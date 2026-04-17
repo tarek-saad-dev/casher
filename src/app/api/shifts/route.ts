@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getPool } from '@/lib/db';
-import sql from 'mssql';
+import { NextRequest, NextResponse } from "next/server";
+import { getPool, getUserFriendlyError } from "@/lib/db";
+import sql from "mssql";
+
+export const runtime = "nodejs";
 
 /**
  * GET /api/shifts
@@ -10,23 +12,23 @@ import sql from 'mssql';
  */
 export async function GET(request: NextRequest) {
   let db;
-  
+
   try {
     db = await getPool();
-    
+
     const searchParams = request.nextUrl.searchParams;
-    const newDay = searchParams.get('newDay') ? parseInt(searchParams.get('newDay')!) : null;
-    
+    const newDay = searchParams.get("newDay")
+      ? parseInt(searchParams.get("newDay")!)
+      : null;
+
     if (newDay === null) {
       return NextResponse.json(
-        { error: 'معامل newDay مطلوب' },
-        { status: 400 }
+        { error: "معامل newDay مطلوب" },
+        { status: 400 },
       );
     }
-    
-    const result = await db.request()
-      .input('newDay', sql.Int, newDay)
-      .query(`
+
+    const result = await db.request().input("newDay", sql.Int, newDay).query(`
         SELECT 
           sm.ID as ShiftMoveID,
           sm.ShiftID,
@@ -41,7 +43,7 @@ export async function GET(request: NextRequest) {
         WHERE sm.NewDay = @newDay
         ORDER BY sm.StartDate DESC
       `);
-    
+
     const shifts = result.recordset.map((row: any) => ({
       ShiftMoveID: row.ShiftMoveID,
       ShiftID: row.ShiftID,
@@ -49,19 +51,18 @@ export async function GET(request: NextRequest) {
       UserID: row.UserID,
       UserName: row.UserName,
       StartDate: row.StartDate,
-      EndDate: row.EndDate
+      EndDate: row.EndDate,
     }));
-    
+
     return NextResponse.json({ shifts });
-    
   } catch (error) {
-    console.error('[api/shifts] GET error:', error);
+    console.error("[api/shifts] GET error:", error);
     return NextResponse.json(
-      { 
-        error: 'فشل تحميل الورديات',
-        details: error instanceof Error ? error.message : 'Unknown error'
+      {
+        error: "فشل تحميل الورديات",
+        details: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

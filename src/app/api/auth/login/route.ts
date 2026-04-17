@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getPool, sql } from '@/lib/db';
-import { createSession } from '@/lib/session';
+import { NextRequest, NextResponse } from "next/server";
+import { getPool, getUserFriendlyError, sql } from "@/lib/db";
+import { createSession } from "@/lib/session";
+
+export const runtime = "nodejs";
 
 // POST /api/auth/login
 export async function POST(req: NextRequest) {
@@ -9,16 +11,16 @@ export async function POST(req: NextRequest) {
 
     if (!loginName || !password) {
       return NextResponse.json(
-        { error: 'يجب إدخال اسم المستخدم وكلمة المرور' },
-        { status: 400 }
+        { error: "يجب إدخال اسم المستخدم وكلمة المرور" },
+        { status: 400 },
       );
     }
 
     const db = await getPool();
-    const result = await db.request()
-      .input('loginName', sql.NVarChar(50), loginName)
-      .input('password', sql.NVarChar(50), password)
-      .query(`
+    const result = await db
+      .request()
+      .input("loginName", sql.NVarChar(50), loginName)
+      .input("password", sql.NVarChar(50), password).query(`
         SELECT UserID, UserName, UserLevel, loginName, ShiftID
         FROM [dbo].[TblUser]
         WHERE loginName = @loginName
@@ -28,8 +30,8 @@ export async function POST(req: NextRequest) {
 
     if (result.recordset.length === 0) {
       return NextResponse.json(
-        { error: 'اسم المستخدم أو كلمة المرور غير صحيحة' },
-        { status: 401 }
+        { error: "اسم المستخدم أو كلمة المرور غير صحيحة" },
+        { status: 401 },
       );
     }
 
@@ -40,7 +42,9 @@ export async function POST(req: NextRequest) {
       UserLevel: user.UserLevel,
     });
 
-    console.log(`[auth] Login success: UserID=${user.UserID}, UserName=${user.UserName}, Level=${user.UserLevel}`);
+    console.log(
+      `[auth] Login success: UserID=${user.UserID}, UserName=${user.UserName}, Level=${user.UserLevel}`,
+    );
 
     return NextResponse.json({
       UserID: user.UserID,
@@ -49,8 +53,9 @@ export async function POST(req: NextRequest) {
       ShiftID: user.ShiftID,
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[auth/login] error:', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    const rawMessage = err instanceof Error ? err.message : "Unknown error";
+    console.error("[auth/login] error:", rawMessage);
+    const userMessage = getUserFriendlyError(err);
+    return NextResponse.json({ error: userMessage }, { status: 500 });
   }
 }

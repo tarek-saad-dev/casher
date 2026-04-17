@@ -33,12 +33,12 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'خطأ في تسجيل الدخول');
+        setError(data.error || 'تعذر الاتصال بالخادم، حاول مرة أخرى');
         return;
       }
       onSuccess(data);
     } catch {
-      setError('خطأ في الاتصال بالخادم');
+      setError('تعذر الاتصال بالخادم، يرجى التحقق من الإنترنت والمحاولة مرة أخرى');
     } finally {
       setLoading(false);
     }
