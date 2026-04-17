@@ -26,6 +26,8 @@ import {
   ArrowLeftRight,
   BarChart3,
   Clock,
+  // Budget
+  Calculator,
   // Admin
   Settings,
   Scissors,
@@ -78,7 +80,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'مراجعة المدخلات',
     items: [
       {
-        href: '/income-review/today-sales',
+        href: '/sales/today',
         label: 'مبيعات اليوم',
         icon: TrendingUp,
       },
@@ -108,14 +110,14 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'المصروفات',
     items: [
       {
+        href: '/expenses',
+        label: 'تسجيل مصروف',
+        icon: Receipt,
+      },
+      {
         href: '/expenses/salaries',
         label: 'مرتبات العاملين',
         icon: Users,
-      },
-      {
-        href: '/expenses/new',
-        label: 'مصروف جديد',
-        icon: Receipt,
       },
       {
         href: '/expenses/fixed',
@@ -128,7 +130,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'مراجعة المصروفات',
     items: [
       {
-        href: '/expenses-review/report',
+        href: '/reports/expenses/monthly',
         label: 'تقرير المصروفات',
         icon: PieChart,
       },
@@ -148,8 +150,8 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'الخزنة',
     items: [
       {
-        href: '/treasury/daily-close',
-        label: 'تقفيل اليوم',
+        href: '/treasury/daily',
+        label: 'قفل اليوم',
         icon: Lock,
       },
       {
@@ -166,6 +168,16 @@ const NAV_SECTIONS: NavSection[] = [
         href: '/treasury/shift-close',
         label: 'تقفيل الوردية',
         icon: Clock,
+      },
+    ]
+  },
+  {
+    title: 'الميزانية',
+    items: [
+      {
+        href: '/budget',
+        label: 'الميزانية الشهرية',
+        icon: Calculator,
       },
     ]
   },
