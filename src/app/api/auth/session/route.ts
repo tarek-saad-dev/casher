@@ -1,7 +1,9 @@
-import { NextResponse } from 'next/server';
-import { getSession, destroySession } from '@/lib/session';
-import { getPool, sql } from '@/lib/db';
-import { getPermissions } from '@/lib/permissions';
+import { NextResponse } from "next/server";
+import { getSession, destroySession } from "@/lib/session";
+import { getPool, getUserFriendlyError, sql } from "@/lib/db";
+import { getPermissions } from "@/lib/permissions";
+
+export const runtime = "nodejs";
 
 // GET /api/auth/session — returns full operational session state
 export async function GET() {
@@ -9,7 +11,10 @@ export async function GET() {
     const user = await getSession();
     if (!user) {
       return NextResponse.json({
-        user: null, day: null, shift: null, permissions: [],
+        user: null,
+        day: null,
+        shift: null,
+        permissions: [],
       });
     }
 
@@ -25,8 +30,7 @@ export async function GET() {
     const day = dayResult.recordset.length > 0 ? dayResult.recordset[0] : null;
 
     // Get current open shift for THIS authenticated user only
-    const shiftResult = await db.request()
-      .input('userID', sql.Int, user.UserID)
+    const shiftResult = await db.request().input("userID", sql.Int, user.UserID)
       .query(`
         SELECT TOP 1
           sm.ID, sm.NewDay, sm.UserID, sm.ShiftID,
@@ -39,15 +43,17 @@ export async function GET() {
         WHERE sm.Status = 1 AND sm.UserID = @userID
         ORDER BY sm.ID DESC
       `);
-    const shift = shiftResult.recordset.length > 0 ? shiftResult.recordset[0] : null;
+    const shift =
+      shiftResult.recordset.length > 0 ? shiftResult.recordset[0] : null;
 
     const permissions = getPermissions(user.UserLevel);
 
     return NextResponse.json({ user, day, shift, permissions });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[auth/session] GET error:', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    const rawMessage = err instanceof Error ? err.message : "Unknown error";
+    console.error("[auth/session] GET error:", rawMessage);
+    const userMessage = getUserFriendlyError(err);
+    return NextResponse.json({ error: userMessage }, { status: 500 });
   }
 }
 
@@ -57,8 +63,8 @@ export async function DELETE() {
     await destroySession();
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[auth/session] DELETE error:', message);
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("[auth/session] DELETE error:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
