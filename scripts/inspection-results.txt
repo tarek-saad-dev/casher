@@ -1,0 +1,1 @@
+Sqlcmd: Error: Microsoft ODBC Driver 17 for SQL Server : Login failed for user 'DESKTOP-EUN2CV2\user'. Reason: The account is disabled..

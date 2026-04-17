@@ -1,65 +1,267 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import { useEffect, useState, useCallback } from 'react';
+import { Save, Loader2, AlertTriangle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import PosHeader from '@/components/pos/PosHeader';
+import CustomerSearch from '@/components/pos/CustomerSearch';
+import CustomerHistoryPanel from '@/components/pos/CustomerHistoryPanel';
+import QuickCustomerModal from '@/components/pos/QuickCustomerModal';
+import BarberGrid from '@/components/pos/BarberGrid';
+import ServiceGrid from '@/components/pos/ServiceGrid';
+import CartPanel from '@/components/pos/CartPanel';
+import InvoiceSummary from '@/components/pos/InvoiceSummary';
+import PaymentMethodSelect from '@/components/pos/PaymentMethodSelect';
+import PrintInvoiceModal from '@/components/pos/PrintInvoiceModal';
+import ShiftRequiredOverlay from '@/components/session/ShiftRequiredOverlay';
+import DayRolloverModal from '@/components/session/DayRolloverModal';
+import CloseDayModal from '@/components/session/CloseDayModal';
+import { useSaleState } from '@/hooks/useSaleState';
+import { useSession } from '@/hooks/useSession';
+import { useDayRollover } from '@/hooks/useDayRollover';
+import type { Barber, Service, PaymentMethod, Customer } from '@/lib/types';
+
+export default function PosPage() {
+  // ───────────────── Session ─────────────────
+  const { shift, hasActiveShift, loading: sessionLoading, refresh: refreshSession } = useSession();
+
+  // Set page title
+  useEffect(() => {
+    document.title = 'نقطة البيع | نظام نقاط البيع';
+  }, []);
+
+  // ───────────────── Day rollover detection ─────────────────
+  const rollover = useDayRollover();
+
+  // ───────────────── Close day modal ─────────────────
+  const [closeDayOpen, setCloseDayOpen] = useState(false);
+
+  // ───────────────── Lookup data ─────────────────
+  const [barbers, setBarbers] = useState<Barber[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+
+  // ───────────────── Sale state ─────────────────
+  const {
+    state, totals,
+    setCustomer, setBarber, addItem, removeItem,
+    setDiscountPercent, setDiscountValue,
+    setPaymentMethod, setShift, reset,
+  } = useSaleState();
+
+  // ───────────────── UI state ─────────────────
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [printInvID, setPrintInvID] = useState<number | null>(null);
+  const [printOpen, setPrintOpen] = useState(false);
+
+  // ───────────────── Sync shift from session into sale state ─────────────────
+  useEffect(() => {
+    setShift(shift?.ID ?? null);
+  }, [shift, setShift]);
+
+  // ───────────────── Load lookup data on mount ─────────────────
+  useEffect(() => {
+    fetch('/api/barbers').then(r => r.json()).then(d => { if (Array.isArray(d)) setBarbers(d); });
+    fetch('/api/services').then(r => r.json()).then(d => { if (Array.isArray(d)) setServices(d); });
+    fetch('/api/payment-methods').then(r => r.json()).then(d => { if (Array.isArray(d)) setPaymentMethods(d); });
+  }, []);
+
+  // ───────────────── Save sale ─────────────────
+  const handleSave = useCallback(async () => {
+    setSaveError('');
+    if (state.items.length === 0) { setSaveError('يجب إضافة خدمة واحدة على الأقل'); return; }
+    if (!state.paymentMethodId) { setSaveError('يجب اختيار طريقة الدفع'); return; }
+
+    setSaving(true);
+    try {
+      const isCash = state.paymentMethodId === 1;
+      const payload = {
+        clientId: state.customer?.ClientID || null,
+        items: state.items.map(i => ({
+          proId: i.ProID,
+          empId: i.EmpID,
+          sPrice: i.SPrice,
+          bonus: i.Bonus,
+          qty: i.Qty,
+          dis: i.Dis,
+          disVal: i.DisVal,
+          sPriceAfterDis: i.SPriceAfterDis,
+          notes: i.ProName,
+        })),
+        subTotal: totals.subTotal,
+        dis: state.discountPercent,
+        disVal: totals.discountValue,
+        grandTotal: totals.grandTotal,
+        totalBonus: totals.totalBonus,
+        totalQty: totals.totalQty,
+        paymentMethodId: state.paymentMethodId,
+        payCash: isCash ? totals.grandTotal : 0,
+        payVisa: !isCash ? totals.grandTotal : 0,
+        notes: state.customer ? `مبيعات / ${state.customer.Name}` : 'مبيعات',
+      };
+
+      const res = await fetch('/api/sales', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setSaveError(data.error || 'خطأ في حفظ الفاتورة');
+        return;
+      }
+
+      const result = await res.json();
+      setPrintInvID(result.invID);
+      setPrintOpen(true);
+      reset();
+    } catch {
+      setSaveError('خطأ في الاتصال بالخادم');
+    } finally {
+      setSaving(false);
+    }
+  }, [state, totals, reset]);
+
+  // ───────────────── Keyboard shortcuts ─────────────────
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'F9') { e.preventDefault(); handleSave(); }
+    }
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [handleSave]);
+
+  // ───────────────── New sale handler ─────────────────
+  const handleNewSale = useCallback(() => {
+    reset();
+    setSaveError('');
+  }, [reset]);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div className="flex flex-col h-full overflow-hidden">
+      <PosHeader
+        shiftId={shift?.ID ?? null}
+        shiftLevel={hasActiveShift ? 'open' : null}
+        onNewSale={handleNewSale}
+      />
+
+      <div className="flex flex-1 overflow-hidden relative">
+        <ShiftRequiredOverlay />
+        {/* ═══════ RIGHT PANEL: Customer + History ═══════ */}
+        <aside className="w-80 border-l border-border p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
+          <CustomerSearch
+            selected={state.customer}
+            onSelect={(c: Customer | null) => setCustomer(c)}
+            onQuickAdd={() => setQuickAddOpen(true)}
+          />
+          
+          {/* Customer History Panel - Auto-loads when customer selected */}
+          {state.customer && (
+            <>
+              <Separator />
+              <CustomerHistoryPanel customerID={state.customer.ClientID} />
+            </>
+          )}
+          
+          <Separator />
+          <div className="text-xs text-muted-foreground space-y-1">
+            <p><kbd className="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono">F9</kbd> حفظ الفاتورة</p>
+          </div>
+        </aside>
+
+        {/* ═══════ CENTER PANEL: Barbers + Services ═══════ */}
+        <main className="flex-1 p-4 overflow-y-auto space-y-5">
+          <BarberGrid
+            barbers={barbers}
+            selected={state.barber}
+            onSelect={setBarber}
+          />
+          <Separator />
+          <ServiceGrid
+            services={services}
+            selectedBarber={state.barber}
+            onAddItem={addItem}
+          />
+        </main>
+
+        {/* ═══════ LEFT PANEL: Cart + Summary + Payment + Save ═══════ */}
+        <aside className="w-80 border-r border-border p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
+          <CartPanel items={state.items} onRemove={removeItem} />
+          <Separator />
+          <InvoiceSummary
+            totals={totals}
+            discountPercent={state.discountPercent}
+            discountValue={state.discountValue}
+            onDiscountPercentChange={setDiscountPercent}
+            onDiscountValueChange={setDiscountValue}
+          />
+          <Separator />
+          <PaymentMethodSelect
+            methods={paymentMethods}
+            selected={state.paymentMethodId}
+            onSelect={setPaymentMethod}
+          />
+
+          {saveError && (
+            <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-lg p-2.5">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              {saveError}
+            </div>
+          )}
+
+          <Button
+            size="lg"
+            className="w-full text-base font-bold py-6"
+            onClick={handleSave}
+            disabled={saving || state.items.length === 0}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+            {saving ? (
+              <>
+                <Loader2 className="w-5 h-5 ml-2 animate-spin" />
+                جاري الحفظ...
+              </>
+            ) : (
+              <>
+                <Save className="w-5 h-5 ml-2" />
+                حفظ الفاتورة (F9)
+              </>
+            )}
+          </Button>
+        </aside>
+      </div>
+
+      {/* ═══════ Modals ═══════ */}
+      <QuickCustomerModal
+        open={quickAddOpen}
+        onClose={() => setQuickAddOpen(false)}
+        onCreated={(c) => { setCustomer(c); setQuickAddOpen(false); }}
+      />
+      <PrintInvoiceModal
+        open={printOpen}
+        invID={printInvID}
+        onClose={() => { setPrintOpen(false); setPrintInvID(null); }}
+      />
+
+      {/* ═══════ Day Rollover Modal ═══════ */}
+      <DayRolloverModal
+        open={rollover.showModal}
+        openDayDate={rollover.openDayDate}
+        todayDate={rollover.todayDate}
+        openShifts={rollover.openShifts}
+        onDismiss={rollover.dismiss}
+        onResolved={() => { rollover.resolved(); refreshSession(); }}
+      />
+
+      {/* ═══════ Close Day Modal ═══════ */}
+      <CloseDayModal
+        open={closeDayOpen}
+        onClose={() => setCloseDayOpen(false)}
+        onClosed={() => { setCloseDayOpen(false); refreshSession(); }}
+      />
     </div>
   );
 }
