@@ -33,6 +33,7 @@ import {
   Scissors,
   Tags,
   Shield,
+  Activity,
   // System
   ChevronDown,
   Menu,
@@ -185,13 +186,18 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'الإدارة',
     items: [
       {
+        href: '/admin/operations',
+        label: 'مركز التشغيل',
+        icon: Activity,
+      },
+      {
         href: '/admin/employees',
         label: 'الموظفون',
         icon: Users,
       },
       {
         href: '/admin/users',
-        label: 'المستخدمون والصلاحيات',
+        label: 'المستخدمون',
         icon: Shield,
       },
       {
