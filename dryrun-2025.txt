@@ -1,0 +1,81 @@
+
+> pos-system@0.1.0 sync:dryrun
+> cd sync-service && npm run dryrun
+
+
+> hawai-sync-service@1.0.0 dryrun
+> node dist/cli/sync.js --once --dry-run
+
+
+🔄 HAWAI SYNC SERVICE
+
+
+========================================
+SYNC SERVICE CONFIGURATION
+========================================
+Environment: PRODUCTION
+
+Local Node: LOCAL-001 (Local)
+  Database: DESKTOP-EUN2CV2.HawaiDB
+
+Cloud Node: CLOUD-001 (Cloud)
+  Database: hawaisqltarek2026.database.windows.net.HawaiDB
+
+Sync Settings:
+  DRY_RUN: true
+  ENABLE_PUSH_LOCAL_TO_CLOUD: true
+  ENABLE_PULL_CLOUD_TO_LOCAL: true
+  ENABLE_APPLY: false
+  ENABLE_DELETE_SYNC: false
+  CONFLICT_POLICY: HashEqualElseConflict
+  BATCH_SIZE: 100
+========================================
+
+⚠️  SAFETY WARNINGS:
+   WARNING: DRY_RUN is still enabled in production mode. No changes will be applied.
+   WARNING: ENABLE_APPLY is false in production mode. No data will be modified.
+
+🔍 DRY RUN MODE - No changes will be applied
+
+01:25:34 [[32minfo[39m]: Starting sync run {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8","dryRun":true,"enablePush":true,"enablePull":true,"enableApply":false,"environment":"production"}
+01:25:34 [[32minfo[39m]: Connecting to databases... {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8"}
+01:25:34 [[32minfo[39m]: [Lock] Acquiring sync locks with 10s timeout... {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8"}
+01:25:34 [[32minfo[39m]: [Lock] Acquiring on LOCAL-001... {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8","lockName":"HawaiSyncLock","owner":"LOCAL-001-1776468334262","timeoutMs":10000}
+01:25:34 [[32minfo[39m]: [Lock] Acquiring on CLOUD-001... {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8","lockName":"HawaiSyncLock","owner":"CLOUD-001-1776468334264","timeoutMs":10000}
+01:25:34 [[32minfo[39m]: [Lock] ✅ ACQUIRED on LOCAL-001 {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8","lockName":"HawaiSyncLock","owner":"LOCAL-001-1776468334262","resultCode":0,"resultText":"Granted"}
+01:25:44 [[33mwarn[39m]: [Lock] ❌ FAILED on CLOUD-001 {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8","lockName":"HawaiSyncLock","owner":"CLOUD-001-1776468334264","resultCode":-1,"resultText":"Parameter error"}
+01:25:44 [[32minfo[39m]: [Lock] Results {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8","localSuccess":true,"localOwner":"LOCAL-001-1776468334262","cloudSuccess":false,"cloudOwner":"CLOUD-001-1776468334264"}
+01:25:44 [[33mwarn[39m]: [Lock] Cloud lock failed but continuing in dry run mode (read-only) {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8"}
+01:25:44 [[32minfo[39m]: Loading table metadata... {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8"}
+01:25:44 [[32minfo[39m]: Loaded metadata for 40 tables {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8"}
+01:25:44 [[32minfo[39m]: Current versions {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8","localVersion":"31","cloudVersion":"31"}
+01:25:44 [[32minfo[39m]: Reading local changes for push... {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8"}
+01:25:46 [[32minfo[39m]: Found 23 local changes {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8"}
+01:25:46 [[32minfo[39m]: Reading cloud changes for pull... {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8"}
+01:25:47 [[32minfo[39m]: Found 23 cloud changes {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8"}
+01:25:47 [[32minfo[39m]: Detecting conflicts... {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8"}
+01:25:47 [[32minfo[39m]: Conflict detection complete {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8","totalConflicts":0,"localOnlyChanges":0,"cloudOnlyChanges":0,"hashEqualNoConflict":15}
+01:25:47 [[31merror[39m]: Sync failed {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8","error":"Do not know how to serialize a BigInt"}
+01:25:47 [[32minfo[39m]: [Lock] Releasing on LOCAL-001... {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8","lockName":"HawaiSyncLock","owner":"LOCAL-001-1776468334262"}
+01:25:47 [[32minfo[39m]: [Lock] ✅ RELEASED on LOCAL-001 {"runId":"26207ab5-2725-4874-9479-35aa060a4aa8","lockName":"HawaiSyncLock","owner":"LOCAL-001-1776468334262"}
+
+========================================
+SYNC RESULTS
+========================================
+Run ID: 26207ab5-2725-4874-9479-35aa060a4aa8
+Status: ✅ SUCCESS
+Error: Do not know how to serialize a BigInt
+
+📊 Statistics:
+  Tables processed: 40
+  Local changes read: 23
+  Cloud changes read: 23
+  Inserts: 0
+  Updates: 0
+  Deletes: 0
+
+========================================
+Log file: logs/sync-26207ab5-2725-4874-9479-35aa060a4aa8.log
+========================================
+
+DRYRUN_DONE 

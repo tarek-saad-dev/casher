@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Loader2, Lock } from 'lucide-react';
+import { Loader2, Lock, Calculator } from 'lucide-react';
 import TreasuryFiltersBar from '@/components/treasury/TreasuryFiltersBar';
 import TreasuryKpiCards from '@/components/treasury/TreasuryKpiCards';
 import PaymentMethodBreakdownTable from '@/components/treasury/PaymentMethodBreakdownTable';
@@ -17,7 +17,6 @@ export default function DailyTreasuryPage() {
   const [treasuryData, setTreasuryData] = useState<DailyTreasuryData | null>(null);
   const [movementsData, setMovementsData] = useState<TreasuryMovementsResponse | null>(null);
   const [currentDayShift, setCurrentDayShift] = useState<CurrentDayShift | null>(null);
-  
   const [loading, setLoading] = useState(false);
   const [movementsLoading, setMovementsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -203,6 +202,60 @@ export default function DailyTreasuryPage() {
         {/* Content */}
         {!loading && treasuryData && (
           <>
+            {/* Total Money Banner */}
+            {(() => {
+              const totalNet = treasuryData.paymentMethods.reduce((s, p) => s + p.net, 0);
+              const fmt = (n: number) =>
+                new Intl.NumberFormat('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+              return (
+                <div className={`rounded-2xl border p-5 shadow-lg ${
+                  totalNet >= 0
+                    ? 'bg-gradient-to-l from-emerald-950/40 to-emerald-900/20 border-emerald-500/20'
+                    : 'bg-gradient-to-l from-rose-950/40 to-rose-900/20 border-rose-500/20'
+                }`}>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    {/* Label */}
+                    <div className="flex items-center gap-3">
+                      <div className={`p-3 rounded-xl ${totalNet >= 0 ? 'bg-emerald-500/15' : 'bg-rose-500/15'}`}>
+                        <Calculator className={`h-6 w-6 ${totalNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} />
+                      </div>
+                      <div>
+                        <p className={`text-xs font-semibold tracking-wide ${totalNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          إجمالي المبلغ في الخزنة
+                        </p>
+                        <p className="text-xs text-zinc-500 mt-0.5">جمع صافي كل طرق الدفع للفترة المحددة</p>
+                      </div>
+                    </div>
+
+                    {/* Per-method breakdown + grand total */}
+                    <div className="flex flex-wrap items-center gap-5">
+                      {treasuryData.paymentMethods.map((pm) => (
+                        <div key={pm.paymentMethodId} className="text-center min-w-[60px]">
+                          <p className="text-[11px] text-zinc-500 mb-0.5 truncate max-w-[80px]">{pm.paymentMethodName}</p>
+                          <p className={`text-sm font-bold ${pm.net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {fmt(pm.net)}
+                            <span className="text-[10px] font-normal mr-0.5">ج.م</span>
+                          </p>
+                        </div>
+                      ))}
+
+                      <div className={`h-8 w-px hidden sm:block ${totalNet >= 0 ? 'bg-emerald-500/20' : 'bg-rose-500/20'}`} />
+
+                      <div className="text-center">
+                        <p className={`text-[11px] font-medium mb-0.5 ${totalNet >= 0 ? 'text-emerald-400/70' : 'text-rose-400/70'}`}>
+                          الإجمالي
+                        </p>
+                        <p className={`text-2xl font-bold ${totalNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {fmt(totalNet)}
+                          <span className="text-sm font-normal mr-1">ج.م</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* KPI Cards */}
             <TreasuryKpiCards summary={treasuryData.summary} loading={loading} />
 

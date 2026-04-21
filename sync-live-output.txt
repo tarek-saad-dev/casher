@@ -1,0 +1,64 @@
+
+> pos-system@0.1.0 sync:live
+> cd sync-service && npm run live
+
+
+> hawai-sync-service@1.0.0 live
+> node dist/cli/sync.js --once
+
+
+🔄 HAWAI SYNC SERVICE
+
+
+========================================
+SYNC SERVICE CONFIGURATION
+========================================
+Environment: PRODUCTION
+
+Local Node: LOCAL-001 (Local)
+  Database: DESKTOP-EUN2CV2.HawaiDB
+
+Cloud Node: CLOUD-001 (Cloud)
+  Database: hawaisqltarek2026.database.windows.net.HawaiDB
+
+Sync Settings:
+  DRY_RUN: false
+  ENABLE_PUSH_LOCAL_TO_CLOUD: true
+  ENABLE_PULL_CLOUD_TO_LOCAL: true
+  ENABLE_APPLY: true
+  ENABLE_DELETE_SYNC: false
+  CONFLICT_POLICY: HashEqualElseConflict
+  BATCH_SIZE: 100
+========================================
+
+22:59:00 [[32minfo[39m]: Starting sync run {"runId":"32ebf0f1-9a56-47d1-b6f8-b3b8c342a2d4","dryRun":false,"enablePush":true,"enablePull":true,"enableApply":true,"environment":"production"}
+22:59:00 [[32minfo[39m]: Connecting to databases... {"runId":"32ebf0f1-9a56-47d1-b6f8-b3b8c342a2d4"}
+22:59:00 [[32minfo[39m]: [Lock] Acquiring sync locks with 10s timeout... {"runId":"32ebf0f1-9a56-47d1-b6f8-b3b8c342a2d4"}
+22:59:00 [[32minfo[39m]: [Lock] Acquiring on LOCAL-001... {"runId":"32ebf0f1-9a56-47d1-b6f8-b3b8c342a2d4","lockName":"HawaiSyncLock","owner":"LOCAL-001-1776632340935","timeoutMs":10000}
+22:59:00 [[32minfo[39m]: [Lock] Acquiring on CLOUD-001... {"runId":"32ebf0f1-9a56-47d1-b6f8-b3b8c342a2d4","lockName":"HawaiSyncLock","owner":"CLOUD-001-1776632340937","timeoutMs":10000}
+22:59:04 [[32minfo[39m]: [Lock] ✅ ACQUIRED on LOCAL-001 {"runId":"32ebf0f1-9a56-47d1-b6f8-b3b8c342a2d4","lockName":"HawaiSyncLock","owner":"LOCAL-001-1776632340935","resultCode":1,"resultText":"Granted after wait"}
+22:59:10 [[33mwarn[39m]: [Lock] ❌ FAILED on CLOUD-001 {"runId":"32ebf0f1-9a56-47d1-b6f8-b3b8c342a2d4","lockName":"HawaiSyncLock","owner":"CLOUD-001-1776632340937","resultCode":-1,"resultText":"Parameter error"}
+22:59:10 [[32minfo[39m]: [Lock] Results {"runId":"32ebf0f1-9a56-47d1-b6f8-b3b8c342a2d4","localSuccess":true,"localOwner":"LOCAL-001-1776632340935","cloudSuccess":false,"cloudOwner":"CLOUD-001-1776632340937"}
+22:59:10 [[31merror[39m]: Sync failed {"runId":"32ebf0f1-9a56-47d1-b6f8-b3b8c342a2d4","error":"Cloud lock acquisition failed. Try: npm run sync:unlock"}
+22:59:10 [[32minfo[39m]: [Lock] Releasing on LOCAL-001... {"runId":"32ebf0f1-9a56-47d1-b6f8-b3b8c342a2d4","lockName":"HawaiSyncLock","owner":"LOCAL-001-1776632340935"}
+22:59:10 [[33mwarn[39m]: [Lock] Release warning on LOCAL-001 {"runId":"32ebf0f1-9a56-47d1-b6f8-b3b8c342a2d4","lockName":"HawaiSyncLock","owner":"LOCAL-001-1776632340935","error":"Cannot release the application lock (Database Principal: 'public', Resource: 'HawaiSyncLock') because it is not currently held."}
+
+========================================
+SYNC RESULTS
+========================================
+Run ID: 32ebf0f1-9a56-47d1-b6f8-b3b8c342a2d4
+Status: ❌ FAILED
+Error: Cloud lock acquisition failed. Try: npm run sync:unlock
+
+📊 Statistics:
+  Tables processed: 0
+  Local changes read: 0
+  Cloud changes read: 0
+  Inserts: 0
+  Updates: 0
+  Deletes: 0
+
+========================================
+Log file: logs/sync-32ebf0f1-9a56-47d1-b6f8-b3b8c342a2d4.log
+========================================
+
