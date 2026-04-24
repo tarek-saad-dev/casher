@@ -10,6 +10,7 @@ type Action =
   | { type: 'SET_BARBER'; barber: Barber | null }
   | { type: 'ADD_ITEM'; item: CartItem }
   | { type: 'REMOVE_ITEM'; id: string }
+  | { type: 'UPDATE_ITEM'; id: string; patch: Partial<CartItem> }
   | { type: 'SET_DISCOUNT_PERCENT'; value: number }
   | { type: 'SET_DISCOUNT_VALUE'; value: number }
   | { type: 'SET_PAYMENT_METHOD'; id: number | null }
@@ -43,6 +44,8 @@ function reducer(state: SaleState, action: Action): SaleState {
       return { ...state, items: [...state.items, action.item] };
     case 'REMOVE_ITEM':
       return { ...state, items: state.items.filter(i => i.id !== action.id) };
+    case 'UPDATE_ITEM':
+      return { ...state, items: state.items.map(i => i.id === action.id ? { ...i, ...action.patch } : i) };
     case 'CLEAR_ITEMS':
       return { ...state, items: [] };
     case 'SET_DISCOUNT_PERCENT':
@@ -90,6 +93,7 @@ export function useSaleState() {
   const setBarber = useCallback((b: Barber | null) => dispatch({ type: 'SET_BARBER', barber: b }), []);
   const addItem = useCallback((item: CartItem) => dispatch({ type: 'ADD_ITEM', item }), []);
   const removeItem = useCallback((id: string) => dispatch({ type: 'REMOVE_ITEM', id }), []);
+  const updateItem = useCallback((id: string, patch: Partial<CartItem>) => dispatch({ type: 'UPDATE_ITEM', id, patch }), []);
   const setDiscountPercent = useCallback((v: number) => dispatch({ type: 'SET_DISCOUNT_PERCENT', value: v }), []);
   const setDiscountValue = useCallback((v: number) => dispatch({ type: 'SET_DISCOUNT_VALUE', value: v }), []);
   const setPaymentMethod = useCallback((id: number | null) => dispatch({ type: 'SET_PAYMENT_METHOD', id }), []);
@@ -105,6 +109,7 @@ export function useSaleState() {
     setBarber,
     addItem,
     removeItem,
+    updateItem,
     setDiscountPercent,
     setDiscountValue,
     setPaymentMethod,

@@ -46,7 +46,7 @@ export default function PosPage() {
   // ───────────────── Sale state ─────────────────
   const {
     state, totals,
-    setCustomer, setBarber, addItem, removeItem,
+    setCustomer, setBarber, addItem, removeItem, updateItem,
     setDiscountPercent, setDiscountValue,
     setPaymentMethod, setShift, clearItems, reset,
   } = useSaleState();
@@ -230,7 +230,7 @@ export default function PosPage() {
 
         {/* ═══════ LEFT PANEL: Cart + Summary + Payment + Save ═══════ */}
         <aside className="w-80 border-r border-border p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
-          <CartPanel items={state.items} onRemove={removeItem} />
+          <CartPanel items={state.items} barbers={barbers} onRemove={removeItem} onUpdateItem={updateItem} />
           <Separator />
           <InvoiceSummary
             totals={totals}
