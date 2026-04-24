@@ -47,6 +47,7 @@ interface NavItem {
   label: string;
   icon: any;
   badge?: string;
+  disabled?: boolean;
   children?: NavItem[];
 }
 
@@ -74,6 +75,7 @@ const NAV_SECTIONS: NavSection[] = [
         href: '/income/collection',
         label: 'تحصيل / دفعة',
         icon: CreditCard,
+        disabled: true,
       },
     ]
   },
@@ -262,6 +264,31 @@ export default function MainNav() {
     const active = isActive(item.href);
     const Icon = item.icon;
     const isCollapsed = sidebarCollapsed;
+
+    if (item.disabled) {
+      return (
+        <div
+          key={item.href}
+          className={cn(
+            'flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg cursor-not-allowed opacity-40 select-none',
+            isCollapsed && 'justify-center px-2'
+          )}
+          title={isCollapsed ? item.label : 'قريباً'}
+        >
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-800/50">
+            <Icon className="w-4 h-4 flex-shrink-0 text-zinc-500" />
+          </div>
+          {!isCollapsed && (
+            <span className="truncate text-zinc-500">{item.label}</span>
+          )}
+          {!isCollapsed && (
+            <span className="mr-auto px-1.5 py-0.5 bg-zinc-700/50 text-zinc-500 text-[10px] font-medium rounded-full border border-zinc-700/50">
+              قريباً
+            </span>
+          )}
+        </div>
+      );
+    }
 
     return (
       <Link

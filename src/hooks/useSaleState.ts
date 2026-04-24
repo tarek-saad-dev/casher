@@ -15,6 +15,7 @@ type Action =
   | { type: 'SET_PAYMENT_METHOD'; id: number | null }
   | { type: 'SET_NOTES'; notes: string }
   | { type: 'SET_SHIFT'; shiftMoveId: number | null }
+  | { type: 'CLEAR_ITEMS' }
   | { type: 'RESET' };
 
 // ───────────────────────── Initial State ─────────────────────────
@@ -42,6 +43,8 @@ function reducer(state: SaleState, action: Action): SaleState {
       return { ...state, items: [...state.items, action.item] };
     case 'REMOVE_ITEM':
       return { ...state, items: state.items.filter(i => i.id !== action.id) };
+    case 'CLEAR_ITEMS':
+      return { ...state, items: [] };
     case 'SET_DISCOUNT_PERCENT':
       return { ...state, discountPercent: action.value, discountValue: 0 };
     case 'SET_DISCOUNT_VALUE':
@@ -92,6 +95,7 @@ export function useSaleState() {
   const setPaymentMethod = useCallback((id: number | null) => dispatch({ type: 'SET_PAYMENT_METHOD', id }), []);
   const setNotes = useCallback((n: string) => dispatch({ type: 'SET_NOTES', notes: n }), []);
   const setShift = useCallback((id: number | null) => dispatch({ type: 'SET_SHIFT', shiftMoveId: id }), []);
+  const clearItems = useCallback(() => dispatch({ type: 'CLEAR_ITEMS' }), []);
   const reset = useCallback(() => dispatch({ type: 'RESET' }), []);
 
   return {
@@ -106,6 +110,7 @@ export function useSaleState() {
     setPaymentMethod,
     setNotes,
     setShift,
+    clearItems,
     reset,
   };
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { History, AlertCircle } from 'lucide-react';
+import { History, AlertCircle, Wand2 } from 'lucide-react';
 import CustomerRecentSales from './CustomerRecentSales';
 import CustomerVisitSummary from './CustomerVisitSummary';
 import CustomerRecommendation from './CustomerRecommendation';
@@ -38,20 +38,39 @@ interface Recommendation {
   priority: 'high' | 'medium' | 'low';
 }
 
+interface AutoFillService {
+  proID: number;
+  proName: string;
+  empID: number;
+  empName: string;
+  sPrice: number;
+  bonus: number;
+}
+
+export interface LastSaleAutoFill {
+  paymentMethodId: number | null;
+  paymentMethodName: string | null;
+  barberEmpID: number | null;
+  barberName: string | null;
+  services: AutoFillService[];
+}
+
 interface CustomerHistoryData {
   customerID: number;
   customerName: string;
   customerPhone: string;
   recentSales: RecentSale[];
+  lastSaleForAutoFill: LastSaleAutoFill | null;
   summary: VisitSummary;
   recommendation: Recommendation;
 }
 
 interface CustomerHistoryPanelProps {
   customerID: number | null;
+  onAutoFill?: (data: LastSaleAutoFill) => void;
 }
 
-export default function CustomerHistoryPanel({ customerID }: CustomerHistoryPanelProps) {
+export default function CustomerHistoryPanel({ customerID, onAutoFill }: CustomerHistoryPanelProps) {
   const [data, setData] = useState<CustomerHistoryData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -141,6 +160,20 @@ export default function CustomerHistoryPanel({ customerID }: CustomerHistoryPane
       {/* Data Display */}
       {data && !loading && !error && (
         <>
+          {/* Auto-fill button */}
+          {data.lastSaleForAutoFill && onAutoFill && (
+            <button
+              onClick={() => onAutoFill(data.lastSaleForAutoFill!)}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-primary/30 bg-primary/5 text-primary text-xs font-semibold hover:bg-primary/15 transition-colors"
+            >
+              <Wand2 className="w-3.5 h-3.5" />
+              تطبيق آخر زيارة تلقائياً
+              {data.lastSaleForAutoFill.barberName && (
+                <span className="text-[10px] text-muted-foreground font-normal">({data.lastSaleForAutoFill.barberName})</span>
+              )}
+            </button>
+          )}
+
           {/* Recent Sales */}
           <div>
             <h4 className="text-xs font-bold text-muted-foreground mb-2">آخر 3 مبيعات</h4>

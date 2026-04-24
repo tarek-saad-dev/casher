@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import PosHeader from '@/components/pos/PosHeader';
 import CustomerSearch from '@/components/pos/CustomerSearch';
-import CustomerHistoryPanel from '@/components/pos/CustomerHistoryPanel';
+import CustomerHistoryPanel, { type LastSaleAutoFill } from '@/components/pos/CustomerHistoryPanel';
 import QuickCustomerModal from '@/components/pos/QuickCustomerModal';
 import BarberGrid from '@/components/pos/BarberGrid';
 import ServiceGrid from '@/components/pos/ServiceGrid';
@@ -47,7 +47,7 @@ export default function PosPage() {
     state, totals,
     setCustomer, setBarber, addItem, removeItem,
     setDiscountPercent, setDiscountValue,
-    setPaymentMethod, setShift, reset,
+    setPaymentMethod, setShift, clearItems, reset,
   } = useSaleState();
 
   // ───────────────── UI state ─────────────────
@@ -141,6 +141,39 @@ export default function PosPage() {
     setSaveError('');
   }, [reset]);
 
+  // ───────────────── Auto-fill from last sale ─────────────────
+  const handleAutoFill = useCallback((data: LastSaleAutoFill) => {
+    // 1. Select barber (dominant barber from last sale)
+    if (data.barberEmpID) {
+      const barber = barbers.find(b => b.EmpID === data.barberEmpID);
+      if (barber) setBarber(barber);
+    }
+
+    // 2. Clear existing items then add each service from last sale
+    clearItems();
+    data.services.forEach(svc => {
+      const emp = barbers.find(b => b.EmpID === svc.empID);
+      addItem({
+        id: `${svc.proID}-${svc.empID}-${Date.now()}-${Math.random()}`,
+        ProID: svc.proID,
+        ProName: svc.proName,
+        EmpID: svc.empID,
+        EmpName: emp?.EmpName ?? svc.empName,
+        SPrice: svc.sPrice,
+        Bonus: svc.bonus,
+        Qty: 1,
+        Dis: 0,
+        DisVal: 0,
+        SPriceAfterDis: svc.sPrice,
+      });
+    });
+
+    // 3. Select payment method
+    if (data.paymentMethodId) {
+      setPaymentMethod(data.paymentMethodId);
+    }
+  }, [barbers, setBarber, clearItems, addItem, setPaymentMethod]);
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <PosHeader
@@ -163,7 +196,10 @@ export default function PosPage() {
           {state.customer && (
             <>
               <Separator />
-              <CustomerHistoryPanel customerID={state.customer.ClientID} />
+              <CustomerHistoryPanel
+                customerID={state.customer.ClientID}
+                onAutoFill={handleAutoFill}
+              />
             </>
           )}
           
