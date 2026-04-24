@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
     const result = await db.request()
       .input('q', sql.NVarChar(100), `%${q}%`)
       .query(`
-        SELECT TOP 20 ClientID, [Name], Mobile, BirthDate, RegisterDate, Notes
+        SELECT TOP 20 ClientID, [Name], Mobile, BirthDate, Address, RegisterDate, Notes
         FROM [dbo].[TblClient]
         WHERE [Name] LIKE @q OR Mobile LIKE @q
         ORDER BY [Name]
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, mobile, birthDate, notes } = body;
+    const { name, mobile, birthDate, address, notes } = body;
 
     if (!name || name.trim().length === 0) {
       return NextResponse.json({ error: 'الاسم مطلوب' }, { status: 400 });
@@ -41,12 +41,13 @@ export async function POST(req: NextRequest) {
       .input('name', sql.NVarChar(100), name.trim())
       .input('mobile', sql.NVarChar(30), mobile?.trim() || null)
       .input('birthDate', sql.Date, birthDate || null)
+      .input('address', sql.NVarChar(200), address?.trim() || null)
       .input('notes', sql.NVarChar(500), notes?.trim() || null)
       .query(`
-        INSERT INTO [dbo].[TblClient] ([Name], Mobile, BirthDate, Notes, RegisterDate)
+        INSERT INTO [dbo].[TblClient] ([Name], Mobile, BirthDate, Address, Notes, RegisterDate)
         OUTPUT INSERTED.ClientID, INSERTED.[Name], INSERTED.Mobile,
-               INSERTED.BirthDate, INSERTED.Notes, INSERTED.RegisterDate
-        VALUES (@name, @mobile, @birthDate, @notes, GETDATE())
+               INSERTED.BirthDate, INSERTED.Address, INSERTED.Notes, INSERTED.RegisterDate
+        VALUES (@name, @mobile, @birthDate, @address, @notes, GETDATE())
       `);
 
     return NextResponse.json(result.recordset[0], { status: 201 });

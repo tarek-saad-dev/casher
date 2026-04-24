@@ -8,6 +8,7 @@ import PosHeader from '@/components/pos/PosHeader';
 import CustomerSearch from '@/components/pos/CustomerSearch';
 import CustomerHistoryPanel, { type LastSaleAutoFill } from '@/components/pos/CustomerHistoryPanel';
 import QuickCustomerModal from '@/components/pos/QuickCustomerModal';
+import CompleteCustomerModal from '@/components/pos/CompleteCustomerModal';
 import BarberGrid from '@/components/pos/BarberGrid';
 import ServiceGrid from '@/components/pos/ServiceGrid';
 import CartPanel from '@/components/pos/CartPanel';
@@ -52,6 +53,8 @@ export default function PosPage() {
 
   // ───────────────── UI state ─────────────────
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickAddPrefill, setQuickAddPrefill] = useState<string | undefined>();
+  const [completeCustomer, setCompleteCustomer] = useState<Customer | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [printInvID, setPrintInvID] = useState<number | null>(null);
@@ -189,7 +192,8 @@ export default function PosPage() {
           <CustomerSearch
             selected={state.customer}
             onSelect={(c: Customer | null) => setCustomer(c)}
-            onQuickAdd={() => setQuickAddOpen(true)}
+            onQuickAdd={(prefill) => { setQuickAddPrefill(prefill); setQuickAddOpen(true); }}
+            onCompleteData={(c) => setCompleteCustomer(c)}
           />
           
           {/* Customer History Panel - Auto-loads when customer selected */}
@@ -275,7 +279,18 @@ export default function PosPage() {
         open={quickAddOpen}
         onClose={() => setQuickAddOpen(false)}
         onCreated={(c) => { setCustomer(c); setQuickAddOpen(false); }}
+        initialQuery={quickAddPrefill}
       />
+      {completeCustomer && (
+        <CompleteCustomerModal
+          customer={completeCustomer}
+          onClose={() => setCompleteCustomer(null)}
+          onUpdated={(updated) => {
+            setCustomer(updated);
+            setCompleteCustomer(null);
+          }}
+        />
+      )}
       <PrintInvoiceModal
         open={printOpen}
         invID={printInvID}

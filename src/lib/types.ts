@@ -5,6 +5,7 @@ export interface Customer {
   Name: string;
   Mobile: string | null;
   BirthDate: string | null;
+  Address: string | null;
   RegisterDate: string | null;
   Notes: string | null;
 }

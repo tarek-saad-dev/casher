@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { UserPlus } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { UserPlus, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -16,15 +16,30 @@ interface QuickCustomerModalProps {
   open: boolean;
   onClose: () => void;
   onCreated: (customer: Customer) => void;
+  initialQuery?: string;
 }
 
-export default function QuickCustomerModal({ open, onClose, onCreated }: QuickCustomerModalProps) {
-  const [name, setName] = useState('');
-  const [mobile, setMobile] = useState('');
+export default function QuickCustomerModal({ open, onClose, onCreated, initialQuery }: QuickCustomerModalProps) {
+  const [name,      setName]      = useState('');
+  const [mobile,    setMobile]    = useState('');
   const [birthDate, setBirthDate] = useState('');
-  const [notes, setNotes] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [address,   setAddress]   = useState('');
+  const [notes,     setNotes]     = useState('');
+  const [saving,    setSaving]    = useState(false);
+  const [error,     setError]     = useState('');
+
+  // Pre-fill when modal opens — detect phone vs name
+  useEffect(() => {
+    if (!open) return;
+    const q = initialQuery?.trim() ?? '';
+    const looksLikePhone = q.length >= 6 && /^[0-9+\s-]+$/.test(q);
+    setName(looksLikePhone ? '' : q);
+    setMobile(looksLikePhone ? q : '');
+    setBirthDate('');
+    setAddress('');
+    setNotes('');
+    setError('');
+  }, [open, initialQuery]);
 
   async function handleSave() {
     if (!name.trim()) { setError('الاسم مطلوب'); return; }
@@ -38,6 +53,7 @@ export default function QuickCustomerModal({ open, onClose, onCreated }: QuickCu
           name: name.trim(),
           mobile: mobile.trim() || null,
           birthDate: birthDate || null,
+          address: address.trim() || null,
           notes: notes.trim() || null,
         }),
       });
@@ -51,6 +67,7 @@ export default function QuickCustomerModal({ open, onClose, onCreated }: QuickCu
       setName('');
       setMobile('');
       setBirthDate('');
+      setAddress('');
       setNotes('');
     } catch {
       setError('خطأ في الاتصال');
@@ -101,6 +118,17 @@ export default function QuickCustomerModal({ open, onClose, onCreated }: QuickCu
                 className="text-left"
               />
             </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
+              العنوان
+            </label>
+            <Input
+              placeholder="عنوان العميل..."
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+            />
           </div>
           <div>
             <label className="text-sm font-medium mb-1.5 block">ملاحظات</label>
