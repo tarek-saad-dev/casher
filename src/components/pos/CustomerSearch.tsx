@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Search, UserPlus, X, Phone, User } from 'lucide-react';
+import { Search, UserPlus, X, Phone, User, Cake, FileText } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import type { Customer } from '@/lib/types';
@@ -50,6 +50,11 @@ export default function CustomerSearch({ selected, onSelect, onQuickAdd }: Custo
     return () => document.removeEventListener('mousedown', handle);
   }, []);
 
+  const formatBirthDate = (dateStr: string | null) => {
+    if (!dateStr) return null;
+    return new Date(dateStr).toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric' });
+  };
+
   if (selected) {
     return (
       <div className="rounded-lg border border-border bg-card p-3">
@@ -59,15 +64,26 @@ export default function CustomerSearch({ selected, onSelect, onQuickAdd }: Custo
             <X className="w-3.5 h-3.5" />
           </Button>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center justify-center w-9 h-9 rounded-full bg-primary/10 text-primary">
+        <div className="flex items-start gap-2">
+          <div className="flex items-center justify-center w-9 h-9 rounded-full bg-primary/10 text-primary shrink-0 mt-0.5">
             <User className="w-4 h-4" />
           </div>
-          <div>
+          <div className="min-w-0 space-y-0.5">
             <p className="font-semibold text-sm">{selected.Name}</p>
             {selected.Mobile && (
               <p className="text-xs text-muted-foreground flex items-center gap-1">
                 <Phone className="w-3 h-3" /> {selected.Mobile}
+              </p>
+            )}
+            {selected.BirthDate && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <Cake className="w-3 h-3" /> {formatBirthDate(selected.BirthDate)}
+              </p>
+            )}
+            {selected.Notes && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <FileText className="w-3 h-3" />
+                <span className="truncate max-w-[200px]">{selected.Notes}</span>
               </p>
             )}
           </div>

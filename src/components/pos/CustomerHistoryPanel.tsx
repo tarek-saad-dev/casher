@@ -19,6 +19,7 @@ interface RecentSale {
   grandTotal: number;
   daysAgo: number;
   services: SaleDetail[];
+  paymentMethod?: string | null;
 }
 
 interface VisitSummary {

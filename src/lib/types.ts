@@ -6,6 +6,7 @@ export interface Customer {
   Mobile: string | null;
   BirthDate: string | null;
   RegisterDate: string | null;
+  Notes: string | null;
 }
 
 export interface Barber {

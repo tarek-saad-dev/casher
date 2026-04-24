@@ -1,4 +1,4 @@
-import { Clock, Calendar, DollarSign } from 'lucide-react';
+import { Clock, Calendar, CreditCard } from 'lucide-react';
 
 interface SaleDetail {
   serviceName: string;
@@ -12,6 +12,7 @@ interface RecentSale {
   grandTotal: number;
   daysAgo: number;
   services: SaleDetail[];
+  paymentMethod?: string | null;
 }
 
 interface CustomerRecentSalesProps {
@@ -50,6 +51,17 @@ export default function CustomerRecentSales({ sales }: CustomerRecentSalesProps)
     if (days === 1) return 'أمس';
     if (days === 2) return 'منذ يومين';
     return `منذ ${days} يوم`;
+  };
+
+  const getPaymentStyle = (method: string | null | undefined) => {
+    if (!method) return { bg: 'bg-muted', text: 'text-muted-foreground', icon: '❓' };
+    const m = method.toLowerCase();
+    if (m.includes('نقد') || m.includes('cash'))      return { bg: 'bg-emerald-500/10', text: 'text-emerald-600 dark:text-emerald-400', icon: '💵' };
+    if (m.includes('فيزا') || m.includes('visa'))    return { bg: 'bg-blue-500/10',    text: 'text-blue-600 dark:text-blue-400',    icon: '💳' };
+    if (m.includes('انستا') || m.includes('insta')) return { bg: 'bg-purple-500/10', text: 'text-purple-600 dark:text-purple-400', icon: '📱' };
+    if (m.includes('تيلدا') || m.includes('tilda')) return { bg: 'bg-orange-500/10', text: 'text-orange-600 dark:text-orange-400', icon: '📲' };
+    if (m.includes('فودافون') || m.includes('vodafone')) return { bg: 'bg-red-500/10', text: 'text-red-600 dark:text-red-400', icon: '📶' };
+    return { bg: 'bg-muted', text: 'text-muted-foreground', icon: '💳' };
   };
 
   return (
@@ -91,11 +103,20 @@ export default function CustomerRecentSales({ sales }: CustomerRecentSalesProps)
             ))}
           </div>
 
-          {/* Days ago badge */}
-          <div className="mt-2 pt-2 border-t border-border">
+          {/* Footer: days ago + payment method */}
+          <div className="mt-2 pt-2 border-t border-border flex items-center justify-between">
             <span className="text-[10px] text-muted-foreground">
               {getDaysAgoText(sale.daysAgo)}
             </span>
+            {sale.paymentMethod && (() => {
+              const style = getPaymentStyle(sale.paymentMethod);
+              return (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${style.bg} ${style.text}`}>
+                  <span>{style.icon}</span>
+                  {sale.paymentMethod}
+                </span>
+              );
+            })()}
           </div>
         </div>
       ))}

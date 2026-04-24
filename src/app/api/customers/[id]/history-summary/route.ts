@@ -13,6 +13,7 @@ interface RecentSale {
   grandTotal: number;
   daysAgo: number;
   services: SaleDetail[];
+  paymentMethod: string | null;
 }
 
 // GET /api/customers/[id]/history-summary — Customer intelligence summary
@@ -49,12 +50,14 @@ export async function GET(
       .input('clientID', sql.Int, clientID)
       .query(`
         SELECT TOP 8
-          invID, invDate, invTime, GrandTotal,
-          DATEDIFF(day, invDate, GETDATE()) AS DaysAgo
-        FROM [dbo].[TblinvServHead]
-        WHERE ClientID = @clientID
-          AND invType = N'مبيعات'
-        ORDER BY invDate DESC, invTime DESC
+          h.invID, h.invDate, h.invTime, h.GrandTotal,
+          DATEDIFF(day, h.invDate, GETDATE()) AS DaysAgo,
+          pm.PaymentMethod
+        FROM [dbo].[TblinvServHead] h
+        LEFT JOIN [dbo].[TblPaymentMethods] pm ON h.PaymentMethodID = pm.PaymentID
+        WHERE h.ClientID = @clientID
+          AND h.invType = N'مبيعات'
+        ORDER BY h.invDate DESC, h.invTime DESC
       `);
 
     const allSales = salesResult.recordset;
@@ -89,6 +92,7 @@ export async function GET(
         grandTotal: sale.GrandTotal || 0,
         daysAgo: sale.DaysAgo || 0,
         services,
+        paymentMethod: sale.PaymentMethod || null,
       });
     }
 
