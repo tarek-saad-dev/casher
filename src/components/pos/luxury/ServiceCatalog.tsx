@@ -64,7 +64,7 @@ const getServiceDuration = (serviceName: string): number => {
 };
 
 export default function ServiceCatalog({ services, selectedBarber, onAddItem }: ServiceCatalogProps) {
-  const [activeTab, setActiveTab] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<string>('hot');
 
   // Auto-select first service when barber is selected (if cart is empty)
   useEffect(() => {
@@ -78,8 +78,12 @@ export default function ServiceCatalog({ services, selectedBarber, onAddItem }: 
   const categories = useMemo(() => {
     const catMap = new Map<number | null, { id: number | null; name: string; count: number }>();
 
+    // Add 'Hot' category (most popular)
+    const hotServices = services.filter(s => s.SalesCount > 0).sort((a, b) => b.SalesCount - a.SalesCount).slice(0, 10);
+    catMap.set(null, { id: null, name: 'الأكثر طلباً', count: hotServices.length });
+
     // Add 'All' category
-    catMap.set(null, { id: null, name: 'الكل', count: services.length });
+    catMap.set(-1, { id: -1, name: 'الكل', count: services.length });
 
     // Count services per category
     for (const svc of services) {
@@ -97,16 +101,42 @@ export default function ServiceCatalog({ services, selectedBarber, onAddItem }: 
 
   // Create tabs from categories
   const categoryTabs: CategoryTab[] = useMemo(() => {
-    return categories.map(cat => ({
-      id: cat.id === null ? 'all' : String(cat.id),
-      name: cat.id === null ? 'الكل' : cat.name,
-      icon: cat.id === null ? <LayoutGrid className="w-4 h-4" /> : getCategoryIcon(cat.name),
-      count: cat.count,
-    }));
+    return categories.map(cat => {
+      let id: string;
+      let icon: React.ReactNode;
+      
+      if (cat.id === null) {
+        // Hot services tab
+        id = 'hot';
+        icon = <Flame className="w-4 h-4" />;
+      } else if (cat.id === -1) {
+        // All services tab
+        id = 'all';
+        icon = <LayoutGrid className="w-4 h-4" />;
+      } else {
+        // Regular category tabs
+        id = String(cat.id);
+        icon = getCategoryIcon(cat.name);
+      }
+      
+      return {
+        id,
+        name: cat.name,
+        icon,
+        count: cat.count,
+      };
+    });
   }, [categories]);
 
   // Filter services by active category
   const filteredServices = useMemo(() => {
+    if (activeTab === 'hot') {
+      // Return top 10 most popular services
+      return services
+        .filter(s => s.SalesCount > 0)
+        .sort((a, b) => b.SalesCount - a.SalesCount)
+        .slice(0, 10);
+    }
     if (activeTab === 'all') return services;
     const activeCatId = parseInt(activeTab);
     return services.filter(s => s.CatID === activeCatId);
