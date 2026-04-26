@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Users, Plus, CheckCircle2, AlertCircle,
-  Loader2, UserPlus, Link2, Scissors, X, Zap
+  Loader2, UserPlus, Link2, Scissors, X, Zap, Settings, Clock
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import KpiCard from '@/components/shared/KpiCard';
@@ -15,6 +15,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import EmployeeManagementModal from '@/components/admin/EmployeeManagementModal';
 
 interface Employee {
   EmpID: number;
@@ -26,6 +27,7 @@ interface Employee {
   TargetMinSales: number | null;
   DefaultCheckInTime: string | null;
   DefaultCheckOutTime: string | null;
+  WorkScheduleNotes: string | null;
   IsPayrollEnabled: boolean | null;
   AdvanceExpINID: number | null;
   AdvanceCatName: string | null;
@@ -59,6 +61,20 @@ export default function EmployeesPage() {
   const [autoMapping, setAutoMapping] = useState(false);
   const [autoMappingResult, setAutoMappingResult] = useState<any>(null);
   const [showAutoMappingModal, setShowAutoMappingModal] = useState(false);
+
+  // Employee management modal state
+  const [managementModalOpen, setManagementModalOpen] = useState(false);
+  const [selectedManagementEmployee, setSelectedManagementEmployee] = useState<Employee | null>(null);
+
+  // Work hours modal state
+  const [workHoursModalOpen, setWorkHoursModalOpen] = useState(false);
+  const [selectedWorkHoursEmployee, setSelectedWorkHoursEmployee] = useState<Employee | null>(null);
+  const [workHoursSaving, setWorkHoursSaving] = useState(false);
+  const [workHoursError, setWorkHoursError] = useState('');
+  const [workHoursSuccess, setWorkHoursSuccess] = useState('');
+  const [checkInTime, setCheckInTime] = useState('');
+  const [checkOutTime, setCheckOutTime] = useState('');
+  const [workNotes, setWorkNotes] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -171,6 +187,76 @@ export default function EmployeesPage() {
       await load();
     } catch (e: any) {
       setFinanceError(e.message);
+    }
+  };
+
+  // Open employee management modal
+  const openManagementModal = (employee: Employee) => {
+    setSelectedManagementEmployee(employee);
+    setManagementModalOpen(true);
+  };
+
+  // Open work hours modal
+  const openWorkHoursModal = (employee: Employee) => {
+    setSelectedWorkHoursEmployee(employee);
+    setCheckInTime(employee.DefaultCheckInTime || '');
+    setCheckOutTime(employee.DefaultCheckOutTime || '');
+    setWorkNotes(employee.WorkScheduleNotes || '');
+    setWorkHoursError('');
+    setWorkHoursSuccess('');
+    setWorkHoursModalOpen(true);
+  };
+
+  // Handle work hours save
+  const handleWorkHoursSave = async () => {
+    if (!selectedWorkHoursEmployee) return;
+    
+    // Validation
+    if ((checkInTime && !checkOutTime) || (!checkInTime && checkOutTime)) {
+      setWorkHoursError('يجب تحديد وقت البدء والانتهاء معاً');
+      return;
+    }
+
+    setWorkHoursSaving(true);
+    setWorkHoursError('');
+    setWorkHoursSuccess('');
+
+    try {
+      const response = await fetch(`/api/admin/employees/${selectedWorkHoursEmployee.EmpID}/work-hours`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          DefaultCheckInTime: checkInTime || null,
+          DefaultCheckOutTime: checkOutTime || null,
+          WorkScheduleNotes: workNotes || null,
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'فشل حفظ مواعيد العمل');
+      }
+
+      // Update employee in the list
+      setEmployees(prev => prev.map(emp => 
+        emp.EmpID === selectedWorkHoursEmployee.EmpID 
+          ? { ...emp, ...data.employee }
+          : emp
+      ));
+
+      setWorkHoursSuccess('تم حفظ مواعيد العمل بنجاح');
+      setTimeout(() => {
+        setWorkHoursModalOpen(false);
+        setWorkHoursSuccess('');
+      }, 1500);
+
+    } catch (error: any) {
+      setWorkHoursError(error.message);
+    } finally {
+      setWorkHoursSaving(false);
     }
   };
 
@@ -399,15 +485,25 @@ export default function EmployeesPage() {
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1">
+                  <td className="px-4 py-3 text-left">
+                    <div className="flex items-center gap-2">
                       <Button
-                        size="sm"
                         variant="outline"
-                        className="h-7 px-2 text-xs gap-1 border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                        size="sm"
                         onClick={() => openFinanceModal(emp)}
+                        className="flex items-center gap-1"
                       >
-                        تعديل الربط
+                        <Link2 className="w-3 h-3" />
+                        الربط المالي
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openManagementModal(emp)}
+                        className="flex items-center gap-1"
+                      >
+                        <Settings className="w-3 h-3" />
+                        إدارة الملف
                       </Button>
                     </div>
                   </td>
@@ -768,6 +864,112 @@ export default function EmployeesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ── Employee Management Modal ── */}
+      <EmployeeManagementModal
+        employee={selectedManagementEmployee}
+        open={managementModalOpen}
+        onClose={() => setManagementModalOpen(false)}
+        onRefresh={load}
+        onOpenWorkHours={openWorkHoursModal}
+      />
+
+      {/* ── Work Hours Modal ── */}
+      <Dialog open={workHoursModalOpen} onOpenChange={setWorkHoursModalOpen}>
+        <DialogContent className="sm:max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Clock className="w-5 h-5 text-blue-400" />
+              تعديل مواعيد العمل
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedWorkHoursEmployee && (
+            <div className="space-y-4">
+              <div className="text-sm text-zinc-400">
+                الموظف: <span className="font-medium text-white">{selectedWorkHoursEmployee.EmpName}</span>
+              </div>
+
+              {workHoursError && (
+                <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+                  <AlertCircle className="w-4 h-4" />
+                  {workHoursError}
+                </div>
+              )}
+
+              {workHoursSuccess && (
+                <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-emerald-400 text-sm">
+                  <CheckCircle2 className="w-4 h-4" />
+                  {workHoursSuccess}
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium text-zinc-300 block mb-1">وقت بداية العمل</label>
+                  <Input
+                    type="time"
+                    value={checkInTime}
+                    onChange={(e) => setCheckInTime(e.target.value)}
+                    className="bg-zinc-800 border-zinc-700 text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-zinc-300 block mb-1">وقت نهاية العمل</label>
+                  <Input
+                    type="time"
+                    value={checkOutTime}
+                    onChange={(e) => setCheckOutTime(e.target.value)}
+                    className="bg-zinc-800 border-zinc-700 text-white"
+                  />
+                </div>
+
+                {checkInTime && checkOutTime && checkOutTime < checkInTime && (
+                  <div className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/30 rounded-lg text-blue-400 text-xs">
+                    <AlertCircle className="w-3 h-3" />
+                    هذا الموعد يمتد لليوم التالي
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-sm font-medium text-zinc-300 block mb-1">ملاحظات (اختياري)</label>
+                  <textarea
+                    value={workNotes}
+                    onChange={(e) => setWorkNotes(e.target.value)}
+                    placeholder="أي ملاحظات حول مواعيد العمل..."
+                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder:text-zinc-500 resize-none h-20 text-sm"
+                    maxLength={250}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button
+                  onClick={handleWorkHoursSave}
+                  disabled={workHoursSaving}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                >
+                  {workHoursSaving ? (
+                    <><Loader2 className="w-4 h-4 animate-spin ml-2" /> جاري الحفظ...</>
+                  ) : (
+                    <><CheckCircle2 className="w-4 h-4 ml-2" /> حفظ</>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setWorkHoursModalOpen(false)}
+                  disabled={workHoursSaving}
+                  className="flex-1"
+                >
+                  إلغاء
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }

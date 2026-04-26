@@ -466,3 +466,98 @@ export interface MonthlyExpensesReport {
   dailyTrend: DailyTrend[];
   transactions: ExpenseTransaction[];
 }
+
+// ───────────────────────── Employee Management ─────────────────────────
+
+export interface Employee {
+  EmpID: number;
+  EmpName: string;
+  Job: string | null;
+  isActive: boolean;
+  BaseSalary: number | null;
+  TargetCommissionPercent: number | null;
+  TargetMinSales: number | null;
+  DefaultCheckInTime: string | null;
+  DefaultCheckOutTime: string | null;
+  WorkScheduleNotes: string | null;
+  IsPayrollEnabled: boolean | null;
+  AdvanceExpINID: number | null;
+  AdvanceCatName: string | null;
+  RevenueExpINID: number | null;
+  RevenueCatName: string | null;
+  Mobile?: string;
+  CardNO?: string;
+  Notes?: string;
+  NationalID?: string;
+  Address?: string;
+  EmergencyContactName?: string;
+  EmergencyContactPhone?: string;
+  BirthDate?: string;
+  HireDate?: string;
+  PersonalNotes?: string;
+}
+
+export interface WorkSchedule {
+  DayOfWeek: number;
+  IsWorkingDay: boolean;
+  StartTime?: string;
+  EndTime?: string;
+  BreakStartTime?: string;
+  BreakEndTime?: string;
+  Notes?: string;
+}
+
+export interface DayOff {
+  ID: number;
+  EmpID: number;
+  OffDate: string;
+  OffType: string;
+  Reason?: string;
+  IsPaid: boolean;
+  CreatedAt: string;
+  UpdatedAt?: string;
+}
+
+// Finance category types
+export interface FinanceCategory {
+  ExpINID: number;
+  CatName: string;
+  ExpINType: string;
+}
+
+// API response types
+export interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
+}
+
+// Employee profile response
+export interface EmployeeProfileResponse {
+  success: true;
+  employee: Employee;
+  schedule: WorkSchedule[];
+  daysOff: DayOff[];
+}
+
+// Auto mapping types
+export interface AutoMappingPreview {
+  empId: number;
+  empName: string;
+  job?: string;
+  category: string;
+  type: 'smart' | 'individual';
+}
+
+export interface AutoMappingResult {
+  success: boolean;
+  unmappedCount: number;
+  statistics?: {
+    smartMappings: number;
+    individualMappings: number;
+    coverage: number;
+  };
+  previewMappings?: AutoMappingPreview[];
+  mappings?: AutoMappingPreview[];
+}

@@ -9,7 +9,12 @@ export async function GET() {
     const result = await db.request().query(`
       SELECT 
         e.EmpID, e.EmpName, e.Job, e.isActive, e.BaseSalary, e.TargetCommissionPercent, e.TargetMinSales,
-        e.DefaultCheckInTime, e.DefaultCheckOutTime, e.IsPayrollEnabled,
+        e.DefaultCheckInTime, e.DefaultCheckOutTime, 
+        CASE 
+          WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'WorkScheduleNotes') 
+          THEN e.WorkScheduleNotes ELSE NULL 
+        END AS WorkScheduleNotes, 
+        e.IsPayrollEnabled,
         adv.ExpINID AS AdvanceExpINID, adv.CatName AS AdvanceCatName,
         rev.ExpINID AS RevenueExpINID, rev.CatName AS RevenueCatName
       FROM dbo.TblEmp e
