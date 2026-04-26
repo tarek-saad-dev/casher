@@ -9,8 +9,8 @@ import CustomerSearch from '@/components/pos/CustomerSearch';
 import CustomerHistoryPanel, { type LastSaleAutoFill } from '@/components/pos/CustomerHistoryPanel';
 import QuickCustomerModal from '@/components/pos/QuickCustomerModal';
 import CompleteCustomerModal from '@/components/pos/CompleteCustomerModal';
-import BarberGrid from '@/components/pos/BarberGrid';
-import ServiceGrid from '@/components/pos/ServiceGrid';
+import BarberCarousel from '@/components/pos/luxury/BarberCarousel';
+import ServiceCatalog from '@/components/pos/luxury/ServiceCatalog';
 import CartPanel from '@/components/pos/CartPanel';
 import InvoiceSummary from '@/components/pos/InvoiceSummary';
 import PaymentMethodSelect from '@/components/pos/PaymentMethodSelect';
@@ -195,7 +195,7 @@ export default function PosPage() {
             onQuickAdd={(prefill) => { setQuickAddPrefill(prefill); setQuickAddOpen(true); }}
             onCompleteData={(c) => setCompleteCustomer(c)}
           />
-          
+
           {/* Customer History Panel - Auto-loads when customer selected */}
           {state.customer && (
             <>
@@ -206,7 +206,7 @@ export default function PosPage() {
               />
             </>
           )}
-          
+
           <Separator />
           <div className="text-xs text-muted-foreground space-y-1">
             <p><kbd className="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono">F9</kbd> حفظ الفاتورة</p>
@@ -214,14 +214,14 @@ export default function PosPage() {
         </aside>
 
         {/* ═══════ CENTER PANEL: Barbers + Services ═══════ */}
-        <main className="flex-1 p-4 overflow-y-auto space-y-5">
-          <BarberGrid
+        <main className="flex-1 p-4 overflow-y-auto space-y-5 scrollbar-luxury-v">
+          <BarberCarousel
             barbers={barbers}
             selected={state.barber}
             onSelect={setBarber}
           />
-          <Separator />
-          <ServiceGrid
+          <Separator className="bg-[#2A2A30]" />
+          <ServiceCatalog
             services={services}
             selectedBarber={state.barber}
             onAddItem={addItem}
@@ -229,7 +229,7 @@ export default function PosPage() {
         </main>
 
         {/* ═══════ LEFT PANEL: Cart + Summary + Payment + Save ═══════ */}
-        <aside className="w-80 border-r border-border p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
+        <aside className="w-80 border-r border-border p-4 flex flex-col gap-4 overflow-y-auto shrink-0 scrollbar-luxury-v">
           <CartPanel items={state.items} barbers={barbers} onRemove={removeItem} onUpdateItem={updateItem} />
           <Separator />
           <InvoiceSummary
