@@ -2,6 +2,7 @@
 
 import { useSession } from '@/hooks/useSession';
 import { usePermission } from '@/hooks/usePermission';
+import { DbToggleButton } from '@/components/db/DbToggleButton';
 import { User, CalendarDays, Clock, LogOut, ShieldCheck, ShieldAlert, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -78,6 +79,11 @@ export default function ActiveSessionBar({ onCloseDayClick }: Props) {
           <span className="text-destructive font-medium">لا يوجد وردية مفتوحة</span>
         )}
       </div>
+
+      <span className="text-muted-foreground/40">|</span>
+
+      {/* Database Toggle */}
+      <DbToggleButton />
 
       {/* Spacer */}
       <div className="flex-1" />

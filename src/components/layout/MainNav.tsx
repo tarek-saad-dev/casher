@@ -32,12 +32,14 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { LucideIcon } from 'lucide-react';
-import Image from 'next/image';
 
 interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
+  badge?: string;
+  disabled?: boolean;
+  children?: NavItem[];
 }
 
 // Navigation with Categories/Sections
@@ -54,7 +56,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/income/pos', label: 'نقطة البيع', icon: LayoutGrid },
       { href: '/income/new', label: 'إيراد جديد', icon: PlusCircle },
-      { href: '/income/collection', label: 'تحصيل / دفعة', icon: CreditCard },
+      { href: '/income/collection', label: 'تحصيل / دفعة', icon: CreditCard, disabled: true },
     ]
   },
   {
@@ -156,6 +158,31 @@ export default function MainNav() {
   const renderNavItem = (item: NavItem) => {
     const active = isActive(item.href);
     const Icon = item.icon;
+
+    if (item.disabled) {
+      return (
+        <div
+          key={item.href}
+          className={cn(
+            'flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg cursor-not-allowed opacity-40 select-none',
+            isCollapsed && 'justify-center px-2'
+          )}
+          title={isCollapsed ? item.label : 'قريباً'}
+        >
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-800/50">
+            <Icon className="w-4 h-4 flex-shrink-0 text-zinc-500" />
+          </div>
+          {!isCollapsed && (
+            <span className="truncate text-zinc-500">{item.label}</span>
+          )}
+          {!isCollapsed && (
+            <span className="mr-auto px-1.5 py-0.5 bg-zinc-700/50 text-zinc-500 text-[10px] font-medium rounded-full border border-zinc-700/50">
+              قريباً
+            </span>
+          )}
+        </div>
+      );
+    }
 
     return (
       <Link
@@ -283,9 +310,9 @@ export default function MainNav() {
           <div className="px-3 py-2">
             <div className="relative rounded-xl overflow-hidden h-60">
               <img
-                src="https://scontent.fcai19-8.fna.fbcdn.net/v/t39.30808-6/506283377_122213102858139783_4145229924719928944_n.jpg?_nc_cat=111&ccb=1-7&_nc_sid=7b2446&_nc_eui2=AeHILHuy8QYoT2aOTUyjv9gX-m__arGpeb_6b_9qsal5vwmvHyviMbcNt6YSc1eJgjBEET0mTdyMZQ6-supJQtwO&_nc_ohc=72e5pZJ1vNMQ7kNvwH4QrBt&_nc_oc=AdqkJNapMu-EUHb5WBbDxb2LXp_2kVia1lmCAPISw8CVP6RTiqSDJlJ2fWyGXefQ7Cc&_nc_zt=23&_nc_ht=scontent.fcai19-8.fna&_nc_gid=aGZaT5a3sWBIVh0ak2b6BQ&_nc_ss=7b2a8&oh=00_Af2qPpfEwS3CMDLFNVAXs1x7xxkduWEzV0untBdZpKxSFg&oe=69F34CC3"
+                src="/barber-mohamed.jpg"
                 alt="Barber Chair"
-                className="w-full h-full object-cover "
+                className="w-full h-full object-cover"
               />
               {/* Fade from all directions to blend with sidebar */}
               <div className="absolute inset-0 bg-gradient-to-t from-[#111114] via-transparent to-transparent" />
@@ -369,7 +396,7 @@ export default function MainNav() {
             <div className="px-3 py-2 mt-auto">
               <div className="relative rounded-xl overflow-hidden h-24">
                 <img
-                  src="https://images.unsplash.com/photo-1599351431202-0e671c16d7a7?w=400&h=300&fit=crop"
+                  src="/barber-mohamed.jpg"
                   alt="Barber Chair"
                   className="w-full h-full object-cover opacity-70"
                 />

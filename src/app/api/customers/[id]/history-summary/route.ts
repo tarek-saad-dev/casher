@@ -6,6 +6,23 @@ interface SaleDetail {
   barberName: string | null;
 }
 
+interface AutoFillService {
+  proID: number;
+  proName: string;
+  empID: number;
+  empName: string;
+  sPrice: number;
+  bonus: number;
+}
+
+interface LastSaleAutoFill {
+  paymentMethodId: number | null;
+  paymentMethodName: string | null;
+  barberEmpID: number | null;
+  barberName: string | null;
+  services: AutoFillService[];
+}
+
 interface RecentSale {
   invID: number;
   invDate: string;
@@ -13,6 +30,7 @@ interface RecentSale {
   grandTotal: number;
   daysAgo: number;
   services: SaleDetail[];
+  paymentMethod: string | null;
 }
 
 // GET /api/customers/[id]/history-summary — Customer intelligence summary
@@ -49,19 +67,24 @@ export async function GET(
       .input('clientID', sql.Int, clientID)
       .query(`
         SELECT TOP 8
-          invID, invDate, invTime, GrandTotal,
-          DATEDIFF(day, invDate, GETDATE()) AS DaysAgo
-        FROM [dbo].[TblinvServHead]
-        WHERE ClientID = @clientID
-          AND invType = N'مبيعات'
-        ORDER BY invDate DESC, invTime DESC
+          h.invID, h.invDate, h.invTime, h.GrandTotal,
+          DATEDIFF(day, h.invDate, GETDATE()) AS DaysAgo,
+          h.PaymentMethodID,
+          pm.PaymentMethod
+        FROM [dbo].[TblinvServHead] h
+        LEFT JOIN [dbo].[TblPaymentMethods] pm ON h.PaymentMethodID = pm.PaymentID
+        WHERE h.ClientID = @clientID
+          AND h.invType = N'مبيعات'
+        ORDER BY h.invDate DESC, h.invTime DESC
       `);
 
     const allSales = salesResult.recordset;
     const totalVisits = allSales.length;
 
-    // ═══════ 3. Get services for last 3 sales ═══════
+    // ═══════ 3. Get services for last 3 sales + auto-fill data for last sale ═══════
     const recentSales: RecentSale[] = [];
+    let lastSaleForAutoFill: LastSaleAutoFill | null = null;
+
     for (let i = 0; i < Math.min(3, allSales.length); i++) {
       const sale = allSales[i];
       
@@ -69,8 +92,12 @@ export async function GET(
         .input('invID', sql.Int, sale.invID)
         .query(`
           SELECT 
+            d.ProID,
             p.ProName AS ServiceName,
-            e.EmpName AS BarberName
+            d.EmpID,
+            e.EmpName AS BarberName,
+            d.SPrice,
+            d.Bonus
           FROM [dbo].[TblinvServDetail] d
           LEFT JOIN [dbo].[TblPro] p ON d.ProID = p.ProID
           LEFT JOIN [dbo].[TblEmp] e ON d.EmpID = e.EmpID
@@ -89,7 +116,30 @@ export async function GET(
         grandTotal: sale.GrandTotal || 0,
         daysAgo: sale.DaysAgo || 0,
         services,
+        paymentMethod: sale.PaymentMethod || null,
       });
+
+      // Build auto-fill from the most recent sale (i === 0)
+      if (i === 0) {
+        const autoFillServices: AutoFillService[] = detailsResult.recordset.map((r: Record<string, unknown>) => ({
+          proID: r.ProID as number,
+          proName: r.ServiceName as string,
+          empID: r.EmpID as number,
+          empName: r.BarberName as string,
+          sPrice: r.SPrice as number ?? 0,
+          bonus: r.Bonus as number ?? 0,
+        }));
+
+        // Determine dominant barber (first one in the sale)
+        const firstEmp = detailsResult.recordset[0];
+        lastSaleForAutoFill = {
+          paymentMethodId: sale.PaymentMethodID ?? null,
+          paymentMethodName: sale.PaymentMethod || null,
+          barberEmpID: firstEmp ? (firstEmp.EmpID as number) : null,
+          barberName: firstEmp ? (firstEmp.BarberName as string) : null,
+          services: autoFillServices,
+        };
+      }
     }
 
     // ═══════ 4. Calculate visit frequency (use 5-8 visits) ═══════
@@ -220,6 +270,7 @@ export async function GET(
       customerPhone: customer.Mobile || customer.Phone,
 
       recentSales,
+      lastSaleForAutoFill,
 
       summary: {
         totalVisits,

@@ -1,0 +1,79 @@
+
+> pos-system@0.1.0 sync:dryrun
+> cd sync-service && npm run dryrun
+
+
+> hawai-sync-service@1.0.0 dryrun
+> node dist/cli/sync.js --once --dry-run
+
+
+🔄 HAWAI SYNC SERVICE
+
+
+========================================
+SYNC SERVICE CONFIGURATION
+========================================
+Environment: PRODUCTION
+
+Local Node: LOCAL-001 (Local)
+  Database: DESKTOP-EUN2CV2.HawaiDB
+
+Cloud Node: CLOUD-001 (Cloud)
+  Database: hawaisqltarek2026.database.windows.net.HawaiDB
+
+Sync Settings:
+  DRY_RUN: true
+  ENABLE_PUSH_LOCAL_TO_CLOUD: true
+  ENABLE_PULL_CLOUD_TO_LOCAL: true
+  ENABLE_APPLY: false
+  ENABLE_DELETE_SYNC: false
+  CONFLICT_POLICY: HashEqualElseConflict
+  BATCH_SIZE: 100
+========================================
+
+⚠️  SAFETY WARNINGS:
+   WARNING: DRY_RUN is still enabled in production mode. No changes will be applied.
+   WARNING: ENABLE_APPLY is false in production mode. No data will be modified.
+
+🔍 DRY RUN MODE - No changes will be applied
+
+01:29:30 [[32minfo[39m]: Starting sync run {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f","dryRun":true,"enablePush":true,"enablePull":true,"enableApply":false,"environment":"production"}
+01:29:30 [[32minfo[39m]: Connecting to databases... {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f"}
+01:29:30 [[32minfo[39m]: [Lock] Acquiring sync locks with 10s timeout... {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f"}
+01:29:30 [[32minfo[39m]: [Lock] Acquiring on LOCAL-001... {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f","lockName":"HawaiSyncLock","owner":"LOCAL-001-1776468570843","timeoutMs":10000}
+01:29:30 [[32minfo[39m]: [Lock] Acquiring on CLOUD-001... {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f","lockName":"HawaiSyncLock","owner":"CLOUD-001-1776468570844","timeoutMs":10000}
+01:29:30 [[32minfo[39m]: [Lock] ✅ ACQUIRED on LOCAL-001 {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f","lockName":"HawaiSyncLock","owner":"LOCAL-001-1776468570843","resultCode":0,"resultText":"Granted"}
+01:29:40 [[33mwarn[39m]: [Lock] ❌ FAILED on CLOUD-001 {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f","lockName":"HawaiSyncLock","owner":"CLOUD-001-1776468570844","resultCode":-1,"resultText":"Parameter error"}
+01:29:40 [[32minfo[39m]: [Lock] Results {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f","localSuccess":true,"localOwner":"LOCAL-001-1776468570843","cloudSuccess":false,"cloudOwner":"CLOUD-001-1776468570844"}
+01:29:40 [[33mwarn[39m]: [Lock] Cloud lock failed but continuing in dry run mode (read-only) {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f"}
+01:29:40 [[32minfo[39m]: Loading table metadata... {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f"}
+01:29:40 [[32minfo[39m]: Loaded metadata for 40 tables {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f"}
+01:29:40 [[32minfo[39m]: Current versions {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f","localVersion":"31","cloudVersion":"31"}
+01:29:40 [[32minfo[39m]: Reading local changes for push... {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f"}
+01:29:41 [[32minfo[39m]: Found 23 local changes {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f"}
+01:29:41 [[32minfo[39m]: Reading cloud changes for pull... {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f"}
+01:29:42 [[32minfo[39m]: Found 23 cloud changes {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f"}
+01:29:42 [[32minfo[39m]: Detecting conflicts... {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f"}
+01:29:42 [[32minfo[39m]: Conflict detection complete {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f","totalConflicts":0,"localOnlyChanges":0,"cloudOnlyChanges":0,"hashEqualNoConflict":15}
+01:29:42 [[32minfo[39m]: Sync complete {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f","success":true,"stats":{"tablesProcessed":40,"localChangesRead":23,"cloudChangesRead":23,"inserts":0,"updates":0,"deletes":0,"conflicts":0,"errors":0,"localVersion":"31","cloudVersion":"31"},"logFile":"logs\\sync-fb44f9a5-7fc4-459c-be50-c9b16398485f.log"}
+01:29:42 [[32minfo[39m]: [Lock] Releasing on LOCAL-001... {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f","lockName":"HawaiSyncLock","owner":"LOCAL-001-1776468570843"}
+01:29:42 [[33mwarn[39m]: [Lock] Release warning on LOCAL-001 {"runId":"fb44f9a5-7fc4-459c-be50-c9b16398485f","lockName":"HawaiSyncLock","owner":"LOCAL-001-1776468570843","error":"Cannot release the application lock (Database Principal: 'public', Resource: 'HawaiSyncLock') because it is not currently held."}
+
+========================================
+SYNC RESULTS
+========================================
+Run ID: fb44f9a5-7fc4-459c-be50-c9b16398485f
+Status: ✅ SUCCESS
+
+📊 Statistics:
+  Tables processed: 40
+  Local changes read: 23
+  Cloud changes read: 23
+  Inserts: 0
+  Updates: 0
+  Deletes: 0
+
+========================================
+Log file: logs/sync-fb44f9a5-7fc4-459c-be50-c9b16398485f.log
+========================================
+

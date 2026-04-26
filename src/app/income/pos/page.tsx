@@ -6,11 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import PosHeader from '@/components/pos/PosHeader';
 import CustomerSearch from '@/components/pos/CustomerSearch';
-import CustomerHistoryPanel from '@/components/pos/CustomerHistoryPanel';
+import CustomerHistoryPanel, { type LastSaleAutoFill } from '@/components/pos/CustomerHistoryPanel';
 import QuickCustomerModal from '@/components/pos/QuickCustomerModal';
-import BarberCarousel from '@/components/pos/luxury/BarberCarousel';
-import ServiceCatalog from '@/components/pos/luxury/ServiceCatalog';
-import PackagesSection from '@/components/pos/luxury/PackagesSection';
+import CompleteCustomerModal from '@/components/pos/CompleteCustomerModal';
+import BarberGrid from '@/components/pos/BarberGrid';
+import ServiceGrid from '@/components/pos/ServiceGrid';
 import CartPanel from '@/components/pos/CartPanel';
 import InvoiceSummary from '@/components/pos/InvoiceSummary';
 import PaymentMethodSelect from '@/components/pos/PaymentMethodSelect';
@@ -46,13 +46,15 @@ export default function PosPage() {
   // ───────────────── Sale state ─────────────────
   const {
     state, totals,
-    setCustomer, setBarber, addItem, removeItem,
+    setCustomer, setBarber, addItem, removeItem, updateItem,
     setDiscountPercent, setDiscountValue,
-    setPaymentMethod, setShift, reset,
+    setPaymentMethod, setShift, clearItems, reset,
   } = useSaleState();
 
   // ───────────────── UI state ─────────────────
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickAddPrefill, setQuickAddPrefill] = useState<string | undefined>();
+  const [completeCustomer, setCompleteCustomer] = useState<Customer | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [printInvID, setPrintInvID] = useState<number | null>(null);
@@ -142,6 +144,39 @@ export default function PosPage() {
     setSaveError('');
   }, [reset]);
 
+  // ───────────────── Auto-fill from last sale ─────────────────
+  const handleAutoFill = useCallback((data: LastSaleAutoFill) => {
+    // 1. Select barber (dominant barber from last sale)
+    if (data.barberEmpID) {
+      const barber = barbers.find(b => b.EmpID === data.barberEmpID);
+      if (barber) setBarber(barber);
+    }
+
+    // 2. Clear existing items then add each service from last sale
+    clearItems();
+    data.services.forEach(svc => {
+      const emp = barbers.find(b => b.EmpID === svc.empID);
+      addItem({
+        id: `${svc.proID}-${svc.empID}-${Date.now()}-${Math.random()}`,
+        ProID: svc.proID,
+        ProName: svc.proName,
+        EmpID: svc.empID,
+        EmpName: emp?.EmpName ?? svc.empName,
+        SPrice: svc.sPrice,
+        Bonus: svc.bonus,
+        Qty: 1,
+        Dis: 0,
+        DisVal: 0,
+        SPriceAfterDis: svc.sPrice,
+      });
+    });
+
+    // 3. Select payment method
+    if (data.paymentMethodId) {
+      setPaymentMethod(data.paymentMethodId);
+    }
+  }, [barbers, setBarber, clearItems, addItem, setPaymentMethod]);
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <PosHeader
@@ -153,21 +188,25 @@ export default function PosPage() {
       <div className="flex flex-1 overflow-hidden relative">
         <ShiftRequiredOverlay />
         {/* ═══════ RIGHT PANEL: Customer + History ═══════ */}
-        <aside className="w-80 border-l border-border p-4 flex flex-col gap-4 overflow-y-auto shrink-0 scrollbar-luxury-v">
+        <aside className="w-80 border-l border-border p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
           <CustomerSearch
             selected={state.customer}
             onSelect={(c: Customer | null) => setCustomer(c)}
-            onQuickAdd={() => setQuickAddOpen(true)}
+            onQuickAdd={(prefill) => { setQuickAddPrefill(prefill); setQuickAddOpen(true); }}
+            onCompleteData={(c) => setCompleteCustomer(c)}
           />
-
+          
           {/* Customer History Panel - Auto-loads when customer selected */}
           {state.customer && (
             <>
               <Separator />
-              <CustomerHistoryPanel customerID={state.customer.ClientID} />
+              <CustomerHistoryPanel
+                customerID={state.customer.ClientID}
+                onAutoFill={handleAutoFill}
+              />
             </>
           )}
-
+          
           <Separator />
           <div className="text-xs text-muted-foreground space-y-1">
             <p><kbd className="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono">F9</kbd> حفظ الفاتورة</p>
@@ -175,26 +214,23 @@ export default function PosPage() {
         </aside>
 
         {/* ═══════ CENTER PANEL: Barbers + Services ═══════ */}
-        <main className="flex-1 p-6 overflow-y-auto space-y-6 bg-[#0B0B0D] scrollbar-luxury-v">
-          <BarberCarousel
+        <main className="flex-1 p-4 overflow-y-auto space-y-5">
+          <BarberGrid
             barbers={barbers}
             selected={state.barber}
             onSelect={setBarber}
           />
-          <ServiceCatalog
+          <Separator />
+          <ServiceGrid
             services={services}
-            selectedBarber={state.barber}
-            onAddItem={addItem}
-          />
-          <PackagesSection
             selectedBarber={state.barber}
             onAddItem={addItem}
           />
         </main>
 
         {/* ═══════ LEFT PANEL: Cart + Summary + Payment + Save ═══════ */}
-        <aside className="w-80 border-r border-border p-4 flex flex-col gap-4 overflow-y-auto shrink-0 scrollbar-luxury-v">
-          <CartPanel items={state.items} onRemove={removeItem} />
+        <aside className="w-80 border-r border-border p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
+          <CartPanel items={state.items} barbers={barbers} onRemove={removeItem} onUpdateItem={updateItem} />
           <Separator />
           <InvoiceSummary
             totals={totals}
@@ -243,7 +279,18 @@ export default function PosPage() {
         open={quickAddOpen}
         onClose={() => setQuickAddOpen(false)}
         onCreated={(c) => { setCustomer(c); setQuickAddOpen(false); }}
+        initialQuery={quickAddPrefill}
       />
+      {completeCustomer && (
+        <CompleteCustomerModal
+          customer={completeCustomer}
+          onClose={() => setCompleteCustomer(null)}
+          onUpdated={(updated) => {
+            setCustomer(updated);
+            setCompleteCustomer(null);
+          }}
+        />
+      )}
       <PrintInvoiceModal
         open={printOpen}
         invID={printInvID}
