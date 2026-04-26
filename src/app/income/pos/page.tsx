@@ -188,7 +188,7 @@ export default function PosPage() {
       <div className="flex flex-1 overflow-hidden relative">
         <ShiftRequiredOverlay />
         {/* ═══════ RIGHT PANEL: Customer + History ═══════ */}
-        <aside className="w-80 border-l border-border p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
+        <aside className="w-80 border-l border-border p-4 flex flex-col gap-4 overflow-y-auto shrink-0 scrollbar-luxury-v">
           <CustomerSearch
             selected={state.customer}
             onSelect={(c: Customer | null) => setCustomer(c)}
