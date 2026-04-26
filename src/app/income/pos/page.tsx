@@ -21,7 +21,7 @@ import CloseDayModal from '@/components/session/CloseDayModal';
 import { useSaleState } from '@/hooks/useSaleState';
 import { useSession } from '@/hooks/useSession';
 import { useDayRollover } from '@/hooks/useDayRollover';
-import type { Barber, Service, PaymentMethod, Customer } from '@/lib/types';
+import type { Barber, Service, PaymentMethod, Customer, CartItem } from '@/lib/types';
 
 export default function PosPage() {
   // ───────────────── Session ─────────────────
@@ -64,6 +64,33 @@ export default function PosPage() {
   useEffect(() => {
     setShift(shift?.ID ?? null);
   }, [shift, setShift]);
+
+  // ───────────────── Auto-select most popular service when barber is selected ─────────────────
+  useEffect(() => {
+    if (state.barber && services.length > 0 && state.items.length === 0) {
+      // Get the most popular service (sorted by SalesCount from API)
+      const mostPopularService = services.reduce((prev, current) => 
+        (prev.SalesCount > current.SalesCount) ? prev : current
+      );
+      
+      if (mostPopularService && mostPopularService.SalesCount > 0) {
+        const item: CartItem = {
+          id: `auto-${mostPopularService.ProID}-${state.barber.EmpID}-${Date.now()}`,
+          ProID: mostPopularService.ProID,
+          ProName: mostPopularService.ProName,
+          EmpID: state.barber.EmpID,
+          EmpName: state.barber.EmpName,
+          SPrice: mostPopularService.SPrice1,
+          Bonus: mostPopularService.Bonus ?? 0,
+          Qty: 1,
+          Dis: 0,
+          DisVal: 0,
+          SPriceAfterDis: mostPopularService.SPrice1,
+        };
+        addItem(item);
+      }
+    }
+  }, [state.barber, services, state.items.length, addItem]);
 
   // ───────────────── Load lookup data on mount ─────────────────
   useEffect(() => {
@@ -121,7 +148,13 @@ export default function PosPage() {
       const result = await res.json();
       setPrintInvID(result.invID);
       setPrintOpen(true);
-      reset();
+      // Reset only cart items and customer, keep barber selected
+      clearItems();
+      setCustomer(null);
+      setDiscountPercent(0);
+      setDiscountValue(0);
+      setPaymentMethod(null);
+      setSaveError('');
     } catch {
       setSaveError('خطأ في الاتصال بالخادم');
     } finally {
@@ -140,9 +173,14 @@ export default function PosPage() {
 
   // ───────────────── New sale handler ─────────────────
   const handleNewSale = useCallback(() => {
-    reset();
+    // Keep barber selected, only reset cart and other fields
+    clearItems();
+    setCustomer(null);
+    setDiscountPercent(0);
+    setDiscountValue(0);
+    setPaymentMethod(null);
     setSaveError('');
-  }, [reset]);
+  }, []);
 
   // ───────────────── Auto-fill from last sale ─────────────────
   const handleAutoFill = useCallback((data: LastSaleAutoFill) => {

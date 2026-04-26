@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Plus, Flame, Clock, LayoutGrid, Sparkles, Gift, Scissors, Heart, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Service, Barber, CartItem } from '@/lib/types';
@@ -65,6 +65,14 @@ const getServiceDuration = (serviceName: string): number => {
 
 export default function ServiceCatalog({ services, selectedBarber, onAddItem }: ServiceCatalogProps) {
   const [activeTab, setActiveTab] = useState<string>('all');
+
+  // Auto-select first service when barber is selected (if cart is empty)
+  useEffect(() => {
+    if (selectedBarber && services.length > 0) {
+      // Check if we should auto-select (only when no items in cart)
+      // This will be handled by the parent component
+    }
+  }, [selectedBarber, services]);
 
   // Extract unique categories from services
   const categories = useMemo(() => {
