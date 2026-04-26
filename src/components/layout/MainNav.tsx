@@ -308,9 +308,9 @@ export default function MainNav() {
         {/* Barber Chair Image - Hidden when collapsed */}
         {!isCollapsed && (
           <div className="px-3 py-2">
-            <div className="relative rounded-xl overflow-hidden h-60">
+            <div className="relative rounded-xl overflow-hidden h-80">
               <img
-                src="/barber-mohamed.jpg"
+                src="/chair.png"
                 alt="Barber Chair"
                 className="w-full h-full object-cover"
               />
@@ -321,6 +321,13 @@ export default function MainNav() {
               <div className="absolute inset-0 bg-gradient-to-r from-[#111114] via-transparent to-transparent" />
               {/* Center vignette for extra depth */}
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,#111114_100%)]" />
+              {/* Elegant overlay text */}
+              <div className="absolute bottom-4 left-4 right-4">
+                <div className="bg-black/60 backdrop-blur-sm rounded-lg p-3 text-center">
+                  <p className="text-amber-400 font-bold text-sm">Cut Salon</p>
+                  <p className="text-white/80 text-xs">صالون حلاقة راقي</p>
+                </div>
+              </div>
             </div>
           </div>
         )}

@@ -2,21 +2,45 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 
-// GET /api/employees — list all active employees
+// GET /api/employees — list all active employees with finance mapping
 export async function GET() {
   try {
     const db = await getPool();
     const result = await db.request().query(`
-      SELECT
-        e.EmpID,
-        e.EmpName,
-        e.isActive,
-        m.ExpINID        AS AdvanceExpINID,
-        cat.CatName      AS AdvanceCatName
-      FROM      dbo.TblEmp          e
-      LEFT JOIN dbo.TblExpCatEmpMap m   ON e.EmpID  = m.EmpID  AND m.TxnKind = N'advance' AND m.IsActive = 1
-      LEFT JOIN dbo.TblExpINCat     cat ON m.ExpINID = cat.ExpINID
-      ORDER BY  e.EmpName
+      SELECT 
+        e.EmpID, e.EmpName, e.Job, e.isActive, e.BaseSalary, e.TargetCommissionPercent, e.TargetMinSales,
+        e.DefaultCheckInTime, e.DefaultCheckOutTime, e.IsPayrollEnabled,
+        adv.ExpINID AS AdvanceExpINID, adv.CatName AS AdvanceCatName,
+        rev.ExpINID AS RevenueExpINID, rev.CatName AS RevenueCatName
+      FROM dbo.TblEmp e
+      OUTER APPLY (
+        SELECT TOP 1
+          m.ExpINID,
+          cat.CatName
+        FROM dbo.TblExpCatEmpMap m
+        JOIN dbo.TblExpINCat cat
+          ON cat.ExpINID = m.ExpINID
+        WHERE m.EmpID = e.EmpID
+          AND m.TxnKind = N'advance'
+          AND m.IsActive = 1
+          AND cat.ExpINType = N'مصروفات'
+        ORDER BY m.ModifiedDate DESC, m.ID DESC
+      ) adv
+      OUTER APPLY (
+        SELECT TOP 1
+          m.ExpINID,
+          cat.CatName
+        FROM dbo.TblExpCatEmpMap m
+        JOIN dbo.TblExpINCat cat
+          ON cat.ExpINID = m.ExpINID
+        WHERE m.EmpID = e.EmpID
+          AND m.TxnKind = N'revenue'
+          AND m.IsActive = 1
+          AND cat.ExpINType = N'ايرادات'
+        ORDER BY m.ModifiedDate DESC, m.ID DESC
+      ) rev
+      WHERE ISNULL(e.isActive, 1) = 1
+      ORDER BY e.EmpName
     `);
     return NextResponse.json(result.recordset);
   } catch (err: unknown) {

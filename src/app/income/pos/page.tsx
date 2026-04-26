@@ -148,8 +148,8 @@ export default function PosPage() {
       const result = await res.json();
       setPrintInvID(result.invID);
       setPrintOpen(true);
-      // Reset only cart items and customer, keep barber selected
-      clearItems();
+      // Reset everything including barber selection
+      reset();
       setCustomer(null);
       setDiscountPercent(0);
       setDiscountValue(0);
@@ -173,8 +173,8 @@ export default function PosPage() {
 
   // ───────────────── New sale handler ─────────────────
   const handleNewSale = useCallback(() => {
-    // Keep barber selected, only reset cart and other fields
-    clearItems();
+    // Reset everything including barber selection
+    reset();
     setCustomer(null);
     setDiscountPercent(0);
     setDiscountValue(0);
