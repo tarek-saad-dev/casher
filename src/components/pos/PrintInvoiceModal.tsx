@@ -41,7 +41,7 @@ interface PrintInvoiceModalProps {
   onClose: () => void;
 }
 
-// ──── Premium Thermal Receipt CSS (72mm) — Optimized for weak print density ────
+// ──── CUT SALON Premium Receipt CSS (80mm) — Elegant vintage barber style ────
 const THERMAL_CSS = `
   @page {
     size: 72mm auto;
@@ -52,90 +52,186 @@ const THERMAL_CSS = `
     width: 72mm;
     max-width: 72mm;
     overflow: hidden;
-    font-family: 'Arial', 'Segoe UI', sans-serif;
+    font-family: 'Cairo', sans-serif;
     direction: rtl;
-    font-size: 11px;
-    line-height: 1.4;
+    font-size: 10px;
+    line-height: 1.3;
     color: #000;
     background: #fff;
-    padding: 3mm 3mm;
+    padding: 4mm 4mm;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
   
-  /* Header Section */
+  /* Ornate Border Frame */
+  .receipt-frame {
+    border: 2px solid #000;
+    border-radius: 8px;
+    padding: 3mm;
+    position: relative;
+  }
+  .receipt-frame::before {
+    content: '';
+    position: absolute;
+    top: 1mm;
+    left: 1mm;
+    right: 1mm;
+    bottom: 1mm;
+    border: 1px solid #000;
+    border-radius: 6px;
+    pointer-events: none;
+  }
+  
+  /* Header Section with Ornaments */
   .receipt-header {
     text-align: center;
-    padding-bottom: 3mm;
-    border-bottom: 2px solid #000;
-    margin-bottom: 3mm;
+    padding-bottom: 2mm;
+    margin-bottom: 2mm;
+    position: relative;
   }
-  .logo {
-    width: 20mm;
-    height: 20mm;
-    margin: 0 auto 2mm;
-    border: 2px solid #000;
+  
+  /* Barber Poles */
+  .header-ornaments {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 3mm;
+    margin-bottom: 2mm;
+  }
+  .barber-pole {
+    width: 6mm;
+    height: 12mm;
+    border: 1.5px solid #000;
+    border-radius: 3mm;
+    background: repeating-linear-gradient(
+      45deg,
+      #fff,
+      #fff 2px,
+      #000 2px,
+      #000 4px,
+      #dc2626 4px,
+      #dc2626 6px,
+      #000 6px,
+      #000 8px
+    );
+  }
+  
+  /* Crown Logo */
+  .logo-circle {
+    width: 22mm;
+    height: 22mm;
+    margin: 0 auto;
+    border: 3px solid #000;
     border-radius: 50%;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    font-size: 16px;
-    font-weight: 900;
-    background: #000;
-    color: #fff;
+    background: #fff;
+    position: relative;
   }
-  .salon-name {
-    font-size: 18px;
+  .crown {
+    font-size: 10px;
+    margin-bottom: 1mm;
+  }
+  .logo-text {
+    font-size: 14px;
     font-weight: 900;
     letter-spacing: 1px;
+  }
+  .mustache {
+    font-size: 10px;
+    margin-top: 1mm;
+  }
+  .scissors {
+    font-size: 8px;
+    margin-top: 0.5mm;
+  }
+  
+  /* Salon Name */
+  .salon-name-main {
+    font-size: 20px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    margin-top: 2mm;
     margin-bottom: 1mm;
   }
   .salon-name-ar {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
     margin-bottom: 1mm;
   }
   .salon-phone {
     font-size: 11px;
     font-weight: 700;
-  }
-  .receipt-title {
-    font-size: 13px;
-    font-weight: 900;
-    margin-top: 2mm;
-    text-transform: uppercase;
+    margin-bottom: 2mm;
   }
   
-  /* Info Section */
+  /* Divider with Diamonds */
+  .divider-ornate {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2mm;
+    margin: 2mm 0;
+    font-size: 8px;
+  }
+  .divider-line {
+    flex: 1;
+    height: 1px;
+    background: #000;
+  }
+  .divider-diamond {
+    color: #000;
+    font-size: 6px;
+  }
+  
+  /* Receipt Title */
+  .receipt-title {
+    font-size: 12px;
+    font-weight: 900;
+    margin: 2mm 0;
+    padding: 1mm 3mm;
+    border-top: 1px solid #000;
+    border-bottom: 1px solid #000;
+    background: #f5f5f5;
+  }
+  
+  /* Info Section with Icons */
   .receipt-info {
     margin-bottom: 2mm;
     font-size: 10px;
-    font-weight: 600;
   }
   .info-row {
     display: flex;
     justify-content: space-between;
-    margin-bottom: 1mm;
-    line-height: 1.3;
+    align-items: center;
+    margin-bottom: 1.5mm;
+    padding: 1mm 0;
+    border-bottom: 1px dotted #ccc;
   }
-  .info-row .label { font-weight: 700; }
-  .info-row .value { font-weight: 600; }
+  .info-row:last-child { border-bottom: none; }
+  .info-label {
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 1mm;
+  }
+  .info-icon {
+    font-size: 10px;
+  }
+  .info-value {
+    font-weight: 600;
+    font-family: 'Courier New', monospace;
+  }
   
-  .divider {
-    border-top: 2px dashed #000;
-    margin: 2mm 0;
-  }
-  .divider-thin {
-    border-top: 1px dashed #000;
-    margin: 1.5mm 0;
-  }
-  
-  /* Table */
+  /* Services Table */
   table {
     width: 100%;
     border-collapse: collapse;
     table-layout: fixed;
-    margin-bottom: 2mm;
+    margin: 2mm 0;
+    border: 2px solid #000;
   }
   thead {
     background: #000;
@@ -144,51 +240,81 @@ const THERMAL_CSS = `
     print-color-adjust: exact;
   }
   th {
-    padding: 1.5mm 1mm;
-    font-size: 10px;
+    padding: 2mm 1.5mm;
+    font-size: 9px;
     font-weight: 900;
     text-align: right;
-    border: none;
+    border: 1px solid #000;
   }
+  th:first-child { text-align: center; width: 8mm; }
+  th:last-child { text-align: left; width: 18mm; }
   td {
-    padding: 1.5mm 1mm;
-    font-size: 10px;
-    font-weight: 600;
-    border-bottom: 1px solid #000;
+    padding: 2mm 1.5mm;
+    font-size: 9px;
+    border: 1px solid #000;
     vertical-align: top;
   }
-  tbody tr:last-child td { border-bottom: 2px solid #000; }
-  .col-num { width: 8mm; text-align: center; font-weight: 700; }
-  .col-desc { width: auto; }
-  .col-price { width: 16mm; text-align: left; font-weight: 700; }
-  .service-name { font-weight: 700; margin-bottom: 0.5mm; }
-  .barber-name { font-size: 9px; font-weight: 600; }
+  td:first-child { text-align: center; font-weight: 700; }
+  td:last-child { text-align: left; font-weight: 700; font-family: 'Courier New', monospace; }
+  tbody tr:nth-child(even) { background: #f9f9f9; }
+  .service-name { font-weight: 700; margin-bottom: 0.5mm; font-size: 10px; }
+  .barber-name { font-size: 8px; font-weight: 600; color: #333; }
   
   /* Totals Section */
   .receipt-totals {
-    border-top: 2px solid #000;
-    padding-top: 2mm;
-    font-size: 11px;
+    margin: 2mm 0;
+    padding: 2mm;
+    border: 2px solid #000;
+    border-radius: 4px;
   }
   .total-row {
     display: flex;
     justify-content: space-between;
     margin-bottom: 1mm;
-    font-weight: 700;
+    font-size: 10px;
   }
-  .total-row.subtotal { font-size: 11px; }
-  .total-row.discount { font-size: 11px; font-weight: 900; }
+  .total-row.subtotal { font-weight: 600; }
+  .total-row.discount { font-weight: 700; color: #dc2626; }
   .total-row.grand {
     font-size: 16px;
     font-weight: 900;
     margin-top: 2mm;
     padding-top: 2mm;
-    border-top: 3px double #000;
+    border-top: 2px double #000;
   }
-  .total-row.payment {
-    font-size: 10px;
-    font-weight: 700;
-    margin-top: 1mm;
+  .total-amount {
+    font-family: 'Courier New', monospace;
+    font-weight: 900;
+  }
+  
+  /* Gift Promotion Section */
+  .gift-section {
+    margin: 3mm 0;
+    padding: 3mm 2mm;
+    border: 2px solid #000;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #f5f5f5 0%, #fff 50%, #f5f5f5 100%);
+    text-align: center;
+    position: relative;
+  }
+  .gift-section::before,
+  .gift-section::after {
+    content: '✦';
+    position: absolute;
+    top: 1mm;
+    font-size: 8px;
+    color: #000;
+  }
+  .gift-section::before { left: 2mm; }
+  .gift-section::after { right: 2mm; }
+  .gift-icon {
+    font-size: 16px;
+    margin-bottom: 1mm;
+  }
+  .gift-text {
+    font-size: 14px;
+    font-weight: 900;
+    letter-spacing: 1px;
   }
   
   /* Footer */
@@ -196,19 +322,57 @@ const THERMAL_CSS = `
     text-align: center;
     margin-top: 3mm;
     padding-top: 2mm;
-    border-top: 2px solid #000;
     font-size: 10px;
-    font-weight: 700;
   }
-  .thank-you {
-    font-size: 12px;
-    font-weight: 900;
+  .thank-you-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2mm;
     margin-bottom: 1mm;
   }
-  .contact-info {
+  .thank-you {
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .star-icon {
+    font-size: 8px;
+  }
+  .footer-tagline {
     font-size: 9px;
     font-weight: 600;
+    margin-bottom: 1mm;
+  }
+  .footer-contact {
+    font-size: 9px;
+    font-weight: 700;
     margin-top: 1mm;
+    padding-top: 1mm;
+    border-top: 1px solid #000;
+  }
+  
+  /* Bottom Barber Pole */
+  .footer-ornament {
+    display: flex;
+    justify-content: center;
+    margin-top: 2mm;
+  }
+  .barber-pole-small {
+    width: 5mm;
+    height: 10mm;
+    border: 1.5px solid #000;
+    border-radius: 2.5mm;
+    background: repeating-linear-gradient(
+      45deg,
+      #fff,
+      #fff 1.5px,
+      #000 1.5px,
+      #000 3px,
+      #dc2626 3px,
+      #dc2626 4.5px,
+      #000 4.5px,
+      #000 6px
+    );
   }
 `;
 
@@ -230,7 +394,7 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
       .finally(() => setLoading(false));
   }, [open, invID]);
 
-  // Build receipt HTML (no buttons, no JS in output)
+  // Build receipt HTML with new CUT SALON style
   const buildReceiptHTML = useCallback(() => {
     if (!data) return '';
     const fmtDate = (d: string) => {
@@ -241,110 +405,138 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
       const serviceName = `<div class="service-name">${item.ProName || ''}</div>`;
       const barberName = item.EmpName ? `<div class="barber-name">${item.EmpName}</div>` : '';
       return `<tr>
-        <td class="col-num">${i + 1}</td>
-        <td class="col-desc">${serviceName}${barberName}</td>
-        <td class="col-price">${item.SPrice} ج.م</td>
+        <td>${i + 1}</td>
+        <td>${serviceName}${barberName}</td>
+        <td>${item.SPrice} ج.م</td>
       </tr>`;
     }).join('');
 
     const discountRow = data.DisVal > 0
-      ? `<div class="total-row discount"><span>الخصم</span><span>- ${data.DisVal} ج.م</span></div>`
+      ? `<div class="total-row discount"><span>الخصم:</span><span>- ${data.DisVal} ج.م</span></div>`
       : '';
 
     const paymentMethod = data.PayCash > 0 && data.PayVisa > 0 ? 'نقدي + فيزا'
       : data.PayVisa > 0 ? 'فيزا'
       : 'نقدي';
 
-    const paymentDetails = data.PayCash > 0 && data.PayVisa > 0
-      ? `<div class="total-row payment"><span>نقدي</span><span>${data.PayCash} ج.م</span></div>
-         <div class="total-row payment"><span>فيزا</span><span>${data.PayVisa} ج.م</span></div>`
-      : '';
-
     return `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="utf-8"/>
   <title>فاتورة #${data.invID}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>${THERMAL_CSS}</style>
 </head>
 <body>
-  <!-- Header -->
-  <div class="receipt-header">
-    <div class="logo">CUT</div>
-    <div class="salon-name">CUT SALON</div>
-    <div class="salon-name-ar">صالون كَت للرجال</div>
-    <div class="salon-phone">📞 01012126899</div>
-    <div class="receipt-title">فاتورة مبيعات</div>
-  </div>
-  
-  <!-- Invoice Info -->
-  <div class="receipt-info">
-    <div class="info-row">
-      <span class="label">رقم الفاتورة:</span>
-      <span class="value">#${data.invID}</span>
+  <div class="receipt-frame">
+    <!-- Header with Ornaments -->
+    <div class="receipt-header">
+      <div class="header-ornaments">
+        <div class="barber-pole"></div>
+        <div class="logo-circle">
+          <div class="crown">👑</div>
+          <div class="logo-text">CUT</div>
+          <div class="mustache">〰</div>
+          <div class="scissors">✂</div>
+        </div>
+        <div class="barber-pole"></div>
+      </div>
+      <div class="salon-name-main">CUT SALON</div>
+      <div class="salon-name-ar">صالون كت للرجال</div>
+      <div class="salon-phone">📞 01012126899</div>
     </div>
-    <div class="info-row">
-      <span class="label">التاريخ:</span>
-      <span class="value">${fmtDate(data.invDate)}</span>
+    
+    <!-- Divider -->
+    <div class="divider-ornate">
+      <div class="divider-line"></div>
+      <span class="divider-diamond">◆</span>
+      <div class="divider-line"></div>
     </div>
-    <div class="info-row">
-      <span class="label">الوقت:</span>
-      <span class="value">${data.invTime}</span>
+    
+    <!-- Receipt Title -->
+    <div class="receipt-title">✦ فاتورة مبيعات ✦</div>
+    
+    <!-- Invoice Info -->
+    <div class="receipt-info">
+      <div class="info-row">
+        <span class="info-label"><span class="info-icon">📄</span> رقم الفاتورة:</span>
+        <span class="info-value">#${data.invID}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label"><span class="info-icon">📅</span> التاريخ:</span>
+        <span class="info-value">${fmtDate(data.invDate)}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label"><span class="info-icon">🕐</span> الوقت:</span>
+        <span class="info-value">${data.invTime}</span>
+      </div>
+      ${data.customerName ? `<div class="info-row">
+        <span class="info-label"><span class="info-icon">👤</span> العميل:</span>
+        <span class="info-value">${data.customerName}</span>
+      </div>` : ''}
+      ${data.customerPhone ? `<div class="info-row">
+        <span class="info-label"><span class="info-icon">📞</span> الهاتف:</span>
+        <span class="info-value">${data.customerPhone}</span>
+      </div>` : ''}
+      <div class="info-row">
+        <span class="info-label"><span class="info-icon">💳</span> طريقة الدفع:</span>
+        <span class="info-value">${paymentMethod}</span>
+      </div>
     </div>
-    ${data.customerName ? `<div class="info-row">
-      <span class="label">العميل:</span>
-      <span class="value">${data.customerName}</span>
-    </div>` : ''}
-    ${data.customerPhone ? `<div class="info-row">
-      <span class="label">الهاتف:</span>
-      <span class="value">${data.customerPhone}</span>
-    </div>` : ''}
-    <div class="info-row">
-      <span class="label">طريقة الدفع:</span>
-      <span class="value">${paymentMethod}</span>
+    
+    <!-- Divider -->
+    <div class="divider-ornate">
+      <div class="divider-line"></div>
+      <span class="divider-diamond">✂</span>
+      <div class="divider-line"></div>
     </div>
-  </div>
-  
-  <div class="divider"></div>
-  
-  <!-- Services Table -->
-  <table>
-    <colgroup>
-      <col style="width:8mm"/>
-      <col/>
-      <col style="width:16mm"/>
-    </colgroup>
-    <thead>
-      <tr>
-        <th class="col-num">#</th>
-        <th class="col-desc">الخدمة / الحلاق</th>
-        <th class="col-price">السعر</th>
-      </tr>
-    </thead>
-    <tbody>${itemRows}</tbody>
-  </table>
-  
-  <!-- Totals -->
-  <div class="receipt-totals">
-    <div class="total-row subtotal">
-      <span>المجموع الفرعي:</span>
-      <span>${data.SubTotal} ج.م</span>
+    
+    <!-- Services Table -->
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>الخدمة / الحلاق</th>
+          <th>السعر</th>
+        </tr>
+      </thead>
+      <tbody>${itemRows}</tbody>
+    </table>
+    
+    <!-- Totals -->
+    <div class="receipt-totals">
+      <div class="total-row subtotal">
+        <span>المجموع الفرعي:</span>
+        <span class="total-amount">${data.SubTotal} ج.م</span>
+      </div>
+      ${discountRow}
+      <div class="total-row grand">
+        <span>الإجمالي:</span>
+        <span class="total-amount">${data.GrandTotal} ج.م</span>
+      </div>
     </div>
-    ${discountRow}
-    <div class="total-row grand">
-      <span>الإجمالي:</span>
-      <span>${data.GrandTotal} ج.م</span>
+    
+    <!-- Gift Promotion -->
+    <div class="gift-section">
+      <div class="gift-icon">🎁</div>
+      <div class="gift-text">اسأل على هديتك</div>
     </div>
-    ${paymentDetails}
-  </div>
-  
-  <div class="divider"></div>
-  
-  <!-- Footer -->
-  <div class="receipt-footer">
-    <div class="thank-you">شكراً لزيارتكم</div>
-    <div>نسعد بخدمتكم دائماً</div>
-    <div class="contact-info">📞 01012126899 | CUT SALON</div>
+    
+    <!-- Footer -->
+    <div class="receipt-footer">
+      <div class="thank-you-row">
+        <span class="star-icon">★</span>
+        <span class="thank-you">شكراً لزيارتكم</span>
+        <span class="star-icon">★</span>
+      </div>
+      <div class="footer-tagline">نسعد بخدمتكم دائماً</div>
+      <div class="footer-contact">📞 01012126899 - 035861483</div>
+    </div>
+    
+    <!-- Bottom Ornament -->
+    <div class="footer-ornament">
+      <div class="barber-pole-small"></div>
+    </div>
   </div>
 </body>
 </html>`;
@@ -422,16 +614,41 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
         {!loading && data && (
           <>
             {/* Receipt preview (screen only — matches thermal layout) */}
-            <div className="text-sm border-2 border-black rounded-lg p-4 bg-white text-black max-w-[280px] mx-auto" dir="rtl">
-              {/* Header */}
-              <div className="text-center border-b-2 border-black pb-3 mb-3">
-                <div className="w-16 h-16 mx-auto mb-2 border-2 border-black rounded-full flex items-center justify-center bg-black text-white font-black text-lg">
-                  CUT
+            <div className="text-sm border-2 border-black rounded-lg p-2 bg-white text-black max-w-[260px] mx-auto" dir="rtl" style={{ fontFamily: 'Cairo, sans-serif' }}>
+              {/* Frame */}
+              <div className="border-2 border-black rounded-lg p-2 relative">
+                {/* Header with Ornaments */}
+                <div className="text-center pb-3 mb-3">
+                  <div className="flex justify-center items-center gap-2 mb-3">
+                    {/* Barber Pole */}
+                    <div className="w-4 h-8 border-2 border-black rounded-full" style={{ background: 'repeating-linear-gradient(45deg, #fff, #fff 2px, #000 2px, #000 4px, #dc2626 4px, #dc2626 6px, #000 6px, #000 8px)' }}></div>
+                    
+                    {/* Logo */}
+                    <div className="w-20 h-20 border-[3px] border-black rounded-full flex flex-col items-center justify-center bg-white">
+                      <span className="text-lg">👑</span>
+                      <span className="font-black text-xl tracking-wider">CUT</span>
+                      <span className="text-lg">〰</span>
+                      <span className="text-xs">✂</span>
+                    </div>
+                    
+                    {/* Barber Pole */}
+                    <div className="w-4 h-8 border-2 border-black rounded-full" style={{ background: 'repeating-linear-gradient(45deg, #fff, #fff 2px, #000 2px, #000 4px, #dc2626 4px, #dc2626 6px, #000 6px, #000 8px)' }}></div>
+                  </div>
+                  <p className="font-black text-2xl tracking-widest mb-1">CUT SALON</p>
+                  <p className="font-bold text-base mb-1">صالون كت للرجال</p>
+                  <p className="font-bold text-sm">📞 01012126899</p>
                 </div>
-                <p className="font-black text-lg tracking-wide">CUT SALON</p>
-                <p className="font-bold text-sm mb-1">صالون كَت للرجال</p>
-                <p className="font-bold text-[11px]">📞 01000000000</p>
-                <p className="font-black text-xs mt-2 uppercase">فاتورة مبيعات</p>
+                
+                {/* Divider with Diamonds */}
+                <div className="flex items-center justify-center gap-2 my-3">
+                  <div className="flex-1 h-px bg-black"></div>
+                  <span className="text-xs">◆</span>
+                  <div className="flex-1 h-px bg-black"></div>
+                </div>
+              
+              {/* Receipt Title */}
+              <div className="text-center font-black text-xs my-2 py-1 border-y border-black bg-gray-100">
+                ✦ فاتورة مبيعات ✦
               </div>
               
               {/* Info */}
@@ -451,7 +668,7 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
                 {data.customerName && (
                   <div className="flex justify-between">
                     <span className="font-bold">العميل:</span>
-                    <span className="font-semibold truncate max-w-[140px]">{data.customerName}</span>
+                    <span className="font-semibold truncate max-w-[120px]">{data.customerName}</span>
                   </div>
                 )}
                 {data.customerPhone && (
@@ -498,43 +715,54 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
                 </tbody>
               </table>
               
-              {/* Totals */}
-              <div className="border-t-2 border-black pt-2 text-[11px] font-bold space-y-1">
-                <div className="flex justify-between">
-                  <span>المجموع الفرعي:</span>
-                  <span>{data.SubTotal} ج.م</span>
-                </div>
-                {data.DisVal > 0 && (
-                  <div className="flex justify-between font-black">
-                    <span>الخصم</span>
-                    <span>- {data.DisVal} ج.م</span>
-                  </div>
-                )}
-                <div className="flex justify-between font-black text-base border-t-[3px] border-double border-black pt-2 mt-2">
-                  <span>الإجمالي:</span>
-                  <span>{data.GrandTotal} ج.م</span>
-                </div>
-                {data.PayCash > 0 && data.PayVisa > 0 && (
-                  <>
-                    <div className="flex justify-between text-[10px] font-bold mt-1">
-                      <span>نقدي</span>
-                      <span>{data.PayCash} ج.م</span>
-                    </div>
-                    <div className="flex justify-between text-[10px] font-bold">
-                      <span>فيزا</span>
-                      <span>{data.PayVisa} ج.م</span>
-                    </div>
-                  </>
-                )}
+              {/* Divider */}
+              <div className="flex items-center justify-center gap-2 my-2">
+                <div className="flex-1 h-px bg-black"></div>
+                <span className="text-xs">✂</span>
+                <div className="flex-1 h-px bg-black"></div>
               </div>
               
-              <div className="border-t-2 border-black mt-2" />
+              {/* Totals Box */}
+              <div className="border-2 border-black rounded p-2 mb-2 text-[11px]">
+                <div className="flex justify-between font-semibold mb-1">
+                  <span>المجموع الفرعي:</span>
+                  <span className="font-mono">{data.SubTotal} ج.م</span>
+                </div>
+                {data.DisVal > 0 && (
+                  <div className="flex justify-between font-bold text-red-600 mb-1">
+                    <span>الخصم:</span>
+                    <span className="font-mono">- {data.DisVal} ج.م</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-black text-base border-t-2 border-double border-black pt-2 mt-2">
+                  <span>الإجمالي:</span>
+                  <span className="font-mono">{data.GrandTotal} ج.م</span>
+                </div>
+              </div>
+              
+              {/* Gift Promotion Section */}
+              <div className="border-2 border-black rounded-md p-3 my-3 text-center relative bg-gradient-to-r from-gray-100 via-white to-gray-100">
+                <span className="absolute top-1 left-2 text-[10px]">✦</span>
+                <span className="absolute top-1 right-2 text-[10px]">✦</span>
+                <div className="text-2xl mb-1">🎁</div>
+                <div className="font-black text-base tracking-wide">اسأل على هديتك</div>
+              </div>
               
               {/* Footer */}
-              <div className="text-center font-bold mt-2 pt-2">
-                <p className="font-black text-xs mb-1">شكراً لزيارتكم</p>
-                <p className="text-[10px]">نسعد بخدمتكم دائماً</p>
-                <p className="text-[9px] font-semibold mt-1">📞 01000000000 | CUT SALON</p>
+              <div className="text-center mt-3 pt-2 border-t border-black">
+                <div className="flex items-center justify-center gap-2 mb-1">
+                  <span className="text-[10px]">★</span>
+                  <span className="font-black text-sm">شكراً لزيارتكم</span>
+                  <span className="text-[10px]">★</span>
+                </div>
+                <p className="text-[10px] font-semibold">نسعد بخدمتكم دائماً</p>
+                <p className="text-[9px] font-bold mt-1 pt-1 border-t border-black">📞 01012126899 - 035861483</p>
+              </div>
+              
+              {/* Bottom Barber Pole */}
+              <div className="flex justify-center mt-2">
+                <div className="w-4 h-6 border-2 border-black rounded-full" style={{ background: 'repeating-linear-gradient(45deg, #fff, #fff 1.5px, #000 1.5px, #000 3px, #dc2626 3px, #dc2626 4.5px, #000 4.5px, #000 6px)' }} />
+              </div>
               </div>
             </div>
 
