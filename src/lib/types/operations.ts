@@ -46,6 +46,9 @@ export interface ShiftSummaryData {
   paymentBreakdown: PaymentBreakdown[];
   cashIn: number;
   cashOut: number;
+  userName?: string;
+  shiftName?: string;
+  startTime?: string;
 }
 
 export interface DaySummaryData {

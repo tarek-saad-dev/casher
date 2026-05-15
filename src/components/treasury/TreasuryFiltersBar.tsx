@@ -69,10 +69,10 @@ export default function TreasuryFiltersBar({
       if (response.ok) {
         const data = await response.json();
         const dayOptions: DayOption[] = data.days.map((d: any) => ({
-          newDay: d.NewDay,
-          dayDate: d.DayDate,
-          label: `يوم ${d.NewDay} - ${new Date(d.DayDate).toLocaleDateString('ar-EG')}`,
-          isOpen: d.IsOpen
+          newDay: d.newDay,
+          dayDate: d.dayDate,
+          label: `يوم ${d.newDay}`,
+          isOpen: d.isOpen
         }));
         setDays(dayOptions);
       }

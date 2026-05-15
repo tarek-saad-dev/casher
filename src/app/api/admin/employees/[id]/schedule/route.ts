@@ -2,6 +2,60 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 
+async function ensureScheduleTable(db: any) {
+  await db.request().query(`
+    IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'TblEmpWorkSchedule')
+    BEGIN
+        CREATE TABLE dbo.TblEmpWorkSchedule (
+            ID INT IDENTITY(1,1) PRIMARY KEY,
+            EmpID INT NOT NULL,
+            DayOfWeek TINYINT NOT NULL,
+            IsWorkingDay BIT NOT NULL DEFAULT 1,
+            StartTime TIME NULL,
+            EndTime TIME NULL,
+            BreakStartTime TIME NULL,
+            BreakEndTime TIME NULL,
+            Notes NVARCHAR(200) NULL,
+            CreatedAt DATETIME NOT NULL DEFAULT GETDATE(),
+            UpdatedAt DATETIME NULL,
+            CONSTRAINT CK_TblEmpWorkSchedule_DayOfWeek CHECK (DayOfWeek BETWEEN 0 AND 6)
+        );
+        
+        ALTER TABLE dbo.TblEmpWorkSchedule 
+        ADD CONSTRAINT FK_TblEmpWorkSchedule_TblEmp 
+        FOREIGN KEY (EmpID) REFERENCES dbo.TblEmp(EmpID);
+        
+        CREATE UNIQUE INDEX UQ_TblEmpWorkSchedule_Emp_Day 
+        ON dbo.TblEmpWorkSchedule (EmpID, DayOfWeek);
+        
+        CREATE INDEX IX_TblEmpWorkSchedule_EmpID 
+        ON dbo.TblEmpWorkSchedule (EmpID);
+    END
+  `);
+}
+
+function timeToDate(timeStr: string | null | undefined): Date | null {
+  if (!timeStr || timeStr.trim() === '') return null;
+  const [h, m, s] = timeStr.split(':').map(Number);
+  return new Date(1970, 0, 1, h, m, s || 0);
+}
+
+function formatScheduleRow(row: any) {
+  const fmt = (v: any): string | null => {
+    if (!v) return null;
+    if (typeof v === 'string') return v.substring(0, 5);
+    if (v instanceof Date) return `${String(v.getHours()).padStart(2,'0')}:${String(v.getMinutes()).padStart(2,'0')}`;
+    return null;
+  };
+  return {
+    ...row,
+    StartTime: fmt(row.StartTime),
+    EndTime: fmt(row.EndTime),
+    BreakStartTime: fmt(row.BreakStartTime),
+    BreakEndTime: fmt(row.BreakEndTime),
+  };
+}
+
 // GET /api/admin/employees/:id/schedule - Get employee work schedule
 export async function GET(
   req: NextRequest,
@@ -20,6 +74,7 @@ export async function GET(
     }
 
     const db = await getPool();
+    await ensureScheduleTable(db);
 
     // Check if employee exists
     const empCheck = await db.request()
@@ -87,8 +142,8 @@ export async function GET(
               .input("empId", sql.Int, empId)
               .input("dayOfWeek", sql.TinyInt, day)
               .input("isWorkingDay", sql.Bit, isWorkingDay ? 1 : 0)
-              .input("startTime", sql.Time, isWorkingDay ? defaultStart : null)
-              .input("endTime", sql.Time, isWorkingDay ? defaultEnd : null)
+              .input("startTime", sql.Time, isWorkingDay ? timeToDate(defaultStart) : null)
+              .input("endTime", sql.Time, isWorkingDay ? timeToDate(defaultEnd) : null)
               .input("notes", sql.NVarChar(200), notes)
               .query(`
                 INSERT INTO dbo.TblEmpWorkSchedule 
@@ -128,7 +183,7 @@ export async function GET(
 
     return NextResponse.json({
       success: true,
-      schedule
+      schedule: schedule.map(formatScheduleRow)
     });
 
   } catch (err: unknown) {
@@ -195,6 +250,7 @@ export async function PUT(
     }
 
     const db = await getPool();
+    await ensureScheduleTable(db);
     const transaction = new sql.Transaction(db);
     await transaction.begin();
 
@@ -226,10 +282,10 @@ export async function PUT(
           // Update existing
           await request
             .input("isWorkingDay", sql.Bit, day.IsWorkingDay ? 1 : 0)
-            .input("startTime", sql.Time, day.IsWorkingDay ? day.StartTime : null)
-            .input("endTime", sql.Time, day.IsWorkingDay ? day.EndTime : null)
-            .input("breakStartTime", sql.Time, day.BreakStartTime || null)
-            .input("breakEndTime", sql.Time, day.BreakEndTime || null)
+            .input("startTime", sql.Time, day.IsWorkingDay ? timeToDate(day.StartTime) : null)
+            .input("endTime", sql.Time, day.IsWorkingDay ? timeToDate(day.EndTime) : null)
+            .input("breakStartTime", sql.Time, timeToDate(day.BreakStartTime))
+            .input("breakEndTime", sql.Time, timeToDate(day.BreakEndTime))
             .input("notes", sql.NVarChar(200), day.Notes || null)
             .input("scheduleId", sql.Int, existingDay.recordset[0].ID)
             .query(`
@@ -247,10 +303,10 @@ export async function PUT(
           // Insert new
           await request
             .input("isWorkingDay", sql.Bit, day.IsWorkingDay ? 1 : 0)
-            .input("startTime", sql.Time, day.IsWorkingDay ? day.StartTime : null)
-            .input("endTime", sql.Time, day.IsWorkingDay ? day.EndTime : null)
-            .input("breakStartTime", sql.Time, day.BreakStartTime || null)
-            .input("breakEndTime", sql.Time, day.BreakEndTime || null)
+            .input("startTime", sql.Time, day.IsWorkingDay ? timeToDate(day.StartTime) : null)
+            .input("endTime", sql.Time, day.IsWorkingDay ? timeToDate(day.EndTime) : null)
+            .input("breakStartTime", sql.Time, timeToDate(day.BreakStartTime))
+            .input("breakEndTime", sql.Time, timeToDate(day.BreakEndTime))
             .input("notes", sql.NVarChar(200), day.Notes || null)
             .query(`
               INSERT INTO dbo.TblEmpWorkSchedule 
@@ -283,7 +339,7 @@ export async function PUT(
       return NextResponse.json({
         success: true,
         message: "تم تحديث جدول المواعيد بنجاح",
-        schedule: updatedResult.recordset
+        schedule: updatedResult.recordset.map(formatScheduleRow)
       });
 
     } catch (innerErr) {

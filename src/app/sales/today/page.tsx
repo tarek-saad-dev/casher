@@ -10,11 +10,15 @@ import ByBarberView from '@/components/sales/ByBarberView';
 import ByServiceView from '@/components/sales/ByServiceView';
 import ByHourView from '@/components/sales/ByHourView';
 import TodaySalesTransactionsTable from '@/components/sales/TodaySalesTransactionsTable';
-import type { TodaySalesData } from '@/lib/types/today-sales';
+import { useSession } from '@/hooks/useSession';
+import { usePermission } from '@/hooks/usePermission';
+import type { TodaySalesData, TodaySaleTransaction } from '@/lib/types/today-sales';
 
 type AnalysisMode = 'overview' | 'shift' | 'payment' | 'barber' | 'service' | 'hour';
 
 export default function TodaySalesPage() {
+  const { user } = useSession();
+  const canDelete = usePermission('sales.delete');
   const [data, setData] = useState<TodaySalesData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -262,6 +266,20 @@ export default function TodaySalesPage() {
                     // Could navigate to invoice detail page
                     console.log('Invoice clicked:', invId);
                   }}
+                  onEdit={(txn) => {
+                    // Navigate to POS with invoice data for editing
+                    window.location.href = `/income/pos?edit=${txn.invId}`;
+                  }}
+                  onDelete={async (invId) => {
+                    const response = await fetch(`/api/sales/${invId}`, { method: 'DELETE' });
+                    if (response.ok) {
+                      loadSalesData();
+                    } else {
+                      const error = await response.json();
+                      alert(error.error || 'فشل حذف الفاتورة');
+                    }
+                  }}
+                  canEdit={canDelete}
                 />
               </div>
             </>

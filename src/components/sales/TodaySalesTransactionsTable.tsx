@@ -1,21 +1,39 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, Receipt, User, Package, CreditCard, Clock, Tag } from 'lucide-react';
+import { Search, Receipt, User, Package, CreditCard, Clock, Tag, Edit2, Trash2, AlertCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import type { TodaySaleTransaction } from '@/lib/types/today-sales';
 
 interface TodaySalesTransactionsTableProps {
   transactions: TodaySaleTransaction[];
   onInvoiceClick?: (invId: number) => void;
+  onEdit?: (txn: TodaySaleTransaction) => void;
+  onDelete?: (invId: number) => void;
+  canEdit?: boolean;
 }
 
 export default function TodaySalesTransactionsTable({ 
   transactions, 
-  onInvoiceClick 
+  onInvoiceClick,
+  onEdit,
+  onDelete,
+  canEdit = false,
 }: TodaySalesTransactionsTableProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<TodaySaleTransaction | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('ar-EG', {
@@ -38,7 +56,14 @@ export default function TodaySalesTransactionsTable({
     }
   };
 
-  const filteredTransactions = transactions.filter(txn => {
+  // Sort transactions by time (ascending - oldest first)
+  const sortedTransactions = [...transactions].sort((a, b) => {
+    const timeA = a.invTime || '00:00:00';
+    const timeB = b.invTime || '00:00:00';
+    return timeA.localeCompare(timeB);
+  });
+
+  const filteredTransactions = sortedTransactions.filter(txn => {
     if (!searchQuery.trim()) return true;
     const query = searchQuery.toLowerCase();
     return (
@@ -49,6 +74,24 @@ export default function TodaySalesTransactionsTable({
       txn.paymentMethod.toLowerCase().includes(query)
     );
   });
+
+  const handleDeleteClick = (e: React.MouseEvent, txn: TodaySaleTransaction) => {
+    e.stopPropagation();
+    setDeleteTarget(txn);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget || !onDelete) return;
+    setDeleteLoading(true);
+    try {
+      await onDelete(deleteTarget.invId);
+    } finally {
+      setDeleteLoading(false);
+      setDeleteConfirmOpen(false);
+      setDeleteTarget(null);
+    }
+  };
 
   if (transactions.length === 0) {
     return (
@@ -91,6 +134,9 @@ export default function TodaySalesTransactionsTable({
                 <th className="text-right px-4 py-3 text-xs font-semibold text-zinc-400">المبلغ</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-zinc-400">الدفع</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-zinc-400">الوردية</th>
+                {canEdit && (
+                  <th className="text-center px-4 py-3 text-xs font-semibold text-zinc-400">إجراءات</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -166,6 +212,35 @@ export default function TodaySalesTransactionsTable({
                       <p className="text-xs text-zinc-500">{txn.userName}</p>
                     </div>
                   </td>
+                  {canEdit && (
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center gap-2">
+                        {onEdit && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEdit(txn);
+                            }}
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {onDelete && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                            onClick={(e) => handleDeleteClick(e, txn)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -179,6 +254,51 @@ export default function TodaySalesTransactionsTable({
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent className="sm:max-w-[400px] bg-zinc-900 border-zinc-800">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-400">
+              <AlertCircle className="w-5 h-5" />
+              تأكيد الحذف
+            </DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              هل أنت متأكد من حذف الفاتورة رقم <span className="font-bold text-white">#{deleteTarget?.invId}</span>؟
+              <br />
+              هذا الإجراء لا يمكن التراجع عنه.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteConfirmOpen(false)}
+              disabled={deleteLoading}
+              className="border-zinc-700"
+            >
+              إلغاء
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDelete}
+              disabled={deleteLoading}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleteLoading ? (
+                <span className="flex items-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  جاري الحذف...
+                </span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <Trash2 className="w-4 h-4" />
+                  حذف
+                </span>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

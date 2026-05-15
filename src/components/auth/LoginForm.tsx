@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 interface LoginFormProps {
-  onSuccess: (user: { UserID: number; UserName: string; UserLevel: string }) => void;
+  onSuccess: (user: { UserID: number; UserName: string; UserLevel: string; ShiftID?: number | null }) => void;
 }
 
 export default function LoginForm({ onSuccess }: LoginFormProps) {

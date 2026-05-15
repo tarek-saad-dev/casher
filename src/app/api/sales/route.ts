@@ -82,8 +82,37 @@ export async function POST(req: NextRequest) {
     const grandTotal = Math.max(0, subTotal - disVal);
     const payCash = Math.max(0, body.payCash || 0);
     const payVisa = Math.max(0, body.payVisa || 0);
+    
+    // ──── Split payment validation ────
+    const paymentAllocations = body.paymentAllocations || [];
+    const totalAllocated = paymentAllocations.reduce((sum, pa) => sum + (pa.amount || 0), 0);
+    if (Math.abs(totalAllocated - grandTotal) > 0.01) {
+      console.error(`[pos-api]   ❌ REJECTED: payment total mismatch. Allocated=${totalAllocated}, GrandTotal=${grandTotal}`);
+      return NextResponse.json(
+        { error: `إجمالي المدفوع (${totalAllocated.toFixed(2)}) لا يساوي إجمالي الفاتورة (${grandTotal.toFixed(2)})` },
+        { status: 400 },
+      );
+    }
+    
+    // Determine main payment method (largest amount)
+    const sortedAllocations = [...paymentAllocations].sort((a, b) => (b.amount || 0) - (a.amount || 0));
+    const mainPayment = sortedAllocations[0];
+    if (!mainPayment || mainPayment.amount <= 0) {
+      return NextResponse.json(
+        { error: "يجب إدخال مبلغ لطريقة دفع واحدة على الأقل" },
+        { status: 400 },
+      );
+    }
+    
+    // Check if this is a split payment
+    const activeAllocations = paymentAllocations.filter(pa => (pa.amount || 0) > 0);
+    const isSplitPayment = activeAllocations.length > 1;
+    
     console.log(
       `[pos-api]   Discount: dis=${disPercent}%, disVal=${disVal}, subTotal=${subTotal}, grandTotal=${grandTotal}`,
+    );
+    console.log(
+      `[pos-api]   Payment: mainMethodId=${mainPayment.paymentMethodId}, isSplit=${isSplitPayment}, allocations=${activeAllocations.length}`,
     );
 
     // Format invTime as "HH.mm"
@@ -229,6 +258,143 @@ export async function POST(req: NextRequest) {
         `[pos-api]   ℹ️  TblCashMove will be inserted by trigger InsCashMoveSales`,
       );
 
+      // ──── 5b. Split Payment Settlement Entries ────
+      if (isSplitPayment) {
+        console.log(`[pos-api]   💰 Creating split payment settlement entries...`);
+        
+        // Get payment method names for logging
+        const pmResult = await new sql.Request(transaction).query(`
+          SELECT PaymentID, PaymentMethod FROM [dbo].[TblPaymentMethods] WHERE PaymentID IN (${activeAllocations.map(pa => pa.paymentMethodId).join(',')})
+        `);
+        const pmNames = new Map(pmResult.recordset.map((pm: any) => [pm.PaymentID, pm.PaymentMethod]));
+        
+        // Find or create settlement categories "طرق دفع"
+        const EXPENSE_CAT_NAME = 'طرق دفع - مصروفات';
+        const INCOME_CAT_NAME = 'طرق دفع - إيرادات';
+        
+        // Check if categories exist
+        const catCheckReq = new sql.Request(transaction);
+        catCheckReq.input('expCat', sql.NVarChar(100), EXPENSE_CAT_NAME);
+        catCheckReq.input('incCat', sql.NVarChar(100), INCOME_CAT_NAME);
+        const catResult = await catCheckReq.query(`
+          SELECT ExpINID, CatName, ExpINType FROM [dbo].[TblExpINCat] 
+          WHERE CatName = @expCat OR CatName = @incCat
+        `);
+        
+        let expenseCatId = null;
+        let incomeCatId = null;
+        
+        for (const cat of catResult.recordset) {
+          if (cat.CatName === EXPENSE_CAT_NAME) expenseCatId = cat.ExpINID;
+          if (cat.CatName === INCOME_CAT_NAME) incomeCatId = cat.ExpINID;
+        }
+        
+        // Create expense category if not found
+        if (!expenseCatId) {
+          const newExpReq = new sql.Request(transaction);
+          newExpReq.input('catName', sql.NVarChar(100), EXPENSE_CAT_NAME);
+          newExpReq.input('expType', sql.NVarChar(20), 'مصروفات');
+          newExpReq.input('notes', sql.NVarChar(sql.MAX), 'تصنيف مخصص لتسويات الدفع المختلط');
+          const newExpResult = await newExpReq.query(`
+            INSERT INTO [dbo].[TblExpINCat] (CatName, ExpINType, Notes)
+            OUTPUT INSERTED.ExpINID
+            VALUES (@catName, @expType, @notes)
+          `);
+          expenseCatId = newExpResult.recordset[0].ExpINID;
+          console.log(`[pos-api]   📂 Created expense category: ${EXPENSE_CAT_NAME} (ID=${expenseCatId})`);
+        }
+        
+        // Create income category if not found
+        if (!incomeCatId) {
+          const newIncReq = new sql.Request(transaction);
+          newIncReq.input('catName', sql.NVarChar(100), INCOME_CAT_NAME);
+          newIncReq.input('incType', sql.NVarChar(20), 'ايرادات');
+          newIncReq.input('notes', sql.NVarChar(sql.MAX), 'تصنيف مخصص لتسويات الدفع المختلط');
+          const newIncResult = await newIncReq.query(`
+            INSERT INTO [dbo].[TblExpINCat] (CatName, ExpINType, Notes)
+            OUTPUT INSERTED.ExpINID
+            VALUES (@catName, @incType, @notes)
+          `);
+          incomeCatId = newIncResult.recordset[0].ExpINID;
+          console.log(`[pos-api]   📂 Created income category: ${INCOME_CAT_NAME} (ID=${incomeCatId})`);
+        }
+        
+        console.log(`[pos-api]   📂 Settlement categories: expense=${expenseCatId}, income=${incomeCatId}`);
+        
+        const mainMethodId = mainPayment.paymentMethodId;
+        const mainMethodName = pmNames.get(mainMethodId) || 'Unknown';
+        
+        // For each other payment method, create settlement entries
+        for (const alloc of activeAllocations) {
+          if (alloc.paymentMethodId === mainMethodId) continue; // Skip main method
+          
+          const otherMethodId = alloc.paymentMethodId;
+          const otherMethodName = pmNames.get(otherMethodId) || 'Unknown';
+          const otherAmount = alloc.amount;
+          
+          // Generate invIDs for settlement entries
+          const settleInvResult = await new sql.Request(transaction).query(`
+            SELECT ISNULL(MAX(invID), 0) + 1 AS newInvID FROM [dbo].[TblCashMove] WITH (TABLOCKX)
+          `);
+          const expenseInvId = settleInvResult.recordset[0].newInvID;
+          const incomeInvId = expenseInvId + 1;
+          
+          // 1. Create EXPENSE entry on main method (reduce main method balance)
+          const expenseReq = new sql.Request(transaction);
+          expenseReq
+            .input("invID", sql.Int, expenseInvId)
+            .input("invType", sql.NVarChar(20), "مصروفات")
+            .input("invDate", sql.Date, invDate)
+            .input("invTime", sql.NVarChar(50), invTime)
+            .input("ClientID", sql.Int, body.clientId || null)
+            .input("ExpINID", sql.Int, expenseCatId)
+            .input("GrandTolal", sql.Decimal(10, 2), otherAmount)
+            .input("inOut", sql.NVarChar(5), "out")
+            .input("Notes", sql.NVarChar(sql.MAX), `تسوية دفع مختلط للفاتورة ${newInvID} - خصم الجزء المدفوع ${otherMethodName} من ${mainMethodName}`)
+            .input("ShiftMoveID", sql.Int, shiftMoveID)
+            .input("PaymentMethodID", sql.Int, mainMethodId);
+          
+          await expenseReq.query(`
+            INSERT INTO [dbo].[TblCashMove] (
+              invID, invType, invDate, invTime, ClientID,
+              ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID
+            ) VALUES (
+              @invID, @invType, @invDate, @invTime, @ClientID,
+              @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID
+            )
+          `);
+          console.log(`[pos-api]     ✅ Settlement Expense: ${mainMethodName} -${otherAmount}`);
+          
+          // 2. Create INCOME entry on other method (add to other method balance)
+          const incomeReq = new sql.Request(transaction);
+          incomeReq
+            .input("invID", sql.Int, incomeInvId)
+            .input("invType", sql.NVarChar(20), "ايرادات")
+            .input("invDate", sql.Date, invDate)
+            .input("invTime", sql.NVarChar(50), invTime)
+            .input("ClientID", sql.Int, body.clientId || null)
+            .input("ExpINID", sql.Int, incomeCatId)
+            .input("GrandTolal", sql.Decimal(10, 2), otherAmount)
+            .input("inOut", sql.NVarChar(5), "in")
+            .input("Notes", sql.NVarChar(sql.MAX), `تسوية دفع مختلط للفاتورة ${newInvID} - إثبات الجزء المدفوع ${otherMethodName}`)
+            .input("ShiftMoveID", sql.Int, shiftMoveID)
+            .input("PaymentMethodID", sql.Int, otherMethodId);
+          
+          await incomeReq.query(`
+            INSERT INTO [dbo].[TblCashMove] (
+              invID, invType, invDate, invTime, ClientID,
+              ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID
+            ) VALUES (
+              @invID, @invType, @invDate, @invTime, @ClientID,
+              @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID
+            )
+          `);
+          console.log(`[pos-api]     ✅ Settlement Income: ${otherMethodName} +${otherAmount}`);
+        }
+        
+        console.log(`[pos-api]   ✅ Split payment settlement complete`);
+      }
+
       // ──── 6. Commit ────
       await transaction.commit();
       console.log(
@@ -236,7 +402,32 @@ export async function POST(req: NextRequest) {
       );
       console.log(`[pos-api] ──── SAVE SALE COMPLETE ────`);
 
-      // ──── 7. Send WhatsApp notification (fire and forget) ────
+      // ──── 7. Loyalty Points Earning (CUT CLUB) — Fire and Forget ────
+      if (body.clientId) {
+        try {
+          const loyaltyDb = await getPool();
+          await loyaltyDb.request()
+            .input('invID', sql.Int, newInvID)
+            .input('invType', sql.NVarChar(20), invType)
+            .input('UserID', sql.Int, userID)
+            .query(`
+              EXEC [dbo].[sp_Loyalty_EarnPointsFromSale]
+                @invID = @invID,
+                @invType = @invType,
+                @UserID = @UserID
+            `);
+          console.log(
+            `[pos-api]   👑 Loyalty points awarded for ClientID=${body.clientId}, Invoice=${newInvID}`,
+          );
+        } catch (loyaltyErr) {
+          // Non-critical error - log but don't fail the sale
+          console.error(
+            `[pos-api]   ⚠️ Loyalty points error (non-critical): ${loyaltyErr instanceof Error ? loyaltyErr.message : loyaltyErr}`,
+          );
+        }
+      }
+
+      // ──── 8. Send WhatsApp notification (fire and forget) ────
       if (body.clientId) {
         try {
           // Get customer phone and name
@@ -244,7 +435,7 @@ export async function POST(req: NextRequest) {
             .request()
             .input("clientId", sql.Int, body.clientId).query(`
               SELECT ClientName, Mobile1 
-              FROM [dbo].[TblClients] 
+              FROM [dbo].[TblClient] 
               WHERE ClientID = @clientId
             `);
 

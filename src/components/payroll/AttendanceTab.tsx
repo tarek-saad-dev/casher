@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input }  from '@/components/ui/input';
+import { getBusinessDateStr } from '@/lib/timeUtils';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -48,9 +49,13 @@ function statusBadge(s: string | null) {
   );
 }
 
-function today() { return new Date().toISOString().slice(0, 10); }
+function today() { return getBusinessDateStr(); }
 function weekAgo() {
   const d = new Date();
+  // If before 5 AM, go back an extra day for the week ago calculation
+  if (d.getHours() < 5) {
+    d.setDate(d.getDate() - 1);
+  }
   d.setDate(d.getDate() - 7);
   return d.toISOString().slice(0, 10);
 }

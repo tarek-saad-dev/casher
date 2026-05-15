@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     }
     
     if (shiftMoveId !== null) {
-      whereConditions.push('sm.ShiftMoveID = @shiftMoveId');
+      whereConditions.push('sm.ID = @shiftMoveId');
       params.shiftMoveId = shiftMoveId;
     }
     
@@ -64,17 +64,17 @@ export async function GET(request: NextRequest) {
     const breakdownQuery = `
       SELECT 
         pm.PaymentID,
-        pm.PaymentMethod,
+        ISNULL(pm.PaymentMethod, N'\u0637\u0631\u064a\u0642\u0629 \u062f\u0641\u0639 \u063a\u064a\u0631 \u0645\u062d\u062f\u062f\u0629') AS PaymentMethod,
         SUM(CASE WHEN cm.inOut = N'in' THEN cm.GrandTolal ELSE 0 END) AS Inflow,
         SUM(CASE WHEN cm.inOut = N'out' THEN cm.GrandTolal ELSE 0 END) AS Outflow,
-        SUM(CASE WHEN cm.inOut = N'in' THEN cm.GrandTolal ELSE 0 END) - 
+        SUM(CASE WHEN cm.inOut = N'in' THEN cm.GrandTolal ELSE 0 END) -
         SUM(CASE WHEN cm.inOut = N'out' THEN cm.GrandTolal ELSE 0 END) AS Net,
         COUNT(cm.ID) AS TransactionCount,
         SUM(CASE WHEN cm.inOut = N'in' AND cm.invType = N'مبيعات' THEN cm.GrandTolal ELSE 0 END) AS SalesInflow,
         SUM(CASE WHEN cm.inOut = N'in' AND cm.invType = N'ايرادات' THEN cm.GrandTolal ELSE 0 END) AS IncomeInflow
       FROM [dbo].[TblCashMove] cm
-      INNER JOIN [dbo].[TblPaymentMethods] pm ON cm.PaymentMethodID = pm.PaymentID
-      INNER JOIN [dbo].[TblShiftMove] sm ON cm.ShiftMoveID = sm.ID
+      LEFT JOIN [dbo].[TblPaymentMethods] pm ON cm.PaymentMethodID = pm.PaymentID
+      LEFT JOIN [dbo].[TblShiftMove] sm ON cm.ShiftMoveID = sm.ID
       WHERE ${whereClause}
       GROUP BY pm.PaymentID, pm.PaymentMethod
       ORDER BY Net DESC
@@ -165,7 +165,7 @@ export async function GET(request: NextRequest) {
       const dayInfoResult = await db.request()
         .input('newDay', sql.Int, newDay)
         .query(`
-          SELECT DayDate FROM [dbo].[TblNewDay] WHERE NewDay = @newDay
+          SELECT NewDay AS DayDate FROM [dbo].[TblNewDay] WHERE NewDay = @newDay
         `);
       
       if (dayInfoResult.recordset.length > 0) {
@@ -177,9 +177,9 @@ export async function GET(request: NextRequest) {
       const shiftInfoResult = await db.request()
         .input('shiftMoveId', sql.Int, shiftMoveId)
         .query(`
-          SELECT s.ShiftName 
+          SELECT s.ShiftName
           FROM [dbo].[TblShiftMove] sm
-          INNER JOIN [dbo].[TblShift] s ON sm.ShiftID = s.ShiftID
+          LEFT JOIN [dbo].[TblShift] s ON sm.ShiftID = s.ShiftID
           WHERE sm.ShiftMoveID = @shiftMoveId
         `);
       

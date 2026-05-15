@@ -1,0 +1,1022 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import dynamic from 'next/dynamic';
+import {
+  Users, Plus, CheckCircle2, AlertCircle,
+  Loader2, UserPlus, Link2, Scissors, X, Zap, Settings, Clock, UserX, UserCheck,
+  Banknote, CalendarCheck, Wallet, UsersRound,
+} from 'lucide-react';
+import PageHeader from '@/components/shared/PageHeader';
+import { parseTimeToMinutes } from '@/lib/timeUtils';
+import KpiCard from '@/components/shared/KpiCard';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import EmployeeManagementModal from '@/components/admin/EmployeeManagementModal';
+import { JobType } from '@/lib/types';
+
+function TabLoader() {
+  return (
+    <div className="flex items-center justify-center py-16 text-zinc-500">
+      <Loader2 className="w-5 h-5 animate-spin ml-2" />
+      <span className="text-sm">جاري التحميل...</span>
+    </div>
+  );
+}
+
+const PayrollSummaryTab  = dynamic(() => import('@/components/payroll/PayrollSummaryTab'),  { ssr: false, loading: () => <TabLoader /> });
+const PayrollSettingsTab = dynamic(() => import('@/components/payroll/PayrollSettingsTab'), { ssr: false, loading: () => <TabLoader /> });
+const AttendanceTab      = dynamic(() => import('@/components/payroll/AttendanceTab'),      { ssr: false, loading: () => <TabLoader /> });
+const AdvancesTab        = dynamic(() => import('@/components/payroll/AdvancesTab'),        { ssr: false, loading: () => <TabLoader /> });
+const AttendancePanel        = dynamic(() => import('@/components/hr/AttendancePanel'),                              { ssr: false, loading: () => <TabLoader /> });
+const DailyPayrollPanel      = dynamic(() => import('@/components/hr/DailyPayrollPanel'),                            { ssr: false, loading: () => <TabLoader /> });
+const EmployeeAdvancesSection = dynamic(() => import('@/components/reports/expenses/EmployeeAdvancesSection'),       { ssr: false, loading: () => <TabLoader /> });
+
+/* ─── types ─────────────────────────────────────────── */
+interface Employee {
+  EmpID: number;
+  EmpName: string;
+  Job: JobType | string | null;
+  isActive: boolean;
+  BaseSalary: number | null;
+  TargetCommissionPercent: number | null;
+  TargetMinSales: number | null;
+  DefaultCheckInTime: string | null;
+  DefaultCheckOutTime: string | null;
+  WorkScheduleNotes: string | null;
+  IsPayrollEnabled: boolean | null;
+  HourlyRate: number | null;
+  AdvanceExpINID: number | null;
+  AdvanceCatName: string | null;
+  RevenueExpINID: number | null;
+  RevenueCatName: string | null;
+}
+
+/* ─── main tabs ──────────────────────────────────────── */
+
+const MAIN_TABS = [
+  { id: 'employees',        label: 'الموظفون',          icon: UsersRound },
+  { id: 'attendance',      label: 'متابعة الحضور',     icon: CalendarCheck },
+  { id: 'daily-payroll',   label: 'يوميات الموظفين',   icon: Banknote },
+  { id: 'emp-advances',    label: 'سلف الموظفين',     icon: Wallet },
+  { id: 'salaries',        label: 'مرتبات العاملين',   icon: Banknote },
+] as const;
+type MainTabId = typeof MAIN_TABS[number]['id'];
+
+/* ─── payroll sub-tabs ───────────────────────────────── */
+const PAYROLL_TABS = [
+  { id: 'summary',    label: 'ملخص المرتبات',    icon: Banknote },
+  { id: 'settings',  label: 'إعدادات الموظفين',  icon: Users },
+  { id: 'attendance',label: 'الحضور والانصراف',  icon: CalendarCheck },
+  { id: 'advances',  label: 'السلف والخصومات',    icon: Wallet },
+] as const;
+type PayrollTabId = typeof PAYROLL_TABS[number]['id'];
+
+/* ══════════════════════════════════════════════════════ */
+export default function HRPage() {
+  const [mainTab, setMainTab] = useState<MainTabId>('employees');
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
+
+  if (!mounted) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto" dir="rtl">
+        <PageHeader
+          title="إدارة الموارد البشرية"
+          description="إدارة الموظفين، الرواتب، الحضور، والسلف في مكان واحد"
+        />
+        <div className="flex items-center justify-center py-24 text-zinc-500">
+          <Loader2 className="w-6 h-6 animate-spin ml-2" />
+          <span className="text-sm">جاري التحميل...</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 max-w-7xl mx-auto space-y-0" dir="rtl">
+      {/* ── Page Header ── */}
+      <PageHeader
+        title="إدارة الموارد البشرية"
+        description="إدارة الموظفين، الرواتب، الحضور، والسلف في مكان واحد"
+      />
+
+      {/* ── Main Tab Switcher ── */}
+      <div className="flex gap-1 p-1 bg-zinc-900/60 border border-zinc-800/60 rounded-xl w-fit mb-6">
+        {MAIN_TABS.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setMainTab(id)}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all ${
+              mainTab === id
+                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+            }`}
+          >
+            <Icon className="w-4 h-4" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Tab Panels ── */}
+      {mainTab === 'employees'      && <EmployeesPanel />}
+      {mainTab === 'attendance'     && <AttendancePanel />}
+      {mainTab === 'daily-payroll'  && <DailyPayrollPanel />}
+      {mainTab === 'emp-advances'   && <AdvancesReportPanel />}
+      {mainTab === 'salaries'       && <SalariesPanel />}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════
+   PANEL 1 — Employees
+   ══════════════════════════════════════════════════════ */
+function EmployeesPanel() {
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState('');
+  const [jobTypeFilter, setJobTypeFilter] = useState<string>('');
+
+  const [open,      setOpen]     = useState(false);
+  const [empName,   setEmpName]  = useState('');
+  const [saving,    setSaving]   = useState(false);
+  const [saveErr,   setSaveErr]  = useState('');
+  const [lastAdded, setLastAdded] = useState<Employee | null>(null);
+
+  const [financeModalOpen, setFinanceModalOpen] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [advanceCategories, setAdvanceCategories] = useState<any[]>([]);
+  const [revenueCategories, setRevenueCategories] = useState<any[]>([]);
+  const [selectedAdvance, setSelectedAdvance] = useState<string>('');
+  const [selectedRevenue, setSelectedRevenue] = useState<string>('');
+  const [financeSaving, setFinanceSaving] = useState(false);
+  const [financeError, setFinanceError] = useState('');
+
+  const [autoMapping, setAutoMapping] = useState(false);
+  const [autoMappingResult, setAutoMappingResult] = useState<any>(null);
+  const [showAutoMappingModal, setShowAutoMappingModal] = useState(false);
+
+  const [managementModalOpen, setManagementModalOpen] = useState(false);
+  const [selectedManagementEmployee, setSelectedManagementEmployee] = useState<Employee | null>(null);
+
+  const [workHoursModalOpen, setWorkHoursModalOpen] = useState(false);
+  const [selectedWorkHoursEmployee, setSelectedWorkHoursEmployee] = useState<Employee | null>(null);
+  const [workHoursSaving, setWorkHoursSaving] = useState(false);
+  const [workHoursError, setWorkHoursError] = useState('');
+  const [workHoursSuccess, setWorkHoursSuccess] = useState('');
+  const [checkInTime, setCheckInTime] = useState('');
+  const [checkOutTime, setCheckOutTime] = useState('');
+  const [workNotes, setWorkNotes] = useState('');
+
+  const [inactiveModalOpen, setInactiveModalOpen] = useState(false);
+  const [inactiveEmployees, setInactiveEmployees] = useState<Employee[]>([]);
+  const [loadingInactive, setLoadingInactive] = useState(false);
+  const [activatingId, setActivatingId] = useState<number | null>(null);
+  const [deactivatingId, setDeactivatingId] = useState<number | null>(null);
+  const [statusTab, setStatusTab] = useState<'inactive' | 'active'>('inactive');
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      const res  = await fetch('/api/employees');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'خطأ في التحميل');
+      setEmployees(Array.isArray(data) ? data : []);
+    } catch (e: any) { setError(e.message); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filteredEmployees = employees.filter(emp => {
+    if (!jobTypeFilter || jobTypeFilter === 'all') return true;
+    return emp.Job === jobTypeFilter;
+  });
+
+  const loadFinanceCategories = useCallback(async () => {
+    try {
+      const [advRes, revRes] = await Promise.all([
+        fetch('/api/finance/categories?type=مصروفات'),
+        fetch('/api/finance/categories?type=ايرادات')
+      ]);
+      const advData = await advRes.json();
+      const revData = await revRes.json();
+      if (advRes.ok) setAdvanceCategories(Array.isArray(advData) ? advData : []);
+      if (revRes.ok) setRevenueCategories(Array.isArray(revData) ? revData : []);
+    } catch (e: any) { console.error('Failed to load finance categories:', e.message); }
+  }, []);
+
+  const openFinanceModal = async (employee: Employee) => {
+    setSelectedEmployee(employee);
+    setSelectedAdvance(employee.AdvanceExpINID?.toString() || '');
+    setSelectedRevenue(employee.RevenueExpINID?.toString() || '');
+    setFinanceError('');
+    await loadFinanceCategories();
+    setFinanceModalOpen(true);
+  };
+
+  const closeFinanceModal = () => {
+    setFinanceModalOpen(false); setSelectedEmployee(null);
+    setSelectedAdvance(''); setSelectedRevenue(''); setFinanceError('');
+  };
+
+  const saveFinanceMapping = async () => {
+    if (!selectedEmployee) return;
+    setFinanceSaving(true); setFinanceError('');
+    try {
+      const payload: any = {};
+      if (selectedAdvance) payload.advanceExpINID = parseInt(selectedAdvance);
+      if (selectedRevenue) payload.revenueExpINID = parseInt(selectedRevenue);
+      const res = await fetch(`/api/admin/employees/${selectedEmployee.EmpID}/finance-map`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'خطأ في تحديث الربط المالي');
+      await load(); closeFinanceModal();
+    } catch (e: any) { setFinanceError(e.message); }
+    finally { setFinanceSaving(false); }
+  };
+
+  const deleteFinanceMapping = async (type: 'advance' | 'revenue') => {
+    if (!selectedEmployee) return;
+    try {
+      const res = await fetch(`/api/admin/employees/${selectedEmployee.EmpID}/finance-map`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'خطأ في حذف الربط المالي');
+      if (type === 'advance') setSelectedAdvance('');
+      if (type === 'revenue') setSelectedRevenue('');
+      await load();
+    } catch (e: any) { setFinanceError(e.message); }
+  };
+
+  const openManagementModal = (employee: Employee) => {
+    setSelectedManagementEmployee(employee); setManagementModalOpen(true);
+  };
+
+  const openWorkHoursModal = (employee: Employee) => {
+    setSelectedWorkHoursEmployee(employee);
+    setCheckInTime(employee.DefaultCheckInTime || '');
+    setCheckOutTime(employee.DefaultCheckOutTime || '');
+    setWorkNotes(employee.WorkScheduleNotes || '');
+    setWorkHoursError(''); setWorkHoursSuccess('');
+    setWorkHoursModalOpen(true);
+  };
+
+  const loadInactiveEmployees = async () => {
+    setLoadingInactive(true);
+    try {
+      const res = await fetch('/api/employees?inactive=true');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'خطأ في التحميل');
+      setInactiveEmployees(Array.isArray(data) ? data : []);
+    } catch (e: any) { console.error('Failed to load inactive employees:', e.message); }
+    finally { setLoadingInactive(false); }
+  };
+
+  const openInactiveModal = async () => { setInactiveModalOpen(true); await loadInactiveEmployees(); };
+
+  const activateEmployee = async (empId: number) => {
+    setActivatingId(empId);
+    try {
+      const res = await fetch(`/api/admin/employees/${empId}/activate`, { method: 'PATCH' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'خطأ في تفعيل الموظف');
+      await load(); await loadInactiveEmployees();
+    } catch (e: any) { console.error('Failed to activate employee:', e.message); }
+    finally { setActivatingId(null); }
+  };
+
+  const deactivateEmployee = async (empId: number) => {
+    setDeactivatingId(empId);
+    try {
+      const res = await fetch(`/api/admin/employees/${empId}/deactivate`, { method: 'PATCH' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'خطأ في إيقاف الموظف');
+      await load(); await loadInactiveEmployees();
+    } catch (e: any) { console.error('Failed to deactivate employee:', e.message); }
+    finally { setDeactivatingId(null); }
+  };
+
+  const handleWorkHoursSave = async () => {
+    if (!selectedWorkHoursEmployee) return;
+    if ((checkInTime && !checkOutTime) || (!checkInTime && checkOutTime)) {
+      setWorkHoursError('يجب تحديد وقت البدء والانتهاء معاً'); return;
+    }
+    setWorkHoursSaving(true); setWorkHoursError(''); setWorkHoursSuccess('');
+    try {
+      const response = await fetch(`/api/admin/employees/${selectedWorkHoursEmployee.EmpID}/work-hours`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          DefaultCheckInTime: checkInTime || null,
+          DefaultCheckOutTime: checkOutTime || null,
+          WorkScheduleNotes: workNotes || null,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'فشل حفظ مواعيد العمل');
+      setEmployees(prev => prev.map(emp =>
+        emp.EmpID === selectedWorkHoursEmployee.EmpID ? { ...emp, ...data.employee } : emp
+      ));
+      setWorkHoursSuccess('تم حفظ مواعيد العمل بنجاح');
+      setTimeout(() => { setWorkHoursModalOpen(false); setWorkHoursSuccess(''); }, 1500);
+    } catch (error: any) { setWorkHoursError(error.message); }
+    finally { setWorkHoursSaving(false); }
+  };
+
+  const previewAutoMapping = async () => {
+    try {
+      const res = await fetch('/api/admin/employees/auto-revenue-map');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'خطأ في جلب المعاينة');
+      setAutoMappingResult(data); setShowAutoMappingModal(true);
+    } catch (e: any) { console.error('Preview auto mapping error:', e.message); }
+  };
+
+  const executeAutoMapping = async () => {
+    setAutoMapping(true);
+    try {
+      const res = await fetch('/api/admin/employees/auto-revenue-map', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'خطأ في الربط التلقائي');
+      setAutoMappingResult(data); await load();
+    } catch (e: any) { console.error('Auto mapping error:', e.message); }
+    finally { setAutoMapping(false); }
+  };
+
+  async function handleAdd() {
+    if (!empName.trim()) { setSaveErr('اسم الموظف مطلوب'); return; }
+    setSaving(true); setSaveErr('');
+    try {
+      const res  = await fetch('/api/employees', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ empName: empName.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'خطأ في الحفظ');
+      setLastAdded(data); setEmpName(''); setOpen(false); await load();
+    } catch (e: any) { setSaveErr(e.message); }
+    finally { setSaving(false); }
+  }
+
+  const total        = employees.length;
+  const active       = employees.filter(e => e.isActive).length;
+  const advanceMapped  = employees.filter(e => e.AdvanceExpINID !== null).length;
+  const revenueMapped  = employees.filter(e => e.RevenueExpINID !== null).length;
+  const fullyMapped  = employees.filter(e => e.AdvanceExpINID !== null && e.RevenueExpINID !== null).length;
+
+  return (
+    <div className="space-y-6">
+      {/* ── Action Bar ── */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm text-zinc-400">
+          <UsersRound className="w-4 h-4 text-amber-400" />
+          <span>إدارة بيانات وملفات الموظفين</span>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" className="gap-2 border-zinc-700 hover:bg-zinc-800" onClick={openInactiveModal}>
+            <UserX className="w-4 h-4" />
+            غير النشطين
+          </Button>
+          {revenueMapped < total && (
+            <Button className="gap-2 bg-blue-600 hover:bg-blue-700" onClick={previewAutoMapping} disabled={autoMapping}>
+              {autoMapping ? <><Loader2 className="w-4 h-4 animate-spin" /> جاري الربط...</> : <><Zap className="w-4 h-4" /> ربط تلقائي</>}
+            </Button>
+          )}
+          <Button className="gap-2 bg-amber-600 hover:bg-amber-700" onClick={() => { setOpen(true); setSaveErr(''); setEmpName(''); setLastAdded(null); }}>
+            <Plus className="w-4 h-4" />
+            موظف جديد
+          </Button>
+        </div>
+      </div>
+
+      {/* ── KPI Strip ── */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <KpiCard title="إجمالي الموظفين" value={total}        icon={<Users        className="w-5 h-5" />} variant="default" />
+        <KpiCard title="نشطون"            value={active}       icon={<Scissors     className="w-5 h-5" />} variant="primary" />
+        <KpiCard title="مربوطون بسلفة"    value={advanceMapped} icon={<Link2       className="w-5 h-5" />} variant="success" />
+        <KpiCard title="مربوطون بإيراد"   value={revenueMapped} icon={<Link2       className="w-5 h-5" />} variant="primary" />
+        <KpiCard title="كامل الربط"       value={fullyMapped}  icon={<CheckCircle2 className="w-5 h-5" />} variant={fullyMapped === total && total > 0 ? 'success' : 'warning'} />
+      </div>
+
+      {/* ── Success Toast ── */}
+      {lastAdded && (
+        <div className="flex items-start gap-3 p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-emerald-400">تم إضافة الموظف بنجاح</p>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              <span className="font-medium text-white">{lastAdded.EmpName}</span>
+              {' '}&mdash; تم إنشاء بند السلفة تلقائياً:{' '}
+              <span className="font-mono text-amber-300">{lastAdded.AdvanceCatName}</span>
+            </p>
+          </div>
+          <button onClick={() => setLastAdded(null)} className="text-zinc-500 hover:text-white"><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
+      {/* ── Table ── */}
+      <div className="rounded-xl border border-zinc-800 overflow-hidden">
+        <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/40">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-zinc-300">قائمة الموظفين</h3>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-zinc-400">الوظيفة:</label>
+                <Select
+                    value={jobTypeFilter}
+                    onValueChange={setJobTypeFilter}
+                  >
+                    <SelectTrigger className="w-40 h-8 text-xs bg-zinc-800 border-zinc-700 text-white">
+                      <SelectValue placeholder="الكل" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-zinc-800 border-zinc-700">
+                      <SelectItem value="all" className="text-white text-xs">الكل</SelectItem>
+                      <SelectItem value={JobType.BARBER}           className="text-white text-xs">{JobType.BARBER}</SelectItem>
+                      <SelectItem value={JobType.SKIN_CARE}        className="text-white text-xs">{JobType.SKIN_CARE}</SelectItem>
+                      <SelectItem value={JobType.ASSISTANT}        className="text-white text-xs">{JobType.ASSISTANT}</SelectItem>
+                      <SelectItem value={JobType.ADMINISTRATIVE}   className="text-white text-xs">{JobType.ADMINISTRATIVE}</SelectItem>
+                      <SelectItem value={JobType.MANAGER}          className="text-white text-xs">{JobType.MANAGER}</SelectItem>
+                      <SelectItem value={JobType.RECEPTIONIST}     className="text-white text-xs">{JobType.RECEPTIONIST}</SelectItem>
+                      <SelectItem value={JobType.BEAUTICIAN}       className="text-white text-xs">{JobType.BEAUTICIAN}</SelectItem>
+                      <SelectItem value={JobType.MASSAGE_THERAPIST} className="text-white text-xs">{JobType.MASSAGE_THERAPIST}</SelectItem>
+                      <SelectItem value={JobType.NAIL_TECHNICIAN}  className="text-white text-xs">{JobType.NAIL_TECHNICIAN}</SelectItem>
+                      <SelectItem value={JobType.MAKEUP_ARTIST}    className="text-white text-xs">{JobType.MAKEUP_ARTIST}</SelectItem>
+                      <SelectItem value={JobType.HAIR_STYLIST}     className="text-white text-xs">{JobType.HAIR_STYLIST}</SelectItem>
+                      <SelectItem value={JobType.ESTHETICIAN}      className="text-white text-xs">{JobType.ESTHETICIAN}</SelectItem>
+                      <SelectItem value={JobType.OTHER}            className="text-white text-xs">{JobType.OTHER}</SelectItem>
+                    </SelectContent>
+                  </Select>
+              </div>
+              {loading && <Loader2 className="w-4 h-4 animate-spin text-zinc-500" />}
+            </div>
+          </div>
+        </div>
+
+        {error && <div className="p-6 text-center text-sm text-rose-400">{error}</div>}
+
+        {!loading && !error && filteredEmployees.length === 0 && (
+          <div className="p-12 text-center text-zinc-500">
+            <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
+            <p className="text-sm">{jobTypeFilter ? `لا يوجد موظفون بهذه الوظيفة: ${jobTypeFilter}` : 'لا يوجد موظفون بعد'}</p>
+          </div>
+        )}
+
+        {filteredEmployees.length > 0 && (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-zinc-800 text-zinc-500 text-xs uppercase tracking-wider">
+                <th className="px-4 py-3 text-right font-medium">#</th>
+                <th className="px-4 py-3 text-right font-medium">الموظف</th>
+                <th className="px-4 py-3 text-right font-medium">الوظيفة</th>
+                <th className="px-4 py-3 text-right font-medium">الحالة</th>
+                <th className="px-4 py-3 text-right font-medium">تصنيف السلفة</th>
+                <th className="px-4 py-3 text-right font-medium">تصنيف الإيراد</th>
+                <th className="px-4 py-3 text-right font-medium">الربط المالي</th>
+                <th className="px-4 py-3 text-right font-medium">إجراءات</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-800/60">
+              {filteredEmployees.map((emp) => (
+                <tr key={emp.EmpID} className="hover:bg-zinc-800/30 transition-colors">
+                  <td className="px-4 py-3 text-zinc-500 font-mono text-xs">{emp.EmpID}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/10 text-amber-400 shrink-0">
+                        <Scissors className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <span className="font-medium text-white">{emp.EmpName}</span>
+                        {emp.Job && <p className="text-xs text-zinc-500">{emp.Job}</p>}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    {emp.Job
+                      ? <span className="text-xs text-zinc-400">{emp.Job}</span>
+                      : <span className="text-xs text-zinc-600 italic">—</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    {emp.isActive ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> نشط
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-700/50 text-zinc-400 border border-zinc-700">
+                        <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" /> غير نشط
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {emp.AdvanceCatName
+                      ? <span className="text-xs text-zinc-300 font-mono">{emp.AdvanceCatName}</span>
+                      : <span className="inline-flex items-center gap-1.5 text-xs text-amber-400"><AlertCircle className="w-3 h-3" />غير مربوط</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    {emp.RevenueCatName
+                      ? <span className="text-xs text-zinc-300 font-mono">{emp.RevenueCatName}</span>
+                      : <span className="inline-flex items-center gap-1.5 text-xs text-amber-400"><AlertCircle className="w-3 h-3" />غير مربوط</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    {emp.AdvanceExpINID && emp.RevenueExpINID ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400"><CheckCircle2 className="w-3.5 h-3.5" />كامل</span>
+                    ) : emp.AdvanceExpINID || emp.RevenueExpINID ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs text-amber-400"><AlertCircle className="w-3.5 h-3.5" />جزئي</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-xs text-rose-400"><X className="w-3.5 h-3.5" />لا يوجد</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-left">
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={() => openFinanceModal(emp)} className="flex items-center gap-1">
+                        <Link2 className="w-3 h-3" />الربط المالي
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => openManagementModal(emp)} className="flex items-center gap-1">
+                        <Settings className="w-3 h-3" />إدارة الملف
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* ── Add Employee Modal ── */}
+      <Dialog open={open} onOpenChange={(v) => { if (!v) setOpen(false); }}>
+        <DialogContent className="sm:max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="w-5 h-5 text-amber-400" />
+              إضافة موظف جديد
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-1">
+            <div className="rounded-lg border border-zinc-700/50 bg-zinc-800/40 p-3 space-y-1.5 text-xs text-zinc-400">
+              <p className="font-semibold text-zinc-300 text-sm mb-2">ما سيحدث تلقائياً عند الإضافة:</p>
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-[10px] font-bold shrink-0">١</span>
+                <span>إنشاء الموظف في قاعدة البيانات</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-[10px] font-bold shrink-0">٢</span>
+                <span>إنشاء بند مصروف سلفة باسم: <span className="font-mono text-amber-300">سلفه ( اسم الموظف )</span></span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-[10px] font-bold shrink-0">٣</span>
+                <span>ربط الموظف بالبند تلقائياً لتتبع السلف</span>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">اسم الموظف *</label>
+              <Input placeholder="مثال: أحمد محمد" value={empName} onChange={(e) => setEmpName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }} autoFocus />
+              {empName.trim() && (
+                <p className="text-xs text-zinc-500">سيُنشأ بند السلفة باسم:{' '}<span className="font-mono text-amber-400">سلفه ( {empName.trim()} )</span></p>
+              )}
+            </div>
+            {saveErr && <p className="text-sm text-rose-400">{saveErr}</p>}
+            <div className="flex gap-2 justify-end" dir="ltr">
+              <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>إلغاء</Button>
+              <Button onClick={handleAdd} disabled={saving || !empName.trim()} className="bg-amber-600 hover:bg-amber-700 gap-2">
+                {saving ? <><Loader2 className="w-4 h-4 animate-spin" />جاري الحفظ...</> : <><UserPlus className="w-4 h-4" />إضافة وربط</>}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Finance Mapping Modal ── */}
+      <Dialog open={financeModalOpen} onOpenChange={(v) => { if (!v) closeFinanceModal(); }}>
+        <DialogContent className="sm:max-w-2xl" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 className="w-5 h-5 text-amber-400" />
+              تعديل الربط المالي - {selectedEmployee?.EmpName}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6 pt-1">
+            {financeError && <div className="p-3 rounded-lg border border-rose-500/30 bg-rose-500/5 text-sm text-rose-400">{financeError}</div>}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium">تصنيف السلفة</label>
+                {selectedAdvance && (
+                  <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-rose-500/30 text-rose-400 hover:bg-rose-500/10" onClick={() => deleteFinanceMapping('advance')}>
+                    <X className="w-3 h-3" />حذف
+                  </Button>
+                )}
+              </div>
+              <Select value={selectedAdvance} onValueChange={setSelectedAdvance}>
+                <SelectTrigger className="text-right"><SelectValue placeholder="اختر تصنيف السلفة" /></SelectTrigger>
+                <SelectContent>{advanceCategories.map(cat => <SelectItem key={cat.ExpINID} value={cat.ExpINID.toString()}>{cat.CatName}</SelectItem>)}</SelectContent>
+              </Select>
+              {selectedEmployee?.AdvanceCatName && <p className="text-xs text-zinc-500">الحالي: <span className="font-mono text-amber-300">{selectedEmployee.AdvanceCatName}</span></p>}
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium">تصنيف الإيراد</label>
+                {selectedRevenue && (
+                  <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-rose-500/30 text-rose-400 hover:bg-rose-500/10" onClick={() => deleteFinanceMapping('revenue')}>
+                    <X className="w-3 h-3" />حذف
+                  </Button>
+                )}
+              </div>
+              <Select value={selectedRevenue} onValueChange={setSelectedRevenue}>
+                <SelectTrigger className="text-right"><SelectValue placeholder="اختر تصنيف الإيراد" /></SelectTrigger>
+                <SelectContent>{revenueCategories.map(cat => <SelectItem key={cat.ExpINID} value={cat.ExpINID.toString()}>{cat.CatName}</SelectItem>)}</SelectContent>
+              </Select>
+              {selectedEmployee?.RevenueCatName && <p className="text-xs text-zinc-500">الحالي: <span className="font-mono text-amber-300">{selectedEmployee.RevenueCatName}</span></p>}
+            </div>
+            <div className="rounded-lg border border-zinc-700/50 bg-zinc-800/40 p-3 space-y-1.5 text-xs text-zinc-400">
+              <p className="font-semibold text-zinc-300 text-sm mb-2">ملاحظات هامة:</p>
+              <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center text-[10px] font-bold shrink-0">!</span><span>السلفة تستخدم لتتبع سلف الموظفين من المصروفات</span></div>
+              <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-green-500/10 text-green-400 flex items-center justify-center text-[10px] font-bold shrink-0">!</span><span>الإيراد يستخدم لتصنيف إيرادات الموظف في التقارير المالية</span></div>
+            </div>
+            <div className="flex gap-2 justify-end" dir="ltr">
+              <Button variant="outline" onClick={closeFinanceModal} disabled={financeSaving}>إلغاء</Button>
+              <Button onClick={saveFinanceMapping} disabled={financeSaving || (!selectedAdvance && !selectedRevenue)} className="bg-amber-600 hover:bg-amber-700 gap-2">
+                {financeSaving ? <><Loader2 className="w-4 h-4 animate-spin" />جاري الحفظ...</> : <><CheckCircle2 className="w-4 h-4" />حفظ التعديلات</>}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Auto Mapping Modal ── */}
+      <Dialog open={showAutoMappingModal} onOpenChange={(v) => { if (!v) setShowAutoMappingModal(false); }}>
+        <DialogContent className="sm:max-w-3xl" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Zap className="w-5 h-5 text-blue-400" />الربط التلقائي للإيرادات</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6 pt-1">
+            {autoMappingResult && (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-zinc-800/50 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-white">{autoMappingResult?.unmappedCount || 0}</p>
+                    <p className="text-xs text-zinc-400">موظف بدون ربط</p>
+                  </div>
+                  {autoMappingResult?.statistics && (
+                    <>
+                      <div className="bg-blue-500/10 rounded-lg p-3 text-center border border-blue-500/30">
+                        <p className="text-2xl font-bold text-blue-400">{autoMappingResult.statistics?.smartMappings}</p>
+                        <p className="text-xs text-zinc-400">ربط ذكي</p>
+                      </div>
+                      <div className="bg-amber-500/10 rounded-lg p-3 text-center border border-amber-500/30">
+                        <p className="text-2xl font-bold text-amber-400">{autoMappingResult.statistics?.individualMappings}</p>
+                        <p className="text-xs text-zinc-400">ربط فردي</p>
+                      </div>
+                      <div className="bg-emerald-500/10 rounded-lg p-3 text-center border border-emerald-500/30">
+                        <p className="text-2xl font-bold text-emerald-400">{autoMappingResult.statistics?.coverage}%</p>
+                        <p className="text-xs text-zinc-400">نسبة التغطية</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+                {autoMappingResult?.previewMappings && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-300 mb-3">معاينة الربط المقترح:</h3>
+                    <div className="max-h-60 overflow-y-auto rounded-lg border border-zinc-800">
+                      <table className="w-full text-sm">
+                        <thead className="bg-zinc-900/50 sticky top-0">
+                          <tr className="text-zinc-500 text-xs uppercase tracking-wider">
+                            <th className="px-3 py-2 text-right">الموظف</th>
+                            <th className="px-3 py-2 text-right">الوظيفة</th>
+                            <th className="px-3 py-2 text-right">تصنيف الإيراد</th>
+                            <th className="px-3 py-2 text-right">نوع الربط</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-800/60">
+                          {autoMappingResult.previewMappings.map((mapping: any, idx: number) => (
+                            <tr key={idx} className="hover:bg-zinc-800/30">
+                              <td className="px-3 py-2 font-medium text-white">{mapping.empName}</td>
+                              <td className="px-3 py-2 text-zinc-400">{mapping.job || '—'}</td>
+                              <td className="px-3 py-2 text-zinc-300">{mapping.category}</td>
+                              <td className="px-3 py-2">
+                                {mapping.type === 'smart'
+                                  ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20"><span className="w-1.5 h-1.5 rounded-full bg-blue-400" />ذكي</span>
+                                  : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20"><span className="w-1.5 h-1.5 rounded-full bg-amber-400" />فردي</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+            {!autoMappingResult?.mappings && (
+              <div className="rounded-lg border border-zinc-700/50 bg-zinc-800/40 p-3 space-y-1.5 text-xs text-zinc-400">
+                <p className="font-semibold text-zinc-300 text-sm mb-2">كيف يعمل الربط التلقائي:</p>
+                <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center text-[10px] font-bold shrink-0">1</span><span>يبحث عن تطابق اسم الموظف مع تصنيفات الإيرادات الموجودة</span></div>
+                <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center text-[10px] font-bold shrink-0">2</span><span>إذا وجد تطابق، يستخدم التصنيف المطابق (ربط ذكي)</span></div>
+                <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-[10px] font-bold shrink-0">3</span><span>إذا لم يجد تطابق، ينشئ "ايراد (اسم الموظف)" (ربط فردي)</span></div>
+              </div>
+            )}
+            <div className="flex gap-2 justify-end" dir="ltr">
+              <Button variant="outline" onClick={() => setShowAutoMappingModal(false)}>إغلاق</Button>
+              {!autoMappingResult?.mappings && autoMappingResult?.previewMappings && (
+                <Button onClick={executeAutoMapping} disabled={autoMapping} className="bg-blue-600 hover:bg-blue-700 gap-2">
+                  {autoMapping ? <><Loader2 className="w-4 h-4 animate-spin" />جاري التنفيذ...</> : <><Zap className="w-4 h-4" />تنفيذ الربط التلقائي</>}
+                </Button>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Employee Management Modal ── */}
+      <EmployeeManagementModal
+        employee={selectedManagementEmployee}
+        open={managementModalOpen}
+        onClose={() => setManagementModalOpen(false)}
+        onRefresh={load}
+        onOpenWorkHours={openWorkHoursModal}
+      />
+
+      {/* ── Work Hours Modal ── */}
+      <Dialog open={workHoursModalOpen} onOpenChange={setWorkHoursModalOpen}>
+        <DialogContent className="sm:max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Clock className="w-5 h-5 text-blue-400" />تعديل مواعيد العمل</DialogTitle>
+          </DialogHeader>
+          {selectedWorkHoursEmployee && (
+            <div className="space-y-4">
+              <div className="text-sm text-zinc-400">الموظف: <span className="font-medium text-white">{selectedWorkHoursEmployee.EmpName}</span></div>
+              {workHoursError && <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm"><AlertCircle className="w-4 h-4" />{workHoursError}</div>}
+              {workHoursSuccess && <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-emerald-400 text-sm"><CheckCircle2 className="w-4 h-4" />{workHoursSuccess}</div>}
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium text-zinc-300 block mb-1">وقت بداية العمل</label>
+                  <Input type="time" value={checkInTime} onChange={(e) => setCheckInTime(e.target.value)} className="bg-zinc-800 border-zinc-700 text-white" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-zinc-300 block mb-1">وقت نهاية العمل</label>
+                  <Input type="time" value={checkOutTime} onChange={(e) => setCheckOutTime(e.target.value)} className="bg-zinc-800 border-zinc-700 text-white" />
+                </div>
+                {checkInTime && checkOutTime && (parseTimeToMinutes(checkOutTime) ?? 0) < (parseTimeToMinutes(checkInTime) ?? 0) && (
+                  <div className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/30 rounded-lg text-blue-400 text-xs"><AlertCircle className="w-3 h-3" />هذا الموعد يمتد لليوم التالي</div>
+                )}
+                <div>
+                  <label className="text-sm font-medium text-zinc-300 block mb-1">ملاحظات (اختياري)</label>
+                  <textarea value={workNotes} onChange={(e) => setWorkNotes(e.target.value)} placeholder="أي ملاحظات حول مواعيد العمل..." className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder:text-zinc-500 resize-none h-20 text-sm" maxLength={250} />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button onClick={handleWorkHoursSave} disabled={workHoursSaving} className="flex-1 bg-blue-600 hover:bg-blue-700">
+                  {workHoursSaving ? <><Loader2 className="w-4 h-4 animate-spin ml-2" />جاري الحفظ...</> : <><CheckCircle2 className="w-4 h-4 ml-2" />حفظ</>}
+                </Button>
+                <Button variant="outline" onClick={() => setWorkHoursModalOpen(false)} disabled={workHoursSaving} className="flex-1">إلغاء</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Employee Status Modal ── */}
+      <Dialog open={inactiveModalOpen} onOpenChange={setInactiveModalOpen}>
+        <DialogContent className="sm:max-w-3xl" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-amber-400" />
+              إدارة نشاط الموظفين
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Tabs */}
+            <div className="flex gap-1 p-1 bg-zinc-900/60 border border-zinc-800/60 rounded-xl w-fit">
+              <button
+                onClick={() => setStatusTab('inactive')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  statusTab === 'inactive'
+                    ? 'bg-zinc-700/80 text-white border border-zinc-600'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                }`}
+              >
+                <UserX className="w-4 h-4" />
+                غير النشطين
+                {inactiveEmployees.length > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full text-xs bg-zinc-600 text-zinc-300">{inactiveEmployees.length}</span>
+                )}
+              </button>
+              <button
+                onClick={() => setStatusTab('active')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  statusTab === 'active'
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                }`}
+              >
+                <UserCheck className="w-4 h-4" />
+                النشطون
+                <span className="px-1.5 py-0.5 rounded-full text-xs bg-emerald-500/20 text-emerald-400">{employees.length}</span>
+              </button>
+            </div>
+
+            {loadingInactive ? (
+              <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-zinc-500" /></div>
+            ) : statusTab === 'inactive' ? (
+              inactiveEmployees.length === 0 ? (
+                <div className="py-12 text-center border border-dashed border-zinc-800 rounded-xl">
+                  <UserCheck className="w-12 h-12 mx-auto mb-3 text-zinc-600" />
+                  <p className="text-sm text-zinc-500">جميع الموظفين نشطون</p>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-zinc-800 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-zinc-800 bg-zinc-900/40 text-zinc-500 text-xs uppercase tracking-wider">
+                        <th className="px-4 py-3 text-right font-medium">#</th>
+                        <th className="px-4 py-3 text-right font-medium">الموظف</th>
+                        <th className="px-4 py-3 text-right font-medium">الوظيفة</th>
+                        <th className="px-4 py-3 text-right font-medium">إجراءات</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/60">
+                      {inactiveEmployees.map((emp) => (
+                        <tr key={emp.EmpID} className="hover:bg-zinc-800/30 transition-colors">
+                          <td className="px-4 py-3 text-zinc-500 font-mono text-xs">{emp.EmpID}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-zinc-700/50 text-zinc-500 shrink-0"><UserX className="w-3.5 h-3.5" /></div>
+                              <span className="font-medium text-white">{emp.EmpName}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            {emp.Job ? <span className="text-xs text-zinc-400">{emp.Job}</span> : <span className="text-xs text-zinc-600 italic">—</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Button size="sm" onClick={() => activateEmployee(emp.EmpID)} disabled={activatingId === emp.EmpID} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-xs">
+                              {activatingId === emp.EmpID ? <><Loader2 className="w-3 h-3 animate-spin" />جاري...</> : <><UserCheck className="w-3 h-3" />تفعيل</>}
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : (
+              employees.length === 0 ? (
+                <div className="py-12 text-center border border-dashed border-zinc-800 rounded-xl">
+                  <UserX className="w-12 h-12 mx-auto mb-3 text-zinc-600" />
+                  <p className="text-sm text-zinc-500">لا يوجد موظفون نشطون</p>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-zinc-800 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-zinc-800 bg-zinc-900/40 text-zinc-500 text-xs uppercase tracking-wider">
+                        <th className="px-4 py-3 text-right font-medium">#</th>
+                        <th className="px-4 py-3 text-right font-medium">الموظف</th>
+                        <th className="px-4 py-3 text-right font-medium">الوظيفة</th>
+                        <th className="px-4 py-3 text-right font-medium">إجراءات</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/60">
+                      {employees.map((emp) => (
+                        <tr key={emp.EmpID} className="hover:bg-zinc-800/30 transition-colors">
+                          <td className="px-4 py-3 text-zinc-500 font-mono text-xs">{emp.EmpID}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-400 shrink-0"><UserCheck className="w-3.5 h-3.5" /></div>
+                              <span className="font-medium text-white">{emp.EmpName}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            {emp.Job ? <span className="text-xs text-zinc-400">{emp.Job}</span> : <span className="text-xs text-zinc-600 italic">—</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => deactivateEmployee(emp.EmpID)}
+                              disabled={deactivatingId === emp.EmpID}
+                              className="gap-1.5 border-rose-500/40 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 text-xs"
+                            >
+                              {deactivatingId === emp.EmpID ? <><Loader2 className="w-3 h-3 animate-spin" />جاري...</> : <><UserX className="w-3 h-3" />إيقاف</>}
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            )}
+            <div className="flex justify-end pt-2">
+              <Button variant="outline" onClick={() => setInactiveModalOpen(false)}>إغلاق</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════
+   PANEL — Employee Advances Report
+   ══════════════════════════════════════════════════════ */
+const ARABIC_MONTHS = [
+  'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+  'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
+];
+
+function AdvancesReportPanel() {
+  const now   = new Date();
+  const [year,  setYear]  = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+
+  const years = Array.from({ length: 4 }, (_, i) => now.getFullYear() - i);
+
+  return (
+    <div className="space-y-5">
+      {/* ── Header + Filters ── */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 text-sm text-zinc-400">
+          <Wallet className="w-4 h-4 text-amber-400" />
+          <span>سلف وإيرادات الموظفين حسب الشهر</span>
+        </div>
+        <div className="flex items-center gap-2 mr-auto">
+          <Select value={String(month)} onValueChange={v => setMonth(Number(v))}>
+            <SelectTrigger className="w-36 h-9 text-sm bg-zinc-900 border-zinc-700 text-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-zinc-900 border-zinc-700">
+              {ARABIC_MONTHS.map((label, i) => (
+                <SelectItem key={i + 1} value={String(i + 1)} className="text-white text-sm">
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={String(year)} onValueChange={v => setYear(Number(v))}>
+            <SelectTrigger className="w-28 h-9 text-sm bg-zinc-900 border-zinc-700 text-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-zinc-900 border-zinc-700">
+              {years.map(y => (
+                <SelectItem key={y} value={String(y)} className="text-white text-sm">{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <EmployeeAdvancesSection year={year} month={month} />
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════
+   PANEL 2 — Salaries / Payroll
+   ══════════════════════════════════════════════════════ */
+function SalariesPanel() {
+  const [activeTab, setActiveTab] = useState<PayrollTabId>('summary');
+
+  return (
+    <div className="space-y-5">
+      {/* Sub-tab description */}
+      <div className="flex items-center gap-2 text-sm text-zinc-400">
+        <Banknote className="w-4 h-4 text-amber-400" />
+        <span>إدارة الرواتب والتارجت والحضور والسلف للموظفين</span>
+      </div>
+
+      {/* ── Payroll Sub-Tabs ── */}
+      <div className="flex gap-1 p-1 bg-zinc-900/60 border border-zinc-800/60 rounded-xl w-fit">
+        {PAYROLL_TABS.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setActiveTab(id)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === id
+                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+            }`}
+          >
+            <Icon className="w-4 h-4" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Tab Content ── */}
+      {activeTab === 'summary'    && <PayrollSummaryTab />}
+      {activeTab === 'settings'   && <PayrollSettingsTab />}
+      {activeTab === 'attendance' && <AttendanceTab />}
+      {activeTab === 'advances'   && <AdvancesTab />}
+    </div>
+  );
+}

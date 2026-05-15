@@ -22,6 +22,8 @@ interface RolloverState {
 }
 
 const DISMISS_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes
+const SKIP_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+const SKIP_STORAGE_KEY = 'dayRolloverSkippedUntil';
 
 export function useDayRollover() {
   const { isAuthenticated, day } = useSession();
@@ -57,8 +59,8 @@ export function useDayRollover() {
         loading: false,
       });
 
-      // Show modal if stale and not dismissed recently
-      if (data.needsRollover && Date.now() > dismissedUntilRef.current) {
+      // Show modal if stale and not dismissed recently and not skipped today
+      if (data.needsRollover && Date.now() > dismissedUntilRef.current && !isSkippedToday()) {
         if (!hasTriggeredRef.current) {
           setShowModal(true);
           hasTriggeredRef.current = true;
@@ -86,6 +88,26 @@ export function useDayRollover() {
     }, DISMISS_COOLDOWN_MS);
   }, [check]);
 
+  // Skip with cooldown (reappear after 5 minutes)
+  const skip = useCallback(() => {
+    setShowModal(false);
+    const skipUntil = Date.now() + SKIP_COOLDOWN_MS;
+    localStorage.setItem(SKIP_STORAGE_KEY, skipUntil.toString());
+    dismissedUntilRef.current = skipUntil;
+    // Schedule re-check after cooldown
+    setTimeout(() => {
+      hasTriggeredRef.current = false;
+      check();
+    }, SKIP_COOLDOWN_MS);
+  }, [check]);
+
+  // Check if skip cooldown is still active
+  const isSkippedToday = useCallback(() => {
+    const skipUntil = localStorage.getItem(SKIP_STORAGE_KEY);
+    if (!skipUntil) return false;
+    return Date.now() < parseInt(skipUntil, 10);
+  }, []);
+
   // After successful resolution
   const resolved = useCallback(() => {
     setShowModal(false);
@@ -106,14 +128,14 @@ export function useDayRollover() {
       const dayDate = new Date(day.NewDay).toISOString().split('T')[0];
       const now = new Date();
       const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      if (dayDate < todayStr && Date.now() > dismissedUntilRef.current) {
+      if (dayDate < todayStr && Date.now() > dismissedUntilRef.current && !isSkippedToday()) {
         if (!hasTriggeredRef.current) {
           setShowModal(true);
           hasTriggeredRef.current = true;
         }
       }
     }
-  }, [isAuthenticated, day]);
+  }, [isAuthenticated, day, isSkippedToday]);
 
   // Midnight timer — schedule a check at next midnight
   useEffect(() => {
@@ -136,6 +158,7 @@ export function useDayRollover() {
     ...state,
     showModal,
     dismiss,
+    skip,
     resolved,
     recheck: check,
   };

@@ -14,7 +14,7 @@ export interface TreasurySummary {
 
 export interface PaymentMethodBreakdown {
   paymentMethodId: number;
-  paymentMethodName: string;
+  paymentMethodName: string | null;
   inflow: number;
   outflow: number;
   net: number;
@@ -56,6 +56,7 @@ export interface TreasuryMovement {
   userId: number | null;
   userName: string | null;
   notes: string | null;
+  catName?: string | null;
 }
 
 export interface TreasuryMovementsResponse {

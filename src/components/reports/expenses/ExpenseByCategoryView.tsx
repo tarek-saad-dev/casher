@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronLeft, ChevronDown, Edit2, Trash2, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, ChevronDown, Edit2, Trash2, AlertTriangle, FileDown, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import EditExpenseCategoryDialog from './EditExpenseCategoryDialog';
 import type { ExpenseTransaction } from '@/lib/types';
+import { exportCategoryToPdf } from '@/lib/exportCategoryPdf';
 
 interface CategoryExpenses {
   CatName: string;
@@ -30,6 +31,7 @@ export default function ExpenseByCategoryView({
   const [deletingExpense, setDeletingExpense] = useState<{ id: number; invID: number } | null>(null);
   const [deletingCategory, setDeletingCategory] = useState<{ ExpINID: number; CatName: string; Count: number } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [exportingCategory, setExportingCategory] = useState<number | null>(null);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('ar-EG', {
@@ -303,6 +305,35 @@ export default function ExpenseByCategoryView({
                         {formatCurrency(category.TotalAmount)}
                       </div>
                     </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={exportingCategory === category.ExpINID}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        setExportingCategory(category.ExpINID);
+                        try {
+                          await exportCategoryToPdf({
+                            categoryName: category.CatName,
+                            totalAmount: category.TotalAmount,
+                            count: category.Count,
+                            transactions: category.transactions,
+                          });
+                        } catch (err) {
+                          console.error('PDF export error:', err);
+                        } finally {
+                          setExportingCategory(null);
+                        }
+                      }}
+                      className="gap-2 text-xs text-primary hover:text-primary hover:bg-primary/10"
+                    >
+                      {exportingCategory === category.ExpINID ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <FileDown className="h-3 w-3" />
+                      )}
+                      PDF
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"

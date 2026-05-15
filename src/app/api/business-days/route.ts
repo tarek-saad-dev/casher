@@ -21,17 +21,19 @@ export async function GET(request: NextRequest) {
       .input('limit', sql.Int, limit)
       .query(`
         SELECT TOP (@limit)
+          ID,
           NewDay,
-          DayDate,
-          IsOpen
+          Status
         FROM [dbo].[TblNewDay]
         ORDER BY NewDay DESC
       `);
     
     const days = result.recordset.map((row: any) => ({
-      NewDay: row.NewDay,
-      DayDate: row.DayDate,
-      IsOpen: row.IsOpen
+      id: row.ID,
+      newDay: row.NewDay,
+      dayDate: row.NewDay,
+      isOpen: row.Status === 1,
+      label: String(row.NewDay)
     }));
     
     return NextResponse.json({ days });

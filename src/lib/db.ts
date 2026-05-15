@@ -6,18 +6,18 @@ const RETRY_DELAY_MS = 3000;
 // Database target type
 export type DbTarget = "local" | "cloud";
 
-// Current database target (default to local)
-let currentDbTarget: DbTarget = "local";
+// Current database target (default to cloud for Azure SQL)
+let currentDbTarget: DbTarget = "cloud";
 
 // Local Database Config
 const localConfig: sql.config = {
   server: process.env.LOCAL_DB_SERVER || process.env.DB_SERVER || "localhost",
-  database: process.env.LOCAL_DB_NAME || process.env.DB_NAME || "HawaiDB",
+  database: process.env.LOCAL_DB_NAME || process.env.DB_DATABASE || process.env.DB_NAME || "HawaiDB",
   user: process.env.LOCAL_DB_USER || process.env.DB_USER || "",
   password: process.env.LOCAL_DB_PASSWORD || process.env.DB_PASSWORD || "",
   options: {
     encrypt: process.env.LOCAL_DB_ENCRYPT === "true" || false,
-    trustServerCertificate: process.env.LOCAL_DB_TRUST_CERT === "true" || true,
+    trustServerCertificate: process.env.LOCAL_DB_TRUST_CERT === "true" || process.env.DB_TRUST_SERVER_CERTIFICATE === "true" || true,
     enableArithAbort: true,
   },
   connectionTimeout: 60000,
@@ -36,13 +36,14 @@ const localConfig: sql.config = {
 
 // Cloud Database Config
 const cloudConfig: sql.config = {
-  server: process.env.CLOUD_DB_SERVER || "",
-  database: process.env.CLOUD_DB_NAME || "HawaiRestaurant",
-  user: process.env.CLOUD_DB_USER || "",
-  password: process.env.CLOUD_DB_PASSWORD || "",
+  server: process.env.CLOUD_DB_SERVER || process.env.DB_SERVER || "",
+  port: parseInt(process.env.CLOUD_DB_PORT || process.env.DB_PORT || "1433", 10),
+  database: process.env.CLOUD_DB_NAME || process.env.DB_DATABASE || "HawaiRestaurant",
+  user: process.env.CLOUD_DB_USER || process.env.DB_USER || "",
+  password: process.env.CLOUD_DB_PASSWORD || process.env.DB_PASSWORD || "",
   options: {
-    encrypt: true,
-    trustServerCertificate: false,
+    encrypt: process.env.CLOUD_DB_ENCRYPT !== "false" && process.env.DB_ENCRYPT !== "false",
+    trustServerCertificate: process.env.CLOUD_DB_TRUST_CERT === "true" || process.env.DB_TRUST_SERVER_CERTIFICATE === "true",
     enableArithAbort: true,
   },
   connectionTimeout: 60000,

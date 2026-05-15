@@ -13,22 +13,33 @@ export async function GET(request: NextRequest) {
   try {
     db = await getPool();
     
-    // Get current open day
+    // Get current open day (Status=1), fallback to latest day
     const currentDayResult = await db.request().query(`
-      SELECT TOP 1 
+      SELECT TOP 1
+        ID,
         NewDay,
-        DayDate,
-        IsOpen
+        Status
       FROM [dbo].[TblNewDay]
-      WHERE IsOpen = 1
-      ORDER BY NewDay DESC
+      WHERE Status = 1
+      ORDER BY ID DESC
     `);
-    
-    const currentDay = currentDayResult.recordset.length > 0 
+
+    let currentDayRow = currentDayResult.recordset[0] ?? null;
+
+    if (!currentDayRow) {
+      const fallbackResult = await db.request().query(`
+        SELECT TOP 1 ID, NewDay, Status
+        FROM [dbo].[TblNewDay]
+        ORDER BY ID DESC
+      `);
+      currentDayRow = fallbackResult.recordset[0] ?? null;
+    }
+
+    const currentDay = currentDayRow
       ? {
-          newDay: currentDayResult.recordset[0].NewDay,
-          dayDate: currentDayResult.recordset[0].DayDate,
-          isOpen: currentDayResult.recordset[0].IsOpen
+          newDay: currentDayRow.NewDay,
+          dayDate: currentDayRow.NewDay,
+          isOpen: currentDayRow.Status === 1,
         }
       : null;
     

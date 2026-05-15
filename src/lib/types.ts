@@ -13,6 +13,7 @@ export interface Customer {
 export interface Barber {
   EmpID: number;
   EmpName: string;
+  Job?: string | null;
 }
 
 export interface Service {
@@ -52,13 +53,19 @@ export interface CartItem {
   SPriceAfterDis: number;
 }
 
+export interface PaymentAllocation {
+  paymentMethodId: number;
+  amount: number;
+}
+
 export interface SaleState {
   customer: Customer | null;
   barber: Barber | null;       // default barber for new items
   items: CartItem[];
   discountPercent: number;     // header-level discount %
   discountValue: number;       // header-level discount value
-  paymentMethodId: number | null;
+  paymentMethodId: number | null;  // legacy single payment method
+  paymentAllocations: PaymentAllocation[]; // split payment allocations
   notes: string;
   shiftMoveId: number | null;
 }
@@ -335,7 +342,8 @@ export interface CreateSalePayload {
   grandTotal: number;
   totalBonus: number;
   totalQty: number;
-  paymentMethodId: number | null;
+  paymentMethodId: number | null;  // main payment method (largest amount)
+  paymentAllocations: PaymentAllocation[];  // all payment allocations for split payments
   payCash: number;
   payVisa: number;
   notes: string;
@@ -469,10 +477,26 @@ export interface MonthlyExpensesReport {
 
 // ───────────────────────── Employee Management ─────────────────────────
 
+export enum JobType {
+  BARBER = 'حلاق',
+  SKIN_CARE = 'تنظيف بشرة',
+  ASSISTANT = 'مساعد',
+  ADMINISTRATIVE = 'اداري',
+  MANAGER = 'مدير',
+  RECEPTIONIST = 'موظف استقبال',
+  BEAUTICIAN = 'مجمّل',
+  MASSAGE_THERAPIST = 'معالج تدليك',
+  NAIL_TECHNICIAN = 'أخصائي أظافر',
+  MAKEUP_ARTIST = 'مصفف مكياج',
+  HAIR_STYLIST = 'مصفف شعر',
+  ESTHETICIAN = 'أخصائي تجميل',
+  OTHER = 'أخرى'
+}
+
 export interface Employee {
   EmpID: number;
   EmpName: string;
-  Job: string | null;
+  Job: JobType | string | null;
   isActive: boolean;
   BaseSalary: number | null;
   TargetCommissionPercent: number | null;
@@ -481,6 +505,7 @@ export interface Employee {
   DefaultCheckOutTime: string | null;
   WorkScheduleNotes: string | null;
   IsPayrollEnabled: boolean | null;
+  HourlyRate: number | null;
   AdvanceExpINID: number | null;
   AdvanceCatName: string | null;
   RevenueExpINID: number | null;
@@ -560,4 +585,130 @@ export interface AutoMappingResult {
   };
   previewMappings?: AutoMappingPreview[];
   mappings?: AutoMappingPreview[];
+}
+
+// ───────────────────────── Loyalty System (CUT CLUB) ─────────────────────────
+
+export interface LoyaltyTier {
+  TierID: number;
+  TierCode: string;
+  TierNameAr: string;
+  TierNameEn: string;
+  MinLifetimePoints: number;
+  PointsMultiplier: number;
+  SortOrder: number;
+  IsActive: boolean;
+}
+
+export interface ClientLoyalty {
+  ClientLoyaltyID: number;
+  ClientID: number;
+  PointsBalance: number;
+  LifetimeEarnedPoints: number;
+  LifetimeRedeemedPoints: number;
+  LifetimeAdjustedPoints: number;
+  TierID: number;
+  TotalVisits: number;
+  TotalSpend: number;
+  LastVisitDate: string | null;
+  LastEarnAt: string | null;
+  IsActive: boolean;
+  CreatedAt: string;
+  UpdatedAt: string | null;
+}
+
+export interface LoyaltyLedgerEntry {
+  LedgerID: number;
+  ClientLoyaltyID: number;
+  MovementType: 'EARN_SALE' | 'ADJUST_ADD' | 'ADJUST_SUBTRACT' | 'REVERSAL' | 'REDEEM';
+  PointsDelta: number;
+  PointsBefore: number;
+  PointsAfter: number;
+  SourceInvID: number | null;
+  SourceInvType: string | null;
+  InvoiceAmount: number | null;
+  MultiplierApplied: number | null;
+  ShiftMoveID: number | null;
+  UserID: number | null;
+  Notes: string | null;
+  IdempotencyKey: string | null;
+  CreatedAt: string;
+}
+
+export interface ClientLoyaltyWithDetails extends ClientLoyalty {
+  ClientName: string;
+  Phone: string;
+  TierNameAr: string;
+  TierNameEn: string;
+  TierCode: string;
+}
+
+export interface LoyaltyClientListItem {
+  ClientID: number;
+  ClientName: string;
+  Phone: string;
+  ClientLoyaltyID: number | null;
+  PointsBalance: number;
+  LifetimeEarnedPoints: number;
+  LifetimeRedeemedPoints: number;
+  LifetimeAdjustedPoints: number;
+  TierID: number | null;
+  TierNameAr: string | null;
+  TierNameEn: string | null;
+  TierCode: string | null;
+  TotalVisits: number;
+  TotalSpend: number;
+  LastVisitDate: string | null;
+  LastEarnAt: string | null;
+  IsActive: boolean;
+}
+
+export interface LoyaltyStats {
+  totalLoyaltyClients: number;
+  totalPointsBalance: number;
+  totalLifetimeEarned: number;
+  totalLifetimeAdjusted: number;
+  totalVisits: number;
+  totalSpend: number;
+  bronzeCount: number;
+  silverCount: number;
+  goldCount: number;
+  vipCount: number;
+  todayEarnedPoints: number;
+  todayManualAdjustments: number;
+  todayReversedPoints: number;
+}
+
+export interface LoyaltyLedgerWithClient extends LoyaltyLedgerEntry {
+  ClientID: number;
+  ClientName: string;
+  Phone: string;
+}
+
+export interface LoyaltyClientDetailResponse {
+  client: {
+    ClientID: number;
+    ClientName: string;
+    Phone: string;
+  };
+  loyalty: ClientLoyaltyWithDetails | null;
+  recentLedger: LoyaltyLedgerEntry[];
+  stats: {
+    totalEarnedFromSales: number;
+    totalManualAdjustments: number;
+    totalReversed: number;
+    currentBalance: number;
+  };
+}
+
+export interface AdjustPointsPayload {
+  clientId: number;
+  pointsDelta: number;
+  notes: string;
+}
+
+export interface ReverseSalePointsPayload {
+  invId: number;
+  invType: string;
+  notes: string;
 }

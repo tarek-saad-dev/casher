@@ -92,6 +92,7 @@ export async function GET() {
         GROUP BY ExpINID
       ) usage ON cat.ExpINID = usage.ExpINID
       WHERE cat.ExpINType = N'مصروفات'
+        AND cat.IsActive = 1
       ORDER BY ISNULL(usage.UsageCount, 0) DESC, cat.CatName
     `);
     

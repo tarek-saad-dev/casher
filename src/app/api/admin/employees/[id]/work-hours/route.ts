@@ -80,7 +80,7 @@ export async function PATCH(
         SELECT COLUMN_NAME 
         FROM INFORMATION_SCHEMA.COLUMNS 
         WHERE TABLE_NAME = 'TblEmp' 
-          AND COLUMN_NAME IN ('DefaultCheckInTime', 'DefaultCheckOutTime', 'WorkScheduleNotes')
+          AND COLUMN_NAME IN ('DefaultCheckInTime', 'DefaultCheckOutTime', 'WorkScheduleNotes', 'ModifiedDate')
       `);
       
       const existingColumns = columnsCheck.recordset.map(r => r.COLUMN_NAME);
@@ -92,7 +92,9 @@ export async function PATCH(
       if (DefaultCheckInTime !== undefined && existingColumns.includes('DefaultCheckInTime')) {
         if (DefaultCheckInTime && DefaultCheckInTime.trim() !== '') {
           updateFields.push("DefaultCheckInTime = @defaultCheckInTime");
-          request.input("defaultCheckInTime", sql.Time, DefaultCheckInTime);
+          const ciParts = DefaultCheckInTime.split(':').map(Number);
+          const ciDate = new Date(0); ciDate.setUTCHours(ciParts[0] ?? 0, ciParts[1] ?? 0, ciParts[2] ?? 0, 0);
+          request.input("defaultCheckInTime", sql.Time, ciDate);
         } else {
           updateFields.push("DefaultCheckInTime = NULL");
         }
@@ -101,7 +103,9 @@ export async function PATCH(
       if (DefaultCheckOutTime !== undefined && existingColumns.includes('DefaultCheckOutTime')) {
         if (DefaultCheckOutTime && DefaultCheckOutTime.trim() !== '') {
           updateFields.push("DefaultCheckOutTime = @defaultCheckOutTime");
-          request.input("defaultCheckOutTime", sql.Time, DefaultCheckOutTime);
+          const coParts = DefaultCheckOutTime.split(':').map(Number);
+          const coDate = new Date(0); coDate.setUTCHours(coParts[0] ?? 0, coParts[1] ?? 0, coParts[2] ?? 0, 0);
+          request.input("defaultCheckOutTime", sql.Time, coDate);
         } else {
           updateFields.push("DefaultCheckOutTime = NULL");
         }
@@ -113,7 +117,9 @@ export async function PATCH(
       }
 
       if (updateFields.length > 0) {
-        updateFields.push("ModifiedDate = GETDATE()");
+        if (existingColumns.includes('ModifiedDate')) {
+          updateFields.push("ModifiedDate = GETDATE()");
+        }
         
         const updateQuery = `
           UPDATE dbo.TblEmp 

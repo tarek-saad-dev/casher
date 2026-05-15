@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Users, Plus, CheckCircle2, AlertCircle,
-  Loader2, UserPlus, Link2, Scissors, X, Zap, Settings, Clock
+  Loader2, UserPlus, Link2, Scissors, X, Zap, Settings, Clock, UserX, UserCheck
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
+import { parseTimeToMinutes } from '@/lib/timeUtils';
 import KpiCard from '@/components/shared/KpiCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,11 +17,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import EmployeeManagementModal from '@/components/admin/EmployeeManagementModal';
+import { JobType } from '@/lib/types';
 
 interface Employee {
   EmpID: number;
   EmpName: string;
-  Job: string | null;
+  Job: JobType | string | null;
   isActive: boolean;
   BaseSalary: number | null;
   TargetCommissionPercent: number | null;
@@ -29,6 +31,7 @@ interface Employee {
   DefaultCheckOutTime: string | null;
   WorkScheduleNotes: string | null;
   IsPayrollEnabled: boolean | null;
+  HourlyRate: number | null;
   AdvanceExpINID: number | null;
   AdvanceCatName: string | null;
   RevenueExpINID: number | null;
@@ -39,6 +42,14 @@ export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState('');
+  
+  // Job type filter state
+  const [jobTypeFilter, setJobTypeFilter] = useState<string>('');
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   // Modal state
   const [open,     setOpen]     = useState(false);
@@ -76,6 +87,12 @@ export default function EmployeesPage() {
   const [checkOutTime, setCheckOutTime] = useState('');
   const [workNotes, setWorkNotes] = useState('');
 
+  // Inactive employees modal state
+  const [inactiveModalOpen, setInactiveModalOpen] = useState(false);
+  const [inactiveEmployees, setInactiveEmployees] = useState<Employee[]>([]);
+  const [loadingInactive, setLoadingInactive] = useState(false);
+  const [activatingId, setActivatingId] = useState<number | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -92,6 +109,12 @@ export default function EmployeesPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Filter employees by job type
+  const filteredEmployees = employees.filter(emp => {
+    if (!jobTypeFilter || jobTypeFilter === 'all') return true;
+    return emp.Job === jobTypeFilter;
+  });
 
   // Load finance categories
   const loadFinanceCategories = useCallback(async () => {
@@ -205,6 +228,47 @@ export default function EmployeesPage() {
     setWorkHoursError('');
     setWorkHoursSuccess('');
     setWorkHoursModalOpen(true);
+  };
+
+  // Load inactive employees
+  const loadInactiveEmployees = async () => {
+    setLoadingInactive(true);
+    try {
+      const res = await fetch('/api/employees?inactive=true');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'خطأ في التحميل');
+      setInactiveEmployees(Array.isArray(data) ? data : []);
+    } catch (e: any) {
+      console.error('Failed to load inactive employees:', e.message);
+    } finally {
+      setLoadingInactive(false);
+    }
+  };
+
+  // Open inactive employees modal
+  const openInactiveModal = async () => {
+    setInactiveModalOpen(true);
+    await loadInactiveEmployees();
+  };
+
+  // Activate employee
+  const activateEmployee = async (empId: number) => {
+    setActivatingId(empId);
+    try {
+      const res = await fetch(`/api/admin/employees/${empId}/activate`, {
+        method: 'PATCH',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'خطأ في تفعيل الموظف');
+      
+      // Refresh both lists
+      await load();
+      await loadInactiveEmployees();
+    } catch (e: any) {
+      console.error('Failed to activate employee:', e.message);
+    } finally {
+      setActivatingId(null);
+    }
   };
 
   // Handle work hours save
@@ -330,6 +394,14 @@ export default function EmployeesPage() {
         description="إدارة موظفي الصالون — كل موظف جديد يحصل تلقائياً على بند سلفة مرتبط به"
       >
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="gap-2 border-zinc-700 hover:bg-zinc-800"
+            onClick={openInactiveModal}
+          >
+            <UserX className="w-4 h-4" />
+            الموظفون غير النشطين
+          </Button>
           {revenueMapped < total && (
             <Button
               className="gap-2 bg-blue-600 hover:bg-blue-700"
@@ -382,23 +454,63 @@ export default function EmployeesPage() {
 
       {/* ── Table ── */}
       <div className="rounded-xl border border-zinc-800 overflow-hidden">
-        <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/40 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-zinc-300">قائمة الموظفين</h3>
-          {loading && <Loader2 className="w-4 h-4 animate-spin text-zinc-500" />}
+        <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/40">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-zinc-300">قائمة الموظفين</h3>
+            <div className="flex items-center gap-3">
+              {/* Job Type Filter */}
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-zinc-400">الوظيفة:</label>
+                {isClient ? (
+                  <Select
+                    value={jobTypeFilter}
+                    onValueChange={setJobTypeFilter}
+                  >
+                    <SelectTrigger className="w-40 h-8 text-xs bg-zinc-800 border-zinc-700 text-white">
+                      <SelectValue placeholder="الكل" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-zinc-800 border-zinc-700">
+                      <SelectItem value="all" className="text-white text-xs">الكل</SelectItem>
+                      <SelectItem value={JobType.BARBER} className="text-white text-xs">{JobType.BARBER}</SelectItem>
+                      <SelectItem value={JobType.SKIN_CARE} className="text-white text-xs">{JobType.SKIN_CARE}</SelectItem>
+                      <SelectItem value={JobType.ASSISTANT} className="text-white text-xs">{JobType.ASSISTANT}</SelectItem>
+                      <SelectItem value={JobType.ADMINISTRATIVE} className="text-white text-xs">{JobType.ADMINISTRATIVE}</SelectItem>
+                      <SelectItem value={JobType.MANAGER} className="text-white text-xs">{JobType.MANAGER}</SelectItem>
+                      <SelectItem value={JobType.RECEPTIONIST} className="text-white text-xs">{JobType.RECEPTIONIST}</SelectItem>
+                      <SelectItem value={JobType.BEAUTICIAN} className="text-white text-xs">{JobType.BEAUTICIAN}</SelectItem>
+                      <SelectItem value={JobType.MASSAGE_THERAPIST} className="text-white text-xs">{JobType.MASSAGE_THERAPIST}</SelectItem>
+                      <SelectItem value={JobType.NAIL_TECHNICIAN} className="text-white text-xs">{JobType.NAIL_TECHNICIAN}</SelectItem>
+                      <SelectItem value={JobType.MAKEUP_ARTIST} className="text-white text-xs">{JobType.MAKEUP_ARTIST}</SelectItem>
+                      <SelectItem value={JobType.HAIR_STYLIST} className="text-white text-xs">{JobType.HAIR_STYLIST}</SelectItem>
+                      <SelectItem value={JobType.ESTHETICIAN} className="text-white text-xs">{JobType.ESTHETICIAN}</SelectItem>
+                      <SelectItem value={JobType.OTHER} className="text-white text-xs">{JobType.OTHER}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="w-40 h-8 text-xs bg-zinc-800 border-zinc-700 text-white flex items-center px-3 rounded">
+                    الكل
+                  </div>
+                )}
+              </div>
+              {loading && <Loader2 className="w-4 h-4 animate-spin text-zinc-500" />}
+            </div>
+          </div>
         </div>
 
         {error && (
           <div className="p-6 text-center text-sm text-rose-400">{error}</div>
         )}
 
-        {!loading && !error && employees.length === 0 && (
+        {!loading && !error && filteredEmployees.length === 0 && (
           <div className="p-12 text-center text-zinc-500">
             <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">لا يوجد موظفون بعد</p>
+            <p className="text-sm">
+              {jobTypeFilter ? `لا يوجد موظفون بهذه الوظيفة: ${jobTypeFilter}` : 'لا يوجد موظفون بعد'}
+            </p>
           </div>
         )}
 
-        {employees.length > 0 && (
+        {filteredEmployees.length > 0 && (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-zinc-800 text-zinc-500 text-xs uppercase tracking-wider">
@@ -413,7 +525,7 @@ export default function EmployeesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/60">
-              {employees.map((emp) => (
+              {filteredEmployees.map((emp) => (
                 <tr key={emp.EmpID} className="hover:bg-zinc-800/30 transition-colors">
                   <td className="px-4 py-3 text-zinc-500 font-mono text-xs">{emp.EmpID}</td>
                   <td className="px-4 py-3">
@@ -925,7 +1037,7 @@ export default function EmployeesPage() {
                   />
                 </div>
 
-                {checkInTime && checkOutTime && checkOutTime < checkInTime && (
+                {checkInTime && checkOutTime && (parseTimeToMinutes(checkOutTime) ?? 0) < (parseTimeToMinutes(checkInTime) ?? 0) && (
                   <div className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/30 rounded-lg text-blue-400 text-xs">
                     <AlertCircle className="w-3 h-3" />
                     هذا الموعد يمتد لليوم التالي
@@ -967,6 +1079,89 @@ export default function EmployeesPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Inactive Employees Modal ── */}
+      <Dialog open={inactiveModalOpen} onOpenChange={setInactiveModalOpen}>
+        <DialogContent className="sm:max-w-3xl" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserX className="w-5 h-5 text-zinc-400" />
+              الموظفون غير النشطين
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {loadingInactive ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-zinc-500" />
+              </div>
+            ) : inactiveEmployees.length === 0 ? (
+              <div className="py-12 text-center">
+                <UserCheck className="w-12 h-12 mx-auto mb-3 text-zinc-600" />
+                <p className="text-sm text-zinc-500">جميع الموظفين نشطون</p>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-zinc-800 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-zinc-800 bg-zinc-900/40 text-zinc-500 text-xs uppercase tracking-wider">
+                      <th className="px-4 py-3 text-right font-medium">#</th>
+                      <th className="px-4 py-3 text-right font-medium">الموظف</th>
+                      <th className="px-4 py-3 text-right font-medium">الوظيفة</th>
+                      <th className="px-4 py-3 text-right font-medium">إجراءات</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/60">
+                    {inactiveEmployees.map((emp) => (
+                      <tr key={emp.EmpID} className="hover:bg-zinc-800/30 transition-colors">
+                        <td className="px-4 py-3 text-zinc-500 font-mono text-xs">{emp.EmpID}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-zinc-700/50 text-zinc-500 shrink-0">
+                              <UserX className="w-3.5 h-3.5" />
+                            </div>
+                            <span className="font-medium text-white">{emp.EmpName}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {emp.Job ? (
+                            <span className="text-xs text-zinc-400">{emp.Job}</span>
+                          ) : (
+                            <span className="text-xs text-zinc-600 italic">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Button
+                            size="sm"
+                            onClick={() => activateEmployee(emp.EmpID)}
+                            disabled={activatingId === emp.EmpID}
+                            className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+                          >
+                            {activatingId === emp.EmpID ? (
+                              <><Loader2 className="w-3 h-3 animate-spin" /> جاري التفعيل...</>
+                            ) : (
+                              <><UserCheck className="w-3 h-3" /> تفعيل</>
+                            )}
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setInactiveModalOpen(false)}
+              >
+                إغلاق
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

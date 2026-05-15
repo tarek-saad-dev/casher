@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId') ? parseInt(searchParams.get('userId')!) : null;
     const page = searchParams.get('page') ? parseInt(searchParams.get('page')!) : 1;
     const pageSize = searchParams.get('pageSize') ? parseInt(searchParams.get('pageSize')!) : 50;
+    const paymentMethodId = searchParams.get('paymentMethodId') ? parseInt(searchParams.get('paymentMethodId')!) : null;
     
     // Build WHERE clause
     let whereConditions: string[] = ['1=1'];
@@ -53,13 +54,18 @@ export async function GET(request: NextRequest) {
     }
     
     if (shiftMoveId !== null) {
-      whereConditions.push('sm.ShiftMoveID = @shiftMoveId');
+      whereConditions.push('sm.ID = @shiftMoveId');
       params.shiftMoveId = shiftMoveId;
     }
     
     if (userId !== null) {
       whereConditions.push('sm.UserID = @userId');
       params.userId = userId;
+    }
+
+    if (paymentMethodId !== null) {
+      whereConditions.push('cm.PaymentMethodID = @paymentMethodId');
+      params.paymentMethodId = paymentMethodId;
     }
     
     const whereClause = whereConditions.join(' AND ');
@@ -68,13 +74,13 @@ export async function GET(request: NextRequest) {
     const countQuery = `
       SELECT COUNT(*) AS Total
       FROM [dbo].[TblCashMove] cm
-      INNER JOIN [dbo].[TblShiftMove] sm ON cm.ShiftMoveID = sm.ShiftMoveID
+      LEFT JOIN [dbo].[TblShiftMove] sm ON cm.ShiftMoveID = sm.ID
       WHERE ${whereClause}
     `;
     
     const countRequest = db.request();
     Object.keys(params).forEach(key => {
-      if (key === 'newDay' || key === 'shiftMoveId' || key === 'userId') {
+      if (key === 'newDay' || key === 'shiftMoveId' || key === 'userId' || key === 'paymentMethodId') {
         countRequest.input(key, sql.Int, params[key]);
       } else {
         countRequest.input(key, sql.Date, params[key]);
@@ -94,21 +100,23 @@ export async function GET(request: NextRequest) {
         cm.invID,
         cm.invType,
         cm.invDate,
-        CONVERT(VARCHAR(5), cm.invDate, 108) AS invTime,
+        cm.invTime,
         cm.PaymentMethodID,
-        pm.PaymentMethod,
+        ISNULL(pm.PaymentMethod, N'\u0637\u0631\u064a\u0642\u0629 \u062f\u0641\u0639 \u063a\u064a\u0631 \u0645\u062d\u062f\u062f\u0629') AS PaymentMethod,
         cm.inOut,
         cm.GrandTolal AS Amount,
         cm.ShiftMoveID,
         s.ShiftName,
         sm.UserID,
         u.UserName,
-        cm.Notes
+        cm.Notes,
+        cat.CatName
       FROM [dbo].[TblCashMove] cm
-      INNER JOIN [dbo].[TblPaymentMethods] pm ON cm.PaymentMethodID = pm.PaymentID
-      INNER JOIN [dbo].[TblShiftMove] sm ON cm.ShiftMoveID = sm.ID
+      LEFT JOIN [dbo].[TblPaymentMethods] pm ON cm.PaymentMethodID = pm.PaymentID
+      LEFT JOIN [dbo].[TblShiftMove] sm ON cm.ShiftMoveID = sm.ID
       LEFT JOIN [dbo].[TblShift] s ON sm.ShiftID = s.ShiftID
       LEFT JOIN [dbo].[TblUser] u ON sm.UserID = u.UserID
+      LEFT JOIN [dbo].[TblExpINCat] cat ON cm.ExpINID = cat.ExpINID
       WHERE ${whereClause}
       ORDER BY cm.invDate DESC, cm.ID DESC
       OFFSET @offset ROWS
@@ -117,7 +125,7 @@ export async function GET(request: NextRequest) {
     
     const movementsRequest = db.request();
     Object.keys(params).forEach(key => {
-      if (key === 'newDay' || key === 'shiftMoveId' || key === 'userId') {
+      if (key === 'newDay' || key === 'shiftMoveId' || key === 'userId' || key === 'paymentMethodId') {
         movementsRequest.input(key, sql.Int, params[key]);
       } else {
         movementsRequest.input(key, sql.Date, params[key]);
@@ -142,7 +150,8 @@ export async function GET(request: NextRequest) {
       shiftName: row.ShiftName,
       userId: row.UserID,
       userName: row.UserName,
-      notes: row.Notes
+      notes: row.Notes,
+      catName: row.CatName ?? null,
     }));
     
     const response: TreasuryMovementsResponse = {

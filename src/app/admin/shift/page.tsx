@@ -5,6 +5,7 @@ import { Clock, Plus, X, Loader2, CheckCircle2, XCircle, Info } from 'lucide-rea
 import { Button } from '@/components/ui/button';
 import { useSession } from '@/hooks/useSession';
 import { usePermission } from '@/hooks/usePermission';
+import ShiftCloseReceipt from '@/components/operations/ShiftCloseReceipt';
 
 interface ShiftDef {
   ShiftID: number;
@@ -51,6 +52,8 @@ export default function ShiftControlPage() {
   const [selectedShiftID, setSelectedShiftID] = useState<number | null>(null);
   const [summary, setSummary] = useState<ShiftSummaryData | null>(null);
   const [showSummary, setShowSummary] = useState(false);
+  const [showPrintReceipt, setShowPrintReceipt] = useState(false);
+  const [printData, setPrintData] = useState<ShiftSummaryData | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -104,7 +107,7 @@ export default function ShiftControlPage() {
   }
 
   async function handleConfirmClose() {
-    if (!shift) return;
+    if (!shift || !summary) return;
     setError('');
     setActionLoading(true);
     try {
@@ -119,6 +122,10 @@ export default function ShiftControlPage() {
       setSummary(null);
       await refresh();
       await loadData();
+
+      // Show print receipt
+      setPrintData(summary);
+      setShowPrintReceipt(true);
     } catch { setError('خطأ في إغلاق الوردية'); }
     finally { setActionLoading(false); }
   }
@@ -310,6 +317,16 @@ export default function ShiftControlPage() {
           </div>
         )}
       </div>
+
+      {/* Shift Close Receipt Print Modal */}
+      <ShiftCloseReceipt
+        open={showPrintReceipt}
+        data={printData}
+        onClose={() => {
+          setShowPrintReceipt(false);
+          setPrintData(null);
+        }}
+      />
     </div>
   );
 }

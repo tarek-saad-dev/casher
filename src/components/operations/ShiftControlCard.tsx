@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import ShiftCloseReceipt from './ShiftCloseReceipt';
 import type {
   ShiftInfo, ShiftSummaryData, DayInfo,
   ShiftDefinition, UserDefaultShift
@@ -24,6 +25,19 @@ interface Props {
 
 type ModalState = 'none' | 'open-confirm' | 'close-wizard';
 type CloseStep = 1 | 2 | 3;
+
+interface ShiftClosePrintData {
+  shiftMoveID: number;
+  userName: string;
+  shiftName: string;
+  startTime: string;
+  salesCount: number;
+  totalRevenue: number;
+  paymentBreakdown: { method: string; cnt: number; total: number }[];
+  cashIn: number;
+  cashOut: number;
+  notes?: string;
+}
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('ar-EG', { minimumFractionDigits: 0 }).format(n);
@@ -128,8 +142,11 @@ export default function ShiftControlCard({
   }
 
   // ── Close Shift ───────────────────────────────────────────
+  const [showPrintReceipt, setShowPrintReceipt] = useState(false);
+  const [printData, setPrintData] = useState<ShiftClosePrintData | null>(null);
+
   async function handleCloseShift() {
-    if (!shift) return;
+    if (!shift || !shiftSummary) return;
     setLoading(true);
     setError('');
     try {
@@ -140,7 +157,25 @@ export default function ShiftControlCard({
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'خطأ غير معروف'); return; }
+
+      // Prepare print data
+      const closePrintData: ShiftClosePrintData = {
+        shiftMoveID: shift.ID,
+        userName: shiftSummary.userName || shift.UserName || '—',
+        shiftName: shiftSummary.shiftName || shift.ShiftName || '—',
+        startTime: shiftSummary.startTime || shift.StartTime?.trim() || '—',
+        salesCount: shiftSummary.salesCount,
+        totalRevenue: shiftSummary.totalRevenue,
+        paymentBreakdown: shiftSummary.paymentBreakdown || [],
+        cashIn: shiftSummary.cashIn,
+        cashOut: shiftSummary.cashOut,
+        notes: notes || undefined,
+      };
+
+      // Show print receipt instead of just closing
       resetModal();
+      setPrintData(closePrintData);
+      setShowPrintReceipt(true);
       onRefresh();
     } catch {
       setError('خطأ في الاتصال بالخادم');
@@ -478,6 +513,16 @@ export default function ShiftControlCard({
           </div>
         </ModalOverlay>
       )}
+
+      {/* Shift Close Receipt Print Modal */}
+      <ShiftCloseReceipt
+        open={showPrintReceipt}
+        data={printData}
+        onClose={() => {
+          setShowPrintReceipt(false);
+          setPrintData(null);
+        }}
+      />
     </>
   );
 }

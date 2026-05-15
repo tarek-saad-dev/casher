@@ -1,48 +1,57 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, CSSProperties } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutGrid,
-  PlusCircle,
-  CreditCard,
-  ClipboardList,
-  TrendingUp,
-  History,
-  Receipt,
-  Wallet,
-  Lock,
-  ArrowLeftRight,
-  BarChart3,
-  Clock,
-  Calculator,
-  Settings,
-  Scissors,
-  Tags,
-  Shield,
-  Activity,
-  Users,
-  ChevronDown,
-  Menu,
-  X,
-  SlidersHorizontal,
-  PanelLeftClose,
-  PanelLeftOpen,
+  LayoutGrid, PlusCircle, CreditCard, ClipboardList, TrendingUp,
+  History, Receipt, Wallet, Lock, ArrowLeftRight, BarChart3, Clock,
+  Calculator, Settings, Scissors, Tags, Shield, Activity, Star,
+  ChevronDown, Menu, X, SlidersHorizontal, PanelLeftClose, PanelLeftOpen,
+  UsersRound, FileBarChart, Calendar,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import type { LucideIcon } from 'lucide-react';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NAV THEME SYSTEM — 100% inline styles, rgba() values, no dynamic Tailwind.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface NavTheme {
+  rgb: string;    // "r,g,b"
+  emoji: string;
+}
+
+const NAV_THEMES: Record<string, NavTheme> = {
+  'المدخلات':          { rgb: '214,168,79',  emoji: '📥' }, // gold
+  'مراجعة المدخلات':   { rgb: '59,130,246',  emoji: '📊' }, // blue
+  'المصروفات':         { rgb: '244,63,94',   emoji: '💸' }, // rose
+  'مراجعة المصروفات':  { rgb: '168,85,247',  emoji: '📋' }, // violet
+  'الخزنة':            { rgb: '16,185,129',  emoji: '🏦' }, // emerald
+  'الميزانية':         { rgb: '6,182,212',   emoji: '💰' }, // cyan
+  'الموارد البشرية':   { rgb: '236,72,153',  emoji: '👥' }, // pink
+  'الإدارة':           { rgb: '148,163,184', emoji: '⚙️' }, // slate
+};
+
+function getTheme(title: string): NavTheme {
+  return NAV_THEMES[title] ?? { rgb: '161,161,170', emoji: '📌' };
+}
+
+// Glow helpers — computed once per rgb
+const glow   = (rgb: string, a = 0.22) => `0 0 22px rgba(${rgb},${a})`;
+const glow2  = (rgb: string, a = 0.14) => `0 0 14px rgba(${rgb},${a})`;
+const dotGlow= (rgb: string)            => `0 0 8px  rgba(${rgb},0.90), 0 0 16px rgba(${rgb},0.45)`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NAV DATA
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
-  badge?: string;
   disabled?: boolean;
-  children?: NavItem[];
 }
 
-// Navigation with Categories/Sections
 interface NavSection {
   title: string;
   icon: LucideIcon;
@@ -54,72 +63,84 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'المدخلات',
     icon: LayoutGrid,
     items: [
-      { href: '/income/pos', label: 'نقطة البيع', icon: LayoutGrid },
-      { href: '/income/new', label: 'إيراد جديد', icon: PlusCircle },
+      { href: '/income/pos',        label: 'نقطة البيع',    icon: LayoutGrid  },
+      { href: '/income/new',        label: 'إيراد جديد',   icon: PlusCircle  },
       { href: '/income/collection', label: 'تحصيل / دفعة', icon: CreditCard, disabled: true },
-    ]
+    ],
   },
   {
     title: 'مراجعة المدخلات',
     icon: ClipboardList,
     items: [
-      { href: '/sales/today', label: 'مبيعات اليوم', icon: TrendingUp },
-      { href: '/income-review/all-sales', label: 'كل المبيعات', icon: History },
-      { href: '/income-review/today-revenue', label: 'إيرادات اليوم', icon: Wallet },
-      { href: '/income-review/all-revenue', label: 'كل الإيرادات', icon: History },
-      { href: '/income-review/payments', label: 'المدفوعات', icon: CreditCard },
-    ]
+      { href: '/sales/today',              label: 'مبيعات اليوم',   icon: TrendingUp  },
+      { href: '/income-review/all-sales',  label: 'كل المبيعات',   icon: History     },
+      { href: '/income-review/today-revenue', label: 'إيرادات اليوم', icon: Wallet  },
+      { href: '/income-review/all-revenue',   label: 'كل الإيرادات', icon: History  },
+      { href: '/income-review/payments',   label: 'المدفوعات',     icon: CreditCard  },
+    ],
   },
   {
     title: 'المصروفات',
     icon: Receipt,
     items: [
       { href: '/expenses', label: 'تسجيل مصروف', icon: Receipt },
-      { href: '/expenses/salaries', label: 'مرتبات العاملين', icon: Users },
-      { href: '/expenses/fixed', label: 'المصروفات الثابتة', icon: Wallet },
-    ]
+    ],
   },
   {
     title: 'مراجعة المصروفات',
     icon: BarChart3,
     items: [
-      { href: '/reports/expenses/monthly', label: 'تقرير المصروفات', icon: BarChart3 },
-      { href: '/expenses-review/salaries', label: 'تقرير المرتبات', icon: Wallet },
-      { href: '/expenses-review/advances', label: 'السلف والخصومات', icon: CreditCard },
-    ]
+      { href: '/reports/expenses/monthly',       label: 'تقرير المصروفات',  icon: BarChart3   },
+    ],
   },
   {
     title: 'الخزنة',
     icon: Wallet,
     items: [
-      { href: '/treasury/daily', label: 'قفل اليوم', icon: Lock },
-      { href: '/treasury/movement', label: 'حركة الخزنة', icon: ArrowLeftRight },
-      { href: '/treasury/summary', label: 'ملخص حسب الدفع', icon: BarChart3 },
-      { href: '/treasury/shift-close', label: 'تقفيل الوردية', icon: Clock },
-    ]
+      { href: '/treasury/daily',       label: 'قفل اليوم',       icon: Lock           },
+      { href: '/treasury/movement',    label: 'حركة الخزنة',     icon: ArrowLeftRight },
+      { href: '/treasury/summary',     label: 'ملخص حسب الدفع', icon: BarChart3      },
+      { href: '/treasury/shift-close', label: 'تقفيل الوردية',   icon: Clock          },
+    ],
   },
   {
     title: 'الميزانية',
     icon: Calculator,
     items: [
       { href: '/budget', label: 'الميزانية الشهرية', icon: Calculator },
-    ]
+    ],
+  },
+  // ─── HR Module (Single with nested items) ─────────────────────────
+  {
+    title: 'الموارد البشرية',
+    icon: UsersRound,
+    items: [
+      { href: '/admin/hr',              label: 'الموظفون',       icon: UsersRound },
+      { href: '/admin/attendance',      label: 'متابعة الحضور', icon: Clock      },
+      { href: '/admin/attendance/daily-payroll', label: 'يوميات الموظفين', icon: Calendar },
+      { href: '/expenses-review/advances', label: 'سلف الموظفين', icon: CreditCard },
+      { href: '/expenses-review/salaries', label: 'مرتبات العاملين', icon: Wallet     },
+    ],
   },
   {
     title: 'الإدارة',
     icon: Settings,
     items: [
-      { href: '/admin/operations', label: 'مركز التشغيل', icon: Activity },
-      { href: '/admin/employees', label: 'الموظفون', icon: Users },
-      { href: '/admin/users', label: 'المستخدمون', icon: Shield },
-      { href: '/admin/services', label: 'الخدمات', icon: Scissors },
-      { href: '/admin/payment-methods', label: 'طرق الدفع', icon: CreditCard },
-      { href: '/admin/categories', label: 'التصنيفات', icon: Tags },
-      { href: '/admin/shift', label: 'الورديات', icon: Clock },
-      { href: '/admin/settings', label: 'الإعدادات', icon: Settings },
-    ]
+      { href: '/admin/operations',      label: 'مركز التشغيل',   icon: Activity   },
+      { href: '/admin/users',           label: 'المستخدمون',      icon: Shield     },
+      { href: '/admin/services',        label: 'الخدمات',         icon: Scissors   },
+      { href: '/admin/payment-methods', label: 'طرق الدفع',      icon: CreditCard },
+      { href: '/admin/categories',      label: 'التصنيفات',       icon: Tags       },
+      { href: '/admin/loyalty',         label: 'إدارة النقاط',   icon: Star       },
+      { href: '/admin/shift',           label: 'الورديات',        icon: Clock      },
+      { href: '/admin/settings',        label: 'الإعدادات',       icon: Settings   },
+    ],
   },
 ];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPONENT
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function MainNav() {
   const pathname = usePathname();
@@ -127,265 +148,534 @@ export default function MainNav() {
   const [expandedSections, setExpandedSections] = useState<string[]>(['المدخلات']);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // Auto-expand sections that contain the current route
+  // ── Route matching (normalized, no false positives) ────────────────────────
+  // Strips trailing slashes, then checks exact OR prefix-with-slash.
+  // IMPORTANT: never uses plain startsWith(href) — avoids /admin matching /admin/services etc.
+  const isRouteActive = (href: string): boolean => {
+    if (!href || href === '#') return false;
+    const norm = (p: string) => p.replace(/\/+$/, '') || '/';
+    const cur = norm(pathname);
+    const tgt = norm(href);
+    if (tgt === '/') return cur === '/';
+    return cur === tgt || cur.startsWith(tgt + '/');
+  };
+
+  // Derived purely from current pathname — no state involved.
+  // This is the ONLY source of truth for "which section is lit".
+  const activeSectionTitle: string | null = (() => {
+    for (const section of NAV_SECTIONS) {
+      for (const item of section.items) {
+        if (!item.disabled && isRouteActive(item.href)) {
+          return section.title;
+        }
+      }
+    }
+    return null;
+  })();
+
+  // Auto-expand the active section when navigating
   useEffect(() => {
-    const activeSections = NAV_SECTIONS
-      .filter(section => section.items.some(item => pathname.startsWith(item.href)))
-      .map(section => section.title);
-    if (activeSections.length > 0) {
-      setExpandedSections(prev => {
-        const newSet = new Set([...prev, ...activeSections]);
-        return Array.from(newSet);
-      });
+    if (activeSectionTitle) {
+      setExpandedSections(prev =>
+        prev.includes(activeSectionTitle)
+          ? prev
+          : [...prev, activeSectionTitle]
+      );
     }
-  }, [pathname]);
+    // Dev verification only — disabled in production for performance
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[MainNav active]', { pathname, activeSectionTitle });
+    }
+  }, [pathname, activeSectionTitle]);
 
-  const toggleSection = (title: string) => {
+  const toggleSection = (title: string) =>
     setExpandedSections(prev =>
-      prev.includes(title)
-        ? prev.filter(t => t !== title)
-        : [...prev, title]
+      prev.includes(title) ? prev.filter(t => t !== title) : [...prev, title]
     );
-  };
 
-  const isActive = (href: string) => {
-    if (href === '/') {
-      return pathname === '/';
-    }
-    return pathname === href || pathname.startsWith(href + '/');
-  };
+  // isActive used only for individual items (child-level)
+  const isActive = isRouteActive;
 
-  const renderNavItem = (item: NavItem) => {
+  // ── Sub item renderer ──────────────────────────────────────────────────────
+  const renderSubItem = (
+    item: NavItem,
+    theme: NavTheme,
+    isSectionActive: boolean,
+    index: number
+  ) => {
     const active = isActive(item.href);
     const Icon = item.icon;
+    const { rgb } = theme;
 
     if (item.disabled) {
       return (
         <div
           key={item.href}
-          className={cn(
-            'flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg cursor-not-allowed opacity-40 select-none',
-            isCollapsed && 'justify-center px-2'
-          )}
-          title={isCollapsed ? item.label : 'قريباً'}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '7px 12px', borderRadius: 8, opacity: 0.3, cursor: 'not-allowed',
+          }}
         >
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-800/50">
-            <Icon className="w-4 h-4 flex-shrink-0 text-zinc-500" />
-          </div>
-          {!isCollapsed && (
-            <span className="truncate text-zinc-500">{item.label}</span>
-          )}
-          {!isCollapsed && (
-            <span className="mr-auto px-1.5 py-0.5 bg-zinc-700/50 text-zinc-500 text-[10px] font-medium rounded-full border border-zinc-700/50">
-              قريباً
-            </span>
-          )}
+          <Icon style={{ width: 13, height: 13, color: `rgb(${rgb})`, flexShrink: 0 }} />
+          <span style={{ fontSize: 11, color: '#A7A29A', flex: 1 }}>{item.label}</span>
+          <span style={{
+            fontSize: 9, padding: '1px 5px', borderRadius: 9999,
+            backgroundColor: 'rgba(255,255,255,0.06)',
+            color: '#6B6B6B', border: '1px solid rgba(255,255,255,0.08)',
+          }}>قريباً</span>
         </div>
       );
     }
+
+    // Staggered entrance delay
+    const delay = isSectionActive ? `${index * 45}ms` : '0ms';
+
+    // Base opacity per state — children are NEVER inherited from parent wrapper opacity
+    const baseOpacity = active ? 1 : isSectionActive ? 1 : 0.55;
+
+    const baseStyle: CSSProperties = {
+      display: 'flex', alignItems: 'center', gap: 10,
+      padding: '7px 12px', borderRadius: 8,
+      cursor: 'pointer', textDecoration: 'none',
+      position: 'relative', overflow: 'hidden',
+      transition: `background-color 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease,
+                   opacity 0.25s ease ${delay}, transform 0.25s ease ${delay}`,
+      opacity: baseOpacity,
+      transform: isSectionActive ? 'translateX(0)' : 'translateX(3px)',
+      border: '1px solid transparent',
+      ...(active ? {
+        backgroundColor: `rgba(${rgb}, 0.16)`,
+        borderRight: `2px solid rgb(${rgb})`,
+        borderColor: `rgba(${rgb}, 0.35)`,
+        boxShadow: glow2(rgb, 0.22),
+      } : {}),
+    };
+
+    const handleMouseEnter = (e: React.MouseEvent<HTMLAnchorElement>) => {
+      const el = e.currentTarget as HTMLElement;
+      // Always show clearly on hover — overrides any opacity state
+      el.style.opacity = '1';
+      el.style.transform = 'translateX(0)';
+      if (!active) {
+        el.style.backgroundColor = `rgba(${rgb}, 0.12)`;
+        el.style.boxShadow = `${glow2(rgb, 0.20)}, inset 0 0 20px rgba(${rgb},0.04)`;
+        el.style.borderColor = `rgba(${rgb}, 0.30)`;
+      }
+      // Dot
+      const dot = el.querySelector(`[data-dot]`) as HTMLElement | null;
+      if (dot && !active) {
+        dot.style.width  = '6px';
+        dot.style.height = '6px';
+        dot.style.backgroundColor = `rgb(${rgb})`;
+        dot.style.boxShadow = dotGlow(rgb);
+      }
+      // Icon
+      const icon = el.querySelector(`[data-icon]`) as HTMLElement | null;
+      if (icon && !active) {
+        icon.style.color = `rgb(${rgb})`;
+        icon.style.filter = `drop-shadow(0 0 5px rgba(${rgb},0.55))`;
+      }
+      // Text
+      const txt = el.querySelector(`[data-txt]`) as HTMLElement | null;
+      if (txt && !active) {
+        txt.style.color = `rgb(${rgb})`;
+        txt.style.textShadow = `0 0 12px rgba(${rgb},0.45)`;
+        txt.style.fontWeight = '600';
+      }
+    };
+
+    const handleMouseLeave = (e: React.MouseEvent<HTMLAnchorElement>) => {
+      const el = e.currentTarget as HTMLElement;
+      el.style.opacity = String(baseOpacity);
+      el.style.transform = isSectionActive ? 'translateX(0)' : 'translateX(3px)';
+      if (!active) {
+        el.style.backgroundColor = 'transparent';
+        el.style.boxShadow = 'none';
+        el.style.borderColor = 'transparent';
+      }
+      // Dot
+      const dot = el.querySelector(`[data-dot]`) as HTMLElement | null;
+      if (dot && !active) {
+        const sz = isSectionActive ? '5px' : '4px';
+        dot.style.width  = sz;
+        dot.style.height = sz;
+        dot.style.backgroundColor = isSectionActive ? `rgba(${rgb},0.55)` : `rgba(${rgb},0.25)`;
+        dot.style.boxShadow = isSectionActive ? glow2(rgb, 0.35) : 'none';
+      }
+      // Icon
+      const icon = el.querySelector(`[data-icon]`) as HTMLElement | null;
+      if (icon && !active) {
+        icon.style.color = isSectionActive ? `rgba(${rgb},0.75)` : 'rgba(161,161,170,0.55)';
+        icon.style.filter = 'none';
+      }
+      // Text
+      const txt = el.querySelector(`[data-txt]`) as HTMLElement | null;
+      if (txt && !active) {
+        txt.style.color = isSectionActive ? 'rgba(220,215,208,0.9)' : '#7A7570';
+        txt.style.textShadow = 'none';
+        txt.style.fontWeight = '400';
+      }
+    };
 
     return (
       <Link
         key={item.href}
         href={item.href}
         onClick={() => setMobileMenuOpen(false)}
-        title={isCollapsed ? item.label : undefined}
-        className={cn(
-          'flex items-center gap-3 text-xs transition-all duration-200 rounded-xl group mb-1 relative',
-          isCollapsed ? 'px-2 py-2 justify-center' : 'px-3 py-2',
-          active
-            ? 'bg-[#D6A84F] text-[#0B0B0D] font-bold'
-            : 'text-[#A7A29A] hover:bg-[#2A2A30] hover:text-[#F7F1E5]'
-        )}
+        style={baseStyle}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
-        {active && !isCollapsed && <div className="w-1.5 h-1.5 rounded-full bg-[#0B0B0D]" />}
-        {active && isCollapsed && <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-l-full bg-[#D6A84F]" />}
-        <Icon className={cn('w-5 h-5', active ? 'text-[#0B0B0D]' : 'text-[#6B6B6B] group-hover:text-[#D6A84F]')} />
-        {!isCollapsed && <span>{item.label}</span>}
+        {/* Subtle gradient overlay visible on hover via JS */}
+        {/* Dot */}
+        <span
+          data-dot
+          style={{
+            width: active ? 7 : isSectionActive ? 5 : 4,
+            height: active ? 7 : isSectionActive ? 5 : 4,
+            borderRadius: 9999, flexShrink: 0,
+            backgroundColor: active ? `rgb(${rgb})` : isSectionActive ? `rgba(${rgb},0.55)` : `rgba(${rgb},0.25)`,
+            boxShadow: active ? dotGlow(rgb) : isSectionActive ? glow2(rgb, 0.35) : 'none',
+            transition: 'all 0.18s ease',
+          }}
+        />
+        {/* Icon */}
+        <Icon
+          data-icon
+          style={{
+            width: 13, height: 13, flexShrink: 0,
+            color: active ? `rgb(${rgb})` : isSectionActive ? `rgba(${rgb},0.75)` : 'rgba(161,161,170,0.55)',
+            filter: active ? `drop-shadow(0 0 4px rgba(${rgb},0.5))` : 'none',
+            transition: 'color 0.18s, filter 0.18s',
+          }}
+        />
+        {/* Label */}
+        <span
+          data-txt
+          style={{
+            fontSize: 11,
+            fontWeight: active ? 600 : 400,
+            flex: 1,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            color: active ? `rgb(${rgb})` : isSectionActive ? 'rgba(220,215,208,0.9)' : '#7A7570',
+            textShadow: active ? `0 0 10px rgba(${rgb},0.4)` : 'none',
+            transition: 'color 0.18s, text-shadow 0.18s',
+          }}
+        >
+          {item.label}
+        </span>
       </Link>
     );
   };
 
+  // ── Section renderer ───────────────────────────────────────────────────────
   const renderSection = (section: NavSection) => {
+    const theme = getTheme(section.title);
+    const { rgb } = theme;
+    const isSectionActive = activeSectionTitle === section.title;
+    const isDimmed = activeSectionTitle !== null && !isSectionActive;
+
+    // ── Collapsed mode ────────────────────────────────────────────────────────
     if (isCollapsed) {
-      // In collapsed mode, show all items directly without section headers
-      return section.items.map(item => (
-        <div key={item.href} className="mb-1">
-          {renderNavItem(item)}
-        </div>
-      ));
+      return section.items.map(item => {
+        if (item.disabled) return null;
+        const active = isActive(item.href);
+        const Icon = item.icon;
+        const dimOpacity = isDimmed && !active ? 0.35 : 1;
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            title={item.label}
+            onClick={() => setMobileMenuOpen(false)}
+            style={{
+              position: 'relative',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 40, height: 40, borderRadius: 12,
+              margin: '0 auto 4px',
+              backgroundColor: active ? `rgba(${rgb}, 0.22)` : 'transparent',
+              border: active ? `1px solid rgba(${rgb}, 0.55)` : '1px solid transparent',
+              boxShadow: active ? glow(rgb, 0.25) : 'none',
+              opacity: dimOpacity,
+              transition: 'all 0.2s ease',
+            }}
+          >
+            <Icon style={{
+              width: 18, height: 18,
+              color: active ? `rgb(${rgb})` : isDimmed ? '#4A4A52' : '#6B6B6B',
+              filter: active ? `drop-shadow(0 0 5px rgba(${rgb},0.55))` : 'none',
+            }} />
+            {active && (
+              <span style={{
+                position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
+                width: 3, height: 22, borderRadius: 9999,
+                backgroundColor: `rgb(${rgb})`,
+                boxShadow: dotGlow(rgb),
+              }} />
+            )}
+          </Link>
+        );
+      });
     }
 
+    // ── Expanded mode ─────────────────────────────────────────────────────────
     const isExpanded = expandedSections.includes(section.title);
-    const hasActiveItem = section.items.some(item => isActive(item.href));
+    const hasActive = isSectionActive;
     const SectionIcon = section.icon;
 
+    // KEY FIX: dim is applied to header button ONLY — not the wrapper.
+    // This ensures children control their own opacity independently.
+    const wrapperStyle: CSSProperties = {
+      marginBottom: 6,
+      // NO opacity here — children must not inherit dim
+    };
+
+    const headerStyle: CSSProperties = {
+      borderRadius: 12,
+      backgroundColor: hasActive
+        ? `rgba(${rgb}, 0.14)`
+        : isExpanded
+          ? `rgba(${rgb}, 0.08)`
+          : 'transparent',
+      border: hasActive
+        ? `1px solid rgba(${rgb}, 0.40)`
+        : isExpanded
+          ? `1px solid rgba(${rgb}, 0.22)`
+          : '1px solid transparent',
+      boxShadow: hasActive ? glow(rgb, 0.20) : 'none',
+      // Dim header button when section is not active
+      opacity: isDimmed ? 0.42 : 1,
+      transition: 'all 0.25s ease',
+    };
+
     return (
-      <div key={section.title} className="mb-2">
-        {/* Section Header */}
+      <div key={section.title} style={wrapperStyle}>
+        {/* Section Header — dim applied here only, not on children */}
         <button
           onClick={() => toggleSection(section.title)}
-          className={cn(
-            'w-full flex items-center justify-between px-3 py-2 text-xs transition-all duration-200 rounded-xl group',
-            hasActiveItem
-              ? 'bg-[#D6A84F] text-[#0B0B0D] font-bold'
-              : 'text-[#A7A29A] hover:bg-[#2A2A30] hover:text-[#F7F1E5]'
-          )}
+          className="w-full flex items-center justify-between px-3 py-2.5"
+          style={headerStyle}
+          onMouseEnter={e => {
+            if (isDimmed) {
+              (e.currentTarget as HTMLElement).style.opacity = '0.82';
+            }
+          }}
+          onMouseLeave={e => {
+            if (isDimmed) {
+              (e.currentTarget as HTMLElement).style.opacity = '0.42';
+            }
+          }}
         >
-          <div className="flex items-center gap-3">
-            {hasActiveItem && <div className="w-1.5 h-1.5 rounded-full bg-[#0B0B0D]" />}
-            <SectionIcon className={cn('w-5 h-5', hasActiveItem ? 'text-[#0B0B0D]' : 'text-[#6B6B6B] group-hover:text-[#D6A84F]')} />
-            <span>{section.title}</span>
-          </div>
-          <ChevronDown
-            className={cn(
-              'w-4 h-4 transition-transform duration-200',
-              isExpanded && 'rotate-180',
-              hasActiveItem ? 'text-[#0B0B0D]' : 'text-[#6B6B6B]'
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {/* Icon box */}
+            <div style={{
+              width: 30, height: 30, borderRadius: 8,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              backgroundColor: `rgba(${rgb}, ${hasActive ? '0.25' : isExpanded ? '0.14' : '0.10'})`,
+              border: `1px solid rgba(${rgb}, ${hasActive ? '0.50' : isExpanded ? '0.28' : '0.15'})`,
+              boxShadow: hasActive ? glow2(rgb, 0.30) : 'none',
+              flexShrink: 0,
+              transition: 'all 0.2s ease',
+            }}>
+              <SectionIcon style={{
+                width: 15, height: 15,
+                color: `rgb(${rgb})`,
+                filter: hasActive ? `drop-shadow(0 0 4px rgba(${rgb},0.6))` : 'none',
+              }} />
+            </div>
+            {/* Title */}
+            <span style={{
+              fontSize: 12,
+              fontWeight: hasActive ? 700 : isExpanded ? 600 : 500,
+              color: hasActive ? `rgb(${rgb})` : isExpanded ? `rgba(${rgb},0.85)` : '#C4BFB8',
+              textShadow: hasActive ? `0 0 10px rgba(${rgb},0.35)` : 'none',
+              transition: 'all 0.2s ease',
+            }}>
+              {section.title}
+            </span>
+            {/* Glowing active dot */}
+            {hasActive && (
+              <span style={{
+                width: 5, height: 5, borderRadius: 9999, flexShrink: 0,
+                backgroundColor: `rgb(${rgb})`,
+                boxShadow: dotGlow(rgb),
+              }} />
             )}
-          />
+          </div>
+
+          {/* Chevron */}
+          <ChevronDown style={{
+            width: 14, height: 14, flexShrink: 0,
+            color: hasActive ? `rgb(${rgb})` : isExpanded ? `rgba(${rgb},0.7)` : '#555',
+            filter: hasActive ? `drop-shadow(0 0 3px rgba(${rgb},0.5))` : 'none',
+            transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+            transition: 'transform 0.22s ease, color 0.2s ease',
+          }} />
         </button>
 
-        {/* Section Items */}
-        <div className={cn(
-          'overflow-hidden transition-all duration-200 pr-4',
-          isExpanded ? 'max-h-96 opacity-100 mt-1' : 'max-h-0 opacity-0'
-        )}>
-          <div className="space-y-1 border-r-2 border-[#2A2A30]">
-            {section.items.map(item => (
-              <div key={item.href} className="mr-2">
-                {renderNavItem(item)}
-              </div>
-            ))}
+        {/* Sub-items container */}
+        <div style={{
+          overflow: 'hidden',
+          maxHeight: isExpanded ? 520 : 0,
+          opacity: isExpanded ? 1 : 0,
+          transition: 'max-height 0.28s ease, opacity 0.22s ease',
+          marginTop: isExpanded ? 3 : 0,
+          paddingRight: 6,
+        }}>
+          <div style={{ position: 'relative' }}>
+            {/* Vertical rail — glows for active section */}
+            <div style={{
+              position: 'absolute',
+              right: 12,
+              top: 4,
+              bottom: 4,
+              width: isSectionActive ? 2 : 1.5,
+              borderRadius: 9999,
+              backgroundColor: isSectionActive ? `rgba(${rgb}, 0.50)` : `rgba(${rgb}, 0.18)`,
+              boxShadow: isSectionActive ? `0 0 10px rgba(${rgb}, 0.40)` : 'none',
+              transition: 'all 0.3s ease',
+            }} />
+            <div style={{ paddingRight: 8, display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {section.items.map((item, idx) =>
+                renderSubItem(item, theme, isSectionActive, idx)
+              )}
+            </div>
           </div>
         </div>
       </div>
     );
   };
 
+  // ── Sidebar nav content ────────────────────────────────────────────────────
+  const SidebarContent = () => (
+    <div
+      className="flex-1 overflow-y-auto scrollbar-luxury-v"
+      style={{ padding: isCollapsed ? '8px 6px' : '8px 10px' }}
+    >
+      {NAV_SECTIONS.map(section => (
+        <div key={section.title}>
+          {renderSection(section)}
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <>
-      {/* Desktop Sidebar */}
-      <nav className={cn(
-        'hidden lg:flex bg-[#111114] border-l border-[#2A2A30] flex-col shrink-0 transition-all duration-300',
-        isCollapsed ? 'w-[60px]' : 'w-[200px]'
-      )}>
-        {/* Logo Header + Toggle */}
-        <div className={cn(
-          'flex items-center justify-between transition-all duration-300',
-          isCollapsed ? 'p-2 flex-col gap-2' : 'p-4'
-        )}>
-          <div className={cn(
-            'flex items-center justify-center transition-all duration-300',
-            isCollapsed ? 'w-10 h-10' : 'w-16 h-16'
-          )}>
-            <img
-              src="/cutsalon.png"
-              alt="Cut Salon Logo"
-              className="w-full h-full object-contain"
-            />
+      {/* ── Desktop Sidebar ─────────────────────────────────────────────── */}
+      <nav
+        className="hidden lg:flex flex-col shrink-0 transition-all duration-300"
+        style={{
+          width: isCollapsed ? 60 : 215,
+          backgroundColor: '#111114',
+          borderLeft: '1px solid #2A2A30',
+        }}
+      >
+        {/* Logo + collapse toggle */}
+        <div
+          className="flex items-center justify-between transition-all duration-300"
+          style={{ padding: isCollapsed ? '10px 8px' : '14px 14px 10px' }}
+        >
+          <div style={{
+            width: isCollapsed ? 36 : 52,
+            height: isCollapsed ? 36 : 52,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'all 0.3s',
+          }}>
+            <img src="/cutsalon.png" alt="Cut Salon Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
-          <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className={cn(
-              'p-1.5 rounded-lg transition-all duration-200 hover:bg-[#2A2A30] text-[#6B6B6B] hover:text-[#F7F1E5]',
-              isCollapsed && 'rotate-180'
-            )}
-            title={isCollapsed ? 'توسيع القائمة' : 'طي القائمة'}
-          >
-            {isCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
-          </button>
+          {!isCollapsed && (
+            <button
+              onClick={() => setIsCollapsed(true)}
+              className="p-1.5 rounded-lg transition-colors hover:bg-[#2A2A30] text-[#6B6B6B] hover:text-[#F7F1E5]"
+              title="طي القائمة"
+            >
+              <PanelLeftClose className="w-4 h-4" />
+            </button>
+          )}
+          {isCollapsed && (
+            <button
+              onClick={() => setIsCollapsed(false)}
+              className="p-1.5 rounded-lg transition-colors hover:bg-[#2A2A30] text-[#6B6B6B] hover:text-[#F7F1E5] mt-1"
+              title="توسيع القائمة"
+            >
+              <PanelLeftOpen className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
-        {/* Navigation */}
-        <div className={cn(
-          'flex-1 py-2 overflow-y-auto space-y-1 scrollbar-luxury-v',
-          isCollapsed ? 'px-1.5' : 'px-3'
-        )}>
-          {NAV_SECTIONS.map(section => renderSection(section))}
-        </div>
+        <SidebarContent />
 
-        {/* Barber Chair Image - Hidden when collapsed */}
+        {/* Barber Chair Image */}
         {!isCollapsed && (
-          <div className="px-3 py-2">
-            <div className="relative rounded-xl overflow-hidden h-80">
-              <img
-                src="/chair.png"
-                alt="Barber Chair"
-                className="w-full h-full object-cover"
-              />
-              {/* Fade from all directions to blend with sidebar */}
+          <div style={{ padding: '4px 10px 8px' }}>
+            <div className="relative rounded-xl overflow-hidden" style={{ height: 200 }}>
+              <img src="/chair.png" alt="Barber Chair" className="w-full h-full object-cover" />
               <div className="absolute inset-0 bg-gradient-to-t from-[#111114] via-transparent to-transparent" />
-              <div className="absolute inset-0 bg-gradient-to-b from-[#111114] via-transparent to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-b from-[#111114] via-transparent to-transparent opacity-40" />
               <div className="absolute inset-0 bg-gradient-to-l from-[#111114] via-transparent to-transparent" />
               <div className="absolute inset-0 bg-gradient-to-r from-[#111114] via-transparent to-transparent" />
-              {/* Center vignette for extra depth */}
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,#111114_100%)]" />
-              {/* Elegant overlay text */}
-              <div className="absolute bottom-4 left-4 right-4">
-                <div className="bg-black/60 backdrop-blur-sm rounded-lg p-3 text-center">
-                  <p className="text-amber-400 font-bold text-sm">Cut Salon</p>
-                  <p className="text-white/80 text-xs">صالون حلاقة راقي</p>
+              <div className="absolute bottom-3 left-3 right-3">
+                <div className="bg-black/60 backdrop-blur-sm rounded-lg p-2.5 text-center">
+                  <p className="text-amber-400 font-bold text-xs">Cut Salon</p>
+                  <p className="text-white/70 text-[10px]">صالون حلاقة راقي</p>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Footer Button */}
-        <div className="p-3 border-t border-[#2A2A30]">
+        {/* Footer */}
+        <div style={{ padding: '10px 10px', borderTop: '1px solid #2A2A30' }}>
           <button
-            className={cn(
-              'flex items-center justify-center transition-all duration-200 rounded-xl border border-[#D6A84F]/50 text-[#D6A84F] hover:bg-[#D6A84F]/10',
-              isCollapsed ? 'w-full p-2' : 'w-full gap-2 px-3 py-2.5'
-            )}
+            className="flex items-center justify-center transition-all duration-200 rounded-xl"
+            style={{
+              width: '100%',
+              gap: isCollapsed ? 0 : 8,
+              padding: isCollapsed ? '8px' : '8px 12px',
+              border: '1px solid rgba(214,168,79,0.40)',
+              color: '#D6A84F',
+              backgroundColor: 'transparent',
+            }}
             title="تخصيص القوائم"
           >
-            {!isCollapsed && <span className="text-sm">تخصيص القوائم</span>}
-            <SlidersHorizontal className="w-4 h-4" />
+            {!isCollapsed && <span style={{ fontSize: 12 }}>تخصيص القوائم</span>}
+            <SlidersHorizontal style={{ width: 14, height: 14 }} />
           </button>
         </div>
       </nav>
 
-      {/* Mobile Header */}
+      {/* ── Mobile Header ───────────────────────────────────────────────── */}
       <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-[#111114] border-b border-[#2A2A30]">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 flex items-center justify-center">
-            <img
-              src="/cutsalon.png"
-              alt="Cut Salon Logo"
-              className="w-full h-full object-contain"
-            />
+          <div className="w-9 h-9 flex items-center justify-center">
+            <img src="/cutsalon.png" alt="Cut Salon Logo" className="w-full h-full object-contain" />
           </div>
-          <h2 className="text-lg font-bold text-[#F7F1E5]">CUT SALON</h2>
+          <h2 className="text-base font-bold text-[#F7F1E5]">CUT SALON</h2>
         </div>
-
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           className="p-2 bg-[#1E1D21] border border-[#2A2A30] rounded-lg text-[#A7A29A] hover:bg-[#2A2A30] transition-colors"
         >
-          {mobileMenuOpen ? (
-            <X className="w-5 h-5" />
-          ) : (
-            <Menu className="w-5 h-5" />
-          )}
+          {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
 
-      {/* Mobile Menu */}
+      {/* ── Mobile Menu ─────────────────────────────────────────────────── */}
       {mobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm">
-          <div className="absolute top-0 right-0 bottom-0 w-[280px] bg-[#111114] border-l border-[#2A2A30] shadow-2xl">
+          <div
+            className="absolute top-0 right-0 bottom-0 shadow-2xl flex flex-col"
+            style={{ width: 280, backgroundColor: '#111114', borderLeft: '1px solid #2A2A30' }}
+          >
+            {/* Mobile header */}
             <div className="flex items-center justify-between p-4 border-b border-[#2A2A30]">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 flex items-center justify-center">
-                  <img
-                    src="/cutsalon.png"
-                    alt="Cut Salon Logo"
-                    className="w-full h-full object-contain"
-                  />
+                <div className="w-9 h-9 flex items-center justify-center">
+                  <img src="/cutsalon.png" alt="Cut Salon Logo" className="w-full h-full object-contain" />
                 </div>
-                <h2 className="text-lg font-bold text-[#F7F1E5]">CUT SALON</h2>
+                <h2 className="text-base font-bold text-[#F7F1E5]">CUT SALON</h2>
               </div>
               <button
                 onClick={() => setMobileMenuOpen(false)}
@@ -395,25 +685,25 @@ export default function MainNav() {
               </button>
             </div>
 
-            <div className="py-3 px-3 space-y-1 overflow-y-auto max-h-[calc(100vh-200px)]">
-              {NAV_SECTIONS.map(section => renderSection(section))}
+            {/* Mobile nav */}
+            <div className="flex-1 overflow-y-auto py-3 px-3">
+              {NAV_SECTIONS.map(section => (
+                <div key={section.title}>{renderSection(section)}</div>
+              ))}
             </div>
 
-            {/* Mobile Barber Image */}
-            <div className="px-3 py-2 mt-auto">
-              <div className="relative rounded-xl overflow-hidden h-24">
-                <img
-                  src="/barber-mohamed.jpg"
-                  alt="Barber Chair"
-                  className="w-full h-full object-cover opacity-70"
-                />
+            {/* Mobile barber image */}
+            <div className="px-3 py-2">
+              <div className="relative rounded-xl overflow-hidden" style={{ height: 80 }}>
+                <img src="/barber-mohamed.jpg" alt="Barber" className="w-full h-full object-cover opacity-60" />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#111114] via-transparent to-transparent" />
               </div>
             </div>
 
-            {/* Mobile Footer Button */}
+            {/* Mobile footer */}
             <div className="p-3 border-t border-[#2A2A30]">
-              <button className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-[#D6A84F]/50 text-[#D6A84F] hover:bg-[#D6A84F]/10 transition-all">
+              <button className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl transition-all"
+                style={{ border: '1px solid rgba(214,168,79,0.4)', color: '#D6A84F' }}>
                 <span className="text-sm">تخصيص القوائم</span>
                 <SlidersHorizontal className="w-4 h-4" />
               </button>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CalendarDays, Loader2, AlertTriangle, ArrowLeftRight, Clock, Users, ShieldAlert } from 'lucide-react';
+import { CalendarDays, Loader2, AlertTriangle, ArrowLeftRight, Clock, Users, ShieldAlert, Ban } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSession } from '@/hooks/useSession';
 import { usePermission } from '@/hooks/usePermission';
@@ -20,6 +20,7 @@ interface Props {
   openShifts: OpenShiftInfo[];
   onDismiss: () => void;
   onResolved: () => void;
+  onSkip?: () => void;
 }
 
 export default function DayRolloverModal({
@@ -29,6 +30,7 @@ export default function DayRolloverModal({
   openShifts,
   onDismiss,
   onResolved,
+  onSkip,
 }: Props) {
   const { refresh } = useSession();
   const canClose = usePermission('day.close');
@@ -248,8 +250,21 @@ export default function DayRolloverModal({
             disabled={actionLoading}
             className="w-full text-muted-foreground"
           >
-            تأجيل
+            {openShifts.length > 0 ? 'إغلاق وإنهاء الورديات أولاً' : 'سأغلق الورديات ثم أعود'}
           </Button>
+
+          {/* Skip option - only for admins */}
+          {onSkip && (
+            <Button
+              variant="outline"
+              onClick={onSkip}
+              disabled={actionLoading}
+              className="w-full border-dashed border-amber-500/40 text-amber-600 hover:bg-amber-500/10 hover:text-amber-700"
+            >
+              <Ban className="w-4 h-4 ml-2" />
+              تخطي (العمل على اليوم الحالي اليوم)
+            </Button>
+          )}
         </div>
       </div>
     </div>

@@ -2,19 +2,28 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 
-// GET /api/employees — list all active employees with finance mapping
-export async function GET() {
+// GET /api/employees — list employees with finance mapping
+// Query params: ?inactive=true to get inactive employees
+export async function GET(req: NextRequest) {
   try {
+    const { searchParams } = new URL(req.url);
+    const showInactive = searchParams.get('inactive') === 'true';
+    
     const db = await getPool();
     const result = await db.request().query(`
       SELECT 
         e.EmpID, e.EmpName, e.Job, e.isActive, e.BaseSalary, e.TargetCommissionPercent, e.TargetMinSales,
-        e.DefaultCheckInTime, e.DefaultCheckOutTime, 
+        CONVERT(VARCHAR(5), e.DefaultCheckInTime,  108) AS DefaultCheckInTime,
+        CONVERT(VARCHAR(5), e.DefaultCheckOutTime, 108) AS DefaultCheckOutTime,
         CASE 
           WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'WorkScheduleNotes') 
           THEN e.WorkScheduleNotes ELSE NULL 
         END AS WorkScheduleNotes, 
         e.IsPayrollEnabled,
+        CASE
+          WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'HourlyRate')
+          THEN e.HourlyRate ELSE NULL
+        END AS HourlyRate,
         adv.ExpINID AS AdvanceExpINID, adv.CatName AS AdvanceCatName,
         rev.ExpINID AS RevenueExpINID, rev.CatName AS RevenueCatName
       FROM dbo.TblEmp e
@@ -44,7 +53,7 @@ export async function GET() {
           AND cat.ExpINType = N'ايرادات'
         ORDER BY m.ModifiedDate DESC, m.ID DESC
       ) rev
-      WHERE ISNULL(e.isActive, 1) = 1
+      WHERE ISNULL(e.isActive, 1) = ${showInactive ? '0' : '1'}
       ORDER BY e.EmpName
     `);
     return NextResponse.json(result.recordset);
@@ -81,12 +90,17 @@ export async function POST(req: NextRequest) {
 
     try {
       // ── 1. Insert employee ───────────────────────────────────────────
+      // Use SCOPE_IDENTITY() instead of OUTPUT clause — TblEmp has a trigger
+      // that causes "OUTPUT without INTO" to fail when triggers are enabled.
       const empRes = await new sql.Request(transaction)
         .input("empName", sql.NVarChar(200), name)
         .input("isActive", sql.Bit, isActive ? 1 : 0).query(`
           INSERT INTO dbo.TblEmp (EmpName, isActive)
-          OUTPUT INSERTED.EmpID, INSERTED.EmpName, INSERTED.isActive
-          VALUES (@empName, @isActive)
+          VALUES (@empName, @isActive);
+
+          SELECT EmpID, EmpName, isActive
+          FROM dbo.TblEmp
+          WHERE EmpID = SCOPE_IDENTITY();
         `);
 
       const newEmp = empRes.recordset[0];

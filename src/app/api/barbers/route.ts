@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 
 // GET /api/barbers — sorted by sales count (most popular first)
+// Only returns barbers (حلاق) and assistants (مساعد)
 export async function GET() {
   try {
     const db = await getPool();
@@ -9,6 +10,7 @@ export async function GET() {
       SELECT 
         e.EmpID, 
         e.EmpName,
+        e.Job,
         ISNULL(sales.SalesCount, 0) AS SalesCount
       FROM [dbo].[TblEmp] e
       LEFT JOIN (
@@ -17,6 +19,7 @@ export async function GET() {
         GROUP BY EmpID
       ) sales ON e.EmpID = sales.EmpID
       WHERE e.isActive = 1
+        AND e.Job IN (N'حلاق', N'مساعد')
       ORDER BY ISNULL(sales.SalesCount, 0) DESC, e.EmpName
     `);
     return NextResponse.json(result.recordset);

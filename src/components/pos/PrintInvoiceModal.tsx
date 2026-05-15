@@ -109,8 +109,8 @@ const THERMAL_CSS = `
       #fff 2px,
       #000 2px,
       #000 4px,
-      #dc2626 4px,
-      #dc2626 6px,
+      #666 4px,
+      #666 6px,
       #000 6px,
       #000 8px
     );
@@ -194,7 +194,7 @@ const THERMAL_CSS = `
     padding: 1mm 3mm;
     border-top: 1px solid #000;
     border-bottom: 1px solid #000;
-    background: #f5f5f5;
+    background: #fff;
   }
   
   /* Info Section with Icons */
@@ -208,7 +208,7 @@ const THERMAL_CSS = `
     align-items: center;
     margin-bottom: 1.5mm;
     padding: 1mm 0;
-    border-bottom: 1px dotted #ccc;
+    border-bottom: 1px dotted #000;
   }
   .info-row:last-child { border-bottom: none; }
   .info-label {
@@ -235,7 +235,6 @@ const THERMAL_CSS = `
   }
   thead {
     background: #000;
-    color: #fff;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -245,6 +244,7 @@ const THERMAL_CSS = `
     font-weight: 900;
     text-align: right;
     border: 1px solid #000;
+    color: #fff;
   }
   th:first-child { text-align: center; width: 8mm; }
   th:last-child { text-align: left; width: 18mm; }
@@ -256,9 +256,9 @@ const THERMAL_CSS = `
   }
   td:first-child { text-align: center; font-weight: 700; }
   td:last-child { text-align: left; font-weight: 700; font-family: 'Courier New', monospace; }
-  tbody tr:nth-child(even) { background: #f9f9f9; }
+  tbody tr:nth-child(even) { background: #fff; }
   .service-name { font-weight: 700; margin-bottom: 0.5mm; font-size: 10px; }
-  .barber-name { font-size: 8px; font-weight: 600; color: #333; }
+  .barber-name { font-size: 8px; font-weight: 600; color: #000; }
   
   /* Totals Section */
   .receipt-totals {
@@ -274,7 +274,7 @@ const THERMAL_CSS = `
     font-size: 10px;
   }
   .total-row.subtotal { font-weight: 600; }
-  .total-row.discount { font-weight: 700; color: #dc2626; }
+  .total-row.discount { font-weight: 700; color: #000; }
   .total-row.grand {
     font-size: 16px;
     font-weight: 900;
@@ -293,7 +293,7 @@ const THERMAL_CSS = `
     padding: 3mm 2mm;
     border: 2px solid #000;
     border-radius: 6px;
-    background: linear-gradient(135deg, #f5f5f5 0%, #fff 50%, #f5f5f5 100%);
+    background: #fff;
     text-align: center;
     position: relative;
   }
@@ -368,8 +368,8 @@ const THERMAL_CSS = `
       #fff 1.5px,
       #000 1.5px,
       #000 3px,
-      #dc2626 3px,
-      #dc2626 4.5px,
+      #666 3px,
+      #666 4.5px,
       #000 4.5px,
       #000 6px
     );
@@ -614,7 +614,7 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
         {!loading && data && (
           <>
             {/* Receipt preview (screen only — matches thermal layout) */}
-            <div className="text-sm border-2 border-black rounded-lg p-2 bg-white text-black max-w-[260px] mx-auto" dir="rtl" style={{ fontFamily: 'Cairo, sans-serif' }}>
+            <div className="text-sm border-2 border-black rounded-lg p-2 bg-white text-black max-w-[260px] mx-auto font-sans" dir="rtl">
               {/* Frame */}
               <div className="border-2 border-black rounded-lg p-2 relative">
                 {/* Header with Ornaments */}

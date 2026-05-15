@@ -44,7 +44,8 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    console.log('[api/sales/today] Target date:', targetDate);
+    // Performance timing
+    const startTime = performance.now();
 
     // Filters
     const shiftMoveIdFilter = searchParams.get('shiftMoveId') ? parseInt(searchParams.get('shiftMoveId')!) : null;
@@ -221,85 +222,115 @@ export async function GET(request: NextRequest) {
       ORDER BY sm.ID
     `);
     
-    console.log(`[api/sales/today] Found ${shiftResult.recordset.length} shift(s) for ${targetDate}`);
-    shiftResult.recordset.forEach((s: any) => {
-      console.log(`  - Shift ${s.shiftMoveId}: ${s.ShiftName} (${s.UserName}) - Invoices: ${s.invoiceCount}, Total: ${s.totalSales}`);
-    });
+    // OPTIMIZED: Batch fetch top barbers and payment methods for ALL shifts in 2 queries
+    // instead of N+1 queries (2 queries per shift)
+    const shiftMoveIds = shiftResult.recordset.map(s => s.shiftMoveId).join(',');
     
-    // Get top barber and payment method for each shift separately
+    // Batch query 1: Get top barber for each shift
+    const batchBarberReq = db.request();
+    batchBarberReq.input('targetDate', sql.Date, targetDate);
+    const batchBarberResult = await batchBarberReq.query(`
+      SELECT 
+        h.ShiftMoveID,
+        e.EmpName,
+        SUM(d.SPriceAfterDis) as TotalSales
+      FROM [dbo].[TblinvServHead] h
+      INNER JOIN [dbo].[TblinvServDetail] d ON h.invID = d.invID AND h.invType = d.invType
+      INNER JOIN [dbo].[TblEmp] e ON d.EmpID = e.EmpID
+      WHERE h.ShiftMoveID IN (${shiftMoveIds || 'NULL'})
+        AND h.invType = N'مبيعات'
+        AND ${activeSalesCondition('h')}
+        AND ${dateFilter('h')}
+      GROUP BY h.ShiftMoveID, e.EmpName
+    `);
+    
+    // Build map of top barbers per shift
+    const topBarbersByShift = new Map<number, string>();
+    const barberSalesByShift = new Map<number, {name: string, sales: number}[]>();
+    for (const row of batchBarberResult.recordset) {
+      const shiftId = row.ShiftMoveID;
+      if (!barberSalesByShift.has(shiftId)) {
+        barberSalesByShift.set(shiftId, []);
+      }
+      barberSalesByShift.get(shiftId)!.push({name: row.EmpName, sales: row.TotalSales});
+    }
+    for (const [shiftId, barbers] of barberSalesByShift) {
+      // Get top barber (highest sales)
+      const topBarber = barbers.sort((a, b) => b.sales - a.sales)[0];
+      if (topBarber) {
+        topBarbersByShift.set(shiftId, topBarber.name);
+      }
+    }
+    
+    // Batch query 2: Get top payment method for each shift
+    const batchPaymentReq = db.request();
+    batchPaymentReq.input('targetDate', sql.Date, targetDate);
+    const batchPaymentResult = await batchPaymentReq.query(`
+      WITH ShiftInvoices AS (
+        SELECT
+          h.ShiftMoveID,
+          h.invID,
+          h.invType,
+          h.PaymentMethodID,
+          PayValue = COALESCE(NULLIF(h.Payment, 0), h.GrandTotal, 0)
+        FROM [dbo].[TblinvServHead] h
+        WHERE h.ShiftMoveID IN (${shiftMoveIds || 'NULL'})
+          AND h.invType = N'مبيعات'
+          AND ${activeSalesCondition('h')}
+          AND ${dateFilter('h')}
+      ),
+      PaymentRows AS (
+        SELECT p.ShiftMoveID, p.PaymentMethodID, ISNULL(p.PayValue, 0) as PayValue
+        FROM [dbo].[TblinvServPayment] p
+        INNER JOIN ShiftInvoices h ON h.invID = p.invID AND h.invType = p.invType
+        WHERE ISNULL(p.PayValue, 0) > 0
+      ),
+      FallbackRows AS (
+        SELECT h.ShiftMoveID, h.PaymentMethodID, h.PayValue
+        FROM ShiftInvoices h
+        WHERE h.PaymentMethodID IS NOT NULL
+          AND h.PayValue > 0
+          AND NOT EXISTS (
+            SELECT 1 FROM [dbo].[TblinvServPayment] p
+            WHERE p.invID = h.invID AND p.invType = h.invType AND ISNULL(p.PayValue, 0) > 0
+          )
+      ),
+      NormalizedPayments AS (
+        SELECT ShiftMoveID, PaymentMethodID, PayValue FROM PaymentRows
+        UNION ALL
+        SELECT ShiftMoveID, PaymentMethodID, PayValue FROM FallbackRows
+      )
+      SELECT 
+        np.ShiftMoveID,
+        pm.PaymentMethod,
+        SUM(np.PayValue) as TotalAmount
+      FROM NormalizedPayments np
+      INNER JOIN [dbo].[TblPaymentMethods] pm ON np.PaymentMethodID = pm.PaymentID
+      GROUP BY np.ShiftMoveID, pm.PaymentMethod
+    `);
+    
+    // Build map of top payment methods per shift
+    const topPaymentsByShift = new Map<number, string>();
+    const paymentSalesByShift = new Map<number, {method: string, amount: number}[]>();
+    for (const row of batchPaymentResult.recordset) {
+      const shiftId = row.ShiftMoveID;
+      if (!paymentSalesByShift.has(shiftId)) {
+        paymentSalesByShift.set(shiftId, []);
+      }
+      paymentSalesByShift.get(shiftId)!.push({method: row.PaymentMethod, amount: row.TotalAmount});
+    }
+    for (const [shiftId, methods] of paymentSalesByShift) {
+      // Get top payment method (highest amount)
+      const topMethod = methods.sort((a, b) => b.amount - a.amount)[0];
+      if (topMethod) {
+        topPaymentsByShift.set(shiftId, topMethod.method);
+      }
+    }
+    
+    // Assign top barbers and payment methods to shifts
     for (const shift of shiftResult.recordset) {
-      // Top barber for this shift
-      const topBarberReq = db.request();
-      topBarberReq.input('shiftMoveId', sql.Int, shift.shiftMoveId);
-      topBarberReq.input('targetDate', sql.Date, targetDate);
-      
-      const topBarberResult = await topBarberReq.query(`
-        SELECT TOP 1 e.EmpName
-        FROM [dbo].[TblinvServHead] h3
-        INNER JOIN [dbo].[TblinvServDetail] d3 ON h3.invID = d3.invID AND h3.invType = d3.invType
-        INNER JOIN [dbo].[TblEmp] e ON d3.EmpID = e.EmpID
-        WHERE h3.ShiftMoveID = @shiftMoveId 
-          AND h3.invType = N'مبيعات'
-          AND ${activeSalesCondition('h3')}
-        GROUP BY e.EmpName
-        ORDER BY SUM(d3.SPriceAfterDis) DESC
-      `);
-      shift.topBarber = topBarberResult.recordset.length > 0 ? topBarberResult.recordset[0].EmpName : null;
-      
-      // Top payment method for this shift
-      const topPaymentReq = db.request();
-      topPaymentReq.input('shiftMoveId', sql.Int, shift.shiftMoveId);
-      topPaymentReq.input('targetDate', sql.Date, targetDate);
-      
-      const topPaymentResult = await topPaymentReq.query(`
-        WITH HeadInvoices AS (
-          SELECT
-            h2.invID,
-            h2.invType,
-            h2.PaymentMethodID,
-            PayValue = COALESCE(NULLIF(h2.Payment, 0), h2.GrandTotal, 0)
-          FROM [dbo].[TblinvServHead] h2
-          WHERE h2.ShiftMoveID = @shiftMoveId 
-            AND h2.invType = N'مبيعات'
-            AND ${activeSalesCondition('h2')}
-        ),
-        PaymentRows AS (
-          SELECT
-            p.invID,
-            p.invType,
-            p.PaymentMethodID,
-            PayValue = ISNULL(p.PayValue, 0)
-          FROM [dbo].[TblinvServPayment] p
-          INNER JOIN HeadInvoices h ON h.invID = p.invID AND h.invType = p.invType
-          WHERE ISNULL(p.PayValue, 0) > 0
-            AND ISNULL(p.ShiftMoveID, @shiftMoveId) = @shiftMoveId
-        ),
-        FallbackRows AS (
-          SELECT
-            h.invID,
-            h.invType,
-            h.PaymentMethodID,
-            h.PayValue
-          FROM HeadInvoices h
-          WHERE h.PaymentMethodID IS NOT NULL
-            AND h.PayValue > 0
-            AND NOT EXISTS (
-              SELECT 1 FROM [dbo].[TblinvServPayment] p
-              WHERE p.invID = h.invID AND p.invType = h.invType AND ISNULL(p.PayValue, 0) > 0
-            )
-        ),
-        NormalizedPayments AS (
-          SELECT invID, invType, PaymentMethodID, PayValue FROM PaymentRows
-          UNION ALL
-          SELECT invID, invType, PaymentMethodID, PayValue FROM FallbackRows
-        )
-        SELECT TOP 1 pm2.PaymentMethod
-        FROM NormalizedPayments np
-        INNER JOIN [dbo].[TblPaymentMethods] pm2 ON np.PaymentMethodID = pm2.PaymentID
-        GROUP BY pm2.PaymentMethod
-        ORDER BY SUM(np.PayValue) DESC
-      `);
-      shift.topPaymentMethod = topPaymentResult.recordset.length > 0 ? topPaymentResult.recordset[0].PaymentMethod : null;
+      shift.topBarber = topBarbersByShift.get(shift.shiftMoveId) || null;
+      shift.topPaymentMethod = topPaymentsByShift.get(shift.shiftMoveId) || null;
     }
 
     const byShift: ShiftSales[] = shiftResult.recordset.map((row: any) => ({
@@ -404,10 +435,12 @@ export async function GET(request: NextRequest) {
       averageTransaction: row.invoiceCount > 0 ? row.totalAmount / row.invoiceCount : 0
     }));
     
-    console.log('[api/sales/today] Payment breakdown:');
-    byPaymentMethod.forEach(pm => {
-      console.log(`  - ${pm.paymentMethodName}: ${pm.invoiceCount} invoices, ${pm.totalAmount} total`);
-    });
+    // Payment breakdown logged only in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[api/sales/today] Payment breakdown:', byPaymentMethod.map(pm => 
+        `${pm.paymentMethodName}: ${pm.invoiceCount} invoices, ${pm.totalAmount} total`
+      ).join(' | '));
+    }
 
     // ═══════════════════════════════════════════════════════════
     // 4. BY BARBER
@@ -667,6 +700,15 @@ export async function GET(request: NextRequest) {
     // ═══════════════════════════════════════════════════════════
     // RESPONSE
     // ═══════════════════════════════════════════════════════════
+
+    const duration = performance.now() - startTime;
+    
+    // Log performance metrics
+    if (process.env.NODE_ENV === 'development' || duration > 1000) {
+      console.log(`[api/sales/today] ✅ Completed in ${duration.toFixed(1)}ms | ` +
+        `Shifts: ${byShift.length} | Barber: ${byBarber.length} | Services: ${byService.length} | ` +
+        `Transactions: ${transactions.length}`);
+    }
 
     const response: TodaySalesData = {
       date: targetDate || new Date().toISOString().split('T')[0],

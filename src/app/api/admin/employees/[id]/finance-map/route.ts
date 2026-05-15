@@ -108,28 +108,52 @@ export async function PATCH(
       }
 
       // Update revenue mapping if provided
-      if (revenueExpINID !== undefined) {
+      if (revenueExpINID !== undefined && revenueExpINID !== null) {
         // Deactivate ALL existing revenue mappings for this employee
-        // Deactivate existing revenue mapping
         await new sql.Request(transaction)
           .input("empId", sql.Int, empId)
           .query(`
             UPDATE dbo.TblExpCatEmpMap 
-            SET IsActive = 0, ModifiedDate = GETDATE()
+            SET IsActive = 0, 
+                ModifiedDate = GETDATE(),
+                Notes = CONCAT(ISNULL(Notes, N''), N' | Deactivated by new revenue mapping')
             WHERE EmpID = @empId AND TxnKind = N'revenue'
           `);
 
-        // Insert new revenue mapping
-        await new sql.Request(transaction)
+        // Check if the new mapping already exists (but inactive)
+        const existingRevenueMapping = await new sql.Request(transaction)
           .input("empId", sql.Int, empId)
           .input("expINID", sql.Int, revenueExpINID)
           .query(`
-            INSERT INTO dbo.TblExpCatEmpMap 
-              (EmpID, ExpINID, TxnKind, IsActive, Notes, CreatedDate, ModifiedDate)
-            VALUES
-              (@empId, @expINID, N'revenue', 1, 
-               N'Updated from employees admin', GETDATE(), GETDATE())
+            SELECT 1 FROM dbo.TblExpCatEmpMap
+            WHERE EmpID = @empId AND ExpINID = @expINID AND TxnKind = N'revenue'
           `);
+
+        if (existingRevenueMapping.recordset.length > 0) {
+          // Reactivate existing mapping
+          await new sql.Request(transaction)
+            .input("empId", sql.Int, empId)
+            .input("expINID", sql.Int, revenueExpINID)
+            .query(`
+              UPDATE dbo.TblExpCatEmpMap 
+              SET IsActive = 1, 
+                  ModifiedDate = GETDATE(),
+                  Notes = CONCAT(ISNULL(Notes, N''), N' | Reactivated revenue mapping')
+              WHERE EmpID = @empId AND ExpINID = @expINID AND TxnKind = N'revenue'
+            `);
+        } else {
+          // Insert new revenue mapping
+          await new sql.Request(transaction)
+            .input("empId", sql.Int, empId)
+            .input("expINID", sql.Int, revenueExpINID)
+            .query(`
+              INSERT INTO dbo.TblExpCatEmpMap 
+                (EmpID, ExpINID, TxnKind, IsActive, Notes, CreatedDate, ModifiedDate)
+              VALUES
+                (@empId, @expINID, N'revenue', 1, 
+                 N'Updated from employees admin', GETDATE(), GETDATE())
+            `);
+        }
 
         console.log(`Updated revenue mapping for EmpID=${empId} to ExpINID=${revenueExpINID}`);
       }

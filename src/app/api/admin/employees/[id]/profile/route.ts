@@ -2,6 +2,59 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 
+async function ensureScheduleTable(db: any) {
+  await db.request().query(`
+    IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'TblEmpWorkSchedule')
+    BEGIN
+        CREATE TABLE dbo.TblEmpWorkSchedule (
+            ID INT IDENTITY(1,1) PRIMARY KEY,
+            EmpID INT NOT NULL,
+            DayOfWeek TINYINT NOT NULL,
+            IsWorkingDay BIT NOT NULL DEFAULT 1,
+            StartTime TIME NULL,
+            EndTime TIME NULL,
+            BreakStartTime TIME NULL,
+            BreakEndTime TIME NULL,
+            Notes NVARCHAR(200) NULL,
+            CreatedAt DATETIME NOT NULL DEFAULT GETDATE(),
+            UpdatedAt DATETIME NULL,
+            CONSTRAINT CK_TblEmpWorkSchedule_DayOfWeek CHECK (DayOfWeek BETWEEN 0 AND 6)
+        );
+        
+        ALTER TABLE dbo.TblEmpWorkSchedule 
+        ADD CONSTRAINT FK_TblEmpWorkSchedule_TblEmp 
+        FOREIGN KEY (EmpID) REFERENCES dbo.TblEmp(EmpID);
+        
+        CREATE UNIQUE INDEX UQ_TblEmpWorkSchedule_Emp_Day 
+        ON dbo.TblEmpWorkSchedule (EmpID, DayOfWeek);
+        
+        CREATE INDEX IX_TblEmpWorkSchedule_EmpID 
+        ON dbo.TblEmpWorkSchedule (EmpID);
+    END
+  `);
+}
+
+function formatTime(val: any): string | null {
+  if (!val) return null;
+  if (typeof val === 'string') return val.substring(0, 5);
+  if (val instanceof Date) {
+    const h = String(val.getHours()).padStart(2, '0');
+    const m = String(val.getMinutes()).padStart(2, '0');
+    return `${h}:${m}`;
+  }
+  return null;
+}
+
+function formatScheduleRow(row: any) {
+  return {
+    ...row,
+    StartTime: formatTime(row.StartTime),
+    EndTime: formatTime(row.EndTime),
+    BreakStartTime: formatTime(row.BreakStartTime),
+    BreakEndTime: formatTime(row.BreakEndTime),
+  };
+}
+
 // GET /api/admin/employees/:id/profile - Get employee complete profile
 export async function GET(
   req: NextRequest,
@@ -56,7 +109,9 @@ export async function GET(
             THEN PersonalNotes ELSE NULL 
           END AS PersonalNotes,
           BaseSalary, TargetCommissionPercent, TargetMinSales,
-          DefaultCheckInTime, DefaultCheckOutTime, IsPayrollEnabled,
+          CONVERT(VARCHAR(5), DefaultCheckInTime, 108) AS DefaultCheckInTime,
+          CONVERT(VARCHAR(5), DefaultCheckOutTime, 108) AS DefaultCheckOutTime,
+          IsPayrollEnabled,
           isActive
         FROM dbo.TblEmp 
         WHERE EmpID = @empId
@@ -68,7 +123,10 @@ export async function GET(
 
     const employee = empResult.recordset[0];
 
-    // Get work schedule - handle missing table gracefully
+    // Ensure schedule table exists
+    await ensureScheduleTable(db);
+
+    // Get work schedule
     let schedule: any[] = [];
     try {
       const scheduleResult = await db.request()
@@ -89,8 +147,7 @@ export async function GET(
 
       schedule = scheduleResult.recordset;
     } catch (scheduleError) {
-      // Table doesn't exist, return empty schedule
-      console.log('TblEmpWorkSchedule table not found, using empty schedule');
+      console.log('TblEmpWorkSchedule error:', scheduleError);
       schedule = [];
     }
 
@@ -126,7 +183,7 @@ export async function GET(
     return NextResponse.json({
       success: true,
       employee,
-      schedule,
+      schedule: schedule.map(formatScheduleRow),
       daysOff
     });
 
@@ -167,7 +224,11 @@ export async function PATCH(
       EmergencyContactPhone,
       BirthDate,
       HireDate,
-      PersonalNotes
+      PersonalNotes,
+      BaseSalary,
+      TargetCommissionPercent,
+      TargetMinSales,
+      IsPayrollEnabled
     } = body;
 
     // Validation
@@ -220,7 +281,7 @@ export async function PATCH(
         SELECT COLUMN_NAME 
         FROM INFORMATION_SCHEMA.COLUMNS 
         WHERE TABLE_NAME = 'TblEmp' 
-          AND COLUMN_NAME IN ('NationalID', 'Address', 'EmergencyContactName', 'EmergencyContactPhone', 'BirthDate', 'HireDate', 'PersonalNotes', 'ModifiedDate')
+          AND COLUMN_NAME IN ('NationalID', 'Address', 'EmergencyContactName', 'EmergencyContactPhone', 'BirthDate', 'HireDate', 'PersonalNotes', 'ModifiedDate', 'BaseSalary', 'TargetCommissionPercent', 'TargetMinSales', 'IsPayrollEnabled')
       `);
       
       const existingColumns = columnsCheck.recordset.map(r => r.COLUMN_NAME);
@@ -252,6 +313,22 @@ export async function PATCH(
       if (PersonalNotes !== undefined && existingColumns.includes('PersonalNotes')) {
         updateFields.push("PersonalNotes = @personalNotes");
         request.input("personalNotes", sql.NVarChar(500), PersonalNotes);
+      }
+      if (BaseSalary !== undefined) {
+        updateFields.push("BaseSalary = @baseSalary");
+        request.input("baseSalary", sql.Decimal(18, 2), BaseSalary !== null && BaseSalary !== '' ? parseFloat(BaseSalary) : null);
+      }
+      if (TargetCommissionPercent !== undefined) {
+        updateFields.push("TargetCommissionPercent = @targetCommissionPercent");
+        request.input("targetCommissionPercent", sql.Decimal(5, 2), TargetCommissionPercent !== null && TargetCommissionPercent !== '' ? parseFloat(TargetCommissionPercent) : null);
+      }
+      if (TargetMinSales !== undefined) {
+        updateFields.push("TargetMinSales = @targetMinSales");
+        request.input("targetMinSales", sql.Decimal(18, 2), TargetMinSales !== null && TargetMinSales !== '' ? parseFloat(TargetMinSales) : null);
+      }
+      if (IsPayrollEnabled !== undefined) {
+        updateFields.push("IsPayrollEnabled = @isPayrollEnabled");
+        request.input("isPayrollEnabled", sql.Bit, IsPayrollEnabled ? 1 : 0);
       }
 
       if (updateFields.length > 0) {
@@ -307,7 +384,9 @@ export async function PATCH(
               THEN PersonalNotes ELSE NULL 
             END AS PersonalNotes,
             BaseSalary, TargetCommissionPercent, TargetMinSales,
-            DefaultCheckInTime, DefaultCheckOutTime, IsPayrollEnabled,
+            CONVERT(VARCHAR(5), DefaultCheckInTime, 108) AS DefaultCheckInTime,
+            CONVERT(VARCHAR(5), DefaultCheckOutTime, 108) AS DefaultCheckOutTime,
+            IsPayrollEnabled,
             isActive
           FROM dbo.TblEmp 
           WHERE EmpID = @empId

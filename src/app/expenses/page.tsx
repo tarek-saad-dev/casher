@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Save, Loader2, AlertTriangle, CheckCircle2,
   Banknote, CreditCard, Wallet, Receipt,
-  TrendingDown, Filter, RotateCcw, Search, Zap, Edit2,
+  TrendingDown, Filter, RotateCcw, Search, Zap, Edit2, Trash2, ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import ShiftRequiredOverlay from '@/components/session/ShiftRequiredOverlay';
 import EditExpenseModal from '@/components/expenses/EditExpenseModal';
+import ExpenseReceiptPopup from '@/components/expenses/ExpenseReceiptPopup';
 import { useSession } from '@/hooks/useSession';
 import type { ExpenseCategory, ExpenseRecord, PaymentMethod } from '@/lib/types';
 
@@ -50,7 +51,13 @@ const CATEGORY_GROUPS: { key: string; label: string; catNames: string[] }[] = [
 
 const QUICK_PICK_NAMES = ['بوفيه', 'توصيل', 'تنظيف', 'مرتبات اليوم', 'بضاعة', 'سلف', 'كهرباء'];
 
+// Groups that use keyword matching instead of exact names
+const KEYWORD_GROUPS: { key: string; keywords: string[] }[] = [
+  { key: 'loans', keywords: ['سلف', 'سلفه', 'سلفة'] },
+];
+
 // Build a fast lookup: trimmed CatName → group key
+// Exact matches first, then keyword fallback
 function buildGroupLookup(): Map<string, string> {
   const map = new Map<string, string>();
   for (const g of CATEGORY_GROUPS) {
@@ -61,6 +68,21 @@ function buildGroupLookup(): Map<string, string> {
   return map;
 }
 const GROUP_LOOKUP = buildGroupLookup();
+
+function getCatGroupKey(catName: string): string {
+  const trimmed = catName.trim();
+  // Exact match first
+  const exact = GROUP_LOOKUP.get(trimmed);
+  if (exact) return exact;
+  // Keyword match fallback
+  const lower = trimmed.toLowerCase();
+  for (const kg of KEYWORD_GROUPS) {
+    if (kg.keywords.some(kw => lower.startsWith(kw) || lower.includes(kw))) {
+      return kg.key;
+    }
+  }
+  return '';
+}
 
 export default function ExpensesPage() {
   const { shift, hasActiveShift } = useSession();
@@ -82,17 +104,35 @@ export default function ExpensesPage() {
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
 
-  // ──── History state ────
+  // ──── Date helpers (local time, not UTC) ────
+  function getLocalDateString(d: Date) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  // ──── History / filter state ────
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [filterToday, setFilterToday] = useState(true);
+  const [activeDatePreset, setActiveDatePreset] = useState<'today' | 'yesterday' | 'last7' | 'thisMonth' | 'all' | 'custom'>('today');
+  const [dateFrom, setDateFrom] = useState<string>(() => getLocalDateString(new Date()));
+  const [dateTo, setDateTo] = useState<string>(() => getLocalDateString(new Date()));
   const [filterCatId, setFilterCatId] = useState<string>('');
-  const [filterDate, setFilterDate] = useState<string>('');
-  const [dateFrom, setDateFrom] = useState<string>('');
-  const [dateTo, setDateTo] = useState<string>('');
+  const [dateError, setDateError] = useState<string>('');
+  const [showCustomRange, setShowCustomRange] = useState(false);
   
   // ──── Edit state ────
   const [editingExpense, setEditingExpense] = useState<ExpenseRecord | null>(null);
+
+  // ──── Receipt state ────
+  const [receiptExpense, setReceiptExpense] = useState<{
+    invID: number;
+    invDate: string;
+    invTime: string;
+    CatName: string;
+    GrandTolal: number;
+    PaymentMethod: string | null;
+    Notes: string | null;
+    UserName: string | null;
+  } | null>(null);
 
   // ──── Set page title ────
   useEffect(() => {
@@ -111,59 +151,51 @@ export default function ExpensesPage() {
       .catch(() => {});
   }, []);
 
-  // ──── Quick date helpers ────
-  const setQuickDate = useCallback((type: 'yesterday' | 'last7' | 'last30' | 'thisMonth') => {
+  // ──── Quick date presets ────
+  const applyPreset = useCallback((preset: typeof activeDatePreset) => {
     const today = new Date();
-    let from = new Date();
-    let to = new Date();
-
-    switch (type) {
-      case 'yesterday':
-        from.setDate(today.getDate() - 1);
-        to = new Date(from);
-        break;
-      case 'last7':
-        from.setDate(today.getDate() - 7);
-        break;
-      case 'last30':
-        from.setDate(today.getDate() - 30);
-        break;
-      case 'thisMonth':
-        from = new Date(today.getFullYear(), today.getMonth(), 1);
+    setDateError('');
+    setActiveDatePreset(preset);
+    setShowCustomRange(preset === 'custom');
+    switch (preset) {
+      case 'today': {
+        const t = getLocalDateString(today);
+        setDateFrom(t); setDateTo(t); break;
+      }
+      case 'yesterday': {
+        const y = new Date(today); y.setDate(today.getDate() - 1);
+        const ys = getLocalDateString(y);
+        setDateFrom(ys); setDateTo(ys); break;
+      }
+      case 'last7': {
+        const f = new Date(today); f.setDate(today.getDate() - 6);
+        setDateFrom(getLocalDateString(f)); setDateTo(getLocalDateString(today)); break;
+      }
+      case 'thisMonth': {
+        const f = new Date(today.getFullYear(), today.getMonth(), 1);
+        setDateFrom(getLocalDateString(f)); setDateTo(getLocalDateString(today)); break;
+      }
+      case 'all':
+        setDateFrom(''); setDateTo(''); break;
+      case 'custom':
         break;
     }
-
-    setDateFrom(from.toISOString().split('T')[0]);
-    setDateTo(to.toISOString().split('T')[0]);
-    setFilterToday(false);
-    setFilterDate('');
-  }, []);
+  }, [activeDatePreset]);
 
   // ──── Load expenses history ────
   const loadExpenses = useCallback(() => {
+    if (dateError) return;
     setLoadingHistory(true);
     const params = new URLSearchParams();
-    
-    if (filterToday) {
-      params.set('today', '1');
-    } else if (filterDate) {
-      // Filter by specific date
-      params.set('dateFrom', filterDate);
-      params.set('dateTo', filterDate);
-    } else if (dateFrom || dateTo) {
-      // Filter by date range
-      if (dateFrom) params.set('dateFrom', dateFrom);
-      if (dateTo) params.set('dateTo', dateTo);
-    }
-    
+    if (dateFrom) params.set('dateFrom', dateFrom);
+    if (dateTo) params.set('dateTo', dateTo);
     if (filterCatId) params.set('catId', filterCatId);
-
     fetch(`/api/expenses?${params.toString()}`)
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setExpenses(d); })
       .catch(() => {})
       .finally(() => setLoadingHistory(false));
-  }, [filterToday, filterCatId, filterDate, dateFrom, dateTo]);
+  }, [dateFrom, dateTo, filterCatId, dateError]);
 
   useEffect(() => { loadExpenses(); }, [loadExpenses]);
 
@@ -171,6 +203,41 @@ export default function ExpensesPage() {
   const totalExpenses = expenses.reduce((sum, e) => sum + (e.GrandTolal || 0), 0);
   const totalCash = expenses.filter(e => e.PaymentMethod === 'كاش').reduce((sum, e) => sum + (e.GrandTolal || 0), 0);
   const totalVisa = expenses.filter(e => e.PaymentMethod === 'فيزا').reduce((sum, e) => sum + (e.GrandTolal || 0), 0);
+
+  // ──── Handle custom date input ────
+  const handleCustomFrom = (val: string) => {
+    setDateFrom(val); setActiveDatePreset('custom'); setDateError('');
+    if (dateTo && val > dateTo) setDateError('تاريخ البداية لا يمكن أن يكون بعد تاريخ النهاية');
+  };
+  const handleCustomTo = (val: string) => {
+    setDateTo(val); setActiveDatePreset('custom'); setDateError('');
+    if (dateFrom && val < dateFrom) setDateError('تاريخ البداية لا يمكن أن يكون بعد تاريخ النهاية');
+  };
+
+  // ──── Reset filters ────
+  const handleResetFilters = useCallback(() => {
+    applyPreset('today');
+    setFilterCatId('');
+    setDateError('');
+    setShowCustomRange(false);
+  }, [applyPreset]);
+
+  // ──── Friendly period label ────
+  const periodLabel = useMemo(() => {
+    switch (activeDatePreset) {
+      case 'today': return 'عرض مصروفات اليوم';
+      case 'yesterday': return 'عرض مصروفات أمس';
+      case 'last7': return 'آخر 7 أيام';
+      case 'thisMonth': return 'هذا الشهر';
+      case 'all': return 'عرض كل المصروفات';
+      case 'custom':
+        if (dateFrom && dateTo && dateFrom === dateTo) return `مصروفات ${dateFrom}`;
+        if (dateFrom && dateTo) return `من ${dateFrom} إلى ${dateTo}`;
+        if (dateFrom) return `من ${dateFrom}`;
+        if (dateTo) return `حتى ${dateTo}`;
+        return 'فترة مخصصة';
+    }
+  }, [activeDatePreset, dateFrom, dateTo]);
 
   // ──── Reset form ────
   const resetForm = useCallback(() => {
@@ -212,6 +279,27 @@ export default function ExpensesPage() {
 
       const result = await res.json();
       setSaveSuccess(`✅ تم تسجيل المصروف بنجاح — #${result.invID} (${result.catName}: ${result.amount} ج.م)`);
+      
+      // Get current date and time for receipt
+      const now = new Date();
+      const currentDate = now.toISOString().split('T')[0];
+      const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      
+      // Get payment method name
+      const paymentMethod = paymentMethods.find(pm => pm.ID === paymentMethodId);
+      
+      // Show receipt modal
+      setReceiptExpense({
+        invID: result.invID,
+        invDate: currentDate,
+        invTime: currentTime,
+        CatName: result.catName,
+        GrandTolal: result.amount,
+        PaymentMethod: paymentMethod?.Name || null,
+        Notes: notes || null,
+        UserName: null, // Will be populated from server if needed
+      });
+      
       resetForm();
       setPaymentMethodId(null);
       loadExpenses();
@@ -223,17 +311,35 @@ export default function ExpensesPage() {
     } finally {
       setSaving(false);
     }
-  }, [selectedCatId, amount, paymentMethodId, notes, resetForm, loadExpenses]);
+  }, [selectedCatId, amount, paymentMethodId, notes, paymentMethods, resetForm, loadExpenses]);
+
+  // ──── Delete expense ────
+  const handleDelete = useCallback(async (id: number, invID: number) => {
+    if (!confirm(`هل أنت متأكد من حذف المصروف #${invID}؟`)) return;
+    
+    try {
+      const res = await fetch(`/api/expenses/${id}`, {
+        method: 'DELETE',
+      });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || 'خطأ في حذف المصروف');
+        return;
+      }
+      
+      loadExpenses();
+    } catch {
+      alert('خطأ في الاتصال بالخادم');
+    }
+  }, [loadExpenses]);
 
   // ──── Filtered categories by group + search ────
   const filteredCategories = useMemo(() => {
     let filtered = categories;
 
     if (activeGroup !== 'all') {
-      filtered = filtered.filter(c => {
-        const groupKey = GROUP_LOOKUP.get(c.CatName.trim());
-        return groupKey === activeGroup;
-      });
+      filtered = filtered.filter(c => getCatGroupKey(c.CatName) === activeGroup);
     }
 
     if (catSearch.trim()) {
@@ -296,89 +402,112 @@ export default function ExpensesPage() {
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="px-3 py-2 border-b border-border bg-muted/5">
-          <div className="flex items-center gap-2 flex-wrap mb-2">
-            <Filter className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+        {/* ═══ Filters Bar ═══ */}
+        <div className="px-3 pt-2.5 pb-2 border-b border-border bg-zinc-900/60 space-y-2">
+
+          {/* Row 1: Preset buttons + category */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Filter className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+
+            {([ 
+              { key: 'today',     label: 'اليوم' },
+              { key: 'yesterday', label: 'أمس' },
+              { key: 'last7',     label: 'آخر 7 أيام' },
+              { key: 'thisMonth', label: 'هذا الشهر' },
+              { key: 'all',       label: 'الكل' },
+            ] as const).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => applyPreset(key)}
+                className={`text-[11px] px-2.5 py-1 rounded-md border font-semibold transition-all ${
+                  activeDatePreset === key
+                    ? 'border-primary bg-primary/15 text-primary shadow-sm shadow-primary/20'
+                    : 'border-border text-muted-foreground hover:border-zinc-500 hover:text-foreground hover:bg-accent'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+
+            {/* Custom range toggle */}
             <button
-              onClick={() => {
-                setFilterToday(true);
-                setFilterDate('');
-                setDateFrom('');
-                setDateTo('');
-              }}
-              className={`text-[11px] px-2.5 py-1 rounded-md border transition-all font-medium ${
-                filterToday ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent'
+              onClick={() => { setShowCustomRange(v => !v); if (activeDatePreset !== 'custom') setActiveDatePreset('custom'); }}
+              className={`text-[11px] px-2.5 py-1 rounded-md border font-semibold transition-all flex items-center gap-1 ${
+                activeDatePreset === 'custom'
+                  ? 'border-amber-500/60 bg-amber-500/10 text-amber-400'
+                  : 'border-border text-muted-foreground hover:border-zinc-500 hover:text-foreground hover:bg-accent'
               }`}
             >
-              اليوم
+              فترة مخصصة
+              <ChevronDown className={`w-3 h-3 transition-transform ${showCustomRange ? 'rotate-180' : ''}`} />
             </button>
-            <button
-              onClick={() => setQuickDate('yesterday')}
-              className="text-[11px] px-2.5 py-1 rounded-md border border-border text-muted-foreground hover:bg-accent transition-all font-medium"
-            >
-              أمس
-            </button>
-            <button
-              onClick={() => setQuickDate('last7')}
-              className="text-[11px] px-2.5 py-1 rounded-md border border-border text-muted-foreground hover:bg-accent transition-all font-medium"
-            >
-              آخر 7 أيام
-            </button>
-            <button
-              onClick={() => setQuickDate('last30')}
-              className="text-[11px] px-2.5 py-1 rounded-md border border-border text-muted-foreground hover:bg-accent transition-all font-medium"
-            >
-              آخر 30 يوم
-            </button>
-            <button
-              onClick={() => setQuickDate('thisMonth')}
-              className="text-[11px] px-2.5 py-1 rounded-md border border-border text-muted-foreground hover:bg-accent transition-all font-medium"
-            >
-              هذا الشهر
-            </button>
-            <button
-              onClick={() => {
-                setFilterToday(false);
-                setFilterDate('');
-                setDateFrom('');
-                setDateTo('');
-              }}
-              className={`text-[11px] px-2.5 py-1 rounded-md border transition-all font-medium ${
-                !filterToday && !filterDate && !dateFrom && !dateTo ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent'
-              }`}
-            >
-              الكل
-            </button>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <input
-              type="date"
-              value={filterDate}
-              onChange={(e) => {
-                setFilterDate(e.target.value);
-                setFilterToday(false);
-                setDateFrom('');
-                setDateTo('');
-              }}
-              placeholder="يوم محدد"
-              className="text-[11px] px-2 py-1 rounded-md border border-border bg-background text-foreground"
-            />
+
+            <div className="flex-1" />
+
+            {/* Category filter */}
             <select
               value={filterCatId}
               onChange={(e) => setFilterCatId(e.target.value)}
-              className="text-[11px] px-2 py-1 rounded-md border border-border bg-background text-foreground"
+              className="text-[11px] px-2 py-1 rounded-md border border-border bg-zinc-800/60 text-foreground max-w-[140px] truncate"
             >
               <option value="">كل الفئات</option>
               {categories.map(c => (
                 <option key={c.ExpINID} value={c.ExpINID}>{c.CatName}</option>
               ))}
             </select>
-            <div className="flex-1" />
-            <Button variant="ghost" size="sm" onClick={loadExpenses} className="text-[11px] h-6 px-2">
-              <RotateCcw className="w-3 h-3 ml-1" />
+
+            {/* Reset */}
+            <button
+              onClick={handleResetFilters}
+              className="text-[11px] px-2 py-1 rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-all flex items-center gap-1"
+              title="إعادة تعيين"
+            >
+              <RotateCcw className="w-3 h-3" />
+              إعادة تعيين
+            </button>
+          </div>
+
+          {/* Row 2: Custom date range (collapsible) */}
+          {showCustomRange && (
+            <div className="flex items-center gap-2 flex-wrap pt-0.5">
+              <span className="text-[11px] text-zinc-500">من</span>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => handleCustomFrom(e.target.value)}
+                className="text-[11px] px-2 py-1 rounded-md border border-border bg-zinc-800/60 text-foreground"
+              />
+              <span className="text-[11px] text-zinc-500">إلى</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => handleCustomTo(e.target.value)}
+                className="text-[11px] px-2 py-1 rounded-md border border-border bg-zinc-800/60 text-foreground"
+              />
+              {dateError && (
+                <span className="text-[10px] text-destructive flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" />{dateError}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Period label */}
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] text-zinc-500">
+              <span className="text-zinc-400 font-medium">{periodLabel}</span>
+              {expenses.length > 0 && !loadingHistory && (
+                <span className="mr-1.5 text-zinc-600">— {expenses.length} عملية</span>
+              )}
+            </p>
+            <button
+              onClick={loadExpenses}
+              disabled={!!dateError}
+              className="text-[10px] text-zinc-500 hover:text-zinc-300 flex items-center gap-1 transition-colors disabled:opacity-40"
+            >
+              <RotateCcw className="w-3 h-3" />
               تحديث
-            </Button>
+            </button>
           </div>
         </div>
 
@@ -447,6 +576,13 @@ export default function ExpensesPage() {
                         title="تعديل"
                       >
                         <Edit2 className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(exp.ID, exp.invID)}
+                        className="p-1.5 hover:bg-red-100 rounded-lg transition-colors"
+                        title="حذف"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-red-500 hover:text-red-600" />
                       </button>
                       <span className="text-sm font-black text-destructive">
                         {exp.GrandTolal?.toLocaleString('ar-EG')} ج.م
@@ -692,6 +828,13 @@ export default function ExpensesPage() {
           }}
         />
       )}
+
+      {/* Receipt Popup */}
+      <ExpenseReceiptPopup
+        open={!!receiptExpense}
+        expense={receiptExpense}
+        onClose={() => setReceiptExpense(null)}
+      />
     </div>
   );
 }

@@ -68,28 +68,32 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     }
 
     request.input('empID', sql.Int, empID);
-    const result = await request.query(`
+    await request.query(`
       UPDATE dbo.TblEmp
       SET    ${setClauses.join(', ')}
-      OUTPUT
-        INSERTED.EmpID,
-        INSERTED.EmpName,
-        INSERTED.isActive,
-        INSERTED.BaseSalary,
-        INSERTED.SalaryType,
-        INSERTED.TargetCommissionPercent,
-        INSERTED.TargetMinSales,
-        INSERTED.DefaultCheckInTime,
-        INSERTED.DefaultCheckOutTime,
-        INSERTED.IsPayrollEnabled
       WHERE  EmpID = @empID
     `);
 
-    if (result.recordset.length === 0) {
+    // SELECT after UPDATE — avoids OUTPUT INSERTED conflict with trigger
+    const pool = await getPool();
+    const sel = await (pool as any).request()
+      .input('empID', sql.Int, empID)
+      .query(`
+        SELECT
+          EmpID, EmpName, isActive, BaseSalary, SalaryType,
+          TargetCommissionPercent, TargetMinSales,
+          CAST(DefaultCheckInTime  AS varchar(8)) AS DefaultCheckInTime,
+          CAST(DefaultCheckOutTime AS varchar(8)) AS DefaultCheckOutTime,
+          IsPayrollEnabled, HourlyRate
+        FROM dbo.TblEmp
+        WHERE EmpID = @empID
+      `);
+
+    if (sel.recordset.length === 0) {
       return NextResponse.json({ error: 'الموظف غير موجود' }, { status: 404 });
     }
 
-    return NextResponse.json(result.recordset[0]);
+    return NextResponse.json(sel.recordset[0]);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/employees/:id] PATCH error:', message);

@@ -1,16 +1,18 @@
 'use client';
 
-import { ArrowUpRight, ArrowDownRight, Wallet, TrendingUp } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Wallet, TrendingUp, List } from 'lucide-react';
 import type { PaymentMethodBreakdown } from '@/lib/types/treasury';
 
 interface PaymentMethodBreakdownTableProps {
   paymentMethods: PaymentMethodBreakdown[];
   loading?: boolean;
+  onViewDetails?: (id: number, name: string) => void;
 }
 
 export default function PaymentMethodBreakdownTable({ 
   paymentMethods, 
-  loading 
+  loading,
+  onViewDetails,
 }: PaymentMethodBreakdownTableProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('ar-EG', {
@@ -20,11 +22,12 @@ export default function PaymentMethodBreakdownTable({
     }).format(amount) + ' ج.م';
   };
 
-  const getPaymentMethodIcon = (name: string) => {
-    if (name.includes('نقد')) return '💵';
-    if (name.includes('فيزا') || name.includes('visa')) return '💳';
-    if (name.includes('انستا') || name.includes('insta')) return '📱';
-    if (name.includes('باي') || name.includes('pay')) return '💰';
+  const getPaymentMethodIcon = (name?: string | null) => {
+    const s = (name ?? '').toLowerCase();
+    if (s.includes('نقد') || s.includes('كاش') || s.includes('cash')) return '💵';
+    if (s.includes('فيزا') || s.includes('visa')) return '💳';
+    if (s.includes('انستا') || s.includes('insta')) return '📱';
+    if (s.includes('باي') || s.includes('pay')) return '💰';
     return '💳';
   };
 
@@ -93,7 +96,7 @@ export default function PaymentMethodBreakdownTable({
               <div className="flex items-center gap-3">
                 <span className="text-2xl">{getPaymentMethodIcon(pm.paymentMethodName)}</span>
                 <div>
-                  <h4 className="text-lg font-bold text-white">{pm.paymentMethodName}</h4>
+                  <h4 className="text-lg font-bold text-white">{pm.paymentMethodName ?? 'طريقة دفع غير محددة'}</h4>
                   <p className="text-xs text-zinc-500">{pm.transactionCount} معاملة</p>
                   {(pm.salesInflow > 0 || pm.incomeInflow > 0) && (
                     <p className="text-xs text-zinc-400 mt-0.5">
@@ -104,14 +107,27 @@ export default function PaymentMethodBreakdownTable({
                   )}
                 </div>
               </div>
-              
-              {/* Net Badge */}
-              <div className={`px-3 py-1.5 rounded-full border ${
-                pm.net >= 0 
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                  : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-              }`}>
-                <span className="text-sm font-bold">{formatCurrency(pm.net)}</span>
+
+              <div className="flex items-center gap-2">
+                {/* Net Badge */}
+                <div className={`px-3 py-1.5 rounded-full border ${
+                  pm.net >= 0 
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                    : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                }`}>
+                  <span className="text-sm font-bold">{formatCurrency(pm.net)}</span>
+                </div>
+
+                {/* Details button */}
+                {onViewDetails && (
+                  <button
+                    onClick={() => onViewDetails(pm.paymentMethodId, pm.paymentMethodName ?? 'طريقة دفع غير محددة')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-600/50 bg-zinc-700/40 hover:bg-zinc-700/70 text-zinc-300 hover:text-white text-xs font-medium transition-colors"
+                  >
+                    <List className="h-3.5 w-3.5" />
+                    عرض التفاصيل
+                  </button>
+                )}
               </div>
             </div>
 

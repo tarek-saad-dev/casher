@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import { Plus, Flame } from 'lucide-react';
 import type { Service, Barber, CartItem } from '@/lib/types';
+import { getCategoryTheme } from '@/lib/categoryTheme';
 
 interface ServiceGridProps {
   services: Service[];
@@ -68,9 +69,15 @@ export default function ServiceGrid({ services, selectedBarber, onAddItem }: Ser
         {categories.map((cat) => (
           <div key={cat.catID ?? 'other'}>
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs font-bold text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                {cat.catName}
-              </span>
+              {(() => {
+                const t = getCategoryTheme(cat.catName, cat.catID ?? undefined);
+                return (
+                  <span style={{ ...t.badgeStyle, padding: '2px 10px', fontSize: '11px' }}>
+                    <span style={{ fontSize: '12px' }}>{t.emoji}</span>
+                    {cat.catName}
+                  </span>
+                );
+              })()}
               <div className="flex-1 border-t border-border" />
             </div>
             <div className="grid grid-cols-3 gap-2">

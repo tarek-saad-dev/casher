@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { OperationalSession, SessionUser, BusinessDay, ActiveShift } from '@/lib/session-types';
 import { getPermissions } from '@/lib/permissions';
 
@@ -9,9 +9,12 @@ interface SessionContextValue extends OperationalSession {
   isAuthenticated: boolean;
   hasActiveDay: boolean;
   hasActiveShift: boolean;
+  defaultShiftId: number | null;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
-  setUser: (user: SessionUser) => void;
+  setUser: (user: SessionUser & { defaultShiftId?: number }) => void;
+  openMyShift: (shiftId?: number) => Promise<void>;
+  closeMyShift: (shiftMoveId?: number) => Promise<void>;
 }
 
 export const SessionContext = createContext<SessionContextValue>({
@@ -23,9 +26,12 @@ export const SessionContext = createContext<SessionContextValue>({
   isAuthenticated: false,
   hasActiveDay: false,
   hasActiveShift: false,
+  defaultShiftId: null,
   refresh: async () => {},
   logout: async () => {},
   setUser: () => {},
+  openMyShift: async () => {},
+  closeMyShift: async () => {},
 });
 
 export default function SessionProvider({ children }: { children: ReactNode }) {
@@ -34,6 +40,7 @@ export default function SessionProvider({ children }: { children: ReactNode }) {
   const [shift, setShift] = useState<ActiveShift | null>(null);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [defaultShiftId, setDefaultShiftId] = useState<number | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -61,16 +68,60 @@ export default function SessionProvider({ children }: { children: ReactNode }) {
     setDay(null);
     setShift(null);
     setPermissions([]);
+    setDefaultShiftId(null);
     window.location.href = '/login';
   }, []);
 
-  const setUser = useCallback((u: SessionUser) => {
+  const setUser = useCallback((u: SessionUser & { defaultShiftId?: number }) => {
     // Clear stale shift/day immediately to prevent previous user's data leaking
     setShift(null);
     setDay(null);
     setUserState(u);
     setPermissions(getPermissions(u.UserLevel));
+    setDefaultShiftId(u.defaultShiftId ?? null);
   }, []);
+
+  const openMyShift = useCallback(async (shiftId?: number) => {
+    if (!user) throw new Error('No user');
+
+    const targetShiftId = shiftId || defaultShiftId;
+    if (!targetShiftId) throw new Error('No shift selected');
+
+    const res = await fetch('/api/shift/open', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shiftID: targetShiftId }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Failed to open shift');
+    }
+
+    await refresh();
+  }, [user, defaultShiftId, refresh]);
+
+  const closeMyShift = useCallback(async (shiftMoveId?: number) => {
+    if (!user) throw new Error('No user');
+    if (!shift && !shiftMoveId) throw new Error('No open shift');
+
+    const targetShiftMoveId = shiftMoveId || shift?.ID;
+    if (!targetShiftMoveId) throw new Error('No shift move ID');
+
+    const res = await fetch('/api/shift/close', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shiftMoveID: targetShiftMoveId }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Failed to close shift');
+    }
+
+    setShift(null);
+    await refresh();
+  }, [user, shift, refresh]);
 
   // Fetch session on mount
   useEffect(() => {
@@ -83,22 +134,26 @@ export default function SessionProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(id);
   }, [refresh]);
 
+  // Memoize context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => ({
+    user,
+    day,
+    shift,
+    permissions,
+    loading,
+    isAuthenticated: !!user,
+    hasActiveDay: !!day && day.Status === true,
+    hasActiveShift: !!user && !!shift && shift.Status === true && shift.UserID === user.UserID,
+    defaultShiftId,
+    refresh,
+    logout,
+    setUser,
+    openMyShift,
+    closeMyShift,
+  }), [user, day, shift, permissions, loading, defaultShiftId, refresh, logout, setUser, openMyShift, closeMyShift]);
+
   return (
-    <SessionContext.Provider
-      value={{
-        user,
-        day,
-        shift,
-        permissions,
-        loading,
-        isAuthenticated: !!user,
-        hasActiveDay: !!day && day.Status === true,
-        hasActiveShift: !!user && !!shift && shift.Status === true && shift.UserID === user.UserID,
-        refresh,
-        logout,
-        setUser,
-      }}
-    >
+    <SessionContext.Provider value={contextValue}>
       {children}
     </SessionContext.Provider>
   );

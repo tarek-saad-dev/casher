@@ -1,7 +1,7 @@
 'use client';
 
 import { useReducer, useCallback, useMemo } from 'react';
-import type { Customer, Barber, CartItem, SaleState, SaleTotals } from '@/lib/types';
+import type { Customer, Barber, CartItem, SaleState, SaleTotals, PaymentAllocation } from '@/lib/types';
 
 // ───────────────────────── Actions ─────────────────────────
 
@@ -14,6 +14,8 @@ type Action =
   | { type: 'SET_DISCOUNT_PERCENT'; value: number }
   | { type: 'SET_DISCOUNT_VALUE'; value: number }
   | { type: 'SET_PAYMENT_METHOD'; id: number | null }
+  | { type: 'SET_PAYMENT_ALLOCATIONS'; allocations: PaymentAllocation[] }
+  | { type: 'UPDATE_PAYMENT_AMOUNT'; paymentMethodId: number; amount: number }
   | { type: 'SET_NOTES'; notes: string }
   | { type: 'SET_SHIFT'; shiftMoveId: number | null }
   | { type: 'CLEAR_ITEMS' }
@@ -28,6 +30,7 @@ const initialState: SaleState = {
   discountPercent: 0,
   discountValue: 0,
   paymentMethodId: null,
+  paymentAllocations: [],
   notes: '',
   shiftMoveId: null,
 };
@@ -54,12 +57,23 @@ function reducer(state: SaleState, action: Action): SaleState {
       return { ...state, discountValue: action.value, discountPercent: 0 };
     case 'SET_PAYMENT_METHOD':
       return { ...state, paymentMethodId: action.id };
+    case 'SET_PAYMENT_ALLOCATIONS':
+      return { ...state, paymentAllocations: action.allocations };
+    case 'UPDATE_PAYMENT_AMOUNT':
+      return {
+        ...state,
+        paymentAllocations: state.paymentAllocations.map(pa =>
+          pa.paymentMethodId === action.paymentMethodId
+            ? { ...pa, amount: action.amount }
+            : pa
+        ),
+      };
     case 'SET_NOTES':
       return { ...state, notes: action.notes };
     case 'SET_SHIFT':
       return { ...state, shiftMoveId: action.shiftMoveId };
     case 'RESET':
-      return { ...initialState, shiftMoveId: state.shiftMoveId, barber: state.barber };
+      return { ...initialState, shiftMoveId: state.shiftMoveId, paymentAllocations: [] };
     default:
       return state;
   }
@@ -97,6 +111,8 @@ export function useSaleState() {
   const setDiscountPercent = useCallback((v: number) => dispatch({ type: 'SET_DISCOUNT_PERCENT', value: v }), []);
   const setDiscountValue = useCallback((v: number) => dispatch({ type: 'SET_DISCOUNT_VALUE', value: v }), []);
   const setPaymentMethod = useCallback((id: number | null) => dispatch({ type: 'SET_PAYMENT_METHOD', id }), []);
+  const setPaymentAllocations = useCallback((allocations: PaymentAllocation[]) => dispatch({ type: 'SET_PAYMENT_ALLOCATIONS', allocations }), []);
+  const updatePaymentAmount = useCallback((paymentMethodId: number, amount: number) => dispatch({ type: 'UPDATE_PAYMENT_AMOUNT', paymentMethodId, amount }), []);
   const setNotes = useCallback((n: string) => dispatch({ type: 'SET_NOTES', notes: n }), []);
   const setShift = useCallback((id: number | null) => dispatch({ type: 'SET_SHIFT', shiftMoveId: id }), []);
   const clearItems = useCallback(() => dispatch({ type: 'CLEAR_ITEMS' }), []);
@@ -113,6 +129,8 @@ export function useSaleState() {
     setDiscountPercent,
     setDiscountValue,
     setPaymentMethod,
+    setPaymentAllocations,
+    updatePaymentAmount,
     setNotes,
     setShift,
     clearItems,

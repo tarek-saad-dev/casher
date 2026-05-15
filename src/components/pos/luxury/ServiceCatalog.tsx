@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Plus, Flame, Clock, LayoutGrid, Sparkles, Gift, Scissors, Heart, Star } from 'lucide-react';
+import { Plus, Flame, Clock, LayoutGrid } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Service, Barber, CartItem } from '@/lib/types';
+import { getCategoryTheme } from '@/lib/categoryTheme';
 
 interface ServiceCatalogProps {
   services: Service[];
@@ -18,23 +19,6 @@ interface CategoryTab {
   count: number;
 }
 
-// Icons for categories based on keywords
-const getCategoryIcon = (catName: string): React.ReactNode => {
-  const name = catName.toLowerCase();
-  if (name.includes('قص') || name.includes('شعر') || name.includes('حلاق')) {
-    return <Scissors className="w-4 h-4" />;
-  }
-  if (name.includes('ذقن') || name.includes('عناية')) {
-    return <Sparkles className="w-4 h-4" />;
-  }
-  if (name.includes('باقة') || name.includes('عرض') || name.includes('package')) {
-    return <Gift className="w-4 h-4" />;
-  }
-  if (name.includes('بشرة') || name.includes('ماسك') || name.includes('-care')) {
-    return <Heart className="w-4 h-4" />;
-  }
-  return <Star className="w-4 h-4" />;
-};
 
 // Service images mapping (using Unsplash barber images)
 const getServiceImage = (serviceName: string, category: string): string => {
@@ -104,27 +88,20 @@ export default function ServiceCatalog({ services, selectedBarber, onAddItem }: 
     return categories.map(cat => {
       let id: string;
       let icon: React.ReactNode;
-      
+
       if (cat.id === null) {
-        // Hot services tab
         id = 'hot';
         icon = <Flame className="w-4 h-4" />;
       } else if (cat.id === -1) {
-        // All services tab
         id = 'all';
         icon = <LayoutGrid className="w-4 h-4" />;
       } else {
-        // Regular category tabs
         id = String(cat.id);
-        icon = getCategoryIcon(cat.name);
+        const t = getCategoryTheme(cat.name, cat.id);
+        icon = <span style={{ fontSize: '14px', lineHeight: 1 }}>{t.emoji}</span>;
       }
-      
-      return {
-        id,
-        name: cat.name,
-        icon,
-        count: cat.count,
-      };
+
+      return { id, name: cat.name, icon, count: cat.count };
     });
   }, [categories]);
 
@@ -186,27 +163,43 @@ export default function ServiceCatalog({ services, selectedBarber, onAddItem }: 
 
       {/* Category Tabs */}
       <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-2 scrollbar-luxury">
-        {categoryTabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={cn(
-              'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap border',
-              activeTab === tab.id
-                ? 'bg-[#D6A84F] text-[#0B0B0D] border-[#D6A84F]'
-                : 'bg-[#16161A] text-[#A7A29A] border-[#2A2A30] hover:border-[#3A3A40] hover:text-[#F7F1E5]'
-            )}
-          >
-            {tab.icon}
-            <span>{tab.name}</span>
-            <span className={cn(
-              'text-xs px-1.5 py-0.5 rounded-full',
-              activeTab === tab.id ? 'bg-[#0B0B0D]/20 text-[#0B0B0D]' : 'bg-[#2A2A30] text-[#6B6B6B]'
-            )}>
-              {tab.count}
-            </span>
-          </button>
-        ))}
+        {categoryTabs.map((tab) => {
+          const isActive = activeTab === tab.id;
+          // For special tabs (hot/all) use gold, for category tabs use their theme color
+          const isSpecial = tab.id === 'hot' || tab.id === 'all';
+          const catId = isSpecial ? null : parseInt(tab.id);
+          const theme = isSpecial ? null : getCategoryTheme(tab.name, catId);
+
+          const activeStyle = isSpecial
+            ? { backgroundColor: '#D6A84F', color: '#0B0B0D', borderColor: '#D6A84F', border: '1px solid' }
+            : (theme ? { ...theme.badgeStyle, padding: undefined } : {});
+
+          const inactiveStyle = {
+            backgroundColor: '#16161A',
+            color: '#A7A29A',
+            borderColor: '#2A2A30',
+            border: '1px solid',
+          };
+
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={isActive ? activeStyle : inactiveStyle}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap"
+            >
+              {tab.icon}
+              <span>{tab.name}</span>
+              <span style={{
+                fontSize: '11px', padding: '1px 6px', borderRadius: '9999px',
+                backgroundColor: isActive ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.08)',
+                color: isActive ? 'inherit' : '#6B6B6B',
+              }}>
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Services Grid */}

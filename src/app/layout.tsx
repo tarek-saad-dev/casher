@@ -22,8 +22,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ar" dir="rtl" className={`dark h-full antialiased ${cairo.variable}`}>
-      <body className={`min-h-full flex flex-col bg-zinc-950 text-foreground font-sans`}>
+    <html lang="ar" dir="rtl" className={`dark h-full antialiased ${cairo.variable}`} suppressHydrationWarning>
+      <body className={`min-h-full flex flex-col bg-zinc-950 text-foreground font-sans`} suppressHydrationWarning>
         <SessionProvider>
           <div className="flex flex-col h-screen overflow-hidden">
             <ActiveSessionBar />

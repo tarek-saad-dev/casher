@@ -8,11 +8,13 @@ export async function GET() {
     const session = await getSession();
     const db = await getPool();
 
-    // Categories — show all from TblExpINCat (include income-typed ones)
+    // Categories — active income categories only for new-entry form
     const catRes = await db.request().query(`
       SELECT ExpINID, ExpINType, CatName
       FROM dbo.TblExpINCat
       WHERE CatName IS NOT NULL
+        AND IsActive = 1
+        AND ExpINType = N'\u0627\u064a\u0631\u0627\u062f\u0627\u062a'
       ORDER BY CatName ASC
     `);
 

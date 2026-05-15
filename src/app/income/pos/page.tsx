@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { Save, Loader2, AlertTriangle } from 'lucide-react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { Save, Loader2, AlertTriangle, CheckCircle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import PosHeader from '@/components/pos/PosHeader';
+import RecentSalesSidebar from '@/components/pos/RecentSalesSidebar';
 import CustomerSearch from '@/components/pos/CustomerSearch';
 import CustomerHistoryPanel, { type LastSaleAutoFill } from '@/components/pos/CustomerHistoryPanel';
 import QuickCustomerModal from '@/components/pos/QuickCustomerModal';
@@ -14,6 +15,7 @@ import ServiceCatalog from '@/components/pos/luxury/ServiceCatalog';
 import CartPanel from '@/components/pos/CartPanel';
 import InvoiceSummary from '@/components/pos/InvoiceSummary';
 import PaymentMethodSelect from '@/components/pos/PaymentMethodSelect';
+import SplitPaymentInput from '@/components/pos/SplitPaymentInput';
 import PrintInvoiceModal from '@/components/pos/PrintInvoiceModal';
 import ShiftRequiredOverlay from '@/components/session/ShiftRequiredOverlay';
 import DayRolloverModal from '@/components/session/DayRolloverModal';
@@ -21,9 +23,47 @@ import CloseDayModal from '@/components/session/CloseDayModal';
 import { useSaleState } from '@/hooks/useSaleState';
 import { useSession } from '@/hooks/useSession';
 import { useDayRollover } from '@/hooks/useDayRollover';
-import type { Barber, Service, PaymentMethod, Customer, CartItem } from '@/lib/types';
+import type { Barber, Service, PaymentMethod, Customer } from '@/lib/types';
+
+// ─── Toast Types ─────────────────────────────────────────────────────────
+interface Toast { id: number; type: 'success' | 'error' | 'info'; message: string }
+
+// ─── Toast Component ─────────────────────────────────────────────────────────
+function ToastList({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: number) => void }) {
+  return (
+    <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 w-80" dir="rtl">
+      {toasts.map(t => (
+        <div
+          key={t.id}
+          className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl text-sm font-medium transition-all
+            ${t.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-300' : ''}
+            ${t.type === 'error'   ? 'bg-rose-950/90 border-rose-500/40 text-rose-300' : ''}
+            ${t.type === 'info'    ? 'bg-zinc-900/90 border-zinc-700/40 text-zinc-300' : ''}
+          `}
+        >
+          {t.type === 'success' && <CheckCircle className="w-4 h-4 shrink-0" />}
+          {t.type === 'error'   && <AlertTriangle className="w-4 h-4 shrink-0" />}
+          <span className="flex-1">{t.message}</span>
+          <button onClick={() => dismiss(t.id)} className="opacity-60 hover:opacity-100"><X className="w-3.5 h-3.5" /></button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function PosPage() {
+  // ───────────────── Toast System ─────────────────
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const toastIdRef = useRef(0);
+
+  const addToast = useCallback((type: Toast['type'], message: string) => {
+    const id = ++toastIdRef.current;
+    setToasts(p => [...p, { id, type, message }]);
+    setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 3000);
+  }, []);
+
+  const dismissToast = useCallback((id: number) => setToasts(p => p.filter(t => t.id !== id)), []);
+
   // ───────────────── Session ─────────────────
   const { shift, hasActiveShift, loading: sessionLoading, refresh: refreshSession } = useSession();
 
@@ -48,7 +88,9 @@ export default function PosPage() {
     state, totals,
     setCustomer, setBarber, addItem, removeItem, updateItem,
     setDiscountPercent, setDiscountValue,
-    setPaymentMethod, setShift, clearItems, reset,
+    setPaymentMethod,
+    setPaymentAllocations,
+    setNotes, setShift, clearItems, reset,
   } = useSaleState();
 
   // ───────────────── UI state ─────────────────
@@ -59,38 +101,13 @@ export default function PosPage() {
   const [saveError, setSaveError] = useState('');
   const [printInvID, setPrintInvID] = useState<number | null>(null);
   const [printOpen, setPrintOpen] = useState(false);
+  const [splitPaymentActive, setSplitPaymentActive] = useState(false);
+  const [editingSaleId, setEditingSaleId] = useState<number | null>(null); // Track edit mode
 
   // ───────────────── Sync shift from session into sale state ─────────────────
   useEffect(() => {
     setShift(shift?.ID ?? null);
   }, [shift, setShift]);
-
-  // ───────────────── Auto-select most popular service when barber is selected ─────────────────
-  useEffect(() => {
-    if (state.barber && services.length > 0 && state.items.length === 0) {
-      // Get the most popular service (sorted by SalesCount from API)
-      const mostPopularService = services.reduce((prev, current) => 
-        (prev.SalesCount > current.SalesCount) ? prev : current
-      );
-      
-      if (mostPopularService && mostPopularService.SalesCount > 0) {
-        const item: CartItem = {
-          id: `auto-${mostPopularService.ProID}-${state.barber.EmpID}-${Date.now()}`,
-          ProID: mostPopularService.ProID,
-          ProName: mostPopularService.ProName,
-          EmpID: state.barber.EmpID,
-          EmpName: state.barber.EmpName,
-          SPrice: mostPopularService.SPrice1,
-          Bonus: mostPopularService.Bonus ?? 0,
-          Qty: 1,
-          Dis: 0,
-          DisVal: 0,
-          SPriceAfterDis: mostPopularService.SPrice1,
-        };
-        addItem(item);
-      }
-    }
-  }, [state.barber, services, state.items.length, addItem]);
 
   // ───────────────── Load lookup data on mount ─────────────────
   useEffect(() => {
@@ -103,11 +120,36 @@ export default function PosPage() {
   const handleSave = useCallback(async () => {
     setSaveError('');
     if (state.items.length === 0) { setSaveError('يجب إضافة خدمة واحدة على الأقل'); return; }
-    if (!state.paymentMethodId) { setSaveError('يجب اختيار طريقة الدفع'); return; }
+    
+    // Validate split payment totals
+    const totalAllocated = state.paymentAllocations.reduce((sum, pa) => sum + pa.amount, 0);
+    const remaining = totals.grandTotal - totalAllocated;
+    if (Math.abs(remaining) > 0.01) {
+      setSaveError(`إجمالي المدفوع (${totalAllocated.toFixed(2)}) لا يساوي إجمالي الفاتورة (${totals.grandTotal.toFixed(2)})`);
+      return;
+    }
+
+    // Determine main payment method (largest amount)
+    const sortedAllocations = [...state.paymentAllocations].sort((a, b) => b.amount - a.amount);
+    const mainPayment = sortedAllocations[0];
+    if (!mainPayment || mainPayment.amount <= 0) {
+      setSaveError('يجب إدخال مبلغ لطريقة دفع واحدة على الأقل');
+      return;
+    }
 
     setSaving(true);
     try {
-      const isCash = state.paymentMethodId === 1;
+      // Build payment allocations for API
+      const activeAllocations = state.paymentAllocations.filter(pa => pa.amount > 0);
+      const payCash = state.paymentAllocations.find(pa => {
+        const method = paymentMethods.find(m => m.ID === pa.paymentMethodId);
+        return method?.Name?.toLowerCase().includes('كاش') && pa.amount > 0;
+      })?.amount || 0;
+      const payVisa = state.paymentAllocations.find(pa => {
+        const method = paymentMethods.find(m => m.ID === pa.paymentMethodId);
+        return (method?.Name?.toLowerCase().includes('فيزا') || method?.Name?.toLowerCase().includes('كارت')) && pa.amount > 0;
+      })?.amount || 0;
+
       const payload = {
         clientId: state.customer?.ClientID || null,
         items: state.items.map(i => ({
@@ -127,14 +169,20 @@ export default function PosPage() {
         grandTotal: totals.grandTotal,
         totalBonus: totals.totalBonus,
         totalQty: totals.totalQty,
-        paymentMethodId: state.paymentMethodId,
-        payCash: isCash ? totals.grandTotal : 0,
-        payVisa: !isCash ? totals.grandTotal : 0,
+        paymentMethodId: mainPayment.paymentMethodId,
+        paymentAllocations: activeAllocations,
+        payCash,
+        payVisa,
         notes: state.customer ? `مبيعات / ${state.customer.Name}` : 'مبيعات',
       };
 
-      const res = await fetch('/api/sales', {
-        method: 'POST',
+      // Use PUT for editing, POST for new sale
+      const isEditing = editingSaleId !== null;
+      const url = isEditing ? `/api/sales/${editingSaleId}` : '/api/sales';
+      const method = isEditing ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
@@ -148,19 +196,19 @@ export default function PosPage() {
       const result = await res.json();
       setPrintInvID(result.invID);
       setPrintOpen(true);
-      // Reset everything including barber selection
+      // Reset everything (customer, barber, items, discount, payment, edit mode)
       reset();
-      setCustomer(null);
-      setDiscountPercent(0);
-      setDiscountValue(0);
-      setPaymentMethod(null);
+      setEditingSaleId(null);
+      setSplitPaymentActive(false);
       setSaveError('');
+      // Show success toast
+      addToast('success', isEditing ? 'تم تحديث الفاتورة بنجاح' : 'تم حفظ الفاتورة بنجاح');
     } catch {
       setSaveError('خطأ في الاتصال بالخادم');
     } finally {
       setSaving(false);
     }
-  }, [state, totals, reset]);
+  }, [state, totals, reset, addToast, paymentMethods, editingSaleId]);
 
   // ───────────────── Keyboard shortcuts ─────────────────
   useEffect(() => {
@@ -173,14 +221,12 @@ export default function PosPage() {
 
   // ───────────────── New sale handler ─────────────────
   const handleNewSale = useCallback(() => {
-    // Reset everything including barber selection
+    // Reset everything including barber selection and edit mode
     reset();
-    setCustomer(null);
-    setDiscountPercent(0);
-    setDiscountValue(0);
-    setPaymentMethod(null);
+    setEditingSaleId(null);
+    setSplitPaymentActive(false);
     setSaveError('');
-  }, []);
+  }, [reset, setSplitPaymentActive]);
 
   // ───────────────── Auto-fill from last sale ─────────────────
   const handleAutoFill = useCallback((data: LastSaleAutoFill) => {
@@ -214,6 +260,97 @@ export default function PosPage() {
       setPaymentMethod(data.paymentMethodId);
     }
   }, [barbers, setBarber, clearItems, addItem, setPaymentMethod]);
+
+  // ───────────────── Edit sale functionality ─────────────────
+  const handleEditSale = useCallback(async (saleId: number) => {
+    try {
+      const response = await fetch(`/api/sales/${saleId}`);
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'فشل تحميل بيانات الفاتورة');
+      }
+
+      // 1. Set customer if exists
+      if (data.ClientID && data.customerName) {
+        const customer: Customer = {
+          ClientID: data.ClientID,
+          Name: data.customerName,
+          Mobile: data.customerPhone || '',
+          BirthDate: null,
+          Address: '',
+          RegisterDate: new Date().toISOString(),
+          Notes: ''
+        };
+        setCustomer(customer);
+      }
+
+      // 2. Set discount if exists
+      if (data.Dis || data.DisVal) {
+        if (data.Dis && data.Dis > 0) {
+          setDiscountPercent(data.Dis);
+        }
+        if (data.DisVal && data.DisVal > 0) {
+          setDiscountValue(data.DisVal);
+        }
+      }
+
+      // 3. Clear existing items and add services from the sale
+      clearItems();
+      if (data.items && Array.isArray(data.items)) {
+        data.items.forEach((item: any) => {
+          const emp = barbers.find(b => b.EmpID === item.EmpID);
+          addItem({
+            id: `${item.ProID}-${item.EmpID}-${Date.now()}-${Math.random()}`,
+            ProID: item.ProID,
+            ProName: item.ProName || 'خدمة',
+            EmpID: item.EmpID,
+            EmpName: emp?.EmpName || item.EmpName || 'موظف',
+            SPrice: item.SPrice || 0,
+            Bonus: item.Bonus || 0,
+            Qty: item.Qty || 1,
+            Dis: item.Dis || 0,
+            DisVal: item.DisVal || 0,
+            SPriceAfterDis: item.SPriceAfterDis || item.SPrice || 0,
+          });
+        });
+      }
+
+      // 4. Set payment method and allocations
+      if (data.PaymentMethodID) {
+        setPaymentMethod(data.PaymentMethodID);
+        
+        // Set payment allocations based on actual payment data
+        const newAllocations = paymentMethods.map(m => {
+          let amount = 0;
+          if (m.ID === data.PaymentMethodID) {
+            // Use actual payment amounts if available
+            if (data.PayCash && data.PayCash > 0 && m.Name?.toLowerCase().includes('كاش')) {
+              amount = data.PayCash;
+            } else if (data.PayVisa && data.PayVisa > 0 && (m.Name?.toLowerCase().includes('فيزا') || m.Name?.toLowerCase().includes('كارت'))) {
+              amount = data.PayVisa;
+            } else {
+              amount = data.GrandTotal;
+            }
+          }
+          return {
+            paymentMethodId: m.ID,
+            amount: amount
+          };
+        });
+        setPaymentAllocations(newAllocations);
+      }
+
+      // 5. Set editing mode
+      setEditingSaleId(saleId);
+
+      // 6. Show success message
+      addToast('info', 'تم تحميل بيانات الفاتورة للتعديل');
+
+    } catch (e: any) {
+      addToast('error', e.message || 'فشل تحميل بيانات الفاتورة');
+    }
+  }, [barbers, setCustomer, clearItems, addItem, setPaymentMethod, setPaymentAllocations, paymentMethods, addToast, setDiscountPercent, setDiscountValue]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -266,7 +403,7 @@ export default function PosPage() {
           />
         </main>
 
-        {/* ═══════ LEFT PANEL: Cart + Summary + Payment + Save ═══════ */}
+        {/* ═══════ LEFT PANEL: Cart + Summary + Payment + Save + Recent Sales ═══════ */}
         <aside className="w-80 border-r border-border p-4 flex flex-col gap-4 overflow-y-auto shrink-0 scrollbar-luxury-v">
           <CartPanel items={state.items} barbers={barbers} onRemove={removeItem} onUpdateItem={updateItem} />
           <Separator />
@@ -278,11 +415,71 @@ export default function PosPage() {
             onDiscountValueChange={setDiscountValue}
           />
           <Separator />
-          <PaymentMethodSelect
-            methods={paymentMethods}
-            selected={state.paymentMethodId}
-            onSelect={setPaymentMethod}
-          />
+          {paymentMethods.length > 0 && (
+            <>
+              {/* Default: Single Payment Method Selection */}
+              {!state.paymentAllocations.some(pa => pa.amount > 0 && pa.amount !== totals.grandTotal) ? (
+                <PaymentMethodSelect
+                  methods={paymentMethods}
+                  selected={state.paymentMethodId}
+                  onSelect={(id) => {
+                    setPaymentMethod(id);
+                    // Set full amount to selected method
+                    const newAllocations = paymentMethods.map(m => ({
+                      paymentMethodId: m.ID,
+                      amount: m.ID === id ? totals.grandTotal : 0,
+                    }));
+                    setPaymentAllocations(newAllocations);
+                  }}
+                />
+              ) : null}
+
+              {/* Toggle Split Payment */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">دفع مختلط</span>
+                <button
+                  onClick={() => {
+                    if (splitPaymentActive) {
+                      // Switch back to single payment (all to current method)
+                      const currentMethod = state.paymentMethodId || paymentMethods[0]?.ID;
+                      const newAllocations = paymentMethods.map(m => ({
+                        paymentMethodId: m.ID,
+                        amount: m.ID === currentMethod ? totals.grandTotal : 0,
+                      }));
+                      setPaymentAllocations(newAllocations);
+                      setSplitPaymentActive(false);
+                    } else {
+                      // Initialize split payment with current method having full amount
+                      const currentMethod = state.paymentMethodId || paymentMethods[0]?.ID;
+                      const newAllocations = paymentMethods.map(m => ({
+                        paymentMethodId: m.ID,
+                        amount: m.ID === currentMethod ? totals.grandTotal : 0,
+                      }));
+                      setPaymentAllocations(newAllocations);
+                      setSplitPaymentActive(true);
+                    }
+                  }}
+                  className={`text-xs px-2 py-1 rounded transition-colors ${
+                    splitPaymentActive
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  }`}
+                >
+                  {splitPaymentActive ? 'إلغاء' : 'تفعيل'}
+                </button>
+              </div>
+
+              {/* Split Payment Input (shown only when activated) */}
+              {splitPaymentActive && (
+                <SplitPaymentInput
+                  methods={paymentMethods}
+                  grandTotal={totals.grandTotal}
+                  allocations={state.paymentAllocations}
+                  onChange={setPaymentAllocations}
+                />
+              )}
+            </>
+          )}
 
           {saveError && (
             <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-lg p-2.5">
@@ -309,6 +506,21 @@ export default function PosPage() {
               </>
             )}
           </Button>
+
+          <Separator />
+          
+          {/* Recent Sales Sidebar */}
+          <RecentSalesSidebar
+            onEditSale={handleEditSale}
+            onDeleteSale={(saleId) => {
+              // Delete functionality is handled in the component
+              console.log('Delete sale:', saleId);
+            }}
+            onRefresh={() => {
+              // Refresh any other components if needed
+              console.log('Refresh sales');
+            }}
+          />
         </aside>
       </div>
 
@@ -343,6 +555,7 @@ export default function PosPage() {
         openShifts={rollover.openShifts}
         onDismiss={rollover.dismiss}
         onResolved={() => { rollover.resolved(); refreshSession(); }}
+        onSkip={rollover.skip}
       />
 
       {/* ═══════ Close Day Modal ═══════ */}
@@ -351,6 +564,9 @@ export default function PosPage() {
         onClose={() => setCloseDayOpen(false)}
         onClosed={() => { setCloseDayOpen(false); refreshSession(); }}
       />
+
+      {/* ═══════ Toast Notifications ═══════ */}
+      <ToastList toasts={toasts} dismiss={dismissToast} />
     </div>
   );
 }

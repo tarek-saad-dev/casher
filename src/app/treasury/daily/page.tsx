@@ -7,6 +7,7 @@ import TreasuryKpiCards from '@/components/treasury/TreasuryKpiCards';
 import PaymentMethodBreakdownTable from '@/components/treasury/PaymentMethodBreakdownTable';
 import TreasuryMovementsTable from '@/components/treasury/TreasuryMovementsTable';
 import TreasuryClosePanel from '@/components/treasury/TreasuryClosePanel';
+import PaymentMethodDetailsModal from '@/components/treasury/PaymentMethodDetailsModal';
 import type { 
   DailyTreasuryData, 
   TreasuryMovementsResponse,
@@ -23,6 +24,15 @@ export default function DailyTreasuryPage() {
   
   const [showClosePanel, setShowClosePanel] = useState(false);
   const [movementsPage, setMovementsPage] = useState(1);
+
+  const [detailsModal, setDetailsModal] = useState<{
+    paymentMethodId: number;
+    paymentMethodName: string;
+  } | null>(null);
+
+  const handleViewDetails = (id: number, name: string) => {
+    setDetailsModal({ paymentMethodId: id, paymentMethodName: name });
+  };
 
   // Set page title
   useEffect(() => {
@@ -260,9 +270,10 @@ export default function DailyTreasuryPage() {
             <TreasuryKpiCards summary={treasuryData.summary} loading={loading} />
 
             {/* Payment Method Breakdown */}
-            <PaymentMethodBreakdownTable 
+            <PaymentMethodBreakdownTable
               paymentMethods={treasuryData.paymentMethods}
               loading={loading}
+              onViewDetails={handleViewDetails}
             />
 
             {/* Detailed Movements */}
@@ -294,6 +305,16 @@ export default function DailyTreasuryPage() {
           </div>
         )}
       </div>
+
+      {/* Payment Method Details Modal */}
+      {detailsModal && (
+        <PaymentMethodDetailsModal
+          paymentMethodId={detailsModal.paymentMethodId}
+          paymentMethodName={detailsModal.paymentMethodName}
+          filters={filters}
+          onClose={() => setDetailsModal(null)}
+        />
+      )}
 
       {/* Close Panel Modal */}
       {showClosePanel && treasuryData && (
