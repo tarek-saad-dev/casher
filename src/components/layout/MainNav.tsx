@@ -8,7 +8,7 @@ import {
   History, Receipt, Wallet, Lock, ArrowLeftRight, BarChart3, Clock,
   Calculator, Settings, Scissors, Tags, Shield, Activity, Star,
   ChevronDown, Menu, X, SlidersHorizontal, PanelLeftClose, PanelLeftOpen,
-  UsersRound, FileBarChart, Calendar,
+  UsersRound, FileBarChart, Calendar, Ticket, CalendarCheck, MonitorPlay,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -30,6 +30,9 @@ const NAV_THEMES: Record<string, NavTheme> = {
   'الميزانية':         { rgb: '6,182,212',   emoji: '💰' }, // cyan
   'الموارد البشرية':   { rgb: '236,72,153',  emoji: '👥' }, // pink
   'الإدارة':           { rgb: '148,163,184', emoji: '⚙️' }, // slate
+  'لوحة التشغيل':      { rgb: '20,184,166',  emoji: '🖥️' }, // teal
+  'الطابور':           { rgb: '245,158,11',  emoji: '🎫' }, // amber
+  'الحجوزات':          { rgb: '99,102,241',  emoji: '📅' }, // indigo
 };
 
 function getTheme(title: string): NavTheme {
@@ -110,6 +113,25 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/budget', label: 'الميزانية الشهرية', icon: Calculator },
     ],
   },
+  // ─── Queue Module ───────────────────────────────────────────────
+  {
+    title: 'الطابور',
+    icon: Ticket,
+    items: [
+      { href: '/queue/live', label: 'لوحة الانتظار',  icon: LayoutGrid  },
+      { href: '/queue/new',  label: 'تذكرة جديدة',    icon: PlusCircle  },
+    ],
+  },
+  // ─── Bookings Module ─────────────────────────────────────────────
+  {
+    title: 'الحجوزات',
+    icon: CalendarCheck,
+    items: [
+      { href: '/bookings',          label: 'قائمة الحجوزات',  icon: ClipboardList },
+      { href: '/bookings/new',      label: 'حجز جديد',        icon: PlusCircle    },
+      { href: '/bookings/calendar', label: 'التقويم',          icon: Calendar      },
+    ],
+  },
   // ─── HR Module (Single with nested items) ─────────────────────────
   {
     title: 'الموارد البشرية',
@@ -134,6 +156,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/admin/loyalty',         label: 'إدارة النقاط',   icon: Star       },
       { href: '/admin/shift',           label: 'الورديات',        icon: Clock      },
       { href: '/admin/settings',        label: 'الإعدادات',       icon: Settings   },
+      { href: '/admin/queue-booking-settings', label: 'إعدادات الطابور', icon: Ticket     },
     ],
   },
 ];
@@ -368,6 +391,75 @@ export default function MainNav() {
     );
   };
 
+  // ── Direct link renderer (no sub-items, standalone button) ──────────────────
+  const renderDirectLink = (href: string, label: string, Icon: LucideIcon, rgb: string) => {
+    const active = isActive(href);
+    if (isCollapsed) {
+      return (
+        <Link
+          href={href}
+          title={label}
+          onClick={() => setMobileMenuOpen(false)}
+          style={{
+            position: 'relative',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 40, height: 40, borderRadius: 12,
+            margin: '0 auto 8px',
+            backgroundColor: active ? `rgba(${rgb},0.22)` : `rgba(${rgb},0.08)`,
+            border: active ? `1px solid rgba(${rgb},0.55)` : `1px solid rgba(${rgb},0.22)`,
+            boxShadow: active ? glow(rgb, 0.3) : 'none',
+            transition: 'all 0.2s ease',
+          }}
+        >
+          <Icon style={{ width: 18, height: 18, color: `rgb(${rgb})`, filter: active ? `drop-shadow(0 0 5px rgba(${rgb},0.6))` : 'none' }} />
+          {active && (
+            <span style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 3, height: 22, borderRadius: 9999, backgroundColor: `rgb(${rgb})`, boxShadow: dotGlow(rgb) }} />
+          )}
+        </Link>
+      );
+    }
+    return (
+      <Link
+        href={href}
+        onClick={() => setMobileMenuOpen(false)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '10px 12px',
+          borderRadius: 12,
+          marginBottom: 10,
+          backgroundColor: active ? `rgba(${rgb},0.18)` : `rgba(${rgb},0.07)`,
+          border: active ? `1px solid rgba(${rgb},0.50)` : `1px solid rgba(${rgb},0.20)`,
+          boxShadow: active ? glow(rgb, 0.25) : 'none',
+          transition: 'all 0.2s ease',
+          textDecoration: 'none',
+        }}
+        onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = `rgba(${rgb},0.13)`; }}
+        onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = `rgba(${rgb},0.07)`; }}
+      >
+        <div style={{
+          width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backgroundColor: `rgba(${rgb},${active ? '0.28' : '0.14'})`,
+          border: `1px solid rgba(${rgb},${active ? '0.55' : '0.25'})`,
+          boxShadow: active ? glow2(rgb, 0.35) : 'none',
+        }}>
+          <Icon style={{ width: 15, height: 15, color: `rgb(${rgb})`, filter: active ? `drop-shadow(0 0 5px rgba(${rgb},0.65))` : 'none' }} />
+        </div>
+        <span style={{
+          fontSize: 12, fontWeight: active ? 700 : 600,
+          color: active ? `rgb(${rgb})` : `rgba(${rgb},0.85)`,
+          textShadow: active ? `0 0 10px rgba(${rgb},0.4)` : 'none',
+          transition: 'all 0.2s ease',
+        }}>
+          {label}
+        </span>
+        {active && (
+          <span style={{ marginRight: 'auto', width: 5, height: 5, borderRadius: 9999, backgroundColor: `rgb(${rgb})`, boxShadow: dotGlow(rgb), flexShrink: 0 }} />
+        )}
+      </Link>
+    );
+  };
+
   // ── Section renderer ───────────────────────────────────────────────────────
   const renderSection = (section: NavSection) => {
     const theme = getTheme(section.title);
@@ -552,6 +644,7 @@ export default function MainNav() {
       className="flex-1 overflow-y-auto scrollbar-luxury-v"
       style={{ padding: isCollapsed ? '8px 6px' : '8px 10px' }}
     >
+      {renderDirectLink('/operations', 'لوحة التشغيل', MonitorPlay, '20,184,166')}
       {NAV_SECTIONS.map(section => (
         <div key={section.title}>
           {renderSection(section)}
