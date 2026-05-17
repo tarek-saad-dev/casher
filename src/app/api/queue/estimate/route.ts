@@ -4,7 +4,7 @@ import { computeBarberEstimate } from '@/lib/queueEstimateEngine';
 import { getPool, sql } from '@/lib/db';
 
 export const runtime = 'nodejs';
-console.log('[queue/estimate route] module loaded — v2 shared engine');
+const isDev = process.env.NODE_ENV !== 'production';
 
 /**
  * POST /api/queue/estimate
@@ -102,18 +102,9 @@ export async function POST(req: NextRequest) {
       ? `الوقت المتوقع للدخول ${timeStr}`
       : est.unavailableReason!;
 
-    console.log('[queue estimate] empId', empId);
-    console.log('[queue estimate] activeTickets', est.blockingTickets.map(t => ({
-      code: t.ticketCode, status: t.status, estimated: t.estimatedStart,
-    })));
-    console.log('[queue estimate] activeQueueCount', est.blockingQueueCount);
-    console.log('[queue estimate] result', {
-      empId, empName: resolvedEmpName,
-      blockingQueueCount: est.blockingQueueCount,
-      blockingBookingCount: est.blockingBookingCount,
-      isFreeNow, statusText, contextMsg,
-      estimatedStartTime: est.estimatedStartTime,
-      waitMinutes,
+    if (isDev) console.log('[queue estimate]', {
+      empId, empName: resolvedEmpName, isFreeNow, statusText,
+      blockingQueueCount: est.blockingQueueCount, waitMinutes,
     });
 
     // If barber unavailable, add to unavailable list
@@ -203,13 +194,7 @@ async function handleNearest(
       allBarbers.map(b => computeBarberEstimate(b.EmpID, b.EmpName, serviceIds, requestedAt))
     );
 
-    console.log('[queue estimate] nearest all estimates', estimates.map(e => ({
-      empId: e.empId, empName: e.empName,
-      isWorking: e.isWorking,
-      blockingQueueCount: e.blockingQueueCount,
-      blockingBookingCount: e.blockingBookingCount,
-      estimatedStartTime: e.estimatedStartTime,
-    })));
+    if (isDev) console.log('[queue estimate nearest] count', estimates.length, 'available', estimates.filter(e => e.isWorking).length);
 
     // Sort available barbers: earliest real slot → lower queue count
     const available = estimates

@@ -264,7 +264,9 @@ export async function POST(req: NextRequest) {
     }
     const servicesText = svcNames.join(', ') || 'خدمة عامة';
 
-    console.log('[public/booking/create] created', { bookingId, bookingCode, clientId, empId: resolvedEmpId });
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[public/booking/create] created', { bookingId, bookingCode, clientId, empId: resolvedEmpId });
+    }
 
     return NextResponse.json({
       ok: true,

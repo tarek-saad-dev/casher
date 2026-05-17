@@ -17,6 +17,8 @@
 import { getPool, sql } from '@/lib/db';
 import { getBarberAvailabilityReason } from '@/lib/barberAvailability';
 
+const isDev = process.env.NODE_ENV !== 'production';
+
 export interface Interval {
   start:      Date;
   end:        Date;
@@ -128,7 +130,7 @@ export async function buildQueueIntervals(
     .then((r: any) => r.recordset[0]?.oid != null)
     .catch(() => false);
 
-  console.log('[buildQueueIntervals] empId', empId, 'dateStr', dateStr, 'svcTableExists', svcTableExists);
+  if (isDev) console.log('[buildQueueIntervals] empId', empId, 'dateStr', dateStr, 'svcTableExists', svcTableExists);
 
   const durationSql = svcTableExists
     ? `ISNULL(
@@ -174,17 +176,13 @@ export async function buildQueueIntervals(
       return { recordset: [] as any[] };
     });
 
-  console.log('[timeline] empId', empId, 'activeQueueTickets count', res.recordset.length);
-  console.log('[timeline] activeQueueTickets', res.recordset.map((t: any) => ({
-    code: t.TicketCode,
-    status: t.Status,
-    estimatedStartTime: t.EstimatedStartTime,
-    duration: t.DurationMinutes,
-  })));
-  console.log('[queue estimate] activeTickets raw', res.recordset.map((t: any) => ({
-    code: t.TicketCode, status: t.Status, empId: t.EmpID, estimated: t.EstimatedStartTime,
-  })));
-  console.log('[queue estimate] activeQueueCount', res.recordset.length);
+  if (isDev) {
+    console.log('[timeline] empId', empId, 'activeQueueTickets count', res.recordset.length);
+    console.log('[timeline] activeQueueTickets', res.recordset.map((t: any) => ({
+      code: t.TicketCode, status: t.Status,
+      estimatedStartTime: t.EstimatedStartTime, duration: t.DurationMinutes,
+    })));
+  }
 
   const intervals: Interval[] = [];
 
@@ -221,11 +219,13 @@ export async function buildQueueIntervals(
     cursor = end; // next ticket starts right after this one
   }
 
-  const totalQueueBlockMinutes = intervals.length > 0
-    ? Math.round((cursor.getTime() - now.getTime()) / 60000)
-    : 0;
-  console.log('[timeline] totalQueueBlockMinutes', totalQueueBlockMinutes);
-  console.log('[timeline] nextAvailableTime (queue end)', cursor.toISOString());
+  if (isDev) {
+    const totalQueueBlockMinutes = intervals.length > 0
+      ? Math.round((cursor.getTime() - now.getTime()) / 60000)
+      : 0;
+    console.log('[timeline] totalQueueBlockMinutes', totalQueueBlockMinutes);
+    console.log('[timeline] nextAvailableTime (queue end)', cursor.toISOString());
+  }
 
   return intervals;
 }
@@ -309,8 +309,10 @@ export async function computeBarberEstimate(
   const now     = requestedAt ? new Date(requestedAt) : new Date();
   const dateStr = now.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
 
-  console.log('[queue estimate] empId', empId, 'empName', empName);
-  console.log('[queue estimate] requestedAt', now.toISOString(), 'cairoDate', dateStr);
+  if (isDev) {
+    console.log('[queue estimate] empId', empId, 'empName', empName);
+    console.log('[queue estimate] requestedAt', now.toISOString(), 'cairoDate', dateStr);
+  }
 
   // Check working hours at requestedAt (not at slot) — this is "is the barber working now?"
   const availResult = await getBarberAvailabilityReason(empId, now);
@@ -331,7 +333,7 @@ export async function computeBarberEstimate(
       blockingBookings:     [],
       blockingTickets:      [],
     };
-    console.log('[queue estimate] result (unavailable)', { empId, reason: availResult.reason });
+    if (isDev) console.log('[queue estimate] result (unavailable)', { empId, reason: availResult.reason });
     return result;
   }
 
@@ -341,12 +343,14 @@ export async function computeBarberEstimate(
   const qIntervals = await buildQueueIntervals(db, empId, dateStr, now, defaultDur, excludeTicketId);
   const bIntervals = await buildBookingIntervals(db, empId, dateStr, defaultDur);
 
-  console.log('[queue estimate] queue intervals', qIntervals.map(iv => ({
-    id: iv.id, code: iv.ticketCode, start: iv.start.toISOString(), end: iv.end.toISOString(), label: iv.label,
-  })));
-  console.log('[queue estimate] booking intervals', bIntervals.map(iv => ({
-    id: iv.id, start: iv.start.toISOString(), end: iv.end.toISOString(),
-  })));
+  if (isDev) {
+    console.log('[queue estimate] queue intervals', qIntervals.map(iv => ({
+      id: iv.id, code: iv.ticketCode, start: iv.start.toISOString(), end: iv.end.toISOString(), label: iv.label,
+    })));
+    console.log('[queue estimate] booking intervals', bIntervals.map(iv => ({
+      id: iv.id, start: iv.start.toISOString(), end: iv.end.toISOString(),
+    })));
+  }
 
   // Merge and sort all blocking intervals
   const allIntervals = [...qIntervals, ...bIntervals].sort(
@@ -357,7 +361,7 @@ export async function computeBarberEstimate(
   const slot = findFirstFreeSlot(now, customerDur, allIntervals);
   const estimatedWaitMinutes = Math.max(0, Math.round((slot.getTime() - now.getTime()) / 60000));
 
-  console.log('[queue estimate] chosen slot', slot.toISOString(), 'waitMinutes', estimatedWaitMinutes);
+  if (isDev) console.log('[queue estimate] chosen slot', slot.toISOString(), 'waitMinutes', estimatedWaitMinutes);
 
   const result: BarberEstimate = {
     empId,
@@ -386,7 +390,7 @@ export async function computeBarberEstimate(
     })),
   };
 
-  console.log('[queue estimate] result', {
+  if (isDev) console.log('[queue estimate] result', {
     empId, empName,
     blockingQueueCount: result.blockingQueueCount,
     blockingBookingCount: result.blockingBookingCount,
@@ -422,9 +426,10 @@ export async function checkBarberAvailableForBooking(
   const start   = typeof bookingStart === 'string' ? new Date(bookingStart) : bookingStart;
   const dateStr = cairoDateStr(start);
 
-  console.log('[timeline] empId', empId, 'empName', empName);
-  console.log('[timeline] requestedAt (bookingStart)', start.toISOString());
-  console.log('[timeline] mode booking');
+  if (isDev) {
+    console.log('[timeline] empId', empId, 'empName', empName);
+    console.log('[timeline] requestedAt (bookingStart)', start.toISOString());
+  }
 
   // Resolve empName if not provided
   if (!empName) {
@@ -466,14 +471,10 @@ export async function checkBarberAvailableForBooking(
   const qIntervals = await buildQueueIntervals(db, empId, dateStr, realNow, defaultDur);
   const bIntervals = await buildBookingIntervals(db, empId, dateStr, defaultDur);
 
-  console.log('[timeline check] empId', empId);
-  console.log('[timeline check] requested slot', start.toISOString(), '->', end.toISOString());
-  console.log('[timeline check] queue intervals', qIntervals.map(iv => ({
-    code: iv.ticketCode, start: iv.start.toISOString(), end: iv.end.toISOString(), label: iv.label,
-  })));
-  console.log('[timeline check] booking intervals', bIntervals.map(iv => ({
-    id: iv.id, start: iv.start.toISOString(), end: iv.end.toISOString(),
-  })));
+  if (isDev) {
+    console.log('[timeline check] empId', empId, 'slot', start.toISOString(), '->', end.toISOString());
+    console.log('[timeline check] queue intervals count', qIntervals.length);
+  }
 
   // 4. Find queue ticket conflicts — any interval that overlaps [start, end)
   const qConflicts = qIntervals.filter(
@@ -483,8 +484,9 @@ export async function checkBarberAvailableForBooking(
     iv => start < iv.end && end > iv.start,
   );
 
-  console.log('[timeline] blockingIntervals (queue conflicts)', qConflicts.length);
-  console.log('[timeline] blockingIntervals (booking conflicts)', bConflicts.length);
+  if (isDev) {
+    console.log('[timeline] conflicts q:', qConflicts.length, 'b:', bConflicts.length);
+  }
 
   if (qConflicts.length > 0 || bConflicts.length > 0) {
     // suggestedStart = end of the last interval in the FULL queue timeline
@@ -531,8 +533,7 @@ export async function checkBarberAvailableForBooking(
       durationMinutes:     customerDur,
     };
 
-    console.log('[timeline check] result', { empId, empName, available: false, reason, conflictType,
-      totalQueueCount: qIntervals.length, suggestedStartTime: suggestedStart.toISOString() });
+    if (isDev) console.log('[timeline check] unavailable', empId, reason);
     return result;
   }
 
@@ -550,6 +551,6 @@ export async function checkBarberAvailableForBooking(
     durationMinutes:     customerDur,
   };
 
-  console.log('[timeline check] result', { empId, empName, available: true, startTime: start.toISOString() });
+  if (isDev) console.log('[timeline check] available', empId, start.toISOString());
   return result;
 }

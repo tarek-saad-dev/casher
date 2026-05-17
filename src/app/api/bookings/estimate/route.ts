@@ -9,6 +9,7 @@ import {
 import type { BookingBarberResult } from '@/lib/operationsTypes';
 
 export const runtime = 'nodejs';
+const isDev = process.env.NODE_ENV !== 'production';
 
 /**
  * POST /api/bookings/estimate
@@ -55,10 +56,7 @@ export async function POST(req: NextRequest) {
     const resolvedDate = bookingDate ?? cairoDateStr(dt);
     const resolvedTime = bookingTime ?? `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
 
-    console.log('[booking estimate] bookingDate', resolvedDate);
-    console.log('[booking estimate] bookingTime', resolvedTime);
-    console.log('[booking estimate] serviceIds', serviceIds);
-    console.log('[booking estimate] mode', mode);
+    if (isDev) console.log('[booking estimate]', { mode, resolvedDate, resolvedTime, serviceIds });
 
     /** Convert BookingAvailability → BookingBarberResult */
     function toResult(r: BookingAvailability, workingWindow: string | null = null): BookingBarberResult {
@@ -113,7 +111,7 @@ export async function POST(req: NextRequest) {
       const check = await checkBarberAvailableForBooking(empId, emp.EmpName, dt, serviceIds);
       const result = toResult(check, ww);
 
-      console.log('[booking estimate] barber results', [result]);
+      if (isDev) console.log('[booking estimate] specific', result.empId, result.available);
 
       return NextResponse.json({
         ok:           result.available,
@@ -155,8 +153,8 @@ export async function POST(req: NextRequest) {
     const unavailable = barbers.filter(b => !b.available);
     const [best, ...alternatives] = available;
 
-    console.log('[booking estimate] barber results', barbers.map(b => ({
-      empId: b.empId, empName: b.empName, available: b.available, conflictType: b.conflictType,
+    if (isDev) console.log('[booking estimate] all barbers', barbers.map(b => ({
+      empId: b.empId, available: b.available, conflictType: b.conflictType,
     })));
 
     return NextResponse.json({
