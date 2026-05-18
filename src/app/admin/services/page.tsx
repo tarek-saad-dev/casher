@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Scissors, Plus, Edit2, Trash2, Loader2, FolderOpen, 
-  FolderPlus, Settings, Search, Filter, MoreVertical
+  Scissors, Plus, Edit2, Trash2, Loader2, FolderOpen,
+  FolderPlus, Settings, Search, Clock, MoreVertical, Users,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import KpiCard from '@/components/shared/KpiCard';
@@ -37,6 +37,16 @@ interface Service {
   CatName: string | null;
   SalesCount: number;
   isDeleted?: boolean;
+  DurationMinutes: number | null;
+}
+
+interface BarberDurationItem {
+  empId: number;
+  empName: string;
+  overrideDurationMinutes: number | null;
+  effectiveDurationMinutes: number;
+  durationSource: string;
+  pendingValue: string;
 }
 
 interface Category {
@@ -84,6 +94,86 @@ export default function ServicesManagementPage() {
     CatID: null,
     isActive: true,
   });
+
+  // Duration state per service (inline edit)
+  const [durationEdits, setDurationEdits] = useState<Record<number, string>>({});
+  const [durationSaving, setDurationSaving] = useState<Record<number, boolean>>({});
+
+  // Barber-duration modal
+  const [barberDurModal, setBarberDurModal] = useState(false);
+  const [barberDurService, setBarberDurService] = useState<Service | null>(null);
+  const [barberDurItems, setBarberDurItems] = useState<BarberDurationItem[]>([]);
+  const [barberDurLoading, setBarberDurLoading] = useState(false);
+  const [barberDurSaving, setBarberDurSaving] = useState(false);
+
+  const openBarberDurModal = async (service: Service) => {
+    setBarberDurService(service);
+    setBarberDurModal(true);
+    setBarberDurLoading(true);
+    try {
+      const res = await fetch(`/api/services/${service.ProID}/barber-durations`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل التحميل');
+      setBarberDurItems(
+        (data.barbers as BarberDurationItem[]).map(b => ({
+          ...b,
+          pendingValue: b.overrideDurationMinutes !== null ? String(b.overrideDurationMinutes) : '',
+        }))
+      );
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBarberDurLoading(false);
+    }
+  };
+
+  const saveBarberDurations = async () => {
+    if (!barberDurService) return;
+    setBarberDurSaving(true);
+    try {
+      const items = barberDurItems.map(b => ({
+        empId: b.empId,
+        durationMinutes: b.pendingValue.trim() === '' ? null : parseInt(b.pendingValue),
+      }));
+      const res = await fetch(`/api/services/${barberDurService.ProID}/barber-durations`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل الحفظ');
+      setBarberDurModal(false);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBarberDurSaving(false);
+    }
+  };
+
+  const saveDurationMinutes = async (service: Service) => {
+    const raw = durationEdits[service.ProID];
+    const val = raw === '' ? null : parseInt(raw);
+    if (val !== null && (isNaN(val) || val < 5 || val > 240)) {
+      setError('مدة الخدمة يجب أن تكون بين 5 و 240 دقيقة');
+      return;
+    }
+    setDurationSaving(prev => ({ ...prev, [service.ProID]: true }));
+    try {
+      const res = await fetch(`/api/services/${service.ProID}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ durationMinutes: val }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل الحفظ');
+      await loadData();
+      setDurationEdits(prev => { const n = { ...prev }; delete n[service.ProID]; return n; });
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setDurationSaving(prev => ({ ...prev, [service.ProID]: false }));
+    }
+  };
 
   // Category Modal State
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
@@ -142,6 +232,9 @@ export default function ServicesManagementPage() {
         CatID: service.CatID,
         isActive: !service.isDeleted,
       });
+      if (service.DurationMinutes !== null && service.DurationMinutes !== undefined) {
+        setDurationEdits(prev => ({ ...prev, [service.ProID]: String(service.DurationMinutes) }));
+      }
     } else {
       setEditingService(null);
       setServiceFormData({
@@ -295,6 +388,91 @@ export default function ServicesManagementPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6" dir="rtl">
+      {/* Barber Duration Modal */}
+      <Dialog open={barberDurModal} onOpenChange={setBarberDurModal}>
+        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl flex items-center gap-2">
+              <Users className="w-5 h-5 text-amber-400" />
+              مدة الخدمة حسب الصنايعي — {barberDurService?.ProName}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-zinc-400 -mt-2">
+            مدة الصنايعي تؤثر على المواعيد المتاحة في الحجز الإلكتروني. اترك الحقل فارغًا لاستخدام مدة الخدمة الافتراضية.
+          </p>
+          {barberDurLoading ? (
+            <div className="py-10 text-center text-zinc-500">
+              <Loader2 className="w-6 h-6 mx-auto animate-spin mb-2" />
+              <p className="text-sm">جاري التحميل...</p>
+            </div>
+          ) : (
+            <div className="max-h-96 overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-zinc-800">
+                    <TableHead className="text-right text-zinc-400">الصنايعي</TableHead>
+                    <TableHead className="text-right text-zinc-400">مدة مخصصة</TableHead>
+                    <TableHead className="text-right text-zinc-400">المدة الفعلية</TableHead>
+                    <TableHead className="text-right text-zinc-400">المصدر</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {barberDurItems.map((b, i) => {
+                    const pendingNum = b.pendingValue === '' ? null : parseInt(b.pendingValue);
+                    const effective = pendingNum !== null && !isNaN(pendingNum)
+                      ? pendingNum
+                      : b.effectiveDurationMinutes;
+                    const src = pendingNum !== null && !isNaN(pendingNum) ? 'مخصصة' :
+                      b.durationSource === 'EMP_SERVICE_OVERRIDE' ? 'مخصصة' :
+                      b.durationSource === 'SERVICE_DEFAULT' ? 'الافتراضية' : 'النظام';
+                    return (
+                      <TableRow key={b.empId} className="border-zinc-800">
+                        <TableCell className="text-white font-medium">{b.empName}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="number"
+                              min={5} max={240}
+                              placeholder="—"
+                              value={b.pendingValue}
+                              onChange={e => {
+                                const updated = [...barberDurItems];
+                                updated[i] = { ...updated[i], pendingValue: e.target.value };
+                                setBarberDurItems(updated);
+                              }}
+                              className="w-20 bg-zinc-800 border-zinc-700 text-white text-center h-8"
+                            />
+                            <span className="text-xs text-zinc-400">دقيقة</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-zinc-300 text-sm">{effective} دقيقة</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={src === 'مخصصة' ? 'default' : 'secondary'}
+                            className={`text-xs ${src === 'مخصصة' ? 'bg-amber-600/20 text-amber-300 border-amber-600/30' : 'bg-zinc-700 text-zinc-400'}`}
+                          >
+                            {src}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          <p className="text-xs text-zinc-500">
+            مدة الخدمة الافتراضية تُستخدم إذا لم يتم تحديد مدة خاصة للصنايعي.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setBarberDurModal(false)} className="border-zinc-700 hover:bg-zinc-800">إلغاء</Button>
+            <Button onClick={saveBarberDurations} disabled={barberDurSaving} className="bg-amber-600 hover:bg-amber-700">
+              {barberDurSaving ? <><Loader2 className="w-4 h-4 ml-2 animate-spin" />جاري الحفظ...</> : 'حفظ مدد الصنايعية'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <PageHeader
         title="إدارة الخدمات والفئات"
         description="إدارة خدمات الصالون وتصنيفاتها — إضافة وتعديل وحذف الخدمات والفئات"
@@ -398,6 +576,7 @@ export default function ServicesManagementPage() {
                 <TableHead className="text-right text-zinc-400">الفئة</TableHead>
                 <TableHead className="text-right text-zinc-400">السعر</TableHead>
                 <TableHead className="text-right text-zinc-400">العمولة</TableHead>
+                <TableHead className="text-right text-zinc-400">مدة الخدمة</TableHead>
                 <TableHead className="text-right text-zinc-400">المبيعات</TableHead>
                 <TableHead className="text-right text-zinc-400">الحالة</TableHead>
                 <TableHead className="text-right text-zinc-400">إجراءات</TableHead>
@@ -417,6 +596,28 @@ export default function ServicesManagementPage() {
                   </TableCell>
                   <TableCell className="text-zinc-300">{service.SPrice1} جنيه</TableCell>
                   <TableCell className="text-zinc-300">{service.Bonus} جنيه</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        type="number"
+                        min={5} max={240}
+                        placeholder="افتراضي"
+                        value={durationEdits[service.ProID] ?? (service.DurationMinutes !== null && service.DurationMinutes !== undefined ? String(service.DurationMinutes) : '')}
+                        onChange={e => setDurationEdits(prev => ({ ...prev, [service.ProID]: e.target.value }))}
+                        className="w-20 h-7 text-xs bg-zinc-800 border-zinc-700 text-white text-center"
+                      />
+                      <span className="text-xs text-zinc-500">د</span>
+                      {durationEdits[service.ProID] !== undefined && durationEdits[service.ProID] !== String(service.DurationMinutes ?? '') && (
+                        <button
+                          onClick={() => saveDurationMinutes(service)}
+                          disabled={!!durationSaving[service.ProID]}
+                          className="text-xs text-amber-400 hover:text-amber-300 disabled:opacity-50"
+                        >
+                          {durationSaving[service.ProID] ? <Loader2 className="w-3 h-3 animate-spin" /> : '✓'}
+                        </button>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell className="text-zinc-300">{service.SalesCount}</TableCell>
                   <TableCell>
                     <Badge 
@@ -434,14 +635,21 @@ export default function ServicesManagementPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="bg-zinc-800 border-zinc-700">
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           onClick={() => openServiceModal(service)}
                           className="text-white hover:bg-zinc-700"
                         >
                           <Edit2 className="w-4 h-4 ml-2" />
                           تعديل
                         </DropdownMenuItem>
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
+                          onClick={() => openBarberDurModal(service)}
+                          className="text-amber-400 hover:bg-amber-500/10"
+                        >
+                          <Clock className="w-4 h-4 ml-2" />
+                          تخصيص مدة الصنايعية
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
                           onClick={() => deleteService(service.ProID)}
                           className="text-rose-400 hover:bg-rose-500/10"
                         >
