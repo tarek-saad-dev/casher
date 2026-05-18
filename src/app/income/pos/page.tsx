@@ -23,6 +23,7 @@ import CloseDayModal from '@/components/session/CloseDayModal';
 import { useSaleState } from '@/hooks/useSaleState';
 import { useSession } from '@/hooks/useSession';
 import { useDayRollover } from '@/hooks/useDayRollover';
+import { printReceiptWithFallback, type PrintReceiptData } from '@/lib/printService';
 import type { Barber, Service, PaymentMethod, Customer } from '@/lib/types';
 
 // ─── Toast Types ─────────────────────────────────────────────────────────
@@ -103,6 +104,7 @@ export default function PosPage() {
   const [printOpen, setPrintOpen] = useState(false);
   const [splitPaymentActive, setSplitPaymentActive] = useState(false);
   const [editingSaleId, setEditingSaleId] = useState<number | null>(null); // Track edit mode
+  const [lastSaveTime, setLastSaveTime] = useState(0); // Track last save time for double-click detection
 
   // ───────────────── Sync shift from session into sale state ─────────────────
   useEffect(() => {
@@ -116,10 +118,48 @@ export default function PosPage() {
     fetch('/api/payment-methods').then(r => r.json()).then(d => { if (Array.isArray(d)) setPaymentMethods(d); });
   }, []);
 
+  // ───────────────── Auto-select default payment method when methods load ─────────────────
+  useEffect(() => {
+    if (paymentMethods.length === 0) return;
+    // Only initialize if no method is selected yet (don't override edit-loaded state)
+    if (state.paymentMethodId !== null) return;
+    const cashMethod = paymentMethods.find(m =>
+      m.Name?.toLowerCase().includes('كاش') ||
+      m.Name?.toLowerCase() === 'cash'
+    ) || paymentMethods[0];
+    if (!cashMethod) return;
+    console.log('[payment] loaded paymentMethods:', paymentMethods.map(m => `${m.ID}:${m.Name}`));
+    setPaymentMethod(cashMethod.ID);
+    const allocs = paymentMethods.map(m => ({
+      paymentMethodId: m.ID,
+      amount: m.ID === cashMethod.ID ? totals.grandTotal : 0,
+    }));
+    setPaymentAllocations(allocs);
+    console.log('[payment] selectedPaymentMethodId after init:', cashMethod.ID);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentMethods]);
+
+  // ───────────────── Keep single-payment allocation in sync with grand total ─────────────────
+  useEffect(() => {
+    if (splitPaymentActive) return;
+    if (state.paymentMethodId === null) return;
+    if (paymentMethods.length === 0) return;
+    // Only update if currently a single full-amount allocation (not a manual split)
+    const activeCount = state.paymentAllocations.filter(pa => pa.amount > 0).length;
+    if (activeCount > 1) return;
+    const allocs = paymentMethods.map(m => ({
+      paymentMethodId: m.ID,
+      amount: m.ID === state.paymentMethodId ? totals.grandTotal : 0,
+    }));
+    setPaymentAllocations(allocs);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totals.grandTotal, state.paymentMethodId]);
+
   // ───────────────── Save sale ─────────────────
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(async (forcePrint = false) => {
     setSaveError('');
     if (state.items.length === 0) { setSaveError('يجب إضافة خدمة واحدة على الأقل'); return; }
+    if (state.paymentMethodId === null) { setSaveError('اختر طريقة الدفع'); return; }
     
     // Validate split payment totals
     const totalAllocated = state.paymentAllocations.reduce((sum, pa) => sum + pa.amount, 0);
@@ -194,15 +234,50 @@ export default function PosPage() {
       }
 
       const result = await res.json();
-      setPrintInvID(result.invID);
-      setPrintOpen(true);
+      const savedInvID: number = result.invID;
+      setPrintInvID(savedInvID);
+
       // Reset everything (customer, barber, items, discount, payment, edit mode)
       reset();
       setEditingSaleId(null);
       setSplitPaymentActive(false);
       setSaveError('');
+
       // Show success toast
       addToast('success', isEditing ? 'تم تحديث الفاتورة بنجاح' : 'تم حفظ الفاتورة بنجاح');
+
+      if (forcePrint || isEditing) {
+        // Double-click (forcePrint) or edit always opens the browser modal directly
+        setPrintOpen(true);
+      } else {
+        // New sale: try local print service first, fall back to browser modal
+        const printData: PrintReceiptData = {
+          invID: savedInvID,
+          invDate: result.invDate || new Date().toISOString(),
+          invTime: result.invTime || new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+          customerName: state.customer?.Name,
+          customerPhone: state.customer?.Mobile ?? undefined,
+          SubTotal: totals.subTotal,
+          Dis: state.discountPercent || 0,
+          DisVal: totals.discountValue,
+          GrandTotal: totals.grandTotal,
+          PayCash: payCash,
+          PayVisa: payVisa,
+          PaymentMethodID: mainPayment.paymentMethodId,
+          items: state.items.map(i => ({
+            ProName: i.ProName,
+            EmpName: i.EmpName,
+            SPrice: i.SPriceAfterDis,
+            Qty: i.Qty,
+            SPriceAfterDis: i.SPriceAfterDis,
+          })),
+        };
+        await printReceiptWithFallback(
+          printData,
+          () => setPrintOpen(true),
+          addToast,
+        );
+      }
     } catch {
       setSaveError('خطأ في الاتصال بالخادم');
     } finally {
@@ -210,14 +285,50 @@ export default function PosPage() {
     }
   }, [state, totals, reset, addToast, paymentMethods, editingSaleId]);
 
+  // ───────────────── Handle + button click (double-click detection) ─────────────────
+  const handlePlusClick = useCallback(() => {
+    const now = Date.now();
+    const timeDiff = now - lastSaveTime;
+    
+    if (timeDiff < 500 && timeDiff > 0) {
+      // Double click detected - save and print immediately
+      setShouldAutoPrint(true); // Set flag for auto print
+      handleSave(true);
+    } else {
+      // Single click - just save
+      handleSave(false);
+    }
+    
+    setLastSaveTime(now);
+  }, [lastSaveTime, handleSave]);
+
+  // ───────────────── Auto print after save for double-click ─────────────────
+  const [shouldAutoPrint, setShouldAutoPrint] = useState(false);
+
+  useEffect(() => {
+    if (printOpen && printInvID && shouldAutoPrint) {
+      // This was triggered by double-click, trigger auto print after modal loads
+      const timer = setTimeout(() => {
+        // Find and click the print button
+        const printButton = document.querySelector('[data-testid="print-button"]') as HTMLButtonElement;
+        if (printButton && !printButton.disabled) {
+          printButton.click();
+        }
+        setShouldAutoPrint(false); // Reset flag
+      }, 800); // Wait for modal to fully load
+      return () => clearTimeout(timer);
+    }
+  }, [printOpen, printInvID, shouldAutoPrint]);
+
   // ───────────────── Keyboard shortcuts ─────────────────
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'F9') { e.preventDefault(); handleSave(); }
+      if (e.key === '+' || (e.key === '=' && e.shiftKey)) { e.preventDefault(); handlePlusClick(); }
     }
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [handleSave]);
+  }, [handleSave, handlePlusClick]);
 
   // ───────────────── New sale handler ─────────────────
   const handleNewSale = useCallback(() => {
@@ -385,6 +496,7 @@ export default function PosPage() {
           <Separator />
           <div className="text-xs text-muted-foreground space-y-1">
             <p><kbd className="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono">F9</kbd> حفظ الفاتورة</p>
+            <p><kbd className="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono">+</kbd> حفظ (ضغطة) / حفظ وطباعة (ضغطتين)</p>
           </div>
         </aside>
 
@@ -488,24 +600,35 @@ export default function PosPage() {
             </div>
           )}
 
-          <Button
-            size="lg"
-            className="w-full text-base font-bold py-6"
-            onClick={handleSave}
-            disabled={saving || state.items.length === 0}
-          >
-            {saving ? (
-              <>
-                <Loader2 className="w-5 h-5 ml-2 animate-spin" />
-                جاري الحفظ...
-              </>
-            ) : (
-              <>
-                <Save className="w-5 h-5 ml-2" />
-                حفظ الفاتورة (F9)
-              </>
-            )}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              size="lg"
+              className="flex-1 text-base font-bold py-6"
+              onClick={() => handleSave()}
+              disabled={saving || state.items.length === 0}
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="w-5 h-5 ml-2 animate-spin" />
+                  جاري الحفظ...
+                </>
+              ) : (
+                <>
+                  <Save className="w-5 h-5 ml-2" />
+                  حفظ (F9)
+                </>
+              )}
+            </Button>
+            <Button
+              size="lg"
+              className="px-6 py-6 text-base font-bold"
+              onClick={handlePlusClick}
+              disabled={saving || state.items.length === 0}
+              variant="outline"
+            >
+              <span className="text-xl font-bold">+</span>
+            </Button>
+          </div>
 
           <Separator />
           

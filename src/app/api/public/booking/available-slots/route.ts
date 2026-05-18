@@ -7,12 +7,7 @@ import {
   isValidDate,
   PUBLIC_CORS_HEADERS,
 } from '@/lib/publicBookingHelpers';
-import {
-  checkBarberAvailableForBooking,
-  getDefaultDuration,
-  getServicesDuration,
-} from '@/lib/queueEstimateEngine';
-import { getBarberAvailabilityReason } from '@/lib/barberAvailability';
+import { checkBarberAvailableForBooking } from '@/lib/queueEstimateEngine';
 
 export const runtime = 'nodejs';
 
@@ -58,36 +53,26 @@ export async function GET(req: NextRequest) {
     const settings = await getPublicSettings();
     const db       = await getPool();
 
-    // Resolve service duration
-    const defaultDur  = await getDefaultDuration(db);
-    const customerDur = await getServicesDuration(db, serviceIds, defaultDur);
-
-    // Determine working window for slot generation
-    // Use first available barber's schedule (or default 09:00–23:00 fallback)
-    const targetEmpId = empId ?? await getFirstBarber(db);
-    let windowStart = '09:00';
-    let windowEnd   = '23:00';
-
-    if (targetEmpId) {
-      const noonDt   = new Date(`${date}T12:00:00`);
-      const avail    = await getBarberAvailabilityReason(targetEmpId, noonDt);
-      if (avail.startTime) windowStart = avail.startTime;
-      if (avail.endTime)   windowEnd   = avail.endTime;
-    }
+    // For nearest: use wide 09:00-23:00 window to cover all barbers' possible schedules.
+    // For specific: use 09:00-23:00 fallback (barber availability check will reject out-of-hours slots).
+    const windowStart = '09:00';
+    const windowEnd   = '23:00';
 
     // Generate slot times from window
-    const slotTimes  = generateSlots(date, windowStart, windowEnd, settings.slotIntervalMinutes);
+    const slotTimes  = generateSlots(windowStart, windowEnd, settings.slotIntervalMinutes);
     const minNotice  = settings.minNoticeMinutes;
     const nowMs      = Date.now();
 
-    // For nearest: collect all barber IDs
-    let barberIds: number[] = empId ? [empId] : await getAllBarberIds(db);
+    // For nearest: collect all barber IDs and names upfront
+    const barberIds: number[] = empId ? [empId] : await getAllBarberIds(db);
+    const names = barberIds.length > 0 ? await getBarberNames(db, barberIds) : {};
 
     // Build slots
     const slots: any[] = [];
 
     for (const time of slotTimes) {
       const slotDt = new Date(`${date}T${time}:00`);
+      const label  = formatTimeLabel(time);
 
       // Skip slots in the past or within min notice
       if (slotDt.getTime() - nowMs < minNotice * 60_000) {
@@ -95,11 +80,12 @@ export async function GET(req: NextRequest) {
       }
 
       if (mode === 'specific' && empId) {
-        const check = await checkBarberAvailableForBooking(empId, '', slotDt, serviceIds);
+        const check = await checkBarberAvailableForBooking(empId, names[empId] ?? '', slotDt, serviceIds);
         slots.push(check.available
-          ? { time, available: true }
+          ? { time, label, available: true }
           : {
               time,
+              label,
               available:         false,
               reason:            check.reason,
               nextAvailableTime: check.suggestedStartTime
@@ -110,21 +96,22 @@ export async function GET(req: NextRequest) {
         );
       } else {
         // Nearest: find first available barber for this slot
-        let bestBarber: { id: number; name: string } | null = null;
-        let availCount = 0;
+        // Flatten empId + barberName directly onto the slot (no nested bestBarber object)
+        let bestEmpId: number | null = null;
+        let bestBarberName: string   = '';
 
-        const names = await getBarberNames(db, barberIds);
         for (const bid of barberIds) {
           const check = await checkBarberAvailableForBooking(bid, names[bid] ?? '', slotDt, serviceIds);
           if (check.available) {
-            availCount++;
-            if (!bestBarber) bestBarber = { id: bid, name: names[bid] ?? '' };
+            bestEmpId     = bid;
+            bestBarberName = names[bid] ?? '';
+            break;
           }
         }
 
-        slots.push(bestBarber
-          ? { time, available: true, bestBarber, availableBarbersCount: availCount }
-          : { time, available: false, reason: 'لا يوجد حلاق متاح' }
+        slots.push(bestEmpId !== null
+          ? { time, label, available: true, empId: bestEmpId, barberName: bestBarberName }
+          : { time, label, available: false, reason: 'لا يوجد حلاق متاح' }
         );
       }
     }
@@ -144,10 +131,18 @@ export async function GET(req: NextRequest) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function generateSlots(date: string, start: string, end: string, intervalMin: number): string[] {
+/** Format HH:MM into a 12-hour label, e.g. "03:00 PM" */
+function formatTimeLabel(time: string): string {
+  const [h, m] = time.split(':').map(Number);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12    = h % 12 === 0 ? 12 : h % 12;
+  return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+function generateSlots(start: string, end: string, intervalMin: number): string[] {
   const times: string[] = [];
-  let [sh, sm] = start.split(':').map(Number);
-  let [eh, em] = end.split(':').map(Number);
+  const [sh, sm] = start.split(':').map(Number);
+  const [eh, em] = end.split(':').map(Number);
 
   // Handle overnight
   const overnight = eh * 60 + em <= sh * 60 + sm;
@@ -155,8 +150,6 @@ function generateSlots(date: string, start: string, end: string, intervalMin: nu
 
   let cur = sh * 60 + sm;
   while (cur < endTotal) {
-    const hh = String(cur % (24 * 60) < 0 ? (cur % (24 * 60)) + 24 * 60 : cur % (24 * 60))
-      .padStart(4, '0');
     const totalMinsOfDay = cur % (24 * 60);
     const hStr = String(Math.floor(totalMinsOfDay / 60)).padStart(2, '0');
     const mStr = String(totalMinsOfDay % 60).padStart(2, '0');
@@ -164,14 +157,6 @@ function generateSlots(date: string, start: string, end: string, intervalMin: nu
     cur += intervalMin;
   }
   return times;
-}
-
-async function getFirstBarber(db: any): Promise<number | null> {
-  const res = await db.request().query(`
-    SELECT TOP 1 EmpID FROM [dbo].[TblEmp]
-    WHERE ISNULL(isActive,1)=1 AND Job IN (N'حلاق',N'مساعد',N'Barber',N'barber')
-  `).catch(() => ({ recordset: [] }));
-  return res.recordset[0]?.EmpID ?? null;
 }
 
 async function getAllBarberIds(db: any): Promise<number[]> {
