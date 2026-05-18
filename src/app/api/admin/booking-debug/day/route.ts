@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
-import { getServiceDuration } from "@/lib/publicBookingHelpers";
+import { getDefaultDuration, getServicesDuration } from "@/lib/queueEstimateEngine";
 
 // Types
 interface QueueTicket {
@@ -140,7 +140,8 @@ export async function GET(req: NextRequest) {
     const db = await getPool();
 
     // Get service duration
-    const durationMinutes = await getServiceDuration(db, serviceIds);
+    const defaultDur = await getDefaultDuration(db);
+    const durationMinutes = await getServicesDuration(db, serviceIds, defaultDur);
 
     // Parse date
     const date = new Date(dateStr);
