@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "salon": {
+    "name": "Cut Salon",
+    "logoUrl": null,
+    "timezone": "Africa/Cairo",
+    "currency": "EGP",
+    "bookingEnabled": true
+  },
+  "settings": {
+    "allowSpecificBarber": true,
+    "allowNearestBarber": true,
+    "defaultMode": "nearest",
+    "slotIntervalMinutes": 15,
+    "maxBookingDaysAhead": 14,
+    "minNoticeMinutes": 30
+  }
+}

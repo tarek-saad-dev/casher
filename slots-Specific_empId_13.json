@@ -1,0 +1,155 @@
+{
+  "time": 78335,
+  "data": {
+    "ok": true,
+    "date": "2026-05-18",
+    "mode": "specific",
+    "empId": 13,
+    "slots": [
+      {
+        "time": "15:00",
+        "available": true
+      },
+      {
+        "time": "15:15",
+        "available": true
+      },
+      {
+        "time": "15:30",
+        "available": true
+      },
+      {
+        "time": "15:45",
+        "available": true
+      },
+      {
+        "time": "16:00",
+        "available": true
+      },
+      {
+        "time": "16:15",
+        "available": true
+      },
+      {
+        "time": "16:30",
+        "available": true
+      },
+      {
+        "time": "16:45",
+        "available": true
+      },
+      {
+        "time": "17:00",
+        "available": true
+      },
+      {
+        "time": "17:15",
+        "available": true
+      },
+      {
+        "time": "17:30",
+        "available": true
+      },
+      {
+        "time": "17:45",
+        "available": true
+      },
+      {
+        "time": "18:00",
+        "available": true
+      },
+      {
+        "time": "18:15",
+        "available": true
+      },
+      {
+        "time": "18:30",
+        "available": true
+      },
+      {
+        "time": "18:45",
+        "available": true
+      },
+      {
+        "time": "19:00",
+        "available": true
+      },
+      {
+        "time": "19:15",
+        "available": true
+      },
+      {
+        "time": "19:30",
+        "available": true
+      },
+      {
+        "time": "19:45",
+        "available": true
+      },
+      {
+        "time": "20:00",
+        "available": true
+      },
+      {
+        "time": "20:15",
+        "available": true
+      },
+      {
+        "time": "20:30",
+        "available": true
+      },
+      {
+        "time": "20:45",
+        "available": true
+      },
+      {
+        "time": "21:00",
+        "available": true
+      },
+      {
+        "time": "21:15",
+        "available": true
+      },
+      {
+        "time": "21:30",
+        "available": true
+      },
+      {
+        "time": "21:45",
+        "available": true
+      },
+      {
+        "time": "22:00",
+        "available": true
+      },
+      {
+        "time": "22:15",
+        "available": true
+      },
+      {
+        "time": "22:30",
+        "available": true
+      },
+      {
+        "time": "22:45",
+        "available": true
+      },
+      {
+        "time": "23:00",
+        "available": true
+      },
+      {
+        "time": "23:15",
+        "available": true
+      },
+      {
+        "time": "23:30",
+        "available": true
+      },
+      {
+        "time": "23:45",
+        "available": true
+      }
+    ]
+  }
+}

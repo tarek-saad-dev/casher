@@ -1,0 +1,81 @@
+{
+  "ok": true,
+  "mode": "specific",
+  "empId": 25,
+  "days": [
+    {
+      "date": "2026-05-18",
+      "available": false,
+      "label": "الاثنين",
+      "reason": "إجازة أسبوعية",
+      "reasonCode": "DAY_OFF"
+    },
+    {
+      "date": "2026-05-19",
+      "available": true,
+      "label": "الثلاثاء"
+    },
+    {
+      "date": "2026-05-20",
+      "available": true,
+      "label": "الأربعاء"
+    },
+    {
+      "date": "2026-05-21",
+      "available": true,
+      "label": "الخميس"
+    },
+    {
+      "date": "2026-05-22",
+      "available": true,
+      "label": "الجمعة"
+    },
+    {
+      "date": "2026-05-23",
+      "available": true,
+      "label": "السبت"
+    },
+    {
+      "date": "2026-05-24",
+      "available": true,
+      "label": "الأحد"
+    },
+    {
+      "date": "2026-05-25",
+      "available": false,
+      "label": "الاثنين",
+      "reason": "إجازة أسبوعية",
+      "reasonCode": "DAY_OFF"
+    },
+    {
+      "date": "2026-05-26",
+      "available": true,
+      "label": "الثلاثاء"
+    },
+    {
+      "date": "2026-05-27",
+      "available": true,
+      "label": "الأربعاء"
+    },
+    {
+      "date": "2026-05-28",
+      "available": true,
+      "label": "الخميس"
+    },
+    {
+      "date": "2026-05-29",
+      "available": true,
+      "label": "الجمعة"
+    },
+    {
+      "date": "2026-05-30",
+      "available": true,
+      "label": "السبت"
+    },
+    {
+      "date": "2026-05-31",
+      "available": true,
+      "label": "الأحد"
+    }
+  ]
+}

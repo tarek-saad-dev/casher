@@ -1,0 +1,93 @@
+{
+  "ok": true,
+  "mode": "specific",
+  "empId": 13,
+  "days": [
+    {
+      "date": "2026-05-18",
+      "available": true,
+      "label": "الاثنين"
+    },
+    {
+      "date": "2026-05-19",
+      "available": false,
+      "label": "الثلاثاء",
+      "reason": "إجازة أسبوعية",
+      "reasonCode": "DAY_OFF"
+    },
+    {
+      "date": "2026-05-20",
+      "available": false,
+      "label": "الأربعاء",
+      "reason": "إجازة أسبوعية",
+      "reasonCode": "DAY_OFF"
+    },
+    {
+      "date": "2026-05-21",
+      "available": false,
+      "label": "الخميس",
+      "reason": "إجازة أسبوعية",
+      "reasonCode": "DAY_OFF"
+    },
+    {
+      "date": "2026-05-22",
+      "available": true,
+      "label": "الجمعة"
+    },
+    {
+      "date": "2026-05-23",
+      "available": false,
+      "label": "السبت",
+      "reason": "إجازة أسبوعية",
+      "reasonCode": "DAY_OFF"
+    },
+    {
+      "date": "2026-05-24",
+      "available": true,
+      "label": "الأحد"
+    },
+    {
+      "date": "2026-05-25",
+      "available": true,
+      "label": "الاثنين"
+    },
+    {
+      "date": "2026-05-26",
+      "available": false,
+      "label": "الثلاثاء",
+      "reason": "إجازة أسبوعية",
+      "reasonCode": "DAY_OFF"
+    },
+    {
+      "date": "2026-05-27",
+      "available": false,
+      "label": "الأربعاء",
+      "reason": "إجازة أسبوعية",
+      "reasonCode": "DAY_OFF"
+    },
+    {
+      "date": "2026-05-28",
+      "available": false,
+      "label": "الخميس",
+      "reason": "إجازة أسبوعية",
+      "reasonCode": "DAY_OFF"
+    },
+    {
+      "date": "2026-05-29",
+      "available": true,
+      "label": "الجمعة"
+    },
+    {
+      "date": "2026-05-30",
+      "available": false,
+      "label": "السبت",
+      "reason": "إجازة أسبوعية",
+      "reasonCode": "DAY_OFF"
+    },
+    {
+      "date": "2026-05-31",
+      "available": true,
+      "label": "الأحد"
+    }
+  ]
+}

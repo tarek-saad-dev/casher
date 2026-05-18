@@ -61,7 +61,7 @@ async function addColumnIfNotExists(
   db: sql.ConnectionPool,
   columnName: string,
   dataType: string,
-  defaultValue: string
+  defaultValue: string,
 ): Promise<boolean> {
   const checkResult = await db.request().query(`
     SELECT COUNT(*) as count
@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
           error: "Table QueueBookingSettings does not exist",
           tableExists: false,
         },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -133,7 +133,7 @@ export async function GET(req: NextRequest) {
     console.error("[admin/booking-settings-migrate] GET error:", err);
     return NextResponse.json(
       { ok: false, error: err.message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -156,6 +156,7 @@ export async function POST(req: NextRequest) {
         CREATE TABLE [dbo].[QueueBookingSettings] (
           SettingID INT PRIMARY KEY IDENTITY(1,1),
           SalonName NVARCHAR(200) NOT NULL DEFAULT N'Cut Salon',
+          LogoUrl NVARCHAR(500) NULL,
           Timezone NVARCHAR(100) NOT NULL DEFAULT N'Africa/Cairo',
           Currency NVARCHAR(10) NOT NULL DEFAULT N'EGP',
           BookingEnabled BIT NOT NULL DEFAULT 1,
@@ -189,37 +190,112 @@ export async function POST(req: NextRequest) {
       // Table exists - ensure all columns exist
       const addedCols: string[] = [];
 
-      if (await addColumnIfNotExists(db, "Timezone", "NVARCHAR(100)", "NOT NULL DEFAULT N'Africa/Cairo'")) {
+      if (await addColumnIfNotExists(db, "LogoUrl", "NVARCHAR(500)", "NULL")) {
+        addedCols.push("LogoUrl");
+      }
+      if (
+        await addColumnIfNotExists(
+          db,
+          "Timezone",
+          "NVARCHAR(100)",
+          "NOT NULL DEFAULT N'Africa/Cairo'",
+        )
+      ) {
         addedCols.push("Timezone");
       }
-      if (await addColumnIfNotExists(db, "Currency", "NVARCHAR(10)", "NOT NULL DEFAULT N'EGP'")) {
+      if (
+        await addColumnIfNotExists(
+          db,
+          "Currency",
+          "NVARCHAR(10)",
+          "NOT NULL DEFAULT N'EGP'",
+        )
+      ) {
         addedCols.push("Currency");
       }
-      if (await addColumnIfNotExists(db, "BookingEnabled", "BIT", "NOT NULL DEFAULT 1")) {
+      if (
+        await addColumnIfNotExists(
+          db,
+          "BookingEnabled",
+          "BIT",
+          "NOT NULL DEFAULT 1",
+        )
+      ) {
         addedCols.push("BookingEnabled");
       }
-      if (await addColumnIfNotExists(db, "AllowSpecificBarber", "BIT", "NOT NULL DEFAULT 1")) {
+      if (
+        await addColumnIfNotExists(
+          db,
+          "AllowSpecificBarber",
+          "BIT",
+          "NOT NULL DEFAULT 1",
+        )
+      ) {
         addedCols.push("AllowSpecificBarber");
       }
-      if (await addColumnIfNotExists(db, "AllowNearestBarber", "BIT", "NOT NULL DEFAULT 1")) {
+      if (
+        await addColumnIfNotExists(
+          db,
+          "AllowNearestBarber",
+          "BIT",
+          "NOT NULL DEFAULT 1",
+        )
+      ) {
         addedCols.push("AllowNearestBarber");
       }
-      if (await addColumnIfNotExists(db, "DefaultMode", "NVARCHAR(20)", "NOT NULL DEFAULT N'nearest'")) {
+      if (
+        await addColumnIfNotExists(
+          db,
+          "DefaultMode",
+          "NVARCHAR(20)",
+          "NOT NULL DEFAULT N'nearest'",
+        )
+      ) {
         addedCols.push("DefaultMode");
       }
-      if (await addColumnIfNotExists(db, "SlotIntervalMinutes", "INT", "NOT NULL DEFAULT 15")) {
+      if (
+        await addColumnIfNotExists(
+          db,
+          "SlotIntervalMinutes",
+          "INT",
+          "NOT NULL DEFAULT 15",
+        )
+      ) {
         addedCols.push("SlotIntervalMinutes");
       }
-      if (await addColumnIfNotExists(db, "MaxBookingDaysAhead", "INT", "NOT NULL DEFAULT 14")) {
+      if (
+        await addColumnIfNotExists(
+          db,
+          "MaxBookingDaysAhead",
+          "INT",
+          "NOT NULL DEFAULT 14",
+        )
+      ) {
         addedCols.push("MaxBookingDaysAhead");
       }
-      if (await addColumnIfNotExists(db, "MinNoticeMinutes", "INT", "NOT NULL DEFAULT 30")) {
+      if (
+        await addColumnIfNotExists(
+          db,
+          "MinNoticeMinutes",
+          "INT",
+          "NOT NULL DEFAULT 30",
+        )
+      ) {
         addedCols.push("MinNoticeMinutes");
       }
-      if (await addColumnIfNotExists(db, "DefaultServiceDurationMinutes", "INT", "NULL")) {
+      if (
+        await addColumnIfNotExists(
+          db,
+          "DefaultServiceDurationMinutes",
+          "INT",
+          "NULL",
+        )
+      ) {
         addedCols.push("DefaultServiceDurationMinutes");
       }
-      if (await addColumnIfNotExists(db, "DefaultServiceMinutes", "INT", "NULL")) {
+      if (
+        await addColumnIfNotExists(db, "DefaultServiceMinutes", "INT", "NULL")
+      ) {
         addedCols.push("DefaultServiceMinutes");
       }
 
@@ -272,13 +348,15 @@ export async function POST(req: NextRequest) {
       ok: true,
       changes,
       verifiedSettings: verifySettings,
-      bookingEnabled: verifySettings?.BookingEnabled === 1 || verifySettings?.BookingEnabled === true,
+      bookingEnabled:
+        verifySettings?.BookingEnabled === 1 ||
+        verifySettings?.BookingEnabled === true,
     });
   } catch (err: any) {
     console.error("[admin/booking-settings-migrate] POST error:", err);
     return NextResponse.json(
       { ok: false, error: err.message, details: err.stack },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -14,56 +14,72 @@
  *      that does not overlap any interval and is inside working hours.
  */
 
-import { getPool, sql } from '@/lib/db';
-import { getBarberAvailabilityReason } from '@/lib/barberAvailability';
+import { getPool, sql } from "@/lib/db";
+import {
+  getBarberAvailabilityReason,
+  getBarberWorkingWindow,
+} from "@/lib/barberAvailability";
 
-const isDev = process.env.NODE_ENV !== 'production';
+const DEBUG_BOOKING = process.env.DEBUG_BOOKING === "true";
 
 export interface Interval {
-  start:      Date;
-  end:        Date;
-  source:     'queue' | 'booking';
-  id:         number;
-  label?:     string;
+  start: Date;
+  end: Date;
+  source: "queue" | "booking";
+  id: number;
+  label?: string;
   ticketCode?: string;
 }
 
 export interface BarberEstimate {
-  empId:                  number;
-  empName:                string;
-  estimatedStartTime:     string;   // ISO
-  estimatedWaitMinutes:   number;
-  waitingCount:           number;
-  isWorking:              boolean;
-  unavailableReason?:     string;
-  blockingQueueCount:     number;
-  blockingBookingCount:   number;
-  blockingQueueTickets:   Array<{ id: number; estimatedStart: string; durationMin: number }>;
-  blockingBookings:       Array<{ id: number; start: string; end: string }>;
-  blockingTickets:        Array<{ ticketCode: string; status: string; estimatedStart: string }>;
+  empId: number;
+  empName: string;
+  estimatedStartTime: string; // ISO
+  estimatedWaitMinutes: number;
+  waitingCount: number;
+  isWorking: boolean;
+  unavailableReason?: string;
+  blockingQueueCount: number;
+  blockingBookingCount: number;
+  blockingQueueTickets: Array<{
+    id: number;
+    estimatedStart: string;
+    durationMin: number;
+  }>;
+  blockingBookings: Array<{ id: number; start: string; end: string }>;
+  blockingTickets: Array<{
+    ticketCode: string;
+    status: string;
+    estimatedStart: string;
+  }>;
 }
 
 // ── Booking availability result ───────────────────────────────────────────────
 
 export interface BookingAvailability {
-  empId:               number;
-  empName:             string;
-  available:           boolean;
-  reason:              string | null;
-  conflictType:        'working_hours' | 'day_off' | 'queue' | 'booking' | null;
-  conflictingTickets:  Array<{ ticketCode: string; status: string; start: string; end: string }>;
+  empId: number;
+  empName: string;
+  available: boolean;
+  reason: string | null;
+  conflictType: "working_hours" | "day_off" | "queue" | "booking" | null;
+  conflictingTickets: Array<{
+    ticketCode: string;
+    status: string;
+    start: string;
+    end: string;
+  }>;
   conflictingBookings: Array<{ bookingId: number; start: string; end: string }>;
-  suggestedStartTime:  string | null;
-  startTime:           string;
-  endTime:             string;
-  durationMinutes:     number;
+  suggestedStartTime: string | null;
+  startTime: string;
+  endTime: string;
+  durationMinutes: number;
 }
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
 /** Cairo local date string YYYY-MM-DD */
 export function cairoDateStr(d: Date): string {
-  return d.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+  return d.toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
 }
 
 /**
@@ -71,19 +87,28 @@ export function cairoDateStr(d: Date): string {
  * into a full Date object in local (server) time.
  */
 export function sqlTimeToDate(dateStr: string, timeVal: unknown): Date {
-  let hhmm = '00:00';
-  if (typeof timeVal === 'string')      hhmm = timeVal.slice(0, 5);
-  else if (timeVal instanceof Date)     hhmm = `${String(timeVal.getHours()).padStart(2,'0')}:${String(timeVal.getMinutes()).padStart(2,'0')}`;
+  let hhmm = "00:00";
+  if (typeof timeVal === "string") hhmm = timeVal.slice(0, 5);
+  else if (timeVal instanceof Date)
+    hhmm = `${String(timeVal.getHours()).padStart(2, "0")}:${String(timeVal.getMinutes()).padStart(2, "0")}`;
   return new Date(`${dateStr}T${hhmm}:00`);
 }
 
 // ── Default durations ─────────────────────────────────────────────────────────
 
-export async function getDefaultDuration(db: Awaited<ReturnType<typeof getPool>>): Promise<number> {
+export async function getDefaultDuration(
+  db: Awaited<ReturnType<typeof getPool>>,
+): Promise<number> {
   try {
-    const r = await db.request().query(`SELECT TOP 1 DefaultServiceMinutes FROM [dbo].[QueueBookingSettings]`);
+    const r = await db
+      .request()
+      .query(
+        `SELECT TOP 1 DefaultServiceMinutes FROM [dbo].[QueueBookingSettings]`,
+      );
     return r.recordset[0]?.DefaultServiceMinutes ?? 30;
-  } catch { return 30; }
+  } catch {
+    return 30;
+  }
 }
 
 export async function getServicesDuration(
@@ -98,10 +123,12 @@ export async function getServicesDuration(
     const res = await r.query(`
       SELECT ISNULL(SUM(ISNULL(DurationMinutes, ${fallback})), ${fallback}) AS Tot
       FROM [dbo].[TblPro]
-      WHERE ProID IN (${serviceIds.map((_, i) => `@id${i}`).join(',')})
+      WHERE ProID IN (${serviceIds.map((_, i) => `@id${i}`).join(",")})
     `);
     return res.recordset[0]?.Tot ?? fallback;
-  } catch { return fallback; }
+  } catch {
+    return fallback;
+  }
 }
 
 // ── Interval builder ──────────────────────────────────────────────────────────
@@ -118,19 +145,28 @@ export async function getServicesDuration(
 export async function buildQueueIntervals(
   db: Awaited<ReturnType<typeof getPool>>,
   empId: number,
-  dateStr: string,          // YYYY-MM-DD
-  now: Date,                // actual current time — cursor starts here
+  dateStr: string, // YYYY-MM-DD
+  now: Date, // actual current time — cursor starts here
   defaultDuration: number,
   excludeTicketId?: number, // skip this ticket (for re-estimate of existing)
 ): Promise<Interval[]> {
   // Build SELECT defensively — guard QueueTicketServices with OBJECT_ID check
   // so when the table doesn't exist the whole query doesn't crash
-  const svcTableExists = await db.request()
+  const svcTableExists = await db
+    .request()
     .query(`SELECT OBJECT_ID('dbo.QueueTicketServices') AS oid`)
     .then((r: any) => r.recordset[0]?.oid != null)
     .catch(() => false);
 
-  if (isDev) console.log('[buildQueueIntervals] empId', empId, 'dateStr', dateStr, 'svcTableExists', svcTableExists);
+  if (DEBUG_BOOKING)
+    console.log(
+      "[buildQueueIntervals] empId",
+      empId,
+      "dateStr",
+      dateStr,
+      "svcTableExists",
+      svcTableExists,
+    );
 
   const durationSql = svcTableExists
     ? `ISNULL(
@@ -147,10 +183,12 @@ export async function buildQueueIntervals(
     ${durationSql} AS DurationMinutes
   `;
 
-  const res = await db.request()
-    .input('qdate', sql.Date, dateStr)
-    .input('empId', sql.Int,  empId)
-    .query(`
+  const res = await db
+    .request()
+    .input("qdate", sql.Date, dateStr)
+    .input("empId", sql.Int, empId)
+    .query(
+      `
       SELECT
         qt.QueueTicketID,
         qt.TicketCode,
@@ -171,39 +209,53 @@ export async function buildQueueIntervals(
           qt.CreatedTime
         ) ASC,
         qt.TicketNumber ASC
-    `).catch((err: any) => {
-      console.error('[buildQueueIntervals] query error', err?.message ?? err);
+    `,
+    )
+    .catch((err: any) => {
+      console.error("[buildQueueIntervals] query error", err?.message ?? err);
       return { recordset: [] as any[] };
     });
 
-  if (isDev) {
-    console.log('[timeline] empId', empId, 'activeQueueTickets count', res.recordset.length);
-    console.log('[timeline] activeQueueTickets', res.recordset.map((t: any) => ({
-      code: t.TicketCode, status: t.Status,
-      estimatedStartTime: t.EstimatedStartTime, duration: t.DurationMinutes,
-    })));
+  if (DEBUG_BOOKING) {
+    console.log(
+      "[timeline] empId",
+      empId,
+      "activeQueueTickets count",
+      res.recordset.length,
+    );
   }
 
   const intervals: Interval[] = [];
 
   // Step 1: handle in_service ticket first (if any) — it has a real start in the past
-  const inServiceTickets = res.recordset.filter((t: any) =>
-    (!excludeTicketId || t.QueueTicketID !== excludeTicketId) &&
-    String(t.Status).toLowerCase() === 'in_service'
+  const inServiceTickets = res.recordset.filter(
+    (t: any) =>
+      (!excludeTicketId || t.QueueTicketID !== excludeTicketId) &&
+      String(t.Status).toLowerCase() === "in_service",
   );
-  const otherTickets = res.recordset.filter((t: any) =>
-    (!excludeTicketId || t.QueueTicketID !== excludeTicketId) &&
-    String(t.Status).toLowerCase() !== 'in_service'
+  const otherTickets = res.recordset.filter(
+    (t: any) =>
+      (!excludeTicketId || t.QueueTicketID !== excludeTicketId) &&
+      String(t.Status).toLowerCase() !== "in_service",
   );
 
   // cursor: the end of the last placed interval — new tickets start here
   let cursor = new Date(now);
 
   for (const t of inServiceTickets) {
-    const dur   = Math.max(1, Number(t.DurationMinutes) || defaultDuration);
-    const start = t.ServiceStartedAt ? new Date(t.ServiceStartedAt) : new Date(now);
-    const end   = new Date(start.getTime() + dur * 60000);
-    intervals.push({ start, end, source: 'queue', id: t.QueueTicketID, label: t.Status, ticketCode: t.TicketCode });
+    const dur = Math.max(1, Number(t.DurationMinutes) || defaultDuration);
+    const start = t.ServiceStartedAt
+      ? new Date(t.ServiceStartedAt)
+      : new Date(now);
+    const end = new Date(start.getTime() + dur * 60000);
+    intervals.push({
+      start,
+      end,
+      source: "queue",
+      id: t.QueueTicketID,
+      label: t.Status,
+      ticketCode: t.TicketCode,
+    });
     // cursor must be at least the end of in_service (even if that's in the future)
     if (end > cursor) cursor = end;
   }
@@ -212,19 +264,26 @@ export async function buildQueueIntervals(
   // Each ticket occupies exactly one duration slot, one after another.
   // We do NOT use stored EstimatedStartTime here because they may be stale/past.
   for (const t of otherTickets) {
-    const dur   = Math.max(1, Number(t.DurationMinutes) || defaultDuration);
+    const dur = Math.max(1, Number(t.DurationMinutes) || defaultDuration);
     const start = new Date(cursor);
-    const end   = new Date(start.getTime() + dur * 60000);
-    intervals.push({ start, end, source: 'queue', id: t.QueueTicketID, label: t.Status, ticketCode: t.TicketCode });
+    const end = new Date(start.getTime() + dur * 60000);
+    intervals.push({
+      start,
+      end,
+      source: "queue",
+      id: t.QueueTicketID,
+      label: t.Status,
+      ticketCode: t.TicketCode,
+    });
     cursor = end; // next ticket starts right after this one
   }
 
-  if (isDev) {
-    const totalQueueBlockMinutes = intervals.length > 0
-      ? Math.round((cursor.getTime() - now.getTime()) / 60000)
-      : 0;
-    console.log('[timeline] totalQueueBlockMinutes', totalQueueBlockMinutes);
-    console.log('[timeline] nextAvailableTime (queue end)', cursor.toISOString());
+  if (DEBUG_BOOKING) {
+    const totalQueueBlockMinutes =
+      intervals.length > 0
+        ? Math.round((cursor.getTime() - now.getTime()) / 60000)
+        : 0;
+    console.log("[timeline] totalQueueBlockMinutes", totalQueueBlockMinutes);
   }
 
   return intervals;
@@ -239,24 +298,28 @@ export async function buildBookingIntervals(
   dateStr: string,
   defaultDuration: number,
 ): Promise<Interval[]> {
-  const res = await db.request()
-    .input('bdate', sql.Date, dateStr)
-    .input('empId', sql.Int,  empId)
-    .query(`
+  const res = await db
+    .request()
+    .input("bdate", sql.Date, dateStr)
+    .input("empId", sql.Int, empId)
+    .query(
+      `
       SELECT BookingID, StartTime, EndTime
       FROM [dbo].[Bookings]
       WHERE BookingDate     = @bdate
         AND AssignedEmpID   = @empId
         AND Status IN ('confirmed','arrived','queued','in_service')
       ORDER BY StartTime ASC
-    `).catch(() => ({ recordset: [] as any[] }));
+    `,
+    )
+    .catch(() => ({ recordset: [] as any[] }));
 
   return res.recordset.map((b: any) => {
     const start = sqlTimeToDate(dateStr, b.StartTime);
-    const end   = b.EndTime
+    const end = b.EndTime
       ? sqlTimeToDate(dateStr, b.EndTime)
       : new Date(start.getTime() + defaultDuration * 60000);
-    return { start, end, source: 'booking' as const, id: b.BookingID };
+    return { start, end, source: "booking" as const, id: b.BookingID };
   });
 }
 
@@ -273,9 +336,9 @@ export function findFirstFreeSlot(
   durationMin: number,
   intervals: Interval[],
 ): Date {
-  const durMs    = durationMin * 60000;
+  const durMs = durationMin * 60000;
   const maxLimit = new Date(from.getTime() + 12 * 3600 * 1000);
-  let   candidate = new Date(from);
+  let candidate = new Date(from);
 
   let iterations = 0;
   while (candidate < maxLimit && iterations < 500) {
@@ -304,99 +367,143 @@ export async function computeBarberEstimate(
   requestedAt: string | undefined,
   excludeTicketId?: number,
 ): Promise<BarberEstimate> {
-  const db      = await getPool();
+  const db = await getPool();
   // Always compute business date in Cairo timezone
-  const now     = requestedAt ? new Date(requestedAt) : new Date();
-  const dateStr = now.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+  const now = requestedAt ? new Date(requestedAt) : new Date();
+  const dateStr = now.toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
 
-  if (isDev) {
-    console.log('[queue estimate] empId', empId, 'empName', empName);
-    console.log('[queue estimate] requestedAt', now.toISOString(), 'cairoDate', dateStr);
+  if (DEBUG_BOOKING) {
+    console.log("[queue estimate] empId", empId, "empName", empName);
+    console.log(
+      "[queue estimate] requestedAt",
+      now.toISOString(),
+      "cairoDate",
+      dateStr,
+    );
   }
 
   // Check working hours at requestedAt (not at slot) — this is "is the barber working now?"
   const availResult = await getBarberAvailabilityReason(empId, now);
-  const isWorking   = availResult.available;
+  const isWorking = availResult.available;
 
   if (!isWorking) {
     const result: BarberEstimate = {
       empId,
       empName,
-      estimatedStartTime:   now.toISOString(),
+      estimatedStartTime: now.toISOString(),
       estimatedWaitMinutes: 0,
-      waitingCount:         0,
-      isWorking:            false,
-      unavailableReason:    availResult.reason,
-      blockingQueueCount:   0,
+      waitingCount: 0,
+      isWorking: false,
+      unavailableReason: availResult.reason,
+      blockingQueueCount: 0,
       blockingBookingCount: 0,
       blockingQueueTickets: [],
-      blockingBookings:     [],
-      blockingTickets:      [],
+      blockingBookings: [],
+      blockingTickets: [],
     };
-    if (isDev) console.log('[queue estimate] result (unavailable)', { empId, reason: availResult.reason });
+    if (DEBUG_BOOKING)
+      console.log("[queue estimate] result (unavailable)", {
+        empId,
+        reason: availResult.reason,
+      });
     return result;
   }
 
-  const defaultDur  = await getDefaultDuration(db);
+  const defaultDur = await getDefaultDuration(db);
   const customerDur = await getServicesDuration(db, serviceIds, defaultDur);
 
-  const qIntervals = await buildQueueIntervals(db, empId, dateStr, now, defaultDur, excludeTicketId);
-  const bIntervals = await buildBookingIntervals(db, empId, dateStr, defaultDur);
+  const qIntervals = await buildQueueIntervals(
+    db,
+    empId,
+    dateStr,
+    now,
+    defaultDur,
+    excludeTicketId,
+  );
+  const bIntervals = await buildBookingIntervals(
+    db,
+    empId,
+    dateStr,
+    defaultDur,
+  );
 
-  if (isDev) {
-    console.log('[queue estimate] queue intervals', qIntervals.map(iv => ({
-      id: iv.id, code: iv.ticketCode, start: iv.start.toISOString(), end: iv.end.toISOString(), label: iv.label,
-    })));
-    console.log('[queue estimate] booking intervals', bIntervals.map(iv => ({
-      id: iv.id, start: iv.start.toISOString(), end: iv.end.toISOString(),
-    })));
+  if (DEBUG_BOOKING) {
+    console.log(
+      "[queue estimate] queue intervals",
+      qIntervals.map((iv) => ({
+        id: iv.id,
+        code: iv.ticketCode,
+        start: iv.start.toISOString(),
+        end: iv.end.toISOString(),
+        label: iv.label,
+      })),
+    );
+    console.log(
+      "[queue estimate] booking intervals",
+      bIntervals.map((iv) => ({
+        id: iv.id,
+        start: iv.start.toISOString(),
+        end: iv.end.toISOString(),
+      })),
+    );
   }
 
   // Merge and sort all blocking intervals
   const allIntervals = [...qIntervals, ...bIntervals].sort(
-    (a, b) => a.start.getTime() - b.start.getTime()
+    (a, b) => a.start.getTime() - b.start.getTime(),
   );
 
   // Find first free slot
   const slot = findFirstFreeSlot(now, customerDur, allIntervals);
-  const estimatedWaitMinutes = Math.max(0, Math.round((slot.getTime() - now.getTime()) / 60000));
+  const estimatedWaitMinutes = Math.max(
+    0,
+    Math.round((slot.getTime() - now.getTime()) / 60000),
+  );
 
-  if (isDev) console.log('[queue estimate] chosen slot', slot.toISOString(), 'waitMinutes', estimatedWaitMinutes);
+  if (DEBUG_BOOKING)
+    console.log(
+      "[queue estimate] chosen slot",
+      slot.toISOString(),
+      "waitMinutes",
+      estimatedWaitMinutes,
+    );
 
   const result: BarberEstimate = {
     empId,
     empName,
-    estimatedStartTime:   slot.toISOString(),
+    estimatedStartTime: slot.toISOString(),
     estimatedWaitMinutes,
-    waitingCount:         qIntervals.length,
-    isWorking:            true,
-    unavailableReason:    undefined,
-    blockingQueueCount:   qIntervals.length,
+    waitingCount: qIntervals.length,
+    isWorking: true,
+    unavailableReason: undefined,
+    blockingQueueCount: qIntervals.length,
     blockingBookingCount: bIntervals.length,
-    blockingQueueTickets: qIntervals.map(iv => ({
-      id:             iv.id,
+    blockingQueueTickets: qIntervals.map((iv) => ({
+      id: iv.id,
       estimatedStart: iv.start.toISOString(),
-      durationMin:    Math.round((iv.end.getTime() - iv.start.getTime()) / 60000),
+      durationMin: Math.round((iv.end.getTime() - iv.start.getTime()) / 60000),
     })),
-    blockingBookings: bIntervals.map(iv => ({
-      id:    iv.id,
+    blockingBookings: bIntervals.map((iv) => ({
+      id: iv.id,
       start: iv.start.toISOString(),
-      end:   iv.end.toISOString(),
+      end: iv.end.toISOString(),
     })),
-    blockingTickets: qIntervals.map(iv => ({
-      ticketCode:     iv.ticketCode ?? String(iv.id),
-      status:         iv.label ?? 'unknown',
+    blockingTickets: qIntervals.map((iv) => ({
+      ticketCode: iv.ticketCode ?? String(iv.id),
+      status: iv.label ?? "unknown",
       estimatedStart: iv.start.toISOString(),
     })),
   };
 
-  if (isDev) console.log('[queue estimate] result', {
-    empId, empName,
-    blockingQueueCount: result.blockingQueueCount,
-    blockingBookingCount: result.blockingBookingCount,
-    estimatedStartTime: result.estimatedStartTime,
-    waitMinutes: result.estimatedWaitMinutes,
-  });
+  if (DEBUG_BOOKING)
+    console.log("[queue estimate] result", {
+      empId,
+      empName,
+      blockingQueueCount: result.blockingQueueCount,
+      blockingBookingCount: result.blockingBookingCount,
+      estimatedStartTime: result.estimatedStartTime,
+      waitMinutes: result.estimatedWaitMinutes,
+    });
 
   return result;
 }
@@ -416,76 +523,100 @@ export async function computeBarberEstimate(
  * @param durationOverride - optional fixed duration (skip service lookup)
  */
 export async function checkBarberAvailableForBooking(
-  empId:             number,
-  empName:           string,
-  bookingStart:      string | Date,
-  serviceIds:        number[],
+  empId: number,
+  empName: string,
+  bookingStart: string | Date,
+  serviceIds: number[],
   durationOverride?: number,
 ): Promise<BookingAvailability> {
-  const db      = await getPool();
-  const start   = typeof bookingStart === 'string' ? new Date(bookingStart) : bookingStart;
+  const db = await getPool();
+  const start =
+    typeof bookingStart === "string" ? new Date(bookingStart) : bookingStart;
   const dateStr = cairoDateStr(start);
 
-  if (isDev) {
-    console.log('[timeline] empId', empId, 'empName', empName);
-    console.log('[timeline] requestedAt (bookingStart)', start.toISOString());
+  if (DEBUG_BOOKING) {
+    console.log("[timeline] empId", empId, "empName", empName);
+    console.log("[timeline] requestedAt (bookingStart)", start.toISOString());
   }
 
   // Resolve empName if not provided
   if (!empName) {
     try {
-      const r = await db.request().input('eid', sql.Int, empId)
+      const r = await db
+        .request()
+        .input("eid", sql.Int, empId)
         .query(`SELECT TOP 1 EmpName FROM [dbo].[TblEmp] WHERE EmpID = @eid`);
-      empName = r.recordset[0]?.EmpName ?? '';
-    } catch { /* non-fatal */ }
+      empName = r.recordset[0]?.EmpName ?? "";
+    } catch {
+      /* non-fatal */
+    }
   }
 
   // 1. Check working hours / day off
   const avail = await getBarberAvailabilityReason(empId, start);
   if (!avail.available) {
-    const conflictType = avail.reason?.includes('إجازة') ? 'day_off' : 'working_hours';
+    const conflictType = avail.reason?.includes("إجازة")
+      ? "day_off"
+      : "working_hours";
     return {
-      empId, empName,
-      available:           false,
-      reason:              avail.reason ?? 'خارج ساعات العمل',
+      empId,
+      empName,
+      available: false,
+      reason: avail.reason ?? "خارج ساعات العمل",
       conflictType,
-      conflictingTickets:  [],
+      conflictingTickets: [],
       conflictingBookings: [],
-      suggestedStartTime:  null,
-      startTime:           start.toISOString(),
-      endTime:             '',
-      durationMinutes:     durationOverride ?? 0,
+      suggestedStartTime: null,
+      startTime: start.toISOString(),
+      endTime: "",
+      durationMinutes: durationOverride ?? 0,
     };
   }
 
   // 2. Resolve service duration
-  const defaultDur  = await getDefaultDuration(db);
-  const customerDur = durationOverride ?? await getServicesDuration(db, serviceIds, defaultDur);
-  const end         = new Date(start.getTime() + customerDur * 60000);
+  const defaultDur = await getDefaultDuration(db);
+  const customerDur =
+    durationOverride ?? (await getServicesDuration(db, serviceIds, defaultDur));
+  const end = new Date(start.getTime() + customerDur * 60000);
 
   // 3. Build all blocking intervals (queue + booking) using the shared builders
   // IMPORTANT: pass realNow (not bookingStart) so sequential cursor starts from NOW,
   // not from the requested booking time. Otherwise tickets are placed after bookingStart
   // and never overlap it.
-  const realNow    = new Date();
-  const qIntervals = await buildQueueIntervals(db, empId, dateStr, realNow, defaultDur);
-  const bIntervals = await buildBookingIntervals(db, empId, dateStr, defaultDur);
+  const realNow = new Date();
+  const qIntervals = await buildQueueIntervals(
+    db,
+    empId,
+    dateStr,
+    realNow,
+    defaultDur,
+  );
+  const bIntervals = await buildBookingIntervals(
+    db,
+    empId,
+    dateStr,
+    defaultDur,
+  );
 
-  if (isDev) {
-    console.log('[timeline check] empId', empId, 'slot', start.toISOString(), '->', end.toISOString());
-    console.log('[timeline check] queue intervals count', qIntervals.length);
+  if (DEBUG_BOOKING) {
+    console.log("[timeline check] queue intervals count", qIntervals.length);
   }
 
   // 4. Find queue ticket conflicts — any interval that overlaps [start, end)
   const qConflicts = qIntervals.filter(
-    iv => start < iv.end && end > iv.start,
+    (iv) => start < iv.end && end > iv.start,
   );
   const bConflicts = bIntervals.filter(
-    iv => start < iv.end && end > iv.start,
+    (iv) => start < iv.end && end > iv.start,
   );
 
-  if (isDev) {
-    console.log('[timeline] conflicts q:', qConflicts.length, 'b:', bConflicts.length);
+  if (DEBUG_BOOKING) {
+    console.log(
+      "[timeline] conflicts q:",
+      qConflicts.length,
+      "b:",
+      bConflicts.length,
+    );
   }
 
   if (qConflicts.length > 0 || bConflicts.length > 0) {
@@ -494,63 +625,230 @@ export async function checkBarberAvailableForBooking(
     const allIntervalsSorted = [...qIntervals, ...bIntervals].sort(
       (a, b) => a.end.getTime() - b.end.getTime(),
     );
-    const suggestedStart = new Date(allIntervalsSorted[allIntervalsSorted.length - 1].end);
+    const suggestedStart = new Date(
+      allIntervalsSorted[allIntervalsSorted.length - 1].end,
+    );
 
-    const conflictType = qConflicts.length > 0 ? 'queue' : 'booking';
+    const conflictType = qConflicts.length > 0 ? "queue" : "booking";
 
     // Show total active queue count (all intervals), not just conflicting ones
     const totalQueueCount = qIntervals.length;
-    const queueEndTime    = qIntervals.length > 0
-      ? new Date(Math.max(...qIntervals.map(iv => iv.end.getTime())))
-      : null;
+    const queueEndTime =
+      qIntervals.length > 0
+        ? new Date(Math.max(...qIntervals.map((iv) => iv.end.getTime())))
+        : null;
     const queueEndStr = queueEndTime
-      ? queueEndTime.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Cairo' })
+      ? queueEndTime.toLocaleTimeString("ar-EG", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+          timeZone: "Africa/Cairo",
+        })
       : null;
 
-    const reason = qConflicts.length > 0
-      ? `لديه ${totalQueueCount} ${totalQueueCount === 1 ? 'دور متوقع' : 'أدوار متوقعة'}${queueEndStr ? ` حتى ${queueEndStr}` : ''}`
-      : 'يوجد حجز آخر في هذا الموعد';
+    const reason =
+      qConflicts.length > 0
+        ? `لديه ${totalQueueCount} ${totalQueueCount === 1 ? "دور متوقع" : "أدوار متوقعة"}${queueEndStr ? ` حتى ${queueEndStr}` : ""}`
+        : "يوجد حجز آخر في هذا الموعد";
 
     const result: BookingAvailability = {
-      empId, empName,
-      available:           false,
+      empId,
+      empName,
+      available: false,
       reason,
       conflictType,
-      conflictingTickets:  qConflicts.map(iv => ({
+      conflictingTickets: qConflicts.map((iv) => ({
         ticketCode: iv.ticketCode ?? String(iv.id),
-        status:     iv.label ?? 'unknown',
-        start:      iv.start.toISOString(),
-        end:        iv.end.toISOString(),
+        status: iv.label ?? "unknown",
+        start: iv.start.toISOString(),
+        end: iv.end.toISOString(),
       })),
-      conflictingBookings: bConflicts.map(iv => ({
+      conflictingBookings: bConflicts.map((iv) => ({
         bookingId: iv.id,
-        start:     iv.start.toISOString(),
-        end:       iv.end.toISOString(),
+        start: iv.start.toISOString(),
+        end: iv.end.toISOString(),
       })),
-      suggestedStartTime:  suggestedStart.toISOString(),
-      startTime:           start.toISOString(),
-      endTime:             end.toISOString(),
-      durationMinutes:     customerDur,
+      suggestedStartTime: suggestedStart.toISOString(),
+      startTime: start.toISOString(),
+      endTime: end.toISOString(),
+      durationMinutes: customerDur,
     };
 
-    if (isDev) console.log('[timeline check] unavailable', empId, reason);
+    if (DEBUG_BOOKING) console.log("[timeline check] unavailable", empId);
     return result;
   }
 
   // 5. Available
   const result: BookingAvailability = {
-    empId, empName,
-    available:           true,
-    reason:              null,
-    conflictType:        null,
-    conflictingTickets:  [],
+    empId,
+    empName,
+    available: true,
+    reason: null,
+    conflictType: null,
+    conflictingTickets: [],
     conflictingBookings: [],
-    suggestedStartTime:  null,
-    startTime:           start.toISOString(),
-    endTime:             end.toISOString(),
-    durationMinutes:     customerDur,
+    suggestedStartTime: null,
+    startTime: start.toISOString(),
+    endTime: end.toISOString(),
+    durationMinutes: customerDur,
   };
 
-  if (isDev) console.log('[timeline check] available', empId, start.toISOString());
+  if (DEBUG_BOOKING) console.log("[timeline check] available", empId);
   return result;
+}
+
+export interface DayAvailabilityResult {
+  available: boolean;
+  reason?: string;
+  reasonCode?:
+    | "BARBER_NOT_FOUND"
+    | "BARBER_NOT_BOOKABLE"
+    | "NO_WORKING_SCHEDULE"
+    | "DAY_OFF"
+    | "OUTSIDE_WORKING_HOURS"
+    | "NO_AVAILABLE_SLOTS"
+    | "FULLY_BOOKED"
+    | "QUEUE_BLOCKED"
+    | "BOOKING_BLOCKED";
+  firstAvailableSlot?: string;
+}
+
+/**
+ * Optimized check for available-days endpoint.
+ *
+ * Instead of calling checkBarberAvailableForBooking for every slot (N+1 problem),
+ * this helper:
+ * 1. Preloads queue intervals once
+ * 2. Preloads booking intervals once
+ * 3. Generates slots inside working window
+ * 4. Tests overlap in memory
+ * 5. Returns immediately on first valid slot (early exit)
+ *
+ * This is much faster for the "does this day have ANY available slot?" use case.
+ */
+export async function hasAnyAvailableSlotForBarberOnDay(
+  empId: number,
+  dateStr: string,
+  serviceIds: number[],
+  durationMinutes: number,
+  slotIntervalMinutes: number,
+  minNoticeMinutes: number,
+  nowMs: number,
+): Promise<DayAvailabilityResult> {
+  const db = await getPool();
+
+  // 1. Get working window (uses getBarberWorkingWindow which checks IsWorkingDay)
+  const dateObj = new Date(`${dateStr}T12:00:00`);
+  const window = await getBarberWorkingWindow(empId, dateObj);
+
+  if (!window.isWorkingDay) {
+    return {
+      available: false,
+      reason: "إجازة أسبوعية",
+      reasonCode: "DAY_OFF",
+    };
+  }
+
+  if (!window.startTime || !window.endTime) {
+    return {
+      available: false,
+      reason: "لا توجد مواعيد عمل لهذا الحلاق في هذا اليوم",
+      reasonCode: "NO_WORKING_SCHEDULE",
+    };
+  }
+
+  // 2. Preload all blocking intervals ONCE
+  const [qIntervals, bIntervals] = await Promise.all([
+    buildQueueIntervals(db, empId, dateStr, new Date(nowMs), durationMinutes),
+    buildBookingIntervals(db, empId, dateStr, durationMinutes),
+  ]);
+
+  const allIntervals = [...qIntervals, ...bIntervals].sort(
+    (a, b) => a.start.getTime() - b.start.getTime(),
+  );
+
+  // 3. Generate slots and check in memory (early exit on first valid)
+  const startMin = timeToMinutes(window.startTime);
+  const endMin = timeToMinutes(window.endTime);
+
+  // Handle overnight shifts (e.g., 15:00-02:00)
+  // Generate slots from startTime up to midnight, and from midnight to endTime if overnight
+  const slots: string[] = [];
+
+  if (startMin <= endMin) {
+    // Normal shift (e.g., 09:00-17:00)
+    for (let m = startMin; m < endMin; m += slotIntervalMinutes) {
+      const hh = Math.floor(m / 60)
+        .toString()
+        .padStart(2, "0");
+      const mm = (m % 60).toString().padStart(2, "0");
+      slots.push(`${hh}:${mm}`);
+    }
+  } else {
+    // Overnight shift (e.g., 15:00-02:00)
+    // First part: startTime to midnight
+    for (let m = startMin; m < 24 * 60; m += slotIntervalMinutes) {
+      const hh = Math.floor(m / 60)
+        .toString()
+        .padStart(2, "0");
+      const mm = (m % 60).toString().padStart(2, "0");
+      slots.push(`${hh}:${mm}`);
+    }
+    // Second part: midnight to endTime
+    for (let m = 0; m < endMin; m += slotIntervalMinutes) {
+      const hh = Math.floor(m / 60)
+        .toString()
+        .padStart(2, "0");
+      const mm = (m % 60).toString().padStart(2, "0");
+      slots.push(`${hh}:${mm}`);
+    }
+  }
+
+  // 4. Check each slot in memory (early exit)
+  for (const time of slots) {
+    const slotDt = new Date(`${dateStr}T${time}:00`);
+    const slotMs = slotDt.getTime();
+
+    // Skip past slots
+    if (slotMs - nowMs < minNoticeMinutes * 60_000) {
+      continue;
+    }
+
+    const slotEnd = new Date(slotMs + durationMinutes * 60000);
+
+    // Check overlap with blocking intervals in memory
+    let hasConflict = false;
+    for (const iv of allIntervals) {
+      if (slotDt < iv.end && slotEnd > iv.start) {
+        hasConflict = true;
+        break; // Conflict found, move to next slot
+      }
+    }
+
+    if (!hasConflict) {
+      // Found valid slot!
+      return {
+        available: true,
+        firstAvailableSlot: time,
+      };
+    }
+  }
+
+  // No available slots found
+  const reason =
+    qIntervals.length > 0
+      ? `لديه ${qIntervals.length} ${qIntervals.length === 1 ? "دور متوقع" : "أدوار متوقعة"}`
+      : "لا توجد مواعيد متاحة";
+
+  return {
+    available: false,
+    reason,
+    reasonCode: qIntervals.length > 0 ? "QUEUE_BLOCKED" : "NO_AVAILABLE_SLOTS",
+  };
+}
+
+// Helper for time conversion (copied from barberAvailability)
+function timeToMinutes(t: string): number {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
 }
