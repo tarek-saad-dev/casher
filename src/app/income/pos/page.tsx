@@ -99,12 +99,12 @@ export default function PosPage() {
   const [quickAddPrefill, setQuickAddPrefill] = useState<string | undefined>();
   const [completeCustomer, setCompleteCustomer] = useState<Customer | null>(null);
   const [saving, setSaving] = useState(false);
+  const saveLockRef = useRef(false); // synchronous guard — prevents concurrent saves
   const [saveError, setSaveError] = useState('');
   const [printInvID, setPrintInvID] = useState<number | null>(null);
   const [printOpen, setPrintOpen] = useState(false);
   const [splitPaymentActive, setSplitPaymentActive] = useState(false);
-  const [editingSaleId, setEditingSaleId] = useState<number | null>(null); // Track edit mode
-  const [lastSaveTime, setLastSaveTime] = useState(0); // Track last save time for double-click detection
+  const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
 
   // ───────────────── Sync shift from session into sale state ─────────────────
   useEffect(() => {
@@ -156,16 +156,28 @@ export default function PosPage() {
   }, [totals.grandTotal, state.paymentMethodId]);
 
   // ───────────────── Save sale ─────────────────
-  const handleSave = useCallback(async (forcePrint = false) => {
+  const handleSave = useCallback(async (forcePrint = false, source = 'unknown') => {
+    if (saveLockRef.current) {
+      console.warn('[POS SAVE] Duplicate save blocked', { source });
+      return;
+    }
+
+    saveLockRef.current = true;
+    setSaving(true);
     setSaveError('');
-    if (state.items.length === 0) { setSaveError('يجب إضافة خدمة واحدة على الأقل'); return; }
-    if (state.paymentMethodId === null) { setSaveError('اختر طريقة الدفع'); return; }
+
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    console.log('[POS SAVE] START', { requestId, source });
+
+    if (state.items.length === 0) { setSaveError('يجب إضافة خدمة واحدة على الأقل'); saveLockRef.current = false; setSaving(false); return; }
+    if (state.paymentMethodId === null) { setSaveError('اختر طريقة الدفع'); saveLockRef.current = false; setSaving(false); return; }
     
     // Validate split payment totals
     const totalAllocated = state.paymentAllocations.reduce((sum, pa) => sum + pa.amount, 0);
     const remaining = totals.grandTotal - totalAllocated;
     if (Math.abs(remaining) > 0.01) {
       setSaveError(`إجمالي المدفوع (${totalAllocated.toFixed(2)}) لا يساوي إجمالي الفاتورة (${totals.grandTotal.toFixed(2)})`);
+      saveLockRef.current = false; setSaving(false);
       return;
     }
 
@@ -174,10 +186,10 @@ export default function PosPage() {
     const mainPayment = sortedAllocations[0];
     if (!mainPayment || mainPayment.amount <= 0) {
       setSaveError('يجب إدخال مبلغ لطريقة دفع واحدة على الأقل');
+      saveLockRef.current = false; setSaving(false);
       return;
     }
 
-    setSaving(true);
     try {
       // Build payment allocations for API
       const activeAllocations = state.paymentAllocations.filter(pa => pa.amount > 0);
@@ -278,57 +290,40 @@ export default function PosPage() {
           addToast,
         );
       }
+      console.log('[POS SAVE] SUCCESS', { requestId });
     } catch {
       setSaveError('خطأ في الاتصال بالخادم');
+      console.error('[POS SAVE] ERROR', { requestId });
     } finally {
+      saveLockRef.current = false;
       setSaving(false);
+      console.log('[POS SAVE] END', { requestId });
     }
-  }, [state, totals, reset, addToast, paymentMethods, editingSaleId]);
-
-  // ───────────────── Handle + button click (double-click detection) ─────────────────
-  const handlePlusClick = useCallback(() => {
-    const now = Date.now();
-    const timeDiff = now - lastSaveTime;
-    
-    if (timeDiff < 500 && timeDiff > 0) {
-      // Double click detected - save and print immediately
-      setShouldAutoPrint(true); // Set flag for auto print
-      handleSave(true);
-    } else {
-      // Single click - just save
-      handleSave(false);
-    }
-    
-    setLastSaveTime(now);
-  }, [lastSaveTime, handleSave]);
-
-  // ───────────────── Auto print after save for double-click ─────────────────
-  const [shouldAutoPrint, setShouldAutoPrint] = useState(false);
-
-  useEffect(() => {
-    if (printOpen && printInvID && shouldAutoPrint) {
-      // This was triggered by double-click, trigger auto print after modal loads
-      const timer = setTimeout(() => {
-        // Find and click the print button
-        const printButton = document.querySelector('[data-testid="print-button"]') as HTMLButtonElement;
-        if (printButton && !printButton.disabled) {
-          printButton.click();
-        }
-        setShouldAutoPrint(false); // Reset flag
-      }, 800); // Wait for modal to fully load
-      return () => clearTimeout(timer);
-    }
-  }, [printOpen, printInvID, shouldAutoPrint]);
+  }, [state, totals, reset, addToast, paymentMethods, editingSaleId, saveLockRef]);
 
   // ───────────────── Keyboard shortcuts ─────────────────
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'F9') { e.preventDefault(); handleSave(); }
-      if (e.key === '+' || (e.key === '=' && e.shiftKey)) { e.preventDefault(); handlePlusClick(); }
+      if (e.key === 'F9') {
+        e.preventDefault();
+        if (saveLockRef.current) {
+          console.warn('[POS SAVE] F9 ignored — save already running');
+          return;
+        }
+        handleSave(false, 'F9');
+      }
+      if (e.key === '+' || (e.key === '=' && e.shiftKey)) {
+        e.preventDefault();
+        if (saveLockRef.current) {
+          console.warn('[POS SAVE] keyboard-+ ignored — save already running');
+          return;
+        }
+        handleSave(false, 'keyboard-plus');
+      }
     }
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [handleSave, handlePlusClick]);
+  }, [handleSave, saveLockRef]);
 
   // ───────────────── New sale handler ─────────────────
   const handleNewSale = useCallback(() => {
@@ -604,7 +599,8 @@ export default function PosPage() {
             <Button
               size="lg"
               className="flex-1 text-base font-bold py-6"
-              onClick={() => handleSave()}
+              type="button"
+              onClick={() => handleSave(false, 'save-button')}
               disabled={saving || state.items.length === 0}
             >
               {saving ? (
@@ -622,7 +618,8 @@ export default function PosPage() {
             <Button
               size="lg"
               className="px-6 py-6 text-base font-bold"
-              onClick={handlePlusClick}
+              type="button"
+              onClick={() => handleSave(false, 'plus-button')}
               disabled={saving || state.items.length === 0}
               variant="outline"
             >
