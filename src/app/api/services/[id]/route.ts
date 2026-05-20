@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { getPool } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
 
 // PUT /api/services/[id] — update a service
 export async function PUT(
@@ -65,6 +65,48 @@ export async function PUT(
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/services/[id]] PUT error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+// PATCH /api/services/[id] — partial update (e.g. durationMinutes only)
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const serviceId = parseInt(id);
+    if (isNaN(serviceId)) {
+      return NextResponse.json({ error: 'معرف الخدمة غير صالح' }, { status: 400 });
+    }
+
+    const body = await req.json();
+    const { durationMinutes } = body as { durationMinutes?: number | null };
+
+    if (durationMinutes !== undefined && durationMinutes !== null) {
+      if (typeof durationMinutes !== 'number' || durationMinutes < 5 || durationMinutes > 240) {
+        return NextResponse.json({ error: 'مدة الخدمة يجب أن تكون بين 5 و 240 دقيقة' }, { status: 400 });
+      }
+    }
+
+    const db = await getPool();
+    await db.request()
+      .input('ProID', sql.Int, serviceId)
+      .input('DurationMinutes', sql.Int, durationMinutes ?? null)
+      .query(`UPDATE [dbo].[TblPro] SET DurationMinutes = @DurationMinutes WHERE ProID = @ProID`);
+
+    const result = await db.request()
+      .input('ProID', sql.Int, serviceId)
+      .query(`SELECT ProID, ProName, SPrice1, Bonus, CatID, isDeleted, DurationMinutes FROM [dbo].[TblPro] WHERE ProID = @ProID`);
+
+    if (!result.recordset[0]) {
+      return NextResponse.json({ error: 'الخدمة غير موجودة' }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true, service: result.recordset[0] });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[api/services/[id]] PATCH error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

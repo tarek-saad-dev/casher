@@ -10,7 +10,8 @@ export async function GET() {
         p.ProID, p.ProName, p.SPrice1, p.Bonus,
         p.CatID, c.CatName,
         ISNULL(pop.SalesCount, 0) AS SalesCount,
-        p.isDeleted
+        p.isDeleted,
+        p.DurationMinutes
       FROM [dbo].[TblPro] p
       LEFT JOIN [dbo].[TblCat] c ON p.CatID = c.CatID
       LEFT JOIN (
