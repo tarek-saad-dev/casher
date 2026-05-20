@@ -12,6 +12,11 @@ import {
   PUBLIC_CORS_HEADERS,
 } from "@/lib/publicBookingHelpers";
 import { checkBarberAvailableForBooking } from "@/lib/queueEstimateEngine";
+import {
+  loadOverridesForBarber,
+  applyOverrides,
+  slotBlockedByOverride,
+} from "@/lib/scheduleOverrides";
 
 export const runtime = "nodejs";
 
@@ -344,7 +349,90 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // ── Validate availability for assigned employee ────────────────────────
+      // ── Check schedule overrides for this segment date ──────────────────────
+      const segOverrides = await loadOverridesForBarber(
+        db,
+        assignedEmpId,
+        segDate,
+      );
+      const segDayOfWeek = new Date(`${segDate}T12:00:00`).getDay();
+
+      // Look up base schedule for the segment day from TblEmpWorkSchedule
+      const baseSchedRes = await db
+        .request()
+        .input("eid", sql.Int, assignedEmpId)
+        .input("dow", sql.TinyInt, segDayOfWeek)
+        .query(
+          `
+          SELECT IsWorkingDay, StartTime, EndTime
+          FROM dbo.TblEmpWorkSchedule
+          WHERE EmpID = @eid AND DayOfWeek = @dow
+        `,
+        )
+        .catch(() => ({
+          recordset: [] as Array<{
+            IsWorkingDay: boolean;
+            StartTime: unknown;
+            EndTime: unknown;
+          }>,
+        }));
+
+      if (segOverrides.length && baseSchedRes.recordset.length) {
+        const baseRow = baseSchedRes.recordset[0];
+        const fmtT = (v: unknown): string => {
+          if (!v) return "00:00";
+          if (typeof v === "string") return v.slice(0, 5);
+          if (v instanceof Date)
+            return `${String(v.getUTCHours()).padStart(2, "0")}:${String(v.getUTCMinutes()).padStart(2, "0")}`;
+          return "00:00";
+        };
+        const baseSchedule = {
+          isWorking: !!baseRow.IsWorkingDay,
+          start: fmtT(baseRow.StartTime),
+          end: fmtT(baseRow.EndTime),
+        };
+        const effSched = applyOverrides(
+          assignedEmpId,
+          segDate,
+          baseSchedule,
+          segOverrides,
+        );
+
+        if (!effSched.isWorking) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: `الموظف "${assignedEmpName}" لديه استثناء إجازة في ${segDate}`,
+              reason: "employee_day_off",
+              serviceId: sid,
+              slotDate: segDate,
+            },
+            { status: 409, headers: PUBLIC_CORS_HEADERS },
+          );
+        }
+
+        const slotEndMs = segStartDt.getTime() + svc.DurationMinutes * 60_000;
+        const overrideBlockReason = slotBlockedByOverride(
+          segStartDt.getTime(),
+          slotEndMs,
+          effSched,
+        );
+        if (overrideBlockReason) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: `الموظف "${assignedEmpName}" لديه فترة مغلقة في هذا الوقت`,
+              reason: "employee_blocked_range",
+              serviceId: sid,
+              slotTime: segStartTime,
+              slotDate: segDate,
+            },
+            { status: 409, headers: PUBLIC_CORS_HEADERS },
+          );
+        }
+      }
+
+      // ── Validate availability for assigned employee (queue + bookings) ─────────
       const avail = await checkBarberAvailableForBooking(
         assignedEmpId,
         assignedEmpName,

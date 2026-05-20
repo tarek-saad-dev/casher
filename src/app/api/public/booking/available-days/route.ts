@@ -13,6 +13,7 @@ import {
   getServicesDuration,
   Interval,
 } from "@/lib/queueEstimateEngine";
+import { applyOverrides, ScheduleOverride } from "@/lib/scheduleOverrides";
 
 export const runtime = "nodejs";
 
@@ -352,6 +353,52 @@ export async function GET(req: NextRequest) {
           })
       : Promise.resolve({ recordset: [] });
 
+    // 5. Preload overrides for the entire date range
+    // We load them date-by-date in the loop (lightweight: only a few overrides per day).
+    // For the batch approach we load once per date inside computeDayAvailabilityInMemory
+    // via a pre-built overridesRangeMap: dateStr → Map<empId, ScheduleOverride[]>
+    const overridesRangeRes = tableExists.schedule
+      ? await db
+          .request()
+          .input("startDate", sql.Date, startDate)
+          .input("endDate", sql.Date, endDate)
+          .query(
+            `
+            SELECT
+              OverrideID, EmpID,
+              CONVERT(VARCHAR(10), OverrideDate, 120) AS OverrideDate,
+              Type,
+              CASE WHEN StartTime IS NOT NULL
+                   THEN LEFT(CONVERT(VARCHAR(8), StartTime, 108), 5)
+                   ELSE NULL END AS StartTime,
+              CASE WHEN EndTime IS NOT NULL
+                   THEN LEFT(CONVERT(VARCHAR(8), EndTime, 108), 5)
+                   ELSE NULL END AS EndTime,
+              Reason, IsActive, CreatedBy,
+              CONVERT(VARCHAR(30), CreatedAt, 126) AS CreatedAt
+            FROM dbo.TblEmpScheduleOverrides
+            WHERE EmpID IN (${barberIdList})
+              AND OverrideDate BETWEEN @startDate AND @endDate
+              AND IsActive = 1
+          `,
+          )
+          .catch(() => ({ recordset: [] as ScheduleOverride[] }))
+      : { recordset: [] as ScheduleOverride[] };
+
+    // Build overrides map: dateStr → Map<empId, ScheduleOverride[]>
+    const overridesRangeMap = new Map<
+      string,
+      Map<number, ScheduleOverride[]>
+    >();
+    for (const row of overridesRangeRes.recordset) {
+      const d = row.OverrideDate;
+      if (!overridesRangeMap.has(d)) overridesRangeMap.set(d, new Map());
+      const empMap = overridesRangeMap.get(d)!;
+      const list = empMap.get(row.EmpID) ?? [];
+      list.push(row);
+      empMap.set(row.EmpID, list);
+    }
+
     // Wait for all batch queries
     const [schedulesRes, queueRes, bookingsRes, dayOffRes] = await Promise.all([
       schedulesPromise,
@@ -387,6 +434,9 @@ export async function GET(req: NextRequest) {
       const dow = new Date(ms).getDay();
       const label = AR_DAYS[dow];
 
+      const dateOverridesMap =
+        overridesRangeMap.get(dateStr) ?? new Map<number, ScheduleOverride[]>();
+
       const dayResult = computeDayAvailabilityInMemory(
         dateStr,
         dow,
@@ -401,6 +451,7 @@ export async function GET(req: NextRequest) {
         queueMap,
         bookingMap,
         dayOffMap,
+        dateOverridesMap,
       );
 
       days.push({
@@ -514,6 +565,7 @@ function computeDayAvailabilityInMemory(
   queueMap: Map<string, QueueTicketRow[]>,
   bookingMap: Map<string, BookingRow[]>,
   dayOffMap: Map<string, DayOffRow>,
+  overridesForDate: Map<number, ScheduleOverride[]> = new Map(),
 ): { available: boolean; reason?: string; reasonCode?: ReasonCode } {
   const barbersToCheck =
     mode === "specific" && specificBarberInfo
@@ -547,7 +599,7 @@ function computeDayAvailabilityInMemory(
       continue;
     }
 
-    // 2. Check day off
+    // 2. Check day off (TblEmpDayOff)
     const dayOffKey = `${empId}:${dateStr}`;
     if (dayOffMap.has(dayOffKey)) {
       if (mode === "specific" && barbersToCheck.length === 1) {
@@ -561,7 +613,31 @@ function computeDayAvailabilityInMemory(
       continue;
     }
 
-    // 3. Build blocking intervals from queue and bookings
+    // 2b. Apply schedule overrides
+    const empOverrides = overridesForDate.get(empId) ?? [];
+    const baseSchedule = {
+      isWorking: !!schedule.IsWorkingDay,
+      start: schedule.StartTime ?? "09:00",
+      end: schedule.EndTime ?? "23:00",
+    };
+    const effSched = applyOverrides(empId, dateStr, baseSchedule, empOverrides);
+
+    if (!effSched.isWorking) {
+      if (mode === "specific" && barbersToCheck.length === 1) {
+        return {
+          available: false,
+          reason: "employee_day_off",
+          reasonCode: REASON_CODES.DAY_OFF,
+        };
+      }
+      continue;
+    }
+
+    // Use effective (overridden) start/end for slot generation
+    const effectiveStart = effSched.start;
+    const effectiveEnd = effSched.end;
+
+    // 3. Build blocking intervals from queue, bookings, and override block_ranges
     const queueKey = `${empId}:${dateStr}`;
     const queueTickets = queueMap.get(queueKey) || [];
     const bookings = bookingMap.get(queueKey) || [];
@@ -588,12 +664,22 @@ function computeDayAvailabilityInMemory(
       intervals.push({ start, end, source: "booking", id: booking.BookingID });
     }
 
+    // Add block_range override intervals
+    for (const iv of effSched.blockedIntervals) {
+      intervals.push({
+        start: new Date(iv.startMs),
+        end: new Date(iv.endMs),
+        source: "queue",
+        id: -1,
+      });
+    }
+
     // Sort intervals by start time
     intervals.sort((a, b) => a.start.getTime() - b.start.getTime());
 
-    // 4. Generate slots and check availability in memory
-    const startMin = timeToMinutes(schedule.StartTime);
-    const endMin = timeToMinutes(schedule.EndTime);
+    // 4. Generate slots using effective schedule boundaries
+    const startMin = timeToMinutes(effectiveStart);
+    const endMin = timeToMinutes(effectiveEnd);
 
     // Generate slots
     const slots: string[] = [];

@@ -2,25 +2,27 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { OverviewData, OperationAlert } from '@/lib/operationsTypes';
-import { OperationsHeader }   from '@/components/operations/OperationsHeader';
+import { OperationsHeader } from '@/components/operations/OperationsHeader';
 import { BarberStatusColumn } from '@/components/operations/BarberStatusColumn';
-import { GroupedQueueBoard }  from '@/components/operations/GroupedQueueBoard';
-import { BookingsColumn }     from '@/components/operations/BookingsColumn';
-import { AlertsPanel }        from '@/components/operations/AlertsPanel';
-import { CreateQueueDrawer }  from '@/components/operations/CreateQueueDrawer';
-import { CreateBookingDrawer} from '@/components/operations/CreateBookingDrawer';
+import { GroupedQueueBoard } from '@/components/operations/GroupedQueueBoard';
+import { BookingsColumn } from '@/components/operations/BookingsColumn';
+import { AlertsPanel } from '@/components/operations/AlertsPanel';
+import { CreateQueueDrawer } from '@/components/operations/CreateQueueDrawer';
+import { CreateBookingDrawer } from '@/components/operations/CreateBookingDrawer';
+import { BookingControlDrawer } from '@/components/operations/BookingControlDrawer';
 import { BUSINESS_DATE_CAIRO } from '@/lib/queueTicketNormalizer';
 
 export default function OperationsPage() {
-  const [overview,      setOverview]      = useState<OverviewData | null>(null);
-  const [alerts,        setAlerts]        = useState<OperationAlert[]>([]);
-  const [dismissedIds,  setDismissedIds]  = useState<Set<string>>(new Set());
-  const [loading,       setLoading]       = useState(true);
+  const [overview, setOverview] = useState<OverviewData | null>(null);
+  const [alerts, setAlerts] = useState<OperationAlert[]>([]);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
   const [alertsLoading, setAlertsLoading] = useState(true);
   // Queue tickets fetched directly from /api/queue — same source as /queue/live
-  const [liveTickets,   setLiveTickets]   = useState<any[]>([]);
-  const [showQueueDrawer,   setShowQueueDrawer]   = useState(false);
+  const [liveTickets, setLiveTickets] = useState<any[]>([]);
+  const [showQueueDrawer, setShowQueueDrawer] = useState(false);
   const [showBookingDrawer, setShowBookingDrawer] = useState(false);
+  const [showBookingControlDrawer, setShowBookingControlDrawer] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -34,7 +36,7 @@ export default function OperationsPage() {
   // Fetch KPIs + barbers from overview (no need for its queue list)
   const fetchOverview = useCallback(async () => {
     try {
-      const res  = await fetch('/api/operations/overview');
+      const res = await fetch('/api/operations/overview');
       const data = await res.json();
       if (res.ok) setOverview(data);
     } catch { /* non-fatal */ }
@@ -45,7 +47,7 @@ export default function OperationsPage() {
   const fetchQueueTickets = useCallback(async () => {
     try {
       const date = BUSINESS_DATE_CAIRO();
-      const res  = await fetch(`/api/queue?date=${date}`);
+      const res = await fetch(`/api/queue?date=${date}`);
       const data = await res.json();
       const tickets = data.tickets ?? [];
       if (process.env.NODE_ENV !== 'production') {
@@ -58,7 +60,7 @@ export default function OperationsPage() {
   const fetchAlerts = useCallback(async () => {
     setAlertsLoading(true);
     try {
-      const res  = await fetch('/api/operations/alerts');
+      const res = await fetch('/api/operations/alerts');
       const data = await res.json();
       if (res.ok) setAlerts(data.alerts ?? []);
     } catch { /* non-fatal */ }
@@ -89,10 +91,10 @@ export default function OperationsPage() {
   const handleQueueAction = useCallback(async (ticketId: number, action: string, extra?: any) => {
     try {
       const statusMap: Record<string, string> = {
-        call:   'called',
-        start:  'in_service',
-        done:   'done',
-        skip:   'skipped',
+        call: 'called',
+        start: 'in_service',
+        done: 'done',
+        skip: 'skipped',
         cancel: 'cancelled',
       };
 
@@ -135,9 +137,9 @@ export default function OperationsPage() {
       // Map UI action → API action (matches /api/bookings/[id] PATCH switch cases)
       const actionMap: Record<string, string> = {
         confirm: 'confirm',
-        arrive:  'arrive',
-        start:   'start_service',
-        cancel:  'cancel',
+        arrive: 'arrive',
+        start: 'start_service',
+        cancel: 'cancel',
       };
 
       if (action === 'add_queue') {
@@ -148,10 +150,10 @@ export default function OperationsPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            clientId:  booking.ClientID,
-            empId:     booking.AssignedEmpID,
+            clientId: booking.ClientID,
+            empId: booking.AssignedEmpID,
             bookingId: booking.BookingID,
-            notes:     null,
+            notes: null,
           }),
         });
         if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'خطأ'); }
@@ -204,7 +206,7 @@ export default function OperationsPage() {
   // Visible alerts (not dismissed)
   const visibleAlerts = alerts.filter(a => !dismissedIds.has(a.id));
 
-  const barbers  = overview?.barbers  ?? [];
+  const barbers = overview?.barbers ?? [];
   // Use directly-fetched live tickets (same source as /queue/live)
   const queueTickets = liveTickets;
   const bookings = overview?.bookings ?? [];
@@ -220,6 +222,7 @@ export default function OperationsPage() {
         onRefresh={refresh}
         onNewQueue={() => setShowQueueDrawer(true)}
         onNewBooking={() => setShowBookingDrawer(true)}
+        onBookingControl={() => setShowBookingControlDrawer(true)}
       />
 
       {/* Main 4-column grid */}
@@ -227,7 +230,7 @@ export default function OperationsPage() {
 
         {/* Col 1: Barbers */}
         <div className="border-l overflow-hidden" style={{ borderColor: '#2A2A35' }}>
-          <BarberStatusColumn barbers={barbers} loading={loading}/>
+          <BarberStatusColumn barbers={barbers} loading={loading} />
         </div>
 
         {/* Col 2: Live Queue — grouped by barber */}
@@ -282,6 +285,11 @@ export default function OperationsPage() {
           onCreated={() => { setShowBookingDrawer(false); refresh(); showToast('تم إنشاء الحجز'); }}
         />
       )}
+      {showBookingControlDrawer && (
+        <BookingControlDrawer
+          onClose={() => setShowBookingControlDrawer(false)}
+        />
+      )}
 
       {/* Toast */}
       {toast && (
@@ -289,7 +297,7 @@ export default function OperationsPage() {
           className="fixed bottom-5 right-1/2 translate-x-1/2 z-[60] px-5 py-3 rounded-xl text-sm font-semibold shadow-2xl border transition-all"
           style={{
             background: toast.ok ? '#141418' : 'rgba(239,68,68,0.15)',
-            color:      toast.ok ? '#F7F1E5' : '#EF4444',
+            color: toast.ok ? '#F7F1E5' : '#EF4444',
             borderColor: toast.ok ? '#2A2A35' : 'rgba(239,68,68,0.35)',
           }}>
           {toast.msg}

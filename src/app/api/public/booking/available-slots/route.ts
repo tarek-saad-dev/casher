@@ -7,6 +7,12 @@ import {
   isValidDate,
   PUBLIC_CORS_HEADERS,
 } from "@/lib/publicBookingHelpers";
+import {
+  loadOverridesForDate,
+  applyOverrides,
+  slotBlockedByOverride,
+  EffectiveSchedule,
+} from "@/lib/scheduleOverrides";
 
 export const runtime = "nodejs";
 
@@ -267,6 +273,25 @@ export async function GET(req: NextRequest) {
       /* table may not exist */
     }
 
+    // ── 5b. Batch preload schedule overrides (1 query) ────────────────────────
+    const overridesMap = await loadOverridesForDate(db, barberIds, date);
+
+    // Apply overrides to each barber's base schedule
+    const effectiveScheduleMap: Record<number, EffectiveSchedule> = {};
+    for (const bid of barberIds) {
+      const base = scheduleMap[bid] ?? {
+        isWorking: false,
+        start: "09:00",
+        end: "23:00",
+      };
+      const overrides = overridesMap.get(bid) ?? [];
+      effectiveScheduleMap[bid] = applyOverrides(bid, date, base, overrides);
+      // day_off override → treat same as TblEmpDayOff
+      if (!effectiveScheduleMap[bid].isWorking) {
+        dayOffSet.add(bid);
+      }
+    }
+
     // ── 6. Batch preload queue tickets (1 query) ──────────────────────────────
     const queueRes = await db
       .request()
@@ -373,6 +398,17 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // ── 8b. Inject block_range override intervals into blockersMap ──────────────
+    for (const bid of barberIds) {
+      for (const iv of effectiveScheduleMap[bid]?.blockedIntervals ?? []) {
+        blockersMap[bid].push({
+          startMs: iv.startMs,
+          endMs: iv.endMs,
+          label: "override",
+        });
+      }
+    }
+
     for (const id of barberIds) {
       blockersMap[id].sort((a, b) => a.startMs - b.startMs);
     }
@@ -409,7 +445,9 @@ export async function GET(req: NextRequest) {
     const activeBarbers = barberIds.filter((id) => !dayOffSet.has(id));
 
     for (const bid of activeBarbers) {
-      const sched = scheduleMap[bid];
+      // Use effective schedule (post-override) for slot generation
+      const effSched = effectiveScheduleMap[bid];
+      const sched = effSched ?? scheduleMap[bid];
       if (!sched || !sched.isWorking) continue;
       for (const { time, dayOffset } of generateSlots(
         sched.start,
@@ -485,15 +523,19 @@ export async function GET(req: NextRequest) {
 
       if (mode === "specific" && empId) {
         const { minutes: durMin } = barberDuration[empId];
-        const sched = scheduleMap[empId];
+        const effSched = effectiveScheduleMap[empId];
+        const sched = effSched ?? scheduleMap[empId];
 
         if (dayOffSet.has(empId)) {
+          const overrideReason = overridesMap
+            .get(empId)
+            ?.find((o) => o.Type === "day_off");
           slots.push({
             time,
             label,
             available: false,
             dayOffset,
-            reason: "إجازة",
+            reason: overrideReason ? "employee_day_off" : "إجازة",
           });
           continue;
         }
@@ -508,7 +550,7 @@ export async function GET(req: NextRequest) {
           continue;
         }
         if (!withinWindow(slotDateMs, date, sched.start, sched.end)) {
-          continue; // outside this barber's shift — skip entirely
+          continue; // outside this barber's effective shift — skip entirely
         }
 
         const slotEndMs = slotDateMs + durMin * 60_000;
@@ -525,19 +567,22 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
-        const conflict = findConflict(
-          blockersMap[empId] ?? [],
-          slotDateMs,
-          slotEndMs,
-        );
+        // Check block_range override intervals first
+        const overrideBlock = effSched
+          ? slotBlockedByOverride(slotDateMs, slotEndMs, effSched)
+          : null;
+        const conflict = overrideBlock
+          ? true
+          : findConflict(blockersMap[empId] ?? [], slotDateMs, slotEndMs);
         if (DEV)
           console.log("[available-slots] slot check:", {
             slotStart: time,
             dayOffset,
             slotEnd: minutesToHHMM(hhmmToMinutes(time) + durMin),
             overlapsBooking: conflict,
+            overrideBlock,
             available: !conflict,
-            reason: conflict ? "blocker" : "ok",
+            reason: conflict ? (overrideBlock ?? "blocker") : "ok",
           });
 
         if (conflict) {
@@ -546,7 +591,7 @@ export async function GET(req: NextRequest) {
             label,
             available: false,
             dayOffset,
-            reason: "الوقت محجوز",
+            reason: overrideBlock ?? "الوقت محجوز",
           });
         } else {
           slots.push({
@@ -567,7 +612,8 @@ export async function GET(req: NextRequest) {
         let bestSource: DurationSource = "SYSTEM_DEFAULT";
 
         for (const bid of activeBarbers) {
-          const sched = scheduleMap[bid];
+          const effSchedN = effectiveScheduleMap[bid];
+          const sched = effSchedN ?? scheduleMap[bid];
           if (!sched || !sched.isWorking) continue;
           if (!withinWindow(slotDateMs, date, sched.start, sched.end)) continue;
 
@@ -575,6 +621,12 @@ export async function GET(req: NextRequest) {
           const slotEndMs = slotDateMs + durMin * 60_000;
 
           if (!slotEndFitsInShift(slotEndMs, date, sched.start, sched.end))
+            continue;
+          // Check override block_range intervals
+          if (
+            effSchedN &&
+            slotBlockedByOverride(slotDateMs, slotEndMs, effSchedN)
+          )
             continue;
           if (findConflict(blockersMap[bid] ?? [], slotDateMs, slotEndMs))
             continue;
