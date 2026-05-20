@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { CalendarCheck, AlertTriangle, User, Clock, Plus, CheckCircle, UserCheck, Play, ReceiptText, XCircle } from 'lucide-react';
-import type { Booking, BookingStatus } from '@/lib/operationsTypes';
+import type { Booking } from '@/lib/operationsTypes';
 import { BOOKING_STATUS_LABELS, BOOKING_STATUS_COLORS } from '@/lib/operationsTypes';
 import { BookingDetailsModal } from './BookingDetailsModal';
 
@@ -23,12 +23,47 @@ interface Props {
   onRefresh: () => void;
 }
 
+/**
+ * Safely extract minutes-since-midnight from a StartTime value.
+ * SQL Server `time` columns arrive as Date objects with epoch date 1970-01-01,
+ * so we read UTC hours/minutes to avoid local timezone shifts.
+ * Also handles plain "HH:MM" or "HH:MM:SS" strings.
+ */
+function startTimeToMinutes(value: Date | string | null | undefined): number {
+  if (!value) return 999999;
+  if (value instanceof Date) {
+    if (!Number.isNaN(value.getTime())) return value.getUTCHours() * 60 + value.getUTCMinutes();
+  } else if (typeof value === 'string') {
+    // Try ISO / Date-like string first
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime()) && value.includes('T')) {
+      return d.getUTCHours() * 60 + d.getUTCMinutes();
+    }
+    // Plain "HH:MM" or "HH:MM:SS"
+    const match = value.match(/(\d{1,2}):(\d{2})/);
+    if (match) return Number(match[1]) * 60 + Number(match[2]);
+  }
+  return 999999;
+}
+
+
+/** Returns "HH:MM AM/PM" for display. Never returns NaN / undefined / 1970. */
+function formatBookingTime(value: Date | string | null | undefined): string {
+  const mins = startTimeToMinutes(value);
+  if (mins === 999999) return 'غير محدد';
+  const h = Math.floor(mins / 60) % 24;
+  const m = mins % 60;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
+}
+
 export function BookingsColumn({ bookings, loading, onAction, onRefresh }: Props) {
   const [tab, setTab] = useState<Tab>('today');
   const [selected, setSelected] = useState<Booking | null>(null);
 
   const now = new Date();
-  const nowTime = now.toTimeString().slice(0, 5);
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
 
   const filterBookings = (t: Tab): Booking[] => {
     switch (t) {
@@ -37,13 +72,13 @@ export function BookingsColumn({ bookings, loading, onAction, onRefresh }: Props
       case 'upcoming':
         return bookings.filter(b =>
           ['pending', 'confirmed'].includes(b.Status) &&
-          String(b.StartTime ?? '').slice(0, 5) >= nowTime
+          startTimeToMinutes(b.StartTime) >= nowMinutes
         );
       case 'late':
-        return bookings.filter(b => {
-          const t = String(b.StartTime ?? '').slice(0, 5);
-          return ['pending', 'confirmed'].includes(b.Status) && t < nowTime;
-        });
+        return bookings.filter(b =>
+          ['pending', 'confirmed'].includes(b.Status) &&
+          startTimeToMinutes(b.StartTime) < nowMinutes
+        );
       case 'arrived':
         return bookings.filter(b => ['arrived', 'queued'].includes(b.Status));
       case 'cancelled':
@@ -51,22 +86,17 @@ export function BookingsColumn({ bookings, loading, onAction, onRefresh }: Props
     }
   };
 
-  const filtered = filterBookings(tab).slice().sort((a, b) => {
-    const ta = String(a.StartTime ?? '').slice(0, 5);
-    const tb = String(b.StartTime ?? '').slice(0, 5);
-    return ta.localeCompare(tb);
-  });
+  const filtered = filterBookings(tab).slice().sort((a, b) =>
+    startTimeToMinutes(a.StartTime) - startTimeToMinutes(b.StartTime)
+  );
 
-  const isLate = (b: Booking) => {
-    const t = String(b.StartTime ?? '').slice(0, 5);
-    return ['pending', 'confirmed'].includes(b.Status) && t < nowTime;
-  };
+  const isLate = (b: Booking) =>
+    ['pending', 'confirmed'].includes(b.Status) &&
+    startTimeToMinutes(b.StartTime) < nowMinutes;
 
   const isSoon = (b: Booking) => {
-    const t = String(b.StartTime ?? '').slice(0, 5);
-    if (!t || !['pending', 'confirmed'].includes(b.Status)) return false;
-    const [bh, bm] = t.split(':').map(Number);
-    const diff = (bh * 60 + bm) - (now.getHours() * 60 + now.getMinutes());
+    if (!['pending', 'confirmed'].includes(b.Status)) return false;
+    const diff = startTimeToMinutes(b.StartTime) - nowMinutes;
     return diff > 0 && diff <= 15;
   };
 
@@ -111,14 +141,7 @@ export function BookingsColumn({ bookings, loading, onAction, onRefresh }: Props
           const label = BOOKING_STATUS_LABELS[b.Status] ?? b.Status;
           const late = isLate(b);
           const soon = isSoon(b);
-          const timeStr = String(b.StartTime ?? '').slice(0, 5);
-          const timeLabel = (() => {
-            if (!timeStr) return '';
-            const [h, m] = timeStr.split(':').map(Number);
-            const period = h >= 12 ? 'PM' : 'AM';
-            const h12 = h % 12 === 0 ? 12 : h % 12;
-            return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
-          })();
+          const timeDisplay = formatBookingTime(b.StartTime);
 
           return (
             <div key={b.BookingID}
@@ -133,10 +156,7 @@ export function BookingsColumn({ bookings, loading, onAction, onRefresh }: Props
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Clock size={12} style={{ color: late ? '#EF4444' : soon ? '#F59E0B' : '#6B7280' }} />
-                  <div className="flex flex-col">
-                    <span className="text-base font-bold leading-tight" style={{ color: late ? '#EF4444' : '#F7F1E5' }}>{timeStr}</span>
-                    {timeLabel && <span className="text-[10px] leading-tight" style={{ color: late ? '#EF4444' : '#9CA3AF' }}>الميعاد: {timeLabel}</span>}
-                  </div>
+                  <span className="text-sm font-bold" style={{ color: late ? '#EF4444' : '#F7F1E5' }}>{timeDisplay}</span>
                   {(late || soon) && (
                     <AlertTriangle size={12} style={{ color: late ? '#EF4444' : '#F59E0B' }} />
                   )}
