@@ -404,38 +404,50 @@ export async function GET(req: NextRequest) {
     // For specific mode: only the requested barber's schedule.
     // For nearest mode: union of all barbers' schedules.
 
-    const slotSet = new Set<string>();
+    // slotMap: HH:MM → dayOffset (0=same day, 1=next day for overnight post-midnight slots)
+    const slotMap = new Map<string, 0 | 1>();
     const activeBarbers = barberIds.filter((id) => !dayOffSet.has(id));
 
     for (const bid of activeBarbers) {
       const sched = scheduleMap[bid];
       if (!sched || !sched.isWorking) continue;
-      const times = generateSlots(
+      for (const { time, dayOffset } of generateSlots(
         sched.start,
         sched.end,
         settings.slotIntervalMinutes,
-      );
-      for (const t of times) slotSet.add(t);
+      )) {
+        // Prefer dayOffset=0 if two barbers share the same HH:MM at different offsets
+        if (!slotMap.has(time) || dayOffset < slotMap.get(time)!) {
+          slotMap.set(time, dayOffset);
+        }
+      }
     }
 
-    // Sort slot times chronologically (handle overnight: times >=00 after >=shiftStart)
-    const sortedSlots = [...slotSet].sort((a, b) => {
-      // Simple HH:MM sort — overnight slots (00:xx–05:xx) naturally sort before morning
-      // which is wrong for overnight shifts. We detect overnight per barber below.
-      return a.localeCompare(b);
-    });
+    // Sort: day-0 slots chronologically first, then day-1 (overnight) slots chronologically
+    const sortedSlots = [...slotMap.entries()].sort(([aT, aD], [bT, bD]) =>
+      aD !== bD ? aD - bD : aT.localeCompare(bT),
+    );
 
-    if (DEV)
+    if (DEV) {
+      const overnightSlots = sortedSlots.filter(([, d]) => d === 1);
       console.log("[available-slots] generated range:", {
-        firstGeneratedSlot: sortedSlots[0],
-        lastGeneratedSlot: sortedSlots[sortedSlots.length - 1],
+        firstGeneratedSlot: sortedSlots[0]?.[0],
+        lastGeneratedSlot: sortedSlots[sortedSlots.length - 1]?.[0],
         totalGeneratedSlots: sortedSlots.length,
+        overnightSlotsCount: overnightSlots.length,
       });
+      if (overnightSlots.length)
+        console.log(
+          "[available-slots overnight] post-midnight slots:",
+          overnightSlots.map(([t]) => t),
+        );
+    }
 
     const slots: Array<{
       time: string;
       label: string;
       available: boolean;
+      dayOffset: 0 | 1;
       empId?: number;
       barberName?: string;
       durationMinutes?: number;
@@ -446,29 +458,26 @@ export async function GET(req: NextRequest) {
     let removedPast = 0;
     let removedNotice = 0;
 
-    for (const time of sortedSlots) {
+    for (const [time, dayOffset] of sortedSlots) {
       const label = formatTimeLabel(time);
-      const timeMin = hhmmToMinutes(time);
 
-      // ── Today: skip past slots and min-notice slots ──────────────────────
+      // Correct epoch: post-midnight overnight slots belong to the next calendar day.
+      // This fixes the core bug: 00:15 on an overnight shift is date+1T00:15, NOT dateT00:15.
+      const slotDate = dayOffset === 1 ? nextDate(date) : date;
+      const slotDateMs = new Date(`${slotDate}T${time}:00`).getTime();
+
+      // ── Today: skip past/minNotice slots using FULL epoch (not minutes-only) ──
+      // Must use epoch so overnight post-midnight slots (dayOffset=1, always tomorrow)
+      // are never wrongly discarded as "past" because their HH:MM < nowMinutes.
       if (isToday) {
-        if (timeMin < nowMinutesSinceMidnight) {
+        if (slotDateMs < serverNow.getTime()) {
           removedPast++;
           continue;
         }
-        if (timeMin < minAllowedMinutes) {
+        if (slotDateMs < serverNow.getTime() + minNotice * 60_000) {
           removedNotice++;
           continue;
         }
-      }
-
-      // Construct slot epoch Ms — needed for blocker comparison
-      // For overnight slots (time < shiftStart), the slot is on date+1
-      // We handle this inside per-barber withinWindow check.
-      const slotDateMs = new Date(`${date}T${time}:00`).getTime();
-
-      if (DEV) {
-        // Per-slot debug logged below per barber
       }
 
       if (mode === "specific" && empId) {
@@ -476,7 +485,13 @@ export async function GET(req: NextRequest) {
         const sched = scheduleMap[empId];
 
         if (dayOffSet.has(empId)) {
-          slots.push({ time, label, available: false, reason: "إجازة" });
+          slots.push({
+            time,
+            label,
+            available: false,
+            dayOffset,
+            reason: "إجازة",
+          });
           continue;
         }
         if (!sched || !sched.isWorking) {
@@ -484,6 +499,7 @@ export async function GET(req: NextRequest) {
             time,
             label,
             available: false,
+            dayOffset,
             reason: "إجازة أسبوعية",
           });
           continue;
@@ -494,13 +510,14 @@ export async function GET(req: NextRequest) {
 
         const slotEndMs = slotDateMs + durMin * 60_000;
 
-        // Last slot must end within shift
-        if (!slotEndFitsInShift(slotEndMs, date, sched.end)) {
+        // Last slot must end within shift (pass startHHMM for correct overnight detection)
+        if (!slotEndFitsInShift(slotEndMs, date, sched.start, sched.end)) {
           if (DEV)
             console.log("[available-slots] slot check:", {
               time,
+              dayOffset,
               reason: "exceeds shift end",
-              slotEndMs,
+              slotEnd: new Date(slotEndMs).toISOString(),
             });
           continue;
         }
@@ -513,6 +530,7 @@ export async function GET(req: NextRequest) {
         if (DEV)
           console.log("[available-slots] slot check:", {
             slotStart: time,
+            dayOffset,
             slotEnd: minutesToHHMM(hhmmToMinutes(time) + durMin),
             overlapsBooking: conflict,
             available: !conflict,
@@ -520,12 +538,19 @@ export async function GET(req: NextRequest) {
           });
 
         if (conflict) {
-          slots.push({ time, label, available: false, reason: "الوقت محجوز" });
+          slots.push({
+            time,
+            label,
+            available: false,
+            dayOffset,
+            reason: "الوقت محجوز",
+          });
         } else {
           slots.push({
             time,
             label,
             available: true,
+            dayOffset,
             empId,
             barberName: nameMap[empId] ?? "",
             durationMinutes: durMin,
@@ -546,7 +571,8 @@ export async function GET(req: NextRequest) {
           const { minutes: durMin, source } = barberDuration[bid];
           const slotEndMs = slotDateMs + durMin * 60_000;
 
-          if (!slotEndFitsInShift(slotEndMs, date, sched.end)) continue;
+          if (!slotEndFitsInShift(slotEndMs, date, sched.start, sched.end))
+            continue;
           if (findConflict(blockersMap[bid] ?? [], slotDateMs, slotEndMs))
             continue;
 
@@ -562,6 +588,7 @@ export async function GET(req: NextRequest) {
             time,
             label,
             available: true,
+            dayOffset,
             empId: bestId,
             barberName: bestName,
             durationMinutes: bestDurMin,
@@ -572,6 +599,7 @@ export async function GET(req: NextRequest) {
             time,
             label,
             available: false,
+            dayOffset,
             reason: "لا يوجد حلاق متاح",
           });
         }
@@ -599,6 +627,12 @@ export async function GET(req: NextRequest) {
         first: slots[0],
         last: slots[slots.length - 1],
       });
+      const overnightFinal = slots.filter((s) => s.dayOffset === 1);
+      if (overnightFinal.length)
+        console.log(
+          "[available-slots overnight] final post-midnight slots:",
+          overnightFinal,
+        );
     }
 
     console.log(
@@ -758,7 +792,8 @@ function findConflict(
 
 /**
  * Returns true if slotMs falls within [shiftStart, shiftEnd).
- * Handles overnight shifts (e.g., 15:00–02:00).
+ * For overnight shifts (endHHMM <= startHHMM), shiftEnd is placed on date+1.
+ * slotMs for post-midnight slots is already epoch of date+1, so comparison is correct.
  */
 function withinWindow(
   slotMs: number,
@@ -766,28 +801,28 @@ function withinWindow(
   startHHMM: string,
   endHHMM: string,
 ): boolean {
-  const startMs = new Date(`${dateStr}T${startHHMM}:00`).getTime();
-  let endMs = new Date(`${dateStr}T${endHHMM}:00`).getTime();
-  const [sh, sm] = startHHMM.split(":").map(Number);
-  const [eh, em] = endHHMM.split(":").map(Number);
-  if (eh * 60 + em <= sh * 60 + sm) endMs += 24 * 3600_000; // overnight
-  return slotMs >= startMs && slotMs < endMs;
+  const shiftStartMs = new Date(`${dateStr}T${startHHMM}:00`).getTime();
+  const isOvernight = hhmmToMinutes(endHHMM) <= hhmmToMinutes(startHHMM);
+  const shiftEndMs = isOvernight
+    ? new Date(`${nextDate(dateStr)}T${endHHMM}:00`).getTime()
+    : new Date(`${dateStr}T${endHHMM}:00`).getTime();
+  return slotMs >= shiftStartMs && slotMs < shiftEndMs;
 }
 
 /**
- * Checks that slotEnd (epoch ms) does not exceed shiftEnd for that date.
- * Handles overnight shifts.
+ * Checks that slotEnd epoch does not exceed shiftEnd epoch.
+ * Requires startHHMM to detect overnight shifts correctly.
  */
 function slotEndFitsInShift(
   slotEndMs: number,
   dateStr: string,
+  startHHMM: string,
   endHHMM: string,
 ): boolean {
-  let shiftEndMs = new Date(`${dateStr}T${endHHMM}:00`).getTime();
-  // If the shift ends past midnight, add a day
-  // We detect overnight by checking if shiftEndMs < shiftStartMs — but we don't
-  // have startHHMM here. Safe heuristic: if slotEndMs > shiftEndMs by < 12h it's overnight.
-  if (slotEndMs > shiftEndMs + 12 * 3600_000) shiftEndMs += 24 * 3600_000;
+  const isOvernight = hhmmToMinutes(endHHMM) <= hhmmToMinutes(startHHMM);
+  const shiftEndMs = isOvernight
+    ? new Date(`${nextDate(dateStr)}T${endHHMM}:00`).getTime()
+    : new Date(`${dateStr}T${endHHMM}:00`).getTime();
   return slotEndMs <= shiftEndMs;
 }
 
@@ -799,15 +834,17 @@ function formatTimeLabel(time: string): string {
 }
 
 /**
- * Generate slot times between start and end at intervalMin spacing.
- * Handles overnight shifts (e.g., start=15:00, end=02:00).
+ * Generate slot entries between start and end at intervalMin spacing.
+ * Returns { time: "HH:MM", dayOffset: 0|1 }.
+ * dayOffset=1 means this slot is on the next calendar day (overnight post-midnight).
+ * Example: start=14:00, end=01:00 → 14:00..23:45 dayOffset=0, 00:00..00:45 dayOffset=1
  */
 function generateSlots(
   start: string,
   end: string,
   intervalMin: number,
-): string[] {
-  const times: string[] = [];
+): Array<{ time: string; dayOffset: 0 | 1 }> {
+  const entries: Array<{ time: string; dayOffset: 0 | 1 }> = [];
   const startMin = hhmmToMinutes(start);
   const endMin = hhmmToMinutes(end);
   const overnight = endMin <= startMin;
@@ -815,12 +852,21 @@ function generateSlots(
   let cur = startMin;
   while (cur < endTotal) {
     const tod = cur % (24 * 60);
-    times.push(
-      `${String(Math.floor(tod / 60)).padStart(2, "0")}:${String(tod % 60).padStart(2, "0")}`,
-    );
+    const dayOffset: 0 | 1 = cur >= 24 * 60 ? 1 : 0;
+    entries.push({
+      time: `${String(Math.floor(tod / 60)).padStart(2, "0")}:${String(tod % 60).padStart(2, "0")}`,
+      dayOffset,
+    });
     cur += intervalMin;
   }
-  return times;
+  return entries;
+}
+
+/** Returns "YYYY-MM-DD" for the day after dateStr. */
+function nextDate(dateStr: string): string {
+  const d = new Date(`${dateStr}T12:00:00`);
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
 }
 
 async function getAllBarberIds(
