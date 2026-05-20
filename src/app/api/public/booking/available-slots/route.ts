@@ -464,13 +464,16 @@ export async function GET(req: NextRequest) {
       // Correct epoch: post-midnight overnight slots belong to the next calendar day.
       // This fixes the core bug: 00:15 on an overnight shift is date+1T00:15, NOT dateT00:15.
       const slotDate = dayOffset === 1 ? nextDate(date) : date;
-      const slotDateMs = new Date(`${slotDate}T${time}:00`).getTime();
+      // Use timezone-aware epoch so comparison with serverNow is apples-to-apples.
+      // Plain new Date(`${date}T${time}:00`) parses in SERVER local TZ which may differ
+      // from salon TZ (e.g., server=UTC, salon=Africa/Cairo=UTC+3 → 3h error).
+      const slotDateMs = salonDateTimeToMs(slotDate, time, timezone);
 
       // ── Today: skip past/minNotice slots using FULL epoch (not minutes-only) ──
       // Must use epoch so overnight post-midnight slots (dayOffset=1, always tomorrow)
       // are never wrongly discarded as "past" because their HH:MM < nowMinutes.
       if (isToday) {
-        if (slotDateMs < serverNow.getTime()) {
+        if (slotDateMs <= serverNow.getTime()) {
           removedPast++;
           continue;
         }
@@ -616,7 +619,13 @@ export async function GET(req: NextRequest) {
           };
 
     if (DEV) {
-      console.log("[available-slots] removed past/minNotice slots:", {
+      console.log("[available-slots] past-slot filter summary:", {
+        requestedDate: date,
+        salonNow: nowInSalon,
+        minNoticeMinutes: minNotice,
+        isToday,
+        originalSlotsCount: sortedSlots.length,
+        filteredSlotsCount: slots.length,
         removedPastSlotsCount: removedPast,
         removedMinNoticeSlotsCount: removedNotice,
       });
@@ -722,6 +731,57 @@ function nowInTimezone(now: Date, tz: string): string {
   } catch {
     // Fallback: UTC
     return `${String(now.getUTCHours()).padStart(2, "0")}:${String(now.getUTCMinutes()).padStart(2, "0")}`;
+  }
+}
+
+/**
+ * Returns the UTC epoch (ms) for a given "YYYY-MM-DD" + "HH:MM" in a specific IANA timezone.
+ * This is the correct way to construct slot epoch when the server may not be in the salon TZ.
+ *
+ * Strategy: ask Intl what UTC instant corresponds to noon on that date in the TZ, then
+ * add/subtract the offset between noon-UTC and noon-local to get the TZ offset, then
+ * apply it to the desired HH:MM.
+ * Simpler approach used here: parse the ISO string with the TZ offset derived from Intl.
+ */
+function salonDateTimeToMs(dateStr: string, hhmm: string, tz: string): number {
+  try {
+    // Construct a reference instant at the desired local wall-clock time.
+    // We do this by using Temporal-like trick: format a known UTC instant back
+    // to local time, compute the offset, then shift.
+    // Simplest reliable approach: use Date.UTC for a candidate, check the
+    // Intl-formatted local time for that candidate, iterate until match.
+    // Instead, use the offset of the requested date at ~noon as a stable approximation
+    // (avoids DST issues at exact midnight).
+    const [h, m] = hhmm.split(":").map(Number);
+    // Reference: noon UTC on that date — to find offset
+    const noonUtc = new Date(`${dateStr}T12:00:00Z`);
+    const noonLocal = new Intl.DateTimeFormat("en-GB", {
+      timeZone: tz,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZoneName: "shortOffset",
+    }).formatToParts(noonUtc);
+    // Extract offset from the formatted parts (e.g., "GMT+3" → +180)
+    const offsetPart =
+      noonLocal.find((p) => p.type === "timeZoneName")?.value ?? "GMT+0";
+    const offsetMatch = offsetPart.match(/GMT([+-]\d+(?::\d+)?)/);
+    let offsetMinutes = 0;
+    if (offsetMatch) {
+      const parts = offsetMatch[1].split(":");
+      offsetMinutes =
+        parseInt(parts[0], 10) * 60 +
+        (parts[1]
+          ? parseInt(parts[1], 10) * Math.sign(parseInt(parts[0], 10))
+          : 0);
+    }
+    // Construct epoch: midnight UTC on that date, minus TZ offset (to get midnight local),
+    // then add desired HH:MM
+    const midnightUtcMs = new Date(`${dateStr}T00:00:00Z`).getTime();
+    return midnightUtcMs - offsetMinutes * 60_000 + (h * 60 + m) * 60_000;
+  } catch {
+    // Fallback: treat as local server time (original behavior)
+    return new Date(`${dateStr}T${hhmm}:00`).getTime();
   }
 }
 
