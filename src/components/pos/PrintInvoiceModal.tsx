@@ -573,7 +573,9 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
       };
 
       // Trigger print exactly once
-      win.print();
+      setTimeout(() => {
+        win.print();
+      }, 100); // Small delay to ensure content is fully rendered
 
       // Fallback: if onafterprint never fires (some browsers), close after 10s
       setTimeout(() => {
@@ -600,7 +602,7 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) { setPrinting(false); onClose(); } }}>
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -772,7 +774,7 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
                 <X className="w-4 h-4 ml-2" />
                 إغلاق
               </Button>
-              <Button onClick={handlePrint} disabled={printing}>
+              <Button onClick={handlePrint} disabled={printing} data-testid="print-button">
                 <Printer className="w-4 h-4 ml-2" />
                 {printing ? 'جاري الطباعة...' : 'طباعة'}
               </Button>
