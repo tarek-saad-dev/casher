@@ -199,3 +199,83 @@ export const PUBLIC_CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type, x-public-booking-key",
   "Cache-Control": "no-store",
 };
+
+// ── Timezone helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Convert a salon-local wall-clock time (YYYY-MM-DD HH:MM) to UTC epoch milliseconds.
+ * This compensates for server timezone differences (e.g., server=UTC vs salon=Africa/Cairo).
+ */
+export function salonDateTimeToMs(
+  dateStr: string,
+  hhmm: string,
+  tz: string,
+): number {
+  try {
+    const [h, m] = hhmm.split(":").map(Number);
+    // Reference: noon UTC on that date — to find offset
+    const noonUtc = new Date(`${dateStr}T12:00:00Z`);
+    const noonLocal = new Intl.DateTimeFormat("en-GB", {
+      timeZone: tz,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZoneName: "shortOffset",
+    }).formatToParts(noonUtc);
+    // Extract offset from the formatted parts (e.g., "GMT+3" → +180)
+    const offsetPart =
+      noonLocal.find((p) => p.type === "timeZoneName")?.value ?? "GMT+0";
+    const offsetMatch = offsetPart.match(/GMT([+-]\d+(?::\d+)?)/);
+    let offsetMinutes = 0;
+    if (offsetMatch) {
+      const parts = offsetMatch[1].split(":");
+      offsetMinutes =
+        parseInt(parts[0], 10) * 60 +
+        (parts[1]
+          ? parseInt(parts[1], 10) * Math.sign(parseInt(parts[0], 10))
+          : 0);
+    }
+    // Construct epoch: midnight UTC on that date, minus TZ offset (to get midnight local),
+    // then add desired HH:MM
+    const midnightUtcMs = new Date(`${dateStr}T00:00:00Z`).getTime();
+    return midnightUtcMs - offsetMinutes * 60_000 + (h * 60 + m) * 60_000;
+  } catch {
+    // Fallback: treat as local server time
+    return new Date(`${dateStr}T${hhmm}:00`).getTime();
+  }
+}
+
+/** Returns "YYYY-MM-DD" for today in the given IANA timezone. */
+export function dateInTimezone(now: Date, tz: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(now);
+    const y = parts.find((p) => p.type === "year")?.value ?? "";
+    const mo = parts.find((p) => p.type === "month")?.value ?? "";
+    const d = parts.find((p) => p.type === "day")?.value ?? "";
+    return `${y}-${mo}-${d}`;
+  } catch {
+    return now.toISOString().slice(0, 10);
+  }
+}
+
+/** Returns "HH:MM" for the given time in the specified timezone. */
+export function timeInTimezone(dt: Date, tz: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: tz,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(dt);
+    const h = parts.find((p) => p.type === "hour")?.value ?? "00";
+    const m = parts.find((p) => p.type === "minute")?.value ?? "00";
+    return `${h}:${m}`;
+  } catch {
+    return `${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;
+  }
+}

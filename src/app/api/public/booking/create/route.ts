@@ -10,6 +10,7 @@ import {
   generateBookingCode,
   upsertCustomer,
   PUBLIC_CORS_HEADERS,
+  salonDateTimeToMs,
 } from "@/lib/publicBookingHelpers";
 import {
   checkBarberAvailableForBooking,
@@ -114,7 +115,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const slotDt = new Date(`${date}T${time}:00`);
+    // Use salon timezone-aware epoch calculation to avoid server TZ mismatches
+    const timezone = settings.timezone || "Africa/Cairo";
+    const slotEpochMs = salonDateTimeToMs(date, time, timezone);
+    const slotDt = new Date(slotEpochMs);
 
     // Prevent bookings too soon
     const noticeMs = settings.minNoticeMinutes * 60_000;
@@ -258,12 +262,26 @@ export async function POST(req: NextRequest) {
           INSERT INTO [dbo].[Bookings]
             (ClientID, AssignedEmpID, BookingDate, StartTime, EndTime,
              Status, Source, Notes, BookingCode, CreatedByUserID)
-          OUTPUT INSERTED.BookingID
+          OUTPUT INSERTED.BookingID, INSERTED.BookingDate, INSERTED.StartTime, INSERTED.EndTime, INSERTED.Status
           VALUES
             (@clientId, @empId, @bDate, @sTime, @eTime,
              'confirmed', @source, @notes, @code, 0)
         `);
       bookingId = ins.recordset[0].BookingID;
+
+      // Log inserted booking for debugging
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[booking create] inserted booking:", {
+          bookingId,
+          bookingCode,
+          assignedEmpId: resolvedEmpId,
+          bookingDate: ins.recordset[0].BookingDate,
+          startTime: ins.recordset[0].StartTime,
+          endTime: ins.recordset[0].EndTime,
+          status: ins.recordset[0].Status,
+          durationMinutes: customerDur,
+        });
+      }
     } catch (err: any) {
       // BookingCode column is missing or other critical error
       console.error("[public/booking/create] Insert failed:", err);

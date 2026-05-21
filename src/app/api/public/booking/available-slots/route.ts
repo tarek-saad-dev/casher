@@ -6,6 +6,8 @@ import {
   checkRateLimit,
   isValidDate,
   PUBLIC_CORS_HEADERS,
+  salonDateTimeToMs,
+  dateInTimezone,
 } from "@/lib/publicBookingHelpers";
 import {
   loadOverridesForDate,
@@ -322,7 +324,7 @@ export async function GET(req: NextRequest) {
       .input("bdate", sql.Date, date)
       .query(
         `
-        SELECT AssignedEmpID AS EmpID, StartTime, EndTime, Status
+        SELECT AssignedEmpID AS EmpID, StartTime, EndTime, Status, BookingCode
         FROM dbo.Bookings
         WHERE AssignedEmpID IN (${barberIdList})
           AND BookingDate = @bdate
@@ -332,11 +334,18 @@ export async function GET(req: NextRequest) {
       )
       .catch(() => ({ recordset: [] as any[] }));
 
-    if (DEV)
+    if (DEV) {
+      console.log("[available-slots blockers] request:", {
+        date,
+        barberIds,
+        serviceIds,
+        mode,
+      });
       console.log(
-        "[available-slots] existing confirmed bookings:",
+        "[available-slots blockers] existing bookings query result:",
         bookingRes.recordset,
       );
+    }
 
     // ── 8. Build per-barber blocker maps in memory ────────────────────────────
     const blockersMap: Record<
@@ -381,21 +390,32 @@ export async function GET(req: NextRequest) {
 
     const bookingBlocks: Record<
       number,
-      Array<{ start: string; end: string }>
+      Array<{ start: string; end: string; bookingCode?: string }>
     > = {};
     for (const r of bookingRes.recordset) {
       const id = r.EmpID as number;
-      const startMs = sqlTimeToDateMs(date, r.StartTime);
+      // IMPORTANT: Use salon timezone-aware epoch calculation to match slot checking
+      // sqlTimeToDateMs uses local server time which causes timezone mismatches
+      const startMs = salonDateTimeToMs(
+        date,
+        fmtTime(r.StartTime) ?? "00:00",
+        timezone,
+      );
       const fallbackDurMs =
         (barberDuration[id]?.minutes ?? systemDefault) * 60_000;
       const endMs = r.EndTime
-        ? sqlTimeToDateMs(date, r.EndTime)
+        ? salonDateTimeToMs(date, fmtTime(r.EndTime) ?? "00:00", timezone)
         : startMs + fallbackDurMs;
       blockersMap[id].push({ startMs, endMs, label: "booking" });
       (bookingBlocks[id] ??= []).push({
         start: new Date(startMs).toISOString(),
         end: new Date(endMs).toISOString(),
+        bookingCode: r.BookingCode,
       });
+    }
+
+    if (DEV) {
+      console.log("[available-slots blockers] booking blocks:", bookingBlocks);
     }
 
     // ── 8b. Inject block_range override intervals into blockersMap ──────────────
@@ -574,16 +594,28 @@ export async function GET(req: NextRequest) {
         const conflict = overrideBlock
           ? true
           : findConflict(blockersMap[empId] ?? [], slotDateMs, slotEndMs);
-        if (DEV)
-          console.log("[available-slots] slot check:", {
+        if (DEV) {
+          // Find which booking caused the conflict for detailed logging
+          const conflictingBooking = !overrideBlock
+            ? (blockersMap[empId] ?? []).find(
+                (b) => slotDateMs < b.endMs && slotEndMs > b.startMs,
+              )
+            : null;
+          console.log("[available-slots blockers] slot conflict check:", {
             slotStart: time,
-            dayOffset,
+            slotStartMs: slotDateMs,
             slotEnd: minutesToHHMM(hhmmToMinutes(time) + durMin),
-            overlapsBooking: conflict,
-            overrideBlock,
-            available: !conflict,
-            reason: conflict ? (overrideBlock ?? "blocker") : "ok",
+            slotEndMs,
+            bookingBlocksForEmp: (blockersMap[empId] ?? []).map((b) => ({
+              startMs: b.startMs,
+              endMs: b.endMs,
+              label: b.label,
+            })),
+            conflict,
+            conflictBooking: conflictingBooking,
+            reason: conflict ? (overrideBlock ?? "already_booked") : "ok",
           });
+        }
 
         if (conflict) {
           slots.push({
@@ -786,75 +818,6 @@ function nowInTimezone(now: Date, tz: string): string {
   }
 }
 
-/**
- * Returns the UTC epoch (ms) for a given "YYYY-MM-DD" + "HH:MM" in a specific IANA timezone.
- * This is the correct way to construct slot epoch when the server may not be in the salon TZ.
- *
- * Strategy: ask Intl what UTC instant corresponds to noon on that date in the TZ, then
- * add/subtract the offset between noon-UTC and noon-local to get the TZ offset, then
- * apply it to the desired HH:MM.
- * Simpler approach used here: parse the ISO string with the TZ offset derived from Intl.
- */
-function salonDateTimeToMs(dateStr: string, hhmm: string, tz: string): number {
-  try {
-    // Construct a reference instant at the desired local wall-clock time.
-    // We do this by using Temporal-like trick: format a known UTC instant back
-    // to local time, compute the offset, then shift.
-    // Simplest reliable approach: use Date.UTC for a candidate, check the
-    // Intl-formatted local time for that candidate, iterate until match.
-    // Instead, use the offset of the requested date at ~noon as a stable approximation
-    // (avoids DST issues at exact midnight).
-    const [h, m] = hhmm.split(":").map(Number);
-    // Reference: noon UTC on that date — to find offset
-    const noonUtc = new Date(`${dateStr}T12:00:00Z`);
-    const noonLocal = new Intl.DateTimeFormat("en-GB", {
-      timeZone: tz,
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-      timeZoneName: "shortOffset",
-    }).formatToParts(noonUtc);
-    // Extract offset from the formatted parts (e.g., "GMT+3" → +180)
-    const offsetPart =
-      noonLocal.find((p) => p.type === "timeZoneName")?.value ?? "GMT+0";
-    const offsetMatch = offsetPart.match(/GMT([+-]\d+(?::\d+)?)/);
-    let offsetMinutes = 0;
-    if (offsetMatch) {
-      const parts = offsetMatch[1].split(":");
-      offsetMinutes =
-        parseInt(parts[0], 10) * 60 +
-        (parts[1]
-          ? parseInt(parts[1], 10) * Math.sign(parseInt(parts[0], 10))
-          : 0);
-    }
-    // Construct epoch: midnight UTC on that date, minus TZ offset (to get midnight local),
-    // then add desired HH:MM
-    const midnightUtcMs = new Date(`${dateStr}T00:00:00Z`).getTime();
-    return midnightUtcMs - offsetMinutes * 60_000 + (h * 60 + m) * 60_000;
-  } catch {
-    // Fallback: treat as local server time (original behavior)
-    return new Date(`${dateStr}T${hhmm}:00`).getTime();
-  }
-}
-
-/** Returns "YYYY-MM-DD" for today in the given IANA timezone. */
-function dateInTimezone(now: Date, tz: string): string {
-  try {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: tz,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(now);
-    const y = parts.find((p) => p.type === "year")?.value ?? "";
-    const mo = parts.find((p) => p.type === "month")?.value ?? "";
-    const d = parts.find((p) => p.type === "day")?.value ?? "";
-    return `${y}-${mo}-${d}`;
-  } catch {
-    return now.toISOString().slice(0, 10);
-  }
-}
-
 // ── Pure helpers ──────────────────────────────────────────────────────────────
 
 function hhmmToMinutes(hhmm: string): number {
@@ -885,10 +848,6 @@ function fmtTime(v: unknown): string | null {
     return `${String(v.getUTCHours()).padStart(2, "0")}:${String(v.getUTCMinutes()).padStart(2, "0")}`;
   }
   return null;
-}
-
-function sqlTimeToDateMs(dateStr: string, timeVal: unknown): number {
-  return new Date(`${dateStr}T${fmtTime(timeVal) ?? "00:00"}:00`).getTime();
 }
 
 function findConflict(

@@ -534,13 +534,30 @@ export async function POST(req: NextRequest) {
             INSERT INTO [dbo].[Bookings]
               (ClientID, AssignedEmpID, BookingDate, StartTime, EndTime,
                Status, Source, Notes, BookingCode, CreatedByUserID)
-            OUTPUT INSERTED.BookingID
+            OUTPUT INSERTED.BookingID, INSERTED.BookingDate, INSERTED.StartTime, INSERTED.EndTime, INSERTED.Status
             VALUES
               (@clientId, @empId, @bDate, @sTime, @eTime,
                'confirmed', @source, @notes, @code, 0)
           `);
         const bookingId = ins.recordset[0].BookingID as number;
         bookingIds.push(bookingId);
+
+        // Log inserted booking for debugging
+        if (DEV) {
+          console.log("[booking/plan] inserted booking:", {
+            bookingId,
+            bookingCode: code,
+            assignedEmpId: seg.empId,
+            empName: seg.empName,
+            bookingDate: ins.recordset[0].BookingDate,
+            startTime: ins.recordset[0].StartTime,
+            endTime: ins.recordset[0].EndTime,
+            status: ins.recordset[0].Status,
+            serviceId: seg.serviceId,
+            serviceName: seg.serviceName,
+            durationMinutes: seg.durationMinutes,
+          });
+        }
 
         // Insert booking service row
         await db
