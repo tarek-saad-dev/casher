@@ -171,7 +171,33 @@ export async function GET(req: NextRequest) {
     }
     const nameMap = await getBarberNames(db, barberIds);
     const barberIdList = barberIds.join(",");
-    const dayOfWeek = new Date(`${date}T12:00:00`).getDay();
+
+    // CRITICAL FIX: JavaScript getDay() returns 0-6 (Sun=0), but SQL Server default expects 1-7 (Sun=1)
+    // We need to add 1 to match SQL Server's default DATEFIRST behavior
+    const jsDayOfWeek = new Date(`${date}T12:00:00`).getDay();
+    const sqlDayOfWeek = jsDayOfWeek === 0 ? 7 : jsDayOfWeek; // Convert Sun=0 to Sun=7, Mon=1 to Mon=1, etc.
+
+    if (DEV) {
+      console.log("[available-slots full debug] now/timezone:", {
+        serverNow: serverNow.toISOString(),
+        timezone,
+        nowInSalonTimezone: nowInSalon,
+        salonToday: todayInSalon,
+        requestedDate: date,
+        isToday,
+        isPast,
+        nowMinutesSinceMidnight,
+        jsDayOfWeek,
+        sqlDayOfWeek,
+      });
+      console.log("[available-slots full debug] settings:", {
+        minNoticeMinutes: minNotice,
+        slotIntervalMinutes: settings.slotIntervalMinutes,
+        maxBookingDaysAhead: settings.maxBookingDaysAhead,
+        timezone,
+        minimumAllowedStartTime,
+      });
+    }
 
     // ── 2. Batch load all duration data (2 queries) ───────────────────────────
 
@@ -239,7 +265,7 @@ export async function GET(req: NextRequest) {
         `
       SELECT EmpID, IsWorkingDay, StartTime, EndTime
       FROM dbo.TblEmpWorkSchedule
-      WHERE EmpID IN (${barberIdList}) AND DayOfWeek = ${dayOfWeek}
+      WHERE EmpID IN (${barberIdList}) AND DayOfWeek = ${sqlDayOfWeek}
     `,
       )
       .catch(() => ({ recordset: [] as any[] }));
@@ -253,14 +279,37 @@ export async function GET(req: NextRequest) {
       const end = fmtTime(r.EndTime) ?? "23:00";
       scheduleMap[r.EmpID] = { isWorking: !!r.IsWorkingDay, start, end };
       if (DEV)
-        console.log("[available-slots] barber schedule:", {
+        console.log("[available-slots full debug] barber schedule from DB:", {
           empId: r.EmpID,
-          barberName: nameMap[r.EmpID],
+          empName: nameMap[r.EmpID],
           workDate: date,
+          jsDayOfWeek,
+          sqlDayOfWeek,
+          isWorkingDay: r.IsWorkingDay,
           startTime: start,
           endTime: end,
           isOvernight: hhmmToMinutes(end) <= hhmmToMinutes(start),
+          scheduleSource: "TblEmpWorkSchedule",
         });
+    }
+
+    // Log barbers who don't have schedule entries for this day
+    if (DEV) {
+      for (const bid of barberIds) {
+        if (!scheduleMap[bid]) {
+          console.log(
+            "[available-slots full debug] barber NO schedule found:",
+            {
+              empId: bid,
+              empName: nameMap[bid],
+              workDate: date,
+              jsDayOfWeek,
+              sqlDayOfWeek,
+              warning: "No schedule row found - will use fallback default",
+            },
+          );
+        }
+      }
     }
 
     // ── 5. Batch preload day-offs (1 query) ───────────────────────────────────
@@ -333,19 +382,6 @@ export async function GET(req: NextRequest) {
       `,
       )
       .catch(() => ({ recordset: [] as any[] }));
-
-    if (DEV) {
-      console.log("[available-slots blockers] request:", {
-        date,
-        barberIds,
-        serviceIds,
-        mode,
-      });
-      console.log(
-        "[available-slots blockers] existing bookings query result:",
-        bookingRes.recordset,
-      );
-    }
 
     // ── 8. Build per-barber blocker maps in memory ────────────────────────────
     const blockersMap: Record<
@@ -464,16 +500,51 @@ export async function GET(req: NextRequest) {
     const slotMap = new Map<string, 0 | 1>();
     const activeBarbers = barberIds.filter((id) => !dayOffSet.has(id));
 
+    // Track generated slots per barber for detailed debugging
+    const generatedSlotsByBarber: Record<
+      number,
+      Array<{ time: string; dayOffset: 0 | 1 }>
+    > = {};
+
     for (const bid of activeBarbers) {
       // Use effective schedule (post-override) for slot generation
       const effSched = effectiveScheduleMap[bid];
       const sched = effSched ?? scheduleMap[bid];
-      if (!sched || !sched.isWorking) continue;
-      for (const { time, dayOffset } of generateSlots(
+      if (!sched || !sched.isWorking) {
+        if (DEV) {
+          console.log(
+            "[available-slots full debug] barber skipped - not working:",
+            {
+              empId: bid,
+              empName: nameMap[bid],
+              hasSchedule: !!sched,
+              isWorking: sched?.isWorking,
+            },
+          );
+        }
+        continue;
+      }
+      const barberSlots = generateSlots(
         sched.start,
         sched.end,
         settings.slotIntervalMinutes,
-      )) {
+      );
+      generatedSlotsByBarber[bid] = barberSlots;
+      if (DEV) {
+        console.log(
+          "[available-slots full debug] generated slots for barber:",
+          {
+            empId: bid,
+            empName: nameMap[bid],
+            scheduleStart: sched.start,
+            scheduleEnd: sched.end,
+            totalGenerated: barberSlots.length,
+            first20: barberSlots.slice(0, 20).map((s) => s.time),
+            last10: barberSlots.slice(-10).map((s) => s.time),
+          },
+        );
+      }
+      for (const { time, dayOffset } of barberSlots) {
         // Prefer dayOffset=0 if two barbers share the same HH:MM at different offsets
         if (!slotMap.has(time) || dayOffset < slotMap.get(time)!) {
           slotMap.set(time, dayOffset);
@@ -516,6 +587,24 @@ export async function GET(req: NextRequest) {
     let removedPast = 0;
     let removedNotice = 0;
 
+    // Track all slot checks for detailed debugging (11 AM to 5 PM)
+    const slotChecks: Array<{
+      time: string;
+      dayOffset: 0 | 1;
+      slotStartMs: number;
+      slotEndMs: number;
+      available: boolean;
+      rejected: boolean;
+      reason?: string;
+      outsideWorkingHours?: boolean;
+      exceedsShiftEnd?: boolean;
+      overlapsBooking?: boolean;
+      overlapsQueue?: boolean;
+      overlapsOverride?: boolean;
+      empId?: number;
+      empName?: string;
+    }> = [];
+
     for (const [time, dayOffset] of sortedSlots) {
       const label = formatTimeLabel(time);
 
@@ -546,6 +635,92 @@ export async function GET(req: NextRequest) {
         const effSched = effectiveScheduleMap[empId];
         const sched = effSched ?? scheduleMap[empId];
 
+        // Track detailed slot check
+        const slotEndMs = slotDateMs + durMin * 60_000;
+        let slotCheckReason = "";
+        let slotRejected = false;
+        let outsideWorkingHours = false;
+        let exceedsShiftEnd = false;
+        let overlapsBooking = false;
+        let overlapsQueue = false;
+        let overlapsOverride = false;
+
+        if (dayOffSet.has(empId)) {
+          slotRejected = true;
+          slotCheckReason = "day_off";
+        } else if (!sched || !sched.isWorking) {
+          slotRejected = true;
+          slotCheckReason = "not_working";
+        } else if (
+          !withinWindow(slotDateMs, date, sched.start, sched.end, timezone)
+        ) {
+          slotRejected = true;
+          slotCheckReason = "outside_working_hours";
+          outsideWorkingHours = true;
+        } else {
+          // Last slot must end within shift
+          if (
+            !slotEndFitsInShift(
+              slotEndMs,
+              date,
+              sched.start,
+              sched.end,
+              timezone,
+            )
+          ) {
+            slotRejected = true;
+            slotCheckReason = "exceeds_shift_end";
+            exceedsShiftEnd = true;
+          } else {
+            // Check block_range override intervals first
+            const overrideBlock = effSched
+              ? slotBlockedByOverride(slotDateMs, slotEndMs, effSched)
+              : null;
+            const conflict = overrideBlock
+              ? true
+              : findConflict(blockersMap[empId] ?? [], slotDateMs, slotEndMs);
+
+            if (overrideBlock) {
+              slotRejected = true;
+              slotCheckReason = "override_block";
+              overlapsOverride = true;
+            } else if (conflict) {
+              slotRejected = true;
+              slotCheckReason = "already_booked";
+              // Find what type of blocker
+              const blocker = (blockersMap[empId] ?? []).find(
+                (b) => slotDateMs < b.endMs && slotEndMs > b.startMs,
+              );
+              if (blocker?.label === "booking") overlapsBooking = true;
+              if (blocker?.label === "queue") overlapsQueue = true;
+              if (blocker?.label === "override") overlapsOverride = true;
+            }
+          }
+        }
+
+        // Add to tracking array for debugging (only for slots 09:00-23:00)
+        const timeMinutes = hhmmToMinutes(time);
+        if (timeMinutes >= 540 && timeMinutes <= 1380) {
+          // 09:00 to 23:00
+          slotChecks.push({
+            time,
+            dayOffset,
+            slotStartMs: slotDateMs,
+            slotEndMs,
+            available: !slotRejected,
+            rejected: slotRejected,
+            reason: slotCheckReason,
+            outsideWorkingHours,
+            exceedsShiftEnd,
+            overlapsBooking,
+            overlapsQueue,
+            overlapsOverride,
+            empId,
+            empName: nameMap[empId] ?? "",
+          });
+        }
+
+        // Handle slot result
         if (dayOffSet.has(empId)) {
           const overrideReason = overridesMap
             .get(empId)
@@ -569,14 +744,10 @@ export async function GET(req: NextRequest) {
           });
           continue;
         }
-        if (!withinWindow(slotDateMs, date, sched.start, sched.end)) {
+        if (outsideWorkingHours) {
           continue; // outside this barber's effective shift — skip entirely
         }
-
-        const slotEndMs = slotDateMs + durMin * 60_000;
-
-        // Last slot must end within shift (pass startHHMM for correct overnight detection)
-        if (!slotEndFitsInShift(slotEndMs, date, sched.start, sched.end)) {
+        if (exceedsShiftEnd) {
           if (DEV)
             console.log("[available-slots] slot check:", {
               time,
@@ -594,28 +765,6 @@ export async function GET(req: NextRequest) {
         const conflict = overrideBlock
           ? true
           : findConflict(blockersMap[empId] ?? [], slotDateMs, slotEndMs);
-        if (DEV) {
-          // Find which booking caused the conflict for detailed logging
-          const conflictingBooking = !overrideBlock
-            ? (blockersMap[empId] ?? []).find(
-                (b) => slotDateMs < b.endMs && slotEndMs > b.startMs,
-              )
-            : null;
-          console.log("[available-slots blockers] slot conflict check:", {
-            slotStart: time,
-            slotStartMs: slotDateMs,
-            slotEnd: minutesToHHMM(hhmmToMinutes(time) + durMin),
-            slotEndMs,
-            bookingBlocksForEmp: (blockersMap[empId] ?? []).map((b) => ({
-              startMs: b.startMs,
-              endMs: b.endMs,
-              label: b.label,
-            })),
-            conflict,
-            conflictBooking: conflictingBooking,
-            reason: conflict ? (overrideBlock ?? "already_booked") : "ok",
-          });
-        }
 
         if (conflict) {
           slots.push({
@@ -647,12 +796,21 @@ export async function GET(req: NextRequest) {
           const effSchedN = effectiveScheduleMap[bid];
           const sched = effSchedN ?? scheduleMap[bid];
           if (!sched || !sched.isWorking) continue;
-          if (!withinWindow(slotDateMs, date, sched.start, sched.end)) continue;
+          if (!withinWindow(slotDateMs, date, sched.start, sched.end, timezone))
+            continue;
 
           const { minutes: durMin, source } = barberDuration[bid];
           const slotEndMs = slotDateMs + durMin * 60_000;
 
-          if (!slotEndFitsInShift(slotEndMs, date, sched.start, sched.end))
+          if (
+            !slotEndFitsInShift(
+              slotEndMs,
+              date,
+              sched.start,
+              sched.end,
+              timezone,
+            )
+          )
             continue;
           // Check override block_range intervals
           if (
@@ -726,6 +884,42 @@ export async function GET(req: NextRequest) {
           "[available-slots overnight] final post-midnight slots:",
           overnightFinal,
         );
+
+      // Print detailed slot table for debugging (specific mode only)
+      if (mode === "specific" && empId && slotChecks.length > 0) {
+        const rejectedSlots = slotChecks.filter((s) => s.rejected);
+        console.log(
+          `[available-slots full debug] Slot checks for ${nameMap[empId]} (${empId}):`,
+        );
+        console.log(
+          `Total slots checked: ${slotChecks.length}, Rejected: ${rejectedSlots.length}`,
+        );
+        console.table(
+          slotChecks.map((s) => ({
+            time: s.time,
+            available: s.available,
+            rejected: s.rejected,
+            reason: s.reason || "",
+            outsideWH: s.outsideWorkingHours ? "YES" : "",
+            exceedsEnd: s.exceedsShiftEnd ? "YES" : "",
+            booking: s.overlapsBooking ? "YES" : "",
+            queue: s.overlapsQueue ? "YES" : "",
+            override: s.overlapsOverride ? "YES" : "",
+          })),
+        );
+        if (rejectedSlots.length > 0) {
+          console.log("[available-slots full debug] REJECTED slots summary:");
+          const rejectionReasons = rejectedSlots.reduce(
+            (acc, s) => {
+              acc[s.reason || "unknown"] =
+                (acc[s.reason || "unknown"] || 0) + 1;
+              return acc;
+            },
+            {} as Record<string, number>,
+          );
+          console.table(rejectionReasons);
+        }
+      }
     }
 
     console.log(
@@ -865,35 +1059,39 @@ function findConflict(
  * Returns true if slotMs falls within [shiftStart, shiftEnd).
  * For overnight shifts (endHHMM <= startHHMM), shiftEnd is placed on date+1.
  * slotMs for post-midnight slots is already epoch of date+1, so comparison is correct.
+ * CRITICAL: Uses timezone-aware epoch calculation to avoid server/salon TZ mismatches.
  */
 function withinWindow(
   slotMs: number,
   dateStr: string,
   startHHMM: string,
   endHHMM: string,
+  timezone: string,
 ): boolean {
-  const shiftStartMs = new Date(`${dateStr}T${startHHMM}:00`).getTime();
+  const shiftStartMs = salonDateTimeToMs(dateStr, startHHMM, timezone);
   const isOvernight = hhmmToMinutes(endHHMM) <= hhmmToMinutes(startHHMM);
   const shiftEndMs = isOvernight
-    ? new Date(`${nextDate(dateStr)}T${endHHMM}:00`).getTime()
-    : new Date(`${dateStr}T${endHHMM}:00`).getTime();
+    ? salonDateTimeToMs(nextDate(dateStr), endHHMM, timezone)
+    : salonDateTimeToMs(dateStr, endHHMM, timezone);
   return slotMs >= shiftStartMs && slotMs < shiftEndMs;
 }
 
 /**
  * Checks that slotEnd epoch does not exceed shiftEnd epoch.
  * Requires startHHMM to detect overnight shifts correctly.
+ * CRITICAL: Uses timezone-aware epoch calculation to avoid server/salon TZ mismatches.
  */
 function slotEndFitsInShift(
   slotEndMs: number,
   dateStr: string,
   startHHMM: string,
   endHHMM: string,
+  timezone: string,
 ): boolean {
   const isOvernight = hhmmToMinutes(endHHMM) <= hhmmToMinutes(startHHMM);
   const shiftEndMs = isOvernight
-    ? new Date(`${nextDate(dateStr)}T${endHHMM}:00`).getTime()
-    : new Date(`${dateStr}T${endHHMM}:00`).getTime();
+    ? salonDateTimeToMs(nextDate(dateStr), endHHMM, timezone)
+    : salonDateTimeToMs(dateStr, endHHMM, timezone);
   return slotEndMs <= shiftEndMs;
 }
 

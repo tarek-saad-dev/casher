@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { speakWithAzure } from '@/lib/queueVoice';
+// Settings icon from lucide-react is used in Section component
 
 interface QueueSettings {
   QueuePrefix: string;
@@ -19,6 +20,20 @@ interface QueueSettings {
   BookingPriorityMode: string;
 }
 
+interface BookingSettings {
+  salonName: string;
+  timezone: string;
+  currency: string;
+  bookingEnabled: boolean;
+  allowSpecificBarber: boolean;
+  allowNearestBarber: boolean;
+  defaultMode: "nearest" | "specific";
+  slotIntervalMinutes: number;
+  minNoticeMinutes: number;
+  maxBookingDaysAhead: number;
+  defaultServiceDurationMinutes: number;
+}
+
 const DEFAULT_SETTINGS: QueueSettings = {
   QueuePrefix: 'A',
   QueueStartNumber: 1,
@@ -28,6 +43,20 @@ const DEFAULT_SETTINGS: QueueSettings = {
   AutoNoShowAfterMin: 30,
   AllowDoubleBooking: false,
   BookingPriorityMode: 'fifo',
+};
+
+const DEFAULT_BOOKING_SETTINGS: BookingSettings = {
+  salonName: "Cut Salon",
+  timezone: "Africa/Cairo",
+  currency: "EGP",
+  bookingEnabled: true,
+  allowSpecificBarber: true,
+  allowNearestBarber: true,
+  defaultMode: "nearest",
+  slotIntervalMinutes: 15,
+  minNoticeMinutes: 30,
+  maxBookingDaysAhead: 14,
+  defaultServiceDurationMinutes: 30,
 };
 
 function Toggle({
@@ -95,22 +124,27 @@ function Section({ title, icon, children }: { title: string; icon: React.ReactNo
 
 export default function QueueBookingSettingsPage() {
   const router = useRouter();
-  const [settings,    setSettings]    = useState<QueueSettings>(DEFAULT_SETTINGS);
-  const [loading,     setLoading]     = useState(true);
-  const [saving,      setSaving]      = useState(false);
-  const [saved,       setSaved]       = useState(false);
-  const [error,       setError]       = useState<string | null>(null);
+  const [settings, setSettings] = useState<QueueSettings>(DEFAULT_SETTINGS);
+  const [bookingSettings, setBookingSettings] = useState<BookingSettings>(DEFAULT_BOOKING_SETTINGS);
+  const [bookingLoading, setBookingLoading] = useState(true);
+  const [bookingSaving, setBookingSaving] = useState(false);
+  const [bookingSaved, setBookingSaved] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [voiceTesting, setVoiceTesting] = useState(false);
-  const [voiceToast,   setVoiceToast]   = useState<{ msg: string; ok: boolean } | null>(null);
+  const [voiceToast, setVoiceToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
-  const [migrating,   setMigrating]   = useState(false);
-  const [migrateMsg,  setMigrateMsg]  = useState<{ msg: string; ok: boolean } | null>(null);
+  const [migrating, setMigrating] = useState(false);
+  const [migrateMsg, setMigrateMsg] = useState<{ msg: string; ok: boolean } | null>(null);
 
   const handleMigrate = async () => {
     setMigrating(true);
     setMigrateMsg(null);
     try {
-      const res  = await fetch('/api/admin/migrate-barber-schedule', { method: 'POST' });
+      const res = await fetch('/api/admin/migrate-barber-schedule', { method: 'POST' });
       const data = await res.json();
       if (data.ok) {
         setMigrateMsg({ msg: 'تمت الميجرشن بنجاح ✅', ok: true });
@@ -141,30 +175,110 @@ export default function QueueBookingSettingsPage() {
   };
 
   useEffect(() => {
-    fetch('/api/queue/settings')
-      .then(r => r.json())
-      .then(d => {
-        if (d.settings) {
+    // Fetch both queue and booking settings
+    Promise.all([
+      fetch('/api/queue/settings').then(r => r.json()),
+      fetch('/api/admin/booking-settings').then(r => r.json()),
+    ])
+      .then(([queueData, bookingData]) => {
+        if (queueData.settings) {
           setSettings({
-            QueuePrefix:           d.settings.QueuePrefix           ?? 'A',
-            QueueStartNumber:      d.settings.QueueStartNumber       ?? 1,
-            ResetQueueDaily:       !!d.settings.ResetQueueDaily,
-            DefaultServiceMinutes: d.settings.DefaultServiceMinutes  ?? 30,
-            BookingGracePeriod:    d.settings.BookingGracePeriod      ?? 15,
-            AutoNoShowAfterMin:    d.settings.AutoNoShowAfterMin       ?? 30,
-            AllowDoubleBooking:    !!d.settings.AllowDoubleBooking,
-            BookingPriorityMode:   d.settings.BookingPriorityMode     ?? 'fifo',
+            QueuePrefix: queueData.settings.QueuePrefix ?? 'A',
+            QueueStartNumber: queueData.settings.QueueStartNumber ?? 1,
+            ResetQueueDaily: !!queueData.settings.ResetQueueDaily,
+            DefaultServiceMinutes: queueData.settings.DefaultServiceMinutes ?? 30,
+            BookingGracePeriod: queueData.settings.BookingGracePeriod ?? 15,
+            AutoNoShowAfterMin: queueData.settings.AutoNoShowAfterMin ?? 30,
+            AllowDoubleBooking: !!queueData.settings.AllowDoubleBooking,
+            BookingPriorityMode: queueData.settings.BookingPriorityMode ?? 'fifo',
           });
         }
+        if (bookingData.ok && bookingData.settings) {
+          setBookingSettings({
+            salonName: bookingData.settings.salonName ?? DEFAULT_BOOKING_SETTINGS.salonName,
+            timezone: bookingData.settings.timezone ?? DEFAULT_BOOKING_SETTINGS.timezone,
+            currency: bookingData.settings.currency ?? DEFAULT_BOOKING_SETTINGS.currency,
+            bookingEnabled: bookingData.settings.bookingEnabled ?? DEFAULT_BOOKING_SETTINGS.bookingEnabled,
+            allowSpecificBarber: bookingData.settings.allowSpecificBarber ?? DEFAULT_BOOKING_SETTINGS.allowSpecificBarber,
+            allowNearestBarber: bookingData.settings.allowNearestBarber ?? DEFAULT_BOOKING_SETTINGS.allowNearestBarber,
+            defaultMode: bookingData.settings.defaultMode ?? DEFAULT_BOOKING_SETTINGS.defaultMode,
+            slotIntervalMinutes: bookingData.settings.slotIntervalMinutes ?? DEFAULT_BOOKING_SETTINGS.slotIntervalMinutes,
+            minNoticeMinutes: bookingData.settings.minNoticeMinutes ?? DEFAULT_BOOKING_SETTINGS.minNoticeMinutes,
+            maxBookingDaysAhead: bookingData.settings.maxBookingDaysAhead ?? DEFAULT_BOOKING_SETTINGS.maxBookingDaysAhead,
+            defaultServiceDurationMinutes: bookingData.settings.defaultServiceDurationMinutes ?? DEFAULT_BOOKING_SETTINGS.defaultServiceDurationMinutes,
+          });
+        } else if (!bookingData.ok) {
+          setBookingError(bookingData.error || 'فشل تحميل إعدادات الحجز');
+        }
       })
-      .catch(() => setError('فشل تحميل الإعدادات'))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        setError('فشل تحميل الإعدادات');
+        setBookingError('فشل تحميل إعدادات الحجز');
+      })
+      .finally(() => {
+        setLoading(false);
+        setBookingLoading(false);
+      });
   }, []);
+
+  const setBooking = <K extends keyof BookingSettings>(key: K, value: BookingSettings[K]) => {
+    setBookingSettings(s => ({ ...s, [key]: value }));
+    setBookingSaved(false);
+  };
+
+  const handleSaveBookingSettings = async () => {
+    setBookingSaving(true);
+    setBookingError(null);
+    try {
+      const res = await fetch('/api/admin/booking-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          salonName: bookingSettings.salonName,
+          timezone: bookingSettings.timezone,
+          currency: bookingSettings.currency,
+          bookingEnabled: bookingSettings.bookingEnabled,
+          allowSpecificBarber: bookingSettings.allowSpecificBarber,
+          allowNearestBarber: bookingSettings.allowNearestBarber,
+          defaultMode: bookingSettings.defaultMode,
+          slotIntervalMinutes: bookingSettings.slotIntervalMinutes,
+          minNoticeMinutes: bookingSettings.minNoticeMinutes,
+          maxBookingDaysAhead: bookingSettings.maxBookingDaysAhead,
+          defaultServiceDurationMinutes: bookingSettings.defaultServiceDurationMinutes,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل الحفظ');
+      setBookingSaved(true);
+      setTimeout(() => setBookingSaved(false), 3000);
+    } catch (err) {
+      setBookingError(err instanceof Error ? err.message : 'خطأ');
+    } finally {
+      setBookingSaving(false);
+    }
+  };
 
   const set = <K extends keyof QueueSettings>(key: K, value: QueueSettings[K]) => {
     setSettings(s => ({ ...s, [key]: value }));
     setSaved(false);
   };
+
+  // Select options for booking settings
+  const minNoticeOptions = [
+    { value: 0, label: '0 دقيقة' },
+    { value: 5, label: '5 دقائق' },
+    { value: 10, label: '10 دقائق' },
+    { value: 15, label: '15 دقيقة' },
+    { value: 30, label: '30 دقيقة' },
+    { value: 60, label: '60 دقيقة' },
+  ];
+
+  const slotIntervalOptions = [
+    { value: 5, label: '5 دقائق' },
+    { value: 10, label: '10 دقائق' },
+    { value: 15, label: '15 دقيقة' },
+    { value: 30, label: '30 دقيقة' },
+  ];
 
   const handleSave = async () => {
     setSaving(true);
@@ -213,9 +327,9 @@ export default function QueueBookingSettingsPage() {
           className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
           style={{ background: saved ? '#10B981' : 'linear-gradient(135deg,#D6A84F,#B8923A)', color: saved ? '#fff' : '#000' }}
         >
-          {saving  ? <Loader2 size={14} className="animate-spin" /> :
-           saved   ? <CheckCircle2 size={14} /> :
-                     <Save size={14} />}
+          {saving ? <Loader2 size={14} className="animate-spin" /> :
+            saved ? <CheckCircle2 size={14} /> :
+              <Save size={14} />}
           {saving ? 'جاري الحفظ...' : saved ? 'تم الحفظ' : 'حفظ الإعدادات'}
         </button>
       </div>
@@ -246,8 +360,183 @@ export default function QueueBookingSettingsPage() {
             </div>
           </div>
 
+          {/* Online Booking Settings */}
+          <Section title="إعدادات الحجز الأونلاين" icon={<CalendarDays size={14} />}>
+
+            {/* Booking Enabled */}
+            <Toggle
+              label="تفعيل الحجز من الموقع"
+              description="عند الإيقاف، لن يستطيع العملاء إنشاء حجوزات جديدة من الموقع"
+              checked={bookingSettings.bookingEnabled}
+              onChange={v => setBooking('bookingEnabled', v)}
+            />
+
+            {/* Booking Modes */}
+            <div className="border-t border-zinc-800 pt-4 mt-4">
+              <p className="text-sm font-medium text-white mb-3">طرق الحجز المتاحة</p>
+              <div className="space-y-3">
+                <Toggle
+                  label="السماح باختيار حلاق محدد"
+                  description="العميل يختار الحلاق المفضل"
+                  checked={bookingSettings.allowSpecificBarber}
+                  onChange={v => setBooking('allowSpecificBarber', v)}
+                />
+                <Toggle
+                  label="السماح بأقرب حلاق متاح"
+                  description="النظام يختار أول حلاق متاح"
+                  checked={bookingSettings.allowNearestBarber}
+                  onChange={v => setBooking('allowNearestBarber', v)}
+                />
+              </div>
+            </div>
+
+            {/* Default Mode */}
+            <div className="border-t border-zinc-800 pt-4 mt-4">
+              <p className="text-sm font-medium text-white mb-2">الوضع الافتراضي</p>
+              <div className="flex gap-2">
+                {[
+                  { value: 'nearest', label: 'أقرب حلاق متاح' },
+                  { value: 'specific', label: 'اختيار حلاق محدد' },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setBooking('defaultMode', opt.value as 'nearest' | 'specific')}
+                    className="flex-1 py-2 rounded-xl border text-xs font-medium transition-all"
+                    style={bookingSettings.defaultMode === opt.value
+                      ? { borderColor: '#D6A84F', background: 'rgba(214,168,79,0.15)', color: '#D6A84F' }
+                      : { borderColor: '#2A2A35', background: 'transparent', color: '#6B7280' }
+                    }
+                  >{opt.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Time Settings */}
+            <div className="border-t border-zinc-800 pt-4 mt-4 space-y-4">
+              <p className="text-sm font-medium text-white">إعدادات الوقت</p>
+
+              {/* Min Notice Minutes */}
+              <div>
+                <p className="text-xs text-zinc-400 mb-2">أقل مدة قبل الحجز</p>
+                <p className="text-xs text-zinc-600 mb-2">تحدد أقل وقت بين الوقت الحالي وميعاد الحجز</p>
+                <div className="flex gap-2 flex-wrap">
+                  {minNoticeOptions.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setBooking('minNoticeMinutes', opt.value)}
+                      className="px-3 py-1.5 rounded-lg border text-xs font-medium transition-all"
+                      style={bookingSettings.minNoticeMinutes === opt.value
+                        ? { borderColor: '#D6A84F', background: 'rgba(214,168,79,0.15)', color: '#D6A84F' }
+                        : { borderColor: '#2A2A35', background: 'transparent', color: '#6B7280' }
+                      }
+                    >{opt.label}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Slot Interval */}
+              <div>
+                <p className="text-xs text-zinc-400 mb-2">تقسيم المواعيد</p>
+                <p className="text-xs text-zinc-600 mb-2">تحدد شكل تقسيم المواعيد في صفحة الحجز</p>
+                <div className="flex gap-2 flex-wrap">
+                  {slotIntervalOptions.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setBooking('slotIntervalMinutes', opt.value)}
+                      className="px-3 py-1.5 rounded-lg border text-xs font-medium transition-all"
+                      style={bookingSettings.slotIntervalMinutes === opt.value
+                        ? { borderColor: '#D6A84F', background: 'rgba(214,168,79,0.15)', color: '#D6A84F' }
+                        : { borderColor: '#2A2A35', background: 'transparent', color: '#6B7280' }
+                      }
+                    >{opt.label}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Max Booking Days Ahead */}
+              <NumberInput
+                label="أقصى عدد أيام للحجز المسبق"
+                description="كم يوم يمكن للعميل الحجز مقدماً"
+                value={bookingSettings.maxBookingDaysAhead}
+                onChange={v => setBooking('maxBookingDaysAhead', v)}
+                min={1} max={60} suffix=" يوم"
+              />
+            </div>
+
+            {/* Salon Info */}
+            <div className="border-t border-zinc-800 pt-4 mt-4 space-y-3">
+              <p className="text-sm font-medium text-white">بيانات الصالون</p>
+              <div>
+                <label className="text-xs text-zinc-400 block mb-1">اسم الصالون</label>
+                <input
+                  type="text"
+                  value={bookingSettings.salonName}
+                  onChange={e => setBooking('salonName', e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50"
+                />
+              </div>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="text-xs text-zinc-400 block mb-1">المنطقة الزمنية</label>
+                  <input
+                    type="text"
+                    value={bookingSettings.timezone}
+                    onChange={e => setBooking('timezone', e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50"
+                    placeholder="Africa/Cairo"
+                  />
+                </div>
+                <div className="w-24">
+                  <label className="text-xs text-zinc-400 block mb-1">العملة</label>
+                  <input
+                    type="text"
+                    value={bookingSettings.currency}
+                    onChange={e => setBooking('currency', e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white text-center focus:outline-none focus:border-amber-500/50"
+                    placeholder="EGP"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Default Duration */}
+            <div className="border-t border-zinc-800 pt-4 mt-4">
+              <NumberInput
+                label="مدة الخدمة الافتراضية"
+                description="تستخدم فقط لو خدمة ليس لها مدة محددة"
+                value={bookingSettings.defaultServiceDurationMinutes}
+                onChange={v => setBooking('defaultServiceDurationMinutes', v)}
+                min={5} max={240} suffix=" د"
+              />
+            </div>
+
+            {/* Save Button */}
+            <div className="border-t border-zinc-800 pt-4 mt-4">
+              {bookingError && (
+                <div className="mb-3 p-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
+                  {bookingError}
+                </div>
+              )}
+              <button
+                onClick={handleSaveBookingSettings}
+                disabled={bookingSaving}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+                style={{ background: bookingSaved ? '#10B981' : '#D6A84F', color: bookingSaved ? '#fff' : '#000' }}
+              >
+                {bookingSaving ? (
+                  <><Loader2 size={14} className="animate-spin" /> جاري حفظ إعدادات الحجز...</>
+                ) : bookingSaved ? (
+                  <><CheckCircle2 size={14} /> تم حفظ إعدادات الحجز بنجاح</>
+                ) : (
+                  <><Save size={14} /> حفظ إعدادات الحجز</>
+                )}
+              </button>
+            </div>
+          </Section>
+
           {/* Queue number settings */}
-          <Section title="إعدادات الطابور" icon={<Hash size={14}/>}>
+          <Section title="إعدادات الطابور" icon={<Hash size={14} />}>
+
             <div className="space-y-1 mb-2">
               <label className="text-xs text-zinc-400">بادئة رقم الطابور</label>
               <div className="flex gap-2 flex-wrap">
@@ -263,7 +552,7 @@ export default function QueueBookingSettingsPage() {
                   >{p}</button>
                 ))}
                 <input
-                  value={!['A','B','C','Q','#'].includes(settings.QueuePrefix) ? settings.QueuePrefix : ''}
+                  value={!['A', 'B', 'C', 'Q', '#'].includes(settings.QueuePrefix) ? settings.QueuePrefix : ''}
                   onChange={e => set('QueuePrefix', e.target.value.slice(0, 3).toUpperCase() || 'A')}
                   placeholder="مخصص"
                   maxLength={3}
@@ -289,7 +578,7 @@ export default function QueueBookingSettingsPage() {
           </Section>
 
           {/* Timing */}
-          <Section title="توقيتات الخدمة" icon={<Clock size={14}/>}>
+          <Section title="توقيتات الخدمة" icon={<Clock size={14} />}>
             <NumberInput
               label="مدة الخدمة الافتراضية"
               description="دقائق لكل خدمة إذا لم تُحدد مدتها"
@@ -314,7 +603,7 @@ export default function QueueBookingSettingsPage() {
           </Section>
 
           {/* Booking rules */}
-          <Section title="قواعد الحجز" icon={<CalendarDays size={14}/>}>
+          <Section title="قواعد الحجز" icon={<CalendarDays size={14} />}>
             <Toggle
               label="السماح بحجز مزدوج"
               description="السماح بحجزين متعارضين لنفس الحلاق في نفس الوقت"
@@ -327,9 +616,9 @@ export default function QueueBookingSettingsPage() {
               <p className="text-xs text-zinc-500 mb-2">كيف يُرتّب الطابور عند تساوي الوقت</p>
               <div className="flex gap-2">
                 {[
-                  { value: 'fifo',     label: 'الأول يُخدَّم أولاً' },
-                  { value: 'priority', label: 'حسب الأولوية'        },
-                  { value: 'booking',  label: 'الحجوزات أولاً'       },
+                  { value: 'fifo', label: 'الأول يُخدَّم أولاً' },
+                  { value: 'priority', label: 'حسب الأولوية' },
+                  { value: 'booking', label: 'الحجوزات أولاً' },
                 ].map(opt => (
                   <button
                     key={opt.value}
@@ -346,7 +635,7 @@ export default function QueueBookingSettingsPage() {
           </Section>
 
           {/* Voice test */}
-          <Section title="اختبار النداء الصوتي" icon={<Volume2 size={14}/>}>
+          <Section title="اختبار النداء الصوتي" icon={<Volume2 size={14} />}>
             <p className="text-xs text-zinc-500 leading-relaxed">
               يُشغَّل النداء باستخدام Azure Speech (ar-EG-SalmaNeural) عبر الخادم.
               تأكد من ضبط <span className="text-amber-400 font-mono">AZURE_SPEECH_KEY</span> في ملف <span className="font-mono">.env.local</span>.
@@ -367,7 +656,7 @@ export default function QueueBookingSettingsPage() {
                   className="text-xs font-medium px-3 py-1.5 rounded-lg"
                   style={voiceToast.ok
                     ? { background: 'rgba(16,185,129,0.12)', color: '#34D399', border: '1px solid rgba(16,185,129,0.25)' }
-                    : { background: 'rgba(239,68,68,0.1)',   color: '#F87171', border: '1px solid rgba(239,68,68,0.25)' }}
+                    : { background: 'rgba(239,68,68,0.1)', color: '#F87171', border: '1px solid rgba(239,68,68,0.25)' }}
                 >
                   {voiceToast.msg}
                 </span>
@@ -376,7 +665,7 @@ export default function QueueBookingSettingsPage() {
           </Section>
 
           {/* Migration section */}
-          <Section title="جداول قاعدة البيانات" icon={<Database size={14}/>}>
+          <Section title="جداول قاعدة البيانات" icon={<Database size={14} />}>
             <p className="text-xs text-zinc-500 leading-relaxed">
               شغّل هذه الميجرشن مرة واحدة لإضافة أعمدة الوقت التقديري إلى جدول التذاكر وإنشاء جدول خدمات التذاكر.
               مواعيد الموظفين موجودة بالفعل في نظام الموارد البشرية. آمنة للتشغيل أكثر من مرة.
@@ -397,7 +686,7 @@ export default function QueueBookingSettingsPage() {
                   className="text-xs font-medium px-3 py-1.5 rounded-lg"
                   style={migrateMsg.ok
                     ? { background: 'rgba(16,185,129,0.12)', color: '#34D399', border: '1px solid rgba(16,185,129,0.25)' }
-                    : { background: 'rgba(239,68,68,0.1)',   color: '#F87171', border: '1px solid rgba(239,68,68,0.25)' }}
+                    : { background: 'rgba(239,68,68,0.1)', color: '#F87171', border: '1px solid rgba(239,68,68,0.25)' }}
                 >
                   {migrateMsg.msg}
                 </span>
