@@ -2,10 +2,11 @@
  * POST /api/operations/bookings/[id]/arrive
  *
  * Handle booking arrival:
- * 1. Update Booking.Status = 'arrived' or 'queued'
- * 2. Create QueueTicket linked to BookingID
- * 3. PriorityType = reserved_booking
+ * 1. Update Booking.Status = 'queued'
+ * 2. Create QueueTicket (Status='waiting') linked to BookingID
+ * 3. Priority = 1 (reserved_booking)
  * 4. Prevent duplicate QueueTicket for same BookingID
+ * 5. EstimatedStartTime = booking's original slot time (Cairo local)
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -16,13 +17,14 @@ import {
   buildBookingIntervals,
   getDefaultDuration,
   findFirstFreeSlot,
-  cairoDateStr,
 } from "@/lib/queueEstimateEngine";
 
+// ── Date helpers ──────────────────────────────────────────────────────────────
+
 /**
- * SQL Server `time` columns arrive as Date objects anchored to 1970-01-01.
- * SQL Server `date` columns arrive as Date objects with time zeroed (UTC midnight).
- * This helper extracts HH:mm safely from either a Date (1970-based) or a string.
+ * Extract "HH:mm" from a SQL `time` column value.
+ * mssql driver returns `time` columns as Date objects anchored to 1970-01-01 UTC.
+ * Also handles plain strings like "10:30:00".
  */
 function extractHHMM(value: unknown): string | null {
   if (value == null) return null;
@@ -41,28 +43,54 @@ function extractHHMM(value: unknown): string | null {
 }
 
 /**
- * Build a proper local Date from a SQL `date` column value and a SQL `time` column value.
- * Combines the calendar date from dateValue with the HH:mm from timeValue.
+ * Extract "YYYY-MM-DD" from a SQL `date` column value.
+ * mssql driver returns `date` columns as Date objects with time zeroed at UTC midnight.
  */
-function buildDateTimeFromSqlDateAndTime(dateValue: unknown, timeValue: unknown): Date | null {
-  // Extract YYYY-MM-DD from dateValue
-  let dateStr: string | null = null;
-  if (dateValue instanceof Date && !isNaN(dateValue.getTime())) {
-    const y = dateValue.getUTCFullYear();
-    const mo = String(dateValue.getUTCMonth() + 1).padStart(2, '0');
-    const d = String(dateValue.getUTCDate()).padStart(2, '0');
-    dateStr = `${y}-${mo}-${d}`;
-  } else if (typeof dateValue === 'string') {
-    const m = dateValue.match(/(\d{4}-\d{2}-\d{2})/);
-    if (m) dateStr = m[1];
+function extractDateStr(value: unknown): string | null {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    const y = value.getUTCFullYear();
+    const mo = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(value.getUTCDate()).padStart(2, '0');
+    return `${y}-${mo}-${d}`;
   }
-  if (!dateStr) return null;
+  if (typeof value === 'string') {
+    const m = value.match(/(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1];
+  }
+  return null;
+}
 
-  const hhmm = extractHHMM(timeValue);
-  if (!hhmm) return null;
-
-  const dt = new Date(`${dateStr}T${hhmm}:00.000Z`);
-  return isNaN(dt.getTime()) ? null : dt;
+/**
+ * Build a valid Date for a salon datetime by treating YYYY-MM-DD + HH:mm
+ * as Africa/Cairo local time, converting to UTC correctly via Intl offset.
+ *
+ * Uses the same algorithm as /api/public/booking/plan's salonDateTimeToMs.
+ */
+function buildSalonDateTime(dateStr: string, hhmm: string, tz = 'Africa/Cairo'): Date | null {
+  try {
+    const [h, m] = hhmm.split(':').map(Number);
+    if (isNaN(h) || isNaN(m)) return null;
+    // Get TZ offset for noon on this date (avoids DST edge at midnight)
+    const noonUtc = new Date(`${dateStr}T12:00:00Z`);
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz,
+      timeZoneName: 'shortOffset',
+    }).formatToParts(noonUtc);
+    const offsetPart = parts.find(p => p.type === 'timeZoneName')?.value ?? 'GMT+0';
+    const match = offsetPart.match(/GMT([+-]\d+(?::\d+)?)/);
+    let offsetMinutes = 0;
+    if (match) {
+      const segs = match[1].split(':');
+      offsetMinutes = parseInt(segs[0], 10) * 60 +
+        (segs[1] ? parseInt(segs[1], 10) * Math.sign(parseInt(segs[0], 10)) : 0);
+    }
+    const midnightUtcMs = new Date(`${dateStr}T00:00:00Z`).getTime();
+    const ms = midnightUtcMs - offsetMinutes * 60_000 + (h * 60 + m) * 60_000;
+    const dt = new Date(ms);
+    return isNaN(dt.getTime()) ? null : dt;
+  } catch {
+    return null;
+  }
 }
 
 export const runtime = "nodejs";
@@ -174,11 +202,22 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 
     const userID = session.UserID ?? 0;
     const now = new Date();
-    const today = cairoDateStr(now);
     const createdTime = now.toLocaleTimeString("en-GB", {
       timeZone: "Africa/Cairo",
       hour12: false,
     });
+
+    // Derive the operational date from the booking's own date (not necessarily today)
+    const bookingDateStr = extractDateStr(booking.BookingDate);
+    if (!bookingDateStr) {
+      return NextResponse.json(
+        { ok: false, error: 'invalid_booking_date', bookingId,
+          raw: String(booking.BookingDate), message: 'Cannot extract YYYY-MM-DD from BookingDate' },
+        { status: 422 }
+      );
+    }
+    // QueueDate = booking's calendar date (used to group tickets per day)
+    const queueDate = bookingDateStr;
 
     // 4. Load queue settings for ticket code generation
     let prefix = "A";
@@ -200,106 +239,95 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     let estimatedStartTime: Date | null = null;
     let estimatedWaitMinutes: number | null = null;
 
-    // Debug log raw booking fields before any date computation
+    // Extract HH:mm from SQL time columns (returned as 1970-based Date objects)
     const startHHMM = extractHHMM(booking.StartTime);
     const endHHMM   = extractHHMM(booking.EndTime);
+
     console.log('[arrive] booking raw fields', {
       bookingId,
-      BookingDate:       booking.BookingDate,
-      StartTime:         booking.StartTime,
-      EndTime:           booking.EndTime,
-      AssignedEmpID:     booking.AssignedEmpID,
-      Status:            booking.Status,
-      typeofBookingDate: typeof booking.BookingDate,
-      typeofStartTime:   typeof booking.StartTime,
-      isStartTimeDate:   booking.StartTime instanceof Date,
+      bookingDateStr,
+      StartTime:       booking.StartTime,
+      EndTime:         booking.EndTime,
+      AssignedEmpID:   booking.AssignedEmpID,
+      Status:          booking.Status,
       startHHMM,
       endHHMM,
     });
 
+    // Build Cairo-local DateTimes for start and end
+    const bookingStart = startHHMM ? buildSalonDateTime(bookingDateStr, startHHMM) : null;
+    const bookingEnd   = endHHMM   ? buildSalonDateTime(bookingDateStr, endHHMM)   : null;
+
+    console.log('[arrive] computed datetime', {
+      computedEstStart: bookingStart?.toISOString() ?? null,
+      computedEstEnd:   bookingEnd?.toISOString()   ?? null,
+      isValidEstStart:  bookingStart ? !isNaN(bookingStart.getTime()) : false,
+      isValidEstEnd:    bookingEnd   ? !isNaN(bookingEnd.getTime())   : false,
+    });
+
+    // Guard: if we cannot build a valid start datetime, return 422 instead of 500
+    if (!bookingStart) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'invalid_est_start',
+          bookingId,
+          bookingDateStr,
+          rawStartTime: String(booking.StartTime),
+          extractedHHMM: startHHMM,
+          message: 'Cannot build valid EstimatedStartTime — check BookingDate + StartTime',
+        },
+        { status: 422 }
+      );
+    }
+
     if (booking.AssignedEmpID) {
       const defaultDur = await getDefaultDuration(db);
 
-      // Build timeline for the barber
+      const bookingDuration = (bookingEnd && bookingStart)
+        ? Math.max(1, Math.round((bookingEnd.getTime() - bookingStart.getTime()) / 60000))
+        : defaultDur;
+
+      // Build timeline for the barber on the booking's date
       const qIvs = await buildQueueIntervals(
-        db,
-        booking.AssignedEmpID,
-        today,
-        now,
-        defaultDur
+        db, booking.AssignedEmpID, bookingDateStr, now, defaultDur
       );
       const bIvs = await buildBookingIntervals(
-        db,
-        booking.AssignedEmpID,
-        today,
-        defaultDur
+        db, booking.AssignedEmpID, bookingDateStr, defaultDur
       );
 
-      // This booking's own interval should be excluded (it's being converted to queue)
-      const otherBookings = bIvs.filter((b) => b.id !== bookingId);
+      // Exclude this booking's own interval (it's being converted)
+      const otherBookings = bIvs.filter(iv => iv.id !== bookingId);
       const allIvs = [...qIvs, ...otherBookings].sort(
         (a, b) => a.start.getTime() - b.start.getTime()
       );
 
-      // Use buildDateTimeFromSqlDateAndTime to safely combine SQL `date` + SQL `time` values
-      const bookingStart = buildDateTimeFromSqlDateAndTime(booking.BookingDate, booking.StartTime);
-      const bookingEnd   = buildDateTimeFromSqlDateAndTime(booking.BookingDate, booking.EndTime);
-
-      console.log('[arrive] computed datetime', {
-        computedEstStart:   bookingStart?.toISOString() ?? null,
-        computedEstEnd:     bookingEnd?.toISOString() ?? null,
-        isValidEstStart:    bookingStart ? !isNaN(bookingStart.getTime()) : false,
-        isValidEstEnd:      bookingEnd   ? !isNaN(bookingEnd.getTime())   : false,
-      });
-
-      // Guard: if we cannot build a valid start datetime, return 400 instead of 500
-      if (!bookingStart) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: 'invalid_est_start',
-            bookingId,
-            BookingDate:   booking.BookingDate,
-            StartTime:     booking.StartTime,
-            extractedDate: (() => {
-              if (booking.BookingDate instanceof Date) return booking.BookingDate.toISOString();
-              return String(booking.BookingDate);
-            })(),
-            extractedTime: startHHMM,
-            message: 'Cannot build valid EstimatedStartTime from booking date/time',
-          },
-          { status: 400 }
-        );
-      }
-
-      const fallbackDuration = defaultDur;
-      const bookingDuration = (bookingEnd && bookingStart)
-        ? Math.max(1, Math.round((bookingEnd.getTime() - bookingStart.getTime()) / 60000))
-        : fallbackDuration;
-
-      // Find first free slot - but we want to prioritize the booking's original time
-      // Check if booking's original slot is still available
-      const slotAvailable = !allIvs.some(
-        (iv) =>
-          bookingStart < iv.end &&
-          new Date(bookingStart.getTime() + bookingDuration * 60000) > iv.start
+      // Always preserve the booking's original time slot as EstimatedStartTime.
+      // The booking already blocked this slot — we respect that.
+      estimatedStartTime = bookingStart;
+      estimatedWaitMinutes = Math.max(
+        0,
+        Math.round((bookingStart.getTime() - now.getTime()) / 60000)
       );
 
-      if (slotAvailable) {
-        // Use original booking time
-        estimatedStartTime = bookingStart;
-        estimatedWaitMinutes = Math.max(
-          0,
-          Math.round((bookingStart.getTime() - now.getTime()) / 60000)
-        );
-      } else {
-        // Find next available slot
+      // If the slot is somehow no longer free (e.g. manual override), find next free
+      const slotEnd = new Date(bookingStart.getTime() + bookingDuration * 60_000);
+      const slotBlocked = allIvs.some(iv => bookingStart < iv.end && slotEnd > iv.start);
+      if (slotBlocked) {
+        console.warn('[arrive] booking slot blocked by another ticket — finding next free slot');
         estimatedStartTime = findFirstFreeSlot(now, bookingDuration, allIvs);
         estimatedWaitMinutes = Math.max(
           0,
           Math.round((estimatedStartTime.getTime() - now.getTime()) / 60000)
         );
       }
+    } else {
+      // No barber assigned — still use booking start time
+      estimatedStartTime = bookingStart;
+      estimatedWaitMinutes = Math.max(
+        0,
+        Math.round((bookingStart.getTime() - now.getTime()) / 60000)
+      );
     }
 
     // 6. Create QueueTicket in transaction
@@ -314,7 +342,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       // Generate ticket number
       const numRes = await transaction
         .request()
-        .input("qDate", sql.Date, today)
+        .input("qDate", sql.Date, queueDate)
         .query(`
           SELECT ISNULL(MAX(TicketNumber), ${startNumber - 1}) + 1 AS NextNum
           FROM [dbo].[QueueTickets] WITH (UPDLOCK, HOLDLOCK)
@@ -342,7 +370,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       const waitingCountRes = await transaction
         .request()
         .input("empId", sql.Int, booking.AssignedEmpID)
-        .input("qDate", sql.Date, today)
+        .input("qDate", sql.Date, queueDate)
         .query(`
           SELECT COUNT(*) AS cnt
           FROM [dbo].[QueueTickets]
@@ -352,7 +380,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         `);
       const waitingCountAtCreation = waitingCountRes.recordset[0]?.cnt ?? 0;
 
-      // Insert queue ticket
+      // Insert queue ticket — Status='waiting' (not 'arrived'; 'arrived' is not a valid QueueTicket status)
       const insertSql = `
         INSERT INTO [dbo].[QueueTickets]
           (TicketCode, TicketNumber, TicketPrefix, ClientID, EmpID, BookingID,
@@ -363,7 +391,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         OUTPUT INSERTED.QueueTicketID
         VALUES
           (@code, @num, @prefix, @clientId, @empId, @bookingId,
-           @qDate, @cTime, 'arrived', 'booking', @priority, @userID, @notes
+           @qDate, @cTime, 'waiting', 'booking', @priority, @userID, @notes
            ${hasEst ? ", @estStart" : ""}
            ${hasWait ? ", @estWait" : ""}
            ${hasWCount ? ", @waitCount" : ""})
@@ -377,7 +405,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         .input("clientId", sql.Int, booking.ClientID)
         .input("empId", sql.Int, booking.AssignedEmpID)
         .input("bookingId", sql.Int, bookingId)
-        .input("qDate", sql.Date, today)
+        .input("qDate", sql.Date, queueDate)
         .input("cTime", sql.VarChar, createdTime)
         .input("priority", sql.Int, priority)
         .input("userID", sql.Int, userID)
@@ -393,16 +421,14 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       const insertRes = await insReq.query(insertSql);
       newTicketId = insertRes.recordset[0].QueueTicketID;
 
-      // Update booking status to queued
+      // Update booking status to 'queued' (UpdatedByUserID does not exist on this table)
       await transaction
         .request()
         .input("bid", sql.Int, bookingId)
-        .input("userId", sql.Int, userID)
         .query(`
           UPDATE [dbo].[Bookings]
           SET Status = 'queued',
-              UpdatedAt = GETDATE(),
-              UpdatedByUserID = @userId
+              UpdatedAt = GETDATE()
           WHERE BookingID = @bid
         `);
 
@@ -417,38 +443,48 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       .request()
       .input("ticketId", sql.Int, newTicketId)
       .input("userId", sql.Int, userID)
+      .input("notes", sql.NVarChar, `تم الاستقبال من حجز #${bookingId}`)
       .query(`
         INSERT INTO [dbo].[QueueTicketHistory]
           (QueueTicketID, OldStatus, NewStatus, ActionType, ActionByUserID, Notes)
-        VALUES (@ticketId, NULL, 'arrived', 'booking_arrived', @userId, N'تم الاستقبال من حجز #${bookingId}')
+        VALUES (@ticketId, NULL, 'waiting', 'booking_arrived', @userId, @notes)
       `)
       .catch((e) => console.error("[booking arrive] history failed:", e));
 
-    // 8. Load booking services and copy to QueueTicketServices
+    // 8. Load booking services and copy to QueueTicketServices (if table exists)
     try {
-      const servicesRes = await db
-        .request()
-        .input("bid", sql.Int, bookingId)
-        .query(`
-          SELECT bs.ServiceID, bs.ServiceName, bs.DurationMinutes, bs.Price
-          FROM [dbo].[BookingServices] bs
-          WHERE bs.BookingID = @bid
-        `);
-
-      for (const svc of servicesRes.recordset) {
-        await db
+      const svcTableCheck = await db.request().query(
+        `SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='QueueTicketServices'`
+      );
+      if (svcTableCheck.recordset.length) {
+        // BookingServices uses ProID (not ServiceID), join TblPro for name
+        const servicesRes = await db
           .request()
-          .input("ticketId", sql.Int, newTicketId)
-          .input("proId", sql.Int, svc.ServiceID)
-          .input("proName", sql.NVarChar, svc.ServiceName)
-          .input("dur", sql.Int, svc.DurationMinutes)
-          .input("price", sql.Decimal(10, 2), svc.Price)
+          .input("bid", sql.Int, bookingId)
           .query(`
-            INSERT INTO [dbo].[QueueTicketServices]
-              (QueueTicketID, ProID, ProName, Qty, DurationMinutes, Price)
-            VALUES (@ticketId, @proId, @proName, 1, @dur, @price)
-          `)
-          .catch((e) => console.error("[booking arrive] service insert failed:", e));
+            SELECT bs.ProID, p.ProName, bs.DurationMinutes, bs.Price
+            FROM [dbo].[BookingServices] bs
+            LEFT JOIN [dbo].[TblPro] p ON p.ProID = bs.ProID
+            WHERE bs.BookingID = @bid
+          `);
+
+        for (const svc of servicesRes.recordset) {
+          await db
+            .request()
+            .input("ticketId", sql.Int, newTicketId)
+            .input("proId", sql.Int, svc.ProID ?? null)
+            .input("proName", sql.NVarChar, svc.ProName ?? null)
+            .input("dur", sql.Int, svc.DurationMinutes ?? null)
+            .input("price", sql.Decimal(10, 2), svc.Price ?? null)
+            .query(`
+              INSERT INTO [dbo].[QueueTicketServices]
+                (QueueTicketID, ProID, ProName, Qty, DurationMinutes, Price)
+              VALUES (@ticketId, @proId, @proName, 1, @dur, @price)
+            `)
+            .catch((e) => console.error("[booking arrive] service insert failed:", e));
+        }
+      } else {
+        console.warn('[booking arrive] QueueTicketServices table missing — skipping service copy');
       }
     } catch (e) {
       console.error("[booking arrive] services copy failed:", e);
