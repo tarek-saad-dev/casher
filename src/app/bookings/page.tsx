@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import {
   Plus, Search, RefreshCw, CalendarDays,
   Phone, User, Clock, AlertCircle,
   Loader2, Pencil, Trash2, X, CheckCircle2,
 } from 'lucide-react';
+import CreateBookingModal from '@/components/bookings/CreateBookingModal';
 
 type BookingStatus =
   | 'pending' | 'confirmed' | 'arrived' | 'queued'
@@ -242,12 +242,11 @@ function BookingCard({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function BookingsPage() {
-  const router = useRouter();
-
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState<string | null>(null);
-  const [search, setSearch]     = useState('');
+  const [bookings, setBookings]       = useState<Booking[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState<string | null>(null);
+  const [search, setSearch]           = useState('');
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [toasts, setToasts]     = useState<Toast[]>([]);
   const [confirmTarget, setConfirmTarget] = useState<Booking | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
@@ -364,7 +363,7 @@ export default function BookingsPage() {
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
           </button>
           <button
-            onClick={() => router.push('/bookings/new')}
+            onClick={() => setCreateModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
             style={{ background: 'linear-gradient(135deg,#D6A84F,#B8923A)', color: '#000' }}
           >
@@ -464,6 +463,17 @@ export default function BookingsPage() {
           loading={cancelLoading}
         />
       )}
+
+      {/* ── Create booking modal ────────────────────────────────────── */}
+      <CreateBookingModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onSuccess={(code) => {
+          setCreateModalOpen(false);
+          addToast('success', code ? `تم إنشاء الحجز بنجاح · ${code}` : 'تم إنشاء الحجز بنجاح');
+          fetchData();
+        }}
+      />
 
       {/* ── Toasts ──────────────────────────────────────────────────── */}
       <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 w-72">
