@@ -16,6 +16,9 @@ import {
   Loader2,
   Hash,
   TrendingUp,
+  Pencil,
+  Save,
+  X,
 } from 'lucide-react';
 
 /* ────────── types ────────── */
@@ -46,6 +49,17 @@ interface CategoryGroup {
   TotalAmount: number;
   Count: number;
   items: RevenueItem[];
+}
+
+interface IncomeCategory {
+  ExpINID: number;
+  ExpINType: string;
+  CatName: string;
+}
+
+interface PaymentMethod {
+  PaymentID: number;
+  PaymentMethod: string;
 }
 
 /* ────────── helpers ────────── */
@@ -79,6 +93,115 @@ export default function AllRevenuePage() {
   const [deletingCat, setDeletingCat] = useState<{ ExpINID: number; name: string; count: number } | null>(null);
   const [deletingId, setDeletingId] = useState<{ ID: number; invID: number } | null>(null);
   const [busyDelete, setBusyDelete] = useState(false);
+
+  /* ── toast state ── */
+  const [toastState, setToastState] = useState<{ msg: string; ok: boolean } | null>(null);
+  const showToast = useCallback((msg: string, ok = true) => {
+    setToastState({ msg, ok });
+    setTimeout(() => setToastState(null), 3000);
+  }, []);
+
+  /* ── edit state ── */
+  const [editingItem, setEditingItem] = useState<RevenueItem | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [categoriesList, setCategoriesList] = useState<IncomeCategory[]>([]);
+  const [paymentMethodsList, setPaymentMethodsList] = useState<PaymentMethod[]>([]);
+
+  // Edit form state
+  const [editForm, setEditForm] = useState({
+    invDate: '',
+    invTime: '',
+    amount: '',
+    expInId: '',
+    paymentMethodId: '',
+    notes: '',
+  });
+
+  /* ── fetch meta (categories & payment methods) ── */
+  const fetchMeta = useCallback(async () => {
+    try {
+      const res = await fetch('/api/incomes/meta');
+      if (res.ok) {
+        const data = await res.json();
+        setCategoriesList(data.categories || []);
+        setPaymentMethodsList(data.paymentMethods || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch meta:', err);
+    }
+  }, []);
+
+  useEffect(() => { fetchMeta(); }, [fetchMeta]);
+
+  /* ── open edit modal ── */
+  const handleEditClick = (item: RevenueItem) => {
+    setEditingItem(item);
+    setEditForm({
+      invDate: item.invDate,
+      invTime: item.invTime || '',
+      amount: String(item.Amount),
+      expInId: String(item.ExpINID),
+      paymentMethodId: String(item.PaymentMethodID || ''),
+      notes: item.Notes || '',
+    });
+    setIsEditModalOpen(true);
+  };
+
+  /* ── save edit ── */
+  const handleSaveEdit = async () => {
+    if (!editingItem) return;
+
+    // Validation
+    if (!editForm.invDate) {
+      showToast('التاريخ مطلوب', false);
+      return;
+    }
+    if (!editForm.amount || Number(editForm.amount) <= 0) {
+      showToast('المبلغ يجب أن يكون أكبر من صفر', false);
+      return;
+    }
+    if (!editForm.expInId) {
+      showToast('يجب اختيار التصنيف', false);
+      return;
+    }
+    if (!editForm.paymentMethodId) {
+      showToast('يجب اختيار طريقة الدفع', false);
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const res = await fetch(`/api/incomes/${editingItem.ID}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invDate: editForm.invDate,
+          amount: Number(editForm.amount),
+          expInId: Number(editForm.expInId),
+          paymentMethodId: Number(editForm.paymentMethodId),
+          notes: editForm.notes,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'فشل التعديل');
+      }
+
+      showToast('تم تعديل الإيراد بنجاح', true);
+      setIsEditModalOpen(false);
+      setEditingItem(null);
+      fetchData();
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : 'حدث خطأ أثناء التعديل',
+        false
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   /* ── fetch ── */
   const fetchData = useCallback(async () => {
@@ -300,15 +423,26 @@ export default function AllRevenuePage() {
                               <td className="py-2.5 px-3 text-xs text-zinc-400">{item.UserName || '—'}</td>
                               <td className="py-2.5 px-3 text-xs text-zinc-500 max-w-[200px] truncate">{item.Notes || '—'}</td>
                               <td className="py-2.5 px-3">
-                                <Button
-                                  variant="ghost"
-                                  size="icon-xs"
-                                  onClick={() => setDeletingId({ ID: item.ID, invID: item.invID })}
-                                  className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
-                                  title="حذف"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-xs"
+                                    onClick={() => handleEditClick(item)}
+                                    className="text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                                    title="تعديل"
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-xs"
+                                    onClick={() => setDeletingId({ ID: item.ID, invID: item.invID })}
+                                    className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                                    title="حذف"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -356,7 +490,7 @@ export default function AllRevenuePage() {
             </div>
             <p className="text-sm text-zinc-400 mb-5">
               هل أنت متأكد من حذف <span className="font-bold text-rose-400">{deletingCat.count}</span> إيراد من فئة{' '}
-              <span className="font-bold text-white">"{deletingCat.name}"</span>؟
+              <span className="font-bold text-white">&quot;{deletingCat.name}&quot;</span>؟
               <br /><br />
               <span className="text-rose-400 font-semibold">⚠️ سيتم حذف جميع الإيرادات تحت هذه الفئة في الفترة المحددة!</span>
               <br />
@@ -372,6 +506,131 @@ export default function AllRevenuePage() {
               </Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Edit Modal ── */}
+      {isEditModalOpen && editingItem && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <Pencil className="h-5 w-5 text-amber-400" />
+                تعديل الإيراد #{editingItem.invID}
+              </h3>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setIsEditModalOpen(false)}
+                className="text-zinc-400 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Amount */}
+              <div className="space-y-1">
+                <label className="text-sm text-zinc-400">المبلغ <span className="text-rose-400">*</span></label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editForm.amount}
+                  onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
+                  className="w-full h-10 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-white focus:border-amber-500 focus:outline-none"
+                  placeholder="0.00"
+                />
+              </div>
+
+              {/* Date */}
+              <div className="space-y-1">
+                <label className="text-sm text-zinc-400">التاريخ <span className="text-rose-400">*</span></label>
+                <input
+                  type="date"
+                  value={editForm.invDate}
+                  onChange={(e) => setEditForm({ ...editForm, invDate: e.target.value })}
+                  className="w-full h-10 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-white focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Category */}
+              <div className="space-y-1">
+                <label className="text-sm text-zinc-400">التصنيف <span className="text-rose-400">*</span></label>
+                <select
+                  value={editForm.expInId}
+                  onChange={(e) => setEditForm({ ...editForm, expInId: e.target.value })}
+                  className="w-full h-10 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-white focus:border-amber-500 focus:outline-none"
+                >
+                  <option value="">اختر التصنيف</option>
+                  {categoriesList.map((cat) => (
+                    <option key={cat.ExpINID} value={cat.ExpINID}>
+                      {cat.CatName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Payment Method */}
+              <div className="space-y-1">
+                <label className="text-sm text-zinc-400">طريقة الدفع <span className="text-rose-400">*</span></label>
+                <select
+                  value={editForm.paymentMethodId}
+                  onChange={(e) => setEditForm({ ...editForm, paymentMethodId: e.target.value })}
+                  className="w-full h-10 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-white focus:border-amber-500 focus:outline-none"
+                >
+                  <option value="">اختر طريقة الدفع</option>
+                  {paymentMethodsList.map((pm) => (
+                    <option key={pm.PaymentID} value={pm.PaymentID}>
+                      {pm.PaymentMethod}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-1">
+                <label className="text-sm text-zinc-400">الملاحظات</label>
+                <textarea
+                  value={editForm.notes}
+                  onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                  rows={3}
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none resize-none"
+                  placeholder="أضف ملاحظات..."
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => setIsEditModalOpen(false)}
+                disabled={isSaving}
+              >
+                إلغاء
+              </Button>
+              <Button
+                onClick={handleSaveEdit}
+                disabled={isSaving}
+                className="gap-2 bg-amber-600 hover:bg-amber-700"
+              >
+                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {isSaving ? 'جاري الحفظ...' : 'حفظ التعديلات'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toastState && (
+        <div
+          className="fixed bottom-5 right-1/2 translate-x-1/2 z-[60] px-5 py-3 rounded-xl text-sm font-semibold shadow-2xl border transition-all"
+          style={{
+            background: toastState.ok ? '#141418' : 'rgba(239,68,68,0.15)',
+            color: toastState.ok ? '#F7F1E5' : '#EF4444',
+            borderColor: toastState.ok ? '#2A2A35' : 'rgba(239,68,68,0.35)',
+          }}>
+          {toastState.msg}
         </div>
       )}
     </div>
