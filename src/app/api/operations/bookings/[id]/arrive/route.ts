@@ -19,6 +19,52 @@ import {
   cairoDateStr,
 } from "@/lib/queueEstimateEngine";
 
+/**
+ * SQL Server `time` columns arrive as Date objects anchored to 1970-01-01.
+ * SQL Server `date` columns arrive as Date objects with time zeroed (UTC midnight).
+ * This helper extracts HH:mm safely from either a Date (1970-based) or a string.
+ */
+function extractHHMM(value: unknown): string | null {
+  if (value == null) return null;
+  if (value instanceof Date) {
+    if (isNaN(value.getTime())) return null;
+    const h = String(value.getUTCHours()).padStart(2, '0');
+    const m = String(value.getUTCMinutes()).padStart(2, '0');
+    return `${h}:${m}`;
+  }
+  if (typeof value === 'string') {
+    const match = value.match(/^(\d{1,2}):(\d{2})/);
+    if (match) return `${match[1].padStart(2, '0')}:${match[2]}`;
+  }
+  console.warn('[arrive] extractHHMM: unknown value type', typeof value, value);
+  return null;
+}
+
+/**
+ * Build a proper local Date from a SQL `date` column value and a SQL `time` column value.
+ * Combines the calendar date from dateValue with the HH:mm from timeValue.
+ */
+function buildDateTimeFromSqlDateAndTime(dateValue: unknown, timeValue: unknown): Date | null {
+  // Extract YYYY-MM-DD from dateValue
+  let dateStr: string | null = null;
+  if (dateValue instanceof Date && !isNaN(dateValue.getTime())) {
+    const y = dateValue.getUTCFullYear();
+    const mo = String(dateValue.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(dateValue.getUTCDate()).padStart(2, '0');
+    dateStr = `${y}-${mo}-${d}`;
+  } else if (typeof dateValue === 'string') {
+    const m = dateValue.match(/(\d{4}-\d{2}-\d{2})/);
+    if (m) dateStr = m[1];
+  }
+  if (!dateStr) return null;
+
+  const hhmm = extractHHMM(timeValue);
+  if (!hhmm) return null;
+
+  const dt = new Date(`${dateStr}T${hhmm}:00.000Z`);
+  return isNaN(dt.getTime()) ? null : dt;
+}
+
 export const runtime = "nodejs";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -154,6 +200,23 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     let estimatedStartTime: Date | null = null;
     let estimatedWaitMinutes: number | null = null;
 
+    // Debug log raw booking fields before any date computation
+    const startHHMM = extractHHMM(booking.StartTime);
+    const endHHMM   = extractHHMM(booking.EndTime);
+    console.log('[arrive] booking raw fields', {
+      bookingId,
+      BookingDate:       booking.BookingDate,
+      StartTime:         booking.StartTime,
+      EndTime:           booking.EndTime,
+      AssignedEmpID:     booking.AssignedEmpID,
+      Status:            booking.Status,
+      typeofBookingDate: typeof booking.BookingDate,
+      typeofStartTime:   typeof booking.StartTime,
+      isStartTimeDate:   booking.StartTime instanceof Date,
+      startHHMM,
+      endHHMM,
+    });
+
     if (booking.AssignedEmpID) {
       const defaultDur = await getDefaultDuration(db);
 
@@ -178,14 +241,41 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         (a, b) => a.start.getTime() - b.start.getTime()
       );
 
-      // Use booking's own duration
-      const bookingStart = new Date(`${today}T${booking.StartTime}`);
-      const bookingEnd = booking.EndTime
-        ? new Date(`${today}T${booking.EndTime}`)
-        : new Date(bookingStart.getTime() + defaultDur * 60000);
-      const bookingDuration = Math.round(
-        (bookingEnd.getTime() - bookingStart.getTime()) / 60000
-      );
+      // Use buildDateTimeFromSqlDateAndTime to safely combine SQL `date` + SQL `time` values
+      const bookingStart = buildDateTimeFromSqlDateAndTime(booking.BookingDate, booking.StartTime);
+      const bookingEnd   = buildDateTimeFromSqlDateAndTime(booking.BookingDate, booking.EndTime);
+
+      console.log('[arrive] computed datetime', {
+        computedEstStart:   bookingStart?.toISOString() ?? null,
+        computedEstEnd:     bookingEnd?.toISOString() ?? null,
+        isValidEstStart:    bookingStart ? !isNaN(bookingStart.getTime()) : false,
+        isValidEstEnd:      bookingEnd   ? !isNaN(bookingEnd.getTime())   : false,
+      });
+
+      // Guard: if we cannot build a valid start datetime, return 400 instead of 500
+      if (!bookingStart) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: 'invalid_est_start',
+            bookingId,
+            BookingDate:   booking.BookingDate,
+            StartTime:     booking.StartTime,
+            extractedDate: (() => {
+              if (booking.BookingDate instanceof Date) return booking.BookingDate.toISOString();
+              return String(booking.BookingDate);
+            })(),
+            extractedTime: startHHMM,
+            message: 'Cannot build valid EstimatedStartTime from booking date/time',
+          },
+          { status: 400 }
+        );
+      }
+
+      const fallbackDuration = defaultDur;
+      const bookingDuration = (bookingEnd && bookingStart)
+        ? Math.max(1, Math.round((bookingEnd.getTime() - bookingStart.getTime()) / 60000))
+        : fallbackDuration;
 
       // Find first free slot - but we want to prioritize the booking's original time
       // Check if booking's original slot is still available
