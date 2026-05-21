@@ -21,6 +21,7 @@ interface Props {
   loading: boolean;
   onAction: (bookingId: number, action: string) => Promise<void>;
   onRefresh: () => void;
+  onBookingArrive?: (bookingId: number) => Promise<{ success: boolean; error?: string }>;
 }
 
 /**
@@ -58,9 +59,24 @@ function formatBookingTime(value: Date | string | null | undefined): string {
   return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
 }
 
-export function BookingsColumn({ bookings, loading, onAction, onRefresh }: Props) {
+export function BookingsColumn({ bookings, loading, onAction, onRefresh, onBookingArrive }: Props) {
   const [tab, setTab] = useState<Tab>('today');
   const [selected, setSelected] = useState<Booking | null>(null);
+  const [arriveError, setArriveError] = useState<string | null>(null);
+
+  const handleArrive = async (bookingId: number) => {
+    if (onBookingArrive) {
+      const result = await onBookingArrive(bookingId);
+      if (!result.success && result.error) {
+        setArriveError(result.error);
+        setTimeout(() => setArriveError(null), 5000);
+        return;
+      }
+    } else {
+      await onAction(bookingId, 'arrive');
+    }
+    onRefresh();
+  };
 
   const now = new Date();
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
@@ -180,7 +196,7 @@ export function BookingsColumn({ bookings, loading, onAction, onRefresh }: Props
                   <QuickBtn icon={<CheckCircle size={11} />} color="#10B981" label="تأكيد" onClick={async () => { await onAction(b.BookingID, 'confirm'); onRefresh(); }} />
                 )}
                 {['pending', 'confirmed'].includes(b.Status) && (
-                  <QuickBtn icon={<UserCheck size={11} />} color="#8B5CF6" label="وصل" onClick={async () => { await onAction(b.BookingID, 'arrive'); onRefresh(); }} />
+                  <QuickBtn icon={<UserCheck size={11} />} color="#8B5CF6" label="وصل" onClick={async () => { await handleArrive(b.BookingID); }} />
                 )}
                 {['arrived', 'confirmed'].includes(b.Status) && (
                   <QuickBtn icon={<Plus size={11} />} color="#F59E0B" label="للدور" onClick={async () => { await onAction(b.BookingID, 'add_queue'); onRefresh(); }} />

@@ -5,12 +5,13 @@ import { X, Search, User, Scissors, Loader2, CheckCircle2, Zap, Clock, Users, Al
 import type { BarberStatus, EstimateResponse } from '@/lib/operationsTypes';
 import { QueueTicketCreatedModal } from '@/components/queue/QueueTicketCreatedModal';
 import type { QueueTicketPrintData } from '@/components/queue/QueueTicketPrint';
+import { QueueConflictDialog } from './QueueConflictDialog';
 
 interface Service { ProID: number; ProName: string; SPrice: number; DurationMinutes: number | null; }
-interface Client  { ClientID: number; Name: string; Mobile?: string; }
+interface Client { ClientID: number; Name: string; Mobile?: string; }
 
 interface Props {
-  onClose:   () => void;
+  onClose: () => void;
   onCreated: () => void;
 }
 
@@ -18,7 +19,7 @@ type Mode = 'nearest' | 'specific';
 
 interface SubmitState {
   canSubmit: boolean;
-  reason:    string | null;
+  reason: string | null;
 }
 
 function fmtTime(iso: string): string {
@@ -33,13 +34,13 @@ function normalizeCreatedTime(v: unknown): string {
   if (!v) return '';
   if (v instanceof Date) {
     // mssql TIME → Date with 1970-01-01 epoch, use UTC hours/minutes
-    return `${String(v.getUTCHours()).padStart(2,'0')}:${String(v.getUTCMinutes()).padStart(2,'0')}`;
+    return `${String(v.getUTCHours()).padStart(2, '0')}:${String(v.getUTCMinutes()).padStart(2, '0')}`;
   }
   if (typeof v === 'string') {
     // If it looks like an ISO string with 1970 date, extract time part
     if (v.startsWith('1970-01-01T')) {
       const d = new Date(v);
-      return `${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;
+      return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
     }
     // Plain time string HH:MM or HH:MM:SS
     return v.slice(0, 5);
@@ -48,30 +49,54 @@ function normalizeCreatedTime(v: unknown): string {
 }
 
 export function CreateQueueDrawer({ onClose, onCreated }: Props) {
-  const [mode,            setMode]            = useState<Mode>('nearest');
-  const [clientSearch,    setClientSearch]    = useState('');
-  const [clients,         setClients]         = useState<Client[]>([]);
+  const [mode, setMode] = useState<Mode>('nearest');
+  const [clientSearch, setClientSearch] = useState('');
+  const [clients, setClients] = useState<Client[]>([]);
   const [clientSearching, setClientSearching] = useState(false);
-  const [selectedClient,  setSelectedClient]  = useState<Client | null>(null);
-  const [showClients,     setShowClients]     = useState(false);
-  const [quickCreating,   setQuickCreating]   = useState(false);
-  const [services,       setServices]       = useState<Service[]>([]);
-  const [selectedSvcs,   setSelectedSvcs]   = useState<Service[]>([]);
-  const [barbers,        setBarbers]        = useState<BarberStatus[]>([]);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [showClients, setShowClients] = useState(false);
+  const [quickCreating, setQuickCreating] = useState(false);
+  const [services, setServices] = useState<Service[]>([]);
+  const [selectedSvcs, setSelectedSvcs] = useState<Service[]>([]);
+  const [barbers, setBarbers] = useState<BarberStatus[]>([]);
   const [selectedBarber, setSelectedBarber] = useState<BarberStatus | null>(null);
-  const [notes,          setNotes]          = useState('');
-  const [estimate,       setEstimate]       = useState<EstimateResponse | null>(null);
-  const [estimating,     setEstimating]     = useState(false);
-  const [submitting,     setSubmitting]     = useState(false);
-  const [error,          setError]          = useState<string | null>(null);
-  const [createdData,    setCreatedData]    = useState<(QueueTicketPrintData & { ticketId: number }) | null>(null);
+  const [notes, setNotes] = useState('');
+  const [estimate, setEstimate] = useState<EstimateResponse | null>(null);
+  const [estimating, setEstimating] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [createdData, setCreatedData] = useState<(QueueTicketPrintData & { ticketId: number }) | null>(null);
+
+  // ── Conflict dialog state ───────────────────────────────────────────────
+  const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
+  const [conflictData, setConflictData] = useState<{
+    conflictBooking: {
+      bookingId: number;
+      clientName: string | null;
+      startTime: string;
+      endTime: string;
+      status: string;
+    } | null;
+    availableGapMinutes: number | null;
+    requiredDurationMinutes: number;
+    suggestedStartAfterBooking: string | null;
+    alternativeBarbers: Array<{
+      empId: number;
+      empName: string;
+      available: boolean;
+      estimatedStartTime: string;
+      reason?: string;
+    }>;
+    message: string;
+  } | null>(null);
+  const [forceManualPriority, setForceManualPriority] = useState(false);
 
   // ── Load services + barbers on mount ──────────────────────────────────────
   useEffect(() => {
     fetch('/api/services?active=true')
-      .then(r => r.json()).then(d => setServices(d.services ?? d ?? [])).catch(() => {});
+      .then(r => r.json()).then(d => setServices(d.services ?? d ?? [])).catch(() => { });
     fetch('/api/barbers/available')
-      .then(r => r.json()).then(d => setBarbers(d.barbers ?? [])).catch(() => {});
+      .then(r => r.json()).then(d => setBarbers(d.barbers ?? [])).catch(() => { });
   }, []);
 
   // ── Client search — correct endpoint /api/customers?q= ─────────────────
@@ -133,12 +158,12 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
 
       console.log('[drawer estimate response full]', JSON.stringify(data, null, 2));
       console.log('[drawer estimate display]', {
-        empName:         data?.best?.empName,
-        isFreeNow:       data?.best?.isFreeNow,
-        statusText:      data?.best?.statusText,
+        empName: data?.best?.empName,
+        isFreeNow: data?.best?.isFreeNow,
+        statusText: data?.best?.statusText,
         activeQueueCount: data?.best?.activeQueueCount ?? data?.best?.blockingQueueCount,
-        waitingCount:    data?.best?.waitingCount,
-        contextMsg:      data?.best?.contextMsg,
+        waitingCount: data?.best?.waitingCount,
+        contextMsg: data?.best?.contextMsg,
         estimatedStartTime: data?.best?.estimatedStartTime,
       });
     } catch { /* non-fatal */ }
@@ -242,20 +267,65 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
     }
 
     const best = estimate!.best!;
-    const empId   = mode === 'nearest' ? best.empId : selectedBarber!.EmpID;
+    const empId = mode === 'nearest' ? best.empId : selectedBarber!.EmpID;
     const empName = mode === 'nearest' ? best.empName : selectedBarber!.EmpName;
     if (!empId) { setError('الرجاء اختيار حلاق'); return; }
 
+    // ── Check for booking conflicts before creating ────────────────────────────
+    if (!forceManualPriority) {
+      const serviceIds = selectedSvcs.map(s => s.ProID);
+      const checkRes = await fetch('/api/operations/queue/check-insert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          empId,
+          serviceIds,
+          mode,
+          requestedAt: new Date().toISOString(),
+        }),
+      });
+
+      if (checkRes.ok) {
+        const checkData = await checkRes.json();
+        if (!checkData.canInsertBeforeNextBooking && checkData.requiresForceFlag) {
+          // Conflict detected — show dialog
+          setConflictData({
+            conflictBooking: checkData.conflictBooking || null,
+            availableGapMinutes: checkData.availableGapMinutes || null,
+            requiredDurationMinutes: checkData.requiredDurationMinutes || 0,
+            suggestedStartAfterBooking: checkData.suggestedStartAfterBooking || null,
+            alternativeBarbers: checkData.alternativeBarbers || [],
+            message: checkData.message || 'يوجد تعارض مع حجز قادم',
+          });
+          setConflictDialogOpen(true);
+          return; // Don't proceed yet — wait for user decision
+        }
+      }
+      // If check fails, we'll proceed and let the server handle it
+    }
+
     // Server recalculates estimate inside a serializable transaction — don't send from client
-    const submitPayload = {
+    const submitPayload: {
+      clientId: number;
+      empId: number;
+      notes: string | null;
+      services: Array<{ proId: number; proName: string; qty: number; price: number; durationMinutes: number | null }>;
+      forceManualPriority?: boolean;
+    } = {
       clientId: Number(clientId),
       empId,
-      notes:    notes || null,
+      notes: notes || null,
       services: selectedSvcs.map(s => ({
         proId: s.ProID, proName: s.ProName,
         qty: 1, price: s.SPrice, durationMinutes: s.DurationMinutes,
       })),
     };
+
+    // Add force flag if user chose to override
+    if (forceManualPriority) {
+      submitPayload.forceManualPriority = true;
+    }
+
     console.log('[queue submit] payload', submitPayload);
 
     setSubmitting(true);
@@ -279,37 +349,39 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
       const apiServices: Array<{ name: string }> =
         (t?.services ?? data.services ?? []).length > 0
           ? (t?.services ?? data.services).map((s: { ProName?: string | null; proName?: string | null }) => ({
-              name: s.ProName ?? s.proName ?? '',
-            })).filter((s: { name: string }) => s.name)
+            name: s.ProName ?? s.proName ?? '',
+          })).filter((s: { name: string }) => s.name)
           : selectedSvcs.map(s => ({ name: s.ProName }));
 
       // Use server-returned values — these are authoritative (recalculated inside tx)
-      const resolvedClientName = t?.clientName  ?? selectedClient?.Name ?? null;
-      const resolvedEmpName    = t?.barberName  ?? empName;
-      const resolvedDate       = t?.queueDate   ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
-      const rawTime            = t?.createdTime ?? new Date().toLocaleTimeString('en-GB', { timeZone: 'Africa/Cairo', hour12: false });
-      const resolvedTime       = normalizeCreatedTime(rawTime);
+      const resolvedClientName = t?.clientName ?? selectedClient?.Name ?? null;
+      const resolvedEmpName = t?.barberName ?? empName;
+      const resolvedDate = t?.queueDate ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+      const rawTime = t?.createdTime ?? new Date().toLocaleTimeString('en-GB', { timeZone: 'Africa/Cairo', hour12: false });
+      const resolvedTime = normalizeCreatedTime(rawTime);
       // Prefer server-recalculated values (flat fields in response)
-      const resolvedEstStart   = data.estimatedStartTime  ?? t?.estimatedStartTime   ?? null;
-      const resolvedEstWait    = data.estimatedWaitMinutes ?? t?.estimatedWaitMinutes  ?? null;
-      const resolvedWaitCount  = data.waitingCountAtCreation ?? t?.waitingCountAtCreation ?? null;
+      const resolvedEstStart = data.estimatedStartTime ?? t?.estimatedStartTime ?? null;
+      const resolvedEstWait = data.estimatedWaitMinutes ?? t?.estimatedWaitMinutes ?? null;
+      const resolvedWaitCount = data.waitingCountAtCreation ?? t?.waitingCountAtCreation ?? null;
 
       const normalized = {
-        ticketId:             data.ticketId,
-        ticketCode:           data.ticketCode,
-        clientName:           resolvedClientName,
-        empName:              resolvedEmpName,
-        services:             apiServices,
-        queueDate:            resolvedDate,
-        createdTime:          resolvedTime,
-        waitingBefore:        resolvedWaitCount,
+        ticketId: data.ticketId,
+        ticketCode: data.ticketCode,
+        clientName: resolvedClientName,
+        empName: resolvedEmpName,
+        services: apiServices,
+        queueDate: resolvedDate,
+        createdTime: resolvedTime,
+        waitingBefore: resolvedWaitCount,
         estimatedWaitMinutes: resolvedEstWait,
-        estimatedStartTime:   resolvedEstStart,
+        estimatedStartTime: resolvedEstStart,
       };
 
       console.log('[ticket modal] ticket for modal/print', normalized);
 
       setCreatedData(normalized);
+      // Reset force flag after successful creation
+      setForceManualPriority(false);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'فشل إصدار الدور');
     } finally {
@@ -317,12 +389,45 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
     }
   };
 
+  // ── Handle conflict dialog actions ─────────────────────────────────────────
+  const handlePlaceAfterBooking = () => {
+    setConflictDialogOpen(false);
+    setForceManualPriority(false);
+    // User wants to place after booking — submit normally
+    // The server will calculate the correct slot
+    handleSubmit();
+  };
+
+  const handleSelectAlternativeBarber = (newEmpId: number) => {
+    setConflictDialogOpen(false);
+    // Switch to specific mode and select the alternative barber
+    const altBarber = barbers.find(b => b.EmpID === newEmpId);
+    if (altBarber) {
+      setMode('specific');
+      setSelectedBarber(altBarber);
+      // Re-fetch estimate with new barber
+      fetchEstimate();
+    }
+  };
+
+  const handleForceManualPriority = () => {
+    setConflictDialogOpen(false);
+    setForceManualPriority(true);
+    // Re-submit with force flag
+    handleSubmit();
+  };
+
+  const handleCancelConflict = () => {
+    setConflictDialogOpen(false);
+    setForceManualPriority(false);
+  };
+
   // ── Estimate panel content ────────────────────────────────────────────────
   const renderEstimatePanel = () => {
     if (estimating) {
       return (
         <div className="flex items-center gap-2 text-sm text-zinc-500">
-          <Loader2 size={14} className="animate-spin"/> جاري حساب الوقت المتوقع...
+          <Loader2 size={14} className="animate-spin" /> جاري حساب الوقت المتوقع...
         </div>
       );
     }
@@ -339,7 +444,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
         ?? 'خارج مواعيد العمل';
       return (
         <div className="flex items-start gap-2">
-          <AlertCircle size={15} className="text-red-400 mt-0.5 flex-shrink-0"/>
+          <AlertCircle size={15} className="text-red-400 mt-0.5 flex-shrink-0" />
           <div>
             <p className="text-sm font-semibold text-red-400">الحلاق غير متاح</p>
             <p className="text-xs text-zinc-500 mt-1">{reason}</p>
@@ -372,34 +477,34 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
       );
     }
 
-    const best           = estimate.best;
-    const contextMsg     = best?.contextMsg ?? (estimate as any)?.contextMsg ?? '';
-    const statusText     = best?.statusText ?? '';
-    const isFreeNow      = best?.isFreeNow  ?? false;
+    const best = estimate.best;
+    const contextMsg = best?.contextMsg ?? (estimate as any)?.contextMsg ?? '';
+    const statusText = best?.statusText ?? '';
+    const isFreeNow = best?.isFreeNow ?? false;
     // activeQueueCount: read every possible field the API may have returned
     const activeQueueCount =
-      (typeof best?.activeQueueCount  === 'number' ? best.activeQueueCount  : null) ??
+      (typeof best?.activeQueueCount === 'number' ? best.activeQueueCount : null) ??
       (typeof best?.blockingQueueCount === 'number' ? best.blockingQueueCount : null) ??
-      (typeof best?.waitingCount       === 'number' ? best.waitingCount       : null) ??
+      (typeof best?.waitingCount === 'number' ? best.waitingCount : null) ??
       0;
-    const waitingCount   = activeQueueCount;
+    const waitingCount = activeQueueCount;
 
     // ── Diagnostic: log exact values used in render ─────────────────────────
     console.log('[estimate panel render source]', {
-      selectedBarber:        selectedBarber ? { id: selectedBarber.EmpID, name: selectedBarber.EmpName } : null,
-      estimate_ok:           estimate.ok,
-      best_raw:              best,
-      displayedStatus:       activeQueueCount > 0 ? 'مشغول' : (isFreeNow ? 'فاضي الآن' : statusText),
+      selectedBarber: selectedBarber ? { id: selectedBarber.EmpID, name: selectedBarber.EmpName } : null,
+      estimate_ok: estimate.ok,
+      best_raw: best,
+      displayedStatus: activeQueueCount > 0 ? 'مشغول' : (isFreeNow ? 'فاضي الآن' : statusText),
       displayedWaitingCount: activeQueueCount,
       displayedEstimatedTime: best?.estimatedStartTime,
-      displayedWaitMinutes:  best?.estimatedWaitMinutes,
+      displayedWaitMinutes: best?.estimatedWaitMinutes,
       contextMsg,
     });
 
     if (best) {
       // Derive final status: activeQueueCount wins over isFreeNow/statusText
-      const derivedStatus   = activeQueueCount > 0 ? 'مشغول' : (isFreeNow ? 'فاضي الآن' : statusText);
-      const derivedFreeNow  = activeQueueCount === 0 && isFreeNow;
+      const derivedStatus = activeQueueCount > 0 ? 'مشغول' : (isFreeNow ? 'فاضي الآن' : statusText);
+      const derivedFreeNow = activeQueueCount === 0 && isFreeNow;
       const statusColor = !estimate.ok
         ? '#EF4444'
         : derivedFreeNow ? '#10B981' : '#F59E0B';
@@ -409,7 +514,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
           {/* Barber + status row */}
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <Zap size={14} className="text-amber-400"/>
+              <Zap size={14} className="text-amber-400" />
               <span className="text-sm font-bold" style={{ color: '#D6A84F' }}>
                 {mode === 'nearest' ? `أفضل اختيار: ${best.empName}` : best.empName}
               </span>
@@ -426,14 +531,14 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
           <div className="space-y-2 text-xs">
             <div className="flex items-center justify-between">
               <span className="text-zinc-500 flex items-center gap-1.5">
-                <Clock size={11}/>الوقت المتوقع للدخول
+                <Clock size={11} />الوقت المتوقع للدخول
               </span>
               <span className="text-white font-semibold">{fmtTime(best.estimatedStartTime)}</span>
             </div>
 
             <div className="flex items-center justify-between">
               <span className="text-zinc-500 flex items-center gap-1.5">
-                <Users size={11}/>أمامك
+                <Users size={11} />أمامك
               </span>
               <span className="font-semibold" style={{ color: activeQueueCount > 0 ? '#F59E0B' : '#10B981' }}>
                 {activeQueueCount} {activeQueueCount === 1 ? 'عميل' : 'عملاء'}
@@ -442,7 +547,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
 
             <div className="flex items-center justify-between">
               <span className="text-zinc-500 flex items-center gap-1.5">
-                <Clock size={11}/>الانتظار المتوقع
+                <Clock size={11} />الانتظار المتوقع
               </span>
               <span className="text-white font-semibold">
                 {best.estimatedWaitMinutes > 0 ? `~${best.estimatedWaitMinutes} دقيقة` : 'فوري'}
@@ -463,7 +568,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                   border: `1px solid ${isWarning ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)'}`,
                   color: isWarning ? '#D6A84F' : '#34D399',
                 }}>
-                <CheckCircle2 size={11} className="mt-0.5 flex-shrink-0"/>
+                <CheckCircle2 size={11} className="mt-0.5 flex-shrink-0" />
                 <span>{msg}</span>
               </div>
             );
@@ -554,7 +659,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
             onClick={onClose}
             className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition-all"
           >
-            <X size={15}/>
+            <X size={15} />
           </button>
         </div>
 
@@ -572,8 +677,8 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                   className="py-2.5 rounded-xl border text-sm font-semibold transition-all"
                   style={{
                     borderColor: mode === m ? '#D6A84F' : '#2A2A35',
-                    color:       mode === m ? '#D6A84F' : '#6B7280',
-                    background:  mode === m ? 'rgba(214,168,79,0.10)' : 'transparent',
+                    color: mode === m ? '#D6A84F' : '#6B7280',
+                    background: mode === m ? 'rgba(214,168,79,0.10)' : 'transparent',
                   }}
                 >
                   {lbl}
@@ -594,7 +699,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                 style={{ borderColor: '#10B981', background: 'rgba(16,185,129,0.08)' }}
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <User size={14} className="text-emerald-400 flex-shrink-0"/>
+                  <User size={14} className="text-emerald-400 flex-shrink-0" />
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-white truncate">{selectedClient.Name}</p>
                     {selectedClient.Mobile && (
@@ -624,8 +729,8 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                   }}
                 >
                   {clientSearching
-                    ? <Loader2 size={13} className="text-amber-400 animate-spin flex-shrink-0"/>
-                    : <Search size={13} className="text-zinc-500 flex-shrink-0"/>
+                    ? <Loader2 size={13} className="text-amber-400 animate-spin flex-shrink-0" />
+                    : <Search size={13} className="text-zinc-500 flex-shrink-0" />
                   }
                   <input
                     className="flex-1 bg-transparent text-sm text-white placeholder-zinc-600 outline-none"
@@ -639,7 +744,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                       onClick={() => { setClientSearch(''); setClients([]); setShowClients(false); }}
                       className="text-zinc-600 hover:text-zinc-400"
                     >
-                      <X size={12}/>
+                      <X size={12} />
                     </button>
                   )}
                 </div>
@@ -676,7 +781,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                       </>
                     ) : clientSearching ? (
                       <div className="px-4 py-3 text-xs text-zinc-500 flex items-center gap-2">
-                        <Loader2 size={12} className="animate-spin"/> جاري البحث...
+                        <Loader2 size={12} className="animate-spin" /> جاري البحث...
                       </div>
                     ) : (
                       /* No results — offer quick create */
@@ -689,7 +794,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                           style={{ background: 'rgba(214,168,79,0.12)', color: '#D6A84F', border: '1px solid rgba(214,168,79,0.25)' }}
                         >
                           {quickCreating
-                            ? <Loader2 size={11} className="animate-spin"/>
+                            ? <Loader2 size={11} className="animate-spin" />
                             : <span>+</span>
                           }
                           {quickCreating ? 'جاري الإنشاء...' : `إضافة عميل «${clientSearch.trim()}»`}
@@ -719,15 +824,15 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                         className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border text-sm transition-all"
                         style={{
                           borderColor: isSelected ? '#D6A84F' : '#2A2A35',
-                          background:  isSelected ? 'rgba(214,168,79,0.10)' : 'transparent',
-                          opacity:     b.IsAvailable ? 1 : 0.65,
+                          background: isSelected ? 'rgba(214,168,79,0.10)' : 'transparent',
+                          opacity: b.IsAvailable ? 1 : 0.65,
                         }}
                       >
                         <div className="flex flex-col items-start gap-0.5">
                           <span className="font-medium text-white">{b.EmpName}</span>
                           {b.WorkingStartTime && b.WorkingEndTime && (
                             <span className="text-[10px] text-zinc-600">
-                              {b.WorkingStartTime.slice(0,5)} – {b.WorkingEndTime.slice(0,5)}
+                              {b.WorkingStartTime.slice(0, 5)} – {b.WorkingEndTime.slice(0, 5)}
                             </span>
                           )}
                         </div>
@@ -735,7 +840,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                           className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
                           style={{
                             background: b.IsAvailable ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.12)',
-                            color:      b.IsAvailable ? '#10B981' : '#EF4444',
+                            color: b.IsAvailable ? '#10B981' : '#EF4444',
                           }}
                         >
                           {b.IsAvailable ? 'متاح' : (b.AvailabilityReason || 'غير متاح')}
@@ -763,11 +868,11 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                     className="px-3 py-1.5 rounded-lg border text-xs font-medium transition-all"
                     style={{
                       borderColor: sel ? '#D6A84F' : '#2A2A35',
-                      color:       sel ? '#D6A84F' : '#9CA3AF',
-                      background:  sel ? 'rgba(214,168,79,0.10)' : 'transparent',
+                      color: sel ? '#D6A84F' : '#9CA3AF',
+                      background: sel ? 'rgba(214,168,79,0.10)' : 'transparent',
                     }}
                   >
-                    <Scissors size={10} className="inline ml-1"/>
+                    <Scissors size={10} className="inline ml-1" />
                     {svc.ProName}
                   </button>
                 );
@@ -795,7 +900,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
           >
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-semibold text-zinc-400 flex items-center gap-2">
-                <Clock size={12}/> الوقت التقديري
+                <Clock size={12} /> الوقت التقديري
               </p>
               <button
                 onClick={fetchEstimate}
@@ -803,7 +908,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                 className="text-zinc-600 hover:text-amber-400 disabled:opacity-40 transition-colors"
                 title="تحديث التقدير"
               >
-                <RefreshCw size={11} className={estimating ? 'animate-spin' : ''}/>
+                <RefreshCw size={11} className={estimating ? 'animate-spin' : ''} />
               </button>
             </div>
             {renderEstimatePanel()}
@@ -811,7 +916,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
 
           {error && (
             <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
-              <AlertCircle size={14} className="flex-shrink-0"/>
+              <AlertCircle size={14} className="flex-shrink-0" />
               {error}
             </div>
           )}
@@ -830,8 +935,8 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
             style={{ background: 'linear-gradient(135deg,#D6A84F,#B8923A)', color: '#000' }}
           >
             {submitting
-              ? <><Loader2 size={15} className="animate-spin"/> جاري إصدار الدور...</>
-              : <><CheckCircle2 size={15}/> إصدار رقم الانتظار</>
+              ? <><Loader2 size={15} className="animate-spin" /> جاري إصدار الدور...</>
+              : <><CheckCircle2 size={15} /> إصدار رقم الانتظار</>
             }
           </button>
         </div>

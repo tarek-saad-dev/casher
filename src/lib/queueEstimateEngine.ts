@@ -200,9 +200,9 @@ export async function buildQueueIntervals(
       FROM [dbo].[QueueTickets] qt
       WHERE qt.QueueDate = @qdate
         AND qt.EmpID     = @empId
-        AND LOWER(qt.Status) IN ('waiting','called','arrived','in_service')
+        AND LOWER(qt.Status) IN ('waiting','called','in_service')
       ORDER BY
-        CASE LOWER(qt.Status) WHEN 'in_service' THEN 0 WHEN 'called' THEN 1 WHEN 'arrived' THEN 2 ELSE 3 END ASC,
+        CASE LOWER(qt.Status) WHEN 'in_service' THEN 0 WHEN 'called' THEN 1 ELSE 2 END ASC,
         ISNULL(
           CASE WHEN COL_LENGTH('dbo.QueueTickets','EstimatedStartTime') IS NOT NULL
                THEN qt.EstimatedStartTime ELSE NULL END,
@@ -558,7 +558,7 @@ export async function checkBarberAvailableForBooking(
     const conflictType = avail.reason?.includes("إجازة")
       ? "day_off"
       : "working_hours";
-    return {
+    const result: BookingAvailability = {
       empId,
       empName,
       available: false,
@@ -571,6 +571,18 @@ export async function checkBarberAvailableForBooking(
       endTime: "",
       durationMinutes: durationOverride ?? 0,
     };
+    if (DEBUG_BOOKING) {
+      console.log(
+        "[checkBarberAvailableForBooking] 409 working_hours/day_off",
+        {
+          empId,
+          startTime: start.toISOString(),
+          reason: result.reason,
+          conflictType: result.conflictType,
+        },
+      );
+    }
+    return result;
   }
 
   // 2. Resolve service duration
@@ -674,7 +686,17 @@ export async function checkBarberAvailableForBooking(
       durationMinutes: customerDur,
     };
 
-    if (DEBUG_BOOKING) console.log("[timeline check] unavailable", empId);
+    if (DEBUG_BOOKING) {
+      console.log("[checkBarberAvailableForBooking] 409 conflict", {
+        empId,
+        startTime: start.toISOString(),
+        endTime: end.toISOString(),
+        conflictType,
+        queueConflictsCount: qConflicts.length,
+        bookingConflictsCount: bConflicts.length,
+        reason,
+      });
+    }
     return result;
   }
 

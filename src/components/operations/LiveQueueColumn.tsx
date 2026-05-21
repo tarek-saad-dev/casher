@@ -11,49 +11,49 @@ import type { QueueTicketPrintData } from '@/components/queue/QueueTicketPrint';
 import { normalizeQueueTicket, LIVE_STATUSES, type NormalizedQueueTicket } from '@/lib/queueTicketNormalizer';
 
 const TABS: { key: string; label: string }[] = [
-  { key: 'all',        label: 'النشطة'    },
-  { key: 'waiting',    label: 'منتظر'      },
-  { key: 'called',     label: 'تم النداء'  },
+  { key: 'all', label: 'النشطة' },
+  { key: 'waiting', label: 'منتظر' },
+  { key: 'called', label: 'تم النداء' },
   { key: 'in_service', label: 'في الخدمة' },
-  { key: 'skipped',    label: 'تخطى'        },
-  { key: 'done',       label: 'منجزون'      },
+  { key: 'skipped', label: 'تخطى' },
+  { key: 'done', label: 'منجزون' },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
-  waiting:    '#F59E0B',
-  called:     '#3B82F6',
-  arrived:    '#10B981',
+  waiting: '#F59E0B',
+  called: '#3B82F6',
+  arrived: '#10B981',
   in_service: '#8B5CF6',
-  done:       '#6B7280',
-  skipped:    '#EF4444',
-  cancelled:  '#6B7280',
-  no_show:    '#DC2626',
+  done: '#6B7280',
+  skipped: '#EF4444',
+  cancelled: '#6B7280',
+  no_show: '#DC2626',
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  waiting:    'انتظار',
-  called:     'تم النداء',
-  arrived:    'حضر',
+  waiting: 'انتظار',
+  called: 'تم النداء',
+  arrived: 'حضر',
   in_service: 'في الخدمة',
-  done:       'انتهى',
-  skipped:    'تخطى',
-  cancelled:  'ملغي',
-  no_show:    'لم يحضر',
+  done: 'انتهى',
+  skipped: 'تخطى',
+  cancelled: 'ملغي',
+  no_show: 'لم يحضر',
 };
 
 interface Props {
-  tickets:   any[];   // accepts raw PascalCase rows from /api/queue
-  barbers:   BarberStatus[];
-  loading:   boolean;
-  onAction:  (ticketId: number, action: string, extra?: any) => Promise<void>;
+  tickets: any[];   // accepts raw PascalCase rows from /api/queue
+  barbers: BarberStatus[];
+  loading: boolean;
+  onAction: (ticketId: number, action: string, extra?: any) => Promise<void>;
   onRefresh: () => void;
 }
 
 export function LiveQueueColumn({ tickets, barbers, loading, onAction, onRefresh }: Props) {
-  const [tab,           setTab]           = useState<string>('all');
-  const [selected,      setSelected]      = useState<NormalizedQueueTicket | null>(null);
+  const [tab, setTab] = useState<string>('all');
+  const [selected, setSelected] = useState<NormalizedQueueTicket | null>(null);
   const [transferTicket, setTransferTicket] = useState<NormalizedQueueTicket | null>(null);
-  const [speaking,      setSpeaking]      = useState<number | null>(null);
+  const [speaking, setSpeaking] = useState<number | null>(null);
 
   // Normalize all incoming tickets once (handles both PascalCase and camelCase)
   const normalized = tickets.map(normalizeQueueTicket);
@@ -69,8 +69,8 @@ export function LiveQueueColumn({ tickets, barbers, loading, onAction, onRefresh
   // 'all' tab = active statuses only (same as /queue/live LIVE_STATUSES)
   // 'done' tab = done + cancelled + no_show
   const getFiltered = (tabKey: string): NormalizedQueueTicket[] => {
-    if (tabKey === 'all')  return normalized.filter(t => LIVE_STATUSES.includes(t.status));
-    if (tabKey === 'done') return normalized.filter(t => ['done','cancelled','no_show'].includes(t.status));
+    if (tabKey === 'all') return normalized.filter(t => LIVE_STATUSES.includes(t.status));
+    if (tabKey === 'done') return normalized.filter(t => ['done', 'cancelled', 'no_show'].includes(t.status));
     return normalized.filter(t => t.status === tabKey);
   };
 
@@ -90,13 +90,13 @@ export function LiveQueueColumn({ tickets, barbers, loading, onAction, onRefresh
 
   const handlePrint = (t: NormalizedQueueTicket) => {
     const printData: QueueTicketPrintData = {
-      ticketCode:           t.ticketCode,
-      clientName:           t.clientName,
-      empName:              t.barberName,
-      queueDate:            t.queueDate,
-      createdTime:          t.createdTime,
+      ticketCode: t.ticketCode,
+      clientName: t.clientName,
+      empName: t.barberName,
+      queueDate: t.queueDate,
+      createdTime: t.createdTime,
       estimatedWaitMinutes: t.estimatedWaitMinutes ?? undefined,
-      estimatedStartTime:   t.estimatedStartTime   ?? undefined,
+      estimatedStartTime: t.estimatedStartTime ?? undefined,
     };
     printQueueTicket(printData);
   };
@@ -111,7 +111,7 @@ export function LiveQueueColumn({ tickets, barbers, loading, onAction, onRefresh
 
       {/* Column header */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b flex-shrink-0" style={{ borderColor: '#2A2A35' }}>
-        <Ticket size={14} className="text-amber-400"/>
+        <Ticket size={14} className="text-amber-400" />
         <span className="text-sm font-bold text-white">قائمة الانتظار</span>
         <span className="mr-auto text-xs px-2 py-0.5 rounded-full font-bold"
           style={{ background: 'rgba(245,158,11,0.15)', color: '#F59E0B' }}>
@@ -128,8 +128,8 @@ export function LiveQueueColumn({ tickets, barbers, loading, onAction, onRefresh
               className="flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-medium transition-all whitespace-nowrap"
               style={{
                 background: tab === t.key ? 'rgba(245,158,11,0.15)' : 'transparent',
-                color:      tab === t.key ? '#F59E0B'                : '#6B7280',
-                border:     `1px solid ${tab === t.key ? 'rgba(245,158,11,0.3)' : 'transparent'}`,
+                color: tab === t.key ? '#F59E0B' : '#6B7280',
+                border: `1px solid ${tab === t.key ? 'rgba(245,158,11,0.3)' : 'transparent'}`,
               }}>
               {t.label}{cnt > 0 && <span className="mr-1 opacity-70">({cnt})</span>}
             </button>
@@ -144,14 +144,14 @@ export function LiveQueueColumn({ tickets, barbers, loading, onAction, onRefresh
         )}
         {!loading && filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center py-8 text-zinc-600">
-            <Ticket size={24} className="mb-2 opacity-30"/>
+            <Ticket size={24} className="mb-2 opacity-30" />
             <p className="text-sm">{normalized.length === 0 ? 'لا توجد تذاكر اليوم' : 'لا توجد تذاكر في هذه الحالة'}</p>
           </div>
         )}
         {filtered.map(t => {
-          const color  = STATUS_COLORS[t.status]  ?? '#6B7280';
-          const label  = STATUS_LABELS[t.status]  ?? t.status;
-          const isSpk  = speaking === t.queueTicketId;
+          const color = STATUS_COLORS[t.status] ?? '#6B7280';
+          const label = STATUS_LABELS[t.status] ?? t.status;
+          const isSpk = speaking === t.queueTicketId;
           const isLive = LIVE_STATUSES.includes(t.status);
 
           const estTime = t.estimatedStartTime ? (() => {
@@ -167,13 +167,32 @@ export function LiveQueueColumn({ tickets, barbers, loading, onAction, onRefresh
               className="rounded-xl border p-3 space-y-2 cursor-pointer transition-all hover:border-zinc-600"
               style={{ borderColor: '#2A2A35', background: '#1A1A20', opacity: isLive ? 1 : 0.6 }}>
 
-              {/* Row 1: code + status badge */}
+              {/* Row 1: code + status badge + source badge */}
               <div className="flex items-center justify-between">
                 <span className="text-xl font-black" style={{ color: '#D6A84F' }}>{t.ticketCode}</span>
                 <div className="flex items-center gap-2">
+                  {/* Source/Priority badges */}
+                  {t.source === 'booking' && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                      style={{ background: 'rgba(99,102,241,0.2)', color: '#818CF8', border: '1px solid rgba(99,102,241,0.3)' }}>
+                      حجز وصل
+                    </span>
+                  )}
+                  {t.source === 'walk_in' && t.priority === 2 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                      style={{ background: 'rgba(245,158,11,0.2)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.3)' }}>
+                      أولوية يدوية
+                    </span>
+                  )}
+                  {t.source === 'walk_in' && t.priority === 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                      style={{ background: 'rgba(107,114,128,0.2)', color: '#6B7280', border: '1px solid rgba(107,114,128,0.3)' }}>
+                      Walk-in
+                    </span>
+                  )}
                   {estTime && (
                     <span className="text-xs text-zinc-500 flex items-center gap-1">
-                      <Clock size={10}/>{estTime}
+                      <Clock size={10} />{estTime}
                     </span>
                   )}
                   <span className="text-xs px-2 py-0.5 rounded-full font-medium"
@@ -186,7 +205,7 @@ export function LiveQueueColumn({ tickets, barbers, loading, onAction, onRefresh
               {/* Row 2: client + barber */}
               <div className="flex items-center gap-3 text-xs text-zinc-400">
                 <span className="flex items-center gap-1">
-                  <User size={10}/>
+                  <User size={10} />
                   {t.clientName !== 'عميل غير محدد' ? t.clientName : <span className="text-zinc-600">غير محدد</span>}
                 </span>
                 {t.barberName !== '-' && (
@@ -195,7 +214,7 @@ export function LiveQueueColumn({ tickets, barbers, loading, onAction, onRefresh
                   </span>
                 )}
                 {t.estimatedWaitMinutes != null && (
-                  <span className="flex items-center gap-1 mr-auto"><Clock size={10}/>~{t.estimatedWaitMinutes}د</span>
+                  <span className="flex items-center gap-1 mr-auto"><Clock size={10} />~{t.estimatedWaitMinutes}د</span>
                 )}
               </div>
 
@@ -203,27 +222,27 @@ export function LiveQueueColumn({ tickets, barbers, loading, onAction, onRefresh
               {isLive && (
                 <div className="flex gap-1 flex-wrap" onClick={e => e.stopPropagation()}>
                   <QuickBtn
-                    icon={<Volume2 size={11}/>}
+                    icon={<Volume2 size={11} />}
                     color={isSpk ? '#EF4444' : '#3B82F6'}
                     label={isSpk ? 'جاري...' : 'نداء'}
                     onClick={e => handleVoice(t, e)}
                   />
-                  {['waiting','called','arrived'].includes(t.status) && (
-                    <QuickBtn icon={<Play size={11}/>} color="#10B981" label="بدء"
-                      onClick={async e => { e.stopPropagation(); await onAction(t.queueTicketId, 'start'); }}/>
+                  {['waiting', 'called', 'arrived'].includes(t.status) && (
+                    <QuickBtn icon={<Play size={11} />} color="#10B981" label="بدء"
+                      onClick={async e => { e.stopPropagation(); await onAction(t.queueTicketId, 'start'); }} />
                   )}
                   {t.status === 'in_service' && (
-                    <QuickBtn icon={<CheckCircle size={11}/>} color="#D6A84F" label="تم"
-                      onClick={async e => { e.stopPropagation(); await onAction(t.queueTicketId, 'done'); }}/>
+                    <QuickBtn icon={<CheckCircle size={11} />} color="#D6A84F" label="تم"
+                      onClick={async e => { e.stopPropagation(); await onAction(t.queueTicketId, 'done'); }} />
                   )}
-                  {['waiting','called','arrived'].includes(t.status) && (
-                    <QuickBtn icon={<SkipForward size={11}/>} color="#F97316" label="تخطي"
-                      onClick={async e => { e.stopPropagation(); await onAction(t.queueTicketId, 'skip'); }}/>
+                  {['waiting', 'called', 'arrived'].includes(t.status) && (
+                    <QuickBtn icon={<SkipForward size={11} />} color="#F97316" label="تخطي"
+                      onClick={async e => { e.stopPropagation(); await onAction(t.queueTicketId, 'skip'); }} />
                   )}
-                  <QuickBtn icon={<ArrowLeftRight size={11}/>} color="#8B5CF6" label="نقل"
-                    onClick={e => { e.stopPropagation(); setTransferTicket(t); }}/>
-                  <QuickBtn icon={<Printer size={11}/>} color="#6B7280" label="طباعة"
-                    onClick={e => { e.stopPropagation(); handlePrint(t); }}/>
+                  <QuickBtn icon={<ArrowLeftRight size={11} />} color="#8B5CF6" label="نقل"
+                    onClick={e => { e.stopPropagation(); setTransferTicket(t); }} />
+                  <QuickBtn icon={<Printer size={11} />} color="#6B7280" label="طباعة"
+                    onClick={e => { e.stopPropagation(); handlePrint(t); }} />
                 </div>
               )}
             </div>

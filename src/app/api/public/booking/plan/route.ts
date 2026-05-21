@@ -101,8 +101,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Diagnostic info for 409 responses
+  const diag: any = {
+    env: DEV ? "development" : "production",
+    timestamp: new Date().toISOString(),
+  };
+
   try {
     const body = await req.json();
+
+    // Capture payload for diagnostics
+    diag.requestedPayload = {
+      date: body.date,
+      time: body.time,
+      dayOffset: body.dayOffset ?? 0,
+      mode: body.mode ?? "nearest",
+      empId: body.empId,
+      serviceIds: body.serviceIds ?? [],
+    };
     const {
       customer,
       serviceIds = [],
@@ -283,6 +299,7 @@ export async function POST(req: NextRequest) {
       const svc = serviceMap.get(sid)!;
       const durMs = svc.DurationMinutes * 60_000;
       const segStartDt = new Date(cursorMs);
+      const segEndDt = new Date(cursorMs + durMs);
 
       // Compute date string for this segment (cursor may have crossed midnight)
       const segDate = msToDateStr(cursorMs, timezone);
@@ -442,18 +459,36 @@ export async function POST(req: NextRequest) {
       );
 
       if (!avail.available) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: `الموظف "${assignedEmpName}" غير متاح للخدمة "${svc.ProName}" في الوقت ${segStartTime}`,
-            reason: avail.reason ?? "employee_unavailable",
-            conflictType: avail.conflictType,
-            serviceId: sid,
-            slotTime: segStartTime,
-            slotDate: segDate,
+        // Build comprehensive diagnostic data
+        const diagResponse = {
+          ok: false,
+          error: `الموظف "${assignedEmpName}" غير متاح للخدمة "${svc.ProName}" في الوقت ${segStartTime}`,
+          reason: avail.reason ?? "employee_unavailable",
+          conflictType: avail.conflictType,
+          serviceId: sid,
+          slotTime: segStartTime,
+          slotDate: segDate,
+          // Diagnostic data
+          _diag: {
+            ...diag,
+            selectedEmpId: assignedEmpId,
+            selectedEmpName: assignedEmpName,
+            serviceDurationMinutes: svc.DurationMinutes,
+            segStartMs: segStartDt.getTime(),
+            segEndMs: segEndDt.getTime(),
+            timezone: settings.timezone,
+            checkResult: avail,
           },
-          { status: 409, headers: PUBLIC_CORS_HEADERS },
-        );
+        };
+
+        if (DEV) {
+          console.log("[booking/plan] 409 diagnostic:", diagResponse._diag);
+        }
+
+        return NextResponse.json(diagResponse, {
+          status: 409,
+          headers: PUBLIC_CORS_HEADERS,
+        });
       }
 
       if (DEV) {

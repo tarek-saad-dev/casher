@@ -353,7 +353,7 @@ export async function GET(req: NextRequest) {
         FROM dbo.QueueTickets
         WHERE EmpID IN (${barberIdList})
           AND QueueDate = @qdate
-          AND LOWER(Status) IN ('waiting','called','arrived','in_service')
+          AND LOWER(Status) IN ('waiting','called','in_service')
         ORDER BY EmpID,
           CASE WHEN LOWER(Status)='in_service' THEN 0 ELSE 1 END ASC,
           QueueTicketID ASC

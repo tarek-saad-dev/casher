@@ -131,6 +131,35 @@ export default function OperationsPage() {
     }
   }, [refresh, showToast]);
 
+  // ── Booking arrive action (new endpoint) ───────────────────────────────────
+  const handleBookingArrive = useCallback(async (bookingId: number): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await fetch(`/api/operations/bookings/${bookingId}/arrive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority: 1 }), // Priority 1 = reserved_booking
+      });
+
+      if (res.status === 409) {
+        const data = await res.json();
+        return { success: false, error: data.error || 'هذا الحجز تم تسجيل وصوله بالفعل' };
+      }
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? 'فشل استقبال صاحب الحجز');
+      }
+
+      const data = await res.json();
+      showToast(data.message || `تم استقبال صاحب الحجز وإنشاء دور ${data.ticketCode}`);
+      refresh();
+      return { success: true };
+    } catch (e: any) {
+      showToast(e.message ?? 'حدث خطأ أثناء الاستقبال', false);
+      return { success: false, error: e.message };
+    }
+  }, [refresh, showToast]);
+
   // ── Booking actions ──────────────────────────────────────────────────────────
   const handleBookingAction = useCallback(async (bookingId: number, action: string) => {
     try {
@@ -251,6 +280,7 @@ export default function OperationsPage() {
             loading={loading}
             onAction={handleBookingAction}
             onRefresh={refresh}
+            onBookingArrive={handleBookingArrive}
           />
         </div>
 
