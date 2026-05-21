@@ -291,15 +291,16 @@ export async function GET(req: NextRequest) {
               qt.Status,
               qt.ServiceStartedAt,
               qt.TicketCode,
-              ISNULL(qt.DurationMinutes, 30) AS DurationMinutes
+              CASE WHEN COL_LENGTH('dbo.QueueTickets','DurationMinutes') IS NOT NULL
+                   THEN ISNULL(qt.DurationMinutes, 30) ELSE 30 END AS DurationMinutes
             FROM dbo.QueueTickets qt
             WHERE qt.EmpID IN (${barberIdList})
               AND qt.QueueDate BETWEEN @startDate AND @endDate
-              AND LOWER(qt.Status) IN ('waiting','called','arrived','in_service')
+              AND LOWER(qt.Status) IN ('waiting','called','in_service')
           `,
           )
           .catch((err) => {
-            console.error("[available-days] queue query error:", err.message);
+            console.error("[available-days] queue query error:", err?.message ?? err);
             return { recordset: [] };
           })
       : Promise.resolve({ recordset: [] });

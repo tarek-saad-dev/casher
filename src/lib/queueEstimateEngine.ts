@@ -19,6 +19,9 @@ import {
   getBarberAvailabilityReason,
   getBarberWorkingWindow,
 } from "@/lib/barberAvailability";
+import { salonDateTimeToMs } from "@/lib/publicBookingHelpers";
+
+const SALON_TZ = 'Africa/Cairo';
 
 const DEBUG_BOOKING = process.env.DEBUG_BOOKING === "true";
 
@@ -89,9 +92,12 @@ export function cairoDateStr(d: Date): string {
 export function sqlTimeToDate(dateStr: string, timeVal: unknown): Date {
   let hhmm = "00:00";
   if (typeof timeVal === "string") hhmm = timeVal.slice(0, 5);
-  else if (timeVal instanceof Date)
-    hhmm = `${String(timeVal.getHours()).padStart(2, "0")}:${String(timeVal.getMinutes()).padStart(2, "0")}`;
-  return new Date(`${dateStr}T${hhmm}:00`);
+  else if (timeVal instanceof Date) {
+    // mssql returns TIME columns as Date anchored to 1970-01-01 UTC — use UTC hours
+    hhmm = `${String(timeVal.getUTCHours()).padStart(2, "0")}:${String(timeVal.getUTCMinutes()).padStart(2, "0")}`;
+  }
+  // Use salon timezone-aware epoch so booking intervals align with slot epochs
+  return new Date(salonDateTimeToMs(dateStr, hhmm, SALON_TZ));
 }
 
 // ── Default durations ─────────────────────────────────────────────────────────
@@ -828,8 +834,8 @@ export async function hasAnyAvailableSlotForBarberOnDay(
 
   // 4. Check each slot in memory (early exit)
   for (const time of slots) {
-    const slotDt = new Date(`${dateStr}T${time}:00`);
-    const slotMs = slotDt.getTime();
+    // Use salon timezone-aware epoch — same as available-slots uses
+    const slotMs = salonDateTimeToMs(dateStr, time, SALON_TZ);
 
     // Skip past slots
     if (slotMs - nowMs < minNoticeMinutes * 60_000) {
@@ -840,6 +846,7 @@ export async function hasAnyAvailableSlotForBarberOnDay(
 
     // Check overlap with blocking intervals in memory
     let hasConflict = false;
+    const slotDt = new Date(slotMs);
     for (const iv of allIntervals) {
       if (slotDt < iv.end && slotEnd > iv.start) {
         hasConflict = true;

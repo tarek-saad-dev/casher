@@ -65,13 +65,34 @@ function withinWindow(checkMin: number, startMin: number, endMin: number): boole
  * Check a single barber's availability at a given datetime.
  * Uses existing HR tables: TblEmpWorkSchedule + TblEmpDayOff.
  */
+/** Extract "HH:MM" for Africa/Cairo from a Date using Intl (server-TZ independent) */
+function cairoHHMM(dt: Date): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Cairo',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(dt);
+  const h = parts.find(p => p.type === 'hour')?.value ?? '00';
+  const m = parts.find(p => p.type === 'minute')?.value ?? '00';
+  return `${h}:${m}`;
+}
+
+/** Extract "YYYY-MM-DD" for Africa/Cairo from a Date */
+function cairoDateString(dt: Date): string {
+  return dt.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+}
+
 export async function getBarberAvailabilityReason(
   empId: number,
   dt: Date,
 ): Promise<{ available: boolean; reason: string; startTime: string | null; endTime: string | null }> {
   const db = await getPool();
-  const dateStr = dt.toISOString().slice(0, 10);
-  const dayOfWeek = dt.getDay(); // 0=Sun…6=Sat, matches TblEmpWorkSchedule
+  // CRITICAL: use Cairo local date/time, not server local time
+  // (server may be UTC; salon is Africa/Cairo = UTC+2/+3)
+  const dateStr = cairoDateString(dt);
+  const cairoTime = cairoHHMM(dt); // "HH:MM" in Cairo local time
+  // dayOfWeek from Cairo date (not server-local Date.getDay which uses server TZ)
+  const cairoDate = new Date(`${dateStr}T12:00:00Z`);
+  const dayOfWeek = cairoDate.getDay(); // 0=Sun…6=Sat, matches TblEmpWorkSchedule
 
   // 1. Check TblEmpDayOff — specific day off for this date
   try {
@@ -125,7 +146,7 @@ export async function getBarberAvailabilityReason(
       }
       const startMin = timeToMinutes(emp.DefaultCheckInTime);
       const endMin   = timeToMinutes(emp.DefaultCheckOutTime);
-      const checkMin = dt.getHours() * 60 + dt.getMinutes();
+      const checkMin = timeToMinutes(cairoTime);
       if (!withinWindow(checkMin, startMin, endMin)) {
         return {
           available: false,
@@ -152,7 +173,7 @@ export async function getBarberAvailabilityReason(
     if (startStr && endStr) {
       const startMin = timeToMinutes(startStr);
       const endMin   = timeToMinutes(endStr);
-      const checkMin = dt.getHours() * 60 + dt.getMinutes();
+      const checkMin = timeToMinutes(cairoTime);
       if (!withinWindow(checkMin, startMin, endMin)) {
         return {
           available: false,
@@ -241,7 +262,9 @@ export async function getBarberWorkingWindow(
   date: Date,
 ): Promise<{ startTime: string | null; endTime: string | null; isWorkingDay: boolean }> {
   const db = await getPool();
-  const dayOfWeek = date.getDay();
+  // Use Cairo local date to derive correct dayOfWeek
+  const cairoDs = cairoDateString(date);
+  const dayOfWeek = new Date(`${cairoDs}T12:00:00Z`).getDay();
   try {
     const res = await db.request()
       .input('empId',     sql.Int,     empId)
