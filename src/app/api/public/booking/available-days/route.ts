@@ -559,11 +559,17 @@ export async function GET(req: NextRequest) {
 }
 
 // Build schedule lookup map: key = `${empId}:${dayOfWeek}`
+// Converts SQL Server dayOfWeek (1=Sunday) to JavaScript dayOfWeek (0=Sunday)
 function buildScheduleMap(rows: ScheduleRow[]): Map<string, ScheduleRow> {
   const map = new Map<string, ScheduleRow>();
   for (const row of rows) {
-    const key = `${row.EmpID}:${row.DayOfWeek}`;
+    // SQL Server: 1=Sun, 2=Mon, ..., 7=Sat
+    // JavaScript: 0=Sun, 1=Mon, ..., 6=Sat
+    const sqlDay = row.DayOfWeek;
+    const jsDay = (sqlDay + 6) % 7; // Convert SQL to JS convention
+    const key = `${row.EmpID}:${jsDay}`;
     map.set(key, row);
+    console.log(`[buildScheduleMap] Emp ${row.EmpID}: SQL Day ${sqlDay} → JS Day ${jsDay}`);
   }
   return map;
 }
@@ -633,6 +639,12 @@ function computeDayAvailabilityInMemory(
     // 1. Check schedule
     const scheduleKey = `${empId}:${dayOfWeek}`;
     const schedule = scheduleMap.get(scheduleKey);
+    
+    // Debug: log all available schedule keys for this employee
+    if (process.env.NODE_ENV !== 'production' || dateStr === '2026-05-24') {
+      const allKeysForEmp = Array.from(scheduleMap.keys()).filter(k => k.startsWith(`${empId}:`));
+      console.log(`[computeDayAvailability] Emp ${empId}, Date ${dateStr}, JS Day ${dayOfWeek}, looking for key "${scheduleKey}", found=${!!schedule}, all emp keys: [${allKeysForEmp.join(', ')}]`);
+    }
 
     if (!schedule || !schedule.IsWorkingDay) {
       if (mode === "specific" && barbersToCheck.length === 1) {
