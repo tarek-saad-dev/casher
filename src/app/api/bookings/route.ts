@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
 
     const result = await request.query(`
       SELECT
-        b.BookingID, b.ClientID, b.AssignedEmpID, b.BookingDate,
+        b.BookingID, b.BookingCode, b.ClientID, b.AssignedEmpID, b.BookingDate,
         b.StartTime, b.EndTime, b.Status, b.Source, b.Notes,
         b.QueueTicketID, b.OldInvID, b.OldInvType,
         b.ConvertedInvID, b.ConvertedInvType,
@@ -49,7 +49,17 @@ export async function GET(req: NextRequest) {
         e.EmpName,
         (SELECT COUNT(*)
          FROM [dbo].[BookingServices] bs
-         WHERE bs.BookingID = b.BookingID) AS ServiceCount
+         WHERE bs.BookingID = b.BookingID) AS ServiceCount,
+        (SELECT STRING_AGG(p.ProName, ', ')
+         FROM [dbo].[BookingServices] bs2
+         LEFT JOIN [dbo].[TblPro] p ON p.ProID = bs2.ProID
+         WHERE bs2.BookingID = b.BookingID) AS ServiceNames,
+        (SELECT ISNULL(SUM(bs3.Price * bs3.Qty), 0)
+         FROM [dbo].[BookingServices] bs3
+         WHERE bs3.BookingID = b.BookingID) AS TotalPrice,
+        (SELECT ISNULL(SUM(bs4.DurationMinutes), 0)
+         FROM [dbo].[BookingServices] bs4
+         WHERE bs4.BookingID = b.BookingID) AS TotalDuration
       FROM [dbo].[Bookings] b
       LEFT JOIN [dbo].[TblClient] c ON c.ClientID = b.ClientID
       LEFT JOIN [dbo].[TblEmp]    e ON e.EmpID    = b.AssignedEmpID

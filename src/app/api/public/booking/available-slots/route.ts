@@ -344,22 +344,36 @@ export async function GET(req: NextRequest) {
     }
 
     // ── 6. Batch preload queue tickets (1 query) ──────────────────────────────
+    // Guard optional columns: DurationMinutes and EstimatedStartTime may not exist
+    const qColRes = await db.request().query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'QueueTickets'
+        AND COLUMN_NAME IN ('DurationMinutes','EstimatedStartTime')
+    `).catch(() => ({ recordset: [] as any[] }));
+    const qCols = new Set(qColRes.recordset.map((r: any) => r.COLUMN_NAME as string));
+    const durSql = qCols.has('DurationMinutes')
+      ? `ISNULL(qt.DurationMinutes, ${systemDefault})`
+      : `${systemDefault}`;
+
     const queueRes = await db
       .request()
       .input("qdate", sql.Date, date)
       .query(
         `
-        SELECT EmpID, ServiceStartedAt, ISNULL(DurationMinutes, ${systemDefault}) AS DurationMinutes, Status
-        FROM dbo.QueueTickets
-        WHERE EmpID IN (${barberIdList})
-          AND QueueDate = @qdate
-          AND LOWER(Status) IN ('waiting','called','in_service')
-        ORDER BY EmpID,
-          CASE WHEN LOWER(Status)='in_service' THEN 0 ELSE 1 END ASC,
-          QueueTicketID ASC
+        SELECT qt.EmpID, qt.ServiceStartedAt, ${durSql} AS DurationMinutes, qt.Status
+        FROM dbo.QueueTickets qt
+        WHERE qt.EmpID IN (${barberIdList})
+          AND qt.QueueDate = @qdate
+          AND LOWER(qt.Status) IN ('waiting','called','in_service')
+        ORDER BY qt.EmpID,
+          CASE WHEN LOWER(qt.Status)='in_service' THEN 0 ELSE 1 END ASC,
+          qt.QueueTicketID ASC
       `,
       )
-      .catch(() => ({ recordset: [] as any[] }));
+      .catch((e: any) => {
+        console.error('[available-slots] queue query error:', e?.message ?? e);
+        return { recordset: [] as any[] };
+      });
 
     if (DEV)
       console.log(
@@ -800,6 +814,24 @@ export async function GET(req: NextRequest) {
             reason: overrideBlock ?? "الوقت محجوز",
           });
         } else {
+          // Correlation log — compare with [booking/plan] slot correlation
+          console.log('[available-slots] slot available', {
+            endpoint: 'available-slots',
+            date,
+            empId,
+            empName: nameMap[empId] ?? '',
+            serviceIds,
+            duration: durMin,
+            returnedSlot: {
+              time,
+              dayOffset,
+              startMs: slotDateMs,
+              endMs: slotEndMs,
+            },
+            workingWindow: { start: sched?.start, end: sched?.end },
+            blockersCount: blockersMap[empId]?.length ?? 0,
+            timezone,
+          });
           slots.push({
             time,
             label,

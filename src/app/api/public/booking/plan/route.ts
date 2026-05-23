@@ -295,6 +295,21 @@ export async function POST(req: NextRequest) {
     const plan: PlanSegment[] = [];
     let cursorMs = firstSlotMs; // rolling start pointer
 
+    // Correlation log — always print so we can compare with available-slots
+    console.log('[booking/plan] slot correlation', {
+      endpoint: 'plan',
+      date,
+      bookingDate,
+      time,
+      dayOffset,
+      mode,
+      empId: empId ?? null,
+      serviceIds,
+      firstSlotMs,
+      firstSlotCairo: msToHHMM(firstSlotMs, timezone),
+      timezone,
+    });
+
     for (const sid of serviceIds) {
       const svc = serviceMap.get(sid)!;
       const durMs = svc.DurationMinutes * 60_000;
@@ -459,33 +474,55 @@ export async function POST(req: NextRequest) {
       );
 
       if (!avail.available) {
-        // Build comprehensive diagnostic data
-        const diagResponse = {
-          ok: false,
-          error: `الموظف "${assignedEmpName}" غير متاح للخدمة "${svc.ProName}" في الوقت ${segStartTime}`,
-          reason: avail.reason ?? "employee_unavailable",
-          conflictType: avail.conflictType,
-          serviceId: sid,
-          slotTime: segStartTime,
-          slotDate: segDate,
-          // Diagnostic data
-          _diag: {
-            ...diag,
-            selectedEmpId: assignedEmpId,
-            selectedEmpName: assignedEmpName,
-            serviceDurationMinutes: svc.DurationMinutes,
-            segStartMs: segStartDt.getTime(),
-            segEndMs: segEndDt.getTime(),
-            timezone: settings.timezone,
-            checkResult: avail,
-          },
-        };
-
-        if (DEV) {
-          console.log("[booking/plan] 409 diagnostic:", diagResponse._diag);
+        // Classify reason into a machine-readable code
+        let reasonCode: string;
+        if (avail.conflictType === 'working_hours' || avail.conflictType === 'day_off') {
+          reasonCode = avail.conflictType === 'day_off' ? 'outside_working_hours' : 'outside_working_hours';
+        } else if (avail.conflictType === 'queue') {
+          reasonCode = 'queue_conflict';
+        } else if (avail.conflictType === 'booking') {
+          reasonCode = 'booking_conflict';
+        } else {
+          reasonCode = 'unknown_availability_mismatch';
         }
 
-        return NextResponse.json(diagResponse, {
+        const debugPayload = {
+          requestedPayload: diag.requestedPayload,
+          selectedEmpId: assignedEmpId,
+          selectedEmpName: assignedEmpName,
+          totalDuration: svc.DurationMinutes,
+          serviceDurations: { [sid]: svc.DurationMinutes },
+          timezone: settings.timezone,
+          startMs: segStartDt.getTime(),
+          endMs: segEndDt.getTime(),
+          startCairo: segStartTime,
+          endCairo: segEndTime,
+          nowMs: Date.now(),
+          isPastTime: segStartDt.getTime() < Date.now(),
+          isOutsideWorkingHours: avail.conflictType === 'working_hours' || avail.conflictType === 'day_off',
+          hasBookingConflict: avail.conflictType === 'booking',
+          hasQueueConflict: avail.conflictType === 'queue',
+          conflictingBookingsCount: avail.conflictingBookings.length,
+          conflictingQueueTicketsCount: avail.conflictingTickets.length,
+          conflictingBookings: avail.conflictingBookings,
+          conflictingQueueTickets: avail.conflictingTickets,
+          workingWindow: {
+            startTime: avail.startTime ?? null,
+            endTime: avail.endTime ?? null,
+          },
+          checkResult: avail,
+        };
+
+        // Always log — critical for diagnosing available-slots vs plan mismatch
+        console.log('[booking/plan] 409 slot_not_available', JSON.stringify(debugPayload, null, 2));
+
+        return NextResponse.json({
+          ok: false,
+          error: 'slot_not_available',
+          reason: reasonCode,
+          message: avail.reason ?? `الموظف "${assignedEmpName}" غير متاح في الوقت ${segStartTime}`,
+          debug: debugPayload,
+        }, {
           status: 409,
           headers: PUBLIC_CORS_HEADERS,
         });

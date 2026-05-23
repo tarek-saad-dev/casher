@@ -80,6 +80,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/income-review/today-revenue', label: 'إيرادات اليوم', icon: Wallet  },
       { href: '/income-review/all-revenue',   label: 'كل الإيرادات', icon: History  },
       { href: '/income-review/payments',   label: 'المدفوعات',     icon: CreditCard  },
+      { href: '/admin/reports/employee-services', label: 'خدمات الصنايعية', icon: FileBarChart },
     ],
   },
   {

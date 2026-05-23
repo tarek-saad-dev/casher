@@ -1,210 +1,369 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  Plus, Search, Filter, RefreshCw, CalendarDays, ChevronDown,
-  Phone, User, Clock, CheckCircle2, XCircle, AlertCircle,
-  Loader2, ArrowRight, MoreHorizontal, FileText, Ticket,
+  Plus, Search, RefreshCw, CalendarDays,
+  Phone, User, Clock, AlertCircle,
+  Loader2, Pencil, Trash2, X, CheckCircle2,
 } from 'lucide-react';
+import CreateBookingModal from '@/components/bookings/CreateBookingModal';
 
 type BookingStatus =
   | 'pending' | 'confirmed' | 'arrived' | 'queued'
   | 'in_service' | 'completed' | 'cancelled' | 'no_show' | 'rescheduled';
 
 interface Booking {
-  BookingID: number;
-  ClientID: number | null;
-  AssignedEmpID: number | null;
-  BookingDate: string;
-  StartTime: string;
-  EndTime: string | null;
-  Status: BookingStatus;
-  Source: string;
-  Notes: string | null;
-  QueueTicketID: number | null;
+  BookingID:      number;
+  BookingCode:    string | null;
+  ClientID:       number | null;
+  AssignedEmpID:  number | null;
+  BookingDate:    string;
+  StartTime:      string;
+  EndTime:        string | null;
+  Status:         BookingStatus;
+  Source:         string;
+  Notes:          string | null;
+  QueueTicketID:  number | null;
   ConvertedInvID: number | null;
-  ClientName: string | null;
-  ClientMobile: string | null;
-  EmpName: string | null;
-  ServiceCount: number;
+  ClientName:     string | null;
+  ClientMobile:   string | null;
+  EmpName:        string | null;
+  ServiceCount:   number;
+  ServiceNames:   string | null;
+  TotalPrice:     number | null;
+  TotalDuration:  number | null;
 }
 
-interface Barber { EmpID: number; EmpName: string; }
-
+// ─── Status config ────────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<BookingStatus, { label: string; color: string; bg: string }> = {
-  pending:    { label: 'معلق',       color: '#9CA3AF', bg: 'rgba(156,163,175,0.1)' },
-  confirmed:  { label: 'مؤكد',      color: '#3B82F6', bg: 'rgba(59,130,246,0.1)'  },
-  arrived:    { label: 'حضر',        color: '#10B981', bg: 'rgba(16,185,129,0.1)'  },
-  queued:     { label: 'في الطابور', color: '#F59E0B', bg: 'rgba(245,158,11,0.1)'  },
-  in_service: { label: 'في الخدمة', color: '#8B5CF6', bg: 'rgba(139,92,246,0.1)'  },
-  completed:  { label: 'مكتمل',     color: '#10B981', bg: 'rgba(16,185,129,0.08)' },
-  cancelled:  { label: 'ملغي',      color: '#6B7280', bg: 'rgba(107,114,128,0.08)'},
-  no_show:    { label: 'لم يحضر',   color: '#EF4444', bg: 'rgba(239,68,68,0.1)'   },
-  rescheduled:{ label: 'أُعيد جدولة',color: '#6366F1', bg: 'rgba(99,102,241,0.1)'  },
+  pending:     { label: 'معلق',          color: '#9CA3AF', bg: 'rgba(156,163,175,0.12)' },
+  confirmed:   { label: 'مؤكد',          color: '#3B82F6', bg: 'rgba(59,130,246,0.12)'  },
+  arrived:     { label: 'وصل',           color: '#10B981', bg: 'rgba(16,185,129,0.12)'  },
+  queued:      { label: 'وصل',           color: '#10B981', bg: 'rgba(16,185,129,0.12)'  },
+  in_service:  { label: 'قيد الخدمة',   color: '#8B5CF6', bg: 'rgba(139,92,246,0.12)'  },
+  completed:   { label: 'مكتمل',         color: '#22C55E', bg: 'rgba(34,197,94,0.10)'   },
+  cancelled:   { label: 'ملغي',          color: '#6B7280', bg: 'rgba(107,114,128,0.10)' },
+  no_show:     { label: 'لم يحضر',       color: '#EF4444', bg: 'rgba(239,68,68,0.10)'   },
+  rescheduled: { label: 'أُعيد جدولة',  color: '#6366F1', bg: 'rgba(99,102,241,0.10)'  },
 };
 
-const SOURCE_LABELS: Record<string, string> = {
-  walk_in: 'حضور مباشر', phone: 'هاتف', whatsapp: 'واتساب', website: 'موقع', admin: 'إدارة',
-};
+// ─── Day label helpers ────────────────────────────────────────────────────────
+function getDayLabel(dateStr: string): string {
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().slice(0, 10);
 
-// ─── Action menu ───────────────────────────────────────────────────────────────
-function ActionMenu({
-  booking, onAction, onClose,
-}: {
-  booking: Booking;
-  onAction: (id: number, action: string, extra?: Record<string, unknown>) => void;
-  onClose: () => void;
-}) {
-  const s = booking.Status;
-  const actions: { key: string; label: string; icon: React.ReactNode; color?: string }[] = [];
+  if (dateStr === todayStr)     return 'اليوم';
+  if (dateStr === tomorrowStr)  return 'غدًا';
 
-  if (s === 'pending')    actions.push({ key: 'confirm',    label: 'تأكيد الحجز',        icon: <CheckCircle2 size={13} /> });
-  if (['pending','confirmed'].includes(s))
-                          actions.push({ key: 'arrive',     label: 'سجل الحضور',          icon: <User size={13} /> });
-  if (s === 'arrived')    actions.push({ key: 'queue',      label: 'أضف للطابور',         icon: <Ticket size={13} /> });
-  if (['arrived','queued'].includes(s))
-                          actions.push({ key: 'start_service', label: 'بدء الخدمة',       icon: <CheckCircle2 size={13} /> });
-  if (s === 'in_service') actions.push({ key: 'complete',   label: 'إنهاء الخدمة',        icon: <CheckCircle2 size={13} /> });
-  if (['completed','in_service'].includes(s) && !booking.ConvertedInvID)
-                          actions.push({ key: 'convert',    label: 'تحويل لفاتورة',       icon: <FileText size={13} />, color: '#D6A84F' });
-  if (!['cancelled','completed','no_show'].includes(s)) {
-    actions.push({ key: 'reschedule', label: 'إعادة جدولة', icon: <CalendarDays size={13} /> });
-    actions.push({ key: 'no_show',   label: 'لم يحضر',      icon: <AlertCircle size={13} />, color: '#EF4444' });
-    actions.push({ key: 'cancel',    label: 'إلغاء الحجز',  icon: <XCircle size={13} />, color: '#EF4444' });
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('ar-EG', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function formatTime(value: unknown): string {
+  if (!value) return '—';
+  const s = String(value);
+  // Handle ISO string from SQL time column (1970-01-01T...)
+  if (s.includes('T')) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) {
+      return `${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;
+    }
   }
+  return s.slice(0, 5);
+}
 
+// ─── Toast ────────────────────────────────────────────────────────────────────
+interface Toast { id: number; type: 'success' | 'error'; message: string }
+
+// ─── Confirm dialog ───────────────────────────────────────────────────────────
+function ConfirmDialog({
+  bookingId, onConfirm, onCancel, loading,
+}: { bookingId: number; onConfirm: () => void; onCancel: () => void; loading: boolean }) {
   return (
-    <div className="fixed inset-0 z-50" onClick={onClose}>
-      <div
-        className="absolute left-4 mt-1 w-52 rounded-xl border shadow-2xl overflow-hidden"
-        style={{ background: '#1E1E26', borderColor: '#2A2A35', top: 'auto' }}
-        onClick={e => e.stopPropagation()}
-      >
-        {actions.map(act => (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" dir="rtl">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-80 shadow-2xl">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+            <Trash2 size={18} className="text-red-400" />
+          </div>
+          <div>
+            <p className="text-white font-semibold text-sm">إلغاء الحجز</p>
+            <p className="text-zinc-500 text-xs">حجز رقم #{bookingId}</p>
+          </div>
+        </div>
+        <p className="text-zinc-300 text-sm mb-5">هل أنت متأكد من حذف / إلغاء هذا الحجز؟</p>
+        <div className="flex gap-2">
           <button
-            key={act.key}
-            onClick={() => { onAction(booking.BookingID, act.key); onClose(); }}
-            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-zinc-700/30 transition-colors text-right"
-            style={{ color: act.color ?? '#D1D5DB' }}
+            onClick={onConfirm}
+            disabled={loading}
+            className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition-colors disabled:opacity-60"
           >
-            {act.icon}{act.label}
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            تأكيد الإلغاء
           </button>
-        ))}
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="flex-1 py-2 rounded-xl border border-zinc-700 text-zinc-300 text-sm hover:bg-zinc-800 transition-colors disabled:opacity-60"
+          >
+            رجوع
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
+// ─── Skeleton row ─────────────────────────────────────────────────────────────
+function SkeletonGroup() {
+  return (
+    <div className="mb-6">
+      <div className="h-5 w-40 bg-zinc-800 rounded-lg mb-3 animate-pulse" />
+      {[1, 2].map(i => (
+        <div key={i} className="border border-zinc-800 rounded-xl p-4 mb-2 animate-pulse">
+          <div className="flex gap-3">
+            <div className="w-10 h-10 rounded-full bg-zinc-800" />
+            <div className="flex-1 space-y-2">
+              <div className="h-3.5 w-1/3 bg-zinc-800 rounded" />
+              <div className="h-3 w-1/2 bg-zinc-800 rounded" />
+            </div>
+            <div className="h-6 w-14 bg-zinc-800 rounded-full" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Booking card ─────────────────────────────────────────────────────────────
+function BookingCard({
+  booking, onCancelClick, cancelLoading,
+}: {
+  booking: Booking;
+  onCancelClick: (b: Booking) => void;
+  cancelLoading: boolean;
+}) {
+  const cfg = STATUS_CONFIG[booking.Status] ?? STATUS_CONFIG.pending;
+  const isClosed = ['cancelled','completed','no_show'].includes(booking.Status);
+
+  return (
+    <div
+      className="border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-colors"
+      style={{ background: '#18181f' }}
+    >
+      <div className="flex items-start gap-3">
+        {/* Time column */}
+        <div className="shrink-0 text-center w-12">
+          <p className="text-white font-bold text-base leading-tight">{formatTime(booking.StartTime)}</p>
+          {booking.EndTime && (
+            <p className="text-zinc-600 text-[10px] mt-0.5">{formatTime(booking.EndTime)}</p>
+          )}
+        </div>
+
+        {/* Separator */}
+        <div className="shrink-0 mt-1 flex flex-col items-center gap-1">
+          <div className="w-2 h-2 rounded-full" style={{ background: cfg.color }} />
+          <div className="w-px flex-1 bg-zinc-800 min-h-[28px]" />
+        </div>
+
+        {/* Main content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2 flex-wrap">
+            <div>
+              <p className="text-white font-semibold text-sm leading-tight">
+                {booking.ClientName || <span className="text-zinc-500">عميل غير محدد</span>}
+              </p>
+              {booking.ClientMobile && (
+                <p className="text-zinc-500 text-xs flex items-center gap-1 mt-0.5">
+                  <Phone size={9} />{booking.ClientMobile}
+                </p>
+              )}
+            </div>
+            <span
+              className="text-xs px-2.5 py-0.5 rounded-full font-medium shrink-0"
+              style={{ color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.color}30` }}
+            >
+              {cfg.label}
+            </span>
+          </div>
+
+          <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-zinc-400">
+            {booking.EmpName && (
+              <span className="flex items-center gap-1">
+                <User size={10} className="text-zinc-600" />مع {booking.EmpName}
+              </span>
+            )}
+            {booking.ServiceNames ? (
+              <span className="flex items-center gap-1 truncate max-w-[200px]">
+                <Clock size={10} className="text-zinc-600 shrink-0" />{booking.ServiceNames}
+              </span>
+            ) : booking.ServiceCount > 0 ? (
+              <span className="flex items-center gap-1">
+                <Clock size={10} className="text-zinc-600" />{booking.ServiceCount} خدمة
+              </span>
+            ) : null}
+            {booking.TotalPrice != null && booking.TotalPrice > 0 && (
+              <span className="text-amber-400/80">{booking.TotalPrice} ج.م</span>
+            )}
+            {booking.BookingCode && (
+              <span className="text-zinc-600 font-mono">{booking.BookingCode}</span>
+            )}
+          </div>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            title="تعديل الحجز سيتم تفعيله قريبًا"
+            disabled
+            className="p-1.5 rounded-lg text-zinc-600 cursor-not-allowed opacity-40"
+          >
+            <Pencil size={14} />
+          </button>
+          {!isClosed && (
+            <button
+              type="button"
+              onClick={() => onCancelClick(booking)}
+              disabled={cancelLoading}
+              title="إلغاء الحجز"
+              className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40"
+            >
+              {cancelLoading ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 export default function BookingsPage() {
-  const router = useRouter();
-  const [bookings, setBookings]     = useState<Booking[]>([]);
-  const [barbers, setBarbers]       = useState<Barber[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState<string | null>(null);
-  const [actionLoading, setActionLoading] = useState<number | null>(null);
-  const [openMenu, setOpenMenu]     = useState<number | null>(null);
-  const [showFilters, setShowFilters] = useState(false);
+  const [bookings, setBookings]       = useState<Booking[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState<string | null>(null);
+  const [search, setSearch]           = useState('');
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [toasts, setToasts]     = useState<Toast[]>([]);
+  const [confirmTarget, setConfirmTarget] = useState<Booking | null>(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const toastIdRef = useRef(0);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const addToast = useCallback((type: Toast['type'], message: string) => {
+    const id = ++toastIdRef.current;
+    setToasts(t => [...t, { id, type, message }]);
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3500);
+  }, []);
 
-  const [filters, setFilters] = useState({
-    date: today,
-    dateFrom: '',
-    dateTo: '',
-    empId: '',
-    status: 'all',
-    source: 'all',
-    clientSearch: '',
-    useDateRange: false,
-  });
+  // Compute 7-day range once
+  const { dateFrom, dateTo } = useMemo(() => {
+    const today = new Date();
+    const from = today.toISOString().slice(0, 10);
+    const end = new Date(today); end.setDate(today.getDate() + 6);
+    const to = end.toISOString().slice(0, 10);
+    return { dateFrom: from, dateTo: to };
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams();
-      if (filters.useDateRange) {
-        if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
-        if (filters.dateTo)   params.set('dateTo',   filters.dateTo);
-      } else {
-        params.set('date', filters.date);
-      }
-      if (filters.empId)        params.set('empId',        filters.empId);
-      if (filters.status !== 'all') params.set('status',   filters.status);
-      if (filters.source !== 'all') params.set('source',   filters.source);
-      if (filters.clientSearch) params.set('clientSearch', filters.clientSearch);
-
-      const [bkRes, empRes] = await Promise.all([
-        fetch(`/api/bookings?${params}`),
-        fetch('/api/employees'),
-      ]);
-      const bkData  = await bkRes.json();
-      const empData = await empRes.json();
-      setBookings(bkData.bookings || []);
-      setBarbers(Array.isArray(empData) ? empData.filter((e: Barber & { isActive?: number }) => e.isActive !== 0) : []);
+      const params = new URLSearchParams({ dateFrom, dateTo });
+      const res = await fetch(`/api/bookings?${params}`);
+      if (!res.ok) throw new Error('فشل الاتصال');
+      const data = await res.json();
+      setBookings(data.bookings || []);
     } catch {
-      setError('فشل تحميل الحجوزات');
+      setError('فشل تحميل الحجوزات. تحقق من الاتصال وحاول مجدداً.');
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [dateFrom, dateTo]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const handleAction = async (id: number, action: string, extra: Record<string, unknown> = {}) => {
-    if (action === 'convert') {
-      router.push(`/bookings/${id}`);
-      return;
+  // Filter by search query
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return bookings;
+    return bookings.filter(b =>
+      (b.ClientName   ?? '').toLowerCase().includes(q) ||
+      (b.ClientMobile ?? '').toLowerCase().includes(q) ||
+      (b.BookingCode  ?? '').toLowerCase().includes(q) ||
+      (b.EmpName      ?? '').toLowerCase().includes(q) ||
+      (b.ServiceNames ?? '').toLowerCase().includes(q)
+    );
+  }, [bookings, search]);
+
+  // Group by date
+  const grouped = useMemo(() => {
+    const map = new Map<string, Booking[]>();
+    // Pre-populate all 7 days in order
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(); d.setDate(d.getDate() + i);
+      map.set(d.toISOString().slice(0, 10), []);
     }
-    if (action === 'reschedule') {
-      router.push(`/bookings/${id}`);
-      return;
+    for (const b of filtered) {
+      const key = String(b.BookingDate).slice(0, 10);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(b);
     }
-    setActionLoading(id);
+    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [filtered]);
+
+  // Soft cancel
+  const handleCancel = async () => {
+    if (!confirmTarget) return;
+    setCancelLoading(true);
     try {
-      const res = await fetch(`/api/bookings/${id}`, {
+      const res = await fetch(`/api/bookings/${confirmTarget.BookingID}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, ...extra }),
+        body: JSON.stringify({ action: 'cancel' }),
       });
       const data = await res.json();
-      if (!res.ok) { alert(data.error || 'فشل تنفيذ الإجراء'); return; }
+      if (!res.ok) {
+        addToast('error', data.error || 'فشل إلغاء الحجز');
+        return;
+      }
+      addToast('success', 'تم إلغاء الحجز بنجاح');
+      setConfirmTarget(null);
       fetchData();
+    } catch {
+      addToast('error', 'فشل الاتصال بالخادم');
     } finally {
-      setActionLoading(null);
+      setCancelLoading(false);
     }
   };
 
-  const statusCounts = bookings.reduce((acc, b) => {
-    acc[b.Status] = (acc[b.Status] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+  const totalFiltered = filtered.length;
 
   return (
     <div className="h-full flex flex-col bg-zinc-950" dir="rtl">
-      {/* Header */}
+
+      {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 shrink-0">
         <div>
-          <h1 className="text-lg font-black text-white tracking-tight">الحجوزات</h1>
-          <p className="text-xs text-zinc-500 mt-0.5">{bookings.length} حجز</p>
+          <h1 className="text-lg font-black text-white tracking-tight">إدارة الحجوزات</h1>
+          <p className="text-xs text-zinc-500 mt-0.5">
+            حجوزات الـ 7 أيام القادمة
+            {!loading && ` · ${totalFiltered} حجز`}
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={fetchData} className="p-2 rounded-xl border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600 transition-all" title="تحديث">
-            <RefreshCw size={15} />
-          </button>
-          <button onClick={() => setShowFilters(f => !f)} className="flex items-center gap-1.5 p-2 rounded-xl border border-zinc-700 text-zinc-400 hover:text-white transition-all">
-            <Filter size={15} />
-            <span className="text-xs hidden sm:block">فلترة</span>
-          </button>
           <button
-            onClick={() => router.push('/bookings/calendar')}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-zinc-700 text-zinc-300 text-sm hover:bg-zinc-800 transition-all"
+            onClick={fetchData}
+            disabled={loading}
+            className="p-2 rounded-xl border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600 transition-all disabled:opacity-50"
+            title="تحديث"
           >
-            <CalendarDays size={15} /> التقويم
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
           </button>
           <button
-            onClick={() => router.push('/bookings/new')}
+            onClick={() => setCreateModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
             style={{ background: 'linear-gradient(135deg,#D6A84F,#B8923A)', color: '#000' }}
           >
@@ -213,185 +372,125 @@ export default function BookingsPage() {
         </div>
       </div>
 
-      {/* Filters panel */}
-      {showFilters && (
-        <div className="px-6 py-4 border-b border-zinc-800 bg-zinc-900/50 space-y-3 shrink-0">
-          <div className="flex flex-wrap gap-3">
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-zinc-400">نطاق تاريخ</label>
-              <div
-                onClick={() => setFilters(f => ({ ...f, useDateRange: !f.useDateRange }))}
-                className="relative w-9 h-5 rounded-full cursor-pointer transition-colors"
-                style={{ background: filters.useDateRange ? '#D6A84F' : '#374151' }}
-              >
-                <div className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all" style={{ right: filters.useDateRange ? 2 : 'auto', left: filters.useDateRange ? 'auto' : 2 }} />
-              </div>
-            </div>
-            {!filters.useDateRange ? (
-              <input
-                type="date"
-                value={filters.date}
-                onChange={e => setFilters(f => ({ ...f, date: e.target.value }))}
-                className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/50"
-              />
-            ) : (
-              <>
-                <input type="date" value={filters.dateFrom} onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value }))} className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/50" placeholder="من" />
-                <input type="date" value={filters.dateTo}   onChange={e => setFilters(f => ({ ...f, dateTo: e.target.value }))}   className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/50" placeholder="إلى" />
-              </>
-            )}
-
-            <select
-              value={filters.empId}
-              onChange={e => setFilters(f => ({ ...f, empId: e.target.value }))}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/50"
-            >
-              <option value="">كل الحلاقين</option>
-              {barbers.map(b => <option key={b.EmpID} value={b.EmpID}>{b.EmpName}</option>)}
-            </select>
-
-            <select
-              value={filters.status}
-              onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/50"
-            >
-              <option value="all">كل الحالات</option>
-              {Object.entries(STATUS_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-            </select>
-
-            <select
-              value={filters.source}
-              onChange={e => setFilters(f => ({ ...f, source: e.target.value }))}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/50"
-            >
-              <option value="all">كل المصادر</option>
-              {Object.entries(SOURCE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-
-            <div className="relative">
-              <Search size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
-              <input
-                value={filters.clientSearch}
-                onChange={e => setFilters(f => ({ ...f, clientSearch: e.target.value }))}
-                placeholder="بحث عميل..."
-                className="bg-zinc-800 border border-zinc-700 rounded-lg pr-7 pl-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/50 w-40"
-              />
-            </div>
-          </div>
+      {/* ── Search ──────────────────────────────────────────────────── */}
+      <div className="px-6 py-3 border-b border-zinc-800 shrink-0">
+        <div className="relative">
+          <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="ابحث باسم العميل، رقم الهاتف، كود الحجز، الحلاق، الخدمة..."
+            className="w-full bg-zinc-900 border border-zinc-700 rounded-xl pr-9 pl-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 transition-colors"
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300">
+              <X size={14} />
+            </button>
+          )}
         </div>
-      )}
+      </div>
 
-      {/* Status summary chips */}
-      {Object.keys(statusCounts).length > 0 && (
-        <div className="flex flex-wrap gap-2 px-6 py-2.5 border-b border-zinc-800 shrink-0">
-          {Object.entries(statusCounts).map(([st, cnt]) => {
-            const cfg = STATUS_CONFIG[st as BookingStatus];
-            if (!cfg) return null;
-            return (
-              <span key={st} className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.color}33` }}>
-                {cfg.label}: {cnt}
-              </span>
-            );
-          })}
-        </div>
-      )}
+      {/* ── Body ────────────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6 scrollbar-luxury-v">
 
-      {/* Table */}
-      <div className="flex-1 overflow-auto scrollbar-luxury-v">
         {loading ? (
-          <div className="flex items-center justify-center h-48">
-            <Loader2 className="animate-spin text-amber-400" size={28} />
-          </div>
+          <>{[1,2,3].map(i => <SkeletonGroup key={i} />)}</>
+
         ) : error ? (
-          <div className="flex items-center justify-center h-48">
-            <div className="text-center">
-              <AlertCircle className="text-red-400 mx-auto mb-2" size={28} />
-              <p className="text-red-400 text-sm">{error}</p>
-              <button onClick={fetchData} className="mt-2 text-xs text-zinc-400 underline">إعادة المحاولة</button>
-            </div>
+          <div className="flex flex-col items-center justify-center h-48 text-center gap-3">
+            <AlertCircle size={32} className="text-red-400" />
+            <p className="text-red-400 text-sm">{error}</p>
+            <button
+              onClick={fetchData}
+              className="px-4 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 text-xs hover:bg-zinc-800 transition-colors"
+            >
+              إعادة المحاولة
+            </button>
           </div>
-        ) : bookings.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-zinc-600">
-            <CalendarDays size={32} className="mb-3" />
-            <p className="text-sm">لا توجد حجوزات</p>
-            <button onClick={() => router.push('/bookings/new')} className="mt-3 text-xs text-amber-400 underline">أضف حجزاً جديداً</button>
+
+        ) : totalFiltered === 0 && search ? (
+          <div className="flex flex-col items-center justify-center h-48 text-center gap-3">
+            <Search size={28} className="text-zinc-600" />
+            <p className="text-zinc-500 text-sm">لا توجد نتائج لـ &quot;{search}&quot;</p>
+            <button onClick={() => setSearch('')} className="text-xs text-amber-400 underline">مسح البحث</button>
           </div>
+
         ) : (
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-zinc-900 z-10">
-              <tr className="text-right">
-                {['الوقت', 'العميل', 'الحلاق', 'الخدمات', 'المصدر', 'الحالة', ''].map((h, i) => (
-                  <th key={i} className="px-4 py-3 text-xs font-semibold text-zinc-500 border-b border-zinc-800 whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {bookings.map(b => {
-                const cfg = STATUS_CONFIG[b.Status] ?? STATUS_CONFIG.pending;
-                const isLoading = actionLoading === b.BookingID;
-                return (
-                  <tr
-                    key={b.BookingID}
-                    className="border-b border-zinc-800/60 hover:bg-zinc-900/50 transition-colors cursor-pointer"
-                    onClick={() => router.push(`/bookings/${b.BookingID}`)}
-                  >
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5 text-white font-semibold">
-                        <Clock size={12} className="text-zinc-500" />
-                        {String(b.StartTime).slice(0, 5)}
-                      </div>
-                      <div className="text-xs text-zinc-500 mt-0.5">{new Date(b.BookingDate).toLocaleDateString('ar-EG', { day: 'numeric', month: 'short' })}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-white shrink-0">
-                          {b.ClientName?.charAt(0) ?? <User size={12} />}
-                        </div>
-                        <div>
-                          <p className="text-white font-medium">{b.ClientName || <span className="text-zinc-500">غير محدد</span>}</p>
-                          {b.ClientMobile && (
-                            <p className="text-[11px] text-zinc-500 flex items-center gap-1"><Phone size={9} />{b.ClientMobile}</p>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-zinc-300">{b.EmpName || <span className="text-zinc-600">—</span>}</td>
-                    <td className="px-4 py-3 text-zinc-400 text-xs">{b.ServiceCount || 0} خدمة</td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs text-zinc-500">{SOURCE_LABELS[b.Source] ?? b.Source}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.color}33` }}>
-                        {cfg.label}
-                      </span>
-                      {b.ConvertedInvID && (
-                        <span className="mr-1 text-xs text-amber-400">· فاتورة</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                      <div className="relative">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setOpenMenu(openMenu === b.BookingID ? null : b.BookingID); }}
-                          disabled={isLoading}
-                          className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-500 hover:text-white transition-all disabled:opacity-40"
-                        >
-                          {isLoading ? <Loader2 size={14} className="animate-spin" /> : <MoreHorizontal size={14} />}
-                        </button>
-                        {openMenu === b.BookingID && (
-                          <ActionMenu
-                            booking={b}
-                            onAction={handleAction}
-                            onClose={() => setOpenMenu(null)}
-                          />
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          grouped.map(([dateKey, items]) => (
+            <div key={dateKey}>
+              {/* Day header */}
+              <div className="flex items-center gap-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <CalendarDays size={14} className="text-amber-400/70" />
+                  <span className="text-sm font-bold text-white">{getDayLabel(dateKey)}</span>
+                  <span className="text-xs text-zinc-600">
+                    {new Date(dateKey + 'T00:00:00').toLocaleDateString('ar-EG', { day: 'numeric', month: 'long' })}
+                  </span>
+                </div>
+                <div className="flex-1 h-px bg-zinc-800" />
+                <span className="text-xs text-zinc-600">{items.length} حجز</span>
+              </div>
+
+              {/* Bookings or empty */}
+              {items.length === 0 ? (
+                <div className="border border-zinc-800/50 border-dashed rounded-xl py-4 px-4 text-center">
+                  <p className="text-xs text-zinc-700">لا توجد حجوزات في هذا اليوم</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {items.map(b => (
+                    <BookingCard
+                      key={b.BookingID}
+                      booking={b}
+                      onCancelClick={setConfirmTarget}
+                      cancelLoading={cancelLoading && confirmTarget?.BookingID === b.BookingID}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          ))
         )}
+      </div>
+
+      {/* ── Confirm dialog ──────────────────────────────────────────── */}
+      {confirmTarget && (
+        <ConfirmDialog
+          bookingId={confirmTarget.BookingID}
+          onConfirm={handleCancel}
+          onCancel={() => { if (!cancelLoading) setConfirmTarget(null); }}
+          loading={cancelLoading}
+        />
+      )}
+
+      {/* ── Create booking modal ────────────────────────────────────── */}
+      <CreateBookingModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onSuccess={(code) => {
+          setCreateModalOpen(false);
+          addToast('success', code ? `تم إنشاء الحجز بنجاح · ${code}` : 'تم إنشاء الحجز بنجاح');
+          fetchData();
+        }}
+      />
+
+      {/* ── Toasts ──────────────────────────────────────────────────── */}
+      <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 w-72">
+        {toasts.map(t => (
+          <div
+            key={t.id}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl text-sm font-medium
+              ${t.type === 'success'
+                ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-300'
+                : 'bg-rose-950/90 border-rose-500/40 text-rose-300'}`}
+          >
+            {t.type === 'success'
+              ? <CheckCircle2 size={15} className="shrink-0" />
+              : <AlertCircle size={15} className="shrink-0" />}
+            <span className="flex-1">{t.message}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

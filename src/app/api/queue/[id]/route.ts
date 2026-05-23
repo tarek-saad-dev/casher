@@ -153,6 +153,32 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
         VALUES (@ticketId, @oldStatus, @newStatus, @action, @userID, @notes)
       `);
 
+    // Sync Booking.Status when the linked booking-queue ticket advances
+    const BOOKING_STATUS_MAP: Partial<Record<string, string>> = {
+      in_service: 'in_service',
+      done:       'completed',
+      cancelled:  'cancelled',
+    };
+    const targetBookingStatus = BOOKING_STATUS_MAP[newStatus];
+    if (targetBookingStatus) {
+      const ticketBooking = await db.request()
+        .input("id", sql.Int, ticketId)
+        .query(`SELECT BookingID FROM [dbo].[QueueTickets] WHERE QueueTicketID = @id`);
+      const bookingId = ticketBooking.recordset[0]?.BookingID;
+      if (bookingId) {
+        await db.request()
+          .input("bid",    sql.Int,      bookingId)
+          .input("status", sql.NVarChar, targetBookingStatus)
+          .query(`
+            UPDATE [dbo].[Bookings]
+            SET Status = @status, UpdatedAt = GETDATE()
+            WHERE BookingID = @bid
+              AND Status NOT IN ('completed','cancelled')
+          `)
+          .catch(e => console.error('[queue PATCH] booking sync failed:', e));
+      }
+    }
+
     return NextResponse.json({ ok: true, newStatus });
   } catch (err) {
     console.error("[queue PATCH id]", err);
