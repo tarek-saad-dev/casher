@@ -687,6 +687,31 @@ export async function GET(req: NextRequest) {
             } else if (conflict) {
               slotRejected = true;
               slotCheckReason = "already_booked";
+
+              // Detailed diagnostic logging for conflicting slots
+              if (DEV) {
+                const blockersForThisBarber = blockersMap[empId] ?? [];
+                console.log("[available-slots] CONFLICT slot check:", {
+                  empId,
+                  slotTime: time,
+                  slotStartMs: slotDateMs,
+                  slotEndMs,
+                  slotISO: new Date(slotDateMs).toISOString(),
+                  blockersCount: blockersForThisBarber.length,
+                  blockers: blockersForThisBarber.map((b: any) => ({
+                    type: b.type,
+                    id: b.id,
+                    empId: b.empId,
+                    startMs: b.startMs,
+                    endMs: b.endMs,
+                    startISO: new Date(b.startMs).toISOString(),
+                    endISO: new Date(b.endMs).toISOString(),
+                    status: b.status,
+                    source: b.source,
+                  })),
+                });
+              }
+
               // Find what type of blocker
               const blocker = (blockersMap[empId] ?? []).find(
                 (b) => slotDateMs < b.endMs && slotEndMs > b.startMs,

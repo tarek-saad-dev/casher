@@ -556,61 +556,153 @@ export async function POST(req: NextRequest) {
       const code = bookingCodes[i];
 
       try {
-        const ins = await db
-          .request()
-          .input("clientId", sql.Int, clientId)
-          .input("empId", sql.Int, seg.empId)
-          .input("bDate", sql.Date, seg.date)
-          .input("sTime", sql.VarChar, seg.startTime + ":00")
-          .input("eTime", sql.VarChar, seg.endTime + ":00")
-          .input("source", sql.NVarChar, "online")
-          .input("notes", sql.NVarChar, notes?.trim() || null)
-          .input("code", sql.NVarChar, code).query(`
-            INSERT INTO [dbo].[Bookings]
-              (ClientID, AssignedEmpID, BookingDate, StartTime, EndTime,
-               Status, Source, Notes, BookingCode, CreatedByUserID)
-            OUTPUT INSERTED.BookingID, INSERTED.BookingDate, INSERTED.StartTime, INSERTED.EndTime, INSERTED.Status
-            VALUES
-              (@clientId, @empId, @bDate, @sTime, @eTime,
-               'confirmed', @source, @notes, @code, 0)
-          `);
-        const bookingId = ins.recordset[0].BookingID as number;
-        bookingIds.push(bookingId);
+        // ── Start transaction for this segment ────────────────────────────────
+        const transaction = new sql.Transaction(db);
+        await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
 
-        // Log inserted booking for debugging
-        if (DEV) {
-          console.log("[booking/plan] inserted booking:", {
-            bookingId,
-            bookingCode: code,
-            assignedEmpId: seg.empId,
-            empName: seg.empName,
-            bookingDate: ins.recordset[0].BookingDate,
-            startTime: ins.recordset[0].StartTime,
-            endTime: ins.recordset[0].EndTime,
-            status: ins.recordset[0].Status,
-            serviceId: seg.serviceId,
-            serviceName: seg.serviceName,
-            durationMinutes: seg.durationMinutes,
-          });
+        try {
+          // ── Re-check for conflicts with locking (prevents race conditions) ─────
+          // Calculate slot timing from seg data (segStartDt is not in scope here)
+          const slotDateStr = `${seg.date}T${seg.startTime}:00`;
+          const segStartMs = new Date(slotDateStr).getTime();
+          const segEndMs = new Date(`${seg.date}T${seg.endTime}:00`).getTime();
+
+          // Check existing bookings with UPDLOCK to prevent concurrent inserts
+          const conflictCheck = await transaction
+            .request()
+            .input("empId", sql.Int, seg.empId)
+            .input("bDate", sql.Date, seg.date)
+            .input("sTime", sql.VarChar, seg.startTime + ":00")
+            .input("eTime", sql.VarChar, seg.endTime + ":00").query(`
+              SELECT BookingID, StartTime, EndTime, Status, BookingCode
+              FROM [dbo].[Bookings] WITH (UPDLOCK, HOLDLOCK)
+              WHERE AssignedEmpID = @empId
+                AND BookingDate = @bDate
+                AND Status IN ('confirmed', 'arrived', 'queued', 'in_service')
+                AND (
+                  -- Overlap condition: new start < existing end AND new end > existing start
+                  (@sTime < EndTime AND @eTime > StartTime)
+                )
+            `);
+
+          if (conflictCheck.recordset.length > 0) {
+            await transaction.rollback();
+            const conflicting = conflictCheck.recordset[0];
+
+            if (DEV) {
+              console.log("[booking/plan] CONFLICT DETECTED in transaction:", {
+                empId: seg.empId,
+                date: seg.date,
+                startTime: seg.startTime,
+                endTime: seg.endTime,
+                conflictingBookingId: conflicting.BookingID,
+                conflictingBookingCode: conflicting.BookingCode,
+                conflictingStartTime: conflicting.StartTime,
+                conflictingEndTime: conflicting.EndTime,
+                conflictingStatus: conflicting.Status,
+              });
+            }
+
+            // Rollback all previously inserted bookings for this request
+            if (bookingIds.length) {
+              await db
+                .request()
+                .query(
+                  `UPDATE [dbo].[Bookings] SET Status='cancelled'
+                   WHERE BookingID IN (${bookingIds.join(",")})`,
+                )
+                .catch(() => {});
+            }
+
+            return NextResponse.json(
+              {
+                ok: false,
+                error: `الموعد ${seg.startTime} لم يعد متاحاً للحلاق ${seg.empName} - تم حجزه للتو`,
+                reason: "booking_conflict",
+                conflictType: "booking",
+                serviceId: seg.serviceId,
+                slotTime: seg.startTime,
+                slotDate: seg.date,
+                conflictingBooking: {
+                  bookingId: conflicting.BookingID,
+                  bookingCode: conflicting.BookingCode,
+                  startTime: conflicting.StartTime,
+                  endTime: conflicting.EndTime,
+                },
+                _diag: {
+                  ...diag,
+                  selectedEmpId: seg.empId,
+                  segStartMs,
+                  segEndMs,
+                },
+              },
+              { status: 409, headers: PUBLIC_CORS_HEADERS },
+            );
+          }
+
+          // ── Insert booking with OUTPUT clause ────────────────────────────────
+          const ins = await transaction
+            .request()
+            .input("clientId", sql.Int, clientId)
+            .input("empId", sql.Int, seg.empId)
+            .input("bDate", sql.Date, seg.date)
+            .input("sTime", sql.VarChar, seg.startTime + ":00")
+            .input("eTime", sql.VarChar, seg.endTime + ":00")
+            .input("source", sql.NVarChar, "online")
+            .input("notes", sql.NVarChar, notes?.trim() || null)
+            .input("code", sql.NVarChar, code).query(`
+              INSERT INTO [dbo].[Bookings]
+                (ClientID, AssignedEmpID, BookingDate, StartTime, EndTime,
+                 Status, Source, Notes, BookingCode, CreatedByUserID)
+              OUTPUT INSERTED.BookingID, INSERTED.BookingDate, INSERTED.StartTime, INSERTED.EndTime, INSERTED.Status
+              VALUES
+                (@clientId, @empId, @bDate, @sTime, @eTime,
+                 'confirmed', @source, @notes, @code, 0)
+            `);
+          const bookingId = ins.recordset[0].BookingID as number;
+          bookingIds.push(bookingId);
+
+          // ── Insert booking service row within same transaction ───────────────
+          await transaction
+            .request()
+            .input("bId", sql.Int, bookingId)
+            .input("proId", sql.Int, seg.serviceId)
+            .input("eId", sql.Int, seg.empId)
+            .input("qty", sql.Decimal, 1)
+            .input("price", sql.Decimal, seg.price)
+            .input("mins", sql.Int, seg.durationMinutes)
+            .query(
+              `
+              INSERT INTO [dbo].[BookingServices]
+                (BookingID, ProID, EmpID, Qty, Price, DurationMinutes)
+              VALUES (@bId, @proId, @eId, @qty, @price, @mins)
+            `,
+            );
+
+          // ── Commit transaction ───────────────────────────────────────────────
+          await transaction.commit();
+
+          // Log inserted booking for debugging (inside transaction block)
+          if (DEV) {
+            console.log("[booking/plan] inserted booking:", {
+              bookingId,
+              bookingCode: code,
+              assignedEmpId: seg.empId,
+              empName: seg.empName,
+              serviceId: seg.serviceId,
+              serviceName: seg.serviceName,
+              durationMinutes: seg.durationMinutes,
+            });
+          }
+        } catch (txErr) {
+          // Rollback transaction on any error
+          try {
+            await transaction.rollback();
+          } catch {}
+          throw txErr;
         }
 
-        // Insert booking service row
-        await db
-          .request()
-          .input("bId", sql.Int, bookingId)
-          .input("proId", sql.Int, seg.serviceId)
-          .input("eId", sql.Int, seg.empId)
-          .input("qty", sql.Decimal, 1)
-          .input("price", sql.Decimal, seg.price)
-          .input("mins", sql.Int, seg.durationMinutes)
-          .query(
-            `
-            INSERT INTO [dbo].[BookingServices]
-              (BookingID, ProID, EmpID, Qty, Price, DurationMinutes)
-            VALUES (@bId, @proId, @eId, @qty, @price, @mins)
-          `,
-          )
-          .catch(() => {});
+        // Note: All inserts moved inside transaction above
       } catch (err: unknown) {
         // Rollback: cancel all successfully inserted bookings
         if (bookingIds.length) {
