@@ -8,6 +8,7 @@ import { GroupedQueueBoard } from '@/components/operations/GroupedQueueBoard';
 import { BookingsColumn } from '@/components/operations/BookingsColumn';
 import { AlertsPanel } from '@/components/operations/AlertsPanel';
 import { CreateQueueDrawer } from '@/components/operations/CreateQueueDrawer';
+import { SimpleCreateQueueDrawer } from '@/components/operations/SimpleCreateQueueDrawer';
 import { CreateBookingDrawer } from '@/components/operations/CreateBookingDrawer';
 import { BookingControlDrawer } from '@/components/operations/BookingControlDrawer';
 import { BUSINESS_DATE_CAIRO } from '@/lib/queueTicketNormalizer';
@@ -21,6 +22,7 @@ export default function OperationsPage() {
   // Queue tickets fetched directly from /api/queue — same source as /queue/live
   const [liveTickets, setLiveTickets] = useState<any[]>([]);
   const [showQueueDrawer, setShowQueueDrawer] = useState(false);
+  const [showSimpleQueueDrawer, setShowSimpleQueueDrawer] = useState(false);
   const [showBookingDrawer, setShowBookingDrawer] = useState(false);
   const [showBookingControlDrawer, setShowBookingControlDrawer] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
@@ -295,7 +297,29 @@ export default function OperationsPage() {
         </div>
       </div>
 
+      {/* Big Button - Create Queue */}
+      <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20">
+        <button
+          onClick={() => setShowSimpleQueueDrawer(true)}
+          className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white text-xl font-bold rounded-2xl shadow-lg hover:shadow-xl transition-all flex items-center gap-3"
+        >
+          <span>+</span>
+          <span>إنشاء دور</span>
+        </button>
+      </div>
+
       {/* Drawers */}
+      {showSimpleQueueDrawer && (
+        <SimpleCreateQueueDrawer
+          isOpen={showSimpleQueueDrawer}
+          onClose={() => setShowSimpleQueueDrawer(false)}
+          onCreated={() => {
+            fetchQueueTickets();
+            fetchOverview();
+            showToast('تم إنشاء الدور بنجاح');
+          }}
+        />
+      )}
       {showQueueDrawer && (
         <CreateQueueDrawer
           onClose={() => setShowQueueDrawer(false)}

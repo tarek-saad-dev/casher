@@ -70,6 +70,7 @@ interface QueueTicketRow {
   QueueDate: string;
   Status: string;
   ServiceStartedAt: Date | null;
+  EstimatedStartTime?: Date | null;
   DurationMinutes: number;
   TicketCode?: string;
 }
@@ -277,6 +278,22 @@ export async function GET(req: NextRequest) {
       : Promise.resolve({ recordset: [] });
 
     // 2. Batch preload all queue tickets for date range
+    // First check which columns exist (same approach as available-slots)
+    const queueColCheckPromise = tableExists.queue
+      ? db.request().query(`
+          SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+          WHERE TABLE_NAME = 'QueueTickets'
+            AND COLUMN_NAME IN ('DurationMinutes','EstimatedStartTime')
+        `).catch(() => ({ recordset: [] as any[] }))
+      : Promise.resolve({ recordset: [] as any[] });
+
+    const queueColRes = await queueColCheckPromise;
+    const qCols = new Set(queueColRes.recordset.map((r: any) => r.COLUMN_NAME as string));
+    const durSql = qCols.has('DurationMinutes')
+      ? `ISNULL(qt.DurationMinutes, 30)`
+      : `30`;
+    const hasEstimatedStart = qCols.has('EstimatedStartTime');
+
     const queuePromise = tableExists.queue
       ? db
           .request()
@@ -290,9 +307,9 @@ export async function GET(req: NextRequest) {
               qt.QueueDate,
               qt.Status,
               qt.ServiceStartedAt,
+              ${hasEstimatedStart ? 'qt.EstimatedStartTime,' : ''}
               qt.TicketCode,
-              CASE WHEN COL_LENGTH('dbo.QueueTickets','DurationMinutes') IS NOT NULL
-                   THEN ISNULL(qt.DurationMinutes, 30) ELSE 30 END AS DurationMinutes
+              ${durSql} AS DurationMinutes
             FROM dbo.QueueTickets qt
             WHERE qt.EmpID IN (${barberIdList})
               AND qt.QueueDate BETWEEN @startDate AND @endDate
@@ -455,6 +472,45 @@ export async function GET(req: NextRequest) {
         dateOverridesMap,
       );
 
+      // Debug log for diagnosing day availability (especially for 2026-05-24 issue)
+      const isTargetDate = dateStr === '2026-05-24' || dateStr === '2026-05-23';
+      const isDev = process.env.NODE_ENV !== 'production';
+      if (isTargetDate || (isDev && !dayResult.available)) {
+        const empId = mode === 'specific' && specificBarberInfo ? specificBarberInfo.id : barberIds[0];
+        const scheduleKey = empId ? `${empId}:${dow}` : null;
+        const schedule = scheduleKey ? scheduleMap.get(scheduleKey) : null;
+        const queueKey = empId ? `${empId}:${dateStr}` : null;
+        const queueTickets = queueKey ? queueMap.get(queueKey) || [] : [];
+        const bookings = queueKey ? bookingMap.get(queueKey) || [] : [];
+
+        console.log('[available-days] day debug', {
+          date: dateStr,
+          empId,
+          serviceIds: serviceIds.length > 0 ? serviceIds : 'all',
+          employeeSchedule: schedule ? {
+            isWorkingDay: schedule.IsWorkingDay,
+            start: schedule.StartTime,
+            end: schedule.EndTime,
+          } : null,
+          isWorkingDay: schedule?.IsWorkingDay ?? false,
+          workStart: schedule?.StartTime ?? null,
+          workEnd: schedule?.EndTime ?? null,
+          serviceDuration: customerDur,
+          bookingBlocksCount: bookings.length,
+          queueBlocksCount: queueTickets.length,
+          queueTickets: queueTickets.map(t => ({
+            id: t.QueueTicketID,
+            status: t.Status,
+            duration: t.DurationMinutes,
+            serviceStarted: !!t.ServiceStartedAt,
+            estimatedStart: !!t.EstimatedStartTime,
+          })),
+          isAvailable: dayResult.available,
+          reason: dayResult.reason,
+          reasonCode: dayResult.reasonCode,
+        });
+      }
+
       days.push({
         date: dateStr,
         available: dayResult.available,
@@ -503,11 +559,17 @@ export async function GET(req: NextRequest) {
 }
 
 // Build schedule lookup map: key = `${empId}:${dayOfWeek}`
+// Converts SQL Server dayOfWeek (1=Sunday) to JavaScript dayOfWeek (0=Sunday)
 function buildScheduleMap(rows: ScheduleRow[]): Map<string, ScheduleRow> {
   const map = new Map<string, ScheduleRow>();
   for (const row of rows) {
-    const key = `${row.EmpID}:${row.DayOfWeek}`;
+    // SQL Server: 1=Sun, 2=Mon, ..., 7=Sat
+    // JavaScript: 0=Sun, 1=Mon, ..., 6=Sat
+    const sqlDay = row.DayOfWeek;
+    const jsDay = (sqlDay + 6) % 7; // Convert SQL to JS convention
+    const key = `${row.EmpID}:${jsDay}`;
     map.set(key, row);
+    console.log(`[buildScheduleMap] Emp ${row.EmpID}: SQL Day ${sqlDay} → JS Day ${jsDay}`);
   }
   return map;
 }
@@ -577,6 +639,12 @@ function computeDayAvailabilityInMemory(
     // 1. Check schedule
     const scheduleKey = `${empId}:${dayOfWeek}`;
     const schedule = scheduleMap.get(scheduleKey);
+    
+    // Debug: log all available schedule keys for this employee
+    if (process.env.NODE_ENV !== 'production' || dateStr === '2026-05-24') {
+      const allKeysForEmp = Array.from(scheduleMap.keys()).filter(k => k.startsWith(`${empId}:`));
+      console.log(`[computeDayAvailability] Emp ${empId}, Date ${dateStr}, JS Day ${dayOfWeek}, looking for key "${scheduleKey}", found=${!!schedule}, all emp keys: [${allKeysForEmp.join(', ')}]`);
+    }
 
     if (!schedule || !schedule.IsWorkingDay) {
       if (mode === "specific" && barbersToCheck.length === 1) {
@@ -645,12 +713,18 @@ function computeDayAvailabilityInMemory(
 
     const intervals: Interval[] = [];
 
-    // Add queue intervals (sequential placement)
+    // Add queue intervals
+    // Use ServiceStartedAt (already in service) → EstimatedStartTime (planned) → sequential fallback
     let cursor = new Date(nowMs);
     for (const ticket of queueTickets) {
-      const start = ticket.ServiceStartedAt
-        ? new Date(ticket.ServiceStartedAt)
-        : new Date(cursor);
+      let start: Date;
+      if (ticket.ServiceStartedAt) {
+        start = new Date(ticket.ServiceStartedAt);
+      } else if (ticket.EstimatedStartTime) {
+        start = new Date(ticket.EstimatedStartTime);
+      } else {
+        start = new Date(cursor);
+      }
       const end = new Date(start.getTime() + ticket.DurationMinutes * 60000);
       intervals.push({ start, end, source: "queue", id: ticket.QueueTicketID });
       if (end > cursor) cursor = end;
