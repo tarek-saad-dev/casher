@@ -58,12 +58,26 @@ export function isValidPhone(phone: string): boolean {
   return /^[\d+\s\-]{8,20}$/.test(phone.trim());
 }
 
+/**
+ * Validate date string - must be YYYY-MM-DD only.
+ * Rejects ISO strings with T or Z.
+ */
 export function isValidDate(s: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(s));
+  // Strict format: YYYY-MM-DD only
+  // Reject if contains T or Z (ISO format indicators)
+  if (s.includes("T") || s.includes("Z")) return false;
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(s + "T12:00:00"));
 }
 
+/**
+ * Validate time string - must be HH:mm only.
+ * Examples: "14:00", "23:30", "01:30"
+ */
 export function isValidTime(s: string): boolean {
-  return /^\d{2}:\d{2}$/.test(s);
+  // Strict format: HH:mm only (24-hour format)
+  if (!/^\d{2}:\d{2}$/.test(s)) return false;
+  const [h, m] = s.split(":").map(Number);
+  return h >= 0 && h <= 23 && m >= 0 && m <= 59;
 }
 
 // ── Public settings ───────────────────────────────────────────────────────────

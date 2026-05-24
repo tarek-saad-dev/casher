@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { format } from 'date-fns';
 import {
   X, Search, User, Scissors, Loader2, CheckCircle2,
   Calendar, Clock, AlertTriangle, RefreshCw,
@@ -8,10 +9,10 @@ import {
 import type { BookingBarberResult, BookingEstimateResponse } from '@/lib/operationsTypes';
 
 interface Service { ProID: number; ProName: string; SPrice: number; DurationMinutes: number | null; }
-interface Client  { ClientID: number; Name: string; Mobile?: string; }
+interface Client { ClientID: number; Name: string; Mobile?: string; }
 
 interface Props {
-  onClose:   () => void;
+  onClose: () => void;
   onCreated: () => void;
 }
 
@@ -26,30 +27,30 @@ function fmtTime(iso: string | null | undefined): string {
 }
 
 export function CreateBookingDrawer({ onClose, onCreated }: Props) {
-  const [mode,           setMode]           = useState<Mode>('nearest');
-  const [clientSearch,   setClientSearch]   = useState('');
-  const [clients,        setClients]        = useState<Client[]>([]);
+  const [mode, setMode] = useState<Mode>('nearest');
+  const [clientSearch, setClientSearch] = useState('');
+  const [clients, setClients] = useState<Client[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [showClients,    setShowClients]    = useState(false);
-  const [services,       setServices]       = useState<Service[]>([]);
-  const [selectedSvcs,   setSelectedSvcs]   = useState<Service[]>([]);
+  const [showClients, setShowClients] = useState(false);
+  const [services, setServices] = useState<Service[]>([]);
+  const [selectedSvcs, setSelectedSvcs] = useState<Service[]>([]);
   const [selectedBarber, setSelectedBarber] = useState<BookingBarberResult | null>(null);
-  const [bookingDate,    setBookingDate]    = useState(() => new Date().toISOString().slice(0, 10));
-  const [bookingTime,    setBookingTime]    = useState(() => {
+  const [bookingDate, setBookingDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  const [bookingTime, setBookingTime] = useState(() => {
     const d = new Date(); d.setMinutes(d.getMinutes() + 30, 0, 0);
-    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   });
-  const [notes,          setNotes]          = useState('');
-  const [availability,   setAvailability]   = useState<BookingEstimateResponse | null>(null);
-  const [checking,       setChecking]       = useState(false);
-  const [submitting,     setSubmitting]     = useState(false);
-  const [error,          setError]          = useState<string | null>(null);
-  const [success,        setSuccess]        = useState(false);
+  const [notes, setNotes] = useState('');
+  const [availability, setAvailability] = useState<BookingEstimateResponse | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   // Load services on mount
   useEffect(() => {
     fetch('/api/services?active=true')
-      .then(r => r.json()).then(d => setServices(d.services ?? d ?? [])).catch(() => {});
+      .then(r => r.json()).then(d => setServices(d.services ?? d ?? [])).catch(() => { });
   }, []);
 
   // Client search
@@ -59,7 +60,7 @@ export function CreateBookingDrawer({ onClose, onCreated }: Props) {
       fetch(`/api/customers?q=${encodeURIComponent(clientSearch)}`)
         .then(r => r.json())
         .then(d => { const list = Array.isArray(d) ? d : (d.clients ?? d.data ?? []); setClients(list); setShowClients(true); })
-        .catch(() => {});
+        .catch(() => { });
     }, 300);
     return () => clearTimeout(t);
   }, [clientSearch]);
@@ -72,8 +73,8 @@ export function CreateBookingDrawer({ onClose, onCreated }: Props) {
     setSelectedBarber(null);
 
     const payload = {
-      mode:        'all',
-      serviceIds:  selectedSvcs.map(s => s.ProID),
+      mode: 'all',
+      serviceIds: selectedSvcs.map(s => s.ProID),
       bookingDate,
       bookingTime,
     };
@@ -122,7 +123,7 @@ export function CreateBookingDrawer({ onClose, onCreated }: Props) {
     const totalMins = selectedSvcs.reduce((sum, s) => sum + (s.DurationMinutes ?? 30), 0) || 30;
     const [h, m] = bookingTime.split(':').map(Number);
     const end = new Date(0, 0, 0, h, m + totalMins);
-    return `${String(end.getHours()).padStart(2,'0')}:${String(end.getMinutes()).padStart(2,'0')}`;
+    return `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`;
   })();
 
   // Submit validation
@@ -146,14 +147,14 @@ export function CreateBookingDrawer({ onClose, onCreated }: Props) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          clientId:    selectedClient?.ClientID ?? null,
-          empId:       chosenBarber.empId,
+          clientId: selectedClient?.ClientID ?? null,
+          empId: chosenBarber.empId,
           bookingDate,
-          startTime:   bookingTime + ':00',
-          endTime:     endTime + ':00',
-          source:      'reception',
-          notes:       notes || null,
-          services:    selectedSvcs.map(s => ({
+          startTime: bookingTime + ':00',
+          endTime: endTime + ':00',
+          source: 'reception',
+          notes: notes || null,
+          services: selectedSvcs.map(s => ({
             proId: s.ProID, qty: 1, price: s.SPrice,
             durationMinutes: s.DurationMinutes,
           })),
@@ -174,7 +175,7 @@ export function CreateBookingDrawer({ onClose, onCreated }: Props) {
     return (
       <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/75 backdrop-blur-sm">
         <div className="rounded-2xl border p-8 text-center space-y-3" style={{ background: '#141418', borderColor: '#2A2A35' }}>
-          <CheckCircle2 size={40} className="text-emerald-400 mx-auto"/>
+          <CheckCircle2 size={40} className="text-emerald-400 mx-auto" />
           <p className="font-bold text-white text-lg">تم إنشاء الحجز</p>
           <p className="text-sm text-zinc-500">{bookingDate} — {bookingTime}</p>
         </div>
@@ -193,7 +194,7 @@ export function CreateBookingDrawer({ onClose, onCreated }: Props) {
         <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0" style={{ borderColor: '#2A2A35' }}>
           <h2 className="font-bold text-white text-base">حجز موعد جديد</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition-all">
-            <X size={15}/>
+            <X size={15} />
           </button>
         </div>
 
@@ -203,7 +204,7 @@ export function CreateBookingDrawer({ onClose, onCreated }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <p className="text-xs font-semibold text-zinc-400 mb-2 flex items-center gap-1">
-                <Calendar size={11}/> التاريخ
+                <Calendar size={11} /> التاريخ
               </p>
               <input
                 type="date" value={bookingDate}
@@ -214,7 +215,7 @@ export function CreateBookingDrawer({ onClose, onCreated }: Props) {
             </div>
             <div>
               <p className="text-xs font-semibold text-zinc-400 mb-2 flex items-center gap-1">
-                <Clock size={11}/> الوقت
+                <Clock size={11} /> الوقت
               </p>
               <input
                 type="time" value={bookingTime}
@@ -239,11 +240,11 @@ export function CreateBookingDrawer({ onClose, onCreated }: Props) {
                     className="px-3 py-1.5 rounded-lg border text-xs font-medium transition-all"
                     style={{
                       borderColor: sel ? '#D6A84F' : '#2A2A35',
-                      color:       sel ? '#D6A84F' : '#9CA3AF',
-                      background:  sel ? 'rgba(214,168,79,0.10)' : 'transparent',
+                      color: sel ? '#D6A84F' : '#9CA3AF',
+                      background: sel ? 'rgba(214,168,79,0.10)' : 'transparent',
                     }}
                   >
-                    <Scissors size={10} className="inline ml-1"/>
+                    <Scissors size={10} className="inline ml-1" />
                     {svc.ProName}
                     {svc.DurationMinutes ? <span className="text-zinc-600 mr-1">({svc.DurationMinutes}د)</span> : null}
                   </button>
@@ -269,8 +270,8 @@ export function CreateBookingDrawer({ onClose, onCreated }: Props) {
                   className="py-2.5 rounded-xl border text-sm font-semibold transition-all"
                   style={{
                     borderColor: mode === m ? '#D6A84F' : '#2A2A35',
-                    color:       mode === m ? '#D6A84F' : '#6B7280',
-                    background:  mode === m ? 'rgba(214,168,79,0.10)' : 'transparent',
+                    color: mode === m ? '#D6A84F' : '#6B7280',
+                    background: mode === m ? 'rgba(214,168,79,0.10)' : 'transparent',
                   }}
                 >
                   {lbl}
@@ -291,13 +292,13 @@ export function CreateBookingDrawer({ onClose, onCreated }: Props) {
                 className="text-zinc-600 hover:text-amber-400 disabled:opacity-40 transition-colors"
                 title="تحديث التوفر"
               >
-                <RefreshCw size={11} className={checking ? 'animate-spin' : ''}/>
+                <RefreshCw size={11} className={checking ? 'animate-spin' : ''} />
               </button>
             </div>
 
             {checking ? (
               <div className="flex items-center gap-2 text-sm text-zinc-500 py-3">
-                <Loader2 size={14} className="animate-spin"/>
+                <Loader2 size={14} className="animate-spin" />
                 جاري فحص الحلاقين المتاحين...
               </div>
             ) : !availability ? (
@@ -316,11 +317,11 @@ export function CreateBookingDrawer({ onClose, onCreated }: Props) {
                       <span className="text-[10px] text-zinc-600">مواعيده: {availability.best.workingWindow}</span>
                     )}
                   </div>
-                  <CheckCircle2 size={16} className="text-emerald-400 flex-shrink-0"/>
+                  <CheckCircle2 size={16} className="text-emerald-400 flex-shrink-0" />
                 </div>
               ) : (
                 <div className="flex items-center gap-2 text-sm text-red-400 py-2">
-                  <AlertTriangle size={14}/>
+                  <AlertTriangle size={14} />
                   لا يوجد حلاق متاح في هذا الوقت
                 </div>
               )
@@ -329,7 +330,7 @@ export function CreateBookingDrawer({ onClose, onCreated }: Props) {
               <div className="space-y-2">
                 {(availability.barbers ?? []).map(b => {
                   const isSelected = selectedBarber?.empId === b.empId;
-                  const canSelect  = b.available;
+                  const canSelect = b.available;
                   return (
                     <button
                       key={b.empId}
@@ -340,11 +341,11 @@ export function CreateBookingDrawer({ onClose, onCreated }: Props) {
                         borderColor: isSelected
                           ? '#D6A84F'
                           : b.available ? '#1E3A2F' : '#2A2A35',
-                        background:  isSelected
+                        background: isSelected
                           ? 'rgba(214,168,79,0.08)'
                           : b.available ? 'rgba(16,185,129,0.04)' : 'transparent',
-                        opacity:     canSelect ? 1 : 0.7,
-                        cursor:      canSelect ? 'pointer' : 'not-allowed',
+                        opacity: canSelect ? 1 : 0.7,
+                        cursor: canSelect ? 'pointer' : 'not-allowed',
                       }}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -372,7 +373,7 @@ export function CreateBookingDrawer({ onClose, onCreated }: Props) {
                           className="text-xs px-2 py-0.5 rounded-full flex-shrink-0 mt-0.5"
                           style={{
                             background: b.available ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.12)',
-                            color:      b.available ? '#10B981' : '#EF4444',
+                            color: b.available ? '#10B981' : '#EF4444',
                           }}
                         >
                           {b.available ? 'متاح' : 'غير متاح'}
@@ -394,18 +395,18 @@ export function CreateBookingDrawer({ onClose, onCreated }: Props) {
               <div className="flex items-center justify-between px-3 py-2 rounded-xl border"
                 style={{ borderColor: '#10B981', background: 'rgba(16,185,129,0.08)' }}>
                 <div className="flex items-center gap-2">
-                  <User size={13} className="text-emerald-400"/>
+                  <User size={13} className="text-emerald-400" />
                   <span className="text-sm text-white">{selectedClient.Name}</span>
                 </div>
                 <button onClick={() => setSelectedClient(null)} className="text-zinc-500 hover:text-white">
-                  <X size={13}/>
+                  <X size={13} />
                 </button>
               </div>
             ) : (
               <>
                 <div className="flex items-center gap-2 px-3 py-2 rounded-xl border"
                   style={{ borderColor: '#2A2A35', background: '#1A1A20' }}>
-                  <Search size={13} className="text-zinc-500"/>
+                  <Search size={13} className="text-zinc-500" />
                   <input
                     className="flex-1 bg-transparent text-sm text-white placeholder-zinc-600 outline-none"
                     placeholder="ابحث بالاسم أو الهاتف..."
@@ -445,7 +446,7 @@ export function CreateBookingDrawer({ onClose, onCreated }: Props) {
 
           {error && (
             <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
-              <AlertTriangle size={14} className="flex-shrink-0"/>
+              <AlertTriangle size={14} className="flex-shrink-0" />
               {error}
             </div>
           )}
@@ -463,8 +464,8 @@ export function CreateBookingDrawer({ onClose, onCreated }: Props) {
             style={{ background: 'linear-gradient(135deg,#6366F1,#4F46E5)', color: '#fff' }}
           >
             {submitting
-              ? <><Loader2 size={15} className="animate-spin"/> جاري الحجز...</>
-              : <><CheckCircle2 size={15}/> تأكيد الحجز</>
+              ? <><Loader2 size={15} className="animate-spin" /> جاري الحجز...</>
+              : <><CheckCircle2 size={15} /> تأكيد الحجز</>
             }
           </button>
         </div>

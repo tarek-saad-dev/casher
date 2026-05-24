@@ -2,49 +2,50 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { format } from 'date-fns';
 import {
   ArrowRight, Search, UserPlus, Scissors, Clock, CalendarDays,
   CheckCircle2, Loader2, AlertCircle, User,
 } from 'lucide-react';
 
-interface Barber  { EmpID: number; EmpName: string; }
-interface Client  { ClientID: number; Name: string; ClientName: string; Mobile: string | null; ClientMobile: string | null; }
+interface Barber { EmpID: number; EmpName: string; }
+interface Client { ClientID: number; Name: string; ClientName: string; Mobile: string | null; ClientMobile: string | null; }
 interface Service { ProID: number; ProName: string; SPrice: number; DurationMinutes?: number; }
-interface SelSvc  extends Service { qty: number; empId: number | null; }
+interface SelSvc extends Service { qty: number; empId: number | null; }
 
 const SOURCE_OPTIONS = [
-  { value: 'phone',    label: 'هاتف'           },
-  { value: 'whatsapp', label: 'واتساب'         },
-  { value: 'website',  label: 'موقع إلكتروني'  },
-  { value: 'admin',    label: 'إداري'           },
-  { value: 'walk_in',  label: 'حضور مباشر'      },
+  { value: 'phone', label: 'هاتف' },
+  { value: 'whatsapp', label: 'واتساب' },
+  { value: 'website', label: 'موقع إلكتروني' },
+  { value: 'admin', label: 'إداري' },
+  { value: 'walk_in', label: 'حضور مباشر' },
 ];
 
 export default function NewBookingPage() {
   const router = useRouter();
 
-  const [barbers,  setBarbers]  = useState<Barber[]>([]);
+  const [barbers, setBarbers] = useState<Barber[]>([]);
   const [services, setServices] = useState<Service[]>([]);
 
-  const [clientSearch,   setClientSearch]   = useState('');
-  const [clientResults,  setClientResults]  = useState<Client[]>([]);
+  const [clientSearch, setClientSearch] = useState('');
+  const [clientResults, setClientResults] = useState<Client[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [clientLoading,  setClientLoading]  = useState(false);
-  const [showNewClient,  setShowNewClient]  = useState(false);
-  const [newClientName,  setNewClientName]  = useState('');
-  const [newClientMobile,setNewClientMobile]= useState('');
+  const [clientLoading, setClientLoading] = useState(false);
+  const [showNewClient, setShowNewClient] = useState(false);
+  const [newClientName, setNewClientName] = useState('');
+  const [newClientMobile, setNewClientMobile] = useState('');
 
-  const [selectedBarber,   setSelectedBarber]   = useState<Barber | null>(null);
+  const [selectedBarber, setSelectedBarber] = useState<Barber | null>(null);
   const [selectedServices, setSelectedServices] = useState<SelSvc[]>([]);
-  const [bookingDate,      setBookingDate]      = useState('');
-  const [startTime,        setStartTime]        = useState('');
-  const [endTime,          setEndTime]          = useState('');
-  const [source,           setSource]           = useState('phone');
-  const [notes,            setNotes]            = useState('');
+  const [bookingDate, setBookingDate] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [source, setSource] = useState('phone');
+  const [notes, setNotes] = useState('');
 
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError]   = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [newBookingId, setNewBookingId] = useState<number | null>(null);
 
@@ -65,7 +66,7 @@ export default function NewBookingPage() {
     // Default to tomorrow
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    setBookingDate(tomorrow.toISOString().slice(0, 10));
+    setBookingDate(format(tomorrow, 'yyyy-MM-dd'));
     setStartTime('10:00');
   }, []);
 
@@ -94,7 +95,7 @@ export default function NewBookingPage() {
     if (!totalMins) { setEndTime(''); return; }
     const [h, m] = startTime.split(':').map(Number);
     const end = new Date(0, 0, 0, h, m + totalMins);
-    setEndTime(`${String(end.getHours()).padStart(2,'0')}:${String(end.getMinutes()).padStart(2,'0')}`);
+    setEndTime(`${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`);
   }, [startTime, selectedServices]);
 
   // Check conflict
@@ -105,7 +106,7 @@ export default function NewBookingPage() {
       .then(data => {
         const bks: Array<{ StartTime: string; EndTime: string | null; Status: string; ClientName: string | null }> = data.bookings || [];
         const conflicts = bks.filter(b => {
-          if (['cancelled','no_show','rescheduled'].includes(b.Status)) return false;
+          if (['cancelled', 'no_show', 'rescheduled'].includes(b.Status)) return false;
           const bs = String(b.StartTime).slice(0, 5);
           const be = b.EndTime ? String(b.EndTime).slice(0, 5) : bs;
           return startTime < be && endTime > bs;
@@ -209,7 +210,7 @@ export default function NewBookingPage() {
         <div className="max-w-2xl mx-auto p-6 space-y-6">
 
           {/* Client */}
-          <Section title="العميل" icon={<User size={14}/>}>
+          <Section title="العميل" icon={<User size={14} />}>
             {!showNewClient ? (
               <>
                 <div className="relative mb-3">
@@ -241,7 +242,7 @@ export default function NewBookingPage() {
                   </div>
                 ) : null}
                 <button onClick={() => setShowNewClient(true)} className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300">
-                  <UserPlus size={13}/> عميل جديد
+                  <UserPlus size={13} /> عميل جديد
                 </button>
               </>
             ) : (
@@ -256,7 +257,7 @@ export default function NewBookingPage() {
           </Section>
 
           {/* Date & Time */}
-          <Section title="التاريخ والوقت" icon={<CalendarDays size={14}/>}>
+          <Section title="التاريخ والوقت" icon={<CalendarDays size={14} />}>
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-1">
                 <label className="text-xs text-zinc-400 mb-1 block">التاريخ *</label>
@@ -273,13 +274,13 @@ export default function NewBookingPage() {
             </div>
             {conflictWarning && (
               <div className="mt-2 flex items-center gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs">
-                <AlertCircle size={13}/>{conflictWarning}
+                <AlertCircle size={13} />{conflictWarning}
               </div>
             )}
           </Section>
 
           {/* Barber */}
-          <Section title="الحلاق" icon={<User size={14}/>}>
+          <Section title="الحلاق" icon={<User size={14} />}>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => setSelectedBarber(null)}
                 className="flex items-center gap-2 p-3 rounded-xl border text-right transition-all"
@@ -302,7 +303,7 @@ export default function NewBookingPage() {
           </Section>
 
           {/* Services */}
-          <Section title="الخدمات" icon={<Scissors size={14}/>}>
+          <Section title="الخدمات" icon={<Scissors size={14} />}>
             <div className="space-y-2 max-h-64 overflow-y-auto scrollbar-luxury-v">
               {services.map(svc => {
                 const sel = selectedServices.find(s => s.ProID === svc.ProID);
@@ -312,13 +313,13 @@ export default function NewBookingPage() {
                     style={sel ? { borderColor: 'rgba(139,92,246,0.4)', background: 'rgba(139,92,246,0.1)' } : { borderColor: '#2A2A35', background: 'rgba(255,255,255,0.02)' }}>
                     <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
                       style={{ background: sel ? 'rgba(139,92,246,0.2)' : '#2A2A35' }}>
-                      {sel ? <CheckCircle2 size={14} className="text-purple-400"/> : <Scissors size={13} className="text-zinc-500"/>}
+                      {sel ? <CheckCircle2 size={14} className="text-purple-400" /> : <Scissors size={13} className="text-zinc-500" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-white truncate">{svc.ProName}</p>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-amber-400 font-semibold">{svc.SPrice} ر.س</span>
-                        {svc.DurationMinutes && <span className="text-xs text-zinc-500 flex items-center gap-1"><Clock size={9}/>{svc.DurationMinutes}د</span>}
+                        {svc.DurationMinutes && <span className="text-xs text-zinc-500 flex items-center gap-1"><Clock size={9} />{svc.DurationMinutes}د</span>}
                       </div>
                     </div>
                   </button>
@@ -334,7 +335,7 @@ export default function NewBookingPage() {
           </Section>
 
           {/* Source & Notes */}
-          <Section title="إضافي" icon={<CalendarDays size={14}/>}>
+          <Section title="إضافي" icon={<CalendarDays size={14} />}>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-zinc-400 mb-1 block">مصدر الحجز</label>
@@ -352,7 +353,7 @@ export default function NewBookingPage() {
 
           {error && (
             <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
-              <AlertCircle size={14}/>{error}
+              <AlertCircle size={14} />{error}
             </div>
           )}
 
@@ -362,7 +363,7 @@ export default function NewBookingPage() {
             className="w-full py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-2"
             style={{ background: canSubmit ? 'linear-gradient(135deg,#D6A84F,#B8923A)' : '#2A2A35', color: canSubmit ? '#000' : '#6B7280' }}
           >
-            {submitting ? <><Loader2 size={16} className="animate-spin"/> جاري الحفظ...</> : <><CalendarDays size={16}/> حفظ الحجز</>}
+            {submitting ? <><Loader2 size={16} className="animate-spin" /> جاري الحفظ...</> : <><CalendarDays size={16} /> حفظ الحجز</>}
           </button>
         </div>
       </div>
