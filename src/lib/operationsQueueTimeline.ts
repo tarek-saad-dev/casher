@@ -357,9 +357,6 @@ export async function simulateQueueInsertion({
     };
   }
 
-  // Count people before
-  const peopleBefore = timeline.queueCount;
-
   // Build intervals for slot finding
   const qIntervals = await buildQueueIntervals(db, empId, dateStr, now, defaultDur);
   const bIntervals = await buildBookingIntervals(db, empId, dateStr, defaultDur);
@@ -371,29 +368,34 @@ export async function simulateQueueInsertion({
   const suggestedStart = findFirstFreeSlot(now, serviceDur, allIntervals);
   const suggestedEnd = new Date(suggestedStart.getTime() + serviceDur * 60000);
 
-  // Determine decision
-  let decision: SimulateQueueResult["decision"];
-  let message: string;
+  // Count people before (queue tickets that end before or at our start)
+  const queueBeforeItems = qIntervals.filter((q) => q.end <= suggestedStart);
+  const queueCountBefore = queueBeforeItems.length;
 
-  // Check if slot is "now" (within 5 minutes)
-  const isStartNow =
-    suggestedStart.getTime() - now.getTime() <= 5 * 60000;
+  // Find bookings that end before or at our start (for peopleBefore count)
+  const bookingBeforeItems = bIntervals.filter((b) => b.end <= suggestedStart);
+  const bookingCountBefore = bookingBeforeItems.length;
 
-  // Find next upcoming booking
+  // Find next upcoming booking (for decision logic)
   const upcomingBookings = bIntervals
     .filter((b) => b.start > now)
     .sort((a, b) => a.start.getTime() - b.start.getTime());
   const nextBooking = upcomingBookings[0];
 
-  if (isStartNow) {
-    if (peopleBefore === 0) {
-      decision = "start_now";
-      message = "يمكن بدء الخدمة فوراً";
-    } else {
-      decision = "after_queue";
-      message = `يوجد ${peopleBefore} أدوار قبلك، ستبدأ بعدهم`;
-    }
-  } else if (nextBooking && suggestedStart >= nextBooking.end) {
+  // Determine decision
+  let decision: SimulateQueueResult["decision"];
+  let message: string;
+
+  // Check if we're placed immediately after a booking (within 5 min tolerance)
+  const isAfterBooking = nextBooking &&
+    suggestedStart.getTime() >= nextBooking.end.getTime() - 5 * 60000;
+
+  // Total people before = queue items + bookings that end before or at our start
+  // Note: bookingBeforeItems already includes the booking we're after (if any)
+  // because its end time <= suggestedStart
+  const peopleBefore = queueCountBefore + bookingCountBefore;
+
+  if (isAfterBooking) {
     decision = "after_booking";
     const bookingTime = nextBooking.start.toLocaleTimeString("ar-EG", {
       hour: "2-digit",
@@ -401,16 +403,27 @@ export async function simulateQueueInsertion({
       hour12: true,
     });
     message = `يوجد حجز محمي الساعة ${bookingTime}، دورك سيكون بعده`;
-  } else if (peopleBefore > 0) {
-    decision = "after_queue";
-    message = `يوجد ${peopleBefore} أدوار قبلك`;
+  } else if (peopleBefore === 0) {
+    // Check if start is "now" (within 5 minutes)
+    const isStartNow = suggestedStart.getTime() - now.getTime() <= 5 * 60000;
+    if (isStartNow) {
+      decision = "start_now";
+      message = "يمكن بدء الخدمة فوراً";
+    } else {
+      decision = "after_queue";
+      message = "يوجد تأخير، سيبدأ الدور قريباً";
+    }
   } else {
-    decision = "start_now";
-    message = "يمكن بدء الخدمة الآن";
+    decision = "after_queue";
+    if (bookingCountBefore > 0) {
+      message = `يوجد ${peopleBefore} أدوار وحجوزات قبلك، ستبدأ بعدهم`;
+    } else {
+      message = `يوجد ${peopleBefore} أدوار قبلك، ستبدأ بعدهم`;
+    }
   }
 
-  // Build queue before list
-  const queueBefore = qIntervals.map((iv) => ({
+  // Build queue before list for response
+  const queueBeforeList = queueBeforeItems.map((iv) => ({
     ticketId: iv.id,
     ticketCode: iv.ticketCode ?? `Q-${iv.id}`,
     startTime: iv.start.toISOString(),
@@ -449,7 +462,7 @@ export async function simulateQueueInsertion({
     message,
     timeline: timeline.timeline,
     protectedBookings,
-    queueBefore,
+    queueBefore: queueBeforeList,
   };
 }
 
