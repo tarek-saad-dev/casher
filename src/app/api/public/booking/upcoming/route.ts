@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
+import { PUBLIC_CORS_HEADERS } from "@/lib/publicBookingHelpers";
 
 const MIN_CANCEL_MINUTES = 30;
 const SALON_TZ = "Africa/Cairo";
@@ -15,6 +16,10 @@ function normalizePhone(phone: string): string {
 
 function getCairoNow() {
   return new Date().toLocaleString("en-US", { timeZone: SALON_TZ });
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: PUBLIC_CORS_HEADERS });
 }
 
 export async function POST(req: NextRequest) {
@@ -28,7 +33,7 @@ export async function POST(req: NextRequest) {
     if (!phone || typeof phone !== "string") {
       return NextResponse.json(
         { ok: false, error: "Phone number is required" },
-        { status: 400 },
+        { status: 400, headers: PUBLIC_CORS_HEADERS },
       );
     }
 
@@ -36,7 +41,7 @@ export async function POST(req: NextRequest) {
     if (!normalizedPhone || normalizedPhone.length < 10) {
       return NextResponse.json(
         { ok: false, error: "Invalid phone number" },
-        { status: 400 },
+        { status: 400, headers: PUBLIC_CORS_HEADERS },
       );
     }
 
@@ -79,10 +84,10 @@ export async function POST(req: NextRequest) {
     const bookings = bookingsResult.recordset;
 
     if (bookings.length === 0) {
-      return NextResponse.json({
-        ok: true,
-        bookings: [],
-      });
+      return NextResponse.json(
+        { ok: true, bookings: [] },
+        { headers: PUBLIC_CORS_HEADERS },
+      );
     }
 
     // Get services and calculate totals for each booking
@@ -92,12 +97,12 @@ export async function POST(req: NextRequest) {
         const servicesResult = await db.request().input("bookingId", booking.id)
           .query(`
             SELECT
-              bs.ServiceID AS id,
-              s.Name AS name,
+              bs.ProID AS id,
+              p.ProName AS name,
               bs.Price AS price,
               bs.DurationMinutes AS duration
             FROM dbo.BookingServices bs
-            LEFT JOIN dbo.TblServices s ON s.ServiceID = bs.ServiceID
+            LEFT JOIN dbo.TblPro p ON p.ProID = bs.ProID
             WHERE bs.BookingID = @bookingId
           `);
 
@@ -154,15 +159,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({
-      ok: true,
-      bookings: bookingsWithServices,
-    });
+    return NextResponse.json(
+      { ok: true, bookings: bookingsWithServices },
+      { headers: PUBLIC_CORS_HEADERS },
+    );
   } catch (err: unknown) {
     console.error("[upcoming] error:", err);
     return NextResponse.json(
       { ok: false, error: "Failed to fetch bookings" },
-      { status: 500 },
+      { status: 500, headers: PUBLIC_CORS_HEADERS },
     );
   }
 }

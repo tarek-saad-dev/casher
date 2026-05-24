@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
+import { PUBLIC_CORS_HEADERS } from "@/lib/publicBookingHelpers";
 
 const MIN_CANCEL_MINUTES = 30;
 const SALON_TZ = "Africa/Cairo";
@@ -15,6 +16,10 @@ function normalizePhone(phone: string): string {
 
 function getCairoNow() {
   return new Date().toLocaleString("en-US", { timeZone: SALON_TZ });
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: PUBLIC_CORS_HEADERS });
 }
 
 export async function POST(req: NextRequest) {
@@ -28,14 +33,14 @@ export async function POST(req: NextRequest) {
     if (!bookingId || typeof bookingId !== "number") {
       return NextResponse.json(
         { ok: false, error: "Booking ID is required" },
-        { status: 400 },
+        { status: 400, headers: PUBLIC_CORS_HEADERS },
       );
     }
 
     if (!phone || typeof phone !== "string") {
       return NextResponse.json(
         { ok: false, error: "Phone number is required" },
-        { status: 400 },
+        { status: 400, headers: PUBLIC_CORS_HEADERS },
       );
     }
 
@@ -43,7 +48,7 @@ export async function POST(req: NextRequest) {
     if (!normalizedPhone || normalizedPhone.length < 10) {
       return NextResponse.json(
         { ok: false, error: "Invalid phone number" },
-        { status: 400 },
+        { status: 400, headers: PUBLIC_CORS_HEADERS },
       );
     }
 
@@ -70,7 +75,7 @@ export async function POST(req: NextRequest) {
     if (!booking) {
       return NextResponse.json(
         { ok: false, error: "Booking not found" },
-        { status: 404 },
+        { status: 404, headers: PUBLIC_CORS_HEADERS },
       );
     }
 
@@ -87,7 +92,7 @@ export async function POST(req: NextRequest) {
           ok: false,
           error: "Unauthorized: Phone number does not match booking",
         },
-        { status: 403 },
+        { status: 403, headers: PUBLIC_CORS_HEADERS },
       );
     }
 
@@ -95,7 +100,7 @@ export async function POST(req: NextRequest) {
     if (booking.Status === "Cancelled" || booking.Status === "Canceled") {
       return NextResponse.json(
         { ok: false, error: "Booking is already cancelled" },
-        { status: 400 },
+        { status: 400, headers: PUBLIC_CORS_HEADERS },
       );
     }
 
@@ -103,7 +108,7 @@ export async function POST(req: NextRequest) {
     if (booking.Status === "Completed") {
       return NextResponse.json(
         { ok: false, error: "Cannot cancel completed booking" },
-        { status: 400 },
+        { status: 400, headers: PUBLIC_CORS_HEADERS },
       );
     }
 
@@ -122,7 +127,7 @@ export async function POST(req: NextRequest) {
           error: `Cannot cancel less than ${MIN_CANCEL_MINUTES} minutes before appointment`,
           minutesUntilBooking: Math.floor(minutesUntilBooking),
         },
-        { status: 400 },
+        { status: 400, headers: PUBLIC_CORS_HEADERS },
       );
     }
 
@@ -145,15 +150,15 @@ export async function POST(req: NextRequest) {
       console.log("[cancel] success:", { bookingId, phone: normalizedPhone });
     }
 
-    return NextResponse.json({
-      ok: true,
-      message: "Booking cancelled successfully",
-    });
+    return NextResponse.json(
+      { ok: true, message: "Booking cancelled successfully" },
+      { headers: PUBLIC_CORS_HEADERS },
+    );
   } catch (err: unknown) {
     console.error("[cancel] error:", err);
     return NextResponse.json(
       { ok: false, error: "Failed to cancel booking" },
-      { status: 500 },
+      { status: 500, headers: PUBLIC_CORS_HEADERS },
     );
   }
 }

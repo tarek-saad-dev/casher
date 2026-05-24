@@ -1,0 +1,120 @@
+{
+    "info": {
+        "name": "Casher Public APIs",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [{
+        "key": "base_url",
+        "value": "http://localhost:5500",
+        "type": "string"
+    }],
+    "item": [{
+            "name": "1. Upcoming - empty phone (no bookings)",
+            "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "url": "{{base_url}}/api/public/booking/upcoming",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"phone\": \"01000000000\"\n}"
+                }
+            }
+        },
+        {
+            "name": "2. Upcoming - invalid phone",
+            "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "url": "{{base_url}}/api/public/booking/upcoming",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"phone\": \"123\"\n}"
+                }
+            }
+        },
+        {
+            "name": "3. Upcoming - REAL phone (replace with actual)",
+            "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "url": "{{base_url}}/api/public/booking/upcoming",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"phone\": \"REPLACE_WITH_REAL_PHONE\"\n}"
+                }
+            }
+        },
+        {
+            "name": "4. Client Profile - not found",
+            "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "url": "{{base_url}}/api/public/client/profile",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"phone\": \"01000000000\"\n}"
+                }
+            }
+        },
+        {
+            "name": "5. Client Profile - REAL phone (replace with actual)",
+            "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "url": "{{base_url}}/api/public/client/profile",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"phone\": \"REPLACE_WITH_REAL_PHONE\"\n}"
+                }
+            }
+        },
+        {
+            "name": "6. Cancel - missing bookingId",
+            "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "url": "{{base_url}}/api/public/booking/cancel",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"phone\": \"01000000000\"\n}"
+                }
+            }
+        },
+        {
+            "name": "7. Cancel - wrong phone",
+            "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "url": "{{base_url}}/api/public/booking/cancel",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"bookingId\": 1,\n  \"phone\": \"01099999999\"\n}"
+                }
+            }
+        },
+        {
+            "name": "8. Cancel - REAL booking (replace both)",
+            "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "url": "{{base_url}}/api/public/booking/cancel",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"bookingId\": REPLACE_WITH_REAL_ID,\n  \"phone\": \"REPLACE_WITH_REAL_PHONE\"\n}"
+                }
+            }
+        },
+        {
+            "name": "9. Upcoming after cancel (verify booking gone)",
+            "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "url": "{{base_url}}/api/public/booking/upcoming",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"phone\": \"REPLACE_WITH_REAL_PHONE\"\n}"
+                }
+            }
+        }
+    ]
+}
