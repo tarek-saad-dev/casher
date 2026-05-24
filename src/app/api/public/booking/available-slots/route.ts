@@ -174,8 +174,10 @@ export async function GET(req: NextRequest) {
 
     // CRITICAL FIX: JavaScript getDay() returns 0-6 (Sun=0), but SQL Server default expects 1-7 (Sun=1)
     // We need to add 1 to match SQL Server's default DATEFIRST behavior
+    // JS: Sun=0, Mon=1, Tue=2, Wed=3, Thu=4, Fri=5, Sat=6
+    // SQL: Sun=1, Mon=2, Tue=3, Wed=4, Thu=5, Fri=6, Sat=7
     const jsDayOfWeek = new Date(`${date}T12:00:00`).getDay();
-    const sqlDayOfWeek = jsDayOfWeek === 0 ? 7 : jsDayOfWeek; // Convert Sun=0 to Sun=7, Mon=1 to Mon=1, etc.
+    const sqlDayOfWeek = jsDayOfWeek + 1; // Convert JS to SQL: 0→1, 1→2, ..., 6→7
 
     if (DEV) {
       console.log("[available-slots full debug] now/timezone:", {
