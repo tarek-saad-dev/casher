@@ -172,10 +172,10 @@ export async function GET(req: NextRequest) {
     const nameMap = await getBarberNames(db, barberIds);
     const barberIdList = barberIds.join(",");
 
-    // CRITICAL FIX: JavaScript getDay() returns 0-6 (Sun=0), but SQL Server default expects 1-7 (Sun=1)
-    // We need to add 1 to match SQL Server's default DATEFIRST behavior
+    // DayOfWeek: TblEmpWorkSchedule uses 0-6 convention (0=Sunday, 6=Saturday)
+    // This matches JavaScript getDay() exactly - no conversion needed
     const jsDayOfWeek = new Date(`${date}T12:00:00`).getDay();
-    const sqlDayOfWeek = jsDayOfWeek === 0 ? 7 : jsDayOfWeek; // Convert Sun=0 to Sun=7, Mon=1 to Mon=1, etc.
+    const dayOfWeek = jsDayOfWeek; // 0=Sunday, 1=Monday, ..., 6=Saturday
 
     if (DEV) {
       console.log("[available-slots full debug] now/timezone:", {
@@ -188,7 +188,7 @@ export async function GET(req: NextRequest) {
         isPast,
         nowMinutesSinceMidnight,
         jsDayOfWeek,
-        sqlDayOfWeek,
+        dayOfWeek,
       });
       console.log("[available-slots full debug] settings:", {
         minNoticeMinutes: minNotice,
@@ -265,7 +265,7 @@ export async function GET(req: NextRequest) {
         `
       SELECT EmpID, IsWorkingDay, StartTime, EndTime
       FROM dbo.TblEmpWorkSchedule
-      WHERE EmpID IN (${barberIdList}) AND DayOfWeek = ${sqlDayOfWeek}
+      WHERE EmpID IN (${barberIdList}) AND DayOfWeek = ${dayOfWeek}
     `,
       )
       .catch(() => ({ recordset: [] as any[] }));
@@ -284,7 +284,7 @@ export async function GET(req: NextRequest) {
           empName: nameMap[r.EmpID],
           workDate: date,
           jsDayOfWeek,
-          sqlDayOfWeek,
+          dayOfWeek,
           isWorkingDay: r.IsWorkingDay,
           startTime: start,
           endTime: end,
@@ -304,7 +304,7 @@ export async function GET(req: NextRequest) {
               empName: nameMap[bid],
               workDate: date,
               jsDayOfWeek,
-              sqlDayOfWeek,
+              dayOfWeek,
               warning: "No schedule row found - will use fallback default",
             },
           );
@@ -345,13 +345,20 @@ export async function GET(req: NextRequest) {
 
     // ── 6. Batch preload queue tickets (1 query) ──────────────────────────────
     // Guard optional columns: DurationMinutes and EstimatedStartTime may not exist
-    const qColRes = await db.request().query(`
+    const qColRes = await db
+      .request()
+      .query(
+        `
       SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
       WHERE TABLE_NAME = 'QueueTickets'
         AND COLUMN_NAME IN ('DurationMinutes','EstimatedStartTime')
-    `).catch(() => ({ recordset: [] as any[] }));
-    const qCols = new Set(qColRes.recordset.map((r: any) => r.COLUMN_NAME as string));
-    const durSql = qCols.has('DurationMinutes')
+    `,
+      )
+      .catch(() => ({ recordset: [] as any[] }));
+    const qCols = new Set(
+      qColRes.recordset.map((r: any) => r.COLUMN_NAME as string),
+    );
+    const durSql = qCols.has("DurationMinutes")
       ? `ISNULL(qt.DurationMinutes, ${systemDefault})`
       : `${systemDefault}`;
 
@@ -371,7 +378,7 @@ export async function GET(req: NextRequest) {
       `,
       )
       .catch((e: any) => {
-        console.error('[available-slots] queue query error:', e?.message ?? e);
+        console.error("[available-slots] queue query error:", e?.message ?? e);
         return { recordset: [] as any[] };
       });
 
@@ -815,11 +822,11 @@ export async function GET(req: NextRequest) {
           });
         } else {
           // Correlation log — compare with [booking/plan] slot correlation
-          console.log('[available-slots] slot available', {
-            endpoint: 'available-slots',
+          console.log("[available-slots] slot available", {
+            endpoint: "available-slots",
             date,
             empId,
-            empName: nameMap[empId] ?? '',
+            empName: nameMap[empId] ?? "",
             serviceIds,
             duration: durMin,
             returnedSlot: {

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { format } from 'date-fns';
 import {
   ChevronRight, ChevronLeft, Plus, RefreshCw, Filter,
   Clock, User, AlertCircle, Loader2, CalendarDays,
@@ -29,15 +30,15 @@ interface Booking {
 interface Barber { EmpID: number; EmpName: string; }
 
 const STATUS_CONFIG: Record<BookingStatus, { label: string; color: string; bg: string; border: string }> = {
-  pending:    { label: 'معلق',        color: '#9CA3AF', bg: '#1F1F2A', border: '#374151' },
-  confirmed:  { label: 'مؤكد',       color: '#93C5FD', bg: '#1E2A3A', border: '#1D4ED8' },
-  arrived:    { label: 'حضر',         color: '#6EE7B7', bg: '#1A2E28', border: '#065F46' },
-  queued:     { label: 'في الطابور',  color: '#FCD34D', bg: '#2A2211', border: '#D97706' },
-  in_service: { label: 'في الخدمة',  color: '#C4B5FD', bg: '#211A2E', border: '#7C3AED' },
-  completed:  { label: 'مكتمل',      color: '#6EE7B7', bg: '#162218', border: '#065F46' },
-  cancelled:  { label: 'ملغي',       color: '#6B7280', bg: '#1A1A1E', border: '#374151' },
-  no_show:    { label: 'لم يحضر',    color: '#FCA5A5', bg: '#2A1A1A', border: '#991B1B' },
-  rescheduled:{ label: 'أُعيد جدولة', color: '#A5B4FC', bg: '#1E1E32', border: '#4338CA' },
+  pending: { label: 'معلق', color: '#9CA3AF', bg: '#1F1F2A', border: '#374151' },
+  confirmed: { label: 'مؤكد', color: '#93C5FD', bg: '#1E2A3A', border: '#1D4ED8' },
+  arrived: { label: 'حضر', color: '#6EE7B7', bg: '#1A2E28', border: '#065F46' },
+  queued: { label: 'في الطابور', color: '#FCD34D', bg: '#2A2211', border: '#D97706' },
+  in_service: { label: 'في الخدمة', color: '#C4B5FD', bg: '#211A2E', border: '#7C3AED' },
+  completed: { label: 'مكتمل', color: '#6EE7B7', bg: '#162218', border: '#065F46' },
+  cancelled: { label: 'ملغي', color: '#6B7280', bg: '#1A1A1E', border: '#374151' },
+  no_show: { label: 'لم يحضر', color: '#FCA5A5', bg: '#2A1A1A', border: '#991B1B' },
+  rescheduled: { label: 'أُعيد جدولة', color: '#A5B4FC', bg: '#1E1E32', border: '#4338CA' },
 };
 
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 7); // 7am – 8pm
@@ -107,8 +108,8 @@ function DayColumn({
     const pct = y / rect.height;
     const totalMins = pct * 14 * 60;
     const hour = Math.floor(totalMins / 60) + 7;
-    const min  = Math.round((totalMins % 60) / 15) * 15;
-    const time = `${String(hour).padStart(2,'0')}:${String(Math.min(min,59)).padStart(2,'0')}`;
+    const min = Math.round((totalMins % 60) / 15) * 15;
+    const time = `${String(hour).padStart(2, '0')}:${String(Math.min(min, 59)).padStart(2, '0')}`;
     onNewBooking(date, time, barber?.EmpID ?? null);
   };
 
@@ -156,10 +157,10 @@ function BookingDrawer({ booking, onClose, onNavigate }: {
         <h3 className="text-base font-black text-white mb-4">حجز #{booking.BookingID}</h3>
 
         <div className="space-y-3 text-sm">
-          <Row icon={<User size={13}/>} label="العميل" value={booking.ClientName || '—'} />
-          <Row icon={<Clock size={13}/>} label="الوقت" value={`${formatTime(booking.StartTime)}${booking.EndTime ? ' — ' + formatTime(booking.EndTime) : ''}`} />
-          <Row icon={<User size={13}/>} label="الحلاق" value={booking.EmpName || '—'} />
-          <Row icon={<CalendarDays size={13}/>} label="الخدمات" value={`${booking.ServiceCount} خدمة`} />
+          <Row icon={<User size={13} />} label="العميل" value={booking.ClientName || '—'} />
+          <Row icon={<Clock size={13} />} label="الوقت" value={`${formatTime(booking.StartTime)}${booking.EndTime ? ' — ' + formatTime(booking.EndTime) : ''}`} />
+          <Row icon={<User size={13} />} label="الحلاق" value={booking.EmpName || '—'} />
+          <Row icon={<CalendarDays size={13} />} label="الخدمات" value={`${booking.ServiceCount} خدمة`} />
         </div>
 
         {booking.Notes && (
@@ -192,14 +193,14 @@ function Row({ icon, label, value }: { icon: React.ReactNode; label: string; val
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function BookingsCalendarPage() {
   const router = useRouter();
-  const [bookings, setBookings]   = useState<Booking[]>([]);
-  const [barbers,  setBarbers]    = useState<Barber[]>([]);
-  const [loading,  setLoading]    = useState(true);
-  const [error,    setError]      = useState<string | null>(null);
-  const [viewDate, setViewDate]   = useState(new Date().toISOString().slice(0, 10));
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [barbers, setBarbers] = useState<Barber[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [viewDate, setViewDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [filterEmpId, setFilterEmpId] = useState<string>('all');
   const [drawerBooking, setDrawerBooking] = useState<Booking | null>(null);
-  const [viewMode, setViewMode]   = useState<'day' | 'week'>('day');
+  const [viewMode, setViewMode] = useState<'day' | 'week'>('day');
 
   const GRID_HEIGHT = 840;
 
@@ -217,12 +218,12 @@ export default function BookingsCalendarPage() {
         const diff = d.getDate() - day + (day === 0 ? -6 : 1);
         const mon = new Date(d.setDate(diff));
         const sun = new Date(mon); sun.setDate(sun.getDate() + 6);
-        url = `/api/bookings?dateFrom=${mon.toISOString().slice(0,10)}&dateTo=${sun.toISOString().slice(0,10)}`;
+        url = `/api/bookings?dateFrom=${format(mon, 'yyyy-MM-dd')}&dateTo=${format(sun, 'yyyy-MM-dd')}`;
       }
       const [bkRes, empRes] = await Promise.all([
         fetch(url), fetch('/api/employees'),
       ]);
-      const bkData  = await bkRes.json();
+      const bkData = await bkRes.json();
       const empData = await empRes.json();
       setBookings(bkData.bookings || []);
       setBarbers(Array.isArray(empData) ? empData.filter((e: Barber & { isActive?: number }) => e.isActive !== 0) : []);
@@ -238,7 +239,7 @@ export default function BookingsCalendarPage() {
   const navigate = (dir: 1 | -1) => {
     const d = new Date(viewDate);
     d.setDate(d.getDate() + (viewMode === 'day' ? dir : dir * 7));
-    setViewDate(d.toISOString().slice(0, 10));
+    setViewDate(format(d, 'yyyy-MM-dd'));
   };
 
   const displayBarbers = filterEmpId === 'all'
@@ -271,7 +272,7 @@ export default function BookingsCalendarPage() {
           </button>
           {/* View toggle */}
           <div className="flex rounded-xl border border-zinc-700 overflow-hidden">
-            {(['day','week'] as const).map(m => (
+            {(['day', 'week'] as const).map(m => (
               <button key={m} onClick={() => setViewMode(m)}
                 className="px-3 py-1.5 text-xs font-semibold transition-all"
                 style={viewMode === m ? { background: 'rgba(214,168,79,0.15)', color: '#D6A84F' } : { background: 'transparent', color: '#6B7280' }}>
@@ -305,7 +306,7 @@ export default function BookingsCalendarPage() {
         </button>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setViewDate(new Date().toISOString().slice(0, 10))}
+            onClick={() => setViewDate(format(new Date(), 'yyyy-MM-dd'))}
             className="text-xs px-3 py-1 rounded-full border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600 transition-all"
           >اليوم</button>
           <input
@@ -339,7 +340,7 @@ export default function BookingsCalendarPage() {
             <div className="shrink-0 w-14 pt-12 border-l border-zinc-800" style={{ height: GRID_HEIGHT + 48 }}>
               {HOURS.map(h => (
                 <div key={h} className="text-[10px] text-zinc-600 text-center" style={{ height: 60 }}>
-                  {String(h).padStart(2,'0')}:00
+                  {String(h).padStart(2, '0')}:00
                 </div>
               ))}
             </div>
@@ -349,7 +350,7 @@ export default function BookingsCalendarPage() {
               {displayBarbers.map(barber => {
                 const barkBookings = filteredBookings.filter(b =>
                   b.AssignedEmpID === barber.EmpID &&
-                  (viewMode === 'day' ? b.BookingDate.slice(0,10) === viewDate : true)
+                  (viewMode === 'day' ? b.BookingDate.slice(0, 10) === viewDate : true)
                 );
                 return (
                   <div key={barber.EmpID} className="flex-1 min-w-[180px]">
@@ -378,7 +379,7 @@ export default function BookingsCalendarPage() {
               {(() => {
                 const unassigned = filteredBookings.filter(b =>
                   !b.AssignedEmpID &&
-                  (viewMode === 'day' ? b.BookingDate.slice(0,10) === viewDate : true)
+                  (viewMode === 'day' ? b.BookingDate.slice(0, 10) === viewDate : true)
                 );
                 if (!unassigned.length) return null;
                 return (
@@ -411,7 +412,7 @@ export default function BookingsCalendarPage() {
 
       {/* Status legend */}
       <div className="px-6 py-2.5 border-t border-zinc-800 flex flex-wrap gap-3 shrink-0">
-        {Object.entries(STATUS_CONFIG).filter(([k]) => !['cancelled','no_show','rescheduled'].includes(k)).map(([k, v]) => (
+        {Object.entries(STATUS_CONFIG).filter(([k]) => !['cancelled', 'no_show', 'rescheduled'].includes(k)).map(([k, v]) => (
           <span key={k} className="flex items-center gap-1.5 text-[11px]">
             <span className="w-2.5 h-2.5 rounded-full" style={{ background: v.color }} />
             <span className="text-zinc-500">{v.label}</span>
