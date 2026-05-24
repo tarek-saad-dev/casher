@@ -1,35 +1,28 @@
 /**
  * GET /api/operations/flow-board?date=2026-05-24
  *
- * Returns operational dashboard for all barbers on a specific date.
- * Includes timeline, queue counts, booking counts, and next available slots.
+ * Returns operational dashboard for BARBER employees only on a specific date.
+ * OPTIMIZED: Batch queries, parallel loading, no N+1
  *
  * Response:
  * {
  *   ok: true,
  *   date: "2026-05-24",
- *   barbers: [
- *     {
- *       empId,
- *       empName,
- *       status: "working" | "off" | "day_off",
- *       workStart,
- *       workEnd,
- *       nextAvailableAt,
- *       waitingCount,
- *       bookingsCount,
- *       timeline: [...]
- *     }
- *   ]
+ *   barbers: [...]
  * }
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
-import { buildBarberOperationalTimeline } from "@/lib/operationsQueueTimeline";
-import { getDefaultDuration, buildQueueIntervals, buildBookingIntervals } from "@/lib/queueEstimateEngine";
 
 export const runtime = "nodejs";
+
+// Performance logger
+function perfLog(label: string, startMs: number) {
+  const elapsed = Date.now() - startMs;
+  console.log(`[flow-board perf] ${label}: ${elapsed}ms`);
+  return elapsed;
+}
 
 export interface FlowBoardBarber {
   empId: number;
@@ -55,87 +48,130 @@ export interface FlowBoardBarber {
   }>;
 }
 
-export interface FlowBoardResponse {
-  ok: true;
-  date: string;
-  generatedAt: string;
-  barbers: FlowBoardBarber[];
-}
-
 export async function GET(req: NextRequest) {
+  const totalStart = Date.now();
+  
   try {
-    console.log("[flow-board] Request started");
     const { searchParams } = new URL(req.url);
     const dateParam = searchParams.get("date");
-
-    // Default to today if no date provided
-    const dateStr =
-      dateParam ||
-      new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
-
-    console.log("[flow-board] Date:", dateStr);
-    console.log("[flow-board] Getting DB pool...");
-    let db;
-    try {
-      db = await getPool();
-      console.log("[flow-board] DB pool acquired");
-    } catch (dbErr) {
-      console.error("[flow-board] DB connection failed:", dbErr);
-      return NextResponse.json(
-        { ok: false, error: "Database connection failed" },
-        { status: 500 }
-      );
-    }
+    const dateStr = dateParam || new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
     const now = new Date();
+    
+    // Get Cairo day of week (0=Sunday)
+    const cairoDate = new Date(`${dateStr}T12:00:00`);
+    const dayOfWeek = cairoDate.getDay();
 
-    // Get all active barbers (only basic info - schedule checked per barber)
-    console.log("[flow-board] Fetching active barbers...");
-    let barbersRes;
-    try {
-      // Try with TblEmpDayOff check
-      barbersRes = await db.request().query(`
-        SELECT 
-          e.EmpID, 
-          e.EmpName,
-          CASE 
-            WHEN EXISTS (
-              SELECT 1 FROM [dbo].[TblEmpDayOff] 
-              WHERE EmpID = e.EmpID 
-              AND OffDate = CAST(GETDATE() AS DATE)
-              AND IsDeleted = 0
-            ) THEN 0
-            ELSE 1
-          END as IsActuallyWorking
-        FROM [dbo].[TblEmp] e
-        WHERE e.isActive = 1
-        ORDER BY e.EmpName
-      `);
-    } catch {
-      // Fallback if TblEmpDayOff doesn't exist
-      console.log("[flow-board] TblEmpDayOff not found, using fallback query");
-      barbersRes = await db.request().query(`
-        SELECT 
-          e.EmpID, 
-          e.EmpName,
-          1 as IsActuallyWorking
-        FROM [dbo].[TblEmp] e
-        WHERE e.isActive = 1
-        ORDER BY e.EmpName
-      `);
+    console.log(`[flow-board] Date: ${dateStr}, DayOfWeek: ${dayOfWeek}`);
+
+    // 1. Connect to DB
+    const dbStart = Date.now();
+    const db = await getPool();
+    perfLog("dbConnect", dbStart);
+
+    // 2. Fetch ALL data in parallel (NO N+1!)
+    const batchStart = Date.now();
+    
+    const [
+      barbersRes,
+      schedulesRes,
+      bookingsRes,
+      queueRes,
+    ] = await Promise.all([
+      // 2a. Get barbers only (Job = 'حلاق')
+      db.request().query(`
+        SELECT EmpID, EmpName
+        FROM [dbo].[TblEmp]
+        WHERE isActive = 1 AND Job = N'حلاق'
+        ORDER BY EmpName
+      `),
+      
+      // 2b. Get all schedules for barbers on this day
+      db.request()
+        .input("dow", sql.TinyInt, dayOfWeek)
+        .query(`
+          SELECT EmpID, IsWorkingDay, StartTime, EndTime
+          FROM [dbo].[TblEmpWorkSchedule]
+          WHERE DayOfWeek = @dow
+            AND EmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
+        `),
+      
+      // 2c. Get all bookings for this date
+      db.request()
+        .input("bdate", sql.Date, dateStr)
+        .query(`
+          SELECT 
+            b.BookingID,
+            b.AssignedEmpID,
+            b.ClientID,
+            c.Name as ClientName,
+            b.StartTime,
+            b.EndTime,
+            b.Status
+          FROM [dbo].[Bookings] b
+          LEFT JOIN [dbo].[TblClient] c ON b.ClientID = c.ClientID
+          WHERE b.BookingDate = @bdate
+            AND b.AssignedEmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
+            AND b.Status IN ('confirmed', 'arrived', 'in_progress')
+        `),
+      
+      // 2d. Get all queue tickets for this date
+      db.request()
+        .input("qdate", sql.Date, dateStr)
+        .query(`
+          SELECT 
+            qt.QueueTicketID,
+            qt.TicketCode,
+            qt.EmpID,
+            qt.ClientID,
+            c.Name as ClientName,
+            qt.Status,
+            qt.EstimatedStartTime,
+            qt.ServiceStartedAt,
+            qt.CreatedTime
+          FROM [dbo].[QueueTickets] qt
+          LEFT JOIN [dbo].[TblClient] c ON qt.ClientID = c.ClientID
+          WHERE qt.QueueDate = @qdate
+            AND qt.EmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
+            AND LOWER(qt.Status) IN ('waiting', 'called', 'in_service')
+        `),
+    ]);
+    
+    perfLog("batchFetch", batchStart);
+    console.log(`[flow-board] Barbers: ${barbersRes.recordset.length}, Schedules: ${schedulesRes.recordset.length}, Bookings: ${bookingsRes.recordset.length}, Queue: ${queueRes.recordset.length}`);
+
+    // 3. Group data by empId in memory (fast)
+    const processStart = Date.now();
+    
+    const scheduleMap = new Map();
+    for (const s of schedulesRes.recordset) {
+      scheduleMap.set(s.EmpID, s);
     }
-    console.log(`[flow-board] Found ${barbersRes.recordset.length} active barbers`);
+    
+    const bookingsMap = new Map();
+    for (const b of bookingsRes.recordset) {
+      if (!bookingsMap.has(b.AssignedEmpID)) bookingsMap.set(b.AssignedEmpID, []);
+      bookingsMap.get(b.AssignedEmpID).push(b);
+    }
+    
+    const queueMap = new Map();
+    for (const q of queueRes.recordset) {
+      if (!queueMap.has(q.EmpID)) queueMap.set(q.EmpID, []);
+      queueMap.get(q.EmpID).push(q);
+    }
 
+    // 4. Build response for each barber (no DB queries here!)
     const barbers: FlowBoardBarber[] = [];
-
+    const defaultDuration = 30; // minutes
+    
     for (const barber of barbersRes.recordset) {
       const empId = barber.EmpID;
-      const empName = barber.EmpName;
-
-      // Check if barber is off today
-      if (!barber.IsActuallyWorking) {
+      const schedule = scheduleMap.get(empId);
+      
+      // Not working today
+      if (!schedule || !schedule.IsWorkingDay) {
         barbers.push({
           empId,
-          empName,
+          empName: barber.EmpName,
           status: "day_off",
           workStart: null,
           workEnd: null,
@@ -149,63 +185,104 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      try {
-        // Build timeline for this barber
-        const timeline = await buildBarberOperationalTimeline({
-          empId,
-          date: dateStr,
-          now,
-        });
+      const workStart = schedule.StartTime ? formatTime(schedule.StartTime) : null;
+      const workEnd = schedule.EndTime ? formatTime(schedule.EndTime) : null;
+      const isOvernight = !!(workStart && workEnd && timeToMinutes(workEnd) <= timeToMinutes(workStart));
 
-        // Get counts
-        const defaultDur = await getDefaultDuration(db);
-        const qIntervals = await buildQueueIntervals(db, empId, dateStr, now, defaultDur);
-        const bIntervals = await buildBookingIntervals(db, empId, dateStr, defaultDur);
-
-        const inServiceCount = qIntervals.filter(
-          (q) => q.label === "in_service"
-        ).length;
-
-        barbers.push({
-          empId,
-          empName,
-          status: timeline.isWorkingDay ? "working" : "off",
-          workStart: timeline.workStart,
-          workEnd: timeline.workEnd,
-          isOvernightShift: timeline.isOvernightShift,
-          nextAvailableAt: timeline.nextAvailableAt,
-          waitingCount: timeline.queueCount,
-          bookingsCount: timeline.bookingCount,
-          inServiceCount,
-          timeline: timeline.timeline,
-        });
-      } catch (err) {
-        console.error(`[flow-board] Error loading barber ${empId}:`, err);
-        // Add barber with error state
-        barbers.push({
-          empId,
-          empName,
-          status: "unknown",
-          workStart: null,
-          workEnd: null,
-          isOvernightShift: false,
-          nextAvailableAt: null,
-          waitingCount: 0,
-          bookingsCount: 0,
-          inServiceCount: 0,
-          timeline: [],
+      // Build timeline items
+      const timeline: FlowBoardBarber["timeline"] = [];
+      const barberBookings = bookingsMap.get(empId) || [];
+      const barberQueue = queueMap.get(empId) || [];
+      
+      // Add booking items
+      for (const b of barberBookings) {
+        const start = timeToDate(b.StartTime, dateStr);
+        const end = timeToDate(b.EndTime, dateStr);
+        const duration = Math.round((end.getTime() - start.getTime()) / 60000);
+        
+        timeline.push({
+          type: "booking",
+          sourceId: b.BookingID,
+          label: b.ClientName || `B-${b.BookingID}`,
+          startTime: start.toISOString(),
+          endTime: end.toISOString(),
+          status: b.Status,
+          protected: true,
+          durationMinutes: duration,
+          customerName: b.ClientName || undefined,
         });
       }
-    }
+      
+      // Add queue items
+      let inServiceCount = 0;
+      for (const q of barberQueue) {
+        const isInService = q.Status.toLowerCase() === 'in_service';
+        if (isInService) inServiceCount++;
+        
+        // Calculate times
+        let start: Date;
+        if (q.EstimatedStartTime) {
+          start = new Date(q.EstimatedStartTime);
+        } else if (q.ServiceStartedAt) {
+          start = new Date(q.ServiceStartedAt);
+        } else {
+          start = new Date(`${dateStr}T${workStart || '14:00'}`);
+        }
+        const end = new Date(start.getTime() + defaultDuration * 60000);
+        
+        timeline.push({
+          type: "queue",
+          sourceId: q.QueueTicketID,
+          label: q.TicketCode || `Q-${q.QueueTicketID}`,
+          startTime: start.toISOString(),
+          endTime: end.toISOString(),
+          status: q.Status,
+          protected: true,
+          durationMinutes: defaultDuration,
+          customerName: q.ClientName || undefined,
+        });
+      }
+      
+      // Sort timeline by start time
+      timeline.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
-    const response: FlowBoardResponse = {
+      // Calculate next available (simple: after last item or work start)
+      let nextAvailableAt: string | null = null;
+      if (timeline.length > 0) {
+        const lastItem = timeline[timeline.length - 1];
+        nextAvailableAt = lastItem.endTime;
+      } else if (workStart) {
+        nextAvailableAt = new Date(`${dateStr}T${workStart}`).toISOString();
+      }
+
+      barbers.push({
+        empId,
+        empName: barber.EmpName,
+        status: "working",
+        workStart,
+        workEnd,
+        isOvernightShift: isOvernight,
+        nextAvailableAt,
+        waitingCount: barberQueue.filter((q: any) => q.Status.toLowerCase() === 'waiting').length,
+        bookingsCount: barberBookings.length,
+        inServiceCount,
+        timeline,
+      });
+    }
+    
+    perfLog("processData", processStart);
+
+    // 5. Return response
+    const totalMs = perfLog("TOTAL", totalStart);
+    console.log(`[flow-board] ✅ Completed in ${totalMs}ms, ${barbers.length} barbers`);
+
+    return NextResponse.json({
       ok: true,
       date: dateStr,
       generatedAt: now.toISOString(),
       barbers,
-    };
-
-    return NextResponse.json(response);
+    });
+    
   } catch (err) {
     console.error("[operations/flow-board] error:", err);
     return NextResponse.json(
@@ -216,4 +293,26 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// Helper: Format SQL time to HH:MM
+function formatTime(sqlTime: any): string {
+  if (!sqlTime) return '';
+  // Handle Date object from SQL time
+  const d = new Date(sqlTime);
+  const h = d.getUTCHours().toString().padStart(2, '0');
+  const m = d.getUTCMinutes().toString().padStart(2, '0');
+  return `${h}:${m}`;
+}
+
+// Helper: Convert "HH:MM" to minutes
+function timeToMinutes(timeStr: string): number {
+  const [h, m] = timeStr.split(':').map(Number);
+  return h * 60 + m;
+}
+
+// Helper: SQL time to Date
+function timeToDate(sqlTime: any, dateStr: string): Date {
+  const timeStr = formatTime(sqlTime);
+  return new Date(`${dateStr}T${timeStr}`);
 }

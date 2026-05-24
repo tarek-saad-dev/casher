@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { CalendarCheck, AlertTriangle, User, Clock, Plus, CheckCircle, UserCheck, Play, ReceiptText, XCircle } from 'lucide-react';
 import type { Booking } from '@/lib/operationsTypes';
 import { BOOKING_STATUS_LABELS, BOOKING_STATUS_COLORS } from '@/lib/operationsTypes';
-import { BookingDetailsModal } from './BookingDetailsModal';
+import { BookingActionModal } from './BookingActionModal';
 
 type Tab = 'today' | 'upcoming' | 'late' | 'arrived' | 'cancelled';
 
@@ -217,10 +217,10 @@ export function BookingsColumn({ bookings, loading, onAction, onRefresh, onBooki
       </div>
 
       {selected && (
-        <BookingDetailsModal
+        <BookingActionModal
           booking={selected}
           onClose={() => { setSelected(null); onRefresh(); }}
-          onAction={async (id, action) => { await onAction(id, action); setSelected(null); onRefresh(); }}
+          onAction={async (id: number, action: string) => { await onAction(id, action); setSelected(null); onRefresh(); }}
         />
       )}
     </div>

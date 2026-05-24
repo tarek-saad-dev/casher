@@ -46,5 +46,35 @@ for (const row of empCols.recordset) {
   console.log(`  ${row.COLUMN_NAME.padEnd(20)} | ${row.DATA_TYPE.padEnd(15)} | ${row.IS_NULLABLE}`);
 }
 
+console.log('\n=== Job Column Values (distinct) ===');
+const jobValues = await pool.request().query(`
+  SELECT DISTINCT Job, COUNT(*) as count
+  FROM dbo.TblEmp
+  WHERE isActive = 1
+  GROUP BY Job
+  ORDER BY count DESC
+`);
+console.table(jobValues.recordset);
+
+console.log('\n=== All Active Employees ===');
+const allEmps = await pool.request().query(`
+  SELECT EmpID, EmpName, Job, EmpCatID
+  FROM dbo.TblEmp
+  WHERE isActive = 1
+  ORDER BY EmpName
+`);
+console.table(allEmps.recordset);
+
+console.log('\n=== TblClient Columns ===');
+const clientCols = await pool.request().query(`
+  SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_NAME = 'TblClient'
+  ORDER BY ORDINAL_POSITION
+`);
+for (const row of clientCols.recordset) {
+  console.log(`  ${row.COLUMN_NAME.padEnd(20)} | ${row.DATA_TYPE.padEnd(15)} | ${row.IS_NULLABLE}`);
+}
+
 await pool.close();
 console.log('\nDone!');

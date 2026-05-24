@@ -1,21 +1,11 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { BarberLane } from './BarberLane';
 import { TimeAxis } from './TimeAxis';
-
-interface TimelineItem {
-  type: 'queue' | 'booking' | 'gap' | 'in_service';
-  sourceId: number;
-  label: string;
-  startTime: string;
-  endTime: string;
-  status: string;
-  protected?: boolean;
-  customerName?: string;
-  durationMinutes?: number;
-  ticketCode?: string;
-}
+import { BookingDetailsModal } from './BookingDetailsModal';
+import { generateOperationalHours, HOUR_CELL_HEIGHT, TimelineItem } from './schedulerUtils';
+import type { Booking } from '@/lib/operationsTypes';
 
 interface Barber {
   empId: number;
@@ -36,17 +26,56 @@ interface Props {
   loading?: boolean;
   error?: string | null;
   onRetry?: () => void;
+  onRefresh?: () => void;
 }
 
-// Generate hour slots from 2 PM to 11:59 PM (or based on barber shifts)
-const HOURS = [
-  '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00'
-];
+const HEADER_HEIGHT = 80;
 
-export function SchedulerBoard({ barbers, loading, error, onRetry }: Props) {
-  const workingBarbers = useMemo(() => {
-    return barbers.filter(b => b.status === 'working');
+export function SchedulerBoard({ barbers, loading, error, onRetry, onRefresh }: Props) {
+  const hours = useMemo(() => generateOperationalHours(), []);
+  const [selectedItem, setSelectedItem] = useState<TimelineItem | null>(null);
+  const [showModal, setShowModal] = useState(false);
+
+  // Show all barbers (working, off, day_off) but not 'unknown'
+  const displayBarbers = useMemo(() => {
+    return barbers.filter(b => b.status !== 'unknown');
   }, [barbers]);
+
+  const totalHeight = hours.length * HOUR_CELL_HEIGHT + HEADER_HEIGHT;
+
+  const handleItemClick = useCallback((item: TimelineItem) => {
+    setSelectedItem(item);
+    setShowModal(true);
+  }, []);
+
+  const handleCloseModal = useCallback(() => {
+    setShowModal(false);
+    setSelectedItem(null);
+  }, []);
+
+  const handleDeleteBooking = useCallback(async (bookingId: number) => {
+    const res = await fetch(`/api/bookings/${bookingId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'cancel' }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'فشل حذف الحجز');
+    }
+
+    // Refresh the scheduler board
+    if (onRefresh) {
+      onRefresh();
+    }
+  }, [onRefresh]);
+
+  const handleEditBooking = useCallback((booking: Booking) => {
+    // For now, show alert that edit is coming soon
+    // In the future, this would open an edit modal
+    alert('ميزة التعديل سيتم تفعيلها بعد ربط endpoint التعديل الكامل');
+  }, []);
 
   if (loading) {
     return (
@@ -76,7 +105,7 @@ export function SchedulerBoard({ barbers, loading, error, onRetry }: Props) {
     );
   }
 
-  if (workingBarbers.length === 0) {
+  if (displayBarbers.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center" style={{ background: '#050505' }}>
         <div className="text-center">
@@ -88,25 +117,45 @@ export function SchedulerBoard({ barbers, loading, error, onRetry }: Props) {
   }
 
   return (
-    <div className="flex-1 overflow-auto" style={{ background: '#050505' }} dir="rtl">
-      <div className="min-w-max p-6">
-        {/* Scheduler Grid */}
-        <div className="flex gap-4">
-          {/* Time Axis */}
-          <TimeAxis hours={HOURS} />
+    <div
+      className="flex-1 overflow-auto"
+      style={{ background: '#050505' }}
+      dir="rtl"
+    >
+      <div className="min-w-max">
+        {/* Scheduler Grid - Horizontal Scroll Container */}
+        <div
+          className="flex"
+          style={{
+            height: totalHeight,
+          }}
+        >
+          {/* Time Axis - Sticky Left */}
+          <TimeAxis headerHeight={HEADER_HEIGHT} />
 
-          {/* Barber Lanes */}
-          <div className="flex gap-4">
-            {workingBarbers.map(barber => (
+          {/* Barber Lanes - Horizontal Scroll */}
+          <div className="flex">
+            {displayBarbers.map(barber => (
               <BarberLane
                 key={barber.empId}
                 barber={barber}
-                hours={HOURS}
+                headerHeight={HEADER_HEIGHT}
+                onItemClick={handleItemClick}
               />
             ))}
           </div>
         </div>
       </div>
+
+      {/* Booking Details Modal */}
+      {showModal && selectedItem && (
+        <BookingDetailsModal
+          item={selectedItem}
+          onClose={handleCloseModal}
+          onDelete={selectedItem.type === 'booking' ? handleDeleteBooking : undefined}
+          onEdit={selectedItem.type === 'booking' ? handleEditBooking : undefined}
+        />
+      )}
     </div>
   );
 }

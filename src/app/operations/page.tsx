@@ -25,7 +25,7 @@ interface FlowBoardBarber {
     startTime: string;
     endTime: string;
     status: string;
-    protected?: boolean;
+    protected: boolean;
     customerName?: string;
     durationMinutes?: number;
     ticketCode?: string;
@@ -192,6 +192,7 @@ export default function OperationsPage() {
         loading={loading}
         error={error}
         onRetry={fetchFlowBoard}
+        onRefresh={fetchFlowBoard}
       />
 
       {/* Bottom Summary Strip */}
