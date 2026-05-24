@@ -6,10 +6,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 
-const MIN_CANCEL_MINUTES = 30; // Configurable: must cancel 30 min before
+const MIN_CANCEL_MINUTES = 30;
+const SALON_TZ = "Africa/Cairo";
 
 function normalizePhone(phone: string): string {
   return phone.trim().replace(/\s+/g, "").replace(/^\+20/, "0");
+}
+
+function getCairoNow() {
+  return new Date().toLocaleString("en-US", { timeZone: SALON_TZ });
 }
 
 export async function POST(req: NextRequest) {
@@ -44,16 +49,19 @@ export async function POST(req: NextRequest) {
 
     const db = await getPool();
 
-    // Get booking details
+    // Get booking details with client phone verification
     const bookingResult = await db.request().input("bookingId", bookingId)
       .query(`
         SELECT
           b.BookingID,
-          b.Phone,
+          b.ClientID,
+          c.Mobile AS Phone,
           b.Status,
           CONVERT(VARCHAR(10), b.BookingDate, 120) AS BookingDate,
-          CONVERT(VARCHAR(5), b.BookingTime, 108) AS BookingTime
-        FROM TblBooking b
+          CONVERT(VARCHAR(5), b.StartTime, 108) AS BookingTime,
+          b.CancelledAt
+        FROM dbo.Bookings b
+        JOIN dbo.TblClient c ON c.ClientID = b.ClientID
         WHERE b.BookingID = @bookingId
       `);
 
@@ -103,7 +111,7 @@ export async function POST(req: NextRequest) {
     const bookingDateTime = new Date(
       `${booking.BookingDate}T${booking.BookingTime}`,
     );
-    const now = new Date();
+    const now = new Date(getCairoNow());
     const minutesUntilBooking =
       (bookingDateTime.getTime() - now.getTime()) / (1000 * 60);
 
@@ -119,13 +127,18 @@ export async function POST(req: NextRequest) {
     }
 
     // Update booking status
-    await db.request().input("bookingId", bookingId).query(`
-        UPDATE TblBooking
+    await db
+      .request()
+      .input("bookingId", bookingId)
+      .input("clientId", booking.ClientID).query(`
+        UPDATE dbo.Bookings
         SET 
           Status = 'Cancelled',
           CancelledAt = GETDATE(),
-          CancelReason = 'Cancelled by customer'
+          CancelReason = 'Cancelled by customer',
+          UpdatedAt = GETDATE()
         WHERE BookingID = @bookingId
+          AND ClientID = @clientId
       `);
 
     if (isDev) {
