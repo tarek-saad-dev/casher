@@ -1,15 +1,17 @@
 'use client';
 
-import { Scissors, Calendar, Ticket, Shield, User, Clock } from 'lucide-react';
+import { Scissors, Calendar, Ticket, Shield, User, Clock, Volume2 } from 'lucide-react';
 import { formatTimeRange, getItemTypeLabel, TimelineItem } from './schedulerUtils';
 
 interface Props {
   item: TimelineItem;
   compact?: boolean;
   onClick?: (item: TimelineItem) => void;
+  voiceEnabled?: boolean;
+  onReannounce?: (ticketId: number) => Promise<boolean>;
 }
 
-export function HourCellCard({ item, compact = false, onClick }: Props) {
+export function HourCellCard({ item, compact = false, onClick, voiceEnabled, onReannounce }: Props) {
   const type = item.type === 'in_service' ? 'in_service' :
                item.type === 'booking' ? 'booking' :
                item.type === 'queue' ? 'queue' : 'gap';
@@ -30,6 +32,16 @@ export function HourCellCard({ item, compact = false, onClick }: Props) {
       onClick(item);
     }
   };
+
+  const handleReannounce = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onReannounce && item.type === 'queue') {
+      await onReannounce(item.sourceId);
+    }
+  };
+
+  // Check if this queue item is called/announced
+  const isCalled = item.status === 'called' || item.status === 'announced';
 
   return (
     <div
@@ -117,6 +129,34 @@ export function HourCellCard({ item, compact = false, onClick }: Props) {
             {serviceName}
           </div>
         )}
+
+        {/* Called badge and reannounce button */}
+        <div className="flex items-center justify-between mt-1">
+          {isCalled && (
+            <span 
+              className="text-[8px] px-1.5 py-0.5 rounded font-medium"
+              style={{ background: '#22c55e30', color: '#22c55e' }}
+            >
+              تم النداء
+            </span>
+          )}
+          
+          {voiceEnabled && item.type === 'queue' && (
+            <button
+              onClick={handleReannounce}
+              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-medium opacity-0 hover:opacity-100 group-hover:opacity-100 transition-opacity"
+              style={{ 
+                background: isCalled ? '#22c55e20' : 'rgba(212, 175, 55, 0.15)', 
+                color: isCalled ? '#22c55e' : '#d4af37',
+                marginRight: 'auto'
+              }}
+              title="إعادة النداء"
+            >
+              <Volume2 size={10} />
+              {isCalled ? 'إعادة' : 'نداء'}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -27,11 +27,13 @@ interface Props {
   error?: string | null;
   onRetry?: () => void;
   onRefresh?: () => void;
+  voiceEnabled?: boolean;
+  onReannounce?: (ticketId: number) => Promise<boolean>;
 }
 
 const HEADER_HEIGHT = 80;
 
-export function SchedulerBoard({ barbers, loading, error, onRetry, onRefresh }: Props) {
+export function SchedulerBoard({ barbers, loading, error, onRetry, onRefresh, voiceEnabled, onReannounce }: Props) {
   const hours = useMemo(() => generateOperationalHours(), []);
   const [selectedItem, setSelectedItem] = useState<TimelineItem | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -63,6 +65,24 @@ export function SchedulerBoard({ barbers, loading, error, onRetry, onRefresh }: 
     if (!res.ok) {
       const data = await res.json();
       throw new Error(data.error || 'فشل حذف الحجز');
+    }
+
+    // Refresh the scheduler board
+    if (onRefresh) {
+      onRefresh();
+    }
+  }, [onRefresh]);
+
+  const handleCancelQueueTicket = useCallback(async (ticketId: number) => {
+    const res = await fetch(`/api/operations/queue/${ticketId}/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: 'إلغاء من لوحة التشغيل' }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'فشل إلغاء الدور');
     }
 
     // Refresh the scheduler board
@@ -141,6 +161,8 @@ export function SchedulerBoard({ barbers, loading, error, onRetry, onRefresh }: 
                 barber={barber}
                 headerHeight={HEADER_HEIGHT}
                 onItemClick={handleItemClick}
+                voiceEnabled={voiceEnabled}
+                onReannounce={onReannounce}
               />
             ))}
           </div>
@@ -154,6 +176,7 @@ export function SchedulerBoard({ barbers, loading, error, onRetry, onRefresh }: 
           onClose={handleCloseModal}
           onDelete={selectedItem.type === 'booking' ? handleDeleteBooking : undefined}
           onEdit={selectedItem.type === 'booking' ? handleEditBooking : undefined}
+          onCancel={selectedItem.type === 'queue' ? handleCancelQueueTicket : undefined}
         />
       )}
     </div>

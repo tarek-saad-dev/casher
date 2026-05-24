@@ -10,6 +10,7 @@ interface Props {
   onClose: () => void;
   onDelete?: (bookingId: number) => Promise<void>;
   onEdit?: (booking: Booking) => void;
+  onCancel?: (ticketId: number) => Promise<void>;
 }
 
 interface BookingDetails extends Booking {
@@ -20,12 +21,13 @@ interface BookingDetails extends Booking {
   }>;
 }
 
-export function BookingDetailsModal({ item, onClose, onDelete, onEdit }: Props) {
+export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel }: Props) {
   const [booking, setBooking] = useState<BookingDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   // Fetch booking details
   useEffect(() => {
@@ -74,6 +76,19 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit }: Props) 
       setError(err instanceof Error ? err.message : 'فشل حذف الحجز');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!onCancel) return;
+    setCancelling(true);
+    try {
+      await onCancel(item.sourceId);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'فشل إلغاء الدور');
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -313,24 +328,38 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit }: Props) 
 
         {/* Footer Actions */}
         <div className="px-5 py-4 border-t flex gap-3" style={{ borderColor: '#2A2A35', background: '#1a1a1f' }}>
-          <button
-            disabled
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-semibold transition-all opacity-50 cursor-not-allowed"
-            style={{ borderColor: '#52525b', color: '#71717a', background: 'rgba(255,255,255,0.05)' }}
-            title="تعديل الحجز سيتم تفعيله في المرحلة القادمة"
-          >
-            <Pencil size={16} />
-            تعديل قريبًا
-          </button>
-          <button
-            onClick={() => setShowDeleteConfirm(true)}
-            disabled={deleting}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-semibold transition-all hover:opacity-80 disabled:opacity-50"
-            style={{ borderColor: '#ef444444', color: '#ef4444', background: '#ef444411' }}
-          >
-            <XCircle size={16} />
-            إلغاء الحجز
-          </button>
+          {item.type === 'booking' ? (
+            <>
+              <button
+                disabled
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-semibold transition-all opacity-50 cursor-not-allowed"
+                style={{ borderColor: '#52525b', color: '#71717a', background: 'rgba(255,255,255,0.05)' }}
+                title="تعديل الحجز سيتم تفعيله في المرحلة القادمة"
+              >
+                <Pencil size={16} />
+                تعديل قريبًا
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={deleting}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-semibold transition-all hover:opacity-80 disabled:opacity-50"
+                style={{ borderColor: '#ef444444', color: '#ef4444', background: '#ef444411' }}
+              >
+                <XCircle size={16} />
+                إلغاء الحجز
+              </button>
+            </>
+          ) : item.type === 'queue' && onCancel ? (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={cancelling}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-semibold transition-all hover:opacity-80 disabled:opacity-50"
+              style={{ borderColor: '#ef444444', color: '#ef4444', background: '#ef444411' }}
+            >
+              <XCircle size={16} />
+              {cancelling ? 'جاري الإلغاء...' : 'إلغاء الدور'}
+            </button>
+          ) : null}
           <button
             onClick={onClose}
             className="px-6 py-2.5 rounded-xl text-sm font-medium transition-all hover:bg-zinc-800"
@@ -349,11 +378,17 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit }: Props) 
                   <XCircle size={20} style={{ color: '#ef4444' }} />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">إلغاء الحجز</h3>
-                  <p className="text-sm text-zinc-400">هل أنت متأكد من إلغاء هذا الحجز؟</p>
+                  <h3 className="text-lg font-bold text-white">
+                    {item.type === 'queue' ? 'إلغاء الدور' : 'إلغاء الحجز'}
+                  </h3>
+                  <p className="text-sm text-zinc-400">
+                    {item.type === 'queue' ? 'هل أنت متأكد من إلغاء هذا الدور؟' : 'هل أنت متأكد من إلغاء هذا الحجز؟'}
+                  </p>
                 </div>
               </div>
-              <p className="text-sm text-zinc-400 mb-4">سيتم إخفاؤه من جدول التشغيل ولن يتم احتسابه كحجز نشط.</p>
+              <p className="text-sm text-zinc-400 mb-4">
+                سيتم إخفاؤه من جدول التشغيل ولن يتم احتسابه كـ {item.type === 'queue' ? 'دور' : 'حجز'} نشط.
+              </p>
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowDeleteConfirm(false)}
@@ -363,12 +398,12 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit }: Props) 
                   إلغاء
                 </button>
                 <button
-                  onClick={handleDelete}
-                  disabled={deleting}
+                  onClick={item.type === 'queue' ? handleCancel : handleDelete}
+                  disabled={deleting || cancelling}
                   className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-80 disabled:opacity-50"
                   style={{ background: '#ef4444', color: '#fff' }}
                 >
-                  {deleting ? <Loader2 size={16} className="animate-spin mx-auto" /> : 'تأكيد الإلغاء'}
+                  {deleting || cancelling ? <Loader2 size={16} className="animate-spin mx-auto" /> : 'تأكيد الإلغاء'}
                 </button>
               </div>
             </div>

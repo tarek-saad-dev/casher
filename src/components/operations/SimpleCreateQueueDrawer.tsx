@@ -1,7 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { X, User, Scissors, Loader2, CheckCircle2, Clock, Users, AlertCircle, ArrowRight, ArrowLeft } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { X, User, Scissors, Loader2, CheckCircle2, Clock, Users, AlertCircle, ArrowRight, ArrowLeft, Search, Phone, UserPlus, CheckCircle } from 'lucide-react';
+import type { Customer } from '@/lib/types';
+import type { CreateQueueResponse } from '@/app/api/operations/queue/create/route';
+import { PrintQueueTicketModal } from './PrintQueueTicketModal';
 
 interface Service {
   ProID: number;
@@ -10,11 +13,15 @@ interface Service {
 }
 
 interface Barber {
-  EmpID: number;
-  EmpName: string;
-  IsWorkingDay: boolean;
-  nextAvailableAt?: string;
-  waitingCount?: number;
+  empId: number;
+  empName: string;
+  status: 'working' | 'off' | 'day_off' | 'unknown';
+  workStart: string | null;
+  workEnd: string | null;
+  isOvernightShift: boolean;
+  nextAvailableAt: string | null;
+  waitingCount: number;
+  bookingsCount: number;
 }
 
 interface SimulateResult {
@@ -36,14 +43,7 @@ interface SimulateResult {
   }>;
 }
 
-interface CreateResult {
-  ok: boolean;
-  ticketCode: string;
-  queueTicketId: number;
-  empName: string;
-  estimatedStartTime: string;
-  estimatedEndTime: string;
-  peopleBefore: number;
+interface CreateResult extends CreateQueueResponse {
   error?: string;
   newSuggestion?: SimulateResult;
 }
@@ -52,6 +52,8 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   onCreated: () => void;
+  barbers: Barber[];
+  debugInfo?: { source: string; count: number; timestamp: string };
 }
 
 const SERVICES: Service[] = [
@@ -71,38 +73,85 @@ function formatTime(iso: string): string {
   return `${h12}:${m} ${ampm}`;
 }
 
-export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated }: Props) {
+export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, debugInfo }: Props) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [barbers, setBarbers] = useState<Barber[]>([]);
   const [selectedBarber, setSelectedBarber] = useState<Barber | null>(null);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [simulateResult, setSimulateResult] = useState<SimulateResult | null>(null);
   const [createResult, setCreateResult] = useState<CreateResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPrintModal, setShowPrintModal] = useState(false);
 
-  // Load barbers on open
+  // Customer info - optional
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerId, setCustomerId] = useState<number | null>(null);
+  const [isSearchingCustomer, setIsSearchingCustomer] = useState(false);
+  const [customerSearchError, setCustomerSearchError] = useState<string | null>(null);
+  const [customerFound, setCustomerFound] = useState<boolean | null>(null);
+
+  const customerDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // Debug logging - show all barbers and filtering
+  useEffect(() => {
+    if (!isOpen) return;
+
+    console.log('[create queue] DEBUG INFO:', debugInfo);
+    console.log('[create queue] all barbers received:', barbers.map(b => ({
+      empId: b.empId,
+      name: b.empName,
+      status: b.status,
+      workStart: b.workStart,
+      workEnd: b.workEnd,
+      isOvernightShift: b.isOvernightShift,
+      nextAvailableAt: b.nextAvailableAt,
+      waitingCount: b.waitingCount,
+    })));
+
+    // Specifically check for Omar (empId=25)
+    const omar = barbers.find(b => b.empId === 25);
+    if (omar) {
+      console.log('[create queue] FOUND Omar (empId=25):', {
+        empId: omar.empId,
+        name: omar.empName,
+        status: omar.status,
+        workStart: omar.workStart,
+        workEnd: omar.workEnd,
+        isOvernightShift: omar.isOvernightShift,
+        nextAvailableAt: omar.nextAvailableAt,
+        waitingCount: omar.waitingCount,
+      });
+    } else {
+      console.log('[create queue] Omar (empId=25) NOT FOUND in barbers list');
+    }
+
+    // Show filtered barbers (working only, not off/day_off)
+    const workingBarbers = barbers.filter(b => b.status === 'working');
+    console.log('[create queue] filtered working barbers:', workingBarbers.map(b => ({
+      empId: b.empId,
+      name: b.empName,
+      status: b.status,
+      nextAvailableAt: b.nextAvailableAt,
+      waitingCount: b.waitingCount,
+    })));
+  }, [isOpen, barbers, debugInfo]);
+
+  // Reset state when closed
   useEffect(() => {
     if (!isOpen) {
-      // Reset state when closed
       setStep(1);
       setSelectedBarber(null);
       setSelectedService(null);
       setSimulateResult(null);
       setCreateResult(null);
       setError(null);
-      return;
+      setCustomerName('');
+      setCustomerPhone('');
+      setCustomerId(null);
+      setCustomerFound(null);
+      setCustomerSearchError(null);
     }
-
-    setLoading(true);
-    fetch('/api/public/booking/barbers')
-      .then(r => r.json())
-      .then(d => {
-        const activeBarbers = (d.barbers || []).filter((b: Barber) => b.IsWorkingDay);
-        setBarbers(activeBarbers);
-      })
-      .catch(() => setError('فشل تحميل الصنايعية'))
-      .finally(() => setLoading(false));
   }, [isOpen]);
 
   // Call simulate when barber and service selected
@@ -113,7 +162,7 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated }: Props) {
     setError(null);
 
     const simulatePayload = {
-      empId: selectedBarber.EmpID,
+      empId: selectedBarber.empId,
       serviceIds: [selectedService.ProID],
       requestedAt: new Date().toISOString(),
     };
@@ -138,6 +187,68 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated }: Props) {
       .finally(() => setLoading(false));
   }, [selectedBarber, selectedService]);
 
+  // Customer search function with debounce
+  const searchCustomerByPhone = useCallback(async (phone: string) => {
+    if (!phone || phone.length < 7) {
+      setCustomerFound(null);
+      setCustomerSearchError(null);
+      return;
+    }
+
+    setIsSearchingCustomer(true);
+    setCustomerSearchError(null);
+
+    try {
+      // Use existing POS customer search endpoint
+      const res = await fetch(`/api/customers?q=${encodeURIComponent(phone)}`);
+      if (!res.ok) throw new Error('فشل البحث');
+
+      const data: Customer[] = await res.json();
+
+      // Find exact match by phone
+      const matched = data.find((c) =>
+        c.Mobile === phone || c.Mobile?.includes(phone)
+      );
+
+      if (matched) {
+        setCustomerId(matched.ClientID);
+        setCustomerName(matched.Name);
+        setCustomerFound(true);
+      } else {
+        setCustomerId(null);
+        setCustomerFound(false);
+      }
+    } catch {
+      setCustomerSearchError('تعذر البحث عن العميل، يمكنك المتابعة يدويًا');
+      setCustomerFound(null);
+    } finally {
+      setIsSearchingCustomer(false);
+    }
+  }, []);
+
+  // Debounced phone search
+  const handlePhoneChange = (value: string) => {
+    setCustomerPhone(value);
+
+    // Clear previous debounce
+    if (customerDebounceRef.current) {
+      clearTimeout(customerDebounceRef.current);
+    }
+
+    // Reset states when clearing
+    if (!value.trim()) {
+      setCustomerId(null);
+      setCustomerFound(null);
+      setCustomerSearchError(null);
+      return;
+    }
+
+    // Debounce search
+    customerDebounceRef.current = setTimeout(() => {
+      searchCustomerByPhone(value.trim());
+    }, 500);
+  };
+
   const handleCreate = async () => {
     if (!simulateResult || !selectedBarber || !selectedService) return;
     console.log('=== CREATE START ===');
@@ -147,9 +258,13 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated }: Props) {
 
     try {
       const createPayload = {
-        empId: selectedBarber.EmpID,
+        empId: selectedBarber.empId,
         serviceIds: [selectedService.ProID],
-        customer: { name: 'عميل مباشر', phone: '' },
+        customer: {
+          clientId: customerId || undefined,
+          name: customerName.trim() || (customerId ? undefined : 'عميل مباشر'),
+          phone: customerPhone.trim() || undefined,
+        },
         expectedStartTime: simulateResult.suggestedStartTime,
         expectedEndTime: simulateResult.suggestedEndTime,
         source: 'walk_in',
@@ -177,11 +292,8 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated }: Props) {
       }
 
       setCreateResult(result);
-      // Show success for 2 seconds then close
-      setTimeout(() => {
-        onCreated();
-        onClose();
-      }, 2000);
+      // Show print modal immediately after successful create
+      setShowPrintModal(true);
     } catch {
       setError('فشل في إنشاء الدور');
     } finally {
@@ -202,6 +314,7 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated }: Props) {
   if (!isOpen) return null;
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="relative w-full max-w-lg mx-4 bg-white rounded-xl shadow-2xl max-h-[90vh] overflow-hidden">
         {/* Header */}
@@ -235,14 +348,14 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                 </div>
-              ) : barbers.length === 0 ? (
+              ) : barbers.filter(b => b.status === 'working').length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
-                  لا يوجد صنايعية متاحين
+                  لا يوجد صنايعية متاحين للعمل
                 </div>
               ) : (
-                barbers.map(barber => (
+                barbers.filter(b => b.status === 'working').map(barber => (
                   <button
-                    key={barber.EmpID}
+                    key={barber.empId}
                     onClick={() => {
                       setSelectedBarber(barber);
                       setStep(2);
@@ -255,7 +368,7 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                           <User className="w-6 h-6 text-blue-600" />
                         </div>
                         <div>
-                          <div className="font-semibold text-gray-900">{barber.EmpName}</div>
+                          <div className="font-semibold text-gray-900">{barber.empName}</div>
                           {barber.waitingCount !== undefined && barber.waitingCount > 0 && (
                             <div className="text-sm text-gray-500 flex items-center gap-1">
                               <Users className="w-4 h-4" />
@@ -282,7 +395,7 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated }: Props) {
             <div className="space-y-3">
               <div className="mb-4 p-3 bg-blue-50 rounded-lg">
                 <div className="text-sm text-blue-600 mb-1">الصنايعي المختار:</div>
-                <div className="font-semibold text-blue-900">{selectedBarber.EmpName}</div>
+                <div className="font-semibold text-blue-900">{selectedBarber.empName}</div>
               </div>
 
               {loading ? (
@@ -338,7 +451,7 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                   {/* Summary Card */}
                   <div className="p-4 bg-blue-50 rounded-xl">
                     <div className="text-lg font-bold text-blue-900 mb-3">
-                      الدور المتوقع مع {selectedBarber.EmpName}
+                      الدور المتوقع مع {selectedBarber.empName}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 mb-4">
@@ -353,6 +466,89 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                         <div className="text-xl font-bold text-blue-900">
                           {formatTime(simulateResult.suggestedEndTime)}
                         </div>
+                      </div>
+                    </div>
+
+                    {/* Customer Info Section - Improved UI */}
+                    <div className="bg-white rounded-xl border border-slate-200 p-4 mt-4 shadow-sm">
+                      <div className="flex items-center gap-2 mb-4">
+                        <User className="w-4 h-4 text-slate-500" />
+                        <span className="text-sm font-semibold text-slate-800">بيانات العميل</span>
+                        <span className="text-xs text-slate-400">— اختياري</span>
+                      </div>
+
+                      <div className="space-y-3">
+                        {/* Phone Input with Search */}
+                        <div className="relative">
+                          <label className="block text-xs font-medium text-slate-600 mb-1.5">رقم الهاتف</label>
+                          <div className="relative">
+                            <input
+                              type="tel"
+                              placeholder="01xxxxxxxxx"
+                              value={customerPhone}
+                              onChange={(e) => handlePhoneChange(e.target.value)}
+                              className="w-full p-3 pr-10 border border-slate-300 rounded-lg text-right text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                            />
+                            <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                              {isSearchingCustomer ? (
+                                <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                              ) : customerFound === true ? (
+                                <CheckCircle className="w-4 h-4 text-emerald-500" />
+                              ) : (
+                                <Search className="w-4 h-4 text-slate-400" />
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Search Status Messages */}
+                          {customerFound === true && (
+                            <div className="flex items-center gap-1.5 mt-2 text-xs text-emerald-600">
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              <span>عميل موجود — تم ملء الاسم تلقائياً</span>
+                            </div>
+                          )}
+                          {customerFound === false && customerPhone.length >= 7 && (
+                            <div className="flex items-center gap-1.5 mt-2 text-xs text-amber-600">
+                              <UserPlus className="w-3.5 h-3.5" />
+                              <span>عميل جديد — سيتم تسجيله عند إنشاء الدور</span>
+                            </div>
+                          )}
+                          {customerSearchError && (
+                            <div className="flex items-center gap-1.5 mt-2 text-xs text-red-500">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              <span>{customerSearchError}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Name Input */}
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1.5">اسم العميل</label>
+                          <input
+                            type="text"
+                            placeholder="اسم العميل"
+                            value={customerName}
+                            onChange={(e) => setCustomerName(e.target.value)}
+                            className="w-full p-3 border border-slate-300 rounded-lg text-right text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                          />
+                        </div>
+
+                        {/* Customer Summary Card */}
+                        {customerFound === true && customerId && (
+                          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mt-2">
+                            <div className="flex items-center gap-2 text-emerald-700">
+                              <CheckCircle className="w-4 h-4" />
+                              <span className="text-xs font-medium">سيتم ربط الدور بالعميل رقم #{customerId}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Empty State Hint */}
+                        {!customerPhone && !customerName && (
+                          <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-1">
+                            <span>يمكنك إنشاء الدور بدون بيانات العميل أو إدخال رقم الهاتف للبحث</span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -442,5 +638,21 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated }: Props) {
         )}
       </div>
     </div>
+
+    {/* Print Ticket Modal */}
+    <PrintQueueTicketModal
+      isOpen={showPrintModal}
+      ticket={createResult}
+      onClose={() => {
+        setShowPrintModal(false);
+        onCreated();
+        onClose();
+      }}
+      onPrintComplete={() => {
+        // Refresh scheduler after print
+        onCreated();
+      }}
+    />
+    </>
   );
 }

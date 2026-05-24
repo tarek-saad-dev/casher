@@ -5,6 +5,9 @@ import { OperationsToolbar } from '@/components/operations/OperationsToolbar';
 import { SchedulerBoard } from '@/components/operations/SchedulerBoard';
 import { BottomSummaryStrip } from '@/components/operations/BottomSummaryStrip';
 import { SimpleCreateQueueDrawer } from '@/components/operations/SimpleCreateQueueDrawer';
+import { VoiceEnableBanner } from '@/components/operations/VoiceEnableBanner';
+import { OperationsMusicPlayer } from '@/components/operations/OperationsMusicPlayer';
+import { useAutoVoiceAnnounce, isVoiceEnabled, enableVoice, disableVoice } from '@/hooks/useAutoVoiceAnnounce';
 
 // Types matching flow-board response
 interface FlowBoardBarber {
@@ -74,11 +77,50 @@ export default function OperationsPage() {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Toast helper
+  // Toast helper - defined first to be available for voice handlers
   const showToast = useCallback((msg: string, ok = true) => {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 3000);
   }, []);
+
+  // Voice auto-announcement state
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [musicPlayerExpanded, setMusicPlayerExpanded] = useState(false);
+
+  // Check voice enabled status on mount
+  useEffect(() => {
+    setVoiceEnabled(isVoiceEnabled());
+  }, []);
+
+  // Voice auto-announcement hook
+  const { isPlaying: isAnnouncing, reannounce } = useAutoVoiceAnnounce({
+    date: selectedDate,
+    enabled: voiceEnabled,
+    pollIntervalMs: 10000, // Check every 10 seconds
+    onAnnouncementStart: (announcement) => {
+      showToast(`نداء: ${announcement.ticketCode}`, true);
+    },
+    onError: (error) => {
+      console.error('[Voice] Error:', error);
+    },
+  });
+
+  // Handle voice enable/disable
+  const handleEnableVoice = useCallback(() => {
+    const success = enableVoice();
+    if (success) {
+      setVoiceEnabled(true);
+      showToast('تم تفعيل النداء الصوتي', true);
+    } else {
+      showToast('فشل تفعيل النداء الصوتي - تأكد من دعم المتصفح', false);
+    }
+  }, [showToast]);
+
+  const handleDisableVoice = useCallback(() => {
+    disableVoice();
+    setVoiceEnabled(false);
+    showToast('تم إيقاف النداء الصوتي', true);
+  }, [showToast]);
 
   // Fetch flow board data
   const fetchFlowBoard = useCallback(async () => {
@@ -186,6 +228,25 @@ export default function OperationsPage() {
         loading={loading}
       />
 
+      {/* Voice Enable Banner & Music Player */}
+      <div className="px-4 py-2 space-y-2">
+        <div className="flex justify-center">
+          <VoiceEnableBanner
+            enabled={voiceEnabled}
+            onEnable={handleEnableVoice}
+            onDisable={handleDisableVoice}
+          />
+        </div>
+        <div className="flex justify-center">
+          <div className="w-full max-w-md">
+            <OperationsMusicPlayer
+              isExpanded={musicPlayerExpanded}
+              onToggleExpand={() => setMusicPlayerExpanded(!musicPlayerExpanded)}
+            />
+          </div>
+        </div>
+      </div>
+
       {/* Main Scheduler Board */}
       <SchedulerBoard
         barbers={flowBoardData?.barbers || []}
@@ -193,6 +254,8 @@ export default function OperationsPage() {
         error={error}
         onRetry={fetchFlowBoard}
         onRefresh={fetchFlowBoard}
+        voiceEnabled={voiceEnabled}
+        onReannounce={reannounce}
       />
 
       {/* Bottom Summary Strip */}
@@ -210,6 +273,12 @@ export default function OperationsPage() {
           onCreated={() => {
             fetchFlowBoard();
             showToast('تم إنشاء الدور بنجاح');
+          }}
+          barbers={flowBoardData?.barbers || []}
+          debugInfo={{
+            source: 'flow-board',
+            count: flowBoardData?.barbers?.length || 0,
+            timestamp: new Date().toISOString(),
           }}
         />
       )}

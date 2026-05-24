@@ -360,6 +360,30 @@ export async function simulateQueueInsertion({
   // Build intervals for slot finding
   const qIntervals = await buildQueueIntervals(db, empId, dateStr, now, defaultDur);
   const bIntervals = await buildBookingIntervals(db, empId, dateStr, defaultDur);
+
+  // Debug: Log all blockers
+  if (DEBUG_OPS) {
+    console.log("[simulate blockers]", {
+      empId,
+      date: dateStr,
+      activeQueueCount: qIntervals.length,
+      activeBookingCount: bIntervals.length,
+      activeQueue: qIntervals.map((q) => ({
+        id: q.id,
+        ticketCode: q.ticketCode,
+        start: q.start.toISOString(),
+        end: q.end.toISOString(),
+        status: q.label,
+      })),
+      activeBookings: bIntervals.map((b) => ({
+        id: b.id,
+        start: b.start.toISOString(),
+        end: b.end.toISOString(),
+        status: b.label,
+      })),
+    });
+  }
+
   const allIntervals = [...qIntervals, ...bIntervals].sort(
     (a, b) => a.start.getTime() - b.start.getTime()
   );

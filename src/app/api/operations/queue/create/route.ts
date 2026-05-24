@@ -9,11 +9,21 @@
  * {
  *   empId: number,
  *   serviceIds: number[],
- *   customer: { name?: string, phone?: string },
+ *   customer: {
+ *     clientId?: number,  // If provided, linked directly
+ *     name?: string,      // Used if clientId not provided
+ *     phone?: string      // Used to lookup/create customer
+ *   },
  *   expectedStartTime: "2026-05-24T15:00:00.000Z",
  *   expectedEndTime: "2026-05-24T15:30:00.000Z",
  *   source: "walk_in"
  * }
+ *
+ * Customer handling:
+ * - If clientId provided: Uses it directly
+ * - If phone matches existing: Links to existing customer
+ * - If phone not found + name provided: Creates new customer then links
+ * - If no customer data: Creates as "walk-in" with no client link
  *
  * Response (success):
  * {
@@ -39,6 +49,8 @@ import { getPool, sql } from "@/lib/db";
 import { simulateQueueInsertion, buildBarberOperationalTimeline } from "@/lib/operationsQueueTimeline";
 import { getDefaultDuration, getServicesDuration, cairoDateStr } from "@/lib/queueEstimateEngine";
 import { generateTicketCode } from "@/lib/queueTicketCode";
+import { detectQueueTicketsSchema, buildInsertColumns } from "@/lib/queueSchema";
+import { getChairNumber } from "@/lib/chairMapping";
 
 export const runtime = "nodejs";
 
@@ -46,6 +58,7 @@ export interface CreateQueueRequest {
   empId: number;
   serviceIds: number[];
   customer?: {
+    clientId?: number;
     name?: string;
     phone?: string;
   };
@@ -57,18 +70,31 @@ export interface CreateQueueRequest {
 export interface CreateQueueResponse {
   ok: true;
   ticketCode: string;
+  ticketNumber: number;
+  ticketPrefix: string;
   queueTicketId: number;
+  queueDate: string;
   empId: number;
   empName: string;
-  estimatedStartTime: string;
-  estimatedEndTime: string;
-  peopleBefore: number;
-  serviceDurationMinutes: number;
+  chairNumber: number | null;
+  customer: {
+    clientId: number | null;
+    name: string | null;
+    phone: string | null;
+  };
   services: Array<{
     proId: number;
     proName: string;
     durationMinutes: number;
+    price?: number;
   }>;
+  serviceDurationMinutes: number;
+  estimatedStartTime: string;
+  estimatedEndTime: string;
+  estimatedWaitMinutes: number;
+  peopleBefore: number;
+  status: string;
+  createdAt: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -177,57 +203,124 @@ export async function POST(req: NextRequest) {
       ])
     );
 
+    // Detect schema to avoid using non-existent columns
+    const schema = await detectQueueTicketsSchema();
+    console.log("[queue/create] Schema detected:", schema);
+
+    // Calculate estimatedWaitMinutes (difference between now and start time)
+    const nowMs = new Date().getTime();
+    const startMs = new Date(finalStartTime).getTime();
+    const estimatedWaitMinutes = Math.max(0, Math.round((startMs - nowMs) / 60000));
+
+    // Build dynamic insert based on actual schema
+    const { columns, paramNames } = buildInsertColumns(schema);
+
     // Begin transaction
     await transaction.begin();
 
     try {
-      // 1. Create QueueTicket
-      const insertTicketRes = await transaction
+      // 1. Resolve customer to ClientID
+      let clientId: number | null = null;
+      let resolvedCustomerName = customer?.name || null;
+      let resolvedCustomerPhone = customer?.phone || null;
+
+      // If customer has clientId, use it directly
+      if (customer?.clientId && schema.hasClientID) {
+        clientId = customer.clientId;
+      }
+      // Otherwise try to find or create customer
+      else if (customer?.phone) {
+        try {
+          // Search for customer by phone in TblClient
+          const findClient = await transaction.request()
+            .input("phone", sql.NVarChar, customer.phone)
+            .query(`
+              SELECT TOP 1 ClientID, Name, Mobile
+              FROM [dbo].[TblClient]
+              WHERE Mobile = @phone OR Mobile2 = @phone
+            `);
+
+          if (findClient.recordset.length > 0) {
+            clientId = findClient.recordset[0].ClientID;
+            resolvedCustomerName = findClient.recordset[0].Name;
+            resolvedCustomerPhone = findClient.recordset[0].Mobile;
+          }
+          // If not found and has name, create new customer
+          else if (customer.name && schema.hasClientID) {
+            const createClient = await transaction.request()
+              .input("name", sql.NVarChar, customer.name)
+              .input("phone", sql.NVarChar, customer.phone)
+              .query(`
+                INSERT INTO [dbo].[TblClient] (Name, Mobile)
+                OUTPUT INSERTED.ClientID
+                VALUES (@name, @phone);
+              `);
+            if (createClient.recordset.length > 0) {
+              clientId = createClient.recordset[0].ClientID;
+            }
+          }
+        } catch (clientErr) {
+          console.log("[queue/create] Customer lookup/creation skipped:", clientErr);
+          // Continue without clientId
+        }
+      }
+
+      // 2. Create QueueTicket with dynamic columns
+      const insertColumnsStr = columns.join(', ');
+      const insertValuesStr = paramNames.join(', ');
+
+      // Build request with all inputs
+      const ticketRequest = transaction
         .request()
         .input("ticketCode", sql.NVarChar, ticketCode)
         .input("queueDate", sql.Date, dateStr)
         .input("empId", sql.Int, empId)
         .input("status", sql.NVarChar, "waiting")
         .input("source", sql.NVarChar, source)
-        .input("customerName", sql.NVarChar, customer?.name || null)
-        .input("customerPhone", sql.NVarChar, customer?.phone || null)
-        .input("estimatedStartTime", sql.DateTime, new Date(finalStartTime))
-        .input("estimatedEndTime", sql.DateTime, new Date(finalEndTime))
-        .input(
-          "estimatedDurationMinutes",
-          sql.Int,
-          serviceDur
-        ).query(`
-          INSERT INTO [dbo].[QueueTickets] (
-            TicketCode,
-            TicketNumber,
-            QueueDate,
-            EmpID,
-            Status,
-            Source,
-            CustomerName,
-            CustomerPhone,
-            EstimatedStartTime,
-            EstimatedEndTime,
-            EstimatedDurationMinutes,
-            CreatedTime
-          )
-          OUTPUT INSERTED.QueueTicketID
-          VALUES (
-            @ticketCode,
-            (SELECT ISNULL(MAX(TicketNumber), 0) + 1 FROM [dbo].[QueueTickets] WHERE QueueDate = @queueDate),
-            @queueDate,
-            @empId,
-            @status,
-            @source,
-            @customerName,
-            @customerPhone,
-            @estimatedStartTime,
-            @estimatedEndTime,
-            @estimatedDurationMinutes,
-            GETDATE()
-          );
-        `);
+        .input("estimatedStartTime", sql.DateTime, new Date(finalStartTime));
+
+      // Add optional column inputs if they exist in schema
+      if (schema.hasTicketPrefix) {
+        ticketRequest.input("ticketPrefix", sql.NVarChar, "W");
+      }
+      if (schema.hasClientID) {
+        ticketRequest.input("clientId", sql.Int, clientId);
+      }
+      // Only add CustomerName/CustomerPhone if columns exist
+      if (schema.hasCustomerName) {
+        ticketRequest.input("customerName", sql.NVarChar, resolvedCustomerName);
+      }
+      if (schema.hasCustomerPhone) {
+        ticketRequest.input("customerPhone", sql.NVarChar, resolvedCustomerPhone);
+      }
+      if (schema.hasPriority) {
+        ticketRequest.input("priority", sql.Int, 0);
+      }
+      if (schema.hasEstimatedWaitMinutes) {
+        ticketRequest.input("estimatedWaitMinutes", sql.Int, estimatedWaitMinutes);
+      }
+      if (schema.hasWaitingCountAtCreation) {
+        ticketRequest.input("waitingCountAtCreation", sql.Int, simulation.peopleBefore);
+      }
+      if (schema.hasNotes) {
+        ticketRequest.input("notes", sql.NVarChar, resolvedCustomerName || null);
+      }
+
+      const insertQuery = `
+        INSERT INTO [dbo].[QueueTickets] (
+          ${insertColumnsStr}
+        )
+        OUTPUT INSERTED.QueueTicketID
+        VALUES (
+          ${insertValuesStr}
+        );
+      `;
+
+      console.log("[queue/create] Insert query:", insertQuery);
+      console.log("[queue/create] Columns:", insertColumnsStr);
+      console.log("[queue/create] ClientID:", clientId);
+
+      const insertTicketRes = await ticketRequest.query(insertQuery);
 
       const queueTicketId = insertTicketRes.recordset[0].QueueTicketID;
 
@@ -252,24 +345,49 @@ export async function POST(req: NextRequest) {
 
       await transaction.commit();
 
+      // Calculate estimatedEndTime in code only (not stored in DB)
+      const responseEndTime = new Date(
+        new Date(finalStartTime).getTime() + serviceDur * 60000
+      ).toISOString();
+
+      // Extract ticket number from code (e.g., "W-002" -> 2)
+      const ticketNumberMatch = ticketCode.match(/-(\d+)$/);
+      const ticketNumber = ticketNumberMatch ? parseInt(ticketNumberMatch[1], 10) : 0;
+
+      // Get chair number for the barber
+      const chairNumber = getChairNumber(empName);
+
       const response: CreateQueueResponse = {
         ok: true,
         ticketCode,
+        ticketNumber,
+        ticketPrefix: "W",
         queueTicketId,
+        queueDate: dateStr,
         empId,
         empName,
-        estimatedStartTime: finalStartTime,
-        estimatedEndTime: finalEndTime,
-        peopleBefore: simulation.peopleBefore,
-        serviceDurationMinutes: serviceDur,
+        chairNumber,
+        customer: {
+          clientId,
+          name: resolvedCustomerName,
+          phone: resolvedCustomerPhone,
+        },
         services: serviceIds.map((id) => {
           const svc = servicesMap.get(id);
           return {
             proId: id,
             proName: svc?.name || `Service ${id}`,
             durationMinutes: svc?.duration || defaultDur,
+            price: undefined, // Could be fetched from DB if needed
           };
         }),
+        serviceDurationMinutes: serviceDur,
+        estimatedStartTime: finalStartTime,
+        estimatedEndTime: responseEndTime,
+        estimatedWaitMinutes,
+        peopleBefore: simulation.peopleBefore,
+        status: "waiting",
+        createdAt: new Date().toISOString(),
       };
 
       return NextResponse.json(response);
