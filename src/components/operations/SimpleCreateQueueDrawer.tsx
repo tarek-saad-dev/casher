@@ -112,17 +112,21 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated }: Props) {
     setLoading(true);
     setError(null);
 
+    const simulatePayload = {
+      empId: selectedBarber.EmpID,
+      serviceIds: [selectedService.ProID],
+      requestedAt: new Date().toISOString(),
+    };
+    console.log('=== SIMULATE PAYLOAD ===', simulatePayload);
+
     fetch('/api/operations/queue/simulate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        empId: selectedBarber.EmpID,
-        serviceIds: [selectedService.ProID],
-        requestedAt: new Date().toISOString(),
-      }),
+      body: JSON.stringify(simulatePayload),
     })
       .then(r => r.json())
       .then((result: SimulateResult) => {
+        console.log('=== SIMULATE RESPONSE ===', result);
         setSimulateResult(result);
         if (result.decision === 'outside_hours') {
           setError('الصنايعي خارج مواعيد العمل');
@@ -136,25 +140,31 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated }: Props) {
 
   const handleCreate = async () => {
     if (!simulateResult || !selectedBarber || !selectedService) return;
+    console.log('=== CREATE START ===');
 
     setLoading(true);
     setError(null);
 
     try {
+      const createPayload = {
+        empId: selectedBarber.EmpID,
+        serviceIds: [selectedService.ProID],
+        customer: { name: 'عميل مباشر', phone: '' },
+        expectedStartTime: simulateResult.suggestedStartTime,
+        expectedEndTime: simulateResult.suggestedEndTime,
+        source: 'walk_in',
+      };
+      console.log('=== CREATE PAYLOAD ===', createPayload);
+
       const res = await fetch('/api/operations/queue/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          empId: selectedBarber.EmpID,
-          serviceIds: [selectedService.ProID],
-          customer: { name: 'عميل مباشر', phone: '' },
-          expectedStartTime: simulateResult.suggestedStartTime,
-          expectedEndTime: simulateResult.suggestedEndTime,
-          source: 'walk_in',
-        }),
+        body: JSON.stringify(createPayload),
       });
 
       const result: CreateResult = await res.json();
+      console.log('=== CREATE RESPONSE ===', result);
+      console.log('Status:', res.status, 'OK:', result.ok, 'TicketCode:', result.ticketCode);
 
       if (!result.ok) {
         if (res.status === 409 && result.newSuggestion) {

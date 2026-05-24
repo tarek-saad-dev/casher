@@ -91,7 +91,19 @@ export default function OperationsPage() {
       if (!data.ok) {
         throw new Error('فشل تحميل البيانات');
       }
-      
+
+      // Debug logging
+      console.log('=== FLOW-BOARD RESPONSE ===', data);
+      data.barbers.forEach(b => {
+        console.log(`Barber ${b.empName} (ID:${b.empId}):`);
+        console.log(`  Status: ${b.status}, Waiting: ${b.waitingCount}, Bookings: ${b.bookingsCount}`);
+        console.log(`  Timeline items: ${b.timeline?.length || 0}`);
+        if (b.timeline?.length > 0) {
+          console.log(`  First: ${JSON.stringify(b.timeline[0])}`);
+          console.log(`  Last: ${JSON.stringify(b.timeline[b.timeline.length - 1])}`);
+        }
+      });
+
       setFlowBoardData(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'فشل تحميل لوحة التشغيل');
