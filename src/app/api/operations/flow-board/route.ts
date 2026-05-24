@@ -64,6 +64,7 @@ export interface FlowBoardResponse {
 
 export async function GET(req: NextRequest) {
   try {
+    console.log("[flow-board] Request started");
     const { searchParams } = new URL(req.url);
     const dateParam = searchParams.get("date");
 
@@ -72,27 +73,57 @@ export async function GET(req: NextRequest) {
       dateParam ||
       new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
 
-    const db = await getPool();
+    console.log("[flow-board] Date:", dateStr);
+    console.log("[flow-board] Getting DB pool...");
+    let db;
+    try {
+      db = await getPool();
+      console.log("[flow-board] DB pool acquired");
+    } catch (dbErr) {
+      console.error("[flow-board] DB connection failed:", dbErr);
+      return NextResponse.json(
+        { ok: false, error: "Database connection failed" },
+        { status: 500 }
+      );
+    }
     const now = new Date();
 
-    // Get all active barbers
-    const barbersRes = await db.request().query(`
-      SELECT 
-        EmpID, 
-        EmpName, 
-        IsWorkingDay,
-        CASE 
-          WHEN EXISTS (
-            SELECT 1 FROM [dbo].[TblEmpDayOff] 
-            WHERE EmpID = [dbo].[TblEmp].EmpID 
-            AND OffDate = CAST(GETDATE() AS DATE)
-          ) THEN 0
-          ELSE IsWorkingDay 
-        END as IsActuallyWorking
-      FROM [dbo].[TblEmp]
-      WHERE IsActive = 1
-      ORDER BY EmpName
-    `);
+    // Get all active barbers (only basic info - schedule checked per barber)
+    console.log("[flow-board] Fetching active barbers...");
+    let barbersRes;
+    try {
+      // Try with TblEmpDayOff check
+      barbersRes = await db.request().query(`
+        SELECT 
+          e.EmpID, 
+          e.EmpName,
+          CASE 
+            WHEN EXISTS (
+              SELECT 1 FROM [dbo].[TblEmpDayOff] 
+              WHERE EmpID = e.EmpID 
+              AND OffDate = CAST(GETDATE() AS DATE)
+              AND IsDeleted = 0
+            ) THEN 0
+            ELSE 1
+          END as IsActuallyWorking
+        FROM [dbo].[TblEmp] e
+        WHERE e.isActive = 1
+        ORDER BY e.EmpName
+      `);
+    } catch {
+      // Fallback if TblEmpDayOff doesn't exist
+      console.log("[flow-board] TblEmpDayOff not found, using fallback query");
+      barbersRes = await db.request().query(`
+        SELECT 
+          e.EmpID, 
+          e.EmpName,
+          1 as IsActuallyWorking
+        FROM [dbo].[TblEmp] e
+        WHERE e.isActive = 1
+        ORDER BY e.EmpName
+      `);
+    }
+    console.log(`[flow-board] Found ${barbersRes.recordset.length} active barbers`);
 
     const barbers: FlowBoardBarber[] = [];
 
