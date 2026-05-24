@@ -1,347 +1,203 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { OverviewData, OperationAlert } from '@/lib/operationsTypes';
-import { OperationsHeader } from '@/components/operations/OperationsHeader';
-import { BarberStatusColumn } from '@/components/operations/BarberStatusColumn';
-import { GroupedQueueBoard } from '@/components/operations/GroupedQueueBoard';
-import { BookingsColumn } from '@/components/operations/BookingsColumn';
-import { AlertsPanel } from '@/components/operations/AlertsPanel';
-import { CreateQueueDrawer } from '@/components/operations/CreateQueueDrawer';
+import { OperationsToolbar } from '@/components/operations/OperationsToolbar';
+import { SchedulerBoard } from '@/components/operations/SchedulerBoard';
+import { BottomSummaryStrip } from '@/components/operations/BottomSummaryStrip';
 import { SimpleCreateQueueDrawer } from '@/components/operations/SimpleCreateQueueDrawer';
-import { CreateBookingDrawer } from '@/components/operations/CreateBookingDrawer';
-import { BookingControlDrawer } from '@/components/operations/BookingControlDrawer';
-import { BUSINESS_DATE_CAIRO } from '@/lib/queueTicketNormalizer';
+
+// Types matching flow-board response
+interface FlowBoardBarber {
+  empId: number;
+  empName: string;
+  status: 'working' | 'off' | 'day_off' | 'unknown';
+  workStart: string | null;
+  workEnd: string | null;
+  isOvernightShift: boolean;
+  nextAvailableAt: string | null;
+  waitingCount: number;
+  bookingsCount: number;
+  inServiceCount: number;
+  timeline: Array<{
+    type: 'queue' | 'booking' | 'gap' | 'in_service';
+    sourceId: number;
+    label: string;
+    startTime: string;
+    endTime: string;
+    status: string;
+    protected?: boolean;
+    customerName?: string;
+    durationMinutes?: number;
+    ticketCode?: string;
+  }>;
+}
+
+interface FlowBoardResponse {
+  ok: boolean;
+  date: string;
+  generatedAt: string;
+  barbers: FlowBoardBarber[];
+}
+
+// Format date for display
+function formatDateLabel(dateStr: string): string {
+  const date = new Date(dateStr + 'T00:00:00');
+  const days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+  const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+  
+  const dayName = days[date.getDay()];
+  const dayNum = date.getDate();
+  const monthName = months[date.getMonth()];
+  const year = date.getFullYear();
+  
+  return `${dayName} ${dayNum} ${monthName} ${year}`;
+}
+
+// Get today in Cairo timezone
+function getCairoToday(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+}
+
+// Add/subtract days
+function addDays(dateStr: string, days: number): string {
+  const date = new Date(dateStr + 'T00:00:00');
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
 
 export default function OperationsPage() {
-  const [overview, setOverview] = useState<OverviewData | null>(null);
-  const [alerts, setAlerts] = useState<OperationAlert[]>([]);
-  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [selectedDate, setSelectedDate] = useState<string>(getCairoToday());
+  const [flowBoardData, setFlowBoardData] = useState<FlowBoardResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [alertsLoading, setAlertsLoading] = useState(true);
-  // Queue tickets fetched directly from /api/queue — same source as /queue/live
-  const [liveTickets, setLiveTickets] = useState<any[]>([]);
-  const [showQueueDrawer, setShowQueueDrawer] = useState(false);
-  const [showSimpleQueueDrawer, setShowSimpleQueueDrawer] = useState(false);
-  const [showBookingDrawer, setShowBookingDrawer] = useState(false);
-  const [showBookingControlDrawer, setShowBookingControlDrawer] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showCreateDrawer, setShowCreateDrawer] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Toast helper ────────────────────────────────────────────────────────────
+  // Toast helper
   const showToast = useCallback((msg: string, ok = true) => {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 3000);
   }, []);
 
-  // ── Data fetching ────────────────────────────────────────────────────────────
-  // Fetch KPIs + barbers from overview (no need for its queue list)
-  const fetchOverview = useCallback(async () => {
-    try {
-      const res = await fetch('/api/operations/overview');
-      const data = await res.json();
-      if (res.ok) setOverview(data);
-    } catch { /* non-fatal */ }
-    finally { setLoading(false); }
-  }, []);
-
-  // Fetch queue tickets directly from /api/queue — SAME source as /queue/live
-  const fetchQueueTickets = useCallback(async () => {
-    try {
-      const date = BUSINESS_DATE_CAIRO();
-      const res = await fetch(`/api/queue?date=${date}`);
-      const data = await res.json();
-      const tickets = data.tickets ?? [];
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('[operations] queue tickets from same source', tickets);
-      }
-      if (res.ok) setLiveTickets(tickets);
-    } catch { /* non-fatal */ }
-  }, []);
-
-  const fetchAlerts = useCallback(async () => {
-    setAlertsLoading(true);
-    try {
-      const res = await fetch('/api/operations/alerts');
-      const data = await res.json();
-      if (res.ok) setAlerts(data.alerts ?? []);
-    } catch { /* non-fatal */ }
-    finally { setAlertsLoading(false); }
-  }, []);
-
-  const refresh = useCallback(() => {
+  // Fetch flow board data
+  const fetchFlowBoard = useCallback(async () => {
     setLoading(true);
-    fetchOverview();
-    fetchQueueTickets();
-    fetchAlerts();
-  }, [fetchOverview, fetchQueueTickets, fetchAlerts]);
+    setError(null);
+    try {
+      const res = await fetch(`/api/operations/flow-board?date=${selectedDate}`);
+      const data: FlowBoardResponse = await res.json();
+      
+      if (!data.ok) {
+        throw new Error('فشل تحميل البيانات');
+      }
+      
+      setFlowBoardData(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'فشل تحميل لوحة التشغيل');
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedDate]);
 
+  // Initial load and auto-refresh
   useEffect(() => {
-    fetchOverview();
-    fetchQueueTickets();
-    fetchAlerts();
-    // Auto-refresh every 30 seconds (matches /queue/live)
-    refreshTimer.current = setInterval(() => {
-      fetchOverview();
-      fetchQueueTickets();
-      fetchAlerts();
-    }, 30000);
-    return () => { if (refreshTimer.current) clearInterval(refreshTimer.current); };
-  }, [fetchOverview, fetchQueueTickets, fetchAlerts]);
+    fetchFlowBoard();
+    // Auto-refresh every 30 seconds
+    refreshTimer.current = setInterval(fetchFlowBoard, 30000);
+    return () => {
+      if (refreshTimer.current) clearInterval(refreshTimer.current);
+    };
+  }, [fetchFlowBoard]);
 
-  // ── Queue ticket actions ─────────────────────────────────────────────────────
-  const handleQueueAction = useCallback(async (ticketId: number, action: string, extra?: any) => {
-    try {
-      const statusMap: Record<string, string> = {
-        call: 'called',
-        start: 'in_service',
-        done: 'done',
-        skip: 'skipped',
-        cancel: 'cancelled',
-      };
+  // Navigation handlers
+  const handlePrevDay = useCallback(() => {
+    setSelectedDate(prev => addDays(prev, -1));
+  }, []);
 
-      if (action === 'transfer' && extra?.newEmpId) {
-        const res = await fetch(`/api/queue/${ticketId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'transfer', transferEmpId: extra.newEmpId }),
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'خطأ'); }
-        showToast('تم نقل التذكرة');
-        refresh();
-        return;
+  const handleNextDay = useCallback(() => {
+    setSelectedDate(prev => addDays(prev, 1));
+  }, []);
+
+  const handleToday = useCallback(() => {
+    setSelectedDate(getCairoToday());
+  }, []);
+
+  // Calculate summary stats
+  const summaryStats = useCallback(() => {
+    if (!flowBoardData) return { nextAvailable: null, totalWaiting: 0, totalBookings: 0 };
+    
+    const workingBarbers = flowBoardData.barbers.filter(b => b.status === 'working');
+    
+    // Find next available barber
+    let nextAvailable: { name: string; time: string } | null = null;
+    for (const barber of workingBarbers) {
+      if (barber.nextAvailableAt) {
+        const barberTime = new Date(barber.nextAvailableAt).getTime();
+        const now = Date.now();
+        if (barberTime >= now || barberTime - now < 60 * 60 * 1000) { // Within 1 hour
+          const timeStr = new Date(barber.nextAvailableAt).toLocaleTimeString('ar-EG', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+          });
+          if (!nextAvailable) {
+            nextAvailable = { name: barber.empName, time: timeStr };
+          }
+          break;
+        }
       }
-
-      const newStatus = statusMap[action];
-      if (!newStatus) return;
-
-      const res = await fetch(`/api/queue/${ticketId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: newStatus }),
-      });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'خطأ'); }
-
-      const labels: Record<string, string> = {
-        called: 'تم النداء', in_service: 'بدأت الخدمة',
-        done: 'تمت الخدمة', skipped: 'تم التخطي', cancelled: 'تم الإلغاء',
-      };
-      showToast(labels[newStatus] ?? 'تم التحديث');
-      refresh();
-    } catch (e: any) {
-      showToast(e.message ?? 'حدث خطأ', false);
     }
-  }, [refresh, showToast]);
+    
+    // Total waiting across all barbers
+    const totalWaiting = workingBarbers.reduce((sum, b) => sum + b.waitingCount, 0);
+    
+    // Total bookings
+    const totalBookings = workingBarbers.reduce((sum, b) => sum + b.bookingsCount, 0);
+    
+    return { nextAvailable, totalWaiting, totalBookings };
+  }, [flowBoardData]);
 
-  // ── Booking arrive action (new endpoint) ───────────────────────────────────
-  const handleBookingArrive = useCallback(async (bookingId: number): Promise<{ success: boolean; error?: string }> => {
-    try {
-      const res = await fetch(`/api/operations/bookings/${bookingId}/arrive`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ priority: 1 }), // Priority 1 = reserved_booking
-      });
-
-      if (res.status === 409) {
-        const data = await res.json();
-        return { success: false, error: data.error || 'هذا الحجز تم تسجيل وصوله بالفعل' };
-      }
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error ?? 'فشل استقبال صاحب الحجز');
-      }
-
-      const data = await res.json();
-      showToast(data.message || `تم استقبال صاحب الحجز وإنشاء دور ${data.ticketCode}`);
-      refresh();
-      return { success: true };
-    } catch (e: any) {
-      showToast(e.message ?? 'حدث خطأ أثناء الاستقبال', false);
-      return { success: false, error: e.message };
-    }
-  }, [refresh, showToast]);
-
-  // ── Booking actions ──────────────────────────────────────────────────────────
-  const handleBookingAction = useCallback(async (bookingId: number, action: string) => {
-    try {
-      // Map UI action → API action (matches /api/bookings/[id] PATCH switch cases)
-      const actionMap: Record<string, string> = {
-        confirm: 'confirm',
-        arrive: 'arrive',
-        start: 'start_service',
-        cancel: 'cancel',
-      };
-
-      if (action === 'add_queue') {
-        // Find booking details from overview data
-        const booking = overview?.bookings.find(b => b.BookingID === bookingId);
-        if (!booking) return;
-        const res = await fetch('/api/queue', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            clientId: booking.ClientID,
-            empId: booking.AssignedEmpID,
-            bookingId: booking.BookingID,
-            notes: null,
-          }),
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'خطأ'); }
-        showToast('تمت إضافة العميل للدور');
-        refresh();
-        return;
-      }
-
-      if (action === 'invoice') {
-        showToast('سيتم تحويل الحجز لفاتورة — قريباً', true);
-        return;
-      }
-
-      if (action === 'reschedule') {
-        showToast('استخدم صفحة الحجوزات لإعادة الجدولة', true);
-        return;
-      }
-
-      const apiAction = actionMap[action];
-      if (!apiAction) return;
-
-      const res = await fetch(`/api/bookings/${bookingId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: apiAction }),
-      });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'خطأ'); }
-
-      const labels: Record<string, string> = {
-        confirm: 'تم التأكيد', arrive: 'تم التسجيل',
-        start_service: 'بدأت الخدمة', cancel: 'تم الإلغاء',
-      };
-      showToast(labels[apiAction] ?? 'تم التحديث');
-      refresh();
-    } catch (e: any) {
-      showToast(e.message ?? 'حدث خطأ', false);
-    }
-  }, [overview, refresh, showToast]);
-
-  // ── Alert actions ────────────────────────────────────────────────────────────
-  const handleAlertAction = useCallback((alert: OperationAlert) => {
-    // Dismiss locally
-    setDismissedIds(prev => new Set([...prev, alert.id]));
-    // action-specific behaviour can be expanded later
-    if (alert.action === 'add_to_queue' && alert.relatedId) {
-      handleBookingAction(alert.relatedId, 'add_queue');
-    }
-  }, [handleBookingAction]);
-
-  // Visible alerts (not dismissed)
-  const visibleAlerts = alerts.filter(a => !dismissedIds.has(a.id));
-
-  const barbers = overview?.barbers ?? [];
-  // Use directly-fetched live tickets (same source as /queue/live)
-  const queueTickets = liveTickets;
-  const bookings = overview?.bookings ?? [];
+  const stats = summaryStats();
 
   return (
-    <div className="flex flex-col h-full overflow-hidden" style={{ background: '#0E0E12' }} dir="rtl">
-
-      {/* Header */}
-      <OperationsHeader
-        data={overview}
+    <div className="flex flex-col h-screen overflow-hidden" style={{ background: '#050505' }} dir="rtl">
+      {/* Top Toolbar */}
+      <OperationsToolbar
+        date={selectedDate}
+        dateLabel={formatDateLabel(selectedDate)}
+        onPrevDay={handlePrevDay}
+        onNextDay={handleNextDay}
+        onToday={handleToday}
+        onRefresh={fetchFlowBoard}
+        onCreateQueue={() => setShowCreateDrawer(true)}
         loading={loading}
-        alertsCount={visibleAlerts.length}
-        onRefresh={refresh}
-        onNewQueue={() => setShowQueueDrawer(true)}
-        onNewBooking={() => setShowBookingDrawer(true)}
-        onBookingControl={() => setShowBookingControlDrawer(true)}
       />
 
-      {/* Main 4-column grid */}
-      <div className="flex-1 overflow-hidden grid" style={{ gridTemplateColumns: '220px 1fr 1fr 200px' }}>
+      {/* Main Scheduler Board */}
+      <SchedulerBoard
+        barbers={flowBoardData?.barbers || []}
+        loading={loading}
+        error={error}
+        onRetry={fetchFlowBoard}
+      />
 
-        {/* Col 1: Barbers */}
-        <div className="border-l overflow-hidden" style={{ borderColor: '#2A2A35' }}>
-          <BarberStatusColumn barbers={barbers} loading={loading} />
-        </div>
+      {/* Bottom Summary Strip */}
+      <BottomSummaryStrip
+        nextAvailableBarber={stats.nextAvailable}
+        totalWaiting={stats.totalWaiting}
+        totalBookings={stats.totalBookings}
+      />
 
-        {/* Col 2: Live Queue — grouped by barber */}
-        <div className="border-l overflow-hidden" style={{ borderColor: '#2A2A35' }}>
-          <GroupedQueueBoard
-            tickets={queueTickets}
-            barbers={barbers}
-            loading={loading}
-            onAction={handleQueueAction}
-            onRefresh={refresh}
-          />
-        </div>
-
-        {/* Col 3: Bookings */}
-        <div className="border-l overflow-hidden" style={{ borderColor: '#2A2A35' }}>
-          <BookingsColumn
-            bookings={bookings}
-            loading={loading}
-            onAction={handleBookingAction}
-            onRefresh={refresh}
-            onBookingArrive={handleBookingArrive}
-          />
-        </div>
-
-        {/* Col 4: Alerts */}
-        <div className="overflow-hidden">
-          <AlertsPanel
-            alerts={visibleAlerts}
-            loading={alertsLoading}
-            onDismiss={id => setDismissedIds(prev => new Set([...prev, id]))}
-            onAction={handleAlertAction}
-          />
-        </div>
-      </div>
-
-      {/* Big Button - Create Queue */}
-      <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20">
-        <button
-          onClick={() => setShowSimpleQueueDrawer(true)}
-          className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white text-xl font-bold rounded-2xl shadow-lg hover:shadow-xl transition-all flex items-center gap-3"
-        >
-          <span>+</span>
-          <span>إنشاء دور</span>
-        </button>
-      </div>
-
-      {/* Drawers */}
-      {showSimpleQueueDrawer && (
+      {/* Create Queue Drawer */}
+      {showCreateDrawer && (
         <SimpleCreateQueueDrawer
-          isOpen={showSimpleQueueDrawer}
-          onClose={() => setShowSimpleQueueDrawer(false)}
+          isOpen={showCreateDrawer}
+          onClose={() => setShowCreateDrawer(false)}
           onCreated={() => {
-            fetchQueueTickets();
-            fetchOverview();
+            fetchFlowBoard();
             showToast('تم إنشاء الدور بنجاح');
           }}
-        />
-      )}
-      {showQueueDrawer && (
-        <CreateQueueDrawer
-          onClose={() => setShowQueueDrawer(false)}
-          onCreated={() => {
-            // Immediately refresh queue tickets (same source as /queue/live)
-            fetchQueueTickets();
-            // Refresh KPIs
-            fetchOverview();
-            setShowQueueDrawer(false);
-            showToast('تم إصدار رقم الانتظار');
-          }}
-        />
-      )}
-      {showBookingDrawer && (
-        <CreateBookingDrawer
-          onClose={() => setShowBookingDrawer(false)}
-          onCreated={() => { setShowBookingDrawer(false); refresh(); showToast('تم إنشاء الحجز'); }}
-        />
-      )}
-      {showBookingControlDrawer && (
-        <BookingControlDrawer
-          onClose={() => setShowBookingControlDrawer(false)}
         />
       )}
 
@@ -352,8 +208,9 @@ export default function OperationsPage() {
           style={{
             background: toast.ok ? '#141418' : 'rgba(239,68,68,0.15)',
             color: toast.ok ? '#F7F1E5' : '#EF4444',
-            borderColor: toast.ok ? '#2A2A35' : 'rgba(239,68,68,0.35)',
-          }}>
+            borderColor: toast.ok ? 'rgba(212,175,55,0.3)' : 'rgba(239,68,68,0.35)',
+          }}
+        >
           {toast.msg}
         </div>
       )}
