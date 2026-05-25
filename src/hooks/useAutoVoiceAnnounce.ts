@@ -103,7 +103,7 @@ export function useAutoVoiceAnnounce(options: UseAutoVoiceAnnounceOptions) {
             azureErr,
           );
           try {
-            await speakWithBrowser(part.text);
+            await speakWithBrowser(part.text, part.lang);
             console.log(`[auto-voice] browser fallback ok for part ${i + 1}`);
           } catch (browserErr) {
             console.error(
