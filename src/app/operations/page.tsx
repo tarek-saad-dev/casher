@@ -47,12 +47,12 @@ function formatDateLabel(dateStr: string): string {
   const date = new Date(dateStr + 'T00:00:00');
   const days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
   const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-  
+
   const dayName = days[date.getDay()];
   const dayNum = date.getDate();
   const monthName = months[date.getMonth()];
   const year = date.getFullYear();
-  
+
   return `${dayName} ${dayNum} ${monthName} ${year}`;
 }
 
@@ -75,6 +75,7 @@ export default function OperationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showCreateDrawer, setShowCreateDrawer] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [announcedIds, setAnnouncedIds] = useState<Set<string>>(new Set());
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Toast helper - defined first to be available for voice handlers
@@ -93,12 +94,22 @@ export default function OperationsPage() {
   }, []);
 
   // Voice auto-announcement hook
-  const { isPlaying: isAnnouncing, reannounce } = useAutoVoiceAnnounce({
+  const { reannounce } = useAutoVoiceAnnounce({
     date: selectedDate,
     enabled: voiceEnabled,
-    pollIntervalMs: 10000, // Check every 10 seconds
+    pollIntervalMs: 10000,
     onAnnouncementStart: (announcement) => {
-      showToast(`نداء: ${announcement.ticketCode}`, true);
+      const isBooking = announcement.type === 'booking';
+      const label = isBooking
+        ? `تم نداء الحجز ${announcement.ticketCode}${announcement.chairDisplayText ? ' — ' + announcement.chairDisplayText : ''}`
+        : `تم نداء الدور ${announcement.ticketCode}${announcement.chairDisplayText ? ' — ' + announcement.chairDisplayText : ''}`;
+      showToast(label, true);
+    },
+    onAnnouncementEnd: (announcement) => {
+      const key = announcement.type === 'booking'
+        ? `booking-${announcement.bookingId}`
+        : `queue-${announcement.queueTicketId}`;
+      setAnnouncedIds(prev => new Set([...prev, key]));
     },
     onError: (error) => {
       console.error('[Voice] Error:', error);
@@ -129,7 +140,7 @@ export default function OperationsPage() {
     try {
       const res = await fetch(`/api/operations/flow-board?date=${selectedDate}`);
       const data: FlowBoardResponse = await res.json();
-      
+
       if (!data.ok) {
         throw new Error('فشل تحميل البيانات');
       }
@@ -180,9 +191,9 @@ export default function OperationsPage() {
   // Calculate summary stats
   const summaryStats = useCallback(() => {
     if (!flowBoardData) return { nextAvailable: null, totalWaiting: 0, totalBookings: 0 };
-    
+
     const workingBarbers = flowBoardData.barbers.filter(b => b.status === 'working');
-    
+
     // Find next available barber
     let nextAvailable: { name: string; time: string } | null = null;
     for (const barber of workingBarbers) {
@@ -202,13 +213,13 @@ export default function OperationsPage() {
         }
       }
     }
-    
+
     // Total waiting across all barbers
     const totalWaiting = workingBarbers.reduce((sum, b) => sum + b.waitingCount, 0);
-    
+
     // Total bookings
     const totalBookings = workingBarbers.reduce((sum, b) => sum + b.bookingsCount, 0);
-    
+
     return { nextAvailable, totalWaiting, totalBookings };
   }, [flowBoardData]);
 
@@ -256,6 +267,7 @@ export default function OperationsPage() {
         onRefresh={fetchFlowBoard}
         voiceEnabled={voiceEnabled}
         onReannounce={reannounce}
+        announcedIds={announcedIds}
       />
 
       {/* Bottom Summary Strip */}

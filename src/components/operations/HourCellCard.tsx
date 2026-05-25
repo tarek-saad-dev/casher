@@ -5,16 +5,17 @@ import { formatTimeRange, getItemTypeLabel, TimelineItem } from './schedulerUtil
 
 interface Props {
   item: TimelineItem;
+  announcedIds?: Set<string>;
   compact?: boolean;
   onClick?: (item: TimelineItem) => void;
   voiceEnabled?: boolean;
   onReannounce?: (ticketId: number) => Promise<boolean>;
 }
 
-export function HourCellCard({ item, compact = false, onClick, voiceEnabled, onReannounce }: Props) {
+export function HourCellCard({ item, compact = false, onClick, voiceEnabled, onReannounce, announcedIds }: Props) {
   const type = item.type === 'in_service' ? 'in_service' :
-               item.type === 'booking' ? 'booking' :
-               item.type === 'queue' ? 'queue' : 'gap';
+    item.type === 'booking' ? 'booking' :
+      item.type === 'queue' ? 'queue' : 'gap';
 
   const styles = getCardStyles(type, item.protected);
   const Icon = getIcon(type, item.protected);
@@ -40,8 +41,9 @@ export function HourCellCard({ item, compact = false, onClick, voiceEnabled, onR
     }
   };
 
-  // Check if this queue item is called/announced
-  const isCalled = item.status === 'called' || item.status === 'announced';
+  // Check if called: queue via status, booking via announcedIds set
+  const key = item.type === 'booking' ? `booking-${item.sourceId}` : `queue-${item.sourceId}`;
+  const isCalled = item.status === 'called' || item.status === 'announced' || (!!announcedIds && announcedIds.has(key));
 
   return (
     <div
@@ -133,20 +135,20 @@ export function HourCellCard({ item, compact = false, onClick, voiceEnabled, onR
         {/* Called badge and reannounce button */}
         <div className="flex items-center justify-between mt-1">
           {isCalled && (
-            <span 
+            <span
               className="text-[8px] px-1.5 py-0.5 rounded font-medium"
               style={{ background: '#22c55e30', color: '#22c55e' }}
             >
               تم النداء
             </span>
           )}
-          
+
           {voiceEnabled && item.type === 'queue' && (
             <button
               onClick={handleReannounce}
               className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-medium opacity-0 hover:opacity-100 group-hover:opacity-100 transition-opacity"
-              style={{ 
-                background: isCalled ? '#22c55e20' : 'rgba(212, 175, 55, 0.15)', 
+              style={{
+                background: isCalled ? '#22c55e20' : 'rgba(212, 175, 55, 0.15)',
                 color: isCalled ? '#22c55e' : '#d4af37',
                 marginRight: 'auto'
               }}

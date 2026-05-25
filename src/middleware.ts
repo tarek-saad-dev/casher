@@ -1,9 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 
-const COOKIE_NAME = 'pos_session';
+const COOKIE_NAME = "pos_session";
 
 // Public routes that don't require authentication
-const PUBLIC_ROUTES = ['/login', '/api/auth/login', '/api/public/', '/api/operations/flow-board'];
+const PUBLIC_ROUTES = [
+  "/login",
+  "/api/auth/login",
+  "/api/public/",
+  "/api/operations/flow-board",
+  "/api/operations/queue/due-announcements",
+  "/api/operations/announce",
+  "/api/admin/migrate-booking-announce",
+];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -15,9 +23,9 @@ export function middleware(req: NextRequest) {
 
   // Allow static assets and Next.js internals
   if (
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/favicon') ||
-    pathname.includes('.')
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/favicon") ||
+    pathname.includes(".")
   ) {
     return NextResponse.next();
   }
@@ -26,10 +34,13 @@ export function middleware(req: NextRequest) {
   const session = req.cookies.get(COOKIE_NAME);
   if (!session?.value) {
     // API routes return 401, page routes redirect to login
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'غير مصرح — يجب تسجيل الدخول' }, { status: 401 });
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "غير مصرح — يجب تسجيل الدخول" },
+        { status: 401 },
+      );
     }
-    const loginUrl = new URL('/login', req.url);
+    const loginUrl = new URL("/login", req.url);
     return NextResponse.redirect(loginUrl);
   }
 
@@ -37,5 +48,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

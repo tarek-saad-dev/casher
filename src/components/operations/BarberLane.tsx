@@ -30,9 +30,10 @@ interface Props {
   onItemClick?: (item: TimelineItem) => void;
   voiceEnabled?: boolean;
   onReannounce?: (ticketId: number) => Promise<boolean>;
+  announcedIds?: Set<string>;
 }
 
-export function BarberLane({ barber, headerHeight = 80, onItemClick, voiceEnabled, onReannounce }: Props) {
+export function BarberLane({ barber, headerHeight = 80, onItemClick, voiceEnabled, onReannounce, announcedIds }: Props) {
   const hours = generateOperationalHours();
   const itemsByHour = groupItemsByHour(barber.timeline);
 
@@ -138,13 +139,14 @@ export function BarberLane({ barber, headerHeight = 80, onItemClick, voiceEnable
                 // Cell with items
                 <div className="h-full p-1.5 flex flex-col gap-1">
                   {visibleItems.map((item, idx) => (
-                    <HourCellCard 
-                      key={idx} 
-                      item={item} 
-                      compact={items.length > 1} 
+                    <HourCellCard
+                      key={idx}
+                      item={item}
+                      compact={items.length > 1}
                       onClick={onItemClick}
                       voiceEnabled={voiceEnabled}
                       onReannounce={onReannounce}
+                      announcedIds={announcedIds}
                     />
                   ))}
 

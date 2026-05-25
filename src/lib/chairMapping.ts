@@ -3,7 +3,7 @@
  * Re-exports from barberVoiceMap for backward compatibility
  */
 
-import { getBarberVoiceInfo, getEnglishBarberName } from './barberVoiceMap';
+import { getBarberVoiceInfo, getEnglishBarberName } from "./barberVoiceMap";
 
 // Re-export functions from barberVoiceMap
 export { getEnglishBarberName };
@@ -12,7 +12,9 @@ export { getEnglishBarberName };
  * Get chair number for a barber by name
  * Delegates to barberVoiceMap
  */
-export function getChairNumber(empName: string | null | undefined): number | null {
+export function getChairNumber(
+  empName: string | null | undefined,
+): number | null {
   const info = getBarberVoiceInfo(empName);
   return info?.chairNumber ?? null;
 }
@@ -134,7 +136,7 @@ export function buildEnglishAnnouncement(params: {
  * Arabic once, English once (no repetition)
  */
 export interface AnnouncementPart {
-  lang: 'ar-EG' | 'en-US';
+  lang: "ar-EG" | "en-US";
   text: string;
   rate: string;
   pitch: string;
@@ -165,16 +167,16 @@ export function buildAnnouncementSequence(params: {
   // Return only 2 parts: Arabic once, English once
   return [
     {
-      lang: 'ar-EG',
+      lang: "ar-EG",
       text: arabicText,
-      rate: '-5%',
-      pitch: '0%',
+      rate: "-5%",
+      pitch: "0%",
     },
     {
-      lang: 'en-US',
+      lang: "en-US",
       text: englishText,
-      rate: '-5%',
-      pitch: '0%',
+      rate: "-5%",
+      pitch: "0%",
     },
   ];
 }
@@ -182,10 +184,65 @@ export function buildAnnouncementSequence(params: {
 /**
  * Get chair display text for UI
  */
-export function getChairDisplayText(empName: string | null | undefined): string {
+export function getChairDisplayText(
+  empName: string | null | undefined,
+): string {
   const chairNumber = getChairNumber(empName);
   if (chairNumber) {
     return `كرسي ${chairNumber}`;
   }
-  return '';
+  return "";
+}
+
+/**
+ * Build announcement sequence for a BOOKING (not queue ticket).
+ * Uses "صاحب الحجز" / "Your booking" phrasing instead of "الدور".
+ */
+export function buildBookingAnnouncementSequence(params: {
+  bookingCode: string | null;
+  customerName: string | null;
+  empName: string | null;
+}): AnnouncementPart[] {
+  const { bookingCode, customerName, empName } = params;
+  const chairNumber = getChairNumber(empName);
+  const englishBarberName = getEnglishBarberName(empName);
+
+  const codeLabel = bookingCode ? `رقم ${bookingCode}` : "";
+  const hasCustomer = customerName && customerName.trim();
+  const hasBarber = empName && empName.trim();
+  const hasChair = chairNumber !== null;
+
+  // Arabic
+  let arText: string;
+  if (hasCustomer && codeLabel && hasBarber && hasChair) {
+    arText = `عميلنا ${customerName}، صاحب الحجز ${codeLabel}، يتفضل يتوجه إلى الأستاذ ${empName}، كرسي رقم ${chairNumber}`;
+  } else if (hasCustomer && hasBarber && hasChair) {
+    arText = `عميلنا ${customerName}، يتفضل يتوجه إلى الأستاذ ${empName}، كرسي رقم ${chairNumber}`;
+  } else if (hasCustomer && hasBarber) {
+    arText = `عميلنا ${customerName}، يتفضل يتوجه إلى الأستاذ ${empName}`;
+  } else if (hasBarber && hasChair) {
+    arText = `صاحب الحجز${codeLabel ? " " + codeLabel : ""}، يتفضل يتوجه إلى الأستاذ ${empName}، كرسي رقم ${chairNumber}`;
+  } else {
+    arText = `صاحب الحجز${codeLabel ? " " + codeLabel : ""}، يتفضل يتوجه إلى منطقة الخدمة`;
+  }
+
+  // English
+  const enBarber = englishBarberName ?? empName;
+  let enText: string;
+  if (bookingCode && hasCustomer && enBarber && hasChair) {
+    enText = `Booking number ${bookingCode}, customer ${customerName}, please proceed to barber ${enBarber}, chair number ${chairNumber}`;
+  } else if (hasCustomer && enBarber && hasChair) {
+    enText = `Customer ${customerName}, please proceed to barber ${enBarber}, chair number ${chairNumber}`;
+  } else if (enBarber && hasChair) {
+    enText = `Your booking${bookingCode ? " number " + bookingCode : ""}, please proceed to barber ${enBarber}, chair number ${chairNumber}`;
+  } else if (enBarber) {
+    enText = `Your booking${bookingCode ? " number " + bookingCode : ""}, please proceed to barber ${enBarber}`;
+  } else {
+    enText = `Your booking${bookingCode ? " number " + bookingCode : ""}, please proceed to the service area`;
+  }
+
+  return [
+    { lang: "ar-EG", text: arText, rate: "-5%", pitch: "0%" },
+    { lang: "en-US", text: enText, rate: "-5%", pitch: "0%" },
+  ];
 }

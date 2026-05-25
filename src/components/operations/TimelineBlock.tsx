@@ -1,6 +1,6 @@
 'use client';
 
-import { Scissors, Calendar, Users, Shield, Ticket } from 'lucide-react';
+import { Scissors, Calendar, Shield, Ticket, Volume2 } from 'lucide-react';
 
 interface TimelineItem {
   type: 'queue' | 'booking' | 'gap' | 'in_service';
@@ -17,9 +17,10 @@ interface TimelineItem {
 
 interface Props {
   item: TimelineItem;
+  announced?: boolean;
 }
 
-export function TimelineBlock({ item }: Props) {
+export function TimelineBlock({ item, announced }: Props) {
   const startTime = formatTime(item.startTime);
   const endTime = formatTime(item.endTime);
 
@@ -68,6 +69,13 @@ export function TimelineBlock({ item }: Props) {
             {isProtected ? 'حجز محمي' : 'حجز'}
           </span>
           {isProtected && <Shield className="w-3.5 h-3.5" style={{ color: '#d4af37' }} />}
+          {announced && (
+            <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+              style={{ background: 'rgba(16,185,129,0.2)', color: '#10B981', border: '1px solid rgba(16,185,129,0.4)' }}>
+              <Volume2 className="w-2.5 h-2.5" />
+              تم النداء
+            </span>
+          )}
         </div>
         <div className="text-sm font-bold text-white mb-1">
           {startTime} - {endTime}
@@ -94,6 +102,13 @@ export function TimelineBlock({ item }: Props) {
           {item.ticketCode && (
             <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(212, 175, 55, 0.2)', color: '#d4af37' }}>
               {item.ticketCode}
+            </span>
+          )}
+          {announced && (
+            <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+              style={{ background: 'rgba(16,185,129,0.2)', color: '#10B981', border: '1px solid rgba(16,185,129,0.4)' }}>
+              <Volume2 className="w-2.5 h-2.5" />
+              تم النداء
             </span>
           )}
         </div>
