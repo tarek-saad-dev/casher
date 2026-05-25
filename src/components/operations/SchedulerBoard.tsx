@@ -29,12 +29,11 @@ interface Props {
   onRefresh?: () => void;
   voiceEnabled?: boolean;
   onReannounce?: (ticketId: number) => Promise<boolean>;
-  announcedIds?: Set<string>;
 }
 
 const HEADER_HEIGHT = 80;
 
-export function SchedulerBoard({ barbers, loading, error, onRetry, onRefresh, voiceEnabled, onReannounce, announcedIds }: Props) {
+export function SchedulerBoard({ barbers, loading, error, onRetry, onRefresh, voiceEnabled, onReannounce }: Props) {
   const hours = useMemo(() => generateOperationalHours(), []);
   const [selectedItem, setSelectedItem] = useState<TimelineItem | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -164,7 +163,6 @@ export function SchedulerBoard({ barbers, loading, error, onRetry, onRefresh, vo
                 onItemClick={handleItemClick}
                 voiceEnabled={voiceEnabled}
                 onReannounce={onReannounce}
-                announcedIds={announcedIds}
               />
             ))}
           </div>

@@ -1,6 +1,6 @@
 {
     "info": {
-        "name": "Casher - All APIs",
+        "name": "Casher Public APIs",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
     "variable": [{
@@ -9,85 +9,6 @@
         "type": "string"
     }],
     "item": [{
-            "name": "── STEP 1: Run Migration ──",
-            "request": {
-                "method": "POST",
-                "header": [],
-                "url": "{{base_url}}/api/admin/migrate-booking-announce",
-                "body": { "mode": "raw", "raw": "" }
-            }
-        },
-        {
-            "name": "── STEP 2: Check due-announcements (bookings + queue) ──",
-            "request": {
-                "method": "GET",
-                "header": [],
-                "url": "{{base_url}}/api/operations/queue/due-announcements?date=2026-05-25"
-            }
-        },
-        {
-            "name": "── STEP 3: Announce a booking manually ──",
-            "request": {
-                "method": "POST",
-                "header": [{ "key": "Content-Type", "value": "application/json" }],
-                "url": "{{base_url}}/api/operations/announce",
-                "body": {
-                    "mode": "raw",
-                    "raw": "{\n  \"type\": \"booking\",\n  \"id\": REPLACE_WITH_BOOKING_ID\n}"
-                }
-            }
-        },
-        {
-            "name": "── STEP 4: Announce a queue ticket manually ──",
-            "request": {
-                "method": "POST",
-                "header": [{ "key": "Content-Type", "value": "application/json" }],
-                "url": "{{base_url}}/api/operations/announce",
-                "body": {
-                    "mode": "raw",
-                    "raw": "{\n  \"type\": \"queue_ticket\",\n  \"id\": REPLACE_WITH_TICKET_ID\n}"
-                }
-            }
-        },
-        {
-            "name": "── STEP 5: Force re-announce (force=true) ──",
-            "request": {
-                "method": "POST",
-                "header": [{ "key": "Content-Type", "value": "application/json" }],
-                "url": "{{base_url}}/api/operations/announce",
-                "body": {
-                    "mode": "raw",
-                    "raw": "{\n  \"type\": \"booking\",\n  \"id\": REPLACE_WITH_BOOKING_ID,\n  \"force\": true\n}"
-                }
-            }
-        },
-        {
-            "name": "── STEP 6: Check due-announcements after announce (should be empty) ──",
-            "request": {
-                "method": "GET",
-                "header": [],
-                "url": "{{base_url}}/api/operations/queue/due-announcements?date=2026-05-25"
-            }
-        },
-        {
-            "name": "── TEST A: due-announcements — booking 2 min ago (should appear) ──",
-            "request": {
-                "method": "GET",
-                "header": [],
-                "url": "{{base_url}}/api/operations/queue/due-announcements?date=2026-05-25",
-                "description": "First insert test booking via SQL:\nINSERT INTO dbo.Bookings (ClientID, AssignedEmpID, BookingDate, StartTime, EndTime, Status, Source, BookingCode, CreatedByUserID)\nVALUES (1, 1, '2026-05-25', FORMAT(DATEADD(MINUTE,-2,GETDATE()),'HH:mm:ss'), FORMAT(DATEADD(MINUTE,28,GETDATE()),'HH:mm:ss'), 'confirmed', 'test', 'TEST-PAST', 0)\n\nExpected: booking appears in announcements[]"
-            }
-        },
-        {
-            "name": "── TEST B: due-announcements — booking 10 min future (should NOT appear) ──",
-            "request": {
-                "method": "GET",
-                "header": [],
-                "url": "{{base_url}}/api/operations/queue/due-announcements?date=2026-05-25",
-                "description": "First insert test booking via SQL:\nINSERT INTO dbo.Bookings (ClientID, AssignedEmpID, BookingDate, StartTime, EndTime, Status, Source, BookingCode, CreatedByUserID)\nVALUES (1, 1, '2026-05-25', FORMAT(DATEADD(MINUTE,10,GETDATE()),'HH:mm:ss'), FORMAT(DATEADD(MINUTE,40,GETDATE()),'HH:mm:ss'), 'confirmed', 'test', 'TEST-FUTURE', 0)\n\nExpected: booking does NOT appear in announcements[]"
-            }
-        },
-        {
             "name": "1. Upcoming - empty phone (no bookings)",
             "request": {
                 "method": "POST",
