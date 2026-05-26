@@ -115,7 +115,7 @@ interface OperationsMusicPlayerProps {
 }
 
 // Default salon music
-const DEFAULT_MUSIC_URL = 'https://youtu.be/K7d-c9BhWUc';
+const DEFAULT_MUSIC_URL = 'https://youtu.be/zAiXGF6kp7g?si=REAv95Sbqz_gLTaL';
 
 export function OperationsMusicPlayer({ isExpanded = false, onToggleExpand }: OperationsMusicPlayerProps) {
   const [youtubeUrl, setYoutubeUrl] = useState(DEFAULT_MUSIC_URL);
@@ -334,16 +334,16 @@ export function OperationsMusicPlayer({ isExpanded = false, onToggleExpand }: Op
         </div>
       </div>
 
+      {/* Hidden YouTube Player Container - always in DOM */}
+      <div
+        ref={containerRef}
+        id="youtube-player-container"
+        className="hidden"
+      />
+
       {/* Expanded Content - Compact Controls */}
       {isExpanded && (
         <div className="p-3 space-y-3">
-          {/* Hidden YouTube Player Container */}
-          <div
-            ref={containerRef}
-            id="youtube-player-container"
-            className="hidden"
-          />
-
           {/* Compact Player Controls */}
           <div className="flex items-center gap-3">
             {/* Play/Pause Button */}

@@ -116,8 +116,10 @@ export default function ExpensesPage() {
   const [dateFrom, setDateFrom] = useState<string>(() => getLocalDateString(new Date()));
   const [dateTo, setDateTo] = useState<string>(() => getLocalDateString(new Date()));
   const [filterCatId, setFilterCatId] = useState<string>('');
+  const [filterPaymentMethodId, setFilterPaymentMethodId] = useState<string>(''); // 'all' or specific ID
   const [dateError, setDateError] = useState<string>('');
   const [showCustomRange, setShowCustomRange] = useState(false);
+  const [sortByAmountDesc, setSortByAmountDesc] = useState(false); // Toggle for amount sorting
   
   // ──── Edit state ────
   const [editingExpense, setEditingExpense] = useState<ExpenseRecord | null>(null);
@@ -190,19 +192,30 @@ export default function ExpensesPage() {
     if (dateFrom) params.set('dateFrom', dateFrom);
     if (dateTo) params.set('dateTo', dateTo);
     if (filterCatId) params.set('catId', filterCatId);
+    if (filterPaymentMethodId && filterPaymentMethodId !== 'all') {
+      params.set('paymentMethodId', filterPaymentMethodId);
+    }
     fetch(`/api/expenses?${params.toString()}`)
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setExpenses(d); })
       .catch(() => {})
       .finally(() => setLoadingHistory(false));
-  }, [dateFrom, dateTo, filterCatId, dateError]);
+  }, [dateFrom, dateTo, filterCatId, filterPaymentMethodId, dateError]);
 
   useEffect(() => { loadExpenses(); }, [loadExpenses]);
 
   // ──── Summary calculations ────
-  const totalExpenses = expenses.reduce((sum, e) => sum + (e.GrandTolal || 0), 0);
-  const totalCash = expenses.filter(e => e.PaymentMethod === 'كاش').reduce((sum, e) => sum + (e.GrandTolal || 0), 0);
-  const totalVisa = expenses.filter(e => e.PaymentMethod === 'فيزا').reduce((sum, e) => sum + (e.GrandTolal || 0), 0);
+  // Sort expenses by amount when toggle is on
+  const sortedExpenses = useMemo(() => {
+    if (sortByAmountDesc) {
+      return [...expenses].sort((a, b) => (b.GrandTolal || 0) - (a.GrandTolal || 0));
+    }
+    return expenses;
+  }, [expenses, sortByAmountDesc]);
+
+  const totalExpenses = sortedExpenses.reduce((sum, e) => sum + (e.GrandTolal || 0), 0);
+  const totalCash = sortedExpenses.filter(e => e.PaymentMethod === 'كاش').reduce((sum, e) => sum + (e.GrandTolal || 0), 0);
+  const totalVisa = sortedExpenses.filter(e => e.PaymentMethod === 'فيزا').reduce((sum, e) => sum + (e.GrandTolal || 0), 0);
 
   // ──── Handle custom date input ────
   const handleCustomFrom = (val: string) => {
@@ -218,6 +231,7 @@ export default function ExpensesPage() {
   const handleResetFilters = useCallback(() => {
     applyPreset('today');
     setFilterCatId('');
+    setFilterPaymentMethodId('');
     setDateError('');
     setShowCustomRange(false);
   }, [applyPreset]);
@@ -373,9 +387,9 @@ export default function ExpensesPage() {
       <ShiftRequiredOverlay />
 
       {/* ═══════════ LEFT PANEL: History + Summary ═══════════ */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-background">
+      <div className="flex-1 flex flex-col min-h-0 bg-background">
         {/* Summary Cards */}
-        <div className="p-3 border-b border-border bg-gradient-to-br from-muted/30 to-muted/10">
+        <div className="p-3 border-b border-border bg-gradient-to-br from-muted/30 to-muted/10 shrink-0">
           <div className="grid grid-cols-3 gap-2">
             <div className="rounded-lg border border-border p-2.5 bg-card/80 backdrop-blur-sm">
               <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
@@ -403,7 +417,7 @@ export default function ExpensesPage() {
         </div>
 
         {/* ═══ Filters Bar ═══ */}
-        <div className="px-3 pt-2.5 pb-2 border-b border-border bg-zinc-900/60 space-y-2">
+        <div className="px-3 pt-2.5 pb-2 border-b border-border bg-zinc-900/60 space-y-2 shrink-0">
 
           {/* Row 1: Preset buttons + category */}
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -453,6 +467,18 @@ export default function ExpensesPage() {
               <option value="">كل الفئات</option>
               {categories.map(c => (
                 <option key={c.ExpINID} value={c.ExpINID}>{c.CatName}</option>
+              ))}
+            </select>
+
+            {/* Payment Method filter */}
+            <select
+              value={filterPaymentMethodId}
+              onChange={(e) => setFilterPaymentMethodId(e.target.value)}
+              className="text-[11px] px-2 py-1 rounded-md border border-border bg-zinc-800/60 text-foreground max-w-[140px] truncate"
+            >
+              <option value="">كل وسائل الدفع</option>
+              {paymentMethods.map(pm => (
+                <option key={pm.ID} value={pm.ID}>{pm.Name}</option>
               ))}
             </select>
 
@@ -512,7 +538,7 @@ export default function ExpensesPage() {
         </div>
 
         {/* Expenses List */}
-        <ScrollArea className="flex-1">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="p-3">
             {loadingHistory && (
               <div className="text-center py-8 text-muted-foreground">
@@ -524,21 +550,70 @@ export default function ExpensesPage() {
             {!loadingHistory && expenses.length === 0 && (
               <div className="text-center py-12 text-muted-foreground">
                 <Receipt className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm font-medium">لا توجد مصروفات</p>
-                <p className="text-xs mt-1">سجّل مصروف جديد من النموذج على اليسار</p>
+                <p className="text-sm font-medium">
+                  {filterPaymentMethodId && filterPaymentMethodId !== 'all'
+                    ? `لا توجد مصروفات بهذه الوسيلة في الفترة المحددة`
+                    : 'لا توجد مصروفات'}
+                </p>
+                <p className="text-xs mt-1">
+                  {filterPaymentMethodId && filterPaymentMethodId !== 'all'
+                    ? 'جرب وسيلة دفع أخرى أو غيّر الفترة'
+                    : 'سجّل مصروف جديد من النموذج على اليسار'}
+                </p>
               </div>
             )}
 
-            {!loadingHistory && expenses.length > 0 && (
+            {/* List Header */}
+            {!loadingHistory && sortedExpenses.length > 0 && (
+              <div className="flex items-center justify-between mb-3 pb-2 border-b border-border/50">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-foreground">
+                    {activeDatePreset === 'today' ? 'مصروفات اليوم' : 
+                     activeDatePreset === 'yesterday' ? 'مصروفات أمس' : 
+                     activeDatePreset === 'last7' ? 'آخر 7 أيام' :
+                     activeDatePreset === 'thisMonth' ? 'مصروفات الشهر' : 'عرض المصروفات'}
+                  </span>
+                  <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                    {sortedExpenses.length} عملية
+                  </span>
+                </div>
+                <button
+                  onClick={() => setSortByAmountDesc(!sortByAmountDesc)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-medium transition-all ${
+                    sortByAmountDesc
+                      ? 'bg-amber-500/10 border-amber-500/50 text-amber-400'
+                      : 'bg-zinc-800/50 border-zinc-700 text-zinc-400 hover:text-zinc-300'
+                  }`}
+                >
+                  <TrendingDown className="w-3.5 h-3.5" />
+                  {sortByAmountDesc ? 'الأعلى للأقل' : 'ترتيب'}
+                </button>
+              </div>
+            )}
+
+            {!loadingHistory && sortedExpenses.length > 0 && (
               <div className="space-y-2">
-                {expenses.map((exp) => (
+                {sortedExpenses.map((exp, index) => {
+                  const rank = sortByAmountDesc ? index + 1 : null;
+                  
+                  return (
                   <div
                     key={exp.ID}
                     className="flex items-center justify-between p-2.5 rounded-lg border border-border bg-card hover:bg-accent/30 transition-colors"
+                    style={{ scrollMarginTop: '10px' }}
                   >
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-destructive/10 text-destructive shrink-0">
-                        <TrendingDown className="w-3.5 h-3.5" />
+                      <div className={`flex items-center justify-center w-10 h-10 rounded-full shrink-0 ${
+                        rank === 1 ? 'bg-amber-500 text-amber-950' :
+                        rank === 2 ? 'bg-zinc-300 text-zinc-900' :
+                        rank === 3 ? 'bg-orange-500 text-orange-950' :
+                        'bg-destructive/10 text-destructive'
+                      }`}>
+                        {rank && rank <= 3 ? (
+                          <span className="text-lg font-black">{rank}</span>
+                        ) : (
+                          <TrendingDown className="w-4 h-4" />
+                        )}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 mb-0.5">
@@ -546,6 +621,18 @@ export default function ExpensesPage() {
                           <Badge variant="outline" className="text-[9px] h-4 px-1">
                             #{exp.invID}
                           </Badge>
+                          {sortByAmountDesc && rank && rank <= 3 && (
+                            <Badge 
+                              variant="outline" 
+                              className={`text-[10px] h-5 px-2 font-bold ${
+                                rank === 1 ? 'bg-amber-500/20 border-amber-500 text-amber-400' :
+                                rank === 2 ? 'bg-zinc-400/20 border-zinc-400 text-zinc-300' :
+                                'bg-orange-500/20 border-orange-500 text-orange-400'
+                              }`}
+                            >
+                              {rank === 1 ? '🥇 الأعلى' : rank === 2 ? '🥈' : '🥉'}
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                           <span>{fmtDate(exp.invDate)}</span>
@@ -589,11 +676,12 @@ export default function ExpensesPage() {
                       </span>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
-        </ScrollArea>
+        </div>
       </div>
 
       {/* ═══════════ RIGHT PANEL: New Expense Form ═══════════ */}

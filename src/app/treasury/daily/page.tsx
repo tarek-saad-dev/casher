@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Loader2, Lock, Calculator } from 'lucide-react';
+import { Loader2, Lock, Calculator, ArrowRightLeft } from 'lucide-react';
 import TreasuryFiltersBar from '@/components/treasury/TreasuryFiltersBar';
 import TreasuryKpiCards from '@/components/treasury/TreasuryKpiCards';
 import PaymentMethodBreakdownTable from '@/components/treasury/PaymentMethodBreakdownTable';
 import TreasuryMovementsTable from '@/components/treasury/TreasuryMovementsTable';
 import TreasuryClosePanel from '@/components/treasury/TreasuryClosePanel';
 import PaymentMethodDetailsModal from '@/components/treasury/PaymentMethodDetailsModal';
+import PaymentTransferModal from '@/components/treasury/PaymentTransferModal';
 import type { 
   DailyTreasuryData, 
   TreasuryMovementsResponse,
@@ -23,6 +24,7 @@ export default function DailyTreasuryPage() {
   const [error, setError] = useState<string | null>(null);
   
   const [showClosePanel, setShowClosePanel] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
   const [movementsPage, setMovementsPage] = useState(1);
 
   const [detailsModal, setDetailsModal] = useState<{
@@ -164,6 +166,13 @@ export default function DailyTreasuryPage() {
     loadMovements(movementsPage);
   };
 
+  const handleTransferSuccess = () => {
+    // Reload data after transfer
+    loadTreasuryData();
+    loadMovements(movementsPage);
+    setShowTransferModal(false);
+  };
+
   return (
     <div className="min-h-screen bg-zinc-950 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -174,15 +183,26 @@ export default function DailyTreasuryPage() {
             <p className="text-zinc-400">متابعة الحركات المالية وقفل اليوم</p>
           </div>
           
-          {treasuryData && treasuryData.paymentMethods.length > 0 && (
-            <button
-              onClick={() => setShowClosePanel(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-sm font-medium hover:bg-amber-500/30 transition-colors"
-            >
-              <Lock className="h-4 w-4" />
-              قفل اليوم
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {treasuryData && treasuryData.paymentMethods.length > 0 && (
+              <>
+                <button
+                  onClick={() => setShowTransferModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-sm font-medium hover:bg-emerald-500/30 transition-colors"
+                >
+                  <ArrowRightLeft className="h-4 w-4" />
+                  تحويل
+                </button>
+                <button
+                  onClick={() => setShowClosePanel(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-sm font-medium hover:bg-amber-500/30 transition-colors"
+                >
+                  <Lock className="h-4 w-4" />
+                  قفل اليوم
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Filters */}
@@ -315,6 +335,13 @@ export default function DailyTreasuryPage() {
           onClose={() => setDetailsModal(null)}
         />
       )}
+
+      {/* Transfer Modal */}
+      <PaymentTransferModal
+        isOpen={showTransferModal}
+        onClose={() => setShowTransferModal(false)}
+        onSuccess={handleTransferSuccess}
+      />
 
       {/* Close Panel Modal */}
       {showClosePanel && treasuryData && (

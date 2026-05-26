@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
     const catId = url.searchParams.get('catId');
     const shiftId = url.searchParams.get('shiftId');
     const today = url.searchParams.get('today'); // "1" = today only
+    const paymentMethodId = url.searchParams.get('paymentMethodId');
 
     let whereClause = "WHERE cm.invType = N'مصروفات' AND cm.inOut = N'out'";
     const request = db.request();
@@ -39,6 +40,11 @@ export async function GET(req: NextRequest) {
     if (shiftId) {
       whereClause += ' AND cm.ShiftMoveID = @shiftId';
       request.input('shiftId', sql.Int, parseInt(shiftId));
+    }
+
+    if (paymentMethodId && paymentMethodId !== 'all') {
+      whereClause += ' AND cm.PaymentMethodID = @paymentMethodId';
+      request.input('paymentMethodId', sql.Int, parseInt(paymentMethodId));
     }
 
     const result = await request.query(`

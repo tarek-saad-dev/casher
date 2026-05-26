@@ -197,8 +197,17 @@ export async function GET(req: NextRequest) {
       // Add booking items
       for (const b of barberBookings) {
         const start = timeToDate(b.StartTime, dateStr);
-        const end = timeToDate(b.EndTime, dateStr);
+        let end = timeToDate(b.EndTime, dateStr);
+        
+        // Fix: if end is before start (overnight or data issue), add one day to end
+        if (end.getTime() <= start.getTime()) {
+          end = new Date(end.getTime() + 24 * 60 * 60 * 1000);
+        }
+        
         const duration = Math.round((end.getTime() - start.getTime()) / 60000);
+        
+        // Ensure duration is never negative
+        const safeDuration = Math.max(0, duration);
         
         timeline.push({
           type: "booking",
@@ -208,7 +217,7 @@ export async function GET(req: NextRequest) {
           endTime: end.toISOString(),
           status: b.Status,
           protected: true,
-          durationMinutes: duration,
+          durationMinutes: safeDuration,
           customerName: b.ClientName || undefined,
         });
       }

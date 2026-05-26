@@ -5,9 +5,12 @@ import { OperationsToolbar } from '@/components/operations/OperationsToolbar';
 import { SchedulerBoard } from '@/components/operations/SchedulerBoard';
 import { BottomSummaryStrip } from '@/components/operations/BottomSummaryStrip';
 import { SimpleCreateQueueDrawer } from '@/components/operations/SimpleCreateQueueDrawer';
+import { FindNearestQueueDrawer } from '@/components/operations/FindNearestQueueDrawer';
 import { VoiceEnableBanner } from '@/components/operations/VoiceEnableBanner';
 import { OperationsMusicPlayer } from '@/components/operations/OperationsMusicPlayer';
+import { CreateBookingDrawer } from '@/components/operations/CreateBookingDrawer';
 import { useAutoVoiceAnnounce, isVoiceEnabled, enableVoice, disableVoice } from '@/hooks/useAutoVoiceAnnounce';
+import { Plus, CalendarPlus } from 'lucide-react';
 
 // Types matching flow-board response
 interface FlowBoardBarber {
@@ -74,6 +77,16 @@ export default function OperationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateDrawer, setShowCreateDrawer] = useState(false);
+  const [showFindNearestDrawer, setShowFindNearestDrawer] = useState(false);
+  const [showBookingDrawer, setShowBookingDrawer] = useState(false);
+  const [bookingInitialData, setBookingInitialData] = useState<{
+    date?: string;
+    time?: string;
+    empId?: number;
+    barberName?: string;
+    timeRangeStart?: string;
+    timeRangeEnd?: string;
+  }>({});
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -90,6 +103,11 @@ export default function OperationsPage() {
   // Check voice enabled status on mount
   useEffect(() => {
     setVoiceEnabled(isVoiceEnabled());
+  }, []);
+
+  // Set page title with emoji
+  useEffect(() => {
+    document.title = '💈 لوحة التحكم - الصالون';
   }, []);
 
   // Voice auto-announcement hook
@@ -225,11 +243,26 @@ export default function OperationsPage() {
         onToday={handleToday}
         onRefresh={fetchFlowBoard}
         onCreateQueue={() => setShowCreateDrawer(true)}
+        onFindNearestQueue={() => setShowFindNearestDrawer(true)}
         loading={loading}
       />
 
-      {/* Voice Enable Banner & Music Player */}
+      {/* Create Booking Button + Voice Enable Banner & Music Player */}
       <div className="px-4 py-2 space-y-2">
+        {/* Create Booking Button */}
+        <div className="flex justify-center">
+          <button
+            onClick={() => {
+              setBookingInitialData({ date: selectedDate });
+              setShowBookingDrawer(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all"
+            style={{ background: 'linear-gradient(135deg,#D4AF37,#B8941F)', color: '#000' }}
+          >
+            <CalendarPlus size={18} />
+            + إنشاء حجز
+          </button>
+        </div>
         <div className="flex justify-center">
           <VoiceEnableBanner
             enabled={voiceEnabled}
@@ -256,6 +289,46 @@ export default function OperationsPage() {
         onRefresh={fetchFlowBoard}
         voiceEnabled={voiceEnabled}
         onReannounce={reannounce}
+        currentDate={selectedDate}
+        addToast={(type, message) => showToast(message, type !== 'error')}
+        onEmptyCellClick={(hour, barber) => {
+          // Convert operational hour to time strings
+          // Each cell represents a 1-hour range (e.g., 15:00 to 16:00)
+          const startHour = hour >= 24 ? hour - 24 : hour;
+          const endHour = startHour + 1;
+
+          const timeRangeStart = `${String(startHour).padStart(2, '0')}:00`;
+          const timeRangeEnd = `${String(endHour).padStart(2, '0')}:00`;
+
+          setBookingInitialData({
+            date: selectedDate,
+            time: timeRangeStart,  // Default to start of range
+            empId: barber.empId,
+            barberName: barber.empName,
+            timeRangeStart,
+            timeRangeEnd,
+          });
+          setShowBookingDrawer(true);
+        }}
+        onFreeSegmentClick={(segment, barber) => {
+          // Free segment has exact start and end times from the helper
+          // Format times for the drawer
+          const segmentStartDate = new Date(segment.start);
+          const segmentEndDate = new Date(segment.end);
+
+          const timeRangeStart = `${String(segmentStartDate.getHours()).padStart(2, '0')}:${String(segmentStartDate.getMinutes()).padStart(2, '0')}`;
+          const timeRangeEnd = `${String(segmentEndDate.getHours()).padStart(2, '0')}:${String(segmentEndDate.getMinutes()).padStart(2, '0')}`;
+
+          setBookingInitialData({
+            date: selectedDate,
+            time: timeRangeStart,  // Start at the beginning of free segment
+            empId: barber.empId,
+            barberName: barber.empName,
+            timeRangeStart,
+            timeRangeEnd,
+          });
+          setShowBookingDrawer(true);
+        }}
       />
 
       {/* Bottom Summary Strip */}
@@ -279,6 +352,37 @@ export default function OperationsPage() {
             source: 'flow-board',
             count: flowBoardData?.barbers?.length || 0,
             timestamp: new Date().toISOString(),
+          }}
+        />
+      )}
+
+      {/* Find Nearest Queue Drawer */}
+      {showFindNearestDrawer && (
+        <FindNearestQueueDrawer
+          isOpen={showFindNearestDrawer}
+          onClose={() => setShowFindNearestDrawer(false)}
+          onCreated={() => {
+            fetchFlowBoard();
+            showToast('تم إصدار الدور بنجاح');
+          }}
+        />
+      )}
+
+      {/* Create Booking Drawer */}
+      {showBookingDrawer && (
+        <CreateBookingDrawer
+          open={showBookingDrawer}
+          onClose={() => setShowBookingDrawer(false)}
+          initialDate={bookingInitialData.date}
+          initialTime={bookingInitialData.time}
+          initialEmpId={bookingInitialData.empId}
+          initialBarberName={bookingInitialData.barberName}
+          initialTimeRangeStart={bookingInitialData.timeRangeStart}
+          initialTimeRangeEnd={bookingInitialData.timeRangeEnd}
+          barbers={flowBoardData?.barbers.map(b => ({ empId: b.empId, empName: b.empName })) || []}
+          onCreated={() => {
+            fetchFlowBoard();
+            showToast('تم إنشاء الحجز بنجاح');
           }}
         />
       )}

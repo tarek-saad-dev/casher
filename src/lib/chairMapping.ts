@@ -19,6 +19,7 @@ export function getChairNumber(empName: string | null | undefined): number | nul
 
 /**
  * Build Arabic announcement with chair number
+ * Format: الدور رقم [ticketCode]، يتوجه نحو الكرسي رقم [chairNumber]
  */
 export function buildArabicAnnouncement(params: {
   ticketCode: string;
@@ -26,41 +27,16 @@ export function buildArabicAnnouncement(params: {
   empName: string | null;
   chairNumber: number | null;
 }): string {
-  const { ticketCode, customerName, empName, chairNumber } = params;
+  const { ticketCode, chairNumber } = params;
 
-  const hasCustomer = customerName && customerName.trim();
-  const hasBarber = empName && empName.trim();
   const hasChair = chairNumber !== null;
+  const safeTicketCode = ticketCode || '';
 
-  if (hasCustomer && hasBarber && hasChair) {
-    return `عميلنا ${customerName}، صاحب الدور رقم ${ticketCode}، يتفضل يتوجه إلى الأستاذ ${empName}، كرسي رقم ${chairNumber}`;
+  if (hasChair) {
+    return `الدور رقم ${safeTicketCode}، يتوجه نحو الكرسي رقم ${chairNumber}`;
   }
 
-  if (hasCustomer && hasBarber && !hasChair) {
-    return `عميلنا ${customerName}، صاحب الدور رقم ${ticketCode}، يتفضل يتوجه إلى الأستاذ ${empName}`;
-  }
-
-  if (!hasCustomer && hasBarber && hasChair) {
-    return `عميلنا صاحب الدور رقم ${ticketCode}، يتفضل يتوجه إلى الأستاذ ${empName}، كرسي رقم ${chairNumber}`;
-  }
-
-  if (!hasCustomer && hasBarber && !hasChair) {
-    return `عميلنا صاحب الدور رقم ${ticketCode}، يتفضل يتوجه إلى الأستاذ ${empName}`;
-  }
-
-  if (hasCustomer && !hasBarber && hasChair) {
-    return `عميلنا ${customerName}، صاحب الدور رقم ${ticketCode}، يتفضل يتوجه إلى منطقة الخدمة، كرسي رقم ${chairNumber}`;
-  }
-
-  if (hasCustomer && !hasBarber && !hasChair) {
-    return `عميلنا ${customerName}، صاحب الدور رقم ${ticketCode}، يتفضل يتوجه إلى منطقة الخدمة`;
-  }
-
-  if (!hasCustomer && !hasBarber && hasChair) {
-    return `صاحب الدور رقم ${ticketCode}، يتفضل يتوجه إلى منطقة الخدمة، كرسي رقم ${chairNumber}`;
-  }
-
-  return `صاحب الدور رقم ${ticketCode}، يتفضل يتوجه إلى منطقة الخدمة`;
+  return `الدور رقم ${safeTicketCode}، يتوجه نحو منطقة الخدمة`;
 }
 
 /**

@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronLeft, ChevronRight, RefreshCw, Filter, Calendar } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RefreshCw, Filter, Calendar, Zap, Plus } from 'lucide-react';
 
 interface Props {
   date: string;
@@ -10,6 +10,7 @@ interface Props {
   onToday: () => void;
   onRefresh: () => void;
   onCreateQueue: () => void;
+  onFindNearestQueue?: () => void;
   loading?: boolean;
 }
 
@@ -21,6 +22,7 @@ export function OperationsToolbar({
   onToday,
   onRefresh,
   onCreateQueue,
+  onFindNearestQueue,
   loading,
 }: Props) {
   return (
@@ -80,12 +82,23 @@ export function OperationsToolbar({
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
 
+        {onFindNearestQueue && (
+          <button
+            onClick={onFindNearestQueue}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all hover:brightness-110"
+            style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)', color: '#fff' }}
+          >
+            <Zap className="w-4 h-4" />
+            <span>إيجاد أقرب دور</span>
+          </button>
+        )}
+
         <button
           onClick={onCreateQueue}
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-base transition-all hover:brightness-110"
           style={{ background: '#d4af37', color: '#050505' }}
         >
-          <span className="text-xl">+</span>
+          <Plus className="w-5 h-5" />
           <span>إنشاء دور</span>
         </button>
       </div>

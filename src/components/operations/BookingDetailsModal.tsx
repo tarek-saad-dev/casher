@@ -1,9 +1,10 @@
 'use client';
 
-import { X, Pencil, XCircle, Calendar, Clock, User, Phone, Scissors, Receipt, FileText, Tag, AlertCircle, Loader2 } from 'lucide-react';
+import { X, Pencil, XCircle, Calendar, Clock, User, Phone, Scissors, Receipt, FileText, Tag, AlertCircle, Loader2, Printer } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import type { Booking } from '@/lib/operationsTypes';
 import { TimelineItem } from './schedulerUtils';
+import { printBookingTicket, BookingTicketData } from '@/lib/printBookingTicket';
 
 interface Props {
   item: TimelineItem;
@@ -11,6 +12,7 @@ interface Props {
   onDelete?: (bookingId: number) => Promise<void>;
   onEdit?: (booking: Booking) => void;
   onCancel?: (ticketId: number) => Promise<void>;
+  addToast?: (type: 'success' | 'error' | 'info', message: string) => void;
 }
 
 interface BookingDetails extends Booking {
@@ -21,13 +23,14 @@ interface BookingDetails extends Booking {
   }>;
 }
 
-export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel }: Props) {
+export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel, addToast }: Props) {
   const [booking, setBooking] = useState<BookingDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   // Fetch booking details
   useEffect(() => {
@@ -99,6 +102,38 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel 
       return;
     }
     onEdit(booking);
+  };
+
+  const handlePrint = async () => {
+    if (!booking) return;
+    setPrinting(true);
+    try {
+      const ticketData: BookingTicketData = {
+        bookingId: booking.BookingID,
+        bookingCode: `BK-${booking.BookingID}`,
+        customerName: booking.ClientName || item.customerName || '—',
+        customerPhone: booking.ClientMobile || undefined,
+        empName: booking.EmpName || '—',
+        services: booking.services?.map(s => ({
+          name: s.ProName || 'خدمة',
+          durationMinutes: undefined,
+          price: s.Price,
+        })) || [],
+        bookingDate: booking.BookingDate || item.startTime,
+        startTime: booking.StartTime || item.startTime,
+        endTime: booking.EndTime || item.endTime,
+        durationMinutes: item.durationMinutes,
+        status: booking.Status || item.status,
+        notes: booking.Notes,
+      };
+
+      await printBookingTicket(ticketData, addToast);
+    } catch (err) {
+      console.error('[BookingDetailsModal] Print error:', err);
+      addToast?.('error', 'تعذر الطباعة، حاول مرة أخرى');
+    } finally {
+      setPrinting(false);
+    }
   };
 
   const getStatusLabel = (status: string) => {
@@ -330,6 +365,16 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel 
         <div className="px-5 py-4 border-t flex gap-3" style={{ borderColor: '#2A2A35', background: '#1a1a1f' }}>
           {item.type === 'booking' ? (
             <>
+              {/* Print Booking Ticket Button */}
+              <button
+                onClick={handlePrint}
+                disabled={printing}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-semibold transition-all hover:opacity-80 disabled:opacity-50"
+                style={{ borderColor: '#d4af3744', color: '#d4af37', background: '#d4af3711' }}
+              >
+                {printing ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
+                {printing ? 'جاري الطباعة...' : 'طباعة ورقة الحجز'}
+              </button>
               <button
                 disabled
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-semibold transition-all opacity-50 cursor-not-allowed"
