@@ -29,6 +29,23 @@ import {
 
 export const runtime = "nodejs";
 
+// CORS headers for public API
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+/**
+ * OPTIONS handler for CORS preflight
+ */
+export async function OPTIONS(): Promise<NextResponse> {
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders,
+  });
+}
+
 /**
  * GET /api/public/client/loyalty/me
  *
@@ -48,7 +65,7 @@ export async function GET(
     if (!clientIdParam) {
       return NextResponse.json(
         { ok: false, error: "clientId is required in development mode" },
-        { status: 400 },
+        { status: 400, headers: corsHeaders },
       );
     }
 
@@ -56,7 +73,7 @@ export async function GET(
     if (isNaN(clientId) || clientId <= 0) {
       return NextResponse.json(
         { ok: false, error: "Invalid clientId" },
-        { status: 400 },
+        { status: 400, headers: corsHeaders },
       );
     }
 
@@ -78,7 +95,7 @@ export async function GET(
     if (clientResult.recordset.length === 0) {
       return NextResponse.json(
         { ok: false, error: "Client not found" },
-        { status: 404 },
+        { status: 404, headers: corsHeaders },
       );
     }
 
@@ -322,13 +339,13 @@ export async function GET(
       recentActivity,
     };
 
-    return NextResponse.json(response);
+    return NextResponse.json(response, { headers: corsHeaders });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[api/public/client/loyalty/me] GET error:", message);
     return NextResponse.json(
       { ok: false, error: "Failed to load loyalty data" },
-      { status: 500 },
+      { status: 500, headers: corsHeaders },
     );
   }
 }

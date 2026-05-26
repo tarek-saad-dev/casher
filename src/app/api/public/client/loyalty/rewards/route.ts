@@ -3,40 +3,59 @@
 // Client Loyalty Rewards List
 // ============================================
 
-import { NextRequest, NextResponse } from 'next/server';
-import { getPool, sql } from '@/lib/db';
-import type { 
-  LoyaltyRewardsResponse, 
-  LoyaltyErrorResponse
-} from '@/lib/loyalty/types';
-import { buildRewardsForClient, getNextReward } from '@/lib/loyalty/helpers';
+import { NextRequest, NextResponse } from "next/server";
+import { getPool, sql } from "@/lib/db";
+import type {
+  LoyaltyRewardsResponse,
+  LoyaltyErrorResponse,
+} from "@/lib/loyalty/types";
+import { buildRewardsForClient, getNextReward } from "@/lib/loyalty/helpers";
 
-export const runtime = 'nodejs';
+export const runtime = "nodejs";
+
+// CORS headers for public API
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+/**
+ * OPTIONS handler for CORS preflight
+ */
+export async function OPTIONS(): Promise<NextResponse> {
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders,
+  });
+}
 
 /**
  * GET /api/public/client/loyalty/rewards
- * 
+ *
  * Query params:
  * - clientId: number (TODO: replace with authenticated session)
  */
-export async function GET(req: NextRequest): Promise<NextResponse<LoyaltyRewardsResponse | LoyaltyErrorResponse>> {
+export async function GET(
+  req: NextRequest,
+): Promise<NextResponse<LoyaltyRewardsResponse | LoyaltyErrorResponse>> {
   try {
     // TODO: Replace with authenticated session / OTP token
     const { searchParams } = new URL(req.url);
-    const clientIdParam = searchParams.get('clientId');
-    
+    const clientIdParam = searchParams.get("clientId");
+
     if (!clientIdParam) {
       return NextResponse.json(
-        { ok: false, error: 'clientId is required in development mode' },
-        { status: 400 }
+        { ok: false, error: "clientId is required in development mode" },
+        { status: 400, headers: corsHeaders },
       );
     }
-    
+
     const clientId = parseInt(clientIdParam, 10);
     if (isNaN(clientId) || clientId <= 0) {
       return NextResponse.json(
-        { ok: false, error: 'Invalid clientId' },
-        { status: 400 }
+        { ok: false, error: "Invalid clientId" },
+        { status: 400, headers: corsHeaders },
       );
     }
 
@@ -45,9 +64,9 @@ export async function GET(req: NextRequest): Promise<NextResponse<LoyaltyRewards
     // ============================================
     // 1. Get Client Loyalty Data
     // ============================================
-    const loyaltyResult = await db.request()
-      .input('clientId', sql.Int, clientId)
-      .query(`
+    const loyaltyResult = await db
+      .request()
+      .input("clientId", sql.Int, clientId).query(`
         SELECT 
           cl.PointsBalance,
           cl.TierID,
@@ -58,11 +77,11 @@ export async function GET(req: NextRequest): Promise<NextResponse<LoyaltyRewards
       `);
 
     let pointsBalance = 0;
-    let tierCode = 'BRONZE';
+    let tierCode = "BRONZE";
 
     if (loyaltyResult.recordset.length > 0) {
       pointsBalance = loyaltyResult.recordset[0].PointsBalance || 0;
-      tierCode = loyaltyResult.recordset[0].TierCode || 'BRONZE';
+      tierCode = loyaltyResult.recordset[0].TierCode || "BRONZE";
     }
 
     // ============================================
@@ -77,17 +96,16 @@ export async function GET(req: NextRequest): Promise<NextResponse<LoyaltyRewards
     const response: LoyaltyRewardsResponse = {
       ok: true,
       rewards,
-      nextReward
+      nextReward,
     };
 
-    return NextResponse.json(response);
-
+    return NextResponse.json(response, { headers: corsHeaders });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[api/public/client/loyalty/rewards] GET error:', message);
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("[api/public/client/loyalty/rewards] GET error:", message);
     return NextResponse.json(
-      { ok: false, error: 'Failed to load rewards data' },
-      { status: 500 }
+      { ok: false, error: "Failed to load rewards data" },
+      { status: 500, headers: corsHeaders },
     );
   }
 }
