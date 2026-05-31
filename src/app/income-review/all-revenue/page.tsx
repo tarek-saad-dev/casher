@@ -116,6 +116,7 @@ export default function AllRevenuePage() {
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
   const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
   const [bulkCategoryId, setBulkCategoryId] = useState('');
+  const [quickTransferCategoryId, setQuickTransferCategoryId] = useState('');
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
 
   // Edit form state
@@ -180,6 +181,52 @@ export default function AllRevenuePage() {
 
   const handleClearSelection = () => {
     setSelectedItems(new Set());
+    setQuickTransferCategoryId('');
+  };
+
+  /* ── quick transfer function ── */
+  const handleQuickTransfer = async () => {
+    if (selectedItems.size === 0) {
+      showToast('يرجى اختيار عنصر واحد على الأقل', false);
+      return;
+    }
+
+    if (!quickTransferCategoryId) {
+      showToast('يرجى اختيار التصنيف', false);
+      return;
+    }
+
+    setIsBulkUpdating(true);
+    try {
+      const response = await fetch('/api/incomes/bulk-update', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itemIds: Array.from(selectedItems),
+          expInId: Number(quickTransferCategoryId)
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'فشل النقل السريع');
+      }
+
+      const result = await response.json();
+      showToast(`تم نقل ${result.updatedCount} إيراد بنجاح`, true);
+
+      // Reset state
+      setSelectedItems(new Set());
+      setQuickTransferCategoryId('');
+      fetchData();
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : 'حدث خطأ أثناء النقل السريع',
+        false
+      );
+    } finally {
+      setIsBulkUpdating(false);
+    }
   };
 
   /* ── bulk category update ── */
@@ -430,30 +477,59 @@ export default function AllRevenuePage() {
       {/* Bulk Selection Controls */}
       {selectedItems.size > 0 && (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <CheckSquare className="h-5 w-5 text-amber-400" />
-              <span className="text-amber-400 font-medium">
-                تم اختيار {selectedItems.size} {selectedItems.size === 1 ? 'إيراد' : 'إيرادات'}
-              </span>
+          <div className="space-y-3">
+            {/* Selection Info */}
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <CheckSquare className="h-5 w-5 text-amber-400" />
+                <span className="text-amber-400 font-medium">
+                  تم اختيار {selectedItems.size} {selectedItems.size === 1 ? 'إيراد' : 'إيرادات'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleClearSelection}
+                  className="gap-2 border-zinc-600 text-zinc-400 hover:text-white"
+                >
+                  <X className="h-4 w-4" />
+                  إلغاء الاختيار
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setIsBulkEditOpen(true)}
+                  className="gap-2 bg-zinc-700 hover:bg-zinc-600"
+                >
+                  <Edit3 className="h-4 w-4" />
+                  تعديل مفصل
+                </Button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleClearSelection}
-                className="gap-2 border-zinc-600 text-zinc-400 hover:text-white"
+
+            {/* Quick Transfer */}
+            <div className="flex items-center gap-3 pt-2 border-t border-amber-500/20">
+              <span className="text-sm text-amber-300">نقل سريع:</span>
+              <select
+                value={quickTransferCategoryId}
+                onChange={(e) => setQuickTransferCategoryId(e.target.value)}
+                className="h-8 rounded-lg border border-zinc-600 bg-zinc-800 px-3 text-sm text-white focus:border-amber-500 focus:outline-none min-w-[200px]"
               >
-                <X className="h-4 w-4" />
-                إلغاء الاختيار
-              </Button>
+                <option value="">اختر التصنيف</option>
+                {categoriesList.map((cat) => (
+                  <option key={cat.ExpINID} value={cat.ExpINID}>
+                    {cat.CatName}
+                  </option>
+                ))}
+              </select>
               <Button
                 size="sm"
-                onClick={() => setIsBulkEditOpen(true)}
+                onClick={handleQuickTransfer}
+                disabled={isBulkUpdating || !quickTransferCategoryId}
                 className="gap-2 bg-amber-600 hover:bg-amber-700"
               >
-                <Edit3 className="h-4 w-4" />
-                نقل للتصنيف
+                {isBulkUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                {isBulkUpdating ? 'جاري النقل...' : 'نقل'}
               </Button>
             </div>
           </div>
