@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Loader2, Lock, Calculator, ArrowRightLeft } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Loader2, Lock, Calculator, ArrowRightLeft, TrendingUp, TrendingDown } from 'lucide-react';
 import TreasuryFiltersBar from '@/components/treasury/TreasuryFiltersBar';
 import TreasuryKpiCards from '@/components/treasury/TreasuryKpiCards';
 import PaymentMethodBreakdownTable from '@/components/treasury/PaymentMethodBreakdownTable';
@@ -9,10 +9,13 @@ import TreasuryMovementsTable from '@/components/treasury/TreasuryMovementsTable
 import TreasuryClosePanel from '@/components/treasury/TreasuryClosePanel';
 import PaymentMethodDetailsModal from '@/components/treasury/PaymentMethodDetailsModal';
 import PaymentTransferModal from '@/components/treasury/PaymentTransferModal';
-import type { 
-  DailyTreasuryData, 
+import PastDateTransferModal from '@/components/treasury/PastDateTransferModal';
+import PastDateIncomeModal from '@/components/treasury/PastDateIncomeModal';
+import PastDateExpenseModal from '@/components/treasury/PastDateExpenseModal';
+import type {
+  DailyTreasuryData,
   TreasuryMovementsResponse,
-  CurrentDayShift 
+  CurrentDayShift
 } from '@/lib/types/treasury';
 
 export default function DailyTreasuryPage() {
@@ -22,7 +25,7 @@ export default function DailyTreasuryPage() {
   const [loading, setLoading] = useState(false);
   const [movementsLoading, setMovementsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const [showClosePanel, setShowClosePanel] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [movementsPage, setMovementsPage] = useState(1);
@@ -32,6 +35,9 @@ export default function DailyTreasuryPage() {
     paymentMethodName: string;
   } | null>(null);
 
+  const [showPastIncomeModal, setShowPastIncomeModal] = useState(false);
+  const [showPastExpenseModal, setShowPastExpenseModal] = useState(false);
+
   const handleViewDetails = (id: number, name: string) => {
     setDetailsModal({ paymentMethodId: id, paymentMethodName: name });
   };
@@ -40,7 +46,7 @@ export default function DailyTreasuryPage() {
   useEffect(() => {
     document.title = 'الخزنة - قفل اليوم | نظام نقاط البيع';
   }, []);
-  
+
   const [filters, setFilters] = useState<{
     newDay: number | null;
     dateFrom: string | null;
@@ -55,33 +61,13 @@ export default function DailyTreasuryPage() {
     userId: null
   });
 
-  // Load current day/shift on mount
-  useEffect(() => {
-    loadCurrentDayShift();
-  }, []);
-
-  // Load treasury data when filters change
-  useEffect(() => {
-    if (filters.newDay !== null || filters.dateFrom !== null) {
-      loadTreasuryData();
-      loadMovements(1);
-    }
-  }, [filters]);
-
-  // Load movements when page changes
-  useEffect(() => {
-    if (filters.newDay !== null || filters.dateFrom !== null) {
-      loadMovements(movementsPage);
-    }
-  }, [movementsPage]);
-
   const loadCurrentDayShift = async () => {
     try {
       const response = await fetch('/api/treasury/current');
       if (response.ok) {
         const data: CurrentDayShift = await response.json();
         setCurrentDayShift(data);
-        
+
         // Set default filter to current day
         if (data.currentDay) {
           setFilters(prev => ({
@@ -95,10 +81,10 @@ export default function DailyTreasuryPage() {
     }
   };
 
-  const loadTreasuryData = async () => {
+  const loadTreasuryData = useCallback(async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       const params = new URLSearchParams();
       if (filters.newDay !== null) params.append('newDay', filters.newDay.toString());
@@ -106,27 +92,27 @@ export default function DailyTreasuryPage() {
       if (filters.dateTo) params.append('dateTo', filters.dateTo);
       if (filters.shiftMoveId !== null) params.append('shiftMoveId', filters.shiftMoveId.toString());
       if (filters.userId !== null) params.append('userId', filters.userId.toString());
-      
+
       const response = await fetch(`/api/treasury/daily-summary?${params}`);
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'فشل تحميل بيانات الخزنة');
       }
-      
+
       const data: DailyTreasuryData = await response.json();
       setTreasuryData(data);
-      
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'حدث خطأ غير متوقع');
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters]);
 
-  const loadMovements = async (page: number) => {
+  const loadMovements = useCallback(async (page: number) => {
     setMovementsLoading(true);
-    
+
     try {
       const params = new URLSearchParams();
       if (filters.newDay !== null) params.append('newDay', filters.newDay.toString());
@@ -136,20 +122,40 @@ export default function DailyTreasuryPage() {
       if (filters.userId !== null) params.append('userId', filters.userId.toString());
       params.append('page', page.toString());
       params.append('pageSize', '50');
-      
+
       const response = await fetch(`/api/treasury/movements?${params}`);
-      
+
       if (response.ok) {
         const data: TreasuryMovementsResponse = await response.json();
         setMovementsData(data);
       }
-      
+
     } catch (err) {
       console.error('Failed to load movements:', err);
     } finally {
       setMovementsLoading(false);
     }
-  };
+  }, [filters]);
+
+  // Load current day/shift on mount
+  useEffect(() => {
+    loadCurrentDayShift();
+  }, []);
+
+  // Load treasury data when filters change
+  useEffect(() => {
+    if (filters.newDay !== null || filters.dateFrom !== null) {
+      loadTreasuryData();
+      loadMovements(1);
+    }
+  }, [filters, loadTreasuryData, loadMovements]);
+
+  // Load movements when page changes
+  useEffect(() => {
+    if (filters.newDay !== null || filters.dateFrom !== null) {
+      loadMovements(movementsPage);
+    }
+  }, [movementsPage, filters.newDay, filters.dateFrom, loadMovements]);
 
   const handleFilterChange = (newFilters: typeof filters) => {
     setFilters(newFilters);
@@ -182,27 +188,39 @@ export default function DailyTreasuryPage() {
             <h1 className="text-3xl font-bold text-white mb-2">قفل اليوم / الخزنة اليومية</h1>
             <p className="text-zinc-400">متابعة الحركات المالية وقفل اليوم</p>
           </div>
-          
-          <div className="flex items-center gap-2">
-            {treasuryData && treasuryData.paymentMethods.length > 0 && (
-              <>
-                <button
-                  onClick={() => setShowTransferModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-sm font-medium hover:bg-emerald-500/30 transition-colors"
-                >
-                  <ArrowRightLeft className="h-4 w-4" />
-                  تحويل
-                </button>
-                <button
-                  onClick={() => setShowClosePanel(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-sm font-medium hover:bg-amber-500/30 transition-colors"
-                >
-                  <Lock className="h-4 w-4" />
-                  قفل اليوم
-                </button>
-              </>
-            )}
-          </div>
+
+          {treasuryData && treasuryData.paymentMethods.length > 0 && (
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                onClick={() => setShowPastIncomeModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-sm font-medium hover:bg-emerald-500/30 transition-colors"
+              >
+                <TrendingUp className="h-4 w-4" />
+                اضافه ايراد في يوم سابق
+              </button>
+              <button
+                onClick={() => setShowPastExpenseModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-sm font-medium hover:bg-rose-500/30 transition-colors"
+              >
+                <TrendingDown className="h-4 w-4" />
+                اضافه مصروف في يوم سابق
+              </button>
+              <button
+                onClick={() => setShowTransferModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-xl text-sm font-medium hover:bg-cyan-500/30 transition-colors"
+              >
+                <ArrowRightLeft className="h-4 w-4" />
+                تحويل في يوم سابق
+              </button>
+              <button
+                onClick={() => setShowClosePanel(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-sm font-medium hover:bg-amber-500/30 transition-colors"
+              >
+                <Lock className="h-4 w-4" />
+                قفل اليوم
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Filters */}
@@ -238,11 +256,10 @@ export default function DailyTreasuryPage() {
               const fmt = (n: number) =>
                 new Intl.NumberFormat('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
               return (
-                <div className={`rounded-2xl border p-5 shadow-lg ${
-                  totalNet >= 0
-                    ? 'bg-gradient-to-l from-emerald-950/40 to-emerald-900/20 border-emerald-500/20'
-                    : 'bg-gradient-to-l from-rose-950/40 to-rose-900/20 border-rose-500/20'
-                }`}>
+                <div className={`rounded-2xl border p-5 shadow-lg ${totalNet >= 0
+                  ? 'bg-gradient-to-l from-emerald-950/40 to-emerald-900/20 border-emerald-500/20'
+                  : 'bg-gradient-to-l from-rose-950/40 to-rose-900/20 border-rose-500/20'
+                  }`}>
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     {/* Label */}
                     <div className="flex items-center gap-3">
@@ -336,12 +353,35 @@ export default function DailyTreasuryPage() {
         />
       )}
 
+      {/* Past Income Modal */}
+      {showPastIncomeModal && (
+        <PastDateIncomeModal
+          isOpen={showPastIncomeModal}
+          onClose={() => setShowPastIncomeModal(false)}
+          onIncomeComplete={handleCloseSaved}
+          defaultDate={filters.dateTo || undefined}
+        />
+      )}
+
+      {/* Past Expense Modal */}
+      {showPastExpenseModal && (
+        <PastDateExpenseModal
+          isOpen={showPastExpenseModal}
+          onClose={() => setShowPastExpenseModal(false)}
+          onExpenseComplete={handleCloseSaved}
+          defaultDate={filters.dateTo || undefined}
+        />
+      )}
+
       {/* Transfer Modal */}
-      <PaymentTransferModal
-        isOpen={showTransferModal}
-        onClose={() => setShowTransferModal(false)}
-        onSuccess={handleTransferSuccess}
-      />
+      {showTransferModal && (
+        <PastDateTransferModal
+          isOpen={showTransferModal}
+          onClose={() => setShowTransferModal(false)}
+          onTransferComplete={handleCloseSaved}
+          defaultDate={filters.dateTo || undefined}
+        />
+      )}
 
       {/* Close Panel Modal */}
       {showClosePanel && treasuryData && (

@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
-import { sqlTimeToHHmm, calcLateMinutes as calcLate, calcEarlyLeaveMinutes as calcEarlyLeave } from "@/lib/timeUtils";
+import {
+  calcLateMinutes as calcLate,
+  calcEarlyLeaveMinutes as calcEarlyLeave,
+} from "@/lib/timeUtils";
 
-async function ensureAttendanceTable(db: any) {
+async function ensureAttendanceTable(db: { request: () => any }) {
   await db.request().query(`
     IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'TblEmpAttendance')
     BEGIN
@@ -38,10 +41,6 @@ async function ensureAttendanceTable(db: any) {
   `);
 }
 
-function formatTime(val: any): string | null {
-  return sqlTimeToHHmm(val);
-}
-
 function timeToDate(timeStr: string | null | undefined): Date | null {
   if (!timeStr || timeStr.trim() === "") return null;
   // Parse "HH:mm" or "HH:mm:ss" into a Date anchored to 1970-01-01 UTC
@@ -55,11 +54,17 @@ function timeToDate(timeStr: string | null | undefined): Date | null {
   return d;
 }
 
-function calcLateMinutes(checkIn: string | null, scheduledStart: string | null): number {
+function calcLateMinutes(
+  checkIn: string | null,
+  scheduledStart: string | null,
+): number {
   return calcLate(checkIn, scheduledStart);
 }
 
-function calcEarlyLeaveMinutes(checkOut: string | null, scheduledEnd: string | null): number {
+function calcEarlyLeaveMinutes(
+  checkOut: string | null,
+  scheduledEnd: string | null,
+): number {
   return calcEarlyLeave(checkOut, scheduledEnd);
 }
 
@@ -76,7 +81,7 @@ export async function GET(req: NextRequest) {
     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
       return NextResponse.json(
         { error: "التاريخ مطلوب بصيغة YYYY-MM-DD" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -90,8 +95,7 @@ export async function GET(req: NextRequest) {
     const result = await db
       .request()
       .input("workDate", sql.Date, dateStr)
-      .input("dayOfWeek", sql.TinyInt, dayOfWeek)
-      .query(`
+      .input("dayOfWeek", sql.TinyInt, dayOfWeek).query(`
         SELECT
           e.EmpID,
           e.EmpName,
@@ -116,41 +120,72 @@ export async function GET(req: NextRequest) {
         ORDER BY e.EmpName
       `);
 
-    const rows = result.recordset.map((row: any) => {
-      const hasAttendance = row.AttendanceID != null;
-      const hasSchedule   = row.DayOfWeek != null;
-      const isWorkingDay  = hasSchedule ? !!row.IsWorkingDay : (dayOfWeek !== 5);
+    const rows = result.recordset.map(
+      (row: {
+        EmpID: number;
+        EmpName: string;
+        DayOfWeek: number | null;
+        IsWorkingDay: boolean | null;
+        DefaultCheckInTime: string | null;
+        DefaultCheckOutTime: string | null;
+        AttendanceID: number | null;
+        WorkDate: string | null;
+        CheckInTime: string | null;
+        CheckOutTime: string | null;
+        Status: string | null;
+        LateMinutes: number | null;
+        EarlyLeaveMinutes: number | null;
+        Notes: string | null;
+      }) => {
+        const hasAttendance = row.AttendanceID != null;
+        const hasSchedule = row.DayOfWeek != null;
+        const isWorkingDay = hasSchedule ? !!row.IsWorkingDay : dayOfWeek !== 5;
 
-      // Always use DefaultCheckInTime / DefaultCheckOutTime as the canonical schedule
-      const schedStart = row.DefaultCheckInTime  || null;
-      const schedEnd   = row.DefaultCheckOutTime || null;
+        // Always use DefaultCheckInTime / DefaultCheckOutTime as the canonical schedule
+        const schedStart = row.DefaultCheckInTime || null;
+        const schedEnd = row.DefaultCheckOutTime || null;
 
-      const checkIn  = row.CheckInTime  || null;
-      const checkOut = row.CheckOutTime || null;
+        const checkIn = row.CheckInTime || null;
+        const checkOut = row.CheckOutTime || null;
 
-      // Recalculate LateMinutes from actual check-in vs default schedule
-      const lateMin  = hasAttendance && checkIn ? calcLateMinutes(checkIn, schedStart) : 0;
-      const earlyMin = hasAttendance && checkOut ? calcEarlyLeaveMinutes(checkOut, schedEnd) : 0;
+        // Recalculate LateMinutes from actual check-in vs default schedule
+        const lateMin =
+          hasAttendance && checkIn ? calcLateMinutes(checkIn, schedStart) : 0;
+        const earlyMin =
+          hasAttendance && checkOut
+            ? calcEarlyLeaveMinutes(checkOut, schedEnd)
+            : 0;
 
-      return {
-        EmpID: row.EmpID,
-        EmpName: row.EmpName,
-        WorkDate: dateStr,
-        DayOfWeek: dayOfWeek,
-        IsWorkingDay: isWorkingDay,
-        ScheduledStartTime: schedStart,
-        ScheduledEndTime: schedEnd,
-        CheckInTime: checkIn,
-        CheckOutTime: checkOut,
-        Status: hasAttendance ? row.Status : (isWorkingDay ? "Pending" : "DayOff"),
-        LateMinutes: lateMin,
-        EarlyLeaveMinutes: earlyMin,
-        Notes: row.Notes || "",
-        HasRecord: hasAttendance,
-      };
+        return {
+          EmpID: row.EmpID,
+          EmpName: row.EmpName,
+          WorkDate: dateStr,
+          DayOfWeek: dayOfWeek,
+          IsWorkingDay: isWorkingDay,
+          ScheduledStartTime: schedStart,
+          ScheduledEndTime: schedEnd,
+          DefaultCheckInTime: row.DefaultCheckInTime,
+          DefaultCheckOutTime: row.DefaultCheckOutTime,
+          CheckInTime: checkIn,
+          CheckOutTime: checkOut,
+          Status: hasAttendance
+            ? row.Status
+            : isWorkingDay
+              ? "Pending"
+              : "DayOff",
+          LateMinutes: lateMin,
+          EarlyLeaveMinutes: earlyMin,
+          Notes: row.Notes || "",
+          HasRecord: hasAttendance,
+        };
+      },
+    );
+
+    return NextResponse.json({
+      success: true,
+      date: dateStr,
+      attendance: rows,
     });
-
-    return NextResponse.json({ success: true, date: dateStr, attendance: rows });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[api/admin/attendance] GET error:", message);
@@ -172,16 +207,14 @@ export async function PUT(req: NextRequest) {
     if (!EmpID || !WorkDate) {
       return NextResponse.json(
         { error: "EmpID و WorkDate مطلوبين" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    if (
-      !/^\d{4}-\d{2}-\d{2}$/.test(WorkDate)
-    ) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(WorkDate)) {
       return NextResponse.json(
         { error: "صيغة التاريخ غير صحيحة" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -195,23 +228,20 @@ export async function PUT(req: NextRequest) {
       "Excused",
     ];
     if (Status && !validStatuses.includes(Status)) {
-      return NextResponse.json(
-        { error: "حالة غير صحيحة" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "حالة غير صحيحة" }, { status: 400 });
     }
 
     const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/;
     if (CheckInTime && !timeRegex.test(CheckInTime)) {
       return NextResponse.json(
         { error: "صيغة وقت الحضور غير صحيحة" },
-        { status: 400 }
+        { status: 400 },
       );
     }
     if (CheckOutTime && !timeRegex.test(CheckOutTime)) {
       return NextResponse.json(
         { error: "صيغة وقت الانصراف غير صحيحة" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -222,10 +252,7 @@ export async function PUT(req: NextRequest) {
     const targetDate = new Date(WorkDate + "T00:00:00");
     const dayOfWeek = targetDate.getDay();
 
-    const empResult = await db
-      .request()
-      .input("empId", sql.Int, EmpID)
-      .query(`
+    const empResult = await db.request().input("empId", sql.Int, EmpID).query(`
         SELECT
           CONVERT(VARCHAR(5), DefaultCheckInTime,  108) AS DefaultCheckInTime,
           CONVERT(VARCHAR(5), DefaultCheckOutTime, 108) AS DefaultCheckOutTime
@@ -234,17 +261,17 @@ export async function PUT(req: NextRequest) {
       `);
 
     let schedStart: string | null = null;
-    let schedEnd:   string | null = null;
+    let schedEnd: string | null = null;
     if (empResult.recordset.length > 0) {
-      schedStart = empResult.recordset[0].DefaultCheckInTime  || null;
-      schedEnd   = empResult.recordset[0].DefaultCheckOutTime || null;
+      schedStart = empResult.recordset[0].DefaultCheckInTime || null;
+      schedEnd = empResult.recordset[0].DefaultCheckOutTime || null;
     }
 
     // Calculate late/early
     const lateMinutes = calcLateMinutes(CheckInTime || null, schedStart);
     const earlyLeaveMinutes = calcEarlyLeaveMinutes(
       CheckOutTime || null,
-      schedEnd
+      schedEnd,
     );
 
     // Auto-determine status if not manually overridden to Absent/DayOff/Excused
@@ -254,11 +281,7 @@ export async function PUT(req: NextRequest) {
       if (CheckInTime) {
         finalStatus = lateMinutes > 0 ? "Late" : "Present";
       }
-      if (
-        CheckOutTime &&
-        earlyLeaveMinutes > 0 &&
-        finalStatus === "Present"
-      ) {
+      if (CheckOutTime && earlyLeaveMinutes > 0 && finalStatus === "Present") {
         finalStatus = "EarlyLeave";
       }
     }
@@ -269,7 +292,7 @@ export async function PUT(req: NextRequest) {
       .input("empId", sql.Int, EmpID)
       .input("workDate", sql.Date, WorkDate)
       .query(
-        "SELECT ID FROM dbo.TblEmpAttendance WHERE EmpID = @empId AND WorkDate = @workDate"
+        "SELECT ID FROM dbo.TblEmpAttendance WHERE EmpID = @empId AND WorkDate = @workDate",
       );
 
     if (existing.recordset.length > 0) {
@@ -285,8 +308,7 @@ export async function PUT(req: NextRequest) {
         .input("notes", sql.NVarChar(500), Notes || null)
         .input("scheduledStart", sql.Time, timeToDate(schedStart))
         .input("scheduledEnd", sql.Time, timeToDate(schedEnd))
-        .input("updatedBy", sql.Int, session.UserID || null)
-        .query(`
+        .input("updatedBy", sql.Int, session.UserID || null).query(`
           UPDATE dbo.TblEmpAttendance
           SET CheckInTime = @checkInTime,
               CheckOutTime = @checkOutTime,
@@ -314,8 +336,7 @@ export async function PUT(req: NextRequest) {
         .input("notes", sql.NVarChar(500), Notes || null)
         .input("scheduledStart", sql.Time, timeToDate(schedStart))
         .input("scheduledEnd", sql.Time, timeToDate(schedEnd))
-        .input("createdBy", sql.Int, session.UserID || null)
-        .query(`
+        .input("createdBy", sql.Int, session.UserID || null).query(`
           INSERT INTO dbo.TblEmpAttendance
             (EmpID, WorkDate, CheckInTime, CheckOutTime, Status, LateMinutes, EarlyLeaveMinutes, Notes, ScheduledStartTime, ScheduledEndTime, CreatedByUserID, CreatedAt)
           VALUES
