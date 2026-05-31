@@ -64,8 +64,8 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
       .request()
       .input("expInId", sql.Int, body.expInId).query(`
         SELECT COUNT(*) as count 
-        FROM [dbo].[TblExpIN] 
-        WHERE ExpINID = @expInId AND ExpINType = N'إيرادات'
+        FROM [dbo].[TblExpINCat] 
+        WHERE ExpINID = @expInId AND ExpINType = N'ايرادات'
       `);
 
     if (categoryCheck.recordset[0]?.count === 0) {
@@ -78,8 +78,8 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
     // Verify all items exist and are income items
     const itemsCheck = await db.request().query(`
         SELECT COUNT(*) as validCount
-        FROM [dbo].[TblExpIN] 
-        WHERE ID IN (${body.itemIds.join(",")}) AND ExpINType = N'إيرادات'
+        FROM [dbo].[TblCashMove] 
+        WHERE ID IN (${body.itemIds.join(",")}) AND invType = N'ايرادات'
       `);
 
     const validCount = itemsCheck.recordset[0]?.validCount || 0;
@@ -93,9 +93,9 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
     // Perform bulk update
     const result = await db.request().input("expInId", sql.Int, body.expInId)
       .query(`
-        UPDATE [dbo].[TblExpIN]
+        UPDATE [dbo].[TblCashMove]
         SET ExpINID = @expInId
-        WHERE ID IN (${body.itemIds.join(",")}) AND ExpINType = N'إيرادات'
+        WHERE ID IN (${body.itemIds.join(",")}) AND invType = N'ايرادات'
         
         SELECT @@ROWCOUNT as updatedCount
       `);

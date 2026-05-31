@@ -7,7 +7,7 @@ import {
   UserX, Coffee, ShieldCheck, Timer,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
-import { sqlTimeForInput, formatTime12h, parseTimeToMinutes } from '@/lib/timeUtils';
+import { sqlTimeForInput, formatTime12h, parseTimeToMinutes, calcEarlyLeaveMinutes } from '@/lib/timeUtils';
 import KpiCard from '@/components/shared/KpiCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,8 @@ interface AttendanceRow {
   IsWorkingDay: boolean;
   ScheduledStartTime: string | null;
   ScheduledEndTime: string | null;
+  DefaultCheckInTime: string | null;
+  DefaultCheckOutTime: string | null;
   CheckInTime: string | null;
   CheckOutTime: string | null;
   Status: string;
@@ -59,7 +61,7 @@ function getCurrentTime(): string {
 }
 
 function calcLate(checkIn: string | null, schedStart: string | null): number {
-  const actualMin    = parseTimeToMinutes(checkIn);
+  const actualMin = parseTimeToMinutes(checkIn);
   const scheduledMin = parseTimeToMinutes(schedStart);
   if (actualMin === null || scheduledMin === null) return 0;
   let diff = actualMin - scheduledMin;
@@ -101,7 +103,7 @@ export default function AttendancePage() {
     fetchAttendance(date);
   }, [date, fetchAttendance]);
 
-  const updateRow = (empId: number, field: string, value: any) => {
+  const updateRow = (empId: number, field: string, value: string | number | null) => {
     setAttendance(prev => prev.map(row => {
       if (row.EmpID !== empId) return row;
       const updated = { ...row, [field]: value };
@@ -156,6 +158,44 @@ export default function AttendancePage() {
     setAttendance(prev => prev.map(row => {
       if (row.EmpID !== empId) return row;
       return { ...row, Status: 'Excused' };
+    }));
+    setDirty(prev => new Set(prev).add(empId));
+  };
+
+  const autoFillDefaultTimes = (empId: number) => {
+    setAttendance(prev => prev.map(row => {
+      if (row.EmpID !== empId) return row;
+
+      const updated = { ...row };
+
+      // Auto-fill CheckInTime if missing and default exists
+      if (!row.CheckInTime && row.DefaultCheckInTime) {
+        updated.CheckInTime = row.DefaultCheckInTime;
+        // Auto-calc status when CheckInTime is set
+        const manualStatuses = ['Absent', 'DayOff', 'Excused'];
+        if (!manualStatuses.includes(updated.Status)) {
+          const late = calcLate(row.DefaultCheckInTime, row.ScheduledStartTime);
+          updated.LateMinutes = late;
+          updated.Status = late > 0 ? 'Late' : 'Present';
+        }
+      }
+
+      // Auto-fill CheckOutTime if missing and default exists
+      if (!row.CheckOutTime && row.DefaultCheckOutTime) {
+        updated.CheckOutTime = row.DefaultCheckOutTime;
+        // Auto-calc early leave if both CheckInTime and CheckOutTime are set
+        if (updated.CheckInTime && row.ScheduledEndTime) {
+          const earlyLeave = calcEarlyLeaveMinutes(row.ScheduledEndTime, row.DefaultCheckOutTime);
+          updated.EarlyLeaveMinutes = earlyLeave > 0 ? earlyLeave : 0;
+          // Update status if early leave and not a manual status
+          const manualStatuses = ['Absent', 'DayOff', 'Excused'];
+          if (!manualStatuses.includes(updated.Status) && earlyLeave > 0) {
+            updated.Status = 'EarlyLeave';
+          }
+        }
+      }
+
+      return updated;
     }));
     setDirty(prev => new Set(prev).add(empId));
   };
@@ -365,7 +405,7 @@ export default function AttendancePage() {
                         <span className="text-xs text-zinc-400">
                           {row.ScheduledStartTime ? formatTime12h(row.ScheduledStartTime) : '--:--'}
                           {' — '}
-                          {row.ScheduledEndTime   ? formatTime12h(row.ScheduledEndTime)   : '--:--'}
+                          {row.ScheduledEndTime ? formatTime12h(row.ScheduledEndTime) : '--:--'}
                         </span>
                       </td>
 
@@ -474,6 +514,16 @@ export default function AttendancePage() {
                             className="h-7 w-7 p-0 text-purple-400 hover:bg-purple-500/20 hover:text-purple-300"
                           >
                             <ShieldCheck className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => autoFillDefaultTimes(row.EmpID)}
+                            title="املأ بالوقت الافتراضي"
+                            disabled={!row.DefaultCheckInTime && !row.DefaultCheckOutTime}
+                            className={`h-7 w-7 p-0 ${(row.DefaultCheckInTime || row.DefaultCheckOutTime) ? 'text-cyan-400 hover:bg-cyan-500/20 hover:text-cyan-300' : 'text-zinc-600 cursor-not-allowed'}`}
+                          >
+                            <span className="text-xs font-bold">D</span>
                           </Button>
                           <Button
                             size="sm"

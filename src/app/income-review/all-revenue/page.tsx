@@ -475,40 +475,42 @@ export default function AllRevenuePage() {
       )}
 
       {/* Bulk Selection Controls */}
-      {selectedItems.size > 0 && (
+      {categoriesList.length > 0 && (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
           <div className="space-y-3">
-            {/* Selection Info */}
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <CheckSquare className="h-5 w-5 text-amber-400" />
-                <span className="text-amber-400 font-medium">
-                  تم اختيار {selectedItems.size} {selectedItems.size === 1 ? 'إيراد' : 'إيرادات'}
-                </span>
+            {/* Selection Info - only show when items are selected */}
+            {selectedItems.size > 0 && (
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <CheckSquare className="h-5 w-5 text-amber-400" />
+                  <span className="text-amber-400 font-medium">
+                    تم اختيار {selectedItems.size} {selectedItems.size === 1 ? 'إيراد' : 'إيرادات'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleClearSelection}
+                    className="gap-2 border-zinc-600 text-zinc-400 hover:text-white"
+                  >
+                    <X className="h-4 w-4" />
+                    إلغاء الاختيار
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => setIsBulkEditOpen(true)}
+                    className="gap-2 bg-zinc-700 hover:bg-zinc-600"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    تعديل مفصل
+                  </Button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleClearSelection}
-                  className="gap-2 border-zinc-600 text-zinc-400 hover:text-white"
-                >
-                  <X className="h-4 w-4" />
-                  إلغاء الاختيار
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => setIsBulkEditOpen(true)}
-                  className="gap-2 bg-zinc-700 hover:bg-zinc-600"
-                >
-                  <Edit3 className="h-4 w-4" />
-                  تعديل مفصل
-                </Button>
-              </div>
-            </div>
+            )}
 
-            {/* Quick Transfer */}
-            <div className="flex items-center gap-3 pt-2 border-t border-amber-500/20">
+            {/* Quick Transfer - always visible when categories exist */}
+            <div className="flex items-center gap-3">
               <span className="text-sm text-amber-300">نقل سريع:</span>
               <select
                 value={quickTransferCategoryId}
@@ -525,12 +527,15 @@ export default function AllRevenuePage() {
               <Button
                 size="sm"
                 onClick={handleQuickTransfer}
-                disabled={isBulkUpdating || !quickTransferCategoryId}
-                className="gap-2 bg-amber-600 hover:bg-amber-700"
+                disabled={isBulkUpdating || !quickTransferCategoryId || selectedItems.size === 0}
+                className="gap-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isBulkUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-                {isBulkUpdating ? 'جاري النقل...' : 'نقل'}
+                {isBulkUpdating ? 'جاري النقل...' : `نقل ${selectedItems.size > 0 ? `(${selectedItems.size})` : ''}`}
               </Button>
+              {selectedItems.size === 0 && (
+                <span className="text-xs text-zinc-400">يرجى اختيار إيرادات أولاً</span>
+              )}
             </div>
           </div>
         </div>
