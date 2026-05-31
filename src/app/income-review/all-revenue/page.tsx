@@ -19,6 +19,10 @@ import {
   Pencil,
   Save,
   X,
+  CheckSquare,
+  Square,
+  ArrowRight,
+  Edit3,
 } from 'lucide-react';
 
 /* ────────── types ────────── */
@@ -108,6 +112,12 @@ export default function AllRevenuePage() {
   const [categoriesList, setCategoriesList] = useState<IncomeCategory[]>([]);
   const [paymentMethodsList, setPaymentMethodsList] = useState<PaymentMethod[]>([]);
 
+  // Bulk selection state
+  const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
+  const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
+  const [bulkCategoryId, setBulkCategoryId] = useState('');
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+
   // Edit form state
   const [editForm, setEditForm] = useState({
     invDate: '',
@@ -133,6 +143,90 @@ export default function AllRevenuePage() {
   }, []);
 
   useEffect(() => { fetchMeta(); }, [fetchMeta]);
+
+  /* ── bulk selection handlers ── */
+  const handleSelectItem = (itemId: number) => {
+    setSelectedItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(itemId)) {
+        newSet.delete(itemId);
+      } else {
+        newSet.add(itemId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = (categoryItems: RevenueItem[]) => {
+    const allIds = categoryItems.map(item => item.ID);
+    const allSelected = allIds.every(id => selectedItems.has(id));
+
+    if (allSelected) {
+      // Deselect all in this category
+      setSelectedItems(prev => {
+        const newSet = new Set(prev);
+        allIds.forEach(id => newSet.delete(id));
+        return newSet;
+      });
+    } else {
+      // Select all in this category
+      setSelectedItems(prev => {
+        const newSet = new Set(prev);
+        allIds.forEach(id => newSet.add(id));
+        return newSet;
+      });
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedItems(new Set());
+  };
+
+  /* ── bulk category update ── */
+  const handleBulkCategoryUpdate = async () => {
+    if (selectedItems.size === 0) {
+      showToast('يرجى اختيار عنصر واحد على الأقل', false);
+      return;
+    }
+
+    if (!bulkCategoryId) {
+      showToast('يرجى اختيار التصنيف الجديد', false);
+      return;
+    }
+
+    setIsBulkUpdating(true);
+    try {
+      const response = await fetch('/api/incomes/bulk-update', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itemIds: Array.from(selectedItems),
+          expInId: Number(bulkCategoryId)
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'فشل التحديث الجماعي');
+      }
+
+      const result = await response.json();
+      showToast(`تم تحديث ${result.updatedCount} إيراد بنجاح`, true);
+
+      // Reset state
+      setSelectedItems(new Set());
+      setBulkCategoryId('');
+      setIsBulkEditOpen(false);
+      fetchData();
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : 'حدث خطأ أثناء التحديث الجماعي',
+        false
+      );
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  };
 
   /* ── open edit modal ── */
   const handleEditClick = (item: RevenueItem) => {
@@ -333,6 +427,39 @@ export default function AllRevenuePage() {
         </div>
       )}
 
+      {/* Bulk Selection Controls */}
+      {selectedItems.size > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <CheckSquare className="h-5 w-5 text-amber-400" />
+              <span className="text-amber-400 font-medium">
+                تم اختيار {selectedItems.size} {selectedItems.size === 1 ? 'إيراد' : 'إيرادات'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClearSelection}
+                className="gap-2 border-zinc-600 text-zinc-400 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+                إلغاء الاختيار
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setIsBulkEditOpen(true)}
+                className="gap-2 bg-amber-600 hover:bg-amber-700"
+              >
+                <Edit3 className="h-4 w-4" />
+                نقل للتصنيف
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Category groups */}
       {!loading && categories.length === 0 && (
         <EmptyState
@@ -360,22 +487,37 @@ export default function AllRevenuePage() {
                 {/* Category header */}
                 <div className={`p-4 transition-colors ${isOpen ? 'bg-zinc-800/60' : ''}`}>
                   <div className="flex items-center justify-between gap-3">
-                    <button
-                      onClick={() => setExpandedCat(isOpen ? null : cat.ExpINID)}
-                      className="flex items-center gap-3 flex-1 text-right hover:opacity-80 transition-opacity"
-                    >
-                      {isOpen ? (
-                        <ChevronDown className="h-5 w-5 text-zinc-400 shrink-0" />
-                      ) : (
-                        <ChevronLeft className="h-5 w-5 text-zinc-400 shrink-0" />
+                    <div className="flex items-center gap-3 flex-1">
+                      {isOpen && (
+                        <button
+                          onClick={() => handleSelectAll(cat.items)}
+                          className="shrink-0 hover:opacity-80 transition-opacity"
+                          title="اختر الكل"
+                        >
+                          {cat.items.every(item => selectedItems.has(item.ID)) ? (
+                            <CheckSquare className="h-5 w-5 text-amber-400" />
+                          ) : (
+                            <Square className="h-5 w-5 text-zinc-400" />
+                          )}
+                        </button>
                       )}
-                      <div>
-                        <span className="font-medium text-white">{cat.CategoryName}</span>
-                        <div className="text-xs text-zinc-500 mt-0.5">
-                          {cat.Count} {cat.Count === 1 ? 'عملية' : 'عمليات'}
+                      <button
+                        onClick={() => setExpandedCat(isOpen ? null : cat.ExpINID)}
+                        className="flex items-center gap-3 flex-1 text-right hover:opacity-80 transition-opacity"
+                      >
+                        {isOpen ? (
+                          <ChevronDown className="h-5 w-5 text-zinc-400 shrink-0" />
+                        ) : (
+                          <ChevronLeft className="h-5 w-5 text-zinc-400 shrink-0" />
+                        )}
+                        <div>
+                          <span className="font-medium text-white">{cat.CategoryName}</span>
+                          <div className="text-xs text-zinc-500 mt-0.5">
+                            {cat.Count} {cat.Count === 1 ? 'عملية' : 'عمليات'}
+                          </div>
                         </div>
-                      </div>
-                    </button>
+                      </button>
+                    </div>
 
                     <div className="flex items-center gap-3 shrink-0">
                       <span className="text-lg font-bold text-emerald-400">{fmt(cat.TotalAmount)}</span>
@@ -402,6 +544,21 @@ export default function AllRevenuePage() {
                       <table className="w-full">
                         <thead>
                           <tr className="border-b border-zinc-800 bg-zinc-900/60">
+                            <th className="text-center py-2 px-3 text-xs font-medium text-zinc-500 w-8">
+                              {isOpen && (
+                                <button
+                                  onClick={() => handleSelectAll(cat.items)}
+                                  className="hover:opacity-80 transition-opacity"
+                                  title="اختر الكل"
+                                >
+                                  {cat.items.every(item => selectedItems.has(item.ID)) ? (
+                                    <CheckSquare className="h-4 w-4 text-amber-400" />
+                                  ) : (
+                                    <Square className="h-4 w-4 text-zinc-400" />
+                                  )}
+                                </button>
+                              )}
+                            </th>
                             <th className="text-right py-2 px-3 text-xs font-medium text-zinc-500">#</th>
                             <th className="text-right py-2 px-3 text-xs font-medium text-zinc-500">التاريخ</th>
                             <th className="text-right py-2 px-3 text-xs font-medium text-zinc-500">الوقت</th>
@@ -414,7 +571,20 @@ export default function AllRevenuePage() {
                         </thead>
                         <tbody>
                           {cat.items.map((item) => (
-                            <tr key={item.ID} className="border-b border-zinc-800/50 last:border-0 hover:bg-zinc-800/30 transition-colors">
+                            <tr key={item.ID} className={`border-b border-zinc-800/50 last:border-0 hover:bg-zinc-800/30 transition-colors ${selectedItems.has(item.ID) ? 'bg-amber-500/10' : ''}`}>
+                              <td className="py-2.5 px-3 text-xs text-center">
+                                <button
+                                  onClick={() => handleSelectItem(item.ID)}
+                                  className="hover:opacity-80 transition-opacity"
+                                  title="اختر"
+                                >
+                                  {selectedItems.has(item.ID) ? (
+                                    <CheckSquare className="h-4 w-4 text-amber-400" />
+                                  ) : (
+                                    <Square className="h-4 w-4 text-zinc-400" />
+                                  )}
+                                </button>
+                              </td>
                               <td className="py-2.5 px-3 text-xs text-zinc-500">{item.invID}</td>
                               <td className="py-2.5 px-3 text-xs text-zinc-300">{fmtDate(item.invDate)}</td>
                               <td className="py-2.5 px-3 text-xs text-zinc-500">{item.invTime || '—'}</td>
@@ -615,6 +785,70 @@ export default function AllRevenuePage() {
               >
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 {isSaving ? 'جاري الحفظ...' : 'حفظ التعديلات'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Bulk Edit Modal ── */}
+      {isBulkEditOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <Edit3 className="h-5 w-5 text-amber-400" />
+                نقل {selectedItems.size} {selectedItems.size === 1 ? 'إيراد' : 'إيرادات'}
+              </h3>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setIsBulkEditOpen(false)}
+                className="text-zinc-400 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+                <p className="text-sm text-amber-400">
+                  سيتم نقل {selectedItems.size} {selectedItems.size === 1 ? 'إيراد' : 'إيرادات'} للتصنيف الجديد
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm text-zinc-400">التصنيف الجديد <span className="text-rose-400">*</span></label>
+                <select
+                  value={bulkCategoryId}
+                  onChange={(e) => setBulkCategoryId(e.target.value)}
+                  className="w-full h-10 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-white focus:border-amber-500 focus:outline-none"
+                >
+                  <option value="">اختر التصنيف الجديد</option>
+                  {categoriesList.map((cat) => (
+                    <option key={cat.ExpINID} value={cat.ExpINID}>
+                      {cat.CatName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => setIsBulkEditOpen(false)}
+                disabled={isBulkUpdating}
+              >
+                إلغاء
+              </Button>
+              <Button
+                onClick={handleBulkCategoryUpdate}
+                disabled={isBulkUpdating || !bulkCategoryId}
+                className="gap-2 bg-amber-600 hover:bg-amber-700"
+              >
+                {isBulkUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                {isBulkUpdating ? 'جاري النقل...' : `نقل (${selectedItems.size})`}
               </Button>
             </div>
           </div>
