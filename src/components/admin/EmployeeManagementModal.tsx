@@ -125,10 +125,14 @@ export default function EmployeeManagementModal({
         fetch('/api/finance/categories?type=مصروفات'),
         fetch('/api/finance/categories?type=ايرادات')
       ]);
-      const advData = await advRes.json();
-      const revData = await revRes.json();
-      if (advRes.ok) setAdvanceCategories(Array.isArray(advData) ? advData : []);
-      if (revRes.ok) setRevenueCategories(Array.isArray(revData) ? revData : []);
+      if (advRes.ok) {
+        const advData = await advRes.json();
+        setAdvanceCategories(Array.isArray(advData) ? advData : []);
+      }
+      if (revRes.ok) {
+        const revData = await revRes.json();
+        setRevenueCategories(Array.isArray(revData) ? revData : []);
+      }
     } catch (error) {
       console.error('Error loading finance categories:', error);
     }
@@ -139,6 +143,13 @@ export default function EmployeeManagementModal({
 
     try {
       const response = await fetch(`/api/admin/employees/${employee.EmpID}/profile`);
+      if (!response.ok) {
+        console.error('Error loading employee data: HTTP', response.status);
+        setProfile(employee as unknown as EmployeeProfile);
+        setSchedule(DEFAULT_SCHEDULE);
+        setDaysOff([]);
+        return;
+      }
       const data = await response.json();
       
       if (data.success) {
@@ -150,9 +161,16 @@ export default function EmployeeManagementModal({
         setDaysOff(data.daysOff);
         setSelectedAdvance(data.employee.AdvanceExpINID?.toString() || '');
         setSelectedRevenue(data.employee.RevenueExpINID?.toString() || '');
+      } else {
+        setProfile(employee as unknown as EmployeeProfile);
+        setSchedule(DEFAULT_SCHEDULE);
+        setDaysOff([]);
       }
     } catch (error) {
       console.error('Error loading employee data:', error);
+      setProfile(employee as unknown as EmployeeProfile);
+      setSchedule(DEFAULT_SCHEDULE);
+      setDaysOff([]);
     }
   };
 
@@ -210,6 +228,12 @@ export default function EmployeeManagementModal({
         body: JSON.stringify({ schedule })
       });
 
+      if (!response.ok) {
+        let errMsg = `HTTP ${response.status}`;
+        try { const d = await response.json(); errMsg = d.error || errMsg; } catch {}
+        setScheduleError(errMsg);
+        return;
+      }
       const data = await response.json();
       
       if (data.success) {

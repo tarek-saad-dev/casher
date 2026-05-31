@@ -42,7 +42,7 @@ interface YTPlayerOptions {
   };
 }
 
-interface YTPlayer {
+export interface YTPlayer {
   playVideo: () => void;
   pauseVideo: () => void;
   stopVideo: () => void;
@@ -50,6 +50,7 @@ interface YTPlayer {
   getVolume: () => number;
   getPlayerState: () => number;
   destroy: () => void;
+  loadVideoById?: (videoId: string) => void;
 }
 
 // Global music controller (exposed for ducking)

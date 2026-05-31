@@ -98,6 +98,7 @@ export default function PosPage() {
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickAddPrefill, setQuickAddPrefill] = useState<string | undefined>();
   const [completeCustomer, setCompleteCustomer] = useState<Customer | null>(null);
+  const [completeCustomerMode, setCompleteCustomerMode] = useState<'complete' | 'edit'>('complete');
   const [saving, setSaving] = useState(false);
   const saveLockRef = useRef(false); // synchronous guard — prevents concurrent saves
   const [saveError, setSaveError] = useState('');
@@ -474,7 +475,8 @@ export default function PosPage() {
             selected={state.customer}
             onSelect={(c: Customer | null) => setCustomer(c)}
             onQuickAdd={(prefill) => { setQuickAddPrefill(prefill); setQuickAddOpen(true); }}
-            onCompleteData={(c) => setCompleteCustomer(c)}
+            onCompleteData={(c) => { setCompleteCustomerMode('complete'); setCompleteCustomer(c); }}
+            onEditCustomer={(c) => { setCompleteCustomerMode('edit'); setCompleteCustomer(c); }}
           />
 
           {/* Customer History Panel - Auto-loads when customer selected */}
@@ -654,6 +656,7 @@ export default function PosPage() {
       {completeCustomer && (
         <CompleteCustomerModal
           customer={completeCustomer}
+          mode={completeCustomerMode}
           onClose={() => setCompleteCustomer(null)}
           onUpdated={(updated) => {
             setCustomer(updated);

@@ -7,7 +7,7 @@ import { BottomSummaryStrip } from '@/components/operations/BottomSummaryStrip';
 import { SimpleCreateQueueDrawer } from '@/components/operations/SimpleCreateQueueDrawer';
 import { FindNearestQueueDrawer } from '@/components/operations/FindNearestQueueDrawer';
 import { VoiceEnableBanner } from '@/components/operations/VoiceEnableBanner';
-import { OperationsMusicPlayer } from '@/components/operations/OperationsMusicPlayer';
+import { OperationsMusicPlayerEnhanced } from '@/components/operations/OperationsMusicPlayerEnhanced';
 import { CreateBookingDrawer } from '@/components/operations/CreateBookingDrawer';
 import { useAutoVoiceAnnounce, isVoiceEnabled, enableVoice, disableVoice } from '@/hooks/useAutoVoiceAnnounce';
 import { Plus, CalendarPlus } from 'lucide-react';
@@ -64,6 +64,33 @@ function getCairoToday(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
 }
 
+// Business date: if Cairo time is before 4:00 AM, we're still in the previous operational day
+const BUSINESS_DAY_CUTOFF_HOUR = 4;
+
+function getCairoBusinessDate(): string {
+  const now = new Date();
+  // Get Cairo hour using Intl
+  const cairoHour = parseInt(
+    new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Cairo', hour: '2-digit', hour12: false }).format(now),
+    10
+  );
+  if (cairoHour < BUSINESS_DAY_CUTOFF_HOUR) {
+    // Still in previous operational day — return yesterday Cairo date
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    return yesterday.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+  }
+  return now.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+}
+
+function isAfterMidnightShift(): boolean {
+  const now = new Date();
+  const cairoHour = parseInt(
+    new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Cairo', hour: '2-digit', hour12: false }).format(now),
+    10
+  );
+  return cairoHour < BUSINESS_DAY_CUTOFF_HOUR;
+}
+
 // Add/subtract days
 function addDays(dateStr: string, days: number): string {
   const date = new Date(dateStr + 'T00:00:00');
@@ -72,7 +99,7 @@ function addDays(dateStr: string, days: number): string {
 }
 
 export default function OperationsPage() {
-  const [selectedDate, setSelectedDate] = useState<string>(getCairoToday());
+  const [selectedDate, setSelectedDate] = useState<string>(getCairoBusinessDate());
   const [flowBoardData, setFlowBoardData] = useState<FlowBoardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -192,7 +219,11 @@ export default function OperationsPage() {
   }, []);
 
   const handleToday = useCallback(() => {
-    setSelectedDate(getCairoToday());
+    setSelectedDate(getCairoBusinessDate());
+  }, []);
+
+  const handleDateSelect = useCallback((date: string) => {
+    setSelectedDate(date);
   }, []);
 
   // Calculate summary stats
@@ -232,6 +263,8 @@ export default function OperationsPage() {
 
   const stats = summaryStats();
 
+  const afterMidnight = isAfterMidnightShift();
+
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: '#050505' }} dir="rtl">
       {/* Top Toolbar */}
@@ -241,11 +274,31 @@ export default function OperationsPage() {
         onPrevDay={handlePrevDay}
         onNextDay={handleNextDay}
         onToday={handleToday}
+        onDateSelect={handleDateSelect}
         onRefresh={fetchFlowBoard}
         onCreateQueue={() => setShowCreateDrawer(true)}
         onFindNearestQueue={() => setShowFindNearestDrawer(true)}
         loading={loading}
       />
+
+      {/* After-midnight banner */}
+      {afterMidnight && selectedDate === getCairoBusinessDate() && (
+        <div
+          className="flex items-center justify-center gap-2 py-1.5 text-xs font-medium"
+          style={{ background: 'rgba(139, 92, 246, 0.12)', borderBottom: '1px solid rgba(139, 92, 246, 0.25)', color: '#a78bfa' }}
+        >
+          <span>🌙</span>
+          <span>وقت القاهرة بعد منتصف الليل — تعمل على يوم التشغيل السابق</span>
+          <span style={{ opacity: 0.6 }}>|</span>
+          <button
+            onClick={() => setSelectedDate(getCairoToday())}
+            className="underline hover:no-underline transition-all"
+            style={{ color: '#c4b5fd' }}
+          >
+            انتقل ليوم {formatDateLabel(getCairoToday()).split(' ').slice(0, 2).join(' ')}
+          </button>
+        </div>
+      )}
 
       {/* Create Booking Button + Voice Enable Banner & Music Player */}
       <div className="px-4 py-2 space-y-2">
@@ -272,7 +325,7 @@ export default function OperationsPage() {
         </div>
         <div className="flex justify-center">
           <div className="w-full max-w-md">
-            <OperationsMusicPlayer
+            <OperationsMusicPlayerEnhanced
               isExpanded={musicPlayerExpanded}
               onToggleExpand={() => setMusicPlayerExpanded(!musicPlayerExpanded)}
             />

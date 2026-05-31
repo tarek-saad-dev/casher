@@ -196,7 +196,9 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
               const now = new Date();
               const [bIntervals, qIntervals] = await Promise.all([
                 buildBookingIntervals(db, booking.AssignedEmpID, dateStr, 30),
-                buildQueueIntervals(db, booking.AssignedEmpID, dateStr, now, 30),
+                buildQueueIntervals(db, booking.AssignedEmpID, dateStr, now, 30, undefined, {
+                  filterStale: true, graceMinutes: 30, debugContext: "booking-restore"
+                }),
               ]);
               
               // Calculate booking end time (need service duration)

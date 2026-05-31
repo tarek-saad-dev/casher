@@ -4,6 +4,7 @@ import { useMemo, useState, useCallback } from 'react';
 import { BarberLane } from './BarberLane';
 import { TimeAxis } from './TimeAxis';
 import { BookingDetailsModal } from './BookingDetailsModal';
+import { CurrentTimeLine } from './CurrentTimeLine';
 import { generateOperationalHours, HOUR_CELL_HEIGHT, TimelineItem, FreeSegment } from './schedulerUtils';
 import type { Booking } from '@/lib/operationsTypes';
 
@@ -174,7 +175,7 @@ export function SchedulerBoard({ barbers, loading, error, onRetry, onRefresh, vo
       <div className="min-w-max">
         {/* Scheduler Grid - Horizontal Scroll Container */}
         <div
-          className="flex"
+          className="flex relative"
           style={{
             height: totalHeight,
           }}
@@ -183,7 +184,10 @@ export function SchedulerBoard({ barbers, loading, error, onRetry, onRefresh, vo
           <TimeAxis headerHeight={HEADER_HEIGHT} />
 
           {/* Barber Lanes - Horizontal Scroll */}
-          <div className="flex">
+          <div className="flex relative">
+            {/* Current Time Line - spans across all lanes */}
+            <CurrentTimeLine headerHeight={HEADER_HEIGHT} selectedDate={currentDate} />
+
             {displayBarbers.map((barber, index) => (
               <BarberLane
                 key={barber.empId}

@@ -25,6 +25,84 @@ const SALON_TZ = 'Africa/Cairo';
 
 const DEBUG_BOOKING = process.env.DEBUG_BOOKING === "true";
 
+// ── Stale Queue Ticket Detection ─────────────────────────────────────────────
+
+const STALE_GRACE_MINUTES = 30; // Grace period after estimated end time
+
+export interface QueueTicketRow {
+  QueueTicketID: number;
+  TicketCode: string;
+  TicketNumber: number;
+  Status: string;
+  EmpID: number;
+  ServiceStartedAt?: Date | null;
+  EstimatedStartTime?: Date | null;
+  DurationMinutes: number;
+  CreatedTime?: Date | null;
+}
+
+/**
+ * Check if a queue ticket is "stale" - meaning its estimated time has passed
+ * and it should no longer block new tickets.
+ * 
+ * Stale rules:
+ * - in_service: never stale (always a blocker until completed)
+ * - waiting/called: stale if estimatedEnd + grace < now
+ */
+export function isQueueTicketStale(
+  ticket: QueueTicketRow,
+  now: Date,
+  graceMinutes: number = STALE_GRACE_MINUTES
+): boolean {
+  // in_service tickets are never stale - they're actively being served
+  if (String(ticket.Status).toLowerCase() === "in_service") {
+    return false;
+  }
+
+  // If no estimated start time, check CreatedTime as fallback
+  const estimatedStart = ticket.EstimatedStartTime
+    ? new Date(ticket.EstimatedStartTime)
+    : ticket.CreatedTime
+      ? new Date(ticket.CreatedTime)
+      : null;
+
+  if (!estimatedStart) {
+    // No time reference - consider it stale if very old ( > 4 hours)
+    const createdTime = ticket.CreatedTime ? new Date(ticket.CreatedTime) : null;
+    if (!createdTime) return false; // Can't determine, treat as active
+    const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60000);
+    return createdTime < fourHoursAgo;
+  }
+
+  const duration = Math.max(1, Number(ticket.DurationMinutes) || 30);
+  const estimatedEnd = new Date(estimatedStart.getTime() + duration * 60000);
+  const staleAfter = new Date(estimatedEnd.getTime() + graceMinutes * 60000);
+
+  return staleAfter < now;
+}
+
+/**
+ * Classify queue tickets into active and stale for debugging
+ */
+export function classifyQueueTickets(
+  tickets: QueueTicketRow[],
+  now: Date,
+  graceMinutes: number = STALE_GRACE_MINUTES
+): { active: QueueTicketRow[]; stale: QueueTicketRow[] } {
+  const active: QueueTicketRow[] = [];
+  const stale: QueueTicketRow[] = [];
+
+  for (const ticket of tickets) {
+    if (isQueueTicketStale(ticket, now, graceMinutes)) {
+      stale.push(ticket);
+    } else {
+      active.push(ticket);
+    }
+  }
+
+  return { active, stale };
+}
+
 export interface Interval {
   start: Date;
   end: Date;
@@ -155,7 +233,13 @@ export async function buildQueueIntervals(
   now: Date, // actual current time — cursor starts here
   defaultDuration: number,
   excludeTicketId?: number, // skip this ticket (for re-estimate of existing)
+  options?: {
+    filterStale?: boolean; // if true, exclude stale tickets (default: true for operations)
+    graceMinutes?: number;
+    debugContext?: string; // for logging context
+  },
 ): Promise<Interval[]> {
+  const { filterStale = true, graceMinutes = STALE_GRACE_MINUTES, debugContext = "" } = options || {};
   // Build SELECT defensively — guard QueueTicketServices with OBJECT_ID check
   // so when the table doesn't exist the whole query doesn't crash
   const svcTableExists = await db
@@ -172,6 +256,8 @@ export async function buildQueueIntervals(
       dateStr,
       "svcTableExists",
       svcTableExists,
+      "filterStale",
+      filterStale,
     );
 
   const durationSql = svcTableExists
@@ -231,18 +317,45 @@ export async function buildQueueIntervals(
     );
   }
 
+  // Classify tickets into active and stale
+  const allTickets = res.recordset.filter(
+    (t: any) => !excludeTicketId || t.QueueTicketID !== excludeTicketId
+  );
+
+  const { active: activeTickets, stale: staleTickets } = classifyQueueTickets(
+    allTickets as QueueTicketRow[],
+    now,
+    graceMinutes
+  );
+
+  // Log classification for debugging
+  if (DEBUG_BOOKING || staleTickets.length > 0) {
+    console.log(`[buildQueueIntervals] ${debugContext}`, {
+      empId,
+      total: allTickets.length,
+      active: activeTickets.length,
+      stale: staleTickets.length,
+      staleDetails: staleTickets.map(t => ({
+        id: t.QueueTicketID,
+        code: t.TicketCode,
+        status: t.Status,
+        estimatedStart: t.EstimatedStartTime,
+        duration: t.DurationMinutes,
+      })),
+    });
+  }
+
+  // Use only active tickets for interval building (if filterStale is true)
+  const ticketsToUse = filterStale ? activeTickets : allTickets;
+
   const intervals: Interval[] = [];
 
   // Step 1: handle in_service ticket first (if any) — it has a real start in the past
-  const inServiceTickets = res.recordset.filter(
-    (t: any) =>
-      (!excludeTicketId || t.QueueTicketID !== excludeTicketId) &&
-      String(t.Status).toLowerCase() === "in_service",
+  const inServiceTickets = ticketsToUse.filter(
+    (t) => String(t.Status).toLowerCase() === "in_service",
   );
-  const otherTickets = res.recordset.filter(
-    (t: any) =>
-      (!excludeTicketId || t.QueueTicketID !== excludeTicketId) &&
-      String(t.Status).toLowerCase() !== "in_service",
+  const otherTickets = ticketsToUse.filter(
+    (t) => String(t.Status).toLowerCase() !== "in_service",
   );
 
   // cursor: the end of the last placed interval — new tickets start here
@@ -425,6 +538,7 @@ export async function computeBarberEstimate(
     now,
     defaultDur,
     excludeTicketId,
+    { filterStale: true, graceMinutes: 30, debugContext: "compute-estimate" }
   );
   const bIntervals = await buildBookingIntervals(
     db,
@@ -608,6 +722,8 @@ export async function checkBarberAvailableForBooking(
     dateStr,
     realNow,
     defaultDur,
+    undefined,
+    { filterStale: true, graceMinutes: 30, debugContext: "check-availability" }
   );
   const bIntervals = await buildBookingIntervals(
     db,
@@ -787,7 +903,9 @@ export async function hasAnyAvailableSlotForBarberOnDay(
 
   // 2. Preload all blocking intervals ONCE
   const [qIntervals, bIntervals] = await Promise.all([
-    buildQueueIntervals(db, empId, dateStr, new Date(nowMs), durationMinutes),
+    buildQueueIntervals(db, empId, dateStr, new Date(nowMs), durationMinutes, undefined, {
+      filterStale: true, graceMinutes: 30, debugContext: "day-availability"
+    }),
     buildBookingIntervals(db, empId, dateStr, durationMinutes),
   ]);
 

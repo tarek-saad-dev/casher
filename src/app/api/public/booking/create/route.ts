@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
       date,
       time,
       notes = "",
+      source = "public",
     } = body as {
       customer: { name: string; phone: string };
       serviceIds?: number[];
@@ -73,6 +74,7 @@ export async function POST(req: NextRequest) {
       date: string;
       time: string;
       notes?: string;
+      source?: "public" | "operations" | "admin";
     };
 
     // ── Validation ───────────────────────────────────────────────────────────
@@ -107,8 +109,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Determine source type early (needed for multiple checks)
+    const isInternalSource = source === "operations" || source === "admin";
+
     const settings = await getPublicSettings();
-    if (!settings.bookingEnabled) {
+    // Only check bookingEnabled for public bookings, skip for operations/admin
+    if (!isInternalSource && !settings.bookingEnabled) {
       return NextResponse.json(
         { error: "الحجز الإلكتروني غير متاح حالياً" },
         { status: 503, headers: PUBLIC_CORS_HEADERS },
@@ -120,15 +126,18 @@ export async function POST(req: NextRequest) {
     const slotEpochMs = salonDateTimeToMs(date, time, timezone);
     const slotDt = new Date(slotEpochMs);
 
-    // Prevent bookings too soon
-    const noticeMs = settings.minNoticeMinutes * 60_000;
-    if (slotDt.getTime() - Date.now() < noticeMs) {
-      return NextResponse.json(
-        {
-          error: `يجب الحجز قبل الموعد بـ ${settings.minNoticeMinutes} دقيقة على الأقل`,
-        },
-        { status: 400, headers: PUBLIC_CORS_HEADERS },
-      );
+    // Prevent bookings too soon (only for public bookings)
+    // Operations/admin bookings can book immediately (skip minNotice)
+    if (!isInternalSource) {
+      const noticeMs = settings.minNoticeMinutes * 60_000;
+      if (slotDt.getTime() - Date.now() < noticeMs) {
+        return NextResponse.json(
+          {
+            error: `يجب الحجز قبل الموعد بـ ${settings.minNoticeMinutes} دقيقة على الأقل`,
+          },
+          { status: 400, headers: PUBLIC_CORS_HEADERS },
+        );
+      }
     }
 
     // Prevent bookings too far ahead

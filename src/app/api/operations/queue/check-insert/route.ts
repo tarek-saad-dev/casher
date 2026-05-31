@@ -92,7 +92,9 @@ async function getAlternativeBarbers(
       const dateStr = cairoDateStr(now);
       const customerDur = await getServicesDuration(db, serviceIds, defaultDur);
 
-      const qIvs = await buildQueueIntervals(db, barber.EmpID, dateStr, now, defaultDur);
+      const qIvs = await buildQueueIntervals(db, barber.EmpID, dateStr, now, defaultDur, undefined, {
+        filterStale: true, graceMinutes: 30, debugContext: "check-insert-alt"
+      });
       const bIvs = await buildBookingIntervals(db, barber.EmpID, dateStr, defaultDur);
       const allIvs = [...qIvs, ...bIvs].sort((a, b) => a.start.getTime() - b.start.getTime());
 
@@ -168,8 +170,10 @@ export async function POST(req: NextRequest) {
     const defaultDur = await getDefaultDuration(db);
     const customerDur = await getServicesDuration(db, serviceIds, defaultDur);
 
-    // 3. Build timeline for the barber
-    const qIvs = await buildQueueIntervals(db, empId, dateStr, now, defaultDur);
+    // 3. Build timeline for the barber (filter stale queue tickets)
+    const qIvs = await buildQueueIntervals(db, empId, dateStr, now, defaultDur, undefined, {
+      filterStale: true, graceMinutes: 30, debugContext: "check-insert"
+    });
     const bIvs = await buildBookingIntervals(db, empId, dateStr, defaultDur);
     const allIvs = [...qIvs, ...bIvs].sort((a, b) => a.start.getTime() - b.start.getTime());
 

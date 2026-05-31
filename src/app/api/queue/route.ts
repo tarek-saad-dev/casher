@@ -238,6 +238,8 @@ export async function POST(req: NextRequest) {
         today,
         now2,
         defaultDur,
+        undefined,
+        { filterStale: true, graceMinutes: 30, debugContext: "queue-create" }
       );
       const bIvs = await buildBookingIntervals(db, empId, today, defaultDur);
       const allIvs = [...qIvs, ...bIvs].sort(
@@ -335,6 +337,8 @@ export async function POST(req: NextRequest) {
           today,
           now2,
           defaultDur,
+          undefined,
+          { filterStale: true, graceMinutes: 30, debugContext: "queue-create-tx" }
         );
         const bIvsTx = await buildBookingIntervals(
           db,

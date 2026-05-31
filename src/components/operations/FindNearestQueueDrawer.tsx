@@ -140,16 +140,27 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
     setSelectedOption(null);
 
     try {
+      const browserNow = new Date();
+      const estimatePayload = {
+        mode: 'nearest',
+        serviceIds: [selectedService.ProID],
+        requestedAt: browserNow.toISOString(),
+      };
+      console.log('[estimate payload]', {
+        ...estimatePayload,
+        browserNowLocal: browserNow.toLocaleString('ar-EG', { timeZone: 'Africa/Cairo' }),
+        browserTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        serviceName: selectedService.ProName,
+        serviceDuration: selectedService.DurationMinutes,
+      });
+
       const res = await fetch('/api/queue/estimate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: 'nearest',
-          serviceIds: [selectedService.ProID],
-          requestedAt: new Date().toISOString(),
-        }),
+        body: JSON.stringify(estimatePayload),
       });
       const data: EstimateResponse = await res.json();
+      console.log('[estimate response]', data);
       setEstimate(data);
 
       // Auto-select best option if available
@@ -160,6 +171,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
     finally { setEstimating(false); }
   }, [selectedService]);
 
+  // Fetch estimate when going to step 2
   useEffect(() => {
     if (step === 2 && selectedService) {
       fetchEstimate();
@@ -186,8 +198,8 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
       setClientSearch('');
       setClients([]);
       setShowClients(false);
-      // Auto-advance to step 2
-      setStep(2);
+      // Stay on current step, just clear search and update selected client
+      // Don't auto-advance - let user see the selection
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'فشل إنشاء العميل');
     } finally {
@@ -199,10 +211,6 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
   const handleSubmit = async () => {
     setError(null);
 
-    if (!selectedClient) {
-      setError('اختر العميل أولاً');
-      return;
-    }
     if (!selectedService) {
       setError('اختر الخدمة أولاً');
       return;
@@ -212,16 +220,48 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
       return;
     }
 
-    const clientId = selectedClient.ClientID;
     const empId = selectedOption.empId;
+    // Client is optional - use selected client or default to "عميل مباشر"
+    const clientId = selectedClient?.ClientID ?? null;
 
     setSubmitting(true);
     try {
+      // Build customer payload based on selection
+      let customerPayload;
+      if (selectedClient) {
+        // Existing client
+        customerPayload = {
+          clientId: selectedClient.ClientID,
+          name: selectedClient.Name,
+          phone: selectedClient.Mobile || '',
+        };
+      } else if (clientSearch.trim()) {
+        // New client from search text
+        const isPhone = /^[0-9+\- ]{7,}$/.test(clientSearch.trim());
+        if (isPhone) {
+          customerPayload = {
+            name: `عميل ${clientSearch.trim()}`,
+            phone: clientSearch.trim(),
+          };
+        } else {
+          customerPayload = {
+            name: clientSearch.trim(),
+            phone: '',
+          };
+        }
+      } else {
+        // No client info - use default
+        customerPayload = {
+          name: 'عميل مباشر',
+          phone: '',
+        };
+      }
+
       const res = await fetch('/api/queue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          clientId: Number(clientId),
+          clientId: clientId ? Number(clientId) : null,
           empId,
           notes: null,
           services: [{
@@ -231,13 +271,14 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
             price: selectedService.SPrice,
             durationMinutes: selectedService.DurationMinutes,
           }],
+          customer: customerPayload,
         }),
       });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'خطأ'); }
       const data = await res.json();
 
       const t = data.ticket;
-      const resolvedClientName = t?.clientName ?? selectedClient?.Name ?? null;
+      const resolvedClientName = t?.clientName ?? selectedClient?.Name ?? customerPayload.name ?? 'عميل مباشر';
       const resolvedEmpName = t?.barberName ?? selectedOption?.empName;
       const resolvedDate = t?.queueDate ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
       const rawTime = t?.createdTime ?? new Date().toLocaleTimeString('en-GB', { timeZone: 'Africa/Cairo', hour12: false });
@@ -293,15 +334,15 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
             <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${
               step === 1 ? 'bg-zinc-800 text-white' : 'text-zinc-500'
             }`}>
-              <User className="w-4 h-4" />
-              <span>العميل</span>
+              <Scissors className="w-4 h-4" />
+              <span>الخدمة</span>
             </div>
             <ChevronLeft className="w-4 h-4 text-zinc-600" />
             <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${
               step === 2 ? 'bg-zinc-800 text-white' : step > 2 ? 'text-zinc-400' : 'text-zinc-500'
             }`}>
-              <Scissors className="w-4 h-4" />
-              <span>الخدمة</span>
+              <User className="w-4 h-4" />
+              <span>الحلاق</span>
             </div>
             <ChevronLeft className="w-4 h-4 text-zinc-600" />
             <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${
@@ -322,100 +363,11 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
               </div>
             )}
 
-            {/* Step 1: Select Client */}
+            {/* Step 1: Select Service */}
             {step === 1 && (
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">العميل</label>
-                  {selectedClient ? (
-                    <div className="flex items-center justify-between p-3 rounded-lg border"
-                      style={{ background: 'rgba(34,197,94,0.1)', borderColor: 'rgba(34,197,94,0.3)' }}>
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-5 h-5 text-green-500" />
-                        <div>
-                          <p className="font-medium text-white">{selectedClient.Name}</p>
-                          {selectedClient.Mobile && <p className="text-xs text-zinc-400">{selectedClient.Mobile}</p>}
-                        </div>
-                      </div>
-                      <button onClick={() => setSelectedClient(null)}
-                        className="text-xs px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 transition-colors text-zinc-300">
-                        تغيير
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="relative">
-                      <div className="flex items-center gap-2">
-                        <div className="relative flex-1">
-                          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                          <input
-                            type="text"
-                            value={clientSearch}
-                            onChange={(e) => setClientSearch(e.target.value)}
-                            placeholder="ابحث باسم العميل أو رقم الهاتف..."
-                            className="w-full pr-10 pl-3 py-2.5 rounded-lg border text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-amber-500/50"
-                            style={{ background: '#111', borderColor: 'rgba(212,175,55,0.2)' }}
-                          />
-                          {clientSearching && (
-                            <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 animate-spin" />
-                          )}
-                        </div>
-                        {clientSearch.trim() && (
-                          <button
-                            onClick={handleQuickCreate}
-                            disabled={quickCreating}
-                            className="px-3 py-2.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors"
-                            style={{ background: 'rgba(212,175,55,0.15)', color: '#d4af37' }}
-                          >
-                            {quickCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : '+ عميل جديد'}
-                          </button>
-                        )}
-                      </div>
-
-                      {showClients && clients.length > 0 && (
-                        <div className="absolute z-10 w-full mt-1 rounded-lg border overflow-hidden max-h-48 overflow-y-auto"
-                          style={{ background: '#111', borderColor: 'rgba(212,175,55,0.2)' }}>
-                          {clients.map((c) => (
-                            <button
-                              key={c.ClientID}
-                              onClick={() => {
-                                setSelectedClient(c);
-                                setClientSearch('');
-                                setClients([]);
-                                setShowClients(false);
-                              }}
-                              className="w-full px-3 py-2.5 text-right hover:bg-zinc-800 transition-colors flex items-center gap-2"
-                            >
-                              <User className="w-4 h-4 text-zinc-500" />
-                              <div className="flex-1">
-                                <p className="text-sm text-white">{c.Name}</p>
-                                {c.Mobile && <p className="text-xs text-zinc-500">{c.Mobile}</p>}
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {selectedClient && (
-                  <button
-                    onClick={() => setStep(2)}
-                    className="w-full py-3 rounded-xl font-bold text-base transition-all"
-                    style={{ background: '#d4af37', color: '#050505' }}
-                  >
-                    التالي: اختيار الخدمة
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Step 2: Select Service + Show Options */}
-            {step === 2 && (
-              <div className="space-y-4">
-                {/* Service Selection */}
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">الخدمة</label>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">اختر الخدمة</label>
                   {selectedService ? (
                     <div className="flex items-center justify-between p-3 rounded-lg border"
                       style={{ background: 'rgba(34,197,94,0.1)', borderColor: 'rgba(34,197,94,0.3)' }}>
@@ -453,6 +405,31 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                       ))}
                     </div>
                   )}
+                </div>
+
+                {selectedService && (
+                  <button
+                    onClick={() => setStep(2)}
+                    className="w-full py-3 rounded-xl font-bold text-base transition-all"
+                    style={{ background: '#d4af37', color: '#050505' }}
+                  >
+                    التالي: اختيار الحلاق
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Step 2: Show Barber Options */}
+            {step === 2 && (
+              <div className="space-y-4">
+                {/* Service Summary (Read-only) */}
+                <div className="p-3 rounded-lg border" style={{ background: 'rgba(212,175,55,0.05)', borderColor: 'rgba(212,175,55,0.15)' }}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-zinc-400">الخدمة المختارة</span>
+                    <button onClick={() => setStep(1)} className="text-xs text-amber-500 hover:underline">تغيير</button>
+                  </div>
+                  <p className="text-sm font-medium text-white mt-1">{selectedService?.ProName}</p>
+                  <p className="text-xs text-zinc-500">{selectedService?.DurationMinutes ? `${selectedService.DurationMinutes} دقيقة` : ''}</p>
                 </div>
 
                 {/* Estimate Results */}
@@ -601,7 +578,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                           className="flex-[2] py-3 rounded-xl font-bold text-base transition-all"
                           style={{ background: '#d4af37', color: '#050505' }}
                         >
-                          التالي: التأكيد
+                          التالي: التأكيد والعميل
                         </button>
                       )}
                     </div>
@@ -610,18 +587,14 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
               </div>
             )}
 
-            {/* Step 3: Confirmation */}
-            {step === 3 && selectedClient && selectedService && selectedOption && (
+            {/* Step 3: Client Info + Confirmation */}
+            {step === 3 && selectedService && selectedOption && (
               <div className="space-y-4">
+                {/* Summary Card */}
                 <div className="p-4 rounded-xl border"
                   style={{ background: 'rgba(212,175,55,0.05)', borderColor: 'rgba(212,175,55,0.2)' }}>
                   <h3 className="text-sm font-medium text-zinc-400 mb-3">ملخص الدور</h3>
-
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-zinc-400">العميل</span>
-                      <span className="text-sm font-medium text-white">{selectedClient.Name}</span>
-                    </div>
+                  <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-zinc-400">الخدمة</span>
                       <span className="text-sm font-medium text-white">{selectedService.ProName}</span>
@@ -631,23 +604,127 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                       <span className="text-sm font-medium" style={{ color: '#d4af37' }}>{selectedOption.empName}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-zinc-400">موعد الدخول المتوقع</span>
+                      <span className="text-sm text-zinc-400">وقت البدء</span>
                       <span className="text-sm font-medium text-white">
                         {selectedOption.isFreeNow ? 'فوراً' : fmtTime(selectedOption.estimatedStartTime)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-zinc-400">مدة الانتظار</span>
-                      <span className="text-sm font-medium text-white">{selectedOption.estimatedWaitMinutes} دقيقة</span>
+                      <span className="text-sm text-zinc-400">مدة الخدمة</span>
+                      <span className="text-sm font-medium text-white">{formatDuration(selectedService.DurationMinutes ?? 30)}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-zinc-400">الأدوار قبلك</span>
+                      <span className="text-sm text-zinc-400">الأشخاص قبله</span>
                       <span className="text-sm font-medium text-white">{selectedOption.waitingCount}</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex gap-2">
+                {/* Client Info Section */}
+                <div className="space-y-3">
+                  <label className="block text-sm font-medium text-zinc-300">بيانات العميل <span className="text-zinc-500 text-xs">(اختياري)</span></label>
+
+                  {/* Selected Client Display */}
+                  {selectedClient ? (
+                    <div className="flex items-center justify-between p-3 rounded-lg border"
+                      style={{ background: 'rgba(34,197,94,0.1)', borderColor: 'rgba(34,197,94,0.3)' }}>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-5 h-5 text-green-500" />
+                        <div>
+                          <p className="font-medium text-white">{selectedClient.Name}</p>
+                          {selectedClient.Mobile && <p className="text-xs text-zinc-400">{selectedClient.Mobile}</p>}
+                        </div>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">عميل موجود</span>
+                      </div>
+                      <button onClick={() => { setSelectedClient(null); setClientSearch(''); }}
+                        className="text-xs px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 transition-colors text-zinc-300">
+                        تغيير
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      {/* Search Input */}
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                          <input
+                            type="text"
+                            value={clientSearch}
+                            onChange={(e) => setClientSearch(e.target.value)}
+                            placeholder="رقم الهاتف أو اسم العميل..."
+                            className="w-full pr-10 pl-3 py-2.5 rounded-lg border text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-amber-500/50"
+                            style={{ background: '#111', borderColor: 'rgba(212,175,55,0.2)' }}
+                          />
+                          {clientSearching && (
+                            <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 animate-spin" />
+                          )}
+                        </div>
+                        {clientSearch.trim() && (
+                          <button
+                            onClick={handleQuickCreate}
+                            disabled={quickCreating}
+                            className="px-3 py-2.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors"
+                            style={{ background: 'rgba(212,175,55,0.15)', color: '#d4af37' }}
+                          >
+                            {quickCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : '+ عميل جديد'}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Search Results Dropdown */}
+                      {showClients && clients.length > 0 && (
+                        <div className="absolute z-10 w-full mt-1 rounded-lg border overflow-hidden max-h-48 overflow-y-auto"
+                          style={{ background: '#111', borderColor: 'rgba(212,175,55,0.2)' }}>
+                          {clients.map((c) => (
+                            <button
+                              key={c.ClientID}
+                              onClick={() => {
+                                setSelectedClient(c);
+                                setClientSearch('');
+                                setClients([]);
+                                setShowClients(false);
+                              }}
+                              className="w-full px-3 py-2.5 text-right hover:bg-zinc-800 transition-colors flex items-center gap-2"
+                            >
+                              <User className="w-4 h-4 text-zinc-500" />
+                              <div className="flex-1">
+                                <p className="text-sm text-white">{c.Name}</p>
+                                {c.Mobile && <p className="text-xs text-zinc-500">{c.Mobile}</p>}
+                              </div>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">عميل موجود</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* No client hint */}
+                      {!clientSearch.trim() && !selectedClient && (
+                        <p className="text-xs text-zinc-500 mt-2">
+                          يمكنك ترك الحقل فارغاً وسيتم إنشاء الدور باسم "عميل مباشر"
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* New client hint */}
+                  {clientSearch.trim() && !selectedClient && !showClients && (
+                    <p className="text-xs text-amber-500/80">
+                      عميل جديد — سيتم تسجيله عند إنشاء الدور
+                    </p>
+                  )}
+                </div>
+
+                {/* Error Display */}
+                {error && (
+                  <div className="p-3 rounded-lg border flex items-center gap-2"
+                    style={{ background: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.3)', color: '#ef4444' }}>
+                    <AlertCircle className="w-5 h-5 shrink-0" />
+                    <p className="text-sm">{error}</p>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex gap-2 pt-2">
                   <button
                     onClick={() => setStep(2)}
                     className="flex-1 py-3 rounded-xl font-bold text-base transition-all border"
@@ -666,7 +743,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                     ) : (
                       <>
                         <Zap className="w-5 h-5" />
-                        إصدار الدور مع {selectedOption.empName}
+                        تأكيد وإصدار الدور
                       </>
                     )}
                   </button>

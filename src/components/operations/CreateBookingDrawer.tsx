@@ -191,10 +191,10 @@ export function CreateBookingDrawer({
     try {
       let url: string;
       if (mode === 'specific' && selectedBarberId) {
-        url = `/api/public/booking/available-slots?date=${bookingDate}&serviceIds=${selectedService.ProID}&mode=specific&empId=${selectedBarberId}`;
+        url = `/api/public/booking/available-slots?date=${bookingDate}&serviceIds=${selectedService.ProID}&mode=specific&empId=${selectedBarberId}&source=operations`;
         console.log('[CreateBookingDrawer] fetching specific slots for empId:', selectedBarberId);
       } else {
-        url = `/api/public/booking/available-slots?date=${bookingDate}&serviceIds=${selectedService.ProID}&mode=nearest`;
+        url = `/api/public/booking/available-slots?date=${bookingDate}&serviceIds=${selectedService.ProID}&mode=nearest&source=operations`;
       }
       
       console.log('[CreateBookingDrawer] fetching slots:', url);
@@ -291,6 +291,7 @@ export function CreateBookingDrawer({
         mode: mode,
         empId: finalEmpId,
         notes: '',
+        source: 'operations',
       };
       
       console.log('[CreateBookingDrawer] creating booking with empId:', finalEmpId, 'mode:', mode);

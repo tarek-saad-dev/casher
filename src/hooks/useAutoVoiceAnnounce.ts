@@ -7,7 +7,7 @@ import {
   speakWithBrowser,
 } from "@/lib/queueVoice";
 import type { AnnouncementPart } from "@/lib/chairMapping";
-import { musicController } from "@/components/operations/OperationsMusicPlayer";
+import { musicController } from "@/components/operations/OperationsMusicPlayerEnhanced";
 
 interface Announcement {
   queueTicketId: number;

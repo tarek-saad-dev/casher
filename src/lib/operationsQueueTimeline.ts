@@ -128,8 +128,12 @@ export async function buildBarberOperationalTimeline({
       ? await getServicesDuration(db, serviceIds, defaultDur)
       : defaultDur;
 
-  // Build intervals
-  const qIntervals = await buildQueueIntervals(db, empId, date, now, defaultDur);
+  // Build intervals (filter stale queue tickets for operations)
+  const qIntervals = await buildQueueIntervals(db, empId, date, now, defaultDur, undefined, {
+    filterStale: true,
+    graceMinutes: 30,
+    debugContext: "operations-timeline",
+  });
   const bIntervals = await buildBookingIntervals(db, empId, date, defaultDur);
 
   // Merge and sort all intervals
@@ -361,36 +365,59 @@ export async function simulateQueueInsertion({
   const qIntervals = await buildQueueIntervals(db, empId, dateStr, now, defaultDur);
   const bIntervals = await buildBookingIntervals(db, empId, dateStr, defaultDur);
 
-  // Debug: Log all blockers
-  if (DEBUG_OPS) {
-    console.log("[simulate blockers]", {
-      empId,
-      date: dateStr,
-      activeQueueCount: qIntervals.length,
-      activeBookingCount: bIntervals.length,
-      activeQueue: qIntervals.map((q) => ({
-        id: q.id,
-        ticketCode: q.ticketCode,
-        start: q.start.toISOString(),
-        end: q.end.toISOString(),
-        status: q.label,
-      })),
-      activeBookings: bIntervals.map((b) => ({
-        id: b.id,
-        start: b.start.toISOString(),
-        end: b.end.toISOString(),
-        status: b.label,
-      })),
-    });
-  }
+  // Debug: Always log detailed blockers info (not just in DEBUG_OPS mode)
+  console.log("[simulate debug] Request details:", {
+    empId,
+    empName,
+    date: dateStr,
+    requestedAt: requestedAt ?? "undefined",
+    effectiveNowUsed: now.toISOString(),
+    effectiveNowCairo: now.toLocaleString("en-GB", { timeZone: "Africa/Cairo" }),
+    serviceDuration: serviceDur,
+    activeQueueCount: qIntervals.length,
+    activeBookingCount: bIntervals.length,
+  });
+
+  console.log("[simulate debug] Queue blockers:", qIntervals.map((q) => ({
+    id: q.id,
+    ticketCode: q.ticketCode,
+    start: q.start.toISOString(),
+    end: q.end.toISOString(),
+    status: q.label,
+    durationMinutes: Math.round((q.end.getTime() - q.start.getTime()) / 60000),
+  })));
+
+  console.log("[simulate debug] Booking blockers:", bIntervals.map((b) => ({
+    id: b.id,
+    start: b.start.toISOString(),
+    end: b.end.toISOString(),
+    status: b.label,
+    durationMinutes: Math.round((b.end.getTime() - b.start.getTime()) / 60000),
+  })));
 
   const allIntervals = [...qIntervals, ...bIntervals].sort(
     (a, b) => a.start.getTime() - b.start.getTime()
   );
 
+  console.log("[simulate debug] Combined timeline (sorted):", allIntervals.map((iv) => ({
+    type: iv.source,
+    id: iv.id,
+    start: iv.start.toISOString(),
+    end: iv.end.toISOString(),
+  })));
+
   // Find first free slot
   const suggestedStart = findFirstFreeSlot(now, serviceDur, allIntervals);
   const suggestedEnd = new Date(suggestedStart.getTime() + serviceDur * 60000);
+
+  console.log("[simulate debug] Slot calculation:", {
+    now: now.toISOString(),
+    nowCairo: now.toLocaleString("en-GB", { timeZone: "Africa/Cairo" }),
+    suggestedStart: suggestedStart.toISOString(),
+    suggestedStartCairo: suggestedStart.toLocaleString("en-GB", { timeZone: "Africa/Cairo" }),
+    suggestedEnd: suggestedEnd.toISOString(),
+    serviceDuration: serviceDur,
+  });
 
   // Count people before (queue tickets that end before or at our start)
   const queueBeforeItems = qIntervals.filter((q) => q.end <= suggestedStart);

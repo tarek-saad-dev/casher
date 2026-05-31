@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { User, Clock, Users } from 'lucide-react';
 import { HourCellCard } from './HourCellCard';
+import { MoreTimelineItemsModal } from './MoreTimelineItemsModal';
 import {
   generateOperationalHours,
   groupItemsByHour,
@@ -12,6 +13,7 @@ import {
   FreeSegment,
   operationalHourToTime,
   formatShortTime,
+  formatOperationalHour,
 } from './schedulerUtils';
 
 interface Barber {
@@ -52,6 +54,11 @@ export function BarberLane({ barber, headerHeight = 80, onItemClick, voiceEnable
   const barberColor = color || { bg: 'rgba(212, 175, 55, 0.12)', border: 'rgba(212, 175, 55, 0.55)', text: '#d4af37', dot: '#d4af37', label: 'gold' };
   const hours = generateOperationalHours();
   const itemsByHour = groupItemsByHour(barber.timeline);
+
+  // State for more items modal
+  const [moreItemsModalOpen, setMoreItemsModalOpen] = useState(false);
+  const [selectedCellItems, setSelectedCellItems] = useState<TimelineItem[]>([]);
+  const [selectedHourLabel, setSelectedHourLabel] = useState<string>('');
 
   const getStatusColor = () => {
     if (barber.status === 'day_off') return '#ef4444';
@@ -190,7 +197,11 @@ export function BarberLane({ barber, headerHeight = 80, onItemClick, voiceEnable
                     <button
                       className="text-[10px] px-2 py-0.5 rounded bg-[rgba(212,175,55,0.15)] hover:bg-[rgba(212,175,55,0.25)] transition-colors self-center"
                       style={{ color: '#d4af37' }}
-                      onClick={() => alert(`الساعة ${hour}: ${items.length} عناصر`)}
+                      onClick={() => {
+                        setSelectedCellItems(items);
+                        setSelectedHourLabel(formatOperationalHour(hour));
+                        setMoreItemsModalOpen(true);
+                      }}
                     >
                       +{moreCount} المزيد
                     </button>
@@ -214,6 +225,16 @@ export function BarberLane({ barber, headerHeight = 80, onItemClick, voiceEnable
           );
         })}
       </div>
+
+      {/* More Items Modal for this barber */}
+      <MoreTimelineItemsModal
+        open={moreItemsModalOpen}
+        onClose={() => setMoreItemsModalOpen(false)}
+        items={selectedCellItems}
+        barberName={barber.empName}
+        hourLabel={selectedHourLabel}
+        onOpenDetails={onItemClick}
+      />
     </div>
   );
 }

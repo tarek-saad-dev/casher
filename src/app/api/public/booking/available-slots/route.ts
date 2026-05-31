@@ -66,6 +66,7 @@ export async function GET(req: NextRequest) {
       | "nearest"
       | "specific";
     const empIdParam = searchParams.get("empId");
+    const source = searchParams.get("source") ?? "public"; // "public" | "operations" | "admin"
 
     if (!date || !isValidDate(date)) {
       return NextResponse.json(
@@ -107,9 +108,13 @@ export async function GET(req: NextRequest) {
     const isPast = date < todayInSalon;
 
     // Minimum allowed start time for today
+    // Skip minNotice for operations/admin bookings - they can book immediately
+    const isInternalSource = source === "operations" || source === "admin";
+    const effectiveMinNotice = isInternalSource ? 0 : minNotice;
+
     const minAllowedMinutes = isToday
       ? ceilToInterval(
-          nowMinutesSinceMidnight + minNotice,
+          nowMinutesSinceMidnight + effectiveMinNotice,
           settings.slotIntervalMinutes,
         )
       : 0;
@@ -121,11 +126,14 @@ export async function GET(req: NextRequest) {
         serviceIds,
         mode,
         empId,
+        source,
+        isInternalSource,
       });
       console.log("[available-slots] config:", {
         timezone,
         slotIntervalMinutes: settings.slotIntervalMinutes,
         minNoticeMinutes: minNotice,
+        effectiveMinNotice,
         maxBookingDaysAhead: settings.maxBookingDaysAhead,
       });
       console.log("[available-slots] now:", {
@@ -645,7 +653,8 @@ export async function GET(req: NextRequest) {
           removedPast++;
           continue;
         }
-        if (slotDateMs < serverNow.getTime() + minNotice * 60_000) {
+        // Only apply minNotice for public bookings, skip for operations/admin
+        if (!isInternalSource && slotDateMs < serverNow.getTime() + minNotice * 60_000) {
           removedNotice++;
           continue;
         }
