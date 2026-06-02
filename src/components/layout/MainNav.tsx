@@ -9,6 +9,7 @@ import {
   Calculator, Settings, Scissors, Tags, Shield, Activity, Star,
   ChevronDown, Menu, X, SlidersHorizontal, PanelLeftClose, PanelLeftOpen,
   UsersRound, FileBarChart, Calendar, Ticket, CalendarCheck, MonitorPlay,
+  AlertTriangle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -33,6 +34,7 @@ const NAV_THEMES: Record<string, NavTheme> = {
   'لوحة التشغيل':      { rgb: '20,184,166',  emoji: '🖥️' }, // teal
   'الطابور':           { rgb: '245,158,11',  emoji: '🎫' }, // amber
   'الحجوزات':          { rgb: '99,102,241',  emoji: '📅' }, // indigo
+  'التدقيق':           { rgb: '239,68,68',   emoji: '🔍' }, // red (audit)
 };
 
 function getTheme(title: string): NavTheme {
@@ -53,6 +55,7 @@ interface NavItem {
   label: string;
   icon: LucideIcon;
   disabled?: boolean;
+  badge?: string; // badge type identifier
 }
 
 interface NavSection {
@@ -81,6 +84,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/income-review/all-revenue',   label: 'كل الإيرادات', icon: History  },
       { href: '/income-review/payments',   label: 'المدفوعات',     icon: CreditCard  },
       { href: '/admin/reports/employee-services', label: 'خدمات الصنايعية', icon: FileBarChart },
+      { href: '/reports/monthly', label: 'التقرير الشهري', icon: BarChart3 },
     ],
   },
   {
@@ -160,6 +164,13 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/admin/queue-booking-settings', label: 'إعدادات الطابور', icon: Ticket     },
     ],
   },
+  {
+    title: 'التدقيق',
+    icon: AlertTriangle,
+    items: [
+      { href: '/admin/audit/unspecified-payment-methods', label: 'تدقيق طرق الدفع', icon: AlertTriangle, badge: 'payment-audit' },
+    ],
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -171,6 +182,29 @@ export default function MainNav() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<string[]>(['المدخلات']);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  
+  // Badge count for payment audit
+  const [paymentAuditCount, setPaymentAuditCount] = useState<number>(0);
+  
+  // Fetch badge count periodically
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const response = await fetch('/api/audit/unspecified-payment-methods/count');
+        if (response.ok) {
+          const data = await response.json();
+          setPaymentAuditCount(data.count || 0);
+        }
+      } catch {
+        // Silent fail - badge will just show 0
+      }
+    };
+    
+    fetchCount();
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchCount, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // ── Route matching (normalized, no false positives) ────────────────────────
   // Strips trailing slashes, then checks exact OR prefix-with-slash.
@@ -388,6 +422,26 @@ export default function MainNav() {
         >
           {item.label}
         </span>
+        
+        {/* Badge */}
+        {item.badge === 'payment-audit' && paymentAuditCount > 0 && (
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              padding: '2px 8px',
+              borderRadius: 9999,
+              backgroundColor: 'rgba(239,68,68,0.85)', // red-500
+              color: '#fff',
+              border: '1px solid rgba(239,68,68,0.5)',
+              boxShadow: '0 0 8px rgba(239,68,68,0.4)',
+              flexShrink: 0,
+              marginRight: 4,
+            }}
+          >
+            {paymentAuditCount > 99 ? '99+' : paymentAuditCount}
+          </span>
+        )}
       </Link>
     );
   };

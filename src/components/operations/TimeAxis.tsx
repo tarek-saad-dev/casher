@@ -18,8 +18,8 @@ export function TimeAxis({ headerHeight = 80 }: Props) {
         borderRight: '1px solid rgba(212, 175, 55, 0.1)',
       }}
     >
-      {/* Header spacer */}
-      <div style={{ height: headerHeight, borderBottom: '1px solid rgba(212, 175, 55, 0.2)' }} />
+      {/* Header spacer - Sticky */}
+      <div className="sticky top-0 z-10 bg-[#0a0a0a]" style={{ height: headerHeight, borderBottom: '1px solid rgba(212, 175, 55, 0.2)' }} />
 
       {/* Hour labels */}
       {hours.map((hour) => (

@@ -8,6 +8,7 @@ import PaymentMethodBreakdownTable from '@/components/treasury/PaymentMethodBrea
 import TreasuryMovementsTable from '@/components/treasury/TreasuryMovementsTable';
 import TreasuryClosePanel from '@/components/treasury/TreasuryClosePanel';
 import PaymentMethodDetailsModal from '@/components/treasury/PaymentMethodDetailsModal';
+import PaymentTransferModal from '@/components/treasury/PaymentTransferModal';
 import PastDateTransferModal from '@/components/treasury/PastDateTransferModal';
 import PastDateIncomeModal from '@/components/treasury/PastDateIncomeModal';
 import PastDateExpenseModal from '@/components/treasury/PastDateExpenseModal';
@@ -26,6 +27,7 @@ export default function DailyTreasuryPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [showClosePanel, setShowClosePanel] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
   const [movementsPage, setMovementsPage] = useState(1);
 
   const [detailsModal, setDetailsModal] = useState<{
@@ -33,7 +35,6 @@ export default function DailyTreasuryPage() {
     paymentMethodName: string;
   } | null>(null);
 
-  const [showTransferModal, setShowTransferModal] = useState(false);
   const [showPastIncomeModal, setShowPastIncomeModal] = useState(false);
   const [showPastExpenseModal, setShowPastExpenseModal] = useState(false);
 
@@ -169,6 +170,13 @@ export default function DailyTreasuryPage() {
     // Reload data after closing
     loadTreasuryData();
     loadMovements(movementsPage);
+  };
+
+  const handleTransferSuccess = () => {
+    // Reload data after transfer
+    loadTreasuryData();
+    loadMovements(movementsPage);
+    setShowTransferModal(false);
   };
 
   return (

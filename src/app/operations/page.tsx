@@ -5,9 +5,12 @@ import { OperationsToolbar } from '@/components/operations/OperationsToolbar';
 import { SchedulerBoard } from '@/components/operations/SchedulerBoard';
 import { BottomSummaryStrip } from '@/components/operations/BottomSummaryStrip';
 import { SimpleCreateQueueDrawer } from '@/components/operations/SimpleCreateQueueDrawer';
+import { FindNearestQueueDrawer } from '@/components/operations/FindNearestQueueDrawer';
 import { VoiceEnableBanner } from '@/components/operations/VoiceEnableBanner';
-import { OperationsMusicPlayer } from '@/components/operations/OperationsMusicPlayer';
+import { OperationsMusicPlayerEnhanced } from '@/components/operations/OperationsMusicPlayerEnhanced';
+import { CreateBookingDrawer } from '@/components/operations/CreateBookingDrawer';
 import { useAutoVoiceAnnounce, isVoiceEnabled, enableVoice, disableVoice } from '@/hooks/useAutoVoiceAnnounce';
+import { Plus, CalendarPlus } from 'lucide-react';
 
 // Types matching flow-board response
 interface FlowBoardBarber {
@@ -61,6 +64,33 @@ function getCairoToday(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
 }
 
+// Business date: if Cairo time is before 4:00 AM, we're still in the previous operational day
+const BUSINESS_DAY_CUTOFF_HOUR = 4;
+
+function getCairoBusinessDate(): string {
+  const now = new Date();
+  // Get Cairo hour using Intl
+  const cairoHour = parseInt(
+    new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Cairo', hour: '2-digit', hour12: false }).format(now),
+    10
+  );
+  if (cairoHour < BUSINESS_DAY_CUTOFF_HOUR) {
+    // Still in previous operational day — return yesterday Cairo date
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    return yesterday.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+  }
+  return now.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+}
+
+function isAfterMidnightShift(): boolean {
+  const now = new Date();
+  const cairoHour = parseInt(
+    new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Cairo', hour: '2-digit', hour12: false }).format(now),
+    10
+  );
+  return cairoHour < BUSINESS_DAY_CUTOFF_HOUR;
+}
+
 // Add/subtract days
 function addDays(dateStr: string, days: number): string {
   const date = new Date(dateStr + 'T00:00:00');
@@ -69,11 +99,21 @@ function addDays(dateStr: string, days: number): string {
 }
 
 export default function OperationsPage() {
-  const [selectedDate, setSelectedDate] = useState<string>(getCairoToday());
+  const [selectedDate, setSelectedDate] = useState<string>(getCairoBusinessDate());
   const [flowBoardData, setFlowBoardData] = useState<FlowBoardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateDrawer, setShowCreateDrawer] = useState(false);
+  const [showFindNearestDrawer, setShowFindNearestDrawer] = useState(false);
+  const [showBookingDrawer, setShowBookingDrawer] = useState(false);
+  const [bookingInitialData, setBookingInitialData] = useState<{
+    date?: string;
+    time?: string;
+    empId?: number;
+    barberName?: string;
+    timeRangeStart?: string;
+    timeRangeEnd?: string;
+  }>({});
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -90,6 +130,11 @@ export default function OperationsPage() {
   // Check voice enabled status on mount
   useEffect(() => {
     setVoiceEnabled(isVoiceEnabled());
+  }, []);
+
+  // Set page title with emoji
+  useEffect(() => {
+    document.title = '💈 لوحة التحكم - الصالون';
   }, []);
 
   // Voice auto-announcement hook
@@ -174,7 +219,11 @@ export default function OperationsPage() {
   }, []);
 
   const handleToday = useCallback(() => {
-    setSelectedDate(getCairoToday());
+    setSelectedDate(getCairoBusinessDate());
+  }, []);
+
+  const handleDateSelect = useCallback((date: string) => {
+    setSelectedDate(date);
   }, []);
 
   // Calculate summary stats
@@ -214,6 +263,8 @@ export default function OperationsPage() {
 
   const stats = summaryStats();
 
+  const afterMidnight = isAfterMidnightShift();
+
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: '#050505' }} dir="rtl">
       {/* Top Toolbar */}
@@ -223,13 +274,48 @@ export default function OperationsPage() {
         onPrevDay={handlePrevDay}
         onNextDay={handleNextDay}
         onToday={handleToday}
+        onDateSelect={handleDateSelect}
         onRefresh={fetchFlowBoard}
         onCreateQueue={() => setShowCreateDrawer(true)}
+        onFindNearestQueue={() => setShowFindNearestDrawer(true)}
         loading={loading}
       />
 
-      {/* Voice Enable Banner & Music Player */}
+      {/* After-midnight banner */}
+      {afterMidnight && selectedDate === getCairoBusinessDate() && (
+        <div
+          className="flex items-center justify-center gap-2 py-1.5 text-xs font-medium"
+          style={{ background: 'rgba(139, 92, 246, 0.12)', borderBottom: '1px solid rgba(139, 92, 246, 0.25)', color: '#a78bfa' }}
+        >
+          <span>🌙</span>
+          <span>وقت القاهرة بعد منتصف الليل — تعمل على يوم التشغيل السابق</span>
+          <span style={{ opacity: 0.6 }}>|</span>
+          <button
+            onClick={() => setSelectedDate(getCairoToday())}
+            className="underline hover:no-underline transition-all"
+            style={{ color: '#c4b5fd' }}
+          >
+            انتقل ليوم {formatDateLabel(getCairoToday()).split(' ').slice(0, 2).join(' ')}
+          </button>
+        </div>
+      )}
+
+      {/* Create Booking Button + Voice Enable Banner & Music Player */}
       <div className="px-4 py-2 space-y-2">
+        {/* Create Booking Button */}
+        <div className="flex justify-center">
+          <button
+            onClick={() => {
+              setBookingInitialData({ date: selectedDate });
+              setShowBookingDrawer(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all"
+            style={{ background: 'linear-gradient(135deg,#D4AF37,#B8941F)', color: '#000' }}
+          >
+            <CalendarPlus size={18} />
+            + إنشاء حجز
+          </button>
+        </div>
         <div className="flex justify-center">
           <VoiceEnableBanner
             enabled={voiceEnabled}
@@ -239,7 +325,7 @@ export default function OperationsPage() {
         </div>
         <div className="flex justify-center">
           <div className="w-full max-w-md">
-            <OperationsMusicPlayer
+            <OperationsMusicPlayerEnhanced
               isExpanded={musicPlayerExpanded}
               onToggleExpand={() => setMusicPlayerExpanded(!musicPlayerExpanded)}
             />
@@ -256,6 +342,46 @@ export default function OperationsPage() {
         onRefresh={fetchFlowBoard}
         voiceEnabled={voiceEnabled}
         onReannounce={reannounce}
+        currentDate={selectedDate}
+        addToast={(type, message) => showToast(message, type !== 'error')}
+        onEmptyCellClick={(hour, barber) => {
+          // Convert operational hour to time strings
+          // Each cell represents a 1-hour range (e.g., 15:00 to 16:00)
+          const startHour = hour >= 24 ? hour - 24 : hour;
+          const endHour = startHour + 1;
+
+          const timeRangeStart = `${String(startHour).padStart(2, '0')}:00`;
+          const timeRangeEnd = `${String(endHour).padStart(2, '0')}:00`;
+
+          setBookingInitialData({
+            date: selectedDate,
+            time: timeRangeStart,  // Default to start of range
+            empId: barber.empId,
+            barberName: barber.empName,
+            timeRangeStart,
+            timeRangeEnd,
+          });
+          setShowBookingDrawer(true);
+        }}
+        onFreeSegmentClick={(segment, barber) => {
+          // Free segment has exact start and end times from the helper
+          // Format times for the drawer
+          const segmentStartDate = new Date(segment.start);
+          const segmentEndDate = new Date(segment.end);
+
+          const timeRangeStart = `${String(segmentStartDate.getHours()).padStart(2, '0')}:${String(segmentStartDate.getMinutes()).padStart(2, '0')}`;
+          const timeRangeEnd = `${String(segmentEndDate.getHours()).padStart(2, '0')}:${String(segmentEndDate.getMinutes()).padStart(2, '0')}`;
+
+          setBookingInitialData({
+            date: selectedDate,
+            time: timeRangeStart,  // Start at the beginning of free segment
+            empId: barber.empId,
+            barberName: barber.empName,
+            timeRangeStart,
+            timeRangeEnd,
+          });
+          setShowBookingDrawer(true);
+        }}
       />
 
       {/* Bottom Summary Strip */}
@@ -279,6 +405,37 @@ export default function OperationsPage() {
             source: 'flow-board',
             count: flowBoardData?.barbers?.length || 0,
             timestamp: new Date().toISOString(),
+          }}
+        />
+      )}
+
+      {/* Find Nearest Queue Drawer */}
+      {showFindNearestDrawer && (
+        <FindNearestQueueDrawer
+          isOpen={showFindNearestDrawer}
+          onClose={() => setShowFindNearestDrawer(false)}
+          onCreated={() => {
+            fetchFlowBoard();
+            showToast('تم إصدار الدور بنجاح');
+          }}
+        />
+      )}
+
+      {/* Create Booking Drawer */}
+      {showBookingDrawer && (
+        <CreateBookingDrawer
+          open={showBookingDrawer}
+          onClose={() => setShowBookingDrawer(false)}
+          initialDate={bookingInitialData.date}
+          initialTime={bookingInitialData.time}
+          initialEmpId={bookingInitialData.empId}
+          initialBarberName={bookingInitialData.barberName}
+          initialTimeRangeStart={bookingInitialData.timeRangeStart}
+          initialTimeRangeEnd={bookingInitialData.timeRangeEnd}
+          barbers={flowBoardData?.barbers.map(b => ({ empId: b.empId, empName: b.empName })) || []}
+          onCreated={() => {
+            fetchFlowBoard();
+            showToast('تم إنشاء الحجز بنجاح');
           }}
         />
       )}

@@ -161,12 +161,22 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
     setLoading(true);
     setError(null);
 
+    const browserNow = new Date();
     const simulatePayload = {
       empId: selectedBarber.empId,
       serviceIds: [selectedService.ProID],
-      requestedAt: new Date().toISOString(),
+      requestedAt: browserNow.toISOString(),
     };
-    console.log('=== SIMULATE PAYLOAD ===', simulatePayload);
+    console.log('[simulate payload]', {
+      empId: selectedBarber.empId,
+      serviceIds: [selectedService.ProID],
+      requestedAt: browserNow.toISOString(),
+      browserNowLocal: browserNow.toLocaleString('ar-EG', { timeZone: 'Africa/Cairo' }),
+      browserTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      barberName: selectedBarber.empName,
+      serviceName: selectedService.ProName,
+      serviceDuration: selectedService.DurationMinutes,
+    });
 
     fetch('/api/operations/queue/simulate', {
       method: 'POST',

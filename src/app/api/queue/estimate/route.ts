@@ -31,9 +31,21 @@ export async function POST(req: NextRequest) {
       requestedAt?: string;
     };
 
+    // Debug: Log incoming request
+    const serverNow = new Date();
+    console.log('[estimate API] Request received:', {
+      mode,
+      empId,
+      serviceIds,
+      requestedAtFromClient: requestedAt,
+      serverNowUtc: serverNow.toISOString(),
+      serverNowCairo: serverNow.toLocaleString('en-GB', { timeZone: 'Africa/Cairo' }),
+    });
+
     // ── Nearest barber mode ───────────────────────────────────────────────
     if (mode === 'nearest') {
-      return await handleNearest(serviceIds, requestedAt);
+      const result = await handleNearest(serviceIds, requestedAt);
+      return result;
     }
 
     // ── Specific barber mode ──────────────────────────────────────────────
@@ -183,6 +195,13 @@ async function handleNearest(
 ) {
   try {
     const now        = requestedAt ? new Date(requestedAt) : new Date();
+    console.log('[estimate API handleNearest] Starting:', {
+      requestedAt,
+      effectiveNow: now.toISOString(),
+      effectiveNowCairo: now.toLocaleString('en-GB', { timeZone: 'Africa/Cairo' }),
+      serviceIds,
+    });
+
     const allBarbers = await getAvailableBarbers(now);
 
     if (allBarbers.length === 0) {
@@ -194,7 +213,14 @@ async function handleNearest(
       allBarbers.map(b => computeBarberEstimate(b.EmpID, b.EmpName, serviceIds, requestedAt))
     );
 
-    if (isDev) console.log('[queue estimate nearest] count', estimates.length, 'available', estimates.filter(e => e.isWorking).length);
+    console.log('[estimate API handleNearest] Estimates:', estimates.map(e => ({
+      empId: e.empId,
+      empName: e.empName,
+      isWorking: e.isWorking,
+      estimatedStartTime: e.estimatedStartTime,
+      blockingQueueCount: e.blockingQueueCount,
+      blockingBookingCount: e.blockingBookingCount,
+    })));
 
     // Sort available barbers: earliest real slot → lower queue count
     const available = estimates

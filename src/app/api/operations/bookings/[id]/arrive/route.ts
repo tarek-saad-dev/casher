@@ -288,9 +288,11 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         ? Math.max(1, Math.round((bookingEnd.getTime() - bookingStart.getTime()) / 60000))
         : defaultDur;
 
-      // Build timeline for the barber on the booking's date
+      // Build timeline for the barber on the booking's date (filter stale queue tickets)
       const qIvs = await buildQueueIntervals(
-        db, booking.AssignedEmpID, bookingDateStr, now, defaultDur
+        db, booking.AssignedEmpID, bookingDateStr, now, defaultDur, undefined, {
+          filterStale: true, graceMinutes: 30, debugContext: "booking-arrive"
+        }
       );
       const bIvs = await buildBookingIntervals(
         db, booking.AssignedEmpID, bookingDateStr, defaultDur

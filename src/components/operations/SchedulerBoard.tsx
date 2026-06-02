@@ -4,7 +4,8 @@ import { useMemo, useState, useCallback } from 'react';
 import { BarberLane } from './BarberLane';
 import { TimeAxis } from './TimeAxis';
 import { BookingDetailsModal } from './BookingDetailsModal';
-import { generateOperationalHours, HOUR_CELL_HEIGHT, TimelineItem } from './schedulerUtils';
+import { CurrentTimeLine } from './CurrentTimeLine';
+import { generateOperationalHours, HOUR_CELL_HEIGHT, TimelineItem, FreeSegment } from './schedulerUtils';
 import type { Booking } from '@/lib/operationsTypes';
 
 interface Barber {
@@ -29,11 +30,40 @@ interface Props {
   onRefresh?: () => void;
   voiceEnabled?: boolean;
   onReannounce?: (ticketId: number) => Promise<boolean>;
+  onEmptyCellClick?: (hour: number, barber: Barber) => void;
+  onFreeSegmentClick?: (segment: FreeSegment, barber: Barber, hour: number) => void;
+  currentDate?: string;
+  addToast?: (type: 'success' | 'error' | 'info', message: string) => void;
 }
 
 const HEADER_HEIGHT = 80;
 
-export function SchedulerBoard({ barbers, loading, error, onRetry, onRefresh, voiceEnabled, onReannounce }: Props) {
+// Barber color palette - consistent colors for dark UI
+export const BARBER_COLORS = [
+  { bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.55)', text: '#34D399', dot: '#10B981', label: 'green' },
+  { bg: 'rgba(59, 130, 246, 0.12)', border: 'rgba(59, 130, 246, 0.55)', text: '#60A5FA', dot: '#3B82F6', label: 'blue' },
+  { bg: 'rgba(168, 85, 247, 0.12)', border: 'rgba(168, 85, 247, 0.55)', text: '#C084FC', dot: '#A855F7', label: 'purple' },
+  { bg: 'rgba(245, 158, 11, 0.12)', border: 'rgba(245, 158, 11, 0.55)', text: '#FBBF24', dot: '#F59E0B', label: 'amber' },
+  { bg: 'rgba(236, 72, 153, 0.12)', border: 'rgba(236, 72, 153, 0.55)', text: '#F472B6', dot: '#EC4899', label: 'pink' },
+  { bg: 'rgba(20, 184, 166, 0.12)', border: 'rgba(20, 184, 166, 0.55)', text: '#2DD4BF', dot: '#14B8A6', label: 'teal' },
+  { bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.55)', text: '#F87171', dot: '#EF4444', label: 'red' },
+  { bg: 'rgba(99, 102, 241, 0.12)', border: 'rgba(99, 102, 241, 0.55)', text: '#818CF8', dot: '#6366F1', label: 'indigo' },
+] as const;
+
+export type BarberColor = typeof BARBER_COLORS[number];
+
+// Get consistent color for a barber based on empId
+export function getBarberColor(empId: number | null | undefined, index?: number): BarberColor {
+  if (empId) {
+    return BARBER_COLORS[Math.abs(Number(empId)) % BARBER_COLORS.length];
+  }
+  if (index !== undefined) {
+    return BARBER_COLORS[index % BARBER_COLORS.length];
+  }
+  return BARBER_COLORS[0];
+}
+
+export function SchedulerBoard({ barbers, loading, error, onRetry, onRefresh, voiceEnabled, onReannounce, onEmptyCellClick, onFreeSegmentClick, currentDate, addToast }: Props) {
   const hours = useMemo(() => generateOperationalHours(), []);
   const [selectedItem, setSelectedItem] = useState<TimelineItem | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -145,7 +175,7 @@ export function SchedulerBoard({ barbers, loading, error, onRetry, onRefresh, vo
       <div className="min-w-max">
         {/* Scheduler Grid - Horizontal Scroll Container */}
         <div
-          className="flex"
+          className="flex relative"
           style={{
             height: totalHeight,
           }}
@@ -154,8 +184,11 @@ export function SchedulerBoard({ barbers, loading, error, onRetry, onRefresh, vo
           <TimeAxis headerHeight={HEADER_HEIGHT} />
 
           {/* Barber Lanes - Horizontal Scroll */}
-          <div className="flex">
-            {displayBarbers.map(barber => (
+          <div className="flex relative">
+            {/* Current Time Line - spans across all lanes */}
+            <CurrentTimeLine headerHeight={HEADER_HEIGHT} selectedDate={currentDate} />
+
+            {displayBarbers.map((barber, index) => (
               <BarberLane
                 key={barber.empId}
                 barber={barber}
@@ -163,6 +196,10 @@ export function SchedulerBoard({ barbers, loading, error, onRetry, onRefresh, vo
                 onItemClick={handleItemClick}
                 voiceEnabled={voiceEnabled}
                 onReannounce={onReannounce}
+                onEmptyCellClick={onEmptyCellClick}
+                onFreeSegmentClick={onFreeSegmentClick}
+                currentDate={currentDate}
+                color={getBarberColor(barber.empId, index)}
               />
             ))}
           </div>
@@ -177,6 +214,7 @@ export function SchedulerBoard({ barbers, loading, error, onRetry, onRefresh, vo
           onDelete={selectedItem.type === 'booking' ? handleDeleteBooking : undefined}
           onEdit={selectedItem.type === 'booking' ? handleEditBooking : undefined}
           onCancel={selectedItem.type === 'queue' ? handleCancelQueueTicket : undefined}
+          addToast={addToast}
         />
       )}
     </div>

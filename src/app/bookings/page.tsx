@@ -5,6 +5,7 @@ import {
   Plus, Search, RefreshCw, CalendarDays,
   Phone, User, Clock, AlertCircle,
   Loader2, Pencil, Trash2, X, CheckCircle2,
+  RotateCcw,
 } from 'lucide-react';
 import CreateBookingModal from '@/components/bookings/CreateBookingModal';
 
@@ -77,7 +78,12 @@ function formatTime(value: unknown): string {
 // ─── Toast ────────────────────────────────────────────────────────────────────
 interface Toast { id: number; type: 'success' | 'error'; message: string }
 
-// ─── Confirm dialog ───────────────────────────────────────────────────────────
+// ─── Helper: Check if booking is cancelled ─────────────────────────────────────
+function isCancelledBooking(status: string): boolean {
+  return status === 'cancelled' || status === 'canceled' || status === 'cancel' || status === 'ملغي';
+}
+
+// ─── Confirm dialog for cancel ────────────────────────────────────────────────
 function ConfirmDialog({
   bookingId, onConfirm, onCancel, loading,
 }: { bookingId: number; onConfirm: () => void; onCancel: () => void; loading: boolean }) {
@@ -116,6 +122,45 @@ function ConfirmDialog({
   );
 }
 
+// ─── Confirm dialog for restore ─────────────────────────────────────────────────
+function RestoreConfirmDialog({
+  bookingId, onConfirm, onCancel, loading,
+}: { bookingId: number; onConfirm: () => void; onCancel: () => void; loading: boolean }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" dir="rtl">
+      <div className="bg-zinc-900 border border-amber-500/30 rounded-2xl p-6 w-80 shadow-2xl">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">
+            <RotateCcw size={18} className="text-amber-400" />
+          </div>
+          <div>
+            <p className="text-white font-semibold text-sm">إرجاع الحجز؟</p>
+            <p className="text-zinc-500 text-xs">حجز رقم #{bookingId}</p>
+          </div>
+        </div>
+        <p className="text-zinc-300 text-sm mb-5">سيتم إعادة تفعيل هذا الحجز وإرجاعه إلى الحجوزات المؤكدة.</p>
+        <div className="flex gap-2">
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold transition-colors disabled:opacity-60"
+          >
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+            تأكيد الإرجاع
+          </button>
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="flex-1 py-2 rounded-xl border border-zinc-700 text-zinc-300 text-sm hover:bg-zinc-800 transition-colors disabled:opacity-60"
+          >
+            إلغاء
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Skeleton row ─────────────────────────────────────────────────────────────
 function SkeletonGroup() {
   return (
@@ -139,14 +184,17 @@ function SkeletonGroup() {
 
 // ─── Booking card ─────────────────────────────────────────────────────────────
 function BookingCard({
-  booking, onCancelClick, cancelLoading,
+  booking, onCancelClick, onRestoreClick, cancelLoading, restoreLoading,
 }: {
   booking: Booking;
   onCancelClick: (b: Booking) => void;
+  onRestoreClick: (b: Booking) => void;
   cancelLoading: boolean;
+  restoreLoading: boolean;
 }) {
   const cfg = STATUS_CONFIG[booking.Status] ?? STATUS_CONFIG.pending;
   const isClosed = ['cancelled','completed','no_show'].includes(booking.Status);
+  const isCancelled = isCancelledBooking(booking.Status);
 
   return (
     <div
@@ -223,6 +271,21 @@ function BookingCard({
           >
             <Pencil size={14} />
           </button>
+          
+          {/* Restore button - only for cancelled bookings */}
+          {isCancelled && (
+            <button
+              type="button"
+              onClick={() => onRestoreClick(booking)}
+              disabled={restoreLoading}
+              title="إرجاع الحجز إلى الحجوزات المؤكدة"
+              className="p-1.5 rounded-lg text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 border border-amber-500/30 transition-colors disabled:opacity-40"
+            >
+              {restoreLoading ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+            </button>
+          )}
+          
+          {/* Cancel button - not shown for closed bookings (unless cancelled which has restore instead) */}
           {!isClosed && (
             <button
               type="button"
@@ -250,6 +313,8 @@ export default function BookingsPage() {
   const [toasts, setToasts]     = useState<Toast[]>([]);
   const [confirmTarget, setConfirmTarget] = useState<Booking | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState<Booking | null>(null);
+  const [restoreLoading, setRestoreLoading] = useState(false);
   const toastIdRef = useRef(0);
 
   const addToast = useCallback((type: Toast['type'], message: string) => {
@@ -336,6 +401,31 @@ export default function BookingsPage() {
       addToast('error', 'فشل الاتصال بالخادم');
     } finally {
       setCancelLoading(false);
+    }
+  };
+
+  // Restore booking
+  const handleRestore = async () => {
+    if (!restoreTarget) return;
+    setRestoreLoading(true);
+    try {
+      const res = await fetch(`/api/bookings/${restoreTarget.BookingID}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'restore' }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        addToast('error', data.error || 'فشل إرجاع الحجز');
+        return;
+      }
+      addToast('success', 'تم إرجاع الحجز بنجاح');
+      setRestoreTarget(null);
+      fetchData();
+    } catch {
+      addToast('error', 'فشل الاتصال بالخادم');
+    } finally {
+      setRestoreLoading(false);
     }
   };
 
@@ -444,7 +534,9 @@ export default function BookingsPage() {
                       key={b.BookingID}
                       booking={b}
                       onCancelClick={setConfirmTarget}
+                      onRestoreClick={setRestoreTarget}
                       cancelLoading={cancelLoading && confirmTarget?.BookingID === b.BookingID}
+                      restoreLoading={restoreLoading && restoreTarget?.BookingID === b.BookingID}
                     />
                   ))}
                 </div>
@@ -454,13 +546,23 @@ export default function BookingsPage() {
         )}
       </div>
 
-      {/* ── Confirm dialog ──────────────────────────────────────────── */}
+      {/* ── Confirm dialog for cancel ───────────────────────────────── */}
       {confirmTarget && (
         <ConfirmDialog
           bookingId={confirmTarget.BookingID}
           onConfirm={handleCancel}
           onCancel={() => { if (!cancelLoading) setConfirmTarget(null); }}
           loading={cancelLoading}
+        />
+      )}
+
+      {/* ── Confirm dialog for restore ───────────────────────────────── */}
+      {restoreTarget && (
+        <RestoreConfirmDialog
+          bookingId={restoreTarget.BookingID}
+          onConfirm={handleRestore}
+          onCancel={() => { if (!restoreLoading) setRestoreTarget(null); }}
+          loading={restoreLoading}
         />
       )}
 

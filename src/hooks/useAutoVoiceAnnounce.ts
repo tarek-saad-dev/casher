@@ -7,7 +7,7 @@ import {
   speakWithBrowser,
 } from "@/lib/queueVoice";
 import type { AnnouncementPart } from "@/lib/chairMapping";
-import { musicController } from "@/components/operations/OperationsMusicPlayer";
+import { musicController } from "@/components/operations/OperationsMusicPlayerEnhanced";
 
 interface Announcement {
   queueTicketId: number;
@@ -148,11 +148,11 @@ export function useAutoVoiceAnnounce(options: UseAutoVoiceAnnounceOptions) {
     try {
       onAnnouncementStart?.(announcement);
 
-      // Duck music volume before announcement
+      // Duck music volume before announcement (very low - almost silent)
       console.log(
         `[auto-voice] ducking music before announcement ${ticketCode}`,
       );
-      await musicController.duckVolume(15, 400);
+      await musicController.duckVolume(5, 400);
 
       // Play announcement sequence (Arabic once, English once)
       if (

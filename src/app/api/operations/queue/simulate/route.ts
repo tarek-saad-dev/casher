@@ -38,6 +38,16 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { empId, serviceIds, requestedAt } = body;
 
+    // Debug: Log incoming request
+    const serverNow = new Date();
+    console.log("[simulate API] Request received:", {
+      empId,
+      serviceIds,
+      requestedAtFromClient: requestedAt,
+      serverNowUtc: serverNow.toISOString(),
+      serverNowCairo: serverNow.toLocaleString("en-GB", { timeZone: "Africa/Cairo" }),
+    });
+
     // Validation
     if (!empId || typeof empId !== "number") {
       return NextResponse.json(
@@ -58,6 +68,15 @@ export async function POST(req: NextRequest) {
       empId,
       serviceIds,
       requestedAt,
+    });
+
+    // Debug: Log outgoing response
+    console.log("[simulate API] Response:", {
+      empId: result.empId,
+      decision: result.decision,
+      suggestedStartTime: result.suggestedStartTime,
+      suggestedEndTime: result.suggestedEndTime,
+      peopleBefore: result.peopleBefore,
     });
 
     return NextResponse.json(result);

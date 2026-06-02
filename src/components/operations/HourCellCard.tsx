@@ -1,7 +1,15 @@
 'use client';
 
-import { Scissors, Calendar, Ticket, Shield, User, Clock, Volume2 } from 'lucide-react';
+import { Scissors, Calendar, Ticket, Shield, Clock, Volume2 } from 'lucide-react';
 import { formatTimeRange, getItemTypeLabel, TimelineItem } from './schedulerUtils';
+
+interface BarberColor {
+  bg: string;
+  border: string;
+  text: string;
+  dot: string;
+  label: string;
+}
 
 interface Props {
   item: TimelineItem;
@@ -9,23 +17,46 @@ interface Props {
   onClick?: (item: TimelineItem) => void;
   voiceEnabled?: boolean;
   onReannounce?: (ticketId: number) => Promise<boolean>;
+  barberColor?: BarberColor;
 }
 
-export function HourCellCard({ item, compact = false, onClick, voiceEnabled, onReannounce }: Props) {
+// Get card height based on duration
+function getCardHeight(durationMinutes: number): number {
+  // Base height for very short bookings
+  if (durationMinutes <= 15) return 44;
+  if (durationMinutes <= 30) return 56;
+  if (durationMinutes <= 45) return 68;
+  return 80;
+}
+
+// Format time label (short)
+function formatTimeLabel(start: string, end: string): string {
+  const startTime = new Date(start).toLocaleTimeString('ar-EG', { hour: 'numeric', minute: '2-digit', hour12: true });
+  return startTime;
+}
+
+export function HourCellCard({ item, compact = false, onClick, voiceEnabled, onReannounce, barberColor }: Props) {
   const type = item.type === 'in_service' ? 'in_service' :
                item.type === 'booking' ? 'booking' :
                item.type === 'queue' ? 'queue' : 'gap';
 
-  const styles = getCardStyles(type, item.protected);
+  const styles = getCardStyles(type, item.protected, barberColor);
   const Icon = getIcon(type, item.protected);
   const label = getItemTypeLabel(type, item.protected);
 
   // Format content for display
   const timeRange = formatTimeRange(item.startTime, item.endTime);
+  const timeLabel = formatTimeLabel(item.startTime, item.endTime);
   const customerName = item.customerName || item.label || '—';
   const serviceName = item.serviceNames?.[0] || '';
   const ticketCode = item.ticketCode || (type === 'queue' ? item.label : '');
   const bookingCode = type === 'booking' ? `BK-${item.sourceId}` : '';
+
+  // Calculate card height based on duration
+  const cardHeight = item.durationMinutes ? getCardHeight(item.durationMinutes) : (compact ? 44 : 56);
+  
+  // Compact mode for short bookings (< 20 min or when compact prop is true)
+  const isCompact = compact || (item.durationMinutes && item.durationMinutes < 20);
 
   const handleClick = () => {
     if (onClick) {
@@ -43,121 +74,144 @@ export function HourCellCard({ item, compact = false, onClick, voiceEnabled, onR
   // Check if this queue item is called/announced
   const isCalled = item.status === 'called' || item.status === 'announced';
 
+  // Tooltip with full details
+  const tooltipText = `${customerName} • ${bookingCode || ticketCode || label} • ${timeRange}${serviceName ? ` • ${serviceName}` : ''}`;
+
   return (
     <div
-      className="rounded-md overflow-hidden cursor-pointer transition-all hover:shadow-lg"
+      className="relative overflow-hidden rounded-md border px-2 py-1 cursor-pointer transition-all hover:bg-white/[0.04] hover:shadow-md"
       onClick={handleClick}
+      title={tooltipText}
       style={{
-        background: styles.background,
-        border: `1px solid ${styles.borderColor}`,
-        height: compact ? '50px' : '56px',
-        boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+        backgroundColor: styles.background,
+        borderColor: styles.borderColor,
+        minHeight: `${cardHeight}px`,
+        boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.borderColor = styles.hoverBorderColor;
-        e.currentTarget.style.transform = 'scale(1.02)';
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.borderColor = styles.borderColor;
-        e.currentTarget.style.transform = 'scale(1)';
       }}
     >
-      {/* Top bar with icon, label, and code */}
-      <div
-        className="flex items-center justify-between px-1.5 py-0.5"
-        style={{
-          background: styles.headerBg,
-          borderBottom: `1px solid ${styles.borderColor}`,
-        }}
-      >
-        <div className="flex items-center gap-1">
-          <Icon className="w-3 h-3 shrink-0" style={{ color: styles.iconColor }} />
-          <span
-            className="text-[9px] font-medium truncate"
-            style={{ color: styles.textColor }}
-          >
-            {label}
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
-          {bookingCode && (
-            <span className="text-[8px] px-1 rounded" style={{ background: styles.codeBg, color: styles.codeColor }}>
-              {bookingCode}
-            </span>
-          )}
-          {ticketCode && type === 'queue' && (
-            <span className="text-[8px] px-1 rounded font-medium" style={{ background: styles.codeBg, color: styles.codeColor }}>
-              {ticketCode}
-            </span>
-          )}
-          {item.protected && type === 'booking' && (
-            <Shield className="w-2.5 h-2.5 shrink-0" style={{ color: styles.iconColor }} />
-          )}
-        </div>
-      </div>
+      {/* Booking Card - Premium Compact Design */}
+      {type === 'booking' && (
+        <div className="h-full flex flex-col justify-center gap-1">
+          {/* Compact Mode: Name + Time only */}
+          {isCompact ? (
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0 truncate text-[12px] font-bold text-white" title={customerName}>
+                {customerName}
+              </div>
+              <div className="shrink-0 text-[11px] font-bold text-yellow-300">
+                {timeLabel}
+              </div>
+            </div>
+          ) : (
+            /* Normal Mode: 2-row grid */
+            <div className="grid grid-cols-[1fr_auto] gap-x-2 gap-y-1">
+              {/* Row 1: Customer Name | Time */}
+              <div className="min-w-0 truncate text-[12px] font-bold text-white leading-tight" title={customerName}>
+                {customerName}
+              </div>
+              <div className="shrink-0 text-[11px] font-bold text-yellow-300 leading-tight">
+                {timeLabel}
+              </div>
 
-      {/* Content */}
-      <div className="px-1.5 py-1 flex flex-col justify-center h-[calc(100%-22px)] gap-0.5">
-        {/* Time range with icon */}
-        <div className="flex items-center gap-1">
-          <Clock className="w-2.5 h-2.5 shrink-0" style={{ color: styles.iconColor }} />
-          <span
-            className="text-[9px] font-medium"
-            style={{ color: styles.textColor }}
-          >
-            {timeRange}
-          </span>
+              {/* Row 2: Service | Code */}
+              <div className="min-w-0 truncate text-[10px] text-slate-400 leading-tight" title={serviceName}>
+                {serviceName || label}
+              </div>
+              {bookingCode && (
+                <div className="shrink-0 rounded bg-black/20 px-1.5 py-0.5 text-[9px] font-medium text-slate-300 leading-tight">
+                  {bookingCode}
+                </div>
+              )}
+              {item.protected && (
+                <div className="shrink-0 text-[9px] text-yellow-500/80" title="محمي">
+                  🛡️
+                </div>
+              )}
+            </div>
+          )}
         </div>
+      )}
 
-        {/* Customer name with icon */}
-        <div className="flex items-center gap-1">
-          <User className="w-2.5 h-2.5 shrink-0" style={{ color: styles.subTextColor }} />
-          <span
-            className="text-[9px] truncate font-medium"
-            style={{ color: styles.subTextColor }}
-          >
-            {customerName}
-          </span>
-        </div>
-
-        {/* Service name if available */}
-        {serviceName && !compact && (
-          <div
-            className="text-[8px] truncate pl-3.5"
-            style={{ color: styles.serviceColor }}
-          >
-            {serviceName}
+      {/* Queue Card */}
+      {type === 'queue' && (
+        <div className="h-full flex flex-col justify-center gap-0.5">
+          {/* Header: Icon + Code */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1">
+              <Icon className="w-3 h-3 shrink-0" style={{ color: styles.iconColor }} />
+              <span className="text-[9px] font-medium text-slate-400">{label}</span>
+            </div>
+            {ticketCode && (
+              <span className="text-[9px] px-1 rounded bg-slate-700/50 text-slate-300">
+                {ticketCode}
+              </span>
+            )}
           </div>
-        )}
-
-        {/* Called badge and reannounce button */}
-        <div className="flex items-center justify-between mt-1">
-          {isCalled && (
-            <span 
-              className="text-[8px] px-1.5 py-0.5 rounded font-medium"
-              style={{ background: '#22c55e30', color: '#22c55e' }}
-            >
-              تم النداء
-            </span>
-          )}
           
-          {voiceEnabled && item.type === 'queue' && (
-            <button
-              onClick={handleReannounce}
-              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-medium opacity-0 hover:opacity-100 group-hover:opacity-100 transition-opacity"
-              style={{ 
-                background: isCalled ? '#22c55e20' : 'rgba(212, 175, 55, 0.15)', 
-                color: isCalled ? '#22c55e' : '#d4af37',
-                marginRight: 'auto'
-              }}
-              title="إعادة النداء"
-            >
-              <Volume2 size={10} />
-              {isCalled ? 'إعادة' : 'نداء'}
-            </button>
+          {/* Customer */}
+          <div className="text-[11px] font-bold text-white truncate" title={customerName}>
+            {customerName}
+          </div>
+          
+          {/* Time */}
+          <div className="text-[10px] text-slate-400">
+            {timeRange}
+          </div>
+
+          {/* Called badge */}
+          {isCalled && (
+            <div className="flex items-center justify-between mt-0.5">
+              <span className="text-[8px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">
+                تم النداء
+              </span>
+              {voiceEnabled && (
+                <button
+                  onClick={handleReannounce}
+                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-medium bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 transition-colors"
+                  title="إعادة النداء"
+                >
+                  <Volume2 size={10} />
+                  نداء
+                </button>
+              )}
+            </div>
           )}
         </div>
-      </div>
+      )}
+
+      {/* In Service Card */}
+      {type === 'in_service' && (
+        <div className="h-full flex flex-col justify-center gap-0.5">
+          <div className="flex items-center gap-1">
+            <Icon className="w-3 h-3 shrink-0 text-amber-900" />
+            <span className="text-[9px] font-medium text-amber-900">قيد الخدمة</span>
+          </div>
+          <div className="text-[11px] font-bold text-amber-900 truncate" title={customerName}>
+            {customerName}
+          </div>
+          <div className="text-[10px] text-amber-800/80">
+            {timeRange}
+          </div>
+          {serviceName && (
+            <div className="text-[9px] text-amber-800/70 truncate">
+              {serviceName}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Gap/Other Card */}
+      {type === 'gap' && (
+        <div className="h-full flex items-center justify-center">
+          <span className="text-[10px] text-slate-600">—</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -175,17 +229,34 @@ function getIcon(type: string, isProtected?: boolean) {
   }
 }
 
-function getCardStyles(type: string, isProtected?: boolean) {
+function getCardStyles(type: string, isProtected?: boolean, barberColor?: BarberColor) {
+  // Default to gold if no barber color provided
+  const accent = barberColor || {
+    bg: 'rgba(212, 175, 55, 0.12)',
+    border: 'rgba(212, 175, 55, 0.55)',
+    text: '#d4af37',
+    dot: '#d4af37',
+    label: 'gold'
+  };
+
+  // Common readable text colors
+  const readable = {
+    timeColor: '#FACC15',
+    timeIconColor: '#FDE68A',
+    codeBorder: accent.border,
+  };
+
   const base = {
-    hoverBorderColor: '#d4af37',
-    codeBg: 'rgba(255,255,255,0.1)',
-    codeColor: '#d4af37',
+    hoverBorderColor: accent.border,
+    codeBg: accent.bg,
+    codeColor: accent.text,
     serviceColor: '#71717a',
+    ...readable,
   };
 
   switch (type) {
     case 'in_service':
-      // Gold filled card for in-service
+      // Gold filled card for in-service (always gold)
       return {
         ...base,
         background: 'linear-gradient(135deg, #d4af37 0%, #b8941f 100%)',
@@ -198,38 +269,36 @@ function getCardStyles(type: string, isProtected?: boolean) {
         codeBg: 'rgba(0,0,0,0.2)',
         codeColor: '#1a1a1a',
         serviceColor: 'rgba(26,26,26,0.7)',
+        timeColor: '#1a1a1a',
+        timeIconColor: '#1a1a1a',
+        codeBorder: '#d4af37',
       };
 
     case 'booking':
-      if (isProtected) {
-        // Protected booking - stronger gold border
-        return {
-          ...base,
-          background: '#1a1a1a',
-          borderColor: '#d4af37',
-          headerBg: 'rgba(212, 175, 55, 0.15)',
-          iconColor: '#d4af37',
-          textColor: '#d4af37',
-          subTextColor: '#a1a1aa',
-          hoverBorderColor: '#f5d547',
-          codeBg: 'rgba(212, 175, 55, 0.2)',
-          codeColor: '#d4af37',
-          serviceColor: '#71717a',
-        };
-      }
-      // Normal booking - dark card with gold border
+      // Booking cards: clean dark card with barber accent on border only
+      // No header bar - all content in body
       return {
         ...base,
-        background: '#1a1a1a',
-        borderColor: 'rgba(212, 175, 55, 0.5)',
-        headerBg: 'rgba(212, 175, 55, 0.08)',
-        iconColor: '#d4af37',
-        textColor: '#e5e5e5',
-        subTextColor: '#a1a1aa',
-        hoverBorderColor: '#f5d547',
-        codeBg: 'rgba(212, 175, 55, 0.15)',
-        codeColor: '#d4af37',
-        serviceColor: '#71717a',
+        // Dark clean background (not barber color)
+        background: '#0f172a',
+        // Barber color only on border
+        borderColor: accent.border,
+        // No header for bookings
+        headerBg: 'transparent',
+        // Icons only if needed
+        iconColor: accent.text,
+        // Text colors fixed for readability
+        textColor: '#F8FAFC',
+        subTextColor: '#94a3b8',
+        // Time accent
+        timeColor: '#FACC15',
+        timeIconColor: '#FDE68A',
+        // Code badge subtle
+        codeBg: 'rgba(0,0,0,0.2)',
+        codeBorder: 'rgba(255,255,255,0.1)',
+        codeColor: '#94a3b8',
+        hoverBorderColor: accent.text,
+        serviceColor: '#CBD5E1',
       };
 
     case 'queue':
@@ -246,6 +315,9 @@ function getCardStyles(type: string, isProtected?: boolean) {
         codeBg: 'rgba(100, 116, 139, 0.3)',
         codeColor: '#94a3b8',
         serviceColor: '#64748b',
+        timeColor: '#e2e8f0',
+        timeIconColor: '#94a3b8',
+        codeBorder: 'rgba(100, 116, 139, 0.5)',
       };
 
     default:
@@ -262,6 +334,9 @@ function getCardStyles(type: string, isProtected?: boolean) {
         codeBg: 'rgba(255,255,255,0.08)',
         codeColor: '#71717a',
         serviceColor: '#52525b',
+        timeColor: '#a1a1aa',
+        timeIconColor: '#52525b',
+        codeBorder: 'rgba(255,255,255,0.1)',
       };
   }
 }

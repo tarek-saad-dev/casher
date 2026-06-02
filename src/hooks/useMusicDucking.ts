@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
-import { musicController } from '@/components/operations/OperationsMusicPlayer';
+import { musicController } from '@/components/operations/OperationsMusicPlayerEnhanced';
 
 interface DuckOptions {
   targetVolume?: number;

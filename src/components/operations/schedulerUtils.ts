@@ -108,6 +108,108 @@ export function groupItemsByHour(items: TimelineItem[]): Map<number, TimelineIte
 }
 
 /**
+ * Free time segment within a cell
+ */
+export interface FreeSegment {
+  start: string; // ISO datetime
+  end: string;   // ISO datetime
+  startMinutes: number; // minutes from cell start (for positioning)
+  durationMinutes: number;
+}
+
+/**
+ * Calculate free time segments within a cell (1-hour period)
+ * given a list of busy events (bookings, queue items, etc.)
+ *
+ * @param cellStart - ISO datetime string for cell start (e.g., "2024-01-15T18:00:00")
+ * @param cellEnd - ISO datetime string for cell end (e.g., "2024-01-15T19:00:00")
+ * @param events - Array of timeline items that might overlap with the cell
+ * @returns Array of free segments within the cell
+ */
+export function getFreeSegmentsInCell(
+  cellStart: string,
+  cellEnd: string,
+  events: TimelineItem[]
+): FreeSegment[] {
+  const cellStartMs = new Date(cellStart).getTime();
+  const cellEndMs = new Date(cellEnd).getTime();
+  const cellDurationMs = cellEndMs - cellStartMs;
+
+  // Filter events that overlap with this cell and clip to cell boundaries
+  const busySegments = events
+    .filter(event => {
+      const eventStartMs = new Date(event.startTime).getTime();
+      const eventEndMs = new Date(event.endTime).getTime();
+      // Event overlaps if it starts before cell ends AND ends after cell starts
+      return eventStartMs < cellEndMs && eventEndMs > cellStartMs;
+    })
+    .map(event => {
+      const eventStartMs = new Date(event.startTime).getTime();
+      const eventEndMs = new Date(event.endTime).getTime();
+      return {
+        startMs: Math.max(eventStartMs, cellStartMs),
+        endMs: Math.min(eventEndMs, cellEndMs),
+      };
+    })
+    .sort((a, b) => a.startMs - b.startMs);
+
+  // Merge overlapping busy segments
+  const mergedBusy: { startMs: number; endMs: number }[] = [];
+  for (const segment of busySegments) {
+    if (mergedBusy.length === 0) {
+      mergedBusy.push(segment);
+    } else {
+      const last = mergedBusy[mergedBusy.length - 1];
+      if (segment.startMs <= last.endMs) {
+        // Overlaps or touches - merge
+        last.endMs = Math.max(last.endMs, segment.endMs);
+      } else {
+        mergedBusy.push(segment);
+      }
+    }
+  }
+
+  // Calculate free segments by subtracting busy from cell
+  const freeSegments: FreeSegment[] = [];
+  let cursorMs = cellStartMs;
+
+  for (const busy of mergedBusy) {
+    if (busy.startMs > cursorMs) {
+      // There's a gap before this busy segment
+      const start = new Date(cursorMs).toISOString();
+      const end = new Date(busy.startMs).toISOString();
+      const startMinutes = (cursorMs - cellStartMs) / 60000;
+      const durationMinutes = (busy.startMs - cursorMs) / 60000;
+
+      freeSegments.push({
+        start,
+        end,
+        startMinutes,
+        durationMinutes,
+      });
+    }
+    cursorMs = Math.max(cursorMs, busy.endMs);
+  }
+
+  // Check for free time after last busy segment
+  if (cursorMs < cellEndMs) {
+    const start = new Date(cursorMs).toISOString();
+    const end = new Date(cellEndMs).toISOString();
+    const startMinutes = (cursorMs - cellStartMs) / 60000;
+    const durationMinutes = (cellEndMs - cursorMs) / 60000;
+
+    freeSegments.push({
+      start,
+      end,
+      startMinutes,
+      durationMinutes,
+    });
+  }
+
+  return freeSegments;
+}
+
+/**
  * Format time range for display
  * "2:00 - 2:30"
  */

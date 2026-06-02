@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { checkBarberAvailableForBooking, buildBookingIntervals, buildQueueIntervals } from "@/lib/queueEstimateEngine";
 
 export const runtime = "nodejs";
 
@@ -54,6 +55,8 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     const bookingId = parseInt(id);
     const body = await req.json();
     const { action, notes, cancelReason, rescheduleDate, rescheduleTime, empId } = body;
+
+    console.log("[PATCH bookings] Received request:", { bookingId, action, body });
 
     const db = await getPool();
 
@@ -129,13 +132,149 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
           `);
         break;
 
+      case "restore": {
+        try {
+          // Only cancelled bookings can be restored
+          if (currentStatus !== 'cancelled' && currentStatus !== 'canceled') {
+            return NextResponse.json({ error: "لا يمكن إرجاع الحجز - الحالة الحالية غير ملغية" }, { status: 400 });
+          }
+
+          // Get full booking details for conflict check
+          const bookingRes = await db.request()
+            .input("id", sql.Int, bookingId)
+            .query(`
+              SELECT AssignedEmpID, BookingDate, StartTime, EndTime
+              FROM [dbo].[Bookings]
+              WHERE BookingID = @id
+            `);
+          
+          const booking = bookingRes.recordset[0];
+          if (!booking) {
+            return NextResponse.json({ error: "حجز غير موجود" }, { status: 404 });
+          }
+
+          // Check for conflicts using the same logic as new bookings
+          if (booking.AssignedEmpID && booking.BookingDate && booking.StartTime) {
+            // Handle BookingDate as Date object or string
+            let dateStr: string;
+            if (booking.BookingDate instanceof Date) {
+              dateStr = booking.BookingDate.toISOString().split('T')[0];
+            } else if (typeof booking.BookingDate === 'string') {
+              dateStr = booking.BookingDate.split('T')[0];
+            } else {
+              dateStr = String(booking.BookingDate);
+            }
+            
+            // Handle StartTime - extract HH:MM
+            let timeStr: string;
+            if (booking.StartTime instanceof Date) {
+              timeStr = booking.StartTime.toISOString().split('T')[1].slice(0, 5);
+            } else if (typeof booking.StartTime === 'string') {
+              timeStr = booking.StartTime.slice(0, 5);
+            } else {
+              timeStr = String(booking.StartTime);
+            }
+            
+            const bookingStart = new Date(`${dateStr}T${timeStr}`);
+            
+            console.log("[restore] Parsed date:", dateStr, "time:", timeStr, "bookingStart:", bookingStart.toISOString());
+            
+            // Get service IDs for this booking
+            const servicesRes = await db.request()
+              .input("id", sql.Int, bookingId)
+              .query(`SELECT ProID FROM [dbo].[BookingServices] WHERE BookingID = @id`);
+            
+            const serviceIds = servicesRes.recordset.map((s: { ProID: number }) => s.ProID).filter(Boolean);
+            
+            console.log("[restore] Checking availability for empId:", booking.AssignedEmpID, "date:", dateStr, "services:", serviceIds);
+            
+            // Check for actual booking conflicts only (skip working hours check)
+            // The booking was already accepted before, so we only care if someone else took the slot
+            let hasConflict = false;
+            try {
+              // Build intervals for existing bookings and queue on this date
+              const now = new Date();
+              const [bIntervals, qIntervals] = await Promise.all([
+                buildBookingIntervals(db, booking.AssignedEmpID, dateStr, 30),
+                buildQueueIntervals(db, booking.AssignedEmpID, dateStr, now, 30, undefined, {
+                  filterStale: true, graceMinutes: 30, debugContext: "booking-restore"
+                }),
+              ]);
+              
+              // Calculate booking end time (need service duration)
+              const servicesRes = await db.request()
+                .input("ids", sql.VarChar, serviceIds.join(','))
+                .query(`
+                  SELECT COALESCE(SUM(DurationMinutes), 30) as totalDuration 
+                  FROM [dbo].[TblServices] 
+                  WHERE ProID IN (SELECT CAST(value AS INT) FROM STRING_SPLIT(@ids, ','))
+                `);
+              const durationMinutes = servicesRes.recordset[0]?.totalDuration || 30;
+              const bookingEnd = new Date(bookingStart.getTime() + durationMinutes * 60000);
+              
+              console.log("[restore] Checking conflicts for:", bookingStart.toISOString(), "to", bookingEnd.toISOString());
+              console.log("[restore] Booking intervals:", bIntervals.length, "Queue intervals:", qIntervals.length);
+              
+              // Check for any overlapping intervals (excluding this booking itself)
+              const allIntervals = [...bIntervals, ...qIntervals];
+              for (const iv of allIntervals) {
+                // Skip if this is the same booking being restored
+                if (iv.source === 'booking' && iv.id === bookingId) continue;
+                
+                // Check for overlap: [start, end) overlaps with [iv.start, iv.end)
+                if (bookingStart < iv.end && bookingEnd > iv.start) {
+                  console.log("[restore] Conflict found with", iv.source, "id:", iv.id);
+                  hasConflict = true;
+                  break;
+                }
+              }
+            } catch (conflictErr) {
+              console.error("[restore] Error checking conflicts:", conflictErr);
+              // If conflict check fails, log it but don't block restore
+              hasConflict = false;
+            }
+            
+            if (hasConflict) {
+              return NextResponse.json({ 
+                error: "لا يمكن إرجاع الحجز لأن الموعد أصبح محجوزًا بالفعل.",
+                conflict: true 
+              }, { status: 409 });
+            }
+            
+            console.log("[restore] No conflicts found, proceeding with restore");
+          }
+
+          // Restore booking to confirmed status
+          const updateResult = await db.request()
+            .input("id", sql.Int, bookingId)
+            .query(`
+              UPDATE [dbo].[Bookings]
+              SET Status='confirmed', CancelReason=NULL, CancelledAt=NULL, UpdatedAt=GETDATE()
+              WHERE BookingID=@id;
+              SELECT @@ROWCOUNT as affectedRows;
+            `);
+          
+          console.log("[restore] Update result:", updateResult.recordset);
+          console.log("[restore] Booking restored successfully:", bookingId);
+          break;
+        } catch (restoreErr) {
+          console.error("[restore] Error during restore:", restoreErr);
+          throw restoreErr; // Re-throw to be caught by outer catch
+        }
+      }
+
       default:
         return NextResponse.json({ error: `إجراء غير معروف: ${action}` }, { status: 400 });
     }
 
     return NextResponse.json({ ok: true, action, previousStatus: currentStatus });
   } catch (err) {
-    console.error("[bookings PATCH id]", err);
+    console.error("[bookings PATCH id] Error:", err);
+    // Log detailed error for debugging
+    if (err instanceof Error) {
+      console.error("[bookings PATCH id] Error message:", err.message);
+      console.error("[bookings PATCH id] Error stack:", err.stack);
+    }
     return NextResponse.json({ error: "فشل تحديث الحجز" }, { status: 500 });
   }
 }

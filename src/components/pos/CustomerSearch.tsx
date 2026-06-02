@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Search, UserPlus, X, Phone, User, Cake, FileText, AlertCircle } from 'lucide-react';
+import { Search, UserPlus, X, Phone, User, Cake, FileText, AlertCircle, Pencil } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import type { Customer } from '@/lib/types';
@@ -11,9 +11,10 @@ interface CustomerSearchProps {
   onSelect: (customer: Customer | null) => void;
   onQuickAdd: (prefill?: string) => void;
   onCompleteData?: (customer: Customer) => void;
+  onEditCustomer?: (customer: Customer) => void;
 }
 
-export default function CustomerSearch({ selected, onSelect, onQuickAdd, onCompleteData }: CustomerSearchProps) {
+export default function CustomerSearch({ selected, onSelect, onQuickAdd, onCompleteData, onEditCustomer }: CustomerSearchProps) {
   const [searched, setSearched] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Customer[]>([]);
@@ -96,6 +97,7 @@ export default function CustomerSearch({ selected, onSelect, onQuickAdd, onCompl
           </div>
         </div>
 
+        {/* Missing data warning - only when data is incomplete */}
         {hasMissingData && onCompleteData && (
           <button
             onClick={() => onCompleteData(selected)}
@@ -107,6 +109,17 @@ export default function CustomerSearch({ selected, onSelect, onQuickAdd, onCompl
               {!selected.BirthDate && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
               {!selected.Address   && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
             </span>
+          </button>
+        )}
+
+        {/* Edit customer button - always visible when customer is selected */}
+        {onEditCustomer && (
+          <button
+            onClick={() => onEditCustomer(selected)}
+            className="mt-2 w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-blue-500/30 bg-blue-500/5 text-blue-400 text-xs font-medium hover:bg-blue-500/10 transition-colors"
+          >
+            <Pencil className="w-3.5 h-3.5 shrink-0" />
+            <span>تعديل بيانات العميل</span>
           </button>
         )}
       </div>
