@@ -109,7 +109,7 @@ export default function AttendancePage() {
       const updated = { ...row, [field]: value };
 
       // Auto-calc status when CheckInTime changes
-      if (field === 'CheckInTime' && value) {
+      if (field === 'CheckInTime' && value && typeof value === 'string') {
         const manualStatuses = ['Absent', 'DayOff', 'Excused'];
         if (!manualStatuses.includes(updated.Status)) {
           const late = calcLate(value, updated.ScheduledStartTime);
