@@ -175,41 +175,45 @@ export default function DailyTreasuryPage() {
     <div className="min-h-screen bg-zinc-950 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Page Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-white mb-2">قفل اليوم / الخزنة اليومية</h1>
-            <p className="text-zinc-400">متابعة الحركات المالية وقفل اليوم</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">قفل اليوم / الخزنة اليومية</h1>
+            <p className="text-zinc-400 text-sm sm:text-base">متابعة الحركات المالية وقفل اليوم</p>
           </div>
 
           {treasuryData && treasuryData.paymentMethods.length > 0 && (
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               <button
                 onClick={() => setShowPastIncomeModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-sm font-medium hover:bg-emerald-500/30 transition-colors"
+                className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs sm:text-sm font-medium hover:bg-emerald-500/30 transition-colors"
               >
-                <TrendingUp className="h-4 w-4" />
-                اضافه ايراد في يوم سابق
+                <TrendingUp className="h-3.5 sm:h-4 w-3.5 sm:w-4" />
+                <span className="hidden sm:inline">اضافه ايراد في يوم سابق</span>
+                <span className="sm:hidden">اضافه ايراد</span>
               </button>
               <button
                 onClick={() => setShowPastExpenseModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-sm font-medium hover:bg-rose-500/30 transition-colors"
+                className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs sm:text-sm font-medium hover:bg-rose-500/30 transition-colors"
               >
-                <TrendingDown className="h-4 w-4" />
-                اضافه مصروف في يوم سابق
+                <TrendingDown className="h-3.5 sm:h-4 w-3.5 sm:w-4" />
+                <span className="hidden sm:inline">اضافه مصروف في يوم سابق</span>
+                <span className="sm:hidden">اضافه مصروف</span>
               </button>
               <button
                 onClick={() => setShowTransferModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-xl text-sm font-medium hover:bg-cyan-500/30 transition-colors"
+                className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-xl text-xs sm:text-sm font-medium hover:bg-cyan-500/30 transition-colors"
               >
-                <ArrowRightLeft className="h-4 w-4" />
-                تحويل في يوم سابق
+                <ArrowRightLeft className="h-3.5 sm:h-4 w-3.5 sm:w-4" />
+                <span className="hidden sm:inline">تحويل في يوم سابق</span>
+                <span className="sm:hidden">تحويل</span>
               </button>
               <button
                 onClick={() => setShowClosePanel(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-sm font-medium hover:bg-amber-500/30 transition-colors"
+                className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-xs sm:text-sm font-medium hover:bg-amber-500/30 transition-colors"
               >
-                <Lock className="h-4 w-4" />
-                قفل اليوم
+                <Lock className="h-3.5 sm:h-4 w-3.5 sm:w-4" />
+                <span className="hidden sm:inline">قفل اليوم</span>
+                <span className="sm:hidden">قفل</span>
               </button>
             </div>
           )}
@@ -248,45 +252,45 @@ export default function DailyTreasuryPage() {
               const fmt = (n: number) =>
                 new Intl.NumberFormat('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
               return (
-                <div className={`rounded-2xl border p-5 shadow-lg ${totalNet >= 0
+                <div className={`rounded-xl sm:rounded-2xl border p-3 sm:p-5 shadow-lg ${totalNet >= 0
                   ? 'bg-gradient-to-l from-emerald-950/40 to-emerald-900/20 border-emerald-500/20'
                   : 'bg-gradient-to-l from-rose-950/40 to-rose-900/20 border-rose-500/20'
                   }`}>
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="flex flex-col gap-3 sm:gap-4">
                     {/* Label */}
-                    <div className="flex items-center gap-3">
-                      <div className={`p-3 rounded-xl ${totalNet >= 0 ? 'bg-emerald-500/15' : 'bg-rose-500/15'}`}>
-                        <Calculator className={`h-6 w-6 ${totalNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} />
+                    <div className="flex items-center gap-2 sm:gap-3">
+                      <div className={`p-2 sm:p-3 rounded-xl ${totalNet >= 0 ? 'bg-emerald-500/15' : 'bg-rose-500/15'}`}>
+                        <Calculator className={`h-5 sm:h-6 w-5 sm:w-6 ${totalNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} />
                       </div>
                       <div>
                         <p className={`text-xs font-semibold tracking-wide ${totalNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                           إجمالي المبلغ في الخزنة
                         </p>
-                        <p className="text-xs text-zinc-500 mt-0.5">جمع صافي كل طرق الدفع للفترة المحددة</p>
+                        <p className="text-[10px] sm:text-xs text-zinc-500 mt-0.5">جمع صافي كل طرق الدفع للفترة المحددة</p>
                       </div>
                     </div>
 
                     {/* Per-method breakdown + grand total */}
-                    <div className="flex flex-wrap items-center gap-5">
+                    <div className="flex flex-wrap items-center justify-center sm:justify-end gap-3 sm:gap-5">
                       {treasuryData.paymentMethods.map((pm) => (
-                        <div key={pm.paymentMethodId} className="text-center min-w-[60px]">
-                          <p className="text-[11px] text-zinc-500 mb-0.5 truncate max-w-[80px]">{pm.paymentMethodName}</p>
-                          <p className={`text-sm font-bold ${pm.net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        <div key={pm.paymentMethodId} className="text-center min-w-[50px] sm:min-w-[60px]">
+                          <p className="text-[10px] sm:text-[11px] text-zinc-500 mb-0.5 truncate max-w-[70px] sm:max-w-[80px]">{pm.paymentMethodName}</p>
+                          <p className={`text-xs sm:text-sm font-bold ${pm.net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                             {fmt(pm.net)}
-                            <span className="text-[10px] font-normal mr-0.5">ج.م</span>
+                            <span className="text-[9px] sm:text-[10px] font-normal mr-0.5">ج.م</span>
                           </p>
                         </div>
                       ))}
 
-                      <div className={`h-8 w-px hidden sm:block ${totalNet >= 0 ? 'bg-emerald-500/20' : 'bg-rose-500/20'}`} />
+                      <div className={`h-6 sm:h-8 w-px hidden sm:block ${totalNet >= 0 ? 'bg-emerald-500/20' : 'bg-rose-500/20'}`} />
 
-                      <div className="text-center">
-                        <p className={`text-[11px] font-medium mb-0.5 ${totalNet >= 0 ? 'text-emerald-400/70' : 'text-rose-400/70'}`}>
+                      <div className="text-center w-full sm:w-auto mt-2 sm:mt-0 border-t sm:border-t-0 pt-2 sm:pt-0 border-zinc-700/30">
+                        <p className={`text-[10px] sm:text-[11px] font-medium mb-0.5 ${totalNet >= 0 ? 'text-emerald-400/70' : 'text-rose-400/70'}`}>
                           الإجمالي
                         </p>
-                        <p className={`text-2xl font-bold ${totalNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        <p className={`text-xl sm:text-2xl font-bold ${totalNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                           {fmt(totalNet)}
-                          <span className="text-sm font-normal mr-1">ج.م</span>
+                          <span className="text-xs sm:text-sm font-normal mr-1">ج.م</span>
                         </p>
                       </div>
                     </div>

@@ -45,22 +45,22 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-6">
+    <form onSubmit={handleSubmit} className="w-full max-w-[340px] sm:max-w-sm px-4 sm:px-0 space-y-5 sm:space-y-6">
       {/* Logo */}
-      <div className="flex flex-col items-center gap-3 mb-8">
-        <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-primary shadow-lg">
-          <Scissors className="w-8 h-8 text-primary-foreground" />
+      <div className="flex flex-col items-center gap-2 sm:gap-3 mb-6 sm:mb-8">
+        <div className="flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-primary shadow-lg shadow-primary/25">
+          <Scissors className="w-7 h-7 sm:w-8 sm:h-8 text-primary-foreground" />
         </div>
         <div className="text-center">
-          <h1 className="text-2xl font-bold tracking-tight">Hawai Salon</h1>
-          <p className="text-sm text-muted-foreground">نظام نقطة البيع</p>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Hawai Salon</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">نظام نقطة البيع</p>
         </div>
       </div>
 
       {/* Fields */}
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="loginName">اسم المستخدم</Label>
+      <div className="space-y-3 sm:space-y-4">
+        <div className="space-y-1.5 sm:space-y-2">
+          <Label htmlFor="loginName" className="text-sm sm:text-base">اسم المستخدم</Label>
           <Input
             id="loginName"
             type="text"
@@ -69,13 +69,13 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
             value={loginName}
             onChange={(e) => setLoginName(e.target.value)}
             placeholder="أدخل اسم المستخدم"
-            className="h-11"
+            className="h-12 sm:h-11 text-base w-full"
             dir="ltr"
           />
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="password">كلمة المرور</Label>
+        <div className="space-y-1.5 sm:space-y-2">
+          <Label htmlFor="password" className="text-sm sm:text-base">كلمة المرور</Label>
           <Input
             id="password"
             type="password"
@@ -83,7 +83,7 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="أدخل كلمة المرور"
-            className="h-11"
+            className="h-12 sm:h-11 text-base w-full"
             dir="ltr"
           />
         </div>
@@ -91,13 +91,17 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
 
       {/* Error */}
       {error && (
-        <div className="text-sm text-destructive bg-destructive/10 rounded-lg p-3 text-center">
+        <div className="text-xs sm:text-sm text-destructive bg-destructive/10 rounded-lg p-2.5 sm:p-3 text-center">
           {error}
         </div>
       )}
 
       {/* Submit */}
-      <Button type="submit" className="w-full h-11 text-base font-bold" disabled={loading}>
+      <Button
+        type="submit"
+        className="w-full h-12 sm:h-11 text-base font-bold mt-2"
+        disabled={loading}
+      >
         {loading ? (
           <>
             <Loader2 className="w-5 h-5 ml-2 animate-spin" />

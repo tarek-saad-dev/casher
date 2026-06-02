@@ -38,12 +38,12 @@ function ToastList({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: number)
           key={t.id}
           className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl text-sm font-medium transition-all
             ${t.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-300' : ''}
-            ${t.type === 'error'   ? 'bg-rose-950/90 border-rose-500/40 text-rose-300' : ''}
-            ${t.type === 'info'    ? 'bg-zinc-900/90 border-zinc-700/40 text-zinc-300' : ''}
+            ${t.type === 'error' ? 'bg-rose-950/90 border-rose-500/40 text-rose-300' : ''}
+            ${t.type === 'info' ? 'bg-zinc-900/90 border-zinc-700/40 text-zinc-300' : ''}
           `}
         >
           {t.type === 'success' && <CheckCircle className="w-4 h-4 shrink-0" />}
-          {t.type === 'error'   && <AlertTriangle className="w-4 h-4 shrink-0" />}
+          {t.type === 'error' && <AlertTriangle className="w-4 h-4 shrink-0" />}
           <span className="flex-1">{t.message}</span>
           <button onClick={() => dismiss(t.id)} className="opacity-60 hover:opacity-100"><X className="w-3.5 h-3.5" /></button>
         </div>
@@ -136,7 +136,7 @@ export default function PosPage() {
     }));
     setPaymentAllocations(allocs);
     console.log('[payment] selectedPaymentMethodId after init:', cashMethod.ID);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paymentMethods]);
 
   // ───────────────── Keep single-payment allocation in sync with grand total ─────────────────
@@ -152,7 +152,7 @@ export default function PosPage() {
       amount: m.ID === state.paymentMethodId ? totals.grandTotal : 0,
     }));
     setPaymentAllocations(allocs);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totals.grandTotal, state.paymentMethodId]);
 
   // ───────────────── Save sale ─────────────────
@@ -171,7 +171,7 @@ export default function PosPage() {
 
     if (state.items.length === 0) { setSaveError('يجب إضافة خدمة واحدة على الأقل'); saveLockRef.current = false; setSaving(false); return; }
     if (state.paymentMethodId === null) { setSaveError('اختر طريقة الدفع'); saveLockRef.current = false; setSaving(false); return; }
-    
+
     // Validate split payment totals
     const totalAllocated = state.paymentAllocations.reduce((sum, pa) => sum + pa.amount, 0);
     const remaining = totals.grandTotal - totalAllocated;
@@ -372,7 +372,7 @@ export default function PosPage() {
     try {
       const response = await fetch(`/api/sales/${saleId}`);
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.error || 'فشل تحميل بيانات الفاتورة');
       }
@@ -425,7 +425,7 @@ export default function PosPage() {
       // 4. Set payment method and allocations
       if (data.PaymentMethodID) {
         setPaymentMethod(data.PaymentMethodID);
-        
+
         // Set payment allocations based on actual payment data
         const newAllocations = paymentMethods.map(m => {
           let amount = 0;
@@ -466,10 +466,10 @@ export default function PosPage() {
         onNewSale={handleNewSale}
       />
 
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden relative">
         <ShiftRequiredOverlay />
         {/* ═══════ RIGHT PANEL: Customer + History ═══════ */}
-        <aside className="w-80 border-l border-border p-4 flex flex-col gap-4 overflow-y-auto shrink-0 scrollbar-luxury-v">
+        <aside className="w-full lg:w-80 border-l border-border p-3 lg:p-4 flex flex-col gap-3 lg:gap-4 overflow-y-auto shrink-0 scrollbar-luxury-v order-1 lg:order-1">
           <CustomerSearch
             selected={state.customer}
             onSelect={(c: Customer | null) => setCustomer(c)}
@@ -496,7 +496,7 @@ export default function PosPage() {
         </aside>
 
         {/* ═══════ CENTER PANEL: Barbers + Services ═══════ */}
-        <main className="flex-1 p-4 overflow-y-auto space-y-5 scrollbar-luxury-v">
+        <main className="flex-1 p-3 lg:p-4 overflow-y-auto space-y-4 lg:space-y-5 scrollbar-luxury-v order-3 lg:order-2 min-h-[40vh]">
           <BarberCarousel
             barbers={barbers}
             selected={state.barber}
@@ -511,7 +511,7 @@ export default function PosPage() {
         </main>
 
         {/* ═══════ LEFT PANEL: Cart + Summary + Payment + Save + Recent Sales ═══════ */}
-        <aside className="w-80 border-r border-border p-4 flex flex-col gap-4 overflow-y-auto shrink-0 scrollbar-luxury-v">
+        <aside className="w-full lg:w-80 border-r border-border p-3 lg:p-4 flex flex-col gap-3 lg:gap-4 overflow-y-auto shrink-0 scrollbar-luxury-v order-2 lg:order-3">
           <CartPanel items={state.items} barbers={barbers} onRemove={removeItem} onUpdateItem={updateItem} />
           <Separator />
           <InvoiceSummary
@@ -566,11 +566,10 @@ export default function PosPage() {
                       setSplitPaymentActive(true);
                     }
                   }}
-                  className={`text-xs px-2 py-1 rounded transition-colors ${
-                    splitPaymentActive
+                  className={`text-xs px-2 py-1 rounded transition-colors ${splitPaymentActive
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                  }`}
+                    }`}
                 >
                   {splitPaymentActive ? 'إلغاء' : 'تفعيل'}
                 </button>
@@ -628,7 +627,7 @@ export default function PosPage() {
           </div>
 
           <Separator />
-          
+
           {/* Recent Sales Sidebar */}
           <RecentSalesSidebar
             onEditSale={handleEditSale}

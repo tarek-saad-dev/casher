@@ -1,5 +1,5 @@
-import ClientLayout from '@/components/layout/ClientLayout';
-
 export default function MainLayout({ children }: { children: React.ReactNode }) {
-  return <ClientLayout>{children}</ClientLayout>;
+  // Navigation is handled by AuthLayout at root level
+  // This layout is just a pass-through for route grouping
+  return <>{children}</>;
 }

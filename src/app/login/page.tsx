@@ -92,7 +92,7 @@ export default function LoginPage() {
   // Show OpenShiftPrompt if logged in but needs shift/day
   if (loginData && sessionState) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="flex-1 flex items-center justify-center bg-background p-3 sm:p-4 min-h-0 overflow-y-auto">
         <OpenShiftPrompt
           userName={loginData.UserName}
           defaultShiftId={loginData.ShiftID ?? null}
@@ -107,7 +107,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="flex-1 flex items-center justify-center bg-background p-3 sm:p-4 min-h-0 overflow-y-auto">
       <LoginForm onSuccess={handleLoginSuccess} />
     </div>
   );

@@ -110,33 +110,33 @@ export default function OpenShiftPrompt({
   if (!hasOpenDay) {
     return (
       <Dialog open={true}>
-        <DialogContent className="sm:max-w-md" showCloseButton={false}>
+        <DialogContent className="max-w-[95vw] sm:max-w-md p-4 sm:p-6" showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
+            <DialogTitle className="flex items-center gap-2 text-destructive text-base sm:text-lg">
               <Store className="w-5 h-5" />
               لا يوجد يوم عمل مفتوح
             </DialogTitle>
-            <DialogDescription className="text-base">
+            <DialogDescription className="text-sm sm:text-base">
               مرحبًا {userName}، لا يوجد يوم عمل مفتوح حاليًا.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-3 sm:space-y-4 py-3 sm:py-4">
             {isAdmin ? (
-              <div className="bg-muted/50 rounded-lg p-4">
-                <p className="text-sm mb-4">
+              <div className="bg-muted/50 rounded-lg p-3 sm:p-4">
+                <p className="text-sm mb-3 sm:mb-4">
                   أنت المدير. هل تريد فتح يوم عمل جديد؟
                 </p>
                 {error && (
-                  <div className="text-sm text-destructive bg-destructive/10 rounded-lg p-3 mb-4">
+                  <div className="text-xs sm:text-sm text-destructive bg-destructive/10 rounded-lg p-2.5 sm:p-3 mb-3 sm:mb-4">
                     {error}
                   </div>
                 )}
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                   <Button
                     onClick={handleOpenDay}
                     disabled={openingDay}
-                    className="flex-1"
+                    className="flex-1 h-11 sm:h-10"
                   >
                     {openingDay ? (
                       <>
@@ -150,19 +150,19 @@ export default function OpenShiftPrompt({
                       </>
                     )}
                   </Button>
-                  <Button variant="outline" onClick={onLogout} className="flex-1">
+                  <Button variant="outline" onClick={onLogout} className="flex-1 h-11 sm:h-10">
                     <LogOut className="w-4 h-4 ml-2" />
                     خروج
                   </Button>
                 </div>
               </div>
             ) : (
-              <div className="bg-destructive/10 rounded-lg p-4 text-center">
-                <AlertCircle className="w-8 h-8 text-destructive mx-auto mb-3" />
-                <p className="text-sm mb-4">
+              <div className="bg-destructive/10 rounded-lg p-3 sm:p-4 text-center">
+                <AlertCircle className="w-7 h-7 sm:w-8 sm:h-8 text-destructive mx-auto mb-2 sm:mb-3" />
+                <p className="text-sm mb-3 sm:mb-4">
                   لا يوجد يوم عمل مفتوح. برجاء التواصل مع المدير لفتح يوم العمل.
                 </p>
-                <Button variant="outline" onClick={onLogout} className="w-full">
+                <Button variant="outline" onClick={onLogout} className="w-full h-11 sm:h-10">
                   <LogOut className="w-4 h-4 ml-2" />
                   تسجيل الخروج
                 </Button>
@@ -177,24 +177,24 @@ export default function OpenShiftPrompt({
   // Has open day, but no shift - show shift prompt
   return (
     <Dialog open={true}>
-      <DialogContent className="sm:max-w-md" showCloseButton={false}>
+      <DialogContent className="max-w-[95vw] sm:max-w-md p-4 sm:p-6" showCloseButton={false}>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
             <Clock className="w-5 h-5 text-primary" />
             لا توجد وردية مفتوحة
           </DialogTitle>
-          <DialogDescription className="text-base">
+          <DialogDescription className="text-sm sm:text-base">
             مرحبًا {userName}، لا توجد وردية مفتوحة حاليًا لحسابك.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="space-y-3 sm:space-y-4 py-3 sm:py-4">
           <p className="text-sm text-muted-foreground">
             هل تريد فتح وردية الآن؟
           </p>
 
           {error && (
-            <div className="text-sm text-destructive bg-destructive/10 rounded-lg p-3">
+            <div className="text-xs sm:text-sm text-destructive bg-destructive/10 rounded-lg p-2.5 sm:p-3">
               {error}
             </div>
           )}
@@ -207,7 +207,7 @@ export default function OpenShiftPrompt({
                 onValueChange={setSelectedShift}
                 disabled={loading || loadingShifts}
               >
-                <SelectTrigger>
+                <SelectTrigger className="h-11 sm:h-10">
                   <SelectValue placeholder="اختر الوردية" />
                 </SelectTrigger>
                 <SelectContent>
@@ -222,7 +222,7 @@ export default function OpenShiftPrompt({
           )}
 
           {defaultShiftId && (
-            <div className="bg-muted/50 rounded-lg p-3">
+            <div className="bg-muted/50 rounded-lg p-2.5 sm:p-3">
               <p className="text-sm">
                 سيتم فتح الوردية الافتراضية:{' '}
                 <span className="font-semibold">
@@ -233,11 +233,11 @@ export default function OpenShiftPrompt({
             </div>
           )}
 
-          <div className="flex gap-3 pt-2">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-2">
             <Button
               onClick={handleOpenShift}
               disabled={loading || (!defaultShiftId && !selectedShift)}
-              className="flex-1"
+              className="flex-1 h-11 sm:h-10"
             >
               {loading ? (
                 <>
@@ -255,7 +255,7 @@ export default function OpenShiftPrompt({
               variant="outline"
               onClick={onLogout}
               disabled={loading}
-              className="flex-1"
+              className="flex-1 h-11 sm:h-10"
             >
               <LogOut className="w-4 h-4 ml-2" />
               خروج

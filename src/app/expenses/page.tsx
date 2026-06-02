@@ -118,7 +118,7 @@ export default function ExpensesPage() {
   const [filterCatId, setFilterCatId] = useState<string>('');
   const [dateError, setDateError] = useState<string>('');
   const [showCustomRange, setShowCustomRange] = useState(false);
-  
+
   // ──── Edit state ────
   const [editingExpense, setEditingExpense] = useState<ExpenseRecord | null>(null);
 
@@ -144,11 +144,11 @@ export default function ExpensesPage() {
     fetch('/api/expenses/categories')
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setCategories(d); })
-      .catch(() => {});
+      .catch(() => { });
     fetch('/api/payment-methods')
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setPaymentMethods(d); })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // ──── Quick date presets ────
@@ -193,7 +193,7 @@ export default function ExpensesPage() {
     fetch(`/api/expenses?${params.toString()}`)
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setExpenses(d); })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoadingHistory(false));
   }, [dateFrom, dateTo, filterCatId, dateError]);
 
@@ -279,15 +279,15 @@ export default function ExpensesPage() {
 
       const result = await res.json();
       setSaveSuccess(`✅ تم تسجيل المصروف بنجاح — #${result.invID} (${result.catName}: ${result.amount} ج.م)`);
-      
+
       // Get current date and time for receipt
       const now = new Date();
       const currentDate = now.toISOString().split('T')[0];
       const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      
+
       // Get payment method name
       const paymentMethod = paymentMethods.find(pm => pm.ID === paymentMethodId);
-      
+
       // Show receipt modal
       setReceiptExpense({
         invID: result.invID,
@@ -299,7 +299,7 @@ export default function ExpensesPage() {
         Notes: notes || null,
         UserName: null, // Will be populated from server if needed
       });
-      
+
       resetForm();
       setPaymentMethodId(null);
       loadExpenses();
@@ -316,18 +316,18 @@ export default function ExpensesPage() {
   // ──── Delete expense ────
   const handleDelete = useCallback(async (id: number, invID: number) => {
     if (!confirm(`هل أنت متأكد من حذف المصروف #${invID}؟`)) return;
-    
+
     try {
       const res = await fetch(`/api/expenses/${id}`, {
         method: 'DELETE',
       });
-      
+
       if (!res.ok) {
         const data = await res.json();
         alert(data.error || 'خطأ في حذف المصروف');
         return;
       }
-      
+
       loadExpenses();
     } catch {
       alert('خطأ في الاتصال بالخادم');
@@ -369,61 +369,61 @@ export default function ExpensesPage() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden relative" dir="rtl">
+    <div className="flex flex-col lg:flex-row h-screen overflow-hidden relative" dir="rtl">
       <ShiftRequiredOverlay />
 
       {/* ═══════════ LEFT PANEL: History + Summary ═══════════ */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-background">
+      <div className="flex-1 flex flex-col overflow-hidden bg-background order-1 lg:order-1 min-h-0">
         {/* Summary Cards */}
-        <div className="p-3 border-b border-border bg-gradient-to-br from-muted/30 to-muted/10">
-          <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-lg border border-border p-2.5 bg-card/80 backdrop-blur-sm">
-              <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
-                <TrendingDown className="w-3.5 h-3.5" />
-                <span className="text-[10px] font-medium">إجمالي</span>
+        <div className="p-2 sm:p-3 border-b border-border bg-gradient-to-br from-muted/30 to-muted/10">
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+            <div className="rounded-lg border border-border p-2 sm:p-2.5 bg-card/80 backdrop-blur-sm">
+              <div className="flex items-center gap-1 sm:gap-1.5 text-muted-foreground mb-1">
+                <TrendingDown className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                <span className="text-[9px] sm:text-[10px] font-medium">إجمالي</span>
               </div>
-              <p className="text-lg font-black">{totalExpenses.toLocaleString('ar-EG')} ج.م</p>
-              <p className="text-[10px] text-muted-foreground">{expenses.length} عملية</p>
+              <p className="text-sm sm:text-lg font-black truncate">{totalExpenses.toLocaleString('ar-EG')} ج.م</p>
+              <p className="text-[9px] sm:text-[10px] text-muted-foreground">{expenses.length} عملية</p>
             </div>
-            <div className="rounded-lg border border-border p-2.5 bg-card/80 backdrop-blur-sm">
-              <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
-                <Banknote className="w-3.5 h-3.5" />
-                <span className="text-[10px] font-medium">كاش</span>
+            <div className="rounded-lg border border-border p-2 sm:p-2.5 bg-card/80 backdrop-blur-sm">
+              <div className="flex items-center gap-1 sm:gap-1.5 text-muted-foreground mb-1">
+                <Banknote className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                <span className="text-[9px] sm:text-[10px] font-medium">كاش</span>
               </div>
-              <p className="text-lg font-bold">{totalCash.toLocaleString('ar-EG')} ج.م</p>
+              <p className="text-sm sm:text-lg font-bold truncate">{totalCash.toLocaleString('ar-EG')} ج.م</p>
             </div>
-            <div className="rounded-lg border border-border p-2.5 bg-card/80 backdrop-blur-sm">
-              <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
-                <CreditCard className="w-3.5 h-3.5" />
-                <span className="text-[10px] font-medium">فيزا</span>
+            <div className="rounded-lg border border-border p-2 sm:p-2.5 bg-card/80 backdrop-blur-sm">
+              <div className="flex items-center gap-1 sm:gap-1.5 text-muted-foreground mb-1">
+                <CreditCard className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                <span className="text-[9px] sm:text-[10px] font-medium">فيزا</span>
               </div>
-              <p className="text-lg font-bold">{totalVisa.toLocaleString('ar-EG')} ج.م</p>
+              <p className="text-sm sm:text-lg font-bold truncate">{totalVisa.toLocaleString('ar-EG')} ج.م</p>
             </div>
           </div>
         </div>
 
         {/* ═══ Filters Bar ═══ */}
-        <div className="px-3 pt-2.5 pb-2 border-b border-border bg-zinc-900/60 space-y-2">
+        <div className="px-2 sm:px-3 pt-2 sm:pt-2.5 pb-2 border-b border-border bg-zinc-900/60 space-y-2">
 
           {/* Row 1: Preset buttons + category */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <Filter className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+          <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap">
+            <Filter className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-zinc-500 shrink-0" />
 
-            {([ 
-              { key: 'today',     label: 'اليوم' },
-              { key: 'yesterday', label: 'أمس' },
-              { key: 'last7',     label: 'آخر 7 أيام' },
-              { key: 'thisMonth', label: 'هذا الشهر' },
-              { key: 'all',       label: 'الكل' },
-            ] as const).map(({ key, label }) => (
+            {([
+              { key: 'today', label: 'اليوم', fullLabel: 'اليوم' },
+              { key: 'yesterday', label: 'أمس', fullLabel: 'أمس' },
+              { key: 'last7', label: 'آخر 7', fullLabel: 'آخر 7 أيام' },
+              { key: 'thisMonth', label: 'الشهر', fullLabel: 'هذا الشهر' },
+              { key: 'all', label: 'الكل', fullLabel: 'الكل' },
+            ] as const).map(({ key, label, fullLabel }) => (
               <button
                 key={key}
                 onClick={() => applyPreset(key)}
-                className={`text-[11px] px-2.5 py-1 rounded-md border font-semibold transition-all ${
-                  activeDatePreset === key
-                    ? 'border-primary bg-primary/15 text-primary shadow-sm shadow-primary/20'
-                    : 'border-border text-muted-foreground hover:border-zinc-500 hover:text-foreground hover:bg-accent'
-                }`}
+                className={`text-[10px] sm:text-[11px] px-2 sm:px-2.5 py-1 rounded-md border font-semibold transition-all ${activeDatePreset === key
+                  ? 'border-primary bg-primary/15 text-primary shadow-sm shadow-primary/20'
+                  : 'border-border text-muted-foreground hover:border-zinc-500 hover:text-foreground hover:bg-accent'
+                  }`}
+                title={fullLabel}
               >
                 {label}
               </button>
@@ -432,13 +432,13 @@ export default function ExpensesPage() {
             {/* Custom range toggle */}
             <button
               onClick={() => { setShowCustomRange(v => !v); if (activeDatePreset !== 'custom') setActiveDatePreset('custom'); }}
-              className={`text-[11px] px-2.5 py-1 rounded-md border font-semibold transition-all flex items-center gap-1 ${
-                activeDatePreset === 'custom'
-                  ? 'border-amber-500/60 bg-amber-500/10 text-amber-400'
-                  : 'border-border text-muted-foreground hover:border-zinc-500 hover:text-foreground hover:bg-accent'
-              }`}
+              className={`text-[10px] sm:text-[11px] px-2 sm:px-2.5 py-1 rounded-md border font-semibold transition-all flex items-center gap-1 ${activeDatePreset === 'custom'
+                ? 'border-amber-500/60 bg-amber-500/10 text-amber-400'
+                : 'border-border text-muted-foreground hover:border-zinc-500 hover:text-foreground hover:bg-accent'
+                }`}
             >
-              فترة مخصصة
+              <span className="hidden sm:inline">فترة مخصصة</span>
+              <span className="sm:hidden">مخصص</span>
               <ChevronDown className={`w-3 h-3 transition-transform ${showCustomRange ? 'rotate-180' : ''}`} />
             </button>
 
@@ -448,7 +448,7 @@ export default function ExpensesPage() {
             <select
               value={filterCatId}
               onChange={(e) => setFilterCatId(e.target.value)}
-              className="text-[11px] px-2 py-1 rounded-md border border-border bg-zinc-800/60 text-foreground max-w-[140px] truncate"
+              className="text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-1 rounded-md border border-border bg-zinc-800/60 text-foreground max-w-[100px] sm:max-w-[140px] truncate"
             >
               <option value="">كل الفئات</option>
               {categories.map(c => (
@@ -459,33 +459,33 @@ export default function ExpensesPage() {
             {/* Reset */}
             <button
               onClick={handleResetFilters}
-              className="text-[11px] px-2 py-1 rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-all flex items-center gap-1"
+              className="text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-1 rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-all flex items-center gap-1"
               title="إعادة تعيين"
             >
               <RotateCcw className="w-3 h-3" />
-              إعادة تعيين
+              <span className="hidden sm:inline">إعادة تعيين</span>
             </button>
           </div>
 
           {/* Row 2: Custom date range (collapsible) */}
           {showCustomRange && (
             <div className="flex items-center gap-2 flex-wrap pt-0.5">
-              <span className="text-[11px] text-zinc-500">من</span>
+              <span className="text-[10px] sm:text-[11px] text-zinc-500">من</span>
               <input
                 type="date"
                 value={dateFrom}
                 onChange={(e) => handleCustomFrom(e.target.value)}
-                className="text-[11px] px-2 py-1 rounded-md border border-border bg-zinc-800/60 text-foreground"
+                className="text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-1 rounded-md border border-border bg-zinc-800/60 text-foreground"
               />
-              <span className="text-[11px] text-zinc-500">إلى</span>
+              <span className="text-[10px] sm:text-[11px] text-zinc-500">إلى</span>
               <input
                 type="date"
                 value={dateTo}
                 onChange={(e) => handleCustomTo(e.target.value)}
-                className="text-[11px] px-2 py-1 rounded-md border border-border bg-zinc-800/60 text-foreground"
+                className="text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-1 rounded-md border border-border bg-zinc-800/60 text-foreground"
               />
               {dateError && (
-                <span className="text-[10px] text-destructive flex items-center gap-1">
+                <span className="text-[9px] sm:text-[10px] text-destructive flex items-center gap-1">
                   <AlertTriangle className="w-3 h-3" />{dateError}
                 </span>
               )}
@@ -597,7 +597,7 @@ export default function ExpensesPage() {
       </div>
 
       {/* ═══════════ RIGHT PANEL: New Expense Form ═══════════ */}
-      <aside className="w-[380px] border-r border-border flex flex-col shrink-0 bg-muted/5">
+      <aside className="w-full lg:w-[380px] border-r border-border flex flex-col shrink-0 bg-muted/5 order-2 lg:order-2 h-[45vh] lg:h-auto">
         <div className="p-3 border-b border-border bg-muted/20">
           <h2 className="text-sm font-bold flex items-center gap-2">
             <Receipt className="w-4 h-4" />
@@ -615,203 +615,203 @@ export default function ExpensesPage() {
                   الأكثر استخداماً
                 </h3>
                 <div className="flex flex-wrap gap-1">
-                {quickPicks.map((cat) => {
+                  {quickPicks.map((cat) => {
+                    const isSelected = selectedCatId === cat.ExpINID;
+                    return (
+                      <button
+                        key={cat.ExpINID}
+                        onClick={() => { setSelectedCatId(cat.ExpINID); setSaveError(''); }}
+                        className={`
+                        px-2.5 py-1 rounded-full border text-[10px] font-bold transition-all
+                        ${isSelected
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-border bg-muted/40 hover:bg-accent text-foreground'
+                          }
+                      `}
+                      >
+                        {cat.CatName}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <Separator />
+
+            {/* ──── Category Selection (Grouped) ──── */}
+            <div className="space-y-2.5">
+              <h3 className="text-sm font-semibold text-muted-foreground">فئة المصروف</h3>
+
+              {/* Group tabs */}
+              <div className="flex flex-wrap gap-1">
+                {[{ key: 'all', label: 'الكل' }, ...CATEGORY_GROUPS].map((g) => {
+                  const isActive = activeGroup === g.key;
+                  return (
+                    <button
+                      key={g.key}
+                      onClick={() => { setActiveGroup(g.key); setCatSearch(''); }}
+                      className={`
+                      px-2.5 py-1 rounded-md text-[11px] font-bold transition-all border
+                      ${isActive
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+                        }
+                    `}
+                    >
+                      {g.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Search */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <Input
+                  placeholder="بحث في الفئات..."
+                  value={catSearch}
+                  onChange={(e) => setCatSearch(e.target.value)}
+                  className="h-8 text-xs pr-8"
+                />
+              </div>
+
+              {/* Filtered category buttons */}
+              <div className="grid grid-cols-2 gap-1.5 max-h-[200px] overflow-y-auto">
+                {filteredCategories.map((cat) => {
                   const isSelected = selectedCatId === cat.ExpINID;
                   return (
                     <button
                       key={cat.ExpINID}
                       onClick={() => { setSelectedCatId(cat.ExpINID); setSaveError(''); }}
                       className={`
-                        px-2.5 py-1 rounded-full border text-[10px] font-bold transition-all
-                        ${isSelected
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-border bg-muted/40 hover:bg-accent text-foreground'
+                      flex items-center justify-center px-2 py-2 rounded-lg border transition-all text-xs font-bold leading-tight
+                      ${isSelected
+                          ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/30'
+                          : 'border-border hover:border-muted-foreground/30 hover:bg-accent text-foreground'
                         }
-                      `}
+                    `}
                     >
                       {cat.CatName}
                     </button>
                   );
                 })}
               </div>
-            </div>
-          )}
 
-          <Separator />
-
-          {/* ──── Category Selection (Grouped) ──── */}
-          <div className="space-y-2.5">
-            <h3 className="text-sm font-semibold text-muted-foreground">فئة المصروف</h3>
-
-            {/* Group tabs */}
-            <div className="flex flex-wrap gap-1">
-              {[{ key: 'all', label: 'الكل' }, ...CATEGORY_GROUPS].map((g) => {
-                const isActive = activeGroup === g.key;
-                return (
-                  <button
-                    key={g.key}
-                    onClick={() => { setActiveGroup(g.key); setCatSearch(''); }}
-                    className={`
-                      px-2.5 py-1 rounded-md text-[11px] font-bold transition-all border
-                      ${isActive
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
-                      }
-                    `}
-                  >
-                    {g.label}
-                  </button>
-                );
-              })}
+              {categories.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-3">جاري تحميل الفئات...</p>
+              )}
+              {categories.length > 0 && filteredCategories.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-3">لا توجد فئات مطابقة</p>
+              )}
             </div>
 
-            {/* Search */}
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <Separator />
+
+            {/* Amount */}
+            <div>
+              <h3 className="text-sm font-semibold text-muted-foreground mb-2">المبلغ (ج.م)</h3>
               <Input
-                placeholder="بحث في الفئات..."
-                value={catSearch}
-                onChange={(e) => setCatSearch(e.target.value)}
-                className="h-8 text-xs pr-8"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="أدخل المبلغ"
+                value={amount}
+                onChange={(e) => { setAmount(e.target.value); setSaveError(''); }}
+                className="text-lg font-bold text-center h-12"
+                dir="ltr"
               />
             </div>
 
-            {/* Filtered category buttons */}
-            <div className="grid grid-cols-2 gap-1.5 max-h-[200px] overflow-y-auto">
-              {filteredCategories.map((cat) => {
-                const isSelected = selectedCatId === cat.ExpINID;
-                return (
-                  <button
-                    key={cat.ExpINID}
-                    onClick={() => { setSelectedCatId(cat.ExpINID); setSaveError(''); }}
-                    className={`
-                      flex items-center justify-center px-2 py-2 rounded-lg border transition-all text-xs font-bold leading-tight
-                      ${isSelected
-                        ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/30'
-                        : 'border-border hover:border-muted-foreground/30 hover:bg-accent text-foreground'
-                      }
-                    `}
-                  >
-                    {cat.CatName}
-                  </button>
-                );
-              })}
-            </div>
+            <Separator />
 
-            {categories.length === 0 && (
-              <p className="text-xs text-muted-foreground text-center py-3">جاري تحميل الفئات...</p>
-            )}
-            {categories.length > 0 && filteredCategories.length === 0 && (
-              <p className="text-xs text-muted-foreground text-center py-3">لا توجد فئات مطابقة</p>
-            )}
-          </div>
-
-          <Separator />
-
-          {/* Amount */}
-          <div>
-            <h3 className="text-sm font-semibold text-muted-foreground mb-2">المبلغ (ج.م)</h3>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="أدخل المبلغ"
-              value={amount}
-              onChange={(e) => { setAmount(e.target.value); setSaveError(''); }}
-              className="text-lg font-bold text-center h-12"
-              dir="ltr"
-            />
-          </div>
-
-          <Separator />
-
-          {/* Payment Method */}
-          <div>
-            <h3 className="text-sm font-semibold text-muted-foreground mb-2">طريقة الدفع</h3>
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-transparent">
-              {paymentMethods.map((m) => {
-                const isSelected = paymentMethodId === m.ID;
-                const icon = PAYMENT_ICONS[m.Name] || <Wallet className="w-4 h-4" />;
-                return (
-                  <button
-                    key={m.ID}
-                    onClick={() => { setPaymentMethodId(m.ID); setSaveError(''); }}
-                    className={`
+            {/* Payment Method */}
+            <div>
+              <h3 className="text-sm font-semibold text-muted-foreground mb-2">طريقة الدفع</h3>
+              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-transparent">
+                {paymentMethods.map((m) => {
+                  const isSelected = paymentMethodId === m.ID;
+                  const icon = PAYMENT_ICONS[m.Name] || <Wallet className="w-4 h-4" />;
+                  return (
+                    <button
+                      key={m.ID}
+                      onClick={() => { setPaymentMethodId(m.ID); setSaveError(''); }}
+                      className={`
                       flex-shrink-0 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border transition-all text-sm font-medium whitespace-nowrap
                       ${isSelected
-                        ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/30'
-                        : 'border-border hover:border-muted-foreground/30 hover:bg-accent text-muted-foreground'
-                      }
+                          ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/30'
+                          : 'border-border hover:border-muted-foreground/30 hover:bg-accent text-muted-foreground'
+                        }
                     `}
-                  >
-                    {icon}
-                    {m.Name}
-                  </button>
-                );
-              })}
+                    >
+                      {icon}
+                      {m.Name}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
 
-          <Separator />
+            <Separator />
 
-          {/* Notes */}
-          <div>
-            <h3 className="text-sm font-semibold text-muted-foreground mb-2">ملاحظات (اختياري)</h3>
-            <Input
-              placeholder="وصف المصروف..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="text-sm"
-            />
-          </div>
-
-          {/* Error */}
-          {saveError && (
-            <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-lg p-2.5 font-medium">
-              <AlertTriangle className="w-4 h-4 shrink-0" />
-              {saveError}
+            {/* Notes */}
+            <div>
+              <h3 className="text-sm font-semibold text-muted-foreground mb-2">ملاحظات (اختياري)</h3>
+              <Input
+                placeholder="وصف المصروف..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="text-sm"
+              />
             </div>
-          )}
 
-          {/* Success */}
-          {saveSuccess && (
-            <div className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-500/10 rounded-lg p-2.5 font-medium">
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-              {saveSuccess}
-            </div>
-          )}
-
-          {/* Save Button */}
-          <Button
-            size="lg"
-            className="w-full text-base font-bold py-6"
-            onClick={handleSave}
-            disabled={saving || !hasActiveShift}
-          >
-            {saving ? (
-              <>
-                <Loader2 className="w-5 h-5 ml-2 animate-spin" />
-                جاري الحفظ...
-              </>
-            ) : (
-              <>
-                <Save className="w-5 h-5 ml-2" />
-                حفظ المصروف
-              </>
+            {/* Error */}
+            {saveError && (
+              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-lg p-2.5 font-medium">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                {saveError}
+              </div>
             )}
-          </Button>
 
-          {/* Reset */}
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full"
-            onClick={() => { resetForm(); setPaymentMethodId(null); }}
-          >
-            <RotateCcw className="w-4 h-4 ml-2" />
-            مسح النموذج
-          </Button>
-        </div>
+            {/* Success */}
+            {saveSuccess && (
+              <div className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-500/10 rounded-lg p-2.5 font-medium">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                {saveSuccess}
+              </div>
+            )}
+
+            {/* Save Button */}
+            <Button
+              size="lg"
+              className="w-full text-base font-bold py-6"
+              onClick={handleSave}
+              disabled={saving || !hasActiveShift}
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="w-5 h-5 ml-2 animate-spin" />
+                  جاري الحفظ...
+                </>
+              ) : (
+                <>
+                  <Save className="w-5 h-5 ml-2" />
+                  حفظ المصروف
+                </>
+              )}
+            </Button>
+
+            {/* Reset */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => { resetForm(); setPaymentMethodId(null); }}
+            >
+              <RotateCcw className="w-4 h-4 ml-2" />
+              مسح النموذج
+            </Button>
+          </div>
         </ScrollArea>
       </aside>
 
