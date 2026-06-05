@@ -23,18 +23,18 @@ interface NavTheme {
 }
 
 const NAV_THEMES: Record<string, NavTheme> = {
-  'المدخلات':          { rgb: '214,168,79',  emoji: '📥' }, // gold
-  'مراجعة المدخلات':   { rgb: '59,130,246',  emoji: '📊' }, // blue
-  'المصروفات':         { rgb: '244,63,94',   emoji: '💸' }, // rose
-  'مراجعة المصروفات':  { rgb: '168,85,247',  emoji: '📋' }, // violet
-  'الخزنة':            { rgb: '16,185,129',  emoji: '🏦' }, // emerald
-  'الميزانية':         { rgb: '6,182,212',   emoji: '💰' }, // cyan
-  'الموارد البشرية':   { rgb: '236,72,153',  emoji: '👥' }, // pink
-  'الإدارة':           { rgb: '148,163,184', emoji: '⚙️' }, // slate
-  'لوحة التشغيل':      { rgb: '20,184,166',  emoji: '🖥️' }, // teal
-  'الطابور':           { rgb: '245,158,11',  emoji: '🎫' }, // amber
-  'الحجوزات':          { rgb: '99,102,241',  emoji: '📅' }, // indigo
-  'التدقيق':           { rgb: '239,68,68',   emoji: '🔍' }, // red (audit)
+  'المدخلات': { rgb: '214,168,79', emoji: '📥' }, // gold
+  'مراجعة المدخلات': { rgb: '59,130,246', emoji: '📊' }, // blue
+  'المصروفات': { rgb: '244,63,94', emoji: '💸' }, // rose
+  'مراجعة المصروفات': { rgb: '168,85,247', emoji: '📋' }, // violet
+  'الخزنة': { rgb: '16,185,129', emoji: '🏦' }, // emerald
+  'الميزانية': { rgb: '6,182,212', emoji: '💰' }, // cyan
+  'الموارد البشرية': { rgb: '236,72,153', emoji: '👥' }, // pink
+  'الإدارة': { rgb: '148,163,184', emoji: '⚙️' }, // slate
+  'لوحة التشغيل': { rgb: '20,184,166', emoji: '🖥️' }, // teal
+  'الطابور': { rgb: '245,158,11', emoji: '🎫' }, // amber
+  'الحجوزات': { rgb: '99,102,241', emoji: '📅' }, // indigo
+  'التدقيق': { rgb: '239,68,68', emoji: '🔍' }, // red (audit)
 };
 
 function getTheme(title: string): NavTheme {
@@ -42,9 +42,9 @@ function getTheme(title: string): NavTheme {
 }
 
 // Glow helpers — computed once per rgb
-const glow   = (rgb: string, a = 0.22) => `0 0 22px rgba(${rgb},${a})`;
-const glow2  = (rgb: string, a = 0.14) => `0 0 14px rgba(${rgb},${a})`;
-const dotGlow= (rgb: string)            => `0 0 8px  rgba(${rgb},0.90), 0 0 16px rgba(${rgb},0.45)`;
+const glow = (rgb: string, a = 0.22) => `0 0 22px rgba(${rgb},${a})`;
+const glow2 = (rgb: string, a = 0.14) => `0 0 14px rgba(${rgb},${a})`;
+const dotGlow = (rgb: string) => `0 0 8px  rgba(${rgb},0.90), 0 0 16px rgba(${rgb},0.45)`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NAV DATA
@@ -69,8 +69,8 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'المدخلات',
     icon: LayoutGrid,
     items: [
-      { href: '/income/pos',        label: 'نقطة البيع',    icon: LayoutGrid  },
-      { href: '/income/new',        label: 'إيراد جديد',   icon: PlusCircle  },
+      { href: '/income/pos', label: 'نقطة البيع', icon: LayoutGrid },
+      { href: '/income/new', label: 'إيراد جديد', icon: PlusCircle },
       { href: '/income/collection', label: 'تحصيل / دفعة', icon: CreditCard, disabled: true },
     ],
   },
@@ -78,11 +78,11 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'مراجعة المدخلات',
     icon: ClipboardList,
     items: [
-      { href: '/sales/today',              label: 'مبيعات اليوم',   icon: TrendingUp  },
-      { href: '/income-review/all-sales',  label: 'كل المبيعات',   icon: History     },
-      { href: '/income-review/today-revenue', label: 'إيرادات اليوم', icon: Wallet  },
-      { href: '/income-review/all-revenue',   label: 'كل الإيرادات', icon: History  },
-      { href: '/income-review/payments',   label: 'المدفوعات',     icon: CreditCard  },
+      { href: '/sales/today', label: 'مبيعات اليوم', icon: TrendingUp },
+      { href: '/income-review/all-sales', label: 'كل المبيعات', icon: History },
+      { href: '/income-review/today-revenue', label: 'إيرادات اليوم', icon: Wallet },
+      { href: '/income-review/all-revenue', label: 'كل الإيرادات', icon: History },
+      { href: '/income-review/payments', label: 'المدفوعات', icon: CreditCard },
       { href: '/admin/reports/employee-services', label: 'خدمات الصنايعية', icon: FileBarChart },
       { href: '/reports/monthly', label: 'التقرير الشهري', icon: BarChart3 },
     ],
@@ -98,17 +98,18 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'مراجعة المصروفات',
     icon: BarChart3,
     items: [
-      { href: '/reports/expenses/monthly',       label: 'تقرير المصروفات',  icon: BarChart3   },
+      { href: '/reports/expenses/monthly', label: 'تقرير المصروفات', icon: BarChart3 },
     ],
   },
   {
     title: 'الخزنة',
     icon: Wallet,
     items: [
-      { href: '/treasury/daily',       label: 'قفل اليوم',       icon: Lock           },
-      { href: '/treasury/movement',    label: 'حركة الخزنة',     icon: ArrowLeftRight },
-      { href: '/treasury/summary',     label: 'ملخص حسب الدفع', icon: BarChart3      },
-      { href: '/treasury/shift-close', label: 'تقفيل الوردية',   icon: Clock          },
+      { href: '/treasury/daily', label: 'قفل اليوم', icon: Lock },
+      { href: '/treasury/movement', label: 'حركة الخزنة', icon: ArrowLeftRight },
+      { href: '/treasury/summary', label: 'ملخص حسب الدفع', icon: BarChart3 },
+      { href: '/treasury/shift-close', label: 'تقفيل الوردية', icon: Clock },
+      { href: '/admin/monthly-closing', label: 'تقفيل الشهر', icon: Lock },
     ],
   },
   {
@@ -123,8 +124,8 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'الطابور',
     icon: Ticket,
     items: [
-      { href: '/queue/live', label: 'لوحة الانتظار',  icon: LayoutGrid  },
-      { href: '/queue/new',  label: 'تذكرة جديدة',    icon: PlusCircle  },
+      { href: '/queue/live', label: 'لوحة الانتظار', icon: LayoutGrid },
+      { href: '/queue/new', label: 'تذكرة جديدة', icon: PlusCircle },
     ],
   },
   // ─── Bookings Module ─────────────────────────────────────────────
@@ -132,9 +133,9 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'الحجوزات',
     icon: CalendarCheck,
     items: [
-      { href: '/bookings',          label: 'قائمة الحجوزات',  icon: ClipboardList },
-      { href: '/bookings/new',      label: 'حجز جديد',        icon: PlusCircle    },
-      { href: '/bookings/calendar', label: 'التقويم',          icon: Calendar      },
+      { href: '/bookings', label: 'قائمة الحجوزات', icon: ClipboardList },
+      { href: '/bookings/new', label: 'حجز جديد', icon: PlusCircle },
+      { href: '/bookings/calendar', label: 'التقويم', icon: Calendar },
     ],
   },
   // ─── HR Module (Single with nested items) ─────────────────────────
@@ -142,26 +143,26 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'الموارد البشرية',
     icon: UsersRound,
     items: [
-      { href: '/admin/hr',              label: 'الموظفون',       icon: UsersRound },
-      { href: '/admin/attendance',      label: 'متابعة الحضور', icon: Clock      },
+      { href: '/admin/hr', label: 'الموظفون', icon: UsersRound },
+      { href: '/admin/attendance', label: 'متابعة الحضور', icon: Clock },
       { href: '/admin/attendance/daily-payroll', label: 'يوميات الموظفين', icon: Calendar },
       { href: '/expenses-review/advances', label: 'سلف الموظفين', icon: CreditCard },
-      { href: '/expenses-review/salaries', label: 'مرتبات العاملين', icon: Wallet     },
+      { href: '/expenses-review/salaries', label: 'مرتبات العاملين', icon: Wallet },
     ],
   },
   {
     title: 'الإدارة',
     icon: Settings,
     items: [
-      { href: '/admin/operations',      label: 'مركز التشغيل',   icon: Activity   },
-      { href: '/admin/users',           label: 'المستخدمون',      icon: Shield     },
-      { href: '/admin/services',        label: 'الخدمات',         icon: Scissors   },
-      { href: '/admin/payment-methods', label: 'طرق الدفع',      icon: CreditCard },
-      { href: '/admin/categories',      label: 'التصنيفات',       icon: Tags       },
-      { href: '/admin/loyalty',         label: 'إدارة النقاط',   icon: Star       },
-      { href: '/admin/shift',           label: 'الورديات',        icon: Clock      },
-      { href: '/admin/settings',        label: 'الإعدادات',       icon: Settings   },
-      { href: '/admin/queue-booking-settings', label: 'إعدادات الطابور', icon: Ticket     },
+      { href: '/admin/operations', label: 'مركز التشغيل', icon: Activity },
+      { href: '/admin/users', label: 'المستخدمون', icon: Shield },
+      { href: '/admin/services', label: 'الخدمات', icon: Scissors },
+      { href: '/admin/payment-methods', label: 'طرق الدفع', icon: CreditCard },
+      { href: '/admin/categories', label: 'التصنيفات', icon: Tags },
+      { href: '/admin/loyalty', label: 'إدارة النقاط', icon: Star },
+      { href: '/admin/shift', label: 'الورديات', icon: Clock },
+      { href: '/admin/settings', label: 'الإعدادات', icon: Settings },
+      { href: '/admin/queue-booking-settings', label: 'إعدادات الطابور', icon: Ticket },
     ],
   },
   {
@@ -182,10 +183,10 @@ export default function MainNav() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<string[]>(['المدخلات']);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  
+
   // Badge count for payment audit
   const [paymentAuditCount, setPaymentAuditCount] = useState<number>(0);
-  
+
   // Fetch badge count periodically
   useEffect(() => {
     const fetchCount = async () => {
@@ -199,7 +200,7 @@ export default function MainNav() {
         // Silent fail - badge will just show 0
       }
     };
-    
+
     fetchCount();
     // Refresh every 5 minutes
     const interval = setInterval(fetchCount, 5 * 60 * 1000);
@@ -322,7 +323,7 @@ export default function MainNav() {
       // Dot
       const dot = el.querySelector(`[data-dot]`) as HTMLElement | null;
       if (dot && !active) {
-        dot.style.width  = '6px';
+        dot.style.width = '6px';
         dot.style.height = '6px';
         dot.style.backgroundColor = `rgb(${rgb})`;
         dot.style.boxShadow = dotGlow(rgb);
@@ -355,7 +356,7 @@ export default function MainNav() {
       const dot = el.querySelector(`[data-dot]`) as HTMLElement | null;
       if (dot && !active) {
         const sz = isSectionActive ? '5px' : '4px';
-        dot.style.width  = sz;
+        dot.style.width = sz;
         dot.style.height = sz;
         dot.style.backgroundColor = isSectionActive ? `rgba(${rgb},0.55)` : `rgba(${rgb},0.25)`;
         dot.style.boxShadow = isSectionActive ? glow2(rgb, 0.35) : 'none';
@@ -422,7 +423,7 @@ export default function MainNav() {
         >
           {item.label}
         </span>
-        
+
         {/* Badge */}
         {item.badge === 'payment-audit' && paymentAuditCount > 0 && (
           <span
