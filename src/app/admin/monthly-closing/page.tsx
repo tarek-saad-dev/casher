@@ -40,10 +40,6 @@ export default function MonthlyClosingPage() {
     { id: '2', label: 'تقفيل اليوم بيومه', description: 'اعتماد اليوم (Verified) بعد مراجعة الإيرادات والمصروفات', goal: 'منع تراكم الأخطاء', checked: false },
     { id: '3', label: 'تجميع الأموال', description: 'تحويل جميع طرق الدفع إلى وسيلة دفع رئيسية في نهاية اليوم', goal: 'توحيد الرصيد', checked: false },
     { id: '4', label: 'تصفير وسائل الدفع الأخرى', description: 'جميع وسائل الدفع الأخرى تصبح صفر بعد التحويل', goal: 'سهولة المطابقة', checked: false },
-    { id: '5', label: 'مراجعة السحوبات', description: 'تسجيل أي سحب للموظفين أو الملاك أولًا بأول', goal: 'منع النسيان آخر الشهر', checked: false },
-    { id: '6', label: 'مراجعة المصروفات', description: 'تسجيل جميع المصروفات فور حدوثها', goal: 'دقة الربح', checked: false },
-    { id: '7', label: 'مراجعة الإيرادات', description: 'التأكد من تسجيل جميع الإيرادات', goal: 'اكتمال البيانات', checked: false },
-    { id: '8', label: 'متابعة التارجت', description: 'متابعة أداء كل موظف وتارجته بشكل مستمر', goal: 'سهولة الحساب آخر الشهر', checked: false },
   ]);
 
   const [beforeClosingTasks, setBeforeClosingTasks] = useState<ChecklistItem[]>([
