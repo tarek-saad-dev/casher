@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Store, Plus, Search, Edit, Power, Trash2,
-  Package, Star, Clock, Image as ImageIcon, Loader2
+  Package, Star, Clock, Image as ImageIcon, Loader2, FolderTree
 } from 'lucide-react';
 import PageHeader from '@/components/cut-club/PageHeader';
 import PremiumCard from '@/components/cut-club/PremiumCard';
@@ -118,6 +118,22 @@ export default function StorePage() {
   const [editingItem, setEditingItem] = useState<ApiStoreItem | null>(null);
   const [error, setError] = useState('');
 
+  // Category management state
+  const [catModalOpen, setCatModalOpen] = useState(false);
+  const [catSaving, setCatSaving] = useState(false);
+  const [catError, setCatError] = useState('');
+  const [editingCategory, setEditingCategory] = useState<StoreCategory | null>(null);
+  const [catForm, setCatForm] = useState({
+    code: '',
+    nameAr: '',
+    nameEn: '',
+    descriptionAr: '',
+    descriptionEn: '',
+    icon: '',
+    sortOrder: 0,
+    isActive: true,
+  });
+
   const [formData, setFormData] = useState({
     categoryId: 1,
     code: '',
@@ -198,6 +214,84 @@ export default function StorePage() {
       sortOrder: 0,
     });
     setModalOpen(true);
+  };
+
+  const openCatModal = () => {
+    setEditingCategory(null);
+    setCatForm({
+      code: '',
+      nameAr: '',
+      nameEn: '',
+      descriptionAr: '',
+      descriptionEn: '',
+      icon: '',
+      sortOrder: 0,
+      isActive: true,
+    });
+    setCatError('');
+    setCatModalOpen(true);
+  };
+
+  const openEditCategory = (cat: StoreCategory) => {
+    setEditingCategory(cat);
+    setCatForm({
+      code: cat.code,
+      nameAr: cat.nameAr,
+      nameEn: cat.nameEn,
+      descriptionAr: cat.descriptionAr || '',
+      descriptionEn: cat.descriptionEn || '',
+      icon: cat.icon || '',
+      sortOrder: cat.sortOrder,
+      isActive: cat.isActive,
+    });
+    setCatError('');
+    setCatModalOpen(true);
+  };
+
+  const handleSaveCategory = async () => {
+    setCatSaving(true);
+    setCatError('');
+    try {
+      let ok = false;
+      if (editingCategory) {
+        const res = await fetch(`/api/admin/store/categories/${editingCategory.categoryId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(catForm),
+        });
+        const data = await res.json();
+        ok = data.ok;
+        if (!ok) setCatError(data.error || 'فشل التحديث');
+      } else {
+        const res = await fetch('/api/admin/store/categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(catForm),
+        });
+        const data = await res.json();
+        ok = data.ok;
+        if (!ok) setCatError(data.error || 'فشل الإنشاء');
+      }
+      if (ok) {
+        setCatModalOpen(false);
+        fetchItems();
+      }
+    } catch {
+      setCatError('Network error');
+    } finally {
+      setCatSaving(false);
+    }
+  };
+
+  const handleDeleteCategory = async (cat: StoreCategory) => {
+    if (!confirm('هل أنت متأكد من حذف هذا التصنيف؟')) return;
+    try {
+      const res = await fetch(`/api/admin/store/categories/${cat.categoryId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) fetchItems();
+    } catch {
+      console.error('Delete category failed');
+    }
   };
 
   const openEditModal = (item: ApiStoreItem) => {
@@ -295,13 +389,23 @@ export default function StorePage() {
         description="إدارة جميع المكافآت والمنتجات المتاحة"
         gradient="from-blue-500/20 to-cyan-600/20"
         actions={
-          <Button
-            onClick={openNewItemModal}
-            className="bg-yellow-500 hover:bg-yellow-600 text-black font-semibold"
-          >
-            <Plus className="w-4 h-4 ml-2" />
-            منتج جديد
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={openCatModal}
+              className="border-zinc-700 hover:bg-zinc-800 text-zinc-300"
+            >
+              <FolderTree className="w-4 h-4 ml-2" />
+              التصنيفات
+            </Button>
+            <Button
+              onClick={openNewItemModal}
+              className="bg-yellow-500 hover:bg-yellow-600 text-black font-semibold"
+            >
+              <Plus className="w-4 h-4 ml-2" />
+              منتج جديد
+            </Button>
+          </div>
         }
       />
 
@@ -727,6 +831,103 @@ export default function StorePage() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={catModalOpen} onOpenChange={setCatModalOpen}>
+        <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">
+              {editingCategory ? 'تعديل التصنيف' : 'تصنيف جديد'}
+            </DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              إدارة تصنيفات متجر CUT CLUB
+            </DialogDescription>
+          </DialogHeader>
+
+          {catError && (
+            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+              {catError}
+            </div>
+          )}
+
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>الكود</Label>
+                <Input value={catForm.code} onChange={(e) => setCatForm({ ...catForm, code: e.target.value })} placeholder="CAT-001" className="bg-zinc-800 border-zinc-700" />
+              </div>
+              <div className="space-y-2">
+                <Label>الترتيب</Label>
+                <Input type="number" value={catForm.sortOrder} onChange={(e) => setCatForm({ ...catForm, sortOrder: parseInt(e.target.value) || 0 })} className="bg-zinc-800 border-zinc-700" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>الاسم بالعربية</Label>
+                <Input value={catForm.nameAr} onChange={(e) => setCatForm({ ...catForm, nameAr: e.target.value })} placeholder="الاسم العربي" className="bg-zinc-800 border-zinc-700" />
+              </div>
+              <div className="space-y-2">
+                <Label>الاسم بالإنجليزية</Label>
+                <Input value={catForm.nameEn} onChange={(e) => setCatForm({ ...catForm, nameEn: e.target.value })} placeholder="English name" className="bg-zinc-800 border-zinc-700" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>الوصف بالعربية</Label>
+                <Input value={catForm.descriptionAr} onChange={(e) => setCatForm({ ...catForm, descriptionAr: e.target.value })} placeholder="..." className="bg-zinc-800 border-zinc-700" />
+              </div>
+              <div className="space-y-2">
+                <Label>الوصف بالإنجليزية</Label>
+                <Input value={catForm.descriptionEn} onChange={(e) => setCatForm({ ...catForm, descriptionEn: e.target.value })} placeholder="..." className="bg-zinc-800 border-zinc-700" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>الأيقونة (اسم الأيقونة)</Label>
+              <Input value={catForm.icon} onChange={(e) => setCatForm({ ...catForm, icon: e.target.value })} placeholder="Gift" className="bg-zinc-800 border-zinc-700" />
+            </div>
+            <div className="flex items-center justify-between p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
+              <div>
+                <Label>نشط</Label>
+                <p className="text-xs text-zinc-400">متاح في المتجر</p>
+              </div>
+              <Switch checked={catForm.isActive} onCheckedChange={(v) => setCatForm({ ...catForm, isActive: v })} />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button onClick={handleSaveCategory} disabled={catSaving} className="flex-1 bg-yellow-500 hover:bg-yellow-600 text-black font-semibold">
+                {catSaving ? <Loader2 className="w-4 h-4 animate-spin ml-2" /> : null}
+                {editingCategory ? 'حفظ التغييرات' : 'إنشاء التصنيف'}
+              </Button>
+              <Button variant="outline" className="flex-1 border-zinc-700 hover:bg-zinc-800" onClick={() => setCatModalOpen(false)}>
+                إلغاء
+              </Button>
+            </div>
+          </div>
+
+          {categories.length > 0 && (
+            <div className="border-t border-zinc-800 pt-4 mt-2">
+              <h3 className="text-sm font-bold text-zinc-400 mb-3">التصنيفات الحالية</h3>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {categories.map((cat) => (
+                  <div key={cat.categoryId} className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50 border border-zinc-700">
+                    <div>
+                      <p className="text-sm font-medium text-white">{cat.nameAr}</p>
+                      <p className="text-xs text-zinc-500">{cat.code} · {cat.isActive ? 'نشط' : 'غير نشط'}</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => openEditCategory(cat)} className="text-yellow-400 hover:bg-yellow-400/10 h-8 w-8 p-0">
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleDeleteCategory(cat)} className="text-red-400 hover:bg-red-400/10 h-8 w-8 p-0">
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

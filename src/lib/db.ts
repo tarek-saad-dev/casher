@@ -19,7 +19,8 @@ const localConfig: sql.config = {
     encrypt: process.env.LOCAL_DB_ENCRYPT === "true" || false,
     trustServerCertificate: process.env.LOCAL_DB_TRUST_CERT === "true" || process.env.DB_TRUST_SERVER_CERTIFICATE === "true" || true,
     enableArithAbort: true,
-  },
+    charset: "utf8",
+  } as any,
   connectionTimeout: 60000,
   requestTimeout: 60000,
   pool: {
@@ -45,7 +46,8 @@ const cloudConfig: sql.config = {
     encrypt: process.env.CLOUD_DB_ENCRYPT !== "false" && process.env.DB_ENCRYPT !== "false",
     trustServerCertificate: process.env.CLOUD_DB_TRUST_CERT === "true" || process.env.DB_TRUST_SERVER_CERTIFICATE === "true",
     enableArithAbort: true,
-  },
+    charset: "utf8",
+  } as any,
   connectionTimeout: 60000,
   requestTimeout: 60000,
   pool: {
