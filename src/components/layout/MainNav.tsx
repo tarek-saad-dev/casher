@@ -9,7 +9,7 @@ import {
   Calculator, Settings, Scissors, Tags, Shield, Activity, Star,
   ChevronDown, Menu, X, SlidersHorizontal, PanelLeftClose, PanelLeftOpen,
   UsersRound, FileBarChart, Calendar, Ticket, CalendarCheck, MonitorPlay,
-  AlertTriangle,
+  AlertTriangle, Crown, Store, Package, UserPlus, Gift,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -34,6 +34,7 @@ const NAV_THEMES: Record<string, NavTheme> = {
   'لوحة التشغيل': { rgb: '20,184,166', emoji: '🖥️' }, // teal
   'الطابور': { rgb: '245,158,11', emoji: '🎫' }, // amber
   'الحجوزات': { rgb: '99,102,241', emoji: '📅' }, // indigo
+  'CUT CLUB': { rgb: '234,179,8', emoji: '👑' }, // yellow (loyalty)
   'التدقيق': { rgb: '239,68,68', emoji: '🔍' }, // red (audit)
 };
 
@@ -701,6 +702,7 @@ export default function MainNav() {
       style={{ padding: isCollapsed ? '8px 6px' : '8px 10px' }}
     >
       {renderDirectLink('/operations', 'لوحة التشغيل', MonitorPlay, '20,184,166')}
+      {renderDirectLink('/admin/cut-club', 'CUT CLUB', Crown, '234,179,8')}
       {NAV_SECTIONS.map(section => (
         <div key={section.title}>
           {renderSection(section)}

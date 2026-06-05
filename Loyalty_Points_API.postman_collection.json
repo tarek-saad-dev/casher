@@ -1,0 +1,233 @@
+{
+	"info": {
+		"_postman_id": "loyalty-points-api-collection",
+		"name": "Loyalty Points API",
+		"description": "CUT CLUB Client Loyalty API endpoints for managing points, rewards, and activity",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Get Client Loyalty Dashboard",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/me?clientId={{client_id}}",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"me"
+					],
+					"query": [
+						{
+							"key": "clientId",
+							"value": "{{client_id}}",
+							"description": "Client ID number"
+						}
+					]
+				},
+				"description": "Get complete loyalty dashboard including points balance, tier, rewards, activity, and referral info."
+			},
+			"response": []
+		},
+		{
+			"name": "Get Rewards List",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/rewards?clientId={{client_id}}",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"rewards"
+					],
+					"query": [
+						{
+							"key": "clientId",
+							"value": "{{client_id}}",
+							"description": "Client ID number"
+						}
+					]
+				},
+				"description": "Get all available rewards with status (available, locked, tier_locked)."
+			},
+			"response": []
+		},
+		{
+			"name": "Redeem Reward",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"confirm\": true\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/rewards/{{reward_id}}/redeem?clientId={{client_id}}",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"rewards",
+						"{{reward_id}}",
+						"redeem"
+					],
+					"query": [
+						{
+							"key": "clientId",
+							"value": "{{client_id}}",
+							"description": "Client ID number"
+						}
+					]
+				},
+				"description": "Redeem a loyalty reward using points. Requires confirmation in request body."
+			},
+			"response": []
+		},
+		{
+			"name": "Get Activity History (Basic)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/activity?clientId={{client_id}}&page=1&limit=10",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"activity"
+					],
+					"query": [
+						{
+							"key": "clientId",
+							"value": "{{client_id}}",
+							"description": "Client ID number"
+						},
+						{
+							"key": "page",
+							"value": "1",
+							"description": "Page number (default: 1)"
+						},
+						{
+							"key": "limit",
+							"value": "10",
+							"description": "Items per page (default: 10, max: 50)"
+						}
+					]
+				},
+				"description": "Get paginated loyalty points activity history."
+			},
+			"response": []
+		},
+		{
+			"name": "Get Activity History (Filtered by Type)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/activity?clientId={{client_id}}&page=1&limit=20&movementType=EARN",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"activity"
+					],
+					"query": [
+						{
+							"key": "clientId",
+							"value": "{{client_id}}",
+							"description": "Client ID number"
+						},
+						{
+							"key": "page",
+							"value": "1",
+							"description": "Page number"
+						},
+						{
+							"key": "limit",
+							"value": "20",
+							"description": "Items per page"
+						},
+						{
+							"key": "movementType",
+							"value": "EARN",
+							"description": "Filter by type: EARN, REDEEM, ADJUST, EXPIRE"
+						}
+					]
+				},
+				"description": "Get activity history filtered by movement type (EARN, REDEEM, ADJUST, EXPIRE)."
+			},
+			"response": []
+		},
+		{
+			"name": "Get Activity History (Date Range)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/activity?clientId={{client_id}}&page=1&limit=10&dateFrom=2024-01-01&dateTo=2024-12-31",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"activity"
+					],
+					"query": [
+						{
+							"key": "clientId",
+							"value": "{{client_id}}",
+							"description": "Client ID number"
+						},
+						{
+							"key": "page",
+							"value": "1",
+							"description": "Page number"
+						},
+						{
+							"key": "limit",
+							"value": "10",
+							"description": "Items per page"
+						},
+						{
+							"key": "dateFrom",
+							"value": "2024-01-01",
+							"description": "Filter from date (ISO format)"
+						},
+						{
+							"key": "dateTo",
+							"value": "2024-12-31",
+							"description": "Filter to date (ISO format)"
+						}
+					]
+				},
+				"description": "Get activity history filtered by date range."
+			},
+			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:3000/api/public/client/loyalty",
+			"type": "string"
+		},
+		{
+			"key": "client_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "reward_id",
+			"value": "1",
+			"type": "string"
+		}
+	]
+}
