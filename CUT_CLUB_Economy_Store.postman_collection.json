@@ -1,0 +1,660 @@
+{
+	"info": {
+		"_postman_id": "cut-club-economy-store-collection",
+		"name": "CUT CLUB Economy - Store System",
+		"description": "Complete API collection for CUT CLUB Economy Store, Inventory, Mystery Boxes, and POS Integration",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Store APIs",
+			"item": [
+				{
+					"name": "Get Store (Main)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/store?clientId={{client_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"store"
+							],
+							"query": [
+								{
+									"key": "clientId",
+									"value": "{{client_id}}",
+									"description": "Client ID (TODO: replace with auth token)"
+								}
+							]
+						},
+						"description": "Get complete store with categories, featured items, and all items.\n\nReturns:\n- Client's CUT Coins balance\n- All active categories\n- Featured items (top 6)\n- All store items with status (canAfford, tierLocked, stockStatus)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Store Item Details",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/store/items/{{item_id}}?clientId={{client_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"store",
+								"items",
+								"{{item_id}}"
+							],
+							"query": [
+								{
+									"key": "clientId",
+									"value": "{{client_id}}",
+									"description": "Client ID"
+								}
+							]
+						},
+						"description": "Get detailed information about a specific store item.\n\nReturns:\n- Item details with status\n- Related items from same category (up to 4)"
+					},
+					"response": []
+				},
+				{
+					"name": "Purchase Item",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"itemId\": {{item_id}}\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/store/buy?clientId={{client_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"store",
+								"buy"
+							],
+							"query": [
+								{
+									"key": "clientId",
+									"value": "{{client_id}}",
+									"description": "Client ID"
+								}
+							]
+						},
+						"description": "Purchase a store item with CUT Coins.\n\nValidations:\n- Client has enough coins\n- Client meets tier requirements\n- Item is in stock\n- Item is active\n\nReturns:\n- Purchase confirmation\n- Inventory ID\n- Voucher code\n- Expiry date (if applicable)\n- New balance"
+					},
+					"response": []
+				},
+				{
+					"name": "Open Mystery Box",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"inventoryId\": {{inventory_id}}\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/store/open-box?clientId={{client_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"store",
+								"open-box"
+							],
+							"query": [
+								{
+									"key": "clientId",
+									"value": "{{client_id}}",
+									"description": "Client ID"
+								}
+							]
+						},
+						"description": "Open a mystery box from inventory.\n\nBackend determines reward using weighted probabilities.\n\nReturns:\n- Reward type (COINS, STORE_ITEM, BONUS_POINTS, etc.)\n- Reward value\n- New balance"
+					},
+					"response": []
+				}
+			],
+			"description": "Store browsing and purchasing endpoints"
+		},
+		{
+			"name": "Inventory APIs",
+			"item": [
+				{
+					"name": "Get Client Inventory",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/inventory?clientId={{client_id}}&status=ACTIVE",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"inventory"
+							],
+							"query": [
+								{
+									"key": "clientId",
+									"value": "{{client_id}}",
+									"description": "Client ID"
+								},
+								{
+									"key": "status",
+									"value": "ACTIVE",
+									"description": "Filter by status: ACTIVE, USED, EXPIRED, CANCELLED, ALL"
+								}
+							]
+						},
+						"description": "Get client's inventory items.\n\nQuery params:\n- status: ACTIVE (default), USED, EXPIRED, CANCELLED, ALL\n\nReturns:\n- List of inventory items\n- Item details\n- Expiry information\n- Usage status\n- Stats (totalActive, totalUsed, expiringThisWeek)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Client Inventory (All)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/inventory?clientId={{client_id}}&status=ALL",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"inventory"
+							],
+							"query": [
+								{
+									"key": "clientId",
+									"value": "{{client_id}}",
+									"description": "Client ID"
+								},
+								{
+									"key": "status",
+									"value": "ALL",
+									"description": "Get all items regardless of status"
+								}
+							]
+						},
+						"description": "Get all inventory items (all statuses)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Inventory Item Details",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/inventory/{{inventory_id}}?clientId={{client_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"inventory",
+								"{{inventory_id}}"
+							],
+							"query": [
+								{
+									"key": "clientId",
+									"value": "{{client_id}}",
+									"description": "Client ID"
+								}
+							]
+						},
+						"description": "Get detailed information about a specific inventory item.\n\nReturns:\n- Item details\n- Purchase information\n- Expiry information\n- Usage history\n- Can use status"
+					},
+					"response": []
+				}
+			],
+			"description": "Client inventory management endpoints"
+		},
+		{
+			"name": "POS Integration",
+			"item": [
+				{
+					"name": "Get Client Inventory (POS)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{pos_base_url}}/client-inventory?clientId={{client_id}}",
+							"host": [
+								"{{pos_base_url}}"
+							],
+							"path": [
+								"client-inventory"
+							],
+							"query": [
+								{
+									"key": "clientId",
+									"value": "{{client_id}}",
+									"description": "Client ID"
+								}
+							]
+						},
+						"description": "Get client's active inventory for POS usage.\n\nReturns only ACTIVE items that can be used.\n\nReturns:\n- Client ID and name\n- List of active inventory items\n- Item details for each"
+					},
+					"response": []
+				},
+				{
+					"name": "Use Inventory Item (POS)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"inventoryId\": {{inventory_id}},\n  \"invId\": {{invoice_id}},\n  \"notes\": \"Applied discount on invoice\"\n}"
+						},
+						"url": {
+							"raw": "{{pos_base_url}}/client-inventory/use",
+							"host": [
+								"{{pos_base_url}}"
+							],
+							"path": [
+								"client-inventory",
+								"use"
+							]
+						},
+						"description": "Use an inventory item in POS.\n\nApplies the item effect based on ItemType:\n- DISCOUNT_AMOUNT: Apply fixed discount\n- DISCOUNT_PERCENT: Apply percentage discount\n- FREE_SERVICE: Inject free service\n- DOUBLE_POINTS: Store multiplier\n- BONUS_POINTS: Grant bonus points\n- VIP_UPGRADE: Flag invoice as VIP\n\nReturns:\n- Success message\n- Used item details\n- Applied effect description"
+					},
+					"response": []
+				}
+			],
+			"description": "POS integration endpoints for using inventory items during checkout"
+		},
+		{
+			"name": "Legacy Loyalty APIs",
+			"item": [
+				{
+					"name": "Get Loyalty Dashboard (Legacy)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{legacy_base_url}}/me?clientId={{client_id}}",
+							"host": [
+								"{{legacy_base_url}}"
+							],
+							"path": [
+								"me"
+							],
+							"query": [
+								{
+									"key": "clientId",
+									"value": "{{client_id}}",
+									"description": "Client ID"
+								}
+							]
+						},
+						"description": "Legacy loyalty dashboard endpoint.\n\nStill functional for backward compatibility.\n\nReturns:\n- Client info\n- Membership details\n- Points balance\n- Rewards (legacy static rewards)\n- Activity history"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Rewards List (Legacy)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{legacy_base_url}}/rewards?clientId={{client_id}}",
+							"host": [
+								"{{legacy_base_url}}"
+							],
+							"path": [
+								"rewards"
+							],
+							"query": [
+								{
+									"key": "clientId",
+									"value": "{{client_id}}",
+									"description": "Client ID"
+								}
+							]
+						},
+						"description": "Legacy rewards list endpoint.\n\nReturns static rewards from code (not database)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Activity History (Legacy)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{legacy_base_url}}/activity?clientId={{client_id}}&page=1&limit=10",
+							"host": [
+								"{{legacy_base_url}}"
+							],
+							"path": [
+								"activity"
+							],
+							"query": [
+								{
+									"key": "clientId",
+									"value": "{{client_id}}",
+									"description": "Client ID"
+								},
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number"
+								},
+								{
+									"key": "limit",
+									"value": "10",
+									"description": "Items per page"
+								}
+							]
+						},
+						"description": "Legacy activity history endpoint.\n\nShows all point movements including new types:\n- STORE_PURCHASE\n- STORE_REFUND\n- MYSTERY_BOX_OPEN\n- etc."
+					},
+					"response": []
+				}
+			],
+			"description": "Legacy loyalty endpoints (kept for backward compatibility)"
+		},
+		{
+			"name": "Testing Scenarios",
+			"item": [
+				{
+					"name": "Scenario 1: Complete Purchase Flow",
+					"item": [
+						{
+							"name": "1. Get Store",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/store?clientId={{client_id}}",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"store"
+									],
+									"query": [
+										{
+											"key": "clientId",
+											"value": "{{client_id}}"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "2. Get Item Details",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/store/items/1?clientId={{client_id}}",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"store",
+										"items",
+										"1"
+									],
+									"query": [
+										{
+											"key": "clientId",
+											"value": "{{client_id}}"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "3. Purchase Item",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"itemId\": 1\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/store/buy?clientId={{client_id}}",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"store",
+										"buy"
+									],
+									"query": [
+										{
+											"key": "clientId",
+											"value": "{{client_id}}"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "4. Check Inventory",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/inventory?clientId={{client_id}}",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"inventory"
+									],
+									"query": [
+										{
+											"key": "clientId",
+											"value": "{{client_id}}"
+										}
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Scenario 2: Mystery Box Flow",
+					"item": [
+						{
+							"name": "1. Purchase Mystery Box",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"itemId\": 10\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/store/buy?clientId={{client_id}}",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"store",
+										"buy"
+									],
+									"query": [
+										{
+											"key": "clientId",
+											"value": "{{client_id}}"
+										}
+									]
+								},
+								"description": "Purchase Bronze Mystery Box (itemId: 10)"
+							},
+							"response": []
+						},
+						{
+							"name": "2. Open Mystery Box",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"inventoryId\": 1\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/store/open-box?clientId={{client_id}}",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"store",
+										"open-box"
+									],
+									"query": [
+										{
+											"key": "clientId",
+											"value": "{{client_id}}"
+										}
+									]
+								},
+								"description": "Open the mystery box (use inventoryId from previous response)"
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Scenario 3: POS Usage Flow",
+					"item": [
+						{
+							"name": "1. Get Client Inventory (POS)",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{pos_base_url}}/client-inventory?clientId={{client_id}}",
+									"host": [
+										"{{pos_base_url}}"
+									],
+									"path": [
+										"client-inventory"
+									],
+									"query": [
+										{
+											"key": "clientId",
+											"value": "{{client_id}}"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "2. Use Item in POS",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"inventoryId\": 1,\n  \"invId\": 1234,\n  \"notes\": \"Applied 50 EGP discount\"\n}"
+								},
+								"url": {
+									"raw": "{{pos_base_url}}/client-inventory/use",
+									"host": [
+										"{{pos_base_url}}"
+									],
+									"path": [
+										"client-inventory",
+										"use"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				}
+			],
+			"description": "Complete testing scenarios for common workflows"
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:3000/api/public/client",
+			"type": "string"
+		},
+		{
+			"key": "pos_base_url",
+			"value": "http://localhost:3000/api/pos",
+			"type": "string"
+		},
+		{
+			"key": "legacy_base_url",
+			"value": "http://localhost:3000/api/public/client/loyalty",
+			"type": "string"
+		},
+		{
+			"key": "client_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "item_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "inventory_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "invoice_id",
+			"value": "1234",
+			"type": "string"
+		}
+	]
+}
