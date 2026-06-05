@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
-  Store, Plus, Search, Filter, Edit, Copy, Power, Trash2,
-  Package, Star, Clock, Tag, Image as ImageIcon, Eye
+  Store, Plus, Search, Edit, Power, Trash2,
+  Package, Star, Clock, Image as ImageIcon, Loader2
 } from 'lucide-react';
 import PageHeader from '@/components/cut-club/PageHeader';
 import PremiumCard from '@/components/cut-club/PremiumCard';
@@ -31,160 +31,261 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import TierBadge from '@/components/cut-club/TierBadge';
 
-interface StoreItem {
-  id: number;
+interface ApiStoreItem {
+  itemId: number;
+  categoryId: number;
+  code: string;
   nameAr: string;
   nameEn: string;
   descriptionAr: string;
   descriptionEn: string;
-  category: 'SERVICE' | 'PRODUCT' | 'DISCOUNT' | 'UPGRADE';
-  itemType: 'VOUCHER' | 'INSTANT';
+  itemType: string;
   priceCoins: number;
-  value?: number;
-  minimumTier: 'BRONZE' | 'SILVER' | 'GOLD' | 'VIP';
-  expiryDays?: number;
-  featured: boolean;
-  badgeText?: string;
-  imageUrl?: string;
-  active: boolean;
-  purchaseCount: number;
-  stockStatus: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
+  value: number | null;
+  serviceId: number | null;
+  productId: number | null;
+  minTierCode: string | null;
+  stockQuantity: number | null;
+  unlimitedStock: boolean;
+  expiresAfterDays: number | null;
+  imageUrl: string | null;
+  badgeText: string | null;
+  isFeatured: boolean;
+  isActive: boolean;
+  sortOrder: number;
 }
 
-const categoryLabels = {
-  SERVICE: 'خدمة',
-  PRODUCT: 'منتج',
-  DISCOUNT: 'خصم',
-  UPGRADE: 'ترقية',
+interface StoreCategory {
+  categoryId: number;
+  code: string;
+  nameAr: string;
+  nameEn: string;
+  descriptionAr: string | null;
+  descriptionEn: string | null;
+  icon: string | null;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+const itemTypeLabels: Record<string, string> = {
+  DISCOUNT_AMOUNT: 'خصم مبلغ',
+  DISCOUNT_PERCENT: 'خصم %',
+  FREE_SERVICE: 'خدمة مجانية',
+  FREE_PRODUCT: 'منتج مجاني',
+  DOUBLE_POINTS: 'نقاط مضاعفة',
+  BONUS_POINTS: 'نقاط إضافية',
+  VIP_UPGRADE: 'ترقية VIP',
+  PRIORITY_BOOKING: 'حجز أولوية',
+  MYSTERY_BOX: 'صندوق غموض',
+  CUSTOM: 'مخصص',
 };
 
-const categoryColors = {
-  SERVICE: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
-  PRODUCT: 'bg-green-500/10 text-green-400 border-green-500/30',
-  DISCOUNT: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
-  UPGRADE: 'bg-pink-500/10 text-pink-400 border-pink-500/30',
+const itemTypeColors: Record<string, string> = {
+  DISCOUNT_AMOUNT: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+  DISCOUNT_PERCENT: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+  FREE_SERVICE: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
+  FREE_PRODUCT: 'bg-green-500/10 text-green-400 border-green-500/30',
+  DOUBLE_POINTS: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
+  BONUS_POINTS: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
+  VIP_UPGRADE: 'bg-pink-500/10 text-pink-400 border-pink-500/30',
+  PRIORITY_BOOKING: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
+  MYSTERY_BOX: 'bg-orange-500/10 text-orange-400 border-orange-500/30',
+  CUSTOM: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/30',
 };
+
+function getStockStatus(item: ApiStoreItem): 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK' {
+  if (item.unlimitedStock) return 'IN_STOCK';
+  if (item.stockQuantity === null || item.stockQuantity === 0) return 'OUT_OF_STOCK';
+  if (item.stockQuantity < 10) return 'LOW_STOCK';
+  return 'IN_STOCK';
+}
+
+function getTierCode(tier: string | null): string {
+  return tier || 'BRONZE';
+}
 
 export default function StorePage() {
-  const [items, setItems] = useState<StoreItem[]>([]);
+  const [items, setItems] = useState<ApiStoreItem[]>([]);
+  const [categories, setCategories] = useState<StoreCategory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedItemType, setSelectedItemType] = useState('');
   const [selectedTier, setSelectedTier] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
   const [showFeaturedOnly, setShowFeaturedOnly] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<StoreItem | null>(null);
+  const [editingItem, setEditingItem] = useState<ApiStoreItem | null>(null);
+  const [error, setError] = useState('');
 
-  const fetchItems = async () => {
+  const [formData, setFormData] = useState({
+    categoryId: 1,
+    code: '',
+    nameAr: '',
+    nameEn: '',
+    descriptionAr: '',
+    descriptionEn: '',
+    itemType: 'DISCOUNT_AMOUNT',
+    priceCoins: 0,
+    value: null as number | null,
+    minTierCode: 'BRONZE' as string | null,
+    stockQuantity: null as number | null,
+    unlimitedStock: false,
+    expiresAfterDays: null as number | null,
+    imageUrl: '',
+    badgeText: '',
+    isFeatured: false,
+    isActive: true,
+    sortOrder: 0,
+  });
+
+  const fetchItems = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
-      const mockItems: StoreItem[] = [
-        {
-          id: 1,
-          nameAr: 'تسريحة مجانية',
-          nameEn: 'Free Styling',
-          descriptionAr: 'احصل على تسريحة شعر مجانية',
-          descriptionEn: 'Get a free hair styling service',
-          category: 'SERVICE',
-          itemType: 'VOUCHER',
-          priceCoins: 500,
-          minimumTier: 'BRONZE',
-          expiryDays: 30,
-          featured: true,
-          badgeText: 'الأكثر شعبية',
-          active: true,
-          purchaseCount: 145,
-          stockStatus: 'IN_STOCK',
-        },
-        {
-          id: 2,
-          nameAr: 'ترقية VIP',
-          nameEn: 'VIP Upgrade',
-          descriptionAr: 'ترقية فورية إلى مستوى VIP',
-          descriptionEn: 'Instant upgrade to VIP tier',
-          category: 'UPGRADE',
-          itemType: 'INSTANT',
-          priceCoins: 1000,
-          minimumTier: 'GOLD',
-          featured: true,
-          badgeText: 'حصري',
-          active: true,
-          purchaseCount: 28,
-          stockStatus: 'IN_STOCK',
-        },
-        {
-          id: 3,
-          nameAr: 'خصم 20%',
-          nameEn: '20% Discount',
-          descriptionAr: 'خصم 20% على الزيارة القادمة',
-          descriptionEn: '20% discount on next visit',
-          category: 'DISCOUNT',
-          itemType: 'VOUCHER',
-          priceCoins: 300,
-          value: 20,
-          minimumTier: 'BRONZE',
-          expiryDays: 15,
-          featured: false,
-          active: true,
-          purchaseCount: 89,
-          stockStatus: 'IN_STOCK',
-        },
-        {
-          id: 4,
-          nameAr: 'منتج العناية بالشعر',
-          nameEn: 'Hair Care Product',
-          descriptionAr: 'منتج عناية بالشعر مميز',
-          descriptionEn: 'Premium hair care product',
-          category: 'PRODUCT',
-          itemType: 'VOUCHER',
-          priceCoins: 800,
-          minimumTier: 'SILVER',
-          expiryDays: 60,
-          featured: false,
-          active: true,
-          purchaseCount: 34,
-          stockStatus: 'LOW_STOCK',
-        },
-      ];
-
-      setItems(mockItems);
-    } catch (error) {
-      console.error('Failed to fetch store items:', error);
+      const [itemsRes, catsRes] = await Promise.all([
+        fetch('/api/admin/store/items'),
+        fetch('/api/admin/store/categories'),
+      ]);
+      const itemsData = await itemsRes.json();
+      const catsData = await catsRes.json();
+      if (itemsData.ok) setItems(itemsData.items);
+      if (catsData.ok) setCategories(catsData.categories);
+    } catch {
+      setError('فشل تحميل البيانات');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchItems();
-  }, []);
+  }, [fetchItems]);
 
   const filteredItems = items.filter((item) => {
-    if (searchQuery && !item.nameAr.includes(searchQuery) && !item.nameEn.toLowerCase().includes(searchQuery.toLowerCase())) {
+    const q = searchQuery.toLowerCase();
+    if (searchQuery && !item.nameAr.includes(searchQuery) && !item.nameEn.toLowerCase().includes(q) && !item.code.toLowerCase().includes(q)) {
       return false;
     }
-    if (selectedCategory && item.category !== selectedCategory) return false;
-    if (selectedTier && item.minimumTier !== selectedTier) return false;
-    if (selectedStatus === 'ACTIVE' && !item.active) return false;
-    if (selectedStatus === 'INACTIVE' && item.active) return false;
-    if (showFeaturedOnly && !item.featured) return false;
+    if (selectedItemType && item.itemType !== selectedItemType) return false;
+    if (selectedTier && item.minTierCode !== selectedTier) return false;
+    if (selectedStatus === 'ACTIVE' && !item.isActive) return false;
+    if (selectedStatus === 'INACTIVE' && item.isActive) return false;
+    if (showFeaturedOnly && !item.isFeatured) return false;
     return true;
   });
 
   const openNewItemModal = () => {
     setEditingItem(null);
+    setFormData({
+      categoryId: categories[0]?.categoryId || 1,
+      code: '',
+      nameAr: '',
+      nameEn: '',
+      descriptionAr: '',
+      descriptionEn: '',
+      itemType: 'DISCOUNT_AMOUNT',
+      priceCoins: 0,
+      value: null,
+      minTierCode: 'BRONZE',
+      stockQuantity: null,
+      unlimitedStock: false,
+      expiresAfterDays: null,
+      imageUrl: '',
+      badgeText: '',
+      isFeatured: false,
+      isActive: true,
+      sortOrder: 0,
+    });
     setModalOpen(true);
   };
 
-  const openEditModal = (item: StoreItem) => {
+  const openEditModal = (item: ApiStoreItem) => {
     setEditingItem(item);
+    setFormData({
+      categoryId: item.categoryId,
+      code: item.code,
+      nameAr: item.nameAr,
+      nameEn: item.nameEn,
+      descriptionAr: item.descriptionAr,
+      descriptionEn: item.descriptionEn,
+      itemType: item.itemType,
+      priceCoins: item.priceCoins,
+      value: item.value,
+      minTierCode: item.minTierCode,
+      stockQuantity: item.stockQuantity,
+      unlimitedStock: item.unlimitedStock,
+      expiresAfterDays: item.expiresAfterDays,
+      imageUrl: item.imageUrl || '',
+      badgeText: item.badgeText || '',
+      isFeatured: item.isFeatured,
+      isActive: item.isActive,
+      sortOrder: item.sortOrder,
+    });
     setModalOpen(true);
   };
 
-  const formatNumber = (num: number) => {
-    return new Intl.NumberFormat('ar-EG').format(num);
+  const handleSave = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      let ok = false;
+      if (editingItem) {
+        const res = await fetch(`/api/admin/store/items/${editingItem.itemId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData),
+        });
+        const data = await res.json();
+        ok = data.ok;
+        if (!ok) setError(data.error || 'فشل التحديث');
+      } else {
+        const res = await fetch('/api/admin/store/items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData),
+        });
+        const data = await res.json();
+        ok = data.ok;
+        if (!ok) setError(data.error || 'فشل الإنشاء');
+      }
+      if (ok) {
+        setModalOpen(false);
+        fetchItems();
+      }
+    } catch {
+      setError('Network error');
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const toggleActive = async (item: ApiStoreItem) => {
+    try {
+      const res = await fetch(`/api/admin/store/items/${item.itemId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !item.isActive }),
+      });
+      const data = await res.json();
+      if (data.ok) fetchItems();
+    } catch {
+      console.error('Toggle failed');
+    }
+  };
+
+  const handleDelete = async (item: ApiStoreItem) => {
+    if (!confirm('هل أنت متأكد من إلغاء تنشيط هذا المنتج؟')) return;
+    try {
+      const res = await fetch(`/api/admin/store/items/${item.itemId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) fetchItems();
+    } catch {
+      console.error('Delete failed');
+    }
+  };
+
+  const formatNumber = (num: number) => new Intl.NumberFormat('ar-EG').format(num);
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
@@ -216,36 +317,35 @@ export default function StorePage() {
                 className="pr-10 bg-zinc-800 border-zinc-700"
               />
             </div>
-            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="w-full md:w-40 bg-zinc-800 border-zinc-700">
-                <SelectValue placeholder="التصنيف" />
+            <Select value={selectedItemType || '_all'} onValueChange={(v) => setSelectedItemType(v === '_all' ? '' : v)}>
+              <SelectTrigger className="w-full md:w-48 bg-zinc-800 border-zinc-700">
+                <SelectValue placeholder="نوع المنتج" />
               </SelectTrigger>
               <SelectContent className="bg-zinc-800 border-zinc-700">
-                <SelectItem value="">الكل</SelectItem>
-                <SelectItem value="SERVICE">خدمة</SelectItem>
-                <SelectItem value="PRODUCT">منتج</SelectItem>
-                <SelectItem value="DISCOUNT">خصم</SelectItem>
-                <SelectItem value="UPGRADE">ترقية</SelectItem>
+                <SelectItem value="_all">الكل</SelectItem>
+                {Object.entries(itemTypeLabels).map(([key, label]) => (
+                  <SelectItem key={key} value={key}>{label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
-            <Select value={selectedTier} onValueChange={setSelectedTier}>
+            <Select value={selectedTier || '_all'} onValueChange={(v) => setSelectedTier(v === '_all' ? '' : v)}>
               <SelectTrigger className="w-full md:w-40 bg-zinc-800 border-zinc-700">
                 <SelectValue placeholder="المستوى" />
               </SelectTrigger>
               <SelectContent className="bg-zinc-800 border-zinc-700">
-                <SelectItem value="">الكل</SelectItem>
+                <SelectItem value="_all">الكل</SelectItem>
                 <SelectItem value="BRONZE">BRONZE</SelectItem>
                 <SelectItem value="SILVER">SILVER</SelectItem>
                 <SelectItem value="GOLD">GOLD</SelectItem>
                 <SelectItem value="VIP">VIP</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+            <Select value={selectedStatus || '_all'} onValueChange={(v) => setSelectedStatus(v === '_all' ? '' : v)}>
               <SelectTrigger className="w-full md:w-40 bg-zinc-800 border-zinc-700">
                 <SelectValue placeholder="الحالة" />
               </SelectTrigger>
               <SelectContent className="bg-zinc-800 border-zinc-700">
-                <SelectItem value="">الكل</SelectItem>
+                <SelectItem value="_all">الكل</SelectItem>
                 <SelectItem value="ACTIVE">نشط</SelectItem>
                 <SelectItem value="INACTIVE">غير نشط</SelectItem>
               </SelectContent>
@@ -280,7 +380,7 @@ export default function StorePage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredItems.map((item) => (
-              <PremiumCard key={item.id} hover noPadding>
+              <PremiumCard key={item.itemId} hover noPadding>
                 <div className="relative">
                   {item.imageUrl ? (
                     <div className="h-48 bg-zinc-800 rounded-t-xl overflow-hidden">
@@ -295,8 +395,8 @@ export default function StorePage() {
                       <ImageIcon className="h-16 w-16 text-zinc-600" />
                     </div>
                   )}
-                  
-                  {item.featured && item.badgeText && (
+
+                  {item.isFeatured && item.badgeText && (
                     <div className="absolute top-3 right-3">
                       <Badge className="bg-yellow-500 text-black font-semibold border-0">
                         <Star className="h-3 w-3 ml-1" />
@@ -305,7 +405,7 @@ export default function StorePage() {
                     </div>
                   )}
 
-                  {!item.active && (
+                  {!item.isActive && (
                     <div className="absolute inset-0 bg-black/60 rounded-t-xl flex items-center justify-center">
                       <Badge className="bg-red-500/90 text-white font-semibold">
                         غير نشط
@@ -318,6 +418,7 @@ export default function StorePage() {
                   <div>
                     <h3 className="text-lg font-bold text-white mb-1">{item.nameAr}</h3>
                     <p className="text-sm text-zinc-400">{item.nameEn}</p>
+                    <p className="text-xs text-zinc-500 mt-1">{item.code}</p>
                   </div>
 
                   <p className="text-sm text-zinc-300 line-clamp-2">
@@ -325,16 +426,19 @@ export default function StorePage() {
                   </p>
 
                   <div className="flex flex-wrap gap-2">
-                    <Badge className={`${categoryColors[item.category]} border font-medium`}>
-                      {categoryLabels[item.category]}
+                    <Badge className={`${itemTypeColors[item.itemType] || itemTypeColors.CUSTOM} border font-medium`}>
+                      {itemTypeLabels[item.itemType] || item.itemType}
                     </Badge>
-                    <TierBadge tier={item.minimumTier} size="sm" />
-                    {item.expiryDays && (
+                    <TierBadge tier={getTierCode(item.minTierCode)} size="sm" />
+                    {item.expiresAfterDays && (
                       <Badge variant="outline" className="text-zinc-400 border-zinc-700">
                         <Clock className="h-3 w-3 ml-1" />
-                        {item.expiryDays} يوم
+                        {item.expiresAfterDays} يوم
                       </Badge>
                     )}
+                    <Badge variant="outline" className={`border ${getStockStatus(item) === 'OUT_OF_STOCK' ? 'text-red-400 border-red-700' : getStockStatus(item) === 'LOW_STOCK' ? 'text-yellow-400 border-yellow-700' : 'text-green-400 border-green-700'}`}>
+                      {getStockStatus(item) === 'OUT_OF_STOCK' ? 'نفذ المخزون' : getStockStatus(item) === 'LOW_STOCK' ? 'مخزون منخفض' : 'متوفر'}
+                    </Badge>
                   </div>
 
                   <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
@@ -346,21 +450,13 @@ export default function StorePage() {
                     </div>
                     <div className="text-left">
                       <p className="text-sm font-semibold text-white">
-                        {formatNumber(item.purchaseCount)}
+                        {item.unlimitedStock ? '∞' : formatNumber(item.stockQuantity || 0)}
                       </p>
-                      <p className="text-xs text-zinc-500">عملية شراء</p>
+                      <p className="text-xs text-zinc-500">المخزون</p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2 pt-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="flex-1 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10"
-                    >
-                      <Eye className="w-4 h-4 ml-1" />
-                      عرض
-                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -373,20 +469,22 @@ export default function StorePage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-zinc-400 hover:text-zinc-300 hover:bg-zinc-700"
-                    >
-                      <Copy className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                      onClick={() => toggleActive(item)}
                       className={`${
-                        item.active
+                        item.isActive
                           ? 'text-red-400 hover:text-red-300 hover:bg-red-400/10'
                           : 'text-green-400 hover:text-green-300 hover:bg-green-400/10'
                       }`}
                     >
                       <Power className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDelete(item)}
+                      className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
+                    >
+                      <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
                 </div>
@@ -407,11 +505,41 @@ export default function StorePage() {
             </DialogDescription>
           </DialogHeader>
 
+          {error && (
+            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+              {error}
+            </div>
+          )}
+
           <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>الكود</Label>
+                <Input
+                  value={formData.code}
+                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                  placeholder="DISC-50"
+                  className="bg-zinc-800 border-zinc-700"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>السعر (نقاط)</Label>
+                <Input
+                  type="number"
+                  value={formData.priceCoins}
+                  onChange={(e) => setFormData({ ...formData, priceCoins: parseFloat(e.target.value) || 0 })}
+                  placeholder="500"
+                  className="bg-zinc-800 border-zinc-700"
+                />
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>الاسم بالعربية</Label>
                 <Input
+                  value={formData.nameAr}
+                  onChange={(e) => setFormData({ ...formData, nameAr: e.target.value })}
                   placeholder="تسريحة مجانية"
                   className="bg-zinc-800 border-zinc-700"
                 />
@@ -419,6 +547,8 @@ export default function StorePage() {
               <div className="space-y-2">
                 <Label>الاسم بالإنجليزية</Label>
                 <Input
+                  value={formData.nameEn}
+                  onChange={(e) => setFormData({ ...formData, nameEn: e.target.value })}
                   placeholder="Free Styling"
                   className="bg-zinc-800 border-zinc-700"
                 />
@@ -429,6 +559,8 @@ export default function StorePage() {
               <div className="space-y-2">
                 <Label>الوصف بالعربية</Label>
                 <Textarea
+                  value={formData.descriptionAr}
+                  onChange={(e) => setFormData({ ...formData, descriptionAr: e.target.value })}
                   placeholder="وصف المنتج..."
                   className="bg-zinc-800 border-zinc-700"
                   rows={3}
@@ -437,6 +569,8 @@ export default function StorePage() {
               <div className="space-y-2">
                 <Label>الوصف بالإنجليزية</Label>
                 <Textarea
+                  value={formData.descriptionEn}
+                  onChange={(e) => setFormData({ ...formData, descriptionEn: e.target.value })}
                   placeholder="Product description..."
                   className="bg-zinc-800 border-zinc-700"
                   rows={3}
@@ -444,47 +578,39 @@ export default function StorePage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>التصنيف</Label>
-                <Select defaultValue="SERVICE">
+                <Select value={String(formData.categoryId)} onValueChange={(v) => setFormData({ ...formData, categoryId: parseInt(v) })}>
                   <SelectTrigger className="bg-zinc-800 border-zinc-700">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-800 border-zinc-700">
-                    <SelectItem value="SERVICE">خدمة</SelectItem>
-                    <SelectItem value="PRODUCT">منتج</SelectItem>
-                    <SelectItem value="DISCOUNT">خصم</SelectItem>
-                    <SelectItem value="UPGRADE">ترقية</SelectItem>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat.categoryId} value={String(cat.categoryId)}>{cat.nameAr}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label>نوع المنتج</Label>
-                <Select defaultValue="VOUCHER">
+                <Select value={formData.itemType} onValueChange={(v) => setFormData({ ...formData, itemType: v })}>
                   <SelectTrigger className="bg-zinc-800 border-zinc-700">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-zinc-800 border-zinc-700">
-                    <SelectItem value="VOUCHER">قسيمة</SelectItem>
-                    <SelectItem value="INSTANT">فوري</SelectItem>
+                    {Object.entries(itemTypeLabels).map(([key, label]) => (
+                      <SelectItem key={key} value={key}>{label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>السعر (نقاط)</Label>
-                <Input
-                  type="number"
-                  placeholder="500"
-                  className="bg-zinc-800 border-zinc-700"
-                />
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>الحد الأدنى للمستوى</Label>
-                <Select defaultValue="BRONZE">
+                <Select value={formData.minTierCode || 'BRONZE'} onValueChange={(v) => setFormData({ ...formData, minTierCode: v })}>
                   <SelectTrigger className="bg-zinc-800 border-zinc-700">
                     <SelectValue />
                   </SelectTrigger>
@@ -500,6 +626,8 @@ export default function StorePage() {
                 <Label>مدة الصلاحية (أيام)</Label>
                 <Input
                   type="number"
+                  value={formData.expiresAfterDays ?? ''}
+                  onChange={(e) => setFormData({ ...formData, expiresAfterDays: e.target.value ? parseInt(e.target.value) : null })}
                   placeholder="30"
                   className="bg-zinc-800 border-zinc-700"
                 />
@@ -508,7 +636,31 @@ export default function StorePage() {
                 <Label>القيمة (اختياري)</Label>
                 <Input
                   type="number"
+                  value={formData.value ?? ''}
+                  onChange={(e) => setFormData({ ...formData, value: e.target.value ? parseFloat(e.target.value) : null })}
                   placeholder="20"
+                  className="bg-zinc-800 border-zinc-700"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>المخزون</Label>
+                <Input
+                  type="number"
+                  value={formData.stockQuantity ?? ''}
+                  onChange={(e) => setFormData({ ...formData, stockQuantity: e.target.value ? parseInt(e.target.value) : null })}
+                  placeholder="50"
+                  className="bg-zinc-800 border-zinc-700"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>رابط الصورة (اختياري)</Label>
+                <Input
+                  value={formData.imageUrl}
+                  onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
+                  placeholder="https://..."
                   className="bg-zinc-800 border-zinc-700"
                 />
               </div>
@@ -517,8 +669,21 @@ export default function StorePage() {
             <div className="space-y-2">
               <Label>نص الشارة (اختياري)</Label>
               <Input
+                value={formData.badgeText}
+                onChange={(e) => setFormData({ ...formData, badgeText: e.target.value })}
                 placeholder="الأكثر شعبية"
                 className="bg-zinc-800 border-zinc-700"
+              />
+            </div>
+
+            <div className="flex items-center justify-between p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
+              <div>
+                <Label>مخزون غير محدود</Label>
+                <p className="text-xs text-zinc-400">لا يوجد حد للمخزون</p>
+              </div>
+              <Switch
+                checked={formData.unlimitedStock}
+                onCheckedChange={(v) => setFormData({ ...formData, unlimitedStock: v })}
               />
             </div>
 
@@ -527,7 +692,10 @@ export default function StorePage() {
                 <Label>مميز</Label>
                 <p className="text-xs text-zinc-400">عرض في القائمة المميزة</p>
               </div>
-              <Switch />
+              <Switch
+                checked={formData.isFeatured}
+                onCheckedChange={(v) => setFormData({ ...formData, isFeatured: v })}
+              />
             </div>
 
             <div className="flex items-center justify-between p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
@@ -535,13 +703,19 @@ export default function StorePage() {
                 <Label>نشط</Label>
                 <p className="text-xs text-zinc-400">متاح للشراء</p>
               </div>
-              <Switch defaultChecked />
+              <Switch
+                checked={formData.isActive}
+                onCheckedChange={(v) => setFormData({ ...formData, isActive: v })}
+              />
             </div>
 
             <div className="flex gap-3 pt-4">
               <Button
+                onClick={handleSave}
+                disabled={saving}
                 className="flex-1 bg-yellow-500 hover:bg-yellow-600 text-black font-semibold"
               >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin ml-2" /> : null}
                 {editingItem ? 'حفظ التغييرات' : 'إضافة المنتج'}
               </Button>
               <Button

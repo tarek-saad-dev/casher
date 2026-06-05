@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const COOKIE_NAME = 'pos_session';
 
 // Public routes that don't require authentication
-const PUBLIC_ROUTES = ['/login', '/api/auth/login', '/api/public/', '/api/operations/flow-board'];
+const PUBLIC_ROUTES = ['/login', '/api/auth/login', '/api/public/', '/api/admin/', '/api/operations/flow-board'];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

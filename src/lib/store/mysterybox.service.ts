@@ -132,15 +132,17 @@ export async function openMysteryBox(
           `);
 
         // Add ledger entry
+        const idempotencyKeyCoins = `MYSTERY-${clientId}-${Date.now()}`;
         const ledgerReq = new sql.Request(transaction);
         await ledgerReq
           .input("clientId", sql.Int, clientId)
           .input("movementType", sql.NVarChar(20), "MYSTERY_BOX_OPEN")
           .input("pointsDelta", sql.Decimal(10, 2), selectedReward.rewardValue)
           .input("notes", sql.NVarChar(500), `Mystery box reward: ${selectedReward.nameAr}`)
+          .input("idempotencyKey", sql.NVarChar(100), idempotencyKeyCoins)
           .query(`
             INSERT INTO [dbo].[TblLoyaltyPointLedger] (
-              ClientID, ClientLoyaltyID, MovementType, PointsDelta, PointsBefore, PointsAfter, Notes, CreatedAt
+              ClientID, ClientLoyaltyID, MovementType, PointsDelta, PointsBefore, PointsAfter, Notes, IdempotencyKey, CreatedAt
             )
             SELECT 
               @clientId,
@@ -150,6 +152,7 @@ export async function openMysteryBox(
               PointsBalance - @pointsDelta,
               PointsBalance,
               @notes,
+              @idempotencyKey,
               GETDATE()
             FROM [dbo].[TblClientLoyalty]
             WHERE ClientID = @clientId
@@ -214,15 +217,17 @@ export async function openMysteryBox(
           `);
 
         // Add ledger entry
+        const idempotencyKeyBonus = `BONUS-${clientId}-${Date.now()}`;
         const ledgerReq = new sql.Request(transaction);
         await ledgerReq
           .input("clientId", sql.Int, clientId)
           .input("movementType", sql.NVarChar(20), "BONUS_POINTS_REWARD")
           .input("pointsDelta", sql.Decimal(10, 2), selectedReward.rewardValue)
           .input("notes", sql.NVarChar(500), `Mystery box bonus: ${selectedReward.nameAr}`)
+          .input("idempotencyKey", sql.NVarChar(100), idempotencyKeyBonus)
           .query(`
             INSERT INTO [dbo].[TblLoyaltyPointLedger] (
-              ClientID, ClientLoyaltyID, MovementType, PointsDelta, PointsBefore, PointsAfter, Notes, CreatedAt
+              ClientID, ClientLoyaltyID, MovementType, PointsDelta, PointsBefore, PointsAfter, Notes, IdempotencyKey, CreatedAt
             )
             SELECT 
               @clientId,
@@ -232,6 +237,7 @@ export async function openMysteryBox(
               PointsBalance - @pointsDelta,
               PointsBalance,
               @notes,
+              @idempotencyKey,
               GETDATE()
             FROM [dbo].[TblClientLoyalty]
             WHERE ClientID = @clientId

@@ -377,6 +377,192 @@
 			"description": "Legacy loyalty endpoints (kept for backward compatibility)"
 		},
 		{
+			"name": "Admin Store Management",
+			"item": [
+				{
+					"name": "List All Items",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{admin_base_url}}/store/items?isActive=true&search=discount",
+							"host": ["{{admin_base_url}}"],
+							"path": ["store", "items"],
+							"query": [
+								{"key": "isActive", "value": "true", "description": "Filter by active status"},
+								{"key": "categoryId", "value": "1", "description": "Filter by category"},
+								{"key": "itemType", "value": "DISCOUNT_AMOUNT", "description": "Filter by type"},
+								{"key": "search", "value": "discount", "description": "Search by name/code"}
+							]
+						},
+						"description": "Get all store items (admin view). Supports filters: isActive, categoryId, itemType, search."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Item",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"categoryId\": 1,\n  \"code\": \"DISC-100\",\n  \"nameAr\": \"\\u062e\\u0635\\u0645 100 \\u062c\\u0646\\u064a\\u0647\",\n  \"nameEn\": \"EGP 100 Discount\",\n  \"descriptionAr\": \"\\u062e\\u0635\\u0645 100 \\u062c\\u0646\\u064a\\u0647 \\u0639\\u0644\\u0649 \\u0623\\u064a \\u062e\\u062f\\u0645\\u0629\",\n  \"descriptionEn\": \"100 EGP discount on any service\",\n  \"itemType\": \"DISCOUNT_AMOUNT\",\n  \"priceCoins\": 450,\n  \"value\": 100,\n  \"stockQuantity\": 50,\n  \"unlimitedStock\": false,\n  \"expiresAfterDays\": 30,\n  \"minTierCode\": \"BRONZE\",\n  \"isFeatured\": true,\n  \"isActive\": true,\n  \"sortOrder\": 1\n}"
+						},
+						"url": {
+							"raw": "{{admin_base_url}}/store/items",
+							"host": ["{{admin_base_url}}"],
+							"path": ["store", "items"]
+						},
+						"description": "Create a new store item. Required: code, nameAr, nameEn, itemType, priceCoins."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Item Detail",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{admin_base_url}}/store/items/{{item_id}}",
+							"host": ["{{admin_base_url}}"],
+							"path": ["store", "items", "{{item_id}}"]
+						},
+						"description": "Get single item details (including inactive)."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Item",
+					"request": {
+						"method": "PATCH",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"priceCoins\": 400,\n  \"isFeatured\": false,\n  \"stockQuantity\": 100\n}"
+						},
+						"url": {
+							"raw": "{{admin_base_url}}/store/items/{{item_id}}",
+							"host": ["{{admin_base_url}}"],
+							"path": ["store", "items", "{{item_id}}"]
+						},
+						"description": "Update any field of a store item. Only send fields you want to change."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Item (Soft)",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{admin_base_url}}/store/items/{{item_id}}",
+							"host": ["{{admin_base_url}}"],
+							"path": ["store", "items", "{{item_id}}"]
+						},
+						"description": "Soft delete (deactivate) a store item."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Stock",
+					"request": {
+						"method": "PATCH",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"stockQuantity\": 200,\n  \"unlimitedStock\": false\n}"
+						},
+						"url": {
+							"raw": "{{admin_base_url}}/store/items/{{item_id}}/stock",
+							"host": ["{{admin_base_url}}"],
+							"path": ["store", "items", "{{item_id}}", "stock"]
+						},
+						"description": "Update stock quantity and unlimitedStock flag."
+					},
+					"response": []
+				},
+				{
+					"name": "List Categories",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{admin_base_url}}/store/categories",
+							"host": ["{{admin_base_url}}"],
+							"path": ["store", "categories"]
+						},
+						"description": "Get all store categories (including inactive)."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Category",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"code\": \"VOUCHERS\",\n  \"nameAr\": \"\\u0642\\u0633\\u0627\\u0626\\u0645 \\u0627\\u0644\\u0634\\u0631\\u0627\\u0621\",\n  \"nameEn\": \"Purchase Vouchers\",\n  \"descriptionAr\": \"\\u0642\\u0633\\u0627\\u0626\\u0645 \\u062e\\u0635\\u0645 \\u0644\\u0644\\u0634\\u0631\\u0627\\u0621\",\n  \"descriptionEn\": \"Discount vouchers for purchases\",\n  \"icon\": \"ticket\",\n  \"sortOrder\": 5,\n  \"isActive\": true\n}"
+						},
+						"url": {
+							"raw": "{{admin_base_url}}/store/categories",
+							"host": ["{{admin_base_url}}"],
+							"path": ["store", "categories"]
+						},
+						"description": "Create a new store category. Required: code, nameAr, nameEn."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Category",
+					"request": {
+						"method": "PATCH",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nameAr\": \"\\u0642\\u0633\\u0627\\u0626\\u0645 \\u0627\\u0644\\u0634\\u0631\\u0627\\u0621 \\u0627\\u0644\\u0645\\u062d\\u062f\\u062b\\u0629\",\n  \"sortOrder\": 3\n}"
+						},
+						"url": {
+							"raw": "{{admin_base_url}}/store/categories/{{category_id}}",
+							"host": ["{{admin_base_url}}"],
+							"path": ["store", "categories", "{{category_id}}"]
+						},
+						"description": "Update a category. Only send fields to change."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Category (Soft)",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{admin_base_url}}/store/categories/{{category_id}}",
+							"host": ["{{admin_base_url}}"],
+							"path": ["store", "categories", "{{category_id}}"]
+						},
+						"description": "Soft delete (deactivate) a category."
+					},
+					"response": []
+				},
+				{
+					"name": "Store Stats",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{admin_base_url}}/store/stats",
+							"host": ["{{admin_base_url}}"],
+							"path": ["store", "stats"]
+						},
+						"description": "Get store dashboard statistics: total/active/inactive items, stock status, categories, purchases."
+					},
+					"response": []
+				}
+			],
+			"description": "Admin endpoints for managing store items, categories, and viewing stats"
+		},
+		{
 			"name": "Testing Scenarios",
 			"item": [
 				{
@@ -627,6 +813,11 @@
 			"type": "string"
 		},
 		{
+			"key": "admin_base_url",
+			"value": "http://localhost:3000/api/admin",
+			"type": "string"
+		},
+		{
 			"key": "pos_base_url",
 			"value": "http://localhost:3000/api/pos",
 			"type": "string"
@@ -648,6 +839,11 @@
 		},
 		{
 			"key": "inventory_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "category_id",
 			"value": "1",
 			"type": "string"
 		},

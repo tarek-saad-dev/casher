@@ -2,90 +2,65 @@
 
 import { useState, useEffect } from 'react';
 import {
-  Package, Gift, Plus, Edit, Percent, Coins, AlertCircle
+  Package, Gift, Plus, Edit, Percent, Coins, AlertCircle, Loader2, Trash2
 } from 'lucide-react';
 import PageHeader from '@/components/cut-club/PageHeader';
 import PremiumCard from '@/components/cut-club/PremiumCard';
+import EmptyState from '@/components/cut-club/EmptyState';
 import { CardSkeleton } from '@/components/cut-club/LoadingSkeleton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
+} from '@/components/ui/dialog';
 
-interface BoxReward {
-  id: string;
+interface ApiReward {
+  rewardId: number;
+  boxItemId: number;
+  rewardType: string;
+  rewardValue: number;
+  probabilityWeight: number;
   nameAr: string;
   nameEn: string;
-  probability: number;
-  coinsValue: number;
-  active: boolean;
+  isActive: boolean;
 }
 
 interface MysteryBox {
-  id: number;
+  itemId: number;
+  code: string;
   nameAr: string;
   nameEn: string;
   priceCoins: number;
-  rewards: BoxReward[];
   totalOpened: number;
-  active: boolean;
+  isActive: boolean;
+  rewards: ApiReward[];
 }
 
 export default function MysteryBoxesPage() {
   const [boxes, setBoxes] = useState<MysteryBox[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingBox, setEditingBox] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [error, setError] = useState('');
+
+  const [formData, setFormData] = useState({
+    code: '',
+    nameAr: '',
+    nameEn: '',
+    priceCoins: 0,
+    isActive: true,
+    rewards: [] as { nameAr: string; nameEn: string; probabilityWeight: number; rewardValue: number }[],
+  });
 
   const fetchBoxes = async () => {
     setLoading(true);
     try {
-      const mockBoxes: MysteryBox[] = [
-        {
-          id: 1,
-          nameAr: 'صندوق المبتدئين',
-          nameEn: 'Starter Box',
-          priceCoins: 100,
-          rewards: [
-            { id: '1', nameAr: '50 نقطة', nameEn: '50 Coins', probability: 40, coinsValue: 50, active: true },
-            { id: '2', nameAr: '100 نقطة', nameEn: '100 Coins', probability: 30, coinsValue: 100, active: true },
-            { id: '3', nameAr: '200 نقطة', nameEn: '200 Coins', probability: 20, coinsValue: 200, active: true },
-            { id: '4', nameAr: '500 نقطة', nameEn: '500 Coins', probability: 10, coinsValue: 500, active: true },
-          ],
-          totalOpened: 234,
-          active: true,
-        },
-        {
-          id: 2,
-          nameAr: 'الصندوق المميز',
-          nameEn: 'Premium Box',
-          priceCoins: 500,
-          rewards: [
-            { id: '1', nameAr: '300 نقطة', nameEn: '300 Coins', probability: 35, coinsValue: 300, active: true },
-            { id: '2', nameAr: '600 نقطة', nameEn: '600 Coins', probability: 30, coinsValue: 600, active: true },
-            { id: '3', nameAr: '1000 نقطة', nameEn: '1000 Coins', probability: 25, coinsValue: 1000, active: true },
-            { id: '4', nameAr: '2000 نقطة', nameEn: '2000 Coins', probability: 10, coinsValue: 2000, active: true },
-          ],
-          totalOpened: 89,
-          active: true,
-        },
-        {
-          id: 3,
-          nameAr: 'صندوق VIP',
-          nameEn: 'VIP Box',
-          priceCoins: 1000,
-          rewards: [
-            { id: '1', nameAr: '800 نقطة', nameEn: '800 Coins', probability: 30, coinsValue: 800, active: true },
-            { id: '2', nameAr: '1500 نقطة', nameEn: '1500 Coins', probability: 30, coinsValue: 1500, active: true },
-            { id: '3', nameAr: '3000 نقطة', nameEn: '3000 Coins', probability: 25, coinsValue: 3000, active: true },
-            { id: '4', nameAr: '5000 نقطة', nameEn: '5000 Coins', probability: 15, coinsValue: 5000, active: true },
-          ],
-          totalOpened: 34,
-          active: true,
-        },
-      ];
-
-      setBoxes(mockBoxes);
+      const res = await fetch('/api/admin/store/mystery-boxes');
+      const data = await res.json();
+      if (data.ok) setBoxes(data.boxes || []);
     } catch (error) {
       console.error('Failed to fetch mystery boxes:', error);
     } finally {
@@ -101,12 +76,12 @@ export default function MysteryBoxesPage() {
     return new Intl.NumberFormat('ar-EG').format(num);
   };
 
-  const getTotalProbability = (rewards: BoxReward[]) => {
-    return rewards.reduce((sum, reward) => sum + reward.probability, 0);
+  const getTotalProbability = (rewards: ApiReward[]) => {
+    return rewards.reduce((sum, r) => sum + (r.probabilityWeight || 0), 0);
   };
 
-  const getExpectedValue = (rewards: BoxReward[]) => {
-    return rewards.reduce((sum, reward) => sum + (reward.coinsValue * reward.probability / 100), 0);
+  const getExpectedValue = (rewards: ApiReward[]) => {
+    return rewards.reduce((sum, r) => sum + ((r.rewardValue || 0) * (r.probabilityWeight || 0) / 100), 0);
   };
 
   const boxGradients = [
@@ -114,6 +89,95 @@ export default function MysteryBoxesPage() {
     'from-purple-500/20 to-pink-600/20',
     'from-yellow-500/20 to-orange-600/20',
   ];
+
+  const openNewModal = () => {
+    setFormData({
+      code: '',
+      nameAr: '',
+      nameEn: '',
+      priceCoins: 0,
+      isActive: true,
+      rewards: [
+        { nameAr: '50 نقطة', nameEn: '50 Coins', probabilityWeight: 40, rewardValue: 50 },
+        { nameAr: '100 نقطة', nameEn: '100 Coins', probabilityWeight: 30, rewardValue: 100 },
+        { nameAr: '200 نقطة', nameEn: '200 Coins', probabilityWeight: 20, rewardValue: 200 },
+        { nameAr: '500 نقطة', nameEn: '500 Coins', probabilityWeight: 10, rewardValue: 500 },
+      ],
+    });
+    setError('');
+    setModalOpen(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch('/api/admin/store/mystery-boxes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setModalOpen(false);
+        fetchBoxes();
+      } else {
+        setError(data.error || 'فشل الإنشاء');
+      }
+    } catch {
+      setError('Network error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleActive = async (box: MysteryBox) => {
+    try {
+      const res = await fetch(`/api/admin/store/mystery-boxes/${box.itemId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !box.isActive }),
+      });
+      const data = await res.json();
+      if (data.ok) fetchBoxes();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDelete = async (box: MysteryBox) => {
+    if (!confirm('هل أنت متأكد من حذف هذا الصندوق؟')) return;
+    try {
+      const res = await fetch(`/api/admin/store/mystery-boxes/${box.itemId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) fetchBoxes();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const updateReward = (index: number, field: string, value: string | number) => {
+    const newRewards = [...formData.rewards];
+    newRewards[index] = { ...newRewards[index], [field]: value };
+    setFormData({ ...formData, rewards: newRewards });
+  };
+
+  const addReward = () => {
+    setFormData({
+      ...formData,
+      rewards: [...formData.rewards, { nameAr: '', nameEn: '', probabilityWeight: 0, rewardValue: 0 }],
+    });
+  };
+
+  const removeReward = (index: number) => {
+    setFormData({
+      ...formData,
+      rewards: formData.rewards.filter((_, i) => i !== index),
+    });
+  };
+
+  const totalFormProb = formData.rewards.reduce((s, r) => s + (Number(r.probabilityWeight) || 0), 0);
+  const isFormProbValid = totalFormProb === 100;
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
@@ -123,7 +187,7 @@ export default function MysteryBoxesPage() {
         description="إدارة الصناديق واحتمالات المكافآت"
         gradient="from-pink-500/20 to-purple-600/20"
         actions={
-          <Button className="bg-yellow-500 hover:bg-yellow-600 text-black font-semibold">
+          <Button onClick={openNewModal} className="bg-yellow-500 hover:bg-yellow-600 text-black font-semibold">
             <Plus className="w-4 h-4 ml-2" />
             صندوق جديد
           </Button>
@@ -137,18 +201,25 @@ export default function MysteryBoxesPage() {
               <CardSkeleton key={i} />
             ))}
           </div>
+        ) : boxes.length === 0 ? (
+          <EmptyState
+            icon={Gift}
+            title="لا توجد صناديق"
+            description="لم يتم إنشاء أي صناديق غموض بعد"
+            actionLabel="إنشاء صندوق جديد"
+            onAction={openNewModal}
+          />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {boxes.map((box, index) => {
-              const isEditing = editingBox === box.id;
               const totalProb = getTotalProbability(box.rewards);
               const expectedValue = getExpectedValue(box.rewards);
-              const isProbabilityValid = totalProb === 100;
+              const isProbabilityValid = Math.round(totalProb) === 100;
 
               return (
-                <PremiumCard key={box.id} className="relative overflow-hidden">
+                <PremiumCard key={box.itemId} className="relative overflow-hidden">
                   <div className={`absolute inset-0 bg-gradient-to-br ${boxGradients[index % 3]} opacity-20`} />
-                  
+
                   <div className="relative space-y-4">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
@@ -158,16 +229,26 @@ export default function MysteryBoxesPage() {
                         <div>
                           <h3 className="text-lg font-bold text-white">{box.nameAr}</h3>
                           <p className="text-sm text-zinc-400">{box.nameEn}</p>
+                          <p className="text-xs text-zinc-500">{box.code}</p>
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setEditingBox(isEditing ? null : box.id)}
-                        className="text-yellow-400 hover:bg-yellow-400/10"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-yellow-400 hover:bg-yellow-400/10"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(box)}
+                          className="text-red-400 hover:bg-red-400/10"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="flex items-center justify-between p-3 rounded-lg bg-zinc-800/50 border border-zinc-700">
@@ -198,7 +279,7 @@ export default function MysteryBoxesPage() {
                       <div className="space-y-2">
                         {box.rewards.map((reward) => (
                           <div
-                            key={reward.id}
+                            key={reward.rewardId}
                             className="flex items-center gap-3 p-3 rounded-lg bg-zinc-800/50 border border-zinc-700"
                           >
                             <div className="flex-1">
@@ -208,24 +289,14 @@ export default function MysteryBoxesPage() {
                               <div className="flex items-center gap-2 mt-1">
                                 <div className="flex items-center gap-1 text-xs text-yellow-400">
                                   <Coins className="h-3 w-3" />
-                                  {formatNumber(reward.coinsValue)}
+                                  {formatNumber(reward.rewardValue)}
                                 </div>
                                 <div className="flex items-center gap-1 text-xs text-purple-400">
                                   <Percent className="h-3 w-3" />
-                                  {reward.probability}%
+                                  {reward.probabilityWeight}%
                                 </div>
                               </div>
                             </div>
-                            {isEditing && (
-                              <div className="flex flex-col gap-1">
-                                <Input
-                                  type="number"
-                                  defaultValue={reward.probability}
-                                  className="w-16 h-8 text-xs bg-zinc-900 border-zinc-700"
-                                  placeholder="%"
-                                />
-                              </div>
-                            )}
                           </div>
                         ))}
                       </div>
@@ -235,7 +306,7 @@ export default function MysteryBoxesPage() {
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-zinc-400">إجمالي الاحتمالات:</span>
                         <span className={`font-bold ${isProbabilityValid ? 'text-green-400' : 'text-red-400'}`}>
-                          {totalProb}%
+                          {Math.round(totalProb)}%
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-sm mt-2">
@@ -250,13 +321,13 @@ export default function MysteryBoxesPage() {
                       <div className="h-full flex">
                         {box.rewards.map((reward, idx) => (
                           <div
-                            key={reward.id}
+                            key={reward.rewardId}
                             className={`${
                               idx === 0 ? 'bg-blue-500' :
                               idx === 1 ? 'bg-purple-500' :
                               idx === 2 ? 'bg-yellow-500' : 'bg-pink-500'
                             }`}
-                            style={{ width: `${reward.probability}%` }}
+                            style={{ width: `${reward.probabilityWeight}%` }}
                           />
                         ))}
                       </div>
@@ -266,17 +337,11 @@ export default function MysteryBoxesPage() {
                       <div>
                         <Label className="text-sm">الحالة</Label>
                         <p className="text-xs text-zinc-400">
-                          {box.active ? 'متاح للشراء' : 'غير نشط'}
+                          {box.isActive ? 'متاح للشراء' : 'غير نشط'}
                         </p>
                       </div>
-                      <Switch checked={box.active} />
+                      <Switch checked={box.isActive} onCheckedChange={() => toggleActive(box)} />
                     </div>
-
-                    {isEditing && (
-                      <Button className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-semibold">
-                        حفظ التغييرات
-                      </Button>
-                    )}
                   </div>
                 </PremiumCard>
               );
@@ -284,6 +349,95 @@ export default function MysteryBoxesPage() {
           </div>
         )}
       </div>
+
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">صندوق غموض جديد</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              إنشاء صندوق غموض جديد مع احتمالات المكافآت
+            </DialogDescription>
+          </DialogHeader>
+
+          {error && (
+            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+              {error}
+            </div>
+          )}
+
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>الكود</Label>
+                <Input value={formData.code} onChange={(e) => setFormData({ ...formData, code: e.target.value })} placeholder="BOX-001" className="bg-zinc-800 border-zinc-700" />
+              </div>
+              <div className="space-y-2">
+                <Label>السعر (نقاط)</Label>
+                <Input type="number" value={formData.priceCoins} onChange={(e) => setFormData({ ...formData, priceCoins: parseFloat(e.target.value) || 0 })} placeholder="100" className="bg-zinc-800 border-zinc-700" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>الاسم بالعربية</Label>
+                <Input value={formData.nameAr} onChange={(e) => setFormData({ ...formData, nameAr: e.target.value })} placeholder="صندوق المبتدئين" className="bg-zinc-800 border-zinc-700" />
+              </div>
+              <div className="space-y-2">
+                <Label>الاسم بالإنجليزية</Label>
+                <Input value={formData.nameEn} onChange={(e) => setFormData({ ...formData, nameEn: e.target.value })} placeholder="Starter Box" className="bg-zinc-800 border-zinc-700" />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>المكافآت</Label>
+                <span className={`text-xs font-bold ${isFormProbValid ? 'text-green-400' : 'text-red-400'}`}>
+                  المجموع: {totalFormProb}%
+                </span>
+              </div>
+              <div className="space-y-2">
+                {formData.rewards.map((reward, idx) => (
+                  <div key={idx} className="grid grid-cols-5 gap-2 items-end">
+                    <div className="col-span-2">
+                      <Input value={reward.nameAr} onChange={(e) => updateReward(idx, 'nameAr', e.target.value)} placeholder="الاسم" className="bg-zinc-800 border-zinc-700 text-sm" />
+                    </div>
+                    <div>
+                      <Input type="number" value={reward.rewardValue} onChange={(e) => updateReward(idx, 'rewardValue', parseFloat(e.target.value) || 0)} placeholder="القيمة" className="bg-zinc-800 border-zinc-700 text-sm" />
+                    </div>
+                    <div>
+                      <Input type="number" value={reward.probabilityWeight} onChange={(e) => updateReward(idx, 'probabilityWeight', parseFloat(e.target.value) || 0)} placeholder="%" className="bg-zinc-800 border-zinc-700 text-sm" />
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => removeReward(idx)} className="text-red-400 hover:bg-red-400/10 h-10">
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <Button variant="outline" size="sm" onClick={addReward} className="w-full border-zinc-700 hover:bg-zinc-800 text-zinc-400">
+                <Plus className="w-4 h-4 ml-2" />
+                إضافة مكافأة
+              </Button>
+            </div>
+
+            <div className="flex items-center justify-between p-4 rounded-lg bg-zinc-800/50 border border-zinc-700">
+              <div>
+                <Label>نشط</Label>
+                <p className="text-xs text-zinc-400">متاح للشراء</p>
+              </div>
+              <Switch checked={formData.isActive} onCheckedChange={(v) => setFormData({ ...formData, isActive: v })} />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button onClick={handleSave} disabled={saving || !isFormProbValid} className="flex-1 bg-yellow-500 hover:bg-yellow-600 text-black font-semibold">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin ml-2" /> : null}
+                إنشاء الصندوق
+              </Button>
+              <Button variant="outline" className="flex-1 border-zinc-700 hover:bg-zinc-800" onClick={() => setModalOpen(false)}>
+                إلغاء
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import {
   Package, Search, Calendar, CheckCircle2, XCircle, Clock,
-  Eye, Ban, Filter as FilterIcon
+  Eye, Ban
 } from 'lucide-react';
 import PageHeader from '@/components/cut-club/PageHeader';
 import PremiumCard from '@/components/cut-club/PremiumCard';
@@ -22,17 +22,19 @@ import {
 import TierBadge from '@/components/cut-club/TierBadge';
 
 interface InventoryItem {
-  id: number;
+  inventoryId: number;
   clientId: number;
   clientName: string;
+  clientPhone: string;
   itemNameAr: string;
   itemNameEn: string;
   voucherCode: string;
   purchaseDate: string;
-  expiryDate: string;
+  expiryDate: string | null;
   status: 'ACTIVE' | 'USED' | 'EXPIRED' | 'CANCELLED';
-  usageDate?: string;
+  usedAt: string | null;
   priceCoins: number;
+  notes: string;
 }
 
 const statusConfig = {
@@ -67,47 +69,9 @@ export default function InventoryPage() {
   const fetchInventory = async () => {
     setLoading(true);
     try {
-      const mockItems: InventoryItem[] = [
-        {
-          id: 1,
-          clientId: 101,
-          clientName: 'أحمد محمد علي',
-          itemNameAr: 'تسريحة مجانية',
-          itemNameEn: 'Free Styling',
-          voucherCode: 'FS-2024-001',
-          purchaseDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-          expiryDate: new Date(Date.now() + 25 * 24 * 60 * 60 * 1000).toISOString(),
-          status: 'ACTIVE',
-          priceCoins: 500,
-        },
-        {
-          id: 2,
-          clientId: 102,
-          clientName: 'محمد حسن',
-          itemNameAr: 'خصم 20%',
-          itemNameEn: '20% Discount',
-          voucherCode: 'DC-2024-045',
-          purchaseDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-          expiryDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
-          status: 'ACTIVE',
-          priceCoins: 300,
-        },
-        {
-          id: 3,
-          clientId: 103,
-          clientName: 'خالد يوسف',
-          itemNameAr: 'تسريحة مجانية',
-          itemNameEn: 'Free Styling',
-          voucherCode: 'FS-2024-002',
-          purchaseDate: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
-          expiryDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-          status: 'USED',
-          usageDate: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
-          priceCoins: 500,
-        },
-      ];
-
-      setItems(mockItems);
+      const res = await fetch('/api/admin/store/inventory');
+      const data = await res.json();
+      if (data.ok) setItems(data.items || []);
     } catch (error) {
       console.error('Failed to fetch inventory:', error);
     } finally {
@@ -120,8 +84,11 @@ export default function InventoryPage() {
   }, []);
 
   const filteredItems = items.filter((item) => {
-    if (searchQuery && !item.clientName.includes(searchQuery) && !item.voucherCode.includes(searchQuery)) {
-      return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      if (!item.clientName.toLowerCase().includes(q) && !item.voucherCode.toLowerCase().includes(q) && !item.clientPhone.includes(q)) {
+        return false;
+      }
     }
     if (selectedStatus && item.status !== selectedStatus) return false;
     return true;
@@ -160,12 +127,12 @@ export default function InventoryPage() {
                 className="pr-10 bg-zinc-800 border-zinc-700"
               />
             </div>
-            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+            <Select value={selectedStatus || '_all'} onValueChange={(v) => setSelectedStatus(v === '_all' ? '' : v)}>
               <SelectTrigger className="w-full md:w-40 bg-zinc-800 border-zinc-700">
                 <SelectValue placeholder="الحالة" />
               </SelectTrigger>
               <SelectContent className="bg-zinc-800 border-zinc-700">
-                <SelectItem value="">الكل</SelectItem>
+                <SelectItem value="_all">الكل</SelectItem>
                 <SelectItem value="ACTIVE">نشط</SelectItem>
                 <SelectItem value="USED">مستخدم</SelectItem>
                 <SelectItem value="EXPIRED">منتهي</SelectItem>
@@ -219,13 +186,13 @@ export default function InventoryPage() {
                     const StatusIcon = statusConfig[item.status].icon;
                     return (
                       <tr
-                        key={item.id}
+                        key={item.inventoryId}
                         className="hover:bg-zinc-800/30 transition-colors"
                       >
                         <td className="px-6 py-4">
                           <div>
                             <p className="font-medium text-white">{item.clientName}</p>
-                            <p className="text-xs text-zinc-500">#{item.clientId}</p>
+                            <p className="text-xs text-zinc-500">{item.clientPhone}</p>
                           </div>
                         </td>
                         <td className="px-6 py-4">
@@ -250,7 +217,7 @@ export default function InventoryPage() {
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2 text-sm text-zinc-300">
                             <Clock className="h-4 w-4 text-zinc-500" />
-                            {formatDate(item.expiryDate)}
+                            {item.expiryDate ? formatDate(item.expiryDate) : '—'}
                           </div>
                         </td>
                         <td className="px-6 py-4">

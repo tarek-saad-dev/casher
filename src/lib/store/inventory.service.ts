@@ -445,14 +445,17 @@ export async function cancelInventoryItem(
         `);
 
       // Add ledger entry
+      const idempotencyKey = `REFUND-${inventoryItem.clientId}-${inventoryId}-${Date.now()}`;
       const ledgerReq = new sql.Request(transaction);
       await ledgerReq
         .input("clientId", sql.Int, inventoryItem.clientId)
         .input("movementType", sql.NVarChar(20), "STORE_REFUND")
         .input("pointsDelta", sql.Decimal(10, 2), refundedCoins)
-        .input("notes", sql.NVarChar(500), `Store refund: ${inventoryItem.item.nameAr}`).query(`
+        .input("notes", sql.NVarChar(500), `Store refund: ${inventoryItem.item.nameAr}`)
+        .input("idempotencyKey", sql.NVarChar(100), idempotencyKey)
+        .query(`
           INSERT INTO [dbo].[TblLoyaltyPointLedger] (
-            ClientID, ClientLoyaltyID, MovementType, PointsDelta, PointsBefore, PointsAfter, Notes, CreatedAt
+            ClientID, ClientLoyaltyID, MovementType, PointsDelta, PointsBefore, PointsAfter, Notes, IdempotencyKey, CreatedAt
           )
           SELECT 
             @clientId,
@@ -462,6 +465,7 @@ export async function cancelInventoryItem(
             PointsBalance - @pointsDelta,
             PointsBalance,
             @notes,
+            @idempotencyKey,
             GETDATE()
           FROM [dbo].[TblClientLoyalty]
           WHERE ClientID = @clientId
