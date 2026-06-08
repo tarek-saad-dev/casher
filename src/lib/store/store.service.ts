@@ -451,15 +451,21 @@ export async function purchaseStoreItem(
         WHERE ClientID = @clientId
       `);
 
-    // Update stock if not unlimited
-    if (!item.unlimitedStock && item.stockQuantity !== null) {
+    // Update stock if not unlimited — use UPDLOCK to prevent race conditions
+    if (!item.unlimitedStock) {
       const updateStockReq = new sql.Request(transaction);
-      await updateStockReq.input("itemId", sql.Int, itemId).query(`
+      const stockResult = await updateStockReq.input("itemId", sql.Int, itemId).query(`
         UPDATE [dbo].[TblLoyaltyStoreItem]
         SET StockQuantity = StockQuantity - 1,
             UpdatedAt = GETDATE()
-        WHERE ItemID = @itemId AND StockQuantity > 0
+        OUTPUT INSERTED.StockQuantity
+        WHERE ItemID = @itemId
+          AND UnlimitedStock = 0
+          AND ISNULL(StockQuantity, 0) > 0
       `);
+      if (stockResult.rowsAffected[0] === 0) {
+        throw new Error("هذا العنصر غير متوفر في المخزون");
+      }
     }
 
     await transaction.commit();

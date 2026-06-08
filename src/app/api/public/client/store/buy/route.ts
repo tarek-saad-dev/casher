@@ -11,6 +11,7 @@ import type {
 import {
   purchaseStoreItem,
   getStoreItemById,
+  getClientBalance,
 } from "@/lib/store/store.service";
 
 export const runtime = "nodejs";
@@ -71,27 +72,33 @@ export async function POST(
       );
     }
 
-    // Get item details
+    // Verify item exists first
     const item = await getStoreItemById(itemId);
     if (!item) {
       return NextResponse.json(
-        { ok: false, error: "Item not found" },
+        { ok: false, error: "المنتج غير موجود" },
         { status: 404, headers: corsHeaders },
       );
     }
 
-    // Purchase item
-    const result = await purchaseStoreItem(clientId, itemId);
-
-    if (!result.success) {
+    if (!item.isActive) {
       return NextResponse.json(
-        { ok: false, error: result.error || "Purchase failed" },
+        { ok: false, error: "هذا المنتج غير متاح حالياً" },
         { status: 400, headers: corsHeaders },
       );
     }
 
-    // Get new balance (after purchase)
-    const { getClientBalance } = await import("@/lib/store/store.service");
+    // Purchase item (handles balance check, tier check, stock, ledger, all in one transaction)
+    const result = await purchaseStoreItem(clientId, itemId);
+
+    if (!result.success) {
+      return NextResponse.json(
+        { ok: false, error: result.error || "فشل الشراء" },
+        { status: 400, headers: corsHeaders },
+      );
+    }
+
+    // Get updated balance
     const newBalance = await getClientBalance(clientId);
 
     const response: PurchaseResponse = {

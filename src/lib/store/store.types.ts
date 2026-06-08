@@ -117,6 +117,7 @@ export interface MysteryBoxReward {
 }
 
 export interface MysteryBoxOpenResult {
+  ok: true;
   success: boolean;
   reward: {
     type: MysteryBoxRewardType;

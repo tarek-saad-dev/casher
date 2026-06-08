@@ -9,7 +9,7 @@ import type {
   RawMysteryBoxRewardFromDb,
 } from "./store.types";
 import { selectWeightedRandom } from "./store.helpers";
-import { getInventoryItemById, useInventoryItem } from "./inventory.service";
+import { getInventoryItemById } from "./inventory.service";
 import { getClientBalance } from "./store.service";
 
 // ============================================
@@ -102,84 +102,100 @@ export async function openMysteryBox(
   }
 
   const db = await getPool();
+
+  // Read balance BEFORE opening (outside transaction, used for ledger PointsBefore)
+  const balanceBefore = await getClientBalance(clientId);
+
   const transaction = new sql.Transaction(db);
   await transaction.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
 
   try {
-    // Mark mystery box as used
-    await useInventoryItem(
-      inventoryId,
-      null,
-      null,
-      `Opened mystery box - Reward: ${selectedReward.nameAr}`,
-    );
+    // ── 1. Mark mystery box as used (inlined to avoid nested transaction) ──
+    const now = new Date();
+    const openNotes = `Opened mystery box - Reward: ${selectedReward.nameAr}`;
 
-    // Apply reward based on type
-    let newBalance = await getClientBalance(clientId);
+    const updateInvReq = new sql.Request(transaction);
+    await updateInvReq
+      .input("inventoryId", sql.Int, inventoryId)
+      .input("usedAt", sql.DateTime, now)
+      .input("notes", sql.NVarChar(500), openNotes)
+      .query(`
+        UPDATE [dbo].[TblClientInventory]
+        SET Status = 'USED', UsedAt = @usedAt, Notes = @notes
+        WHERE InventoryID = @inventoryId AND Status = 'ACTIVE'
+      `);
+
+    const logOpenReq = new sql.Request(transaction);
+    await logOpenReq
+      .input("inventoryId", sql.Int, inventoryId)
+      .input("clientId", sql.Int, clientId)
+      .input("actionType", sql.NVarChar(50), "USED")
+      .input("usedAt", sql.DateTime, now)
+      .input("notes", sql.NVarChar(500), openNotes)
+      .query(`
+        INSERT INTO [dbo].[TblInventoryUsageLog] (InventoryID, ClientID, ActionType, UsedAt, Notes)
+        VALUES (@inventoryId, @clientId, @actionType, @usedAt, @notes)
+      `);
+
+    // ── 2. Apply reward ──
+    let balanceAfter = balanceBefore;
 
     switch (selectedReward.rewardType) {
-      case "COINS": {
-        // Add coins to balance
-        const addCoinsReq = new sql.Request(transaction);
-        await addCoinsReq
+      case "COINS":
+      case "BONUS_POINTS": {
+        const isBonus = selectedReward.rewardType === "BONUS_POINTS";
+        balanceAfter = balanceBefore + selectedReward.rewardValue;
+
+        const updateBalReq = new sql.Request(transaction);
+        const updateQ = isBonus
+          ? `UPDATE [dbo].[TblClientLoyalty]
+               SET PointsBalance = PointsBalance + @amount,
+                   LifetimeEarnedPoints = LifetimeEarnedPoints + @amount,
+                   UpdatedAt = GETDATE()
+               WHERE ClientID = @clientId`
+          : `UPDATE [dbo].[TblClientLoyalty]
+               SET PointsBalance = PointsBalance + @amount,
+                   UpdatedAt = GETDATE()
+               WHERE ClientID = @clientId`;
+        await updateBalReq
           .input("clientId", sql.Int, clientId)
           .input("amount", sql.Decimal(18, 2), selectedReward.rewardValue)
-          .query(`
-            UPDATE [dbo].[TblClientLoyalty]
-            SET PointsBalance = PointsBalance + @amount,
-                UpdatedAt = GETDATE()
-            WHERE ClientID = @clientId
-          `);
+          .query(updateQ);
 
-        // Add ledger entry
-        const idempotencyKeyCoins = `MYSTERY-${clientId}-${Date.now()}`;
+        const movementType = isBonus ? "BONUS_POINTS_REWARD" : "MYSTERY_BOX_OPEN";
+        const idempotencyKey = `MYSTERY-${selectedReward.rewardType}-${clientId}-${Date.now()}`;
         const ledgerReq = new sql.Request(transaction);
         await ledgerReq
           .input("clientId", sql.Int, clientId)
-          .input("movementType", sql.NVarChar(20), "MYSTERY_BOX_OPEN")
+          .input("movementType", sql.NVarChar(20), movementType)
           .input("pointsDelta", sql.Decimal(10, 2), selectedReward.rewardValue)
+          .input("pointsBefore", sql.Decimal(10, 2), balanceBefore)
+          .input("pointsAfter", sql.Decimal(10, 2), balanceAfter)
           .input("notes", sql.NVarChar(500), `Mystery box reward: ${selectedReward.nameAr}`)
-          .input("idempotencyKey", sql.NVarChar(100), idempotencyKeyCoins)
+          .input("idempotencyKey", sql.NVarChar(100), idempotencyKey)
           .query(`
             INSERT INTO [dbo].[TblLoyaltyPointLedger] (
               ClientID, ClientLoyaltyID, MovementType, PointsDelta, PointsBefore, PointsAfter, Notes, IdempotencyKey, CreatedAt
             )
-            SELECT 
-              @clientId,
-              ClientLoyaltyID,
-              @movementType,
-              @pointsDelta,
-              PointsBalance - @pointsDelta,
-              PointsBalance,
-              @notes,
-              @idempotencyKey,
-              GETDATE()
+            SELECT
+              @clientId, ClientLoyaltyID, @movementType,
+              @pointsDelta, @pointsBefore, @pointsAfter,
+              @notes, @idempotencyKey, GETDATE()
             FROM [dbo].[TblClientLoyalty]
             WHERE ClientID = @clientId
           `);
-
-        newBalance += selectedReward.rewardValue;
         break;
       }
 
       case "STORE_ITEM": {
-        // Add item to inventory
         if (selectedReward.rewardItemId) {
-          const { generateVoucherCode, calculateExpiryDate } = await import(
-            "./store.helpers"
-          );
+          const { generateVoucherCode, calculateExpiryDate } = await import("./store.helpers");
           const { getStoreItemById } = await import("./store.service");
 
           const rewardItem = await getStoreItemById(selectedReward.rewardItemId);
           if (rewardItem) {
-            const voucherCode = generateVoucherCode(
-              clientId,
-              selectedReward.rewardItemId,
-            );
-            const expiresAt = calculateExpiryDate(
-              new Date(),
-              rewardItem.expiresAfterDays,
-            );
+            const voucherCode = generateVoucherCode(clientId, selectedReward.rewardItemId);
+            const expiresAt = calculateExpiryDate(new Date(), rewardItem.expiresAfterDays);
 
             const inventoryReq = new sql.Request(transaction);
             await inventoryReq
@@ -192,69 +208,22 @@ export async function openMysteryBox(
                   ClientID, ItemID, Quantity, Status, PurchasePriceCoins,
                   VoucherCode, PurchasedAt, ExpiresAt, Notes
                 )
-                VALUES (
-                  @clientId, @itemId, 1, 'ACTIVE', 0,
-                  @voucherCode, GETDATE(), @expiresAt, 'Mystery box reward'
-                )
+                VALUES (@clientId, @itemId, 1, 'ACTIVE', 0, @voucherCode, GETDATE(), @expiresAt, 'Mystery box reward')
               `);
           }
         }
         break;
       }
 
-      case "BONUS_POINTS": {
-        // Add bonus points
-        const addPointsReq = new sql.Request(transaction);
-        await addPointsReq
-          .input("clientId", sql.Int, clientId)
-          .input("amount", sql.Decimal(18, 2), selectedReward.rewardValue)
-          .query(`
-            UPDATE [dbo].[TblClientLoyalty]
-            SET PointsBalance = PointsBalance + @amount,
-                LifetimeEarnedPoints = LifetimeEarnedPoints + @amount,
-                UpdatedAt = GETDATE()
-            WHERE ClientID = @clientId
-          `);
-
-        // Add ledger entry
-        const idempotencyKeyBonus = `BONUS-${clientId}-${Date.now()}`;
-        const ledgerReq = new sql.Request(transaction);
-        await ledgerReq
-          .input("clientId", sql.Int, clientId)
-          .input("movementType", sql.NVarChar(20), "BONUS_POINTS_REWARD")
-          .input("pointsDelta", sql.Decimal(10, 2), selectedReward.rewardValue)
-          .input("notes", sql.NVarChar(500), `Mystery box bonus: ${selectedReward.nameAr}`)
-          .input("idempotencyKey", sql.NVarChar(100), idempotencyKeyBonus)
-          .query(`
-            INSERT INTO [dbo].[TblLoyaltyPointLedger] (
-              ClientID, ClientLoyaltyID, MovementType, PointsDelta, PointsBefore, PointsAfter, Notes, IdempotencyKey, CreatedAt
-            )
-            SELECT 
-              @clientId,
-              ClientLoyaltyID,
-              @movementType,
-              @pointsDelta,
-              PointsBalance - @pointsDelta,
-              PointsBalance,
-              @notes,
-              @idempotencyKey,
-              GETDATE()
-            FROM [dbo].[TblClientLoyalty]
-            WHERE ClientID = @clientId
-          `);
-
-        newBalance += selectedReward.rewardValue;
-        break;
-      }
-
       default:
-        // For DISCOUNT, JACKPOT, or other types, just record the reward
+        // DISCOUNT, JACKPOT — reward is recorded; POS applies the effect on next visit
         break;
     }
 
     await transaction.commit();
 
     return {
+      ok: true,
       success: true,
       reward: {
         type: selectedReward.rewardType,
@@ -263,7 +232,7 @@ export async function openMysteryBox(
         value: selectedReward.rewardValue,
         itemId: selectedReward.rewardItemId,
       },
-      newBalance,
+      newBalance: balanceAfter,
     };
   } catch (error) {
     await transaction.rollback();
