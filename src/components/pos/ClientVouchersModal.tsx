@@ -105,11 +105,27 @@ export default function ClientVouchersModal({
   }, [open, clientId]);
 
   const handleUse = async (v: VoucherItem) => {
-    if (!onUseVoucher) return;
     setUsingId(v.inventoryId);
-    onUseVoucher(v.inventoryId, v.item.itemType, v.item.value, v.item.nameAr);
-    setUsedIds(prev => new Set(prev).add(v.inventoryId));
-    setUsingId(null);
+    try {
+      const res = await fetch('/api/pos/client-inventory/use', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inventoryId: v.inventoryId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        console.error('[ClientVouchersModal] use failed:', data.error);
+        return;
+      }
+      // Mark as used locally — removes it from active list
+      setUsedIds(prev => new Set(prev).add(v.inventoryId));
+      // Notify parent to apply discount / effect on invoice
+      if (onUseVoucher) {
+        onUseVoucher(v.inventoryId, v.item.itemType, v.item.value, v.item.nameAr);
+      }
+    } finally {
+      setUsingId(null);
+    }
   };
 
   if (!open) return null;

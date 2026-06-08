@@ -59,12 +59,9 @@ export async function POST(
       );
     }
 
-    if (!invId || typeof invId !== "number") {
-      return NextResponse.json(
-        { ok: false, error: "invId is required" },
-        { status: 400, headers: corsHeaders },
-      );
-    }
+    // invId is optional — voucher may be applied before invoice is saved
+    const resolvedInvId: number | null =
+      invId && typeof invId === "number" && invId > 0 ? invId : null;
 
     // Get inventory item details
     const inventoryItem = await getInventoryItemById(inventoryId);
@@ -97,9 +94,9 @@ export async function POST(
     // Mark item as used
     const useResult = await useInventoryItem(
       inventoryId,
-      invId,
+      resolvedInvId,
       null,
-      notes || `Used in invoice #${invId}`,
+      notes || (resolvedInvId ? `Used in invoice #${resolvedInvId}` : "Applied at POS"),
     );
 
     if (!useResult.success) {
