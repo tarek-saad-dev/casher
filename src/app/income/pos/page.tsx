@@ -17,6 +17,7 @@ import InvoiceSummary from '@/components/pos/InvoiceSummary';
 import PaymentMethodSelect from '@/components/pos/PaymentMethodSelect';
 import SplitPaymentInput from '@/components/pos/SplitPaymentInput';
 import PrintInvoiceModal from '@/components/pos/PrintInvoiceModal';
+import ClientVouchersModal from '@/components/pos/ClientVouchersModal';
 import ShiftRequiredOverlay from '@/components/session/ShiftRequiredOverlay';
 import DayRolloverModal from '@/components/session/DayRolloverModal';
 import CloseDayModal from '@/components/session/CloseDayModal';
@@ -87,7 +88,7 @@ export default function PosPage() {
   // ───────────────── Sale state ─────────────────
   const {
     state, totals,
-    setCustomer, setBarber, addItem, removeItem, updateItem,
+    setCustomer: setCustomerBase, setBarber, addItem, removeItem, updateItem,
     setDiscountPercent, setDiscountValue,
     setPaymentMethod,
     setPaymentAllocations,
@@ -106,6 +107,14 @@ export default function PosPage() {
   const [printOpen, setPrintOpen] = useState(false);
   const [splitPaymentActive, setSplitPaymentActive] = useState(false);
   const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
+  const [vouchersOpen, setVouchersOpen] = useState(false);
+
+  // ───────────────── Wrap setCustomer to auto-open vouchers modal ─────────────────
+  const setCustomer = useCallback((c: Customer | null) => {
+    setCustomerBase(c);
+    if (c) setVouchersOpen(true);
+    else setVouchersOpen(false);
+  }, [setCustomerBase]);
 
   // ───────────────── Sync shift from session into sale state ─────────────────
   useEffect(() => {
@@ -479,6 +488,17 @@ export default function PosPage() {
             onEditCustomer={(c) => { setCompleteCustomerMode('edit'); setCompleteCustomer(c); }}
           />
 
+          {/* Vouchers button — shown when customer is selected and modal is closed */}
+          {state.customer && !vouchersOpen && (
+            <button
+              onClick={() => setVouchersOpen(true)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 hover:bg-yellow-500/15 transition-colors text-sm text-yellow-400 font-medium"
+            >
+              <span>مكافآت النقاط</span>
+              <span className="text-xs bg-yellow-500/20 px-1.5 py-0.5 rounded-md">عرض</span>
+            </button>
+          )}
+
           {/* Customer History Panel - Auto-loads when customer selected */}
           {state.customer && (
             <>
@@ -668,6 +688,24 @@ export default function PosPage() {
         invID={printInvID}
         onClose={() => { setPrintOpen(false); setPrintInvID(null); }}
       />
+
+      {/* ═══════ Client Vouchers Modal ═══════ */}
+      {state.customer && (
+        <ClientVouchersModal
+          clientId={state.customer.ClientID}
+          clientName={state.customer.Name}
+          open={vouchersOpen}
+          onClose={() => setVouchersOpen(false)}
+          onUseVoucher={(inventoryId, itemType, value, nameAr) => {
+            addToast('success', `تم تطبيق: ${nameAr}`);
+            if (itemType === 'DISCOUNT_AMOUNT' && value) {
+              setDiscountValue(value);
+            } else if (itemType === 'DISCOUNT_PERCENT' && value) {
+              setDiscountPercent(value);
+            }
+          }}
+        />
+      )}
 
       {/* ═══════ Day Rollover Modal ═══════ */}
       <DayRolloverModal
