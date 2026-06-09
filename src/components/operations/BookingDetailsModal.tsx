@@ -1,10 +1,16 @@
 'use client';
 
-import { X, Pencil, XCircle, Calendar, Clock, User, Phone, Scissors, Receipt, FileText, Tag, AlertCircle, Loader2, Printer } from 'lucide-react';
+import { X, Pencil, XCircle, Calendar, Clock, User, Phone, Scissors, Receipt, FileText, Tag, AlertCircle, Loader2, Printer, ArrowLeftRight } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import type { Booking } from '@/lib/operationsTypes';
 import { TimelineItem } from './schedulerUtils';
 import { printBookingTicket, BookingTicketData } from '@/lib/printBookingTicket';
+
+interface Barber {
+  empId: number;
+  empName: string;
+  status: 'working' | 'off' | 'day_off' | 'unknown';
+}
 
 interface Props {
   item: TimelineItem;
@@ -12,6 +18,8 @@ interface Props {
   onDelete?: (bookingId: number) => Promise<void>;
   onEdit?: (booking: Booking) => void;
   onCancel?: (ticketId: number) => Promise<void>;
+  onTransfer?: (ticketId: number, newEmpId: number) => Promise<void>;
+  barbers?: Barber[];
   addToast?: (type: 'success' | 'error' | 'info', message: string) => void;
 }
 
@@ -23,7 +31,7 @@ interface BookingDetails extends Booking {
   }>;
 }
 
-export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel, addToast }: Props) {
+export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel, onTransfer, barbers, addToast }: Props) {
   const [booking, setBooking] = useState<BookingDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +39,9 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
   const [deleting, setDeleting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [transferring, setTransferring] = useState(false);
+  const [selectedBarber, setSelectedBarber] = useState<number | null>(null);
 
   // Fetch booking details
   useEffect(() => {
@@ -92,6 +103,19 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
       setError(err instanceof Error ? err.message : 'فشل إلغاء الدور');
     } finally {
       setCancelling(false);
+    }
+  };
+
+  const handleTransfer = async () => {
+    if (!onTransfer || !selectedBarber) return;
+    setTransferring(true);
+    try {
+      await onTransfer(item.sourceId, selectedBarber);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'فشل نقل الدور');
+    } finally {
+      setTransferring(false);
     }
   };
 
@@ -395,15 +419,28 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
               </button>
             </>
           ) : item.type === 'queue' && onCancel ? (
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              disabled={cancelling}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-semibold transition-all hover:opacity-80 disabled:opacity-50"
-              style={{ borderColor: '#ef444444', color: '#ef4444', background: '#ef444411' }}
-            >
-              <XCircle size={16} />
-              {cancelling ? 'جاري الإلغاء...' : 'إلغاء الدور'}
-            </button>
+            <>
+              {onTransfer && barbers && barbers.length > 0 && (
+                <button
+                  onClick={() => setShowTransfer(true)}
+                  disabled={transferring}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-semibold transition-all hover:opacity-80 disabled:opacity-50"
+                  style={{ borderColor: '#8B5CF644', color: '#8B5CF6', background: '#8B5CF611' }}
+                >
+                  <ArrowLeftRight size={16} />
+                  نقل لحلاق آخر
+                </button>
+              )}
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={cancelling}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-semibold transition-all hover:opacity-80 disabled:opacity-50"
+                style={{ borderColor: '#ef444444', color: '#ef4444', background: '#ef444411' }}
+              >
+                <XCircle size={16} />
+                {cancelling ? 'جاري الإلغاء...' : 'إلغاء الدور'}
+              </button>
+            </>
           ) : null}
           <button
             onClick={onClose}
@@ -449,6 +486,68 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
                   style={{ background: '#ef4444', color: '#fff' }}
                 >
                   {deleting || cancelling ? <Loader2 size={16} className="animate-spin mx-auto" /> : 'تأكيد الإلغاء'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Transfer Dialog */}
+        {showTransfer && barbers && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm z-10">
+            <div className="mx-4 p-5 rounded-xl max-w-sm w-full" style={{ background: '#1a1a1f', border: '1px solid #8B5CF650' }}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: '#8B5CF620' }}>
+                  <ArrowLeftRight size={20} style={{ color: '#8B5CF6' }} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">نقل الدور لحلاق آخر</h3>
+                  <p className="text-sm text-zinc-400">اختر الحلاق الجديد لنقل {item.label} إليه</p>
+                </div>
+              </div>
+              <div className="space-y-2 max-h-60 overflow-y-auto mb-4">
+                {barbers
+                  .filter(b => b.empId !== item.barberId)
+                  .map(b => (
+                    <button
+                      key={b.empId}
+                      onClick={() => setSelectedBarber(b.empId)}
+                      className="w-full flex items-center justify-between px-4 py-3 rounded-xl border text-sm transition-all"
+                      style={{
+                        borderColor: selectedBarber === b.empId ? '#8B5CF6' : '#2A2A35',
+                        background: selectedBarber === b.empId ? 'rgba(139,92,246,0.12)' : 'transparent',
+                        color: b.status === 'working' ? '#F7F1E5' : '#6B7280',
+                      }}
+                    >
+                      <span className="font-medium">{b.empName}</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full"
+                        style={{
+                          background: b.status === 'working' ? 'rgba(16,185,129,0.15)' : 'rgba(107,114,128,0.15)',
+                          color: b.status === 'working' ? '#10B981' : '#6B7280',
+                        }}>
+                        {b.status === 'working' ? 'متاح' : b.status === 'day_off' ? 'إجازة' : 'خارج الدوام'}
+                      </span>
+                    </button>
+                  ))}
+                {barbers.filter(b => b.empId !== item.barberId).length === 0 && (
+                  <p className="text-zinc-500 text-sm text-center py-4">لا يوجد حلاقون آخرون متاحون</p>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowTransfer(false)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all hover:bg-zinc-800"
+                  style={{ color: '#a1a1aa', background: '#2A2A35' }}
+                >
+                  إلغاء
+                </button>
+                <button
+                  onClick={handleTransfer}
+                  disabled={!selectedBarber || transferring}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-80 disabled:opacity-50"
+                  style={{ background: '#8B5CF6', color: '#fff' }}
+                >
+                  {transferring ? <Loader2 size={16} className="animate-spin mx-auto" /> : 'نقل'}
                 </button>
               </div>
             </div>

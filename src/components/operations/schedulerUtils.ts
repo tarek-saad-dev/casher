@@ -18,6 +18,7 @@ export interface TimelineItem {
   customerName?: string;
   serviceNames?: string[];
   ticketCode?: string;
+  barberId?: number;
 }
 
 /**
