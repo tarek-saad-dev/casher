@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { UserCog, Cake, MapPin, CheckCircle, Pencil, Phone, FileText } from 'lucide-react';
+import { UserCog, Cake, MapPin, CheckCircle, Pencil, Phone, FileText, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -27,6 +27,7 @@ export default function CompleteCustomerModal({
 }: CompleteCustomerModalProps) {
   const isEditMode = mode === 'edit';
 
+  const [name,      setName]      = useState(customer.Name      ?? '');
   const [birthDate, setBirthDate] = useState(
     customer.BirthDate ? customer.BirthDate.split('T')[0] : ''
   );
@@ -47,6 +48,7 @@ export default function CompleteCustomerModal({
 
       if (isEditMode) {
         // In edit mode, update all fields that are provided
+        payload.name      = name.trim() || null;
         payload.birthDate = birthDate || null;
         payload.address   = address.trim() || null;
         payload.mobile    = mobile.trim() || null;
@@ -99,11 +101,25 @@ export default function CompleteCustomerModal({
         </DialogHeader>
 
         <div className="space-y-4 pt-1" dir="rtl">
-          {/* Customer name (readonly) */}
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/40 border border-border">
-            <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span className="text-sm font-medium">{customer.Name}</span>
-          </div>
+          {/* Customer name - editable in edit mode, readonly otherwise */}
+          {isEditMode ? (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-blue-400" />
+                اسم العميل
+              </label>
+              <Input
+                placeholder="اسم العميل..."
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/40 border border-border">
+              <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="text-sm font-medium">{customer.Name}</span>
+            </div>
+          )}
 
           {/* Fields */}
           <div className="space-y-3">
