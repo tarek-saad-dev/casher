@@ -67,18 +67,17 @@ export async function POST(req: NextRequest) {
         .input('expInId', sql.Int, expInId)
         .input('amount', sql.Decimal(10, 2), Number(amount))
         .input('notes', sql.NVarChar(sql.MAX), notes?.trim() || null)
-        .input('userID', sql.Int, session.UserID)
         .input('paymentMethodId', sql.Int, paymentMethodId);
 
       const insertRes = await insertReq.query(`
         INSERT INTO dbo.TblCashMove
-          (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, CreatedByUserID)
+          (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID)
         OUTPUT
           INSERTED.ID, INSERTED.invID, INSERTED.invDate, INSERTED.invTime,
           INSERTED.ExpINID, INSERTED.GrandTolal AS Amount, INSERTED.Notes,
-          INSERTED.PaymentMethodID, INSERTED.CreatedByUserID
+          INSERTED.PaymentMethodID
         VALUES
-          (@invID, N'ايرادات', @invDate, @invTime, NULL, @expInId, @amount, N'in', @notes, NULL, @paymentMethodId, @userID)
+          (@invID, N'ايرادات', @invDate, @invTime, NULL, @expInId, @amount, N'in', @notes, NULL, @paymentMethodId)
       `);
 
       await transaction.commit();
@@ -97,7 +96,6 @@ export async function POST(req: NextRequest) {
           Amount: newRecord.Amount,
           Notes: newRecord.Notes,
           PaymentMethodID: newRecord.PaymentMethodID,
-          CreatedByUserID: newRecord.CreatedByUserID
         }
       });
 
