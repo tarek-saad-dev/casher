@@ -45,6 +45,7 @@ export interface FlowBoardBarber {
     protected: boolean;
     durationMinutes?: number;
     customerName?: string;
+    barberId?: number;
   }>;
 }
 
@@ -219,6 +220,7 @@ export async function GET(req: NextRequest) {
           protected: true,
           durationMinutes: safeDuration,
           customerName: b.ClientName || undefined,
+          barberId: empId,
         });
       }
       
@@ -249,6 +251,7 @@ export async function GET(req: NextRequest) {
           protected: true,
           durationMinutes: defaultDuration,
           customerName: q.ClientName || undefined,
+          barberId: empId,
         });
       }
       

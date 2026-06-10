@@ -115,10 +115,28 @@ export function SchedulerBoard({ barbers, loading, error, onRetry, onRefresh, vo
       throw new Error(data.error || 'فشل إلغاء الدور');
     }
 
-    // Refresh the scheduler board
-    if (onRefresh) {
-      onRefresh();
+    // Wait a bit for DB transaction to commit, then refresh
+    setTimeout(() => {
+      if (onRefresh) onRefresh();
+    }, 300);
+  }, [onRefresh]);
+
+  const handleTransferQueueTicket = useCallback(async (ticketId: number, newEmpId: number) => {
+    const res = await fetch(`/api/queue/${ticketId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'transfer', transferEmpId: newEmpId }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'فشل نقل الدور');
     }
+
+    // Wait a bit for DB transaction to commit, then refresh
+    setTimeout(() => {
+      if (onRefresh) onRefresh();
+    }, 300);
   }, [onRefresh]);
 
   const handleEditBooking = useCallback((booking: Booking) => {
@@ -214,6 +232,8 @@ export function SchedulerBoard({ barbers, loading, error, onRetry, onRefresh, vo
           onDelete={selectedItem.type === 'booking' ? handleDeleteBooking : undefined}
           onEdit={selectedItem.type === 'booking' ? handleEditBooking : undefined}
           onCancel={selectedItem.type === 'queue' ? handleCancelQueueTicket : undefined}
+          onTransfer={selectedItem.type === 'queue' ? handleTransferQueueTicket : undefined}
+          barbers={displayBarbers.map(b => ({ empId: b.empId, empName: b.empName, status: b.status }))}
           addToast={addToast}
         />
       )}

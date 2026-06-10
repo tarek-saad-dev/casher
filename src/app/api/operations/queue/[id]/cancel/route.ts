@@ -99,12 +99,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
     // Cancel the queue ticket
     await db.request()
       .input("ticketId", sql.Int, ticketId)
-      .input("reason", sql.NVarChar, reason || null)
       .query(`
         UPDATE dbo.QueueTickets
         SET Status = 'cancelled',
-            CancelledAt = GETDATE(),
-            CancelReason = @reason
+            CancelledAt = GETDATE()
         WHERE QueueTicketID = @ticketId
       `);
 
