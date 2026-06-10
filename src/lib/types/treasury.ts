@@ -170,6 +170,10 @@ export interface PeriodDayRow {
   transactionsCount: number;
   status: 'open' | 'closed' | 'unknown';
   paymentTotals: Record<string, number>;
+  monthToDateIncome: number;
+  monthToDateExpense: number;
+  monthToDateNetTotal: number;
+  monthToDatePaymentTotals: Record<string, number>;
 }
 
 export interface PeriodSummary {

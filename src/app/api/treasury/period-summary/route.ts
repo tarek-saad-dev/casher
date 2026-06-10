@@ -135,10 +135,123 @@ export async function GET(request: NextRequest) {
       d.paymentOutflow[pmKey] = (d.paymentOutflow[pmKey] || 0) + outflow;
     }
 
-    // ── 6. Build sorted day rows ────────────────────────────────────────────
-    const days = Object.keys(dayMap)
-      .sort()
-      .map(dateKey => {
+    // ── 6. Build sorted day rows (base, no MTD yet) ────────────────────────
+    const sortedDateKeys = Object.keys(dayMap).sort();
+
+    // ── 6b. Determine unique months that appear in the result ──────────────
+    //   For each month, we need data from YYYY-MM-01 to the last day of that
+    //   month that appears in our result set. We query the DB once per month
+    //   so that the MTD is always "from the 1st of the month", regardless of
+    //   the user's dateFrom filter.
+    const uniqueMonths = [...new Set(sortedDateKeys.map(d => d.slice(0, 7)))]; // ['2026-05', '2026-06']
+
+    // mtdMap[dateKey] = { income, expense, paymentTotals }
+    const mtdMap: Record<string, {
+      income: number;
+      expense: number;
+      paymentTotals: Record<string, number>;
+    }> = {};
+
+    for (const monthStr of uniqueMonths) {
+      const monthStart = `${monthStr}-01`;
+      // Last day of this month that exists in our result
+      const daysInMonth = sortedDateKeys.filter(d => d.startsWith(monthStr));
+      const monthEnd = daysInMonth[daysInMonth.length - 1];
+
+      // Query cumulative data for this month from its 1st day
+      let mtdWhereConditions = [
+        'cm.invDate >= @mtdFrom',
+        'cm.invDate <= @mtdTo',
+      ];
+      const mtdReq = db.request()
+        .input('mtdFrom', sql.Date, monthStart)
+        .input('mtdTo',   sql.Date, monthEnd);
+
+      if (userId !== null) {
+        mtdWhereConditions.push('sm.UserID = @mtdUserId');
+        mtdReq.input('mtdUserId', sql.Int, userId);
+      }
+
+      const mtdWhere = mtdWhereConditions.join(' AND ');
+
+      const mtdRaw = await mtdReq.query(`
+        SELECT
+          CONVERT(date, cm.invDate) AS DayDate,
+          cm.PaymentMethodID,
+          SUM(CASE WHEN cm.inOut = N'in'  THEN cm.GrandTolal ELSE 0 END) AS Inflow,
+          SUM(CASE WHEN cm.inOut = N'out' THEN cm.GrandTolal ELSE 0 END) AS Outflow
+        FROM dbo.TblCashMove cm
+        LEFT JOIN dbo.TblShiftMove sm ON cm.ShiftMoveID = sm.ID
+        WHERE ${mtdWhere}
+        GROUP BY CONVERT(date, cm.invDate), cm.PaymentMethodID
+        ORDER BY DayDate ASC
+      `);
+
+      // Build running cumulative per day within this month.
+      // Store inflow & outflow SEPARATELY per PM per day so that
+      // net = runPmInflow[pmk] - runPmOutflow[pmk]  (matches /treasury/daily logic exactly)
+      let runIncome  = 0;
+      let runExpense = 0;
+      const runPmInflow:  Record<string, number> = {};
+      const runPmOutflow: Record<string, number> = {};
+
+      // Group mtdRaw rows by date, keeping inflow/outflow split per PM
+      const mtdByDate: Record<string, {
+        income: number;
+        expense: number;
+        pmInflow:  Record<string, number>;
+        pmOutflow: Record<string, number>;
+      }> = {};
+
+      for (const row of mtdRaw.recordset as any[]) {
+        const dk: string = row.DayDate instanceof Date
+          ? row.DayDate.toISOString().split('T')[0]
+          : String(row.DayDate).split('T')[0];
+        if (!mtdByDate[dk]) mtdByDate[dk] = { income: 0, expense: 0, pmInflow: {}, pmOutflow: {} };
+        const inf = Number(row.Inflow)  || 0;
+        const out = Number(row.Outflow) || 0;
+        const pmk = row.PaymentMethodID != null ? String(row.PaymentMethodID) : 'null';
+        mtdByDate[dk].income  += inf;
+        mtdByDate[dk].expense += out;
+        mtdByDate[dk].pmInflow[pmk]  = (mtdByDate[dk].pmInflow[pmk]  || 0) + inf;
+        mtdByDate[dk].pmOutflow[pmk] = (mtdByDate[dk].pmOutflow[pmk] || 0) + out;
+      }
+
+      // Walk every calendar day from monthStart → monthEnd accumulating running totals
+      const cursor = new Date(monthStart + 'T00:00:00');
+      const endDate = new Date(monthEnd + 'T00:00:00');
+      while (cursor <= endDate) {
+        const dk = cursor.toISOString().split('T')[0];
+        if (mtdByDate[dk]) {
+          runIncome  += mtdByDate[dk].income;
+          runExpense += mtdByDate[dk].expense;
+          for (const pmk of Object.keys(mtdByDate[dk].pmInflow)) {
+            runPmInflow[pmk]  = (runPmInflow[pmk]  || 0) + mtdByDate[dk].pmInflow[pmk];
+          }
+          for (const pmk of Object.keys(mtdByDate[dk].pmOutflow)) {
+            runPmOutflow[pmk] = (runPmOutflow[pmk] || 0) + mtdByDate[dk].pmOutflow[pmk];
+          }
+        }
+        // Snapshot only for days present in our result set
+        if (daysInMonth.includes(dk)) {
+          // net per PM = cumulative inflow - cumulative outflow  (same as /treasury/daily)
+          const pmSnapshot: Record<string, number> = {};
+          const allPmKeys = new Set([...Object.keys(runPmInflow), ...Object.keys(runPmOutflow)]);
+          for (const pmk of allPmKeys) {
+            pmSnapshot[pmk] = (runPmInflow[pmk] || 0) - (runPmOutflow[pmk] || 0);
+          }
+          mtdMap[dk] = {
+            income:  runIncome,
+            expense: runExpense,
+            paymentTotals: pmSnapshot,
+          };
+        }
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+
+    // ── 6c. Build final day rows with MTD attached ─────────────────────────
+    const days = sortedDateKeys.map(dateKey => {
         const d = dayMap[dateKey];
         const netTotal = d.totalIncome - d.totalExpense;
 
@@ -153,9 +266,18 @@ export async function GET(request: NextRequest) {
         for (const pm of paymentMethods) {
           paymentTotals[String(pm.id)] = d.paymentTotals[String(pm.id)] || 0;
         }
-        // Handle NULL payment method
         if (d.paymentTotals['null'] !== undefined) {
           paymentTotals['null'] = d.paymentTotals['null'];
+        }
+
+        // MTD values
+        const mtd = mtdMap[dateKey] ?? { income: 0, expense: 0, paymentTotals: {} };
+        const monthToDatePaymentTotals: Record<string, number> = {};
+        for (const pm of paymentMethods) {
+          monthToDatePaymentTotals[String(pm.id)] = mtd.paymentTotals[String(pm.id)] || 0;
+        }
+        if (mtd.paymentTotals['null'] !== undefined) {
+          monthToDatePaymentTotals['null'] = mtd.paymentTotals['null'];
         }
 
         return {
@@ -166,6 +288,10 @@ export async function GET(request: NextRequest) {
           transactionsCount: d.transactionsCount,
           status,
           paymentTotals,
+          monthToDateIncome:        mtd.income,
+          monthToDateExpense:       mtd.expense,
+          monthToDateNetTotal:      mtd.income - mtd.expense,
+          monthToDatePaymentTotals,
         };
       });
 
@@ -193,7 +319,6 @@ export async function GET(request: NextRequest) {
     const usersResult = await db.request().query(`
       SELECT UserID, UserName
       FROM dbo.TblUser
-      WHERE IsActive = 1 OR IsActive IS NULL
       ORDER BY UserName ASC
     `);
 

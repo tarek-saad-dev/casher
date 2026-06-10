@@ -1,10 +1,14 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Loader2, RefreshCw, Download, TrendingUp, TrendingDown,
   Wallet, Activity, CalendarDays, Users, ChevronUp, ChevronDown,
+  ArrowRightLeft,
 } from 'lucide-react';
+import PastDateIncomeModal  from '@/components/treasury/PastDateIncomeModal';
+import PastDateExpenseModal from '@/components/treasury/PastDateExpenseModal';
+import PastDateTransferModal from '@/components/treasury/PastDateTransferModal';
 import type {
   TreasuryPeriodSummaryResponse,
   PeriodDayRow,
@@ -107,6 +111,17 @@ export default function TreasuryPeriodSummaryPage() {
 
   const tableRef = useRef<HTMLDivElement>(null);
 
+  // ── Action modals state ───────────────────────────────────────────────────
+  const [activeModal, setActiveModal] = useState<'income' | 'expense' | 'transfer' | null>(null);
+  const [modalDate, setModalDate]     = useState<string | undefined>(undefined);
+
+  const openModal = (mode: 'income' | 'expense' | 'transfer', date: string) => {
+    setModalDate(date);
+    setActiveModal(mode);
+  };
+  const closeModal = () => { setActiveModal(null); setModalDate(undefined); };
+  const onActionSuccess = () => { closeModal(); load(dateFrom, dateTo, userId); };
+
   useEffect(() => {
     document.title = 'ملخص الخزنة الدوري | نظام نقاط البيع';
   }, []);
@@ -168,6 +183,8 @@ export default function TreasuryPeriodSummaryPage() {
       'إجمالي الإيرادات', 'إجمالي المصروفات', 'صافي اليوم',
       ...pms.map(p => p.name),
       'عدد الحركات',
+      'تراكمي الشهر - الإيرادات', 'تراكمي الشهر - المصروفات', 'تراكمي الشهر - الصافي',
+      ...pms.map(p => `تراكمي - ${p.name}`),
     ];
     const rows = sortedDays.map(d => [
       d.date,
@@ -177,6 +194,10 @@ export default function TreasuryPeriodSummaryPage() {
       d.netTotal,
       ...pms.map(p => d.paymentTotals[String(p.id)] ?? 0),
       d.transactionsCount,
+      d.monthToDateIncome   ?? 0,
+      d.monthToDateExpense  ?? 0,
+      d.monthToDateNetTotal ?? 0,
+      ...pms.map(p => d.monthToDatePaymentTotals?.[String(p.id)] ?? 0),
     ]);
 
     const csvContent = [headers, ...rows]
@@ -404,60 +425,147 @@ export default function TreasuryPeriodSummaryPage() {
                           <Th key={pm.id} label={pm.name} sKey={String(pm.id)} colorClass="text-amber-400" />
                         ))}
                         <Th label="عدد الحركات"       sKey="transactionsCount" colorClass="text-zinc-300" />
+                        {/* Sticky actions column */}
+                        <th className="px-3 py-3 text-right text-xs font-semibold text-zinc-400 whitespace-nowrap sticky left-0 bg-zinc-900 z-10 border-r border-zinc-800/40">
+                          إجراءات
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {sortedDays.map((day, idx) => {
-                        const net = getCell(day.netTotal);
-                        const isEven = idx % 2 === 0;
+                        const net    = getCell(day.netTotal);
+                        const mtdNet = getCell(day.monthToDateNetTotal ?? 0);
+                        const isEven   = idx % 2 === 0;
+                        // Each day pair (main row + MTD sub-row) shares the same stripe
+                        const rowBg    = isEven ? 'bg-zinc-900/50' : 'bg-zinc-800/30';
+                        const mtdBg    = rowBg;
+                        const stickyBg = isEven ? 'bg-zinc-900'    : 'bg-[#1f1f27]';
                         return (
-                          <tr
-                            key={day.date}
-                            className={`border-b border-zinc-800/30 hover:bg-zinc-800/30 transition-colors
-                              ${isEven ? 'bg-transparent' : 'bg-zinc-900/20'}`}
-                          >
-                            {/* Date — sticky right */}
-                            <td
-                              className="px-3 py-2.5 text-right whitespace-nowrap sticky bg-zinc-900 z-10 border-l border-zinc-800/30"
-                              style={{ right: 0 }}
+                          <React.Fragment key={day.date}>
+                            {/* ── Main day row ── */}
+                            <tr
+                              className={`border-b border-zinc-800/20 hover:bg-zinc-800/25 transition-colors ${rowBg}`}
                             >
-                              <span className="text-xs font-medium text-zinc-200">{fmtDate(day.date)}</span>
-                            </td>
-                            {/* Status */}
-                            <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                              {statusBadge(day.status)}
-                            </td>
-                            {/* Income */}
-                            <td className="px-3 py-2.5 text-right whitespace-nowrap tabular-nums text-emerald-400 font-medium">
-                              {fmt(day.totalIncome)}
-                            </td>
-                            {/* Expense */}
-                            <td className="px-3 py-2.5 text-right whitespace-nowrap tabular-nums text-rose-400 font-medium">
-                              {fmt(day.totalExpense)}
-                            </td>
-                            {/* Net — sticky left */}
-                            <td
-                              className={`px-3 py-2.5 text-right whitespace-nowrap tabular-nums font-bold sticky z-10 border-r border-zinc-800/30
-                                ${isEven ? 'bg-zinc-900' : 'bg-zinc-900/80'} ${net.cls}`}
-                              style={{ left: 0 }}
+                              {/* Date — sticky right */}
+                              <td
+                                className={`px-3 py-2.5 text-right whitespace-nowrap sticky z-10 border-l border-zinc-800/30 ${stickyBg}`}
+                                style={{ right: 0 }}
+                              >
+                                <span className="text-sm font-semibold text-zinc-200">{fmtDate(day.date)}</span>
+                              </td>
+                              {/* Status */}
+                              <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                                {statusBadge(day.status)}
+                              </td>
+                              {/* Income */}
+                              <td className="px-4 py-3.5 text-right whitespace-nowrap tabular-nums text-base text-emerald-400 font-semibold">
+                                {fmt(day.totalIncome)}
+                              </td>
+                              {/* Expense */}
+                              <td className="px-4 py-3.5 text-right whitespace-nowrap tabular-nums text-base text-rose-400 font-semibold">
+                                {fmt(day.totalExpense)}
+                              </td>
+                              {/* Net — sticky left */}
+                              <td
+                                className={`px-4 py-3.5 text-right whitespace-nowrap tabular-nums text-base font-bold sticky z-10 border-r border-zinc-800/30 ${stickyBg} ${net.cls}`}
+                                style={{ left: 0 }}
+                              >
+                                {net.text}
+                              </td>
+                              {/* Dynamic PM columns */}
+                              {data.paymentMethods.map(pm => {
+                                const v = day.paymentTotals[String(pm.id)] ?? 0;
+                                const c = getCell(v);
+                                return (
+                                  <td key={pm.id} className={`px-4 py-3.5 text-right whitespace-nowrap tabular-nums text-base ${c.cls}`}>
+                                    {v === 0 ? <span className="text-zinc-700">—</span> : c.text}
+                                  </td>
+                                );
+                              })}
+                              {/* TX count */}
+                              <td className="px-4 py-3.5 text-right text-zinc-300 tabular-nums text-base">
+                                {day.transactionsCount}
+                              </td>
+                              {/* Actions — sticky left */}
+                              <td
+                                className={`px-2 py-2 text-right whitespace-nowrap sticky left-0 z-10 border-r border-zinc-800/30 ${stickyBg}`}
+                              >
+                                <div className="flex items-center gap-1 justify-end">
+                                  {/* Income */}
+                                  <button
+                                    onClick={() => openModal('income', day.date)}
+                                    title={`إضافة إيراد ليوم ${day.date}`}
+                                    className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/25 transition-colors"
+                                  >
+                                    <TrendingUp className="h-3.5 w-3.5" />
+                                  </button>
+                                  {/* Expense */}
+                                  <button
+                                    onClick={() => openModal('expense', day.date)}
+                                    title={`إضافة مصروف ليوم ${day.date}`}
+                                    className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/25 transition-colors"
+                                  >
+                                    <TrendingDown className="h-3.5 w-3.5" />
+                                  </button>
+                                  {/* Transfer */}
+                                  <button
+                                    onClick={() => openModal('transfer', day.date)}
+                                    title={`تحويل ليوم ${day.date}`}
+                                    className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/25 transition-colors"
+                                  >
+                                    <ArrowRightLeft className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+
+                            {/* ── MTD sub-row ── */}
+                            <tr
+                              key={`${day.date}-mtd`}
+                              className={`border-b-2 border-zinc-600/60 hover:brightness-110 transition-colors ${mtdBg}`}
                             >
-                              {net.text}
-                            </td>
-                            {/* Dynamic PM columns */}
-                            {data.paymentMethods.map(pm => {
-                              const v = day.paymentTotals[String(pm.id)] ?? 0;
-                              const c = getCell(v);
-                              return (
-                                <td key={pm.id} className={`px-3 py-2.5 text-right whitespace-nowrap tabular-nums ${c.cls}`}>
-                                  {v === 0 ? <span className="text-zinc-700">—</span> : c.text}
-                                </td>
-                              );
-                            })}
-                            {/* TX count */}
-                            <td className="px-3 py-2.5 text-right text-zinc-400 tabular-nums">
-                              {day.transactionsCount}
-                            </td>
-                          </tr>
+                              {/* Date label — sticky right */}
+                              <td
+                                className={`px-3 py-1.5 text-right whitespace-nowrap sticky z-10 border-l border-zinc-800/20 ${mtdBg}`}
+                                style={{ right: 0 }}
+                              >
+                                <span className="text-xs text-zinc-500 font-normal">
+                                  ↩ تراكمي الشهر حتى {fmtDate(day.date)}
+                                </span>
+                              </td>
+                              {/* Status — empty */}
+                              <td className="px-3 py-1.5" />
+                              {/* MTD Income */}
+                              <td className="px-4 py-2 text-right whitespace-nowrap tabular-nums text-sm text-emerald-400/60">
+                                {fmt(day.monthToDateIncome ?? 0)}
+                              </td>
+                              {/* MTD Expense */}
+                              <td className="px-4 py-2 text-right whitespace-nowrap tabular-nums text-sm text-rose-400/60">
+                                {fmt(day.monthToDateExpense ?? 0)}
+                              </td>
+                              {/* MTD Net — sticky left */}
+                              <td
+                                className={`px-4 py-2 text-right whitespace-nowrap tabular-nums text-sm font-semibold sticky z-10 border-r border-zinc-800/20 ${mtdBg} ${mtdNet.cls} opacity-75`}
+                                style={{ left: 0 }}
+                              >
+                                {mtdNet.text}
+                              </td>
+                              {/* MTD per-PM */}
+                              {data.paymentMethods.map(pm => {
+                                const v = day.monthToDatePaymentTotals?.[String(pm.id)] ?? 0;
+                                const c = getCell(v);
+                                return (
+                                  <td key={pm.id} className={`px-4 py-2 text-right whitespace-nowrap tabular-nums text-sm ${c.cls} opacity-60`}>
+                                    {v === 0 ? <span className="text-zinc-700">—</span> : c.text}
+                                  </td>
+                                );
+                              })}
+                              {/* TX count — empty for MTD */}
+                              <td className="px-4 py-2" />
+                              {/* Actions — empty for MTD sub-row */}
+                              <td className={`px-2 py-1.5 sticky left-0 z-10 border-r border-zinc-800/20 ${mtdBg}`} />
+                            </tr>
+                          </React.Fragment>
                         );
                       })}
 
@@ -486,6 +594,7 @@ export default function TreasuryPeriodSummaryPage() {
                           );
                         })}
                         <td className="px-3 py-3 text-right text-zinc-300 tabular-nums">{data.summary.transactionsCount}</td>
+                        <td className="px-3 py-3 sticky left-0 z-10 bg-zinc-800/40 border-r border-zinc-700/30" />
                       </tr>
                     </tbody>
                   </table>
@@ -496,6 +605,32 @@ export default function TreasuryPeriodSummaryPage() {
         )}
 
       </div>
+
+      {/* ── Action Modals ──────────────────────────────────────────────── */}
+      {activeModal === 'income' && (
+        <PastDateIncomeModal
+          isOpen
+          onClose={closeModal}
+          onIncomeComplete={onActionSuccess}
+          defaultDate={modalDate}
+        />
+      )}
+      {activeModal === 'expense' && (
+        <PastDateExpenseModal
+          isOpen
+          onClose={closeModal}
+          onExpenseComplete={onActionSuccess}
+          defaultDate={modalDate}
+        />
+      )}
+      {activeModal === 'transfer' && (
+        <PastDateTransferModal
+          isOpen
+          onClose={closeModal}
+          onTransferComplete={onActionSuccess}
+          defaultDate={modalDate}
+        />
+      )}
     </div>
   );
 }
