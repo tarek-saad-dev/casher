@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { requireApprovalOrExecute } from '@/lib/approvalWorkflow';
 
 /**
  * PUT /api/expenses/[id]
@@ -131,44 +132,39 @@ export async function DELETE(
   try {
     const { id } = await params;
     const expenseId = parseInt(id);
-    
+
     if (isNaN(expenseId)) {
       return NextResponse.json({ error: 'معرف المصروف غير صالح' }, { status: 400 });
     }
 
     const user = await getSession();
-    if (!user) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
-    }
+    if (!user) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
 
     const db = await getPool();
 
-    // Check if expense exists
     const expense = await db.request()
       .input('id', sql.Int, expenseId)
-      .query(`
-        SELECT ID FROM [dbo].[TblCashMove]
-        WHERE ID = @id AND invType = N'مصروفات'
-      `);
+      .query(`SELECT ID, Amount, invDate, Notes FROM dbo.TblCashMove WHERE ID=@id AND invType=N'مصروفات'`);
 
-    if (expense.recordset.length === 0) {
+    if (!expense.recordset.length)
       return NextResponse.json({ error: 'المصروف غير موجود' }, { status: 404 });
+
+    const result = await requireApprovalOrExecute({
+      userId:      user.UserID,
+      userName:    user.UserName,
+      requestType: 'delete_expense',
+      entityId:    String(expenseId),
+      actionMethod:'DELETE',
+      endpointPath:`/api/expenses/${expenseId}`,
+      oldDataLoader: async () => expense.recordset[0],
+    });
+
+    if (result.pendingApproval) {
+      return NextResponse.json({ success: true, pendingApproval: true, approvalId: result.approvalId, message: result.message });
     }
 
-    // Delete the expense
-    await db.request()
-      .input('id', sql.Int, expenseId)
-      .query(`
-        DELETE FROM [dbo].[TblCashMove]
-        WHERE ID = @id
-      `);
-
-    console.log(`[expenses] Deleted expense ID=${expenseId} by ${user.UserName}`);
-
-    return NextResponse.json({
-      success: true,
-      message: 'تم حذف المصروف بنجاح'
-    });
+    // super_admin executed directly (actual delete done inside registry execute())
+    return NextResponse.json({ success: true, message: 'تم حذف المصروف' });
 
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

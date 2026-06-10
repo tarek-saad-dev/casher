@@ -7,7 +7,7 @@ import {
   History, Receipt, Wallet, Lock, ArrowLeftRight, BarChart3, Clock,
   Calculator, Settings, Scissors, Tags, Shield, Activity, Star,
   UsersRound, FileBarChart, Calendar, Ticket, CalendarCheck, MonitorPlay,
-  AlertTriangle, Crown, KeyRound, FileKey2, Banknote,
+  AlertTriangle, Crown, KeyRound, FileKey2, Banknote, ShieldCheck,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -151,8 +151,9 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: '/admin/shift',                     label: 'الورديات',               icon: Clock      },
       { href: '/admin/settings',                  label: 'الإعدادات',              icon: Settings   },
       { href: '/admin/queue-booking-settings',    label: 'إعدادات الطابور',       icon: Ticket     },
-      { href: '/admin/permissions/users',         label: 'صلاحيات المستخدمين',    icon: KeyRound   },
-      { href: '/admin/permissions/pages',         label: 'صلاحيات الصفحات',       icon: FileKey2   },
+      { href: '/admin/permissions/users',         label: 'صلاحيات المستخدمين',    icon: KeyRound     },
+      { href: '/admin/permissions/pages',         label: 'صلاحيات الصفحات',       icon: FileKey2     },
+      { href: '/admin/approvals',                 label: 'طلبات الموافقة',          icon: ShieldCheck  },
     ],
   },
   {

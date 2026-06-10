@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
-import { requireRole, isAuthResult } from '@/lib/api-auth';
+import { requireApprovalOrExecute } from '@/lib/approvalWorkflow';
 
 // GET /api/sales/[id] — Get sale by invID for printing
 export async function GET(
@@ -66,6 +66,7 @@ export async function GET(
 }
 
 // PUT /api/sales/[id] — Update existing sale invoice
+// super_admin: executes immediately | others: creates pending approval
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -73,27 +74,41 @@ export async function PUT(
   try {
     const { id } = await params;
     const invID = parseInt(id);
-    if (isNaN(invID)) {
-      return NextResponse.json({ error: "Invalid invID" }, { status: 400 });
-    }
+    if (isNaN(invID)) return NextResponse.json({ error: 'Invalid invID' }, { status: 400 });
+
+    const sessionUser = await getSession();
+    if (!sessionUser) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    const userID = sessionUser.UserID;
 
     const body = await req.json();
 
-    // Validation
-    if (!body.items || body.items.length === 0) {
-      return NextResponse.json(
-        { error: "يجب إضافة خدمة واحدة على الأقل" },
-        { status: 400 },
-      );
-    }
-
-    // Session check
-    const sessionUser = await getSession();
-    const userID = sessionUser?.UserID ?? 0;
+    if (!body.items || body.items.length === 0)
+      return NextResponse.json({ error: 'يجب إضافة خدمة واحدة على الأقل' }, { status: 400 });
 
     const db = await getPool();
+    const existingSnap = await db.request()
+      .input('id', sql.Int, invID)
+      .query(`SELECT invID, invDate, GrandTotal, Notes FROM dbo.TblinvServHead WHERE invID=@id AND invType=N'مبيعات'`);
+    if (!existingSnap.recordset.length)
+      return NextResponse.json({ error: 'الفاتورة غير موجودة' }, { status: 404 });
 
-    // Start transaction
+    const editWorkflow = await requireApprovalOrExecute({
+      userId:      sessionUser.UserID,
+      userName:    sessionUser.UserName,
+      requestType: 'edit_invoice',
+      entityId:    String(invID),
+      actionMethod:'PUT',
+      endpointPath:`/api/sales/${invID}`,
+      oldDataLoader: async () => existingSnap.recordset[0],
+      newData: body,
+      riskLevel: 'high',
+    });
+    if (editWorkflow.pendingApproval)
+      return NextResponse.json({ success: true, pendingApproval: true, approvalId: editWorkflow.approvalId, message: editWorkflow.message });
+    if (editWorkflow.executed)
+      return NextResponse.json({ success: true, message: editWorkflow.message });
+
+    // Start transaction (non-super_admin path should not reach here, but kept for safety)
     const transaction = db.transaction();
     await transaction.begin();
 
@@ -348,99 +363,46 @@ export async function PUT(
   }
 }
 
-// DELETE /api/sales/[id] — Delete sale invoice (admin only)
+// DELETE /api/sales/[id] — Delete sale invoice
+// super_admin: executes immediately | others: creates pending approval
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const authCheck = await requireRole(['admin']);
-  if (!isAuthResult(authCheck)) return authCheck;
-
   try {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+
     const { id } = await params;
     const invID = parseInt(id);
-    if (isNaN(invID)) {
-      return NextResponse.json({ error: "Invalid invID" }, { status: 400 });
-    }
+    if (isNaN(invID)) return NextResponse.json({ error: 'Invalid invID' }, { status: 400 });
 
     const db = await getPool();
+    const existing = await db.request()
+      .input('id', sql.Int, invID)
+      .query(`SELECT invID, invDate, GrandTotal FROM dbo.TblinvServHead WHERE invID=@id`);
+    if (!existing.recordset.length)
+      return NextResponse.json({ error: 'الفاتورة غير موجودة' }, { status: 404 });
 
-    // Start transaction
-    const transaction = db.transaction();
-    await transaction.begin();
+    const workflow = await requireApprovalOrExecute({
+      userId:      session.UserID,
+      userName:    session.UserName,
+      requestType: 'delete_invoice',
+      entityId:    String(invID),
+      actionMethod:'DELETE',
+      endpointPath:`/api/sales/${invID}`,
+      oldDataLoader: async () => existing.recordset[0],
+    });
 
-    try {
-      // Delete cash movements (related to this invoice) - always clean these up
-      const cashResult = await transaction
-        .request()
-        .input("invID", sql.Int, invID)
-        .query(
-          `DELETE FROM [dbo].[TblCashMove] WHERE invID = @invID AND invType = N'مبيعات'`,
-        );
+    if (workflow.pendingApproval)
+      return NextResponse.json({ success: true, pendingApproval: true, approvalId: workflow.approvalId, message: workflow.message });
 
-      // Delete loyalty points ledger entries first (FK constraint)
-      // TODO: SECURITY & AUDIT - Replace DELETE with sp_Loyalty_ReverseSalePoints
-      // Current: Directly deletes ledger entries (loses audit trail)
-      // Should be: Call sp_Loyalty_ReverseSalePoints to create REVERSAL entry
-      // This preserves audit trail when invoice is deleted
-      // Location: DELETE /api/sales/[id] - Line ~391
-      await transaction
-        .request()
-        .input("invID", sql.Int, invID)
-        .query(
-          `DELETE FROM [dbo].[TblLoyaltyPointLedger] WHERE SourceInvID = @invID`,
-        );
+    return NextResponse.json({ success: true, message: 'تم حذف الفاتورة' });
 
-      // Delete invoice details (child records)
-      await transaction
-        .request()
-        .input("invID", sql.Int, invID)
-        .query(
-          `DELETE FROM [dbo].[TblinvServDetail] WHERE invID = @invID AND invType = N'مبيعات'`,
-        );
-
-      // Delete invoice header (if still exists)
-      const headResult = await transaction
-        .request()
-        .input("invID", sql.Int, invID)
-        .query(
-          `DELETE FROM [dbo].[TblinvServHead] WHERE invID = @invID AND invType = N'مبيعات'`,
-        );
-
-      const invoiceExisted = headResult.rowsAffected[0] > 0;
-      const cashDeleted = (cashResult.rowsAffected?.[0] ?? 0) > 0;
-
-      // If neither invoice nor cash movement existed, then it's truly not found
-      if (!invoiceExisted && !cashDeleted) {
-        await transaction.rollback();
-        return NextResponse.json(
-          { error: "الفاتورة غير موجودة" },
-          { status: 404 },
-        );
-      }
-
-      await transaction.commit();
-
-      if (!invoiceExisted && cashDeleted) {
-        // Cleanup case: invoice was already gone, but we cleaned up orphaned cash record
-        return NextResponse.json({
-          success: true,
-          message: "تم تنظيف السجل اليتيم من حركة الخزنة",
-          cleanedUp: true,
-        });
-      }
-
-      return NextResponse.json({
-        success: true,
-        message: "تم حذف الفاتورة بنجاح",
-      });
-    } catch (err) {
-      await transaction.rollback();
-      throw err;
-    }
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("[api/sales/id] DELETE error:", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
+
+

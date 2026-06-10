@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { requireRole, isAuthResult } from '@/lib/api-auth';
+import { requireApprovalOrExecute } from '@/lib/approvalWorkflow';
 
 // POST /api/treasury/transfer — Transfer amount between payment methods
 // Body: { amount: number, fromPaymentMethodId: number, toPaymentMethodId: number, notes?: string, transferDate?: string }
@@ -48,6 +49,21 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+
+    // Approval workflow check
+    const workflow = await requireApprovalOrExecute({
+      userId:      session.UserID,
+      userName:    session.UserName,
+      requestType: 'treasury_transfer',
+      actionMethod:'TRANSFER',
+      endpointPath:'/api/treasury/transfer',
+      newData: { amount, fromPaymentMethodId, toPaymentMethodId, notes, transferDate, userId: session.UserID },
+      riskLevel: 'high',
+    });
+    if (workflow.pendingApproval)
+      return NextResponse.json({ success: true, pendingApproval: true, approvalId: workflow.approvalId, message: workflow.message });
+    if (workflow.executed)
+      return NextResponse.json({ success: true, message: workflow.message });
 
     const db = await getPool();
 

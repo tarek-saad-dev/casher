@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import sql from 'mssql';
 import { requireRole, isAuthResult } from '@/lib/api-auth';
+import { requireApprovalOrExecute } from '@/lib/approvalWorkflow';
+import { getSession } from '@/lib/session';
 import type { 
   ReconciliationRequest, 
   ReconciliationResponse, 
@@ -34,23 +36,36 @@ export async function POST(request: NextRequest) {
   if (!isAuthResult(auth)) return auth;
 
   let db;
-  
+
   try {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+
     const body: ReconciliationRequest = await request.json();
     const { newDay, shiftMoveId, reconciliations } = body;
-    
+
     if (!newDay || !reconciliations || reconciliations.length === 0) {
-      return NextResponse.json(
-        { error: 'البيانات المطلوبة غير مكتملة' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'البيانات المطلوبة غير مكتملة' }, { status: 400 });
     }
-    
+
+    // Approval workflow
+    const workflow = await requireApprovalOrExecute({
+      userId:      session.UserID,
+      userName:    session.UserName,
+      requestType: 'close_day',
+      entityId:    String(newDay),
+      actionMethod:'CLOSE_DAY',
+      endpointPath:'/api/treasury/reconciliation',
+      newData:     { newDay, shiftMoveId, reconciliations },
+      riskLevel:   'critical',
+    });
+    if (workflow.pendingApproval)
+      return NextResponse.json({ success: true, pendingApproval: true, approvalId: workflow.approvalId, message: workflow.message });
+    if (workflow.executed)
+      return NextResponse.json({ success: true, message: workflow.message });
+
     db = await getPool();
-    
-    // Get current user (in real app, get from session)
-    // For now, use a default user ID
-    const closedByUserId = 1; // TODO: Get from auth session
+    const closedByUserId = session.UserID;
     
     const reconciliationIds: number[] = [];
     const variances: any[] = [];

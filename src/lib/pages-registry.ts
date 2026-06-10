@@ -69,4 +69,5 @@ export const SYSTEM_PAGES: PageDefinition[] = [
   // ── Permissions (super_admin_only) ───────────────────────────────────────────
   { key: 'admin.permissions.users', name: 'صلاحيات المستخدمين',     path: '/admin/permissions/users',         section: 'الإدارة',           accessMode: 'super_admin_only', sort: 200 },
   { key: 'admin.permissions.pages', name: 'صلاحيات الصفحات',        path: '/admin/permissions/pages',         section: 'الإدارة',           accessMode: 'super_admin_only', sort: 201 },
+  { key: 'admin_approvals',         name: 'طلبات الموافقة',           path: '/admin/approvals',                 section: 'الإدارة',           accessMode: 'super_admin_only', sort: 202 },
 ];

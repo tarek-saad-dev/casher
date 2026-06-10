@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { getUserAccess } from '@/lib/permissions-server';
+import { requireApprovalOrExecute } from '@/lib/approvalWorkflow';
 
 export const runtime = 'nodejs';
 
@@ -48,8 +49,10 @@ export async function GET() {
 // POST — assign or remove roles for a user
 // Body: { userID: number, roles: string[] }  — full replacement of roles
 export async function POST(req: NextRequest) {
-  const session = await requireSuperAdmin();
-  if (!session) return NextResponse.json({ error: 'غير مصرح — super_admin فقط' }, { status: 403 });
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+
+  const access = await getUserAccess(session.UserID, session.UserName, session.UserLevel);
 
   const { userID, roles }: { userID: number; roles: string[] } = await req.json();
   if (!userID || !Array.isArray(roles)) {
@@ -58,29 +61,60 @@ export async function POST(req: NextRequest) {
 
   const db = await getPool();
 
-  // Remove existing roles
-  await db.request().input('uid', userID).query(`DELETE FROM dbo.TblUserRoles WHERE UserID = @uid`);
+  // Fetch role IDs for oldData snapshot
+  const oldRolesRes = await db.request().input('uid', userID)
+    .query(`SELECT r.RoleID FROM dbo.TblUserRoles ur JOIN dbo.TblRoles r ON r.RoleID=ur.RoleID WHERE ur.UserID=@uid`);
+  const oldRoleIds = oldRolesRes.recordset.map((r: Record<string, number>) => r.RoleID);
 
-  // Assign new roles
+  // Fetch new role IDs
+  const roleIdsRes = await db.request().query(
+    `SELECT RoleID, RoleKey FROM dbo.TblRoles WHERE RoleKey IN (${roles.map((_,i)=>`@r${i}`).join(',')})`);
+  // inject params individually
+  const reqObj = db.request();
+  roles.forEach((rk, i) => reqObj.input(`r${i}`, rk));
+  const roleIdsRes2 = await reqObj.query(
+    `SELECT RoleID FROM dbo.TblRoles WHERE RoleKey IN (${roles.map((_,i)=>`@r${i}`).join(',')})`);
+  const newRoleIds = roleIdsRes2.recordset.map((r: Record<string,number>) => r.RoleID);
+
+  void roleIdsRes; // suppress unused
+
+  // Non-super_admin → route through approval workflow
+  if (!access.isSuperAdmin) {
+    const workflow = await requireApprovalOrExecute({
+      userId:      session.UserID,
+      userName:    session.UserName,
+      requestType: 'update_user_roles',
+      entityId:    String(userID),
+      actionMethod:'UPDATE',
+      endpointPath:'/api/admin/permissions/users',
+      oldDataLoader: async () => ({ roles: oldRoleIds }),
+      newData:     { roles: newRoleIds },
+      riskLevel:   'critical',
+    });
+    if (workflow.pendingApproval)
+      return NextResponse.json({ success: true, pendingApproval: true, approvalId: workflow.approvalId, message: workflow.message });
+  }
+
+  // super_admin executes directly (workflow.execute already ran, but that uses registry;
+  // here we also keep the original inline logic so page access token cache refreshes properly)
+  await db.request().input('uid', userID).query(`DELETE FROM dbo.TblUserRoles WHERE UserID=@uid`);
   for (const roleKey of roles) {
     await db.request()
       .input('uid',     userID)
       .input('roleKey', roleKey)
       .query(`
-        DECLARE @rid INT = (SELECT RoleID FROM dbo.TblRoles WHERE RoleKey = @roleKey)
-        IF @rid IS NOT NULL
-          INSERT INTO dbo.TblUserRoles (UserID, RoleID) VALUES (@uid, @rid)
+        DECLARE @rid INT = (SELECT RoleID FROM dbo.TblRoles WHERE RoleKey=@roleKey)
+        IF @rid IS NOT NULL INSERT INTO dbo.TblUserRoles (UserID,RoleID) VALUES (@uid,@rid)
       `);
   }
 
-  // Audit log
   await db.request()
     .input('actor',   session.UserID)
     .input('target',  userID)
     .input('details', JSON.stringify(roles))
     .query(`
-      INSERT INTO dbo.TblPermissionAuditLog (ActorUserID, Action, TargetType, TargetID, Details)
-      VALUES (@actor, 'assign_roles', 'user', @target, @details)
+      INSERT INTO dbo.TblPermissionAuditLog (ActorUserID,Action,TargetType,TargetID,Details)
+      VALUES (@actor,'assign_roles','user',@target,@details)
     `);
 
   return NextResponse.json({ success: true });

@@ -80,6 +80,7 @@ const PAGE_ACCESS_RULES = [
   // Permissions (super_admin_only — no roles needed)
   { pageKey: 'admin.permissions.users', accessMode: 'super_admin_only', allowedRoles: [] },
   { pageKey: 'admin.permissions.pages', accessMode: 'super_admin_only', allowedRoles: [] },
+  { pageKey: 'admin_approvals',         accessMode: 'super_admin_only', allowedRoles: [] },
 ];
 
 async function repair(db) {

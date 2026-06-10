@@ -72,6 +72,9 @@ const PAGES = [
   // Permissions (super_admin_only)
   { key: 'admin.permissions.users',name: 'صلاحيات المستخدمين',    path: '/admin/permissions/users',         section: 'الإدارة',            access: 'super_admin_only', sort: 200 },
   { key: 'admin.permissions.pages',name: 'صلاحيات الصفحات',       path: '/admin/permissions/pages',         section: 'الإدارة',            access: 'super_admin_only', sort: 201 },
+  { key: 'admin_approvals',         name: 'طلبات الموافقة',          path: '/admin/approvals',                 section: 'الإدارة',            access: 'super_admin_only', sort: 202 },
+  // Cashier
+  { key: 'cashier_treasury_daily',  name: 'خزنة الكاشير اليومية',     path: '/cashier/treasury/daily',          section: 'الكاشير',           access: 'roles', sort: 56 },
 ];
 
 // ── Per-role page access ──────────────────────────────────────────────────────
@@ -107,7 +110,7 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
     pages: [
       'income.pos','sales.today','income_review.all_sales','income_review.today_rev',
       'reports.monthly','reports.expenses',
-      'treasury.daily','treasury.period_summary',
+      'treasury.daily','treasury.period_summary','cashier_treasury_daily',
       'queue.live','queue.new',
       'bookings.list','bookings.new','bookings.calendar',
       'hr.attendance','hr.payroll',
@@ -121,7 +124,7 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
       'income.pos','income.new',
       'sales.today','income_review.today_rev',
       'expenses.new',
-      'treasury.daily',
+      'cashier_treasury_daily',
       'queue.live','queue.new',
       'bookings.list','bookings.new',
       'operations.main',

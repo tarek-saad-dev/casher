@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { requireApprovalOrExecute } from '@/lib/approvalWorkflow';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -182,66 +183,44 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   }
 }
 
-// ─────────────────────── DELETE /api/incomes/[id] ───────────────────────
+// ───────────────────────── DELETE /api/incomes/[id] ───────────────────────
 export async function DELETE(_req: NextRequest, { params }: Ctx) {
   try {
     const session = await getSession();
     if (!session)
-      return NextResponse.json(
-        { error: "يجب تسجيل الدخول أولاً" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
 
     const { id } = await params;
     const incomeId = parseInt(id);
     if (isNaN(incomeId))
-      return NextResponse.json(
-        { error: "معرف الإيراد غير صالح" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'معرف الإيراد غير صالح' }, { status: 400 });
 
     const db = await getPool();
-    const transaction = new sql.Transaction(db);
-    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    const existing = await db.request()
+      .input('id', sql.Int, incomeId)
+      .query(`SELECT ID, invDate, GrandTolal, Notes FROM dbo.TblCashMove WHERE ID=@id AND invType=N'ايرادات'`);
 
-    try {
-      const existsRes = await new sql.Request(transaction)
-        .input("id", sql.Int, incomeId)
-        .query(
-          `SELECT ID, invID, invDate, GrandTolal FROM dbo.TblCashMove WHERE ID = @id AND invType = N'ايرادات'`,
-        );
-      if (existsRes.recordset.length === 0) {
-        await transaction.rollback();
-        return NextResponse.json(
-          { error: "الإيراد غير موجود أو ليس من نوع إيرادات" },
-          { status: 404 },
-        );
-      }
+    if (!existing.recordset.length)
+      return NextResponse.json({ error: 'الإيراد غير موجود' }, { status: 404 });
 
-      const deleted = await new sql.Request(transaction).input(
-        "id",
-        sql.Int,
-        incomeId,
-      ).query(`
-          DELETE FROM dbo.TblCashMove
-          OUTPUT DELETED.ID, DELETED.invID, DELETED.invDate, DELETED.GrandTolal AS Amount, DELETED.Notes
-          WHERE ID = @id AND invType = N'ايرادات'
-        `);
+    const result = await requireApprovalOrExecute({
+      userId:      session.UserID,
+      userName:    session.UserName,
+      requestType: 'delete_income',
+      entityId:    String(incomeId),
+      actionMethod:'DELETE',
+      endpointPath:`/api/incomes/${incomeId}`,
+      oldDataLoader: async () => existing.recordset[0],
+    });
 
-      await transaction.commit();
-      return NextResponse.json({
-        success: true,
-        deleted: deleted.recordset[0],
-      });
-    } catch (innerErr) {
-      try {
-        await transaction.rollback();
-      } catch {}
-      throw innerErr;
-    }
+    if (result.pendingApproval)
+      return NextResponse.json({ success: true, pendingApproval: true, approvalId: result.approvalId, message: result.message });
+
+    return NextResponse.json({ success: true, message: 'تم حذف الإيراد' });
+
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("[api/incomes/[id]] DELETE error:", message);
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[api/incomes/[id]] DELETE error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
