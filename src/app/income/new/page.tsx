@@ -6,6 +6,7 @@ import KpiCard from '@/components/shared/KpiCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { handleApprovalResponse } from '@/lib/handleApprovalResponse';
 import {
   Plus, Coins, Hash, TrendingUp, RefreshCw,
   Pencil, Trash2, Search, Filter, X, Loader2,
@@ -227,11 +228,14 @@ export default function NewRevenuePage() {
       const method = editingId ? 'PATCH' : 'POST';
       const res    = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data   = await res.json();
-      if (!res.ok) throw new Error(data.error);
 
-      addToast('success', editingId ? 'تم تعديل الإيراد بنجاح' : 'تم حفظ الإيراد بنجاح');
-      resetForm();
-      await loadData();
+      handleApprovalResponse(data, {
+        addToast,
+        successMessage: editingId ? 'تم تعديل الإيراد بنجاح' : 'تم حفظ الإيراد بنجاح',
+        onExecuted: async () => { resetForm(); await loadData(); },
+        onPending:  () => { resetForm(); },
+        onFailed:   (msg) => setFormError(msg),
+      });
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'خطأ في الحفظ');
     } finally {
@@ -246,10 +250,13 @@ export default function NewRevenuePage() {
     try {
       const res  = await fetch(`/api/incomes/${deleteTarget.ID}`, { method: 'DELETE' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      addToast('success', 'تم حذف الإيراد بنجاح');
-      setDeleteTarget(null);
-      await loadData();
+      handleApprovalResponse(data, {
+        addToast,
+        successMessage: 'تم حذف الإيراد بنجاح',
+        onExecuted: async () => { setDeleteTarget(null); await loadData(); },
+        onPending:  () => setDeleteTarget(null),
+        onFailed:   (msg) => addToast('error', msg),
+      });
     } catch (e) {
       addToast('error', e instanceof Error ? e.message : 'خطأ في الحذف');
     } finally {

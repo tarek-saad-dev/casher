@@ -84,6 +84,20 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
         { status: 400 },
       );
 
+    const workflow = await requireApprovalOrExecute({
+      userId:      session.UserID,
+      userName:    session.UserName,
+      requestType: 'edit_income',
+      entityId:    String(incomeId),
+      actionMethod:'PATCH',
+      endpointPath:`/api/incomes/${incomeId}`,
+      newData: { invDate, amount: Number(amount), expInId: Number(expInId), paymentMethodId: Number(paymentMethodId), notes: notes ?? null },
+    });
+    if (workflow.pendingApproval)
+      return NextResponse.json({ success: true, pendingApproval: true, approvalId: workflow.approvalId, message: workflow.message });
+    if (workflow.executed)
+      return NextResponse.json({ success: true, message: workflow.message });
+
     const db = await getPool();
     const transaction = new sql.Transaction(db);
     await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);

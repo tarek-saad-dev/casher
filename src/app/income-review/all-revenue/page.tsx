@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { handleApprovalResponse } from '@/lib/handleApprovalResponse';
 import PageHeader from '@/components/shared/PageHeader';
 import KpiCard from '@/components/shared/KpiCard';
 import EmptyState from '@/components/shared/EmptyState';
@@ -102,8 +103,11 @@ export default function AllRevenuePage() {
   const [toastState, setToastState] = useState<{ msg: string; ok: boolean } | null>(null);
   const showToast = useCallback((msg: string, ok = true) => {
     setToastState({ msg, ok });
-    setTimeout(() => setToastState(null), 3000);
+    setTimeout(() => setToastState(null), 4500);
   }, []);
+  const addToast = useCallback((type: 'success' | 'error' | 'info', message: string) => {
+    showToast(message, type !== 'error');
+  }, [showToast]);
 
   /* ── edit state ── */
   const [editingItem, setEditingItem] = useState<RevenueItem | null>(null);
@@ -313,7 +317,7 @@ export default function AllRevenuePage() {
 
     setIsSaving(true);
     try {
-      const res = await fetch(`/api/incomes/${editingItem.ID}`, {
+      const res  = await fetch(`/api/incomes/${editingItem.ID}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -324,21 +328,16 @@ export default function AllRevenuePage() {
           notes: editForm.notes,
         }),
       });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'فشل التعديل');
-      }
-
-      showToast('تم تعديل الإيراد بنجاح', true);
-      setIsEditModalOpen(false);
-      setEditingItem(null);
-      fetchData();
+      const data = await res.json();
+      handleApprovalResponse(data, {
+        addToast,
+        successMessage: 'تم تعديل الإيراد بنجاح',
+        onExecuted: () => { setIsEditModalOpen(false); setEditingItem(null); fetchData(); },
+        onPending:  () => { setIsEditModalOpen(false); setEditingItem(null); },
+        onFailed:   (msg) => showToast(msg, false),
+      });
     } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'حدث خطأ أثناء التعديل',
-        false
-      );
+      showToast(err instanceof Error ? err.message : 'حدث خطأ أثناء التعديل', false);
     } finally {
       setIsSaving(false);
     }
@@ -383,12 +382,17 @@ export default function AllRevenuePage() {
     if (!deletingId) return;
     setBusyDelete(true);
     try {
-      const res = await fetch(`/api/incomes/${deletingId.ID}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error((await res.json()).error || 'فشل الحذف');
-      setDeletingId(null);
-      fetchData();
+      const res  = await fetch(`/api/incomes/${deletingId.ID}`, { method: 'DELETE' });
+      const data = await res.json();
+      handleApprovalResponse(data, {
+        addToast,
+        successMessage: 'تم حذف الإيراد بنجاح',
+        onExecuted: () => { setDeletingId(null); fetchData(); },
+        onPending:  () => setDeletingId(null),
+        onFailed:   (msg) => addToast('error', msg),
+      });
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'حدث خطأ');
+      addToast('error', err instanceof Error ? err.message : 'حدث خطأ');
     } finally {
       setBusyDelete(false);
     }
@@ -398,16 +402,24 @@ export default function AllRevenuePage() {
   const handleDeleteCategory = async () => {
     if (!deletingCat) return;
     setBusyDelete(true);
+    let anyPending = false;
     try {
       const catItems = items.filter((i) => i.ExpINID === deletingCat.ExpINID);
       for (const item of catItems) {
-        const res = await fetch(`/api/incomes/${item.ID}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error((await res.json()).error || 'فشل حذف الإيرادات');
+        const res  = await fetch(`/api/incomes/${item.ID}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.pendingApproval) { anyPending = true; }
+        else if (!data.success && !data.ok) throw new Error(data.error || 'فشل حذف الإيرادات');
       }
       setDeletingCat(null);
-      fetchData();
+      if (anyPending) {
+        addToast('info', 'تم تسجيل طلبات الحذف، وهي في انتظار موافقة المسؤول.');
+      } else {
+        addToast('success', 'تم حذف الإيرادات بنجاح');
+        fetchData();
+      }
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'حدث خطأ');
+      addToast('error', err instanceof Error ? err.message : 'حدث خطأ');
     } finally {
       setBusyDelete(false);
     }

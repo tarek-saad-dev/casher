@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { handleApprovalResponse } from '@/lib/handleApprovalResponse';
 import { Loader2, Shield, Save, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface Role { RoleID: number; RoleKey: string; RoleName: string; }
@@ -59,15 +60,22 @@ export default function UsersPermissionsPage() {
   const save = async (uid: number) => {
     setSaving(uid);
     try {
-      const res = await fetch('/api/admin/permissions/users', {
+      const res  = await fetch('/api/admin/permissions/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userID: uid, roles: editMap[uid] || [] }),
       });
-      if (!res.ok) throw new Error(await res.text());
-      setMsg({ type: 'ok', text: 'تم الحفظ بنجاح' });
-      setTimeout(() => setMsg(null), 3000);
-      await load();
+      const data = await res.json();
+      handleApprovalResponse(data, {
+        addToast: (type: 'success' | 'error' | 'info', message: string) => {
+          setMsg({ type: type === 'error' ? 'err' : 'ok', text: message });
+          setTimeout(() => setMsg(null), 4500);
+        },
+        successMessage: 'تم حفظ الصلاحيات بنجاح',
+        onExecuted: async () => { await load(); },
+        onPending:  () => { /* editMap stays, msg shown */ },
+        onFailed:   (msg) => setMsg({ type: 'err', text: msg }),
+      });
     } catch (e: any) {
       setMsg({ type: 'err', text: e.message });
     } finally { setSaving(null); }

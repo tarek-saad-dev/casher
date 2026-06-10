@@ -124,14 +124,22 @@ export default function TreasuryClosePanel({
         })
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'فشل حفظ القفل');
+      const result = await response.json();
+
+      if (result.pendingApproval) {
+        const msg = result.approvalId
+          ? `تم تسجيل طلب قفل اليوم برقم #${result.approvalId}، وهو في انتظار موافقة المسؤول.`
+          : 'تم تسجيل طلب قفل اليوم وهو في انتظار موافقة المسؤول.';
+        setError(null);
+        alert(msg);
+        onClose();
+        return;
       }
 
-      const result = await response.json();
-      
-      // Show success and close
+      if (!response.ok) {
+        throw new Error(result.error || 'فشل حفظ القفل');
+      }
+
       onSaved();
       onClose();
       

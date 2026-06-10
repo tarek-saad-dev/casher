@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { handleApprovalResponse } from '@/lib/handleApprovalResponse';
 import { Calendar, Loader2, RotateCcw, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import TodaySalesKpiCards from '@/components/sales/TodaySalesKpiCards';
@@ -24,6 +25,15 @@ export default function TodaySalesPage() {
   const [error, setError] = useState('');
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('overview');
   const [selectedDate, setSelectedDate] = useState('');
+
+  // Toast
+  const [toasts, setToasts] = useState<{ id: number; type: 'success' | 'error' | 'info'; message: string }[]>([]);
+  const toastIdRef = useRef(0);
+  const addToast = useCallback((type: 'success' | 'error' | 'info', message: string) => {
+    const id = ++toastIdRef.current;
+    setToasts(p => [...p, { id, type, message }]);
+    setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 4500);
+  }, []);
 
   // Set page title
   useEffect(() => {
@@ -271,13 +281,15 @@ export default function TodaySalesPage() {
                     window.location.href = `/income/pos?edit=${txn.invId}`;
                   }}
                   onDelete={async (invId) => {
-                    const response = await fetch(`/api/sales/${invId}`, { method: 'DELETE' });
-                    if (response.ok) {
-                      loadSalesData();
-                    } else {
-                      const error = await response.json();
-                      alert(error.error || 'فشل حذف الفاتورة');
-                    }
+                    const res  = await fetch(`/api/sales/${invId}`, { method: 'DELETE' });
+                    const data = await res.json();
+                    handleApprovalResponse(data, {
+                      addToast,
+                      successMessage: 'تم حذف الفاتورة بنجاح',
+                      onExecuted: () => loadSalesData(),
+                      onPending:  () => { /* row stays */ },
+                      onFailed:   (msg) => addToast('error', msg),
+                    });
                   }}
                   canEdit={canDelete}
                 />
@@ -285,6 +297,18 @@ export default function TodaySalesPage() {
             </>
           )}
         </div>
+      </div>
+      {/* Toasts */}
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[80] flex flex-col gap-2 w-80" dir="rtl">
+        {toasts.map(t => (
+          <div key={t.id} className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl text-sm font-medium
+            ${t.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-300' : ''}
+            ${t.type === 'error'   ? 'bg-rose-950/90 border-rose-500/40 text-rose-300' : ''}
+            ${t.type === 'info'    ? 'bg-blue-950/90 border-blue-500/30 text-blue-300' : ''}
+          `}>
+            <span className="flex-1">{t.message}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

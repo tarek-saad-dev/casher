@@ -93,8 +93,9 @@ export default function PastDateTransferModal({
     setLoading(true);
     setError('');
 
+    const resetForm = () => { setTransferDate(''); setAmount(''); setFromPaymentMethod(''); setToPaymentMethod(''); setNotes(''); };
+
     try {
-      // Use the dedicated transfer API endpoint
       const response = await fetch('/api/treasury/transfer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -107,22 +108,26 @@ export default function PastDateTransferModal({
         })
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'فشل التحويل');
+      const result = await response.json();
+
+      if (result.pendingApproval) {
+        const msg = result.approvalId
+          ? `تم تسجيل طلب التحويل برقم #${result.approvalId}، وهو في انتظار موافقة المسؤول.`
+          : 'تم تسجيل طلب التحويل وهو في انتظار موافقة المسؤول.';
+        setError('');
+        alert(msg);
+        resetForm();
+        onClose();
+        return;
       }
 
-      const result = await response.json();
-      console.log('Transfer completed:', result);
+      if (!response.ok) {
+        throw new Error(result.error || 'فشل التحويل');
+      }
 
       onTransferComplete();
       onClose();
-      // Reset form
-      setTransferDate('');
-      setAmount('');
-      setFromPaymentMethod('');
-      setToPaymentMethod('');
-      setNotes('');
+      resetForm();
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'فشل التحويل');

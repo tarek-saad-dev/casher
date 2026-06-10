@@ -33,8 +33,23 @@ export async function PUT(
 
     const user = await getSession();
     if (!user) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
+
+    // Approval workflow
+    const workflow = await requireApprovalOrExecute({
+      userId:      user.UserID,
+      userName:    user.UserName,
+      requestType: 'edit_expense',
+      entityId:    String(expenseId),
+      actionMethod:'PUT',
+      endpointPath:`/api/expenses/${expenseId}`,
+      newData: { expInId: Number(expINID), amount: Number(grandTotal), paymentMethodId: Number(paymentMethodId), notes: notes ?? null },
+    });
+    if (workflow.pendingApproval)
+      return NextResponse.json({ success: true, pendingApproval: true, approvalId: workflow.approvalId, message: workflow.message });
+    if (workflow.executed)
+      return NextResponse.json({ success: true, message: workflow.message });
 
     const db = await getPool();
 

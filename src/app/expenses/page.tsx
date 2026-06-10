@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { handleApprovalResponse } from '@/lib/handleApprovalResponse';
 import {
   Save, Loader2, AlertTriangle, CheckCircle2,
   Banknote, CreditCard, Wallet, Receipt,
@@ -103,6 +104,15 @@ export default function ExpensesPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
+
+  // ──── Toast ────
+  const [toasts, setToasts] = useState<{ id: number; type: 'success' | 'error' | 'info'; message: string }[]>([]);
+  const toastIdRef = useRef(0);
+  const addToast = useCallback((type: 'success' | 'error' | 'info', message: string) => {
+    const id = ++toastIdRef.current;
+    setToasts(p => [...p, { id, type, message }]);
+    setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 4500);
+  }, []);
 
   // ──── Date helpers (local time, not UTC) ────
   function getLocalDateString(d: Date) {
@@ -330,23 +340,20 @@ export default function ExpensesPage() {
   // ──── Delete expense ────
   const handleDelete = useCallback(async (id: number, invID: number) => {
     if (!confirm(`هل أنت متأكد من حذف المصروف #${invID}؟`)) return;
-
     try {
-      const res = await fetch(`/api/expenses/${id}`, {
-        method: 'DELETE',
+      const res  = await fetch(`/api/expenses/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      handleApprovalResponse(data, {
+        addToast,
+        successMessage: 'تم حذف المصروف بنجاح',
+        onExecuted: () => loadExpenses(),
+        onPending:  () => { /* row stays, toast shown */ },
+        onFailed:   (msg) => addToast('error', msg),
       });
-
-      if (!res.ok) {
-        const data = await res.json();
-        alert(data.error || 'خطأ في حذف المصروف');
-        return;
-      }
-
-      loadExpenses();
     } catch {
-      alert('خطأ في الاتصال بالخادم');
+      addToast('error', 'خطأ في الاتصال بالخادم');
     }
-  }, [loadExpenses]);
+  }, [loadExpenses, addToast]);
 
   // ──── Filtered categories by group + search ────
   const filteredCategories = useMemo(() => {
@@ -920,6 +927,22 @@ export default function ExpensesPage() {
         expense={receiptExpense}
         onClose={() => setReceiptExpense(null)}
       />
+
+      {/* Toast notifications */}
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[80] flex flex-col gap-2 w-80" dir="rtl">
+        {toasts.map(t => (
+          <div key={t.id} className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl text-sm font-medium
+            ${t.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-300' : ''}
+            ${t.type === 'error'   ? 'bg-rose-950/90 border-rose-500/40 text-rose-300' : ''}
+            ${t.type === 'info'    ? 'bg-blue-950/90 border-blue-500/30 text-blue-300' : ''}
+          `}>
+            {t.type === 'success' && <CheckCircle2 className="w-4 h-4 shrink-0" />}
+            {t.type === 'error'   && <AlertTriangle className="w-4 h-4 shrink-0" />}
+            {t.type === 'info'    && <AlertTriangle className="w-4 h-4 shrink-0 text-blue-400" />}
+            <span className="flex-1">{t.message}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

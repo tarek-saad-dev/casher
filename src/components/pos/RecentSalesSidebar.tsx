@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { handleApprovalResponse } from '@/lib/handleApprovalResponse';
 import { 
   ShoppingCart, Edit2, Trash2, User, Phone, Calendar, 
   CreditCard, Scissors, Clock, MoreVertical, Loader2, RefreshCw
@@ -60,6 +61,15 @@ export default function RecentSalesSidebar({
   const [showMore, setShowMore] = useState(false);
   const [expandedSale, setExpandedSale] = useState<number | null>(null);
   const [saleDetails, setSaleDetails] = useState<{ [key: number]: SaleDetail[] }>({});
+
+  // Toast
+  const [toasts, setToasts] = useState<{ id: number; type: 'success' | 'error' | 'info'; message: string }[]>([]);
+  const toastIdRef = useRef(0);
+  const addToast = useCallback((type: 'success' | 'error' | 'info', message: string) => {
+    const id = ++toastIdRef.current;
+    setToasts(p => [...p, { id, type, message }]);
+    setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 4500);
+  }, []);
 
   const loadRecentSales = async () => {
     setLoading(true);
@@ -122,26 +132,19 @@ export default function RecentSalesSidebar({
   }, []);
 
   const handleDelete = async (saleId: number) => {
-    if (!confirm('هل أنت متأكد من حذف هذه العملية؟ هذا الإجراء لا يمكن التراجع عنه.')) {
-      return;
-    }
-
+    if (!confirm('هل أنت متأكد من حذف هذه العملية؟')) return;
     try {
-      const response = await fetch(`/api/sales/${saleId}`, {
-        method: 'DELETE',
+      const res  = await fetch(`/api/sales/${saleId}`, { method: 'DELETE' });
+      const data = await res.json();
+      handleApprovalResponse(data, {
+        addToast,
+        successMessage: 'تم حذف الفاتورة بنجاح',
+        onExecuted: async () => { await loadRecentSales(); onRefresh?.(); },
+        onPending:  () => { /* row stays, toast shown */ },
+        onFailed:   (msg) => addToast('error', msg),
       });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'فشل حذف العملية');
-      }
-
-      // Refresh the sales list
-      await loadRecentSales();
-      onRefresh?.();
-    } catch (e: any) {
-      setError(e.message);
-      setTimeout(() => setError(''), 3000);
+    } catch (e) {
+      addToast('error', e instanceof Error ? e.message : 'خطأ غير متوقع');
     }
   };
 
@@ -507,6 +510,19 @@ export default function RecentSalesSidebar({
           )}
         </div>
       ))}
+
+      {/* Toast notifications */}
+      <div className="fixed bottom-4 left-4 z-[80] flex flex-col gap-2 w-72" dir="rtl">
+        {toasts.map(t => (
+          <div key={t.id} className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl text-sm font-medium
+            ${t.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-300' : ''}
+            ${t.type === 'error'   ? 'bg-rose-950/90 border-rose-500/40 text-rose-300' : ''}
+            ${t.type === 'info'    ? 'bg-blue-950/90 border-blue-500/30 text-blue-300' : ''}
+          `}>
+            <span className="flex-1">{t.message}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

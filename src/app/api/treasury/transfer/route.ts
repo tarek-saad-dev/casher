@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
-import { requireRole, isAuthResult } from '@/lib/api-auth';
 import { requireApprovalOrExecute } from '@/lib/approvalWorkflow';
 
 // POST /api/treasury/transfer — Transfer amount between payment methods
@@ -10,8 +9,6 @@ import { requireApprovalOrExecute } from '@/lib/approvalWorkflow';
 // If no transferDate, enforces active business day and shift
 export async function POST(req: NextRequest) {
   try {
-    const auth = await requireRole(['admin', 'manager', 'accountant']);
-    if (!isAuthResult(auth)) return auth; // 401 or 403
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
 

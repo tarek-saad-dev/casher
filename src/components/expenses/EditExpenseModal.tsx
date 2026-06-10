@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { handleApprovalResponse } from '@/lib/handleApprovalResponse';
 import { X, Save, Loader2, History, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -66,13 +67,21 @@ export default function EditExpenseModal({
         })
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'فشل تحديث المصروف');
-      }
-
-      onSaved();
-      onClose();
+      const data = await response.json();
+      handleApprovalResponse(data, {
+        addToast: (type: 'success' | 'error' | 'info', message: string) => {
+          if (type === 'info' || type === 'success') {
+            onSaved();
+            onClose();
+          } else {
+            setError(message);
+          }
+        },
+        successMessage: 'تم تحديث المصروف بنجاح',
+        onExecuted: () => { onSaved(); onClose(); },
+        onPending:  () => { onSaved(); onClose(); },
+        onFailed:   (msg) => setError(msg),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'حدث خطأ غير متوقع');
     } finally {

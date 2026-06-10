@@ -217,7 +217,57 @@ export const APPROVAL_ACTIONS: Record<string, ActionDefinition> = {
       }
     },
   },
-  // 9. Edit sale invoice (update header + details)
+  // 9. Edit income / revenue record
+  edit_income: {
+    label: 'تعديل إيراد',
+    entityType: 'TblCashMove',
+    riskLevel: 'high',
+    async execute({ entityId, newData }) {
+      if (!entityId || !newData) throw new Error('entityId و newData مطلوبان لتعديل الإيراد');
+      const id = parseInt(entityId);
+      const d = newData as Record<string, unknown>;
+      const db = await getPool();
+      await db.request()
+        .input('id',    sql.Int,            id)
+        .input('date',  sql.Date,           new Date(d.invDate as string))
+        .input('expIn', sql.Int,            Number(d.expInId))
+        .input('amt',   sql.Decimal(10, 2), Number(d.amount))
+        .input('notes', sql.NVarChar(sql.MAX), (d.notes as string) ?? null)
+        .input('pm',    sql.Int,            Number(d.paymentMethodId))
+        .query(`
+          UPDATE dbo.TblCashMove
+          SET invDate=@date, ExpINID=@expIn, GrandTolal=@amt, Notes=@notes, PaymentMethodID=@pm
+          WHERE ID=@id AND invType=N'ايرادات'
+        `);
+    },
+  },
+
+  // 10. Edit expense record
+  edit_expense: {
+    label: 'تعديل مصروف',
+    entityType: 'TblCashMove',
+    riskLevel: 'high',
+    async execute({ entityId, newData }) {
+      if (!entityId || !newData) throw new Error('entityId و newData مطلوبان لتعديل المصروف');
+      const id = parseInt(entityId);
+      const d = newData as Record<string, unknown>;
+      const db = await getPool();
+      await db.request()
+        .input('id',    sql.Int,            id)
+        .input('date',  sql.Date,           new Date(d.invDate as string))
+        .input('expIn', sql.Int,            Number(d.expInId))
+        .input('amt',   sql.Decimal(10, 2), Number(d.amount))
+        .input('notes', sql.NVarChar(sql.MAX), (d.notes as string) ?? null)
+        .input('pm',    sql.Int,            Number(d.paymentMethodId))
+        .query(`
+          UPDATE dbo.TblCashMove
+          SET invDate=@date, ExpINID=@expIn, GrandTolal=@amt, Notes=@notes, PaymentMethodID=@pm
+          WHERE ID=@id AND invType=N'مصروفات'
+        `);
+    },
+  },
+
+  // 11. Edit sale invoice (update header + details)
   edit_invoice: {
     label: 'تعديل فاتورة مبيعات',
     entityType: 'TblinvServHead',

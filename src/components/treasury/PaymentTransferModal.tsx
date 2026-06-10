@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { handleApprovalResponse } from '@/lib/handleApprovalResponse';
 import { X, ArrowRightLeft, Loader2, Wallet } from 'lucide-react';
 
 interface PaymentMethod {
@@ -93,17 +94,17 @@ export default function PaymentTransferModal({ isOpen, onClose, onSuccess }: Pay
 
       const data = await response.json();
 
-      if (response.ok) {
-        setSuccess(`تم التحويل بنجاح: ${data.amount} ج.م من ${data.fromPaymentMethod} إلى ${data.toPaymentMethod}`);
-        // Reset form
-        setFromMethodId('');
-        setToMethodId('');
-        setAmount('');
-        setNotes('');
-        // Call success callback after a delay
-        setTimeout(() => {
-          onSuccess?.();
-        }, 1500);
+      const resetForm = () => { setFromMethodId(''); setToMethodId(''); setAmount(''); setNotes(''); };
+
+      if (data.pendingApproval) {
+        setSuccess(data.approvalId
+          ? `تم تسجيل طلب التحويل برقم #${data.approvalId}، وهو في انتظار موافقة المسؤول.`
+          : 'تم تسجيل طلب التحويل بنجاح، وهو في انتظار موافقة المسؤول.');
+        resetForm();
+      } else if (data.success || response.ok) {
+        setSuccess('تم التحويل بنجاح');
+        resetForm();
+        setTimeout(() => { onSuccess?.(); }, 1200);
       } else {
         setError(data.error || 'فشل تنفيذ التحويل');
       }

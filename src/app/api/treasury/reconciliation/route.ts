@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import sql from 'mssql';
-import { requireRole, isAuthResult } from '@/lib/api-auth';
 import { requireApprovalOrExecute } from '@/lib/approvalWorkflow';
 import { getSession } from '@/lib/session';
 import type { 
@@ -32,9 +31,6 @@ function getVarianceStatus(variance: number, systemAmount: number): VarianceStat
  * Save end-of-day reconciliation
  */
 export async function POST(request: NextRequest) {
-  const auth = await requireRole(['admin', 'accountant']);
-  if (!isAuthResult(auth)) return auth;
-
   let db;
 
   try {
