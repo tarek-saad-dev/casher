@@ -107,6 +107,7 @@ const NAV_SECTIONS: NavSection[] = [
     icon: Wallet,
     items: [
       { href: '/treasury/daily', label: 'قفل اليوم', icon: Lock },
+      { href: '/treasury/period-summary', label: 'ملخص الخزنة الدوري', icon: Calendar },
       { href: '/treasury/movement', label: 'حركة الخزنة', icon: ArrowLeftRight },
       { href: '/treasury/summary', label: 'ملخص حسب الدفع', icon: BarChart3 },
       { href: '/treasury/shift-close', label: 'تقفيل الوردية', icon: Clock },

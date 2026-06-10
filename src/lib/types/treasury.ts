@@ -154,3 +154,36 @@ export interface UserOption {
   userId: number;
   userName: string;
 }
+
+// ─── Period Summary (multi-day aggregated table) ────────────────────────────
+
+export interface PeriodPaymentMethod {
+  id: number;
+  name: string;
+}
+
+export interface PeriodDayRow {
+  date: string;
+  totalIncome: number;
+  totalExpense: number;
+  netTotal: number;
+  transactionsCount: number;
+  status: 'open' | 'closed' | 'unknown';
+  paymentTotals: Record<string, number>;
+}
+
+export interface PeriodSummary {
+  totalIncome: number;
+  totalExpense: number;
+  netTotal: number;
+  totalByPaymentMethod: Record<string, number>;
+  daysCount: number;
+  transactionsCount: number;
+}
+
+export interface TreasuryPeriodSummaryResponse {
+  paymentMethods: PeriodPaymentMethod[];
+  summary: PeriodSummary;
+  days: PeriodDayRow[];
+  users: { userId: number; userName: string }[];
+}
