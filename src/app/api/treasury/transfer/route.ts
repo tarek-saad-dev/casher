@@ -100,8 +100,10 @@ export async function POST(req: NextRequest) {
       const shiftResult = await db.request()
         .input("shiftUserID", sql.Int, session.UserID)
         .query(`
-          SELECT TOP 1 ID, UserID, ShiftID FROM [dbo].[TblShiftMove]
-          WHERE Status = 1 AND UserID = @shiftUserID
+          SELECT TOP 1 ID, ShiftID FROM [dbo].[TblShiftMove]
+          WHERE Status = 1 AND ID IN (
+            SELECT ID FROM [dbo].[TblShiftMove] WHERE Status = 1
+          )
           ORDER BY ID DESC
         `);
       if (shiftResult.recordset.length === 0) {

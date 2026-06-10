@@ -448,7 +448,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       .input("notes", sql.NVarChar, `تم الاستقبال من حجز #${bookingId}`)
       .query(`
         INSERT INTO [dbo].[QueueTicketHistory]
-          (QueueTicketID, OldStatus, NewStatus, ActionType, ActionByUserID, Notes)
+          (QueueTicketID, OldStatus, NewStatus, ActionType, UserID, Notes)
         VALUES (@ticketId, NULL, 'waiting', 'booking_arrived', @userId, @notes)
       `)
       .catch((e) => console.error("[booking arrive] history failed:", e));

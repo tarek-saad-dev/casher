@@ -50,7 +50,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       .query(`
         SELECT h.*, u.UserName
         FROM [dbo].[QueueTicketHistory] h
-        LEFT JOIN [dbo].[TblUser] u ON u.UserID = h.ActionByUserID
+        LEFT JOIN [dbo].[TblUser] u ON u.UserID = h.UserID
         WHERE h.QueueTicketID = @id
         ORDER BY h.ActionAt DESC
       `);
@@ -105,7 +105,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
         .input("notes",     sql.NVarChar, notes || null)
         .query(`
           INSERT INTO [dbo].[QueueTicketHistory]
-            (QueueTicketID, OldStatus, NewStatus, ActionType, ActionByUserID, Notes)
+            (QueueTicketID, OldStatus, NewStatus, ActionType, UserID, Notes)
           VALUES (@ticketId, @oldStatus, @newStatus, @action, @userID, @notes)
         `);
 
@@ -149,7 +149,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       .input("notes",     sql.NVarChar, notes || null)
       .query(`
         INSERT INTO [dbo].[QueueTicketHistory]
-          (QueueTicketID, OldStatus, NewStatus, ActionType, ActionByUserID, Notes)
+          (QueueTicketID, OldStatus, NewStatus, ActionType, UserID, Notes)
         VALUES (@ticketId, @oldStatus, @newStatus, @action, @userID, @notes)
       `);
 
