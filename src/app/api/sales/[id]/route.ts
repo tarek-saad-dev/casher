@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { requireRole, isAuthResult } from '@/lib/api-auth';
 
 // GET /api/sales/[id] — Get sale by invID for printing
 export async function GET(
@@ -347,25 +348,19 @@ export async function PUT(
   }
 }
 
-// DELETE /api/sales/[id] — Delete sale invoice (admin/supervisor only)
+// DELETE /api/sales/[id] — Delete sale invoice (admin only)
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const authCheck = await requireRole(['admin']);
+  if (!isAuthResult(authCheck)) return authCheck;
+
   try {
     const { id } = await params;
     const invID = parseInt(id);
     if (isNaN(invID)) {
       return NextResponse.json({ error: "Invalid invID" }, { status: 400 });
-    }
-
-    // Check permissions
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    if (session.UserLevel !== "admin") {
-      return NextResponse.json({ error: "Permission denied" }, { status: 403 });
     }
 
     const db = await getPool();

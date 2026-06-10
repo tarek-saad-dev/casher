@@ -18,6 +18,7 @@ interface Props {
     userId: number | null;
   };
   onClose: () => void;
+  canDelete?: boolean; // default true — set false for cashier view
 }
 
 type DirectionFilter = 'all' | 'in' | 'out';
@@ -27,6 +28,7 @@ export default function PaymentMethodDetailsModal({
   paymentMethodName,
   filters,
   onClose,
+  canDelete = true,
 }: Props) {
   const [movements, setMovements] = useState<TreasuryMovement[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -270,7 +272,7 @@ export default function PaymentMethodDetailsModal({
                     <th className="px-3 py-2.5 text-right font-medium text-emerald-400">وارد</th>
                     <th className="px-3 py-2.5 text-right font-medium text-rose-400">صادر</th>
                     <th className="px-3 py-2.5 text-right font-medium">صافي</th>
-                    <th className="px-3 py-2.5 text-center font-medium">إجراء</th>
+                    {canDelete && <th className="px-3 py-2.5 text-center font-medium">إجراء</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800/60">
@@ -329,22 +331,24 @@ export default function PaymentMethodDetailsModal({
                         }`}>
                           {rowNet >= 0 ? '+' : ''}{fmt(rowNet)}
                         </td>
-                        <td className="px-3 py-2 text-center whitespace-nowrap">
-                          {m.invType === 'مبيعات' && (
-                            <button
-                              onClick={() => handleDelete(m.invId, m.invType)}
-                              disabled={deletingId === m.invId}
-                              className="p-1.5 hover:bg-rose-500/20 rounded-lg transition-colors text-zinc-500 hover:text-rose-400 disabled:opacity-50"
-                              title="مسح الفاتورة"
-                            >
-                              {deletingId === m.invId ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-3.5 w-3.5" />
-                              )}
-                            </button>
-                          )}
-                        </td>
+                        {canDelete && (
+                          <td className="px-3 py-2 text-center whitespace-nowrap">
+                            {m.invType === 'مبيعات' && (
+                              <button
+                                onClick={() => handleDelete(m.invId, m.invType)}
+                                disabled={deletingId === m.invId}
+                                className="p-1.5 hover:bg-rose-500/20 rounded-lg transition-colors text-zinc-500 hover:text-rose-400 disabled:opacity-50"
+                                title="مسح الفاتورة"
+                              >
+                                {deletingId === m.invId ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -359,7 +363,7 @@ export default function PaymentMethodDetailsModal({
                     <td className={`px-3 py-2.5 text-right ${net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {net >= 0 ? '+' : ''}{fmt(net)}
                     </td>
-                    <td className="px-3 py-2.5"></td>
+                    {canDelete && <td className="px-3 py-2.5"></td>}
                   </tr>
                 </tfoot>
               </table>

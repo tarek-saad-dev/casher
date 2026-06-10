@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Loader2, FileKey2, Save, RefreshCw, Globe, Lock, Users,
-  Plus, X, Search, ChevronDown, ChevronUp, Info,
+  Plus, X, Search, ChevronDown, ChevronUp, Info, AlertTriangle,
 } from 'lucide-react';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -22,6 +22,26 @@ const EMPTY_FORM = {
   section: '', accessMode: 'roles' as 'all' | 'roles' | 'super_admin_only',
   sortOrder: 999, roles: [] as string[],
 };
+
+// Sections considered sensitive — warn before setting accessMode='all'
+const SENSITIVE_SECTIONS = [
+  'الموظفين', 'الموارد البشرية', 'الخزنة', 'الميزانية',
+  'المصروفات', 'مراجعة المصروفات', 'مراجعة المدخلات',
+  'الإدارة', 'التدقيق', 'المرتبات',
+];
+
+const SENSITIVE_PAGE_KEYS = [
+  'reports.emp_services', 'hr.employees', 'hr.attendance', 'hr.payroll', 'hr.advances', 'hr.salaries',
+  'admin.settings', 'admin.users', 'admin.payment_methods', 'admin.shift',
+  'admin.permissions.users', 'admin.permissions.pages',
+  'treasury.monthly_close', 'treasury.shift_close', 'budget.main',
+  'reports.expenses', 'income_review.all_rev', 'income_review.payments',
+];
+
+function isSensitivePage(page: PageRow): boolean {
+  return SENSITIVE_PAGE_KEYS.includes(page.pageKey) ||
+    SENSITIVE_SECTIONS.some(s => page.section?.includes(s));
+}
 
 const ACCESS_MODES = [
   { value: 'all',              label: 'للجميع',          icon: Globe,  cls: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25', desc: 'أي مستخدم مسجّل' },
@@ -345,8 +365,25 @@ export default function PagesPermissionsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const setMode = (key: string, mode: string) =>
-    setEditMap(prev => ({ ...prev, [key]: { ...prev[key], accessMode: mode } }));
+  const [sensitiveConfirm, setSensitiveConfirm] = useState<{ pageKey: string; pageName: string } | null>(null);
+  const [pendingMode, setPendingMode] = useState<string>('');
+
+  const setMode = (page: PageRow, mode: string) => {
+    if (mode === 'all' && isSensitivePage(page)) {
+      setSensitiveConfirm({ pageKey: page.pageKey, pageName: page.pageName });
+      setPendingMode(mode);
+      return;
+    }
+    setEditMap(prev => ({ ...prev, [page.pageKey]: { ...prev[page.pageKey], accessMode: mode } }));
+  };
+
+  const confirmSensitiveMode = () => {
+    if (sensitiveConfirm && pendingMode) {
+      setEditMap(prev => ({ ...prev, [sensitiveConfirm.pageKey]: { ...prev[sensitiveConfirm.pageKey], accessMode: pendingMode } }));
+    }
+    setSensitiveConfirm(null);
+    setPendingMode('');
+  };
 
   const toggleR = (key: string, role: string) =>
     setEditMap(prev => {
@@ -391,6 +428,44 @@ export default function PagesPermissionsPage() {
 
   return (
     <>
+      {/* ── Sensitive page confirmation modal ── */}
+      {sensitiveConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" dir="rtl">
+          <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={() => setSensitiveConfirm(null)} />
+          <div className="relative w-full max-w-sm bg-zinc-900 border border-rose-500/30 rounded-2xl shadow-2xl p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-rose-500/15 border border-rose-500/25 flex-shrink-0">
+                <AlertTriangle className="w-5 h-5 text-rose-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white">صفحة حساسة</h3>
+                <p className="text-xs text-zinc-400 mt-1">
+                  <span className="text-zinc-200 font-medium">"{sensitiveConfirm.pageName}"</span> صفحة حساسة.
+                  جعلها متاحة للكل قد يسبب كشف بيانات مالية أو تحكم غير مصرح.
+                </p>
+              </div>
+            </div>
+            <div className="bg-rose-500/5 border border-rose-500/15 rounded-xl px-3 py-2.5 text-[11px] text-rose-300/80">
+              هل أنت متأكد أنك تريد تغيير وضع الوصول إلى <span className="font-bold">للجميع</span>؟
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setSensitiveConfirm(null)}
+                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium border border-zinc-700/50 transition-colors"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={confirmSensitiveMode}
+                className="px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-sm font-medium border border-rose-500/25 transition-colors"
+              >
+                نعم، أنا متأكد
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <AddPageModal
         open={showAdd}
         onClose={() => setShowAdd(false)}
@@ -503,7 +578,7 @@ export default function PagesPermissionsPage() {
                                 {ACCESS_MODES.map(m => (
                                   <button
                                     key={m.value}
-                                    onClick={() => setMode(page.pageKey, m.value)}
+                                    onClick={() => setMode(page, m.value)}
                                     title={m.desc}
                                     className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-colors ${edit.accessMode === m.value ? m.cls : 'bg-zinc-800/50 text-zinc-600 border-zinc-700/30 hover:border-zinc-600/50'}`}
                                   >

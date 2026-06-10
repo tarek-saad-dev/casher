@@ -6,13 +6,14 @@ import { useMyAccess, type UserAccess } from '@/lib/hooks/useMyAccess';
 interface PermissionsCtx {
   access: UserAccess | null;
   loading: boolean;
+  isAuthenticated: boolean;
   canSeePage: (path: string) => boolean;
   hasRole: (role: string) => boolean;
   reload: () => void;
 }
 
 const Ctx = createContext<PermissionsCtx>({
-  access: null, loading: true,
+  access: null, loading: true, isAuthenticated: false,
   canSeePage: () => false,
   hasRole: () => false,
   reload: () => {},

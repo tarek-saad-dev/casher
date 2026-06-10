@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { requireRole, isAuthResult } from '@/lib/api-auth';
 
 // POST /api/expenses/past-date - Add expense for past dates
 export async function POST(req: NextRequest) {
+  const auth = await requireRole(['admin', 'manager', 'accountant']);
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const session = await getSession();
     if (!session)
-      return NextResponse.json(
-        { error: "يجب تسجيل الدخول أولاً" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
 
     const body = await req.json();
     const { invDate, invTime, amount, expINID, paymentMethodId, notes } = body;

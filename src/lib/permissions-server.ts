@@ -17,9 +17,10 @@ async function permTablesExist(db: import('mssql').ConnectionPool): Promise<bool
  * Falls back gracefully if tables don't exist yet (before migration).
  */
 export async function getUserAccess(userID: number, userName: string, userLevel: string): Promise<UserAccess> {
+  // Fallback: no roles, no pages — deny all (pre-migration or error state)
   const fallback: UserAccess = {
     userID, userName, userLevel,
-    roles: userLevel === 'admin' ? ['admin'] : ['cashier'],
+    roles: [],
     isSuperAdmin: false,
     allowedPagePaths: [],
     allowedPageKeys: [],
@@ -74,9 +75,9 @@ export async function getUserAccess(userID: number, userName: string, userLevel:
 export async function canAccessPath(userID: number, userName: string, userLevel: string, path: string): Promise<boolean> {
   const access = await getUserAccess(userID, userName, userLevel);
   if (access.isSuperAdmin) return true;
+  // Exact match only — no prefix/children inheritance
   const clean = path.split('?')[0].replace(/\/$/, '') || '/';
   return access.allowedPagePaths.some((p: string) => {
-    const np = p.replace(/\/$/, '') || '/';
-    return clean === np || clean.startsWith(np + '/');
+    return (p.replace(/\/$/, '') || '/') === clean;
   });
 }

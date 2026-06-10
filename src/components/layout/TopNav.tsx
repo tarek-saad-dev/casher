@@ -1,135 +1,18 @@
 'use client';
 
-import { useState, useRef, useCallback, CSSProperties } from 'react';
+import { useState, useRef, useCallback, CSSProperties, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  LayoutGrid, PlusCircle, CreditCard, ClipboardList, TrendingUp,
-  History, Receipt, Wallet, Lock, ArrowLeftRight, BarChart3, Clock,
-  Calculator, Settings, Scissors, Tags, Shield, Activity, Star,
-  UsersRound, FileBarChart, ChevronDown, Calendar,
-} from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { DbConnectionStatus } from '@/components/db/DbConnectionStatus';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SHARED DATA & THEMES (mirrors MainNav — single source of truth)
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface NavTheme { rgb: string; emoji: string }
-
-const NAV_THEMES: Record<string, NavTheme> = {
-  'المدخلات':          { rgb: '214,168,79',  emoji: '📥' },
-  'مراجعة المدخلات':   { rgb: '59,130,246',  emoji: '📊' },
-  'المصروفات':         { rgb: '244,63,94',   emoji: '💸' },
-  'مراجعة المصروفات':  { rgb: '168,85,247',  emoji: '📋' },
-  'الخزنة':            { rgb: '16,185,129',  emoji: '🏦' },
-  'الميزانية':         { rgb: '6,182,212',   emoji: '💰' },
-  'الموارد البشرية':   { rgb: '236,72,153',  emoji: '�' },
-  'الإدارة':           { rgb: '148,163,184', emoji: '⚙️' },
-};
-
-const getTheme = (title: string): NavTheme =>
-  NAV_THEMES[title] ?? { rgb: '161,161,170', emoji: '📌' };
-
-interface NavItem {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-  disabled?: boolean;
-}
-
-interface NavSection {
-  title: string;
-  icon: LucideIcon;
-  items: NavItem[];
-}
-
-const NAV_SECTIONS: NavSection[] = [
-  {
-    title: 'المدخلات',
-    icon: LayoutGrid,
-    items: [
-      { href: '/income/pos',        label: 'نقطة البيع',    icon: LayoutGrid },
-      { href: '/income/new',        label: 'إيراد جديد',   icon: PlusCircle },
-      { href: '/income/collection', label: 'تحصيل / دفعة', icon: CreditCard, disabled: true },
-    ],
-  },
-  {
-    title: 'مراجعة المدخلات',
-    icon: ClipboardList,
-    items: [
-      { href: '/sales/today',                 label: 'مبيعات اليوم',   icon: TrendingUp },
-      { href: '/income-review/all-sales',     label: 'كل المبيعات',   icon: History    },
-      { href: '/income-review/today-revenue', label: 'إيرادات اليوم', icon: Wallet     },
-      { href: '/income-review/all-revenue',   label: 'كل الإيرادات', icon: History    },
-      { href: '/income-review/payments',      label: 'المدفوعات',     icon: CreditCard },
-    ],
-  },
-  {
-    title: 'المصروفات',
-    icon: Receipt,
-    items: [
-      { href: '/expenses', label: 'تسجيل مصروف', icon: Receipt },
-    ],
-  },
-  {
-    title: 'مراجعة المصروفات',
-    icon: BarChart3,
-    items: [
-      { href: '/reports/expenses/monthly',        label: 'تقرير المصروفات',  icon: BarChart3   },
-    ],
-  },
-  {
-    title: 'الخزنة',
-    icon: Wallet,
-    items: [
-      { href: '/treasury/daily',       label: 'قفل اليوم',       icon: Lock           },
-      { href: '/treasury/movement',    label: 'حركة الخزنة',     icon: ArrowLeftRight },
-      { href: '/treasury/summary',     label: 'ملخص حسب الدفع', icon: BarChart3      },
-      { href: '/treasury/shift-close', label: 'تقفيل الوردية',   icon: Clock          },
-    ],
-  },
-  {
-    title: 'الميزانية',
-    icon: Calculator,
-    items: [
-      { href: '/budget', label: 'الميزانية الشهرية', icon: Calculator },
-    ],
-  },
-  // ─── HR Module (Single with nested items) ─────────────────────────
-  {
-    title: 'الموارد البشرية',
-    icon: UsersRound,
-    items: [
-      { href: '/admin/hr',              label: 'الموظفون',       icon: UsersRound },
-      { href: '/admin/attendance',      label: 'متابعة الحضور', icon: Clock      },
-      { href: '/admin/attendance/daily-payroll', label: 'يوميات الموظفين', icon: Calendar },
-      { href: '/expenses-review/advances', label: 'سلف الموظفين', icon: CreditCard },
-      { href: '/expenses-review/salaries', label: 'مرتبات العاملين', icon: Wallet     },
-    ],
-  },
-  {
-    title: 'الإدارة',
-    icon: Settings,
-    items: [
-      { href: '/admin/operations',      label: 'مركز التشغيل',   icon: Activity   },
-      { href: '/admin/users',           label: 'المستخدمون',      icon: Shield     },
-      { href: '/admin/services',        label: 'الخدمات',         icon: Scissors   },
-      { href: '/admin/payment-methods', label: 'طرق الدفع',      icon: CreditCard },
-      { href: '/admin/categories',      label: 'التصنيفات',       icon: Tags       },
-      { href: '/admin/loyalty',         label: 'إدارة النقاط',   icon: Star       },
-      { href: '/admin/shift',           label: 'الورديات',        icon: Clock      },
-      { href: '/admin/settings',        label: 'الإعدادات',       icon: Settings   },
-    ],
-  },
-];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ROUTE HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
-
-function normPath(p: string) { return p.replace(/\/+$/, '') || '/'; }
+import { usePermissions } from '@/components/providers/PermissionsProvider';
+import {
+  NAV_SECTIONS, getTheme,
+  isRouteActive as navIsRouteActive,
+  getActiveSectionTitle,
+} from './nav-config';
+import type { NavItem, NavSection, NavTheme } from './nav-config';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DROPDOWN PANEL
@@ -425,23 +308,21 @@ function CategoryPill({ section, isActive, isDimmed, isRouteActive }: PillProps)
 
 export default function TopNav() {
   const pathname = usePathname();
+  const { canSeePage, access, loading: permLoading, isAuthenticated } = usePermissions();
 
-  const isRouteActive = (href: string): boolean => {
-    if (!href || href === '#') return false;
-    const cur = normPath(pathname);
-    const tgt = normPath(href);
-    if (tgt === '/') return cur === '/';
-    return cur === tgt || cur.startsWith(tgt + '/');
-  };
+  const isItemActive = (href: string) => navIsRouteActive(pathname, href);
+  const activeSectionTitle = getActiveSectionTitle(pathname);
 
-  const activeSectionTitle: string | null = (() => {
-    for (const section of NAV_SECTIONS) {
-      for (const item of section.items) {
-        if (!item.disabled && isRouteActive(item.href)) return section.title;
-      }
-    }
-    return null;
-  })();
+  // Filter sections — same logic as MainNav
+  const visibleSections = useMemo(() => {
+    if (permLoading || !isAuthenticated || !access) return [];
+    return NAV_SECTIONS.map(section => ({
+      ...section,
+      items: section.items.filter(item => !item.disabled && canSeePage(item.href)),
+    })).filter(section => section.items.length > 0);
+  }, [access, permLoading, isAuthenticated, canSeePage]);
+
+  if (permLoading || !isAuthenticated || !access) return null;
 
   return (
     <nav
@@ -454,14 +335,13 @@ export default function TopNav() {
         backgroundColor: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: 9999,
-        // overflow visible so dropdown escapes bar
         overflow: 'visible',
         maxWidth: 'calc(100vw - 520px)',
         whiteSpace: 'nowrap',
         flexShrink: 0,
       }}
     >
-      {NAV_SECTIONS.map(section => {
+      {visibleSections.map(section => {
         const isActive = activeSectionTitle === section.title;
         const isDimmed = activeSectionTitle !== null && !isActive;
         return (
@@ -470,7 +350,7 @@ export default function TopNav() {
             section={section}
             isActive={isActive}
             isDimmed={isDimmed}
-            isRouteActive={isRouteActive}
+            isRouteActive={isItemActive}
           />
         );
       })}
