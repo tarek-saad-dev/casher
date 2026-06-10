@@ -23,6 +23,25 @@ if not exist "node_modules" (
 )
 
 echo [OK] Project folder: C:\Users\user\Desktop\pos-system
+
+:: Check if print-service node_modules exists
+if not exist "print-service\node_modules" (
+    echo [!] Print service dependencies not found! Installing...
+    cd print-service
+    npm install
+    cd ..
+    if errorlevel 1 (
+        echo [X] Print service npm install failed!
+        pause
+        exit /b 1
+    )
+)
+
+:: Start the print service in a new window
+echo [OK] Starting Print Service on port 7788...
+start "POS Print Service" cmd /k "cd /d C:\Users\user\Desktop\pos-system\print-service && npm start"
+timeout /t 2 /nobreak >nul
+
 echo [OK] Starting Next.js dev server on port 5500...
 echo.
 echo ------------------------------------------
@@ -31,10 +50,10 @@ echo  Network:  http://192.168.1.2:5500
 echo ------------------------------------------
 echo.
 
-:: Start Chrome in background (give server 2 seconds to start)
-echo [OK] Opening Chrome at http://localhost:5500/ ...
+:: Start Edge in background (give server 2 seconds to start)
+echo [OK] Opening Edge at http://localhost:5500/ ...
 timeout /t 2 /nobreak >nul
-start chrome "http://localhost:5500/"
+start msedge "http://localhost:5500/"
 
 echo.
 echo Press Ctrl+C to stop the server

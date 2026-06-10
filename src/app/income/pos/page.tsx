@@ -109,11 +109,10 @@ export default function PosPage() {
   const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
   const [vouchersOpen, setVouchersOpen] = useState(false);
 
-  // ───────────────── Wrap setCustomer to auto-open vouchers modal ─────────────────
+  // ───────────────── Wrap setCustomer ─────────────────
   const setCustomer = useCallback((c: Customer | null) => {
     setCustomerBase(c);
-    if (c) setVouchersOpen(true);
-    else setVouchersOpen(false);
+    if (!c) setVouchersOpen(false);
   }, [setCustomerBase]);
 
   // ───────────────── Sync shift from session into sale state ─────────────────
