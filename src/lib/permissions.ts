@@ -1,7 +1,6 @@
-// ──── Permission definitions ────
-// Maps TblUser.UserLevel → array of capability strings.
-// This is a client-side permission model that requires NO database changes.
-
+// ──── Permission helpers ────
+// Legacy functions — safe for both client and server.
+// Server-only DB functions are in permissions-server.ts
 export const PERMISSION_MAP: Record<string, string[]> = {
   admin: [
     'pos.sell',
@@ -21,12 +20,12 @@ export const PERMISSION_MAP: Record<string, string[]> = {
 export function getPermissions(userLevel: string): string[] {
   return PERMISSION_MAP[userLevel] || [];
 }
-
 export function hasPermission(userLevel: string, permission: string): boolean {
   return getPermissions(userLevel).includes(permission);
 }
-
 export function hasAnyPermission(userLevel: string, permissions: string[]): boolean {
-  const userPerms = getPermissions(userLevel);
-  return permissions.some((p) => userPerms.includes(p));
+  return permissions.some(p => getPermissions(userLevel).includes(p));
 }
+
+// Re-export shared types (safe for client)
+export type { UserAccess, PageAccess } from './permissions-types';

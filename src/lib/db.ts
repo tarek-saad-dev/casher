@@ -154,7 +154,10 @@ export async function getCloudPool(): Promise<sql.ConnectionPool> {
 
 // Get current target pool (legacy compatibility)
 export async function getPool(): Promise<sql.ConnectionPool> {
-  return currentDbTarget === "local" ? getLocalPool() : getCloudPool();
+  const pool = await (currentDbTarget === "local" ? getLocalPool() : getCloudPool());
+  // Auto-sync pages registry on first connection (non-blocking)
+  import('./pages-sync').then(m => m.syncPagesRegistry(pool)).catch(() => {});
+  return pool;
 }
 
 // Get pool by specific target

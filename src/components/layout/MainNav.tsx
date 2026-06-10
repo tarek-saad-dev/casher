@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, CSSProperties } from 'react';
+import { useState, useEffect, CSSProperties, useMemo } from 'react';
+import { usePermissions } from '@/components/providers/PermissionsProvider';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -9,7 +10,7 @@ import {
   Calculator, Settings, Scissors, Tags, Shield, Activity, Star,
   ChevronDown, Menu, X, SlidersHorizontal, PanelLeftClose, PanelLeftOpen,
   UsersRound, FileBarChart, Calendar, Ticket, CalendarCheck, MonitorPlay,
-  AlertTriangle, Crown, Store, Package, UserPlus, Gift,
+  AlertTriangle, Crown, Store, Package, UserPlus, Gift, KeyRound, FileKey2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -165,6 +166,8 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/admin/shift', label: 'الورديات', icon: Clock },
       { href: '/admin/settings', label: 'الإعدادات', icon: Settings },
       { href: '/admin/queue-booking-settings', label: 'إعدادات الطابور', icon: Ticket },
+      { href: '/admin/permissions/users', label: 'صلاحيات المستخدمين', icon: KeyRound },
+      { href: '/admin/permissions/pages', label: 'صلاحيات الصفحات', icon: FileKey2 },
     ],
   },
   {
@@ -185,6 +188,18 @@ export default function MainNav() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<string[]>(['المدخلات']);
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  const { canSeePage, access, loading: permLoading } = usePermissions();
+
+  // Filter nav sections based on user permissions
+  const visibleSections = useMemo(() => {
+    // While permissions are loading, show all (avoid flicker)
+    if (permLoading || !access) return NAV_SECTIONS;
+    return NAV_SECTIONS.map(section => ({
+      ...section,
+      items: section.items.filter(item => !item.disabled && canSeePage(item.href)),
+    })).filter(section => section.items.length > 0);
+  }, [access, permLoading, canSeePage]);
 
   // Badge count for payment audit
   const [paymentAuditCount, setPaymentAuditCount] = useState<number>(0);
@@ -702,9 +717,9 @@ export default function MainNav() {
       className="flex-1 overflow-y-auto scrollbar-luxury-v"
       style={{ padding: isCollapsed ? '8px 6px' : '8px 10px' }}
     >
-      {renderDirectLink('/operations', 'لوحة التشغيل', MonitorPlay, '20,184,166')}
-      {renderDirectLink('/admin/cut-club', 'CUT CLUB', Crown, '234,179,8')}
-      {NAV_SECTIONS.map(section => (
+      {canSeePage('/operations') && renderDirectLink('/operations', 'لوحة التشغيل', MonitorPlay, '20,184,166')}
+      {canSeePage('/admin/cut-club') && renderDirectLink('/admin/cut-club', 'CUT CLUB', Crown, '234,179,8')}
+      {visibleSections.map(section => (
         <div key={section.title}>
           {renderSection(section)}
         </div>
