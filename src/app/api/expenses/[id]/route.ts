@@ -36,24 +36,9 @@ export async function PUT(
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
 
-    // Approval workflow
-    const workflow = await requireApprovalOrExecute({
-      userId:      user.UserID,
-      userName:    user.UserName,
-      requestType: 'edit_expense',
-      entityId:    String(expenseId),
-      actionMethod:'PUT',
-      endpointPath:`/api/expenses/${expenseId}`,
-      newData: { expInId: Number(expINID), amount: Number(grandTotal), paymentMethodId: Number(paymentMethodId), notes: notes ?? null },
-    });
-    if (workflow.pendingApproval)
-      return NextResponse.json({ success: true, pendingApproval: true, approvalId: workflow.approvalId, message: workflow.message });
-    if (workflow.executed)
-      return NextResponse.json({ success: true, message: workflow.message });
-
     const db = await getPool();
 
-    // Get current expense data
+    // Get current expense data (needed for approval workflow and history)
     const currentExpense = await db.request()
       .input('id', sql.Int, expenseId)
       .query(`
@@ -73,6 +58,29 @@ export async function PUT(
     }
 
     const current = currentExpense.recordset[0];
+
+    // Approval workflow
+    const workflow = await requireApprovalOrExecute({
+      userId:      user.UserID,
+      userName:    user.UserName,
+      requestType: 'edit_expense',
+      entityId:    String(expenseId),
+      actionMethod:'PUT',
+      endpointPath:`/api/expenses/${expenseId}`,
+      newData: {
+        expInId: Number(expINID),
+        amount: Number(grandTotal),
+        paymentMethodId: Number(paymentMethodId),
+        notes: notes ?? null,
+        invDate: current.invDate instanceof Date
+          ? current.invDate.toISOString().split('T')[0]
+          : String(current.invDate).split('T')[0],
+      },
+    });
+    if (workflow.pendingApproval)
+      return NextResponse.json({ success: true, pendingApproval: true, approvalId: workflow.approvalId, message: workflow.message });
+    if (workflow.executed)
+      return NextResponse.json({ success: true, message: workflow.message });
     
     // Build edit history entry
     const editEntry = {

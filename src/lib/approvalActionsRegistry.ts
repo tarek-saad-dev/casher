@@ -131,6 +131,10 @@ export const APPROVAL_ACTIONS: Record<string, ActionDefinition> = {
     async execute({ newData }) {
       if (!newData) throw new Error('newData مطلوب للتحويل');
       const { amount, fromPaymentMethodId, toPaymentMethodId, notes, transferDate, userId, shiftMoveId } = newData as Record<string, unknown>;
+      // Validate date - use provided date or today
+      const dateStr = (transferDate as string) || new Date().toISOString().split('T')[0];
+      const parsedDate = new Date(dateStr);
+      if (isNaN(parsedDate.getTime())) throw new Error(`تاريخ غير صالح: ${dateStr}`);
       const db = await getPool();
       const tx = db.transaction();
       await tx.begin();
@@ -139,7 +143,7 @@ export const APPROVAL_ACTIONS: Record<string, ActionDefinition> = {
         req1.input('pm',    sql.Int,         fromPaymentMethodId as number);
         req1.input('amt',   sql.Decimal(18,2), amount as number);
         req1.input('notes', sql.NVarChar,    (notes as string) ?? '');
-        req1.input('date',  sql.Date,        new Date(transferDate as string));
+        req1.input('date',  sql.Date,        parsedDate);
         req1.input('uid',   sql.Int,         userId as number);
         req1.input('sid',   sql.Int,         shiftMoveId as number ?? null);
         await req1.query(`INSERT INTO dbo.TblCashMove (PaymentMethodID,Amount,InOut,Notes,InvDate,UserID,ShiftMoveID,InvType) VALUES (@pm,@amt,'out',@notes,@date,@uid,@sid,'تحويل')`);
@@ -148,7 +152,7 @@ export const APPROVAL_ACTIONS: Record<string, ActionDefinition> = {
         req2.input('pm',    sql.Int,         toPaymentMethodId as number);
         req2.input('amt',   sql.Decimal(18,2), amount as number);
         req2.input('notes', sql.NVarChar,    (notes as string) ?? '');
-        req2.input('date',  sql.Date,        new Date(transferDate as string));
+        req2.input('date',  sql.Date,        parsedDate);
         req2.input('uid',   sql.Int,         userId as number);
         req2.input('sid',   sql.Int,         shiftMoveId as number ?? null);
         await req2.query(`INSERT INTO dbo.TblCashMove (PaymentMethodID,Amount,InOut,Notes,InvDate,UserID,ShiftMoveID,InvType) VALUES (@pm,@amt,'in',@notes,@date,@uid,@sid,'تحويل')`);
@@ -226,10 +230,15 @@ export const APPROVAL_ACTIONS: Record<string, ActionDefinition> = {
       if (!entityId || !newData) throw new Error('entityId و newData مطلوبان لتعديل الإيراد');
       const id = parseInt(entityId);
       const d = newData as Record<string, unknown>;
+      // Validate and parse date
+      const dateStr = d.invDate as string;
+      if (!dateStr) throw new Error('تاريخ الإيراد مطلوب');
+      const parsedDate = new Date(dateStr);
+      if (isNaN(parsedDate.getTime())) throw new Error(`تاريخ غير صالح: ${dateStr}`);
       const db = await getPool();
       await db.request()
         .input('id',    sql.Int,            id)
-        .input('date',  sql.Date,           new Date(d.invDate as string))
+        .input('date',  sql.Date,           parsedDate)
         .input('expIn', sql.Int,            Number(d.expInId))
         .input('amt',   sql.Decimal(10, 2), Number(d.amount))
         .input('notes', sql.NVarChar(sql.MAX), (d.notes as string) ?? null)
@@ -251,10 +260,15 @@ export const APPROVAL_ACTIONS: Record<string, ActionDefinition> = {
       if (!entityId || !newData) throw new Error('entityId و newData مطلوبان لتعديل المصروف');
       const id = parseInt(entityId);
       const d = newData as Record<string, unknown>;
+      // Validate and parse date
+      const dateStr = d.invDate as string;
+      if (!dateStr) throw new Error('تاريخ المصروف مطلوب');
+      const parsedDate = new Date(dateStr);
+      if (isNaN(parsedDate.getTime())) throw new Error(`تاريخ غير صالح: ${dateStr}`);
       const db = await getPool();
       await db.request()
         .input('id',    sql.Int,            id)
-        .input('date',  sql.Date,           new Date(d.invDate as string))
+        .input('date',  sql.Date,           parsedDate)
         .input('expIn', sql.Int,            Number(d.expInId))
         .input('amt',   sql.Decimal(10, 2), Number(d.amount))
         .input('notes', sql.NVarChar(sql.MAX), (d.notes as string) ?? null)
