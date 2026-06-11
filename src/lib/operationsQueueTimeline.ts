@@ -410,6 +410,46 @@ export async function simulateQueueInsertion({
   const suggestedStart = findFirstFreeSlot(now, serviceDur, allIntervals);
   const suggestedEnd = new Date(suggestedStart.getTime() + serviceDur * 60000);
 
+  // CRITICAL: Log conflict detection results for the proposed slot
+  console.log("[simulate debug] === CONFLICT DETECTION ===");
+  console.log("[simulate debug] Proposed interval:", {
+    proposedStart: suggestedStart.toISOString(),
+    proposedEnd: suggestedEnd.toISOString(),
+    duration: serviceDur,
+  });
+
+  // Check for any overlaps with the proposed slot (using correct overlap condition)
+  const proposedBookingConflicts = bIntervals.filter(b =>
+    suggestedStart < b.end && suggestedEnd > b.start
+  );
+  const proposedQueueConflicts = qIntervals.filter(q =>
+    suggestedStart < q.end && suggestedEnd > q.start
+  );
+
+  console.log("[simulate debug] Conflict check with proposed slot:", {
+    bookingConflicts: proposedBookingConflicts.map(b => ({
+      id: b.id,
+      start: b.start.toISOString(),
+      end: b.end.toISOString(),
+      overlapMinutes: Math.max(0,
+        Math.min(suggestedEnd.getTime(), b.end.getTime()) -
+        Math.max(suggestedStart.getTime(), b.start.getTime())
+      ) / 60000,
+    })),
+    queueConflicts: proposedQueueConflicts.map(q => ({
+      id: q.id,
+      code: q.ticketCode,
+      start: q.start.toISOString(),
+      end: q.end.toISOString(),
+      overlapMinutes: Math.max(0,
+        Math.min(suggestedEnd.getTime(), q.end.getTime()) -
+        Math.max(suggestedStart.getTime(), q.start.getTime())
+      ) / 60000,
+    })),
+    hasConflict: proposedBookingConflicts.length > 0 || proposedQueueConflicts.length > 0,
+    overlapCondition: "newStart < existingEnd && newEnd > existingStart",
+  });
+
   console.log("[simulate debug] Slot calculation:", {
     now: now.toISOString(),
     nowCairo: now.toLocaleString("en-GB", { timeZone: "Africa/Cairo" }),
@@ -417,6 +457,7 @@ export async function simulateQueueInsertion({
     suggestedStartCairo: suggestedStart.toLocaleString("en-GB", { timeZone: "Africa/Cairo" }),
     suggestedEnd: suggestedEnd.toISOString(),
     serviceDuration: serviceDur,
+    finalSlotSelected: suggestedStart.toISOString(),
   });
 
   // Count people before (queue tickets that end before or at our start)

@@ -379,12 +379,28 @@ export async function buildQueueIntervals(
     if (end > cursor) cursor = end;
   }
 
-  // Step 2: place all other active tickets strictly sequentially from cursor
-  // Each ticket occupies exactly one duration slot, one after another.
-  // We do NOT use stored EstimatedStartTime here because they may be stale/past.
+  // Step 2: For waiting/called tickets, use their stored EstimatedStartTime if available
+  // This is CRITICAL for conflict detection - we must use the ACTUAL stored intervals
+  // not recompute them, or we won't detect overlaps with bookings correctly.
   for (const t of otherTickets) {
     const dur = Math.max(1, Number(t.DurationMinutes) || defaultDuration);
-    const start = new Date(cursor);
+
+    // Priority for start time:
+    // 1. Stored EstimatedStartTime (already reserved slot)
+    // 2. Sequential placement from cursor (fallback for old tickets without estimate)
+    let start: Date;
+    const storedEstStart = t.EstimatedStartTime
+      ? new Date(t.EstimatedStartTime)
+      : null;
+
+    if (storedEstStart && storedEstStart.getTime() > 0) {
+      // Use the stored estimated start time (this is the actual reservation)
+      start = storedEstStart;
+    } else {
+      // Fallback: place sequentially from cursor (for old tickets without estimate)
+      start = new Date(cursor);
+    }
+
     const end = new Date(start.getTime() + dur * 60000);
     intervals.push({
       start,
@@ -394,7 +410,21 @@ export async function buildQueueIntervals(
       label: t.Status,
       ticketCode: t.TicketCode,
     });
-    cursor = end; // next ticket starts right after this one
+
+    // Advance cursor to after this ticket's end (for sequential fallback of future tickets)
+    if (end > cursor) cursor = end;
+  }
+
+  // Log the built intervals for debugging overlap detection
+  if (DEBUG_BOOKING || intervals.length > 0) {
+    console.log(`[buildQueueIntervals] ${debugContext} Built intervals:`, intervals.map(iv => ({
+      id: iv.id,
+      code: iv.ticketCode,
+      source: iv.source,
+      start: iv.start.toISOString(),
+      end: iv.end.toISOString(),
+      label: iv.label,
+    })));
   }
 
   if (DEBUG_BOOKING) {

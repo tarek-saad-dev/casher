@@ -313,17 +313,22 @@ export const APPROVAL_ACTIONS: Record<string, ActionDefinition> = {
           .query(`DELETE FROM dbo.TblinvServDetail WHERE invID=@id AND invType=N'مبيعات'`);
         if (Array.isArray(h.items)) {
           for (const item of h.items as Array<Record<string, unknown>>) {
+            const empId = Number(item.empId) || 0;
+            if (empId === 0) {
+              console.warn('[edit_invoice] Warning: empId is 0 or missing for item:', item);
+            }
             await tx.request()
-              .input('id',   sql.Int,         invId)
-              .input('sid',  sql.Int,         Number(item.serviceId))
-              .input('eid',  sql.Int,         Number(item.employeeId) || null)
-              .input('qty',  sql.Int,         Number(item.qty)        || 1)
-              .input('pr',   sql.Decimal(10,2), Number(item.price)    || 0)
-              .input('disc', sql.Decimal(10,2), Number(item.discount) || 0)
-              .input('tot',  sql.Decimal(10,2), Number(item.total)    || 0)
+              .input('id',    sql.Int,         invId)
+              .input('sid',   sql.Int,         Number(item.proId) || Number(item.serviceId) || 0)
+              .input('eid',   sql.Int,         empId)
+              .input('qty',   sql.Int,         Number(item.qty)   || 1)
+              .input('pr',    sql.Decimal(10,2), Number(item.sPrice) || Number(item.price) || 0)
+              .input('disc',  sql.Decimal(10,2), Number(item.disVal) || Number(item.discount) || 0)
+              .input('tot',   sql.Decimal(10,2), Number(item.sValue) || Number(item.total) || 0)
+              .input('notes', sql.NVarChar,    String(item.notes || ''))
               .query(`
-                INSERT INTO dbo.TblinvServDetail (invID,invType,ServiceID,EmployeeID,Qty,Price,Discount,Total)
-                VALUES (@id,N'مبيعات',@sid,@eid,@qty,@pr,@disc,@tot)
+                INSERT INTO dbo.TblinvServDetail (invID,invType,ProID,EmpID,Qty,SPrice,DisVal,SValue,Notes,Bonus)
+                VALUES (@id,N'مبيعات',@sid,@eid,@qty,@pr,@disc,@tot,@notes,0)
               `);
           }
         }

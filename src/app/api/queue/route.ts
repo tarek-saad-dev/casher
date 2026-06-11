@@ -260,53 +260,121 @@ export async function POST(req: NextRequest) {
         finalWaitCount,
       );
 
-      // ── Booking-aware conflict check (walk-in only) ─────────────────────────
-      // If this is a walk-in (not from a booking), check it doesn't conflict with upcoming bookings
-      if (!bookingId) {
-        const upcomingBookings = bIvs
-          .filter((b) => b.start > now2)
-          .sort((a, b) => a.start.getTime() - b.start.getTime());
+      // ── Comprehensive Conflict Check (walk-in only) ─────────────────────────
+      // CRITICAL: Validate proposed interval against ALL bookings and ALL queue tickets
+      // Correct overlap condition: newStart < existingEnd && newEnd > existingStart
+      if (!bookingId && finalEstStart) {
+        const proposedStart = finalEstStart;
+        const proposedEnd = new Date(proposedStart.getTime() + customerDur * 60000);
 
-        const nextBooking = upcomingBookings[0];
-        if (nextBooking) {
-          const ticketEnd = new Date(
-            finalEstStart.getTime() + customerDur * 60000,
+        // Log proposed interval
+        console.log("[queue create] Conflict check - proposed interval:", {
+          proposedStart: proposedStart.toISOString(),
+          proposedEnd: proposedEnd.toISOString(),
+          duration: customerDur,
+        });
+
+        // Log existing intervals
+        console.log("[queue create] Conflict check - existing booking intervals:", bIvs.map(b => ({
+          id: b.id,
+          start: b.start.toISOString(),
+          end: b.end.toISOString(),
+        })));
+        console.log("[queue create] Conflict check - existing queue intervals:", qIvs.map(q => ({
+          id: q.id,
+          code: q.ticketCode,
+          start: q.start.toISOString(),
+          end: q.end.toISOString(),
+        })));
+
+        // Check overlap with ALL bookings (not just upcoming)
+        const bookingConflicts = bIvs.filter(b =>
+          proposedStart < b.end && proposedEnd > b.start
+        );
+
+        // Check overlap with ALL queue tickets
+        const queueConflicts = qIvs.filter(q =>
+          proposedStart < q.end && proposedEnd > q.start
+        );
+
+        // Log conflicts
+        console.log("[queue create] Conflict check results:", {
+          bookingConflicts: bookingConflicts.map(b => ({ id: b.id, start: b.start.toISOString(), end: b.end.toISOString() })),
+          queueConflicts: queueConflicts.map(q => ({ id: q.id, code: q.ticketCode, start: q.start.toISOString(), end: q.end.toISOString() })),
+          hasConflict: bookingConflicts.length > 0 || queueConflicts.length > 0,
+        });
+
+        if ((bookingConflicts.length > 0 || queueConflicts.length > 0) && !forceManualPriority) {
+          // Find the next available slot after all conflicts
+          const allConflicts = [...bookingConflicts, ...queueConflicts].sort(
+            (a, b) => a.end.getTime() - b.end.getTime()
           );
-          const overlapsBooking = ticketEnd > nextBooking.start;
+          const lastConflictEnd = allConflicts[allConflicts.length - 1]?.end;
+          const suggestedStart = lastConflictEnd || proposedStart;
 
-          if (overlapsBooking && !forceManualPriority) {
-            // Load booking details for error message
+          // Load details for first booking conflict (for error message)
+          let conflictDetails: Array<{ id: number; type: string; start: string; end: string; clientName?: string }> = [];
+
+          if (bookingConflicts.length > 0) {
+            const firstBooking = bookingConflicts[0];
             const bookingRes = await db
               .request()
-              .input("bid", sql.Int, nextBooking.id).query(`
-                SELECT b.StartTime, c.Name AS ClientName
+              .input("bid", sql.Int, firstBooking.id)
+              .query(`
+                SELECT b.BookingID, b.StartTime, b.EndTime, c.Name AS ClientName
                 FROM [dbo].[Bookings] b
                 LEFT JOIN [dbo].[TblClient] c ON c.ClientID = b.ClientID
                 WHERE b.BookingID = @bid
               `);
             const bRow = bookingRes.recordset[0];
-
-            return NextResponse.json(
-              {
-                error: "conflicts_with_upcoming_booking",
-                message: `الدور الجديد يتعارض مع حجز قادم الساعة ${bRow?.StartTime || "غير معروف"}`,
-                conflictBooking: {
-                  bookingId: nextBooking.id,
-                  clientName: bRow?.ClientName || null,
-                  startTime: nextBooking.start.toISOString(),
-                  endTime: nextBooking.end.toISOString(),
-                },
-                availableGapMinutes: Math.round(
-                  (nextBooking.start.getTime() - now2.getTime()) / 60000,
-                ),
-                requiredDurationMinutes: customerDur,
-                suggestedStartAfterBooking: nextBooking.end.toISOString(),
-                requiresForceFlag: true,
-              },
-              { status: 409 },
-            );
+            if (bRow) {
+              conflictDetails.push({
+                id: bRow.BookingID,
+                type: "booking",
+                start: firstBooking.start.toISOString(),
+                end: firstBooking.end.toISOString(),
+                clientName: bRow.ClientName,
+              });
+            }
           }
+
+          for (const q of queueConflicts.slice(0, 3)) {
+            conflictDetails.push({
+              id: q.id,
+              type: "queue",
+              start: q.start.toISOString(),
+              end: q.end.toISOString(),
+              clientName: undefined,
+            });
+          }
+
+          return NextResponse.json(
+            {
+              error: "conflicts_with_existing_items",
+              message: bookingConflicts.length > 0
+                ? `الدور الجديد يتعارض مع ${bookingConflicts.length > 1 ? 'حجوزات' : 'حجز'} موجودة`
+                : `الدور الجديد يتعارض مع ${queueConflicts.length > 1 ? 'أدوار' : 'دور'} موجودة`,
+              conflictDetails,
+              bookingConflicts: bookingConflicts.map(b => ({
+                bookingId: b.id,
+                startTime: b.start.toISOString(),
+                endTime: b.end.toISOString(),
+              })),
+              queueConflicts: queueConflicts.map(q => ({
+                ticketId: q.id,
+                ticketCode: q.ticketCode,
+                startTime: q.start.toISOString(),
+                endTime: q.end.toISOString(),
+              })),
+              requiredDurationMinutes: customerDur,
+              suggestedStartAfterConflict: suggestedStart.toISOString(),
+              requiresForceFlag: true,
+            },
+            { status: 409 },
+          );
         }
+
+        console.log("[queue create] Conflict check passed - no overlaps detected");
       }
     }
 
@@ -350,6 +418,37 @@ export async function POST(req: NextRequest) {
           (a, b) => a.start.getTime() - b.start.getTime(),
         );
         const verifiedSlot = findFirstFreeSlot(now2, customerDur, allIvsTx);
+
+        // CRITICAL: Re-check for conflicts with the verified slot inside transaction
+        const verifiedEnd = new Date(verifiedSlot.getTime() + customerDur * 60000);
+        const txBookingConflicts = bIvsTx.filter(b =>
+          verifiedSlot < b.end && verifiedEnd > b.start
+        );
+        const txQueueConflicts = qIvsTx.filter(q =>
+          verifiedSlot < q.end && verifiedEnd > q.start
+        );
+
+        console.log("[queue create] Transaction conflict check:", {
+          verifiedSlot: verifiedSlot.toISOString(),
+          verifiedEnd: verifiedEnd.toISOString(),
+          bookingConflicts: txBookingConflicts.length,
+          queueConflicts: txQueueConflicts.length,
+        });
+
+        // If conflicts detected inside transaction, abort
+        if (!bookingId && (txBookingConflicts.length > 0 || txQueueConflicts.length > 0) && !forceManualPriority) {
+          await transaction.rollback();
+          console.log("[queue create] Transaction rolled back due to conflicts");
+          return NextResponse.json(
+            {
+              error: "conflicts_detected_in_transaction",
+              message: "تم اكتشاف تعارض أثناء إنشاء الدور، يرجى المحاولة مرة أخرى",
+              requiresForceFlag: true,
+            },
+            { status: 409 },
+          );
+        }
+
         // Only update if slot changed significantly (> 1 min diff)
         if (
           Math.abs(verifiedSlot.getTime() - finalEstStart.getTime()) > 60000
