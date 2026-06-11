@@ -448,7 +448,7 @@ export async function POST(req: NextRequest) {
       .query(
         `
         INSERT INTO [dbo].[QueueTicketHistory]
-          (QueueTicketID, OldStatus, NewStatus, ActionType, ActionByUserID)
+          (QueueTicketID, OldStatus, NewStatus, ActionType, UserID)
         VALUES (@ticketId, NULL, 'waiting', @action, @userID)
       `,
       )

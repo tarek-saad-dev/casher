@@ -60,7 +60,7 @@ async function auditLog(
       .input('tid',    sql.NVarChar, targetId ?? '')
       .input('det',    sql.NVarChar, JSON.stringify(details))
       .query(`
-        INSERT INTO dbo.TblPermissionAuditLog (ActorUserID, Action, TargetType, TargetID, Details)
+        INSERT INTO dbo.TblPermissionAuditLog (UserID, Action, TargetType, TargetID, Details)
         VALUES (@actor, @action, @ttype, @tid, @det)
       `);
   } catch {
