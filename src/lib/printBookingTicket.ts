@@ -18,12 +18,19 @@ export interface BookingTicketData {
     durationMinutes?: number;
     price?: number;
   }>;
+  // Raw fields (for backwards compatibility)
   bookingDate: string;
   startTime: string;
   endTime?: string;
   durationMinutes?: number;
   status: string;
   notes?: string | null;
+  // Normalized Cairo display fields (preferred)
+  startTimeDisplay?: string;  // e.g., "10:30 م"
+  endTimeDisplay?: string;    // e.g., "11:00 م"
+  dateDisplay?: string;       // e.g., "2026-06-12"
+  startDateTimeCairo?: string; // ISO datetime
+  endDateTimeCairo?: string;   // ISO datetime
 }
 
 interface PrintServiceResponse {
@@ -59,21 +66,92 @@ async function isLocalPrintServiceAvailable(): Promise<boolean> {
 /**
  * Generate compact thermal ticket HTML for booking (72mm printer - XP-80)
  * Optimized for: shorter length, bolder typography, clear hierarchy
+ * 
+ * IMPORTANT: Uses normalized Cairo display fields directly to avoid timezone shifts.
+ * Do NOT parse raw SQL times - use the pre-formatted display fields from the API.
  */
 function generateBookingTicketHTML(data: BookingTicketData): string {
+  // DEBUG for BK-448
+  const isDebug = data.bookingId === 448 || data.bookingCode?.includes('448');
+  if (isDebug) {
+    console.log('[printBookingTicket BK-448] Input data:', {
+      bookingId: data.bookingId,
+      bookingCode: data.bookingCode,
+      rawStartTime: data.startTime,
+      rawEndTime: data.endTime,
+      rawBookingDate: data.bookingDate,
+      // Normalized fields
+      startTimeDisplay: data.startTimeDisplay,
+      endTimeDisplay: data.endTimeDisplay,
+      dateDisplay: data.dateDisplay,
+      startDateTimeCairo: data.startDateTimeCairo,
+      endDateTimeCairo: data.endDateTimeCairo,
+      durationMinutes: data.durationMinutes,
+    });
+  }
+
   // Resolve chair number
   const chairNum = data.chairNumber ?? getChairNumber(data.empName);
   
-  // Format date compact
-  const dateObj = new Date(data.bookingDate);
-  const dateStr = dateObj.toLocaleDateString('ar-EG', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  });
+  // Use normalized date display if available, otherwise format safely
+  let dateStr: string;
+  if (data.dateDisplay) {
+    dateStr = data.dateDisplay;
+  } else {
+    // Fallback: format from ISO string - but don't use new Date() on raw SQL dates
+    const dateObj = new Date(data.bookingDate);
+    dateStr = dateObj.toLocaleDateString('ar-EG', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    });
+  }
 
-  // Format time
-  const formatTime = (timeStr: string) => {
+  // Use pre-formatted display times from API (Cairo-normalized)
+  // These are already formatted as "10:30 م" - no parsing needed
+  let startTimeStr: string;
+  let endTimeStr: string | null;
+
+  if (data.startTimeDisplay) {
+    // Use normalized display field directly
+    startTimeStr = data.startTimeDisplay;
+    if (isDebug) console.log('[printBookingTicket BK-448] Using startTimeDisplay:', startTimeStr);
+  } else {
+    // Fallback: format from time string (should not happen with updated API)
+    startTimeStr = formatTimeFromString(data.startTime);
+    if (isDebug) console.log('[printBookingTicket BK-448] Fallback format startTime:', startTimeStr);
+  }
+
+  if (data.endTimeDisplay) {
+    endTimeStr = data.endTimeDisplay;
+    if (isDebug) console.log('[printBookingTicket BK-448] Using endTimeDisplay:', endTimeStr);
+  } else if (data.endTime) {
+    // Fallback: format from endTime
+    endTimeStr = formatTimeFromString(data.endTime);
+    if (isDebug) console.log('[printBookingTicket BK-448] Fallback format endTime:', endTimeStr);
+  } else if (data.startDateTimeCairo && data.durationMinutes) {
+    // Calculate end from start + duration
+    const startMs = new Date(data.startDateTimeCairo).getTime();
+    const endMs = startMs + data.durationMinutes * 60000;
+    const endDate = new Date(endMs);
+    // Format using the same method as the backend
+    endTimeStr = formatTimeArabic(endDate);
+    if (isDebug) console.log('[printBookingTicket BK-448] Calculated end from duration:', endTimeStr);
+  } else {
+    endTimeStr = null;
+  }
+
+  if (isDebug) {
+    console.log('[printBookingTicket BK-448] Final print values:', {
+      startTimeStr,
+      endTimeStr,
+      dateStr,
+      durationMinutes: data.durationMinutes,
+    });
+  }
+
+  // Helper: Format time from HH:mm string (fallback only)
+  function formatTimeFromString(timeStr: string): string {
     if (!timeStr) return 'غير محدد';
     const [h, m] = timeStr.split(':');
     if (!h || !m) return timeStr;
@@ -82,10 +160,31 @@ function generateBookingTicketHTML(data: BookingTicketData): string {
     const period = hour >= 12 ? 'م' : 'ص';
     const displayHour = hour % 12 || 12;
     return `${displayHour}:${minute.toString().padStart(2, '0')} ${period}`;
-  };
+  }
 
-  const startTimeStr = formatTime(data.startTime);
-  const endTimeStr = data.endTime ? formatTime(data.endTime) : null;
+  // Helper: Format time from Date using Cairo timezone (fallback only)
+  function formatTimeArabic(date: Date): string {
+    try {
+      const parts = new Intl.DateTimeFormat('ar-EG', {
+        timeZone: 'Africa/Cairo',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      }).formatToParts(date);
+      const hour = parts.find((p) => p.type === 'hour')?.value ?? '00';
+      const minute = parts.find((p) => p.type === 'minute')?.value ?? '00';
+      const dayPeriod = parts.find((p) => p.type === 'dayPeriod')?.value ?? '';
+      const period = dayPeriod.includes('ص') ? 'ص' : dayPeriod.includes('م') ? 'م' : dayPeriod;
+      return `${hour}:${minute} ${period}`;
+    } catch {
+      // Fallback to local time
+      const h = date.getHours();
+      const m = date.getMinutes();
+      const period = h >= 12 ? 'م' : 'ص';
+      const displayHour = h % 12 || 12;
+      return `${displayHour}:${m.toString().padStart(2, '0')} ${period}`;
+    }
+  }
 
   // Status label
   const statusLabels: Record<string, string> = {
@@ -115,126 +214,174 @@ function generateBookingTicketHTML(data: BookingTicketData): string {
   const totalDuration = data.durationMinutes || 
     data.services.reduce((sum, s) => sum + (s.durationMinutes || 0), 0);
 
-  return `
+return `
 <!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="UTF-8">
   <style>
-    @page { size: 72mm auto; margin: 0; }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    @page { 
+      size: 72mm auto; 
+      margin: 0; 
+    }
+
+    * { 
+      margin: 0; 
+      padding: 0; 
+      box-sizing: border-box; 
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
     body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       width: 72mm;
-      padding: 3mm 2.5mm;
+      padding: 4mm 3mm;
       background: #fff;
       color: #000;
-      font-size: 11px;
-      font-weight: 600;
-      line-height: 1.25;
+      font-family: Tahoma, Arial, sans-serif;
+      font-size: 13px;
+      font-weight: 900;
+      line-height: 1.45;
     }
-    .center { text-align: center; }
+
+    .center { 
+      text-align: center; 
+    }
+
     .header {
-      font-size: 14px;
-      font-weight: 800;
-      letter-spacing: 0.5px;
+      font-size: 19px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      line-height: 1.1;
       margin-bottom: 2px;
     }
+
     .subheader {
-      font-size: 11px;
-      font-weight: 700;
-      margin-bottom: 4px;
+      font-size: 14px;
+      font-weight: 900;
+      margin-bottom: 5px;
     }
+
     .divider {
-      border-top: 1.5px solid #000;
-      margin: 4px 0;
+      border-top: 2px solid #000;
+      margin: 6px 0;
     }
+
     .divider-thin {
-      border-top: 0.5px solid #000;
-      margin: 3px 0;
+      border-top: 1.5px solid #000;
+      margin: 5px 0;
     }
+
     .booking-code-box {
-      border: 2px solid #000;
-      padding: 6px 4px;
-      margin: 4px 0;
+      border: 3px solid #000;
+      padding: 7px 4px;
+      margin: 6px 0;
       text-align: center;
     }
+
     .booking-code {
-      font-size: 28px;
+      font-size: 34px;
       font-weight: 900;
       letter-spacing: 1px;
       line-height: 1;
     }
+
     .booking-code-label {
-      font-size: 9px;
-      font-weight: 700;
-      margin-top: 2px;
+      font-size: 12px;
+      font-weight: 900;
+      margin-top: 4px;
     }
+
     .row {
       display: flex;
       justify-content: space-between;
-      align-items: baseline;
-      margin: 2px 0;
-      gap: 4px;
-    }
-    .row-label {
-      font-size: 10px;
-      font-weight: 700;
-      flex-shrink: 0;
-    }
-    .row-value {
-      font-size: 12px;
-      font-weight: 800;
-      text-align: left;
-      flex: 1;
-    }
-    .important-row {
-      display: flex;
-      justify-content: space-between;
-      gap: 4px;
+      align-items: flex-start;
+      gap: 5px;
       margin: 4px 0;
+      border-bottom: 1px solid #000;
+      padding-bottom: 3px;
     }
-    .important-box {
-      flex: 1;
-      border: 1.5px solid #000;
-      padding: 4px 2px;
-      text-align: center;
-    }
-    .important-label {
-      font-size: 9px;
-      font-weight: 700;
-      margin-bottom: 1px;
-    }
-    .important-value {
-      font-size: 13px;
+
+    .row-label {
+      font-size: 12px;
       font-weight: 900;
-      line-height: 1.1;
+      white-space: nowrap;
     }
-    .chair-box {
-      background: #000;
-      color: #fff;
-    }
-    .chair-value {
+
+    .row-value {
       font-size: 14px;
       font-weight: 900;
+      text-align: left;
+      flex: 1;
+      word-break: break-word;
     }
-    .footer {
-      font-size: 9px;
-      font-weight: 700;
+
+    .main-box {
+      border: 2px solid #000;
+      padding: 6px 4px;
+      margin: 6px 0;
       text-align: center;
-      margin-top: 6px;
-      padding-top: 4px;
-      border-top: 1.5px solid #000;
     }
+
+    .main-label {
+      font-size: 12px;
+      font-weight: 900;
+      margin-bottom: 3px;
+    }
+
+    .main-value {
+      font-size: 18px;
+      font-weight: 900;
+      line-height: 1.2;
+    }
+
+    .two-col {
+      display: flex;
+      gap: 4px;
+      margin: 6px 0;
+    }
+
+    .two-col .main-box {
+      flex: 1;
+      margin: 0;
+    }
+
+    .black-box {
+      background: #000;
+      color: #fff;
+      border: 3px solid #000;
+    }
+
+    .black-box .main-label,
+    .black-box .main-value {
+      color: #fff;
+    }
+
+    .time-value {
+      font-size: 20px;
+      font-weight: 900;
+      direction: rtl;
+      white-space: nowrap;
+    }
+
+    .footer {
+      font-size: 12px;
+      font-weight: 900;
+      text-align: center;
+      margin-top: 7px;
+      padding-top: 5px;
+      border-top: 2px solid #000;
+    }
+
     .footer-note {
-      font-size: 8px;
-      font-weight: 600;
-      margin-top: 2px;
+      font-size: 11px;
+      font-weight: 900;
+      margin-top: 3px;
     }
   </style>
 </head>
+
 <body>
-  <!-- Header -->
   <div class="center">
     <div class="header">CUT SALON</div>
     <div class="subheader">ورقة حجز</div>
@@ -242,90 +389,82 @@ function generateBookingTicketHTML(data: BookingTicketData): string {
 
   <div class="divider"></div>
 
-  <!-- Booking Code (Most Important) -->
   <div class="booking-code-box">
     <div class="booking-code">${data.bookingCode}</div>
     <div class="booking-code-label">رقم الحجز</div>
   </div>
 
-  <div class="divider-thin"></div>
-
-  <!-- Customer Info -->
   <div class="row">
-    <span class="row-label">العميل:</span>
+    <span class="row-label">العميل</span>
     <span class="row-value">${data.customerName || 'غير محدد'}</span>
   </div>
+
   ${data.customerPhone ? `
   <div class="row">
-    <span class="row-label">الهاتف:</span>
+    <span class="row-label">الهاتف</span>
     <span class="row-value" dir="ltr">${data.customerPhone}</span>
   </div>
   ` : ''}
 
-  <div class="divider-thin"></div>
-
-  <!-- Barber & Chair (Important) -->
-  <div class="important-row">
-    <div class="important-box">
-      <div class="important-label">الحلاق</div>
-      <div class="important-value">${data.empName || 'غير محدد'}</div>
+  <div class="two-col">
+    <div class="main-box">
+      <div class="main-label">الحلاق</div>
+      <div class="main-value">${data.empName || 'غير محدد'}</div>
     </div>
+
     ${chairNum ? `
-    <div class="important-box chair-box">
-      <div class="important-label" style="color: #fff;">الكرسي</div>
-      <div class="chair-value">${chairNum}</div>
+    <div class="main-box black-box">
+      <div class="main-label">الكرسي</div>
+      <div class="main-value">${chairNum}</div>
     </div>
     ` : ''}
   </div>
 
-  <!-- Service -->
-  <div class="row">
-    <span class="row-label">الخدمة:</span>
-    <span class="row-value">${servicesText}</span>
+  <div class="main-box">
+    <div class="main-label">الخدمة</div>
+    <div class="main-value">${servicesText}</div>
   </div>
 
-  <div class="divider-thin"></div>
+  <div class="divider"></div>
 
-  <!-- Time & Date -->
-  <div class="important-row">
-    <div class="important-box">
-      <div class="important-label">وقت الحجز</div>
-      <div class="important-value">${startTimeStr}</div>
+  <div class="two-col">
+    <div class="main-box">
+      <div class="main-label">وقت الحجز</div>
+      <div class="main-value time-value">${startTimeStr}</div>
     </div>
+
     ${endTimeStr ? `
-    <div class="important-box">
-      <div class="important-label">الانتهاء</div>
-      <div class="important-value">${endTimeStr}</div>
+    <div class="main-box">
+      <div class="main-label">الانتهاء</div>
+      <div class="main-value time-value">${endTimeStr}</div>
     </div>
     ` : ''}
   </div>
 
-  <!-- Date & Status Row -->
-  <div class="row" style="margin-top: 4px;">
-    <span class="row-label">التاريخ:</span>
-    <span class="row-value" style="font-size: 11px;">${dateStr}</span>
-  </div>
   <div class="row">
-    <span class="row-label">الحالة:</span>
+    <span class="row-label">التاريخ</span>
+    <span class="row-value">${dateStr}</span>
+  </div>
+
+  <div class="row">
+    <span class="row-label">الحالة</span>
     <span class="row-value">${statusLabel}</span>
   </div>
+
   ${totalDuration > 0 ? `
   <div class="row">
-    <span class="row-label">المدة:</span>
+    <span class="row-label">المدة</span>
     <span class="row-value">${totalDuration} دقيقة</span>
   </div>
   ` : ''}
 
-  <div class="divider"></div>
-
-  <!-- Footer -->
   <div class="footer">
     <div>يرجى تسليم الورقة قبل الدخول</div>
     <div class="footer-note">شكراً لاختياركم Cut Salon</div>
   </div>
 </body>
 </html>
-  `.trim();
+`.trim();
 }
 
 /**

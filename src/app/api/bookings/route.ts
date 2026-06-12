@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { checkBarberAvailableForBooking } from "@/lib/queueEstimateEngine";
+import { normalizeBookingTimes } from "@/lib/bookingDateTime";
 
 export const runtime = "nodejs";
 
@@ -67,7 +68,29 @@ export async function GET(req: NextRequest) {
       ORDER BY b.BookingDate ASC, b.StartTime ASC
     `);
 
-    return NextResponse.json({ bookings: result.recordset });
+    // Normalize times for each booking
+    const enrichedBookings = result.recordset.map((booking: any) => {
+      const totalDuration = booking.TotalDuration || 30;
+      const normalized = normalizeBookingTimes(
+        booking.BookingDate,
+        booking.StartTime,
+        booking.EndTime,
+        totalDuration,
+        booking.BookingID
+      );
+
+      return {
+        ...booking,
+        startDateTimeCairo: normalized.startDateTimeCairo,
+        endDateTimeCairo: normalized.endDateTimeCairo,
+        startTimeDisplay: normalized.startTimeDisplay,
+        endTimeDisplay: normalized.endTimeDisplay,
+        dateDisplay: normalized.dateDisplay,
+        durationMinutes: normalized.durationMinutes,
+      };
+    });
+
+    return NextResponse.json({ bookings: enrichedBookings });
   } catch (err) {
     console.error("[bookings GET]", err);
     return NextResponse.json({ error: "فشل تحميل الحجوزات" }, { status: 500 });

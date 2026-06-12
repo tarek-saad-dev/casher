@@ -80,6 +80,13 @@ export interface Booking {
   ClientMobile: string | null;
   EmpName: string | null;
   ServiceCount: number;
+  // Normalized Cairo time fields (enriched by API)
+  startDateTimeCairo?: string;
+  endDateTimeCairo?: string;
+  startTimeDisplay?: string;
+  endTimeDisplay?: string;
+  dateDisplay?: string;
+  durationMinutes?: number;
 }
 
 export type BookingStatus =

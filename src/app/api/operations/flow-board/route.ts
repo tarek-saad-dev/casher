@@ -14,6 +14,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
+import { normalizeBookingTimes, sqlTimeToHhmm, sqlDateToYyyyMmDd, createCairoDateTime, SALON_TZ } from "@/lib/bookingDateTime";
 
 export const runtime = "nodejs";
 
@@ -46,6 +47,10 @@ export interface FlowBoardBarber {
     durationMinutes?: number;
     customerName?: string;
     barberId?: number;
+    // Normalized Cairo time display fields
+    startTimeDisplay?: string;
+    endTimeDisplay?: string;
+    dateDisplay?: string;
   }>;
 }
 
@@ -195,32 +200,56 @@ export async function GET(req: NextRequest) {
       const barberBookings = bookingsMap.get(empId) || [];
       const barberQueue = queueMap.get(empId) || [];
       
-      // Add booking items
+      // Add booking items with Cairo-normalized times
       for (const b of barberBookings) {
-        const start = timeToDate(b.StartTime, dateStr);
-        let end = timeToDate(b.EndTime, dateStr);
-        
-        // Fix: if end is before start (overnight or data issue), add one day to end
-        if (end.getTime() <= start.getTime()) {
-          end = new Date(end.getTime() + 24 * 60 * 60 * 1000);
+        // DEBUG for BK-448
+        const isDebug = b.BookingID === 448;
+        if (isDebug) {
+          console.log(`[flow-board] Processing BK-${b.BookingID}:`, {
+            rawStartTime: b.StartTime,
+            rawEndTime: b.EndTime,
+            dateStr,
+          });
         }
-        
-        const duration = Math.round((end.getTime() - start.getTime()) / 60000);
-        
-        // Ensure duration is never negative
-        const safeDuration = Math.max(0, duration);
+
+        // Use Cairo-normalized datetime utility
+        const normalized = normalizeBookingTimes(
+          dateStr,
+          b.StartTime,
+          b.EndTime,
+          30, // default duration, will be calculated from times
+          b.BookingID
+        );
+
+        const start = new Date(normalized.startDateTimeCairo);
+        const end = new Date(normalized.endDateTimeCairo);
+        const safeDuration = normalized.durationMinutes;
+
+        if (isDebug) {
+          console.log(`[flow-board] BK-${b.BookingID} normalized:`, {
+            start: start.toISOString(),
+            end: end.toISOString(),
+            duration: safeDuration,
+            startDisplay: normalized.startTimeDisplay,
+            endDisplay: normalized.endTimeDisplay,
+          });
+        }
         
         timeline.push({
           type: "booking",
           sourceId: b.BookingID,
           label: b.ClientName || `B-${b.BookingID}`,
-          startTime: start.toISOString(),
-          endTime: end.toISOString(),
+          startTime: normalized.startDateTimeCairo,
+          endTime: normalized.endDateTimeCairo,
           status: b.Status,
           protected: true,
           durationMinutes: safeDuration,
           customerName: b.ClientName || undefined,
           barberId: empId,
+          // Additional normalized fields for frontend
+          startTimeDisplay: normalized.startTimeDisplay,
+          endTimeDisplay: normalized.endTimeDisplay,
+          dateDisplay: normalized.dateDisplay,
         });
       }
       
@@ -307,14 +336,9 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// Helper: Format SQL time to HH:MM
-function formatTime(sqlTime: any): string {
-  if (!sqlTime) return '';
-  // Handle Date object from SQL time
-  const d = new Date(sqlTime);
-  const h = d.getUTCHours().toString().padStart(2, '0');
-  const m = d.getUTCMinutes().toString().padStart(2, '0');
-  return `${h}:${m}`;
+// Helper: Format SQL time to HH:MM using Cairo timezone
+function formatTime(sqlTime: unknown): string {
+  return sqlTimeToHhmm(sqlTime);
 }
 
 // Helper: Convert "HH:MM" to minutes
@@ -323,8 +347,7 @@ function timeToMinutes(timeStr: string): number {
   return h * 60 + m;
 }
 
-// Helper: SQL time to Date
-function timeToDate(sqlTime: any, dateStr: string): Date {
-  const timeStr = formatTime(sqlTime);
-  return new Date(`${dateStr}T${timeStr}`);
+// Helper: SQL time to Date (Cairo-normalized)
+function timeToDate(sqlTime: unknown, dateStr: string): Date {
+  return createCairoDateTime(dateStr, sqlTime);
 }
