@@ -194,8 +194,16 @@ export function dowFromDateStr(dateStr: string): number {
 
 /**
  * Load the weekly default schedule for one barber on a given date.
- * Falls back to TblEmp.DefaultCheckInTime/Out if no schedule row.
- * "No schedule + no default" returns source="none" with isWorkingDay=false.
+ *
+ * Source priority:
+ *   1. TblEmpWorkSchedule row for this EmpID + DayOfWeek  → authoritative
+ *   2. If the employee has NO schedule rows at all (table empty for this emp),
+ *      fall back to TblEmp.DefaultCheckInTime/Out as a one-time migration aid.
+ *   3. If neither exists → source="none", isWorkingDay=false.
+ *
+ * IMPORTANT: If TblEmpWorkSchedule HAS rows for this employee (even for other
+ * days) but NOT for this specific day, that means this day is simply not
+ * configured → treat as isWorkingDay=false. Do NOT fall back to TblEmp defaults.
  */
 export async function getDefaultSchedule(
   empId: number,
@@ -205,6 +213,7 @@ export async function getDefaultSchedule(
   const dow = dowFromDateStr(dateStr);
 
   try {
+    // Query 1: specific day row
     const res = await db
       .request()
       .input("empId", sql.Int, empId)
@@ -222,13 +231,27 @@ export async function getDefaultSchedule(
       return {
         isWorkingDay: !!row.IsWorkingDay,
         start: row.StartTime ?? null,
-        end: row.EndTime ?? null,
+        end:   row.EndTime   ?? null,
         source: "TblEmpWorkSchedule",
       };
     }
-  } catch { /* table may not exist */ }
 
-  // Fallback: TblEmp default times
+    // Query 2: does this employee have ANY schedule rows?
+    // If yes, the missing day simply means "not configured = day off".
+    // If no rows exist at all, we allow the TblEmp fallback below.
+    const anyRowRes = await db
+      .request()
+      .input("empId", sql.Int, empId)
+      .query(`SELECT TOP 1 1 AS HasRows FROM dbo.TblEmpWorkSchedule WHERE EmpID = @empId`);
+
+    if (anyRowRes.recordset.length > 0) {
+      // Employee has a schedule configured but this day is not a working day
+      return { isWorkingDay: false, start: null, end: null, source: "TblEmpWorkSchedule" };
+    }
+  } catch { /* TblEmpWorkSchedule may not exist yet */ }
+
+  // Fallback: TblEmp default times — ONLY when zero schedule rows exist for this employee.
+  // This is a legacy fallback for employees not yet migrated to the HR weekly schedule.
   try {
     const empRes = await db.request().input("empId", sql.Int, empId).query(`
       SELECT
@@ -238,16 +261,21 @@ export async function getDefaultSchedule(
     `);
     const emp = empRes.recordset[0];
     if (emp?.DefaultCheckInTime && emp?.DefaultCheckOutTime) {
+      console.warn(
+        `[availabilityEngine] EMP ${empId}: No TblEmpWorkSchedule rows found. ` +
+        `Falling back to TblEmp default times (${emp.DefaultCheckInTime}–${emp.DefaultCheckOutTime}). ` +
+        `Configure a weekly schedule in HR to remove this warning.`,
+      );
       return {
         isWorkingDay: true,
         start: emp.DefaultCheckInTime,
-        end: emp.DefaultCheckOutTime,
+        end:   emp.DefaultCheckOutTime,
         source: "TblEmp.Default",
       };
     }
   } catch { /* non-fatal */ }
 
-  // No schedule anywhere → unavailable (not available by default)
+  // No schedule anywhere → unavailable
   return { isWorkingDay: false, start: null, end: null, source: "none" };
 }
 
@@ -509,8 +537,8 @@ export async function getBarbersDayStatus(
   const idList = empIds.join(",");
 
   // Load all in parallel
-  const [schedulesRes, dayOffRes, overridesMap, attendanceMap] = await Promise.all([
-    // Schedules
+  const [schedulesRes, anyScheduleRes, dayOffRes, overridesMap, attendanceMap] = await Promise.all([
+    // Schedules for this specific day-of-week
     db.request().input("dow", sql.TinyInt, dow).query(`
       SELECT EmpID,
         IsWorkingDay,
@@ -518,6 +546,11 @@ export async function getBarbersDayStatus(
         CASE WHEN EndTime   IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), EndTime,   108), 5) ELSE NULL END AS EndTime
       FROM dbo.TblEmpWorkSchedule
       WHERE EmpID IN (${idList}) AND DayOfWeek = @dow
+    `).catch(() => ({ recordset: [] as any[] })),
+
+    // Which employees have ANY schedule rows (to distinguish "day not configured" from "no HR schedule at all")
+    db.request().query(`
+      SELECT DISTINCT EmpID FROM dbo.TblEmpWorkSchedule WHERE EmpID IN (${idList})
     `).catch(() => ({ recordset: [] as any[] })),
 
     // Day offs
@@ -546,6 +579,8 @@ export async function getBarbersDayStatus(
   ]);
 
   // Build lookup maps
+  const empsWithAnySchedule = new Set<number>(anyScheduleRes.recordset.map((r: any) => r.EmpID as number));
+
   const schedMap = new Map<number, { isWorkingDay: boolean; start: string | null; end: string | null }>();
   for (const r of schedulesRes.recordset) {
     schedMap.set(r.EmpID, {
@@ -553,6 +588,30 @@ export async function getBarbersDayStatus(
       start: r.StartTime ?? null,
       end:   r.EndTime   ?? null,
     });
+  }
+
+  // For employees with no TblEmpWorkSchedule rows at all, load TblEmp default times
+  const empIdsNeedingDefault = empIds.filter(id => !empsWithAnySchedule.has(id));
+  const defaultTimesMap = new Map<number, { start: string; end: string }>();
+  if (empIdsNeedingDefault.length) {
+    try {
+      const defRes = await db.request().query(`
+        SELECT EmpID,
+          CASE WHEN DefaultCheckInTime  IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), DefaultCheckInTime,  108), 5) ELSE NULL END AS DefaultCheckInTime,
+          CASE WHEN DefaultCheckOutTime IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), DefaultCheckOutTime, 108), 5) ELSE NULL END AS DefaultCheckOutTime
+        FROM dbo.TblEmp WHERE EmpID IN (${empIdsNeedingDefault.join(",")})
+      `);
+      for (const r of defRes.recordset) {
+        if (r.DefaultCheckInTime && r.DefaultCheckOutTime) {
+          console.warn(
+            `[availabilityEngine BATCH] EMP ${r.EmpID}: No TblEmpWorkSchedule rows found. ` +
+            `Falling back to TblEmp default times (${r.DefaultCheckInTime}–${r.DefaultCheckOutTime}). ` +
+            `Configure a weekly schedule in HR to remove this warning.`,
+          );
+          defaultTimesMap.set(r.EmpID, { start: r.DefaultCheckInTime, end: r.DefaultCheckOutTime });
+        }
+      }
+    } catch { /* non-fatal */ }
   }
 
   const dayOffEntryMap = new Map<number, { offType: string; reason: string | null }>();
@@ -581,9 +640,20 @@ export async function getBarbersDayStatus(
       (opts?.debugEmpId === empId && opts?.debugDate === dateStr);
 
     const rawSched = schedMap.get(empId);
-    const schedule: BarberSchedule = rawSched
-      ? { isWorkingDay: rawSched.isWorkingDay, start: rawSched.start, end: rawSched.end, source: "TblEmpWorkSchedule" }
-      : { isWorkingDay: false, start: null, end: null, source: "none" };
+    let schedule: BarberSchedule;
+    if (rawSched) {
+      // Has a schedule row for this day-of-week
+      schedule = { isWorkingDay: rawSched.isWorkingDay, start: rawSched.start, end: rawSched.end, source: "TblEmpWorkSchedule" };
+    } else if (empsWithAnySchedule.has(empId)) {
+      // Has schedule rows for other days but not this one → this day is not a working day
+      schedule = { isWorkingDay: false, start: null, end: null, source: "TblEmpWorkSchedule" };
+    } else {
+      // No schedule rows at all → use TblEmp.Default if available
+      const def = defaultTimesMap.get(empId);
+      schedule = def
+        ? { isWorkingDay: true, start: def.start, end: def.end, source: "TblEmp.Default" }
+        : { isWorkingDay: false, start: null, end: null, source: "none" };
+    }
 
     const dayOffEntry = dayOffEntryMap.get(empId) ?? null;
     const overrides   = overridesMap.get(empId) ?? [];

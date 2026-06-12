@@ -280,12 +280,26 @@ export async function GET(req: NextRequest) {
 
     const scheduleMap: Record<
       number,
-      { isWorking: boolean; start: string; end: string }
+      { isWorking: boolean; start: string; end: string; source: string }
     > = {};
     for (const r of schedRes.recordset) {
-      const start = fmtTime(r.StartTime) ?? "09:00";
-      const end = fmtTime(r.EndTime) ?? "23:00";
-      scheduleMap[r.EmpID] = { isWorking: !!r.IsWorkingDay, start, end };
+      const start = fmtTime(r.StartTime);
+      const end   = fmtTime(r.EndTime);
+      const isWorking = !!r.IsWorkingDay;
+
+      // A working-day row with NULL start/end is a data-entry error.
+      // Do NOT silently fall back to 09:00/23:00 — that creates ghost slots.
+      // Treat the row as "no usable schedule" so the barber is skipped.
+      if (isWorking && (!start || !end)) {
+        console.warn(
+          `[available-slots] EMP ${r.EmpID} (${nameMap[r.EmpID]}) has IsWorkingDay=1 ` +
+          `but NULL StartTime/EndTime for DayOfWeek=${dayOfWeek} on ${date}. ` +
+          `Skipping — fix the HR schedule to provide real times.`,
+        );
+        continue;
+      }
+
+      scheduleMap[r.EmpID] = { isWorking, start: start!, end: end!, source: "TblEmpWorkSchedule" };
       if (DEV)
         console.log("[available-slots full debug] barber schedule from DB:", {
           empId: r.EmpID,
@@ -296,7 +310,7 @@ export async function GET(req: NextRequest) {
           isWorkingDay: r.IsWorkingDay,
           startTime: start,
           endTime: end,
-          isOvernight: hhmmToMinutes(end) <= hhmmToMinutes(start),
+          isOvernight: start && end ? hhmmToMinutes(end) <= hhmmToMinutes(start) : false,
           scheduleSource: "TblEmpWorkSchedule",
         });
     }
@@ -355,11 +369,15 @@ export async function GET(req: NextRequest) {
     // Apply overrides to each barber's base schedule
     const effectiveScheduleMap: Record<number, EffectiveSchedule> = {};
     for (const bid of barberIds) {
-      const base = scheduleMap[bid] ?? {
-        isWorking: false,
-        start: "09:00",
-        end: "23:00",
-      };
+      const raw = scheduleMap[bid];
+      if (!raw) {
+        // No TblEmpWorkSchedule row for this barber/day → not working, no slots.
+        if (DEV)
+          console.log(`[available-slots] EMP ${bid} (${nameMap[bid]}) has NO schedule row for DayOfWeek=${dayOfWeek} — treated as not working.`);
+      }
+      const base = raw
+        ? { isWorking: raw.isWorking, start: raw.start, end: raw.end }
+        : { isWorking: false, start: "00:00", end: "00:00" };
       const overrides = overridesMap.get(bid) ?? [];
       effectiveScheduleMap[bid] = applyOverrides(bid, date, base, overrides);
       // day_off override → treat same as TblEmpDayOff
@@ -537,6 +555,45 @@ export async function GET(req: NextRequest) {
 
     const dbTimeMs = Date.now() - t0;
 
+    // ── 9a. Diagnostic log for late_start / override debugging ────────────────
+    if (mode === "specific" && empId) {
+      const effDbg = effectiveScheduleMap[empId];
+      const baseDbg = scheduleMap[empId];
+      const nowCairoMs = serverNow.getTime();
+      const shiftStartMs = effDbg ? salonDateTimeToMs(date, effDbg.start, timezone) : null;
+      console.log("[available-slots][LATE_START_DEBUG] request context:", {
+        empId,
+        date,
+        isToday,
+        isInternalSource,
+        serviceIds,
+        minNoticeMinutes: minNotice,
+        effectiveMinNotice,
+        nowCairo: nowInSalon,
+        nowEpochMs: nowCairoMs,
+        nowPlusMinNoticeMs: nowCairoMs + effectiveMinNotice * 60_000,
+        nowPlusMinNoticeCairo: minutesToHHMM(
+          hhmmToMinutes(nowInSalon) + effectiveMinNotice
+        ),
+        baseSchedule: baseDbg ? { start: baseDbg.start, end: baseDbg.end } : null,
+        effectiveStart: effDbg?.start ?? null,
+        effectiveEnd: effDbg?.end ?? null,
+        appliedOverrideType: effDbg?.appliedOverride?.Type ?? null,
+        blockedIntervalsCount: effDbg?.blockedIntervals?.length ?? 0,
+        shiftStartMs,
+        // Earliest bookable: max(shiftStart, now+minNotice) for today
+        earliestBookableMs: isToday && shiftStartMs
+          ? Math.max(shiftStartMs, nowCairoMs + effectiveMinNotice * 60_000)
+          : shiftStartMs,
+        earliestBookableCairo: isToday && effDbg
+          ? minutesToHHMM(Math.max(
+              hhmmToMinutes(effDbg.start),
+              hhmmToMinutes(nowInSalon) + effectiveMinNotice
+            ))
+          : effDbg?.start ?? null,
+      });
+    }
+
     // ── 9. Generate slots per barber using their own schedule ─────────────────
     // We collect all unique slot times across all active barbers, then check each.
     // For specific mode: only the requested barber's schedule.
@@ -673,6 +730,18 @@ export async function GET(req: NextRequest) {
         // Only apply minNotice for public bookings, skip for operations/admin
         if (!isInternalSource && slotDateMs < serverNow.getTime() + minNotice * 60_000) {
           removedNotice++;
+          // Log the first few minNotice rejections so it's visible in Vercel logs
+          if (removedNotice <= 5 && mode === "specific") {
+            console.log("[available-slots][LATE_START_DEBUG] slot rejected by minNotice:", {
+              slotTime: time,
+              slotMs: slotDateMs,
+              nowMs: serverNow.getTime(),
+              nowPlusMinNoticeMs: serverNow.getTime() + minNotice * 60_000,
+              minNoticeMinutes: minNotice,
+              nowCairo: nowInSalon,
+              nowPlusMinNoticeCairo: minutesToHHMM(hhmmToMinutes(nowInSalon) + minNotice),
+            });
+          }
           continue;
         }
       }
@@ -1019,6 +1088,33 @@ export async function GET(req: NextRequest) {
         `isToday=${isToday} minAllowed=${minimumAllowedStartTime}`,
     );
 
+    // ── Debug block: always included so Network tab / Vercel logs show the cause ──
+    // Helps confirm whether minNotice or a wrong effectiveStart is responsible for
+    // missing early slots (e.g. late_start=17:00 but first slot shows 18:00).
+    const effForDebug = mode === "specific" && empId ? effectiveScheduleMap[empId] : null;
+    const firstAvailable = slots.find((s) => s.available);
+    const debugInfo = {
+      currentCairoTime:    nowInSalon,
+      isToday,
+      minNoticeMinutes:    minNotice,
+      effectiveMinNotice,
+      nowPlusMinNotice:    minutesToHHMM(hhmmToMinutes(nowInSalon) + effectiveMinNotice),
+      effectiveStart:      effForDebug?.start ?? null,
+      effectiveEnd:        effForDebug?.end   ?? null,
+      appliedOverrideType: effForDebug?.appliedOverride?.Type ?? null,
+      firstAvailableSlot:  firstAvailable?.time ?? null,
+      slotsTotal:          slots.length,
+      slotsAvailable:      slots.filter((s) => s.available).length,
+      removedPast,
+      removedByMinNotice:  removedNotice,
+      // Human-readable explanation
+      minNoticeNote: isToday && !isInternalSource && minNotice > 0
+        ? `public booking: slots within ${minNotice}min of now (${nowInSalon}) are hidden`
+        : isInternalSource
+          ? "internal source: minNotice bypassed"
+          : "future date: minNotice not applied",
+    };
+
     return NextResponse.json(
       {
         ok: true,
@@ -1028,6 +1124,7 @@ export async function GET(req: NextRequest) {
         durationSource: respDurSource,
         ...(mode === "specific" && empId ? { empId } : {}),
         slots,
+        debug: debugInfo,
       },
       { headers: PUBLIC_CORS_HEADERS },
     );
