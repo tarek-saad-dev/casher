@@ -147,31 +147,9 @@ export async function getBarberAvailabilityReason(
       `);
 
     if (schedRes.recordset.length === 0) {
-      // No schedule row — fall back to TblEmp default times
-      const empRes = await db.request()
-        .input('empId', sql.Int, empId)
-        .query(`
-          SELECT CONVERT(VARCHAR(5), DefaultCheckInTime, 108)  AS DefaultCheckInTime,
-                 CONVERT(VARCHAR(5), DefaultCheckOutTime, 108) AS DefaultCheckOutTime
-          FROM dbo.TblEmp WHERE EmpID = @empId
-        `);
-      const emp = empRes.recordset[0];
-      if (!emp?.DefaultCheckInTime || !emp?.DefaultCheckOutTime) {
-        // No schedule and no default times — barber is NOT available (not available by default)
-        return { available: false, reason: 'لا يوجد جدول عمل معرّف', startTime: null, endTime: null };
-      }
-      const startMin = timeToMinutes(emp.DefaultCheckInTime);
-      const endMin   = timeToMinutes(emp.DefaultCheckOutTime);
-      const checkMin = timeToMinutes(cairoTime);
-      if (!withinWindow(checkMin, startMin, endMin)) {
-        return {
-          available: false,
-          reason: `خارج ساعات العمل (${emp.DefaultCheckInTime} - ${emp.DefaultCheckOutTime})`,
-          startTime: emp.DefaultCheckInTime,
-          endTime:   emp.DefaultCheckOutTime,
-        };
-      }
-      return { available: true, reason: 'متاح', startTime: emp.DefaultCheckInTime, endTime: emp.DefaultCheckOutTime };
+      // No TblEmpWorkSchedule row for this employee/day — treat as not working.
+      // Do NOT fall back to TblEmp.DefaultCheckInTime/Out.
+      return { available: false, reason: 'لا يوجد جدول عمل معرّف في HR لهذا اليوم', startTime: null, endTime: null };
     }
 
     const row = schedRes.recordset[0];
@@ -189,11 +167,17 @@ export async function getBarberAvailabilityReason(
     // 4. Apply schedule overrides
     const overridesMap = await loadOverridesForDate(db, [empId], dateStr);
     const overrides    = overridesMap.get(empId) ?? [];
+    if (!startStr || !endStr) {
+      // Working-day row with NULL times = data error in HR schedule
+      console.warn(`[barberAvailability] EMP ${empId} / ${dateStr}: IsWorkingDay=1 but NULL StartTime/EndTime. Fix in /admin/hr.`);
+      return { available: false, reason: 'جدول HR غير مكتمل: وقت البداية أو النهاية مفقود', startTime: null, endTime: null };
+    }
+
     if (overrides.length > 0) {
       const base = {
         isWorking: !!row.IsWorkingDay,
-        start: startStr ?? '09:00',
-        end:   endStr   ?? '23:00',
+        start: startStr,
+        end:   endStr,
       };
       const eff = applyOverrides(empId, dateStr, base, overrides);
       if (!eff.isWorking) {

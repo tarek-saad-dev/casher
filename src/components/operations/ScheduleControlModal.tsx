@@ -10,11 +10,12 @@ import {
 
 type OverrideType = 'day_off' | 'late_start' | 'early_leave' | 'custom_hours' | 'block_range';
 type AvailStatus = 'working' | 'day_off' | 'absent' | 'not_checked_in' | 'off' | 'unknown';
+type ScheduleSource = 'TblEmpWorkSchedule' | 'TblEmp.Default' | 'missing_hr_schedule' | 'invalid_hr_schedule' | 'none' | string;
 
 interface BarberRow {
   empId: number;
   empName: string;
-  defaultSchedule: { isWorkingDay: boolean; start: string | null; end: string | null; source: string } | null;
+  defaultSchedule: { isWorkingDay: boolean; start: string | null; end: string | null; source: ScheduleSource } | null;
   effectiveStart: string | null;
   effectiveEnd: string | null;
   isWorkingDay: boolean;
@@ -431,18 +432,35 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                       )}
                     </div>
                     <div className="flex items-center gap-3 mt-1 flex-wrap">
+                      {/* Missing HR schedule warning */}
+                      {b.defaultSchedule?.source === 'missing_hr_schedule' && (
+                        <span className="text-xs flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
+                          <AlertTriangle size={10} />
+                          لا يوجد جدول HR — يرجى ضبطه من /admin/hr
+                        </span>
+                      )}
+                      {/* Invalid HR schedule warning */}
+                      {b.defaultSchedule?.source === 'invalid_hr_schedule' && (
+                        <span className="text-xs flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
+                          <AlertTriangle size={10} />
+                          جدول HR غير مكتمل — وقت البداية أو النهاية مفقود
+                        </span>
+                      )}
                       {/* Default schedule + source */}
                       {b.defaultSchedule?.isWorkingDay && b.defaultSchedule.start && (
                         <span className="text-xs flex items-center gap-1" style={{ color: '#4b5563' }}>
                           <span>الجدول الأساسي: {b.defaultSchedule.start} — {b.defaultSchedule.end}</span>
-                          {b.defaultSchedule.source === 'TblEmp.Default' && (
-                            <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.2)' }}>
-                              تعريف افتراضي ⚠
-                            </span>
-                          )}
+                          <span className="px-1 py-0.5 rounded text-xs" style={{
+                            background: b.defaultSchedule.source === 'TblEmpWorkSchedule'
+                              ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.12)',
+                            color: b.defaultSchedule.source === 'TblEmpWorkSchedule'
+                              ? '#6ee7b7' : '#f59e0b',
+                          }}>
+                            {b.defaultSchedule.source === 'TblEmpWorkSchedule' ? 'HR' : 'تعريف افتراضي ⚠'}
+                          </span>
                         </span>
                       )}
-                      {/* Effective — only show if different from base (i.e. override active) */}
+                      {/* Effective — only show if override is active */}
                       {b.isWorkingDay && b.effectiveStart && b.appliedOverride && (
                         <span className="text-xs flex items-center gap-1" style={{ color: '#6b7280' }}>
                           <span>الفعلي: {b.effectiveStart} — {b.effectiveEnd}</span>
@@ -451,7 +469,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                           </span>
                         </span>
                       )}
-                      {/* Effective when no override — just show times without label */}
+                      {/* Effective when no override */}
                       {b.isWorkingDay && b.effectiveStart && !b.appliedOverride && (
                         <span className="text-xs" style={{ color: '#6b7280' }}>
                           الفعلي: {b.effectiveStart} — {b.effectiveEnd}

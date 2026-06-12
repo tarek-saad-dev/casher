@@ -95,7 +95,26 @@ export async function GET(req: NextRequest) {
       queueCountMap.set(r.EmpID, r.QueueCount);
     }
 
-    // 5. Assemble response
+    // 5. Debug log: schedule source per barber (always logged for tracing)
+    for (const b of barbers) {
+      const s = statusMap.get(b.EmpID);
+      console.log("[schedule-control] SCHEDULE_DEBUG", {
+        empId:           b.EmpID,
+        empName:         b.EmpName,
+        date,
+        dayOfWeek:       new Date(`${date}T12:00:00Z`).getDay(),
+        scheduleSource:  s?.schedule.source ?? "unknown",
+        baseStart:       s?.schedule.start ?? null,
+        baseEnd:         s?.schedule.end ?? null,
+        isWorkingDay:    s?.schedule.isWorkingDay ?? false,
+        effectiveStart:  s?.effectiveStart ?? null,
+        effectiveEnd:    s?.effectiveEnd ?? null,
+        appliedOverride: s?.appliedOverride?.Type ?? null,
+        isDayOff:        s?.isDayOff ?? false,
+      });
+    }
+
+    // 6. Assemble response
     const result = barbers.map((b) => {
       const s = statusMap.get(b.EmpID);
       return {

@@ -133,9 +133,9 @@ export async function computePreview(
   const existingOverrides = await getScheduleOverrides(empId, date);
 
   const base = {
-    isWorking: schedule.isWorkingDay,
-    start: schedule.start ?? "09:00",
-    end:   schedule.end   ?? "23:00",
+    isWorking: schedule.isWorkingDay && !!schedule.start && !!schedule.end,
+    start: schedule.start ?? "00:00",
+    end:   schedule.end   ?? "00:00",
   };
 
   const currentEffective = applyOverrides(empId, date, base, existingOverrides);

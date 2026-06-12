@@ -37,14 +37,20 @@ async function ensureScheduleTable(db: any) {
 function timeToDate(timeStr: string | null | undefined): Date | null {
   if (!timeStr || timeStr.trim() === '') return null;
   const [h, m, s] = timeStr.split(':').map(Number);
-  return new Date(1970, 0, 1, h, m, s || 0);
+  // Use UTC epoch so mssql stores the correct TIME value regardless of server timezone
+  const d = new Date(0);
+  d.setUTCHours(h ?? 0, m ?? 0, s ?? 0, 0);
+  return d;
 }
 
 function formatScheduleRow(row: any) {
   const fmt = (v: any): string | null => {
     if (!v) return null;
     if (typeof v === 'string') return v.substring(0, 5);
-    if (v instanceof Date) return `${String(v.getHours()).padStart(2,'0')}:${String(v.getMinutes()).padStart(2,'0')}`;
+    if (v instanceof Date) {
+      // mssql returns SQL TIME columns as Date anchored to 1970-01-01 UTC — use UTC accessors
+      return `${String(v.getUTCHours()).padStart(2,'0')}:${String(v.getUTCMinutes()).padStart(2,'0')}`;
+    }
     return null;
   };
   return {
@@ -104,81 +110,25 @@ export async function GET(
 
     let schedule = scheduleResult.recordset;
 
-    // Backfill missing days (should always return 7 days)
+    // Fill missing days with in-memory placeholder rows (IsWorkingDay=false, no times).
+    // We do NOT auto-insert using DefaultCheckInTime/Out — that caused schedule corruption.
+    // HR must explicitly configure each day's times via the schedule UI.
     if (schedule.length < 7) {
-      const existingDays = schedule.map(s => s.DayOfWeek);
-      const missingDays = [];
-
+      const existingDays = new Set(schedule.map((s: any) => s.DayOfWeek));
       for (let day = 0; day <= 6; day++) {
-        if (!existingDays.includes(day)) {
-          missingDays.push(day);
+        if (!existingDays.has(day)) {
+          schedule.push({
+            DayOfWeek:      day,
+            IsWorkingDay:   0,
+            StartTime:      null,
+            EndTime:        null,
+            BreakStartTime: null,
+            BreakEndTime:   null,
+            Notes:          null,
+          });
         }
       }
-
-      if (missingDays.length > 0) {
-        const transaction = new sql.Transaction(db);
-        await transaction.begin();
-
-        try {
-          // Get employee default times
-          const empResult = await new sql.Request(transaction)
-            .input("empId", sql.Int, empId)
-            .query(`
-              SELECT DefaultCheckInTime, DefaultCheckOutTime 
-              FROM dbo.TblEmp 
-              WHERE EmpID = @empId
-            `);
-
-          const emp = empResult.recordset[0];
-          const defaultStart = emp.DefaultCheckInTime || '12:00';
-          const defaultEnd = emp.DefaultCheckOutTime || '02:00';
-
-          // Insert missing days
-          for (const day of missingDays) {
-            const isWorkingDay = day !== 5; // Friday is day off
-            const notes = day === 5 ? 'جمعة - إجازة أسبوعية' : 'يوم عمل عادي';
-
-            await new sql.Request(transaction)
-              .input("empId", sql.Int, empId)
-              .input("dayOfWeek", sql.TinyInt, day)
-              .input("isWorkingDay", sql.Bit, isWorkingDay ? 1 : 0)
-              .input("startTime", sql.Time, isWorkingDay ? timeToDate(defaultStart) : null)
-              .input("endTime", sql.Time, isWorkingDay ? timeToDate(defaultEnd) : null)
-              .input("notes", sql.NVarChar(200), notes)
-              .query(`
-                INSERT INTO dbo.TblEmpWorkSchedule 
-                  (EmpID, DayOfWeek, IsWorkingDay, StartTime, EndTime, Notes, CreatedAt)
-                VALUES
-                  (@empId, @dayOfWeek, @isWorkingDay, @startTime, @endTime, @notes, GETDATE())
-              `);
-          }
-
-          await transaction.commit();
-
-          // Get complete schedule again
-          const completeResult = await db.request()
-            .input("empId", sql.Int, empId)
-            .query(`
-              SELECT 
-                DayOfWeek,
-                IsWorkingDay,
-                StartTime,
-                EndTime,
-                BreakStartTime,
-                BreakEndTime,
-                Notes
-              FROM dbo.TblEmpWorkSchedule 
-              WHERE EmpID = @empId
-              ORDER BY DayOfWeek
-            `);
-
-          schedule = completeResult.recordset;
-
-        } catch (innerErr) {
-          await transaction.rollback();
-          throw innerErr;
-        }
-      }
+      schedule.sort((a: any, b: any) => a.DayOfWeek - b.DayOfWeek);
     }
 
     return NextResponse.json({
