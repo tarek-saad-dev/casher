@@ -1089,13 +1089,48 @@ export async function GET(req: NextRequest) {
     );
 
     // ── Debug block: always included so Network tab / Vercel logs show the cause ──
-    // Helps confirm whether minNotice or a wrong effectiveStart is responsible for
-    // missing early slots (e.g. late_start=17:00 but first slot shows 18:00).
     const effForDebug = mode === "specific" && empId ? effectiveScheduleMap[empId] : null;
     const firstAvailable = slots.find((s) => s.available);
+    const availableCount = slots.filter((s) => s.available).length;
+
+    // Per-barber schedule sources for diagnosing missing HR schedule issues
+    const barberScheduleSources = barberIds.map(bid => ({
+      empId:          bid,
+      empName:        nameMap[bid] ?? `EMP${bid}`,
+      scheduleSource: scheduleMap[bid] ? "TblEmpWorkSchedule" : "missing_hr_schedule",
+      isWorking:      effectiveScheduleMap[bid]?.isWorking ?? false,
+      effectiveStart: effectiveScheduleMap[bid]?.start ?? null,
+      effectiveEnd:   effectiveScheduleMap[bid]?.end   ?? null,
+      isDayOff:       dayOffSet.has(bid),
+    }));
+
+    // Derive a human-readable noSlotsReason for the frontend empty-state
+    let noSlotsReason: string | null = null;
+    if (availableCount === 0) {
+      const workingBarbers = barberScheduleSources.filter(b => b.isWorking);
+      const missingHr = barberScheduleSources.filter(b => b.scheduleSource === "missing_hr_schedule");
+      const allOff = barberScheduleSources.every(b => b.isDayOff);
+      if (barberIds.length === 0) {
+        noSlotsReason = "لا يوجد موظفون نشطون في النظام";
+      } else if (allOff) {
+        noSlotsReason = "جميع الموظفين في إجازة أو يوم راحة";
+      } else if (missingHr.length === barberIds.length) {
+        noSlotsReason = "لا يوجد جدول HR معرّف لأي موظف — تحقق من /admin/hr";
+      } else if (missingHr.length > 0) {
+        noSlotsReason = `${missingHr.length} موظف بدون جدول HR — تحقق من /admin/hr`;
+      } else if (workingBarbers.length === 0) {
+        noSlotsReason = "لا يوجد موظف يعمل في هذا اليوم";
+      } else {
+        noSlotsReason = `المدة المطلوبة (${slots[0]?.durationMinutes ?? "؟"} دقيقة) لا تتسع في أي فترة متاحة`;
+      }
+    }
+
     const debugInfo = {
       currentCairoTime:    nowInSalon,
       isToday,
+      date,
+      serviceIds,
+      totalDurationMinutes: respDurMin,
       minNoticeMinutes:    minNotice,
       effectiveMinNotice,
       nowPlusMinNotice:    minutesToHHMM(hhmmToMinutes(nowInSalon) + effectiveMinNotice),
@@ -1104,10 +1139,13 @@ export async function GET(req: NextRequest) {
       appliedOverrideType: effForDebug?.appliedOverride?.Type ?? null,
       firstAvailableSlot:  firstAvailable?.time ?? null,
       slotsTotal:          slots.length,
-      slotsAvailable:      slots.filter((s) => s.available).length,
+      slotsAvailable:      availableCount,
       removedPast,
       removedByMinNotice:  removedNotice,
-      // Human-readable explanation
+      totalBarbers:        barberIds.length,
+      workingBarbers:      barberScheduleSources.filter(b => b.isWorking).length,
+      noSlotsReason,
+      barberScheduleSources,
       minNoticeNote: isToday && !isInternalSource && minNotice > 0
         ? `public booking: slots within ${minNotice}min of now (${nowInSalon}) are hidden`
         : isInternalSource

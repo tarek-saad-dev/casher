@@ -10,7 +10,8 @@ import {
 interface Service {
   ProID: number;
   ProName: string;
-  SPrice: number;
+  SPrice: number;   // normalized from SPrice1
+  SPrice1?: number; // raw field from API
   DurationMinutes: number | null;
 }
 
@@ -170,6 +171,7 @@ export function CreateBookingDrawer({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [slotsDebugReason, setSlotsDebugReason] = useState<string | null>(null);
 
   // ── Computed ──────────────────────────────────────────────────────────────────
 
@@ -215,11 +217,19 @@ export function CreateBookingDrawer({
 
   const groupedSlots = useMemo(() => groupSlotsByHour(uniqueTimes), [uniqueTimes]);
 
-  // ── Load services once ────────────────────────────────────────────────────────
+  // ── Load services once ─────────────────────────────────────────────────────────
   useEffect(() => {
     fetch('/api/services?active=true')
       .then(r => r.json())
-      .then(d => setServices(d.services ?? d ?? []))
+      .then(d => {
+        const raw: any[] = d.services ?? (Array.isArray(d) ? d : []);
+        // Normalize: API returns SPrice1, map to SPrice so price always renders
+        const normalized = raw.map(s => ({
+          ...s,
+          SPrice: s.SPrice ?? s.SPrice1 ?? 0,
+        }));
+        setServices(normalized);
+      })
       .catch(() => {});
   }, []);
 
@@ -235,6 +245,7 @@ export function CreateBookingDrawer({
       setCustomerPhone('');
       setClientSearch('');
       setError(null);
+      setSlotsDebugReason(null);
       setStep(1);
       setSuccess(false);
       setSelectedBarberId(initialEmpId || null);
@@ -257,34 +268,65 @@ export function CreateBookingDrawer({
   }, [clientSearch]);
 
   // ── Fetch slots ───────────────────────────────────────────────────────────────
+  // Stable string key so the effect fires whenever the set of IDs actually changes
+  const serviceIdsKey = serviceIds.join(',');
+
   const fetchSlots = useCallback(async () => {
     if (!serviceIds.length || !bookingDate) return;
-    if (isPastCairoDate(bookingDate)) return;   // never fetch for past date
+    if (isPastCairoDate(bookingDate)) return;
     if (mode === 'specific' && !selectedBarberId) return;
     setLoadingSlots(true);
     setAvailableSlots([]);
+    setSlotsDebugReason(null);
     setError(null);
+    const base = `/api/public/booking/available-slots?date=${bookingDate}&serviceIds=${serviceIdsKey}&source=operations`;
+    const url = mode === 'specific' && selectedBarberId
+      ? `${base}&mode=specific&empId=${selectedBarberId}`
+      : `${base}&mode=nearest`;
+    console.log('[CreateBookingDrawer] fetchSlots', {
+      bookingDate,
+      serviceIds,
+      serviceIdsKey,
+      totalDuration,
+      totalPrice,
+      mode,
+      selectedBarberId,
+      url,
+    });
     try {
-      const svcParam = serviceIds.join(',');
-      const base = `/api/public/booking/available-slots?date=${bookingDate}&serviceIds=${svcParam}&source=operations`;
-      // specific mode: filter by the chosen barber so only their working hours are used
-      const url = mode === 'specific' && selectedBarberId
-        ? `${base}&mode=specific&empId=${selectedBarberId}`
-        : `${base}&mode=nearest`;
       const res = await fetch(url);
       const data = await res.json();
-      // Keep only truly available slots — unavailable ones are never shown
-      setAvailableSlots((data.slots ?? []).filter((s: AvailableSlot) => s.available));
-    } catch {
+      const allSlots: AvailableSlot[] = data.slots ?? [];
+      const available = allSlots.filter((s: AvailableSlot) => s.available);
+      console.log('[CreateBookingDrawer] fetchSlots response', {
+        totalSlots: allSlots.length,
+        availableSlots: available.length,
+        debug: data.debug,
+      });
+      setAvailableSlots(available);
+      // Extract a reason for empty state from the debug payload
+      if (available.length === 0) {
+        const dbg = data.debug;
+        const reason = dbg?.noSlotsReason
+          ?? (dbg?.totalBarbers === 0 ? 'لا يوجد موظفون نشطون' : null)
+          ?? (dbg?.allBarbersOffToday ? 'جميع الموظفين في إجازة' : null)
+          ?? null;
+        setSlotsDebugReason(reason);
+      }
+    } catch (e) {
+      console.error('[CreateBookingDrawer] fetchSlots error', e);
       setAvailableSlots([]);
     } finally {
       setLoadingSlots(false);
     }
-  }, [bookingDate, serviceIds, mode, selectedBarberId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookingDate, serviceIdsKey, mode, selectedBarberId]);
 
+  // Trigger fetch whenever we're on step 2 AND any key dependency changes
   useEffect(() => {
-    if (step === 2 && serviceIds.length) fetchSlots();
-  }, [step, fetchSlots, serviceIds.length]);
+    if (step === 2 && serviceIds.length > 0) fetchSlots();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, bookingDate, serviceIdsKey, mode, selectedBarberId]);
 
   // ── Date change (resets time/barber/slots, keeps services & customer) ─────────
   const handleDateChange = (newDate: string) => {
@@ -691,7 +733,14 @@ export function CreateBookingDrawer({
                 <div className="text-center py-10">
                   <AlertTriangle size={26} className="mx-auto mb-3 text-amber-500" />
                   <p className="text-sm text-zinc-400">لا توجد مواعيد متاحة</p>
-                  <p className="text-xs text-zinc-600 mt-1">جرب تغيير التاريخ أو تقليل الخدمات</p>
+                  {slotsDebugReason ? (
+                    <p className="text-xs mt-1.5 px-4" style={{ color: '#f59e0b' }}>{slotsDebugReason}</p>
+                  ) : (
+                    <p className="text-xs text-zinc-600 mt-1">جرب تغيير التاريخ أو تقليل الخدمات</p>
+                  )}
+                  <p className="text-xs text-zinc-700 mt-2">
+                    {formatDateLabel(bookingDate)} · {totalDuration} دقيقة · {serviceIds.length} خدمة
+                  </p>
                   {hasTimeRange && !showAllSlots && availableSlots.length > 0 && (
                     <button
                       onClick={() => setShowAllSlots(true)}
