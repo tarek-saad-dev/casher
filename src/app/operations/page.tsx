@@ -9,6 +9,7 @@ import { FindNearestQueueDrawer } from '@/components/operations/FindNearestQueue
 import { VoiceEnableBanner } from '@/components/operations/VoiceEnableBanner';
 import { OperationsMusicPlayerEnhanced } from '@/components/operations/OperationsMusicPlayerEnhanced';
 import { CreateBookingDrawer } from '@/components/operations/CreateBookingDrawer';
+import { ScheduleControlModal } from '@/components/operations/ScheduleControlModal';
 import { useAutoVoiceAnnounce, isVoiceEnabled, enableVoice, disableVoice } from '@/hooks/useAutoVoiceAnnounce';
 import { Plus, CalendarPlus } from 'lucide-react';
 
@@ -106,6 +107,7 @@ export default function OperationsPage() {
   const [showCreateDrawer, setShowCreateDrawer] = useState(false);
   const [showFindNearestDrawer, setShowFindNearestDrawer] = useState(false);
   const [showBookingDrawer, setShowBookingDrawer] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [bookingInitialData, setBookingInitialData] = useState<{
     date?: string;
     time?: string;
@@ -278,6 +280,7 @@ export default function OperationsPage() {
         onRefresh={fetchFlowBoard}
         onCreateQueue={() => setShowCreateDrawer(true)}
         onFindNearestQueue={() => setShowFindNearestDrawer(true)}
+        onScheduleControl={() => setShowScheduleModal(true)}
         loading={loading}
       />
 
@@ -436,6 +439,19 @@ export default function OperationsPage() {
           onCreated={() => {
             fetchFlowBoard();
             showToast('تم إنشاء الحجز بنجاح');
+          }}
+        />
+      )}
+
+      {/* Schedule Control Modal */}
+      {showScheduleModal && (
+        <ScheduleControlModal
+          open={showScheduleModal}
+          onClose={() => setShowScheduleModal(false)}
+          initialDate={selectedDate}
+          onApplied={() => {
+            fetchFlowBoard();
+            showToast('تم تحديث مواعيد الصنايعي بنجاح');
           }}
         />
       )}

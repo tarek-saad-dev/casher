@@ -240,6 +240,30 @@ export async function PUT(
       if (day.EndTime && !/^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/.test(day.EndTime)) {
         return NextResponse.json({ error: "صيغة وقت الانتهاء غير صحيحة" }, { status: 400 });
       }
+
+      // StartTime must differ from EndTime; identical times are invalid
+      if (day.IsWorkingDay && day.StartTime && day.EndTime) {
+        const [sh, sm] = day.StartTime.split(":").map(Number);
+        const [eh, em] = day.EndTime.split(":").map(Number);
+        if (sh * 60 + sm === eh * 60 + em) {
+          return NextResponse.json(
+            { error: `اليوم ${day.DayOfWeek}: وقت البدء ووقت الانتهاء لا يمكن أن يكونا متساويين` },
+            { status: 400 },
+          );
+        }
+      }
+
+      // Break times: if both provided, breakStart must be before breakEnd
+      if (day.BreakStartTime && day.BreakEndTime) {
+        const [bsh, bsm] = day.BreakStartTime.split(":").map(Number);
+        const [beh, bem] = day.BreakEndTime.split(":").map(Number);
+        if (bsh * 60 + bsm >= beh * 60 + bem) {
+          return NextResponse.json(
+            { error: `اليوم ${day.DayOfWeek}: وقت بداية الاستراحة يجب أن يكون قبل نهايتها` },
+            { status: 400 },
+          );
+        }
+      }
     }
 
     // Check for duplicate days

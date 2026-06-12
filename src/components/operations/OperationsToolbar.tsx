@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, RefreshCw, Filter, Calendar, Zap, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RefreshCw, Filter, Calendar, Zap, Plus, CalendarClock } from 'lucide-react';
 
 interface Props {
   date: string;
@@ -12,6 +12,7 @@ interface Props {
   onRefresh: () => void;
   onCreateQueue: () => void;
   onFindNearestQueue?: () => void;
+  onScheduleControl?: () => void;
   loading?: boolean;
   onDateSelect?: (date: string) => void; // YYYY-MM-DD
 }
@@ -25,6 +26,7 @@ export function OperationsToolbar({
   onRefresh,
   onCreateQueue,
   onFindNearestQueue,
+  onScheduleControl,
   loading,
   onDateSelect,
 }: Props) {
@@ -155,6 +157,18 @@ export function OperationsToolbar({
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
+
+        {onScheduleControl && (
+          <button
+            onClick={onScheduleControl}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all hover:brightness-110"
+            style={{ background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.3)' }}
+            title="إدارة مواعيد اليوم"
+          >
+            <CalendarClock className="w-4 h-4" />
+            <span>إدارة مواعيد اليوم</span>
+          </button>
+        )}
 
         {onFindNearestQueue && (
           <button

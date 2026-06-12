@@ -14,7 +14,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
-import { normalizeBookingTimes, sqlTimeToHhmm, sqlDateToYyyyMmDd, createCairoDateTime, SALON_TZ } from "@/lib/bookingDateTime";
+import { normalizeBookingTimes, sqlTimeToHhmm, createCairoDateTime } from "@/lib/bookingDateTime";
+import { getBarbersDayStatus } from "@/lib/availabilityEngine";
 
 export const runtime = "nodejs";
 
@@ -28,7 +29,15 @@ function perfLog(label: string, startMs: number) {
 export interface FlowBoardBarber {
   empId: number;
   empName: string;
-  status: "working" | "off" | "day_off" | "unknown";
+  status: "working" | "off" | "day_off" | "absent" | "not_checked_in" | "unknown";
+  // Normalized status fields from availabilityEngine
+  isWorkingDay: boolean;
+  isDayOff: boolean;
+  isAbsent: boolean;
+  isLateStart: boolean;
+  isEarlyLeave: boolean;
+  currentAvailabilityStatus: string;
+  statusReasonArabic: string;
   workStart: string | null;
   workEnd: string | null;
   isOvernightShift: boolean;
@@ -79,7 +88,6 @@ export async function GET(req: NextRequest) {
     
     const [
       barbersRes,
-      schedulesRes,
       bookingsRes,
       queueRes,
     ] = await Promise.all([
@@ -91,17 +99,7 @@ export async function GET(req: NextRequest) {
         ORDER BY EmpName
       `),
       
-      // 2b. Get all schedules for barbers on this day
-      db.request()
-        .input("dow", sql.TinyInt, dayOfWeek)
-        .query(`
-          SELECT EmpID, IsWorkingDay, StartTime, EndTime
-          FROM [dbo].[TblEmpWorkSchedule]
-          WHERE DayOfWeek = @dow
-            AND EmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
-        `),
-      
-      // 2c. Get all bookings for this date
+      // 2b. Get all bookings for this date
       db.request()
         .input("bdate", sql.Date, dateStr)
         .query(`
@@ -120,7 +118,7 @@ export async function GET(req: NextRequest) {
             AND b.Status IN ('confirmed', 'arrived', 'in_progress')
         `),
       
-      // 2d. Get all queue tickets for this date
+      // 2c. Get all queue tickets for this date
       db.request()
         .input("qdate", sql.Date, dateStr)
         .query(`
@@ -143,15 +141,16 @@ export async function GET(req: NextRequest) {
     ]);
     
     perfLog("batchFetch", batchStart);
-    console.log(`[flow-board] Barbers: ${barbersRes.recordset.length}, Schedules: ${schedulesRes.recordset.length}, Bookings: ${bookingsRes.recordset.length}, Queue: ${queueRes.recordset.length}`);
+
+    // 2d. Batch load full day status (schedule + day-off + overrides + attendance) for all barbers
+    const isToday = dateStr === now.toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
+    const allBarberIds: number[] = barbersRes.recordset.map((b: any) => b.EmpID as number);
+    const dayStatusMap = await getBarbersDayStatus(allBarberIds, dateStr, { isToday });
+
+    console.log(`[flow-board] Barbers: ${barbersRes.recordset.length}, Bookings: ${bookingsRes.recordset.length}, Queue: ${queueRes.recordset.length}`);
 
     // 3. Group data by empId in memory (fast)
     const processStart = Date.now();
-    
-    const scheduleMap = new Map();
-    for (const s of schedulesRes.recordset) {
-      scheduleMap.set(s.EmpID, s);
-    }
     
     const bookingsMap = new Map();
     for (const b of bookingsRes.recordset) {
@@ -171,14 +170,30 @@ export async function GET(req: NextRequest) {
     
     for (const barber of barbersRes.recordset) {
       const empId = barber.EmpID;
-      const schedule = scheduleMap.get(empId);
-      
-      // Not working today
-      if (!schedule || !schedule.IsWorkingDay) {
+      const dayStatus = dayStatusMap.get(empId);
+
+      // Common status fields for all branches
+      const statusFields = {
+        isWorkingDay:              dayStatus?.isWorkingDay ?? false,
+        isDayOff:                  dayStatus?.isDayOff ?? true,
+        isAbsent:                  dayStatus?.isAbsent ?? false,
+        isLateStart:               dayStatus?.isLateStart ?? false,
+        isEarlyLeave:              dayStatus?.isEarlyLeave ?? false,
+        currentAvailabilityStatus: dayStatus?.currentAvailabilityStatus ?? "unknown",
+        statusReasonArabic:        dayStatus?.statusReasonArabic ?? "غير متاح",
+      };
+
+      // Not working today (day off, absent, no schedule)
+      if (!dayStatus?.isWorkingDay || dayStatus.isAbsent) {
+        const statusCode =
+          dayStatus?.isAbsent    ? "absent"  :
+          dayStatus?.isDayOff    ? "day_off" :
+          (dayStatus?.currentAvailabilityStatus as FlowBoardBarber["status"]) ?? "day_off";
         barbers.push({
           empId,
           empName: barber.EmpName,
-          status: "day_off",
+          status: statusCode,
+          ...statusFields,
           workStart: null,
           workEnd: null,
           isOvernightShift: false,
@@ -191,8 +206,8 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      const workStart = schedule.StartTime ? formatTime(schedule.StartTime) : null;
-      const workEnd = schedule.EndTime ? formatTime(schedule.EndTime) : null;
+      const workStart = dayStatus.effectiveStart ?? null;
+      const workEnd   = dayStatus.effectiveEnd   ?? null;
       const isOvernight = !!(workStart && workEnd && timeToMinutes(workEnd) <= timeToMinutes(workStart));
 
       // Build timeline items
@@ -299,7 +314,8 @@ export async function GET(req: NextRequest) {
       barbers.push({
         empId,
         empName: barber.EmpName,
-        status: "working",
+        status: (dayStatus?.currentAvailabilityStatus as FlowBoardBarber["status"]) ?? "working",
+        ...statusFields,
         workStart,
         workEnd,
         isOvernightShift: isOvernight,

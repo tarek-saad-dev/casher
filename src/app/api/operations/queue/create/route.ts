@@ -48,6 +48,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { simulateQueueInsertion, buildBarberOperationalTimeline } from "@/lib/operationsQueueTimeline";
 import { getDefaultDuration, getServicesDuration, cairoDateStr, buildQueueIntervals, buildBookingIntervals } from "@/lib/queueEstimateEngine";
+import { getBarberAvailabilityReason } from "@/lib/barberAvailability";
 import { generateTicketCode } from "@/lib/queueTicketCode";
 import { detectQueueTicketsSchema, buildInsertColumns } from "@/lib/queueSchema";
 import { getChairNumber } from "@/lib/chairMapping";
@@ -140,6 +141,16 @@ export async function POST(req: NextRequest) {
       .input("eid", sql.Int, empId)
       .query(`SELECT TOP 1 EmpName FROM [dbo].[TblEmp] WHERE EmpID = @eid`);
     const empName = empRes.recordset[0]?.EmpName ?? "";
+
+    // ── Guard: day_off / overrides / attendance check ─────────────────────────
+    // Reject before simulation so an absent / day-off barber never gets a ticket.
+    const availGuard = await getBarberAvailabilityReason(empId, new Date());
+    if (!availGuard.available) {
+      return NextResponse.json(
+        { ok: false, error: availGuard.reason ?? "الحلاق غير متاح", reason: "barber_unavailable" },
+        { status: 409 }
+      );
+    }
 
     // Get service details
     const defaultDur = await getDefaultDuration(db);

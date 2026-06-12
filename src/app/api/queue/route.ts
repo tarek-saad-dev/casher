@@ -9,6 +9,7 @@ import {
   getServicesDuration,
   cairoDateStr,
 } from "@/lib/queueEstimateEngine";
+import { getBarberAvailabilityReason } from "@/lib/barberAvailability";
 
 export const runtime = "nodejs";
 
@@ -213,6 +214,19 @@ export async function POST(req: NextRequest) {
       timeZone: "Africa/Cairo",
       hour12: false,
     });
+
+    // ── Guard: day_off / overrides / attendance check ─────────────────────────
+    // Must be done BEFORE the interval math so a day_off barber is rejected outright.
+    if (empId) {
+      const guardNow = new Date();
+      const avail = await getBarberAvailabilityReason(empId, guardNow);
+      if (!avail.available) {
+        return NextResponse.json(
+          { error: avail.reason ?? "الحلاق غير متاح", reason: "barber_unavailable" },
+          { status: 409 },
+        );
+      }
+    }
 
     // ── Re-calculate estimate server-side inside a SERIALIZABLE transaction ──
     // This prevents two concurrent requests from getting the same slot.

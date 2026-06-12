@@ -332,7 +332,24 @@ export async function GET(req: NextRequest) {
       /* table may not exist */
     }
 
-    // ── 5b. Batch preload schedule overrides (1 query) ────────────────────────
+    // ── 5b. Attendance Absent check (today only) ─────────────────────────────
+    // A barber marked Absent today must not appear with available slots.
+    if (isToday) {
+      try {
+        const attRes = await db
+          .request()
+          .input("workDate", sql.Date, date)
+          .query(`
+            SELECT EmpID FROM dbo.TblEmpAttendance
+            WHERE EmpID IN (${barberIdList})
+              AND WorkDate = @workDate
+              AND Status = 'Absent'
+          `);
+        for (const r of attRes.recordset) dayOffSet.add(r.EmpID);
+      } catch { /* table may not exist yet */ }
+    }
+
+    // ── 5c. Batch preload schedule overrides (1 query) ────────────────────────
     const overridesMap = await loadOverridesForDate(db, barberIds, date);
 
     // Apply overrides to each barber's base schedule

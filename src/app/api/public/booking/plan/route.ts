@@ -599,10 +599,9 @@ export async function POST(req: NextRequest) {
 
         try {
           // ── Re-check for conflicts with locking (prevents race conditions) ─────
-          // Calculate slot timing from seg data (segStartDt is not in scope here)
-          const slotDateStr = `${seg.date}T${seg.startTime}:00`;
-          const segStartMs = new Date(slotDateStr).getTime();
-          const segEndMs = new Date(`${seg.date}T${seg.endTime}:00`).getTime();
+          // Use Cairo-aware epoch so overnight slots and server-TZ offsets are handled correctly.
+          const segStartMs = salonDateTimeToMs(seg.date, seg.startTime, timezone);
+          const segEndMs   = salonDateTimeToMs(seg.date, seg.endTime,   timezone);
 
           // Check existing bookings with UPDLOCK to prevent concurrent inserts
           const conflictCheck = await transaction

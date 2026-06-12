@@ -6,6 +6,8 @@ import {
   isValidDate,
   isValidTime,
   PUBLIC_CORS_HEADERS,
+  salonDateTimeToMs,
+  getPublicSettings,
 } from '@/lib/publicBookingHelpers';
 import { checkBarberAvailableForBooking, cairoDateStr } from '@/lib/queueEstimateEngine';
 
@@ -56,7 +58,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'empId مطلوب في وضع specific' }, { status: 400, headers: PUBLIC_CORS_HEADERS });
     }
 
-    const slotDt = new Date(`${date}T${time}:00`);
+    const settings = await getPublicSettings();
+    const timezone = settings.timezone || 'Africa/Cairo';
+    // Use Cairo-aware epoch so overnight shifts and server-TZ differences are handled correctly.
+    const slotDt = new Date(salonDateTimeToMs(date, time, timezone));
     const db     = await getPool();
 
     if (mode === 'specific' && empId) {
