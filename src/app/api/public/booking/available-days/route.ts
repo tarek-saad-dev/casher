@@ -6,7 +6,9 @@ import {
   checkRateLimit,
   isValidDate,
   PUBLIC_CORS_HEADERS,
+  salonDateTimeToMs,
 } from "@/lib/publicBookingHelpers";
+import { sqlDateToStr } from "@/lib/availabilityEngine";
 import {
   cairoDateStr,
   getDefaultDuration,
@@ -54,8 +56,10 @@ interface ScheduleRow {
   EmpID: number;
   DayOfWeek: number;
   IsWorkingDay: boolean;
-  StartTime: string | null;
-  EndTime: string | null;
+  // mssql returns TIME columns as Date objects (1970-01-01 UTC anchor), not strings.
+  // Use toHhmm() before any string operations.
+  StartTime: Date | string | null;
+  EndTime: Date | string | null;
 }
 
 interface DayOffRow {
@@ -458,8 +462,11 @@ export async function GET(req: NextRequest) {
 
     for (let i = 0; i < totalDays; i++) {
       const ms = startMs + i * 86_400_000;
-      const dateStr = new Date(ms).toISOString().slice(0, 10);
-      const dow = new Date(ms).getDay();
+      // Use UTC parts — startMs is from Date.parse("YYYY-MM-DD") which is UTC midnight.
+      // getUTCFullYear/Month/Date are stable regardless of server TZ.
+      const d = new Date(ms);
+      const dateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+      const dow = new Date(`${dateStr}T12:00:00Z`).getDay();
       const label = AR_DAYS[dow];
 
       const dateOverridesMap =
@@ -594,14 +601,13 @@ function buildScheduleMap(rows: ScheduleRow[]): Map<string, ScheduleRow> {
 }
 
 // Build queue tickets lookup map: key = `${empId}:${dateStr}`
+// sqlDateToStr uses UTC parts to avoid UTC-midnight off-by-one shift.
 function buildQueueMap(rows: QueueTicketRow[]): Map<string, QueueTicketRow[]> {
   const map = new Map<string, QueueTicketRow[]>();
   for (const row of rows) {
-    const dateStr = new Date(row.QueueDate).toISOString().slice(0, 10);
+    const dateStr = sqlDateToStr(row.QueueDate) ?? String(row.QueueDate).slice(0, 10);
     const key = `${row.EmpID}:${dateStr}`;
-    if (!map.has(key)) {
-      map.set(key, []);
-    }
+    if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(row);
   }
   return map;
@@ -611,11 +617,9 @@ function buildQueueMap(rows: QueueTicketRow[]): Map<string, QueueTicketRow[]> {
 function buildBookingMap(rows: BookingRow[]): Map<string, BookingRow[]> {
   const map = new Map<string, BookingRow[]>();
   for (const row of rows) {
-    const dateStr = new Date(row.BookingDate).toISOString().slice(0, 10);
+    const dateStr = sqlDateToStr(row.BookingDate) ?? String(row.BookingDate).slice(0, 10);
     const key = `${row.AssignedEmpID}:${dateStr}`;
-    if (!map.has(key)) {
-      map.set(key, []);
-    }
+    if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(row);
   }
   return map;
@@ -625,11 +629,22 @@ function buildBookingMap(rows: BookingRow[]): Map<string, BookingRow[]> {
 function buildDayOffMap(rows: DayOffRow[]): Map<string, DayOffRow> {
   const map = new Map<string, DayOffRow>();
   for (const row of rows) {
-    const dateStr = new Date(row.OffDate).toISOString().slice(0, 10);
+    const dateStr = sqlDateToStr(row.OffDate) ?? String(row.OffDate).slice(0, 10);
     const key = `${row.EmpID}:${dateStr}`;
     map.set(key, row);
   }
   return map;
+}
+
+// Helper: Normalize a SQL TIME value (Date object or "HH:MM" string) to "HH:MM".
+// mssql returns TIME columns as Date anchored to 1970-01-01 UTC — use UTC accessors.
+function toHhmm(v: Date | string | null | undefined): string | null {
+  if (!v) return null;
+  if (v instanceof Date) {
+    return `${String(v.getUTCHours()).padStart(2, '0')}:${String(v.getUTCMinutes()).padStart(2, '0')}`;
+  }
+  if (typeof v === 'string') return v.slice(0, 5) || null;
+  return null;
 }
 
 // Pure in-memory computation (no DB calls)
@@ -680,7 +695,12 @@ function computeDayAvailabilityInMemory(
       continue; // Try next barber
     }
 
-    if (!schedule.StartTime || !schedule.EndTime) {
+    // Normalize StartTime/EndTime: mssql returns TIME columns as Date objects
+    // (anchored to 1970-01-01 UTC). Convert to "HH:MM" strings before any use.
+    const schedStart = toHhmm(schedule.StartTime);
+    const schedEnd   = toHhmm(schedule.EndTime);
+
+    if (!schedStart || !schedEnd) {
       if (mode === "specific" && barbersToCheck.length === 1) {
         return {
           available: false,
@@ -706,13 +726,22 @@ function computeDayAvailabilityInMemory(
     }
 
     // 2b. Apply schedule overrides
+    // schedStart/schedEnd are already normalized HH:MM strings (see above).
     const empOverrides = overridesForDate.get(empId) ?? [];
     const baseSchedule = {
       isWorking: !!schedule.IsWorkingDay,
-      start: schedule.StartTime ?? "09:00",
-      end: schedule.EndTime ?? "23:00",
+      start: schedStart,
+      end:   schedEnd,
     };
-    const effSched = applyOverrides(empId, dateStr, baseSchedule, empOverrides);
+    let effSched: ReturnType<typeof applyOverrides>;
+    try {
+      effSched = applyOverrides(empId, dateStr, baseSchedule, empOverrides);
+    } catch (overrideErr) {
+      console.error(`[available-days] applyOverrides error emp=${empId} date=${dateStr}`, overrideErr);
+      // Treat as no overrides — use base schedule so one bad override row
+      // does not crash the entire endpoint.
+      effSched = applyOverrides(empId, dateStr, baseSchedule, []);
+    }
 
     if (!effSched.isWorking) {
       if (mode === "specific" && barbersToCheck.length === 1) {
@@ -725,9 +754,11 @@ function computeDayAvailabilityInMemory(
       continue;
     }
 
-    // Use effective (overridden) start/end for slot generation
+    // Use effective (overridden) start/end for slot generation.
+    // applyOverrides always returns HH:MM strings derived from baseSchedule
+    // (which we already normalized), so these are safe.
     const effectiveStart = effSched.start;
-    const effectiveEnd = effSched.end;
+    const effectiveEnd   = effSched.end;
 
     // 3. Build blocking intervals from queue, bookings, and override block_ranges
     const queueKey = `${empId}:${dateStr}`;
@@ -762,11 +793,16 @@ function computeDayAvailabilityInMemory(
       intervals.push({ start, end, source: "booking", id: booking.BookingID });
     }
 
-    // Add block_range override intervals
+    // Add block_range override intervals.
+    // Guard: skip any interval where startMs/endMs are NaN (malformed override row).
     for (const iv of effSched.blockedIntervals) {
+      if (!Number.isFinite(iv.startMs) || !Number.isFinite(iv.endMs)) {
+        console.warn(`[available-days] skipping malformed block_range interval emp=${empId} date=${dateStr}`, iv);
+        continue;
+      }
       intervals.push({
         start: new Date(iv.startMs),
-        end: new Date(iv.endMs),
+        end:   new Date(iv.endMs),
         source: "queue",
         id: -1,
       });
@@ -810,8 +846,9 @@ function computeDayAvailabilityInMemory(
 
     // Check each slot (early exit on first available)
     for (const time of slots) {
-      const slotDt = new Date(`${dateStr}T${time}:00`);
-      const slotMs = slotDt.getTime();
+      // Cairo-aware epoch: prevents server-TZ offset shifting slot times by ±2-3h
+      const slotMs = salonDateTimeToMs(dateStr, time, "Africa/Cairo");
+      const slotDt = new Date(slotMs);
 
       // Skip past slots
       if (slotMs - nowMs < minNoticeMinutes * 60_000) {
@@ -862,34 +899,30 @@ function computeDayAvailabilityInMemory(
   };
 }
 
-// Helper: Convert SQL time to Date
+// Helper: Convert SQL time to a Cairo-normalized Date.
+// Replaces the old naive new Date(`${dateStr}T${hhmm}:00`) which used server local TZ.
 function sqlTimeToDate(dateStr: string, timeVal: string | Date): Date {
   let hhmm = "00:00";
-
   if (timeVal instanceof Date) {
-    hhmm = `${String(timeVal.getHours()).padStart(2, "0")}:${String(timeVal.getMinutes()).padStart(2, "0")}`;
+    // mssql returns TIME as Date anchored to 1970-01-01 UTC — use UTC accessors
+    hhmm = `${String(timeVal.getUTCHours()).padStart(2, "0")}:${String(timeVal.getUTCMinutes()).padStart(2, "0")}`;
   } else if (typeof timeVal === "string") {
     hhmm = timeVal.slice(0, 5);
   }
-
-  return new Date(`${dateStr}T${hhmm}:00`);
+  return new Date(salonDateTimeToMs(dateStr, hhmm, "Africa/Cairo"));
 }
 
-// Helper: Convert time string or Date to minutes
+// Helper: Convert time string or SQL TIME Date to minutes since midnight
 function timeToMinutes(t: string | Date | null): number {
   if (!t) return 0;
-
-  // If it's a Date object, extract hours and minutes
   if (t instanceof Date) {
-    return t.getHours() * 60 + t.getMinutes();
+    // mssql TIME Date — use UTC accessors (anchored to 1970-01-01 UTC)
+    return t.getUTCHours() * 60 + t.getUTCMinutes();
   }
-
-  // If it's a string (expected format "HH:MM" or "HH:MM:SS")
   if (typeof t === "string") {
     const [h, m] = t.slice(0, 5).split(":").map(Number);
     return h * 60 + m;
   }
-
   return 0;
 }
 
@@ -903,8 +936,9 @@ function generateAllUnavailableDays(
   const days: DayResult[] = [];
   for (let i = 0; i < totalDays; i++) {
     const ms = startMs + i * 86_400_000;
-    const dateStr = new Date(ms).toISOString().slice(0, 10);
-    const dow = new Date(ms).getDay();
+    const d = new Date(ms);
+    const dateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    const dow = new Date(`${dateStr}T12:00:00Z`).getDay();
     days.push({
       date: dateStr,
       available: false,

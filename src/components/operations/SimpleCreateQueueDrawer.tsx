@@ -15,7 +15,7 @@ interface Service {
 interface Barber {
   empId: number;
   empName: string;
-  status: 'working' | 'off' | 'day_off' | 'unknown';
+  status: 'working' | 'off' | 'day_off' | 'absent' | 'not_checked_in' | 'unknown';
   workStart: string | null;
   workEnd: string | null;
   isOvernightShift: boolean;

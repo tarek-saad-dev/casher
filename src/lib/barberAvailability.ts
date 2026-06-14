@@ -12,6 +12,7 @@
  */
 
 import { getPool, sql } from '@/lib/db';
+import { applyOverrides, loadOverridesForDate } from '@/lib/scheduleOverrides';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -42,7 +43,8 @@ function fmtTime(v: unknown): string | null {
   if (!v) return null;
   if (typeof v === 'string') return v.slice(0, 5);
   if (v instanceof Date) {
-    return `${String(v.getHours()).padStart(2, '0')}:${String(v.getMinutes()).padStart(2, '0')}`;
+    // mssql returns TIME columns as Date anchored to 1970-01-01 UTC — use UTC accessors
+    return `${String(v.getUTCHours()).padStart(2, '0')}:${String(v.getUTCMinutes()).padStart(2, '0')}`;
   }
   return null;
 }
@@ -119,7 +121,21 @@ export async function getBarberAvailabilityReason(
     }
   } catch { /* TblEmpDayOff may not exist yet — non-fatal */ }
 
-  // 2. Check TblEmpWorkSchedule — weekly per-day schedule
+  // 2. Check attendance (today only) — Absent barber is unavailable
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+  if (dateStr === todayStr) {
+    try {
+      const attRes = await db.request()
+        .input('empId',     sql.Int,  empId)
+        .input('workDate',  sql.Date, dateStr)
+        .query(`SELECT TOP 1 Status FROM dbo.TblEmpAttendance WHERE EmpID = @empId AND WorkDate = @workDate`);
+      if (attRes.recordset[0]?.Status === 'Absent') {
+        return { available: false, reason: 'غائب', startTime: null, endTime: null };
+      }
+    } catch { /* table may not exist */ }
+  }
+
+  // 3. Check TblEmpWorkSchedule — weekly per-day schedule
   try {
     const schedRes = await db.request()
       .input('empId',     sql.Int,     empId)
@@ -131,31 +147,9 @@ export async function getBarberAvailabilityReason(
       `);
 
     if (schedRes.recordset.length === 0) {
-      // No schedule row — fall back to TblEmp default times
-      const empRes = await db.request()
-        .input('empId', sql.Int, empId)
-        .query(`
-          SELECT CONVERT(VARCHAR(5), DefaultCheckInTime, 108)  AS DefaultCheckInTime,
-                 CONVERT(VARCHAR(5), DefaultCheckOutTime, 108) AS DefaultCheckOutTime
-          FROM dbo.TblEmp WHERE EmpID = @empId
-        `);
-      const emp = empRes.recordset[0];
-      if (!emp?.DefaultCheckInTime || !emp?.DefaultCheckOutTime) {
-        // No schedule at all — assume always available
-        return { available: true, reason: 'متاح', startTime: null, endTime: null };
-      }
-      const startMin = timeToMinutes(emp.DefaultCheckInTime);
-      const endMin   = timeToMinutes(emp.DefaultCheckOutTime);
-      const checkMin = timeToMinutes(cairoTime);
-      if (!withinWindow(checkMin, startMin, endMin)) {
-        return {
-          available: false,
-          reason: `خارج ساعات العمل (${emp.DefaultCheckInTime} - ${emp.DefaultCheckOutTime})`,
-          startTime: emp.DefaultCheckInTime,
-          endTime:   emp.DefaultCheckOutTime,
-        };
-      }
-      return { available: true, reason: 'متاح', startTime: emp.DefaultCheckInTime, endTime: emp.DefaultCheckOutTime };
+      // No TblEmpWorkSchedule row for this employee/day — treat as not working.
+      // Do NOT fall back to TblEmp.DefaultCheckInTime/Out.
+      return { available: false, reason: 'لا يوجد جدول عمل معرّف في HR لهذا اليوم', startTime: null, endTime: null };
     }
 
     const row = schedRes.recordset[0];
@@ -169,6 +163,54 @@ export async function getBarberAvailabilityReason(
 
     const startStr = fmtTime(row.StartTime);
     const endStr   = fmtTime(row.EndTime);
+
+    // 4. Apply schedule overrides
+    const overridesMap = await loadOverridesForDate(db, [empId], dateStr);
+    const overrides    = overridesMap.get(empId) ?? [];
+    if (!startStr || !endStr) {
+      // Working-day row with NULL times = data error in HR schedule
+      console.warn(`[barberAvailability] EMP ${empId} / ${dateStr}: IsWorkingDay=1 but NULL StartTime/EndTime. Fix in /admin/hr.`);
+      return { available: false, reason: 'جدول HR غير مكتمل: وقت البداية أو النهاية مفقود', startTime: null, endTime: null };
+    }
+
+    if (overrides.length > 0) {
+      const base = {
+        isWorking: !!row.IsWorkingDay,
+        start: startStr,
+        end:   endStr,
+      };
+      const eff = applyOverrides(empId, dateStr, base, overrides);
+      if (!eff.isWorking) {
+        return {
+          available: false,
+          reason: eff.appliedOverride?.Reason ?? 'إجازة (تعديل)',
+          startTime: null, endTime: null,
+        };
+      }
+      // Check block_range at this specific time
+      const checkMs = dt.getTime();
+      for (const iv of eff.blockedIntervals) {
+        if (checkMs >= iv.startMs && checkMs < iv.endMs) {
+          return {
+            available: false,
+            reason: iv.reason ?? 'النطاق الزمني محجوب',
+            startTime: null, endTime: null,
+          };
+        }
+      }
+      // Use effective start/end for window check
+      const effStartMin = timeToMinutes(eff.start);
+      const effEndMin   = timeToMinutes(eff.end);
+      const checkMin    = timeToMinutes(cairoTime);
+      if (!withinWindow(checkMin, effStartMin, effEndMin)) {
+        return {
+          available: false,
+          reason: `خارج ساعات العمل (${eff.start} - ${eff.end})`,
+          startTime: eff.start, endTime: eff.end,
+        };
+      }
+      return { available: true, reason: 'متاح', startTime: eff.start, endTime: eff.end };
+    }
 
     if (startStr && endStr) {
       const startMin = timeToMinutes(startStr);
@@ -191,8 +233,8 @@ export async function getBarberAvailabilityReason(
       endTime:   endStr,
     };
   } catch {
-    // TblEmpWorkSchedule may not exist yet — assume available
-    return { available: true, reason: 'متاح', startTime: null, endTime: null };
+    // TblEmpWorkSchedule may not exist yet — unavailable by default (safe fallback)
+    return { available: false, reason: 'لا يوجد جدول عمل', startTime: null, endTime: null };
   }
 }
 
@@ -274,7 +316,7 @@ export async function getBarberWorkingWindow(
         FROM dbo.TblEmpWorkSchedule
         WHERE EmpID = @empId AND DayOfWeek = @dayOfWeek
       `);
-    if (!res.recordset.length) return { startTime: null, endTime: null, isWorkingDay: true };
+    if (!res.recordset.length) return { startTime: null, endTime: null, isWorkingDay: false };
     const row = res.recordset[0];
     return {
       isWorkingDay: !!row.IsWorkingDay,
@@ -282,6 +324,6 @@ export async function getBarberWorkingWindow(
       endTime:   fmtTime(row.EndTime),
     };
   } catch {
-    return { startTime: null, endTime: null, isWorkingDay: true };
+    return { startTime: null, endTime: null, isWorkingDay: false };
   }
 }

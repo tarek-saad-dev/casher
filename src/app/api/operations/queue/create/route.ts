@@ -47,7 +47,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { simulateQueueInsertion, buildBarberOperationalTimeline } from "@/lib/operationsQueueTimeline";
-import { getDefaultDuration, getServicesDuration, cairoDateStr } from "@/lib/queueEstimateEngine";
+import { getDefaultDuration, getServicesDuration, cairoDateStr, buildQueueIntervals, buildBookingIntervals } from "@/lib/queueEstimateEngine";
+import { getBarberAvailabilityReason } from "@/lib/barberAvailability";
 import { generateTicketCode } from "@/lib/queueTicketCode";
 import { detectQueueTicketsSchema, buildInsertColumns } from "@/lib/queueSchema";
 import { getChairNumber } from "@/lib/chairMapping";
@@ -141,6 +142,16 @@ export async function POST(req: NextRequest) {
       .query(`SELECT TOP 1 EmpName FROM [dbo].[TblEmp] WHERE EmpID = @eid`);
     const empName = empRes.recordset[0]?.EmpName ?? "";
 
+    // ── Guard: day_off / overrides / attendance check ─────────────────────────
+    // Reject before simulation so an absent / day-off barber never gets a ticket.
+    const availGuard = await getBarberAvailabilityReason(empId, new Date());
+    if (!availGuard.available) {
+      return NextResponse.json(
+        { ok: false, error: availGuard.reason ?? "الحلاق غير متاح", reason: "barber_unavailable" },
+        { status: 409 }
+      );
+    }
+
     // Get service details
     const defaultDur = await getDefaultDuration(db);
     const serviceDur = await getServicesDuration(db, serviceIds, defaultDur);
@@ -158,6 +169,61 @@ export async function POST(req: NextRequest) {
           ok: false,
           error: simulation.message,
           newSuggestion: simulation,
+        },
+        { status: 409 }
+      );
+    }
+
+    // CRITICAL: Explicit conflict detection - validate the suggested slot
+    const suggestedStartTime = new Date(simulation.suggestedStartTime);
+    const suggestedEndTime = new Date(suggestedStartTime.getTime() + serviceDur * 60000);
+
+    // Load intervals for explicit conflict check
+    const checkDateStr = cairoDateStr(new Date());
+    const qIvs = await buildQueueIntervals(db, empId, checkDateStr, new Date(), defaultDur, undefined, {
+      filterStale: true, graceMinutes: 30, debugContext: "ops-queue-create"
+    });
+    const bIvs = await buildBookingIntervals(db, empId, checkDateStr, defaultDur);
+
+    // Log for debugging
+    console.log("[ops/queue/create] Conflict check:", {
+      proposedStart: suggestedStartTime.toISOString(),
+      proposedEnd: suggestedEndTime.toISOString(),
+      queueCount: qIvs.length,
+      bookingCount: bIvs.length,
+    });
+
+    // Check for conflicts with correct overlap condition
+    const bookingConflicts = bIvs.filter((b: { start: Date; end: Date }) =>
+      suggestedStartTime < b.end && suggestedEndTime > b.start
+    );
+    const queueConflicts = qIvs.filter((q: { start: Date; end: Date }) =>
+      suggestedStartTime < q.end && suggestedEndTime > q.start
+    );
+
+    console.log("[ops/queue/create] Conflicts detected:", {
+      bookingConflicts: bookingConflicts.length,
+      queueConflicts: queueConflicts.length,
+    });
+
+    if (bookingConflicts.length > 0 || queueConflicts.length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "الوقت المقترح يتعارض مع حجز أو دور موجود",
+          conflicts: {
+            bookings: bookingConflicts.map((b: { id: number; start: Date; end: Date }) => ({
+              id: b.id,
+              start: b.start.toISOString(),
+              end: b.end.toISOString(),
+            })),
+            queue: queueConflicts.map((q: { id: number; ticketCode?: string; start: Date; end: Date }) => ({
+              id: q.id,
+              code: q.ticketCode,
+              start: q.start.toISOString(),
+              end: q.end.toISOString(),
+            })),
+          },
         },
         { status: 409 }
       );

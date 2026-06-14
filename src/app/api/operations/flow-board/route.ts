@@ -19,6 +19,8 @@ import {
   computeEffectiveTicket,
   type QueueTicketRaw,
 } from "@/lib/queueLifecycleEngine";
+import { normalizeBookingTimes, sqlTimeToHhmm, createCairoDateTime } from "@/lib/bookingDateTime";
+import { getBarbersDayStatus } from "@/lib/availabilityEngine";
 
 export const runtime = "nodejs";
 
@@ -32,7 +34,15 @@ function perfLog(label: string, startMs: number) {
 export interface FlowBoardBarber {
   empId: number;
   empName: string;
-  status: "working" | "off" | "day_off" | "unknown";
+  status: "working" | "off" | "day_off" | "absent" | "not_checked_in" | "unknown";
+  // Normalized status fields from availabilityEngine
+  isWorkingDay: boolean;
+  isDayOff: boolean;
+  isAbsent: boolean;
+  isLateStart: boolean;
+  isEarlyLeave: boolean;
+  currentAvailabilityStatus: string;
+  statusReasonArabic: string;
   workStart: string | null;
   workEnd: string | null;
   isOvernightShift: boolean;
@@ -60,6 +70,10 @@ export interface FlowBoardBarber {
     expectedEndAt?: string;
     isCountingAhead?: boolean;
     isBlockingAvailability?: boolean;
+    // Normalized Cairo time display fields
+    startTimeDisplay?: string;
+    endTimeDisplay?: string;
+    dateDisplay?: string;
   }>;
 }
 
@@ -104,7 +118,6 @@ export async function GET(req: NextRequest) {
     
     const [
       barbersRes,
-      schedulesRes,
       bookingsRes,
       queueRes,
     ] = await Promise.all([
@@ -116,17 +129,7 @@ export async function GET(req: NextRequest) {
         ORDER BY EmpName
       `),
       
-      // 3b. Get all schedules for barbers on this day
-      db.request()
-        .input("dow", sql.TinyInt, dayOfWeek)
-        .query(`
-          SELECT EmpID, IsWorkingDay, StartTime, EndTime
-          FROM [dbo].[TblEmpWorkSchedule]
-          WHERE DayOfWeek = @dow
-            AND EmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
-        `),
-      
-      // 3c. Get all bookings for this date
+      // 3b. Get all bookings for this date
       db.request()
         .input("bdate", sql.Date, dateStr)
         .query(`
@@ -145,7 +148,7 @@ export async function GET(req: NextRequest) {
             AND b.Status IN ('confirmed', 'arrived', 'in_progress')
         `),
       
-      // 3d. Get all queue tickets for this date (lifecycle cols included only if they exist)
+      // 3c. Get all queue tickets for this date (lifecycle cols included only if they exist)
       db.request()
         .input("qdate", sql.Date, dateStr)
         .query(`
@@ -169,15 +172,16 @@ export async function GET(req: NextRequest) {
     ]);
     
     perfLog("batchFetch", batchStart);
-    console.log(`[flow-board] Barbers: ${barbersRes.recordset.length}, Schedules: ${schedulesRes.recordset.length}, Bookings: ${bookingsRes.recordset.length}, Queue: ${queueRes.recordset.length}`);
+
+    // 2d. Batch load full day status (schedule + day-off + overrides + attendance) for all barbers
+    const isToday = dateStr === now.toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
+    const allBarberIds: number[] = barbersRes.recordset.map((b: any) => b.EmpID as number);
+    const dayStatusMap = await getBarbersDayStatus(allBarberIds, dateStr, { isToday });
+
+    console.log(`[flow-board] Barbers: ${barbersRes.recordset.length}, Bookings: ${bookingsRes.recordset.length}, Queue: ${queueRes.recordset.length}`);
 
     // 3. Group data by empId in memory (fast)
     const processStart = Date.now();
-    
-    const scheduleMap = new Map();
-    for (const s of schedulesRes.recordset) {
-      scheduleMap.set(s.EmpID, s);
-    }
     
     const bookingsMap = new Map();
     for (const b of bookingsRes.recordset) {
@@ -197,14 +201,30 @@ export async function GET(req: NextRequest) {
     
     for (const barber of barbersRes.recordset) {
       const empId = barber.EmpID;
-      const schedule = scheduleMap.get(empId);
-      
-      // Not working today
-      if (!schedule || !schedule.IsWorkingDay) {
+      const dayStatus = dayStatusMap.get(empId);
+
+      // Common status fields for all branches
+      const statusFields = {
+        isWorkingDay:              dayStatus?.isWorkingDay ?? false,
+        isDayOff:                  dayStatus?.isDayOff ?? true,
+        isAbsent:                  dayStatus?.isAbsent ?? false,
+        isLateStart:               dayStatus?.isLateStart ?? false,
+        isEarlyLeave:              dayStatus?.isEarlyLeave ?? false,
+        currentAvailabilityStatus: dayStatus?.currentAvailabilityStatus ?? "unknown",
+        statusReasonArabic:        dayStatus?.statusReasonArabic ?? "غير متاح",
+      };
+
+      // Not working today (day off, absent, no schedule)
+      if (!dayStatus?.isWorkingDay || dayStatus.isAbsent) {
+        const statusCode =
+          dayStatus?.isAbsent    ? "absent"  :
+          dayStatus?.isDayOff    ? "day_off" :
+          (dayStatus?.currentAvailabilityStatus as FlowBoardBarber["status"]) ?? "day_off";
         barbers.push({
           empId,
           empName: barber.EmpName,
-          status: "day_off",
+          status: statusCode,
+          ...statusFields,
           workStart: null,
           workEnd: null,
           isOvernightShift: false,
@@ -217,8 +237,8 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      const workStart = schedule.StartTime ? formatTime(schedule.StartTime) : null;
-      const workEnd = schedule.EndTime ? formatTime(schedule.EndTime) : null;
+      const workStart = dayStatus.effectiveStart ?? null;
+      const workEnd   = dayStatus.effectiveEnd   ?? null;
       const isOvernight = !!(workStart && workEnd && timeToMinutes(workEnd) <= timeToMinutes(workStart));
 
       // Build timeline items
@@ -226,32 +246,56 @@ export async function GET(req: NextRequest) {
       const barberBookings = bookingsMap.get(empId) || [];
       const barberQueue = queueMap.get(empId) || [];
       
-      // Add booking items
+      // Add booking items with Cairo-normalized times
       for (const b of barberBookings) {
-        const start = timeToDate(b.StartTime, dateStr);
-        let end = timeToDate(b.EndTime, dateStr);
-        
-        // Fix: if end is before start (overnight or data issue), add one day to end
-        if (end.getTime() <= start.getTime()) {
-          end = new Date(end.getTime() + 24 * 60 * 60 * 1000);
+        // DEBUG for BK-448
+        const isDebug = b.BookingID === 448;
+        if (isDebug) {
+          console.log(`[flow-board] Processing BK-${b.BookingID}:`, {
+            rawStartTime: b.StartTime,
+            rawEndTime: b.EndTime,
+            dateStr,
+          });
         }
-        
-        const duration = Math.round((end.getTime() - start.getTime()) / 60000);
-        
-        // Ensure duration is never negative
-        const safeDuration = Math.max(0, duration);
+
+        // Use Cairo-normalized datetime utility
+        const normalized = normalizeBookingTimes(
+          dateStr,
+          b.StartTime,
+          b.EndTime,
+          30, // default duration, will be calculated from times
+          b.BookingID
+        );
+
+        const start = new Date(normalized.startDateTimeCairo);
+        const end = new Date(normalized.endDateTimeCairo);
+        const safeDuration = normalized.durationMinutes;
+
+        if (isDebug) {
+          console.log(`[flow-board] BK-${b.BookingID} normalized:`, {
+            start: start.toISOString(),
+            end: end.toISOString(),
+            duration: safeDuration,
+            startDisplay: normalized.startTimeDisplay,
+            endDisplay: normalized.endTimeDisplay,
+          });
+        }
         
         timeline.push({
           type: "booking",
           sourceId: b.BookingID,
           label: b.ClientName || `B-${b.BookingID}`,
-          startTime: start.toISOString(),
-          endTime: end.toISOString(),
+          startTime: normalized.startDateTimeCairo,
+          endTime: normalized.endDateTimeCairo,
           status: b.Status,
           protected: true,
           durationMinutes: safeDuration,
           customerName: b.ClientName || undefined,
           barberId: empId,
+          // Additional normalized fields for frontend
+          startTimeDisplay: normalized.startTimeDisplay,
+          endTimeDisplay: normalized.endTimeDisplay,
+          dateDisplay: normalized.dateDisplay,
         });
       }
       
@@ -338,7 +382,8 @@ export async function GET(req: NextRequest) {
       barbers.push({
         empId,
         empName: barber.EmpName,
-        status: "working",
+        status: (dayStatus?.currentAvailabilityStatus as FlowBoardBarber["status"]) ?? "working",
+        ...statusFields,
         workStart,
         workEnd,
         isOvernightShift: isOvernight,
@@ -375,14 +420,9 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// Helper: Format SQL time to HH:MM
-function formatTime(sqlTime: any): string {
-  if (!sqlTime) return '';
-  // Handle Date object from SQL time
-  const d = new Date(sqlTime);
-  const h = d.getUTCHours().toString().padStart(2, '0');
-  const m = d.getUTCMinutes().toString().padStart(2, '0');
-  return `${h}:${m}`;
+// Helper: Format SQL time to HH:MM using Cairo timezone
+function formatTime(sqlTime: unknown): string {
+  return sqlTimeToHhmm(sqlTime);
 }
 
 // Helper: Convert "HH:MM" to minutes
@@ -391,8 +431,7 @@ function timeToMinutes(timeStr: string): number {
   return h * 60 + m;
 }
 
-// Helper: SQL time to Date
-function timeToDate(sqlTime: any, dateStr: string): Date {
-  const timeStr = formatTime(sqlTime);
-  return new Date(`${dateStr}T${timeStr}`);
+// Helper: SQL time to Date (Cairo-normalized)
+function timeToDate(sqlTime: unknown, dateStr: string): Date {
+  return createCairoDateTime(dateStr, sqlTime);
 }

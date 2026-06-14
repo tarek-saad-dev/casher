@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { checkBarberAvailableForBooking, buildBookingIntervals, buildQueueIntervals } from "@/lib/queueEstimateEngine";
+import { normalizeBookingTimes } from "@/lib/bookingDateTime";
 
 export const runtime = "nodejs";
 
@@ -16,15 +17,28 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     const bkRes = await db.request()
       .input("id", sql.Int, parseInt(id))
       .query(`
-        SELECT b.*, c.[Name] AS ClientName, c.Mobile AS ClientMobile, e.EmpName
+        SELECT
+          b.BookingID, b.BookingCode, b.ClientID, b.AssignedEmpID,
+          b.BookingDate, b.StartTime, b.EndTime, b.Status, b.Source,
+          b.Notes, b.QueueTicketID, b.CreatedAt, b.UpdatedAt,
+          c.[Name] AS ClientName, c.Mobile AS ClientMobile, e.EmpName,
+          COALESCE(SUM(bs.DurationMinutes), 30) AS TotalDuration
         FROM [dbo].[Bookings] b
         LEFT JOIN [dbo].[TblClient] c ON c.ClientID = b.ClientID
         LEFT JOIN [dbo].[TblEmp]    e ON e.EmpID    = b.AssignedEmpID
+        LEFT JOIN [dbo].[BookingServices] bs ON bs.BookingID = b.BookingID
         WHERE b.BookingID = @id
+        GROUP BY
+          b.BookingID, b.BookingCode, b.ClientID, b.AssignedEmpID,
+          b.BookingDate, b.StartTime, b.EndTime, b.Status, b.Source,
+          b.Notes, b.QueueTicketID, b.CreatedAt, b.UpdatedAt,
+          c.[Name], c.Mobile, e.EmpName
       `);
 
     if (!bkRes.recordset.length)
       return NextResponse.json({ error: "حجز غير موجود" }, { status: 404 });
+
+    const booking = bkRes.recordset[0];
 
     const svcRes = await db.request()
       .input("id", sql.Int, parseInt(id))
@@ -36,9 +50,41 @@ export async function GET(_req: NextRequest, context: RouteContext) {
         WHERE bs.BookingID = @id
       `);
 
+    // Calculate total duration from services
+    const services = svcRes.recordset;
+    const totalDurationMinutes = services.reduce(
+      (sum, s) => sum + (s.DurationMinutes || 30),
+      0
+    ) || 30;
+
+    // Normalize booking times to Cairo timezone
+    const normalizedTimes = normalizeBookingTimes(
+      booking.BookingDate,
+      booking.StartTime,
+      booking.EndTime,
+      totalDurationMinutes,
+      booking.BookingID
+    );
+
+    // Build enriched booking object with normalized times
+    const enrichedBooking = {
+      ...booking,
+      // Normalized Cairo datetime fields
+      startDateTimeCairo: normalizedTimes.startDateTimeCairo,
+      endDateTimeCairo: normalizedTimes.endDateTimeCairo,
+      startTimeDisplay: normalizedTimes.startTimeDisplay,
+      endTimeDisplay: normalizedTimes.endTimeDisplay,
+      dateDisplay: normalizedTimes.dateDisplay,
+      durationMinutes: normalizedTimes.durationMinutes,
+      // Raw values for debugging
+      _rawStartTime: normalizedTimes._rawStartTime,
+      _rawEndTime: normalizedTimes._rawEndTime,
+      _rawBookingDate: normalizedTimes._rawBookingDate,
+    };
+
     return NextResponse.json({
-      booking: bkRes.recordset[0],
-      services: svcRes.recordset,
+      booking: enrichedBooking,
+      services,
     });
   } catch (err) {
     console.error("[bookings GET id]", err);

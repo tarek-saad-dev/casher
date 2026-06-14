@@ -167,7 +167,7 @@ export async function DELETE(
 
     const expense = await db.request()
       .input('id', sql.Int, expenseId)
-      .query(`SELECT ID, Amount, invDate, Notes FROM dbo.TblCashMove WHERE ID=@id AND invType=N'مصروفات'`);
+      .query(`SELECT ID, GrandTolal, invDate, Notes FROM dbo.TblCashMove WHERE ID=@id AND invType=N'مصروفات'`);
 
     if (!expense.recordset.length)
       return NextResponse.json({ error: 'المصروف غير موجود' }, { status: 404 });

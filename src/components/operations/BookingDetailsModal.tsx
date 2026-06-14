@@ -9,7 +9,7 @@ import { printBookingTicket, BookingTicketData } from '@/lib/printBookingTicket'
 interface Barber {
   empId: number;
   empName: string;
-  status: 'working' | 'off' | 'day_off' | 'unknown';
+  status: 'working' | 'off' | 'day_off' | 'absent' | 'not_checked_in' | 'unknown';
 }
 
 interface Props {
@@ -29,6 +29,17 @@ interface BookingDetails extends Booking {
     Price?: number;
     EmpName?: string;
   }>;
+  // Normalized Cairo time fields from API
+  startDateTimeCairo?: string;
+  endDateTimeCairo?: string;
+  startTimeDisplay?: string;
+  endTimeDisplay?: string;
+  dateDisplay?: string;
+  durationMinutes?: number;
+  // Debug fields
+  _rawStartTime?: string;
+  _rawEndTime?: string;
+  _rawBookingDate?: string;
 }
 
 export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel, onTransfer, barbers, addToast }: Props) {
@@ -132,6 +143,25 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
     if (!booking) return;
     setPrinting(true);
     try {
+      // DEBUG for BK-448
+      const isDebug = booking.BookingID === 448 || item.sourceId === 448;
+      if (isDebug) {
+        console.log('[BookingDetailsModal handlePrint BK-448] Building ticket data:', {
+          bookingNormalizedFields: {
+            startTimeDisplay: booking.startTimeDisplay,
+            endTimeDisplay: booking.endTimeDisplay,
+            dateDisplay: booking.dateDisplay,
+            startDateTimeCairo: booking.startDateTimeCairo,
+            endDateTimeCairo: booking.endDateTimeCairo,
+          },
+          itemNormalizedFields: {
+            startTimeDisplay: item.startTimeDisplay,
+            endTimeDisplay: item.endTimeDisplay,
+            dateDisplay: item.dateDisplay,
+          },
+        });
+      }
+
       const ticketData: BookingTicketData = {
         bookingId: booking.BookingID,
         bookingCode: `BK-${booking.BookingID}`,
@@ -143,13 +173,29 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
           durationMinutes: undefined,
           price: s.Price,
         })) || [],
+        // Raw fields (for backwards compatibility)
         bookingDate: booking.BookingDate || item.startTime,
         startTime: booking.StartTime || item.startTime,
         endTime: booking.EndTime || item.endTime,
-        durationMinutes: item.durationMinutes,
+        durationMinutes: booking.durationMinutes || item.durationMinutes,
         status: booking.Status || item.status,
         notes: booking.Notes,
+        // Normalized Cairo display fields (preferred for print)
+        // Use booking fields first, fallback to timeline item fields
+        startTimeDisplay: booking.startTimeDisplay || item.startTimeDisplay,
+        endTimeDisplay: booking.endTimeDisplay || item.endTimeDisplay,
+        dateDisplay: booking.dateDisplay || item.dateDisplay,
+        startDateTimeCairo: booking.startDateTimeCairo,
+        endDateTimeCairo: booking.endDateTimeCairo,
       };
+
+      if (isDebug) {
+        console.log('[BookingDetailsModal handlePrint BK-448] Final ticketData:', {
+          startTimeDisplay: ticketData.startTimeDisplay,
+          endTimeDisplay: ticketData.endTimeDisplay,
+          dateDisplay: ticketData.dateDisplay,
+        });
+      }
 
       await printBookingTicket(ticketData, addToast);
     } catch (err) {
@@ -188,14 +234,32 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
     return colors[status] || '#6b7280';
   };
 
-  // Format date and time
+  // DEBUG for BK-448
+  useEffect(() => {
+    if (booking?.BookingID === 448 || item.sourceId === 448) {
+      console.log('[BookingDetailsModal BK-448] item:', item);
+      console.log('[BookingDetailsModal BK-448] booking:', booking);
+      console.log('[BookingDetailsModal BK-448] Using display fields:', {
+        itemStartDisplay: item.startTimeDisplay,
+        itemEndDisplay: item.endTimeDisplay,
+        bookingStartDisplay: booking?.startTimeDisplay,
+        bookingEndDisplay: booking?.endTimeDisplay,
+      });
+    }
+  }, [booking, item]);
+
+  // Format date and time - prefer normalized display fields
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '—';
     const date = new Date(dateStr);
     return date.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
   };
 
-  const formatTime = (timeStr: string) => {
+  // Use normalized display fields if available, otherwise fall back to parsing ISO strings
+  const formatTime = (timeStr: string, displayTime?: string) => {
+    // Prefer pre-formatted display time from normalized fields
+    if (displayTime) return displayTime;
+
     if (!timeStr) return '—';
     // Handle ISO string or time string
     const date = new Date(timeStr);
@@ -314,7 +378,10 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
                 <Calendar size={16} style={{ color: '#d4af37' }} />
                 <div>
                   <div className="text-[10px] text-zinc-500">التاريخ</div>
-                  <div className="text-sm font-medium text-white">{formatDate(booking?.BookingDate || item.startTime)}</div>
+                  <div className="text-sm font-medium text-white">
+                    {/* Prefer normalized display date, fallback to parsing */}
+                    {booking?.dateDisplay || item.dateDisplay || formatDate(booking?.BookingDate || item.startTime)}
+                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: '#1a1a1f' }}>
@@ -322,7 +389,10 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
                 <div>
                   <div className="text-[10px] text-zinc-500">الوقت</div>
                   <div className="text-sm font-medium text-white">
-                    {formatTime(booking?.StartTime || item.startTime)} — {formatTime(booking?.EndTime || item.endTime)}
+                    {/* Use normalized display fields for consistent Cairo time display */}
+                    {formatTime(booking?.StartTime || item.startTime, booking?.startTimeDisplay || item.startTimeDisplay)}
+                    {' — '}
+                    {formatTime(booking?.EndTime || item.endTime, booking?.endTimeDisplay || item.endTimeDisplay)}
                   </div>
                 </div>
               </div>

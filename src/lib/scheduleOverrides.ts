@@ -15,6 +15,9 @@
  */
 
 import { getPool, sql } from "@/lib/db";
+import { salonDateTimeToMs } from "@/lib/publicBookingHelpers";
+
+const SALON_TZ = "Africa/Cairo";
 
 const DEV = process.env.NODE_ENV !== "production";
 
@@ -254,18 +257,18 @@ export function applyOverrides(
 
     if (isOvernightBase && brStartMin < shiftStartMin) {
       // Block is in the post-midnight portion (e.g., 00:30 on a 14:00→02:00 shift)
-      brStartMs = new Date(`${nextDate(dateStr)}T${br.StartTime}:00`).getTime();
+      brStartMs = salonDateTimeToMs(nextDate(dateStr), br.StartTime, SALON_TZ);
     } else {
-      brStartMs = new Date(`${dateStr}T${br.StartTime}:00`).getTime();
+      brStartMs = salonDateTimeToMs(dateStr, br.StartTime, SALON_TZ);
     }
 
     if (isOvernightBase && brEndMin <= shiftStartMin) {
-      brEndMs = new Date(`${nextDate(dateStr)}T${br.EndTime}:00`).getTime();
+      brEndMs = salonDateTimeToMs(nextDate(dateStr), br.EndTime, SALON_TZ);
     } else if (brEndMin <= brStartMin) {
       // block itself crosses midnight
-      brEndMs = new Date(`${nextDate(dateStr)}T${br.EndTime}:00`).getTime();
+      brEndMs = salonDateTimeToMs(nextDate(dateStr), br.EndTime, SALON_TZ);
     } else {
-      brEndMs = new Date(`${dateStr}T${br.EndTime}:00`).getTime();
+      brEndMs = salonDateTimeToMs(dateStr, br.EndTime, SALON_TZ);
     }
 
     effective.blockedIntervals.push({
@@ -320,7 +323,8 @@ function hhmmToMin(hhmm: string): number {
 }
 
 function nextDate(dateStr: string): string {
-  const d = new Date(`${dateStr}T12:00:00`);
-  d.setDate(d.getDate() + 1);
+  // Anchor at noon UTC so server-local TZ never flips the calendar date.
+  const d = new Date(`${dateStr}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().slice(0, 10);
 }

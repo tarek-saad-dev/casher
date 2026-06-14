@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, RefreshCw, Filter, Calendar, Zap, Plus, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RefreshCw, Filter, Calendar, Zap, Plus, AlertTriangle, CalendarClock } from 'lucide-react';
 
 interface Props {
   date: string;
@@ -14,6 +14,7 @@ interface Props {
   onFindNearestQueue?: () => void;
   onSettleExpired?: () => void;
   settlingExpired?: boolean;
+  onScheduleControl?: () => void;
   loading?: boolean;
   onDateSelect?: (date: string) => void; // YYYY-MM-DD
 }
@@ -29,6 +30,7 @@ export function OperationsToolbar({
   onFindNearestQueue,
   onSettleExpired,
   settlingExpired,
+  onScheduleControl,
   loading,
   onDateSelect,
 }: Props) {
@@ -174,6 +176,18 @@ export function OperationsToolbar({
               <AlertTriangle className="w-4 h-4" />
             )}
             <span>تسوية المنتهية</span>
+          </button>
+        )}
+
+        {onScheduleControl && (
+          <button
+            onClick={onScheduleControl}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all hover:brightness-110"
+            style={{ background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.3)' }}
+            title="إدارة مواعيد اليوم"
+          >
+            <CalendarClock className="w-4 h-4" />
+            <span>إدارة مواعيد اليوم</span>
           </button>
         )}
 

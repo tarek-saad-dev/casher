@@ -10,8 +10,8 @@ export interface TimelineItem {
   type: "queue" | "booking" | "gap" | "in_service";
   sourceId: number;
   label: string;
-  startTime: string;
-  endTime: string;
+  startTime: string; // ISO datetime
+  endTime: string;   // ISO datetime
   status: string;
   protected: boolean;
   durationMinutes?: number;
@@ -28,6 +28,10 @@ export interface TimelineItem {
   expectedEndAt?: string;
   isCountingAhead?: boolean;
   isBlockingAvailability?: boolean;
+  // Normalized Cairo time display fields (preferred for display)
+  startTimeDisplay?: string; // e.g., "10:30 م"
+  endTimeDisplay?: string;   // e.g., "11:00 م"
+  dateDisplay?: string;      // e.g., "2026-06-12"
 }
 
 /**

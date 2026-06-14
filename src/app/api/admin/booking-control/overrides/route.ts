@@ -142,6 +142,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Semantic cross-field validation
+    if (type === "late_start" && !startTime) {
+      return NextResponse.json({ error: "late_start يتطلب startTime" }, { status: 400 });
+    }
+    if (type === "early_leave" && !endTime) {
+      return NextResponse.json({ error: "early_leave يتطلب endTime" }, { status: 400 });
+    }
+    if (type === "block_range" && (!startTime || !endTime)) {
+      return NextResponse.json({ error: "block_range يتطلب startTime و endTime" }, { status: 400 });
+    }
+    if (type === "custom_hours" && (!startTime || !endTime)) {
+      return NextResponse.json({ error: "custom_hours يتطلب startTime و endTime" }, { status: 400 });
+    }
+    // For block_range and custom_hours: startTime must be strictly before endTime (overnight not allowed)
+    if ((type === "block_range" || type === "custom_hours") && startTime && endTime) {
+      const [sh, sm] = startTime.split(":").map(Number);
+      const [eh, em] = endTime.split(":").map(Number);
+      const startMin = sh * 60 + sm;
+      const endMin   = eh * 60 + em;
+      if (type === "block_range" && startMin >= endMin) {
+        return NextResponse.json({ error: "block_range: startTime يجب أن يكون قبل endTime" }, { status: 400 });
+      }
+    }
+
     const db = await getPool();
     await ensureOverridesTable(db);
 

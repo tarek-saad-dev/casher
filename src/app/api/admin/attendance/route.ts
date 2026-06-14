@@ -85,8 +85,10 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const targetDate = new Date(dateStr + "T00:00:00");
-    const dayOfWeek = targetDate.getDay(); // 0=Sunday ... 6=Saturday
+    // Use noon UTC so getDay() returns the correct Cairo calendar day regardless of server TZ.
+    // new Date("YYYY-MM-DDT00:00:00") parses in server local TZ — on UTC servers this is correct,
+    // but on servers with a different offset it can return the wrong day.
+    const dayOfWeek = new Date(`${dateStr}T12:00:00Z`).getDay(); // 0=Sunday ... 6=Saturday
 
     const db = await getPool();
     await ensureAttendanceTable(db);

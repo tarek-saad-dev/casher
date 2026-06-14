@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { getSession } from '@/lib/session';
 
+/** Convert "HH:mm" or "HH:mm:ss" string to Date anchored to 1970-01-01 UTC for sql.Time. */
+function timeToDate(timeStr: string | null | undefined): Date | null {
+  if (!timeStr || timeStr.trim() === '') return null;
+  const parts = timeStr.split(':').map(Number);
+  const h = parts[0] ?? 0;
+  const m = parts[1] ?? 0;
+  const s = parts[2] ?? 0;
+  const d = new Date(0); // 1970-01-01T00:00:00.000Z
+  d.setUTCHours(h, m, s, 0);
+  return d;
+}
+
 // GET /api/employees/attendance?empId=&from=YYYY-MM-DD&to=YYYY-MM-DD
 export async function GET(req: NextRequest) {
   try {
@@ -80,8 +92,8 @@ export async function POST(req: NextRequest) {
     const result = await db.request()
       .input('empId',        sql.Int,          empId)
       .input('workDate',     sql.Date,          workDate)
-      .input('checkInTime',  sql.NVarChar(10),  checkInTime  ?? null)
-      .input('checkOutTime', sql.NVarChar(10),  checkOutTime ?? null)
+      .input('checkInTime',  sql.Time,          timeToDate(checkInTime))
+      .input('checkOutTime', sql.Time,          timeToDate(checkOutTime))
       .input('status',       sql.NVarChar(20),  status       ?? null)
       .input('notes',        sql.NVarChar(200), notes        ?? null)
       .query(`
