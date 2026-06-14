@@ -88,7 +88,10 @@ export function LiveQueueColumn({ tickets, barbers, loading, onAction, onRefresh
     } finally { setSpeaking(null); }
   };
 
+  const [printingId, setPrintingId] = useState<number | null>(null);
   const handlePrint = (t: NormalizedQueueTicket) => {
+    if (printingId === t.queueTicketId) return; // prevent double-click
+    setPrintingId(t.queueTicketId);
     const printData: QueueTicketPrintData = {
       ticketCode: t.ticketCode,
       clientName: t.clientName,
@@ -99,6 +102,13 @@ export function LiveQueueColumn({ tickets, barbers, loading, onAction, onRefresh
       estimatedStartTime: t.estimatedStartTime ?? undefined,
     };
     printQueueTicket(printData);
+    // Record print on server (non-blocking)
+    fetch(`/api/queue/${t.queueTicketId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ incrementPrintCount: true }),
+    }).catch(() => {});
+    setTimeout(() => setPrintingId(null), 2000);
   };
 
   const countForTab = (key: string) => getFiltered(key).length;

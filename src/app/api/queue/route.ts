@@ -7,8 +7,12 @@ import {
   findFirstFreeSlot,
   getDefaultDuration,
   getServicesDuration,
-  cairoDateStr,
 } from "@/lib/queueEstimateEngine";
+import { getCairoBusinessDate } from "@/lib/businessDate";
+import {
+  computeEffectiveTickets,
+  type QueueTicketRaw,
+} from "@/lib/queueLifecycleEngine";
 
 export const runtime = "nodejs";
 
@@ -62,13 +66,42 @@ async function getEstimateColsSelect(
         CAST(NULL AS INT) AS WaitingCountAtCreation`;
 }
 
+// ── Lifecycle columns (ExpectedStartAt, ExpectedEndAt, DurationMinutes, etc.) ─
+async function getLifecycleColsSelect(
+  db: Awaited<ReturnType<typeof getPool>>,
+): Promise<string> {
+  try {
+    const check = await db.request().query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'QueueTickets'
+        AND COLUMN_NAME IN ('ExpectedStartAt','ExpectedEndAt','DurationMinutes','LastStatusChangedAt','AutoClosedAt','AutoCloseReason')
+    `);
+    const cols = new Set(check.recordset.map((r: { COLUMN_NAME: string }) => r.COLUMN_NAME));
+
+    const parts: string[] = [];
+    parts.push(cols.has('ExpectedStartAt') ? 'qt.ExpectedStartAt' : 'CAST(NULL AS DATETIME2) AS ExpectedStartAt');
+    parts.push(cols.has('ExpectedEndAt') ? 'qt.ExpectedEndAt' : 'CAST(NULL AS DATETIME2) AS ExpectedEndAt');
+    parts.push(cols.has('DurationMinutes') ? 'qt.DurationMinutes' : 'CAST(NULL AS INT) AS DurationMinutes');
+    parts.push(cols.has('LastStatusChangedAt') ? 'qt.LastStatusChangedAt' : 'CAST(NULL AS DATETIME2) AS LastStatusChangedAt');
+    parts.push(cols.has('AutoClosedAt') ? 'qt.AutoClosedAt' : 'CAST(NULL AS DATETIME2) AS AutoClosedAt');
+    parts.push(cols.has('AutoCloseReason') ? 'qt.AutoCloseReason' : 'CAST(NULL AS NVARCHAR(100)) AS AutoCloseReason');
+    return parts.join(',\n        ');
+  } catch {
+    return `CAST(NULL AS DATETIME2) AS ExpectedStartAt,
+        CAST(NULL AS DATETIME2) AS ExpectedEndAt,
+        CAST(NULL AS INT) AS DurationMinutes,
+        CAST(NULL AS DATETIME2) AS LastStatusChangedAt,
+        CAST(NULL AS DATETIME2) AS AutoClosedAt,
+        CAST(NULL AS NVARCHAR(100)) AS AutoCloseReason`;
+  }
+}
+
 // GET /api/queue?date=YYYY-MM-DD&empId=&status=
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const date =
-      searchParams.get("date") ||
-      new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
+      searchParams.get("date") || getCairoBusinessDate();
     const empId = searchParams.get("empId");
     const status = searchParams.get("status");
 
@@ -99,6 +132,9 @@ export async function GET(req: NextRequest) {
       where += " AND qt.Status = @status";
     }
 
+    // Build lifecycle columns SQL (safely handles missing columns)
+    const lifecycleCols = await getLifecycleColsSelect(db);
+
     const result = await request.query(`
       SELECT
         qt.QueueTicketID, qt.TicketCode, qt.TicketNumber, qt.TicketPrefix,
@@ -107,6 +143,7 @@ export async function GET(req: NextRequest) {
         qt.CalledAt, qt.ArrivedAt, qt.ServiceStartedAt, qt.ServiceEndedAt, qt.CancelledAt,
         qt.Notes,
         ${estColsSql},
+        ${lifecycleCols},
         c.[Name]  AS ClientName,
         c.Mobile  AS ClientMobile,
         e.EmpName
@@ -117,7 +154,17 @@ export async function GET(req: NextRequest) {
       ORDER BY qt.Priority DESC, qt.TicketNumber ASC
     `);
 
-    return NextResponse.json({ tickets: result.recordset });
+    // Compute effective status for each ticket
+    const now = new Date();
+    const effectiveTickets = computeEffectiveTickets(
+      result.recordset as QueueTicketRaw[],
+      now,
+    );
+
+    return NextResponse.json({
+      tickets: effectiveTickets,
+      businessDate: date,
+    });
   } catch (err) {
     console.error("[queue GET]", err);
     return NextResponse.json(
@@ -208,7 +255,7 @@ export async function POST(req: NextRequest) {
     }
 
     const now2 = new Date();
-    const today = cairoDateStr(now2);
+    const today = getCairoBusinessDate(now2);
     const createdTime = now2.toLocaleTimeString("en-GB", {
       timeZone: "Africa/Cairo",
       hour12: false,
@@ -371,7 +418,7 @@ export async function POST(req: NextRequest) {
       const colCheck = await transaction.request().query(`
         SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
         WHERE TABLE_NAME = 'QueueTickets'
-          AND COLUMN_NAME IN ('EstimatedStartTime','EstimatedWaitMinutes','WaitingCountAtCreation')
+          AND COLUMN_NAME IN ('EstimatedStartTime','EstimatedWaitMinutes','WaitingCountAtCreation','ExpectedStartAt','ExpectedEndAt','DurationMinutes')
       `);
       const existingCols = new Set(
         colCheck.recordset.map((r: { COLUMN_NAME: string }) => r.COLUMN_NAME),
@@ -380,6 +427,9 @@ export async function POST(req: NextRequest) {
       const hasEst = existingCols.has("EstimatedStartTime");
       const hasWait = existingCols.has("EstimatedWaitMinutes");
       const hasWCount = existingCols.has("WaitingCountAtCreation");
+      const hasExpStart = existingCols.has("ExpectedStartAt");
+      const hasExpEnd = existingCols.has("ExpectedEndAt");
+      const hasDurMin = existingCols.has("DurationMinutes");
 
       const insertSql = `
         INSERT INTO [dbo].[QueueTickets]
@@ -387,14 +437,20 @@ export async function POST(req: NextRequest) {
            QueueDate, CreatedTime, Status, Source, Priority, CreatedByUserID, Notes
            ${hasEst ? ", EstimatedStartTime" : ""}
            ${hasWait ? ", EstimatedWaitMinutes" : ""}
-           ${hasWCount ? ", WaitingCountAtCreation" : ""})
+           ${hasWCount ? ", WaitingCountAtCreation" : ""}
+           ${hasExpStart ? ", ExpectedStartAt" : ""}
+           ${hasExpEnd ? ", ExpectedEndAt" : ""}
+           ${hasDurMin ? ", DurationMinutes" : ""})
         OUTPUT INSERTED.QueueTicketID
         VALUES
           (@code, @num, @prefix, @clientId, @empId, @bookingId,
            @qDate, @cTime, 'waiting', @source, @priority, @userID, @notes
            ${hasEst ? ", @estStart" : ""}
            ${hasWait ? ", @estWait" : ""}
-           ${hasWCount ? ", @waitCount" : ""})
+           ${hasWCount ? ", @waitCount" : ""}
+           ${hasExpStart ? ", @expStart" : ""}
+           ${hasExpEnd ? ", @expEnd" : ""}
+           ${hasDurMin ? ", @durMin" : ""})
       `;
 
       const insReq = transaction
@@ -416,6 +472,17 @@ export async function POST(req: NextRequest) {
         insReq.input("estStart", sql.DateTime2, finalEstStart ?? null);
       if (hasWait) insReq.input("estWait", sql.Int, finalEstWait ?? null);
       if (hasWCount) insReq.input("waitCount", sql.Int, finalWaitCount ?? null);
+
+      // Lifecycle columns
+      const expectedEnd = finalEstStart
+        ? new Date(finalEstStart.getTime() + customerDur * 60000)
+        : null;
+      if (hasExpStart)
+        insReq.input("expStart", sql.DateTime2, finalEstStart ?? null);
+      if (hasExpEnd)
+        insReq.input("expEnd", sql.DateTime2, expectedEnd ?? null);
+      if (hasDurMin)
+        insReq.input("durMin", sql.Int, customerDur);
 
       const insertRes = await insReq.query(insertSql);
       newId = insertRes.recordset[0].QueueTicketID;
@@ -529,6 +596,12 @@ export async function POST(req: NextRequest) {
           qt.EstimatedStartTime,
           qt.EstimatedWaitMinutes,
           qt.WaitingCountAtCreation,
+          CASE WHEN COL_LENGTH('dbo.QueueTickets','ExpectedStartAt') IS NOT NULL
+               THEN qt.ExpectedStartAt ELSE NULL END AS ExpectedStartAt,
+          CASE WHEN COL_LENGTH('dbo.QueueTickets','ExpectedEndAt') IS NOT NULL
+               THEN qt.ExpectedEndAt ELSE NULL END AS ExpectedEndAt,
+          CASE WHEN COL_LENGTH('dbo.QueueTickets','DurationMinutes') IS NOT NULL
+               THEN qt.DurationMinutes ELSE NULL END AS DurationMinutes,
           c.[Name]   AS ClientName,
           c.Mobile   AS ClientMobile,
           e.EmpName  AS EmpName
@@ -630,6 +703,9 @@ export async function POST(req: NextRequest) {
             estimatedStartTime: fullTicket.EstimatedStartTime ?? null,
             estimatedWaitMinutes: fullTicket.EstimatedWaitMinutes ?? null,
             waitingCountAtCreation: fullTicket.WaitingCountAtCreation ?? null,
+            expectedStartAt: fullTicket.ExpectedStartAt ?? null,
+            expectedEndAt: fullTicket.ExpectedEndAt ?? null,
+            durationMinutes: fullTicket.DurationMinutes ?? null,
             notes: fullTicket.Notes ?? null,
           }
         : null,

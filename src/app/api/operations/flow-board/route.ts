@@ -14,6 +14,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
+import { getCairoBusinessDate } from "@/lib/businessDate";
+import {
+  computeEffectiveTicket,
+  type QueueTicketRaw,
+} from "@/lib/queueLifecycleEngine";
 
 export const runtime = "nodejs";
 
@@ -46,6 +51,15 @@ export interface FlowBoardBarber {
     durationMinutes?: number;
     customerName?: string;
     barberId?: number;
+    // Lifecycle fields
+    effectiveStatus?: string;
+    actualStatus?: string;
+    needsOperatorAction?: boolean;
+    overdueMinutes?: number;
+    expectedStartAt?: string;
+    expectedEndAt?: string;
+    isCountingAhead?: boolean;
+    isBlockingAvailability?: boolean;
   }>;
 }
 
@@ -55,7 +69,7 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const dateParam = searchParams.get("date");
-    const dateStr = dateParam || new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
+    const dateStr = dateParam || getCairoBusinessDate();
     const now = new Date();
     
     // Get Cairo day of week (0=Sunday)
@@ -69,7 +83,23 @@ export async function GET(req: NextRequest) {
     const db = await getPool();
     perfLog("dbConnect", dbStart);
 
-    // 2. Fetch ALL data in parallel (NO N+1!)
+    // 2. Detect lifecycle columns (fast single query)
+    const colCheck = await db.request().query(`
+      SELECT 
+        CASE WHEN COL_LENGTH('dbo.QueueTickets','ExpectedStartAt') IS NOT NULL THEN 1 ELSE 0 END AS hasExpectedStartAt,
+        CASE WHEN COL_LENGTH('dbo.QueueTickets','ExpectedEndAt') IS NOT NULL THEN 1 ELSE 0 END AS hasExpectedEndAt,
+        CASE WHEN COL_LENGTH('dbo.QueueTickets','DurationMinutes') IS NOT NULL THEN 1 ELSE 0 END AS hasDurationMinutes
+    `);
+    const { hasExpectedStartAt, hasExpectedEndAt, hasDurationMinutes } = colCheck.recordset[0] || {};
+
+    // Build lifecycle columns SQL fragment dynamically
+    const lifecycleCols = [
+      hasExpectedStartAt ? 'qt.ExpectedStartAt' : 'NULL AS ExpectedStartAt',
+      hasExpectedEndAt ? 'qt.ExpectedEndAt' : 'NULL AS ExpectedEndAt',
+      hasDurationMinutes ? 'qt.DurationMinutes' : 'NULL AS DurationMinutes',
+    ].join(',\n            ');
+
+    // 3. Fetch ALL data in parallel (NO N+1!)
     const batchStart = Date.now();
     
     const [
@@ -78,7 +108,7 @@ export async function GET(req: NextRequest) {
       bookingsRes,
       queueRes,
     ] = await Promise.all([
-      // 2a. Get barbers only (Job = 'حلاق')
+      // 3a. Get barbers only (Job = 'حلاق')
       db.request().query(`
         SELECT EmpID, EmpName
         FROM [dbo].[TblEmp]
@@ -86,7 +116,7 @@ export async function GET(req: NextRequest) {
         ORDER BY EmpName
       `),
       
-      // 2b. Get all schedules for barbers on this day
+      // 3b. Get all schedules for barbers on this day
       db.request()
         .input("dow", sql.TinyInt, dayOfWeek)
         .query(`
@@ -96,7 +126,7 @@ export async function GET(req: NextRequest) {
             AND EmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
         `),
       
-      // 2c. Get all bookings for this date
+      // 3c. Get all bookings for this date
       db.request()
         .input("bdate", sql.Date, dateStr)
         .query(`
@@ -115,7 +145,7 @@ export async function GET(req: NextRequest) {
             AND b.Status IN ('confirmed', 'arrived', 'in_progress')
         `),
       
-      // 2d. Get all queue tickets for this date
+      // 3d. Get all queue tickets for this date (lifecycle cols included only if they exist)
       db.request()
         .input("qdate", sql.Date, dateStr)
         .query(`
@@ -128,12 +158,13 @@ export async function GET(req: NextRequest) {
             qt.Status,
             qt.EstimatedStartTime,
             qt.ServiceStartedAt,
-            qt.CreatedTime
+            qt.CreatedTime,
+            ${lifecycleCols}
           FROM [dbo].[QueueTickets] qt
           LEFT JOIN [dbo].[TblClient] c ON qt.ClientID = c.ClientID
           WHERE qt.QueueDate = @qdate
             AND qt.EmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
-            AND LOWER(qt.Status) IN ('waiting', 'called', 'in_service')
+            AND LOWER(qt.Status) IN ('waiting', 'called', 'arrived', 'in_service')
         `),
     ]);
     
@@ -224,9 +255,32 @@ export async function GET(req: NextRequest) {
         });
       }
       
-      // Add queue items
+      // Add queue items with effective status computation
       let inServiceCount = 0;
       for (const q of barberQueue) {
+        // Compute effective status
+        const effective = computeEffectiveTicket(
+          {
+            QueueTicketID: q.QueueTicketID,
+            TicketCode: q.TicketCode,
+            TicketNumber: 0,
+            Status: q.Status.toLowerCase() as any,
+            EmpID: q.EmpID,
+            ClientID: q.ClientID,
+            QueueDate: dateStr,
+            CreatedTime: q.CreatedTime,
+            CalledAt: null,
+            ArrivedAt: null,
+            ServiceStartedAt: q.ServiceStartedAt,
+            ServiceEndedAt: null,
+            EstimatedStartTime: q.EstimatedStartTime,
+            ExpectedStartAt: q.ExpectedStartAt ?? null,
+            ExpectedEndAt: q.ExpectedEndAt ?? null,
+            DurationMinutes: q.DurationMinutes ?? null,
+          } as QueueTicketRaw,
+          now,
+        );
+
         const isInService = q.Status.toLowerCase() === 'in_service';
         if (isInService) inServiceCount++;
         
@@ -239,7 +293,8 @@ export async function GET(req: NextRequest) {
         } else {
           start = new Date(`${dateStr}T${workStart || '14:00'}`);
         }
-        const end = new Date(start.getTime() + defaultDuration * 60000);
+        const duration = effective.durationMinutes || defaultDuration;
+        const end = new Date(start.getTime() + duration * 60000);
         
         timeline.push({
           type: "queue",
@@ -248,10 +303,18 @@ export async function GET(req: NextRequest) {
           startTime: start.toISOString(),
           endTime: end.toISOString(),
           status: q.Status,
-          protected: true,
-          durationMinutes: defaultDuration,
+          protected: effective.isBlockingAvailability,
+          durationMinutes: duration,
           customerName: q.ClientName || undefined,
           barberId: empId,
+          actualStatus: effective.actualStatus,
+          effectiveStatus: effective.effectiveStatus,
+          expectedStartAt: effective.expectedStartAt?.toISOString() ?? undefined,
+          expectedEndAt: effective.expectedEndAt?.toISOString() ?? undefined,
+          needsOperatorAction: effective.needsOperatorAction,
+          overdueMinutes: effective.overdueMinutes,
+          isCountingAhead: effective.isCountingAhead,
+          isBlockingAvailability: effective.isBlockingAvailability,
         });
       }
       
@@ -267,6 +330,11 @@ export async function GET(req: NextRequest) {
         nextAvailableAt = new Date(`${dateStr}T${workStart}`).toISOString();
       }
 
+      // Count only effectively active waiting tickets (not expired/overdue)
+      const effectiveWaitingCount = timeline.filter(
+        t => t.type === 'queue' && t.isCountingAhead && t.actualStatus === 'waiting'
+      ).length;
+
       barbers.push({
         empId,
         empName: barber.EmpName,
@@ -275,7 +343,7 @@ export async function GET(req: NextRequest) {
         workEnd,
         isOvernightShift: isOvernight,
         nextAvailableAt,
-        waitingCount: barberQueue.filter((q: any) => q.Status.toLowerCase() === 'waiting').length,
+        waitingCount: effectiveWaitingCount,
         bookingsCount: barberBookings.length,
         inServiceCount,
         timeline,

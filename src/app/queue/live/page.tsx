@@ -10,8 +10,24 @@ import {
 import { speakQueueTicket, stopQueueSpeech } from '@/lib/queueVoice';
 import type { QueueVoiceOptions } from '@/lib/queueVoice';
 
+// ─── Business date helper (shared logic with server) ─────────────────────────
+const BUSINESS_DAY_CUTOFF_HOUR = 4;
+function getCairoBusinessDate(): string {
+  const now = new Date();
+  const cairoHour = parseInt(
+    new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Cairo', hour: '2-digit', hour12: false }).format(now),
+    10
+  );
+  if (cairoHour < BUSINESS_DAY_CUTOFF_HOUR) {
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    return yesterday.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+  }
+  return now.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 type TicketStatus = 'waiting' | 'called' | 'arrived' | 'in_service' | 'done' | 'skipped' | 'cancelled' | 'no_show';
+type EffectiveStatus = TicketStatus | 'expired_candidate' | 'no_show_candidate' | 'overdue_finish_required';
 
 interface Ticket {
   QueueTicketID: number;
@@ -34,6 +50,15 @@ interface Ticket {
   ClientMobile: string | null;
   EmpName: string | null;
   Notes: string | null;
+  // Lifecycle fields from API
+  effectiveStatus?: EffectiveStatus;
+  isBlockingAvailability?: boolean;
+  isCountingAhead?: boolean;
+  needsOperatorAction?: boolean;
+  overdueMinutes?: number;
+  expectedStartAt?: string | null;
+  expectedEndAt?: string | null;
+  durationMinutes?: number;
 }
 
 interface Barber {
@@ -55,6 +80,8 @@ const STATUS_CONFIG: Record<TicketStatus, { label: string; color: string; bg: st
 
 const LIVE_STATUSES: TicketStatus[] = ['waiting', 'called', 'arrived', 'in_service', 'skipped'];
 const DONE_STATUSES: TicketStatus[] = ['done', 'cancelled', 'no_show'];
+const EFFECTIVE_LIVE: Set<string> = new Set(['waiting', 'called', 'arrived', 'in_service', 'skipped', 'expired_candidate', 'no_show_candidate', 'overdue_finish_required']);
+const EFFECTIVE_DONE: Set<string> = new Set(['done', 'cancelled', 'no_show']);
 
 // ─── Action helpers ────────────────────────────────────────────────────────────
 function getActions(status: TicketStatus): { action: string; label: string; icon: React.ReactNode; color: string }[] {
@@ -200,6 +227,11 @@ function TicketCard({
             )}
             {ticket.Source === 'booking' && (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">حجز</span>
+            )}
+            {ticket.needsOperatorAction && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse">
+                {ticket.effectiveStatus === 'overdue_finish_required' ? `متأخر ${ticket.overdueMinutes}د` : 'يحتاج إجراء'}
+              </span>
             )}
           </div>
           <span
@@ -410,7 +442,7 @@ export default function QueueLivePage() {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [filterStatus, setFilterStatus] = useState<string>('active');
 
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+  const today = getCairoBusinessDate();
 
   const fetchData = useCallback(async () => {
     try {
@@ -462,12 +494,12 @@ export default function QueueLivePage() {
     }
   };
 
-  // Group tickets by barber
+  // Group tickets by barber (use effectiveStatus for filtering)
   const grouped = new Map<number | null, Ticket[]>();
   const filteredTickets = filterStatus === 'active'
-    ? tickets.filter(t => LIVE_STATUSES.includes(t.Status))
+    ? tickets.filter(t => EFFECTIVE_LIVE.has(t.effectiveStatus || t.Status))
     : filterStatus === 'done'
-      ? tickets.filter(t => DONE_STATUSES.includes(t.Status))
+      ? tickets.filter(t => EFFECTIVE_DONE.has(t.effectiveStatus || t.Status))
       : tickets;
 
   for (const t of filteredTickets) {

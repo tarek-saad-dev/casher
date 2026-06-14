@@ -19,6 +19,15 @@ export interface TimelineItem {
   serviceNames?: string[];
   ticketCode?: string;
   barberId?: number;
+  // Lifecycle fields (from queueLifecycleEngine)
+  effectiveStatus?: string;
+  actualStatus?: string;
+  needsOperatorAction?: boolean;
+  overdueMinutes?: number;
+  expectedStartAt?: string;
+  expectedEndAt?: string;
+  isCountingAhead?: boolean;
+  isBlockingAvailability?: boolean;
 }
 
 /**

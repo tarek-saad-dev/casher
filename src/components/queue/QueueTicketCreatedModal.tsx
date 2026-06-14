@@ -21,6 +21,7 @@ export function QueueTicketCreatedModal({
   onClose,
 }: QueueTicketCreatedModalProps) {
   const [speaking,     setSpeaking]     = useState(false);
+  const [printing,     setPrinting]     = useState(false);
   const [speechError,  setSpeechError]  = useState<string | null>(null);
   const [toastMsg,     setToastMsg]     = useState<string | null>(null);
   const [showPreview,  setShowPreview]  = useState(false);
@@ -34,9 +35,19 @@ export function QueueTicketCreatedModal({
   // Stop speech when modal unmounts
   useEffect(() => () => { stopQueueSpeech(); }, []);
 
-  const handlePrint = () => {
+  const handlePrint = useCallback(() => {
+    if (printing) return;
+    setPrinting(true);
     printQueueTicket(data);
-  };
+    // Record print on server (non-blocking)
+    fetch(`/api/queue/${data.ticketId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ incrementPrintCount: true }),
+    }).catch(() => {});
+    // Re-enable after short delay to prevent rapid double-clicks
+    setTimeout(() => setPrinting(false), 2000);
+  }, [printing, data]);
 
   const handleSpeak = async () => {
     setSpeechError(null);

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, RefreshCw, Filter, Calendar, Zap, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RefreshCw, Filter, Calendar, Zap, Plus, AlertTriangle } from 'lucide-react';
 
 interface Props {
   date: string;
@@ -12,6 +12,8 @@ interface Props {
   onRefresh: () => void;
   onCreateQueue: () => void;
   onFindNearestQueue?: () => void;
+  onSettleExpired?: () => void;
+  settlingExpired?: boolean;
   loading?: boolean;
   onDateSelect?: (date: string) => void; // YYYY-MM-DD
 }
@@ -25,6 +27,8 @@ export function OperationsToolbar({
   onRefresh,
   onCreateQueue,
   onFindNearestQueue,
+  onSettleExpired,
+  settlingExpired,
   loading,
   onDateSelect,
 }: Props) {
@@ -155,6 +159,23 @@ export function OperationsToolbar({
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
+
+        {onSettleExpired && (
+          <button
+            onClick={onSettleExpired}
+            disabled={loading || settlingExpired}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-all hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ background: 'linear-gradient(135deg, #dc2626, #b91c1c)', color: '#fff' }}
+            title="تسوية الأدوار المنتهية"
+          >
+            {settlingExpired ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <AlertTriangle className="w-4 h-4" />
+            )}
+            <span>تسوية المنتهية</span>
+          </button>
+        )}
 
         {onFindNearestQueue && (
           <button

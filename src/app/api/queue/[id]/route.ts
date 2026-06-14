@@ -73,9 +73,24 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     const userID = session?.UserID ?? 0;
     const ticketId = parseInt(id);
     const body = await req.json();
-    const { action, notes, transferEmpId } = body;
+    const { action, notes, transferEmpId, incrementPrintCount } = body;
 
     const db = await getPool();
+
+    // Handle print count increment (non-status action)
+    if (incrementPrintCount) {
+      await db.request()
+        .input("id", sql.Int, ticketId)
+        .query(`
+          IF COL_LENGTH('dbo.QueueTickets', 'PrintCount') IS NOT NULL
+            UPDATE dbo.QueueTickets
+            SET PrintCount = ISNULL(PrintCount, 0) + 1,
+                PrintedAt = GETDATE()
+            WHERE QueueTicketID = @id
+        `)
+        .catch(() => {});
+      return NextResponse.json({ ok: true });
+    }
 
     // Load current ticket
     const cur = await db.request()
@@ -130,13 +145,20 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     const timeCol = timeFields[newStatus];
     const timeUpdate = timeCol ? `, ${timeCol} = ${now}` : "";
 
+    // Check if LastStatusChangedAt column exists
+    const hasLastChanged = await db.request().query(`
+      SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'QueueTickets' AND COLUMN_NAME = 'LastStatusChangedAt'
+    `).then(r => r.recordset.length > 0).catch(() => false);
+    const lastChangedUpdate = hasLastChanged ? ', LastStatusChangedAt = GETDATE()' : '';
+
     await db.request()
       .input("status",   sql.NVarChar, newStatus)
       .input("notes",    sql.NVarChar, notes || null)
       .input("ticketId", sql.Int,      ticketId)
       .query(`
         UPDATE [dbo].[QueueTickets]
-        SET Status = @status, Notes = ISNULL(@notes, Notes)${timeUpdate}
+        SET Status = @status, Notes = ISNULL(@notes, Notes)${timeUpdate}${lastChangedUpdate}
         WHERE QueueTicketID = @ticketId
       `);
 
@@ -152,6 +174,21 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
           (QueueTicketID, OldStatus, NewStatus, ActionType, UserID, Notes)
         VALUES (@ticketId, @oldStatus, @newStatus, @action, @userID, @notes)
       `);
+
+    // Also write to QueueTicketStatusHistory (new lifecycle table)
+    await db.request()
+      .input("ticketId2",  sql.Int,      ticketId)
+      .input("oldStatus2", sql.NVarChar, currentStatus)
+      .input("newStatus2", sql.NVarChar, newStatus)
+      .input("userID2",    sql.Int,      userID)
+      .input("notes2",     sql.NVarChar, notes || null)
+      .query(`
+        IF OBJECT_ID('dbo.QueueTicketStatusHistory', 'U') IS NOT NULL
+          INSERT INTO [dbo].[QueueTicketStatusHistory]
+            (QueueTicketID, OldStatus, NewStatus, ChangedByUserID, Source, Notes)
+          VALUES (@ticketId2, @oldStatus2, @newStatus2, @userID2, 'operator', @notes2)
+      `)
+      .catch((e: unknown) => console.error('[queue PATCH] status history write failed:', e));
 
     // Sync Booking.Status when the linked booking-queue ticket advances
     const BOOKING_STATUS_MAP: Partial<Record<string, string>> = {

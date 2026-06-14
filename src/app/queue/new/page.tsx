@@ -181,13 +181,25 @@ export default function NewQueuePage() {
         clientId = cData.ClientID ?? null;
       }
 
-      // Fetch current waiting count before creating ticket
-      const today = new Date().toISOString().slice(0, 10);
+      // Fetch current waiting count using business date and effective status
+      const today = (() => {
+        const now = new Date();
+        const cairoHour = parseInt(
+          new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Cairo', hour: '2-digit', hour12: false }).format(now), 10
+        );
+        if (cairoHour < 4) {
+          return new Date(now.getTime() - 24 * 60 * 60 * 1000).toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+        }
+        return now.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+      })();
       let waitingBefore: number | null = null;
       try {
         const wRes  = await fetch(`/api/queue?date=${today}&status=waiting`);
         const wData = await wRes.json();
-        waitingBefore = Array.isArray(wData.tickets) ? wData.tickets.length : null;
+        // Only count tickets that are effectively counting ahead
+        waitingBefore = Array.isArray(wData.tickets)
+          ? wData.tickets.filter((t: any) => t.isCountingAhead !== false).length
+          : null;
       } catch { /* non-fatal */ }
 
       const res  = await fetch('/api/queue', {

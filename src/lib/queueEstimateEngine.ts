@@ -20,6 +20,7 @@ import {
   getBarberWorkingWindow,
 } from "@/lib/barberAvailability";
 import { salonDateTimeToMs } from "@/lib/publicBookingHelpers";
+import { getCairoBusinessDate } from "@/lib/businessDate";
 
 const SALON_TZ = 'Africa/Cairo';
 
@@ -487,9 +488,9 @@ export async function computeBarberEstimate(
   excludeTicketId?: number,
 ): Promise<BarberEstimate> {
   const db = await getPool();
-  // Always compute business date in Cairo timezone
+  // Always compute business date in Cairo timezone (cutoff 4AM)
   const now = requestedAt ? new Date(requestedAt) : new Date();
-  const dateStr = now.toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
+  const dateStr = getCairoBusinessDate(now);
 
   if (DEBUG_BOOKING) {
     console.log("[queue estimate] empId", empId, "empName", empName);

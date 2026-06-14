@@ -35,6 +35,15 @@ interface FlowBoardBarber {
     customerName?: string;
     durationMinutes?: number;
     ticketCode?: string;
+    // Lifecycle fields
+    effectiveStatus?: string;
+    actualStatus?: string;
+    needsOperatorAction?: boolean;
+    overdueMinutes?: number;
+    expectedStartAt?: string;
+    expectedEndAt?: string;
+    isCountingAhead?: boolean;
+    isBlockingAvailability?: boolean;
   }>;
 }
 
@@ -106,6 +115,7 @@ export default function OperationsPage() {
   const [showCreateDrawer, setShowCreateDrawer] = useState(false);
   const [showFindNearestDrawer, setShowFindNearestDrawer] = useState(false);
   const [showBookingDrawer, setShowBookingDrawer] = useState(false);
+  const [settlingExpired, setSettlingExpired] = useState(false);
   const [bookingInitialData, setBookingInitialData] = useState<{
     date?: string;
     time?: string;
@@ -209,6 +219,47 @@ export default function OperationsPage() {
     };
   }, [fetchFlowBoard]);
 
+  // Settle expired tickets handler
+  const handleSettleExpired = useCallback(async () => {
+    if (settlingExpired) return;
+
+    const confirmed = window.confirm(
+      'هل تريد تسوية الأدوار المنتهية لهذا اليوم؟\n\nسيتم التعامل فقط مع الأدوار التي انتهى وقتها وتحتاج إجراء.'
+    );
+
+    if (!confirmed) return;
+
+    setSettlingExpired(true);
+
+    try {
+      const res = await fetch('/api/queue/settle-expired', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: selectedDate }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || data.ok === false) {
+        throw new Error(data.error || 'فشل تسوية الأدوار المنتهية');
+      }
+
+      showToast(
+        `تمت تسوية الأدوار المنتهية بنجاح${typeof data.settled === 'number' ? ` (${data.settled})` : ''}`,
+        true
+      );
+
+      await fetchFlowBoard();
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : 'فشل تسوية الأدوار المنتهية',
+        false
+      );
+    } finally {
+      setSettlingExpired(false);
+    }
+  }, [settlingExpired, selectedDate, fetchFlowBoard, showToast]);
+
   // Navigation handlers
   const handlePrevDay = useCallback(() => {
     setSelectedDate(prev => addDays(prev, -1));
@@ -278,6 +329,8 @@ export default function OperationsPage() {
         onRefresh={fetchFlowBoard}
         onCreateQueue={() => setShowCreateDrawer(true)}
         onFindNearestQueue={() => setShowFindNearestDrawer(true)}
+        onSettleExpired={handleSettleExpired}
+        settlingExpired={settlingExpired}
         loading={loading}
       />
 

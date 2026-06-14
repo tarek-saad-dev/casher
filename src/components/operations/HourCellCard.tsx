@@ -164,8 +164,23 @@ export function HourCellCard({ item, compact = false, onClick, voiceEnabled, onR
             {timeRange}
           </div>
 
+          {/* Overdue / Needs action badge */}
+          {item.needsOperatorAction && (
+            <div className="flex items-center mt-0.5">
+              <span className="text-[8px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30">
+                {item.effectiveStatus === 'overdue_finish_required'
+                  ? `يحتاج إنهاء${(item.overdueMinutes ?? 0) > 0 ? ` (${item.overdueMinutes}د)` : ''}`
+                  : item.effectiveStatus === 'no_show_candidate'
+                    ? 'لم يحضر محتمل'
+                    : item.effectiveStatus === 'expired_candidate'
+                      ? 'منتهي محتمل'
+                      : 'يحتاج إجراء'}
+              </span>
+            </div>
+          )}
+
           {/* Called badge */}
-          {isCalled && (
+          {isCalled && !item.needsOperatorAction && (
             <div className="flex items-center justify-between mt-0.5">
               <span className="text-[8px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">
                 تم النداء
@@ -201,6 +216,13 @@ export function HourCellCard({ item, compact = false, onClick, voiceEnabled, onR
           {serviceName && (
             <div className="text-[9px] text-amber-800/70 truncate">
               {serviceName}
+            </div>
+          )}
+          {item.needsOperatorAction && (
+            <div className="flex items-center mt-0.5">
+              <span className="text-[8px] px-1.5 py-0.5 rounded bg-red-800/40 text-red-200 border border-red-700/50">
+                يحتاج إنهاء{(item.overdueMinutes ?? 0) > 0 ? ` (${item.overdueMinutes}د)` : ''}
+              </span>
             </div>
           )}
         </div>
