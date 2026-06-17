@@ -155,7 +155,7 @@ export const APPROVAL_ACTIONS: Record<string, ActionDefinition> = {
         req1.input('notes', sql.NVarChar,    (notes as string) ?? '');
         req1.input('date',  sql.Date,        parsedDate);
         req1.input('sid',   sql.Int,         shiftMoveId as number ?? null);
-        await req1.query(`INSERT INTO dbo.TblCashMove (invID,PaymentMethodID,GrandTolal,inOut,Notes,InvDate,ShiftMoveID,InvType,UserID) VALUES (@invID,@pm,@amt,'out',@notes,@date,@sid,'تحويل',${userId as number})`);
+        await req1.query(`INSERT INTO dbo.TblCashMove (invID,PaymentMethodID,GrandTolal,inOut,Notes,InvDate,ShiftMoveID,InvType) VALUES (@invID,@pm,@amt,'out',@notes,@date,@sid,'تحويل')`);
 
         const req2 = tx.request();
         req2.input('invID', sql.Int,         incomeInvID);
@@ -164,7 +164,7 @@ export const APPROVAL_ACTIONS: Record<string, ActionDefinition> = {
         req2.input('notes', sql.NVarChar,    (notes as string) ?? '');
         req2.input('date',  sql.Date,        parsedDate);
         req2.input('sid',   sql.Int,         shiftMoveId as number ?? null);
-        await req2.query(`INSERT INTO dbo.TblCashMove (invID,PaymentMethodID,GrandTolal,inOut,Notes,InvDate,ShiftMoveID,InvType,UserID) VALUES (@invID,@pm,@amt,'in',@notes,@date,@sid,'تحويل',${userId as number})`);
+        await req2.query(`INSERT INTO dbo.TblCashMove (invID,PaymentMethodID,GrandTolal,inOut,Notes,InvDate,ShiftMoveID,InvType) VALUES (@invID,@pm,@amt,'in',@notes,@date,@sid,'تحويل')`);
 
         await tx.commit();
       } catch (e) {
