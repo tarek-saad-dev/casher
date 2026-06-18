@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Users, Clock, CheckCircle2, AlertCircle,
   Loader2, RefreshCw, Save, CalendarDays, UserCheck,
-  UserX, Coffee, ShieldCheck, Timer,
+  UserX, Coffee, Timer,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { sqlTimeForInput, formatTime12h, parseTimeToMinutes, calcEarlyLeaveMinutes } from '@/lib/timeUtils';
@@ -186,6 +186,45 @@ export default function AttendancePage() {
         // Auto-calc early leave if both CheckInTime and CheckOutTime are set
         if (updated.CheckInTime && row.ScheduledEndTime) {
           const earlyLeave = calcEarlyLeaveMinutes(row.ScheduledEndTime, row.DefaultCheckOutTime);
+          updated.EarlyLeaveMinutes = earlyLeave > 0 ? earlyLeave : 0;
+          // Update status if early leave and not a manual status
+          const manualStatuses = ['Absent', 'DayOff', 'Excused'];
+          if (!manualStatuses.includes(updated.Status) && earlyLeave > 0) {
+            updated.Status = 'EarlyLeave';
+          }
+        }
+      }
+
+      return updated;
+    }));
+    setDirty(prev => new Set(prev).add(empId));
+  };
+
+  const fillNowTimes = (empId: number) => {
+    const now = getCurrentTime();
+    setAttendance(prev => prev.map(row => {
+      if (row.EmpID !== empId) return row;
+
+      const updated = { ...row };
+
+      // Fill CheckInTime with Now if empty
+      if (!row.CheckInTime) {
+        updated.CheckInTime = now;
+        // Auto-calc status when CheckInTime is set
+        const manualStatuses = ['Absent', 'DayOff', 'Excused'];
+        if (!manualStatuses.includes(updated.Status)) {
+          const late = calcLate(now, row.ScheduledStartTime);
+          updated.LateMinutes = late;
+          updated.Status = late > 0 ? 'Late' : 'Present';
+        }
+      }
+
+      // Fill CheckOutTime with Now if empty
+      if (!row.CheckOutTime) {
+        updated.CheckOutTime = now;
+        // Auto-calc early leave if both CheckInTime and CheckOutTime are set
+        if (updated.CheckInTime && row.ScheduledEndTime) {
+          const earlyLeave = calcEarlyLeaveMinutes(row.ScheduledEndTime, now);
           updated.EarlyLeaveMinutes = earlyLeave > 0 ? earlyLeave : 0;
           // Update status if early leave and not a manual status
           const manualStatuses = ['Absent', 'DayOff', 'Excused'];
@@ -482,48 +521,22 @@ export default function AttendancePage() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => markPresent(row.EmpID)}
-                            title="حاضر الآن"
-                            className="h-7 w-7 p-0 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300"
-                          >
-                            <UserCheck className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => markAbsent(row.EmpID)}
-                            title="غائب"
-                            className="h-7 w-7 p-0 text-rose-400 hover:bg-rose-500/20 hover:text-rose-300"
-                          >
-                            <UserX className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => markDayOff(row.EmpID)}
-                            title="إجازة"
-                            className="h-7 w-7 p-0 text-blue-400 hover:bg-blue-500/20 hover:text-blue-300"
-                          >
-                            <Coffee className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => markExcused(row.EmpID)}
-                            title="إذن"
-                            className="h-7 w-7 p-0 text-purple-400 hover:bg-purple-500/20 hover:text-purple-300"
-                          >
-                            <ShieldCheck className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
                             onClick={() => autoFillDefaultTimes(row.EmpID)}
                             title="املأ بالوقت الافتراضي"
                             disabled={!row.DefaultCheckInTime && !row.DefaultCheckOutTime}
                             className={`h-7 w-7 p-0 ${(row.DefaultCheckInTime || row.DefaultCheckOutTime) ? 'text-cyan-400 hover:bg-cyan-500/20 hover:text-cyan-300' : 'text-zinc-600 cursor-not-allowed'}`}
                           >
                             <span className="text-xs font-bold">D</span>
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => fillNowTimes(row.EmpID)}
+                            title="الآن (الوقت الحالي)"
+                            disabled={!!row.CheckInTime && !!row.CheckOutTime}
+                            className={`h-7 w-7 p-0 ${(!row.CheckInTime || !row.CheckOutTime) ? 'text-indigo-400 hover:bg-indigo-500/20 hover:text-indigo-300' : 'text-zinc-600 cursor-not-allowed'}`}
+                          >
+                            <span className="text-xs font-bold">N</span>
                           </Button>
                           <Button
                             size="sm"

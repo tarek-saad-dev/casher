@@ -14,6 +14,7 @@ export default function EmployeeAdvancesSection({ year, month }: EmployeeAdvance
   const [data, setData] = useState<EmployeeAdvanceData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [visibleCards, setVisibleCards] = useState<Set<number>>(new Set()); // Track which cards show numbers
 
   useEffect(() => {
     fetchEmployeeAdvances();
@@ -89,12 +90,28 @@ export default function EmployeeAdvancesSection({ year, month }: EmployeeAdvance
   const criticalCount = data.filter(emp => emp.RiskStatus.level === 'critical').length;
   const highRiskCount = data.filter(emp => emp.RiskStatus.level === 'high').length;
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number, empId: number) => {
+    const isVisible = visibleCards.has(empId);
+    if (!isVisible) return '****';
     return new Intl.NumberFormat('ar-EG', {
       style: 'decimal',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(amount) + ' ج.م';
+  };
+
+  const formatCount = (count: number, empId: number) => visibleCards.has(empId) ? count : '**';
+
+  const toggleCardVisibility = (empId: number) => {
+    setVisibleCards(prev => {
+      const next = new Set(prev);
+      if (next.has(empId)) {
+        next.delete(empId);
+      } else {
+        next.add(empId);
+      }
+      return next;
+    });
   };
 
   return (
@@ -124,7 +141,7 @@ export default function EmployeeAdvancesSection({ year, month }: EmployeeAdvance
               <TrendingDown className="h-4 w-4 text-rose-400" />
               <p className="text-xs text-zinc-400 font-medium">إجمالي السلف</p>
             </div>
-            <p className="text-2xl font-bold text-rose-400 tracking-tight">{formatCurrency(totalAdvances)}</p>
+            <p className="text-2xl font-bold text-rose-400 tracking-tight">****</p>
           </div>
 
           {/* Total Revenue */}
@@ -133,7 +150,7 @@ export default function EmployeeAdvancesSection({ year, month }: EmployeeAdvance
               <TrendingUp className="h-4 w-4 text-emerald-400" />
               <p className="text-xs text-zinc-400 font-medium">إجمالي الإيرادات</p>
             </div>
-            <p className="text-2xl font-bold text-emerald-400 tracking-tight">{formatCurrency(totalRevenue)}</p>
+            <p className="text-2xl font-bold text-emerald-400 tracking-tight">****</p>
           </div>
 
           {/* Risk Status */}
@@ -166,7 +183,12 @@ export default function EmployeeAdvancesSection({ year, month }: EmployeeAdvance
       {/* Employee Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {data.map((employee) => (
-          <EmployeeAdvanceCard key={employee.EmpID} data={employee} />
+          <EmployeeAdvanceCard
+            key={employee.EmpID}
+            data={employee}
+            isVisible={visibleCards.has(employee.EmpID)}
+            onToggleVisibility={() => toggleCardVisibility(employee.EmpID)}
+          />
         ))}
       </div>
     </div>

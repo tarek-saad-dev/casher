@@ -1,20 +1,26 @@
 'use client';
 
 import type { EmployeeAdvanceData } from '@/lib/types';
-import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Clock, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Clock, ArrowUpRight, ArrowDownRight, Eye, EyeOff } from 'lucide-react';
 
 interface EmployeeAdvanceCardProps {
   data: EmployeeAdvanceData;
+  isVisible: boolean;
+  onToggleVisibility: () => void;
 }
 
-export default function EmployeeAdvanceCard({ data }: EmployeeAdvanceCardProps) {
+export default function EmployeeAdvanceCard({ data, isVisible, onToggleVisibility }: EmployeeAdvanceCardProps) {
   const formatCurrency = (amount: number) => {
+    if (!isVisible) return '****';
     return new Intl.NumberFormat('ar-EG', {
       style: 'decimal',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(amount) + ' ج.م';
   };
+
+  const formatCount = (count: number) => isVisible ? count : '**';
+  const formatPercentage = (percentage: number) => isVisible ? percentage.toFixed(1) + '%' : '**%';
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '—';
@@ -76,14 +82,38 @@ export default function EmployeeAdvanceCard({ data }: EmployeeAdvanceCardProps) 
         <div>
           <h4 className="text-xl font-bold text-white mb-1 tracking-tight">{data.EmpName}</h4>
           <div className="flex items-center gap-2 text-xs text-zinc-500">
-            <span>{data.AdvanceCount} سلفة</span>
+            <span>{formatCount(data.AdvanceCount)} سلفة</span>
             <span>•</span>
-            <span>{data.SalesCount} إيراد</span>
+            <span>{formatCount(data.SalesCount)} إيراد</span>
           </div>
         </div>
-        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${getRiskBadgeStyles()}`}>
-          {getRiskIcon()}
-          <span>{data.RiskStatus.label}</span>
+        <div className="flex items-center gap-2">
+          {/* Visibility Toggle Button */}
+          <button
+            onClick={onToggleVisibility}
+            className={`flex items-center gap-1 px-2 py-1 rounded-full border text-xs font-medium transition-colors ${
+              isVisible 
+                ? 'bg-zinc-700/50 text-zinc-300 border-zinc-600 hover:bg-zinc-600/50' 
+                : 'bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20'
+            }`}
+            title={isVisible ? 'إخفاء الأرقام' : 'إظهار الأرقام'}
+          >
+            {isVisible ? (
+              <>
+                <EyeOff className="h-3 w-3" />
+                <span>إخفاء</span>
+              </>
+            ) : (
+              <>
+                <Eye className="h-3 w-3" />
+                <span>إظهار</span>
+              </>
+            )}
+          </button>
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${getRiskBadgeStyles()}`}>
+            {getRiskIcon()}
+            <span>{data.RiskStatus.label}</span>
+          </div>
         </div>
       </div>
 
@@ -132,7 +162,7 @@ export default function EmployeeAdvanceCard({ data }: EmployeeAdvanceCardProps) 
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs text-zinc-400 font-medium">نسبة السلف</span>
           <span className="text-sm font-bold text-white">
-            {data.AdvancePercentage.toFixed(1)}%
+            {formatPercentage(data.AdvancePercentage)}
           </span>
         </div>
         <div className="relative w-full bg-zinc-800/50 rounded-full h-2 overflow-hidden">
