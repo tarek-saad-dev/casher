@@ -6,6 +6,7 @@ import {
   Filter, Receipt, AlertCircle, Trash2, AlertTriangle,
 } from 'lucide-react';
 import type { TreasuryMovement } from '@/lib/types/treasury';
+import { getMovementTypeLabel, getMovementTypeSearchText } from '@/lib/treasury';
 
 interface Props {
   paymentMethodId: number;
@@ -79,7 +80,7 @@ export default function PaymentMethodDetailsModal({
       list = list.filter(m =>
         (m.catName  ?? '').toLowerCase().includes(q) ||
         (m.notes    ?? '').toLowerCase().includes(q) ||
-        (m.invType  ?? '').toLowerCase().includes(q) ||
+        getMovementTypeSearchText(m).includes(q) ||
         (m.userName ?? '').toLowerCase().includes(q) ||
         String(m.invId).includes(q)
       );
@@ -302,7 +303,7 @@ export default function PaymentMethodDetailsModal({
                               ? <ArrowUpRight className="h-2.5 w-2.5" />
                               : <ArrowDownRight className="h-2.5 w-2.5" />
                             }
-                            {m.invType}
+                            {getMovementTypeLabel(m)}
                           </span>
                         </td>
                         <td className="px-3 py-2 text-zinc-300 max-w-[120px] truncate">

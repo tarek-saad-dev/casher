@@ -149,22 +149,26 @@ export const APPROVAL_ACTIONS: Record<string, ActionDefinition> = {
         const incomeInvID = invIdRes2.recordset[0].newInvID;
 
         const req1 = tx.request();
-        req1.input('invID', sql.Int,         expenseInvID);
-        req1.input('pm',    sql.Int,         fromPaymentMethodId as number);
-        req1.input('amt',   sql.Decimal(18,2), amount as number);
-        req1.input('notes', sql.NVarChar,    (notes as string) ?? '');
-        req1.input('date',  sql.Date,        parsedDate);
-        req1.input('sid',   sql.Int,         shiftMoveId as number ?? null);
-        await req1.query(`INSERT INTO dbo.TblCashMove (invID,PaymentMethodID,GrandTolal,inOut,Notes,InvDate,ShiftMoveID,InvType) VALUES (@invID,@pm,@amt,'out',@notes,@date,@sid,'تحويل')`);
+        req1.input('invID',   sql.Int,         expenseInvID);
+        req1.input('pm',      sql.Int,         fromPaymentMethodId as number);
+        req1.input('amt',     sql.Decimal(18,2), amount as number);
+        req1.input('notes',   sql.NVarChar,    (notes as string) ?? '');
+        req1.input('date',    sql.Date,        parsedDate);
+        req1.input('sid',     sql.Int,         shiftMoveId as number ?? null);
+        req1.input('inOut',   sql.NVarChar(5), 'out');
+        req1.input('invType', sql.NVarChar(20), 'مصروفات');
+        await req1.query(`INSERT INTO dbo.TblCashMove (invID,PaymentMethodID,GrandTolal,inOut,Notes,InvDate,ShiftMoveID,InvType) VALUES (@invID,@pm,@amt,@inOut,@notes,@date,@sid,@invType)`);
 
         const req2 = tx.request();
-        req2.input('invID', sql.Int,         incomeInvID);
-        req2.input('pm',    sql.Int,         toPaymentMethodId as number);
-        req2.input('amt',   sql.Decimal(18,2), amount as number);
-        req2.input('notes', sql.NVarChar,    (notes as string) ?? '');
-        req2.input('date',  sql.Date,        parsedDate);
-        req2.input('sid',   sql.Int,         shiftMoveId as number ?? null);
-        await req2.query(`INSERT INTO dbo.TblCashMove (invID,PaymentMethodID,GrandTolal,inOut,Notes,InvDate,ShiftMoveID,InvType) VALUES (@invID,@pm,@amt,'in',@notes,@date,@sid,'تحويل')`);
+        req2.input('invID',   sql.Int,         incomeInvID);
+        req2.input('pm',      sql.Int,         toPaymentMethodId as number);
+        req2.input('amt',     sql.Decimal(18,2), amount as number);
+        req2.input('notes',   sql.NVarChar,    (notes as string) ?? '');
+        req2.input('date',    sql.Date,        parsedDate);
+        req2.input('sid',     sql.Int,         shiftMoveId as number ?? null);
+        req2.input('inOut',   sql.NVarChar(5), 'in');
+        req2.input('invType', sql.NVarChar(20), 'ايرادات');
+        await req2.query(`INSERT INTO dbo.TblCashMove (invID,PaymentMethodID,GrandTolal,inOut,Notes,InvDate,ShiftMoveID,InvType) VALUES (@invID,@pm,@amt,@inOut,@notes,@date,@sid,@invType)`);
 
         await tx.commit();
       } catch (e) {

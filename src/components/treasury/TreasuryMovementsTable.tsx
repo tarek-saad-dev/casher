@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { ArrowUpRight, ArrowDownRight, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import type { TreasuryMovement } from '@/lib/types/treasury';
+import { getMovementTypeLabel, getMovementTypeSearchText } from '@/lib/treasury';
 
 interface TreasuryMovementsTableProps {
   movements: TreasuryMovement[];
@@ -42,7 +43,7 @@ export default function TreasuryMovementsTable({
 
   const filteredMovements = movements.filter(m => 
     searchTerm === '' ||
-    m.invType.includes(searchTerm) ||
+    getMovementTypeSearchText(m).includes(searchTerm.toLowerCase()) ||
     m.paymentMethodName.includes(searchTerm) ||
     m.notes?.includes(searchTerm) ||
     m.userName?.includes(searchTerm)
@@ -113,7 +114,7 @@ export default function TreasuryMovementsTable({
                   </td>
                   <td className="py-3 px-4">
                     <span className="text-sm text-white font-medium">
-                      {movement.invType}
+                      {getMovementTypeLabel(movement)}
                     </span>
                   </td>
                   <td className="py-3 px-4 text-sm text-zinc-400">
