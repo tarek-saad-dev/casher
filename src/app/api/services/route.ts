@@ -7,7 +7,7 @@ export async function GET() {
     const db = await getPool();
     const result = await db.request().query(`
       SELECT
-        p.ProID, p.ProName, p.SPrice1, p.Bonus,
+        p.ProID, p.ProName, p.ProNameAr, p.SPrice1, p.Bonus,
         p.CatID, c.CatName,
         ISNULL(pop.SalesCount, 0) AS SalesCount,
         p.isDeleted,
@@ -33,7 +33,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { ProName, SPrice1, Bonus, CatID, isActive } = body;
+    const { ProName, ProNameAr, SPrice1, Bonus, CatID, isActive } = body;
 
     if (!ProName || !ProName.trim()) {
       return NextResponse.json({ error: 'اسم الخدمة مطلوب' }, { status: 400 });
@@ -46,16 +46,17 @@ export async function POST(req: NextRequest) {
     const db = await getPool();
     const result = await db.request()
       .input('ProName', ProName.trim())
+      .input('ProNameAr', ProNameAr?.trim() || null)
       .input('SPrice1', SPrice1)
       .input('Bonus', Bonus || 0)
       .input('CatID', CatID || null)
       .input('isDeleted', isActive ? 0 : 1)
       .query(`
-        INSERT INTO [dbo].[TblPro] (ProName, SPrice1, Bonus, CatID, isDeleted)
-        VALUES (@ProName, @SPrice1, @Bonus, @CatID, @isDeleted);
+        INSERT INTO [dbo].[TblPro] (ProName, ProNameAr, SPrice1, Bonus, CatID, isDeleted)
+        VALUES (@ProName, @ProNameAr, @SPrice1, @Bonus, @CatID, @isDeleted);
         
         SELECT 
-          p.ProID, p.ProName, p.SPrice1, p.Bonus, p.CatID, p.isDeleted,
+          p.ProID, p.ProName, p.ProNameAr, p.SPrice1, p.Bonus, p.CatID, p.isDeleted,
           c.CatName,
           0 AS SalesCount
         FROM [dbo].[TblPro] p

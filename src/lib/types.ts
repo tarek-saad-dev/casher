@@ -19,6 +19,7 @@ export interface Barber {
 export interface Service {
   ProID: number;
   ProName: string;
+  ProNameAr: string | null;
   SPrice1: number;
   Bonus: number;
   CatID: number | null;

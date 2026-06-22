@@ -241,9 +241,16 @@ export default function ServiceCatalog({ services, selectedBarber, onAddItem }: 
               {/* Service Info */}
               <div className="p-3">
                 {/* Service Name */}
-                <h4 className="text-sm font-medium text-[#F7F1E5] mb-2 line-clamp-1">
-                  {svc.ProName}
-                </h4>
+                <div className="mb-2">
+                  <h4 className="text-sm font-medium text-[#F7F1E5] line-clamp-1">
+                    {svc.ProNameAr || svc.ProName}
+                  </h4>
+                  {svc.ProNameAr && svc.ProName !== svc.ProNameAr && (
+                    <p className="text-xs text-[#A7A29A] line-clamp-1 mt-1">
+                      {svc.ProName}
+                    </p>
+                  )}
+                </div>
 
                 {/* Price & Duration */}
                 <div className="flex items-center justify-between mb-3">

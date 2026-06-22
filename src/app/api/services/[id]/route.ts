@@ -15,7 +15,7 @@ export async function PUT(
     }
 
     const body = await req.json();
-    const { ProName, SPrice1, Bonus, CatID, isActive } = body;
+    const { ProName, ProNameAr, SPrice1, Bonus, CatID, isActive } = body;
 
     if (!ProName || !ProName.trim()) {
       return NextResponse.json({ error: 'اسم الخدمة مطلوب' }, { status: 400 });
@@ -29,6 +29,7 @@ export async function PUT(
     const result = await db.request()
       .input('ProID', serviceId)
       .input('ProName', ProName.trim())
+      .input('ProNameAr', ProNameAr?.trim() || null)
       .input('SPrice1', SPrice1)
       .input('Bonus', Bonus || 0)
       .input('CatID', CatID || null)
@@ -36,6 +37,7 @@ export async function PUT(
       .query(`
         UPDATE [dbo].[TblPro]
         SET ProName = @ProName, 
+            ProNameAr = @ProNameAr,
             SPrice1 = @SPrice1, 
             Bonus = @Bonus, 
             CatID = @CatID, 
@@ -43,7 +45,7 @@ export async function PUT(
         WHERE ProID = @ProID;
         
         SELECT 
-          p.ProID, p.ProName, p.SPrice1, p.Bonus, p.CatID, p.isDeleted,
+          p.ProID, p.ProName, p.ProNameAr, p.SPrice1, p.Bonus, p.CatID, p.isDeleted,
           c.CatName,
           ISNULL(pop.SalesCount, 0) AS SalesCount
         FROM [dbo].[TblPro] p

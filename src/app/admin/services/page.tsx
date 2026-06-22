@@ -31,6 +31,7 @@ import { Switch } from '@/components/ui/switch';
 interface Service {
   ProID: number;
   ProName: string;
+  ProNameAr: string | null;
   SPrice1: number;
   Bonus: number;
   CatID: number | null;
@@ -57,6 +58,7 @@ interface Category {
 
 interface ServiceFormData {
   ProName: string;
+  ProNameAr: string;
   SPrice1: number;
   Bonus: number;
   CatID: number | null;
@@ -89,6 +91,7 @@ export default function ServicesManagementPage() {
   const [serviceSaving, setServiceSaving] = useState(false);
   const [serviceFormData, setServiceFormData] = useState<ServiceFormData>({
     ProName: '',
+    ProNameAr: '',
     SPrice1: 0,
     Bonus: 0,
     CatID: null,
@@ -227,6 +230,7 @@ export default function ServicesManagementPage() {
       setEditingService(service);
       setServiceFormData({
         ProName: service.ProName,
+        ProNameAr: service.ProNameAr || '',
         SPrice1: service.SPrice1,
         Bonus: service.Bonus,
         CatID: service.CatID,
@@ -239,6 +243,7 @@ export default function ServicesManagementPage() {
       setEditingService(null);
       setServiceFormData({
         ProName: '',
+        ProNameAr: '',
         SPrice1: 0,
         Bonus: 0,
         CatID: null,
@@ -589,6 +594,9 @@ export default function ServicesManagementPage() {
                   <TableCell>
                     <div>
                       <span className="font-medium text-white">{service.ProName}</span>
+                      {service.ProNameAr && (
+                        <div className="text-sm text-zinc-400 mt-1">{service.ProNameAr}</div>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -766,6 +774,16 @@ export default function ServicesManagementPage() {
                 onChange={(e) => setServiceFormData({...serviceFormData, ProName: e.target.value})}
                 className="bg-zinc-800 border-zinc-700 text-white"
                 placeholder="أدخل اسم الخدمة"
+              />
+            </div>
+            <div>
+              <Label htmlFor="serviceNameAr">اسم الخدمة بالعربي</Label>
+              <Input
+                id="serviceNameAr"
+                value={serviceFormData.ProNameAr}
+                onChange={(e) => setServiceFormData({...serviceFormData, ProNameAr: e.target.value})}
+                className="bg-zinc-800 border-zinc-700 text-white"
+                placeholder="أدخل اسم الخدمة بالعربي"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">

@@ -7,7 +7,8 @@ import {
   History, Receipt, Wallet, Lock, ArrowLeftRight, BarChart3, Clock,
   Calculator, Settings, Scissors, Tags, Shield, Activity, Star,
   UsersRound, FileBarChart, Calendar, Ticket, CalendarCheck, MonitorPlay,
-  AlertTriangle, Crown, KeyRound, FileKey2, Banknote, ShieldCheck,
+  AlertTriangle, Crown, KeyRound, FileKey2, Banknote, ShieldCheck, Users,
+  HeartHandshake,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -35,7 +36,9 @@ export const NAV_THEMES: Record<string, NavTheme> = {
   'المدخلات':          { rgb: '214,168,79',  emoji: '📥' },
   'مراجعة المدخلات':   { rgb: '59,130,246',  emoji: '📊' },
   'المصروفات':         { rgb: '244,63,94',   emoji: '💸' },
+  'الخصومات':          { rgb: '220,38,38',   emoji: '🔻' },
   'مراجعة المصروفات':  { rgb: '168,85,247',  emoji: '📋' },
+  'مراجعة الخصومات':  { rgb: '185,28,28',   emoji: '📊' },
   'الخزنة':            { rgb: '16,185,129',  emoji: '🏦' },
   'الميزانية':         { rgb: '6,182,212',   emoji: '💰' },
   'الموارد البشرية':   { rgb: '236,72,153',  emoji: '👥' },
@@ -82,6 +85,7 @@ export const NAV_SECTIONS: NavSection[] = [
     icon: Receipt,
     items: [
       { href: '/expenses', label: 'تسجيل مصروف', icon: Receipt },
+      { href: '/deductions', label: 'تسجيل خصم', icon: Users },
     ],
   },
   {
@@ -89,6 +93,7 @@ export const NAV_SECTIONS: NavSection[] = [
     icon: BarChart3,
     items: [
       { href: '/reports/expenses/monthly', label: 'تقرير المصروفات', icon: BarChart3 },
+      { href: '/reports/deductions/monthly', label: 'تقرير الخصومات', icon: BarChart3 },
     ],
   },
   {
@@ -154,6 +159,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: '/admin/permissions/users',         label: 'صلاحيات المستخدمين',    icon: KeyRound     },
       { href: '/admin/permissions/pages',         label: 'صلاحيات الصفحات',       icon: FileKey2     },
       { href: '/admin/approvals',                 label: 'طلبات الموافقة',          icon: ShieldCheck  },
+      { href: '/admin/customers/follow-up',       label: 'متابعة العملاء',           icon: HeartHandshake },
     ],
   },
   {
