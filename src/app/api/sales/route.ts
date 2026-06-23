@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, getUserFriendlyError, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import type { CreateSalePayload } from "@/lib/types";
+import { resolveSplitPaymentConfig } from "@/lib/clearingMethod";
+import { redistributeFromClearing } from "@/lib/splitPaymentService";
 
 export const runtime = "nodejs";
 
@@ -80,39 +82,82 @@ export async function POST(req: NextRequest) {
     let disVal = Math.max(0, body.disVal || 0);
     if (disVal > subTotal) disVal = subTotal;
     const grandTotal = Math.max(0, subTotal - disVal);
-    const payCash = Math.max(0, body.payCash || 0);
-    const payVisa = Math.max(0, body.payVisa || 0);
-    
-    // ──── Split payment validation ────
-    const paymentAllocations = body.paymentAllocations || [];
-    const totalAllocated = paymentAllocations.reduce((sum, pa) => sum + (pa.amount || 0), 0);
-    if (Math.abs(totalAllocated - grandTotal) > 0.01) {
-      console.error(`[pos-api]   ❌ REJECTED: payment total mismatch. Allocated=${totalAllocated}, GrandTotal=${grandTotal}`);
+
+    // ──── Resolve split-payment clearing config early (needed for validation) ────
+    const splitCfg = await resolveSplitPaymentConfig(db);
+
+    // ──── Payment allocation validation ────
+    const rawAllocations = body.paymentAllocations || [];
+
+    // Reject if client attempts to submit the internal clearing method
+    const clientSubmittedClearing = rawAllocations.some(
+      (pa) => pa.paymentMethodId === splitCfg.clearingMethodId,
+    );
+    if (clientSubmittedClearing) {
       return NextResponse.json(
-        { error: `إجمالي المدفوع (${totalAllocated.toFixed(2)}) لا يساوي إجمالي الفاتورة (${grandTotal.toFixed(2)})` },
+        { error: "طريقة الدفع المختارة غير مسموح بها" },
         { status: 400 },
       );
     }
-    
-    // Determine main payment method (largest amount)
-    const sortedAllocations = [...paymentAllocations].sort((a, b) => (b.amount || 0) - (a.amount || 0));
-    const mainPayment = sortedAllocations[0];
-    if (!mainPayment || mainPayment.amount <= 0) {
+
+    // Filter to non-zero, valid allocations — no negatives, no NaN
+    const activeAllocations = rawAllocations.filter((pa) => {
+      const amt = Number(pa.amount);
+      return isFinite(amt) && amt > 0 && Number.isInteger(pa.paymentMethodId * 1);
+    });
+
+    if (activeAllocations.length === 0) {
       return NextResponse.json(
         { error: "يجب إدخال مبلغ لطريقة دفع واحدة على الأقل" },
         { status: 400 },
       );
     }
-    
-    // Check if this is a split payment
-    const activeAllocations = paymentAllocations.filter(pa => (pa.amount || 0) > 0);
+
+    // Duplicate payment methods check
+    const methodIds = activeAllocations.map((pa) => pa.paymentMethodId);
+    if (new Set(methodIds).size !== methodIds.length) {
+      return NextResponse.json(
+        { error: "لا يمكن تكرار طريقة الدفع" },
+        { status: 400 },
+      );
+    }
+
+    // Decimal-safe total comparison (round to 2dp)
+    const totalAllocated = Math.round(
+      activeAllocations.reduce((sum, pa) => sum + Number(pa.amount), 0) * 100,
+    ) / 100;
+    const grandTotalRounded = Math.round(grandTotal * 100) / 100;
+
+    if (Math.abs(totalAllocated - grandTotalRounded) > 0.01) {
+      console.error(
+        `[pos-api]   ❌ REJECTED: payment total mismatch. Allocated=${totalAllocated}, GrandTotal=${grandTotalRounded}`,
+      );
+      return NextResponse.json(
+        {
+          error: `إجمالي المدفوع (${totalAllocated.toFixed(2)}) لا يساوي إجمالي الفاتورة (${grandTotalRounded.toFixed(2)})`,
+        },
+        { status: 400 },
+      );
+    }
+
+    // Determine if this is truly a mixed (split) payment
     const isSplitPayment = activeAllocations.length > 1;
-    
+
+    // For single payment: use the actual payment method
+    // For split payment: use the internal clearing account in the header
+    const headerPaymentMethodId = isSplitPayment
+      ? splitCfg.clearingMethodId
+      : activeAllocations[0].paymentMethodId;
+
+    // PayCash / PayVisa backward-compat fields (best-effort by name lookup)
+    const payCash = Math.max(0, body.payCash || 0);
+    const payVisa = Math.max(0, body.payVisa || 0);
+
     console.log(
       `[pos-api]   Discount: dis=${disPercent}%, disVal=${disVal}, subTotal=${subTotal}, grandTotal=${grandTotal}`,
     );
     console.log(
-      `[pos-api]   Payment: mainMethodId=${mainPayment.paymentMethodId}, isSplit=${isSplitPayment}, allocations=${activeAllocations.length}`,
+      `[pos-api]   Payment: headerMethodId=${headerPaymentMethodId}, isSplit=${isSplitPayment}, allocations=${activeAllocations.length}`,
     );
 
     // Format invTime as "HH.mm"
@@ -168,7 +213,7 @@ export async function POST(req: NextRequest) {
         .input("PayDue", sql.Decimal(10, 2), 0)
         .input("PayCash", sql.Decimal(10, 2), payCash)
         .input("PayVisa", sql.Decimal(10, 2), payVisa)
-        .input("PaymentMethodID", sql.Int, body.paymentMethodId);
+        .input("PaymentMethodID", sql.Int, headerPaymentMethodId);
 
       await headReq.query(`
         INSERT INTO [dbo].[TblinvServHead] (
@@ -186,7 +231,7 @@ export async function POST(req: NextRequest) {
         )
       `);
       console.log(
-        `[pos-api]   ✅ TblinvServHead inserted: invID=${newInvID}, ClientID=${body.clientId || "NULL"}, SubTotal=${subTotal}, DisVal=${disVal}, GrandTotal=${grandTotal}, PayCash=${payCash}, PayVisa=${payVisa}, PaymentMethodID=${body.paymentMethodId}, UserID=${userID}`,
+        `[pos-api]   ✅ TblinvServHead inserted: invID=${newInvID}, ClientID=${body.clientId || "NULL"}, GrandTotal=${grandTotal}, PaymentMethodID=${headerPaymentMethodId} (${isSplitPayment ? 'CLEARING' : 'DIRECT'}), UserID=${userID}`,
       );
 
       // ──── 3. Insert TblinvServDetail rows ────
@@ -228,171 +273,86 @@ export async function POST(req: NextRequest) {
         `[pos-api]   ✅ TblinvServDetail inserted: ${detailCount} row(s)`,
       );
 
-      // ──── 4. Insert TblinvServPayment ────
-      const payReq = new sql.Request(transaction);
-      payReq
-        .input("invID", sql.Int, newInvID)
-        .input("invType", sql.NVarChar(20), invType)
-        .input("PayDate", sql.Date, invDate)
-        .input("PayTime", sql.NVarChar(50), payTimeStr)
-        .input("PayValue", sql.Decimal(10, 2), grandTotal)
-        .input("Notes", sql.NVarChar(4000), notesText.substring(0, 4000))
-        .input("PaymentMethodID", sql.Int, body.paymentMethodId)
-        .input("ShiftMoveID", sql.Int, shiftMoveID);
-
-      await payReq.query(`
-        INSERT INTO [dbo].[TblinvServPayment] (
-          invID, invType, PayDate, PayTime, PayValue, Notes, PaymentMethodID, ShiftMoveID
-        ) VALUES (
-          @invID, @invType, @PayDate, @PayTime, @PayValue, @Notes, @PaymentMethodID, @ShiftMoveID
-        )
-      `);
-      console.log(
-        `[pos-api]   ✅ TblinvServPayment inserted: PayValue=${grandTotal}, PaymentMethodID=${body.paymentMethodId}, ShiftMoveID=${shiftMoveID}`,
-      );
-
-      // ──── 5. TblCashMove insertion handled by trigger [InsCashMoveSales] ────
-      // REMOVED: Duplicate INSERT removed to prevent double entries
-      // Trigger InsCashMoveSales on TblinvServHead will automatically insert into TblCashMove
-      console.log(
-        `[pos-api]   ℹ️  TblCashMove will be inserted by trigger InsCashMoveSales`,
-      );
-
-      // ──── 5b. Split Payment Settlement Entries ────
-      if (isSplitPayment) {
-        console.log(`[pos-api]   💰 Creating split payment settlement entries...`);
-        
-        // Get payment method names for logging
-        const pmResult = await new sql.Request(transaction).query(`
-          SELECT PaymentID, PaymentMethod FROM [dbo].[TblPaymentMethods] WHERE PaymentID IN (${activeAllocations.map(pa => pa.paymentMethodId).join(',')})
+      // ──── 4. Insert TblinvServPayment (one row per real payment method) ────
+      // Single payment: one row for the real method.
+      // Mixed payment: one row per real allocation — do NOT insert the clearing method here.
+      // Idempotency guard: skip if rows already exist for this invoice.
+      const existingPayRows = await new sql.Request(transaction)
+        .input("chkInvID", sql.Int, newInvID)
+        .input("chkInvType", sql.NVarChar(20), invType)
+        .query(`
+          SELECT COUNT(*) AS cnt FROM [dbo].[TblinvServPayment]
+          WHERE invID = @chkInvID AND invType = @chkInvType
         `);
-        const pmNames = new Map(pmResult.recordset.map((pm: any) => [pm.PaymentID, pm.PaymentMethod]));
-        
-        // Find or create settlement categories "طرق دفع"
-        const EXPENSE_CAT_NAME = 'طرق دفع - مصروفات';
-        const INCOME_CAT_NAME = 'طرق دفع - إيرادات';
-        
-        // Check if categories exist
-        const catCheckReq = new sql.Request(transaction);
-        catCheckReq.input('expCat', sql.NVarChar(100), EXPENSE_CAT_NAME);
-        catCheckReq.input('incCat', sql.NVarChar(100), INCOME_CAT_NAME);
-        const catResult = await catCheckReq.query(`
-          SELECT ExpINID, CatName, ExpINType FROM [dbo].[TblExpINCat] 
-          WHERE CatName = @expCat OR CatName = @incCat
-        `);
-        
-        let expenseCatId = null;
-        let incomeCatId = null;
-        
-        for (const cat of catResult.recordset) {
-          if (cat.CatName === EXPENSE_CAT_NAME) expenseCatId = cat.ExpINID;
-          if (cat.CatName === INCOME_CAT_NAME) incomeCatId = cat.ExpINID;
-        }
-        
-        // Create expense category if not found
-        if (!expenseCatId) {
-          const newExpReq = new sql.Request(transaction);
-          newExpReq.input('catName', sql.NVarChar(100), EXPENSE_CAT_NAME);
-          newExpReq.input('expType', sql.NVarChar(20), 'مصروفات');
-          newExpReq.input('notes', sql.NVarChar(sql.MAX), 'تصنيف مخصص لتسويات الدفع المختلط');
-          const newExpResult = await newExpReq.query(`
-            INSERT INTO [dbo].[TblExpINCat] (CatName, ExpINType, Notes)
-            OUTPUT INSERTED.ExpINID
-            VALUES (@catName, @expType, @notes)
-          `);
-          expenseCatId = newExpResult.recordset[0].ExpINID;
-          console.log(`[pos-api]   📂 Created expense category: ${EXPENSE_CAT_NAME} (ID=${expenseCatId})`);
-        }
-        
-        // Create income category if not found
-        if (!incomeCatId) {
-          const newIncReq = new sql.Request(transaction);
-          newIncReq.input('catName', sql.NVarChar(100), INCOME_CAT_NAME);
-          newIncReq.input('incType', sql.NVarChar(20), 'ايرادات');
-          newIncReq.input('notes', sql.NVarChar(sql.MAX), 'تصنيف مخصص لتسويات الدفع المختلط');
-          const newIncResult = await newIncReq.query(`
-            INSERT INTO [dbo].[TblExpINCat] (CatName, ExpINType, Notes)
-            OUTPUT INSERTED.ExpINID
-            VALUES (@catName, @incType, @notes)
-          `);
-          incomeCatId = newIncResult.recordset[0].ExpINID;
-          console.log(`[pos-api]   📂 Created income category: ${INCOME_CAT_NAME} (ID=${incomeCatId})`);
-        }
-        
-        console.log(`[pos-api]   📂 Settlement categories: expense=${expenseCatId}, income=${incomeCatId}`);
-        
-        const mainMethodId = mainPayment.paymentMethodId;
-        const mainMethodName = pmNames.get(mainMethodId) || 'Unknown';
-        
-        // For each other payment method, create settlement entries
+      if (existingPayRows.recordset[0].cnt === 0) {
         for (const alloc of activeAllocations) {
-          if (alloc.paymentMethodId === mainMethodId) continue; // Skip main method
-          
-          const otherMethodId = alloc.paymentMethodId;
-          const otherMethodName = pmNames.get(otherMethodId) || 'Unknown';
-          const otherAmount = alloc.amount;
-          
-          // Generate invIDs for settlement entries
-          const settleInvResult = await new sql.Request(transaction).query(`
-            SELECT ISNULL(MAX(invID), 0) + 1 AS newInvID FROM [dbo].[TblCashMove] WITH (TABLOCKX)
-          `);
-          const expenseInvId = settleInvResult.recordset[0].newInvID;
-          const incomeInvId = expenseInvId + 1;
-          
-          // 1. Create EXPENSE entry on main method (reduce main method balance)
-          const expenseReq = new sql.Request(transaction);
-          expenseReq
-            .input("invID", sql.Int, expenseInvId)
-            .input("invType", sql.NVarChar(20), "مصروفات")
-            .input("invDate", sql.Date, invDate)
-            .input("invTime", sql.NVarChar(50), invTime)
-            .input("ClientID", sql.Int, body.clientId || null)
-            .input("ExpINID", sql.Int, expenseCatId)
-            .input("GrandTolal", sql.Decimal(10, 2), otherAmount)
-            .input("inOut", sql.NVarChar(5), "out")
-            .input("Notes", sql.NVarChar(sql.MAX), `تسوية دفع مختلط للفاتورة ${newInvID} - خصم الجزء المدفوع ${otherMethodName} من ${mainMethodName}`)
-            .input("ShiftMoveID", sql.Int, shiftMoveID)
-            .input("PaymentMethodID", sql.Int, mainMethodId);
-          
-          await expenseReq.query(`
-            INSERT INTO [dbo].[TblCashMove] (
-              invID, invType, invDate, invTime, ClientID,
-              ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID
+          const payReq = new sql.Request(transaction);
+          payReq
+            .input("invID", sql.Int, newInvID)
+            .input("invType", sql.NVarChar(20), invType)
+            .input("PayDate", sql.Date, invDate)
+            .input("PayTime", sql.NVarChar(50), payTimeStr)
+            .input("PayValue", sql.Decimal(10, 2), Number(alloc.amount))
+            .input("Notes", sql.NVarChar(4000), notesText.substring(0, 4000))
+            .input("PaymentMethodID", sql.Int, alloc.paymentMethodId)
+            .input("ShiftMoveID", sql.Int, shiftMoveID);
+
+          await payReq.query(`
+            INSERT INTO [dbo].[TblinvServPayment] (
+              invID, invType, PayDate, PayTime, PayValue, Notes, PaymentMethodID, ShiftMoveID
             ) VALUES (
-              @invID, @invType, @invDate, @invTime, @ClientID,
-              @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID
+              @invID, @invType, @PayDate, @PayTime, @PayValue, @Notes, @PaymentMethodID, @ShiftMoveID
             )
           `);
-          console.log(`[pos-api]     ✅ Settlement Expense: ${mainMethodName} -${otherAmount}`);
-          
-          // 2. Create INCOME entry on other method (add to other method balance)
-          const incomeReq = new sql.Request(transaction);
-          incomeReq
-            .input("invID", sql.Int, incomeInvId)
-            .input("invType", sql.NVarChar(20), "ايرادات")
-            .input("invDate", sql.Date, invDate)
-            .input("invTime", sql.NVarChar(50), invTime)
-            .input("ClientID", sql.Int, body.clientId || null)
-            .input("ExpINID", sql.Int, incomeCatId)
-            .input("GrandTolal", sql.Decimal(10, 2), otherAmount)
-            .input("inOut", sql.NVarChar(5), "in")
-            .input("Notes", sql.NVarChar(sql.MAX), `تسوية دفع مختلط للفاتورة ${newInvID} - إثبات الجزء المدفوع ${otherMethodName}`)
-            .input("ShiftMoveID", sql.Int, shiftMoveID)
-            .input("PaymentMethodID", sql.Int, otherMethodId);
-          
-          await incomeReq.query(`
-            INSERT INTO [dbo].[TblCashMove] (
-              invID, invType, invDate, invTime, ClientID,
-              ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID
-            ) VALUES (
-              @invID, @invType, @invDate, @invTime, @ClientID,
-              @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID
-            )
-          `);
-          console.log(`[pos-api]     ✅ Settlement Income: ${otherMethodName} +${otherAmount}`);
+          console.log(
+            `[pos-api]   ✅ TblinvServPayment inserted: PayValue=${alloc.amount}, PaymentMethodID=${alloc.paymentMethodId}`,
+          );
         }
-        
-        console.log(`[pos-api]   ✅ Split payment settlement complete`);
+      } else {
+        console.log(`[pos-api]   ⚠️  TblinvServPayment rows already exist for invID=${newInvID} — skipping (idempotency)`);
+      }
+
+      // ──── 5. TblCashMove initial entry: handled by trigger [InsCashMoveSales] ────
+      // For single payment: trigger creates one 'in' row for the actual payment method.
+      // For mixed payment: trigger creates one 'in' row for the clearing account.
+      // Do NOT manually insert here — the trigger is the single code path.
+      console.log(
+        `[pos-api]   ℹ️  TblCashMove initial entry created by trigger InsCashMoveSales (paymentMethodId=${headerPaymentMethodId})`,
+      );
+
+      // ──── 5b. Mixed payment redistribution: clearing → each real method ────
+      if (isSplitPayment) {
+        console.log(`[pos-api]   � Redistributing clearing account to real payment methods...`);
+
+        // Idempotency guard: skip if split transfer rows already exist
+        const existingSplitTransfers = await new sql.Request(transaction)
+          .input("chkInvID2", sql.Int, newInvID)
+          .input("chkCatId", sql.Int, splitCfg.expenseCatId)
+          .query(`
+            SELECT COUNT(*) AS cnt FROM [dbo].[TblCashMove]
+            WHERE ExpINID = @chkCatId
+              AND Notes LIKE N'%فاتورة ' + CAST(@chkInvID2 AS NVARCHAR) + N'%'
+          `);
+        if (existingSplitTransfers.recordset[0].cnt === 0) {
+          await redistributeFromClearing({
+            transaction,
+            clearingMethodId: splitCfg.clearingMethodId,
+            allocations: activeAllocations.map((a) => ({
+              paymentMethodId: a.paymentMethodId,
+              amount: Number(a.amount),
+            })),
+            invDate,
+            invTime,
+            clientId: body.clientId || null,
+            shiftMoveId: shiftMoveID,
+            invoiceId: newInvID,
+            expenseCatId: splitCfg.expenseCatId,
+            incomeCatId: splitCfg.incomeCatId,
+          });
+          console.log(`[pos-api]   ✅ Split payment redistribution complete`);
+        } else {
+          console.log(`[pos-api]   ⚠️  Split transfers already exist for invID=${newInvID} — skipping (idempotency)`);
+        }
       }
 
       // ──── 6. Commit ────

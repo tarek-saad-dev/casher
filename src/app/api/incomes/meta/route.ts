@@ -18,12 +18,24 @@ export async function GET() {
       ORDER BY CatName ASC
     `);
 
-    // Payment methods
-    const pmRes = await db.request().query(`
-      SELECT PaymentID, PaymentMethod
-      FROM dbo.TblPaymentMethods
-      ORDER BY PaymentID ASC
-    `);
+    // Resolve clearing method ID (0 = not configured, never matches a real PaymentID)
+    let clearingId = 0;
+    try {
+      const cfgRes = await db.request().query(
+        `SELECT CAST(Value AS INT) AS v FROM [dbo].[TblSettingValues] WHERE Name = N'SplitClearingMethodID'`
+      );
+      if (cfgRes.recordset.length > 0) clearingId = cfgRes.recordset[0].v || 0;
+    } catch { /* settings table may not exist yet */ }
+
+    // Payment methods — exclude internal split-payment clearing account by ID
+    const pmRes = await db.request()
+      .input('clearingId', sql.Int, clearingId)
+      .query(`
+        SELECT PaymentID, PaymentMethod
+        FROM dbo.TblPaymentMethods
+        WHERE PaymentID <> @clearingId
+        ORDER BY PaymentID ASC
+      `);
 
     // Open shift for current user (or any open shift if no session)
     let openShift = null;

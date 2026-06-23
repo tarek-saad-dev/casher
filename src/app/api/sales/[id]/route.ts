@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { requireApprovalOrExecute } from '@/lib/approvalWorkflow';
+import { resolveSplitPaymentConfig } from "@/lib/clearingMethod";
+import { redistributeFromClearing } from "@/lib/splitPaymentService";
 
 // GET /api/sales/[id] — Get sale by invID for printing
 export async function GET(
@@ -54,9 +56,26 @@ export async function GET(
         WHERE d.invID = @invID AND d.invType = N'مبيعات'
       `);
 
+    // Fetch real payment allocations for mixed-payment display/printing
+    const payAllocations = await db.request().input("invID", sql.Int, invID).query(`
+        SELECT
+          p.PaymentMethodID,
+          pm.PaymentMethod AS PaymentMethodName,
+          p.PayValue
+        FROM [dbo].[TblinvServPayment] p
+        LEFT JOIN [dbo].[TblPaymentMethods] pm ON p.PaymentMethodID = pm.PaymentID
+        WHERE p.invID = @invID AND p.invType = N'مبيعات'
+          AND ISNULL(p.PayValue, 0) > 0
+        ORDER BY p.ID
+      `);
+
+    const isSplitPayment = payAllocations.recordset.length > 1;
+
     return NextResponse.json({
       ...header,
       items: details.recordset,
+      paymentAllocations: payAllocations.recordset,
+      isSplitPayment,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -129,12 +148,19 @@ export async function PUT(
         );
       }
 
-      // 2. Delete existing details
+      // 2. Delete existing details and payment allocations
       await transaction
         .request()
         .input("invID", sql.Int, invID)
         .query(
           `DELETE FROM [dbo].[TblinvServDetail] WHERE invID = @invID AND invType = N'مبيعات'`,
+        );
+
+      await transaction
+        .request()
+        .input("invID", sql.Int, invID)
+        .query(
+          `DELETE FROM [dbo].[TblinvServPayment] WHERE invID = @invID AND invType = N'مبيعات'`,
         );
 
       // 3. Delete old loyalty points
@@ -217,117 +243,111 @@ export async function PUT(
         `);
       }
 
-      // 8. Re-insert cash movement(s) - handle both single payment and split payment
-      const paymentAllocations = body.paymentAllocations || [];
-      const hasSplitPayment =
-        Array.isArray(paymentAllocations) && paymentAllocations.length > 0;
+      // 8. Re-insert cash movement(s) using correct clearing-account architecture
+      const db2 = await getPool();
+      const splitCfg = await resolveSplitPaymentConfig(db2);
 
-      if (hasSplitPayment) {
-        // Automatic Settlement for split payments:
-        // 1. Record full amount as CASH income
-        // 2. For each non-cash payment: record CASH expense + that method income
+      const rawEditAllocations = body.paymentAllocations || [];
+      const activeEditAllocations = rawEditAllocations.filter(
+        (pa: { paymentMethodId: number; amount: number }) => {
+          const amt = Number(pa.amount);
+          return isFinite(amt) && amt > 0 && pa.paymentMethodId !== splitCfg.clearingMethodId;
+        },
+      );
 
-        const cashPaymentMethodId = 1; // Assuming ID 1 is cash
+      const isEditSplitPayment = activeEditAllocations.length > 1;
+      const editHeaderPaymentMethodId = isEditSplitPayment
+        ? splitCfg.clearingMethodId
+        : (activeEditAllocations[0]?.paymentMethodId || body.paymentMethodId || 1);
 
-        // Step 1: Record full grandTotal as CASH income (in)
+      // Update header PaymentMethodID to reflect correct method
+      await transaction.request()
+        .input("invID", sql.Int, invID)
+        .input("PaymentMethodID", sql.Int, editHeaderPaymentMethodId)
+        .query(`UPDATE [dbo].[TblinvServHead] SET PaymentMethodID = @PaymentMethodID WHERE invID = @invID AND invType = N'مبيعات'`);
+
+      // Re-insert TblinvServPayment rows (one per real allocation)
+      const now2 = new Date();
+      const payHours2 = now2.getHours();
+      const payAmPm2 = payHours2 >= 12 ? "PM" : "AM";
+      const payH122 = payHours2 % 12 || 12;
+      const payTimeStr2 = `${now2.getFullYear()}-${String(now2.getMonth() + 1).padStart(2, "0")}-${String(now2.getDate()).padStart(2, "0")} ${String(payH122).padStart(2, "0")}:${String(now2.getMinutes()).padStart(2, "0")}:${String(now2.getSeconds()).padStart(2, "0")} ${payAmPm2}`;
+
+      const editInvDate = now2; // Use current date for edits (TblCashMove was already cleared)
+      const editInvTime = `${String(now2.getHours()).padStart(2, "0")}.${String(now2.getMinutes()).padStart(2, "0")}`;
+
+      for (const alloc of activeEditAllocations) {
+        await transaction.request()
+          .input("invID", sql.Int, invID)
+          .input("invType", sql.NVarChar(20), "مبيعات")
+          .input("PayDate", sql.Date, editInvDate)
+          .input("PayTime", sql.NVarChar(50), payTimeStr2)
+          .input("PayValue", sql.Decimal(10, 2), Number(alloc.amount))
+          .input("Notes", sql.NVarChar(4000), (body.notes || "مبيعات").substring(0, 4000))
+          .input("PaymentMethodID", sql.Int, alloc.paymentMethodId)
+          .input("ShiftMoveID", sql.Int, null)
+          .query(`
+            INSERT INTO [dbo].[TblinvServPayment]
+              (invID, invType, PayDate, PayTime, PayValue, Notes, PaymentMethodID, ShiftMoveID)
+            VALUES
+              (@invID, @invType, @PayDate, @PayTime, @PayValue, @Notes, @PaymentMethodID, @ShiftMoveID)
+          `);
+      }
+
+      // Re-insert TblCashMove: for single payment insert directly;
+      // for mixed payment insert clearing income then redistribute.
+      if (!isEditSplitPayment) {
+        // Single payment — insert one 'in' row for the real method
         if (grandTotal > 0) {
-          const cashIncomeReq = transaction.request();
-          cashIncomeReq
+          await transaction.request()
             .input("invID", sql.Int, invID)
             .input("invType", sql.NVarChar(20), "مبيعات")
             .input("GrandTotal", sql.Decimal(10, 2), grandTotal)
-            .input("PaymentMethodID", sql.Int, cashPaymentMethodId)
-            .input(
-              "Notes",
-              sql.NVarChar(sql.MAX),
-              (body.notes || "مبيعات") + " [تسوية - وارد كاش]",
-            );
-
-          await cashIncomeReq.query(`
-            INSERT INTO [dbo].[TblCashMove]
-              (invID, invType, invDate, invTime, GrandTolal, PaymentMethodID, inOut, Notes)
-            VALUES
-              (@invID, @invType, CONVERT(date, GETDATE()), CONVERT(time, GETDATE()),
-               @GrandTotal, @PaymentMethodID, N'in', @Notes)
-          `);
-        }
-
-        // Step 2: For each non-cash payment, create settlement entries
-        for (const alloc of paymentAllocations) {
-          const allocAmount = Math.max(0, alloc.amount || 0);
-          const allocMethodId = alloc.paymentMethodId || 1;
-
-          // Skip if cash or zero amount
-          if (allocAmount <= 0 || allocMethodId === cashPaymentMethodId)
-            continue;
-
-          // 2a. Record CASH expense (out) - money leaving cash to go to other method
-          const cashOutReq = transaction.request();
-          cashOutReq
-            .input("invID", sql.Int, invID)
-            .input("invType", sql.NVarChar(20), "مبيعات")
-            .input("GrandTotal", sql.Decimal(10, 2), allocAmount)
-            .input("PaymentMethodID", sql.Int, cashPaymentMethodId)
-            .input(
-              "Notes",
-              sql.NVarChar(sql.MAX),
-              (body.notes || "مبيعات") +
-                ` [تسوية - صادر كاش -> طريقة ${allocMethodId}]`,
-            );
-
-          await cashOutReq.query(`
-            INSERT INTO [dbo].[TblCashMove]
-              (invID, invType, invDate, invTime, GrandTolal, PaymentMethodID, inOut, Notes)
-            VALUES
-              (@invID, @invType, CONVERT(date, GETDATE()), CONVERT(time, GETDATE()),
-               @GrandTotal, @PaymentMethodID, N'out', @Notes)
-          `);
-
-          // 2b. Record income (in) for the actual payment method
-          const methodIncomeReq = transaction.request();
-          methodIncomeReq
-            .input("invID", sql.Int, invID)
-            .input("invType", sql.NVarChar(20), "مبيعات")
-            .input("GrandTotal", sql.Decimal(10, 2), allocAmount)
-            .input("PaymentMethodID", sql.Int, allocMethodId)
-            .input(
-              "Notes",
-              sql.NVarChar(sql.MAX),
-              (body.notes || "مبيعات") + " [تسوية - وارد]",
-            );
-
-          await methodIncomeReq.query(`
-            INSERT INTO [dbo].[TblCashMove]
-              (invID, invType, invDate, invTime, GrandTolal, PaymentMethodID, inOut, Notes)
-            VALUES
-              (@invID, @invType, CONVERT(date, GETDATE()), CONVERT(time, GETDATE()),
-               @GrandTotal, @PaymentMethodID, N'in', @Notes)
-          `);
+            .input("PaymentMethodID", sql.Int, editHeaderPaymentMethodId)
+            .input("Notes", sql.NVarChar(sql.MAX), body.notes || "مبيعات")
+            .input("ShiftMoveID", sql.Int, null)
+            .query(`
+              INSERT INTO [dbo].[TblCashMove]
+                (invID, invType, invDate, invTime, GrandTolal, PaymentMethodID, inOut, Notes, ShiftMoveID)
+              VALUES
+                (@invID, @invType, CONVERT(date, GETDATE()), CONVERT(varchar(5), GETDATE(), 8),
+                 @GrandTotal, @PaymentMethodID, N'in', @Notes, @ShiftMoveID)
+            `);
         }
       } else {
-        // Single payment method - fallback to original logic
-        const cashMoveReq = transaction.request();
-        cashMoveReq
-          .input("invID", sql.Int, invID)
-          .input("invType", sql.NVarChar(20), "مبيعات")
-          .input("GrandTotal", sql.Decimal(10, 2), grandTotal)
-          .input("PaymentMethodID", sql.Int, body.paymentMethodId || 1)
-          .input("Notes", sql.NVarChar(sql.MAX), body.notes || "مبيعات");
+        // Mixed payment — insert clearing income row first, then redistribute
+        if (grandTotal > 0) {
+          await transaction.request()
+            .input("invID", sql.Int, invID)
+            .input("invType", sql.NVarChar(20), "مبيعات")
+            .input("GrandTotal", sql.Decimal(10, 2), grandTotal)
+            .input("PaymentMethodID", sql.Int, splitCfg.clearingMethodId)
+            .input("Notes", sql.NVarChar(sql.MAX), body.notes || "مبيعات")
+            .input("ShiftMoveID", sql.Int, null)
+            .query(`
+              INSERT INTO [dbo].[TblCashMove]
+                (invID, invType, invDate, invTime, GrandTolal, PaymentMethodID, inOut, Notes, ShiftMoveID)
+              VALUES
+                (@invID, @invType, CONVERT(date, GETDATE()), CONVERT(varchar(5), GETDATE(), 8),
+                 @GrandTotal, @PaymentMethodID, N'in', @Notes, @ShiftMoveID)
+            `);
+        }
 
-        await cashMoveReq.query(`
-          INSERT INTO [dbo].[TblCashMove]
-            (invID, invType, invDate, invTime, GrandTolal, PaymentMethodID, inOut, Notes)
-          SELECT
-            @invID,
-            @invType,
-            CONVERT(date, GETDATE()),
-            CONVERT(time, GETDATE()),
-            @GrandTotal,
-            @PaymentMethodID,
-            N'in',
-            @Notes
-          WHERE @GrandTotal > 0
-        `);
+        await redistributeFromClearing({
+          transaction,
+          clearingMethodId: splitCfg.clearingMethodId,
+          allocations: activeEditAllocations.map((a: { paymentMethodId: number; amount: number }) => ({
+            paymentMethodId: a.paymentMethodId,
+            amount: Number(a.amount),
+          })),
+          invDate: editInvDate,
+          invTime: editInvTime,
+          clientId: body.clientId || null,
+          shiftMoveId: null,
+          invoiceId: invID,
+          expenseCatId: splitCfg.expenseCatId,
+          incomeCatId: splitCfg.incomeCatId,
+        });
       }
 
       // 9. Commit

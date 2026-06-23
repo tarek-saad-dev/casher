@@ -18,6 +18,12 @@ interface PrintItem {
   SPriceAfterDis: number;
 }
 
+interface PaymentAllocationRow {
+  PaymentMethodID: number;
+  PaymentMethodName: string | null;
+  PayValue: number;
+}
+
 interface PrintData {
   invID: number;
   invDate: string;
@@ -33,6 +39,8 @@ interface PrintData {
   PaymentMethodID: number | null;
   TotalBonus: number;
   items: PrintItem[];
+  paymentAllocations?: PaymentAllocationRow[];
+  isSplitPayment?: boolean;
 }
 
 interface PrintInvoiceModalProps {
@@ -415,9 +423,20 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
       ? `<div class="total-row discount"><span>الخصم:</span><span>- ${data.DisVal} ج.م</span></div>`
       : '';
 
-    const paymentMethod = data.PayCash > 0 && data.PayVisa > 0 ? 'نقدي + فيزا'
-      : data.PayVisa > 0 ? 'فيزا'
-      : 'نقدي';
+    // Payment method display: use real allocations if available, else fall back to legacy PayCash/PayVisa
+    let paymentMethodHtml: string;
+    if (data.isSplitPayment && data.paymentAllocations && data.paymentAllocations.length > 1) {
+      const allocLines = data.paymentAllocations
+        .map(a => `<div style="display:flex;justify-content:space-between;font-size:9px;padding:1px 0"><span>${a.PaymentMethodName || 'غير محدد'}</span><span>${Number(a.PayValue).toFixed(2)} ج.م</span></div>`)
+        .join('');
+      paymentMethodHtml = `دفع متعدد<div style="margin-top:3px;border-top:1px dashed #ccc;padding-top:2px">${allocLines}</div>`;
+    } else if (data.paymentAllocations && data.paymentAllocations.length === 1) {
+      paymentMethodHtml = data.paymentAllocations[0].PaymentMethodName || 'نقدي';
+    } else {
+      paymentMethodHtml = data.PayCash > 0 && data.PayVisa > 0 ? 'نقدي + فيزا'
+        : data.PayVisa > 0 ? 'فيزا'
+        : 'نقدي';
+    }
 
     return `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -480,7 +499,7 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
       </div>` : ''}
       <div class="info-row">
         <span class="info-label"><span class="info-icon">💳</span> طريقة الدفع:</span>
-        <span class="info-value">${paymentMethod}</span>
+        <span class="info-value">${paymentMethodHtml}</span>
       </div>
     </div>
     

@@ -40,17 +40,45 @@ export async function GET(req: NextRequest) {
         WHERE ShiftMoveID = @smID AND invType = N'مبيعات'
       `);
 
-    // Payment breakdown
+    // Payment breakdown — read from TblinvServPayment (real per-method allocations)
+    // Falls back to header PaymentMethodID for older invoices without payment rows.
+    // Excludes the internal clearing account from display.
     const payments = await db.request()
       .input('smID', sql.Int, shiftMoveID)
       .query(`
+        WITH ShiftInvoices AS (
+          SELECT h.invID, h.invType, h.ShiftMoveID, h.PaymentMethodID,
+                 COALESCE(NULLIF(h.Payment, 0), h.GrandTotal, 0) AS PayValue
+          FROM [dbo].[TblinvServHead] h
+          WHERE h.ShiftMoveID = @smID AND h.invType = N'\u0645\u0628\u064a\u0639\u0627\u062a'
+        ),
+        PayRows AS (
+          SELECT p.PaymentMethodID, ISNULL(p.PayValue, 0) AS PayValue
+          FROM [dbo].[TblinvServPayment] p
+          INNER JOIN ShiftInvoices h ON h.invID = p.invID AND h.invType = p.invType
+          WHERE ISNULL(p.PayValue, 0) > 0
+        ),
+        FallbackRows AS (
+          SELECT h.PaymentMethodID, h.PayValue
+          FROM ShiftInvoices h
+          WHERE h.PaymentMethodID IS NOT NULL AND h.PayValue > 0
+            AND NOT EXISTS (
+              SELECT 1 FROM [dbo].[TblinvServPayment] p
+              WHERE p.invID = h.invID AND p.invType = h.invType AND ISNULL(p.PayValue, 0) > 0
+            )
+        ),
+        AllRows AS (
+          SELECT PaymentMethodID, PayValue FROM PayRows
+          UNION ALL
+          SELECT PaymentMethodID, PayValue FROM FallbackRows
+        )
         SELECT
-          ISNULL(pm.PaymentMethod, N'غير محدد') AS method,
+          ISNULL(pm.PaymentMethod, N'\u063a\u064a\u0631 \u0645\u062d\u062f\u062f') AS method,
           COUNT(*) AS cnt,
-          ISNULL(SUM(h.GrandTotal), 0) AS total
-        FROM [dbo].[TblinvServHead] h
-        LEFT JOIN [dbo].[TblPaymentMethods] pm ON h.PaymentMethodID = pm.PaymentID
-        WHERE h.ShiftMoveID = @smID AND h.invType = N'مبيعات'
+          ISNULL(SUM(ar.PayValue), 0) AS total
+        FROM AllRows ar
+        LEFT JOIN [dbo].[TblPaymentMethods] pm ON pm.PaymentID = ar.PaymentMethodID
+        WHERE ISNULL(pm.PaymentMethod, N'') <> N'\u062f\u0641\u0639 \u0645\u062a\u0639\u062f\u062f - \u062d\u0633\u0627\u0628 \u062a\u0633\u0648\u064a\u0629'
         GROUP BY pm.PaymentMethod
       `);
 
