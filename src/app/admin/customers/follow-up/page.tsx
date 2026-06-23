@@ -6,8 +6,10 @@ import {
   Users, Cake, Clock, Search, RefreshCw, Loader2,
   ChevronLeft, ChevronRight, Copy, MessageCircle, History,
   ExternalLink, X, Calendar, RotateCcw, UserPlus, AlertTriangle,
+  CheckSquare, Square, PhoneCall,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
+import ContactDialog, { FollowUpDetailPopover, type FollowUpData } from '@/components/customers/ContactDialog';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -62,6 +64,12 @@ interface InactiveCustomer {
   inactiveDays: number;
   lastEmpName: string | null;
   lastServiceName: string | null;
+  followUp: FollowUpData | null;
+}
+
+interface FollowUpSummary {
+  contacted: number;
+  pending:   number;
 }
 
 type Customer = NewCustomer | BirthdayCustomer | InactiveCustomer;
@@ -71,6 +79,7 @@ interface ApiResponse {
   data: Customer[];
   pagination: Pagination;
   counts: Counts;
+  followUpSummary?: FollowUpSummary;
   error?: string;
 }
 
@@ -378,13 +387,21 @@ function BirthdaysTable({ data }: { data: BirthdayCustomer[] }) {
 
 // ── Table: Inactive ───────────────────────────────────────────────────────────
 
-function InactiveTable({ data }: { data: InactiveCustomer[] }) {
+function InactiveTable({
+  data,
+  onCheckboxClick,
+}: {
+  data: InactiveCustomer[];
+  followUpMonth: string;
+  onCheckboxClick: (customer: InactiveCustomer) => void;
+}) {
   const MSG = 'مرحباً {customerName}، اشتقنا إليك في صالون Cut ✂️ يسعدنا رؤيتك مجدداً.';
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-zinc-800 text-zinc-500 text-xs">
+            <th className="px-4 py-3 text-right font-medium">تم التواصل</th>
             <th className="px-4 py-3 text-right font-medium">اسم العميل</th>
             <th className="px-4 py-3 text-right font-medium">رقم الهاتف</th>
             <th className="px-4 py-3 text-right font-medium">آخر زيارة</th>
@@ -399,8 +416,46 @@ function InactiveTable({ data }: { data: InactiveCustomer[] }) {
         <tbody className="divide-y divide-zinc-800/50">
           {data.map(c => {
             const badge = inactiveBadge(c.inactiveDays);
+            const contacted = !!c.followUp;
             return (
               <tr key={c.clientId} className="hover:bg-zinc-800/30 transition-colors">
+                {/* Contacted column */}
+                <td className="px-4 py-3 w-[150px] align-top">
+                  <button
+                    type="button"
+                    onClick={() => onCheckboxClick(c)}
+                    title={contacted ? 'تم التواصل — انقر للتعديل' : 'لم يتم التواصل — انقر للتسجيل'}
+                    className="flex flex-col items-start gap-1 w-full text-right group"
+                  >
+                    {contacted ? (
+                      <>
+                        <span className="flex items-center gap-1.5 text-emerald-400">
+                          <CheckSquare className="w-4 h-4 shrink-0" />
+                          <span className="text-[11px] font-medium">تم التواصل</span>
+                        </span>
+                        <span className="text-[10px] text-zinc-500">
+                          {c.followUp?.contactedAt
+                            ? new Date(c.followUp.contactedAt).toLocaleString('ar-EG', {
+                                month: 'short', day: 'numeric',
+                                hour: '2-digit', minute: '2-digit',
+                              })
+                            : ''}
+                        </span>
+                        <span className="text-[10px] text-zinc-600">{c.followUp?.contactedByUserName || ''}</span>
+                        {c.followUp && (
+                          <span className="mt-0.5">
+                            <FollowUpDetailPopover fu={c.followUp} />
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="flex items-center gap-1.5 text-zinc-500 group-hover:text-zinc-300 transition-colors">
+                        <Square className="w-4 h-4 shrink-0" />
+                        <span className="text-[11px]">لم يتم التواصل</span>
+                      </span>
+                    )}
+                  </button>
+                </td>
                 <td className="px-4 py-3">
                   <div>
                     <p className="font-medium text-white">{c.name}</p>
@@ -408,7 +463,7 @@ function InactiveTable({ data }: { data: InactiveCustomer[] }) {
                   </div>
                 </td>
                 <td className="px-4 py-3 font-mono text-zinc-300 text-xs" dir="ltr">
-                  {c.mobile || c.phone || <span className="text-zinc-600">—</span>}
+                  {c.mobile || c.phone || <span className="text-zinc-600 not-italic">—</span>}
                 </td>
                 <td className="px-4 py-3 text-zinc-400">{formatDate(c.lastVisit)}</td>
                 <td className="px-4 py-3">
@@ -458,14 +513,20 @@ export default function CustomerFollowUpPage() {
   const sizeParam  = parseInt(searchParams.get('pageSize') || '25', 10);
   const searchParam = searchParams.get('search') || '';
   const inactiveMonthsParam = parseInt(searchParams.get('inactiveMonths') || '2', 10);
+  const contactStatusParam = (searchParams.get('contactStatus') || 'all') as 'all' | 'pending' | 'contacted';
 
   // ── Local state ───────────────────────────────────────────────────────────
-  const [data,       setData]       = useState<Customer[]>([]);
-  const [pagination, setPagination] = useState<Pagination>({ page: 1, pageSize: 25, total: 0, totalPages: 0 });
-  const [counts,     setCounts]     = useState<Counts>({ newCustomers: 0, birthdays: 0, inactiveCustomers: 0 });
-  const [loading,    setLoading]    = useState(true);
-  const [isError,    setIsError]    = useState(false);
-  const [searchInput, setSearchInput] = useState(searchParam);
+  const [data,            setData]           = useState<Customer[]>([]);
+  const [pagination,      setPagination]     = useState<Pagination>({ page: 1, pageSize: 25, total: 0, totalPages: 0 });
+  const [counts,          setCounts]         = useState<Counts>({ newCustomers: 0, birthdays: 0, inactiveCustomers: 0 });
+  const [followUpSummary, setFollowUpSummary] = useState<FollowUpSummary>({ contacted: 0, pending: 0 });
+  const [loading,         setLoading]        = useState(true);
+  const [isError,         setIsError]        = useState(false);
+  const [searchInput,     setSearchInput]    = useState(searchParam);
+
+  // ── Dialog state ──────────────────────────────────────────────────────────
+  const [dialogOpen,      setDialogOpen]     = useState(false);
+  const [dialogCustomer,  setDialogCustomer] = useState<InactiveCustomer | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentMonth = getCurrentMonth();
@@ -496,6 +557,7 @@ export default function CustomerFollowUpPage() {
         pageSize:       String(sizeParam),
         inactiveMonths: String(inactiveMonthsParam),
         ...(searchParam ? { search: searchParam } : {}),
+        ...(activeTab === 'inactive' ? { contactStatus: contactStatusParam } : {}),
       });
       const res  = await fetch(`/api/admin/customers/follow-up?${qs}`);
       const json = await res.json() as ApiResponse;
@@ -503,14 +565,35 @@ export default function CustomerFollowUpPage() {
       setData(json.data);
       setPagination(json.pagination);
       setCounts(json.counts);
+      if (json.followUpSummary) setFollowUpSummary(json.followUpSummary);
     } catch {
       setIsError(true);
     } finally {
       setLoading(false);
     }
-  }, [activeTab, monthParam, pageParam, sizeParam, searchParam, inactiveMonthsParam]);
+  }, [activeTab, monthParam, pageParam, sizeParam, searchParam, inactiveMonthsParam, contactStatusParam]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // ── Dialog handlers ──────────────────────────────────────────────────────
+  const openDialog = useCallback((customer: InactiveCustomer) => {
+    setDialogCustomer(customer);
+    setDialogOpen(true);
+  }, []);
+
+  const handleFollowUpSaved = useCallback((clientId: number, followUp: FollowUpData) => {
+    setData(prev => prev.map(c => {
+      if ((c as InactiveCustomer).clientId === clientId) {
+        return { ...c, followUp } as InactiveCustomer;
+      }
+      return c;
+    }));
+    setFollowUpSummary(prev => {
+      const wasContacted = (data.find(c => (c as InactiveCustomer).clientId === clientId) as InactiveCustomer)?.followUp;
+      if (wasContacted) return prev;
+      return { contacted: prev.contacted + 1, pending: Math.max(0, prev.pending - 1) };
+    });
+  }, [data]);
 
   // ── Debounced search ──────────────────────────────────────────────────────
   const handleSearchChange = (val: string) => {
@@ -595,21 +678,59 @@ export default function CustomerFollowUpPage() {
 
       {/* ── Inactive filters ── */}
       {activeTab === 'inactive' && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-zinc-500">فلترة سريعة:</span>
-          {INACTIVE_FILTERS.map(f => (
-            <button
-              key={f.months}
-              onClick={() => navigate({ inactiveMonths: f.months, page: 1 })}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                inactiveMonthsParam === f.months
-                  ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
-                  : 'bg-zinc-800/50 text-zinc-500 border-zinc-700/40 hover:border-zinc-600/60 hover:text-zinc-300'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-zinc-500">فلترة سريعة:</span>
+            {INACTIVE_FILTERS.map(f => (
+              <button
+                key={f.months}
+                onClick={() => navigate({ inactiveMonths: f.months, page: 1 })}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                  inactiveMonthsParam === f.months
+                    ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                    : 'bg-zinc-800/50 text-zinc-500 border-zinc-700/40 hover:border-zinc-600/60 hover:text-zinc-300'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Contact status filter */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-zinc-500 flex items-center gap-1"><PhoneCall className="w-3 h-3" /> حالة التواصل:</span>
+            {([['all', 'الكل'], ['pending', 'لم يتم التواصل'], ['contacted', 'تم التواصل']] as const).map(([val, label]) => (
+              <button
+                key={val}
+                onClick={() => navigate({ contactStatus: val, page: 1 })}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                  contactStatusParam === val
+                    ? val === 'contacted'
+                      ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                      : val === 'pending'
+                        ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                        : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                    : 'bg-zinc-800/50 text-zinc-500 border-zinc-700/40 hover:border-zinc-600/60 hover:text-zinc-300'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Follow-up summary */}
+          {!loading && (
+            <div className="flex items-center gap-4 text-xs text-zinc-400">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
+                تم التواصل: <strong className="text-emerald-400">{followUpSummary.contacted}</strong>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-zinc-500 inline-block" />
+                متبقي للتواصل: <strong className="text-zinc-300">{followUpSummary.pending}</strong>
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -675,7 +796,7 @@ export default function CustomerFollowUpPage() {
           <>
             {activeTab === 'new'       && <NewCustomersTable data={data as NewCustomer[]} />}
             {activeTab === 'birthdays' && <BirthdaysTable    data={data as BirthdayCustomer[]} />}
-            {activeTab === 'inactive'  && <InactiveTable     data={data as InactiveCustomer[]} />}
+            {activeTab === 'inactive'  && <InactiveTable     data={data as InactiveCustomer[]} followUpMonth={getCurrentMonth()} onCheckboxClick={openDialog} />}
 
             <PaginationBar
               pagination={pagination}
@@ -686,6 +807,16 @@ export default function CustomerFollowUpPage() {
           </>
         )}
       </div>
+
+      {/* ── Contact Dialog ── */}
+      <ContactDialog
+        open={dialogOpen}
+        customer={dialogCustomer}
+        followUpMonth={getCurrentMonth()}
+        existingFollowUp={dialogCustomer?.followUp ?? null}
+        onClose={() => setDialogOpen(false)}
+        onSaved={handleFollowUpSaved}
+      />
     </div>
   );
 }

@@ -19,6 +19,10 @@ export async function GET(req: NextRequest) {
     const inactiveMonths = Math.max(1, parseInt(sp.get('inactiveMonths') || '2', 10));
     const sortBy      = sp.get('sortBy') || '';
     const sortDir     = sp.get('sortDirection') === 'asc' ? 'ASC' : 'DESC';
+    // contactStatus filter — only applied on the inactive tab
+    const rawContactStatus = sp.get('contactStatus') || 'all';
+    const contactStatus = ['all', 'pending', 'contacted'].includes(rawContactStatus)
+      ? rawContactStatus : 'all';
 
     // ── Cairo "today" — SQL Server AT TIME ZONE ────────────────────────────
     // We compute today in Cairo using SQL so no Node TZ dependency
@@ -278,11 +282,24 @@ export async function GET(req: NextRequest) {
     // TAB 3 — Inactive Customers
     // ═══════════════════════════════════════════════════════════════════════
     // tab === 'inactive'
+
+    // Compute the current Cairo follow-up month (first day of current month)
+    const followUpMonthDate = `${CurYear}-${String(CurMonth).padStart(2, '0')}-01`;
+
+    // contactStatus filter condition for the WHERE clause
+    // "contacted"  → fu.ID IS NOT NULL
+    // "pending"    → fu.ID IS NULL
+    // "all"        → no extra filter
+    const contactStatusCond =
+      contactStatus === 'contacted' ? `AND fu.ID IS NOT NULL` :
+      contactStatus === 'pending'   ? `AND fu.ID IS NULL`     : '';
+
     const baseReq = db.request();
-    baseReq.input('today',          sql.Date, TodayCairo);
-    baseReq.input('inactiveMonths', sql.Int,  inactiveMonths);
-    baseReq.input('offset',         sql.Int,  offset);
-    baseReq.input('pageSize',       sql.Int,  pageSize);
+    baseReq.input('today',            sql.Date, TodayCairo);
+    baseReq.input('inactiveMonths',   sql.Int,  inactiveMonths);
+    baseReq.input('offset',           sql.Int,  offset);
+    baseReq.input('pageSize',         sql.Int,  pageSize);
+    baseReq.input('followUpMonthDt',  sql.Date, followUpMonthDate);
     if (search) baseReq.input('search', sql.NVarChar(200), search);
 
     const orderBy = sortBy === 'visitCount'      ? `vs.VisitCount ${sortDir}`
@@ -333,17 +350,73 @@ export async function GET(req: NextRequest) {
         DATEDIFF(DAY, vs.LastVisit, @today) AS InactiveDays,
         les.LastEmpName,
         les.LastServiceName,
-        COUNT(*) OVER () AS TotalCount
+        -- Follow-up data for this month
+        fu.ID              AS FuID,
+        fu.ResultType      AS FuResultType,
+        fu.ComplaintType   AS FuComplaintType,
+        fu.ComplaintEmpID  AS FuComplaintEmpID,
+        fuEmp.EmpName      AS FuComplaintEmpName,
+        fu.ReasonText      AS FuReasonText,
+        fu.Notes           AS FuNotes,
+        fu.ContactedAt     AS FuContactedAt,
+        fu.ContactedByUserID AS FuContactedByUserID,
+        fuUsr.UserName     AS FuContactedByUserName,
+        COUNT(*) OVER ()   AS TotalCount
       FROM dbo.TblClient c
       INNER JOIN VisitStats vs ON vs.ClientID = c.ClientID
       LEFT  JOIN LastEmpService les ON les.ClientID = c.ClientID
-      WHERE 1=1 ${searchCond}
+      LEFT  JOIN dbo.TblCustomerFollowUp fu
+             ON fu.ClientID = c.ClientID AND fu.FollowUpMonth = @followUpMonthDt
+      LEFT  JOIN dbo.TblEmp  fuEmp ON fuEmp.EmpID  = fu.ComplaintEmpID
+      LEFT  JOIN dbo.TblUser fuUsr ON fuUsr.UserID = fu.ContactedByUserID
+      WHERE 1=1 ${searchCond} ${contactStatusCond}
       ORDER BY ${orderBy}
       OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
     `);
 
     const rows  = dataRes.recordset;
     const total = rows.length > 0 ? (rows[0].TotalCount || 0) : 0;
+
+    // ── Contacted / pending summary counts for the inactive tab ─────────────
+    // Use separate parameter names to avoid conflicts with main query request
+    let searchCond2 = '';
+    if (search) {
+      searchCond2 = `AND (
+        c.Name   LIKE N'%' + @search2 + '%'
+        OR c.Phone  LIKE N'%' + @search2 + '%'
+        OR c.Mobile LIKE N'%' + @search2 + '%'
+        OR CAST(c.ClientID AS NVARCHAR) = @search2
+      )`;
+    }
+    const inactiveSummaryReq = db.request();
+    inactiveSummaryReq.input('today2',           sql.Date, TodayCairo);
+    inactiveSummaryReq.input('inactiveMonths2',  sql.Int,  inactiveMonths);
+    inactiveSummaryReq.input('followUpMonthDt2', sql.Date, followUpMonthDate);
+    if (search) inactiveSummaryReq.input('search2', sql.NVarChar(200), search);
+
+    const summaryRes = await inactiveSummaryReq.query(`
+      WITH InactiveClients AS (
+        SELECT c.ClientID
+        FROM dbo.TblClient c
+        INNER JOIN (
+          SELECT h.ClientID
+          FROM dbo.TblinvServHead h
+          WHERE ${VALID_INVOICE}
+          GROUP BY h.ClientID
+          HAVING MAX(h.invDate) < DATEADD(MONTH, -@inactiveMonths2, @today2)
+        ) vs ON vs.ClientID = c.ClientID
+        WHERE 1=1 ${searchCond2}
+      )
+      SELECT
+        COUNT(*) AS TotalInactive,
+        SUM(CASE WHEN fu2.ID IS NOT NULL THEN 1 ELSE 0 END) AS ContactedCount
+      FROM InactiveClients ic
+      LEFT JOIN dbo.TblCustomerFollowUp fu2
+             ON fu2.ClientID = ic.ClientID AND fu2.FollowUpMonth = @followUpMonthDt2
+    `);
+
+    const contacted = summaryRes.recordset[0]?.ContactedCount ?? 0;
+    const pending   = (summaryRes.recordset[0]?.TotalInactive ?? 0) - contacted;
 
     return NextResponse.json({
       success: true,
@@ -358,6 +431,18 @@ export async function GET(req: NextRequest) {
         inactiveDays:    r.InactiveDays,
         lastEmpName:     r.LastEmpName,
         lastServiceName: r.LastServiceName,
+        followUp: r.FuID ? {
+          isContacted:         true,
+          resultType:          r.FuResultType,
+          complaintType:       r.FuComplaintType,
+          complaintEmpId:      r.FuComplaintEmpID,
+          complaintEmpName:    r.FuComplaintEmpName,
+          reasonText:          r.FuReasonText,
+          notes:               r.FuNotes,
+          contactedAt:         r.FuContactedAt,
+          contactedByUserId:   r.FuContactedByUserID,
+          contactedByUserName: r.FuContactedByUserName,
+        } : null,
       })),
       pagination: {
         page,
@@ -366,6 +451,10 @@ export async function GET(req: NextRequest) {
         totalPages: Math.ceil(total / pageSize),
       },
       counts,
+      followUpSummary: {
+        contacted,
+        pending: Math.max(0, pending),
+      },
     });
 
   } catch (err: unknown) {

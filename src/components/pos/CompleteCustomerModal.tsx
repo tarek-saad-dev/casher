@@ -10,6 +10,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import CustomerSourceFields from '@/components/pos/CustomerSourceFields';
+import {
+  isCustomerSourceMissing,
+  isKnownCustomerSource,
+  validateCustomerSource,
+  type CustomerSource,
+} from '@/lib/customerSource';
 import type { Customer } from '@/lib/types';
 
 interface CompleteCustomerModalProps {
@@ -34,15 +41,24 @@ export default function CompleteCustomerModal({
   const [address,   setAddress]   = useState(customer.Address   ?? '');
   const [mobile,    setMobile]    = useState(customer.Mobile    ?? '');
   const [notes,     setNotes]     = useState(customer.Notes     ?? '');
+  const [cameFrom, setCameFrom] = useState<CustomerSource | null>(
+    isKnownCustomerSource(customer.CameFrom) ? customer.CameFrom : null
+  );
+  const [cameFromDetails, setCameFromDetails] = useState(customer.CameFromDetails ?? '');
+  const [referralCode, setReferralCode] = useState(customer.ReferralCode ?? '');
+  const [sourceErrors, setSourceErrors] = useState<Record<string, string>>({});
+  const [sourceChanged, setSourceChanged] = useState(false);
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState('');
 
   const missingBirthDate = !customer.BirthDate;
   const missingAddress   = !customer.Address;
+  const missingSource    = isCustomerSourceMissing(customer.CameFrom);
 
   async function handleSave() {
     setSaving(true);
     setError('');
+    setSourceErrors({});
     try {
       const payload: Record<string, string | null> = {};
 
@@ -57,11 +73,32 @@ export default function CompleteCustomerModal({
         // In complete mode, only update missing fields
         if (missingBirthDate && birthDate)         payload.birthDate = birthDate;
         if (missingAddress   && address.trim())    payload.address   = address.trim();
+      }
 
-        if (Object.keys(payload).length === 0) {
-          onClose();
+      // Only send source fields when the user has changed them or the source is currently missing
+      const shouldSendSource =
+        sourceChanged ||
+        (missingSource && !isCustomerSourceMissing(cameFrom));
+
+      if (shouldSendSource) {
+        const sourceValidation = validateCustomerSource(
+          cameFrom,
+          cameFromDetails,
+          referralCode
+        );
+        if (Object.keys(sourceValidation.errors).length > 0) {
+          setSourceErrors(sourceValidation.errors);
+          setSaving(false);
           return;
         }
+        payload.cameFrom = sourceValidation.cameFrom;
+        payload.cameFromDetails = sourceValidation.cameFromDetails;
+        payload.referralCode = sourceValidation.referralCode;
+      }
+
+      if (Object.keys(payload).length === 0) {
+        onClose();
+        return;
       }
 
       const res = await fetch(`/api/customers/${customer.ClientID}`, {
@@ -193,6 +230,31 @@ export default function CompleteCustomerModal({
               </div>
             )}
           </div>
+
+          {/* Source selection */}
+          {(isEditMode || missingSource) && (
+            <CustomerSourceFields
+              cameFrom={cameFrom}
+              cameFromDetails={cameFromDetails}
+              referralCode={referralCode}
+              errors={sourceErrors}
+              onChange={(payload) => {
+                setCameFrom(payload.cameFrom);
+                setCameFromDetails(payload.cameFromDetails);
+                setReferralCode(payload.referralCode);
+                setSourceErrors({});
+                setSourceChanged(true);
+              }}
+            />
+          )}
+
+          {/* Legacy source display — when the customer has an unknown non-empty value */}
+          {!isEditMode && !missingSource && !isKnownCustomerSource(customer.CameFrom) && (
+            <div className="px-3 py-2 rounded-lg border border-border bg-muted/40 text-sm" dir="rtl">
+              <span className="text-muted-foreground">مصدر مسجل قديم:</span>{' '}
+              <span className="font-medium">{customer.CameFrom}</span>
+            </div>
+          )}
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 

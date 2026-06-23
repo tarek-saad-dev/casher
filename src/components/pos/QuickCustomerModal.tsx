@@ -10,6 +10,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import CustomerSourceFields from '@/components/pos/CustomerSourceFields';
+import {
+  validateCustomerSource,
+  isCustomerSourceMissing,
+  type CustomerSource,
+} from '@/lib/customerSource';
 import type { Customer } from '@/lib/types';
 
 interface QuickCustomerModalProps {
@@ -25,6 +31,10 @@ export default function QuickCustomerModal({ open, onClose, onCreated, initialQu
   const [birthDate, setBirthDate] = useState('');
   const [address,   setAddress]   = useState('');
   const [notes,     setNotes]     = useState('');
+  const [cameFrom, setCameFrom] = useState<CustomerSource | null>(null);
+  const [cameFromDetails, setCameFromDetails] = useState('');
+  const [referralCode, setReferralCode] = useState('');
+  const [sourceErrors, setSourceErrors] = useState<Record<string, string>>({});
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState('');
 
@@ -38,11 +48,27 @@ export default function QuickCustomerModal({ open, onClose, onCreated, initialQu
     setBirthDate('');
     setAddress('');
     setNotes('');
+    setCameFrom(null);
+    setCameFromDetails('');
+    setReferralCode('');
+    setSourceErrors({});
     setError('');
   }, [open, initialQuery]);
 
   async function handleSave() {
     if (!name.trim()) { setError('الاسم مطلوب'); return; }
+
+    setSourceErrors({});
+    const sourceValidation = validateCustomerSource(
+      cameFrom,
+      cameFromDetails,
+      referralCode
+    );
+    if (cameFrom !== null && !isCustomerSourceMissing(cameFrom) && Object.keys(sourceValidation.errors).length > 0) {
+      setSourceErrors(sourceValidation.errors);
+      return;
+    }
+
     setSaving(true);
     setError('');
     try {
@@ -55,6 +81,9 @@ export default function QuickCustomerModal({ open, onClose, onCreated, initialQu
           birthDate: birthDate || null,
           address: address.trim() || null,
           notes: notes.trim() || null,
+          cameFrom: sourceValidation.cameFrom,
+          cameFromDetails: sourceValidation.cameFromDetails,
+          referralCode: sourceValidation.referralCode,
         }),
       });
       if (!res.ok) {
@@ -69,6 +98,9 @@ export default function QuickCustomerModal({ open, onClose, onCreated, initialQu
       setBirthDate('');
       setAddress('');
       setNotes('');
+      setCameFrom(null);
+      setCameFromDetails('');
+      setReferralCode('');
     } catch {
       setError('خطأ في الاتصال');
     } finally {
@@ -130,6 +162,19 @@ export default function QuickCustomerModal({ open, onClose, onCreated, initialQu
               onChange={(e) => setAddress(e.target.value)}
             />
           </div>
+          <CustomerSourceFields
+            cameFrom={cameFrom}
+            cameFromDetails={cameFromDetails}
+            referralCode={referralCode}
+            errors={sourceErrors}
+            onChange={(payload) => {
+              setCameFrom(payload.cameFrom);
+              setCameFromDetails(payload.cameFromDetails);
+              setReferralCode(payload.referralCode);
+              setSourceErrors({});
+            }}
+          />
+
           <div>
             <label className="text-sm font-medium mb-1.5 block">ملاحظات</label>
             <textarea

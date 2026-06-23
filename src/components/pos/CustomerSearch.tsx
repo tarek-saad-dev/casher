@@ -1,9 +1,14 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Search, UserPlus, X, Phone, User, Cake, FileText, AlertCircle, Pencil } from 'lucide-react';
+import { Search, UserPlus, X, Phone, User, Cake, FileText, AlertCircle, Pencil, Sparkles } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import {
+  formatCustomerSourceDisplay,
+  isCustomerSourceMissing,
+  isCustomerIncomplete,
+} from '@/lib/customerSource';
 import type { Customer } from '@/lib/types';
 
 interface CustomerSearchProps {
@@ -59,9 +64,8 @@ export default function CustomerSearch({ selected, onSelect, onQuickAdd, onCompl
     return new Date(dateStr).toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
-  const hasMissingData = selected && (
-    !selected.BirthDate || !selected.Address
-  );
+  const missingSource = selected && isCustomerSourceMissing(selected.CameFrom);
+  const hasMissingData = selected && isCustomerIncomplete(selected);
 
   if (selected) {
     return (
@@ -94,6 +98,12 @@ export default function CustomerSearch({ selected, onSelect, onQuickAdd, onCompl
                 <span className="truncate max-w-[200px]">{selected.Notes}</span>
               </p>
             )}
+            {selected.CameFrom && (
+              <p className="text-xs text-primary/90 flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />
+                <span>عرفنا منين: {formatCustomerSourceDisplay(selected.CameFrom, selected.CameFromDetails, selected.ReferralCode)}</span>
+              </p>
+            )}
           </div>
         </div>
 
@@ -104,10 +114,15 @@ export default function CustomerSearch({ selected, onSelect, onQuickAdd, onCompl
             className="mt-2.5 w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-amber-500/30 bg-amber-500/5 text-amber-400 text-xs font-medium hover:bg-amber-500/10 transition-colors"
           >
             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-            <span>بيانات ناقصة — اضغط لإتمامها</span>
+            <span>
+              {missingSource && !selected.BirthDate && !selected.Address
+                ? 'بيانات ناقصة — مصدر العميل غير مسجل'
+                : 'بيانات ناقصة — اضغط لإتمامها'}
+            </span>
             <span className="mr-auto flex gap-0.5">
               {!selected.BirthDate && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
               {!selected.Address   && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+              {missingSource       && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
             </span>
           </button>
         )}

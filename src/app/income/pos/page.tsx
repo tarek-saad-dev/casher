@@ -25,6 +25,7 @@ import { useSaleState } from '@/hooks/useSaleState';
 import { useSession } from '@/hooks/useSession';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { printReceiptWithFallback, type PrintReceiptData } from '@/lib/printService';
+import { isCustomerIncomplete } from '@/lib/customerSource';
 import type { Barber, Service, PaymentMethod, Customer } from '@/lib/types';
 
 // ─── Toast Types ─────────────────────────────────────────────────────────
@@ -100,6 +101,10 @@ export default function PosPage() {
   const [quickAddPrefill, setQuickAddPrefill] = useState<string | undefined>();
   const [completeCustomer, setCompleteCustomer] = useState<Customer | null>(null);
   const [completeCustomerMode, setCompleteCustomerMode] = useState<'complete' | 'edit'>('complete');
+  const savingRef = useRef(false); // tracks whether the modal save succeeded
+  const autoOpenedClientIdRef = useRef<number | null>(null);
+  const dismissedAutoClientIdRef = useRef<number | null>(null);
+  const previousCustomerIdRef = useRef<number | null>(null);
   const [saving, setSaving] = useState(false);
   const saveLockRef = useRef(false); // synchronous guard — prevents concurrent saves
   const [saveError, setSaveError] = useState('');
@@ -114,6 +119,46 @@ export default function PosPage() {
     setCustomerBase(c);
     if (!c) setVouchersOpen(false);
   }, [setCustomerBase]);
+
+  // ───────────────── Auto-open completion modal for incomplete customers ─────────────────
+  const handleCloseCompleteModal = useCallback(() => {
+    if (completeCustomer && !savingRef.current) {
+      dismissedAutoClientIdRef.current = completeCustomer.ClientID;
+    }
+    setCompleteCustomer(null);
+  }, [completeCustomer]);
+
+  const handleCompleteCustomerUpdated = useCallback((updated: Customer) => {
+    savingRef.current = true;
+    setCustomer(updated);
+    setCompleteCustomer(null);
+    // After a successful save the customer is no longer incomplete, so reset the guard
+    requestAnimationFrame(() => { savingRef.current = false; });
+  }, [setCustomer]);
+
+  useEffect(() => {
+    const c = state.customer;
+    const currentId = c?.ClientID ?? null;
+
+    if (currentId !== previousCustomerIdRef.current) {
+      // Customer selection changed (or cleared) — reset per-customer tracking
+      autoOpenedClientIdRef.current = null;
+      dismissedAutoClientIdRef.current = null;
+      previousCustomerIdRef.current = currentId;
+    }
+
+    if (!c || !currentId || editingSaleId !== null) return;
+
+    const incomplete = isCustomerIncomplete(c);
+    if (!incomplete) return;
+
+    if (autoOpenedClientIdRef.current === currentId) return;
+    if (dismissedAutoClientIdRef.current === currentId) return;
+
+    setCompleteCustomerMode('complete');
+    setCompleteCustomer(c);
+    autoOpenedClientIdRef.current = currentId;
+  }, [state.customer, editingSaleId]);
 
   // ───────────────── Sync shift from session into sale state ─────────────────
   useEffect(() => {
@@ -395,7 +440,10 @@ export default function PosPage() {
           BirthDate: null,
           Address: '',
           RegisterDate: new Date().toISOString(),
-          Notes: ''
+          Notes: '',
+          CameFrom: null,
+          CameFromDetails: null,
+          ReferralCode: null,
         };
         setCustomer(customer);
       }
@@ -675,11 +723,8 @@ export default function PosPage() {
         <CompleteCustomerModal
           customer={completeCustomer}
           mode={completeCustomerMode}
-          onClose={() => setCompleteCustomer(null)}
-          onUpdated={(updated) => {
-            setCustomer(updated);
-            setCompleteCustomer(null);
-          }}
+          onClose={handleCloseCompleteModal}
+          onUpdated={handleCompleteCustomerUpdated}
         />
       )}
       <PrintInvoiceModal

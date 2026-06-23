@@ -8,6 +8,9 @@ export interface Customer {
   Address: string | null;
   RegisterDate: string | null;
   Notes: string | null;
+  CameFrom: string | null;
+  CameFromDetails: string | null;
+  ReferralCode: string | null;
 }
 
 export interface Barber {

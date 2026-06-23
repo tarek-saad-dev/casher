@@ -17,6 +17,7 @@ import {
   getDefaultDuration,
   getServicesDuration,
 } from "@/lib/queueEstimateEngine";
+import { sendBookingWhatsAppMessage } from "@/lib/integrations/whatsapp";
 
 export const runtime = "nodejs";
 
@@ -364,6 +365,26 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // ── WhatsApp booking confirmation (after commit) ──────────────────────────────────
+    let whatsappResult: Record<string, unknown> = { sent: false, skipped: true, reason: 'development_only' };
+    try {
+      whatsappResult = await sendBookingWhatsAppMessage({
+        phone: customer.phone,
+        customerName: customer.name,
+        bookingId,
+        bookingDate: date,
+        bookingTime: time,
+        barberName: resolvedEmpName || undefined,
+        services: svcNames.length > 0 ? svcNames : undefined,
+      });
+    } catch (waErr) {
+      console.log(
+        `[public/booking/create] WhatsApp error (non-critical): ${
+          waErr instanceof Error ? waErr.message : String(waErr)
+        }`,
+      );
+    }
+
     return NextResponse.json(
       {
         ok: true,
@@ -380,6 +401,7 @@ export async function POST(req: NextRequest) {
           endTime: endTimeStr.slice(0, 5),
         },
         message: "تم تأكيد الحجز بنجاح",
+        whatsapp: whatsappResult,
       },
       { status: 201, headers: PUBLIC_CORS_HEADERS },
     );

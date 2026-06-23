@@ -4,12 +4,12 @@ import { getSession } from "@/lib/session";
 import type { CreateSalePayload } from "@/lib/types";
 import { resolveSplitPaymentConfig } from "@/lib/clearingMethod";
 import { redistributeFromClearing } from "@/lib/splitPaymentService";
+import {
+  sendSaleWhatsAppMessage,
+  sendFirstTimeWhatsAppMessage,
+} from "@/lib/integrations/whatsapp";
 
 export const runtime = "nodejs";
-
-// WhatsApp API configuration
-const WHATSAPP_API_URL =
-  process.env.WHATSAPP_API_URL || "http://localhost:3000/api/sales/notify";
 
 // POST /api/sales — Create a new sale (head + details + payment + cash move)
 export async function POST(req: NextRequest) {
@@ -362,95 +362,134 @@ export async function POST(req: NextRequest) {
       );
       console.log(`[pos-api] ──── SAVE SALE COMPLETE ────`);
 
-      // ──── 7. Loyalty Points Earning (CUT CLUB) — Fire and Forget ────
-      if (body.clientId) {
-        try {
-          const loyaltyDb = await getPool();
-          await loyaltyDb.request()
-            .input('invID', sql.Int, newInvID)
-            .input('invType', sql.NVarChar(20), invType)
-            .input('UserID', sql.Int, userID)
-            .query(`
-              EXEC [dbo].[sp_Loyalty_EarnPointsFromSale]
-                @invID = @invID,
-                @invType = @invType,
-                @UserID = @UserID
-            `);
-          console.log(
-            `[pos-api]   👑 Loyalty points awarded for ClientID=${body.clientId}, Invoice=${newInvID}`,
-          );
-        } catch (loyaltyErr) {
-          // Non-critical error - log but don't fail the sale
-          console.error(
-            `[pos-api]   ⚠️ Loyalty points error (non-critical): ${loyaltyErr instanceof Error ? loyaltyErr.message : loyaltyErr}`,
-          );
-        }
-      }
-
-      // ──── 8. Send WhatsApp notification (fire and forget) ────
-      if (body.clientId) {
-        try {
-          // Get customer phone and name
-          const customerResult = await db
-            .request()
-            .input("clientId", sql.Int, body.clientId).query(`
-              SELECT ClientName, Mobile1 
-              FROM [dbo].[TblClient] 
-              WHERE ClientID = @clientId
-            `);
-
-          if (customerResult.recordset.length > 0) {
-            const customer = customerResult.recordset[0];
-            const phone = customer.Mobile1;
-            const customerName = customer.ClientName;
-
-            if (phone) {
-              // Send WhatsApp notification in background
-              const whatsappPayload = {
-                phone: phone,
-                saleData: {
-                  orderId: newInvID.toString(),
-                  amount: grandTotal.toFixed(2),
-                  currency: "ج.م",
-                  customerName: customerName || "عميل",
-                  date: invDate,
-                  time: invTime,
-                  paymentMethod: body.paymentMethodId === 1 ? "كاش" : "فيزا",
-                },
-                type: "sale",
-                token:
-                  process.env.WHATSAPP_API_TOKEN ||
-                  "your-secret-token-change-this",
-              };
-
-              // Fire and forget - don't wait for response
-              fetch("http://localhost:3000/api/sales/notify", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "x-api-token":
-                    process.env.WHATSAPP_API_TOKEN ||
-                    "your-secret-token-change-this",
-                },
-                body: JSON.stringify(whatsappPayload),
-              }).catch((err) => {
-                console.error(
-                  `[pos-api]   ⚠️ WhatsApp notification failed (non-critical): ${err.message}`,
-                );
-              });
-
-              console.log(
-                `[pos-api]   📱 WhatsApp notification queued for: ${phone}`,
-              );
-            }
+      // ──── 7 & 8. Loyalty + WhatsApp — fully async, do NOT block the response ────
+      void (async () => {
+        // ── 7. Loyalty Points Earning (CUT CLUB) ──
+        if (body.clientId) {
+          try {
+            const loyaltyDb = await getPool();
+            await loyaltyDb.request()
+              .input('invID', sql.Int, newInvID)
+              .input('invType', sql.NVarChar(20), invType)
+              .input('UserID', sql.Int, userID)
+              .query(`
+                EXEC [dbo].[sp_Loyalty_EarnPointsFromSale]
+                  @invID = @invID,
+                  @invType = @invType,
+                  @UserID = @UserID
+              `);
+            console.log(
+              `[pos-api]   👑 Loyalty points awarded for ClientID=${body.clientId}, Invoice=${newInvID}`,
+            );
+          } catch (loyaltyErr) {
+            console.error(
+              `[pos-api]   ⚠️ Loyalty points error (non-critical): ${loyaltyErr instanceof Error ? loyaltyErr.message : loyaltyErr}`,
+            );
           }
-        } catch (whatsappErr) {
-          // Non-critical error - log but don't fail the sale
-          console.error(
-            `[pos-api]   ⚠️ WhatsApp notification error (non-critical): ${whatsappErr instanceof Error ? whatsappErr.message : whatsappErr}`,
-          );
         }
-      }
+
+        // ── 8. Send WhatsApp messages ──
+        if (body.clientId) {
+          try {
+            const waDb = await getPool();
+
+            const customerResult = await waDb
+              .request()
+              .input('waClientId', sql.Int, body.clientId)
+              .query(`
+                SELECT [Name], Mobile, Phone
+                FROM [dbo].[TblClient]
+                WHERE ClientID = @waClientId
+              `);
+
+            if (customerResult.recordset.length > 0) {
+              const cust = customerResult.recordset[0];
+              const phone: string | null = cust.Mobile?.trim() || cust.Phone?.trim() || null;
+              const customerName: string = cust.Name?.trim() || 'عميل';
+
+              if (phone) {
+                const detailResult = await waDb
+                  .request()
+                  .input('waInvID', sql.Int, newInvID)
+                  .query(`
+                    SELECT p.ProName AS ServiceName, e.EmpName AS EmpName
+                    FROM [dbo].[TblinvServDetail] d
+                    LEFT JOIN [dbo].[TblPro] p ON d.ProID = p.ProID
+                    LEFT JOIN [dbo].[TblEmp] e ON d.EmpID = e.EmpID
+                    WHERE d.invID = @waInvID AND d.invType = N'مبيعات'
+                  `);
+
+                const serviceNames: string[] = detailResult.recordset
+                  .map((r: Record<string, unknown>) => r.ServiceName as string)
+                  .filter(Boolean);
+                const employeeNames: string[] = detailResult.recordset
+                  .map((r: Record<string, unknown>) => r.EmpName as string)
+                  .filter(Boolean);
+
+                let paymentMethodLabel: string | undefined;
+                if (!isSplitPayment) {
+                  const pmResult = await waDb
+                    .request()
+                    .input('waPmId', sql.Int, headerPaymentMethodId)
+                    .query(`
+                      SELECT PaymentMethod FROM [dbo].[TblPaymentMethods]
+                      WHERE PaymentID = @waPmId
+                    `);
+                  paymentMethodLabel = pmResult.recordset[0]?.PaymentMethod as string | undefined;
+                } else {
+                  const pmIds = activeAllocations.map((a) => a.paymentMethodId).join(',');
+                  if (pmIds.length > 0) {
+                    const pmResult = await waDb
+                      .request()
+                      .query(`
+                        SELECT PaymentMethod FROM [dbo].[TblPaymentMethods]
+                        WHERE PaymentID IN (${pmIds})
+                      `);
+                    const names = pmResult.recordset.map(
+                      (r: Record<string, unknown>) => r.PaymentMethod as string,
+                    );
+                    paymentMethodLabel = names.join(' + ');
+                  }
+                }
+
+                const priorInvResult = await waDb
+                  .request()
+                  .input('waFirstClientId', sql.Int, body.clientId)
+                  .input('waCurrentInvID', sql.Int, newInvID)
+                  .query(`
+                    SELECT COUNT(*) AS cnt
+                    FROM [dbo].[TblinvServHead]
+                    WHERE ClientID = @waFirstClientId
+                      AND invType = N'مبيعات'
+                      AND invID <> @waCurrentInvID
+                  `);
+                const isFirstTime = (priorInvResult.recordset[0]?.cnt as number) === 0;
+
+                await sendSaleWhatsAppMessage({
+                  phone,
+                  customerName,
+                  invID: newInvID,
+                  total: grandTotal,
+                  paymentMethod: paymentMethodLabel,
+                  services: serviceNames,
+                  employeeNames,
+                });
+
+                if (isFirstTime) {
+                  await sendFirstTimeWhatsAppMessage({
+                    phone,
+                    customerName,
+                  });
+                }
+              }
+            }
+          } catch (whatsappErr) {
+            console.log(
+              `[pos-api]   ⚠️ WhatsApp error (non-critical): ${whatsappErr instanceof Error ? whatsappErr.message : whatsappErr}`,
+            );
+          }
+        }
+      })();
 
       return NextResponse.json({ invID: newInvID, invType }, { status: 201 });
     } catch (err) {
