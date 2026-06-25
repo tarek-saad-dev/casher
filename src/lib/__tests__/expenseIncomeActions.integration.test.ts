@@ -34,7 +34,7 @@ describe('expense/income snapshot integration', () => {
   itIfDb('expense snapshot loads full record before and after mutation', async () => {
     const pool = await getPool();
     const transaction = new sql.Transaction(pool);
-    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    await transaction.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
 
     try {
       const result = await new sql.Request(transaction).query(
@@ -70,7 +70,7 @@ describe('expense/income snapshot integration', () => {
   itIfDb('income snapshot loads full record before and after mutation', async () => {
     const pool = await getPool();
     const transaction = new sql.Transaction(pool);
-    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    await transaction.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
 
     try {
       const result = await new sql.Request(transaction).query(

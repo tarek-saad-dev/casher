@@ -35,7 +35,7 @@ describe('approval workflow legacy', () => {
     expect(result.recordset[0].cnt).toBe(1);
 
     const data = await pool.request().query(`
-      SELECT TOP 1 ApprovalRequestID FROM dbo.TblApprovalRequests
+      SELECT TOP 1 ApprovalID FROM dbo.TblApprovalRequests
     `);
     // Reading must not throw; data may be empty if no historical requests exist
     expect(data.recordset).toBeDefined();

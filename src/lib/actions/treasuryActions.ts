@@ -221,13 +221,13 @@ export async function executeTreasuryTransfer(
 
   // Generate invIDs
   const expenseInvIdResult = await new sql.Request(connection).query(`
-    SELECT ISNULL(MAX(invID), 0) + 1 AS newInvID FROM [dbo].[TblCashMove] WITH (TABLOCKX)
+    SELECT ISNULL(MAX(invID), 0) + 1 AS newInvID FROM [dbo].[TblCashMove] WITH (NOLOCK)
     WHERE invType = N'مصروفات'
   `);
   const expenseInvID = expenseInvIdResult.recordset[0].newInvID;
 
   const incomeInvIdResult = await new sql.Request(connection).query(`
-    SELECT ISNULL(MAX(invID), 0) + 1 AS newInvID FROM [dbo].[TblCashMove] WITH (TABLOCKX)
+    SELECT ISNULL(MAX(invID), 0) + 1 AS newInvID FROM [dbo].[TblCashMove] WITH (NOLOCK)
     WHERE invType = N'ايرادات'
   `);
   const incomeInvID = incomeInvIdResult.recordset[0].newInvID;

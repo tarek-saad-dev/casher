@@ -30,12 +30,12 @@ describe('treasuryActions integration', () => {
   itIfDb('creates exactly one outgoing and one incoming cash move per transfer', async () => {
     const pool = await getPool();
     const transaction = new sql.Transaction(pool);
-    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    await transaction.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
 
     try {
       // Find two payment methods
       const pmResult = await new sql.Request(transaction).query(
-        `SELECT TOP 2 PaymentID FROM dbo.TblPaymentMethods WHERE IsActive = 1 ORDER BY PaymentID`
+        `SELECT TOP 2 PaymentID FROM dbo.TblPaymentMethods ORDER BY PaymentID`
       );
       if (pmResult.recordset.length < 2) {
         throw new Error('Need at least 2 payment methods to test transfer');

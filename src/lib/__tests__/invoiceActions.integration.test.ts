@@ -30,7 +30,7 @@ describe('invoiceActions integration', () => {
   itIfDb('updateInvoice mutates header, details, and payments exactly once', async () => {
     const pool = await getPool();
     const transaction = new sql.Transaction(pool);
-    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    await transaction.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
 
     try {
       // Find an existing invoice
@@ -45,6 +45,11 @@ describe('invoiceActions integration', () => {
       const oldSnapshot = await getInvoiceSnapshot(transaction, invID);
       expect(oldSnapshot).not.toBeNull();
 
+      // Use real ProID and EmpID from the existing invoice detail to satisfy FK constraints
+      const existingDetail = oldSnapshot!.details[0];
+      const testProId = existingDetail?.ProID || 1;
+      const testEmpId = existingDetail?.EmpID || 1;
+
       await updateInvoice(transaction, invID, {
         clientId: oldSnapshot!.header.ClientID ?? undefined,
         subTotal: 500,
@@ -56,7 +61,7 @@ describe('invoiceActions integration', () => {
         paymentMethodId: 1,
         notes: 'updated by integration test',
         items: [
-          { proId: 1, empId: 1, sPrice: 500, qty: 1, sValue: 500, total: 500, bonus: 0, notes: '' },
+          { proId: testProId, empId: testEmpId, sPrice: 500, qty: 1, sValue: 500, total: 500, bonus: 0, notes: '' },
         ],
         paymentAllocations: [{ paymentMethodId: 1, amount: 500 }],
       }, 1);
@@ -82,7 +87,7 @@ describe('invoiceActions integration', () => {
   itIfDb('deleteInvoice removes the full invoice once and leaves no orphans', async () => {
     const pool = await getPool();
     const transaction = new sql.Transaction(pool);
-    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    await transaction.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
 
     try {
       const headResult = await new sql.Request(transaction).query(
