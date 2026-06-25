@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { getUserAccess } from '@/lib/permissions-server';
+import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
+import { getPageAccessSnapshot, updatePageAccess, createPage } from '@/lib/actions/permissionActions';
 
 export const runtime = 'nodejs';
 
@@ -53,123 +55,111 @@ export async function GET() {
 // POST — update a page's accessMode and/or role assignments
 // Body: { pageKey: string, accessMode: string, roles: string[] }
 export async function POST(req: NextRequest) {
-  const session = await requireSuperAdmin();
-  if (!session) return NextResponse.json({ error: 'غير مصرح — super_admin فقط' }, { status: 403 });
+  try {
+    const session = await requireSuperAdmin();
+    if (!session) return NextResponse.json({ error: 'غير مصرح — super_admin فقط' }, { status: 403 });
 
-  const { pageKey, accessMode, roles }: {
-    pageKey: string;
-    accessMode: 'all' | 'roles' | 'super_admin_only';
-    roles: string[];
-  } = await req.json();
+    const { pageKey, accessMode, roles, reason }: {
+      pageKey: string;
+      accessMode: 'all' | 'roles' | 'super_admin_only';
+      roles: string[];
+      reason?: string;
+    } = await req.json();
 
-  if (!pageKey || !accessMode) {
-    return NextResponse.json({ error: 'بيانات غير صحيحة' }, { status: 400 });
-  }
-
-  const db = await getPool();
-
-  // Update accessMode
-  await db.request()
-    .input('mode', accessMode)
-    .input('key',  pageKey)
-    .query(`UPDATE dbo.TblSystemPages SET AccessMode = @mode WHERE PageKey = @key`);
-
-  // If roles provided, replace role access entries
-  if (Array.isArray(roles)) {
-    const pidRes = await db.request()
-      .input('key', pageKey)
-      .query(`SELECT PageID FROM dbo.TblSystemPages WHERE PageKey = @key`);
-    const pageID = pidRes.recordset[0]?.PageID;
-    if (pageID) {
-      await db.request().input('pid', pageID).query(`DELETE FROM dbo.TblPageRoleAccess WHERE PageID = @pid`);
-      for (const roleKey of roles) {
-        await db.request()
-          .input('pid',     pageID)
-          .input('roleKey', roleKey)
-          .query(`
-            DECLARE @rid INT = (SELECT RoleID FROM dbo.TblRoles WHERE RoleKey = @roleKey)
-            IF @rid IS NOT NULL
-              INSERT INTO dbo.TblPageRoleAccess (PageID, RoleID, CanView, CanEdit, CanDelete)
-              VALUES (@pid, @rid, 1, 0, 0)
-          `);
-      }
+    if (!pageKey || !accessMode) {
+      return NextResponse.json({ error: 'بيانات غير صحيحة' }, { status: 400 });
     }
+
+    const db = await getPool();
+
+    const auditResult = await executeAuditedAction({
+      actionType: 'update_page_access',
+      user: session,
+      entityId: pageKey,
+      request: req,
+      actionMethod: 'POST',
+      endpointPath: '/api/admin/permissions/pages',
+      reason: reason || null,
+      loadOldData: async (transaction) => getPageAccessSnapshot(transaction, pageKey) as unknown as Record<string, unknown> | null,
+      execute: async (transaction) => updatePageAccess(transaction, pageKey, accessMode, roles),
+      loadNewData: async (transaction) => getPageAccessSnapshot(transaction, pageKey) as unknown as Record<string, unknown> | null,
+    });
+
+    // Keep legacy permission audit log as a secondary trail
+    await db.request()
+      .input('actor',   session.UserID)
+      .input('details', JSON.stringify({ pageKey, accessMode, roles }))
+      .query(`
+        INSERT INTO dbo.TblPermissionAuditLog (ActorUserID, Action, TargetType, Details)
+        VALUES (@actor, 'update_page_access', 'page', @details)
+      `);
+
+    return NextResponse.json({ success: true, auditId: auditResult.auditId });
+  } catch (err: unknown) {
+    if (isAuditedActionError(err)) {
+      return NextResponse.json({ error: err.message, auditId: err.failedAuditId }, { status: 500 });
+    }
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[api/admin/permissions/pages] POST error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  // Audit log
-  await db.request()
-    .input('actor',   session.UserID)
-    .input('details', JSON.stringify({ pageKey, accessMode, roles }))
-    .query(`
-      INSERT INTO dbo.TblPermissionAuditLog (ActorUserID, Action, TargetType, Details)
-      VALUES (@actor, 'update_page_access', 'page', @details)
-    `);
-
-  return NextResponse.json({ success: true });
 }
 
 // PUT — create a new page
 // Body: { pageKey, pageName, pagePath, section, accessMode, sortOrder, roles }
 export async function PUT(req: NextRequest) {
-  const session = await requireSuperAdmin();
-  if (!session) return NextResponse.json({ error: 'غير مصرح — super_admin فقط' }, { status: 403 });
+  try {
+    const session = await requireSuperAdmin();
+    if (!session) return NextResponse.json({ error: 'غير مصرح — super_admin فقط' }, { status: 403 });
 
-  const body = await req.json();
-  const { pageKey, pageName, pagePath, section, accessMode, sortOrder, roles } = body;
+    const body = await req.json();
+    const { pageKey, pageName, pagePath, section, accessMode, sortOrder, roles } = body;
 
-  if (!pageKey || !pageName || !pagePath || !accessMode) {
-    return NextResponse.json({ error: 'pageKey و pageName و pagePath و accessMode مطلوبون' }, { status: 400 });
-  }
-
-  const db = await getPool();
-
-  // Check duplicate key
-  const dup = await db.request().input('key', pageKey).query(
-    `SELECT 1 FROM dbo.TblSystemPages WHERE PageKey = @key`
-  );
-  if (dup.recordset.length > 0) {
-    return NextResponse.json({ error: 'مفتاح الصفحة موجود بالفعل' }, { status: 409 });
-  }
-
-  // Insert page
-  const ins = await db.request()
-    .input('key',     pageKey)
-    .input('name',    pageName)
-    .input('path',    pagePath)
-    .input('section', section || null)
-    .input('access',  accessMode)
-    .input('sort',    sortOrder ?? 999)
-    .query(`
-      INSERT INTO dbo.TblSystemPages (PageKey, PageName, PagePath, Section, AccessMode, SortOrder)
-      OUTPUT INSERTED.PageID
-      VALUES (@key, @name, @path, @section, @access, @sort)
-    `);
-
-  const pageID = ins.recordset[0]?.PageID;
-
-  // Assign roles
-  if (pageID && Array.isArray(roles)) {
-    for (const roleKey of roles) {
-      await db.request()
-        .input('pid',     pageID)
-        .input('roleKey', roleKey)
-        .query(`
-          DECLARE @rid INT = (SELECT RoleID FROM dbo.TblRoles WHERE RoleKey = @roleKey)
-          IF @rid IS NOT NULL
-            INSERT INTO dbo.TblPageRoleAccess (PageID, RoleID, CanView, CanEdit, CanDelete)
-            VALUES (@pid, @rid, 1, 0, 0)
-        `);
+    if (!pageKey || !pageName || !pagePath || !accessMode) {
+      return NextResponse.json({ error: 'pageKey و pageName و pagePath و accessMode مطلوبون' }, { status: 400 });
     }
+
+    const db = await getPool();
+
+    const auditResult = await executeAuditedAction({
+      actionType: 'create_page',
+      user: session,
+      entityId: pageKey,
+      request: req,
+      actionMethod: 'PUT',
+      endpointPath: '/api/admin/permissions/pages',
+      reason: body.reason || null,
+      loadOldData: async () => null,
+      execute: async (transaction) => createPage(transaction, {
+        pageKey,
+        pageName,
+        pagePath,
+        section,
+        accessMode,
+        sortOrder,
+        roles,
+      }),
+      loadNewData: async () => null,
+    });
+
+    const data = auditResult.data as { pageID: number; pageKey: string; accessMode: string; roles: string[] } | undefined;
+
+    // Keep legacy permission audit log as a secondary trail
+    await db.request()
+      .input('actor',   session.UserID)
+      .input('details', JSON.stringify({ pageKey, pageName, pagePath, accessMode, roles }))
+      .query(`
+        INSERT INTO dbo.TblPermissionAuditLog (ActorUserID, Action, TargetType, Details)
+        VALUES (@actor, 'create_page', 'page', @details)
+      `);
+
+    return NextResponse.json({ success: true, pageID: data?.pageID, auditId: auditResult.auditId });
+  } catch (err: unknown) {
+    if (isAuditedActionError(err)) {
+      return NextResponse.json({ error: err.message, auditId: err.failedAuditId }, { status: 500 });
+    }
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[api/admin/permissions/pages] PUT error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  // Audit log
-  await db.request()
-    .input('actor',   session.UserID)
-    .input('details', JSON.stringify({ pageKey, pageName, pagePath, accessMode, roles }))
-    .query(`
-      INSERT INTO dbo.TblPermissionAuditLog (ActorUserID, Action, TargetType, Details)
-      VALUES (@actor, 'create_page', 'page', @details)
-    `);
-
-  return NextResponse.json({ success: true, pageID });
 }

@@ -11,7 +11,7 @@ interface KpiCardProps {
   trend?: 'up' | 'down' | 'neutral';
   trendValue?: string;
   className?: string;
-  variant?: 'default' | 'primary' | 'success' | 'warning' | 'danger';
+  variant?: 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info';
 }
 
 const variantStyles = {
@@ -20,6 +20,7 @@ const variantStyles = {
   success: 'bg-emerald-500/5 border-emerald-500/20',
   warning: 'bg-yellow-500/5 border-yellow-500/20',
   danger: 'bg-rose-500/5 border-rose-500/20',
+  info: 'bg-cyan-500/5 border-cyan-500/20',
 };
 
 const iconStyles = {
@@ -28,6 +29,7 @@ const iconStyles = {
   success: 'bg-emerald-500/10 text-emerald-400',
   warning: 'bg-yellow-500/10 text-yellow-400',
   danger: 'bg-rose-500/10 text-rose-400',
+  info: 'bg-cyan-500/10 text-cyan-400',
 };
 
 export default function KpiCard({

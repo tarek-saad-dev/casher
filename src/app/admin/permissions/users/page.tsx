@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { handleApprovalResponse } from '@/lib/handleApprovalResponse';
 import { Loader2, Shield, Save, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface Role { RoleID: number; RoleKey: string; RoleName: string; }
@@ -58,27 +57,33 @@ export default function UsersPermissionsPage() {
   };
 
   const save = async (uid: number) => {
+    const reason = window.prompt('سبب تعديل صلاحيات المستخدم (مطلوب):');
+    if (reason === null) return;
+    if (!reason.trim()) {
+      setMsg({ type: 'err', text: 'يجب إدخال سبب لتعديل الصلاحيات' });
+      return;
+    }
+
     setSaving(uid);
     try {
-      const res  = await fetch('/api/admin/permissions/users', {
+      const res = await fetch('/api/admin/permissions/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userID: uid, roles: editMap[uid] || [] }),
+        body: JSON.stringify({ userID: uid, roles: editMap[uid] || [], reason: reason.trim() }),
       });
       const data = await res.json();
-      handleApprovalResponse(data, {
-        addToast: (type: 'success' | 'error' | 'info', message: string) => {
-          setMsg({ type: type === 'error' ? 'err' : 'ok', text: message });
-          setTimeout(() => setMsg(null), 4500);
-        },
-        successMessage: 'تم حفظ الصلاحيات بنجاح',
-        onExecuted: async () => { await load(); },
-        onPending:  () => { /* editMap stays, msg shown */ },
-        onFailed:   (msg) => setMsg({ type: 'err', text: msg }),
-      });
+      if (!res.ok || !data.success) {
+        setMsg({ type: 'err', text: data.error || 'فشل حفظ الصلاحيات' });
+      } else {
+        setMsg({ type: 'ok', text: 'تم حفظ الصلاحيات بنجاح' });
+        await load();
+      }
     } catch (e: any) {
       setMsg({ type: 'err', text: e.message });
-    } finally { setSaving(null); }
+    } finally {
+      setSaving(null);
+      setTimeout(() => setMsg(null), 4500);
+    }
   };
 
   if (loading) return (

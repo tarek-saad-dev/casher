@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
-import { requireApprovalOrExecute } from '@/lib/approvalWorkflow';
-import { resolveSplitPaymentConfig } from "@/lib/clearingMethod";
-import { redistributeFromClearing } from "@/lib/splitPaymentService";
+import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
+import { getInvoiceSnapshot, updateInvoice, deleteInvoice } from '@/lib/actions/invoiceActions';
 
 // GET /api/sales/[id] — Get sale by invID for printing
 export async function GET(
@@ -84,8 +83,7 @@ export async function GET(
   }
 }
 
-// PUT /api/sales/[id] — Update existing sale invoice
-// super_admin: executes immediately | others: creates pending approval
+// PUT /api/sales/[id] — Update existing sale invoice (executes immediately, audited)
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -107,284 +105,83 @@ export async function PUT(
     const db = await getPool();
     const existingSnap = await db.request()
       .input('id', sql.Int, invID)
-      .query(`SELECT invID, invDate, GrandTotal, Notes FROM dbo.TblinvServHead WHERE invID=@id AND invType=N'مبيعات'`);
+      .query(`SELECT invID FROM dbo.TblinvServHead WHERE invID=@id AND invType=N'مبيعات'`);
     if (!existingSnap.recordset.length)
       return NextResponse.json({ error: 'الفاتورة غير موجودة' }, { status: 404 });
 
-    const editWorkflow = await requireApprovalOrExecute({
-      userId:      sessionUser.UserID,
-      userName:    sessionUser.UserName,
-      requestType: 'edit_invoice',
-      entityId:    String(invID),
-      actionMethod:'PUT',
-      endpointPath:`/api/sales/${invID}`,
-      oldDataLoader: async () => existingSnap.recordset[0],
-      newData: body,
-      riskLevel: 'high',
+    const auditResult = await executeAuditedAction({
+      actionType: 'edit_invoice',
+      user: sessionUser,
+      entityId: invID,
+      request: req,
+      actionMethod: 'PUT',
+      endpointPath: `/api/sales/${invID}`,
+      reason: body.reason || body.notes || null,
+      loadOldData: async (transaction) => getInvoiceSnapshot(transaction, invID) as unknown as Record<string, unknown> | null,
+      execute: async (transaction) => updateInvoice(transaction, invID, {
+        clientId: body.clientId,
+        subTotal: body.subTotal,
+        dis: body.dis,
+        disVal: body.disVal,
+        grandTotal: body.grandTotal,
+        totalBonus: body.totalBonus,
+        payCash: body.payCash,
+        payVisa: body.payVisa,
+        paymentMethodId: body.paymentMethodId,
+        notes: body.notes,
+        items: body.items.map((item: any) => ({
+          proId: item.proId,
+          empId: item.empId,
+          serviceId: item.serviceId,
+          sPrice: item.sPrice,
+          qty: item.qty,
+          disVal: item.disVal,
+          discount: item.discount,
+          sValue: item.sValue,
+          total: item.total,
+          bonus: item.bonus,
+          notes: item.notes,
+        })),
+        paymentAllocations: body.paymentAllocations,
+      }, userID),
+      loadNewData: async (transaction) => getInvoiceSnapshot(transaction, invID) as unknown as Record<string, unknown> | null,
     });
-    if (editWorkflow.pendingApproval)
-      return NextResponse.json({ success: true, pendingApproval: true, approvalId: editWorkflow.approvalId, message: editWorkflow.message });
-    if (editWorkflow.executed)
-      return NextResponse.json({ success: true, message: editWorkflow.message });
 
-    // Start transaction (non-super_admin path should not reach here, but kept for safety)
-    const transaction = db.transaction();
-    await transaction.begin();
-
-    try {
-      // 1. Verify invoice exists
-      const existingResult = await transaction
-        .request()
-        .input("invID", sql.Int, invID)
-        .query(
-          `SELECT invID FROM [dbo].[TblinvServHead] WHERE invID = @invID AND invType = N'مبيعات'`,
-        );
-
-      if (existingResult.recordset.length === 0) {
-        await transaction.rollback();
-        return NextResponse.json(
-          { error: "الفاتورة غير موجودة" },
-          { status: 404 },
-        );
-      }
-
-      // 2. Delete existing details and payment allocations
-      await transaction
-        .request()
-        .input("invID", sql.Int, invID)
-        .query(
-          `DELETE FROM [dbo].[TblinvServDetail] WHERE invID = @invID AND invType = N'مبيعات'`,
-        );
-
-      await transaction
-        .request()
-        .input("invID", sql.Int, invID)
-        .query(
-          `DELETE FROM [dbo].[TblinvServPayment] WHERE invID = @invID AND invType = N'مبيعات'`,
-        );
-
-      // 3. Delete old loyalty points
-      // TODO: SECURITY & AUDIT - Replace DELETE with sp_Loyalty_ReverseSalePoints
-      // Current: Directly deletes ledger entries (loses audit trail of original earn)
-      // Should be: Call sp_Loyalty_ReverseSalePoints to create REVERSAL entry instead
-      // This preserves audit trail and properly adjusts points via ledger
-      // Location: PUT /api/sales/[id] - Line ~119
-      await transaction
-        .request()
-        .input("invID", sql.Int, invID)
-        .query(
-          `DELETE FROM [dbo].[TblLoyaltyPointLedger] WHERE SourceInvID = @invID`,
-        );
-
-      // 4. Delete old cash movements
-      await transaction
-        .request()
-        .input("invID", sql.Int, invID)
-        .query(`DELETE FROM [dbo].[TblCashMove] WHERE invID = @invID`);
-
-      // 5. Calculate totals
-      const subTotal = Math.max(0, body.subTotal || 0);
-      const disVal = Math.max(0, body.disVal || 0);
-      const grandTotal = Math.max(0, subTotal - disVal);
-      const totalBonus = body.totalBonus || 0;
-
-      // 6. Update header
-      const headReq = transaction.request();
-      headReq
-        .input("invID", sql.Int, invID)
-        .input("ClientID", sql.Int, body.clientId || null)
-        .input("SubTotal", sql.Decimal(10, 2), subTotal)
-        .input("Dis", sql.Decimal(5, 2), body.dis || 0)
-        .input("DisVal", sql.Decimal(10, 2), disVal)
-        .input("GrandTotal", sql.Decimal(10, 2), grandTotal)
-        .input("TotalBonus", sql.Decimal(10, 2), totalBonus)
-        .input("PayCash", sql.Decimal(10, 2), body.payCash || 0)
-        .input("PayVisa", sql.Decimal(10, 2), body.payVisa || 0)
-        .input("PaymentMethodID", sql.Int, body.paymentMethodId || 1)
-        .input("Notes", sql.NVarChar(sql.MAX), body.notes || "مبيعات")
-        .input("UserID", sql.Int, userID);
-
-      await headReq.query(`
-        UPDATE [dbo].[TblinvServHead] SET
-          ClientID = @ClientID,
-          SubTotal = @SubTotal,
-          Dis = @Dis,
-          DisVal = @DisVal,
-          GrandTotal = @GrandTotal,
-          TotalBonus = @TotalBonus,
-          PayCash = @PayCash,
-          PayVisa = @PayVisa,
-          PaymentMethodID = @PaymentMethodID,
-          Notes = @Notes,
-          UserID = @UserID
-        WHERE invID = @invID AND invType = N'مبيعات'
-      `);
-
-      // 7. Insert new details
-      for (const item of body.items) {
-        const itemValue = (item.sPrice || 0) * (item.qty || 1);
-        const detailReq = transaction.request();
-        detailReq
-          .input("invID", sql.Int, invID)
-          .input("invType", sql.NVarChar(20), "مبيعات")
-          .input("ProID", sql.Int, item.proId)
-          .input("EmpID", sql.Int, item.empId)
-          .input("SPrice", sql.Decimal(10, 2), item.sPrice || 0)
-          .input("SValue", sql.Decimal(10, 2), itemValue)
-          .input("Qty", sql.Int, item.qty || 1)
-          .input("Bonus", sql.Decimal(10, 2), item.bonus || 0)
-          .input("Notes", sql.NVarChar(sql.MAX), item.notes || "");
-
-        await detailReq.query(`
-          INSERT INTO [dbo].[TblinvServDetail]
-            (invID, invType, ProID, EmpID, SPrice, SValue, Qty, Bonus, Notes)
-          VALUES
-            (@invID, @invType, @ProID, @EmpID, @SPrice, @SValue, @Qty, @Bonus, @Notes)
-        `);
-      }
-
-      // 8. Re-insert cash movement(s) using correct clearing-account architecture
-      const db2 = await getPool();
-      const splitCfg = await resolveSplitPaymentConfig(db2);
-
-      const rawEditAllocations = body.paymentAllocations || [];
-      const activeEditAllocations = rawEditAllocations.filter(
-        (pa: { paymentMethodId: number; amount: number }) => {
-          const amt = Number(pa.amount);
-          return isFinite(amt) && amt > 0 && pa.paymentMethodId !== splitCfg.clearingMethodId;
-        },
-      );
-
-      const isEditSplitPayment = activeEditAllocations.length > 1;
-      const editHeaderPaymentMethodId = isEditSplitPayment
-        ? splitCfg.clearingMethodId
-        : (activeEditAllocations[0]?.paymentMethodId || body.paymentMethodId || 1);
-
-      // Update header PaymentMethodID to reflect correct method
-      await transaction.request()
-        .input("invID", sql.Int, invID)
-        .input("PaymentMethodID", sql.Int, editHeaderPaymentMethodId)
-        .query(`UPDATE [dbo].[TblinvServHead] SET PaymentMethodID = @PaymentMethodID WHERE invID = @invID AND invType = N'مبيعات'`);
-
-      // Re-insert TblinvServPayment rows (one per real allocation)
-      const now2 = new Date();
-      const payHours2 = now2.getHours();
-      const payAmPm2 = payHours2 >= 12 ? "PM" : "AM";
-      const payH122 = payHours2 % 12 || 12;
-      const payTimeStr2 = `${now2.getFullYear()}-${String(now2.getMonth() + 1).padStart(2, "0")}-${String(now2.getDate()).padStart(2, "0")} ${String(payH122).padStart(2, "0")}:${String(now2.getMinutes()).padStart(2, "0")}:${String(now2.getSeconds()).padStart(2, "0")} ${payAmPm2}`;
-
-      const editInvDate = now2; // Use current date for edits (TblCashMove was already cleared)
-      const editInvTime = `${String(now2.getHours()).padStart(2, "0")}.${String(now2.getMinutes()).padStart(2, "0")}`;
-
-      for (const alloc of activeEditAllocations) {
-        await transaction.request()
-          .input("invID", sql.Int, invID)
-          .input("invType", sql.NVarChar(20), "مبيعات")
-          .input("PayDate", sql.Date, editInvDate)
-          .input("PayTime", sql.NVarChar(50), payTimeStr2)
-          .input("PayValue", sql.Decimal(10, 2), Number(alloc.amount))
-          .input("Notes", sql.NVarChar(4000), (body.notes || "مبيعات").substring(0, 4000))
-          .input("PaymentMethodID", sql.Int, alloc.paymentMethodId)
-          .input("ShiftMoveID", sql.Int, null)
-          .query(`
-            INSERT INTO [dbo].[TblinvServPayment]
-              (invID, invType, PayDate, PayTime, PayValue, Notes, PaymentMethodID, ShiftMoveID)
-            VALUES
-              (@invID, @invType, @PayDate, @PayTime, @PayValue, @Notes, @PaymentMethodID, @ShiftMoveID)
+    // Recalculate loyalty points after the audited transaction commits
+    if (body.clientId) {
+      try {
+        await db.request()
+          .input('invID', sql.Int, invID)
+          .input('invType', sql.NVarChar(20), 'مبيعات')
+          .input('UserID', sql.Int, userID).query(`
+            EXEC [dbo].[sp_Loyalty_EarnPointsFromSale]
+              @invID = @invID,
+              @invType = @invType,
+              @UserID = @UserID
           `);
+      } catch (loyaltyErr) {
+        console.error('[api/sales/id] Loyalty recalc error:', loyaltyErr);
       }
-
-      // Re-insert TblCashMove: for single payment insert directly;
-      // for mixed payment insert clearing income then redistribute.
-      if (!isEditSplitPayment) {
-        // Single payment — insert one 'in' row for the real method
-        if (grandTotal > 0) {
-          await transaction.request()
-            .input("invID", sql.Int, invID)
-            .input("invType", sql.NVarChar(20), "مبيعات")
-            .input("GrandTotal", sql.Decimal(10, 2), grandTotal)
-            .input("PaymentMethodID", sql.Int, editHeaderPaymentMethodId)
-            .input("Notes", sql.NVarChar(sql.MAX), body.notes || "مبيعات")
-            .input("ShiftMoveID", sql.Int, null)
-            .query(`
-              INSERT INTO [dbo].[TblCashMove]
-                (invID, invType, invDate, invTime, GrandTolal, PaymentMethodID, inOut, Notes, ShiftMoveID)
-              VALUES
-                (@invID, @invType, CONVERT(date, GETDATE()), CONVERT(varchar(5), GETDATE(), 8),
-                 @GrandTotal, @PaymentMethodID, N'in', @Notes, @ShiftMoveID)
-            `);
-        }
-      } else {
-        // Mixed payment — insert clearing income row first, then redistribute
-        if (grandTotal > 0) {
-          await transaction.request()
-            .input("invID", sql.Int, invID)
-            .input("invType", sql.NVarChar(20), "مبيعات")
-            .input("GrandTotal", sql.Decimal(10, 2), grandTotal)
-            .input("PaymentMethodID", sql.Int, splitCfg.clearingMethodId)
-            .input("Notes", sql.NVarChar(sql.MAX), body.notes || "مبيعات")
-            .input("ShiftMoveID", sql.Int, null)
-            .query(`
-              INSERT INTO [dbo].[TblCashMove]
-                (invID, invType, invDate, invTime, GrandTolal, PaymentMethodID, inOut, Notes, ShiftMoveID)
-              VALUES
-                (@invID, @invType, CONVERT(date, GETDATE()), CONVERT(varchar(5), GETDATE(), 8),
-                 @GrandTotal, @PaymentMethodID, N'in', @Notes, @ShiftMoveID)
-            `);
-        }
-
-        await redistributeFromClearing({
-          transaction,
-          clearingMethodId: splitCfg.clearingMethodId,
-          allocations: activeEditAllocations.map((a: { paymentMethodId: number; amount: number }) => ({
-            paymentMethodId: a.paymentMethodId,
-            amount: Number(a.amount),
-          })),
-          invDate: editInvDate,
-          invTime: editInvTime,
-          clientId: body.clientId || null,
-          shiftMoveId: null,
-          invoiceId: invID,
-          expenseCatId: splitCfg.expenseCatId,
-          incomeCatId: splitCfg.incomeCatId,
-        });
-      }
-
-      // 9. Commit
-      await transaction.commit();
-
-      // 10. Recalculate loyalty points
-      if (body.clientId) {
-        try {
-          await db
-            .request()
-            .input("invID", sql.Int, invID)
-            .input("invType", sql.NVarChar(20), "مبيعات")
-            .input("UserID", sql.Int, userID).query(`
-              EXEC [dbo].[sp_Loyalty_EarnPointsFromSale]
-                @invID = @invID,
-                @invType = @invType,
-                @UserID = @UserID
-            `);
-        } catch (loyaltyErr) {
-          console.error("[api/sales/id] Loyalty recalc error:", loyaltyErr);
-        }
-      }
-
-      return NextResponse.json({ invID, invType: "مبيعات", updated: true });
-    } catch (err) {
-      await transaction.rollback();
-      throw err;
     }
+
+    return NextResponse.json({
+      invID,
+      invType: 'مبيعات',
+      updated: true,
+      auditId: auditResult.auditId,
+      data: auditResult.data,
+    });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("[api/sales/id] PUT error:", message);
+    if (isAuditedActionError(err)) {
+      return NextResponse.json({ error: err.message, auditId: err.failedAuditId }, { status: 500 });
+    }
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[api/sales/id] PUT error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
-// DELETE /api/sales/[id] — Delete sale invoice
-// super_admin: executes immediately | others: creates pending approval
+// DELETE /api/sales/[id] — Delete sale invoice (executes immediately, audited)
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -397,32 +194,34 @@ export async function DELETE(
     const invID = parseInt(id);
     if (isNaN(invID)) return NextResponse.json({ error: 'Invalid invID' }, { status: 400 });
 
-    const db = await getPool();
-    const existing = await db.request()
-      .input('id', sql.Int, invID)
-      .query(`SELECT invID, invDate, GrandTotal FROM dbo.TblinvServHead WHERE invID=@id`);
-    if (!existing.recordset.length)
-      return NextResponse.json({ error: 'الفاتورة غير موجودة' }, { status: 404 });
+    const body = await req.json().catch(() => ({}));
+    const reason = body.reason || null;
 
-    const workflow = await requireApprovalOrExecute({
-      userId:      session.UserID,
-      userName:    session.UserName,
-      requestType: 'delete_invoice',
-      entityId:    String(invID),
-      actionMethod:'DELETE',
-      endpointPath:`/api/sales/${invID}`,
-      oldDataLoader: async () => existing.recordset[0],
+    const auditResult = await executeAuditedAction({
+      actionType: 'delete_invoice',
+      user: session,
+      entityId: invID,
+      request: req,
+      actionMethod: 'DELETE',
+      endpointPath: `/api/sales/${invID}`,
+      reason,
+      loadOldData: async (transaction) => getInvoiceSnapshot(transaction, invID) as unknown as Record<string, unknown> | null,
+      execute: async (transaction) => deleteInvoice(transaction, invID),
+      loadNewData: async () => null,
     });
 
-    if (workflow.pendingApproval)
-      return NextResponse.json({ success: true, pendingApproval: true, approvalId: workflow.approvalId, message: workflow.message });
-
-    return NextResponse.json({ success: true, message: 'تم حذف الفاتورة' });
+    return NextResponse.json({
+      success: true,
+      message: 'تم حذف الفاتورة',
+      auditId: auditResult.auditId,
+    });
 
   } catch (err: unknown) {
+    if (isAuditedActionError(err)) {
+      return NextResponse.json({ error: err.message, auditId: err.failedAuditId }, { status: 500 });
+    }
     const msg = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
-
 

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import sql from 'mssql';
-import { requireApprovalOrExecute } from '@/lib/approvalWorkflow';
+import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
+import { closeTreasuryDay } from '@/lib/actions/treasuryActions';
 import { getSession } from '@/lib/session';
 import type { 
   ReconciliationRequest, 
@@ -31,105 +32,93 @@ function getVarianceStatus(variance: number, systemAmount: number): VarianceStat
  * Save end-of-day reconciliation
  */
 export async function POST(request: NextRequest) {
-  let db;
+  let db: sql.ConnectionPool | undefined;
 
   try {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
 
-    const body: ReconciliationRequest = await request.json();
-    const { newDay, shiftMoveId, reconciliations } = body;
+    db = await getPool();
+    const body: ReconciliationRequest & { reason?: string } = await request.json();
+    const { newDay, shiftMoveId, reconciliations, reason } = body;
 
     if (!newDay || !reconciliations || reconciliations.length === 0) {
       return NextResponse.json({ error: 'البيانات المطلوبة غير مكتملة' }, { status: 400 });
     }
 
-    // Approval workflow
-    const workflow = await requireApprovalOrExecute({
-      userId:      session.UserID,
-      userName:    session.UserName,
-      requestType: 'close_day',
-      entityId:    String(newDay),
-      actionMethod:'CLOSE_DAY',
-      endpointPath:'/api/treasury/reconciliation',
-      newData:     { newDay, shiftMoveId, reconciliations },
-      riskLevel:   'critical',
-    });
-    if (workflow.pendingApproval)
-      return NextResponse.json({ success: true, pendingApproval: true, approvalId: workflow.approvalId, message: workflow.message });
-    if (workflow.executed)
-      return NextResponse.json({ success: true, message: workflow.message });
+    const dayResult = await db.request()
+      .input('newDay', sql.Int, newDay)
+      .query(`
+        SELECT TOP 1 ID, NewDay, Status FROM dbo.TblNewDay WHERE ID = @newDay
+      `);
+    const dayRow = dayResult.recordset[0];
 
-    db = await getPool();
-    const closedByUserId = session.UserID;
-    
-    const reconciliationIds: number[] = [];
-    const variances: any[] = [];
-    
-    // Insert each reconciliation record
-    for (const recon of reconciliations) {
-      const variance = recon.countedAmount - recon.systemAmount;
-      const status = getVarianceStatus(variance, recon.systemAmount);
-      
-      const insertResult = await db.request()
-        .input('newDay', sql.Int, newDay)
-        .input('shiftMoveId', sql.Int, shiftMoveId || null)
-        .input('paymentMethodId', sql.Int, recon.paymentMethodId)
-        .input('systemAmount', sql.Decimal(18, 2), recon.systemAmount)
-        .input('countedAmount', sql.Decimal(18, 2), recon.countedAmount)
-        .input('notes', sql.NVarChar, recon.notes || null)
-        .input('closedByUserId', sql.Int, closedByUserId)
-        .query(`
-          INSERT INTO [dbo].[TblTreasuryCloseRecon] 
-            ([NewDay], [ShiftMoveID], [PaymentMethodID], [SystemAmount], [CountedAmount], [Notes], [ClosedByUserID])
-          VALUES 
-            (@newDay, @shiftMoveId, @paymentMethodId, @systemAmount, @countedAmount, @notes, @closedByUserId);
-          
-          SELECT SCOPE_IDENTITY() AS ID;
+    const auditResult = await executeAuditedAction({
+      actionType: 'close_day',
+      user: session,
+      entityId: newDay,
+      request,
+      actionMethod: 'CLOSE_DAY',
+      endpointPath: '/api/treasury/reconciliation',
+      reason: reason || null,
+      loadOldData: async () => {
+        if (!dayRow) return null;
+        const previousRecon = await db!.request().input('newDay', sql.Int, newDay).query(`
+          SELECT r.ID, r.PaymentMethodID, pm.PaymentMethod, r.SystemAmount, r.CountedAmount, r.VarianceAmount, r.Notes
+          FROM dbo.TblTreasuryCloseRecon r
+          JOIN dbo.TblPaymentMethods pm ON r.PaymentMethodID = pm.PaymentID
+          WHERE r.NewDay = @newDay
         `);
-      
-      const reconId = insertResult.recordset[0].ID;
-      reconciliationIds.push(reconId);
-      
-      // Get payment method name for response
-      const pmResult = await db.request()
-        .input('paymentMethodId', sql.Int, recon.paymentMethodId)
-        .query(`
-          SELECT PaymentMethod 
-          FROM [dbo].[TblPaymentMethods] 
-          WHERE PaymentID = @paymentMethodId
-        `);
-      
-      const paymentMethodName = pmResult.recordset[0]?.PaymentMethod || '';
-      const variancePercentage = recon.systemAmount !== 0 
-        ? (variance / Math.abs(recon.systemAmount)) * 100 
-        : 0;
-      
-      variances.push({
-        paymentMethodId: recon.paymentMethodId,
-        paymentMethodName,
-        variance,
-        variancePercentage,
-        status
-      });
-    }
-    
+        return {
+          newDay,
+          dayStatus: dayRow.Status,
+          previousReconciliations: previousRecon.recordset,
+        };
+      },
+      execute: async (transaction) => closeTreasuryDay(transaction, {
+        newDay,
+        shiftMoveId,
+        reconciliations,
+        closedByUserId: session.UserID,
+      }),
+      loadNewData: async (transaction, result) => {
+        const newRecon = await new sql.Request(transaction)
+          .input('newDay', sql.Int, result.newDay)
+          .query(`
+            SELECT r.ID, r.PaymentMethodID, pm.PaymentMethod, r.SystemAmount, r.CountedAmount, r.VarianceAmount, r.Notes
+            FROM dbo.TblTreasuryCloseRecon r
+            JOIN dbo.TblPaymentMethods pm ON r.PaymentMethodID = pm.PaymentID
+            WHERE r.NewDay = @newDay
+          `);
+        return {
+          newDay: result.newDay,
+          reconciliationIds: result.reconciliationIds,
+          variances: result.variances,
+          closedByUserId: result.closedByUserId,
+          reconciliations: newRecon.recordset,
+        };
+      },
+    });
+
     const response: ReconciliationResponse = {
       success: true,
-      reconciliationIds,
-      variances,
-      message: 'تم حفظ قفل اليوم بنجاح'
+      reconciliationIds: auditResult.data.reconciliationIds,
+      variances: auditResult.data.variances,
+      message: 'تم حفظ قفل اليوم بنجاح',
     };
-    
-    return NextResponse.json(response);
-    
+
+    return NextResponse.json({ ...response, auditId: auditResult.auditId });
+
   } catch (error) {
+    if (isAuditedActionError(error)) {
+      return NextResponse.json(
+        { error: error.message, auditId: error.failedAuditId },
+        { status: 500 },
+      );
+    }
     console.error('[api/treasury/reconciliation] POST error:', error);
     return NextResponse.json(
-      { 
-        error: 'فشل حفظ قفل اليوم',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
+      { error: 'فشل حفظ قفل اليوم' },
       { status: 500 }
     );
   }

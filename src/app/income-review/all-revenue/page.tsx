@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { handleApprovalResponse } from '@/lib/handleApprovalResponse';
 import PageHeader from '@/components/shared/PageHeader';
 import KpiCard from '@/components/shared/KpiCard';
 import EmptyState from '@/components/shared/EmptyState';
@@ -329,13 +328,14 @@ export default function AllRevenuePage() {
         }),
       });
       const data = await res.json();
-      handleApprovalResponse(data, {
-        addToast,
-        successMessage: 'تم تعديل الإيراد بنجاح',
-        onExecuted: () => { setIsEditModalOpen(false); setEditingItem(null); fetchData(); },
-        onPending:  () => { setIsEditModalOpen(false); setEditingItem(null); },
-        onFailed:   (msg) => showToast(msg, false),
-      });
+      if (!res.ok || !data.success) {
+        showToast(data.error || 'فشل تعديل الإيراد', false);
+      } else {
+        showToast('تم تعديل الإيراد بنجاح', true);
+        setIsEditModalOpen(false);
+        setEditingItem(null);
+        fetchData();
+      }
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'حدث خطأ أثناء التعديل', false);
     } finally {
@@ -380,17 +380,28 @@ export default function AllRevenuePage() {
   /* ── delete single ── */
   const handleDeleteOne = async () => {
     if (!deletingId) return;
+    const reason = window.prompt('سبب حذف الإيراد (مطلوب):');
+    if (reason === null) { setDeletingId(null); return; }
+    if (!reason.trim()) {
+      addToast('error', 'يجب إدخال سبب للحذف');
+      setBusyDelete(false);
+      return;
+    }
     setBusyDelete(true);
     try {
-      const res  = await fetch(`/api/incomes/${deletingId.ID}`, { method: 'DELETE' });
-      const data = await res.json();
-      handleApprovalResponse(data, {
-        addToast,
-        successMessage: 'تم حذف الإيراد بنجاح',
-        onExecuted: () => { setDeletingId(null); fetchData(); },
-        onPending:  () => setDeletingId(null),
-        onFailed:   (msg) => addToast('error', msg),
+      const res  = await fetch(`/api/incomes/${deletingId.ID}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason.trim() }),
       });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        addToast('error', data.error || 'فشل حذف الإيراد');
+      } else {
+        addToast('success', 'تم حذف الإيراد بنجاح');
+        setDeletingId(null);
+        fetchData();
+      }
     } catch (err) {
       addToast('error', err instanceof Error ? err.message : 'حدث خطأ');
     } finally {
@@ -401,23 +412,27 @@ export default function AllRevenuePage() {
   /* ── delete all in category ── */
   const handleDeleteCategory = async () => {
     if (!deletingCat) return;
+    const reason = window.prompt('سبب حذف الإيرادات في هذا التصنيف (مطلوب):');
+    if (reason === null) { setDeletingCat(null); return; }
+    if (!reason.trim()) {
+      addToast('error', 'يجب إدخال سبب للحذف');
+      return;
+    }
     setBusyDelete(true);
-    let anyPending = false;
     try {
       const catItems = items.filter((i) => i.ExpINID === deletingCat.ExpINID);
       for (const item of catItems) {
-        const res  = await fetch(`/api/incomes/${item.ID}`, { method: 'DELETE' });
+        const res = await fetch(`/api/incomes/${item.ID}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason: reason.trim() }),
+        });
         const data = await res.json();
-        if (data.pendingApproval) { anyPending = true; }
-        else if (!data.success && !data.ok) throw new Error(data.error || 'فشل حذف الإيرادات');
+        if (!data.success && !data.ok) throw new Error(data.error || 'فشل حذف الإيرادات');
       }
       setDeletingCat(null);
-      if (anyPending) {
-        addToast('info', 'تم تسجيل طلبات الحذف، وهي في انتظار موافقة المسؤول.');
-      } else {
-        addToast('success', 'تم حذف الإيرادات بنجاح');
-        fetchData();
-      }
+      addToast('success', 'تم حذف الإيرادات بنجاح');
+      fetchData();
     } catch (err) {
       addToast('error', err instanceof Error ? err.message : 'حدث خطأ');
     } finally {

@@ -6,7 +6,6 @@ import KpiCard from '@/components/shared/KpiCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { handleApprovalResponse } from '@/lib/handleApprovalResponse';
 import {
   Plus, Coins, Hash, TrendingUp, RefreshCw,
   Pencil, Trash2, Search, Filter, X, Loader2,
@@ -228,14 +227,13 @@ export default function NewRevenuePage() {
       const method = editingId ? 'PATCH' : 'POST';
       const res    = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data   = await res.json();
-
-      handleApprovalResponse(data, {
-        addToast,
-        successMessage: editingId ? 'تم تعديل الإيراد بنجاح' : 'تم حفظ الإيراد بنجاح',
-        onExecuted: async () => { resetForm(); await loadData(); },
-        onPending:  () => { resetForm(); },
-        onFailed:   (msg) => setFormError(msg),
-      });
+      if (!res.ok || !data.success) {
+        setFormError(data.error || 'خطأ في الحفظ');
+      } else {
+        addToast('success', editingId ? 'تم تعديل الإيراد بنجاح' : 'تم حفظ الإيراد بنجاح');
+        resetForm();
+        await loadData();
+      }
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'خطأ في الحفظ');
     } finally {
@@ -246,17 +244,27 @@ export default function NewRevenuePage() {
   // Delete
   const handleDelete = async () => {
     if (!deleteTarget) return;
+    const reason = window.prompt('سبب حذف الإيراد (مطلوب):');
+    if (reason === null) return;
+    if (!reason.trim()) {
+      addToast('error', 'يجب إدخال سبب للحذف');
+      return;
+    }
     setDeleting(true);
     try {
-      const res  = await fetch(`/api/incomes/${deleteTarget.ID}`, { method: 'DELETE' });
-      const data = await res.json();
-      handleApprovalResponse(data, {
-        addToast,
-        successMessage: 'تم حذف الإيراد بنجاح',
-        onExecuted: async () => { setDeleteTarget(null); await loadData(); },
-        onPending:  () => setDeleteTarget(null),
-        onFailed:   (msg) => addToast('error', msg),
+      const res  = await fetch(`/api/incomes/${deleteTarget.ID}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason.trim() }),
       });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        addToast('error', data.error || 'فشل حذف الإيراد');
+      } else {
+        addToast('success', 'تم حذف الإيراد بنجاح');
+        setDeleteTarget(null);
+        await loadData();
+      }
     } catch (e) {
       addToast('error', e instanceof Error ? e.message : 'خطأ في الحذف');
     } finally {

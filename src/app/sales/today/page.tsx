@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { handleApprovalResponse } from '@/lib/handleApprovalResponse';
 import { Calendar, Loader2, RotateCcw, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import TodaySalesKpiCards from '@/components/sales/TodaySalesKpiCards';
@@ -281,15 +280,24 @@ export default function TodaySalesPage() {
                     window.location.href = `/income/pos?edit=${txn.invId}`;
                   }}
                   onDelete={async (invId) => {
-                    const res  = await fetch(`/api/sales/${invId}`, { method: 'DELETE' });
-                    const data = await res.json();
-                    handleApprovalResponse(data, {
-                      addToast,
-                      successMessage: 'تم حذف الفاتورة بنجاح',
-                      onExecuted: () => loadSalesData(),
-                      onPending:  () => { /* row stays */ },
-                      onFailed:   (msg) => addToast('error', msg),
+                    const reason = window.prompt('سبب حذف الفاتورة (مطلوب):');
+                    if (reason === null) return;
+                    if (!reason.trim()) {
+                      addToast('error', 'يجب إدخال سبب للحذف');
+                      return;
+                    }
+                    const res = await fetch(`/api/sales/${invId}`, {
+                      method: 'DELETE',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ reason: reason.trim() }),
                     });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) {
+                      addToast('error', data.error || 'فشل حذف الفاتورة');
+                    } else {
+                      addToast('success', 'تم حذف الفاتورة بنجاح');
+                      loadSalesData();
+                    }
                   }}
                   canEdit={canDelete}
                 />

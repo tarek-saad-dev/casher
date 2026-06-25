@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "sync:install": "cd sync-service && npm install && npm run build",
     "sync:setup": "cd sync-service && npm run setup",
     "sync:bootstrap": "cd sync-service && npm run bootstrap",

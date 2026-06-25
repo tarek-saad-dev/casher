@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { handleApprovalResponse } from '@/lib/handleApprovalResponse';
 import { 
   ShoppingCart, Edit2, Trash2, User, Phone, Calendar, 
   CreditCard, Scissors, Clock, MoreVertical, Loader2, RefreshCw
@@ -133,16 +132,26 @@ export default function RecentSalesSidebar({
 
   const handleDelete = async (saleId: number) => {
     if (!confirm('هل أنت متأكد من حذف هذه العملية؟')) return;
+    const reason = window.prompt('سبب حذف الفاتورة (مطلوب):');
+    if (reason === null) return;
+    if (!reason.trim()) {
+      addToast('error', 'يجب إدخال سبب للحذف');
+      return;
+    }
     try {
-      const res  = await fetch(`/api/sales/${saleId}`, { method: 'DELETE' });
-      const data = await res.json();
-      handleApprovalResponse(data, {
-        addToast,
-        successMessage: 'تم حذف الفاتورة بنجاح',
-        onExecuted: async () => { await loadRecentSales(); onRefresh?.(); },
-        onPending:  () => { /* row stays, toast shown */ },
-        onFailed:   (msg) => addToast('error', msg),
+      const res = await fetch(`/api/sales/${saleId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason.trim() }),
       });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        addToast('error', data.error || 'فشل حذف الفاتورة');
+      } else {
+        addToast('success', 'تم حذف الفاتورة بنجاح');
+        await loadRecentSales();
+        onRefresh?.();
+      }
     } catch (e) {
       addToast('error', e instanceof Error ? e.message : 'خطأ غير متوقع');
     }

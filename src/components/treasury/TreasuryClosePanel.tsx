@@ -21,6 +21,7 @@ export default function TreasuryClosePanel({
 }: TreasuryClosePanelProps) {
   const [countedAmounts, setCountedAmounts] = useState<{ [key: number]: string }>({});
   const [notes, setNotes] = useState<{ [key: number]: string }>({});
+  const [reason, setReason] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [variances, setVariances] = useState<{ [key: number]: number }>({});
@@ -103,6 +104,10 @@ export default function TreasuryClosePanel({
   };
 
   const handleSave = async () => {
+    if (!reason.trim()) {
+      setError('يجب إدخال سبب لتقفيل اليوم');
+      return;
+    }
     setSaving(true);
     setError(null);
 
@@ -120,23 +125,14 @@ export default function TreasuryClosePanel({
         body: JSON.stringify({
           newDay,
           shiftMoveId,
+          reason: reason.trim(),
           reconciliations
         })
       });
 
       const result = await response.json();
 
-      if (result.pendingApproval) {
-        const msg = result.approvalId
-          ? `تم تسجيل طلب قفل اليوم برقم #${result.approvalId}، وهو في انتظار موافقة المسؤول.`
-          : 'تم تسجيل طلب قفل اليوم وهو في انتظار موافقة المسؤول.';
-        setError(null);
-        alert(msg);
-        onClose();
-        return;
-      }
-
-      if (!response.ok) {
+      if (!response.ok || !result.success) {
         throw new Error(result.error || 'فشل حفظ القفل');
       }
 
@@ -264,6 +260,21 @@ export default function TreasuryClosePanel({
                 </div>
               );
             })}
+          </div>
+
+          {/* Reason */}
+          <div className="mt-6">
+            <label className="block text-sm font-medium text-zinc-400 mb-2">
+              سبب تقفيل اليوم <span className="text-amber-500">*</span>
+            </label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="أدخل سبب تقفيل اليوم..."
+              rows={2}
+              disabled={saving}
+              className="w-full bg-zinc-800/50 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-colors resize-none"
+            />
           </div>
 
           {/* Total Summary */}

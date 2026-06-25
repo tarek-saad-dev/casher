@@ -392,13 +392,19 @@ export default function PagesPermissionsPage() {
     });
 
   const save = async (pageKey: string) => {
+    const reason = window.prompt('سبب تعديل صلاحيات الصفحة (مطلوب):');
+    if (reason === null) return;
+    if (!reason.trim()) {
+      showMsg('err', 'يجب إدخال سبب لتعديل صلاحيات الصفحة');
+      return;
+    }
     setSaving(pageKey);
     try {
       const edit = editMap[pageKey];
       const res = await fetch('/api/admin/permissions/pages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pageKey, accessMode: edit.accessMode, roles: edit.roles }),
+        body: JSON.stringify({ pageKey, accessMode: edit.accessMode, roles: edit.roles, reason: reason.trim() }),
       });
       if (!res.ok) throw new Error(await res.text());
       showMsg('ok', 'تم الحفظ');

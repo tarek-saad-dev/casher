@@ -110,18 +110,7 @@ export default function PastDateTransferModal({
 
       const result = await response.json();
 
-      if (result.pendingApproval) {
-        const msg = result.approvalId
-          ? `تم تسجيل طلب التحويل برقم #${result.approvalId}، وهو في انتظار موافقة المسؤول.`
-          : 'تم تسجيل طلب التحويل وهو في انتظار موافقة المسؤول.';
-        setError('');
-        alert(msg);
-        resetForm();
-        onClose();
-        return;
-      }
-
-      if (!response.ok) {
+      if (!response.ok || !result.success) {
         throw new Error(result.error || 'فشل التحويل');
       }
 

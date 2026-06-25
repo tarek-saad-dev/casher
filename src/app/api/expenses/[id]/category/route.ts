@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool, sql } from '@/lib/db';
+import { getSession } from '@/lib/session';
+import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
+import { getExpenseSnapshot, deleteExpense, updateExpenseCategory } from '@/lib/actions/expenseActions';
 
 // DELETE /api/expenses/[id]/category — Delete expense transaction
 export async function DELETE(
@@ -13,40 +15,35 @@ export async function DELETE(
       return NextResponse.json({ error: 'معرف المصروف غير صالح' }, { status: 400 });
     }
 
-    const db = await getPool();
+    const user = await getSession();
+    if (!user) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
 
-    // Verify expense exists and is an expense transaction
-    const expenseCheck = await db.request()
-      .input('id', sql.Int, expenseId)
-      .query(`
-        SELECT ID, invType, inOut, invID
-        FROM [dbo].[TblCashMove]
-        WHERE ID = @id
-      `);
+    const body = await req.json().catch(() => ({}));
+    const reason = body.reason || null;
 
-    if (expenseCheck.recordset.length === 0) {
-      return NextResponse.json({ error: 'المصروف غير موجود' }, { status: 404 });
-    }
-
-    const expense = expenseCheck.recordset[0];
-    if (expense.invType !== 'مصروفات' || expense.inOut !== 'out') {
-      return NextResponse.json({ error: 'هذه المعاملة ليست مصروف' }, { status: 400 });
-    }
-
-    // Delete the expense
-    await db.request()
-      .input('id', sql.Int, expenseId)
-      .query(`
-        DELETE FROM [dbo].[TblCashMove]
-        WHERE ID = @id
-      `);
+    const auditResult = await executeAuditedAction({
+      actionType: 'delete_expense',
+      user,
+      entityId: expenseId,
+      request: req,
+      actionMethod: 'DELETE',
+      endpointPath: `/api/expenses/${expenseId}/category`,
+      reason,
+      loadOldData: async (transaction) => getExpenseSnapshot(transaction, expenseId) as unknown as Record<string, unknown> | null,
+      execute: async (transaction) => deleteExpense(transaction, expenseId),
+      loadNewData: async () => null,
+    });
 
     return NextResponse.json({
       success: true,
       message: 'تم حذف المصروف بنجاح',
       deletedId: expenseId,
+      auditId: auditResult.auditId,
     });
   } catch (err: unknown) {
+    if (isAuditedActionError(err)) {
+      return NextResponse.json({ error: err.message, auditId: err.failedAuditId }, { status: 500 });
+    }
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/expenses/[id]/category] DELETE error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
@@ -65,67 +62,46 @@ export async function PUT(
       return NextResponse.json({ error: 'معرف المصروف غير صالح' }, { status: 400 });
     }
 
+    const user = await getSession();
+    if (!user) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+
     const body = await req.json();
-    const { ExpINID } = body;
+    const { ExpINID, reason } = body;
 
     if (!ExpINID) {
       return NextResponse.json({ error: 'يجب تحديد الفئة الجديدة' }, { status: 400 });
     }
 
-    const db = await getPool();
+    const auditResult = await executeAuditedAction({
+      actionType: 'edit_expense',
+      user,
+      entityId: expenseId,
+      request: req,
+      actionMethod: 'PUT',
+      endpointPath: `/api/expenses/${expenseId}/category`,
+      reason: reason || null,
+      loadOldData: async (transaction) => getExpenseSnapshot(transaction, expenseId) as unknown as Record<string, unknown> | null,
+      execute: async (transaction) => updateExpenseCategory(transaction, expenseId, Number(ExpINID)),
+      loadNewData: async (transaction) => getExpenseSnapshot(transaction, expenseId) as unknown as Record<string, unknown> | null,
+    });
 
-    // Verify expense exists and is an expense transaction
-    const expenseCheck = await db.request()
-      .input('id', sql.Int, expenseId)
-      .query(`
-        SELECT ID, invType, inOut, invDate
-        FROM [dbo].[TblCashMove]
-        WHERE ID = @id
-      `);
-
-    if (expenseCheck.recordset.length === 0) {
-      return NextResponse.json({ error: 'المصروف غير موجود' }, { status: 404 });
-    }
-
-    const expense = expenseCheck.recordset[0];
-    if (expense.invType !== 'مصروفات' || expense.inOut !== 'out') {
-      return NextResponse.json({ error: 'هذه المعاملة ليست مصروف' }, { status: 400 });
-    }
-
-    // Verify new category exists and is an expense category
-    const categoryCheck = await db.request()
-      .input('expinid', sql.Int, ExpINID)
-      .query(`
-        SELECT ExpINID, CatName, ExpINType
-        FROM [dbo].[TblExpINCat]
-        WHERE ExpINID = @expinid AND ExpINType = N'مصروفات'
-      `);
-
-    if (categoryCheck.recordset.length === 0) {
-      return NextResponse.json({ error: 'الفئة المحددة غير موجودة أو ليست فئة مصروفات' }, { status: 400 });
-    }
-
-    // Update the expense category (preserve all other fields including date)
-    await db.request()
-      .input('id', sql.Int, expenseId)
-      .input('expinid', sql.Int, ExpINID)
-      .query(`
-        UPDATE [dbo].[TblCashMove]
-        SET ExpINID = @expinid
-        WHERE ID = @id
-      `);
+    const data = auditResult.data as { ExpINID: number; invDate?: string | Date } | undefined;
 
     return NextResponse.json({
       success: true,
       message: 'تم تحديث تصنيف المصروف بنجاح',
+      updatedId: expenseId,
+      auditId: auditResult.auditId,
       expense: {
         ID: expenseId,
-        ExpINID: ExpINID,
-        CatName: categoryCheck.recordset[0].CatName,
-        invDate: expense.invDate,
+        ExpINID: data?.ExpINID ?? Number(ExpINID),
+        invDate: data?.invDate,
       },
     });
   } catch (err: unknown) {
+    if (isAuditedActionError(err)) {
+      return NextResponse.json({ error: err.message, auditId: err.failedAuditId }, { status: 500 });
+    }
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/expenses/[id]/category] PUT error:', message);
     return NextResponse.json({ error: message }, { status: 500 });

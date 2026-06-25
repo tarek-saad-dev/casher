@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { handleApprovalResponse } from '@/lib/handleApprovalResponse';
 import {
   Save, Loader2, AlertTriangle, CheckCircle2,
   Banknote, CreditCard, Wallet, Receipt,
@@ -340,16 +339,25 @@ export default function ExpensesPage() {
   // ──── Delete expense ────
   const handleDelete = useCallback(async (id: number, invID: number) => {
     if (!confirm(`هل أنت متأكد من حذف المصروف #${invID}؟`)) return;
+    const reason = window.prompt('سبب حذف المصروف (مطلوب):');
+    if (reason === null) return;
+    if (!reason.trim()) {
+      addToast('error', 'يجب إدخال سبب للحذف');
+      return;
+    }
     try {
-      const res  = await fetch(`/api/expenses/${id}`, { method: 'DELETE' });
-      const data = await res.json();
-      handleApprovalResponse(data, {
-        addToast,
-        successMessage: 'تم حذف المصروف بنجاح',
-        onExecuted: () => loadExpenses(),
-        onPending:  () => { /* row stays, toast shown */ },
-        onFailed:   (msg) => addToast('error', msg),
+      const res = await fetch(`/api/expenses/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason.trim() }),
       });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        addToast('error', data.error || 'فشل حذف المصروف');
+      } else {
+        addToast('success', 'تم حذف المصروف بنجاح');
+        loadExpenses();
+      }
     } catch {
       addToast('error', 'خطأ في الاتصال بالخادم');
     }

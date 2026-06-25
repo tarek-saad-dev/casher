@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
-import { requireApprovalOrExecute } from '@/lib/approvalWorkflow';
+import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
+import { getIncomeSnapshot, updateIncome, deleteIncome } from '@/lib/actions/incomeActions';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -84,113 +85,36 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
         { status: 400 },
       );
 
-    const workflow = await requireApprovalOrExecute({
-      userId:      session.UserID,
-      userName:    session.UserName,
-      requestType: 'edit_income',
-      entityId:    String(incomeId),
-      actionMethod:'PATCH',
-      endpointPath:`/api/incomes/${incomeId}`,
-      newData: { invDate, amount: Number(amount), expInId: Number(expInId), paymentMethodId: Number(paymentMethodId), notes: notes ?? null },
+    const auditResult = await executeAuditedAction({
+      actionType: 'edit_income',
+      user: session,
+      entityId: incomeId,
+      request: req,
+      actionMethod: 'PATCH',
+      endpointPath: `/api/incomes/${incomeId}`,
+      reason: notes || null,
+      loadOldData: async (transaction) => getIncomeSnapshot(transaction, incomeId) as unknown as Record<string, unknown> | null,
+      execute: async (transaction) => updateIncome(transaction, incomeId, {
+        invDate,
+        amount: Number(amount),
+        expInId,
+        paymentMethodId,
+        notes,
+        shiftMoveId,
+      }),
+      loadNewData: async (transaction) => getIncomeSnapshot(transaction, incomeId) as unknown as Record<string, unknown> | null,
     });
-    if (workflow.pendingApproval)
-      return NextResponse.json({ success: true, pendingApproval: true, approvalId: workflow.approvalId, message: workflow.message });
-    if (workflow.executed)
-      return NextResponse.json({ success: true, message: workflow.message });
 
-    const db = await getPool();
-    const transaction = new sql.Transaction(db);
-    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
-
-    try {
-      // Verify record exists and is ايرادات
-      const existsRes = await new sql.Request(transaction)
-        .input("id", sql.Int, incomeId)
-        .query(
-          `SELECT 1 FROM dbo.TblCashMove WHERE ID = @id AND invType = N'ايرادات'`,
-        );
-      if (existsRes.recordset.length === 0) {
-        await transaction.rollback();
-        return NextResponse.json(
-          { error: "الإيراد غير موجود" },
-          { status: 404 },
-        );
-      }
-
-      // Validate category
-      const catRes = await new sql.Request(transaction)
-        .input("expInId", sql.Int, expInId)
-        .query(`SELECT 1 FROM dbo.TblExpINCat WHERE ExpINID = @expInId`);
-      if (catRes.recordset.length === 0) {
-        await transaction.rollback();
-        return NextResponse.json(
-          { error: "تصنيف الإيراد غير موجود" },
-          { status: 400 },
-        );
-      }
-
-      // Validate payment method
-      const pmRes = await new sql.Request(transaction)
-        .input("pmId", sql.Int, paymentMethodId)
-        .query(`SELECT 1 FROM dbo.TblPaymentMethods WHERE PaymentID = @pmId`);
-      if (pmRes.recordset.length === 0) {
-        await transaction.rollback();
-        return NextResponse.json(
-          { error: "طريقة الدفع غير موجودة" },
-          { status: 400 },
-        );
-      }
-
-      // Update
-      await new sql.Request(transaction)
-        .input("id", sql.Int, incomeId)
-        .input("invDate", sql.Date, invDate)
-        .input("expInId", sql.Int, expInId)
-        .input("amount", sql.Decimal(10, 2), Number(amount))
-        .input("notes", sql.NVarChar(sql.MAX), notes?.trim() || null)
-        .input("paymentMethodId", sql.Int, paymentMethodId)
-        .input("shiftMoveId", sql.Int, shiftMoveId ?? null).query(`
-          UPDATE dbo.TblCashMove
-          SET
-            invDate         = @invDate,
-            ExpINID         = @expInId,
-            GrandTolal      = @amount,
-            Notes           = @notes,
-            PaymentMethodID = @paymentMethodId,
-            ShiftMoveID     = COALESCE(@shiftMoveId, ShiftMoveID)
-          WHERE ID = @id AND invType = N'ايرادات'
-        `);
-
-      // Fetch updated record with joined data (consistent with GET)
-      const updateRes = await new sql.Request(transaction).input(
-        "id",
-        sql.Int,
-        incomeId,
-      ).query(`
-          SELECT
-            CM.ID, CM.invID, CM.invType, CM.invDate, CM.invTime,
-            CM.ExpINID, ISNULL(CAT.CatName, N'غير مصنف') AS CategoryName,
-            CM.GrandTolal AS Amount, CM.inOut, CM.Notes,
-            CM.ShiftMoveID, SM.NewDay, U.UserName, S.ShiftName,
-            CM.PaymentMethodID, ISNULL(PM.PaymentMethod, N'غير محدد') AS PaymentMethod
-          FROM dbo.TblCashMove CM
-          LEFT JOIN dbo.TblExpINCat CAT       ON CM.ExpINID        = CAT.ExpINID
-          LEFT JOIN dbo.TblShiftMove SM       ON CM.ShiftMoveID    = SM.ID
-          LEFT JOIN dbo.TblUser U             ON SM.UserID         = U.UserID
-          LEFT JOIN dbo.TblShift S            ON SM.ShiftID        = S.ShiftID
-          LEFT JOIN dbo.TblPaymentMethods PM  ON CM.PaymentMethodID = PM.PaymentID
-          WHERE CM.ID = @id AND CM.invType = N'ايرادات'
-        `);
-
-      await transaction.commit();
-      return NextResponse.json(updateRes.recordset[0]);
-    } catch (innerErr) {
-      try {
-        await transaction.rollback();
-      } catch {}
-      throw innerErr;
-    }
+    return NextResponse.json({
+      success: true,
+      message: 'تم تحديث الإيراد',
+      auditId: auditResult.auditId,
+      data: auditResult.data,
+    });
   } catch (err: unknown) {
+    if (isAuditedActionError(err)) {
+      return NextResponse.json({ error: err.message, auditId: err.failedAuditId }, { status: 500 });
+    }
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[api/incomes/[id]] PATCH error:", message);
     return NextResponse.json({ error: message }, { status: 500 });
@@ -198,7 +122,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 }
 
 // ───────────────────────── DELETE /api/incomes/[id] ───────────────────────
-export async function DELETE(_req: NextRequest, { params }: Ctx) {
+export async function DELETE(req: NextRequest, { params }: Ctx) {
   try {
     const session = await getSession();
     if (!session)
@@ -209,30 +133,28 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
     if (isNaN(incomeId))
       return NextResponse.json({ error: 'معرف الإيراد غير صالح' }, { status: 400 });
 
-    const db = await getPool();
-    const existing = await db.request()
-      .input('id', sql.Int, incomeId)
-      .query(`SELECT ID, invDate, GrandTolal, Notes FROM dbo.TblCashMove WHERE ID=@id AND invType=N'ايرادات'`);
+    const body = await req.json().catch(() => ({}));
+    const reason = body.reason || null;
 
-    if (!existing.recordset.length)
-      return NextResponse.json({ error: 'الإيراد غير موجود' }, { status: 404 });
-
-    const result = await requireApprovalOrExecute({
-      userId:      session.UserID,
-      userName:    session.UserName,
-      requestType: 'delete_income',
-      entityId:    String(incomeId),
-      actionMethod:'DELETE',
-      endpointPath:`/api/incomes/${incomeId}`,
-      oldDataLoader: async () => existing.recordset[0],
+    const auditResult = await executeAuditedAction({
+      actionType: 'delete_income',
+      user: session,
+      entityId: incomeId,
+      request: req,
+      actionMethod: 'DELETE',
+      endpointPath: `/api/incomes/${incomeId}`,
+      reason,
+      loadOldData: async (transaction) => getIncomeSnapshot(transaction, incomeId) as unknown as Record<string, unknown> | null,
+      execute: async (transaction) => deleteIncome(transaction, incomeId),
+      loadNewData: async () => null,
     });
 
-    if (result.pendingApproval)
-      return NextResponse.json({ success: true, pendingApproval: true, approvalId: result.approvalId, message: result.message });
-
-    return NextResponse.json({ success: true, message: 'تم حذف الإيراد' });
+    return NextResponse.json({ success: true, message: 'تم حذف الإيراد', auditId: auditResult.auditId });
 
   } catch (err: unknown) {
+    if (isAuditedActionError(err)) {
+      return NextResponse.json({ error: err.message, auditId: err.failedAuditId }, { status: 500 });
+    }
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/incomes/[id]] DELETE error:', message);
     return NextResponse.json({ error: message }, { status: 500 });

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { getSession } from '@/lib/session';
-import { requireApprovalOrExecute } from '@/lib/approvalWorkflow';
+import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
+import { getExpenseSnapshot, updateExpense, deleteExpense } from '@/lib/actions/expenseActions';
 
 /**
  * PUT /api/expenses/[id]
@@ -36,108 +37,37 @@ export async function PUT(
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
 
-    const db = await getPool();
-
-    // Get current expense data (needed for approval workflow and history)
-    const currentExpense = await db.request()
-      .input('id', sql.Int, expenseId)
-      .query(`
-        SELECT 
-          cm.ExpINID,
-          cm.GrandTolal,
-          cm.PaymentMethodID,
-          cm.Notes,
-          cm.EditHistory,
-          cm.invDate
-        FROM [dbo].[TblCashMove] cm
-        WHERE cm.ID = @id AND cm.invType = N'مصروفات'
-      `);
-
-    if (currentExpense.recordset.length === 0) {
-      return NextResponse.json({ error: 'المصروف غير موجود' }, { status: 404 });
-    }
-
-    const current = currentExpense.recordset[0];
-
-    // Approval workflow
-    const workflow = await requireApprovalOrExecute({
-      userId:      user.UserID,
-      userName:    user.UserName,
-      requestType: 'edit_expense',
-      entityId:    String(expenseId),
-      actionMethod:'PUT',
-      endpointPath:`/api/expenses/${expenseId}`,
-      newData: {
-        expInId: Number(expINID),
-        amount: Number(grandTotal),
-        paymentMethodId: Number(paymentMethodId),
-        notes: notes ?? null,
-        invDate: current.invDate instanceof Date
-          ? current.invDate.toISOString().split('T')[0]
-          : String(current.invDate).split('T')[0],
-      },
+    const auditResult = await executeAuditedAction({
+      actionType: 'edit_expense',
+      user,
+      entityId: expenseId,
+      request: req,
+      actionMethod: 'PUT',
+      endpointPath: `/api/expenses/${expenseId}`,
+      reason: body.reason || notes || null,
+      loadOldData: async (transaction) => getExpenseSnapshot(transaction, expenseId) as unknown as Record<string, unknown> | null,
+      execute: async (transaction) => updateExpense(transaction, expenseId, {
+        expINID,
+        grandTotal: Number(grandTotal),
+        paymentMethodId,
+        notes,
+        editedByUserId: user.UserID,
+        editedByUserName: user.UserName,
+      }),
+      loadNewData: async (transaction) => getExpenseSnapshot(transaction, expenseId) as unknown as Record<string, unknown> | null,
     });
-    if (workflow.pendingApproval)
-      return NextResponse.json({ success: true, pendingApproval: true, approvalId: workflow.approvalId, message: workflow.message });
-    if (workflow.executed)
-      return NextResponse.json({ success: true, message: workflow.message });
-    
-    // Build edit history entry
-    const editEntry = {
-      editedAt: new Date().toISOString(),
-      editedBy: user.UserName,
-      userId: user.UserID,
-      changes: {
-        expINID: { old: current.ExpINID, new: expINID },
-        grandTotal: { old: current.GrandTolal, new: grandTotal },
-        paymentMethodId: { old: current.PaymentMethodID, new: paymentMethodId },
-        notes: { old: current.Notes, new: notes }
-      }
-    };
-
-    // Parse existing history or create new array
-    let editHistory: any[] = [];
-    if (current.EditHistory) {
-      try {
-        editHistory = JSON.parse(current.EditHistory);
-      } catch (e) {
-        console.error('Failed to parse EditHistory:', e);
-        editHistory = [];
-      }
-    }
-
-    // Add new edit entry
-    editHistory.push(editEntry);
-    const editHistoryJson = JSON.stringify(editHistory);
-
-    // Update the expense (preserve invDate)
-    await db.request()
-      .input('id', sql.Int, expenseId)
-      .input('expINID', sql.Int, expINID)
-      .input('grandTotal', sql.Decimal(10, 2), grandTotal)
-      .input('paymentMethodId', sql.Int, paymentMethodId)
-      .input('notes', sql.NVarChar(sql.MAX), notes || null)
-      .input('editHistory', sql.NVarChar(sql.MAX), editHistoryJson)
-      .query(`
-        UPDATE [dbo].[TblCashMove]
-        SET 
-          ExpINID = @expINID,
-          GrandTolal = @grandTotal,
-          PaymentMethodID = @paymentMethodId,
-          Notes = @notes,
-          EditHistory = @editHistory
-        WHERE ID = @id
-      `);
-
-    console.log(`[expenses] Updated expense ID=${expenseId} by ${user.UserName}`);
 
     return NextResponse.json({
       success: true,
       message: 'تم تحديث المصروف بنجاح',
-      editHistory: editHistory
+      auditId: auditResult.auditId,
+      data: auditResult.data,
     });
 
   } catch (err: unknown) {
+    if (isAuditedActionError(err)) {
+      return NextResponse.json({ error: err.message, auditId: err.failedAuditId }, { status: 500 });
+    }
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/expenses/[id]] PUT error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
@@ -163,33 +93,28 @@ export async function DELETE(
     const user = await getSession();
     if (!user) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
 
-    const db = await getPool();
+    const body = await req.json().catch(() => ({}));
+    const reason = body.reason || null;
 
-    const expense = await db.request()
-      .input('id', sql.Int, expenseId)
-      .query(`SELECT ID, GrandTolal, invDate, Notes FROM dbo.TblCashMove WHERE ID=@id AND invType=N'مصروفات'`);
-
-    if (!expense.recordset.length)
-      return NextResponse.json({ error: 'المصروف غير موجود' }, { status: 404 });
-
-    const result = await requireApprovalOrExecute({
-      userId:      user.UserID,
-      userName:    user.UserName,
-      requestType: 'delete_expense',
-      entityId:    String(expenseId),
-      actionMethod:'DELETE',
-      endpointPath:`/api/expenses/${expenseId}`,
-      oldDataLoader: async () => expense.recordset[0],
+    const auditResult = await executeAuditedAction({
+      actionType: 'delete_expense',
+      user,
+      entityId: expenseId,
+      request: req,
+      actionMethod: 'DELETE',
+      endpointPath: `/api/expenses/${expenseId}`,
+      reason,
+      loadOldData: async (transaction) => getExpenseSnapshot(transaction, expenseId) as unknown as Record<string, unknown> | null,
+      execute: async (transaction) => deleteExpense(transaction, expenseId),
+      loadNewData: async () => null,
     });
 
-    if (result.pendingApproval) {
-      return NextResponse.json({ success: true, pendingApproval: true, approvalId: result.approvalId, message: result.message });
-    }
-
-    // super_admin executed directly (actual delete done inside registry execute())
-    return NextResponse.json({ success: true, message: 'تم حذف المصروف' });
+    return NextResponse.json({ success: true, message: 'تم حذف المصروف', auditId: auditResult.auditId });
 
   } catch (err: unknown) {
+    if (isAuditedActionError(err)) {
+      return NextResponse.json({ error: err.message, auditId: err.failedAuditId }, { status: 500 });
+    }
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/expenses/[id]] DELETE error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
