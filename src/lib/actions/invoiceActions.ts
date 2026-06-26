@@ -122,35 +122,33 @@ export async function getInvoiceSnapshot(
 
   if (head.recordset.length === 0) return null;
 
-  const [details, payments, cashMoves, loyalty] = await Promise.all([
-    new sql.Request(transaction)
-      .input('invID', sql.Int, invID)
-      .query(`
-        SELECT d.ProID, d.EmpID, d.SPrice, d.SValue, d.SPriceAfterDis, d.Qty, d.Bonus, d.Notes,
-               p.ProName, e.EmpName
-        FROM dbo.TblinvServDetail d
-        LEFT JOIN dbo.TblPro p ON d.ProID = p.ProID
-        LEFT JOIN dbo.TblEmp e ON d.EmpID = e.EmpID
-        WHERE d.invID = @invID AND d.invType = N'مبيعات'
-      `),
-    new sql.Request(transaction)
-      .input('invID', sql.Int, invID)
-      .query(`
-        SELECT p.PaymentMethodID, pm.PaymentMethod AS PaymentMethodName, p.PayValue
-        FROM dbo.TblinvServPayment p
-        LEFT JOIN dbo.TblPaymentMethods pm ON p.PaymentMethodID = pm.PaymentID
-        WHERE p.invID = @invID AND p.invType = N'مبيعات' AND ISNULL(p.PayValue, 0) > 0
-      `),
-    new sql.Request(transaction)
-      .input('invID', sql.Int, invID)
-      .query(`
-        SELECT ID, PaymentMethodID, GrandTolal, inOut, Notes
-        FROM dbo.TblCashMove WHERE invID = @invID
-      `),
-    new sql.Request(transaction)
-      .input('invID', sql.Int, invID)
-      .query(`SELECT * FROM dbo.TblLoyaltyPointLedger WHERE SourceInvID = @invID`),
-  ]);
+  const details = await new sql.Request(transaction)
+    .input('invID', sql.Int, invID)
+    .query(`
+      SELECT d.ProID, d.EmpID, d.SPrice, d.SValue, d.SPriceAfterDis, d.Qty, d.Bonus, d.Notes,
+             p.ProName, e.EmpName
+      FROM dbo.TblinvServDetail d
+      LEFT JOIN dbo.TblPro p ON d.ProID = p.ProID
+      LEFT JOIN dbo.TblEmp e ON d.EmpID = e.EmpID
+      WHERE d.invID = @invID AND d.invType = N'مبيعات'
+    `);
+  const payments = await new sql.Request(transaction)
+    .input('invID', sql.Int, invID)
+    .query(`
+      SELECT p.PaymentMethodID, pm.PaymentMethod AS PaymentMethodName, p.PayValue
+      FROM dbo.TblinvServPayment p
+      LEFT JOIN dbo.TblPaymentMethods pm ON p.PaymentMethodID = pm.PaymentID
+      WHERE p.invID = @invID AND p.invType = N'مبيعات' AND ISNULL(p.PayValue, 0) > 0
+    `);
+  const cashMoves = await new sql.Request(transaction)
+    .input('invID', sql.Int, invID)
+    .query(`
+      SELECT ID, PaymentMethodID, GrandTolal, inOut, Notes
+      FROM dbo.TblCashMove WHERE invID = @invID
+    `);
+  const loyalty = await new sql.Request(transaction)
+    .input('invID', sql.Int, invID)
+    .query(`SELECT * FROM dbo.TblLoyaltyPointLedger WHERE SourceInvID = @invID`);
 
   return {
     header: head.recordset[0],
