@@ -19,7 +19,14 @@ export async function DELETE(
     if (!user) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const reason = body.reason || null;
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+
+    if (!reason) {
+      return NextResponse.json(
+        { success: false, error: 'سبب حذف المصروف مطلوب' },
+        { status: 400 }
+      );
+    }
 
     const auditResult = await executeAuditedAction({
       actionType: 'delete_expense',
@@ -42,7 +49,11 @@ export async function DELETE(
     });
   } catch (err: unknown) {
     if (isAuditedActionError(err)) {
-      return NextResponse.json({ error: err.message, auditId: err.failedAuditId }, { status: 500 });
+      const isValidation = err.message.includes('تتطلب سبباً') || err.message.includes('مطلوب');
+      return NextResponse.json(
+        { success: false, error: err.message, auditId: err.failedAuditId },
+        { status: isValidation ? 400 : 500 }
+      );
     }
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/expenses/[id]/category] DELETE error:', message);
