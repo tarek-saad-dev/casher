@@ -85,7 +85,7 @@ export interface CurrentDayShift {
 }
 
 export interface ReconciliationInput {
-  paymentMethodId: number;
+  paymentMethodId: number | null;
   systemAmount: number;
   countedAmount: number;
   notes?: string;
@@ -100,7 +100,7 @@ export interface ReconciliationRequest {
 export type VarianceStatus = 'acceptable' | 'warning' | 'critical';
 
 export interface ReconciliationVariance {
-  paymentMethodId: number;
+  paymentMethodId: number | null;
   paymentMethodName: string;
   variance: number;
   variancePercentage: number;

@@ -19,28 +19,28 @@ export default function TreasuryClosePanel({
   onClose,
   onSaved
 }: TreasuryClosePanelProps) {
-  const [countedAmounts, setCountedAmounts] = useState<{ [key: number]: string }>({});
-  const [notes, setNotes] = useState<{ [key: number]: string }>({});
+  const [countedAmounts, setCountedAmounts] = useState<{ [key: string]: string }>({});
+  const [notes, setNotes] = useState<{ [key: string]: string }>({});
   const [reason, setReason] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [variances, setVariances] = useState<{ [key: number]: number }>({});
+  const [variances, setVariances] = useState<{ [key: string]: number }>({});
 
   useEffect(() => {
     // Initialize with system amounts
-    const initial: { [key: number]: string } = {};
+    const initial: { [key: string]: string } = {};
     paymentMethods.forEach(pm => {
-      initial[pm.paymentMethodId] = pm.net.toFixed(2);
+      initial[pm.paymentMethodKey] = pm.net.toFixed(2);
     });
     setCountedAmounts(initial);
   }, [paymentMethods]);
 
   useEffect(() => {
     // Calculate variances
-    const newVariances: { [key: number]: number } = {};
+    const newVariances: { [key: string]: number } = {};
     paymentMethods.forEach(pm => {
-      const counted = parseFloat(countedAmounts[pm.paymentMethodId] || '0');
-      newVariances[pm.paymentMethodId] = counted - pm.net;
+      const counted = parseFloat(countedAmounts[pm.paymentMethodKey] || '0');
+      newVariances[pm.paymentMethodKey] = counted - pm.net;
     });
     setVariances(newVariances);
   }, [countedAmounts, paymentMethods]);
@@ -89,17 +89,17 @@ export default function TreasuryClosePanel({
     }
   };
 
-  const handleCountedAmountChange = (paymentMethodId: number, value: string) => {
+  const handleCountedAmountChange = (paymentMethodKey: string, value: string) => {
     setCountedAmounts(prev => ({
       ...prev,
-      [paymentMethodId]: value
+      [paymentMethodKey]: value
     }));
   };
 
-  const handleNotesChange = (paymentMethodId: number, value: string) => {
+  const handleNotesChange = (paymentMethodKey: string, value: string) => {
     setNotes(prev => ({
       ...prev,
-      [paymentMethodId]: value
+      [paymentMethodKey]: value
     }));
   };
 
@@ -115,8 +115,8 @@ export default function TreasuryClosePanel({
       const reconciliations: ReconciliationInput[] = paymentMethods.map(pm => ({
         paymentMethodId: pm.paymentMethodId,
         systemAmount: pm.net,
-        countedAmount: parseFloat(countedAmounts[pm.paymentMethodId] || '0'),
-        notes: notes[pm.paymentMethodId] || undefined
+        countedAmount: parseFloat(countedAmounts[pm.paymentMethodKey] || '0'),
+        notes: notes[pm.paymentMethodKey] || undefined
       }));
 
       const response = await fetch('/api/treasury/reconciliation', {
@@ -147,8 +147,8 @@ export default function TreasuryClosePanel({
   };
 
   const totalSystemAmount = paymentMethods.reduce((sum, pm) => sum + pm.net, 0);
-  const totalCountedAmount = paymentMethods.reduce((sum, pm) => 
-    sum + parseFloat(countedAmounts[pm.paymentMethodId] || '0'), 0
+  const totalCountedAmount = paymentMethods.reduce((sum, pm) =>
+    sum + parseFloat(countedAmounts[pm.paymentMethodKey] || '0'), 0
   );
   const totalVariance = totalCountedAmount - totalSystemAmount;
 
@@ -184,11 +184,11 @@ export default function TreasuryClosePanel({
 
           <div className="space-y-4">
             {paymentMethods.map((pm) => {
-              const variance = variances[pm.paymentMethodId] || 0;
-              
+              const variance = variances[pm.paymentMethodKey] || 0;
+
               return (
                 <div
-                  key={pm.paymentMethodId}
+                  key={pm.paymentMethodKey}
                   className="bg-zinc-800/40 border border-zinc-700/30 rounded-xl p-4"
                 >
                   {/* Payment Method Header */}
@@ -219,8 +219,8 @@ export default function TreasuryClosePanel({
                       <input
                         type="number"
                         step="0.01"
-                        value={countedAmounts[pm.paymentMethodId] || ''}
-                        onChange={(e) => handleCountedAmountChange(pm.paymentMethodId, e.target.value)}
+                        value={countedAmounts[pm.paymentMethodKey] || ''}
+                        onChange={(e) => handleCountedAmountChange(pm.paymentMethodKey, e.target.value)}
                         className="w-full bg-zinc-900/50 border border-zinc-700/30 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50 transition-colors"
                       />
                     </div>
@@ -252,8 +252,8 @@ export default function TreasuryClosePanel({
                     <input
                       type="text"
                       placeholder="أضف ملاحظة إذا كان هناك فرق..."
-                      value={notes[pm.paymentMethodId] || ''}
-                      onChange={(e) => handleNotesChange(pm.paymentMethodId, e.target.value)}
+                      value={notes[pm.paymentMethodKey] || ''}
+                      onChange={(e) => handleNotesChange(pm.paymentMethodKey, e.target.value)}
                       className="w-full bg-zinc-900/50 border border-zinc-700/30 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-amber-500/50 transition-colors"
                     />
                   </div>

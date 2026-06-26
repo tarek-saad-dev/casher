@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool, sql } from '@/lib/db';
+import { getPool, sql, allocateInvID } from '@/lib/db';
 import { getSession } from '@/lib/session';
 
 // GET /api/deductions — List employee deductions with optional filters
@@ -194,13 +194,8 @@ export async function POST(req: NextRequest) {
     console.log(`[deductions]   Transaction started (SERIALIZABLE)`);
 
     try {
-      // Generate invID for deductions (مصروفات)
-      const deductionInvIdResult = await new sql.Request(transaction).query(`
-        SELECT ISNULL(MAX(invID), 0) + 1 AS newInvID
-        FROM [dbo].[TblCashMove] WITH (TABLOCKX)
-        WHERE invType = N'مصروفات'
-      `);
-      const deductionInvID = deductionInvIdResult.recordset[0].newInvID;
+      // Allocate invID safely (no TABLOCKX)
+      const deductionInvID = await allocateInvID(transaction, 'TblCashMove', 'مصروفات', 5000);
 
       // Insert deduction (employee loan)
       const deductionReq = new sql.Request(transaction);
@@ -228,13 +223,8 @@ export async function POST(req: NextRequest) {
       `);
       console.log(`[deductions]   ✅ Deduction inserted: invID=${deductionInvID}, Employee=${employee.EmpName}, Amount=${amount}`);
 
-      // Generate invID for income (ايرادات)
-      const incomeInvIdResult = await new sql.Request(transaction).query(`
-        SELECT ISNULL(MAX(invID), 0) + 1 AS newInvID
-        FROM [dbo].[TblCashMove] WITH (TABLOCKX)
-        WHERE invType = N'ايرادات'
-      `);
-      const incomeInvID = incomeInvIdResult.recordset[0].newInvID;
+      // Allocate income invID safely (no TABLOCKX)
+      const incomeInvID = await allocateInvID(transaction, 'TblCashMove', 'ايرادات', 5000);
 
       // Insert corresponding income (معادلة)
       const incomeReq = new sql.Request(transaction);

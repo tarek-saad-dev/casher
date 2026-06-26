@@ -4,7 +4,7 @@
  * All operations run inside a transaction passed from the audit wrapper.
  */
 
-import { sql } from '@/lib/db';
+import { sql, allocateInvID } from '@/lib/db';
 
 export interface TreasuryTransferInput {
   amount: number;
@@ -13,6 +13,7 @@ export interface TreasuryTransferInput {
   notes?: string;
   transferDate?: string;
   userId: number;
+  requestId?: string;
 }
 
 export interface TreasuryTransferResult {
@@ -34,7 +35,7 @@ export interface CloseDayInput {
   newDay: number;
   shiftMoveId?: number;
   reconciliations: Array<{
-    paymentMethodId: number;
+    paymentMethodId: number | null;
     systemAmount: number;
     countedAmount: number;
     notes?: string;
@@ -44,7 +45,7 @@ export interface CloseDayInput {
 
 export interface CloseDayReconRow {
   id: number;
-  paymentMethodId: number;
+  paymentMethodId: number | null;
   systemAmount: number;
   countedAmount: number;
   variance: number;
@@ -72,25 +73,34 @@ function getVarianceStatus(variance: number, systemAmount: number): CloseDayReco
 }
 
 export async function getPaymentMethodBalance(
-  connection: sql.Transaction,
+  connection: sql.Transaction | sql.ConnectionPool,
   paymentMethodId: number,
-  newDay?: number,
+  options?: { newDay?: number; asOfDate?: string },
 ): Promise<number> {
   let query = `
     SELECT COALESCE(SUM(CASE WHEN inOut = N'in' THEN GrandTolal ELSE -GrandTolal END), 0) AS balance
     FROM dbo.TblCashMove
     WHERE PaymentMethodID = @pm
   `;
-  if (newDay !== undefined) {
+  if (options?.asOfDate) {
+    query += ` AND invDate < DATEADD(day, 1, CAST(@asOfDate AS DATE))`;
+  } else if (options?.newDay !== undefined) {
     query += ` AND CAST(invDate AS DATE) = (SELECT CAST(DayDate AS DATE) FROM dbo.TblNewDay WHERE ID = @day)`;
   }
-  const req = new sql.Request(connection)
-    .input('pm', sql.Int, paymentMethodId);
-  if (newDay !== undefined) {
-    req.input('day', sql.Int, newDay);
+  const req = new sql.Request(connection as any).input('pm', sql.Int, paymentMethodId);
+  if (options?.asOfDate) {
+    req.input('asOfDate', sql.Date, options.asOfDate);
+  } else if (options?.newDay !== undefined) {
+    req.input('day', sql.Int, options.newDay);
   }
   const result = await req.query(query);
   return result.recordset[0]?.balance ?? 0;
+}
+
+function throwWithStatus(message: string, statusCode: number): never {
+  const err = new Error(message) as Error & { statusCode: number };
+  err.statusCode = statusCode;
+  throw err;
 }
 
 export async function executeTreasuryTransfer(
@@ -104,7 +114,23 @@ export async function executeTreasuryTransfer(
     notes,
     transferDate,
     userId,
+    requestId = 'unknown',
   } = input;
+
+  const log = (msg: string, data?: unknown) => {
+    console.log(`[transfer:${requestId}] ${msg}`, data ?? '');
+  };
+  const logError = (msg: string, err: unknown) => {
+    console.error(`[transfer:${requestId}] ${msg}`, err);
+  };
+
+  log('Starting transfer', {
+    amount,
+    fromPaymentMethodId,
+    toPaymentMethodId,
+    transferDate: transferDate ?? 'current',
+    userId,
+  });
 
   let invDate: Date;
   let shiftMoveID: number | null = null;
@@ -112,6 +138,9 @@ export async function executeTreasuryTransfer(
 
   if (transferDate) {
     const inputDate = new Date(transferDate);
+    if (isNaN(inputDate.getTime())) {
+      throw new Error('تاريخ التحويل غير صالح');
+    }
     const today = new Date();
     today.setHours(23, 59, 59, 999);
     if (inputDate > today) {
@@ -119,6 +148,7 @@ export async function executeTreasuryTransfer(
     }
     invDate = inputDate;
     invTime = '12:00';
+    log('Historical date resolved', { invDate: invDate.toISOString().split('T')[0], invTime });
   } else {
     const dayResult = await new sql.Request(connection).query(`
       SELECT TOP 1 ID, NewDay FROM [dbo].[TblNewDay] WHERE Status = 1 ORDER BY ID DESC
@@ -128,14 +158,13 @@ export async function executeTreasuryTransfer(
     }
     const activeDay = dayResult.recordset[0];
     invDate = activeDay.NewDay;
+    log('Active business day resolved', { dayId: activeDay.ID, invDate: invDate.toISOString().split('T')[0] });
 
     const shiftResult = await new sql.Request(connection)
       .input('shiftUserID', sql.Int, userId)
       .query(`
         SELECT TOP 1 ID, ShiftID FROM [dbo].[TblShiftMove]
-        WHERE Status = 1 AND ID IN (
-          SELECT ID FROM [dbo].[TblShiftMove] WHERE Status = 1
-        )
+        WHERE Status = 1 AND UserID = @shiftUserID
         ORDER BY ID DESC
       `);
     if (shiftResult.recordset.length === 0) {
@@ -143,9 +172,14 @@ export async function executeTreasuryTransfer(
     }
     const activeShift = shiftResult.recordset[0];
     shiftMoveID = activeShift.ID;
+    log('Active shift resolved', { shiftMoveID, shiftId: activeShift.ShiftID });
 
     const now = new Date();
     invTime = `${String(now.getHours()).padStart(2, '0')}.${String(now.getMinutes()).padStart(2, '0')}`;
+  }
+
+  if (fromPaymentMethodId === toPaymentMethodId) {
+    throwWithStatus('يجب اختيار طرق دفع مختلفة', 400);
   }
 
   // Validate payment methods exist
@@ -157,36 +191,66 @@ export async function executeTreasuryTransfer(
       WHERE PaymentID IN (@fromPmId, @toPmId)
     `);
   if (pmCheck.recordset.length !== 2) {
-    throw new Error('إحدى طرق الدفع غير موجودة');
+    throwWithStatus('إحدى طرق الدفع غير موجودة', 404);
   }
 
   const fromPm = pmCheck.recordset.find((pm) => pm.PaymentID === fromPaymentMethodId);
   const toPm = pmCheck.recordset.find((pm) => pm.PaymentID === toPaymentMethodId);
+
+  // Data integrity: names must exist after validation
+  if (!fromPm?.PaymentMethod || typeof fromPm.PaymentMethod !== 'string' || fromPm.PaymentMethod.trim().length === 0) {
+    logError('Data integrity error: missing source payment method name', { fromPm });
+    throw new Error('بيانات طريقة الدفع المصدر غير مكتملة');
+  }
+  if (!toPm?.PaymentMethod || typeof toPm.PaymentMethod !== 'string' || toPm.PaymentMethod.trim().length === 0) {
+    logError('Data integrity error: missing destination payment method name', { toPm });
+    throw new Error('بيانات طريقة الدفع الهدف غير مكتملة');
+  }
+
+  log('Payment methods resolved', { from: fromPm.PaymentMethod, to: toPm.PaymentMethod });
+
+  // Balance check: ensure source has enough funds as of the transfer date
+  const balanceOpts = transferDate ? { asOfDate: transferDate } : undefined;
+  const fromBalance = await getPaymentMethodBalance(connection, fromPaymentMethodId, balanceOpts);
+  log('Source balance checked', { fromBalance, amount, asOfDate: transferDate ?? 'all-time' });
+  if (fromBalance < amount) {
+    throwWithStatus('رصيد طريقة الدفع المصدر غير كافٍ', 409);
+  }
 
   // Get or create transfer categories
   let transferIncomeCategory: number;
   let transferExpenseCategory: number;
 
   if (transferDate) {
+    // Historical transfer: find existing categories (TblExpINCat has no IsActive column)
     const incomeCatRes = await new sql.Request(connection).query(`
       SELECT TOP 1 ExpINID FROM dbo.TblExpINCat
-      WHERE ExpINType = N'ايرادات' AND (CatName LIKE N'%تحويل%' OR IsActive = 1)
-      ORDER BY CASE WHEN CatName LIKE N'%تحويل%' THEN 0 ELSE 1 END, ExpINID
+      WHERE ExpINType = N'ايرادات' AND CatName LIKE N'%تحويل%'
+      ORDER BY ExpINID
     `);
-    if (incomeCatRes.recordset.length === 0) throw new Error('لا توجد تصنيفات إيرادات صالحة للتحويل');
+    if (incomeCatRes.recordset.length === 0) {
+      logError('Missing transfer income category in TblExpINCat', { ExpINType: 'ايرادات', pattern: '%تحويل%' });
+      throw new Error('لا توجد تصنيفات إيرادات صالحة للتحويل');
+    }
     transferIncomeCategory = incomeCatRes.recordset[0].ExpINID;
+    log('Historical income category resolved', { transferIncomeCategory });
 
     const expenseCatRes = await new sql.Request(connection).query(`
       SELECT TOP 1 ExpINID FROM dbo.TblExpINCat
-      WHERE ExpINType = N'مصروفات' AND IsActive = 1
+      WHERE ExpINType = N'مصروفات' AND CatName LIKE N'%تحويل%'
       ORDER BY ExpINID
     `);
-    if (expenseCatRes.recordset.length === 0) throw new Error('لا توجد تصنيفات مصروفات صالحة للتحويل');
+    if (expenseCatRes.recordset.length === 0) {
+      logError('Missing transfer expense category in TblExpINCat', { ExpINType: 'مصروفات', pattern: '%تحويل%' });
+      throw new Error('لا توجد تصنيفات مصروفات صالحة للتحويل');
+    }
     transferExpenseCategory = expenseCatRes.recordset[0].ExpINID;
+    log('Historical expense category resolved', { transferExpenseCategory });
   } else {
     let expCatResult = await new sql.Request(connection).query(`
       SELECT TOP 1 ExpINID FROM [dbo].[TblExpINCat]
       WHERE ExpINType = N'مصروفات' AND CatName LIKE N'%تحويل%'
+      ORDER BY ExpINID
     `);
     if (expCatResult.recordset.length === 0) {
       const insertCat = await new sql.Request(connection).query(`
@@ -195,6 +259,7 @@ export async function executeTreasuryTransfer(
         VALUES (N'تحويل بين طرق الدفع', N'مصروفات')
       `);
       transferExpenseCategory = insertCat.recordset[0].ExpINID;
+      log('Created expense transfer category', { transferExpenseCategory });
     } else {
       transferExpenseCategory = expCatResult.recordset[0].ExpINID;
     }
@@ -202,6 +267,7 @@ export async function executeTreasuryTransfer(
     let incCatResult = await new sql.Request(connection).query(`
       SELECT TOP 1 ExpINID FROM [dbo].[TblExpINCat]
       WHERE ExpINType = N'ايرادات' AND CatName LIKE N'%تحويل%'
+      ORDER BY ExpINID
     `);
     if (incCatResult.recordset.length === 0) {
       const insertCat = await new sql.Request(connection).query(`
@@ -210,6 +276,7 @@ export async function executeTreasuryTransfer(
         VALUES (N'تحويل بين طرق الدفع', N'ايرادات')
       `);
       transferIncomeCategory = insertCat.recordset[0].ExpINID;
+      log('Created income transfer category', { transferIncomeCategory });
     } else {
       transferIncomeCategory = incCatResult.recordset[0].ExpINID;
     }
@@ -217,20 +284,14 @@ export async function executeTreasuryTransfer(
 
   const transferAmount = Number(amount);
   const transferNotes =
-    notes?.trim() || `تحويل من ${fromPm?.PaymentMethod} إلى ${toPm?.PaymentMethod}`;
+    notes?.trim() || `تحويل من ${fromPm.PaymentMethod} إلى ${toPm.PaymentMethod}`;
 
-  // Generate invIDs
-  const expenseInvIdResult = await new sql.Request(connection).query(`
-    SELECT ISNULL(MAX(invID), 0) + 1 AS newInvID FROM [dbo].[TblCashMove] WITH (NOLOCK)
-    WHERE invType = N'مصروفات'
-  `);
-  const expenseInvID = expenseInvIdResult.recordset[0].newInvID;
+  // Allocate invIDs safely using application locks (no TABLOCKX)
+  const expenseInvID = await allocateInvID(connection as sql.Transaction, 'TblCashMove', 'مصروفات', 5000);
+  log('Generated expense invID', { expenseInvID });
 
-  const incomeInvIdResult = await new sql.Request(connection).query(`
-    SELECT ISNULL(MAX(invID), 0) + 1 AS newInvID FROM [dbo].[TblCashMove] WITH (NOLOCK)
-    WHERE invType = N'ايرادات'
-  `);
-  const incomeInvID = incomeInvIdResult.recordset[0].newInvID;
+  const incomeInvID = await allocateInvID(connection as sql.Transaction, 'TblCashMove', 'ايرادات', 5000);
+  log('Generated income invID', { incomeInvID });
 
   // Create expense record
   const expenseReq = new sql.Request(connection)
@@ -241,21 +302,28 @@ export async function executeTreasuryTransfer(
     .input('ClientID', sql.Int, null)
     .input('expINID', sql.Int, transferExpenseCategory)
     .input('amount', sql.Decimal(10, 2), transferAmount)
-    .input('inOut', sql.NVarChar(10), 'out')
+    .input('inOut', sql.NVarChar(5), 'out')
     .input('notes', sql.NVarChar(sql.MAX), transferDate
-      ? `تحويل إلى ${toPm?.PaymentMethod}: ${transferNotes}`
-      : `${transferNotes} (تحويل إلى ${toPm?.PaymentMethod})`)
+      ? `تحويل إلى ${toPm.PaymentMethod}: ${transferNotes}`
+      : `${transferNotes} (تحويل إلى ${toPm.PaymentMethod})`)
     .input('shiftMoveID', sql.Int, shiftMoveID)
     .input('paymentMethodID', sql.Int, fromPaymentMethodId);
 
-  const expInsert = await expenseReq.query(`
-    INSERT INTO [dbo].[TblCashMove]
-      (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID)
-    OUTPUT INSERTED.ID
-    VALUES
-      (@invID, @invType, @invDate, @invTime, @ClientID, @expINID, @amount, @inOut, @notes, @shiftMoveID, @paymentMethodID)
-  `);
-  const expenseId = expInsert.recordset[0].ID;
+  let expenseId: number;
+  try {
+    const expInsert = await expenseReq.query(`
+      INSERT INTO [dbo].[TblCashMove]
+        (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID)
+      OUTPUT INSERTED.ID
+      VALUES
+        (@invID, @invType, @invDate, @invTime, @ClientID, @expINID, @amount, @inOut, @notes, @shiftMoveID, @paymentMethodID)
+    `);
+    expenseId = expInsert.recordset[0].ID;
+    log('Expense record inserted', { expenseId, expenseInvID });
+  } catch (err) {
+    logError('Failed to insert expense record', err);
+    throw new Error('فشل إنشاء سجل المصروف');
+  }
 
   // Create income record
   const incomeReq = new sql.Request(connection)
@@ -266,21 +334,30 @@ export async function executeTreasuryTransfer(
     .input('ClientID', sql.Int, null)
     .input('expINID', sql.Int, transferIncomeCategory)
     .input('amount', sql.Decimal(10, 2), transferAmount)
-    .input('inOut', sql.NVarChar(10), 'in')
+    .input('inOut', sql.NVarChar(5), 'in')
     .input('notes', sql.NVarChar(sql.MAX), transferDate
-      ? `تحويل من ${fromPm?.PaymentMethod}: ${transferNotes}`
-      : `${transferNotes} (تحويل من ${fromPm?.PaymentMethod})`)
+      ? `تحويل من ${fromPm.PaymentMethod}: ${transferNotes}`
+      : `${transferNotes} (تحويل من ${fromPm.PaymentMethod})`)
     .input('shiftMoveID', sql.Int, shiftMoveID)
     .input('paymentMethodID', sql.Int, toPaymentMethodId);
 
-  const incInsert = await incomeReq.query(`
-    INSERT INTO [dbo].[TblCashMove]
-      (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID)
-    OUTPUT INSERTED.ID
-    VALUES
-      (@invID, @invType, @invDate, @invTime, @ClientID, @expINID, @amount, @inOut, @notes, @shiftMoveID, @paymentMethodID)
-  `);
-  const incomeId = incInsert.recordset[0].ID;
+  let incomeId: number;
+  try {
+    const incInsert = await incomeReq.query(`
+      INSERT INTO [dbo].[TblCashMove]
+        (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID)
+      OUTPUT INSERTED.ID
+      VALUES
+        (@invID, @invType, @invDate, @invTime, @ClientID, @expINID, @amount, @inOut, @notes, @shiftMoveID, @paymentMethodID)
+    `);
+    incomeId = incInsert.recordset[0].ID;
+    log('Income record inserted', { incomeId, incomeInvID });
+  } catch (err) {
+    logError('Failed to insert income record', err);
+    throw new Error('فشل إنشاء سجل الإيراد');
+  }
+
+  log('Transfer completed successfully', { expenseId, incomeId });
 
   return {
     expenseId,
@@ -290,8 +367,8 @@ export async function executeTreasuryTransfer(
     amount: transferAmount,
     fromPaymentMethodId: fromPaymentMethodId,
     toPaymentMethodId: toPaymentMethodId,
-    fromPaymentMethod: fromPm?.PaymentMethod,
-    toPaymentMethod: toPm?.PaymentMethod,
+    fromPaymentMethod: fromPm.PaymentMethod,
+    toPaymentMethod: toPm.PaymentMethod,
     notes: transferNotes,
     transferDate: transferDate || invDate,
     shiftMoveId: shiftMoveID,

@@ -299,19 +299,32 @@ export async function executeAuditedAction<T>(options: AuditExecutionOptions<T>)
       failedAuditId = -1;
     }
 
+    // Log full SQL error details server-side before sanitizing public message
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    const sqlDetails = (error as any)?.number !== undefined
+      ? { number: (error as any).number, state: (error as any).state, class: (error as any).class, lineNumber: (error as any).lineNumber, procName: (error as any).procName }
+      : undefined;
+    console.error(`[executeAuditedAction] Raw error before sanitization: ${rawMessage}`, sqlDetails);
+
+    const statusCode =
+      typeof (error as any)?.statusCode === 'number' ? (error as any).statusCode : 500;
+
     throw new AuditedActionError(
       sanitizePublicError(error),
       failedAuditId,
+      statusCode,
     );
   }
 }
 
 export class AuditedActionError extends Error {
   failedAuditId: number;
+  statusCode: number;
 
-  constructor(message: string, failedAuditId: number) {
+  constructor(message: string, failedAuditId: number, statusCode: number = 500) {
     super(message);
     this.failedAuditId = failedAuditId;
+    this.statusCode = statusCode;
   }
 }
 

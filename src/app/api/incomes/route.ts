@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool, sql } from '@/lib/db';
+import { getPool, sql, allocateInvID } from '@/lib/db';
 import { getSession } from '@/lib/session';
 
 // ─────────────────────── GET /api/incomes ───────────────────────
@@ -223,13 +223,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'طريقة الدفع غير موجودة' }, { status: 400 });
       }
 
-      // 4. Generate next invID
-      const invIdRes = await new sql.Request(transaction).query(`
-        SELECT ISNULL(MAX(invID), 0) + 1 AS NextInvID
-        FROM dbo.TblCashMove WITH (UPDLOCK, HOLDLOCK)
-        WHERE invType = N'ايرادات'
-      `);
-      const nextInvID = invIdRes.recordset[0].NextInvID;
+      // 4. Allocate next invID safely (no UPDLOCK/HOLDLOCK)
+      const nextInvID = await allocateInvID(transaction, 'TblCashMove', 'ايرادات', 5000);
 
       // 5. Insert
       const insertReq = new sql.Request(transaction)

@@ -1,4 +1,4 @@
-import { sql } from "@/lib/db";
+import { sql, allocateInvID } from "@/lib/db";
 import type { Transaction } from "mssql";
 
 export interface PaymentTransferParams {
@@ -33,20 +33,9 @@ export interface PaymentTransferParams {
 export async function insertPaymentTransferPair(
   p: PaymentTransferParams,
 ): Promise<{ expenseId: number; incomeId: number }> {
-  // Generate sequential invIDs for the two cash-move rows using TABLOCKX
-  const expInvIdRes = await new sql.Request(p.transaction).query(`
-    SELECT ISNULL(MAX(invID), 0) + 1 AS newInvID
-    FROM [dbo].[TblCashMove] WITH (TABLOCKX)
-    WHERE invType = N'مصروفات'
-  `);
-  const expenseInvID: number = expInvIdRes.recordset[0].newInvID;
-
-  const incInvIdRes = await new sql.Request(p.transaction).query(`
-    SELECT ISNULL(MAX(invID), 0) + 1 AS newInvID
-    FROM [dbo].[TblCashMove] WITH (TABLOCKX)
-    WHERE invType = N'ايرادات'
-  `);
-  const incomeInvID: number = incInvIdRes.recordset[0].newInvID;
+  // Allocate invIDs safely using application locks (no TABLOCKX)
+  const expenseInvID = await allocateInvID(p.transaction as sql.Transaction, 'TblCashMove', 'مصروفات', 5000);
+  const incomeInvID = await allocateInvID(p.transaction as sql.Transaction, 'TblCashMove', 'ايرادات', 5000);
 
   // 1. Expense (out) — money leaves the source method
   const expReq = new sql.Request(p.transaction);
