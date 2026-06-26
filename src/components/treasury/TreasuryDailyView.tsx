@@ -62,7 +62,7 @@ export default function TreasuryDailyView({
   const [movementsPage,       setMovementsPage]       = useState(1);
 
   const [detailsModal, setDetailsModal] = useState<{
-    paymentMethodId: number;
+    paymentMethodKey: string;
     paymentMethodName: string;
   } | null>(null);
 
@@ -304,7 +304,7 @@ export default function TreasuryDailyView({
             <PaymentMethodBreakdownTable
               paymentMethods={treasuryData.paymentMethods}
               loading={loading}
-              onViewDetails={(id, name) => setDetailsModal({ paymentMethodId: id, paymentMethodName: name })}
+              onViewDetails={(key, name) => setDetailsModal({ paymentMethodKey: key, paymentMethodName: name })}
             />
 
             {movementsData && (
@@ -338,7 +338,7 @@ export default function TreasuryDailyView({
 
       {detailsModal && (
         <PaymentMethodDetailsModal
-          paymentMethodId={detailsModal.paymentMethodId}
+          paymentMethodKey={detailsModal.paymentMethodKey}
           paymentMethodName={detailsModal.paymentMethodName}
           filters={filters}
           onClose={() => setDetailsModal(null)}

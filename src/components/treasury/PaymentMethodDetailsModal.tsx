@@ -10,7 +10,7 @@ import { getMovementTypeLabel, getMovementTypeSearchText } from '@/lib/treasury'
 import DeleteInvoiceDialog, { type DeleteInvoiceTarget } from '@/components/sales/DeleteInvoiceDialog';
 
 interface Props {
-  paymentMethodId: number;
+  paymentMethodKey: string; // 'unassigned' for NULL PaymentMethodID, else String(paymentMethodId)
   paymentMethodName: string;
   filters: {
     newDay: number | null;
@@ -26,7 +26,7 @@ interface Props {
 type DirectionFilter = 'all' | 'in' | 'out';
 
 export default function PaymentMethodDetailsModal({
-  paymentMethodId,
+  paymentMethodKey,
   paymentMethodName,
   filters,
   onClose,
@@ -45,7 +45,7 @@ export default function PaymentMethodDetailsModal({
     setError(null);
     try {
       const p = new URLSearchParams();
-      p.set('paymentMethodId', paymentMethodId.toString());
+      p.set('paymentMethodKey', paymentMethodKey);
       p.set('pageSize', '500');
       if (filters.newDay !== null)     p.set('newDay',       filters.newDay.toString());
       if (filters.dateFrom)            p.set('dateFrom',     filters.dateFrom);
@@ -62,7 +62,7 @@ export default function PaymentMethodDetailsModal({
     } finally {
       setLoading(false);
     }
-  }, [paymentMethodId, filters]);
+  }, [paymentMethodKey, filters]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -83,7 +83,7 @@ export default function PaymentMethodDetailsModal({
         (m.notes    ?? '').toLowerCase().includes(q) ||
         getMovementTypeSearchText(m).includes(q) ||
         (m.userName ?? '').toLowerCase().includes(q) ||
-        String(m.invId).includes(q)
+        String(m.invId ?? '').includes(q)
       );
     }
     return list;
@@ -306,10 +306,10 @@ export default function PaymentMethodDetailsModal({
                         </td>
                         {canDelete && (
                           <td className="px-3 py-2 text-center whitespace-nowrap">
-                            {m.invType === 'مبيعات' && (
+                            {m.invType === 'مبيعات' && m.invId != null && (
                               <button
-                                onClick={() => handleDelete(m.invId, m.invType)}
-                                disabled={deletingId === m.invId}
+                                onClick={() => handleDelete(m.invId!, m.invType ?? '')}
+                                disabled={m.invId != null && deletingId === m.invId}
                                 className="p-1.5 hover:bg-rose-500/20 rounded-lg transition-colors text-zinc-500 hover:text-rose-400 disabled:opacity-50"
                                 title="مسح الفاتورة"
                               >

@@ -6,7 +6,7 @@ import type { PaymentMethodBreakdown } from '@/lib/types/treasury';
 interface PaymentMethodBreakdownTableProps {
   paymentMethods: PaymentMethodBreakdown[];
   loading?: boolean;
-  onViewDetails?: (id: number, name: string) => void;
+  onViewDetails?: (key: string, name: string) => void;
 }
 
 export default function PaymentMethodBreakdownTable({ 
@@ -88,7 +88,7 @@ export default function PaymentMethodBreakdownTable({
       <div className="space-y-3">
         {paymentMethods.map((pm) => (
           <div
-            key={pm.paymentMethodId}
+            key={pm.paymentMethodKey}
             className="bg-zinc-800/40 border border-zinc-700/30 rounded-xl p-4 hover:border-zinc-700/50 transition-all duration-300"
           >
             {/* Header */}
@@ -121,7 +121,7 @@ export default function PaymentMethodBreakdownTable({
                 {/* Details button */}
                 {onViewDetails && (
                   <button
-                    onClick={() => onViewDetails(pm.paymentMethodId, pm.paymentMethodName ?? 'طريقة دفع غير محددة')}
+                    onClick={() => onViewDetails(pm.paymentMethodKey, pm.paymentMethodName ?? 'طريقة دفع غير محددة')}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-600/50 bg-zinc-700/40 hover:bg-zinc-700/70 text-zinc-300 hover:text-white text-xs font-medium transition-colors"
                   >
                     <List className="h-3.5 w-3.5" />
