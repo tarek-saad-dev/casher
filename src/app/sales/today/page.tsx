@@ -279,25 +279,9 @@ export default function TodaySalesPage() {
                     // Navigate to POS with invoice data for editing
                     window.location.href = `/income/pos?edit=${txn.invId}`;
                   }}
-                  onDelete={async (invId) => {
-                    const reason = window.prompt('سبب حذف الفاتورة (مطلوب):');
-                    if (reason === null) return;
-                    if (!reason.trim()) {
-                      addToast('error', 'يجب إدخال سبب للحذف');
-                      return;
-                    }
-                    const res = await fetch(`/api/sales/${invId}`, {
-                      method: 'DELETE',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ reason: reason.trim() }),
-                    });
-                    const data = await res.json();
-                    if (!res.ok || !data.success) {
-                      addToast('error', data.error || 'فشل حذف الفاتورة');
-                    } else {
-                      addToast('success', 'تم حذف الفاتورة بنجاح');
-                      loadSalesData();
-                    }
+                  onDelete={(invId) => {
+                    addToast('success', `تم حذف الفاتورة #${invId} بنجاح`);
+                    loadSalesData();
                   }}
                   canEdit={canDelete}
                 />

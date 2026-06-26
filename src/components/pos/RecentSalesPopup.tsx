@@ -10,6 +10,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
+import DeleteInvoiceDialog, { type DeleteInvoiceTarget } from '@/components/sales/DeleteInvoiceDialog';
 
 interface RecentSale {
   InvID: number;
@@ -45,6 +46,7 @@ export default function RecentSalesPopup({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isVisible, setIsVisible] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteInvoiceTarget | null>(null);
 
   const loadRecentSales = async () => {
     setLoading(true);
@@ -58,8 +60,8 @@ export default function RecentSalesPopup({
       }
       
       setSales(Array.isArray(data) ? data : []);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'خطأ غير متوقع');
     } finally {
       setLoading(false);
     }
@@ -76,28 +78,8 @@ export default function RecentSalesPopup({
     return () => clearTimeout(timer);
   }, []);
 
-  const handleDelete = async (saleId: number) => {
-    if (!confirm('هل أنت متأكد من حذف هذه العملية؟ هذا الإجراء لا يمكن التراجع عنه.')) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/sales/${saleId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'فشل حذف العملية');
-      }
-
-      // Refresh the sales list
-      await loadRecentSales();
-      onRefresh?.();
-    } catch (e: any) {
-      setError(e.message);
-      setTimeout(() => setError(''), 3000);
-    }
+  const handleDelete = (saleId: number, invNo: number) => {
+    setDeleteTarget({ invId: saleId, invNo });
   };
 
   const formatDate = (dateString: string) => {
@@ -183,7 +165,7 @@ export default function RecentSalesPopup({
                     تعديل
                   </DropdownMenuItem>
                   <DropdownMenuItem 
-                    onClick={() => handleDelete(sale.InvID)}
+                    onClick={() => handleDelete(sale.InvID, sale.InvNo)}
                     className="text-rose-400 hover:bg-rose-500/10 text-xs"
                   >
                     <Trash2 className="w-3 h-3 ml-1" />
@@ -202,6 +184,16 @@ export default function RecentSalesPopup({
           {error}
         </div>
       )}
+
+      <DeleteInvoiceDialog
+        target={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onSuccess={async () => {
+          setDeleteTarget(null);
+          await loadRecentSales();
+          onRefresh?.();
+        }}
+      />
 
       {/* Add custom animation styles */}
       <style jsx>{`
