@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool, getUserFriendlyError, sql } from "@/lib/db";
+import { getPool, getUserFriendlyError, sql, allocateInvID } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import type { CreateSalePayload } from "@/lib/types";
 import { resolveSplitPaymentConfig } from "@/lib/clearingMethod";
@@ -178,13 +178,8 @@ export async function POST(req: NextRequest) {
     console.log(`[pos-api]   Transaction started (SERIALIZABLE)`);
 
     try {
-      // ──── 1. Generate safe invID with TABLOCKX ────
-      const invIdResult = await new sql.Request(transaction).query(`
-        SELECT ISNULL(MAX(invID), 0) + 1 AS newInvID
-        FROM [dbo].[TblinvServHead] WITH (TABLOCKX)
-        WHERE invType = N'مبيعات'
-      `);
-      const newInvID = invIdResult.recordset[0].newInvID;
+      // ──── 1. Allocate invID safely (no TABLOCKX) ────
+      const newInvID = await allocateInvID(transaction, 'TblinvServHead', 'مبيعات', 5000);
       console.log(`[pos-api]   Generated invID=${newInvID} for invType=مبيعات`);
 
       // ──── 2. Insert TblinvServHead ────

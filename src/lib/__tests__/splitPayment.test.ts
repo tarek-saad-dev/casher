@@ -110,6 +110,11 @@ vi.mock("@/lib/db", () => {
   return {
     sql,
     getPool: vi.fn(),
+    allocateInvID: vi.fn(async () => {
+      const id = nextMockId;
+      nextMockId++;
+      return id;
+    }),
   };
 });
 

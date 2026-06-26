@@ -3,6 +3,7 @@ import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
 import { getInvoiceSnapshot, updateInvoice, deleteInvoice } from '@/lib/actions/invoiceActions';
+import type { InvoiceItemInput } from '@/lib/actions/invoiceActions';
 
 // GET /api/sales/[id] — Get sale by invID for printing
 export async function GET(
@@ -129,7 +130,7 @@ export async function PUT(
         payVisa: body.payVisa,
         paymentMethodId: body.paymentMethodId,
         notes: body.notes,
-        items: body.items.map((item: any) => ({
+        items: body.items.map((item: InvoiceItemInput) => ({
           proId: item.proId,
           empId: item.empId,
           serviceId: item.serviceId,
@@ -195,7 +196,14 @@ export async function DELETE(
     if (isNaN(invID)) return NextResponse.json({ error: 'Invalid invID' }, { status: 400 });
 
     const body = await req.json().catch(() => ({}));
-    const reason = body.reason || null;
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+
+    if (!reason) {
+      return NextResponse.json(
+        { success: false, error: 'سبب مسح فاتورة المبيعات مطلوب' },
+        { status: 400 },
+      );
+    }
 
     const auditResult = await executeAuditedAction({
       actionType: 'delete_invoice',
@@ -218,7 +226,11 @@ export async function DELETE(
 
   } catch (err: unknown) {
     if (isAuditedActionError(err)) {
-      return NextResponse.json({ error: err.message, auditId: err.failedAuditId }, { status: 500 });
+      const isValidation = err.message.includes('تتطلب سبباً') || err.message.includes('مطلوب');
+      return NextResponse.json(
+        { success: false, error: err.message, auditId: err.failedAuditId },
+        { status: isValidation ? 400 : 500 },
+      );
     }
     const msg = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });

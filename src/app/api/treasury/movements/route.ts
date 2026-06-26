@@ -30,8 +30,17 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId') ? parseInt(searchParams.get('userId')!) : null;
     const page = searchParams.get('page') ? parseInt(searchParams.get('page')!) : 1;
     const pageSize = searchParams.get('pageSize') ? parseInt(searchParams.get('pageSize')!) : 50;
-    const paymentMethodId = searchParams.get('paymentMethodId') ? parseInt(searchParams.get('paymentMethodId')!) : null;
-    
+    // paymentMethodKey is the stable identifier: 'unassigned' for NULL PaymentMethodID,
+    // or a numeric string for a real payment method.
+    const paymentMethodKeyParam = searchParams.get('paymentMethodKey') ?? searchParams.get('paymentMethodId');
+    const isUnassigned = paymentMethodKeyParam === 'unassigned';
+    const paymentMethodId =
+      !isUnassigned && paymentMethodKeyParam != null
+        ? parseInt(paymentMethodKeyParam, 10)
+        : null;
+    // Fall back: if parseInt produced NaN treat as no filter
+    const hasPaymentFilter = isUnassigned || (paymentMethodId !== null && !isNaN(paymentMethodId));
+
     // Build WHERE clause
     let whereConditions: string[] = ['1=1'];
     const params: any = {};
@@ -63,9 +72,14 @@ export async function GET(request: NextRequest) {
       params.userId = userId;
     }
 
-    if (paymentMethodId !== null) {
-      whereConditions.push('cm.PaymentMethodID = @paymentMethodId');
-      params.paymentMethodId = paymentMethodId;
+    if (hasPaymentFilter) {
+      if (isUnassigned) {
+        // Return rows where PaymentMethodID is NULL or has no matching payment method
+        whereConditions.push('cm.PaymentMethodID IS NULL');
+      } else {
+        whereConditions.push('cm.PaymentMethodID = @paymentMethodId');
+        params.paymentMethodId = paymentMethodId;
+      }
     }
     
     const whereClause = whereConditions.join(' AND ');
@@ -102,7 +116,7 @@ export async function GET(request: NextRequest) {
         cm.invDate,
         cm.invTime,
         cm.PaymentMethodID,
-        ISNULL(pm.PaymentMethod, N'\u0637\u0631\u064a\u0642\u0629 \u062f\u0641\u0639 \u063a\u064a\u0631 \u0645\u062d\u062f\u062f\u0629') AS PaymentMethod,
+        COALESCE(NULLIF(LTRIM(RTRIM(pm.PaymentMethod)), N''), N'\u0637\u0631\u064a\u0642\u0629 \u062f\u0641\u0639 \u063a\u064a\u0631 \u0645\u062d\u062f\u062f\u0629') AS PaymentMethod,
         cm.inOut,
         cm.GrandTolal AS Amount,
         cm.ShiftMoveID,
@@ -138,12 +152,12 @@ export async function GET(request: NextRequest) {
     
     const movements: TreasuryMovement[] = movementsResult.recordset.map((row: any) => ({
       id: row.ID,
-      invId: row.invID,
-      invType: row.invType,
+      invId: row.invID ?? null,
+      invType: row.invType ?? null,
       invDate: row.invDate,
       invTime: row.invTime,
-      paymentMethodId: row.PaymentMethodID,
-      paymentMethodName: row.PaymentMethod,
+      paymentMethodId: row.PaymentMethodID ?? null,
+      paymentMethodName: row.PaymentMethod ?? null,
       inOut: row.inOut,
       amount: row.Amount,
       shiftMoveId: row.ShiftMoveID,

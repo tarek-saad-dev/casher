@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool, sql } from '@/lib/db';
+import { getPool, sql, allocateInvID } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { requireRole, isAuthResult } from '@/lib/api-auth';
 
@@ -55,13 +55,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'طريقة الدفع غير موجودة' }, { status: 400 });
       }
 
-      // 3. Generate next invID for the past date
-      const invIdRes = await new sql.Request(transaction).query(`
-        SELECT ISNULL(MAX(invID), 0) + 1 AS NextInvID
-        FROM dbo.TblCashMove WITH (UPDLOCK, HOLDLOCK)
-        WHERE invType = N'ايرادات'
-      `);
-      const nextInvID = invIdRes.recordset[0].NextInvID;
+      // 3. Allocate next invID safely (no UPDLOCK/HOLDLOCK)
+      const nextInvID = await allocateInvID(transaction, 'TblCashMove', 'ايرادات', 5000);
 
       // 4. Insert the income record for past date
       const insertReq = new sql.Request(transaction)

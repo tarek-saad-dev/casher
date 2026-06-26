@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool, sql } from '@/lib/db';
+import { getPool, sql, allocateInvID } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import type { CreateExpensePayload } from '@/lib/types';
+import { randomUUID } from 'crypto';
 
 // GET /api/expenses — List expenses with optional filters
 export async function GET(req: NextRequest) {
@@ -80,43 +81,63 @@ export async function GET(req: NextRequest) {
 
 // POST /api/expenses — Create a new expense (single TblCashMove row)
 export async function POST(req: NextRequest) {
+  const requestId = randomUUID();
+  const startTime = Date.now();
+  const log = (step: string, data?: unknown) => {
+    console.info('[expenses]', {
+      requestId,
+      step,
+      elapsedMs: Date.now() - startTime,
+      ...(data ? { data } : {}),
+    });
+  };
+
   try {
     const body: CreateExpensePayload = await req.json();
+    log('request-received', { amount: body.amount, expINID: body.expINID, paymentMethodId: body.paymentMethodId });
 
-    // ──── Validation ────
+    // ──── Validation (read-only, before transaction) ────
     if (!body.expINID || body.expINID <= 0) {
+      log('validation-failed', { field: 'expINID', reason: 'missing or non-positive' });
       return NextResponse.json({ error: 'يجب اختيار فئة المصروف' }, { status: 400 });
     }
     if (!body.amount || body.amount <= 0) {
+      log('validation-failed', { field: 'amount', reason: 'missing or non-positive' });
       return NextResponse.json({ error: 'يجب إدخال مبلغ صحيح أكبر من صفر' }, { status: 400 });
     }
     if (!body.paymentMethodId) {
+      log('validation-failed', { field: 'paymentMethodId', reason: 'missing' });
       return NextResponse.json({ error: 'يجب اختيار طريقة الدفع' }, { status: 400 });
     }
 
     // ──── Session enforcement ────
     const sessionUser = await getSession();
     if (!sessionUser) {
+      log('auth-failed', { reason: 'no session' });
       return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
     }
     const userID = sessionUser.UserID;
+    log('session-ok', { userID });
 
     const db = await getPool();
-    console.log(`[expenses] ──── SAVE EXPENSE START ──── UserID=${userID}`);
+    log('db-connected');
 
     // ──── Enforce active business day ────
+    log('before-active-day-lookup');
     const dayResult = await db.request().query(`
       SELECT TOP 1 ID, NewDay FROM [dbo].[TblNewDay] WHERE Status = 1 ORDER BY ID DESC
     `);
+    log('after-active-day-lookup');
     if (dayResult.recordset.length === 0) {
-      console.error(`[expenses]   ❌ REJECTED: no active business day`);
+      log('rejected', { reason: 'no active business day' });
       return NextResponse.json({ error: 'لا يوجد يوم عمل مفتوح — لا يمكن تسجيل مصروف' }, { status: 400 });
     }
     const activeDay = dayResult.recordset[0];
     const invDate = activeDay.NewDay;
-    console.log(`[expenses]   Active Day: ID=${activeDay.ID}, NewDay=${invDate}`);
+    log('active-day-resolved', { dayId: activeDay.ID, invDate });
 
     // ──── Enforce active shift for THIS user ────
+    log('before-active-shift-lookup');
     const shiftResult = await db.request()
       .input('shiftUserID', sql.Int, userID)
       .query(`
@@ -124,25 +145,30 @@ export async function POST(req: NextRequest) {
         WHERE Status = 1 AND UserID = @shiftUserID
         ORDER BY ID DESC
       `);
+    log('after-active-shift-lookup');
     if (shiftResult.recordset.length === 0) {
-      console.error(`[expenses]   ❌ REJECTED: no active shift for UserID=${userID}`);
+      log('rejected', { reason: 'no active shift for user', userID });
       return NextResponse.json({ error: 'لا يوجد وردية مفتوحة لهذا المستخدم — لا يمكن تسجيل مصروف' }, { status: 400 });
     }
     const activeShift = shiftResult.recordset[0];
     const shiftMoveID = activeShift.ID;
-    console.log(`[expenses]   Active Shift: ID=${shiftMoveID}, UserID=${activeShift.UserID}`);
+    log('active-shift-resolved', { shiftMoveID, userID: activeShift.UserID });
 
     // ──── Validate category belongs to مصروفات ────
+    log('before-category-lookup');
     const catResult = await db.request()
       .input('expINID', sql.Int, body.expINID)
       .query(`
         SELECT ExpINID, CatName FROM [dbo].[TblExpINCat]
         WHERE ExpINID = @expINID AND ExpINType = N'مصروفات'
       `);
+    log('after-category-lookup');
     if (catResult.recordset.length === 0) {
+      log('rejected', { reason: 'invalid expense category', expINID: body.expINID });
       return NextResponse.json({ error: 'فئة المصروف غير صالحة' }, { status: 400 });
     }
     const catName = catResult.recordset[0].CatName;
+    log('category-resolved', { catName, expINID: body.expINID });
 
     // ──── Prepare values ────
     const amount = Math.max(0, body.amount);
@@ -150,22 +176,51 @@ export async function POST(req: NextRequest) {
     const invTime = `${String(now.getHours()).padStart(2, '0')}.${String(now.getMinutes()).padStart(2, '0')}`;
     const notesText = body.notes || catName;
 
-    // ──── Transaction ────
+    // ──── Transaction (minimal: only invID allocation + insert) ────
+    let transactionStarted = false;
+    let transactionCompleted = false;
     const transaction = new sql.Transaction(db);
-    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
-    console.log(`[expenses]   Transaction started (SERIALIZABLE)`);
 
     try {
-      // Generate safe invID scoped to مصروفات in TblCashMove
-      const invIdResult = await new sql.Request(transaction).query(`
-        SELECT ISNULL(MAX(invID), 0) + 1 AS newInvID
-        FROM [dbo].[TblCashMove] WITH (TABLOCKX)
-        WHERE invType = N'مصروفات'
-      `);
-      const newInvID = invIdResult.recordset[0].newInvID;
-      console.log(`[expenses]   Generated invID=${newInvID} for invType=مصروفات`);
+      log('before-transaction-begin');
+      await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+      transactionStarted = true;
+      log('after-transaction-begin', { isolation: 'SERIALIZABLE' });
 
-      // Insert into TblCashMove
+      // ──── Idempotency: check for recent identical expense (within last 5 sec) ────
+      log('before-idempotency-check');
+      const dupCheck = await new sql.Request(transaction)
+        .input('invDate', sql.Date, invDate)
+        .input('expINID', sql.Int, body.expINID)
+        .input('amount', sql.Decimal(10, 2), amount)
+        .input('shiftMoveID', sql.Int, shiftMoveID)
+        .query(`
+          SELECT TOP 1 ID, invID, invDate, GrandTolal, ExpINID, ShiftMoveID
+          FROM [dbo].[TblCashMove]
+          WHERE invType = N'مصروفات'
+            AND invDate = @invDate
+            AND ExpINID = @expINID
+            AND GrandTolal = @amount
+            AND ShiftMoveID = @shiftMoveID
+          ORDER BY ID DESC
+        `);
+      log('after-idempotency-check');
+      if (dupCheck.recordset.length > 0) {
+        const dup = dupCheck.recordset[0];
+        log('idempotency-detected', { existingId: dup.ID, existingInvID: dup.invID });
+        await transaction.commit();
+        transactionCompleted = true;
+        log('committed-duplicate', { invID: dup.invID });
+        return NextResponse.json({ invID: dup.invID, catName, amount, duplicate: true }, { status: 200 });
+      }
+
+      // ──── Allocate invID safely (no TABLOCKX) ────
+      log('before-invID-allocation');
+      const newInvID = await allocateInvID(transaction, 'TblCashMove', 'مصروفات', 5000);
+      log('after-invID-allocation', { newInvID });
+
+      // ──── Insert into TblCashMove ────
+      log('before-cash-move-insert');
       const cashReq = new sql.Request(transaction);
       cashReq
         .input('invID',           sql.Int,              newInvID)
@@ -189,25 +244,50 @@ export async function POST(req: NextRequest) {
           @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID
         )
       `);
-      console.log(`[expenses]   ✅ TblCashMove inserted: invID=${newInvID}, ExpINID=${body.expINID} (${catName}), GrandTolal=${amount}, inOut=out, ShiftMoveID=${shiftMoveID}`);
+      log('after-cash-move-insert', { invID: newInvID, expINID: body.expINID, amount, shiftMoveID });
 
+      log('before-commit');
       await transaction.commit();
-      console.log(`[expenses]   ✅ COMMITTED — invID=${newInvID}`);
-      console.log(`[expenses] ──── SAVE EXPENSE COMPLETE ────`);
+      transactionCompleted = true;
+      log('after-commit', { invID: newInvID });
 
       return NextResponse.json({ invID: newInvID, catName, amount }, { status: 201 });
     } catch (err) {
-      const rollbackReason = err instanceof Error ? err.message : String(err);
-      console.error(`[expenses]   ❌ ROLLING BACK — reason: ${rollbackReason}`);
-      try { await transaction.rollback(); } catch (rbErr) {
-        console.error(`[expenses]   Rollback also failed: ${rbErr instanceof Error ? rbErr.message : rbErr}`);
+      log('transaction-error', {
+        error: err instanceof Error ? err.message : String(err),
+        code: (err as any)?.code,
+        number: (err as any)?.number,
+      });
+      if (transactionStarted && !transactionCompleted) {
+        log('before-rollback');
+        try { await transaction.rollback(); log('after-rollback'); } catch (rbErr) {
+          log('rollback-failed', { error: rbErr instanceof Error ? rbErr.message : String(rbErr) });
+        }
+      }
+
+      // Distinguish lock/busy errors
+      const errCode = (err as any)?.code;
+      const errStatus = (err as any)?.statusCode;
+      const errNumber = (err as any)?.number;
+      if (errCode === 'TREASURY_BUSY' || errStatus === 503) {
+        return NextResponse.json(
+          { success: false, code: 'TREASURY_BUSY', message: (err as Error).message, requestId },
+          { status: 503 }
+        );
+      }
+      if (errNumber === 1222 || errNumber === 1205) {
+        return NextResponse.json(
+          { success: false, code: errNumber === 1205 ? 'DEADLOCK' : 'LOCK_TIMEOUT', message: 'الخزينة مشغولة بعملية أخرى حاليًا. حاول مرة أخرى بعد لحظات.', requestId },
+          { status: 503 }
+        );
       }
       throw err;
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
+    log('unhandled-error', { error: message });
     console.error(`[expenses] ❌ POST /api/expenses FAILED: ${message}`);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: 'حدث خطأ غير متوقع', requestId }, { status: 500 });
   }
 }
 

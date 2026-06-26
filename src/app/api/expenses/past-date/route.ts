@@ -1,46 +1,69 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool, sql } from "@/lib/db";
+import { getPool, sql, allocateInvID } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { requireRole, isAuthResult } from '@/lib/api-auth';
+import { randomUUID } from 'crypto';
 
 // POST /api/expenses/past-date - Add expense for past dates
 export async function POST(req: NextRequest) {
+  const requestId = randomUUID();
+  const startTime = Date.now();
+  const log = (step: string, data?: unknown) => {
+    console.info('[expenses/past-date]', {
+      requestId,
+      step,
+      elapsedMs: Date.now() - startTime,
+      ...(data ? { data } : {}),
+    });
+  };
+
   const auth = await requireRole(['admin', 'manager', 'accountant']);
   if (!isAuthResult(auth)) return auth;
 
   try {
     const session = await getSession();
-    if (!session)
+    if (!session) {
+      log('auth-failed');
       return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
+    }
 
     const body = await req.json();
     const { invDate, invTime, amount, expINID, paymentMethodId, notes } = body;
+    log('request-received', { invDate, amount, expINID, paymentMethodId });
 
-    // Validation
-    if (!invDate)
+    // Validation (read-only, before transaction)
+    if (!invDate) {
+      log('validation-failed', { field: 'invDate' });
       return NextResponse.json({ error: "التاريخ مطلوب" }, { status: 400 });
-    if (!amount || Number(amount) <= 0)
+    }
+    if (!amount || Number(amount) <= 0) {
+      log('validation-failed', { field: 'amount' });
       return NextResponse.json(
         { error: "قيمة المصروف يجب أن تكون أكبر من صفر" },
         { status: 400 },
       );
-    if (!expINID)
+    }
+    if (!expINID) {
+      log('validation-failed', { field: 'expINID' });
       return NextResponse.json(
         { error: "يجب اختيار تصنيف المصروف" },
         { status: 400 },
       );
-    if (!paymentMethodId)
+    }
+    if (!paymentMethodId) {
+      log('validation-failed', { field: 'paymentMethodId' });
       return NextResponse.json(
         { error: "يجب اختيار طريقة الدفع" },
         { status: 400 },
       );
+    }
 
     // Validate that the date is in the past or today
     const inputDate = new Date(invDate);
     const today = new Date();
-    today.setHours(23, 59, 59, 999); // End of today
-
+    today.setHours(23, 59, 59, 999);
     if (inputDate > today) {
+      log('validation-failed', { field: 'invDate', reason: 'future date' });
       return NextResponse.json(
         { error: "لا يمكن إضافة مصروف لتاريخ في المستقبل" },
         { status: 400 },
@@ -48,43 +71,78 @@ export async function POST(req: NextRequest) {
     }
 
     const db = await getPool();
+    log('db-connected');
+
+    // Validate category BEFORE transaction (read-only)
+    log('before-category-lookup');
+    const catResult = await db.request()
+      .input('expINID', sql.Int, expINID)
+      .query(`
+        SELECT ExpINID, CatName FROM [dbo].[TblExpINCat]
+        WHERE ExpINID = @expINID AND ExpINType = N'مصروفات'
+      `);
+    log('after-category-lookup');
+    if (catResult.recordset.length === 0) {
+      log('rejected', { reason: 'invalid expense category' });
+      return NextResponse.json({ error: "فئة المصروف غير صالحة" }, { status: 400 });
+    }
+    const catName = catResult.recordset[0].CatName;
+
+    // ──── Transaction (minimal: only invID allocation + insert) ────
+    let transactionStarted = false;
+    let transactionCompleted = false;
     const transaction = new sql.Transaction(db);
-    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
 
     try {
-      // 1. Validate category exists and is expense type
-      const catResult = await new sql.Request(transaction).input(
-        "expINID",
-        sql.Int,
-        expINID,
-      ).query(`
-          SELECT ExpINID, CatName FROM [dbo].[TblExpINCat]
-          WHERE ExpINID = @expINID AND ExpINType = N'مصروفات'
+      log('before-transaction-begin');
+      await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+      transactionStarted = true;
+      log('after-transaction-begin');
+
+      // Idempotency: check for identical past-date expense
+      log('before-idempotency-check');
+      const dupCheck = await new sql.Request(transaction)
+        .input('invDate', sql.Date, invDate)
+        .input('expINID', sql.Int, expINID)
+        .input('amount', sql.Decimal(10, 2), Number(amount))
+        .input('paymentMethodId', sql.Int, paymentMethodId)
+        .query(`
+          SELECT TOP 1 ID, invID
+          FROM [dbo].[TblCashMove]
+          WHERE invType = N'مصروفات'
+            AND invDate = @invDate
+            AND ExpINID = @expINID
+            AND GrandTolal = @amount
+            AND PaymentMethodID = @paymentMethodId
+            AND ShiftMoveID IS NULL
+          ORDER BY ID DESC
         `);
-
-      if (catResult.recordset.length === 0) {
-        await transaction.rollback();
-        return NextResponse.json(
-          { error: "فئة المصروف غير صالحة" },
-          { status: 400 },
-        );
+      log('after-idempotency-check');
+      if (dupCheck.recordset.length > 0) {
+        const dup = dupCheck.recordset[0];
+        log('idempotency-detected', { existingId: dup.ID, existingInvID: dup.invID });
+        await transaction.commit();
+        transactionCompleted = true;
+        log('committed-duplicate');
+        return NextResponse.json({
+          success: true,
+          message: "تم إضافة المصروف للتاريخ المحدد بنجاح",
+          data: { ID: dup.ID, invID: dup.invID, CategoryName: catName, duplicate: true },
+        });
       }
-      const catName = catResult.recordset[0].CatName;
 
-      // 2. Generate safe invID scoped to مصروفات in TblCashMove
-      const invIdResult = await new sql.Request(transaction).query(`
-        SELECT ISNULL(MAX(invID), 0) + 1 AS newInvID
-        FROM [dbo].[TblCashMove] WITH (TABLOCKX)
-        WHERE invType = N'مصروفات'
-      `);
-      const newInvID = invIdResult.recordset[0].newInvID;
+      // Allocate invID safely (no TABLOCKX)
+      log('before-invID-allocation');
+      const newInvID = await allocateInvID(transaction, 'TblCashMove', 'مصروفات', 5000);
+      log('after-invID-allocation', { newInvID });
 
-      // 3. Prepare values
+      // Prepare values
       const finalAmount = Math.max(0, Number(amount));
       const finalInvTime = invTime || "12:00";
       const notesText = notes?.trim() || catName;
 
-      // 4. Insert into TblCashMove for past date
+      // Insert into TblCashMove for past date
+      log('before-cash-move-insert');
       const cashReq = new sql.Request(transaction);
       cashReq
         .input("invID", sql.Int, newInvID)
@@ -96,8 +154,8 @@ export async function POST(req: NextRequest) {
         .input("amount", sql.Decimal(10, 2), finalAmount)
         .input("inOut", sql.NVarChar(10), "out")
         .input("notes", sql.NVarChar(sql.MAX), notesText)
-        .input("shiftMoveID", sql.Int, null) // No shift for past dates
-        .input("paymentMethodID", sql.Int, paymentMethodId); // Use provided payment method
+        .input("shiftMoveID", sql.Int, null)
+        .input("paymentMethodID", sql.Int, paymentMethodId);
 
       const insertResult = await cashReq.query(`
         INSERT INTO [dbo].[TblCashMove]
@@ -108,11 +166,14 @@ export async function POST(req: NextRequest) {
         VALUES
           (@invID, @invType, @invDate, @invTime, @ClientID, @expINID, @amount, @inOut, @notes, @shiftMoveID, @paymentMethodID)
       `);
+      log('after-cash-move-insert');
 
+      log('before-commit');
       await transaction.commit();
+      transactionCompleted = true;
+      log('after-commit');
 
       const newRecord = insertResult.recordset[0];
-
       return NextResponse.json({
         success: true,
         message: "تم إضافة المصروف للتاريخ المحدد بنجاح",
@@ -129,14 +190,40 @@ export async function POST(req: NextRequest) {
         },
       });
     } catch (error) {
-      await transaction.rollback();
+      log('transaction-error', {
+        error: error instanceof Error ? error.message : String(error),
+        code: (error as any)?.code,
+        number: (error as any)?.number,
+      });
+      if (transactionStarted && !transactionCompleted) {
+        log('before-rollback');
+        try { await transaction.rollback(); log('after-rollback'); } catch (rbErr) {
+          log('rollback-failed', { error: rbErr instanceof Error ? rbErr.message : String(rbErr) });
+        }
+      }
+
+      const errCode = (error as any)?.code;
+      const errStatus = (error as any)?.statusCode;
+      const errNumber = (error as any)?.number;
+      if (errCode === 'TREASURY_BUSY' || errStatus === 503) {
+        return NextResponse.json(
+          { success: false, code: 'TREASURY_BUSY', message: (error as Error).message, requestId },
+          { status: 503 }
+        );
+      }
+      if (errNumber === 1222 || errNumber === 1205) {
+        return NextResponse.json(
+          { success: false, code: errNumber === 1205 ? 'DEADLOCK' : 'LOCK_TIMEOUT', message: 'الخزينة مشغولة بعملية أخرى حاليًا. حاول مرة أخرى بعد لحظات.', requestId },
+          { status: 503 }
+        );
+      }
       throw error;
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[api/expenses/past-date] POST error:", message);
     return NextResponse.json(
-      { error: "فشل إضافة المصروف: " + message },
+      { error: "فشل إضافة المصروف: " + message, requestId },
       { status: 500 },
     );
   }

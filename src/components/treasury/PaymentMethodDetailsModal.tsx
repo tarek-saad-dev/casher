@@ -3,13 +3,14 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   X, Loader2, ArrowUpRight, ArrowDownRight, Search,
-  Filter, Receipt, AlertCircle, Trash2, AlertTriangle,
+  Filter, Receipt, AlertCircle, Trash2,
 } from 'lucide-react';
 import type { TreasuryMovement } from '@/lib/types/treasury';
 import { getMovementTypeLabel, getMovementTypeSearchText } from '@/lib/treasury';
+import DeleteInvoiceDialog, { type DeleteInvoiceTarget } from '@/components/sales/DeleteInvoiceDialog';
 
 interface Props {
-  paymentMethodId: number;
+  paymentMethodKey: string; // 'unassigned' for NULL PaymentMethodID, else String(paymentMethodId)
   paymentMethodName: string;
   filters: {
     newDay: string | null;
@@ -25,7 +26,7 @@ interface Props {
 type DirectionFilter = 'all' | 'in' | 'out';
 
 export default function PaymentMethodDetailsModal({
-  paymentMethodId,
+  paymentMethodKey,
   paymentMethodName,
   filters,
   onClose,
@@ -37,14 +38,14 @@ export default function PaymentMethodDetailsModal({
   const [search, setSearch]       = useState('');
   const [direction, setDirection] = useState<DirectionFilter>('all');
   const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<{invId: number; invType: string} | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteInvoiceTarget | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const p = new URLSearchParams();
-      p.set('paymentMethodId', paymentMethodId.toString());
+      p.set('paymentMethodKey', paymentMethodKey);
       p.set('pageSize', '500');
       if (filters.newDay !== null)     p.set('newDay',       filters.newDay.toString());
       if (filters.dateFrom)            p.set('dateFrom',     filters.dateFrom);
@@ -56,12 +57,12 @@ export default function PaymentMethodDetailsModal({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'فشل التحميل');
       setMovements(data.movements ?? []);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'خطأ غير متوقع');
     } finally {
       setLoading(false);
     }
-  }, [paymentMethodId, filters]);
+  }, [paymentMethodKey, filters]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -82,7 +83,7 @@ export default function PaymentMethodDetailsModal({
         (m.notes    ?? '').toLowerCase().includes(q) ||
         getMovementTypeSearchText(m).includes(q) ||
         (m.userName ?? '').toLowerCase().includes(q) ||
-        String(m.invId).includes(q)
+        String(m.invId ?? '').includes(q)
       );
     }
     return list;
@@ -99,41 +100,12 @@ export default function PaymentMethodDetailsModal({
     try { return new Date(d).toLocaleDateString('ar-EG'); } catch { return d; }
   };
 
-  const handleDelete = async (invId: number, invType: string) => {
+  const handleDelete = (invId: number, invType: string) => {
     if (invType !== 'مبيعات') {
       alert('يمكن مسح فواتير المبيعات فقط من هنا');
       return;
     }
-    setDeleteConfirm({invId, invType});
-  };
-
-  const confirmDelete = async () => {
-    if (!deleteConfirm) return;
-    const { invId } = deleteConfirm;
-
-    setDeletingId(invId);
-    try {
-      const res = await fetch(`/api/sales/${invId}`, { method: 'DELETE' });
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'فشل مسح الفاتورة');
-      }
-
-      // Reload data
-      await load();
-      setDeleteConfirm(null);
-
-      // Show appropriate message
-      if (data.cleanedUp) {
-        // Silently succeeded - was just cleanup
-        console.log('Cleaned up orphaned cash movement record');
-      }
-    } catch (e: any) {
-      alert(e.message || 'فشل مسح الفاتورة');
-    } finally {
-      setDeletingId(null);
-    }
+    setDeleteTarget({ invId });
   };
 
   return (
@@ -334,18 +306,18 @@ export default function PaymentMethodDetailsModal({
                         </td>
                         {canDelete && (
                           <td className="px-3 py-2 text-center whitespace-nowrap">
-                            {m.invType === 'مبيعات' && (
+                            {m.invType === 'مبيعات' && m.invId != null && (
                               <button
-                                onClick={() => handleDelete(m.invId, m.invType)}
-                                disabled={deletingId === m.invId}
+                                onClick={() => handleDelete(m.invId!, m.invType ?? '')}
+                                disabled={m.invId != null && deletingId === m.invId}
                                 className="p-1.5 hover:bg-rose-500/20 rounded-lg transition-colors text-zinc-500 hover:text-rose-400 disabled:opacity-50"
                                 title="مسح الفاتورة"
                               >
                                 {deletingId === m.invId ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                )}
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
                               </button>
                             )}
                           </td>
@@ -373,46 +345,16 @@ export default function PaymentMethodDetailsModal({
         </div>
       </div>
 
-      {/* Delete Confirmation Dialog */}
-      {deleteConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setDeleteConfirm(null)} />
-          <div className="relative bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-md w-full shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-3 bg-rose-500/20 rounded-full">
-                <AlertTriangle className="h-6 w-6 text-rose-400" />
-              </div>
-              <h3 className="text-lg font-bold text-white">تأكيد المسح</h3>
-            </div>
-            <p className="text-zinc-400 mb-6">
-              هل أنت متأكد من مسح الفاتورة <span className="text-white font-bold">#{deleteConfirm.invId}</span>؟<br/>
-              <span className="text-rose-400 text-sm">هذا الإجراء لا يمكن التراجع عنه.</span>
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setDeleteConfirm(null)}
-                className="flex-1 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl transition-colors"
-              >
-                إلغاء
-              </button>
-              <button
-                onClick={confirmDelete}
-                disabled={deletingId !== null}
-                className="flex-1 px-4 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 border border-rose-500/30 rounded-xl transition-colors disabled:opacity-50"
-              >
-                {deletingId !== null ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    جاري المسح...
-                  </span>
-                ) : (
-                  'مسح الفاتورة'
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DeleteInvoiceDialog
+        target={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onSuccess={async (invId) => {
+          setDeleteTarget(null);
+          setDeletingId(null);
+          await load();
+          console.log('Deleted invoice', invId);
+        }}
+      />
     </div>
   );
 }

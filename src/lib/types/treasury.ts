@@ -13,7 +13,8 @@ export interface TreasurySummary {
 }
 
 export interface PaymentMethodBreakdown {
-  paymentMethodId: number;
+  paymentMethodId: number | null;
+  paymentMethodKey: string; // "unassigned" when paymentMethodId is null, else String(paymentMethodId)
   paymentMethodName: string | null;
   inflow: number;
   outflow: number;
@@ -43,12 +44,12 @@ export interface DailyTreasuryData {
 
 export interface TreasuryMovement {
   id: number;
-  invId: number;
-  invType: string;
+  invId: number | null;
+  invType: string | null;
   invDate: string;
   invTime: string;
-  paymentMethodId: number;
-  paymentMethodName: string;
+  paymentMethodId: number | null;
+  paymentMethodName: string | null;
   inOut: 'in' | 'out';
   amount: number;
   shiftMoveId: number | null;
@@ -85,7 +86,7 @@ export interface CurrentDayShift {
 }
 
 export interface ReconciliationInput {
-  paymentMethodId: number;
+  paymentMethodId: number | null;
   systemAmount: number;
   countedAmount: number;
   notes?: string;
@@ -100,7 +101,7 @@ export interface ReconciliationRequest {
 export type VarianceStatus = 'acceptable' | 'warning' | 'critical';
 
 export interface ReconciliationVariance {
-  paymentMethodId: number;
+  paymentMethodId: number | null;
   paymentMethodName: string;
   variance: number;
   variancePercentage: number;

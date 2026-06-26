@@ -16,33 +16,42 @@ beforeAll(async () => {
   }
 });
 
-const itIfDb = (name: string, fn: () => Promise<void>) => {
+const itIfDb = (name: string, fn: () => Promise<void>, timeout?: number) => {
   it(name, async () => {
     if (!dbAvailable) {
       console.warn(`Skipping DB test: ${dbReason}`);
       return;
     }
     await fn();
-  });
+  }, timeout);
 };
 
 describe('treasuryActions integration', () => {
   itIfDb('creates exactly one outgoing and one incoming cash move per transfer', async () => {
     const pool = await getPool();
+
+    // Find two payment methods
+    const pmResult = await pool.request().query(
+      `SELECT TOP 2 PaymentID FROM dbo.TblPaymentMethods ORDER BY PaymentID`
+    );
+    if (pmResult.recordset.length < 2) {
+      throw new Error('Need at least 2 payment methods to test transfer');
+    }
+    const [fromPm, toPm] = pmResult.recordset;
+    const amount = 123.45;
+
+    // Seed balance outside the test transaction (auto-commit) so the transfer can succeed
+    await pool.request().query(`
+      DECLARE @seedCatID INT = ISNULL((SELECT TOP 1 ExpINID FROM dbo.TblExpINCat WHERE ExpINType = N'ايرادات'), 1);
+      DECLARE @seedInvID INT = ISNULL((SELECT MAX(invID) FROM dbo.TblCashMove WHERE invType = N'ايرادات'), 0) + 99999;
+      INSERT INTO dbo.TblCashMove (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID)
+      VALUES (@seedInvID, N'ايرادات', '2024-01-01', '12:00', NULL, @seedCatID, 100000, N'in', N'seed balance for test', NULL, ${fromPm.PaymentID})
+    `);
+
     const transaction = new sql.Transaction(pool);
     await transaction.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
 
     try {
-      // Find two payment methods
-      const pmResult = await new sql.Request(transaction).query(
-        `SELECT TOP 2 PaymentID FROM dbo.TblPaymentMethods ORDER BY PaymentID`
-      );
-      if (pmResult.recordset.length < 2) {
-        throw new Error('Need at least 2 payment methods to test transfer');
-      }
-      const [fromPm, toPm] = pmResult.recordset;
-      const amount = 123.45;
-
       const transferResult = await executeTreasuryTransfer(transaction, {
         amount,
         fromPaymentMethodId: fromPm.PaymentID,
@@ -75,6 +84,25 @@ describe('treasuryActions integration', () => {
       expect(outMove.PaymentMethodID).toBe(fromPm.PaymentID);
       expect(inMove.PaymentMethodID).toBe(toPm.PaymentID);
 
+      // Verify inOut uses canonical 'in'/'out' never Arabic labels
+      expect(outMove.inOut).toBe('out');
+      expect(inMove.inOut).toBe('in');
+      expect(outMove.inOut).not.toMatch(/[\u0600-\u06FF]/);
+      expect(inMove.inOut).not.toMatch(/[\u0600-\u06FF]/);
+
+      // Verify invType stores Arabic labels while inOut stays canonical
+      const invTypes = await new sql.Request(transaction)
+        .input('expenseId', sql.Int, transferResult.expenseId)
+        .input('incomeId', sql.Int, transferResult.incomeId)
+        .query(`
+          SELECT ID, invType FROM dbo.TblCashMove
+          WHERE ID IN (@expenseId, @incomeId)
+        `);
+      const expType = invTypes.recordset.find((r) => r.ID === transferResult.expenseId)?.invType;
+      const incType = invTypes.recordset.find((r) => r.ID === transferResult.incomeId)?.invType;
+      expect(expType).toBe('مصروفات');
+      expect(incType).toBe('ايرادات');
+
       // No extra records should exist for this transfer's invIDs
       const extra = await new sql.Request(transaction)
         .input('expenseInvID', sql.Int, transferResult.expenseInvID)
@@ -85,6 +113,87 @@ describe('treasuryActions integration', () => {
              OR (invID = @incomeInvID AND invType = N'ايرادات')
         `);
       expect(extra.recordset[0].cnt).toBe(2);
+    } finally {
+      await transaction.rollback();
+    }
+  }, 120000);
+
+  itIfDb('rejects transfer with identical source and destination', async () => {
+    const pool = await getPool();
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
+    try {
+      const pmResult = await new sql.Request(transaction).query(
+        `SELECT TOP 1 PaymentID FROM dbo.TblPaymentMethods ORDER BY PaymentID`
+      );
+      if (pmResult.recordset.length === 0) throw new Error('Need at least 1 payment method');
+      const pmId = pmResult.recordset[0].PaymentID;
+
+      await expect(
+        executeTreasuryTransfer(transaction, {
+          amount: 100,
+          fromPaymentMethodId: pmId,
+          toPaymentMethodId: pmId,
+          transferDate: '2025-01-01',
+          userId: 1,
+        })
+      ).rejects.toThrow('يجب اختيار طرق دفع مختلفة');
+    } finally {
+      await transaction.rollback();
+    }
+  });
+
+  itIfDb('rejects transfer when source balance is insufficient with statusCode 409', async () => {
+    const pool = await getPool();
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
+    try {
+      const pmResult = await new sql.Request(transaction).query(
+        `SELECT TOP 2 PaymentID FROM dbo.TblPaymentMethods ORDER BY PaymentID`
+      );
+      if (pmResult.recordset.length < 2) throw new Error('Need at least 2 payment methods');
+      const [fromPm, toPm] = pmResult.recordset;
+
+      let caught: unknown;
+      try {
+        await executeTreasuryTransfer(transaction, {
+          amount: 999999999.99, // Impossibly large
+          fromPaymentMethodId: fromPm.PaymentID,
+          toPaymentMethodId: toPm.PaymentID,
+          transferDate: '2025-01-01',
+          userId: 1,
+        });
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toContain('رصيد');
+      expect((caught as any).statusCode).toBe(409);
+    } finally {
+      await transaction.rollback();
+    }
+  });
+
+  itIfDb('rejects invalid payment method IDs with statusCode 404', async () => {
+    const pool = await getPool();
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
+    try {
+      let caught: unknown;
+      try {
+        await executeTreasuryTransfer(transaction, {
+          amount: 100,
+          fromPaymentMethodId: 999999,
+          toPaymentMethodId: 888888,
+          transferDate: '2025-01-01',
+          userId: 1,
+        });
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toContain('غير موجودة');
+      expect((caught as any).statusCode).toBe(404);
     } finally {
       await transaction.rollback();
     }

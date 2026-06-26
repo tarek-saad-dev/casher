@@ -1,18 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, Receipt, User, Package, CreditCard, Clock, Tag, Edit2, Trash2, AlertCircle } from 'lucide-react';
+import { Search, Receipt, User, Package, CreditCard, Clock, Tag, Edit2, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import DeleteInvoiceDialog, { type DeleteInvoiceTarget } from '@/components/sales/DeleteInvoiceDialog';
 import type { TodaySaleTransaction } from '@/lib/types/today-sales';
 
 interface TodaySalesTransactionsTableProps {
@@ -31,9 +24,7 @@ export default function TodaySalesTransactionsTable({
   canEdit = false,
 }: TodaySalesTransactionsTableProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<TodaySaleTransaction | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteInvoiceTarget | null>(null);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('ar-EG', {
@@ -77,20 +68,7 @@ export default function TodaySalesTransactionsTable({
 
   const handleDeleteClick = (e: React.MouseEvent, txn: TodaySaleTransaction) => {
     e.stopPropagation();
-    setDeleteTarget(txn);
-    setDeleteConfirmOpen(true);
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!deleteTarget || !onDelete) return;
-    setDeleteLoading(true);
-    try {
-      await onDelete(deleteTarget.invId);
-    } finally {
-      setDeleteLoading(false);
-      setDeleteConfirmOpen(false);
-      setDeleteTarget(null);
-    }
+    setDeleteTarget({ invId: txn.invId });
   };
 
   if (transactions.length === 0) {
@@ -250,55 +228,19 @@ export default function TodaySalesTransactionsTable({
         {filteredTransactions.length === 0 && searchQuery && (
           <div className="text-center py-8 text-zinc-500">
             <Search className="w-8 h-8 mx-auto mb-2 opacity-30" />
-            <p className="text-sm">لا توجد نتائج للبحث "{searchQuery}"</p>
+            <p className="text-sm">لا توجد نتائج للبحث &quot;{searchQuery}&quot;</p>
           </div>
         )}
       </div>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <DialogContent className="sm:max-w-[400px] bg-zinc-900 border-zinc-800">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-400">
-              <AlertCircle className="w-5 h-5" />
-              تأكيد الحذف
-            </DialogTitle>
-            <DialogDescription className="text-zinc-400">
-              هل أنت متأكد من حذف الفاتورة رقم <span className="font-bold text-white">#{deleteTarget?.invId}</span>؟
-              <br />
-              هذا الإجراء لا يمكن التراجع عنه.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setDeleteConfirmOpen(false)}
-              disabled={deleteLoading}
-              className="border-zinc-700"
-            >
-              إلغاء
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleConfirmDelete}
-              disabled={deleteLoading}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              {deleteLoading ? (
-                <span className="flex items-center gap-2">
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  جاري الحذف...
-                </span>
-              ) : (
-                <span className="flex items-center gap-2">
-                  <Trash2 className="w-4 h-4" />
-                  حذف
-                </span>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteInvoiceDialog
+        target={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onSuccess={(invId) => {
+          setDeleteTarget(null);
+          onDelete?.(invId);
+        }}
+      />
     </div>
   );
 }

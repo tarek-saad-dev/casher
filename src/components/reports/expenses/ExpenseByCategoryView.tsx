@@ -31,6 +31,8 @@ export default function ExpenseByCategoryView({
   const [deletingExpense, setDeletingExpense] = useState<{ id: number; invID: number } | null>(null);
   const [deletingCategory, setDeletingCategory] = useState<{ ExpINID: number; CatName: string; Count: number } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [exportingCategory, setExportingCategory] = useState<number | null>(null);
 
   const formatCurrency = (amount: number) => {
@@ -109,13 +111,34 @@ export default function ExpenseByCategoryView({
     }
   };
 
+  const openDeleteExpense = (id: number, invID: number) => {
+    setDeleteReason('');
+    setDeleteError(null);
+    setDeletingExpense({ id, invID });
+  };
+
+  const openDeleteCategory = (ExpINID: number, CatName: string, Count: number) => {
+    setDeleteReason('');
+    setDeleteError(null);
+    setDeletingCategory({ ExpINID, CatName, Count });
+  };
+
   const handleDeleteExpense = async () => {
     if (!deletingExpense) return;
 
+    const normalizedReason = deleteReason.trim();
+    if (!normalizedReason) {
+      setDeleteError('يجب إدخال سبب الحذف');
+      return;
+    }
+
     setDeleting(true);
+    setDeleteError(null);
     try {
       const response = await fetch(`/api/expenses/${deletingExpense.id}/category`, {
         method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: normalizedReason }),
       });
 
       if (!response.ok) {
@@ -124,12 +147,10 @@ export default function ExpenseByCategoryView({
       }
 
       setDeletingExpense(null);
-      if (onRefresh) {
-        onRefresh();
-      }
+      setDeleteReason('');
+      if (onRefresh) onRefresh();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'حدث خطأ غير متوقع';
-      alert(message);
+      setDeleteError(err instanceof Error ? err.message : 'حدث خطأ غير متوقع');
     } finally {
       setDeleting(false);
     }
@@ -138,15 +159,22 @@ export default function ExpenseByCategoryView({
   const handleDeleteCategoryExpenses = async () => {
     if (!deletingCategory) return;
 
+    const normalizedReason = deleteReason.trim();
+    if (!normalizedReason) {
+      setDeleteError('يجب إدخال سبب الحذف');
+      return;
+    }
+
     setDeleting(true);
+    setDeleteError(null);
     try {
-      // Get all transaction IDs in this category
       const categoryTransactions = transactions.filter(t => t.ExpINID === deletingCategory.ExpINID);
-      
-      // Delete each transaction
+
       for (const transaction of categoryTransactions) {
         const response = await fetch(`/api/expenses/${transaction.ID}/category`, {
           method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason: normalizedReason }),
         });
 
         if (!response.ok) {
@@ -156,12 +184,10 @@ export default function ExpenseByCategoryView({
       }
 
       setDeletingCategory(null);
-      if (onRefresh) {
-        onRefresh();
-      }
+      setDeleteReason('');
+      if (onRefresh) onRefresh();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'حدث خطأ غير متوقع';
-      alert(message);
+      setDeleteError(err instanceof Error ? err.message : 'حدث خطأ غير متوقع');
     } finally {
       setDeleting(false);
     }
@@ -189,10 +215,29 @@ export default function ExpenseByCategoryView({
               <br />
               <span className="text-destructive">لا يمكن التراجع عن هذا الإجراء.</span>
             </p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">
+                سبب الحذف <span className="text-destructive">*</span>
+              </label>
+              <textarea
+                className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                rows={3}
+                placeholder="أدخل سبب حذف هذا المصروف..."
+                value={deleteReason}
+                onChange={(e) => {
+                  setDeleteReason(e.target.value);
+                  if (deleteError) setDeleteError(null);
+                }}
+                disabled={deleting}
+              />
+              {deleteError && (
+                <p className="text-xs text-destructive mt-1">{deleteError}</p>
+              )}
+            </div>
             <div className="flex items-center justify-end gap-2">
               <Button
                 variant="outline"
-                onClick={() => setDeletingExpense(null)}
+                onClick={() => { setDeletingExpense(null); setDeleteReason(''); setDeleteError(null); }}
                 disabled={deleting}
               >
                 إلغاء
@@ -200,16 +245,13 @@ export default function ExpenseByCategoryView({
               <Button
                 variant="destructive"
                 onClick={handleDeleteExpense}
-                disabled={deleting}
+                disabled={deleting || !deleteReason.trim()}
                 className="gap-2"
               >
                 {deleting ? (
-                  <>جاري الحذف...</>
+                  <><Loader2 className="h-4 w-4 animate-spin" />جاري الحذف...</>
                 ) : (
-                  <>
-                    <Trash2 className="h-4 w-4" />
-                    حذف
-                  </>
+                  <><Trash2 className="h-4 w-4" />حذف</>
                 )}
               </Button>
             </div>
@@ -227,17 +269,36 @@ export default function ExpenseByCategoryView({
             </div>
             <p className="text-sm text-muted-foreground mb-4">
               هل أنت متأكد من حذف <span className="font-bold text-destructive">{deletingCategory.Count}</span> مصروف من فئة{' '}
-              <span className="font-bold">"{deletingCategory.CatName}"</span>؟
+              <span className="font-bold">&quot;{deletingCategory.CatName}&quot;</span>؟
               <br />
               <br />
               <span className="text-destructive font-semibold">⚠️ سيتم حذف جميع المصروفات تحت هذه الفئة في هذا الشهر!</span>
               <br />
               <span className="text-destructive">لا يمكن التراجع عن هذا الإجراء.</span>
             </p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">
+                سبب الحذف <span className="text-destructive">*</span>
+              </label>
+              <textarea
+                className="w-full border border-border rounded-md px-3 py-2 text-sm bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                rows={3}
+                placeholder="أدخل سبب حذف هذه المصروفات..."
+                value={deleteReason}
+                onChange={(e) => {
+                  setDeleteReason(e.target.value);
+                  if (deleteError) setDeleteError(null);
+                }}
+                disabled={deleting}
+              />
+              {deleteError && (
+                <p className="text-xs text-destructive mt-1">{deleteError}</p>
+              )}
+            </div>
             <div className="flex items-center justify-end gap-2">
               <Button
                 variant="outline"
-                onClick={() => setDeletingCategory(null)}
+                onClick={() => { setDeletingCategory(null); setDeleteReason(''); setDeleteError(null); }}
                 disabled={deleting}
               >
                 إلغاء
@@ -245,16 +306,13 @@ export default function ExpenseByCategoryView({
               <Button
                 variant="destructive"
                 onClick={handleDeleteCategoryExpenses}
-                disabled={deleting}
+                disabled={deleting || !deleteReason.trim()}
                 className="gap-2"
               >
                 {deleting ? (
-                  <>جاري الحذف...</>
+                  <><Loader2 className="h-4 w-4 animate-spin" />جاري الحذف...</>
                 ) : (
-                  <>
-                    <Trash2 className="h-4 w-4" />
-                    حذف الكل ({deletingCategory.Count})
-                  </>
+                  <><Trash2 className="h-4 w-4" />حذف الكل ({deletingCategory.Count})</>
                 )}
               </Button>
             </div>
@@ -339,11 +397,7 @@ export default function ExpenseByCategoryView({
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setDeletingCategory({
-                          ExpINID: category.ExpINID,
-                          CatName: category.CatName,
-                          Count: category.Count,
-                        });
+                        openDeleteCategory(category.ExpINID, category.CatName, category.Count);
                       }}
                       className="gap-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
                     >
@@ -414,7 +468,7 @@ export default function ExpenseByCategoryView({
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => setDeletingExpense({ id: transaction.ID, invID: transaction.invID })}
+                                  onClick={() => openDeleteExpense(transaction.ID, transaction.invID)}
                                   className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                                   title="حذف"
                                 >

@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import DeleteInvoiceDialog, { type DeleteInvoiceTarget } from '@/components/sales/DeleteInvoiceDialog';
 
 interface RecentSale {
   InvID: number;
@@ -60,6 +61,7 @@ export default function RecentSalesSidebar({
   const [showMore, setShowMore] = useState(false);
   const [expandedSale, setExpandedSale] = useState<number | null>(null);
   const [saleDetails, setSaleDetails] = useState<{ [key: number]: SaleDetail[] }>({});
+  const [deleteTarget, setDeleteTarget] = useState<DeleteInvoiceTarget | null>(null);
 
   // Toast
   const [toasts, setToasts] = useState<{ id: number; type: 'success' | 'error' | 'info'; message: string }[]>([]);
@@ -82,8 +84,8 @@ export default function RecentSalesSidebar({
       }
       
       setSales(Array.isArray(data) ? data : []);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'خطأ غير متوقع');
     } finally {
       setLoading(false);
     }
@@ -101,8 +103,8 @@ export default function RecentSalesSidebar({
       
       setMoreSales(Array.isArray(data) ? data : []);
       setShowMore(true);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'خطأ غير متوقع');
     } finally {
       setLoadingMore(false);
     }
@@ -121,7 +123,7 @@ export default function RecentSalesSidebar({
         ...prev,
         [saleId]: data.items || []
       }));
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to load sale details:', e);
     }
   };
@@ -130,31 +132,8 @@ export default function RecentSalesSidebar({
     loadRecentSales();
   }, []);
 
-  const handleDelete = async (saleId: number) => {
-    if (!confirm('هل أنت متأكد من حذف هذه العملية؟')) return;
-    const reason = window.prompt('سبب حذف الفاتورة (مطلوب):');
-    if (reason === null) return;
-    if (!reason.trim()) {
-      addToast('error', 'يجب إدخال سبب للحذف');
-      return;
-    }
-    try {
-      const res = await fetch(`/api/sales/${saleId}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: reason.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        addToast('error', data.error || 'فشل حذف الفاتورة');
-      } else {
-        addToast('success', 'تم حذف الفاتورة بنجاح');
-        await loadRecentSales();
-        onRefresh?.();
-      }
-    } catch (e) {
-      addToast('error', e instanceof Error ? e.message : 'خطأ غير متوقع');
-    }
+  const handleDelete = (saleId: number, invNo: number) => {
+    setDeleteTarget({ invId: saleId, invNo });
   };
 
   const handleExpand = async (saleId: number) => {
@@ -270,7 +249,7 @@ export default function RecentSalesSidebar({
                     تعديل
                   </DropdownMenuItem>
                   <DropdownMenuItem 
-                    onClick={() => handleDelete(sale.InvID)}
+                    onClick={() => handleDelete(sale.InvID, sale.InvNo)}
                     className="text-rose-400 hover:bg-rose-500/10"
                   >
                     <Trash2 className="w-4 h-4 ml-2" />
@@ -428,7 +407,7 @@ export default function RecentSalesSidebar({
                     تعديل
                   </DropdownMenuItem>
                   <DropdownMenuItem 
-                    onClick={() => handleDelete(sale.InvID)}
+                    onClick={() => handleDelete(sale.InvID, sale.InvNo)}
                     className="text-rose-400 hover:bg-rose-500/10"
                   >
                     <Trash2 className="w-4 h-4 ml-2" />
@@ -519,6 +498,17 @@ export default function RecentSalesSidebar({
           )}
         </div>
       ))}
+
+      <DeleteInvoiceDialog
+        target={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onSuccess={async () => {
+          setDeleteTarget(null);
+          addToast('success', 'تم حذف الفاتورة بنجاح');
+          await loadRecentSales();
+          onRefresh?.();
+        }}
+      />
 
       {/* Toast notifications */}
       <div className="fixed bottom-4 left-4 z-[80] flex flex-col gap-2 w-72" dir="rtl">

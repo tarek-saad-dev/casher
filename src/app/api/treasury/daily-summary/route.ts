@@ -61,10 +61,12 @@ export async function GET(request: NextRequest) {
     const whereClause = whereConditions.join(' AND ');
     
     // Get payment method breakdown
+    // Group by cm.PaymentMethodID (not pm.PaymentID) so that rows where PaymentMethodID IS NULL
+    // form their own group, and COALESCE normalises NULL/empty PaymentMethod names.
     const breakdownQuery = `
-      SELECT 
-        pm.PaymentID,
-        ISNULL(pm.PaymentMethod, N'\u0637\u0631\u064a\u0642\u0629 \u062f\u0641\u0639 \u063a\u064a\u0631 \u0645\u062d\u062f\u062f\u0629') AS PaymentMethod,
+      SELECT
+        cm.PaymentMethodID AS PaymentID,
+        COALESCE(NULLIF(LTRIM(RTRIM(pm.PaymentMethod)), N''), N'\u0637\u0631\u064a\u0642\u0629 \u062f\u0641\u0639 \u063a\u064a\u0631 \u0645\u062d\u062f\u062f\u0629') AS PaymentMethod,
         SUM(CASE WHEN cm.inOut = N'in' THEN cm.GrandTolal ELSE 0 END) AS Inflow,
         SUM(CASE WHEN cm.inOut = N'out' THEN cm.GrandTolal ELSE 0 END) AS Outflow,
         SUM(CASE WHEN cm.inOut = N'in' THEN cm.GrandTolal ELSE 0 END) -
@@ -76,7 +78,8 @@ export async function GET(request: NextRequest) {
       LEFT JOIN [dbo].[TblPaymentMethods] pm ON cm.PaymentMethodID = pm.PaymentID
       LEFT JOIN [dbo].[TblShiftMove] sm ON cm.ShiftMoveID = sm.ID
       WHERE ${whereClause}
-      GROUP BY pm.PaymentID, pm.PaymentMethod
+      GROUP BY cm.PaymentMethodID,
+               COALESCE(NULLIF(LTRIM(RTRIM(pm.PaymentMethod)), N''), N'\u0637\u0631\u064a\u0642\u0629 \u062f\u0641\u0639 \u063a\u064a\u0631 \u0645\u062d\u062f\u062f\u0629')
       ORDER BY Net DESC
     `;
     
@@ -122,9 +125,12 @@ export async function GET(request: NextRequest) {
         topPaymentMethod = row.PaymentMethod;
       }
       
+      const pmId: number | null = row.PaymentID ?? null;
+      const pmKey = pmId == null ? 'unassigned' : String(pmId);
       return {
-        paymentMethodId: row.PaymentID,
-        paymentMethodName: row.PaymentMethod,
+        paymentMethodId: pmId,
+        paymentMethodKey: pmKey,
+        paymentMethodName: row.PaymentMethod ?? 'طريقة دفع غير محددة',
         inflow,
         outflow,
         net,

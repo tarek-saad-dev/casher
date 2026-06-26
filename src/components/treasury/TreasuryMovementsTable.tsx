@@ -41,10 +41,10 @@ export default function TreasuryMovementsTable({
     });
   };
 
-  const filteredMovements = movements.filter(m => 
+  const filteredMovements = movements.filter(m =>
     searchTerm === '' ||
     getMovementTypeSearchText(m).includes(searchTerm.toLowerCase()) ||
-    m.paymentMethodName.includes(searchTerm) ||
+    m.paymentMethodName?.includes(searchTerm) ||
     m.notes?.includes(searchTerm) ||
     m.userName?.includes(searchTerm)
   );

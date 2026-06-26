@@ -259,4 +259,64 @@ export async function closeCloudPool(): Promise<void> {
   }
 }
 
+const ALLOWED_INV_TABLES = ['TblCashMove', 'TblinvServHead'] as const;
+type AllowedInvTable = (typeof ALLOWED_INV_TABLES)[number];
+
+/**
+ * Safely allocates the next invID for a given table and invType using SQL Server
+ * application locks (sp_getapplock). Must be called inside an active transaction.
+ * The application lock is released automatically on commit or rollback.
+ *
+ * @param transaction   Active sql.Transaction
+ * @param tableName     Invoice table (TblCashMove or TblinvServHead)
+ * @param invType       Invoice type (e.g. 'مصروفات', 'ايرادات', 'مبيعات')
+ * @param lockTimeoutMs How long to wait for the application lock (default 5000ms)
+ * @returns Next sequential invID
+ * @throws Error with code 'TREASURY_BUSY' and statusCode 503 if lock cannot be acquired
+ */
+export async function allocateInvID(
+  transaction: sql.Transaction,
+  tableName: AllowedInvTable,
+  invType: string,
+  lockTimeoutMs: number = 5000
+): Promise<number> {
+  if (!ALLOWED_INV_TABLES.includes(tableName)) {
+    throw new Error(`Invalid invoice table: ${tableName}`);
+  }
+
+  const lockResource = `SqlAllocator:${tableName}:invID:${invType}`;
+
+  const lockReq = new sql.Request(transaction)
+    .input('lockResource', sql.NVarChar(255), lockResource)
+    .input('lockTimeout', sql.Int, lockTimeoutMs);
+
+  const lockResult = await lockReq.query(`
+    DECLARE @LockResult INT;
+    EXEC @LockResult = sp_getapplock
+      @Resource = @lockResource,
+      @LockMode = 'Exclusive',
+      @LockOwner = 'Transaction',
+      @LockTimeout = @lockTimeout;
+    SELECT @LockResult AS lockResult;
+  `);
+
+  const result = lockResult.recordset[0].lockResult as number;
+  if (result < 0) {
+    const err = new Error('الخزينة مشغولة بعملية أخرى حاليًا. حاول مرة أخرى بعد لحظات.');
+    (err as any).code = 'TREASURY_BUSY';
+    (err as any).statusCode = 503;
+    throw err;
+  }
+
+  const idReq = new sql.Request(transaction)
+    .input('invType', sql.NVarChar(20), invType);
+  const idResult = await idReq.query(`
+    SELECT ISNULL(MAX(invID), 0) + 1 AS newInvID
+    FROM [dbo].[${tableName}] WITH (NOLOCK)
+    WHERE invType = @invType;
+  `);
+
+  return idResult.recordset[0].newInvID as number;
+}
+
 export { sql };
