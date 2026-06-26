@@ -12,7 +12,7 @@ interface Props {
   paymentMethodId: number;
   paymentMethodName: string;
   filters: {
-    newDay: number | null;
+    newDay: string | null;
     dateFrom: string | null;
     dateTo: string | null;
     shiftMoveId: number | null;

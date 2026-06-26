@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     db = await getPool();
     
     const searchParams = request.nextUrl.searchParams;
-    const newDay = searchParams.get('newDay') ? parseInt(searchParams.get('newDay')!) : null;
+    const newDay = searchParams.get('newDay') || null;
     const dateFrom = searchParams.get('dateFrom');
     const dateTo = searchParams.get('dateTo');
     const shiftMoveId = searchParams.get('shiftMoveId') ? parseInt(searchParams.get('shiftMoveId')!) : null;
@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
     
     const countRequest = db.request();
     Object.keys(params).forEach(key => {
-      if (key === 'newDay' || key === 'shiftMoveId' || key === 'userId' || key === 'paymentMethodId') {
+      if (key === 'shiftMoveId' || key === 'userId' || key === 'paymentMethodId') {
         countRequest.input(key, sql.Int, params[key]);
       } else {
         countRequest.input(key, sql.Date, params[key]);
@@ -125,7 +125,7 @@ export async function GET(request: NextRequest) {
     
     const movementsRequest = db.request();
     Object.keys(params).forEach(key => {
-      if (key === 'newDay' || key === 'shiftMoveId' || key === 'userId' || key === 'paymentMethodId') {
+      if (key === 'shiftMoveId' || key === 'userId' || key === 'paymentMethodId') {
         movementsRequest.input(key, sql.Int, params[key]);
       } else {
         movementsRequest.input(key, sql.Date, params[key]);

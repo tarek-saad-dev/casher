@@ -98,15 +98,19 @@ describe('treasuryActions integration', () => {
     try {
       // Find or create an open day
       const dayResult = await new sql.Request(transaction).query(
-        `SELECT TOP 1 ID FROM dbo.TblNewDay WHERE Status = 1 ORDER BY ID DESC`
+        `SELECT TOP 1 ID, NewDay FROM dbo.TblNewDay WHERE Status = 1 ORDER BY ID DESC`
       );
       if (dayResult.recordset.length === 0) {
         throw new Error('No open business day found for close-day test');
       }
-      const newDay = dayResult.recordset[0].ID;
+      const dayId = dayResult.recordset[0].ID;
+      const newDay = dayResult.recordset[0].NewDay;
+      const newDayDate = newDay instanceof Date
+        ? newDay.toISOString().split('T')[0]
+        : String(newDay);
 
       const firstClose = await closeTreasuryDay(transaction, {
-        newDay,
+        newDay: newDayDate,
         reconciliations: [
           { paymentMethodId: 1, systemAmount: 1000, countedAmount: 1000, notes: 'first' },
         ],
@@ -117,7 +121,7 @@ describe('treasuryActions integration', () => {
       // Second close of the same day should fail
       await expect(
         closeTreasuryDay(transaction, {
-          newDay,
+          newDay: newDayDate,
           reconciliations: [
             { paymentMethodId: 1, systemAmount: 1000, countedAmount: 1000, notes: 'second' },
           ],
@@ -125,10 +129,10 @@ describe('treasuryActions integration', () => {
         })
       ).rejects.toThrow('تم تقفيل هذا اليوم مسبقاً');
 
-      // Verify only one reconciliation row exists
+      // Verify only one reconciliation row exists (TblTreasuryCloseRecon.NewDay is the day ID)
       const reconCount = await new sql.Request(transaction)
-        .input('newDay', sql.Int, newDay)
-        .query(`SELECT COUNT(*) AS cnt FROM dbo.TblTreasuryCloseRecon WHERE NewDay = @newDay`);
+        .input('dayId', sql.Int, dayId)
+        .query(`SELECT COUNT(*) AS cnt FROM dbo.TblTreasuryCloseRecon WHERE NewDay = @dayId`);
       expect(reconCount.recordset[0].cnt).toBe(1);
     } finally {
       await transaction.rollback();

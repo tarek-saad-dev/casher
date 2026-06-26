@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     db = await getPool();
     
     const searchParams = request.nextUrl.searchParams;
-    const newDay = searchParams.get('newDay') ? parseInt(searchParams.get('newDay')!) : null;
+    const newDay = searchParams.get('newDay') || null;
     const dateFrom = searchParams.get('dateFrom');
     const dateTo = searchParams.get('dateTo');
     const shiftMoveId = searchParams.get('shiftMoveId') ? parseInt(searchParams.get('shiftMoveId')!) : null;
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
     
     const breakdownRequest = db.request();
     Object.keys(params).forEach(key => {
-      if (key === 'newDay' || key === 'shiftMoveId' || key === 'userId') {
+      if (key === 'shiftMoveId' || key === 'userId') {
         breakdownRequest.input(key, sql.Int, params[key]);
       } else {
         breakdownRequest.input(key, sql.Date, params[key]);
@@ -163,13 +163,17 @@ export async function GET(request: NextRequest) {
     
     if (newDay !== null) {
       const dayInfoResult = await db.request()
-        .input('newDay', sql.Int, newDay)
+        .input('newDay', sql.Date, newDay)
         .query(`
           SELECT NewDay AS DayDate FROM [dbo].[TblNewDay] WHERE NewDay = @newDay
         `);
       
       if (dayInfoResult.recordset.length > 0) {
-        filterInfo.dayDate = dayInfoResult.recordset[0].DayDate;
+        const dayDate = dayInfoResult.recordset[0].DayDate;
+        if (dayDate) {
+          const date = new Date(dayDate);
+          filterInfo.dayDate = isNaN(date.getTime()) ? dayDate : date.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+        }
       }
     }
     

@@ -67,7 +67,7 @@ export default function TreasuryDailyView({
   } | null>(null);
 
   const [filters, setFilters] = useState<{
-    newDay: number | null;
+    newDay: string | null;
     dateFrom: string | null;
     dateTo: string | null;
     shiftMoveId: number | null;

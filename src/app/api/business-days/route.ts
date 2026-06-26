@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import sql from 'mssql';
 
+function formatDate(d: Date | string | null | undefined): string | null {
+  if (!d) return null;
+  const date = typeof d === 'string' ? new Date(d) : d;
+  if (isNaN(date.getTime())) return null;
+  return date.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+}
+
 /**
  * GET /api/business-days
  * Get list of business days for selection
@@ -28,13 +35,16 @@ export async function GET(request: NextRequest) {
         ORDER BY NewDay DESC
       `);
     
-    const days = result.recordset.map((row: any) => ({
-      id: row.ID,
-      newDay: row.NewDay,
-      dayDate: row.NewDay,
-      isOpen: row.Status === 1,
-      label: String(row.NewDay)
-    }));
+    const days = result.recordset.map((row: any) => {
+      const dayStr = formatDate(row.NewDay) ?? String(row.NewDay);
+      return {
+        id: row.ID,
+        newDay: dayStr,
+        dayDate: dayStr,
+        isOpen: row.Status === 1,
+        label: dayStr
+      };
+    });
     
     return NextResponse.json({ days });
     

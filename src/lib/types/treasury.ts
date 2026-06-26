@@ -25,7 +25,7 @@ export interface PaymentMethodBreakdown {
 }
 
 export interface TreasuryFilters {
-  newDay: number | null;
+  newDay: string | null;
   dayDate: string | null;
   dateFrom: string | null;
   dateTo: string | null;
@@ -71,7 +71,8 @@ export interface TreasuryMovementsResponse {
 
 export interface CurrentDayShift {
   currentDay: {
-    newDay: number;
+    id: number;
+    newDay: string;
     dayDate: string;
     isOpen: boolean;
   } | null;
@@ -91,7 +92,7 @@ export interface ReconciliationInput {
 }
 
 export interface ReconciliationRequest {
-  newDay: number;
+  newDay: string;
   shiftMoveId?: number;
   reconciliations: ReconciliationInput[];
 }
@@ -115,7 +116,7 @@ export interface ReconciliationResponse {
 
 export interface ReconciliationRecord {
   id: number;
-  newDay: number;
+  newDay: string;
   dayDate: string;
   shiftMoveId: number | null;
   shiftName: string | null;
@@ -137,7 +138,7 @@ export interface ReconciliationHistoryResponse {
 }
 
 export interface DayOption {
-  newDay: number;
+  newDay: string;
   dayDate: string;
   label: string;
   isOpen: boolean;

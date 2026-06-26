@@ -20,7 +20,7 @@ export interface FinancialSummaryParams {
   toDate: string;   // YYYY-MM-DD
   shiftMoveId?: number;
   userId?: number;
-  newDay?: number;
+  newDay?: string;
 }
 
 export interface FinancialSummary {
@@ -98,7 +98,7 @@ export async function getFinancialSummary(params: FinancialSummaryParams): Promi
   
   const request = db.request();
   Object.keys(queryParams).forEach(key => {
-    if (key === 'newDay' || key === 'shiftMoveId' || key === 'userId') {
+    if (key === 'shiftMoveId' || key === 'userId') {
       request.input(key, sql.Int, queryParams[key]);
     } else {
       request.input(key, sql.Date, queryParams[key]);

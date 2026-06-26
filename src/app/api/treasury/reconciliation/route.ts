@@ -14,6 +14,13 @@ import type {
 
 const VARIANCE_THRESHOLD = 50; // 50 ج.م acceptable variance
 
+function formatDate(d: Date | string | null | undefined): string | null {
+  if (!d) return null;
+  const date = typeof d === 'string' ? new Date(d) : d;
+  if (isNaN(date.getTime())) return null;
+  return date.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+}
+
 function getVarianceStatus(variance: number, systemAmount: number): VarianceStatus {
   const absVariance = Math.abs(variance);
   const percentage = systemAmount !== 0 ? (absVariance / Math.abs(systemAmount)) * 100 : 0;
@@ -47,11 +54,14 @@ export async function POST(request: NextRequest) {
     }
 
     const dayResult = await db.request()
-      .input('newDay', sql.Int, newDay)
+      .input('newDay', sql.Date, newDay)
       .query(`
-        SELECT TOP 1 ID, NewDay, Status FROM dbo.TblNewDay WHERE ID = @newDay
+        SELECT TOP 1 ID, NewDay, Status FROM dbo.TblNewDay WHERE NewDay = @newDay
       `);
     const dayRow = dayResult.recordset[0];
+    if (!dayRow) {
+      return NextResponse.json({ error: 'اليوم المطلوب غير موجود' }, { status: 404 });
+    }
 
     const auditResult = await executeAuditedAction({
       actionType: 'close_day',
@@ -63,11 +73,11 @@ export async function POST(request: NextRequest) {
       reason: reason || null,
       loadOldData: async () => {
         if (!dayRow) return null;
-        const previousRecon = await db!.request().input('newDay', sql.Int, newDay).query(`
+        const previousRecon = await db!.request().input('dayId', sql.Int, dayRow.ID).query(`
           SELECT r.ID, r.PaymentMethodID, pm.PaymentMethod, r.SystemAmount, r.CountedAmount, r.VarianceAmount, r.Notes
           FROM dbo.TblTreasuryCloseRecon r
           JOIN dbo.TblPaymentMethods pm ON r.PaymentMethodID = pm.PaymentID
-          WHERE r.NewDay = @newDay
+          WHERE r.NewDay = @dayId
         `);
         return {
           newDay,
@@ -83,15 +93,15 @@ export async function POST(request: NextRequest) {
       }),
       loadNewData: async (transaction, result) => {
         const newRecon = await new sql.Request(transaction)
-          .input('newDay', sql.Int, result.newDay)
+          .input('dayId', sql.Int, dayRow.ID)
           .query(`
             SELECT r.ID, r.PaymentMethodID, pm.PaymentMethod, r.SystemAmount, r.CountedAmount, r.VarianceAmount, r.Notes
             FROM dbo.TblTreasuryCloseRecon r
             JOIN dbo.TblPaymentMethods pm ON r.PaymentMethodID = pm.PaymentID
-            WHERE r.NewDay = @newDay
+            WHERE r.NewDay = @dayId
           `);
         return {
-          newDay: result.newDay,
+          newDay,
           reconciliationIds: result.reconciliationIds,
           variances: result.variances,
           closedByUserId: result.closedByUserId,
@@ -135,15 +145,23 @@ export async function GET(request: NextRequest) {
     db = await getPool();
     
     const searchParams = request.nextUrl.searchParams;
-    const newDay = searchParams.get('newDay') ? parseInt(searchParams.get('newDay')!) : null;
+    const newDayDate = searchParams.get('newDay') || null;
     const shiftMoveId = searchParams.get('shiftMoveId') ? parseInt(searchParams.get('shiftMoveId')!) : null;
+    
+    let dayId: number | null = null;
+    if (newDayDate) {
+      const dayLookup = await db.request()
+        .input('newDay', sql.Date, newDayDate)
+        .query(`SELECT TOP 1 ID FROM [dbo].[TblNewDay] WHERE NewDay = @newDay`);
+      dayId = dayLookup.recordset[0]?.ID ?? null;
+    }
     
     let whereConditions: string[] = ['r.IsActive = 1'];
     const params: any = {};
     
-    if (newDay !== null) {
-      whereConditions.push('r.NewDay = @newDay');
-      params.newDay = newDay;
+    if (dayId !== null) {
+      whereConditions.push('r.NewDay = @dayId');
+      params.dayId = dayId;
     }
     
     if (shiftMoveId !== null) {
@@ -157,7 +175,7 @@ export async function GET(request: NextRequest) {
       SELECT 
         r.ID,
         r.NewDay,
-        nd.DayDate,
+        nd.NewDay AS DayDate,
         r.ShiftMoveID,
         s.ShiftName,
         r.PaymentMethodID,
@@ -170,7 +188,7 @@ export async function GET(request: NextRequest) {
         u.UserName AS ClosedByUserName,
         r.ClosedAt
       FROM [dbo].[TblTreasuryCloseRecon] r
-      INNER JOIN [dbo].[TblNewDay] nd ON r.NewDay = nd.NewDay
+      INNER JOIN [dbo].[TblNewDay] nd ON r.NewDay = nd.ID
       INNER JOIN [dbo].[TblPaymentMethods] pm ON r.PaymentMethodID = pm.PaymentID
       INNER JOIN [dbo].[TblUser] u ON r.ClosedByUserID = u.UserID
       LEFT JOIN [dbo].[TblShiftMove] sm ON r.ShiftMoveID = sm.ID
@@ -195,8 +213,8 @@ export async function GET(request: NextRequest) {
       
       return {
         id: row.ID,
-        newDay: row.NewDay,
-        dayDate: row.DayDate,
+        newDay: formatDate(row.DayDate) ?? row.DayDate,
+        dayDate: formatDate(row.DayDate) ?? row.DayDate,
         shiftMoveId: row.ShiftMoveID,
         shiftName: row.ShiftName,
         paymentMethodId: row.PaymentMethodID,

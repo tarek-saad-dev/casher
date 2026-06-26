@@ -6,13 +6,13 @@ import type { DayOption, ShiftOption, UserOption } from '@/lib/types/treasury';
 
 interface TreasuryFiltersBarProps {
   onFilterChange: (filters: {
-    newDay: number | null;
+    newDay: string | null;
     dateFrom: string | null;
     dateTo: string | null;
     shiftMoveId: number | null;
     userId: number | null;
   }) => void;
-  currentDay: { newDay: number; dayDate: string } | null;
+  currentDay: { id: number; newDay: string; dayDate: string } | null;
   currentShift: { shiftMoveId: number; shiftName: string } | null;
 }
 
@@ -21,7 +21,7 @@ export default function TreasuryFiltersBar({
   currentDay, 
   currentShift 
 }: TreasuryFiltersBarProps) {
-  const [selectedNewDay, setSelectedNewDay] = useState<number | null>(currentDay?.newDay || null);
+  const [selectedNewDay, setSelectedNewDay] = useState<string | null>(currentDay?.newDay || null);
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
   const [selectedShiftMoveId, setSelectedShiftMoveId] = useState<number | null>(null);
@@ -83,10 +83,10 @@ export default function TreasuryFiltersBar({
     }
   };
 
-  const loadShifts = async (newDay: number) => {
+  const loadShifts = async (newDay: string) => {
     setLoadingShifts(true);
     try {
-      const response = await fetch(`/api/shifts?newDay=${newDay}`);
+      const response = await fetch(`/api/shifts?newDay=${encodeURIComponent(newDay)}`);
       if (response.ok) {
         const data = await response.json();
         const shiftOptions: ShiftOption[] = data.shifts.map((s: any) => ({
@@ -110,7 +110,8 @@ export default function TreasuryFiltersBar({
       const response = await fetch('/api/users?active=true');
       if (response.ok) {
         const data = await response.json();
-        const userOptions: UserOption[] = data.users.map((u: any) => ({
+        const rawUsers = Array.isArray(data) ? data : (data.users || []);
+        const userOptions: UserOption[] = rawUsers.map((u: any) => ({
           userId: u.UserID,
           userName: u.UserName
         }));
@@ -162,7 +163,7 @@ export default function TreasuryFiltersBar({
           </label>
           <select
             value={selectedNewDay || ''}
-            onChange={(e) => setSelectedNewDay(e.target.value ? parseInt(e.target.value) : null)}
+            onChange={(e) => setSelectedNewDay(e.target.value || null)}
             disabled={loadingDays}
             className="w-full bg-zinc-800/40 border border-zinc-700/30 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50 transition-colors"
           >

@@ -17,9 +17,7 @@ export async function GET(request: NextRequest) {
     db = await getPool();
 
     const searchParams = request.nextUrl.searchParams;
-    const newDay = searchParams.get("newDay")
-      ? parseInt(searchParams.get("newDay")!)
-      : null;
+    const newDay = searchParams.get("newDay") || null;
 
     if (newDay === null) {
       return NextResponse.json(
@@ -28,7 +26,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const result = await db.request().input("newDay", sql.Int, newDay).query(`
+    const result = await db.request().input("newDay", sql.Date, newDay).query(`
         SELECT 
           sm.ID as ShiftMoveID,
           sm.ShiftID,

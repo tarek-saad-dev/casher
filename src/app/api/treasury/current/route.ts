@@ -3,6 +3,13 @@ import { getPool } from '@/lib/db';
 import sql from 'mssql';
 import type { CurrentDayShift } from '@/lib/types/treasury';
 
+function formatDate(d: Date | string | null | undefined): string | null {
+  if (!d) return null;
+  const date = typeof d === 'string' ? new Date(d) : d;
+  if (isNaN(date.getTime())) return null;
+  return date.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+}
+
 /**
  * GET /api/treasury/current
  * Get current open business day and active shift
@@ -37,17 +44,18 @@ export async function GET(request: NextRequest) {
 
     const currentDay = currentDayRow
       ? {
-          newDay: currentDayRow.NewDay,
-          dayDate: currentDayRow.NewDay,
+          id: currentDayRow.ID,
+          newDay: formatDate(currentDayRow.NewDay)!,
+          dayDate: formatDate(currentDayRow.NewDay)!,
           isOpen: currentDayRow.Status === 1,
         }
       : null;
     
     // Get current active shift (if day is open)
     let currentShift = null;
-    if (currentDay) {
+    if (currentDayRow) {
       const currentShiftResult = await db.request()
-        .input('newDay', sql.Int, currentDay.newDay)
+        .input('newDay', sql.Date, currentDayRow.NewDay)
         .query(`
           SELECT TOP 1 
             sm.ID as ShiftMoveID,

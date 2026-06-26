@@ -6,7 +6,7 @@ import type { PaymentMethodBreakdown, ReconciliationInput, VarianceStatus } from
 
 interface TreasuryClosePanelProps {
   paymentMethods: PaymentMethodBreakdown[];
-  newDay: number;
+  newDay: string;
   shiftMoveId?: number;
   onClose: () => void;
   onSaved: () => void;

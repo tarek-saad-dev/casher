@@ -31,7 +31,7 @@ export interface TreasuryTransferResult {
 }
 
 export interface CloseDayInput {
-  newDay: number;
+  newDay: string;
   shiftMoveId?: number;
   reconciliations: Array<{
     paymentMethodId: number;
@@ -55,7 +55,7 @@ export interface CloseDayReconRow {
 }
 
 export interface CloseDayResult {
-  newDay: number;
+  newDay: string;
   reconciliationIds: number[];
   variances: CloseDayReconRow[];
   closedByUserId: number;
@@ -74,7 +74,7 @@ function getVarianceStatus(variance: number, systemAmount: number): CloseDayReco
 export async function getPaymentMethodBalance(
   connection: sql.Transaction,
   paymentMethodId: number,
-  newDay?: number,
+  newDay?: string,
 ): Promise<number> {
   let query = `
     SELECT COALESCE(SUM(CASE WHEN inOut = N'in' THEN GrandTolal ELSE -GrandTolal END), 0) AS balance
@@ -82,12 +82,12 @@ export async function getPaymentMethodBalance(
     WHERE PaymentMethodID = @pm
   `;
   if (newDay !== undefined) {
-    query += ` AND CAST(invDate AS DATE) = (SELECT CAST(DayDate AS DATE) FROM dbo.TblNewDay WHERE ID = @day)`;
+    query += ` AND CAST(invDate AS DATE) = @day`;
   }
   const req = new sql.Request(connection)
     .input('pm', sql.Int, paymentMethodId);
   if (newDay !== undefined) {
-    req.input('day', sql.Int, newDay);
+    req.input('day', sql.Date, newDay);
   }
   const result = await req.query(query);
   return result.recordset[0]?.balance ?? 0;
@@ -133,9 +133,7 @@ export async function executeTreasuryTransfer(
       .input('shiftUserID', sql.Int, userId)
       .query(`
         SELECT TOP 1 ID, ShiftID FROM [dbo].[TblShiftMove]
-        WHERE Status = 1 AND ID IN (
-          SELECT ID FROM [dbo].[TblShiftMove] WHERE Status = 1
-        )
+        WHERE Status = 1 AND UserID = @shiftUserID
         ORDER BY ID DESC
       `);
     if (shiftResult.recordset.length === 0) {
@@ -163,56 +161,38 @@ export async function executeTreasuryTransfer(
   const fromPm = pmCheck.recordset.find((pm) => pm.PaymentID === fromPaymentMethodId);
   const toPm = pmCheck.recordset.find((pm) => pm.PaymentID === toPaymentMethodId);
 
-  // Get or create transfer categories
+  // Get or create transfer categories (same logic for current and past-date transfers)
   let transferIncomeCategory: number;
   let transferExpenseCategory: number;
 
-  if (transferDate) {
-    const incomeCatRes = await new sql.Request(connection).query(`
-      SELECT TOP 1 ExpINID FROM dbo.TblExpINCat
-      WHERE ExpINType = N'ايرادات' AND (CatName LIKE N'%تحويل%' OR IsActive = 1)
-      ORDER BY CASE WHEN CatName LIKE N'%تحويل%' THEN 0 ELSE 1 END, ExpINID
+  const expCatResult = await new sql.Request(connection).query(`
+    SELECT TOP 1 ExpINID FROM [dbo].[TblExpINCat]
+    WHERE ExpINType = N'مصروفات' AND CatName LIKE N'%تحويل%'
+  `);
+  if (expCatResult.recordset.length === 0) {
+    const insertCat = await new sql.Request(connection).query(`
+      INSERT INTO [dbo].[TblExpINCat] (CatName, ExpINType)
+      OUTPUT INSERTED.ExpINID
+      VALUES (N'تحويل بين طرق الدفع', N'مصروفات')
     `);
-    if (incomeCatRes.recordset.length === 0) throw new Error('لا توجد تصنيفات إيرادات صالحة للتحويل');
-    transferIncomeCategory = incomeCatRes.recordset[0].ExpINID;
-
-    const expenseCatRes = await new sql.Request(connection).query(`
-      SELECT TOP 1 ExpINID FROM dbo.TblExpINCat
-      WHERE ExpINType = N'مصروفات' AND IsActive = 1
-      ORDER BY ExpINID
-    `);
-    if (expenseCatRes.recordset.length === 0) throw new Error('لا توجد تصنيفات مصروفات صالحة للتحويل');
-    transferExpenseCategory = expenseCatRes.recordset[0].ExpINID;
+    transferExpenseCategory = insertCat.recordset[0].ExpINID;
   } else {
-    let expCatResult = await new sql.Request(connection).query(`
-      SELECT TOP 1 ExpINID FROM [dbo].[TblExpINCat]
-      WHERE ExpINType = N'مصروفات' AND CatName LIKE N'%تحويل%'
-    `);
-    if (expCatResult.recordset.length === 0) {
-      const insertCat = await new sql.Request(connection).query(`
-        INSERT INTO [dbo].[TblExpINCat] (CatName, ExpINType)
-        OUTPUT INSERTED.ExpINID
-        VALUES (N'تحويل بين طرق الدفع', N'مصروفات')
-      `);
-      transferExpenseCategory = insertCat.recordset[0].ExpINID;
-    } else {
-      transferExpenseCategory = expCatResult.recordset[0].ExpINID;
-    }
+    transferExpenseCategory = expCatResult.recordset[0].ExpINID;
+  }
 
-    let incCatResult = await new sql.Request(connection).query(`
-      SELECT TOP 1 ExpINID FROM [dbo].[TblExpINCat]
-      WHERE ExpINType = N'ايرادات' AND CatName LIKE N'%تحويل%'
+  const incCatResult = await new sql.Request(connection).query(`
+    SELECT TOP 1 ExpINID FROM [dbo].[TblExpINCat]
+    WHERE ExpINType = N'ايرادات' AND CatName LIKE N'%تحويل%'
+  `);
+  if (incCatResult.recordset.length === 0) {
+    const insertCat = await new sql.Request(connection).query(`
+      INSERT INTO [dbo].[TblExpINCat] (CatName, ExpINType)
+      OUTPUT INSERTED.ExpINID
+      VALUES (N'تحويل بين طرق الدفع', N'ايرادات')
     `);
-    if (incCatResult.recordset.length === 0) {
-      const insertCat = await new sql.Request(connection).query(`
-        INSERT INTO [dbo].[TblExpINCat] (CatName, ExpINType)
-        OUTPUT INSERTED.ExpINID
-        VALUES (N'تحويل بين طرق الدفع', N'ايرادات')
-      `);
-      transferIncomeCategory = insertCat.recordset[0].ExpINID;
-    } else {
-      transferIncomeCategory = incCatResult.recordset[0].ExpINID;
-    }
+    transferIncomeCategory = insertCat.recordset[0].ExpINID;
+  } else {
+    transferIncomeCategory = incCatResult.recordset[0].ExpINID;
   }
 
   const transferAmount = Number(amount);
@@ -304,17 +284,27 @@ export async function closeTreasuryDay(
 ): Promise<CloseDayResult> {
   const { newDay, shiftMoveId, reconciliations, closedByUserId } = input;
 
+  // Resolve the business day ID from its date
+  const dayLookup = await new sql.Request(connection)
+    .input('newDay', sql.Date, newDay)
+    .query(`SELECT TOP 1 ID FROM dbo.TblNewDay WHERE NewDay = @newDay`);
+  const dayId = dayLookup.recordset[0]?.ID;
+  if (!dayId) {
+    throw new Error('لا يوجد يوم عمل مطابق للتاريخ المحدد');
+  }
+
   // Idempotency guard: prevent duplicate reconciliation rows for the same day
+  // TblTreasuryCloseRecon.NewDay stores the day ID (int), not the date.
   const existingRecon = await new sql.Request(connection)
-    .input('newDay', sql.Int, newDay)
-    .query(`SELECT TOP 1 ID FROM dbo.TblTreasuryCloseRecon WHERE NewDay = @newDay`);
+    .input('dayId', sql.Int, dayId)
+    .query(`SELECT TOP 1 ID FROM dbo.TblTreasuryCloseRecon WHERE NewDay = @dayId`);
   if (existingRecon.recordset.length > 0) {
     throw new Error('تم تقفيل هذا اليوم مسبقاً — لا يمكن إنشاء تسويات جديدة');
   }
 
   // Update TblNewDay status
   await new sql.Request(connection)
-    .input('id', sql.Int, newDay)
+    .input('id', sql.Int, dayId)
     .query(`UPDATE dbo.TblNewDay SET Status = 0 WHERE ID = @id`);
 
   const reconciliationIds: number[] = [];
@@ -325,7 +315,7 @@ export async function closeTreasuryDay(
     const status = getVarianceStatus(variance, recon.systemAmount);
 
     const insertResult = await new sql.Request(connection)
-      .input('newDay', sql.Int, newDay)
+      .input('dayId', sql.Int, dayId)
       .input('shiftMoveId', sql.Int, shiftMoveId || null)
       .input('paymentMethodId', sql.Int, recon.paymentMethodId)
       .input('systemAmount', sql.Decimal(18, 2), recon.systemAmount)
@@ -336,7 +326,7 @@ export async function closeTreasuryDay(
         INSERT INTO [dbo].[TblTreasuryCloseRecon]
           ([NewDay], [ShiftMoveID], [PaymentMethodID], [SystemAmount], [CountedAmount], [Notes], [ClosedByUserID])
         VALUES
-          (@newDay, @shiftMoveId, @paymentMethodId, @systemAmount, @countedAmount, @notes, @closedByUserId);
+          (@dayId, @shiftMoveId, @paymentMethodId, @systemAmount, @countedAmount, @notes, @closedByUserId);
         SELECT SCOPE_IDENTITY() AS ID;
       `);
 
