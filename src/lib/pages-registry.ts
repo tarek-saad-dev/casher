@@ -25,6 +25,7 @@ export const SYSTEM_PAGES: PageDefinition[] = [
   { key: 'income_review.payments',  name: 'المدفوعات',               path: '/income-review/payments',          section: 'مراجعة المدخلات',  accessMode: 'roles', sort: 24,  defaultRoles: ['super_admin','admin','accountant'] },
   { key: 'reports.emp_services',    name: 'خدمات الصنايعية',         path: '/admin/reports/employee-services', section: 'مراجعة المدخلات',  accessMode: 'roles', sort: 25,  defaultRoles: ['super_admin','admin','manager'] },
   { key: 'reports.monthly',         name: 'التقرير الشهري',          path: '/reports/monthly',                 section: 'مراجعة المدخلات',  accessMode: 'roles', sort: 26,  defaultRoles: ['super_admin','admin','manager','accountant','viewer'] },
+  { key: 'reports.partners',        name: 'تقرير الشركاء',           path: '/admin/reports/partners',          section: 'مراجعة المدخلات',  accessMode: 'roles', sort: 27,  defaultRoles: ['super_admin','admin','manager','accountant'] },
   // ── Expenses ─────────────────────────────────────────────────────────────────
   { key: 'expenses.new',            name: 'تسجيل مصروف',            path: '/expenses',                        section: 'المصروفات',         accessMode: 'roles', sort: 30,  defaultRoles: ['super_admin','admin','cashier','accountant'] },
   { key: 'reports.expenses',        name: 'تقرير المصروفات',         path: '/reports/expenses/monthly',        section: 'مراجعة المصروفات', accessMode: 'roles', sort: 40,  defaultRoles: ['super_admin','admin','manager','accountant'] },
