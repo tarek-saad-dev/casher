@@ -148,11 +148,13 @@ export async function executeTreasuryTransfer(
     }
     invDate = inputDate;
     invTime = '12:00';
-    log('Historical date resolved', { invDate: invDate.toISOString().split('T')[0], invTime });
+    log('Historical date resolved', { step: 'date-resolve:complete', invDate: invDate.toISOString().split('T')[0], invTime });
   } else {
+    log('Active business day lookup:start', { step: 'day-lookup:start' });
     const dayResult = await new sql.Request(connection).query(`
       SELECT TOP 1 ID, NewDay FROM [dbo].[TblNewDay] WHERE Status = 1 ORDER BY ID DESC
     `);
+    log('Active business day lookup:complete', { step: 'day-lookup:complete' });
     if (dayResult.recordset.length === 0) {
       throw new Error('لا يوجد يوم عمل مفتوح — لا يمكن تنفيذ التحويل');
     }
@@ -160,6 +162,7 @@ export async function executeTreasuryTransfer(
     invDate = activeDay.NewDay;
     log('Active business day resolved', { dayId: activeDay.ID, invDate: invDate.toISOString().split('T')[0] });
 
+    log('Active shift lookup:start', { step: 'shift-lookup:start' });
     const shiftResult = await new sql.Request(connection)
       .input('shiftUserID', sql.Int, userId)
       .query(`
@@ -167,6 +170,7 @@ export async function executeTreasuryTransfer(
         WHERE Status = 1 AND UserID = @shiftUserID
         ORDER BY ID DESC
       `);
+    log('Active shift lookup:complete', { step: 'shift-lookup:complete' });
     if (shiftResult.recordset.length === 0) {
       throw new Error('لا يوجد وردية مفتوحة لهذا المستخدم — لا يمكن تنفيذ التحويل');
     }
@@ -183,6 +187,7 @@ export async function executeTreasuryTransfer(
   }
 
   // Validate payment methods exist
+  log('Payment method lookup:start', { step: 'payment-method-lookup:start' });
   const pmCheck = await new sql.Request(connection)
     .input('fromPmId', sql.Int, fromPaymentMethodId)
     .input('toPmId', sql.Int, toPaymentMethodId)
@@ -190,6 +195,7 @@ export async function executeTreasuryTransfer(
       SELECT PaymentID, PaymentMethod FROM dbo.TblPaymentMethods
       WHERE PaymentID IN (@fromPmId, @toPmId)
     `);
+  log('Payment method lookup:complete', { step: 'payment-method-lookup:complete' });
   if (pmCheck.recordset.length !== 2) {
     throwWithStatus('إحدى طرق الدفع غير موجودة', 404);
   }
@@ -211,8 +217,9 @@ export async function executeTreasuryTransfer(
 
   // Balance check: ensure source has enough funds as of the transfer date
   const balanceOpts = transferDate ? { asOfDate: transferDate } : undefined;
+  log('Balance calculation:start', { step: 'balance-calculation:start', fromPaymentMethodId, asOfDate: transferDate ?? 'all-time' });
   const fromBalance = await getPaymentMethodBalance(connection, fromPaymentMethodId, balanceOpts);
-  log('Source balance checked', { fromBalance, amount, asOfDate: transferDate ?? 'all-time' });
+  log('Balance calculation:complete', { step: 'balance-calculation:complete', fromBalance, amount });
   if (fromBalance < amount) {
     throwWithStatus('رصيد طريقة الدفع المصدر غير كافٍ', 409);
   }
@@ -221,12 +228,14 @@ export async function executeTreasuryTransfer(
   let transferIncomeCategory: number;
   let transferExpenseCategory: number;
 
+  log('Category lookup:start', { step: 'category-lookup:expense:start' });
   const expCatResult = await new sql.Request(connection).query(`
     SELECT TOP 1 ExpINID FROM [dbo].[TblExpINCat]
     WHERE ExpINType = N'مصروفات' AND CatName LIKE N'%تحويل%'
     ORDER BY ExpINID
   `);
   if (expCatResult.recordset.length === 0) {
+    log('Category lookup:create-expense', { step: 'category-lookup:expense:create' });
     const insertCat = await new sql.Request(connection).query(`
       INSERT INTO [dbo].[TblExpINCat] (CatName, ExpINType)
       OUTPUT INSERTED.ExpINID
@@ -237,13 +246,16 @@ export async function executeTreasuryTransfer(
   } else {
     transferExpenseCategory = expCatResult.recordset[0].ExpINID;
   }
+  log('Category lookup:complete', { step: 'category-lookup:expense:complete', transferExpenseCategory });
 
+  log('Category lookup:start', { step: 'category-lookup:income:start' });
   const incCatResult = await new sql.Request(connection).query(`
     SELECT TOP 1 ExpINID FROM [dbo].[TblExpINCat]
     WHERE ExpINType = N'ايرادات' AND CatName LIKE N'%تحويل%'
     ORDER BY ExpINID
   `);
   if (incCatResult.recordset.length === 0) {
+    log('Category lookup:create-income', { step: 'category-lookup:income:create' });
     const insertCat = await new sql.Request(connection).query(`
       INSERT INTO [dbo].[TblExpINCat] (CatName, ExpINType)
       OUTPUT INSERTED.ExpINID
@@ -254,17 +266,20 @@ export async function executeTreasuryTransfer(
   } else {
     transferIncomeCategory = incCatResult.recordset[0].ExpINID;
   }
+  log('Category lookup:complete', { step: 'category-lookup:income:complete', transferIncomeCategory });
 
   const transferAmount = Number(amount);
   const transferNotes =
     notes?.trim() || `تحويل من ${fromPm.PaymentMethod} إلى ${toPm.PaymentMethod}`;
 
   // Allocate invIDs safely using application locks (no TABLOCKX)
+  log('invID allocation:start', { step: 'invID-allocation:expense:start' });
   const expenseInvID = await allocateInvID(connection as sql.Transaction, 'TblCashMove', 'مصروفات', 5000);
-  log('Generated expense invID', { expenseInvID });
+  log('invID allocation:complete', { step: 'invID-allocation:expense:complete', expenseInvID });
 
+  log('invID allocation:start', { step: 'invID-allocation:income:start' });
   const incomeInvID = await allocateInvID(connection as sql.Transaction, 'TblCashMove', 'ايرادات', 5000);
-  log('Generated income invID', { incomeInvID });
+  log('invID allocation:complete', { step: 'invID-allocation:income:complete', incomeInvID });
 
   // Create expense record
   const expenseReq = new sql.Request(connection)
@@ -284,6 +299,7 @@ export async function executeTreasuryTransfer(
 
   let expenseId: number;
   try {
+    log('insert-outgoing:start', { step: 'insert-outgoing:start', expenseInvID });
     const expInsert = await expenseReq.query(`
       INSERT INTO [dbo].[TblCashMove]
         (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID)
@@ -292,7 +308,7 @@ export async function executeTreasuryTransfer(
         (@invID, @invType, @invDate, @invTime, @ClientID, @expINID, @amount, @inOut, @notes, @shiftMoveID, @paymentMethodID)
     `);
     expenseId = expInsert.recordset[0].ID;
-    log('Expense record inserted', { expenseId, expenseInvID });
+    log('insert-outgoing:complete', { step: 'insert-outgoing:complete', expenseId, expenseInvID });
   } catch (err) {
     logError('Failed to insert expense record', err);
     throw new Error('فشل إنشاء سجل المصروف');
@@ -316,6 +332,7 @@ export async function executeTreasuryTransfer(
 
   let incomeId: number;
   try {
+    log('insert-incoming:start', { step: 'insert-incoming:start', incomeInvID });
     const incInsert = await incomeReq.query(`
       INSERT INTO [dbo].[TblCashMove]
         (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID)
@@ -324,7 +341,7 @@ export async function executeTreasuryTransfer(
         (@invID, @invType, @invDate, @invTime, @ClientID, @expINID, @amount, @inOut, @notes, @shiftMoveID, @paymentMethodID)
     `);
     incomeId = incInsert.recordset[0].ID;
-    log('Income record inserted', { incomeId, incomeInvID });
+    log('insert-incoming:complete', { step: 'insert-incoming:complete', incomeId, incomeInvID });
   } catch (err) {
     logError('Failed to insert income record', err);
     throw new Error('فشل إنشاء سجل الإيراد');

@@ -174,10 +174,12 @@ export async function POST(req: NextRequest) {
       requestId,
       loadOldData: async (transaction) => {
         const balanceOpts = transferDate ? { asOfDate: transferDate } : undefined;
-        const [fromBalance, toBalance] = await Promise.all([
-          getPaymentMethodBalance(transaction, fromPmId, balanceOpts),
-          getPaymentMethodBalance(transaction, toPmId, balanceOpts),
-        ]);
+        log('loadOldData:from-balance:start', { fromPmId, asOfDate: transferDate ?? 'all-time' });
+        const fromBalance = await getPaymentMethodBalance(transaction, fromPmId, balanceOpts);
+        log('loadOldData:from-balance:complete', { fromBalance });
+        log('loadOldData:to-balance:start', { toPmId });
+        const toBalance = await getPaymentMethodBalance(transaction, toPmId, balanceOpts);
+        log('loadOldData:to-balance:complete', { toBalance });
         log('Loaded pre-transfer balances', { fromBalance, toBalance, asOfDate: transferDate ?? 'all-time' });
         return {
           fromPaymentMethodId: fromPmId,
@@ -197,10 +199,12 @@ export async function POST(req: NextRequest) {
       }),
       loadNewData: async (transaction, result) => {
         const balanceOpts = transferDate ? { asOfDate: transferDate } : undefined;
-        const [fromBalance, toBalance] = await Promise.all([
-          getPaymentMethodBalance(transaction, result.fromPaymentMethodId, balanceOpts),
-          getPaymentMethodBalance(transaction, result.toPaymentMethodId, balanceOpts),
-        ]);
+        log('loadNewData:from-balance:start', { fromPmId: result.fromPaymentMethodId });
+        const fromBalance = await getPaymentMethodBalance(transaction, result.fromPaymentMethodId, balanceOpts);
+        log('loadNewData:from-balance:complete', { fromBalance });
+        log('loadNewData:to-balance:start', { toPmId: result.toPaymentMethodId });
+        const toBalance = await getPaymentMethodBalance(transaction, result.toPaymentMethodId, balanceOpts);
+        log('loadNewData:to-balance:complete', { toBalance });
         return {
           fromPaymentMethodId: result.fromPaymentMethodId,
           toPaymentMethodId: result.toPaymentMethodId,

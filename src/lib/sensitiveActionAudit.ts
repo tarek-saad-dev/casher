@@ -226,22 +226,34 @@ export async function executeAuditedAction<T>(options: AuditExecutionOptions<T>)
 
   const db = await getPool();
   const transaction = new sql.Transaction(db);
+  let transactionStarted = false;
+  let transactionCompleted = false;
+
+  console.info(`[executeAuditedAction:${requestId}]`, { step: 'transaction-begin:start' });
   await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+  transactionStarted = true;
+  console.info(`[executeAuditedAction:${requestId}]`, { step: 'transaction-begin:complete' });
 
   try {
     // 1. Load old data
     let oldData: Record<string, unknown> | null = null;
     if (options.loadOldData) {
+      console.info(`[executeAuditedAction:${requestId}]`, { step: 'load-old-data:start' });
       oldData = await options.loadOldData(transaction);
+      console.info(`[executeAuditedAction:${requestId}]`, { step: 'load-old-data:complete' });
     }
 
     // 2. Execute the operation exactly once
+    console.info(`[executeAuditedAction:${requestId}]`, { step: 'execute:start' });
     const result = await options.execute(transaction);
+    console.info(`[executeAuditedAction:${requestId}]`, { step: 'execute:complete' });
 
     // 3. Load new data
     let newData: Record<string, unknown> | null = null;
     if (options.loadNewData) {
+      console.info(`[executeAuditedAction:${requestId}]`, { step: 'load-new-data:start' });
       newData = await options.loadNewData(transaction, result);
+      console.info(`[executeAuditedAction:${requestId}]`, { step: 'load-new-data:complete' });
     }
 
     // 4. Calculate changed fields
@@ -271,18 +283,27 @@ export async function executeAuditedAction<T>(options: AuditExecutionOptions<T>)
     };
 
     // 6. Insert audit record inside the same transaction
+    console.info(`[executeAuditedAction:${requestId}]`, { step: 'audit-insert:start' });
     const auditId = await insertAuditRecord(transaction, record);
+    console.info(`[executeAuditedAction:${requestId}]`, { step: 'audit-insert:complete', auditId });
 
     // 7. Commit
+    console.info(`[executeAuditedAction:${requestId}]`, { step: 'commit:start' });
     await transaction.commit();
+    transactionCompleted = true;
+    console.info(`[executeAuditedAction:${requestId}]`, { step: 'commit:complete' });
 
     return { success: true, auditId, data: result };
   } catch (error) {
     // Roll back business transaction
-    try {
-      await transaction.rollback();
-    } catch {
-      // ignore rollback errors
+    if (transactionStarted && !transactionCompleted) {
+      console.info(`[executeAuditedAction:${requestId}]`, { step: 'rollback:start' });
+      try {
+        await transaction.rollback();
+        console.info(`[executeAuditedAction:${requestId}]`, { step: 'rollback:complete' });
+      } catch (rollbackError) {
+        console.error(`[executeAuditedAction:${requestId}] rollback failed`, { rollbackError });
+      }
     }
 
     // Record failed attempt separately after rollback (detailed error is safe for audit log)

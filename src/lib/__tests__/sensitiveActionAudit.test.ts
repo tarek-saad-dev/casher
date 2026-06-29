@@ -193,4 +193,63 @@ describe('executeAuditedAction', () => {
     const redacted = sanitizeForAudit({ amount: 100, password: 'secret' });
     expect(redacted).toEqual({ amount: 100, password: '***REDACTED***' });
   });
+
+  it('runs execute before audit insert and commit in order', async () => {
+    const execute = vi.fn(async () => ({ ok: true }));
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    await runWithFakeRequest((req) => req.setResult({ recordset: [{ AuditID: 42 }] }));
+
+    await executeAuditedAction({
+      actionType: 'edit_expense',
+      user: mockUser,
+      entityId: 1,
+      reason: 'test reason',
+      execute,
+    });
+
+    const steps = infoSpy.mock.calls
+      .map((call) => (call[1] as { step?: string } | undefined)?.step)
+      .filter((step): step is string => Boolean(step));
+
+    expect(steps.indexOf('execute:complete')).toBeLessThan(steps.indexOf('audit-insert:start'));
+    expect(steps.indexOf('audit-insert:complete')).toBeLessThan(steps.indexOf('commit:start'));
+    infoSpy.mockRestore();
+  });
+
+  it('writes failed audit only after rollback using pool connection', async () => {
+    const execute = vi.fn(async () => {
+      throw new Error('business failure');
+    });
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    const { sql } = await runWithFakeRequest((req) => req.setResult({ recordset: [{ AuditID: 99 }] }));
+
+    const poolRequestConstructors: boolean[] = [];
+    const OriginalRequest = sql.Request;
+    sql.Request = class PoolTrackingRequest extends OriginalRequest {
+      constructor(connection?: unknown) {
+        super(connection as never);
+        poolRequestConstructors.push(!(connection instanceof sql.Transaction));
+      }
+    } as unknown as typeof sql.Request;
+
+    await expect(
+      executeAuditedAction({
+        actionType: 'edit_expense',
+        user: mockUser,
+        entityId: 1,
+        reason: 'test',
+        execute,
+      })
+    ).rejects.toThrow();
+
+    const steps = infoSpy.mock.calls
+      .map((call) => (call[1] as { step?: string } | undefined)?.step)
+      .filter((step): step is string => Boolean(step));
+
+    expect(steps.indexOf('rollback:start')).toBeGreaterThan(steps.indexOf('execute:start'));
+    expect(poolRequestConstructors.some((isPool) => isPool)).toBe(true);
+    infoSpy.mockRestore();
+  });
 });

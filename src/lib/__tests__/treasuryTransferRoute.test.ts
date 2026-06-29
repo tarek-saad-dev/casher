@@ -85,7 +85,7 @@ vi.mock('crypto', () => ({
 import { POST } from '@/app/api/treasury/transfer/route';
 import { getSession } from '@/lib/session';
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
-import { executeTreasuryTransfer } from '@/lib/actions/treasuryActions';
+import { executeTreasuryTransfer, getPaymentMethodBalance } from '@/lib/actions/treasuryActions';
 import { getPool } from '@/lib/db';
 
 describe('POST /api/treasury/transfer', () => {
@@ -294,5 +294,74 @@ describe('POST /api/treasury/transfer', () => {
     const json = await res.json();
     expect(json.requestId).toBe('test-request-id-123');
     expect(json.error).toContain('Unexpected boom');
+  });
+
+  it('loads pre-transfer balances sequentially inside the audited transaction', async () => {
+    const balanceCallOrder: string[] = [];
+    vi.mocked(getPaymentMethodBalance).mockImplementation(async (_tx, pmId) => {
+      balanceCallOrder.push(`start:${pmId}`);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      balanceCallOrder.push(`end:${pmId}`);
+      return 5000;
+    });
+
+    vi.mocked(executeAuditedAction).mockImplementationOnce(async (opts: any) => {
+      const tx = {};
+      if (opts.loadOldData) await opts.loadOldData(tx);
+      const result = await opts.execute(tx);
+      if (opts.loadNewData) await opts.loadNewData(tx, result);
+      return { success: true, auditId: 99, data: result };
+    });
+
+    const res = await POST(makeReq({
+      amount: 10410,
+      fromPaymentMethodId: 1,
+      toPaymentMethodId: 2,
+      transferDate: '2025-01-15',
+    }));
+
+    expect(res.status).toBe(200);
+    expect(balanceCallOrder).toEqual([
+      'start:1', 'end:1', 'start:2', 'end:2',
+      'start:1', 'end:1', 'start:2', 'end:2',
+    ]);
+  });
+
+  it('runs execute only after loadOldData completes', async () => {
+    const callOrder: string[] = [];
+    vi.mocked(getPaymentMethodBalance).mockImplementation(async (_tx, pmId) => {
+      callOrder.push(`balance:${pmId}`);
+      return 5000;
+    });
+
+    vi.mocked(executeAuditedAction).mockImplementationOnce(async (opts: any) => {
+      const tx = {};
+      if (opts.loadOldData) {
+        callOrder.push('loadOldData:start');
+        await opts.loadOldData(tx);
+        callOrder.push('loadOldData:end');
+      }
+      callOrder.push('execute:start');
+      const result = await opts.execute(tx);
+      callOrder.push('execute:end');
+      return { success: true, auditId: 99, data: result };
+    });
+
+    await POST(makeReq({
+      amount: 500,
+      fromPaymentMethodId: 3,
+      toPaymentMethodId: 4,
+      transferDate: '2025-01-15',
+    }));
+
+    expect(callOrder.indexOf('loadOldData:end')).toBeLessThan(callOrder.indexOf('execute:start'));
+    expect(callOrder).toEqual([
+      'loadOldData:start',
+      'balance:3',
+      'balance:4',
+      'loadOldData:end',
+      'execute:start',
+      'execute:end',
+    ]);
   });
 });
