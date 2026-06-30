@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import {
+  aggregateEmployeeServiceBreakdown,
+  calculateServiceLineTotal,
+  classifyServiceLines,
+} from '@/lib/services/employeeServiceBreakdown';
+import {
+  allocateEmployeeInvoiceRevenue,
+  type AllocatedDetailLine,
+} from '@/lib/services/employeeInvoiceAllocation';
+import { roundMoney } from '@/lib/reportMonthUtils';
 
 // GET /api/reports/employee-services
 // Query params: fromDate=YYYY-MM-DD, toDate=YYYY-MM-DD, employeeId=optional
@@ -46,6 +56,7 @@ export async function GET(req: NextRequest) {
       || proCols.find(c => /^(ItemName|ServiceName|Name|ProName)/i.test(c))
       || proCols.find(c => /name/i.test(c) && !/id/i.test(c))
       || 'ProName';
+    const proNameArCol = proCols.find(c => /^ProNameAr$/i.test(c)) ?? null;
 
     // Resolve TblClient name column
     const clientCols = schema['TblClient'] || [];
@@ -152,9 +163,94 @@ export async function GET(req: NextRequest) {
       .input('toDate',     sql.Date, toDate)
       .input('employeeId', sql.Int,  employeeId);
 
+    const serviceNameArExpr = proNameArCol
+      ? `ISNULL(p.${proNameArCol}, N'')`
+      : `N''`;
+
+    const lineTotalExpr = `
+      CASE
+        WHEN ISNULL(d.SValue, 0) > 0
+          THEN ISNULL(d.SValue, 0) - ISNULL(d.DisVal, 0)
+        ELSE (ISNULL(d.Qty, 1) * ISNULL(d.SPrice, 0)) - ISNULL(d.DisVal, 0)
+      END
+    `;
+
+    const baseDateWhere = `
+      CAST(h.invDate AS date) >= @fromDate
+      AND CAST(h.invDate AS date) <= @toDate
+      AND h.invType = N'مبيعات'
+    `;
+
+    const headersResult = await db.request()
+      .input('fromDate', sql.Date, fromDate)
+      .input('toDate', sql.Date, toDate)
+      .query(`
+        SELECT
+          h.invID,
+          h.invType,
+          ISNULL(h.SubTotal, 0)    AS SubTotal,
+          ISNULL(h.GrandTotal, 0)  AS GrandTotal,
+          ISNULL(h.DisVal, 0)      AS DisVal
+        FROM dbo.TblinvServHead h
+        WHERE ${baseDateWhere}
+      `);
+
+    const allocationLinesResult = await db.request()
+      .input('fromDate', sql.Date, fromDate)
+      .input('toDate', sql.Date, toDate)
+      .query(`
+        SELECT
+          d.ID                                                        AS DetailID,
+          d.EmpID,
+          e.${empNameCol}                                             AS EmpName,
+          h.invID,
+          h.invType,
+          d.ProID,
+          ISNULL(d.Qty, 1)                                            AS Qty,
+          ISNULL(d.SValue, 0)                                         AS SValue,
+          ISNULL(d.SPrice, 0)                                         AS UnitPrice,
+          ISNULL(d.DisVal, 0)                                         AS DiscountValue,
+          ${lineTotalExpr}                                            AS LineTotal
+        FROM dbo.TblinvServDetail d
+        INNER JOIN dbo.TblinvServHead h
+          ON h.invID = d.invID AND h.invType = d.invType
+        LEFT JOIN dbo.TblEmp e ON e.EmpID = d.EmpID
+        WHERE ${baseDateWhere}
+          AND d.EmpID IS NOT NULL
+          AND d.ProID IS NOT NULL
+      `);
+
+    const allocation = allocateEmployeeInvoiceRevenue(
+      headersResult.recordset.map((h: any) => ({
+        invID: h.invID,
+        invType: h.invType,
+        subTotal: h.SubTotal,
+        grandTotal: h.GrandTotal,
+        disVal: h.DisVal,
+      })),
+      allocationLinesResult.recordset.map((r: any) => ({
+        detailId: r.DetailID,
+        invID: r.invID,
+        invType: r.invType,
+        empId: r.EmpID,
+        empName: r.EmpName ?? '',
+        proId: r.ProID,
+        qty: r.Qty,
+        unitPrice: r.UnitPrice,
+        discountValue: r.DiscountValue,
+        sValue: r.SValue,
+        lineTotal: r.LineTotal,
+      }))
+    );
+
+    const allocationByDetailId = new Map<number, AllocatedDetailLine>(
+      allocation.allocatedLines.map((line) => [line.detailId, line])
+    );
+
     const mainQuery = `
       WITH ServiceLines AS (
         SELECT
+          d.ID                                                        AS DetailID,
           d.EmpID,
           e.${empNameCol}                                           AS EmpName,
           h.invID,
@@ -163,14 +259,14 @@ export async function GET(req: NextRequest) {
           CONVERT(VARCHAR(8), h.invTime, 108)                        AS OperationTime,
           d.ProID,
           p.${proNameCol}                                            AS ServiceName,
+          ${serviceNameArExpr}                                       AS ServiceNameAr,
           ISNULL(d.Qty,    1)                                        AS Qty,
+          ISNULL(d.SValue, 0)                                        AS SValue,
           ISNULL(d.SPrice, 0)                                        AS UnitPrice,
           ISNULL(d.DisVal, 0)                                        AS DiscountValue,
-          CASE
-            WHEN ISNULL(d.SValue, 0) > 0
-              THEN ISNULL(d.SValue, 0) - ISNULL(d.DisVal, 0)
-            ELSE (ISNULL(d.Qty, 1) * ISNULL(d.SPrice, 0)) - ISNULL(d.DisVal, 0)
-          END                                                         AS LineTotal,
+          ${lineTotalExpr}                                            AS LineTotal,
+          ISNULL(h.SubTotal, 0)                                      AS InvoiceSubTotal,
+          ISNULL(h.GrandTotal, 0)                                    AS InvoiceGrandTotal,
           ${clientNameExpr}                                           AS ClientName,
           ISNULL(d.Notes, N'')                                        AS Notes
         FROM dbo.TblinvServDetail d
@@ -181,9 +277,7 @@ export async function GET(req: NextRequest) {
         LEFT JOIN dbo.TblPro p  ON p.ProID = d.ProID
         ${clientJoin}
         WHERE
-          CAST(h.invDate AS date) >= @fromDate
-          AND CAST(h.invDate AS date) <= @toDate
-          AND h.invType = N'مبيعات'
+          ${baseDateWhere}
           AND (@employeeId IS NULL OR d.EmpID = @employeeId)
           AND d.EmpID IS NOT NULL
           AND d.ProID IS NOT NULL
@@ -208,7 +302,15 @@ export async function GET(req: NextRequest) {
     const invoiceSet  = new Set<string>();
 
     for (const r of rows) {
-      totalAmount   += r.LineTotal ?? 0;
+      const lineTotal = calculateServiceLineTotal({
+        qty: r.Qty,
+        unitPrice: r.UnitPrice,
+        discountValue: r.DiscountValue,
+        sValue: r.SValue,
+      });
+      r.LineTotal = lineTotal;
+
+      totalAmount   += lineTotal;
       totalServices += 1;
       invoiceSet.add(`${r.invType}-${r.invID}`);
 
@@ -225,30 +327,73 @@ export async function GET(req: NextRequest) {
       }
       const emp = empMap[r.EmpID];
       emp.servicesCount   += 1;
-      emp.totalAmount     += r.LineTotal ?? 0;
+      emp.totalAmount     += lineTotal;
       emp.invoiceSet.add(`${r.invType}-${r.invID}`);
       if (!emp.lastOperationDate || r.OperationDate > emp.lastOperationDate) {
         emp.lastOperationDate = r.OperationDate ?? '';
       }
     }
 
-    const employees = Object.values(empMap).map(emp => ({
-      empId:             emp.empId,
-      empName:           emp.empName,
-      servicesCount:     emp.servicesCount,
-      invoicesCount:     emp.invoiceSet.size,
-      totalAmount:       Math.round(emp.totalAmount * 100) / 100,
-      avgServiceValue:   emp.servicesCount > 0
-        ? Math.round((emp.totalAmount / emp.servicesCount) * 100) / 100
-        : 0,
-      lastOperationDate: emp.lastOperationDate,
-    })).sort((a, b) => b.totalAmount - a.totalAmount);
+    const revenueByEmployee = new Map(
+      allocation.employeeTotals.map((row) => [row.employeeId, row])
+    );
+
+    const filteredEmployeeTotals = employeeId != null
+      ? allocation.employeeTotals.filter((row) => row.employeeId === employeeId)
+      : allocation.employeeTotals;
+
+    const filteredRevenueTotals = employeeId != null
+      ? {
+          totalGrossServiceRevenue: roundMoney(
+            filteredEmployeeTotals.reduce((sum, row) => sum + row.grossServiceRevenue, 0)
+          ),
+          totalAllocatedInvoiceDiscount: roundMoney(
+            filteredEmployeeTotals.reduce((sum, row) => sum + row.allocatedInvoiceDiscount, 0)
+          ),
+          totalActualInvoiceRevenue: roundMoney(
+            filteredEmployeeTotals.reduce((sum, row) => sum + row.actualInvoiceRevenue, 0)
+          ),
+          unattributedInvoiceRevenue: allocation.reportTotals.unattributedInvoiceRevenue,
+          treasuryComparableRevenue: allocation.reportTotals.treasuryComparableRevenue,
+        }
+      : allocation.reportTotals;
+
+    const employees = Object.values(empMap).map(emp => {
+      const revenue = revenueByEmployee.get(emp.empId);
+      const grossServiceRevenue = revenue?.grossServiceRevenue ?? roundMoney(emp.totalAmount);
+      const allocatedInvoiceDiscount = revenue?.allocatedInvoiceDiscount ?? 0;
+      const actualInvoiceRevenue = revenue?.actualInvoiceRevenue ?? grossServiceRevenue;
+
+      return {
+        empId:             emp.empId,
+        empName:           emp.empName,
+        employeeId:        emp.empId,
+        employeeName:      emp.empName,
+        servicesCount:     emp.servicesCount,
+        invoicesCount:     emp.invoiceSet.size,
+        serviceCount:      emp.servicesCount,
+        invoiceCount:      emp.invoiceSet.size,
+        totalAmount:       roundMoney(emp.totalAmount),
+        grossServiceRevenue,
+        allocatedInvoiceDiscount,
+        actualInvoiceRevenue,
+        avgServiceValue:   emp.servicesCount > 0
+          ? roundMoney(emp.totalAmount / emp.servicesCount)
+          : 0,
+        lastOperationDate: emp.lastOperationDate,
+      };
+    }).sort((a, b) => b.grossServiceRevenue - a.grossServiceRevenue);
 
     const topByAmount   = employees[0] ?? null;
     const topByServices = [...employees].sort((a, b) => b.servicesCount - a.servicesCount)[0] ?? null;
 
     const summary = {
-      totalAmount:    Math.round(totalAmount * 100) / 100,
+      totalAmount:    roundMoney(totalAmount),
+      totalGrossServiceRevenue: filteredRevenueTotals.totalGrossServiceRevenue,
+      totalAllocatedInvoiceDiscount: filteredRevenueTotals.totalAllocatedInvoiceDiscount,
+      totalActualInvoiceRevenue: filteredRevenueTotals.totalActualInvoiceRevenue,
+      unattributedInvoiceRevenue: filteredRevenueTotals.unattributedInvoiceRevenue,
+      treasuryComparableRevenue: filteredRevenueTotals.treasuryComparableRevenue,
       totalServices,
       totalInvoices:  invoiceSet.size,
       activeEmployees: employees.length,
@@ -264,31 +409,72 @@ export async function GET(req: NextRequest) {
       } : null,
     };
 
-    const details = rows.map(r => ({
-      empId:          r.EmpID,
-      empName:        r.EmpName ?? '',
-      invoiceId:      r.invID,
-      invoiceType:    r.invType ?? '',
-      operationDate:  r.OperationDate,
-      operationTime:  r.OperationTime ?? '',
-      serviceId:      r.ProID,
-      serviceName:    r.ServiceName ?? '',
-      qty:            r.Qty,
-      unitPrice:      r.UnitPrice,
-      discountValue:  r.DiscountValue,
-      lineTotal:      Math.round((r.LineTotal ?? 0) * 100) / 100,
-      clientName:     r.ClientName ?? '',
-      notes:          r.Notes ?? '',
+    const breakdownLines = rows.map(r => ({
+      empId: r.EmpID,
+      empName: r.EmpName ?? '',
+      proId: r.ProID,
+      serviceName: r.ServiceName ?? '',
+      serviceNameAr: r.ServiceNameAr ?? '',
+      qty: r.Qty,
+      unitPrice: r.UnitPrice,
+      discountValue: r.DiscountValue,
+      sValue: r.SValue,
+      lineTotal: r.LineTotal,
     }));
+
+    const serviceBreakdown = aggregateEmployeeServiceBreakdown(breakdownLines).map((row) => {
+      const revenue = revenueByEmployee.get(row.employeeId);
+      return {
+        ...row,
+        grossServiceRevenue: revenue?.grossServiceRevenue ?? row.totalRevenue,
+        allocatedInvoiceDiscount: revenue?.allocatedInvoiceDiscount ?? 0,
+        actualInvoiceRevenue: revenue?.actualInvoiceRevenue ?? row.totalRevenue,
+        invoiceCount: revenue?.invoiceCount ?? 0,
+        serviceCount: revenue?.serviceCount ?? 0,
+      };
+    });
+    const classifiedLines = classifyServiceLines(breakdownLines);
+
+    const details = rows.map((r, index) => {
+      const classified = classifiedLines[index];
+      const allocated = allocationByDetailId.get(r.DetailID);
+      return {
+        empId:           r.EmpID,
+        empName:         r.EmpName ?? '',
+        detailId:        r.DetailID,
+        invoiceId:       r.invID,
+        invoiceType:     r.invType ?? '',
+        operationDate:   r.OperationDate,
+        operationTime:   r.OperationTime ?? '',
+        serviceId:       r.ProID,
+        serviceName:     r.ServiceName ?? '',
+        serviceNameAr:   r.ServiceNameAr ?? '',
+        qty:             r.Qty,
+        unitPrice:       r.UnitPrice,
+        discountValue:   r.DiscountValue,
+        lineTotal:       classified.lineTotal,
+        grossServiceValue: allocated?.grossServiceValue ?? classified.lineTotal,
+        allocatedInvoiceDiscount: allocated?.allocatedInvoiceDiscount ?? 0,
+        actualInvoiceRevenue: allocated?.actualInvoiceRevenue ?? classified.lineTotal,
+        invoiceGrandTotal: allocated?.invoiceGrandTotal ?? r.InvoiceGrandTotal ?? 0,
+        invoiceSubTotal: allocated?.invoiceSubTotal ?? r.InvoiceSubTotal ?? 0,
+        otherEmployeesOnInvoice: allocated?.otherEmployeesOnInvoice ?? [],
+        clientName:      r.ClientName ?? '',
+        notes:           r.Notes ?? '',
+        serviceCategory: classified.serviceCategory,
+      };
+    });
 
     return NextResponse.json({
       summary,
       employees,
+      serviceBreakdown,
+      revenueTotals: filteredRevenueTotals,
       details,
       _meta: {
         fromDate,
         toDate,
-        resolvedColumns: { empNameCol, proNameCol, clientNameCol },
+        resolvedColumns: { empNameCol, proNameCol, proNameArCol, clientNameCol },
         hasIsActiveColumn: hasIsActive,
         isActiveFilterApplied,
         invTypesFound: invTypes,

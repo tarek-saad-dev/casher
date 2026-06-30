@@ -6,6 +6,8 @@ export interface UserAccess {
   userLevel: string;
   roles: string[];
   isSuperAdmin: boolean;
+  isPartnerOnly: boolean;
+  defaultLandingPath: string;
   allowedPagePaths: string[];
   allowedPageKeys: string[];
 }

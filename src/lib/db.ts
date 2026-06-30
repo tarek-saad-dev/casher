@@ -156,7 +156,10 @@ export async function getCloudPool(): Promise<sql.ConnectionPool> {
 export async function getPool(): Promise<sql.ConnectionPool> {
   const pool = await (currentDbTarget === "local" ? getLocalPool() : getCloudPool());
   // Auto-sync pages registry on first connection (non-blocking)
-  import('./pages-sync').then(m => m.syncPagesRegistry(pool)).catch(() => {});
+  import('./pages-sync')
+    .then((m) => m.syncPagesRegistry(pool))
+    .then(() => import('./roles-sync').then((m) => m.syncRolesRegistry(pool)))
+    .catch(() => {});
   return pool;
 }
 

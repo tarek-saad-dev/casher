@@ -3,6 +3,7 @@ import { Cairo } from "next/font/google";
 import "./globals.css";
 import SessionProvider from "@/components/session/SessionProvider";
 import AuthLayout from "@/components/layout/AuthLayout";
+import GlobalAccessGuard from "@/components/guards/GlobalAccessGuard";
 import { PermissionsProvider } from "@/components/providers/PermissionsProvider";
 
 const cairo = Cairo({
@@ -26,12 +27,14 @@ export default function RootLayout({
       <body className={`min-h-full flex flex-col bg-zinc-950 text-foreground font-sans`} suppressHydrationWarning>
         <SessionProvider>
           <PermissionsProvider>
-            {/* Mobile-first layout with conditional navigation */}
-            <div className="flex flex-col h-[100dvh] overflow-hidden">
-              <AuthLayout>
-                {children}
-              </AuthLayout>
-            </div>
+            <GlobalAccessGuard>
+              {/* Mobile-first layout with conditional navigation */}
+              <div className="flex flex-col h-[100dvh] overflow-hidden">
+                <AuthLayout>
+                  {children}
+                </AuthLayout>
+              </div>
+            </GlobalAccessGuard>
           </PermissionsProvider>
         </SessionProvider>
       </body>

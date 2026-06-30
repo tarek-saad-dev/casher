@@ -2,6 +2,11 @@
 
 import type { DailyTrend } from '@/lib/types';
 import { AlertCircle } from 'lucide-react';
+import {
+  formatArabicCurrency,
+  formatArabicDate,
+  formatArabicNumber,
+} from '@/lib/formatArabicNumbers';
 
 interface ExpenseDailyTrendProps {
   dailyTrend: DailyTrend[];
@@ -14,13 +19,8 @@ export default function ExpenseDailyTrend({
   highestDay,
   loading,
 }: ExpenseDailyTrendProps) {
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('ar-EG', {
-      style: 'decimal',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount) + ' ج.م';
-  };
+  const formatCurrency = (amount: number) =>
+    formatArabicCurrency(amount, 0, 0);
 
   if (loading) {
     return (
@@ -76,7 +76,7 @@ export default function ExpenseDailyTrend({
                   }`}
                 >
                   <td className="py-2 px-2 text-sm">
-                    {new Date(day.invDate).toLocaleDateString('ar-EG', {
+                    {formatArabicDate(day.invDate, {
                       day: 'numeric',
                       month: 'short',
                     })}
@@ -85,7 +85,7 @@ export default function ExpenseDailyTrend({
                     {hasData ? formatCurrency(day.Amount) : '—'}
                   </td>
                   <td className="py-2 px-2 text-sm text-muted-foreground">
-                    {hasData ? day.Count : '—'}
+                    {hasData ? formatArabicNumber(day.Count) : '—'}
                   </td>
                   <td className="py-2 px-2">
                     <div className="flex items-center gap-2">

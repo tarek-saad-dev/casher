@@ -26,26 +26,22 @@ export default function FinancialEquationSection({ summary }: FinancialEquationS
         </div>
 
         <div className="flex items-center justify-between gap-4 border-b border-zinc-800 pb-3 print:border-zinc-300">
-          <span className="text-zinc-300 print:text-black">− إجمالي المصروفات</span>
-          <span className="text-rose-400 font-bold print:text-black">
-            {formatPartnersCurrency(summary.totalExpenses)}
+          <span className="text-zinc-300 print:text-black">− الرواتب والسلف المدفوعة</span>
+          <span className="text-amber-400 font-bold print:text-black">
+            {formatPartnersCurrency(summary.totalEmployeeAdvances)}
           </span>
         </div>
 
-        {!summary.advancesIncludedInExpenses && (
-          <div className="flex items-center justify-between gap-4 border-b border-zinc-800 pb-3 print:border-zinc-300">
-            <span className="text-zinc-300 print:text-black">− سلف الموظفين</span>
-            <span className="text-amber-400 font-bold print:text-black">
-              {formatPartnersCurrency(summary.totalEmployeeAdvances)}
-            </span>
-          </div>
-        )}
+        <div className="flex items-center justify-between gap-4 border-b border-zinc-800 pb-3 print:border-zinc-300">
+          <span className="text-zinc-300 print:text-black">− مصروفات التشغيل الأخرى</span>
+          <span className="text-rose-400 font-bold print:text-black">
+            {formatPartnersCurrency(summary.operatingExpenses)}
+          </span>
+        </div>
 
-        {summary.advancesIncludedInExpenses && (
-          <p className="text-xs text-zinc-500 print:text-zinc-600">
-            السلف مدرجة بالفعل ضمن إجمالي المصروفات — لا تُخصم مرة أخرى
-          </p>
-        )}
+        <p className="text-xs text-zinc-500 print:text-zinc-600">
+          {summary.operatingNetExplanation}
+        </p>
 
         <div className="flex items-center justify-between gap-4 pt-2">
           <span className="text-white font-bold text-base print:text-black">= صافي التشغيل</span>

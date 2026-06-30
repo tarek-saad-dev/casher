@@ -1,9 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Loader2, AlertCircle, TrendingUp, TrendingDown, ShieldAlert } from 'lucide-react';
+import { Users, Loader2, AlertCircle, TrendingUp, TrendingDown, ShieldAlert, Languages } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import EmployeeAdvanceCard from './EmployeeAdvanceCard';
 import type { EmployeeAdvanceData } from '@/lib/types';
+import {
+  formatNumberByScript,
+  type NumberScript,
+} from '@/lib/formatArabicNumbers';
 
 interface EmployeeAdvancesSectionProps {
   year: number;
@@ -14,7 +19,8 @@ export default function EmployeeAdvancesSection({ year, month }: EmployeeAdvance
   const [data, setData] = useState<EmployeeAdvanceData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [visibleCards, setVisibleCards] = useState<Set<number>>(new Set()); // Track which cards show numbers
+  const [visibleCards, setVisibleCards] = useState<Set<number>>(new Set());
+  const [numberScript, setNumberScript] = useState<NumberScript>('arab');
 
   useEffect(() => {
     fetchEmployeeAdvances();
@@ -90,18 +96,6 @@ export default function EmployeeAdvancesSection({ year, month }: EmployeeAdvance
   const criticalCount = data.filter(emp => emp.RiskStatus.level === 'critical').length;
   const highRiskCount = data.filter(emp => emp.RiskStatus.level === 'high').length;
 
-  const formatCurrency = (amount: number, empId: number) => {
-    const isVisible = visibleCards.has(empId);
-    if (!isVisible) return '****';
-    return new Intl.NumberFormat('ar-EG', {
-      style: 'decimal',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount) + ' ج.م';
-  };
-
-  const formatCount = (count: number, empId: number) => visibleCards.has(empId) ? count : '**';
-
   const toggleCardVisibility = (empId: number) => {
     setVisibleCards(prev => {
       const next = new Set(prev);
@@ -118,11 +112,24 @@ export default function EmployeeAdvancesSection({ year, month }: EmployeeAdvance
     <div className="space-y-6">
       {/* Premium Summary Header */}
       <div className="bg-gradient-to-br from-zinc-900/90 to-zinc-900/50 backdrop-blur-sm border border-zinc-800/50 rounded-2xl p-6 shadow-xl shadow-black/10">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="p-2 bg-amber-500/10 rounded-xl">
-            <Users className="h-5 w-5 text-amber-400" />
+        <div className="flex items-center justify-between gap-3 mb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-amber-500/10 rounded-xl">
+              <Users className="h-5 w-5 text-amber-400" />
+            </div>
+            <h3 className="text-2xl font-bold text-white tracking-tight">سلف الموظفين</h3>
           </div>
-          <h3 className="text-2xl font-bold text-white tracking-tight">سلف الموظفين</h3>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setNumberScript((s) => (s === 'arab' ? 'latin' : 'arab'))}
+            className="gap-2 border-zinc-700 bg-zinc-800/50 text-zinc-200 hover:bg-zinc-700/50 hover:text-white shrink-0"
+            title={numberScript === 'arab' ? 'التبديل إلى أرقام إنجليزية (0-9)' : 'التبديل إلى أرقام عربية (٠-٩)'}
+          >
+            <Languages className="h-4 w-4" />
+            {numberScript === 'arab' ? '0-9' : '٠-٩'}
+          </Button>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -132,7 +139,9 @@ export default function EmployeeAdvancesSection({ year, month }: EmployeeAdvance
               <Users className="h-4 w-4 text-zinc-400" />
               <p className="text-xs text-zinc-400 font-medium">عدد الموظفين</p>
             </div>
-            <p className="text-3xl font-bold text-white tracking-tight">{data.length}</p>
+            <p className="text-3xl font-bold text-white tracking-tight">
+              {formatNumberByScript(data.length, numberScript)}
+            </p>
           </div>
 
           {/* Total Advances */}
@@ -162,12 +171,12 @@ export default function EmployeeAdvancesSection({ year, month }: EmployeeAdvance
             <div className="flex flex-wrap items-center gap-2">
               {criticalCount > 0 && (
                 <span className="px-2.5 py-1 bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs font-medium rounded-full">
-                  حرج: {criticalCount}
+                  حرج: {formatNumberByScript(criticalCount, numberScript)}
                 </span>
               )}
               {highRiskCount > 0 && (
                 <span className="px-2.5 py-1 bg-orange-500/10 text-orange-400 border border-orange-500/20 text-xs font-medium rounded-full">
-                  عالي: {highRiskCount}
+                  عالي: {formatNumberByScript(highRiskCount, numberScript)}
                 </span>
               )}
               {criticalCount === 0 && highRiskCount === 0 && (
@@ -188,6 +197,7 @@ export default function EmployeeAdvancesSection({ year, month }: EmployeeAdvance
             data={employee}
             isVisible={visibleCards.has(employee.EmpID)}
             onToggleVisibility={() => toggleCardVisibility(employee.EmpID)}
+            numberScript={numberScript}
           />
         ))}
       </div>

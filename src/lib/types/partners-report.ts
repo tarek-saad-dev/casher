@@ -1,3 +1,14 @@
+export interface PartnersExpenseCategoryTransaction {
+  id: number;
+  categoryId: number | null;
+  categoryName: string;
+  date: string;
+  time: string | null;
+  notes: string | null;
+  paymentMethod: string | null;
+  amount: number;
+}
+
 export interface PartnersMonthlyReportResponse {
   period: {
     year: number;
@@ -9,6 +20,8 @@ export interface PartnersMonthlyReportResponse {
   summary: {
     totalRevenue: number;
     totalExpenses: number;
+    operatingExpenses: number;
+    excludedEmployeeSettlementExpenses: number;
     totalEmployeeAdvances: number;
     advancesIncludedInExpenses: boolean;
     operatingNet: number;
@@ -45,6 +58,20 @@ export interface PartnersMonthlyReportResponse {
       label: string;
     };
   }>;
+
+  employeeSummary: Array<{
+    employeeId: number;
+    employeeName: string;
+    isServiceWorker: boolean;
+    shopRevenue: number | null;
+    paidSalaryAndAdvances: number;
+    hasSpecialAccounting?: boolean;
+  }>;
+
+  employeeSummaryTotals: {
+    totalShopRevenue: number;
+    totalPaidSalaryAndAdvances: number;
+  };
 
   metadata: {
     generatedAt: string;

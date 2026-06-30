@@ -6,11 +6,15 @@ import {
   validateMonthYear,
   roundMoney,
 } from '@/lib/reportMonthUtils';
-import {
-  areAdvancesIncludedInExpenses,
-  calculateOperatingNet,
-  getOperatingNetExplanation,
-} from '@/lib/services/monthlyExpensesReportService';
+import { isBarberOrServiceWorker } from '@/lib/services/employeeServicesReportService';
+
+function calcPartnersOperatingNet(
+  totalRevenue: number,
+  totalEmployeeAdvances: number,
+  operatingExpenses: number
+): number {
+  return roundMoney(totalRevenue - totalEmployeeAdvances - operatingExpenses);
+}
 
 vi.mock('server-only', () => ({}));
 
@@ -37,14 +41,21 @@ const sampleReport = {
   summary: {
     totalRevenue: 100000,
     totalExpenses: 65000,
+    operatingExpenses: 57000,
+    excludedEmployeeSettlementExpenses: 8000,
     totalEmployeeAdvances: 8000,
-    advancesIncludedInExpenses: true,
+    advancesIncludedInExpenses: false,
     operatingNet: 35000,
     operatingNetExplanation: 'test',
   },
   revenueDetails: [],
   expensesByCategory: [],
   employeeAdvances: [],
+  employeeSummary: [],
+  employeeSummaryTotals: {
+    totalShopRevenue: 0,
+    totalPaidSalaryAndAdvances: 0,
+  },
   metadata: { generatedAt: '2026-06-27T00:00:00.000Z' },
 };
 
@@ -77,22 +88,22 @@ describe('reportMonthUtils', () => {
   });
 });
 
-describe('operating net calculation', () => {
-  it('subtracts only expenses when advances are included', () => {
-    expect(areAdvancesIncludedInExpenses()).toBe(true);
-    expect(calculateOperatingNet(100000, 65000, 8000, true)).toBe(35000);
-    expect(getOperatingNetExplanation(true)).toContain('السلف مدرجة');
+describe('partners operating net calculation', () => {
+  it('subtracts employee advances and filtered operating expenses from revenue', () => {
+    expect(calcPartnersOperatingNet(100000, 8000, 57000)).toBe(35000);
   });
 
-  it('subtracts advances separately when not included in expenses', () => {
-    expect(calculateOperatingNet(100000, 65000, 8000, false)).toBe(27000);
-    expect(getOperatingNetExplanation(false)).toContain('سلف الموظفين');
+  it('does not double-count settlement categories already in employee advances', () => {
+    const operatingExpenses = 57000;
+    const excludedSettlement = 8000;
+    const rawExpenses = operatingExpenses + excludedSettlement;
+    expect(rawExpenses).toBe(65000);
+    expect(calcPartnersOperatingNet(100000, 8000, operatingExpenses)).toBe(35000);
+    expect(calcPartnersOperatingNet(100000, 8000, rawExpenses)).not.toBe(35000);
   });
 
-  it('does not double-count advances when included', () => {
-    const net = calculateOperatingNet(100000, 65000, 8000, true);
-    expect(net).not.toBe(roundMoney(100000 - 65000 - 8000));
-    expect(net).toBe(35000);
+  it('handles zero totals', () => {
+    expect(calcPartnersOperatingNet(0, 0, 0)).toBe(0);
   });
 });
 
@@ -131,12 +142,30 @@ describe('GET /api/admin/reports/partners', () => {
     expect(res2.status).toBe(400);
   });
 
+  it('returns 400 for partners report periods before June 2026', async () => {
+    const res = await GET(makeRequest('2026', '5'));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain('يونيو 2026');
+    expect(mockBuildReport).not.toHaveBeenCalled();
+  });
+
   it('returns consolidated report for authorized users', async () => {
     const res = await GET(makeRequest('2026', '6'));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.summary.totalRevenue).toBe(100000);
     expect(mockBuildReport).toHaveBeenCalledWith(2026, 6);
+  });
+});
+
+describe('isBarberOrServiceWorker', () => {
+  it('identifies barbers and assistants', () => {
+    expect(isBarberOrServiceWorker('حلاق')).toBe(true);
+    expect(isBarberOrServiceWorker('مساعد')).toBe(true);
+    expect(isBarberOrServiceWorker('Barber')).toBe(true);
+    expect(isBarberOrServiceWorker('محاسب')).toBe(false);
+    expect(isBarberOrServiceWorker(null)).toBe(false);
   });
 });
 
@@ -166,6 +195,6 @@ describe('reconciliation helpers', () => {
   });
 
   it('handles no-data month with zero totals', () => {
-    expect(calculateOperatingNet(0, 0, 0, true)).toBe(0);
+    expect(calcPartnersOperatingNet(0, 0, 0)).toBe(0);
   });
 });

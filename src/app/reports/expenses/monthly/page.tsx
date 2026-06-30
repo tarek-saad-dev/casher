@@ -10,6 +10,7 @@ import ExpenseByCategoryView from '@/components/reports/expenses/ExpenseByCatego
 import ExpenseTransactionsTable from '@/components/reports/expenses/ExpenseTransactionsTable';
 import EmployeeAdvancesSection from '@/components/reports/expenses/EmployeeAdvancesSection';
 import type { MonthlyExpensesReport } from '@/lib/types';
+import { formatArabicNumber } from '@/lib/formatArabicNumbers';
 
 const ARABIC_MONTHS = [
   'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
@@ -79,7 +80,7 @@ export default function MonthlyExpensesReportPage() {
           <div>
             <h1 className="text-2xl font-bold">تقرير المصروفات الشهرية</h1>
             <p className="text-sm text-muted-foreground">
-              {ARABIC_MONTHS[month - 1]} {year}
+              {ARABIC_MONTHS[month - 1]} {formatArabicNumber(year)}
               {isCurrentMonth && ' (الشهر الحالي)'}
             </p>
           </div>

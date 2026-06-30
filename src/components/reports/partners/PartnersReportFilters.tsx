@@ -5,7 +5,13 @@ import { Button } from '@/components/ui/button';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { ARABIC_MONTHS, REPORT_YEARS } from './partnersReportUtils';
+import { ARABIC_MONTHS } from './partnersReportUtils';
+import {
+  getPartnersReportAllowedMonths,
+  getPartnersReportAllowedYears,
+  isAtPartnersReportMinimum,
+  PARTNERS_REPORT_PREVIOUS_MONTH_DISABLED_TITLE,
+} from '@/lib/reports/partnersReportPeriod';
 
 interface PartnersReportFiltersProps {
   year: number;
@@ -36,6 +42,10 @@ export default function PartnersReportFilters({
   onRefresh,
   onPrint,
 }: PartnersReportFiltersProps) {
+  const allowedYears = getPartnersReportAllowedYears();
+  const allowedMonths = getPartnersReportAllowedMonths(year);
+  const isPreviousMonthDisabled = isAtPartnersReportMinimum(year, month);
+
   return (
     <div className="print:hidden flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -44,7 +54,13 @@ export default function PartnersReportFilters({
           variant="outline"
           size="sm"
           onClick={onPreviousMonth}
-          className="border-zinc-700 bg-zinc-800/50 text-zinc-200 hover:bg-zinc-700"
+          disabled={isPreviousMonthDisabled}
+          title={
+            isPreviousMonthDisabled
+              ? PARTNERS_REPORT_PREVIOUS_MONTH_DISABLED_TITLE
+              : undefined
+          }
+          className="border-zinc-700 bg-zinc-800/50 text-zinc-200 hover:bg-zinc-700 disabled:opacity-40 disabled:pointer-events-none disabled:cursor-not-allowed"
         >
           <ChevronRight className="h-4 w-4" />
           الشهر السابق
@@ -55,9 +71,9 @@ export default function PartnersReportFilters({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {ARABIC_MONTHS.map((name, index) => (
-              <SelectItem key={index + 1} value={String(index + 1)}>
-                {name}
+            {allowedMonths.map((monthValue) => (
+              <SelectItem key={monthValue} value={String(monthValue)}>
+                {ARABIC_MONTHS[monthValue - 1]}
               </SelectItem>
             ))}
           </SelectContent>
@@ -68,7 +84,7 @@ export default function PartnersReportFilters({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {REPORT_YEARS.map((y) => (
+            {allowedYears.map((y) => (
               <SelectItem key={y} value={String(y)}>
                 {y}
               </SelectItem>

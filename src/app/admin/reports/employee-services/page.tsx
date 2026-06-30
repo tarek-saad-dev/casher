@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Users, Scissors, Receipt, TrendingUp, Award, Star,
   Loader2, RefreshCw, AlertCircle, ChevronDown, ChevronUp,
@@ -14,7 +14,22 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+import {
+  aggregateEmployeeServiceBreakdown,
+  normalizeEmployeeServiceBreakdown,
+  resolveBarberRevenue,
+  sumEmployeeServiceBreakdown,
+  type EmployeeServiceBreakdown,
+} from '@/lib/services/employeeServiceBreakdown';
+import { isBarberServiceCategory, type ServiceCategory } from '@/lib/services/classifyService';
+
+type DetailCategoryFilter = 'all' | 'barber' | 'other';
+
+const DETAIL_FILTER_CHIPS: { value: DetailCategoryFilter; label: string }[] = [
+  { value: 'all', label: 'الكل' },
+  { value: 'barber', label: 'شعر / شعر ودقن / دقن' },
+  { value: 'other', label: 'خدمات أخرى' },
+];
 
 interface TopEmployee {
   empId: number;
@@ -25,6 +40,11 @@ interface TopEmployee {
 
 interface Summary {
   totalAmount: number;
+  totalGrossServiceRevenue?: number;
+  totalAllocatedInvoiceDiscount?: number;
+  totalActualInvoiceRevenue?: number;
+  unattributedInvoiceRevenue?: number;
+  treasuryComparableRevenue?: number;
   totalServices: number;
   totalInvoices: number;
   activeEmployees: number;
@@ -38,8 +58,27 @@ interface EmployeeRow {
   servicesCount: number;
   invoicesCount: number;
   totalAmount: number;
+  grossServiceRevenue?: number;
+  allocatedInvoiceDiscount?: number;
+  actualInvoiceRevenue?: number;
   avgServiceValue: number;
   lastOperationDate: string;
+}
+
+interface RevenueTotals {
+  totalGrossServiceRevenue: number;
+  totalAllocatedInvoiceDiscount: number;
+  totalActualInvoiceRevenue: number;
+  unattributedInvoiceRevenue: number;
+  treasuryComparableRevenue: number;
+}
+
+interface ServiceBreakdownRow extends EmployeeServiceBreakdown {
+  grossServiceRevenue?: number;
+  allocatedInvoiceDiscount?: number;
+  actualInvoiceRevenue?: number;
+  invoiceCount?: number;
+  serviceCount?: number;
 }
 
 interface DetailRow {
@@ -51,17 +90,27 @@ interface DetailRow {
   operationTime: string;
   serviceId: number;
   serviceName: string;
+  serviceNameAr?: string;
   qty: number;
   unitPrice: number;
   discountValue: number;
   lineTotal: number;
+  grossServiceValue?: number;
+  allocatedInvoiceDiscount?: number;
+  actualInvoiceRevenue?: number;
+  invoiceGrandTotal?: number;
+  invoiceSubTotal?: number;
+  otherEmployeesOnInvoice?: { empId: number; empName: string }[];
   clientName: string;
   notes: string;
+  serviceCategory: ServiceCategory;
 }
 
 interface ReportData {
   summary: Summary;
   employees: EmployeeRow[];
+  serviceBreakdown: ServiceBreakdownRow[];
+  revenueTotals?: RevenueTotals;
   details: DetailRow[];
 }
 
@@ -72,13 +121,14 @@ function getTodayStr(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function formatCurrency(val: number): string {
+function formatCurrency(val: number | null | undefined): string {
+  const amount = Number(val);
   return new Intl.NumberFormat('ar-EG', {
     style: 'currency',
     currency: 'EGP',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(val);
+  }).format(Number.isFinite(amount) ? amount : 0);
 }
 
 function formatDate(dateStr: string): string {
@@ -91,30 +141,104 @@ function formatDate(dateStr: string): string {
   }
 }
 
-function exportCsv(employees: EmployeeRow[], details: DetailRow[], from: string, to: string) {
+function exportCsv(
+  employees: EmployeeRow[],
+  details: DetailRow[],
+  breakdown: ServiceBreakdownRow[],
+  revenueTotals: RevenueTotals | undefined,
+  from: string,
+  to: string
+) {
   const BOM = '\uFEFF';
 
-  // Summary sheet
   const empLines = [
-    ['الموظف', 'عدد الخدمات', 'عدد الفواتير', 'إجمالي القيمة (ج.م)', 'متوسط الخدمة (ج.م)', 'آخر عملية'],
+    [
+      'الموظف',
+      'عدد الخدمات',
+      'عدد الفواتير',
+      'قيمة الشغل قبل الخصم',
+      'خصومات الفواتير',
+      'الإيراد الفعلي',
+      'متوسط الخدمة (ج.م)',
+      'آخر عملية',
+    ],
     ...employees.map(e => [
       e.empName,
       e.servicesCount,
       e.invoicesCount,
-      e.totalAmount.toFixed(2),
+      (e.grossServiceRevenue ?? e.totalAmount).toFixed(2),
+      (e.allocatedInvoiceDiscount ?? 0).toFixed(2),
+      (e.actualInvoiceRevenue ?? e.totalAmount).toFixed(2),
       e.avgServiceValue.toFixed(2),
       e.lastOperationDate,
     ]),
   ];
 
-  const detailLines = [
-    ['الموظف', 'رقم الفاتورة', 'نوع الفاتورة', 'التاريخ', 'الوقت', 'الخدمة', 'الكمية', 'سعر الوحدة', 'الخصم', 'الإجمالي', 'العميل', 'ملاحظات'],
-    ...details.map(d => [
-      d.empName, d.invoiceId, d.invoiceType, d.operationDate,
-      d.operationTime, d.serviceName, d.qty, d.unitPrice.toFixed(2),
-      d.discountValue.toFixed(2), d.lineTotal.toFixed(2), d.clientName, d.notes,
+  const breakdownLines = [
+    [
+      'الصنايعي',
+      'شعر / شعر ودقن / دقن',
+      'الخدمات الأخرى',
+      'إجمالي قيمة الخدمات',
+      'نصيبه من الخصومات',
+      'الفعلي بعد الخصم',
+    ],
+    ...breakdown.map(row => [
+      row.employeeName,
+      resolveBarberRevenue(row).toFixed(2),
+      row.otherRevenue.toFixed(2),
+      (row.grossServiceRevenue ?? row.totalRevenue).toFixed(2),
+      (row.allocatedInvoiceDiscount ?? 0).toFixed(2),
+      (row.actualInvoiceRevenue ?? row.totalRevenue).toFixed(2),
     ]),
   ];
+
+  const detailLines = [
+    [
+      'الموظف',
+      'رقم الفاتورة',
+      'نوع الفاتورة',
+      'التاريخ',
+      'الوقت',
+      'الخدمة',
+      'الكمية',
+      'قيمة الخدمة قبل خصم الفاتورة',
+      'نصيب من خصم الفاتورة',
+      'الفعلي بعد الخصم',
+      'إجمالي الفاتورة',
+      'موظفون آخرون',
+      'العميل',
+      'ملاحظات',
+    ],
+    ...details.map(d => [
+      d.empName,
+      d.invoiceId,
+      d.invoiceType,
+      d.operationDate,
+      d.operationTime,
+      d.serviceName,
+      d.qty,
+      (d.grossServiceValue ?? d.lineTotal).toFixed(2),
+      (d.allocatedInvoiceDiscount ?? 0).toFixed(2),
+      (d.actualInvoiceRevenue ?? d.lineTotal).toFixed(2),
+      (d.invoiceGrandTotal ?? 0).toFixed(2),
+      (d.otherEmployeesOnInvoice ?? []).map(e => e.empName).join(' | '),
+      d.clientName,
+      d.notes,
+    ]),
+  ];
+
+  const totalsLines = revenueTotals
+    ? [
+        [],
+        ['--- إجماليات الإيراد ---'],
+        ['إجمالي الخدمات قبل الخصم', revenueTotals.totalGrossServiceRevenue.toFixed(2)],
+        ['إجمالي خصومات الفواتير', revenueTotals.totalAllocatedInvoiceDiscount.toFixed(2)],
+        ['صافي إيراد الفواتير الفعلي', revenueTotals.totalActualInvoiceRevenue.toFixed(2)],
+        ['غير المنسوب للموظفين', revenueTotals.unattributedInvoiceRevenue.toFixed(2)],
+        ['مقارنة الخزينة', revenueTotals.treasuryComparableRevenue.toFixed(2)],
+      ]
+    : [];
 
   const allLines = [
     [`تقرير خدمات الموظفين من ${from} إلى ${to}`],
@@ -122,8 +246,12 @@ function exportCsv(employees: EmployeeRow[], details: DetailRow[], from: string,
     ['--- ملخص الموظفين ---'],
     ...empLines,
     [],
+    ['--- تفصيل الصنايعية ---'],
+    ...breakdownLines,
+    [],
     ['--- تفاصيل الخدمات ---'],
     ...detailLines,
+    ...totalsLines,
   ];
 
   const csv = BOM + allLines.map(row =>
@@ -159,6 +287,7 @@ export default function EmployeeServicesReportPage() {
   const [reassignLoading, setReassignLoading] = useState(false);
   const [reassignError, setReassignError] = useState('');
   const [reassignSuccess, setReassignSuccess] = useState('');
+  const [detailCategoryFilter, setDetailCategoryFilter] = useState<DetailCategoryFilter>('all');
 
   // Load employee dropdown on mount
   useEffect(() => {
@@ -183,6 +312,7 @@ export default function EmployeeServicesReportPage() {
       } else {
         setData(json);
         setExpandedEmp(null);
+        setDetailCategoryFilter('all');
       }
     } catch {
       setError('خطأ في الاتصال بالخادم');
@@ -250,9 +380,66 @@ export default function EmployeeServicesReportPage() {
     fetchReport(today, today, 'all');
   };
 
-  // Details for expanded employee
-  const empDetails = (empId: number): DetailRow[] =>
-    data?.details.filter(d => d.empId === empId) ?? [];
+  // Details for expanded employee (optionally filtered by service category)
+  const empDetails = (empId: number): DetailRow[] => {
+    const rows = data?.details.filter(d => d.empId === empId) ?? [];
+    if (detailCategoryFilter === 'all') return rows;
+    if (detailCategoryFilter === 'barber') {
+      return rows.filter(d => isBarberServiceCategory(d.serviceCategory));
+    }
+    return rows.filter(d => d.serviceCategory === 'other');
+  };
+
+  const breakdownRows = useMemo((): ServiceBreakdownRow[] => {
+    if (!data) return [];
+
+    if (data.serviceBreakdown?.length) {
+      return data.serviceBreakdown.map((row) => normalizeEmployeeServiceBreakdown(row) as ServiceBreakdownRow);
+    }
+
+    if (data.details.length > 0 && data.details[0].serviceCategory) {
+      return aggregateEmployeeServiceBreakdown(
+        data.details.map((d) => ({
+          empId: d.empId,
+          empName: d.empName,
+          proId: d.serviceId,
+          serviceName: d.serviceName,
+          serviceNameAr: d.serviceNameAr,
+          lineTotal: d.lineTotal,
+        }))
+      ) as ServiceBreakdownRow[];
+    }
+
+    return [];
+  }, [data]);
+
+  const revenueTotals: RevenueTotals = useMemo(() => {
+    if (!data) {
+      return {
+        totalGrossServiceRevenue: 0,
+        totalAllocatedInvoiceDiscount: 0,
+        totalActualInvoiceRevenue: 0,
+        unattributedInvoiceRevenue: 0,
+        treasuryComparableRevenue: 0,
+      };
+    }
+    if (data.revenueTotals) return data.revenueTotals;
+    return {
+      totalGrossServiceRevenue: data.summary.totalGrossServiceRevenue ?? data.summary.totalAmount,
+      totalAllocatedInvoiceDiscount: data.summary.totalAllocatedInvoiceDiscount ?? 0,
+      totalActualInvoiceRevenue: data.summary.totalActualInvoiceRevenue ?? data.summary.totalAmount,
+      unattributedInvoiceRevenue: data.summary.unattributedInvoiceRevenue ?? 0,
+      treasuryComparableRevenue: data.summary.treasuryComparableRevenue ?? data.summary.totalAmount,
+    };
+  }, [data]);
+
+  const breakdownTotals = useMemo(() => {
+    const base = sumEmployeeServiceBreakdown(breakdownRows);
+    const gross = breakdownRows.reduce((sum, row) => sum + (row.grossServiceRevenue ?? row.totalRevenue), 0);
+    const discount = breakdownRows.reduce((sum, row) => sum + (row.allocatedInvoiceDiscount ?? 0), 0);
+    const actual = breakdownRows.reduce((sum, row) => sum + (row.actualInvoiceRevenue ?? row.totalRevenue), 0);
+    return { ...base, grossServiceRevenue: gross, allocatedInvoiceDiscount: discount, actualInvoiceRevenue: actual };
+  }, [breakdownRows]);
 
   return (
     <div className="p-6 space-y-6 max-w-[1600px] mx-auto" dir="rtl">
@@ -262,7 +449,13 @@ export default function EmployeeServicesReportPage() {
       >
         <Button
           variant="outline"
-          onClick={() => data && exportCsv(data.employees, data.details, fromDate, toDate)}
+          onClick={() => data && exportCsv(data.employees, data.details, breakdownRows, data.revenueTotals ?? {
+            totalGrossServiceRevenue: data.summary.totalGrossServiceRevenue ?? data.summary.totalAmount,
+            totalAllocatedInvoiceDiscount: data.summary.totalAllocatedInvoiceDiscount ?? 0,
+            totalActualInvoiceRevenue: data.summary.totalActualInvoiceRevenue ?? data.summary.totalAmount,
+            unattributedInvoiceRevenue: data.summary.unattributedInvoiceRevenue ?? 0,
+            treasuryComparableRevenue: data.summary.treasuryComparableRevenue ?? data.summary.totalAmount,
+          }, fromDate, toDate)}
           disabled={!data || loading}
           className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-10 gap-2"
         >
@@ -371,10 +564,37 @@ export default function EmployeeServicesReportPage() {
 
       {!loading && data && (
         <>
+          {/* ── Revenue Summary Cards ── */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <KpiCard
+              title="إجمالي الخدمات قبل الخصم"
+              value={formatCurrency(revenueTotals.totalGrossServiceRevenue)}
+              icon={<TrendingUp className="w-5 h-5" />}
+              variant="default"
+            />
+            <KpiCard
+              title="إجمالي خصومات الفواتير"
+              value={formatCurrency(revenueTotals.totalAllocatedInvoiceDiscount)}
+              icon={<Receipt className="w-5 h-5" />}
+              variant="warning"
+            />
+            <KpiCard
+              title="صافي إيراد الفواتير الفعلي"
+              value={formatCurrency(revenueTotals.totalActualInvoiceRevenue)}
+              subtitle={
+                revenueTotals.unattributedInvoiceRevenue > 0
+                  ? `غير منسوب: ${formatCurrency(revenueTotals.unattributedInvoiceRevenue)}`
+                  : `مطابق للخزينة: ${formatCurrency(revenueTotals.treasuryComparableRevenue)}`
+              }
+              icon={<TrendingUp className="w-5 h-5" />}
+              variant="success"
+            />
+          </div>
+
           {/* ── Summary Cards ── */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             <KpiCard
-              title="إجمالي القيمة"
+              title="قيمة الخدمات قبل خصم الفاتورة"
               value={formatCurrency(data.summary.totalAmount)}
               icon={<TrendingUp className="w-5 h-5" />}
               variant="primary"
@@ -417,6 +637,55 @@ export default function EmployeeServicesReportPage() {
             />
           </div>
 
+          {/* ── Service Category Breakdown ── */}
+          {breakdownRows.length > 0 && (
+            <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-zinc-800/50 flex items-center justify-between">
+                <h2 className="text-sm font-bold text-white">تفصيل شغل الصنايعية حسب نوع الخدمة</h2>
+                <span className="text-xs text-zinc-500">{breakdownRows.length} صنايعي</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-zinc-800">
+                      <th className="text-right p-3 text-zinc-400 font-semibold whitespace-nowrap">الصنايعي</th>
+                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">شعر / شعر ودقن / دقن</th>
+                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">الخدمات الأخرى</th>
+                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">إجمالي قيمة الخدمات</th>
+                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">الخصومات</th>
+                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">الفعلي بعد الخصم</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {breakdownRows.map((row) => (
+                      <tr
+                        key={row.employeeId}
+                        className="border-b border-zinc-800/50 hover:bg-zinc-800/20 transition-colors"
+                      >
+                        <td className="p-3 font-semibold text-white whitespace-nowrap">{row.employeeName}</td>
+                        <td className="text-center p-3 font-bold text-emerald-400 whitespace-nowrap">{formatCurrency(resolveBarberRevenue(row))}</td>
+                        <td className="text-center p-3 text-zinc-300 whitespace-nowrap">{formatCurrency(row.otherRevenue)}</td>
+                        <td className="text-center p-3 text-white whitespace-nowrap">{formatCurrency(row.grossServiceRevenue ?? row.totalRevenue)}</td>
+                        <td className="text-center p-3 text-amber-400 whitespace-nowrap">-{formatCurrency(row.allocatedInvoiceDiscount ?? 0)}</td>
+                        <td className="text-center p-3 font-bold text-emerald-400 whitespace-nowrap">{formatCurrency(row.actualInvoiceRevenue ?? row.totalRevenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-zinc-900/80 border-t-2 border-zinc-700">
+                      <td className="px-3 py-3 font-bold text-white text-sm whitespace-nowrap">الإجمالي</td>
+                      <td className="text-center px-3 py-3 font-bold text-[#D6A84F] whitespace-nowrap">{formatCurrency(breakdownTotals.barberRevenue)}</td>
+                      <td className="text-center px-3 py-3 font-bold text-[#D6A84F] whitespace-nowrap">{formatCurrency(breakdownTotals.otherRevenue)}</td>
+                      <td className="text-center px-3 py-3 font-bold text-white whitespace-nowrap">{formatCurrency(breakdownTotals.grossServiceRevenue)}</td>
+                      <td className="text-center px-3 py-3 font-bold text-amber-400 whitespace-nowrap">-{formatCurrency(breakdownTotals.allocatedInvoiceDiscount)}</td>
+                      <td className="text-center px-3 py-3 font-bold text-emerald-400 whitespace-nowrap">{formatCurrency(breakdownTotals.actualInvoiceRevenue)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* ── Empty State ── */}
           {data.employees.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -429,8 +698,25 @@ export default function EmployeeServicesReportPage() {
           {/* ── Employee Summary Table ── */}
           {data.employees.length > 0 && (
             <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-zinc-800/50 flex items-center justify-between">
+              <div className="px-5 py-3 border-b border-zinc-800/50 flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-sm font-bold text-white">ملخص الموظفين</h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-zinc-500 ml-2">تصفية التفاصيل:</span>
+                  {DETAIL_FILTER_CHIPS.map((chip) => (
+                    <button
+                      key={chip.value}
+                      type="button"
+                      onClick={() => setDetailCategoryFilter(chip.value)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                        detailCategoryFilter === chip.value
+                          ? 'bg-[#D6A84F] text-black'
+                          : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700'
+                      }`}
+                    >
+                      {chip.label}
+                    </button>
+                  ))}
+                </div>
                 <span className="text-xs text-zinc-500">{data.employees.length} موظف</span>
               </div>
 
@@ -441,7 +727,9 @@ export default function EmployeeServicesReportPage() {
                       <th className="text-right p-3 text-zinc-400 font-semibold whitespace-nowrap">الموظف</th>
                       <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">عدد الخدمات</th>
                       <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">عدد الفواتير</th>
-                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">إجمالي القيمة</th>
+                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">قيمة الشغل قبل الخصم</th>
+                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">خصومات الفواتير</th>
+                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">الإيراد الفعلي</th>
                       <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">متوسط الخدمة</th>
                       <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">آخر عملية</th>
                       <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">التفاصيل</th>
@@ -484,10 +772,24 @@ export default function EmployeeServicesReportPage() {
                               <span className="text-zinc-300">{emp.invoicesCount.toLocaleString('ar-EG')}</span>
                             </td>
 
-                            {/* Total Amount */}
+                            {/* Gross before invoice discount */}
                             <td className="text-center p-3">
-                              <span className={`font-bold ${isTop ? 'text-[#D6A84F]' : 'text-emerald-400'}`}>
-                                {formatCurrency(emp.totalAmount)}
+                              <span className={`font-bold ${isTop ? 'text-white' : 'text-zinc-200'}`}>
+                                {formatCurrency(emp.grossServiceRevenue ?? emp.totalAmount)}
+                              </span>
+                            </td>
+
+                            {/* Invoice discounts */}
+                            <td className="text-center p-3">
+                              <span className="font-bold text-amber-400">
+                                -{formatCurrency(emp.allocatedInvoiceDiscount ?? 0)}
+                              </span>
+                            </td>
+
+                            {/* Actual revenue */}
+                            <td className="text-center p-3">
+                              <span className={`font-bold ${isTop ? 'text-emerald-400' : 'text-emerald-400'}`}>
+                                {formatCurrency(emp.actualInvoiceRevenue ?? emp.totalAmount)}
                               </span>
                             </td>
 
@@ -518,14 +820,18 @@ export default function EmployeeServicesReportPage() {
                           {/* ── Expanded Details Sub-Table ── */}
                           {isExpanded && (
                             <tr key={`details-${emp.empId}`} className="bg-zinc-950/60">
-                              <td colSpan={7} className="p-0">
+                              <td colSpan={9} className="p-0">
                                 <div className="border-t border-[#D6A84F]/20 px-4 pb-4 pt-3">
                                   <div className="text-xs font-bold text-[#D6A84F] mb-2 flex items-center gap-1.5">
                                     <Scissors className="w-3.5 h-3.5" />
                                     تفاصيل خدمات {emp.empName} ({details.length} خدمة)
                                   </div>
                                   {details.length === 0 ? (
-                                    <p className="text-zinc-500 text-xs py-2">لا توجد تفاصيل</p>
+                                    <p className="text-zinc-500 text-xs py-2">
+                                      {detailCategoryFilter === 'all'
+                                        ? 'لا توجد تفاصيل'
+                                        : 'لا توجد خدمات في هذا التصنيف'}
+                                    </p>
                                   ) : (
                                     <div className="overflow-x-auto rounded-lg border border-zinc-800/50">
                                       <table className="w-full text-xs border-collapse">
@@ -536,9 +842,11 @@ export default function EmployeeServicesReportPage() {
                                             <th className="text-right px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">رقم الفاتورة</th>
                                             <th className="text-right px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">اسم الخدمة</th>
                                             <th className="text-center px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">الكمية</th>
-                                            <th className="text-center px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">سعر الوحدة</th>
-                                            <th className="text-center px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">الخصم</th>
-                                            <th className="text-center px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">الإجمالي</th>
+                                            <th className="text-center px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">قيمة الخدمة قبل خصم الفاتورة</th>
+                                            <th className="text-center px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">نصيب خصم الفاتورة</th>
+                                            <th className="text-center px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">الفعلي بعد الخصم</th>
+                                            <th className="text-center px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">إجمالي الفاتورة</th>
+                                            <th className="text-right px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">موظفون آخرون</th>
                                             <th className="text-right px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">العميل</th>
                                             <th className="text-right px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">ملاحظات</th>
                                             <th className="text-center px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">إجراءات</th>
@@ -560,16 +868,26 @@ export default function EmployeeServicesReportPage() {
                                               </td>
                                               <td className="px-3 py-2 text-white font-medium whitespace-nowrap">{d.serviceName || '—'}</td>
                                               <td className="px-3 py-2 text-center text-zinc-300">{d.qty}</td>
-                                              <td className="px-3 py-2 text-center text-zinc-300">{formatCurrency(d.unitPrice)}</td>
+                                              <td className="px-3 py-2 text-center text-white whitespace-nowrap">
+                                                {formatCurrency(d.grossServiceValue ?? d.lineTotal)}
+                                              </td>
                                               <td className="px-3 py-2 text-center">
-                                                {d.discountValue > 0 ? (
-                                                  <span className="text-rose-400">-{formatCurrency(d.discountValue)}</span>
+                                                {(d.allocatedInvoiceDiscount ?? 0) > 0 ? (
+                                                  <span className="text-amber-400">-{formatCurrency(d.allocatedInvoiceDiscount ?? 0)}</span>
                                                 ) : (
                                                   <span className="text-zinc-600">—</span>
                                                 )}
                                               </td>
                                               <td className="px-3 py-2 text-center font-bold text-emerald-400 whitespace-nowrap">
-                                                {formatCurrency(d.lineTotal)}
+                                                {formatCurrency(d.actualInvoiceRevenue ?? d.lineTotal)}
+                                              </td>
+                                              <td className="px-3 py-2 text-center text-zinc-300 whitespace-nowrap">
+                                                {formatCurrency(d.invoiceGrandTotal ?? 0)}
+                                              </td>
+                                              <td className="px-3 py-2 text-zinc-400 whitespace-nowrap">
+                                                {(d.otherEmployeesOnInvoice ?? []).length > 0
+                                                  ? (d.otherEmployeesOnInvoice ?? []).map((e) => e.empName).join('، ')
+                                                  : '—'}
                                               </td>
                                               <td className="px-3 py-2 text-zinc-400 whitespace-nowrap">{d.clientName || '—'}</td>
                                               <td className="px-3 py-2 text-zinc-500 max-w-[150px] truncate">{d.notes || '—'}</td>
@@ -587,13 +905,19 @@ export default function EmployeeServicesReportPage() {
                                         </tbody>
                                         <tfoot>
                                           <tr className="bg-zinc-900/80 border-t border-zinc-700">
-                                            <td colSpan={7} className="px-3 py-2 text-left text-zinc-400 text-xs font-semibold">
-                                              الإجمالي
+                                            <td colSpan={5} className="px-3 py-2 text-left text-zinc-400 text-xs font-semibold">
+                                              {detailCategoryFilter === 'all' ? 'الإجمالي' : 'إجمالي المعروض'}
                                             </td>
-                                            <td className="px-3 py-2 text-center font-bold text-[#D6A84F] whitespace-nowrap">
-                                              {formatCurrency(emp.totalAmount)}
+                                            <td className="px-3 py-2 text-center text-white font-bold whitespace-nowrap">
+                                              {formatCurrency(details.reduce((sum, d) => sum + (d.grossServiceValue ?? d.lineTotal), 0))}
                                             </td>
-                                            <td colSpan={3} />
+                                            <td className="px-3 py-2 text-center text-amber-400 font-bold whitespace-nowrap">
+                                              -{formatCurrency(details.reduce((sum, d) => sum + (d.allocatedInvoiceDiscount ?? 0), 0))}
+                                            </td>
+                                            <td className="px-3 py-2 text-center font-bold text-emerald-400 whitespace-nowrap">
+                                              {formatCurrency(details.reduce((sum, d) => sum + (d.actualInvoiceRevenue ?? d.lineTotal), 0))}
+                                            </td>
+                                            <td colSpan={4} />
                                           </tr>
                                         </tfoot>
                                       </table>
@@ -618,8 +942,14 @@ export default function EmployeeServicesReportPage() {
                       <td className="text-center px-3 py-3 font-bold text-white">
                         {data.summary.totalInvoices.toLocaleString('ar-EG')}
                       </td>
-                      <td className="text-center px-3 py-3 font-bold text-[#D6A84F] text-base">
-                        {formatCurrency(data.summary.totalAmount)}
+                      <td className="text-center px-3 py-3 font-bold text-white whitespace-nowrap">
+                        {formatCurrency(data.employees.reduce((sum, e) => sum + (e.grossServiceRevenue ?? e.totalAmount), 0))}
+                      </td>
+                      <td className="text-center px-3 py-3 font-bold text-amber-400 whitespace-nowrap">
+                        -{formatCurrency(data.employees.reduce((sum, e) => sum + (e.allocatedInvoiceDiscount ?? 0), 0))}
+                      </td>
+                      <td className="text-center px-3 py-3 font-bold text-emerald-400 text-base whitespace-nowrap">
+                        {formatCurrency(data.employees.reduce((sum, e) => sum + (e.actualInvoiceRevenue ?? e.totalAmount), 0))}
                       </td>
                       <td colSpan={3} />
                     </tr>

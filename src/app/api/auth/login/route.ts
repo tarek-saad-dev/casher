@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, getUserFriendlyError, sql } from "@/lib/db";
 import { createSession } from "@/lib/session";
+import { getUserAccess } from "@/lib/permissions-server";
 
 export const runtime = "nodejs";
 
@@ -42,6 +43,8 @@ export async function POST(req: NextRequest) {
       UserLevel: user.UserLevel,
     });
 
+    const access = await getUserAccess(user.UserID, user.UserName, user.UserLevel);
+
     console.log(
       `[auth] Login success: UserID=${user.UserID}, UserName=${user.UserName}, Level=${user.UserLevel}`,
     );
@@ -51,6 +54,8 @@ export async function POST(req: NextRequest) {
       UserName: user.UserName,
       UserLevel: user.UserLevel,
       ShiftID: user.ShiftID,
+      redirectTo: access.defaultLandingPath,
+      skipShiftPrompt: access.isPartnerOnly,
     });
   } catch (err: unknown) {
     const rawMessage = err instanceof Error ? err.message : "Unknown error";

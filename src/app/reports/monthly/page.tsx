@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Wallet, Calendar, ChevronDown, Loader2, FileDown, Users, BarChart3 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, Calendar, ChevronDown, Loader2, FileDown, BarChart3 } from 'lucide-react';
 import type { MonthlyBusinessReport } from '@/lib/types/monthly-report';
-import { PARTNERS } from '@/lib/types/monthly-report';
+import { calculateMonthlyFinancialEquations } from '@/lib/reports/monthlyFinancialEquations';
+import MonthlyFinancialEquations from '@/components/reports/MonthlyFinancialEquations';
 import { generateMonthlyReportPDF, downloadPDF } from '@/lib/services/MonthlyReportPDFService';
 
 const ARABIC_MONTHS = [
@@ -94,6 +95,15 @@ export default function MonthlyBusinessReportPage() {
   };
 
   const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
+
+  const partnerEquations = report
+    ? calculateMonthlyFinancialEquations({
+        year,
+        month,
+        baseAmount: report.netProfit,
+        mode: 'monthly',
+      })
+    : null;
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -252,55 +262,16 @@ export default function MonthlyBusinessReportPage() {
               </div>
             </div>
 
-            {/* Partner Distribution Table */}
-            <div className="bg-card border border-border rounded-lg p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <Users className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="text-lg font-semibold">توزيع أرباح الشركاء</h3>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">الشريك</th>
-                      <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">النسبة</th>
-                      <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">نصيب الربح</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {PARTNERS.map((partner) => {
-                      const profitShare = report.netProfit * (partner.percentage / 100);
-                      return (
-                        <tr key={partner.name} className="border-b border-border/50">
-                          <td className="py-4 px-4 font-medium">{partner.name}</td>
-                          <td className="py-4 px-4 text-center text-muted-foreground">
-                            {partner.percentage.toFixed(4)}%
-                          </td>
-                          <td className="py-4 px-4 text-center">
-                            <span className={`font-bold ${report.netProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                              {formatCurrency(profitShare)}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Total Distributed */}
-              <div className="mt-6 p-4 bg-muted/50 rounded-lg">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">إجمالي المبالغ الموزعة</span>
-                  <span className={`text-xl font-bold ${report.netProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                    {formatCurrency(report.netProfit)}
-                  </span>
-                </div>
-              </div>
-            </div>
+            {partnerEquations && (
+              <MonthlyFinancialEquations
+                result={partnerEquations}
+                title="توزيع أرباح الشركاء"
+                baseAmountLabel="صافي الربح"
+                distributableLabel="المبلغ النهائي القابل للتوزيع"
+                lossDistributableLabel="خسارة قابلة للتوزيع"
+                variant="monthly"
+              />
+            )}
 
             {/* Data Source Info */}
             <div className="bg-muted/30 border border-border/50 rounded-lg p-4">

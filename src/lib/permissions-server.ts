@@ -2,6 +2,11 @@
 // Never import this in client components or client hooks.
 import 'server-only';
 import type { UserAccess } from './permissions-types';
+import {
+  getDefaultLandingPath,
+  isPartnerOnlyUser,
+  PARTNERS_REPORT_PAGE_PATH,
+} from './partnerAccess';
 
 /** Check whether the new TblRoles tables exist */
 async function permTablesExist(db: import('mssql').ConnectionPool): Promise<boolean> {
@@ -22,6 +27,8 @@ export async function getUserAccess(userID: number, userName: string, userLevel:
     userID, userName, userLevel,
     roles: [],
     isSuperAdmin: false,
+    isPartnerOnly: false,
+    defaultLandingPath: '/income/pos',
     allowedPagePaths: [],
     allowedPageKeys: [],
   };
@@ -40,6 +47,7 @@ export async function getUserAccess(userID: number, userName: string, userLevel:
       `);
     const roles: string[] = rolesRes.recordset.map((x: { RoleKey: string }) => x.RoleKey);
     const isSuperAdmin = roles.includes('super_admin');
+    const partnerOnly = isPartnerOnlyUser(roles);
 
     let allowedPagePaths: string[] = [];
     let allowedPageKeys: string[]  = [];
@@ -48,6 +56,16 @@ export async function getUserAccess(userID: number, userName: string, userLevel:
       const r = await db.request().query(`SELECT PageKey, PagePath FROM dbo.TblSystemPages WHERE IsActive = 1`);
       allowedPagePaths = r.recordset.map((x: { PagePath: string }) => x.PagePath);
       allowedPageKeys  = r.recordset.map((x: { PageKey: string }) => x.PageKey);
+    } else if (partnerOnly) {
+      const roleRes = await db.request().input('uid', userID).query(`
+        SELECT DISTINCT sp.PageKey, sp.PagePath
+        FROM dbo.TblPageRoleAccess pra
+        JOIN dbo.TblSystemPages sp ON sp.PageID = pra.PageID
+        JOIN dbo.TblUserRoles ur   ON ur.RoleID = pra.RoleID
+        WHERE ur.UserID = @uid AND sp.IsActive = 1 AND pra.CanView = 1
+      `);
+      allowedPagePaths = [...new Set(roleRes.recordset.map((x: { PagePath: string }) => x.PagePath))];
+      allowedPageKeys  = [...new Set(roleRes.recordset.map((x: { PageKey: string }) => x.PageKey))];
     } else {
       const allRes = await db.request().query(`
         SELECT PageKey, PagePath FROM dbo.TblSystemPages WHERE IsActive=1 AND AccessMode='all'
@@ -66,7 +84,19 @@ export async function getUserAccess(userID: number, userName: string, userLevel:
       allowedPageKeys  = [...new Set(combined.map(x => x.PageKey))];
     }
 
-    return { userID, userName, userLevel, roles, isSuperAdmin, allowedPagePaths, allowedPageKeys };
+    const access: UserAccess = {
+      userID,
+      userName,
+      userLevel,
+      roles,
+      isSuperAdmin,
+      isPartnerOnly: partnerOnly,
+      defaultLandingPath: getDefaultLandingPath({ roles, isSuperAdmin }),
+      allowedPagePaths,
+      allowedPageKeys,
+    };
+
+    return access;
   } catch {
     return fallback;
   }
@@ -75,8 +105,14 @@ export async function getUserAccess(userID: number, userName: string, userLevel:
 export async function canAccessPath(userID: number, userName: string, userLevel: string, path: string): Promise<boolean> {
   const access = await getUserAccess(userID, userName, userLevel);
   if (access.isSuperAdmin) return true;
-  // Exact match only — no prefix/children inheritance
+
   const clean = path.split('?')[0].replace(/\/$/, '') || '/';
+  const partnersPath = PARTNERS_REPORT_PAGE_PATH.replace(/\/$/, '');
+
+  if (access.isPartnerOnly) {
+    return clean === partnersPath;
+  }
+
   return access.allowedPagePaths.some((p: string) => {
     return (p.replace(/\/$/, '') || '/') === clean;
   });

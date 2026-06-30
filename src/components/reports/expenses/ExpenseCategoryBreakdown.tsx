@@ -1,6 +1,11 @@
 'use client';
 
 import type { CategoryBreakdown } from '@/lib/types';
+import {
+  formatArabicCurrency,
+  formatArabicNumber,
+  formatArabicPercent,
+} from '@/lib/formatArabicNumbers';
 
 interface ExpenseCategoryBreakdownProps {
   categories: CategoryBreakdown[];
@@ -13,17 +18,9 @@ export default function ExpenseCategoryBreakdown({
   totalExpenses,
   loading,
 }: ExpenseCategoryBreakdownProps) {
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('ar-EG', {
-      style: 'decimal',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    }).format(amount) + ' ج.م';
-  };
+  const formatCurrency = (amount: number) => formatArabicCurrency(amount);
 
-  const formatPercentage = (percentage: number) => {
-    return percentage.toFixed(1) + '%';
-  };
+  const formatPercentage = (percentage: number) => formatArabicPercent(percentage);
 
   if (loading) {
     return (
@@ -80,17 +77,17 @@ export default function ExpenseCategoryBreakdown({
                   <td className="py-3 px-2 text-sm">
                     {isTop3 && (
                       <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold">
-                        {index + 1}
+                        {formatArabicNumber(index + 1)}
                       </span>
                     )}
-                    {!isTop3 && <span className="text-muted-foreground">{index + 1}</span>}
+                    {!isTop3 && <span className="text-muted-foreground">{formatArabicNumber(index + 1)}</span>}
                   </td>
                   <td className="py-3 px-2 text-sm font-medium">{category.CatName}</td>
                   <td className="py-3 px-2 text-sm font-bold text-red-600">
                     {formatCurrency(category.Amount)}
                   </td>
                   <td className="py-3 px-2 text-sm text-muted-foreground">
-                    {category.Count}
+                    {formatArabicNumber(category.Count)}
                   </td>
                   <td className="py-3 px-2 text-sm text-muted-foreground">
                     {formatCurrency(category.AvgTransaction)}

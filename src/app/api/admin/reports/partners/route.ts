@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { canAccessPath } from '@/lib/permissions-server';
 import { parseMonthYearParams, validateMonthYear } from '@/lib/reportMonthUtils';
+import { validatePartnersReportMinimumPeriod } from '@/lib/reports/partnersReportPeriod';
 import { buildPartnersMonthlyReport } from '@/lib/services/partnersReportService';
 
 const PARTNERS_REPORT_PATH = '/admin/reports/partners';
@@ -36,6 +37,11 @@ export async function GET(req: NextRequest) {
     const validationError = validateMonthYear(year, month);
     if (validationError) {
       return NextResponse.json({ error: validationError }, { status: 400 });
+    }
+
+    const minimumPeriodError = validatePartnersReportMinimumPeriod(year, month);
+    if (minimumPeriodError) {
+      return NextResponse.json({ error: minimumPeriodError }, { status: 400 });
     }
 
     const report = await buildPartnersMonthlyReport(year, month);

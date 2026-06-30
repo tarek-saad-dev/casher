@@ -18,8 +18,14 @@ export default async function PageGuard({ requiredPagePath, children }: Props) {
 
   const access = await getUserAccess(session.UserID, session.UserName, session.UserLevel);
 
-  // super_admin always passes
   if (access.isSuperAdmin) return <>{children}</>;
+
+  if (access.isPartnerOnly) {
+    const clean = requiredPagePath.replace(/\/$/, '') || '/';
+    const partners = '/admin/reports/partners'.replace(/\/$/, '');
+    if (clean !== partners) redirect('/403');
+    return <>{children}</>;
+  }
 
   const clean = requiredPagePath.replace(/\/$/, '') || '/';
   const allowed = access.allowedPagePaths.some((p: string) => {

@@ -2,29 +2,40 @@
 
 import type { EmployeeAdvanceData } from '@/lib/types';
 import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Clock, ArrowUpRight, ArrowDownRight, Eye, EyeOff } from 'lucide-react';
+import {
+  formatCurrencyByScript,
+  formatDateByScript,
+  formatNumberByScript,
+  formatPercentByScript,
+  type NumberScript,
+} from '@/lib/formatArabicNumbers';
 
 interface EmployeeAdvanceCardProps {
   data: EmployeeAdvanceData;
   isVisible: boolean;
   onToggleVisibility: () => void;
+  numberScript: NumberScript;
 }
 
-export default function EmployeeAdvanceCard({ data, isVisible, onToggleVisibility }: EmployeeAdvanceCardProps) {
+export default function EmployeeAdvanceCard({
+  data,
+  isVisible,
+  onToggleVisibility,
+  numberScript,
+}: EmployeeAdvanceCardProps) {
   const formatCurrency = (amount: number) => {
     if (!isVisible) return '****';
-    return new Intl.NumberFormat('ar-EG', {
-      style: 'decimal',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount) + ' ج.م';
+    return formatCurrencyByScript(amount, numberScript, 2, 2);
   };
 
-  const formatCount = (count: number) => isVisible ? count : '**';
-  const formatPercentage = (percentage: number) => isVisible ? percentage.toFixed(1) + '%' : '**%';
+  const formatCount = (count: number) =>
+    isVisible ? formatNumberByScript(count, numberScript) : '**';
+  const formatPercentage = (percentage: number) =>
+    isVisible ? formatPercentByScript(percentage, numberScript) : '**%';
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '—';
-    return new Date(dateStr).toLocaleDateString('ar-EG', {
+    return formatDateByScript(dateStr, numberScript, {
       year: 'numeric',
       month: 'short',
       day: 'numeric',

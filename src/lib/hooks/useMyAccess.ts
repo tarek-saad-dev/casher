@@ -33,8 +33,13 @@ export function useMyAccess() {
   const canSeePage  = (path: string) => {
     if (!access) return false;
     if (access.isSuperAdmin) return true;
-    // Exact match only — no prefix/children inheritance
+
     const clean = path.split('?')[0].replace(/\/$/, '') || '/';
+
+    if (access.isPartnerOnly) {
+      return clean === '/admin/reports/partners';
+    }
+
     return access.allowedPagePaths.some(p => {
       const np = p.replace(/\/$/, '') || '/';
       return clean === np;

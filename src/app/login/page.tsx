@@ -11,6 +11,8 @@ interface LoginData {
   UserName: string;
   UserLevel: 'admin' | 'user';
   ShiftID?: number | null;
+  redirectTo?: string;
+  skipShiftPrompt?: boolean;
 }
 
 export default function LoginPage() {
@@ -28,10 +30,16 @@ export default function LoginPage() {
     document.title = 'تسجيل الدخول | نظام نقاط البيع';
   }, []);
 
-  async function handleLoginSuccess(user: { UserID: number; UserName: string; UserLevel: string; ShiftID?: number | null }) {
+  async function handleLoginSuccess(user: {
+    UserID: number;
+    UserName: string;
+    UserLevel: string;
+    ShiftID?: number | null;
+    redirectTo?: string;
+    skipShiftPrompt?: boolean;
+  }) {
     setLoading(true);
     try {
-      // Set user in context including default shift ID
       setUser({
         UserID: user.UserID,
         UserName: user.UserName,
@@ -39,29 +47,32 @@ export default function LoginPage() {
         defaultShiftId: user.ShiftID ?? undefined,
       });
 
-      // Refresh session to get day and shift status
       await refresh();
 
-      // Fetch current session state
+      if (user.skipShiftPrompt) {
+        router.push(user.redirectTo ?? '/admin/reports/partners');
+        return;
+      }
+
       const sessionRes = await fetch('/api/auth/session');
       const sessionData = await sessionRes.json();
 
       const hasOpenDay = !!sessionData.day;
       const hasOpenShift = !!sessionData.shift;
 
-      // If user has open shift and day, proceed to main page
       if (hasOpenDay && hasOpenShift) {
-        router.push('/');
+        router.push(user.redirectTo ?? '/');
         return;
       }
 
-      // Otherwise show OpenShiftPrompt
       setSessionState({ hasOpenDay, hasOpenShift });
       setLoginData({
         UserID: user.UserID,
         UserName: user.UserName,
         UserLevel: user.UserLevel as 'admin' | 'user',
         ShiftID: user.ShiftID,
+        redirectTo: user.redirectTo,
+        skipShiftPrompt: user.skipShiftPrompt,
       });
     } finally {
       setLoading(false);
@@ -70,7 +81,7 @@ export default function LoginPage() {
 
   async function handleOpenShift(shiftId: number) {
     await openMyShift(shiftId);
-    router.push('/');
+    router.push(loginData?.redirectTo ?? '/');
   }
 
   async function handleOpenDay() {

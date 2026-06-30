@@ -6,12 +6,17 @@ import { AlertCircle } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import PartnersReportFilters from '@/components/reports/partners/PartnersReportFilters';
-import PartnersSummaryCards from '@/components/reports/partners/PartnersSummaryCards';
-import RevenueDetailsSection from '@/components/reports/partners/RevenueDetailsSection';
+import PartnersEmployeesSection from '@/components/reports/partners/PartnersEmployeesSection';
+import PartnersEmployeeFlowSection from '@/components/reports/partners/PartnersEmployeeFlowSection';
 import ExpensesByCategorySection from '@/components/reports/partners/ExpensesByCategorySection';
-import PartnersEmployeeAdvancesSection from '@/components/reports/partners/PartnersEmployeeAdvancesSection';
-import FinancialEquationSection from '@/components/reports/partners/FinancialEquationSection';
+import PartnersOperatingNetFlowSection from '@/components/reports/partners/PartnersOperatingNetFlowSection';
+import PartnersFinalSettlementSection from '@/components/reports/partners/PartnersFinalSettlementSection';
 import { ARABIC_MONTHS } from '@/components/reports/partners/partnersReportUtils';
+import {
+  clampPartnersReportMonth,
+  getPartnersReportCurrentMonth,
+  isAtPartnersReportMinimum,
+} from '@/lib/reports/partnersReportPeriod';
 import type { PartnersMonthlyReportResponse } from '@/lib/types/partners-report';
 
 function parseYearFromParams(value: string | null, fallback: number): number {
@@ -25,37 +30,52 @@ function parseMonthFromParams(value: string | null, fallback: number): number {
   return parsed;
 }
 
+function resolvePartnersReportPeriod(
+  yearParam: string | null,
+  monthParam: string | null,
+  now: Date
+): { year: number; month: number } {
+  const fallback = getPartnersReportCurrentMonth(now);
+  const rawYear = parseYearFromParams(yearParam, fallback.year);
+  const rawMonth = parseMonthFromParams(monthParam, fallback.month);
+  return clampPartnersReportMonth(rawYear, rawMonth);
+}
+
 function PartnersReportPageContent() {
   const now = new Date();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
 
-  const [year, setYear] = useState(() =>
-    parseYearFromParams(searchParams.get('year'), now.getFullYear())
+  const initialPeriod = resolvePartnersReportPeriod(
+    searchParams.get('year'),
+    searchParams.get('month'),
+    now
   );
-  const [month, setMonth] = useState(() =>
-    parseMonthFromParams(searchParams.get('month'), now.getMonth() + 1)
-  );
+
+  const [year, setYear] = useState(initialPeriod.year);
+  const [month, setMonth] = useState(initialPeriod.month);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<PartnersMonthlyReportResponse | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   const fetchIdRef = useRef(0);
+  const hasSyncedInitialUrlRef = useRef(false);
 
   const syncUrl = useCallback((newYear: number, newMonth: number) => {
     router.replace(`${pathname}?year=${newYear}&month=${newMonth}`, { scroll: false });
   }, [pathname, router]);
 
   const fetchReport = useCallback(async (targetYear: number, targetMonth: number) => {
+    const period = clampPartnersReportMonth(targetYear, targetMonth);
     const fetchId = ++fetchIdRef.current;
     setLoading(true);
     setError(null);
 
     try {
       const response = await fetch(
-        `/api/admin/reports/partners?year=${targetYear}&month=${targetMonth}`
+        `/api/admin/reports/partners?year=${period.year}&month=${period.month}`
       );
 
       if (fetchId !== fetchIdRef.current) return;
@@ -80,6 +100,7 @@ function PartnersReportPageContent() {
       if (fetchId !== fetchIdRef.current) return;
       const message = err instanceof Error ? err.message : 'حدث خطأ غير متوقع';
       setError(message);
+      setReport(null);
     } finally {
       if (fetchId === fetchIdRef.current) {
         setLoading(false);
@@ -88,10 +109,12 @@ function PartnersReportPageContent() {
   }, []);
 
   const applyPeriod = useCallback((newYear: number, newMonth: number) => {
-    setYear(newYear);
-    setMonth(newMonth);
-    syncUrl(newYear, newMonth);
-    fetchReport(newYear, newMonth);
+    const period = clampPartnersReportMonth(newYear, newMonth);
+    setReport(null);
+    setYear(period.year);
+    setMonth(period.month);
+    syncUrl(period.year, period.month);
+    fetchReport(period.year, period.month);
   }, [fetchReport, syncUrl]);
 
   useEffect(() => {
@@ -99,21 +122,53 @@ function PartnersReportPageContent() {
   }, []);
 
   useEffect(() => {
-    const urlYear = parseYearFromParams(searchParams.get('year'), year);
-    const urlMonth = parseMonthFromParams(searchParams.get('month'), month);
-    if (urlYear !== year || urlMonth !== month) {
-      setYear(urlYear);
-      setMonth(urlMonth);
+    const resolved = resolvePartnersReportPeriod(
+      searchParams.get('year'),
+      searchParams.get('month'),
+      now
+    );
+
+    const urlYear = parseYearFromParams(searchParams.get('year'), resolved.year);
+    const urlMonth = parseMonthFromParams(searchParams.get('month'), resolved.month);
+    const urlNeedsCorrection = urlYear !== resolved.year || urlMonth !== resolved.month;
+
+    if (urlNeedsCorrection) {
+      syncUrl(resolved.year, resolved.month);
+      return;
     }
-    fetchReport(urlYear, urlMonth);
+
+    if (!hasSyncedInitialUrlRef.current) {
+      hasSyncedInitialUrlRef.current = true;
+      if (
+        searchParams.get('year') == null ||
+        searchParams.get('month') == null ||
+        urlNeedsCorrection
+      ) {
+        syncUrl(resolved.year, resolved.month);
+      }
+    }
+
+    if (resolved.year !== year || resolved.month !== month) {
+      setYear(resolved.year);
+      setMonth(resolved.month);
+    }
+
+    setReport(null);
+    fetchReport(resolved.year, resolved.month);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
+  const currentPeriod = getPartnersReportCurrentMonth(now);
+  const isCurrentMonth = year === currentPeriod.year && month === currentPeriod.month;
 
   const goToPreviousMonth = () => {
-    if (month === 1) applyPeriod(year - 1, 12);
-    else applyPeriod(year, month - 1);
+    if (isAtPartnersReportMinimum(year, month)) return;
+
+    if (month === 1) {
+      applyPeriod(year - 1, 12);
+      return;
+    }
+    applyPeriod(year, month - 1);
   };
 
   const goToNextMonth = () => {
@@ -122,7 +177,7 @@ function PartnersReportPageContent() {
   };
 
   const goToCurrentMonth = () => {
-    applyPeriod(now.getFullYear(), now.getMonth() + 1);
+    applyPeriod(currentPeriod.year, currentPeriod.month);
   };
 
   const handlePrint = () => {
@@ -153,7 +208,7 @@ function PartnersReportPageContent() {
         }
       `}</style>
 
-      <div className="p-6 space-y-6 max-w-[1600px] mx-auto print:p-4 print:max-w-none" dir="rtl">
+      <div className="p-6 space-y-4 max-w-[1600px] mx-auto print:p-4 print:max-w-none" dir="rtl">
         <div className="hidden print:block mb-6">
           <h1 className="text-2xl font-bold text-black">تقرير الشركاء</h1>
           <p className="text-sm text-zinc-600">
@@ -202,34 +257,60 @@ function PartnersReportPageContent() {
 
         {(report || loading) && (
           <>
-            <PartnersSummaryCards
-              summary={report?.summary ?? null}
+            <PartnersEmployeesSection
+              rows={report?.employeeSummary ?? []}
+              totals={
+                report?.employeeSummaryTotals ?? {
+                  totalShopRevenue: 0,
+                  totalPaidSalaryAndAdvances: 0,
+                }
+              }
               loading={loading}
             />
 
-            <RevenueDetailsSection
-              rows={report?.revenueDetails ?? []}
-              totalRevenue={report?.summary.totalRevenue ?? 0}
+            <PartnersEmployeeFlowSection
+              totals={
+                report?.employeeSummaryTotals ?? {
+                  totalShopRevenue: 0,
+                  totalPaidSalaryAndAdvances: 0,
+                }
+              }
               loading={loading}
             />
 
             <ExpensesByCategorySection
+              year={year}
+              month={month}
               rows={report?.expensesByCategory ?? []}
-              totalExpenses={report?.summary.totalExpenses ?? 0}
+              totalOperatingExpenses={report?.summary.operatingExpenses ?? 0}
               loading={loading}
               error={error}
               onRetry={() => fetchReport(year, month)}
             />
 
-            <PartnersEmployeeAdvancesSection
-              rows={report?.employeeAdvances ?? []}
-              totalAdvances={report?.summary.totalEmployeeAdvances ?? 0}
+            <PartnersOperatingNetFlowSection
+              totals={
+                report?.employeeSummaryTotals ?? {
+                  totalShopRevenue: 0,
+                  totalPaidSalaryAndAdvances: 0,
+                }
+              }
+              filteredOperatingExpenses={report?.summary.operatingExpenses ?? 0}
               loading={loading}
             />
 
-            {report?.summary && (
-              <FinancialEquationSection summary={report.summary} />
-            )}
+            <PartnersFinalSettlementSection
+              year={year}
+              month={month}
+              totals={
+                report?.employeeSummaryTotals ?? {
+                  totalShopRevenue: 0,
+                  totalPaidSalaryAndAdvances: 0,
+                }
+              }
+              filteredOperatingExpenses={report?.summary.operatingExpenses ?? 0}
+              loading={loading}
+            />
           </>
         )}
       </div>

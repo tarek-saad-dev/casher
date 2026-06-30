@@ -2,6 +2,12 @@
 
 import { TrendingUp, Receipt, DollarSign, Calendar, Tag, AlertCircle, CreditCard } from 'lucide-react';
 import type { MonthlyExpensesSummary } from '@/lib/types';
+import {
+  formatArabicCurrency,
+  formatArabicDate,
+  formatArabicNumber,
+  formatArabicPercent,
+} from '@/lib/formatArabicNumbers';
 
 interface ExpensesKpiCardsProps {
   summary: MonthlyExpensesSummary;
@@ -22,17 +28,9 @@ export default function ExpensesKpiCards({ summary, loading }: ExpensesKpiCardsP
     );
   }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('ar-EG', {
-      style: 'decimal',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    }).format(amount) + ' ج.م';
-  };
+  const formatCurrency = (amount: number) => formatArabicCurrency(amount);
 
-  const formatPercentage = (percentage: number) => {
-    return percentage.toFixed(1) + '%';
-  };
+  const formatPercentage = (percentage: number) => formatArabicPercent(percentage);
 
   return (
     <div className="space-y-4">
@@ -46,7 +44,7 @@ export default function ExpensesKpiCards({ summary, loading }: ExpensesKpiCardsP
                 ⚠️ تحذير: مصروفات تحتاج تصنيف
               </h3>
               <p className="text-sm text-amber-800 dark:text-amber-200 mb-2">
-                يوجد <span className="font-bold">{summary.uncategorizedCount}</span> معاملة غير مصنفة بشكل واضح 
+                يوجد <span className="font-bold">{formatArabicNumber(summary.uncategorizedCount)}</span> معاملة غير مصنفة بشكل واضح
                 بإجمالي <span className="font-bold">{formatCurrency(summary.uncategorizedAmount)}</span>
               </p>
               <p className="text-xs text-amber-700 dark:text-amber-300">
@@ -76,7 +74,7 @@ export default function ExpensesKpiCards({ summary, loading }: ExpensesKpiCardsP
           <span className="text-sm text-muted-foreground">عدد المعاملات</span>
         </div>
         <div className="text-2xl font-bold">
-          {summary.transactionCount}
+          {formatArabicNumber(summary.transactionCount)}
         </div>
         <div className="text-xs text-muted-foreground mt-1">معاملة</div>
       </div>
@@ -102,7 +100,7 @@ export default function ExpensesKpiCards({ summary, loading }: ExpensesKpiCardsP
           {formatCurrency(summary.avgDailyExpense)}
         </div>
         <div className="text-xs text-muted-foreground mt-1">
-          {summary.daysInMonth} يوم
+          {formatArabicNumber(summary.daysInMonth)} يوم
         </div>
       </div>
 
@@ -138,7 +136,7 @@ export default function ExpensesKpiCards({ summary, loading }: ExpensesKpiCardsP
         {summary.highestSpendDay ? (
           <>
             <div className="text-lg font-bold">
-              {new Date(summary.highestSpendDay.invDate).toLocaleDateString('ar-EG', {
+              {formatArabicDate(summary.highestSpendDay.invDate, {
                 day: 'numeric',
                 month: 'short',
               })}
@@ -147,7 +145,7 @@ export default function ExpensesKpiCards({ summary, loading }: ExpensesKpiCardsP
               {formatCurrency(summary.highestSpendDay.Amount)}
             </div>
             <div className="text-xs text-muted-foreground mt-1">
-              {summary.highestSpendDay.Count} معاملة
+              {formatArabicNumber(summary.highestSpendDay.Count)} معاملة
             </div>
           </>
         ) : (

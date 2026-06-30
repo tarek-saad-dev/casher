@@ -13,6 +13,7 @@ const ROLES = [
   { key: 'accountant',  name: 'محاسب',                 desc: 'خزنة وتقارير مالية' },
   { key: 'receptionist',name: 'استقبال',               desc: 'حجوزات وعملاء وطابور' },
   { key: 'viewer',      name: 'مشاهد',                 desc: 'قراءة فقط' },
+  { key: 'partner',     name: 'شريك',                  desc: 'عرض تقرير الشركاء فقط' },
 ];
 
 // ── System pages seed data ───────────────────────────────────────────────────
@@ -29,6 +30,7 @@ const PAGES = [
   { key: 'income_review.payments', name: 'المدفوعات',              path: '/income-review/payments',          section: 'مراجعة المدخلات',   access: 'roles', sort: 24 },
   { key: 'reports.emp_services',   name: 'خدمات الصنايعية',        path: '/admin/reports/employee-services', section: 'مراجعة المدخلات',   access: 'roles', sort: 25 },
   { key: 'reports.monthly',        name: 'التقرير الشهري',         path: '/reports/monthly',                 section: 'مراجعة المدخلات',   access: 'roles', sort: 26 },
+  { key: 'reports.partners',       name: 'تقرير الشركاء',          path: '/admin/reports/partners',          section: 'التقارير',          access: 'roles', sort: 27 },
   // Expenses
   { key: 'expenses.new',           name: 'تسجيل مصروف',           path: '/expenses',                        section: 'المصروفات',          access: 'roles', sort: 30 },
   { key: 'reports.expenses',       name: 'تقرير المصروفات',        path: '/reports/expenses/monthly',        section: 'مراجعة المصروفات',  access: 'roles', sort: 40 },
@@ -90,7 +92,7 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
     pages: [
       'income.pos','income.new',
       'sales.today','income_review.all_sales','income_review.today_rev','income_review.all_rev',
-      'income_review.payments','reports.emp_services','reports.monthly',
+      'income_review.payments','reports.emp_services','reports.monthly','reports.partners',
       'expenses.new','reports.expenses',
       'treasury.daily','treasury.period_summary','treasury.movement','treasury.summary',
       'treasury.shift_close','treasury.monthly_close',
@@ -158,6 +160,11 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
       'treasury.period_summary','treasury.movement',
       'operations.main',
     ],
+    canEdit: false, canDelete: false,
+  },
+  {
+    role: 'partner',
+    pages: ['reports.partners'],
     canEdit: false, canDelete: false,
   },
 ];

@@ -14,6 +14,7 @@
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas-pro';
 import type { MonthlyBusinessReport } from '@/lib/types/monthly-report';
+import { calculatePartnerProfitShares } from '@/lib/reports/monthlyFinancialEquations';
 import { PARTNERS } from '@/lib/types/monthly-report';
 
 const PDF_CONFIG = {
@@ -51,10 +52,7 @@ export async function generateMonthlyReportPDF(data: PDFReportData): Promise<Blo
   const monthNameEn = new Date(year, month - 1).toLocaleDateString('en-US', { month: 'long' });
 
   // Calculate partner shares
-  const partnerShares = PARTNERS.map(partner => ({
-    ...partner,
-    profitShare: report.netProfit * (partner.percentage / 100),
-  }));
+  const partnerShares = calculatePartnerProfitShares(report.netProfit);
   const totalDistributed = partnerShares.reduce((sum, p) => sum + p.profitShare, 0);
 
   // Generate 5-page HTML - each item on separate page

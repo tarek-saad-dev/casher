@@ -5,6 +5,12 @@ import type { ExpenseTransaction } from '@/lib/types';
 import { ChevronLeft, ChevronRight, AlertTriangle, Edit2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import EditExpenseCategoryDialog from './EditExpenseCategoryDialog';
+import {
+  formatArabicCurrency,
+  formatArabicDate,
+  formatArabicNumber,
+  toArabicDigits,
+} from '@/lib/formatArabicNumbers';
 
 interface ExpenseTransactionsTableProps {
   transactions: ExpenseTransaction[];
@@ -24,21 +30,14 @@ export default function ExpenseTransactionsTable({
   const [deletingExpense, setDeletingExpense] = useState<{ id: number; invID: number } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('ar-EG', {
-      style: 'decimal',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount) + ' ج.م';
-  };
+  const formatCurrency = (amount: number) => formatArabicCurrency(amount, 2, 2);
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('ar-EG', {
+  const formatDate = (dateStr: string) =>
+    formatArabicDate(dateStr, {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
     });
-  };
 
   if (loading) {
     return (
@@ -73,7 +72,7 @@ export default function ExpenseTransactionsTable({
               className="gap-2"
             >
               <AlertTriangle className="h-4 w-4" />
-              غير مصنفة ({uncategorizedCount})
+              غير مصنفة ({formatArabicNumber(uncategorizedCount)})
             </Button>
           )}
         </div>
@@ -148,7 +147,7 @@ export default function ExpenseTransactionsTable({
           <div className="bg-card border border-border rounded-lg shadow-lg max-w-sm w-full p-6">
             <h3 className="text-lg font-semibold mb-3">تأكيد الحذف</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              هل أنت متأكد من حذف المصروف رقم <span className="font-bold">#{deletingExpense.invID}</span>؟
+              هل أنت متأكد من حذف المصروف رقم <span className="font-bold">#{formatArabicNumber(deletingExpense.invID)}</span>؟
               <br />
               <span className="text-destructive">لا يمكن التراجع عن هذا الإجراء.</span>
             </p>
@@ -195,13 +194,13 @@ export default function ExpenseTransactionsTable({
               className="gap-2"
             >
               <AlertTriangle className="h-4 w-4" />
-              {showOnlyUncategorized ? 'عرض الكل' : `غير مصنفة (${uncategorizedCount})`}
+              {showOnlyUncategorized ? 'عرض الكل' : `غير مصنفة (${formatArabicNumber(uncategorizedCount)})`}
             </Button>
           )}
           <div className="text-sm text-muted-foreground">
             {showOnlyUncategorized 
-              ? `${filteredTransactions.length} معاملة غير مصنفة`
-              : `إجمالي: ${transactions.length} معاملة`
+              ? `${formatArabicNumber(filteredTransactions.length)} معاملة غير مصنفة`
+              : `إجمالي: ${formatArabicNumber(transactions.length)} معاملة`
             }
           </div>
         </div>
@@ -231,13 +230,13 @@ export default function ExpenseTransactionsTable({
                 }`}
               >
                 <td className="py-3 px-2 text-sm text-muted-foreground">
-                  {transaction.invID}
+                  {formatArabicNumber(transaction.invID)}
                 </td>
                 <td className="py-3 px-2 text-sm">
                   {formatDate(transaction.invDate)}
                 </td>
                 <td className="py-3 px-2 text-sm text-muted-foreground">
-                  {transaction.invTime}
+                  {toArabicDigits(transaction.invTime)}
                 </td>
                 <td className="py-3 px-2 text-sm">
                   <div className="flex items-center gap-2">
@@ -299,7 +298,7 @@ export default function ExpenseTransactionsTable({
       {totalPages > 1 && (
         <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
           <div className="text-sm text-muted-foreground">
-            صفحة {currentPage} من {totalPages}
+            صفحة {formatArabicNumber(currentPage)} من {formatArabicNumber(totalPages)}
           </div>
           <div className="flex items-center gap-2">
             <Button

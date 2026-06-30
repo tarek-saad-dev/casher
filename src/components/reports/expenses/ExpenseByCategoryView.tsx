@@ -6,6 +6,12 @@ import { Button } from '@/components/ui/button';
 import EditExpenseCategoryDialog from './EditExpenseCategoryDialog';
 import type { ExpenseTransaction } from '@/lib/types';
 import { exportCategoryToPdf } from '@/lib/exportCategoryPdf';
+import {
+  formatArabicCurrency,
+  formatArabicDate,
+  formatArabicNumber,
+  toArabicDigits,
+} from '@/lib/formatArabicNumbers';
 
 interface CategoryExpenses {
   CatName: string;
@@ -35,21 +41,14 @@ export default function ExpenseByCategoryView({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [exportingCategory, setExportingCategory] = useState<number | null>(null);
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('ar-EG', {
-      style: 'decimal',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount) + ' ج.م';
-  };
+  const formatCurrency = (amount: number) => formatArabicCurrency(amount, 2, 2);
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('ar-EG', {
+  const formatDate = (dateStr: string) =>
+    formatArabicDate(dateStr, {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
     });
-  };
 
   if (loading) {
     return (
@@ -211,7 +210,7 @@ export default function ExpenseByCategoryView({
           <div className="bg-card border border-border rounded-lg shadow-lg max-w-sm w-full p-6">
             <h3 className="text-lg font-semibold mb-3">تأكيد الحذف</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              هل أنت متأكد من حذف المصروف رقم <span className="font-bold">#{deletingExpense.invID}</span>؟
+              هل أنت متأكد من حذف المصروف رقم <span className="font-bold">#{formatArabicNumber(deletingExpense.invID)}</span>؟
               <br />
               <span className="text-destructive">لا يمكن التراجع عن هذا الإجراء.</span>
             </p>
@@ -268,7 +267,7 @@ export default function ExpenseByCategoryView({
               <h3 className="text-lg font-semibold">تحذير: حذف جماعي</h3>
             </div>
             <p className="text-sm text-muted-foreground mb-4">
-              هل أنت متأكد من حذف <span className="font-bold text-destructive">{deletingCategory.Count}</span> مصروف من فئة{' '}
+              هل أنت متأكد من حذف <span className="font-bold text-destructive">{formatArabicNumber(deletingCategory.Count)}</span> مصروف من فئة{' '}
               <span className="font-bold">&quot;{deletingCategory.CatName}&quot;</span>؟
               <br />
               <br />
@@ -312,7 +311,7 @@ export default function ExpenseByCategoryView({
                 {deleting ? (
                   <><Loader2 className="h-4 w-4 animate-spin" />جاري الحذف...</>
                 ) : (
-                  <><Trash2 className="h-4 w-4" />حذف الكل ({deletingCategory.Count})</>
+                  <><Trash2 className="h-4 w-4" />حذف الكل ({formatArabicNumber(deletingCategory.Count)})</>
                 )}
               </Button>
             </div>
@@ -352,7 +351,7 @@ export default function ExpenseByCategoryView({
                         )}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        {category.Count} {category.Count === 1 ? 'معاملة' : 'معاملات'}
+                        {formatArabicNumber(category.Count)} {category.Count === 1 ? 'معاملة' : 'معاملات'}
                       </div>
                     </div>
                   </button>
@@ -434,13 +433,13 @@ export default function ExpenseByCategoryView({
                             }`}
                           >
                             <td className="py-2 px-3 text-xs text-muted-foreground">
-                              {transaction.invID}
+                              {formatArabicNumber(transaction.invID)}
                             </td>
                             <td className="py-2 px-3 text-xs">
                               {formatDate(transaction.invDate)}
                             </td>
                             <td className="py-2 px-3 text-xs text-muted-foreground">
-                              {transaction.invTime}
+                              {toArabicDigits(transaction.invTime)}
                             </td>
                             <td className="py-2 px-3 text-xs font-bold text-red-600">
                               {formatCurrency(transaction.GrandTolal)}

@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
+import { formatArabicNumber } from '@/lib/formatArabicNumbers';
 
 interface ExpensesReportFiltersProps {
   month: number;
@@ -56,7 +57,7 @@ export default function ExpensesReportFilters({
         >
           {years.map((y) => (
             <option key={y} value={y}>
-              {y}
+              {formatArabicNumber(y)}
             </option>
           ))}
         </select>
