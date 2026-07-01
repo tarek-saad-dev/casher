@@ -58,11 +58,11 @@ export default function MonthlyFinancialEquations({
   const displayDistributableLabel = isLoss ? lossDistributableLabel : distributableLabel;
 
   const sectionClass = isPartners
-    ? 'bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-6 print:break-inside-avoid print:bg-white print:border-zinc-300'
+    ? 'w-full min-w-0 bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-3 sm:p-4 md:p-6 print:break-inside-avoid print:bg-white print:border-zinc-300'
     : 'bg-card border border-border rounded-lg p-6';
 
   const summaryClass = isPartners
-    ? `rounded-xl border px-5 py-4 mb-6 print:border-zinc-300 ${
+    ? `rounded-xl border px-3 py-3 sm:px-5 sm:py-4 mb-4 sm:mb-6 print:border-zinc-300 ${
         isLoss
           ? 'border-rose-500/30 bg-rose-500/10 print:bg-rose-50'
           : 'border-emerald-500/35 bg-emerald-500/10 print:bg-emerald-50'
@@ -94,7 +94,7 @@ export default function MonthlyFinancialEquations({
         <div
           className={
             isPartners
-              ? 'p-2 bg-amber-500/10 rounded-lg print:bg-amber-50'
+              ? 'p-2 bg-amber-500/10 rounded-lg print:bg-amber-50 shrink-0'
               : 'p-2 bg-primary/10 rounded-lg'
           }
         >
@@ -106,11 +106,11 @@ export default function MonthlyFinancialEquations({
             }
           />
         </div>
-        <div>
+        <div className="min-w-0">
           <h2
             className={
               isPartners
-                ? 'text-lg font-bold text-white print:text-black'
+                ? 'text-base sm:text-lg font-bold text-white print:text-black'
                 : 'text-lg font-semibold'
             }
           >
@@ -120,7 +120,7 @@ export default function MonthlyFinancialEquations({
             <p
               className={
                 isPartners
-                  ? 'text-xs text-zinc-500 print:text-zinc-600 mt-1'
+                  ? 'text-xs sm:text-sm text-zinc-500 print:text-zinc-600 mt-1'
                   : 'text-xs text-muted-foreground mt-1'
               }
             >
@@ -131,87 +131,131 @@ export default function MonthlyFinancialEquations({
       </div>
 
       <div className={summaryClass}>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+          <div className="min-w-0">
             <p
               className={
                 isPartners
-                  ? 'text-xs text-zinc-400 print:text-zinc-600 mb-1'
+                  ? 'text-xs sm:text-sm text-zinc-400 print:text-zinc-600 mb-1'
                   : 'text-sm text-muted-foreground mb-1'
               }
             >
               {baseAmountLabel}
             </p>
-            <p className={`text-xl font-bold ${amountClass}`}>
+            <p className={`text-lg sm:text-xl font-bold tabular-nums ${amountClass}`}>
               {formatCurrency(result.baseAmount, variant)}
             </p>
           </div>
-          <div>
+          <div className="min-w-0">
             <p
               className={
                 isPartners
-                  ? 'text-xs text-zinc-400 print:text-zinc-600 mb-1'
+                  ? 'text-xs sm:text-sm text-zinc-400 print:text-zinc-600 mb-1'
                   : 'text-sm text-muted-foreground mb-1'
               }
             >
               {displayDistributableLabel}
             </p>
-            <p className={`text-2xl md:text-3xl font-bold ${amountClass}`}>
+            <p className={`text-xl sm:text-2xl md:text-3xl font-bold tabular-nums ${amountClass}`}>
               {formatCurrency(Math.abs(result.finalDistributableAmount), variant)}
             </p>
           </div>
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className={tableHeadClass}>
-              <th className="text-right py-3 px-2 font-medium">الشريك</th>
-              <th className="text-center py-3 px-2 font-medium">النسبة</th>
-              <th className="text-center py-3 px-2 font-medium">نصيب الربح</th>
-            </tr>
-          </thead>
-          <tbody>
+      {isPartners ? (
+        <>
+          <div className="md:hidden print:hidden space-y-2">
             {result.partnerShares.map((partner) => (
-              <tr key={partner.name} className={`${tableRowClass} print:break-inside-avoid`}>
-                <td
-                  className={
-                    isPartners
-                      ? 'py-3 px-2 text-white font-medium print:text-black'
-                      : 'py-4 px-4 font-medium'
-                  }
-                >
+              <article
+                key={partner.name}
+                className="w-full min-w-0 rounded-lg border border-zinc-800/70 bg-zinc-950/40 p-3 sm:p-4"
+              >
+                <h3 className="text-base font-bold text-white break-words mb-3 border-b border-zinc-800/60 pb-2">
                   {partner.name}
-                </td>
-                <td
-                  className={
-                    isPartners
-                      ? 'py-3 px-2 text-center text-zinc-400 print:text-zinc-600'
-                      : 'py-4 px-4 text-center text-muted-foreground'
-                  }
-                >
-                  {formatPartnerPercentage(partner.percentage)}
-                </td>
-                <td className="py-3 px-2 text-center">
-                  <span className={`font-bold ${amountClass}`}>
+                </h3>
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <span className="text-sm text-zinc-400">النسبة</span>
+                  <span className="text-sm text-zinc-300 tabular-nums">
+                    {formatPartnerPercentage(partner.percentage)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-zinc-400">نصيب الربح</span>
+                  <span className={`text-base font-bold tabular-nums ${amountClass}`}>
                     {formatCurrency(partner.profitShare, variant)}
                   </span>
-                </td>
-              </tr>
+                </div>
+              </article>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
+
+          <div className="hidden md:block print:block overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className={tableHeadClass}>
+                  <th className="text-right py-3 px-2 font-medium">الشريك</th>
+                  <th className="text-center py-3 px-2 font-medium">النسبة</th>
+                  <th className="text-center py-3 px-2 font-medium">نصيب الربح</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.partnerShares.map((partner) => (
+                  <tr key={partner.name} className={`${tableRowClass} print:break-inside-avoid`}>
+                    <td className="py-3 px-2 text-white font-medium print:text-black break-words">
+                      {partner.name}
+                    </td>
+                    <td className="py-3 px-2 text-center text-zinc-400 print:text-zinc-600 tabular-nums">
+                      {formatPartnerPercentage(partner.percentage)}
+                    </td>
+                    <td className="py-3 px-2 text-center tabular-nums">
+                      <span className={`font-bold ${amountClass}`}>
+                        {formatCurrency(partner.profitShare, variant)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className={tableHeadClass}>
+                <th className="text-right py-3 px-2 font-medium">الشريك</th>
+                <th className="text-center py-3 px-2 font-medium">النسبة</th>
+                <th className="text-center py-3 px-2 font-medium">نصيب الربح</th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.partnerShares.map((partner) => (
+                <tr key={partner.name} className={`${tableRowClass} print:break-inside-avoid`}>
+                  <td className="py-4 px-4 font-medium break-words">{partner.name}</td>
+                  <td className="py-4 px-4 text-center text-muted-foreground tabular-nums">
+                    {formatPartnerPercentage(partner.percentage)}
+                  </td>
+                  <td className="py-4 px-4 text-center tabular-nums">
+                    <span className={`font-bold ${amountClass}`}>
+                      {formatCurrency(partner.profitShare, variant)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div
         className={
           isPartners
-            ? 'mt-6 p-4 bg-zinc-800/40 rounded-lg print:bg-zinc-100 print:border print:border-zinc-300'
+            ? 'mt-4 sm:mt-6 p-3 sm:p-4 bg-zinc-800/40 rounded-lg print:bg-zinc-100 print:border print:border-zinc-300'
             : 'mt-6 p-4 bg-muted/50 rounded-lg'
         }
       >
-        <div className="flex justify-between items-center gap-4">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 sm:gap-4 min-w-0">
           <span
             className={
               isPartners
@@ -221,7 +265,7 @@ export default function MonthlyFinancialEquations({
           >
             إجمالي المبالغ الموزعة
           </span>
-          <span className={`text-xl font-bold ${amountClass}`}>
+          <span className={`text-lg sm:text-xl font-bold tabular-nums ${amountClass}`}>
             {formatCurrency(result.finalDistributableAmount, variant)}
           </span>
         </div>

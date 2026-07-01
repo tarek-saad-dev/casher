@@ -7,7 +7,9 @@ export default function PartnersReportLayout({
 }) {
   return (
     <PageGuard requiredPagePath="/admin/reports/partners">
-      {children}
+      <div className="-m-6 w-auto min-w-0 overflow-x-hidden">
+        {children}
+      </div>
     </PageGuard>
   );
 }

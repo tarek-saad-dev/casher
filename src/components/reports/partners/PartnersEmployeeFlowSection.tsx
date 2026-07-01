@@ -43,62 +43,59 @@ export default function PartnersEmployeeFlowSection({
   const displayRemaining = Math.abs(remaining);
 
   return (
-    <section className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-6 print:break-inside-avoid print:bg-white print:border-zinc-300">
-      <h2 className="text-lg font-bold text-white print:text-black mb-5">
+    <section className="w-full min-w-0 bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-3 sm:p-4 md:p-6 print:break-inside-avoid print:bg-white print:border-zinc-300">
+      <h2 className="text-base sm:text-lg font-bold text-white print:text-black mb-3 sm:mb-5">
         صافي إيراد الصنايعية بعد الرواتب والسلف
       </h2>
 
       {loading && totalEmployeeActualRevenue === 0 && totalPaidSalaryOrAdvance === 0 ? (
         <FlowSkeleton />
       ) : (
-        <div className="financial-flow flex flex-col md:flex-row md:items-center md:justify-center gap-4 md:gap-3">
-          {/* Revenue */}
-          <div className="flex-1 min-w-0 rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-5 py-4 text-center print:border-emerald-700 print:bg-emerald-50">
-            <span className="block text-xs text-zinc-400 print:text-zinc-600 mb-2">
+        <div className="financial-flow flex flex-col md:flex-row md:items-center md:justify-center gap-3 sm:gap-4 md:gap-3 w-full min-w-0">
+          <div className="flex-1 min-w-0 rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-3 py-3 sm:px-5 sm:py-4 text-center print:border-emerald-700 print:bg-emerald-50">
+            <span className="block text-xs sm:text-sm text-zinc-400 print:text-zinc-600 mb-1.5 sm:mb-2">
               إيراد الصنايعية الفعلي
             </span>
-            <strong className="text-xl md:text-2xl font-bold text-emerald-400 print:text-emerald-700">
+            <strong className="text-lg sm:text-xl md:text-2xl font-bold text-emerald-400 print:text-emerald-700 tabular-nums">
               {formatPartnersCurrency(totalEmployeeActualRevenue)}
             </strong>
           </div>
 
           <div
-            className="operator flex items-center justify-center text-2xl font-bold text-zinc-500 print:text-zinc-700 md:px-1 shrink-0"
+            className="operator flex items-center justify-center text-xl sm:text-2xl font-bold text-zinc-500 print:text-zinc-700 md:px-1 shrink-0 py-0.5"
             aria-hidden
           >
             −
           </div>
 
-          {/* Payroll */}
-          <div className="flex-1 min-w-0 rounded-xl border border-amber-500/25 bg-amber-500/5 px-5 py-4 text-center print:border-amber-700 print:bg-amber-50">
-            <span className="block text-xs text-zinc-400 print:text-zinc-600 mb-2">
+          <div className="flex-1 min-w-0 rounded-xl border border-amber-500/25 bg-amber-500/5 px-3 py-3 sm:px-5 sm:py-4 text-center print:border-amber-700 print:bg-amber-50">
+            <span className="block text-xs sm:text-sm text-zinc-400 print:text-zinc-600 mb-1.5 sm:mb-2">
               الرواتب والسلف المدفوعة
             </span>
-            <strong className="text-xl md:text-2xl font-bold text-amber-400 print:text-amber-700">
+            <strong className="text-lg sm:text-xl md:text-2xl font-bold text-amber-400 print:text-amber-700 tabular-nums">
               {formatPartnersCurrency(totalPaidSalaryOrAdvance)}
             </strong>
           </div>
 
           <div
-            className="operator flex items-center justify-center text-2xl font-bold text-zinc-500 print:text-zinc-700 md:px-1 shrink-0"
+            className="operator flex items-center justify-center text-xl sm:text-2xl font-bold text-zinc-500 print:text-zinc-700 md:px-1 shrink-0 py-0.5"
             aria-hidden
           >
             =
           </div>
 
-          {/* Result */}
           <div
-            className={`flex-[1.2] min-w-0 rounded-xl border px-5 py-5 text-center print:border-zinc-400 ${
+            className={`flex-[1.2] min-w-0 rounded-xl border px-3 py-4 sm:px-5 sm:py-5 text-center print:border-zinc-400 ${
               isNegative
                 ? 'border-rose-500/30 bg-rose-500/10 print:bg-rose-50'
                 : 'border-emerald-500/35 bg-emerald-500/10 print:bg-emerald-50'
             }`}
           >
-            <span className="block text-xs text-zinc-400 print:text-zinc-600 mb-2">
+            <span className="block text-xs sm:text-sm text-zinc-400 print:text-zinc-600 mb-1.5 sm:mb-2">
               {isNegative ? 'عجز بعد الرواتب والسلف' : 'المتبقي بعد الرواتب والسلف'}
             </span>
             <strong
-              className={`text-2xl md:text-3xl font-bold ${
+              className={`text-xl sm:text-2xl md:text-3xl font-bold tabular-nums ${
                 isNegative
                   ? 'text-rose-400 print:text-rose-700'
                   : 'text-emerald-400 print:text-emerald-700'
@@ -106,7 +103,7 @@ export default function PartnersEmployeeFlowSection({
             >
               {formatPartnersCurrency(displayRemaining)}
             </strong>
-            <p className="mt-3 text-[11px] leading-relaxed text-zinc-500 print:text-zinc-600">
+            <p className="mt-2 sm:mt-3 text-[11px] sm:text-xs leading-relaxed text-zinc-500 print:text-zinc-600">
               المبلغ المتبقي قبل خصم باقي مصروفات التشغيل
             </p>
           </div>

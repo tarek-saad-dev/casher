@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { AlertCircle } from 'lucide-react';
-import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import PartnersReportFilters from '@/components/reports/partners/PartnersReportFilters';
 import PartnersEmployeesSection from '@/components/reports/partners/PartnersEmployeesSection';
@@ -205,23 +204,37 @@ function PartnersReportPageContent() {
             page-break-inside: avoid;
             page-break-after: auto;
           }
+          .financial-flow .operator {
+            display: none !important;
+          }
+          .financial-flow {
+            display: block !important;
+          }
+          .financial-flow > div {
+            margin-bottom: 0.75rem;
+          }
         }
       `}</style>
 
-      <div className="p-6 space-y-4 max-w-[1600px] mx-auto print:p-4 print:max-w-none" dir="rtl">
-        <div className="hidden print:block mb-6">
-          <h1 className="text-2xl font-bold text-black">تقرير الشركاء</h1>
+      <div
+        className="px-3 py-3 sm:px-5 sm:py-4 lg:px-6 lg:py-6 space-y-3 sm:space-y-4 max-w-[1600px] mx-auto w-full min-w-0 overflow-x-hidden print:p-4 print:max-w-none"
+        dir="rtl"
+      >
+        <div className="hidden print:block mb-4">
+          <h1 className="text-xl sm:text-2xl font-bold text-black">تقرير الشركاء</h1>
           <p className="text-sm text-zinc-600">
             ملخص الأداء المالي الشهري — {ARABIC_MONTHS[month - 1]} {year}
           </p>
         </div>
 
-        <div className="print:hidden">
-          <PageHeader
-            title="تقرير الشركاء"
-            description="ملخص الأداء المالي الشهري"
-          />
-        </div>
+        <header className="print:hidden text-right w-full min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+            تقرير الشركاء
+          </h1>
+          <p className="mt-1 text-xs sm:text-sm text-zinc-400">
+            ملخص الأداء المالي الشهري
+          </p>
+        </header>
 
         <PartnersReportFilters
           year={year}
@@ -239,16 +252,16 @@ function PartnersReportPageContent() {
         />
 
         {error && !report && (
-          <div className="print:hidden flex flex-col items-center gap-4 rounded-xl border border-rose-500/20 bg-rose-950/20 p-8">
-            <div className="flex items-center gap-2 text-rose-400">
-              <AlertCircle className="h-5 w-5" />
-              <span>{error}</span>
+          <div className="print:hidden flex flex-col items-center gap-4 rounded-xl border border-rose-500/20 bg-rose-950/20 p-4 sm:p-6 w-full min-w-0">
+            <div className="flex items-start gap-2 text-rose-400 text-sm text-center max-w-full">
+              <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" aria-hidden />
+              <span className="break-words">{error}</span>
             </div>
             <Button
               type="button"
               variant="outline"
               onClick={() => fetchReport(year, month)}
-              className="border-zinc-700"
+              className="min-h-11 w-full sm:w-auto border-zinc-700"
             >
               إعادة المحاولة
             </Button>
@@ -321,7 +334,9 @@ function PartnersReportPageContent() {
 export default function PartnersReportPage() {
   return (
     <Suspense fallback={
-      <div className="p-6 text-zinc-400" dir="rtl">جاري تحميل التقرير...</div>
+      <div className="px-3 py-6 text-sm sm:text-base text-zinc-400 text-center w-full min-w-0" dir="rtl">
+        جاري تحميل التقرير...
+      </div>
     }>
       <PartnersReportPageContent />
     </Suspense>
