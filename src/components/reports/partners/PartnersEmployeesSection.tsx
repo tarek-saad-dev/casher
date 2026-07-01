@@ -76,7 +76,7 @@ export default function PartnersEmployeesSection({
                   }
                 />
                 <MobileValueRow
-                  label="استلم راتب / سلف"
+                  label="استلم راتب "
                   value={formatPartnersCurrency(row.paidSalaryAndAdvances)}
                   valueClassName="text-amber-400"
                 />
