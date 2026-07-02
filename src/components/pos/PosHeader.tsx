@@ -40,7 +40,7 @@ export default function PosHeader({ shiftId, shiftLevel, onNewSale }: PosHeaderP
         {shiftId && (
           <div className="text-xs text-muted-foreground">
             وردية #{shiftId}
-            {shiftLevel === 'closed_today' && <span className="text-yellow-500 mr-1">(مغلقة)</span>}
+            {shiftLevel === 'closed_today' && <span className="text-warning mr-1">(مغلقة)</span>}
           </div>
         )}
 

@@ -78,31 +78,31 @@ export default function DeleteInvoiceDialog({
         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
         onClick={handleClose}
       />
-      <div className="relative bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+      <div className="relative bg-surface border border-border rounded-2xl p-6 max-w-md w-full shadow-2xl">
         {/* Header */}
         <div className="flex items-center gap-3 mb-4">
-          <div className="p-3 bg-rose-500/20 rounded-full">
-            <AlertTriangle className="h-6 w-6 text-rose-400" />
+          <div className="p-3 bg-destructive/20 rounded-full">
+            <AlertTriangle className="h-6 w-6 text-destructive" />
           </div>
-          <h3 className="text-lg font-bold text-white">تأكيد المسح</h3>
+          <h3 className="text-lg font-bold text-foreground">تأكيد المسح</h3>
         </div>
 
         {/* Invoice info */}
-        <p className="text-zinc-400 mb-1">
+        <p className="text-muted-foreground mb-1">
           هل أنت متأكد من مسح الفاتورة{' '}
-          <span className="text-white font-bold">#{displayNo}</span>؟
+          <span className="text-foreground font-bold">#{displayNo}</span>؟
         </p>
-        <p className="text-rose-400 text-sm mb-5">
+        <p className="text-destructive text-sm mb-5">
           هذا الإجراء لا يمكن التراجع عنه.
         </p>
 
         {/* Reason field */}
         <div className="mb-5">
-          <label className="block text-sm font-medium text-zinc-300 mb-1.5">
-            سبب مسح الفاتورة <span className="text-rose-400">*</span>
+          <label className="block text-sm font-medium text-foreground/80 mb-1.5">
+            سبب مسح الفاتورة <span className="text-destructive">*</span>
           </label>
           <textarea
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-zinc-600 resize-none focus:outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 disabled:opacity-50"
+            className="w-full bg-surface-muted border border-border rounded-xl px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/40 resize-none focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 disabled:opacity-50"
             rows={3}
             placeholder="اكتب سبب مسح الفاتورة..."
             value={reason}
@@ -113,7 +113,7 @@ export default function DeleteInvoiceDialog({
             disabled={deleting}
           />
           {error && (
-            <p className="text-xs text-rose-400 mt-1.5">{error}</p>
+            <p className="text-xs text-destructive mt-1.5">{error}</p>
           )}
         </div>
 
@@ -123,7 +123,7 @@ export default function DeleteInvoiceDialog({
             type="button"
             onClick={handleClose}
             disabled={deleting}
-            className="flex-1 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl transition-colors disabled:opacity-50"
+            className="flex-1 px-4 py-2 bg-surface-muted hover:bg-surface-muted/80 text-foreground/80 rounded-xl transition-colors disabled:opacity-50"
           >
             إلغاء
           </button>
@@ -131,7 +131,7 @@ export default function DeleteInvoiceDialog({
             type="button"
             onClick={handleConfirm}
             disabled={deleting || !reason.trim()}
-            className="flex-1 px-4 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 border border-rose-500/30 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            className="flex-1 px-4 py-2 bg-destructive/20 hover:bg-destructive/30 text-destructive border border-destructive/30 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {deleting ? (
               <>

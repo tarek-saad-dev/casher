@@ -79,10 +79,10 @@ export default function PackagesSection({ selectedBarber, onAddItem }: PackagesS
       {/* Section Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <h3 className="text-lg font-bold text-[#F7F1E5]">العروض والباقات</h3>
-          <Crown className="w-5 h-5 text-[#D6A84F]" />
+          <h3 className="text-lg font-bold text-foreground">العروض والباقات</h3>
+          <Crown className="w-5 h-5 text-primary" />
         </div>
-        <button className="flex items-center gap-1 text-sm text-[#D6A84F] hover:text-[#E8C877] transition-colors">
+        <button className="flex items-center gap-1 text-sm text-primary hover:text-primary-hover transition-colors">
           عرض جميع الخدمات
           <ChevronDown className="w-4 h-4" />
         </button>
@@ -94,18 +94,18 @@ export default function PackagesSection({ selectedBarber, onAddItem }: PackagesS
           <div
             key={pkg.id}
             className={cn(
-              'group relative bg-[#16161A] rounded-2xl overflow-hidden border transition-all duration-300',
+              'group relative bg-surface rounded-2xl overflow-hidden border transition-all duration-300',
               pkg.popular
-                ? 'border-[#D6A84F]/50 shadow-lg shadow-[#D6A84F]/10'
-                : 'border-[#2A2A30] hover:border-[#3A3A40]',
+                ? 'border-primary/50 shadow-lg shadow-primary/10'
+                : 'border-border hover:border-border/80',
               !isDisabled && 'hover:shadow-lg hover:shadow-black/20'
             )}
           >
             {/* Popular Badge */}
             {pkg.popular && (
               <div className="absolute top-3 left-3 z-10">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#D6A84F] to-[#B8963F] flex items-center justify-center shadow-lg">
-                  <Crown className="w-4 h-4 text-[#0B0B0D]" />
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg">
+                  <Crown className="w-4 h-4 text-primary-foreground" />
                 </div>
               </div>
             )}
@@ -117,28 +117,28 @@ export default function PackagesSection({ selectedBarber, onAddItem }: PackagesS
                 alt={pkg.name}
                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#16161A] via-[#16161A]/50 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/50 to-transparent" />
             </div>
 
             {/* Package Info */}
             <div className="p-4">
               {/* Package Name */}
-              <h4 className="text-base font-bold text-[#F7F1E5] mb-2">
+              <h4 className="text-base font-bold text-foreground mb-2">
                 {pkg.name}
               </h4>
 
               {/* Price Section */}
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-xl font-bold text-[#D6A84F]">
+                <span className="text-xl font-bold text-primary">
                   {pkg.price} ج.م
                 </span>
-                <span className="text-sm text-[#6B6B6B] line-through">
+                <span className="text-sm text-muted-foreground line-through">
                   {pkg.originalPrice} ج.م
                 </span>
               </div>
 
               {/* Duration */}
-              <div className="flex items-center gap-1 text-[#6B6B6B] mb-3">
+              <div className="flex items-center gap-1 text-muted-foreground mb-3">
                 <Clock className="w-3 h-3" />
                 <span className="text-xs">{pkg.duration} دقيقة</span>
               </div>
@@ -148,13 +148,13 @@ export default function PackagesSection({ selectedBarber, onAddItem }: PackagesS
                 {pkg.includes.slice(0, 2).map((item, idx) => (
                   <span
                     key={idx}
-                    className="text-[10px] bg-[#2A2A30] text-[#A7A29A] px-2 py-1 rounded-full"
+                    className="text-[10px] bg-surface-muted text-muted-foreground px-2 py-1 rounded-full"
                   >
                     {item}
                   </span>
                 ))}
                 {pkg.includes.length > 2 && (
-                  <span className="text-[10px] bg-[#2A2A30] text-[#A7A29A] px-2 py-1 rounded-full">
+                  <span className="text-[10px] bg-surface-muted text-muted-foreground px-2 py-1 rounded-full">
                     +{pkg.includes.length - 2}
                   </span>
                 )}
@@ -167,8 +167,8 @@ export default function PackagesSection({ selectedBarber, onAddItem }: PackagesS
                 className={cn(
                   'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all',
                   isDisabled
-                    ? 'bg-[#2A2A30] text-[#4A4A4A] cursor-not-allowed'
-                    : 'bg-[#D6A84F]/10 text-[#D6A84F] border border-[#D6A84F]/30 hover:bg-[#D6A84F] hover:text-[#0B0B0D] active:scale-95'
+                    ? 'bg-muted text-muted-foreground/40 cursor-not-allowed'
+                    : 'bg-primary/10 text-primary border border-primary/30 hover:bg-primary hover:text-primary-foreground active:scale-95'
                 )}
               >
                 <Plus className="w-4 h-4" />
