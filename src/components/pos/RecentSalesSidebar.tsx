@@ -46,12 +46,16 @@ interface RecentSalesSidebarProps {
   onEditSale?: (saleId: number) => void;
   onDeleteSale?: (saleId: number) => void;
   onRefresh?: () => void;
+  showHeader?: boolean;
+  refreshToken?: number;
 }
 
 export default function RecentSalesSidebar({ 
   onEditSale, 
   onDeleteSale, 
-  onRefresh 
+  onRefresh,
+  showHeader = true,
+  refreshToken,
 }: RecentSalesSidebarProps) {
   const [sales, setSales] = useState<RecentSale[]>([]);
   const [moreSales, setMoreSales] = useState<RecentSale[]>([]);
@@ -132,6 +136,12 @@ export default function RecentSalesSidebar({
     loadRecentSales();
   }, []);
 
+  useEffect(() => {
+    if (refreshToken !== undefined && refreshToken > 0) {
+      loadRecentSales();
+    }
+  }, [refreshToken]);
+
   const handleDelete = (saleId: number, invNo: number) => {
     setDeleteTarget({ invId: saleId, invNo });
   };
@@ -190,20 +200,22 @@ export default function RecentSalesSidebar({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-zinc-300">
-          {showMore ? `آخر ${sales.length + moreSales.length} عملية بيع اليوم` : 'آخر 3 عمليات بيع'}
-        </h3>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={loadRecentSales}
-          className="h-6 px-2 text-xs text-zinc-400 hover:text-zinc-300"
-        >
-          <RefreshCw className="w-3 h-3 ml-1" />
-          تحديث
-        </Button>
-      </div>
+      {showHeader && (
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-zinc-300">
+            {showMore ? `آخر ${sales.length + moreSales.length} عملية بيع اليوم` : 'آخر 3 عمليات بيع'}
+          </h3>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={loadRecentSales}
+            className="h-6 px-2 text-xs text-zinc-400 hover:text-zinc-300"
+          >
+            <RefreshCw className="w-3 h-3 ml-1" />
+            تحديث
+          </Button>
+        </div>
+      )}
 
       {/* First 3 sales */}
       {sales.map((sale) => (

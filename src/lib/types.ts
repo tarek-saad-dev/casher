@@ -28,6 +28,7 @@ export interface Service {
   CatID: number | null;
   CatName: string | null;
   SalesCount: number;
+  ImageUrl: string | null;
 }
 
 export interface PaymentMethod {

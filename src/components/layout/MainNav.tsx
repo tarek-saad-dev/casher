@@ -12,6 +12,7 @@ import {
   getActiveSectionTitle,
 } from './nav-config';
 import type { NavItem, NavSection, NavTheme } from './nav-config';
+import SidebarThemeSwitch from '@/components/theme/SidebarThemeSwitch';
 
 
 // Glow helpers — computed once per rgb
@@ -24,11 +25,16 @@ const dotGlow = (rgb: string) => `0 0 8px  rgba(${rgb},0.90), 0 0 16px rgba(${rg
 // COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function MainNav() {
+interface MainNavProps {
+  /** Hide mobile header/menu chrome (used on POS mobile layout). */
+  suppressMobileChrome?: boolean;
+}
+
+export default function MainNav({ suppressMobileChrome = false }: MainNavProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<string[]>(['المدخلات']);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
 
   const { canSeePage, access, loading: permLoading, isAuthenticated } = usePermissions();
 
@@ -111,11 +117,11 @@ export default function MainNav() {
           }}
         >
           <Icon style={{ width: 13, height: 13, color: `rgb(${rgb})`, flexShrink: 0 }} />
-          <span style={{ fontSize: 11, color: '#A7A29A', flex: 1 }}>{item.label}</span>
+          <span style={{ fontSize: 11, color: 'var(--muted-foreground)', flex: 1 }}>{item.label}</span>
           <span style={{
             fontSize: 9, padding: '1px 5px', borderRadius: 9999,
             backgroundColor: 'rgba(255,255,255,0.06)',
-            color: '#6B6B6B', border: '1px solid rgba(255,255,255,0.08)',
+            color: 'var(--muted-foreground)', border: '1px solid rgba(255,255,255,0.08)',
           }}>قريباً</span>
         </div>
       );
@@ -199,13 +205,13 @@ export default function MainNav() {
       // Icon
       const icon = el.querySelector(`[data-icon]`) as HTMLElement | null;
       if (icon && !active) {
-        icon.style.color = isSectionActive ? `rgba(${rgb},0.75)` : 'rgba(161,161,170,0.55)';
+        icon.style.color = isSectionActive ? `rgba(${rgb},0.75)` : 'color-mix(in srgb, var(--muted-foreground) 55%, transparent)';
         icon.style.filter = 'none';
       }
       // Text
       const txt = el.querySelector(`[data-txt]`) as HTMLElement | null;
       if (txt && !active) {
-        txt.style.color = isSectionActive ? 'rgba(220,215,208,0.9)' : '#7A7570';
+        txt.style.color = isSectionActive ? 'color-mix(in srgb, var(--foreground) 90%, transparent)' : 'var(--muted-foreground)';
         txt.style.textShadow = 'none';
         txt.style.fontWeight = '400';
       }
@@ -238,7 +244,7 @@ export default function MainNav() {
           data-icon
           style={{
             width: 13, height: 13, flexShrink: 0,
-            color: active ? `rgb(${rgb})` : isSectionActive ? `rgba(${rgb},0.75)` : 'rgba(161,161,170,0.55)',
+            color: active ? `rgb(${rgb})` : isSectionActive ? `rgba(${rgb},0.75)` : 'color-mix(in srgb, var(--muted-foreground) 55%, transparent)',
             filter: active ? `drop-shadow(0 0 4px rgba(${rgb},0.5))` : 'none',
             transition: 'color 0.18s, filter 0.18s',
           }}
@@ -251,7 +257,7 @@ export default function MainNav() {
             fontWeight: active ? 600 : 400,
             flex: 1,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            color: active ? `rgb(${rgb})` : isSectionActive ? 'rgba(220,215,208,0.9)' : '#7A7570',
+            color: active ? `rgb(${rgb})` : isSectionActive ? 'color-mix(in srgb, var(--foreground) 90%, transparent)' : 'var(--muted-foreground)',
             textShadow: active ? `0 0 10px rgba(${rgb},0.4)` : 'none',
             transition: 'color 0.18s, text-shadow 0.18s',
           }}
@@ -385,7 +391,7 @@ export default function MainNav() {
           >
             <Icon style={{
               width: 18, height: 18,
-              color: active ? `rgb(${rgb})` : isDimmed ? '#4A4A52' : '#6B6B6B',
+              color: active ? `rgb(${rgb})` : isDimmed ? 'color-mix(in srgb, var(--muted-foreground) 60%, transparent)' : 'var(--muted-foreground)',
               filter: active ? `drop-shadow(0 0 5px rgba(${rgb},0.55))` : 'none',
             }} />
             {active && (
@@ -470,7 +476,7 @@ export default function MainNav() {
             <span style={{
               fontSize: 12,
               fontWeight: hasActive ? 700 : isExpanded ? 600 : 500,
-              color: hasActive ? `rgb(${rgb})` : isExpanded ? `rgba(${rgb},0.85)` : '#C4BFB8',
+              color: hasActive ? `rgb(${rgb})` : isExpanded ? `rgba(${rgb},0.85)` : 'var(--sidebar-foreground)',
               textShadow: hasActive ? `0 0 10px rgba(${rgb},0.35)` : 'none',
               transition: 'all 0.2s ease',
             }}>
@@ -489,7 +495,7 @@ export default function MainNav() {
           {/* Chevron */}
           <ChevronDown style={{
             width: 14, height: 14, flexShrink: 0,
-            color: hasActive ? `rgb(${rgb})` : isExpanded ? `rgba(${rgb},0.7)` : '#555',
+            color: hasActive ? `rgb(${rgb})` : isExpanded ? `rgba(${rgb},0.7)` : 'var(--muted-foreground)',
             filter: hasActive ? `drop-shadow(0 0 3px rgba(${rgb},0.5))` : 'none',
             transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
             transition: 'transform 0.22s ease, color 0.2s ease',
@@ -533,7 +539,7 @@ export default function MainNav() {
   const NavSkeleton = () => (
     <div style={{ padding: isCollapsed ? '8px 6px' : '8px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
       {[72, 56, 64, 48, 60].map((w, i) => (
-        <div key={i} style={{ height: 28, width: isCollapsed ? 28 : `${w}%`, borderRadius: 8, background: '#1e1e22', animation: 'pulse 1.5s ease-in-out infinite' }} />
+        <div key={i} style={{ height: 28, width: isCollapsed ? 28 : `${w}%`, borderRadius: 8, background: 'var(--surface-muted)', animation: 'pulse 1.5s ease-in-out infinite' }} />
       ))}
     </div>
   );
@@ -566,8 +572,8 @@ export default function MainNav() {
         className="hidden lg:flex flex-col shrink-0 transition-all duration-300"
         style={{
           width: isCollapsed ? 60 : 215,
-          backgroundColor: '#111114',
-          borderLeft: '1px solid #2A2A30',
+          backgroundColor: 'var(--sidebar-background)',
+          borderLeft: '1px solid var(--sidebar-border)',
         }}
       >
         {/* Logo + collapse toggle */}
@@ -586,7 +592,7 @@ export default function MainNav() {
           {!isCollapsed && (
             <button
               onClick={() => setIsCollapsed(true)}
-              className="p-1.5 rounded-lg transition-colors hover:bg-[#2A2A30] text-[#6B6B6B] hover:text-[#F7F1E5]"
+              className="p-1.5 rounded-lg transition-colors hover:bg-sidebar-hover text-muted-foreground hover:text-foreground"
               title="طي القائمة"
             >
               <PanelLeftClose className="w-4 h-4" />
@@ -595,7 +601,7 @@ export default function MainNav() {
           {isCollapsed && (
             <button
               onClick={() => setIsCollapsed(false)}
-              className="p-1.5 rounded-lg transition-colors hover:bg-[#2A2A30] text-[#6B6B6B] hover:text-[#F7F1E5] mt-1"
+              className="p-1.5 rounded-lg transition-colors hover:bg-sidebar-hover text-muted-foreground hover:text-foreground mt-1"
               title="توسيع القائمة"
             >
               <PanelLeftOpen className="w-4 h-4" />
@@ -610,15 +616,15 @@ export default function MainNav() {
           <div style={{ padding: '4px 10px 8px' }}>
             <div className="relative rounded-xl overflow-hidden" style={{ height: 200 }}>
               <img src="/chair.png" alt="Barber Chair" className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#111114] via-transparent to-transparent" />
-              <div className="absolute inset-0 bg-gradient-to-b from-[#111114] via-transparent to-transparent opacity-40" />
-              <div className="absolute inset-0 bg-gradient-to-l from-[#111114] via-transparent to-transparent" />
-              <div className="absolute inset-0 bg-gradient-to-r from-[#111114] via-transparent to-transparent" />
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,#111114_100%)]" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[var(--sidebar-background)] via-transparent to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-b from-[var(--sidebar-background)] via-transparent to-transparent opacity-40" />
+              <div className="absolute inset-0 bg-gradient-to-l from-[var(--sidebar-background)] via-transparent to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-r from-[var(--sidebar-background)] via-transparent to-transparent" />
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,var(--sidebar-background)_100%)]" />
               <div className="absolute bottom-3 left-3 right-3">
-                <div className="bg-black/60 backdrop-blur-sm rounded-lg p-2.5 text-center">
-                  <p className="text-amber-400 font-bold text-xs">Cut Salon</p>
-                  <p className="text-white/70 text-[10px]">صالون حلاقة راقي</p>
+                <div className="bg-background/60 backdrop-blur-sm rounded-lg p-2.5 text-center">
+                  <p className="text-primary font-bold text-xs">Cut Salon</p>
+                  <p className="text-foreground/70 text-[10px]">صالون حلاقة راقي</p>
                 </div>
               </div>
             </div>
@@ -626,61 +632,63 @@ export default function MainNav() {
         )}
 
         {/* Footer */}
-        <div style={{ padding: '10px 10px', borderTop: '1px solid #2A2A30' }}>
-          <button
-            className="flex items-center justify-center transition-all duration-200 rounded-xl"
-            style={{
-              width: '100%',
-              gap: isCollapsed ? 0 : 8,
-              padding: isCollapsed ? '8px' : '8px 12px',
-              border: '1px solid rgba(214,168,79,0.40)',
-              color: '#D6A84F',
-              backgroundColor: 'transparent',
-            }}
-            title="تخصيص القوائم"
-          >
-            {!isCollapsed && <span style={{ fontSize: 12 }}>تخصيص القوائم</span>}
-            <SlidersHorizontal style={{ width: 14, height: 14 }} />
-          </button>
+        <div style={{ padding: '10px 10px', borderTop: '1px solid var(--sidebar-border)' }}>
+          <div className="flex items-center gap-2">
+            <button
+              className="flex flex-1 items-center justify-center transition-all duration-200 rounded-xl"
+              style={{
+                gap: isCollapsed ? 0 : 8,
+                padding: isCollapsed ? '8px' : '8px 12px',
+                border: '1px solid color-mix(in srgb, var(--primary) 40%, transparent)',
+                color: 'var(--primary)',
+                backgroundColor: 'transparent',
+              }}
+              title="تخصيص القوائم"
+            >
+              {!isCollapsed && <span style={{ fontSize: 12 }}>تخصيص القوائم</span>}
+              <SlidersHorizontal style={{ width: 14, height: 14 }} />
+            </button>
+            {!isCollapsed && <SidebarThemeSwitch />}
+          </div>
         </div>
       </nav>
 
       {/* ── Mobile Header ───────────────────────────────────────────────── */}
-      <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-[#111114] border-b border-[#2A2A30]">
+      <div className={`lg:hidden flex items-center justify-between px-4 py-3 bg-sidebar-background border-b border-sidebar-border ${suppressMobileChrome ? 'max-md:hidden' : ''}`}>
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 flex items-center justify-center">
             <img src="/cutsalon.png" alt="Cut Salon Logo" className="w-full h-full object-contain" />
           </div>
-          <h2 className="text-base font-bold text-[#F7F1E5]">CUT SALON</h2>
+          <h2 className="text-base font-bold text-foreground">CUT SALON</h2>
         </div>
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="p-2 bg-[#1E1D21] border border-[#2A2A30] rounded-lg text-[#A7A29A] hover:bg-[#2A2A30] transition-colors"
+          className="p-2 bg-surface-muted border border-sidebar-border rounded-lg text-muted-foreground hover:bg-sidebar-hover transition-colors"
         >
           {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
 
       {/* ── Mobile Menu ─────────────────────────────────────────────────── */}
-      {mobileMenuOpen && (
+      {mobileMenuOpen && !suppressMobileChrome && (
         <div className="lg:hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm">
           <div
             className="absolute top-0 right-0 bottom-0 shadow-2xl flex flex-col"
-            style={{ width: 280, backgroundColor: '#111114', borderLeft: '1px solid #2A2A30' }}
+            style={{ width: 280, backgroundColor: 'var(--sidebar-background)', borderLeft: '1px solid var(--sidebar-border)' }}
           >
             {/* Mobile header */}
-            <div className="flex items-center justify-between p-4 border-b border-[#2A2A30]">
+            <div className="flex items-center justify-between p-4 border-b border-sidebar-border">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 flex items-center justify-center">
                   <img src="/cutsalon.png" alt="Cut Salon Logo" className="w-full h-full object-contain" />
                 </div>
-                <h2 className="text-base font-bold text-[#F7F1E5]">CUT SALON</h2>
+                <h2 className="text-base font-bold text-foreground">CUT SALON</h2>
               </div>
               <button
                 onClick={() => setMobileMenuOpen(false)}
-                className="p-2 hover:bg-[#2A2A30] rounded-lg transition-colors"
+                className="p-2 hover:bg-sidebar-hover rounded-lg transition-colors"
               >
-                <X className="w-5 h-5 text-[#A7A29A]" />
+                <X className="w-5 h-5 text-muted-foreground" />
               </button>
             </div>
 
@@ -695,14 +703,14 @@ export default function MainNav() {
             <div className="px-3 py-2">
               <div className="relative rounded-xl overflow-hidden" style={{ height: 80 }}>
                 <img src="/barber-mohamed.jpg" alt="Barber" className="w-full h-full object-cover opacity-60" />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#111114] via-transparent to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[var(--sidebar-background)] via-transparent to-transparent" />
               </div>
             </div>
 
             {/* Mobile footer */}
-            <div className="p-3 border-t border-[#2A2A30]">
+            <div className="p-3 border-t border-sidebar-border">
               <button className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl transition-all"
-                style={{ border: '1px solid rgba(214,168,79,0.4)', color: '#D6A84F' }}>
+                style={{ border: '1px solid color-mix(in srgb, var(--primary) 40%, transparent)', color: 'var(--primary)' }}>
                 <span className="text-sm">تخصيص القوائم</span>
                 <SlidersHorizontal className="w-4 h-4" />
               </button>

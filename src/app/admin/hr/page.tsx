@@ -23,7 +23,7 @@ import { JobType } from '@/lib/types';
 
 function TabLoader() {
   return (
-    <div className="flex items-center justify-center py-16 text-zinc-500">
+    <div className="flex items-center justify-center py-16 text-muted-foreground/70">
       <Loader2 className="w-5 h-5 animate-spin ml-2" />
       <span className="text-sm">جاري التحميل...</span>
     </div>
@@ -92,7 +92,7 @@ export default function HRPage() {
           title="إدارة الموارد البشرية"
           description="إدارة الموظفين، الرواتب، الحضور، والسلف في مكان واحد"
         />
-        <div className="flex items-center justify-center py-24 text-zinc-500">
+        <div className="flex items-center justify-center py-24 text-muted-foreground/70">
           <Loader2 className="w-6 h-6 animate-spin ml-2" />
           <span className="text-sm">جاري التحميل...</span>
         </div>
@@ -109,15 +109,15 @@ export default function HRPage() {
       />
 
       {/* ── Main Tab Switcher ── */}
-      <div className="flex gap-1 p-1 bg-zinc-900/60 border border-zinc-800/60 rounded-xl w-fit mb-6">
+      <div className="flex gap-1 p-1 bg-surface/60 border border-border/60 rounded-xl w-fit mb-6">
         {MAIN_TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setMainTab(id)}
             className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all ${
               mainTab === id
-                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                ? 'bg-primary/20 text-primary border border-primary/30'
+                : 'text-muted-foreground hover:text-foreground hover:bg-surface-muted/60'
             }`}
           >
             <Icon className="w-4 h-4" />
@@ -380,21 +380,21 @@ function EmployeesPanel() {
     <div className="space-y-6">
       {/* ── Action Bar ── */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm text-zinc-400">
-          <UsersRound className="w-4 h-4 text-amber-400" />
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <UsersRound className="w-4 h-4 text-primary" />
           <span>إدارة بيانات وملفات الموظفين</span>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" className="gap-2 border-zinc-700 hover:bg-zinc-800" onClick={openInactiveModal}>
+          <Button variant="outline" className="gap-2 border-border hover:bg-surface-muted" onClick={openInactiveModal}>
             <UserX className="w-4 h-4" />
             غير النشطين
           </Button>
           {revenueMapped < total && (
-            <Button className="gap-2 bg-blue-600 hover:bg-blue-700" onClick={previewAutoMapping} disabled={autoMapping}>
+            <Button className="gap-2 bg-info hover:bg-info/90" onClick={previewAutoMapping} disabled={autoMapping}>
               {autoMapping ? <><Loader2 className="w-4 h-4 animate-spin" /> جاري الربط...</> : <><Zap className="w-4 h-4" /> ربط تلقائي</>}
             </Button>
           )}
-          <Button className="gap-2 bg-amber-600 hover:bg-amber-700" onClick={() => { setOpen(true); setSaveErr(''); setEmpName(''); setLastAdded(null); }}>
+          <Button className="gap-2 bg-primary hover:bg-primary/90" onClick={() => { setOpen(true); setSaveErr(''); setEmpName(''); setLastAdded(null); }}>
             <Plus className="w-4 h-4" />
             موظف جديد
           </Button>
@@ -412,62 +412,62 @@ function EmployeesPanel() {
 
       {/* ── Success Toast ── */}
       {lastAdded && (
-        <div className="flex items-start gap-3 p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+        <div className="flex items-start gap-3 p-4 rounded-xl border border-success/30 bg-success/5">
+          <CheckCircle2 className="w-5 h-5 text-success shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-emerald-400">تم إضافة الموظف بنجاح</p>
-            <p className="text-xs text-zinc-400 mt-0.5">
-              <span className="font-medium text-white">{lastAdded.EmpName}</span>
+            <p className="text-sm font-semibold text-success">تم إضافة الموظف بنجاح</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              <span className="font-medium text-foreground">{lastAdded.EmpName}</span>
               {' '}&mdash; تم إنشاء بند السلفة تلقائياً:{' '}
-              <span className="font-mono text-amber-300">{lastAdded.AdvanceCatName}</span>
+              <span className="font-mono text-primary">{lastAdded.AdvanceCatName}</span>
             </p>
           </div>
-          <button onClick={() => setLastAdded(null)} className="text-zinc-500 hover:text-white"><X className="w-4 h-4" /></button>
+          <button onClick={() => setLastAdded(null)} className="text-muted-foreground/70 hover:text-foreground"><X className="w-4 h-4" /></button>
         </div>
       )}
 
       {/* ── Table ── */}
-      <div className="rounded-xl border border-zinc-800 overflow-hidden">
-        <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/40">
+      <div className="rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 border-b border-border bg-surface/40">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-zinc-300">قائمة الموظفين</h3>
+            <h3 className="text-sm font-semibold text-foreground">قائمة الموظفين</h3>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
-                <label className="text-xs text-zinc-400">الوظيفة:</label>
+                <label className="text-xs text-muted-foreground">الوظيفة:</label>
                 <Select
                     value={jobTypeFilter}
                     onValueChange={setJobTypeFilter}
                   >
-                    <SelectTrigger className="w-40 h-8 text-xs bg-zinc-800 border-zinc-700 text-white">
+                    <SelectTrigger className="w-40 h-8 text-xs bg-surface-muted border-border text-foreground">
                       <SelectValue placeholder="الكل" />
                     </SelectTrigger>
-                    <SelectContent className="bg-zinc-800 border-zinc-700">
-                      <SelectItem value="all" className="text-white text-xs">الكل</SelectItem>
-                      <SelectItem value={JobType.BARBER}           className="text-white text-xs">{JobType.BARBER}</SelectItem>
-                      <SelectItem value={JobType.SKIN_CARE}        className="text-white text-xs">{JobType.SKIN_CARE}</SelectItem>
-                      <SelectItem value={JobType.ASSISTANT}        className="text-white text-xs">{JobType.ASSISTANT}</SelectItem>
-                      <SelectItem value={JobType.ADMINISTRATIVE}   className="text-white text-xs">{JobType.ADMINISTRATIVE}</SelectItem>
-                      <SelectItem value={JobType.MANAGER}          className="text-white text-xs">{JobType.MANAGER}</SelectItem>
-                      <SelectItem value={JobType.RECEPTIONIST}     className="text-white text-xs">{JobType.RECEPTIONIST}</SelectItem>
-                      <SelectItem value={JobType.BEAUTICIAN}       className="text-white text-xs">{JobType.BEAUTICIAN}</SelectItem>
-                      <SelectItem value={JobType.MASSAGE_THERAPIST} className="text-white text-xs">{JobType.MASSAGE_THERAPIST}</SelectItem>
-                      <SelectItem value={JobType.NAIL_TECHNICIAN}  className="text-white text-xs">{JobType.NAIL_TECHNICIAN}</SelectItem>
-                      <SelectItem value={JobType.MAKEUP_ARTIST}    className="text-white text-xs">{JobType.MAKEUP_ARTIST}</SelectItem>
-                      <SelectItem value={JobType.HAIR_STYLIST}     className="text-white text-xs">{JobType.HAIR_STYLIST}</SelectItem>
-                      <SelectItem value={JobType.ESTHETICIAN}      className="text-white text-xs">{JobType.ESTHETICIAN}</SelectItem>
-                      <SelectItem value={JobType.OTHER}            className="text-white text-xs">{JobType.OTHER}</SelectItem>
+                    <SelectContent className="bg-surface-muted border-border">
+                      <SelectItem value="all" className="text-foreground text-xs">الكل</SelectItem>
+                      <SelectItem value={JobType.BARBER}           className="text-foreground text-xs">{JobType.BARBER}</SelectItem>
+                      <SelectItem value={JobType.SKIN_CARE}        className="text-foreground text-xs">{JobType.SKIN_CARE}</SelectItem>
+                      <SelectItem value={JobType.ASSISTANT}        className="text-foreground text-xs">{JobType.ASSISTANT}</SelectItem>
+                      <SelectItem value={JobType.ADMINISTRATIVE}   className="text-foreground text-xs">{JobType.ADMINISTRATIVE}</SelectItem>
+                      <SelectItem value={JobType.MANAGER}          className="text-foreground text-xs">{JobType.MANAGER}</SelectItem>
+                      <SelectItem value={JobType.RECEPTIONIST}     className="text-foreground text-xs">{JobType.RECEPTIONIST}</SelectItem>
+                      <SelectItem value={JobType.BEAUTICIAN}       className="text-foreground text-xs">{JobType.BEAUTICIAN}</SelectItem>
+                      <SelectItem value={JobType.MASSAGE_THERAPIST} className="text-foreground text-xs">{JobType.MASSAGE_THERAPIST}</SelectItem>
+                      <SelectItem value={JobType.NAIL_TECHNICIAN}  className="text-foreground text-xs">{JobType.NAIL_TECHNICIAN}</SelectItem>
+                      <SelectItem value={JobType.MAKEUP_ARTIST}    className="text-foreground text-xs">{JobType.MAKEUP_ARTIST}</SelectItem>
+                      <SelectItem value={JobType.HAIR_STYLIST}     className="text-foreground text-xs">{JobType.HAIR_STYLIST}</SelectItem>
+                      <SelectItem value={JobType.ESTHETICIAN}      className="text-foreground text-xs">{JobType.ESTHETICIAN}</SelectItem>
+                      <SelectItem value={JobType.OTHER}            className="text-foreground text-xs">{JobType.OTHER}</SelectItem>
                     </SelectContent>
                   </Select>
               </div>
-              {loading && <Loader2 className="w-4 h-4 animate-spin text-zinc-500" />}
+              {loading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground/70" />}
             </div>
           </div>
         </div>
 
-        {error && <div className="p-6 text-center text-sm text-rose-400">{error}</div>}
+        {error && <div className="p-6 text-center text-sm text-destructive">{error}</div>}
 
         {!loading && !error && filteredEmployees.length === 0 && (
-          <div className="p-12 text-center text-zinc-500">
+          <div className="p-12 text-center text-muted-foreground/70">
             <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p className="text-sm">{jobTypeFilter ? `لا يوجد موظفون بهذه الوظيفة: ${jobTypeFilter}` : 'لا يوجد موظفون بعد'}</p>
           </div>
@@ -476,7 +476,7 @@ function EmployeesPanel() {
         {filteredEmployees.length > 0 && (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-zinc-800 text-zinc-500 text-xs uppercase tracking-wider">
+              <tr className="border-b border-border text-muted-foreground/70 text-xs uppercase tracking-wider">
                 <th className="px-4 py-3 text-right font-medium">#</th>
                 <th className="px-4 py-3 text-right font-medium">الموظف</th>
                 <th className="px-4 py-3 text-right font-medium">الوظيفة</th>
@@ -487,54 +487,54 @@ function EmployeesPanel() {
                 <th className="px-4 py-3 text-right font-medium">إجراءات</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800/60">
+            <tbody className="divide-y divide-border/60">
               {filteredEmployees.map((emp) => (
-                <tr key={emp.EmpID} className="hover:bg-zinc-800/30 transition-colors">
-                  <td className="px-4 py-3 text-zinc-500 font-mono text-xs">{emp.EmpID}</td>
+                <tr key={emp.EmpID} className="hover:bg-surface-muted/30 transition-colors">
+                  <td className="px-4 py-3 text-muted-foreground/70 font-mono text-xs">{emp.EmpID}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2.5">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/10 text-amber-400 shrink-0">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary shrink-0">
                         <Scissors className="w-3.5 h-3.5" />
                       </div>
                       <div>
-                        <span className="font-medium text-white">{emp.EmpName}</span>
-                        {emp.Job && <p className="text-xs text-zinc-500">{emp.Job}</p>}
+                        <span className="font-medium text-foreground">{emp.EmpName}</span>
+                        {emp.Job && <p className="text-xs text-muted-foreground/70">{emp.Job}</p>}
                       </div>
                     </div>
                   </td>
                   <td className="px-4 py-3">
                     {emp.Job
-                      ? <span className="text-xs text-zinc-400">{emp.Job}</span>
-                      : <span className="text-xs text-zinc-600 italic">—</span>}
+                      ? <span className="text-xs text-muted-foreground">{emp.Job}</span>
+                      : <span className="text-xs text-muted-foreground/60 italic">—</span>}
                   </td>
                   <td className="px-4 py-3">
                     {emp.isActive ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> نشط
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success border border-success/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-success" /> نشط
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-700/50 text-zinc-400 border border-zinc-700">
-                        <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" /> غير نشط
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-surface-muted/50 text-muted-foreground border border-border">
+                        <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground" /> غير نشط
                       </span>
                     )}
                   </td>
                   <td className="px-4 py-3">
                     {emp.AdvanceCatName
-                      ? <span className="text-xs text-zinc-300 font-mono">{emp.AdvanceCatName}</span>
-                      : <span className="inline-flex items-center gap-1.5 text-xs text-amber-400"><AlertCircle className="w-3 h-3" />غير مربوط</span>}
+                      ? <span className="text-xs text-foreground font-mono">{emp.AdvanceCatName}</span>
+                      : <span className="inline-flex items-center gap-1.5 text-xs text-primary"><AlertCircle className="w-3 h-3" />غير مربوط</span>}
                   </td>
                   <td className="px-4 py-3">
                     {emp.RevenueCatName
-                      ? <span className="text-xs text-zinc-300 font-mono">{emp.RevenueCatName}</span>
-                      : <span className="inline-flex items-center gap-1.5 text-xs text-amber-400"><AlertCircle className="w-3 h-3" />غير مربوط</span>}
+                      ? <span className="text-xs text-foreground font-mono">{emp.RevenueCatName}</span>
+                      : <span className="inline-flex items-center gap-1.5 text-xs text-primary"><AlertCircle className="w-3 h-3" />غير مربوط</span>}
                   </td>
                   <td className="px-4 py-3">
                     {emp.AdvanceExpINID && emp.RevenueExpINID ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400"><CheckCircle2 className="w-3.5 h-3.5" />كامل</span>
+                      <span className="inline-flex items-center gap-1.5 text-xs text-success"><CheckCircle2 className="w-3.5 h-3.5" />كامل</span>
                     ) : emp.AdvanceExpINID || emp.RevenueExpINID ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-amber-400"><AlertCircle className="w-3.5 h-3.5" />جزئي</span>
+                      <span className="inline-flex items-center gap-1.5 text-xs text-primary"><AlertCircle className="w-3.5 h-3.5" />جزئي</span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-rose-400"><X className="w-3.5 h-3.5" />لا يوجد</span>
+                      <span className="inline-flex items-center gap-1.5 text-xs text-destructive"><X className="w-3.5 h-3.5" />لا يوجد</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-left">
@@ -559,23 +559,23 @@ function EmployeesPanel() {
         <DialogContent className="sm:max-w-md" dir="rtl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <UserPlus className="w-5 h-5 text-amber-400" />
+              <UserPlus className="w-5 h-5 text-primary" />
               إضافة موظف جديد
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-1">
-            <div className="rounded-lg border border-zinc-700/50 bg-zinc-800/40 p-3 space-y-1.5 text-xs text-zinc-400">
-              <p className="font-semibold text-zinc-300 text-sm mb-2">ما سيحدث تلقائياً عند الإضافة:</p>
+            <div className="rounded-lg border border-border/50 bg-surface-muted/40 p-3 space-y-1.5 text-xs text-muted-foreground">
+              <p className="font-semibold text-foreground text-sm mb-2">ما سيحدث تلقائياً عند الإضافة:</p>
               <div className="flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-[10px] font-bold shrink-0">١</span>
+                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">١</span>
                 <span>إنشاء الموظف في قاعدة البيانات</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-[10px] font-bold shrink-0">٢</span>
-                <span>إنشاء بند مصروف سلفة باسم: <span className="font-mono text-amber-300">سلفه ( اسم الموظف )</span></span>
+                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">٢</span>
+                <span>إنشاء بند مصروف سلفة باسم: <span className="font-mono text-primary">سلفه ( اسم الموظف )</span></span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-[10px] font-bold shrink-0">٣</span>
+                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">٣</span>
                 <span>ربط الموظف بالبند تلقائياً لتتبع السلف</span>
               </div>
             </div>
@@ -583,13 +583,13 @@ function EmployeesPanel() {
               <label className="text-sm font-medium">اسم الموظف *</label>
               <Input placeholder="مثال: أحمد محمد" value={empName} onChange={(e) => setEmpName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }} autoFocus />
               {empName.trim() && (
-                <p className="text-xs text-zinc-500">سيُنشأ بند السلفة باسم:{' '}<span className="font-mono text-amber-400">سلفه ( {empName.trim()} )</span></p>
+                <p className="text-xs text-muted-foreground/70">سيُنشأ بند السلفة باسم:{' '}<span className="font-mono text-primary">سلفه ( {empName.trim()} )</span></p>
               )}
             </div>
-            {saveErr && <p className="text-sm text-rose-400">{saveErr}</p>}
+            {saveErr && <p className="text-sm text-destructive">{saveErr}</p>}
             <div className="flex gap-2 justify-end" dir="ltr">
               <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>إلغاء</Button>
-              <Button onClick={handleAdd} disabled={saving || !empName.trim()} className="bg-amber-600 hover:bg-amber-700 gap-2">
+              <Button onClick={handleAdd} disabled={saving || !empName.trim()} className="bg-primary hover:bg-primary/90 gap-2">
                 {saving ? <><Loader2 className="w-4 h-4 animate-spin" />جاري الحفظ...</> : <><UserPlus className="w-4 h-4" />إضافة وربط</>}
               </Button>
             </div>
@@ -602,17 +602,17 @@ function EmployeesPanel() {
         <DialogContent className="sm:max-w-2xl" dir="rtl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Link2 className="w-5 h-5 text-amber-400" />
+              <Link2 className="w-5 h-5 text-primary" />
               تعديل الربط المالي - {selectedEmployee?.EmpName}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-6 pt-1">
-            {financeError && <div className="p-3 rounded-lg border border-rose-500/30 bg-rose-500/5 text-sm text-rose-400">{financeError}</div>}
+            {financeError && <div className="p-3 rounded-lg border border-destructive/30 bg-destructive/5 text-sm text-destructive">{financeError}</div>}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium">تصنيف السلفة</label>
                 {selectedAdvance && (
-                  <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-rose-500/30 text-rose-400 hover:bg-rose-500/10" onClick={() => deleteFinanceMapping('advance')}>
+                  <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-destructive/30 text-destructive hover:bg-destructive/10" onClick={() => deleteFinanceMapping('advance')}>
                     <X className="w-3 h-3" />حذف
                   </Button>
                 )}
@@ -621,13 +621,13 @@ function EmployeesPanel() {
                 <SelectTrigger className="text-right"><SelectValue placeholder="اختر تصنيف السلفة" /></SelectTrigger>
                 <SelectContent>{advanceCategories.map(cat => <SelectItem key={cat.ExpINID} value={cat.ExpINID.toString()}>{cat.CatName}</SelectItem>)}</SelectContent>
               </Select>
-              {selectedEmployee?.AdvanceCatName && <p className="text-xs text-zinc-500">الحالي: <span className="font-mono text-amber-300">{selectedEmployee.AdvanceCatName}</span></p>}
+              {selectedEmployee?.AdvanceCatName && <p className="text-xs text-muted-foreground/70">الحالي: <span className="font-mono text-primary">{selectedEmployee.AdvanceCatName}</span></p>}
             </div>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium">تصنيف الإيراد</label>
                 {selectedRevenue && (
-                  <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-rose-500/30 text-rose-400 hover:bg-rose-500/10" onClick={() => deleteFinanceMapping('revenue')}>
+                  <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 border-destructive/30 text-destructive hover:bg-destructive/10" onClick={() => deleteFinanceMapping('revenue')}>
                     <X className="w-3 h-3" />حذف
                   </Button>
                 )}
@@ -636,16 +636,16 @@ function EmployeesPanel() {
                 <SelectTrigger className="text-right"><SelectValue placeholder="اختر تصنيف الإيراد" /></SelectTrigger>
                 <SelectContent>{revenueCategories.map(cat => <SelectItem key={cat.ExpINID} value={cat.ExpINID.toString()}>{cat.CatName}</SelectItem>)}</SelectContent>
               </Select>
-              {selectedEmployee?.RevenueCatName && <p className="text-xs text-zinc-500">الحالي: <span className="font-mono text-amber-300">{selectedEmployee.RevenueCatName}</span></p>}
+              {selectedEmployee?.RevenueCatName && <p className="text-xs text-muted-foreground/70">الحالي: <span className="font-mono text-primary">{selectedEmployee.RevenueCatName}</span></p>}
             </div>
-            <div className="rounded-lg border border-zinc-700/50 bg-zinc-800/40 p-3 space-y-1.5 text-xs text-zinc-400">
-              <p className="font-semibold text-zinc-300 text-sm mb-2">ملاحظات هامة:</p>
-              <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center text-[10px] font-bold shrink-0">!</span><span>السلفة تستخدم لتتبع سلف الموظفين من المصروفات</span></div>
-              <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-green-500/10 text-green-400 flex items-center justify-center text-[10px] font-bold shrink-0">!</span><span>الإيراد يستخدم لتصنيف إيرادات الموظف في التقارير المالية</span></div>
+            <div className="rounded-lg border border-border/50 bg-surface-muted/40 p-3 space-y-1.5 text-xs text-muted-foreground">
+              <p className="font-semibold text-foreground text-sm mb-2">ملاحظات هامة:</p>
+              <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-info/10 text-info flex items-center justify-center text-[10px] font-bold shrink-0">!</span><span>السلفة تستخدم لتتبع سلف الموظفين من المصروفات</span></div>
+              <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-success/10 text-success flex items-center justify-center text-[10px] font-bold shrink-0">!</span><span>الإيراد يستخدم لتصنيف إيرادات الموظف في التقارير المالية</span></div>
             </div>
             <div className="flex gap-2 justify-end" dir="ltr">
               <Button variant="outline" onClick={closeFinanceModal} disabled={financeSaving}>إلغاء</Button>
-              <Button onClick={saveFinanceMapping} disabled={financeSaving || (!selectedAdvance && !selectedRevenue)} className="bg-amber-600 hover:bg-amber-700 gap-2">
+              <Button onClick={saveFinanceMapping} disabled={financeSaving || (!selectedAdvance && !selectedRevenue)} className="bg-primary hover:bg-primary/90 gap-2">
                 {financeSaving ? <><Loader2 className="w-4 h-4 animate-spin" />جاري الحفظ...</> : <><CheckCircle2 className="w-4 h-4" />حفظ التعديلات</>}
               </Button>
             </div>
@@ -657,56 +657,56 @@ function EmployeesPanel() {
       <Dialog open={showAutoMappingModal} onOpenChange={(v) => { if (!v) setShowAutoMappingModal(false); }}>
         <DialogContent className="sm:max-w-3xl" dir="rtl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Zap className="w-5 h-5 text-blue-400" />الربط التلقائي للإيرادات</DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><Zap className="w-5 h-5 text-info" />الربط التلقائي للإيرادات</DialogTitle>
           </DialogHeader>
           <div className="space-y-6 pt-1">
             {autoMappingResult && (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="bg-zinc-800/50 rounded-lg p-3 text-center">
-                    <p className="text-2xl font-bold text-white">{autoMappingResult?.unmappedCount || 0}</p>
-                    <p className="text-xs text-zinc-400">موظف بدون ربط</p>
+                  <div className="bg-surface-muted/50 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-foreground">{autoMappingResult?.unmappedCount || 0}</p>
+                    <p className="text-xs text-muted-foreground">موظف بدون ربط</p>
                   </div>
                   {autoMappingResult?.statistics && (
                     <>
-                      <div className="bg-blue-500/10 rounded-lg p-3 text-center border border-blue-500/30">
-                        <p className="text-2xl font-bold text-blue-400">{autoMappingResult.statistics?.smartMappings}</p>
-                        <p className="text-xs text-zinc-400">ربط ذكي</p>
+                      <div className="bg-info/10 rounded-lg p-3 text-center border border-info/30">
+                        <p className="text-2xl font-bold text-info">{autoMappingResult.statistics?.smartMappings}</p>
+                        <p className="text-xs text-muted-foreground">ربط ذكي</p>
                       </div>
-                      <div className="bg-amber-500/10 rounded-lg p-3 text-center border border-amber-500/30">
-                        <p className="text-2xl font-bold text-amber-400">{autoMappingResult.statistics?.individualMappings}</p>
-                        <p className="text-xs text-zinc-400">ربط فردي</p>
+                      <div className="bg-primary/10 rounded-lg p-3 text-center border border-primary/30">
+                        <p className="text-2xl font-bold text-primary">{autoMappingResult.statistics?.individualMappings}</p>
+                        <p className="text-xs text-muted-foreground">ربط فردي</p>
                       </div>
-                      <div className="bg-emerald-500/10 rounded-lg p-3 text-center border border-emerald-500/30">
-                        <p className="text-2xl font-bold text-emerald-400">{autoMappingResult.statistics?.coverage}%</p>
-                        <p className="text-xs text-zinc-400">نسبة التغطية</p>
+                      <div className="bg-success/10 rounded-lg p-3 text-center border border-success/30">
+                        <p className="text-2xl font-bold text-success">{autoMappingResult.statistics?.coverage}%</p>
+                        <p className="text-xs text-muted-foreground">نسبة التغطية</p>
                       </div>
                     </>
                   )}
                 </div>
                 {autoMappingResult?.previewMappings && (
                   <div>
-                    <h3 className="text-sm font-semibold text-zinc-300 mb-3">معاينة الربط المقترح:</h3>
-                    <div className="max-h-60 overflow-y-auto rounded-lg border border-zinc-800">
+                    <h3 className="text-sm font-semibold text-foreground mb-3">معاينة الربط المقترح:</h3>
+                    <div className="max-h-60 overflow-y-auto rounded-lg border border-border">
                       <table className="w-full text-sm">
-                        <thead className="bg-zinc-900/50 sticky top-0">
-                          <tr className="text-zinc-500 text-xs uppercase tracking-wider">
+                        <thead className="bg-surface/50 sticky top-0">
+                          <tr className="text-muted-foreground/70 text-xs uppercase tracking-wider">
                             <th className="px-3 py-2 text-right">الموظف</th>
                             <th className="px-3 py-2 text-right">الوظيفة</th>
                             <th className="px-3 py-2 text-right">تصنيف الإيراد</th>
                             <th className="px-3 py-2 text-right">نوع الربط</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-zinc-800/60">
+                        <tbody className="divide-y divide-border/60">
                           {autoMappingResult.previewMappings.map((mapping: any, idx: number) => (
-                            <tr key={idx} className="hover:bg-zinc-800/30">
-                              <td className="px-3 py-2 font-medium text-white">{mapping.empName}</td>
-                              <td className="px-3 py-2 text-zinc-400">{mapping.job || '—'}</td>
-                              <td className="px-3 py-2 text-zinc-300">{mapping.category}</td>
+                            <tr key={idx} className="hover:bg-surface-muted/30">
+                              <td className="px-3 py-2 font-medium text-foreground">{mapping.empName}</td>
+                              <td className="px-3 py-2 text-muted-foreground">{mapping.job || '—'}</td>
+                              <td className="px-3 py-2 text-foreground">{mapping.category}</td>
                               <td className="px-3 py-2">
                                 {mapping.type === 'smart'
-                                  ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20"><span className="w-1.5 h-1.5 rounded-full bg-blue-400" />ذكي</span>
-                                  : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20"><span className="w-1.5 h-1.5 rounded-full bg-amber-400" />فردي</span>}
+                                  ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-info/10 text-info border border-info/20"><span className="w-1.5 h-1.5 rounded-full bg-info" />ذكي</span>
+                                  : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20"><span className="w-1.5 h-1.5 rounded-full bg-primary" />فردي</span>}
                               </td>
                             </tr>
                           ))}
@@ -718,17 +718,17 @@ function EmployeesPanel() {
               </>
             )}
             {!autoMappingResult?.mappings && (
-              <div className="rounded-lg border border-zinc-700/50 bg-zinc-800/40 p-3 space-y-1.5 text-xs text-zinc-400">
-                <p className="font-semibold text-zinc-300 text-sm mb-2">كيف يعمل الربط التلقائي:</p>
-                <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center text-[10px] font-bold shrink-0">1</span><span>يبحث عن تطابق اسم الموظف مع تصنيفات الإيرادات الموجودة</span></div>
-                <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center text-[10px] font-bold shrink-0">2</span><span>إذا وجد تطابق، يستخدم التصنيف المطابق (ربط ذكي)</span></div>
-                <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-[10px] font-bold shrink-0">3</span><span>إذا لم يجد تطابق، ينشئ "ايراد (اسم الموظف)" (ربط فردي)</span></div>
+              <div className="rounded-lg border border-border/50 bg-surface-muted/40 p-3 space-y-1.5 text-xs text-muted-foreground">
+                <p className="font-semibold text-foreground text-sm mb-2">كيف يعمل الربط التلقائي:</p>
+                <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-info/10 text-info flex items-center justify-center text-[10px] font-bold shrink-0">1</span><span>يبحث عن تطابق اسم الموظف مع تصنيفات الإيرادات الموجودة</span></div>
+                <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-info/10 text-info flex items-center justify-center text-[10px] font-bold shrink-0">2</span><span>إذا وجد تطابق، يستخدم التصنيف المطابق (ربط ذكي)</span></div>
+                <div className="flex items-center gap-2"><span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">3</span><span>إذا لم يجد تطابق، ينشئ "ايراد (اسم الموظف)" (ربط فردي)</span></div>
               </div>
             )}
             <div className="flex gap-2 justify-end" dir="ltr">
               <Button variant="outline" onClick={() => setShowAutoMappingModal(false)}>إغلاق</Button>
               {!autoMappingResult?.mappings && autoMappingResult?.previewMappings && (
-                <Button onClick={executeAutoMapping} disabled={autoMapping} className="bg-blue-600 hover:bg-blue-700 gap-2">
+                <Button onClick={executeAutoMapping} disabled={autoMapping} className="bg-info hover:bg-info/90 gap-2">
                   {autoMapping ? <><Loader2 className="w-4 h-4 animate-spin" />جاري التنفيذ...</> : <><Zap className="w-4 h-4" />تنفيذ الربط التلقائي</>}
                 </Button>
               )}
@@ -750,32 +750,32 @@ function EmployeesPanel() {
       <Dialog open={workHoursModalOpen} onOpenChange={setWorkHoursModalOpen}>
         <DialogContent className="sm:max-w-md" dir="rtl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Clock className="w-5 h-5 text-blue-400" />تعديل مواعيد العمل</DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><Clock className="w-5 h-5 text-info" />تعديل مواعيد العمل</DialogTitle>
           </DialogHeader>
           {selectedWorkHoursEmployee && (
             <div className="space-y-4">
-              <div className="text-sm text-zinc-400">الموظف: <span className="font-medium text-white">{selectedWorkHoursEmployee.EmpName}</span></div>
-              {workHoursError && <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm"><AlertCircle className="w-4 h-4" />{workHoursError}</div>}
-              {workHoursSuccess && <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-emerald-400 text-sm"><CheckCircle2 className="w-4 h-4" />{workHoursSuccess}</div>}
+              <div className="text-sm text-muted-foreground">الموظف: <span className="font-medium text-foreground">{selectedWorkHoursEmployee.EmpName}</span></div>
+              {workHoursError && <div className="flex items-center gap-2 p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive text-sm"><AlertCircle className="w-4 h-4" />{workHoursError}</div>}
+              {workHoursSuccess && <div className="flex items-center gap-2 p-3 bg-success/10 border border-success/30 rounded-lg text-success text-sm"><CheckCircle2 className="w-4 h-4" />{workHoursSuccess}</div>}
               <div className="space-y-3">
                 <div>
-                  <label className="text-sm font-medium text-zinc-300 block mb-1">وقت بداية العمل</label>
-                  <Input type="time" value={checkInTime} onChange={(e) => setCheckInTime(e.target.value)} className="bg-zinc-800 border-zinc-700 text-white" />
+                  <label className="text-sm font-medium text-foreground block mb-1">وقت بداية العمل</label>
+                  <Input type="time" value={checkInTime} onChange={(e) => setCheckInTime(e.target.value)} className="bg-surface-muted border-border text-foreground" />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-zinc-300 block mb-1">وقت نهاية العمل</label>
-                  <Input type="time" value={checkOutTime} onChange={(e) => setCheckOutTime(e.target.value)} className="bg-zinc-800 border-zinc-700 text-white" />
+                  <label className="text-sm font-medium text-foreground block mb-1">وقت نهاية العمل</label>
+                  <Input type="time" value={checkOutTime} onChange={(e) => setCheckOutTime(e.target.value)} className="bg-surface-muted border-border text-foreground" />
                 </div>
                 {checkInTime && checkOutTime && (parseTimeToMinutes(checkOutTime) ?? 0) < (parseTimeToMinutes(checkInTime) ?? 0) && (
-                  <div className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/30 rounded-lg text-blue-400 text-xs"><AlertCircle className="w-3 h-3" />هذا الموعد يمتد لليوم التالي</div>
+                  <div className="flex items-center gap-2 p-2 bg-info/10 border border-info/30 rounded-lg text-info text-xs"><AlertCircle className="w-3 h-3" />هذا الموعد يمتد لليوم التالي</div>
                 )}
                 <div>
-                  <label className="text-sm font-medium text-zinc-300 block mb-1">ملاحظات (اختياري)</label>
-                  <textarea value={workNotes} onChange={(e) => setWorkNotes(e.target.value)} placeholder="أي ملاحظات حول مواعيد العمل..." className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder:text-zinc-500 resize-none h-20 text-sm" maxLength={250} />
+                  <label className="text-sm font-medium text-foreground block mb-1">ملاحظات (اختياري)</label>
+                  <textarea value={workNotes} onChange={(e) => setWorkNotes(e.target.value)} placeholder="أي ملاحظات حول مواعيد العمل..." className="w-full px-3 py-2 bg-surface-muted border border-border rounded-lg text-foreground placeholder:text-muted-foreground/70 resize-none h-20 text-sm" maxLength={250} />
                 </div>
               </div>
               <div className="flex gap-2 pt-2">
-                <Button onClick={handleWorkHoursSave} disabled={workHoursSaving} className="flex-1 bg-blue-600 hover:bg-blue-700">
+                <Button onClick={handleWorkHoursSave} disabled={workHoursSaving} className="flex-1 bg-info hover:bg-info/90">
                   {workHoursSaving ? <><Loader2 className="w-4 h-4 animate-spin ml-2" />جاري الحفظ...</> : <><CheckCircle2 className="w-4 h-4 ml-2" />حفظ</>}
                 </Button>
                 <Button variant="outline" onClick={() => setWorkHoursModalOpen(false)} disabled={workHoursSaving} className="flex-1">إلغاء</Button>
@@ -790,75 +790,75 @@ function EmployeesPanel() {
         <DialogContent className="sm:max-w-3xl" dir="rtl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-amber-400" />
+              <Users className="w-5 h-5 text-primary" />
               إدارة نشاط الموظفين
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {/* Tabs */}
-            <div className="flex gap-1 p-1 bg-zinc-900/60 border border-zinc-800/60 rounded-xl w-fit">
+            <div className="flex gap-1 p-1 bg-surface/60 border border-border/60 rounded-xl w-fit">
               <button
                 onClick={() => setStatusTab('inactive')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                   statusTab === 'inactive'
-                    ? 'bg-zinc-700/80 text-white border border-zinc-600'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                    ? 'bg-surface-muted/80 text-foreground border border-border'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-surface-muted/60'
                 }`}
               >
                 <UserX className="w-4 h-4" />
                 غير النشطين
                 {inactiveEmployees.length > 0 && (
-                  <span className="px-1.5 py-0.5 rounded-full text-xs bg-zinc-600 text-zinc-300">{inactiveEmployees.length}</span>
+                  <span className="px-1.5 py-0.5 rounded-full text-xs bg-muted-foreground text-foreground">{inactiveEmployees.length}</span>
                 )}
               </button>
               <button
                 onClick={() => setStatusTab('active')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                   statusTab === 'active'
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                    ? 'bg-success/20 text-success border border-success/30'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-surface-muted/60'
                 }`}
               >
                 <UserCheck className="w-4 h-4" />
                 النشطون
-                <span className="px-1.5 py-0.5 rounded-full text-xs bg-emerald-500/20 text-emerald-400">{employees.length}</span>
+                <span className="px-1.5 py-0.5 rounded-full text-xs bg-success/20 text-success">{employees.length}</span>
               </button>
             </div>
 
             {loadingInactive ? (
-              <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-zinc-500" /></div>
+              <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground/70" /></div>
             ) : statusTab === 'inactive' ? (
               inactiveEmployees.length === 0 ? (
-                <div className="py-12 text-center border border-dashed border-zinc-800 rounded-xl">
-                  <UserCheck className="w-12 h-12 mx-auto mb-3 text-zinc-600" />
-                  <p className="text-sm text-zinc-500">جميع الموظفين نشطون</p>
+                <div className="py-12 text-center border border-dashed border-border rounded-xl">
+                  <UserCheck className="w-12 h-12 mx-auto mb-3 text-muted-foreground/60" />
+                  <p className="text-sm text-muted-foreground/70">جميع الموظفين نشطون</p>
                 </div>
               ) : (
-                <div className="rounded-lg border border-zinc-800 overflow-hidden">
+                <div className="rounded-lg border border-border overflow-hidden">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-zinc-800 bg-zinc-900/40 text-zinc-500 text-xs uppercase tracking-wider">
+                      <tr className="border-b border-border bg-surface/40 text-muted-foreground/70 text-xs uppercase tracking-wider">
                         <th className="px-4 py-3 text-right font-medium">#</th>
                         <th className="px-4 py-3 text-right font-medium">الموظف</th>
                         <th className="px-4 py-3 text-right font-medium">الوظيفة</th>
                         <th className="px-4 py-3 text-right font-medium">إجراءات</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-zinc-800/60">
+                    <tbody className="divide-y divide-border/60">
                       {inactiveEmployees.map((emp) => (
-                        <tr key={emp.EmpID} className="hover:bg-zinc-800/30 transition-colors">
-                          <td className="px-4 py-3 text-zinc-500 font-mono text-xs">{emp.EmpID}</td>
+                        <tr key={emp.EmpID} className="hover:bg-surface-muted/30 transition-colors">
+                          <td className="px-4 py-3 text-muted-foreground/70 font-mono text-xs">{emp.EmpID}</td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2.5">
-                              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-zinc-700/50 text-zinc-500 shrink-0"><UserX className="w-3.5 h-3.5" /></div>
-                              <span className="font-medium text-white">{emp.EmpName}</span>
+                              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-surface-muted/50 text-muted-foreground/70 shrink-0"><UserX className="w-3.5 h-3.5" /></div>
+                              <span className="font-medium text-foreground">{emp.EmpName}</span>
                             </div>
                           </td>
                           <td className="px-4 py-3">
-                            {emp.Job ? <span className="text-xs text-zinc-400">{emp.Job}</span> : <span className="text-xs text-zinc-600 italic">—</span>}
+                            {emp.Job ? <span className="text-xs text-muted-foreground">{emp.Job}</span> : <span className="text-xs text-muted-foreground/60 italic">—</span>}
                           </td>
                           <td className="px-4 py-3">
-                            <Button size="sm" onClick={() => activateEmployee(emp.EmpID)} disabled={activatingId === emp.EmpID} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-xs">
+                            <Button size="sm" onClick={() => activateEmployee(emp.EmpID)} disabled={activatingId === emp.EmpID} className="gap-1.5 bg-success hover:bg-success/90 text-xs">
                               {activatingId === emp.EmpID ? <><Loader2 className="w-3 h-3 animate-spin" />جاري...</> : <><UserCheck className="w-3 h-3" />تفعيل</>}
                             </Button>
                           </td>
@@ -870,33 +870,33 @@ function EmployeesPanel() {
               )
             ) : (
               employees.length === 0 ? (
-                <div className="py-12 text-center border border-dashed border-zinc-800 rounded-xl">
-                  <UserX className="w-12 h-12 mx-auto mb-3 text-zinc-600" />
-                  <p className="text-sm text-zinc-500">لا يوجد موظفون نشطون</p>
+                <div className="py-12 text-center border border-dashed border-border rounded-xl">
+                  <UserX className="w-12 h-12 mx-auto mb-3 text-muted-foreground/60" />
+                  <p className="text-sm text-muted-foreground/70">لا يوجد موظفون نشطون</p>
                 </div>
               ) : (
-                <div className="rounded-lg border border-zinc-800 overflow-hidden">
+                <div className="rounded-lg border border-border overflow-hidden">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-zinc-800 bg-zinc-900/40 text-zinc-500 text-xs uppercase tracking-wider">
+                      <tr className="border-b border-border bg-surface/40 text-muted-foreground/70 text-xs uppercase tracking-wider">
                         <th className="px-4 py-3 text-right font-medium">#</th>
                         <th className="px-4 py-3 text-right font-medium">الموظف</th>
                         <th className="px-4 py-3 text-right font-medium">الوظيفة</th>
                         <th className="px-4 py-3 text-right font-medium">إجراءات</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-zinc-800/60">
+                    <tbody className="divide-y divide-border/60">
                       {employees.map((emp) => (
-                        <tr key={emp.EmpID} className="hover:bg-zinc-800/30 transition-colors">
-                          <td className="px-4 py-3 text-zinc-500 font-mono text-xs">{emp.EmpID}</td>
+                        <tr key={emp.EmpID} className="hover:bg-surface-muted/30 transition-colors">
+                          <td className="px-4 py-3 text-muted-foreground/70 font-mono text-xs">{emp.EmpID}</td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2.5">
-                              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-400 shrink-0"><UserCheck className="w-3.5 h-3.5" /></div>
-                              <span className="font-medium text-white">{emp.EmpName}</span>
+                              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-success/10 text-success shrink-0"><UserCheck className="w-3.5 h-3.5" /></div>
+                              <span className="font-medium text-foreground">{emp.EmpName}</span>
                             </div>
                           </td>
                           <td className="px-4 py-3">
-                            {emp.Job ? <span className="text-xs text-zinc-400">{emp.Job}</span> : <span className="text-xs text-zinc-600 italic">—</span>}
+                            {emp.Job ? <span className="text-xs text-muted-foreground">{emp.Job}</span> : <span className="text-xs text-muted-foreground/60 italic">—</span>}
                           </td>
                           <td className="px-4 py-3">
                             <Button
@@ -904,7 +904,7 @@ function EmployeesPanel() {
                               variant="outline"
                               onClick={() => deactivateEmployee(emp.EmpID)}
                               disabled={deactivatingId === emp.EmpID}
-                              className="gap-1.5 border-rose-500/40 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 text-xs"
+                              className="gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive/80 text-xs"
                             >
                               {deactivatingId === emp.EmpID ? <><Loader2 className="w-3 h-3 animate-spin" />جاري...</> : <><UserX className="w-3 h-3" />إيقاف</>}
                             </Button>
@@ -945,30 +945,30 @@ function AdvancesReportPanel() {
     <div className="space-y-5">
       {/* ── Header + Filters ── */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 text-sm text-zinc-400">
-          <Wallet className="w-4 h-4 text-amber-400" />
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Wallet className="w-4 h-4 text-primary" />
           <span>سلف وإيرادات الموظفين حسب الشهر</span>
         </div>
         <div className="flex items-center gap-2 mr-auto">
           <Select value={String(month)} onValueChange={v => setMonth(Number(v))}>
-            <SelectTrigger className="w-36 h-9 text-sm bg-zinc-900 border-zinc-700 text-white">
+            <SelectTrigger className="w-36 h-9 text-sm bg-surface border-border text-foreground">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-zinc-900 border-zinc-700">
+            <SelectContent className="bg-surface border-border">
               {ARABIC_MONTHS.map((label, i) => (
-                <SelectItem key={i + 1} value={String(i + 1)} className="text-white text-sm">
+                <SelectItem key={i + 1} value={String(i + 1)} className="text-foreground text-sm">
                   {label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
           <Select value={String(year)} onValueChange={v => setYear(Number(v))}>
-            <SelectTrigger className="w-28 h-9 text-sm bg-zinc-900 border-zinc-700 text-white">
+            <SelectTrigger className="w-28 h-9 text-sm bg-surface border-border text-foreground">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-zinc-900 border-zinc-700">
+            <SelectContent className="bg-surface border-border">
               {years.map(y => (
-                <SelectItem key={y} value={String(y)} className="text-white text-sm">{y}</SelectItem>
+                <SelectItem key={y} value={String(y)} className="text-foreground text-sm">{y}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -989,21 +989,21 @@ function SalariesPanel() {
   return (
     <div className="space-y-5">
       {/* Sub-tab description */}
-      <div className="flex items-center gap-2 text-sm text-zinc-400">
-        <Banknote className="w-4 h-4 text-amber-400" />
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Banknote className="w-4 h-4 text-primary" />
         <span>إدارة الرواتب والتارجت والحضور والسلف للموظفين</span>
       </div>
 
       {/* ── Payroll Sub-Tabs ── */}
-      <div className="flex gap-1 p-1 bg-zinc-900/60 border border-zinc-800/60 rounded-xl w-fit">
+      <div className="flex gap-1 p-1 bg-surface/60 border border-border/60 rounded-xl w-fit">
         {PAYROLL_TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
               activeTab === id
-                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                ? 'bg-primary/20 text-primary border border-primary/30'
+                : 'text-muted-foreground hover:text-foreground hover:bg-surface-muted/60'
             }`}
           >
             <Icon className="w-4 h-4" />

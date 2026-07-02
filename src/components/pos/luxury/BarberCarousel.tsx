@@ -65,22 +65,26 @@ export default function BarberCarousel({ barbers, selected, onSelect }: BarberCa
       {/* Section Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <Users className="w-5 h-5 text-[#D6A84F]" />
-          <h3 className="text-lg font-bold text-[#F7F1E5]">اختر الحلاق</h3>
-          <span className="text-xs text-[#A7A29A] bg-[#2A2A30] px-2 py-0.5 rounded-full">
+          <Users className="w-5 h-5 text-primary" />
+          <h3 className="text-lg font-bold text-foreground">اختر الحلاق</h3>
+          <span className="text-xs text-muted-foreground bg-surface-muted px-2 py-0.5 rounded-full">
             {barbers.length}
           </span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="hidden items-center gap-1 md:flex">
           <button
+            type="button"
             onClick={() => scroll('right')}
-            className="w-7 h-7 rounded-full bg-[#1E1D21] text-[#D6A84F] hover:bg-[#2A2A30] flex items-center justify-center transition-all border border-[#2A2A30]"
+            aria-label="تمرير لليمين"
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-border bg-surface-muted text-primary transition-all hover:bg-surface-muted"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
           <button
+            type="button"
             onClick={() => scroll('left')}
-            className="w-7 h-7 rounded-full bg-[#1E1D21] text-[#D6A84F] hover:bg-[#2A2A30] flex items-center justify-center transition-all border border-[#2A2A30]"
+            aria-label="تمرير لليسار"
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-border bg-surface-muted text-primary transition-all hover:bg-surface-muted"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -90,11 +94,7 @@ export default function BarberCarousel({ barbers, selected, onSelect }: BarberCa
       {/* Horizontal Scrollable Barbers */}
       <div
         ref={scrollRef}
-        className="flex gap-3 overflow-x-auto pb-3 scrollbar-thin scrollbar-thumb-[#D6A84F] scrollbar-track-[#2A2A30] scrollbar-thumb-rounded-full scrollbar-track-rounded-full"
-        style={{
-          scrollbarWidth: 'thin',
-          msOverflowStyle: 'auto',
-        }}
+        className="scrollbar-none md:scrollbar-luxury flex gap-2 overflow-x-auto pb-2 md:gap-3 md:pb-3"
         dir="rtl"
       >
         {barbers.map((barber, idx) => {
@@ -108,22 +108,23 @@ export default function BarberCarousel({ barbers, selected, onSelect }: BarberCa
           return (
             <button
               key={barber.EmpID}
+              type="button"
               onClick={() => onSelect(barber)}
               className={cn(
-                'group relative flex flex-col items-center p-3 rounded-2xl border transition-all duration-300 min-w-[100px] shrink-0',
+                'group relative flex min-w-[92px] shrink-0 flex-col items-center rounded-2xl border p-2.5 transition-all duration-300 md:min-w-[100px] md:p-3',
                 isSelected
-                  ? `bg-[#1E1D21] ${colorClass} border-2 shadow-lg shadow-${colorClass.split('-')[1]}-500/20`
-                  : 'bg-[#16161A] border-[#2A2A30] hover:border-[#3A3A40] hover:bg-[#1E1D21]'
+                  ? `bg-surface-muted ${colorClass} border-2 shadow-lg shadow-primary/10`
+                  : 'bg-surface border-border hover:border-muted hover:bg-surface-muted'
               )}
             >
               {/* Profile Image or Initials Placeholder */}
               <div className={cn(
-                'relative w-14 h-14 rounded-full overflow-hidden mb-2 border-2 transition-all duration-300 flex items-center justify-center',
-                isSelected ? colorClass : 'border-[#2A2A30] group-hover:border-[#3A3A40]',
-                hasNoPhoto ? 'bg-[#2A2A30]' : ''
+                'relative mb-2 flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border-2 transition-all duration-300 md:h-14 md:w-14',
+                isSelected ? colorClass : 'border-border group-hover:border-muted',
+                hasNoPhoto ? 'bg-surface-muted' : ''
               )}>
                 {hasNoPhoto ? (
-                  <span className="text-base font-bold text-[#D6A84F]">{initials}</span>
+                  <span className="text-base font-bold text-primary">{initials}</span>
                 ) : (
                   <img
                     src={imageSrc}
@@ -133,9 +134,9 @@ export default function BarberCarousel({ barbers, selected, onSelect }: BarberCa
                 )}
                 {/* Selected Checkmark */}
                 {isSelected && (
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                    <div className="w-5 h-5 rounded-full bg-[#D6A84F] flex items-center justify-center">
-                      <Check className="w-3 h-3 text-[#0B0B0D]" />
+                  <div className="absolute inset-0 bg-background/40 flex items-center justify-center">
+                    <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                      <Check className="w-3 h-3 text-primary-foreground" />
                     </div>
                   </div>
                 )}
@@ -144,15 +145,15 @@ export default function BarberCarousel({ barbers, selected, onSelect }: BarberCa
               {/* Barber Name */}
               <span className={cn(
                 'text-xs font-medium mb-1 transition-colors truncate max-w-[80px]',
-                isSelected ? 'text-[#F7F1E5]' : 'text-[#A7A29A] group-hover:text-[#F7F1E5]'
+                isSelected ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'
               )}>
                 {barber.EmpName}
               </span>
 
               {/* Rating */}
               <div className="flex items-center gap-1">
-                <Star className="w-3 h-3 fill-[#D6A84F] text-[#D6A84F]" />
-                <span className="text-[10px] text-[#D6A84F] font-medium">{rating}</span>
+                <Star className="w-3 h-3 fill-primary text-primary" />
+                <span className="text-[10px] text-primary font-medium">{rating}</span>
               </div>
             </button>
           );

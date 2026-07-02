@@ -18,7 +18,7 @@ export default function PaymentMethodSelect({ methods, selected, onSelect }: Pay
   return (
     <div>
       <h3 className="text-sm font-semibold text-muted-foreground mb-2">طريقة الدفع</h3>
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-transparent">
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-muted-foreground/30 scrollbar-track-transparent">
         {methods.map((m) => {
           const isSelected = selected === m.ID;
           const icon = ICONS[m.Name] || <Wallet className="w-4 h-4" />;

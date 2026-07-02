@@ -18,13 +18,19 @@ interface PastDateTransferModalProps {
   onClose: () => void;
   onTransferComplete: () => void;
   defaultDate?: string;
+  title?: string;
+  subtitle?: string;
+  transferDateReadOnly?: boolean;
 }
 
 export default function PastDateTransferModal({
   isOpen,
   onClose,
   onTransferComplete,
-  defaultDate
+  defaultDate,
+  title = 'تحويل في يوم سابق',
+  subtitle = 'تحويل مبلغ بين طرق دفع مختلفة',
+  transferDateReadOnly = false,
 }: PastDateTransferModalProps) {
   const [transferDate, setTransferDate] = useState('');
   const [amount, setAmount] = useState('');
@@ -144,8 +150,8 @@ export default function PastDateTransferModal({
               <ArrowRightLeft className="h-5 w-5 text-cyan-400" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-white">تحويل في يوم سابق</h2>
-              <p className="text-sm text-zinc-400">تحويل مبلغ بين طرق دفع مختلفة</p>
+              <h2 className="text-xl font-semibold text-white">{title}</h2>
+              <p className="text-sm text-zinc-400">{subtitle}</p>
             </div>
           </div>
           <button
@@ -168,9 +174,14 @@ export default function PastDateTransferModal({
               type="date"
               value={transferDate}
               onChange={(e) => setTransferDate(e.target.value)}
-              className="bg-zinc-800 border-zinc-700 text-white"
+              readOnly={transferDateReadOnly}
+              disabled={transferDateReadOnly}
+              className="bg-zinc-800 border-zinc-700 text-white disabled:cursor-not-allowed disabled:opacity-80"
               required
             />
+            {transferDateReadOnly && (
+              <p className="mt-1.5 text-xs text-zinc-500">تاريخ اليوم الحالي — غير قابل للتعديل من نقطة البيع</p>
+            )}
           </div>
 
           {/* Amount */}

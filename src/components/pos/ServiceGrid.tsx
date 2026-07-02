@@ -63,7 +63,7 @@ export default function ServiceGrid({ services, selectedBarber, onAddItem }: Ser
     <div>
       <h3 className="text-sm font-semibold text-muted-foreground mb-2">الخدمات</h3>
       {!selectedBarber && (
-        <p className="text-xs text-yellow-500 mb-2">اختر الحلاق أولاً</p>
+        <p className="text-xs text-warning mb-2">اختر الحلاق أولاً</p>
       )}
       <div className="space-y-4">
         {categories.map((cat) => (

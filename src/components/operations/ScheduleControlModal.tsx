@@ -72,12 +72,12 @@ interface Props {
 
 function statusColor(s: AvailStatus): { bg: string; text: string; border: string } {
   switch (s) {
-    case 'working':       return { bg: 'rgba(16,185,129,0.12)', text: '#34d399', border: 'rgba(16,185,129,0.3)' };
-    case 'day_off':       return { bg: 'rgba(139,92,246,0.12)', text: '#a78bfa', border: 'rgba(139,92,246,0.3)' };
-    case 'absent':        return { bg: 'rgba(239,68,68,0.12)',  text: '#f87171', border: 'rgba(239,68,68,0.3)' };
-    case 'not_checked_in':return { bg: 'rgba(245,158,11,0.12)', text: '#fbbf24', border: 'rgba(245,158,11,0.3)' };
-    case 'off':           return { bg: 'rgba(107,114,128,0.12)',text: '#9ca3af', border: 'rgba(107,114,128,0.3)' };
-    default:              return { bg: 'rgba(107,114,128,0.12)',text: '#9ca3af', border: 'rgba(107,114,128,0.3)' };
+    case 'working':       return { bg: 'color-mix(in srgb, var(--success) 12%, transparent)', text: 'var(--success)', border: 'color-mix(in srgb, var(--success) 30%, transparent)' };
+    case 'day_off':       return { bg: 'color-mix(in srgb, var(--accent) 12%, transparent)', text: 'var(--accent)', border: 'color-mix(in srgb, var(--accent) 30%, transparent)' };
+    case 'absent':        return { bg: 'color-mix(in srgb, var(--destructive) 12%, transparent)', text: 'var(--destructive)', border: 'color-mix(in srgb, var(--destructive) 30%, transparent)' };
+    case 'not_checked_in':return { bg: 'color-mix(in srgb, var(--warning) 12%, transparent)', text: 'var(--warning)', border: 'color-mix(in srgb, var(--warning) 30%, transparent)' };
+    case 'off':           return { bg: 'color-mix(in srgb, var(--muted-foreground) 12%, transparent)', text: 'var(--muted-foreground)', border: 'color-mix(in srgb, var(--muted-foreground) 30%, transparent)' };
+    default:              return { bg: 'color-mix(in srgb, var(--muted-foreground) 12%, transparent)', text: 'var(--muted-foreground)', border: 'color-mix(in srgb, var(--muted-foreground) 30%, transparent)' };
   }
 }
 
@@ -310,8 +310,8 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
       <div
         className="relative w-full max-w-3xl mx-4 rounded-2xl flex flex-col overflow-hidden"
         style={{
-          background: '#0e0e12',
-          border: '1px solid rgba(212,175,55,0.18)',
+          background: 'var(--surface-elevated)',
+          border: '1px solid color-mix(in srgb, var(--primary) 18%, transparent)',
           maxHeight: '94vh',
         }}
         dir="rtl"
@@ -319,13 +319,13 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
         {/* Header */}
         <div
           className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0"
-          style={{ borderColor: 'rgba(212,175,55,0.15)' }}
+          style={{ borderColor: 'color-mix(in srgb, var(--primary) 15%, transparent)' }}
         >
           <div className="flex items-center gap-3">
             <span className="text-xl">🗓️</span>
             <div>
-              <h2 className="text-base font-bold text-white">إدارة مواعيد اليوم</h2>
-              <p className="text-xs" style={{ color: '#6b7280' }}>
+              <h2 className="text-base font-bold text-foreground">إدارة مواعيد اليوم</h2>
+              <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
                 تعديل جدول الصنايعي لتاريخ محدد
               </p>
             </div>
@@ -333,18 +333,18 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg transition-colors"
-            style={{ color: '#6b7280' }}
-            onMouseEnter={e => (e.currentTarget.style.color = '#fff')}
-            onMouseLeave={e => (e.currentTarget.style.color = '#6b7280')}
+            style={{ color: 'var(--muted-foreground)' }}
+            onMouseEnter={e => (e.currentTarget.style.color = 'var(--foreground)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--muted-foreground)')}
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Date selector */}
-        <div className="px-6 py-3 border-b flex items-center gap-4" style={{ borderColor: 'rgba(255,255,255,0.06)', background: '#080808' }}>
-          <Calendar size={15} style={{ color: '#D4AF37', flexShrink: 0 }} />
-          <label className="text-xs font-medium" style={{ color: '#9ca3af', flexShrink: 0 }}>التاريخ</label>
+        <div className="px-6 py-3 border-b flex items-center gap-4" style={{ borderColor: 'color-mix(in srgb, var(--foreground) 6%, transparent)', background: 'var(--background)' }}>
+          <Calendar size={15} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+          <label className="text-xs font-medium" style={{ color: 'var(--muted-foreground)', flexShrink: 0 }}>التاريخ</label>
           <input
             type="date"
             value={date}
@@ -354,11 +354,11 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
               setPreview(null);
               setSaveSuccess(null);
             }}
-            className="rounded-lg px-3 py-1.5 text-sm font-medium text-white outline-none border"
-            style={{ background: '#1a1a1f', borderColor: 'rgba(212,175,55,0.25)', colorScheme: 'dark' }}
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-foreground outline-none border"
+            style={{ background: 'var(--surface-muted)', borderColor: 'color-mix(in srgb, var(--primary) 25%, transparent)', colorScheme: 'dark' }}
           />
           {isToday && (
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(212,175,55,0.12)', color: '#D4AF37' }}>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--primary) 12%, transparent)', color: 'var(--primary)' }}>
               اليوم
             </span>
           )}
@@ -366,7 +366,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
             <button
               onClick={() => { setDate(todayStr); setActiveEmpId(null); }}
               className="text-xs underline"
-              style={{ color: '#6b7280' }}
+              style={{ color: 'var(--muted-foreground)' }}
             >
               رجوع لليوم
             </button>
@@ -375,7 +375,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
 
         {/* Attendance warning banner (persists after day_off delete) */}
         {attendanceWarning && (
-          <div className="mx-6 mt-3 px-4 py-2 rounded-xl flex items-start gap-2 text-xs" style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }}>
+          <div className="mx-6 mt-3 px-4 py-2 rounded-xl flex items-start gap-2 text-xs" style={{ background: 'color-mix(in srgb, var(--destructive) 10%, transparent)', color: 'var(--destructive)', border: '1px solid color-mix(in srgb, var(--destructive) 25%, transparent)' }}>
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
             <span>{attendanceWarning}</span>
           </div>
@@ -383,7 +383,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
 
         {/* Save success toast */}
         {saveSuccess && (
-          <div className="mx-6 mt-3 px-4 py-2 rounded-xl flex items-center gap-2 text-sm" style={{ background: 'rgba(16,185,129,0.12)', color: '#34d399', border: '1px solid rgba(16,185,129,0.25)' }}>
+          <div className="mx-6 mt-3 px-4 py-2 rounded-xl flex items-center gap-2 text-sm" style={{ background: 'color-mix(in srgb, var(--success) 12%, transparent)', color: 'var(--success)', border: '1px solid color-mix(in srgb, var(--success) 25%, transparent)' }}>
             <CheckCircle size={15} />
             {saveSuccess}
           </div>
@@ -392,13 +392,13 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
         {/* Body */}
         <div className="overflow-y-auto flex-1 px-4 py-3 space-y-2">
           {loading && (
-            <div className="flex items-center justify-center py-12 gap-3" style={{ color: '#6b7280' }}>
+            <div className="flex items-center justify-center py-12 gap-3" style={{ color: 'var(--muted-foreground)' }}>
               <Loader2 size={18} className="animate-spin" />
               <span className="text-sm">جارٍ تحميل البيانات...</span>
             </div>
           )}
           {error && (
-            <div className="px-4 py-3 rounded-xl text-sm" style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.25)' }}>
+            <div className="px-4 py-3 rounded-xl text-sm" style={{ background: 'color-mix(in srgb, var(--destructive) 10%, transparent)', color: 'var(--destructive)', border: '1px solid color-mix(in srgb, var(--destructive) 25%, transparent)' }}>
               {error}
             </div>
           )}
@@ -411,14 +411,14 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
               <div
                 key={b.empId}
                 className="rounded-xl overflow-hidden"
-                style={{ border: `1px solid ${isOpen ? 'rgba(212,175,55,0.3)' : 'rgba(255,255,255,0.07)'}`, background: isOpen ? 'rgba(212,175,55,0.04)' : '#111115' }}
+                style={{ border: `1px solid ${isOpen ? 'color-mix(in srgb, var(--primary) 30%, transparent)' : 'color-mix(in srgb, var(--foreground) 7%, transparent)'}`, background: isOpen ? 'color-mix(in srgb, var(--primary) 4%, transparent)' : 'var(--surface)' }}
               >
                 {/* Barber row */}
                 <div className="flex items-center gap-3 px-4 py-3 cursor-pointer" onClick={() => openActionPanel(b.empId)}>
                   {/* Name + status badge */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-sm text-white">{b.empName}</span>
+                      <span className="font-bold text-sm text-foreground">{b.empName}</span>
                       <span
                         className="text-xs px-2 py-0.5 rounded-full font-medium"
                         style={{ background: sc.bg, color: sc.text, border: `1px solid ${sc.border}` }}
@@ -426,7 +426,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                         {b.statusReasonArabic}
                       </span>
                       {b.appliedOverride && (
-                        <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(212,175,55,0.1)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.2)' }}>
+                        <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--primary) 10%, transparent)', color: 'var(--primary)', border: '1px solid color-mix(in srgb, var(--primary) 20%, transparent)' }}>
                           {ACTION_LABELS[b.appliedOverride.type]}
                         </span>
                       )}
@@ -434,27 +434,27 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                     <div className="flex items-center gap-3 mt-1 flex-wrap">
                       {/* Missing HR schedule warning */}
                       {b.defaultSchedule?.source === 'missing_hr_schedule' && (
-                        <span className="text-xs flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
+                        <span className="text-xs flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: 'color-mix(in srgb, var(--destructive) 10%, transparent)', color: 'var(--destructive)', border: '1px solid color-mix(in srgb, var(--destructive) 20%, transparent)' }}>
                           <AlertTriangle size={10} />
                           لا يوجد جدول HR — يرجى ضبطه من /admin/hr
                         </span>
                       )}
                       {/* Invalid HR schedule warning */}
                       {b.defaultSchedule?.source === 'invalid_hr_schedule' && (
-                        <span className="text-xs flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}>
+                        <span className="text-xs flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: 'color-mix(in srgb, var(--destructive) 10%, transparent)', color: 'var(--destructive)', border: '1px solid color-mix(in srgb, var(--destructive) 20%, transparent)' }}>
                           <AlertTriangle size={10} />
                           جدول HR غير مكتمل — وقت البداية أو النهاية مفقود
                         </span>
                       )}
                       {/* Default schedule + source */}
                       {b.defaultSchedule?.isWorkingDay && b.defaultSchedule.start && (
-                        <span className="text-xs flex items-center gap-1" style={{ color: '#4b5563' }}>
+                        <span className="text-xs flex items-center gap-1" style={{ color: 'var(--muted-foreground)' }}>
                           <span>الجدول الأساسي: {b.defaultSchedule.start} — {b.defaultSchedule.end}</span>
                           <span className="px-1 py-0.5 rounded text-xs" style={{
                             background: b.defaultSchedule.source === 'TblEmpWorkSchedule'
-                              ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.12)',
+                              ? 'color-mix(in srgb, var(--success) 8%, transparent)' : 'color-mix(in srgb, var(--warning) 12%, transparent)',
                             color: b.defaultSchedule.source === 'TblEmpWorkSchedule'
-                              ? '#6ee7b7' : '#f59e0b',
+                              ? 'var(--success)' : 'var(--warning)',
                           }}>
                             {b.defaultSchedule.source === 'TblEmpWorkSchedule' ? 'HR' : 'تعريف افتراضي ⚠'}
                           </span>
@@ -462,22 +462,22 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                       )}
                       {/* Effective — only show if override is active */}
                       {b.isWorkingDay && b.effectiveStart && b.appliedOverride && (
-                        <span className="text-xs flex items-center gap-1" style={{ color: '#6b7280' }}>
+                        <span className="text-xs flex items-center gap-1" style={{ color: 'var(--muted-foreground)' }}>
                           <span>الفعلي: {b.effectiveStart} — {b.effectiveEnd}</span>
-                          <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: 'rgba(212,175,55,0.1)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.2)' }}>
+                          <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: 'color-mix(in srgb, var(--primary) 10%, transparent)', color: 'var(--primary)', border: '1px solid color-mix(in srgb, var(--primary) 20%, transparent)' }}>
                             {ACTION_LABELS[b.appliedOverride.type]}
                           </span>
                         </span>
                       )}
                       {/* Effective when no override */}
                       {b.isWorkingDay && b.effectiveStart && !b.appliedOverride && (
-                        <span className="text-xs" style={{ color: '#6b7280' }}>
+                        <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
                           الفعلي: {b.effectiveStart} — {b.effectiveEnd}
                         </span>
                       )}
                       {/* Counts */}
                       {(b.activeBookingsCount > 0 || b.activeQueueCount > 0) && (
-                        <span className="text-xs" style={{ color: '#6b7280' }}>
+                        <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
                           {b.activeBookingsCount > 0 && `${b.activeBookingsCount} حجز`}
                           {b.activeBookingsCount > 0 && b.activeQueueCount > 0 && ' • '}
                           {b.activeQueueCount > 0 && `${b.activeQueueCount} دور`}
@@ -490,7 +490,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                   {b.appliedOverride?.overrideId && (
                     <button
                       className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-colors"
-                      style={{ color: '#6b7280', border: '1px solid rgba(255,255,255,0.08)' }}
+                      style={{ color: 'var(--muted-foreground)', border: '1px solid color-mix(in srgb, var(--foreground) 8%, transparent)' }}
                       onClick={e => { e.stopPropagation(); handleRemoveOverride(b.appliedOverride!.overrideId!); }}
                       title="إلغاء التعديل"
                     >
@@ -501,17 +501,17 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
 
                   <ChevronDown
                     size={15}
-                    style={{ color: '#4b5563', flexShrink: 0, transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+                    style={{ color: 'var(--muted-foreground)', flexShrink: 0, transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
                   />
                 </div>
 
                 {/* Action panel */}
                 {isOpen && (
-                  <div className="border-t px-4 pb-4 pt-3 space-y-4" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                  <div className="border-t px-4 pb-4 pt-3 space-y-4" style={{ borderColor: 'color-mix(in srgb, var(--foreground) 6%, transparent)' }}>
 
                     {/* day_off already active warning */}
                     {b.isDayOff && b.appliedOverride?.type !== 'day_off' && (
-                      <div className="px-3 py-2 rounded-xl text-xs flex items-center gap-2" style={{ background: 'rgba(139,92,246,0.1)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.2)' }}>
+                      <div className="px-3 py-2 rounded-xl text-xs flex items-center gap-2" style={{ background: 'color-mix(in srgb, var(--accent) 10%, transparent)', color: 'var(--accent)', border: '1px solid color-mix(in srgb, var(--accent) 20%, transparent)' }}>
                         <AlertTriangle size={12} />
                         الصنايعي لديه غياب مسجل — أزل الغياب أولاً لإضافة تعديل آخر
                       </div>
@@ -519,7 +519,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
 
                     {/* Action type buttons */}
                     <div>
-                      <p className="text-xs font-medium mb-2" style={{ color: '#9ca3af' }}>اختر الإجراء</p>
+                      <p className="text-xs font-medium mb-2" style={{ color: 'var(--muted-foreground)' }}>اختر الإجراء</p>
                       <div className="flex flex-wrap gap-2">
                         {(Object.keys(ACTION_LABELS) as OverrideType[]).map(t => {
                           const isDanger = DANGER_TYPES.includes(t);
@@ -534,14 +534,14 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                               style={{
                                 background: isSelected
-                                  ? isDanger ? 'rgba(239,68,68,0.18)' : 'rgba(212,175,55,0.18)'
-                                  : 'rgba(255,255,255,0.05)',
+                                  ? isDanger ? 'color-mix(in srgb, var(--destructive) 18%, transparent)' : 'color-mix(in srgb, var(--primary) 18%, transparent)'
+                                  : 'color-mix(in srgb, var(--foreground) 5%, transparent)',
                                 color: isSelected
-                                  ? isDanger ? '#f87171' : '#D4AF37'
-                                  : '#9ca3af',
+                                  ? isDanger ? 'var(--destructive)' : 'var(--primary)'
+                                  : 'var(--muted-foreground)',
                                 border: `1px solid ${isSelected
-                                  ? isDanger ? 'rgba(239,68,68,0.4)' : 'rgba(212,175,55,0.4)'
-                                  : 'rgba(255,255,255,0.08)'}`,
+                                  ? isDanger ? 'color-mix(in srgb, var(--destructive) 40%, transparent)' : 'color-mix(in srgb, var(--primary) 40%, transparent)'
+                                  : 'color-mix(in srgb, var(--foreground) 8%, transparent)'}`,
                               }}
                             >
                               {ACTION_ICONS[t]}
@@ -555,43 +555,43 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                     {/* Time inputs */}
                     {(actionForm.type === 'late_start' || actionForm.type === 'block_range' || actionForm.type === 'custom_hours') && (
                       <div className="flex items-center gap-3">
-                        <label className="text-xs font-medium w-20 text-right shrink-0" style={{ color: '#9ca3af' }}>
+                        <label className="text-xs font-medium w-20 text-right shrink-0" style={{ color: 'var(--muted-foreground)' }}>
                           {actionForm.type === 'late_start' ? 'وقت البداية الجديد' : 'من'}
                         </label>
                         <input
                           type="time"
                           value={actionForm.startTime}
                           onChange={e => setActionForm(f => ({ ...f, startTime: e.target.value }))}
-                          className="rounded-lg px-3 py-1.5 text-sm text-white outline-none border"
-                          style={{ background: '#1a1a1f', borderColor: 'rgba(212,175,55,0.25)', colorScheme: 'dark' }}
+                          className="rounded-lg px-3 py-1.5 text-sm text-foreground outline-none border"
+                          style={{ background: 'var(--surface-muted)', borderColor: 'color-mix(in srgb, var(--primary) 25%, transparent)', colorScheme: 'dark' }}
                         />
                       </div>
                     )}
                     {(actionForm.type === 'early_leave' || actionForm.type === 'block_range' || actionForm.type === 'custom_hours') && (
                       <div className="flex items-center gap-3">
-                        <label className="text-xs font-medium w-20 text-right shrink-0" style={{ color: '#9ca3af' }}>
+                        <label className="text-xs font-medium w-20 text-right shrink-0" style={{ color: 'var(--muted-foreground)' }}>
                           {actionForm.type === 'early_leave' ? 'وقت المغادرة' : 'إلى'}
                         </label>
                         <input
                           type="time"
                           value={actionForm.endTime}
                           onChange={e => setActionForm(f => ({ ...f, endTime: e.target.value }))}
-                          className="rounded-lg px-3 py-1.5 text-sm text-white outline-none border"
-                          style={{ background: '#1a1a1f', borderColor: 'rgba(212,175,55,0.25)', colorScheme: 'dark' }}
+                          className="rounded-lg px-3 py-1.5 text-sm text-foreground outline-none border"
+                          style={{ background: 'var(--surface-muted)', borderColor: 'color-mix(in srgb, var(--primary) 25%, transparent)', colorScheme: 'dark' }}
                         />
                       </div>
                     )}
 
                     {/* Reason */}
                     <div className="flex items-center gap-3">
-                      <label className="text-xs font-medium w-20 text-right shrink-0" style={{ color: '#9ca3af' }}>السبب</label>
+                      <label className="text-xs font-medium w-20 text-right shrink-0" style={{ color: 'var(--muted-foreground)' }}>السبب</label>
                       <input
                         type="text"
                         placeholder="اختياري"
                         value={actionForm.reason}
                         onChange={e => setActionForm(f => ({ ...f, reason: e.target.value }))}
-                        className="flex-1 rounded-lg px-3 py-1.5 text-sm text-white outline-none border placeholder-gray-600"
-                        style={{ background: '#1a1a1f', borderColor: 'rgba(255,255,255,0.1)' }}
+                        className="flex-1 rounded-lg px-3 py-1.5 text-sm text-foreground outline-none border placeholder-muted-foreground"
+                        style={{ background: 'var(--surface-muted)', borderColor: 'color-mix(in srgb, var(--foreground) 10%, transparent)' }}
                       />
                     </div>
 
@@ -602,7 +602,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                           onClick={runPreview}
                           disabled={!formValid() || previewing}
                           className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
-                          style={{ background: 'rgba(212,175,55,0.12)', color: '#D4AF37', border: '1px solid rgba(212,175,55,0.3)' }}
+                          style={{ background: 'color-mix(in srgb, var(--primary) 12%, transparent)', color: 'var(--primary)', border: '1px solid color-mix(in srgb, var(--primary) 30%, transparent)' }}
                         >
                           {previewing ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle size={15} />}
                           معاينة التأثير
@@ -611,7 +611,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                           onClick={() => handleSave(false)}
                           disabled={!formValid() || saving}
                           className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
-                          style={{ background: 'rgba(255,255,255,0.05)', color: '#9ca3af', border: '1px solid rgba(255,255,255,0.1)' }}
+                          style={{ background: 'color-mix(in srgb, var(--foreground) 5%, transparent)', color: 'var(--muted-foreground)', border: '1px solid color-mix(in srgb, var(--foreground) 10%, transparent)' }}
                           title="حفظ مباشرة — إذا وجد تعارض سيطلب منك التأكيد"
                         >
                           {saving ? <Loader2 size={15} className="animate-spin" /> : null}
@@ -621,7 +621,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                     )}
 
                     {previewError && (
-                      <div className="px-3 py-2 rounded-xl text-xs" style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171' }}>
+                      <div className="px-3 py-2 rounded-xl text-xs" style={{ background: 'color-mix(in srgb, var(--destructive) 10%, transparent)', color: 'var(--destructive)' }}>
                         {previewError}
                       </div>
                     )}
@@ -633,9 +633,9 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                         <div
                           className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold"
                           style={{
-                            background: preview.safe ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
-                            color: preview.safe ? '#34d399' : '#fbbf24',
-                            border: `1px solid ${preview.safe ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.25)'}`,
+                            background: preview.safe ? 'color-mix(in srgb, var(--success) 10%, transparent)' : 'color-mix(in srgb, var(--warning) 10%, transparent)',
+                            color: preview.safe ? 'var(--success)' : 'var(--warning)',
+                            border: `1px solid ${preview.safe ? 'color-mix(in srgb, var(--success) 25%, transparent)' : 'color-mix(in srgb, var(--warning) 25%, transparent)'} `,
                           }}
                         >
                           {preview.safe ? <CheckCircle size={15} /> : <AlertTriangle size={15} />}
@@ -645,19 +645,19 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                         {/* Affected bookings */}
                         {preview.affectedBookings.length > 0 && (
                           <div>
-                            <p className="text-xs font-semibold mb-1.5" style={{ color: '#f59e0b' }}>
+                            <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--warning)' }}>
                               الحجوزات المتأثرة ({preview.affectedBookings.length})
                             </p>
                             <div className="space-y-1.5 max-h-32 overflow-y-auto">
                               {preview.affectedBookings.map(bk => (
-                                <div key={bk.bookingId} className="flex items-center justify-between px-3 py-2 rounded-lg text-xs" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.15)' }}>
+                                <div key={bk.bookingId} className="flex items-center justify-between px-3 py-2 rounded-lg text-xs" style={{ background: 'color-mix(in srgb, var(--warning) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--warning) 15%, transparent)' }}>
                                   <div className="flex items-center gap-2">
-                                    <span className="font-bold" style={{ color: '#fbbf24' }}>{bk.bookingCode ?? `#${bk.bookingId}`}</span>
-                                    {bk.clientName && <span style={{ color: '#9ca3af' }}>{bk.clientName}</span>}
-                                    {bk.serviceName && <span style={{ color: '#6b7280' }}>• {bk.serviceName}</span>}
+                                    <span className="font-bold" style={{ color: 'var(--warning)' }}>{bk.bookingCode ?? `#${bk.bookingId}`}</span>
+                                    {bk.clientName && <span style={{ color: 'var(--muted-foreground)' }}>{bk.clientName}</span>}
+                                    {bk.serviceName && <span style={{ color: 'var(--muted-foreground)' }}>• {bk.serviceName}</span>}
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <span style={{ color: '#9ca3af' }}>{bk.startTime}{bk.endTime ? ` - ${bk.endTime}` : ''}</span>
+                                    <span style={{ color: 'var(--muted-foreground)' }}>{bk.startTime}{bk.endTime ? ` - ${bk.endTime}` : ''}</span>
                                   </div>
                                 </div>
                               ))}
@@ -668,18 +668,18 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                         {/* Affected queue tickets */}
                         {preview.affectedQueueTickets.length > 0 && (
                           <div>
-                            <p className="text-xs font-semibold mb-1.5" style={{ color: '#f59e0b' }}>
+                            <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--warning)' }}>
                               الأدوار المتأثرة ({preview.affectedQueueTickets.length})
                             </p>
                             <div className="space-y-1.5 max-h-32 overflow-y-auto">
                               {preview.affectedQueueTickets.map(qt => (
-                                <div key={qt.ticketId} className="flex items-center justify-between px-3 py-2 rounded-lg text-xs" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.15)' }}>
+                                <div key={qt.ticketId} className="flex items-center justify-between px-3 py-2 rounded-lg text-xs" style={{ background: 'color-mix(in srgb, var(--warning) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--warning) 15%, transparent)' }}>
                                   <div className="flex items-center gap-2">
-                                    <span className="font-bold" style={{ color: '#fbbf24' }}>{qt.ticketCode}</span>
-                                    {qt.clientName && <span style={{ color: '#9ca3af' }}>{qt.clientName}</span>}
+                                    <span className="font-bold" style={{ color: 'var(--warning)' }}>{qt.ticketCode}</span>
+                                    {qt.clientName && <span style={{ color: 'var(--muted-foreground)' }}>{qt.clientName}</span>}
                                   </div>
                                   <div>
-                                    <span style={{ color: '#9ca3af' }}>
+                                    <span style={{ color: 'var(--muted-foreground)' }}>
                                       {new Date(qt.estimatedStartTime).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Cairo' })}
                                     </span>
                                   </div>
@@ -697,9 +697,9 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                               checked={confirmed}
                               onChange={e => setConfirmed(e.target.checked)}
                               className="mt-0.5 rounded"
-                              style={{ accentColor: '#D4AF37' }}
+                              style={{ accentColor: 'var(--primary)' }}
                             />
-                            <span className="text-xs" style={{ color: '#fbbf24' }}>
+                            <span className="text-xs" style={{ color: 'var(--warning)' }}>
                               أفهم أن هذا التعديل سيؤثر على حجوزات أو أدوار حالية
                             </span>
                           </label>
@@ -713,9 +713,9 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                             className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-40"
                             style={{
                               background: DANGER_TYPES.includes(actionForm.type)
-                                ? (confirmed || preview.safe) ? 'rgba(239,68,68,0.2)' : 'rgba(239,68,68,0.08)'
-                                : 'linear-gradient(135deg,#D4AF37,#B8941F)',
-                              color: DANGER_TYPES.includes(actionForm.type) ? '#f87171' : '#000',
+                                ? (confirmed || preview.safe) ? 'color-mix(in srgb, var(--destructive) 20%, transparent)' : 'color-mix(in srgb, var(--destructive) 8%, transparent)'
+                                : 'linear-gradient(135deg,var(--primary),var(--primary-active))',
+                              color: DANGER_TYPES.includes(actionForm.type) ? 'var(--destructive)' : 'var(--primary-foreground)',
                             }}
                           >
                             {saving ? <Loader2 size={15} className="animate-spin" /> : null}
@@ -724,14 +724,14 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                           <button
                             onClick={() => { setPreview(null); setConfirmed(false); }}
                             className="px-3 py-2 rounded-xl text-xs transition-colors"
-                            style={{ color: '#6b7280', border: '1px solid rgba(255,255,255,0.08)' }}
+                            style={{ color: 'var(--muted-foreground)', border: '1px solid color-mix(in srgb, var(--foreground) 8%, transparent)' }}
                           >
                             تعديل
                           </button>
                         </div>
 
                         {saveError && (
-                          <div className="px-3 py-2 rounded-xl text-xs" style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171' }}>
+                          <div className="px-3 py-2 rounded-xl text-xs" style={{ background: 'color-mix(in srgb, var(--destructive) 10%, transparent)', color: 'var(--destructive)' }}>
                             {saveError}
                           </div>
                         )}
@@ -745,11 +745,11 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3 border-t flex justify-end" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <div className="px-6 py-3 border-t flex justify-end" style={{ borderColor: 'color-mix(in srgb, var(--foreground) 6%, transparent)' }}>
           <button
             onClick={onClose}
             className="px-5 py-2 rounded-xl text-sm font-medium transition-colors"
-            style={{ background: 'rgba(255,255,255,0.06)', color: '#9ca3af' }}
+            style={{ background: 'color-mix(in srgb, var(--foreground) 6%, transparent)', color: 'var(--muted-foreground)' }}
           >
             إغلاق
           </button>

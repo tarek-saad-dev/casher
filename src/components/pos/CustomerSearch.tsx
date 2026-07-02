@@ -10,6 +10,7 @@ import {
   isCustomerIncomplete,
 } from '@/lib/customerSource';
 import type { Customer } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 interface CustomerSearchProps {
   selected: Customer | null;
@@ -17,9 +18,19 @@ interface CustomerSearchProps {
   onQuickAdd: (prefill?: string) => void;
   onCompleteData?: (customer: Customer) => void;
   onEditCustomer?: (customer: Customer) => void;
+  className?: string;
+  inputClassName?: string;
 }
 
-export default function CustomerSearch({ selected, onSelect, onQuickAdd, onCompleteData, onEditCustomer }: CustomerSearchProps) {
+export default function CustomerSearch({
+  selected,
+  onSelect,
+  onQuickAdd,
+  onCompleteData,
+  onEditCustomer,
+  className,
+  inputClassName,
+}: CustomerSearchProps) {
   const [searched, setSearched] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Customer[]>([]);
@@ -111,7 +122,7 @@ export default function CustomerSearch({ selected, onSelect, onQuickAdd, onCompl
         {hasMissingData && onCompleteData && (
           <button
             onClick={() => onCompleteData(selected)}
-            className="mt-2.5 w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-amber-500/30 bg-amber-500/5 text-amber-400 text-xs font-medium hover:bg-amber-500/10 transition-colors"
+            className="mt-2.5 w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-warning/30 bg-warning/5 text-warning text-xs font-medium hover:bg-warning/10 transition-colors"
           >
             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
             <span>
@@ -120,9 +131,9 @@ export default function CustomerSearch({ selected, onSelect, onQuickAdd, onCompl
                 : 'بيانات ناقصة — اضغط لإتمامها'}
             </span>
             <span className="mr-auto flex gap-0.5">
-              {!selected.BirthDate && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
-              {!selected.Address   && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
-              {missingSource       && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+              {!selected.BirthDate && <span className="w-1.5 h-1.5 rounded-full bg-warning" />}
+              {!selected.Address   && <span className="w-1.5 h-1.5 rounded-full bg-warning" />}
+              {missingSource       && <span className="w-1.5 h-1.5 rounded-full bg-warning" />}
             </span>
           </button>
         )}
@@ -131,7 +142,7 @@ export default function CustomerSearch({ selected, onSelect, onQuickAdd, onCompl
         {onEditCustomer && (
           <button
             onClick={() => onEditCustomer(selected)}
-            className="mt-2 w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-blue-500/30 bg-blue-500/5 text-blue-400 text-xs font-medium hover:bg-blue-500/10 transition-colors"
+            className="mt-2 w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-info/30 bg-info/5 text-info text-xs font-medium hover:bg-info/10 transition-colors"
           >
             <Pencil className="w-3.5 h-3.5 shrink-0" />
             <span>تعديل بيانات العميل</span>
@@ -142,16 +153,16 @@ export default function CustomerSearch({ selected, onSelect, onQuickAdd, onCompl
   }
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className={cn('relative min-w-0', className)} ref={dropdownRef}>
       <div className="relative">
-        <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           ref={inputRef}
           placeholder="بحث بالاسم أو الموبايل..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => { if (results.length > 0) setOpen(true); }}
-          className="pr-10 text-sm"
+          className={cn('min-h-11 pr-10 text-sm', inputClassName)}
         />
         {loading && (
           <div className="absolute left-3 top-1/2 -translate-y-1/2">
@@ -182,11 +193,11 @@ export default function CustomerSearch({ selected, onSelect, onQuickAdd, onCompl
               onClick={() => { setOpen(false); onQuickAdd(query); }}
               className="w-full text-right px-3 py-3 hover:bg-accent flex items-center gap-3 transition-colors"
             >
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-400 shrink-0">
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-success/10 text-success shrink-0">
                 <UserPlus className="w-3.5 h-3.5" />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-emerald-400">تسجيل هذا العميل</p>
+                <p className="text-sm font-semibold text-success">تسجيل هذا العميل</p>
                 <p className="text-xs text-muted-foreground truncate">«{query}» غير موجود — اضغط للتسجيل</p>
               </div>
             </button>

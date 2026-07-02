@@ -31,7 +31,7 @@ const SENSITIVE_SECTIONS = [
 ];
 
 const SENSITIVE_PAGE_KEYS = [
-  'reports.emp_services', 'hr.employees', 'hr.attendance', 'hr.payroll', 'hr.advances', 'hr.salaries',
+  'reports.emp_services', 'reports.emp_monthly_work_revenue', 'hr.employees', 'hr.attendance', 'hr.payroll', 'hr.advances', 'hr.salaries',
   'admin.settings', 'admin.users', 'admin.payment_methods', 'admin.shift',
   'admin.permissions.users', 'admin.permissions.pages',
   'treasury.monthly_close', 'treasury.shift_close', 'budget.main',

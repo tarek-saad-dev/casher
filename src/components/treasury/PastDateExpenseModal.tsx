@@ -23,13 +23,19 @@ interface PastDateExpenseModalProps {
   onClose: () => void;
   onExpenseComplete: () => void;
   defaultDate?: string;
+  title?: string;
+  subtitle?: string;
+  entryDateReadOnly?: boolean;
 }
 
 export default function PastDateExpenseModal({
   isOpen,
   onClose,
   onExpenseComplete,
-  defaultDate
+  defaultDate,
+  title = 'اضافه مصروف في يوم سابق',
+  subtitle = 'إضافة مصروف لتاريخ سابق',
+  entryDateReadOnly = false,
 }: PastDateExpenseModalProps) {
   const [expenseDate, setExpenseDate] = useState('');
   const [expenseTime, setExpenseTime] = useState('');
@@ -175,8 +181,8 @@ export default function PastDateExpenseModal({
               <TrendingDown className="h-5 w-5 text-rose-400" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-white">اضافه مصروف في يوم سابق</h2>
-              <p className="text-sm text-zinc-400">إضافة مصروف لتاريخ سابق</p>
+              <h2 className="text-xl font-semibold text-white">{title}</h2>
+              <p className="text-sm text-zinc-400">{subtitle}</p>
             </div>
           </div>
           <button
@@ -199,9 +205,14 @@ export default function PastDateExpenseModal({
               type="date"
               value={expenseDate}
               onChange={(e) => setExpenseDate(e.target.value)}
-              className="bg-zinc-800 border-zinc-700 text-white"
+              readOnly={entryDateReadOnly}
+              disabled={entryDateReadOnly}
+              className="bg-zinc-800 border-zinc-700 text-white disabled:cursor-not-allowed disabled:opacity-80"
               required
             />
+            {entryDateReadOnly && (
+              <p className="mt-1.5 text-xs text-zinc-500">تاريخ اليوم الحالي — غير قابل للتعديل من نقطة البيع</p>
+            )}
           </div>
 
           {/* Time */}

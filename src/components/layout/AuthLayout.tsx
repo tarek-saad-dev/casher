@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import MainNav from '@/components/layout/MainNav';
 import ActiveSessionBar from '@/components/session/ActiveSessionBar';
+import { cn } from '@/lib/utils';
 
 interface AuthLayoutProps {
   children: React.ReactNode;
@@ -13,6 +14,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
   
   // Don't show navigation on login page
   const isLoginPage = pathname === '/login';
+  const isPosPage = pathname === '/income/pos';
   
   if (isLoginPage) {
     return (
@@ -24,11 +26,18 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
 
   return (
     <>
-      <ActiveSessionBar />
+      <div className={cn(isPosPage && 'max-md:hidden')}>
+        <ActiveSessionBar />
+      </div>
       {/* Responsive layout: column on mobile (nav header on top), sidebar on desktop */}
       <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
-        <MainNav />
-        <main className="flex-1 overflow-y-auto w-full">
+        <MainNav suppressMobileChrome={isPosPage} />
+        <main
+          className={cn(
+            'flex-1 w-full',
+            isPosPage ? 'max-md:overflow-hidden overflow-y-auto' : 'overflow-y-auto',
+          )}
+        >
           {children}
         </main>
       </div>

@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import { ensureTblProImageUrlColumn, tblProImageUrlSelect } from '@/lib/migrations/ensureServiceImageUrl';
 
 // PUT /api/services/[id] — update a service
 export async function PUT(
@@ -15,7 +16,7 @@ export async function PUT(
     }
 
     const body = await req.json();
-    const { ProName, ProNameAr, SPrice1, Bonus, CatID, isActive } = body;
+    const { ProName, ProNameAr, SPrice1, Bonus, CatID, isActive, ImageUrl } = body;
 
     if (!ProName || !ProName.trim()) {
       return NextResponse.json({ error: 'اسم الخدمة مطلوب' }, { status: 400 });
@@ -26,28 +27,46 @@ export async function PUT(
     }
 
     const db = await getPool();
-    const result = await db.request()
+    const hasImageUrl = await ensureTblProImageUrlColumn(db);
+    const imageUrlCol = tblProImageUrlSelect(hasImageUrl);
+
+    if (!hasImageUrl && ImageUrl?.trim()) {
+      return NextResponse.json(
+        { error: 'عمود ImageUrl غير متوفر في قاعدة البيانات — شغّل ترحيل /api/admin/migrate-service-image-url' },
+        { status: 503 }
+      );
+    }
+
+    const dbReq = db.request()
       .input('ProID', serviceId)
       .input('ProName', ProName.trim())
       .input('ProNameAr', ProNameAr?.trim() || null)
       .input('SPrice1', SPrice1)
       .input('Bonus', Bonus || 0)
       .input('CatID', CatID || null)
-      .input('isDeleted', isActive ? 0 : 1)
-      .query(`
+      .input('isDeleted', isActive ? 0 : 1);
+
+    if (hasImageUrl) {
+      dbReq.input('ImageUrl', ImageUrl?.trim() || null);
+    }
+
+    const imageUrlSet = hasImageUrl ? ',\n            ImageUrl = @ImageUrl' : '';
+
+    const result = await dbReq.query(`
         UPDATE [dbo].[TblPro]
         SET ProName = @ProName, 
             ProNameAr = @ProNameAr,
             SPrice1 = @SPrice1, 
             Bonus = @Bonus, 
             CatID = @CatID, 
-            isDeleted = @isDeleted
+            isDeleted = @isDeleted${imageUrlSet}
         WHERE ProID = @ProID;
         
         SELECT 
           p.ProID, p.ProName, p.ProNameAr, p.SPrice1, p.Bonus, p.CatID, p.isDeleted,
           c.CatName,
-          ISNULL(pop.SalesCount, 0) AS SalesCount
+          ISNULL(pop.SalesCount, 0) AS SalesCount,
+          ${imageUrlCol}
         FROM [dbo].[TblPro] p
         LEFT JOIN [dbo].[TblCat] c ON p.CatID = c.CatID
         LEFT JOIN (
@@ -84,7 +103,12 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const { durationMinutes } = body as { durationMinutes?: number | null };
+    const { durationMinutes, ImageUrl, imageUrl } = body as {
+      durationMinutes?: number | null;
+      ImageUrl?: string | null;
+      imageUrl?: string | null;
+    };
+    const resolvedImageUrl = ImageUrl !== undefined ? ImageUrl : imageUrl;
 
     if (durationMinutes !== undefined && durationMinutes !== null) {
       if (typeof durationMinutes !== 'number' || durationMinutes < 5 || durationMinutes > 240) {
@@ -93,14 +117,36 @@ export async function PATCH(
     }
 
     const db = await getPool();
-    await db.request()
-      .input('ProID', sql.Int, serviceId)
-      .input('DurationMinutes', sql.Int, durationMinutes ?? null)
-      .query(`UPDATE [dbo].[TblPro] SET DurationMinutes = @DurationMinutes WHERE ProID = @ProID`);
+    const hasImageUrl = await ensureTblProImageUrlColumn(db);
+    const imageUrlCol = tblProImageUrlSelect(hasImageUrl);
+    const reqUpdate = db.request().input('ProID', sql.Int, serviceId);
+    const updateFields: string[] = [];
+
+    if (durationMinutes !== undefined) {
+      updateFields.push('DurationMinutes = @durationMinutes');
+      reqUpdate.input('durationMinutes', sql.Int, durationMinutes ?? null);
+    }
+
+    if (resolvedImageUrl !== undefined) {
+      if (!hasImageUrl && resolvedImageUrl?.trim()) {
+        return NextResponse.json(
+          { error: 'عمود ImageUrl غير متوفر في قاعدة البيانات — شغّل ترحيل /api/admin/migrate-service-image-url' },
+          { status: 503 }
+        );
+      }
+      if (hasImageUrl) {
+        updateFields.push('ImageUrl = @imageUrl');
+        reqUpdate.input('imageUrl', sql.NVarChar(1000), resolvedImageUrl?.trim() || null);
+      }
+    }
+
+    if (updateFields.length > 0) {
+      await reqUpdate.query(`UPDATE [dbo].[TblPro] SET ${updateFields.join(', ')} WHERE ProID = @ProID`);
+    }
 
     const result = await db.request()
       .input('ProID', sql.Int, serviceId)
-      .query(`SELECT ProID, ProName, SPrice1, Bonus, CatID, isDeleted, DurationMinutes FROM [dbo].[TblPro] WHERE ProID = @ProID`);
+      .query(`SELECT ProID, ProName, SPrice1, Bonus, CatID, isDeleted, DurationMinutes, ${imageUrlCol} FROM [dbo].[TblPro] p WHERE ProID = @ProID`);
 
     if (!result.recordset[0]) {
       return NextResponse.json({ error: 'الخدمة غير موجودة' }, { status: 404 });

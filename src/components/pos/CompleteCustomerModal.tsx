@@ -125,12 +125,12 @@ export default function CompleteCustomerModal({
           <DialogTitle className="flex items-center gap-2" dir="rtl">
             {isEditMode ? (
               <>
-                <Pencil className="w-5 h-5 text-blue-400" />
+                <Pencil className="w-5 h-5 text-info" />
                 تعديل بيانات العميل
               </>
             ) : (
               <>
-                <UserCog className="w-5 h-5 text-amber-400" />
+                <UserCog className="w-5 h-5 text-warning" />
                 تكملة بيانات العميل
               </>
             )}
@@ -142,7 +142,7 @@ export default function CompleteCustomerModal({
           {isEditMode ? (
             <div className="space-y-1.5">
               <label className="text-sm font-medium flex items-center gap-1.5">
-                <User className="w-3.5 h-3.5 text-blue-400" />
+                <User className="w-3.5 h-3.5 text-info" />
                 اسم العميل
               </label>
               <Input
@@ -153,7 +153,7 @@ export default function CompleteCustomerModal({
             </div>
           ) : (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/40 border border-border">
-              <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+              <CheckCircle className="w-4 h-4 text-success shrink-0" />
               <span className="text-sm font-medium">{customer.Name}</span>
             </div>
           )}
@@ -164,10 +164,10 @@ export default function CompleteCustomerModal({
             {(isEditMode || missingBirthDate) && (
               <div className="space-y-1.5">
                 <label className="text-sm font-medium flex items-center gap-1.5">
-                  <Cake className="w-3.5 h-3.5 text-amber-400" />
+                  <Cake className="w-3.5 h-3.5 text-warning" />
                   تاريخ الميلاد
                   {!isEditMode && missingBirthDate && (
-                    <span className="text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-full border border-amber-400/20">ناقص</span>
+                    <span className="text-[10px] text-warning bg-warning/10 px-1.5 py-0.5 rounded-full border border-warning/20">ناقص</span>
                   )}
                 </label>
                 <Input
@@ -184,10 +184,10 @@ export default function CompleteCustomerModal({
             {(isEditMode || missingAddress) && (
               <div className="space-y-1.5">
                 <label className="text-sm font-medium flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                  <MapPin className="w-3.5 h-3.5 text-warning" />
                   العنوان
                   {!isEditMode && missingAddress && (
-                    <span className="text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-full border border-amber-400/20">ناقص</span>
+                    <span className="text-[10px] text-warning bg-warning/10 px-1.5 py-0.5 rounded-full border border-warning/20">ناقص</span>
                   )}
                 </label>
                 <Input
@@ -202,7 +202,7 @@ export default function CompleteCustomerModal({
             {isEditMode && (
               <div className="space-y-1.5">
                 <label className="text-sm font-medium flex items-center gap-1.5">
-                  <Phone className="w-3.5 h-3.5 text-blue-400" />
+                  <Phone className="w-3.5 h-3.5 text-info" />
                   رقم الهاتف
                 </label>
                 <Input
@@ -219,7 +219,7 @@ export default function CompleteCustomerModal({
             {isEditMode && (
               <div className="space-y-1.5">
                 <label className="text-sm font-medium flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-blue-400" />
+                  <FileText className="w-3.5 h-3.5 text-info" />
                   ملاحظات
                 </label>
                 <Input
@@ -266,8 +266,8 @@ export default function CompleteCustomerModal({
               onClick={handleSave}
               disabled={saving}
               className={isEditMode
-                ? "bg-blue-600 hover:bg-blue-700 gap-2"
-                : "bg-amber-600 hover:bg-amber-700 gap-2"
+                ? "bg-primary hover:bg-primary-hover gap-2"
+                : "bg-primary hover:bg-primary-hover gap-2"
               }
             >
               {saving ? 'جاري الحفظ...' : (isEditMode ? 'حفظ التعديلات' : 'حفظ البيانات')}

@@ -23,13 +23,19 @@ interface PastDateIncomeModalProps {
   onClose: () => void;
   onIncomeComplete: () => void;
   defaultDate?: string;
+  title?: string;
+  subtitle?: string;
+  entryDateReadOnly?: boolean;
 }
 
 export default function PastDateIncomeModal({
   isOpen,
   onClose,
   onIncomeComplete,
-  defaultDate
+  defaultDate,
+  title = 'اضافه ايراد في يوم سابق',
+  subtitle = 'إضافة إيراد لتاريخ سابق',
+  entryDateReadOnly = false,
 }: PastDateIncomeModalProps) {
   const [incomeDate, setIncomeDate] = useState('');
   const [incomeTime, setIncomeTime] = useState('');
@@ -164,8 +170,8 @@ export default function PastDateIncomeModal({
               <TrendingUp className="h-5 w-5 text-emerald-400" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-white">اضافه ايراد في يوم سابق</h2>
-              <p className="text-sm text-zinc-400">إضافة إيراد لتاريخ سابق</p>
+              <h2 className="text-xl font-semibold text-white">{title}</h2>
+              <p className="text-sm text-zinc-400">{subtitle}</p>
             </div>
           </div>
           <button
@@ -188,9 +194,14 @@ export default function PastDateIncomeModal({
               type="date"
               value={incomeDate}
               onChange={(e) => setIncomeDate(e.target.value)}
-              className="bg-zinc-800 border-zinc-700 text-white"
+              readOnly={entryDateReadOnly}
+              disabled={entryDateReadOnly}
+              className="bg-zinc-800 border-zinc-700 text-white disabled:cursor-not-allowed disabled:opacity-80"
               required
             />
+            {entryDateReadOnly && (
+              <p className="mt-1.5 text-xs text-zinc-500">تاريخ اليوم الحالي — غير قابل للتعديل من نقطة البيع</p>
+            )}
           </div>
 
           {/* Time */}

@@ -426,7 +426,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
   const renderEstimatePanel = () => {
     if (estimating) {
       return (
-        <div className="flex items-center gap-2 text-sm text-zinc-500">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground/70">
           <Loader2 size={14} className="animate-spin" /> جاري حساب الوقت المتوقع...
         </div>
       );
@@ -434,7 +434,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
 
     // Specific mode — no barber selected yet
     if (mode === 'specific' && !selectedBarber) {
-      return <p className="text-sm text-zinc-600">اختر الحلاق لعرض التقدير</p>;
+      return <p className="text-sm text-muted-foreground/60">اختر الحلاق لعرض التقدير</p>;
     }
 
     // Specific mode — barber unavailable
@@ -444,10 +444,10 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
         ?? 'خارج مواعيد العمل';
       return (
         <div className="flex items-start gap-2">
-          <AlertCircle size={15} className="text-red-400 mt-0.5 flex-shrink-0" />
+          <AlertCircle size={15} className="text-destructive mt-0.5 flex-shrink-0" />
           <div>
-            <p className="text-sm font-semibold text-red-400">الحلاق غير متاح</p>
-            <p className="text-xs text-zinc-500 mt-1">{reason}</p>
+            <p className="text-sm font-semibold text-destructive">الحلاق غير متاح</p>
+            <p className="text-xs text-muted-foreground/70 mt-1">{reason}</p>
           </div>
         </div>
       );
@@ -455,20 +455,20 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
 
     // No estimate loaded yet (and not estimating)
     if (!estimate) {
-      return <p className="text-sm text-zinc-600">اختر الخدمات لعرض التقدير</p>;
+      return <p className="text-sm text-muted-foreground/60">اختر الخدمات لعرض التقدير</p>;
     }
 
     // Nearest — no available barber
     if (!estimate.ok && !estimate.best && mode === 'nearest') {
       return (
         <div>
-          <p className="text-sm text-zinc-500 mb-2">لا يوجد حلاق متاح حالياً</p>
+          <p className="text-sm text-muted-foreground/70 mb-2">لا يوجد حلاق متاح حالياً</p>
           {(estimate.unavailable?.length ?? 0) > 0 && (
             <div className="space-y-1 mt-2">
               {estimate.unavailable.map(u => (
-                <div key={u.empId} className="flex items-center justify-between text-xs text-zinc-600">
+                <div key={u.empId} className="flex items-center justify-between text-xs text-muted-foreground/60">
                   <span>{u.empName}</span>
-                  <span className="text-red-500/70">{u.reason}</span>
+                  <span className="text-destructive/70">{u.reason}</span>
                 </div>
               ))}
             </div>
@@ -506,16 +506,16 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
       const derivedStatus = activeQueueCount > 0 ? 'مشغول' : (isFreeNow ? 'فاضي الآن' : statusText);
       const derivedFreeNow = activeQueueCount === 0 && isFreeNow;
       const statusColor = !estimate.ok
-        ? '#EF4444'
-        : derivedFreeNow ? '#10B981' : '#F59E0B';
+        ? 'var(--destructive)'
+        : derivedFreeNow ? 'var(--success)' : 'var(--warning)';
 
       return (
         <>
           {/* Barber + status row */}
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <Zap size={14} className="text-amber-400" />
-              <span className="text-sm font-bold" style={{ color: '#D6A84F' }}>
+              <Zap size={14} className="text-primary" />
+              <span className="text-sm font-bold" style={{ color: 'var(--primary)' }}>
                 {mode === 'nearest' ? `أفضل اختيار: ${best.empName}` : best.empName}
               </span>
             </div>
@@ -530,26 +530,26 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
           {/* Estimate grid */}
           <div className="space-y-2 text-xs">
             <div className="flex items-center justify-between">
-              <span className="text-zinc-500 flex items-center gap-1.5">
+              <span className="text-muted-foreground/70 flex items-center gap-1.5">
                 <Clock size={11} />الوقت المتوقع للدخول
               </span>
-              <span className="text-white font-semibold">{fmtTime(best.estimatedStartTime)}</span>
+              <span className="text-foreground font-semibold">{fmtTime(best.estimatedStartTime)}</span>
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="text-zinc-500 flex items-center gap-1.5">
+              <span className="text-muted-foreground/70 flex items-center gap-1.5">
                 <Users size={11} />أمامك
               </span>
-              <span className="font-semibold" style={{ color: activeQueueCount > 0 ? '#F59E0B' : '#10B981' }}>
+              <span className="font-semibold" style={{ color: activeQueueCount > 0 ? 'var(--warning)' : 'var(--success)' }}>
                 {activeQueueCount} {activeQueueCount === 1 ? 'عميل' : 'عملاء'}
               </span>
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="text-zinc-500 flex items-center gap-1.5">
+              <span className="text-muted-foreground/70 flex items-center gap-1.5">
                 <Clock size={11} />الانتظار المتوقع
               </span>
-              <span className="text-white font-semibold">
+              <span className="text-foreground font-semibold">
                 {best.estimatedWaitMinutes > 0 ? `~${best.estimatedWaitMinutes} دقيقة` : 'فوري'}
               </span>
             </div>
@@ -564,9 +564,9 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
             return (
               <div className="mt-3 px-3 py-2 rounded-lg text-xs flex items-start gap-1.5"
                 style={{
-                  background: isWarning ? 'rgba(245,158,11,0.08)' : 'rgba(16,185,129,0.08)',
-                  border: `1px solid ${isWarning ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)'}`,
-                  color: isWarning ? '#D6A84F' : '#34D399',
+                  background: isWarning ? 'color-mix(in srgb, var(--warning) 8%, transparent)' : 'color-mix(in srgb, var(--success) 8%, transparent)',
+                  border: `1px solid ${isWarning ? 'color-mix(in srgb, var(--warning) 20%, transparent)' : 'color-mix(in srgb, var(--success) 20%, transparent)'}`,
+                  color: isWarning ? 'var(--primary)' : 'var(--success)',
                 }}>
                 <CheckCircle2 size={11} className="mt-0.5 flex-shrink-0" />
                 <span>{msg}</span>
@@ -576,8 +576,8 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
 
           {/* Alternatives (nearest mode only) */}
           {mode === 'nearest' && (estimate.alternatives?.length ?? 0) > 0 && (
-            <div className="mt-3 pt-3 border-t space-y-1.5" style={{ borderColor: '#2A2A35' }}>
-              <p className="text-xs text-zinc-500 mb-1">بدائل متاحة:</p>
+            <div className="mt-3 pt-3 border-t space-y-1.5" style={{ borderColor: 'var(--surface-muted)' }}>
+              <p className="text-xs text-muted-foreground/70 mb-1">بدائل متاحة:</p>
               {estimate.alternatives.slice(0, 3).map(alt => {
                 const altWait = (alt as any).waitingCount ?? (alt as any).blockingQueueCount ?? 0;
                 return (
@@ -586,10 +586,10 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                       const b = barbers.find(x => x.EmpID === alt.empId);
                       if (b) { setMode('specific'); setSelectedBarber(b); }
                     }}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded-lg border text-xs hover:border-zinc-600 transition-all"
-                    style={{ borderColor: '#2A2A35' }}>
-                    <span className="text-zinc-300 font-medium">{alt.empName}</span>
-                    <div className="flex items-center gap-2 text-zinc-500">
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-lg border text-xs hover:border-muted-foreground transition-all"
+                    style={{ borderColor: 'var(--surface-muted)' }}>
+                    <span className="text-foreground font-medium">{alt.empName}</span>
+                    <div className="flex items-center gap-2 text-muted-foreground/70">
                       <span>{altWait} أمامك</span>
                       <span>~{alt.estimatedWaitMinutes} د</span>
                     </div>
@@ -601,12 +601,12 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
 
           {/* Unavailable list (nearest mode) */}
           {mode === 'nearest' && (estimate.unavailable?.length ?? 0) > 0 && (
-            <div className="mt-2 pt-2 border-t" style={{ borderColor: '#2A2A35' }}>
-              <p className="text-xs text-zinc-600 mb-1">غير متاح حالياً:</p>
+            <div className="mt-2 pt-2 border-t" style={{ borderColor: 'var(--surface-muted)' }}>
+              <p className="text-xs text-muted-foreground/60 mb-1">غير متاح حالياً:</p>
               {estimate.unavailable.map(u => (
-                <div key={u.empId} className="flex items-center justify-between text-xs text-zinc-600 py-0.5">
+                <div key={u.empId} className="flex items-center justify-between text-xs text-muted-foreground/60 py-0.5">
                   <span>{u.empName}</span>
-                  <span className="text-red-500/60">{u.reason}</span>
+                  <span className="text-destructive/60">{u.reason}</span>
                 </div>
               ))}
             </div>
@@ -615,7 +615,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
       );
     }
 
-    return <p className="text-sm text-zinc-600">اختر الخدمات لعرض التقدير</p>;
+    return <p className="text-sm text-muted-foreground/60">اختر الخدمات لعرض التقدير</p>;
   };
 
   // ── Created modal ─────────────────────────────────────────────────────────
@@ -640,24 +640,24 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-start justify-end bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-40 flex items-start justify-end bg-background/60 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
         className="h-full w-full max-w-md flex flex-col shadow-2xl overflow-hidden"
-        style={{ background: '#141418', borderLeft: '1px solid #2A2A35' }}
+        style={{ background: 'var(--surface-elevated)', borderLeft: '1px solid var(--surface-muted)' }}
         onClick={e => e.stopPropagation()}
       >
 
         {/* ── Sticky Header ── */}
         <div
           className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0"
-          style={{ borderColor: '#2A2A35' }}
+          style={{ borderColor: 'var(--surface-muted)' }}
         >
-          <h2 className="font-bold text-white text-base">إصدار دور جديد</h2>
+          <h2 className="font-bold text-foreground text-base">إصدار دور جديد</h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition-all"
+            className="p-1.5 rounded-lg text-muted-foreground/70 hover:text-foreground hover:bg-surface-muted transition-all"
           >
             <X size={15} />
           </button>
@@ -668,7 +668,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
 
           {/* 1. Mode selector */}
           <section>
-            <p className="text-xs font-semibold text-zinc-400 mb-2">طريقة الاختيار</p>
+            <p className="text-xs font-semibold text-muted-foreground mb-2">طريقة الاختيار</p>
             <div className="grid grid-cols-2 gap-2">
               {([['nearest', 'أقرب حلاق متاح'], ['specific', 'حلاق معين']] as [Mode, string][]).map(([m, lbl]) => (
                 <button
@@ -676,9 +676,9 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                   onClick={() => { setMode(m); setSelectedBarber(null); setEstimate(null); }}
                   className="py-2.5 rounded-xl border text-sm font-semibold transition-all"
                   style={{
-                    borderColor: mode === m ? '#D6A84F' : '#2A2A35',
-                    color: mode === m ? '#D6A84F' : '#6B7280',
-                    background: mode === m ? 'rgba(214,168,79,0.10)' : 'transparent',
+                    borderColor: mode === m ? 'var(--primary)' : 'var(--surface-muted)',
+                    color: mode === m ? 'var(--primary)' : 'var(--muted-foreground)',
+                    background: mode === m ? 'color-mix(in srgb, var(--primary) 10%, transparent)' : 'transparent',
                   }}
                 >
                   {lbl}
@@ -689,21 +689,21 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
 
           {/* 2. Client search */}
           <section className="relative">
-            <p className="text-xs font-semibold text-zinc-400 mb-2">
-              العميل <span className="text-red-500">*</span>
+            <p className="text-xs font-semibold text-muted-foreground mb-2">
+              العميل <span className="text-destructive">*</span>
             </p>
             {selectedClient ? (
               /* ── Selected client card ── */
               <div
                 className="flex items-center justify-between px-3 py-2.5 rounded-xl border"
-                style={{ borderColor: '#10B981', background: 'rgba(16,185,129,0.08)' }}
+                style={{ borderColor: 'var(--success)', background: 'color-mix(in srgb, var(--success) 8%, transparent)' }}
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <User size={14} className="text-emerald-400 flex-shrink-0" />
+                  <User size={14} className="text-success flex-shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-white truncate">{selectedClient.Name}</p>
+                    <p className="text-sm font-semibold text-foreground truncate">{selectedClient.Name}</p>
                     {selectedClient.Mobile && (
-                      <p className="text-xs text-zinc-500 mt-0.5">{selectedClient.Mobile}</p>
+                      <p className="text-xs text-muted-foreground/70 mt-0.5">{selectedClient.Mobile}</p>
                     )}
                   </div>
                 </div>
@@ -713,7 +713,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                     setClientSearch('');
                     setClients([]);
                   }}
-                  className="text-xs text-zinc-500 hover:text-amber-400 transition-colors flex-shrink-0 mr-2 border border-zinc-700 rounded-lg px-2 py-1"
+                  className="text-xs text-muted-foreground/70 hover:text-primary transition-colors flex-shrink-0 mr-2 border border-border rounded-lg px-2 py-1"
                 >
                   تغيير
                 </button>
@@ -724,16 +724,16 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                 <div
                   className="flex items-center gap-2 px-3 py-2 rounded-xl border"
                   style={{
-                    borderColor: clientSearch.length > 0 ? '#D6A84F' : '#2A2A35',
-                    background: '#1A1A20',
+                    borderColor: clientSearch.length > 0 ? 'var(--primary)' : 'var(--surface-muted)',
+                    background: 'var(--surface)',
                   }}
                 >
                   {clientSearching
                     ? <Loader2 size={13} className="text-amber-400 animate-spin flex-shrink-0" />
-                    : <Search size={13} className="text-zinc-500 flex-shrink-0" />
+                    : <Search size={13} className="text-muted-foreground/70 flex-shrink-0" />
                   }
                   <input
-                    className="flex-1 bg-transparent text-sm text-white placeholder-zinc-600 outline-none"
+                    className="flex-1 bg-transparent text-sm text-foreground placeholder-muted-foreground outline-none"
                     placeholder="ابحث بالاسم أو رقم الهاتف..."
                     value={clientSearch}
                     onChange={e => { setClientSearch(e.target.value); setShowClients(true); }}
@@ -742,7 +742,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                   {clientSearch && (
                     <button
                       onClick={() => { setClientSearch(''); setClients([]); setShowClients(false); }}
-                      className="text-zinc-600 hover:text-zinc-400"
+                      className="text-muted-foreground/60 hover:text-muted-foreground"
                     >
                       <X size={12} />
                     </button>
@@ -753,14 +753,14 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                 {showClients && clientSearch.length > 0 && (
                   <div
                     className="absolute top-full left-0 right-0 mt-1 rounded-xl border shadow-2xl z-20 overflow-hidden"
-                    style={{ background: '#1E1D21', borderColor: '#2A2A35' }}
+                    style={{ background: 'var(--surface-muted)', borderColor: 'var(--surface-muted)' }}
                   >
                     {clients.length > 0 ? (
                       <>
                         {clients.slice(0, 6).map(c => (
                           <button
                             key={c.ClientID}
-                            className="w-full text-right px-4 py-2.5 hover:bg-zinc-800 transition-colors flex items-center justify-between gap-2"
+                            className="w-full text-right px-4 py-2.5 hover:bg-surface-muted transition-colors flex items-center justify-between gap-2"
                             onClick={() => {
                               if (process.env.NODE_ENV !== 'production') {
                                 console.log('[customer select] selectedClient', c);
@@ -771,27 +771,27 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                               setShowClients(false);
                             }}
                           >
-                            <span className="text-sm text-white font-medium">{c.Name}</span>
-                            {c.Mobile && <span className="text-zinc-500 text-xs">{c.Mobile}</span>}
+                            <span className="text-sm text-foreground font-medium">{c.Name}</span>
+                            {c.Mobile && <span className="text-muted-foreground/70 text-xs">{c.Mobile}</span>}
                           </button>
                         ))}
-                        <div className="border-t px-4 py-2" style={{ borderColor: '#2A2A35' }}>
-                          <p className="text-[11px] text-zinc-600">{clients.length} نتيجة</p>
+                        <div className="border-t px-4 py-2" style={{ borderColor: 'var(--surface-muted)' }}>
+                          <p className="text-[11px] text-muted-foreground/60">{clients.length} نتيجة</p>
                         </div>
                       </>
                     ) : clientSearching ? (
-                      <div className="px-4 py-3 text-xs text-zinc-500 flex items-center gap-2">
+                      <div className="px-4 py-3 text-xs text-muted-foreground/70 flex items-center gap-2">
                         <Loader2 size={12} className="animate-spin" /> جاري البحث...
                       </div>
                     ) : (
                       /* No results — offer quick create */
                       <div className="p-3 space-y-2">
-                        <p className="text-xs text-zinc-600">لا توجد نتائج لـ «{clientSearch}»</p>
+                        <p className="text-xs text-muted-foreground/60">لا توجد نتائج لـ «{clientSearch}»</p>
                         <button
                           onClick={handleQuickCreate}
                           disabled={quickCreating}
                           className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
-                          style={{ background: 'rgba(214,168,79,0.12)', color: '#D6A84F', border: '1px solid rgba(214,168,79,0.25)' }}
+                          style={{ background: 'color-mix(in srgb, var(--primary) 12%, transparent)', color: 'var(--primary)', border: '1px solid color-mix(in srgb, var(--primary) 25%, transparent)' }}
                         >
                           {quickCreating
                             ? <Loader2 size={11} className="animate-spin" />
@@ -810,9 +810,9 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
           {/* 3. Barber selector — specific mode */}
           {mode === 'specific' && (
             <section>
-              <p className="text-xs font-semibold text-zinc-400 mb-2">اختر الحلاق</p>
+              <p className="text-xs font-semibold text-muted-foreground mb-2">اختر الحلاق</p>
               {barbers.length === 0 ? (
-                <p className="text-xs text-zinc-600">لا توجد بيانات حلاقين</p>
+                <p className="text-xs text-muted-foreground/60">لا توجد بيانات حلاقين</p>
               ) : (
                 <div className="space-y-1.5">
                   {barbers.map(b => {
@@ -823,15 +823,15 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                         onClick={() => setSelectedBarber(isSelected ? null : b)}
                         className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border text-sm transition-all"
                         style={{
-                          borderColor: isSelected ? '#D6A84F' : '#2A2A35',
-                          background: isSelected ? 'rgba(214,168,79,0.10)' : 'transparent',
+                          borderColor: isSelected ? 'var(--primary)' : 'var(--surface-muted)',
+                          background: isSelected ? 'color-mix(in srgb, var(--primary) 10%, transparent)' : 'transparent',
                           opacity: b.IsAvailable ? 1 : 0.65,
                         }}
                       >
                         <div className="flex flex-col items-start gap-0.5">
-                          <span className="font-medium text-white">{b.EmpName}</span>
+                          <span className="font-medium text-foreground">{b.EmpName}</span>
                           {b.WorkingStartTime && b.WorkingEndTime && (
-                            <span className="text-[10px] text-zinc-600">
+                            <span className="text-[10px] text-muted-foreground/60">
                               {b.WorkingStartTime.slice(0, 5)} – {b.WorkingEndTime.slice(0, 5)}
                             </span>
                           )}
@@ -839,8 +839,8 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                         <span
                           className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
                           style={{
-                            background: b.IsAvailable ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.12)',
-                            color: b.IsAvailable ? '#10B981' : '#EF4444',
+                            background: b.IsAvailable ? 'color-mix(in srgb, var(--success) 15%, transparent)' : 'color-mix(in srgb, var(--destructive) 12%, transparent)',
+                            color: b.IsAvailable ? 'var(--success)' : 'var(--destructive)',
                           }}
                         >
                           {b.IsAvailable ? 'متاح' : (b.AvailabilityReason || 'غير متاح')}
@@ -855,8 +855,8 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
 
           {/* 4. Services */}
           <section>
-            <p className="text-xs font-semibold text-zinc-400 mb-2">
-              الخدمات <span className="text-zinc-600">(اختياري)</span>
+            <p className="text-xs font-semibold text-muted-foreground mb-2">
+              الخدمات <span className="text-muted-foreground/60">(اختياري)</span>
             </p>
             <div className="flex flex-wrap gap-2">
               {services.slice(0, 20).map(svc => {
@@ -867,9 +867,9 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
                     onClick={() => toggleService(svc)}
                     className="px-3 py-1.5 rounded-lg border text-xs font-medium transition-all"
                     style={{
-                      borderColor: sel ? '#D6A84F' : '#2A2A35',
-                      color: sel ? '#D6A84F' : '#9CA3AF',
-                      background: sel ? 'rgba(214,168,79,0.10)' : 'transparent',
+                      borderColor: sel ? 'var(--primary)' : 'var(--surface-muted)',
+                      color: sel ? 'var(--primary)' : 'var(--muted-foreground)',
+                      background: sel ? 'color-mix(in srgb, var(--primary) 10%, transparent)' : 'transparent',
                     }}
                   >
                     <Scissors size={10} className="inline ml-1" />
@@ -882,11 +882,11 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
 
           {/* 5. Notes */}
           <section>
-            <p className="text-xs font-semibold text-zinc-400 mb-2">ملاحظات</p>
+            <p className="text-xs font-semibold text-muted-foreground mb-2">ملاحظات</p>
             <textarea
               rows={2}
-              className="w-full rounded-xl border px-3 py-2 text-sm text-white bg-transparent placeholder-zinc-600 outline-none resize-none"
-              style={{ borderColor: '#2A2A35' }}
+              className="w-full rounded-xl border px-3 py-2 text-sm text-foreground bg-transparent placeholder-muted-foreground outline-none resize-none"
+              style={{ borderColor: 'var(--surface-muted)' }}
               placeholder="ملاحظة اختيارية..."
               value={notes}
               onChange={e => setNotes(e.target.value)}
@@ -896,16 +896,16 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
           {/* 6. Estimate panel */}
           <section
             className="rounded-xl border p-4"
-            style={{ borderColor: '#2A2A35', background: '#1A1A20' }}
+            style={{ borderColor: 'var(--surface-muted)', background: 'var(--surface)' }}
           >
             <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-zinc-400 flex items-center gap-2">
+              <p className="text-xs font-semibold text-muted-foreground flex items-center gap-2">
                 <Clock size={12} /> الوقت التقديري
               </p>
               <button
                 onClick={fetchEstimate}
                 disabled={estimating}
-                className="text-zinc-600 hover:text-amber-400 disabled:opacity-40 transition-colors"
+                className="text-muted-foreground/60 hover:text-primary disabled:opacity-40 transition-colors"
                 title="تحديث التقدير"
               >
                 <RefreshCw size={11} className={estimating ? 'animate-spin' : ''} />
@@ -915,7 +915,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
           </section>
 
           {error && (
-            <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
+            <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-3 py-2">
               <AlertCircle size={14} className="flex-shrink-0" />
               {error}
             </div>
@@ -923,16 +923,16 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
         </div>
 
         {/* ── Sticky Footer ── */}
-        <div className="px-5 py-4 border-t flex-shrink-0 space-y-2" style={{ borderColor: '#2A2A35' }}>
+        <div className="px-5 py-4 border-t flex-shrink-0 space-y-2" style={{ borderColor: 'var(--surface-muted)' }}>
           {/* Disable reason above button */}
           {!submitState.canSubmit && submitState.reason && !submitting && (
-            <p className="text-xs text-center text-zinc-500">{submitState.reason}</p>
+            <p className="text-xs text-center text-muted-foreground/70">{submitState.reason}</p>
           )}
           <button
             onClick={handleSubmit}
             disabled={submitting || !submitState.canSubmit}
             className="w-full py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-2"
-            style={{ background: 'linear-gradient(135deg,#D6A84F,#B8923A)', color: '#000' }}
+            style={{ background: 'linear-gradient(135deg,var(--primary),var(--primary-active))', color: 'var(--primary-foreground)' }}
           >
             {submitting
               ? <><Loader2 size={15} className="animate-spin" /> جاري إصدار الدور...</>

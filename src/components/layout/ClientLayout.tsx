@@ -10,7 +10,7 @@ interface ClientLayoutProps {
 
 export default function ClientLayout({ children }: ClientLayoutProps) {
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-zinc-950">
+    <div className="flex flex-col h-screen overflow-hidden bg-background">
       <ActiveSessionBar />
       {/* TopNavPortal renders into document.body — bypasses overflow-hidden */}
       <TopNavPortal />

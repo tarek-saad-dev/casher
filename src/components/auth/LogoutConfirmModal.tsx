@@ -97,7 +97,7 @@ export default function LogoutConfirmModal({
                 onClick={handleCloseShiftPrintAndLogout}
                 disabled={closingShift || closingAndPrinting || loggingOut}
                 variant="default"
-                className="bg-emerald-600 hover:bg-emerald-700"
+                className="bg-success hover:bg-success/90"
               >
                 {closingAndPrinting ? (
                   <>

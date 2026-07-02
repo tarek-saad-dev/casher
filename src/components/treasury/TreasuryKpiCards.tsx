@@ -22,62 +22,62 @@ export default function TreasuryKpiCards({ summary, loading }: TreasuryKpiCardsP
       label: 'إجمالي الوارد',
       value: summary.totalInflow,
       icon: TrendingUp,
-      color: 'emerald',
-      bgColor: 'bg-emerald-500/5',
-      borderColor: 'border-emerald-500/10',
-      iconColor: 'text-emerald-400',
-      textColor: 'text-emerald-400'
+      color: 'success',
+      bgColor: 'bg-success/5',
+      borderColor: 'border-success/10',
+      iconColor: 'text-success',
+      textColor: 'text-success'
     },
     {
       label: 'إجمالي الصادر',
       value: summary.totalOutflow,
       icon: TrendingDown,
-      color: 'rose',
-      bgColor: 'bg-rose-500/5',
-      borderColor: 'border-rose-500/10',
-      iconColor: 'text-rose-400',
-      textColor: 'text-rose-400'
+      color: 'destructive',
+      bgColor: 'bg-destructive/5',
+      borderColor: 'border-destructive/10',
+      iconColor: 'text-destructive',
+      textColor: 'text-destructive'
     },
     {
       label: 'صافي الخزنة',
       value: summary.grandNet,
       icon: Wallet,
-      color: summary.grandNet >= 0 ? 'emerald' : 'rose',
-      bgColor: summary.grandNet >= 0 ? 'bg-emerald-500/5' : 'bg-rose-500/5',
-      borderColor: summary.grandNet >= 0 ? 'border-emerald-500/10' : 'border-rose-500/10',
-      iconColor: summary.grandNet >= 0 ? 'text-emerald-400' : 'text-rose-400',
-      textColor: summary.grandNet >= 0 ? 'text-emerald-400' : 'text-rose-400'
+      color: summary.grandNet >= 0 ? 'success' : 'destructive',
+      bgColor: summary.grandNet >= 0 ? 'bg-success/5' : 'bg-destructive/5',
+      borderColor: summary.grandNet >= 0 ? 'border-success/10' : 'border-destructive/10',
+      iconColor: summary.grandNet >= 0 ? 'text-success' : 'text-destructive',
+      textColor: summary.grandNet >= 0 ? 'text-success' : 'text-destructive'
     },
     {
       label: 'صافي النقدي',
       value: summary.cashNet,
       icon: Banknote,
-      color: summary.cashNet >= 0 ? 'amber' : 'orange',
-      bgColor: summary.cashNet >= 0 ? 'bg-amber-500/5' : 'bg-orange-500/5',
-      borderColor: summary.cashNet >= 0 ? 'border-amber-500/10' : 'border-orange-500/10',
-      iconColor: summary.cashNet >= 0 ? 'text-amber-400' : 'text-orange-400',
-      textColor: summary.cashNet >= 0 ? 'text-amber-400' : 'text-orange-400'
+      color: summary.cashNet >= 0 ? 'warning' : 'destructive',
+      bgColor: summary.cashNet >= 0 ? 'bg-warning/5' : 'bg-destructive/5',
+      borderColor: summary.cashNet >= 0 ? 'border-warning/10' : 'border-destructive/10',
+      iconColor: summary.cashNet >= 0 ? 'text-warning' : 'text-destructive',
+      textColor: summary.cashNet >= 0 ? 'text-warning' : 'text-destructive'
     },
     {
       label: 'أعلى طريقة دفع',
       value: summary.topPaymentMethod || 'لا يوجد',
       icon: Award,
-      color: 'amber',
-      bgColor: 'bg-amber-500/5',
-      borderColor: 'border-amber-500/10',
-      iconColor: 'text-amber-400',
-      textColor: 'text-white',
+      color: 'primary',
+      bgColor: 'bg-primary/5',
+      borderColor: 'border-primary/10',
+      iconColor: 'text-primary',
+      textColor: 'text-foreground',
       isText: true
     },
     {
       label: 'عدد المعاملات',
       value: summary.transactionCount,
       icon: Activity,
-      color: 'zinc',
-      bgColor: 'bg-zinc-800/40',
-      borderColor: 'border-zinc-700/30',
-      iconColor: 'text-zinc-400',
-      textColor: 'text-white',
+      color: 'muted',
+      bgColor: 'bg-muted',
+      borderColor: 'border-border',
+      iconColor: 'text-muted-foreground',
+      textColor: 'text-foreground',
       isCount: true
     }
   ];
@@ -88,10 +88,10 @@ export default function TreasuryKpiCards({ summary, loading }: TreasuryKpiCardsP
         {[...Array(6)].map((_, i) => (
           <div
             key={i}
-            className="bg-zinc-800/40 border border-zinc-700/30 rounded-xl p-4 animate-pulse"
+            className="bg-muted border border-border rounded-xl p-4 animate-pulse"
           >
-            <div className="h-4 bg-zinc-700/30 rounded mb-3 w-20"></div>
-            <div className="h-8 bg-zinc-700/30 rounded w-full"></div>
+            <div className="h-4 bg-muted-foreground/20 rounded mb-3 w-20"></div>
+            <div className="h-8 bg-muted-foreground/20 rounded w-full"></div>
           </div>
         ))}
       </div>
@@ -110,7 +110,7 @@ export default function TreasuryKpiCards({ summary, loading }: TreasuryKpiCardsP
           >
             <div className="flex items-center gap-2 mb-3">
               <Icon className={`h-4 w-4 ${kpi.iconColor}`} />
-              <span className="text-xs text-zinc-400 font-medium">{kpi.label}</span>
+              <span className="text-xs text-muted-foreground font-medium">{kpi.label}</span>
             </div>
             
             {kpi.isText ? (

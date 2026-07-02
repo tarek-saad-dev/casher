@@ -34,13 +34,13 @@ function Dropdown({ section, isVisible, onClose, isRouteActive }: DropdownProps)
     right: 0,
     minWidth: 220,
     maxWidth: 300,
-    backgroundColor: 'rgba(10,10,14,0.97)',
+    backgroundColor: 'color-mix(in srgb, var(--surface-elevated) 97%, transparent)',
     backdropFilter: 'blur(20px)',
     WebkitBackdropFilter: 'blur(20px)',
     border: `1px solid rgba(${rgb},0.22)`,
     borderRadius: 16,
     padding: '8px',
-    boxShadow: `0 20px 60px rgba(0,0,0,0.6), 0 0 40px rgba(${rgb},0.12)`,
+    boxShadow: `0 20px 60px color-mix(in srgb, var(--background) 60%, transparent), 0 0 40px rgba(${rgb},0.12)`,
     zIndex: 10000,
     // Entrance animation via opacity + translateY
     opacity: isVisible ? 1 : 0,
@@ -93,12 +93,12 @@ function Dropdown({ section, isVisible, onClose, isRouteActive }: DropdownProps)
                   <Icon style={{ width: 13, height: 13, color: `rgba(${rgb},0.5)` }} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, color: '#6B6B6B' }}>{item.label}</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>{item.label}</div>
                 </div>
                 <span style={{
                   fontSize: 9, padding: '1px 5px', borderRadius: 9999,
                   backgroundColor: 'rgba(255,255,255,0.06)',
-                  color: '#555', border: '1px solid rgba(255,255,255,0.08)',
+                  color: 'var(--muted-foreground)', border: '1px solid color-mix(in srgb, var(--foreground) 8%, transparent)',
                 }}>قريباً</span>
               </div>
             );
@@ -149,7 +149,7 @@ function Dropdown({ section, isVisible, onClose, isRouteActive }: DropdownProps)
                 }
                 const sv = el.querySelector('[data-ds]') as HTMLElement | null;
                 if (sv) {
-                  sv.style.color = '#A7A29A';
+                  sv.style.color = 'var(--muted-foreground)';
                   sv.style.textShadow = 'none';
                 }
               }}
@@ -178,7 +178,7 @@ function Dropdown({ section, isVisible, onClose, isRouteActive }: DropdownProps)
                 data-ds
                 style={{
                   fontSize: 12, fontWeight: active ? 600 : 400,
-                  color: active ? `rgb(${rgb})` : '#A7A29A',
+                  color: active ? `rgb(${rgb})` : 'var(--muted-foreground)',
                   textShadow: active ? `0 0 10px rgba(${rgb},0.35)` : 'none',
                   transition: 'color 0.15s, text-shadow 0.15s',
                   flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -261,7 +261,7 @@ function CategoryPill({ section, isActive, isDimmed, isRouteActive }: PillProps)
       {/* Icon */}
       <Icon style={{
         width: 12, height: 12, flexShrink: 0,
-        color: isActive ? `rgb(${rgb})` : open ? `rgba(${rgb},0.85)` : '#6A6560',
+        color: isActive ? `rgb(${rgb})` : open ? `rgba(${rgb},0.85)` : 'var(--muted-foreground)',
         filter: isActive ? `drop-shadow(0 0 3px rgba(${rgb},0.45))` : 'none',
         transition: 'color 0.18s, filter 0.18s',
       }} />
@@ -269,7 +269,7 @@ function CategoryPill({ section, isActive, isDimmed, isRouteActive }: PillProps)
       {/* Title */}
       <span style={{
         fontSize: 11, fontWeight: isActive ? 600 : 400,
-        color: isActive ? `rgb(${rgb})` : open ? `rgba(${rgb},0.85)` : '#9A9590',
+        color: isActive ? `rgb(${rgb})` : open ? `rgba(${rgb},0.85)` : 'var(--muted-foreground)',
         textShadow: isActive ? `0 0 8px rgba(${rgb},0.3)` : 'none',
         whiteSpace: 'nowrap',
         transition: 'all 0.18s',
@@ -280,7 +280,7 @@ function CategoryPill({ section, isActive, isDimmed, isRouteActive }: PillProps)
       {/* Chevron */}
       <ChevronDown style={{
         width: 10, height: 10, flexShrink: 0,
-        color: isActive ? `rgba(${rgb},0.7)` : open ? `rgba(${rgb},0.5)` : '#3A3835',
+        color: isActive ? `rgba(${rgb},0.7)` : open ? `rgba(${rgb},0.5)` : 'var(--muted-foreground)',
         transform: open ? 'rotate(180deg)' : 'rotate(0)',
         transition: 'transform 0.2s ease',
       }} />
@@ -310,6 +310,7 @@ export default function TopNav() {
   const pathname = usePathname();
   const { canSeePage, access, loading: permLoading, isAuthenticated } = usePermissions();
 
+  const isPosPage = pathname === '/income/pos';
   const isItemActive = (href: string) => navIsRouteActive(pathname, href);
   const activeSectionTitle = getActiveSectionTitle(pathname);
 
@@ -332,8 +333,8 @@ export default function TopNav() {
         alignItems: 'center',
         gap: 1,
         padding: '2px 6px',
-        backgroundColor: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.08)',
+        backgroundColor: 'color-mix(in srgb, var(--topbar-background) 80%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--topbar-border) 50%, transparent)',
         borderRadius: 9999,
         overflow: 'visible',
         maxWidth: 'calc(100vw - 520px)',
@@ -355,10 +356,12 @@ export default function TopNav() {
         );
       })}
 
-      {/* Connection Status Indicator */}
-      <div style={{ marginRight: 8, marginLeft: 4 }}>
-        <DbConnectionStatus />
-      </div>
+      {/* Connection Status Indicator — hidden on POS page */}
+      {!isPosPage && (
+        <div style={{ marginRight: 8, marginLeft: 4 }}>
+          <DbConnectionStatus />
+        </div>
+      )}
     </nav>
   );
 }

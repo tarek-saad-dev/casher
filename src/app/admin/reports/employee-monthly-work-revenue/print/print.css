@@ -1,0 +1,153 @@
+.emp-work-print-report {
+  direction: rtl;
+  font-family: 'Cairo', Tahoma, Arial, sans-serif;
+  color: #111;
+  background: #fff;
+  padding: 12px;
+  max-width: 100%;
+}
+
+.emp-work-print-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 2px solid #d6a84f;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+
+.emp-work-print-logo-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.emp-work-print-logo-circle {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #111;
+  color: #d6a84f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.emp-work-print-brand-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.emp-work-print-report-title {
+  font-size: 16px;
+  color: #444;
+  margin-top: 4px;
+}
+
+.emp-work-print-meta {
+  text-align: left;
+  font-size: 12px;
+  color: #555;
+  line-height: 1.6;
+}
+
+.emp-work-print-summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+  font-size: 12px;
+}
+
+.emp-work-print-summary-table th,
+.emp-work-print-summary-table td {
+  border: 1px solid #ddd;
+  padding: 6px 8px;
+  text-align: center;
+}
+
+.emp-work-print-summary-table th {
+  background: #f5f5f5;
+  font-weight: 600;
+}
+
+.emp-work-print-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+
+.emp-work-print-data-table th,
+.emp-work-print-data-table td {
+  border: 1px solid #ccc;
+  padding: 4px 5px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.emp-work-print-data-table th {
+  background: #222;
+  color: #fff;
+  font-weight: 600;
+}
+
+.emp-work-print-data-table tbody tr:nth-child(even) {
+  background: #fafafa;
+}
+
+.emp-work-print-day-off-row {
+  background: #f0f0f0 !important;
+  color: #666;
+}
+
+.emp-work-print-incomplete-row {
+  background: #fff8e6 !important;
+}
+
+.emp-work-print-revenue-cell {
+  font-weight: 700;
+  color: #8a6d1f;
+}
+
+.emp-work-print-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  border: 1px solid #ccc;
+  background: #f7f7f7;
+}
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+
+  .emp-work-print-report {
+    padding: 0;
+  }
+
+  .emp-work-print-data-table thead {
+    display: table-header-group;
+  }
+
+  .emp-work-print-data-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .emp-work-print-summary-table,
+  .emp-work-print-header {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .emp-work-print-report,
+  .emp-work-print-report * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

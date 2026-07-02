@@ -1,21 +1,24 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Save, Loader2, AlertTriangle, CheckCircle, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { AlertTriangle, CheckCircle, X } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-import PosHeader from '@/components/pos/PosHeader';
-import RecentSalesSidebar from '@/components/pos/RecentSalesSidebar';
+import RecentInvoicesDrawer from '@/components/pos/RecentInvoicesDrawer';
+import { invalidateRecentInvoicesCache } from '@/lib/recentInvoicesCache';
+import QuickActionsBar, { type QuickActionId } from '@/components/pos/QuickActionsBar';
+import PaymentTransferModal from '@/components/pos/PaymentTransferModal';
+import QuickExpenseModal from '@/components/pos/QuickExpenseModal';
+import QuickIncomeModal from '@/components/pos/QuickIncomeModal';
 import CustomerSearch from '@/components/pos/CustomerSearch';
 import CustomerHistoryPanel, { type LastSaleAutoFill } from '@/components/pos/CustomerHistoryPanel';
 import QuickCustomerModal from '@/components/pos/QuickCustomerModal';
 import CompleteCustomerModal from '@/components/pos/CompleteCustomerModal';
 import BarberCarousel from '@/components/pos/luxury/BarberCarousel';
 import ServiceCatalog from '@/components/pos/luxury/ServiceCatalog';
-import CartPanel from '@/components/pos/CartPanel';
-import InvoiceSummary from '@/components/pos/InvoiceSummary';
-import PaymentMethodSelect from '@/components/pos/PaymentMethodSelect';
-import SplitPaymentInput from '@/components/pos/SplitPaymentInput';
+import PosInvoicePanel, { PosInvoiceSaveActions } from '@/components/pos/PosInvoicePanel';
+import MobilePosHeader from '@/components/pos/mobile/MobilePosHeader';
+import MobileInvoiceBar from '@/components/pos/mobile/MobileInvoiceBar';
+import MobileInvoiceSheet from '@/components/pos/mobile/MobileInvoiceSheet';
 import PrintInvoiceModal from '@/components/pos/PrintInvoiceModal';
 import ClientVouchersModal from '@/components/pos/ClientVouchersModal';
 import ShiftRequiredOverlay from '@/components/session/ShiftRequiredOverlay';
@@ -34,14 +37,14 @@ interface Toast { id: number; type: 'success' | 'error' | 'info'; message: strin
 // ─── Toast Component ─────────────────────────────────────────────────────────
 function ToastList({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: number) => void }) {
   return (
-    <div className="fixed bottom-4 left-4 z-50 flex flex-col gap-2 w-80" dir="rtl">
+    <div className="fixed bottom-4 left-4 z-50 flex w-80 max-md:bottom-[calc(4.5rem+env(safe-area-inset-bottom))] flex-col gap-2" dir="rtl">
       {toasts.map(t => (
         <div
           key={t.id}
           className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl text-sm font-medium transition-all
-            ${t.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-300' : ''}
-            ${t.type === 'error' ? 'bg-rose-950/90 border-rose-500/40 text-rose-300' : ''}
-            ${t.type === 'info' ? 'bg-zinc-900/90 border-zinc-700/40 text-zinc-300' : ''}
+            ${t.type === 'success' ? 'bg-success/10 border-success/40 text-success' : ''}
+            ${t.type === 'error' ? 'bg-destructive/10 border-destructive/40 text-destructive' : ''}
+            ${t.type === 'info' ? 'bg-muted/90 border-border/40 text-muted-foreground' : ''}
           `}
         >
           {t.type === 'success' && <CheckCircle className="w-4 h-4 shrink-0" />}
@@ -113,6 +116,11 @@ export default function PosPage() {
   const [splitPaymentActive, setSplitPaymentActive] = useState(false);
   const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
   const [vouchersOpen, setVouchersOpen] = useState(false);
+  const [invoiceSheetOpen, setInvoiceSheetOpen] = useState(false);
+  const [isPaymentTransferOpen, setIsPaymentTransferOpen] = useState(false);
+  const [isQuickExpenseOpen, setIsQuickExpenseOpen] = useState(false);
+  const [isQuickIncomeOpen, setIsQuickIncomeOpen] = useState(false);
+  const [isRecentInvoicesOpen, setIsRecentInvoicesOpen] = useState(false);
 
   // ───────────────── Wrap setCustomer ─────────────────
   const setCustomer = useCallback((c: Customer | null) => {
@@ -311,6 +319,7 @@ export default function PosPage() {
 
       // Show success toast
       addToast('success', isEditing ? 'تم تحديث الفاتورة بنجاح' : 'تم حفظ الفاتورة بنجاح');
+      invalidateRecentInvoicesCache();
 
       if (forcePrint || isEditing) {
         // Double-click (forcePrint) or edit always opens the browser modal directly
@@ -515,18 +524,122 @@ export default function PosPage() {
     }
   }, [barbers, setCustomer, clearItems, addItem, setPaymentMethod, setPaymentAllocations, paymentMethods, addToast, setDiscountPercent, setDiscountValue]);
 
-  return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <PosHeader
-        shiftId={shift?.ID ?? null}
-        shiftLevel={hasActiveShift ? 'open' : null}
-        onNewSale={handleNewSale}
-      />
+  const handlePaymentMethodSelect = useCallback((id: number) => {
+    setPaymentMethod(id);
+    const newAllocations = paymentMethods.map((m) => ({
+      paymentMethodId: m.ID,
+      amount: m.ID === id ? totals.grandTotal : 0,
+    }));
+    setPaymentAllocations(newAllocations);
+  }, [paymentMethods, totals.grandTotal, setPaymentMethod, setPaymentAllocations]);
 
-      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden relative">
+  const handleQuickAction = useCallback((actionId: QuickActionId) => {
+    switch (actionId) {
+      case 'payment-transfer':
+        setIsPaymentTransferOpen(true);
+        break;
+      case 'quick-expense':
+        setIsQuickExpenseOpen(true);
+        break;
+      case 'quick-income':
+        setIsQuickIncomeOpen(true);
+        break;
+      case 'recent-invoices':
+        setIsRecentInvoicesOpen(true);
+        break;
+    }
+  }, []);
+
+  const invoicePanelProps = {
+    state,
+    totals,
+    barbers,
+    paymentMethods,
+    splitPaymentActive,
+    setSplitPaymentActive,
+    saveError,
+    saving,
+    onRemove: removeItem,
+    onUpdateItem: updateItem,
+    onDiscountPercentChange: setDiscountPercent,
+    onDiscountValueChange: setDiscountValue,
+    onPaymentMethodSelect: handlePaymentMethodSelect,
+    onPaymentAllocationsChange: setPaymentAllocations,
+    onSave: handleSave,
+  };
+
+  const invoiceLabel = editingSaleId
+    ? `تعديل #${editingSaleId}`
+    : state.items.length > 0
+      ? `مسودة — ${state.items.length} خدمات`
+      : 'فاتورة جديدة';
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* ═══════ MOBILE LAYOUT (< md) ═══════ */}
+      <div className="pos-mobile-workspace flex h-full min-h-0 flex-col md:hidden">
+        <ShiftRequiredOverlay />
+        <MobilePosHeader
+          invoiceLabel={invoiceLabel}
+          shiftId={shift?.ID ?? null}
+          shiftName={shift?.ShiftName ?? null}
+          onNewSale={handleNewSale}
+          onOpenRecentSales={() => setIsRecentInvoicesOpen(true)}
+        />
+
+        <div className="sticky top-0 z-30 shrink-0 border-b border-border bg-background/95 px-3 py-2 backdrop-blur-sm">
+          <CustomerSearch
+            selected={state.customer}
+            onSelect={(c: Customer | null) => setCustomer(c)}
+            onQuickAdd={(prefill) => { setQuickAddPrefill(prefill); setQuickAddOpen(true); }}
+            onCompleteData={(c) => { setCompleteCustomerMode('complete'); setCompleteCustomer(c); }}
+            onEditCustomer={(c) => { setCompleteCustomerMode('edit'); setCompleteCustomer(c); }}
+          />
+          {state.customer && !vouchersOpen && (
+            <button
+              type="button"
+              onClick={() => setVouchersOpen(true)}
+              className="mt-2 flex min-h-11 w-full items-center justify-between rounded-lg border border-warning/20 bg-warning/10 px-3 py-2 text-sm font-medium text-warning transition-colors hover:bg-warning/15"
+            >
+              <span>مكافآت النقاط</span>
+              <span className="rounded-md bg-warning/20 px-1.5 py-0.5 text-xs">عرض</span>
+            </button>
+          )}
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-3 pb-[calc(4.5rem+env(safe-area-inset-bottom))] pt-3 scrollbar-luxury-v">
+          <QuickActionsBar onAction={handleQuickAction} />
+          <BarberCarousel
+            barbers={barbers}
+            selected={state.barber}
+            onSelect={setBarber}
+          />
+          <Separator className="bg-border" />
+          <ServiceCatalog
+            services={services}
+            selectedBarber={state.barber}
+            onAddItem={addItem}
+          />
+        </div>
+
+        <MobileInvoiceBar
+          itemCount={state.items.length}
+          grandTotal={totals.grandTotal}
+          onOpen={() => setInvoiceSheetOpen(true)}
+        />
+
+        <MobileInvoiceSheet
+          open={invoiceSheetOpen}
+          onClose={() => setInvoiceSheetOpen(false)}
+          {...invoicePanelProps}
+        />
+      </div>
+
+      {/* ═══════ DESKTOP / TABLET LAYOUT (≥ md) ═══════ */}
+      <div className="relative hidden h-full flex-1 flex-col overflow-hidden md:flex lg:flex-row">
         <ShiftRequiredOverlay />
         {/* ═══════ RIGHT PANEL: Customer + History ═══════ */}
-        <aside className="w-full lg:w-80 border-l border-border p-3 lg:p-4 flex flex-col gap-3 lg:gap-4 overflow-y-auto shrink-0 scrollbar-luxury-v order-1 lg:order-1">
+        <aside className="order-1 flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-l border-border p-3 scrollbar-luxury-v lg:order-1 lg:w-80 lg:gap-4 lg:p-4">
           <CustomerSearch
             selected={state.customer}
             onSelect={(c: Customer | null) => setCustomer(c)}
@@ -539,10 +652,10 @@ export default function PosPage() {
           {state.customer && !vouchersOpen && (
             <button
               onClick={() => setVouchersOpen(true)}
-              className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 hover:bg-yellow-500/15 transition-colors text-sm text-yellow-400 font-medium"
+              className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-warning/10 border border-warning/20 hover:bg-warning/15 transition-colors text-sm text-warning font-medium"
             >
               <span>مكافآت النقاط</span>
-              <span className="text-xs bg-yellow-500/20 px-1.5 py-0.5 rounded-md">عرض</span>
+              <span className="text-xs bg-warning/20 px-1.5 py-0.5 rounded-md">عرض</span>
             </button>
           )}
 
@@ -565,13 +678,14 @@ export default function PosPage() {
         </aside>
 
         {/* ═══════ CENTER PANEL: Barbers + Services ═══════ */}
-        <main className="flex-1 p-3 lg:p-4 overflow-y-auto space-y-4 lg:space-y-5 scrollbar-luxury-v order-3 lg:order-2 min-h-[40vh]">
+        <main className="order-3 min-h-[40vh] min-w-0 flex-1 space-y-4 overflow-y-auto p-3 scrollbar-luxury-v lg:order-2 lg:space-y-5 lg:p-4">
+          <QuickActionsBar onAction={handleQuickAction} />
           <BarberCarousel
             barbers={barbers}
             selected={state.barber}
             onSelect={setBarber}
           />
-          <Separator className="bg-[#2A2A30]" />
+          <Separator className="bg-border" />
           <ServiceCatalog
             services={services}
             selectedBarber={state.barber}
@@ -579,135 +693,13 @@ export default function PosPage() {
           />
         </main>
 
-        {/* ═══════ LEFT PANEL: Cart + Summary + Payment + Save + Recent Sales ═══════ */}
-        <aside className="w-full lg:w-80 border-r border-border p-3 lg:p-4 flex flex-col gap-3 lg:gap-4 overflow-y-auto shrink-0 scrollbar-luxury-v order-2 lg:order-3">
-          <CartPanel items={state.items} barbers={barbers} onRemove={removeItem} onUpdateItem={updateItem} />
-          <Separator />
-          <InvoiceSummary
-            totals={totals}
-            discountPercent={state.discountPercent}
-            discountValue={state.discountValue}
-            onDiscountPercentChange={setDiscountPercent}
-            onDiscountValueChange={setDiscountValue}
-          />
-          <Separator />
-          {paymentMethods.length > 0 && (
-            <>
-              {/* Default: Single Payment Method Selection */}
-              {!state.paymentAllocations.some(pa => pa.amount > 0 && pa.amount !== totals.grandTotal) ? (
-                <PaymentMethodSelect
-                  methods={paymentMethods}
-                  selected={state.paymentMethodId}
-                  onSelect={(id) => {
-                    setPaymentMethod(id);
-                    // Set full amount to selected method
-                    const newAllocations = paymentMethods.map(m => ({
-                      paymentMethodId: m.ID,
-                      amount: m.ID === id ? totals.grandTotal : 0,
-                    }));
-                    setPaymentAllocations(newAllocations);
-                  }}
-                />
-              ) : null}
-
-              {/* Toggle Split Payment */}
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">دفع مختلط</span>
-                <button
-                  onClick={() => {
-                    if (splitPaymentActive) {
-                      // Switch back to single payment (all to current method)
-                      const currentMethod = state.paymentMethodId || paymentMethods[0]?.ID;
-                      const newAllocations = paymentMethods.map(m => ({
-                        paymentMethodId: m.ID,
-                        amount: m.ID === currentMethod ? totals.grandTotal : 0,
-                      }));
-                      setPaymentAllocations(newAllocations);
-                      setSplitPaymentActive(false);
-                    } else {
-                      // Initialize split payment with current method having full amount
-                      const currentMethod = state.paymentMethodId || paymentMethods[0]?.ID;
-                      const newAllocations = paymentMethods.map(m => ({
-                        paymentMethodId: m.ID,
-                        amount: m.ID === currentMethod ? totals.grandTotal : 0,
-                      }));
-                      setPaymentAllocations(newAllocations);
-                      setSplitPaymentActive(true);
-                    }
-                  }}
-                  className={`text-xs px-2 py-1 rounded transition-colors ${splitPaymentActive
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                    }`}
-                >
-                  {splitPaymentActive ? 'إلغاء' : 'تفعيل'}
-                </button>
-              </div>
-
-              {/* Split Payment Input (shown only when activated) */}
-              {splitPaymentActive && (
-                <SplitPaymentInput
-                  methods={paymentMethods}
-                  grandTotal={totals.grandTotal}
-                  allocations={state.paymentAllocations}
-                  onChange={setPaymentAllocations}
-                />
-              )}
-            </>
-          )}
-
-          {saveError && (
-            <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-lg p-2.5">
-              <AlertTriangle className="w-4 h-4 shrink-0" />
-              {saveError}
-            </div>
-          )}
-
-          <div className="flex gap-2">
-            <Button
-              size="lg"
-              className="flex-1 text-base font-bold py-6"
-              type="button"
-              onClick={() => handleSave(false, 'save-button')}
-              disabled={saving || state.items.length === 0}
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="w-5 h-5 ml-2 animate-spin" />
-                  جاري الحفظ...
-                </>
-              ) : (
-                <>
-                  <Save className="w-5 h-5 ml-2" />
-                  حفظ (F9)
-                </>
-              )}
-            </Button>
-            <Button
-              size="lg"
-              className="px-6 py-6 text-base font-bold"
-              type="button"
-              onClick={() => handleSave(false, 'plus-button')}
-              disabled={saving || state.items.length === 0}
-              variant="outline"
-            >
-              <span className="text-xl font-bold">+</span>
-            </Button>
-          </div>
-
-          <Separator />
-
-          {/* Recent Sales Sidebar */}
-          <RecentSalesSidebar
-            onEditSale={handleEditSale}
-            onDeleteSale={(saleId) => {
-              // Delete functionality is handled in the component
-              console.log('Delete sale:', saleId);
-            }}
-            onRefresh={() => {
-              // Refresh any other components if needed
-              console.log('Refresh sales');
-            }}
+        {/* ═══════ LEFT PANEL: Cart + Summary + Payment + Save ═══════ */}
+        <aside className="order-2 flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-r border-border p-3 scrollbar-luxury-v lg:order-3 lg:w-80 lg:gap-4 lg:p-4">
+          <PosInvoicePanel {...invoicePanelProps} />
+          <PosInvoiceSaveActions
+            saving={saving}
+            disabled={state.items.length === 0}
+            onSave={handleSave}
           />
         </aside>
       </div>
@@ -767,6 +759,39 @@ export default function PosPage() {
         open={closeDayOpen}
         onClose={() => setCloseDayOpen(false)}
         onClosed={() => { setCloseDayOpen(false); refreshSession(); }}
+      />
+
+      <PaymentTransferModal
+        open={isPaymentTransferOpen}
+        onClose={() => setIsPaymentTransferOpen(false)}
+        onTransferComplete={() => {
+          addToast('success', 'تم تنفيذ التحويل بنجاح');
+        }}
+      />
+      <QuickExpenseModal
+        open={isQuickExpenseOpen}
+        onClose={() => setIsQuickExpenseOpen(false)}
+        onExpenseComplete={() => {
+          addToast('success', 'تم إضافة المصروف بنجاح');
+        }}
+      />
+      <QuickIncomeModal
+        open={isQuickIncomeOpen}
+        onClose={() => setIsQuickIncomeOpen(false)}
+        onIncomeComplete={() => {
+          addToast('success', 'تم إضافة الإيراد بنجاح');
+        }}
+      />
+      <RecentInvoicesDrawer
+        open={isRecentInvoicesOpen}
+        onClose={() => setIsRecentInvoicesOpen(false)}
+        onEditSale={handleEditSale}
+        onDeleteSale={(saleId) => {
+          console.log('Delete sale:', saleId);
+        }}
+        onRefresh={() => {
+          console.log('Refresh sales');
+        }}
       />
 
       {/* ═══════ Toast Notifications ═══════ */}

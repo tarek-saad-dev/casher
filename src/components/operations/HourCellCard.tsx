@@ -79,7 +79,7 @@ export function HourCellCard({ item, compact = false, onClick, voiceEnabled, onR
 
   return (
     <div
-      className="relative overflow-hidden rounded-md border px-2 py-1 cursor-pointer transition-all hover:bg-white/[0.04] hover:shadow-md"
+      className="relative overflow-hidden rounded-md border px-2 py-1 cursor-pointer transition-all hover:bg-foreground/[0.04] hover:shadow-md"
       onClick={handleClick}
       title={tooltipText}
       style={{
@@ -101,10 +101,10 @@ export function HourCellCard({ item, compact = false, onClick, voiceEnabled, onR
           {/* Compact Mode: Name + Time only */}
           {isCompact ? (
             <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0 truncate text-[12px] font-bold text-white" title={customerName}>
+              <div className="min-w-0 truncate text-[12px] font-bold text-foreground" title={customerName}>
                 {customerName}
               </div>
-              <div className="shrink-0 text-[11px] font-bold text-yellow-300">
+              <div className="shrink-0 text-[11px] font-bold text-primary">
                 {timeLabel}
               </div>
             </div>
@@ -112,24 +112,24 @@ export function HourCellCard({ item, compact = false, onClick, voiceEnabled, onR
             /* Normal Mode: 2-row grid */
             <div className="grid grid-cols-[1fr_auto] gap-x-2 gap-y-1">
               {/* Row 1: Customer Name | Time */}
-              <div className="min-w-0 truncate text-[12px] font-bold text-white leading-tight" title={customerName}>
+              <div className="min-w-0 truncate text-[12px] font-bold text-foreground leading-tight" title={customerName}>
                 {customerName}
               </div>
-              <div className="shrink-0 text-[11px] font-bold text-yellow-300 leading-tight">
+              <div className="shrink-0 text-[11px] font-bold text-primary leading-tight">
                 {timeLabel}
               </div>
 
               {/* Row 2: Service | Code */}
-              <div className="min-w-0 truncate text-[10px] text-slate-400 leading-tight" title={serviceName}>
+              <div className="min-w-0 truncate text-[10px] text-muted-foreground leading-tight" title={serviceName}>
                 {serviceName || label}
               </div>
               {bookingCode && (
-                <div className="shrink-0 rounded bg-black/20 px-1.5 py-0.5 text-[9px] font-medium text-slate-300 leading-tight">
+                <div className="shrink-0 rounded bg-background/20 px-1.5 py-0.5 text-[9px] font-medium text-foreground leading-tight">
                   {bookingCode}
                 </div>
               )}
               {item.protected && (
-                <div className="shrink-0 text-[9px] text-yellow-500/80" title="محمي">
+                <div className="shrink-0 text-[9px] text-primary/80" title="محمي">
                   🛡️
                 </div>
               )}
@@ -145,29 +145,29 @@ export function HourCellCard({ item, compact = false, onClick, voiceEnabled, onR
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1">
               <Icon className="w-3 h-3 shrink-0" style={{ color: styles.iconColor }} />
-              <span className="text-[9px] font-medium text-slate-400">{label}</span>
+              <span className="text-[9px] font-medium text-muted-foreground">{label}</span>
             </div>
             {ticketCode && (
-              <span className="text-[9px] px-1 rounded bg-slate-700/50 text-slate-300">
+              <span className="text-[9px] px-1 rounded bg-surface-muted/50 text-foreground">
                 {ticketCode}
               </span>
             )}
           </div>
           
           {/* Customer */}
-          <div className="text-[11px] font-bold text-white truncate" title={customerName}>
+          <div className="text-[11px] font-bold text-foreground truncate" title={customerName}>
             {customerName}
           </div>
           
           {/* Time */}
-          <div className="text-[10px] text-slate-400">
+          <div className="text-[10px] text-muted-foreground">
             {timeRange}
           </div>
 
           {/* Overdue / Needs action badge */}
           {item.needsOperatorAction && (
             <div className="flex items-center mt-0.5">
-              <span className="text-[8px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30">
+              <span className="text-[8px] px-1.5 py-0.5 rounded bg-destructive/20 text-destructive border border-destructive/30">
                 {item.effectiveStatus === 'overdue_finish_required'
                   ? `يحتاج إنهاء${(item.overdueMinutes ?? 0) > 0 ? ` (${item.overdueMinutes}د)` : ''}`
                   : item.effectiveStatus === 'no_show_candidate'
@@ -182,13 +182,13 @@ export function HourCellCard({ item, compact = false, onClick, voiceEnabled, onR
           {/* Called badge */}
           {isCalled && !item.needsOperatorAction && (
             <div className="flex items-center justify-between mt-0.5">
-              <span className="text-[8px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">
+              <span className="text-[8px] px-1.5 py-0.5 rounded bg-success/20 text-success">
                 تم النداء
               </span>
               {voiceEnabled && (
                 <button
                   onClick={handleReannounce}
-                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-medium bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 transition-colors"
+                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
                   title="إعادة النداء"
                 >
                   <Volume2 size={10} />
@@ -220,7 +220,7 @@ export function HourCellCard({ item, compact = false, onClick, voiceEnabled, onR
           )}
           {item.needsOperatorAction && (
             <div className="flex items-center mt-0.5">
-              <span className="text-[8px] px-1.5 py-0.5 rounded bg-red-800/40 text-red-200 border border-red-700/50">
+              <span className="text-[8px] px-1.5 py-0.5 rounded bg-destructive/40 text-destructive-foreground border border-destructive/50">
                 يحتاج إنهاء{(item.overdueMinutes ?? 0) > 0 ? ` (${item.overdueMinutes}د)` : ''}
               </span>
             </div>
@@ -231,7 +231,7 @@ export function HourCellCard({ item, compact = false, onClick, voiceEnabled, onR
       {/* Gap/Other Card */}
       {type === 'gap' && (
         <div className="h-full flex items-center justify-center">
-          <span className="text-[10px] text-slate-600">—</span>
+          <span className="text-[10px] text-muted-foreground/60">—</span>
         </div>
       )}
     </div>
@@ -252,19 +252,19 @@ function getIcon(type: string, isProtected?: boolean) {
 }
 
 function getCardStyles(type: string, isProtected?: boolean, barberColor?: BarberColor) {
-  // Default to gold if no barber color provided
+  // Default to primary theme accent if no barber color provided
   const accent = barberColor || {
-    bg: 'rgba(212, 175, 55, 0.12)',
-    border: 'rgba(212, 175, 55, 0.55)',
-    text: '#d4af37',
-    dot: '#d4af37',
-    label: 'gold'
+    bg: 'color-mix(in srgb, var(--primary) 12%, transparent)',
+    border: 'color-mix(in srgb, var(--primary) 55%, transparent)',
+    text: 'var(--primary)',
+    dot: 'var(--primary)',
+    label: 'primary'
   };
 
   // Common readable text colors
   const readable = {
-    timeColor: '#FACC15',
-    timeIconColor: '#FDE68A',
+    timeColor: 'var(--primary)',
+    timeIconColor: 'var(--primary)',
     codeBorder: accent.border,
   };
 
@@ -272,7 +272,7 @@ function getCardStyles(type: string, isProtected?: boolean, barberColor?: Barber
     hoverBorderColor: accent.border,
     codeBg: accent.bg,
     codeColor: accent.text,
-    serviceColor: '#71717a',
+    serviceColor: 'var(--muted-foreground)',
     ...readable,
   };
 
@@ -283,14 +283,14 @@ function getCardStyles(type: string, isProtected?: boolean, barberColor?: Barber
         ...base,
         background: 'linear-gradient(135deg, #d4af37 0%, #b8941f 100%)',
         borderColor: '#d4af37',
-        headerBg: 'rgba(0,0,0,0.15)',
+        headerBg: 'color-mix(in srgb, var(--background) 15%, transparent)',
         iconColor: '#1a1a1a',
         textColor: '#1a1a1a',
-        subTextColor: 'rgba(26,26,26,0.8)',
+        subTextColor: 'color-mix(in srgb, #1a1a1a 80%, transparent)',
         hoverBorderColor: '#f5d547',
-        codeBg: 'rgba(0,0,0,0.2)',
+        codeBg: 'color-mix(in srgb, var(--background) 20%, transparent)',
         codeColor: '#1a1a1a',
-        serviceColor: 'rgba(26,26,26,0.7)',
+        serviceColor: 'color-mix(in srgb, #1a1a1a 70%, transparent)',
         timeColor: '#1a1a1a',
         timeIconColor: '#1a1a1a',
         codeBorder: '#d4af37',
@@ -310,17 +310,17 @@ function getCardStyles(type: string, isProtected?: boolean, barberColor?: Barber
         // Icons only if needed
         iconColor: accent.text,
         // Text colors fixed for readability
-        textColor: '#F8FAFC',
-        subTextColor: '#94a3b8',
+        textColor: 'var(--foreground)',
+        subTextColor: 'var(--muted-foreground)',
         // Time accent
-        timeColor: '#FACC15',
-        timeIconColor: '#FDE68A',
+        timeColor: 'var(--primary)',
+        timeIconColor: 'var(--primary)',
         // Code badge subtle
-        codeBg: 'rgba(0,0,0,0.2)',
-        codeBorder: 'rgba(255,255,255,0.1)',
-        codeColor: '#94a3b8',
+        codeBg: 'color-mix(in srgb, var(--background) 20%, transparent)',
+        codeBorder: 'color-mix(in srgb, var(--foreground) 10%, transparent)',
+        codeColor: 'var(--muted-foreground)',
         hoverBorderColor: accent.text,
-        serviceColor: '#CBD5E1',
+        serviceColor: 'var(--foreground)',
       };
 
     case 'queue':
@@ -330,15 +330,15 @@ function getCardStyles(type: string, isProtected?: boolean, barberColor?: Barber
         background: '#1e293b',
         borderColor: 'rgba(100, 116, 139, 0.5)',
         headerBg: 'rgba(100, 116, 139, 0.2)',
-        iconColor: '#94a3b8',
-        textColor: '#e2e8f0',
-        subTextColor: '#94a3b8',
+        iconColor: 'var(--muted-foreground)',
+        textColor: 'var(--foreground)',
+        subTextColor: 'var(--muted-foreground)',
         hoverBorderColor: '#60a5fa',
         codeBg: 'rgba(100, 116, 139, 0.3)',
-        codeColor: '#94a3b8',
-        serviceColor: '#64748b',
-        timeColor: '#e2e8f0',
-        timeIconColor: '#94a3b8',
+        codeColor: 'var(--muted-foreground)',
+        serviceColor: 'var(--muted-foreground)',
+        timeColor: 'var(--foreground)',
+        timeIconColor: 'var(--muted-foreground)',
         codeBorder: 'rgba(100, 116, 139, 0.5)',
       };
 
@@ -346,19 +346,19 @@ function getCardStyles(type: string, isProtected?: boolean, barberColor?: Barber
       // Gap or unknown - muted
       return {
         ...base,
-        background: 'rgba(255,255,255,0.05)',
-        borderColor: 'rgba(255,255,255,0.1)',
-        headerBg: 'rgba(255,255,255,0.03)',
-        iconColor: '#52525b',
-        textColor: '#71717a',
-        subTextColor: '#52525b',
-        hoverBorderColor: '#a1a1aa',
-        codeBg: 'rgba(255,255,255,0.08)',
-        codeColor: '#71717a',
-        serviceColor: '#52525b',
-        timeColor: '#a1a1aa',
-        timeIconColor: '#52525b',
-        codeBorder: 'rgba(255,255,255,0.1)',
+        background: 'color-mix(in srgb, var(--foreground) 5%, transparent)',
+        borderColor: 'color-mix(in srgb, var(--foreground) 10%, transparent)',
+        headerBg: 'color-mix(in srgb, var(--foreground) 3%, transparent)',
+        iconColor: 'color-mix(in srgb, var(--muted-foreground) 60%, transparent)',
+        textColor: 'var(--muted-foreground)',
+        subTextColor: 'color-mix(in srgb, var(--muted-foreground) 60%, transparent)',
+        hoverBorderColor: 'var(--muted-foreground)',
+        codeBg: 'color-mix(in srgb, var(--foreground) 8%, transparent)',
+        codeColor: 'var(--muted-foreground)',
+        serviceColor: 'color-mix(in srgb, var(--muted-foreground) 60%, transparent)',
+        timeColor: 'var(--muted-foreground)',
+        timeIconColor: 'color-mix(in srgb, var(--muted-foreground) 60%, transparent)',
+        codeBorder: 'color-mix(in srgb, var(--foreground) 10%, transparent)',
       };
   }
 }

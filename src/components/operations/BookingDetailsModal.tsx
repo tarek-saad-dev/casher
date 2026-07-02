@@ -222,16 +222,16 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
-      pending: '#f59e0b',
-      confirmed: '#22c55e',
-      arrived: '#8b5cf6',
-      queued: '#06b6d4',
-      in_service: '#d4af37',
-      completed: '#10b981',
-      cancelled: '#ef4444',
-      no_show: '#6b7280',
+      pending:    'var(--warning)',
+      confirmed:  'var(--success)',
+      arrived:    'var(--accent)',
+      queued:     'var(--info)',
+      in_service: 'var(--primary)',
+      completed:  'var(--success)',
+      cancelled:  'var(--destructive)',
+      no_show:    'var(--muted-foreground)',
     };
-    return colors[status] || '#6b7280';
+    return colors[status] || 'var(--muted-foreground)';
   };
 
   // DEBUG for BK-448
@@ -298,10 +298,10 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
 
   if (loading) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm" onClick={onClose}>
-        <div className="flex items-center gap-3 p-6 rounded-xl" style={{ background: '#141418', border: '1px solid #2A2A35' }}>
-          <Loader2 size={24} className="animate-spin" style={{ color: '#d4af37' }} />
-          <span className="text-white">جاري تحميل التفاصيل...</span>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/75 backdrop-blur-sm" onClick={onClose}>
+        <div className="flex items-center gap-3 p-6 rounded-xl" style={{ background: 'var(--surface-elevated)', border: '1px solid var(--surface-muted)' }}>
+          <Loader2 size={24} className="animate-spin" style={{ color: 'var(--primary)' }} />
+          <span className="text-foreground">جاري تحميل التفاصيل...</span>
         </div>
       </div>
     );
@@ -309,11 +309,11 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
 
   if (error && !booking) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm" onClick={onClose}>
-        <div className="flex flex-col items-center gap-4 p-6 rounded-xl max-w-sm" style={{ background: '#141418', border: '1px solid #2A2A35' }}>
-          <AlertCircle size={32} style={{ color: '#ef4444' }} />
-          <p className="text-red-400 text-center">{error}</p>
-          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm" style={{ background: '#2A2A35', color: '#fff' }}>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/75 backdrop-blur-sm" onClick={onClose}>
+        <div className="flex flex-col items-center gap-4 p-6 rounded-xl max-w-sm" style={{ background: 'var(--surface-elevated)', border: '1px solid var(--surface-muted)' }}>
+          <AlertCircle size={32} style={{ color: 'var(--destructive)' }} />
+          <p className="text-destructive text-center">{error}</p>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm" style={{ background: 'var(--surface-muted)', color: 'var(--foreground)' }}>
             إغلاق
           </button>
         </div>
@@ -325,14 +325,14 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
   const statusLabel = getStatusLabel(booking?.Status || item.status);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/75 backdrop-blur-sm" onClick={onClose}>
       <div
         className="relative rounded-2xl border shadow-2xl w-full max-w-md mx-4 overflow-hidden"
-        style={{ background: '#141418', borderColor: '#2A2A35' }}
+        style={{ background: 'var(--surface-elevated)', borderColor: 'var(--surface-muted)' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: '#2A2A35', background: '#1a1a1f' }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--surface-muted)', background: 'var(--surface)' }}>
           <div className="flex items-center gap-3">
             <div
               className="px-3 py-1 rounded-full text-xs font-bold"
@@ -340,9 +340,9 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
             >
               {item.type === 'booking' ? 'حجز' : 'دور'}
             </div>
-            <span className="text-lg font-bold text-white">BK-{item.sourceId}</span>
+            <span className="text-lg font-bold text-foreground">BK-{item.sourceId}</span>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition-all">
+          <button onClick={onClose} className="p-1.5 rounded-lg text-muted-foreground/70 hover:text-foreground hover:bg-surface-muted transition-all">
             <X size={18} />
           </button>
         </div>
@@ -351,20 +351,20 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
         <div className="px-5 py-4 space-y-4 max-h-[60vh] overflow-y-auto">
           {/* Customer Info */}
           <div className="space-y-2">
-            <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">معلومات العميل</h3>
+            <h3 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">معلومات العميل</h3>
             <div className="grid grid-cols-2 gap-3">
-              <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: '#1a1a1f' }}>
-                <User size={16} style={{ color: '#d4af37' }} />
+              <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: 'var(--surface)' }}>
+                <User size={16} style={{ color: 'var(--primary)' }} />
                 <div>
-                  <div className="text-[10px] text-zinc-500">الاسم</div>
-                  <div className="text-sm font-medium text-white">{booking?.ClientName || item.customerName || '—'}</div>
+                  <div className="text-[10px] text-muted-foreground/70">الاسم</div>
+                  <div className="text-sm font-medium text-foreground">{booking?.ClientName || item.customerName || '—'}</div>
                 </div>
               </div>
-              <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: '#1a1a1f' }}>
-                <Phone size={16} style={{ color: '#d4af37' }} />
+              <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: 'var(--surface)' }}>
+                <Phone size={16} style={{ color: 'var(--primary)' }} />
                 <div>
-                  <div className="text-[10px] text-zinc-500">الهاتف</div>
-                  <div className="text-sm font-medium text-white" dir="ltr">{booking?.ClientMobile || '—'}</div>
+                  <div className="text-[10px] text-muted-foreground/70">الهاتف</div>
+                  <div className="text-sm font-medium text-foreground" dir="ltr">{booking?.ClientMobile || '—'}</div>
                 </div>
               </div>
             </div>
@@ -372,23 +372,23 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
 
           {/* Booking Info */}
           <div className="space-y-2">
-            <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">معلومات الحجز</h3>
+            <h3 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">معلومات الحجز</h3>
             <div className="grid grid-cols-2 gap-3">
-              <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: '#1a1a1f' }}>
-                <Calendar size={16} style={{ color: '#d4af37' }} />
+              <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: 'var(--surface)' }}>
+                <Calendar size={16} style={{ color: 'var(--primary)' }} />
                 <div>
-                  <div className="text-[10px] text-zinc-500">التاريخ</div>
-                  <div className="text-sm font-medium text-white">
+                  <div className="text-[10px] text-muted-foreground/70">التاريخ</div>
+                  <div className="text-sm font-medium text-foreground">
                     {/* Prefer normalized display date, fallback to parsing */}
                     {booking?.dateDisplay || item.dateDisplay || formatDate(booking?.BookingDate || item.startTime)}
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: '#1a1a1f' }}>
-                <Clock size={16} style={{ color: '#d4af37' }} />
+              <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: 'var(--surface)' }}>
+                <Clock size={16} style={{ color: 'var(--primary)' }} />
                 <div>
-                  <div className="text-[10px] text-zinc-500">الوقت</div>
-                  <div className="text-sm font-medium text-white">
+                  <div className="text-[10px] text-muted-foreground/70">الوقت</div>
+                  <div className="text-sm font-medium text-foreground">
                     {/* Use normalized display fields for consistent Cairo time display */}
                     {formatTime(booking?.StartTime || item.startTime, booking?.startTimeDisplay || item.startTimeDisplay)}
                     {' — '}
@@ -396,18 +396,18 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: '#1a1a1f' }}>
-                <Tag size={16} style={{ color: '#d4af37' }} />
+              <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: 'var(--surface)' }}>
+                <Tag size={16} style={{ color: 'var(--primary)' }} />
                 <div>
-                  <div className="text-[10px] text-zinc-500">المدة</div>
-                  <div className="text-sm font-medium text-white">{getDuration()}</div>
+                  <div className="text-[10px] text-muted-foreground/70">المدة</div>
+                  <div className="text-sm font-medium text-foreground">{getDuration()}</div>
                 </div>
               </div>
-              <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: '#1a1a1f' }}>
-                <Scissors size={16} style={{ color: '#d4af37' }} />
+              <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: 'var(--surface)' }}>
+                <Scissors size={16} style={{ color: 'var(--primary)' }} />
                 <div>
-                  <div className="text-[10px] text-zinc-500">الحلاق</div>
-                  <div className="text-sm font-medium text-white">{booking?.EmpName || '—'}</div>
+                  <div className="text-[10px] text-muted-foreground/70">الحلاق</div>
+                  <div className="text-sm font-medium text-foreground">{booking?.EmpName || '—'}</div>
                 </div>
               </div>
             </div>
@@ -422,21 +422,21 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
           {/* Services */}
           {booking?.services && booking.services.length > 0 && (
             <div className="space-y-2">
-              <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">الخدمات</h3>
+              <h3 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">الخدمات</h3>
               <div className="space-y-1">
                 {booking.services.map((svc, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-2 rounded-lg" style={{ background: '#1a1a1f' }}>
+                  <div key={idx} className="flex items-center justify-between p-2 rounded-lg" style={{ background: 'var(--surface)' }}>
                     <div className="flex items-center gap-2">
-                      <Receipt size={14} style={{ color: '#d4af37' }} />
-                      <span className="text-sm text-white">{svc.ProName || 'خدمة'}</span>
+                      <Receipt size={14} style={{ color: 'var(--primary)' }} />
+                      <span className="text-sm text-foreground">{svc.ProName || 'خدمة'}</span>
                     </div>
-                    <span className="text-sm font-medium" style={{ color: '#d4af37' }}>{svc.Price?.toFixed(2) || '—'} ج.م</span>
+                    <span className="text-sm font-medium" style={{ color: 'var(--primary)' }}>{svc.Price?.toFixed(2) || '—'} ج.م</span>
                   </div>
                 ))}
                 {getTotalPrice() && (
-                  <div className="flex items-center justify-between p-2 rounded-lg mt-2" style={{ background: '#d4af3720', border: '1px solid #d4af3740' }}>
-                    <span className="text-sm font-medium text-white">الإجمالي</span>
-                    <span className="text-sm font-bold" style={{ color: '#d4af37' }}>{getTotalPrice()?.toFixed(2)} ج.م</span>
+                  <div className="flex items-center justify-between p-2 rounded-lg mt-2" style={{ background: 'var(--primary)20', border: '1px solid var(--primary)40' }}>
+                    <span className="text-sm font-medium text-foreground">الإجمالي</span>
+                    <span className="text-sm font-bold" style={{ color: 'var(--primary)' }}>{getTotalPrice()?.toFixed(2)} ج.م</span>
                   </div>
                 )}
               </div>
@@ -446,17 +446,17 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
           {/* Notes */}
           {booking?.Notes && (
             <div className="space-y-2">
-              <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">ملاحظات</h3>
-              <div className="flex items-start gap-2 p-3 rounded-lg" style={{ background: '#1a1a1f' }}>
-                <FileText size={16} style={{ color: '#d4af37', marginTop: '2px' }} />
-                <p className="text-sm text-zinc-300">{booking.Notes}</p>
+              <h3 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">ملاحظات</h3>
+              <div className="flex items-start gap-2 p-3 rounded-lg" style={{ background: 'var(--surface)' }}>
+                <FileText size={16} style={{ color: 'var(--primary)', marginTop: '2px' }} />
+                <p className="text-sm text-foreground">{booking.Notes}</p>
               </div>
             </div>
           )}
         </div>
 
         {/* Footer Actions */}
-        <div className="px-5 py-4 border-t flex gap-3" style={{ borderColor: '#2A2A35', background: '#1a1a1f' }}>
+        <div className="px-5 py-4 border-t flex gap-3" style={{ borderColor: 'var(--surface-muted)', background: 'var(--surface)' }}>
           {item.type === 'booking' ? (
             <>
               {/* Print Booking Ticket Button */}
@@ -464,7 +464,7 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
                 onClick={handlePrint}
                 disabled={printing}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-semibold transition-all hover:opacity-80 disabled:opacity-50"
-                style={{ borderColor: '#d4af3744', color: '#d4af37', background: '#d4af3711' }}
+                style={{ borderColor: 'color-mix(in srgb, var(--primary) 25%, transparent)', color: 'var(--primary)', background: 'color-mix(in srgb, var(--primary) 7%, transparent)' }}
               >
                 {printing ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
                 {printing ? 'جاري الطباعة...' : 'طباعة ورقة الحجز'}
@@ -472,7 +472,7 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
               <button
                 disabled
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-semibold transition-all opacity-50 cursor-not-allowed"
-                style={{ borderColor: '#52525b', color: '#71717a', background: 'rgba(255,255,255,0.05)' }}
+                style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)', background: 'var(--muted-foreground)/5' }}
                 title="تعديل الحجز سيتم تفعيله في المرحلة القادمة"
               >
                 <Pencil size={16} />
@@ -482,7 +482,7 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={deleting}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-semibold transition-all hover:opacity-80 disabled:opacity-50"
-                style={{ borderColor: '#ef444444', color: '#ef4444', background: '#ef444411' }}
+                style={{ borderColor: 'color-mix(in srgb, var(--destructive) 25%, transparent)', color: 'var(--destructive)', background: 'color-mix(in srgb, var(--destructive) 7%, transparent)' }}
               >
                 <XCircle size={16} />
                 إلغاء الحجز
@@ -495,7 +495,7 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
                   onClick={() => setShowTransfer(true)}
                   disabled={transferring}
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-semibold transition-all hover:opacity-80 disabled:opacity-50"
-                  style={{ borderColor: '#8B5CF644', color: '#8B5CF6', background: '#8B5CF611' }}
+                  style={{ borderColor: 'color-mix(in srgb, var(--accent) 25%, transparent)', color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 7%, transparent)' }}
                 >
                   <ArrowLeftRight size={16} />
                   نقل لحلاق آخر
@@ -505,7 +505,7 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={cancelling}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-semibold transition-all hover:opacity-80 disabled:opacity-50"
-                style={{ borderColor: '#ef444444', color: '#ef4444', background: '#ef444411' }}
+                style={{ borderColor: 'color-mix(in srgb, var(--destructive) 25%, transparent)', color: 'var(--destructive)', background: 'color-mix(in srgb, var(--destructive) 7%, transparent)' }}
               >
                 <XCircle size={16} />
                 {cancelling ? 'جاري الإلغاء...' : 'إلغاء الدور'}
@@ -514,8 +514,8 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
           ) : null}
           <button
             onClick={onClose}
-            className="px-6 py-2.5 rounded-xl text-sm font-medium transition-all hover:bg-zinc-800"
-            style={{ color: '#a1a1aa', background: '#2A2A35' }}
+            className="px-6 py-2.5 rounded-xl text-sm font-medium transition-all hover:bg-surface-muted"
+            style={{ color: 'var(--muted-foreground)', background: 'var(--surface-muted)' }}
           >
             إغلاق
           </button>
@@ -523,29 +523,29 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
 
         {/* Cancel Confirmation Dialog */}
         {showDeleteConfirm && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm z-10">
-            <div className="mx-4 p-5 rounded-xl max-w-sm w-full" style={{ background: '#1a1a1f', border: '1px solid #ef444450' }}>
+          <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-10">
+            <div className="mx-4 p-5 rounded-xl max-w-sm w-full" style={{ background: 'var(--surface)', border: '1px solid color-mix(in srgb, var(--destructive) 30%, transparent)' }}>
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: '#ef444420' }}>
-                  <XCircle size={20} style={{ color: '#ef4444' }} />
+                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: 'color-mix(in srgb, var(--destructive) 12%, transparent)' }}>
+                  <XCircle size={20} style={{ color: 'var(--destructive)' }} />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">
+                  <h3 className="text-lg font-bold text-foreground">
                     {item.type === 'queue' ? 'إلغاء الدور' : 'إلغاء الحجز'}
                   </h3>
-                  <p className="text-sm text-zinc-400">
+                  <p className="text-sm text-muted-foreground">
                     {item.type === 'queue' ? 'هل أنت متأكد من إلغاء هذا الدور؟' : 'هل أنت متأكد من إلغاء هذا الحجز؟'}
                   </p>
                 </div>
               </div>
-              <p className="text-sm text-zinc-400 mb-4">
+              <p className="text-sm text-muted-foreground mb-4">
                 سيتم إخفاؤه من جدول التشغيل ولن يتم احتسابه كـ {item.type === 'queue' ? 'دور' : 'حجز'} نشط.
               </p>
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowDeleteConfirm(false)}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all hover:bg-zinc-800"
-                  style={{ color: '#a1a1aa', background: '#2A2A35' }}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all hover:bg-surface-muted"
+                  style={{ color: 'var(--muted-foreground)', background: 'var(--surface-muted)' }}
                 >
                   إلغاء
                 </button>
@@ -553,7 +553,7 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
                   onClick={item.type === 'queue' ? handleCancel : handleDelete}
                   disabled={deleting || cancelling}
                   className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-80 disabled:opacity-50"
-                  style={{ background: '#ef4444', color: '#fff' }}
+                  style={{ background: 'var(--destructive)', color: 'var(--foreground)' }}
                 >
                   {deleting || cancelling ? <Loader2 size={16} className="animate-spin mx-auto" /> : 'تأكيد الإلغاء'}
                 </button>
@@ -564,15 +564,15 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
 
         {/* Transfer Dialog */}
         {showTransfer && barbers && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm z-10">
-            <div className="mx-4 p-5 rounded-xl max-w-sm w-full" style={{ background: '#1a1a1f', border: '1px solid #8B5CF650' }}>
+          <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-10">
+            <div className="mx-4 p-5 rounded-xl max-w-sm w-full" style={{ background: 'var(--surface)', border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)' }}>
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: '#8B5CF620' }}>
-                  <ArrowLeftRight size={20} style={{ color: '#8B5CF6' }} />
+                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: 'color-mix(in srgb, var(--accent) 12%, transparent)' }}>
+                  <ArrowLeftRight size={20} style={{ color: 'var(--accent)' }} />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">نقل الدور لحلاق آخر</h3>
-                  <p className="text-sm text-zinc-400">اختر الحلاق الجديد لنقل {item.label} إليه</p>
+                  <h3 className="text-lg font-bold text-foreground">نقل الدور لحلاق آخر</h3>
+                  <p className="text-sm text-muted-foreground">اختر الحلاق الجديد لنقل {item.label} إليه</p>
                 </div>
               </div>
               <div className="space-y-2 max-h-60 overflow-y-auto mb-4">
@@ -584,30 +584,30 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
                       onClick={() => setSelectedBarber(b.empId)}
                       className="w-full flex items-center justify-between px-4 py-3 rounded-xl border text-sm transition-all"
                       style={{
-                        borderColor: selectedBarber === b.empId ? '#8B5CF6' : '#2A2A35',
-                        background: selectedBarber === b.empId ? 'rgba(139,92,246,0.12)' : 'transparent',
-                        color: b.status === 'working' ? '#F7F1E5' : '#6B7280',
+                        borderColor: selectedBarber === b.empId ? 'var(--accent)' : 'var(--surface-muted)',
+                        background: selectedBarber === b.empId ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
+                        color: b.status === 'working' ? 'var(--foreground)' : 'var(--muted-foreground)',
                       }}
                     >
                       <span className="font-medium">{b.empName}</span>
                       <span className="text-xs px-2 py-0.5 rounded-full"
                         style={{
-                          background: b.status === 'working' ? 'rgba(16,185,129,0.15)' : 'rgba(107,114,128,0.15)',
-                          color: b.status === 'working' ? '#10B981' : '#6B7280',
+                          background: b.status === 'working' ? 'color-mix(in srgb, var(--success) 15%, transparent)' : 'color-mix(in srgb, var(--muted-foreground) 15%, transparent)',
+                          color: b.status === 'working' ? 'var(--success)' : 'var(--muted-foreground)',
                         }}>
                         {b.status === 'working' ? 'متاح' : b.status === 'day_off' ? 'إجازة' : 'خارج الدوام'}
                       </span>
                     </button>
                   ))}
                 {barbers.filter(b => b.empId !== item.barberId).length === 0 && (
-                  <p className="text-zinc-500 text-sm text-center py-4">لا يوجد حلاقون آخرون متاحون</p>
+                  <p className="text-muted-foreground/70 text-sm text-center py-4">لا يوجد حلاقون آخرون متاحون</p>
                 )}
               </div>
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowTransfer(false)}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all hover:bg-zinc-800"
-                  style={{ color: '#a1a1aa', background: '#2A2A35' }}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all hover:bg-surface-muted"
+                  style={{ color: 'var(--muted-foreground)', background: 'var(--surface-muted)' }}
                 >
                   إلغاء
                 </button>
@@ -615,7 +615,7 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
                   onClick={handleTransfer}
                   disabled={!selectedBarber || transferring}
                   className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-80 disabled:opacity-50"
-                  style={{ background: '#8B5CF6', color: '#fff' }}
+                  style={{ background: 'var(--accent)', color: 'var(--foreground)' }}
                 >
                   {transferring ? <Loader2 size={16} className="animate-spin mx-auto" /> : 'نقل'}
                 </button>
