@@ -114,8 +114,8 @@ export default function CloseDayModal({ open, onClose, onClosed }: Props) {
       <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center gap-3 p-5 border-b border-border">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-amber-500/10">
-            <CalendarDays className="w-5 h-5 text-amber-500" />
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-warning/10">
+            <CalendarDays className="w-5 h-5 text-warning" />
           </div>
           <div>
             <h2 className="text-lg font-bold">ملخص اليوم قبل الإغلاق</h2>
@@ -192,8 +192,8 @@ export default function CloseDayModal({ open, onClose, onClosed }: Props) {
 
           {/* Open Shifts Warning */}
           {openShiftsWarning.length > 0 && (
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
-              <div className="flex items-center gap-2 text-amber-500">
+            <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 space-y-3">
+              <div className="flex items-center gap-2 text-warning">
                 <AlertTriangle className="w-5 h-5 shrink-0" />
                 <h4 className="font-semibold text-sm">يوجد {openShiftsWarning.length} وردية مفتوحة</h4>
               </div>
@@ -214,7 +214,7 @@ export default function CloseDayModal({ open, onClose, onClosed }: Props) {
                 size="sm"
                 onClick={() => handleClose(true)}
                 disabled={actionLoading}
-                className="border-amber-500/30 text-amber-500 hover:bg-amber-500/10"
+                className="border-warning/30 text-warning hover:bg-warning/10"
               >
                 {actionLoading ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Clock className="w-4 h-4 ml-2" />}
                 إغلاق الورديات المفتوحة وإغلاق اليوم

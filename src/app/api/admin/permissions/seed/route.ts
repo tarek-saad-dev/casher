@@ -29,6 +29,7 @@ const PAGES = [
   { key: 'income_review.all_rev',  name: 'كل الإيرادات',           path: '/income-review/all-revenue',       section: 'مراجعة المدخلات',   access: 'roles', sort: 23 },
   { key: 'income_review.payments', name: 'المدفوعات',              path: '/income-review/payments',          section: 'مراجعة المدخلات',   access: 'roles', sort: 24 },
   { key: 'reports.emp_services',   name: 'خدمات الصنايعية',        path: '/admin/reports/employee-services', section: 'مراجعة المدخلات',   access: 'roles', sort: 25 },
+  { key: 'reports.emp_monthly_work_revenue', name: 'مواعيد وإيرادات الموظفين', path: '/admin/reports/employee-monthly-work-revenue', section: 'مراجعة المدخلات', access: 'roles', sort: 27 },
   { key: 'reports.monthly',        name: 'التقرير الشهري',         path: '/reports/monthly',                 section: 'مراجعة المدخلات',   access: 'roles', sort: 26 },
   { key: 'reports.partners',       name: 'تقرير الشركاء',          path: '/admin/reports/partners',          section: 'التقارير',          access: 'roles', sort: 27 },
   // Expenses
@@ -92,7 +93,7 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
     pages: [
       'income.pos','income.new',
       'sales.today','income_review.all_sales','income_review.today_rev','income_review.all_rev',
-      'income_review.payments','reports.emp_services','reports.monthly','reports.partners',
+      'income_review.payments','reports.emp_services','reports.emp_monthly_work_revenue','reports.monthly','reports.partners',
       'expenses.new','reports.expenses',
       'treasury.daily','treasury.period_summary','treasury.movement','treasury.summary',
       'treasury.shift_close','treasury.monthly_close',
@@ -111,7 +112,7 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
     role: 'manager',
     pages: [
       'income.pos','sales.today','income_review.all_sales','income_review.today_rev',
-      'reports.monthly','reports.expenses',
+      'reports.monthly','reports.expenses','reports.emp_services','reports.emp_monthly_work_revenue',
       'treasury.daily','treasury.period_summary','cashier_treasury_daily',
       'queue.live','queue.new',
       'bookings.list','bookings.new','bookings.calendar',

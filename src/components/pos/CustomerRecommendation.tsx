@@ -15,16 +15,16 @@ export default function CustomerRecommendation({ recommendation }: CustomerRecom
     switch (recommendation.priority) {
       case 'high':
         return {
-          bg: 'bg-orange-500/10',
-          border: 'border-orange-500/30',
-          text: 'text-orange-500',
+          bg: 'bg-warning/10',
+          border: 'border-warning/30',
+          text: 'text-warning',
           icon: TrendingUp,
         };
       case 'medium':
         return {
-          bg: 'bg-blue-500/10',
-          border: 'border-blue-500/30',
-          text: 'text-blue-500',
+          bg: 'bg-info/10',
+          border: 'border-info/30',
+          text: 'text-info',
           icon: Star,
         };
       default:

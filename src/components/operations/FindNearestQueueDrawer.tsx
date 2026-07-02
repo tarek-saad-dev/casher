@@ -315,38 +315,38 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
         <div className="w-full max-w-lg rounded-2xl border overflow-hidden flex flex-col max-h-[90vh]"
-          style={{ background: '#0a0a0a', borderColor: 'rgba(212,175,55,0.2)' }}>
+          style={{ background: 'var(--surface)', borderColor: 'color-mix(in srgb, var(--primary) 20%, transparent)' }}>
 
           {/* Header */}
           <div className="px-5 py-4 border-b flex items-center justify-between"
-            style={{ borderColor: 'rgba(212,175,55,0.15)', background: 'rgba(212,175,55,0.05)' }}>
+            style={{ borderColor: 'color-mix(in srgb, var(--primary) 15%, transparent)', background: 'color-mix(in srgb, var(--primary) 5%, transparent)' }}>
             <div className="flex items-center gap-2">
-              <Zap className="w-5 h-5" style={{ color: '#22c55e' }} />
-              <h2 className="text-lg font-bold text-white">إيجاد أقرب دور</h2>
+              <Zap className="w-5 h-5" style={{ color: 'var(--success)' }} />
+              <h2 className="text-lg font-bold text-foreground">إيجاد أقرب دور</h2>
             </div>
-            <button onClick={onClose} className="p-2 rounded-lg hover:bg-zinc-800 transition-colors">
-              <X className="w-5 h-5 text-zinc-400" />
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-surface-muted transition-colors">
+              <X className="w-5 h-5 text-muted-foreground" />
             </button>
           </div>
 
           {/* Step indicator */}
-          <div className="px-5 py-3 border-b flex items-center gap-2" style={{ borderColor: 'rgba(212,175,55,0.1)' }}>
+          <div className="px-5 py-3 border-b flex items-center gap-2" style={{ borderColor: 'color-mix(in srgb, var(--primary) 10%, transparent)' }}>
             <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${
-              step === 1 ? 'bg-zinc-800 text-white' : 'text-zinc-500'
+              step === 1 ? 'bg-surface-muted text-foreground' : 'text-muted-foreground/70'
             }`}>
               <Scissors className="w-4 h-4" />
               <span>الخدمة</span>
             </div>
-            <ChevronLeft className="w-4 h-4 text-zinc-600" />
+            <ChevronLeft className="w-4 h-4 text-muted-foreground/50" />
             <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${
-              step === 2 ? 'bg-zinc-800 text-white' : step > 2 ? 'text-zinc-400' : 'text-zinc-500'
+              step === 2 ? 'bg-surface-muted text-foreground' : step > 2 ? 'text-muted-foreground' : 'text-muted-foreground/70'
             }`}>
               <User className="w-4 h-4" />
               <span>الحلاق</span>
             </div>
-            <ChevronLeft className="w-4 h-4 text-zinc-600" />
+            <ChevronLeft className="w-4 h-4 text-muted-foreground/50" />
             <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${
-              step === 3 ? 'bg-zinc-800 text-white' : 'text-zinc-500'
+              step === 3 ? 'bg-surface-muted text-foreground' : 'text-muted-foreground/70'
             }`}>
               <Ticket className="w-4 h-4" />
               <span>التأكيد</span>
@@ -357,7 +357,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
           <div className="flex-1 overflow-y-auto p-5">
             {error && (
               <div className="mb-4 p-3 rounded-lg border flex items-center gap-2"
-                style={{ background: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.3)', color: '#ef4444' }}>
+                style={{ background: 'color-mix(in srgb, var(--destructive) 10%, transparent)', borderColor: 'color-mix(in srgb, var(--destructive) 30%, transparent)', color: 'var(--destructive)' }}>
                 <AlertCircle className="w-5 h-5 shrink-0" />
                 <p className="text-sm">{error}</p>
               </div>
@@ -367,21 +367,21 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
             {step === 1 && (
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-2">اختر الخدمة</label>
+                  <label className="block text-sm font-medium text-foreground mb-2">اختر الخدمة</label>
                   {selectedService ? (
                     <div className="flex items-center justify-between p-3 rounded-lg border"
-                      style={{ background: 'rgba(34,197,94,0.1)', borderColor: 'rgba(34,197,94,0.3)' }}>
+                      style={{ background: 'color-mix(in srgb, var(--success) 10%, transparent)', borderColor: 'color-mix(in srgb, var(--success) 30%, transparent)' }}>
                       <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-5 h-5 text-green-500" />
+                        <CheckCircle2 className="w-5 h-5 text-success" />
                         <div>
-                          <p className="font-medium text-white">{selectedService.ProName}</p>
-                          <p className="text-xs text-zinc-400">
+                          <p className="font-medium text-foreground">{selectedService.ProName}</p>
+                          <p className="text-xs text-muted-foreground">
                             {selectedService.DurationMinutes ? `${selectedService.DurationMinutes} دقيقة` : 'مدة غير محددة'}
                           </p>
                         </div>
                       </div>
                       <button onClick={() => { setSelectedService(null); setEstimate(null); }}
-                        className="text-xs px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 transition-colors text-zinc-300">
+                        className="text-xs px-2 py-1 rounded bg-surface-muted hover:bg-surface-muted/80 transition-colors text-foreground">
                         تغيير
                       </button>
                     </div>
@@ -391,14 +391,14 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                         <button
                           key={svc.ProID}
                           onClick={() => { setSelectedService(svc); }}
-                          className="p-3 rounded-lg border text-right hover:border-amber-500/50 transition-all flex items-center justify-between"
-                          style={{ background: '#111', borderColor: 'rgba(212,175,55,0.15)' }}
+                          className="p-3 rounded-lg border text-right hover:border-primary/50 transition-all flex items-center justify-between"
+                          style={{ background: 'var(--surface-muted)', borderColor: 'color-mix(in srgb, var(--primary) 15%, transparent)' }}
                         >
                           <div className="flex items-center gap-2">
-                            <Scissors className="w-4 h-4 text-zinc-500" />
-                            <span className="text-sm text-white">{svc.ProName}</span>
+                            <Scissors className="w-4 h-4 text-muted-foreground/70" />
+                            <span className="text-sm text-foreground">{svc.ProName}</span>
                           </div>
-                          <div className="text-xs text-zinc-400">
+                          <div className="text-xs text-muted-foreground">
                             {svc.DurationMinutes ? `${svc.DurationMinutes} دقيقة` : ''}
                           </div>
                         </button>
@@ -411,7 +411,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                   <button
                     onClick={() => setStep(2)}
                     className="w-full py-3 rounded-xl font-bold text-base transition-all"
-                    style={{ background: '#d4af37', color: '#050505' }}
+                    style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
                   >
                     التالي: اختيار الحلاق
                   </button>
@@ -423,31 +423,31 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
             {step === 2 && (
               <div className="space-y-4">
                 {/* Service Summary (Read-only) */}
-                <div className="p-3 rounded-lg border" style={{ background: 'rgba(212,175,55,0.05)', borderColor: 'rgba(212,175,55,0.15)' }}>
+                <div className="p-3 rounded-lg border" style={{ background: 'color-mix(in srgb, var(--primary) 5%, transparent)', borderColor: 'color-mix(in srgb, var(--primary) 15%, transparent)' }}>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-zinc-400">الخدمة المختارة</span>
-                    <button onClick={() => setStep(1)} className="text-xs text-amber-500 hover:underline">تغيير</button>
+                    <span className="text-xs text-muted-foreground">الخدمة المختارة</span>
+                    <button onClick={() => setStep(1)} className="text-xs text-primary hover:underline">تغيير</button>
                   </div>
-                  <p className="text-sm font-medium text-white mt-1">{selectedService?.ProName}</p>
-                  <p className="text-xs text-zinc-500">{selectedService?.DurationMinutes ? `${selectedService.DurationMinutes} دقيقة` : ''}</p>
+                  <p className="text-sm font-medium text-foreground mt-1">{selectedService?.ProName}</p>
+                  <p className="text-xs text-muted-foreground/70">{selectedService?.DurationMinutes ? `${selectedService.DurationMinutes} دقيقة` : ''}</p>
                 </div>
 
                 {/* Estimate Results */}
                 {estimating && (
                   <div className="flex flex-col items-center justify-center py-8">
-                    <Loader2 className="w-8 h-8 text-amber-500 animate-spin mb-3" />
-                    <p className="text-sm text-zinc-400">جاري حساب أقرب دور...</p>
+                    <Loader2 className="w-8 h-8 text-primary animate-spin mb-3" />
+                    <p className="text-sm text-muted-foreground">جاري حساب أقرب دور...</p>
                   </div>
                 )}
 
                 {estimate && !estimating && (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-bold text-white">أقرب الخيارات المتاحة</h3>
+                      <h3 className="text-sm font-bold text-foreground">أقرب الخيارات المتاحة</h3>
                       <button
                         onClick={fetchEstimate}
                         className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors"
-                        style={{ color: '#d4af37' }}
+                        style={{ color: 'var(--primary)' }}
                       >
                         <RefreshCw className="w-3 h-3" />
                         تحديث
@@ -460,39 +460,39 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                         onClick={() => setSelectedOption(estimate.best)}
                         style={{
                           background: selectedOption?.empId === estimate.best.empId
-                            ? 'rgba(34,197,94,0.15)'
-                            : 'rgba(34,197,94,0.05)',
+                            ? 'color-mix(in srgb, var(--success) 15%, transparent)'
+                            : 'color-mix(in srgb, var(--success) 5%, transparent)',
                           borderColor: selectedOption?.empId === estimate.best.empId
-                            ? '#22c55e'
-                            : 'rgba(34,197,94,0.3)',
+                            ? 'var(--success)'
+                            : 'color-mix(in srgb, var(--success) 30%, transparent)',
                         }}>
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
-                            <Zap className="w-5 h-5" style={{ color: '#22c55e' }} />
-                            <span className="font-bold text-white">{estimate.best.empName}</span>
+                            <Zap className="w-5 h-5" style={{ color: 'var(--success)' }} />
+                            <span className="font-bold text-foreground">{estimate.best.empName}</span>
                             <span className="text-xs px-2 py-0.5 rounded-full"
-                              style={{ background: 'rgba(34,197,94,0.2)', color: '#22c55e' }}>
+                              style={{ background: 'color-mix(in srgb, var(--success) 20%, transparent)', color: 'var(--success)' }}>
                               الأفضل
                             </span>
                           </div>
                           {selectedOption?.empId === estimate.best.empId && (
-                            <CheckCircle2 className="w-5 h-5 text-green-500" />
+                            <CheckCircle2 className="w-5 h-5 text-success" />
                           )}
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-xs">
-                          <div className="flex items-center gap-1 text-zinc-400">
+                          <div className="flex items-center gap-1 text-muted-foreground">
                             <Clock className="w-3.5 h-3.5" />
                             <span>متاح {estimate.best.isFreeNow ? 'الآن' : fmtTime(estimate.best.estimatedStartTime)}</span>
                           </div>
-                          <div className="flex items-center gap-1 text-zinc-400">
+                          <div className="flex items-center gap-1 text-muted-foreground">
                             <Users className="w-3.5 h-3.5" />
                             <span>{estimate.best.waitingCount} دور قبلك</span>
                           </div>
-                          <div className="flex items-center gap-1 text-zinc-400">
+                          <div className="flex items-center gap-1 text-muted-foreground">
                             <Scissors className="w-3.5 h-3.5" />
                             <span>{formatDuration(selectedService?.DurationMinutes ?? 30)}</span>
                           </div>
-                          <div className="flex items-center gap-1 text-zinc-400">
+                          <div className="flex items-center gap-1 text-muted-foreground">
                             <Clock className="w-3.5 h-3.5" />
                             <span>{estimate.best.estimatedWaitMinutes} دقيقة انتظار</span>
                           </div>
@@ -503,7 +503,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                     {/* Alternatives */}
                     {estimate.alternatives.length > 0 && (
                       <div className="space-y-2">
-                        <h4 className="text-xs font-medium text-zinc-500">بدائل أخرى</h4>
+                        <h4 className="text-xs font-medium text-muted-foreground/70">بدائل أخرى</h4>
                         {estimate.alternatives.map((alt) => (
                           <div
                             key={alt.empId}
@@ -511,23 +511,23 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                             className="p-3 rounded-lg border cursor-pointer transition-all"
                             style={{
                               background: selectedOption?.empId === alt.empId
-                                ? 'rgba(212,175,55,0.15)'
-                                : 'rgba(255,255,255,0.02)',
+                                ? 'color-mix(in srgb, var(--primary) 15%, transparent)'
+                                : 'color-mix(in srgb, var(--foreground) 2%, transparent)',
                               borderColor: selectedOption?.empId === alt.empId
-                                ? 'rgba(212,175,55,0.5)'
-                                : 'rgba(255,255,255,0.1)',
+                                ? 'color-mix(in srgb, var(--primary) 50%, transparent)'
+                                : 'color-mix(in srgb, var(--foreground) 10%, transparent)',
                             }}
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <User className="w-4 h-4 text-zinc-500" />
-                                <span className="font-medium text-white">{alt.empName}</span>
+                                <User className="w-4 h-4 text-muted-foreground/70" />
+                                <span className="font-medium text-foreground">{alt.empName}</span>
                               </div>
-                              <div className="text-xs text-zinc-400">
+                              <div className="text-xs text-muted-foreground">
                                 متاح {fmtTime(alt.estimatedStartTime)}
                               </div>
                             </div>
-                            <div className="flex items-center gap-4 mt-1 text-xs text-zinc-500">
+                            <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground/70">
                               <span>{alt.waitingCount} دور قبلك</span>
                               <span>{alt.estimatedWaitMinutes} دقيقة انتظار</span>
                             </div>
@@ -539,24 +539,24 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                     {/* No options available */}
                     {!estimate.best?.available && estimate.alternatives.length === 0 && (
                       <div className="p-6 text-center rounded-lg border"
-                        style={{ background: 'rgba(239,68,68,0.05)', borderColor: 'rgba(239,68,68,0.2)' }}>
-                        <AlertCircle className="w-8 h-8 mx-auto mb-2" style={{ color: '#ef4444' }} />
-                        <p className="text-sm font-medium text-white">لا يوجد حلاق متاح حالياً</p>
-                        <p className="text-xs text-zinc-400 mt-1">جرب تحديث القائمة لاحقاً</p>
+                        style={{ background: 'color-mix(in srgb, var(--destructive) 5%, transparent)', borderColor: 'color-mix(in srgb, var(--destructive) 20%, transparent)' }}>
+                        <AlertCircle className="w-8 h-8 mx-auto mb-2" style={{ color: 'var(--destructive)' }} />
+                        <p className="text-sm font-medium text-foreground">لا يوجد حلاق متاح حالياً</p>
+                        <p className="text-xs text-muted-foreground mt-1">جرب تحديث القائمة لاحقاً</p>
                       </div>
                     )}
 
                     {/* Unavailable barbers (collapsed) */}
                     {estimate.unavailable.length > 0 && (
                       <details className="mt-3">
-                        <summary className="text-xs text-zinc-500 cursor-pointer py-2">
+                        <summary className="text-xs text-muted-foreground/70 cursor-pointer py-2">
                           غير متاح ({estimate.unavailable.length})
                         </summary>
                         <div className="space-y-1 mt-1">
                           {estimate.unavailable.map((u) => (
                             <div key={u.empId} className="flex items-center justify-between px-2 py-1 text-xs">
-                              <span className="text-zinc-400">{u.empName}</span>
-                              <span className="text-zinc-600">{u.reason}</span>
+                              <span className="text-muted-foreground">{u.empName}</span>
+                              <span className="text-muted-foreground/50">{u.reason}</span>
                             </div>
                           ))}
                         </div>
@@ -568,7 +568,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                       <button
                         onClick={() => setStep(1)}
                         className="flex-1 py-3 rounded-xl font-bold text-base transition-all border"
-                        style={{ borderColor: 'rgba(255,255,255,0.1)', color: '#fff' }}
+                        style={{ borderColor: 'color-mix(in srgb, var(--foreground) 10%, transparent)', color: 'var(--foreground)' }}
                       >
                         رجوع
                       </button>
@@ -576,7 +576,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                         <button
                           onClick={() => setStep(3)}
                           className="flex-[2] py-3 rounded-xl font-bold text-base transition-all"
-                          style={{ background: '#d4af37', color: '#050505' }}
+                          style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
                         >
                           التالي: التأكيد والعميل
                         </button>
@@ -592,52 +592,52 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
               <div className="space-y-4">
                 {/* Summary Card */}
                 <div className="p-4 rounded-xl border"
-                  style={{ background: 'rgba(212,175,55,0.05)', borderColor: 'rgba(212,175,55,0.2)' }}>
-                  <h3 className="text-sm font-medium text-zinc-400 mb-3">ملخص الدور</h3>
+                  style={{ background: 'color-mix(in srgb, var(--primary) 5%, transparent)', borderColor: 'color-mix(in srgb, var(--primary) 20%, transparent)' }}>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-3">ملخص الدور</h3>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-zinc-400">الخدمة</span>
-                      <span className="text-sm font-medium text-white">{selectedService.ProName}</span>
+                      <span className="text-sm text-muted-foreground">الخدمة</span>
+                      <span className="text-sm font-medium text-foreground">{selectedService.ProName}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-zinc-400">الحلاق</span>
-                      <span className="text-sm font-medium" style={{ color: '#d4af37' }}>{selectedOption.empName}</span>
+                      <span className="text-sm text-muted-foreground">الحلاق</span>
+                      <span className="text-sm font-medium" style={{ color: 'var(--primary)' }}>{selectedOption.empName}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-zinc-400">وقت البدء</span>
-                      <span className="text-sm font-medium text-white">
+                      <span className="text-sm text-muted-foreground">وقت البدء</span>
+                      <span className="text-sm font-medium text-foreground">
                         {selectedOption.isFreeNow ? 'فوراً' : fmtTime(selectedOption.estimatedStartTime)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-zinc-400">مدة الخدمة</span>
-                      <span className="text-sm font-medium text-white">{formatDuration(selectedService.DurationMinutes ?? 30)}</span>
+                      <span className="text-sm text-muted-foreground">مدة الخدمة</span>
+                      <span className="text-sm font-medium text-foreground">{formatDuration(selectedService.DurationMinutes ?? 30)}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-zinc-400">الأشخاص قبله</span>
-                      <span className="text-sm font-medium text-white">{selectedOption.waitingCount}</span>
+                      <span className="text-sm text-muted-foreground">الأشخاص قبله</span>
+                      <span className="text-sm font-medium text-foreground">{selectedOption.waitingCount}</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Client Info Section */}
                 <div className="space-y-3">
-                  <label className="block text-sm font-medium text-zinc-300">بيانات العميل <span className="text-zinc-500 text-xs">(اختياري)</span></label>
+                  <label className="block text-sm font-medium text-foreground">بيانات العميل <span className="text-muted-foreground/70 text-xs">(اختياري)</span></label>
 
                   {/* Selected Client Display */}
                   {selectedClient ? (
                     <div className="flex items-center justify-between p-3 rounded-lg border"
-                      style={{ background: 'rgba(34,197,94,0.1)', borderColor: 'rgba(34,197,94,0.3)' }}>
+                      style={{ background: 'color-mix(in srgb, var(--success) 10%, transparent)', borderColor: 'color-mix(in srgb, var(--success) 30%, transparent)' }}>
                       <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-5 h-5 text-green-500" />
+                        <CheckCircle2 className="w-5 h-5 text-success" />
                         <div>
-                          <p className="font-medium text-white">{selectedClient.Name}</p>
-                          {selectedClient.Mobile && <p className="text-xs text-zinc-400">{selectedClient.Mobile}</p>}
+                          <p className="font-medium text-foreground">{selectedClient.Name}</p>
+                          {selectedClient.Mobile && <p className="text-xs text-muted-foreground">{selectedClient.Mobile}</p>}
                         </div>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">عميل موجود</span>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-success/20 text-success">عميل موجود</span>
                       </div>
                       <button onClick={() => { setSelectedClient(null); setClientSearch(''); }}
-                        className="text-xs px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 transition-colors text-zinc-300">
+                        className="text-xs px-2 py-1 rounded bg-surface-muted hover:bg-surface-muted/80 transition-colors text-foreground">
                         تغيير
                       </button>
                     </div>
@@ -646,17 +646,17 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                       {/* Search Input */}
                       <div className="flex items-center gap-2">
                         <div className="relative flex-1">
-                          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/70" />
                           <input
                             type="text"
                             value={clientSearch}
                             onChange={(e) => setClientSearch(e.target.value)}
                             placeholder="رقم الهاتف أو اسم العميل..."
-                            className="w-full pr-10 pl-3 py-2.5 rounded-lg border text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-amber-500/50"
-                            style={{ background: '#111', borderColor: 'rgba(212,175,55,0.2)' }}
+                            className="w-full pr-10 pl-3 py-2.5 rounded-lg border text-sm text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:border-primary/50"
+                            style={{ background: 'var(--surface-muted)', borderColor: 'color-mix(in srgb, var(--primary) 20%, transparent)' }}
                           />
                           {clientSearching && (
-                            <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 animate-spin" />
+                            <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/70 animate-spin" />
                           )}
                         </div>
                         {clientSearch.trim() && (
@@ -664,7 +664,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                             onClick={handleQuickCreate}
                             disabled={quickCreating}
                             className="px-3 py-2.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors"
-                            style={{ background: 'rgba(212,175,55,0.15)', color: '#d4af37' }}
+                            style={{ background: 'color-mix(in srgb, var(--primary) 15%, transparent)', color: 'var(--primary)' }}
                           >
                             {quickCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : '+ عميل جديد'}
                           </button>
@@ -674,7 +674,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                       {/* Search Results Dropdown */}
                       {showClients && clients.length > 0 && (
                         <div className="absolute z-10 w-full mt-1 rounded-lg border overflow-hidden max-h-48 overflow-y-auto"
-                          style={{ background: '#111', borderColor: 'rgba(212,175,55,0.2)' }}>
+                          style={{ background: 'var(--surface-muted)', borderColor: 'color-mix(in srgb, var(--primary) 20%, transparent)' }}>
                           {clients.map((c) => (
                             <button
                               key={c.ClientID}
@@ -684,14 +684,14 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                                 setClients([]);
                                 setShowClients(false);
                               }}
-                              className="w-full px-3 py-2.5 text-right hover:bg-zinc-800 transition-colors flex items-center gap-2"
+                              className="w-full px-3 py-2.5 text-right hover:bg-surface-muted transition-colors flex items-center gap-2"
                             >
-                              <User className="w-4 h-4 text-zinc-500" />
+                              <User className="w-4 h-4 text-muted-foreground/70" />
                               <div className="flex-1">
-                                <p className="text-sm text-white">{c.Name}</p>
-                                {c.Mobile && <p className="text-xs text-zinc-500">{c.Mobile}</p>}
+                                <p className="text-sm text-foreground">{c.Name}</p>
+                                {c.Mobile && <p className="text-xs text-muted-foreground/70">{c.Mobile}</p>}
                               </div>
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">عميل موجود</span>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-success/20 text-success">عميل موجود</span>
                             </button>
                           ))}
                         </div>
@@ -699,7 +699,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
 
                       {/* No client hint */}
                       {!clientSearch.trim() && !selectedClient && (
-                        <p className="text-xs text-zinc-500 mt-2">
+                        <p className="text-xs text-muted-foreground/70 mt-2">
                           يمكنك ترك الحقل فارغاً وسيتم إنشاء الدور باسم "عميل مباشر"
                         </p>
                       )}
@@ -708,7 +708,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
 
                   {/* New client hint */}
                   {clientSearch.trim() && !selectedClient && !showClients && (
-                    <p className="text-xs text-amber-500/80">
+                    <p className="text-xs text-primary/80">
                       عميل جديد — سيتم تسجيله عند إنشاء الدور
                     </p>
                   )}
@@ -717,7 +717,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                 {/* Error Display */}
                 {error && (
                   <div className="p-3 rounded-lg border flex items-center gap-2"
-                    style={{ background: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.3)', color: '#ef4444' }}>
+                    style={{ background: 'color-mix(in srgb, var(--destructive) 10%, transparent)', borderColor: 'color-mix(in srgb, var(--destructive) 30%, transparent)', color: 'var(--destructive)' }}>
                     <AlertCircle className="w-5 h-5 shrink-0" />
                     <p className="text-sm">{error}</p>
                   </div>
@@ -728,7 +728,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                   <button
                     onClick={() => setStep(2)}
                     className="flex-1 py-3 rounded-xl font-bold text-base transition-all border"
-                    style={{ borderColor: 'rgba(255,255,255,0.1)', color: '#fff' }}
+                    style={{ borderColor: 'color-mix(in srgb, var(--foreground) 10%, transparent)', color: 'var(--foreground)' }}
                   >
                     رجوع
                   </button>
@@ -736,7 +736,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                     onClick={handleSubmit}
                     disabled={submitting}
                     className="flex-[2] py-3 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2"
-                    style={{ background: '#22c55e', color: '#fff' }}
+                    style={{ background: 'var(--success)', color: 'var(--success-foreground)' }}
                   >
                     {submitting ? (
                       <Loader2 className="w-5 h-5 animate-spin" />

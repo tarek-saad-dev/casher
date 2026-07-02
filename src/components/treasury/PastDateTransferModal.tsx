@@ -18,13 +18,19 @@ interface PastDateTransferModalProps {
   onClose: () => void;
   onTransferComplete: () => void;
   defaultDate?: string;
+  title?: string;
+  subtitle?: string;
+  transferDateReadOnly?: boolean;
 }
 
 export default function PastDateTransferModal({
   isOpen,
   onClose,
   onTransferComplete,
-  defaultDate
+  defaultDate,
+  title = 'تحويل في يوم سابق',
+  subtitle = 'تحويل مبلغ بين طرق دفع مختلفة',
+  transferDateReadOnly = false,
 }: PastDateTransferModalProps) {
   const [transferDate, setTransferDate] = useState('');
   const [amount, setAmount] = useState('');
@@ -136,22 +142,22 @@ export default function PastDateTransferModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl">
+      <div className="bg-surface border border-border rounded-2xl w-full max-w-md shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-zinc-800">
+        <div className="flex items-center justify-between p-6 border-b border-border">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-cyan-500/15 rounded-lg">
-              <ArrowRightLeft className="h-5 w-5 text-cyan-400" />
+            <div className="p-2 bg-info/15 rounded-lg">
+              <ArrowRightLeft className="h-5 w-5 text-info" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-white">تحويل في يوم سابق</h2>
-              <p className="text-sm text-zinc-400">تحويل مبلغ بين طرق دفع مختلفة</p>
+              <h2 className="text-xl font-semibold text-foreground">{title}</h2>
+              <p className="text-sm text-muted-foreground">{subtitle}</p>
             </div>
           </div>
           <button
             onClick={handleClose}
             disabled={loading}
-            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors disabled:opacity-50"
+            className="p-2 text-muted-foreground hover:text-foreground hover:bg-surface-muted rounded-lg transition-colors disabled:opacity-50"
           >
             <X className="h-5 w-5" />
           </button>
@@ -161,21 +167,26 @@ export default function PastDateTransferModal({
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* Transfer Date */}
           <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-2">
+            <label className="block text-sm font-medium text-foreground/80 mb-2">
               تاريخ التحويل
             </label>
             <Input
               type="date"
               value={transferDate}
               onChange={(e) => setTransferDate(e.target.value)}
-              className="bg-zinc-800 border-zinc-700 text-white"
+              readOnly={transferDateReadOnly}
+              disabled={transferDateReadOnly}
+              className="bg-surface-muted border-border text-foreground disabled:cursor-not-allowed disabled:opacity-80"
               required
             />
+            {transferDateReadOnly && (
+              <p className="mt-1.5 text-xs text-muted-foreground/60">تاريخ اليوم الحالي — غير قابل للتعديل من نقطة البيع</p>
+            )}
           </div>
 
           {/* Amount */}
           <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-2">
+            <label className="block text-sm font-medium text-foreground/80 mb-2">
               المبلغ
             </label>
             <Input
@@ -185,23 +196,23 @@ export default function PastDateTransferModal({
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0.00"
-              className="bg-zinc-800 border-zinc-700 text-white"
+              className="bg-surface-muted border-border text-foreground"
               required
             />
           </div>
 
           {/* From Payment Method */}
           <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-2">
+            <label className="block text-sm font-medium text-foreground/80 mb-2">
               من طريقة الدفع
             </label>
             <Select value={fromPaymentMethod} onValueChange={setFromPaymentMethod} required>
-              <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
+              <SelectTrigger className="bg-surface-muted border-border text-foreground">
                 <SelectValue placeholder="اختر طريقة الدفع" />
               </SelectTrigger>
-              <SelectContent className="bg-zinc-900 border-zinc-700">
+              <SelectContent className="bg-surface border-border">
                 {paymentMethods.map((pm) => (
-                  <SelectItem key={pm.PaymentID} value={pm.PaymentID.toString()} className="text-white">
+                  <SelectItem key={pm.PaymentID} value={pm.PaymentID.toString()} className="text-foreground">
                     {pm.PaymentMethod}
                   </SelectItem>
                 ))}
@@ -211,16 +222,16 @@ export default function PastDateTransferModal({
 
           {/* To Payment Method */}
           <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-2">
+            <label className="block text-sm font-medium text-foreground/80 mb-2">
               إلى طريقة الدفع
             </label>
             <Select value={toPaymentMethod} onValueChange={setToPaymentMethod} required>
-              <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
+              <SelectTrigger className="bg-surface-muted border-border text-foreground">
                 <SelectValue placeholder="اختر طريقة الدفع" />
               </SelectTrigger>
-              <SelectContent className="bg-zinc-900 border-zinc-700">
+              <SelectContent className="bg-surface border-border">
                 {paymentMethods.map((pm) => (
-                  <SelectItem key={pm.PaymentID} value={pm.PaymentID.toString()} className="text-white">
+                  <SelectItem key={pm.PaymentID} value={pm.PaymentID.toString()} className="text-foreground">
                     {pm.PaymentMethod}
                   </SelectItem>
                 ))}
@@ -230,21 +241,21 @@ export default function PastDateTransferModal({
 
           {/* Notes */}
           <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-2">
+            <label className="block text-sm font-medium text-foreground/80 mb-2">
               ملاحظات (اختياري)
             </label>
             <Input
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="ملاحظات التحويل"
-              className="bg-zinc-800 border-zinc-700 text-white"
+              className="bg-surface-muted border-border text-foreground"
             />
           </div>
 
           {/* Error */}
           {error && (
-            <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-lg">
-              <p className="text-rose-400 text-sm">{error}</p>
+            <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
+              <p className="text-destructive text-sm">{error}</p>
             </div>
           )}
 
@@ -255,14 +266,14 @@ export default function PastDateTransferModal({
               variant="outline"
               onClick={handleClose}
               disabled={loading}
-              className="flex-1 border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+              className="flex-1 border-border text-foreground/80 hover:bg-surface-muted"
             >
               إلغاء
             </Button>
             <Button
               type="submit"
               disabled={loading}
-              className="flex-1 bg-cyan-500 hover:bg-cyan-600 text-black font-medium"
+              className="flex-1 bg-primary hover:bg-primary-hover text-primary-foreground font-medium"
             >
               {loading ? (
                 <>

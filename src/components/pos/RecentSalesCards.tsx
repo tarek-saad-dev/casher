@@ -92,16 +92,16 @@ export default function RecentSalesCards({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <Loader2 className="w-6 h-6 animate-spin text-zinc-500" />
-        <span className="mr-2 text-sm text-zinc-500">جاري التحميل...</span>
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground/60" />
+        <span className="mr-2 text-sm text-muted-foreground/60">جاري التحميل...</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="p-4 rounded-lg border border-rose-500/30 bg-rose-500/5">
-        <p className="text-sm text-rose-400">{error}</p>
+      <div className="p-4 rounded-lg border border-destructive/30 bg-destructive/5">
+        <p className="text-sm text-destructive">{error}</p>
       </div>
     );
   }
@@ -109,8 +109,8 @@ export default function RecentSalesCards({
   if (sales.length === 0) {
     return (
       <div className="text-center py-8">
-        <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-zinc-600" />
-        <p className="text-sm text-zinc-500">لا توجد عمليات بيع حديثة</p>
+        <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
+        <p className="text-sm text-muted-foreground/60">لا توجد عمليات بيع حديثة</p>
       </div>
     );
   }
@@ -118,12 +118,12 @@ export default function RecentSalesCards({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-zinc-300">آخر 3 عمليات بيع</h3>
+        <h3 className="text-sm font-semibold text-foreground/80">آخر 3 عمليات بيع</h3>
         <Button
           variant="ghost"
           size="sm"
           onClick={loadRecentSales}
-          className="h-6 px-2 text-xs text-zinc-400 hover:text-zinc-300"
+          className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground/80"
         >
           <Clock className="w-3 h-3 ml-1" />
           تحديث
@@ -133,13 +133,13 @@ export default function RecentSalesCards({
       {sales.map((sale) => (
         <div
           key={sale.InvID}
-          className="bg-zinc-800/50 rounded-lg p-3 border border-zinc-700 hover:border-zinc-600 transition-colors"
+          className="bg-surface-muted/50 rounded-lg p-3 border border-border hover:border-border/80 transition-colors"
         >
           {/* Header */}
           <div className="flex items-start justify-between mb-2">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-sm font-medium text-white">
+                <span className="text-sm font-medium text-foreground">
                   فاتورة #{sale.InvNo}
                 </span>
                 <Badge 
@@ -149,7 +149,7 @@ export default function RecentSalesCards({
                   {sale.RemainingAmount > 0 ? "غير مكتملة" : "مكتملة"}
                 </Badge>
               </div>
-              <div className="flex items-center gap-1 text-xs text-zinc-400">
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Calendar className="w-3 h-3" />
                 {formatDate(sale.InvDate)}
               </div>
@@ -161,17 +161,17 @@ export default function RecentSalesCards({
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="bg-zinc-800 border-zinc-700">
+              <DropdownMenuContent align="end" className="bg-surface-muted border-border">
                 <DropdownMenuItem 
                   onClick={() => onEditSale?.(sale.InvID)}
-                  className="text-white hover:bg-zinc-700"
+                  className="text-foreground hover:bg-accent"
                 >
                   <Edit2 className="w-4 h-4 ml-2" />
                   تعديل
                 </DropdownMenuItem>
                 <DropdownMenuItem 
                   onClick={() => handleDelete(sale.InvID, sale.InvNo)}
-                  className="text-rose-400 hover:bg-rose-500/10"
+                  className="text-destructive hover:bg-destructive/10"
                 >
                   <Trash2 className="w-4 h-4 ml-2" />
                   حذف
@@ -183,12 +183,12 @@ export default function RecentSalesCards({
           {/* Customer Info */}
           {sale.ClientName && (
             <div className="flex items-center gap-2 mb-2 text-xs">
-              <User className="w-3 h-3 text-zinc-400" />
-              <span className="text-zinc-300">{sale.ClientName}</span>
+              <User className="w-3 h-3 text-muted-foreground" />
+              <span className="text-foreground/80">{sale.ClientName}</span>
               {sale.Phone && (
                 <>
-                  <Phone className="w-3 h-3 text-zinc-400" />
-                  <span className="text-zinc-400">{sale.Phone}</span>
+                  <Phone className="w-3 h-3 text-muted-foreground" />
+                  <span className="text-muted-foreground">{sale.Phone}</span>
                 </>
               )}
             </div>
@@ -197,28 +197,28 @@ export default function RecentSalesCards({
           {/* Services Summary */}
           {sale.ServicesSummary && (
             <div className="flex items-start gap-2 mb-2 text-xs">
-              <Scissors className="w-3 h-3 text-zinc-400 mt-0.5" />
-              <span className="text-zinc-300 line-clamp-2">
+              <Scissors className="w-3 h-3 text-muted-foreground mt-0.5" />
+              <span className="text-foreground/80 line-clamp-2">
                 {sale.ServicesSummary}
               </span>
-              <Badge variant="outline" className="text-xs border-zinc-600 text-zinc-300">
+              <Badge variant="outline" className="text-xs border-border text-foreground/80">
                 {sale.ServiceCount} خدمات
               </Badge>
             </div>
           )}
 
           {/* Payment Info */}
-          <div className="flex items-center justify-between pt-2 border-t border-zinc-700">
+          <div className="flex items-center justify-between pt-2 border-t border-border">
             <div className="flex items-center gap-2 text-xs">
-              <CreditCard className="w-3 h-3 text-zinc-400" />
-              <span className="text-zinc-300">{sale.PaymentMethodName}</span>
+              <CreditCard className="w-3 h-3 text-muted-foreground" />
+              <span className="text-foreground/80">{sale.PaymentMethodName}</span>
             </div>
             <div className="text-left">
-              <div className="text-sm font-medium text-white">
+              <div className="text-sm font-medium text-foreground">
                 {formatCurrency(sale.TotalPrice)}
               </div>
               {sale.Discount > 0 && (
-                <div className="text-xs text-amber-400">
+                <div className="text-xs text-primary">
                   خصم: {formatCurrency(sale.Discount)}
                 </div>
               )}

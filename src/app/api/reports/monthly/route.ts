@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getEmployeeServicesRevenue } from '@/lib/services/employeeServicesReportService';
 import { parseMonthYearParams, validateMonthYear } from '@/lib/reportMonthUtils';
 import { getMonthlyFinancialSummary } from '@/lib/services/TreasurySummaryService';
+import { getAllEmployeesRevenueTotal } from '@/lib/reports/employeeServicesRevenue';
 
 /**
  * Simplified Monthly Profit Report API
@@ -29,7 +29,11 @@ export async function GET(req: NextRequest) {
     // ═══════════════════════════════════════════════════════════════════
     // Fetch Revenue from Employee Services (matches /admin/reports/employee-services)
     // ═══════════════════════════════════════════════════════════════════
-    const revenue = await getEmployeeServicesRevenue(year, month);
+    const fromDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const nextYear = month === 12 ? year + 1 : year;
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const endDateExclusive = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+    const revenue = await getAllEmployeesRevenueTotal(fromDate, endDateExclusive);
 
     // ═══════════════════════════════════════════════════════════════════
     // Fetch Net Profit from Treasury (TblCashMove)

@@ -63,11 +63,11 @@ export default function RevenueExpensesChart({ dailyData, loading }: RevenueExpe
       {/* Legend - Using Treasury Terminology */}
       <div className="flex items-center gap-6 mb-6">
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-emerald-500 rounded"></div>
+          <div className="w-4 h-4 bg-success rounded"></div>
           <span className="text-sm text-muted-foreground">الوارد (Incoming)</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 bg-rose-500 rounded"></div>
+          <div className="w-4 h-4 bg-destructive rounded"></div>
           <span className="text-sm text-muted-foreground">الصادر (Outgoing)</span>
         </div>
       </div>
@@ -88,7 +88,7 @@ export default function RevenueExpensesChart({ dailyData, loading }: RevenueExpe
                     {/* Revenue Bar */}
                     <div className="relative group">
                       <div
-                        className="w-3 bg-emerald-500 rounded-t transition-all duration-300"
+                        className="w-3 bg-success rounded-t transition-all duration-300"
                         style={{ height: `${Math.max(revenueHeight, 2)}px` }}
                       ></div>
                       {/* Tooltip */}
@@ -100,7 +100,7 @@ export default function RevenueExpensesChart({ dailyData, loading }: RevenueExpe
                     {/* Expenses Bar */}
                     <div className="relative group">
                       <div
-                        className="w-3 bg-rose-500 rounded-t transition-all duration-300"
+                        className="w-3 bg-destructive rounded-t transition-all duration-300"
                         style={{ height: `${Math.max(expensesHeight, 2)}px` }}
                       ></div>
                       {/* Tooltip */}

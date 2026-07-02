@@ -52,6 +52,23 @@ export async function requireRole(
   return auth;
 }
 
+/** Require authenticated user with access to a specific page path. */
+export async function requirePageAccess(
+  pagePath: string,
+): Promise<AuthResult | NextResponse> {
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
+  if (auth.isSuperAdmin) return auth;
+
+  const { canAccessPath } = await import('@/lib/permissions-server');
+  const allowed = await canAccessPath(auth.userId, auth.userName, auth.userLevel, pagePath);
+  if (!allowed) {
+    return NextResponse.json({ error: 'غير مصرح — لا تملك صلاحية الوصول لهذه الصفحة' }, { status: 403 });
+  }
+  return auth;
+}
+
 /** Type guard */
 export function isAuthResult(v: AuthResult | NextResponse): v is AuthResult {
   return (v as AuthResult).ok === true;

@@ -1,6 +1,7 @@
 'use client';
 
 import { memo } from 'react';
+import { usePathname } from 'next/navigation';
 import { useSession } from '@/hooks/useSession';
 import { usePermission } from '@/hooks/usePermission';
 import { DbToggleButton } from '@/components/db/DbToggleButton';
@@ -16,6 +17,8 @@ interface Props {
 }
 
 function ActiveSessionBar({ onCloseDayClick }: Props) {
+  const pathname = usePathname();
+  const isPosPage = pathname === '/income/pos';
   const { user, day, shift, hasActiveDay, hasActiveShift, logout, closeMyShift } = useSession();
   const canCloseDay = usePermission('day.close');
   const [mounted, setMounted] = useState(false);
@@ -114,9 +117,9 @@ function ActiveSessionBar({ onCloseDayClick }: Props) {
         <User className="w-3.5 h-3.5 text-muted-foreground" />
         <span className="font-medium">{user.UserName}</span>
         {isAdmin ? (
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+          <ShieldCheck className="w-3.5 h-3.5 text-success" />
         ) : (
-          <ShieldAlert className="w-3.5 h-3.5 text-blue-400" />
+          <ShieldAlert className="w-3.5 h-3.5 text-info" />
         )}
       </div>
 
@@ -127,7 +130,7 @@ function ActiveSessionBar({ onCloseDayClick }: Props) {
         <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
         {hasActiveDay && day ? (
           <>
-            <span className="text-emerald-400">
+            <span className="text-success">
               يوم {mounted ? new Date(day.NewDay).toLocaleDateString('ar-EG') : new Date(day.NewDay).toISOString().split('T')[0]}
             </span>
             {canCloseDay && onCloseDayClick && (
@@ -153,11 +156,11 @@ function ActiveSessionBar({ onCloseDayClick }: Props) {
         <Clock className="w-3.5 h-3.5 text-muted-foreground" />
         {hasActiveShift && shift ? (
           shift.UserID !== user.UserID ? (
-            <span className="text-amber-500 font-medium">
+            <span className="text-warning font-medium">
               ⚠ وردية مستخدم آخر ({shift.UserName}) — يجب فتح وردية جديدة
             </span>
           ) : (
-            <span className="text-emerald-400">
+            <span className="text-success">
               {shift.ShiftName || `وردية #${shift.ShiftID}`} — {shift.UserName || user.UserName}
               <span className="text-muted-foreground mr-1">
                 (من {shift.StartTime?.trim()})
@@ -169,10 +172,13 @@ function ActiveSessionBar({ onCloseDayClick }: Props) {
         )}
       </div>
 
-      <span className="text-muted-foreground/40">|</span>
-
-      {/* Database Toggle */}
-      <DbToggleButton />
+      {!isPosPage && (
+        <>
+          <span className="text-muted-foreground/40">|</span>
+          {/* Database Toggle */}
+          <DbToggleButton />
+        </>
+      )}
 
       {/* TopNav — centered in available space */}
       <div className="flex-1 flex justify-center items-center overflow-visible">

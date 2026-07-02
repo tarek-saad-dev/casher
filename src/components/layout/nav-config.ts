@@ -77,6 +77,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: '/income-review/all-revenue',        label: 'كل الإيرادات',      icon: History     },
       { href: '/income-review/payments',           label: 'المدفوعات',          icon: CreditCard  },
       { href: '/admin/reports/employee-services',  label: 'خدمات الصنايعية',   icon: FileBarChart },
+      { href: '/admin/reports/employee-monthly-work-revenue', label: 'مواعيد وإيرادات الموظفين', icon: CalendarCheck },
       { href: '/admin/reports/partners',           label: 'تقرير الشركاء',      icon: UsersRound    },
       { href: '/admin/reports/partners-overrides', label: 'حسابات الشركاء الخاصة', icon: FileKey2 },
       { href: '/reports/monthly',                  label: 'التقرير الشهري',     icon: BarChart3   },

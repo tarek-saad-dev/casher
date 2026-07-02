@@ -109,8 +109,8 @@ export default function DayRolloverModal({
       <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
         <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-amber-500/10">
-              <ShieldAlert className="w-5 h-5 text-amber-500" />
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-warning/10">
+              <ShieldAlert className="w-5 h-5 text-warning" />
             </div>
             <h2 className="text-lg font-bold">يوم العمل يحتاج إلى إغلاق</h2>
           </div>
@@ -133,8 +133,8 @@ export default function DayRolloverModal({
       <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center gap-3 p-5 border-b border-border">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-amber-500/10">
-            <CalendarDays className="w-5 h-5 text-amber-500" />
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-warning/10">
+            <CalendarDays className="w-5 h-5 text-warning" />
           </div>
           <div>
             <h2 className="text-lg font-bold">يوم العمل السابق لا يزال مفتوحاً</h2>
@@ -147,7 +147,7 @@ export default function DayRolloverModal({
           <div className="rounded-lg bg-muted/30 p-4 space-y-2 text-sm">
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">اليوم المفتوح:</span>
-              <span className="font-medium text-amber-500">{formattedOldDate}</span>
+              <span className="font-medium text-warning">{formattedOldDate}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">التاريخ الفعلي:</span>
@@ -161,8 +161,8 @@ export default function DayRolloverModal({
 
           {/* Open shifts warning */}
           {(openShifts.length > 0 || showShiftWarning) && (
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
-              <div className="flex items-center gap-2 text-amber-500">
+            <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 space-y-3">
+              <div className="flex items-center gap-2 text-warning">
                 <AlertTriangle className="w-4 h-4 shrink-0" />
                 <span className="font-semibold text-sm">
                   يوجد {openShifts.length} وردية مفتوحة
@@ -189,7 +189,7 @@ export default function DayRolloverModal({
                       variant="outline"
                       onClick={() => handleCloseAndOpen(true)}
                       disabled={actionLoading}
-                      className="border-amber-500/30 text-amber-500 hover:bg-amber-500/10 text-xs"
+                      className="border-warning/30 text-warning hover:bg-warning/10 text-xs"
                     >
                       {actionLoading ? <Loader2 className="w-3.5 h-3.5 ml-1 animate-spin" /> : <Clock className="w-3.5 h-3.5 ml-1" />}
                       إغلاق الورديات + إغلاق وفتح يوم جديد
@@ -259,7 +259,7 @@ export default function DayRolloverModal({
               variant="outline"
               onClick={onSkip}
               disabled={actionLoading}
-              className="w-full border-dashed border-amber-500/40 text-amber-600 hover:bg-amber-500/10 hover:text-amber-700"
+              className="w-full border-dashed border-warning/40 text-warning hover:bg-warning/10 hover:text-warning"
             >
               <Ban className="w-4 h-4 ml-2" />
               تخطي (العمل على اليوم الحالي اليوم)

@@ -105,7 +105,7 @@ export default function RecentSalesPopup({
         variant="ghost"
         size="sm"
         onClick={() => setIsVisible(false)}
-        className="mb-2 text-zinc-400 hover:text-white"
+        className="mb-2 text-muted-foreground hover:text-foreground"
       >
         <X className="w-4 h-4 ml-1" />
         إغلاق
@@ -114,7 +114,7 @@ export default function RecentSalesPopup({
       {sales.map((sale, index) => (
         <div
           key={sale.InvID}
-          className="bg-zinc-900 border border-zinc-700 rounded p-2 shadow-lg min-w-[240px] max-w-[280px] transform transition-all duration-300 hover:scale-101"
+          className="bg-surface border border-border rounded p-2 shadow-lg min-w-[240px] max-w-[280px] transform transition-all duration-300 hover:scale-101"
           style={{
             animation: `slideInUp 0.5s ease-out ${index * 0.1}s both`,
           }}
@@ -122,17 +122,17 @@ export default function RecentSalesPopup({
           {/* Single Line Content */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1 flex-1 min-w-0">
-              <ShoppingCart className="w-3 h-3 text-amber-500 flex-shrink-0" />
-              <span className="text-xs font-bold text-white">
+              <ShoppingCart className="w-3 h-3 text-primary flex-shrink-0" />
+              <span className="text-xs font-bold text-foreground">
                 #{sale.InvNo}
               </span>
               {sale.ClientName && (
-                <span className="text-xs text-zinc-300 truncate">
+                <span className="text-xs text-foreground/80 truncate">
                   {sale.ClientName}
                 </span>
               )}
               {sale.ServicesSummary && (
-                <span className="text-xs text-zinc-400 truncate">
+                <span className="text-xs text-muted-foreground truncate">
                   {sale.ServicesSummary.split(',')[0]}
                 </span>
               )}
@@ -140,11 +140,11 @@ export default function RecentSalesPopup({
             
             <div className="flex items-center gap-2 flex-shrink-0">
               <div className="text-left">
-                <div className="text-xs font-bold text-amber-500">
+                <div className="text-xs font-bold text-primary">
                   {formatCurrency(sale.TotalPrice)}
                 </div>
                 {sale.Discount > 0 && (
-                  <div className="text-xs text-amber-400">
+                  <div className="text-xs text-primary">
                     -{formatCurrency(sale.Discount)}
                   </div>
                 )}
@@ -156,17 +156,17 @@ export default function RecentSalesPopup({
                     <MoreVertical className="h-3 w-3" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="bg-zinc-800 border-zinc-700">
+                <DropdownMenuContent align="end" className="bg-surface-muted border-border">
                   <DropdownMenuItem 
                     onClick={() => onEditSale?.(sale.InvID)}
-                    className="text-white hover:bg-zinc-700 text-xs"
+                    className="text-foreground hover:bg-accent text-xs"
                   >
                     <Edit2 className="w-3 h-3 ml-1" />
                     تعديل
                   </DropdownMenuItem>
                   <DropdownMenuItem 
                     onClick={() => handleDelete(sale.InvID, sale.InvNo)}
-                    className="text-rose-400 hover:bg-rose-500/10 text-xs"
+                    className="text-destructive hover:bg-destructive/10 text-xs"
                   >
                     <Trash2 className="w-3 h-3 ml-1" />
                     حذف
@@ -180,7 +180,7 @@ export default function RecentSalesPopup({
 
       {/* Error Display */}
       {error && (
-        <div className="bg-rose-900/90 border border-rose-500/40 rounded-xl p-3 text-sm text-rose-300">
+        <div className="bg-destructive/10 border border-destructive/40 rounded-xl p-3 text-sm text-destructive">
           {error}
         </div>
       )}

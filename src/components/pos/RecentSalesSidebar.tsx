@@ -46,12 +46,16 @@ interface RecentSalesSidebarProps {
   onEditSale?: (saleId: number) => void;
   onDeleteSale?: (saleId: number) => void;
   onRefresh?: () => void;
+  showHeader?: boolean;
+  refreshToken?: number;
 }
 
 export default function RecentSalesSidebar({ 
   onEditSale, 
   onDeleteSale, 
-  onRefresh 
+  onRefresh,
+  showHeader = true,
+  refreshToken,
 }: RecentSalesSidebarProps) {
   const [sales, setSales] = useState<RecentSale[]>([]);
   const [moreSales, setMoreSales] = useState<RecentSale[]>([]);
@@ -132,6 +136,12 @@ export default function RecentSalesSidebar({
     loadRecentSales();
   }, []);
 
+  useEffect(() => {
+    if (refreshToken !== undefined && refreshToken > 0) {
+      loadRecentSales();
+    }
+  }, [refreshToken]);
+
   const handleDelete = (saleId: number, invNo: number) => {
     setDeleteTarget({ invId: saleId, invNo });
   };
@@ -165,16 +175,16 @@ export default function RecentSalesSidebar({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <Loader2 className="w-6 h-6 animate-spin text-zinc-500" />
-        <span className="mr-2 text-sm text-zinc-500">جاري التحميل...</span>
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground/60" />
+        <span className="mr-2 text-sm text-muted-foreground/60">جاري التحميل...</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="p-4 rounded-lg border border-rose-500/30 bg-rose-500/5">
-        <p className="text-sm text-rose-400">{error}</p>
+      <div className="p-4 rounded-lg border border-destructive/30 bg-destructive/5">
+        <p className="text-sm text-destructive">{error}</p>
       </div>
     );
   }
@@ -182,34 +192,36 @@ export default function RecentSalesSidebar({
   if (sales.length === 0) {
     return (
       <div className="text-center py-8">
-        <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-zinc-600" />
-        <p className="text-sm text-zinc-500">لا توجد عمليات بيع حديثة</p>
+        <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
+        <p className="text-sm text-muted-foreground/60">لا توجد عمليات بيع حديثة</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-zinc-300">
-          {showMore ? `آخر ${sales.length + moreSales.length} عملية بيع اليوم` : 'آخر 3 عمليات بيع'}
-        </h3>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={loadRecentSales}
-          className="h-6 px-2 text-xs text-zinc-400 hover:text-zinc-300"
-        >
-          <RefreshCw className="w-3 h-3 ml-1" />
-          تحديث
-        </Button>
-      </div>
+      {showHeader && (
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-foreground/80">
+            {showMore ? `آخر ${sales.length + moreSales.length} عملية بيع اليوم` : 'آخر 3 عمليات بيع'}
+          </h3>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={loadRecentSales}
+            className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground/80"
+          >
+            <RefreshCw className="w-3 h-3 ml-1" />
+            تحديث
+          </Button>
+        </div>
+      )}
 
       {/* First 3 sales */}
       {sales.map((sale) => (
         <div
           key={sale.InvID}
-          className="bg-zinc-800/50 rounded-lg border border-zinc-700 overflow-hidden"
+          className="bg-surface-muted/50 rounded-lg border border-border overflow-hidden"
         >
           {/* Main Card */}
           <div className="p-3">
@@ -217,8 +229,8 @@ export default function RecentSalesSidebar({
             <div className="flex items-start justify-between mb-2">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <ShoppingCart className="w-4 h-4 text-amber-500" />
-                  <span className="text-sm font-bold text-white">
+                  <ShoppingCart className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-bold text-foreground">
                     فاتورة #{sale.InvNo}
                   </span>
                   <Badge 
@@ -228,7 +240,7 @@ export default function RecentSalesSidebar({
                     {sale.RemainingAmount > 0 ? "غير مكتملة" : "مكتملة"}
                   </Badge>
                 </div>
-                <div className="flex items-center gap-1 text-xs text-zinc-400">
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Calendar className="w-3 h-3" />
                   {formatDate(sale.InvDate)}
                 </div>
@@ -240,17 +252,17 @@ export default function RecentSalesSidebar({
                     <MoreVertical className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="bg-zinc-800 border-zinc-700">
+                <DropdownMenuContent align="end" className="bg-surface-muted border-border">
                   <DropdownMenuItem 
                     onClick={() => onEditSale?.(sale.InvID)}
-                    className="text-white hover:bg-zinc-700"
+                    className="text-foreground hover:bg-accent"
                   >
                     <Edit2 className="w-4 h-4 ml-2" />
                     تعديل
                   </DropdownMenuItem>
                   <DropdownMenuItem 
                     onClick={() => handleDelete(sale.InvID, sale.InvNo)}
-                    className="text-rose-400 hover:bg-rose-500/10"
+                    className="text-destructive hover:bg-destructive/10"
                   >
                     <Trash2 className="w-4 h-4 ml-2" />
                     حذف
@@ -262,12 +274,12 @@ export default function RecentSalesSidebar({
             {/* Customer Info */}
             {sale.ClientName && (
               <div className="flex items-center gap-2 mb-2 text-xs">
-                <User className="w-3 h-3 text-zinc-400" />
-                <span className="text-zinc-300">{sale.ClientName}</span>
+                <User className="w-3 h-3 text-muted-foreground" />
+                <span className="text-foreground/80">{sale.ClientName}</span>
                 {sale.Phone && (
                   <>
-                    <Phone className="w-3 h-3 text-zinc-400" />
-                    <span className="text-zinc-400">{sale.Phone}</span>
+                    <Phone className="w-3 h-3 text-muted-foreground" />
+                    <span className="text-muted-foreground">{sale.Phone}</span>
                   </>
                 )}
               </div>
@@ -276,28 +288,28 @@ export default function RecentSalesSidebar({
             {/* Services Summary */}
             {sale.ServicesSummary && (
               <div className="flex items-start gap-2 mb-2 text-xs">
-                <Scissors className="w-3 h-3 text-zinc-400 mt-0.5" />
-                <span className="text-zinc-300 line-clamp-2">
+                <Scissors className="w-3 h-3 text-muted-foreground mt-0.5" />
+                <span className="text-foreground/80 line-clamp-2">
                   {sale.ServicesSummary}
                 </span>
-                <Badge variant="outline" className="text-xs border-zinc-600 text-zinc-300">
+                <Badge variant="outline" className="text-xs border-border text-foreground/80">
                   {sale.ServiceCount} خدمات
                 </Badge>
               </div>
             )}
 
             {/* Payment Info */}
-            <div className="flex items-center justify-between pt-2 border-t border-zinc-700">
+            <div className="flex items-center justify-between pt-2 border-t border-border">
               <div className="flex items-center gap-2 text-xs">
-                <CreditCard className="w-3 h-3 text-zinc-400" />
-                <span className="text-zinc-300">{sale.PaymentMethodName}</span>
+                <CreditCard className="w-3 h-3 text-muted-foreground" />
+                <span className="text-foreground/80">{sale.PaymentMethodName}</span>
               </div>
               <div className="text-left">
-                <div className="text-sm font-bold text-amber-500">
+                <div className="text-sm font-bold text-primary">
                   {formatCurrency(sale.TotalPrice)}
                 </div>
                 {sale.Discount > 0 && (
-                  <div className="text-xs text-amber-400">
+                  <div className="text-xs text-primary">
                     خصم: {formatCurrency(sale.Discount)}
                   </div>
                 )}
@@ -309,7 +321,7 @@ export default function RecentSalesSidebar({
               variant="ghost"
               size="sm"
               onClick={() => handleExpand(sale.InvID)}
-              className="w-full mt-2 text-xs text-zinc-400 hover:text-zinc-300"
+              className="w-full mt-2 text-xs text-muted-foreground hover:text-foreground/80"
             >
               {expandedSale === sale.InvID ? 'إخفاء التفاصيل' : 'عرض التفاصيل'}
             </Button>
@@ -317,20 +329,20 @@ export default function RecentSalesSidebar({
 
           {/* Expanded Details */}
           {expandedSale === sale.InvID && saleDetails[sale.InvID] && (
-            <div className="border-t border-zinc-700 bg-zinc-900/50 p-3">
-              <h4 className="text-xs font-semibold text-zinc-300 mb-2">تفاصيل الخدمات:</h4>
+            <div className="border-t border-border bg-surface-muted/50 p-3">
+              <h4 className="text-xs font-semibold text-foreground/80 mb-2">تفاصيل الخدمات:</h4>
               <div className="space-y-2">
                 {saleDetails[sale.InvID].map((detail, index) => (
                   <div key={index} className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
-                      <Scissors className="w-3 h-3 text-zinc-400" />
-                      <span className="text-zinc-300">{detail.ProName}</span>
-                      <span className="text-zinc-400">({detail.EmpName})</span>
+                      <Scissors className="w-3 h-3 text-muted-foreground" />
+                      <span className="text-foreground/80">{detail.ProName}</span>
+                      <span className="text-muted-foreground">({detail.EmpName})</span>
                     </div>
                     <div className="text-left">
-                      <div className="text-zinc-300">{formatCurrency(detail.SPrice)}</div>
+                      <div className="text-foreground/80">{formatCurrency(detail.SPrice)}</div>
                       {detail.Bonus > 0 && (
-                        <div className="text-amber-400 text-xs">عمولة: {formatCurrency(detail.Bonus)}</div>
+                        <div className="text-primary text-xs">عمولة: {formatCurrency(detail.Bonus)}</div>
                       )}
                     </div>
                   </div>
@@ -348,7 +360,7 @@ export default function RecentSalesSidebar({
           size="sm"
           onClick={loadMoreSales}
           disabled={loadingMore}
-          className="w-full text-xs text-zinc-400 border-zinc-600 hover:text-zinc-300"
+          className="w-full text-xs text-muted-foreground border-border hover:text-foreground/80"
         >
           {loadingMore ? (
             <>
@@ -367,7 +379,7 @@ export default function RecentSalesSidebar({
       {showMore && moreSales.map((sale) => (
         <div
           key={sale.InvID}
-          className="bg-zinc-800/30 rounded-lg border border-zinc-700/50 overflow-hidden"
+          className="bg-surface-muted/30 rounded-lg border border-border/50 overflow-hidden"
         >
           {/* Main Card */}
           <div className="p-3">
@@ -375,8 +387,8 @@ export default function RecentSalesSidebar({
             <div className="flex items-start justify-between mb-2">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <ShoppingCart className="w-4 h-4 text-zinc-500" />
-                  <span className="text-sm font-bold text-zinc-400">
+                  <ShoppingCart className="w-4 h-4 text-muted-foreground/60" />
+                  <span className="text-sm font-bold text-muted-foreground">
                     فاتورة #{sale.InvNo}
                   </span>
                   <Badge 
@@ -386,7 +398,7 @@ export default function RecentSalesSidebar({
                     {sale.RemainingAmount > 0 ? "غير مكتملة" : "مكتملة"}
                   </Badge>
                 </div>
-                <div className="flex items-center gap-1 text-xs text-zinc-500">
+                <div className="flex items-center gap-1 text-xs text-muted-foreground/60">
                   <Calendar className="w-3 h-3" />
                   {formatDate(sale.InvDate)}
                 </div>
@@ -398,17 +410,17 @@ export default function RecentSalesSidebar({
                     <MoreVertical className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="bg-zinc-800 border-zinc-700">
+                <DropdownMenuContent align="end" className="bg-surface-muted border-border">
                   <DropdownMenuItem 
                     onClick={() => onEditSale?.(sale.InvID)}
-                    className="text-white hover:bg-zinc-700"
+                    className="text-foreground hover:bg-accent"
                   >
                     <Edit2 className="w-4 h-4 ml-2" />
                     تعديل
                   </DropdownMenuItem>
                   <DropdownMenuItem 
                     onClick={() => handleDelete(sale.InvID, sale.InvNo)}
-                    className="text-rose-400 hover:bg-rose-500/10"
+                    className="text-destructive hover:bg-destructive/10"
                   >
                     <Trash2 className="w-4 h-4 ml-2" />
                     حذف
@@ -420,12 +432,12 @@ export default function RecentSalesSidebar({
             {/* Customer Info */}
             {sale.ClientName && (
               <div className="flex items-center gap-2 mb-2 text-xs">
-                <User className="w-3 h-3 text-zinc-500" />
-                <span className="text-zinc-400">{sale.ClientName}</span>
+                <User className="w-3 h-3 text-muted-foreground/60" />
+                <span className="text-muted-foreground">{sale.ClientName}</span>
                 {sale.Phone && (
                   <>
-                    <Phone className="w-3 h-3 text-zinc-500" />
-                    <span className="text-zinc-500">{sale.Phone}</span>
+                    <Phone className="w-3 h-3 text-muted-foreground/60" />
+                    <span className="text-muted-foreground/60">{sale.Phone}</span>
                   </>
                 )}
               </div>
@@ -434,28 +446,28 @@ export default function RecentSalesSidebar({
             {/* Services Summary */}
             {sale.ServicesSummary && (
               <div className="flex items-start gap-2 mb-2 text-xs">
-                <Scissors className="w-3 h-3 text-zinc-500 mt-0.5" />
-                <span className="text-zinc-400 line-clamp-2">
+                <Scissors className="w-3 h-3 text-muted-foreground/60 mt-0.5" />
+                <span className="text-muted-foreground line-clamp-2">
                   {sale.ServicesSummary}
                 </span>
-                <Badge variant="outline" className="text-xs border-zinc-600 text-zinc-400">
+                <Badge variant="outline" className="text-xs border-border text-muted-foreground">
                   {sale.ServiceCount} خدمات
                 </Badge>
               </div>
             )}
 
             {/* Payment Info */}
-            <div className="flex items-center justify-between pt-2 border-t border-zinc-700">
+            <div className="flex items-center justify-between pt-2 border-t border-border">
               <div className="flex items-center gap-2 text-xs">
-                <CreditCard className="w-3 h-3 text-zinc-500" />
-                <span className="text-zinc-400">{sale.PaymentMethodName}</span>
+                <CreditCard className="w-3 h-3 text-muted-foreground/60" />
+                <span className="text-muted-foreground">{sale.PaymentMethodName}</span>
               </div>
               <div className="text-left">
-                <div className="text-sm font-bold text-zinc-400">
+                <div className="text-sm font-bold text-muted-foreground">
                   {formatCurrency(sale.TotalPrice)}
                 </div>
                 {sale.Discount > 0 && (
-                  <div className="text-xs text-zinc-500">
+                  <div className="text-xs text-muted-foreground/60">
                     خصم: {formatCurrency(sale.Discount)}
                   </div>
                 )}
@@ -467,7 +479,7 @@ export default function RecentSalesSidebar({
               variant="ghost"
               size="sm"
               onClick={() => handleExpand(sale.InvID)}
-              className="w-full mt-2 text-xs text-zinc-500 hover:text-zinc-400"
+              className="w-full mt-2 text-xs text-muted-foreground/60 hover:text-muted-foreground"
             >
               {expandedSale === sale.InvID ? 'إخفاء التفاصيل' : 'عرض التفاصيل'}
             </Button>
@@ -475,20 +487,20 @@ export default function RecentSalesSidebar({
 
           {/* Expanded Details */}
           {expandedSale === sale.InvID && saleDetails[sale.InvID] && (
-            <div className="border-t border-zinc-700 bg-zinc-900/30 p-3">
-              <h4 className="text-xs font-semibold text-zinc-400 mb-2">تفاصيل الخدمات:</h4>
+            <div className="border-t border-border bg-surface-muted/30 p-3">
+              <h4 className="text-xs font-semibold text-muted-foreground mb-2">تفاصيل الخدمات:</h4>
               <div className="space-y-2">
                 {saleDetails[sale.InvID].map((detail, index) => (
                   <div key={index} className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
-                      <Scissors className="w-3 h-3 text-zinc-500" />
-                      <span className="text-zinc-400">{detail.ProName}</span>
-                      <span className="text-zinc-500">({detail.EmpName})</span>
+                      <Scissors className="w-3 h-3 text-muted-foreground/60" />
+                      <span className="text-muted-foreground">{detail.ProName}</span>
+                      <span className="text-muted-foreground/60">({detail.EmpName})</span>
                     </div>
                     <div className="text-left">
-                      <div className="text-zinc-400">{formatCurrency(detail.SPrice)}</div>
+                      <div className="text-muted-foreground">{formatCurrency(detail.SPrice)}</div>
                       {detail.Bonus > 0 && (
-                        <div className="text-amber-400 text-xs">عمولة: {formatCurrency(detail.Bonus)}</div>
+                        <div className="text-primary text-xs">عمولة: {formatCurrency(detail.Bonus)}</div>
                       )}
                     </div>
                   </div>
@@ -514,9 +526,9 @@ export default function RecentSalesSidebar({
       <div className="fixed bottom-4 left-4 z-[80] flex flex-col gap-2 w-72" dir="rtl">
         {toasts.map(t => (
           <div key={t.id} className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl text-sm font-medium
-            ${t.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-300' : ''}
-            ${t.type === 'error'   ? 'bg-rose-950/90 border-rose-500/40 text-rose-300' : ''}
-            ${t.type === 'info'    ? 'bg-blue-950/90 border-blue-500/30 text-blue-300' : ''}
+            ${t.type === 'success' ? 'bg-success/10 border-success/40 text-success' : ''}
+            ${t.type === 'error'   ? 'bg-destructive/10 border-destructive/40 text-destructive' : ''}
+            ${t.type === 'info'    ? 'bg-info/10 border-info/30 text-info' : ''}
           `}>
             <span className="flex-1">{t.message}</span>
           </div>

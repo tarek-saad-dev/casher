@@ -55,13 +55,13 @@ function fmtTypeAr(type: string): string {
 
 function typeColor(type: string): string {
   const map: Record<string, string> = {
-    day_off:      '#EF4444',
-    late_start:   '#F59E0B',
-    early_leave:  '#F97316',
-    block_range:  '#8B5CF6',
-    custom_hours: '#06B6D4',
+    day_off:      'var(--destructive)',
+    late_start:   'var(--warning)',
+    early_leave:  'var(--warning)',
+    block_range:  'var(--accent)',
+    custom_hours: 'var(--info)',
   };
-  return map[type] ?? '#6B7280';
+  return map[type] ?? 'var(--muted-foreground)';
 }
 
 // ── Sub-component: Action Modal ───────────────────────────────────────────────
@@ -135,21 +135,21 @@ function ActionModal({ modal, date, onClose, onSaved, onError }: ActionModalProp
   return (
     <div
       className="fixed inset-0 z-[80] flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.75)' }}
+      style={{ background: 'color-mix(in srgb, var(--background) 75%, transparent)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
         className="w-full max-w-sm rounded-2xl border shadow-2xl"
-        style={{ background: '#18181F', borderColor: '#2A2A35' }}
+        style={{ background: 'var(--surface-elevated)', borderColor: 'var(--surface-muted)' }}
         dir="rtl"
       >
         {/* Modal header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: '#2A2A35' }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--surface-muted)' }}>
           <div>
-            <p className="text-xs text-zinc-500 mb-0.5">{modal.barber.name}</p>
-            <h3 className="text-sm font-bold text-white">{titles[modal.type]}</h3>
+            <p className="text-xs text-muted-foreground/80 mb-0.5">{modal.barber.name}</p>
+            <h3 className="text-sm font-bold text-foreground">{titles[modal.type]}</h3>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors">
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-muted text-muted-foreground hover:text-foreground transition-colors">
             <X size={16}/>
           </button>
         </div>
@@ -159,21 +159,21 @@ function ActionModal({ modal, date, onClose, onSaved, onError }: ActionModalProp
 
           {/* day_off: just reason */}
           {modal.type === 'day_off' && (
-            <p className="text-sm text-zinc-400">
-              سيُقفل <span className="text-white font-semibold">{modal.barber.name}</span> طوال يوم <span className="text-amber-400">{date}</span> في الحجوزات الأونلاين.
+            <p className="text-sm text-muted-foreground">
+              سيُقفل <span className="text-foreground font-semibold">{modal.barber.name}</span> طوال يوم <span className="text-primary">{date}</span> في الحجوزات الأونلاين.
             </p>
           )}
 
           {/* late_start */}
           {modal.type === 'late_start' && (
             <div>
-              <label className="text-xs text-zinc-400 mb-1.5 block">وقت الوصول الفعلي</label>
+              <label className="text-xs text-muted-foreground mb-1.5 block">وقت الوصول الفعلي</label>
               <input
                 type="time"
                 value={startTime}
                 onChange={e => setStartTime(e.target.value)}
-                className="w-full rounded-xl border px-3 py-2.5 text-sm text-white bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                style={{ borderColor: '#3A3A45' }}
+                className="w-full rounded-xl border px-3 py-2.5 text-sm text-foreground bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
+                style={{ borderColor: 'var(--border)' }}
               />
             </div>
           )}
@@ -181,13 +181,13 @@ function ActionModal({ modal, date, onClose, onSaved, onError }: ActionModalProp
           {/* early_leave */}
           {modal.type === 'early_leave' && (
             <div>
-              <label className="text-xs text-zinc-400 mb-1.5 block">وقت الخروج المبكر</label>
+              <label className="text-xs text-muted-foreground mb-1.5 block">وقت الخروج المبكر</label>
               <input
                 type="time"
                 value={endTime}
                 onChange={e => setEndTime(e.target.value)}
-                className="w-full rounded-xl border px-3 py-2.5 text-sm text-white bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                style={{ borderColor: '#3A3A45' }}
+                className="w-full rounded-xl border px-3 py-2.5 text-sm text-foreground bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
+                style={{ borderColor: 'var(--border)' }}
               />
             </div>
           )}
@@ -196,23 +196,23 @@ function ActionModal({ modal, date, onClose, onSaved, onError }: ActionModalProp
           {modal.type === 'block_range' && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-zinc-400 mb-1.5 block">من</label>
+                <label className="text-xs text-muted-foreground mb-1.5 block">من</label>
                 <input
                   type="time"
                   value={startTime}
                   onChange={e => setStartTime(e.target.value)}
-                  className="w-full rounded-xl border px-3 py-2.5 text-sm text-white bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  style={{ borderColor: '#3A3A45' }}
+                  className="w-full rounded-xl border px-3 py-2.5 text-sm text-foreground bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
+                  style={{ borderColor: 'var(--border)' }}
                 />
               </div>
               <div>
-                <label className="text-xs text-zinc-400 mb-1.5 block">إلى</label>
+                <label className="text-xs text-muted-foreground mb-1.5 block">إلى</label>
                 <input
                   type="time"
                   value={endTime}
                   onChange={e => setEndTime(e.target.value)}
-                  className="w-full rounded-xl border px-3 py-2.5 text-sm text-white bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  style={{ borderColor: '#3A3A45' }}
+                  className="w-full rounded-xl border px-3 py-2.5 text-sm text-foreground bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
+                  style={{ borderColor: 'var(--border)' }}
                 />
               </div>
             </div>
@@ -222,23 +222,23 @@ function ActionModal({ modal, date, onClose, onSaved, onError }: ActionModalProp
           {modal.type === 'custom_hours' && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-zinc-400 mb-1.5 block">بداية الشيفت</label>
+                <label className="text-xs text-muted-foreground mb-1.5 block">بداية الشيفت</label>
                 <input
                   type="time"
                   value={startTime}
                   onChange={e => setStartTime(e.target.value)}
-                  className="w-full rounded-xl border px-3 py-2.5 text-sm text-white bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  style={{ borderColor: '#3A3A45' }}
+                  className="w-full rounded-xl border px-3 py-2.5 text-sm text-foreground bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
+                  style={{ borderColor: 'var(--border)' }}
                 />
               </div>
               <div>
-                <label className="text-xs text-zinc-400 mb-1.5 block">نهاية الشيفت</label>
+                <label className="text-xs text-muted-foreground mb-1.5 block">نهاية الشيفت</label>
                 <input
                   type="time"
                   value={endTime}
                   onChange={e => setEndTime(e.target.value)}
-                  className="w-full rounded-xl border px-3 py-2.5 text-sm text-white bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  style={{ borderColor: '#3A3A45' }}
+                  className="w-full rounded-xl border px-3 py-2.5 text-sm text-foreground bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
+                  style={{ borderColor: 'var(--border)' }}
                 />
               </div>
             </div>
@@ -246,19 +246,19 @@ function ActionModal({ modal, date, onClose, onSaved, onError }: ActionModalProp
 
           {/* Reason (all types) */}
           <div>
-            <label className="text-xs text-zinc-400 mb-1.5 block">السبب (اختياري)</label>
+            <label className="text-xs text-muted-foreground mb-1.5 block">السبب (اختياري)</label>
             <input
               type="text"
               value={reason}
               onChange={e => setReason(e.target.value)}
               placeholder="مثال: مرض مفاجئ..."
-              className="w-full rounded-xl border px-3 py-2.5 text-sm text-white bg-zinc-900 placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-amber-500"
-              style={{ borderColor: '#3A3A45' }}
+              className="w-full rounded-xl border px-3 py-2.5 text-sm text-foreground bg-surface placeholder-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              style={{ borderColor: 'var(--border)' }}
             />
           </div>
 
           {/* Info note */}
-          <div className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-xs text-amber-300" style={{ background: 'rgba(214,168,79,0.08)', border: '1px solid rgba(214,168,79,0.2)' }}>
+          <div className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-xs text-primary" style={{ background: 'color-mix(in srgb, var(--primary) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--primary) 20%, transparent)' }}>
             <Shield size={13} className="mt-0.5 shrink-0"/>
             <span>هذا التعديل يطبق على الحجوزات الأونلاين فورًا ولا يغير جدول الأسبوع الأساسي.</span>
           </div>
@@ -268,8 +268,8 @@ function ActionModal({ modal, date, onClose, onSaved, onError }: ActionModalProp
         <div className="flex gap-3 px-5 pb-5">
           <button
             onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl border text-sm text-zinc-400 hover:bg-zinc-800 hover:text-white transition-all"
-            style={{ borderColor: '#2A2A35' }}
+            className="flex-1 py-2.5 rounded-xl border text-sm text-muted-foreground hover:bg-surface-muted hover:text-foreground transition-all"
+            style={{ borderColor: 'var(--surface-muted)' }}
           >
             إلغاء
           </button>
@@ -278,9 +278,9 @@ function ActionModal({ modal, date, onClose, onSaved, onError }: ActionModalProp
             disabled={saving}
             className="flex-1 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-50"
             style={{
-              background: modal.type === 'day_off' ? 'rgba(239,68,68,0.18)' : 'linear-gradient(135deg,#D6A84F,#B8923A)',
-              color:      modal.type === 'day_off' ? '#EF4444' : '#000',
-              border:     modal.type === 'day_off' ? '1px solid rgba(239,68,68,0.4)' : 'none',
+              background: modal.type === 'day_off' ? 'color-mix(in srgb, var(--destructive) 18%, transparent)' : 'linear-gradient(135deg,var(--primary),var(--primary-active))',
+              color:      modal.type === 'day_off' ? 'var(--destructive)' : 'var(--primary-foreground)',
+              border:     modal.type === 'day_off' ? '1px solid color-mix(in srgb, var(--destructive) 40%, transparent)' : 'none',
             }}
           >
             {saving ? <Loader2 size={14} className="animate-spin"/> : null}
@@ -308,19 +308,19 @@ function BarberCard({ barber, overrides, onAction, onDeleteOverride, deletingId 
   const hasDayOff = active.some(o => o.Type === 'day_off');
 
   const ACTIONS: { type: ActionType; label: string; icon: React.ReactNode; color: string; bg: string }[] = [
-    { type: 'day_off',      label: 'إجازة اليوم',      icon: <CalendarOff size={13}/>,  color: '#EF4444', bg: 'rgba(239,68,68,0.1)' },
-    { type: 'late_start',   label: 'تأخير',            icon: <Clock size={13}/>,        color: '#F59E0B', bg: 'rgba(245,158,11,0.1)' },
-    { type: 'early_leave',  label: 'خروج بدري',        icon: <LogOut size={13}/>,       color: '#F97316', bg: 'rgba(249,115,22,0.1)' },
-    { type: 'block_range',  label: 'قفل فترة',         icon: <Lock size={13}/>,         color: '#8B5CF6', bg: 'rgba(139,92,246,0.1)' },
-    { type: 'custom_hours', label: 'ساعات مخصصة',      icon: <CalendarCog size={13}/>,  color: '#06B6D4', bg: 'rgba(6,182,212,0.1)' },
+    { type: 'day_off',      label: 'إجازة اليوم',      icon: <CalendarOff size={13}/>,  color: 'var(--destructive)', bg: 'color-mix(in srgb, var(--destructive) 10%, transparent)' },
+    { type: 'late_start',   label: 'تأخير',            icon: <Clock size={13}/>,        color: 'var(--warning)', bg: 'color-mix(in srgb, var(--warning) 10%, transparent)' },
+    { type: 'early_leave',  label: 'خروج بدري',        icon: <LogOut size={13}/>,       color: 'var(--warning)', bg: 'color-mix(in srgb, var(--warning) 10%, transparent)' },
+    { type: 'block_range',  label: 'قفل فترة',         icon: <Lock size={13}/>,         color: 'var(--accent)', bg: 'color-mix(in srgb, var(--accent) 10%, transparent)' },
+    { type: 'custom_hours', label: 'ساعات مخصصة',      icon: <CalendarCog size={13}/>,  color: 'var(--info)', bg: 'color-mix(in srgb, var(--info) 10%, transparent)' },
   ];
 
   return (
     <div
       className="rounded-2xl border overflow-hidden transition-all"
       style={{
-        borderColor: hasDayOff ? 'rgba(239,68,68,0.4)' : active.length ? 'rgba(214,168,79,0.35)' : '#2A2A35',
-        background:  hasDayOff ? 'rgba(239,68,68,0.04)' : '#141418',
+        borderColor: hasDayOff ? 'color-mix(in srgb, var(--destructive) 40%, transparent)' : active.length ? 'color-mix(in srgb, var(--primary) 35%, transparent)' : 'var(--surface-muted)',
+        background:  hasDayOff ? 'color-mix(in srgb, var(--destructive) 4%, transparent)' : 'var(--surface)',
       }}
     >
       {/* Card header */}
@@ -330,26 +330,26 @@ function BarberCard({ barber, overrides, onAction, onDeleteOverride, deletingId 
           <div
             className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-sm font-bold"
             style={{
-              background: hasDayOff ? 'rgba(239,68,68,0.15)' : 'rgba(214,168,79,0.12)',
-              color:      hasDayOff ? '#EF4444' : '#D6A84F',
+              background: hasDayOff ? 'color-mix(in srgb, var(--destructive) 15%, transparent)' : 'color-mix(in srgb, var(--primary) 12%, transparent)',
+              color:      hasDayOff ? 'var(--destructive)' : 'var(--primary)',
             }}
           >
             {barber.name.slice(0, 1)}
           </div>
 
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-white truncate">{barber.name}</p>
+            <p className="text-sm font-semibold text-foreground truncate">{barber.name}</p>
             <div className="flex items-center gap-2 mt-0.5">
               {hasDayOff ? (
-                <span className="text-xs font-medium px-1.5 py-0.5 rounded-md" style={{ background: 'rgba(239,68,68,0.15)', color: '#EF4444' }}>
+                <span className="text-xs font-medium px-1.5 py-0.5 rounded-md" style={{ background: 'color-mix(in srgb, var(--destructive) 15%, transparent)', color: 'var(--destructive)' }}>
                   إجازة اليوم
                 </span>
               ) : active.length > 0 ? (
-                <span className="text-xs font-medium px-1.5 py-0.5 rounded-md" style={{ background: 'rgba(214,168,79,0.12)', color: '#D6A84F' }}>
+                <span className="text-xs font-medium px-1.5 py-0.5 rounded-md" style={{ background: 'color-mix(in srgb, var(--primary) 12%, transparent)', color: 'var(--primary)' }}>
                   {active.length} تعديل نشط
                 </span>
               ) : (
-                <span className="text-xs text-zinc-500">لا توجد تعديلات</span>
+                <span className="text-xs text-muted-foreground/80">لا توجد تعديلات</span>
               )}
             </div>
           </div>
@@ -357,7 +357,7 @@ function BarberCard({ barber, overrides, onAction, onDeleteOverride, deletingId 
 
         <button
           onClick={() => setExpanded(v => !v)}
-          className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors shrink-0"
+          className="p-1.5 rounded-lg text-muted-foreground/80 hover:text-foreground hover:bg-surface-muted transition-colors shrink-0"
         >
           {expanded ? <ChevronUp size={15}/> : <ChevronDown size={15}/>}
         </button>
@@ -392,7 +392,7 @@ function BarberCard({ barber, overrides, onAction, onDeleteOverride, deletingId 
 
       {/* Expanded: Action buttons */}
       {expanded && (
-        <div className="border-t px-4 py-3 grid grid-cols-2 gap-2 sm:grid-cols-3" style={{ borderColor: '#2A2A35' }}>
+        <div className="border-t px-4 py-3 grid grid-cols-2 gap-2 sm:grid-cols-3" style={{ borderColor: 'var(--surface-muted)' }}>
           {ACTIONS.map(act => (
             <button
               key={act.type}
@@ -488,32 +488,32 @@ export function BookingControlDrawer({ onClose }: Props) {
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-[50] bg-black/60 backdrop-blur-[2px]"
+        className="fixed inset-0 z-[50] bg-background/60 backdrop-blur-[2px]"
         onClick={onClose}
       />
 
       {/* Drawer panel */}
       <div
         className="fixed top-0 left-0 h-full z-[55] flex flex-col overflow-hidden shadow-2xl"
-        style={{ width: 420, background: '#0F0F14', borderRight: '1px solid #2A2A35' }}
+        style={{ width: 420, background: 'var(--background)', borderRight: '1px solid var(--surface-muted)' }}
         dir="rtl"
       >
         {/* ── Drawer Header ──────────────────────────────────────────────── */}
-        <div className="flex-shrink-0 border-b px-5 py-4" style={{ borderColor: '#2A2A35', background: '#111116' }}>
+        <div className="flex-shrink-0 border-b px-5 py-4" style={{ borderColor: 'var(--surface-muted)', background: 'var(--surface-muted)' }}>
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'rgba(214,168,79,0.15)' }}>
-                <Shield size={16} style={{ color: '#D6A84F' }}/>
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'color-mix(in srgb, var(--primary) 15%, transparent)' }}>
+                <Shield size={16} style={{ color: 'var(--primary)' }}/>
               </div>
               <div>
-                <h2 className="text-sm font-black text-white">التحكم السريع في الحجز</h2>
-                <p className="text-xs text-zinc-500 leading-tight">تعديلات يومية بدون تغيير جدول الأسبوع</p>
+                <h2 className="text-sm font-black text-foreground">التحكم السريع في الحجز</h2>
+                <p className="text-xs text-muted-foreground/80 leading-tight">تعديلات يومية بدون تغيير جدول الأسبوع</p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-2 rounded-xl border text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all"
-              style={{ borderColor: '#2A2A35' }}
+              className="p-2 rounded-xl border text-muted-foreground hover:text-foreground hover:bg-surface-muted transition-all"
+              style={{ borderColor: 'var(--surface-muted)' }}
             >
               <X size={15}/>
             </button>
@@ -521,13 +521,13 @@ export function BookingControlDrawer({ onClose }: Props) {
 
           {/* Date selector */}
           <div className="mt-3">
-            <label className="text-xs text-zinc-500 mb-1 block">اليوم المحدد</label>
+            <label className="text-xs text-muted-foreground/80 mb-1 block">اليوم المحدد</label>
             <input
               type="date"
               value={date}
               onChange={e => setDate(e.target.value)}
-              className="w-full rounded-xl border px-3 py-2 text-sm text-white bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
-              style={{ borderColor: '#2A2A35' }}
+              className="w-full rounded-xl border px-3 py-2 text-sm text-foreground bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
+              style={{ borderColor: 'var(--surface-muted)' }}
             />
           </div>
         </div>
@@ -537,35 +537,35 @@ export function BookingControlDrawer({ onClose }: Props) {
 
           {/* Active Overrides Banner */}
           {allActive.length > 0 && (
-            <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'rgba(214,168,79,0.3)', background: 'rgba(214,168,79,0.05)' }}>
-              <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'rgba(214,168,79,0.2)' }}>
+            <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'color-mix(in srgb, var(--primary) 30%, transparent)', background: 'color-mix(in srgb, var(--primary) 5%, transparent)' }}>
+              <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'color-mix(in srgb, var(--primary) 20%, transparent)' }}>
                 <div className="flex items-center gap-2">
-                  <AlertCircle size={14} style={{ color: '#D6A84F' }}/>
-                  <span className="text-xs font-bold text-amber-400">تعديلات اليوم ({allActive.length})</span>
+                  <AlertCircle size={14} style={{ color: 'var(--primary)' }}/>
+                  <span className="text-xs font-bold text-primary">تعديلات اليوم ({allActive.length})</span>
                 </div>
                 {allActive.length > 3 && (
                   <button
                     onClick={() => setShowAllOverrides(v => !v)}
-                    className="text-xs text-zinc-500 hover:text-white transition-colors"
+                    className="text-xs text-muted-foreground/80 hover:text-foreground transition-colors"
                   >
                     {showAllOverrides ? 'أقل' : `عرض الكل`}
                   </button>
                 )}
               </div>
-              <div className="divide-y" style={{ borderColor: 'rgba(214,168,79,0.1)' }}>
+              <div className="divide-y" style={{ borderColor: 'color-mix(in srgb, var(--primary) 10%, transparent)' }}>
                 {visibleTopOverrides.map(ov => (
                   <div key={ov.OverrideID} className="flex items-center justify-between px-4 py-2.5">
                     <div className="flex items-center gap-2 min-w-0">
                       <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: typeColor(ov.Type) }}/>
-                      <span className="text-xs text-zinc-300 font-medium truncate">{ov.EmpName}</span>
+                      <span className="text-xs text-foreground font-medium truncate">{ov.EmpName}</span>
                       <span className="text-xs shrink-0" style={{ color: typeColor(ov.Type) }}>{fmtTypeAr(ov.Type)}</span>
-                      {ov.StartTime && <span className="text-xs text-zinc-500 shrink-0">{ov.StartTime}</span>}
-                      {ov.EndTime   && <span className="text-xs text-zinc-500 shrink-0">← {ov.EndTime}</span>}
+                      {ov.StartTime && <span className="text-xs text-muted-foreground/80 shrink-0">{ov.StartTime}</span>}
+                      {ov.EndTime   && <span className="text-xs text-muted-foreground/80 shrink-0">← {ov.EndTime}</span>}
                     </div>
                     <button
                       onClick={() => handleDelete(ov.OverrideID)}
                       disabled={deletingId === ov.OverrideID}
-                      className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-400/10 transition-all disabled:opacity-40 shrink-0 mr-2"
+                      className="p-1.5 rounded-lg text-muted-foreground/80 hover:text-destructive hover:bg-destructive/10 transition-all disabled:opacity-40 shrink-0 mr-2"
                     >
                       {deletingId === ov.OverrideID
                         ? <Loader2 size={13} className="animate-spin"/>
@@ -580,18 +580,18 @@ export function BookingControlDrawer({ onClose }: Props) {
 
           {/* Section label */}
           <div className="flex items-center gap-2">
-            <div className="h-px flex-1" style={{ background: '#2A2A35' }}/>
-            <span className="text-xs text-zinc-500 px-2">الموظفون</span>
-            <div className="h-px flex-1" style={{ background: '#2A2A35' }}/>
+            <div className="h-px flex-1" style={{ background: 'var(--surface-muted)' }}/>
+            <span className="text-xs text-muted-foreground/80 px-2">الموظفون</span>
+            <div className="h-px flex-1" style={{ background: 'var(--surface-muted)' }}/>
           </div>
 
           {/* Barber cards */}
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 size={22} className="animate-spin text-amber-400"/>
+              <Loader2 size={22} className="animate-spin text-primary"/>
             </div>
           ) : barbers.length === 0 ? (
-            <div className="text-center py-12 text-zinc-500 text-sm">لا يوجد موظفون</div>
+            <div className="text-center py-12 text-muted-foreground/80 text-sm">لا يوجد موظفون</div>
           ) : (
             <div className="space-y-3">
               {barbers.map(barber => (
@@ -610,8 +610,8 @@ export function BookingControlDrawer({ onClose }: Props) {
 
         {/* ── Footer note ────────────────────────────────────────────────── */}
         <div
-          className="flex-shrink-0 px-5 py-3 border-t text-xs text-zinc-600 text-center"
-          style={{ borderColor: '#2A2A35' }}
+          className="flex-shrink-0 px-5 py-3 border-t text-xs text-muted-foreground/60 text-center"
+          style={{ borderColor: 'var(--surface-muted)' }}
         >
           التعديلات تؤثر فورًا على الحجوزات الأونلاين · لا تُعدَّل جداول الأسبوع
         </div>
@@ -631,14 +631,14 @@ export function BookingControlDrawer({ onClose }: Props) {
         <div
           className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[90] px-5 py-3 rounded-xl text-sm font-semibold shadow-2xl border flex items-center gap-2 transition-all"
           style={{
-            background:  toast.ok ? '#141418' : 'rgba(239,68,68,0.12)',
-            color:       toast.ok ? '#F7F1E5' : '#EF4444',
-            borderColor: toast.ok ? '#2A2A35' : 'rgba(239,68,68,0.3)',
+            background:  toast.ok ? 'var(--surface)' : 'color-mix(in srgb, var(--destructive) 12%, transparent)',
+            color:       toast.ok ? 'var(--foreground)' : 'var(--destructive)',
+            borderColor: toast.ok ? 'var(--surface-muted)' : 'color-mix(in srgb, var(--destructive) 30%, transparent)',
           }}
         >
           {toast.ok
-            ? <CheckCircle2 size={15} style={{ color: '#10B981' }}/>
-            : <AlertCircle  size={15} style={{ color: '#EF4444' }}/>
+            ? <CheckCircle2 size={15} style={{ color: 'var(--success)' }}/>
+            : <AlertCircle  size={15} style={{ color: 'var(--destructive)' }}/>
           }
           {toast.msg}
         </div>

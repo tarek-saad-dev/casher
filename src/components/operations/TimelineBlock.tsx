@@ -34,18 +34,18 @@ export function TimelineBlock({ item }: Props) {
       <div
         className="p-3 rounded-xl border-2"
         style={{
-          background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.25), rgba(212, 175, 55, 0.1))',
-          borderColor: '#d4af37',
+          background: 'linear-gradient(135deg, color-mix(in srgb, var(--primary) 25%, transparent), color-mix(in srgb, var(--primary) 10%, transparent))',
+          borderColor: 'var(--primary)',
         }}
       >
         <div className="flex items-center gap-2 mb-2">
-          <Scissors className="w-4 h-4" style={{ color: '#d4af37' }} />
-          <span className="text-xs font-bold" style={{ color: '#d4af37' }}>قيد الخدمة</span>
+          <Scissors className="w-4 h-4" style={{ color: 'var(--primary)' }} />
+          <span className="text-xs font-bold" style={{ color: 'var(--primary)' }}>قيد الخدمة</span>
         </div>
-        <div className="text-sm font-bold text-white mb-1">
+        <div className="text-sm font-bold text-foreground mb-1">
           {startTime} - {endTime}
         </div>
-        <div className="text-xs" style={{ color: '#a1a1aa' }}>
+        <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
           {item.label} {item.customerName ? `— ${item.customerName}` : ''}
         </div>
       </div>
@@ -57,22 +57,22 @@ export function TimelineBlock({ item }: Props) {
       <div
         className="p-3 rounded-xl border"
         style={{
-          background: '#111',
-          borderColor: isProtected ? '#d4af37' : 'rgba(212, 175, 55, 0.3)',
+          background: 'var(--surface)',
+          borderColor: isProtected ? 'var(--primary)' : 'color-mix(in srgb, var(--primary) 30%, transparent)',
           borderWidth: isProtected ? '2px' : '1px',
         }}
       >
         <div className="flex items-center gap-2 mb-2">
-          <Calendar className="w-4 h-4" style={{ color: isProtected ? '#d4af37' : '#a1a1aa' }} />
-          <span className="text-xs font-medium" style={{ color: isProtected ? '#d4af37' : '#a1a1aa' }}>
+          <Calendar className="w-4 h-4" style={{ color: isProtected ? 'var(--primary)' : 'var(--muted-foreground)' }} />
+          <span className="text-xs font-medium" style={{ color: isProtected ? 'var(--primary)' : 'var(--muted-foreground)' }}>
             {isProtected ? 'حجز محمي' : 'حجز'}
           </span>
-          {isProtected && <Shield className="w-3.5 h-3.5" style={{ color: '#d4af37' }} />}
+          {isProtected && <Shield className="w-3.5 h-3.5" style={{ color: 'var(--primary)' }} />}
         </div>
-        <div className="text-sm font-bold text-white mb-1">
+        <div className="text-sm font-bold text-foreground mb-1">
           {startTime} - {endTime}
         </div>
-        <div className="text-xs" style={{ color: '#a1a1aa' }}>
+        <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
           {item.label} {item.customerName ? `— ${item.customerName}` : ''}
         </div>
       </div>
@@ -84,23 +84,23 @@ export function TimelineBlock({ item }: Props) {
       <div
         className="p-3 rounded-xl border"
         style={{
-          background: '#171717',
-          borderColor: 'rgba(161, 161, 170, 0.3)',
+          background: 'var(--surface-muted)',
+          borderColor: 'color-mix(in srgb, var(--muted-foreground) 30%, transparent)',
         }}
       >
         <div className="flex items-center gap-2 mb-2">
-          <Ticket className="w-4 h-4" style={{ color: '#a1a1aa' }} />
-          <span className="text-xs font-medium" style={{ color: '#a1a1aa' }}>دور</span>
+          <Ticket className="w-4 h-4" style={{ color: 'var(--muted-foreground)' }} />
+          <span className="text-xs font-medium" style={{ color: 'var(--muted-foreground)' }}>دور</span>
           {item.ticketCode && (
-            <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(212, 175, 55, 0.2)', color: '#d4af37' }}>
+            <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{ background: 'color-mix(in srgb, var(--primary) 20%, transparent)', color: 'var(--primary)' }}>
               {item.ticketCode}
             </span>
           )}
         </div>
-        <div className="text-sm font-bold text-white mb-1">
+        <div className="text-sm font-bold text-foreground mb-1">
           {startTime} - {endTime}
         </div>
-        <div className="text-xs" style={{ color: '#a1a1aa' }}>
+        <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
           {item.label} {item.customerName ? `— ${item.customerName}` : ''}
         </div>
       </div>
@@ -109,11 +109,11 @@ export function TimelineBlock({ item }: Props) {
 
   // Default/fallback
   return (
-    <div className="p-3 rounded-xl border" style={{ background: '#171717', borderColor: 'rgba(255,255,255,0.1)' }}>
-      <div className="text-sm font-medium text-white">
+    <div className="p-3 rounded-xl border" style={{ background: 'var(--surface-muted)', borderColor: 'color-mix(in srgb, var(--foreground) 10%, transparent)' }}>
+      <div className="text-sm font-medium text-foreground">
         {startTime} - {endTime}
       </div>
-      <div className="text-xs" style={{ color: '#a1a1aa' }}>{item.label}</div>
+      <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{item.label}</div>
     </div>
   );
 }

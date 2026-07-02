@@ -35,6 +35,7 @@ const PAGE_ACCESS_RULES = [
   { pageKey: 'income_review.payments',  accessMode: 'roles', allowedRoles: ['super_admin','admin','accountant'] },
   // Reports — cashier NOT included
   { pageKey: 'reports.emp_services',    accessMode: 'roles', allowedRoles: ['super_admin','admin','manager'] },
+  { pageKey: 'reports.emp_monthly_work_revenue', accessMode: 'roles', allowedRoles: ['super_admin','admin','manager'] },
   { pageKey: 'reports.monthly',         accessMode: 'roles', allowedRoles: ['super_admin','admin','manager','accountant','viewer'] },
   // Expenses
   { pageKey: 'expenses.new',            accessMode: 'roles', allowedRoles: ['super_admin','admin','cashier','accountant'] },
@@ -167,7 +168,7 @@ async function verify(db) {
         JOIN dbo.TblSystemPages sp ON sp.PageID = pra.PageID
         JOIN dbo.TblUserRoles ur   ON ur.RoleID = pra.RoleID
         WHERE ur.UserID = @uid AND sp.PageKey IN (
-          'reports.emp_services','hr.employees','hr.attendance',
+          'reports.emp_services','reports.emp_monthly_work_revenue','hr.employees','hr.attendance',
           'hr.payroll','admin.settings','admin.users','admin.permissions.users',
           'treasury.daily'
         ) AND pra.CanView = 1

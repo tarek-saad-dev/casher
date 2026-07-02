@@ -4,7 +4,9 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Scissors, Plus, Edit2, Trash2, Loader2, FolderOpen,
   FolderPlus, Settings, Search, Clock, MoreVertical, Users,
+  ImageIcon, X,
 } from 'lucide-react';
+import { SERVICE_IMAGE_PRESETS } from '@/lib/serviceImages';
 import PageHeader from '@/components/shared/PageHeader';
 import KpiCard from '@/components/shared/KpiCard';
 import { Button } from '@/components/ui/button';
@@ -39,6 +41,7 @@ interface Service {
   SalesCount: number;
   isDeleted?: boolean;
   DurationMinutes: number | null;
+  ImageUrl: string | null;
 }
 
 interface BarberDurationItem {
@@ -63,6 +66,7 @@ interface ServiceFormData {
   Bonus: number;
   CatID: number | null;
   isActive: boolean;
+  ImageUrl: string;
 }
 
 interface CategoryFormData {
@@ -96,6 +100,7 @@ export default function ServicesManagementPage() {
     Bonus: 0,
     CatID: null,
     isActive: true,
+    ImageUrl: '',
   });
 
   // Duration state per service (inline edit)
@@ -235,6 +240,7 @@ export default function ServicesManagementPage() {
         Bonus: service.Bonus,
         CatID: service.CatID,
         isActive: !service.isDeleted,
+        ImageUrl: service.ImageUrl || '',
       });
       if (service.DurationMinutes !== null && service.DurationMinutes !== undefined) {
         setDurationEdits(prev => ({ ...prev, [service.ProID]: String(service.DurationMinutes) }));
@@ -248,6 +254,7 @@ export default function ServicesManagementPage() {
         Bonus: 0,
         CatID: null,
         isActive: true,
+        ImageUrl: '',
       });
     }
     setServiceModalOpen(true);
@@ -578,6 +585,7 @@ export default function ServicesManagementPage() {
               <TableRow className="border-zinc-800">
                 <TableHead className="text-right text-zinc-400">#</TableHead>
                 <TableHead className="text-right text-zinc-400">الخدمة</TableHead>
+                <TableHead className="text-right text-zinc-400 w-14">صورة</TableHead>
                 <TableHead className="text-right text-zinc-400">الفئة</TableHead>
                 <TableHead className="text-right text-zinc-400">السعر</TableHead>
                 <TableHead className="text-right text-zinc-400">العمولة</TableHead>
@@ -598,6 +606,21 @@ export default function ServicesManagementPage() {
                         <div className="text-sm text-zinc-400 mt-1">{service.ProNameAr}</div>
                       )}
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    {service.ImageUrl ? (
+                      <div className="h-10 w-10 rounded-md overflow-hidden border border-zinc-700 bg-zinc-800">
+                        <img
+                          src={service.ImageUrl}
+                          alt={service.ProName}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div className="h-10 w-10 rounded-md border border-dashed border-zinc-700 bg-zinc-800/50 flex items-center justify-center">
+                        <ImageIcon className="w-4 h-4 text-zinc-600" />
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell>
                     <CategoryBadge name={service.CatName} size="sm" />
@@ -759,7 +782,7 @@ export default function ServicesManagementPage() {
 
       {/* Service Modal */}
       <Dialog open={serviceModalOpen} onOpenChange={setServiceModalOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-md">
+        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl">
               {editingService ? 'تعديل الخدمة' : 'خدمة جديدة'}
@@ -834,6 +857,93 @@ export default function ServicesManagementPage() {
                   اختر الفئة
                 </div>
               )}
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="imageUrl">رابط الصورة</Label>
+                {serviceFormData.ImageUrl.trim() && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setServiceFormData({ ...serviceFormData, ImageUrl: '' })}
+                    className="h-7 px-2 text-xs text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10"
+                  >
+                    <X className="w-3.5 h-3.5 ml-1" />
+                    مسح الصورة
+                  </Button>
+                )}
+              </div>
+              <Input
+                id="imageUrl"
+                value={serviceFormData.ImageUrl}
+                onChange={(e) => setServiceFormData({ ...serviceFormData, ImageUrl: e.target.value })}
+                className="bg-zinc-800 border-zinc-700 text-white"
+                placeholder="/services/haircut.jpg أو رابط خارجي"
+                dir="ltr"
+              />
+              <p className="text-xs text-zinc-500">
+                أدخل مسارًا محليًا مثل <span dir="ltr" className="font-mono text-zinc-400">/services/haircut.jpg</span> أو رابطًا خارجيًا.
+              </p>
+
+              {serviceFormData.ImageUrl.trim() ? (
+                <div className="rounded-lg border border-zinc-700 overflow-hidden bg-zinc-800/50">
+                  <div className="px-3 py-2 border-b border-zinc-700 text-xs text-zinc-400">معاينة الصورة</div>
+                  <div className="relative h-36 bg-zinc-900">
+                    <img
+                      src={serviceFormData.ImageUrl.trim()}
+                      alt="معاينة صورة الخدمة"
+                      className="h-full w-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  </div>
+                  <div className="px-3 py-2 text-xs text-zinc-500 font-mono truncate" dir="ltr">
+                    {serviceFormData.ImageUrl.trim()}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-zinc-700 bg-zinc-800/30 text-zinc-500">
+                  <div className="flex flex-col items-center gap-1 text-xs">
+                    <ImageIcon className="w-5 h-5 opacity-50" />
+                    <span>لا توجد صورة محددة</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label className="text-xs text-zinc-400">اختيار سريع من الصور المتاحة</Label>
+                <div className="grid grid-cols-4 gap-2">
+                  {SERVICE_IMAGE_PRESETS.map((preset) => {
+                    const isSelected = serviceFormData.ImageUrl.trim() === preset.path;
+                    return (
+                      <button
+                        key={preset.path}
+                        type="button"
+                        title={preset.label}
+                        onClick={() => setServiceFormData({ ...serviceFormData, ImageUrl: preset.path })}
+                        className={`group relative overflow-hidden rounded-lg border transition-all ${
+                          isSelected
+                            ? 'border-amber-500 ring-1 ring-amber-500/50'
+                            : 'border-zinc-700 hover:border-zinc-500'
+                        }`}
+                      >
+                        <div className="aspect-4/3 bg-zinc-800">
+                          <img
+                            src={preset.path}
+                            alt={preset.label}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                        <div className="absolute inset-x-0 bottom-0 bg-black/70 px-1 py-0.5 text-[9px] text-white truncate">
+                          {preset.label}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <Switch

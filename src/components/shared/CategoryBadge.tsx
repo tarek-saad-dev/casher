@@ -40,9 +40,9 @@ export function CategoryBadge({
       <span style={{
         display: 'inline-flex', alignItems: 'center', gap: '4px',
         padding, fontSize, fontWeight: 500, borderRadius: '9999px',
-        backgroundColor: 'rgba(113,113,122,0.15)',
-        border: '1px solid rgba(113,113,122,0.35)',
-        color: 'rgba(161,161,170,1)',
+        backgroundColor: 'color-mix(in srgb, var(--muted-foreground) 15%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--muted-foreground) 35%, transparent)',
+        color: 'var(--muted-foreground)',
         whiteSpace: 'nowrap',
       }}>
         بدون فئة

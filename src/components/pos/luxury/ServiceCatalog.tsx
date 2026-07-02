@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useDeferredValue, useCallback } from 'react';
 import { Plus, Flame, Clock, LayoutGrid } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Service, Barber, CartItem } from '@/lib/types';
 import { getCategoryTheme } from '@/lib/categoryTheme';
+import { searchServices, resolveVisibleServices } from '@/lib/serviceSearch';
+import ServiceSearchInput from '@/components/pos/ServiceSearchInput';
 
 interface ServiceCatalogProps {
   services: Service[];
@@ -20,13 +22,13 @@ interface CategoryTab {
 }
 
 
-// Service images mapping (using Unsplash barber images)
+// Fallback images when ImageUrl is not set in the database
 const getServiceImage = (serviceName: string, category: string): string => {
   const images: Record<string, string> = {
-    'hair': 'https://images.unsplash.com/photo-1621605815971-fbc98d665033?w=400&h=300&fit=crop',
-    'beard': 'https://images.unsplash.com/photo-1622286342621-4bd9c993e2be?w=400&h=300&fit=crop',
-    'care': 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=400&h=300&fit=crop',
-    'packages': 'https://images.unsplash.com/photo-1599351431202-0e671c16d7a7?w=400&h=300&fit=crop',
+    'hair': '/services/haircut.jpg',
+    'beard': '/services/beard.jpeg',
+    'care': '/services/basic.jpeg',
+    'packages': '/services/hb.jpeg',
   };
 
   if (serviceName.includes('قص') || serviceName.includes('شعر')) return images['hair'];
@@ -49,6 +51,35 @@ const getServiceDuration = (serviceName: string): number => {
 
 export default function ServiceCatalog({ services, selectedBarber, onAddItem }: ServiceCatalogProps) {
   const [activeTab, setActiveTab] = useState<string>('hot');
+  const [serviceSearchQuery, setServiceSearchQuery] = useState('');
+  const deferredSearchQuery = useDeferredValue(serviceSearchQuery);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const clearSearch = useCallback(() => {
+    setServiceSearchQuery('');
+  }, []);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (event.key !== '/') return;
+
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const isEditable =
+        tag === 'input' ||
+        tag === 'textarea' ||
+        tag === 'select' ||
+        target?.isContentEditable;
+
+      if (isEditable) return;
+
+      event.preventDefault();
+      searchInputRef.current?.focus();
+    };
+
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  }, []);
 
   // Auto-select first service when barber is selected (if cart is empty)
   useEffect(() => {
@@ -106,7 +137,7 @@ export default function ServiceCatalog({ services, selectedBarber, onAddItem }: 
   }, [categories]);
 
   // Filter services by active category
-  const filteredServices = useMemo(() => {
+  const categoryServices = useMemo(() => {
     if (activeTab === 'hot') {
       // Return top 10 most popular services
       return services
@@ -118,6 +149,12 @@ export default function ServiceCatalog({ services, selectedBarber, onAddItem }: 
     const activeCatId = parseInt(activeTab);
     return services.filter(s => s.CatID === activeCatId);
   }, [services, activeTab]);
+
+  const filteredServices = useMemo(() => {
+    return resolveVisibleServices(services, categoryServices, deferredSearchQuery);
+  }, [services, categoryServices, deferredSearchQuery]);
+
+  const isSearchActive = serviceSearchQuery.trim().length > 0;
 
   // Get hot threshold (top 3 by sales from filtered services)
   const hotThreshold = useMemo(() => {
@@ -152,17 +189,28 @@ export default function ServiceCatalog({ services, selectedBarber, onAddItem }: 
 
   return (
     <div className="w-full">
-      {/* Section Header */}
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold text-[#F7F1E5]">اختر الخدمة</h3>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-[#A7A29A]">الأكثر طلباً</span>
-          <Flame className="w-4 h-4 text-orange-400" />
+      {/* Section Header + Search */}
+      <div className="mb-4 flex flex-col gap-3">
+        <h3 className="text-lg font-bold text-foreground">اختر الخدمة</h3>
+
+        <div className="flex flex-col gap-2 min-[480px]:flex-row min-[480px]:items-start min-[480px]:justify-between min-[480px]:gap-4">
+          <ServiceSearchInput
+            ref={searchInputRef}
+            value={serviceSearchQuery}
+            onChange={setServiceSearchQuery}
+            onClear={clearSearch}
+            resultCount={isSearchActive ? filteredServices.length : undefined}
+            className="w-full min-[480px]:w-[min(100%,480px)] min-[480px]:max-w-[480px] min-[480px]:min-w-[280px]"
+          />
+          <div className="flex shrink-0 items-center gap-2 self-start pt-2 min-[480px]:pt-2.5">
+            <span className="text-xs text-muted-foreground">الأكثر طلباً</span>
+            <Flame className="h-4 w-4 text-warning" />
+          </div>
         </div>
       </div>
 
       {/* Category Tabs */}
-      <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-2 scrollbar-luxury">
+      <div className="scrollbar-none md:scrollbar-luxury -mx-1 mb-4 flex items-center gap-2 overflow-x-auto px-1 pb-2">
         {categoryTabs.map((tab) => {
           const isActive = activeTab === tab.id;
           // For special tabs (hot/all) use gold, for category tabs use their theme color
@@ -171,29 +219,30 @@ export default function ServiceCatalog({ services, selectedBarber, onAddItem }: 
           const theme = isSpecial ? null : getCategoryTheme(tab.name, catId);
 
           const activeStyle = isSpecial
-            ? { backgroundColor: '#D6A84F', color: '#0B0B0D', borderColor: '#D6A84F', border: '1px solid' }
+            ? { backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)', borderColor: 'var(--primary)', border: '1px solid' }
             : (theme ? { ...theme.badgeStyle, padding: undefined } : {});
 
           const inactiveStyle = {
-            backgroundColor: '#16161A',
-            color: '#A7A29A',
-            borderColor: '#2A2A30',
+            backgroundColor: 'var(--surface)',
+            color: 'var(--muted-foreground)',
+            borderColor: 'var(--border)',
             border: '1px solid',
           };
 
           return (
             <button
               key={tab.id}
+              type="button"
               onClick={() => setActiveTab(tab.id)}
               style={isActive ? activeStyle : inactiveStyle}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap"
+              className="flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-medium transition-all"
             >
               {tab.icon}
               <span>{tab.name}</span>
               <span style={{
                 fontSize: '11px', padding: '1px 6px', borderRadius: '9999px',
-                backgroundColor: isActive ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.08)',
-                color: isActive ? 'inherit' : '#6B6B6B',
+                backgroundColor: isActive ? 'color-mix(in srgb, var(--background) 20%, transparent)' : 'color-mix(in srgb, var(--foreground) 8%, transparent)',
+                color: isActive ? 'inherit' : 'var(--muted-foreground)',
               }}>
                 {tab.count}
               </span>
@@ -203,78 +252,79 @@ export default function ServiceCatalog({ services, selectedBarber, onAddItem }: 
       </div>
 
       {/* Services Grid */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2.5 sm:gap-3">
         {filteredServices.map((svc) => {
           const isHot = svc.SalesCount >= hotThreshold && svc.SalesCount > 0;
           const duration = getServiceDuration(svc.ProName);
-          const imageUrl = getServiceImage(svc.ProName, activeTab);
+          const imageUrl = svc.ImageUrl || getServiceImage(svc.ProName, svc.CatName || '');
           const isDisabled = !selectedBarber;
 
           return (
             <div
               key={svc.ProID}
               className={cn(
-                'group relative bg-[#16161A] rounded-2xl overflow-hidden border border-[#2A2A30] transition-all duration-300',
-                !isDisabled && 'hover:border-[#D6A84F]/50 hover:shadow-lg hover:shadow-[#D6A84F]/10',
-                isDisabled && 'opacity-60 cursor-not-allowed'
+                'group relative overflow-hidden rounded-xl border border-border bg-surface transition-all duration-300',
+                !isDisabled && 'hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10',
+                isDisabled && 'cursor-not-allowed opacity-60'
               )}
             >
               {/* Hot Badge */}
               {isHot && (
-                <div className="absolute top-3 left-3 z-10">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center shadow-lg">
-                    <Flame className="w-4 h-4 text-white" />
+                <div className="absolute top-2 left-2 z-10">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-orange-400 to-red-500 shadow-lg">
+                    <Flame className="h-3.5 w-3.5 text-primary-foreground" />
                   </div>
                 </div>
               )}
 
               {/* Service Image */}
-              <div className="relative h-32 overflow-hidden">
+              <div className="relative h-16 overflow-hidden sm:h-[4.5rem]">
                 <img
                   src={imageUrl}
                   alt={svc.ProName}
-                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#16161A] via-transparent to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)] via-transparent to-transparent" />
               </div>
 
               {/* Service Info */}
-              <div className="p-3">
+              <div className="p-2.5">
                 {/* Service Name */}
-                <div className="mb-2">
-                  <h4 className="text-sm font-medium text-[#F7F1E5] line-clamp-1">
+                <div className="mb-1.5">
+                  <h4 className="line-clamp-2 text-sm font-medium leading-snug text-foreground">
                     {svc.ProNameAr || svc.ProName}
                   </h4>
                   {svc.ProNameAr && svc.ProName !== svc.ProNameAr && (
-                    <p className="text-xs text-[#A7A29A] line-clamp-1 mt-1">
+                    <p className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground max-sm:hidden">
                       {svc.ProName}
                     </p>
                   )}
                 </div>
 
                 {/* Price & Duration */}
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-lg font-bold text-[#D6A84F]">
-                    {svc.SPrice1} <span className="text-sm">ج.م</span>
+                <div className="mb-2 flex items-center justify-between gap-1">
+                  <span className="text-base font-bold text-primary">
+                    {svc.SPrice1} <span className="text-xs">ج.م</span>
                   </span>
-                  <div className="flex items-center gap-1 text-[#6B6B6B]">
-                    <Clock className="w-3 h-3" />
-                    <span className="text-xs">{duration} دقيقة</span>
+                  <div className="flex shrink-0 items-center gap-1 text-muted-foreground">
+                    <Clock className="h-3 w-3" />
+                    <span className="text-[11px]">{duration} د</span>
                   </div>
                 </div>
 
                 {/* Add Button */}
                 <button
+                  type="button"
                   onClick={() => handleAddService(svc)}
                   disabled={isDisabled}
                   className={cn(
-                    'w-full flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-medium transition-all',
+                    'flex min-h-10 w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium transition-all',
                     isDisabled
-                      ? 'bg-[#2A2A30] text-[#4A4A4A] cursor-not-allowed'
-                      : 'bg-[#D6A84F]/10 text-[#D6A84F] border border-[#D6A84F]/30 hover:bg-[#D6A84F] hover:text-[#0B0B0D] active:scale-95'
+                      ? 'cursor-not-allowed bg-surface-muted text-muted-foreground/50'
+                      : 'border border-primary/30 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground active:scale-95'
                   )}
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="h-3.5 w-3.5" />
                   إضافة
                 </button>
               </div>
@@ -285,8 +335,37 @@ export default function ServiceCatalog({ services, selectedBarber, onAddItem }: 
 
       {/* No Services Message */}
       {filteredServices.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-[#6B6B6B] text-sm">لا توجد خدمات في هذا القسم</p>
+        <div className="py-12 text-center">
+          {isSearchActive ? (
+            <div className="mx-auto max-w-sm space-y-4">
+              <div className="space-y-2">
+                <p className="text-base font-semibold text-foreground">لم نجد خدمة مطابقة</p>
+                <p className="text-sm text-muted-foreground">
+                  جرّب كتابة اسم أقصر أو استخدم كلمة مثل حلاقة، دقن أو بشرة.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={clearSearch}
+                  className="rounded-xl border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20"
+                >
+                  مسح البحث
+                </button>
+                {activeTab !== 'all' && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('all')}
+                    className="rounded-xl border border-border bg-surface px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
+                  >
+                    عرض كل الخدمات
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">لا توجد خدمات في هذا القسم</p>
+          )}
         </div>
       )}
     </div>

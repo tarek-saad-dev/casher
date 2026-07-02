@@ -96,7 +96,7 @@ export default function SplitPaymentInput({
                 amount > 0 
                   ? isMain 
                     ? 'border-primary bg-primary/5' 
-                    : 'border-border bg-zinc-900/30'
+                    : 'border-border bg-surface-muted/30'
                   : 'border-transparent'
               }`}
             >
@@ -106,7 +106,7 @@ export default function SplitPaymentInput({
               
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <span className={`text-sm font-medium ${amount > 0 ? 'text-zinc-200' : 'text-muted-foreground'}`}>
+                  <span className={`text-sm font-medium ${amount > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>
                     {method.Name}
                   </span>
                   {isMain && (
@@ -131,7 +131,7 @@ export default function SplitPaymentInput({
                   variant="ghost"
                   size="sm"
                   onClick={() => handleSetFullAmount(method.ID)}
-                  className="h-8 px-2 text-xs text-muted-foreground hover:text-zinc-300"
+                  className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
                 >
                   الكل
                 </Button>
@@ -144,14 +144,14 @@ export default function SplitPaymentInput({
       {/* Balance Status */}
       <div className={`p-2.5 rounded-lg text-sm ${
         isBalanced 
-          ? 'bg-green-500/10 border border-green-500/20' 
-          : 'bg-amber-500/10 border border-amber-500/20'
+          ? 'bg-success/10 border border-success/20' 
+          : 'bg-warning/10 border border-warning/20'
       }`}>
         <div className="flex items-center gap-2">
           {isBalanced ? (
             <>
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
-              <span className="text-green-400">
+              <CheckCircle2 className="w-4 h-4 text-success" />
+              <span className="text-success">
                 {hasMultiplePayments 
                   ? `دفع مختلط: ${mainMethod?.Name} (${formatCurrency(mainPayment?.amount || 0)})`
                   : 'تم التوزيع بنجاح'
@@ -160,8 +160,8 @@ export default function SplitPaymentInput({
             </>
           ) : (
             <>
-              <AlertCircle className="w-4 h-4 text-amber-500" />
-              <span className="text-amber-400">
+              <AlertCircle className="w-4 h-4 text-warning" />
+              <span className="text-warning">
                 {remaining > 0 
                   ? `متبقي: ${formatCurrency(remaining)}`
                   : `زائد: ${formatCurrency(Math.abs(remaining))}`
@@ -172,8 +172,8 @@ export default function SplitPaymentInput({
         </div>
         
         {hasMultiplePayments && isBalanced && (
-          <div className="mt-2 text-xs text-zinc-500 border-t border-zinc-800 pt-2">
-            سيتم تسجيل الفاتورة بـ <strong className="text-zinc-400">{mainMethod?.Name}</strong> ثم تسوية تلقائية
+          <div className="mt-2 text-xs text-muted-foreground border-t border-border pt-2">
+            سيتم تسجيل الفاتورة بـ <strong className="text-muted-foreground">{mainMethod?.Name}</strong> ثم تسوية تلقائية
           </div>
         )}
       </div>
