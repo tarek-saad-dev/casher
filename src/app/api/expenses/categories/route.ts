@@ -82,7 +82,8 @@ export async function GET() {
       SELECT 
         cat.ExpINID, 
         cat.CatName,
-        ISNULL(usage.UsageCount, 0) AS UsageCount
+        ISNULL(usage.UsageCount, 0) AS UsageCount,
+        ISNULL(daily.DailyUsageCount, 0) AS DailyUsageCount
       FROM [dbo].[TblExpINCat] cat
       LEFT JOIN (
         SELECT ExpINID, COUNT(*) AS UsageCount
@@ -91,9 +92,16 @@ export async function GET() {
           AND invDate >= DATEADD(MONTH, -3, GETDATE())
         GROUP BY ExpINID
       ) usage ON cat.ExpINID = usage.ExpINID
+      LEFT JOIN (
+        SELECT ExpINID, COUNT(*) AS DailyUsageCount
+        FROM [dbo].[TblCashMove]
+        WHERE invType = N'مصروفات' AND inOut = N'out'
+          AND invDate = CAST(GETDATE() AS DATE)
+        GROUP BY ExpINID
+      ) daily ON cat.ExpINID = daily.ExpINID
       WHERE cat.ExpINType = N'مصروفات'
         AND cat.IsActive = 1
-      ORDER BY ISNULL(usage.UsageCount, 0) DESC, cat.CatName
+      ORDER BY ISNULL(daily.DailyUsageCount, 0) DESC, ISNULL(usage.UsageCount, 0) DESC, cat.CatName
     `);
     
     // Add group to each category

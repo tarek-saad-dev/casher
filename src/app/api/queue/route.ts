@@ -7,6 +7,7 @@ import {
   findFirstFreeSlot,
   getDefaultDuration,
   getServicesDuration,
+  countQueueCustomersAhead,
 } from "@/lib/queueEstimateEngine";
 import { getCairoBusinessDate } from "@/lib/businessDate";
 import {
@@ -311,7 +312,7 @@ export async function POST(req: NextRequest) {
         0,
         Math.round((finalEstStart.getTime() - now2.getTime()) / 60000),
       );
-      finalWaitCount = qIvs.length;
+      finalWaitCount = countQueueCustomersAhead(qIvs, finalEstStart);
       console.log(
         "[queue create] final estimatedStartTime saved",
         finalEstStart.toISOString(),
@@ -519,7 +520,7 @@ export async function POST(req: NextRequest) {
             0,
             Math.round((verifiedSlot.getTime() - now2.getTime()) / 60000),
           );
-          finalWaitCount = qIvsTx.length;
+          finalWaitCount = countQueueCustomersAhead(qIvsTx, verifiedSlot);
           console.log(
             "[queue create] slot adjusted inside tx",
             finalEstStart.toISOString(),

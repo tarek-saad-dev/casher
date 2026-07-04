@@ -13,6 +13,7 @@ import {
 } from './nav-config';
 import type { NavItem, NavSection, NavTheme } from './nav-config';
 import SidebarThemeSwitch from '@/components/theme/SidebarThemeSwitch';
+import { useMobileNav } from '@/components/layout/MobileNavContext';
 
 
 // Glow helpers — computed once per rgb
@@ -32,7 +33,7 @@ interface MainNavProps {
 
 export default function MainNav({ suppressMobileChrome = false }: MainNavProps) {
   const pathname = usePathname();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { isOpen: mobileMenuOpen, close: closeMobileMenu, toggle: toggleMobileMenu } = useMobileNav();
   const [expandedSections, setExpandedSections] = useState<string[]>(['المدخلات']);
   const [isCollapsed, setIsCollapsed] = useState(true);
 
@@ -221,7 +222,7 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
       <Link
         key={item.href}
         href={item.href}
-        onClick={() => setMobileMenuOpen(false)}
+        onClick={() => closeMobileMenu()}
         style={baseStyle}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
@@ -296,7 +297,7 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
         <Link
           href={href}
           title={label}
-          onClick={() => setMobileMenuOpen(false)}
+          onClick={() => closeMobileMenu()}
           style={{
             position: 'relative',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -318,7 +319,7 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
     return (
       <Link
         href={href}
-        onClick={() => setMobileMenuOpen(false)}
+        onClick={() => closeMobileMenu()}
         style={{
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '10px 12px',
@@ -376,7 +377,7 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
             key={item.href}
             href={item.href}
             title={item.label}
-            onClick={() => setMobileMenuOpen(false)}
+            onClick={() => closeMobileMenu()}
             style={{
               position: 'relative',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -662,7 +663,7 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
           <h2 className="text-base font-bold text-foreground">CUT SALON</h2>
         </div>
         <button
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          onClick={() => toggleMobileMenu()}
           className="p-2 bg-surface-muted border border-sidebar-border rounded-lg text-muted-foreground hover:bg-sidebar-hover transition-colors"
         >
           {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -670,7 +671,7 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
       </div>
 
       {/* ── Mobile Menu ─────────────────────────────────────────────────── */}
-      {mobileMenuOpen && !suppressMobileChrome && (
+      {mobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm">
           <div
             className="absolute top-0 right-0 bottom-0 shadow-2xl flex flex-col"
@@ -685,7 +686,7 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
                 <h2 className="text-base font-bold text-foreground">CUT SALON</h2>
               </div>
               <button
-                onClick={() => setMobileMenuOpen(false)}
+                onClick={() => closeMobileMenu()}
                 className="p-2 hover:bg-sidebar-hover rounded-lg transition-colors"
               >
                 <X className="w-5 h-5 text-muted-foreground" />

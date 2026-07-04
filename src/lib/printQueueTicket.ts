@@ -1,4 +1,5 @@
 import type { QueueTicketPrintData } from '@/components/queue/QueueTicketPrint';
+import { normalizeCustomersAhead } from '@/lib/queueCustomersAhead';
 
 // ─────────────────────────────────────────────────────────────
 // Queue Ticket Receipt CSS — 80mm thermal, mirrors ExpenseReceiptPopup
@@ -157,13 +158,15 @@ function buildReceiptHtml(data: QueueTicketPrintData): string {
       <span class="info-value"${ltr ? ' dir="ltr"' : ''}>${value}</span>
     </div>`;
 
+  const customersAhead = normalizeCustomersAhead(waitingBefore);
+
   const rows = [
     clientName                      ? row('العميل',            clientName)                                  : '',
     empName                         ? row('الحلاق',             empName)                                     : '',
     services.length > 0             ? row('الخدمات',            services.map(s => s.name).join('، '))        : '',
     dateLabel                       ? row('التاريخ',            dateLabel)                                   : '',
     timeLabel                       ? row('وقت الإصدار',       timeLabel, true)                             : '',
-    (waitingBefore ?? 0) > 0        ? row('أمامك في الانتظار', String(waitingBefore))                       : '',
+    row('أمامك في الانتظار', String(customersAhead)),
     estTimeLabel                    ? row('الدخول المتوقع',    estTimeLabel, true)                          : '',
     (estimatedWaitMinutes ?? 0) > 0 ? row('انتظار تقريبي',     `~${estimatedWaitMinutes} د`)                : '',
   ].filter(Boolean).join('');
@@ -207,7 +210,7 @@ function buildReceiptHtml(data: QueueTicketPrintData): string {
 // ─────────────────────────────────────────────────────────────
 let _printWin: Window | null = null;
 
-export function printQueueTicket(data: QueueTicketPrintData): void {
+export function printQueueTicket(data: QueueTicketPrintData): boolean {
   console.log('[queue print] printing ticket', data);
 
   if (_printWin && !_printWin.closed) {
@@ -215,12 +218,19 @@ export function printQueueTicket(data: QueueTicketPrintData): void {
   }
 
   const win = window.open('', '_blank', 'width=300,height=400');
-  if (!win) {
-    console.error('[queue print] popup blocked');
-    return;
-  }
-  _printWin = win;
+  return printQueueTicketInWindow(win, data);
+}
 
+export function printQueueTicketInWindow(
+  win: Window | null,
+  data: QueueTicketPrintData,
+): boolean {
+  if (!win || win.closed) {
+    console.error('[queue print] popup unavailable');
+    return false;
+  }
+
+  _printWin = win;
   const html = buildReceiptHtml(data);
   win.document.write(html);
   win.document.close();
@@ -233,7 +243,6 @@ export function printQueueTicket(data: QueueTicketPrintData): void {
 
     win.print();
 
-    // Fallback close if onafterprint doesn't fire
     setTimeout(() => {
       if (_printWin && !_printWin.closed) {
         _printWin.close();
@@ -241,4 +250,6 @@ export function printQueueTicket(data: QueueTicketPrintData): void {
       }
     }, 10_000);
   };
+
+  return true;
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { normalizeCustomersAhead } from '@/lib/queueCustomersAhead';
 
 export interface QueueTicketPrintData {
   ticketCode: string;
@@ -251,12 +252,15 @@ export function QueueTicketPrint({ data, preview = false }: Props) {
             <span className="r-val" dir="ltr">{timeLabel}</span>
           </div>
         )}
-        {waitingBefore != null && waitingBefore > 0 && (
-          <div className="r-row">
-            <span className="r-lbl">أمامك في الانتظار</span>
-            <span className="r-val">{waitingBefore}</span>
-          </div>
-        )}
+        {(() => {
+          const customersAhead = normalizeCustomersAhead(waitingBefore);
+          return (
+            <div className="r-row">
+              <span className="r-lbl">أمامك في الانتظار</span>
+              <span className="r-val">{customersAhead}</span>
+            </div>
+          );
+        })()}
         {estTimeLabel && (
           <div className="r-row">
             <span className="r-lbl">الدخول المتوقع</span>

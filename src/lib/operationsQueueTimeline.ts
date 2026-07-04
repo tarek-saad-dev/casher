@@ -21,7 +21,10 @@ import {
   cairoDateStr,
   Interval,
 } from "@/lib/queueEstimateEngine";
+import { countQueueCustomersAhead } from "@/lib/queueCustomersAhead";
 import { getBarberWorkingWindow } from "@/lib/barberAvailability";
+import { getCairoBusinessDate } from "@/lib/businessDate";
+import { intervalsOverlap } from "@/lib/scheduleIntervals";
 
 const SALON_TZ = "Africa/Cairo";
 const DEBUG_OPS = process.env.DEBUG_OPERATIONS === "true";
@@ -322,7 +325,7 @@ export async function simulateQueueInsertion({
 }): Promise<SimulateQueueResult> {
   const db = await getPool();
   const now = requestedAt ? new Date(requestedAt) : new Date();
-  const dateStr = cairoDateStr(now);
+  const dateStr = getCairoBusinessDate(now);
 
   // Get barber info
   const empRes = await db
@@ -419,12 +422,36 @@ export async function simulateQueueInsertion({
   });
 
   // Check for any overlaps with the proposed slot (using correct overlap condition)
-  const proposedBookingConflicts = bIntervals.filter(b =>
-    suggestedStart < b.end && suggestedEnd > b.start
+  const proposedBookingConflicts = bIntervals.filter((b) =>
+    intervalsOverlap(suggestedStart, suggestedEnd, b.start, b.end),
   );
-  const proposedQueueConflicts = qIntervals.filter(q =>
-    suggestedStart < q.end && suggestedEnd > q.start
+  const proposedQueueConflicts = qIntervals.filter((q) =>
+    intervalsOverlap(suggestedStart, suggestedEnd, q.start, q.end),
   );
+
+  if (proposedBookingConflicts.length > 0 || proposedQueueConflicts.length > 0) {
+    console.error("[simulateQueueInsertion] SLOT CONFLICT after findFirstFreeSlot", {
+      empId,
+      suggestedStart: suggestedStart.toISOString(),
+      suggestedEnd: suggestedEnd.toISOString(),
+      bookingConflicts: proposedBookingConflicts.length,
+      queueConflicts: proposedQueueConflicts.length,
+    });
+    return {
+      ok: false,
+      decision: "no_gap_found",
+      empId,
+      empName,
+      serviceDurationMinutes: serviceDur,
+      suggestedStartTime: "",
+      suggestedEndTime: "",
+      peopleBefore: 0,
+      message: "لا يوجد فترة متاحة بدون تعارض مع حجز أو دور موجود",
+      timeline: timeline.timeline,
+      protectedBookings: [],
+      queueBefore: [],
+    };
+  }
 
   console.log("[simulate debug] Conflict check with proposed slot:", {
     bookingConflicts: proposedBookingConflicts.map(b => ({
@@ -460,11 +487,12 @@ export async function simulateQueueInsertion({
     finalSlotSelected: suggestedStart.toISOString(),
   });
 
-  // Count people before (queue tickets that end before or at our start)
+  // Count queue customers ahead (exclude bookings — not queue-line position)
   const queueBeforeItems = qIntervals.filter((q) => q.end <= suggestedStart);
   const queueCountBefore = queueBeforeItems.length;
+  const peopleBefore = countQueueCustomersAhead(qIntervals, suggestedStart);
 
-  // Find bookings that end before or at our start (for peopleBefore count)
+  // Bookings ending before slot — used for decision messaging only
   const bookingBeforeItems = bIntervals.filter((b) => b.end <= suggestedStart);
   const bookingCountBefore = bookingBeforeItems.length;
 
@@ -481,11 +509,6 @@ export async function simulateQueueInsertion({
   // Check if we're placed immediately after a booking (within 5 min tolerance)
   const isAfterBooking = nextBooking &&
     suggestedStart.getTime() >= nextBooking.end.getTime() - 5 * 60000;
-
-  // Total people before = queue items + bookings that end before or at our start
-  // Note: bookingBeforeItems already includes the booking we're after (if any)
-  // because its end time <= suggestedStart
-  const peopleBefore = queueCountBefore + bookingCountBefore;
 
   if (isAfterBooking) {
     decision = "after_booking";
@@ -507,10 +530,12 @@ export async function simulateQueueInsertion({
     }
   } else {
     decision = "after_queue";
-    if (bookingCountBefore > 0) {
-      message = `يوجد ${peopleBefore} أدوار وحجوزات قبلك، ستبدأ بعدهم`;
+    if (bookingCountBefore > 0 && queueCountBefore > 0) {
+      message = `يوجد ${queueCountBefore} ${queueCountBefore === 1 ? 'دور' : 'أدوار'} و${bookingCountBefore} ${bookingCountBefore === 1 ? 'حجز' : 'حجوزات'} قبلك، ستبدأ بعدهم`;
+    } else if (bookingCountBefore > 0) {
+      message = `يوجد ${bookingCountBefore} ${bookingCountBefore === 1 ? 'حجز' : 'حجوزات'} قبل موعدك`;
     } else {
-      message = `يوجد ${peopleBefore} أدوار قبلك، ستبدأ بعدهم`;
+      message = `يوجد ${peopleBefore} ${peopleBefore === 1 ? 'دور' : 'أدوار'} قبلك، ستبدأ بعدهم`;
     }
   }
 

@@ -11,7 +11,11 @@ import {
   upsertCustomer,
   PUBLIC_CORS_HEADERS,
 } from "@/lib/publicBookingHelpers";
-import { checkBarberAvailableForBooking } from "@/lib/queueEstimateEngine";
+import {
+  validateBookingSlot,
+  BOOKING_SLOT_REASON_AR,
+  type BookingSlotReasonCode,
+} from "@/lib/bookingAvailabilityEngine";
 import {
   loadOverridesForBarber,
   applyOverrides,
@@ -349,24 +353,16 @@ export async function POST(req: NextRequest) {
         assignedEmpId = empId;
         assignedEmpName = barberMap.get(empId)!;
       } else {
-        // Nearest mode — find first available barber for this segment
-        assignedEmpId = 0;
-        assignedEmpName = "";
-        for (const [bid, bname] of barberMap) {
-          const check = await checkBarberAvailableForBooking(
-            bid,
-            bname,
-            segStartDt,
-            [sid],
-            svc.DurationMinutes,
-          );
-          if (check.available) {
-            assignedEmpId = bid;
-            assignedEmpName = bname;
-            break;
-          }
-        }
-        if (!assignedEmpId) {
+        // Nearest mode — use canonical engine to find first available barber
+        const nearest = await validateBookingSlot({
+          date: segDate,
+          time: segStartTime,
+          serviceIds: [sid],
+          durationOverride: svc.DurationMinutes,
+          mode: 'nearest',
+          source: 'public',
+        });
+        if (!nearest.available || !nearest.plan) {
           return NextResponse.json(
             {
               ok: false,
@@ -379,6 +375,8 @@ export async function POST(req: NextRequest) {
             { status: 409, headers: PUBLIC_CORS_HEADERS },
           );
         }
+        assignedEmpId = nearest.plan.empId;
+        assignedEmpName = nearest.plan.empName;
       }
 
       // ── Check schedule overrides for this segment date ──────────────────────
@@ -465,26 +463,19 @@ export async function POST(req: NextRequest) {
       }
 
       // ── Validate availability for assigned employee (queue + bookings) ─────────
-      const avail = await checkBarberAvailableForBooking(
-        assignedEmpId,
-        assignedEmpName,
-        segStartDt,
-        [sid],
-        svc.DurationMinutes,
-      );
+      const avail = await validateBookingSlot({
+        date: segDate,
+        time: segStartTime,
+        serviceIds: [sid],
+        durationOverride: svc.DurationMinutes,
+        mode: 'specific',
+        empId: assignedEmpId,
+        source: 'public',
+      });
 
-      if (!avail.available) {
-        // Classify reason into a machine-readable code
-        let reasonCode: string;
-        if (avail.conflictType === 'working_hours' || avail.conflictType === 'day_off') {
-          reasonCode = avail.conflictType === 'day_off' ? 'outside_working_hours' : 'outside_working_hours';
-        } else if (avail.conflictType === 'queue') {
-          reasonCode = 'queue_conflict';
-        } else if (avail.conflictType === 'booking') {
-          reasonCode = 'booking_conflict';
-        } else {
-          reasonCode = 'unknown_availability_mismatch';
-        }
+      if (!avail.available || !avail.plan) {
+        const reasonCode: BookingSlotReasonCode = avail.reasonCode ?? 'booking_conflict';
+        const reasonMessage = avail.reasonMessage ?? BOOKING_SLOT_REASON_AR[reasonCode] ?? `الموظف "${assignedEmpName}" غير متاح في الوقت ${segStartTime}`;
 
         const debugPayload = {
           requestedPayload: diag.requestedPayload,
@@ -499,17 +490,11 @@ export async function POST(req: NextRequest) {
           endCairo: segEndTime,
           nowMs: Date.now(),
           isPastTime: segStartDt.getTime() < Date.now(),
-          isOutsideWorkingHours: avail.conflictType === 'working_hours' || avail.conflictType === 'day_off',
-          hasBookingConflict: avail.conflictType === 'booking',
-          hasQueueConflict: avail.conflictType === 'queue',
-          conflictingBookingsCount: avail.conflictingBookings.length,
-          conflictingQueueTicketsCount: avail.conflictingTickets.length,
-          conflictingBookings: avail.conflictingBookings,
-          conflictingQueueTickets: avail.conflictingTickets,
-          workingWindow: {
-            startTime: avail.startTime ?? null,
-            endTime: avail.endTime ?? null,
-          },
+          isOutsideWorkingHours: reasonCode === 'outside_working_hours',
+          hasBookingConflict: reasonCode === 'booking_conflict',
+          hasQueueConflict: reasonCode === 'queue_conflict',
+          reasonCode,
+          reasonMessage,
           checkResult: avail,
         };
 
@@ -520,7 +505,7 @@ export async function POST(req: NextRequest) {
           ok: false,
           error: 'slot_not_available',
           reason: reasonCode,
-          message: avail.reason ?? `الموظف "${assignedEmpName}" غير متاح في الوقت ${segStartTime}`,
+          message: reasonMessage,
           debug: debugPayload,
         }, {
           status: 409,

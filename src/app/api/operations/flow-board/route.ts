@@ -145,7 +145,7 @@ export async function GET(req: NextRequest) {
           LEFT JOIN [dbo].[TblClient] c ON b.ClientID = c.ClientID
           WHERE b.BookingDate = @bdate
             AND b.AssignedEmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
-            AND b.Status IN ('confirmed', 'arrived', 'in_progress')
+            AND b.Status IN ('confirmed', 'arrived', 'in_progress', 'queued', 'in_service')
         `),
       
       // 3c. Get all queue tickets for this date (lifecycle cols included only if they exist)

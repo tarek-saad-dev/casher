@@ -1,24 +1,30 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { OperationsToolbar } from '@/components/operations/OperationsToolbar';
 import { SchedulerBoard } from '@/components/operations/SchedulerBoard';
 import { BottomSummaryStrip } from '@/components/operations/BottomSummaryStrip';
 import { SimpleCreateQueueDrawer } from '@/components/operations/SimpleCreateQueueDrawer';
 import { FindNearestQueueDrawer } from '@/components/operations/FindNearestQueueDrawer';
-import { VoiceEnableBanner } from '@/components/operations/VoiceEnableBanner';
-import { OperationsMusicPlayerEnhanced } from '@/components/operations/OperationsMusicPlayerEnhanced';
 import { CreateBookingDrawer } from '@/components/operations/CreateBookingDrawer';
 import { ScheduleControlModal } from '@/components/operations/ScheduleControlModal';
+import { OperationsControlPanel } from '@/components/operations/OperationsControlPanel';
+import type { CreateQueueResponse } from '@/lib/operationsQueueTypes';
+import {
+  createQueueResponseToPrintData,
+  formatQuickQueueSuccessToast,
+} from '@/lib/quickQueueClient';
+import { printQueueTicket, printQueueTicketInWindow } from '@/lib/printQueueTicket';
+import { BarberMobileSelector, type MobileBarberSelection } from '@/components/operations/BarberMobileSelector';
+import { MobileOperationsActions } from '@/components/operations/MobileOperationsActions';
+import { OPS_LAYOUT } from '@/components/operations/operationsLayout.constants';
+import { getCairoBusinessDate } from '@/components/operations/schedulerUtils';
+import { QUICK_QUEUE_UI_ENABLED } from '@/lib/quickQueueConfig';
 import { useAutoVoiceAnnounce, isVoiceEnabled, enableVoice, disableVoice } from '@/hooks/useAutoVoiceAnnounce';
-import { Plus, CalendarPlus } from 'lucide-react';
 
-// Types matching flow-board response
 interface FlowBoardBarber {
   empId: number;
   empName: string;
   status: 'working' | 'off' | 'day_off' | 'absent' | 'not_checked_in' | 'unknown';
-  // Normalized status fields from availabilityEngine
   isWorkingDay?: boolean;
   isDayOff?: boolean;
   isAbsent?: boolean;
@@ -44,7 +50,6 @@ interface FlowBoardBarber {
     customerName?: string;
     durationMinutes?: number;
     ticketCode?: string;
-    // Lifecycle fields
     effectiveStatus?: string;
     actualStatus?: string;
     needsOperatorAction?: boolean;
@@ -53,7 +58,6 @@ interface FlowBoardBarber {
     expectedEndAt?: string;
     isCountingAhead?: boolean;
     isBlockingAvailability?: boolean;
-    // Normalized Cairo time display fields
     startTimeDisplay?: string;
     endTimeDisplay?: string;
     dateDisplay?: string;
@@ -67,57 +71,47 @@ interface FlowBoardResponse {
   barbers: FlowBoardBarber[];
 }
 
-// Format date for display
 function formatDateLabel(dateStr: string): string {
   const date = new Date(dateStr + 'T00:00:00');
   const days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
   const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-  
+
   const dayName = days[date.getDay()];
   const dayNum = date.getDate();
   const monthName = months[date.getMonth()];
   const year = date.getFullYear();
-  
+
   return `${dayName} ${dayNum} ${monthName} ${year}`;
 }
 
-// Get today in Cairo timezone
 function getCairoToday(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
 }
 
-// Business date: if Cairo time is before 4:00 AM, we're still in the previous operational day
 const BUSINESS_DAY_CUTOFF_HOUR = 4;
-
-function getCairoBusinessDate(): string {
-  const now = new Date();
-  // Get Cairo hour using Intl
-  const cairoHour = parseInt(
-    new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Cairo', hour: '2-digit', hour12: false }).format(now),
-    10
-  );
-  if (cairoHour < BUSINESS_DAY_CUTOFF_HOUR) {
-    // Still in previous operational day — return yesterday Cairo date
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    return yesterday.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
-  }
-  return now.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
-}
 
 function isAfterMidnightShift(): boolean {
   const now = new Date();
   const cairoHour = parseInt(
     new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Cairo', hour: '2-digit', hour12: false }).format(now),
-    10
+    10,
   );
   return cairoHour < BUSINESS_DAY_CUTOFF_HOUR;
 }
 
-// Add/subtract days
 function addDays(dateStr: string, days: number): string {
   const date = new Date(dateStr + 'T00:00:00');
   date.setDate(date.getDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+function readMobileBarberSelection(): MobileBarberSelection | null {
+  if (typeof window === 'undefined') return null;
+  const saved = sessionStorage.getItem(OPS_LAYOUT.MOBILE_BARBER_STORAGE_KEY);
+  if (!saved) return null;
+  if (saved === 'all') return 'all';
+  const parsed = Number(saved);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export default function OperationsPage() {
@@ -139,42 +133,39 @@ export default function OperationsPage() {
     timeRangeEnd?: string;
   }>({});
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [musicPlayerExpanded, setMusicPlayerExpanded] = useState(false);
+  const [mobileBarberSelection, setMobileBarberSelection] = useState<MobileBarberSelection>('all');
+  const [quickQueueLoading, setQuickQueueLoading] = useState(false);
+  const [quickQueueReprintTicket, setQuickQueueReprintTicket] = useState<CreateQueueResponse | null>(null);
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const quickQueuePendingRef = useRef(false);
 
-  // Toast helper - defined first to be available for voice handlers
   const showToast = useCallback((msg: string, ok = true) => {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 3000);
   }, []);
 
-  // Voice auto-announcement state
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
-  const [musicPlayerExpanded, setMusicPlayerExpanded] = useState(false);
-
-  // Check voice enabled status on mount
   useEffect(() => {
     setVoiceEnabled(isVoiceEnabled());
+    const saved = readMobileBarberSelection();
+    if (saved !== null) setMobileBarberSelection(saved);
   }, []);
 
-  // Set page title with emoji
   useEffect(() => {
-    document.title = '💈 لوحة التحكم - الصالون';
+    document.title = '💈 لوحة التشغيل - الصالون';
   }, []);
 
-  // Voice auto-announcement hook
-  const { isPlaying: isAnnouncing, reannounce } = useAutoVoiceAnnounce({
+  const { reannounce } = useAutoVoiceAnnounce({
     date: selectedDate,
     enabled: voiceEnabled,
-    pollIntervalMs: 10000, // Check every 10 seconds
+    pollIntervalMs: 10000,
     onAnnouncementStart: (announcement) => {
       showToast(`نداء: ${announcement.ticketCode}`, true);
     },
-    onError: (error) => {
-      console.error('[Voice] Error:', error);
-    },
+    onError: () => {},
   });
 
-  // Handle voice enable/disable
   const handleEnableVoice = useCallback(() => {
     const success = enableVoice();
     if (success) {
@@ -191,29 +182,16 @@ export default function OperationsPage() {
     showToast('تم إيقاف النداء الصوتي', true);
   }, [showToast]);
 
-  // Fetch flow board data
   const fetchFlowBoard = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await fetch(`/api/operations/flow-board?date=${selectedDate}`);
       const data: FlowBoardResponse = await res.json();
-      
+
       if (!data.ok) {
         throw new Error('فشل تحميل البيانات');
       }
-
-      // Debug logging
-      console.log('=== FLOW-BOARD RESPONSE ===', data);
-      data.barbers.forEach(b => {
-        console.log(`Barber ${b.empName} (ID:${b.empId}):`);
-        console.log(`  Status: ${b.status}, Waiting: ${b.waitingCount}, Bookings: ${b.bookingsCount}`);
-        console.log(`  Timeline items: ${b.timeline?.length || 0}`);
-        if (b.timeline?.length > 0) {
-          console.log(`  First: ${JSON.stringify(b.timeline[0])}`);
-          console.log(`  Last: ${JSON.stringify(b.timeline[b.timeline.length - 1])}`);
-        }
-      });
 
       setFlowBoardData(data);
     } catch (err) {
@@ -223,22 +201,105 @@ export default function OperationsPage() {
     }
   }, [selectedDate]);
 
-  // Initial load and auto-refresh
+  const handleQuickQueueReprint = useCallback(() => {
+    if (!quickQueueReprintTicket) return;
+    const printed = printQueueTicket(createQueueResponseToPrintData(quickQueueReprintTicket));
+    if (printed) {
+      setQuickQueueReprintTicket(null);
+      showToast('تمت إعادة الطباعة', true);
+    } else {
+      showToast('تعذرت إعادة الطباعة — تحقق من إعدادات المتصفح', false);
+    }
+  }, [quickQueueReprintTicket, showToast]);
+
+  const handleQuickQueue = useCallback(async () => {
+    if (quickQueuePendingRef.current) return;
+
+    quickQueuePendingRef.current = true;
+    setQuickQueueLoading(true);
+    setQuickQueueReprintTicket(null);
+
+    const printWin = window.open('', '_blank', 'width=300,height=400');
+
+    try {
+      const res = await fetch('/api/operations/queue/quick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const result = (await res.json()) as CreateQueueResponse | { ok: false; error?: string };
+
+      if (!res.ok || !('ticketCode' in result)) {
+        printWin?.close();
+        const message =
+          'error' in result && result.error
+            ? result.error
+            : res.status === 409
+              ? 'تعذر إنشاء الدور لأن الفترة تتداخل مع حجز أو دور موجود'
+              : 'تعذر إنشاء الدور السريع، حاول مرة أخرى';
+        showToast(message, false);
+        return;
+      }
+
+      void fetchFlowBoard();
+
+      const printData = createQueueResponseToPrintData(result);
+      const printed = printQueueTicketInWindow(printWin, printData);
+
+      if (!printed) {
+        setQuickQueueReprintTicket(result);
+        showToast('تم إنشاء الدور، لكن تعذرت الطباعة', false);
+      } else {
+        showToast(formatQuickQueueSuccessToast(result), true);
+      }
+    } catch {
+      printWin?.close();
+      showToast('تعذر إنشاء الدور السريع، حاول مرة أخرى', false);
+    } finally {
+      quickQueuePendingRef.current = false;
+      setQuickQueueLoading(false);
+    }
+  }, [fetchFlowBoard, showToast]);
+
   useEffect(() => {
     fetchFlowBoard();
-    // Auto-refresh every 30 seconds
     refreshTimer.current = setInterval(fetchFlowBoard, 30000);
     return () => {
       if (refreshTimer.current) clearInterval(refreshTimer.current);
     };
   }, [fetchFlowBoard]);
 
-  // Settle expired tickets handler
+  useEffect(() => {
+    const barbers = flowBoardData?.barbers.filter((b) => b.status !== 'unknown') ?? [];
+    if (barbers.length === 0) return;
+
+    const saved = sessionStorage.getItem(OPS_LAYOUT.MOBILE_BARBER_STORAGE_KEY);
+    if (saved === null) {
+      setMobileBarberSelection(barbers[0].empId);
+      return;
+    }
+
+    setMobileBarberSelection((current) => {
+      if (saved === 'all') return 'all';
+      const parsed = Number(saved);
+      if (Number.isFinite(parsed) && barbers.some((b) => b.empId === parsed)) {
+        return parsed;
+      }
+      if (current !== 'all' && barbers.some((b) => b.empId === current)) return current;
+      return barbers[0].empId;
+    });
+  }, [flowBoardData]);
+
+  const handleMobileBarberSelect = useCallback((value: MobileBarberSelection) => {
+    setMobileBarberSelection(value);
+    sessionStorage.setItem(OPS_LAYOUT.MOBILE_BARBER_STORAGE_KEY, String(value));
+  }, []);
+
   const handleSettleExpired = useCallback(async () => {
     if (settlingExpired) return;
 
     const confirmed = window.confirm(
-      'هل تريد تسوية الأدوار المنتهية لهذا اليوم؟\n\nسيتم التعامل فقط مع الأدوار التي انتهى وقتها وتحتاج إجراء.'
+      'هل تريد تسوية الأدوار المنتهية لهذا اليوم؟\n\nسيتم التعامل فقط مع الأدوار التي انتهى وقتها وتحتاج إجراء.',
     );
 
     if (!confirmed) return;
@@ -260,27 +321,23 @@ export default function OperationsPage() {
 
       showToast(
         `تمت تسوية الأدوار المنتهية بنجاح${typeof data.settled === 'number' ? ` (${data.settled})` : ''}`,
-        true
+        true,
       );
 
       await fetchFlowBoard();
     } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'فشل تسوية الأدوار المنتهية',
-        false
-      );
+      showToast(err instanceof Error ? err.message : 'فشل تسوية الأدوار المنتهية', false);
     } finally {
       setSettlingExpired(false);
     }
   }, [settlingExpired, selectedDate, fetchFlowBoard, showToast]);
 
-  // Navigation handlers
   const handlePrevDay = useCallback(() => {
-    setSelectedDate(prev => addDays(prev, -1));
+    setSelectedDate((prev) => addDays(prev, -1));
   }, []);
 
   const handleNextDay = useCallback(() => {
-    setSelectedDate(prev => addDays(prev, 1));
+    setSelectedDate((prev) => addDays(prev, 1));
   }, []);
 
   const handleToday = useCallback(() => {
@@ -291,23 +348,29 @@ export default function OperationsPage() {
     setSelectedDate(date);
   }, []);
 
-  // Calculate summary stats
+  const openCreateBooking = useCallback(
+    (initial: typeof bookingInitialData = { date: selectedDate }) => {
+      setBookingInitialData(initial);
+      setShowBookingDrawer(true);
+    },
+    [selectedDate],
+  );
+
   const summaryStats = useCallback(() => {
     if (!flowBoardData) return { nextAvailable: null, totalWaiting: 0, totalBookings: 0 };
-    
-    const workingBarbers = flowBoardData.barbers.filter(b => b.status === 'working');
-    
-    // Find next available barber
+
+    const workingBarbers = flowBoardData.barbers.filter((b) => b.status === 'working');
+
     let nextAvailable: { name: string; time: string } | null = null;
     for (const barber of workingBarbers) {
       if (barber.nextAvailableAt) {
         const barberTime = new Date(barber.nextAvailableAt).getTime();
         const now = Date.now();
-        if (barberTime >= now || barberTime - now < 60 * 60 * 1000) { // Within 1 hour
+        if (barberTime >= now || barberTime - now < 60 * 60 * 1000) {
           const timeStr = new Date(barber.nextAvailableAt).toLocaleTimeString('ar-EG', {
             hour: 'numeric',
             minute: '2-digit',
-            hour12: true
+            hour12: true,
           });
           if (!nextAvailable) {
             nextAvailable = { name: barber.empName, time: timeStr };
@@ -316,150 +379,150 @@ export default function OperationsPage() {
         }
       }
     }
-    
-    // Total waiting across all barbers
+
     const totalWaiting = workingBarbers.reduce((sum, b) => sum + b.waitingCount, 0);
-    
-    // Total bookings
     const totalBookings = workingBarbers.reduce((sum, b) => sum + b.bookingsCount, 0);
-    
+
     return { nextAvailable, totalWaiting, totalBookings };
   }, [flowBoardData]);
 
   const stats = summaryStats();
-
   const afterMidnight = isAfterMidnightShift();
+  const visibleBarbers =
+    flowBoardData?.barbers
+      .filter((b) => b.status !== 'unknown')
+      .map((b) => ({ empId: b.empId, empName: b.empName })) ?? [];
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden" style={{ background: '#050505' }} dir="rtl">
-      {/* Top Toolbar */}
-      <OperationsToolbar
-        date={selectedDate}
-        dateLabel={formatDateLabel(selectedDate)}
-        onPrevDay={handlePrevDay}
-        onNextDay={handleNextDay}
-        onToday={handleToday}
-        onDateSelect={handleDateSelect}
-        onRefresh={fetchFlowBoard}
-        onCreateQueue={() => setShowCreateDrawer(true)}
-        onFindNearestQueue={() => setShowFindNearestDrawer(true)}
-        onSettleExpired={handleSettleExpired}
-        settlingExpired={settlingExpired}
-        onScheduleControl={() => setShowScheduleModal(true)}
-        loading={loading}
-      />
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col bg-background" dir="rtl">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-2 py-3 sm:gap-4 sm:px-4 sm:py-4 md:px-5 lg:px-6">
+        <OperationsControlPanel
+          date={selectedDate}
+          dateLabel={formatDateLabel(selectedDate)}
+          loading={loading}
+          settlingExpired={settlingExpired}
+          voiceEnabled={voiceEnabled}
+          musicExpanded={musicPlayerExpanded}
+          onPrevDay={handlePrevDay}
+          onNextDay={handleNextDay}
+          onToday={handleToday}
+          onDateSelect={handleDateSelect}
+          onRefresh={fetchFlowBoard}
+          {...(QUICK_QUEUE_UI_ENABLED
+            ? { onQuickQueue: handleQuickQueue, quickQueueLoading }
+            : {})}
+          onCreateQueue={() => setShowCreateDrawer(true)}
+          onFindNearestQueue={() => setShowFindNearestDrawer(true)}
+          onCreateBooking={() => openCreateBooking({ date: selectedDate })}
+          onScheduleControl={() => setShowScheduleModal(true)}
+          onSettleExpired={handleSettleExpired}
+          onEnableVoice={handleEnableVoice}
+          onDisableVoice={handleDisableVoice}
+          onToggleMusic={() => setMusicPlayerExpanded((prev) => !prev)}
+        />
 
-      {/* After-midnight banner */}
-      {afterMidnight && selectedDate === getCairoBusinessDate() && (
-        <div
-          className="flex items-center justify-center gap-2 py-1.5 text-xs font-medium"
-          style={{ background: 'rgba(139, 92, 246, 0.12)', borderBottom: '1px solid rgba(139, 92, 246, 0.25)', color: '#a78bfa' }}
-        >
-          <span>🌙</span>
-          <span>وقت القاهرة بعد منتصف الليل — تعمل على يوم التشغيل السابق</span>
-          <span style={{ opacity: 0.6 }}>|</span>
-          <button
-            onClick={() => setSelectedDate(getCairoToday())}
-            className="underline hover:no-underline transition-all"
-            style={{ color: '#c4b5fd' }}
-          >
-            انتقل ليوم {formatDateLabel(getCairoToday()).split(' ').slice(0, 2).join(' ')}
-          </button>
-        </div>
-      )}
-
-      {/* Create Booking Button + Voice Enable Banner & Music Player */}
-      <div className="px-4 py-2 space-y-2">
-        {/* Create Booking Button */}
-        <div className="flex justify-center">
-          <button
-            onClick={() => {
-              setBookingInitialData({ date: selectedDate });
-              setShowBookingDrawer(true);
-            }}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all"
-            style={{ background: 'linear-gradient(135deg,#D4AF37,#B8941F)', color: '#000' }}
-          >
-            <CalendarPlus size={18} />
-            + إنشاء حجز
-          </button>
-        </div>
-        <div className="flex justify-center">
-          <VoiceEnableBanner
-            enabled={voiceEnabled}
-            onEnable={handleEnableVoice}
-            onDisable={handleDisableVoice}
-          />
-        </div>
-        <div className="flex justify-center">
-          <div className="w-full max-w-md">
-            <OperationsMusicPlayerEnhanced
-              isExpanded={musicPlayerExpanded}
-              onToggleExpand={() => setMusicPlayerExpanded(!musicPlayerExpanded)}
-            />
+        {quickQueueReprintTicket && (
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-sm">
+            <span className="font-medium text-foreground">
+              تم إنشاء الدور {quickQueueReprintTicket.ticketCode}، لكن تعذرت الطباعة
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleQuickQueueReprint}
+                className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                إعادة الطباعة
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickQueueReprintTicket(null)}
+                className="rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-surface-muted"
+              >
+                إغلاق
+              </button>
+            </div>
           </div>
-        </div>
+        )}
+
+        {afterMidnight && selectedDate === getCairoBusinessDate() && (
+          <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-xs font-medium text-accent-foreground">
+            <span>🌙</span>
+            <span>وقت القاهرة بعد منتصف الليل — تعمل على يوم التشغيل السابق</span>
+            <span className="opacity-60">|</span>
+            <button
+              type="button"
+              onClick={() => setSelectedDate(getCairoToday())}
+              className="text-primary underline transition-all hover:no-underline"
+            >
+              انتقل ليوم {formatDateLabel(getCairoToday()).split(' ').slice(0, 2).join(' ')}
+            </button>
+          </div>
+        )}
+
+        <BarberMobileSelector
+          className="md:hidden"
+          barbers={visibleBarbers}
+          selected={mobileBarberSelection}
+          onSelect={handleMobileBarberSelect}
+        />
+
+        <SchedulerBoard
+          className="min-h-0 flex-1"
+          barbers={flowBoardData?.barbers || []}
+          loading={loading}
+          error={error}
+          onRetry={fetchFlowBoard}
+          onRefresh={fetchFlowBoard}
+          voiceEnabled={voiceEnabled}
+          onReannounce={reannounce}
+          currentDate={selectedDate}
+          mobileBarberSelection={mobileBarberSelection}
+          addToast={(type, message) => showToast(message, type !== 'error')}
+          onEmptyCellClick={(hour, barber) => {
+            const startHour = hour >= 24 ? hour - 24 : hour;
+            const endHour = startHour + 1;
+            const timeRangeStart = `${String(startHour).padStart(2, '0')}:00`;
+            const timeRangeEnd = `${String(endHour).padStart(2, '0')}:00`;
+
+            openCreateBooking({
+              date: selectedDate,
+              time: timeRangeStart,
+              empId: barber.empId,
+              barberName: barber.empName,
+              timeRangeStart,
+              timeRangeEnd,
+            });
+          }}
+          onFreeSegmentClick={(segment, barber) => {
+            const segmentStartDate = new Date(segment.start);
+            const segmentEndDate = new Date(segment.end);
+            const timeRangeStart = `${String(segmentStartDate.getHours()).padStart(2, '0')}:${String(segmentStartDate.getMinutes()).padStart(2, '0')}`;
+            const timeRangeEnd = `${String(segmentEndDate.getHours()).padStart(2, '0')}:${String(segmentEndDate.getMinutes()).padStart(2, '0')}`;
+
+            openCreateBooking({
+              date: selectedDate,
+              time: timeRangeStart,
+              empId: barber.empId,
+              barberName: barber.empName,
+              timeRangeStart,
+              timeRangeEnd,
+            });
+          }}
+        />
+
+        <BottomSummaryStrip
+          nextAvailableBarber={stats.nextAvailable}
+          totalWaiting={stats.totalWaiting}
+          totalBookings={stats.totalBookings}
+        />
       </div>
 
-      {/* Main Scheduler Board */}
-      <SchedulerBoard
-        barbers={flowBoardData?.barbers || []}
-        loading={loading}
-        error={error}
-        onRetry={fetchFlowBoard}
-        onRefresh={fetchFlowBoard}
-        voiceEnabled={voiceEnabled}
-        onReannounce={reannounce}
-        currentDate={selectedDate}
-        addToast={(type, message) => showToast(message, type !== 'error')}
-        onEmptyCellClick={(hour, barber) => {
-          // Convert operational hour to time strings
-          // Each cell represents a 1-hour range (e.g., 15:00 to 16:00)
-          const startHour = hour >= 24 ? hour - 24 : hour;
-          const endHour = startHour + 1;
-
-          const timeRangeStart = `${String(startHour).padStart(2, '0')}:00`;
-          const timeRangeEnd = `${String(endHour).padStart(2, '0')}:00`;
-
-          setBookingInitialData({
-            date: selectedDate,
-            time: timeRangeStart,  // Default to start of range
-            empId: barber.empId,
-            barberName: barber.empName,
-            timeRangeStart,
-            timeRangeEnd,
-          });
-          setShowBookingDrawer(true);
-        }}
-        onFreeSegmentClick={(segment, barber) => {
-          // Free segment has exact start and end times from the helper
-          // Format times for the drawer
-          const segmentStartDate = new Date(segment.start);
-          const segmentEndDate = new Date(segment.end);
-
-          const timeRangeStart = `${String(segmentStartDate.getHours()).padStart(2, '0')}:${String(segmentStartDate.getMinutes()).padStart(2, '0')}`;
-          const timeRangeEnd = `${String(segmentEndDate.getHours()).padStart(2, '0')}:${String(segmentEndDate.getMinutes()).padStart(2, '0')}`;
-
-          setBookingInitialData({
-            date: selectedDate,
-            time: timeRangeStart,  // Start at the beginning of free segment
-            empId: barber.empId,
-            barberName: barber.empName,
-            timeRangeStart,
-            timeRangeEnd,
-          });
-          setShowBookingDrawer(true);
-        }}
+      <MobileOperationsActions
+        onCreateQueue={() => setShowCreateDrawer(true)}
+        onCreateBooking={() => openCreateBooking({ date: selectedDate })}
       />
 
-      {/* Bottom Summary Strip */}
-      <BottomSummaryStrip
-        nextAvailableBarber={stats.nextAvailable}
-        totalWaiting={stats.totalWaiting}
-        totalBookings={stats.totalBookings}
-      />
-
-      {/* Create Queue Drawer */}
       {showCreateDrawer && (
         <SimpleCreateQueueDrawer
           isOpen={showCreateDrawer}
@@ -477,7 +540,6 @@ export default function OperationsPage() {
         />
       )}
 
-      {/* Find Nearest Queue Drawer */}
       {showFindNearestDrawer && (
         <FindNearestQueueDrawer
           isOpen={showFindNearestDrawer}
@@ -489,7 +551,6 @@ export default function OperationsPage() {
         />
       )}
 
-      {/* Create Booking Drawer */}
       {showBookingDrawer && (
         <CreateBookingDrawer
           open={showBookingDrawer}
@@ -500,7 +561,7 @@ export default function OperationsPage() {
           initialBarberName={bookingInitialData.barberName}
           initialTimeRangeStart={bookingInitialData.timeRangeStart}
           initialTimeRangeEnd={bookingInitialData.timeRangeEnd}
-          barbers={flowBoardData?.barbers.map(b => ({ empId: b.empId, empName: b.empName })) || []}
+          barbers={flowBoardData?.barbers.map((b) => ({ empId: b.empId, empName: b.empName })) || []}
           onCreated={() => {
             fetchFlowBoard();
             showToast('تم إنشاء الحجز بنجاح');
@@ -508,7 +569,6 @@ export default function OperationsPage() {
         />
       )}
 
-      {/* Schedule Control Modal */}
       {showScheduleModal && (
         <ScheduleControlModal
           open={showScheduleModal}
@@ -521,14 +581,15 @@ export default function OperationsPage() {
         />
       )}
 
-      {/* Toast */}
       {toast && (
         <div
-          className="fixed bottom-5 right-1/2 translate-x-1/2 z-[60] px-5 py-3 rounded-xl text-sm font-semibold shadow-2xl border transition-all"
+          className="fixed bottom-20 left-1/2 z-[60] -translate-x-1/2 rounded-xl border px-5 py-3 text-sm font-semibold shadow-2xl transition-all md:bottom-5"
           style={{
-            background: toast.ok ? '#141418' : 'rgba(239,68,68,0.15)',
-            color: toast.ok ? '#F7F1E5' : '#EF4444',
-            borderColor: toast.ok ? 'rgba(212,175,55,0.3)' : 'rgba(239,68,68,0.35)',
+            background: toast.ok ? 'var(--card)' : 'color-mix(in srgb, var(--destructive) 15%, transparent)',
+            color: toast.ok ? 'var(--foreground)' : 'var(--destructive)',
+            borderColor: toast.ok
+              ? 'color-mix(in srgb, var(--primary) 30%, transparent)'
+              : 'color-mix(in srgb, var(--destructive) 35%, transparent)',
           }}
         >
           {toast.msg}

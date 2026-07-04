@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, User, Scissors, Loader2, CheckCircle2, Clock, Users, AlertCircle, ArrowRight, ArrowLeft, Search, Phone, UserPlus, CheckCircle } from 'lucide-react';
 import type { Customer } from '@/lib/types';
-import type { CreateQueueResponse } from '@/app/api/operations/queue/create/route';
+import type { CreateQueueResponse } from '@/lib/operationsQueueTypes';
 import { PrintQueueTicketModal } from './PrintQueueTicketModal';
 
 interface Service {

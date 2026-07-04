@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool } from '@/lib/db';
 import {
   getRateLimitKey,
   checkRateLimit,
   isValidDate,
   isValidTime,
   PUBLIC_CORS_HEADERS,
-  salonDateTimeToMs,
-  getPublicSettings,
 } from '@/lib/publicBookingHelpers';
-import { checkBarberAvailableForBooking, cairoDateStr } from '@/lib/queueEstimateEngine';
+import {
+  validateBookingSlot,
+  BOOKING_SLOT_REASON_AR,
+  type BookingSlotReasonCode,
+} from '@/lib/bookingAvailabilityEngine';
 
 export const runtime = 'nodejs';
 
@@ -21,10 +22,10 @@ export async function OPTIONS() {
  * POST /api/public/booking/check-slot
  *
  * Body:
- *   { date, time, serviceIds, mode, empId? }
+ *   { date, time, serviceIds, mode, empId?, source? }
  *
- * Returns availability for the requested slot.
- * For nearest mode, picks best available barber.
+ * Returns availability for the requested slot using the canonical engine.
+ * For nearest mode, picks the first available barber.
  */
 export async function POST(req: NextRequest) {
   const ip = getRateLimitKey(req);
@@ -40,12 +41,14 @@ export async function POST(req: NextRequest) {
       serviceIds = [],
       mode       = 'nearest',
       empId,
+      source     = 'public',
     } = body as {
       date:        string;
       time:        string;
       serviceIds?: number[];
       mode?:       'nearest' | 'specific';
       empId?:      number;
+      source?:     'public' | 'operations' | 'admin';
     };
 
     if (!date || !isValidDate(date)) {
@@ -58,73 +61,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'empId مطلوب في وضع specific' }, { status: 400, headers: PUBLIC_CORS_HEADERS });
     }
 
-    const settings = await getPublicSettings();
-    const timezone = settings.timezone || 'Africa/Cairo';
-    // Use Cairo-aware epoch so overnight shifts and server-TZ differences are handled correctly.
-    const slotDt = new Date(salonDateTimeToMs(date, time, timezone));
-    const db     = await getPool();
+    const validation = await validateBookingSlot({
+      date,
+      time,
+      serviceIds,
+      mode,
+      empId,
+      source,
+    });
 
-    if (mode === 'specific' && empId) {
-      const empRes = await db.request().query(
-        `SELECT TOP 1 EmpID, EmpName FROM [dbo].[TblEmp] WHERE EmpID = ${empId}`
-      ).catch(() => ({ recordset: [] as any[] }));
-      const emp = empRes.recordset[0];
-      if (!emp) {
-        return NextResponse.json({ error: 'الحلاق غير موجود' }, { status: 404, headers: PUBLIC_CORS_HEADERS });
-      }
+    const plan = validation.plan;
+    const reasonCode: BookingSlotReasonCode = validation.reasonCode ?? 'booking_conflict';
 
-      const check = await checkBarberAvailableForBooking(empId, emp.EmpName, slotDt, serviceIds);
-
-      if (check.available) {
-        return NextResponse.json({
-          ok:        true,
-          available: true,
-          barber:    { id: empId, name: emp.EmpName },
-          slot: {
-            start:           check.startTime,
-            end:             check.endTime,
-            durationMinutes: check.durationMinutes,
-          },
-        }, { headers: PUBLIC_CORS_HEADERS });
-      }
-
+    if (validation.available && plan) {
       return NextResponse.json({
-        ok:                false,
-        available:         false,
-        reason:            check.reason,
-        conflictType:      check.conflictType,
-        nextAvailableTime: check.suggestedStartTime,
-      }, { status: 200, headers: PUBLIC_CORS_HEADERS });
-    }
-
-    // Nearest mode — find first available barber
-    const bRes = await db.request().query(`
-      SELECT EmpID, EmpName FROM [dbo].[TblEmp]
-      WHERE ISNULL(isActive,1)=1 AND Job IN (N'حلاق',N'مساعد',N'Barber',N'barber')
-      ORDER BY EmpName
-    `).catch(() => ({ recordset: [] as any[] }));
-
-    for (const emp of bRes.recordset) {
-      const check = await checkBarberAvailableForBooking(emp.EmpID, emp.EmpName, slotDt, serviceIds);
-      if (check.available) {
-        return NextResponse.json({
-          ok:        true,
-          available: true,
-          barber:    { id: emp.EmpID, name: emp.EmpName },
-          slot: {
-            start:           check.startTime,
-            end:             check.endTime,
-            durationMinutes: check.durationMinutes,
-          },
-        }, { headers: PUBLIC_CORS_HEADERS });
-      }
+        ok:        true,
+        available: true,
+        barber:    { id: plan.empId, name: plan.empName },
+        slot: {
+          start:           plan.startAt,
+          end:             plan.endAt,
+          durationMinutes: plan.durationMinutes,
+        },
+      }, { headers: PUBLIC_CORS_HEADERS });
     }
 
     return NextResponse.json({
       ok:           false,
       available:    false,
-      reason:       'لا يوجد حلاق متاح في هذا الموعد',
-      conflictType: 'queue',
+      reason:       validation.reasonMessage ?? BOOKING_SLOT_REASON_AR[reasonCode],
+      reasonCode,
+      conflictType: reasonCode === 'queue_conflict' ? 'queue' : 'booking',
+      nextAvailableTime: validation.nextAvailable?.startAt ?? null,
     }, { status: 200, headers: PUBLIC_CORS_HEADERS });
   } catch (err) {
     console.error('[public/booking/check-slot]', err);

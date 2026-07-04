@@ -13,11 +13,20 @@ import {
   salonDateTimeToMs,
 } from "@/lib/publicBookingHelpers";
 import {
-  checkBarberAvailableForBooking,
   getDefaultDuration,
   getServicesDuration,
-} from "@/lib/queueEstimateEngine";
-import { sendBookingWhatsAppMessage } from "@/lib/integrations/whatsapp";
+} from '@/lib/queueEstimateEngine';
+import {
+  validateBookingSlot,
+  BOOKING_SLOT_REASON_AR,
+  type BookingSlotReasonCode,
+} from '@/lib/bookingAvailabilityEngine';
+import {
+  assertEmployeeIntervalAvailable,
+  ScheduleConflictError,
+} from '@/lib/scheduleIntegrity';
+import { getCairoBusinessDate } from '@/lib/businessDate';
+import { sendBookingWhatsAppMessage } from '@/lib/integrations/whatsapp';
 
 export const runtime = "nodejs";
 
@@ -154,91 +163,79 @@ export async function POST(req: NextRequest) {
 
     const db = await getPool();
 
-    // ── Resolve barber ───────────────────────────────────────────────────────
-    let resolvedEmpId: number = 0;
-    let resolvedEmpName: string = "";
-
-    if (mode === "specific" && empId) {
-      const empRes = await db
-        .request()
-        .query(
-          `SELECT TOP 1 EmpID, EmpName FROM [dbo].[TblEmp] WHERE EmpID = ${empId}`,
-        )
-        .catch(() => ({ recordset: [] as any[] }));
-      if (!empRes.recordset[0]) {
-        return NextResponse.json(
-          { error: "الحلاق غير موجود" },
-          { status: 404, headers: PUBLIC_CORS_HEADERS },
-        );
-      }
-      resolvedEmpId = empRes.recordset[0].EmpID as number;
-      resolvedEmpName = empRes.recordset[0].EmpName as string;
-    } else {
-      // Nearest: pick first available barber
-      const bRes = await db
-        .request()
-        .query(
-          `
-        SELECT EmpID, EmpName FROM [dbo].[TblEmp]
-        WHERE ISNULL(isActive,1)=1 AND Job IN (N'حلاق',N'مساعد',N'Barber',N'barber')
-        ORDER BY EmpName
-      `,
-        )
-        .catch(() => ({ recordset: [] as any[] }));
-
-      for (const emp of bRes.recordset) {
-        const check = await checkBarberAvailableForBooking(
-          emp.EmpID,
-          emp.EmpName,
-          slotDt,
-          serviceIds,
-        );
-        if (check.available) {
-          resolvedEmpId = emp.EmpID as number;
-          resolvedEmpName = emp.EmpName as string;
-          break;
-        }
-      }
-      if (!resolvedEmpId) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "لا يوجد حلاق متاح في هذا الموعد",
-            reason: "no_barber_available",
-          },
-          { status: 409, headers: PUBLIC_CORS_HEADERS },
-        );
-      }
-    }
-
-    // ── Re-run availability check (server-side guard) ─────────────────────
-    const finalCheck = await checkBarberAvailableForBooking(
-      resolvedEmpId!,
-      resolvedEmpName!,
-      slotDt,
+    // ── Canonical plan validation ────────────────────────────────────────────
+    // This is the single source of truth: it uses the same engine as available-slots
+    // and returns the resolved barber, start/end, duration, and reason when unavailable.
+    const validation = await validateBookingSlot({
+      date,
+      time,
+      dayOffset: 0,
       serviceIds,
-    );
-    if (!finalCheck.available) {
+      mode,
+      empId,
+      source,
+    });
+
+    if (!validation.available || !validation.plan) {
+      const reasonCode: BookingSlotReasonCode = validation.reasonCode ?? 'booking_conflict';
       return NextResponse.json(
         {
           ok: false,
-          error: finalCheck.reason ?? "الحلاق غير متاح في هذا الوقت",
-          conflictType: finalCheck.conflictType,
-          nextAvailable: finalCheck.suggestedStartTime,
+          code: 'SCHEDULE_CONFLICT',
+          error: validation.reasonMessage ?? BOOKING_SLOT_REASON_AR[reasonCode],
+          message: validation.reasonMessage ?? BOOKING_SLOT_REASON_AR[reasonCode],
+          reason: reasonCode,
+          nextAvailable: validation.nextAvailable
+            ? {
+                startAt: validation.nextAvailable.startAt,
+                endAt: validation.nextAvailable.endAt,
+                empId: validation.nextAvailable.empId,
+                empName: validation.nextAvailable.empName,
+              }
+            : null,
         },
         { status: 409, headers: PUBLIC_CORS_HEADERS },
       );
     }
 
-    // ── Compute end time ──────────────────────────────────────────────────
+    const resolvedEmpId = validation.plan.empId;
+    const resolvedEmpName = validation.plan.empName;
+    const endEpochMs = new Date(validation.plan.endAt).getTime();
+    const startTimeStr = time + ':00';
+    const endTimeStr = `${formatCairoHhmm(endEpochMs, timezone)}:00`;
     const defaultDur = await getDefaultDuration(db);
     const customerDur = await getServicesDuration(db, serviceIds, defaultDur);
-    const endDt = new Date(slotDt.getTime() + customerDur * 60_000);
-    const startTimeStr = time + ":00";
-    const endTimeStr = `${String(endDt.getHours()).padStart(2, "0")}:${String(endDt.getMinutes()).padStart(2, "0")}:00`;
 
     // ── Upsert customer ───────────────────────────────────────────────────
     const clientId = await upsertCustomer(customer.name, customer.phone);
+
+    // ── Transactional conflict guard before insert ────────────────────────
+    const transaction = new sql.Transaction(db);
+    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+
+    try {
+      await assertEmployeeIntervalAvailable({
+        empId: resolvedEmpId!,
+        startAt: slotDt,
+        endAt: new Date(endEpochMs),
+        operationalDate: getCairoBusinessDate(slotDt),
+        transaction,
+      });
+    } catch (err) {
+      await transaction.rollback();
+      if (err instanceof ScheduleConflictError) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: 'SCHEDULE_CONFLICT',
+            message: 'الوقت المختار لم يعد متاحًا',
+            conflict: err.conflict,
+          },
+          { status: 409, headers: PUBLIC_CORS_HEADERS },
+        );
+      }
+      throw err;
+    }
 
     // ── Generate unique booking code ──────────────────────────────────────
     let bookingCode = generateBookingCode();
@@ -259,14 +256,14 @@ export async function POST(req: NextRequest) {
     let bookingId: number;
 
     try {
-      const ins = await db
+      const ins = await transaction
         .request()
         .input("clientId", sql.Int, clientId)
         .input("empId", sql.Int, resolvedEmpId!)
         .input("bDate", sql.Date, date)
         .input("sTime", sql.VarChar, startTimeStr)
         .input("eTime", sql.VarChar, endTimeStr)
-        .input("source", sql.NVarChar, "online")
+        .input("source", sql.NVarChar, isInternalSource ? source : "online")
         .input("notes", sql.NVarChar, notes?.trim() || null)
         .input("code", sql.NVarChar, bookingCode).query(`
           INSERT INTO [dbo].[Bookings]
@@ -277,7 +274,36 @@ export async function POST(req: NextRequest) {
             (@clientId, @empId, @bDate, @sTime, @eTime,
              'confirmed', @source, @notes, @code, 0)
         `);
-      bookingId = ins.recordset[0].BookingID;
+      bookingId = ins.recordset[0].BookingID as number;
+
+      if (serviceIds.length > 0) {
+        const svcRes = await transaction
+          .request()
+          .query(`
+            SELECT ProID, ProName, SPrice1,
+                   ISNULL(DurationMinutes, ${defaultDur}) AS DurationMinutes
+            FROM [dbo].[TblPro]
+            WHERE ProID IN (${serviceIds.join(",")})
+          `);
+
+        for (const svc of svcRes.recordset) {
+          await transaction
+            .request()
+            .input("bId", sql.Int, bookingId)
+            .input("proId", sql.Int, svc.ProID)
+            .input("eId", sql.Int, resolvedEmpId!)
+            .input("qty", sql.Decimal, 1)
+            .input("price", sql.Decimal, svc.SPrice1 || 0)
+            .input("mins", sql.Int, svc.DurationMinutes)
+            .query(`
+              INSERT INTO [dbo].[BookingServices]
+                (BookingID, ProID, EmpID, Qty, Price, DurationMinutes)
+              VALUES (@bId, @proId, @eId, @qty, @price, @mins)
+            `);
+        }
+      }
+
+      await transaction.commit();
 
       // Log inserted booking for debugging
       if (process.env.NODE_ENV !== "production") {
@@ -293,6 +319,9 @@ export async function POST(req: NextRequest) {
         });
       }
     } catch (err: any) {
+      try {
+        await transaction.rollback();
+      } catch { /* ignore */ }
       // BookingCode column is missing or other critical error
       console.error("[public/booking/create] Insert failed:", err);
       const isMissingColumn =
@@ -309,41 +338,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── Insert booking services ───────────────────────────────────────────
-    if (serviceIds.length > 0) {
-      const svcRes = await db
-        .request()
-        .query(
-          `
-        SELECT ProID, ProName, SPrice1,
-               ISNULL(DurationMinutes, ${defaultDur}) AS DurationMinutes
-        FROM [dbo].[TblPro]
-        WHERE ProID IN (${serviceIds.join(",")})
-      `,
-        )
-        .catch(() => ({ recordset: [] as any[] }));
-
-      for (const svc of svcRes.recordset) {
-        await db
-          .request()
-          .input("bId", sql.Int, bookingId)
-          .input("proId", sql.Int, svc.ProID)
-          .input("eId", sql.Int, resolvedEmpId!)
-          .input("qty", sql.Decimal, 1)
-          .input("price", sql.Decimal, svc.SPrice1 || 0)
-          .input("mins", sql.Int, svc.DurationMinutes)
-          .query(
-            `
-            INSERT INTO [dbo].[BookingServices]
-              (BookingID, ProID, EmpID, Qty, Price, DurationMinutes)
-            VALUES (@bId, @proId, @eId, @qty, @price, @mins)
-          `,
-          )
-          .catch(() => {});
-      }
-    }
-
-    // Build services summary text
+    // ── WhatsApp booking confirmation (after commit) ──────────────────────
     const svcNames: string[] = [];
     if (serviceIds.length > 0) {
       const svcRes2 = await db
@@ -411,5 +406,22 @@ export async function POST(req: NextRequest) {
       { error: "فشل إنشاء الحجز" },
       { status: 500, headers: PUBLIC_CORS_HEADERS },
     );
+  }
+}
+
+function formatCairoHhmm(epochMs: number, timezone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(new Date(epochMs));
+    const h = parts.find((p) => p.type === 'hour')?.value ?? '00';
+    const m = parts.find((p) => p.type === 'minute')?.value ?? '00';
+    return `${h}:${m}`;
+  } catch {
+    const d = new Date(epochMs);
+    return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
   }
 }

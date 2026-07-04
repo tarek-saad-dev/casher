@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import type { UserAccess } from '@/lib/permissions-types';
 
 export type { UserAccess };
+
+const AUTH_DEBUG = process.env.NODE_ENV === 'development';
 
 export function useMyAccess() {
   const [access, setAccess] = useState<UserAccess | null>(null);
@@ -13,22 +15,33 @@ export function useMyAccess() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/permissions/my-access');
+      const res = await fetch('/api/permissions/my-access', {
+        cache: 'no-store',
+        credentials: 'same-origin',
+      });
       if (res.status === 401) {
-        // Not logged in — stop loading, don't block nav
         setIsAuthenticated(false);
         setAccess(null);
+        if (AUTH_DEBUG) console.info('[permissions] my-access → 401 unauthenticated');
         return;
       }
       if (res.ok) {
+        const data = (await res.json()) as UserAccess;
         setIsAuthenticated(true);
-        setAccess(await res.json());
+        setAccess(data);
+        if (AUTH_DEBUG) {
+          console.info('[permissions] my-access → ok', {
+            roles: data.roles,
+            pageCount: data.allowedPagePaths?.length ?? 0,
+          });
+        }
       }
-    } catch { /* silent */ }
-    finally { setLoading(false); }
+    } catch (err) {
+      if (AUTH_DEBUG) console.error('[permissions] my-access fetch failed', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
-
-  useEffect(() => { load(); }, [load]);
 
   const canSeePage  = (path: string) => {
     if (!access) return false;

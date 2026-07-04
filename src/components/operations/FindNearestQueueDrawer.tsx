@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { X, Search, User, Scissors, Loader2, CheckCircle2, Zap, Clock, Users, AlertCircle, RefreshCw, ChevronLeft, Ticket } from 'lucide-react';
 import { QueueTicketCreatedModal } from '@/components/queue/QueueTicketCreatedModal';
 import type { QueueTicketPrintData } from '@/components/queue/QueueTicketPrint';
+import { normalizeCustomersAhead } from '@/lib/queueCustomersAhead';
 
 interface Service { ProID: number; ProName: string; SPrice: number; DurationMinutes: number | null; }
 interface Client { ClientID: number; Name: string; Mobile?: string; }
@@ -285,7 +286,9 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
       const resolvedTime = normalizeCreatedTime(rawTime);
       const resolvedEstStart = data.estimatedStartTime ?? t?.estimatedStartTime ?? null;
       const resolvedEstWait = data.estimatedWaitMinutes ?? t?.estimatedWaitMinutes ?? null;
-      const resolvedWaitCount = data.waitingCountAtCreation ?? t?.waitingCountAtCreation ?? null;
+      const resolvedWaitCount = normalizeCustomersAhead(
+        data.waitingCountAtCreation ?? t?.waitingCountAtCreation,
+      );
 
       const normalized = {
         ticketId: data.ticketId,

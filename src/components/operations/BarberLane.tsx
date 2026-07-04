@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { User, Clock, Users } from 'lucide-react';
 import { HourCellCard } from './HourCellCard';
 import { MoreTimelineItemsModal } from './MoreTimelineItemsModal';
+import { BookingDragPreview } from './BookingDragPreview';
+import { BookingPasteTargets } from './BookingPasteTargets';
+import type { PasteCandidateSlot, BookingMoveSession } from '@/lib/bookingDragReschedule';
 import {
   generateOperationalHours,
-  groupItemsByHour,
   HOUR_CELL_HEIGHT,
   TimelineItem,
   getFreeSegmentsInCell,
@@ -14,7 +16,13 @@ import {
   operationalHourToTime,
   formatShortTime,
   formatOperationalHour,
+  getTimelineTopPx,
+  getTimelineHeightPx,
+  isBookingDraggable,
 } from './schedulerUtils';
+import { OPS_LAYOUT } from './operationsLayout.constants';
+import type { ActiveDragState } from './useBookingDragReschedule';
+import { cn } from '@/lib/utils';
 
 interface Barber {
   empId: number;
@@ -38,6 +46,30 @@ interface BarberColor {
   label: string;
 }
 
+interface DragHandlers {
+  activeDrag: ActiveDragState | null;
+  dragPressBookingId: number | null;
+  onCardPointerDown: (
+    e: React.PointerEvent,
+    item: TimelineItem,
+    empId: number,
+    empName: string,
+    laneEl: HTMLElement,
+    cardTopPx: number,
+    cardHeightPx: number,
+  ) => void;
+  shouldSuppressCardClick: () => boolean;
+  onOpenTimeAdjust?: (item: TimelineItem) => void;
+}
+
+interface CutPasteHandlers {
+  moveSession: BookingMoveSession | null;
+  isCommitting: boolean;
+  pasteSlots: PasteCandidateSlot[];
+  onCut: (item: TimelineItem) => void;
+  onSelectPaste: (slot: PasteCandidateSlot) => void;
+}
+
 interface Props {
   barber: Barber;
   headerHeight?: number;
@@ -48,185 +80,287 @@ interface Props {
   onFreeSegmentClick?: (segment: FreeSegment, barber: Barber, hour: number) => void;
   currentDate?: string;
   color?: BarberColor;
+  fullWidth?: boolean;
+  showLaneHeader?: boolean;
+  className?: string;
+  drag?: DragHandlers;
+  cutPaste?: CutPasteHandlers;
 }
 
-export function BarberLane({ barber, headerHeight = 80, onItemClick, voiceEnabled, onReannounce, onEmptyCellClick, onFreeSegmentClick, currentDate, color }: Props) {
-  const barberColor = color || { bg: 'rgba(212, 175, 55, 0.12)', border: 'rgba(212, 175, 55, 0.55)', text: '#d4af37', dot: '#d4af37', label: 'gold' };
-  const hours = generateOperationalHours();
-  const itemsByHour = groupItemsByHour(barber.timeline);
+const SCHEDULED_TYPES = new Set<TimelineItem['type']>(['booking', 'queue', 'in_service']);
 
-  // State for more items modal
+export function BarberLane({
+  barber,
+  headerHeight = OPS_LAYOUT.HEADER_HEIGHT,
+  onItemClick,
+  voiceEnabled,
+  onReannounce,
+  onEmptyCellClick,
+  onFreeSegmentClick,
+  currentDate,
+  color,
+  fullWidth = false,
+  showLaneHeader = true,
+  className,
+  drag,
+  cutPaste,
+}: Props) {
+  const laneBodyRef = useRef<HTMLDivElement>(null);
+  const barberColor = color || {
+    bg: 'color-mix(in srgb, var(--primary) 12%, transparent)',
+    border: 'color-mix(in srgb, var(--primary) 40%, transparent)',
+    text: 'var(--primary)',
+    dot: 'var(--primary)',
+    label: 'primary',
+  };
+  const hours = generateOperationalHours();
+  const laneHeight = hours.length * HOUR_CELL_HEIGHT;
+
+  const scheduledItems = barber.timeline.filter((item) => SCHEDULED_TYPES.has(item.type));
+
   const [moreItemsModalOpen, setMoreItemsModalOpen] = useState(false);
   const [selectedCellItems, setSelectedCellItems] = useState<TimelineItem[]>([]);
   const [selectedHourLabel, setSelectedHourLabel] = useState<string>('');
 
   const getStatusColor = () => {
-    if (barber.status === 'day_off') return '#ef4444';
-    if (barber.status === 'off') return '#f59e0b';
-    return '#22c55e';
+    if (barber.status === 'day_off') return 'var(--destructive)';
+    if (barber.status === 'off') return 'var(--warning)';
+    return 'var(--success)';
   };
 
   const getStatusLabel = () => {
     if (barber.status === 'day_off') return 'إجازة';
     if (barber.status === 'off') return 'خارج ساعات العمل';
+    if (barber.status === 'absent') return 'غائب';
+    if (barber.status === 'not_checked_in') return 'لم يسجل حضور';
     return 'نشط';
   };
 
+  const showLanePreview =
+    drag?.activeDrag
+    && drag.activeDrag.empId === barber.empId
+    && !drag.activeDrag.isCommitting;
+
+  const draggingBookingId =
+    drag?.activeDrag?.empId === barber.empId ? drag.activeDrag.item.sourceId : null;
+
+  const moveModeActive = !!cutPaste?.moveSession;
+  const movedBookingId = cutPaste?.moveSession?.appointmentId ?? null;
+
   return (
     <div
-      className="flex flex-col shrink-0"
+      className={cn(
+        'flex min-w-0 flex-col border-border/50',
+        fullWidth ? 'w-full flex-1' : 'flex-1 shrink-0',
+        className,
+      )}
       style={{
-        minWidth: '260px',
-        maxWidth: '280px',
-        borderRight: '1px solid rgba(212, 175, 55, 0.1)',
+        minWidth: fullWidth ? undefined : OPS_LAYOUT.BARBER_MIN_WIDTH,
+        maxWidth: fullWidth ? undefined : OPS_LAYOUT.BARBER_MAX_WIDTH,
+        borderInlineStartWidth: 1,
       }}
     >
-      {/* Header - Sticky */}
+      {showLaneHeader && (
+        <div
+          className="sticky top-0 z-20 border-b p-3 backdrop-blur-sm"
+          style={{
+            height: headerHeight,
+            background: barberColor.bg,
+            borderColor: barberColor.border,
+          }}
+        >
+          <div className="mb-2 flex items-center gap-2">
+            <div
+              className="flex size-9 shrink-0 items-center justify-center rounded-full border"
+              style={{ background: barberColor.bg, borderColor: barberColor.border }}
+            >
+              <User className="size-4" style={{ color: barberColor.dot }} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="truncate text-sm font-bold text-foreground md:text-base">
+                {barber.empName}
+              </h3>
+              <div className="flex items-center gap-1.5 text-xs">
+                <span
+                  className="size-1.5 shrink-0 rounded-full"
+                  style={{ background: getStatusColor() }}
+                />
+                <span className="truncate" style={{ color: barberColor.text }}>
+                  {getStatusLabel()}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            {barber.waitingCount > 0 && (
+              <div className="flex items-center gap-1 rounded-md bg-surface-muted/60 px-1.5 py-0.5">
+                <Users className="size-3 text-muted-foreground" />
+                <span className="text-muted-foreground">{barber.waitingCount} منتظر</span>
+              </div>
+            )}
+            {barber.inServiceCount > 0 && (
+              <div className="flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5">
+                <Clock className="size-3 text-primary" />
+                <span className="text-primary">{barber.inServiceCount} خدمة</span>
+              </div>
+            )}
+            {barber.nextAvailableAt && barber.waitingCount === 0 && barber.inServiceCount === 0 && (
+              <span className="text-success">متاح الآن</span>
+            )}
+          </div>
+        </div>
+      )}
+
       <div
-        className="p-3 border-b sticky top-0 z-10"
-        style={{
-          height: headerHeight,
-          background: barberColor.bg,
-          borderColor: barberColor.border,
-        }}
+        ref={laneBodyRef}
+        className="relative flex-1"
+        style={{ height: laneHeight }}
       >
-        <div className="flex items-center gap-2 mb-2">
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-            style={{ background: barberColor.bg, border: `1px solid ${barberColor.border}` }}
-          >
-            <User className="w-4 h-4" style={{ color: barberColor.dot }} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h3 className="font-bold text-white text-sm truncate">{barber.empName}</h3>
-            <div className="flex items-center gap-1 text-xs">
-              <span
-                className="w-1.5 h-1.5 rounded-full shrink-0"
-                style={{ background: getStatusColor() }}
-              />
-              <span className="truncate" style={{ color: barberColor.text }}>{getStatusLabel()}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Compact Stats */}
-        <div className="flex items-center gap-2 text-xs flex-wrap">
-          {barber.waitingCount > 0 && (
-            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[rgba(255,255,255,0.05)]">
-              <Users className="w-3 h-3" style={{ color: '#a1a1aa' }} />
-              <span style={{ color: '#a1a1aa' }}>{barber.waitingCount}</span>
-            </div>
-          )}
-          {barber.inServiceCount > 0 && (
-            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[rgba(212,175,55,0.15)]">
-              <Clock className="w-3 h-3" style={{ color: '#d4af37' }} />
-              <span style={{ color: '#d4af37' }}>{barber.inServiceCount} خدمة</span>
-            </div>
-          )}
-          {barber.nextAvailableAt && barber.waitingCount === 0 && barber.inServiceCount === 0 && (
-            <div className="flex items-center gap-1" style={{ color: '#22c55e' }}>
-              <span>متاح</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Hour Cells */}
-      <div className="flex-1">
-        {hours.map((hour) => {
-          const items = itemsByHour.get(hour) || [];
-          const visibleItems = items.slice(0, 2);
-          const moreCount = items.length - 2;
-
-          // Determine if this hour is within working hours
-          const isWorkingHour = barber.workStart && barber.workEnd && isHourInRange(
-            hour,
-            barber.workStart,
-            barber.workEnd,
-            barber.isOvernightShift
-          );
-
-          // Calculate free segments when there are items in the cell
-          let freeSegments: FreeSegment[] = [];
-          if (items.length > 0 && currentDate) {
-            const cellStart = operationalHourToTime(hour, currentDate);
-            const cellEnd = operationalHourToTime(hour + 1, currentDate);
-            freeSegments = getFreeSegmentsInCell(cellStart, cellEnd, items);
-          }
+        {hours.map((hour, index) => {
+          const isWorkingHour =
+            barber.workStart &&
+            barber.workEnd &&
+            isHourInRange(hour, barber.workStart, barber.workEnd, barber.isOvernightShift);
 
           return (
             <div
               key={hour}
-              className="border-b border-[rgba(212,175,55,0.08)]"
+              className={cn(
+                'absolute inset-x-0 border-b border-border/30',
+                !isWorkingHour && 'bg-background/40',
+              )}
               style={{
+                top: index * HOUR_CELL_HEIGHT,
                 height: HOUR_CELL_HEIGHT,
-                background: isWorkingHour ? 'transparent' : 'rgba(0,0,0,0.3)',
               }}
             >
-              {items.length === 0 ? (
-                // Empty cell - clickable for creating booking
+              {scheduledItems.filter((item) => getHourKey(item.startTime) === hour).length === 0 && !moveModeActive && (
                 <button
+                  type="button"
                   onClick={() => onEmptyCellClick?.(hour, barber)}
-                  className="h-full w-full flex items-center justify-center transition-all hover:bg-white/[0.02] group cursor-pointer"
-                  style={{
-                    background: isWorkingHour ? 'transparent' : 'rgba(0,0,0,0.3)',
-                  }}
+                  className="group flex h-full w-full cursor-pointer items-center justify-center transition-colors hover:bg-foreground/[0.03]"
                 >
-                  <span 
-                    className="text-[10px] opacity-0 group-hover:opacity-100 transition-all px-2 py-1 rounded border border-dashed border-yellow-500/30 bg-yellow-500/5 text-yellow-300/70 hover:bg-yellow-500/10 hover:text-yellow-300"
-                  >
+                  <span className="rounded-md border border-dashed border-primary/25 bg-primary/5 px-2 py-1 text-[11px] text-primary/70 opacity-0 transition-opacity group-hover:opacity-100">
                     + حجز
                   </span>
                 </button>
-              ) : (
-                // Cell with items - show items and free segment booking buttons
-                <div className="h-full p-1.5 flex flex-col gap-1">
-                  {visibleItems.map((item, idx) => (
-                    <HourCellCard
-                      key={idx}
-                      item={item}
-                      compact={items.length > 1}
-                      onClick={onItemClick}
-                      voiceEnabled={voiceEnabled}
-                      onReannounce={onReannounce}
-                      barberColor={barberColor}
-                    />
-                  ))}
-
-                  {moreCount > 0 && (
-                    <button
-                      className="text-[10px] px-2 py-0.5 rounded bg-[rgba(212,175,55,0.15)] hover:bg-[rgba(212,175,55,0.25)] transition-colors self-center"
-                      style={{ color: '#d4af37' }}
-                      onClick={() => {
-                        setSelectedCellItems(items);
-                        setSelectedHourLabel(formatOperationalHour(hour));
-                        setMoreItemsModalOpen(true);
-                      }}
-                    >
-                      +{moreCount} المزيد
-                    </button>
-                  )}
-
-                  {/* Free segment booking buttons */}
-                  {freeSegments.length > 0 && freeSegments.map((segment, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => onFreeSegmentClick?.(segment, barber, hour)}
-                      className="flex items-center justify-center gap-1 px-2 py-0.5 rounded border border-dashed border-yellow-500/30 bg-yellow-500/5 text-yellow-300/70 text-[10px] transition-all hover:bg-yellow-500/10 hover:text-yellow-300"
-                      title={`حجز من ${formatShortTime(segment.start)} إلى ${formatShortTime(segment.end)}`}
-                    >
-                      <span>+ حجز</span>
-                      <span className="text-[9px] opacity-60">{formatShortTime(segment.start)}</span>
-                    </button>
-                  ))}
-                </div>
               )}
             </div>
           );
         })}
+
+        {currentDate && !moveModeActive && hours.map((hour) => {
+          const cellItems = scheduledItems.filter((item) => overlapsHour(item, hour));
+          if (cellItems.length === 0) return null;
+
+          const cellStart = operationalHourToTime(hour, currentDate);
+          const cellEnd = operationalHourToTime(hour + 1, currentDate);
+          const freeSegments = getFreeSegmentsInCell(cellStart, cellEnd, scheduledItems);
+
+          return freeSegments.map((segment, idx) => {
+            const segTop =
+              getTimelineTopPx(segment.start)
+              + (segment.startMinutes / 60) * HOUR_CELL_HEIGHT;
+
+            return (
+              <button
+                key={`${hour}-free-${idx}`}
+                type="button"
+                onClick={() => onFreeSegmentClick?.(segment, barber, hour)}
+                className="absolute inset-x-2 z-[5] flex items-center justify-center gap-1 rounded-md border border-dashed border-primary/25 bg-primary/5 px-2 text-[10px] text-primary/80 transition-colors hover:bg-primary/10"
+                style={{
+                  top: segTop,
+                  height: Math.max((segment.durationMinutes / 60) * HOUR_CELL_HEIGHT - 4, 24),
+                }}
+                title={`حجز من ${formatShortTime(segment.start)} إلى ${formatShortTime(segment.end)}`}
+              >
+                <span>+ حجز</span>
+                <span className="opacity-70">{formatShortTime(segment.start)}</span>
+              </button>
+            );
+          });
+        })}
+
+        {scheduledItems.map((item, idx) => {
+          const top = getTimelineTopPx(item.startTime);
+          const height = getTimelineHeightPx(item.durationMinutes ?? 30);
+          const draggable = isBookingDraggable(item);
+          const isDragging = draggingBookingId === item.sourceId;
+          const isDragPending = drag?.dragPressBookingId === item.sourceId;
+          const isBeingMoved = movedBookingId === item.sourceId;
+          const showCut = draggable && !!cutPaste && (!moveModeActive || isBeingMoved);
+
+          return (
+            <div
+              key={`${item.type}-${item.sourceId}-${idx}`}
+              className="absolute inset-x-1.5 z-10"
+              style={{ top, height, minHeight: 48 }}
+            >
+              <HourCellCard
+                item={item}
+                compact={height < 56}
+                onClick={onItemClick}
+                voiceEnabled={voiceEnabled}
+                onReannounce={onReannounce}
+                barberColor={barberColor}
+                draggable={draggable && !!drag && !moveModeActive}
+                dragDisabledReason={
+                  item.type === 'booking' && !draggable
+                    ? 'لا يمكن نقل هذا الموعد'
+                    : undefined
+                }
+                isDragging={isDragging}
+                isDragPending={isDragPending}
+                isBeingMoved={isBeingMoved}
+                isCutActive={isBeingMoved && moveModeActive}
+                cutEnabled={showCut}
+                onCutClick={
+                  showCut
+                    ? () => cutPaste!.onCut(item)
+                    : undefined
+                }
+                className="h-full"
+                style={{ minHeight: '100%' }}
+                shouldSuppressClick={drag?.shouldSuppressCardClick}
+                onCardPointerDown={
+                  drag && draggable && laneBodyRef.current
+                    ? (e) =>
+                        drag.onCardPointerDown(
+                          e,
+                          item,
+                          barber.empId,
+                          barber.empName,
+                          laneBodyRef.current!,
+                          top,
+                          height,
+                        )
+                    : undefined
+                }
+                onOpenTimeAdjust={
+                  drag?.onOpenTimeAdjust && draggable
+                    ? () => drag.onOpenTimeAdjust?.(item)
+                    : undefined
+                }
+              />
+            </div>
+          );
+        })}
+
+        {moveModeActive && cutPaste && (
+          <BookingPasteTargets
+            slots={cutPaste.pasteSlots}
+            moveEmpId={cutPaste.moveSession!.originalEmpId}
+            isCommitting={cutPaste.isCommitting}
+            onSelect={cutPaste.onSelectPaste}
+          />
+        )}
+
+        {showLanePreview && drag?.activeDrag && (
+          <BookingDragPreview drag={drag.activeDrag} />
+        )}
       </div>
 
-      {/* More Items Modal for this barber */}
       <MoreTimelineItemsModal
         open={moreItemsModalOpen}
         onClose={() => setMoreItemsModalOpen(false)}
@@ -239,9 +373,29 @@ export function BarberLane({ barber, headerHeight = 80, onItemClick, voiceEnable
   );
 }
 
-function isHourInRange(hour: number, workStart: string, workEnd: string, isOvernight: boolean): boolean {
-  const startHour = parseInt(workStart.split(':')[0]);
-  let endHour = parseInt(workEnd.split(':')[0]);
+function getHourKey(dateTime: string): number {
+  const date = new Date(dateTime);
+  const hour = date.getHours();
+  const minute = date.getMinutes();
+  if (hour >= 0 && hour <= 4) return Math.floor(24 + hour + minute / 60);
+  return hour;
+}
+
+function overlapsHour(item: TimelineItem, hour: number): boolean {
+  const startHour = getHourKey(item.startTime);
+  const endHour = getHourKey(item.endTime);
+  if (endHour < startHour) return hour >= startHour || hour <= endHour;
+  return hour >= startHour && hour < Math.ceil(endHour + 0.001);
+}
+
+function isHourInRange(
+  hour: number,
+  workStart: string,
+  workEnd: string,
+  isOvernight: boolean,
+): boolean {
+  const startHour = parseInt(workStart.split(':')[0], 10);
+  let endHour = parseInt(workEnd.split(':')[0], 10);
 
   if (isOvernight && endHour <= 4) {
     endHour += 24;

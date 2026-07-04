@@ -5,6 +5,7 @@ import { X, Search, User, Scissors, Loader2, CheckCircle2, Zap, Clock, Users, Al
 import type { BarberStatus, EstimateResponse } from '@/lib/operationsTypes';
 import { QueueTicketCreatedModal } from '@/components/queue/QueueTicketCreatedModal';
 import type { QueueTicketPrintData } from '@/components/queue/QueueTicketPrint';
+import { normalizeCustomersAhead } from '@/lib/queueCustomersAhead';
 import { QueueConflictDialog } from './QueueConflictDialog';
 
 interface Service { ProID: number; ProName: string; SPrice: number; DurationMinutes: number | null; }
@@ -362,7 +363,9 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
       // Prefer server-recalculated values (flat fields in response)
       const resolvedEstStart = data.estimatedStartTime ?? t?.estimatedStartTime ?? null;
       const resolvedEstWait = data.estimatedWaitMinutes ?? t?.estimatedWaitMinutes ?? null;
-      const resolvedWaitCount = data.waitingCountAtCreation ?? t?.waitingCountAtCreation ?? null;
+      const resolvedWaitCount = normalizeCustomersAhead(
+        data.waitingCountAtCreation ?? t?.waitingCountAtCreation,
+      );
 
       const normalized = {
         ticketId: data.ticketId,

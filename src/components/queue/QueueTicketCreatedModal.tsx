@@ -6,6 +6,7 @@ import { QueueTicketPrint, type QueueTicketPrintData } from './QueueTicketPrint'
 import { printQueueTicket } from '@/lib/printQueueTicket';
 import { speakQueueTicket, stopQueueSpeech } from '@/lib/queueVoice';
 import type { QueueVoiceOptions } from '@/lib/queueVoice';
+import { normalizeCustomersAhead } from '@/lib/queueCustomersAhead';
 
 export interface QueueTicketCreatedModalProps {
   data: QueueTicketPrintData & {
@@ -146,9 +147,10 @@ export function QueueTicketCreatedModal({
             {data.createdTime && (
               <Row label="الوقت" value={data.createdTime.slice(0, 5)} />
             )}
-            {data.waitingBefore != null && data.waitingBefore > 0 && (
-              <Row label="أمامك في الانتظار" value={`${data.waitingBefore} عميل`} />
-            )}
+            <Row
+              label="أمامك في الانتظار"
+              value={`${normalizeCustomersAhead(data.waitingBefore)} عميل`}
+            />
             {data.estimatedWaitMinutes != null && data.estimatedWaitMinutes > 0 && (
               <Row label="الوقت التقديري" value={`~${data.estimatedWaitMinutes} دقيقة`} />
             )}

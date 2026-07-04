@@ -88,9 +88,10 @@ export const musicController = {
 interface OperationsMusicPlayerEnhancedProps {
   isExpanded?: boolean;
   onToggleExpand?: () => void;
+  embedded?: boolean;
 }
 
-export function OperationsMusicPlayerEnhanced({ isExpanded = false, onToggleExpand }: OperationsMusicPlayerEnhancedProps) {
+export function OperationsMusicPlayerEnhanced({ isExpanded = false, onToggleExpand, embedded = false }: OperationsMusicPlayerEnhancedProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [urlInput, setUrlInput] = useState('');
   const [searchResults, setSearchResults] = useState<YouTubeSearchResult[]>([]);
@@ -437,31 +438,34 @@ export function OperationsMusicPlayerEnhanced({ isExpanded = false, onToggleExpa
 
   const volumeIcon = volume === 0 ? VolumeX : volume < 50 ? Volume1 : Volume2;
 
+  const showPanel = embedded ? isExpanded : isExpanded;
+
   return (
-    <div className="rounded-xl shadow-lg border overflow-hidden" style={{ background: '#1a1a1f', borderColor: 'rgba(212,175,55,0.2)' }}>
-      {/* Header */}
-      <div
-        className="flex items-center justify-between px-4 py-3 cursor-pointer"
-        style={{ background: 'linear-gradient(135deg, #8B5CF6, #6366F1)' }}
-        onClick={onToggleExpand}
-      >
-        <div className="flex items-center gap-2">
-          <Music className="w-5 h-5 text-white" />
-          <span className="text-white font-semibold text-sm">موسيقى الصالة</span>
-          {currentItem && (
-            <span className="text-xs text-purple-200 bg-purple-800/50 px-2 py-0.5 rounded-full">
-              {isPlaying ? 'تعمل' : 'متوقفة'}
-            </span>
-          )}
+    <div className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm">
+      {!embedded && (
+        <div
+          className="flex cursor-pointer items-center justify-between px-4 py-3"
+          style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--primary) 70%, #6366F1), color-mix(in srgb, var(--primary) 45%, #4F46E5))' }}
+          onClick={onToggleExpand}
+        >
+          <div className="flex items-center gap-2">
+            <Music className="size-5 text-primary-foreground" />
+            <span className="text-sm font-semibold text-primary-foreground">موسيقى الصالة</span>
+            {currentItem && (
+              <span className="rounded-full bg-black/20 px-2 py-0.5 text-xs text-primary-foreground/90">
+                {isPlaying ? 'تعمل' : 'متوقفة'}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {isExpanded ? (
+              <ChevronDown className="size-5 text-primary-foreground" />
+            ) : (
+              <ChevronUp className="size-5 text-primary-foreground" />
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {isExpanded ? (
-            <ChevronDown className="w-5 h-5 text-white" />
-          ) : (
-            <ChevronUp className="w-5 h-5 text-white" />
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Hidden YouTube Player Container */}
       <div
@@ -471,8 +475,8 @@ export function OperationsMusicPlayerEnhanced({ isExpanded = false, onToggleExpa
       />
 
       {/* Expanded Content */}
-      {isExpanded && (
-        <div className="p-4 space-y-4">
+      {showPanel && (
+        <div className="space-y-4 p-4">
           {/* Current Playing Info */}
           {currentItem && (
             <div className="flex items-start gap-3 p-3 rounded-lg" style={{ background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.3)' }}>

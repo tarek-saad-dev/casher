@@ -1,17 +1,17 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   X, Search, User, Scissors, Loader2, CheckCircle2,
   Calendar, Clock, AlertTriangle, ChevronRight, ChevronLeft,
-  Users,
+  Users, Sparkles,
 } from 'lucide-react';
 
 interface Service {
   ProID: number;
   ProName: string;
-  SPrice: number;   // normalized from SPrice1
-  SPrice1?: number; // raw field from API
+  SPrice: number;
+  SPrice1?: number;
   DurationMinutes: number | null;
 }
 
@@ -23,12 +23,30 @@ interface Client {
 
 interface AvailableSlot {
   time: string;
+  endTime: string;
   label: string;
   empId: number;
   barberName: string;
   durationMinutes: number;
-  durationSource: string;
+  dayOffset?: 0 | 1;
+  startAt?: string;
+  endAt?: string;
   available: boolean;
+}
+
+interface GapNotice {
+  gapStart: string;
+  gapEnd: string;
+  gapMinutes: number;
+  requiredMinutes: number;
+  message: string;
+}
+
+interface BarberAlternative {
+  empId: number;
+  empName: string;
+  time: string;
+  endTime: string;
 }
 
 interface Barber {
@@ -51,7 +69,11 @@ interface Props {
 
 type Mode = 'nearest' | 'specific';
 
-// ── Pure helpers ──────────────────────────────────────────────────────────────
+const GOLD = 'var(--primary)';
+const GOLD_BG = 'color-mix(in srgb, var(--primary) 10%, transparent)';
+const GOLD_BDR = 'color-mix(in srgb, var(--primary) 35%, transparent)';
+const SURFACE = 'var(--surface)';
+const BORDER = 'var(--border)';
 
 function getCairoToday(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
@@ -63,12 +85,10 @@ function getCairoTomorrow(): string {
   return d.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
 }
 
-/** Returns true if dateStr (YYYY-MM-DD) is strictly before today in Cairo time */
 function isPastCairoDate(dateStr: string): boolean {
   return dateStr < getCairoToday();
 }
 
-/** Returns dateStr if it is today or future in Cairo; otherwise returns cairoToday */
 function sanitizeDate(dateStr: string | undefined): string {
   const today = getCairoToday();
   if (!dateStr || dateStr < today) return today;
@@ -89,42 +109,16 @@ function fmt(timeStr: string): string {
   return `${h12}:${String(m).padStart(2, '0')} ${suffix}`;
 }
 
-function addMinutes(hhmm: string, mins: number): string {
-  const [h, m] = hhmm.split(':').map(Number);
-  const total = h * 60 + m + mins;
-  return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
-}
-
-/** Group available slots by their hour label (e.g. "5 م", "6 م") */
-function groupSlotsByHour(slots: AvailableSlot[]): { label: string; slots: AvailableSlot[] }[] {
-  const map = new Map<string, AvailableSlot[]>();
-  for (const s of slots) {
-    const [h] = s.time.split(':').map(Number);
-    const suffix = h >= 12 ? 'م' : 'ص';
-    const h12 = h % 12 || 12;
-    const key = `${h12} ${suffix}`;
-    if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push(s);
-  }
-  return Array.from(map.entries()).map(([label, slots]) => ({ label, slots }));
-}
-
 function timeToMinutes(t: string): number {
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
 }
 
-function isSlotInsideRange(slot: AvailableSlot, rangeStart: string, rangeEnd: string, dur: number): boolean {
+function isSlotInsideRange(slot: AvailableSlot, rangeStart: string, rangeEnd: string): boolean {
   const s = timeToMinutes(slot.time);
-  return s >= timeToMinutes(rangeStart) && s + (slot.durationMinutes ?? dur) <= timeToMinutes(rangeEnd);
+  const end = timeToMinutes(slot.endTime || slot.time);
+  return s >= timeToMinutes(rangeStart) && end <= timeToMinutes(rangeEnd);
 }
-
-// ── Accent palette ────────────────────────────────────────────────────────────
-const GOLD = 'var(--primary)';
-const GOLD_BG = 'color-mix(in srgb, var(--primary) 10%, transparent)';
-const GOLD_BDR = 'color-mix(in srgb, var(--primary) 35%, transparent)';
-const SURFACE = 'var(--surface)';
-const BORDER = 'var(--border)';
 
 export function CreateBookingDrawer({
   open,
@@ -138,28 +132,24 @@ export function CreateBookingDrawer({
   barbers,
   onCreated,
 }: Props) {
-  // ── State ────────────────────────────────────────────────────────────────────
-
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [mode, setMode] = useState<Mode>(initialEmpId ? 'specific' : 'nearest');
 
-  // Multi-service selection (Step 1)
   const [services, setServices] = useState<Service[]>([]);
   const [selectedServices, setSelectedServices] = useState<Service[]>([]);
 
-  // Date + mode
   const [bookingDate, setBookingDate] = useState(() => sanitizeDate(initialDate));
   const [selectedBarberId, setSelectedBarberId] = useState<number | null>(initialEmpId || null);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  // Slots + time+barber selection (Step 2)
   const [availableSlots, setAvailableSlots] = useState<AvailableSlot[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
-  const [selectedTime, setSelectedTime] = useState<string | null>(initialTime || null);
-  const [selectedBarberForSlot, setSelectedBarberForSlot] = useState<AvailableSlot | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<AvailableSlot | null>(null);
   const [showAllSlots, setShowAllSlots] = useState(false);
+  const [gapNotice, setGapNotice] = useState<GapNotice | null>(null);
+  const [nextAvailable, setNextAvailable] = useState<AvailableSlot | null>(null);
+  const [alternativeBarbers, setAlternativeBarbers] = useState<BarberAlternative[]>([]);
 
-  // Customer (Step 3)
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [clientSearch, setClientSearch] = useState('');
@@ -167,78 +157,70 @@ export function CreateBookingDrawer({
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [showClients, setShowClients] = useState(false);
 
-  // Submit
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [slotsDebugReason, setSlotsDebugReason] = useState<string | null>(null);
 
-  // ── Computed ──────────────────────────────────────────────────────────────────
+  const fetchAbortRef = useRef<AbortController | null>(null);
+  const fetchGenRef = useRef(0);
 
   const totalDuration = useMemo(
     () => selectedServices.reduce((s, svc) => s + (svc.DurationMinutes ?? 30), 0),
-    [selectedServices]
+    [selectedServices],
   );
   const totalPrice = useMemo(
     () => selectedServices.reduce((s, svc) => s + (svc.SPrice ?? 0), 0),
-    [selectedServices]
+    [selectedServices],
   );
-  const serviceIds = useMemo(() => selectedServices.map(s => s.ProID), [selectedServices]);
+  const serviceIds = useMemo(() => selectedServices.map((s) => s.ProID), [selectedServices]);
+  const serviceIdsKey = serviceIds.join(',');
+
+  const selectedBarberName = useMemo(() => {
+    if (mode === 'specific' && selectedBarberId) {
+      return barbers.find((b) => b.empId === selectedBarberId)?.empName
+        ?? initialBarberName
+        ?? '';
+    }
+    return '';
+  }, [mode, selectedBarberId, barbers, initialBarberName]);
 
   const hasTimeRange = !!initialTimeRangeStart && !!initialTimeRangeEnd;
   const isDatePast = isPastCairoDate(bookingDate);
   const isToday = bookingDate === getCairoToday();
   const isTomorrow = bookingDate === getCairoTomorrow();
+  const lockedBarber = !!initialEmpId;
 
-  // Barbers available at selectedTime (from slot data)
-  const barbersAtTime = useMemo(() => {
-    if (!selectedTime) return [];
-    return availableSlots.filter(s => s.time === selectedTime && s.available);
-  }, [availableSlots, selectedTime]);
-
-  // Auto-select barber if only one option
-  useEffect(() => {
-    if (barbersAtTime.length === 1) setSelectedBarberForSlot(barbersAtTime[0]);
-    else if (barbersAtTime.length === 0) setSelectedBarberForSlot(null);
-  }, [barbersAtTime]);
-
-  // Slots filtered by time range (for calendar cell open)
   const filteredSlots = useMemo(() => {
-    const onlyAvailable = availableSlots.filter(s => s.available);
-    if (!hasTimeRange || showAllSlots) return onlyAvailable;
-    return onlyAvailable.filter(s => isSlotInsideRange(s, initialTimeRangeStart!, initialTimeRangeEnd!, totalDuration));
-  }, [availableSlots, hasTimeRange, showAllSlots, initialTimeRangeStart, initialTimeRangeEnd, totalDuration]);
+    if (!hasTimeRange || showAllSlots) return availableSlots;
+    return availableSlots.filter((s) =>
+      isSlotInsideRange(s, initialTimeRangeStart!, initialTimeRangeEnd!),
+    );
+  }, [availableSlots, hasTimeRange, showAllSlots, initialTimeRangeStart, initialTimeRangeEnd]);
 
-  // Unique times (for time grid — each time shown once)
-  const uniqueTimes = useMemo(() => {
-    const seen = new Set<string>();
-    return filteredSlots.filter(s => { if (seen.has(s.time)) return false; seen.add(s.time); return true; });
-  }, [filteredSlots]);
+  const invalidateSlotSelection = useCallback(() => {
+    setSelectedSlot(null);
+    setAvailableSlots([]);
+    setGapNotice(null);
+    setNextAvailable(null);
+    setAlternativeBarbers([]);
+    setSlotsDebugReason(null);
+  }, []);
 
-  const groupedSlots = useMemo(() => groupSlotsByHour(uniqueTimes), [uniqueTimes]);
-
-  // ── Load services once ─────────────────────────────────────────────────────────
   useEffect(() => {
     fetch('/api/services?active=true')
-      .then(r => r.json())
-      .then(d => {
-        const raw: any[] = d.services ?? (Array.isArray(d) ? d : []);
-        // Normalize: API returns SPrice1, map to SPrice so price always renders
-        const normalized = raw.map(s => ({
-          ...s,
-          SPrice: s.SPrice ?? s.SPrice1 ?? 0,
-        }));
-        setServices(normalized);
+      .then((r) => r.json())
+      .then((d) => {
+        const raw: Service[] = d.services ?? (Array.isArray(d) ? d : []);
+        setServices(raw.map((s) => ({ ...s, SPrice: s.SPrice ?? s.SPrice1 ?? 0 })));
       })
       .catch(() => {});
   }, []);
 
-  // Reset on open
   useEffect(() => {
     if (open) {
       setShowAllSlots(false);
-      setSelectedTime(initialTime || null);
-      setSelectedBarberForSlot(null);
+      setSelectedSlot(null);
       setSelectedServices([]);
       setSelectedClient(null);
       setCustomerName('');
@@ -246,121 +228,132 @@ export function CreateBookingDrawer({
       setClientSearch('');
       setError(null);
       setSlotsDebugReason(null);
+      setGapNotice(null);
+      setNextAvailable(null);
+      setAlternativeBarbers([]);
       setStep(1);
       setSuccess(false);
+      setMode(initialEmpId ? 'specific' : 'nearest');
       setSelectedBarberId(initialEmpId || null);
       setBookingDate(sanitizeDate(initialDate));
       setShowDatePicker(false);
+      setAvailableSlots([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // ── Client search ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (clientSearch.length < 2) { setClients([]); return; }
     const t = setTimeout(() => {
       fetch(`/api/customers?q=${encodeURIComponent(clientSearch)}`)
-        .then(r => r.json())
-        .then(d => { setClients(Array.isArray(d) ? d : (d.clients ?? d.data ?? [])); setShowClients(true); })
+        .then((r) => r.json())
+        .then((d) => { setClients(Array.isArray(d) ? d : (d.clients ?? d.data ?? [])); setShowClients(true); })
         .catch(() => {});
     }, 300);
     return () => clearTimeout(t);
   }, [clientSearch]);
 
-  // ── Fetch slots ───────────────────────────────────────────────────────────────
-  // Stable string key so the effect fires whenever the set of IDs actually changes
-  const serviceIdsKey = serviceIds.join(',');
-
   const fetchSlots = useCallback(async () => {
     if (!serviceIds.length || !bookingDate) return;
     if (isPastCairoDate(bookingDate)) return;
     if (mode === 'specific' && !selectedBarberId) return;
+
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    const gen = ++fetchGenRef.current;
+
     setLoadingSlots(true);
-    setAvailableSlots([]);
-    setSlotsDebugReason(null);
-    setError(null);
-    const base = `/api/public/booking/available-slots?date=${bookingDate}&serviceIds=${serviceIdsKey}&source=operations`;
+    invalidateSlotSelection();
+
+    const requestId = `r${gen}`;
+    const base = `/api/public/booking/available-slots?date=${bookingDate}&serviceIds=${serviceIdsKey}&source=operations&requestId=${requestId}`;
     const url = mode === 'specific' && selectedBarberId
       ? `${base}&mode=specific&empId=${selectedBarberId}`
       : `${base}&mode=nearest`;
-    console.log('[CreateBookingDrawer] fetchSlots', {
-      bookingDate,
-      serviceIds,
-      serviceIdsKey,
-      totalDuration,
-      totalPrice,
-      mode,
-      selectedBarberId,
-      url,
-    });
+
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: controller.signal });
+      if (gen !== fetchGenRef.current) return;
       const data = await res.json();
-      const allSlots: AvailableSlot[] = data.slots ?? [];
-      const available = allSlots.filter((s: AvailableSlot) => s.available);
-      console.log('[CreateBookingDrawer] fetchSlots response', {
-        totalSlots: allSlots.length,
-        availableSlots: available.length,
-        debug: data.debug,
-      });
-      setAvailableSlots(available);
-      // Extract a reason for empty state from the debug payload
-      if (available.length === 0) {
-        const dbg = data.debug;
-        const reason = dbg?.noSlotsReason
-          ?? (dbg?.totalBarbers === 0 ? 'لا يوجد موظفون نشطون' : null)
-          ?? (dbg?.allBarbersOffToday ? 'جميع الموظفين في إجازة' : null)
-          ?? null;
-        setSlotsDebugReason(reason);
+      const slots: AvailableSlot[] = (data.availableSlots ?? []).map((s: AvailableSlot) => ({
+        ...s,
+        available: true,
+      }));
+
+      setAvailableSlots(slots);
+      setGapNotice(data.gapNotice ?? data.debug?.gapNotice ?? null);
+      setNextAvailable(data.nextAvailable ?? null);
+      setAlternativeBarbers(data.alternativeBarbers ?? data.debug?.alternativeBarbers ?? []);
+
+      if (slots.length === 0) {
+        setSlotsDebugReason(
+          data.noSlotsReason
+          ?? data.debug?.noSlotsReason
+          ?? null,
+        );
       }
-    } catch (e) {
-      console.error('[CreateBookingDrawer] fetchSlots error', e);
-      setAvailableSlots([]);
+    } catch (e: unknown) {
+      if (e instanceof Error && e.name === 'AbortError') return;
+      if (gen === fetchGenRef.current) setAvailableSlots([]);
     } finally {
-      setLoadingSlots(false);
+      if (gen === fetchGenRef.current) setLoadingSlots(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookingDate, serviceIdsKey, mode, selectedBarberId]);
+  }, [bookingDate, serviceIdsKey, mode, selectedBarberId, invalidateSlotSelection]);
 
-  // Trigger fetch whenever we're on step 2 AND any key dependency changes
   useEffect(() => {
     if (step === 2 && serviceIds.length > 0) fetchSlots();
+    return () => fetchAbortRef.current?.abort();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, bookingDate, serviceIdsKey, mode, selectedBarberId]);
 
-  // ── Date change (resets time/barber/slots, keeps services & customer) ─────────
+  useEffect(() => {
+    if (step >= 2) invalidateSlotSelection();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serviceIdsKey, mode, selectedBarberId, bookingDate]);
+
   const handleDateChange = (newDate: string) => {
     setBookingDate(newDate);
-    setSelectedTime(null);
-    setSelectedBarberForSlot(null);
-    setAvailableSlots([]);
+    invalidateSlotSelection();
     setShowAllSlots(false);
     setShowDatePicker(false);
     setError(null);
   };
 
-  // ── Toggle service ────────────────────────────────────────────────────────────
-  const toggleService = (svc: Service) => {
-    setSelectedServices(prev =>
-      prev.some(s => s.ProID === svc.ProID)
-        ? prev.filter(s => s.ProID !== svc.ProID)
-        : [...prev, svc]
-    );
+  const handleModeChange = (next: Mode) => {
+    setMode(next);
+    if (next === 'specific') {
+      setSelectedBarberId(initialEmpId || selectedBarberId || null);
+    }
+    invalidateSlotSelection();
   };
 
-  // ── Submit ────────────────────────────────────────────────────────────────────
+  const toggleService = (svc: Service) => {
+    setSelectedServices((prev) =>
+      prev.some((s) => s.ProID === svc.ProID)
+        ? prev.filter((s) => s.ProID !== svc.ProID)
+        : [...prev, svc],
+    );
+    invalidateSlotSelection();
+  };
+
   const handleSubmit = async () => {
-    if (!selectedBarberForSlot || !selectedTime || !selectedServices.length) return;
+    if (!selectedSlot || !selectedServices.length) return;
     setError(null);
     setSubmitting(true);
     try {
       const payload = {
-        customer: { name: selectedClient?.Name || customerName, phone: selectedClient?.Mobile || customerPhone },
+        customer: {
+          name: selectedClient?.Name || customerName,
+          phone: selectedClient?.Mobile || customerPhone || '01000000000',
+        },
         serviceIds,
         date: bookingDate,
-        time: selectedTime,
-        mode: 'specific',
-        empId: selectedBarberForSlot.empId,
+        time: selectedSlot.time,
+        dayOffset: selectedSlot.dayOffset ?? 0,
+        mode: mode === 'specific' ? 'specific' : 'nearest',
+        empId: selectedSlot.empId,
         notes: '',
         source: 'operations',
       };
@@ -370,492 +363,338 @@ export function CreateBookingDrawer({
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (res.status === 409) { setError('الموعد لم يعد متاحًا، اختر ميعادًا آخر'); return; }
+      if (res.status === 409) {
+        setError(data.message || data.error || 'الوقت المختار لم يعد متاحًا');
+        return;
+      }
       if (!res.ok || !data.ok) throw new Error(data.error || 'فشل إنشاء الحجز');
       setSuccess(true);
       setTimeout(() => { onCreated?.(); onClose(); }, 1500);
-    } catch (err: any) {
-      setError(err?.message || 'فشل إنشاء الحجز');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'فشل إنشاء الحجز');
     } finally {
       setSubmitting(false);
     }
   };
 
-  // ── Validation ────────────────────────────────────────────────────────────────
-  const canGoStep2 = selectedServices.length > 0 && !isDatePast;
-  const canGoStep3 = !!selectedTime && !!selectedBarberForSlot;
-  const canSubmit  = !!(customerName || selectedClient);
+  const canGoStep2 =
+    selectedServices.length > 0
+    && !isDatePast
+    && (mode === 'nearest' || !!selectedBarberId);
+  const canGoStep3 = !!selectedSlot && !loadingSlots;
+  const canSubmit = !!(customerName || selectedClient);
 
   if (!open) return null;
 
-  // ── Success screen ────────────────────────────────────────────────────────────
   if (success) {
     return (
       <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/75 backdrop-blur-sm" dir="rtl">
         <div className="rounded-2xl border p-8 text-center space-y-3" style={{ background: 'var(--surface-elevated)', borderColor: BORDER }}>
           <CheckCircle2 size={40} className="text-success mx-auto" />
           <p className="font-bold text-foreground text-lg">تم إنشاء الحجز</p>
-          <p className="text-sm text-muted-foreground/70">{formatDateLabel(bookingDate)} — {selectedTime ? fmt(selectedTime) : ''}</p>
+          <p className="text-sm text-muted-foreground/70">
+            {formatDateLabel(bookingDate)} — {selectedSlot?.label ?? ''}
+          </p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-start justify-end bg-background/60 backdrop-blur-sm" onClick={onClose} dir="rtl">
+    <div className="fixed inset-0 z-40 flex items-end sm:items-start sm:justify-end bg-background/60 backdrop-blur-sm" onClick={onClose} dir="rtl">
       <div
-        className="h-full w-full max-w-md flex flex-col shadow-2xl overflow-hidden"
+        className="h-[100dvh] sm:h-full w-full sm:max-w-md flex flex-col shadow-2xl overflow-hidden"
         style={{ background: 'var(--surface-elevated)', borderLeft: `1px solid ${BORDER}` }}
-        onClick={e => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
-
-        {/* ── Header ── */}
-        <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0" style={{ borderColor: BORDER }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 sm:px-5 py-4 border-b flex-shrink-0" style={{ borderColor: BORDER }}>
           <h2 className="font-bold text-foreground text-base">إنشاء حجز جديد</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-muted-foreground/70 hover:text-foreground hover:bg-surface-muted transition-all">
+          <button type="button" onClick={onClose} className="p-2 min-h-[44px] min-w-[44px] rounded-lg text-muted-foreground/70 hover:text-foreground hover:bg-surface-muted transition-all">
             <X size={15} />
           </button>
         </div>
 
-        {/* ── Date bar (visible in all steps) ── */}
-        <div className="px-5 py-2.5 border-b flex-shrink-0" style={{ borderColor: BORDER, background: isDatePast ? 'color-mix(in srgb, var(--destructive) 6%, transparent)' : GOLD_BG }}>
+        {/* Sticky context bar */}
+        {selectedServices.length > 0 && (
+          <div className="px-4 sm:px-5 py-2.5 border-b flex-shrink-0" style={{ borderColor: BORDER, background: GOLD_BG }}>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+              <span className="font-bold" style={{ color: GOLD }}>
+                {mode === 'specific' && selectedBarberName
+                  ? selectedBarberName
+                  : selectedSlot?.barberName
+                    ? selectedSlot.barberName
+                    : 'أقرب حلاق متاح'}
+              </span>
+              <span className="text-muted-foreground">{formatDateLabel(bookingDate)}</span>
+              <span className="text-muted-foreground">{selectedServices.length} خدمة</span>
+              <span className="font-bold" style={{ color: GOLD }}>{totalDuration} دقيقة</span>
+              {selectedSlot && (
+                <span className="font-semibold text-foreground">{selectedSlot.label}</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Date bar */}
+        <div className="px-4 sm:px-5 py-2.5 border-b flex-shrink-0" style={{ borderColor: BORDER }}>
           {showDatePicker ? (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground">اختر تاريخًا</p>
-              {/* Quick chips */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleDateChange(getCairoToday())}
-                  className="px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all"
-                  style={{
-                    borderColor: bookingDate === getCairoToday() ? GOLD : BORDER,
-                    background: bookingDate === getCairoToday() ? GOLD_BG : 'transparent',
-                    color: bookingDate === getCairoToday() ? GOLD : 'var(--muted-foreground)',
-                  }}
-                >
-                  اليوم
-                </button>
-                <button
-                  onClick={() => handleDateChange(getCairoTomorrow())}
-                  className="px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all"
-                  style={{
-                    borderColor: bookingDate === getCairoTomorrow() ? GOLD : BORDER,
-                    background: bookingDate === getCairoTomorrow() ? GOLD_BG : 'transparent',
-                    color: bookingDate === getCairoTomorrow() ? GOLD : 'var(--muted-foreground)',
-                  }}
-                >
-                  غدًا
-                </button>
-                <input
-                  type="date"
-                  value={bookingDate}
-                  min={getCairoToday()}
-                  onChange={e => e.target.value && handleDateChange(e.target.value)}
-                  className="flex-1 rounded-lg border px-2 py-1.5 text-xs text-foreground bg-transparent outline-none"
-                  style={{ borderColor: BORDER, colorScheme: 'dark' }}
-                />
-                <button
-                  onClick={() => setShowDatePicker(false)}
-                  className="p-1.5 rounded-lg text-muted-foreground/70 hover:text-foreground transition-colors"
-                >
-                  <X size={13} />
-                </button>
-              </div>
+            <div className="flex flex-wrap gap-2 items-center">
+              <button type="button" onClick={() => handleDateChange(getCairoToday())} className="px-3 py-2 min-h-[44px] rounded-lg border text-xs font-semibold" style={{ borderColor: GOLD_BDR, color: GOLD }}>اليوم</button>
+              <button type="button" onClick={() => handleDateChange(getCairoTomorrow())} className="px-3 py-2 min-h-[44px] rounded-lg border text-xs font-semibold" style={{ borderColor: BORDER }}>غدًا</button>
+              <input type="date" value={bookingDate} min={getCairoToday()} onChange={(e) => e.target.value && handleDateChange(e.target.value)} className="flex-1 min-h-[44px] rounded-lg border px-2 text-xs bg-transparent" style={{ borderColor: BORDER, colorScheme: 'dark' }} />
+              <button type="button" onClick={() => setShowDatePicker(false)} className="p-2 min-h-[44px] min-w-[44px]"><X size={13} /></button>
             </div>
           ) : (
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Calendar size={13} style={{ color: isDatePast ? 'var(--destructive)' : GOLD }} />
-                <span className="text-xs text-muted-foreground">تاريخ الحجز:</span>
-                <span className="text-sm font-semibold" style={{ color: isDatePast ? 'var(--destructive)' : 'var(--foreground)' }}>
-                  {isToday ? 'اليوم — ' : isTomorrow ? 'غدًا — ' : ''}{formatDateLabel(bookingDate)}
-                </span>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs">
+                <Calendar size={13} style={{ color: GOLD }} />
+                <span>{isToday ? 'اليوم — ' : isTomorrow ? 'غدًا — ' : ''}{formatDateLabel(bookingDate)}</span>
               </div>
-              <button
-                onClick={() => setShowDatePicker(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold transition-all hover:opacity-80"
-                style={{ borderColor: isDatePast ? 'var(--destructive)' : GOLD_BDR, color: isDatePast ? 'var(--destructive)' : GOLD, background: 'transparent' }}
-              >
-                <Calendar size={11} />
-                تغيير التاريخ
-              </button>
-            </div>
-          )}
-
-          {/* Past-date warning */}
-          {isDatePast && !showDatePicker && (
-            <div className="flex items-center gap-2 mt-2">
-              <AlertTriangle size={12} className="text-destructive flex-shrink-0" />
-              <p className="text-xs text-destructive">هذا التاريخ مضى، اختر تاريخًا جديدًا</p>
+              <button type="button" onClick={() => setShowDatePicker(true)} className="px-3 py-2 min-h-[44px] rounded-lg border text-xs font-semibold" style={{ borderColor: GOLD_BDR, color: GOLD }}>تغيير التاريخ</button>
             </div>
           )}
         </div>
 
-        {/* ── Step indicator ── */}
-        <div className="flex items-center gap-0 px-5 py-3 border-b flex-shrink-0" style={{ borderColor: BORDER }}>
+        {/* Steps */}
+        <div className="flex items-center gap-0 px-4 sm:px-5 py-3 border-b flex-shrink-0 overflow-x-auto" style={{ borderColor: BORDER }}>
           {[{ num: 1, label: 'الخدمة' }, { num: 2, label: 'الموعد' }, { num: 3, label: 'العميل' }].map((s, idx) => (
-            <div key={s.num} className="flex items-center">
-              <button
-                onClick={() => { if (s.num < step) setStep(s.num as 1 | 2 | 3); }}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all"
-                style={{ cursor: s.num < step ? 'pointer' : 'default' }}
-              >
-                <div
-                  className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                  style={{
-                    background: step > s.num ? GOLD : step === s.num ? GOLD : BORDER,
-                    color: step >= s.num ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
-                  }}
-                >
+            <div key={s.num} className="flex items-center flex-shrink-0">
+              <button type="button" onClick={() => { if (s.num < step) setStep(s.num as 1 | 2 | 3); }} className="flex items-center gap-2 px-2 py-1.5 rounded-lg">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: step >= s.num ? GOLD : BORDER, color: step >= s.num ? 'var(--primary-foreground)' : 'var(--muted-foreground)' }}>
                   {step > s.num ? '✓' : s.num}
                 </div>
                 <span className="text-xs font-medium" style={{ color: step >= s.num ? GOLD : 'var(--muted-foreground)' }}>{s.label}</span>
               </button>
-              {idx < 2 && <ChevronLeft size={12} className="text-muted-foreground/50 flex-shrink-0" />}
+              {idx < 2 && <ChevronLeft size={12} className="text-muted-foreground/50" />}
             </div>
           ))}
-
-          {/* Service summary pill in header */}
-          {selectedServices.length > 0 && step > 1 && (
-            <div className="mr-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs" style={{ background: GOLD_BG, border: `1px solid ${GOLD_BDR}`, color: GOLD }}>
-              <Scissors size={11} />
-              <span>{selectedServices.length} خدمة · {totalDuration} د</span>
-            </div>
-          )}
         </div>
 
-        {/* ── Content ── */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto min-h-0">
 
-          {/* ════════════════════════════════════════
-              STEP 1 — MULTI-SERVICE SELECTION
-              ════════════════════════════════════════ */}
+          {/* STEP 1 */}
           {step === 1 && (
-            <div className="flex flex-col h-full">
-
-              {/* Prefilled info from calendar */}
-              {(initialBarberName || initialTime) && (
-                <div className="px-5 pt-4">
-                  <div className="p-3 rounded-xl border mb-1" style={{ borderColor: GOLD_BDR, background: GOLD_BG }}>
-                    <p className="text-xs text-muted-foreground mb-1">معلومات الموعد المختار:</p>
-                    {initialBarberName && <p className="text-sm text-foreground">الحلاق: <span style={{ color: GOLD }}>{initialBarberName}</span></p>}
-                    {hasTimeRange
-                      ? <p className="text-sm text-foreground">الفترة: <span style={{ color: GOLD }}>{fmt(initialTimeRangeStart!)} — {fmt(initialTimeRangeEnd!)}</span></p>
-                      : initialTime && <p className="text-sm text-foreground">الوقت: <span style={{ color: GOLD }}>{fmt(initialTime)}</span></p>
-                    }
+            <div className="flex flex-col pb-4">
+              <div className="px-4 sm:px-5 pt-4 space-y-4">
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-muted-foreground">طريقة الحجز</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { value: 'nearest' as const, label: 'أقرب حلاق', sub: 'أول حلاق متاح', icon: Sparkles },
+                      { value: 'specific' as const, label: 'حلاق معين', sub: lockedBarber ? initialBarberName : 'اختر الحلاق', icon: User },
+                    ].map((m) => {
+                      const active = mode === m.value;
+                      const Icon = m.icon;
+                      const disabled = lockedBarber && m.value === 'nearest';
+                      return (
+                        <button
+                          key={m.value}
+                          type="button"
+                          onClick={() => !disabled && handleModeChange(m.value)}
+                          disabled={disabled}
+                          className="relative flex flex-col items-center gap-1 p-3 min-h-[88px] rounded-xl border-2 transition-all text-center"
+                          style={{
+                            borderColor: active ? GOLD : BORDER,
+                            background: active ? GOLD_BG : 'transparent',
+                            opacity: disabled ? 0.5 : 1,
+                          }}
+                        >
+                          {active && <div className="absolute top-2 right-2 w-2 h-2 rounded-full" style={{ background: GOLD }} />}
+                          <Icon size={20} style={{ color: active ? GOLD : 'var(--muted-foreground)' }} />
+                          <span className="text-sm font-bold" style={{ color: active ? GOLD : 'var(--foreground)' }}>{m.label}</span>
+                          <span className="text-[10px] text-muted-foreground leading-tight">{m.sub}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-              )}
 
-              {/* Mode + date row */}
-              <div className="px-5 pt-4 pb-3 flex items-center gap-3">
-                {/* Mode toggle */}
-                <div className="flex rounded-lg overflow-hidden border flex-shrink-0" style={{ borderColor: BORDER }}>
-                  {([{ value: 'nearest', label: 'أقرب حلاق' }, { value: 'specific', label: 'حلاق معين' }] as const).map(m => (
-                    <button
-                      key={m.value}
-                      onClick={() => { setMode(m.value); setSelectedBarberId(initialEmpId || null); }}
-                      disabled={m.value === 'specific' && !!initialEmpId && mode === 'specific'}
-                      className="px-3 py-1.5 text-xs font-semibold transition-all"
-                      style={{
-                        background: mode === m.value ? GOLD : 'transparent',
-                        color: mode === m.value ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
-                      }}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Barber picker (specific + no prefill) */}
-                {mode === 'specific' && !initialEmpId && (
-                  <select
-                    value={selectedBarberId ?? ''}
-                    onChange={e => setSelectedBarberId(Number(e.target.value) || null)}
-                    className="flex-1 rounded-lg border px-3 py-1.5 text-xs text-foreground bg-transparent outline-none"
-                    style={{ borderColor: BORDER, background: SURFACE, colorScheme: 'dark' }}
-                  >
-                    <option value="">اختر الحلاق</option>
-                    {barbers.map(b => <option key={b.empId} value={b.empId}>{b.empName}</option>)}
-                  </select>
-                )}
-              </div>
-
-              {/* Services list — scrollable */}
-              <div className="flex-1 overflow-y-auto px-5 pb-2 space-y-2">
-                <p className="text-xs font-semibold text-muted-foreground mb-2 sticky top-0 py-1" style={{ background: 'var(--surface-elevated)' }}>
-                  اختر الخدمات <span className="text-muted-foreground/60 font-normal">(يمكن اختيار أكثر من خدمة)</span>
-                </p>
-
-                {services.length === 0 && (
-                  <div className="text-center py-8">
-                    <Loader2 size={22} className="animate-spin mx-auto mb-2" style={{ color: GOLD }} />
-                    <p className="text-xs text-muted-foreground/70">جاري تحميل الخدمات...</p>
-                  </div>
-                )}
-
-                {services.map(svc => {
-                  const isSelected = selectedServices.some(s => s.ProID === svc.ProID);
-                  return (
-                    <button
-                      key={svc.ProID}
-                      onClick={() => toggleService(svc)}
-                      className="w-full text-right p-3 rounded-xl border transition-all flex items-center gap-3 group"
-                      style={{
-                        borderColor: isSelected ? GOLD : BORDER,
-                        background: isSelected ? GOLD_BG : 'transparent',
-                      }}
-                    >
-                      {/* Checkbox indicator */}
-                      <div
-                        className="w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all"
-                        style={{
-                          borderColor: isSelected ? GOLD : 'var(--muted-foreground)',
-                          background: isSelected ? GOLD : 'transparent',
-                        }}
-                      >
-                        {isSelected && <span className="text-primary-foreground text-xs font-bold leading-none">✓</span>}
+                {mode === 'specific' && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground">الحلاق المختار</p>
+                    {lockedBarber && initialBarberName ? (
+                      <div className="p-3 rounded-xl border text-center" style={{ borderColor: GOLD_BDR, background: GOLD_BG }}>
+                        <p className="text-base font-bold" style={{ color: GOLD }}>{initialBarberName}</p>
                       </div>
-
-                      {/* Icon */}
-                      <div
-                        className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                        style={{ background: isSelected ? 'color-mix(in srgb, var(--primary) 20%, transparent)' : SURFACE }}
-                      >
-                        <Scissors size={16} style={{ color: isSelected ? GOLD : 'var(--muted-foreground)' }} />
-                      </div>
-
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold truncate" style={{ color: isSelected ? GOLD : 'var(--foreground)' }}>
-                          {svc.ProName}
-                        </p>
-                        <p className="text-xs text-muted-foreground/70">{svc.DurationMinutes ?? 30} دقيقة</p>
-                      </div>
-
-                      {/* Price */}
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-sm font-bold" style={{ color: isSelected ? GOLD : 'var(--muted-foreground)' }}>
-                          {svc.SPrice ?? 0} ج
-                        </p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Selected chips */}
-              {selectedServices.length > 0 && (
-                <div className="px-5 pt-2 pb-1 flex flex-wrap gap-1.5">
-                  {selectedServices.map(svc => (
-                    <span
-                      key={svc.ProID}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium"
-                      style={{ background: GOLD_BG, border: `1px solid ${GOLD_BDR}`, color: GOLD }}
-                    >
-                      {svc.ProName}
-                      <button onClick={() => toggleService(svc)} className="hover:opacity-70 transition-opacity">
-                        <X size={11} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Summary strip */}
-              {selectedServices.length > 0 && (
-                <div className="px-5 py-3 border-t flex items-center gap-4" style={{ borderColor: BORDER }}>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Scissors size={12} style={{ color: GOLD }} />
-                    <span>{selectedServices.length} خدمة</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Clock size={12} style={{ color: GOLD }} />
-                    <span>{totalDuration} دقيقة</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs font-bold" style={{ color: GOLD }}>
-                    <span>{totalPrice} ج.م</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ════════════════════════════════════════
-              STEP 2 — TIME → BARBER
-              ════════════════════════════════════════ */}
-          {step === 2 && (
-            <div className="px-5 py-4 space-y-5">
-
-              {/* Services + date summary strip */}
-              <div className="p-3 rounded-xl space-y-1.5" style={{ background: SURFACE, border: `1px solid ${BORDER}` }}>
-                <div className="flex items-center gap-2">
-                  <Calendar size={12} style={{ color: GOLD }} />
-                  <span className="text-xs font-semibold" style={{ color: GOLD }}>
-                    {isToday ? 'اليوم — ' : isTomorrow ? 'غدًا — ' : ''}{formatDateLabel(bookingDate)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Scissors size={12} style={{ color: GOLD }} />
-                  <p className="text-xs text-muted-foreground flex-1 truncate">{selectedServices.map(s => s.ProName).join(' + ')}</p>
-                  <span className="text-muted-foreground text-xs flex-shrink-0"><Clock size={10} className="inline ml-1" />{totalDuration} د</span>
-                  <span style={{ color: GOLD }} className="font-bold text-xs flex-shrink-0">{totalPrice} ج</span>
-                </div>
-              </div>
-
-              {/* Past-date gate */}
-              {isDatePast && (
-                <div className="text-center py-10">
-                  <AlertTriangle size={26} className="mx-auto mb-3 text-destructive" />
-                  <p className="text-sm text-destructive font-semibold">هذا التاريخ مضى</p>
-                  <p className="text-xs text-muted-foreground/70 mt-1">اختر تاريخًا جديدًا من الأعلى</p>
-                  <button
-                    onClick={() => setShowDatePicker(true)}
-                    className="mt-4 px-4 py-2 rounded-lg border text-xs font-semibold"
-                    style={{ borderColor: GOLD, color: GOLD }}
-                  >
-                    تغيير التاريخ
-                  </button>
-                </div>
-              )}
-
-              {/* Loading */}
-              {!isDatePast && loadingSlots && (
-                <div className="text-center py-10">
-                  <Loader2 size={26} className="animate-spin mx-auto mb-3" style={{ color: GOLD }} />
-                  <p className="text-sm text-muted-foreground/70">جاري تحميل المواعيد المتاحة...</p>
-                  <p className="text-xs text-muted-foreground/60 mt-1">المدة الإجمالية: {totalDuration} دقيقة</p>
-                </div>
-              )}
-
-              {/* No slots */}
-              {!isDatePast && !loadingSlots && uniqueTimes.length === 0 && (
-                <div className="text-center py-10">
-                  <AlertTriangle size={26} className="mx-auto mb-3 text-warning" />
-                  <p className="text-sm text-muted-foreground">لا توجد مواعيد متاحة</p>
-                  {slotsDebugReason ? (
-                    <p className="text-xs mt-1.5 px-4" style={{ color: 'var(--warning)' }}>{slotsDebugReason}</p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground/60 mt-1">جرب تغيير التاريخ أو تقليل الخدمات</p>
-                  )}
-                  <p className="text-xs text-muted-foreground/50 mt-2">
-                    {formatDateLabel(bookingDate)} · {totalDuration} دقيقة · {serviceIds.length} خدمة
-                  </p>
-                  {hasTimeRange && !showAllSlots && availableSlots.length > 0 && (
-                    <button
-                      onClick={() => setShowAllSlots(true)}
-                      className="mt-3 px-4 py-1.5 rounded-lg border text-xs"
-                      style={{ borderColor: GOLD, color: GOLD }}
-                    >
-                      عرض كل مواعيد اليوم
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Time range filter notice */}
-              {!isDatePast && hasTimeRange && !showAllSlots && uniqueTimes.length > 0 && (
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-xs text-warning">
-                    <Clock size={13} />
-                    <span>مواعيد الفترة {fmt(initialTimeRangeStart!)} — {fmt(initialTimeRangeEnd!)}</span>
-                  </div>
-                  <button
-                    onClick={() => setShowAllSlots(true)}
-                    className="text-xs underline text-muted-foreground/70 hover:text-foreground"
-                  >
-                    عرض الكل
-                  </button>
-                </div>
-              )}
-
-              {/* Hour-grouped time grid */}
-              {!isDatePast && !loadingSlots && groupedSlots.length > 0 && (
-                <div className="space-y-4">
-                  {groupedSlots.map(group => (
-                    <div key={group.label}>
-                      {/* Hour divider */}
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-xs font-bold text-muted-foreground/70 flex-shrink-0">{group.label}</span>
-                        <div className="flex-1 h-px" style={{ background: BORDER }} />
-                      </div>
-
-                      {/* Slot buttons — time only, clean */}
-                      <div className="grid grid-cols-4 gap-2">
-                        {group.slots.map(slot => {
-                          const isSelected = selectedTime === slot.time;
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        {barbers.map((b) => {
+                          const active = selectedBarberId === b.empId;
                           return (
                             <button
-                              key={slot.time}
-                              onClick={() => {
-                                setSelectedTime(slot.time);
-                                setSelectedBarberForSlot(null);
-                              }}
-                              className="py-2.5 px-2 rounded-xl border text-center transition-all"
+                              key={b.empId}
+                              type="button"
+                              onClick={() => { setSelectedBarberId(b.empId); invalidateSlotSelection(); }}
+                              className="p-3 rounded-xl border-2 text-center transition-all min-h-[64px]"
                               style={{
-                                borderColor: isSelected ? GOLD : BORDER,
-                                background: isSelected ? GOLD_BG : 'transparent',
+                                borderColor: active ? GOLD : BORDER,
+                                background: active ? GOLD_BG : 'transparent',
                               }}
                             >
-                              <p className="text-sm font-bold leading-none" style={{ color: isSelected ? GOLD : 'var(--foreground)' }}>
-                                {fmt(slot.time)}
-                              </p>
+                              <p className="text-sm font-bold" style={{ color: active ? GOLD : 'var(--foreground)' }}>{b.empName}</p>
                             </button>
                           );
                         })}
                       </div>
+                    )}
+                    {!selectedBarberId && !lockedBarber && (
+                      <p className="text-xs text-warning">اختر الحلاق للمتابعة</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="px-4 sm:px-5 pt-4 pb-2">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">اختر الخدمات</p>
+                <div className="space-y-2">
+                  {services.map((svc) => {
+                    const isSelected = selectedServices.some((s) => s.ProID === svc.ProID);
+                    return (
+                      <button
+                        key={svc.ProID}
+                        type="button"
+                        onClick={() => toggleService(svc)}
+                        className="w-full text-right p-3 min-h-[56px] rounded-xl border transition-all flex items-center gap-3"
+                        style={{ borderColor: isSelected ? GOLD : BORDER, background: isSelected ? GOLD_BG : 'transparent' }}
+                      >
+                        <div className="w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0" style={{ borderColor: isSelected ? GOLD : 'var(--muted-foreground)', background: isSelected ? GOLD : 'transparent' }}>
+                          {isSelected && <span className="text-primary-foreground text-xs font-bold">✓</span>}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold truncate">{svc.ProName}</p>
+                          <p className="text-xs text-muted-foreground">{svc.DurationMinutes ?? 30} د · {svc.SPrice ?? 0} ج.م</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {selectedServices.length > 0 && (
+                <div className="sticky bottom-0 mx-4 sm:mx-5 mt-4 p-4 rounded-xl border" style={{ borderColor: GOLD_BDR, background: 'var(--surface-elevated)' }}>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <div>
+                      <p className="font-bold text-foreground">{selectedServices.length} خدمة · {totalDuration} دقيقة</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {mode === 'specific' && selectedBarberName ? `الحلاق: ${selectedBarberName}` : selectedSlot?.barberName ? `الحلاق: ${selectedSlot.barberName}` : 'أقرب حلاق متاح'}
+                      </p>
                     </div>
-                  ))}
+                    <p className="text-lg font-bold" style={{ color: GOLD }}>{totalPrice} ج.م</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* STEP 2 */}
+          {step === 2 && (
+            <div className="px-4 sm:px-5 py-4 space-y-4">
+              <div className="p-3 rounded-xl space-y-1" style={{ background: SURFACE, border: `1px solid ${BORDER}` }}>
+                <p className="text-xs font-semibold" style={{ color: GOLD }}>
+                  {mode === 'specific' && selectedBarberName ? `${selectedBarberName} • ` : 'أقرب حلاق • '}
+                  {formatDateLabel(bookingDate)}
+                </p>
+                <p className="text-xs text-muted-foreground truncate">{selectedServices.map((s) => s.ProName).join(' + ')}</p>
+                <p className="text-sm font-bold" style={{ color: GOLD }}>الوقت المطلوب: {totalDuration} دقيقة</p>
+              </div>
+
+              {gapNotice && (
+                <div className="flex gap-2 p-3 rounded-xl border border-warning/40 bg-warning/10">
+                  <AlertTriangle size={16} className="text-warning flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-warning leading-relaxed">{gapNotice.message}</p>
                 </div>
               )}
 
-              {/* ── Barber panel — appears after time selected ── */}
-              {!isDatePast && selectedTime && !loadingSlots && (
-                <div className="pt-1">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Users size={14} style={{ color: GOLD }} />
-                    <p className="text-sm font-semibold text-foreground">الحلاقون المتاحون — {fmt(selectedTime)}</p>
-                    {selectedTime && totalDuration > 0 && (
-                      <span className="text-xs text-muted-foreground/70 mr-auto">ينتهي {fmt(addMinutes(selectedTime, totalDuration))}</span>
-                    )}
+              {loadingSlots && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 size={18} className="animate-spin" style={{ color: GOLD }} />
+                    <span>جارٍ حساب المواعيد المتاحة لـ {totalDuration} دقيقة...</span>
                   </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <div key={i} className="p-3 min-h-[72px] rounded-xl border animate-pulse" style={{ borderColor: BORDER, background: SURFACE }}>
+                        <div className="h-4 w-1/2 rounded mb-2" style={{ background: BORDER }} />
+                        <div className="h-3 w-3/4 rounded" style={{ background: BORDER }} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-                  {barbersAtTime.length === 0 && (
-                    <div className="p-4 rounded-xl border text-center" style={{ borderColor: BORDER, background: SURFACE }}>
-                      <p className="text-sm text-muted-foreground/70">لا يوجد حلاق متاح لهذا الوقت</p>
+              {!loadingSlots && filteredSlots.length === 0 && (
+                <div className="text-center py-8 space-y-3">
+                  <AlertTriangle size={28} className="mx-auto text-warning" />
+                  <p className="text-sm font-semibold text-foreground">
+                    {slotsDebugReason
+                      ?? (mode === 'specific' && selectedBarberName
+                        ? `لا توجد فترة متصلة مدتها ${totalDuration} دقيقة متاحة مع ${selectedBarberName} في هذا اليوم.`
+                        : 'لا توجد مواعيد متاحة')}
+                  </p>
+                  {nextAvailable && (
+                    <div className="p-3 rounded-xl border" style={{ borderColor: GOLD_BDR, background: GOLD_BG }}>
+                      <p className="text-xs font-semibold" style={{ color: GOLD }}>أقرب موعد متاح</p>
+                      <p className="text-sm font-bold">{nextAvailable.label}</p>
+                      {mode === 'nearest' && <p className="text-xs text-muted-foreground">مع {nextAvailable.barberName}</p>}
                     </div>
                   )}
+                  {alternativeBarbers.length > 0 && (
+                    <div className="text-xs space-y-2 pt-2">
+                      <p className="text-muted-foreground font-semibold">حلاقات بديلة</p>
+                      {alternativeBarbers.slice(0, 3).map((alt) => (
+                        <button
+                          key={alt.empId}
+                          type="button"
+                          onClick={() => {
+                            setMode('specific');
+                            setSelectedBarberId(alt.empId);
+                            setStep(1);
+                          }}
+                          className="w-full p-2 rounded-lg border text-xs text-right"
+                          style={{ borderColor: BORDER, background: SURFACE }}
+                        >
+                          <span className="font-semibold">{alt.empName}</span> متاح: {fmt(alt.time)} – {fmt(alt.endTime)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap justify-center gap-2 pt-2">
+                    {mode === 'specific' && !lockedBarber && (
+                      <button type="button" onClick={() => { setMode('nearest'); setStep(1); }} className="px-3 py-2 min-h-[44px] rounded-lg border text-xs font-semibold" style={{ borderColor: GOLD, color: GOLD }}>أقرب حلاق</button>
+                    )}
+                    <button type="button" onClick={() => setStep(1)} className="px-3 py-2 min-h-[44px] rounded-lg border text-xs" style={{ borderColor: BORDER }}>تغيير الخدمات</button>
+                    <button type="button" onClick={() => setShowDatePicker(true)} className="px-3 py-2 min-h-[44px] rounded-lg border text-xs" style={{ borderColor: BORDER }}>تغيير التاريخ</button>
+                  </div>
+                </div>
+              )}
 
-                  <div className="space-y-2">
-                    {barbersAtTime.map(slot => {
-                      const isChosen = selectedBarberForSlot?.empId === slot.empId;
-                      const autoChosen = barbersAtTime.length === 1;
+              {!loadingSlots && filteredSlots.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground">
+                    اختر موعداً متصلاً مدته {totalDuration} دقيقة
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {filteredSlots.map((slot) => {
+                      const isSelected = selectedSlot?.time === slot.time && selectedSlot?.empId === slot.empId;
                       return (
                         <button
-                          key={slot.empId}
-                          onClick={() => setSelectedBarberForSlot(slot)}
-                          className="w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-right"
+                          key={`${slot.empId}-${slot.time}-${slot.dayOffset ?? 0}`}
+                          type="button"
+                          onClick={() => setSelectedSlot(slot)}
+                          className="text-right p-3 min-h-[80px] rounded-xl border-2 transition-all"
                           style={{
-                            borderColor: isChosen ? 'var(--success)' : BORDER,
-                            background: isChosen ? 'color-mix(in srgb, var(--success) 6%, transparent)' : SURFACE,
+                            borderColor: isSelected ? GOLD : BORDER,
+                            background: isSelected ? GOLD_BG : SURFACE,
                           }}
                         >
-                          <div
-                            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-                            style={{ background: isChosen ? 'color-mix(in srgb, var(--success) 15%, transparent)' : 'var(--surface-muted)' }}
-                          >
-                            <User size={16} style={{ color: isChosen ? 'var(--success)' : 'var(--muted-foreground)' }} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-foreground">{slot.barberName}</p>
-                            {autoChosen && !isChosen && (
-                              <p className="text-xs text-muted-foreground/70">الوحيد المتاح</p>
-                            )}
-                          </div>
-                          {isChosen
-                            ? <CheckCircle2 size={18} className="text-success flex-shrink-0" />
-                            : <div className="w-4 h-4 rounded-full border flex-shrink-0" style={{ borderColor: BORDER }} />
-                          }
+                          <p className="text-sm font-bold" style={{ color: isSelected ? GOLD : 'var(--foreground)' }}>
+                            {slot.label || `${fmt(slot.time)} – ${fmt(slot.endTime)}`}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                            <Users size={11} /> {mode === 'nearest' ? `مع ${slot.barberName}` : slot.barberName}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{slot.durationMinutes} دقيقة</p>
                         </button>
                       );
                     })}
@@ -863,123 +702,44 @@ export function CreateBookingDrawer({
                 </div>
               )}
 
-              {/* Selected summary */}
-              {!isDatePast && selectedTime && selectedBarberForSlot && (
+              {selectedSlot && !loadingSlots && (
                 <div className="p-3 rounded-xl border" style={{ borderColor: 'var(--success)', background: 'color-mix(in srgb, var(--success) 5%, transparent)' }}>
-                  <p className="text-xs text-success mb-1.5 font-semibold">✓ تم اختيار الموعد</p>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">الوقت</span>
-                    <span className="text-foreground font-bold">{fmt(selectedTime)} — {fmt(addMinutes(selectedTime, totalDuration))}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm mt-1">
-                    <span className="text-muted-foreground">الحلاق</span>
-                    <span className="text-foreground">{selectedBarberForSlot.barberName}</span>
-                  </div>
+                  <p className="text-xs text-success font-semibold mb-1">✓ {selectedSlot.label}</p>
+                  <p className="text-sm text-foreground">الحلاق: {selectedSlot.barberName}</p>
                 </div>
               )}
             </div>
           )}
 
-          {/* ════════════════════════════════════════
-              STEP 3 — CUSTOMER
-              ════════════════════════════════════════ */}
+          {/* STEP 3 — customer (unchanged structure, compact) */}
           {step === 3 && (
-            <div className="px-5 py-4 space-y-4">
-
-              {/* Full booking summary */}
+            <div className="px-4 sm:px-5 py-4 space-y-4">
               <div className="p-4 rounded-xl border space-y-2" style={{ borderColor: BORDER, background: SURFACE }}>
-                <p className="text-xs font-semibold text-muted-foreground mb-2">ملخص الحجز</p>
-
-                {/* Date */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Calendar size={13} style={{ color: GOLD }} />
-                    <span>التاريخ</span>
-                  </div>
-                  <span className="text-sm text-foreground font-semibold">
-                    {isToday ? 'اليوم — ' : isTomorrow ? 'غدًا — ' : ''}{formatDateLabel(bookingDate)}
-                  </span>
-                </div>
-
-                <div className="h-px" style={{ background: BORDER }} />
-
-                {/* Services */}
-                <div className="flex items-start gap-2">
-                  <Scissors size={13} style={{ color: GOLD }} className="mt-0.5 flex-shrink-0" />
-                  <div className="flex-1">
-                    {selectedServices.map(s => (
-                      <p key={s.ProID} className="text-sm text-foreground">{s.ProName} <span className="text-muted-foreground/70 text-xs">({s.DurationMinutes ?? 30} د)</span></p>
-                    ))}
-                  </div>
-                  <span className="text-sm font-bold flex-shrink-0" style={{ color: GOLD }}>{totalPrice} ج</span>
-                </div>
-
-                <div className="h-px" style={{ background: BORDER }} />
-
-                {/* Time */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Clock size={13} style={{ color: GOLD }} />
-                    <span>الوقت</span>
-                  </div>
-                  <span className="text-sm text-foreground font-semibold">
-                    {selectedTime ? `${fmt(selectedTime)} — ${fmt(addMinutes(selectedTime, totalDuration))}` : '—'}
-                  </span>
-                </div>
-
-                {/* Barber */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <User size={13} style={{ color: GOLD }} />
-                    <span>الحلاق</span>
-                  </div>
-                  <span className="text-sm text-foreground">{selectedBarberForSlot?.barberName ?? '—'}</span>
-                </div>
-
-                {/* Duration */}
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground/70">المدة الإجمالية</span>
-                  <span className="text-xs text-muted-foreground">{totalDuration} دقيقة</span>
-                </div>
+                <p className="text-xs font-semibold text-muted-foreground">ملخص الحجز</p>
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">التاريخ</span><span>{formatDateLabel(bookingDate)}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">الوقت</span><span className="font-semibold">{selectedSlot?.label}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">الحلاق</span><span>{selectedSlot?.barberName}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">المدة</span><span>{totalDuration} دقيقة</span></div>
               </div>
 
-              {/* Client search */}
               <div className="relative">
-                <p className="text-xs font-semibold text-muted-foreground mb-2">بحث عن عميل موجود</p>
+                <p className="text-xs font-semibold text-muted-foreground mb-2">بحث عن عميل</p>
                 {selectedClient ? (
-                  <div className="flex items-center justify-between p-3 rounded-xl border" style={{ borderColor: 'var(--success)', background: 'color-mix(in srgb, var(--success) 5%, transparent)' }}>
-                    <div className="flex items-center gap-2">
-                      <User size={16} className="text-success" />
-                      <div>
-                        <p className="text-sm text-foreground">{selectedClient.Name}</p>
-                        {selectedClient.Mobile && <p className="text-xs text-muted-foreground/70">{selectedClient.Mobile}</p>}
-                      </div>
-                    </div>
-                    <button onClick={() => setSelectedClient(null)} className="p-1 text-muted-foreground/70 hover:text-foreground">
-                      <X size={14} />
-                    </button>
+                  <div className="flex items-center justify-between p-3 rounded-xl border" style={{ borderColor: 'var(--success)' }}>
+                    <span className="text-sm">{selectedClient.Name}</span>
+                    <button type="button" onClick={() => setSelectedClient(null)}><X size={14} /></button>
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center gap-2 p-3 rounded-xl border" style={{ borderColor: BORDER, background: SURFACE }}>
+                    <div className="flex items-center gap-2 p-3 rounded-xl border min-h-[44px]" style={{ borderColor: BORDER }}>
                       <Search size={16} className="text-muted-foreground/70" />
-                      <input
-                        className="flex-1 bg-transparent text-sm text-foreground placeholder-muted-foreground/60 outline-none"
-                        placeholder="ابحث بالاسم أو الهاتف..."
-                        value={clientSearch}
-                        onChange={e => { setClientSearch(e.target.value); setShowClients(true); }}
-                      />
+                      <input className="flex-1 bg-transparent text-sm outline-none" placeholder="ابحث بالاسم أو الهاتف..." value={clientSearch} onChange={(e) => { setClientSearch(e.target.value); setShowClients(true); }} />
                     </div>
                     {showClients && clients.length > 0 && (
                       <div className="absolute top-full left-0 right-0 mt-1 rounded-xl border shadow-xl z-10 overflow-hidden" style={{ background: 'var(--surface-muted)', borderColor: BORDER }}>
-                        {clients.slice(0, 6).map(c => (
-                          <button
-                            key={c.ClientID}
-                            className="w-full text-right px-4 py-2.5 hover:bg-surface-muted transition-colors text-sm text-foreground"
-                            onClick={() => { setSelectedClient(c); setClientSearch(''); setShowClients(false); }}
-                          >
+                        {clients.slice(0, 6).map((c) => (
+                          <button key={c.ClientID} type="button" className="w-full text-right px-4 py-3 min-h-[44px] hover:bg-surface-muted text-sm" onClick={() => { setSelectedClient(c); setClientSearch(''); setShowClients(false); }}>
                             {c.Name}
-                            {c.Mobile && <span className="text-muted-foreground/70 text-xs mr-2">{c.Mobile}</span>}
                           </button>
                         ))}
                       </div>
@@ -988,33 +748,13 @@ export function CreateBookingDrawer({
                 )}
               </div>
 
-              {/* New customer form */}
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground mb-2">أو إدخال بيانات جديدة</p>
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    value={customerName}
-                    onChange={e => setCustomerName(e.target.value)}
-                    placeholder="اسم العميل *"
-                    className="w-full rounded-xl border px-3 py-2.5 text-sm text-foreground bg-transparent placeholder-muted-foreground/60 outline-none focus:ring-1 transition-all"
-                    style={{ borderColor: BORDER }}
-                  />
-                  <input
-                    type="tel"
-                    value={customerPhone}
-                    onChange={e => setCustomerPhone(e.target.value)}
-                    placeholder="رقم الهاتف (اختياري)"
-                    className="w-full rounded-xl border px-3 py-2.5 text-sm text-foreground bg-transparent placeholder-muted-foreground/60 outline-none"
-                    style={{ borderColor: BORDER }}
-                    dir="ltr"
-                  />
-                </div>
+              <div className="space-y-3">
+                <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="اسم العميل *" className="w-full min-h-[44px] rounded-xl border px-3 text-sm bg-transparent" style={{ borderColor: BORDER }} />
+                <input type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="رقم الهاتف (اختياري)" className="w-full min-h-[44px] rounded-xl border px-3 text-sm bg-transparent" style={{ borderColor: BORDER }} dir="ltr" />
               </div>
 
-              {/* Error */}
               {error && (
-                <div className="flex items-center gap-2 p-3 rounded-xl border border-destructive/30 bg-destructive/5">
+                <div className="flex gap-2 p-3 rounded-xl border border-destructive/30 bg-destructive/5">
                   <AlertTriangle size={16} className="text-destructive flex-shrink-0" />
                   <p className="text-sm text-destructive">{error}</p>
                 </div>
@@ -1023,50 +763,25 @@ export function CreateBookingDrawer({
           )}
         </div>
 
-        {/* ── Footer ── */}
-        <div className="px-5 py-4 border-t flex-shrink-0 space-y-2" style={{ borderColor: BORDER }}>
-
+        {/* Footer */}
+        <div className="px-4 sm:px-5 py-4 border-t flex-shrink-0 space-y-2" style={{ borderColor: BORDER }}>
           {step === 1 && (
-            <button
-              onClick={() => { setStep(2); setSelectedTime(initialTime || null); setSelectedBarberForSlot(null); }}
-              disabled={!canGoStep2}
-              className="w-full py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-2"
-              style={{ background: canGoStep2 ? `linear-gradient(135deg,${GOLD},var(--primary-active))` : BORDER, color: canGoStep2 ? 'var(--primary-foreground)' : 'var(--muted-foreground)' }}
-            >
+            <button type="button" onClick={() => setStep(2)} disabled={!canGoStep2} className="w-full min-h-[48px] py-3 rounded-xl text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2" style={{ background: canGoStep2 ? `linear-gradient(135deg,${GOLD},var(--primary-active))` : BORDER, color: canGoStep2 ? 'var(--primary-foreground)' : 'var(--muted-foreground)' }}>
               التالي — اختيار الموعد <ChevronLeft size={16} />
             </button>
           )}
-
           {step === 2 && (
-            <button
-              onClick={() => setStep(3)}
-              disabled={!canGoStep3}
-              className="w-full py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-2"
-              style={{ background: canGoStep3 ? `linear-gradient(135deg,${GOLD},var(--primary-active))` : BORDER, color: canGoStep3 ? 'var(--primary-foreground)' : 'var(--muted-foreground)' }}
-            >
+            <button type="button" onClick={() => setStep(3)} disabled={!canGoStep3} className="w-full min-h-[48px] py-3 rounded-xl text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2" style={{ background: canGoStep3 ? `linear-gradient(135deg,${GOLD},var(--primary-active))` : BORDER, color: canGoStep3 ? 'var(--primary-foreground)' : 'var(--muted-foreground)' }}>
               التالي — بيانات العميل <ChevronLeft size={16} />
             </button>
           )}
-
           {step === 3 && (
-            <button
-              onClick={handleSubmit}
-              disabled={!canSubmit || submitting}
-              className="w-full py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-2"
-              style={{ background: 'linear-gradient(135deg,var(--success),var(--success-active))', color: 'var(--foreground)' }}
-            >
-              {submitting
-                ? <><Loader2 size={16} className="animate-spin" /> جاري الحجز...</>
-                : <><CheckCircle2 size={16} /> تأكيد الحجز</>
-              }
+            <button type="button" onClick={handleSubmit} disabled={!canSubmit || submitting} className="w-full min-h-[48px] py-3 rounded-xl text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2" style={{ background: 'linear-gradient(135deg,var(--success),var(--success-active))', color: 'var(--foreground)' }}>
+              {submitting ? <><Loader2 size={16} className="animate-spin" /> جاري الحجز...</> : <><CheckCircle2 size={16} /> تأكيد الحجز</>}
             </button>
           )}
-
           {step > 1 && (
-            <button
-              onClick={() => setStep(s => (s - 1) as 1 | 2 | 3)}
-              className="w-full py-2 rounded-xl text-xs text-muted-foreground/70 hover:text-foreground transition-colors flex items-center justify-center gap-1"
-            >
+            <button type="button" onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)} className="w-full min-h-[44px] py-2 rounded-xl text-xs text-muted-foreground/70 flex items-center justify-center gap-1">
               <ChevronRight size={13} /> رجوع
             </button>
           )}

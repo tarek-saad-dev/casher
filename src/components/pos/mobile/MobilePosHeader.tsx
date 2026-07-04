@@ -10,7 +10,9 @@ import {
   Receipt,
   Settings,
   History,
+  Menu,
 } from 'lucide-react';
+import { useMobileNavOptional } from '@/components/layout/MobileNavContext';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,6 +36,7 @@ export default function MobilePosHeader({
   onNewSale,
   onOpenRecentSales,
 }: MobilePosHeaderProps) {
+  const mobileNav = useMobileNavOptional();
   const [time, setTime] = useState<string | null>(null);
 
   useEffect(() => {
@@ -115,6 +118,18 @@ export default function MobilePosHeader({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {mobileNav && (
+        <button
+          type="button"
+          onClick={mobileNav.toggle}
+          aria-label="فتح القائمة"
+          aria-expanded={mobileNav.isOpen}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-muted text-muted-foreground transition-colors hover:bg-surface-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+      )}
     </header>
   );
 }

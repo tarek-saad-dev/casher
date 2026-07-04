@@ -21,6 +21,8 @@ interface ExpenseReceiptPopupProps {
   onClose: () => void;
 }
 
+export type { ExpenseReceiptData };
+
 // ═══════════════════════════════════════════════════════════
 // EXPENSE RECEIPT CSS — Ultra compact 58mm thermal style
 // ═══════════════════════════════════════════════════════════

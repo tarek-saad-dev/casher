@@ -38,13 +38,46 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ loginName: loginName.trim(), password: password.trim() }),
       });
-      const data = await res.json();
+
+      const contentType = res.headers.get('content-type') ?? '';
+      let data: { error?: string; code?: string; requestId?: string } = {};
+
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        console.error('[LoginForm] non-JSON login response', {
+          status: res.status,
+          contentType,
+          preview: text.slice(0, 200),
+        });
+      }
+
       if (!res.ok) {
-        setError(data.error || 'تعذر الاتصال بالخادم، حاول مرة أخرى');
+        if (res.status === 404) {
+          setError('خدمة تسجيل الدخول غير متاحة. أعد تشغيل الخادم أو تواصل مع الدعم.');
+          return;
+        }
+        if (res.status === 415 || data.code === 'INVALID_CONTENT_TYPE') {
+          setError('تعذر إرسال بيانات الدخول بصيغة صحيحة.');
+          return;
+        }
+        if (res.status >= 500) {
+          console.error('[LoginForm] server login error', {
+            status: res.status,
+            code: data.code,
+            requestId: data.requestId,
+            error: data.error,
+          });
+        }
+        setError(data.error || `تعذر تسجيل الدخول (${res.status})`);
         return;
       }
-      onSuccess(data);
-    } catch {
+
+      onSuccess(data as Parameters<LoginFormProps['onSuccess']>[0]);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      console.error('[LoginForm] network error', { message });
       setError('تعذر الاتصال بالخادم، يرجى التحقق من الإنترنت والمحاولة مرة أخرى');
     } finally {
       setLoading(false);

@@ -67,6 +67,8 @@
 }
 
 :root {
+  --app-sidebar-width: 215px;
+  --app-sidebar-width-collapsed: 60px;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);

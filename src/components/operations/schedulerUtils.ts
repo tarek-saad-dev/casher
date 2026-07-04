@@ -5,6 +5,22 @@
 export const OPERATION_START_HOUR = 11;
 export const OPERATION_END_HOUR = 28; // 4 AM next day (24 + 4)
 export const HOUR_CELL_HEIGHT = 120; // px
+export const BUSINESS_DAY_CUTOFF_HOUR = 4;
+export const SLOT_INTERVAL_MINUTES = 15;
+export const PX_PER_MINUTE = HOUR_CELL_HEIGHT / 60;
+export const DRAG_ACTIVATION_PX = 4;
+export const LARGE_MOVE_CONFIRM_MINUTES = 30;
+export const UNDO_TIMEOUT_MS = 10000;
+
+export interface CairoTimeParts {
+  hour: number;
+  minute: number;
+  calendarDate: string;
+}
+
+export interface TimelineBarber {
+  timeline: TimelineItem[];
+}
 
 export interface TimelineItem {
   type: "queue" | "booking" | "gap" | "in_service";
@@ -32,6 +48,167 @@ export interface TimelineItem {
   startTimeDisplay?: string; // e.g., "10:30 م"
   endTimeDisplay?: string;   // e.g., "11:00 م"
   dateDisplay?: string;      // e.g., "2026-06-12"
+}
+
+/** Calendar date in Africa/Cairo (YYYY-MM-DD) */
+export function getCairoCalendarDate(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+}
+
+/** Operational business date — before 4 AM Cairo belongs to the previous operational day */
+export function getCairoBusinessDate(): string {
+  const now = new Date();
+  const cairoHour = parseInt(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Africa/Cairo',
+      hour: '2-digit',
+      hour12: false,
+    }).format(now),
+    10,
+  );
+
+  if (cairoHour < BUSINESS_DAY_CUTOFF_HOUR) {
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    return yesterday.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+  }
+
+  return getCairoCalendarDate();
+}
+
+export function getCairoTimeParts(): CairoTimeParts {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Cairo',
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour12: false,
+  }).formatToParts(new Date());
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+  const day = parseInt(get('day'), 10);
+  const month = parseInt(get('month'), 10);
+  const year = parseInt(get('year'), 10);
+
+  return {
+    hour: parseInt(get('hour'), 10),
+    minute: parseInt(get('minute'), 10),
+    calendarDate: `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`,
+  };
+}
+
+/** Wall-clock Cairo time → operational hour (11..28, with fractional minutes) */
+export function wallClockToOperationalHour(hour: number, minute: number): number {
+  if (hour >= 0 && hour <= 4) {
+    return 24 + hour + minute / 60;
+  }
+  return hour + minute / 60;
+}
+
+export function operationalHourToScrollY(
+  operationalHour: number,
+  headerHeight: number,
+): number {
+  const hourOffset = operationalHour - OPERATION_START_HOUR;
+  return headerHeight + hourOffset * HOUR_CELL_HEIGHT;
+}
+
+export function getCurrentTimeScrollY(headerHeight: number): number | null {
+  const { hour, minute } = getCairoTimeParts();
+  const operationalHour = wallClockToOperationalHour(hour, minute);
+
+  if (operationalHour < OPERATION_START_HOUR || operationalHour > OPERATION_END_HOUR) {
+    return null;
+  }
+
+  return operationalHourToScrollY(operationalHour, headerHeight);
+}
+
+const SCHEDULED_ITEM_TYPES = new Set<TimelineItem['type']>([
+  'booking',
+  'queue',
+  'in_service',
+]);
+
+export function getEarliestScheduledScrollY(
+  barbers: TimelineBarber[],
+  headerHeight: number,
+): number | null {
+  let earliest: number | null = null;
+
+  for (const barber of barbers) {
+    for (const item of barber.timeline) {
+      if (!SCHEDULED_ITEM_TYPES.has(item.type)) continue;
+      const y = operationalHourToScrollY(getOperationalHour(item.startTime), headerHeight);
+      if (earliest === null || y < earliest) {
+        earliest = y;
+      }
+    }
+  }
+
+  return earliest;
+}
+
+export function resolveTimelineTargetScrollY(
+  selectedDate: string,
+  barbers: TimelineBarber[],
+  headerHeight: number,
+): number {
+  if (selectedDate === getCairoBusinessDate()) {
+    return getCurrentTimeScrollY(headerHeight)
+      ?? operationalHourToScrollY(OPERATION_START_HOUR, headerHeight);
+  }
+
+  return (
+    getEarliestScheduledScrollY(barbers, headerHeight)
+    ?? operationalHourToScrollY(OPERATION_START_HOUR, headerHeight)
+  );
+}
+
+export function computeAnchoredScrollTop(
+  targetY: number,
+  viewportHeight: number,
+  contentHeight: number,
+  anchor = 0.3,
+): number {
+  const desiredTop = targetY - viewportHeight * anchor;
+  const maxScrollTop = Math.max(0, contentHeight - viewportHeight);
+  return Math.max(0, Math.min(desiredTop, maxScrollTop));
+}
+
+const MOBILE_ALL_CARD_GAP = 16;
+const MOBILE_ALL_CONTAINER_PAD = 8;
+
+export function resolveMobileAllScrollTargetY(
+  selectedDate: string,
+  barbers: TimelineBarber[],
+  headerHeight: number,
+  laneHeight: number,
+): number {
+  if (selectedDate === getCairoBusinessDate()) {
+    const currentY = getCurrentTimeScrollY(headerHeight);
+    return MOBILE_ALL_CONTAINER_PAD + (currentY ?? headerHeight);
+  }
+
+  let best: number | null = null;
+
+  barbers.forEach((barber, index) => {
+    const cardTop = MOBILE_ALL_CONTAINER_PAD + index * (laneHeight + MOBILE_ALL_CARD_GAP);
+
+    for (const item of barber.timeline) {
+      if (!SCHEDULED_ITEM_TYPES.has(item.type)) continue;
+      const y = operationalHourToScrollY(getOperationalHour(item.startTime), headerHeight);
+      const absoluteY = cardTop + y;
+      if (best === null || absoluteY < best) {
+        best = absoluteY;
+      }
+    }
+  });
+
+  if (best !== null) return best;
+
+  return MOBILE_ALL_CONTAINER_PAD + operationalHourToScrollY(OPERATION_START_HOUR, headerHeight);
 }
 
 /**
@@ -283,4 +460,69 @@ export function operationalHourToTime(hour: number, dateStr: string): string {
   }
 
   return `${dateStr}T${actualHour.toString().padStart(2, "0")}:00:00`;
+}
+
+/** Top offset (px) within lane body for an ISO start time */
+export function getTimelineTopPx(startTime: string | Date): number {
+  const opHour = getOperationalHour(startTime);
+  return (opHour - OPERATION_START_HOUR) * HOUR_CELL_HEIGHT;
+}
+
+/** Height (px) for a duration in minutes */
+export function getTimelineHeightPx(durationMinutes: number): number {
+  return Math.max((durationMinutes / 60) * HOUR_CELL_HEIGHT, 48);
+}
+
+/** Convert Y delta within lane to minutes delta */
+export function pixelDeltaToMinutes(deltaPx: number): number {
+  return (deltaPx / HOUR_CELL_HEIGHT) * 60;
+}
+
+/** Snap minutes to nearest grid interval */
+export function snapMinutesToGrid(minutes: number, interval = SLOT_INTERVAL_MINUTES): number {
+  return Math.round(minutes / interval) * interval;
+}
+
+/** Snap an ISO datetime by shifting minutes on operational timeline */
+export function snapDateTimeByMinutes(isoStart: string, deltaMinutes: number): string {
+  const startMs = new Date(isoStart).getTime();
+  const startOpHour = getOperationalHour(isoStart);
+  const startTotalMinutes = startOpHour * 60;
+  const snapped = snapMinutesToGrid(startTotalMinutes + deltaMinutes);
+  const newOpHour = snapped / 60;
+  const deltaOp = newOpHour - startOpHour;
+  const newMs = startMs + deltaOp * 3600000;
+  return new Date(newMs).toISOString();
+}
+
+/** Format delta for UX label */
+export function formatMinutesDeltaLabel(deltaMinutes: number): string {
+  if (deltaMinutes === 0) return '0 دقيقة';
+  const sign = deltaMinutes > 0 ? '+' : '';
+  return `${sign}${deltaMinutes} دقيقة`;
+}
+
+const NON_DRAGGABLE_STATUSES = new Set([
+  'in_service',
+  'in_progress',
+  'completed',
+  'cancelled',
+  'canceled',
+  'no_show',
+  'rescheduled',
+  'finished',
+  'serving',
+  'deleted',
+  'expired',
+]);
+
+/** Whether a booking timeline item can be vertically rescheduled */
+export function isBookingDraggable(item: TimelineItem): boolean {
+  if (item.type !== 'booking') return false;
+  const status = (item.status || '').toLowerCase();
+  if (NON_DRAGGABLE_STATUSES.has(status)) return false;
+  if (!['confirmed', 'arrived', 'queued'].includes(status)) return false;
+  if (!item.startTime || !item.endTime) return false;
+  if (!item.durationMinutes || item.durationMinutes <= 0) return false;
+  return true;
 }

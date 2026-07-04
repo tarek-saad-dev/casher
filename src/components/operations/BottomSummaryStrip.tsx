@@ -1,62 +1,72 @@
 'use client';
 
 import { Clock, Users, Calendar } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface Props {
   nextAvailableBarber?: { name: string; time: string } | null;
   totalWaiting: number;
   totalBookings: number;
+  className?: string;
 }
 
-export function BottomSummaryStrip({ nextAvailableBarber, totalWaiting, totalBookings }: Props) {
+export function BottomSummaryStrip({
+  nextAvailableBarber,
+  totalWaiting,
+  totalBookings,
+  className,
+}: Props) {
   return (
     <div
-      className="flex items-center justify-between px-4 py-2 border-t"
-      style={{ background: '#0a0a0a', borderColor: 'rgba(212, 175, 55, 0.15)' }}
+      className={cn(
+        'shrink-0 rounded-2xl border border-border/80 bg-card/80 px-3 py-2.5 shadow-sm sm:px-4',
+        className,
+      )}
     >
-      {/* Compact Stats Row */}
-      <div className="flex items-center gap-4">
-        {/* Next Available */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: '#111', border: '1px solid rgba(212, 175, 55, 0.2)' }}>
-          <Clock className="w-3.5 h-3.5" style={{ color: '#d4af37' }} />
-          <span className="text-xs" style={{ color: '#a1a1aa' }}>التالي:</span>
-          <span className="text-xs font-medium text-white">
-            {nextAvailableBarber ? (
-              <>{nextAvailableBarber.name} <span style={{ color: '#d4af37' }}>•</span> {nextAvailableBarber.time}</>
-            ) : (
-              <span style={{ color: '#52525b' }}>—</span>
-            )}
-          </span>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-surface-muted/40 px-3 py-1.5">
+            <Clock className="size-3.5 text-primary" />
+            <span className="text-xs text-muted-foreground">التالي:</span>
+            <span className="text-xs font-medium text-foreground">
+              {nextAvailableBarber ? (
+                <>
+                  {nextAvailableBarber.name}
+                  <span className="mx-1 text-primary">•</span>
+                  {nextAvailableBarber.time}
+                </>
+              ) : (
+                <span className="text-muted-foreground/60">—</span>
+              )}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 rounded-lg border border-warning/25 bg-warning/10 px-3 py-1.5">
+            <Users className="size-3.5 text-warning" />
+            <span className="text-xs font-bold text-warning">{totalWaiting}</span>
+            <span className="text-xs text-muted-foreground">منتظر</span>
+          </div>
+
+          <div className="flex items-center gap-2 rounded-lg border border-info/25 bg-info/10 px-3 py-1.5">
+            <Calendar className="size-3.5 text-info" />
+            <span className="text-xs font-bold text-info">{totalBookings}</span>
+            <span className="text-xs text-muted-foreground">حجز</span>
+          </div>
         </div>
 
-        {/* Waiting Count */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: '#111', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
-          <Users className="w-3.5 h-3.5" style={{ color: '#f59e0b' }} />
-          <span className="text-xs font-bold" style={{ color: '#f59e0b' }}>{totalWaiting}</span>
-          <span className="text-xs" style={{ color: '#a1a1aa' }}>منتظر</span>
-        </div>
-
-        {/* Bookings Count */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: '#111', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
-          <Calendar className="w-3.5 h-3.5" style={{ color: '#818cf8' }} />
-          <span className="text-xs font-bold" style={{ color: '#818cf8' }}>{totalBookings}</span>
-          <span className="text-xs" style={{ color: '#a1a1aa' }}>حجز</span>
-        </div>
-      </div>
-
-      {/* Compact Legend */}
-      <div className="flex items-center gap-3 text-[10px]">
-        <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-sm" style={{ background: '#d4af37' }} />
-          <span style={{ color: '#a1a1aa' }}>خدمة</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-sm border" style={{ borderColor: '#d4af37', background: 'transparent' }} />
-          <span style={{ color: '#a1a1aa' }}>حجز</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-sm" style={{ background: '#1e293b', border: '1px solid rgba(100,116,139,0.5)' }} />
-          <span style={{ color: '#a1a1aa' }}>دور</span>
+        <div className="hidden items-center gap-3 text-[11px] md:flex">
+          <div className="flex items-center gap-1.5">
+            <div className="size-2.5 rounded-sm bg-primary" />
+            <span className="text-muted-foreground">خدمة</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="size-2.5 rounded-sm border border-primary bg-transparent" />
+            <span className="text-muted-foreground">حجز</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="size-2.5 rounded-sm border border-muted-foreground/40 bg-surface-muted" />
+            <span className="text-muted-foreground">دور</span>
+          </div>
         </div>
       </div>
     </div>

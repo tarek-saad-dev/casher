@@ -2,83 +2,93 @@
 
 import { useState, useEffect } from 'react';
 import { Volume2, VolumeX, CheckCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 
 interface Props {
   enabled: boolean;
   onEnable: () => void;
   onDisable?: () => void;
+  compact?: boolean;
+  className?: string;
 }
 
-export function VoiceEnableBanner({ enabled, onEnable, onDisable }: Props) {
+export function VoiceEnableBanner({ enabled, onEnable, onDisable, compact = false, className }: Props) {
   const [showBanner, setShowBanner] = useState(false);
   const [isEnabling, setIsEnabling] = useState(false);
 
-  // Check if we should show the banner
   useEffect(() => {
-    // Show banner if voice is not enabled yet
-    if (!enabled) {
-      setShowBanner(true);
-    } else {
-      setShowBanner(false);
-    }
+    setShowBanner(!enabled);
   }, [enabled]);
 
   const handleEnable = async () => {
     setIsEnabling(true);
     try {
       onEnable();
-      // Banner will hide automatically via useEffect when enabled prop changes
-    } catch (e) {
-      console.error('[VoiceBanner] Enable failed:', e);
     } finally {
       setIsEnabling(false);
     }
   };
 
-  // Don't render if no interaction needed
   if (!showBanner && !enabled) return null;
 
-  // Show enabled status
   if (enabled) {
     return (
-      <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#22c55e20] border border-[#22c55e40]">
-        <CheckCircle size={14} style={{ color: '#22c55e' }} />
-        <span className="text-xs font-medium" style={{ color: '#22c55e' }}>
-          النداء الصوتي مفعل
-        </span>
+      <div
+        className={cn(
+          'flex items-center justify-between gap-2 rounded-xl border border-success/30 bg-success/10 px-3',
+          compact ? 'w-full' : 'h-11 min-h-[44px] md:h-10 md:min-h-[40px]',
+          className,
+        )}
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <CheckCircle className="size-4 shrink-0 text-success" />
+          <span className="truncate text-sm font-medium text-success">النداء الصوتي مفعل</span>
+        </div>
         {onDisable && (
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
             onClick={onDisable}
-            className="mr-2 p-0.5 rounded hover:bg-[#22c55e30] transition-colors"
+            className="shrink-0 text-success hover:bg-success/15 hover:text-success"
+            aria-label="إيقاف النداء الصوتي"
             title="إيقاف النداء الصوتي"
           >
-            <VolumeX size={12} style={{ color: '#22c55e' }} />
-          </button>
+            <VolumeX className="size-3.5" />
+          </Button>
         )}
       </div>
     );
   }
 
-  // Show enable banner
   return (
-    <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-[#d4af3720] border border-[#d4af3740]">
-      <Volume2 size={18} style={{ color: '#d4af37' }} />
-      <div className="flex-1">
-        <p className="text-xs font-medium text-white">
-          تفعيل النداء الصوتي التلقائي
-        </p>
-        <p className="text-[10px] text-zinc-400">
-          اضغط لتفعيل النداء الصوتي للأدوار المتوقعة
-        </p>
+    <div
+      className={cn(
+        'flex items-center gap-2 rounded-xl border border-primary/25 bg-primary/10 px-3',
+        compact ? 'w-full justify-between' : 'gap-3 px-4 py-2',
+        !compact && 'h-11 min-h-[44px] md:h-10 md:min-h-[40px]',
+        className,
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <Volume2 className="size-4 shrink-0 text-primary" />
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-foreground">النداء الصوتي</p>
+          {!compact && (
+            <p className="text-[11px] text-muted-foreground">اضغط لتفعيل النداء التلقائي</p>
+          )}
+        </div>
       </div>
-      <button
+      <Button
+        type="button"
+        size="sm"
         onClick={handleEnable}
         disabled={isEnabling}
-        className="px-3 py-1.5 rounded-md text-xs font-medium transition-all hover:opacity-80 disabled:opacity-50"
-        style={{ background: '#d4af37', color: '#1a1a1a' }}
+        className="shrink-0 bg-primary text-primary-foreground hover:bg-primary/90"
       >
-        {isEnabling ? 'جاري التفعيل...' : 'تفعيل'}
-      </button>
+        {isEnabling ? '...' : 'تفعيل'}
+      </Button>
     </div>
   );
 }

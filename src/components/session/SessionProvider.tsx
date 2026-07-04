@@ -44,7 +44,10 @@ export default function SessionProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch('/api/auth/session');
+      const res = await fetch('/api/auth/session', {
+        cache: 'no-store',
+        credentials: 'same-origin',
+      });
       if (!res.ok) return;
       const data = await res.json();
       setUserState(data.user || null);

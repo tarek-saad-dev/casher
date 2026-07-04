@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import type { CreateQueueResponse } from '@/app/api/operations/queue/create/route';
+import type { CreateQueueResponse } from '@/lib/operationsQueueTypes';
 import { printQueueTicket } from '@/lib/printQueueTicket';
-import type { QueueTicketPrintData } from '@/components/queue/QueueTicketPrint';
+import { createQueueResponseToPrintData } from '@/lib/quickQueueClient';
+import { normalizeCustomersAhead } from '@/lib/queueCustomersAhead';
 
 interface PrintQueueTicketModalProps {
   isOpen: boolean;
@@ -55,24 +56,17 @@ export function PrintQueueTicketModal({
   // Get services list
   const servicesList = ticket.services.map(s => s.proName).join(' + ');
 
+  const customersAhead = normalizeCustomersAhead(
+    ticket.waitingCountAtCreation ?? ticket.peopleBefore,
+  );
+
   // Handle print using existing printQueueTicket function
   const handlePrint = () => {
     setIsPrinting(true);
     setPrintError(null);
 
     try {
-      // Convert CreateQueueResponse to QueueTicketPrintData format
-      const printData: QueueTicketPrintData = {
-        ticketCode: ticket.ticketCode,
-        clientName: ticket.customer?.name || 'عميل مباشر',
-        empName: ticket.empName,
-        services: ticket.services.map(s => ({ name: s.proName })),
-        queueDate: ticket.queueDate,
-        createdTime: ticket.createdAt ? new Date(ticket.createdAt).toISOString().slice(11, 16) : undefined,
-        waitingBefore: ticket.peopleBefore,
-        estimatedWaitMinutes: ticket.estimatedWaitMinutes,
-        estimatedStartTime: ticket.estimatedStartTime,
-      };
+      const printData = createQueueResponseToPrintData(ticket);
 
       console.log('[PrintQueueTicketModal] printing ticket:', printData);
       
@@ -174,7 +168,7 @@ export function PrintQueueTicketModal({
               <div className="text-center">
                 <span className="text-xs text-gray-500">قدامك</span>
                 <p className="text-xl font-bold text-gray-900">
-                  {ticket.peopleBefore} {ticket.peopleBefore === 1 ? 'شخص' : 'أشخاص'}
+                  {customersAhead} {customersAhead === 1 ? 'شخص' : 'أشخاص'}
                 </p>
               </div>
             </div>

@@ -21,6 +21,8 @@ import {
 } from "@/lib/barberAvailability";
 import { salonDateTimeToMs } from "@/lib/publicBookingHelpers";
 import { getCairoBusinessDate } from "@/lib/businessDate";
+import { normalizeBookingTimes } from "@/lib/bookingDateTime";
+import { ACTIVE_BOOKING_BLOCK_STATUSES, intervalsOverlap } from "@/lib/scheduleIntervals";
 
 const SALON_TZ = 'Africa/Cairo';
 
@@ -112,6 +114,11 @@ export interface Interval {
   label?: string;
   ticketCode?: string;
 }
+
+export {
+  countQueueCustomersAhead,
+  normalizeCustomersAhead,
+} from './queueCustomersAhead';
 
 export interface BarberEstimate {
   empId: number;
@@ -448,27 +455,51 @@ export async function buildBookingIntervals(
   dateStr: string,
   defaultDuration: number,
 ): Promise<Interval[]> {
+  const statusList = ACTIVE_BOOKING_BLOCK_STATUSES.map((s) => `'${s}'`).join(',');
+
   const res = await db
     .request()
     .input("bdate", sql.Date, dateStr)
     .input("empId", sql.Int, empId)
     .query(
       `
-      SELECT BookingID, StartTime, EndTime
-      FROM [dbo].[Bookings]
-      WHERE BookingDate     = @bdate
-        AND AssignedEmpID   = @empId
-        AND Status IN ('confirmed','arrived','queued','in_service')
-      ORDER BY StartTime ASC
+      SELECT
+        b.BookingID,
+        b.BookingDate,
+        b.StartTime,
+        b.EndTime,
+        b.Status,
+        ISNULL((
+          SELECT SUM(bs.DurationMinutes)
+          FROM [dbo].[BookingServices] bs
+          WHERE bs.BookingID = b.BookingID
+        ), 0) AS TotalDuration
+      FROM [dbo].[Bookings] b
+      WHERE b.BookingDate     = @bdate
+        AND b.AssignedEmpID   = @empId
+        AND LOWER(b.Status) IN (${statusList})
+      ORDER BY b.StartTime ASC
     `,
     )
     .catch(() => ({ recordset: [] as any[] }));
 
-  return res.recordset.map((b: any) => {
-    const start = sqlTimeToDate(dateStr, b.StartTime);
-    const end = b.EndTime
-      ? sqlTimeToDate(dateStr, b.EndTime)
-      : new Date(start.getTime() + defaultDuration * 60000);
+  return res.recordset.map((b: {
+    BookingID: number;
+    BookingDate: unknown;
+    StartTime: unknown;
+    EndTime: unknown;
+    TotalDuration: number;
+  }) => {
+    const totalDuration = b.TotalDuration > 0 ? b.TotalDuration : defaultDuration;
+    const normalized = normalizeBookingTimes(
+      b.BookingDate ?? dateStr,
+      b.StartTime,
+      b.EndTime,
+      totalDuration,
+      b.BookingID,
+    );
+    const start = new Date(normalized.startDateTimeCairo);
+    const end = new Date(normalized.endDateTimeCairo);
     return { start, end, source: "booking" as const, id: b.BookingID };
   });
 }
@@ -496,11 +527,10 @@ export function findFirstFreeSlot(
     const candidateEnd = new Date(candidate.getTime() + durMs);
     let bumped = false;
     for (const iv of intervals) {
-      // Overlap: candidate starts before iv ends AND candidate ends after iv starts
-      if (candidate < iv.end && candidateEnd > iv.start) {
-        candidate = new Date(iv.end); // push past this interval
+      if (intervalsOverlap(candidate, candidateEnd, iv.start, iv.end)) {
+        candidate = new Date(iv.end);
         bumped = true;
-        break; // restart loop to re-check from new position
+        break;
       }
     }
     if (!bumped) return candidate; // no overlap found
