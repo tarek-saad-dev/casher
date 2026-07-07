@@ -104,6 +104,7 @@ export default function PosPage() {
   const [quickAddPrefill, setQuickAddPrefill] = useState<string | undefined>();
   const [completeCustomer, setCompleteCustomer] = useState<Customer | null>(null);
   const [completeCustomerMode, setCompleteCustomerMode] = useState<'complete' | 'edit'>('complete');
+  const [lastUpdatedCustomer, setLastUpdatedCustomer] = useState<Customer | null>(null);
   const savingRef = useRef(false); // tracks whether the modal save succeeded
   const autoOpenedClientIdRef = useRef<number | null>(null);
   const dismissedAutoClientIdRef = useRef<number | null>(null);
@@ -139,6 +140,7 @@ export default function PosPage() {
   const handleCompleteCustomerUpdated = useCallback((updated: Customer) => {
     savingRef.current = true;
     setCustomer(updated);
+    setLastUpdatedCustomer(updated);
     setCompleteCustomer(null);
     // After a successful save the customer is no longer incomplete, so reset the guard
     requestAnimationFrame(() => { savingRef.current = false; });
@@ -594,6 +596,7 @@ export default function PosPage() {
             onQuickAdd={(prefill) => { setQuickAddPrefill(prefill); setQuickAddOpen(true); }}
             onCompleteData={(c) => { setCompleteCustomerMode('complete'); setCompleteCustomer(c); }}
             onEditCustomer={(c) => { setCompleteCustomerMode('edit'); setCompleteCustomer(c); }}
+            updatedCustomer={lastUpdatedCustomer}
           />
           {state.customer && !vouchersOpen && (
             <button
@@ -646,6 +649,7 @@ export default function PosPage() {
             onQuickAdd={(prefill) => { setQuickAddPrefill(prefill); setQuickAddOpen(true); }}
             onCompleteData={(c) => { setCompleteCustomerMode('complete'); setCompleteCustomer(c); }}
             onEditCustomer={(c) => { setCompleteCustomerMode('edit'); setCompleteCustomer(c); }}
+            updatedCustomer={lastUpdatedCustomer}
           />
 
           {/* Vouchers button — shown when customer is selected and modal is closed */}

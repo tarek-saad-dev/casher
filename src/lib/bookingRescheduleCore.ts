@@ -71,7 +71,7 @@ export interface BookingMoveValidationResult {
   code?: string;
   message?: string;
   conflict?: {
-    type: 'booking' | 'queue' | 'break' | 'shift';
+    type: 'booking' | 'queue' | 'break' | 'shift' | 'block';
     startAt?: string;
     endAt?: string;
     reference?: string;
@@ -304,9 +304,9 @@ export async function validateTargetBarberEligibility(args: {
   if (serviceIds.length > 0) {
     const svcRes = await db.request()
       .query(`
-        SELECT ProID FROM [dbo].[TblPro]
+        SELECT ProID FROM [dbo].[TblPro] p
         WHERE ProID IN (${serviceIds.join(',')})
-          AND ISNULL(IsActive, 1) = 1
+          AND (p.isDeleted = 0 OR p.isDeleted IS NULL)
       `);
     const activeIds = new Set(svcRes.recordset.map((r: { ProID: number }) => r.ProID));
     for (const sid of serviceIds) {

@@ -2,6 +2,28 @@
  * Shared queue API types — client-safe (no server/database imports).
  */
 
+export interface QueuePlanAlternative {
+  startAt: string;
+  endAt: string;
+  durationMinutes: number;
+  label?: string;
+}
+
+export interface QueuePlanForBarberResult {
+  available: boolean;
+  empId?: number;
+  empName?: string;
+  serviceIds?: number[];
+  totalDurationMinutes?: number;
+  totalPrice?: number;
+  expectedStartAt?: string;
+  expectedEndAt?: string;
+  waitingCountAtCreation?: number;
+  alternatives?: QueuePlanAlternative[];
+  code?: string;
+  message?: string;
+}
+
 export interface CreateQueueRequest {
   empId: number;
   serviceIds: number[];
@@ -12,7 +34,9 @@ export interface CreateQueueRequest {
   };
   expectedStartTime: string;
   expectedEndTime: string;
-  source: 'walk_in' | 'booking' | 'reschedule';
+  source: 'walk_in' | 'booking' | 'reschedule' | 'operations_barber_header';
+  /** When true, use client planned times after server validation (barber-header flow). */
+  useClientPlannedTimes?: boolean;
 }
 
 export interface CreateQueueResponse {

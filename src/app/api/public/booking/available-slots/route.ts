@@ -6,6 +6,7 @@ import {
   PUBLIC_CORS_HEADERS,
 } from '@/lib/publicBookingHelpers';
 import { listAvailableBookingSlots } from '@/lib/bookingAvailabilityEngine';
+import { ServicePlanError } from '@/lib/servicePlan';
 
 export const runtime = 'nodejs';
 
@@ -95,6 +96,8 @@ export async function GET(req: NextRequest) {
         durationSource: result.durationSource,
         ...(result.empId ? { empId: result.empId } : {}),
         slots,
+        availableSlots: slots,
+        noSlotsReason: result.noSlotsReason,
         gapNotice: result.gapNotice,
         nextAvailable: result.nextAvailable,
         alternativeBarbers: result.alternativeBarbers,
@@ -109,6 +112,12 @@ export async function GET(req: NextRequest) {
       { headers: PUBLIC_CORS_HEADERS },
     );
   } catch (err) {
+    if (err instanceof ServicePlanError) {
+      return NextResponse.json(
+        { ok: false, code: err.code, message: err.message },
+        { status: err.status, headers: PUBLIC_CORS_HEADERS },
+      );
+    }
     console.error('[public/booking/available-slots]', err);
     return NextResponse.json(
       { error: 'فشل تحميل المواعيد' },

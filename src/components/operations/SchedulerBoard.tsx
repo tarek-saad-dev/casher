@@ -54,6 +54,10 @@ interface Props {
   addToast?: (type: 'success' | 'error' | 'info', message: string) => void;
   mobileBarberSelection?: MobileBarberSelection;
   className?: string;
+  onBarberQueueClick?: (barber: Barber) => void;
+  barberQueueLoadingEmpId?: number | null;
+  barberQueueSourceEmpId?: number | null;
+  canCreateQueue?: boolean;
 }
 
 export const BARBER_COLORS = [
@@ -93,6 +97,10 @@ export function SchedulerBoard({
   addToast,
   mobileBarberSelection = 'all',
   className,
+  onBarberQueueClick,
+  barberQueueLoadingEmpId = null,
+  barberQueueSourceEmpId = null,
+  canCreateQueue = true,
 }: Props) {
   const hours = useMemo(() => generateOperationalHours(), []);
   const [selectedItem, setSelectedItem] = useState<TimelineItem | null>(null);
@@ -266,7 +274,16 @@ export function SchedulerBoard({
     onEmptyCellClick,
     onFreeSegmentClick,
     currentDate,
+    onQueueClick: onBarberQueueClick,
+    canCreateQueue,
+    scheduleLoading: !!loading,
   };
+
+  const getQueueLaneProps = (empId: number) => ({
+    ...laneProps,
+    queueButtonLoading: barberQueueLoadingEmpId === empId,
+    queueSourceHighlighted: barberQueueSourceEmpId === empId,
+  });
 
   if (loading) {
     return (
@@ -371,7 +388,7 @@ export function SchedulerBoard({
                 color={getBarberColor(barber.empId, index)}
                 drag={dragHandlers}
                 cutPaste={getCutPasteForBarber(barber.empId)}
-                {...laneProps}
+                {...getQueueLaneProps(barber.empId)}
               />
             ))}
           </div>
@@ -397,7 +414,7 @@ export function SchedulerBoard({
                     fullWidth
                     drag={dragHandlers}
                     cutPaste={getCutPasteForBarber(barber.empId)}
-                    {...laneProps}
+                    {...getQueueLaneProps(barber.empId)}
                   />
                 </div>
               ))}
@@ -418,7 +435,7 @@ export function SchedulerBoard({
                     fullWidth
                     drag={dragHandlers}
                     cutPaste={getCutPasteForBarber(barber.empId)}
-                    {...laneProps}
+                    {...getQueueLaneProps(barber.empId)}
                   />
                 </div>
               </div>

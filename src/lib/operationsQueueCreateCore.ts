@@ -17,6 +17,7 @@ import { getBarberAvailabilityReason } from '@/lib/barberAvailability';
 import { generateTicketCode } from '@/lib/queueTicketCode';
 import { detectQueueTicketsSchema, buildInsertColumns } from '@/lib/queueSchema';
 import { getChairNumber } from '@/lib/chairMapping';
+import { calculateServicePlanDuration, buildSequentialServicePlanFromLines } from '@/lib/servicePlan';
 import { findNearestBarberForServices } from '@/lib/queueNearestBarber';
 import {
   QUICK_QUEUE_SERVICE_ID,
@@ -35,9 +36,11 @@ export interface CreateOperationsQueueInput {
   };
   expectedStartTime: string;
   expectedEndTime: string;
-  source: 'walk_in' | 'booking' | 'reschedule';
+  source: 'walk_in' | 'booking' | 'reschedule' | 'operations_barber_header';
   /** When true, skip the 5-minute client/simulation drift check (server-orchestrated flows). */
   trustExpectedStart?: boolean;
+  /** When true, commit expectedStartTime/End from client after transactional validation (barber-header flow). */
+  useClientPlannedTimes?: boolean;
 }
 
 export class CreateOperationsQueueError extends Error {
@@ -64,6 +67,7 @@ export async function createOperationsQueueTicket(
     expectedEndTime,
     source,
     trustExpectedStart = false,
+    useClientPlannedTimes = false,
   } = input;
 
   if (!empId || typeof empId !== 'number') {
@@ -92,91 +96,127 @@ export async function createOperationsQueueTicket(
   }
 
   const defaultDur = await getDefaultDuration(db);
-  const serviceDur = await getServicesDuration(db, serviceIds, defaultDur);
-
-  const simulation = await simulateQueueInsertion({
-    empId,
-    serviceIds,
-    requestedAt: new Date().toISOString(),
-  });
-
-  if (!simulation.ok) {
-    throw new CreateOperationsQueueError(409, simulation.message, {
-      newSuggestion: simulation,
-    });
+  let servicePlan;
+  try {
+    servicePlan = await calculateServicePlanDuration(serviceIds);
+  } catch (planErr) {
+    throw new CreateOperationsQueueError(
+      400,
+      planErr instanceof Error ? planErr.message : 'خطأ في الخدمات المختارة',
+    );
   }
+  const serviceDur = servicePlan.totalDurationMinutes;
 
-  const suggestedStartTime = new Date(simulation.suggestedStartTime);
-  const suggestedEndTime = new Date(suggestedStartTime.getTime() + serviceDur * 60000);
+  const simulation = useClientPlannedTimes
+    ? null
+    : await simulateQueueInsertion({
+        empId,
+        serviceIds,
+        requestedAt: new Date().toISOString(),
+      });
+
+  if (!useClientPlannedTimes) {
+    if (!simulation!.ok) {
+      throw new CreateOperationsQueueError(409, simulation!.message, {
+        newSuggestion: simulation,
+      });
+    }
+  }
 
   const now = new Date();
   const operationalDate = getCairoBusinessDate(now);
   const checkDateStr = operationalDate;
 
-  const qIvs = await buildQueueIntervals(db, empId, checkDateStr, now, defaultDur, undefined, {
-    filterStale: true,
-    graceMinutes: 30,
-    debugContext: 'ops-queue-create',
-  });
-  const bIvs = await buildBookingIntervals(db, empId, checkDateStr, defaultDur);
+  let finalStartTime: string;
+  let finalStartDate: Date;
+  let finalEndDate: Date;
+  let waitingCountAtCreation: number;
 
-  const bookingConflicts = bIvs.filter((b: { start: Date; end: Date }) =>
-    intervalsOverlap(suggestedStartTime, suggestedEndTime, b.start, b.end),
-  );
-  const queueConflicts = qIvs.filter((q: { start: Date; end: Date }) =>
-    intervalsOverlap(suggestedStartTime, suggestedEndTime, q.start, q.end),
-  );
-
-  if (bookingConflicts.length > 0 || queueConflicts.length > 0) {
-    throw new CreateOperationsQueueError(409, 'الوقت المقترح يتعارض مع حجز أو دور موجود', {
-      conflicts: {
-        bookings: bookingConflicts.map((b: { id: number; start: Date; end: Date }) => ({
-          id: b.id,
-          start: b.start.toISOString(),
-          end: b.end.toISOString(),
-        })),
-        queue: queueConflicts.map(
-          (q: { id: number; ticketCode?: string; start: Date; end: Date }) => ({
-            id: q.id,
-            code: q.ticketCode,
-            start: q.start.toISOString(),
-            end: q.end.toISOString(),
-          }),
-        ),
-      },
+  if (useClientPlannedTimes) {
+    finalStartDate = new Date(expectedStartTime);
+    finalEndDate = new Date(expectedEndTime);
+    const plannedDur = Math.round((finalEndDate.getTime() - finalStartDate.getTime()) / 60000);
+    if (plannedDur !== serviceDur) {
+      throw new CreateOperationsQueueError(
+        400,
+        `مدة الموعد (${plannedDur} د) لا تطابق الخدمات المختارة (${serviceDur} د)`,
+      );
+    }
+    finalStartTime = finalStartDate.toISOString();
+    const simForCount = await simulateQueueInsertion({
+      empId,
+      serviceIds,
+      requestedAt: finalStartTime,
     });
-  }
+    waitingCountAtCreation = simForCount.ok ? simForCount.peopleBefore : 0;
+  } else {
+    const suggestedStartTime = new Date(simulation!.suggestedStartTime);
+    const suggestedEndTime = new Date(suggestedStartTime.getTime() + serviceDur * 60000);
 
-  if (!trustExpectedStart) {
-    const requestedStart = new Date(expectedStartTime).getTime();
-    const suggestedStart = new Date(simulation.suggestedStartTime).getTime();
-    const timeDiffMinutes = Math.abs(requestedStart - suggestedStart) / 60000;
+    const qIvs = await buildQueueIntervals(db, empId, checkDateStr, now, defaultDur, undefined, {
+      filterStale: true,
+      graceMinutes: 30,
+      debugContext: 'ops-queue-create',
+    });
+    const bIvs = await buildBookingIntervals(db, empId, checkDateStr, defaultDur);
 
-    if (timeDiffMinutes > 5) {
-      throw new CreateOperationsQueueError(409, 'الوقت المطلوب لم يعد متاحاً، تم تحديث الجدول', {
-        newSuggestion: simulation,
-        reason: `الوقت المقترح الآن: ${simulation.suggestedStartTime}`,
+    const bookingConflicts = bIvs.filter((b: { start: Date; end: Date }) =>
+      intervalsOverlap(suggestedStartTime, suggestedEndTime, b.start, b.end),
+    );
+    const queueConflicts = qIvs.filter((q: { start: Date; end: Date }) =>
+      intervalsOverlap(suggestedStartTime, suggestedEndTime, q.start, q.end),
+    );
+
+    if (bookingConflicts.length > 0 || queueConflicts.length > 0) {
+      throw new CreateOperationsQueueError(409, 'الوقت المقترح يتعارض مع حجز أو دور موجود', {
+        conflicts: {
+          bookings: bookingConflicts.map((b: { id: number; start: Date; end: Date }) => ({
+            id: b.id,
+            start: b.start.toISOString(),
+            end: b.end.toISOString(),
+          })),
+          queue: queueConflicts.map(
+            (q: { id: number; ticketCode?: string; start: Date; end: Date }) => ({
+              id: q.id,
+              code: q.ticketCode,
+              start: q.start.toISOString(),
+              end: q.end.toISOString(),
+            }),
+          ),
+        },
       });
     }
+
+    if (!trustExpectedStart) {
+      const requestedStart = new Date(expectedStartTime).getTime();
+      const suggestedStart = new Date(simulation!.suggestedStartTime).getTime();
+      const timeDiffMinutes = Math.abs(requestedStart - suggestedStart) / 60000;
+
+      if (timeDiffMinutes > 5) {
+        throw new CreateOperationsQueueError(409, 'الوقت المطلوب لم يعد متاحاً، تم تحديث الجدول', {
+          newSuggestion: simulation,
+          reason: `الوقت المقترح الآن: ${simulation!.suggestedStartTime}`,
+        });
+      }
+    }
+
+    finalStartTime = simulation!.suggestedStartTime;
+    finalStartDate = new Date(finalStartTime);
+    waitingCountAtCreation = normalizeCustomersAhead(simulation!.peopleBefore);
+    finalEndDate = new Date(finalStartDate.getTime() + serviceDur * 60000);
   }
 
-  const finalStartTime = simulation.suggestedStartTime;
-  const finalStartDate = new Date(finalStartTime);
-  const finalEndDate = new Date(finalStartDate.getTime() + serviceDur * 60000);
   const dateStr = operationalDate;
-  const ticketCode = await generateTicketCode(db, dateStr, 'W');
+  const sequentialPlan = buildSequentialServicePlanFromLines({
+    lines: servicePlan.services,
+    startAt: finalStartDate,
+    empId,
+  });
+  if (!useClientPlannedTimes) {
+    finalEndDate = new Date(sequentialPlan.endAt);
+  }
 
-  const servicesRes = await db.request().query(`
-    SELECT ProID, ProName, DurationMinutes, SPrice1
-    FROM [dbo].[TblPro]
-    WHERE ProID IN (${serviceIds.join(',')})
-  `);
-  const servicesMap = new Map(
-    servicesRes.recordset.map((s: { ProID: number; ProName: string; DurationMinutes: number | null; SPrice1: number | null }) => [
-      s.ProID,
-      { name: s.ProName, duration: s.DurationMinutes ?? defaultDur, price: s.SPrice1 },
-    ]),
-  );
+  const ticketCode = await generateTicketCode(db, dateStr, 'W');
 
   const schema = await detectQueueTicketsSchema();
   const nowMs = new Date().getTime();
@@ -184,7 +224,7 @@ export async function createOperationsQueueTicket(
   const estimatedWaitMinutes = Math.max(0, Math.round((startMs - nowMs) / 60000));
   const { columns, paramNames } = buildInsertColumns(schema);
 
-  await transaction.begin();
+  await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
 
   try {
     await assertEmployeeIntervalAvailable({
@@ -263,10 +303,19 @@ export async function createOperationsQueueTicket(
     if (schema.hasEstimatedWaitMinutes) {
       ticketRequest.input('estimatedWaitMinutes', sql.Int, estimatedWaitMinutes);
     }
-    const waitingCountAtCreation = normalizeCustomersAhead(simulation.peopleBefore);
+    const waitingCountAtCreationNorm = normalizeCustomersAhead(waitingCountAtCreation);
 
     if (schema.hasWaitingCountAtCreation) {
-      ticketRequest.input('waitingCountAtCreation', sql.Int, waitingCountAtCreation);
+      ticketRequest.input('waitingCountAtCreation', sql.Int, waitingCountAtCreationNorm);
+    }
+    if (schema.hasDurationMinutes) {
+      ticketRequest.input('durationMinutes', sql.Int, serviceDur);
+    }
+    if (schema.hasExpectedStartAt) {
+      ticketRequest.input('expectedStartAt', sql.DateTime, finalStartDate);
+    }
+    if (schema.hasExpectedEndAt) {
+      ticketRequest.input('expectedEndAt', sql.DateTime, finalEndDate);
     }
     if (schema.hasNotes) {
       ticketRequest.input('notes', sql.NVarChar, resolvedCustomerName || null);
@@ -282,27 +331,40 @@ export async function createOperationsQueueTicket(
     const queueTicketId = insertTicketRes.recordset[0].QueueTicketID as number;
 
     try {
-      for (const proId of serviceIds) {
-        const svc = servicesMap.get(proId);
+      for (const line of servicePlan.services) {
         await transaction
           .request()
           .input('ticketId', sql.Int, queueTicketId)
-          .input('proId', sql.Int, proId)
-          .input('durationMin', sql.Int, svc?.duration || defaultDur)
+          .input('proId', sql.Int, line.serviceId)
+          .input('proName', sql.NVarChar, line.serviceName)
+          .input('durationMin', sql.Int, line.durationMinutes)
+          .input('price', sql.Decimal, line.price)
           .query(`
-            INSERT INTO [dbo].[QueueTicketServices] (QueueTicketID, ProID, DurationMinutes)
-            VALUES (@ticketId, @proId, @durationMin)
+            INSERT INTO [dbo].[QueueTicketServices]
+              (QueueTicketID, ProID, ProName, DurationMinutes, Price, Qty)
+            VALUES (@ticketId, @proId, @proName, @durationMin, @price, 1)
           `);
       }
     } catch (svcErr) {
-      console.log('[operationsQueueCreateCore] QueueTicketServices insert skipped:', svcErr);
+      try {
+        for (const line of servicePlan.services) {
+          await transaction
+            .request()
+            .input('ticketId', sql.Int, queueTicketId)
+            .input('proId', sql.Int, line.serviceId)
+            .input('durationMin', sql.Int, line.durationMinutes)
+            .query(`
+              INSERT INTO [dbo].[QueueTicketServices] (QueueTicketID, ProID, DurationMinutes)
+              VALUES (@ticketId, @proId, @durationMin)
+            `);
+        }
+      } catch (svcErr2) {
+        console.log('[operationsQueueCreateCore] QueueTicketServices insert skipped:', svcErr2);
+      }
     }
 
     await transaction.commit();
 
-    const responseEndTime = new Date(
-      new Date(finalStartTime).getTime() + serviceDur * 60000,
-    ).toISOString();
     const ticketNumberMatch = ticketCode.match(/-(\d+)$/);
     const ticketNumber = ticketNumberMatch ? parseInt(ticketNumberMatch[1], 10) : 0;
     const chairNumber = getChairNumber(empName);
@@ -322,21 +384,18 @@ export async function createOperationsQueueTicket(
         name: resolvedCustomerName,
         phone: resolvedCustomerPhone,
       },
-      services: serviceIds.map((id) => {
-        const svc = servicesMap.get(id);
-        return {
-          proId: id,
-          proName: svc?.name || `Service ${id}`,
-          durationMinutes: svc?.duration || defaultDur,
-          price: svc?.price ?? undefined,
-        };
-      }),
+      services: servicePlan.services.map((line) => ({
+        proId: line.serviceId,
+        proName: line.serviceName,
+        durationMinutes: line.durationMinutes,
+        price: line.price,
+      })),
       serviceDurationMinutes: serviceDur,
       estimatedStartTime: finalStartTime,
-      estimatedEndTime: responseEndTime,
+      estimatedEndTime: sequentialPlan.endAt,
       estimatedWaitMinutes,
-      peopleBefore: waitingCountAtCreation,
-      waitingCountAtCreation,
+      peopleBefore: waitingCountAtCreationNorm,
+      waitingCountAtCreation: waitingCountAtCreationNorm,
       status: 'waiting',
       createdAt: new Date().toISOString(),
     };

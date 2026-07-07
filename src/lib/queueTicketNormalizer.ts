@@ -2,6 +2,7 @@
  * Shared queue ticket normalizer — works with both PascalCase (DB rows) and
  * camelCase (API responses) field names so every consumer sees the same shape.
  */
+import type { QueueTicketPrintData } from '@/components/queue/QueueTicketPrint';
 export interface NormalizedQueueTicket {
   queueTicketId:          number;
   ticketCode:             string;
@@ -56,3 +57,48 @@ export const DONE_STATUSES = ['done', 'cancelled', 'no_show'];
 
 export const BUSINESS_DATE_CAIRO = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+
+/** Build print payload with all services, duration, and expected end when available */
+export function normalizedTicketToPrintData(t: NormalizedQueueTicket): QueueTicketPrintData {
+  const raw = t._raw;
+  const services: { name: string; price?: number }[] = [];
+
+  const pushName = (name: string | null | undefined, price?: number) => {
+    if (name) services.push({ name, price });
+  };
+
+  if (Array.isArray(raw?.services)) {
+    for (const s of raw.services) {
+      pushName(s.ProName ?? s.proName ?? s.name, s.price ?? s.SPrice);
+    }
+  }
+  if (!services.length && Array.isArray(raw?.QueueTicketServices)) {
+    for (const s of raw.QueueTicketServices) {
+      pushName(s.ProName ?? s.proName, s.Price ?? s.SPrice);
+    }
+  }
+  if (!services.length && t.servicesText && t.servicesText !== '-') {
+    for (const part of t.servicesText.split('+')) {
+      pushName(part.trim());
+    }
+  }
+
+  const durationMinutes =
+    raw?.DurationMinutes ?? raw?.durationMinutes ?? raw?.totalDurationMinutes ?? null;
+  const estimatedEndTime =
+    raw?.ExpectedEndAt ?? raw?.expectedEndAt ?? raw?.estimatedEndTime ?? null;
+
+  return {
+    ticketCode: t.ticketCode,
+    clientName: t.clientName,
+    empName: t.barberName,
+    services,
+    queueDate: t.queueDate,
+    createdTime: t.createdTime,
+    waitingBefore: t.waitingCountAtCreation ?? null,
+    estimatedWaitMinutes: t.estimatedWaitMinutes ?? undefined,
+    estimatedStartTime: t.estimatedStartTime ?? undefined,
+    totalDurationMinutes: durationMinutes ?? undefined,
+    estimatedEndTime: estimatedEndTime ?? undefined,
+  };
+}

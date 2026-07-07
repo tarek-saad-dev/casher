@@ -141,9 +141,6 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/admin/hr',                        label: 'الموظفون',          icon: UsersRound },
       { href: '/admin/attendance',                label: 'متابعة الحضور',    icon: Clock      },
-      { href: '/admin/attendance/daily-payroll',  label: 'يوميات الموظفين',  icon: Calendar   },
-      { href: '/expenses-review/advances',        label: 'سلف الموظفين',     icon: CreditCard },
-      { href: '/expenses-review/salaries',        label: 'مرتبات العاملين',  icon: Wallet     },
     ],
   },
   {

@@ -235,12 +235,17 @@ export function normalizeBookingTimes(
     (endDateTimeCairo.getTime() - startDateTimeCairo.getTime()) / 60000
   );
 
-  // Log warning if duration doesn't match
+  // Service-derived duration is canonical for scheduling when stored times disagree.
+  let canonicalDurationMinutes = actualDurationMinutes;
   if (Math.abs(actualDurationMinutes - totalDurationMinutes) > 1) {
-    console.warn(
-      `[Booking${bookingId ? ` ${bookingId}` : ""}] Duration mismatch: ` +
-      `services=${totalDurationMinutes}min, calculated=${actualDurationMinutes}min`
-    );
+    endDateTimeCairo = calculateEndTime(startDateTimeCairo, totalDurationMinutes);
+    canonicalDurationMinutes = totalDurationMinutes;
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[Booking${bookingId ? ` ${bookingId}` : ''}] Duration mismatch: ` +
+        `services=${totalDurationMinutes}min, stored=${actualDurationMinutes}min — using service sum for scheduling`,
+      );
+    }
   }
 
   if (isDebugBooking) {
@@ -257,7 +262,7 @@ export function normalizeBookingTimes(
     startTimeDisplay: formatTimeArabic(startDateTimeCairo),
     endTimeDisplay: formatTimeArabic(endDateTimeCairo),
     dateDisplay: formatDateArabic(startDateTimeCairo),
-    durationMinutes: actualDurationMinutes,
+    durationMinutes: canonicalDurationMinutes,
     // Debug info
     ...(isDebugBooking && {
       _rawStartTime: String(startTime),

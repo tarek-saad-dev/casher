@@ -7,8 +7,7 @@ import { QueueTicketDetailsModal } from './QueueTicketDetailsModal';
 import { TransferBarberModal } from './TransferBarberModal';
 import { speakQueueTicket } from '@/lib/queueVoice';
 import { printQueueTicket } from '@/lib/printQueueTicket';
-import type { QueueTicketPrintData } from '@/components/queue/QueueTicketPrint';
-import { normalizeQueueTicket, LIVE_STATUSES, type NormalizedQueueTicket } from '@/lib/queueTicketNormalizer';
+import { normalizeQueueTicket, normalizedTicketToPrintData, LIVE_STATUSES, type NormalizedQueueTicket } from '@/lib/queueTicketNormalizer';
 
 const TABS: { key: string; label: string }[] = [
   { key: 'all', label: 'النشطة' },
@@ -92,16 +91,7 @@ export function LiveQueueColumn({ tickets, barbers, loading, onAction, onRefresh
   const handlePrint = (t: NormalizedQueueTicket) => {
     if (printingId === t.queueTicketId) return; // prevent double-click
     setPrintingId(t.queueTicketId);
-    const printData: QueueTicketPrintData = {
-      ticketCode: t.ticketCode,
-      clientName: t.clientName,
-      empName: t.barberName,
-      queueDate: t.queueDate,
-      createdTime: t.createdTime,
-      estimatedWaitMinutes: t.estimatedWaitMinutes ?? undefined,
-      estimatedStartTime: t.estimatedStartTime ?? undefined,
-    };
-    printQueueTicket(printData);
+    printQueueTicket(normalizedTicketToPrintData(t));
     // Record print on server (non-blocking)
     fetch(`/api/queue/${t.queueTicketId}`, {
       method: 'PATCH',

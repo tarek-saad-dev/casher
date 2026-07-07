@@ -60,6 +60,7 @@ export interface FlowBoardBarber {
     protected: boolean;
     durationMinutes?: number;
     customerName?: string;
+    serviceNames?: string[];
     barberId?: number;
     // Lifecycle fields
     effectiveStatus?: string;
@@ -173,7 +174,53 @@ export async function GET(req: NextRequest) {
     
     perfLog("batchFetch", batchStart);
 
-    // 2d. Batch load full day status (schedule + day-off + overrides + attendance) for all barbers
+    // 3d. Batch-load service lines for bookings and queue tickets
+    const bookingIds = bookingsRes.recordset.map((b: { BookingID: number }) => b.BookingID);
+    const queueIds = queueRes.recordset.map((q: { QueueTicketID: number }) => q.QueueTicketID);
+
+    const bookingServicesMap = new Map<number, { names: string[]; totalDuration: number }>();
+    const queueServicesMap = new Map<number, { names: string[]; totalDuration: number }>();
+
+    if (bookingIds.length > 0) {
+      try {
+        const bsRes = await db.request().query(`
+          SELECT bs.BookingID, p.ProName,
+                 ISNULL(bs.DurationMinutes, ISNULL(p.DurationMinutes, 30)) AS DurationMinutes
+          FROM [dbo].[BookingServices] bs
+          LEFT JOIN [dbo].[TblPro] p ON p.ProID = bs.ProID
+          WHERE bs.BookingID IN (${bookingIds.join(',')})
+          ORDER BY bs.BookingServiceID
+        `);
+        for (const row of bsRes.recordset) {
+          const cur = bookingServicesMap.get(row.BookingID) ?? { names: [], totalDuration: 0 };
+          if (row.ProName) cur.names.push(row.ProName);
+          cur.totalDuration += row.DurationMinutes ?? 30;
+          bookingServicesMap.set(row.BookingID, cur);
+        }
+      } catch { /* BookingServices may be missing on legacy DB */ }
+    }
+
+    if (queueIds.length > 0) {
+      try {
+        const qsRes = await db.request().query(`
+          SELECT qts.QueueTicketID,
+                 ISNULL(qts.ProName, p.ProName) AS ProName,
+                 ISNULL(qts.DurationMinutes, ISNULL(p.DurationMinutes, 30)) AS DurationMinutes
+          FROM [dbo].[QueueTicketServices] qts
+          LEFT JOIN [dbo].[TblPro] p ON p.ProID = qts.ProID
+          WHERE qts.QueueTicketID IN (${queueIds.join(',')})
+          ORDER BY qts.ID
+        `);
+        for (const row of qsRes.recordset) {
+          const cur = queueServicesMap.get(row.QueueTicketID) ?? { names: [], totalDuration: 0 };
+          if (row.ProName) cur.names.push(row.ProName);
+          cur.totalDuration += row.DurationMinutes ?? 30;
+          queueServicesMap.set(row.QueueTicketID, cur);
+        }
+      } catch { /* QueueTicketServices optional */ }
+    }
+
+    // 2d. Batch load full day status
     const isToday = dateStr === now.toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
     const allBarberIds: number[] = barbersRes.recordset.map((b: any) => b.EmpID as number);
     const dayStatusMap = await getBarbersDayStatus(allBarberIds, dateStr, { isToday });
@@ -259,11 +306,14 @@ export async function GET(req: NextRequest) {
         }
 
         // Use Cairo-normalized datetime utility
+        const svcInfo = bookingServicesMap.get(b.BookingID);
+        const serviceDuration = svcInfo?.totalDuration ?? defaultDuration;
+
         const normalized = normalizeBookingTimes(
           dateStr,
           b.StartTime,
           b.EndTime,
-          30, // default duration, will be calculated from times
+          serviceDuration,
           b.BookingID
         );
 
@@ -291,6 +341,7 @@ export async function GET(req: NextRequest) {
           protected: true,
           durationMinutes: safeDuration,
           customerName: b.ClientName || undefined,
+          serviceNames: svcInfo?.names,
           barberId: empId,
           // Additional normalized fields for frontend
           startTimeDisplay: normalized.startTimeDisplay,
@@ -337,7 +388,11 @@ export async function GET(req: NextRequest) {
         } else {
           start = new Date(`${dateStr}T${workStart || '14:00'}`);
         }
-        const duration = effective.durationMinutes || defaultDuration;
+        const qSvc = queueServicesMap.get(q.QueueTicketID);
+        const duration = q.DurationMinutes
+          ?? qSvc?.totalDuration
+          ?? effective.durationMinutes
+          ?? defaultDuration;
         const end = new Date(start.getTime() + duration * 60000);
         
         timeline.push({
@@ -350,6 +405,7 @@ export async function GET(req: NextRequest) {
           protected: effective.isBlockingAvailability,
           durationMinutes: duration,
           customerName: q.ClientName || undefined,
+          serviceNames: qSvc?.names,
           barberId: empId,
           actualStatus: effective.actualStatus,
           effectiveStatus: effective.effectiveStatus,

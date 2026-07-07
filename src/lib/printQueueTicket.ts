@@ -132,6 +132,8 @@ function buildReceiptHtml(data: QueueTicketPrintData): string {
     waitingBefore,
     estimatedWaitMinutes,
     estimatedStartTime,
+    totalDurationMinutes,
+    estimatedEndTime,
   } = data;
 
   const dateLabel = queueDate
@@ -145,6 +147,16 @@ function buildReceiptHtml(data: QueueTicketPrintData): string {
   const estTimeLabel = estimatedStartTime
     ? (() => {
         const d = new Date(estimatedStartTime);
+        const h = d.getHours() % 12 || 12;
+        const m = String(d.getMinutes()).padStart(2, '0');
+        const p = d.getHours() < 12 ? 'ص' : 'م';
+        return `${h}:${m} ${p}`;
+      })()
+    : null;
+
+  const estEndLabel = estimatedEndTime
+    ? (() => {
+        const d = new Date(estimatedEndTime);
         const h = d.getHours() % 12 || 12;
         const m = String(d.getMinutes()).padStart(2, '0');
         const p = d.getHours() < 12 ? 'ص' : 'م';
@@ -167,7 +179,9 @@ function buildReceiptHtml(data: QueueTicketPrintData): string {
     dateLabel                       ? row('التاريخ',            dateLabel)                                   : '',
     timeLabel                       ? row('وقت الإصدار',       timeLabel, true)                             : '',
     row('أمامك في الانتظار', String(customersAhead)),
-    estTimeLabel                    ? row('الدخول المتوقع',    estTimeLabel, true)                          : '',
+    estTimeLabel                    ? row('وقت الدخول المتوقع', estTimeLabel, true)                          : '',
+    estEndLabel                     ? row('وقت الانتهاء المتوقع', estEndLabel, true)                          : '',
+    (totalDurationMinutes ?? 0) > 0 ? row('المدة', `${totalDurationMinutes} دقيقة`)                          : '',
     (estimatedWaitMinutes ?? 0) > 0 ? row('انتظار تقريبي',     `~${estimatedWaitMinutes} د`)                : '',
   ].filter(Boolean).join('');
 

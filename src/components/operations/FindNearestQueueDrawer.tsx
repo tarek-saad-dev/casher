@@ -78,7 +78,23 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
   const [quickCreating, setQuickCreating] = useState(false);
 
   const [services, setServices] = useState<Service[]>([]);
-  const [selectedService, setSelectedService] = useState<Service | null>(null);
+  const [selectedServices, setSelectedServices] = useState<Service[]>([]);
+
+  const totalDuration = selectedServices.reduce(
+    (s, svc) => s + (svc.DurationMinutes ?? 30),
+    0,
+  );
+  const totalPrice = selectedServices.reduce((s, svc) => s + (svc.SPrice ?? 0), 0);
+
+  const toggleService = (svc: Service) => {
+    setSelectedServices((prev) =>
+      prev.some((s) => s.ProID === svc.ProID)
+        ? prev.filter((s) => s.ProID !== svc.ProID)
+        : [...prev, svc],
+    );
+    setEstimate(null);
+    setSelectedOption(null);
+  };
 
   const [estimate, setEstimate] = useState<EstimateResponse | null>(null);
   const [estimating, setEstimating] = useState(false);
@@ -119,7 +135,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
     if (!isOpen) {
       setStep(1);
       setSelectedClient(null);
-      setSelectedService(null);
+      setSelectedServices([]);
       setEstimate(null);
       setSelectedOption(null);
       setError(null);
@@ -132,7 +148,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
 
   // Fetch estimate when service is selected
   const fetchEstimate = useCallback(async () => {
-    if (!selectedService) {
+    if (!selectedServices.length) {
       setEstimate(null);
       return;
     }
@@ -142,17 +158,17 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
 
     try {
       const browserNow = new Date();
+      const serviceIds = selectedServices.map((s) => s.ProID);
       const estimatePayload = {
         mode: 'nearest',
-        serviceIds: [selectedService.ProID],
+        serviceIds,
         requestedAt: browserNow.toISOString(),
       };
       console.log('[estimate payload]', {
         ...estimatePayload,
         browserNowLocal: browserNow.toLocaleString('ar-EG', { timeZone: 'Africa/Cairo' }),
         browserTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        serviceName: selectedService.ProName,
-        serviceDuration: selectedService.DurationMinutes,
+        serviceDuration: totalDuration,
       });
 
       const res = await fetch('/api/queue/estimate', {
@@ -170,14 +186,13 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
       }
     } catch { /* non-fatal */ }
     finally { setEstimating(false); }
-  }, [selectedService]);
+  }, [selectedServices, totalDuration]);
 
-  // Fetch estimate when going to step 2
   useEffect(() => {
-    if (step === 2 && selectedService) {
+    if (step === 2 && selectedServices.length > 0) {
       fetchEstimate();
     }
-  }, [step, selectedService, fetchEstimate]);
+  }, [step, selectedServices, fetchEstimate]);
 
   // Quick-create customer
   const handleQuickCreate = async () => {
@@ -212,8 +227,8 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
   const handleSubmit = async () => {
     setError(null);
 
-    if (!selectedService) {
-      setError('اختر الخدمة أولاً');
+    if (!selectedServices.length) {
+      setError('اختر خدمة واحدة على الأقل');
       return;
     }
     if (!selectedOption) {
@@ -265,13 +280,13 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
           clientId: clientId ? Number(clientId) : null,
           empId,
           notes: null,
-          services: [{
-            proId: selectedService.ProID,
-            proName: selectedService.ProName,
+          services: selectedServices.map((s) => ({
+            proId: s.ProID,
+            proName: s.ProName,
             qty: 1,
-            price: selectedService.SPrice,
-            durationMinutes: selectedService.DurationMinutes,
-          }],
+            price: s.SPrice,
+            durationMinutes: s.DurationMinutes,
+          })),
           customer: customerPayload,
         }),
       });
@@ -295,7 +310,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
         ticketCode: data.ticketCode,
         clientName: resolvedClientName,
         empName: resolvedEmpName,
-        services: [{ name: selectedService.ProName }],
+        services: selectedServices.map((s) => ({ name: s.ProName })),
         queueDate: resolvedDate,
         createdTime: resolvedTime,
         waitingBefore: resolvedWaitCount,
@@ -366,51 +381,55 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
               </div>
             )}
 
-            {/* Step 1: Select Service */}
+            {/* Step 1: Select Services */}
             {step === 1 && (
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">اختر الخدمة</label>
-                  {selectedService ? (
-                    <div className="flex items-center justify-between p-3 rounded-lg border"
+                  <label className="block text-sm font-medium text-foreground mb-2">اختر الخدمات</label>
+                  {selectedServices.length > 0 && (
+                    <div className="mb-3 p-3 rounded-lg border flex items-center justify-between"
                       style={{ background: 'color-mix(in srgb, var(--success) 10%, transparent)', borderColor: 'color-mix(in srgb, var(--success) 30%, transparent)' }}>
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-5 h-5 text-success" />
-                        <div>
-                          <p className="font-medium text-foreground">{selectedService.ProName}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {selectedService.DurationMinutes ? `${selectedService.DurationMinutes} دقيقة` : 'مدة غير محددة'}
-                          </p>
-                        </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {selectedServices.length} خدمة — {totalDuration} دقيقة — {totalPrice} ج.م
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {selectedServices.map((s) => s.ProName).join(' + ')}
+                        </p>
                       </div>
-                      <button onClick={() => { setSelectedService(null); setEstimate(null); }}
-                        className="text-xs px-2 py-1 rounded bg-surface-muted hover:bg-surface-muted/80 transition-colors text-foreground">
-                        تغيير
+                      <button onClick={() => { setSelectedServices([]); setEstimate(null); }}
+                        className="text-xs px-2 py-1 rounded bg-surface-muted hover:bg-surface-muted/80 transition-colors text-foreground shrink-0">
+                        مسح
                       </button>
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto">
-                      {services.map((svc) => (
+                  )}
+                  <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto">
+                    {services.map((svc) => {
+                      const sel = selectedServices.some((s) => s.ProID === svc.ProID);
+                      return (
                         <button
                           key={svc.ProID}
-                          onClick={() => { setSelectedService(svc); }}
-                          className="p-3 rounded-lg border text-right hover:border-primary/50 transition-all flex items-center justify-between"
-                          style={{ background: 'var(--surface-muted)', borderColor: 'color-mix(in srgb, var(--primary) 15%, transparent)' }}
+                          onClick={() => toggleService(svc)}
+                          className={`p-3 rounded-lg border text-right transition-all flex items-center justify-between ${
+                            sel ? 'border-primary/60' : 'hover:border-primary/50'
+                          }`}
+                          style={{ background: sel ? 'color-mix(in srgb, var(--primary) 8%, var(--surface-muted))' : 'var(--surface-muted)', borderColor: sel ? undefined : 'color-mix(in srgb, var(--primary) 15%, transparent)' }}
                         >
                           <div className="flex items-center gap-2">
-                            <Scissors className="w-4 h-4 text-muted-foreground/70" />
+                            {sel ? <CheckCircle2 className="w-4 h-4 text-primary" /> : <Scissors className="w-4 h-4 text-muted-foreground/70" />}
                             <span className="text-sm text-foreground">{svc.ProName}</span>
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {svc.DurationMinutes ? `${svc.DurationMinutes} دقيقة` : ''}
+                            {svc.SPrice ? ` — ${svc.SPrice} ج.م` : ''}
                           </div>
                         </button>
-                      ))}
-                    </div>
-                  )}
+                      );
+                    })}
+                  </div>
                 </div>
 
-                {selectedService && (
+                {selectedServices.length > 0 && (
                   <button
                     onClick={() => setStep(2)}
                     className="w-full py-3 rounded-xl font-bold text-base transition-all"
@@ -428,11 +447,13 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                 {/* Service Summary (Read-only) */}
                 <div className="p-3 rounded-lg border" style={{ background: 'color-mix(in srgb, var(--primary) 5%, transparent)', borderColor: 'color-mix(in srgb, var(--primary) 15%, transparent)' }}>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">الخدمة المختارة</span>
+                    <span className="text-xs text-muted-foreground">الخدمات المختارة</span>
                     <button onClick={() => setStep(1)} className="text-xs text-primary hover:underline">تغيير</button>
                   </div>
-                  <p className="text-sm font-medium text-foreground mt-1">{selectedService?.ProName}</p>
-                  <p className="text-xs text-muted-foreground/70">{selectedService?.DurationMinutes ? `${selectedService.DurationMinutes} دقيقة` : ''}</p>
+                  <p className="text-sm font-medium text-foreground mt-1">
+                    {selectedServices.map((s) => s.ProName).join(' + ')}
+                  </p>
+                  <p className="text-xs text-muted-foreground/70">{totalDuration} دقيقة — {totalPrice} ج.م</p>
                 </div>
 
                 {/* Estimate Results */}
@@ -493,7 +514,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                           </div>
                           <div className="flex items-center gap-1 text-muted-foreground">
                             <Scissors className="w-3.5 h-3.5" />
-                            <span>{formatDuration(selectedService?.DurationMinutes ?? 30)}</span>
+                            <span>{formatDuration(totalDuration)}</span>
                           </div>
                           <div className="flex items-center gap-1 text-muted-foreground">
                             <Clock className="w-3.5 h-3.5" />
@@ -591,7 +612,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
             )}
 
             {/* Step 3: Client Info + Confirmation */}
-            {step === 3 && selectedService && selectedOption && (
+            {step === 3 && selectedServices.length > 0 && selectedOption && (
               <div className="space-y-4">
                 {/* Summary Card */}
                 <div className="p-4 rounded-xl border"
@@ -599,8 +620,10 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                   <h3 className="text-sm font-medium text-muted-foreground mb-3">ملخص الدور</h3>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">الخدمة</span>
-                      <span className="text-sm font-medium text-foreground">{selectedService.ProName}</span>
+                      <span className="text-sm text-muted-foreground">الخدمات</span>
+                      <span className="text-sm font-medium text-foreground text-left">
+                        {selectedServices.map((s) => s.ProName).join(' + ')}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">الحلاق</span>
@@ -614,7 +637,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">مدة الخدمة</span>
-                      <span className="text-sm font-medium text-foreground">{formatDuration(selectedService.DurationMinutes ?? 30)}</span>
+                      <span className="text-sm font-medium text-foreground">{formatDuration(totalDuration)}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">الأشخاص قبله</span>
@@ -766,7 +789,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
             setCreatedData(null);
             setStep(1);
             setSelectedClient(null);
-            setSelectedService(null);
+            setSelectedServices([]);
             setSelectedOption(null);
             setClientSearch('');
           }}

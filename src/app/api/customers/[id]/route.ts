@@ -15,7 +15,20 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     }
 
     const body = await req.json();
+    console.log('[PATCH /api/customers] clientId:', clientID, '| payload:', JSON.stringify(body));
+
+    // Support name / Name / customerName from frontend
+    const rawName = body.name ?? body.Name ?? body.customerName;
     const { mobile, birthDate, address, notes, cameFrom, cameFromDetails, referralCode } = body;
+
+    // Normalize payload for logging
+    const normalized = { name: rawName, mobile, birthDate, address, notes, cameFrom, cameFromDetails, referralCode };
+    console.log('[PATCH /api/customers] normalized payload:', JSON.stringify(normalized));
+
+    // Validate name when it is being changed
+    if (rawName !== undefined && (typeof rawName !== 'string' || rawName.trim().length === 0)) {
+      return NextResponse.json({ error: 'الاسم لا يمكن أن يكون فارغاً' }, { status: 400 });
+    }
 
     const db = await getPool();
 
@@ -43,6 +56,10 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     const setClauses: string[] = [];
     const request = db.request().input('clientID', sql.Int, clientID);
 
+    if (rawName !== undefined) {
+      setClauses.push('[Name] = @name');
+      request.input('name', sql.NVarChar(100), rawName.trim());
+    }
     if (mobile !== undefined) {
       setClauses.push('Mobile = @mobile');
       request.input('mobile', sql.NVarChar(30), mobile?.trim() || null);
@@ -72,21 +89,37 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       return NextResponse.json({ error: 'لا توجد بيانات للتحديث' }, { status: 400 });
     }
 
-    const result = await request.query(`
+    const updateResult = await request.query(`
       UPDATE [dbo].[TblClient]
       SET ${setClauses.join(', ')}
-      OUTPUT
-        INSERTED.ClientID, INSERTED.[Name], INSERTED.Mobile,
-        INSERTED.BirthDate, INSERTED.Address, INSERTED.Notes, INSERTED.RegisterDate,
-        INSERTED.CameFrom, INSERTED.CameFromDetails, INSERTED.ReferralCode
       WHERE ClientID = @clientID
     `);
 
-    if (result.recordset.length === 0) {
+    const rowsAffected = updateResult.rowsAffected?.[0] ?? 0;
+    console.log('[PATCH /api/customers] rowsAffected:', rowsAffected);
+
+    if (rowsAffected === 0) {
       return NextResponse.json({ error: 'العميل غير موجود' }, { status: 404 });
     }
 
-    return NextResponse.json(result.recordset[0]);
+    // Fetch the updated customer to return the actual DB state
+    const selectResult = await db.request()
+      .input('clientID2', sql.Int, clientID)
+      .query(`
+        SELECT ClientID, [Name], Mobile, Phone, BirthDate, Address, Notes,
+               RegisterDate, CameFrom, CameFromDetails, ReferralCode
+        FROM [dbo].[TblClient]
+        WHERE ClientID = @clientID2
+      `);
+
+    const updatedCustomer = selectResult.recordset[0] ?? null;
+    console.log('[PATCH /api/customers] customer after update:', JSON.stringify(updatedCustomer));
+
+    if (!updatedCustomer) {
+      return NextResponse.json({ error: 'العميل غير موجود بعد التحديث' }, { status: 404 });
+    }
+
+    return NextResponse.json(updatedCustomer);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/customers/[id]] PATCH error:', message);

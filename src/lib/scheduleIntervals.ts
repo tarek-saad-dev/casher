@@ -22,7 +22,7 @@ export function intervalsOverlap(
 
 export interface ScheduleInterval {
   id: number;
-  source: 'queue' | 'booking';
+  source: 'queue' | 'booking' | 'block';
   start: Date;
   end: Date;
   label?: string;

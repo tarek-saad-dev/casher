@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import {
   Users, Plus, CheckCircle2, AlertCircle,
@@ -18,7 +19,6 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import EmployeeManagementModal from '@/components/admin/EmployeeManagementModal';
 import { JobType } from '@/lib/types';
 
 function TabLoader() {
@@ -30,10 +30,7 @@ function TabLoader() {
   );
 }
 
-const PayrollSummaryTab  = dynamic(() => import('@/components/payroll/PayrollSummaryTab'),  { ssr: false, loading: () => <TabLoader /> });
 const PayrollSettingsTab = dynamic(() => import('@/components/payroll/PayrollSettingsTab'), { ssr: false, loading: () => <TabLoader /> });
-const AttendanceTab      = dynamic(() => import('@/components/payroll/AttendanceTab'),      { ssr: false, loading: () => <TabLoader /> });
-const AdvancesTab        = dynamic(() => import('@/components/payroll/AdvancesTab'),        { ssr: false, loading: () => <TabLoader /> });
 const AttendancePanel        = dynamic(() => import('@/components/hr/AttendancePanel'),                              { ssr: false, loading: () => <TabLoader /> });
 const DailyPayrollPanel      = dynamic(() => import('@/components/hr/DailyPayrollPanel'),                            { ssr: false, loading: () => <TabLoader /> });
 const EmployeeAdvancesSection = dynamic(() => import('@/components/reports/expenses/EmployeeAdvancesSection'),       { ssr: false, loading: () => <TabLoader /> });
@@ -65,25 +62,43 @@ const MAIN_TABS = [
   { id: 'attendance',      label: 'متابعة الحضور',     icon: CalendarCheck },
   { id: 'daily-payroll',   label: 'يوميات الموظفين',   icon: Banknote },
   { id: 'emp-advances',    label: 'سلف الموظفين',     icon: Wallet },
-  { id: 'salaries',        label: 'مرتبات العاملين',   icon: Banknote },
+  { id: 'employee-settings', label: 'إعدادات الموظفين', icon: Settings },
 ] as const;
 type MainTabId = typeof MAIN_TABS[number]['id'];
 
-/* ─── payroll sub-tabs ───────────────────────────────── */
-const PAYROLL_TABS = [
-  { id: 'summary',    label: 'ملخص المرتبات',    icon: Banknote },
-  { id: 'settings',  label: 'إعدادات الموظفين',  icon: Users },
-  { id: 'attendance',label: 'الحضور والانصراف',  icon: CalendarCheck },
-  { id: 'advances',  label: 'السلف والخصومات',    icon: Wallet },
-] as const;
-type PayrollTabId = typeof PAYROLL_TABS[number]['id'];
+// Legacy query-param values that should map to the new employee-settings tab
+const LEGACY_TAB_ALIASES: Record<string, MainTabId> = {
+  payroll: 'employee-settings',
+  salaries: 'employee-settings',
+  settings: 'employee-settings',
+  'employee-settings': 'employee-settings',
+};
 
 /* ══════════════════════════════════════════════════════ */
 export default function HRPage() {
-  const [mainTab, setMainTab] = useState<MainTabId>('employees');
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [mainTab, setMainTab] = useState<MainTabId>(() => {
+    const t = searchParams.get('tab');
+    const resolved = t ? LEGACY_TAB_ALIASES[t] || (MAIN_TABS.find(tab => tab.id === t)?.id) : undefined;
+    return resolved ?? 'employees';
+  });
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
+
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    const resolved = t ? LEGACY_TAB_ALIASES[t] || (MAIN_TABS.find(tab => tab.id === t)?.id) : undefined;
+    if (resolved && resolved !== mainTab) setMainTab(resolved);
+  }, [searchParams, mainTab]);
+
+  const handleTabChange = useCallback((id: MainTabId) => {
+    setMainTab(id);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', id);
+    router.replace(`/admin/hr?${params.toString()}`, { scroll: false });
+  }, [router, searchParams]);
 
   if (!mounted) {
     return (
@@ -113,7 +128,7 @@ export default function HRPage() {
         {MAIN_TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
-            onClick={() => setMainTab(id)}
+            onClick={() => handleTabChange(id)}
             className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all ${
               mainTab === id
                 ? 'bg-primary/20 text-primary border border-primary/30'
@@ -127,11 +142,11 @@ export default function HRPage() {
       </div>
 
       {/* ── Tab Panels ── */}
-      {mainTab === 'employees'      && <EmployeesPanel />}
-      {mainTab === 'attendance'     && <AttendancePanel />}
-      {mainTab === 'daily-payroll'  && <DailyPayrollPanel />}
-      {mainTab === 'emp-advances'   && <AdvancesReportPanel />}
-      {mainTab === 'salaries'       && <SalariesPanel />}
+      {mainTab === 'employees'        && <EmployeesPanel />}
+      {mainTab === 'attendance'         && <AttendancePanel />}
+      {mainTab === 'daily-payroll'    && <DailyPayrollPanel />}
+      {mainTab === 'emp-advances'     && <AdvancesReportPanel />}
+      {mainTab === 'employee-settings' && <EmployeeSettingsPanel />}
     </div>
   );
 }
@@ -163,9 +178,6 @@ function EmployeesPanel() {
   const [autoMapping, setAutoMapping] = useState(false);
   const [autoMappingResult, setAutoMappingResult] = useState<any>(null);
   const [showAutoMappingModal, setShowAutoMappingModal] = useState(false);
-
-  const [managementModalOpen, setManagementModalOpen] = useState(false);
-  const [selectedManagementEmployee, setSelectedManagementEmployee] = useState<Employee | null>(null);
 
   const [workHoursModalOpen, setWorkHoursModalOpen] = useState(false);
   const [selectedWorkHoursEmployee, setSelectedWorkHoursEmployee] = useState<Employee | null>(null);
@@ -259,10 +271,6 @@ function EmployeesPanel() {
       if (type === 'revenue') setSelectedRevenue('');
       await load();
     } catch (e: any) { setFinanceError(e.message); }
-  };
-
-  const openManagementModal = (employee: Employee) => {
-    setSelectedManagementEmployee(employee); setManagementModalOpen(true);
   };
 
   const openWorkHoursModal = (employee: Employee) => {
@@ -538,12 +546,10 @@ function EmployeesPanel() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-left">
+                    {/* TODO: Rebuild employee profile management flow later with reliable data sources. */}
                     <div className="flex items-center gap-2">
                       <Button variant="outline" size="sm" onClick={() => openFinanceModal(emp)} className="flex items-center gap-1">
                         <Link2 className="w-3 h-3" />الربط المالي
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => openManagementModal(emp)} className="flex items-center gap-1">
-                        <Settings className="w-3 h-3" />إدارة الملف
                       </Button>
                     </div>
                   </td>
@@ -736,15 +742,6 @@ function EmployeesPanel() {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* ── Employee Management Modal ── */}
-      <EmployeeManagementModal
-        employee={selectedManagementEmployee}
-        open={managementModalOpen}
-        onClose={() => setManagementModalOpen(false)}
-        onRefresh={load}
-        onOpenWorkHours={openWorkHoursModal}
-      />
 
       {/* ── Work Hours Modal ── */}
       <Dialog open={workHoursModalOpen} onOpenChange={setWorkHoursModalOpen}>
@@ -981,42 +978,16 @@ function AdvancesReportPanel() {
 }
 
 /* ══════════════════════════════════════════════════════
-   PANEL 2 — Salaries / Payroll
+   PANEL 5 — Employee Settings
    ══════════════════════════════════════════════════════ */
-function SalariesPanel() {
-  const [activeTab, setActiveTab] = useState<PayrollTabId>('summary');
-
+function EmployeeSettingsPanel() {
   return (
     <div className="space-y-5">
-      {/* Sub-tab description */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Banknote className="w-4 h-4 text-primary" />
-        <span>إدارة الرواتب والتارجت والحضور والسلف للموظفين</span>
+        <Settings className="w-4 h-4 text-primary" />
+        <span>إعدادات الرواتب والتارجت والحضور للموظفين</span>
       </div>
-
-      {/* ── Payroll Sub-Tabs ── */}
-      <div className="flex gap-1 p-1 bg-surface/60 border border-border/60 rounded-xl w-fit">
-        {PAYROLL_TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setActiveTab(id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              activeTab === id
-                ? 'bg-primary/20 text-primary border border-primary/30'
-                : 'text-muted-foreground hover:text-foreground hover:bg-surface-muted/60'
-            }`}
-          >
-            <Icon className="w-4 h-4" />
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── Tab Content ── */}
-      {activeTab === 'summary'    && <PayrollSummaryTab />}
-      {activeTab === 'settings'   && <PayrollSettingsTab />}
-      {activeTab === 'attendance' && <AttendanceTab />}
-      {activeTab === 'advances'   && <AdvancesTab />}
+      <PayrollSettingsTab />
     </div>
   );
 }

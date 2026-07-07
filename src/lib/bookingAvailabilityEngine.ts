@@ -14,9 +14,9 @@ import {
   buildQueueIntervals,
   buildBookingIntervals,
   getDefaultDuration,
-  getServicesDuration,
   type Interval,
 } from '@/lib/queueEstimateEngine';
+import { calculateServicePlanDuration } from '@/lib/servicePlan';
 import { getBarberWorkingWindow } from '@/lib/barberAvailability';
 import { getAttendanceStatus } from '@/lib/availabilityEngine';
 import {
@@ -93,6 +93,44 @@ export interface BookingSlotValidation {
   reasonMessage?: string;
 }
 
+/** Public booking UI cap — operations/admin receive the full set. */
+export const PUBLIC_AVAILABLE_SLOTS_LIMIT = 12;
+
+export type SlotRejectionBucket =
+  | 'past_or_min_notice'
+  | 'outside_working_hours'
+  | 'booking_conflict'
+  | 'queue_conflict'
+  | 'block_range'
+  | 'break'
+  | 'insufficient_duration'
+  | 'barber_unavailable'
+  | 'unknown';
+
+export const EMPTY_REJECTION_COUNTS: Record<SlotRejectionBucket, number> = {
+  past_or_min_notice: 0,
+  outside_working_hours: 0,
+  booking_conflict: 0,
+  queue_conflict: 0,
+  block_range: 0,
+  break: 0,
+  insufficient_duration: 0,
+  barber_unavailable: 0,
+  unknown: 0,
+};
+
+function mapReasonToBucket(code?: BookingSlotReasonCode): SlotRejectionBucket {
+  if (!code) return 'unknown';
+  if (code === 'past' || code === 'minimum_notice') return 'past_or_min_notice';
+  if (code === 'outside_working_hours') return 'outside_working_hours';
+  if (code === 'booking_conflict') return 'booking_conflict';
+  if (code === 'queue_conflict') return 'queue_conflict';
+  if (code === 'break') return 'break';
+  if (code === 'insufficient_continuous_time') return 'insufficient_duration';
+  if (code === 'barber_unavailable') return 'barber_unavailable';
+  return 'unknown';
+}
+
 export const BOOKING_SLOT_REASON_AR: Record<BookingSlotReasonCode, string> = {
   insufficient_continuous_time: 'المدة المطلوبة لا تتسع في هذه الفترة',
   booking_conflict: 'يوجد حجز في هذا الوقت',
@@ -147,11 +185,26 @@ async function buildBarberContexts(args: {
 
   const systemDefault = settings.defaultServiceDurationMinutes || 30;
   const defaultDur = await getDefaultDuration(db);
-  const totalDuration =
-    durationOverride ?? (serviceIds.length > 0
-      ? await getServicesDuration(db, serviceIds, defaultDur)
-      : systemDefault);
-  const durationSource = durationOverride ? 'OVERRIDE' : serviceIds.length > 0 ? 'SERVICE_DEFAULT' : 'SYSTEM_DEFAULT';
+  let totalDuration = durationOverride ?? systemDefault;
+  let durationSource: string = durationOverride ? 'OVERRIDE' : 'SYSTEM_DEFAULT';
+
+  if (!durationOverride && serviceIds.length > 0) {
+    try {
+      const plan = await calculateServicePlanDuration(serviceIds);
+      totalDuration = plan.totalDurationMinutes;
+      durationSource = 'SERVICE_SUM';
+      if (process.env.NODE_ENV !== 'production' && (source === 'operations' || source === 'admin')) {
+        console.log('[bookingAvailability] service plan duration', {
+          serviceIds,
+          totalDurationMinutes: plan.totalDurationMinutes,
+          services: plan.services.map((s) => ({ id: s.serviceId, name: s.serviceName, min: s.durationMinutes })),
+        });
+      }
+    } catch (err) {
+      console.error('[bookingAvailability] calculateServicePlanDuration failed', { serviceIds, err });
+      throw err;
+    }
+  }
 
   const barberIds: number[] =
     mode === 'specific' && empId ? [empId] : await getAllBarberIds(db);
@@ -373,13 +426,17 @@ export async function listAvailableBookingSlots(args: {
   const nameMap: Record<number, string> = {};
   for (const ctx of contexts) nameMap[ctx.empId] = ctx.empName;
 
+  const slotIntervalMinutes = settings.slotIntervalMinutes || 15;
+  const minNoticeMs = effectiveMinNotice * 60_000;
+
   const slotMap = new Map<string, 0 | 1>();
   for (const ctx of contexts) {
     if (!ctx.effSched) continue;
     for (const entry of generateSlotEntries(
       ctx.effSched.start,
       ctx.effSched.end,
-      settings.slotIntervalMinutes,
+      slotIntervalMinutes,
+      totalDuration,
     )) {
       if (!slotMap.has(entry.time) || entry.dayOffset < slotMap.get(entry.time)!) {
         slotMap.set(entry.time, entry.dayOffset);
@@ -390,7 +447,9 @@ export async function listAvailableBookingSlots(args: {
   const sortedSlotTimes = [...slotMap.entries()].sort(([aT, aD], [bT, bD]) =>
     aD !== bD ? aD - bD : aT.localeCompare(bT),
   );
+  const generatedCandidateCount = sortedSlotTimes.length;
 
+  const rejectionCounts = { ...EMPTY_REJECTION_COUNTS };
   const allPlans = evaluateSlotsForContexts({
     date,
     contexts,
@@ -400,11 +459,58 @@ export async function listAvailableBookingSlots(args: {
     timezone,
     isToday,
     nowMs,
-    minNoticeMs: effectiveMinNotice * 60_000,
+    minNoticeMs,
+    rejectionCounts,
   });
 
-  const availableSlots = allPlans.filter((s: BookingSlotPlan) => s.available);
+  const availableSlotsUnlimited = allPlans.filter((s: BookingSlotPlan) => s.available);
+  const validSlotCountBeforeLimit = availableSlotsUnlimited.length;
+  const isInternalSource = source === 'operations' || source === 'admin';
+  const limitApplied = !isInternalSource && validSlotCountBeforeLimit > PUBLIC_AVAILABLE_SLOTS_LIMIT;
+  const availableSlots = limitApplied
+    ? availableSlotsUnlimited.slice(0, PUBLIC_AVAILABLE_SLOTS_LIMIT)
+    : availableSlotsUnlimited;
+  const returnedSlotCount = availableSlots.length;
   const nextAvailable = availableSlots[0] ?? null;
+
+  const primaryCtx =
+    (mode === 'specific' && empId ? contexts.find((c) => c.empId === empId) : null)
+    ?? contexts[0]
+    ?? null;
+  const scheduleStartAt = primaryCtx?.effSched?.start ?? null;
+  const scheduleEndAt = primaryCtx?.effSched?.end ?? null;
+  const isOvernight = scheduleStartAt && scheduleEndAt
+    ? hhmmToMinutes(scheduleEndAt) <= hhmmToMinutes(scheduleStartAt)
+    : false;
+
+  const slotAudit = {
+    date,
+    mode,
+    empId: empId ?? null,
+    serviceIds,
+    totalDurationMinutes: totalDuration,
+    slotIntervalMinutes,
+    minNoticeMinutes: effectiveMinNotice,
+    nowCairo: msToHhmm(nowMs, timezone, date),
+    scheduleStartAt,
+    scheduleEndAt,
+    isOvernight,
+    busyIntervalsCount: primaryCtx?.busy.length ?? 0,
+    busyIntervals: (primaryCtx?.busy ?? []).slice(0, 20).map((iv) => ({
+      type: iv.source ?? 'unknown',
+      startAt: iv.start.toISOString(),
+      endAt: iv.end.toISOString(),
+    })),
+    generatedCandidateCount,
+    validSlotCountBeforeLimit,
+    returnedSlotCount,
+    limitApplied,
+    rejectedByReason: rejectionCounts,
+  };
+
+  if (process.env.NODE_ENV !== 'production' && isInternalSource) {
+    console.log('[available-slots audit]', slotAudit);
+  }
 
   let gapNotice: GapNotice | null = null;
   if (mode === 'specific' && empId) {
@@ -482,11 +588,15 @@ export async function listAvailableBookingSlots(args: {
       serviceIds,
       totalDurationMinutes: totalDuration,
       isToday,
-      isInternalSource: source === 'operations' || source === 'admin',
+      isInternalSource,
       effectiveMinNotice,
       barberCount: contexts.length,
       slotsTotal: allPlans.length,
-      slotsAvailable: availableSlots.length,
+      slotsAvailable: returnedSlotCount,
+      validSlotCountBeforeLimit,
+      generatedCandidateCount,
+      limitApplied,
+      slotAudit,
     },
   };
 }
@@ -501,9 +611,27 @@ function evaluateSlotsForContexts(args: {
   isToday: boolean;
   nowMs: number;
   minNoticeMs: number;
+  rejectionCounts?: Record<SlotRejectionBucket, number>;
 }): BookingSlotPlan[] {
-  const { date, contexts, sortedSlotTimes, mode, empId, timezone, isToday, nowMs, minNoticeMs } = args;
+  const {
+    date,
+    contexts,
+    sortedSlotTimes,
+    mode,
+    empId,
+    timezone,
+    isToday,
+    nowMs,
+    minNoticeMs,
+    rejectionCounts,
+  } = args;
   const allPlans: BookingSlotPlan[] = [];
+
+  const recordRejection = (plan: BookingSlotPlan | null) => {
+    if (!rejectionCounts || !plan || plan.available) return;
+    const bucket = mapReasonToBucket(plan.reasonCode);
+    rejectionCounts[bucket] += 1;
+  };
 
   for (const [time, dayOffset] of sortedSlotTimes) {
     const slotDate = dayOffset === 1 ? nextDate(date) : date;
@@ -522,11 +650,15 @@ function evaluateSlotsForContexts(args: {
         isToday,
         nowMs,
         minNoticeMs,
+        includeSilentRejections: !!rejectionCounts,
       });
+      recordRejection(plan);
       if (plan) allPlans.push(plan);
     } else {
       let best: BookingSlotPlan | null = null;
-      for (const ctx of contexts) {
+      let bestOrder = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < contexts.length; i++) {
+        const ctx = contexts[i];
         const plan = evaluateBarberSlot({
           ctx,
           time,
@@ -537,10 +669,31 @@ function evaluateSlotsForContexts(args: {
           isToday,
           nowMs,
           minNoticeMs,
+          includeSilentRejections: false,
         });
         if (plan?.available) {
-          best = plan;
-          break;
+          if (i < bestOrder) {
+            best = plan;
+            bestOrder = i;
+          }
+        }
+      }
+      if (!best && rejectionCounts) {
+        const ctx = contexts[0];
+        if (ctx) {
+          const probe = evaluateBarberSlot({
+            ctx,
+            time,
+            dayOffset,
+            slotDate,
+            slotStartMs,
+            timezone,
+            isToday,
+            nowMs,
+            minNoticeMs,
+            includeSilentRejections: true,
+          });
+          recordRejection(probe);
         }
       }
       if (best) allPlans.push(best);
@@ -634,7 +787,7 @@ export async function validateBookingSlot(args: {
   const slotTimes: Array<[string, 0 | 1]> = [];
   for (const ctx of contexts) {
     if (!ctx.effSched) continue;
-    for (const entry of generateSlotEntries(ctx.effSched.start, ctx.effSched.end, slotInterval)) {
+    for (const entry of generateSlotEntries(ctx.effSched.start, ctx.effSched.end, slotInterval, totalDuration)) {
       if (!slotTimes.some(([t, d]) => t === entry.time && d === entry.dayOffset)) {
         slotTimes.push([entry.time, entry.dayOffset]);
       }
@@ -688,8 +841,9 @@ function evaluateBarberSlot(args: {
   isToday: boolean;
   nowMs: number;
   minNoticeMs: number;
+  includeSilentRejections?: boolean;
 }): BookingSlotPlan | null {
-  const { ctx, time, dayOffset, slotDate, slotStartMs, isToday, nowMs, minNoticeMs } = args;
+  const { ctx, time, dayOffset, slotDate, slotStartMs, isToday, nowMs, minNoticeMs, includeSilentRejections } = args;
   const overrideBlock = ctx.effSched
     ? !!slotBlockedByOverride(
         slotStartMs,
@@ -708,9 +862,10 @@ function evaluateBarberSlot(args: {
 
   if (!evalResult.available) {
     if (
-      evalResult.reasonCode === 'past' ||
-      evalResult.reasonCode === 'minimum_notice' ||
-      evalResult.reasonCode === 'outside_working_hours'
+      !includeSilentRejections &&
+      (evalResult.reasonCode === 'past' ||
+        evalResult.reasonCode === 'minimum_notice' ||
+        evalResult.reasonCode === 'outside_working_hours')
     ) {
       return null;
     }
@@ -764,14 +919,18 @@ function generateSlotEntries(
   start: string,
   end: string,
   intervalMin: number,
+  minDurationMinutes = 0,
 ): Array<{ time: string; dayOffset: 0 | 1 }> {
   const entries: Array<{ time: string; dayOffset: 0 | 1 }> = [];
   const startMin = hhmmToMinutes(start);
   const endMin = hhmmToMinutes(end);
   const overnight = endMin <= startMin;
   const endTotal = overnight ? endMin + 24 * 60 : endMin;
+  const lastStartInclusive = minDurationMinutes > 0
+    ? endTotal - minDurationMinutes
+    : endTotal - intervalMin;
   let cur = startMin;
-  while (cur < endTotal) {
+  while (cur <= lastStartInclusive) {
     const tod = cur % (24 * 60);
     const dayOffset: 0 | 1 = cur >= 24 * 60 ? 1 : 0;
     entries.push({
@@ -892,4 +1051,47 @@ function formatArTime(hhmm: string): string {
 
 function formatSlotLabel(start: string, end: string): string {
   return `${formatArTime(start)} – ${formatArTime(end)}`;
+}
+
+/**
+ * Canonical per-employee slot finder — wraps listAvailableBookingSlots for
+ * operations drawer, APIs, and tests.
+ */
+export async function findAvailableSlotsForEmployee(args: {
+  empId: number;
+  operationalDate: string;
+  serviceIds: number[];
+  slotIntervalMinutes?: number;
+  mode?: 'nearest' | 'specific';
+  source?: 'public' | 'operations' | 'admin';
+  limit?: number;
+}) {
+  const result = await listAvailableBookingSlots({
+    date: args.operationalDate,
+    serviceIds: args.serviceIds,
+    mode: args.mode ?? 'specific',
+    empId: args.empId,
+    source: args.source ?? 'operations',
+  });
+
+  const slots = args.limit
+    ? result.availableSlots.slice(0, args.limit)
+    : result.availableSlots;
+
+  if (process.env.NODE_ENV !== 'production' && args.source === 'operations') {
+    console.log('[findAvailableSlotsForEmployee]', {
+      empId: args.empId,
+      date: args.operationalDate,
+      serviceIds: args.serviceIds,
+      durationMinutes: result.durationMinutes,
+      busyBarbers: result.debug.barberCount,
+      slotsAvailable: slots.length,
+      firstSlot: slots[0]?.startAt ?? null,
+    });
+  }
+
+  return {
+    ...result,
+    slots,
+  };
 }

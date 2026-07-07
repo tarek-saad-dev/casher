@@ -2,6 +2,7 @@
 
 import { Scissors, Calendar, Ticket, GripVertical, Volume2 } from 'lucide-react';
 import { formatTimeRange, getItemTypeLabel, TimelineItem } from './schedulerUtils';
+import { formatServiceSummary } from '@/lib/servicePlanFormat';
 import { cn } from '@/lib/utils';
 
 interface BarberColor {
@@ -29,7 +30,7 @@ interface Props {
   cutEnabled?: boolean;
   isBeingMoved?: boolean;
   isCutActive?: boolean;
-  onCutClick?: (e: React.PointerEvent) => void;
+  onCutClick?: () => void;
   className?: string;
   style?: React.CSSProperties;
 }
@@ -82,7 +83,12 @@ export function HourCellCard({
   const timeRange = formatTimeRange(item.startTime, item.endTime);
   const timeLabel = formatTimeLabel(item.startTime, item.endTime);
   const customerName = item.customerName || item.label || '—';
-  const serviceName = item.serviceNames?.[0] || '';
+  const serviceName = item.serviceNames?.length
+    ? formatServiceSummary(item.serviceNames)
+    : (item.serviceNames?.[0] || '');
+  const serviceTooltip = item.serviceNames?.length
+    ? item.serviceNames.map((n, i) => `${i + 1}. ${n}`).join('\n')
+    : serviceName;
   const ticketCode = item.ticketCode || (type === 'queue' ? item.label : '');
   const bookingCode = type === 'booking' ? `BK-${item.sourceId}` : '';
 
@@ -161,7 +167,7 @@ export function HourCellCard({
               }}
               onClick={(e) => {
                 e.stopPropagation();
-                onCutClick(e);
+                onCutClick();
               }}
             >
               <Scissors className="size-4" aria-hidden />
@@ -221,8 +227,13 @@ export function HourCellCard({
                 {customerName}
               </div>
               {!isCompact && serviceName && (
-                <div className="mt-0.5 truncate text-[11px] text-muted-foreground md:text-xs" title={serviceName}>
+                <div className="mt-0.5 truncate text-[11px] text-muted-foreground md:text-xs" title={serviceTooltip}>
                   {serviceName}
+                  {(item.serviceNames?.length ?? 0) > 1 && (
+                    <span className="ms-1 text-[10px] text-primary/80">
+                      {item.serviceNames!.length} خدمات
+                    </span>
+                  )}
                 </div>
               )}
             </div>

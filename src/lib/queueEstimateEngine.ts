@@ -210,16 +210,26 @@ export async function getServicesDuration(
 ): Promise<number> {
   if (!serviceIds.length) return fallback;
   try {
+    const { calculateServicePlanDuration } = await import('@/lib/servicePlan');
+    const plan = await calculateServicePlanDuration(serviceIds);
+    if (plan.durationSource === 'LEGACY_FALLBACK') return fallback;
+    return plan.totalDurationMinutes;
+  } catch (err) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('[getServicesDuration] servicePlan failed, using SQL sum fallback', err);
+    }
+    const uniqueIds = [...new Set(serviceIds)];
     const r = db.request();
-    serviceIds.forEach((id, i) => r.input(`id${i}`, sql.Int, id));
+    uniqueIds.forEach((id, i) => r.input(`id${i}`, sql.Int, id));
     const res = await r.query(`
-      SELECT ISNULL(SUM(ISNULL(DurationMinutes, ${fallback})), ${fallback}) AS Tot
-      FROM [dbo].[TblPro]
-      WHERE ProID IN (${serviceIds.map((_, i) => `@id${i}`).join(",")})
+      SELECT SUM(ISNULL(p.DurationMinutes, ${fallback})) AS total
+      FROM [dbo].[TblPro] p
+      WHERE p.ProID IN (${uniqueIds.map((_, i) => `@id${i}`).join(',')})
+        AND (p.isDeleted = 0 OR p.isDeleted IS NULL)
     `);
-    return res.recordset[0]?.Tot ?? fallback;
-  } catch {
-    return fallback;
+    const sum = Number(res.recordset[0]?.total);
+    if (sum > 0) return sum;
+    throw err;
   }
 }
 

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { SchedulerBoard } from '@/components/operations/SchedulerBoard';
 import { BottomSummaryStrip } from '@/components/operations/BottomSummaryStrip';
 import { SimpleCreateQueueDrawer } from '@/components/operations/SimpleCreateQueueDrawer';
+import { BarberQueueWorkspaceModal } from '@/components/operations/BarberQueueWorkspaceModal';
 import { FindNearestQueueDrawer } from '@/components/operations/FindNearestQueueDrawer';
 import { CreateBookingDrawer } from '@/components/operations/CreateBookingDrawer';
 import { ScheduleControlModal } from '@/components/operations/ScheduleControlModal';
@@ -120,6 +121,11 @@ export default function OperationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateDrawer, setShowCreateDrawer] = useState(false);
+  const [barberQueueModal, setBarberQueueModal] = useState<{
+    empId: number;
+    empName: string;
+  } | null>(null);
+  const [barberQueueLoadingEmpId, setBarberQueueLoadingEmpId] = useState<number | null>(null);
   const [showFindNearestDrawer, setShowFindNearestDrawer] = useState(false);
   const [showBookingDrawer, setShowBookingDrawer] = useState(false);
   const [settlingExpired, setSettlingExpired] = useState(false);
@@ -509,6 +515,12 @@ export default function OperationsPage() {
               timeRangeEnd,
             });
           }}
+          onBarberQueueClick={(barber) => {
+            setBarberQueueModal({ empId: barber.empId, empName: barber.empName });
+          }}
+          barberQueueLoadingEmpId={barberQueueLoadingEmpId}
+          barberQueueSourceEmpId={barberQueueModal?.empId ?? null}
+          canCreateQueue
         />
 
         <BottomSummaryStrip
@@ -522,6 +534,21 @@ export default function OperationsPage() {
         onCreateQueue={() => setShowCreateDrawer(true)}
         onCreateBooking={() => openCreateBooking({ date: selectedDate })}
       />
+
+      {barberQueueModal && (
+        <BarberQueueWorkspaceModal
+          open={!!barberQueueModal}
+          barber={barberQueueModal}
+          operationalDate={selectedDate}
+          requestedFrom={new Date().toISOString()}
+          onClose={() => setBarberQueueModal(null)}
+          onCreated={() => {
+            void fetchFlowBoard();
+            showToast('تم إنشاء الدور بنجاح');
+          }}
+          onLoadingChange={setBarberQueueLoadingEmpId}
+        />
+      )}
 
       {showCreateDrawer && (
         <SimpleCreateQueueDrawer
@@ -561,7 +588,15 @@ export default function OperationsPage() {
           initialBarberName={bookingInitialData.barberName}
           initialTimeRangeStart={bookingInitialData.timeRangeStart}
           initialTimeRangeEnd={bookingInitialData.timeRangeEnd}
-          barbers={flowBoardData?.barbers.map((b) => ({ empId: b.empId, empName: b.empName })) || []}
+          barbers={flowBoardData?.barbers.map((b) => ({
+            empId: b.empId,
+            empName: b.empName,
+            status: b.status,
+            workStart: b.workStart,
+            workEnd: b.workEnd,
+            nextAvailableAt: b.nextAvailableAt,
+            statusReasonArabic: b.statusReasonArabic,
+          })) || []}
           onCreated={() => {
             fetchFlowBoard();
             showToast('تم إنشاء الحجز بنجاح');

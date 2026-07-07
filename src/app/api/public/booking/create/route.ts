@@ -16,6 +16,7 @@ import {
   getDefaultDuration,
   getServicesDuration,
 } from '@/lib/queueEstimateEngine';
+import { buildSequentialServicePlan, ServicePlanError } from '@/lib/servicePlan';
 import {
   validateBookingSlot,
   BOOKING_SLOT_REASON_AR,
@@ -23,6 +24,7 @@ import {
 } from '@/lib/bookingAvailabilityEngine';
 import {
   assertEmployeeIntervalAvailable,
+  findNextAvailableForEmployee,
   ScheduleConflictError,
 } from '@/lib/scheduleIntegrity';
 import { getCairoBusinessDate } from '@/lib/businessDate';
@@ -200,11 +202,49 @@ export async function POST(req: NextRequest) {
 
     const resolvedEmpId = validation.plan.empId;
     const resolvedEmpName = validation.plan.empName;
-    const endEpochMs = new Date(validation.plan.endAt).getTime();
+
+    if (!serviceIds.length) {
+      return NextResponse.json(
+        { error: 'يجب اختيار خدمة واحدة على الأقل' },
+        { status: 400, headers: PUBLIC_CORS_HEADERS },
+      );
+    }
+
+    let servicePlan;
+    try {
+      servicePlan = await buildSequentialServicePlan({
+        serviceIds,
+        startAt: slotDt,
+        empId: resolvedEmpId!,
+      });
+    } catch (planErr) {
+      if (planErr instanceof ServicePlanError) {
+        return NextResponse.json(
+          { ok: false, code: planErr.code, message: planErr.message },
+          { status: planErr.status, headers: PUBLIC_CORS_HEADERS },
+        );
+      }
+      return NextResponse.json(
+        { error: planErr instanceof Error ? planErr.message : 'خطأ في خطة الخدمات' },
+        { status: 400, headers: PUBLIC_CORS_HEADERS },
+      );
+    }
+
+    const customerDur = servicePlan.totalDurationMinutes;
+    if (validation.plan.durationMinutes !== customerDur) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: 'DURATION_MISMATCH',
+          error: `مدة الموعد (${validation.plan.durationMinutes} د) لا تطابق الخدمات المختارة (${customerDur} د)`,
+        },
+        { status: 409, headers: PUBLIC_CORS_HEADERS },
+      );
+    }
+
+    const endEpochMs = new Date(servicePlan.endAt).getTime();
     const startTimeStr = time + ':00';
     const endTimeStr = `${formatCairoHhmm(endEpochMs, timezone)}:00`;
-    const defaultDur = await getDefaultDuration(db);
-    const customerDur = await getServicesDuration(db, serviceIds, defaultDur);
 
     // ── Upsert customer ───────────────────────────────────────────────────
     const clientId = await upsertCustomer(customer.name, customer.phone);
@@ -224,12 +264,19 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       await transaction.rollback();
       if (err instanceof ScheduleConflictError) {
+        const nextAvailable = await findNextAvailableForEmployee({
+          empId: resolvedEmpId!,
+          operationalDate: getCairoBusinessDate(slotDt),
+          candidateStart: slotDt,
+          durationMinutes: customerDur,
+        });
         return NextResponse.json(
           {
             ok: false,
             code: 'SCHEDULE_CONFLICT',
-            message: 'الوقت المختار لم يعد متاحًا',
+            message: err.message || 'الوقت المختار لم يعد متاحًا',
             conflict: err.conflict,
+            nextAvailable,
           },
           { status: 409, headers: PUBLIC_CORS_HEADERS },
         );
@@ -277,24 +324,15 @@ export async function POST(req: NextRequest) {
       bookingId = ins.recordset[0].BookingID as number;
 
       if (serviceIds.length > 0) {
-        const svcRes = await transaction
-          .request()
-          .query(`
-            SELECT ProID, ProName, SPrice1,
-                   ISNULL(DurationMinutes, ${defaultDur}) AS DurationMinutes
-            FROM [dbo].[TblPro]
-            WHERE ProID IN (${serviceIds.join(",")})
-          `);
-
-        for (const svc of svcRes.recordset) {
+        for (const line of servicePlan.lines) {
           await transaction
             .request()
-            .input("bId", sql.Int, bookingId)
-            .input("proId", sql.Int, svc.ProID)
-            .input("eId", sql.Int, resolvedEmpId!)
-            .input("qty", sql.Decimal, 1)
-            .input("price", sql.Decimal, svc.SPrice1 || 0)
-            .input("mins", sql.Int, svc.DurationMinutes)
+            .input('bId', sql.Int, bookingId)
+            .input('proId', sql.Int, line.serviceId)
+            .input('eId', sql.Int, resolvedEmpId!)
+            .input('qty', sql.Decimal, 1)
+            .input('price', sql.Decimal, line.price)
+            .input('mins', sql.Int, line.durationMinutes)
             .query(`
               INSERT INTO [dbo].[BookingServices]
                 (BookingID, ProID, EmpID, Qty, Price, DurationMinutes)

@@ -26,6 +26,9 @@ export interface QueueTicketsSchema {
   hasBookingID: boolean;                 // EXISTS in actual schema
   hasCustomerName: boolean;              // May or may not exist
   hasCustomerPhone: boolean;             // May or may not exist
+  hasDurationMinutes: boolean;
+  hasExpectedStartAt: boolean;
+  hasExpectedEndAt: boolean;
   allColumns: string[];
 }
 
@@ -75,6 +78,9 @@ export async function detectQueueTicketsSchema(): Promise<QueueTicketsSchema> {
       hasBookingID: columns.includes('bookingid'),
       hasCustomerName: columns.includes('customername'),
       hasCustomerPhone: columns.includes('customerphone'),
+      hasDurationMinutes: columns.includes('durationminutes'),
+      hasExpectedStartAt: columns.includes('expectedstartat'),
+      hasExpectedEndAt: columns.includes('expectedendat'),
       allColumns: columns,
     };
 
@@ -106,6 +112,9 @@ export async function detectQueueTicketsSchema(): Promise<QueueTicketsSchema> {
       hasBookingID: false,
       hasCustomerName: false,
       hasCustomerPhone: false,
+      hasDurationMinutes: false,
+      hasExpectedStartAt: false,
+      hasExpectedEndAt: false,
       allColumns: [],
     };
   }
@@ -179,6 +188,19 @@ export function buildInsertColumns(schema: QueueTicketsSchema): {
   if (schema.hasEstimatedWaitMinutes) {
     columns.push('EstimatedWaitMinutes');
     paramNames.push('@estimatedWaitMinutes');
+  }
+
+  if (schema.hasDurationMinutes) {
+    columns.push('DurationMinutes');
+    paramNames.push('@durationMinutes');
+  }
+  if (schema.hasExpectedStartAt) {
+    columns.push('ExpectedStartAt');
+    paramNames.push('@expectedStartAt');
+  }
+  if (schema.hasExpectedEndAt) {
+    columns.push('ExpectedEndAt');
+    paramNames.push('@expectedEndAt');
   }
 
   if (schema.hasWaitingCountAtCreation) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Search, UserPlus, X, Phone, User, Cake, FileText, AlertCircle, Pencil, Sparkles } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ interface CustomerSearchProps {
   onQuickAdd: (prefill?: string) => void;
   onCompleteData?: (customer: Customer) => void;
   onEditCustomer?: (customer: Customer) => void;
+  updatedCustomer?: Customer | null;
   className?: string;
   inputClassName?: string;
 }
@@ -28,6 +29,7 @@ export default function CustomerSearch({
   onQuickAdd,
   onCompleteData,
   onEditCustomer,
+  updatedCustomer,
   className,
   inputClassName,
 }: CustomerSearchProps) {
@@ -39,6 +41,14 @@ export default function CustomerSearch({
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // Patch local results cache when a customer is updated externally
+  useEffect(() => {
+    if (!updatedCustomer) return;
+    setResults((prev) =>
+      prev.map((c) => (c.ClientID === updatedCustomer.ClientID ? updatedCustomer : c))
+    );
+  }, [updatedCustomer]);
 
   const search = useCallback(async (q: string) => {
     if (q.length < 1) { setResults([]); setSearched(false); return; }
@@ -75,10 +85,15 @@ export default function CustomerSearch({
     return new Date(dateStr).toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
-  const missingSource = selected && isCustomerSourceMissing(selected.CameFrom);
-  const hasMissingData = selected && isCustomerIncomplete(selected);
+  const effectiveSelected = useMemo(() => {
+    if (!selected || !updatedCustomer) return selected;
+    return selected.ClientID === updatedCustomer.ClientID ? updatedCustomer : selected;
+  }, [selected, updatedCustomer]);
 
-  if (selected) {
+  const missingSource = effectiveSelected && isCustomerSourceMissing(effectiveSelected.CameFrom);
+  const hasMissingData = effectiveSelected && isCustomerIncomplete(effectiveSelected);
+
+  if (effectiveSelected) {
     return (
       <div className="rounded-lg border border-border bg-card p-3">
         <div className="flex items-center justify-between mb-1">
@@ -92,27 +107,27 @@ export default function CustomerSearch({
             <User className="w-4 h-4" />
           </div>
           <div className="min-w-0 space-y-0.5">
-            <p className="font-semibold text-sm">{selected.Name}</p>
-            {selected.Mobile && (
+            <p className="font-semibold text-sm">{effectiveSelected.Name}</p>
+            {effectiveSelected.Mobile && (
               <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Phone className="w-3 h-3" /> {selected.Mobile}
+                <Phone className="w-3 h-3" /> {effectiveSelected.Mobile}
               </p>
             )}
-            {selected.BirthDate && (
+            {effectiveSelected.BirthDate && (
               <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Cake className="w-3 h-3" /> {formatBirthDate(selected.BirthDate)}
+                <Cake className="w-3 h-3" /> {formatBirthDate(effectiveSelected.BirthDate)}
               </p>
             )}
-            {selected.Notes && (
+            {effectiveSelected.Notes && (
               <p className="text-xs text-muted-foreground flex items-center gap-1">
                 <FileText className="w-3 h-3" />
-                <span className="truncate max-w-[200px]">{selected.Notes}</span>
+                <span className="truncate max-w-[200px]">{effectiveSelected.Notes}</span>
               </p>
             )}
-            {selected.CameFrom && (
+            {effectiveSelected.CameFrom && (
               <p className="text-xs text-primary/90 flex items-center gap-1">
                 <Sparkles className="w-3 h-3" />
-                <span>عرفنا منين: {formatCustomerSourceDisplay(selected.CameFrom, selected.CameFromDetails, selected.ReferralCode)}</span>
+                <span>عرفنا منين: {formatCustomerSourceDisplay(effectiveSelected.CameFrom, effectiveSelected.CameFromDetails, effectiveSelected.ReferralCode)}</span>
               </p>
             )}
           </div>
@@ -121,19 +136,19 @@ export default function CustomerSearch({
         {/* Missing data warning - only when data is incomplete */}
         {hasMissingData && onCompleteData && (
           <button
-            onClick={() => onCompleteData(selected)}
+            onClick={() => onCompleteData(effectiveSelected)}
             className="mt-2.5 w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-warning/30 bg-warning/5 text-warning text-xs font-medium hover:bg-warning/10 transition-colors"
           >
             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
             <span>
-              {missingSource && !selected.BirthDate && !selected.Address
+              {missingSource && !effectiveSelected.BirthDate && !effectiveSelected.Address
                 ? 'بيانات ناقصة — مصدر العميل غير مسجل'
                 : 'بيانات ناقصة — اضغط لإتمامها'}
             </span>
             <span className="mr-auto flex gap-0.5">
-              {!selected.BirthDate && <span className="w-1.5 h-1.5 rounded-full bg-warning" />}
-              {!selected.Address   && <span className="w-1.5 h-1.5 rounded-full bg-warning" />}
-              {missingSource       && <span className="w-1.5 h-1.5 rounded-full bg-warning" />}
+              {!effectiveSelected.BirthDate && <span className="w-1.5 h-1.5 rounded-full bg-warning" />}
+              {!effectiveSelected.Address   && <span className="w-1.5 h-1.5 rounded-full bg-warning" />}
+              {missingSource                && <span className="w-1.5 h-1.5 rounded-full bg-warning" />}
             </span>
           </button>
         )}
@@ -141,7 +156,7 @@ export default function CustomerSearch({
         {/* Edit customer button - always visible when customer is selected */}
         {onEditCustomer && (
           <button
-            onClick={() => onEditCustomer(selected)}
+            onClick={() => onEditCustomer(effectiveSelected)}
             className="mt-2 w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-info/30 bg-info/5 text-info text-xs font-medium hover:bg-info/10 transition-colors"
           >
             <Pencil className="w-3.5 h-3.5 shrink-0" />

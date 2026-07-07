@@ -22,6 +22,8 @@ import {
 } from './schedulerUtils';
 import { OPS_LAYOUT } from './operationsLayout.constants';
 import type { ActiveDragState } from './useBookingDragReschedule';
+import { BarberHeaderQueueButton } from './BarberHeaderQueueButton';
+import { getBarberQueueButtonState } from '@/lib/barberQueueButton';
 import { cn } from '@/lib/utils';
 
 interface Barber {
@@ -85,6 +87,11 @@ interface Props {
   className?: string;
   drag?: DragHandlers;
   cutPaste?: CutPasteHandlers;
+  onQueueClick?: (barber: Barber) => void;
+  queueButtonLoading?: boolean;
+  queueSourceHighlighted?: boolean;
+  canCreateQueue?: boolean;
+  scheduleLoading?: boolean;
 }
 
 const SCHEDULED_TYPES = new Set<TimelineItem['type']>(['booking', 'queue', 'in_service']);
@@ -104,6 +111,11 @@ export function BarberLane({
   className,
   drag,
   cutPaste,
+  onQueueClick,
+  queueButtonLoading = false,
+  queueSourceHighlighted = false,
+  canCreateQueue = true,
+  scheduleLoading = false,
 }: Props) {
   const laneBodyRef = useRef<HTMLDivElement>(null);
   const barberColor = color || {
@@ -146,6 +158,11 @@ export function BarberLane({
 
   const moveModeActive = !!cutPaste?.moveSession;
   const movedBookingId = cutPaste?.moveSession?.appointmentId ?? null;
+
+  const queueButtonState = getBarberQueueButtonState(barber, {
+    scheduleLoading,
+    canCreateQueue,
+  });
 
   return (
     <div
@@ -190,6 +207,15 @@ export function BarberLane({
                 </span>
               </div>
             </div>
+            {onQueueClick && (
+              <BarberHeaderQueueButton
+                enabled={queueButtonState.enabled}
+                tooltip={queueButtonState.tooltip}
+                loading={queueButtonLoading}
+                highlighted={queueSourceHighlighted}
+                onClick={() => onQueueClick(barber)}
+              />
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5 text-xs">

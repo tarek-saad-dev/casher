@@ -13,8 +13,7 @@ import { QueueTicketDetailsModal } from './QueueTicketDetailsModal';
 import { TransferBarberModal }    from './TransferBarberModal';
 import { speakQueueTicket }       from '@/lib/queueVoice';
 import { printQueueTicket }       from '@/lib/printQueueTicket';
-import type { QueueTicketPrintData } from '@/components/queue/QueueTicketPrint';
-import { normalizeQueueTicket }   from '@/lib/queueTicketNormalizer';
+import { normalizeQueueTicket, normalizedTicketToPrintData }   from '@/lib/queueTicketNormalizer';
 
 // ── constants ────────────────────────────────────────────────────────────────
 
@@ -134,16 +133,7 @@ function TicketCard({ ticket: t, allBarbers, onAction, onRefresh }: CardProps) {
 
   const handlePrint = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const data: QueueTicketPrintData = {
-      ticketCode:           t.ticketCode,
-      clientName:           t.clientName,
-      empName:              t.barberName,
-      queueDate:            t.queueDate,
-      createdTime:          t.createdTime,
-      estimatedWaitMinutes: t.estimatedWaitMinutes ?? undefined,
-      estimatedStartTime:   t.estimatedStartTime   ?? undefined,
-    };
-    printQueueTicket(data);
+    printQueueTicket(normalizedTicketToPrintData(t));
   };
 
   return (
@@ -218,7 +208,7 @@ function TicketCard({ ticket: t, allBarbers, onAction, onRefresh }: CardProps) {
           onClose={() => { setSelectedModal(false); onRefresh(); }}
           onAction={async (id, action, extra) => { await onAction(id, action, extra); setSelectedModal(false); onRefresh(); }}
           onTransfer={raw => { setTransferModal(true); setSelectedModal(false); }}
-          onPrint={raw => { const n = normalizeQueueTicket(raw); printQueueTicket({ ticketCode: n.ticketCode, clientName: n.clientName, empName: n.barberName, queueDate: n.queueDate, createdTime: n.createdTime }); }}
+          onPrint={raw => printQueueTicket(normalizedTicketToPrintData(normalizeQueueTicket(raw)))}
         />
       )}
       {transferModal && (

@@ -10,6 +10,7 @@ interface Service {
   ProID: number;
   ProName: string;
   DurationMinutes: number | null;
+  SPrice?: number;
 }
 
 interface Barber {
@@ -56,14 +57,6 @@ interface Props {
   debugInfo?: { source: string; count: number; timestamp: string };
 }
 
-const SERVICES: Service[] = [
-  { ProID: 1, ProName: 'Hair Cut', DurationMinutes: 30 },
-  { ProID: 2, ProName: 'Beard Styling & Fade', DurationMinutes: 30 },
-  { ProID: 3, ProName: 'Haircut & Beard', DurationMinutes: 45 },
-  { ProID: 4, ProName: 'Fade Cut', DurationMinutes: 30 },
-  { ProID: 5, ProName: 'Advanced Cut', DurationMinutes: 45 },
-];
-
 function formatTime(iso: string): string {
   const d = new Date(iso);
   const h = d.getHours();
@@ -76,7 +69,8 @@ function formatTime(iso: string): string {
 export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, debugInfo }: Props) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedBarber, setSelectedBarber] = useState<Barber | null>(null);
-  const [selectedService, setSelectedService] = useState<Service | null>(null);
+  const [services, setServices] = useState<Service[]>([]);
+  const [selectedServices, setSelectedServices] = useState<Service[]>([]);
   const [simulateResult, setSimulateResult] = useState<SimulateResult | null>(null);
   const [createResult, setCreateResult] = useState<CreateResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -92,6 +86,29 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
   const [customerFound, setCustomerFound] = useState<boolean | null>(null);
 
   const customerDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const totalDuration = selectedServices.reduce(
+    (s, svc) => s + (svc.DurationMinutes ?? 30),
+    0,
+  );
+  const totalPrice = selectedServices.reduce((s, svc) => s + (svc.SPrice ?? 0), 0);
+
+  const toggleService = (svc: Service) => {
+    setSelectedServices((prev) =>
+      prev.some((s) => s.ProID === svc.ProID)
+        ? prev.filter((s) => s.ProID !== svc.ProID)
+        : [...prev, svc],
+    );
+    setSimulateResult(null);
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/services?active=true')
+      .then((r) => r.json())
+      .then((d) => setServices(d.services ?? d ?? []))
+      .catch(() => {});
+  }, [isOpen]);
 
   // Debug logging - show all barbers and filtering
   useEffect(() => {
@@ -142,7 +159,7 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
     if (!isOpen) {
       setStep(1);
       setSelectedBarber(null);
-      setSelectedService(null);
+      setSelectedServices([]);
       setSimulateResult(null);
       setCreateResult(null);
       setError(null);
@@ -154,48 +171,48 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
     }
   }, [isOpen]);
 
-  // Call simulate when barber and service selected
-  useEffect(() => {
-    if (!selectedBarber || !selectedService) return;
+  const runSimulate = useCallback(async () => {
+    if (!selectedBarber || !selectedServices.length) return;
 
     setLoading(true);
     setError(null);
+    setSimulateResult(null);
 
     const browserNow = new Date();
+    const serviceIds = selectedServices.map((s) => s.ProID);
     const simulatePayload = {
       empId: selectedBarber.empId,
-      serviceIds: [selectedService.ProID],
+      serviceIds,
       requestedAt: browserNow.toISOString(),
     };
     console.log('[simulate payload]', {
-      empId: selectedBarber.empId,
-      serviceIds: [selectedService.ProID],
-      requestedAt: browserNow.toISOString(),
-      browserNowLocal: browserNow.toLocaleString('ar-EG', { timeZone: 'Africa/Cairo' }),
-      browserTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ...simulatePayload,
       barberName: selectedBarber.empName,
-      serviceName: selectedService.ProName,
-      serviceDuration: selectedService.DurationMinutes,
+      totalDuration,
     });
 
-    fetch('/api/operations/queue/simulate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(simulatePayload),
-    })
-      .then(r => r.json())
-      .then((result: SimulateResult) => {
-        console.log('=== SIMULATE RESPONSE ===', result);
-        setSimulateResult(result);
-        if (result.decision === 'outside_hours') {
-          setError('الصنايعي خارج مواعيد العمل');
-        } else {
-          setStep(3);
-        }
-      })
-      .catch(() => setError('فشل في حساب الوقت المتوقع'))
-      .finally(() => setLoading(false));
-  }, [selectedBarber, selectedService]);
+    try {
+      const res = await fetch('/api/operations/queue/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(simulatePayload),
+      });
+      const result: SimulateResult = await res.json();
+      console.log('=== SIMULATE RESPONSE ===', result);
+      setSimulateResult(result);
+      if (result.decision === 'outside_hours') {
+        setError('الصنايعي خارج مواعيد العمل');
+      } else if (result.decision === 'no_gap_found') {
+        setError(`لا توجد فترة متصلة مدتها ${totalDuration} دقيقة مع ${selectedBarber.empName}`);
+      } else {
+        setStep(3);
+      }
+    } catch {
+      setError('فشل في حساب الوقت المتوقع');
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedBarber, selectedServices, totalDuration]);
 
   // Customer search function with debounce
   const searchCustomerByPhone = useCallback(async (phone: string) => {
@@ -260,7 +277,7 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
   };
 
   const handleCreate = async () => {
-    if (!simulateResult || !selectedBarber || !selectedService) return;
+    if (!simulateResult || !selectedBarber || !selectedServices.length) return;
     console.log('=== CREATE START ===');
 
     setLoading(true);
@@ -269,7 +286,7 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
     try {
       const createPayload = {
         empId: selectedBarber.empId,
-        serviceIds: [selectedService.ProID],
+        serviceIds: selectedServices.map((s) => s.ProID),
         customer: {
           clientId: customerId || undefined,
           name: customerName.trim() || (customerId ? undefined : 'عميل مباشر'),
@@ -317,7 +334,7 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
       setSimulateResult(null);
     } else if (step === 2) {
       setStep(1);
-      setSelectedService(null);
+      setSelectedServices([]);
     }
   };
 
@@ -400,7 +417,7 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
             </div>
           )}
 
-          {/* Step 2: Select Service */}
+          {/* Step 2: Select Services */}
           {step === 2 && selectedBarber && (
             <div className="space-y-3">
               <div className="mb-4 p-3 bg-blue-50 rounded-lg">
@@ -408,39 +425,63 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
                 <div className="font-semibold text-blue-900">{selectedBarber.empName}</div>
               </div>
 
+              {selectedServices.length > 0 && (
+                <div className="p-3 bg-green-50 rounded-lg text-sm text-green-900">
+                  {selectedServices.length} خدمة — {totalDuration} دقيقة
+                  {totalPrice > 0 ? ` — ${totalPrice} ج.م` : ''}
+                </div>
+              )}
+
               {loading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                   <span className="mr-3 text-gray-600">جاري حساب الوقت...</span>
                 </div>
               ) : (
-                SERVICES.map(service => (
-                  <button
-                    key={service.ProID}
-                    onClick={() => setSelectedService(service)}
-                    className={`w-full p-4 border rounded-xl transition-all text-right ${
-                      selectedService?.ProID === service.ProID
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'hover:border-blue-500 hover:bg-blue-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
-                          <Scissors className="w-5 h-5 text-gray-600" />
-                        </div>
-                        <div className="font-medium text-gray-900">{service.ProName}</div>
-                      </div>
-                      <div className="text-sm text-gray-500">{service.DurationMinutes} دقيقة</div>
-                    </div>
-                  </button>
-                ))
+                <>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {services.map((service) => {
+                      const sel = selectedServices.some((s) => s.ProID === service.ProID);
+                      return (
+                        <button
+                          key={service.ProID}
+                          onClick={() => toggleService(service)}
+                          className={`w-full p-4 border rounded-xl transition-all text-right ${
+                            sel ? 'border-blue-500 bg-blue-50' : 'hover:border-blue-500 hover:bg-blue-50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              {sel ? (
+                                <CheckCircle2 className="w-5 h-5 text-blue-600" />
+                              ) : (
+                                <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
+                                  <Scissors className="w-5 h-5 text-gray-600" />
+                                </div>
+                              )}
+                              <div className="font-medium text-gray-900">{service.ProName}</div>
+                            </div>
+                            <div className="text-sm text-gray-500">{service.DurationMinutes ?? 30} دقيقة</div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {selectedServices.length > 0 && (
+                    <button
+                      onClick={runSimulate}
+                      className="w-full py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                    >
+                      التالي: حساب الوقت ({totalDuration} دقيقة)
+                    </button>
+                  )}
+                </>
               )}
             </div>
           )}
 
           {/* Step 3: Confirm */}
-          {step === 3 && simulateResult && selectedBarber && selectedService && (
+          {step === 3 && simulateResult && selectedBarber && selectedServices.length > 0 && (
             <div className="space-y-4">
               {/* Success Message */}
               {createResult ? (

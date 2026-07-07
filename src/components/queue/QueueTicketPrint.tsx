@@ -13,6 +13,8 @@ export interface QueueTicketPrintData {
   waitingBefore?: number | null;
   estimatedWaitMinutes?: number | null;
   estimatedStartTime?: string | null;
+  totalDurationMinutes?: number | null;
+  estimatedEndTime?: string | null;
 }
 
 interface Props {
@@ -161,6 +163,8 @@ export function QueueTicketPrint({ data, preview = false }: Props) {
     waitingBefore,
     estimatedWaitMinutes,
     estimatedStartTime,
+    totalDurationMinutes,
+    estimatedEndTime,
   } = data;
 
   const dateLabel = queueDate
@@ -177,6 +181,16 @@ export function QueueTicketPrint({ data, preview = false }: Props) {
   const estTimeLabel = estimatedStartTime
     ? (() => {
         const d = new Date(estimatedStartTime);
+        const h = d.getHours() % 12 || 12;
+        const m = String(d.getMinutes()).padStart(2, '0');
+        const p = d.getHours() < 12 ? 'ص' : 'م';
+        return `${h}:${m} ${p}`;
+      })()
+    : null;
+
+  const estEndLabel = estimatedEndTime
+    ? (() => {
+        const d = new Date(estimatedEndTime);
         const h = d.getHours() % 12 || 12;
         const m = String(d.getMinutes()).padStart(2, '0');
         const p = d.getHours() < 12 ? 'ص' : 'م';
@@ -263,8 +277,20 @@ export function QueueTicketPrint({ data, preview = false }: Props) {
         })()}
         {estTimeLabel && (
           <div className="r-row">
-            <span className="r-lbl">الدخول المتوقع</span>
+            <span className="r-lbl">وقت الدخول المتوقع</span>
             <span className="r-val" dir="ltr">{estTimeLabel}</span>
+          </div>
+        )}
+        {estEndLabel && (
+          <div className="r-row">
+            <span className="r-lbl">وقت الانتهاء المتوقع</span>
+            <span className="r-val" dir="ltr">{estEndLabel}</span>
+          </div>
+        )}
+        {totalDurationMinutes != null && totalDurationMinutes > 0 && (
+          <div className="r-row">
+            <span className="r-lbl">المدة</span>
+            <span className="r-val">{totalDurationMinutes} دقيقة</span>
           </div>
         )}
         {estimatedWaitMinutes != null && estimatedWaitMinutes > 0 && (

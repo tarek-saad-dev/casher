@@ -22,6 +22,9 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as CreateQueueRequest;
 
+    const useClientPlannedTimes =
+      body.source === 'operations_barber_header' || body.useClientPlannedTimes === true;
+
     const input: CreateOperationsQueueInput = {
       empId: body.empId,
       serviceIds: body.serviceIds,
@@ -29,6 +32,8 @@ export async function POST(req: NextRequest) {
       expectedStartTime: body.expectedStartTime,
       expectedEndTime: body.expectedEndTime,
       source: body.source,
+      trustExpectedStart: useClientPlannedTimes,
+      useClientPlannedTimes,
     };
 
     const response = await createOperationsQueueTicket(input);
