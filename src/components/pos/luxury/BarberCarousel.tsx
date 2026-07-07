@@ -3,12 +3,14 @@
 import { useRef } from 'react';
 import { Star, Check, ChevronLeft, ChevronRight, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { deriveAttendanceDisplay, type TeamAttendanceMember } from '@/lib/teamAttendance';
 import type { Barber } from '@/lib/types';
 
 interface BarberCarouselProps {
   barbers: Barber[];
   selected: Barber | null;
   onSelect: (barber: Barber) => void;
+  attendanceByEmpId?: Map<number, TeamAttendanceMember>;
 }
 
 // Barber images mapping
@@ -47,7 +49,7 @@ const getBarberRating = (name: string): number => {
   return ratings[name] || 4.5;
 };
 
-export default function BarberCarousel({ barbers, selected, onSelect }: BarberCarouselProps) {
+export default function BarberCarousel({ barbers, selected, onSelect, attendanceByEmpId }: BarberCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scroll = (direction: 'left' | 'right') => {
@@ -104,6 +106,8 @@ export default function BarberCarousel({ barbers, selected, onSelect }: BarberCa
           const hasNoPhoto = NO_PHOTO_EMPLOYEES.includes(barber.EmpName);
           const imageSrc = hasNoPhoto ? undefined : (BARBER_IMAGES[barber.EmpName] || '/barber-bassem.jpg');
           const initials = barber.EmpName.split(' ').map(n => n[0]).join('').slice(0, 2);
+          const attendance = attendanceByEmpId?.get(barber.EmpID);
+          const attendanceDisplay = attendance ? deriveAttendanceDisplay(attendance) : null;
 
           return (
             <button
@@ -149,6 +153,17 @@ export default function BarberCarousel({ barbers, selected, onSelect }: BarberCa
               )}>
                 {barber.EmpName}
               </span>
+
+              {attendanceDisplay && (
+                <span
+                  className={cn(
+                    'mb-1 max-w-[88px] truncate rounded-full border px-1.5 py-0.5 text-[9px] font-medium',
+                    attendanceDisplay.badgeClassName,
+                  )}
+                >
+                  {attendanceDisplay.badgeLabel}
+                </span>
+              )}
 
               {/* Rating */}
               <div className="flex items-center gap-1">

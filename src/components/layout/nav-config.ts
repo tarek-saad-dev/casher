@@ -8,7 +8,7 @@ import {
   Calculator, Settings, Scissors, Tags, Shield, Activity, Star,
   UsersRound, FileBarChart, Calendar, Ticket, CalendarCheck, MonitorPlay,
   AlertTriangle, Crown, KeyRound, FileKey2, Banknote, ShieldCheck, Users,
-  HeartHandshake,
+  HeartHandshake, Layers, Beaker, Settings2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -167,6 +167,9 @@ export const NAV_SECTIONS: NavSection[] = [
     icon: AlertTriangle,
     items: [
       { href: '/admin/audit/unspecified-payment-methods', label: 'تدقيق طرق الدفع', icon: AlertTriangle, badge: 'payment-audit' },
+      { href: '/admin/audit/cash-move-classification', label: 'تدقيق تصنيف الخزنة', icon: Layers },
+      { href: '/admin/accounting/classification-lab', label: 'معمل التصنيف المحاسبي', icon: Beaker },
+      { href: '/admin/accounting/classification-settings', label: 'إعدادات التصنيف', icon: Settings2 },
     ],
   },
   {

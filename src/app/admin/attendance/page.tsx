@@ -85,7 +85,7 @@ export default function AttendancePage() {
     setSuccessMsg('');
     setDirty(new Set());
     try {
-      const res = await fetch(`/api/admin/attendance?date=${targetDate}`);
+      const res = await fetch(`/api/admin/attendance?date=${targetDate}&onlyPayrollEnabled=true`);
       const data = await res.json();
       if (data.success) {
         setAttendance(data.attendance);

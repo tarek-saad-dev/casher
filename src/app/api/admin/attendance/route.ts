@@ -68,7 +68,7 @@ function calcEarlyLeaveMinutes(
   return calcEarlyLeave(checkOut, scheduledEnd);
 }
 
-// GET /api/admin/attendance?date=YYYY-MM-DD
+// GET /api/admin/attendance?date=YYYY-MM-DD&onlyPayrollEnabled=true
 export async function GET(req: NextRequest) {
   try {
     const session = await getSession();
@@ -78,6 +78,7 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const dateStr = searchParams.get("date");
+    const onlyPayrollEnabled = searchParams.get("onlyPayrollEnabled") === "true";
     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
       return NextResponse.json(
         { error: "التاريخ مطلوب بصيغة YYYY-MM-DD" },
@@ -119,6 +120,7 @@ export async function GET(req: NextRequest) {
         LEFT JOIN dbo.TblEmpAttendance a
           ON a.EmpID = e.EmpID AND a.WorkDate = @workDate
         WHERE ISNULL(e.isActive, 1) = 1
+          ${onlyPayrollEnabled ? "AND ISNULL(e.IsPayrollEnabled, 1) = 1" : ""}
         ORDER BY e.EmpName
       `);
 

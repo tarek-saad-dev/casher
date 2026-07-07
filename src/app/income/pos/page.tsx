@@ -24,6 +24,8 @@ import ClientVouchersModal from '@/components/pos/ClientVouchersModal';
 import ShiftRequiredOverlay from '@/components/session/ShiftRequiredOverlay';
 import DayRolloverModal from '@/components/session/DayRolloverModal';
 import CloseDayModal from '@/components/session/CloseDayModal';
+import TeamAttendanceWidget from '@/components/pos/TeamAttendanceWidget';
+import { useTeamAttendance } from '@/hooks/useTeamAttendance';
 import { useSaleState } from '@/hooks/useSaleState';
 import { useSession } from '@/hooks/useSession';
 import { useDayRollover } from '@/hooks/useDayRollover';
@@ -122,6 +124,15 @@ export default function PosPage() {
   const [isQuickExpenseOpen, setIsQuickExpenseOpen] = useState(false);
   const [isQuickIncomeOpen, setIsQuickIncomeOpen] = useState(false);
   const [isRecentInvoicesOpen, setIsRecentInvoicesOpen] = useState(false);
+
+  const {
+    team: teamAttendance,
+    date: attendanceDate,
+    loading: attendanceLoading,
+    error: attendanceError,
+    attendanceMap,
+    refresh: refreshAttendance,
+  } = useTeamAttendance();
 
   // ───────────────── Wrap setCustomer ─────────────────
   const setCustomer = useCallback((c: Customer | null) => {
@@ -578,6 +589,14 @@ export default function PosPage() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      <TeamAttendanceWidget
+        team={teamAttendance}
+        date={attendanceDate}
+        loading={attendanceLoading}
+        error={attendanceError}
+        onRefresh={refreshAttendance}
+      />
+
       {/* ═══════ MOBILE LAYOUT (< md) ═══════ */}
       <div className="pos-mobile-workspace flex h-full min-h-0 flex-col md:hidden">
         <ShiftRequiredOverlay />
@@ -616,6 +635,7 @@ export default function PosPage() {
             barbers={barbers}
             selected={state.barber}
             onSelect={setBarber}
+            attendanceByEmpId={attendanceMap}
           />
           <Separator className="bg-border" />
           <ServiceCatalog
@@ -688,6 +708,7 @@ export default function PosPage() {
             barbers={barbers}
             selected={state.barber}
             onSelect={setBarber}
+            attendanceByEmpId={attendanceMap}
           />
           <Separator className="bg-border" />
           <ServiceCatalog

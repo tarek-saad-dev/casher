@@ -72,6 +72,9 @@ const PAGES = [
   { key: 'cut_club.main',          name: 'CUT CLUB',               path: '/admin/cut-club',                  section: 'CUT CLUB',           access: 'roles', sort: 6 },
   // Audit
   { key: 'audit.payment_methods',  name: 'تدقيق طرق الدفع',       path: '/admin/audit/unspecified-payment-methods', section: 'التدقيق', access: 'roles', sort: 110 },
+  { key: 'audit.cash_move_classification', name: 'تدقيق تصنيف الخزنة', path: '/admin/audit/cash-move-classification', section: 'التدقيق', access: 'roles', sort: 111 },
+  { key: 'accounting.classification_lab', name: 'معمل التصنيف المحاسبي', path: '/admin/accounting/classification-lab', section: 'التدقيق', access: 'roles', sort: 112 },
+  { key: 'accounting.classification_settings', name: 'إعدادات التصنيف المحاسبي', path: '/admin/accounting/classification-settings', section: 'التدقيق', access: 'roles', sort: 113 },
   // Permissions (super_admin_only)
   { key: 'admin.permissions.users',name: 'صلاحيات المستخدمين',    path: '/admin/permissions/users',         section: 'الإدارة',            access: 'super_admin_only', sort: 200 },
   { key: 'admin.permissions.pages',name: 'صلاحيات الصفحات',       path: '/admin/permissions/pages',         section: 'الإدارة',            access: 'super_admin_only', sort: 201 },
@@ -105,6 +108,9 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
       'admin.categories','admin.loyalty','admin.shift','admin.settings','admin.queue_settings',
       'operations.main','cut_club.main',
       'audit.payment_methods',
+      'audit.cash_move_classification',
+      'accounting.classification_lab',
+      'accounting.classification_settings',
     ],
     canEdit: true, canDelete: false,
   },

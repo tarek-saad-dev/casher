@@ -68,6 +68,9 @@ export const SYSTEM_PAGES: PageDefinition[] = [
   { key: 'cut_club.main',           name: 'CUT CLUB',                path: '/admin/cut-club',                  section: 'CUT CLUB',          accessMode: 'roles', sort: 6,   defaultRoles: ['super_admin','admin'] },
   // ── Audit ────────────────────────────────────────────────────────────────────
   { key: 'audit.payment_methods',   name: 'تدقيق طرق الدفع',        path: '/admin/audit/unspecified-payment-methods', section: 'التدقيق', accessMode: 'roles', sort: 110, defaultRoles: ['super_admin','admin'] },
+  { key: 'audit.cash_move_classification', name: 'تدقيق تصنيف الخزنة', path: '/admin/audit/cash-move-classification', section: 'التدقيق', accessMode: 'roles', sort: 111, defaultRoles: ['super_admin','admin'] },
+  { key: 'accounting.classification_lab', name: 'معمل التصنيف المحاسبي', path: '/admin/accounting/classification-lab', section: 'التدقيق', accessMode: 'roles', sort: 112, defaultRoles: ['super_admin','admin'] },
+  { key: 'accounting.classification_settings', name: 'إعدادات التصنيف المحاسبي', path: '/admin/accounting/classification-settings', section: 'التدقيق', accessMode: 'roles', sort: 113, defaultRoles: ['super_admin','admin'] },
   // ── Permissions (super_admin_only) ───────────────────────────────────────────
   { key: 'admin.permissions.users', name: 'صلاحيات المستخدمين',     path: '/admin/permissions/users',         section: 'الإدارة',           accessMode: 'super_admin_only', sort: 200 },
   { key: 'admin.permissions.pages', name: 'صلاحيات الصفحات',        path: '/admin/permissions/pages',         section: 'الإدارة',           accessMode: 'super_admin_only', sort: 201 },
