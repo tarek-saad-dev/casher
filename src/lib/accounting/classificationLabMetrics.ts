@@ -337,7 +337,7 @@ export function computeLabKpis(
     const amt = Math.abs(row.amount);
     if (row.suggestedFlowGroup === 'transfer') internalTransfersTotal += amt;
     if (row.suggestedPnlImpact === 'none') nonPnlAmount += amt;
-    else if (row.suggestedPnlImpact !== 'none') pnlImpactingAmount += amt;
+    else pnlImpactingAmount += amt;
   }
 
   const transferBucket = summary.byFlowGroup.find((b) => b.key === 'transfer');

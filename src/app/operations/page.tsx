@@ -583,7 +583,6 @@ export default function OperationsPage() {
           open={showBookingDrawer}
           onClose={() => setShowBookingDrawer(false)}
           initialDate={bookingInitialData.date}
-          initialTime={bookingInitialData.time}
           initialEmpId={bookingInitialData.empId}
           initialBarberName={bookingInitialData.barberName}
           initialTimeRangeStart={bookingInitialData.timeRangeStart}
