@@ -13,6 +13,7 @@ interface ExpenseReceiptData {
   PaymentMethod: string | null;
   Notes: string | null;
   UserName: string | null;
+  ledgerNote?: string | null;
 }
 
 interface ExpenseReceiptPopupProps {
@@ -356,6 +357,10 @@ export default function ExpenseReceiptPopup({ open, expense, onClose }: ExpenseR
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {expense.ledgerNote ? (
+          <p className="text-xs text-green-600 mb-2">{expense.ledgerNote}</p>
+        ) : null}
 
         {/* Receipt Mini Preview */}
         <div className="bg-white border border-black rounded p-2 mb-3 text-black" dir="rtl">

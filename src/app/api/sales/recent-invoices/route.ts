@@ -53,6 +53,7 @@ const LIST_SELECT = `
     h.invID AS InvID,
     h.invID AS InvNo,
     h.invDate AS InvDate,
+    h.invTime AS InvTime,
     ISNULL(h.GrandTotal, 0) AS TotalPrice,
     ISNULL(h.PayCash, 0) + ISNULL(h.PayVisa, 0) AS PaidAmount,
     CASE

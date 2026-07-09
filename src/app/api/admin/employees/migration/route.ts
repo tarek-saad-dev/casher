@@ -66,7 +66,29 @@ export async function POST() {
           ALTER TABLE dbo.TblEmp ADD HireDate DATE NULL;
           PRINT N'Added HireDate column';
       END
+
+      -- WhatsApp (employee sale notifications)
+      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'WhatsApp')
+      BEGIN
+          ALTER TABLE dbo.TblEmp ADD WhatsApp NVARCHAR(30) NULL;
+          PRINT N'Added WhatsApp column';
+      END
     `);
+
+    const whatsAppCol = await db.request().query(`
+      SELECT COUNT(*) AS cnt
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'WhatsApp'
+    `);
+    if (whatsAppCol.recordset[0]?.cnt === 1) {
+      await db.request().query(`
+        UPDATE dbo.TblEmp
+        SET WhatsApp = NULLIF(LTRIM(RTRIM(Mobile)), N'')
+        WHERE WhatsApp IS NULL
+          AND Mobile IS NOT NULL
+          AND LTRIM(RTRIM(Mobile)) <> N'';
+      `);
+    }
 
     // Create TblEmpWorkSchedule table if it doesn't exist
     const scheduleResult = await db.request().query(`

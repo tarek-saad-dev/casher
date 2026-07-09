@@ -301,7 +301,11 @@ export default function ExpensesPage() {
       }
 
       const result = await res.json();
-      setSaveSuccess(`✅ تم تسجيل المصروف بنجاح — #${result.invID} (${result.catName}: ${result.amount} ج.م)`);
+      let successMsg = `✅ تم تسجيل المصروف بنجاح — #${result.invID} (${result.catName}: ${result.amount} ج.م)`;
+      if (result.ledgerDualWrite) {
+        successMsg += ' — تم تسجيل السلفة في دفتر الموظف';
+      }
+      setSaveSuccess(successMsg);
 
       // Get current date and time for receipt
       const now = new Date();

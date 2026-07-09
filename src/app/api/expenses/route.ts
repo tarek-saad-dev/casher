@@ -3,6 +3,14 @@ import { getPool, sql, allocateInvID } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import type { CreateExpensePayload } from '@/lib/types';
 import { randomUUID } from 'crypto';
+import {
+  EmployeeLedgerDualWriteError,
+  formatLedgerEntryDate,
+  maybeSyncAdvanceLedgerForExpenseCashMove,
+} from '@/lib/services/employeeLedgerDualWrite';
+import {
+  maybeScheduleAdvanceWhatsAppFromExpenseCategory,
+} from '@/lib/services/employeeAdvanceWhatsAppNotify';
 
 // GET /api/expenses — List expenses with optional filters
 export async function GET(req: NextRequest) {
@@ -208,10 +216,24 @@ export async function POST(req: NextRequest) {
       if (dupCheck.recordset.length > 0) {
         const dup = dupCheck.recordset[0];
         log('idempotency-detected', { existingId: dup.ID, existingInvID: dup.invID });
+        const ledgerResult = await maybeSyncAdvanceLedgerForExpenseCashMove(db, transaction, {
+          cashMoveId: dup.ID,
+          expINID: body.expINID,
+          entryDate: formatLedgerEntryDate(invDate),
+          amount,
+          createdByUserId: userID,
+        });
         await transaction.commit();
         transactionCompleted = true;
         log('committed-duplicate', { invID: dup.invID });
-        return NextResponse.json({ invID: dup.invID, catName, amount, duplicate: true }, { status: 200 });
+        return NextResponse.json({
+          invID: dup.invID,
+          catName,
+          amount,
+          duplicate: true,
+          ledgerDualWrite: ledgerResult.ledgerDualWrite,
+          ledgerSync: ledgerResult.outcome ?? null,
+        }, { status: 200 });
       }
 
       // ──── Allocate invID safely (no TABLOCKX) ────
@@ -235,24 +257,57 @@ export async function POST(req: NextRequest) {
         .input('ShiftMoveID',     sql.Int,              shiftMoveID)
         .input('PaymentMethodID', sql.Int,              body.paymentMethodId);
 
-      await cashReq.query(`
+      const insertResult = await cashReq.query(`
         INSERT INTO [dbo].[TblCashMove] (
           invID, invType, invDate, invTime, ClientID,
           ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID
-        ) VALUES (
+        )
+        OUTPUT INSERTED.ID
+        VALUES (
           @invID, @invType, @invDate, @invTime, @ClientID,
           @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID
         )
       `);
-      log('after-cash-move-insert', { invID: newInvID, expINID: body.expINID, amount, shiftMoveID });
+      const cashMoveId = insertResult.recordset[0].ID as number;
+      log('after-cash-move-insert', { invID: newInvID, cashMoveId, expINID: body.expINID, amount, shiftMoveID });
+
+      const ledgerResult = await maybeSyncAdvanceLedgerForExpenseCashMove(db, transaction, {
+        cashMoveId,
+        expINID: body.expINID,
+        entryDate: formatLedgerEntryDate(invDate),
+        amount,
+        createdByUserId: userID,
+      });
 
       log('before-commit');
       await transaction.commit();
       transactionCompleted = true;
-      log('after-commit', { invID: newInvID });
+      log('after-commit', { invID: newInvID, cashMoveId });
 
-      return NextResponse.json({ invID: newInvID, catName, amount }, { status: 201 });
+      void maybeScheduleAdvanceWhatsAppFromExpenseCategory({
+        expINID: body.expINID,
+        invID: newInvID,
+        amount,
+        paymentMethodId: body.paymentMethodId,
+        notes: notesText,
+      });
+
+      return NextResponse.json({
+        invID: newInvID,
+        cashMoveId,
+        catName,
+        amount,
+        ledgerDualWrite: ledgerResult.ledgerDualWrite,
+        ledgerSync: ledgerResult.outcome ?? null,
+      }, { status: 201 });
     } catch (err) {
+      if (err instanceof EmployeeLedgerDualWriteError) {
+        log('ledger-dual-write-error', { error: err.message });
+        if (transactionStarted && !transactionCompleted) {
+          try { await transaction.rollback(); } catch { /* ignore */ }
+        }
+        return NextResponse.json({ error: err.message, requestId }, { status: 503 });
+      }
       log('transaction-error', {
         error: err instanceof Error ? err.message : String(err),
         code: (err as any)?.code,

@@ -516,6 +516,7 @@ export interface Employee {
   RevenueExpINID: number | null;
   RevenueCatName: string | null;
   Mobile?: string;
+  WhatsApp?: string;
   CardNO?: string;
   Notes?: string;
   NationalID?: string;

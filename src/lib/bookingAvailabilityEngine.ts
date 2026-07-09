@@ -8,7 +8,6 @@ import { getPool, sql } from '@/lib/db';
 import {
   getPublicSettings,
   salonDateTimeToMs,
-  dateInTimezone,
 } from '@/lib/publicBookingHelpers';
 import {
   buildQueueIntervals,
@@ -26,6 +25,7 @@ import {
   type EffectiveSchedule,
 } from '@/lib/scheduleOverrides';
 import { intervalsOverlap } from '@/lib/scheduleIntervals';
+import { getCairoBusinessDate } from '@/lib/businessDate';
 
 export type BookingSlotReasonCode =
   | 'insufficient_continuous_time'
@@ -180,8 +180,8 @@ async function buildBarberContexts(args: {
   const effectiveMinNotice = isInternalSource ? 0 : settings.minNoticeMinutes;
   const now = new Date();
   const nowMs = now.getTime();
-  const todayInSalon = dateInTimezone(now, timezone);
-  const isToday = date === todayInSalon;
+  const todayBusinessDate = getCairoBusinessDate(now);
+  const isToday = date === todayBusinessDate;
 
   const systemDefault = settings.defaultServiceDurationMinutes || 30;
   const defaultDur = await getDefaultDuration(db);
@@ -223,7 +223,7 @@ async function buildBarberContexts(args: {
         if (attendance?.status === 'Absent') continue;
       }
 
-      const dateObj = new Date(`${date}T12:00:00`);
+      const dateObj = new Date(`${date}T12:00:00Z`);
       const baseWindow = await getBarberWorkingWindow(id, dateObj);
       const base = baseWindow.isWorkingDay && baseWindow.startTime && baseWindow.endTime
         ? { isWorking: true, start: baseWindow.startTime, end: baseWindow.endTime }
@@ -238,20 +238,34 @@ async function buildBarberContexts(args: {
         ? salonDateTimeToMs(nextDate(date), effSched.end, timezone)
         : salonDateTimeToMs(date, effSched.end, timezone);
 
-      const [qIntervals, bIntervals] = await Promise.all([
+      const nextDayStr = isOvernight ? nextDate(date) : null;
+      const [qIntervals, bIntervals, qIntervalsNext, bIntervalsNext] = await Promise.all([
         buildQueueIntervals(db, id, date, now, defaultDur, undefined, {
           filterStale: true,
           graceMinutes: 30,
           debugContext: 'booking-availability',
         }),
         buildBookingIntervals(db, id, date, defaultDur),
+        nextDayStr
+          ? buildQueueIntervals(db, id, nextDayStr, now, defaultDur, undefined, {
+              filterStale: true,
+              graceMinutes: 30,
+              debugContext: 'booking-availability-next-day',
+            })
+          : Promise.resolve<Interval[]>([]),
+        nextDayStr ? buildBookingIntervals(db, id, nextDayStr, defaultDur) : Promise.resolve<Interval[]>([]),
       ]);
+
+      const inShiftWindow = (iv: Interval) => iv.start.getTime() < shiftEndMs && iv.end.getTime() > shiftStartMs;
+      const nextDayBusy = nextDayStr
+        ? [...qIntervalsNext, ...bIntervalsNext].filter(inShiftWindow)
+        : [];
 
       contexts.push({
         empId: id,
         empName: nameMap[id] ?? '',
         durationMinutes: totalDuration,
-        busy: [...qIntervals, ...bIntervals],
+        busy: [...qIntervals, ...bIntervals, ...nextDayBusy],
         effSched,
         shiftStartMs,
         shiftEndMs,
@@ -399,8 +413,8 @@ export async function listAvailableBookingSlots(args: {
 }): Promise<ListAvailableBookingSlotsResult> {
   const { date, serviceIds, mode, empId, source = 'public' } = args;
   const today = new Date();
-  const todayInSalon = dateInTimezone(today, 'Africa/Cairo');
-  const isPast = date < todayInSalon;
+  const todayBusinessDate = getCairoBusinessDate(today);
+  const isPast = date < todayBusinessDate;
 
   const {
     contexts,
@@ -757,6 +771,7 @@ export async function validateBookingSlot(args: {
         isToday,
         nowMs,
         minNoticeMs,
+        includeSilentRejections: true,
       });
     }
   } else {
@@ -771,6 +786,7 @@ export async function validateBookingSlot(args: {
         isToday,
         nowMs,
         minNoticeMs,
+        includeSilentRejections: true,
       });
       if (candidate?.available) {
         plan = candidate;
@@ -1004,8 +1020,8 @@ function hhmmToMinutes(hhmm: string): number {
 }
 
 function nextDate(dateStr: string): string {
-  const d = new Date(`${dateStr}T12:00:00`);
-  d.setDate(d.getDate() + 1);
+  const d = new Date(`${dateStr}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().slice(0, 10);
 }
 

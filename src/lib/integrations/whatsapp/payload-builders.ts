@@ -10,6 +10,8 @@ import type {
   SaleWhatsAppPayload,
   BookingWhatsAppPayload,
   FirstTimeWhatsAppPayload,
+  EmployeeSaleWhatsAppPayload,
+  EmployeeAdvanceWhatsAppPayload,
 } from './types';
 
 export interface SalePayloadInput {
@@ -40,6 +42,24 @@ export interface FirstTimePayloadInput {
   customerName: string;
   branchName?: string;
   bookingLink?: string;
+}
+
+export interface EmployeeSalePayloadInput {
+  phone: string;
+  employeeName: string;
+  invID: number;
+  services: string[];
+  branchName?: string;
+}
+
+export interface EmployeeAdvancePayloadInput {
+  phone: string;
+  employeeName: string;
+  invID: number;
+  amount: number;
+  paymentMethod?: string;
+  notes?: string;
+  branchName?: string;
 }
 
 export function buildSalePayload(input: SalePayloadInput): SaleWhatsAppPayload {
@@ -96,9 +116,49 @@ export function buildFirstTimePayload(input: FirstTimePayloadInput): FirstTimeWh
   };
 }
 
+export function buildEmployeeSalePayload(
+  input: EmployeeSalePayloadInput,
+): EmployeeSaleWhatsAppPayload {
+  const cfg = getConfig();
+  const services = input.services.filter(Boolean);
+
+  return {
+    type: 'employee_sale',
+    phone: input.phone.trim(),
+    customerName: input.employeeName.trim(),
+    invoiceNumber: `INV-${input.invID}`,
+    branchName: input.branchName ?? cfg.defaultBranchName,
+    services: services.length > 0 ? services : undefined,
+  };
+}
+
 export function resolvePhone(
   mobile: string | null | undefined,
   phone: string | null | undefined,
 ): string | null {
   return mobile?.trim() || phone?.trim() || null;
+}
+
+export function buildEmployeeAdvancePayload(
+  input: EmployeeAdvancePayloadInput,
+): EmployeeAdvanceWhatsAppPayload {
+  const cfg = getConfig();
+
+  return {
+    type: 'employee_advance',
+    phone: input.phone.trim(),
+    customerName: input.employeeName.trim(),
+    invoiceNumber: `ADV-${input.invID}`,
+    amount: input.amount,
+    paymentMethod: input.paymentMethod,
+    branchName: input.branchName ?? cfg.defaultBranchName,
+    notes: input.notes?.trim() || undefined,
+  };
+}
+
+export function resolveEmployeeWhatsAppPhone(
+  whatsApp: string | null | undefined,
+  mobile: string | null | undefined,
+): string | null {
+  return whatsApp?.trim() || mobile?.trim() || null;
 }

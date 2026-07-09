@@ -80,6 +80,10 @@ export async function GET(
       .query(`
         SELECT 
           EmpID, EmpName, Job, Mobile, CardNO, Notes,
+          CASE
+            WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'WhatsApp')
+            THEN WhatsApp ELSE NULL
+          END AS WhatsApp,
           CASE 
             WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'NationalID') 
             THEN NationalID ELSE NULL 
@@ -216,6 +220,7 @@ export async function PATCH(
       EmpName,
       Job,
       Mobile,
+      WhatsApp,
       CardNO,
       Notes,
       NationalID,
@@ -266,6 +271,16 @@ export async function PATCH(
       if (Mobile !== undefined) {
         updateFields.push("Mobile = @mobile");
         request.input("mobile", sql.NVarChar(30), Mobile);
+      }
+      if (WhatsApp !== undefined) {
+        const whatsAppCol = await new sql.Request(transaction).query(`
+          SELECT 1 AS ok FROM INFORMATION_SCHEMA.COLUMNS
+          WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'WhatsApp'
+        `);
+        if (whatsAppCol.recordset.length > 0) {
+          updateFields.push("WhatsApp = @whatsApp");
+          request.input("whatsApp", sql.NVarChar(30), WhatsApp ? String(WhatsApp).trim() : null);
+        }
       }
       if (CardNO !== undefined) {
         updateFields.push("CardNO = @cardNO");
@@ -355,6 +370,10 @@ export async function PATCH(
         .query(`
           SELECT 
             EmpID, EmpName, Job, Mobile, CardNO, Notes,
+          CASE
+            WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'WhatsApp')
+            THEN WhatsApp ELSE NULL
+          END AS WhatsApp,
             CASE 
               WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'NationalID') 
               THEN NationalID ELSE NULL 

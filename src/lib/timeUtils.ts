@@ -60,7 +60,41 @@ export function sqlTimeToHHmm(val: unknown): string | null {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   }
 
+  // HH.mm format used by invoice time storage e.g. "14.30"
+  const dotted = s.match(/^(\d{1,2})\.(\d{2})$/);
+  if (dotted) {
+    const h = Number(dotted[1]);
+    const m = Number(dotted[2]);
+    if (h > 23 || m > 59) return null;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+
   return null;
+}
+
+/** Format a calendar date (YYYY-MM-DD) without UTC timezone shift. */
+export function formatCalendarDateAr(dateString: string): string {
+  const match = String(dateString).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return String(dateString);
+  const [, y, m, d] = match;
+  const date = new Date(Number(y), Number(m) - 1, Number(d));
+  return date.toLocaleDateString('ar-EG', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
+/** Format invoice date + optional time for Arabic UI. */
+export function formatInvoiceDateTimeAr(invDate: string, invTime?: unknown): string {
+  const datePart = formatCalendarDateAr(invDate);
+  const hhmm = sqlTimeToHHmm(invTime);
+  if (!hhmm) return datePart;
+  const [h, m] = hhmm.split(':').map(Number);
+  const isPm = h >= 12;
+  const h12 = h % 12 || 12;
+  const period = isPm ? 'م' : 'ص';
+  return `${datePart} ${h12}:${String(m).padStart(2, '0')} ${period}`;
 }
 
 // ─── Parse any time value to total minutes from 00:00 ─────────────────────────

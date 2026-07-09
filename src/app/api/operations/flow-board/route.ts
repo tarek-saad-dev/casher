@@ -88,7 +88,7 @@ export async function GET(req: NextRequest) {
     const now = new Date();
     
     // Get Cairo day of week (0=Sunday)
-    const cairoDate = new Date(`${dateStr}T12:00:00`);
+    const cairoDate = new Date(`${dateStr}T12:00:00Z`);
     const dayOfWeek = cairoDate.getDay();
 
     console.log(`[flow-board] Date: ${dateStr}, DayOfWeek: ${dayOfWeek}`);
@@ -116,11 +116,14 @@ export async function GET(req: NextRequest) {
 
     // 3. Fetch ALL data in parallel (NO N+1!)
     const batchStart = Date.now();
-    
+    const nextDateStr = nextDate(dateStr);
+
     const [
       barbersRes,
       bookingsRes,
       queueRes,
+      bookingsNextRes,
+      queueNextRes,
     ] = await Promise.all([
       // 3a. Get barbers only (Job = 'حلاق')
       db.request().query(`
@@ -129,7 +132,7 @@ export async function GET(req: NextRequest) {
         WHERE isActive = 1 AND Job = N'حلاق'
         ORDER BY EmpName
       `),
-      
+
       // 3b. Get all bookings for this date
       db.request()
         .input("bdate", sql.Date, dateStr)
@@ -138,6 +141,7 @@ export async function GET(req: NextRequest) {
             b.BookingID,
             b.AssignedEmpID,
             b.ClientID,
+            b.BookingDate,
             c.Name as ClientName,
             b.StartTime,
             b.EndTime,
@@ -148,7 +152,7 @@ export async function GET(req: NextRequest) {
             AND b.AssignedEmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
             AND b.Status IN ('confirmed', 'arrived', 'in_progress', 'queued', 'in_service')
         `),
-      
+
       // 3c. Get all queue tickets for this date (lifecycle cols included only if they exist)
       db.request()
         .input("qdate", sql.Date, dateStr)
@@ -158,6 +162,50 @@ export async function GET(req: NextRequest) {
             qt.TicketCode,
             qt.EmpID,
             qt.ClientID,
+            qt.QueueDate,
+            c.Name as ClientName,
+            qt.Status,
+            qt.EstimatedStartTime,
+            qt.ServiceStartedAt,
+            qt.CreatedTime,
+            ${lifecycleCols}
+          FROM [dbo].[QueueTickets] qt
+          LEFT JOIN [dbo].[TblClient] c ON qt.ClientID = c.ClientID
+          WHERE qt.QueueDate = @qdate
+            AND qt.EmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
+            AND LOWER(qt.Status) IN ('waiting', 'called', 'arrived', 'in_service')
+        `),
+
+      // 3d. Next-day bookings for overnight shifts
+      db.request()
+        .input("bdate", sql.Date, nextDateStr)
+        .query(`
+          SELECT 
+            b.BookingID,
+            b.AssignedEmpID,
+            b.ClientID,
+            b.BookingDate,
+            c.Name as ClientName,
+            b.StartTime,
+            b.EndTime,
+            b.Status
+          FROM [dbo].[Bookings] b
+          LEFT JOIN [dbo].[TblClient] c ON b.ClientID = c.ClientID
+          WHERE b.BookingDate = @bdate
+            AND b.AssignedEmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
+            AND b.Status IN ('confirmed', 'arrived', 'in_progress', 'queued', 'in_service')
+        `),
+
+      // 3e. Next-day queue tickets for overnight shifts
+      db.request()
+        .input("qdate", sql.Date, nextDateStr)
+        .query(`
+          SELECT 
+            qt.QueueTicketID,
+            qt.TicketCode,
+            qt.EmpID,
+            qt.ClientID,
+            qt.QueueDate,
             c.Name as ClientName,
             qt.Status,
             qt.EstimatedStartTime,
@@ -171,12 +219,18 @@ export async function GET(req: NextRequest) {
             AND LOWER(qt.Status) IN ('waiting', 'called', 'arrived', 'in_service')
         `),
     ]);
-    
+
     perfLog("batchFetch", batchStart);
 
     // 3d. Batch-load service lines for bookings and queue tickets
-    const bookingIds = bookingsRes.recordset.map((b: { BookingID: number }) => b.BookingID);
-    const queueIds = queueRes.recordset.map((q: { QueueTicketID: number }) => q.QueueTicketID);
+    const bookingIds = [
+      ...bookingsRes.recordset,
+      ...bookingsNextRes.recordset,
+    ].map((b: { BookingID: number }) => b.BookingID);
+    const queueIds = [
+      ...queueRes.recordset,
+      ...queueNextRes.recordset,
+    ].map((q: { QueueTicketID: number }) => q.QueueTicketID);
 
     const bookingServicesMap = new Map<number, { names: string[]; totalDuration: number }>();
     const queueServicesMap = new Map<number, { names: string[]; totalDuration: number }>();
@@ -221,7 +275,7 @@ export async function GET(req: NextRequest) {
     }
 
     // 2d. Batch load full day status
-    const isToday = dateStr === now.toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
+    const isToday = dateStr === getCairoBusinessDate(now);
     const allBarberIds: number[] = barbersRes.recordset.map((b: any) => b.EmpID as number);
     const dayStatusMap = await getBarbersDayStatus(allBarberIds, dateStr, { isToday });
 
@@ -229,17 +283,29 @@ export async function GET(req: NextRequest) {
 
     // 3. Group data by empId in memory (fast)
     const processStart = Date.now();
-    
+
     const bookingsMap = new Map();
     for (const b of bookingsRes.recordset) {
       if (!bookingsMap.has(b.AssignedEmpID)) bookingsMap.set(b.AssignedEmpID, []);
       bookingsMap.get(b.AssignedEmpID).push(b);
     }
-    
+
     const queueMap = new Map();
     for (const q of queueRes.recordset) {
       if (!queueMap.has(q.EmpID)) queueMap.set(q.EmpID, []);
       queueMap.get(q.EmpID).push(q);
+    }
+
+    const bookingsNextMap = new Map();
+    for (const b of bookingsNextRes.recordset) {
+      if (!bookingsNextMap.has(b.AssignedEmpID)) bookingsNextMap.set(b.AssignedEmpID, []);
+      bookingsNextMap.get(b.AssignedEmpID).push(b);
+    }
+
+    const queueNextMap = new Map();
+    for (const q of queueNextRes.recordset) {
+      if (!queueNextMap.has(q.EmpID)) queueNextMap.set(q.EmpID, []);
+      queueNextMap.get(q.EmpID).push(q);
     }
 
     // 4. Build response for each barber (no DB queries here!)
@@ -292,25 +358,42 @@ export async function GET(req: NextRequest) {
       const timeline: FlowBoardBarber["timeline"] = [];
       const barberBookings = bookingsMap.get(empId) || [];
       const barberQueue = queueMap.get(empId) || [];
-      
+      const barberBookingsNext = isOvernight ? (bookingsNextMap.get(empId) || []) : [];
+      const barberQueueNext = isOvernight ? (queueNextMap.get(empId) || []) : [];
+
+      const shiftStartMs = workStart
+        ? createCairoDateTime(dateStr, workStart).getTime()
+        : -Infinity;
+      const shiftEndMs = workStart && workEnd
+        ? (isOvernight
+            ? createCairoDateTime(nextDate(dateStr), workEnd).getTime()
+            : createCairoDateTime(dateStr, workEnd).getTime())
+        : Infinity;
+      const inShiftWindow = (start: Date, end: Date) =>
+        start.getTime() < shiftEndMs && end.getTime() > shiftStartMs;
+
       // Add booking items with Cairo-normalized times
-      for (const b of barberBookings) {
+      for (const b of [...barberBookings, ...barberBookingsNext]) {
         // DEBUG for BK-448
         const isDebug = b.BookingID === 448;
         if (isDebug) {
           console.log(`[flow-board] Processing BK-${b.BookingID}:`, {
             rawStartTime: b.StartTime,
             rawEndTime: b.EndTime,
+            bookingDate: b.BookingDate,
             dateStr,
           });
         }
 
-        // Use Cairo-normalized datetime utility
+        // Use Cairo-normalized datetime utility; for next-day bookings use their stored date
+        const bookingDateStr = b.BookingDate
+          ? (typeof b.BookingDate === 'string' ? b.BookingDate.split('T')[0] : dateStr)
+          : dateStr;
         const svcInfo = bookingServicesMap.get(b.BookingID);
         const serviceDuration = svcInfo?.totalDuration ?? defaultDuration;
 
         const normalized = normalizeBookingTimes(
-          dateStr,
+          bookingDateStr,
           b.StartTime,
           b.EndTime,
           serviceDuration,
@@ -321,6 +404,13 @@ export async function GET(req: NextRequest) {
         const end = new Date(normalized.endDateTimeCairo);
         const safeDuration = normalized.durationMinutes;
 
+        if (!inShiftWindow(start, end)) {
+          if (isDebug) {
+            console.log(`[flow-board] BK-${b.BookingID} skipped (outside shift window)`);
+          }
+          continue;
+        }
+
         if (isDebug) {
           console.log(`[flow-board] BK-${b.BookingID} normalized:`, {
             start: start.toISOString(),
@@ -330,7 +420,7 @@ export async function GET(req: NextRequest) {
             endDisplay: normalized.endTimeDisplay,
           });
         }
-        
+
         timeline.push({
           type: "booking",
           sourceId: b.BookingID,
@@ -352,7 +442,11 @@ export async function GET(req: NextRequest) {
       
       // Add queue items with effective status computation
       let inServiceCount = 0;
-      for (const q of barberQueue) {
+      for (const q of [...barberQueue, ...barberQueueNext]) {
+        const queueDateStr = q.QueueDate
+          ? (typeof q.QueueDate === 'string' ? q.QueueDate.split('T')[0] : dateStr)
+          : dateStr;
+
         // Compute effective status
         const effective = computeEffectiveTicket(
           {
@@ -362,7 +456,7 @@ export async function GET(req: NextRequest) {
             Status: q.Status.toLowerCase() as any,
             EmpID: q.EmpID,
             ClientID: q.ClientID,
-            QueueDate: dateStr,
+            QueueDate: queueDateStr,
             CreatedTime: q.CreatedTime,
             CalledAt: null,
             ArrivedAt: null,
@@ -386,7 +480,9 @@ export async function GET(req: NextRequest) {
         } else if (q.ServiceStartedAt) {
           start = new Date(q.ServiceStartedAt);
         } else {
-          start = new Date(`${dateStr}T${workStart || '14:00'}`);
+          // Next-day queue tickets that have no explicit start time fall inside the overnight window
+          const fallbackDate = queueDateStr === nextDateStr ? nextDateStr : dateStr;
+          start = new Date(`${fallbackDate}T${workStart || '14:00'}`);
         }
         const qSvc = queueServicesMap.get(q.QueueTicketID);
         const duration = q.DurationMinutes
@@ -394,7 +490,11 @@ export async function GET(req: NextRequest) {
           ?? effective.durationMinutes
           ?? defaultDuration;
         const end = new Date(start.getTime() + duration * 60000);
-        
+
+        if (!inShiftWindow(start, end)) {
+          continue;
+        }
+
         timeline.push({
           type: "queue",
           sourceId: q.QueueTicketID,
@@ -434,6 +534,7 @@ export async function GET(req: NextRequest) {
       const effectiveWaitingCount = timeline.filter(
         t => t.type === 'queue' && t.isCountingAhead && t.actualStatus === 'waiting'
       ).length;
+      const displayedBookingsCount = timeline.filter(t => t.type === 'booking').length;
 
       barbers.push({
         empId,
@@ -445,7 +546,7 @@ export async function GET(req: NextRequest) {
         isOvernightShift: isOvernight,
         nextAvailableAt,
         waitingCount: effectiveWaitingCount,
-        bookingsCount: barberBookings.length,
+        bookingsCount: displayedBookingsCount,
         inServiceCount,
         timeline,
       });
@@ -485,6 +586,12 @@ function formatTime(sqlTime: unknown): string {
 function timeToMinutes(timeStr: string): number {
   const [h, m] = timeStr.split(':').map(Number);
   return h * 60 + m;
+}
+
+function nextDate(dateStr: string): string {
+  const d = new Date(`${dateStr}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().split('T')[0];
 }
 
 // Helper: SQL time to Date (Cairo-normalized)

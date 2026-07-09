@@ -400,9 +400,14 @@ export function BarberLane({
 }
 
 function getHourKey(dateTime: string): number {
-  const date = new Date(dateTime);
-  const hour = date.getHours();
-  const minute = date.getMinutes();
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Cairo',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(dateTime));
+  const hour = parseInt(parts.find((p) => p.type === 'hour')?.value ?? '0', 10);
+  const minute = parseInt(parts.find((p) => p.type === 'minute')?.value ?? '0', 10);
   if (hour >= 0 && hour <= 4) return Math.floor(24 + hour + minute / 60);
   return hour;
 }

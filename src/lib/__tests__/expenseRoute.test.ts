@@ -141,6 +141,10 @@ describe('POST /api/expenses', () => {
 
   it('returns 201 on successful expense creation', async () => {
     fakeAllocateInvID.mockResolvedValue(999);
+    txQueryResults = [
+      { recordset: [] },
+      { recordset: [{ ID: 501 }] },
+    ];
 
     const res = await postExpense(makeRequest({ expINID: 5, amount: 100, paymentMethodId: 1 }));
     expect(res.status).toBe(201);
@@ -168,10 +172,8 @@ describe('POST /api/expenses/past-date', () => {
   });
 
   it('returns 400 for future date', async () => {
-    const futureDate = new Date();
-    futureDate.setDate(futureDate.getDate() + 1);
     const res = await postPastDateExpense(makePastDateRequest({
-      invDate: futureDate.toISOString().split('T')[0],
+      invDate: '2099-01-01',
       amount: 100,
       expINID: 5,
       paymentMethodId: 1,

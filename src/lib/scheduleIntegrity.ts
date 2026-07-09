@@ -4,6 +4,7 @@ import {
   buildQueueIntervals,
   buildBookingIntervals,
   getDefaultDuration,
+  type Interval,
 } from '@/lib/queueEstimateEngine';
 import { getCairoBusinessDate } from '@/lib/businessDate';
 import {
@@ -47,8 +48,8 @@ function hhmmToMinutes(hhmm: string): number {
 }
 
 function nextDate(dateStr: string): string {
-  const d = new Date(`${dateStr}T12:00:00`);
-  d.setDate(d.getDate() + 1);
+  const d = new Date(`${dateStr}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().split('T')[0];
 }
 
@@ -68,7 +69,7 @@ export async function getEmployeeEffectiveSchedule(args: {
   const settings = await getPublicSettings();
   const timezone = settings.timezone || SALON_TZ;
 
-  const dateObj = new Date(`${args.operationalDate}T12:00:00`);
+  const dateObj = new Date(`${args.operationalDate}T12:00:00Z`);
   const baseWindow = await getBarberWorkingWindow(args.empId, dateObj);
   const base = baseWindow.isWorkingDay && baseWindow.startTime && baseWindow.endTime
     ? { isWorking: true, start: baseWindow.startTime, end: baseWindow.endTime }
@@ -135,6 +136,27 @@ export async function getEmployeeBusyIntervals(args: {
     transaction: args.transaction,
   });
 
+  // For overnight shifts, also load the next calendar day's bookings/queue and keep
+  // only intervals that fall inside the business-day shift window.
+  let nextDayBusy: Interval[] = [];
+  if (schedule?.isWorking && schedule.shiftStartMs < schedule.shiftEndMs - 24 * 60 * 60 * 1000 + 60_000) {
+    const nextDayStr = nextDate(args.operationalDate);
+    const [qIvsNext, bIvsNext] = await Promise.all([
+      buildQueueIntervals(db, args.empId, nextDayStr, args.now, defaultDur, args.excludeQueueTicketId, {
+        filterStale: true,
+        graceMinutes: 30,
+        debugContext: 'schedule-integrity-next-day',
+      }),
+      buildBookingIntervals(db, args.empId, nextDayStr, defaultDur),
+    ]);
+    const inShiftWindow = (iv: Interval) =>
+      iv.start.getTime() < schedule.shiftEndMs && iv.end.getTime() > schedule.shiftStartMs;
+    const filteredNextBookings = args.excludeBookingId
+      ? bIvsNext.filter((iv) => iv.id !== args.excludeBookingId)
+      : bIvsNext;
+    nextDayBusy = [...qIvsNext, ...filteredNextBookings].filter(inShiftWindow);
+  }
+
   const blockIvs: ScheduleInterval[] = (schedule?.effSched.blockedIntervals ?? []).map(
     (b, idx) => ({
       id: -(idx + 1),
@@ -155,6 +177,14 @@ export async function getEmployeeBusyIntervals(args: {
       ticketCode: iv.ticketCode,
     })),
     ...filteredBookings.map((iv) => ({
+      id: iv.id,
+      source: iv.source,
+      start: iv.start,
+      end: iv.end,
+      label: iv.label,
+      ticketCode: iv.ticketCode,
+    })),
+    ...nextDayBusy.map((iv) => ({
       id: iv.id,
       source: iv.source,
       start: iv.start,

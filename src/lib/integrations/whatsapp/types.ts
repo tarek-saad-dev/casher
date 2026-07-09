@@ -2,7 +2,12 @@
  * WhatsApp Integration — Type Definitions
  */
 
-export type WhatsAppMessageType = 'sale' | 'booking' | 'first_time';
+export type WhatsAppMessageType =
+  | 'sale'
+  | 'booking'
+  | 'first_time'
+  | 'employee_sale'
+  | 'employee_advance';
 
 export type WhatsAppExtraVariables = Record<string, string | number | boolean | null | string[]>;
 
@@ -45,10 +50,30 @@ export interface FirstTimeWhatsAppPayload extends WhatsAppBasePayload {
   variables?: WhatsAppExtraVariables;
 }
 
+export interface EmployeeSaleWhatsAppPayload extends WhatsAppBasePayload {
+  type: 'employee_sale';
+  invoiceNumber?: string;
+  branchName?: string;
+  services?: string[];
+  variables?: WhatsAppExtraVariables;
+}
+
+export interface EmployeeAdvanceWhatsAppPayload extends WhatsAppBasePayload {
+  type: 'employee_advance';
+  invoiceNumber?: string;
+  amount?: number;
+  paymentMethod?: string;
+  branchName?: string;
+  notes?: string;
+  variables?: WhatsAppExtraVariables;
+}
+
 export type WhatsAppPayload =
   | SaleWhatsAppPayload
   | BookingWhatsAppPayload
-  | FirstTimeWhatsAppPayload;
+  | FirstTimeWhatsAppPayload
+  | EmployeeSaleWhatsAppPayload
+  | EmployeeAdvanceWhatsAppPayload;
 
 export type WhatsAppSendResult =
   | {

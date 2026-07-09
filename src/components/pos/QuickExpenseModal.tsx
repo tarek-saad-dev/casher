@@ -131,6 +131,7 @@ function buildExpenseReceiptData(
   currentAmount: number,
   categoryName: string,
   paymentMethodName: string | null,
+  ledgerDualWrite?: boolean,
 ): ExpenseReceiptData {
   return {
     invID: record.invID,
@@ -141,6 +142,7 @@ function buildExpenseReceiptData(
     PaymentMethod: paymentMethodName,
     Notes: record.Notes ?? (form.notes.trim() || null),
     UserName: null,
+    ledgerNote: ledgerDualWrite ? 'تم تسجيل السلفة في دفتر الموظف' : null,
   };
 }
 
@@ -362,6 +364,7 @@ export default function QuickExpenseModal({
             currentAmount,
             categoryName,
             paymentMethodName,
+            Boolean(data.ledgerDualWrite),
           ),
         );
       }

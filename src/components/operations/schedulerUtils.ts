@@ -256,9 +256,7 @@ export function formatOperationalHour(hour: number): string {
  * 14:30 => 14.5
  */
 export function getOperationalHour(dateTime: string | Date): number {
-  const date = new Date(dateTime);
-  const hour = date.getHours();
-  const minute = date.getMinutes();
+  const { hour, minute } = getCairoHourMinute(dateTime);
 
   // After midnight (0-4 AM) = next day operational hours
   if (hour >= 0 && hour <= 4) {
@@ -414,16 +412,14 @@ export function formatTimeRange(startTime: string, endTime: string): string {
  * Format short time (e.g., "2:00", "11:30")
  */
 export function formatShortTime(dateTime: string | Date): string {
-  const date = new Date(dateTime);
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
+  const { hour: hours, minute } = getCairoHourMinute(dateTime);
 
   let displayHour: number;
   if (hours === 0) displayHour = 12;
   else if (hours > 12) displayHour = hours - 12;
   else displayHour = hours;
 
-  return `${displayHour}:${minutes.toString().padStart(2, "0")}`;
+  return `${displayHour}:${minute.toString().padStart(2, "0")}`;
 }
 
 /**
@@ -446,20 +442,41 @@ export function isWithinOperationalHours(hour: number): boolean {
   return hour >= OPERATION_START_HOUR && hour <= OPERATION_END_HOUR;
 }
 
+function nextDate(dateStr: string): string {
+  const d = new Date(`${dateStr}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function getCairoHourMinute(dateTime: string | Date): { hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Cairo',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(dateTime));
+  const h = parseInt(parts.find((p) => p.type === 'hour')?.value ?? '0', 10);
+  const m = parseInt(parts.find((p) => p.type === 'minute')?.value ?? '0', 10);
+  return { hour: h, minute: m };
+}
+
 /**
  * Convert operational hour back to time string for a given date
  */
 export function operationalHourToTime(hour: number, dateStr: string): string {
   let actualHour: number;
+  let actualDate: string;
 
   if (hour >= 24) {
-    // Next day
+    // Next operational day (after midnight)
     actualHour = hour - 24;
+    actualDate = nextDate(dateStr);
   } else {
     actualHour = hour;
+    actualDate = dateStr;
   }
 
-  return `${dateStr}T${actualHour.toString().padStart(2, "0")}:00:00`;
+  return `${actualDate}T${actualHour.toString().padStart(2, "0")}:00:00`;
 }
 
 /** Top offset (px) within lane body for an ISO start time */

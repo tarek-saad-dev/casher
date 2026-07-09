@@ -3,6 +3,8 @@ import {
   sendSaleWhatsAppMessage,
   sendBookingWhatsAppMessage,
   sendFirstTimeWhatsAppMessage,
+  sendEmployeeSaleWhatsAppMessage,
+  sendEmployeeAdvanceWhatsAppMessage,
 } from '@/lib/integrations/whatsapp';
 
 export const runtime = 'nodejs';
@@ -53,8 +55,26 @@ export async function POST(req: NextRequest) {
       });
     } else if (type === 'first_time') {
       result = await sendFirstTimeWhatsAppMessage({ phone, customerName });
+    } else if (type === 'employee_sale') {
+      result = await sendEmployeeSaleWhatsAppMessage({
+        phone,
+        employeeName: customerName,
+        invID: 9999,
+        services: ['حلاقة', 'تحديد دقن'],
+      });
+    } else if (type === 'employee_advance') {
+      result = await sendEmployeeAdvanceWhatsAppMessage({
+        phone,
+        employeeName: customerName,
+        invID: 9999,
+        amount: 500,
+        paymentMethod: 'كاش',
+        notes: 'اختبار سلفة',
+      });
     } else {
-      return NextResponse.json({ error: 'type must be sale | booking | first_time' }, { status: 400 });
+      return NextResponse.json({
+        error: 'type must be sale | booking | first_time | employee_sale | employee_advance',
+      }, { status: 400 });
     }
 
     return NextResponse.json({ result });

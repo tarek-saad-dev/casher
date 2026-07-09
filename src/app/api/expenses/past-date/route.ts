@@ -3,6 +3,14 @@ import { getPool, sql, allocateInvID } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { requireRole, isAuthResult } from '@/lib/api-auth';
 import { randomUUID } from 'crypto';
+import {
+  EmployeeLedgerDualWriteError,
+  formatLedgerEntryDate,
+  maybeSyncAdvanceLedgerForExpenseCashMove,
+} from '@/lib/services/employeeLedgerDualWrite';
+import {
+  maybeScheduleAdvanceWhatsAppFromExpenseCategory,
+} from '@/lib/services/employeeAdvanceWhatsAppNotify';
 
 // POST /api/expenses/past-date - Add expense for past dates
 export async function POST(req: NextRequest) {
@@ -121,12 +129,21 @@ export async function POST(req: NextRequest) {
       if (dupCheck.recordset.length > 0) {
         const dup = dupCheck.recordset[0];
         log('idempotency-detected', { existingId: dup.ID, existingInvID: dup.invID });
+        const ledgerResult = await maybeSyncAdvanceLedgerForExpenseCashMove(db, transaction, {
+          cashMoveId: dup.ID,
+          expINID,
+          entryDate: formatLedgerEntryDate(invDate),
+          amount: Number(amount),
+          createdByUserId: session.UserID,
+        });
         await transaction.commit();
         transactionCompleted = true;
         log('committed-duplicate');
         return NextResponse.json({
           success: true,
           message: "تم إضافة المصروف للتاريخ المحدد بنجاح",
+          ledgerDualWrite: ledgerResult.ledgerDualWrite,
+          ledgerSync: ledgerResult.outcome ?? null,
           data: { ID: dup.ID, invID: dup.invID, CategoryName: catName, duplicate: true },
         });
       }
@@ -168,15 +185,33 @@ export async function POST(req: NextRequest) {
       `);
       log('after-cash-move-insert');
 
+      const newRecord = insertResult.recordset[0];
+      const ledgerResult = await maybeSyncAdvanceLedgerForExpenseCashMove(db, transaction, {
+        cashMoveId: newRecord.ID,
+        expINID,
+        entryDate: formatLedgerEntryDate(invDate),
+        amount: finalAmount,
+        createdByUserId: session.UserID,
+      });
+
       log('before-commit');
       await transaction.commit();
       transactionCompleted = true;
       log('after-commit');
 
-      const newRecord = insertResult.recordset[0];
+      void maybeScheduleAdvanceWhatsAppFromExpenseCategory({
+        expINID,
+        invID: newRecord.invID,
+        amount: finalAmount,
+        paymentMethodId,
+        notes: notesText,
+      });
+
       return NextResponse.json({
         success: true,
         message: "تم إضافة المصروف للتاريخ المحدد بنجاح",
+        ledgerDualWrite: ledgerResult.ledgerDualWrite,
+        ledgerSync: ledgerResult.outcome ?? null,
         data: {
           ID: newRecord.ID,
           invID: newRecord.invID,
@@ -185,11 +220,20 @@ export async function POST(req: NextRequest) {
           ExpINID: newRecord.ExpINID,
           Amount: newRecord.Amount,
           Notes: newRecord.Notes,
-          CreatedByUserID: newRecord.CreatedByUserID,
           CategoryName: catName,
         },
       });
     } catch (error) {
+      if (error instanceof EmployeeLedgerDualWriteError) {
+        log('ledger-dual-write-error', { error: error.message });
+        if (transactionStarted && !transactionCompleted) {
+          try { await transaction.rollback(); } catch { /* ignore */ }
+        }
+        return NextResponse.json(
+          { error: error.message, requestId },
+          { status: 503 },
+        );
+      }
       log('transaction-error', {
         error: error instanceof Error ? error.message : String(error),
         code: (error as any)?.code,

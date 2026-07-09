@@ -7,7 +7,9 @@ import { redistributeFromClearing } from "@/lib/splitPaymentService";
 import {
   sendSaleWhatsAppMessage,
   sendFirstTimeWhatsAppMessage,
+  sendEmployeeSaleWhatsAppMessage,
 } from "@/lib/integrations/whatsapp";
+import { resolveEmployeeWhatsAppPhone } from "@/lib/integrations/whatsapp/payload-builders";
 
 export const runtime = "nodejs";
 
@@ -483,6 +485,100 @@ export async function POST(req: NextRequest) {
               `[pos-api]   ⚠️ WhatsApp error (non-critical): ${whatsappErr instanceof Error ? whatsappErr.message : whatsappErr}`,
             );
           }
+        }
+
+        // ── 9. Notify assigned employees via WhatsApp ──
+        try {
+          const empWaDb = await getPool();
+          const hasWhatsAppCol = await empWaDb.request().query(`
+            SELECT 1 AS ok
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'WhatsApp'
+          `);
+          const whatsAppSelect = hasWhatsAppCol.recordset.length > 0
+            ? 'e.WhatsApp'
+            : 'NULL AS WhatsApp';
+
+          const empDetailResult = await empWaDb
+            .request()
+            .input('empWaInvID', sql.Int, newInvID)
+            .query(`
+              SELECT
+                d.EmpID,
+                e.EmpName,
+                e.Mobile,
+                ${whatsAppSelect},
+                p.ProName AS ServiceName
+              FROM [dbo].[TblinvServDetail] d
+              INNER JOIN [dbo].[TblEmp] e ON d.EmpID = e.EmpID
+              LEFT JOIN [dbo].[TblPro] p ON d.ProID = p.ProID
+              WHERE d.invID = @empWaInvID
+                AND d.invType = N'مبيعات'
+                AND d.EmpID IS NOT NULL
+            `);
+
+          const byEmployee = new Map<
+            number,
+            { empName: string; phone: string; services: string[] }
+          >();
+
+          for (const row of empDetailResult.recordset as Array<Record<string, unknown>>) {
+            const empId = row.EmpID as number;
+            const phone = resolveEmployeeWhatsAppPhone(
+              row.WhatsApp as string | null | undefined,
+              row.Mobile as string | null | undefined,
+            );
+            if (!phone) continue;
+
+            const serviceName = (row.ServiceName as string | undefined)?.trim();
+            const existing = byEmployee.get(empId);
+            if (existing) {
+              if (serviceName && !existing.services.includes(serviceName)) {
+                existing.services.push(serviceName);
+              }
+              continue;
+            }
+
+            byEmployee.set(empId, {
+              empName: (row.EmpName as string | undefined)?.trim() || 'موظف',
+              phone,
+              services: serviceName ? [serviceName] : [],
+            });
+          }
+
+          for (const emp of byEmployee.values()) {
+            if (emp.services.length === 0) continue;
+            console.log(
+              `[pos-api]   📱 Employee WhatsApp: ${emp.empName} (${emp.phone}) services=${emp.services.join(', ')}`,
+            );
+            const empWaResult = await sendEmployeeSaleWhatsAppMessage({
+              phone: emp.phone,
+              employeeName: emp.empName,
+              invID: newInvID,
+              services: emp.services,
+            });
+            if (!empWaResult.sent) {
+              const reason =
+                'reason' in empWaResult ? empWaResult.reason : 'unknown';
+              const error =
+                'error' in empWaResult ? empWaResult.error : undefined;
+              console.log(
+                `[pos-api]   ⚠️ Employee WhatsApp not sent for ${emp.empName}: ${reason}${error ? ` — ${error}` : ''}`,
+              );
+            }
+          }
+
+          if (byEmployee.size === 0) {
+            console.log(
+              `[pos-api]   ℹ️ Employee WhatsApp skipped: no employees with phone on invoice ${newInvID}`,
+            );
+          }
+        } catch (employeeWhatsappErr) {
+          console.log(
+            `[pos-api]   ⚠️ Employee WhatsApp error (non-critical): ${
+              employeeWhatsappErr instanceof Error ? employeeWhatsappErr.message : employeeWhatsappErr
+            }`,
+          );
         }
       })();
 

@@ -953,7 +953,7 @@ export async function hasAnyAvailableSlotForBarberOnDay(
   const db = await getPool();
 
   // 1. Get working window (uses getBarberWorkingWindow which checks IsWorkingDay)
-  const dateObj = new Date(`${dateStr}T12:00:00`);
+  const dateObj = new Date(`${dateStr}T12:00:00Z`);
   const window = await getBarberWorkingWindow(empId, dateObj);
 
   if (!window.isWorkingDay) {
@@ -1022,9 +1022,15 @@ export async function hasAnyAvailableSlotForBarberOnDay(
   }
 
   // 4. Check each slot in memory (early exit)
+  const isOvernightShift = endMin <= startMin;
+  const nextDateStr = isOvernightShift ? nextDate(dateStr) : null;
+
   for (const time of slots) {
-    // Use salon timezone-aware epoch — same as available-slots uses
-    const slotMs = salonDateTimeToMs(dateStr, time, SALON_TZ);
+    // Use salon timezone-aware epoch — same as available-slots uses.
+    // Post-midnight slots belong to the next calendar day.
+    const timeMin = timeToMinutes(time);
+    const slotDate = isOvernightShift && timeMin < startMin ? nextDateStr! : dateStr;
+    const slotMs = salonDateTimeToMs(slotDate, time, SALON_TZ);
 
     // Skip past slots
     if (slotMs - nowMs < minNoticeMinutes * 60_000) {
@@ -1069,4 +1075,10 @@ export async function hasAnyAvailableSlotForBarberOnDay(
 function timeToMinutes(t: string): number {
   const [h, m] = t.split(":").map(Number);
   return h * 60 + m;
+}
+
+function nextDate(dateStr: string): string {
+  const d = new Date(`${dateStr}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().split('T')[0];
 }

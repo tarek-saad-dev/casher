@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { 
   User, Calendar, Clock, DollarSign, Link2, 
-  Save, Loader2, CheckCircle2, AlertCircle, Copy, X, Briefcase, Phone, CreditCard, FileText
+  Save, Loader2, CheckCircle2, AlertCircle, Copy, X, Briefcase, Phone, CreditCard, FileText, MessageCircle
 } from 'lucide-react';
 import type { Employee } from '@/lib/types';
 import { JobType } from '@/lib/types';
@@ -34,6 +34,7 @@ interface EmployeeProfile {
   EmpName: string;
   Job?: string;
   Mobile?: string;
+  WhatsApp?: string;
   CardNO?: string;
   Notes?: string;
   isActive?: boolean;
@@ -248,6 +249,7 @@ export default function EmployeeManagementModal({
           EmpName: profile.EmpName,
           Job: profile.Job,
           Mobile: profile.Mobile,
+          WhatsApp: profile.WhatsApp,
           CardNO: profile.CardNO,
           Notes: profile.Notes,
           isActive: profile.isActive,
@@ -607,6 +609,20 @@ export default function EmployeeManagementModal({
                                 value={profile?.Mobile || ''}
                                 onChange={(e) => setProfile(prev => prev ? { ...prev, Mobile: e.target.value } : null)}
                                 className="bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-500 h-11"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="whatsapp" className="text-zinc-300 flex items-center gap-1">
+                                <MessageCircle className="w-3.5 h-3.5" />
+                                رقم الواتساب
+                              </Label>
+                              <Input
+                                id="whatsapp"
+                                value={profile?.WhatsApp || ''}
+                                onChange={(e) => setProfile(prev => prev ? { ...prev, WhatsApp: e.target.value } : null)}
+                                placeholder="لتأكيد الفواتير بعد البيع"
+                                className="bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-500 h-11"
+                                dir="ltr"
                               />
                             </div>
                             <div className="space-y-2">

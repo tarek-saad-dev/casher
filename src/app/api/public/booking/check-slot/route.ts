@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
       serviceIds = [],
       mode       = 'nearest',
       empId,
+      dayOffset  = 0,
       source     = 'public',
     } = body as {
       date:        string;
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
       serviceIds?: number[];
       mode?:       'nearest' | 'specific';
       empId?:      number;
+      dayOffset?:  0 | 1;
       source?:     'public' | 'operations' | 'admin';
     };
 
@@ -64,6 +66,7 @@ export async function POST(req: NextRequest) {
     const validation = await validateBookingSlot({
       date,
       time,
+      dayOffset,
       serviceIds,
       mode,
       empId,

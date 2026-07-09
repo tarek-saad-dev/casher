@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic';
 import {
   Users, Plus, CheckCircle2, AlertCircle,
   Loader2, UserPlus, Link2, Scissors, X, Zap, Settings, Clock, UserX, UserCheck,
-  Banknote, CalendarCheck, Wallet, UsersRound,
+  Banknote, CalendarCheck, Wallet, UsersRound, BookOpen, Scale, MessageCircle,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { parseTimeToMinutes } from '@/lib/timeUtils';
@@ -34,6 +34,11 @@ const PayrollSettingsTab = dynamic(() => import('@/components/payroll/PayrollSet
 const AttendancePanel        = dynamic(() => import('@/components/hr/AttendancePanel'),                              { ssr: false, loading: () => <TabLoader /> });
 const DailyPayrollPanel      = dynamic(() => import('@/components/hr/DailyPayrollPanel'),                            { ssr: false, loading: () => <TabLoader /> });
 const EmployeeAdvancesSection = dynamic(() => import('@/components/reports/expenses/EmployeeAdvancesSection'),       { ssr: false, loading: () => <TabLoader /> });
+const EmployeeLedgerPanel     = dynamic(() => import('@/components/hr/EmployeeLedgerPanel'),                        { ssr: false, loading: () => <TabLoader /> });
+const EmployeeLedgerReconciliationPanel = dynamic(
+  () => import('@/components/hr/EmployeeLedgerReconciliationPanel'),
+  { ssr: false, loading: () => <TabLoader /> },
+);
 
 /* ─── types ─────────────────────────────────────────── */
 interface Employee {
@@ -53,6 +58,8 @@ interface Employee {
   AdvanceCatName: string | null;
   RevenueExpINID: number | null;
   RevenueCatName: string | null;
+  WhatsApp?: string | null;
+  Mobile?: string | null;
 }
 
 /* ─── main tabs ──────────────────────────────────────── */
@@ -62,6 +69,8 @@ const MAIN_TABS = [
   { id: 'attendance',      label: 'متابعة الحضور',     icon: CalendarCheck },
   { id: 'daily-payroll',   label: 'يوميات الموظفين',   icon: Banknote },
   { id: 'emp-advances',    label: 'سلف الموظفين',     icon: Wallet },
+  { id: 'employee-ledger', label: 'دفتر الموظفين',    icon: BookOpen },
+  { id: 'employee-ledger-reconciliation', label: 'مراجعة الدفتر', icon: Scale },
   { id: 'employee-settings', label: 'إعدادات الموظفين', icon: Settings },
 ] as const;
 type MainTabId = typeof MAIN_TABS[number]['id'];
@@ -146,6 +155,8 @@ export default function HRPage() {
       {mainTab === 'attendance'         && <AttendancePanel />}
       {mainTab === 'daily-payroll'    && <DailyPayrollPanel />}
       {mainTab === 'emp-advances'     && <AdvancesReportPanel />}
+      {mainTab === 'employee-ledger'  && <EmployeeLedgerPanel />}
+      {mainTab === 'employee-ledger-reconciliation' && <EmployeeLedgerReconciliationPanel />}
       {mainTab === 'employee-settings' && <EmployeeSettingsPanel />}
     </div>
   );
@@ -194,6 +205,8 @@ function EmployeesPanel() {
   const [activatingId, setActivatingId] = useState<number | null>(null);
   const [deactivatingId, setDeactivatingId] = useState<number | null>(null);
   const [statusTab, setStatusTab] = useState<'inactive' | 'active'>('inactive');
+  const [savingWhatsAppId, setSavingWhatsAppId] = useState<number | null>(null);
+  const [whatsappDrafts, setWhatsappDrafts] = useState<Record<number, string>>({});
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -212,6 +225,38 @@ function EmployeesPanel() {
     if (!jobTypeFilter || jobTypeFilter === 'all') return true;
     return emp.Job === jobTypeFilter;
   });
+
+  const saveEmployeeWhatsApp = async (empId: number) => {
+    const draft = whatsappDrafts[empId];
+    const employee = employees.find((e) => e.EmpID === empId);
+    const current = employee?.WhatsApp ?? employee?.Mobile ?? '';
+    if (draft === undefined || draft.trim() === String(current).trim()) return;
+
+    setSavingWhatsAppId(empId);
+    try {
+      const res = await fetch(`/api/employees/${empId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ whatsApp: draft.trim() || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل حفظ رقم الواتساب');
+      setEmployees((prev) =>
+        prev.map((emp) =>
+          emp.EmpID === empId ? { ...emp, WhatsApp: (data.WhatsApp ?? draft.trim()) || null } : emp,
+        ),
+      );
+      setWhatsappDrafts((prev) => {
+        const next = { ...prev };
+        delete next[empId];
+        return next;
+      });
+    } catch (e: unknown) {
+      console.error('Failed to save employee WhatsApp:', e instanceof Error ? e.message : e);
+    } finally {
+      setSavingWhatsAppId(null);
+    }
+  };
 
   const loadFinanceCategories = useCallback(async () => {
     try {
@@ -488,6 +533,7 @@ function EmployeesPanel() {
                 <th className="px-4 py-3 text-right font-medium">#</th>
                 <th className="px-4 py-3 text-right font-medium">الموظف</th>
                 <th className="px-4 py-3 text-right font-medium">الوظيفة</th>
+                <th className="px-4 py-3 text-right font-medium">واتساب</th>
                 <th className="px-4 py-3 text-right font-medium">الحالة</th>
                 <th className="px-4 py-3 text-right font-medium">تصنيف السلفة</th>
                 <th className="px-4 py-3 text-right font-medium">تصنيف الإيراد</th>
@@ -514,6 +560,30 @@ function EmployeesPanel() {
                     {emp.Job
                       ? <span className="text-xs text-muted-foreground">{emp.Job}</span>
                       : <span className="text-xs text-muted-foreground/60 italic">—</span>}
+                  </td>
+                  <td className="px-4 py-3 min-w-[180px]">
+                    <div className="flex items-center gap-2">
+                      <MessageCircle className="w-3.5 h-3.5 text-success shrink-0" />
+                      <Input
+                        value={whatsappDrafts[emp.EmpID] ?? emp.WhatsApp ?? emp.Mobile ?? ''}
+                        onChange={(e) =>
+                          setWhatsappDrafts((prev) => ({ ...prev, [emp.EmpID]: e.target.value }))
+                        }
+                        onBlur={() => { void saveEmployeeWhatsApp(emp.EmpID); }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.currentTarget.blur();
+                          }
+                        }}
+                        placeholder="01xxxxxxxxx"
+                        className="h-8 text-xs font-mono"
+                        dir="ltr"
+                        disabled={savingWhatsAppId === emp.EmpID}
+                      />
+                      {savingWhatsAppId === emp.EmpID && (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground shrink-0" />
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     {emp.isActive ? (

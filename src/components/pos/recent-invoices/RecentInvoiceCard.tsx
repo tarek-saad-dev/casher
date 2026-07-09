@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import type { RecentInvoiceItem } from '@/lib/recentInvoices.types';
+import { formatInvoiceDateTimeAr } from '@/lib/timeUtils';
 
 interface SaleDetail {
   ProID: number;
@@ -37,16 +38,6 @@ interface RecentInvoiceCardProps {
   onEditSale?: (saleId: number) => void;
   onDeleteSale?: (saleId: number, invNo: number) => void;
   muted?: boolean;
-}
-
-function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleString('ar-EG', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }
 
 function formatCurrency(amount: number) {
@@ -107,7 +98,7 @@ export default function RecentInvoiceCard({
             </div>
             <div className={`flex items-center gap-1 text-xs ${subTextClass}`}>
               <Calendar className="h-3 w-3" />
-              {formatDate(sale.InvDate)}
+              {formatInvoiceDateTimeAr(sale.InvDate, sale.InvTime)}
             </div>
           </div>
 

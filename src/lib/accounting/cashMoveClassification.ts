@@ -99,6 +99,13 @@ const FALLBACK_CATEGORY_RULES: Array<{ patterns: string[]; match: Omit<RuleMatch
     },
   },
   {
+    patterns: ['تمويل من موظف'],
+    match: {
+      flowGroup: 'employee_funding', flowKind: 'employee_funding_in', pnlImpact: 'none', partyType: 'employee',
+      confidence: 'high', reason: 'تمويل من موظف للمحل — التزام وليس إيراد', requiresEmployee: true, needsReviewByDefault: false,
+    },
+  },
+  {
     patterns: ['شريك', 'رأس مال', 'راس مال', 'تمويل', 'ضخ'],
     match: {
       flowGroup: 'capital', flowKind: 'partner_capital_in', pnlImpact: 'none', partyType: 'partner',

@@ -5,8 +5,9 @@ import {
   CalendarDays, Loader2, Zap, Send, RefreshCw,
   CheckCircle2, AlertCircle, Users, Banknote,
   CheckCheck, Clock4, X, TrendingDown, TrendingUp,
-  AlertTriangle, ShieldCheck, ClipboardList, Timer,
+  AlertTriangle, ShieldCheck, ClipboardList, Timer, BookOpen,
 } from 'lucide-react';
+import Link from 'next/link';
 import KpiCard from '@/components/shared/KpiCard';
 import { formatTime12h, getBusinessDateStr } from '@/lib/timeUtils';
 import { Button } from '@/components/ui/button';
@@ -134,6 +135,7 @@ export default function DailyPayrollPanel() {
 
   /* Post confirmation dialog */
   const [confirmOpen,        setConfirmOpen]        = useState(false);
+  const [dualWriteEnabled,   setDualWriteEnabled]   = useState(false);
 
   /* Auto-generate log for today */
   interface AutoGenLog {
@@ -158,6 +160,21 @@ export default function DailyPayrollPanel() {
   }, []);
 
   useEffect(() => { fetchAutoGenLog(date); }, [date, fetchAutoGenLog]);
+
+  useEffect(() => {
+    const month = date.slice(0, 7);
+    void (async () => {
+      try {
+        const res = await fetch(`/api/admin/hr/employee-ledger/summary?month=${month}`);
+        const data = await res.json();
+        if (res.ok || res.status === 503) {
+          setDualWriteEnabled(Boolean(data.ledgerDualWriteEnabled));
+        }
+      } catch {
+        setDualWriteEnabled(false);
+      }
+    })();
+  }, [date]);
 
   const load = useCallback(async (d: string) => {
     setLoading(true); setError('');
@@ -215,6 +232,9 @@ export default function DailyPayrollPanel() {
         throw new Error(data.error);
       }
       flash(`تم توليد ${data.generatedCount} يومية — إجمالي الساعات: ${Number(data.totalHours).toFixed(2)} — إجمالي الأجور: ${fmt(data.totalWage)} ج.م`);
+      if (data.ledgerDualWrite) {
+        flash('تم تسجيل استحقاقات الموظفين في دفتر الموظفين');
+      }
       setValidationDone(false); setValidationMissing([]);
       await load(date);
     } catch (e: any) { setError(e.message); }
@@ -276,6 +296,13 @@ export default function DailyPayrollPanel() {
             className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-9 w-9 p-0">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
           </Button>
+          <Link
+            href="/admin/hr?tab=employee-ledger"
+            className="inline-flex items-center justify-center gap-1 h-9 px-3 text-xs rounded-md border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            افتح دفتر الموظفين لصرف المستحقات
+          </Link>
         </div>
       </div>
 
@@ -350,9 +377,16 @@ export default function DailyPayrollPanel() {
         {/* Step 3 */}
         {canPost && (
           <Button onClick={() => setConfirmOpen(true)} disabled={posting || loading}
-            className="bg-emerald-700 hover:bg-emerald-600 gap-2 h-11 px-6">
+            className={dualWriteEnabled
+              ? 'bg-zinc-700 hover:bg-zinc-600 border border-amber-500/40 gap-2 h-11 px-6'
+              : 'bg-emerald-700 hover:bg-emerald-600 gap-2 h-11 px-6'}>
             <Send className="w-4 h-4" />
             ترحيل للخزنة
+            {dualWriteEnabled && (
+              <Badge className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] px-1.5">
+                قديم
+              </Badge>
+            )}
             <Badge className="bg-white/20 text-white text-[10px] px-1.5 mr-1">{generatedCount}</Badge>
           </Button>
         )}
@@ -365,6 +399,24 @@ export default function DailyPayrollPanel() {
           </Button>
         )}
       </div>
+
+      {dualWriteEnabled && canPost && (
+        <div className="flex flex-col sm:flex-row sm:items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-sm">
+          <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+          <div className="space-y-2 flex-1">
+            <p>
+              تنبيه: في النظام الجديد، اليوميات تُسجل كاستحقاق في دفتر الموظفين. ترحيل الخزنة القديم ينشئ مصروف وإيراد معادلة وقد يضخم التقارير.
+            </p>
+            <Link
+              href="/admin/hr?tab=employee-ledger"
+              className="inline-flex items-center gap-1 text-xs font-medium text-amber-200 underline underline-offset-2 hover:text-white"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              استخدم دفتر الموظفين لصرف المستحقات
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* ── Validation result card ───────────────────────────────────────────── */}
       {validationDone && (
@@ -576,6 +628,21 @@ export default function DailyPayrollPanel() {
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>بعد الترحيل للخزنة سيتم تسجيل هذه اليوميات كمصروفات، ولا يُفضل تعديلها إلا من خلال إجراء تصحيح.</span>
             </div>
+
+            {dualWriteEnabled && (
+              <div className="flex flex-col gap-2 p-3 bg-rose-500/10 border border-rose-500/30 rounded-lg text-rose-300 text-xs">
+                <p>
+                  تنبيه: في النظام الجديد، اليوميات تُسجل كاستحقاق في دفتر الموظفين. ترحيل الخزنة القديم ينشئ مصروف وإيراد معادلة وقد يضخم التقارير.
+                </p>
+                <Link
+                  href="/admin/hr?tab=employee-ledger"
+                  className="inline-flex items-center gap-1 text-amber-200 underline underline-offset-2 hover:text-white"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  استخدم دفتر الموظفين لصرف المستحقات
+                </Link>
+              </div>
+            )}
           </div>
 
           <DialogFooter className="gap-2 flex-row-reverse sm:flex-row-reverse" dir="rtl">
@@ -584,9 +651,11 @@ export default function DailyPayrollPanel() {
               إلغاء
             </Button>
             <Button onClick={handlePostToCash} disabled={posting}
-              className="bg-emerald-700 hover:bg-emerald-600 gap-2">
+              className={dualWriteEnabled
+                ? 'bg-zinc-700 hover:bg-zinc-600 border border-amber-500/40 gap-2'
+                : 'bg-emerald-700 hover:bg-emerald-600 gap-2'}>
               {posting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              تأكيد الترحيل للخزنة
+              {dualWriteEnabled ? 'تأكيد الترحيل القديم للخزنة' : 'تأكيد الترحيل للخزنة'}
             </Button>
           </DialogFooter>
         </DialogContent>

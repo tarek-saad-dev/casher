@@ -100,6 +100,7 @@ export async function sendWhatsAppPayload(
 
   if (response.status === 400) {
     const errorMsg = body.error || '';
+    console.log(`[whatsapp] Remote validation error (${payload.type}): ${errorMsg}`);
     if (errorMsg.toLowerCase().includes('phone') || errorMsg.toLowerCase().includes('invalid')) {
       return {
         sent: false,

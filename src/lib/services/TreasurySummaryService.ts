@@ -14,6 +14,7 @@
 
 import { getPool } from '@/lib/db';
 import sql from 'mssql';
+import { EMPLOYEE_FUNDING_CATEGORY_NAME } from '@/lib/services/employeeLedgerFundingService';
 
 export interface FinancialSummaryParams {
   fromDate: string; // YYYY-MM-DD
@@ -86,17 +87,23 @@ export async function getFinancialSummary(params: FinancialSummaryParams): Promi
       -- Sales Incoming only (المبيعات)
       ISNULL(SUM(CASE WHEN cm.inOut = N'in' AND cm.invType = N'مبيعات' THEN cm.GrandTolal ELSE 0 END), 0) AS SalesIncoming,
       
-      -- Other Income Incoming (الإيرادات الأخرى)
-      ISNULL(SUM(CASE WHEN cm.inOut = N'in' AND cm.invType = N'ايرادات' THEN cm.GrandTolal ELSE 0 END), 0) AS IncomeIncoming,
+      -- Other Income Incoming (الإيرادات الأخرى) — excludes employee funding liability
+      ISNULL(SUM(CASE
+        WHEN cm.inOut = N'in'
+         AND cm.invType = N'ايرادات'
+         AND ISNULL(cat.CatName, N'') <> @employeeFundingCategory
+        THEN cm.GrandTolal ELSE 0 END), 0) AS IncomeIncoming,
       
       -- Transaction Count
       COUNT(*) AS TransactionsCount
     FROM [dbo].[TblCashMove] cm
+    LEFT JOIN [dbo].[TblExpINCat] cat ON cat.ExpINID = cm.ExpINID
     LEFT JOIN [dbo].[TblShiftMove] sm ON cm.ShiftMoveID = sm.ID
     WHERE ${whereClause}
   `;
   
   const request = db.request();
+  request.input('employeeFundingCategory', sql.NVarChar(200), EMPLOYEE_FUNDING_CATEGORY_NAME);
   Object.keys(queryParams).forEach(key => {
     if (key === 'shiftMoveId' || key === 'userId') {
       request.input(key, sql.Int, queryParams[key]);

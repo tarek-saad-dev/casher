@@ -19,12 +19,23 @@ import {
   buildSalePayload,
   buildBookingPayload,
   buildFirstTimePayload,
+  buildEmployeeSalePayload,
+  buildEmployeeAdvancePayload,
   resolvePhone,
+  resolveEmployeeWhatsAppPhone,
   type SalePayloadInput,
   type BookingPayloadInput,
   type FirstTimePayloadInput,
+  type EmployeeSalePayloadInput,
+  type EmployeeAdvancePayloadInput,
 } from './payload-builders';
-import { validateSalePayload, validateBookingPayload, validateFirstTimePayload } from './schemas';
+import {
+  validateSalePayload,
+  validateBookingPayload,
+  validateFirstTimePayload,
+  validateEmployeeSalePayload,
+  validateEmployeeAdvancePayload,
+} from './schemas';
 import type { WhatsAppSendResult, WhatsAppStatusResult } from './types';
 import { WhatsAppValidationError } from './errors';
 
@@ -155,6 +166,130 @@ export async function sendFirstTimeWhatsAppMessage(
       return { sent: false, skipped: true, reason: 'invalid_payload' };
     }
     console.log(`[whatsapp] First-time message error (non-critical): ${err instanceof Error ? err.message : String(err)}`);
+    return { sent: false, skipped: false, reason: 'remote_error' };
+  }
+}
+
+export async function sendEmployeeSaleWhatsAppMessage(
+  input: EmployeeSalePayloadInput,
+): Promise<WhatsAppSendResult> {
+  const cfg = getConfig();
+
+  if (!cfg.enabled) {
+    return { sent: false, skipped: true, reason: 'development_only' };
+  }
+
+  if (!cfg.employeeSaleEnabled) {
+    console.log('[whatsapp] Employee sale message skipped: type disabled');
+    return { sent: false, skipped: true, reason: 'message_type_disabled' };
+  }
+
+  const phone = resolvePhone(input.phone, undefined);
+  if (!phone) {
+    console.log('[whatsapp] Employee sale message skipped: missing phone');
+    return { sent: false, skipped: true, reason: 'missing_phone' };
+  }
+
+  if (!input.employeeName?.trim()) {
+    console.log('[whatsapp] Employee sale message skipped: missing employee name');
+    return { sent: false, skipped: true, reason: 'missing_customer_name' };
+  }
+
+  if (!input.services?.length) {
+    console.log('[whatsapp] Employee sale message skipped: no services');
+    return { sent: false, skipped: true, reason: 'invalid_payload' };
+  }
+
+  try {
+    const payload = buildEmployeeSalePayload({ ...input, phone });
+    validateEmployeeSalePayload(payload);
+    const result = await sendWhatsAppPayload(payload);
+    if (result.sent) {
+      console.log(
+        `[whatsapp] Employee sale message submitted for invoice INV-${input.invID} -> ${input.employeeName}`,
+      );
+    } else if (!result.skipped) {
+      const detail =
+        'error' in result && result.error
+          ? result.error
+          : 'reason' in result
+            ? result.reason
+            : 'unknown';
+      console.log(
+        `[whatsapp] Employee sale message failed for INV-${input.invID} -> ${input.employeeName}: ${detail}`,
+      );
+    }
+    return result;
+  } catch (err) {
+    if (err instanceof WhatsAppValidationError) {
+      console.log(`[whatsapp] Employee sale message skipped: validation — ${err.message}`);
+      return { sent: false, skipped: true, reason: 'invalid_payload' };
+    }
+    console.log(
+      `[whatsapp] Employee sale message error (non-critical): ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return { sent: false, skipped: false, reason: 'remote_error' };
+  }
+}
+
+export async function sendEmployeeAdvanceWhatsAppMessage(
+  input: EmployeeAdvancePayloadInput,
+): Promise<WhatsAppSendResult> {
+  const cfg = getConfig();
+
+  if (!cfg.enabled) {
+    return { sent: false, skipped: true, reason: 'development_only' };
+  }
+
+  if (!cfg.employeeAdvanceEnabled) {
+    console.log('[whatsapp] Employee advance message skipped: type disabled');
+    return { sent: false, skipped: true, reason: 'message_type_disabled' };
+  }
+
+  const phone = resolvePhone(input.phone, undefined);
+  if (!phone) {
+    console.log('[whatsapp] Employee advance message skipped: missing phone');
+    return { sent: false, skipped: true, reason: 'missing_phone' };
+  }
+
+  if (!input.employeeName?.trim()) {
+    console.log('[whatsapp] Employee advance message skipped: missing employee name');
+    return { sent: false, skipped: true, reason: 'missing_customer_name' };
+  }
+
+  if (!input.amount || input.amount <= 0) {
+    console.log('[whatsapp] Employee advance message skipped: invalid amount');
+    return { sent: false, skipped: true, reason: 'invalid_payload' };
+  }
+
+  try {
+    const payload = buildEmployeeAdvancePayload({ ...input, phone });
+    validateEmployeeAdvancePayload(payload);
+    const result = await sendWhatsAppPayload(payload);
+    if (result.sent) {
+      console.log(
+        `[whatsapp] Employee advance message submitted for ADV-${input.invID} -> ${input.employeeName}`,
+      );
+    } else if (!result.skipped) {
+      const detail =
+        'error' in result && result.error
+          ? result.error
+          : 'reason' in result
+            ? result.reason
+            : 'unknown';
+      console.log(
+        `[whatsapp] Employee advance message failed for ADV-${input.invID} -> ${input.employeeName}: ${detail}`,
+      );
+    }
+    return result;
+  } catch (err) {
+    if (err instanceof WhatsAppValidationError) {
+      console.log(`[whatsapp] Employee advance message skipped: validation — ${err.message}`);
+      return { sent: false, skipped: true, reason: 'invalid_payload' };
+    }
+    console.log(
+      `[whatsapp] Employee advance message error (non-critical): ${err instanceof Error ? err.message : String(err)}`,
+    );
     return { sent: false, skipped: false, reason: 'remote_error' };
   }
 }

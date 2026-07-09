@@ -10,6 +10,8 @@ import type {
   SaleWhatsAppPayload,
   BookingWhatsAppPayload,
   FirstTimeWhatsAppPayload,
+  EmployeeSaleWhatsAppPayload,
+  EmployeeAdvanceWhatsAppPayload,
   WhatsAppExtraVariables,
 } from './types';
 import { PROTECTED_FIELDS } from './types';
@@ -153,6 +155,60 @@ export function validateFirstTimePayload(input: unknown): FirstTimeWhatsAppPaylo
   return payload;
 }
 
+export function validateEmployeeSalePayload(input: unknown): EmployeeSaleWhatsAppPayload {
+  if (typeof input !== 'object' || input === null) {
+    throw new WhatsAppValidationError('Payload must be an object');
+  }
+  const p = input as Record<string, unknown>;
+
+  const payload: EmployeeSaleWhatsAppPayload = {
+    type: 'employee_sale',
+    phone: assertNonEmptyString(p.phone, 'phone'),
+    customerName: assertNonEmptyString(p.customerName, 'customerName'),
+  };
+
+  if (p.invoiceNumber !== undefined)
+    payload.invoiceNumber = assertNonEmptyString(p.invoiceNumber, 'invoiceNumber');
+  if (p.branchName !== undefined && typeof p.branchName === 'string')
+    payload.branchName = p.branchName;
+  if (Array.isArray(p.services) && p.services.every((s) => typeof s === 'string'))
+    payload.services = p.services as string[];
+  if (p.variables !== undefined)
+    payload.variables = validateExtraVariables(p.variables);
+
+  return payload;
+}
+
+export function validateEmployeeAdvancePayload(
+  input: unknown,
+): EmployeeAdvanceWhatsAppPayload {
+  if (typeof input !== 'object' || input === null) {
+    throw new WhatsAppValidationError('Payload must be an object');
+  }
+  const p = input as Record<string, unknown>;
+
+  const payload: EmployeeAdvanceWhatsAppPayload = {
+    type: 'employee_advance',
+    phone: assertNonEmptyString(p.phone, 'phone'),
+    customerName: assertNonEmptyString(p.customerName, 'customerName'),
+  };
+
+  if (p.invoiceNumber !== undefined)
+    payload.invoiceNumber = assertNonEmptyString(p.invoiceNumber, 'invoiceNumber');
+  if (p.amount !== undefined)
+    payload.amount = assertFiniteNumber(p.amount, 'amount');
+  if (p.paymentMethod !== undefined && typeof p.paymentMethod === 'string')
+    payload.paymentMethod = p.paymentMethod;
+  if (p.branchName !== undefined && typeof p.branchName === 'string')
+    payload.branchName = p.branchName;
+  if (p.notes !== undefined && typeof p.notes === 'string')
+    payload.notes = p.notes;
+  if (p.variables !== undefined)
+    payload.variables = validateExtraVariables(p.variables);
+
+  return payload;
+}
+
 export function validatePayload(input: unknown): WhatsAppPayload {
   if (typeof input !== 'object' || input === null) {
     throw new WhatsAppValidationError('Payload must be an object');
@@ -166,6 +222,10 @@ export function validatePayload(input: unknown): WhatsAppPayload {
       return validateBookingPayload(input);
     case 'first_time':
       return validateFirstTimePayload(input);
+    case 'employee_sale':
+      return validateEmployeeSalePayload(input);
+    case 'employee_advance':
+      return validateEmployeeAdvancePayload(input);
     default:
       throw new WhatsAppValidationError(`Unknown message type: ${String(p.type)}`);
   }

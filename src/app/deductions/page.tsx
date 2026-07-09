@@ -263,7 +263,11 @@ export default function DeductionsPage() {
       }
 
       const result = await res.json();
-      setSaveSuccess(`✅ تم تسجيل الخصم بنجاح — #${result.deductionInvID} (${result.employeeName}: ${result.amount} ج.م)`);
+      let successMsg = `✅ تم تسجيل الخصم بنجاح — #${result.deductionInvID} (${result.employeeName}: ${result.amount} ج.م)`;
+      if (result.ledgerDualWrite) {
+        successMsg += ' — تم تسجيل السلفة في دفتر الموظف';
+      }
+      setSaveSuccess(successMsg);
 
       // Get current date and time for receipt
       const now = new Date();

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import sql from 'mssql';
+import { EMPLOYEE_FUNDING_CATEGORY_NAME } from '@/lib/services/employeeLedgerFundingService';
 import type { DailyTreasuryData, TreasurySummary, PaymentMethodBreakdown, TreasuryFilters } from '@/lib/types/treasury';
 
 /**
@@ -73,8 +74,13 @@ export async function GET(request: NextRequest) {
         SUM(CASE WHEN cm.inOut = N'out' THEN cm.GrandTolal ELSE 0 END) AS Net,
         COUNT(cm.ID) AS TransactionCount,
         SUM(CASE WHEN cm.inOut = N'in' AND cm.invType = N'مبيعات' THEN cm.GrandTolal ELSE 0 END) AS SalesInflow,
-        SUM(CASE WHEN cm.inOut = N'in' AND cm.invType = N'ايرادات' THEN cm.GrandTolal ELSE 0 END) AS IncomeInflow
+        SUM(CASE
+          WHEN cm.inOut = N'in'
+           AND cm.invType = N'ايرادات'
+           AND ISNULL(cat.CatName, N'') <> @employeeFundingCategory
+          THEN cm.GrandTolal ELSE 0 END) AS IncomeInflow
       FROM [dbo].[TblCashMove] cm
+      LEFT JOIN [dbo].[TblExpINCat] cat ON cat.ExpINID = cm.ExpINID
       LEFT JOIN [dbo].[TblPaymentMethods] pm ON cm.PaymentMethodID = pm.PaymentID
       LEFT JOIN [dbo].[TblShiftMove] sm ON cm.ShiftMoveID = sm.ID
       WHERE ${whereClause}
@@ -84,6 +90,7 @@ export async function GET(request: NextRequest) {
     `;
     
     const breakdownRequest = db.request();
+    breakdownRequest.input('employeeFundingCategory', sql.NVarChar(200), EMPLOYEE_FUNDING_CATEGORY_NAME);
     Object.keys(params).forEach(key => {
       if (key === 'shiftMoveId' || key === 'userId') {
         breakdownRequest.input(key, sql.Int, params[key]);

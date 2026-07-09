@@ -30,6 +30,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       defaultCheckInTime,
       defaultCheckOutTime,
       isPayrollEnabled,
+      whatsApp,
     } = body;
 
     // Validate numeric fields
@@ -62,6 +63,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     if (defaultCheckInTime      !== undefined) { setClauses.push('DefaultCheckInTime      = @defaultCheckInTime');      request.input('defaultCheckInTime',      sql.NVarChar(10),    defaultCheckInTime ?? null); }
     if (defaultCheckOutTime     !== undefined) { setClauses.push('DefaultCheckOutTime     = @defaultCheckOutTime');     request.input('defaultCheckOutTime',     sql.NVarChar(10),    defaultCheckOutTime ?? null); }
     if (isPayrollEnabled        !== undefined) { setClauses.push('IsPayrollEnabled        = @isPayrollEnabled');        request.input('isPayrollEnabled',        sql.Bit,             isPayrollEnabled ? 1 : 0); }
+    if (whatsApp                !== undefined) { setClauses.push('WhatsApp                = @whatsApp');                request.input('whatsApp',                sql.NVarChar(30),    whatsApp ? String(whatsApp).trim() : null); }
 
     if (setClauses.length === 0) {
       return NextResponse.json({ error: 'لا توجد بيانات للتعديل' }, { status: 400 });
@@ -84,7 +86,12 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
           TargetCommissionPercent, TargetMinSales,
           CAST(DefaultCheckInTime  AS varchar(8)) AS DefaultCheckInTime,
           CAST(DefaultCheckOutTime AS varchar(8)) AS DefaultCheckOutTime,
-          IsPayrollEnabled, HourlyRate
+          IsPayrollEnabled, HourlyRate,
+          CASE
+            WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'WhatsApp')
+            THEN WhatsApp ELSE NULL
+          END AS WhatsApp,
+          Mobile
         FROM dbo.TblEmp
         WHERE EmpID = @empID
       `);

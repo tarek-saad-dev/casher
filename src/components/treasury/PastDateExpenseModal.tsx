@@ -47,6 +47,7 @@ export default function PastDateExpenseModal({
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successNote, setSuccessNote] = useState('');
 
   // Load expense categories and payment methods on mount
   useEffect(() => {
@@ -122,6 +123,7 @@ export default function PastDateExpenseModal({
 
     setLoading(true);
     setError('');
+    setSuccessNote('');
 
     try {
       const response = await fetch('/api/expenses/past-date', {
@@ -143,7 +145,10 @@ export default function PastDateExpenseModal({
       }
 
       const result = await response.json();
-      console.log('Expense added:', result);
+      if (result.ledgerDualWrite) {
+        setSuccessNote('تم تسجيل السلفة في دفتر الموظف');
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+      }
 
       onExpenseComplete();
       onClose();
@@ -295,6 +300,13 @@ export default function PastDateExpenseModal({
               className="bg-surface-muted border-border text-foreground"
             />
           </div>
+
+          {/* Success note */}
+          {successNote && (
+            <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+              <p className="text-green-600 text-sm">{successNote}</p>
+            </div>
+          )}
 
           {/* Error */}
           {error && (

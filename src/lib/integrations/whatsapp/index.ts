@@ -8,6 +8,8 @@ export {
   sendSaleWhatsAppMessage,
   sendBookingWhatsAppMessage,
   sendFirstTimeWhatsAppMessage,
+  sendEmployeeSaleWhatsAppMessage,
+  sendEmployeeAdvanceWhatsAppMessage,
   checkWhatsAppStatus,
 } from './service';
 
@@ -21,5 +23,7 @@ export type {
   SaleWhatsAppPayload,
   BookingWhatsAppPayload,
   FirstTimeWhatsAppPayload,
+  EmployeeSaleWhatsAppPayload,
+  EmployeeAdvanceWhatsAppPayload,
   WhatsAppExtraVariables,
 } from './types';

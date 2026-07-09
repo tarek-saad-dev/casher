@@ -13,6 +13,8 @@ export interface WhatsAppConfig {
   saleEnabled: boolean;
   bookingEnabled: boolean;
   firstTimeEnabled: boolean;
+  employeeSaleEnabled: boolean;
+  employeeAdvanceEnabled: boolean;
   defaultBranchName: string;
   defaultBookingLink: string;
 }
@@ -28,6 +30,8 @@ function getWhatsAppConfig(): WhatsAppConfig {
     saleEnabled: process.env.WHATSAPP_SALE_ENABLED !== 'false',
     bookingEnabled: process.env.WHATSAPP_BOOKING_ENABLED !== 'false',
     firstTimeEnabled: process.env.WHATSAPP_FIRST_TIME_ENABLED !== 'false',
+    employeeSaleEnabled: process.env.WHATSAPP_EMPLOYEE_SALE_ENABLED !== 'false',
+    employeeAdvanceEnabled: process.env.WHATSAPP_EMPLOYEE_ADVANCE_ENABLED !== 'false',
     defaultBranchName: process.env.WHATSAPP_DEFAULT_BRANCH_NAME || 'جليم',
     defaultBookingLink: process.env.WHATSAPP_DEFAULT_BOOKING_LINK || 'https://cutsaloon.com/',
   };

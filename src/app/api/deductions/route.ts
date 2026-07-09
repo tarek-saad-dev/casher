@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql, allocateInvID } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import {
+  EmployeeLedgerDualWriteError,
+  formatLedgerEntryDate,
+  syncAdvanceLedgerForDeductionCashMove,
+} from '@/lib/services/employeeLedgerDualWrite';
+import { scheduleEmployeeAdvanceWhatsApp } from '@/lib/services/employeeAdvanceWhatsAppNotify';
 
 // GET /api/deductions — List employee deductions with optional filters
 export async function GET(req: NextRequest) {
@@ -212,16 +218,27 @@ export async function POST(req: NextRequest) {
         .input('ShiftMoveID',     sql.Int,              shiftMoveID)
         .input('PaymentMethodID', sql.Int,              body.paymentMethodId);
 
-      await deductionReq.query(`
+      const deductionResult = await deductionReq.query(`
         INSERT INTO [dbo].[TblCashMove] (
           invID, invType, invDate, invTime, ClientID,
           ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID
-        ) VALUES (
+        )
+        OUTPUT INSERTED.ID
+        VALUES (
           @invID, @invType, @invDate, @invTime, @ClientID,
           @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID
         )
       `);
-      console.log(`[deductions]   ✅ Deduction inserted: invID=${deductionInvID}, Employee=${employee.EmpName}, Amount=${amount}`);
+      const deductionCashMoveId = deductionResult.recordset[0].ID as number;
+      console.log(`[deductions]   ✅ Deduction inserted: invID=${deductionInvID}, cashMoveId=${deductionCashMoveId}, Employee=${employee.EmpName}, Amount=${amount}`);
+
+      const ledgerResult = await syncAdvanceLedgerForDeductionCashMove(db, transaction, {
+        empId: employee.EmpID,
+        cashMoveId: deductionCashMoveId,
+        entryDate: formatLedgerEntryDate(invDate),
+        amount,
+        createdByUserId: userID,
+      });
 
       // Allocate income invID safely (no TABLOCKX)
       const incomeInvID = await allocateInvID(transaction, 'TblCashMove', 'ايرادات', 5000);
@@ -256,14 +273,34 @@ export async function POST(req: NextRequest) {
       console.log(`[deductions]   ✅ COMMITTED — deductionInvID=${deductionInvID}, incomeInvID=${incomeInvID}`);
       console.log(`[deductions] ──── SAVE DEDUCTION COMPLETE ────`);
 
-      return NextResponse.json({ 
-        deductionInvID: deductionInvID, 
-        incomeInvID: incomeInvID,
+      scheduleEmployeeAdvanceWhatsApp({
+        empId: employee.EmpID,
+        employeeName: employee.EmpName,
+        invID: deductionInvID,
+        amount,
+        paymentMethodId: body.paymentMethodId,
+        notes: notesText,
+      });
+
+      return NextResponse.json({
+        deductionInvID,
+        deductionCashMoveId,
+        incomeInvID,
         employeeName: employee.EmpName,
         categoryName: employee.AdvanceCatName,
-        amount 
+        amount,
+        ledgerDualWrite: ledgerResult.ledgerDualWrite,
+        ledgerSync: ledgerResult.outcome ?? null,
       }, { status: 201 });
     } catch (err) {
+      if (err instanceof EmployeeLedgerDualWriteError) {
+        const rollbackReason = err.message;
+        console.error(`[deductions]   ❌ ROLLING BACK — ledger error: ${rollbackReason}`);
+        try { await transaction.rollback(); } catch (rbErr) {
+          console.error(`[deductions]   Rollback also failed: ${rbErr instanceof Error ? rbErr.message : rbErr}`);
+        }
+        return NextResponse.json({ error: err.message }, { status: 503 });
+      }
       const rollbackReason = err instanceof Error ? err.message : String(err);
       console.error(`[deductions]   ❌ ROLLING BACK — reason: ${rollbackReason}`);
       try { await transaction.rollback(); } catch (rbErr) {

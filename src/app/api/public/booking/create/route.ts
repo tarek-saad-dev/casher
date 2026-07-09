@@ -76,6 +76,7 @@ export async function POST(req: NextRequest) {
       empId,
       date,
       time,
+      dayOffset = 0,
       notes = "",
       source = "public",
     } = body as {
@@ -85,6 +86,7 @@ export async function POST(req: NextRequest) {
       empId?: number;
       date: string;
       time: string;
+      dayOffset?: 0 | 1;
       notes?: string;
       source?: "public" | "operations" | "admin";
     };
@@ -135,7 +137,8 @@ export async function POST(req: NextRequest) {
 
     // Use salon timezone-aware epoch calculation to avoid server TZ mismatches
     const timezone = settings.timezone || "Africa/Cairo";
-    const slotEpochMs = salonDateTimeToMs(date, time, timezone);
+    const actualDate = dayOffset === 1 ? nextDate(date) : date;
+    const slotEpochMs = salonDateTimeToMs(actualDate, time, timezone);
     const slotDt = new Date(slotEpochMs);
 
     // Prevent bookings too soon (only for public bookings)
@@ -171,7 +174,7 @@ export async function POST(req: NextRequest) {
     const validation = await validateBookingSlot({
       date,
       time,
-      dayOffset: 0,
+      dayOffset,
       serviceIds,
       mode,
       empId,
@@ -307,7 +310,7 @@ export async function POST(req: NextRequest) {
         .request()
         .input("clientId", sql.Int, clientId)
         .input("empId", sql.Int, resolvedEmpId!)
-        .input("bDate", sql.Date, date)
+        .input("bDate", sql.Date, actualDate)
         .input("sTime", sql.VarChar, startTimeStr)
         .input("eTime", sql.VarChar, endTimeStr)
         .input("source", sql.NVarChar, isInternalSource ? source : "online")
@@ -405,7 +408,7 @@ export async function POST(req: NextRequest) {
         phone: customer.phone,
         customerName: customer.name,
         bookingId,
-        bookingDate: date,
+        bookingDate: actualDate,
         bookingTime: time,
         barberName: resolvedEmpName || undefined,
         services: svcNames.length > 0 ? svcNames : undefined,
@@ -430,6 +433,7 @@ export async function POST(req: NextRequest) {
           barberName: resolvedEmpName!,
           servicesText,
           date,
+          actualDate,
           startTime: time,
           endTime: endTimeStr.slice(0, 5),
         },
@@ -445,6 +449,12 @@ export async function POST(req: NextRequest) {
       { status: 500, headers: PUBLIC_CORS_HEADERS },
     );
   }
+}
+
+function nextDate(dateStr: string): string {
+  const d = new Date(`${dateStr}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
 }
 
 function formatCairoHhmm(epochMs: number, timezone: string): string {

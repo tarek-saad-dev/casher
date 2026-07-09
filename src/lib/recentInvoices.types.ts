@@ -2,6 +2,7 @@ export interface RecentInvoiceItem {
   InvID: number;
   InvNo: number;
   InvDate: string;
+  InvTime?: string | null;
   TotalPrice: number;
   PaidAmount: number;
   RemainingAmount: number;

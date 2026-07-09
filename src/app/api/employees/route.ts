@@ -24,6 +24,11 @@ export async function GET(req: NextRequest) {
           WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'HourlyRate')
           THEN e.HourlyRate ELSE NULL
         END AS HourlyRate,
+        CASE
+          WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'WhatsApp')
+          THEN e.WhatsApp ELSE NULL
+        END AS WhatsApp,
+        e.Mobile,
         adv.ExpINID AS AdvanceExpINID, adv.CatName AS AdvanceCatName,
         rev.ExpINID AS RevenueExpINID, rev.CatName AS RevenueCatName
       FROM dbo.TblEmp e
