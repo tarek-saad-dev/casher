@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       }, { status: 409 });
     }
 
-    const missing = await validateDailyPayrollAttendance(db, workDate);
+    const { missing } = await validateDailyPayrollAttendance(db, workDate);
     if (missing.length > 0) {
       return NextResponse.json({
         error: 'برجاء إكمال بيانات الحضور والانصراف أولاً',

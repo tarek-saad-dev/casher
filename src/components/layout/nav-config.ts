@@ -30,6 +30,36 @@ export interface NavSection {
   items: NavItem[];
 }
 
+/** Top-level groupings for mobile navigation (categories → sections → items). */
+export interface NavCategory {
+  title: string;
+  description: string;
+  sectionTitles: string[];
+}
+
+export const NAV_CATEGORIES: NavCategory[] = [
+  {
+    title: 'العمليات اليومية',
+    description: 'البيع، الطابور والحجوزات',
+    sectionTitles: ['المدخلات', 'الطابور', 'الحجوزات'],
+  },
+  {
+    title: 'التقارير والمراجعة',
+    description: 'متابعة المدخلات والمصروفات',
+    sectionTitles: ['مراجعة المدخلات', 'مراجعة المصروفات'],
+  },
+  {
+    title: 'المالية',
+    description: 'المصروفات، الخزنة والميزانية',
+    sectionTitles: ['المصروفات', 'الخزنة', 'الميزانية', 'الكاشير'],
+  },
+  {
+    title: 'الإدارة والموارد',
+    description: 'الموظفون، الإعدادات والتدقيق',
+    sectionTitles: ['الموارد البشرية', 'الإدارة', 'التدقيق'],
+  },
+];
+
 // ── Themes ────────────────────────────────────────────────────────────────────
 
 export const NAV_THEMES: Record<string, NavTheme> = {
@@ -140,7 +170,7 @@ export const NAV_SECTIONS: NavSection[] = [
     icon: UsersRound,
     items: [
       { href: '/admin/hr',                        label: 'الموظفون',          icon: UsersRound },
-      { href: '/admin/attendance',                label: 'متابعة الحضور',    icon: Clock      },
+      { href: '/admin/hr?tab=attendance',       label: 'متابعة الحضور',    icon: Clock      },
     ],
   },
   {
@@ -207,6 +237,23 @@ export function getActiveSectionTitle(pathname: string): string | null {
     for (const item of section.items) {
       if (!item.disabled && isRouteActive(pathname, item.href)) return section.title;
     }
+  }
+  return null;
+}
+
+export function getActiveNavItem(pathname: string): NavItem | null {
+  for (const section of NAV_SECTIONS) {
+    for (const item of section.items) {
+      if (!item.disabled && isRouteActive(pathname, item.href)) return item;
+    }
+  }
+  return null;
+}
+
+export function getActiveCategoryTitle(sectionTitle: string | null): string | null {
+  if (!sectionTitle) return null;
+  for (const category of NAV_CATEGORIES) {
+    if (category.sectionTitles.includes(sectionTitle)) return category.title;
   }
   return null;
 }

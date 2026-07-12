@@ -1,18 +1,20 @@
 // ───────────────────────── Monthly Business Report Types ─────────────────────────
 
+import type { FinancialReportClassificationPayload } from '@/lib/types/financial-report-classification';
+
 export interface DailyRevenueExpensesData {
   day: string; // ISO date string (YYYY-MM-DD)
   revenue: number;
   expenses: number;
 }
 
-export interface MonthlyBusinessReport {
+export type MonthlyBusinessReport = {
   totalRevenue: number;
   totalExpenses: number;
   netProfit: number;
   totalInvoices: number;
   dailyData?: DailyRevenueExpensesData[]; // Optional for simplified report
-}
+} & Partial<FinancialReportClassificationPayload>;
 
 export interface Partner {
   name: string;

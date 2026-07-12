@@ -11,6 +11,7 @@ import {
   formatArabicNumber,
   toArabicDigits,
 } from '@/lib/formatArabicNumbers';
+import { cashMoveDeleteToastMessage, notifyEmployeeLedgerRefresh } from '@/lib/cashMoveDeleteClient';
 
 interface ExpenseTransactionsTableProps {
   transactions: ExpenseTransaction[];
@@ -114,9 +115,14 @@ export default function ExpenseTransactionsTable({
         method: 'DELETE',
       });
 
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'فشل حذف المصروف');
+        throw new Error(data.error || 'فشل حذف المصروف');
+      }
+
+      if (typeof data.ledgerDeletedCount === 'number' && data.ledgerDeletedCount > 0) {
+        notifyEmployeeLedgerRefresh();
+        alert(cashMoveDeleteToastMessage(data, 'تم حذف الحركة وحذف تأثيرها من دفتر الموظفين.'));
       }
 
       setDeletingExpense(null);

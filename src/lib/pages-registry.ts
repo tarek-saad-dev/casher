@@ -50,7 +50,8 @@ export const SYSTEM_PAGES: PageDefinition[] = [
   { key: 'bookings.calendar',       name: 'التقويم',                 path: '/bookings/calendar',               section: 'الحجوزات',          accessMode: 'roles', sort: 82,  defaultRoles: ['super_admin','admin','manager','receptionist'] },
   // ── HR ───────────────────────────────────────────────────────────────────────
   { key: 'hr.employees',            name: 'الموظفون',                path: '/admin/hr',                        section: 'الموارد البشرية',   accessMode: 'roles', sort: 90,  defaultRoles: ['super_admin','admin'] },
-  { key: 'hr.attendance',           name: 'متابعة الحضور',           path: '/admin/attendance',                section: 'الموارد البشرية',   accessMode: 'roles', sort: 91,  defaultRoles: ['super_admin','admin','manager'] },
+  { key: 'hr.attendance',           name: 'متابعة الحضور',           path: '/admin/hr?tab=attendance',         section: 'الموارد البشرية',   accessMode: 'roles', sort: 91,  defaultRoles: ['super_admin','admin','manager'] },
+  { key: 'hr.payroll',              name: 'يوميات الموظفين',         path: '/admin/hr?tab=daily-payroll',      section: 'الموارد البشرية',   accessMode: 'roles', sort: 92,  defaultRoles: ['super_admin','admin'] },
   { key: 'hr.advances',             name: 'سلف الموظفين',            path: '/expenses-review/advances',        section: 'الموارد البشرية',   accessMode: 'roles', sort: 93,  defaultRoles: ['super_admin','admin'] },
   { key: 'hr.salaries',             name: 'مرتبات العاملين',         path: '/expenses-review/salaries',        section: 'الموارد البشرية',   accessMode: 'roles', sort: 94,  defaultRoles: ['super_admin','admin'] },
   // ── Admin ────────────────────────────────────────────────────────────────────

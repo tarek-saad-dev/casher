@@ -10,6 +10,7 @@ import PartnersEmployeeFlowSection from '@/components/reports/partners/PartnersE
 import ExpensesByCategorySection from '@/components/reports/partners/ExpensesByCategorySection';
 import PartnersOperatingNetFlowSection from '@/components/reports/partners/PartnersOperatingNetFlowSection';
 import PartnersFinalSettlementSection from '@/components/reports/partners/PartnersFinalSettlementSection';
+import FinancialClassificationPanel from '@/components/reports/FinancialClassificationPanel';
 import { ARABIC_MONTHS } from '@/components/reports/partners/partnersReportUtils';
 import {
   clampPartnersReportMonth,
@@ -270,6 +271,14 @@ function PartnersReportPageContent() {
 
         {(report || loading) && (
           <>
+            <FinancialClassificationPanel
+              payload={report ?? undefined}
+              loading={loading}
+              variant="profit"
+              legacyNetProfit={report?.classifiedPartnerSplit?.legacyOperatingNet}
+              partnerSplitExplanation={report?.classifiedPartnerSplit?.explanation}
+            />
+
             <PartnersEmployeesSection
               rows={report?.employeeSummary ?? []}
               totals={
@@ -323,6 +332,8 @@ function PartnersReportPageContent() {
               }
               filteredOperatingExpenses={report?.summary.operatingExpenses ?? 0}
               loading={loading}
+              classifiedOperatingNet={report?.classifiedPartnerSplit?.cleanNetProfit}
+              legacyOperatingNet={report?.classifiedPartnerSplit?.legacyOperatingNet}
             />
           </>
         )}

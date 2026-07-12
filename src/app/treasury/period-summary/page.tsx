@@ -4,11 +4,12 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Loader2, RefreshCw, Download, TrendingUp, TrendingDown,
   Wallet, Activity, CalendarDays, Users, ChevronUp, ChevronDown,
-  ArrowRightLeft,
+  ArrowRightLeft, List,
 } from 'lucide-react';
 import PastDateIncomeModal  from '@/components/treasury/PastDateIncomeModal';
 import PastDateExpenseModal from '@/components/treasury/PastDateExpenseModal';
 import PastDateTransferModal from '@/components/treasury/PastDateTransferModal';
+import PaymentMethodDetailsModal from '@/components/treasury/PaymentMethodDetailsModal';
 import type {
   TreasuryPeriodSummaryResponse,
   PeriodDayRow,
@@ -114,6 +115,11 @@ export default function TreasuryPeriodSummaryPage() {
   // ── Action modals state ───────────────────────────────────────────────────
   const [activeModal, setActiveModal] = useState<'income' | 'expense' | 'transfer' | null>(null);
   const [modalDate, setModalDate]     = useState<string | undefined>(undefined);
+  const [detailsModal, setDetailsModal] = useState<{
+    paymentMethodKey: string;
+    paymentMethodName: string;
+    date: string;
+  } | null>(null);
 
   const openModal = (mode: 'income' | 'expense' | 'transfer', date: string) => {
     setModalDate(date);
@@ -477,8 +483,24 @@ export default function TreasuryPeriodSummaryPage() {
                                 const v = day.paymentTotals[String(pm.id)] ?? 0;
                                 const c = getCell(v);
                                 return (
-                                  <td key={pm.id} className={`px-4 py-3.5 text-right whitespace-nowrap tabular-nums text-base ${c.cls}`}>
-                                    {v === 0 ? <span className="text-zinc-700">—</span> : c.text}
+                                  <td key={pm.id} className="px-3 py-2.5 text-right whitespace-nowrap">
+                                    <div className="flex items-center justify-end gap-1.5">
+                                      <span className={`tabular-nums text-base ${c.cls}`}>
+                                        {v === 0 ? <span className="text-zinc-700">—</span> : c.text}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setDetailsModal({
+                                          paymentMethodKey: String(pm.id),
+                                          paymentMethodName: pm.name,
+                                          date: day.date,
+                                        })}
+                                        title={`تفاصيل ${pm.name} — ${fmtDate(day.date)}`}
+                                        className="shrink-0 p-1 rounded-md border border-zinc-600/40 bg-zinc-700/30 hover:bg-zinc-700/60 text-zinc-400 hover:text-white transition-colors"
+                                      >
+                                        <List className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
                                   </td>
                                 );
                               })}
@@ -629,6 +651,21 @@ export default function TreasuryPeriodSummaryPage() {
           onClose={closeModal}
           onTransferComplete={onActionSuccess}
           defaultDate={modalDate}
+        />
+      )}
+
+      {detailsModal && (
+        <PaymentMethodDetailsModal
+          paymentMethodKey={detailsModal.paymentMethodKey}
+          paymentMethodName={detailsModal.paymentMethodName}
+          filters={{
+            newDay: null,
+            dateFrom: detailsModal.date,
+            dateTo: detailsModal.date,
+            shiftMoveId: null,
+            userId: userId !== 'all' ? Number(userId) : null,
+          }}
+          onClose={() => setDetailsModal(null)}
         />
       )}
     </div>

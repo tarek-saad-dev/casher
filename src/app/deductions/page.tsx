@@ -15,6 +15,7 @@ import ShiftRequiredOverlay from '@/components/session/ShiftRequiredOverlay';
 import DeductionReceiptPopup from '@/components/deductions/DeductionReceiptPopup';
 import MonthlySummary from '@/components/deductions/MonthlySummary';
 import { useSession } from '@/hooks/useSession';
+import { cashMoveDeleteToastMessage, notifyEmployeeLedgerRefresh } from '@/lib/cashMoveDeleteClient';
 
 // ═══════════════════════════════════════════════════════════
 // DEDUCTIONS PAGE — Employee Deductions Form + History + Summary
@@ -323,7 +324,8 @@ export default function DeductionsPage() {
       if (!res.ok || !data.success) {
         addToast('error', data.error || 'فشل حذف الخصم');
       } else {
-        addToast('success', 'تم حذف الخصم بنجاح');
+        addToast('success', cashMoveDeleteToastMessage(data, 'تم حذف الخصم بنجاح'));
+        if (data.ledgerDeletedCount > 0) notifyEmployeeLedgerRefresh();
         loadDeductions();
       }
     } catch {

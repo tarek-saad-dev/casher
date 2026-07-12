@@ -53,8 +53,8 @@ const PAGES = [
   { key: 'bookings.calendar',      name: 'التقويم',                path: '/bookings/calendar',               section: 'الحجوزات',           access: 'roles', sort: 82 },
   // HR
   { key: 'hr.employees',           name: 'الموظفون',               path: '/admin/hr',                        section: 'الموارد البشرية',    access: 'roles', sort: 90 },
-  { key: 'hr.attendance',          name: 'متابعة الحضور',          path: '/admin/attendance',                section: 'الموارد البشرية',    access: 'roles', sort: 91 },
-  { key: 'hr.payroll',             name: 'يوميات الموظفين',        path: '/admin/attendance/daily-payroll',  section: 'الموارد البشرية',    access: 'roles', sort: 92 },
+  { key: 'hr.attendance',          name: 'متابعة الحضور',          path: '/admin/hr?tab=attendance',         section: 'الموارد البشرية',    access: 'roles', sort: 91 },
+  { key: 'hr.payroll',             name: 'يوميات الموظفين',        path: '/admin/hr?tab=daily-payroll',      section: 'الموارد البشرية',    access: 'roles', sort: 92 },
   { key: 'hr.advances',            name: 'سلف الموظفين',           path: '/expenses-review/advances',        section: 'الموارد البشرية',    access: 'roles', sort: 93 },
   { key: 'hr.salaries',            name: 'مرتبات العاملين',        path: '/expenses-review/salaries',        section: 'الموارد البشرية',    access: 'roles', sort: 94 },
   // Admin

@@ -3,6 +3,10 @@
  */
 
 import { sql } from '@/lib/db';
+import {
+  deleteCashMoveWithLinkedLedgerEntries,
+  type DeleteCashMoveWithLedgerResult,
+} from '@/lib/services/cashMoveHardDeleteService';
 
 export interface ExpenseSnapshot {
   ID: number;
@@ -127,12 +131,16 @@ export async function updateExpenseCategory(
 export async function deleteExpense(
   transaction: sql.Transaction,
   id: number,
-): Promise<void> {
-  const result = await new sql.Request(transaction)
-    .input('id', sql.Int, id)
-    .query(`DELETE FROM dbo.TblCashMove WHERE ID = @id AND invType = N'مصروفات'`);
-
-  if (result.rowsAffected[0] === 0) {
+): Promise<Extract<DeleteCashMoveWithLedgerResult, { deleted: true }>> {
+  const existing = await getExpenseSnapshot(transaction, id);
+  if (!existing) {
     throw new Error('المصروف غير موجود أو تم حذفه');
   }
+
+  const result = await deleteCashMoveWithLinkedLedgerEntries(transaction, id);
+  if (!result.deleted) {
+    throw new Error('المصروف غير موجود أو تم حذفه');
+  }
+
+  return result;
 }

@@ -1,8 +1,14 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Printer, X, CheckCircle2 } from 'lucide-react';
+import { Printer, X, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  createPrintRequestId,
+  openBrowserPrintFallback,
+  printHtmlViaLocalService,
+  type LocalPrintFailure,
+} from '@/lib/localPrintClient';
 
 interface ExpenseReceiptData {
   invID: number;
@@ -154,9 +160,12 @@ export default function ExpenseReceiptPopup({ open, expense, onClose }: ExpenseR
   const [printing, setPrinting] = useState(false);
   const [visible, setVisible] = useState(false);
   const [progress, setProgress] = useState(100);
-  const printWindowRef = useRef<Window | null>(null);
+  const [printError, setPrintError] = useState<LocalPrintFailure | null>(null);
+  const [printSuccess, setPrintSuccess] = useState<string | null>(null);
   const autoCloseTimerRef = useRef<NodeJS.Timeout | null>(null);
   const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const printLockRef = useRef(false);
+  const activeRequestIdRef = useRef<string | null>(null);
 
   // Build receipt HTML
   const buildReceiptHTML = useCallback(() => {
@@ -235,88 +244,108 @@ export default function ExpenseReceiptPopup({ open, expense, onClose }: ExpenseR
 </html>`;
   }, [expense]);
 
-  // Handle visibility and auto-close
-  useEffect(() => {
-    if (open && expense) {
-      setVisible(true);
-      setProgress(100);
-      
-      // Progress bar animation
-      const progressInterval = setInterval(() => {
-        setProgress((prev) => {
-          if (prev <= 0) return 0;
-          return prev - 2; // 100 to 0 in ~5 seconds
-        });
-      }, 100);
-
-      // Auto-close after 5 seconds
-      const closeTimer = setTimeout(() => {
-        handleClose();
-      }, 5000);
-
-      autoCloseTimerRef.current = closeTimer;
-      progressTimerRef.current = progressInterval;
-
-      return () => {
-        clearTimeout(closeTimer);
-        clearInterval(progressInterval);
-      };
-    }
-  }, [open, expense]);
-
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     setVisible(false);
     // Small delay to allow exit animation
     setTimeout(() => {
       onClose();
     }, 300);
-  };
+  }, [onClose]);
 
-  // Print handler
-  const handlePrint = useCallback(() => {
-    if (printing || !expense) return;
+  // Handle visibility and auto-close (enter animation + timed dismiss)
+  useEffect(() => {
+    if (!(open && expense)) return;
+
+    // Animation + print UI reset when a new receipt appears
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional enter-animation sync with open prop
+    setVisible(true);
+    setProgress(100);
+    setPrintError(null);
+    setPrintSuccess(null);
+    printLockRef.current = false;
+    activeRequestIdRef.current = null;
+
+    const progressInterval = setInterval(() => {
+      setProgress((prev) => {
+        if (prev <= 0) return 0;
+        return prev - 2;
+      });
+    }, 100);
+
+    const closeTimer = setTimeout(() => {
+      if (!printLockRef.current) {
+        handleClose();
+      }
+    }, 5000);
+
+    autoCloseTimerRef.current = closeTimer;
+    progressTimerRef.current = progressInterval;
+
+    return () => {
+      clearTimeout(closeTimer);
+      clearInterval(progressInterval);
+    };
+  }, [open, expense, handleClose]);
+
+  // Primary: Local Print Service. No about:blank / window.print on success.
+  const handlePrint = useCallback(async () => {
+    if (printing || printLockRef.current || !expense) return;
+
+    printLockRef.current = true;
     setPrinting(true);
+    setPrintError(null);
+    setPrintSuccess(null);
 
-    if (printWindowRef.current && !printWindowRef.current.closed) {
-      printWindowRef.current.close();
-    }
+    // Keep the same requestId for this attempt (idempotency across UI retries of same click)
+    const requestId = activeRequestIdRef.current || createPrintRequestId(`exp-${expense.invID}`);
+    activeRequestIdRef.current = requestId;
 
-    const win = window.open('', '_blank', 'width=300,height=400');
-    if (!win) {
-      setPrinting(false);
-      return;
+    if (autoCloseTimerRef.current) {
+      clearTimeout(autoCloseTimerRef.current);
+      autoCloseTimerRef.current = null;
     }
-    printWindowRef.current = win;
 
     const html = buildReceiptHTML();
-    win.document.write(html);
-    win.document.close();
+    const result = await printHtmlViaLocalService({
+      html,
+      requestId,
+      width: '58mm',
+      printer: 'default',
+    });
 
-    win.onload = () => {
-      win.onafterprint = () => {
-        win.close();
-        printWindowRef.current = null;
-        setPrinting(false);
-      };
+    if (result.ok) {
+      setPrintSuccess(result.printer ? `تمت الطباعة عبر ${result.printer}` : 'تمت الطباعة بنجاح');
+      activeRequestIdRef.current = null;
+      setPrinting(false);
+      printLockRef.current = false;
+      return;
+    }
 
-      win.print();
+    setPrintError(result);
+    setPrinting(false);
+    printLockRef.current = false;
+  }, [printing, expense, buildReceiptHTML]);
 
-      setTimeout(() => {
-        if (printWindowRef.current && !printWindowRef.current.closed) {
-          printWindowRef.current.close();
-          printWindowRef.current = null;
-        }
-        setPrinting(false);
-      }, 10000);
-    };
+  const handleBrowserFallback = useCallback(() => {
+    if (printing || printLockRef.current || !expense) return;
+    printLockRef.current = true;
+    setPrinting(true);
+
+    const requestId = activeRequestIdRef.current || createPrintRequestId(`exp-browser-${expense.invID}`);
+    const html = buildReceiptHTML();
+    const fallback = openBrowserPrintFallback(html, requestId);
+
+    if (fallback.ok === false) {
+      setPrintError(fallback);
+    }
+
+    setPrinting(false);
+    printLockRef.current = false;
   }, [printing, expense, buildReceiptHTML]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (printWindowRef.current && !printWindowRef.current.closed) {
-        printWindowRef.current.close();
-      }
       if (autoCloseTimerRef.current) clearTimeout(autoCloseTimerRef.current);
       if (progressTimerRef.current) clearInterval(progressTimerRef.current);
     };
@@ -390,25 +419,60 @@ export default function ExpenseReceiptPopup({ open, expense, onClose }: ExpenseR
           )}
         </div>
 
+        {printSuccess && (
+          <p className="text-xs text-green-600 mb-2 flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3" />
+            {printSuccess}
+          </p>
+        )}
+
+        {printError && (
+          <div className="mb-2 rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-200 space-y-1">
+            <div className="flex items-start gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <p>{printError.userMessage}</p>
+            </div>
+            <p className="text-[10px] opacity-70" dir="ltr">
+              {printError.code}
+              {printError.requestId ? ` · ${printError.requestId}` : ''}
+            </p>
+          </div>
+        )}
+
         {/* Actions */}
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1 text-xs"
-            onClick={handleClose}
-          >
-            مسح
-          </Button>
-          <Button
-            size="sm"
-            className="flex-1 text-xs gap-1"
-            onClick={handlePrint}
-            disabled={printing}
-          >
-            <Printer className="w-3 h-3" />
-            {printing ? 'جاري...' : 'طباعة'}
-          </Button>
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 text-xs"
+              onClick={handleClose}
+            >
+              مسح
+            </Button>
+            <Button
+              size="sm"
+              className="flex-1 text-xs gap-1"
+              onClick={handlePrint}
+              disabled={printing}
+              data-testid="expense-print-button"
+            >
+              <Printer className="w-3 h-3" />
+              {printing ? 'جاري...' : 'طباعة'}
+            </Button>
+          </div>
+          {printError && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="w-full text-xs"
+              onClick={handleBrowserFallback}
+              disabled={printing}
+              data-testid="expense-browser-print-fallback"
+            >
+              الطباعة من المتصفح
+            </Button>
+          )}
         </div>
       </div>
     </div>

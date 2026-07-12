@@ -3,6 +3,7 @@ import { getPool, sql } from '@/lib/db';
 import type { ValidationMissing } from '../validate-attendance/route';
 import {
   countPostedDailyPayroll,
+  countEligibleDailyPayrollEmployees,
   validateDailyPayrollAttendance,
 } from '@/lib/payroll/dailyPayrollGenerateCore';
 import {
@@ -45,12 +46,8 @@ export async function POST(req: NextRequest) {
       }, { status: 409 });
     }
 
-    const eligibleResult = await db.request().query(`
-      SELECT EmpID, EmpName, HourlyRate
-      FROM dbo.TblEmp
-      WHERE isActive = 1 AND IsPayrollEnabled = 1 AND SalaryType = N'Daily'
-    `);
-    if (eligibleResult.recordset.length === 0) {
+    const eligibleCount = await countEligibleDailyPayrollEmployees(db);
+    if (eligibleCount === 0) {
       return NextResponse.json({
         ok: true,
         status: 'no_eligible_employees',
@@ -62,7 +59,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const missing = await validateDailyPayrollAttendance(db, workDate);
+    const { missing } = await validateDailyPayrollAttendance(db, workDate);
     if (missing.length > 0) {
       await logAutoGenResult(db, workDate, false, missing, 0, 0, 0);
       return NextResponse.json({

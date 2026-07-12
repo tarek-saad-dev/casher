@@ -14,6 +14,7 @@ import TreasuryKpiCards from '@/components/treasury/TreasuryKpiCards';
 import PaymentMethodBreakdownTable from '@/components/treasury/PaymentMethodBreakdownTable';
 import TreasuryMovementsTable from '@/components/treasury/TreasuryMovementsTable';
 import TreasuryClosePanel from '@/components/treasury/TreasuryClosePanel';
+import FinancialClassificationPanel from '@/components/reports/FinancialClassificationPanel';
 import PaymentMethodDetailsModal from '@/components/treasury/PaymentMethodDetailsModal';
 import PaymentTransferModal from '@/components/treasury/PaymentTransferModal';
 import PastDateTransferModal from '@/components/treasury/PastDateTransferModal';
@@ -300,6 +301,13 @@ export default function TreasuryDailyView({
             })()}
 
             <TreasuryKpiCards summary={treasuryData.summary} loading={loading} />
+
+            <FinancialClassificationPanel
+              payload={treasuryData}
+              loading={loading}
+              variant="treasury"
+              showCleanNetProfit={false}
+            />
 
             <PaymentMethodBreakdownTable
               paymentMethods={treasuryData.paymentMethods}

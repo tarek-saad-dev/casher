@@ -3,6 +3,7 @@ import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
 import { getIncomeSnapshot, updateIncome, deleteIncome } from '@/lib/actions/incomeActions';
+import { cashMoveHardDeleteSuccessMessage } from '@/lib/services/cashMoveHardDeleteService';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -149,7 +150,13 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
       loadNewData: async () => null,
     });
 
-    return NextResponse.json({ success: true, message: 'تم حذف الإيراد', auditId: auditResult.auditId });
+    const ledgerDeletedCount = auditResult.data.ledgerDeletedCount;
+    return NextResponse.json({
+      success: true,
+      message: cashMoveHardDeleteSuccessMessage(ledgerDeletedCount),
+      ledgerDeletedCount,
+      auditId: auditResult.auditId,
+    });
 
   } catch (err: unknown) {
     if (isAuditedActionError(err)) {

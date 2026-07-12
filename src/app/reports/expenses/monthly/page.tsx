@@ -9,6 +9,7 @@ import ExpenseDailyTrend from '@/components/reports/expenses/ExpenseDailyTrend';
 import ExpenseByCategoryView from '@/components/reports/expenses/ExpenseByCategoryView';
 import ExpenseTransactionsTable from '@/components/reports/expenses/ExpenseTransactionsTable';
 import EmployeeAdvancesSection from '@/components/reports/expenses/EmployeeAdvancesSection';
+import FinancialClassificationPanel from '@/components/reports/FinancialClassificationPanel';
 import type { MonthlyExpensesReport } from '@/lib/types';
 import { formatArabicNumber } from '@/lib/formatArabicNumbers';
 
@@ -101,6 +102,15 @@ export default function MonthlyExpensesReportPage() {
           <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4">
             <p className="text-destructive font-medium">خطأ: {error}</p>
           </div>
+        )}
+
+        {report && (
+          <FinancialClassificationPanel
+            payload={report}
+            loading={loading}
+            variant="expense"
+            showCleanNetProfit={false}
+          />
         )}
 
         {/* Tab Navigation */}

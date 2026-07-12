@@ -13,6 +13,8 @@ interface PartnersFinalSettlementSectionProps {
   totals: PartnersMonthlyReportResponse['employeeSummaryTotals'];
   filteredOperatingExpenses: number;
   loading: boolean;
+  classifiedOperatingNet?: number | null;
+  legacyOperatingNet?: number | null;
 }
 
 export default function PartnersFinalSettlementSection({
@@ -21,32 +23,40 @@ export default function PartnersFinalSettlementSection({
   totals,
   filteredOperatingExpenses,
   loading,
+  classifiedOperatingNet,
 }: PartnersFinalSettlementSectionProps) {
   const remainingAfterEmployees = calcRemainingAfterEmployees(
     totals.totalShopRevenue,
     totals.totalPaidSalaryAndAdvances
   );
   const operatingNet = calcOperatingNet(remainingAfterEmployees, filteredOperatingExpenses);
+  const baseAmount = classifiedOperatingNet ?? operatingNet;
 
   const result = useMemo(
     () =>
       calculateMonthlyFinancialEquations({
         year,
         month,
-        baseAmount: operatingNet,
+        baseAmount,
         mode: 'partners',
-        baseAmountAlreadyNetOfEmployees: true,
-        baseAmountAlreadyNetOfOperatingExpenses: true,
+        baseAmountAlreadyNetOfEmployees: classifiedOperatingNet == null,
+        baseAmountAlreadyNetOfOperatingExpenses: classifiedOperatingNet != null,
       }),
-    [year, month, operatingNet]
+    [year, month, baseAmount, classifiedOperatingNet]
   );
 
   return (
     <MonthlyFinancialEquations
       result={result}
       title="التسوية والتوزيع النهائي للشركاء"
-      subtitle="تطبيق المعادلات المالية الشهرية على صافي التشغيل"
-      baseAmountLabel="صافي التشغيل المستخدم كبداية"
+      subtitle={
+        classifiedOperatingNet != null
+          ? 'تطبيق المعادلات المالية الشهرية على صافي الربح النظيف (تصنيف محاسبي)'
+          : 'تطبيق المعادلات المالية الشهرية على صافي التشغيل'
+      }
+      baseAmountLabel={
+        classifiedOperatingNet != null ? 'صافي الربح النظيف' : 'صافي التشغيل المستخدم كبداية'
+      }
       distributableLabel="المبلغ النهائي القابل للتوزيع"
       lossDistributableLabel="خسارة قابلة للتوزيع"
       variant="partners"

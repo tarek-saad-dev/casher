@@ -10,6 +10,14 @@ import {
 import Link from 'next/link';
 import KpiCard from '@/components/shared/KpiCard';
 import { formatTime12h, getBusinessDateStr } from '@/lib/timeUtils';
+import {
+  PAYROLL_VALIDATION_REASON_LABELS,
+  type PayrollValidationReason,
+} from '@/lib/payroll/dailyPayrollHrRules';
+import {
+  EMPLOYMENT_TYPE_LABELS,
+  PAYROLL_METHOD_LABELS,
+} from '@/lib/hr/employee-hr-model';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -21,7 +29,10 @@ interface PayrollRow {
   ID: number;
   EmpID: number;
   EmpName: string;
+  EmploymentType: string | null;
+  PayrollMethod: string | null;
   HourlyRateSnapshot: number | null;
+  DailyRate: number | null;
   WorkDate: string;
   ActualHours: number | null;
   AttendanceStatus: string | null;
@@ -53,17 +64,43 @@ interface Summary {
 interface MissingEmp { EmpID: number; EmpName: string; }
 
 interface ValidationMissing {
-  empId:   number;
+  empId: number;
   empName: string;
-  reason:  'no_attendance' | 'missing_checkout' | 'missing_checkin' | 'no_hourly_rate';
+  reason: PayrollValidationReason;
 }
 
-const REASON_LABEL: Record<ValidationMissing['reason'], string> = {
-  no_attendance:   'لم يسجل حضور',
-  missing_checkout:'لم يسجل انصراف',
-  missing_checkin: 'لم يسجل حضور (check-in)',
-  no_hourly_rate:  'سعر الساعة غير محدد',
-};
+interface ValidationExcluded {
+  empId: number;
+  empName: string;
+  reason: PayrollValidationReason;
+}
+
+const REASON_LABEL = PAYROLL_VALIDATION_REASON_LABELS;
+
+function resolveRowPayrollMethod(row: PayrollRow): string {
+  if (row.PayrollMethod === 'hourly' || row.PayrollMethod === 'daily' || row.PayrollMethod === 'monthly') {
+    return row.PayrollMethod;
+  }
+  return 'hourly';
+}
+
+function employmentBadge(type: string | null) {
+  if (!type || !(type in EMPLOYMENT_TYPE_LABELS)) return null;
+  return (
+    <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+      {EMPLOYMENT_TYPE_LABELS[type as keyof typeof EMPLOYMENT_TYPE_LABELS]}
+    </span>
+  );
+}
+
+function payrollMethodBadge(method: string | null) {
+  if (!method || !(method in PAYROLL_METHOD_LABELS)) return null;
+  return (
+    <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800/60 text-zinc-500 border border-zinc-700/50">
+      {PAYROLL_METHOD_LABELS[method as keyof typeof PAYROLL_METHOD_LABELS]}
+    </span>
+  );
+}
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
@@ -130,12 +167,15 @@ export default function DailyPayrollPanel() {
 
   /* Validation state */
   const [validationMissing,  setValidationMissing]  = useState<ValidationMissing[]>([]);
+  const [validationExcluded, setValidationExcluded] = useState<ValidationExcluded[]>([]);
   const [validationDone,     setValidationDone]     = useState(false);
   const [validationOk,       setValidationOk]       = useState(false);
 
   /* Post confirmation dialog */
   const [confirmOpen,        setConfirmOpen]        = useState(false);
   const [dualWriteEnabled,   setDualWriteEnabled]   = useState(false);
+  const [legacyPostToCashDisabled, setLegacyPostToCashDisabled] = useState(false);
+  const [legacyPostToCashWarning, setLegacyPostToCashWarning] = useState<string | null>(null);
 
   /* Auto-generate log for today */
   interface AutoGenLog {
@@ -169,6 +209,8 @@ export default function DailyPayrollPanel() {
         const data = await res.json();
         if (res.ok || res.status === 503) {
           setDualWriteEnabled(Boolean(data.ledgerDualWriteEnabled));
+          setLegacyPostToCashDisabled(Boolean(data.legacyPostToCashDisabled));
+          setLegacyPostToCashWarning(data.legacyPostToCashWarning ?? null);
         }
       } catch {
         setDualWriteEnabled(false);
@@ -206,6 +248,7 @@ export default function DailyPayrollPanel() {
         setValidationOk(false);
       } else {
         setValidationMissing(data.missing ?? []);
+        setValidationExcluded(data.excluded ?? []);
         setValidationOk(data.ok === true);
       }
       setValidationDone(true);
@@ -235,7 +278,7 @@ export default function DailyPayrollPanel() {
       if (data.ledgerDualWrite) {
         flash('تم تسجيل استحقاقات الموظفين في دفتر الموظفين');
       }
-      setValidationDone(false); setValidationMissing([]);
+      setValidationDone(false); setValidationMissing([]); setValidationExcluded([]);
       await load(date);
     } catch (e: any) { setError(e.message); }
     finally { setGenerating(false); }
@@ -252,9 +295,13 @@ export default function DailyPayrollPanel() {
       });
       const data = await res.json();
       if (!res.ok) {
+        if (data.legacyPostToCashDisabled) {
+          setError(data.message ?? 'تم إيقاف ترحيل اليوميات القديم.');
+          return;
+        }
         const msg = data.missingEmployees
           ? `${data.error}: ${data.missingEmployees.map((e: any) => e.EmpName).join('، ')}`
-          : data.error;
+          : (data.error ?? data.message);
         throw new Error(msg);
       }
       const parts: string[] = [];
@@ -268,13 +315,14 @@ export default function DailyPayrollPanel() {
 
   const handleDateChange = (val: string) => {
     setDate(val); setLoaded(false); setRows([]); setSummary(null);
-    setValidationDone(false); setValidationMissing([]); setValidationOk(false);
+    setValidationDone(false); setValidationMissing([]); setValidationExcluded([]); setValidationOk(false);
     setAutoGenLog(null);
   };
 
   const generatedCount = summary?.generatedCount ?? rows.filter(r => ['Generated','Earned'].includes(r.Status)).length;
   const repairCount    = summary?.repairCount    ?? rows.filter(r => r.needsIncomeRepair).length;
-  const canPost        = generatedCount > 0 || repairCount > 0;
+  const canPost        = !legacyPostToCashDisabled && (generatedCount > 0 || repairCount > 0);
+  const showLegacyPost = dualWriteEnabled && !legacyPostToCashDisabled;
 
   return (
     <div className="space-y-5" dir="rtl">
@@ -377,12 +425,12 @@ export default function DailyPayrollPanel() {
         {/* Step 3 */}
         {canPost && (
           <Button onClick={() => setConfirmOpen(true)} disabled={posting || loading}
-            className={dualWriteEnabled
+            className={showLegacyPost
               ? 'bg-zinc-700 hover:bg-zinc-600 border border-amber-500/40 gap-2 h-11 px-6'
               : 'bg-emerald-700 hover:bg-emerald-600 gap-2 h-11 px-6'}>
             <Send className="w-4 h-4" />
-            ترحيل للخزنة
-            {dualWriteEnabled && (
+            {showLegacyPost ? 'ترحيل قديم للخزنة' : 'ترحيل للخزنة'}
+            {showLegacyPost && (
               <Badge className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] px-1.5">
                 قديم
               </Badge>
@@ -400,12 +448,31 @@ export default function DailyPayrollPanel() {
         )}
       </div>
 
-      {dualWriteEnabled && canPost && (
+      {legacyPostToCashDisabled && (
+        <div className="flex flex-col sm:flex-row sm:items-start gap-3 p-4 bg-sky-500/10 border border-sky-500/30 rounded-xl text-sky-300 text-sm">
+          <ShieldCheck className="w-5 h-5 shrink-0 mt-0.5" />
+          <div className="space-y-2 flex-1">
+            <p>
+              تم إيقاف الترحيل القديم لمنع تضخم الإيرادات والمصروفات. استخدم دفتر الموظفين لصرف المستحقات.
+            </p>
+            <Link
+              href="/admin/hr?tab=employee-ledger"
+              className="inline-flex items-center gap-1 text-xs font-medium text-sky-200 underline underline-offset-2 hover:text-white"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              فتح دفتر الموظفين
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {showLegacyPost && canPost && (
         <div className="flex flex-col sm:flex-row sm:items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-sm">
           <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
           <div className="space-y-2 flex-1">
             <p>
-              تنبيه: في النظام الجديد، اليوميات تُسجل كاستحقاق في دفتر الموظفين. ترحيل الخزنة القديم ينشئ مصروف وإيراد معادلة وقد يضخم التقارير.
+              {legacyPostToCashWarning ??
+                'هذا الإجراء ينشئ حركات خزنة وقد يضخم التقارير. في النظام الجديد، استخدم دفتر الموظفين لصرف المستحقات.'}
             </p>
             <Link
               href="/admin/hr?tab=employee-ledger"
@@ -415,6 +482,15 @@ export default function DailyPayrollPanel() {
               استخدم دفتر الموظفين لصرف المستحقات
             </Link>
           </div>
+        </div>
+      )}
+
+      {!legacyPostToCashDisabled && dualWriteEnabled && !canPost && (
+        <div className="flex flex-col sm:flex-row sm:items-start gap-3 p-4 bg-zinc-800/40 border border-zinc-700/50 rounded-xl text-zinc-400 text-sm">
+          <BookOpen className="w-5 h-5 shrink-0 mt-0.5" />
+          <p className="flex-1">
+            اليوميات المُولَّدة تُسجَّل كاستحقاق في دفتر الموظفين. استخدم «صرف مستحقات» من الدفتر للصرف الفعلي.
+          </p>
         </div>
       )}
 
@@ -441,6 +517,23 @@ export default function DailyPayrollPanel() {
             </div>
           </div>
         ) : null
+      )}
+
+      {validationDone && validationExcluded.length > 0 && (
+        <div className="p-4 bg-zinc-800/40 border border-zinc-700/50 rounded-xl text-sm">
+          <div className="flex items-center gap-2 text-zinc-400 font-semibold mb-3">
+            <Users className="w-5 h-5 shrink-0" />
+            مستثنون من اليوميات (ليس خطأ)
+          </div>
+          <div className="space-y-2">
+            {validationExcluded.map(m => (
+              <div key={m.empId} className="flex items-center justify-between px-3 py-2 bg-zinc-800/30 rounded-lg border border-zinc-700/40">
+                <span className="text-zinc-300 text-sm">{m.empName}</span>
+                <span className="text-zinc-500 text-xs">{REASON_LABEL[m.reason]}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* ── KPI Cards ──────────────────────────────────────────────────────── */}
@@ -499,10 +592,11 @@ export default function DailyPayrollPanel() {
               <thead>
                 <tr className="border-b border-zinc-800 text-xs text-zinc-500">
                   <th className="px-4 py-3 text-right font-medium">الموظف</th>
+                  <th className="px-4 py-3 text-center font-medium">نوع / محاسبة</th>
                   <th className="px-4 py-3 text-center font-medium">حالة الحضور</th>
                   <th className="px-4 py-3 text-center font-medium">حضور ← انصراف</th>
                   <th className="px-4 py-3 text-center font-medium">ساعات فعلية</th>
-                  <th className="px-4 py-3 text-center font-medium">سعر الساعة</th>
+                  <th className="px-4 py-3 text-center font-medium">السعر المستخدم</th>
                   <th className="px-4 py-3 text-center font-medium">التأخير</th>
                   <th className="px-4 py-3 text-left font-medium">الأجر المحسوب</th>
                   <th className="px-4 py-3 text-center font-medium">حالة اليومية</th>
@@ -512,7 +606,10 @@ export default function DailyPayrollPanel() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map(row => (
+                {rows.map(row => {
+                  const method = resolveRowPayrollMethod(row);
+                  const isFlatDaily = method === 'daily';
+                  return (
                   <tr key={row.ID}
                     className={`border-b border-zinc-800/40 hover:bg-zinc-800/20 transition-colors ${row.Status === 'PostedToCashMove' ? 'opacity-60' : ''}`}>
                     <td className="px-4 py-3">
@@ -521,6 +618,12 @@ export default function DailyPayrollPanel() {
                           {row.EmpName?.charAt(0)}
                         </div>
                         <span className="font-medium text-white text-sm">{row.EmpName}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex flex-wrap gap-1 justify-center">
+                        {employmentBadge(row.EmploymentType)}
+                        {payrollMethodBadge(row.PayrollMethod)}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-center">{attendanceBadge(row.AttendanceStatus)}</td>
@@ -535,9 +638,17 @@ export default function DailyPayrollPanel() {
                         : <span className="text-zinc-600">—</span>}
                     </td>
                     <td className="px-4 py-3 text-center text-xs">
-                      {row.HourlyRateSnapshot != null
-                        ? <span className="text-amber-400">{Number(row.HourlyRateSnapshot).toFixed(2)}</span>
-                        : <span className="text-zinc-600">—</span>}
+                      {isFlatDaily ? (
+                        row.DailyRate != null ? (
+                          <span className="text-emerald-400 font-medium">{Number(row.DailyRate).toFixed(2)}<span className="text-zinc-500 mr-1">يومية</span></span>
+                        ) : (
+                          <span className="text-zinc-600">—</span>
+                        )
+                      ) : row.HourlyRateSnapshot != null ? (
+                        <span className="text-amber-400">{Number(row.HourlyRateSnapshot).toFixed(2)}<span className="text-zinc-500 mr-1">/س</span></span>
+                      ) : (
+                        <span className="text-zinc-600">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center text-xs">
                       {row.LateMinutes && row.LateMinutes > 0
@@ -547,9 +658,16 @@ export default function DailyPayrollPanel() {
                     <td className="px-4 py-3 text-left whitespace-nowrap">
                       <span className="font-bold text-white">{fmt(row.DailyWage)}</span>
                       <span className="text-[11px] font-normal text-zinc-500 mr-1">ج.م</span>
-                      {row.HourlyRateSnapshot != null && row.ActualHours != null && (
+                      {isFlatDaily ? (
+                        <div className="text-[10px] text-emerald-500/80 mt-0.5">يومية ثابتة</div>
+                      ) : row.HourlyRateSnapshot != null && row.ActualHours != null ? (
                         <div className="text-[10px] text-zinc-600 mt-0.5">
                           {Number(row.HourlyRateSnapshot).toFixed(2)} × {Number(row.ActualHours).toFixed(2)}س
+                        </div>
+                      ) : null}
+                      {row.Notes && (
+                        <div className="text-[10px] text-zinc-600 mt-0.5 max-w-[180px] truncate" title={row.Notes}>
+                          {row.Notes}
                         </div>
                       )}
                       {row.Status === 'PendingCheckout' && (
@@ -569,12 +687,13 @@ export default function DailyPayrollPanel() {
                       {row.EmployeeIncomeCashMoveID ? <span className="text-emerald-400 font-mono text-[11px]">#{row.EmployeeIncomeCashMoveID}</span> : <span className="text-zinc-600">—</span>}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
               {summary && summary.total > 0 && (
                 <tfoot>
                   <tr className="border-t-2 border-zinc-700 bg-zinc-800/30">
-                    <td colSpan={3} className="px-4 py-3 text-xs font-bold text-zinc-400">
+                    <td colSpan={4} className="px-4 py-3 text-xs font-bold text-zinc-400">
                       الإجمالي ({summary.total} موظف)
                     </td>
                     <td className="px-4 py-3 text-center text-sky-400 font-bold text-sm">
@@ -629,10 +748,11 @@ export default function DailyPayrollPanel() {
               <span>بعد الترحيل للخزنة سيتم تسجيل هذه اليوميات كمصروفات، ولا يُفضل تعديلها إلا من خلال إجراء تصحيح.</span>
             </div>
 
-            {dualWriteEnabled && (
+            {showLegacyPost && (
               <div className="flex flex-col gap-2 p-3 bg-rose-500/10 border border-rose-500/30 rounded-lg text-rose-300 text-xs">
                 <p>
-                  تنبيه: في النظام الجديد، اليوميات تُسجل كاستحقاق في دفتر الموظفين. ترحيل الخزنة القديم ينشئ مصروف وإيراد معادلة وقد يضخم التقارير.
+                  {legacyPostToCashWarning ??
+                    'هذا الإجراء ينشئ حركات خزنة وقد يضخم التقارير. في النظام الجديد، استخدم دفتر الموظفين لصرف المستحقات.'}
                 </p>
                 <Link
                   href="/admin/hr?tab=employee-ledger"
@@ -651,11 +771,11 @@ export default function DailyPayrollPanel() {
               إلغاء
             </Button>
             <Button onClick={handlePostToCash} disabled={posting}
-              className={dualWriteEnabled
+              className={showLegacyPost
                 ? 'bg-zinc-700 hover:bg-zinc-600 border border-amber-500/40 gap-2'
                 : 'bg-emerald-700 hover:bg-emerald-600 gap-2'}>
               {posting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              {dualWriteEnabled ? 'تأكيد الترحيل القديم للخزنة' : 'تأكيد الترحيل للخزنة'}
+              {showLegacyPost ? 'تأكيد الترحيل القديم للخزنة' : 'تأكيد الترحيل للخزنة'}
             </Button>
           </DialogFooter>
         </DialogContent>

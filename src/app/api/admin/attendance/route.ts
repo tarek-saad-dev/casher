@@ -5,6 +5,13 @@ import {
   calcLateMinutes as calcLate,
   calcEarlyLeaveMinutes as calcEarlyLeave,
 } from "@/lib/timeUtils";
+import {
+  computeAttendanceSummary,
+  filterAttendanceBoardRows,
+  resolveScheduleForDay,
+  type RawAttendanceDbRow,
+} from "@/lib/hr/attendance-eligibility";
+import { normalizeEmploymentType } from "@/lib/hr/employee-hr-model";
 
 async function ensureAttendanceTable(db: { request: () => any }) {
   await db.request().query(`
@@ -68,7 +75,7 @@ function calcEarlyLeaveMinutes(
   return calcEarlyLeave(checkOut, scheduledEnd);
 }
 
-// GET /api/admin/attendance?date=YYYY-MM-DD&onlyPayrollEnabled=true
+// GET /api/admin/attendance?date=YYYY-MM-DD&onlyPayrollEnabled=true&includeFreelance=false
 export async function GET(req: NextRequest) {
   try {
     const session = await getSession();
@@ -79,6 +86,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const dateStr = searchParams.get("date");
     const onlyPayrollEnabled = searchParams.get("onlyPayrollEnabled") === "true";
+    const includeFreelance = searchParams.get("includeFreelance") === "true";
     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
       return NextResponse.json(
         { error: "التاريخ مطلوب بصيغة YYYY-MM-DD" },
@@ -86,15 +94,11 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Use noon UTC so getDay() returns the correct Cairo calendar day regardless of server TZ.
-    // new Date("YYYY-MM-DDT00:00:00") parses in server local TZ — on UTC servers this is correct,
-    // but on servers with a different offset it can return the wrong day.
-    const dayOfWeek = new Date(`${dateStr}T12:00:00Z`).getDay(); // 0=Sunday ... 6=Saturday
+    const dayOfWeek = new Date(`${dateStr}T12:00:00Z`).getDay();
 
     const db = await getPool();
     await ensureAttendanceTable(db);
 
-    // Get all active employees with their schedule for this day and attendance
     const result = await db
       .request()
       .input("workDate", sql.Date, dateStr)
@@ -102,12 +106,19 @@ export async function GET(req: NextRequest) {
         SELECT
           e.EmpID,
           e.EmpName,
-          ws.DayOfWeek,
+          e.isActive,
+          e.EmploymentType,
+          e.PayrollMethod,
+          e.DayOffPolicy,
+          e.IsAttendanceExempt,
+          e.IsPayrollEnabled,
+          ws.DayOfWeek AS ScheduleDayOfWeek,
           ws.IsWorkingDay,
+          CONVERT(VARCHAR(5), ws.StartTime, 108) AS ScheduleStartTime,
+          CONVERT(VARCHAR(5), ws.EndTime, 108) AS ScheduleEndTime,
           CONVERT(VARCHAR(5), e.DefaultCheckInTime,  108) AS DefaultCheckInTime,
           CONVERT(VARCHAR(5), e.DefaultCheckOutTime, 108) AS DefaultCheckOutTime,
           a.ID AS AttendanceID,
-          a.WorkDate,
           CONVERT(VARCHAR(5), a.CheckInTime,  108) AS CheckInTime,
           CONVERT(VARCHAR(5), a.CheckOutTime, 108) AS CheckOutTime,
           a.Status,
@@ -124,71 +135,20 @@ export async function GET(req: NextRequest) {
         ORDER BY e.EmpName
       `);
 
-    const rows = result.recordset.map(
-      (row: {
-        EmpID: number;
-        EmpName: string;
-        DayOfWeek: number | null;
-        IsWorkingDay: boolean | null;
-        DefaultCheckInTime: string | null;
-        DefaultCheckOutTime: string | null;
-        AttendanceID: number | null;
-        WorkDate: string | null;
-        CheckInTime: string | null;
-        CheckOutTime: string | null;
-        Status: string | null;
-        LateMinutes: number | null;
-        EarlyLeaveMinutes: number | null;
-        Notes: string | null;
-      }) => {
-        const hasAttendance = row.AttendanceID != null;
-        const hasSchedule = row.DayOfWeek != null;
-        const isWorkingDay = hasSchedule ? !!row.IsWorkingDay : dayOfWeek !== 5;
-
-        // Always use DefaultCheckInTime / DefaultCheckOutTime as the canonical schedule
-        const schedStart = row.DefaultCheckInTime || null;
-        const schedEnd = row.DefaultCheckOutTime || null;
-
-        const checkIn = row.CheckInTime || null;
-        const checkOut = row.CheckOutTime || null;
-
-        // Recalculate LateMinutes from actual check-in vs default schedule
-        const lateMin =
-          hasAttendance && checkIn ? calcLateMinutes(checkIn, schedStart) : 0;
-        const earlyMin =
-          hasAttendance && checkOut
-            ? calcEarlyLeaveMinutes(checkOut, schedEnd)
-            : 0;
-
-        return {
-          EmpID: row.EmpID,
-          EmpName: row.EmpName,
-          WorkDate: dateStr,
-          DayOfWeek: dayOfWeek,
-          IsWorkingDay: isWorkingDay,
-          ScheduledStartTime: schedStart,
-          ScheduledEndTime: schedEnd,
-          DefaultCheckInTime: row.DefaultCheckInTime,
-          DefaultCheckOutTime: row.DefaultCheckOutTime,
-          CheckInTime: checkIn,
-          CheckOutTime: checkOut,
-          Status: hasAttendance
-            ? row.Status
-            : isWorkingDay
-              ? "Pending"
-              : "DayOff",
-          LateMinutes: lateMin,
-          EarlyLeaveMinutes: earlyMin,
-          Notes: row.Notes || "",
-          HasRecord: hasAttendance,
-        };
-      },
+    const rows = filterAttendanceBoardRows(
+      result.recordset as RawAttendanceDbRow[],
+      dateStr,
+      dayOfWeek,
+      { includeFreelance },
     );
+
+    const summary = computeAttendanceSummary(rows);
 
     return NextResponse.json({
       success: true,
       date: dateStr,
       attendance: rows,
+      summary,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -252,23 +212,43 @@ export async function PUT(req: NextRequest) {
     const db = await getPool();
     await ensureAttendanceTable(db);
 
-    // Get DefaultCheckInTime / DefaultCheckOutTime from TblEmp as canonical schedule
-    const targetDate = new Date(WorkDate + "T00:00:00");
-    const dayOfWeek = targetDate.getDay();
+    const dayOfWeek = new Date(`${WorkDate}T12:00:00Z`).getDay();
 
-    const empResult = await db.request().input("empId", sql.Int, EmpID).query(`
+    const empResult = await db
+      .request()
+      .input("empId", sql.Int, EmpID)
+      .input("dayOfWeek", sql.TinyInt, dayOfWeek)
+      .query(`
         SELECT
-          CONVERT(VARCHAR(5), DefaultCheckInTime,  108) AS DefaultCheckInTime,
-          CONVERT(VARCHAR(5), DefaultCheckOutTime, 108) AS DefaultCheckOutTime
-        FROM dbo.TblEmp
-        WHERE EmpID = @empId
+          e.EmploymentType,
+          CONVERT(VARCHAR(5), e.DefaultCheckInTime,  108) AS DefaultCheckInTime,
+          CONVERT(VARCHAR(5), e.DefaultCheckOutTime, 108) AS DefaultCheckOutTime,
+          ws.DayOfWeek AS ScheduleDayOfWeek,
+          ws.IsWorkingDay,
+          CONVERT(VARCHAR(5), ws.StartTime, 108) AS ScheduleStartTime,
+          CONVERT(VARCHAR(5), ws.EndTime, 108) AS ScheduleEndTime
+        FROM dbo.TblEmp e
+        LEFT JOIN dbo.TblEmpWorkSchedule ws
+          ON ws.EmpID = e.EmpID AND ws.DayOfWeek = @dayOfWeek
+        WHERE e.EmpID = @empId
       `);
 
     let schedStart: string | null = null;
     let schedEnd: string | null = null;
     if (empResult.recordset.length > 0) {
-      schedStart = empResult.recordset[0].DefaultCheckInTime || null;
-      schedEnd = empResult.recordset[0].DefaultCheckOutTime || null;
+      const emp = empResult.recordset[0];
+      const employmentType = normalizeEmploymentType(emp.EmploymentType) ?? "full_time";
+      const schedule = resolveScheduleForDay(employmentType, {
+        hasScheduleRow: emp.ScheduleDayOfWeek != null,
+        isWorkingDayFromSchedule:
+          emp.ScheduleDayOfWeek != null ? !!emp.IsWorkingDay : null,
+        scheduleStart: emp.ScheduleStartTime || null,
+        scheduleEnd: emp.ScheduleEndTime || null,
+        defaultStart: emp.DefaultCheckInTime || null,
+        defaultEnd: emp.DefaultCheckOutTime || null,
+      });
+      schedStart = schedule.scheduledStart;
+      schedEnd = schedule.scheduledEnd;
     }
 
     // Calculate late/early

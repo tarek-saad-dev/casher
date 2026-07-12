@@ -54,12 +54,15 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/mssql": "^9.1.9",
     "@types/node": "^20.19.43",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
+    "happy-dom": "^20.10.6",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.9"

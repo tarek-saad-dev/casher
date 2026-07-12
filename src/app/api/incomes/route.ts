@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql, allocateInvID } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { isFinancialReportClassificationEnabled } from '@/lib/accounting/financialReportFlags';
+import {
+  buildCashMoveReportClassification,
+} from '@/lib/accounting/financialReportClassification';
+import {
+  maybeBuildClassificationPayloadForDateRange,
+  mergeIncomeOnlyClassification,
+} from '@/lib/accounting/financialReportClassificationService';
 
 // ─────────────────────── GET /api/incomes ───────────────────────
 // Query params: fromDate, toDate, expInId?, paymentMethodId?, shiftMoveId?, search?
@@ -50,13 +58,24 @@ export async function GET(req: NextRequest) {
         U.UserID,
         U.UserName,
         S.ShiftID,
-        S.ShiftName
+        S.ShiftName,
+        ISNULL(CM.IsPayrollDeduction, 0) AS IsPayrollDeduction,
+        ISNULL(CM.IsEmployeePayrollIncome, 0) AS IsEmployeePayrollIncome,
+        CM.EmpID,
+        map.TxnKind,
+        map.EmpID AS EmpIdFromMap
       FROM dbo.TblCashMove CM
       LEFT JOIN dbo.TblExpINCat CAT        ON CM.ExpINID        = CAT.ExpINID
       LEFT JOIN dbo.TblPaymentMethods PM   ON CM.PaymentMethodID = PM.PaymentID
       LEFT JOIN dbo.TblShiftMove SM        ON CM.ShiftMoveID    = SM.ID
       LEFT JOIN dbo.TblUser U              ON SM.UserID         = U.UserID
       LEFT JOIN dbo.TblShift S             ON SM.ShiftID        = S.ShiftID
+      OUTER APPLY (
+        SELECT TOP 1 m.TxnKind, m.EmpID
+        FROM dbo.TblExpCatEmpMap m
+        WHERE m.ExpINID = CM.ExpINID AND m.IsActive = 1
+        ORDER BY m.ID DESC
+      ) map
       WHERE CM.invType = N'ايرادات'
         AND CM.invDate >= @fromDate
         AND CM.invDate <= @toDate
@@ -150,12 +169,59 @@ export async function GET(req: NextRequest) {
       ORDER BY TotalIncome DESC
     `);
 
+    const summaryRow = summaryResult.recordset[0] ?? {
+      TotalIncome: 0,
+      IncomeCount: 0,
+      AverageIncome: 0,
+      FirstIncomeDate: null,
+      LastIncomeDate: null,
+    };
+
+    const classificationEnabled = isFinancialReportClassificationEnabled();
+    const items = itemsResult.recordset.map((row: Record<string, unknown>) => {
+      const base = row;
+      if (!classificationEnabled) return base;
+
+      const reportClassification = buildCashMoveReportClassification({
+        invType: 'ايرادات',
+        inOut: 'in',
+        amount: Number(row.Amount ?? 0),
+        categoryName: String(row.CategoryName ?? ''),
+        isPayrollDeduction: Boolean(row.IsPayrollDeduction),
+        isEmployeePayrollIncome: Boolean(row.IsEmployeePayrollIncome),
+        txnKind: row.TxnKind != null ? String(row.TxnKind) : null,
+        empIdFromMap: row.EmpIdFromMap != null ? Number(row.EmpIdFromMap) : null,
+        empId: row.EmpID != null ? Number(row.EmpID) : null,
+      });
+
+      return { ...base, reportClassification };
+    });
+
+    let classification: Awaited<ReturnType<typeof maybeBuildClassificationPayloadForDateRange>> = {
+      classificationEnabled: false,
+    };
+
+    if (classificationEnabled) {
+      classification = mergeIncomeOnlyClassification(
+        await maybeBuildClassificationPayloadForDateRange({
+          startDate: from,
+          endDate: to,
+          invTypeFilter: 'income',
+          legacyTotals: {
+            totalIncome: Number(summaryRow.TotalIncome ?? 0),
+            incomeCount: Number(summaryRow.IncomeCount ?? 0),
+          },
+        }),
+      );
+    }
+
     return NextResponse.json({
-      items:         itemsResult.recordset,
-      summary:       summaryResult.recordset[0] ?? { TotalIncome: 0, IncomeCount: 0, AverageIncome: 0, FirstIncomeDate: null, LastIncomeDate: null },
+      items,
+      summary: summaryRow,
       byPaymentMethod: byPmResult.recordset,
       byCategory:    byCatResult.recordset,
       byShift:       byShiftResult.recordset,
+      ...classification,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

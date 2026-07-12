@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
 import { getExpenseSnapshot, deleteExpense, updateExpenseCategory } from '@/lib/actions/expenseActions';
+import { cashMoveHardDeleteSuccessMessage } from '@/lib/services/cashMoveHardDeleteService';
 
 // DELETE /api/expenses/[id]/category — Delete expense transaction
 export async function DELETE(
@@ -41,9 +42,11 @@ export async function DELETE(
       loadNewData: async () => null,
     });
 
+    const ledgerDeletedCount = auditResult.data.ledgerDeletedCount;
     return NextResponse.json({
       success: true,
-      message: 'تم حذف المصروف بنجاح',
+      message: cashMoveHardDeleteSuccessMessage(ledgerDeletedCount),
+      ledgerDeletedCount,
       deletedId: expenseId,
       auditId: auditResult.auditId,
     });

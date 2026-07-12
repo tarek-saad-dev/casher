@@ -375,7 +375,7 @@ describe('POST /api/payroll/daily/generate', () => {
 
     vi.doMock('@/lib/payroll/dailyPayrollGenerateCore', () => ({
       countPostedDailyPayroll: vi.fn(async () => 0),
-      validateDailyPayrollAttendance: vi.fn(async () => []),
+      validateDailyPayrollAttendance: vi.fn(async () => ({ missing: [], excluded: [] })),
     }));
 
     vi.doMock('@/lib/services/employeeLedgerDualWrite', () => ({
@@ -417,7 +417,7 @@ describe('POST /api/payroll/daily/generate', () => {
 
     vi.doMock('@/lib/payroll/dailyPayrollGenerateCore', () => ({
       countPostedDailyPayroll: vi.fn(async () => 0),
-      validateDailyPayrollAttendance: vi.fn(async () => []),
+      validateDailyPayrollAttendance: vi.fn(async () => ({ missing: [], excluded: [] })),
     }));
 
     class EmployeeLedgerDualWriteError extends Error {
@@ -464,7 +464,8 @@ describe('POST /api/payroll/daily/auto-generate', () => {
 
     vi.doMock('@/lib/payroll/dailyPayrollGenerateCore', () => ({
       countPostedDailyPayroll: vi.fn(async () => 0),
-      validateDailyPayrollAttendance: vi.fn(async () => []),
+      countEligibleDailyPayrollEmployees: vi.fn(async () => 1),
+      validateDailyPayrollAttendance: vi.fn(async () => ({ missing: [], excluded: [] })),
     }));
 
     vi.doMock('@/lib/services/employeeLedgerDualWrite', () => ({

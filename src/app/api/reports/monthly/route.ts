@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { parseMonthYearParams, validateMonthYear } from '@/lib/reportMonthUtils';
 import { getMonthlyFinancialSummary } from '@/lib/services/TreasurySummaryService';
 import { getAllEmployeesRevenueTotal } from '@/lib/reports/employeeServicesRevenue';
+import { isFinancialReportClassificationEnabled } from '@/lib/accounting/financialReportFlags';
+import { maybeBuildClassificationPayload } from '@/lib/accounting/financialReportClassificationService';
 
 /**
  * Simplified Monthly Profit Report API
@@ -68,7 +70,25 @@ export async function GET(req: NextRequest) {
       }
     };
 
-    return NextResponse.json(report);
+    if (!isFinancialReportClassificationEnabled()) {
+      return NextResponse.json(report);
+    }
+
+    const classification = await maybeBuildClassificationPayload({
+      year,
+      month,
+      salesRevenueOverride: revenue,
+      legacyTotals: {
+        totalRevenue: revenue,
+        totalExpenses,
+        netProfit,
+      },
+    });
+
+    return NextResponse.json({
+      ...report,
+      ...classification,
+    });
     
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

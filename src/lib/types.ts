@@ -399,6 +399,11 @@ export interface ExpenseTransaction {
   needsCategorization?: boolean; // Flag for unclear/uncategorized expenses
 }
 
+/** Additive classification metadata for Phase 5B (legacy ExpenseTransaction fields unchanged). */
+export type ExpenseTransactionWithClassification = ExpenseTransaction & {
+  reportClassification?: import('@/lib/types/financial-report-classification').CashMoveReportClassification;
+};
+
 export interface CategoryBreakdown {
   ExpINID: number;
   CatName: string;
@@ -477,7 +482,11 @@ export interface MonthlyExpensesReport {
   summary: MonthlyExpensesSummary;
   categoryBreakdown: CategoryBreakdown[];
   dailyTrend: DailyTrend[];
-  transactions: ExpenseTransaction[];
+  transactions: ExpenseTransactionWithClassification[];
+  classificationEnabled?: boolean;
+  legacyTotals?: Record<string, number>;
+  classifiedTotals?: import('@/lib/types/financial-report-classification').ClassifiedTotals;
+  classificationBreakdown?: import('@/lib/types/financial-report-classification').ClassificationBreakdownItem[];
 }
 
 // ───────────────────────── Employee Management ─────────────────────────

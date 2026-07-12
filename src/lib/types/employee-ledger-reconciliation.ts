@@ -118,6 +118,21 @@ export interface LegacyMirrorGroupRow {
   rowCount: number;
 }
 
+export interface MissingMonthlySalaryCreditRow {
+  empId: number;
+  empName: string;
+  baseSalary: number;
+}
+
+export interface OrphanMonthlySalaryCreditRow {
+  ledgerEntryId: number;
+  empId: number;
+  empName: string;
+  entryDate: string;
+  amount: number;
+  refType: string;
+}
+
 export interface EmployeeLedgerReconciliationResponse {
   summary: ReconciliationSummary;
   missingPayrollCredits: MissingPayrollCreditRow[];
@@ -128,4 +143,6 @@ export interface EmployeeLedgerReconciliationResponse {
   advanceDiagnosticRows: AdvanceDiagnosticRow[];
   missingPayoutDebits: MissingPayoutDebitRow[];
   legacyMirrorRows: LegacyMirrorGroupRow[];
+  missingMonthlySalaryCredits: MissingMonthlySalaryCreditRow[];
+  orphanMonthlySalaryCredits: OrphanMonthlySalaryCreditRow[];
 }

@@ -7,11 +7,13 @@ import { usePathname } from 'next/navigation';
 import { ChevronDown, Menu, X, PanelLeftClose, PanelLeftOpen, MonitorPlay, Crown, SlidersHorizontal } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
-  NAV_SECTIONS, getTheme,
+  NAV_SECTIONS, NAV_CATEGORIES, getTheme,
   isRouteActive as navIsRouteActive,
   getActiveSectionTitle,
+  getActiveNavItem,
+  getActiveCategoryTitle,
 } from './nav-config';
-import type { NavItem, NavSection, NavTheme } from './nav-config';
+import type { NavItem, NavSection, NavTheme, NavCategory } from './nav-config';
 import SidebarThemeSwitch from '@/components/theme/SidebarThemeSwitch';
 import { useMobileNav } from '@/components/layout/MobileNavContext';
 
@@ -35,6 +37,7 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
   const pathname = usePathname();
   const { isOpen: mobileMenuOpen, close: closeMobileMenu, toggle: toggleMobileMenu } = useMobileNav();
   const [expandedSections, setExpandedSections] = useState<string[]>(['المدخلات']);
+  const [expandedMobileCategories, setExpandedMobileCategories] = useState<string[]>(['العمليات اليومية']);
   const [isCollapsed, setIsCollapsed] = useState(true);
 
   const { canSeePage, access, loading: permLoading, isAuthenticated } = usePermissions();
@@ -75,6 +78,23 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
 
   const isActive = (href: string) => navIsRouteActive(pathname, href);
   const activeSectionTitle = getActiveSectionTitle(pathname);
+  const activeNavItem = getActiveNavItem(pathname);
+  const activeCategoryTitle = getActiveCategoryTitle(activeSectionTitle);
+  const activeDirectLink = useMemo(() => {
+    if (isActive('/operations')) return { label: 'لوحة التشغيل', section: 'اختصار' };
+    if (isActive('/admin/cut-club')) return { label: 'CUT CLUB', section: 'اختصار' };
+    return null;
+  }, [pathname]);
+  const currentPageLabel = activeNavItem?.label ?? activeDirectLink?.label ?? null;
+  const currentSectionLabel = activeSectionTitle ?? activeDirectLink?.section ?? null;
+
+  // Lock body scroll when mobile menu is open
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [mobileMenuOpen]);
 
   // Auto-expand the active section when navigating
   useEffect(() => {
@@ -85,16 +105,44 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
           : [...prev, activeSectionTitle]
       );
     }
+    if (activeCategoryTitle) {
+      setExpandedMobileCategories(prev =>
+        prev.includes(activeCategoryTitle)
+          ? prev
+          : [...prev, activeCategoryTitle]
+      );
+    }
     // Dev verification only — disabled in production for performance
     if (process.env.NODE_ENV === 'development') {
       console.log('[MainNav active]', { pathname, activeSectionTitle });
     }
-  }, [pathname, activeSectionTitle]);
+  }, [pathname, activeSectionTitle, activeCategoryTitle]);
 
   const toggleSection = (title: string) =>
     setExpandedSections(prev =>
       prev.includes(title) ? prev.filter(t => t !== title) : [...prev, title]
     );
+
+  const toggleMobileCategory = (title: string) =>
+    setExpandedMobileCategories(prev =>
+      prev.includes(title) ? prev.filter(t => t !== title) : [...prev, title]
+    );
+
+  const sectionMap = useMemo(
+    () => new Map(visibleSections.map(section => [section.title, section])),
+    [visibleSections]
+  );
+
+  const mobileCategories = useMemo(
+    () =>
+      NAV_CATEGORIES.map(category => ({
+        ...category,
+        sections: category.sectionTitles
+          .map(title => sectionMap.get(title))
+          .filter((section): section is NavSection => Boolean(section)),
+      })).filter(category => category.sections.length > 0),
+    [sectionMap]
+  );
 
 
   // ── Sub item renderer ──────────────────────────────────────────────────────
@@ -536,6 +584,289 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
     );
   };
 
+  // ── Mobile sub-item renderer (always shows icon + label) ───────────────────
+  const renderMobileSubItem = (item: NavItem, theme: NavTheme) => {
+    const active = isActive(item.href);
+    const Icon = item.icon;
+    const { rgb } = theme;
+
+    if (item.disabled) {
+      return (
+        <div
+          key={item.href}
+          className="flex items-center gap-3 px-3 py-3 rounded-xl opacity-40"
+          style={{ minHeight: 48 }}
+        >
+          <div
+            className="flex items-center justify-center rounded-lg shrink-0"
+            style={{ width: 34, height: 34, backgroundColor: `rgba(${rgb}, 0.10)` }}
+          >
+            <Icon style={{ width: 16, height: 16, color: `rgb(${rgb})` }} />
+          </div>
+          <span className="flex-1 text-sm text-muted-foreground">{item.label}</span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-muted text-muted-foreground border border-sidebar-border">
+            قريباً
+          </span>
+        </div>
+      );
+    }
+
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={() => closeMobileMenu()}
+        className="flex items-center gap-3 px-3 py-3 rounded-xl transition-all active:scale-[0.98]"
+        style={{
+          minHeight: 48,
+          textDecoration: 'none',
+          backgroundColor: active ? `rgba(${rgb}, 0.16)` : 'transparent',
+          border: active ? `1px solid rgba(${rgb}, 0.35)` : '1px solid transparent',
+          boxShadow: active ? glow2(rgb, 0.22) : 'none',
+        }}
+      >
+        <div
+          className="flex items-center justify-center rounded-lg shrink-0"
+          style={{
+            width: 34,
+            height: 34,
+            backgroundColor: active ? `rgba(${rgb}, 0.22)` : `rgba(${rgb}, 0.10)`,
+            border: `1px solid rgba(${rgb}, ${active ? '0.45' : '0.18'})`,
+          }}
+        >
+          <Icon
+            style={{
+              width: 16,
+              height: 16,
+              color: active ? `rgb(${rgb})` : `rgba(${rgb}, 0.75)`,
+              filter: active ? `drop-shadow(0 0 4px rgba(${rgb},0.5))` : 'none',
+            }}
+          />
+        </div>
+        <span
+          className="flex-1 text-sm leading-snug"
+          style={{
+            fontWeight: active ? 600 : 500,
+            color: active ? `rgb(${rgb})` : 'var(--foreground)',
+          }}
+        >
+          {item.label}
+        </span>
+        {item.badge === 'payment-audit' && paymentAuditCount > 0 && (
+          <span
+            className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
+            style={{
+              backgroundColor: 'rgba(239,68,68,0.85)',
+              color: '#fff',
+              border: '1px solid rgba(239,68,68,0.5)',
+            }}
+          >
+            {paymentAuditCount > 99 ? '99+' : paymentAuditCount}
+          </span>
+        )}
+        {active && (
+          <span
+            className="shrink-0 rounded-full"
+            style={{ width: 6, height: 6, backgroundColor: `rgb(${rgb})`, boxShadow: dotGlow(rgb) }}
+          />
+        )}
+      </Link>
+    );
+  };
+
+  // ── Mobile section renderer (category sub-group) ───────────────────────────
+  const renderMobileSection = (section: NavSection) => {
+    const theme = getTheme(section.title);
+    const { rgb, emoji } = theme;
+    const isSectionActive = activeSectionTitle === section.title;
+    const isExpanded = expandedSections.includes(section.title);
+    const SectionIcon = section.icon;
+    const itemCount = section.items.length;
+
+    return (
+      <div
+        key={section.title}
+        className="rounded-xl overflow-hidden"
+        style={{
+          backgroundColor: isSectionActive ? `rgba(${rgb}, 0.06)` : 'rgba(255,255,255,0.02)',
+          border: `1px solid ${isSectionActive ? `rgba(${rgb}, 0.25)` : 'rgba(255,255,255,0.06)'}`,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => toggleSection(section.title)}
+          className="w-full flex items-center justify-between px-3 py-3 transition-colors"
+          style={{ minHeight: 52 }}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              className="flex items-center justify-center rounded-lg shrink-0"
+              style={{
+                width: 32,
+                height: 32,
+                backgroundColor: `rgba(${rgb}, ${isSectionActive ? '0.20' : '0.12'})`,
+                border: `1px solid rgba(${rgb}, ${isSectionActive ? '0.40' : '0.20'})`,
+              }}
+            >
+              <SectionIcon style={{ width: 15, height: 15, color: `rgb(${rgb})` }} />
+            </div>
+            <div className="text-right min-w-0">
+              <div
+                className="text-sm font-semibold truncate"
+                style={{ color: isSectionActive ? `rgb(${rgb})` : 'var(--foreground)' }}
+              >
+                {section.title}
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                {itemCount} {itemCount === 1 ? 'صفحة' : 'صفحات'}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-sm">{emoji}</span>
+            <ChevronDown
+              style={{
+                width: 16,
+                height: 16,
+                color: isSectionActive ? `rgb(${rgb})` : 'var(--muted-foreground)',
+                transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.22s ease',
+              }}
+            />
+          </div>
+        </button>
+
+        <div
+          style={{
+            overflow: 'hidden',
+            maxHeight: isExpanded ? 600 : 0,
+            opacity: isExpanded ? 1 : 0,
+            transition: 'max-height 0.28s ease, opacity 0.2s ease',
+          }}
+        >
+          <div className="px-1.5 pb-2 flex flex-col gap-0.5">
+            {section.items.map(item => renderMobileSubItem(item, theme))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ── Mobile category renderer (top-level grouping) ──────────────────────────
+  const renderMobileCategory = (category: NavCategory & { sections: NavSection[] }) => {
+    const isExpanded = expandedMobileCategories.includes(category.title);
+    const hasActiveSection = category.sections.some(s => s.title === activeSectionTitle);
+    const totalPages = category.sections.reduce((sum, s) => sum + s.items.length, 0);
+
+    return (
+      <div key={category.title} className="mb-3">
+        <button
+          type="button"
+          onClick={() => toggleMobileCategory(category.title)}
+          className="w-full flex items-center justify-between px-1 py-2 mb-1.5"
+        >
+          <div className="text-right">
+            <div
+              className="text-xs font-bold tracking-wide"
+              style={{ color: hasActiveSection ? 'var(--primary)' : 'var(--muted-foreground)' }}
+            >
+              {category.title}
+            </div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">
+              {category.description} · {totalPages} صفحة
+            </div>
+          </div>
+          <ChevronDown
+            className="text-muted-foreground"
+            style={{
+              width: 14,
+              height: 14,
+              transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.22s ease',
+            }}
+          />
+        </button>
+
+        <div
+          style={{
+            overflow: 'hidden',
+            maxHeight: isExpanded ? 2000 : 0,
+            opacity: isExpanded ? 1 : 0,
+            transition: 'max-height 0.3s ease, opacity 0.2s ease',
+          }}
+        >
+          <div className="flex flex-col gap-2">
+            {category.sections.map(section => renderMobileSection(section))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ── Mobile quick-access direct links ───────────────────────────────────────
+  const renderMobileDirectLink = (href: string, label: string, Icon: LucideIcon, rgb: string) => {
+    const active = isActive(href);
+    return (
+      <Link
+        key={href}
+        href={href}
+        onClick={() => closeMobileMenu()}
+        className="flex flex-col items-center justify-center gap-1.5 rounded-xl p-3 transition-all active:scale-[0.97]"
+        style={{
+          flex: '1 1 0',
+          minWidth: 0,
+          minHeight: 72,
+          textDecoration: 'none',
+          backgroundColor: active ? `rgba(${rgb}, 0.18)` : `rgba(${rgb}, 0.08)`,
+          border: active ? `1px solid rgba(${rgb}, 0.45)` : `1px solid rgba(${rgb}, 0.20)`,
+          boxShadow: active ? glow2(rgb, 0.25) : 'none',
+        }}
+      >
+        <Icon style={{ width: 20, height: 20, color: `rgb(${rgb})` }} />
+        <span
+          className="text-[11px] font-semibold text-center leading-tight"
+          style={{ color: active ? `rgb(${rgb})` : 'var(--foreground)' }}
+        >
+          {label}
+        </span>
+      </Link>
+    );
+  };
+
+  const MobileNavContent = () => {
+    const directLinks = [
+      canSeePage('/operations') && { href: '/operations', label: 'لوحة التشغيل', Icon: MonitorPlay, rgb: '20,184,166' },
+      canSeePage('/admin/cut-club') && { href: '/admin/cut-club', label: 'CUT CLUB', Icon: Crown, rgb: '234,179,8' },
+    ].filter(Boolean) as { href: string; label: string; Icon: LucideIcon; rgb: string }[];
+
+    return (
+      <div className="flex-1 overflow-y-auto py-3 px-3 scrollbar-luxury-v">
+        {permLoading ? (
+          <NavSkeleton />
+        ) : isAuthenticated && access ? (
+          <>
+            {directLinks.length > 0 && (
+              <div className="mb-4">
+                <p className="text-[10px] font-bold text-muted-foreground tracking-wide px-1 mb-2">
+                  اختصارات سريعة
+                </p>
+                <div className="flex gap-2">
+                  {directLinks.map(link => renderMobileDirectLink(link.href, link.label, link.Icon, link.rgb))}
+                </div>
+              </div>
+            )}
+
+            {mobileCategories.map(category => renderMobileCategory(category))}
+
+            {mobileCategories.length === 0 && directLinks.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">لا توجد صفحات متاحة</p>
+            )}
+          </>
+        ) : null}
+      </div>
+    );
+  };
+
   // ── Sidebar nav content ────────────────────────────────────────────────────
   const NavSkeleton = () => (
     <div style={{ padding: isCollapsed ? '8px 6px' : '8px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -656,15 +987,26 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
 
       {/* ── Mobile Header ───────────────────────────────────────────────── */}
       <div className={`lg:hidden flex items-center justify-between px-4 py-3 bg-sidebar-background border-b border-sidebar-border ${suppressMobileChrome ? 'max-md:hidden' : ''}`}>
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 flex items-center justify-center">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 flex items-center justify-center shrink-0">
             <img src="/cutsalon.png" alt="Cut Salon Logo" className="w-full h-full object-contain" />
           </div>
-          <h2 className="text-base font-bold text-foreground">CUT SALON</h2>
+          <div className="min-w-0">
+            <h2 className="text-base font-bold text-foreground leading-tight">CUT SALON</h2>
+            {currentPageLabel && (
+              <p className="text-[11px] text-muted-foreground truncate leading-tight mt-0.5">
+                {currentSectionLabel && <span>{currentSectionLabel} · </span>}
+                {currentPageLabel}
+              </p>
+            )}
+          </div>
         </div>
         <button
+          type="button"
           onClick={() => toggleMobileMenu()}
-          className="p-2 bg-surface-muted border border-sidebar-border rounded-lg text-muted-foreground hover:bg-sidebar-hover transition-colors"
+          aria-label={mobileMenuOpen ? 'إغلاق القائمة' : 'فتح القائمة'}
+          aria-expanded={mobileMenuOpen}
+          className="p-2.5 bg-surface-muted border border-sidebar-border rounded-xl text-muted-foreground hover:bg-sidebar-hover transition-colors shrink-0"
         >
           {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
@@ -672,49 +1014,75 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
 
       {/* ── Mobile Menu ─────────────────────────────────────────────────── */}
       {mobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm">
+        <div
+          className="lg:hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm"
+          onClick={() => closeMobileMenu()}
+          role="dialog"
+          aria-modal="true"
+          aria-label="قائمة التنقل"
+        >
           <div
             className="absolute top-0 right-0 bottom-0 shadow-2xl flex flex-col"
-            style={{ width: 280, backgroundColor: 'var(--sidebar-background)', borderLeft: '1px solid var(--sidebar-border)' }}
+            style={{
+              width: 'min(92vw, 360px)',
+              backgroundColor: 'var(--sidebar-background)',
+              borderLeft: '1px solid var(--sidebar-border)',
+            }}
+            onClick={e => e.stopPropagation()}
           >
-            {/* Mobile header */}
-            <div className="flex items-center justify-between p-4 border-b border-sidebar-border">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 flex items-center justify-center">
-                  <img src="/cutsalon.png" alt="Cut Salon Logo" className="w-full h-full object-contain" />
+            {/* Mobile drawer header */}
+            <div className="flex items-center justify-between p-4 border-b border-sidebar-border shrink-0">
+              <div className="min-w-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 flex items-center justify-center shrink-0">
+                    <img src="/cutsalon.png" alt="Cut Salon Logo" className="w-full h-full object-contain" />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="text-base font-bold text-foreground">CUT SALON</h2>
+                    <p className="text-[11px] text-muted-foreground">تصفح الصفحات حسب القسم</p>
+                  </div>
                 </div>
-                <h2 className="text-base font-bold text-foreground">CUT SALON</h2>
+                {currentPageLabel && (
+                  <div
+                    className="mt-3 px-3 py-2 rounded-lg text-[11px] truncate"
+                    style={{
+                      backgroundColor: 'rgba(214,168,79,0.10)',
+                      border: '1px solid rgba(214,168,79,0.22)',
+                      color: 'var(--muted-foreground)',
+                    }}
+                  >
+                    <span className="text-primary font-semibold">الصفحة الحالية: </span>
+                    {activeCategoryTitle && <span>{activeCategoryTitle} › </span>}
+                    {currentSectionLabel && <span>{currentSectionLabel} › </span>}
+                    <span className="text-foreground font-medium">{currentPageLabel}</span>
+                  </div>
+                )}
               </div>
               <button
+                type="button"
                 onClick={() => closeMobileMenu()}
-                className="p-2 hover:bg-sidebar-hover rounded-lg transition-colors"
+                aria-label="إغلاق القائمة"
+                className="p-2 hover:bg-sidebar-hover rounded-xl transition-colors shrink-0 self-start"
               >
                 <X className="w-5 h-5 text-muted-foreground" />
               </button>
             </div>
 
-            {/* Mobile nav */}
-            <div className="flex-1 overflow-y-auto py-3 px-3">
-              {NAV_SECTIONS.map(section => (
-                <div key={section.title}>{renderSection(section)}</div>
-              ))}
-            </div>
-
-            {/* Mobile barber image */}
-            <div className="px-3 py-2">
-              <div className="relative rounded-xl overflow-hidden" style={{ height: 80 }}>
-                <img src="/barber-mohamed.jpg" alt="Barber" className="w-full h-full object-cover opacity-60" />
-                <div className="absolute inset-0 bg-gradient-to-t from-[var(--sidebar-background)] via-transparent to-transparent" />
-              </div>
-            </div>
+            <MobileNavContent />
 
             {/* Mobile footer */}
-            <div className="p-3 border-t border-sidebar-border">
-              <button className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl transition-all"
-                style={{ border: '1px solid color-mix(in srgb, var(--primary) 40%, transparent)', color: 'var(--primary)' }}>
-                <span className="text-sm">تخصيص القوائم</span>
-                <SlidersHorizontal className="w-4 h-4" />
-              </button>
+            <div className="p-3 border-t border-sidebar-border shrink-0">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="flex flex-1 items-center justify-center gap-2 px-3 py-2.5 rounded-xl transition-all"
+                  style={{ border: '1px solid color-mix(in srgb, var(--primary) 40%, transparent)', color: 'var(--primary)' }}
+                >
+                  <span className="text-sm">تخصيص القوائم</span>
+                  <SlidersHorizontal className="w-4 h-4" />
+                </button>
+                <SidebarThemeSwitch />
+              </div>
             </div>
           </div>
         </div>

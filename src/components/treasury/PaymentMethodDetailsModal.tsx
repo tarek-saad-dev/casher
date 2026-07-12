@@ -3,11 +3,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   X, Loader2, ArrowUpRight, ArrowDownRight, Search,
-  Filter, Receipt, AlertCircle, Trash2,
+  Filter, Receipt, AlertCircle, Trash2, Pencil, AlertTriangle,
 } from 'lucide-react';
 import type { TreasuryMovement } from '@/lib/types/treasury';
 import { getMovementTypeLabel, getMovementTypeSearchText } from '@/lib/treasury';
 import DeleteInvoiceDialog, { type DeleteInvoiceTarget } from '@/components/sales/DeleteInvoiceDialog';
+import { cashMoveDeleteToastMessage, notifyEmployeeLedgerRefresh } from '@/lib/cashMoveDeleteClient';
 
 interface Props {
   paymentMethodKey: string; // 'unassigned' for NULL PaymentMethodID, else String(paymentMethodId)
@@ -25,6 +26,32 @@ interface Props {
 
 type DirectionFilter = 'all' | 'in' | 'out';
 
+type CashMoveDeleteKind = 'expense' | 'income';
+
+interface CashMoveDeleteTarget {
+  kind: CashMoveDeleteKind;
+  id: number;
+  displayId: number;
+  label: string;
+}
+
+function resolveDeleteKind(movement: TreasuryMovement): 'sales' | CashMoveDeleteKind | null {
+  const raw = (movement.invType ?? '').trim();
+  const label = getMovementTypeLabel(movement);
+
+  if (raw === 'مبيعات' || raw === 'مرتجع' || raw === 'إرجاع' || label === 'مبيعات') {
+    return 'sales';
+  }
+  if (raw === 'مصروفات' || label === 'مصروفات') {
+    return 'expense';
+  }
+  if (raw === 'ايرادات' || raw === 'إيرادات' || label === 'إيرادات') {
+    return 'income';
+  }
+  // Fallback by direction for unknown/transfer rows shown as expense/income
+  return movement.inOut === 'out' ? 'expense' : 'income';
+}
+
 export default function PaymentMethodDetailsModal({
   paymentMethodKey,
   paymentMethodName,
@@ -38,7 +65,11 @@ export default function PaymentMethodDetailsModal({
   const [search, setSearch]       = useState('');
   const [direction, setDirection] = useState<DirectionFilter>('all');
   const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<DeleteInvoiceTarget | null>(null);
+  const [salesDeleteTarget, setSalesDeleteTarget] = useState<DeleteInvoiceTarget | null>(null);
+  const [cashMoveDeleteTarget, setCashMoveDeleteTarget] = useState<CashMoveDeleteTarget | null>(null);
+  const [cashMoveDeleteReason, setCashMoveDeleteReason] = useState('');
+  const [cashMoveDeleteError, setCashMoveDeleteError] = useState('');
+  const [cashMoveDeleting, setCashMoveDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,12 +131,73 @@ export default function PaymentMethodDetailsModal({
     try { return new Date(d).toLocaleDateString('ar-EG'); } catch { return d; }
   };
 
-  const handleDelete = (invId: number, invType: string) => {
-    if (invType !== 'مبيعات') {
-      alert('يمكن مسح فواتير المبيعات فقط من هنا');
+  const handleDelete = (movement: TreasuryMovement) => {
+    const kind = resolveDeleteKind(movement);
+    if (!kind) return;
+
+    if (kind === 'sales') {
+      if (movement.invId == null) {
+        alert('لا يمكن مسح هذه الفاتورة: رقم الفاتورة غير موجود');
+        return;
+      }
+      setSalesDeleteTarget({ invId: movement.invId });
       return;
     }
-    setDeleteTarget({ invId });
+
+    setCashMoveDeleteReason('');
+    setCashMoveDeleteError('');
+    setCashMoveDeleteTarget({
+      kind,
+      id: movement.id,
+      displayId: movement.invId ?? movement.id,
+      label: kind === 'expense' ? 'المصروف' : 'الإيراد',
+    });
+  };
+
+  const closeCashMoveDelete = () => {
+    if (cashMoveDeleting) return;
+    setCashMoveDeleteTarget(null);
+    setCashMoveDeleteReason('');
+    setCashMoveDeleteError('');
+  };
+
+  const confirmCashMoveDelete = async () => {
+    if (!cashMoveDeleteTarget) return;
+    const reason = cashMoveDeleteReason.trim();
+    if (!reason) {
+      setCashMoveDeleteError(`سبب مسح ${cashMoveDeleteTarget.label} مطلوب`);
+      return;
+    }
+
+    setCashMoveDeleting(true);
+    setCashMoveDeleteError('');
+    setDeletingId(cashMoveDeleteTarget.id);
+    try {
+      const endpoint = cashMoveDeleteTarget.kind === 'expense'
+        ? `/api/expenses/${cashMoveDeleteTarget.id}`
+        : `/api/incomes/${cashMoveDeleteTarget.id}`;
+      const res = await fetch(endpoint, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || `فشل مسح ${cashMoveDeleteTarget.label}`);
+      }
+      if (typeof data.ledgerDeletedCount === 'number' && data.ledgerDeletedCount > 0) {
+        notifyEmployeeLedgerRefresh();
+        alert(cashMoveDeleteToastMessage(data, 'تم حذف الحركة وحذف تأثيرها من دفتر الموظفين.'));
+      }
+      setCashMoveDeleteTarget(null);
+      setCashMoveDeleteReason('');
+      await load();
+    } catch (e: unknown) {
+      setCashMoveDeleteError(e instanceof Error ? e.message : 'حدث خطأ غير متوقع');
+    } finally {
+      setCashMoveDeleting(false);
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -132,6 +224,9 @@ export default function PaymentMethodDetailsModal({
               </h2>
               {!loading && (
                 <p className="text-xs text-zinc-500 mt-0.5">
+                  {filters.dateFrom && filters.dateTo && filters.dateFrom === filters.dateTo
+                    ? `${fmtDate(filters.dateFrom + 'T00:00:00')} — `
+                    : ''}
                   {movements.length} عملية إجمالية
                 </p>
               )}
@@ -306,20 +401,29 @@ export default function PaymentMethodDetailsModal({
                         </td>
                         {canDelete && (
                           <td className="px-3 py-2 text-center whitespace-nowrap">
-                            {m.invType === 'مبيعات' && m.invId != null && (
+                            <div className="inline-flex items-center gap-1">
                               <button
-                                onClick={() => handleDelete(m.invId!, m.invType ?? '')}
-                                disabled={m.invId != null && deletingId === m.invId}
-                                className="p-1.5 hover:bg-rose-500/20 rounded-lg transition-colors text-zinc-500 hover:text-rose-400 disabled:opacity-50"
-                                title="مسح الفاتورة"
+                                type="button"
+                                className="p-1.5 rounded-lg border border-zinc-700/50 bg-zinc-800/40 text-zinc-500 cursor-default"
+                                title="تعديل (قريباً)"
+                                aria-label="تعديل"
                               >
-                                {deletingId === m.invId ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-3.5 w-3.5" />
-                              )}
+                                <Pencil className="h-3.5 w-3.5" />
                               </button>
-                            )}
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(m)}
+                                disabled={deletingId === m.id || (m.invId != null && deletingId === m.invId)}
+                                className="p-1.5 hover:bg-rose-500/20 rounded-lg transition-colors text-zinc-500 hover:text-rose-400 disabled:opacity-50"
+                                title="مسح"
+                              >
+                                {(deletingId === m.id || (m.invId != null && deletingId === m.invId)) ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            </div>
                           </td>
                         )}
                       </tr>
@@ -346,15 +450,91 @@ export default function PaymentMethodDetailsModal({
       </div>
 
       <DeleteInvoiceDialog
-        target={deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onSuccess={async (invId) => {
-          setDeleteTarget(null);
+        target={salesDeleteTarget}
+        onClose={() => setSalesDeleteTarget(null)}
+        onSuccess={async () => {
+          setSalesDeleteTarget(null);
           setDeletingId(null);
           await load();
-          console.log('Deleted invoice', invId);
         }}
       />
+
+      {cashMoveDeleteTarget && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+          dir="rtl"
+        >
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={closeCashMoveDelete}
+          />
+          <div className="relative bg-zinc-900 border border-zinc-700/50 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 bg-rose-500/20 rounded-full">
+                <AlertTriangle className="h-6 w-6 text-rose-400" />
+              </div>
+              <h3 className="text-lg font-bold text-white">تأكيد المسح</h3>
+            </div>
+
+            <p className="text-zinc-400 mb-1">
+              هل أنت متأكد من مسح {cashMoveDeleteTarget.label}{' '}
+              <span className="text-white font-bold">#{cashMoveDeleteTarget.displayId}</span>؟
+            </p>
+            <p className="text-rose-400 text-sm mb-5">
+              هذا الإجراء لا يمكن التراجع عنه.
+            </p>
+
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-zinc-300 mb-1.5">
+                سبب المسح <span className="text-rose-400">*</span>
+              </label>
+              <textarea
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-zinc-600 resize-none focus:outline-none focus:border-amber-500/50 disabled:opacity-50"
+                rows={3}
+                placeholder={`اكتب سبب مسح ${cashMoveDeleteTarget.label}...`}
+                value={cashMoveDeleteReason}
+                onChange={(e) => {
+                  setCashMoveDeleteReason(e.target.value);
+                  if (cashMoveDeleteError) setCashMoveDeleteError('');
+                }}
+                disabled={cashMoveDeleting}
+              />
+              {cashMoveDeleteError && (
+                <p className="text-xs text-rose-400 mt-1.5">{cashMoveDeleteError}</p>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={closeCashMoveDelete}
+                disabled={cashMoveDeleting}
+                className="flex-1 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl transition-colors disabled:opacity-50"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={confirmCashMoveDelete}
+                disabled={cashMoveDeleting || !cashMoveDeleteReason.trim()}
+                className="flex-1 px-4 py-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 border border-rose-500/30 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {cashMoveDeleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    جاري المسح...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4" />
+                    مسح
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

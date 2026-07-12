@@ -6,7 +6,8 @@ export const runtime = 'nodejs';
 
 /**
  * POST /api/admin/hr/employee-ledger/migrate
- * Idempotent schema migration for TblEmpLedgerEntry — table + active-ref unique index only.
+ * Idempotent schema migration for TblEmpLedgerEntry — table, active-ref unique index,
+ * and EntryReason CHECK (includes employee_funding).
  * CLI: pass x-admin-setup-secret header matching ADMIN_SETUP_SECRET, or an authenticated session cookie.
  */
 export async function POST(request: NextRequest) {

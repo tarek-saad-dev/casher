@@ -3,6 +3,7 @@ import { getPool, sql } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
 import { getExpenseSnapshot, updateExpense, deleteExpense } from '@/lib/actions/expenseActions';
+import { cashMoveHardDeleteSuccessMessage } from '@/lib/services/cashMoveHardDeleteService';
 
 /**
  * PUT /api/expenses/[id]
@@ -109,7 +110,13 @@ export async function DELETE(
       loadNewData: async () => null,
     });
 
-    return NextResponse.json({ success: true, message: 'تم حذف المصروف', auditId: auditResult.auditId });
+    const ledgerDeletedCount = auditResult.data.ledgerDeletedCount;
+    return NextResponse.json({
+      success: true,
+      message: cashMoveHardDeleteSuccessMessage(ledgerDeletedCount),
+      ledgerDeletedCount,
+      auditId: auditResult.auditId,
+    });
 
   } catch (err: unknown) {
     if (isAuditedActionError(err)) {

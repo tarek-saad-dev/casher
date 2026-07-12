@@ -5,6 +5,7 @@ import { TrendingUp, TrendingDown, Wallet, Calendar, ChevronDown, Loader2, FileD
 import type { MonthlyBusinessReport } from '@/lib/types/monthly-report';
 import { calculateMonthlyFinancialEquations } from '@/lib/reports/monthlyFinancialEquations';
 import MonthlyFinancialEquations from '@/components/reports/MonthlyFinancialEquations';
+import FinancialClassificationPanel from '@/components/reports/FinancialClassificationPanel';
 import { generateMonthlyReportPDF, downloadPDF } from '@/lib/services/MonthlyReportPDFService';
 
 const ARABIC_MONTHS = [
@@ -100,7 +101,7 @@ export default function MonthlyBusinessReportPage() {
     ? calculateMonthlyFinancialEquations({
         year,
         month,
-        baseAmount: report.netProfit,
+        baseAmount: report.classifiedTotals?.cleanNetProfit ?? report.netProfit,
         mode: 'monthly',
       })
     : null;
@@ -217,6 +218,13 @@ export default function MonthlyBusinessReportPage() {
         {/* Report Content - Simplified Version */}
         {report && (
           <div className="space-y-6">
+            <FinancialClassificationPanel
+              payload={report}
+              loading={loading}
+              variant="profit"
+              legacyNetProfit={report.netProfit}
+            />
+
             {/* 3 Simple Cards: Revenue, Expenses, Net Profit */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Revenue Card */}

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  BookOpen, Loader2, AlertCircle, RefreshCw, TrendingUp, TrendingDown, Scale, Wallet, HandCoins,
+  BookOpen, Loader2, AlertCircle, RefreshCw, TrendingUp, TrendingDown, Scale, Wallet, HandCoins, CalendarDays,
 } from 'lucide-react';
 import KpiCard from '@/components/shared/KpiCard';
 import { Button } from '@/components/ui/button';
@@ -19,7 +19,9 @@ import type {
 import { EMP_LEDGER_REASON_LABELS } from '@/lib/types/employee-ledger';
 import EmployeePayoutModal, { type EmployeePayoutTarget } from '@/components/hr/EmployeePayoutModal';
 import EmployeeFundingModal from '@/components/hr/EmployeeFundingModal';
+import MonthlySalaryPostModal from '@/components/hr/MonthlySalaryPostModal';
 import Link from 'next/link';
+import { EMPLOYEE_LEDGER_REFRESH_EVENT } from '@/lib/cashMoveDeleteClient';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
@@ -67,6 +69,7 @@ export default function EmployeeLedgerPanel() {
   const [payoutTarget, setPayoutTarget] = useState<EmployeePayoutTarget | null>(null);
   const [payoutOpen, setPayoutOpen] = useState(false);
   const [fundingOpen, setFundingOpen] = useState(false);
+  const [monthlySalaryOpen, setMonthlySalaryOpen] = useState(false);
 
   const loadEmployees = useCallback(async () => {
     try {
@@ -132,6 +135,16 @@ export default function EmployeeLedgerPanel() {
   useEffect(() => { loadEmployees(); }, [loadEmployees]);
   useEffect(() => { refresh(); }, [refresh]);
 
+  useEffect(() => {
+    const onExternalRefresh = () => {
+      void refresh();
+    };
+    window.addEventListener(EMPLOYEE_LEDGER_REFRESH_EVENT, onExternalRefresh);
+    return () => {
+      window.removeEventListener(EMPLOYEE_LEDGER_REFRESH_EVENT, onExternalRefresh);
+    };
+  }, [refresh]);
+
   const summaryRows = useMemo(() => {
     if (!summary) return [] as EmpLedgerEmployeeSummaryRow[];
     if (empId === 'all') return summary.employees;
@@ -169,6 +182,11 @@ export default function EmployeeLedgerPanel() {
   };
 
   const handleFundingSuccess = (message: string) => {
+    setSuccessMsg(message);
+    void refresh();
+  };
+
+  const handleMonthlySalarySuccess = (message: string) => {
     setSuccessMsg(message);
     void refresh();
   };
@@ -211,6 +229,16 @@ export default function EmployeeLedgerPanel() {
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             تحديث
+          </Button>
+          <Button
+            onClick={() => setMonthlySalaryOpen(true)}
+            disabled={!dualWriteEnabled}
+            variant="outline"
+            className="h-9 gap-2 border-border"
+            title={!dualWriteEnabled ? 'يتطلب تفعيل EMP_LEDGER_DUAL_WRITE_ENABLED' : undefined}
+          >
+            <CalendarDays className="w-4 h-4" />
+            ترحيل الرواتب الشهرية للدفتر
           </Button>
           <Button
             onClick={() => setFundingOpen(true)}
@@ -410,6 +438,14 @@ export default function EmployeeLedgerPanel() {
         employees={employees}
         dualWriteEnabled={dualWriteEnabled}
         onSuccess={handleFundingSuccess}
+      />
+
+      <MonthlySalaryPostModal
+        open={monthlySalaryOpen}
+        onClose={() => setMonthlySalaryOpen(false)}
+        defaultMonth={month}
+        dualWriteEnabled={dualWriteEnabled}
+        onSuccess={handleMonthlySalarySuccess}
       />
 
       {!dualWriteEnabled && (

@@ -3,6 +3,8 @@ import { getPool } from '@/lib/db';
 import sql from 'mssql';
 import { EMPLOYEE_FUNDING_CATEGORY_NAME } from '@/lib/services/employeeLedgerFundingService';
 import type { DailyTreasuryData, TreasurySummary, PaymentMethodBreakdown, TreasuryFilters } from '@/lib/types/treasury';
+import { isFinancialReportClassificationEnabled } from '@/lib/accounting/financialReportFlags';
+import { maybeBuildClassificationPayloadForDateRange } from '@/lib/accounting/financialReportClassificationService';
 
 /**
  * GET /api/treasury/daily-summary
@@ -222,8 +224,32 @@ export async function GET(request: NextRequest) {
       paymentMethods,
       filters: filterInfo
     };
-    
-    return NextResponse.json(response);
+
+    if (!isFinancialReportClassificationEnabled()) {
+      return NextResponse.json(response);
+    }
+
+    const treasuryStart = dateFrom ?? filterInfo.dayDate ?? dateTo;
+    const treasuryEnd = dateTo ?? filterInfo.dayDate ?? dateFrom;
+
+    if (!treasuryStart || !treasuryEnd) {
+      return NextResponse.json(response);
+    }
+
+    const classification = await maybeBuildClassificationPayloadForDateRange({
+      startDate: treasuryStart,
+      endDate: treasuryEnd,
+      legacyTotals: {
+        totalInflow,
+        totalOutflow,
+        grandNet,
+      },
+    });
+
+    return NextResponse.json({
+      ...response,
+      ...classification,
+    });
     
   } catch (error) {
     console.error('[api/treasury/daily-summary] GET error:', error);

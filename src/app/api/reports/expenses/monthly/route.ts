@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
-import type { MonthlyExpensesReport, CategoryBreakdown, DailyTrend } from '@/lib/types';
+import type {
+  MonthlyExpensesReport,
+  CategoryBreakdown,
+  DailyTrend,
+  ExpenseTransactionWithClassification,
+} from '@/lib/types';
+import { isFinancialReportClassificationEnabled } from '@/lib/accounting/financialReportFlags';
+import {
+  maybeBuildClassificationPayload,
+  mergeExpenseOnlyClassification,
+} from '@/lib/accounting/financialReportClassificationService';
+import { buildCashMoveReportClassification } from '@/lib/accounting/financialReportClassification';
 
 // GET /api/reports/expenses/monthly — Monthly expenses report with full breakdown
 export async function GET(req: NextRequest) {
@@ -243,12 +254,23 @@ export async function GET(req: NextRequest) {
           cm.ShiftMoveID,
           cm.PaymentMethodID,
           ISNULL(pm.PaymentMethod, N'غير محدد') AS PaymentMethod,
-          u.UserName
+          u.UserName,
+          ISNULL(cm.IsPayrollDeduction, 0) AS IsPayrollDeduction,
+          ISNULL(cm.IsEmployeePayrollIncome, 0) AS IsEmployeePayrollIncome,
+          cm.EmpID,
+          map.TxnKind,
+          map.EmpID AS EmpIdFromMap
         FROM [dbo].[TblCashMove] cm
         LEFT JOIN [dbo].[TblExpINCat] cat ON cm.ExpINID = cat.ExpINID
         LEFT JOIN [dbo].[TblPaymentMethods] pm ON cm.PaymentMethodID = pm.PaymentID
         LEFT JOIN [dbo].[TblShiftMove] sm ON cm.ShiftMoveID = sm.ID
         LEFT JOIN [dbo].[TblUser] u ON sm.UserID = u.UserID
+        OUTER APPLY (
+          SELECT TOP 1 m.TxnKind, m.EmpID
+          FROM dbo.TblExpCatEmpMap m
+          WHERE m.ExpINID = cm.ExpINID AND m.IsActive = 1
+          ORDER BY m.ID DESC
+        ) map
         WHERE cm.invType = N'مصروفات' 
           AND cm.inOut = N'out'
           AND YEAR(cm.invDate) = @year
@@ -269,11 +291,47 @@ export async function GET(req: NextRequest) {
       );
     };
 
-    // Mark transactions that need categorization
-    const transactions = transactionsResult.recordset.map((t: any) => ({
-      ...t,
-      needsCategorization: needsCategorization(t.CatName),
-    }));
+    const classificationEnabled = isFinancialReportClassificationEnabled();
+
+    // Explicit field map keeps ExpenseTransaction typing sound; reportClassification is additive only.
+    const transactions: ExpenseTransactionWithClassification[] = transactionsResult.recordset.map(
+      (t: Record<string, unknown>) => {
+        const catName = t.CatName != null ? String(t.CatName) : null;
+        const transaction: ExpenseTransactionWithClassification = {
+          ID: Number(t.ID),
+          invID: Number(t.invID),
+          invDate: t.invDate instanceof Date
+            ? t.invDate.toISOString()
+            : String(t.invDate ?? ''),
+          invTime: String(t.invTime ?? ''),
+          ExpINID: Number(t.ExpINID),
+          CatName: catName ?? 'غير مصنف',
+          GrandTolal: Number(t.GrandTolal ?? 0),
+          Notes: t.Notes != null ? String(t.Notes) : null,
+          ShiftMoveID: t.ShiftMoveID != null ? Number(t.ShiftMoveID) : null,
+          PaymentMethodID: Number(t.PaymentMethodID),
+          PaymentMethod: t.PaymentMethod != null ? String(t.PaymentMethod) : null,
+          UserName: t.UserName != null ? String(t.UserName) : null,
+          needsCategorization: needsCategorization(catName),
+        };
+
+        if (classificationEnabled) {
+          transaction.reportClassification = buildCashMoveReportClassification({
+            invType: 'مصروفات',
+            inOut: 'out',
+            amount: Number(t.GrandTolal ?? 0),
+            categoryName: String(t.CatName ?? ''),
+            isPayrollDeduction: Boolean(t.IsPayrollDeduction),
+            isEmployeePayrollIncome: Boolean(t.IsEmployeePayrollIncome),
+            txnKind: t.TxnKind != null ? String(t.TxnKind) : null,
+            empIdFromMap: t.EmpIdFromMap != null ? Number(t.EmpIdFromMap) : null,
+            empId: t.EmpID != null ? Number(t.EmpID) : null,
+          });
+        }
+
+        return transaction;
+      },
+    );
 
     // ═══════ 9. Build Response ═══════
     const report: MonthlyExpensesReport = {
@@ -294,7 +352,26 @@ export async function GET(req: NextRequest) {
       transactions,
     };
 
-    return NextResponse.json(report);
+    if (!classificationEnabled) {
+      return NextResponse.json(report);
+    }
+
+    const classification = mergeExpenseOnlyClassification(
+      await maybeBuildClassificationPayload({
+        year,
+        month,
+        invTypeFilter: 'expense',
+        legacyTotals: {
+          totalExpenses,
+          transactionCount,
+        },
+      }),
+    );
+
+    return NextResponse.json({
+      ...report,
+      ...classification,
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/reports/expenses/monthly] GET error:', message);

@@ -6,11 +6,18 @@ import dynamic from 'next/dynamic';
 import {
   Users, Plus, CheckCircle2, AlertCircle,
   Loader2, UserPlus, Link2, Scissors, X, Zap, Settings, Clock, UserX, UserCheck,
-  Banknote, CalendarCheck, Wallet, UsersRound, BookOpen, Scale, MessageCircle,
+  Banknote, CalendarCheck, Wallet, UsersRound, BookOpen, Scale, MessageCircle, Pencil,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { parseTimeToMinutes } from '@/lib/timeUtils';
 import KpiCard from '@/components/shared/KpiCard';
+import EmployeeHrFormModal from '@/components/hr/EmployeeHrFormModal';
+import {
+  labelDayOffPolicy,
+  labelEmploymentType,
+  labelPayrollMethod,
+  type HrEmployeeListRow,
+} from '@/components/hr/employee-hr-form-utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -41,25 +48,18 @@ const EmployeeLedgerReconciliationPanel = dynamic(
 );
 
 /* ─── types ─────────────────────────────────────────── */
-interface Employee {
-  EmpID: number;
-  EmpName: string;
-  Job: JobType | string | null;
-  isActive: boolean;
+interface Employee extends HrEmployeeListRow {
   BaseSalary: number | null;
   TargetCommissionPercent: number | null;
   TargetMinSales: number | null;
-  DefaultCheckInTime: string | null;
-  DefaultCheckOutTime: string | null;
   WorkScheduleNotes: string | null;
-  IsPayrollEnabled: boolean | null;
   HourlyRate: number | null;
   AdvanceExpINID: number | null;
   AdvanceCatName: string | null;
   RevenueExpINID: number | null;
   RevenueCatName: string | null;
-  WhatsApp?: string | null;
-  Mobile?: string | null;
+  Job: JobType | string | null;
+  SalaryType?: string | null;
 }
 
 /* ─── main tabs ──────────────────────────────────────── */
@@ -171,10 +171,10 @@ function EmployeesPanel() {
   const [error,     setError]     = useState('');
   const [jobTypeFilter, setJobTypeFilter] = useState<string>('');
 
-  const [open,      setOpen]     = useState(false);
-  const [empName,   setEmpName]  = useState('');
-  const [saving,    setSaving]   = useState(false);
-  const [saveErr,   setSaveErr]  = useState('');
+  const [hrFormOpen, setHrFormOpen] = useState(false);
+  const [hrFormMode, setHrFormMode] = useState<'create' | 'edit'>('create');
+  const [hrFormEmployee, setHrFormEmployee] = useState<Employee | null>(null);
+  const [successMessage, setSuccessMessage] = useState('');
   const [lastAdded, setLastAdded] = useState<Employee | null>(null);
 
   const [financeModalOpen, setFinanceModalOpen] = useState(false);
@@ -408,20 +408,24 @@ function EmployeesPanel() {
     finally { setAutoMapping(false); }
   };
 
-  async function handleAdd() {
-    if (!empName.trim()) { setSaveErr('اسم الموظف مطلوب'); return; }
-    setSaving(true); setSaveErr('');
-    try {
-      const res  = await fetch('/api/employees', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ empName: empName.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'خطأ في الحفظ');
-      setLastAdded(data); setEmpName(''); setOpen(false); await load();
-    } catch (e: any) { setSaveErr(e.message); }
-    finally { setSaving(false); }
-  }
+  const openCreateModal = () => {
+    setHrFormMode('create');
+    setHrFormEmployee(null);
+    setHrFormOpen(true);
+  };
+
+  const openEditModal = (employee: Employee) => {
+    setHrFormMode('edit');
+    setHrFormEmployee(employee);
+    setHrFormOpen(true);
+  };
+
+  const handleHrSaved = async (message: string) => {
+    setSuccessMessage(message);
+    setLastAdded(null);
+    await load();
+    window.setTimeout(() => setSuccessMessage(''), 5000);
+  };
 
   const total        = employees.length;
   const active       = employees.filter(e => e.isActive).length;
@@ -447,7 +451,7 @@ function EmployeesPanel() {
               {autoMapping ? <><Loader2 className="w-4 h-4 animate-spin" /> جاري الربط...</> : <><Zap className="w-4 h-4" /> ربط تلقائي</>}
             </Button>
           )}
-          <Button className="gap-2 bg-primary hover:bg-primary/90" onClick={() => { setOpen(true); setSaveErr(''); setEmpName(''); setLastAdded(null); }}>
+          <Button className="gap-2 bg-primary hover:bg-primary/90" onClick={openCreateModal}>
             <Plus className="w-4 h-4" />
             موظف جديد
           </Button>
@@ -464,6 +468,13 @@ function EmployeesPanel() {
       </div>
 
       {/* ── Success Toast ── */}
+      {successMessage && (
+        <div className="flex items-center gap-2 p-3 rounded-lg border border-success/30 bg-success/5 text-sm text-success">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          {successMessage}
+        </div>
+      )}
+
       {lastAdded && (
         <div className="flex items-start gap-3 p-4 rounded-xl border border-success/30 bg-success/5">
           <CheckCircle2 className="w-5 h-5 text-success shrink-0 mt-0.5" />
@@ -532,11 +543,12 @@ function EmployeesPanel() {
               <tr className="border-b border-border text-muted-foreground/70 text-xs uppercase tracking-wider">
                 <th className="px-4 py-3 text-right font-medium">#</th>
                 <th className="px-4 py-3 text-right font-medium">الموظف</th>
-                <th className="px-4 py-3 text-right font-medium">الوظيفة</th>
+                <th className="px-4 py-3 text-right font-medium">نوع التوظيف</th>
+                <th className="px-4 py-3 text-right font-medium">المحاسبة</th>
+                <th className="px-4 py-3 text-right font-medium">الإجازة</th>
+                <th className="px-4 py-3 text-right font-medium">الرواتب</th>
                 <th className="px-4 py-3 text-right font-medium">واتساب</th>
                 <th className="px-4 py-3 text-right font-medium">الحالة</th>
-                <th className="px-4 py-3 text-right font-medium">تصنيف السلفة</th>
-                <th className="px-4 py-3 text-right font-medium">تصنيف الإيراد</th>
                 <th className="px-4 py-3 text-right font-medium">الربط المالي</th>
                 <th className="px-4 py-3 text-right font-medium">إجراءات</th>
               </tr>
@@ -557,9 +569,32 @@ function EmployeesPanel() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    {emp.Job
-                      ? <span className="text-xs text-muted-foreground">{emp.Job}</span>
-                      : <span className="text-xs text-muted-foreground/60 italic">—</span>}
+                    <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-surface-muted border border-border">
+                      {emp.employmentTypeLabel || labelEmploymentType(emp.EmploymentType)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-primary/10 text-primary border border-primary/20">
+                      {emp.payrollMethodLabel || labelPayrollMethod(emp.PayrollMethod)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground">
+                    {emp.EmploymentType === 'full_time'
+                      ? emp.dayOffPolicyLabel || labelDayOffPolicy(emp.DayOffPolicy)
+                      : '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    {emp.IsPayrollEnabled !== false ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-success">
+                        <span className="w-1.5 h-1.5 rounded-full bg-success" />
+                        مفعلة
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+                        موقوفة
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 min-w-[180px]">
                     <div className="flex items-center gap-2">
@@ -597,16 +632,6 @@ function EmployeesPanel() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    {emp.AdvanceCatName
-                      ? <span className="text-xs text-foreground font-mono">{emp.AdvanceCatName}</span>
-                      : <span className="inline-flex items-center gap-1.5 text-xs text-primary"><AlertCircle className="w-3 h-3" />غير مربوط</span>}
-                  </td>
-                  <td className="px-4 py-3">
-                    {emp.RevenueCatName
-                      ? <span className="text-xs text-foreground font-mono">{emp.RevenueCatName}</span>
-                      : <span className="inline-flex items-center gap-1.5 text-xs text-primary"><AlertCircle className="w-3 h-3" />غير مربوط</span>}
-                  </td>
-                  <td className="px-4 py-3">
                     {emp.AdvanceExpINID && emp.RevenueExpINID ? (
                       <span className="inline-flex items-center gap-1.5 text-xs text-success"><CheckCircle2 className="w-3.5 h-3.5" />كامل</span>
                     ) : emp.AdvanceExpINID || emp.RevenueExpINID ? (
@@ -614,13 +639,43 @@ function EmployeesPanel() {
                     ) : (
                       <span className="inline-flex items-center gap-1.5 text-xs text-destructive"><X className="w-3.5 h-3.5" />لا يوجد</span>
                     )}
+                    {(emp.AdvanceCatName || emp.RevenueCatName) && (
+                      <p className="text-[10px] text-muted-foreground/70 mt-1 truncate max-w-[140px]">
+                        {[emp.AdvanceCatName, emp.RevenueCatName].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-left">
-                    {/* TODO: Rebuild employee profile management flow later with reliable data sources. */}
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={() => openFinanceModal(emp)} className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Button variant="outline" size="sm" onClick={() => openEditModal(emp)} className="gap-1 text-xs h-8">
+                        <Pencil className="w-3 h-3" />تعديل
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => openFinanceModal(emp)} className="gap-1 text-xs h-8">
                         <Link2 className="w-3 h-3" />الربط المالي
                       </Button>
+                      {emp.isActive ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => deactivateEmployee(emp.EmpID)}
+                          disabled={deactivatingId === emp.EmpID}
+                          className="gap-1 text-xs h-8 border-destructive/30 text-destructive hover:bg-destructive/10"
+                        >
+                          {deactivatingId === emp.EmpID ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserX className="w-3 h-3" />}
+                          إيقاف
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => activateEmployee(emp.EmpID)}
+                          disabled={activatingId === emp.EmpID}
+                          className="gap-1 text-xs h-8 border-success/30 text-success hover:bg-success/10"
+                        >
+                          {activatingId === emp.EmpID ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserCheck className="w-3 h-3" />}
+                          تفعيل
+                        </Button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -630,48 +685,13 @@ function EmployeesPanel() {
         )}
       </div>
 
-      {/* ── Add Employee Modal ── */}
-      <Dialog open={open} onOpenChange={(v) => { if (!v) setOpen(false); }}>
-        <DialogContent className="sm:max-w-md" dir="rtl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <UserPlus className="w-5 h-5 text-primary" />
-              إضافة موظف جديد
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-1">
-            <div className="rounded-lg border border-border/50 bg-surface-muted/40 p-3 space-y-1.5 text-xs text-muted-foreground">
-              <p className="font-semibold text-foreground text-sm mb-2">ما سيحدث تلقائياً عند الإضافة:</p>
-              <div className="flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">١</span>
-                <span>إنشاء الموظف في قاعدة البيانات</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">٢</span>
-                <span>إنشاء بند مصروف سلفة باسم: <span className="font-mono text-primary">سلفه ( اسم الموظف )</span></span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">٣</span>
-                <span>ربط الموظف بالبند تلقائياً لتتبع السلف</span>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">اسم الموظف *</label>
-              <Input placeholder="مثال: أحمد محمد" value={empName} onChange={(e) => setEmpName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }} autoFocus />
-              {empName.trim() && (
-                <p className="text-xs text-muted-foreground/70">سيُنشأ بند السلفة باسم:{' '}<span className="font-mono text-primary">سلفه ( {empName.trim()} )</span></p>
-              )}
-            </div>
-            {saveErr && <p className="text-sm text-destructive">{saveErr}</p>}
-            <div className="flex gap-2 justify-end" dir="ltr">
-              <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>إلغاء</Button>
-              <Button onClick={handleAdd} disabled={saving || !empName.trim()} className="bg-primary hover:bg-primary/90 gap-2">
-                {saving ? <><Loader2 className="w-4 h-4 animate-spin" />جاري الحفظ...</> : <><UserPlus className="w-4 h-4" />إضافة وربط</>}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <EmployeeHrFormModal
+        open={hrFormOpen}
+        onOpenChange={setHrFormOpen}
+        mode={hrFormMode}
+        employee={hrFormEmployee}
+        onSaved={handleHrSaved}
+      />
 
       {/* ── Finance Mapping Modal ── */}
       <Dialog open={financeModalOpen} onOpenChange={(v) => { if (!v) closeFinanceModal(); }}>
@@ -1053,9 +1073,16 @@ function AdvancesReportPanel() {
 function EmployeeSettingsPanel() {
   return (
     <div className="space-y-5">
+      <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-muted-foreground">
+        <p className="text-foreground font-medium mb-1">ملاحظة</p>
+        <p>
+          إعدادات نوع التوظيف وطريقة المحاسبة وجدول العمل يتم تعديلها الآن من{' '}
+          <span className="text-primary font-medium">ملف الموظف</span> في تبويب الموظفون (زر تعديل).
+        </p>
+      </div>
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Settings className="w-4 h-4 text-primary" />
-        <span>إعدادات الرواتب والتارجت والحضور للموظفين</span>
+        <span>إعدادات الرواتب اليومية والتارجت والحضور (النظام القديم)</span>
       </div>
       <PayrollSettingsTab />
     </div>

@@ -36,11 +36,11 @@ export interface TreasuryFilters {
   userName: string | null;
 }
 
-export interface DailyTreasuryData {
+export type DailyTreasuryData = {
   summary: TreasurySummary;
   paymentMethods: PaymentMethodBreakdown[];
   filters: TreasuryFilters;
-}
+} & Partial<import('@/lib/types/financial-report-classification').FinancialReportClassificationPayload>;
 
 export interface TreasuryMovement {
   id: number;

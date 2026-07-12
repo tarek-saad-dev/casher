@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import { isEmployeeLedgerDualWriteEnabled } from '@/lib/employeeLedgerConfig';
+import { getLegacyPostToCashConfig } from '@/lib/payroll/legacyPostToCashFlags';
 import {
   getEmployeeLedgerSummary,
   validateLedgerMonth,
@@ -35,10 +36,15 @@ export async function GET(request: NextRequest) {
     }
 
     const result = await getEmployeeLedgerSummary(month);
+    const legacyConfig = getLegacyPostToCashConfig();
     return NextResponse.json({
       ...result,
       ledgerDualWriteEnabled: isEmployeeLedgerDualWriteEnabled(),
-    });  } catch (error: unknown) {
+      legacyPostToCashDisabled: legacyConfig.legacyPostToCashDisabled,
+      legacyPostToCashWarning: legacyConfig.legacyPostToCashWarning,
+      redirectTab: legacyConfig.redirectTab,
+    });
+  } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     if (isMissingLedgerTableError(message)) {
       return NextResponse.json(

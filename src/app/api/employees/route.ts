@@ -1,6 +1,25 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getPool, sql } from "@/lib/db";
-import { getSession } from "@/lib/session";
+import { NextRequest, NextResponse } from 'next/server';
+import { getPool, sql } from '@/lib/db';
+import { getSession } from '@/lib/session';
+import {
+  usesHrModelPayload,
+  validateEmployeeHrPayload,
+  mapNormalizedToDbColumns,
+  enrichEmployeeRow,
+  normalizeEmploymentType,
+  normalizePayrollMethod,
+  isFreelanceMonthlyBlocked,
+  type EmployeeHrPayload,
+  type NormalizedHrFields,
+} from '@/lib/hr/employee-hr-model';
+import { buildScheduleRows } from '@/lib/hr/employee-hr-schedule';
+import {
+  EMPLOYEE_LIST_SELECT,
+  buildHrInsertQuery,
+  ensureScheduleTable,
+  upsertEmployeeSchedule,
+} from '@/lib/hr/employee-hr-db';
+import { ensureEmployeeAdvanceMapping } from '@/lib/hr/employee-hr-advance';
 
 // GET /api/employees — list employees with finance mapping
 // Query params: ?inactive=true to get inactive employees
@@ -8,169 +27,99 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const showInactive = searchParams.get('inactive') === 'true';
-    
+
     const db = await getPool();
     const result = await db.request().query(`
-      SELECT 
-        e.EmpID, e.EmpName, e.Job, e.isActive, e.BaseSalary, e.TargetCommissionPercent, e.TargetMinSales,
-        CONVERT(VARCHAR(5), e.DefaultCheckInTime,  108) AS DefaultCheckInTime,
-        CONVERT(VARCHAR(5), e.DefaultCheckOutTime, 108) AS DefaultCheckOutTime,
-        CASE 
-          WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'WorkScheduleNotes') 
-          THEN e.WorkScheduleNotes ELSE NULL 
-        END AS WorkScheduleNotes, 
-        e.IsPayrollEnabled,
-        CASE
-          WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'HourlyRate')
-          THEN e.HourlyRate ELSE NULL
-        END AS HourlyRate,
-        CASE
-          WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'WhatsApp')
-          THEN e.WhatsApp ELSE NULL
-        END AS WhatsApp,
-        e.Mobile,
-        adv.ExpINID AS AdvanceExpINID, adv.CatName AS AdvanceCatName,
-        rev.ExpINID AS RevenueExpINID, rev.CatName AS RevenueCatName
-      FROM dbo.TblEmp e
-      OUTER APPLY (
-        SELECT TOP 1
-          m.ExpINID,
-          cat.CatName
-        FROM dbo.TblExpCatEmpMap m
-        JOIN dbo.TblExpINCat cat
-          ON cat.ExpINID = m.ExpINID
-        WHERE m.EmpID = e.EmpID
-          AND m.TxnKind = N'advance'
-          AND m.IsActive = 1
-          AND cat.ExpINType = N'مصروفات'
-        ORDER BY m.ModifiedDate DESC, m.ID DESC
-      ) adv
-      OUTER APPLY (
-        SELECT TOP 1
-          m.ExpINID,
-          cat.CatName
-        FROM dbo.TblExpCatEmpMap m
-        JOIN dbo.TblExpINCat cat
-          ON cat.ExpINID = m.ExpINID
-        WHERE m.EmpID = e.EmpID
-          AND m.TxnKind = N'revenue'
-          AND m.IsActive = 1
-          AND cat.ExpINType = N'ايرادات'
-        ORDER BY m.ModifiedDate DESC, m.ID DESC
-      ) rev
+      ${EMPLOYEE_LIST_SELECT}
       WHERE ISNULL(e.isActive, 1) = ${showInactive ? '0' : '1'}
       ORDER BY e.EmpName
     `);
-    return NextResponse.json(result.recordset);
+
+    const rows = result.recordset.map((row: Record<string, unknown>) =>
+      enrichEmployeeRow(row),
+    );
+    return NextResponse.json(rows);
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("[api/employees] GET error:", message);
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[api/employees] GET error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
-// POST /api/employees  { empName, isActive? }
-// Creates employee + advance expense category + mapping atomically
+// POST /api/employees
+// Legacy: { empName, isActive? }
+// HR model: optional full payload with employmentType, payrollMethod, scheduleConfig, etc.
 export async function POST(req: NextRequest) {
   try {
     const session = await getSession();
     if (!session) {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { empName, isActive = true } = body;
+    const body = (await req.json()) as EmployeeHrPayload;
+    const isHrPayload = usesHrModelPayload(body);
 
-    if (!empName || String(empName).trim().length === 0) {
-      return NextResponse.json({ error: "اسم الموظف مطلوب" }, { status: 400 });
+    const validation = validateEmployeeHrPayload(body, {
+      mode: 'create',
+      isHrPayload,
+    });
+
+    if (!validation.ok) {
+      return NextResponse.json({ error: validation.errors[0] }, { status: 400 });
     }
 
-    const name = String(empName).trim();
-    const catName = `سلفه ( ${name} )`;
-    const expType = "مصروفات";
+    const name = String(body.empName).trim();
+    const isActive = body.isActive !== false;
 
     const db = await getPool();
     const transaction = new sql.Transaction(db);
     await transaction.begin();
 
     try {
-      // ── 1. Insert employee ───────────────────────────────────────────
-      // Use SCOPE_IDENTITY() instead of OUTPUT clause — TblEmp has a trigger
-      // that causes "OUTPUT without INTO" to fail when triggers are enabled.
-      const empRes = await new sql.Request(transaction)
-        .input("empName", sql.NVarChar(200), name)
-        .input("isActive", sql.Bit, isActive ? 1 : 0).query(`
-          INSERT INTO dbo.TblEmp (EmpName, isActive)
-          VALUES (@empName, @isActive);
+      let newEmp: { EmpID: number; EmpName: string; isActive: boolean };
 
-          SELECT EmpID, EmpName, isActive
-          FROM dbo.TblEmp
-          WHERE EmpID = SCOPE_IDENTITY();
-        `);
+      if (isHrPayload && validation.normalized) {
+        const dbCols = mapNormalizedToDbColumns(validation.normalized);
+        const { sql: insertSql, bind } = buildHrInsertQuery(name, isActive, dbCols);
+        const insertReq = new sql.Request(transaction);
+        bind(insertReq);
+        const empRes = await insertReq.query(insertSql);
+        newEmp = empRes.recordset[0];
 
-      const newEmp = empRes.recordset[0];
-      const newEmpID: number = newEmp.EmpID;
-
-      console.log(
-        `[api/employees] Inserted EmpID=${newEmpID}  EmpName=${name}`,
-      );
-
-      // ── 2. Create advance category if not already there ──────────────
-      let expINID: number = 0;
-
-      const existCat = await new sql.Request(transaction)
-        .input("catName", sql.NVarChar(200), catName)
-        .input("expType", sql.NVarChar(50), expType).query(`
-          SELECT ExpINID FROM dbo.TblExpINCat
-          WHERE CatName = @catName AND ExpINType = @expType
-        `);
-
-      if (existCat.recordset.length > 0) {
-        expINID = existCat.recordset[0].ExpINID;
-        console.log(`[api/employees] Re-using existing ExpINID=${expINID}`);
+        if (validation.normalized.scheduleConfig) {
+          await ensureScheduleTable(db);
+          const scheduleRows = buildScheduleRows(
+            validation.normalized.employmentType,
+            validation.normalized.dayOffPolicy,
+            validation.normalized.scheduleConfig,
+            validation.normalized.defaultStartTime,
+            validation.normalized.defaultEndTime,
+          );
+          await upsertEmployeeSchedule(transaction, newEmp.EmpID, scheduleRows);
+        }
       } else {
-        const catRes = await new sql.Request(transaction)
-          .input("catName", sql.NVarChar(200), catName)
-          .input("expType", sql.NVarChar(50), expType).query(`
-            INSERT INTO dbo.TblExpINCat (CatName, ExpINType)
-            OUTPUT INSERTED.ExpINID
-            VALUES (@catName, @expType)
+        const empRes = await new sql.Request(transaction)
+          .input('empName', sql.NVarChar(200), name)
+          .input('isActive', sql.Bit, isActive ? 1 : 0)
+          .query(`
+            INSERT INTO dbo.TblEmp (EmpName, isActive)
+            VALUES (@empName, @isActive);
+
+            SELECT EmpID, EmpName, isActive
+            FROM dbo.TblEmp
+            WHERE EmpID = SCOPE_IDENTITY();
           `);
-        expINID = catRes.recordset[0].ExpINID;
-        console.log(`[api/employees] Created TblExpINCat ExpINID=${expINID}`);
+        newEmp = empRes.recordset[0];
       }
 
-      // Validate expINID was assigned
-      if (!expINID || expINID <= 0) {
-        await transaction.rollback();
-        return NextResponse.json(
-          { error: "فشل في إنشاء/العثور على تصنيف السلفة" },
-          { status: 500 },
-        );
-      }
+      const newEmpID = newEmp.EmpID;
+      console.log(`[api/employees] Inserted EmpID=${newEmpID}  EmpName=${name}`);
 
-      // ── 3. Create advance mapping if not already there ───────────────
-      const existMap = await new sql.Request(transaction)
-        .input("empID", sql.Int, newEmpID)
-        .input("expINID", sql.Int, expINID).query(`
-          SELECT 1 FROM dbo.TblExpCatEmpMap
-          WHERE EmpID = @empID AND ExpINID = @expINID AND TxnKind = N'advance'
-        `);
-
-      if (existMap.recordset.length === 0) {
-        await new sql.Request(transaction)
-          .input("empID", sql.Int, newEmpID)
-          .input("expINID", sql.Int, expINID).query(`
-            INSERT INTO dbo.TblExpCatEmpMap
-              (EmpID, ExpINID, TxnKind, IsActive, Notes, CreatedDate, ModifiedDate)
-            VALUES
-              (@empID, @expINID, N'advance', 1,
-               N'Auto map on employee creation', GETDATE(), GETDATE())
-          `);
-        console.log(
-          `[api/employees] Created advance mapping EmpID=${newEmpID} -> ExpINID=${expINID}`,
-        );
-      }
+      const { expINID, catName } = await ensureEmployeeAdvanceMapping(
+        transaction,
+        newEmpID,
+        name,
+      );
 
       await transaction.commit();
 
@@ -181,6 +130,13 @@ export async function POST(req: NextRequest) {
           isActive: newEmp.isActive,
           AdvanceExpINID: expINID,
           AdvanceCatName: catName,
+          ...(isHrPayload && validation.normalized
+            ? {
+                EmploymentType: validation.normalized.employmentType,
+                PayrollMethod: validation.normalized.payrollMethod,
+                DayOffPolicy: validation.normalized.dayOffPolicy,
+              }
+            : {}),
         },
         { status: 201 },
       );
@@ -189,8 +145,10 @@ export async function POST(req: NextRequest) {
       throw innerErr;
     }
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("[api/employees] POST error:", message);
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[api/employees] POST error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export { type EmployeeHrPayload, type NormalizedHrFields };

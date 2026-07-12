@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback } from 'react';
 import PageHeader from '@/components/shared/PageHeader';
 import KpiCard from '@/components/shared/KpiCard';
 import EmptyState from '@/components/shared/EmptyState';
+import FinancialClassificationPanel, {
+  IncomeRowClassificationBadge,
+} from '@/components/reports/FinancialClassificationPanel';
 import { Button } from '@/components/ui/button';
 import {
   Coins,
@@ -24,6 +27,7 @@ import {
   ArrowRight,
   Edit3,
 } from 'lucide-react';
+import { cashMoveDeleteToastMessage, notifyEmployeeLedgerRefresh } from '@/lib/cashMoveDeleteClient';
 
 /* ────────── types ────────── */
 interface RevenueItem {
@@ -39,6 +43,12 @@ interface RevenueItem {
   PaymentMethod: string;
   ShiftMoveID: number | null;
   UserName: string | null;
+  reportClassification?: {
+    bucket: string;
+    label: string;
+    isRealRevenue: boolean;
+    treasuryLabel?: string;
+  };
 }
 
 interface RevenueSummary {
@@ -92,6 +102,11 @@ export default function AllRevenuePage() {
 
   const [items, setItems] = useState<RevenueItem[]>([]);
   const [summary, setSummary] = useState<RevenueSummary | null>(null);
+  const [classificationPayload, setClassificationPayload] = useState<{
+    classificationEnabled?: boolean;
+    classifiedTotals?: import('@/lib/types/financial-report-classification').ClassifiedTotals;
+    classificationBreakdown?: import('@/lib/types/financial-report-classification').ClassificationBreakdownItem[];
+  } | null>(null);
 
   const [expandedCat, setExpandedCat] = useState<number | null>(null);
   const [deletingCat, setDeletingCat] = useState<{ ExpINID: number; name: string; count: number } | null>(null);
@@ -353,6 +368,11 @@ export default function AllRevenuePage() {
       const data = await res.json();
       setItems(data.items ?? []);
       setSummary(data.summary ?? null);
+      setClassificationPayload({
+        classificationEnabled: data.classificationEnabled,
+        classifiedTotals: data.classifiedTotals,
+        classificationBreakdown: data.classificationBreakdown,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'حدث خطأ');
     } finally {
@@ -398,7 +418,8 @@ export default function AllRevenuePage() {
       if (!res.ok || !data.success) {
         addToast('error', data.error || 'فشل حذف الإيراد');
       } else {
-        addToast('success', 'تم حذف الإيراد بنجاح');
+        addToast('success', cashMoveDeleteToastMessage(data, 'تم حذف الإيراد بنجاح'));
+        if (data.ledgerDeletedCount > 0) notifyEmployeeLedgerRefresh();
         setDeletingId(null);
         fetchData();
       }
@@ -421,6 +442,7 @@ export default function AllRevenuePage() {
     setBusyDelete(true);
     try {
       const catItems = items.filter((i) => i.ExpINID === deletingCat.ExpINID);
+      let anyLedgerDeleted = false;
       for (const item of catItems) {
         const res = await fetch(`/api/incomes/${item.ID}`, {
           method: 'DELETE',
@@ -429,9 +451,16 @@ export default function AllRevenuePage() {
         });
         const data = await res.json();
         if (!data.success && !data.ok) throw new Error(data.error || 'فشل حذف الإيرادات');
+        if (data.ledgerDeletedCount > 0) anyLedgerDeleted = true;
       }
       setDeletingCat(null);
-      addToast('success', 'تم حذف الإيرادات بنجاح');
+      addToast(
+        'success',
+        anyLedgerDeleted
+          ? 'تم حذف الحركة وحذف تأثيرها من دفتر الموظفين.'
+          : 'تم حذف الإيرادات بنجاح',
+      );
+      if (anyLedgerDeleted) notifyEmployeeLedgerRefresh();
       fetchData();
     } catch (err) {
       addToast('error', err instanceof Error ? err.message : 'حدث خطأ');
@@ -500,6 +529,13 @@ export default function AllRevenuePage() {
           />
         </div>
       )}
+
+      <FinancialClassificationPanel
+        payload={classificationPayload ?? undefined}
+        loading={loading}
+        variant="income"
+        showCleanNetProfit={false}
+      />
 
       {/* Bulk Selection Controls */}
       {categoriesList.length > 0 && (
@@ -696,7 +732,12 @@ export default function AllRevenuePage() {
                               <td className="py-2.5 px-3 text-xs text-zinc-500">{item.invID}</td>
                               <td className="py-2.5 px-3 text-xs text-zinc-300">{fmtDate(item.invDate)}</td>
                               <td className="py-2.5 px-3 text-xs text-zinc-500">{item.invTime || '—'}</td>
-                              <td className="py-2.5 px-3 text-xs font-bold text-emerald-400">{fmt(item.Amount)}</td>
+                              <td className="py-2.5 px-3 text-xs font-bold text-emerald-400">
+                                <div className="flex flex-col gap-1">
+                                  <span>{fmt(item.Amount)}</span>
+                                  <IncomeRowClassificationBadge reportClassification={item.reportClassification} />
+                                </div>
+                              </td>
                               <td className="py-2.5 px-3 text-xs text-zinc-400">{item.PaymentMethod || '—'}</td>
                               <td className="py-2.5 px-3 text-xs text-zinc-400">{item.UserName || '—'}</td>
                               <td className="py-2.5 px-3 text-xs text-zinc-500 max-w-[200px] truncate">{item.Notes || '—'}</td>

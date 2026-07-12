@@ -21,6 +21,8 @@ import {
 } from '@/lib/reports/partnersEmployeeOverrides';
 import { loadPartnersEmployeeOverrides } from '@/lib/reports/partnersEmployeeOverridesStore';
 import { filterOperatingExpenseCategories } from '@/lib/reports/partnersExpenseCategories';
+import { isFinancialReportClassificationEnabled } from '@/lib/accounting/financialReportFlags';
+import { maybeBuildClassificationPayload } from '@/lib/accounting/financialReportClassificationService';
 
 export async function buildPartnersMonthlyReport(
   year: number,
@@ -159,7 +161,7 @@ export async function buildPartnersMonthlyReport(
   const operatingNetExplanation =
     'بعد خصم الرواتب والسلف من قسم الموظفين ومصروفات التشغيل الأخرى بعد استبعاد سلف وتارجت الموظفين';
 
-  return {
+  const baseReport = {
     period,
     summary: {
       totalRevenue,
@@ -178,6 +180,35 @@ export async function buildPartnersMonthlyReport(
     employeeSummaryTotals,
     metadata: {
       generatedAt: new Date().toISOString(),
+    },
+  };
+
+  if (!isFinancialReportClassificationEnabled()) {
+    return baseReport;
+  }
+
+  const classification = await maybeBuildClassificationPayload({
+    year,
+    month,
+    salesRevenueOverride: totalRevenue,
+    legacyTotals: {
+      totalRevenue,
+      totalExpenses,
+      operatingExpenses,
+      operatingNet,
+    },
+  });
+
+  const cleanNetProfit = classification.classifiedTotals?.cleanNetProfit ?? operatingNet;
+
+  return {
+    ...baseReport,
+    ...classification,
+    classifiedPartnerSplit: {
+      cleanNetProfit,
+      legacyOperatingNet: operatingNet,
+      explanation:
+        'تم احتساب صافي الربح بعد استبعاد السلف وصرف المستحقات وحركات الموظفين غير الربحية، وإضافة تكلفة الرواتب من دفتر الموظفين.',
     },
   };
 }

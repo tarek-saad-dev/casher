@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import {
+  getLegacyPostToCashWarning,
+  LEGACY_POST_TO_CASH_DISABLED_MESSAGE,
+  LEGACY_POST_TO_CASH_REDIRECT_TAB,
+  shouldBlockLegacyPostToCash,
+} from '@/lib/payroll/legacyPostToCashFlags';
 
 const DATE_RE   = /^\d{4}-\d{2}-\d{2}$/;
 const CAT_NAME  = 'يوميات الموظفين';
@@ -40,6 +46,20 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    if (shouldBlockLegacyPostToCash()) {
+      return NextResponse.json(
+        {
+          success: false,
+          legacyPostToCashDisabled: true,
+          message: LEGACY_POST_TO_CASH_DISABLED_MESSAGE,
+          redirectTab: LEGACY_POST_TO_CASH_REDIRECT_TAB,
+        },
+        { status: 409 },
+      );
+    }
+
+    const legacyWarning = getLegacyPostToCashWarning();
 
     const payrollMonth = workDate.substring(0, 7) + '-01';
     const nowTime      = new Date().toTimeString().substring(0, 5);
@@ -97,6 +117,7 @@ export async function POST(req: NextRequest) {
         postedCount: 0,
         repairedCount: 0,
         message:     'لا توجد يوميات مكتسبة غير محولة أو تحتاج إصلاح لهذا اليوم',
+        ...(legacyWarning ? { warning: legacyWarning } : {}),
       });
     }
 
@@ -317,6 +338,7 @@ export async function POST(req: NextRequest) {
         repairedCount,
         skippedCount,
         missingMappings,
+        ...(legacyWarning ? { warning: legacyWarning } : {}),
       });
     } catch (txErr) {
       await transaction.rollback();

@@ -16,6 +16,7 @@ import EditExpenseModal from '@/components/expenses/EditExpenseModal';
 import ExpenseReceiptPopup from '@/components/expenses/ExpenseReceiptPopup';
 import { useSession } from '@/hooks/useSession';
 import type { ExpenseCategory, ExpenseRecord, PaymentMethod } from '@/lib/types';
+import { cashMoveDeleteToastMessage, notifyEmployeeLedgerRefresh } from '@/lib/cashMoveDeleteClient';
 
 // ═══════════════════════════════════════════════════════════
 // EXPENSES PAGE — New Expense Form + History + Summary
@@ -359,7 +360,8 @@ export default function ExpensesPage() {
       if (!res.ok || !data.success) {
         addToast('error', data.error || 'فشل حذف المصروف');
       } else {
-        addToast('success', 'تم حذف المصروف بنجاح');
+        addToast('success', cashMoveDeleteToastMessage(data, 'تم حذف المصروف بنجاح'));
+        if (data.ledgerDeletedCount > 0) notifyEmployeeLedgerRefresh();
         loadExpenses();
       }
     } catch {

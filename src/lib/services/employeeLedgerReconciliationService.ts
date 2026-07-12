@@ -6,6 +6,10 @@ import {
   PAYOUT_EXPENSE_CATEGORY_NAME,
 } from '@/lib/services/employeeLedgerPayoutService';
 import {
+  buildMonthlySalaryRefType,
+  EMP_LEDGER_REASON_MONTHLY_SALARY,
+} from '@/lib/services/employeeLedgerMonthlySalaryService';
+import {
   EMP_LEDGER_REF_TYPE_CASH_MOVE,
   EMP_LEDGER_REF_TYPE_DAILY_PAYROLL,
   EMP_LEDGER_REASON_ADVANCE,
@@ -22,6 +26,8 @@ import type {
   MissingAdvanceDebitRow,
   MissingPayrollCreditRow,
   MissingPayoutDebitRow,
+  MissingMonthlySalaryCreditRow,
+  OrphanMonthlySalaryCreditRow,
   OrphanLedgerCreditRow,
   ReconciliationSummary,
   UnresolvedCashAdvanceRow,
@@ -104,6 +110,8 @@ export async function cashMoveHasLegacyPayrollColumns(
 export function buildReconciliationIssueCount(data: {
   missingPayrollCredits: unknown[];
   orphanLedgerCredits: unknown[];
+  missingMonthlySalaryCredits: unknown[];
+  orphanMonthlySalaryCredits: unknown[];
   missingAdvanceDebits: unknown[];
   unresolvedCashAdvances: unknown[];
   advanceAmountMismatches: unknown[];
@@ -116,6 +124,8 @@ export function buildReconciliationIssueCount(data: {
   const detailRowCount = (
     data.missingPayrollCredits.length
     + data.orphanLedgerCredits.length
+    + data.missingMonthlySalaryCredits.length
+    + data.orphanMonthlySalaryCredits.length
     + data.missingAdvanceDebits.length
     + data.unresolvedCashAdvances.length
     + data.advanceAmountMismatches.length
@@ -448,6 +458,12 @@ export async function getEmployeeLedgerReconciliation(
   const legacyMirrorRows = legacyColumnsAvailable
     ? await fetchLegacyMirrorRows(db, month, startDate, endDate, empId)
     : [];
+  const missingMonthlySalaryCredits = await fetchMissingMonthlySalaryCredits(
+    db, month, empId,
+  );
+  const orphanMonthlySalaryCredits = await fetchOrphanMonthlySalaryCredits(
+    db, month, startDate, endDate, empId,
+  );
 
   const payrollLedgerCreditDiff = roundMoney(payrollGeneratedTotal - ledgerSalaryCreditsTotal);
   const payoutLedgerDiff = roundMoney(payoutCashMoveTotal - ledgerPayoutDebitsTotal);
@@ -473,6 +489,8 @@ export async function getEmployeeLedgerReconciliation(
     issueCount: buildReconciliationIssueCount({
       missingPayrollCredits,
       orphanLedgerCredits,
+      missingMonthlySalaryCredits,
+      orphanMonthlySalaryCredits,
       missingAdvanceDebits: advanceAnalysis.missingAdvanceDebits,
       unresolvedCashAdvances,
       advanceAmountMismatches: advanceAnalysis.advanceAmountMismatches,
@@ -494,7 +512,100 @@ export async function getEmployeeLedgerReconciliation(
     advanceDiagnosticRows,
     missingPayoutDebits,
     legacyMirrorRows,
+    missingMonthlySalaryCredits,
+    orphanMonthlySalaryCredits,
   };
+}
+
+async function fetchMissingMonthlySalaryCredits(
+  db: { request: () => sql.Request },
+  month: string,
+  empId?: number | null,
+): Promise<MissingMonthlySalaryCreditRow[]> {
+  const [yearStr, monthStr] = month.split('-');
+  const { startDate, endDate } = getMonthDateRange(parseInt(yearStr, 10), parseInt(monthStr, 10));
+  const refType = buildMonthlySalaryRefType(month);
+  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId)
+    .input('refType', sql.NVarChar(80), refType)
+    .input('entryReason', sql.NVarChar(40), EMP_LEDGER_REASON_MONTHLY_SALARY)
+    .query(`
+      SELECT
+        e.EmpID AS empId,
+        e.EmpName AS empName,
+        CAST(e.BaseSalary AS DECIMAL(12,2)) AS baseSalary
+      FROM dbo.TblEmp e
+      LEFT JOIN dbo.TblEmpLedgerEntry l
+        ON l.RefType = @refType
+       AND l.RefID = e.EmpID
+       AND l.EntryReason = @entryReason
+       AND l.IsVoided = 0
+      WHERE ISNULL(e.isActive, 1) = 1
+        AND ISNULL(e.IsPayrollEnabled, 1) = 1
+        AND ISNULL(e.BaseSalary, 0) > 0
+        AND (
+          e.PayrollMethod = N'monthly'
+          OR (e.PayrollMethod IS NULL AND e.SalaryType = N'monthly')
+        )
+        AND ISNULL(e.EmploymentType, N'full_time') <> N'freelance'
+        AND l.ID IS NULL
+        ${empFilter('e.EmpID', empId)}
+      ORDER BY e.EmpName
+    `);
+
+  return result.recordset.map((row: Record<string, unknown>) => ({
+    empId: Number(row.empId),
+    empName: String(row.empName),
+    baseSalary: roundMoney(Number(row.baseSalary ?? 0)),
+  }));
+}
+
+async function fetchOrphanMonthlySalaryCredits(
+  db: { request: () => sql.Request },
+  month: string,
+  startDate: string,
+  endDate: string,
+  empId?: number | null,
+): Promise<OrphanMonthlySalaryCreditRow[]> {
+  const refType = buildMonthlySalaryRefType(month);
+  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId)
+    .input('refType', sql.NVarChar(80), refType)
+    .input('entryReason', sql.NVarChar(40), EMP_LEDGER_REASON_MONTHLY_SALARY)
+    .query(`
+      SELECT
+        l.ID AS ledgerEntryId,
+        l.EmpID AS empId,
+        e.EmpName AS empName,
+        l.EntryDate AS entryDate,
+        l.Amount AS amount,
+        l.RefType AS refType
+      FROM dbo.TblEmpLedgerEntry l
+      INNER JOIN dbo.TblEmp e ON e.EmpID = l.EmpID
+      WHERE l.IsVoided = 0
+        AND l.RefType = @refType
+        AND l.EntryReason = @entryReason
+        AND l.EntryDirection = N'credit'
+        AND ${buildMonthEntryFilter('l')}
+        AND (
+          ISNULL(e.isActive, 1) = 0
+          OR ISNULL(e.IsPayrollEnabled, 1) = 0
+          OR NOT (
+            e.PayrollMethod = N'monthly'
+            OR (e.PayrollMethod IS NULL AND e.SalaryType = N'monthly')
+          )
+          OR ISNULL(e.EmploymentType, N'full_time') = N'freelance'
+        )
+        ${empFilter('l.EmpID', empId)}
+      ORDER BY l.EntryDate DESC, l.ID DESC
+    `);
+
+  return result.recordset.map((row: Record<string, unknown>) => ({
+    ledgerEntryId: Number(row.ledgerEntryId),
+    empId: Number(row.empId),
+    empName: String(row.empName),
+    entryDate: formatDate(row.entryDate),
+    amount: roundMoney(Number(row.amount ?? 0)),
+    refType: String(row.refType),
+  }));
 }
 
 async function fetchMissingPayrollCredits(

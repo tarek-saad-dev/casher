@@ -8,6 +8,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
 
+vi.mock('server-only', () => ({}));
+
 // ── Shared mutable state for faking DB results ─────────────────────────────
 let fakeAuditId = 1;
 let fakeExpenseExists = true;
@@ -76,6 +78,7 @@ vi.mock('@/lib/actions/expenseActions', () => ({
   }),
   deleteExpense: vi.fn().mockImplementation(async () => {
     if (!fakeExpenseExists) throw new Error('المصروف غير موجود أو تم حذفه');
+    return { deleted: true, ledgerDeletedCount: 0 };
   }),
   updateExpenseCategory: vi.fn(),
 }));

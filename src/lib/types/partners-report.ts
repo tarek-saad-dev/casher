@@ -1,3 +1,5 @@
+import type { FinancialReportClassificationPayload } from '@/lib/types/financial-report-classification';
+
 export interface PartnersExpenseCategoryTransaction {
   id: number;
   categoryId: number | null;
@@ -9,7 +11,7 @@ export interface PartnersExpenseCategoryTransaction {
   amount: number;
 }
 
-export interface PartnersMonthlyReportResponse {
+export interface PartnersMonthlyReportCore {
   period: {
     year: number;
     month: number;
@@ -77,3 +79,12 @@ export interface PartnersMonthlyReportResponse {
     generatedAt: string;
   };
 }
+
+export type PartnersMonthlyReportResponse = PartnersMonthlyReportCore &
+  Partial<FinancialReportClassificationPayload> & {
+    classifiedPartnerSplit?: {
+      cleanNetProfit: number;
+      legacyOperatingNet: number;
+      explanation: string;
+    };
+  };

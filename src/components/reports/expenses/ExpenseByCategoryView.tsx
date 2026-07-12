@@ -12,6 +12,7 @@ import {
   formatArabicNumber,
   toArabicDigits,
 } from '@/lib/formatArabicNumbers';
+import { cashMoveDeleteToastMessage, notifyEmployeeLedgerRefresh } from '@/lib/cashMoveDeleteClient';
 
 interface CategoryExpenses {
   CatName: string;
@@ -140,9 +141,14 @@ export default function ExpenseByCategoryView({
         body: JSON.stringify({ reason: normalizedReason }),
       });
 
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'فشل حذف المصروف');
+        throw new Error(data.error || 'فشل حذف المصروف');
+      }
+
+      if (typeof data.ledgerDeletedCount === 'number' && data.ledgerDeletedCount > 0) {
+        notifyEmployeeLedgerRefresh();
+        alert(cashMoveDeleteToastMessage(data, 'تم حذف الحركة وحذف تأثيرها من دفتر الموظفين.'));
       }
 
       setDeletingExpense(null);
@@ -168,6 +174,7 @@ export default function ExpenseByCategoryView({
     setDeleteError(null);
     try {
       const categoryTransactions = transactions.filter(t => t.ExpINID === deletingCategory.ExpINID);
+      let anyLedgerDeleted = false;
 
       for (const transaction of categoryTransactions) {
         const response = await fetch(`/api/expenses/${transaction.ID}/category`, {
@@ -176,10 +183,18 @@ export default function ExpenseByCategoryView({
           body: JSON.stringify({ reason: normalizedReason }),
         });
 
+        const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'فشل حذف المصروفات');
+          throw new Error(data.error || 'فشل حذف المصروفات');
         }
+        if (typeof data.ledgerDeletedCount === 'number' && data.ledgerDeletedCount > 0) {
+          anyLedgerDeleted = true;
+        }
+      }
+
+      if (anyLedgerDeleted) {
+        notifyEmployeeLedgerRefresh();
+        alert('تم حذف الحركة وحذف تأثيرها من دفتر الموظفين.');
       }
 
       setDeletingCategory(null);

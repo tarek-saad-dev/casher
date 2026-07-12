@@ -11,6 +11,7 @@ import {
   Pencil, Trash2, Search, Filter, X, Loader2,
   CheckCircle, AlertTriangle, Info, ChevronDown,
 } from 'lucide-react';
+import { cashMoveDeleteToastMessage, notifyEmployeeLedgerRefresh } from '@/lib/cashMoveDeleteClient';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -261,7 +262,8 @@ export default function NewRevenuePage() {
       if (!res.ok || !data.success) {
         addToast('error', data.error || 'فشل حذف الإيراد');
       } else {
-        addToast('success', 'تم حذف الإيراد بنجاح');
+        addToast('success', cashMoveDeleteToastMessage(data, 'تم حذف الإيراد بنجاح'));
+        if (data.ledgerDeletedCount > 0) notifyEmployeeLedgerRefresh();
         setDeleteTarget(null);
         await loadData();
       }

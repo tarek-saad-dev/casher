@@ -18,6 +18,8 @@ interface AttendanceRow {
   EmpName: string;
   WorkDate: string;
   IsWorkingDay: boolean;
+  isScheduledWorkingDay?: boolean;
+  isAttendanceRequired?: boolean;
   ScheduledStartTime: string | null;
   Status: string;
   HasRecord: boolean;
@@ -89,10 +91,8 @@ export default function AttendanceReminder() {
       // 2. Have a scheduled time that has passed
       // 3. Haven't checked in yet (Status is Pending or no record)
       const lateEmps = data.attendance.filter((row: AttendanceRow) => {
-        // Must be a working day
-        if (!row.IsWorkingDay) return false;
-        
-        // Must have a scheduled start time
+        if (row.isAttendanceRequired === false) return false;
+
         if (!row.ScheduledStartTime) return false;
         
         // Scheduled time must have passed

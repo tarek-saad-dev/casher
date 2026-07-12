@@ -11,12 +11,18 @@ vi.mock('fs', () => ({
 function makePool(options: {
   tableExistsSequence?: boolean[];
   indexExistsSequence?: boolean[];
-  batchError?: { step: 'create_table' | 'create_unique_index'; error: Error & { number?: number } };
+  fundingAllowedSequence?: boolean[];
+  batchError?: {
+    step: 'create_table' | 'create_unique_index' | 'update_entry_reason_check';
+    error: Error & { number?: number };
+  };
 }) {
   let tableIdx = 0;
   let indexIdx = 0;
+  let fundingIdx = 0;
   const tableSeq = options.tableExistsSequence ?? [false, true, true];
   const indexSeq = options.indexExistsSequence ?? [false, true];
+  const fundingSeq = options.fundingAllowedSequence ?? [false, true];
   let batchCalls = 0;
 
   return {
@@ -32,12 +38,24 @@ function makePool(options: {
           indexIdx++;
           return { recordset: exists ? [{ ok: 1 }] : [] };
         }
+        if (sql.includes('CK_TblEmpLedgerEntry_EntryReason')) {
+          const allowed = fundingSeq[Math.min(fundingIdx, fundingSeq.length - 1)];
+          fundingIdx++;
+          return {
+            recordset: [{
+              definition: allowed
+                ? "([EntryReason] IN (N'hourly_wage', N'employee_funding'))"
+                : "([EntryReason] IN (N'hourly_wage', N'advance'))",
+            }],
+          };
+        }
         batchCalls++;
         if (options.batchError) {
           const step = options.batchError.step;
           if (
             (step === 'create_table' && batchCalls === 1)
             || (step === 'create_unique_index' && batchCalls === 2)
+            || (step === 'update_entry_reason_check' && batchCalls === 3)
           ) {
             throw options.batchError.error;
           }
@@ -71,11 +89,12 @@ describe('employeeLedgerMigrateService', () => {
     expect(batches).toEqual(['SELECT 1;', 'SELECT 2;']);
   });
 
-  it('runs both migrations and reports created objects', async () => {
+  it('runs migrations and reports created objects', async () => {
     vi.doMock('@/lib/db', () => ({
       getPool: vi.fn(async () => makePool({
         tableExistsSequence: [false, true],
         indexExistsSequence: [false, true],
+        fundingAllowedSequence: [false, true],
       })),
     }));
 
@@ -88,8 +107,10 @@ describe('employeeLedgerMigrateService', () => {
       tableExists: true,
       uniqueIndexCreated: true,
       uniqueIndexExists: true,
+      employeeFundingReasonAllowed: true,
+      entryReasonCheckUpdated: true,
     });
-    expect(readFileSync).toHaveBeenCalledTimes(2);
+    expect(readFileSync).toHaveBeenCalledTimes(3);
   });
 
   it('reports exists when table and index already present', async () => {
@@ -97,6 +118,7 @@ describe('employeeLedgerMigrateService', () => {
       getPool: vi.fn(async () => makePool({
         tableExistsSequence: [true, true],
         indexExistsSequence: [true, true],
+        fundingAllowedSequence: [true, true],
       })),
     }));
 
@@ -109,6 +131,8 @@ describe('employeeLedgerMigrateService', () => {
       tableExists: true,
       uniqueIndexCreated: false,
       uniqueIndexExists: true,
+      employeeFundingReasonAllowed: true,
+      entryReasonCheckUpdated: false,
     });
   });
 
@@ -152,6 +176,29 @@ describe('employeeLedgerMigrateService', () => {
     if (!result.success) {
       expect(result.failedStep).toBe('create_unique_index');
       expect(result.sqlError.number).toBe(1913);
+    }
+  });
+
+  it('returns failure when entry-reason check migration fails', async () => {
+    vi.doMock('@/lib/db', () => ({
+      getPool: vi.fn(async () => makePool({
+        tableExistsSequence: [true, true],
+        indexExistsSequence: [true, true],
+        fundingAllowedSequence: [false],
+        batchError: {
+          step: 'update_entry_reason_check',
+          error: Object.assign(new Error('CHECK constraint conflict'), { number: 547 }),
+        },
+      })),
+    }));
+
+    const { runEmployeeLedgerMigrations } = await import('@/lib/services/employeeLedgerMigrateService');
+    const result = await runEmployeeLedgerMigrations();
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.failedStep).toBe('update_entry_reason_check');
+      expect(result.sqlError.number).toBe(547);
     }
   });
 });

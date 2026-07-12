@@ -46,6 +46,8 @@ describe('employeeLedgerReconciliation helpers', () => {
     expect(buildReconciliationIssueCount({
       missingPayrollCredits: [{}, {}],
       orphanLedgerCredits: [{}],
+      missingMonthlySalaryCredits: [],
+      orphanMonthlySalaryCredits: [],
       missingAdvanceDebits: [],
       unresolvedCashAdvances: [{}],
       advanceAmountMismatches: [{}],
@@ -62,6 +64,8 @@ describe('employeeLedgerReconciliation helpers', () => {
     expect(buildReconciliationIssueCount({
       missingPayrollCredits: [],
       orphanLedgerCredits: [],
+      missingMonthlySalaryCredits: [],
+      orphanMonthlySalaryCredits: [],
       missingAdvanceDebits: [],
       unresolvedCashAdvances: [],
       advanceAmountMismatches: [],
