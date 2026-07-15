@@ -14,6 +14,7 @@ import {
   Loader2,
   MessageCircle,
   MinusCircle,
+  Moon,
   RefreshCw,
   Target,
   TrendingDown,
@@ -233,6 +234,60 @@ export default function FullDayReportPage() {
     }
   };
 
+  const runNightlyCloseNow = async (dryRun: boolean) => {
+    if (!report) return;
+    const mode = dryRun ? 'معاينة بدون تنفيذ' : 'تنفيذ كامل';
+    if (
+      !window.confirm(
+        `${mode}: إقفال ليلي ليوم ${report.workDate}؟\n` +
+          (dryRun
+            ? 'هيعرض مين حضوره ناقص وهيتملى من الـ Default (D) من غير حفظ.'
+            : 'هيكمّل الحضور الناقص من الـ Default (D) → يولّد اليوميات والتارجت → يبعت واتساب للموظفين والمدير ويتأكد من الإرسال.'),
+      )
+    ) {
+      return;
+    }
+    setWaBusy(true);
+    setWaError(null);
+    setWaSuccess(null);
+    try {
+      const res = await fetch('/api/admin/hr/nightly-close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workDate: report.workDate, dryRun }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(
+          data.error ||
+            (Array.isArray(data.errors) ? data.errors[0] : null) ||
+            'فشل الإقفال الليلي',
+        );
+      }
+      const closed = data.steps?.attendanceClose?.closed?.length ?? 0;
+      const empSent = data.delivery?.employeesSent ?? 0;
+      const ownerOk = data.delivery?.ownerSent ? '✓' : '✗';
+      setWaSuccess(
+        dryRun
+          ? `معاينة: ${closed} هيتملاهم من Default (D) · جاهز موظفين ${data.delivery?.employeesReady ?? 0}`
+          : `تم الإقفال الليلي: DefaultFill(D)=${closed} · موظفين ${empSent} · مدير ${ownerOk}`,
+      );
+      setWaLog([
+        `إقفال ليلي ${dryRun ? '(dry-run)' : ''} ${data.workDate}`,
+        `حضور→Default(D): ${closed}`,
+        `يوميات: ${data.steps?.payroll?.status ?? '—'}`,
+        `تارجت: ${data.steps?.targets?.generated ?? 0}`,
+        `واتساب موظفين: ${empSent} (فشل ${data.delivery?.employeesFailed ?? 0})`,
+        `واتساب مدير: ${data.steps?.ownerWhatsApp?.status ?? '—'} (${data.delivery?.ownerPhone ?? '—'})`,
+      ]);
+      if (!dryRun) await load(report.workDate);
+    } catch (err) {
+      setWaError(err instanceof Error ? err.message : 'خطأ في الإقفال الليلي');
+    } finally {
+      setWaBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-5 pb-12 max-w-6xl mx-auto" dir="rtl">
       <PageHeader
@@ -305,6 +360,29 @@ export default function FullDayReportPage() {
                 <Crown className="h-4 w-4 ml-1" />
               )}
               إرسال للمدير
+            </Button>
+            <Button
+              disabled={!report || waBusy || loading}
+              variant="outline"
+              onClick={() => void runNightlyCloseNow(true)}
+              className="border-zinc-600 text-zinc-300"
+              title="معاينة الإقفال الليلي بدون تنفيذ"
+            >
+              <Moon className="h-4 w-4 ml-1" />
+              معاينة إقفال 1ص
+            </Button>
+            <Button
+              disabled={!report || waBusy || loading}
+              onClick={() => void runNightlyCloseNow(false)}
+              className="bg-violet-700 hover:bg-violet-600 text-white"
+              title="تنفيذ الإقفال الليلي: Default(D) → يوميات → واتساب"
+            >
+              {waBusy ? (
+                <Loader2 className="h-4 w-4 animate-spin ml-1" />
+              ) : (
+                <Moon className="h-4 w-4 ml-1" />
+              )}
+              تشغيل إقفال 1ص
             </Button>
           </div>
         </div>

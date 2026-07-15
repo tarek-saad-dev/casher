@@ -19,7 +19,12 @@ import {
   computeEffectiveTicket,
   type QueueTicketRaw,
 } from "@/lib/queueLifecycleEngine";
-import { normalizeBookingTimes, sqlTimeToHhmm, createCairoDateTime } from "@/lib/bookingDateTime";
+import {
+  normalizeBookingTimes,
+  sqlTimeToHhmm,
+  createCairoDateTime,
+  sqlDateToYyyyMmDd,
+} from "@/lib/bookingDateTime";
 import { getBarbersDayStatus } from "@/lib/availabilityEngine";
 
 export const runtime = "nodejs";
@@ -385,9 +390,9 @@ export async function GET(req: NextRequest) {
           });
         }
 
-        // Use Cairo-normalized datetime utility; for next-day bookings use their stored date
+        // Always use the stored BookingDate — mssql returns Date objects; never fall back to board dateStr.
         const bookingDateStr = b.BookingDate
-          ? (typeof b.BookingDate === 'string' ? b.BookingDate.split('T')[0] : dateStr)
+          ? sqlDateToYyyyMmDd(b.BookingDate)
           : dateStr;
         const svcInfo = bookingServicesMap.get(b.BookingID);
         const serviceDuration = svcInfo?.totalDuration ?? defaultDuration;
@@ -444,7 +449,7 @@ export async function GET(req: NextRequest) {
       let inServiceCount = 0;
       for (const q of [...barberQueue, ...barberQueueNext]) {
         const queueDateStr = q.QueueDate
-          ? (typeof q.QueueDate === 'string' ? q.QueueDate.split('T')[0] : dateStr)
+          ? sqlDateToYyyyMmDd(q.QueueDate)
           : dateStr;
 
         // Compute effective status

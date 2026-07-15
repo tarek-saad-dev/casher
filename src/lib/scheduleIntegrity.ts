@@ -111,6 +111,8 @@ export async function getEmployeeBusyIntervals(args: {
   excludeQueueTicketId?: number;
   excludeBookingId?: number;
   transaction?: Transaction;
+  /** Absolute end of the candidate interval — when past operationalDate midnight, next-day busy is loaded. */
+  rangeEndMs?: number;
 }): Promise<ScheduleInterval[]> {
   const db = await getPool();
   const defaultDur = await getDefaultDuration(db);
@@ -136,10 +138,18 @@ export async function getEmployeeBusyIntervals(args: {
     transaction: args.transaction,
   });
 
-  // For overnight shifts, also load the next calendar day's bookings/queue and keep
-  // only intervals that fall inside the business-day shift window.
+  const settings = await getPublicSettings();
+  const timezone = settings.timezone || SALON_TZ;
+  const nextMidnightMs = salonDateTimeToMs(nextDate(args.operationalDate), '00:00', timezone);
+  // Overnight shift: work end is after the next calendar midnight.
+  const overnightShift = !!schedule?.isWorking && schedule.shiftEndMs > nextMidnightMs;
+  // Candidate interval spills past midnight (cross-midnight bookings / plan segments).
+  const rangeNeedsNextDay =
+    args.rangeEndMs != null && args.rangeEndMs > nextMidnightMs;
+
+  // Load next calendar day's bookings/queue when the shift or candidate crosses midnight.
   let nextDayBusy: Interval[] = [];
-  if (schedule?.isWorking && schedule.shiftStartMs < schedule.shiftEndMs - 24 * 60 * 60 * 1000 + 60_000) {
+  if (schedule?.isWorking && (overnightShift || rangeNeedsNextDay)) {
     const nextDayStr = nextDate(args.operationalDate);
     const [qIvsNext, bIvsNext] = await Promise.all([
       buildQueueIntervals(db, args.empId, nextDayStr, args.now, defaultDur, args.excludeQueueTicketId, {
@@ -154,7 +164,11 @@ export async function getEmployeeBusyIntervals(args: {
     const filteredNextBookings = args.excludeBookingId
       ? bIvsNext.filter((iv) => iv.id !== args.excludeBookingId)
       : bIvsNext;
-    nextDayBusy = [...qIvsNext, ...filteredNextBookings].filter(inShiftWindow);
+    // For cross-midnight candidates outside overnight shift windows, keep all next-day
+    // intervals that overlap the candidate range (not only shift-clipped).
+    nextDayBusy = rangeNeedsNextDay && !overnightShift
+      ? [...qIvsNext, ...filteredNextBookings]
+      : [...qIvsNext, ...filteredNextBookings].filter(inShiftWindow);
   }
 
   const blockIvs: ScheduleInterval[] = (schedule?.effSched.blockedIntervals ?? []).map(
@@ -298,6 +312,7 @@ export async function assertEmployeeIntervalAvailable(args: {
     excludeQueueTicketId: args.excludeQueueTicketId,
     excludeBookingId: args.excludeBookingId,
     transaction: args.transaction,
+    rangeEndMs: endMs,
   });
 
   const overlaps = findOverlappingIntervals(args.startAt, args.endAt, busy);

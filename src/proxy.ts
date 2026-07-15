@@ -8,13 +8,42 @@ const PUBLIC_ROUTES = [
   '/api/auth/login',
   '/api/public/',
   '/api/admin/',
+  '/api/cron/',
+  '/api/payroll/daily/auto-generate',
   '/api/operations/flow-board',
 ];
+
+/** Cron paths without session cookie still need Bearer CRON_SECRET (or "dev"). */
+const CRON_BEARER_ROUTES = [
+  '/api/cron/',
+  '/api/admin/hr/nightly-close',
+  '/api/payroll/daily/auto-generate',
+];
+
+function isCronBearerAuthorized(req: NextRequest): boolean {
+  const secret = process.env.CRON_SECRET;
+  const authHeader = req.headers.get('authorization') ?? '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+  if (!token) return false;
+  if (secret) return token === secret;
+  return token === 'dev';
+}
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (PUBLIC_ROUTES.some((r) => pathname.startsWith(r))) {
+    // Cron stays public at edge, but still requires Bearer when no session cookie.
+    if (
+      CRON_BEARER_ROUTES.some((r) => pathname.startsWith(r)) &&
+      !req.cookies.get(COOKIE_NAME)?.value &&
+      !isCronBearerAuthorized(req)
+    ) {
+      return NextResponse.json(
+        { error: 'غير مصرح — CRON_SECRET مطلوب (Bearer)' },
+        { status: 401 },
+      );
+    }
     return NextResponse.next();
   }
 

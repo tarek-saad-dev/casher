@@ -21,6 +21,12 @@ import {
   applyOverrides,
   slotBlockedByOverride,
 } from "@/lib/scheduleOverrides";
+import {
+  assertEmployeeIntervalAvailable,
+  findNextAvailableForEmployee,
+  ScheduleConflictError,
+} from "@/lib/scheduleIntegrity";
+import { getCairoBusinessDate } from "@/lib/businessDate";
 
 export const runtime = "nodejs";
 
@@ -583,82 +589,87 @@ export async function POST(req: NextRequest) {
         await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
 
         try {
-          // ── Re-check for conflicts with locking (prevents race conditions) ─────
-          // Use Cairo-aware epoch so overnight slots and server-TZ offsets are handled correctly.
+          // Shared write guard with /create and reschedule: SERIALIZABLE transaction +
+          // operations-schedule:{empId}:{operationalDate} applock + busy intervals
+          // (bookings, queue, blocks/overrides, cross-midnight).
           const segStartMs = salonDateTimeToMs(seg.date, seg.startTime, timezone);
-          const segEndMs   = salonDateTimeToMs(seg.date, seg.endTime,   timezone);
+          let segEndMs = salonDateTimeToMs(seg.date, seg.endTime, timezone);
+          if (segEndMs <= segStartMs) {
+            segEndMs = segStartMs + seg.durationMinutes * 60_000;
+          }
+          const startAt = new Date(segStartMs);
+          const endAt = new Date(segEndMs);
+          const operationalDate = getCairoBusinessDate(startAt);
 
-          // Check existing bookings with UPDLOCK to prevent concurrent inserts
-          const conflictCheck = await transaction
-            .request()
-            .input("empId", sql.Int, seg.empId)
-            .input("bDate", sql.Date, seg.date)
-            .input("sTime", sql.VarChar, seg.startTime + ":00")
-            .input("eTime", sql.VarChar, seg.endTime + ":00").query(`
-              SELECT BookingID, StartTime, EndTime, Status, BookingCode
-              FROM [dbo].[Bookings] WITH (UPDLOCK, HOLDLOCK)
-              WHERE AssignedEmpID = @empId
-                AND BookingDate = @bDate
-                AND Status IN ('confirmed', 'arrived', 'queued', 'in_service')
-                AND (
-                  -- Overlap condition: new start < existing end AND new end > existing start
-                  (@sTime < EndTime AND @eTime > StartTime)
-                )
-            `);
-
-          if (conflictCheck.recordset.length > 0) {
+          try {
+            await assertEmployeeIntervalAvailable({
+              empId: seg.empId,
+              startAt,
+              endAt,
+              operationalDate,
+              transaction,
+            });
+          } catch (guardErr) {
             await transaction.rollback();
-            const conflicting = conflictCheck.recordset[0];
+            if (guardErr instanceof ScheduleConflictError) {
+              if (bookingIds.length) {
+                await db
+                  .request()
+                  .query(
+                    `UPDATE [dbo].[Bookings] SET Status='cancelled'
+                     WHERE BookingID IN (${bookingIds.join(",")})`,
+                  )
+                  .catch(() => {});
+              }
 
-            if (DEV) {
-              console.log("[booking/plan] CONFLICT DETECTED in transaction:", {
+              const nextAvailable = await findNextAvailableForEmployee({
                 empId: seg.empId,
-                date: seg.date,
-                startTime: seg.startTime,
-                endTime: seg.endTime,
-                conflictingBookingId: conflicting.BookingID,
-                conflictingBookingCode: conflicting.BookingCode,
-                conflictingStartTime: conflicting.StartTime,
-                conflictingEndTime: conflicting.EndTime,
-                conflictingStatus: conflicting.Status,
+                operationalDate,
+                candidateStart: startAt,
+                durationMinutes: seg.durationMinutes,
               });
-            }
 
-            // Rollback all previously inserted bookings for this request
-            if (bookingIds.length) {
-              await db
-                .request()
-                .query(
-                  `UPDATE [dbo].[Bookings] SET Status='cancelled'
-                   WHERE BookingID IN (${bookingIds.join(",")})`,
-                )
-                .catch(() => {});
-            }
+              if (DEV) {
+                console.log("[booking/plan] CONFLICT DETECTED via assertEmployeeIntervalAvailable:", {
+                  empId: seg.empId,
+                  date: seg.date,
+                  startTime: seg.startTime,
+                  endTime: seg.endTime,
+                  conflict: guardErr.conflict,
+                });
+              }
 
-            return NextResponse.json(
-              {
-                ok: false,
-                error: `الموعد ${seg.startTime} لم يعد متاحاً للحلاق ${seg.empName} - تم حجزه للتو`,
-                reason: "booking_conflict",
-                conflictType: "booking",
-                serviceId: seg.serviceId,
-                slotTime: seg.startTime,
-                slotDate: seg.date,
-                conflictingBooking: {
-                  bookingId: conflicting.BookingID,
-                  bookingCode: conflicting.BookingCode,
-                  startTime: conflicting.StartTime,
-                  endTime: conflicting.EndTime,
+              return NextResponse.json(
+                {
+                  ok: false,
+                  error: `الموعد ${seg.startTime} لم يعد متاحاً للحلاق ${seg.empName} - تم حجزه للتو`,
+                  reason: "booking_conflict",
+                  conflictType: guardErr.conflict?.type ?? "booking",
+                  code: guardErr.code,
+                  message: guardErr.message,
+                  conflict: guardErr.conflict,
+                  nextAvailable,
+                  serviceId: seg.serviceId,
+                  slotTime: seg.startTime,
+                  slotDate: seg.date,
+                  conflictingBooking: {
+                    bookingId: guardErr.conflict?.id,
+                    bookingCode: guardErr.conflict?.reference,
+                    startTime: guardErr.conflict?.startAt,
+                    endTime: guardErr.conflict?.endAt,
+                  },
+                  _diag: {
+                    ...diag,
+                    selectedEmpId: seg.empId,
+                    segStartMs,
+                    segEndMs,
+                    operationalDate,
+                  },
                 },
-                _diag: {
-                  ...diag,
-                  selectedEmpId: seg.empId,
-                  segStartMs,
-                  segEndMs,
-                },
-              },
-              { status: 409, headers: PUBLIC_CORS_HEADERS },
-            );
+                { status: 409, headers: PUBLIC_CORS_HEADERS },
+              );
+            }
+            throw guardErr;
           }
 
           // ── Insert booking with OUTPUT clause ────────────────────────────────
