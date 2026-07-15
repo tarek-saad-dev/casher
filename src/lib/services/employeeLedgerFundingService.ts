@@ -6,6 +6,7 @@ import { roundMoney } from '@/lib/reportMonthUtils';
 import {
   EmployeeLedgerDualWriteError,
   EMP_LEDGER_REF_TYPE_CASH_MOVE,
+  EMP_LEDGER_REASON_EMPLOYEE_FUNDING,
   isMissingLedgerTableError,
   payrollMonthFromWorkDate,
 } from '@/lib/services/employeeLedgerDualWrite';
@@ -13,7 +14,7 @@ import { getEmployeeAllTimeBalance, validateLedgerMonth } from '@/lib/services/e
 import type { EmpLedgerFundingResponse } from '@/lib/types/employee-ledger';
 
 export const EMPLOYEE_FUNDING_CATEGORY_NAME = 'تمويل من موظف';
-export const EMP_LEDGER_REASON_EMPLOYEE_FUNDING = 'employee_funding';
+export { EMP_LEDGER_REASON_EMPLOYEE_FUNDING };
 export const EMPLOYEE_FUNDING_LEDGER_NOTE = 'تمويل من موظف للمحل';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;

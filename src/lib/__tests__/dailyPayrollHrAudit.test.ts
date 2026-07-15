@@ -49,6 +49,10 @@ describe('computeActualHoursFromTimes', () => {
   it('computes overnight hours', () => {
     expect(computeActualHoursFromTimes('22:00', '06:00')).toBe(8);
   });
+
+  it('subtracts break minutes for net hours', () => {
+    expect(computeActualHoursFromTimes('09:00', '17:00', 60)).toBe(7);
+  });
 });
 
 describe('buildDailyPayrollAuditReport', () => {

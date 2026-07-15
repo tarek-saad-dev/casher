@@ -102,6 +102,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
         paymentMethodId,
         notes,
         shiftMoveId,
+        createdByUserId: session.UserID,
       }),
       loadNewData: async (transaction) => getIncomeSnapshot(transaction, incomeId) as unknown as Record<string, unknown> | null,
     });

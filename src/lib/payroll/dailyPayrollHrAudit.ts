@@ -68,6 +68,7 @@ export interface AuditAttendanceDbRow {
   Status: string;
   CheckInTime?: string | null;
   CheckOutTime?: string | null;
+  BreakMinutesTotal?: number | null;
 }
 
 export interface DailyPayrollAuditRow {
@@ -123,6 +124,7 @@ function fmtTime(val: unknown): string | null {
 export function computeActualHoursFromTimes(
   checkIn: string | null | undefined,
   checkOut: string | null | undefined,
+  breakMinutesTotal?: number | null,
 ): number | null {
   const start = fmtTime(checkIn);
   const end = fmtTime(checkOut);
@@ -135,8 +137,11 @@ export function computeActualHoursFromTimes(
   let startMin = sh * 60 + sm;
   let endMin = eh * 60 + em;
   if (endMin <= startMin) endMin += 1440;
-  const hours = (endMin - startMin) / 60;
-  return hours > 0 ? Math.round(hours * 100) / 100 : 0;
+  const gross = (endMin - startMin) / 60;
+  if (gross <= 0) return 0;
+  const breakMins = Math.max(0, Math.round(Number(breakMinutesTotal) || 0));
+  const net = Math.max(0, gross - breakMins / 60);
+  return Math.round(net * 100) / 100;
 }
 
 function resolveRateSource(row: AuditEmployeeDbRow, scheduledHours: number | null): string | null {
@@ -228,7 +233,11 @@ export function buildAuditRow(
 
   const checkIn = attendance ? fmtTime(attendance.CheckInTime) : null;
   const checkOut = attendance ? fmtTime(attendance.CheckOutTime) : null;
-  const actualHours = computeActualHoursFromTimes(checkIn, checkOut);
+  const actualHours = computeActualHoursFromTimes(
+    checkIn,
+    checkOut,
+    attendance?.BreakMinutesTotal,
+  );
 
   const schedHours = scheduledHoursFromTimes(
     schedule.scheduleStart ?? defaultStart,

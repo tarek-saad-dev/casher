@@ -7,6 +7,7 @@ import {
   deleteCashMoveWithLinkedLedgerEntries,
   type DeleteCashMoveWithLedgerResult,
 } from '@/lib/services/cashMoveHardDeleteService';
+import { syncEmployeeFundingFromCashMove } from '@/lib/services/employeeLedgerFundingSyncService';
 
 export interface IncomeSnapshot {
   ID: number;
@@ -18,6 +19,7 @@ export interface IncomeSnapshot {
   PaymentMethodID: number;
   Notes: string | null;
   ShiftMoveID: number | null;
+  IsEmployeePayrollIncome?: boolean | number;
 }
 
 export interface UpdateIncomeInput {
@@ -27,6 +29,7 @@ export interface UpdateIncomeInput {
   paymentMethodId: number;
   notes?: string | null;
   shiftMoveId?: number | null;
+  createdByUserId?: number | null;
 }
 
 export async function getIncomeSnapshot(
@@ -38,7 +41,8 @@ export async function getIncomeSnapshot(
     .query(`
       SELECT TOP 1
         ID, invID, invDate, invType, ExpINID, GrandTolal, PaymentMethodID,
-        Notes, ShiftMoveID
+        Notes, ShiftMoveID,
+        ISNULL(IsEmployeePayrollIncome, 0) AS IsEmployeePayrollIncome
       FROM dbo.TblCashMove
       WHERE ID = @id AND invType = N'ايرادات'
     `);
@@ -90,6 +94,11 @@ export async function updateIncome(
 
   const updated = await getIncomeSnapshot(transaction, id);
   if (!updated) throw new Error('فشل تحديث الإيراد');
+
+  await syncEmployeeFundingFromCashMove(transaction, id, {
+    createdByUserId: input.createdByUserId ?? null,
+  });
+
   return updated;
 }
 

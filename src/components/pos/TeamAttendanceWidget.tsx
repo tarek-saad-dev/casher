@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { CalendarCheck, ChevronLeft, RefreshCw, Users } from 'lucide-react';
 import { deriveAttendanceDisplay, type TeamAttendanceMember } from '@/lib/teamAttendance';
-import TeamAttendanceDrawer from '@/components/pos/TeamAttendanceDrawer';
+import AttendancePanelModal from '@/components/pos/AttendancePanelModal';
 import { cn } from '@/lib/utils';
 
 interface TeamAttendanceWidgetProps {
@@ -21,7 +21,7 @@ export default function TeamAttendanceWidget({
   error,
   onRefresh,
 }: TeamAttendanceWidgetProps) {
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
 
   const presentCount = team.filter(m => m.isCheckedIn && !m.isCheckedOut).length;
   const absentCount = team.filter(m => m.attendanceStatus === 'Absent').length;
@@ -89,25 +89,23 @@ export default function TeamAttendanceWidget({
             </button>
             <button
               type="button"
-              onClick={() => setDrawerOpen(true)}
+              onClick={() => setAttendanceModalOpen(true)}
               className="flex h-8 items-center gap-1 rounded-lg border border-border bg-surface-muted px-2.5 text-[11px] font-medium text-primary transition-colors hover:bg-surface-muted/80"
             >
               <Users className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">عرض التفاصيل</span>
+              <span className="hidden sm:inline">متابعة الحضور</span>
               <ChevronLeft className="h-3 w-3 sm:hidden" />
             </button>
           </div>
         </div>
       </div>
 
-      <TeamAttendanceDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        team={team}
-        date={date}
-        loading={loading}
-        error={error}
-        onRefresh={onRefresh}
+      <AttendancePanelModal
+        open={attendanceModalOpen}
+        onClose={() => {
+          setAttendanceModalOpen(false);
+          onRefresh();
+        }}
       />
     </>
   );

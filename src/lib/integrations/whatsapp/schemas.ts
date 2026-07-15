@@ -12,6 +12,8 @@ import type {
   FirstTimeWhatsAppPayload,
   EmployeeSaleWhatsAppPayload,
   EmployeeAdvanceWhatsAppPayload,
+  QuickMessageWhatsAppPayload,
+  EmployeeDailyReportWhatsAppPayload,
   WhatsAppExtraVariables,
 } from './types';
 import { PROTECTED_FIELDS } from './types';
@@ -209,6 +211,97 @@ export function validateEmployeeAdvancePayload(
   return payload;
 }
 
+export function validateQuickMessagePayload(input: unknown): QuickMessageWhatsAppPayload {
+  if (typeof input !== 'object' || input === null) {
+    throw new WhatsAppValidationError('Payload must be an object');
+  }
+  const p = input as Record<string, unknown>;
+
+  const payload: QuickMessageWhatsAppPayload = {
+    type: 'quick_message',
+    phone: assertNonEmptyString(p.phone, 'phone'),
+    customerName: assertNonEmptyString(p.customerName, 'customerName'),
+    message: assertNonEmptyString(p.message, 'message'),
+  };
+
+  if (p.branchName !== undefined && typeof p.branchName === 'string')
+    payload.branchName = p.branchName;
+  if (p.variables !== undefined)
+    payload.variables = validateExtraVariables(p.variables);
+
+  return payload;
+}
+
+function optionalFiniteNumber(value: unknown, field: string): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  return assertFiniteNumber(value, field);
+}
+
+export function validateEmployeeDailyReportPayload(
+  input: unknown,
+): EmployeeDailyReportWhatsAppPayload {
+  if (typeof input !== 'object' || input === null) {
+    throw new WhatsAppValidationError('Payload must be an object');
+  }
+  const p = input as Record<string, unknown>;
+
+  const workDate = assertNonEmptyString(p.workDate, 'workDate');
+  if (!DATE_RE.test(workDate)) {
+    throw new WhatsAppValidationError('workDate must be YYYY-MM-DD');
+  }
+
+  const payload: EmployeeDailyReportWhatsAppPayload = {
+    type: 'employee_daily_report',
+    phone: assertNonEmptyString(p.phone, 'phone'),
+    customerName: assertNonEmptyString(p.customerName, 'customerName'),
+    message: assertNonEmptyString(p.message, 'message'),
+    workDate,
+    ledgerBalance: assertFiniteNumber(p.ledgerBalance, 'ledgerBalance'),
+  };
+
+  if (p.branchName !== undefined && typeof p.branchName === 'string')
+    payload.branchName = p.branchName;
+  if (p.employeeName !== undefined && typeof p.employeeName === 'string')
+    payload.employeeName = p.employeeName;
+  if (p.checkIn !== undefined)
+    payload.checkIn = p.checkIn === null ? null : assertNonEmptyString(p.checkIn, 'checkIn');
+  if (p.checkOut !== undefined)
+    payload.checkOut = p.checkOut === null ? null : assertNonEmptyString(p.checkOut, 'checkOut');
+  if (p.actualHours !== undefined)
+    payload.actualHours = optionalFiniteNumber(p.actualHours, 'actualHours') as number | null;
+  if (p.scheduledHours !== undefined)
+    payload.scheduledHours = optionalFiniteNumber(p.scheduledHours, 'scheduledHours') as number | null;
+  if (p.statusLabelAr !== undefined && (typeof p.statusLabelAr === 'string' || p.statusLabelAr === null))
+    payload.statusLabelAr = p.statusLabelAr as string | null;
+  if (p.lateMinutes !== undefined)
+    payload.lateMinutes = optionalFiniteNumber(p.lateMinutes, 'lateMinutes') as number | null;
+  if (p.baseWage !== undefined)
+    payload.baseWage = optionalFiniteNumber(p.baseWage, 'baseWage') as number | null;
+  if (p.fullDayBase !== undefined)
+    payload.fullDayBase = optionalFiniteNumber(p.fullDayBase, 'fullDayBase') as number | null;
+  if (p.isPartialDay !== undefined)
+    payload.isPartialDay = Boolean(p.isPartialDay);
+  if (p.baseWageNoteAr !== undefined && (typeof p.baseWageNoteAr === 'string' || p.baseWageNoteAr === null))
+    payload.baseWageNoteAr = p.baseWageNoteAr as string | null;
+  if (p.targetSales !== undefined)
+    payload.targetSales = optionalFiniteNumber(p.targetSales, 'targetSales') as number | null;
+  if (p.targetAmount !== undefined)
+    payload.targetAmount = optionalFiniteNumber(p.targetAmount, 'targetAmount') as number | null;
+  if (p.deductions !== undefined)
+    payload.deductions = optionalFiniteNumber(p.deductions, 'deductions') as number | null;
+  if (p.advances !== undefined)
+    payload.advances = optionalFiniteNumber(p.advances, 'advances') as number | null;
+  if (p.dayNet !== undefined)
+    payload.dayNet = optionalFiniteNumber(p.dayNet, 'dayNet') as number | null;
+  if (p.payrollMonth !== undefined && typeof p.payrollMonth === 'string')
+    payload.payrollMonth = p.payrollMonth;
+  if (p.variables !== undefined)
+    payload.variables = validateExtraVariables(p.variables);
+
+  return payload;
+}
+
 export function validatePayload(input: unknown): WhatsAppPayload {
   if (typeof input !== 'object' || input === null) {
     throw new WhatsAppValidationError('Payload must be an object');
@@ -226,6 +319,10 @@ export function validatePayload(input: unknown): WhatsAppPayload {
       return validateEmployeeSalePayload(input);
     case 'employee_advance':
       return validateEmployeeAdvancePayload(input);
+    case 'quick_message':
+      return validateQuickMessagePayload(input);
+    case 'employee_daily_report':
+      return validateEmployeeDailyReportPayload(input);
     default:
       throw new WhatsAppValidationError(`Unknown message type: ${String(p.type)}`);
   }

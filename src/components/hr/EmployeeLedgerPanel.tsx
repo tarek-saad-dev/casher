@@ -20,6 +20,7 @@ import { EMP_LEDGER_REASON_LABELS } from '@/lib/types/employee-ledger';
 import EmployeePayoutModal, { type EmployeePayoutTarget } from '@/components/hr/EmployeePayoutModal';
 import EmployeeFundingModal from '@/components/hr/EmployeeFundingModal';
 import MonthlySalaryPostModal from '@/components/hr/MonthlySalaryPostModal';
+import EmployeeDailyTargetLedgerDetailsDialog from '@/components/hr/EmployeeDailyTargetLedgerDetailsDialog';
 import Link from 'next/link';
 import { EMPLOYEE_LEDGER_REFRESH_EVENT } from '@/lib/cashMoveDeleteClient';
 
@@ -70,6 +71,7 @@ export default function EmployeeLedgerPanel() {
   const [payoutOpen, setPayoutOpen] = useState(false);
   const [fundingOpen, setFundingOpen] = useState(false);
   const [monthlySalaryOpen, setMonthlySalaryOpen] = useState(false);
+  const [targetDetailsId, setTargetDetailsId] = useState<number | null>(null);
 
   const loadEmployees = useCallback(async () => {
     try {
@@ -269,7 +271,8 @@ export default function EmployeeLedgerPanel() {
       <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-sky-200/90 space-y-1">
         <p>الرصيد = استحقاقات + تمويل من موظف − سلف − صرف مستحقات − خصومات</p>
         <p>تمويل الموظف يزيد الخزنة ويُسجَّل التزاماً في الدفتر — ليس إيراد مبيعات.</p>
-        <p>الصرف الحقيقي يتم من زر &quot;صرف مستحقات&quot; — لا تحتاج إلى إنشاء إيراد للموظف.</p>
+        <p>أي إيراد يُسجَّل على تصنيف مربوط بالموظف من «الربط المالي» يُضاف تلقائياً كتمويل في الدفتر.</p>
+        <p>الصرف الحقيقي يتم من زر &quot;صرف مستحقات&quot; — الزر اليدوي «تمويل من موظف» للحالات غير المربوطة فقط.</p>
         <Link
           href="/admin/hr?tab=employee-ledger-reconciliation"
           className="inline-flex items-center gap-1 text-xs text-sky-300 underline underline-offset-2 hover:text-white mt-1"
@@ -282,7 +285,7 @@ export default function EmployeeLedgerPanel() {
       {displayTotals && (
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
           <KpiCard title="استحقاق راتب" value={`${fmt(displayTotals.salaryCredits)} ج.م`} icon={<TrendingUp className="w-5 h-5" />} variant="success" />
-          <KpiCard title="تارجت / عمولة" value={`${fmt(displayTotals.targetCredits)} ج.م`} icon={<TrendingUp className="w-5 h-5" />} variant="success" />
+          <KpiCard title="تارجت" value={`${fmt(displayTotals.targetCredits)} ج.م`} icon={<TrendingUp className="w-5 h-5" />} variant="success" />
           <KpiCard title="تمويل من موظف" value={`${fmt(displayTotals.fundingCredits)} ج.م`} icon={<HandCoins className="w-5 h-5" />} variant="primary" />
           <KpiCard title="سلف" value={`${fmt(displayTotals.advanceDebits)} ج.م`} icon={<TrendingDown className="w-5 h-5" />} variant="danger" />
           <KpiCard title="صرف" value={`${fmt(displayTotals.payoutDebits)} ج.م`} icon={<TrendingDown className="w-5 h-5" />} variant="danger" />
@@ -397,28 +400,47 @@ export default function EmployeeLedgerPanel() {
                   </td>
                 </tr>
               )}
-              {entries.map((entry: EmpLedgerEntryRow) => (
-                <tr key={entry.id} className="hover:bg-zinc-800/30 transition-colors">
-                  <td className="px-4 py-3 font-mono text-xs text-zinc-400">{entry.entryDate}</td>
-                  <td className="px-4 py-3 text-white">{entry.empName}</td>
-                  <td className="px-4 py-3">{directionBadge(entry.entryDirection)}</td>
-                  <td className="px-4 py-3 text-zinc-300">
-                    {EMP_LEDGER_REASON_LABELS[entry.entryReason] ?? entry.entryReason}
-                  </td>
-                  <td className={`px-4 py-3 font-mono font-medium ${
-                    entry.entryDirection === 'credit' ? 'text-emerald-400' : 'text-rose-400'
-                  }`}>
-                    {fmt(entry.amount)}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-zinc-500">{entry.payrollMonth ?? '—'}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-zinc-500">
-                    {entry.refType ? `${entry.refType}${entry.refId ? ` #${entry.refId}` : ''}` : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-zinc-500 max-w-[200px] truncate">
-                    {entry.notes ?? '—'}
-                  </td>
-                </tr>
-              ))}
+              {entries.map((entry: EmpLedgerEntryRow) => {
+                const isDailyTarget =
+                  entry.entryReason === 'target' &&
+                  entry.refType === 'TblEmpDailyTarget' &&
+                  entry.refId != null;
+                const reasonLabel =
+                  entry.entryReason === 'target'
+                    ? 'تارجت يومي'
+                    : entry.entryReason === 'commission'
+                      ? 'عمولة أخرى'
+                      : EMP_LEDGER_REASON_LABELS[entry.entryReason] ?? entry.entryReason;
+
+                return (
+                  <tr
+                    key={entry.id}
+                    className={`hover:bg-zinc-800/30 transition-colors ${
+                      isDailyTarget ? 'cursor-pointer' : ''
+                    }`}
+                    onClick={() => {
+                      if (isDailyTarget) setTargetDetailsId(entry.refId);
+                    }}
+                  >
+                    <td className="px-4 py-3 font-mono text-xs text-zinc-400">{entry.entryDate}</td>
+                    <td className="px-4 py-3 text-white">{entry.empName}</td>
+                    <td className="px-4 py-3">{directionBadge(entry.entryDirection)}</td>
+                    <td className="px-4 py-3 text-zinc-300">{reasonLabel}</td>
+                    <td className={`px-4 py-3 font-mono font-medium ${
+                      entry.entryDirection === 'credit' ? 'text-emerald-400' : 'text-rose-400'
+                    }`}>
+                      {fmt(entry.amount)}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-zinc-500">{entry.payrollMonth ?? '—'}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-zinc-500">
+                      {entry.refType ? `${entry.refType}${entry.refId ? ` #${entry.refId}` : ''}` : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-zinc-500 max-w-[200px] truncate">
+                      {entry.notes ?? '—'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -446,6 +468,12 @@ export default function EmployeeLedgerPanel() {
         defaultMonth={month}
         dualWriteEnabled={dualWriteEnabled}
         onSuccess={handleMonthlySalarySuccess}
+      />
+
+      <EmployeeDailyTargetLedgerDetailsDialog
+        open={targetDetailsId != null}
+        dailyTargetId={targetDetailsId}
+        onClose={() => setTargetDetailsId(null)}
       />
 
       {!dualWriteEnabled && (

@@ -10,6 +10,8 @@ export {
   sendFirstTimeWhatsAppMessage,
   sendEmployeeSaleWhatsAppMessage,
   sendEmployeeAdvanceWhatsAppMessage,
+  sendQuickWhatsAppMessage,
+  sendEmployeeDailyReportWhatsAppMessage,
   checkWhatsAppStatus,
 } from './service';
 
@@ -25,5 +27,7 @@ export type {
   FirstTimeWhatsAppPayload,
   EmployeeSaleWhatsAppPayload,
   EmployeeAdvanceWhatsAppPayload,
+  QuickMessageWhatsAppPayload,
+  EmployeeDailyReportWhatsAppPayload,
   WhatsAppExtraVariables,
 } from './types';

@@ -6,6 +6,7 @@ import {
   CircleMinus,
   CirclePlus,
   History,
+  MessageCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -13,7 +14,8 @@ export type QuickActionId =
   | 'payment-transfer'
   | 'quick-expense'
   | 'quick-income'
-  | 'recent-invoices';
+  | 'recent-invoices'
+  | 'quick-whatsapp';
 
 interface QuickActionConfig {
   id: QuickActionId;
@@ -46,6 +48,12 @@ const QUICK_ACTIONS: QuickActionConfig[] = [
     label: 'آخر الفواتير',
     icon: History,
     title: 'عرض آخر الفواتير',
+  },
+  {
+    id: 'quick-whatsapp',
+    label: 'رسالة واتساب سريعة',
+    icon: MessageCircle,
+    title: 'إرسال رسالة ترحيب على واتساب',
   },
 ];
 

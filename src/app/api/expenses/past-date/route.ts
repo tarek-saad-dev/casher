@@ -199,7 +199,7 @@ export async function POST(req: NextRequest) {
       transactionCompleted = true;
       log('after-commit');
 
-      void maybeScheduleAdvanceWhatsAppFromExpenseCategory({
+      const advanceWa = await maybeScheduleAdvanceWhatsAppFromExpenseCategory({
         expINID,
         invID: newRecord.invID,
         amount: finalAmount,
@@ -212,6 +212,7 @@ export async function POST(req: NextRequest) {
         message: "تم إضافة المصروف للتاريخ المحدد بنجاح",
         ledgerDualWrite: ledgerResult.ledgerDualWrite,
         ledgerSync: ledgerResult.outcome ?? null,
+        advanceWhatsApp: advanceWa.scheduled,
         data: {
           ID: newRecord.ID,
           invID: newRecord.invID,

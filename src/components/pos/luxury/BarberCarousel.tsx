@@ -1,13 +1,16 @@
 'use client';
 
-import { useRef } from 'react';
-import { Star, Check, ChevronLeft, ChevronRight, Users } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Star, Check, ChevronLeft, ChevronRight, Users, UserRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { deriveAttendanceDisplay, type TeamAttendanceMember } from '@/lib/teamAttendance';
+import NonBarberEmployeeModal from '@/components/pos/NonBarberEmployeeModal';
 import type { Barber } from '@/lib/types';
 
 interface BarberCarouselProps {
   barbers: Barber[];
+  otherEmployees?: Barber[];
+  otherEmployeesLoading?: boolean;
   selected: Barber | null;
   onSelect: (barber: Barber) => void;
   attendanceByEmpId?: Map<number, TeamAttendanceMember>;
@@ -49,8 +52,24 @@ const getBarberRating = (name: string): number => {
   return ratings[name] || 4.5;
 };
 
-export default function BarberCarousel({ barbers, selected, onSelect, attendanceByEmpId }: BarberCarouselProps) {
+function isBarberInList(barbers: Barber[], empId: number | undefined): boolean {
+  if (empId == null) return false;
+  return barbers.some((b) => b.EmpID === empId);
+}
+
+export default function BarberCarousel({
+  barbers,
+  otherEmployees = [],
+  otherEmployeesLoading = false,
+  selected,
+  onSelect,
+  attendanceByEmpId,
+}: BarberCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [otherModalOpen, setOtherModalOpen] = useState(false);
+
+  const selectedIsOther =
+    !!selected && !isBarberInList(barbers, selected.EmpID);
 
   const scroll = (direction: 'left' | 'right') => {
     if (scrollRef.current) {
@@ -65,7 +84,7 @@ export default function BarberCarousel({ barbers, selected, onSelect, attendance
   return (
     <div className="w-full">
       {/* Section Header */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Users className="w-5 h-5 text-primary" />
           <h3 className="text-lg font-bold text-foreground">اختر الحلاق</h3>
@@ -73,23 +92,42 @@ export default function BarberCarousel({ barbers, selected, onSelect, attendance
             {barbers.length}
           </span>
         </div>
-        <div className="hidden items-center gap-1 md:flex">
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => scroll('right')}
-            aria-label="تمرير لليمين"
-            className="flex h-7 w-7 items-center justify-center rounded-full border border-border bg-surface-muted text-primary transition-all hover:bg-surface-muted"
+            onClick={() => setOtherModalOpen(true)}
+            className={cn(
+              'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+              selectedIsOther
+                ? 'border-primary/40 bg-primary/10 text-primary'
+                : 'border-border bg-surface text-muted-foreground hover:bg-surface-muted hover:text-foreground',
+            )}
           >
-            <ChevronRight className="w-4 h-4" />
+            <UserRound className="h-3.5 w-3.5" />
+            <span>
+              {selectedIsOther
+                ? selected.EmpName
+                : 'اختر موظف غير حلاق'}
+            </span>
           </button>
-          <button
-            type="button"
-            onClick={() => scroll('left')}
-            aria-label="تمرير لليسار"
-            className="flex h-7 w-7 items-center justify-center rounded-full border border-border bg-surface-muted text-primary transition-all hover:bg-surface-muted"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
+          <div className="hidden items-center gap-1 md:flex">
+            <button
+              type="button"
+              onClick={() => scroll('right')}
+              aria-label="تمرير لليمين"
+              className="flex h-7 w-7 items-center justify-center rounded-full border border-border bg-surface-muted text-primary transition-all hover:bg-surface-muted"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => scroll('left')}
+              aria-label="تمرير لليسار"
+              className="flex h-7 w-7 items-center justify-center rounded-full border border-border bg-surface-muted text-primary transition-all hover:bg-surface-muted"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -174,6 +212,15 @@ export default function BarberCarousel({ barbers, selected, onSelect, attendance
           );
         })}
       </div>
+
+      <NonBarberEmployeeModal
+        open={otherModalOpen}
+        onClose={() => setOtherModalOpen(false)}
+        employees={otherEmployees}
+        selected={selected}
+        onSelect={onSelect}
+        loading={otherEmployeesLoading}
+      />
     </div>
   );
 }

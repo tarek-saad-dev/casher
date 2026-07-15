@@ -284,7 +284,7 @@ export async function POST(req: NextRequest) {
       transactionCompleted = true;
       log('after-commit', { invID: newInvID, cashMoveId });
 
-      void maybeScheduleAdvanceWhatsAppFromExpenseCategory({
+      const advanceWa = await maybeScheduleAdvanceWhatsAppFromExpenseCategory({
         expINID: body.expINID,
         invID: newInvID,
         amount,
@@ -299,6 +299,7 @@ export async function POST(req: NextRequest) {
         amount,
         ledgerDualWrite: ledgerResult.ledgerDualWrite,
         ledgerSync: ledgerResult.outcome ?? null,
+        advanceWhatsApp: advanceWa.scheduled,
       }, { status: 201 });
     } catch (err) {
       if (err instanceof EmployeeLedgerDualWriteError) {

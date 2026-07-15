@@ -19,6 +19,7 @@ import { ensureOverridesTable } from "@/lib/scheduleOverrides";
 import { getBarberDayStatus, getScheduleOverrides, cairoDateStr } from "@/lib/availabilityEngine";
 import { computePreview } from "@/lib/scheduleControlPreview";
 import type { OverrideType } from "@/lib/scheduleOverrides";
+import { syncBreakFromBlockRange } from "@/lib/hr/attendance-break-schedule-sync";
 
 export const runtime = "nodejs";
 
@@ -212,6 +213,13 @@ export async function POST(req: NextRequest) {
             VALUES (@empId, @workDate, 'Absent', @notes)
         `)
         .catch(() => {});
+    }
+
+    // block_range → mirror as وقت مستقطع on attendance (same date)
+    if (type === "block_range" && startTime && endTime) {
+      await syncBreakFromBlockRange(db, empId, date, startTime, endTime, reason).catch((err) => {
+        console.warn("[ops/schedule-control/apply] break sync failed", err);
+      });
     }
 
     // Return fresh barber status

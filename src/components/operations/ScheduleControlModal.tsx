@@ -582,6 +582,12 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                       </div>
                     )}
 
+                    {actionForm.type === 'block_range' && (
+                      <p className="text-[11px] pr-[5.5rem]" style={{ color: 'var(--muted-foreground)' }}>
+                        تُربط تلقائياً مع «وقت مستقطع» في متابعة الحضور لنفس اليوم
+                      </p>
+                    )}
+
                     {/* Reason */}
                     <div className="flex items-center gap-3">
                       <label className="text-xs font-medium w-20 text-right shrink-0" style={{ color: 'var(--muted-foreground)' }}>السبب</label>

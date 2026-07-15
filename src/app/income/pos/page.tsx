@@ -9,6 +9,7 @@ import QuickActionsBar, { type QuickActionId } from '@/components/pos/QuickActio
 import PaymentTransferModal from '@/components/pos/PaymentTransferModal';
 import QuickExpenseModal from '@/components/pos/QuickExpenseModal';
 import QuickIncomeModal from '@/components/pos/QuickIncomeModal';
+import QuickWhatsAppModal from '@/components/pos/QuickWhatsAppModal';
 import CustomerSearch from '@/components/pos/CustomerSearch';
 import CustomerHistoryPanel, { type LastSaleAutoFill } from '@/components/pos/CustomerHistoryPanel';
 import QuickCustomerModal from '@/components/pos/QuickCustomerModal';
@@ -88,6 +89,8 @@ export default function PosPage() {
 
   // ───────────────── Lookup data ─────────────────
   const [barbers, setBarbers] = useState<Barber[]>([]);
+  const [otherEmployees, setOtherEmployees] = useState<Barber[]>([]);
+  const [otherEmployeesLoading, setOtherEmployeesLoading] = useState(true);
   const [services, setServices] = useState<Service[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
 
@@ -123,6 +126,7 @@ export default function PosPage() {
   const [isPaymentTransferOpen, setIsPaymentTransferOpen] = useState(false);
   const [isQuickExpenseOpen, setIsQuickExpenseOpen] = useState(false);
   const [isQuickIncomeOpen, setIsQuickIncomeOpen] = useState(false);
+  const [isQuickWhatsAppOpen, setIsQuickWhatsAppOpen] = useState(false);
   const [isRecentInvoicesOpen, setIsRecentInvoicesOpen] = useState(false);
 
   const {
@@ -188,7 +192,12 @@ export default function PosPage() {
 
   // ───────────────── Load lookup data on mount ─────────────────
   useEffect(() => {
-    fetch('/api/barbers').then(r => r.json()).then(d => { if (Array.isArray(d)) setBarbers(d); });
+    fetch('/api/barbers?scope=barber').then(r => r.json()).then(d => { if (Array.isArray(d)) setBarbers(d); });
+    setOtherEmployeesLoading(true);
+    fetch('/api/barbers?scope=other')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setOtherEmployees(d); })
+      .finally(() => setOtherEmployeesLoading(false));
     fetch('/api/services').then(r => r.json()).then(d => { if (Array.isArray(d)) setServices(d); });
     fetch('/api/payment-methods').then(r => r.json()).then(d => { if (Array.isArray(d)) setPaymentMethods(d); });
   }, []);
@@ -410,18 +419,24 @@ export default function PosPage() {
     setSaveError('');
   }, [reset, setSplitPaymentActive]);
 
+  const findStaffById = useCallback((empId: number) => {
+    return barbers.find(b => b.EmpID === empId)
+      ?? otherEmployees.find(b => b.EmpID === empId)
+      ?? null;
+  }, [barbers, otherEmployees]);
+
   // ───────────────── Auto-fill from last sale ─────────────────
   const handleAutoFill = useCallback((data: LastSaleAutoFill) => {
     // 1. Select barber (dominant barber from last sale)
     if (data.barberEmpID) {
-      const barber = barbers.find(b => b.EmpID === data.barberEmpID);
+      const barber = findStaffById(data.barberEmpID);
       if (barber) setBarber(barber);
     }
 
     // 2. Clear existing items then add each service from last sale
     clearItems();
     data.services.forEach(svc => {
-      const emp = barbers.find(b => b.EmpID === svc.empID);
+      const emp = findStaffById(svc.empID);
       addItem({
         id: `${svc.proID}-${svc.empID}-${Date.now()}-${Math.random()}`,
         ProID: svc.proID,
@@ -441,7 +456,7 @@ export default function PosPage() {
     if (data.paymentMethodId) {
       setPaymentMethod(data.paymentMethodId);
     }
-  }, [barbers, setBarber, clearItems, addItem, setPaymentMethod]);
+  }, [findStaffById, setBarber, clearItems, addItem, setPaymentMethod]);
 
   // ───────────────── Edit sale functionality ─────────────────
   const handleEditSale = useCallback(async (saleId: number) => {
@@ -484,7 +499,7 @@ export default function PosPage() {
       clearItems();
       if (data.items && Array.isArray(data.items)) {
         data.items.forEach((item: any) => {
-          const emp = barbers.find(b => b.EmpID === item.EmpID);
+          const emp = findStaffById(item.EmpID);
           addItem({
             id: `${item.ProID}-${item.EmpID}-${Date.now()}-${Math.random()}`,
             ProID: item.ProID,
@@ -535,7 +550,7 @@ export default function PosPage() {
     } catch (e: any) {
       addToast('error', e.message || 'فشل تحميل بيانات الفاتورة');
     }
-  }, [barbers, setCustomer, clearItems, addItem, setPaymentMethod, setPaymentAllocations, paymentMethods, addToast, setDiscountPercent, setDiscountValue]);
+  }, [findStaffById, setCustomer, clearItems, addItem, setPaymentMethod, setPaymentAllocations, paymentMethods, addToast, setDiscountPercent, setDiscountValue]);
 
   const handlePaymentMethodSelect = useCallback((id: number) => {
     setPaymentMethod(id);
@@ -556,6 +571,9 @@ export default function PosPage() {
         break;
       case 'quick-income':
         setIsQuickIncomeOpen(true);
+        break;
+      case 'quick-whatsapp':
+        setIsQuickWhatsAppOpen(true);
         break;
       case 'recent-invoices':
         setIsRecentInvoicesOpen(true);
@@ -633,6 +651,8 @@ export default function PosPage() {
           <QuickActionsBar onAction={handleQuickAction} />
           <BarberCarousel
             barbers={barbers}
+            otherEmployees={otherEmployees}
+            otherEmployeesLoading={otherEmployeesLoading}
             selected={state.barber}
             onSelect={setBarber}
             attendanceByEmpId={attendanceMap}
@@ -706,6 +726,8 @@ export default function PosPage() {
           <QuickActionsBar onAction={handleQuickAction} />
           <BarberCarousel
             barbers={barbers}
+            otherEmployees={otherEmployees}
+            otherEmployeesLoading={otherEmployeesLoading}
             selected={state.barber}
             onSelect={setBarber}
             attendanceByEmpId={attendanceMap}
@@ -796,8 +818,14 @@ export default function PosPage() {
       <QuickExpenseModal
         open={isQuickExpenseOpen}
         onClose={() => setIsQuickExpenseOpen(false)}
-        onExpenseComplete={() => {
-          addToast('success', 'تم إضافة المصروف بنجاح');
+        onExpenseComplete={(info) => {
+          if (info?.advanceWhatsApp) {
+            addToast('success', 'تم إضافة المصروف — جاري إرسال إشعار السلفة على واتساب');
+          } else if (info?.ledgerDualWrite) {
+            addToast('success', 'تم إضافة المصروف وتسجيل السلفة في دفتر الموظف');
+          } else {
+            addToast('success', 'تم إضافة المصروف بنجاح');
+          }
         }}
       />
       <QuickIncomeModal
@@ -806,6 +834,13 @@ export default function PosPage() {
         onIncomeComplete={() => {
           addToast('success', 'تم إضافة الإيراد بنجاح');
         }}
+      />
+      <QuickWhatsAppModal
+        open={isQuickWhatsAppOpen}
+        onClose={() => setIsQuickWhatsAppOpen(false)}
+        defaultPhone={state.customer?.Mobile}
+        defaultCustomerName={state.customer?.Name}
+        onSent={() => addToast('success', 'تم إرسال رسالة الواتساب')}
       />
       <RecentInvoicesDrawer
         open={isRecentInvoicesOpen}

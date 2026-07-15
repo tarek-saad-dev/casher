@@ -15,6 +15,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getBarberDayStatus, cairoDateStr } from "@/lib/availabilityEngine";
+import {
+  isSyncedBlockRangeCreatedBy,
+  removeBreakMatchingBlockRange,
+} from "@/lib/hr/attendance-break-schedule-sync";
 
 export const runtime = "nodejs";
 
@@ -41,7 +45,9 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
           EmpID,
           CONVERT(VARCHAR(10), OverrideDate, 120) AS OverrideDate,
           Type,
-          ISNULL(CreatedBy, '') AS CreatedBy
+          ISNULL(CreatedBy, '') AS CreatedBy,
+          CASE WHEN StartTime IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), StartTime, 108), 5) ELSE NULL END AS StartTime,
+          CASE WHEN EndTime   IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), EndTime,   108), 5) ELSE NULL END AS EndTime
         FROM dbo.TblEmpScheduleOverrides
         WHERE OverrideID = @oid
       `)
@@ -56,6 +62,8 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
       OverrideDate: date,
       Type: overrideType,
       CreatedBy: createdBy,
+      StartTime: startTime,
+      EndTime: endTime,
     } = fetchRes.recordset[0];
 
     const todayStr = cairoDateStr(new Date());
@@ -96,6 +104,16 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
         `)
         .then(r => { attendanceReverted = r.rowsAffected[0] > 0; })
         .catch(() => {});
+    }
+
+    // 3b. block_range synced ↔ وقت مستقطع → remove matching break
+    if (
+      overrideType === "block_range" &&
+      isSyncedBlockRangeCreatedBy(createdBy)
+    ) {
+      await removeBreakMatchingBlockRange(db, empId, date, startTime, endTime).catch((err) => {
+        console.warn("[ops/schedule-control/override DELETE] break sync failed", err);
+      });
     }
 
     // 4. Load fresh status (after revert)

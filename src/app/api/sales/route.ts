@@ -352,12 +352,51 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // ──── 5b. Durable target recalc enqueue (same TX as invoice) ────
+      let targetRecalcScopes: import('@/lib/payroll/employee-target/employee-target-recalc-scope').TargetRecalcScope[] = [];
+      try {
+        const { enqueueTargetRecalcFromInvoiceSnapshots } = await import(
+          '@/lib/payroll/employee-target/employee-target-invoice-sync'
+        );
+        const workDateStr =
+          invDate instanceof Date
+            ? invDate.toISOString().slice(0, 10)
+            : String(invDate).slice(0, 10);
+        targetRecalcScopes = await enqueueTargetRecalcFromInvoiceSnapshots({
+          transaction,
+          beforeSnapshot: null,
+          afterSnapshot: {
+            header: { invDate: workDateStr },
+            details: body.items.map((it) => ({ empId: it.empId })),
+          },
+          reason: 'invoice_create',
+          sourceType: 'TblinvServHead',
+          sourceRef: String(newInvID),
+        });
+      } catch (enqueueErr) {
+        console.error(
+          '[pos-api] target recalc enqueue failed — rolling back sale:',
+          enqueueErr instanceof Error ? enqueueErr.message : enqueueErr,
+        );
+        throw enqueueErr;
+      }
+
       // ──── 6. Commit ────
       await transaction.commit();
       console.log(
         `[pos-api]   ✅ COMMITTED — invID=${newInvID}, invType=${invType}`,
       );
       console.log(`[pos-api] ──── SAVE SALE COMPLETE ────`);
+
+      if (targetRecalcScopes.length > 0) {
+        const { tryProcessAfterInvoiceCommit } = await import(
+          '@/lib/payroll/employee-target/employee-target-invoice-sync'
+        );
+        void tryProcessAfterInvoiceCommit({
+          scopes: targetRecalcScopes,
+          actorUserId: userID || null,
+        });
+      }
 
       // ──── 7 & 8. Loyalty + WhatsApp — fully async, do NOT block the response ────
       void (async () => {

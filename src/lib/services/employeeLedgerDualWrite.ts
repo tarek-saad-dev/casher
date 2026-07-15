@@ -7,6 +7,7 @@ export const EMP_LEDGER_REF_TYPE_DAILY_PAYROLL = 'TblEmpDailyPayroll';
 export const EMP_LEDGER_REF_TYPE_CASH_MOVE = 'TblCashMove';
 export const EMP_LEDGER_REASON_HOURLY_WAGE = 'hourly_wage';
 export const EMP_LEDGER_REASON_ADVANCE = 'advance';
+export const EMP_LEDGER_REASON_EMPLOYEE_FUNDING = 'employee_funding';
 
 export interface PayrollRowForLedger {
   payrollId: number;
@@ -34,6 +35,13 @@ export type AdvanceEmployeeResolution =
   | { kind: 'unresolved' };
 
 export type AdvanceLedgerUpsertOutcome = 'inserted' | 'updated';
+
+export type RevenueEmployeeMapping = AdvanceEmployeeMapping;
+
+export type RevenueEmployeeResolution =
+  | { kind: 'not_revenue' }
+  | ({ kind: 'resolved' } & RevenueEmployeeMapping)
+  | { kind: 'unresolved' };
 
 export function isMissingLedgerTableError(message: string): boolean {
   const lower = message.toLowerCase();
@@ -76,6 +84,41 @@ export async function resolveAdvanceEmployeeFromExpINID(
 
   if (result.recordset.length === 0) {
     return { kind: 'not_advance' };
+  }
+
+  const row = result.recordset[0];
+  if (row.resolvedEmpId == null) {
+    return { kind: 'unresolved' };
+  }
+
+  return {
+    kind: 'resolved',
+    empId: Number(row.resolvedEmpId),
+    empName: row.empName != null ? String(row.empName) : null,
+  };
+}
+
+export async function resolveRevenueEmployeeFromExpINID(
+  pool: { request: () => sql.Request },
+  expINID: number,
+  transaction?: sql.Transaction,
+): Promise<RevenueEmployeeResolution> {
+  const req = transaction ? new sql.Request(transaction) : pool.request();
+  const result = await req
+    .input('ExpINID', sql.Int, expINID)
+    .query(`
+      SELECT TOP 1 m.EmpID AS mapEmpId, e.EmpID AS resolvedEmpId, e.EmpName AS empName
+      FROM dbo.TblExpCatEmpMap m
+      INNER JOIN dbo.TblExpINCat c ON c.ExpINID = m.ExpINID AND c.ExpINType = N'ايرادات'
+      LEFT JOIN dbo.TblEmp e ON e.EmpID = m.EmpID
+      WHERE m.ExpINID = @ExpINID
+        AND m.TxnKind = N'revenue'
+        AND m.IsActive = 1
+      ORDER BY m.ID DESC
+    `);
+
+  if (result.recordset.length === 0) {
+    return { kind: 'not_revenue' };
   }
 
   const row = result.recordset[0];

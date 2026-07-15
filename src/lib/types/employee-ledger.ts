@@ -108,7 +108,7 @@ export interface EmpLedgerFundingResponse {
 export const EMP_LEDGER_REASON_LABELS: Record<EmpLedgerEntryReason, string> = {
   hourly_wage: 'أجر ساعات',
   monthly_salary: 'راتب شهري',
-  target: 'تارجت',
+  target: 'تارجت يومي',
   commission: 'عمولة',
   bonus: 'مكافأة',
   advance: 'سلفة',

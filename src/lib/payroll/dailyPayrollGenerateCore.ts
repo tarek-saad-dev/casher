@@ -7,6 +7,7 @@ import {
   getPayrollValidationReason,
   SQL_INSERT_ELIGIBILITY_WHERE,
 } from '@/lib/payroll/dailyPayrollHrRules';
+import { ensureAttendanceBreakSchema } from '@/lib/hr/attendance-breaks-db';
 
 export interface ValidationMissing {
   empId: number;
@@ -20,21 +21,35 @@ export interface ValidationExcluded {
   reason: PayrollValidationReason;
 }
 
-/** Divide by DECIMAL 60 so the result stays DECIMAL (not float). Float → NVARCHAR(n) overflows. */
-export const ACTUAL_HOURS_EXPR = `
+/** Gross check-in→check-out span in minutes (overnight-aware). */
+export const GROSS_MINUTES_EXPR = `
   CASE
     WHEN a.CheckInTime IS NULL OR a.CheckOutTime IS NULL THEN NULL
     WHEN a.CheckOutTime > a.CheckInTime
-      THEN CAST(DATEDIFF(MINUTE, a.CheckInTime, a.CheckOutTime) AS DECIMAL(10,2)) / CAST(60 AS DECIMAL(10,2))
+      THEN DATEDIFF(MINUTE, a.CheckInTime, a.CheckOutTime)
     WHEN a.CheckOutTime < a.CheckInTime
-      THEN CAST(
-        DATEDIFF(
-          MINUTE,
-          CAST(a.CheckInTime  AS DATETIME),
-          DATEADD(DAY, 1, CAST(a.CheckOutTime AS DATETIME))
-        ) AS DECIMAL(10,2)
-      ) / CAST(60 AS DECIMAL(10,2))
-    ELSE CAST(0 AS DECIMAL(10,2))
+      THEN DATEDIFF(
+        MINUTE,
+        CAST(a.CheckInTime AS DATETIME),
+        DATEADD(DAY, 1, CAST(a.CheckOutTime AS DATETIME))
+      )
+    ELSE 0
+  END
+`;
+
+/**
+ * Net worked hours after subtracting وقت مستقطع (BreakMinutesTotal).
+ * Never negative. Divide by DECIMAL 60 so the result stays DECIMAL (not float).
+ */
+export const ACTUAL_HOURS_EXPR = `
+  CASE
+    WHEN (${GROSS_MINUTES_EXPR}) IS NULL THEN NULL
+    ELSE CAST(
+      CASE
+        WHEN (${GROSS_MINUTES_EXPR}) - ISNULL(a.BreakMinutesTotal, 0) < 0 THEN 0
+        ELSE (${GROSS_MINUTES_EXPR}) - ISNULL(a.BreakMinutesTotal, 0)
+      END
+    AS DECIMAL(10,2)) / CAST(60 AS DECIMAL(10,2))
   END
 `;
 
@@ -225,6 +240,7 @@ export async function executeDailyPayrollGenerate(
   workDate: string,
   options: DailyPayrollGenerateOptions = {},
 ): Promise<DailyPayrollGenerateResult> {
+  await ensureAttendanceBreakSchema(pool);
   const notesPrefix = options.notesPrefix ?? '';
   const req = () => requestFrom(pool, options.transaction);
   const dayOfWeek = new Date(`${workDate}T12:00:00Z`).getDay();

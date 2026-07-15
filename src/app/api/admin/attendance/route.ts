@@ -12,6 +12,13 @@ import {
   type RawAttendanceDbRow,
 } from "@/lib/hr/attendance-eligibility";
 import { normalizeEmploymentType } from "@/lib/hr/employee-hr-model";
+import {
+  ensureAttendanceBreakSchema,
+  loadBreaksByAttendanceIds,
+  replaceAttendanceBreaks,
+} from "@/lib/hr/attendance-breaks-db";
+import { normalizeBreaksInput } from "@/lib/hr/attendance-breaks";
+import { syncBlockRangesFromBreaks } from "@/lib/hr/attendance-break-schedule-sync";
 
 async function ensureAttendanceTable(db: { request: () => any }) {
   await db.request().query(`
@@ -46,6 +53,7 @@ async function ensureAttendanceTable(db: { request: () => any }) {
         ON dbo.TblEmpAttendance (WorkDate);
     END
   `);
+  await ensureAttendanceBreakSchema(db);
 }
 
 function timeToDate(timeStr: string | null | undefined): Date | null {
@@ -124,7 +132,8 @@ export async function GET(req: NextRequest) {
           a.Status,
           a.LateMinutes,
           a.EarlyLeaveMinutes,
-          a.Notes
+          a.Notes,
+          ISNULL(a.BreakMinutesTotal, 0) AS BreakMinutesTotal
         FROM dbo.TblEmp e
         LEFT JOIN dbo.TblEmpWorkSchedule ws
           ON ws.EmpID = e.EmpID AND ws.DayOfWeek = @dayOfWeek
@@ -135,8 +144,19 @@ export async function GET(req: NextRequest) {
         ORDER BY e.EmpName
       `);
 
+    const rawRows = result.recordset as RawAttendanceDbRow[];
+    const attendanceIds = rawRows
+      .map((r) => r.AttendanceID)
+      .filter((id): id is number => id != null && id > 0);
+    const breaksMap = await loadBreaksByAttendanceIds(db, attendanceIds);
+    for (const row of rawRows) {
+      if (row.AttendanceID != null) {
+        row.Breaks = breaksMap.get(row.AttendanceID) ?? [];
+      }
+    }
+
     const rows = filterAttendanceBoardRows(
-      result.recordset as RawAttendanceDbRow[],
+      rawRows,
       dateStr,
       dayOfWeek,
       { includeFreelance },
@@ -166,7 +186,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { EmpID, WorkDate, CheckInTime, CheckOutTime, Status, Notes } = body;
+    const { EmpID, WorkDate, CheckInTime, CheckOutTime, Status, Notes, Breaks } = body;
 
     if (!EmpID || !WorkDate) {
       return NextResponse.json(
@@ -207,6 +227,18 @@ export async function PUT(req: NextRequest) {
         { error: "صيغة وقت الانصراف غير صحيحة" },
         { status: 400 },
       );
+    }
+
+    const clearBreaks =
+      Status === "Absent" || Status === "DayOff" || (!CheckInTime && !CheckOutTime);
+    let parsedBreaks = { breaks: [] as ReturnType<typeof normalizeBreaksInput>["breaks"], breakMinutesTotal: 0, error: null as string | null };
+    if (Breaks !== undefined || clearBreaks) {
+      parsedBreaks = clearBreaks
+        ? { breaks: [], breakMinutesTotal: 0, error: null }
+        : normalizeBreaksInput(Breaks);
+      if (parsedBreaks.error) {
+        return NextResponse.json({ error: parsedBreaks.error }, { status: 400 });
+      }
     }
 
     const db = await getPool();
@@ -279,11 +311,12 @@ export async function PUT(req: NextRequest) {
         "SELECT ID FROM dbo.TblEmpAttendance WHERE EmpID = @empId AND WorkDate = @workDate",
       );
 
+    let attendanceId: number;
     if (existing.recordset.length > 0) {
-      // UPDATE
+      attendanceId = existing.recordset[0].ID as number;
       await db
         .request()
-        .input("id", sql.Int, existing.recordset[0].ID)
+        .input("id", sql.Int, attendanceId)
         .input("checkInTime", sql.Time, timeToDate(CheckInTime))
         .input("checkOutTime", sql.Time, timeToDate(CheckOutTime))
         .input("status", sql.NVarChar(50), finalStatus)
@@ -307,8 +340,7 @@ export async function PUT(req: NextRequest) {
           WHERE ID = @id
         `);
     } else {
-      // INSERT
-      await db
+      const insertResult = await db
         .request()
         .input("empId", sql.Int, EmpID)
         .input("workDate", sql.Date, WorkDate)
@@ -323,9 +355,29 @@ export async function PUT(req: NextRequest) {
         .input("createdBy", sql.Int, session.UserID || null).query(`
           INSERT INTO dbo.TblEmpAttendance
             (EmpID, WorkDate, CheckInTime, CheckOutTime, Status, LateMinutes, EarlyLeaveMinutes, Notes, ScheduledStartTime, ScheduledEndTime, CreatedByUserID, CreatedAt)
+          OUTPUT INSERTED.ID
           VALUES
             (@empId, @workDate, @checkInTime, @checkOutTime, @status, @lateMinutes, @earlyLeaveMinutes, @notes, @scheduledStart, @scheduledEnd, @createdBy, GETDATE())
         `);
+      attendanceId = insertResult.recordset[0].ID as number;
+    }
+
+    let breakMinutesTotal: number | undefined;
+    if (Breaks !== undefined || clearBreaks) {
+      breakMinutesTotal = await replaceAttendanceBreaks(
+        db,
+        attendanceId,
+        parsedBreaks.breaks,
+      );
+      // Mirror وقت مستقطع → إدارة مواعيد اليوم (block_range)
+      await syncBlockRangesFromBreaks(
+        db,
+        EmpID,
+        WorkDate,
+        parsedBreaks.breaks,
+      ).catch((err) => {
+        console.warn("[api/admin/attendance] block_range sync failed", err);
+      });
     }
 
     return NextResponse.json({
@@ -337,6 +389,8 @@ export async function PUT(req: NextRequest) {
         Status: finalStatus,
         LateMinutes: lateMinutes,
         EarlyLeaveMinutes: earlyLeaveMinutes,
+        BreakMinutesTotal: breakMinutesTotal,
+        Breaks: Breaks !== undefined || clearBreaks ? parsedBreaks.breaks : undefined,
       },
     });
   } catch (err: unknown) {

@@ -5,6 +5,7 @@ import {
   sendFirstTimeWhatsAppMessage,
   sendEmployeeSaleWhatsAppMessage,
   sendEmployeeAdvanceWhatsAppMessage,
+  sendEmployeeDailyReportWhatsAppMessage,
 } from '@/lib/integrations/whatsapp';
 
 export const runtime = 'nodejs';
@@ -71,9 +72,19 @@ export async function POST(req: NextRequest) {
         paymentMethod: 'كاش',
         notes: 'اختبار سلفة',
       });
+    } else if (type === 'employee_daily_report') {
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+      result = await sendEmployeeDailyReportWhatsAppMessage({
+        phone,
+        employeeName: customerName,
+        workDate: today,
+        ledgerBalance: 1850,
+        message: `🌙 تقرير يومك — جليم\nاختبار employee_daily_report\nيا ${customerName}\n\n📒 رصيد حسابك حتى الآن: 1,850.00 ج.م`,
+      });
     } else {
       return NextResponse.json({
-        error: 'type must be sale | booking | first_time | employee_sale | employee_advance',
+        error:
+          'type must be sale | booking | first_time | employee_sale | employee_advance | employee_daily_report',
       }, { status: 400 });
     }
 

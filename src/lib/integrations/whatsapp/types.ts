@@ -7,7 +7,9 @@ export type WhatsAppMessageType =
   | 'booking'
   | 'first_time'
   | 'employee_sale'
-  | 'employee_advance';
+  | 'employee_advance'
+  | 'quick_message'
+  | 'employee_daily_report';
 
 export type WhatsAppExtraVariables = Record<string, string | number | boolean | null | string[]>;
 
@@ -68,12 +70,49 @@ export interface EmployeeAdvanceWhatsAppPayload extends WhatsAppBasePayload {
   variables?: WhatsAppExtraVariables;
 }
 
+/** Free-text quick send from POS (script must support type=quick_message). */
+export interface QuickMessageWhatsAppPayload extends WhatsAppBasePayload {
+  type: 'quick_message';
+  message: string;
+  branchName?: string;
+  variables?: WhatsAppExtraVariables;
+}
+
+/** End-of-day employee HR digest — bot prefers `message` when present. */
+export interface EmployeeDailyReportWhatsAppPayload extends WhatsAppBasePayload {
+  type: 'employee_daily_report';
+  message: string;
+  branchName?: string;
+  workDate: string;
+  employeeName?: string;
+  checkIn?: string | null;
+  checkOut?: string | null;
+  actualHours?: number | null;
+  scheduledHours?: number | null;
+  statusLabelAr?: string | null;
+  lateMinutes?: number | null;
+  baseWage?: number | null;
+  fullDayBase?: number | null;
+  isPartialDay?: boolean;
+  baseWageNoteAr?: string | null;
+  targetSales?: number | null;
+  targetAmount?: number | null;
+  deductions?: number | null;
+  advances?: number | null;
+  dayNet?: number | null;
+  ledgerBalance: number;
+  payrollMonth?: string;
+  variables?: WhatsAppExtraVariables;
+}
+
 export type WhatsAppPayload =
   | SaleWhatsAppPayload
   | BookingWhatsAppPayload
   | FirstTimeWhatsAppPayload
   | EmployeeSaleWhatsAppPayload
-  | EmployeeAdvanceWhatsAppPayload;
+  | EmployeeAdvanceWhatsAppPayload
+  | QuickMessageWhatsAppPayload
+  | EmployeeDailyReportWhatsAppPayload;
 
 export type WhatsAppSendResult =
   | {

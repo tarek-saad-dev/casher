@@ -24,7 +24,7 @@ export default function PaymentTransferModal({
       onTransferComplete={onTransferComplete ?? onClose}
       defaultDate={defaultDate}
       title="تحويل بين طرق الدفع"
-      subtitle="تحويل مبلغ بين طرق دفع مختلفة"
+      subtitle="الفلوس بتطلع من طريقة وتتضاف لأخرى"
       transferDateReadOnly
     />
   );

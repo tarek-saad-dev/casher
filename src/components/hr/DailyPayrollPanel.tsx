@@ -4,12 +4,12 @@ import { useState, useCallback, useEffect } from 'react';
 import {
   CalendarDays, Loader2, Zap, Send, RefreshCw,
   CheckCircle2, AlertCircle, Users, Banknote,
-  CheckCheck, Clock4, X, TrendingDown, TrendingUp,
-  AlertTriangle, ShieldCheck, ClipboardList, Timer, BookOpen,
+  CheckCheck, X, TrendingDown, TrendingUp,
+  AlertTriangle, ShieldCheck, ClipboardList, Timer, BookOpen, Target,
 } from 'lucide-react';
 import Link from 'next/link';
 import KpiCard from '@/components/shared/KpiCard';
-import { formatTime12h, getBusinessDateStr } from '@/lib/timeUtils';
+import { getBusinessDateStr } from '@/lib/timeUtils';
 import {
   PAYROLL_VALIDATION_REASON_LABELS,
   type PayrollValidationReason,
@@ -18,6 +18,12 @@ import {
   EMPLOYMENT_TYPE_LABELS,
   PAYROLL_METHOD_LABELS,
 } from '@/lib/hr/employee-hr-model';
+import {
+  mergeDailyPayrollAndTargetRows,
+  type MergedDailyRow,
+  type TargetLikeRow,
+} from '@/lib/payroll/employee-target/merge-daily-payroll-target-rows';
+import DailyTargetDetailsDialog from '@/components/hr/DailyTargetDetailsDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -77,13 +83,6 @@ interface ValidationExcluded {
 
 const REASON_LABEL = PAYROLL_VALIDATION_REASON_LABELS;
 
-function resolveRowPayrollMethod(row: PayrollRow): string {
-  if (row.PayrollMethod === 'hourly' || row.PayrollMethod === 'daily' || row.PayrollMethod === 'monthly') {
-    return row.PayrollMethod;
-  }
-  return 'hourly';
-}
-
 function employmentBadge(type: string | null) {
   if (!type || !(type in EMPLOYMENT_TYPE_LABELS)) return null;
   return (
@@ -129,25 +128,65 @@ function attendanceBadge(status: string | null) {
   );
 }
 
-function payrollBadge(status: string) {
-  if (status === 'PostedToCashMove') return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
-      <CheckCheck className="w-3 h-3" /> محوّل
-    </span>
-  );
-  if (status === 'Generated' || status === 'Earned') return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border bg-sky-500/15 text-sky-400 border-sky-500/30">
-      <ShieldCheck className="w-3 h-3" /> محسوب
-    </span>
-  );
-  if (status === 'PendingCheckout') return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border bg-orange-500/15 text-orange-400 border-orange-500/30">
-      <Clock4 className="w-3 h-3" /> ناقص انصراف
-    </span>
-  );
+function targetSyncBadge(
+  status: MergedDailyRow['targetSyncStatus'] | TargetLikeRow['syncStatus'] | undefined,
+) {
+  if (status === 'pending') {
+    return (
+      <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] border border-amber-500/40 text-amber-300 bg-amber-500/10">
+        التارجت يحتاج إعادة حساب
+      </span>
+    );
+  }
+  if (status === 'processing') {
+    return (
+      <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] border border-sky-500/40 text-sky-300 bg-sky-500/10">
+        جاري التحديث
+      </span>
+    );
+  }
+  if (status === 'failed') {
+    return (
+      <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] border border-rose-500/40 text-rose-300 bg-rose-500/10">
+        تعذر تحديث التارجت
+      </span>
+    );
+  }
+  if (status === 'up_to_date') {
+    return (
+      <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] border border-emerald-500/30 text-emerald-400 bg-emerald-500/10">
+        محدث
+      </span>
+    );
+  }
+  return null;
+}
+
+function targetPersistenceBadge(status: TargetLikeRow['persistenceStatus'] | undefined) {
+  if (!status) {
+    return (
+      <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] border bg-zinc-500/15 text-zinc-500 border-zinc-600/40">
+        لا يوجد تارجت
+      </span>
+    );
+  }
+  if (status === 'not_generated') {
+    return (
+      <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] border bg-amber-500/15 text-amber-400 border-amber-500/30">
+        لم يتم التوليد
+      </span>
+    );
+  }
+  if (status === 'recalculated') {
+    return (
+      <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] border bg-sky-500/15 text-sky-400 border-sky-500/30">
+        أُعيد حسابه
+      </span>
+    );
+  }
   return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-zinc-500/15 text-zinc-400 border-zinc-500/30">
-      {status}
+    <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] border bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
+      مولَّد
     </span>
   );
 }
@@ -190,7 +229,19 @@ export default function DailyPayrollPanel() {
   }
   const [autoGenLog,         setAutoGenLog]         = useState<AutoGenLog | null>(null);
 
-  const flash = (msg: string) => { setSuccessMsg(msg); setTimeout(() => setSuccessMsg(''), 6000); };
+  const [targetRows, setTargetRows] = useState<TargetLikeRow[]>([]);
+  const [targetTotals, setTargetTotals] = useState<{
+    eligibleEmployees: number;
+    notGenerated: number;
+    earnedTarget: number;
+    totalCurrentNetSalesAfterDiscount: string;
+    totalStoredTargetAmount: string;
+  } | null>(null);
+  const [planConflicts, setPlanConflicts] = useState<string[]>([]);
+  const [regeneratingTarget, setRegeneratingTarget] = useState(false);
+  const [detailTarget, setDetailTarget] = useState<TargetLikeRow | null>(null);
+
+  const flash = (msg: string) => { setSuccessMsg(msg); setTimeout(() => setSuccessMsg(''), 8000); };
 
   const fetchAutoGenLog = useCallback(async (d: string) => {
     try {
@@ -221,14 +272,31 @@ export default function DailyPayrollPanel() {
   const load = useCallback(async (d: string) => {
     setLoading(true); setError('');
     try {
-      const res  = await fetch(`/api/payroll/daily?workDate=${d}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setRows(data.rows ?? []);
-      setSummary(data.summary ?? null);
-      setMissingMappingEmps(data.missingMappingEmps ?? []);
+      const [payrollRes, targetRes] = await Promise.all([
+        fetch(`/api/payroll/daily?workDate=${d}`),
+        fetch(`/api/payroll/daily/targets?workDate=${d}`),
+      ]);
+      const payrollData = await payrollRes.json();
+      const targetData = await targetRes.json();
+      if (!payrollRes.ok) throw new Error(payrollData.error || 'فشل تحميل اليوميات');
+      setRows(payrollData.rows ?? []);
+      setSummary(payrollData.summary ?? null);
+      setMissingMappingEmps(payrollData.missingMappingEmps ?? []);
+
+      if (targetRes.ok) {
+        setTargetRows(Array.isArray(targetData.employees) ? targetData.employees : []);
+        setTargetTotals(targetData.totals ?? null);
+        setPlanConflicts(Array.isArray(targetData.planConflicts) ? targetData.planConflicts : []);
+      } else {
+        setTargetRows([]);
+        setTargetTotals(null);
+        setPlanConflicts([]);
+        if (targetData.error) {
+          console.warn('[DailyPayrollPanel] target load:', targetData.error);
+        }
+      }
       setLoaded(true);
-    } catch (e: any) { setError(e.message); }
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'خطأ في التحميل'); }
     finally { setLoading(false); }
   }, []);
 
@@ -253,35 +321,119 @@ export default function DailyPayrollPanel() {
       }
       setValidationDone(true);
       await load(date);
-    } catch (e: any) { setError(e.message); }
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'خطأ في الفحص'); }
     finally { setValidating(false); }
   };
 
-  /* ── Step 2: Generate payroll ────────────────────────────────────────────── */
-  const handleGenerate = async () => {
-    setGenerating(true); setError('');
+  const generatePayrollOnly = async (): Promise<{ ok: boolean; message: string }> => {
+    const res = await fetch('/api/payroll/daily/generate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workDate: date }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (data.missing?.length) {
+        setValidationMissing(data.missing);
+        setValidationDone(true); setValidationOk(false);
+      }
+      return { ok: false, message: data.error || 'تعذر توليد اليوميات' };
+    }
+    let message = `تم توليد اليوميات بنجاح (${data.generatedCount} سجل — ${fmt(data.totalWage)} ج.م)`;
+    if (data.ledgerDualWrite) {
+      message += ' — سُجِّل الأساسي في دفتر الموظفين';
+    }
+    return { ok: true, message };
+  };
+
+  /** Uses durable recalc pipeline (enqueue + process) — same path as invoice sync. */
+  const generateTargetsOnly = async (
+    empIds?: number[],
+  ): Promise<{ ok: boolean; message: string }> => {
+    const res = await fetch('/api/payroll/daily/targets/recalc-requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workDate: date,
+        processNow: true,
+        reason: empIds?.length ? 'manual_retry_employee' : 'manual_recalc_day',
+        ...(empIds?.length ? { empIds } : {}),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { ok: false, message: data.error || 'تعذر إعادة حساب التارجت' };
+    }
+    const completed = data.process?.completed ?? 0;
+    const failed = data.process?.failed ?? 0;
+    const claimed = data.process?.claimed ?? 0;
+    if (failed > 0 && completed === 0 && claimed > 0) {
+      return { ok: false, message: 'تعذر تحديث التارجت — حاول إعادة المحاولة' };
+    }
+    return {
+      ok: true,
+      message: empIds?.length
+        ? 'تم تحديث تارجت الموظف'
+        : `تم إعادة حساب تارجت اليوم (مكتمل: ${completed || 'توليد يوم كامل'}، فشل: ${failed})`,
+    };
+  };
+
+  const retryEmployeeTarget = async (empId: number) => {
+    if (regeneratingTarget || generating) return;
+    setRegeneratingTarget(true);
+    setError('');
     try {
-      const res  = await fetch('/api/payroll/daily/generate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workDate: date }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        if (data.missing?.length) {
-          setValidationMissing(data.missing);
-          setValidationDone(true); setValidationOk(false);
-          throw new Error(data.error);
-        }
-        throw new Error(data.error);
+      const targets = await generateTargetsOnly([empId]);
+      if (!targets.ok) throw new Error(targets.message);
+      flash(targets.message);
+      await load(date);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'خطأ في إعادة المحاولة');
+    } finally {
+      setRegeneratingTarget(false);
+    }
+  };
+
+  /* ── Step 2: Generate payroll + targets (independent calls) ─────────────── */
+  const handleGenerate = async () => {
+    if (generating) return;
+    setGenerating(true); setError('');
+    const messages: string[] = [];
+    const failures: string[] = [];
+    try {
+      const payroll = await generatePayrollOnly();
+      if (payroll.ok) messages.push(payroll.message);
+      else failures.push(payroll.message);
+
+      const targets = await generateTargetsOnly();
+      if (targets.ok) messages.push(targets.message);
+      else failures.push(targets.message);
+
+      if (failures.length && messages.length) {
+        setError(`${messages.join(' · ')}. ${failures.join(' · ')}`);
+        flash(messages.join(' · '));
+      } else if (failures.length) {
+        setError(failures.join(' · '));
+      } else {
+        flash(messages.join(' · '));
       }
-      flash(`تم توليد ${data.generatedCount} يومية — إجمالي الساعات: ${Number(data.totalHours).toFixed(2)} — إجمالي الأجور: ${fmt(data.totalWage)} ج.م`);
-      if (data.ledgerDualWrite) {
-        flash('تم تسجيل استحقاقات الموظفين في دفتر الموظفين');
-      }
+
       setValidationDone(false); setValidationMissing([]); setValidationExcluded([]);
       await load(date);
-    } catch (e: any) { setError(e.message); }
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'خطأ في التوليد'); }
     finally { setGenerating(false); }
+  };
+
+  /* Secondary: recalculate targets only — never touches DailyPayroll */
+  const handleRecalculateTargets = async () => {
+    if (regeneratingTarget || generating) return;
+    setRegeneratingTarget(true); setError('');
+    try {
+      const targets = await generateTargetsOnly();
+      if (!targets.ok) throw new Error(targets.message);
+      flash(targets.message);
+      await load(date);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'خطأ في إعادة حساب التارجت'); }
+    finally { setRegeneratingTarget(false); }
   };
 
   /* ── Step 3: Post to cash (after dialog confirm) ─────────────────────────── */
@@ -300,7 +452,7 @@ export default function DailyPayrollPanel() {
           return;
         }
         const msg = data.missingEmployees
-          ? `${data.error}: ${data.missingEmployees.map((e: any) => e.EmpName).join('، ')}`
+          ? `${data.error}: ${(data.missingEmployees as Array<{ EmpName: string }>).map((e) => e.EmpName).join('، ')}`
           : (data.error ?? data.message);
         throw new Error(msg);
       }
@@ -309,12 +461,13 @@ export default function DailyPayrollPanel() {
       if (data.repairedCount > 0) parts.push(`إصلاح ${data.repairedCount} سجل`);
       flash((parts.length ? parts.join(' — ') : (data.message ?? 'لا توجد بيانات')) + ' بنجاح');
       await load(date);
-    } catch (e: any) { setError(e.message); }
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'خطأ في الترحيل'); }
     finally { setPosting(false); }
   };
 
   const handleDateChange = (val: string) => {
     setDate(val); setLoaded(false); setRows([]); setSummary(null);
+    setTargetRows([]); setTargetTotals(null); setPlanConflicts([]);
     setValidationDone(false); setValidationMissing([]); setValidationExcluded([]); setValidationOk(false);
     setAutoGenLog(null);
   };
@@ -323,6 +476,7 @@ export default function DailyPayrollPanel() {
   const repairCount    = summary?.repairCount    ?? rows.filter(r => r.needsIncomeRepair).length;
   const canPost        = !legacyPostToCashDisabled && (generatedCount > 0 || repairCount > 0);
   const showLegacyPost = dualWriteEnabled && !legacyPostToCashDisabled;
+  const mergedRows = mergeDailyPayrollAndTargetRows(rows, targetRows);
 
   return (
     <div className="space-y-5" dir="rtl">
@@ -414,12 +568,23 @@ export default function DailyPayrollPanel() {
             : <><ClipboardList className="w-4 h-4" />فحص الحضور</>}
         </Button>
 
-        {/* Step 2 */}
-        <Button onClick={handleGenerate} disabled={generating || loading}
+        {/* Step 2: payroll + targets (independent) */}
+        <Button onClick={handleGenerate} disabled={generating || regeneratingTarget || loading}
           className="bg-amber-600 hover:bg-amber-700 gap-2 h-11 px-6">
           {generating
             ? <><Loader2 className="w-4 h-4 animate-spin" />جاري التوليد...</>
-            : <><Zap className="w-4 h-4" />توليد اليوميات من الحضور</>}
+            : <><Zap className="w-4 h-4" />توليد اليوميات والتارجت</>}
+        </Button>
+
+        <Button
+          onClick={handleRecalculateTargets}
+          disabled={generating || regeneratingTarget || loading}
+          variant="outline"
+          className="border-violet-500/40 text-violet-300 hover:bg-violet-500/10 gap-2 h-11 px-5"
+        >
+          {regeneratingTarget
+            ? <><Loader2 className="w-4 h-4 animate-spin" />جاري إعادة حساب التارجت...</>
+            : <><Target className="w-4 h-4" />إعادة حساب التارجت فقط</>}
         </Button>
 
         {/* Step 3 */}
@@ -536,15 +701,37 @@ export default function DailyPayrollPanel() {
         </div>
       )}
 
-      {/* ── KPI Cards ──────────────────────────────────────────────────────── */}
-      {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          <KpiCard title="إجمالي الموظفين"          value={summary.total}                                                icon={<Users className="w-5 h-5" />}       variant="default" />
-          <KpiCard title="إجمالي الساعات"           value={`${Number(summary.totalHours ?? 0).toFixed(1)} س`}           icon={<Timer className="w-5 h-5" />}       variant="default" />
-          <KpiCard title="إجمالي الأجور"            value={`${fmt(summary.totalWage)} ج.م`}                             icon={<Banknote className="w-5 h-5" />}    variant="primary" />
-          <KpiCard title="محسوب / جاهز للترحيل"    value={summary.generatedCount}                                       icon={<ShieldCheck className="w-5 h-5" />} variant="warning" />
-          <KpiCard title="محوّل للخزنة"            value={summary.postedCount}                                          icon={<CheckCheck className="w-5 h-5" />}  variant="success" />
-          <KpiCard title="مصروفات محوّلة"           value={`${fmt(summary.totalExpenseAmount)} ج.م`}                    icon={<TrendingDown className="w-5 h-5" />} variant="danger" />
+      {/* ── KPI Cards (payroll + target kept separate — no combined total) ── */}
+      {(summary || targetTotals) && (
+        <div className="space-y-3">
+          {summary && (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              <KpiCard title="إجمالي موظفي اليومية" value={summary.total} icon={<Users className="w-5 h-5" />} variant="default" />
+              <KpiCard title="إجمالي الساعات" value={`${Number(summary.totalHours ?? 0).toFixed(1)} س`} icon={<Timer className="w-5 h-5" />} variant="default" />
+              <KpiCard title="إجمالي الأساسي اليومي" value={`${fmt(summary.totalWage)} ج.م`} icon={<Banknote className="w-5 h-5" />} variant="primary" />
+              <KpiCard title="محسوب / جاهز للترحيل" value={summary.generatedCount} icon={<ShieldCheck className="w-5 h-5" />} variant="warning" />
+              <KpiCard title="محوّل للخزنة" value={summary.postedCount} icon={<CheckCheck className="w-5 h-5" />} variant="success" />
+              <KpiCard title="مصروفات محوّلة" value={`${fmt(summary.totalExpenseAmount)} ج.م`} icon={<TrendingDown className="w-5 h-5" />} variant="danger" />
+            </div>
+          )}
+          {targetTotals && (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              <KpiCard title="موظفو التارجت" value={targetTotals.eligibleEmployees} icon={<Target className="w-5 h-5" />} variant="default" />
+              <KpiCard title="مبيعات موظفي التارجت" value={`${fmt(Number(targetTotals.totalCurrentNetSalesAfterDiscount))} ج.م`} icon={<TrendingUp className="w-5 h-5" />} variant="default" />
+              <KpiCard title="إجمالي تارجت اليوم" value={`${fmt(Number(targetTotals.totalStoredTargetAmount))} ج.م`} icon={<Target className="w-5 h-5" />} variant="primary" />
+              <KpiCard title="استحقوا تارجت" value={targetTotals.earnedTarget} icon={<CheckCircle2 className="w-5 h-5" />} variant="success" />
+              <KpiCard title="لم يُولَّد تارجتهم" value={targetTotals.notGenerated} icon={<AlertTriangle className="w-5 h-5" />} variant="warning" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {planConflicts.length > 0 && (
+        <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300 text-sm">
+          <p className="font-semibold mb-1">تعارض خطط تارجت يحتاج مراجعة</p>
+          <ul className="text-xs space-y-1 list-disc pr-4">
+            {planConflicts.map((c) => <li key={c}>{c}</li>)}
+          </ul>
         </div>
       )}
 
@@ -569,8 +756,8 @@ export default function DailyPayrollPanel() {
       {/* ── Table ───────────────────────────────────────────────────────────── */}
       <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
         <div className="px-5 py-3 border-b border-zinc-800/60 flex items-center justify-between">
-          <h2 className="text-sm font-bold text-zinc-300">يوميات {date}</h2>
-          {loaded && <span className="text-xs text-zinc-500">{rows.length} سجل</span>}
+          <h2 className="text-sm font-bold text-zinc-300">يوميات وتارجت {date}</h2>
+          {loaded && <span className="text-xs text-zinc-500">{mergedRows.length} صف</span>}
         </div>
         <div className="overflow-x-auto">
           {loading ? (
@@ -580,131 +767,171 @@ export default function DailyPayrollPanel() {
           ) : !loaded ? (
             <div className="flex flex-col items-center justify-center py-16 text-zinc-600 gap-3">
               <CalendarDays className="w-10 h-10 opacity-30" />
-              <p className="text-sm">اختر التاريخ، ثم اضغط "فحص الحضور" ثم "توليد اليوميات"</p>
+              <p className="text-sm">اختر التاريخ، ثم اضغط «فحص الحضور» ثم «توليد اليوميات والتارجت»</p>
             </div>
-          ) : rows.length === 0 ? (
+          ) : mergedRows.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-zinc-600 gap-3">
               <Users className="w-10 h-10 opacity-30" />
-              <p className="text-sm">لا توجد يوميات لهذا اليوم</p>
+              <p className="text-sm">لا توجد يوميات أو خطط تارجت لهذا اليوم</p>
             </div>
           ) : (
             <table className="w-full text-sm" dir="rtl">
               <thead>
                 <tr className="border-b border-zinc-800 text-xs text-zinc-500">
-                  <th className="px-4 py-3 text-right font-medium">الموظف</th>
-                  <th className="px-4 py-3 text-center font-medium">نوع / محاسبة</th>
-                  <th className="px-4 py-3 text-center font-medium">حالة الحضور</th>
-                  <th className="px-4 py-3 text-center font-medium">حضور ← انصراف</th>
-                  <th className="px-4 py-3 text-center font-medium">ساعات فعلية</th>
-                  <th className="px-4 py-3 text-center font-medium">السعر المستخدم</th>
-                  <th className="px-4 py-3 text-center font-medium">التأخير</th>
-                  <th className="px-4 py-3 text-left font-medium">الأجر المحسوب</th>
-                  <th className="px-4 py-3 text-center font-medium">حالة اليومية</th>
-                  <th className="px-4 py-3 text-center font-medium">تصنيف الإيراد</th>
-                  <th className="px-4 py-3 text-center font-medium">خزنة م.</th>
-                  <th className="px-4 py-3 text-center font-medium">خزنة إ.</th>
+                  <th className="px-3 py-3 text-right font-medium">الموظف</th>
+                  <th className="px-3 py-3 text-center font-medium">حالة الحضور</th>
+                  <th className="px-3 py-3 text-center font-medium">عدد الساعات</th>
+                  <th className="px-3 py-3 text-left font-medium">الأساسي اليومي</th>
+                  <th className="px-3 py-3 text-left font-medium">مبيعات التارجت بعد الخصم</th>
+                  <th className="px-3 py-3 text-center font-medium">نظام التارجت</th>
+                  <th className="px-3 py-3 text-left font-medium">تارجت اليوم</th>
+                  <th className="px-3 py-3 text-center font-medium">حالة التوليد</th>
+                  <th className="px-3 py-3 text-center font-medium">مزامنة التارجت</th>
+                  <th className="px-3 py-3 text-center font-medium">التفاصيل</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map(row => {
-                  const method = resolveRowPayrollMethod(row);
-                  const isFlatDaily = method === 'daily';
+                {mergedRows.map((merged) => {
+                  const row = merged.payroll as PayrollRow | null;
+                  const target = merged.target;
+                  const sync = merged.targetSyncStatus ?? target?.syncStatus;
                   return (
-                  <tr key={row.ID}
-                    className={`border-b border-zinc-800/40 hover:bg-zinc-800/20 transition-colors ${row.Status === 'PostedToCashMove' ? 'opacity-60' : ''}`}>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-bold text-zinc-400 shrink-0">
-                          {row.EmpName?.charAt(0)}
+                    <tr
+                      key={merged.empId}
+                      className={`border-b border-zinc-800/40 hover:bg-zinc-800/20 transition-colors ${row?.Status === 'PostedToCashMove' ? 'opacity-60' : ''}`}
+                    >
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-bold text-zinc-400 shrink-0">
+                            {merged.empName?.charAt(0)}
+                          </div>
+                          <div>
+                            <span className="font-medium text-white text-sm">{merged.empName}</span>
+                            {row && (
+                              <div className="flex flex-wrap gap-1 mt-0.5">
+                                {employmentBadge(row.EmploymentType)}
+                                {payrollMethodBadge(row.PayrollMethod)}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <span className="font-medium text-white text-sm">{row.EmpName}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <div className="flex flex-wrap gap-1 justify-center">
-                        {employmentBadge(row.EmploymentType)}
-                        {payrollMethodBadge(row.PayrollMethod)}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-center">{attendanceBadge(row.AttendanceStatus)}</td>
-                    <td className="px-4 py-3 text-center text-zinc-400 text-xs whitespace-nowrap">
-                      {row.CheckInTime
-                        ? <span>{formatTime12h(row.CheckInTime)}<span className="text-zinc-600 mx-1">←</span>{row.CheckOutTime ? formatTime12h(row.CheckOutTime) : <span className="text-orange-500">؟</span>}</span>
-                        : <span className="text-zinc-600">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-center text-xs">
-                      {row.ActualHours != null
-                        ? <span className="text-sky-400 font-medium">{Number(row.ActualHours).toFixed(2)} س</span>
-                        : <span className="text-zinc-600">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-center text-xs">
-                      {isFlatDaily ? (
-                        row.DailyRate != null ? (
-                          <span className="text-emerald-400 font-medium">{Number(row.DailyRate).toFixed(2)}<span className="text-zinc-500 mr-1">يومية</span></span>
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        {row ? attendanceBadge(row.AttendanceStatus) : <span className="text-zinc-600 text-xs">—</span>}
+                      </td>
+                      <td className="px-3 py-3 text-center text-xs">
+                        {row?.ActualHours != null
+                          ? <span className="text-sky-400 font-medium">{Number(row.ActualHours).toFixed(2)} س</span>
+                          : <span className="text-zinc-600">—</span>}
+                      </td>
+                      <td className="px-3 py-3 text-left whitespace-nowrap">
+                        {row ? (
+                          <>
+                            <span className="font-bold text-white">{fmt(row.DailyWage)}</span>
+                            <span className="text-[11px] font-normal text-zinc-500 mr-1">ج.م</span>
+                          </>
                         ) : (
                           <span className="text-zinc-600">—</span>
-                        )
-                      ) : row.HourlyRateSnapshot != null ? (
-                        <span className="text-amber-400">{Number(row.HourlyRateSnapshot).toFixed(2)}<span className="text-zinc-500 mr-1">/س</span></span>
-                      ) : (
-                        <span className="text-zinc-600">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-center text-xs">
-                      {row.LateMinutes && row.LateMinutes > 0
-                        ? <span className="text-amber-400 font-medium">{row.LateMinutes} د</span>
-                        : <span className="text-zinc-600">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-left whitespace-nowrap">
-                      <span className="font-bold text-white">{fmt(row.DailyWage)}</span>
-                      <span className="text-[11px] font-normal text-zinc-500 mr-1">ج.م</span>
-                      {isFlatDaily ? (
-                        <div className="text-[10px] text-emerald-500/80 mt-0.5">يومية ثابتة</div>
-                      ) : row.HourlyRateSnapshot != null && row.ActualHours != null ? (
-                        <div className="text-[10px] text-zinc-600 mt-0.5">
-                          {Number(row.HourlyRateSnapshot).toFixed(2)} × {Number(row.ActualHours).toFixed(2)}س
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-left text-xs">
+                        {target
+                          ? <span className="text-sky-300 font-medium">{fmt(Number(target.currentNetSalesAfterDiscount))}</span>
+                          : <span className="text-zinc-600">—</span>}
+                      </td>
+                      <td className="px-3 py-3 text-center text-[11px] text-zinc-300 max-w-[140px]">
+                        {target ? target.planSummary : 'لا يوجد تارجت'}
+                      </td>
+                      <td className="px-3 py-3 text-left whitespace-nowrap">
+                        {!target && <span className="text-zinc-600">—</span>}
+                        {target?.persistenceStatus === 'not_generated' && (
+                          <span className="text-amber-400 text-xs">لم يتم التوليد</span>
+                        )}
+                        {target && target.persistenceStatus !== 'not_generated' && (
+                          <div className="space-y-0.5">
+                            <button
+                              type="button"
+                              className="font-bold text-violet-300 hover:underline"
+                              onClick={() => setDetailTarget(target)}
+                            >
+                              {fmt(Number(target.storedTargetAmount ?? 0))}
+                            </button>
+                            {target.displayStatus === 'below_first_tier' && (
+                              <div>
+                                <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] border border-amber-500/30 text-amber-400 bg-amber-500/10">
+                                  أقل من بداية التارجت
+                                </span>
+                              </div>
+                            )}
+                            {target.displayStatus === 'earned_target' && (
+                              <div>
+                                <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] border border-emerald-500/30 text-emerald-400 bg-emerald-500/10">
+                                  مستحق
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        {targetPersistenceBadge(target?.persistenceStatus)}
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          {targetSyncBadge(sync)}
+                          {(sync === 'failed' || sync === 'pending') && target && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-[10px] border-amber-500/40 text-amber-200"
+                              disabled={regeneratingTarget || generating}
+                              onClick={() => void retryEmployeeTarget(merged.empId)}
+                            >
+                              إعادة المحاولة
+                            </Button>
+                          )}
                         </div>
-                      ) : null}
-                      {row.Notes && (
-                        <div className="text-[10px] text-zinc-600 mt-0.5 max-w-[180px] truncate" title={row.Notes}>
-                          {row.Notes}
-                        </div>
-                      )}
-                      {row.Status === 'PendingCheckout' && (
-                        <div className="text-[10px] text-orange-500 mt-0.5">— ناقص انصراف</div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-center">{payrollBadge(row.Status)}</td>
-                    <td className="px-4 py-3 text-center text-xs">
-                      {row.RevenueCatName
-                        ? <span className="text-amber-400 text-[11px]">{row.RevenueCatName}</span>
-                        : <span className="inline-flex items-center gap-1 text-rose-400 text-[11px]"><AlertTriangle className="w-3 h-3" />غير مربوط</span>}
-                    </td>
-                    <td className="px-4 py-3 text-center text-xs">
-                      {row.CashMoveID ? <span className="text-rose-400 font-mono text-[11px]">#{row.CashMoveID}</span> : <span className="text-zinc-600">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-center text-xs">
-                      {row.EmployeeIncomeCashMoveID ? <span className="text-emerald-400 font-mono text-[11px]">#{row.EmployeeIncomeCashMoveID}</span> : <span className="text-zinc-600">—</span>}
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        {target ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-[11px] border-zinc-700"
+                            onClick={() => setDetailTarget(target)}
+                          >
+                            تفاصيل
+                          </Button>
+                        ) : (
+                          <span className="text-zinc-600">—</span>
+                        )}
+                      </td>
+                    </tr>
                   );
                 })}
               </tbody>
-              {summary && summary.total > 0 && (
+              {(summary || targetTotals) && (
                 <tfoot>
                   <tr className="border-t-2 border-zinc-700 bg-zinc-800/30">
-                    <td colSpan={4} className="px-4 py-3 text-xs font-bold text-zinc-400">
-                      الإجمالي ({summary.total} موظف)
+                    <td className="px-3 py-3 text-xs font-bold text-zinc-400" colSpan={2}>
+                      الإجماليات (منفصلة)
                     </td>
-                    <td className="px-4 py-3 text-center text-sky-400 font-bold text-sm">
-                      {Number(summary.totalHours ?? 0).toFixed(1)} س
+                    <td className="px-3 py-3 text-center text-sky-400 font-bold text-sm">
+                      {summary ? `${Number(summary.totalHours ?? 0).toFixed(1)} س` : '—'}
+                    </td>
+                    <td className="px-3 py-3 text-left font-bold text-white whitespace-nowrap">
+                      {summary ? `${fmt(summary.totalWage)} ج.م` : '—'}
+                      <div className="text-[10px] text-zinc-500 font-normal">أساسي فقط</div>
+                    </td>
+                    <td className="px-3 py-3 text-left text-sky-300 font-bold text-sm">
+                      {targetTotals ? fmt(Number(targetTotals.totalCurrentNetSalesAfterDiscount)) : '—'}
                     </td>
                     <td />
-                    <td />
-                    <td className="px-4 py-3 text-left font-bold text-white text-base whitespace-nowrap">
-                      {fmt(summary.totalWage)}<span className="text-xs font-normal text-zinc-500 mr-1">ج.م</span>
+                    <td className="px-3 py-3 text-left font-bold text-violet-300 whitespace-nowrap">
+                      {targetTotals ? `${fmt(Number(targetTotals.totalStoredTargetAmount))} ج.م` : '—'}
+                      <div className="text-[10px] text-zinc-500 font-normal">تارجت فقط</div>
                     </td>
-                    <td colSpan={4} />
+                    <td colSpan={2} />
                   </tr>
                 </tfoot>
               )}
@@ -712,6 +939,13 @@ export default function DailyPayrollPanel() {
           )}
         </div>
       </div>
+
+      <DailyTargetDetailsDialog
+        open={!!detailTarget}
+        onClose={() => setDetailTarget(null)}
+        workDate={date}
+        target={detailTarget}
+      />
 
       {/* ── Confirm Post Dialog ─────────────────────────────────────────────── */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>

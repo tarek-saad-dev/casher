@@ -15,8 +15,12 @@ export interface WhatsAppConfig {
   firstTimeEnabled: boolean;
   employeeSaleEnabled: boolean;
   employeeAdvanceEnabled: boolean;
+  quickMessageEnabled: boolean;
+  employeeDailyReportEnabled: boolean;
+  ownerDailyReportEnabled: boolean;
   defaultBranchName: string;
   defaultBookingLink: string;
+  defaultQuickMessage: string;
 }
 
 function getWhatsAppConfig(): WhatsAppConfig {
@@ -32,8 +36,15 @@ function getWhatsAppConfig(): WhatsAppConfig {
     firstTimeEnabled: process.env.WHATSAPP_FIRST_TIME_ENABLED !== 'false',
     employeeSaleEnabled: process.env.WHATSAPP_EMPLOYEE_SALE_ENABLED !== 'false',
     employeeAdvanceEnabled: process.env.WHATSAPP_EMPLOYEE_ADVANCE_ENABLED !== 'false',
+    quickMessageEnabled: process.env.WHATSAPP_QUICK_MESSAGE_ENABLED !== 'false',
+    employeeDailyReportEnabled:
+      process.env.WHATSAPP_EMPLOYEE_DAILY_REPORT_ENABLED !== 'false',
+    ownerDailyReportEnabled:
+      process.env.WHATSAPP_OWNER_DAILY_REPORT_ENABLED !== 'false',
     defaultBranchName: process.env.WHATSAPP_DEFAULT_BRANCH_NAME || 'جليم',
     defaultBookingLink: process.env.WHATSAPP_DEFAULT_BOOKING_LINK || 'https://cutsaloon.com/',
+    defaultQuickMessage:
+      process.env.WHATSAPP_DEFAULT_QUICK_MESSAGE || 'أهلا بك في Cut Salon',
   };
 }
 

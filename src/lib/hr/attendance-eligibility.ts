@@ -7,6 +7,7 @@ import {
   calcEarlyLeaveMinutes,
   calcLateMinutes,
 } from '@/lib/timeUtils';
+import type { AttendanceBreakInterval } from '@/lib/hr/attendance-breaks';
 import type { DayOffPolicy, EmploymentType } from '@/lib/hr/employee-hr-model';
 import { normalizeEmploymentType, normalizePayrollMethod, normalizeDayOffPolicy } from '@/lib/hr/employee-hr-model';
 
@@ -53,6 +54,8 @@ export interface RawAttendanceDbRow {
   LateMinutes?: number | null;
   EarlyLeaveMinutes?: number | null;
   Notes?: string | null;
+  BreakMinutesTotal?: number | null;
+  Breaks?: AttendanceBreakInterval[] | null;
 }
 
 export interface ResolvedScheduleDay {
@@ -102,6 +105,8 @@ export interface AttendanceBoardRow {
   EarlyLeaveMinutes: number;
   Notes: string;
   HasRecord: boolean;
+  BreakMinutesTotal: number;
+  Breaks: AttendanceBreakInterval[];
   employmentTypeLabel: string | null;
   payrollMethodLabel: string | null;
   dayOffPolicyLabel: string | null;
@@ -409,6 +414,8 @@ export function buildAttendanceBoardRow(
     EarlyLeaveMinutes: earlyMin,
     Notes: row.Notes || '',
     HasRecord: hasAttendanceRecord,
+    BreakMinutesTotal: Math.max(0, Number(row.BreakMinutesTotal) || 0),
+    Breaks: Array.isArray(row.Breaks) ? row.Breaks : [],
     employmentTypeLabel: EMPLOYMENT_LABELS[employmentType] ?? null,
     payrollMethodLabel: payrollMethod ? PAYROLL_LABELS[payrollMethod] ?? null : null,
     dayOffPolicyLabel:

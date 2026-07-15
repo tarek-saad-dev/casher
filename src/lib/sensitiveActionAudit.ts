@@ -70,6 +70,13 @@ export interface AuditExecutionOptions<T = unknown> {
   loadOldData?: (transaction: sql.Transaction) => Promise<Record<string, unknown> | null>;
   execute: (transaction: sql.Transaction) => Promise<T>;
   loadNewData?: (transaction: sql.Transaction, result: T) => Promise<Record<string, unknown> | null>;
+  /** Runs inside the same TX after loadNewData / before audit insert + commit. */
+  beforeCommit?: (ctx: {
+    transaction: sql.Transaction;
+    oldData: Record<string, unknown> | null;
+    newData: Record<string, unknown> | null;
+    result: T;
+  }) => Promise<void>;
 }
 
 interface AuditRecord {
@@ -256,10 +263,17 @@ export async function executeAuditedAction<T>(options: AuditExecutionOptions<T>)
       console.info(`[executeAuditedAction:${requestId}]`, { step: 'load-new-data:complete' });
     }
 
-    // 4. Calculate changed fields
+    // 4. Optional side-effects durable with the business write (e.g. target recalc enqueue)
+    if (options.beforeCommit) {
+      console.info(`[executeAuditedAction:${requestId}]`, { step: 'before-commit:start' });
+      await options.beforeCommit({ transaction, oldData, newData, result });
+      console.info(`[executeAuditedAction:${requestId}]`, { step: 'before-commit:complete' });
+    }
+
+    // 5. Calculate changed fields
     const changedFields = calculateChangedFields(oldData, newData);
 
-    // 5. Build audit record
+    // 6. Build audit record
     const record: AuditRecord = {
       actionType: metaData.actionType,
       actionLabel: metaData.label,
@@ -282,12 +296,12 @@ export async function executeAuditedAction<T>(options: AuditExecutionOptions<T>)
       errorMessage: null,
     };
 
-    // 6. Insert audit record inside the same transaction
+    // 7. Insert audit record inside the same transaction
     console.info(`[executeAuditedAction:${requestId}]`, { step: 'audit-insert:start' });
     const auditId = await insertAuditRecord(transaction, record);
     console.info(`[executeAuditedAction:${requestId}]`, { step: 'audit-insert:complete', auditId });
 
-    // 7. Commit
+    // 8. Commit
     console.info(`[executeAuditedAction:${requestId}]`, { step: 'commit:start' });
     await transaction.commit();
     transactionCompleted = true;

@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql, allocateInvID } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { requireRole, isAuthResult } from '@/lib/api-auth';
+import {
+  EmployeeLedgerDualWriteError,
+} from '@/lib/services/employeeLedgerDualWrite';
+import { syncEmployeeFundingFromCashMove } from '@/lib/services/employeeLedgerFundingSyncService';
 
 // POST /api/incomes/past-date - Add income for past dates
 export async function POST(req: NextRequest) {
@@ -79,13 +83,18 @@ export async function POST(req: NextRequest) {
           (@invID, N'ايرادات', @invDate, @invTime, NULL, @expInId, @amount, N'in', @notes, NULL, @paymentMethodId)
       `);
 
-      await transaction.commit();
-
       const newRecord = insertRes.recordset[0];
+      const fundingSync = await syncEmployeeFundingFromCashMove(transaction, Number(newRecord.ID), {
+        createdByUserId: session.UserID,
+      });
+
+      await transaction.commit();
       
       return NextResponse.json({
         success: true,
         message: 'تم إضافة الإيراد للتاريخ المحدد بنجاح',
+        ledgerDualWrite: fundingSync.ledgerDualWrite,
+        ledgerSync: fundingSync.outcome,
         data: {
           ID: newRecord.ID,
           invID: newRecord.invID,
@@ -104,6 +113,9 @@ export async function POST(req: NextRequest) {
     }
 
   } catch (err: unknown) {
+    if (err instanceof EmployeeLedgerDualWriteError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/incomes/past-date] POST error:', message);
     return NextResponse.json({ error: 'فشل إضافة الإيراد: ' + message }, { status: 500 });

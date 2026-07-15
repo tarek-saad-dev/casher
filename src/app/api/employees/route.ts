@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { getCairoBusinessDate } from '@/lib/businessDate';
 import {
   usesHrModelPayload,
   validateEmployeeHrPayload,
@@ -20,6 +21,7 @@ import {
   upsertEmployeeSchedule,
 } from '@/lib/hr/employee-hr-db';
 import { ensureEmployeeAdvanceMapping } from '@/lib/hr/employee-hr-advance';
+import { getEmployeesTargetSummaryBatch } from '@/lib/payroll/employee-target';
 
 // GET /api/employees — list employees with finance mapping
 // Query params: ?inactive=true to get inactive employees
@@ -35,9 +37,40 @@ export async function GET(req: NextRequest) {
       ORDER BY e.EmpName
     `);
 
-    const rows = result.recordset.map((row: Record<string, unknown>) =>
-      enrichEmployeeRow(row),
-    );
+    let targetSummary = new Map<
+      number,
+      {
+        hasTargetPlan: boolean;
+        targetEnabled: boolean | null;
+        targetTierCount: number | null;
+        targetFirstDailyStart: number | null;
+        targetFirstRatePercent: number | null;
+        targetEffectiveFrom: string | null;
+      }
+    >();
+    try {
+      targetSummary = await getEmployeesTargetSummaryBatch(getCairoBusinessDate());
+    } catch (summaryErr: unknown) {
+      console.warn(
+        '[api/employees] target summary skipped:',
+        summaryErr instanceof Error ? summaryErr.message : summaryErr,
+      );
+    }
+
+    const rows = result.recordset.map((row: Record<string, unknown>) => {
+      const enriched = enrichEmployeeRow(row);
+      const empId = Number(enriched.EmpID);
+      const summary = targetSummary.get(empId);
+      return {
+        ...enriched,
+        hasTargetPlan: summary?.hasTargetPlan ?? false,
+        targetEnabled: summary?.targetEnabled ?? null,
+        targetTierCount: summary?.targetTierCount ?? null,
+        targetFirstDailyStart: summary?.targetFirstDailyStart ?? null,
+        targetFirstRatePercent: summary?.targetFirstRatePercent ?? null,
+        targetEffectiveFrom: summary?.targetEffectiveFrom ?? null,
+      };
+    });
     return NextResponse.json(rows);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

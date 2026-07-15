@@ -9,7 +9,10 @@ import {
   maybeBuildClassificationPayloadForDateRange,
   mergeIncomeOnlyClassification,
 } from '@/lib/accounting/financialReportClassificationService';
-
+import {
+  EmployeeLedgerDualWriteError,
+} from '@/lib/services/employeeLedgerDualWrite';
+import { syncEmployeeFundingFromCashMove } from '@/lib/services/employeeLedgerFundingSyncService';
 // ─────────────────────── GET /api/incomes ───────────────────────
 // Query params: fromDate, toDate, expInId?, paymentMethodId?, shiftMoveId?, search?
 export async function GET(req: NextRequest) {
@@ -314,13 +317,25 @@ export async function POST(req: NextRequest) {
            NULL, @expInId, @amount, N'in', @notes, @shiftMoveId, @paymentMethodId)
       `);
 
+      const inserted = insertRes.recordset[0];
+      const fundingSync = await syncEmployeeFundingFromCashMove(transaction, Number(inserted.ID), {
+        createdByUserId: session.UserID,
+      });
+
       await transaction.commit();
-      return NextResponse.json(insertRes.recordset[0], { status: 201 });
+      return NextResponse.json({
+        ...inserted,
+        ledgerDualWrite: fundingSync.ledgerDualWrite,
+        ledgerSync: fundingSync.outcome,
+      }, { status: 201 });
     } catch (innerErr) {
       try { await transaction.rollback(); } catch {}
       throw innerErr;
     }
   } catch (err: unknown) {
+    if (err instanceof EmployeeLedgerDualWriteError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/incomes] POST error:', message);
     return NextResponse.json({ error: message }, { status: 500 });

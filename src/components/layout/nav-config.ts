@@ -8,7 +8,7 @@ import {
   Calculator, Settings, Scissors, Tags, Shield, Activity, Star,
   UsersRound, FileBarChart, Calendar, Ticket, CalendarCheck, MonitorPlay,
   AlertTriangle, Crown, KeyRound, FileKey2, Banknote, ShieldCheck, Users,
-  HeartHandshake, Layers, Beaker, Settings2,
+  HeartHandshake, Layers, Beaker, Settings2, Sun,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -102,6 +102,7 @@ export const NAV_SECTIONS: NavSection[] = [
     icon: ClipboardList,
     items: [
       { href: '/sales/today',                      label: 'مبيعات اليوم',      icon: TrendingUp  },
+      { href: '/admin/reports/full-day',             label: 'تقرير اليوم كامل',  icon: Sun         },
       { href: '/income-review/all-sales',          label: 'كل المبيعات',       icon: History     },
       { href: '/income-review/today-revenue',      label: 'إيرادات اليوم',     icon: Wallet      },
       { href: '/income-review/all-revenue',        label: 'كل الإيرادات',      icon: History     },

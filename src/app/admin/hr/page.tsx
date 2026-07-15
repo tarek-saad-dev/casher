@@ -5,13 +5,15 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import {
   Users, Plus, CheckCircle2, AlertCircle,
-  Loader2, UserPlus, Link2, Scissors, X, Zap, Settings, Clock, UserX, UserCheck,
-  Banknote, CalendarCheck, Wallet, UsersRound, BookOpen, Scale, MessageCircle, Pencil,
+  Loader2, UserPlus, Link2, Scissors, X, Zap, Clock, UserX, UserCheck,
+  Banknote, CalendarCheck, Wallet, UsersRound, BookOpen, Scale, MessageCircle, Pencil, Target,
+  FileSpreadsheet,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { parseTimeToMinutes } from '@/lib/timeUtils';
 import KpiCard from '@/components/shared/KpiCard';
 import EmployeeHrFormModal from '@/components/hr/EmployeeHrFormModal';
+import EmployeeTargetSettingsModal from '@/components/hr/EmployeeTargetSettingsModal';
 import {
   labelDayOffPolicy,
   labelEmploymentType,
@@ -37,9 +39,9 @@ function TabLoader() {
   );
 }
 
-const PayrollSettingsTab = dynamic(() => import('@/components/payroll/PayrollSettingsTab'), { ssr: false, loading: () => <TabLoader /> });
 const AttendancePanel        = dynamic(() => import('@/components/hr/AttendancePanel'),                              { ssr: false, loading: () => <TabLoader /> });
 const DailyPayrollPanel      = dynamic(() => import('@/components/hr/DailyPayrollPanel'),                            { ssr: false, loading: () => <TabLoader /> });
+const EmployeeMonthlyReportPanel = dynamic(() => import('@/components/hr/EmployeeMonthlyReportPanel'),               { ssr: false, loading: () => <TabLoader /> });
 const EmployeeAdvancesSection = dynamic(() => import('@/components/reports/expenses/EmployeeAdvancesSection'),       { ssr: false, loading: () => <TabLoader /> });
 const EmployeeLedgerPanel     = dynamic(() => import('@/components/hr/EmployeeLedgerPanel'),                        { ssr: false, loading: () => <TabLoader /> });
 const EmployeeLedgerReconciliationPanel = dynamic(
@@ -60,6 +62,37 @@ interface Employee extends HrEmployeeListRow {
   RevenueCatName: string | null;
   Job: JobType | string | null;
   SalaryType?: string | null;
+  hasTargetPlan?: boolean;
+  targetEnabled?: boolean | null;
+  targetTierCount?: number | null;
+  targetFirstDailyStart?: number | null;
+  targetFirstRatePercent?: number | null;
+  targetEffectiveFrom?: string | null;
+}
+
+function formatTargetBadge(emp: Employee): { label: string; tone: 'muted' | 'warn' | 'ok' } {
+  if (!emp.hasTargetPlan || emp.targetEnabled == null) {
+    return { label: 'لا يوجد تارجت', tone: 'muted' };
+  }
+  if (!emp.targetEnabled) {
+    return { label: 'التارجت متوقف', tone: 'warn' };
+  }
+  const start = emp.targetFirstDailyStart;
+  const rate = emp.targetFirstRatePercent;
+  const tierCount = emp.targetTierCount ?? 0;
+  if (start != null && rate != null) {
+    const startTxt = new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(start);
+    const rateTxt = new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(rate);
+    if (tierCount > 1) {
+      return {
+        label: `يبدأ من ${startTxt} يوميًا • ${rateTxt}% · ${tierCount} شرائح`,
+        tone: 'ok',
+      };
+    }
+    return { label: `يبدأ من ${startTxt} يوميًا • ${rateTxt}%`, tone: 'ok' };
+  }
+  if (tierCount > 1) return { label: `${tierCount} شرائح`, tone: 'ok' };
+  return { label: 'التارجت مفعّل', tone: 'ok' };
 }
 
 /* ─── main tabs ──────────────────────────────────────── */
@@ -68,19 +101,19 @@ const MAIN_TABS = [
   { id: 'employees',        label: 'الموظفون',          icon: UsersRound },
   { id: 'attendance',      label: 'متابعة الحضور',     icon: CalendarCheck },
   { id: 'daily-payroll',   label: 'يوميات الموظفين',   icon: Banknote },
+  { id: 'monthly-report',  label: 'التقرير الشهري',    icon: FileSpreadsheet },
   { id: 'emp-advances',    label: 'سلف الموظفين',     icon: Wallet },
   { id: 'employee-ledger', label: 'دفتر الموظفين',    icon: BookOpen },
   { id: 'employee-ledger-reconciliation', label: 'مراجعة الدفتر', icon: Scale },
-  { id: 'employee-settings', label: 'إعدادات الموظفين', icon: Settings },
 ] as const;
 type MainTabId = typeof MAIN_TABS[number]['id'];
 
-// Legacy query-param values that should map to the new employee-settings tab
+// Legacy query-param values → employees (single source of truth for HR profile edits)
 const LEGACY_TAB_ALIASES: Record<string, MainTabId> = {
-  payroll: 'employee-settings',
-  salaries: 'employee-settings',
-  settings: 'employee-settings',
-  'employee-settings': 'employee-settings',
+  payroll: 'employees',
+  salaries: 'employees',
+  settings: 'employees',
+  'employee-settings': 'employees',
 };
 
 /* ══════════════════════════════════════════════════════ */
@@ -133,12 +166,12 @@ export default function HRPage() {
       />
 
       {/* ── Main Tab Switcher ── */}
-      <div className="flex gap-1 p-1 bg-surface/60 border border-border/60 rounded-xl w-fit mb-6">
+      <div className="flex flex-wrap gap-1 p-1 bg-surface/60 border border-border/60 rounded-xl w-fit mb-6">
         {MAIN_TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => handleTabChange(id)}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
               mainTab === id
                 ? 'bg-primary/20 text-primary border border-primary/30'
                 : 'text-muted-foreground hover:text-foreground hover:bg-surface-muted/60'
@@ -154,10 +187,10 @@ export default function HRPage() {
       {mainTab === 'employees'        && <EmployeesPanel />}
       {mainTab === 'attendance'         && <AttendancePanel />}
       {mainTab === 'daily-payroll'    && <DailyPayrollPanel />}
+      {mainTab === 'monthly-report'   && <EmployeeMonthlyReportPanel />}
       {mainTab === 'emp-advances'     && <AdvancesReportPanel />}
       {mainTab === 'employee-ledger'  && <EmployeeLedgerPanel />}
       {mainTab === 'employee-ledger-reconciliation' && <EmployeeLedgerReconciliationPanel />}
-      {mainTab === 'employee-settings' && <EmployeeSettingsPanel />}
     </div>
   );
 }
@@ -207,6 +240,8 @@ function EmployeesPanel() {
   const [statusTab, setStatusTab] = useState<'inactive' | 'active'>('inactive');
   const [savingWhatsAppId, setSavingWhatsAppId] = useState<number | null>(null);
   const [whatsappDrafts, setWhatsappDrafts] = useState<Record<number, string>>({});
+  const [targetModalOpen, setTargetModalOpen] = useState(false);
+  const [targetEmployee, setTargetEmployee] = useState<Employee | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -549,6 +584,7 @@ function EmployeesPanel() {
                 <th className="px-4 py-3 text-right font-medium">الرواتب</th>
                 <th className="px-4 py-3 text-right font-medium">واتساب</th>
                 <th className="px-4 py-3 text-right font-medium">الحالة</th>
+                <th className="px-4 py-3 text-right font-medium">التارجت</th>
                 <th className="px-4 py-3 text-right font-medium">الربط المالي</th>
                 <th className="px-4 py-3 text-right font-medium">إجراءات</th>
               </tr>
@@ -632,6 +668,22 @@ function EmployeesPanel() {
                     )}
                   </td>
                   <td className="px-4 py-3">
+                    {(() => {
+                      const badge = formatTargetBadge(emp);
+                      const cls =
+                        badge.tone === 'ok'
+                          ? 'bg-primary/10 text-primary border-primary/20'
+                          : badge.tone === 'warn'
+                            ? 'bg-amber-500/10 text-amber-700 border-amber-500/20'
+                            : 'bg-surface-muted text-muted-foreground border-border';
+                      return (
+                        <span className={`inline-flex max-w-[180px] px-2 py-0.5 rounded-full text-[11px] border ${cls}`}>
+                          {badge.label}
+                        </span>
+                      );
+                    })()}
+                  </td>
+                  <td className="px-4 py-3">
                     {emp.AdvanceExpINID && emp.RevenueExpINID ? (
                       <span className="inline-flex items-center gap-1.5 text-xs text-success"><CheckCircle2 className="w-3.5 h-3.5" />كامل</span>
                     ) : emp.AdvanceExpINID || emp.RevenueExpINID ? (
@@ -649,6 +701,17 @@ function EmployeesPanel() {
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <Button variant="outline" size="sm" onClick={() => openEditModal(emp)} className="gap-1 text-xs h-8">
                         <Pencil className="w-3 h-3" />تعديل
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setTargetEmployee(emp);
+                          setTargetModalOpen(true);
+                        }}
+                        className="gap-1 text-xs h-8"
+                      >
+                        <Target className="w-3 h-3" />إعداد التارجت
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => openFinanceModal(emp)} className="gap-1 text-xs h-8">
                         <Link2 className="w-3 h-3" />الربط المالي
@@ -692,6 +755,20 @@ function EmployeesPanel() {
         employee={hrFormEmployee}
         onSaved={handleHrSaved}
       />
+
+      {targetEmployee && (
+        <EmployeeTargetSettingsModal
+          open={targetModalOpen}
+          onClose={() => {
+            setTargetModalOpen(false);
+            setTargetEmployee(null);
+          }}
+          empId={targetEmployee.EmpID}
+          empName={targetEmployee.EmpName}
+          onSuccess={(msg) => setSuccessMessage(msg)}
+          onSaved={() => { void load(); }}
+        />
+      )}
 
       {/* ── Finance Mapping Modal ── */}
       <Dialog open={financeModalOpen} onOpenChange={(v) => { if (!v) closeFinanceModal(); }}>
@@ -1067,24 +1144,3 @@ function AdvancesReportPanel() {
   );
 }
 
-/* ══════════════════════════════════════════════════════
-   PANEL 5 — Employee Settings
-   ══════════════════════════════════════════════════════ */
-function EmployeeSettingsPanel() {
-  return (
-    <div className="space-y-5">
-      <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-muted-foreground">
-        <p className="text-foreground font-medium mb-1">ملاحظة</p>
-        <p>
-          إعدادات نوع التوظيف وطريقة المحاسبة وجدول العمل يتم تعديلها الآن من{' '}
-          <span className="text-primary font-medium">ملف الموظف</span> في تبويب الموظفون (زر تعديل).
-        </p>
-      </div>
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Settings className="w-4 h-4 text-primary" />
-        <span>إعدادات الرواتب اليومية والتارجت والحضور (النظام القديم)</span>
-      </div>
-      <PayrollSettingsTab />
-    </div>
-  );
-}

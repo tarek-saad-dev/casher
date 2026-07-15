@@ -1,10 +1,38 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 
-// GET /api/barbers — sorted by sales count (most popular first)
-// Only returns barbers (حلاق) and assistants (مساعد)
-export async function GET() {
+/**
+ * GET /api/barbers
+ * Query:
+ *   scope=service (default) — حلاق + مساعد (legacy POS/booking list)
+ *   scope=barber — حلاق فقط
+ *   scope=other — كل الموظفين النشطين ما عدا الحلاقين
+ */
+export async function GET(req: NextRequest) {
   try {
+    const scope = (req.nextUrl.searchParams.get('scope') || 'service').toLowerCase();
+
+    let jobFilter: string;
+    if (scope === 'barber') {
+      jobFilter = `(
+        e.Job = N'حلاق'
+        OR LOWER(LTRIM(RTRIM(ISNULL(e.Job, N'')))) IN (N'barber')
+      )`;
+    } else if (scope === 'other') {
+      // مساعدين، إداريين، وأي وظيفة أخرى — باستثناء الحلاقين
+      jobFilter = `(
+        e.Job IS NULL
+        OR (
+          e.Job <> N'حلاق'
+          AND LOWER(LTRIM(RTRIM(e.Job))) NOT IN (N'barber')
+          AND e.Job NOT LIKE N'%حلاق%'
+        )
+      )`;
+    } else {
+      // service (default)
+      jobFilter = `e.Job IN (N'حلاق', N'مساعد')`;
+    }
+
     const db = await getPool();
     const result = await db.request().query(`
       SELECT 
@@ -19,7 +47,7 @@ export async function GET() {
         GROUP BY EmpID
       ) sales ON e.EmpID = sales.EmpID
       WHERE e.isActive = 1
-        AND e.Job IN (N'حلاق', N'مساعد')
+        AND ${jobFilter}
       ORDER BY ISNULL(sales.SalesCount, 0) DESC, e.EmpName
     `);
     return NextResponse.json(result.recordset);

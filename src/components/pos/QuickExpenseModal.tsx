@@ -9,7 +9,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
-import { CalendarDays, Clock3, Loader2, Lock, TrendingDown, X } from 'lucide-react';
+import { CalendarDays, Clock3, Loader2, TrendingDown, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
@@ -22,14 +22,28 @@ import ExpenseReceiptPopup, {
 } from '@/components/expenses/ExpenseReceiptPopup';
 import type { PaymentMethod } from '@/lib/types';
 
+interface QuickExpenseCompleteInfo {
+  advanceWhatsApp?: boolean;
+  ledgerDualWrite?: boolean;
+}
+
 interface QuickExpenseModalProps {
   open: boolean;
   onClose: () => void;
-  onExpenseComplete?: () => void;
+  onExpenseComplete?: (info?: QuickExpenseCompleteInfo) => void;
 }
 
 function getCairoDateString(date = new Date()): string {
   return date.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+}
+
+/** Yesterday relative to a YYYY-MM-DD calendar day (Cairo date string). */
+function getPreviousDateString(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  if (!year || !month || !day) return dateStr;
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  utc.setUTCDate(utc.getUTCDate() - 1);
+  return utc.toISOString().slice(0, 10);
 }
 
 function getCurrentTimeValue(date = new Date()): string {
@@ -169,6 +183,8 @@ export default function QuickExpenseModal({
     category: false,
     payment: false,
   });
+  const [allowedDateMin, setAllowedDateMin] = useState('');
+  const [allowedDateMax, setAllowedDateMax] = useState('');
 
   const resetForm = useCallback(() => {
     setForm(INITIAL_FORM_STATE);
@@ -232,9 +248,13 @@ export default function QuickExpenseModal({
     if (!open) return;
 
     const now = new Date();
+    const today = getCairoDateString(now);
+    const yesterday = getPreviousDateString(today);
+    setAllowedDateMin(yesterday);
+    setAllowedDateMax(today);
     setForm({
       ...INITIAL_FORM_STATE,
-      expenseDate: getCairoDateString(now),
+      expenseDate: today,
       expenseTime: getCurrentTimeValue(now),
     });
     setSubmitError(null);
@@ -291,12 +311,20 @@ export default function QuickExpenseModal({
     (method) => method.ID === form.paymentMethodId,
   );
 
+  const dateAllowed =
+    !!form.expenseDate &&
+    !!allowedDateMin &&
+    !!allowedDateMax &&
+    form.expenseDate >= allowedDateMin &&
+    form.expenseDate <= allowedDateMax;
+
   const canSubmit =
     !amountError &&
     parsedAmount !== null &&
     parsedAmount > 0 &&
     form.categoryId !== null &&
     form.paymentMethodId !== null &&
+    dateAllowed &&
     !submitting &&
     !categoriesLoading &&
     !paymentMethodsLoading;
@@ -317,13 +345,20 @@ export default function QuickExpenseModal({
 
     const currentAmount = parseAmount(form.amount);
     const amountValidation = getAmountValidationError(form.amount);
+    const dateAllowed =
+      !!form.expenseDate &&
+      !!allowedDateMin &&
+      !!allowedDateMax &&
+      form.expenseDate >= allowedDateMin &&
+      form.expenseDate <= allowedDateMax;
+
     const readyToSubmit =
       !amountValidation &&
       currentAmount !== null &&
       currentAmount > 0 &&
       form.categoryId !== null &&
       form.paymentMethodId !== null &&
-      !!form.expenseDate;
+      dateAllowed;
 
     if (!readyToSubmit || submittingRef.current) return;
 
@@ -332,17 +367,31 @@ export default function QuickExpenseModal({
     setSubmitError(null);
 
     try {
-      const response = await fetch('/api/expenses/past-date', {
+      const isToday = form.expenseDate === allowedDateMax;
+      const notes = form.notes.trim() || undefined;
+
+      // Today → same /api/expenses path as /expenses (shift + advance WhatsApp)
+      // Yesterday → past-date API (also sends advance WhatsApp)
+      const response = await fetch(isToday ? '/api/expenses' : '/api/expenses/past-date', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          invDate: form.expenseDate,
-          invTime: form.expenseTime || '12:00',
-          amount: currentAmount,
-          expINID: form.categoryId,
-          paymentMethodId: form.paymentMethodId,
-          notes: form.notes.trim() || undefined,
-        }),
+        body: JSON.stringify(
+          isToday
+            ? {
+                expINID: form.categoryId,
+                amount: currentAmount,
+                paymentMethodId: form.paymentMethodId,
+                notes,
+              }
+            : {
+                invDate: form.expenseDate,
+                invTime: form.expenseTime || '12:00',
+                amount: currentAmount,
+                expINID: form.categoryId,
+                paymentMethodId: form.paymentMethodId,
+                notes,
+              },
+        ),
       });
 
       const data = await response.json().catch(() => ({}));
@@ -350,11 +399,27 @@ export default function QuickExpenseModal({
         throw new Error(data.error || data.message || 'فشل إضافة المصروف');
       }
 
-      const record = data.data as PastDateExpenseRecord | undefined;
       const categoryName =
-        categories.find((category) => category.ExpINID === form.categoryId)?.CatName ?? '';
+        (isToday ? data.catName : undefined) ||
+        categories.find((category) => category.ExpINID === form.categoryId)?.CatName ||
+        '';
       const paymentMethodName =
         paymentMethods.find((method) => method.ID === form.paymentMethodId)?.Name ?? null;
+      const ledgerDualWrite = Boolean(data.ledgerDualWrite);
+      const advanceWhatsApp = Boolean(data.advanceWhatsApp);
+
+      const record: PastDateExpenseRecord | undefined = isToday
+        ? data.invID
+          ? {
+              invID: data.invID as number,
+              invDate: form.expenseDate,
+              invTime: form.expenseTime,
+              Amount: Number(data.amount ?? currentAmount),
+              Notes: notes,
+              CategoryName: categoryName,
+            }
+          : undefined
+        : (data.data as PastDateExpenseRecord | undefined);
 
       if (record?.invID) {
         setReceiptExpense(
@@ -364,12 +429,12 @@ export default function QuickExpenseModal({
             currentAmount,
             categoryName,
             paymentMethodName,
-            Boolean(data.ledgerDualWrite),
+            ledgerDualWrite,
           ),
         );
       }
 
-      onExpenseComplete?.();
+      onExpenseComplete?.({ advanceWhatsApp, ledgerDualWrite });
       resetForm();
       onClose();
     } catch (error) {
@@ -378,7 +443,7 @@ export default function QuickExpenseModal({
       submittingRef.current = false;
       setSubmitting(false);
     }
-  }, [form, categories, paymentMethods, onClose, onExpenseComplete, resetForm]);
+  }, [form, allowedDateMin, allowedDateMax, categories, paymentMethods, onClose, onExpenseComplete, resetForm]);
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -457,7 +522,7 @@ export default function QuickExpenseModal({
                   إضافة مصروف فوري
                 </h2>
                 <p className="mt-0.5 text-sm text-muted-foreground">
-                  تسجيل مصروف لليوم الحالي
+                  تسجيل مصروف لليوم أو يوم أمس
                 </p>
               </div>
             </div>
@@ -484,9 +549,40 @@ export default function QuickExpenseModal({
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <CalendarDays className="h-3.5 w-3.5" />
                   <span>التاريخ</span>
-                  <Lock className="h-3 w-3 opacity-70" aria-hidden />
                 </div>
-                <p className="mt-1 text-sm font-medium text-foreground">
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    disabled={submitting || !allowedDateMax}
+                    onClick={() =>
+                      setForm((current) => ({ ...current, expenseDate: allowedDateMax }))
+                    }
+                    className={cn(
+                      'flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors',
+                      form.expenseDate === allowedDateMax
+                        ? 'border-primary/40 bg-primary/10 text-primary'
+                        : 'border-border bg-surface text-muted-foreground hover:bg-surface-muted hover:text-foreground',
+                    )}
+                  >
+                    اليوم
+                  </button>
+                  <button
+                    type="button"
+                    disabled={submitting || !allowedDateMin}
+                    onClick={() =>
+                      setForm((current) => ({ ...current, expenseDate: allowedDateMin }))
+                    }
+                    className={cn(
+                      'flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors',
+                      form.expenseDate === allowedDateMin
+                        ? 'border-primary/40 bg-primary/10 text-primary'
+                        : 'border-border bg-surface text-muted-foreground hover:bg-surface-muted hover:text-foreground',
+                    )}
+                  >
+                    أمس
+                  </button>
+                </div>
+                <p className="mt-1.5 text-sm font-medium text-foreground">
                   {formatDisplayDate(form.expenseDate)}
                 </p>
               </div>
@@ -500,7 +596,7 @@ export default function QuickExpenseModal({
                 </p>
               </div>
               <p className="sm:col-span-2 text-xs text-muted-foreground">
-                تاريخ اليوم الحالي — غير قابل للتعديل من نقطة البيع
+                متاح لليوم الحالي أو يوم أمس فقط
               </p>
             </section>
 

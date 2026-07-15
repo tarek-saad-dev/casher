@@ -12,6 +12,8 @@ import type {
   FirstTimeWhatsAppPayload,
   EmployeeSaleWhatsAppPayload,
   EmployeeAdvanceWhatsAppPayload,
+  QuickMessageWhatsAppPayload,
+  EmployeeDailyReportWhatsAppPayload,
 } from './types';
 
 export interface SalePayloadInput {
@@ -60,6 +62,38 @@ export interface EmployeeAdvancePayloadInput {
   paymentMethod?: string;
   notes?: string;
   branchName?: string;
+}
+
+export interface QuickMessagePayloadInput {
+  phone: string;
+  customerName?: string;
+  message?: string;
+  branchName?: string;
+}
+
+export interface EmployeeDailyReportPayloadInput {
+  phone: string;
+  employeeName: string;
+  message: string;
+  workDate: string;
+  ledgerBalance: number;
+  branchName?: string;
+  checkIn?: string | null;
+  checkOut?: string | null;
+  actualHours?: number | null;
+  scheduledHours?: number | null;
+  statusLabelAr?: string | null;
+  lateMinutes?: number | null;
+  baseWage?: number | null;
+  fullDayBase?: number | null;
+  isPartialDay?: boolean;
+  baseWageNoteAr?: string | null;
+  targetSales?: number | null;
+  targetAmount?: number | null;
+  deductions?: number | null;
+  advances?: number | null;
+  dayNet?: number | null;
+  payrollMonth?: string;
 }
 
 export function buildSalePayload(input: SalePayloadInput): SaleWhatsAppPayload {
@@ -161,4 +195,52 @@ export function resolveEmployeeWhatsAppPhone(
   mobile: string | null | undefined,
 ): string | null {
   return whatsApp?.trim() || mobile?.trim() || null;
+}
+
+export function buildQuickMessagePayload(
+  input: QuickMessagePayloadInput,
+): QuickMessageWhatsAppPayload {
+  const cfg = getConfig();
+  const message = (input.message ?? cfg.defaultQuickMessage).trim();
+
+  return {
+    type: 'quick_message',
+    phone: input.phone.trim(),
+    customerName: (input.customerName ?? 'عميل').trim() || 'عميل',
+    message,
+    branchName: input.branchName ?? cfg.defaultBranchName,
+  };
+}
+
+export function buildEmployeeDailyReportPayload(
+  input: EmployeeDailyReportPayloadInput,
+): EmployeeDailyReportWhatsAppPayload {
+  const cfg = getConfig();
+
+  return {
+    type: 'employee_daily_report',
+    phone: input.phone.trim(),
+    customerName: input.employeeName.trim(),
+    message: input.message.trim(),
+    branchName: input.branchName ?? cfg.defaultBranchName,
+    workDate: input.workDate,
+    employeeName: input.employeeName.trim(),
+    checkIn: input.checkIn ?? null,
+    checkOut: input.checkOut ?? null,
+    actualHours: input.actualHours ?? null,
+    scheduledHours: input.scheduledHours ?? null,
+    statusLabelAr: input.statusLabelAr ?? null,
+    lateMinutes: input.lateMinutes ?? null,
+    baseWage: input.baseWage ?? null,
+    fullDayBase: input.fullDayBase ?? null,
+    isPartialDay: input.isPartialDay ?? false,
+    baseWageNoteAr: input.baseWageNoteAr ?? null,
+    targetSales: input.targetSales ?? null,
+    targetAmount: input.targetAmount ?? null,
+    deductions: input.deductions ?? null,
+    advances: input.advances ?? null,
+    dayNet: input.dayNet ?? null,
+    ledgerBalance: input.ledgerBalance,
+    payrollMonth: input.payrollMonth,
+  };
 }

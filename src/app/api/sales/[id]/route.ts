@@ -110,6 +110,8 @@ export async function PUT(
     if (!existingSnap.recordset.length)
       return NextResponse.json({ error: 'الفاتورة غير موجودة' }, { status: 404 });
 
+    let targetRecalcScopes: import('@/lib/payroll/employee-target/employee-target-recalc-scope').TargetRecalcScope[] = [];
+
     const auditResult = await executeAuditedAction({
       actionType: 'edit_invoice',
       user: sessionUser,
@@ -146,6 +148,19 @@ export async function PUT(
         paymentAllocations: body.paymentAllocations,
       }, userID),
       loadNewData: async (transaction) => getInvoiceSnapshot(transaction, invID) as unknown as Record<string, unknown> | null,
+      beforeCommit: async ({ transaction, oldData, newData }) => {
+        const { enqueueTargetRecalcFromInvoiceSnapshots } = await import(
+          '@/lib/payroll/employee-target/employee-target-invoice-sync'
+        );
+        targetRecalcScopes = await enqueueTargetRecalcFromInvoiceSnapshots({
+          transaction,
+          beforeSnapshot: oldData,
+          afterSnapshot: newData,
+          reason: 'invoice_update',
+          sourceType: 'TblinvServHead',
+          sourceRef: String(invID),
+        });
+      },
     });
 
     // Recalculate loyalty points after the audited transaction commits
@@ -163,6 +178,17 @@ export async function PUT(
       } catch (loyaltyErr) {
         console.error('[api/sales/id] Loyalty recalc error:', loyaltyErr);
       }
+    }
+
+    // Best-effort target processing — invoice already committed; durable request remains if this fails
+    if (targetRecalcScopes.length > 0) {
+      const { tryProcessAfterInvoiceCommit } = await import(
+        '@/lib/payroll/employee-target/employee-target-invoice-sync'
+      );
+      void tryProcessAfterInvoiceCommit({
+        scopes: targetRecalcScopes,
+        actorUserId: userID,
+      });
     }
 
     return NextResponse.json({
@@ -205,6 +231,8 @@ export async function DELETE(
       );
     }
 
+    let targetRecalcScopes: import('@/lib/payroll/employee-target/employee-target-recalc-scope').TargetRecalcScope[] = [];
+
     const auditResult = await executeAuditedAction({
       actionType: 'delete_invoice',
       user: session,
@@ -216,7 +244,30 @@ export async function DELETE(
       loadOldData: async (transaction) => getInvoiceSnapshot(transaction, invID) as unknown as Record<string, unknown> | null,
       execute: async (transaction) => deleteInvoice(transaction, invID),
       loadNewData: async () => null,
+      beforeCommit: async ({ transaction, oldData }) => {
+        const { enqueueTargetRecalcFromInvoiceSnapshots } = await import(
+          '@/lib/payroll/employee-target/employee-target-invoice-sync'
+        );
+        targetRecalcScopes = await enqueueTargetRecalcFromInvoiceSnapshots({
+          transaction,
+          beforeSnapshot: oldData,
+          afterSnapshot: null,
+          reason: 'invoice_delete',
+          sourceType: 'TblinvServHead',
+          sourceRef: String(invID),
+        });
+      },
     });
+
+    if (targetRecalcScopes.length > 0) {
+      const { tryProcessAfterInvoiceCommit } = await import(
+        '@/lib/payroll/employee-target/employee-target-invoice-sync'
+      );
+      void tryProcessAfterInvoiceCommit({
+        scopes: targetRecalcScopes,
+        actorUserId: session.UserID,
+      });
+    }
 
     return NextResponse.json({
       success: true,

@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
-import { sqlTimeToHHmm, calcLateMinutes, calcEarlyLeaveMinutes } from "@/lib/timeUtils";
-
-function formatTime(val: any): string | null {
-  return sqlTimeToHHmm(val);
-}
+import { calcLateMinutes, calcEarlyLeaveMinutes } from "@/lib/timeUtils";
+import { normalizeBreaksInput } from "@/lib/hr/attendance-breaks";
+import {
+  ensureAttendanceBreakSchema,
+  replaceAttendanceBreaks,
+} from "@/lib/hr/attendance-breaks-db";
+import { syncBlockRangesFromBreaks } from "@/lib/hr/attendance-break-schedule-sync";
 
 function timeToDate(timeStr: string | null | undefined): Date | null {
   if (!timeStr || timeStr.trim() === "") return null;
@@ -79,14 +81,22 @@ export async function PUT(req: NextRequest) {
           { status: 400 }
         );
       }
+      if (item.Breaks !== undefined) {
+        const parsed = normalizeBreaksInput(item.Breaks);
+        if (parsed.error) {
+          return NextResponse.json(
+            { error: `${parsed.error} (موظف ${item.EmpID})` },
+            { status: 400 },
+          );
+        }
+        item._parsedBreaks = parsed.breaks;
+      }
     }
 
     const db = await getPool();
-    const targetDate = new Date(WorkDate + "T00:00:00");
-    const dayOfWeek = targetDate.getDay();
+    await ensureAttendanceBreakSchema(db);
 
-    // Get DefaultCheckInTime / DefaultCheckOutTime from TblEmp for all employees
-    const empIds = items.map((i: any) => Number(i.EmpID)).join(",");
+    const empIds = items.map((i: { EmpID: number }) => Number(i.EmpID)).join(",");
     const empDefaults = await db
       .request()
       .query(`
@@ -108,6 +118,7 @@ export async function PUT(req: NextRequest) {
 
     const transaction = new sql.Transaction(db);
     await transaction.begin();
+    const txDb = { request: () => new sql.Request(transaction) };
 
     let insertedCount = 0;
     let updatedCount = 0;
@@ -135,19 +146,25 @@ export async function PUT(req: NextRequest) {
           }
         }
 
-        // Check existing
-        const existReq = new sql.Request(transaction);
-        const existing = await existReq
+        const clearBreaks =
+          finalStatus === "Absent" ||
+          finalStatus === "DayOff" ||
+          (!checkIn && !checkOut);
+
+        const existing = await txDb
+          .request()
           .input("empId", sql.Int, item.EmpID)
           .input("workDate", sql.Date, WorkDate)
           .query(
             "SELECT ID FROM dbo.TblEmpAttendance WHERE EmpID = @empId AND WorkDate = @workDate"
           );
 
+        let attendanceId: number;
         if (existing.recordset.length > 0) {
-          const updateReq = new sql.Request(transaction);
-          await updateReq
-            .input("id", sql.Int, existing.recordset[0].ID)
+          attendanceId = existing.recordset[0].ID as number;
+          await txDb
+            .request()
+            .input("id", sql.Int, attendanceId)
             .input("checkInTime", sql.Time, timeToDate(checkIn))
             .input("checkOutTime", sql.Time, timeToDate(checkOut))
             .input("status", sql.NVarChar(50), finalStatus)
@@ -173,8 +190,8 @@ export async function PUT(req: NextRequest) {
             `);
           updatedCount++;
         } else {
-          const insertReq = new sql.Request(transaction);
-          await insertReq
+          const insertResult = await txDb
+            .request()
             .input("empId", sql.Int, item.EmpID)
             .input("workDate", sql.Date, WorkDate)
             .input("checkInTime", sql.Time, timeToDate(checkIn))
@@ -189,10 +206,27 @@ export async function PUT(req: NextRequest) {
             .query(`
               INSERT INTO dbo.TblEmpAttendance
                 (EmpID, WorkDate, CheckInTime, CheckOutTime, Status, LateMinutes, EarlyLeaveMinutes, Notes, ScheduledStartTime, ScheduledEndTime, CreatedByUserID, CreatedAt)
+              OUTPUT INSERTED.ID
               VALUES
                 (@empId, @workDate, @checkInTime, @checkOutTime, @status, @lateMinutes, @earlyLeaveMinutes, @notes, @scheduledStart, @scheduledEnd, @createdBy, GETDATE())
             `);
+          attendanceId = insertResult.recordset[0].ID as number;
           insertedCount++;
+        }
+
+        if (clearBreaks || item.Breaks !== undefined) {
+          const breaksToSave = clearBreaks ? [] : (item._parsedBreaks ?? []);
+          await replaceAttendanceBreaks(
+            txDb,
+            attendanceId,
+            breaksToSave,
+          );
+          await syncBlockRangesFromBreaks(
+            txDb,
+            Number(item.EmpID),
+            WorkDate,
+            breaksToSave,
+          );
         }
       }
 

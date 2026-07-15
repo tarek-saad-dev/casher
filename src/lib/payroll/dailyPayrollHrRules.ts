@@ -386,6 +386,11 @@ export function buildPayrollNotesSql(notesPrefix: string, actualHoursExpr: strin
         ELSE N'بالساعة: ' + ${hourlyRateText}
           + N' x ' + ${hoursText} + N'h'
       END
+    + CASE
+        WHEN ISNULL(a.BreakMinutesTotal, 0) > 0
+        THEN N' | مستقطع: ' + CONVERT(NVARCHAR(16), a.BreakMinutesTotal) + N'د'
+        ELSE N''
+      END
     + N' | ' + ISNULL(a.Status, N'')
   `;
 }
