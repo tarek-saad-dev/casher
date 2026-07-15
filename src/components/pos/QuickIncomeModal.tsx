@@ -2,10 +2,15 @@
 
 import PastDateIncomeModal from '@/components/treasury/PastDateIncomeModal';
 
+export interface QuickIncomeCompleteInfo {
+  advanceWhatsApp?: boolean;
+  ledgerDualWrite?: boolean;
+}
+
 interface QuickIncomeModalProps {
   open: boolean;
   onClose: () => void;
-  onIncomeComplete?: () => void;
+  onIncomeComplete?: (info?: QuickIncomeCompleteInfo) => void;
 }
 
 export default function QuickIncomeModal({

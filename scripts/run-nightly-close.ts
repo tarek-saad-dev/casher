@@ -136,13 +136,14 @@ async function runOnce(opts: ReturnType<typeof parseArgs>) {
 
 async function watch() {
   console.log(
-    `[run-nightly-close] watching for 01:00 Africa/Cairo → ${BASE_URL}${ENDPOINT}`,
+    `[run-nightly-close] watching for 01:00–01:05 Africa/Cairo → ${BASE_URL}${ENDPOINT}`,
   );
   let lastFiredKey: string | null = null;
 
   for (;;) {
     const clock = getCairoClockParts();
-    if (clock.hour === 1 && clock.minute === 0) {
+    // Forgiving window: fires once per Cairo calendar night if process is up by 01:05
+    if (clock.hour === 1 && clock.minute <= 5) {
       const key = `${clock.date}-01:00`;
       if (lastFiredKey !== key) {
         lastFiredKey = key;

@@ -21,7 +21,7 @@ interface IncomeCategory {
 interface PastDateIncomeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onIncomeComplete: () => void;
+  onIncomeComplete: (info?: { advanceWhatsApp?: boolean; ledgerDualWrite?: boolean }) => void;
   defaultDate?: string;
   title?: string;
   subtitle?: string;
@@ -134,7 +134,10 @@ export default function PastDateIncomeModal({
       const result = await response.json();
       console.log('Income added:', result);
 
-      onIncomeComplete();
+      onIncomeComplete({
+        advanceWhatsApp: Boolean(result.advanceWhatsApp),
+        ledgerDualWrite: Boolean(result.ledgerDualWrite),
+      });
       onClose();
       // Reset form
       setIncomeDate('');

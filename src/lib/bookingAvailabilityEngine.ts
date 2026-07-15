@@ -15,9 +15,7 @@ import {
   getDefaultDuration,
   type Interval,
 } from '@/lib/queueEstimateEngine';
-import { calculateServicePlanDuration } from '@/lib/servicePlan';
-import { getBarberWorkingWindow } from '@/lib/barberAvailability';
-import { getAttendanceStatus } from '@/lib/availabilityEngine';
+import { calculateServicePlanDuration, type ServicePlanDuration } from '@/lib/servicePlan';
 import {
   loadOverridesForDate,
   applyOverrides,
@@ -26,6 +24,72 @@ import {
 } from '@/lib/scheduleOverrides';
 import { intervalsOverlap } from '@/lib/scheduleIntervals';
 import { getCairoBusinessDate } from '@/lib/businessDate';
+import { createStageTimer } from '@/lib/devStageTiming';
+
+function fmtScheduleTime(v: unknown): string | null {
+  if (!v) return null;
+  if (typeof v === 'string') return v.slice(0, 5);
+  if (v instanceof Date) {
+    return `${String(v.getUTCHours()).padStart(2, '0')}:${String(v.getUTCMinutes()).padStart(2, '0')}`;
+  }
+  return null;
+}
+
+/** Batch weekly schedule for many barbers (one query). */
+async function loadWorkingWindowsBatch(
+  db: Awaited<ReturnType<typeof getPool>>,
+  empIds: number[],
+  dayOfWeek: number,
+): Promise<Map<number, { startTime: string | null; endTime: string | null; isWorkingDay: boolean }>> {
+  const map = new Map<number, { startTime: string | null; endTime: string | null; isWorkingDay: boolean }>();
+  if (!empIds.length) return map;
+  try {
+    const res = await db
+      .request()
+      .input('dow', sql.TinyInt, dayOfWeek)
+      .query(`
+        SELECT EmpID, IsWorkingDay, StartTime, EndTime
+        FROM dbo.TblEmpWorkSchedule
+        WHERE DayOfWeek = @dow AND EmpID IN (${empIds.join(',')})
+      `);
+    for (const row of res.recordset) {
+      map.set(row.EmpID as number, {
+        isWorkingDay: !!row.IsWorkingDay,
+        startTime: fmtScheduleTime(row.StartTime),
+        endTime: fmtScheduleTime(row.EndTime),
+      });
+    }
+  } catch {
+    /* empty */
+  }
+  return map;
+}
+
+/** Attendance absences for a date (one query). */
+async function loadAbsentEmpIds(
+  db: Awaited<ReturnType<typeof getPool>>,
+  empIds: number[],
+  dateStr: string,
+): Promise<Set<number>> {
+  const absent = new Set<number>();
+  if (!empIds.length) return absent;
+  try {
+    const res = await db
+      .request()
+      .input('workDate', sql.Date, dateStr)
+      .query(`
+        SELECT EmpID
+        FROM dbo.TblEmpAttendance
+        WHERE WorkDate = @workDate
+          AND EmpID IN (${empIds.join(',')})
+          AND Status = N'Absent'
+      `);
+    for (const row of res.recordset) absent.add(row.EmpID as number);
+  } catch {
+    /* empty */
+  }
+  return absent;
+}
 
 export type BookingSlotReasonCode =
   | 'insufficient_continuous_time'
@@ -160,6 +224,8 @@ async function buildBarberContexts(args: {
   empId?: number | null;
   source?: 'public' | 'operations' | 'admin';
   durationOverride?: number;
+  /** Preloaded service plan — skips a second TblPro round-trip. */
+  servicePlan?: ServicePlanDuration;
 }): Promise<{
   contexts: BarberCtx[];
   totalDuration: number;
@@ -171,10 +237,14 @@ async function buildBarberContexts(args: {
   isToday: boolean;
   timezone: string;
   effectiveMinNotice: number;
+  servicePlan: ServicePlanDuration | null;
 }> {
-  const { date, serviceIds, mode, empId, source = 'public', durationOverride } = args;
+  const timer = createStageTimer();
+  const { date, serviceIds, mode, empId, source = 'public', durationOverride, servicePlan } = args;
   const settings = await getPublicSettings();
+  timer.mark('settingsMs');
   const db = await getPool();
+  timer.mark('poolMs');
   const timezone = settings.timezone || 'Africa/Cairo';
   const isInternalSource = source === 'operations' || source === 'admin';
   const effectiveMinNotice = isInternalSource ? 0 : settings.minNoticeMinutes;
@@ -184,95 +254,110 @@ async function buildBarberContexts(args: {
   const isToday = date === todayBusinessDate;
 
   const systemDefault = settings.defaultServiceDurationMinutes || 30;
-  const defaultDur = await getDefaultDuration(db);
+  const defaultDur = systemDefault || (await getDefaultDuration(db));
   let totalDuration = durationOverride ?? systemDefault;
   let durationSource: string = durationOverride ? 'OVERRIDE' : 'SYSTEM_DEFAULT';
+  let resolvedPlan: ServicePlanDuration | null = servicePlan ?? null;
 
   if (!durationOverride && serviceIds.length > 0) {
     try {
-      const plan = await calculateServicePlanDuration(serviceIds);
-      totalDuration = plan.totalDurationMinutes;
+      resolvedPlan = servicePlan ?? (await calculateServicePlanDuration(serviceIds));
+      totalDuration = resolvedPlan.totalDurationMinutes;
       durationSource = 'SERVICE_SUM';
-      if (process.env.NODE_ENV !== 'production' && (source === 'operations' || source === 'admin')) {
-        console.log('[bookingAvailability] service plan duration', {
-          serviceIds,
-          totalDurationMinutes: plan.totalDurationMinutes,
-          services: plan.services.map((s) => ({ id: s.serviceId, name: s.serviceName, min: s.durationMinutes })),
-        });
-      }
     } catch (err) {
       console.error('[bookingAvailability] calculateServicePlanDuration failed', { serviceIds, err });
       throw err;
     }
   }
+  timer.mark('servicesMs');
 
   const barberIds: number[] =
     mode === 'specific' && empId ? [empId] : await getAllBarberIds(db);
+  timer.mark('barbersMs');
 
   const contexts: BarberCtx[] = [];
   if (barberIds.length) {
-    const nameMap = await getBarberNames(db, barberIds);
-    const dayOffSet = await loadDayOffSet(db, barberIds, date, isToday);
-    const overridesMap = await loadOverridesForDate(db, barberIds, date);
+    const dayOfWeek = new Date(`${date}T12:00:00Z`).getDay();
+    const [nameMap, dayOffSet, overridesMap, windowsMap, absentSet] = await Promise.all([
+      getBarberNames(db, barberIds),
+      loadDayOffSet(db, barberIds, date, isToday),
+      loadOverridesForDate(db, barberIds, date),
+      loadWorkingWindowsBatch(db, barberIds, dayOfWeek),
+      isToday ? loadAbsentEmpIds(db, barberIds, date) : Promise.resolve(new Set<number>()),
+    ]);
+    timer.mark('staticBatchMs');
 
-    for (const id of barberIds) {
-      if (dayOffSet.has(id)) continue;
+    const eligible = barberIds.filter((id) => !dayOffSet.has(id) && !absentSet.has(id));
 
-      if (isToday) {
-        const attendance = await getAttendanceStatus(id, date);
-        if (attendance?.status === 'Absent') continue;
-      }
+    const built = await Promise.all(
+      eligible.map(async (id): Promise<BarberCtx | null> => {
+        const baseWindow = windowsMap.get(id) ?? {
+          isWorkingDay: false,
+          startTime: null,
+          endTime: null,
+        };
+        const base =
+          baseWindow.isWorkingDay && baseWindow.startTime && baseWindow.endTime
+            ? { isWorking: true, start: baseWindow.startTime, end: baseWindow.endTime }
+            : { isWorking: false, start: '00:00', end: '00:00' };
 
-      const dateObj = new Date(`${date}T12:00:00Z`);
-      const baseWindow = await getBarberWorkingWindow(id, dateObj);
-      const base = baseWindow.isWorkingDay && baseWindow.startTime && baseWindow.endTime
-        ? { isWorking: true, start: baseWindow.startTime, end: baseWindow.endTime }
-        : { isWorking: false, start: '00:00', end: '00:00' };
+        const effSched = applyOverrides(id, date, base, overridesMap.get(id) ?? []);
+        if (!effSched.isWorking) return null;
 
-      const effSched = applyOverrides(id, date, base, overridesMap.get(id) ?? []);
-      if (!effSched.isWorking) continue;
+        const shiftStartMs = salonDateTimeToMs(date, effSched.start, timezone);
+        const isOvernight = hhmmToMinutes(effSched.end) <= hhmmToMinutes(effSched.start);
+        const shiftEndMs = isOvernight
+          ? salonDateTimeToMs(nextDate(date), effSched.end, timezone)
+          : salonDateTimeToMs(date, effSched.end, timezone);
 
-      const shiftStartMs = salonDateTimeToMs(date, effSched.start, timezone);
-      const isOvernight = hhmmToMinutes(effSched.end) <= hhmmToMinutes(effSched.start);
-      const shiftEndMs = isOvernight
-        ? salonDateTimeToMs(nextDate(date), effSched.end, timezone)
-        : salonDateTimeToMs(date, effSched.end, timezone);
+        const nextDayStr = isOvernight ? nextDate(date) : null;
+        const [qIntervals, bIntervals, qIntervalsNext, bIntervalsNext] = await Promise.all([
+          buildQueueIntervals(db, id, date, now, defaultDur, undefined, {
+            filterStale: true,
+            graceMinutes: 30,
+            debugContext: 'booking-availability',
+          }),
+          buildBookingIntervals(db, id, date, defaultDur),
+          nextDayStr
+            ? buildQueueIntervals(db, id, nextDayStr, now, defaultDur, undefined, {
+                filterStale: true,
+                graceMinutes: 30,
+                debugContext: 'booking-availability-next-day',
+              })
+            : Promise.resolve<Interval[]>([]),
+          nextDayStr ? buildBookingIntervals(db, id, nextDayStr, defaultDur) : Promise.resolve<Interval[]>([]),
+        ]);
 
-      const nextDayStr = isOvernight ? nextDate(date) : null;
-      const [qIntervals, bIntervals, qIntervalsNext, bIntervalsNext] = await Promise.all([
-        buildQueueIntervals(db, id, date, now, defaultDur, undefined, {
-          filterStale: true,
-          graceMinutes: 30,
-          debugContext: 'booking-availability',
-        }),
-        buildBookingIntervals(db, id, date, defaultDur),
-        nextDayStr
-          ? buildQueueIntervals(db, id, nextDayStr, now, defaultDur, undefined, {
-              filterStale: true,
-              graceMinutes: 30,
-              debugContext: 'booking-availability-next-day',
-            })
-          : Promise.resolve<Interval[]>([]),
-        nextDayStr ? buildBookingIntervals(db, id, nextDayStr, defaultDur) : Promise.resolve<Interval[]>([]),
-      ]);
+        const inShiftWindow = (iv: Interval) =>
+          iv.start.getTime() < shiftEndMs && iv.end.getTime() > shiftStartMs;
+        const nextDayBusy = nextDayStr
+          ? [...qIntervalsNext, ...bIntervalsNext].filter(inShiftWindow)
+          : [];
 
-      const inShiftWindow = (iv: Interval) => iv.start.getTime() < shiftEndMs && iv.end.getTime() > shiftStartMs;
-      const nextDayBusy = nextDayStr
-        ? [...qIntervalsNext, ...bIntervalsNext].filter(inShiftWindow)
-        : [];
+        return {
+          empId: id,
+          empName: nameMap[id] ?? '',
+          durationMinutes: totalDuration,
+          busy: [...qIntervals, ...bIntervals, ...nextDayBusy],
+          effSched,
+          shiftStartMs,
+          shiftEndMs,
+          dayOff: false,
+        };
+      }),
+    );
 
-      contexts.push({
-        empId: id,
-        empName: nameMap[id] ?? '',
-        durationMinutes: totalDuration,
-        busy: [...qIntervals, ...bIntervals, ...nextDayBusy],
-        effSched,
-        shiftStartMs,
-        shiftEndMs,
-        dayOff: false,
-      });
+    for (const ctx of built) {
+      if (ctx) contexts.push(ctx);
     }
+    timer.mark('busyParallelMs');
   }
+
+  timer.finish('[buildBarberContexts perf]', {
+    mode,
+    barberCount: barberIds.length,
+    contextCount: contexts.length,
+  });
 
   return {
     contexts,
@@ -285,6 +370,7 @@ async function buildBarberContexts(args: {
     isToday,
     timezone,
     effectiveMinNotice,
+    servicePlan: resolvedPlan,
   };
 }
 
@@ -731,8 +817,26 @@ export async function validateBookingSlot(args: {
   mode: 'nearest' | 'specific';
   empId?: number | null;
   source?: 'public' | 'operations' | 'admin';
+  /** Preloaded services — avoids duplicate TblPro query. */
+  servicePlan?: ServicePlanDuration;
+  /**
+   * When true and the requested slot is available, skip the expensive next-slot grid.
+   * Create path uses this; conflict handlers can compute nextAvailable separately.
+   */
+  skipNextAvailableWhenOk?: boolean;
 }): Promise<BookingSlotValidation> {
-  const { date, time, dayOffset = 0, serviceIds, durationOverride, mode, empId, source = 'public' } = args;
+  const {
+    date,
+    time,
+    dayOffset = 0,
+    serviceIds,
+    durationOverride,
+    mode,
+    empId,
+    source = 'public',
+    servicePlan,
+    skipNextAvailableWhenOk = false,
+  } = args;
 
   const {
     contexts,
@@ -749,6 +853,7 @@ export async function validateBookingSlot(args: {
     empId,
     source,
     durationOverride,
+    servicePlan,
   });
 
   const minNoticeMs = effectiveMinNotice * 60_000;
@@ -798,35 +903,39 @@ export async function validateBookingSlot(args: {
     }
   }
 
-  // Find the next available slot as a fallback (using the same 15-min grid).
-  const slotInterval = settings.slotIntervalMinutes || 15;
-  const slotTimes: Array<[string, 0 | 1]> = [];
-  for (const ctx of contexts) {
-    if (!ctx.effSched) continue;
-    for (const entry of generateSlotEntries(ctx.effSched.start, ctx.effSched.end, slotInterval, totalDuration)) {
-      if (!slotTimes.some(([t, d]) => t === entry.time && d === entry.dayOffset)) {
-        slotTimes.push([entry.time, entry.dayOffset]);
+  const skipNext =
+    skipNextAvailableWhenOk && !!plan?.available;
+
+  if (!skipNext) {
+    const slotInterval = settings.slotIntervalMinutes || 15;
+    const slotTimes: Array<[string, 0 | 1]> = [];
+    for (const ctx of contexts) {
+      if (!ctx.effSched) continue;
+      for (const entry of generateSlotEntries(ctx.effSched.start, ctx.effSched.end, slotInterval, totalDuration)) {
+        if (!slotTimes.some(([t, d]) => t === entry.time && d === entry.dayOffset)) {
+          slotTimes.push([entry.time, entry.dayOffset]);
+        }
       }
     }
-  }
-  slotTimes.sort(([aT, aD], [bT, bD]) => (aD !== bD ? aD - bD : aT.localeCompare(bT)));
+    slotTimes.sort(([aT, aD], [bT, bD]) => (aD !== bD ? aD - bD : aT.localeCompare(bT)));
 
-  const allPlans = evaluateSlotsForContexts({
-    date,
-    contexts,
-    sortedSlotTimes: slotTimes,
-    mode,
-    empId,
-    timezone,
-    isToday,
-    nowMs,
-    minNoticeMs,
-  });
-  const available = allPlans.find((p) => p.available);
-  if (available) {
-    if (!plan?.available) nextAvailable = available;
-    else if (available.time !== plan.time || available.dayOffset !== plan.dayOffset) {
-      nextAvailable = available;
+    const allPlans = evaluateSlotsForContexts({
+      date,
+      contexts,
+      sortedSlotTimes: slotTimes,
+      mode,
+      empId,
+      timezone,
+      isToday,
+      nowMs,
+      minNoticeMs,
+    });
+    const available = allPlans.find((p) => p.available);
+    if (available) {
+      if (!plan?.available) nextAvailable = available;
+      else if (available.time !== plan.time || available.dayOffset !== plan.dayOffset) {
+        nextAvailable = available;
+      }
     }
   }
 

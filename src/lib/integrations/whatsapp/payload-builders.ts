@@ -12,6 +12,7 @@ import type {
   FirstTimeWhatsAppPayload,
   EmployeeSaleWhatsAppPayload,
   EmployeeAdvanceWhatsAppPayload,
+  EmployeeFundingWhatsAppPayload,
   QuickMessageWhatsAppPayload,
   EmployeeDailyReportWhatsAppPayload,
 } from './types';
@@ -55,6 +56,16 @@ export interface EmployeeSalePayloadInput {
 }
 
 export interface EmployeeAdvancePayloadInput {
+  phone: string;
+  employeeName: string;
+  invID: number;
+  amount: number;
+  paymentMethod?: string;
+  notes?: string;
+  branchName?: string;
+}
+
+export interface EmployeeFundingPayloadInput {
   phone: string;
   employeeName: string;
   invID: number;
@@ -183,6 +194,23 @@ export function buildEmployeeAdvancePayload(
     phone: input.phone.trim(),
     customerName: input.employeeName.trim(),
     invoiceNumber: `ADV-${input.invID}`,
+    amount: input.amount,
+    paymentMethod: input.paymentMethod,
+    branchName: input.branchName ?? cfg.defaultBranchName,
+    notes: input.notes?.trim() || undefined,
+  };
+}
+
+export function buildEmployeeFundingPayload(
+  input: EmployeeFundingPayloadInput,
+): EmployeeFundingWhatsAppPayload {
+  const cfg = getConfig();
+
+  return {
+    type: 'employee_funding',
+    phone: input.phone.trim(),
+    customerName: input.employeeName.trim(),
+    invoiceNumber: `FUND-${input.invID}`,
     amount: input.amount,
     paymentMethod: input.paymentMethod,
     branchName: input.branchName ?? cfg.defaultBranchName,

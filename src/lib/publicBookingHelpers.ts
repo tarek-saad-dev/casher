@@ -96,7 +96,69 @@ export interface PublicSettings {
   defaultServiceDurationMinutes: number;
 }
 
-export async function getPublicSettings(): Promise<PublicSettings> {
+const PUBLIC_SETTINGS_TTL_MS = 45_000;
+const PUBLIC_SETTINGS_GLOBAL_KEY = "__pos_public_settings_cache_v1";
+
+type PublicSettingsCacheState = {
+  value: PublicSettings | null;
+  expiresAt: number;
+  inflight: Promise<PublicSettings> | null;
+};
+
+function getPublicSettingsCacheState(): PublicSettingsCacheState {
+  const g = globalThis as typeof globalThis & {
+    [PUBLIC_SETTINGS_GLOBAL_KEY]?: PublicSettingsCacheState;
+  };
+  if (!g[PUBLIC_SETTINGS_GLOBAL_KEY]) {
+    g[PUBLIC_SETTINGS_GLOBAL_KEY] = {
+      value: null,
+      expiresAt: 0,
+      inflight: null,
+    };
+  }
+  return g[PUBLIC_SETTINGS_GLOBAL_KEY]!;
+}
+
+export function invalidatePublicSettingsCache(): void {
+  const state = getPublicSettingsCacheState();
+  state.value = null;
+  state.expiresAt = 0;
+  state.inflight = null;
+}
+
+function mapSettingsRow(row: Record<string, unknown> | undefined): PublicSettings {
+  if (!row) {
+    return {
+      salonName: "Cut Salon",
+      timezone: "Africa/Cairo",
+      currency: "EGP",
+      bookingEnabled: true,
+      allowSpecificBarber: true,
+      allowNearestBarber: true,
+      defaultMode: "nearest",
+      slotIntervalMinutes: 15,
+      maxBookingDaysAhead: 14,
+      minNoticeMinutes: 30,
+      defaultServiceDurationMinutes: 30,
+    };
+  }
+  return {
+    salonName: String(row.SalonName ?? "Cut Salon"),
+    timezone: String(row.Timezone ?? "Africa/Cairo"),
+    currency: String(row.Currency ?? "EGP"),
+    bookingEnabled: row.BookingEnabled !== 0,
+    allowSpecificBarber: row.AllowSpecificBarber !== 0,
+    allowNearestBarber: row.AllowNearestBarber !== 0,
+    defaultMode: row.DefaultMode === "specific" ? "specific" : "nearest",
+    slotIntervalMinutes: Number(row.SlotIntervalMinutes) || 15,
+    maxBookingDaysAhead: Number(row.MaxBookingDaysAhead) || 14,
+    minNoticeMinutes: Number(row.MinNoticeMinutes) || 30,
+    defaultServiceDurationMinutes:
+      Number(row.DefaultServiceDurationMinutes) || 30,
+  };
+}
+
+async function loadPublicSettingsFromDb(): Promise<PublicSettings> {
   try {
     const db = await getPool();
     const res = await db
@@ -120,55 +182,41 @@ export async function getPublicSettings(): Promise<PublicSettings> {
       )
       .catch(() => ({ recordset: [] as any[] }));
 
-    const row = res.recordset[0];
-    // If no row exists, use fallback defaults
-    if (!row) {
-      return {
-        salonName: "Cut Salon",
-        timezone: "Africa/Cairo",
-        currency: "EGP",
-        bookingEnabled: true,
-        allowSpecificBarber: true,
-        allowNearestBarber: true,
-        defaultMode: "nearest",
-        slotIntervalMinutes: 15,
-        maxBookingDaysAhead: 14,
-        minNoticeMinutes: 30,
-        defaultServiceDurationMinutes: 30,
-      };
-    }
-
-    // Row exists - use DB values (ISNULL already handles NULL in SQL)
-    return {
-      salonName: row.SalonName,
-      timezone: row.Timezone,
-      currency: row.Currency,
-      bookingEnabled: row.BookingEnabled !== 0,
-      allowSpecificBarber: row.AllowSpecificBarber !== 0,
-      allowNearestBarber: row.AllowNearestBarber !== 0,
-      defaultMode: row.DefaultMode === "specific" ? "specific" : "nearest",
-      slotIntervalMinutes: Number(row.SlotIntervalMinutes) || 15,
-      maxBookingDaysAhead: Number(row.MaxBookingDaysAhead) || 14,
-      minNoticeMinutes: Number(row.MinNoticeMinutes) || 30,
-      defaultServiceDurationMinutes:
-        Number(row.DefaultServiceDurationMinutes) || 30,
-    };
+    return mapSettingsRow(res.recordset[0]);
   } catch (err) {
     console.error("[getPublicSettings] DB error, using fallbacks:", err);
-    return {
-      salonName: "Cut Salon",
-      timezone: "Africa/Cairo",
-      currency: "EGP",
-      bookingEnabled: true,
-      allowSpecificBarber: true,
-      allowNearestBarber: true,
-      defaultMode: "nearest",
-      slotIntervalMinutes: 15,
-      maxBookingDaysAhead: 14,
-      minNoticeMinutes: 30,
-      defaultServiceDurationMinutes: 30,
-    };
+    return mapSettingsRow(undefined);
   }
+}
+
+/**
+ * Public booking settings — short TTL process cache + shared in-flight promise.
+ * Must not cache occupancy / dynamic availability.
+ */
+export async function getPublicSettings(): Promise<PublicSettings> {
+  const state = getPublicSettingsCacheState();
+  const now = Date.now();
+  if (state.value && now < state.expiresAt) {
+    return state.value;
+  }
+  if (state.inflight) {
+    return state.inflight;
+  }
+
+  state.inflight = loadPublicSettingsFromDb()
+    .then((value) => {
+      // Only retain successful-shaped results (including DB empty → defaults)
+      state.value = value;
+      state.expiresAt = Date.now() + PUBLIC_SETTINGS_TTL_MS;
+      state.inflight = null;
+      return value;
+    })
+    .catch((err) => {
+      state.inflight = null;
+      throw err;
+    });
+
+  return state.inflight;
 }
 
 // ── Customer upsert ───────────────────────────────────────────────────────────

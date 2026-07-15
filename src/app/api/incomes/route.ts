@@ -13,6 +13,8 @@ import {
   EmployeeLedgerDualWriteError,
 } from '@/lib/services/employeeLedgerDualWrite';
 import { syncEmployeeFundingFromCashMove } from '@/lib/services/employeeLedgerFundingSyncService';
+import { maybeScheduleFundingWhatsAppFromIncomeCategory } from '@/lib/services/employeeAdvanceWhatsAppNotify';
+
 // ─────────────────────── GET /api/incomes ───────────────────────
 // Query params: fromDate, toDate, expInId?, paymentMethodId?, shiftMoveId?, search?
 export async function GET(req: NextRequest) {
@@ -323,10 +325,21 @@ export async function POST(req: NextRequest) {
       });
 
       await transaction.commit();
+
+      const notesText = typeof notes === 'string' ? notes.trim() : '';
+      const fundingWa = await maybeScheduleFundingWhatsAppFromIncomeCategory({
+        expINID: Number(expInId),
+        invID: Number(inserted.invID),
+        amount: Number(amount),
+        paymentMethodId: Number(paymentMethodId),
+        notes: notesText || undefined,
+      });
+
       return NextResponse.json({
         ...inserted,
         ledgerDualWrite: fundingSync.ledgerDualWrite,
         ledgerSync: fundingSync.outcome,
+        advanceWhatsApp: fundingWa.scheduled,
       }, { status: 201 });
     } catch (innerErr) {
       try { await transaction.rollback(); } catch {}

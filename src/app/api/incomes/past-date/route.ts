@@ -6,6 +6,7 @@ import {
   EmployeeLedgerDualWriteError,
 } from '@/lib/services/employeeLedgerDualWrite';
 import { syncEmployeeFundingFromCashMove } from '@/lib/services/employeeLedgerFundingSyncService';
+import { maybeScheduleFundingWhatsAppFromIncomeCategory } from '@/lib/services/employeeAdvanceWhatsAppNotify';
 
 // POST /api/incomes/past-date - Add income for past dates
 export async function POST(req: NextRequest) {
@@ -63,13 +64,14 @@ export async function POST(req: NextRequest) {
       const nextInvID = await allocateInvID(transaction, 'TblCashMove', 'ايرادات', 5000);
 
       // 4. Insert the income record for past date
+      const notesText = typeof notes === 'string' ? notes.trim() : '';
       const insertReq = new sql.Request(transaction)
         .input('invID', sql.Int, nextInvID)
         .input('invDate', sql.Date, invDate)
         .input('invTime', sql.NVarChar(10), invTime || '12:00')
         .input('expInId', sql.Int, expInId)
         .input('amount', sql.Decimal(10, 2), Number(amount))
-        .input('notes', sql.NVarChar(sql.MAX), notes?.trim() || null)
+        .input('notes', sql.NVarChar(sql.MAX), notesText || null)
         .input('paymentMethodId', sql.Int, paymentMethodId);
 
       const insertRes = await insertReq.query(`
@@ -89,12 +91,21 @@ export async function POST(req: NextRequest) {
       });
 
       await transaction.commit();
+
+      const fundingWa = await maybeScheduleFundingWhatsAppFromIncomeCategory({
+        expINID: Number(expInId),
+        invID: Number(newRecord.invID),
+        amount: Number(amount),
+        paymentMethodId: Number(paymentMethodId),
+        notes: notesText || undefined,
+      });
       
       return NextResponse.json({
         success: true,
         message: 'تم إضافة الإيراد للتاريخ المحدد بنجاح',
         ledgerDualWrite: fundingSync.ledgerDualWrite,
         ledgerSync: fundingSync.outcome,
+        advanceWhatsApp: fundingWa.scheduled,
         data: {
           ID: newRecord.ID,
           invID: newRecord.invID,

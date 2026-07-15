@@ -831,8 +831,14 @@ export default function PosPage() {
       <QuickIncomeModal
         open={isQuickIncomeOpen}
         onClose={() => setIsQuickIncomeOpen(false)}
-        onIncomeComplete={() => {
-          addToast('success', 'تم إضافة الإيراد بنجاح');
+        onIncomeComplete={(info) => {
+          if (info?.advanceWhatsApp) {
+            addToast('success', 'تم إضافة الإيراد — جاري إرسال إشعار التمويل على واتساب');
+          } else if (info?.ledgerDualWrite) {
+            addToast('success', 'تم إضافة الإيراد وتسجيل التمويل في دفتر الموظف');
+          } else {
+            addToast('success', 'تم إضافة الإيراد بنجاح');
+          }
         }}
       />
       <QuickWhatsAppModal

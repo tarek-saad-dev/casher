@@ -85,6 +85,9 @@ export async function PATCH(req: NextRequest) {
           UpdatedByUserID       = @userID
       `);
 
+    const { invalidatePublicSettingsCache } = await import("@/lib/publicBookingHelpers");
+    invalidatePublicSettingsCache();
+
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[queue settings PATCH]", err);

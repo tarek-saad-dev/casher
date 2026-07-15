@@ -1,9 +1,15 @@
 import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
-import { sendEmployeeAdvanceWhatsAppMessage } from '@/lib/integrations/whatsapp';
+import {
+  sendEmployeeAdvanceWhatsAppMessage,
+  sendEmployeeFundingWhatsAppMessage,
+} from '@/lib/integrations/whatsapp';
 import { resolveEmployeeWhatsAppPhone } from '@/lib/integrations/whatsapp/payload-builders';
-import { resolveAdvanceEmployeeFromExpINID } from '@/lib/services/employeeLedgerDualWrite';
+import {
+  resolveAdvanceEmployeeFromExpINID,
+  resolveRevenueEmployeeFromExpINID,
+} from '@/lib/services/employeeLedgerDualWrite';
 
 export interface EmployeeAdvanceWhatsAppNotifyInput {
   empId: number;
@@ -14,8 +20,10 @@ export interface EmployeeAdvanceWhatsAppNotifyInput {
   notes?: string;
 }
 
-/** Serialize advance WhatsApp sends — the bot handles one Chrome/WA request at a time. */
-let advanceWhatsAppChain: Promise<void> = Promise.resolve();
+export type EmployeeFundingWhatsAppNotifyInput = EmployeeAdvanceWhatsAppNotifyInput;
+
+/** Serialize employee WhatsApp sends — the bot handles one Chrome/WA request at a time. */
+let employeeWhatsAppChain: Promise<void> = Promise.resolve();
 
 const QUEUE_GAP_MS = 2000;
 
@@ -113,6 +121,64 @@ export async function notifyEmployeeAdvanceWhatsApp(
   }
 }
 
+export async function notifyEmployeeFundingWhatsApp(
+  input: EmployeeFundingWhatsAppNotifyInput,
+): Promise<void> {
+  try {
+    const phone = await fetchEmployeeWhatsAppPhone(input.empId);
+    if (!phone) {
+      console.log(
+        `[pos-api]   ℹ️ Employee funding WhatsApp skipped: no phone for EmpID=${input.empId}`,
+      );
+      return;
+    }
+
+    const paymentMethod = await fetchPaymentMethodLabel(input.paymentMethodId);
+    console.log(
+      `[pos-api]   📱 Employee funding WhatsApp: ${input.employeeName} (${phone}) FUND-${input.invID} amount=${input.amount}`,
+    );
+
+    const result = await sendEmployeeFundingWhatsAppMessage({
+      phone,
+      employeeName: input.employeeName,
+      invID: input.invID,
+      amount: input.amount,
+      paymentMethod,
+      notes: input.notes,
+    });
+
+    if (result.sent) {
+      console.log(
+        `[pos-api]   ✅ Employee funding WhatsApp sent for ${input.employeeName} FUND-${input.invID}`,
+      );
+      return;
+    }
+
+    if (result.skipped) {
+      console.log(
+        `[pos-api]   ℹ️ Employee funding WhatsApp skipped for ${input.employeeName}: ${result.reason}`,
+      );
+      return;
+    }
+
+    const detail =
+      'error' in result && result.error
+        ? result.error
+        : 'reason' in result
+          ? result.reason
+          : 'unknown';
+    console.log(
+      `[pos-api]   ⚠️ Employee funding WhatsApp not sent for ${input.employeeName}: ${detail}`,
+    );
+  } catch (err) {
+    console.log(
+      `[pos-api]   ⚠️ Employee funding WhatsApp error (non-critical): ${
+        err instanceof Error ? err.message : err
+      }`,
+    );
+  }
+}
+
 /**
  * Enqueue advance WhatsApp after DB commit (non-blocking for the HTTP response).
  * Messages are sent one-by-one so the WhatsApp bot is not flooded.
@@ -120,7 +186,7 @@ export async function notifyEmployeeAdvanceWhatsApp(
 export function scheduleEmployeeAdvanceWhatsApp(
   input: EmployeeAdvanceWhatsAppNotifyInput,
 ): void {
-  advanceWhatsAppChain = advanceWhatsAppChain
+  employeeWhatsAppChain = employeeWhatsAppChain
     .then(async () => {
       await notifyEmployeeAdvanceWhatsApp(input);
       await new Promise((resolve) => setTimeout(resolve, QUEUE_GAP_MS));
@@ -128,6 +194,23 @@ export function scheduleEmployeeAdvanceWhatsApp(
     .catch((err) => {
       console.log(
         `[pos-api]   ⚠️ Advance WhatsApp queue error: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    });
+}
+
+export function scheduleEmployeeFundingWhatsApp(
+  input: EmployeeFundingWhatsAppNotifyInput,
+): void {
+  employeeWhatsAppChain = employeeWhatsAppChain
+    .then(async () => {
+      await notifyEmployeeFundingWhatsApp(input);
+      await new Promise((resolve) => setTimeout(resolve, QUEUE_GAP_MS));
+    })
+    .catch((err) => {
+      console.log(
+        `[pos-api]   ⚠️ Funding WhatsApp queue error: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
@@ -150,6 +233,32 @@ export async function maybeScheduleAdvanceWhatsAppFromExpenseCategory(input: {
   if (resolution.kind !== 'resolved') return { scheduled: false };
 
   scheduleEmployeeAdvanceWhatsApp({
+    empId: resolution.empId,
+    employeeName: resolution.empName?.trim() || 'موظف',
+    invID: input.invID,
+    amount: input.amount,
+    paymentMethodId: input.paymentMethodId,
+    notes: input.notes,
+  });
+  return { scheduled: true };
+}
+
+/**
+ * If ExpINID is an employee revenue/funding category, enqueue
+ * type=employee_funding WhatsApp (separate bot template from advances).
+ */
+export async function maybeScheduleFundingWhatsAppFromIncomeCategory(input: {
+  expINID: number;
+  invID: number;
+  amount: number;
+  paymentMethodId?: number;
+  notes?: string;
+}): Promise<{ scheduled: boolean }> {
+  const db = await getPool();
+  const resolution = await resolveRevenueEmployeeFromExpINID(db, input.expINID);
+  if (resolution.kind !== 'resolved') return { scheduled: false };
+
+  scheduleEmployeeFundingWhatsApp({
     empId: resolution.empId,
     employeeName: resolution.empName?.trim() || 'موظف',
     invID: input.invID,

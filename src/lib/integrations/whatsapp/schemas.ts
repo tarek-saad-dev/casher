@@ -12,6 +12,7 @@ import type {
   FirstTimeWhatsAppPayload,
   EmployeeSaleWhatsAppPayload,
   EmployeeAdvanceWhatsAppPayload,
+  EmployeeFundingWhatsAppPayload,
   QuickMessageWhatsAppPayload,
   EmployeeDailyReportWhatsAppPayload,
   WhatsAppExtraVariables,
@@ -211,6 +212,36 @@ export function validateEmployeeAdvancePayload(
   return payload;
 }
 
+export function validateEmployeeFundingPayload(
+  input: unknown,
+): EmployeeFundingWhatsAppPayload {
+  if (typeof input !== 'object' || input === null) {
+    throw new WhatsAppValidationError('Payload must be an object');
+  }
+  const p = input as Record<string, unknown>;
+
+  const payload: EmployeeFundingWhatsAppPayload = {
+    type: 'employee_funding',
+    phone: assertNonEmptyString(p.phone, 'phone'),
+    customerName: assertNonEmptyString(p.customerName, 'customerName'),
+  };
+
+  if (p.invoiceNumber !== undefined)
+    payload.invoiceNumber = assertNonEmptyString(p.invoiceNumber, 'invoiceNumber');
+  if (p.amount !== undefined)
+    payload.amount = assertFiniteNumber(p.amount, 'amount');
+  if (p.paymentMethod !== undefined && typeof p.paymentMethod === 'string')
+    payload.paymentMethod = p.paymentMethod;
+  if (p.branchName !== undefined && typeof p.branchName === 'string')
+    payload.branchName = p.branchName;
+  if (p.notes !== undefined && typeof p.notes === 'string')
+    payload.notes = p.notes;
+  if (p.variables !== undefined)
+    payload.variables = validateExtraVariables(p.variables);
+
+  return payload;
+}
+
 export function validateQuickMessagePayload(input: unknown): QuickMessageWhatsAppPayload {
   if (typeof input !== 'object' || input === null) {
     throw new WhatsAppValidationError('Payload must be an object');
@@ -319,6 +350,8 @@ export function validatePayload(input: unknown): WhatsAppPayload {
       return validateEmployeeSalePayload(input);
     case 'employee_advance':
       return validateEmployeeAdvancePayload(input);
+    case 'employee_funding':
+      return validateEmployeeFundingPayload(input);
     case 'quick_message':
       return validateQuickMessagePayload(input);
     case 'employee_daily_report':

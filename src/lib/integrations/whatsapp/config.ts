@@ -15,6 +15,7 @@ export interface WhatsAppConfig {
   firstTimeEnabled: boolean;
   employeeSaleEnabled: boolean;
   employeeAdvanceEnabled: boolean;
+  employeeFundingEnabled: boolean;
   quickMessageEnabled: boolean;
   employeeDailyReportEnabled: boolean;
   ownerDailyReportEnabled: boolean;
@@ -36,6 +37,7 @@ function getWhatsAppConfig(): WhatsAppConfig {
     firstTimeEnabled: process.env.WHATSAPP_FIRST_TIME_ENABLED !== 'false',
     employeeSaleEnabled: process.env.WHATSAPP_EMPLOYEE_SALE_ENABLED !== 'false',
     employeeAdvanceEnabled: process.env.WHATSAPP_EMPLOYEE_ADVANCE_ENABLED !== 'false',
+    employeeFundingEnabled: process.env.WHATSAPP_EMPLOYEE_FUNDING_ENABLED !== 'false',
     quickMessageEnabled: process.env.WHATSAPP_QUICK_MESSAGE_ENABLED !== 'false',
     employeeDailyReportEnabled:
       process.env.WHATSAPP_EMPLOYEE_DAILY_REPORT_ENABLED !== 'false',

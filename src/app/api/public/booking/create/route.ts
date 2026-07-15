@@ -12,23 +12,21 @@ import {
   PUBLIC_CORS_HEADERS,
   salonDateTimeToMs,
 } from "@/lib/publicBookingHelpers";
-import {
-  getDefaultDuration,
-  getServicesDuration,
-} from '@/lib/queueEstimateEngine';
-import { buildSequentialServicePlan, ServicePlanError } from '@/lib/servicePlan';
+import { buildSequentialServicePlanFromLines, ServicePlanError, calculateServicePlanDuration } from '@/lib/servicePlan';
 import {
   validateBookingSlot,
   BOOKING_SLOT_REASON_AR,
   type BookingSlotReasonCode,
 } from '@/lib/bookingAvailabilityEngine';
+import { getCairoBusinessDate } from '@/lib/businessDate';
+import { scheduleBookingWhatsAppAfterCommit } from '@/lib/bookingPostCommitNotification';
+import { createDevTimer } from '@/lib/devRequestTiming';
 import {
   assertEmployeeIntervalAvailable,
   findNextAvailableForEmployee,
   ScheduleConflictError,
+  lastScheduleLockMs,
 } from '@/lib/scheduleIntegrity';
-import { getCairoBusinessDate } from '@/lib/businessDate';
-import { sendBookingWhatsAppMessage } from '@/lib/integrations/whatsapp';
 
 export const runtime = "nodejs";
 
@@ -58,6 +56,7 @@ export async function OPTIONS() {
  *   5. Return confirmation
  */
 export async function POST(req: NextRequest) {
+  const timer = createDevTimer('booking_create');
   const ip = getRateLimitKey(req);
   // Stricter rate limit for create: 10 per minute per IP
   if (!checkRateLimit(ip, 10)) {
@@ -66,9 +65,11 @@ export async function POST(req: NextRequest) {
       { status: 429, headers: PUBLIC_CORS_HEADERS },
     );
   }
+  timer.mark('authMs'); // public route: rate-limit + CORS only (no session)
 
   try {
     const body = await req.json();
+    timer.mark('parseMs');
     const {
       customer,
       serviceIds = [],
@@ -165,12 +166,37 @@ export async function POST(req: NextRequest) {
         { status: 400, headers: PUBLIC_CORS_HEADERS },
       );
     }
+    timer.mark('validationMs');
 
     const db = await getPool();
+    timer.mark('poolMs');
+
+    if (!serviceIds.length) {
+      return NextResponse.json(
+        { error: 'يجب اختيار خدمة واحدة على الأقل' },
+        { status: 400, headers: PUBLIC_CORS_HEADERS },
+      );
+    }
+
+    // Load services once — reused by validation, insert lines, and WhatsApp payload.
+    let resolvedServices;
+    try {
+      resolvedServices = await calculateServicePlanDuration(serviceIds);
+    } catch (planErr) {
+      if (planErr instanceof ServicePlanError) {
+        return NextResponse.json(
+          { ok: false, code: planErr.code, message: planErr.message },
+          { status: planErr.status, headers: PUBLIC_CORS_HEADERS },
+        );
+      }
+      return NextResponse.json(
+        { error: planErr instanceof Error ? planErr.message : 'خطأ في خطة الخدمات' },
+        { status: 400, headers: PUBLIC_CORS_HEADERS },
+      );
+    }
+    timer.mark('servicePlanMs');
 
     // ── Canonical plan validation ────────────────────────────────────────────
-    // This is the single source of truth: it uses the same engine as available-slots
-    // and returns the resolved barber, start/end, duration, and reason when unavailable.
     const validation = await validateBookingSlot({
       date,
       time,
@@ -179,7 +205,11 @@ export async function POST(req: NextRequest) {
       mode,
       empId,
       source,
+      servicePlan: resolvedServices,
+      durationOverride: resolvedServices.totalDurationMinutes,
+      skipNextAvailableWhenOk: true,
     });
+    timer.mark('availabilityMs');
 
     if (!validation.available || !validation.plan) {
       const reasonCode: BookingSlotReasonCode = validation.reasonCode ?? 'booking_conflict';
@@ -206,32 +236,11 @@ export async function POST(req: NextRequest) {
     const resolvedEmpId = validation.plan.empId;
     const resolvedEmpName = validation.plan.empName;
 
-    if (!serviceIds.length) {
-      return NextResponse.json(
-        { error: 'يجب اختيار خدمة واحدة على الأقل' },
-        { status: 400, headers: PUBLIC_CORS_HEADERS },
-      );
-    }
-
-    let servicePlan;
-    try {
-      servicePlan = await buildSequentialServicePlan({
-        serviceIds,
-        startAt: slotDt,
-        empId: resolvedEmpId!,
-      });
-    } catch (planErr) {
-      if (planErr instanceof ServicePlanError) {
-        return NextResponse.json(
-          { ok: false, code: planErr.code, message: planErr.message },
-          { status: planErr.status, headers: PUBLIC_CORS_HEADERS },
-        );
-      }
-      return NextResponse.json(
-        { error: planErr instanceof Error ? planErr.message : 'خطأ في خطة الخدمات' },
-        { status: 400, headers: PUBLIC_CORS_HEADERS },
-      );
-    }
+    const servicePlan = buildSequentialServicePlanFromLines({
+      lines: resolvedServices.services,
+      startAt: slotDt,
+      empId: resolvedEmpId!,
+    });
 
     const customerDur = servicePlan.totalDurationMinutes;
     if (validation.plan.durationMinutes !== customerDur) {
@@ -251,12 +260,15 @@ export async function POST(req: NextRequest) {
 
     // ── Upsert customer ───────────────────────────────────────────────────
     const clientId = await upsertCustomer(customer.name, customer.phone);
+    timer.mark('customerMs');
 
     // ── Transactional conflict guard before insert ────────────────────────
     const transaction = new sql.Transaction(db);
     await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    timer.mark('transactionBeginMs');
 
     try {
+      const guardStart = Date.now();
       await assertEmployeeIntervalAvailable({
         empId: resolvedEmpId!,
         startAt: slotDt,
@@ -264,6 +276,8 @@ export async function POST(req: NextRequest) {
         operationalDate: getCairoBusinessDate(slotDt),
         transaction,
       });
+      timer.setAbsolute('transactionalGuardMs', Date.now() - guardStart);
+      timer.setAbsolute('scheduleLockMs', lastScheduleLockMs);
     } catch (err) {
       await transaction.rollback();
       if (err instanceof ScheduleConflictError) {
@@ -273,6 +287,7 @@ export async function POST(req: NextRequest) {
           candidateStart: slotDt,
           durationMinutes: customerDur,
         });
+        timer.log('[booking/create perf]', { outcome: 'conflict_409' });
         return NextResponse.json(
           {
             ok: false,
@@ -281,51 +296,67 @@ export async function POST(req: NextRequest) {
             conflict: err.conflict,
             nextAvailable,
           },
-          { status: 409, headers: PUBLIC_CORS_HEADERS },
+          {
+            status: 409,
+            headers: {
+              ...PUBLIC_CORS_HEADERS,
+              ...(timer.serverTimingHeader()
+                ? { 'Server-Timing': timer.serverTimingHeader() }
+                : {}),
+            },
+          },
         );
       }
       throw err;
     }
 
-    // ── Generate unique booking code ──────────────────────────────────────
+    // ── Insert booking (booking code unique constraint is final guarantee) ─
     let bookingCode = generateBookingCode();
-    // Check uniqueness — retry up to 3 times
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const exists = await db
-        .request()
-        .query(
-          `SELECT 1 FROM [dbo].[Bookings] WHERE BookingCode = N'${bookingCode}'`,
-        )
-        .catch(() => ({ recordset: [] }));
-      if (!exists.recordset.length) break;
-      bookingCode = generateBookingCode();
-    }
-
-    // ── Insert booking ────────────────────────────────────────────────────
-    // BookingCode column MUST exist — fail if it doesn't
     let bookingId: number;
 
     try {
-      const ins = await transaction
-        .request()
-        .input("clientId", sql.Int, clientId)
-        .input("empId", sql.Int, resolvedEmpId!)
-        .input("bDate", sql.Date, actualDate)
-        .input("sTime", sql.VarChar, startTimeStr)
-        .input("eTime", sql.VarChar, endTimeStr)
-        .input("source", sql.NVarChar, isInternalSource ? source : "online")
-        .input("notes", sql.NVarChar, notes?.trim() || null)
-        .input("code", sql.NVarChar, bookingCode).query(`
-          INSERT INTO [dbo].[Bookings]
-            (ClientID, AssignedEmpID, BookingDate, StartTime, EndTime,
-             Status, Source, Notes, BookingCode, CreatedByUserID)
-          OUTPUT INSERTED.BookingID, INSERTED.BookingDate, INSERTED.StartTime, INSERTED.EndTime, INSERTED.Status
-          VALUES
-            (@clientId, @empId, @bDate, @sTime, @eTime,
-             'confirmed', @source, @notes, @code, 0)
-        `);
+      const insStart = Date.now();
+      let ins: { recordset: any[] } | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          ins = await transaction
+            .request()
+            .input("clientId", sql.Int, clientId)
+            .input("empId", sql.Int, resolvedEmpId!)
+            .input("bDate", sql.Date, actualDate)
+            .input("sTime", sql.VarChar, startTimeStr)
+            .input("eTime", sql.VarChar, endTimeStr)
+            .input("source", sql.NVarChar, isInternalSource ? source : "online")
+            .input("notes", sql.NVarChar, notes?.trim() || null)
+            .input("code", sql.NVarChar, bookingCode).query(`
+              INSERT INTO [dbo].[Bookings]
+                (ClientID, AssignedEmpID, BookingDate, StartTime, EndTime,
+                 Status, Source, Notes, BookingCode, CreatedByUserID)
+              OUTPUT INSERTED.BookingID, INSERTED.BookingDate, INSERTED.StartTime, INSERTED.EndTime, INSERTED.Status
+              VALUES
+                (@clientId, @empId, @bDate, @sTime, @eTime,
+                 'confirmed', @source, @notes, @code, 0)
+            `);
+          break;
+        } catch (codeErr: any) {
+          const msg = String(codeErr?.message ?? '');
+          const isDup =
+            msg.includes('BookingCode') ||
+            msg.includes('UNIQUE') ||
+            msg.includes('duplicate') ||
+            codeErr?.number === 2627 ||
+            codeErr?.number === 2601;
+          if (!isDup || attempt === 2) throw codeErr;
+          bookingCode = generateBookingCode();
+        }
+      }
+      if (!ins?.recordset?.[0]) {
+        throw new Error('Booking insert returned no row');
+      }
       bookingId = ins.recordset[0].BookingID as number;
+      timer.setAbsolute('bookingInsertMs', Date.now() - insStart);
 
+      const svcInsStart = Date.now();
       if (serviceIds.length > 0) {
         for (const line of servicePlan.lines) {
           await transaction
@@ -343,8 +374,11 @@ export async function POST(req: NextRequest) {
             `);
         }
       }
+      timer.setAbsolute('serviceInsertMs', Date.now() - svcInsStart);
 
+      const commitStart = Date.now();
       await transaction.commit();
+      timer.setAbsolute('commitMs', Date.now() - commitStart);
 
       // Log inserted booking for debugging
       if (process.env.NODE_ENV !== "production") {
@@ -379,17 +413,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── WhatsApp booking confirmation (after commit) ──────────────────────
-    const svcNames: string[] = [];
-    if (serviceIds.length > 0) {
-      const svcRes2 = await db
-        .request()
-        .query(
-          `SELECT ProName FROM [dbo].[TblPro] WHERE ProID IN (${serviceIds.join(",")})`,
-        )
-        .catch(() => ({ recordset: [] as any[] }));
-      svcNames.push(...svcRes2.recordset.map((r: any) => r.ProName));
-    }
+    // ── Post-commit: build response + schedule WhatsApp after HTTP 201 ────
+    const svcNames = resolvedServices.services.map((s) => s.serviceName).filter(Boolean);
     const servicesText = svcNames.join(", ") || "خدمة عامة";
 
     if (process.env.NODE_ENV !== "production") {
@@ -399,26 +424,45 @@ export async function POST(req: NextRequest) {
         clientId,
         empId: resolvedEmpId,
       });
+      console.log('[booking/create] transaction committed', { bookingId });
     }
 
-    // ── WhatsApp booking confirmation (after commit) ──────────────────────────────────
-    let whatsappResult: Record<string, unknown> = { sent: false, skipped: true, reason: 'development_only' };
-    try {
-      whatsappResult = await sendBookingWhatsAppMessage({
-        phone: customer.phone,
-        customerName: customer.name,
+    // Schedule WhatsApp after the response — must not block HTTP 201.
+    const schedStart = Date.now();
+    scheduleBookingWhatsAppAfterCommit({
+      phone: customer.phone,
+      customerName: customer.name,
+      bookingId,
+      bookingDate: actualDate,
+      bookingTime: time,
+      barberName: resolvedEmpName || undefined,
+      services: svcNames.length > 0 ? svcNames : undefined,
+    });
+    timer.setAbsolute('notificationSchedulingMs', Date.now() - schedStart);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[booking/create] post-response notification scheduled', {
         bookingId,
-        bookingDate: actualDate,
-        bookingTime: time,
-        barberName: resolvedEmpName || undefined,
-        services: svcNames.length > 0 ? svcNames : undefined,
+        notificationSchedulingMs: timer.snapshot().notificationSchedulingMs,
       });
-    } catch (waErr) {
-      console.log(
-        `[public/booking/create] WhatsApp error (non-critical): ${
-          waErr instanceof Error ? waErr.message : String(waErr)
-        }`,
-      );
+    }
+
+    const respStart = Date.now();
+    const headers: Record<string, string> = { ...PUBLIC_CORS_HEADERS };
+    timer.setAbsolute('responseBuildMs', Date.now() - respStart);
+    const st = timer.serverTimingHeader();
+    if (st) headers['Server-Timing'] = st;
+    timer.log('[booking/create perf]', {
+      outcome: '201',
+      source: isInternalSource ? source : 'online',
+      empId: resolvedEmpId,
+      bookingId,
+      whatsappAwaitInResponse: false,
+    });
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[booking/create] HTTP response returned', {
+        bookingId,
+        totalMs: timer.totalMs(),
+      });
     }
 
     return NextResponse.json(
@@ -438,12 +482,18 @@ export async function POST(req: NextRequest) {
           endTime: endTimeStr.slice(0, 5),
         },
         message: "تم تأكيد الحجز بنجاح",
-        whatsapp: whatsappResult,
+        whatsapp: {
+          sent: false,
+          skipped: false,
+          scheduled: true,
+          reason: 'post_response',
+        },
       },
-      { status: 201, headers: PUBLIC_CORS_HEADERS },
+      { status: 201, headers },
     );
   } catch (err) {
     console.error("[public/booking/create]", err);
+    timer.log('[booking/create perf]', { outcome: '500' });
     return NextResponse.json(
       { error: "فشل إنشاء الحجز" },
       { status: 500, headers: PUBLIC_CORS_HEADERS },

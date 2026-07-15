@@ -21,6 +21,12 @@ import { OPS_LAYOUT } from '@/components/operations/operationsLayout.constants';
 import { getCairoBusinessDate } from '@/components/operations/schedulerUtils';
 import { QUICK_QUEUE_UI_ENABLED } from '@/lib/quickQueueConfig';
 import { useAutoVoiceAnnounce, isVoiceEnabled, enableVoice, disableVoice } from '@/hooks/useAutoVoiceAnnounce';
+import {
+  createFlowBoardRefreshController,
+  shouldRefreshBoardForBooking,
+  type FlowBoardPayload,
+} from '@/lib/operations/flowBoardRefreshController';
+import type { BookingCreateSuccess } from '@/lib/operations/bookingWorkspaceSubmit';
 
 interface FlowBoardBarber {
   empId: number;
@@ -139,6 +145,7 @@ export default function OperationsPage() {
     timeRangeEnd?: string;
   }>({});
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [jumpToBookingDate, setJumpToBookingDate] = useState<string | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [musicPlayerExpanded, setMusicPlayerExpanded] = useState(false);
   const [mobileBarberSelection, setMobileBarberSelection] = useState<MobileBarberSelection>('all');
@@ -146,11 +153,54 @@ export default function OperationsPage() {
   const [quickQueueReprintTicket, setQuickQueueReprintTicket] = useState<CreateQueueResponse | null>(null);
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const quickQueuePendingRef = useRef(false);
+  const selectedDateRef = useRef(selectedDate);
+  selectedDateRef.current = selectedDate;
 
   const showToast = useCallback((msg: string, ok = true) => {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 3000);
   }, []);
+
+  const refreshControllerRef = useRef(
+    createFlowBoardRefreshController({
+      getSelectedDate: () => selectedDateRef.current,
+      fetchBoard: async (date, signal) => {
+        const t0 = performance.now();
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[ops-booking-perf] flow_board_refresh_start', { date });
+        }
+        const res = await fetch(`/api/operations/flow-board?date=${date}`, { signal });
+        const data = (await res.json()) as FlowBoardPayload;
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[ops-booking-perf] flow_board_refresh_done', {
+            date,
+            ms: Math.round(performance.now() - t0),
+            status: res.status,
+            ok: !!data.ok,
+          });
+        }
+        return data;
+      },
+      onData: (data) => {
+        setFlowBoardData(data as FlowBoardResponse);
+      },
+      onLoading: setLoading,
+      onError: setError,
+    }),
+  );
+
+  const refreshFlowBoard = useCallback(
+    (date: string, options?: { reason?: string; force?: boolean }) =>
+      refreshControllerRef.current.refreshFlowBoard(date, options),
+    [],
+  );
+
+  /** Convenience: refresh the currently selected board date. */
+  const fetchFlowBoard = useCallback(
+    (options?: { reason?: string; force?: boolean }) =>
+      refreshFlowBoard(selectedDateRef.current, options),
+    [refreshFlowBoard],
+  );
 
   useEffect(() => {
     setVoiceEnabled(isVoiceEnabled());
@@ -187,25 +237,6 @@ export default function OperationsPage() {
     setVoiceEnabled(false);
     showToast('تم إيقاف النداء الصوتي', true);
   }, [showToast]);
-
-  const fetchFlowBoard = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/operations/flow-board?date=${selectedDate}`);
-      const data: FlowBoardResponse = await res.json();
-
-      if (!data.ok) {
-        throw new Error('فشل تحميل البيانات');
-      }
-
-      setFlowBoardData(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'فشل تحميل لوحة التشغيل');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedDate]);
 
   const handleQuickQueueReprint = useCallback(() => {
     if (!quickQueueReprintTicket) return;
@@ -268,12 +299,15 @@ export default function OperationsPage() {
   }, [fetchFlowBoard, showToast]);
 
   useEffect(() => {
-    fetchFlowBoard();
-    refreshTimer.current = setInterval(fetchFlowBoard, 30000);
+    void refreshFlowBoard(selectedDate, { reason: 'date-or-mount' });
+    if (refreshTimer.current) clearInterval(refreshTimer.current);
+    refreshTimer.current = setInterval(() => {
+      void refreshFlowBoard(selectedDateRef.current, { reason: 'poll' });
+    }, 30000);
     return () => {
       if (refreshTimer.current) clearInterval(refreshTimer.current);
     };
-  }, [fetchFlowBoard]);
+  }, [selectedDate, refreshFlowBoard]);
 
   useEffect(() => {
     const barbers = flowBoardData?.barbers.filter((b) => b.status !== 'unknown') ?? [];
@@ -543,7 +577,7 @@ export default function OperationsPage() {
           requestedFrom={new Date().toISOString()}
           onClose={() => setBarberQueueModal(null)}
           onCreated={() => {
-            void fetchFlowBoard();
+            void fetchFlowBoard({ reason: 'queue-created' });
             showToast('تم إنشاء الدور بنجاح');
           }}
           onLoadingChange={setBarberQueueLoadingEmpId}
@@ -555,7 +589,7 @@ export default function OperationsPage() {
           isOpen={showCreateDrawer}
           onClose={() => setShowCreateDrawer(false)}
           onCreated={() => {
-            fetchFlowBoard();
+            void fetchFlowBoard({ reason: 'queue-created' });
             showToast('تم إنشاء الدور بنجاح');
           }}
           barbers={flowBoardData?.barbers || []}
@@ -572,7 +606,7 @@ export default function OperationsPage() {
           isOpen={showFindNearestDrawer}
           onClose={() => setShowFindNearestDrawer(false)}
           onCreated={() => {
-            fetchFlowBoard();
+            void fetchFlowBoard({ reason: 'queue-created' });
             showToast('تم إصدار الدور بنجاح');
           }}
         />
@@ -596,9 +630,21 @@ export default function OperationsPage() {
             nextAvailableAt: b.nextAvailableAt,
             statusReasonArabic: b.statusReasonArabic,
           })) || []}
-          onCreated={() => {
-            fetchFlowBoard();
+          onCreated={(result?: BookingCreateSuccess) => {
             showToast('تم إنشاء الحجز بنجاح');
+            const bookedDate = result?.actualDate;
+            if (shouldRefreshBoardForBooking(selectedDateRef.current, bookedDate)) {
+              void refreshFlowBoard(selectedDateRef.current, { reason: 'booking-created' }).catch(
+                () => {
+                  showToast(
+                    'تم إنشاء الحجز، لكن تعذر تحديث اللوحة. اضغط لإعادة المحاولة.',
+                    false,
+                  );
+                },
+              );
+            } else if (bookedDate) {
+              setJumpToBookingDate(bookedDate);
+            }
           }}
         />
       )}
@@ -609,10 +655,29 @@ export default function OperationsPage() {
           onClose={() => setShowScheduleModal(false)}
           initialDate={selectedDate}
           onApplied={() => {
-            fetchFlowBoard();
+            void fetchFlowBoard({ reason: 'schedule-applied' });
             showToast('تم تحديث مواعيد الصنايعي بنجاح');
           }}
         />
+      )}
+
+      {jumpToBookingDate && (
+        <button
+          type="button"
+          className="fixed bottom-32 left-1/2 z-[60] -translate-x-1/2 rounded-xl border px-5 py-3 text-sm font-semibold shadow-2xl md:bottom-16"
+          style={{
+            background: 'var(--card)',
+            color: 'var(--foreground)',
+            borderColor: 'color-mix(in srgb, var(--primary) 30%, transparent)',
+          }}
+          onClick={() => {
+            const d = jumpToBookingDate;
+            setJumpToBookingDate(null);
+            setSelectedDate(d);
+          }}
+        >
+          عرض يوم الحجز ({jumpToBookingDate})
+        </button>
       )}
 
       {toast && (
@@ -627,6 +692,17 @@ export default function OperationsPage() {
           }}
         >
           {toast.msg}
+          {!toast.ok && toast.msg.includes('تعذر تحديث اللوحة') && (
+            <button
+              type="button"
+              className="mr-3 underline"
+              onClick={() => {
+                void fetchFlowBoard({ reason: 'retry', force: true });
+              }}
+            >
+              إعادة المحاولة
+            </button>
+          )}
         </div>
       )}
     </div>

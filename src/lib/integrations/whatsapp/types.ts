@@ -8,6 +8,7 @@ export type WhatsAppMessageType =
   | 'first_time'
   | 'employee_sale'
   | 'employee_advance'
+  | 'employee_funding'
   | 'quick_message'
   | 'employee_daily_report';
 
@@ -70,6 +71,17 @@ export interface EmployeeAdvanceWhatsAppPayload extends WhatsAppBasePayload {
   variables?: WhatsAppExtraVariables;
 }
 
+/** Employee funding the shop (income mapped to employee) — distinct from advance. */
+export interface EmployeeFundingWhatsAppPayload extends WhatsAppBasePayload {
+  type: 'employee_funding';
+  invoiceNumber?: string;
+  amount?: number;
+  paymentMethod?: string;
+  branchName?: string;
+  notes?: string;
+  variables?: WhatsAppExtraVariables;
+}
+
 /** Free-text quick send from POS (script must support type=quick_message). */
 export interface QuickMessageWhatsAppPayload extends WhatsAppBasePayload {
   type: 'quick_message';
@@ -111,6 +123,7 @@ export type WhatsAppPayload =
   | FirstTimeWhatsAppPayload
   | EmployeeSaleWhatsAppPayload
   | EmployeeAdvanceWhatsAppPayload
+  | EmployeeFundingWhatsAppPayload
   | QuickMessageWhatsAppPayload
   | EmployeeDailyReportWhatsAppPayload;
 

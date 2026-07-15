@@ -21,6 +21,7 @@ import {
   buildFirstTimePayload,
   buildEmployeeSalePayload,
   buildEmployeeAdvancePayload,
+  buildEmployeeFundingPayload,
   buildQuickMessagePayload,
   buildEmployeeDailyReportPayload,
   resolvePhone,
@@ -30,6 +31,7 @@ import {
   type FirstTimePayloadInput,
   type EmployeeSalePayloadInput,
   type EmployeeAdvancePayloadInput,
+  type EmployeeFundingPayloadInput,
   type QuickMessagePayloadInput,
   type EmployeeDailyReportPayloadInput,
 } from './payload-builders';
@@ -39,6 +41,7 @@ import {
   validateFirstTimePayload,
   validateEmployeeSalePayload,
   validateEmployeeAdvancePayload,
+  validateEmployeeFundingPayload,
   validateQuickMessagePayload,
   validateEmployeeDailyReportPayload,
 } from './schemas';
@@ -295,6 +298,68 @@ export async function sendEmployeeAdvanceWhatsAppMessage(
     }
     console.log(
       `[whatsapp] Employee advance message error (non-critical): ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return { sent: false, skipped: false, reason: 'remote_error' };
+  }
+}
+
+export async function sendEmployeeFundingWhatsAppMessage(
+  input: EmployeeFundingPayloadInput,
+): Promise<WhatsAppSendResult> {
+  const cfg = getConfig();
+
+  if (!cfg.enabled) {
+    return { sent: false, skipped: true, reason: 'development_only' };
+  }
+
+  if (!cfg.employeeFundingEnabled) {
+    console.log('[whatsapp] Employee funding message skipped: type disabled');
+    return { sent: false, skipped: true, reason: 'message_type_disabled' };
+  }
+
+  const phone = resolvePhone(input.phone, undefined);
+  if (!phone) {
+    console.log('[whatsapp] Employee funding message skipped: missing phone');
+    return { sent: false, skipped: true, reason: 'missing_phone' };
+  }
+
+  if (!input.employeeName?.trim()) {
+    console.log('[whatsapp] Employee funding message skipped: missing employee name');
+    return { sent: false, skipped: true, reason: 'missing_customer_name' };
+  }
+
+  if (!input.amount || input.amount <= 0) {
+    console.log('[whatsapp] Employee funding message skipped: invalid amount');
+    return { sent: false, skipped: true, reason: 'invalid_payload' };
+  }
+
+  try {
+    const payload = buildEmployeeFundingPayload({ ...input, phone });
+    validateEmployeeFundingPayload(payload);
+    const result = await sendWhatsAppPayload(payload);
+    if (result.sent) {
+      console.log(
+        `[whatsapp] Employee funding message submitted for FUND-${input.invID} -> ${input.employeeName}`,
+      );
+    } else if (!result.skipped) {
+      const detail =
+        'error' in result && result.error
+          ? result.error
+          : 'reason' in result
+            ? result.reason
+            : 'unknown';
+      console.log(
+        `[whatsapp] Employee funding message failed for FUND-${input.invID} -> ${input.employeeName}: ${detail}`,
+      );
+    }
+    return result;
+  } catch (err) {
+    if (err instanceof WhatsAppValidationError) {
+      console.log(`[whatsapp] Employee funding message skipped: validation — ${err.message}`);
+      return { sent: false, skipped: true, reason: 'invalid_payload' };
+    }
+    console.log(
+      `[whatsapp] Employee funding message error (non-critical): ${err instanceof Error ? err.message : String(err)}`,
     );
     return { sent: false, skipped: false, reason: 'remote_error' };
   }

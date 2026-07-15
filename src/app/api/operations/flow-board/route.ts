@@ -26,15 +26,9 @@ import {
   sqlDateToYyyyMmDd,
 } from "@/lib/bookingDateTime";
 import { getBarbersDayStatus } from "@/lib/availabilityEngine";
+import { createDevTimer } from "@/lib/devRequestTiming";
 
 export const runtime = "nodejs";
-
-// Performance logger
-function perfLog(label: string, startMs: number) {
-  const elapsed = Date.now() - startMs;
-  console.log(`[flow-board perf] ${label}: ${elapsed}ms`);
-  return elapsed;
-}
 
 export interface FlowBoardBarber {
   empId: number;
@@ -84,44 +78,54 @@ export interface FlowBoardBarber {
 }
 
 export async function GET(req: NextRequest) {
-  const totalStart = Date.now();
-  
+  const timer = createDevTimer('flow_board');
+
   try {
+    // Public operations route is auth-gated by proxy; no session work here.
+    timer.mark('authMs');
+
     const { searchParams } = new URL(req.url);
     const dateParam = searchParams.get("date");
     const dateStr = dateParam || getCairoBusinessDate();
     const now = new Date();
-    
+
     // Get Cairo day of week (0=Sunday)
     const cairoDate = new Date(`${dateStr}T12:00:00Z`);
     const dayOfWeek = cairoDate.getDay();
+    timer.mark('dateParseMs');
 
-    console.log(`[flow-board] Date: ${dateStr}, DayOfWeek: ${dayOfWeek}`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[flow-board] Date: ${dateStr}, DayOfWeek: ${dayOfWeek}`);
+    }
 
-    // 1. Connect to DB
-    const dbStart = Date.now();
     const db = await getPool();
-    perfLog("dbConnect", dbStart);
+    timer.mark('poolMs');
 
-    // 2. Detect lifecycle columns (fast single query)
+    // Detect lifecycle columns (fast single query)
+    const colCheckStart = Date.now();
     const colCheck = await db.request().query(`
       SELECT 
         CASE WHEN COL_LENGTH('dbo.QueueTickets','ExpectedStartAt') IS NOT NULL THEN 1 ELSE 0 END AS hasExpectedStartAt,
         CASE WHEN COL_LENGTH('dbo.QueueTickets','ExpectedEndAt') IS NOT NULL THEN 1 ELSE 0 END AS hasExpectedEndAt,
         CASE WHEN COL_LENGTH('dbo.QueueTickets','DurationMinutes') IS NOT NULL THEN 1 ELSE 0 END AS hasDurationMinutes
     `);
+    timer.setAbsolute('colCheckMs', Date.now() - colCheckStart);
     const { hasExpectedStartAt, hasExpectedEndAt, hasDurationMinutes } = colCheck.recordset[0] || {};
 
-    // Build lifecycle columns SQL fragment dynamically
     const lifecycleCols = [
       hasExpectedStartAt ? 'qt.ExpectedStartAt' : 'NULL AS ExpectedStartAt',
       hasExpectedEndAt ? 'qt.ExpectedEndAt' : 'NULL AS ExpectedEndAt',
       hasDurationMinutes ? 'qt.DurationMinutes' : 'NULL AS DurationMinutes',
     ].join(',\n            ');
 
-    // 3. Fetch ALL data in parallel (NO N+1!)
-    const batchStart = Date.now();
     const nextDateStr = nextDate(dateStr);
+
+    const timed = async <T>(label: string, p: Promise<T>): Promise<T> => {
+      const t0 = Date.now();
+      const result = await p;
+      timer.setAbsolute(label, Date.now() - t0);
+      return result;
+    };
 
     const [
       barbersRes,
@@ -130,16 +134,14 @@ export async function GET(req: NextRequest) {
       bookingsNextRes,
       queueNextRes,
     ] = await Promise.all([
-      // 3a. Get barbers only (Job = 'حلاق')
-      db.request().query(`
+      timed('employeesMs', db.request().query(`
         SELECT EmpID, EmpName
         FROM [dbo].[TblEmp]
         WHERE isActive = 1 AND Job = N'حلاق'
         ORDER BY EmpName
-      `),
+      `)),
 
-      // 3b. Get all bookings for this date
-      db.request()
+      timed('bookingsMs', db.request()
         .input("bdate", sql.Date, dateStr)
         .query(`
           SELECT 
@@ -156,10 +158,9 @@ export async function GET(req: NextRequest) {
           WHERE b.BookingDate = @bdate
             AND b.AssignedEmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
             AND b.Status IN ('confirmed', 'arrived', 'in_progress', 'queued', 'in_service')
-        `),
+        `)),
 
-      // 3c. Get all queue tickets for this date (lifecycle cols included only if they exist)
-      db.request()
+      timed('queueMs', db.request()
         .input("qdate", sql.Date, dateStr)
         .query(`
           SELECT 
@@ -179,10 +180,9 @@ export async function GET(req: NextRequest) {
           WHERE qt.QueueDate = @qdate
             AND qt.EmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
             AND LOWER(qt.Status) IN ('waiting', 'called', 'arrived', 'in_service')
-        `),
+        `)),
 
-      // 3d. Next-day bookings for overnight shifts
-      db.request()
+      timed('nextDayBookingsMs', db.request()
         .input("bdate", sql.Date, nextDateStr)
         .query(`
           SELECT 
@@ -199,10 +199,9 @@ export async function GET(req: NextRequest) {
           WHERE b.BookingDate = @bdate
             AND b.AssignedEmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
             AND b.Status IN ('confirmed', 'arrived', 'in_progress', 'queued', 'in_service')
-        `),
+        `)),
 
-      // 3e. Next-day queue tickets for overnight shifts
-      db.request()
+      timed('nextDayQueueMs', db.request()
         .input("qdate", sql.Date, nextDateStr)
         .query(`
           SELECT 
@@ -222,12 +221,9 @@ export async function GET(req: NextRequest) {
           WHERE qt.QueueDate = @qdate
             AND qt.EmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
             AND LOWER(qt.Status) IN ('waiting', 'called', 'arrived', 'in_service')
-        `),
+        `)),
     ]);
 
-    perfLog("batchFetch", batchStart);
-
-    // 3d. Batch-load service lines for bookings and queue tickets
     const bookingIds = [
       ...bookingsRes.recordset,
       ...bookingsNextRes.recordset,
@@ -240,6 +236,7 @@ export async function GET(req: NextRequest) {
     const bookingServicesMap = new Map<number, { names: string[]; totalDuration: number }>();
     const queueServicesMap = new Map<number, { names: string[]; totalDuration: number }>();
 
+    const detailsStart = Date.now();
     if (bookingIds.length > 0) {
       try {
         const bsRes = await db.request().query(`
@@ -278,15 +275,22 @@ export async function GET(req: NextRequest) {
         }
       } catch { /* QueueTicketServices optional */ }
     }
+    timer.setAbsolute('detailsMs', Date.now() - detailsStart);
 
-    // 2d. Batch load full day status
+    // schedules + overrides + attendance/day-off live inside getBarbersDayStatus
     const isToday = dateStr === getCairoBusinessDate(now);
     const allBarberIds: number[] = barbersRes.recordset.map((b: any) => b.EmpID as number);
+    const dayStatusStart = Date.now();
     const dayStatusMap = await getBarbersDayStatus(allBarberIds, dateStr, { isToday });
+    timer.setAbsolute('otherQueriesMs', Date.now() - dayStatusStart);
+    // Alias for report schema (nested in getBarbersDayStatus — not separately timed without engine change)
+    timer.setAbsolute('schedulesMs', 0);
+    timer.setAbsolute('overridesMs', 0);
 
-    console.log(`[flow-board] Barbers: ${barbersRes.recordset.length}, Bookings: ${bookingsRes.recordset.length}, Queue: ${queueRes.recordset.length}`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[flow-board] Barbers: ${barbersRes.recordset.length}, Bookings: ${bookingsRes.recordset.length}, Queue: ${queueRes.recordset.length}`);
+    }
 
-    // 3. Group data by empId in memory (fast)
     const processStart = Date.now();
 
     const bookingsMap = new Map();
@@ -313,15 +317,16 @@ export async function GET(req: NextRequest) {
       queueNextMap.get(q.EmpID).push(q);
     }
 
-    // 4. Build response for each barber (no DB queries here!)
+    timer.setAbsolute('normalizationMs', Date.now() - processStart);
+    const scheduleCalcStart = Date.now();
+
     const barbers: FlowBoardBarber[] = [];
     const defaultDuration = 30; // minutes
-    
+
     for (const barber of barbersRes.recordset) {
       const empId = barber.EmpID;
       const dayStatus = dayStatusMap.get(empId);
 
-      // Common status fields for all branches
       const statusFields = {
         isWorkingDay:              dayStatus?.isWorkingDay ?? false,
         isDayOff:                  dayStatus?.isDayOff ?? true,
@@ -332,7 +337,6 @@ export async function GET(req: NextRequest) {
         statusReasonArabic:        dayStatus?.statusReasonArabic ?? "غير متاح",
       };
 
-      // Not working today (day off, absent, no schedule)
       if (!dayStatus?.isWorkingDay || dayStatus.isAbsent) {
         const statusCode =
           dayStatus?.isAbsent    ? "absent"  :
@@ -359,7 +363,6 @@ export async function GET(req: NextRequest) {
       const workEnd   = dayStatus.effectiveEnd   ?? null;
       const isOvernight = !!(workStart && workEnd && timeToMinutes(workEnd) <= timeToMinutes(workStart));
 
-      // Build timeline items
       const timeline: FlowBoardBarber["timeline"] = [];
       const barberBookings = bookingsMap.get(empId) || [];
       const barberQueue = queueMap.get(empId) || [];
@@ -377,20 +380,7 @@ export async function GET(req: NextRequest) {
       const inShiftWindow = (start: Date, end: Date) =>
         start.getTime() < shiftEndMs && end.getTime() > shiftStartMs;
 
-      // Add booking items with Cairo-normalized times
       for (const b of [...barberBookings, ...barberBookingsNext]) {
-        // DEBUG for BK-448
-        const isDebug = b.BookingID === 448;
-        if (isDebug) {
-          console.log(`[flow-board] Processing BK-${b.BookingID}:`, {
-            rawStartTime: b.StartTime,
-            rawEndTime: b.EndTime,
-            bookingDate: b.BookingDate,
-            dateStr,
-          });
-        }
-
-        // Always use the stored BookingDate — mssql returns Date objects; never fall back to board dateStr.
         const bookingDateStr = b.BookingDate
           ? sqlDateToYyyyMmDd(b.BookingDate)
           : dateStr;
@@ -410,20 +400,7 @@ export async function GET(req: NextRequest) {
         const safeDuration = normalized.durationMinutes;
 
         if (!inShiftWindow(start, end)) {
-          if (isDebug) {
-            console.log(`[flow-board] BK-${b.BookingID} skipped (outside shift window)`);
-          }
           continue;
-        }
-
-        if (isDebug) {
-          console.log(`[flow-board] BK-${b.BookingID} normalized:`, {
-            start: start.toISOString(),
-            end: end.toISOString(),
-            duration: safeDuration,
-            startDisplay: normalized.startTimeDisplay,
-            endDisplay: normalized.endTimeDisplay,
-          });
         }
 
         timeline.push({
@@ -438,21 +415,18 @@ export async function GET(req: NextRequest) {
           customerName: b.ClientName || undefined,
           serviceNames: svcInfo?.names,
           barberId: empId,
-          // Additional normalized fields for frontend
           startTimeDisplay: normalized.startTimeDisplay,
           endTimeDisplay: normalized.endTimeDisplay,
           dateDisplay: normalized.dateDisplay,
         });
       }
-      
-      // Add queue items with effective status computation
+
       let inServiceCount = 0;
       for (const q of [...barberQueue, ...barberQueueNext]) {
         const queueDateStr = q.QueueDate
           ? sqlDateToYyyyMmDd(q.QueueDate)
           : dateStr;
 
-        // Compute effective status
         const effective = computeEffectiveTicket(
           {
             QueueTicketID: q.QueueTicketID,
@@ -477,15 +451,13 @@ export async function GET(req: NextRequest) {
 
         const isInService = q.Status.toLowerCase() === 'in_service';
         if (isInService) inServiceCount++;
-        
-        // Calculate times
+
         let start: Date;
         if (q.EstimatedStartTime) {
           start = new Date(q.EstimatedStartTime);
         } else if (q.ServiceStartedAt) {
           start = new Date(q.ServiceStartedAt);
         } else {
-          // Next-day queue tickets that have no explicit start time fall inside the overnight window
           const fallbackDate = queueDateStr === nextDateStr ? nextDateStr : dateStr;
           start = new Date(`${fallbackDate}T${workStart || '14:00'}`);
         }
@@ -522,11 +494,9 @@ export async function GET(req: NextRequest) {
           isBlockingAvailability: effective.isBlockingAvailability,
         });
       }
-      
-      // Sort timeline by start time
+
       timeline.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
-      // Calculate next available (simple: after last item or work start)
       let nextAvailableAt: string | null = null;
       if (timeline.length > 0) {
         const lastItem = timeline[timeline.length - 1];
@@ -535,7 +505,6 @@ export async function GET(req: NextRequest) {
         nextAvailableAt = new Date(`${dateStr}T${workStart}`).toISOString();
       }
 
-      // Count only effectively active waiting tickets (not expired/overdue)
       const effectiveWaitingCount = timeline.filter(
         t => t.type === 'queue' && t.isCountingAhead && t.actualStatus === 'waiting'
       ).length;
@@ -556,22 +525,35 @@ export async function GET(req: NextRequest) {
         timeline,
       });
     }
-    
-    perfLog("processData", processStart);
 
-    // 5. Return response
-    const totalMs = perfLog("TOTAL", totalStart);
-    console.log(`[flow-board] ✅ Completed in ${totalMs}ms, ${barbers.length} barbers`);
+    timer.setAbsolute('scheduleCalculationMs', Date.now() - scheduleCalcStart);
 
-    return NextResponse.json({
-      ok: true,
+    const respStart = Date.now();
+    const payload = {
+      ok: true as const,
       date: dateStr,
       generatedAt: now.toISOString(),
       barbers,
-    });
-    
+    };
+    timer.setAbsolute('responseBuildMs', Date.now() - respStart);
+
+    const serStart = Date.now();
+    const body = JSON.stringify(payload);
+    timer.setAbsolute('serializationMs', Date.now() - serStart);
+
+    timer.log('[flow-board perf]', { date: dateStr, barberCount: barbers.length });
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    const st = timer.serverTimingHeader();
+    if (st) headers['Server-Timing'] = st;
+
+    return new NextResponse(body, { status: 200, headers });
+
   } catch (err) {
     console.error("[operations/flow-board] error:", err);
+    timer.log('[flow-board perf]', { outcome: '500' });
     return NextResponse.json(
       {
         ok: false,

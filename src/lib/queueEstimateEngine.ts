@@ -28,6 +28,22 @@ const SALON_TZ = 'Africa/Cairo';
 
 const DEBUG_BOOKING = process.env.DEBUG_BOOKING === "true";
 
+/** Process-wide cache — schema rarely changes; avoids Object_ID round-trip per interval load. */
+let queueTicketServicesExistsCache: boolean | null = null;
+
+async function queueTicketServicesExists(
+  db: { request: () => { query: (sqlText: string) => Promise<{ recordset: any[] }> } },
+): Promise<boolean> {
+  if (queueTicketServicesExistsCache != null) return queueTicketServicesExistsCache;
+  try {
+    const r = await db.request().query(`SELECT OBJECT_ID('dbo.QueueTicketServices') AS oid`);
+    queueTicketServicesExistsCache = r.recordset[0]?.oid != null;
+  } catch {
+    queueTicketServicesExistsCache = false;
+  }
+  return queueTicketServicesExistsCache;
+}
+
 // ── Stale Queue Ticket Detection ─────────────────────────────────────────────
 
 const STALE_GRACE_MINUTES = 30; // Grace period after estimated end time
@@ -189,15 +205,12 @@ export function sqlTimeToDate(dateStr: string, timeVal: unknown): Date {
 // ── Default durations ─────────────────────────────────────────────────────────
 
 export async function getDefaultDuration(
-  db: Awaited<ReturnType<typeof getPool>>,
+  _db?: Awaited<ReturnType<typeof getPool>>,
 ): Promise<number> {
   try {
-    const r = await db
-      .request()
-      .query(
-        `SELECT TOP 1 DefaultServiceMinutes FROM [dbo].[QueueBookingSettings]`,
-      );
-    return r.recordset[0]?.DefaultServiceMinutes ?? 30;
+    const { getPublicSettings } = await import('@/lib/publicBookingHelpers');
+    const settings = await getPublicSettings();
+    return settings.defaultServiceDurationMinutes || 30;
   } catch {
     return 30;
   }
@@ -258,13 +271,8 @@ export async function buildQueueIntervals(
   },
 ): Promise<Interval[]> {
   const { filterStale = true, graceMinutes = STALE_GRACE_MINUTES, debugContext = "" } = options || {};
-  // Build SELECT defensively — guard QueueTicketServices with OBJECT_ID check
-  // so when the table doesn't exist the whole query doesn't crash
-  const svcTableExists = await db
-    .request()
-    .query(`SELECT OBJECT_ID('dbo.QueueTicketServices') AS oid`)
-    .then((r: any) => r.recordset[0]?.oid != null)
-    .catch(() => false);
+  // Build SELECT defensively — guard QueueTicketServices with cached Object_ID check
+  const svcTableExists = await queueTicketServicesExists(db);
 
   if (DEBUG_BOOKING)
     console.log(

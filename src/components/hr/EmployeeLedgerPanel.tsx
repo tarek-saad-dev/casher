@@ -11,7 +11,6 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import type {
-  EmpLedgerEntryRow,
   EmpLedgerEmployeeSummaryRow,
   EmpLedgerListResponse,
   EmpLedgerSummaryResponse,
@@ -23,6 +22,7 @@ import MonthlySalaryPostModal from '@/components/hr/MonthlySalaryPostModal';
 import EmployeeDailyTargetLedgerDetailsDialog from '@/components/hr/EmployeeDailyTargetLedgerDetailsDialog';
 import Link from 'next/link';
 import { EMPLOYEE_LEDGER_REFRESH_EVENT } from '@/lib/cashMoveDeleteClient';
+import { attachRunningBalances } from '@/lib/hr/employee-ledger-running-balance';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
@@ -155,6 +155,11 @@ export default function EmployeeLedgerPanel() {
   }, [summary, empId]);
 
   const entries = ledger?.entries ?? [];
+  const showRunningBalance = empId !== 'all';
+  const entriesWithBalance = useMemo(
+    () => (showRunningBalance ? attachRunningBalances(entries) : entries.map((e) => ({ ...e, runningBalance: null as number | null }))),
+    [entries, showRunningBalance],
+  );
   const displayTotals = empId === 'all'
     ? summary?.totals
     : summaryRows[0]
@@ -387,20 +392,25 @@ export default function EmployeeLedgerPanel() {
                 <th className="px-4 py-3 text-right font-medium">الاتجاه</th>
                 <th className="px-4 py-3 text-right font-medium">السبب</th>
                 <th className="px-4 py-3 text-right font-medium">المبلغ</th>
+                {showRunningBalance && (
+                  <th className="px-4 py-3 text-right font-medium" title="الرصيد بعد كل قيد حسب ترتيب التاريخ">
+                    الرصيد التراكمي
+                  </th>
+                )}
                 <th className="px-4 py-3 text-right font-medium">شهر الرواتب</th>
                 <th className="px-4 py-3 text-right font-medium">مرجع</th>
                 <th className="px-4 py-3 text-right font-medium">ملاحظات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/60">
-              {entries.length === 0 && !loadingEntries && (
+              {entriesWithBalance.length === 0 && !loadingEntries && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-zinc-500 text-sm">
+                  <td colSpan={showRunningBalance ? 9 : 8} className="px-4 py-8 text-center text-zinc-500 text-sm">
                     لا توجد قيود مسجّلة بعد
                   </td>
                 </tr>
               )}
-              {entries.map((entry: EmpLedgerEntryRow) => {
+              {entriesWithBalance.map((entry) => {
                 const isDailyTarget =
                   entry.entryReason === 'target' &&
                   entry.refType === 'TblEmpDailyTarget' &&
@@ -431,6 +441,13 @@ export default function EmployeeLedgerPanel() {
                     }`}>
                       {fmt(entry.amount)}
                     </td>
+                    {showRunningBalance && entry.runningBalance != null && (
+                      <td className={`px-4 py-3 font-mono font-bold ${
+                        entry.runningBalance >= 0 ? 'text-amber-400' : 'text-rose-400'
+                      }`}>
+                        {fmt(entry.runningBalance)}
+                      </td>
+                    )}
                     <td className="px-4 py-3 font-mono text-xs text-zinc-500">{entry.payrollMonth ?? '—'}</td>
                     <td className="px-4 py-3 font-mono text-xs text-zinc-500">
                       {entry.refType ? `${entry.refType}${entry.refId ? ` #${entry.refId}` : ''}` : '—'}
@@ -483,7 +500,7 @@ export default function EmployeeLedgerPanel() {
       )}
 
       <p className="text-xs text-zinc-600 px-1">
-        الرصيد المعروض في الجدول حسب شهر الرواتب المحدد. عند الصرف يُتحقق من الرصيد الإجمالي (كل القيود غير الملغاة).
+        الرصيد المعروض في الجدول حسب شهر الرواتب المحدد. عند اختيار موظف يظهر «الرصيد التراكمي» بعد كل قيد. عند الصرف يُتحقق من الرصيد الإجمالي (كل القيود غير الملغاة).
       </p>
     </div>
   );

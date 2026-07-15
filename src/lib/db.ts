@@ -142,6 +142,11 @@ export async function getCloudPool(): Promise<sql.ConnectionPool> {
         cloudPool = null;
         cloudPoolPromise = null;
       });
+      // One-shot registry sync on first successful cloud connect (not per getPool).
+      void import("./pages-sync")
+        .then((m) => m.syncPagesRegistry(newPool))
+        .then(() => import("./roles-sync").then((m) => m.syncRolesRegistry(newPool)))
+        .catch(() => {});
       return cloudPool;
     })
     .catch((err) => {
@@ -154,13 +159,25 @@ export async function getCloudPool(): Promise<sql.ConnectionPool> {
 
 // Get current target pool (legacy compatibility)
 export async function getPool(): Promise<sql.ConnectionPool> {
-  const pool = await (currentDbTarget === "local" ? getLocalPool() : getCloudPool());
-  // Auto-sync pages registry on first connection (non-blocking)
-  import('./pages-sync')
-    .then((m) => m.syncPagesRegistry(pool))
-    .then(() => import('./roles-sync').then((m) => m.syncRolesRegistry(pool)))
-    .catch(() => {});
-  return pool;
+  return currentDbTarget === "local" ? getLocalPool() : getCloudPool();
+}
+
+/**
+ * Intentional registry bootstrap (pages + roles).
+ * Must NOT run from the generic getPool() booking/API hot path.
+ */
+export async function ensureDbRegistrySync(
+  pool?: sql.ConnectionPool,
+): Promise<void> {
+  const db = pool ?? (await getPool());
+  try {
+    const pages = await import("./pages-sync");
+    await pages.syncPagesRegistry(db);
+    const roles = await import("./roles-sync");
+    await roles.syncRolesRegistry(db);
+  } catch {
+    /* non-fatal */
+  }
 }
 
 // Get pool by specific target

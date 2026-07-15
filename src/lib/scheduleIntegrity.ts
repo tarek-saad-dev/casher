@@ -20,6 +20,7 @@ import {
 } from '@/lib/scheduleOverrides';
 import { salonDateTimeToMs, getPublicSettings } from '@/lib/publicBookingHelpers';
 import { SALON_TZ } from '@/lib/bookingDateTime';
+import { createStageTimer } from '@/lib/devStageTiming';
 
 export class ScheduleConflictError extends Error {
   status = 409;
@@ -65,8 +66,9 @@ export async function getEmployeeEffectiveSchedule(args: {
   empId: number;
   operationalDate: string;
   transaction?: Transaction;
+  settings?: Awaited<ReturnType<typeof getPublicSettings>>;
 }): Promise<EmployeeShiftBounds | null> {
-  const settings = await getPublicSettings();
+  const settings = args.settings ?? (await getPublicSettings());
   const timezone = settings.timezone || SALON_TZ;
 
   const dateObj = new Date(`${args.operationalDate}T12:00:00Z`);
@@ -75,8 +77,9 @@ export async function getEmployeeEffectiveSchedule(args: {
     ? { isWorking: true, start: baseWindow.startTime, end: baseWindow.endTime }
     : { isWorking: false, start: '00:00', end: '00:00' };
 
+  const db = (args.transaction ?? (await getPool())) as Awaited<ReturnType<typeof getPool>>;
   const overridesMap = await loadOverridesForDate(
-    await getPool(),
+    db,
     [args.empId],
     args.operationalDate,
   );
@@ -103,6 +106,9 @@ export async function getEmployeeEffectiveSchedule(args: {
 /**
  * Canonical busy-interval builder — queue, bookings, and block_range overrides.
  * Half-open [start, end). Used by availability engine and final write guard.
+ *
+ * Static schedule/settings may be passed to avoid duplicate slow reads.
+ * Dynamic occupancy is always loaded fresh (preferably on the transaction connection).
  */
 export async function getEmployeeBusyIntervals(args: {
   empId: number;
@@ -113,41 +119,58 @@ export async function getEmployeeBusyIntervals(args: {
   transaction?: Transaction;
   /** Absolute end of the candidate interval — when past operationalDate midnight, next-day busy is loaded. */
   rangeEndMs?: number;
+  /** Reuse schedule already resolved after applock (do not treat as occupancy truth). */
+  schedule?: EmployeeShiftBounds | null;
+  settings?: Awaited<ReturnType<typeof getPublicSettings>>;
+  defaultDuration?: number;
 }): Promise<ScheduleInterval[]> {
-  const db = await getPool();
-  const defaultDur = await getDefaultDuration(db);
+  const timer = createStageTimer();
+  const db = (args.transaction ?? (await getPool())) as Awaited<ReturnType<typeof getPool>>;
+  timer.mark('poolMs');
 
-  const qIvs = await buildQueueIntervals(
-    db,
-    args.empId,
-    args.operationalDate,
-    args.now,
-    defaultDur,
-    args.excludeQueueTicketId,
-    { filterStale: true, graceMinutes: 30, debugContext: 'schedule-integrity' },
-  );
+  const settings = args.settings ?? (await getPublicSettings());
+  timer.mark('settingsMs');
+  const defaultDur =
+    args.defaultDuration ??
+    settings.defaultServiceDurationMinutes ??
+    (await getDefaultDuration(db));
+  timer.mark('defaultDurMs');
 
-  const bIvs = await buildBookingIntervals(db, args.empId, args.operationalDate, defaultDur);
+  const schedule =
+    args.schedule !== undefined
+      ? args.schedule
+      : await getEmployeeEffectiveSchedule({
+          empId: args.empId,
+          operationalDate: args.operationalDate,
+          transaction: args.transaction,
+          settings,
+        });
+  timer.mark('scheduleMs');
+
+  const [qIvs, bIvs] = await Promise.all([
+    buildQueueIntervals(
+      db,
+      args.empId,
+      args.operationalDate,
+      args.now,
+      defaultDur,
+      args.excludeQueueTicketId,
+      { filterStale: true, graceMinutes: 30, debugContext: 'schedule-integrity' },
+    ),
+    buildBookingIntervals(db, args.empId, args.operationalDate, defaultDur),
+  ]);
+  timer.mark('sameDayBusyMs');
+
   const filteredBookings = args.excludeBookingId
     ? bIvs.filter((iv) => iv.id !== args.excludeBookingId)
     : bIvs;
 
-  const schedule = await getEmployeeEffectiveSchedule({
-    empId: args.empId,
-    operationalDate: args.operationalDate,
-    transaction: args.transaction,
-  });
-
-  const settings = await getPublicSettings();
   const timezone = settings.timezone || SALON_TZ;
   const nextMidnightMs = salonDateTimeToMs(nextDate(args.operationalDate), '00:00', timezone);
-  // Overnight shift: work end is after the next calendar midnight.
   const overnightShift = !!schedule?.isWorking && schedule.shiftEndMs > nextMidnightMs;
-  // Candidate interval spills past midnight (cross-midnight bookings / plan segments).
   const rangeNeedsNextDay =
     args.rangeEndMs != null && args.rangeEndMs > nextMidnightMs;
 
-  // Load next calendar day's bookings/queue when the shift or candidate crosses midnight.
   let nextDayBusy: Interval[] = [];
   if (schedule?.isWorking && (overnightShift || rangeNeedsNextDay)) {
     const nextDayStr = nextDate(args.operationalDate);
@@ -164,12 +187,11 @@ export async function getEmployeeBusyIntervals(args: {
     const filteredNextBookings = args.excludeBookingId
       ? bIvsNext.filter((iv) => iv.id !== args.excludeBookingId)
       : bIvsNext;
-    // For cross-midnight candidates outside overnight shift windows, keep all next-day
-    // intervals that overlap the candidate range (not only shift-clipped).
     nextDayBusy = rangeNeedsNextDay && !overnightShift
       ? [...qIvsNext, ...filteredNextBookings]
       : [...qIvsNext, ...filteredNextBookings].filter(inShiftWindow);
   }
+  timer.mark('nextDayBusyMs');
 
   const blockIvs: ScheduleInterval[] = (schedule?.effSched.blockedIntervals ?? []).map(
     (b, idx) => ({
@@ -180,6 +202,8 @@ export async function getEmployeeBusyIntervals(args: {
       label: b.reason,
     }),
   );
+
+  timer.finish('[busy-intervals perf]', { empId: args.empId, date: args.operationalDate });
 
   return [
     ...qIvs.map((iv) => ({
@@ -222,11 +246,15 @@ export async function acquireScheduleLocksSorted(
   }
 }
 
+/** Last applock wait+exec duration (DEV measurement only; not concurrency-safe across parallel requests). */
+export let lastScheduleLockMs = 0;
+
 export async function acquireEmployeeScheduleLock(
   transaction: Transaction,
   empId: number,
   operationalDate: string,
 ): Promise<void> {
+  const lockStart = Date.now();
   const lockResource = `operations-schedule:${empId}:${operationalDate}`;
   const lockRes = await transaction.request()
     .input('resource', sql.NVarChar, lockResource)
@@ -239,6 +267,7 @@ export async function acquireEmployeeScheduleLock(
         @LockTimeout = 10000;
       SELECT @result AS LockResult;
     `);
+  lastScheduleLockMs = Date.now() - lockStart;
 
   const lockResult = lockRes.recordset[0]?.LockResult;
   if (lockResult !== 0 && lockResult !== 1) {
@@ -269,18 +298,24 @@ export async function assertEmployeeIntervalAvailable(args: {
   excludeBookingId?: number;
   transaction?: Transaction;
 }): Promise<void> {
+  const timer = createStageTimer();
   const now = args.now ?? new Date();
   const operationalDate = args.operationalDate ?? getCairoBusinessDate(now);
+  const settings = await getPublicSettings();
+  timer.mark('settingsMs');
 
   if (args.transaction) {
     await acquireEmployeeScheduleLock(args.transaction, args.empId, operationalDate);
   }
+  timer.mark('applockMs');
 
   const schedule = await getEmployeeEffectiveSchedule({
     empId: args.empId,
     operationalDate,
     transaction: args.transaction,
+    settings,
   });
+  timer.mark('scheduleMs');
 
   if (!schedule?.isWorking) {
     throw new ScheduleConflictError(
@@ -305,6 +340,7 @@ export async function assertEmployeeIntervalAvailable(args: {
     );
   }
 
+  // Authoritative busy re-read AFTER lock — never reuse pre-validation occupancy.
   const busy = await getEmployeeBusyIntervals({
     empId: args.empId,
     operationalDate,
@@ -313,9 +349,14 @@ export async function assertEmployeeIntervalAvailable(args: {
     excludeBookingId: args.excludeBookingId,
     transaction: args.transaction,
     rangeEndMs: endMs,
+    schedule,
+    settings,
+    defaultDuration: settings.defaultServiceDurationMinutes,
   });
+  timer.mark('busyMs');
 
   const overlaps = findOverlappingIntervals(args.startAt, args.endAt, busy);
+  timer.finish('[assert-available perf]', { empId: args.empId });
   if (overlaps.length === 0) return;
 
   const first = overlaps[0];

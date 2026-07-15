@@ -357,6 +357,9 @@ export async function PATCH(request: NextRequest) {
       SET ${updates.join(", ")}
     `);
 
+    const { invalidatePublicSettingsCache } = await import("@/lib/publicBookingHelpers");
+    invalidatePublicSettingsCache();
+
     return NextResponse.json({
       ok: true,
       message: "تم حفظ الإعدادات بنجاح",

@@ -17,6 +17,13 @@ import {
   isSlotInsideRange,
   sanitizeDate,
 } from './types';
+import {
+  acquireSubmitGuard,
+  BOOKING_SUCCESS_CLOSE_DELAY_MS,
+  parseBookingCreateSuccess,
+  releaseSubmitGuard,
+  type BookingCreateSuccess,
+} from '@/lib/operations/bookingWorkspaceSubmit';
 
 export interface UseBookingWorkspaceArgs {
   open: boolean;
@@ -27,7 +34,7 @@ export interface UseBookingWorkspaceArgs {
   initialTimeRangeEnd?: string;
   barbers: BookingWorkspaceBarber[];
   onClose: () => void;
-  onCreated?: () => void;
+  onCreated?: (result?: BookingCreateSuccess) => void;
 }
 
 export function useBookingWorkspace({
@@ -83,6 +90,7 @@ export function useBookingWorkspace({
   const fetchGenRef = useRef(0);
   const modalRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const submittingRef = useRef(false);
 
   const totalDuration = useMemo(
     () => selectedServices.reduce((s, svc) => s + (svc.DurationMinutes ?? 30), 0),
@@ -361,13 +369,19 @@ export function useBookingWorkspace({
 
   const handleSubmit = async () => {
     if (!selectedSlot || !selectedServices.length) return;
+    if (!acquireSubmitGuard(submittingRef)) return;
     if (selectedSlot.durationMinutes !== totalDuration) {
+      releaseSubmitGuard(submittingRef);
       setError(`الموعد المختار لا يطابق المدة المطلوبة (${totalDuration} دقيقة)`);
       beginSlotRefresh();
       setStep(3);
       return;
     }
     setError(null);
+    const submitT0 = performance.now();
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[ops-booking-perf] confirm_click', { t: 0 });
+    }
     setSubmitting(true);
     try {
       const payload = {
@@ -384,12 +398,28 @@ export function useBookingWorkspace({
         notes: notes.trim(),
         source: 'operations',
       };
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[ops-booking-perf] post_start', {
+          msSinceConfirm: Math.round(performance.now() - submitT0),
+          date: bookingDate,
+          dayOffset: selectedSlot.dayOffset ?? 0,
+          empId: selectedSlot.empId,
+        });
+      }
       const res = await fetch('/api/public/booking/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[ops-booking-perf] post_return', {
+          msSinceConfirm: Math.round(performance.now() - submitT0),
+          status: res.status,
+          ok: !!(data && data.ok),
+          bookingId: data?.booking?.id ?? null,
+        });
+      }
       if (res.status === 409) {
         setError(data.message || data.error || 'الوقت المختار لم يعد متاحًا، اختر موعدًا آخر.');
         invalidateSlotSelection();
@@ -398,12 +428,51 @@ export function useBookingWorkspace({
         return;
       }
       if (!res.ok || !data.ok) throw new Error(data.error || 'فشل إنشاء الحجز');
+
+      const successResult = parseBookingCreateSuccess(data) ?? {
+        actualDate: data.booking?.actualDate || data.booking?.date || bookingDate,
+        bookingId: data.booking?.id,
+        code: data.booking?.code,
+      };
+
+      setSubmitting(false);
+      releaseSubmitGuard(submittingRef);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[ops-booking-perf] submitting_cleared', {
+          msSinceConfirm: Math.round(performance.now() - submitT0),
+        });
+      }
+
       setSuccess(true);
-      setTimeout(() => { onCreated?.(); onClose(); }, 1500);
+      const finish = () => {
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[ops-booking-perf] onCreated_onClose', {
+            msSinceConfirm: Math.round(performance.now() - submitT0),
+            delayMs: BOOKING_SUCCESS_CLOSE_DELAY_MS,
+          });
+        }
+        // Refresh is owned by the parent — fire-and-forget via onCreated; do not await.
+        onCreated?.(successResult);
+        onClose();
+      };
+
+      if (BOOKING_SUCCESS_CLOSE_DELAY_MS <= 0) {
+        finish();
+      } else {
+        setTimeout(finish, BOOKING_SUCCESS_CLOSE_DELAY_MS);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'فشل إنشاء الحجز');
     } finally {
-      setSubmitting(false);
+      if (submittingRef.current) {
+        releaseSubmitGuard(submittingRef);
+        setSubmitting(false);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[ops-booking-perf] submitting_cleared', {
+            msSinceConfirm: Math.round(performance.now() - submitT0),
+          });
+        }
+      }
     }
   };
 
