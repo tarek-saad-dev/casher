@@ -19,6 +19,7 @@ export interface WhatsAppConfig {
   quickMessageEnabled: boolean;
   employeeDailyReportEnabled: boolean;
   ownerDailyReportEnabled: boolean;
+  otherEnabled: boolean;
   defaultBranchName: string;
   defaultBookingLink: string;
   defaultQuickMessage: string;
@@ -43,6 +44,7 @@ function getWhatsAppConfig(): WhatsAppConfig {
       process.env.WHATSAPP_EMPLOYEE_DAILY_REPORT_ENABLED !== 'false',
     ownerDailyReportEnabled:
       process.env.WHATSAPP_OWNER_DAILY_REPORT_ENABLED !== 'false',
+    otherEnabled: process.env.WHATSAPP_OTHER_ENABLED !== 'false',
     defaultBranchName: process.env.WHATSAPP_DEFAULT_BRANCH_NAME || 'جليم',
     defaultBookingLink: process.env.WHATSAPP_DEFAULT_BOOKING_LINK || 'https://cutsaloon.com/',
     defaultQuickMessage:

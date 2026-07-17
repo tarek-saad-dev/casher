@@ -54,11 +54,20 @@ describe('composeEmployeeDailyWhatsAppMessage', () => {
       dayNameAr: 'الأحد',
       day: baseDay(),
       ledgerBalance: 1850,
+      invoiceCount: 7,
+      serviceCount: 12,
+      basicServiceCount: 9,
+      otherServiceCount: 3,
     });
 
     expect(msg).toContain('تقرير يومك — جليم');
     expect(msg).toContain('يا زياد');
     expect(msg).toContain('اتحاسب أساسي');
+    expect(msg).toContain('عدد الفواتير: 7');
+    expect(msg).toContain('إجمالي الخدمات: 12');
+    expect(msg).toContain('خدمات أساسية (شعر / دقن / شعر ودقن): 9');
+    expect(msg).toContain('خدمات أخرى: 3');
+    expect(msg).not.toContain('مبيعات:');
     expect(msg).toContain('رصيد حسابك حتى الآن');
     expect(msg).toMatch(/1[,.]850|١[,.\u066C]?٨٥٠/);
   });
@@ -78,5 +87,24 @@ describe('composeEmployeeDailyWhatsAppMessage', () => {
         }),
       ),
     ).toBe(true);
+  });
+
+  it('includes break intervals from-to for multiple periods', () => {
+    const msg = composeEmployeeDailyWhatsAppMessage({
+      employeeName: 'زياد',
+      branchName: 'جليم',
+      workDate: '2026-07-06',
+      dayNameAr: 'الأحد',
+      day: baseDay({ breakMinutes: 45 }),
+      ledgerBalance: 1850,
+      breakIntervals: [
+        { LeaveAt: '14:00', ReturnAt: '14:30', Minutes: 30 },
+        { LeaveAt: '17:00', ReturnAt: '17:15', Minutes: 15 },
+      ],
+    });
+
+    expect(msg).toContain('مستقطع: 45 د');
+    expect(msg).toContain('• من 2:00 م إلى 2:30 م');
+    expect(msg).toContain('• من 5:00 م إلى 5:15 م');
   });
 });

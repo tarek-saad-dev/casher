@@ -15,6 +15,7 @@ import type {
   EmployeeFundingWhatsAppPayload,
   QuickMessageWhatsAppPayload,
   EmployeeDailyReportWhatsAppPayload,
+  OtherWhatsAppPayload,
   WhatsAppExtraVariables,
 } from './types';
 import { PROTECTED_FIELDS } from './types';
@@ -269,6 +270,27 @@ function optionalFiniteNumber(value: unknown, field: string): number | null | un
   return assertFiniteNumber(value, field);
 }
 
+export function validateOtherPayload(input: unknown): OtherWhatsAppPayload {
+  if (typeof input !== 'object' || input === null) {
+    throw new WhatsAppValidationError('Payload must be an object');
+  }
+  const p = input as Record<string, unknown>;
+
+  const payload: OtherWhatsAppPayload = {
+    type: 'other',
+    phone: assertNonEmptyString(p.phone, 'phone'),
+    customerName: assertNonEmptyString(p.customerName, 'customerName'),
+    message: assertNonEmptyString(p.message, 'message'),
+  };
+
+  if (p.branchName !== undefined && typeof p.branchName === 'string')
+    payload.branchName = p.branchName;
+  if (p.variables !== undefined)
+    payload.variables = validateExtraVariables(p.variables);
+
+  return payload;
+}
+
 export function validateEmployeeDailyReportPayload(
   input: unknown,
 ): EmployeeDailyReportWhatsAppPayload {
@@ -356,6 +378,8 @@ export function validatePayload(input: unknown): WhatsAppPayload {
       return validateQuickMessagePayload(input);
     case 'employee_daily_report':
       return validateEmployeeDailyReportPayload(input);
+    case 'other':
+      return validateOtherPayload(input);
     default:
       throw new WhatsAppValidationError(`Unknown message type: ${String(p.type)}`);
   }

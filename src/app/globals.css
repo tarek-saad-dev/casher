@@ -155,22 +155,23 @@
 
 .scrollbar-luxury {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--primary) 13%, transparent) transparent;
+  scrollbar-color: color-mix(in srgb, var(--primary) 55%, transparent) color-mix(in srgb, var(--muted) 35%, transparent);
 }
 
 .scrollbar-luxury::-webkit-scrollbar {
-  height: 4px;
+  height: 6px;
 }
 
 .scrollbar-luxury::-webkit-scrollbar-track {
-  background: transparent;
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
   border-radius: 100px;
+  margin-inline: 6px;
 }
 
 .scrollbar-luxury::-webkit-scrollbar-thumb {
   background: linear-gradient(90deg, var(--primary) 0%, var(--primary-hover) 100%);
   border-radius: 100px;
-  box-shadow: 0 0 10px color-mix(in srgb, var(--primary) 30%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--primary) 35%, transparent);
 }
 
 .scrollbar-luxury::-webkit-scrollbar-thumb:hover {

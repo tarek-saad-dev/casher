@@ -1,14 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { FileText, BarChart3, TrendingUp, List, Users } from 'lucide-react';
+import { FileText, BarChart3, TrendingUp, List } from 'lucide-react';
 import ExpensesReportFilters from '@/components/reports/expenses/ExpensesReportFilters';
 import ExpensesKpiCards from '@/components/reports/expenses/ExpensesKpiCards';
 import ExpenseCategoryBreakdown from '@/components/reports/expenses/ExpenseCategoryBreakdown';
 import ExpenseDailyTrend from '@/components/reports/expenses/ExpenseDailyTrend';
 import ExpenseByCategoryView from '@/components/reports/expenses/ExpenseByCategoryView';
 import ExpenseTransactionsTable from '@/components/reports/expenses/ExpenseTransactionsTable';
-import EmployeeAdvancesSection from '@/components/reports/expenses/EmployeeAdvancesSection';
 import FinancialClassificationPanel from '@/components/reports/FinancialClassificationPanel';
 import type { MonthlyExpensesReport } from '@/lib/types';
 import { formatArabicNumber } from '@/lib/formatArabicNumbers';
@@ -18,7 +17,7 @@ const ARABIC_MONTHS = [
   'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
 ];
 
-type TabType = 'summary' | 'category-breakdown' | 'daily-trend' | 'employee-advances' | 'transactions';
+type TabType = 'summary' | 'category-breakdown' | 'daily-trend' | 'transactions';
 
 export default function MonthlyExpensesReportPage() {
   const now = new Date();
@@ -151,17 +150,6 @@ export default function MonthlyExpensesReportPage() {
                 الاتجاه اليومي
               </button>
               <button
-                onClick={() => setActiveTab('employee-advances')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-                  activeTab === 'employee-advances'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'hover:bg-muted'
-                }`}
-              >
-                <Users className="h-4 w-4" />
-                سلف الموظفين
-              </button>
-              <button
                 onClick={() => setActiveTab('transactions')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === 'transactions'
@@ -207,11 +195,6 @@ export default function MonthlyExpensesReportPage() {
                 highestDay={report.summary.highestSpendDay}
                 loading={loading}
               />
-            )}
-
-            {/* Employee Advances Tab */}
-            {activeTab === 'employee-advances' && (
-              <EmployeeAdvancesSection year={year} month={month} />
             )}
 
             {/* Transactions Tab */}

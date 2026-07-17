@@ -167,3 +167,32 @@ export function formatBreakMinutesLabel(minutes: number): string {
   const m = minutes % 60;
   return m > 0 ? `${h}س ${m}د` : `${h}س`;
 }
+
+/**
+ * Format break intervals for WhatsApp / UI:
+ * "من 2:00 م إلى 2:30 م" — one line per period.
+ */
+export function formatBreakIntervalRangeAr(
+  leaveAt: string | null | undefined,
+  returnAt: string | null | undefined,
+  formatTime: (t: string | null | undefined) => string | null,
+): string | null {
+  const leave = formatTime(leaveAt);
+  if (!leave) return null;
+  const ret = formatTime(returnAt);
+  if (!ret) return `من ${leave} (بدون عودة)`;
+  return `من ${leave} إلى ${ret}`;
+}
+
+export function formatBreakIntervalsLinesAr(
+  breaks: AttendanceBreakInterval[] | null | undefined,
+  formatTime: (t: string | null | undefined) => string | null,
+): string[] {
+  if (!breaks?.length) return [];
+  const lines: string[] = [];
+  for (const b of breaks) {
+    const range = formatBreakIntervalRangeAr(b.LeaveAt, b.ReturnAt, formatTime);
+    if (range) lines.push(range);
+  }
+  return lines;
+}

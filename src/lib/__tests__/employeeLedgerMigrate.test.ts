@@ -22,7 +22,8 @@ function makePool(options: {
   let fundingIdx = 0;
   const tableSeq = options.tableExistsSequence ?? [false, true, true];
   const indexSeq = options.indexExistsSequence ?? [false, true];
-  const fundingSeq = options.fundingAllowedSequence ?? [false, true];
+  // Called 4 times: fundingBefore, tipBefore, fundingAfter, tipAfter
+  const fundingSeq = options.fundingAllowedSequence ?? [false, false, true, true];
   let batchCalls = 0;
 
   return {
@@ -44,7 +45,7 @@ function makePool(options: {
           return {
             recordset: [{
               definition: allowed
-                ? "([EntryReason] IN (N'hourly_wage', N'employee_funding'))"
+                ? "([EntryReason] IN (N'hourly_wage', N'employee_funding', N'tip'))"
                 : "([EntryReason] IN (N'hourly_wage', N'advance'))",
             }],
           };
@@ -94,7 +95,7 @@ describe('employeeLedgerMigrateService', () => {
       getPool: vi.fn(async () => makePool({
         tableExistsSequence: [false, true],
         indexExistsSequence: [false, true],
-        fundingAllowedSequence: [false, true],
+        fundingAllowedSequence: [false, false, true, true],
       })),
     }));
 
@@ -108,9 +109,10 @@ describe('employeeLedgerMigrateService', () => {
       uniqueIndexCreated: true,
       uniqueIndexExists: true,
       employeeFundingReasonAllowed: true,
+      employeeTipReasonAllowed: true,
       entryReasonCheckUpdated: true,
     });
-    expect(readFileSync).toHaveBeenCalledTimes(3);
+    expect(readFileSync).toHaveBeenCalledTimes(4);
   });
 
   it('reports exists when table and index already present', async () => {
@@ -118,7 +120,7 @@ describe('employeeLedgerMigrateService', () => {
       getPool: vi.fn(async () => makePool({
         tableExistsSequence: [true, true],
         indexExistsSequence: [true, true],
-        fundingAllowedSequence: [true, true],
+        fundingAllowedSequence: [true, true, true, true],
       })),
     }));
 
@@ -132,6 +134,7 @@ describe('employeeLedgerMigrateService', () => {
       uniqueIndexCreated: false,
       uniqueIndexExists: true,
       employeeFundingReasonAllowed: true,
+      employeeTipReasonAllowed: true,
       entryReasonCheckUpdated: false,
     });
   });

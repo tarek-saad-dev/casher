@@ -18,6 +18,7 @@ import { getBarberDayStatus, cairoDateStr } from "@/lib/availabilityEngine";
 import {
   isSyncedBlockRangeCreatedBy,
   removeBreakMatchingBlockRange,
+  removeBreakTimeMatchingBlockRange,
 } from "@/lib/hr/attendance-break-schedule-sync";
 
 export const runtime = "nodejs";
@@ -106,13 +107,16 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
         .catch(() => {});
     }
 
-    // 3b. block_range synced ↔ وقت مستقطع → remove matching break
+    // 3b. block_range synced ↔ وقت مستقطع / وقت البريك → remove matching interval
     if (
       overrideType === "block_range" &&
       isSyncedBlockRangeCreatedBy(createdBy)
     ) {
       await removeBreakMatchingBlockRange(db, empId, date, startTime, endTime).catch((err) => {
         console.warn("[ops/schedule-control/override DELETE] break sync failed", err);
+      });
+      await removeBreakTimeMatchingBlockRange(db, empId, date, startTime, endTime).catch((err) => {
+        console.warn("[ops/schedule-control/override DELETE] break-time sync failed", err);
       });
     }
 

@@ -56,6 +56,8 @@ export interface RawAttendanceDbRow {
   Notes?: string | null;
   BreakMinutesTotal?: number | null;
   Breaks?: AttendanceBreakInterval[] | null;
+  BreakTimeMinutesTotal?: number | null;
+  BreakTimes?: AttendanceBreakInterval[] | null;
 }
 
 export interface ResolvedScheduleDay {
@@ -107,6 +109,9 @@ export interface AttendanceBoardRow {
   HasRecord: boolean;
   BreakMinutesTotal: number;
   Breaks: AttendanceBreakInterval[];
+  /** وقت البريك — display only, never deducted from net hours */
+  BreakTimeMinutesTotal: number;
+  BreakTimes: AttendanceBreakInterval[];
   employmentTypeLabel: string | null;
   payrollMethodLabel: string | null;
   dayOffPolicyLabel: string | null;
@@ -416,6 +421,8 @@ export function buildAttendanceBoardRow(
     HasRecord: hasAttendanceRecord,
     BreakMinutesTotal: Math.max(0, Number(row.BreakMinutesTotal) || 0),
     Breaks: Array.isArray(row.Breaks) ? row.Breaks : [],
+    BreakTimeMinutesTotal: Math.max(0, Number(row.BreakTimeMinutesTotal) || 0),
+    BreakTimes: Array.isArray(row.BreakTimes) ? row.BreakTimes : [],
     employmentTypeLabel: EMPLOYMENT_LABELS[employmentType] ?? null,
     payrollMethodLabel: payrollMethod ? PAYROLL_LABELS[payrollMethod] ?? null : null,
     dayOffPolicyLabel:

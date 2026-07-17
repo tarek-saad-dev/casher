@@ -13,12 +13,14 @@ export const EMP_LEDGER_ENTRY_REASONS = [
   'settlement',
   'adjustment',
   'employee_funding',
+  'tip',
 ] as const;
 export type EmpLedgerEntryReason = (typeof EMP_LEDGER_ENTRY_REASONS)[number];
 
 export const EMP_LEDGER_SALARY_CREDIT_REASONS = ['hourly_wage', 'monthly_salary'] as const;
 export const EMP_LEDGER_TARGET_CREDIT_REASONS = ['target', 'commission', 'bonus'] as const;
 export const EMP_LEDGER_FUNDING_CREDIT_REASONS = ['employee_funding'] as const;
+export const EMP_LEDGER_TIP_CREDIT_REASONS = ['tip'] as const;
 export const EMP_LEDGER_ADVANCE_DEBIT_REASONS = ['advance'] as const;
 export const EMP_LEDGER_PAYOUT_DEBIT_REASONS = ['payout'] as const;
 export const EMP_LEDGER_DEDUCTION_DEBIT_REASONS = ['deduction', 'settlement', 'adjustment'] as const;
@@ -117,4 +119,20 @@ export const EMP_LEDGER_REASON_LABELS: Record<EmpLedgerEntryReason, string> = {
   settlement: 'تسوية',
   adjustment: 'تعديل',
   employee_funding: 'تمويل للمحل',
+  tip: 'تبس',
 };
+
+export interface EmpLedgerTipResponse {
+  success: true;
+  cashMoveId: number;
+  ledgerEntryId: number;
+  invID: number;
+  employeeName: string;
+  invoiceTotal: number;
+  amountPaid: number;
+  tipAmount: number;
+  previousBalance: number;
+  newBalance: number;
+  ledgerDualWrite: true;
+  tipWhatsApp?: boolean;
+}

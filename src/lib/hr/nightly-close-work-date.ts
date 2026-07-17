@@ -1,10 +1,10 @@
 /**
- * Cairo calendar helpers for the nightly close job (01:00 Africa/Cairo).
+ * Cairo calendar helpers for the nightly close job (02:00 Africa/Cairo).
  */
 
-/** Vercel cron fires at 22:00 UTC ≈ 01:00 Africa/Cairo (ICU often EEST UTC+3). */
-export const NIGHTLY_CLOSE_CRON_UTC = '0 22 * * *';
-export const NIGHTLY_CLOSE_HOUR_CAIRO = 1;
+/** Vercel cron fires at 23:00 UTC ≈ 02:00 Africa/Cairo during DST. */
+export const NIGHTLY_CLOSE_CRON_UTC = '0 23 * * *';
+export const NIGHTLY_CLOSE_HOUR_CAIRO = 2;
 export const NIGHTLY_CLOSE_MINUTE_CAIRO = 0;
 
 export function shiftYmd(yyyyMmDd: string, days: number): string {
@@ -14,7 +14,7 @@ export function shiftYmd(yyyyMmDd: string, days: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
-/** Work date for a job that runs just after midnight Cairo: previous calendar day. */
+/** The close continues to process the previous Cairo calendar day. */
 export function resolveNightlyCloseWorkDate(
   override?: string | null,
   now: Date = new Date(),
@@ -50,7 +50,7 @@ export function getCairoClockParts(now: Date = new Date()): {
   };
 }
 
-/** True when Cairo clock is in the 01:00 fire window (minute 0 only). */
+/** True when Cairo clock is in the 02:00 fire window (minute 0 only). */
 export function isNightlyCloseFireWindow(now: Date = new Date()): boolean {
   const { hour, minute } = getCairoClockParts(now);
   return hour === NIGHTLY_CLOSE_HOUR_CAIRO && minute === NIGHTLY_CLOSE_MINUTE_CAIRO;

@@ -108,14 +108,14 @@ describe('nightly-close-work-date', () => {
     expect(resolveNightlyCloseWorkDate(null, now)).toBe('2026-07-14');
   });
 
-  it('detects 01:00 Cairo fire window', () => {
-    const fire = new Date('2026-07-14T22:00:30.000Z');
+  it('detects 02:00 Cairo fire window', () => {
+    const fire = new Date('2026-07-14T23:00:30.000Z');
     expect(isNightlyCloseFireWindow(fire)).toBe(true);
     const clock = getCairoClockParts(fire);
-    expect(clock.hour).toBe(1);
+    expect(clock.hour).toBe(2);
     expect(clock.minute).toBe(0);
 
-    const later = new Date('2026-07-14T22:01:00.000Z');
+    const later = new Date('2026-07-14T23:01:00.000Z');
     expect(isNightlyCloseFireWindow(later)).toBe(false);
   });
 });

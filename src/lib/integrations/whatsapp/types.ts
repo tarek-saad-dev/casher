@@ -10,7 +10,8 @@ export type WhatsAppMessageType =
   | 'employee_advance'
   | 'employee_funding'
   | 'quick_message'
-  | 'employee_daily_report';
+  | 'employee_daily_report'
+  | 'other';
 
 export type WhatsAppExtraVariables = Record<string, string | number | boolean | null | string[]>;
 
@@ -117,6 +118,17 @@ export interface EmployeeDailyReportWhatsAppPayload extends WhatsAppBasePayload 
   variables?: WhatsAppExtraVariables;
 }
 
+/**
+ * Free-text message composed in the POS — bot sends `message` as-is
+ * (no local template on the WhatsApp script side).
+ */
+export interface OtherWhatsAppPayload extends WhatsAppBasePayload {
+  type: 'other';
+  message: string;
+  branchName?: string;
+  variables?: WhatsAppExtraVariables;
+}
+
 export type WhatsAppPayload =
   | SaleWhatsAppPayload
   | BookingWhatsAppPayload
@@ -125,7 +137,8 @@ export type WhatsAppPayload =
   | EmployeeAdvanceWhatsAppPayload
   | EmployeeFundingWhatsAppPayload
   | QuickMessageWhatsAppPayload
-  | EmployeeDailyReportWhatsAppPayload;
+  | EmployeeDailyReportWhatsAppPayload
+  | OtherWhatsAppPayload;
 
 export type WhatsAppSendResult =
   | {

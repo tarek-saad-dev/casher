@@ -226,7 +226,7 @@ export async function getEmployeeLedgerSummary(month: string): Promise<EmpLedger
         ISNULL(SUM(CASE
           WHEN l.ID IS NOT NULL
            AND l.EntryDirection = N'credit'
-           AND l.EntryReason = N'employee_funding'
+           AND l.EntryReason IN (N'employee_funding', N'tip')
           THEN l.Amount ELSE 0 END), 0) AS FundingCredits,
         ISNULL(SUM(CASE
           WHEN l.ID IS NOT NULL

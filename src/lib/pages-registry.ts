@@ -17,20 +17,21 @@ export const SYSTEM_PAGES: PageDefinition[] = [
   // ── POS / Income ────────────────────────────────────────────────────────────
   { key: 'income.pos',              name: 'نقطة البيع',              path: '/income/pos',                      section: 'المدخلات',         accessMode: 'roles', sort: 10,  defaultRoles: ['super_admin','admin','manager','cashier'] },
   { key: 'income.new',              name: 'إيراد جديد',              path: '/income/new',                      section: 'المدخلات',         accessMode: 'roles', sort: 11,  defaultRoles: ['super_admin','admin','cashier'] },
-  // ── Sales review ────────────────────────────────────────────────────────────
+  // ── Sales / revenue review ──────────────────────────────────────────────────
   { key: 'sales.today',             name: 'مبيعات اليوم',            path: '/sales/today',                     section: 'مراجعة المدخلات',  accessMode: 'roles', sort: 20,  defaultRoles: ['super_admin','admin','manager','cashier','viewer'] },
   { key: 'income_review.all_sales', name: 'كل المبيعات',             path: '/income-review/all-sales',         section: 'مراجعة المدخلات',  accessMode: 'roles', sort: 21,  defaultRoles: ['super_admin','admin','manager','viewer'] },
   { key: 'income_review.today_rev', name: 'إيرادات اليوم',           path: '/income-review/today-revenue',     section: 'مراجعة المدخلات',  accessMode: 'roles', sort: 22,  defaultRoles: ['super_admin','admin','manager','cashier','viewer'] },
   { key: 'income_review.all_rev',   name: 'كل الإيرادات',            path: '/income-review/all-revenue',       section: 'مراجعة المدخلات',  accessMode: 'roles', sort: 23,  defaultRoles: ['super_admin','admin','accountant'] },
   { key: 'income_review.payments',  name: 'المدفوعات',               path: '/income-review/payments',          section: 'مراجعة المدخلات',  accessMode: 'roles', sort: 24,  defaultRoles: ['super_admin','admin','accountant'] },
-  { key: 'reports.emp_services',    name: 'خدمات الصنايعية',         path: '/admin/reports/employee-services', section: 'مراجعة المدخلات',  accessMode: 'roles', sort: 25,  defaultRoles: ['super_admin','admin','manager'] },
-  { key: 'reports.emp_monthly_work_revenue', name: 'مواعيد وإيرادات الموظفين', path: '/admin/reports/employee-monthly-work-revenue', section: 'مراجعة المدخلات', accessMode: 'roles', sort: 27, defaultRoles: ['super_admin','admin','manager'] },
-  { key: 'reports.full_day',        name: 'تقرير اليوم كامل',        path: '/admin/reports/full-day',          section: 'مراجعة المدخلات',  accessMode: 'roles', sort: 25,  defaultRoles: ['super_admin','admin','manager','accountant'] },
-  { key: 'reports.monthly',         name: 'التقرير الشهري',          path: '/reports/monthly',                 section: 'مراجعة المدخلات',  accessMode: 'roles', sort: 26,  defaultRoles: ['super_admin','admin','manager','accountant','viewer'] },
-  { key: 'reports.partners',        name: 'تقرير الشركاء',           path: '/admin/reports/partners',          section: 'التقارير',          accessMode: 'roles', sort: 27,  defaultRoles: ['super_admin','admin','manager','accountant','partner'] },
-  { key: 'reports.partners_overrides', name: 'حسابات الشركاء الخاصة', path: '/admin/reports/partners-overrides', section: 'مراجعة المدخلات', accessMode: 'roles', sort: 28,  defaultRoles: ['super_admin','admin'] },
+  // ── Reports ─────────────────────────────────────────────────────────────────
+  { key: 'reports.emp_services',    name: 'خدمات الصنايعية',         path: '/admin/reports/employee-services', section: 'تقارير موظف',     accessMode: 'roles', sort: 25,  defaultRoles: ['super_admin','admin','manager'] },
+  { key: 'reports.emp_monthly_work_revenue', name: 'مواعيد وإيرادات الموظفين', path: '/admin/reports/employee-monthly-work-revenue', section: 'تقارير موظف', accessMode: 'roles', sort: 26, defaultRoles: ['super_admin','admin','manager'] },
+  { key: 'reports.full_day',        name: 'تقرير اليوم كامل',        path: '/admin/reports/full-day',          section: 'تقارير مدير',     accessMode: 'roles', sort: 27,  defaultRoles: ['super_admin','admin','manager','accountant'] },
+  { key: 'reports.monthly',         name: 'التقرير الشهري',          path: '/reports/monthly',                 section: 'تقارير مدير',     accessMode: 'roles', sort: 28,  defaultRoles: ['super_admin','admin','manager','accountant','viewer'] },
+  { key: 'reports.partners',        name: 'تقرير الشركاء',           path: '/admin/reports/partners',          section: 'تقارير شريك',     accessMode: 'roles', sort: 29,  defaultRoles: ['super_admin','admin','manager','accountant','partner'] },
+  { key: 'reports.partners_overrides', name: 'حسابات الشركاء الخاصة', path: '/admin/reports/partners-overrides', section: 'تقارير شريك', accessMode: 'roles', sort: 30,  defaultRoles: ['super_admin','admin'] },
   // ── Expenses ─────────────────────────────────────────────────────────────────
-  { key: 'expenses.new',            name: 'تسجيل مصروف',            path: '/expenses',                        section: 'المصروفات',         accessMode: 'roles', sort: 30,  defaultRoles: ['super_admin','admin','cashier','accountant'] },
+  { key: 'expenses.new',            name: 'تسجيل مصروف',            path: '/expenses',                        section: 'المصروفات',         accessMode: 'roles', sort: 31,  defaultRoles: ['super_admin','admin','cashier','accountant'] },
   { key: 'reports.expenses',        name: 'تقرير المصروفات',         path: '/reports/expenses/monthly',        section: 'مراجعة المصروفات', accessMode: 'roles', sort: 40,  defaultRoles: ['super_admin','admin','manager','accountant'] },
   // ── Treasury ─────────────────────────────────────────────────────────────────
   { key: 'treasury.daily',             name: 'قفل اليوم',               path: '/treasury/daily',                  section: 'الخزنة',            accessMode: 'roles', sort: 50,  defaultRoles: ['super_admin','admin','accountant'] },

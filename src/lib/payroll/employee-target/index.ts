@@ -23,6 +23,8 @@ export {
   EMPLOYEE_TARGET_LINE_TOTAL_SQL,
   getEmployeeNetServiceSalesByDate,
   getEmployeesNetServiceSalesByDate,
+  getEmployeesServiceCountsByDate,
+  type EmployeeDayServiceCounts,
   type EmployeeNetServiceSalesRow,
 } from './employee-target-sales-service';
 

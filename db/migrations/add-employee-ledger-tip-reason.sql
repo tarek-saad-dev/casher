@@ -1,5 +1,5 @@
 -- ============================================================
--- Migration: Add employee_funding EntryReason to TblEmpLedgerEntry
+-- Migration: Add tip EntryReason to TblEmpLedgerEntry
 -- Safe to re-run.
 -- ============================================================
 SET NOCOUNT ON;
@@ -27,6 +27,6 @@ BEGIN
             N'advance', N'payout', N'deduction', N'settlement', N'adjustment',
             N'employee_funding', N'tip'
         ));
-    PRINT 'Created CK_TblEmpLedgerEntry_EntryReason with employee_funding and tip';
+    PRINT 'Created CK_TblEmpLedgerEntry_EntryReason with tip';
 END
 GO

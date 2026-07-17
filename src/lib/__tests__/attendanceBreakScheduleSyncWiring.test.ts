@@ -10,11 +10,14 @@ vi.mock('server-only', () => ({}));
 
 const syncBreakFromBlockRange = vi.fn(async () => ({ attendanceId: 1, added: true }));
 const removeBreakMatchingBlockRange = vi.fn(async () => ({ removed: true }));
+const removeBreakTimeMatchingBlockRange = vi.fn(async () => ({ removed: false }));
 const syncBlockRangesFromBreaks = vi.fn(async () => ({ deactivated: 0, inserted: 1 }));
+const syncBlockRangesFromBreakTimes = vi.fn(async () => ({ deactivated: 0, inserted: 1 }));
 const isSyncedBlockRangeCreatedBy = vi.fn((createdBy: string | null | undefined) => {
   if (!createdBy) return false;
   return (
     createdBy === 'attendance-break' ||
+    createdBy === 'attendance-break-time' ||
     createdBy.startsWith('schedule-control block_range')
   );
 });
@@ -22,10 +25,14 @@ const isSyncedBlockRangeCreatedBy = vi.fn((createdBy: string | null | undefined)
 vi.mock('@/lib/hr/attendance-break-schedule-sync', () => ({
   syncBreakFromBlockRange: (...args: unknown[]) => syncBreakFromBlockRange(...args),
   removeBreakMatchingBlockRange: (...args: unknown[]) => removeBreakMatchingBlockRange(...args),
+  removeBreakTimeMatchingBlockRange: (...args: unknown[]) =>
+    removeBreakTimeMatchingBlockRange(...args),
   syncBlockRangesFromBreaks: (...args: unknown[]) => syncBlockRangesFromBreaks(...args),
+  syncBlockRangesFromBreakTimes: (...args: unknown[]) => syncBlockRangesFromBreakTimes(...args),
   isSyncedBlockRangeCreatedBy: (...args: unknown[]) => isSyncedBlockRangeCreatedBy(...args),
   SC_BLOCK_RANGE_SOURCE: 'schedule-control block_range',
   ATTENDANCE_BREAK_SOURCE: 'attendance-break',
+  ATTENDANCE_BREAK_TIME_SOURCE: 'attendance-break-time',
 }));
 
 const ensureOverridesTable = vi.fn(async () => undefined);
@@ -82,6 +89,16 @@ vi.mock('@/lib/hr/attendance-breaks-db', () => ({
   loadBreaksByAttendanceIds: (...args: unknown[]) => loadBreaksByAttendanceIds(...args),
 }));
 
+const replaceAttendanceBreakTimes = vi.fn(async () => 0);
+const ensureAttendanceBreakTimeSchema = vi.fn(async () => undefined);
+const loadBreakTimesByAttendanceIds = vi.fn(async () => new Map());
+
+vi.mock('@/lib/hr/attendance-break-time-db', () => ({
+  ensureAttendanceBreakTimeSchema: (...args: unknown[]) => ensureAttendanceBreakTimeSchema(...args),
+  replaceAttendanceBreakTimes: (...args: unknown[]) => replaceAttendanceBreakTimes(...args),
+  loadBreakTimesByAttendanceIds: (...args: unknown[]) => loadBreakTimesByAttendanceIds(...args),
+}));
+
 vi.mock('@/lib/session', () => ({
   getSession: vi.fn(async () => ({ UserID: 1, UserName: 'Admin', UserLevel: 1 })),
 }));
@@ -102,6 +119,10 @@ vi.mock('@/lib/hr/employee-hr-model', () => ({
 vi.mock('@/lib/timeUtils', () => ({
   calcLateMinutes: vi.fn(() => 0),
   calcEarlyLeaveMinutes: vi.fn(() => 0),
+}));
+
+vi.mock('@/lib/services/employeeAttendanceWhatsAppNotify', () => ({
+  scheduleAttendanceCheckInOutWhatsApp: vi.fn(),
 }));
 
 type QueryResult = { recordset?: unknown[]; rowsAffected?: number[] };

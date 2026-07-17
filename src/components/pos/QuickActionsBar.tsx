@@ -5,6 +5,7 @@ import {
   ArrowLeftRight,
   CircleMinus,
   CirclePlus,
+  HandCoins,
   History,
   MessageCircle,
 } from 'lucide-react';
@@ -14,6 +15,7 @@ export type QuickActionId =
   | 'payment-transfer'
   | 'quick-expense'
   | 'quick-income'
+  | 'tips'
   | 'recent-invoices'
   | 'quick-whatsapp';
 
@@ -42,6 +44,12 @@ const QUICK_ACTIONS: QuickActionConfig[] = [
     label: 'إضافة إيراد فوري',
     icon: CirclePlus,
     title: 'تسجيل إيراد سريع',
+  },
+  {
+    id: 'tips',
+    label: 'تبس',
+    icon: HandCoins,
+    title: 'تسجيل تبس من فرق الدفع للحلاق',
   },
   {
     id: 'recent-invoices',

@@ -1,6 +1,6 @@
 #!/usr/bin/env npx tsx
 /**
- * Local nightly-close runner / watcher for Africa/Cairo 01:00.
+ * Local nightly-close runner / watcher for Africa/Cairo 02:00 AM.
  *
  * Once (Cairo yesterday):
  *   npm run nightly-close
@@ -8,7 +8,7 @@
  *   npx tsx scripts/run-nightly-close.ts --date=2026-07-14
  *   npx tsx scripts/run-nightly-close.ts --skip-whatsapp
  *
- * Watch until 01:00 Cairo then fire:
+ * Watch until 02:00 Cairo then fire:
  *   npm run nightly-close:watch
  *
  * Env:
@@ -136,15 +136,15 @@ async function runOnce(opts: ReturnType<typeof parseArgs>) {
 
 async function watch() {
   console.log(
-    `[run-nightly-close] watching for 01:00–01:05 Africa/Cairo → ${BASE_URL}${ENDPOINT}`,
+    `[run-nightly-close] watching for 02:00–02:05 Africa/Cairo → ${BASE_URL}${ENDPOINT}`,
   );
   let lastFiredKey: string | null = null;
 
   for (;;) {
     const clock = getCairoClockParts();
-    // Forgiving window: fires once per Cairo calendar night if process is up by 01:05
-    if (clock.hour === 1 && clock.minute <= 5) {
-      const key = `${clock.date}-01:00`;
+    // Forgiving window: fires once per Cairo calendar night if process is up by 02:05
+    if (clock.hour === 2 && clock.minute <= 5) {
+      const key = `${clock.date}-02:00`;
       if (lastFiredKey !== key) {
         lastFiredKey = key;
         console.log(`[run-nightly-close] FIRE ${key} → closes ${cairoYesterday()}`);

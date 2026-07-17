@@ -13,6 +13,7 @@ export {
   sendEmployeeFundingWhatsAppMessage,
   sendQuickWhatsAppMessage,
   sendEmployeeDailyReportWhatsAppMessage,
+  sendOtherWhatsAppMessage,
   checkWhatsAppStatus,
 } from './service';
 
@@ -31,5 +32,6 @@ export type {
   EmployeeFundingWhatsAppPayload,
   QuickMessageWhatsAppPayload,
   EmployeeDailyReportWhatsAppPayload,
+  OtherWhatsAppPayload,
   WhatsAppExtraVariables,
 } from './types';

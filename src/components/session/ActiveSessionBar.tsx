@@ -111,85 +111,90 @@ function ActiveSessionBar({ onCloseDayClick }: Props) {
   }
 
   return (
-    <div className="flex items-center gap-4 px-4 py-1.5 bg-muted/50 border-b border-border text-xs overflow-visible relative">
-      {/* User */}
-      <div className="flex items-center gap-1.5">
-        <User className="w-3.5 h-3.5 text-muted-foreground" />
-        <span className="font-medium">{user.UserName}</span>
-        {isAdmin ? (
-          <ShieldCheck className="w-3.5 h-3.5 text-success" />
-        ) : (
-          <ShieldAlert className="w-3.5 h-3.5 text-info" />
-        )}
-      </div>
-
-      <span className="text-muted-foreground/40">|</span>
-
-      {/* Day + Close button */}
-      <div className="flex items-center gap-1.5">
-        <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
-        {hasActiveDay && day ? (
-          <>
-            <span className="text-success">
-              يوم {mounted ? new Date(day.NewDay).toLocaleDateString('ar-EG') : new Date(day.NewDay).toISOString().split('T')[0]}
-            </span>
-            {canCloseDay && onCloseDayClick && (
-              <button
-                onClick={onCloseDayClick}
-                className="flex items-center gap-0.5 text-muted-foreground hover:text-destructive transition-colors mr-1 cursor-pointer"
-                title="إغلاق اليوم"
-              >
-                <XCircle className="w-3.5 h-3.5" />
-                <span className="text-[10px]">إغلاق</span>
-              </button>
-            )}
-          </>
-        ) : (
-          <span className="text-destructive font-medium">لا يوجد يوم مفتوح</span>
-        )}
-      </div>
-
-      <span className="text-muted-foreground/40">|</span>
-
-      {/* Shift */}
-      <div className="flex items-center gap-1.5">
-        <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-        {hasActiveShift && shift ? (
-          shift.UserID !== user.UserID ? (
-            <span className="text-warning font-medium">
-              ⚠ وردية مستخدم آخر ({shift.UserName}) — يجب فتح وردية جديدة
-            </span>
+    <div className="flex items-center gap-3 px-3 py-1.5 bg-muted/50 border-b border-border text-xs overflow-hidden relative min-w-0">
+      {/* Session meta — fixed width so TopNav can scroll */}
+      <div className="hidden xl:flex items-center gap-3 shrink-0 max-w-[42%] min-w-0">
+        <div className="flex items-center gap-1.5 shrink-0">
+          <User className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="font-medium truncate max-w-[7rem]">{user.UserName}</span>
+          {isAdmin ? (
+            <ShieldCheck className="w-3.5 h-3.5 text-success shrink-0" />
           ) : (
-            <span className="text-success">
-              {shift.ShiftName || `وردية #${shift.ShiftID}`} — {shift.UserName || user.UserName}
-              <span className="text-muted-foreground mr-1">
-                (من {shift.StartTime?.trim()})
+            <ShieldAlert className="w-3.5 h-3.5 text-info shrink-0" />
+          )}
+        </div>
+
+        <span className="text-muted-foreground/40">|</span>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
+          {hasActiveDay && day ? (
+            <>
+              <span className="text-success whitespace-nowrap">
+                يوم {mounted ? new Date(day.NewDay).toLocaleDateString('ar-EG') : new Date(day.NewDay).toISOString().split('T')[0]}
               </span>
-            </span>
-          )
-        ) : (
-          <span className="text-destructive font-medium">لا يوجد وردية مفتوحة</span>
+              {canCloseDay && onCloseDayClick && (
+                <button
+                  onClick={onCloseDayClick}
+                  className="flex items-center gap-0.5 text-muted-foreground hover:text-destructive transition-colors mr-1 cursor-pointer"
+                  title="إغلاق اليوم"
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                  <span className="text-[10px]">إغلاق</span>
+                </button>
+              )}
+            </>
+          ) : (
+            <span className="text-destructive font-medium whitespace-nowrap">لا يوجد يوم مفتوح</span>
+          )}
+        </div>
+
+        <span className="text-muted-foreground/40">|</span>
+
+        <div className="flex items-center gap-1.5 min-w-0">
+          <Clock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+          {hasActiveShift && shift ? (
+            shift.UserID !== user.UserID ? (
+              <span className="text-warning font-medium truncate">
+                ⚠ وردية مستخدم آخر ({shift.UserName})
+              </span>
+            ) : (
+              <span className="text-success truncate">
+                {shift.ShiftName || `وردية #${shift.ShiftID}`}
+                <span className="text-muted-foreground mr-1">
+                  (من {shift.StartTime?.trim()})
+                </span>
+              </span>
+            )
+          ) : (
+            <span className="text-destructive font-medium whitespace-nowrap">لا يوجد وردية مفتوحة</span>
+          )}
+        </div>
+
+        {!isPosPage && (
+          <>
+            <span className="text-muted-foreground/40">|</span>
+            <DbToggleButton />
+          </>
         )}
       </div>
 
-      {!isPosPage && (
-        <>
-          <span className="text-muted-foreground/40">|</span>
-          {/* Database Toggle */}
-          <DbToggleButton />
-        </>
-      )}
+      {/* Compact session chip on smaller desktops */}
+      <div className="flex xl:hidden items-center gap-1.5 shrink-0">
+        <User className="w-3.5 h-3.5 text-muted-foreground" />
+        <span className="font-medium truncate max-w-[5.5rem]">{user.UserName}</span>
+        {!isPosPage && <DbToggleButton />}
+      </div>
 
-      {/* TopNav — centered in available space */}
-      <div className="flex-1 flex justify-center items-center overflow-visible">
+      {/* TopNav — takes remaining width and scrolls horizontally */}
+      <div className="flex-1 min-w-0 overflow-hidden">
         <TopNav />
       </div>
 
-      {/* Logout */}
       <Button
         variant="ghost"
         size="sm"
-        className="h-6 text-xs px-2"
+        className="h-6 text-xs px-2 shrink-0"
         onClick={() => setShowLogoutModal(true)}
       >
         <LogOut className="w-3.5 h-3.5 ml-1" />

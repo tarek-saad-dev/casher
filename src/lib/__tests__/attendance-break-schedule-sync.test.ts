@@ -30,6 +30,16 @@ vi.mock('@/lib/hr/attendance-breaks-db', () => ({
   replaceAttendanceBreaks: (...args: unknown[]) => replaceAttendanceBreaks(...args),
 }));
 
+const ensureAttendanceBreakTimeSchema = vi.fn(async () => undefined);
+const loadBreakTimesByAttendanceIds = vi.fn(async () => new Map());
+const replaceAttendanceBreakTimes = vi.fn(async () => 0);
+
+vi.mock('@/lib/hr/attendance-break-time-db', () => ({
+  ensureAttendanceBreakTimeSchema: (...args: unknown[]) => ensureAttendanceBreakTimeSchema(...args),
+  loadBreakTimesByAttendanceIds: (...args: unknown[]) => loadBreakTimesByAttendanceIds(...args),
+  replaceAttendanceBreakTimes: (...args: unknown[]) => replaceAttendanceBreakTimes(...args),
+}));
+
 type CapturedQuery = {
   sql: string;
   inputs: Record<string, unknown>;
@@ -61,6 +71,7 @@ function makeRecordingDb(queue: Array<{ recordset?: unknown[]; rowsAffected?: nu
 
 import {
   ATTENDANCE_BREAK_SOURCE,
+  ATTENDANCE_BREAK_TIME_SOURCE,
   SC_BLOCK_RANGE_SOURCE,
   breaksToSyncableIntervals,
   intervalKey,
@@ -68,12 +79,14 @@ import {
   isSyncedBlockRangeCreatedBy,
   removeBreakMatchingBlockRange,
   syncBlockRangesFromBreaks,
+  syncBlockRangesFromBreakTimes,
   syncBreakFromBlockRange,
 } from '@/lib/hr/attendance-break-schedule-sync';
 
 describe('helpers: isSyncedBlockRangeCreatedBy', () => {
-  it('matches attendance-break and schedule-control tags', () => {
+  it('matches attendance-break, attendance-break-time and schedule-control tags', () => {
     expect(isSyncedBlockRangeCreatedBy(ATTENDANCE_BREAK_SOURCE)).toBe(true);
+    expect(isSyncedBlockRangeCreatedBy(ATTENDANCE_BREAK_TIME_SOURCE)).toBe(true);
     expect(isSyncedBlockRangeCreatedBy(SC_BLOCK_RANGE_SOURCE)).toBe(true);
     expect(isSyncedBlockRangeCreatedBy(`${SC_BLOCK_RANGE_SOURCE}: coffee`)).toBe(true);
     expect(isSyncedBlockRangeCreatedBy('manual')).toBe(false);
@@ -166,6 +179,35 @@ describe('syncBlockRangesFromBreaks (HR → Ops)', () => {
     const result = await syncBlockRangesFromBreaks(db, 3, '2026-07-15', []);
     expect(result).toEqual({ deactivated: 1, inserted: 0 });
     expect(db.calls).toHaveLength(1);
+  });
+});
+
+describe('syncBlockRangesFromBreakTimes (بريك → Ops)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('deactivates only attendance-break-time overrides then inserts', async () => {
+    const db = makeRecordingDb([
+      { rowsAffected: [1] },
+      { rowsAffected: [1] },
+    ]);
+
+    const result = await syncBlockRangesFromBreakTimes(db, 7, '2026-07-15', [
+      { LeaveAt: '13:00', ReturnAt: '13:30', Minutes: 30 },
+    ]);
+
+    expect(result).toEqual({ deactivated: 1, inserted: 1 });
+    expect(db.calls[0].inputs).toMatchObject({
+      attSrc: ATTENDANCE_BREAK_TIME_SOURCE,
+    });
+    expect(db.calls[0].sql).not.toContain('scSrc');
+    expect(db.calls[1].inputs).toMatchObject({
+      startT: '13:00',
+      endT: '13:30',
+      reason: 'وقت البريك',
+      createdBy: ATTENDANCE_BREAK_TIME_SOURCE,
+    });
   });
 });
 

@@ -22,16 +22,19 @@ const PAGES = [
   // POS / Income
   { key: 'income.pos',             name: 'نقطة البيع',             path: '/income/pos',                      section: 'المدخلات',          access: 'roles', sort: 10 },
   { key: 'income.new',             name: 'إيراد جديد',             path: '/income/new',                      section: 'المدخلات',          access: 'roles', sort: 11 },
-  // Sales review
+  // Sales / revenue review
   { key: 'sales.today',            name: 'مبيعات اليوم',           path: '/sales/today',                     section: 'مراجعة المدخلات',   access: 'roles', sort: 20 },
   { key: 'income_review.all_sales',name: 'كل المبيعات',            path: '/income-review/all-sales',         section: 'مراجعة المدخلات',   access: 'roles', sort: 21 },
   { key: 'income_review.today_rev',name: 'إيرادات اليوم',          path: '/income-review/today-revenue',     section: 'مراجعة المدخلات',   access: 'roles', sort: 22 },
   { key: 'income_review.all_rev',  name: 'كل الإيرادات',           path: '/income-review/all-revenue',       section: 'مراجعة المدخلات',   access: 'roles', sort: 23 },
   { key: 'income_review.payments', name: 'المدفوعات',              path: '/income-review/payments',          section: 'مراجعة المدخلات',   access: 'roles', sort: 24 },
-  { key: 'reports.emp_services',   name: 'خدمات الصنايعية',        path: '/admin/reports/employee-services', section: 'مراجعة المدخلات',   access: 'roles', sort: 25 },
-  { key: 'reports.emp_monthly_work_revenue', name: 'مواعيد وإيرادات الموظفين', path: '/admin/reports/employee-monthly-work-revenue', section: 'مراجعة المدخلات', access: 'roles', sort: 27 },
-  { key: 'reports.monthly',        name: 'التقرير الشهري',         path: '/reports/monthly',                 section: 'مراجعة المدخلات',   access: 'roles', sort: 26 },
-  { key: 'reports.partners',       name: 'تقرير الشركاء',          path: '/admin/reports/partners',          section: 'التقارير',          access: 'roles', sort: 27 },
+  // Reports
+  { key: 'reports.emp_services',   name: 'خدمات الصنايعية',        path: '/admin/reports/employee-services', section: 'تقارير موظف',      access: 'roles', sort: 25 },
+  { key: 'reports.emp_monthly_work_revenue', name: 'مواعيد وإيرادات الموظفين', path: '/admin/reports/employee-monthly-work-revenue', section: 'تقارير موظف', access: 'roles', sort: 26 },
+  { key: 'reports.full_day',       name: 'تقرير اليوم كامل',       path: '/admin/reports/full-day',          section: 'تقارير مدير',      access: 'roles', sort: 27 },
+  { key: 'reports.monthly',        name: 'التقرير الشهري',         path: '/reports/monthly',                 section: 'تقارير مدير',      access: 'roles', sort: 28 },
+  { key: 'reports.partners',       name: 'تقرير الشركاء',          path: '/admin/reports/partners',          section: 'تقارير شريك',      access: 'roles', sort: 29 },
+  { key: 'reports.partners_overrides', name: 'حسابات الشركاء الخاصة', path: '/admin/reports/partners-overrides', section: 'تقارير شريك', access: 'roles', sort: 30 },
   // Expenses
   { key: 'expenses.new',           name: 'تسجيل مصروف',           path: '/expenses',                        section: 'المصروفات',          access: 'roles', sort: 30 },
   { key: 'reports.expenses',       name: 'تقرير المصروفات',        path: '/reports/expenses/monthly',        section: 'مراجعة المصروفات',  access: 'roles', sort: 40 },

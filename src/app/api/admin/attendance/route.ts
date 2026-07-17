@@ -17,8 +17,14 @@ import {
   loadBreaksByAttendanceIds,
   replaceAttendanceBreaks,
 } from "@/lib/hr/attendance-breaks-db";
+import {
+  ensureAttendanceBreakTimeSchema,
+  loadBreakTimesByAttendanceIds,
+  replaceAttendanceBreakTimes,
+} from "@/lib/hr/attendance-break-time-db";
 import { normalizeBreaksInput } from "@/lib/hr/attendance-breaks";
-import { syncBlockRangesFromBreaks } from "@/lib/hr/attendance-break-schedule-sync";
+import { syncBlockRangesFromBreaks, syncBlockRangesFromBreakTimes } from "@/lib/hr/attendance-break-schedule-sync";
+import { scheduleAttendanceCheckInOutWhatsApp } from "@/lib/services/employeeAttendanceWhatsAppNotify";
 
 async function ensureAttendanceTable(db: { request: () => any }) {
   await db.request().query(`
@@ -54,6 +60,7 @@ async function ensureAttendanceTable(db: { request: () => any }) {
     END
   `);
   await ensureAttendanceBreakSchema(db);
+  await ensureAttendanceBreakTimeSchema(db);
 }
 
 function timeToDate(timeStr: string | null | undefined): Date | null {
@@ -133,7 +140,8 @@ export async function GET(req: NextRequest) {
           a.LateMinutes,
           a.EarlyLeaveMinutes,
           a.Notes,
-          ISNULL(a.BreakMinutesTotal, 0) AS BreakMinutesTotal
+          ISNULL(a.BreakMinutesTotal, 0) AS BreakMinutesTotal,
+          ISNULL(a.BreakTimeMinutesTotal, 0) AS BreakTimeMinutesTotal
         FROM dbo.TblEmp e
         LEFT JOIN dbo.TblEmpWorkSchedule ws
           ON ws.EmpID = e.EmpID AND ws.DayOfWeek = @dayOfWeek
@@ -149,9 +157,11 @@ export async function GET(req: NextRequest) {
       .map((r) => r.AttendanceID)
       .filter((id): id is number => id != null && id > 0);
     const breaksMap = await loadBreaksByAttendanceIds(db, attendanceIds);
+    const breakTimesMap = await loadBreakTimesByAttendanceIds(db, attendanceIds);
     for (const row of rawRows) {
       if (row.AttendanceID != null) {
         row.Breaks = breaksMap.get(row.AttendanceID) ?? [];
+        row.BreakTimes = breakTimesMap.get(row.AttendanceID) ?? [];
       }
     }
 
@@ -186,7 +196,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { EmpID, WorkDate, CheckInTime, CheckOutTime, Status, Notes, Breaks } = body;
+    const { EmpID, WorkDate, CheckInTime, CheckOutTime, Status, Notes, Breaks, BreakTimes } = body;
 
     if (!EmpID || !WorkDate) {
       return NextResponse.json(
@@ -241,6 +251,19 @@ export async function PUT(req: NextRequest) {
       }
     }
 
+    let parsedBreakTimes = { breaks: [] as ReturnType<typeof normalizeBreaksInput>["breaks"], breakMinutesTotal: 0, error: null as string | null };
+    if (BreakTimes !== undefined || clearBreaks) {
+      parsedBreakTimes = clearBreaks
+        ? { breaks: [], breakMinutesTotal: 0, error: null }
+        : normalizeBreaksInput(BreakTimes);
+      if (parsedBreakTimes.error) {
+        return NextResponse.json(
+          { error: parsedBreakTimes.error.replace(/مستقطع/g, 'بريك') },
+          { status: 400 },
+        );
+      }
+    }
+
     const db = await getPool();
     await ensureAttendanceTable(db);
 
@@ -252,6 +275,7 @@ export async function PUT(req: NextRequest) {
       .input("dayOfWeek", sql.TinyInt, dayOfWeek)
       .query(`
         SELECT
+          e.EmpName,
           e.EmploymentType,
           CONVERT(VARCHAR(5), e.DefaultCheckInTime,  108) AS DefaultCheckInTime,
           CONVERT(VARCHAR(5), e.DefaultCheckOutTime, 108) AS DefaultCheckOutTime,
@@ -267,8 +291,10 @@ export async function PUT(req: NextRequest) {
 
     let schedStart: string | null = null;
     let schedEnd: string | null = null;
+    let employeeName: string | undefined;
     if (empResult.recordset.length > 0) {
       const emp = empResult.recordset[0];
+      employeeName = (emp.EmpName as string | null)?.trim() || undefined;
       const employmentType = normalizeEmploymentType(emp.EmploymentType) ?? "full_time";
       const schedule = resolveScheduleForDay(employmentType, {
         hasScheduleRow: emp.ScheduleDayOfWeek != null,
@@ -307,9 +333,23 @@ export async function PUT(req: NextRequest) {
       .request()
       .input("empId", sql.Int, EmpID)
       .input("workDate", sql.Date, WorkDate)
-      .query(
-        "SELECT ID FROM dbo.TblEmpAttendance WHERE EmpID = @empId AND WorkDate = @workDate",
-      );
+      .query(`
+        SELECT
+          ID,
+          CONVERT(VARCHAR(5), CheckInTime, 108) AS CheckInTime,
+          CONVERT(VARCHAR(5), CheckOutTime, 108) AS CheckOutTime
+        FROM dbo.TblEmpAttendance
+        WHERE EmpID = @empId AND WorkDate = @workDate
+      `);
+
+    const previousCheckIn =
+      existing.recordset.length > 0
+        ? (existing.recordset[0].CheckInTime as string | null)
+        : null;
+    const previousCheckOut =
+      existing.recordset.length > 0
+        ? (existing.recordset[0].CheckOutTime as string | null)
+        : null;
 
     let attendanceId: number;
     if (existing.recordset.length > 0) {
@@ -380,6 +420,33 @@ export async function PUT(req: NextRequest) {
       });
     }
 
+    let breakTimeMinutesTotal: number | undefined;
+    if (BreakTimes !== undefined || clearBreaks) {
+      breakTimeMinutesTotal = await replaceAttendanceBreakTimes(
+        db,
+        attendanceId,
+        parsedBreakTimes.breaks,
+      );
+      // Mirror وقت البريك → إدارة مواعيد اليوم (block_range) — يمنع الحجز
+      await syncBlockRangesFromBreakTimes(
+        db,
+        EmpID,
+        WorkDate,
+        parsedBreakTimes.breaks,
+      ).catch((err) => {
+        console.warn("[api/admin/attendance] break-time block_range sync failed", err);
+      });
+    }
+
+    scheduleAttendanceCheckInOutWhatsApp({
+      empId: EmpID,
+      employeeName,
+      previousCheckIn,
+      previousCheckOut,
+      checkInTime: CheckInTime || null,
+      checkOutTime: CheckOutTime || null,
+    });
+
     return NextResponse.json({
       success: true,
       message: "تم حفظ الحضور بنجاح",
@@ -391,6 +458,9 @@ export async function PUT(req: NextRequest) {
         EarlyLeaveMinutes: earlyLeaveMinutes,
         BreakMinutesTotal: breakMinutesTotal,
         Breaks: Breaks !== undefined || clearBreaks ? parsedBreaks.breaks : undefined,
+        BreakTimeMinutesTotal: breakTimeMinutesTotal,
+        BreakTimes:
+          BreakTimes !== undefined || clearBreaks ? parsedBreakTimes.breaks : undefined,
       },
     });
   } catch (err: unknown) {

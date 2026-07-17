@@ -36,7 +36,7 @@ BEGIN
         CONSTRAINT [CK_TblEmpLedgerEntry_EntryReason] CHECK ([EntryReason] IN (
             N'hourly_wage', N'monthly_salary', N'target', N'commission', N'bonus',
             N'advance', N'payout', N'deduction', N'settlement', N'adjustment',
-            N'employee_funding'
+            N'employee_funding', N'tip'
         )),
         CONSTRAINT [CK_TblEmpLedgerEntry_Amount_Positive] CHECK ([Amount] > 0)
     );

@@ -8,6 +8,11 @@ import {
   formatDurationAr,
   formatTime12hAr,
 } from '@/lib/reports/reportFormatters';
+import {
+  formatBreakIntervalsLinesAr,
+  formatBreakMinutesLabel,
+  type AttendanceBreakInterval,
+} from '@/lib/hr/attendance-breaks';
 
 export interface ComposeEmployeeDailyWhatsAppInput {
   employeeName: string;
@@ -16,6 +21,16 @@ export interface ComposeEmployeeDailyWhatsAppInput {
   dayNameAr: string;
   day: EmployeeMonthlyPayrollDayRow | null;
   ledgerBalance: number;
+  /** Invoices the employee worked on today (live sales count). */
+  invoiceCount?: number | null;
+  /** Total service lines today. */
+  serviceCount?: number | null;
+  /** شعر / دقن / شعر ودقن. */
+  basicServiceCount?: number | null;
+  /** Non-barber services. */
+  otherServiceCount?: number | null;
+  /** وقت مستقطع intervals (LeaveAt → ReturnAt). */
+  breakIntervals?: AttendanceBreakInterval[] | null;
 }
 
 function hoursLabel(hours: number | null | undefined): string {
@@ -50,10 +65,27 @@ export function shouldSkipEmptyDayOff(day: EmployeeMonthlyPayrollDayRow | null):
   return true;
 }
 
+function countLabel(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '—';
+  return String(Math.max(0, Math.trunc(value)));
+}
+
 export function composeEmployeeDailyWhatsAppMessage(
   input: ComposeEmployeeDailyWhatsAppInput,
 ): string {
-  const { employeeName, branchName, workDate, dayNameAr, day, ledgerBalance } = input;
+  const {
+    employeeName,
+    branchName,
+    workDate,
+    dayNameAr,
+    day,
+    ledgerBalance,
+    invoiceCount,
+    serviceCount,
+    basicServiceCount,
+    otherServiceCount,
+    breakIntervals,
+  } = input;
   const heading = formatWorkDateHeadingAr(workDate, dayNameAr);
   const lines: string[] = [
     `🌙 تقرير يومك — ${branchName}`,
@@ -94,8 +126,16 @@ export function composeEmployeeDailyWhatsAppMessage(
   lines.push(
     `انصراف: ${day.checkOutLabelAr ?? formatTime12hAr(day.checkOut) ?? '—'}`,
   );
-  if (day.breakMinutes > 0) {
-    lines.push(`مستقطع: ${day.breakMinutes} د`);
+  if (day.breakMinutes > 0 || (breakIntervals && breakIntervals.length > 0)) {
+    const totalMins =
+      day.breakMinutes > 0
+        ? day.breakMinutes
+        : breakIntervals!.reduce((s, b) => s + (b.Minutes ?? 0), 0);
+    lines.push(`مستقطع: ${formatBreakMinutesLabel(totalMins)}`);
+    const ranges = formatBreakIntervalsLinesAr(breakIntervals, formatTime12hAr);
+    for (const range of ranges) {
+      lines.push(`• ${range}`);
+    }
   }
   const hoursLine =
     day.scheduledHours != null && day.actualHours != null
@@ -119,8 +159,18 @@ export function composeEmployeeDailyWhatsAppMessage(
   lines.push('');
 
   lines.push('🎯 التارجت');
-  if (day.targetSales != null || day.targetAmount != null) {
-    lines.push(`مبيعات: ${money(day.targetSales)}`);
+  if (
+    day.targetSales != null ||
+    day.targetAmount != null ||
+    invoiceCount != null ||
+    serviceCount != null
+  ) {
+    lines.push(`عدد الفواتير: ${countLabel(invoiceCount)}`);
+    lines.push(`إجمالي الخدمات: ${countLabel(serviceCount)}`);
+    lines.push(
+      `خدمات أساسية (شعر / دقن / شعر ودقن): ${countLabel(basicServiceCount)}`,
+    );
+    lines.push(`خدمات أخرى: ${countLabel(otherServiceCount)}`);
     lines.push(`مستحق تارجت: ${money(day.targetAmount)}`);
   } else if (day.targetPersistence === 'not_generated') {
     lines.push('لم يُولَّد تارجت لليوم ده');

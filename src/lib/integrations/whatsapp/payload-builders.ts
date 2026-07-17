@@ -15,6 +15,7 @@ import type {
   EmployeeFundingWhatsAppPayload,
   QuickMessageWhatsAppPayload,
   EmployeeDailyReportWhatsAppPayload,
+  OtherWhatsAppPayload,
 } from './types';
 
 export interface SalePayloadInput {
@@ -105,6 +106,13 @@ export interface EmployeeDailyReportPayloadInput {
   advances?: number | null;
   dayNet?: number | null;
   payrollMonth?: string;
+}
+
+export interface OtherPayloadInput {
+  phone: string;
+  customerName: string;
+  message: string;
+  branchName?: string;
 }
 
 export function buildSalePayload(input: SalePayloadInput): SaleWhatsAppPayload {
@@ -270,5 +278,17 @@ export function buildEmployeeDailyReportPayload(
     dayNet: input.dayNet ?? null,
     ledgerBalance: input.ledgerBalance,
     payrollMonth: input.payrollMonth,
+  };
+}
+
+export function buildOtherPayload(input: OtherPayloadInput): OtherWhatsAppPayload {
+  const cfg = getConfig();
+
+  return {
+    type: 'other',
+    phone: input.phone.trim(),
+    customerName: input.customerName.trim(),
+    message: input.message.trim(),
+    branchName: input.branchName ?? cfg.defaultBranchName,
   };
 }

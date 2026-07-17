@@ -12,10 +12,14 @@ import {
   getActiveSectionTitle,
   getActiveNavItem,
   getActiveCategoryTitle,
+  getActiveMainTitle,
+  buildNavTree,
 } from './nav-config';
-import type { NavItem, NavSection, NavTheme, NavCategory } from './nav-config';
+import type { NavItem, NavSection, NavTheme, NavCategory, NavMainGroup } from './nav-config';
 import SidebarThemeSwitch from '@/components/theme/SidebarThemeSwitch';
 import { useMobileNav } from '@/components/layout/MobileNavContext';
+import { useNavMode } from '@/hooks/useNavMode';
+import { cn } from '@/lib/utils';
 
 
 // Glow helpers — computed once per rgb
@@ -36,9 +40,11 @@ interface MainNavProps {
 export default function MainNav({ suppressMobileChrome = false }: MainNavProps) {
   const pathname = usePathname();
   const { isOpen: mobileMenuOpen, close: closeMobileMenu, toggle: toggleMobileMenu } = useMobileNav();
+  const { mode: navMode, setMode: setNavMode } = useNavMode();
   const [expandedSections, setExpandedSections] = useState<string[]>(['المدخلات']);
+  const [expandedMains, setExpandedMains] = useState<string[]>(['العمليات اليومية']);
   const [expandedMobileCategories, setExpandedMobileCategories] = useState<string[]>(['العمليات اليومية']);
-  const [isCollapsed, setIsCollapsed] = useState(true);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const { canSeePage, access, loading: permLoading, isAuthenticated } = usePermissions();
 
@@ -80,6 +86,7 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
   const activeSectionTitle = getActiveSectionTitle(pathname);
   const activeNavItem = getActiveNavItem(pathname);
   const activeCategoryTitle = getActiveCategoryTitle(activeSectionTitle);
+  const activeMainTitle = getActiveMainTitle(pathname);
   const activeDirectLink = useMemo(() => {
     if (isActive('/operations')) return { label: 'لوحة التشغيل', section: 'اختصار' };
     if (isActive('/admin/cut-club')) return { label: 'CUT CLUB', section: 'اختصار' };
@@ -95,6 +102,11 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
   }, [mobileMenuOpen]);
+
+  // The new MAIN/SUB layout needs room to be understandable.
+  useEffect(() => {
+    if (navMode === 'tree') setIsCollapsed(false);
+  }, [navMode]);
 
   // Auto-expand the active section when navigating
   useEffect(() => {
@@ -112,11 +124,16 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
           : [...prev, activeCategoryTitle]
       );
     }
+    if (activeMainTitle) {
+      setExpandedMains(prev =>
+        prev.includes(activeMainTitle) ? prev : [...prev, activeMainTitle]
+      );
+    }
     // Dev verification only — disabled in production for performance
     if (process.env.NODE_ENV === 'development') {
       console.log('[MainNav active]', { pathname, activeSectionTitle });
     }
-  }, [pathname, activeSectionTitle, activeCategoryTitle]);
+  }, [pathname, activeSectionTitle, activeCategoryTitle, activeMainTitle]);
 
   const toggleSection = (title: string) =>
     setExpandedSections(prev =>
@@ -125,6 +142,11 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
 
   const toggleMobileCategory = (title: string) =>
     setExpandedMobileCategories(prev =>
+      prev.includes(title) ? prev.filter(t => t !== title) : [...prev, title]
+    );
+
+  const toggleMain = (title: string) =>
+    setExpandedMains(prev =>
       prev.includes(title) ? prev.filter(t => t !== title) : [...prev, title]
     );
 
@@ -143,6 +165,9 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
       })).filter(category => category.sections.length > 0),
     [sectionMap]
   );
+
+  // Grouped MAIN → SUB → items for the new (tree) desktop layout
+  const groupedMains = useMemo(() => buildNavTree(visibleSections), [visibleSections]);
 
 
   // ── Sub item renderer ──────────────────────────────────────────────────────
@@ -876,6 +901,100 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
     </div>
   );
 
+  // ── MAIN group renderer (desktop tree mode: MAIN → SUB → items) ────────────
+  const renderMainGroup = (group: NavMainGroup) => {
+    const { rgb } = group.meta;
+    const MainIcon = group.meta.icon;
+    const isMainActive = activeMainTitle === group.title;
+    const isExpanded = expandedMains.includes(group.title);
+
+    return (
+      <div key={group.title} style={{ marginBottom: 10 }}>
+        <button
+          onClick={() => toggleMain(group.title)}
+          className="w-full flex items-center justify-between px-2.5 py-2"
+          style={{
+            borderRadius: 12,
+            backgroundColor: isMainActive ? `rgba(${rgb},0.12)` : isExpanded ? `rgba(${rgb},0.06)` : 'transparent',
+            border: `1px solid ${isMainActive ? `rgba(${rgb},0.35)` : isExpanded ? `rgba(${rgb},0.18)` : 'transparent'}`,
+            boxShadow: isMainActive ? glow2(rgb, 0.22) : 'none',
+            transition: 'all 0.22s ease',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <div style={{
+              width: 26, height: 26, borderRadius: 8, flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              backgroundColor: `rgba(${rgb},${isMainActive ? '0.24' : '0.12'})`,
+              border: `1px solid rgba(${rgb},${isMainActive ? '0.45' : '0.22'})`,
+            }}>
+              <MainIcon style={{ width: 14, height: 14, color: `rgb(${rgb})` }} />
+            </div>
+            <span style={{
+              fontSize: 11, fontWeight: 800, letterSpacing: '0.02em',
+              color: isMainActive ? `rgb(${rgb})` : 'var(--sidebar-foreground)',
+              textShadow: isMainActive ? `0 0 10px rgba(${rgb},0.3)` : 'none',
+            }}>
+              {group.title}
+            </span>
+          </div>
+          <ChevronDown style={{
+            width: 13, height: 13, flexShrink: 0,
+            color: isMainActive ? `rgb(${rgb})` : 'var(--muted-foreground)',
+            transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+            transition: 'transform 0.22s ease',
+          }} />
+        </button>
+
+        <div style={{
+          overflow: 'hidden',
+          maxHeight: isExpanded ? 2000 : 0,
+          opacity: isExpanded ? 1 : 0,
+          transition: 'max-height 0.3s ease, opacity 0.22s ease',
+          paddingRight: 8,
+          marginTop: isExpanded ? 4 : 0,
+        }}>
+          {group.subs.map(section => (
+            <div key={section.title}>
+              {renderSection(section)}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const NavModeToggle = ({ compact = false }: { compact?: boolean }) => (
+    <div
+      className="flex items-center rounded-lg border border-sidebar-border bg-sidebar-hover p-0.5"
+      style={{ gap: 2 }}
+      title="تبديل شكل القائمة"
+    >
+      {([
+        { id: 'legacy', label: compact ? 'قديم' : 'قائمة قديمة' },
+        { id: 'tree', label: compact ? 'جديد' : 'قائمة جديدة' },
+      ] as const).map(opt => {
+        const active = navMode === opt.id;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => setNavMode(opt.id)}
+            className={cn(
+              'rounded-md transition-colors whitespace-nowrap',
+              active
+                ? 'bg-sidebar-active text-sidebar-active-foreground'
+                : 'text-sidebar-foreground hover:bg-sidebar-active/50'
+            )}
+            style={{ fontSize: 10, fontWeight: active ? 700 : 500, padding: '4px 8px' }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   const SidebarContent = () => (
     <div
       className="flex-1 overflow-y-auto scrollbar-luxury-v"
@@ -887,11 +1006,13 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
         <>
           {canSeePage('/operations') && renderDirectLink('/operations', 'لوحة التشغيل', MonitorPlay, '20,184,166')}
           {canSeePage('/admin/cut-club') && renderDirectLink('/admin/cut-club', 'CUT CLUB', Crown, '234,179,8')}
-          {visibleSections.map(section => (
-            <div key={section.title}>
-              {renderSection(section)}
-            </div>
-          ))}
+          {navMode === 'tree' && !isCollapsed
+            ? groupedMains.map(group => renderMainGroup(group))
+            : visibleSections.map(section => (
+                <div key={section.title}>
+                  {renderSection(section)}
+                </div>
+              ))}
         </>
       ) : null}
     </div>
@@ -965,6 +1086,9 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
 
         {/* Footer */}
         <div style={{ padding: '10px 10px', borderTop: '1px solid var(--sidebar-border)' }}>
+          <div className="mb-2 flex items-center justify-center">
+            <NavModeToggle compact={isCollapsed} />
+          </div>
           <div className="flex items-center gap-2">
             <button
               className="flex flex-1 items-center justify-center transition-all duration-200 rounded-xl"
@@ -1072,6 +1196,9 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
 
             {/* Mobile footer */}
             <div className="p-3 border-t border-sidebar-border shrink-0">
+              <div className="mb-2 flex items-center justify-center">
+                <NavModeToggle />
+              </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"

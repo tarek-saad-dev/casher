@@ -7,7 +7,12 @@ import {
   ensureAttendanceBreakSchema,
   replaceAttendanceBreaks,
 } from "@/lib/hr/attendance-breaks-db";
-import { syncBlockRangesFromBreaks } from "@/lib/hr/attendance-break-schedule-sync";
+import {
+  ensureAttendanceBreakTimeSchema,
+  replaceAttendanceBreakTimes,
+} from "@/lib/hr/attendance-break-time-db";
+import { syncBlockRangesFromBreaks, syncBlockRangesFromBreakTimes } from "@/lib/hr/attendance-break-schedule-sync";
+import { scheduleAttendanceCheckInOutWhatsApp } from "@/lib/services/employeeAttendanceWhatsAppNotify";
 
 function timeToDate(timeStr: string | null | undefined): Date | null {
   if (!timeStr || timeStr.trim() === "") return null;
@@ -91,10 +96,21 @@ export async function PUT(req: NextRequest) {
         }
         item._parsedBreaks = parsed.breaks;
       }
+      if (item.BreakTimes !== undefined) {
+        const parsed = normalizeBreaksInput(item.BreakTimes);
+        if (parsed.error) {
+          return NextResponse.json(
+            { error: `${parsed.error.replace(/مستقطع/g, 'بريك')} (موظف ${item.EmpID})` },
+            { status: 400 },
+          );
+        }
+        item._parsedBreakTimes = parsed.breaks;
+      }
     }
 
     const db = await getPool();
     await ensureAttendanceBreakSchema(db);
+    await ensureAttendanceBreakTimeSchema(db);
 
     const empIds = items.map((i: { EmpID: number }) => Number(i.EmpID)).join(",");
     const empDefaults = await db
@@ -102,17 +118,22 @@ export async function PUT(req: NextRequest) {
       .query(`
         SELECT
           EmpID,
+          EmpName,
           CONVERT(VARCHAR(5), DefaultCheckInTime,  108) AS DefaultCheckInTime,
           CONVERT(VARCHAR(5), DefaultCheckOutTime, 108) AS DefaultCheckOutTime
         FROM dbo.TblEmp
         WHERE EmpID IN (${empIds || "0"})
       `);
 
-    const empDefaultMap = new Map<number, { schedStart: string | null; schedEnd: string | null }>();
+    const empDefaultMap = new Map<
+      number,
+      { schedStart: string | null; schedEnd: string | null; empName: string }
+    >();
     for (const e of empDefaults.recordset) {
       empDefaultMap.set(e.EmpID, {
         schedStart: e.DefaultCheckInTime  || null,
         schedEnd:   e.DefaultCheckOutTime || null,
+        empName: (e.EmpName as string | null)?.trim() || "موظف",
       });
     }
 
@@ -122,6 +143,14 @@ export async function PUT(req: NextRequest) {
 
     let insertedCount = 0;
     let updatedCount = 0;
+    const whatsappJobs: Array<{
+      empId: number;
+      employeeName?: string;
+      previousCheckIn?: unknown;
+      previousCheckOut?: unknown;
+      checkInTime?: string | null;
+      checkOutTime?: string | null;
+    }> = [];
 
     try {
       for (const item of items) {
@@ -155,9 +184,23 @@ export async function PUT(req: NextRequest) {
           .request()
           .input("empId", sql.Int, item.EmpID)
           .input("workDate", sql.Date, WorkDate)
-          .query(
-            "SELECT ID FROM dbo.TblEmpAttendance WHERE EmpID = @empId AND WorkDate = @workDate"
-          );
+          .query(`
+            SELECT
+              ID,
+              CONVERT(VARCHAR(5), CheckInTime, 108) AS CheckInTime,
+              CONVERT(VARCHAR(5), CheckOutTime, 108) AS CheckOutTime
+            FROM dbo.TblEmpAttendance
+            WHERE EmpID = @empId AND WorkDate = @workDate
+          `);
+
+        const previousCheckIn =
+          existing.recordset.length > 0
+            ? (existing.recordset[0].CheckInTime as string | null)
+            : null;
+        const previousCheckOut =
+          existing.recordset.length > 0
+            ? (existing.recordset[0].CheckOutTime as string | null)
+            : null;
 
         let attendanceId: number;
         if (existing.recordset.length > 0) {
@@ -228,9 +271,37 @@ export async function PUT(req: NextRequest) {
             breaksToSave,
           );
         }
+
+        if (clearBreaks || item.BreakTimes !== undefined) {
+          const breakTimesToSave = clearBreaks ? [] : (item._parsedBreakTimes ?? []);
+          await replaceAttendanceBreakTimes(
+            txDb,
+            attendanceId,
+            breakTimesToSave,
+          );
+          await syncBlockRangesFromBreakTimes(
+            txDb,
+            Number(item.EmpID),
+            WorkDate,
+            breakTimesToSave,
+          );
+        }
+
+        whatsappJobs.push({
+          empId: Number(item.EmpID),
+          employeeName: empDef?.empName,
+          previousCheckIn,
+          previousCheckOut,
+          checkInTime: checkIn,
+          checkOutTime: checkOut,
+        });
       }
 
       await transaction.commit();
+
+      for (const job of whatsappJobs) {
+        scheduleAttendanceCheckInOutWhatsApp(job);
+      }
 
       return NextResponse.json({
         success: true,

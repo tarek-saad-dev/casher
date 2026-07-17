@@ -24,6 +24,7 @@ import {
   buildEmployeeFundingPayload,
   buildQuickMessagePayload,
   buildEmployeeDailyReportPayload,
+  buildOtherPayload,
   resolvePhone,
   resolveEmployeeWhatsAppPhone,
   type SalePayloadInput,
@@ -34,6 +35,7 @@ import {
   type EmployeeFundingPayloadInput,
   type QuickMessagePayloadInput,
   type EmployeeDailyReportPayloadInput,
+  type OtherPayloadInput,
 } from './payload-builders';
 import {
   validateSalePayload,
@@ -44,6 +46,7 @@ import {
   validateEmployeeFundingPayload,
   validateQuickMessagePayload,
   validateEmployeeDailyReportPayload,
+  validateOtherPayload,
 } from './schemas';
 import type { WhatsAppSendResult, WhatsAppStatusResult } from './types';
 import { WhatsAppValidationError } from './errors';
@@ -454,6 +457,56 @@ export async function sendEmployeeDailyReportWhatsAppMessage(
     }
     console.log(
       `[whatsapp] Employee daily report error (non-critical): ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return { sent: false, skipped: false, reason: 'remote_error' };
+  }
+}
+
+export async function sendOtherWhatsAppMessage(
+  input: OtherPayloadInput,
+): Promise<WhatsAppSendResult> {
+  const cfg = getConfig();
+
+  if (!cfg.enabled) {
+    return { sent: false, skipped: true, reason: 'development_only' };
+  }
+
+  if (!cfg.otherEnabled) {
+    console.log('[whatsapp] Other message skipped: type disabled');
+    return { sent: false, skipped: true, reason: 'message_type_disabled' };
+  }
+
+  const phone = resolvePhone(input.phone, undefined);
+  if (!phone) {
+    console.log('[whatsapp] Other message skipped: missing phone');
+    return { sent: false, skipped: true, reason: 'missing_phone' };
+  }
+
+  if (!input.customerName?.trim()) {
+    console.log('[whatsapp] Other message skipped: missing customer name');
+    return { sent: false, skipped: true, reason: 'missing_customer_name' };
+  }
+
+  if (!input.message?.trim()) {
+    console.log('[whatsapp] Other message skipped: empty message');
+    return { sent: false, skipped: true, reason: 'invalid_payload' };
+  }
+
+  try {
+    const payload = buildOtherPayload({ ...input, phone });
+    validateOtherPayload(payload);
+    const result = await sendWhatsAppPayload(payload);
+    if (result.sent) {
+      console.log(`[whatsapp] Other message submitted -> ${input.customerName}`);
+    }
+    return result;
+  } catch (err) {
+    if (err instanceof WhatsAppValidationError) {
+      console.log(`[whatsapp] Other message skipped: validation — ${err.message}`);
+      return { sent: false, skipped: true, reason: 'invalid_payload' };
+    }
+    console.log(
+      `[whatsapp] Other message error (non-critical): ${err instanceof Error ? err.message : String(err)}`,
     );
     return { sent: false, skipped: false, reason: 'remote_error' };
   }

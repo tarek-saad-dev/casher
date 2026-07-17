@@ -40,18 +40,23 @@ export interface NavCategory {
 export const NAV_CATEGORIES: NavCategory[] = [
   {
     title: 'العمليات اليومية',
-    description: 'البيع، الطابور والحجوزات',
-    sectionTitles: ['المدخلات', 'الطابور', 'الحجوزات'],
+    description: 'البيع، المصروفات، الطابور والحجوزات',
+    sectionTitles: ['المدخلات', 'المصروفات', 'الطابور', 'الحجوزات'],
   },
   {
-    title: 'التقارير والمراجعة',
-    description: 'متابعة المدخلات والمصروفات',
+    title: 'المراجعة',
+    description: 'مراجعة المبيعات والإيرادات والمصروفات',
     sectionTitles: ['مراجعة المدخلات', 'مراجعة المصروفات'],
   },
   {
+    title: 'التقارير',
+    description: 'تقارير الموظف والمدير والشريك',
+    sectionTitles: ['تقارير موظف', 'تقارير مدير', 'تقارير شريك'],
+  },
+  {
     title: 'المالية',
-    description: 'المصروفات، الخزنة والميزانية',
-    sectionTitles: ['المصروفات', 'الخزنة', 'الميزانية', 'الكاشير'],
+    description: 'الخزنة والميزانية والكاشير',
+    sectionTitles: ['الخزنة', 'الميزانية', 'الكاشير'],
   },
   {
     title: 'الإدارة والموارد',
@@ -64,11 +69,14 @@ export const NAV_CATEGORIES: NavCategory[] = [
 
 export const NAV_THEMES: Record<string, NavTheme> = {
   'المدخلات':          { rgb: '214,168,79',  emoji: '📥' },
-  'مراجعة المدخلات':   { rgb: '59,130,246',  emoji: '📊' },
+  'مراجعة المدخلات':   { rgb: '59,130,246',  emoji: '🔎' },
   'المصروفات':         { rgb: '244,63,94',   emoji: '💸' },
   'الخصومات':          { rgb: '220,38,38',   emoji: '🔻' },
   'مراجعة المصروفات':  { rgb: '168,85,247',  emoji: '📋' },
   'مراجعة الخصومات':  { rgb: '185,28,28',   emoji: '📊' },
+  'تقارير موظف':       { rgb: '245,158,11',  emoji: '👷' },
+  'تقارير مدير':       { rgb: '59,130,246',  emoji: '📊' },
+  'تقارير شريك':       { rgb: '139,92,246',  emoji: '🤝' },
   'الخزنة':            { rgb: '16,185,129',  emoji: '🏦' },
   'الميزانية':         { rgb: '6,182,212',   emoji: '💰' },
   'الموارد البشرية':   { rgb: '236,72,153',  emoji: '👥' },
@@ -98,28 +106,46 @@ export const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: 'مراجعة المدخلات',
-    icon: ClipboardList,
-    items: [
-      { href: '/sales/today',                      label: 'مبيعات اليوم',      icon: TrendingUp  },
-      { href: '/admin/reports/full-day',             label: 'تقرير اليوم كامل',  icon: Sun         },
-      { href: '/income-review/all-sales',          label: 'كل المبيعات',       icon: History     },
-      { href: '/income-review/today-revenue',      label: 'إيرادات اليوم',     icon: Wallet      },
-      { href: '/income-review/all-revenue',        label: 'كل الإيرادات',      icon: History     },
-      { href: '/income-review/payments',           label: 'المدفوعات',          icon: CreditCard  },
-      { href: '/admin/reports/employee-services',  label: 'خدمات الصنايعية',   icon: FileBarChart },
-      { href: '/admin/reports/employee-monthly-work-revenue', label: 'مواعيد وإيرادات الموظفين', icon: CalendarCheck },
-      { href: '/admin/reports/partners',           label: 'تقرير الشركاء',      icon: UsersRound    },
-      { href: '/admin/reports/partners-overrides', label: 'حسابات الشركاء الخاصة', icon: FileKey2 },
-      { href: '/reports/monthly',                  label: 'التقرير الشهري',     icon: BarChart3   },
-    ],
-  },
-  {
     title: 'المصروفات',
     icon: Receipt,
     items: [
       { href: '/expenses', label: 'تسجيل مصروف', icon: Receipt },
       { href: '/deductions', label: 'تسجيل خصم', icon: Users },
+    ],
+  },
+  {
+    title: 'مراجعة المدخلات',
+    icon: ClipboardList,
+    items: [
+      { href: '/sales/today',                 label: 'مبيعات اليوم',  icon: TrendingUp },
+      { href: '/income-review/all-sales',     label: 'كل المبيعات',   icon: History    },
+      { href: '/income-review/today-revenue', label: 'إيرادات اليوم', icon: Wallet     },
+      { href: '/income-review/all-revenue',   label: 'كل الإيرادات',  icon: History    },
+      { href: '/income-review/payments',      label: 'المدفوعات',     icon: CreditCard },
+    ],
+  },
+  {
+    title: 'تقارير موظف',
+    icon: FileBarChart,
+    items: [
+      { href: '/admin/reports/employee-services', label: 'خدمات الصنايعية', icon: FileBarChart },
+      { href: '/admin/reports/employee-monthly-work-revenue', label: 'مواعيد وإيرادات الموظفين', icon: CalendarCheck },
+    ],
+  },
+  {
+    title: 'تقارير مدير',
+    icon: BarChart3,
+    items: [
+      { href: '/admin/reports/full-day', label: 'تقرير اليوم كامل', icon: Sun       },
+      { href: '/reports/monthly',        label: 'التقرير الشهري',   icon: BarChart3 },
+    ],
+  },
+  {
+    title: 'تقارير شريك',
+    icon: UsersRound,
+    items: [
+      { href: '/admin/reports/partners',           label: 'تقرير الشركاء',          icon: UsersRound },
+      { href: '/admin/reports/partners-overrides', label: 'حسابات الشركاء الخاصة', icon: FileKey2   },
     ],
   },
   {
@@ -257,4 +283,70 @@ export function getActiveCategoryTitle(sectionTitle: string | null): string | nu
     if (category.sectionTitles.includes(sectionTitle)) return category.title;
   }
   return null;
+}
+
+// ── NEW nav tree (MAIN → SUB → items) ─────────────────────────────────────────
+// Added alongside the legacy structures above — nothing is removed.
+// MAIN groups reuse NAV_CATEGORIES titles; SUB groups are the existing sections.
+
+export interface NavMainMeta { icon: LucideIcon; rgb: string; emoji: string; }
+
+/** Visual identity for each MAIN group (keyed by NAV_CATEGORIES title). */
+export const NAV_MAIN_META: Record<string, NavMainMeta> = {
+  'العمليات اليومية': { icon: LayoutGrid,    rgb: '214,168,79',  emoji: '🗓️' },
+  'المراجعة':          { icon: ClipboardList, rgb: '59,130,246',  emoji: '🔎' },
+  'التقارير':          { icon: BarChart3,     rgb: '139,92,246',  emoji: '📊' },
+  'المالية':           { icon: Wallet,        rgb: '16,185,129',  emoji: '💰' },
+  'الإدارة والموارد':  { icon: Settings,      rgb: '148,163,184', emoji: '⚙️' },
+};
+
+export function getMainMeta(title: string): NavMainMeta {
+  return NAV_MAIN_META[title] ?? { icon: LayoutGrid, rgb: '161,161,170', emoji: '📌' };
+}
+
+/** MAIN group resolved with its concrete (already permission-filtered) SUB sections. */
+export interface NavMainGroup {
+  title: string;
+  description: string;
+  meta: NavMainMeta;
+  subs: NavSection[];
+}
+
+/**
+ * Group a list of (already visible/filtered) sections into MAIN groups using
+ * NAV_CATEGORIES. Sections not referenced by any category are appended into a
+ * fallback "أخرى" group so nothing ever disappears.
+ */
+export function buildNavTree(sections: NavSection[]): NavMainGroup[] {
+  const byTitle = new Map(sections.map(s => [s.title, s]));
+  const used = new Set<string>();
+
+  const groups: NavMainGroup[] = NAV_CATEGORIES.map(category => {
+    const subs = category.sectionTitles
+      .map(t => byTitle.get(t))
+      .filter((s): s is NavSection => Boolean(s));
+    subs.forEach(s => used.add(s.title));
+    return {
+      title: category.title,
+      description: category.description,
+      meta: getMainMeta(category.title),
+      subs,
+    };
+  }).filter(group => group.subs.length > 0);
+
+  const leftovers = sections.filter(s => !used.has(s.title));
+  if (leftovers.length > 0) {
+    groups.push({
+      title: 'أخرى',
+      description: 'أقسام غير مصنّفة',
+      meta: getMainMeta('أخرى'),
+      subs: leftovers,
+    });
+  }
+
+  return groups;
+}
+
+export function getActiveMainTitle(pathname: string): string | null {
+  return getActiveCategoryTitle(getActiveSectionTitle(pathname));
 }

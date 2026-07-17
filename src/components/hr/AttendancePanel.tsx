@@ -67,6 +67,8 @@ interface AttendanceRow {
   HasRecord: boolean;
   BreakMinutesTotal?: number;
   Breaks?: AttendanceBreakInterval[];
+  BreakTimeMinutesTotal?: number;
+  BreakTimes?: AttendanceBreakInterval[];
 }
 
 interface FreelancerOption {
@@ -96,6 +98,10 @@ function isHourlyRow(row: AttendanceRow): boolean {
 
 function rowBreaks(row: AttendanceRow): AttendanceBreakInterval[] {
   return Array.isArray(row.Breaks) ? row.Breaks : [];
+}
+
+function rowBreakTimes(row: AttendanceRow): AttendanceBreakInterval[] {
+  return Array.isArray(row.BreakTimes) ? row.BreakTimes : [];
 }
 
 function getStatusConfig(status: string) {
@@ -156,6 +162,7 @@ export default function AttendancePanel() {
   const [freelanceCheckIn, setFreelanceCheckIn] = useState(getCurrentTime());
   const [freelanceSaving, setFreelanceSaving]   = useState(false);
   const [breaksEmpId, setBreaksEmpId]           = useState<number | null>(null);
+  const [breakTimesEmpId, setBreakTimesEmpId]   = useState<number | null>(null);
 
   const fetchAttendance = useCallback(async (targetDate: string) => {
     setLoading(true); setError(''); setSuccessMsg(''); setDirty(new Set());
@@ -281,6 +288,16 @@ export default function AttendancePanel() {
     setDirty(prev => new Set(prev).add(empId));
   };
 
+  const updateBreakTimes = (empId: number, breakTimes: AttendanceBreakInterval[]) => {
+    const total = sumBreakMinutes(breakTimes);
+    setAttendance(prev => prev.map(row =>
+      row.EmpID !== empId
+        ? row
+        : { ...row, BreakTimes: breakTimes, BreakTimeMinutesTotal: total },
+    ));
+    setDirty(prev => new Set(prev).add(empId));
+  };
+
   const saveSingle = async (empId: number) => {
     const row = attendance.find(r => r.EmpID === empId);
     if (!row) return;
@@ -297,6 +314,7 @@ export default function AttendancePanel() {
           Status: row.Status,
           Notes: row.Notes || '',
           Breaks: isHourlyRow(row) ? rowBreaks(row) : [],
+          BreakTimes: isHourlyRow(row) ? rowBreakTimes(row) : [],
         }),
       });
       const data = await res.json();
@@ -313,6 +331,9 @@ export default function AttendancePanel() {
                 Status: data.data.Status,
                 BreakMinutesTotal: data.data.BreakMinutesTotal ?? r.BreakMinutesTotal ?? 0,
                 Breaks: data.data.Breaks ?? r.Breaks ?? [],
+                BreakTimeMinutesTotal:
+                  data.data.BreakTimeMinutesTotal ?? r.BreakTimeMinutesTotal ?? 0,
+                BreakTimes: data.data.BreakTimes ?? r.BreakTimes ?? [],
               }
             : r,
         ));
@@ -331,6 +352,7 @@ export default function AttendancePanel() {
         EmpID: row.EmpID, CheckInTime: row.CheckInTime || null,
         CheckOutTime: row.CheckOutTime || null, Status: row.Status, Notes: row.Notes || '',
         Breaks: isHourlyRow(row) ? rowBreaks(row) : [],
+        BreakTimes: isHourlyRow(row) ? rowBreakTimes(row) : [],
       }));
       const res  = await fetch('/api/admin/attendance/bulk', {
         method:  'PUT',
@@ -426,6 +448,7 @@ export default function AttendancePanel() {
                 <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">وقت الحضور</th>
                 <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">وقت الانصراف</th>
                 <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">مستقطع</th>
+                <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">بريك</th>
                 <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">صافي الساعات</th>
                 <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">الحالة</th>
                 <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">التأخير</th>
@@ -436,12 +459,12 @@ export default function AttendancePanel() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={11} className="text-center p-12">
+                <tr><td colSpan={12} className="text-center p-12">
                   <Loader2 className="w-8 h-8 animate-spin mx-auto text-zinc-500" />
                   <p className="mt-2 text-zinc-500 text-sm">جاري تحميل البيانات...</p>
                 </td></tr>
               ) : attendance.length === 0 ? (
-                <tr><td colSpan={11} className="text-center p-12 text-zinc-500">لا يوجد موظفون متوقع حضورهم اليوم</td></tr>
+                <tr><td colSpan={12} className="text-center p-12 text-zinc-500">لا يوجد موظفون متوقع حضورهم اليوم</td></tr>
               ) : attendance.map((row) => {
                 const statusCfg = getStatusConfig(row.Status);
                 const isDirty   = dirty.has(row.EmpID);
@@ -449,6 +472,9 @@ export default function AttendancePanel() {
                 const hourly    = isHourlyRow(row);
                 const breaks    = rowBreaks(row);
                 const breakMins = row.BreakMinutesTotal ?? sumBreakMinutes(breaks);
+                const breakTimes = rowBreakTimes(row);
+                const breakTimeMins =
+                  row.BreakTimeMinutesTotal ?? sumBreakMinutes(breakTimes);
                 const netHours  = hourly
                   ? computeNetWorkedHours(row.CheckInTime, row.CheckOutTime, breaks, breakMins)
                   : null;
@@ -491,6 +517,15 @@ export default function AttendancePanel() {
                       {hourly ? (
                         breakMins > 0
                           ? <span className="text-xs font-semibold text-amber-400">{formatBreakMinutesLabel(breakMins)}</span>
+                          : <span className="text-xs text-zinc-600">—</span>
+                      ) : (
+                        <span className="text-xs text-zinc-700">—</span>
+                      )}
+                    </td>
+                    <td className="text-center p-3">
+                      {hourly ? (
+                        breakTimeMins > 0
+                          ? <span className="text-xs font-semibold text-teal-400">{formatBreakMinutesLabel(breakTimeMins)}</span>
                           : <span className="text-xs text-zinc-600">—</span>
                       ) : (
                         <span className="text-xs text-zinc-700">—</span>
@@ -553,6 +588,18 @@ export default function AttendancePanel() {
                             className={`h-7 w-7 p-0 ${breakMins > 0 ? 'text-amber-400 hover:bg-amber-500/20' : 'text-zinc-400 hover:bg-zinc-700/40'}`}
                           >
                             <PauseCircle className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                        {hourly && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setBreakTimesEmpId(row.EmpID)}
+                            title="وقت البريك"
+                            data-testid={`attendance-break-times-${row.EmpID}`}
+                            className={`h-7 w-7 p-0 ${breakTimeMins > 0 ? 'text-teal-400 hover:bg-teal-500/20' : 'text-zinc-400 hover:bg-zinc-700/40'}`}
+                          >
+                            <Coffee className="w-3.5 h-3.5" />
                           </Button>
                         )}
                         <Button size="sm" variant="ghost" onClick={() => saveSingle(row.EmpID)} disabled={isSaving || !isDirty} title="حفظ"
@@ -651,12 +698,30 @@ export default function AttendancePanel() {
         return (
           <AttendanceBreaksDialog
             open
+            mode="interrupt"
             onOpenChange={(open) => { if (!open) setBreaksEmpId(null); }}
             empName={breakRow.EmpName}
             checkInTime={breakRow.CheckInTime}
             checkOutTime={breakRow.CheckOutTime}
             breaks={rowBreaks(breakRow)}
             onChange={(next) => updateBreaks(breaksEmpId, next)}
+          />
+        );
+      })()}
+
+      {breakTimesEmpId != null && (() => {
+        const breakRow = attendance.find((r) => r.EmpID === breakTimesEmpId);
+        if (!breakRow) return null;
+        return (
+          <AttendanceBreaksDialog
+            open
+            mode="rest"
+            onOpenChange={(open) => { if (!open) setBreakTimesEmpId(null); }}
+            empName={breakRow.EmpName}
+            checkInTime={breakRow.CheckInTime}
+            checkOutTime={breakRow.CheckOutTime}
+            breaks={rowBreakTimes(breakRow)}
+            onChange={(next) => updateBreakTimes(breakTimesEmpId, next)}
           />
         );
       })()}

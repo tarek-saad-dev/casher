@@ -23,6 +23,9 @@ import {
 } from '@/lib/hr/employee-daily-whatsapp-message';
 import { dailyWaReasonAr } from '@/lib/hr/employee-daily-whatsapp-reasons';
 import { isWhatsAppEnabled } from '@/lib/integrations/whatsapp';
+import { getEmployeesNetServiceSalesByDate, getEmployeesServiceCountsByDate } from '@/lib/payroll/employee-target/employee-target-sales-service';
+import { loadBreaksByEmpIdsOnWorkDate } from '@/lib/hr/attendance-breaks-db';
+import type { AttendanceBreakInterval } from '@/lib/hr/attendance-breaks';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -199,9 +202,32 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
     ledgerSummary.employees.map((e) => [e.empId, e.balance]),
   );
 
+  const empIdList = employees.map((e) => e.EmpID);
+  const db = await getPool();
+  const [salesRows, serviceCountRows, breaksByEmp] =
+    employees.length > 0
+      ? await Promise.all([
+          getEmployeesNetServiceSalesByDate(workDate, empIdList),
+          getEmployeesServiceCountsByDate(workDate, empIdList),
+          loadBreaksByEmpIdsOnWorkDate(db, workDate, empIdList),
+        ])
+      : [[], [], new Map<number, AttendanceBreakInterval[]>()];
+  const invoiceCountByEmp = new Map(
+    salesRows.map((r) => [r.empId, r.invoiceCount] as const),
+  );
+  const serviceCountsByEmp = new Map(
+    serviceCountRows.map((r) => [r.empId, r] as const),
+  );
+
   const rows: EmployeeDailyWhatsAppRow[] = [];
 
   for (const emp of employees) {
+    const invoiceCount = invoiceCountByEmp.get(emp.EmpID) ?? 0;
+    const serviceCounts = serviceCountsByEmp.get(emp.EmpID);
+    const serviceCount = serviceCounts?.totalCount ?? 0;
+    const basicServiceCount = serviceCounts?.basicCount ?? 0;
+    const otherServiceCount = serviceCounts?.otherCount ?? 0;
+    const breakIntervals = breaksByEmp.get(emp.EmpID) ?? [];
     const phone = resolveEmployeeWhatsAppPhone(emp.WhatsApp, emp.Mobile);
     const ledgerBalance = balanceByEmp.get(emp.EmpID) ?? 0;
 
@@ -290,6 +316,11 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
         dayNameAr,
         day,
         ledgerBalance: balance,
+        invoiceCount,
+        serviceCount,
+        basicServiceCount,
+        otherServiceCount,
+        breakIntervals,
       });
       rows.push({
         empId: emp.EmpID,
@@ -311,6 +342,11 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
       dayNameAr,
       day,
       ledgerBalance: balance,
+      invoiceCount,
+      serviceCount,
+      basicServiceCount,
+      otherServiceCount,
+      breakIntervals,
     });
 
     const payload = buildPayloadForRow({

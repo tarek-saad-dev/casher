@@ -76,6 +76,8 @@ export default function FullDayReportPage() {
     meta: string;
     canSend: boolean;
   } | null>(null);
+  const [employeePickOpen, setEmployeePickOpen] = useState(false);
+  const [selectedEmpId, setSelectedEmpId] = useState<string>('');
 
   const syncUrl = useCallback(
     (d: string) => {
@@ -114,6 +116,48 @@ export default function FullDayReportPage() {
     void load(d);
   };
 
+  const applyEmployeeWhatsAppResponse = (
+    res: Response,
+    data: {
+      error?: string;
+      results?: Array<{
+        empName?: string;
+        status?: string;
+        reasonAr?: string;
+        reason?: string;
+      }>;
+      summary?: { sent?: number; skipped?: number; failed?: number };
+    },
+    opts?: { singleName?: string },
+  ) => {
+    const lines: string[] = [];
+    if (Array.isArray(data.results)) {
+      for (const r of data.results) {
+        if (r.status === 'sent') lines.push(`✓ ${r.empName}`);
+        else if (r.status === 'skipped')
+          lines.push(`↷ ${r.empName}: ${r.reasonAr || r.reason || 'تخطي'}`);
+        else lines.push(`✗ ${r.empName}: ${r.reasonAr || r.reason || 'فشل'}`);
+      }
+    }
+    setWaLog(lines);
+
+    const { sent = 0, skipped = 0, failed = 0 } = data.summary ?? {};
+    if (!res.ok || sent === 0) {
+      setWaError(
+        [data.error || 'مفيش رسائل اتبعتت', `إرسال ${sent} · تخطي ${skipped} · فشل ${failed}`]
+          .filter(Boolean)
+          .join(' — '),
+      );
+      return;
+    }
+
+    if (opts?.singleName) {
+      setWaSuccess(`تم إرسال التقرير إلى ${opts.singleName}`);
+    } else {
+      setWaSuccess(`تم إرسال ${sent} رسالة بالدور${skipped ? ` (تخطي ${skipped})` : ''}`);
+    }
+  };
+
   const sendWhatsAppSequential = async () => {
     if (!report) return;
     if (
@@ -136,38 +180,50 @@ export default function FullDayReportPage() {
         body: JSON.stringify({ workDate: report.workDate }),
       });
       const data = await res.json();
-
-      const lines: string[] = [];
-      if (Array.isArray(data.results)) {
-        for (const r of data.results as Array<{
-          empName?: string;
-          status?: string;
-          reasonAr?: string;
-          reason?: string;
-        }>) {
-          if (r.status === 'sent') lines.push(`✓ ${r.empName}`);
-          else if (r.status === 'skipped')
-            lines.push(`↷ ${r.empName}: ${r.reasonAr || r.reason || 'تخطي'}`);
-          else lines.push(`✗ ${r.empName}: ${r.reasonAr || r.reason || 'فشل'}`);
-        }
-      }
-      setWaLog(lines);
-
-      const { sent = 0, skipped = 0, failed = 0 } = data.summary ?? {};
-      if (!res.ok || sent === 0) {
-        setWaError(
-          [data.error || 'مفيش رسائل اتبعتت', `إرسال ${sent} · تخطي ${skipped} · فشل ${failed}`]
-            .filter(Boolean)
-            .join(' — '),
-        );
-      } else {
-        setWaSuccess(`تم إرسال ${sent} رسالة بالدور${skipped ? ` (تخطي ${skipped})` : ''}`);
-      }
+      applyEmployeeWhatsAppResponse(res, data);
     } catch (err) {
       setWaError(err instanceof Error ? err.message : 'خطأ في الإرسال');
     } finally {
       setWaBusy(false);
     }
+  };
+
+  const sendWhatsAppToEmployee = async (empId: number, empName: string) => {
+    if (!report) return;
+    if (
+      !window.confirm(
+        `إرسال تقرير يوم ${report.workDate} إلى ${empName} فقط؟`,
+      )
+    ) {
+      return;
+    }
+
+    setWaBusy(true);
+    setWaError(null);
+    setWaSuccess(null);
+    setWaLog([`جاري الإرسال إلى ${empName}...`]);
+    setEmployeePickOpen(false);
+
+    try {
+      const res = await fetch('/api/admin/hr/employee-daily-whatsapp-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workDate: report.workDate, employeeId: empId }),
+      });
+      const data = await res.json();
+      applyEmployeeWhatsAppResponse(res, data, { singleName: empName });
+    } catch (err) {
+      setWaError(err instanceof Error ? err.message : 'خطأ في الإرسال');
+    } finally {
+      setWaBusy(false);
+    }
+  };
+
+  const openEmployeePick = () => {
+    if (!report) return;
+    const ready = report.payroll.employees.filter((e) => e.hasPhone);
+    setSelectedEmpId(ready[0] ? String(ready[0].empId) : '');
+    setEmployeePickOpen(true);
   };
 
   const previewOwnerWhatsApp = async () => {
@@ -332,14 +388,25 @@ export default function FullDayReportPage() {
               disabled={!report || waBusy || loading}
               onClick={() => void sendWhatsAppSequential()}
               className="bg-emerald-600 hover:bg-emerald-500 text-white min-w-[180px]"
+              title="إرسال تقرير اليوم لكل الموظفين الجاهزين"
             >
               {waBusy ? (
                 <Loader2 className="h-4 w-4 animate-spin ml-1" />
               ) : (
                 <MessageCircle className="h-4 w-4 ml-1" />
               )}
-              للموظفين
+              لكل الموظفين
               {report ? ` (${report.whatsapp.readyToSend})` : ''}
+            </Button>
+            <Button
+              disabled={!report || waBusy || loading || (report?.whatsapp.readyToSend ?? 0) === 0}
+              variant="outline"
+              onClick={openEmployeePick}
+              className="border-emerald-600/50 text-emerald-400 hover:bg-emerald-600/10 min-w-[140px]"
+              title="إرسال تقرير اليوم لموظف واحد فقط"
+            >
+              <Users className="h-4 w-4 ml-1" />
+              موظف معيّن
             </Button>
             <Button
               disabled={!report || waBusy || loading}
@@ -592,7 +659,21 @@ export default function FullDayReportPage() {
                         </td>
                         <td className="px-3 py-2.5">
                           {e.hasPhone ? (
-                            <span className="text-[11px] text-emerald-400">جاهز</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] text-emerald-400">جاهز</span>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                disabled={waBusy || loading}
+                                onClick={() => void sendWhatsAppToEmployee(e.empId, e.empName)}
+                                className="h-7 px-2 text-[11px] text-emerald-400 hover:text-emerald-300 hover:bg-emerald-600/10"
+                                title={`إرسال التقرير إلى ${e.empName}`}
+                              >
+                                <MessageCircle className="h-3 w-3 ml-0.5" />
+                                إرسال
+                              </Button>
+                            </div>
                           ) : (
                             <span className="text-[11px] text-zinc-500 inline-flex items-center gap-0.5">
                               <MinusCircle className="h-3 w-3" />
@@ -853,6 +934,58 @@ export default function FullDayReportPage() {
           </section>
         </>
       )}
+
+      <Dialog open={employeePickOpen} onOpenChange={setEmployeePickOpen}>
+        <DialogContent className="max-w-md bg-zinc-950 border-zinc-800" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="text-zinc-100">إرسال التقرير لموظف معيّن</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-zinc-400">
+            يوم {report?.workDateLabelAr ?? report?.workDate} — هيتبعت لموظف واحد بس، مش للكل.
+          </p>
+          {report && (
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-zinc-400">اختر الموظف</label>
+              <select
+                value={selectedEmpId}
+                onChange={(e) => setSelectedEmpId(e.target.value)}
+                className="w-full h-10 rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
+              >
+                {report.payroll.employees.filter((e) => e.hasPhone).length === 0 ? (
+                  <option value="">مفيش موظفين جاهزين</option>
+                ) : (
+                  report.payroll.employees
+                    .filter((e) => e.hasPhone)
+                    .map((e) => (
+                      <option key={e.empId} value={e.empId}>
+                        {e.empName}
+                      </option>
+                    ))
+                )}
+              </select>
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setEmployeePickOpen(false)}>
+              إلغاء
+            </Button>
+            <Button
+              disabled={!selectedEmpId || waBusy}
+              onClick={() => {
+                const emp = report?.payroll.employees.find(
+                  (e) => String(e.empId) === selectedEmpId,
+                );
+                if (!emp) return;
+                void sendWhatsAppToEmployee(emp.empId, emp.empName);
+              }}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white"
+            >
+              <MessageCircle className="h-4 w-4 ml-1" />
+              إرسال لهذا الموظف
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={ownerPreviewOpen} onOpenChange={setOwnerPreviewOpen}>
         <DialogContent className="max-w-lg bg-zinc-950 border-zinc-800" dir="rtl">

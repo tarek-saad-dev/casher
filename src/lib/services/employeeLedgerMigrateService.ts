@@ -21,6 +21,7 @@ export interface EmployeeLedgerMigrateSuccess {
   uniqueIndexCreated: boolean;
   uniqueIndexExists: boolean;
   employeeFundingReasonAllowed: boolean;
+  employeeTipReasonAllowed: boolean;
   entryReasonCheckUpdated: boolean;
 }
 
@@ -37,6 +38,7 @@ export type EmployeeLedgerMigrateResult =
 const TABLE_MIGRATION_FILE = 'create-tbl-emp-ledger-entry.sql';
 const INDEX_MIGRATION_FILE = 'add-emp-ledger-entry-active-ref-unique.sql';
 const FUNDING_REASON_MIGRATION_FILE = 'add-employee-ledger-employee-funding-reason.sql';
+const TIP_REASON_MIGRATION_FILE = 'add-employee-ledger-tip-reason.sql';
 
 function migrationPath(filename: string): string {
   return join(process.cwd(), 'db', 'migrations', filename);
@@ -112,6 +114,19 @@ export async function employeeFundingReasonAllowed(
   return definition.includes('employee_funding');
 }
 
+export async function employeeTipReasonAllowed(
+  pool: { request: () => { query: (sql: string) => Promise<{ recordset: Array<{ definition?: string | null }> }> } },
+): Promise<boolean> {
+  const result = await pool.request().query(`
+    SELECT cc.definition
+    FROM sys.check_constraints cc
+    WHERE cc.name = N'CK_TblEmpLedgerEntry_EntryReason'
+      AND cc.parent_object_id = OBJECT_ID(N'dbo.TblEmpLedgerEntry')
+  `);
+  const definition = String(result.recordset[0]?.definition ?? '');
+  return definition.includes("'tip'") || definition.includes('N\'tip\'') || definition.includes('tip');
+}
+
 export async function runEmployeeLedgerMigrations(): Promise<EmployeeLedgerMigrateResult> {
   const db = await getPool();
   const tableBefore = await employeeLedgerTableExists(db);
@@ -155,7 +170,21 @@ export async function runEmployeeLedgerMigrations(): Promise<EmployeeLedgerMigra
     };
   }
 
+  const tipReasonBefore = await employeeTipReasonAllowed(db);
+
+  try {
+    const tipReasonSql = readMigrationSql(TIP_REASON_MIGRATION_FILE);
+    await runMigrationSql(db, tipReasonSql);
+  } catch (error) {
+    return {
+      success: false,
+      failedStep: 'update_entry_reason_check',
+      sqlError: extractSqlError(error),
+    };
+  }
+
   const fundingReasonAfter = await employeeFundingReasonAllowed(db);
+  const tipReasonAfter = await employeeTipReasonAllowed(db);
 
   return {
     success: true,
@@ -164,6 +193,8 @@ export async function runEmployeeLedgerMigrations(): Promise<EmployeeLedgerMigra
     uniqueIndexCreated: !indexBefore && indexAfter,
     uniqueIndexExists: indexAfter,
     employeeFundingReasonAllowed: fundingReasonAfter,
-    entryReasonCheckUpdated: !fundingReasonBefore && fundingReasonAfter,
+    employeeTipReasonAllowed: tipReasonAfter,
+    entryReasonCheckUpdated:
+      (!fundingReasonBefore && fundingReasonAfter) || (!tipReasonBefore && tipReasonAfter),
   };
 }

@@ -7,6 +7,7 @@ import {
   type DetailLineForAllocation,
   type InvoiceHeaderInput,
 } from '@/lib/services/employeeInvoiceAllocation';
+import { aggregateEmployeeServiceBreakdown } from '@/lib/services/employeeServiceBreakdown';
 import { assertValidWorkDate } from './target.validation';
 
 /** Same line expression as GET /api/reports/employee-services */
@@ -164,4 +165,84 @@ export async function getEmployeeNetServiceSalesByDate(
     serviceCount: 0,
     invoiceCount: 0,
   };
+}
+
+export interface EmployeeDayServiceCounts {
+  empId: number;
+  empName: string;
+  /** All service lines for the day. */
+  totalCount: number;
+  /** شعر + دقن + شعر ودقن (barber bucket). */
+  basicCount: number;
+  otherCount: number;
+  hairCount: number;
+  hairBeardCount: number;
+  beardCount: number;
+}
+
+/**
+ * Per-employee service line counts for a work date (barber vs other).
+ * Same مبيعات scope as getEmployeesNetServiceSalesByDate.
+ */
+export async function getEmployeesServiceCountsByDate(
+  workDate: string,
+  empIds?: number[] | null,
+): Promise<EmployeeDayServiceCounts[]> {
+  assertValidWorkDate(workDate);
+
+  const filterEmpIds =
+    empIds != null && empIds.length > 0
+      ? [...new Set(empIds.filter((id) => Number.isInteger(id) && id > 0))]
+      : null;
+
+  const db = await getPool();
+  const detailsResult = await db.request()
+    .input('fromDate', sql.Date, workDate)
+    .input('toDate', sql.Date, workDate)
+    .query(`
+      SELECT
+        d.EmpID AS empId,
+        ISNULL(e.EmpName, N'') AS empName,
+        d.ProID AS proId,
+        ISNULL(p.ProName, N'') AS serviceName,
+        ISNULL(p.ProNameAr, N'') AS serviceNameAr
+      FROM dbo.TblinvServDetail d
+      INNER JOIN dbo.TblinvServHead h
+        ON h.invID = d.invID
+       AND h.invType = d.invType
+      LEFT JOIN dbo.TblEmp e ON e.EmpID = d.EmpID
+      LEFT JOIN dbo.TblPro p ON p.ProID = d.ProID
+      WHERE CAST(h.invDate AS date) >= @fromDate
+        AND CAST(h.invDate AS date) <= @toDate
+        AND h.invType = N'مبيعات'
+        AND d.EmpID IS NOT NULL
+        AND d.ProID IS NOT NULL
+    `);
+
+  let lines = detailsResult.recordset.map((row: Record<string, unknown>) => ({
+    empId: Number(row.empId),
+    empName: String(row.empName ?? ''),
+    proId: Number(row.proId),
+    serviceName: String(row.serviceName ?? ''),
+    serviceNameAr: String(row.serviceNameAr ?? ''),
+  }));
+
+  if (filterEmpIds) {
+    const allow = new Set(filterEmpIds);
+    lines = lines.filter((l) => allow.has(l.empId));
+  }
+
+  return aggregateEmployeeServiceBreakdown(lines).map((row) => {
+    const basicCount = row.hairCount + row.hairBeardCount + row.beardCount;
+    return {
+      empId: row.employeeId,
+      empName: row.employeeName,
+      totalCount: basicCount + row.otherCount,
+      basicCount,
+      otherCount: row.otherCount,
+      hairCount: row.hairCount,
+      hairBeardCount: row.hairBeardCount,
+      beardCount: row.beardCount,
+    };
+  });
 }

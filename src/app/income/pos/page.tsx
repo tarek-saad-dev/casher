@@ -10,6 +10,7 @@ import PaymentTransferModal from '@/components/pos/PaymentTransferModal';
 import QuickExpenseModal from '@/components/pos/QuickExpenseModal';
 import QuickIncomeModal from '@/components/pos/QuickIncomeModal';
 import QuickWhatsAppModal from '@/components/pos/QuickWhatsAppModal';
+import TipsModal from '@/components/pos/TipsModal';
 import CustomerSearch from '@/components/pos/CustomerSearch';
 import CustomerHistoryPanel, { type LastSaleAutoFill } from '@/components/pos/CustomerHistoryPanel';
 import QuickCustomerModal from '@/components/pos/QuickCustomerModal';
@@ -126,6 +127,7 @@ export default function PosPage() {
   const [isPaymentTransferOpen, setIsPaymentTransferOpen] = useState(false);
   const [isQuickExpenseOpen, setIsQuickExpenseOpen] = useState(false);
   const [isQuickIncomeOpen, setIsQuickIncomeOpen] = useState(false);
+  const [isTipsOpen, setIsTipsOpen] = useState(false);
   const [isQuickWhatsAppOpen, setIsQuickWhatsAppOpen] = useState(false);
   const [isRecentInvoicesOpen, setIsRecentInvoicesOpen] = useState(false);
 
@@ -572,6 +574,9 @@ export default function PosPage() {
       case 'quick-income':
         setIsQuickIncomeOpen(true);
         break;
+      case 'tips':
+        setIsTipsOpen(true);
+        break;
       case 'quick-whatsapp':
         setIsQuickWhatsAppOpen(true);
         break;
@@ -838,6 +843,27 @@ export default function PosPage() {
             addToast('success', 'تم إضافة الإيراد وتسجيل التمويل في دفتر الموظف');
           } else {
             addToast('success', 'تم إضافة الإيراد بنجاح');
+          }
+        }}
+      />
+      <TipsModal
+        open={isTipsOpen}
+        onClose={() => setIsTipsOpen(false)}
+        invoiceTotal={totals.grandTotal}
+        items={state.items}
+        paymentMethods={paymentMethods}
+        defaultPaymentMethodId={state.paymentMethodId}
+        onTipComplete={(info) => {
+          if (info.tipWhatsApp) {
+            addToast(
+              'success',
+              `تم تسجيل تبس ${info.tipAmount.toFixed(2)} ج.م لـ ${info.employeeName} — جاري إرسال إشعار واتساب`,
+            );
+          } else {
+            addToast(
+              'success',
+              `تم تسجيل تبس ${info.tipAmount.toFixed(2)} ج.م إيداع لـ ${info.employeeName}`,
+            );
           }
         }}
       />
