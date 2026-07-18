@@ -204,4 +204,81 @@ describe('AttendancePanel', () => {
       expect(body.EmpID).toBe(2);
     });
   });
+
+  const pmDefaultRow = {
+    ...fullTimeRow,
+    ScheduledStartTime: '17:00',
+    ScheduledEndTime: '23:00',
+    DefaultCheckInTime: '17:00',
+    DefaultCheckOutTime: '23:00',
+  };
+
+  function mockPmRow() {
+    global.fetch = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        return Promise.resolve({
+          json: async () => ({ success: true, data: { Status: 'Present', LateMinutes: 0, EarlyLeaveMinutes: 0 } }),
+        });
+      }
+      return Promise.resolve({
+        json: async () => ({
+          success: true,
+          attendance: [pmDefaultRow],
+          summary: { total: 1, present: 0, late: 0, absent: 0, dayOff: 0, pending: 1, requiredCount: 1 },
+        }),
+      });
+    }) as unknown as typeof fetch;
+  }
+
+  it('warns when a PM-default employee is checked in during AM', async () => {
+    mockPmRow();
+    render(<AttendancePanel />);
+    await waitFor(() => expect(screen.getByTestId('attendance-checkin-1')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByTestId('attendance-checkin-1'), { target: { value: '05:00' } });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('attendance-period-warning-1')).toBeInTheDocument(),
+    );
+  });
+
+  it('one-click fix converts the AM check-in to the PM equivalent', async () => {
+    mockPmRow();
+    render(<AttendancePanel />);
+    await waitFor(() => expect(screen.getByTestId('attendance-checkin-1')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByTestId('attendance-checkin-1'), { target: { value: '05:00' } });
+    await waitFor(() => expect(screen.getByTestId('attendance-period-fix-1')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId('attendance-period-fix-1'));
+
+    const input = screen.getByTestId('attendance-checkin-1') as HTMLInputElement;
+    expect(input.value).toBe('17:00');
+    expect(screen.queryByTestId('attendance-period-warning-1')).not.toBeInTheDocument();
+  });
+
+  it('blocks saving an AM check-in until confirmed, then allows it', async () => {
+    mockPmRow();
+    const fetchSpy = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    render(<AttendancePanel />);
+    await waitFor(() => expect(screen.getByTestId('attendance-checkin-1')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByTestId('attendance-checkin-1'), { target: { value: '05:00' } });
+    await waitFor(() => expect(screen.getByTestId('attendance-period-warning-1')).toBeInTheDocument());
+
+    fetchSpy.mockClear();
+    fireEvent.click(screen.getByTestId('attendance-save-1'));
+    // Save is guarded — no PUT fired while the mismatch is unresolved
+    const putBefore = fetchSpy.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'PUT');
+    expect(putBefore).toBeFalsy();
+
+    fireEvent.click(screen.getByTestId('attendance-period-confirm-1'));
+    expect(screen.queryByTestId('attendance-period-warning-1')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('attendance-save-1'));
+    await waitFor(() => {
+      const putAfter = fetchSpy.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'PUT');
+      expect(putAfter).toBeTruthy();
+    });
+  });
 });

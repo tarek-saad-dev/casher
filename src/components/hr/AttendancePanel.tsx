@@ -5,6 +5,7 @@ import {
   Users, Clock, CheckCircle2, AlertCircle,
   Loader2, RefreshCw, Save, CalendarDays, UserCheck,
   UserX, Coffee, Timer, UserPlus, Search, PauseCircle,
+  AlertTriangle, Sunrise,
 } from 'lucide-react';
 import KpiCard from '@/components/shared/KpiCard';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,10 @@ import {
   applyNowTimesToRow,
 } from '@/components/hr/attendance-row-time-fill';
 import AttendanceBreaksDialog from '@/components/hr/AttendanceBreaksDialog';
+import {
+  detectCheckInPeriodMismatch,
+  formatClockAr,
+} from '@/lib/hr/attendance-checkin-period';
 import {
   type AttendanceBreakInterval,
   computeNetWorkedHours,
@@ -153,6 +158,9 @@ export default function AttendancePanel() {
   const [savingId, setSavingId]       = useState<number | null>(null);
   const [successMsg, setSuccessMsg]   = useState('');
   const [dirty, setDirty]             = useState<Set<number>>(new Set());
+  // EmpIDs where the operator explicitly confirmed a morning (AM) check-in
+  // for a PM-default employee, silencing the mismatch guard.
+  const [periodConfirmed, setPeriodConfirmed] = useState<Set<number>>(new Set());
 
   const [freelanceOpen, setFreelanceOpen]       = useState(false);
   const [freelanceQuery, setFreelanceQuery]     = useState('');
@@ -161,6 +169,7 @@ export default function AttendancePanel() {
   const [selectedFreelancer, setSelectedFreelancer] = useState<FreelancerOption | null>(null);
   const [freelanceCheckIn, setFreelanceCheckIn] = useState(getCurrentTime());
   const [freelanceSaving, setFreelanceSaving]   = useState(false);
+  const [freelanceAmConfirmed, setFreelanceAmConfirmed] = useState(false);
   const [breaksEmpId, setBreaksEmpId]           = useState<number | null>(null);
   const [breakTimesEmpId, setBreakTimesEmpId]   = useState<number | null>(null);
 
@@ -211,11 +220,26 @@ export default function AttendancePanel() {
     setFreelanceQuery('');
     setSelectedFreelancer(null);
     setFreelanceCheckIn(getCurrentTime());
+    setFreelanceAmConfirmed(false);
     setFreelanceOpen(true);
   };
 
+  const freelancePeriodChk = selectedFreelancer
+    ? detectCheckInPeriodMismatch(freelanceCheckIn, selectedFreelancer.DefaultCheckInTime)
+    : null;
+  const freelancePeriodWarned =
+    !!freelancePeriodChk?.mismatch && !freelanceAmConfirmed;
+
   const saveFreelanceAttendance = async () => {
     if (!selectedFreelancer) return;
+    if (freelancePeriodWarned) {
+      setError(
+        `ميعاد ${selectedFreelancer.EmpName} الافتراضي مساءً (${formatClockAr(
+          freelancePeriodChk?.reference,
+        )}) والمسجّل صباحًا (${formatClockAr(freelancePeriodChk?.checkIn)}). صحّح الوقت أو أكّد "صباحًا فعلاً".`,
+      );
+      return;
+    }
     setFreelanceSaving(true); setError('');
     try {
       const res = await fetch('/api/admin/attendance', {
@@ -261,6 +285,32 @@ export default function AttendancePanel() {
       return updated;
     }));
     setDirty(prev => new Set(prev).add(empId));
+    // A fresh check-in value must be re-validated: drop any prior confirmation.
+    if (field === 'CheckInTime') {
+      setPeriodConfirmed(prev => {
+        if (!prev.has(empId)) return prev;
+        const next = new Set(prev);
+        next.delete(empId);
+        return next;
+      });
+    }
+  };
+
+  const periodCheckFor = (row: AttendanceRow) =>
+    detectCheckInPeriodMismatch(
+      row.CheckInTime,
+      row.DefaultCheckInTime ?? row.ScheduledStartTime,
+    );
+
+  const showPeriodWarning = (row: AttendanceRow) =>
+    periodCheckFor(row).mismatch && !periodConfirmed.has(row.EmpID);
+
+  const fixCheckInPeriod = (empId: number, suggested: string) => {
+    updateRow(empId, 'CheckInTime', suggested);
+  };
+
+  const confirmMorningCheckIn = (empId: number) => {
+    setPeriodConfirmed(prev => new Set(prev).add(empId));
   };
 
   const autoFillDefaultTimes = (empId: number) => {
@@ -301,6 +351,13 @@ export default function AttendancePanel() {
   const saveSingle = async (empId: number) => {
     const row = attendance.find(r => r.EmpID === empId);
     if (!row) return;
+    if (showPeriodWarning(row)) {
+      const chk = periodCheckFor(row);
+      setError(
+        `ميعاد ${row.EmpName} الافتراضي مساءً (${formatClockAr(chk.reference)}) والمسجّل صباحًا (${formatClockAr(chk.checkIn)}). صحّح الوقت أو أكّد "صباحًا فعلاً".`,
+      );
+      return;
+    }
     setSavingId(empId); setError(''); setSuccessMsg('');
     try {
       const res  = await fetch('/api/admin/attendance', {
@@ -346,6 +403,14 @@ export default function AttendancePanel() {
   };
 
   const saveAll = async () => {
+    const flagged = attendance.filter(showPeriodWarning);
+    if (flagged.length > 0) {
+      const names = flagged.map(r => r.EmpName).join('، ');
+      setError(
+        `في موظفين مواعيدهم مساءً ومسجّل لهم حضور صباحًا: ${names}. صحّح الوقت أو أكّد "صباحًا فعلاً" قبل الحفظ.`,
+      );
+      return;
+    }
     setSavingAll(true); setError(''); setSuccessMsg('');
     try {
       const items = attendance.map(row => ({
@@ -478,6 +543,8 @@ export default function AttendancePanel() {
                 const netHours  = hourly
                   ? computeNetWorkedHours(row.CheckInTime, row.CheckOutTime, breaks, breakMins)
                   : null;
+                const periodChk    = periodCheckFor(row);
+                const periodWarned = periodChk.mismatch && !periodConfirmed.has(row.EmpID);
                 const subLabel = row.displayReason
                   || (row.isScheduledWorkingDay ? 'يوم عمل' : 'إجازة')
                   || row.scheduleWarning;
@@ -506,7 +573,49 @@ export default function AttendancePanel() {
                     <td className="text-center p-3">
                       <Input type="time" value={sqlTimeForInput(row.CheckInTime)}
                         onChange={(e) => updateRow(row.EmpID, 'CheckInTime', e.target.value || null)}
-                        className="bg-zinc-800/50 border-zinc-700 text-white h-9 w-28 mx-auto text-center text-xs" />
+                        data-testid={`attendance-checkin-${row.EmpID}`}
+                        aria-invalid={periodWarned}
+                        className={`bg-zinc-800/50 text-white h-9 w-28 mx-auto text-center text-xs ${
+                          periodWarned
+                            ? 'border-amber-500 ring-1 ring-amber-500/40 focus-visible:ring-amber-500'
+                            : 'border-zinc-700'
+                        }`} />
+                      {periodWarned && (
+                        <div
+                          data-testid={`attendance-period-warning-${row.EmpID}`}
+                          className="mt-1.5 mx-auto w-44 rounded-lg border border-amber-500/40 bg-amber-500/10 p-1.5 text-[10px] leading-snug text-amber-300"
+                        >
+                          <div className="flex items-center justify-center gap-1 font-semibold">
+                            <AlertTriangle className="w-3 h-3 shrink-0" />
+                            <span>ميعاده مساءً ({formatClockAr(periodChk.reference)})</span>
+                          </div>
+                          <p className="text-amber-400/80">
+                            مسجّل صباحًا ({formatClockAr(periodChk.checkIn)})؟
+                          </p>
+                          <div className="mt-1 flex items-center justify-center gap-1">
+                            {periodChk.suggested && (
+                              <button
+                                type="button"
+                                onClick={() => fixCheckInPeriod(row.EmpID, periodChk.suggested!)}
+                                data-testid={`attendance-period-fix-${row.EmpID}`}
+                                className="inline-flex items-center gap-0.5 rounded-md bg-amber-500 px-1.5 py-0.5 font-bold text-black hover:bg-amber-400"
+                              >
+                                <Clock className="w-3 h-3" />
+                                صحّح لـ {formatClockAr(periodChk.suggested)}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => confirmMorningCheckIn(row.EmpID)}
+                              data-testid={`attendance-period-confirm-${row.EmpID}`}
+                              className="inline-flex items-center gap-0.5 rounded-md border border-amber-500/40 px-1.5 py-0.5 text-amber-300 hover:bg-amber-500/20"
+                            >
+                              <Sunrise className="w-3 h-3" />
+                              صباحًا فعلاً
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </td>
                     <td className="text-center p-3">
                       <Input type="time" value={sqlTimeForInput(row.CheckOutTime)}
@@ -603,6 +712,7 @@ export default function AttendancePanel() {
                           </Button>
                         )}
                         <Button size="sm" variant="ghost" onClick={() => saveSingle(row.EmpID)} disabled={isSaving || !isDirty} title="حفظ"
+                          data-testid={`attendance-save-${row.EmpID}`}
                           className={`h-7 w-7 p-0 ${isDirty ? 'text-amber-400 hover:bg-amber-500/20' : 'text-zinc-600'}`}>
                           {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                         </Button>
@@ -659,6 +769,7 @@ export default function AttendancePanel() {
                   onClick={() => {
                     setSelectedFreelancer(f);
                     setFreelanceCheckIn(f.DefaultCheckInTime || getCurrentTime());
+                    setFreelanceAmConfirmed(false);
                   }}
                   className={`w-full text-right px-3 py-2 rounded-lg text-sm transition-colors ${
                     selectedFreelancer?.EmpID === f.EmpID
@@ -676,9 +787,51 @@ export default function AttendancePanel() {
                 <Input
                   type="time"
                   value={freelanceCheckIn}
-                  onChange={(e) => setFreelanceCheckIn(e.target.value)}
-                  className="bg-zinc-800 border-zinc-700 text-white"
+                  onChange={(e) => {
+                    setFreelanceCheckIn(e.target.value);
+                    setFreelanceAmConfirmed(false);
+                  }}
+                  aria-invalid={freelancePeriodWarned}
+                  className={`bg-zinc-800 text-white ${
+                    freelancePeriodWarned
+                      ? 'border-amber-500 ring-1 ring-amber-500/40'
+                      : 'border-zinc-700'
+                  }`}
                 />
+                {freelancePeriodWarned && freelancePeriodChk && (
+                  <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-300">
+                    <div className="flex items-center gap-1.5 font-semibold">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      <span>ميعاده الافتراضي مساءً ({formatClockAr(freelancePeriodChk.reference)})</span>
+                    </div>
+                    <p className="mt-0.5 text-amber-400/80">
+                      اخترت صباحًا ({formatClockAr(freelancePeriodChk.checkIn)}) — متأكد؟
+                    </p>
+                    <div className="mt-2 flex items-center gap-2">
+                      {freelancePeriodChk.suggested && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFreelanceCheckIn(freelancePeriodChk.suggested!);
+                            setFreelanceAmConfirmed(false);
+                          }}
+                          className="inline-flex items-center gap-1 rounded-md bg-amber-500 px-2 py-1 font-bold text-black hover:bg-amber-400"
+                        >
+                          <Clock className="w-3.5 h-3.5" />
+                          صحّح لـ {formatClockAr(freelancePeriodChk.suggested)}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setFreelanceAmConfirmed(true)}
+                        className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 px-2 py-1 text-amber-300 hover:bg-amber-500/20"
+                      >
+                        <Sunrise className="w-3.5 h-3.5" />
+                        صباحًا فعلاً
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <Button
