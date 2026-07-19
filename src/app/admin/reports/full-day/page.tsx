@@ -5,10 +5,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertCircle,
   Banknote,
+  CalendarRange,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
+  CreditCard,
   Crown,
   Landmark,
   Loader2,
@@ -19,10 +21,15 @@ import {
   Target,
   TrendingDown,
   TrendingUp,
+  UserCog,
   Users,
   Wallet,
 } from 'lucide-react';
-import type { FullDayGroupedMoneyLine } from '@/lib/reports/full-day-report.types';
+import type {
+  FullDayGroupedMoneyLine,
+  FullDayMonthToDate,
+  FullDayPaymentMix,
+} from '@/lib/reports/full-day-report.types';
 import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -78,6 +85,20 @@ export default function FullDayReportPage() {
   } | null>(null);
   const [employeePickOpen, setEmployeePickOpen] = useState(false);
   const [selectedEmpId, setSelectedEmpId] = useState<string>('');
+  const [recipientsOpen, setRecipientsOpen] = useState(false);
+  const [recipientsLoading, setRecipientsLoading] = useState(false);
+  const [recipientsError, setRecipientsError] = useState<string | null>(null);
+  const [recipients, setRecipients] = useState<{
+    roleLabel: string;
+    rows: Array<{
+      empId: number;
+      name: string;
+      role: string | null;
+      phone: string | null;
+      hasPhone: boolean;
+      isPrimary: boolean;
+    }>;
+  } | null>(null);
 
   const syncUrl = useCallback(
     (d: string) => {
@@ -224,6 +245,26 @@ export default function FullDayReportPage() {
     const ready = report.payroll.employees.filter((e) => e.hasPhone);
     setSelectedEmpId(ready[0] ? String(ready[0].empId) : '');
     setEmployeePickOpen(true);
+  };
+
+  const openRecipients = async () => {
+    setRecipientsOpen(true);
+    setRecipientsLoading(true);
+    setRecipientsError(null);
+    try {
+      const res = await fetch('/api/admin/reports/full-day/report-recipients');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل تحميل قائمة المستلمين');
+      setRecipients({
+        roleLabel: String(data.roleLabel ?? 'مدير'),
+        rows: Array.isArray(data.recipients) ? data.recipients : [],
+      });
+    } catch (err) {
+      setRecipients(null);
+      setRecipientsError(err instanceof Error ? err.message : 'خطأ غير معروف');
+    } finally {
+      setRecipientsLoading(false);
+    }
   };
 
   const previewOwnerWhatsApp = async () => {
@@ -409,6 +450,16 @@ export default function FullDayReportPage() {
               موظف معيّن
             </Button>
             <Button
+              disabled={waBusy}
+              variant="outline"
+              onClick={() => void openRecipients()}
+              className="border-sky-500/40 text-sky-300 hover:bg-sky-500/10"
+              title="مين بيستلم التقرير ودوره في النظام"
+            >
+              <UserCog className="h-4 w-4 ml-1" />
+              مستلمو التقرير
+            </Button>
+            <Button
               disabled={!report || waBusy || loading}
               variant="outline"
               onClick={() => void previewOwnerWhatsApp()}
@@ -531,6 +582,9 @@ export default function FullDayReportPage() {
               داخل = مبيعات + إيرادات · خارج = مصروفات + أساسي الموظفين + التارجت
             </p>
           </div>
+
+          {/* Payment method mix — الفلوس الداخلة متقسمة على طرق الدفع */}
+          <PaymentMixCard mix={report.paymentMix} />
 
           {/* Flow cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -776,6 +830,23 @@ export default function FullDayReportPage() {
                         </strong>
                       </span>
                     </div>
+                    <div className="mt-3 rounded-xl border border-cyan-500/25 bg-cyan-500/5 px-3 py-2.5 flex items-center justify-between gap-3">
+                      <span className="text-xs text-cyan-200/90">
+                        صافي السيولة بالخزنة حتى اليوم
+                        <span className="block text-[10px] text-zinc-500">
+                          من أول الشهر ({report.monthToDate.month})
+                        </span>
+                      </span>
+                      <span
+                        className={`text-lg font-bold ${
+                          report.monthToDate.treasuryNet >= 0
+                            ? 'text-cyan-300'
+                            : 'text-rose-300'
+                        }`}
+                      >
+                        {formatCurrencyAr(report.monthToDate.treasuryNet)}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 text-xs">
@@ -931,6 +1002,9 @@ export default function FullDayReportPage() {
                 لهذا الشهر.
               </div>
             </div>
+
+            {/* Month-to-date net profit — آخر حاجة في التقرير */}
+            <MonthToDateCard mtd={report.monthToDate} />
           </section>
         </>
       )}
@@ -1010,6 +1084,105 @@ export default function FullDayReportPage() {
             >
               <Crown className="h-4 w-4 ml-1" />
               إرسال الآن
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={recipientsOpen} onOpenChange={setRecipientsOpen}>
+        <DialogContent className="max-w-md bg-zinc-950 border-zinc-800" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="text-zinc-100 flex items-center gap-2">
+              <UserCog className="h-4 w-4 text-sky-300" />
+              مستلمو تقرير المالك
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-zinc-400">
+            التقرير بيتبعت للموظفين اللي دورهم في النظام{' '}
+            <span className="text-sky-300 font-medium">
+              {recipients?.roleLabel ?? 'مدير'}
+            </span>
+            . المستلم الأساسي متعلّم بنجمة.
+          </p>
+
+          {recipientsLoading ? (
+            <div className="flex items-center justify-center py-8 text-zinc-400 text-sm">
+              <Loader2 className="h-5 w-5 animate-spin ml-2" />
+              جاري تحميل المستلمين...
+            </div>
+          ) : recipientsError ? (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-red-300 text-xs flex gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              {recipientsError}
+            </div>
+          ) : !recipients || recipients.rows.length === 0 ? (
+            <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-4 text-center text-xs text-amber-300 space-y-1">
+              <p>مفيش أي موظف دوره «مدير» في النظام.</p>
+              <p className="text-zinc-500">
+                عيّن الوظيفة «مدير» لموظف (زي طارق) من إدارة الموظفين عشان يستلم
+                التقرير.
+              </p>
+            </div>
+          ) : (
+            <ul className="space-y-2 max-h-[50vh] overflow-y-auto">
+              {recipients.rows.map((r) => (
+                <li
+                  key={r.empId}
+                  className={`rounded-xl border px-3 py-2.5 flex items-center justify-between gap-3 ${
+                    r.isPrimary
+                      ? 'border-[#D6A84F]/40 bg-[#D6A84F]/5'
+                      : 'border-zinc-800 bg-zinc-900/50'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-zinc-100 font-medium truncate">
+                        {r.name}
+                      </span>
+                      {r.isPrimary && (
+                        <span
+                          className="text-[#D6A84F] text-xs"
+                          title="المستلم الأساسي"
+                        >
+                          ★
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-zinc-500 mt-0.5">
+                      {r.phone ? `واتساب: ${r.phone}` : 'بدون رقم واتساب'}
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <span className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] text-sky-300">
+                      {r.role ?? 'بدون دور'}
+                    </span>
+                    <span
+                      className={`text-[10px] ${
+                        r.hasPhone ? 'text-emerald-400' : 'text-zinc-500'
+                      }`}
+                    >
+                      {r.hasPhone ? 'جاهز للإرسال' : 'بدون رقم'}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setRecipientsOpen(false)}>
+              إغلاق
+            </Button>
+            <Button
+              disabled={!report || waBusy || loading}
+              onClick={() => {
+                setRecipientsOpen(false);
+                void previewOwnerWhatsApp();
+              }}
+              className="bg-[#D6A84F] hover:bg-[#c4983f] text-black"
+            >
+              <Crown className="h-4 w-4 ml-1" />
+              معاينة التقرير
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1101,6 +1274,144 @@ function GroupedBreakdown({
         </ul>
       )}
     </div>
+  );
+}
+
+function MonthToDateCard({ mtd }: { mtd: FullDayMonthToDate }) {
+  const profitPositive = mtd.netProfit >= 0;
+  return (
+    <div
+      className={`relative overflow-hidden rounded-2xl border p-6 ${
+        profitPositive
+          ? 'border-emerald-500/30 bg-gradient-to-l from-emerald-500/10 via-zinc-950 to-zinc-950'
+          : 'border-rose-500/30 bg-gradient-to-l from-rose-500/10 via-zinc-950 to-zinc-950'
+      }`}
+    >
+      <div className="flex items-center gap-2 text-xs text-zinc-400 mb-2">
+        <CalendarRange className="h-4 w-4 text-emerald-300" />
+        صافي الربح من أول الشهر حتى اليوم
+        <span className="text-zinc-600">·</span>
+        <span className="text-zinc-500">
+          {mtd.fromDate} ← {mtd.toDate}
+        </span>
+      </div>
+      <div
+        className={`text-4xl sm:text-5xl font-bold tracking-tight ${
+          profitPositive ? 'text-emerald-300' : 'text-rose-300'
+        }`}
+      >
+        {formatCurrencyAr(mtd.netProfit)}
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <MiniTile label="مبيعات الشهر" value={formatCurrencyAr(mtd.sales)} />
+        <MiniTile label="إيرادات الشهر" value={formatCurrencyAr(mtd.incomes)} />
+        <MiniTile
+          label="مصروفات التشغيل"
+          value={formatCurrencyAr(mtd.operatingExpenses)}
+        />
+        <MiniTile label="أساسي الموظفين" value={formatCurrencyAr(mtd.staffBase)} />
+        <MiniTile label="تارجت الموظفين" value={formatCurrencyAr(mtd.staffTarget)} />
+        <MiniTile
+          label="سلف الموظفين"
+          value={formatCurrencyAr(mtd.advances)}
+          warn={mtd.advances > 0}
+        />
+      </div>
+
+      <div className="mt-3 rounded-xl border border-cyan-500/25 bg-cyan-500/5 px-4 py-3 flex items-center justify-between gap-3">
+        <span className="text-sm text-cyan-200/90">
+          صافي السيولة بالخزنة حتى اليوم
+        </span>
+        <span
+          className={`text-xl font-bold ${
+            mtd.treasuryNet >= 0 ? 'text-cyan-300' : 'text-rose-300'
+          }`}
+        >
+          {formatCurrencyAr(mtd.treasuryNet)}
+        </span>
+      </div>
+
+      <p className="mt-2 text-[11px] text-zinc-500 leading-relaxed">
+        الربح الشهري = (مبيعات + إيرادات) − (مصروفات + أساسي + تارجت) · صافي
+        السيولة = (مبيعات + إيرادات) − (مصروفات + سلف) — كله تراكمي من أول الشهر.
+      </p>
+    </div>
+  );
+}
+
+function PaymentMixCard({ mix }: { mix: FullDayPaymentMix }) {
+  const barColors = [
+    'bg-emerald-400',
+    'bg-sky-400',
+    'bg-violet-400',
+    'bg-amber-400',
+    'bg-rose-400',
+    'bg-teal-400',
+  ];
+  return (
+    <section className="rounded-2xl border border-sky-500/25 bg-gradient-to-b from-sky-500/8 via-zinc-950 to-zinc-950 overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-sky-500/15 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+            <CreditCard className="h-4 w-4 text-sky-300" />
+            الفلوس الداخلة متقسمة على طرق الدفع
+          </h3>
+          <p className="text-[11px] text-zinc-500 mt-0.5">
+            كام كاش · كام فيزا · وهكذا (مبيعات + إيرادات)
+          </p>
+        </div>
+        <div className="text-left">
+          <div className="text-[10px] text-zinc-500">إجمالي الداخل</div>
+          <div className="text-lg font-bold text-sky-300">
+            {formatCurrencyAr(mix.total)}
+          </div>
+        </div>
+      </div>
+
+      {mix.rows.length === 0 ? (
+        <div className="p-6 text-center text-zinc-500 text-sm">
+          مفيش فلوس داخلة مسجّلة اليوم
+        </div>
+      ) : (
+        <ul className="divide-y divide-zinc-800/80">
+          {mix.rows.map((row, i) => (
+            <li key={row.method} className="px-5 py-3">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                      barColors[i % barColors.length]
+                    }`}
+                  />
+                  <span className="text-zinc-100 font-medium truncate">
+                    {row.method}
+                  </span>
+                  <span className="text-[11px] text-zinc-500 shrink-0">
+                    {row.percent}%
+                  </span>
+                </div>
+                <span className="font-semibold text-zinc-50 shrink-0">
+                  {formatCurrencyAr(row.total)}
+                </span>
+              </div>
+              <div className="mt-1.5 h-1.5 w-full rounded-full bg-zinc-800 overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${barColors[i % barColors.length]}`}
+                  style={{ width: `${Math.min(100, Math.max(2, row.percent))}%` }}
+                />
+              </div>
+              {(row.salesTotal > 0 && row.incomesTotal > 0) && (
+                <div className="mt-1 text-[10px] text-zinc-500">
+                  مبيعات {formatCurrencyAr(row.salesTotal)} · إيرادات{' '}
+                  {formatCurrencyAr(row.incomesTotal)}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

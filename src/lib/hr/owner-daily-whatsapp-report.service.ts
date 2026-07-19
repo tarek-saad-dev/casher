@@ -121,6 +121,101 @@ async function resolveOwnerPhone(): Promise<{
   }
 }
 
+export interface OwnerReportRecipient {
+  empId: number;
+  name: string;
+  /** الوظيفة/الدور كما هو مسجّل في النظام (TblEmp.Job) */
+  role: string | null;
+  phone: string | null;
+  hasPhone: boolean;
+  /** هل هو المستلم الأساسي الذي سيصله التقرير فعليًا */
+  isPrimary: boolean;
+}
+
+/**
+ * من الذي يستلم تقرير المالك اليومي؟
+ * الأساس: كل موظف نشط دوره "مدير" (Job=مدير). المستلم الأساسي يفضّل طارق.
+ * fallback: لو مفيش مدير مسجّل، نرجّع الموظف المسمى طارق.
+ */
+export async function resolveOwnerReportRecipients(): Promise<{
+  recipients: OwnerReportRecipient[];
+  primaryEmpId: number | null;
+  roleLabel: string;
+}> {
+  const roleLabel = JobType.MANAGER;
+  try {
+    const db = await getPool();
+
+    const managersResult = await db
+      .request()
+      .input('job', sql.NVarChar(50), JobType.MANAGER)
+      .input('preferredName', sql.NVarChar(100), OWNER_PREFERRED_NAME)
+      .query(`
+        SELECT EmpID, EmpName, WhatsApp, Mobile, Job
+        FROM dbo.TblEmp
+        WHERE ISNULL(isActive, 1) = 1
+          AND LTRIM(RTRIM(ISNULL(Job, N''))) = @job
+        ORDER BY
+          CASE
+            WHEN EmpName = @preferredName THEN 0
+            WHEN EmpName LIKE @preferredName + N'%' THEN 1
+            WHEN EmpName LIKE N'%' + @preferredName + N'%' THEN 2
+            ELSE 3
+          END,
+          EmpID
+      `);
+
+    const managerRows = managersResult.recordset as Array<{
+      EmpID: number;
+      EmpName: string;
+      WhatsApp: string | null;
+      Mobile: string | null;
+      Job: string | null;
+    }>;
+
+    if (managerRows.length > 0) {
+      const owner = await resolveOwnerPhone();
+      const primaryEmpId = owner.empId ?? Number(managerRows[0].EmpID);
+      const recipients: OwnerReportRecipient[] = managerRows.map((r) => {
+        const phone = resolveEmployeeWhatsAppPhone(r.WhatsApp, r.Mobile);
+        return {
+          empId: Number(r.EmpID),
+          name: r.EmpName || OWNER_PREFERRED_NAME,
+          role: (r.Job && r.Job.trim()) || JobType.MANAGER,
+          phone,
+          hasPhone: !!phone,
+          isPrimary: Number(r.EmpID) === primaryEmpId,
+        };
+      });
+      return { recipients, primaryEmpId, roleLabel };
+    }
+
+    // Fallback: employee named طارق even if role not set to مدير
+    const owner = await resolveOwnerPhone();
+    if (owner.empId != null) {
+      return {
+        recipients: [
+          {
+            empId: owner.empId,
+            name: owner.name,
+            role: null,
+            phone: owner.phone,
+            hasPhone: !!owner.phone,
+            isPrimary: true,
+          },
+        ],
+        primaryEmpId: owner.empId,
+        roleLabel,
+      };
+    }
+
+    return { recipients: [], primaryEmpId: null, roleLabel };
+  } catch (err) {
+    console.warn('[owner-daily-whatsapp] recipients lookup failed', err);
+    return { recipients: [], primaryEmpId: null, roleLabel };
+  }
+}
+
 export async function previewOwnerDailyWhatsApp(workDate: string): Promise<{
   workDate: string;
   ownerName: string;

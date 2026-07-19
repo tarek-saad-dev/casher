@@ -2,6 +2,7 @@ import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
 import { getMonthDateRange, roundMoney } from '@/lib/reportMonthUtils';
+import { computeEmployeeWithdrawalBuckets } from '@/lib/hr/employee-withdrawal-buckets';
 import type {
   EmpLedgerEmployeeSummaryRow,
   EmpLedgerEntryRow,
@@ -254,14 +255,25 @@ export async function getEmployeeLedgerSummary(month: string): Promise<EmpLedger
     `);
 
   const employees: EmpLedgerEmployeeSummaryRow[] = result.recordset.map((row: Record<string, unknown>) => {
+    const empId = row.EmpID as number;
     const salaryCredits = roundMoney(Number(row.SalaryCredits ?? 0));
     const targetCredits = roundMoney(Number(row.TargetCredits ?? 0));
     const fundingCredits = roundMoney(Number(row.FundingCredits ?? 0));
     const advanceDebits = roundMoney(Number(row.AdvanceDebits ?? 0));
     const payoutDebits = roundMoney(Number(row.PayoutDebits ?? 0));
     const deductionDebits = roundMoney(Number(row.DeductionDebits ?? 0));
+
+    // إيراد/تمويل الموظف للمحل يُغطّي مسحوباته أولاً قبل الراتب والتارجت.
+    const { payoutWithinDues, revenueWithdrawal, advanceExcess } =
+      computeEmployeeWithdrawalBuckets({
+        advanceDebits,
+        payoutDebits,
+        salaryAndTarget: salaryCredits + targetCredits,
+        revenue: fundingCredits,
+      });
+
     return {
-      empId: row.EmpID as number,
+      empId,
       empName: row.EmpName as string,
       salaryCredits,
       targetCredits,
@@ -272,6 +284,10 @@ export async function getEmployeeLedgerSummary(month: string): Promise<EmpLedger
       balance: roundMoney(
         salaryCredits + targetCredits + fundingCredits - advanceDebits - payoutDebits - deductionDebits,
       ),
+      revenue: fundingCredits,
+      payoutWithinDues,
+      revenueWithdrawal,
+      advanceExcess,
     };
   });
 
@@ -284,6 +300,10 @@ export async function getEmployeeLedgerSummary(month: string): Promise<EmpLedger
       payoutDebits: acc.payoutDebits + row.payoutDebits,
       deductionDebits: acc.deductionDebits + row.deductionDebits,
       balance: acc.balance + row.balance,
+      revenue: acc.revenue + row.revenue,
+      payoutWithinDues: acc.payoutWithinDues + row.payoutWithinDues,
+      revenueWithdrawal: acc.revenueWithdrawal + row.revenueWithdrawal,
+      advanceExcess: acc.advanceExcess + row.advanceExcess,
     }),
     {
       salaryCredits: 0,
@@ -293,6 +313,10 @@ export async function getEmployeeLedgerSummary(month: string): Promise<EmpLedger
       payoutDebits: 0,
       deductionDebits: 0,
       balance: 0,
+      revenue: 0,
+      payoutWithinDues: 0,
+      revenueWithdrawal: 0,
+      advanceExcess: 0,
     },
   );
 
@@ -307,6 +331,10 @@ export async function getEmployeeLedgerSummary(month: string): Promise<EmpLedger
       payoutDebits: roundMoney(totals.payoutDebits),
       deductionDebits: roundMoney(totals.deductionDebits),
       balance: roundMoney(totals.balance),
+      revenue: roundMoney(totals.revenue),
+      payoutWithinDues: roundMoney(totals.payoutWithinDues),
+      revenueWithdrawal: roundMoney(totals.revenueWithdrawal),
+      advanceExcess: roundMoney(totals.advanceExcess),
     },
   };
 }
@@ -329,4 +357,61 @@ export async function getEmployeeAllTimeBalance(
     `);
 
   return roundMoney(Number(result.recordset[0]?.Balance ?? 0));
+}
+
+export interface EmployeeLedgerOutstandingTotals {
+  /** إجمالي ما يستحقه الموظفون على المحل (مجموع الأرصدة الموجبة) — المبلغ المحتجز. */
+  totalOwedToEmployees: number;
+  /** إجمالي ما على الموظفين للمحل (مجموع الأرصدة السالبة / السلف) — مبلغ مستحق للمحل. */
+  totalOwedByEmployees: number;
+  /** الصافي = المستحق للموظفين − المستحق على الموظفين. */
+  netBalance: number;
+}
+
+/**
+ * Aggregate employee ledger balances across all employees.
+ * Positive per-employee balances are money the shop still owes (held);
+ * negative balances are outstanding advances owed back by employees.
+ *
+ * When `range` is provided, only entries whose EntryDate falls within the range
+ * are considered (net entitlements accrued during that period). Otherwise the
+ * all-time outstanding balances are used.
+ */
+export async function getEmployeeLedgerOutstandingTotals(
+  range?: { startDate: string; endDate: string },
+): Promise<EmployeeLedgerOutstandingTotals> {
+  const db = await getPool();
+  const req = db.request();
+
+  let dateFilter = '';
+  if (range) {
+    req.input('startDate', sql.Date, range.startDate);
+    req.input('endDate', sql.Date, range.endDate);
+    dateFilter = 'AND l.EntryDate >= @startDate AND l.EntryDate <= @endDate';
+  }
+
+  const result = await req.query(`
+    SELECT
+      ISNULL(SUM(CASE WHEN l.EntryDirection = N'credit' THEN l.Amount ELSE -l.Amount END), 0) AS Balance
+    FROM dbo.TblEmpLedgerEntry l
+    WHERE l.IsVoided = 0 ${dateFilter}
+    GROUP BY l.EmpID
+  `);
+
+  let totalOwedToEmployees = 0;
+  let totalOwedByEmployees = 0;
+  for (const row of result.recordset as Array<{ Balance: number }>) {
+    const balance = roundMoney(Number(row.Balance ?? 0));
+    if (balance > 0) {
+      totalOwedToEmployees += balance;
+    } else if (balance < 0) {
+      totalOwedByEmployees += -balance;
+    }
+  }
+
+  return {
+    totalOwedToEmployees: roundMoney(totalOwedToEmployees),
+    totalOwedByEmployees: roundMoney(totalOwedByEmployees),
+    netBalance: roundMoney(totalOwedToEmployees - totalOwedByEmployees),
+  };
 }

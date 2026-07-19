@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Loader2, Lock, Calculator, ArrowRightLeft, TrendingUp, TrendingDown } from 'lucide-react';
 import TreasuryFiltersBar from '@/components/treasury/TreasuryFiltersBar';
 import TreasuryKpiCards from '@/components/treasury/TreasuryKpiCards';
+import TreasuryHoldBreakdown from '@/components/treasury/TreasuryHoldBreakdown';
 import PaymentMethodBreakdownTable from '@/components/treasury/PaymentMethodBreakdownTable';
 import TreasuryMovementsTable from '@/components/treasury/TreasuryMovementsTable';
 import TreasuryClosePanel from '@/components/treasury/TreasuryClosePanel';
@@ -61,6 +62,7 @@ export default function TreasuryDailyView({
   const [showPastIncomeModal, setShowPastIncomeModal] = useState(false);
   const [showPastExpenseModal,setShowPastExpenseModal]= useState(false);
   const [movementsPage,       setMovementsPage]       = useState(1);
+  const [holdReloadSignal,    setHoldReloadSignal]    = useState(0);
 
   const [detailsModal, setDetailsModal] = useState<{
     paymentMethodKey: string;
@@ -162,6 +164,7 @@ export default function TreasuryDailyView({
   const handleReload = () => {
     loadTreasuryData();
     loadMovements(movementsPage);
+    setHoldReloadSignal((s) => s + 1);
   };
 
   const hasAdminActions =
@@ -299,6 +302,8 @@ export default function TreasuryDailyView({
                 </div>
               );
             })()}
+
+            <TreasuryHoldBreakdown filters={filters} reloadSignal={holdReloadSignal} />
 
             <TreasuryKpiCards summary={treasuryData.summary} loading={loading} />
 

@@ -14,6 +14,8 @@ import {
   getMonthlyEmployeeAdvances,
   getMonthlyExpensesByCategory,
 } from '@/lib/services/monthlyExpensesReportService';
+import { getEmployeeLedgerSummary } from '@/lib/services/employeeLedgerService';
+import { computeEmployeeWithdrawalBuckets } from '@/lib/hr/employee-withdrawal-buckets';
 import {
   applyEmployeePartnerOverride,
   getEmployeePartnerOverrideFromMap,
@@ -29,6 +31,7 @@ export async function buildPartnersMonthlyReport(
   month: number
 ): Promise<PartnersMonthlyReportResponse> {
   const period = getMonthDateRange(year, month);
+  const ledgerMonth = `${year}-${String(month).padStart(2, '0')}`;
 
   const [
     totalRevenue,
@@ -39,6 +42,7 @@ export async function buildPartnersMonthlyReport(
     expensesData,
     advanceRows,
     partnerOverrides,
+    ledgerSummary,
   ] = await Promise.all([
     getEmployeeServicesRevenue(year, month),
     getEmployeeServicesRevenueByEmployee(year, month),
@@ -48,6 +52,7 @@ export async function buildPartnersMonthlyReport(
     getMonthlyExpensesByCategory(year, month),
     getMonthlyEmployeeAdvances(year, month),
     loadPartnersEmployeeOverrides(),
+    getEmployeeLedgerSummary(ledgerMonth),
   ]);
 
   const { totalExpenses, categories } = expensesData;
@@ -94,10 +99,23 @@ export async function buildPartnersMonthlyReport(
     actualRevenueByEmployee.map((row) => [row.employeeId, row])
   );
   const advancesById = new Map(advanceRows.map((row) => [row.employeeId, row]));
+  const ledgerById = new Map(
+    ledgerSummary.employees.map((row) => [row.empId, row])
+  );
+  const ledgerActiveEmployeeIds = ledgerSummary.employees
+    .filter(
+      (row) =>
+        row.salaryCredits > 0 ||
+        row.targetCredits > 0 ||
+        row.advanceDebits > 0 ||
+        row.payoutDebits > 0
+    )
+    .map((row) => row.empId);
   const employeeIds = new Set<number>([
     ...actualRevenueByEmployee.map((row) => row.employeeId),
     ...advanceRows.map((row) => row.employeeId),
     ...getOverrideEmployeeIdsFromMap(partnerOverrides, year, month),
+    ...ledgerActiveEmployeeIds,
   ]);
 
   const employeeSummary = [...employeeIds]
@@ -126,17 +144,39 @@ export async function buildPartnersMonthlyReport(
         isServiceWorker,
       });
 
+      const ledger = ledgerById.get(employeeId);
+      const ledgerSalary = roundMoney(ledger?.salaryCredits ?? 0);
+      const ledgerTarget = roundMoney(ledger?.targetCredits ?? 0);
+      const salaryAndTarget = roundMoney(ledgerSalary + ledgerTarget);
+      // إذا كان الموظف يحقق إيراداً للمحل، فسحبه يُغطّى أولاً بالإيراد ثم بالراتب + التارجت،
+      // ولا يُعتبر سلفة إلا ما زاد عن ذلك. الإيراد = تمويل الموظف للمحل من الدفتر أو دخله الفعلي.
+      const employeeRevenue = roundMoney(
+        Math.max(overridden.shopRevenue ?? 0, ledger?.fundingCredits ?? 0)
+      );
+      const { moneyTaken, advanceExcess } = computeEmployeeWithdrawalBuckets({
+        advanceDebits: ledger?.advanceDebits ?? 0,
+        payoutDebits: ledger?.payoutDebits ?? 0,
+        salaryAndTarget,
+        revenue: employeeRevenue,
+      });
+
       return {
         employeeId,
         employeeName:
           actual?.employeeName ??
           advance?.employeeName ??
+          ledger?.empName ??
           employeeNames.get(employeeId) ??
           'غير محدد',
         isServiceWorker,
         shopRevenue: overridden.shopRevenue,
         paidSalaryAndAdvances: overridden.paidSalaryAndAdvances,
         hasSpecialAccounting: overridden.hasSpecialAccounting,
+        ledgerSalary,
+        ledgerTarget,
+        salaryAndTarget,
+        moneyTaken,
+        advanceExcess,
       };
     })
     .sort((a, b) => {
@@ -151,6 +191,12 @@ export async function buildPartnersMonthlyReport(
     ),
     totalPaidSalaryAndAdvances: roundMoney(
       employeeSummary.reduce((sum, row) => sum + row.paidSalaryAndAdvances, 0)
+    ),
+    totalSalaryAndTarget: roundMoney(
+      employeeSummary.reduce((sum, row) => sum + row.salaryAndTarget, 0)
+    ),
+    totalAdvanceExcess: roundMoney(
+      employeeSummary.reduce((sum, row) => sum + row.advanceExcess, 0)
     ),
   };
 

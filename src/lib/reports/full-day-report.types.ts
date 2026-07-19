@@ -28,6 +28,30 @@ export interface FullDayGroupedMoneyLine {
   meta?: string | null;
 }
 
+/** توزيع الفلوس الداخلة على طرق الدفع (كاش / فيزا / ...) */
+export interface FullDayPaymentMethodRow {
+  /** اسم طريقة الدفع كما هو في TblPaymentMethods */
+  method: string;
+  /** مبيعات مدفوعة بهذه الطريقة */
+  salesTotal: number;
+  /** إيرادات أخرى مدفوعة بهذه الطريقة */
+  incomesTotal: number;
+  /** الإجمالي = مبيعات + إيرادات */
+  total: number;
+  /** عدد الحركات */
+  count: number;
+  /** نسبة هذه الطريقة من إجمالي الفلوس الداخلة (0..100) */
+  percent: number;
+}
+
+export interface FullDayPaymentMix {
+  /** إجمالي الفلوس الداخلة الموزّعة (مبيعات + إيرادات) */
+  total: number;
+  salesTotal: number;
+  incomesTotal: number;
+  rows: FullDayPaymentMethodRow[];
+}
+
 /** Owner treasury lens: cash in vs cash out (includes advances). */
 export interface FullDayTreasuryReport {
   inflows: {
@@ -82,6 +106,26 @@ export interface FullDayEmployeeAccounts {
   rows: FullDayEmployeeAccountRow[];
 }
 
+/** تراكمي من أول الشهر حتى تاريخ التقرير */
+export interface FullDayMonthToDate {
+  /** الشهر بصيغة YYYY-MM */
+  month: string;
+  /** أول يوم في الشهر YYYY-MM-DD */
+  fromDate: string;
+  /** تاريخ التقرير (حتى اليوم) YYYY-MM-DD */
+  toDate: string;
+  sales: number;
+  incomes: number;
+  operatingExpenses: number;
+  staffBase: number;
+  staffTarget: number;
+  advances: number;
+  /** صافي الربح من أول الشهر حتى اليوم = (مبيعات + إيرادات) − (مصروفات + أساسي + تارجت) */
+  netProfit: number;
+  /** صافي السيولة في الخزنة من أول الشهر حتى اليوم = (مبيعات + إيرادات) − (مصروفات + سلف) */
+  treasuryNet: number;
+}
+
 export interface FullDayReport {
   workDate: string;
   workDateLabelAr: string;
@@ -124,6 +168,10 @@ export interface FullDayReport {
   employeeAccounts: FullDayEmployeeAccounts;
   /** Owner section — treasury cash report */
   treasury: FullDayTreasuryReport;
+  /** توزيع الفلوس الداخلة على طرق الدفع (كاش / فيزا / ...) */
+  paymentMix: FullDayPaymentMix;
+  /** تراكمي الشهر حتى اليوم — صافي الربح وصافي سيولة الخزنة */
+  monthToDate: FullDayMonthToDate;
   whatsapp: {
     readyToSend: number;
     missingPhone: number;

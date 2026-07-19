@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Loader2, RefreshCw, Download, TrendingUp, TrendingDown,
   Wallet, Activity, CalendarDays, Users, ChevronUp, ChevronDown,
-  ArrowRightLeft, List,
+  ArrowRightLeft, List, Smartphone,
 } from 'lucide-react';
 import PastDateIncomeModal  from '@/components/treasury/PastDateIncomeModal';
 import PastDateExpenseModal from '@/components/treasury/PastDateExpenseModal';
@@ -128,6 +128,10 @@ export default function TreasuryPeriodSummaryPage() {
   const closeModal = () => { setActiveModal(null); setModalDate(undefined); };
   const onActionSuccess = () => { closeModal(); load(dateFrom, dateTo, userId); };
 
+  // ── Quick transfer-to-InstaPay ────────────────────────────────────────────
+  // key = `${date}:${pmId}` of the transfer currently running
+  const [instaBusy, setInstaBusy] = useState<string | null>(null);
+
   useEffect(() => {
     document.title = 'ملخص الخزنة الدوري | نظام نقاط البيع';
   }, []);
@@ -178,6 +182,51 @@ export default function TreasuryPeriodSummaryPage() {
         return 0;
       })
     : [];
+
+  // ── InstaPay quick-transfer ────────────────────────────────────────────────
+  // Detect the InstaPay payment method (by name) so we can transfer into it.
+  const instaPay = data?.paymentMethods.find(pm => {
+    const n = (pm.name ?? '').toLowerCase();
+    return n.includes('انستا') || n.includes('insta');
+  }) ?? null;
+
+  const transferToInstaPay = async (
+    pm: PeriodPaymentMethod,
+    day: PeriodDayRow,
+    amount: number,
+  ) => {
+    if (!instaPay || amount <= 0) return;
+    const key = `${day.date}:${pm.id}`;
+    const confirmed = window.confirm(
+      `تحويل ${fmt(amount)} من «${pm.name}» إلى «${instaPay.name}» في يوم ${fmtDate(day.date)}؟`,
+    );
+    if (!confirmed) return;
+
+    setInstaBusy(key);
+    setError(null);
+    try {
+      const res = await fetch('/api/treasury/transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transferDate: day.date,
+          amount,
+          fromPaymentMethodId: pm.id,
+          toPaymentMethodId: instaPay.id,
+          notes: `تحويل تلقائي من ${pm.name} إلى ${instaPay.name}`,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'فشل التحويل');
+      }
+      await load(dateFrom, dateTo, userId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'فشل التحويل إلى انستا باي');
+    } finally {
+      setInstaBusy(null);
+    }
+  };
 
   // ── CSV Export ────────────────────────────────────────────────────────────
 
@@ -488,6 +537,20 @@ export default function TreasuryPeriodSummaryPage() {
                                       <span className={`tabular-nums text-base ${c.cls}`}>
                                         {v === 0 ? <span className="text-zinc-700">—</span> : c.text}
                                       </span>
+                                      {/* Quick transfer this amount to InstaPay for this day */}
+                                      {instaPay && pm.id !== instaPay.id && v > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => transferToInstaPay(pm, day, v)}
+                                          disabled={instaBusy === `${day.date}:${pm.id}`}
+                                          title={`تحويل ${c.text} من ${pm.name} إلى ${instaPay.name} — ${fmtDate(day.date)}`}
+                                          className="shrink-0 p-1 rounded-md border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/25 text-purple-300 hover:text-purple-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                          {instaBusy === `${day.date}:${pm.id}`
+                                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            : <Smartphone className="h-3.5 w-3.5" />}
+                                        </button>
+                                      )}
                                       <button
                                         type="button"
                                         onClick={() => setDetailsModal({

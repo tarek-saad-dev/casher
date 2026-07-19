@@ -9,7 +9,15 @@ function sampleReport(): FullDayReport {
     timezone: 'Africa/Cairo',
     sales: { total: 7060, invoiceCount: 10, customerCount: 8, averageInvoice: 706 },
     incomes: { total: 100, count: 1, lines: [] },
-    expenses: { total: 1555, count: 5, lines: [] },
+    expenses: {
+      total: 1555,
+      count: 5,
+      lines: [
+        { id: 101, label: 'كهرباء', amount: 1000, meta: 'كاش · فاتورة يوليو' },
+        { id: 102, label: 'كهرباء', amount: 200, meta: 'كاش' },
+        { id: 103, label: 'بوفيه', amount: 355, meta: 'شاي وسكر' },
+      ],
+    },
     payroll: {
       wageTotal: 1850.51,
       targetTotal: 982.6,
@@ -102,6 +110,28 @@ function sampleReport(): FullDayReport {
       },
       net: 3710,
     },
+    paymentMix: {
+      total: 7160,
+      salesTotal: 7060,
+      incomesTotal: 100,
+      rows: [
+        { method: 'كاش', salesTotal: 5060, incomesTotal: 100, total: 5160, count: 7, percent: 72.1 },
+        { method: 'فيزا', salesTotal: 2000, incomesTotal: 0, total: 2000, count: 3, percent: 27.9 },
+      ],
+    },
+    monthToDate: {
+      month: '2026-07',
+      fromDate: '2026-07-01',
+      toDate: '2026-07-14',
+      sales: 90000,
+      incomes: 1500,
+      operatingExpenses: 20000,
+      staffBase: 25000,
+      staffTarget: 12000,
+      advances: 8000,
+      netProfit: 34500,
+      treasuryNet: 63500,
+    },
     whatsapp: { readyToSend: 2, missingPhone: 0 },
   };
 }
@@ -111,8 +141,16 @@ describe('composeOwnerDailyWhatsAppMessage', () => {
     const msg = composeOwnerDailyWhatsAppMessage(sampleReport());
     expect(msg).toContain('تقرير المالك اليومي');
     expect(msg).toContain('نتيجة التشغيل');
+    expect(msg).toContain('توزيع الفلوس على طرق الدفع');
+    expect(msg).toContain('كاش');
+    expect(msg).toContain('فيزا');
+    expect(msg).toContain('إجمالي الفلوس الداخلة');
     expect(msg).toContain('حركة الخزنة الفعلية');
     expect(msg).toContain('تفاصيل مصروفات التشغيل');
+    expect(msg).toContain('حسب التصنيف');
+    expect(msg).toContain('البنود بالتفصيل');
+    expect(msg).toContain('فاتورة يوليو');
+    expect(msg).toContain('شاي وسكر');
     expect(msg).toContain('سلف الموظفين');
     expect(msg).toContain('حسابات الموظفين');
     expect(msg).toContain('مواعيد الحضور والانصراف');
@@ -125,5 +163,8 @@ describe('composeOwnerDailyWhatsAppMessage', () => {
     expect(msg).toContain('بدون حضور');
     expect(msg).toContain('سلفتان');
     expect(msg).toContain('ملخص اليوم');
+    expect(msg).toContain('من أول الشهر حتى اليوم');
+    expect(msg).toContain('صافي الربح الشهري حتى اليوم: 34,500.00 ج.م');
+    expect(msg).toContain('صافي السيولة بالخزنة حتى اليوم: 63,500.00 ج.م');
   });
 });

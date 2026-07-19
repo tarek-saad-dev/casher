@@ -10,6 +10,8 @@ export default function DailyTreasuryPage() {
       canAddPastRevenue
       canAddPastExpense
       canDeleteMove
+      pageTitle="الخزنة"
+      pageSubtitle="متابعة الحركات المالية ورصيد الخزنة"
     />
   );
 }

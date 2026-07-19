@@ -69,6 +69,15 @@ export interface EmpLedgerEmployeeSummaryRow {
   payoutDebits: number;
   deductionDebits: number;
   balance: number;
+  // إيراد الموظف الفعلي للمحل خلال الشهر (من الفواتير) — يُستخدم لتصنيف المسحوبات.
+  revenue: number;
+  // تصنيف مسحوبات الموظف (سلف + صرف) على ثلاث شرائح:
+  // صرف = ضمن الاستحقاقات (راتب + تارجت)
+  payoutWithinDues: number;
+  // سحب الايراد = الزيادة عن الاستحقاقات المغطّاة بإيراد الموظف
+  revenueWithdrawal: number;
+  // سلفة = ما تجاوز (راتب + تارجت + إيراد)
+  advanceExcess: number;
 }
 
 export interface EmpLedgerSummaryResponse {
@@ -82,6 +91,10 @@ export interface EmpLedgerSummaryResponse {
     payoutDebits: number;
     deductionDebits: number;
     balance: number;
+    revenue: number;
+    payoutWithinDues: number;
+    revenueWithdrawal: number;
+    advanceExcess: number;
   };
   ledgerDualWriteEnabled?: boolean;
 }

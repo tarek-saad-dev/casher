@@ -76,9 +76,28 @@ export default function PartnersEmployeesSection({
                   }
                 />
                 <MobileValueRow
-                  label="استلم راتب "
-                  value={formatPartnersCurrency(row.paidSalaryAndAdvances)}
+                  label="استلم راتب (راتب + تارجت)"
+                  value={
+                    <span className="flex flex-col items-end gap-0.5">
+                      <span>{formatPartnersCurrency(row.salaryAndTarget)}</span>
+                      <span className="text-[11px] font-normal text-zinc-500">
+                        راتب {formatPartnersCurrency(row.ledgerSalary)} + تارجت{' '}
+                        {formatPartnersCurrency(row.ledgerTarget)}
+                      </span>
+                    </span>
+                  }
                   valueClassName="text-amber-400"
+                />
+                <MobileValueRow
+                  label="سلف"
+                  value={
+                    row.advanceExcess > 0 ? (
+                      formatPartnersCurrency(row.advanceExcess)
+                    ) : (
+                      <span className="text-zinc-500">—</span>
+                    )
+                  }
+                  valueClassName="text-rose-400"
                 />
               </article>
             ))}
@@ -91,9 +110,14 @@ export default function PartnersEmployeesSection({
                 valueClassName="text-emerald-400"
               />
               <MobileValueRow
-                label="إجمالي الرواتب والسلف المدفوعة"
-                value={formatPartnersCurrency(totals.totalPaidSalaryAndAdvances)}
+                label="إجمالي استلم راتب (راتب + تارجت)"
+                value={formatPartnersCurrency(totals.totalSalaryAndTarget ?? 0)}
                 valueClassName="text-amber-400"
+              />
+              <MobileValueRow
+                label="إجمالي السلف"
+                value={formatPartnersCurrency(totals.totalAdvanceExcess ?? 0)}
+                valueClassName="text-rose-400"
               />
             </article>
           </div>
@@ -105,7 +129,8 @@ export default function PartnersEmployeesSection({
                 <tr className="border-b border-zinc-800 text-zinc-400 print:border-zinc-300 print:text-zinc-600">
                   <th className="text-right py-3 px-2 font-medium">الموظف</th>
                   <th className="text-right py-3 px-2 font-medium">دخل للمحل</th>
-                  <th className="text-right py-3 px-2 font-medium">استلم راتب / سلف</th>
+                  <th className="text-right py-3 px-2 font-medium">استلم راتب (راتب + تارجت)</th>
+                  <th className="text-right py-3 px-2 font-medium">سلف</th>
                 </tr>
               </thead>
               <tbody>
@@ -126,8 +151,23 @@ export default function PartnersEmployeesSection({
                         </span>
                       )}
                     </td>
-                    <td className="py-3 px-2 text-amber-400 font-medium tabular-nums">
-                      {formatPartnersCurrency(row.paidSalaryAndAdvances)}
+                    <td className="py-3 px-2 tabular-nums">
+                      <span className="block text-amber-400 font-medium">
+                        {formatPartnersCurrency(row.salaryAndTarget)}
+                      </span>
+                      <span className="block text-[10px] text-zinc-500 font-normal print:text-zinc-600">
+                        راتب {formatPartnersCurrency(row.ledgerSalary)} + تارجت{' '}
+                        {formatPartnersCurrency(row.ledgerTarget)}
+                      </span>
+                    </td>
+                    <td className="py-3 px-2 tabular-nums">
+                      {row.advanceExcess > 0 ? (
+                        <span className="text-rose-400 font-medium print:text-rose-700">
+                          {formatPartnersCurrency(row.advanceExcess)}
+                        </span>
+                      ) : (
+                        <span className="text-zinc-500">—</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -143,10 +183,18 @@ export default function PartnersEmployeesSection({
                   </td>
                   <td className="py-3 px-2 tabular-nums">
                     <span className="block text-[10px] text-zinc-500 font-normal print:text-zinc-600 mb-0.5">
-                      إجمالي الرواتب والسلف المدفوعة
+                      إجمالي استلم راتب (راتب + تارجت)
                     </span>
                     <span className="text-amber-400 print:text-amber-700">
-                      {formatPartnersCurrency(totals.totalPaidSalaryAndAdvances)}
+                      {formatPartnersCurrency(totals.totalSalaryAndTarget ?? 0)}
+                    </span>
+                  </td>
+                  <td className="py-3 px-2 tabular-nums">
+                    <span className="block text-[10px] text-zinc-500 font-normal print:text-zinc-600 mb-0.5">
+                      إجمالي السلف
+                    </span>
+                    <span className="text-rose-400 print:text-rose-700">
+                      {formatPartnersCurrency(totals.totalAdvanceExcess ?? 0)}
                     </span>
                   </td>
                 </tr>

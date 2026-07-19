@@ -10,10 +10,15 @@ import type {
   FullDayEmployeeRow,
   FullDayGroupedMoneyLine,
   FullDayMoneyLine,
+  FullDayMonthToDate,
+  FullDayPaymentMethodRow,
   FullDayReport,
 } from '@/lib/reports/full-day-report.types';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** حساب التسوية الداخلي للدفع المتعدد — نستبعده من عرض طرق الدفع */
+const SPLIT_CLEARING_METHOD = 'دفع متعدد - حساب تسوية';
 
 function normalizeSqlDate(val: unknown): string {
   if (!val) return '';
@@ -336,7 +341,12 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
   const totalOut = roundMoney(expensesTotal + staffCostTotal);
   const net = roundMoney(totalIn - totalOut);
 
-  const [operatingByCategoryRows, advancesByEmployeeRows] = await Promise.all([
+  const [
+    operatingByCategoryRows,
+    advancesByEmployeeRows,
+    salesByPaymentRows,
+    incomesByPaymentRows,
+  ] = await Promise.all([
     queryOrEmpty<{
       CatName: string | null;
       Total: number;
@@ -393,6 +403,69 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
         ORDER BY SUM(cm.GrandTolal) DESC
       `),
     ),
+
+    // مبيعات اليوم موزّعة على طرق الدفع — نقرأ من TblinvServPayment (التوزيع الفعلي)
+    // مع رجوع لطريقة الفاتورة للفواتير القديمة، واستبعاد حساب التسوية الداخلي.
+    queryOrEmpty<{ method: string; Total: number; Cnt: number }>(
+      'sales-by-payment',
+      () =>
+        db.request().input('d', sql.Date, workDate).input('clearing', sql.NVarChar(60), SPLIT_CLEARING_METHOD).query(`
+          WITH DayInvoices AS (
+            SELECT h.invID, h.invType, h.PaymentMethodID,
+                   COALESCE(NULLIF(h.Payment, 0), h.GrandTotal, 0) AS PayValue
+            FROM dbo.TblinvServHead h
+            WHERE CAST(h.invDate AS DATE) = @d
+              AND h.invType = N'مبيعات'
+              AND ISNULL(h.isActive, N'no') = N'no'
+          ),
+          PayRows AS (
+            SELECT p.PaymentMethodID, ISNULL(p.PayValue, 0) AS PayValue
+            FROM dbo.TblinvServPayment p
+            INNER JOIN DayInvoices h ON h.invID = p.invID AND h.invType = p.invType
+            WHERE ISNULL(p.PayValue, 0) > 0
+          ),
+          FallbackRows AS (
+            SELECT h.PaymentMethodID, h.PayValue
+            FROM DayInvoices h
+            WHERE h.PaymentMethodID IS NOT NULL AND h.PayValue > 0
+              AND NOT EXISTS (
+                SELECT 1 FROM dbo.TblinvServPayment p
+                WHERE p.invID = h.invID AND p.invType = h.invType AND ISNULL(p.PayValue, 0) > 0
+              )
+          ),
+          AllRows AS (
+            SELECT PaymentMethodID, PayValue FROM PayRows
+            UNION ALL
+            SELECT PaymentMethodID, PayValue FROM FallbackRows
+          )
+          SELECT
+            ISNULL(pm.PaymentMethod, N'غير محدد') AS method,
+            COUNT(*) AS Cnt,
+            ISNULL(SUM(ar.PayValue), 0) AS Total
+          FROM AllRows ar
+          LEFT JOIN dbo.TblPaymentMethods pm ON pm.PaymentID = ar.PaymentMethodID
+          WHERE ISNULL(pm.PaymentMethod, N'') <> @clearing
+          GROUP BY pm.PaymentMethod
+        `),
+    ),
+
+    // إيرادات أخرى موزّعة على طرق الدفع
+    queryOrEmpty<{ method: string; Total: number; Cnt: number }>(
+      'incomes-by-payment',
+      () =>
+        db.request().input('d', sql.Date, workDate).input('clearing', sql.NVarChar(60), SPLIT_CLEARING_METHOD).query(`
+          SELECT
+            ISNULL(pm.PaymentMethod, N'غير محدد') AS method,
+            COUNT(*) AS Cnt,
+            ISNULL(SUM(cm.GrandTolal), 0) AS Total
+          FROM dbo.TblCashMove cm
+          LEFT JOIN dbo.TblPaymentMethods pm ON pm.PaymentID = cm.PaymentMethodID
+          WHERE CAST(cm.invDate AS DATE) = @d
+            AND cm.invType = N'ايرادات'
+            AND ISNULL(pm.PaymentMethod, N'') <> @clearing
+          GROUP BY pm.PaymentMethod
+        `),
+    ),
   ]);
 
   const operatingByCategory: FullDayGroupedMoneyLine[] = operatingByCategoryRows.map((r) => ({
@@ -424,6 +497,155 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
   const treasuryOutTotal = roundMoney(expensesTotal + advancesTotal);
   const treasuryInTotal = totalIn;
   const treasuryNet = roundMoney(treasuryInTotal - treasuryOutTotal);
+
+  // توزيع الفلوس الداخلة (مبيعات + إيرادات) على طرق الدفع
+  const paymentMixMap = new Map<
+    string,
+    { salesTotal: number; incomesTotal: number; count: number }
+  >();
+  const bumpPaymentMix = (
+    method: string | null | undefined,
+    amount: number,
+    count: number,
+    kind: 'sales' | 'incomes',
+  ) => {
+    const key = (method && method.trim()) || 'غير محدد';
+    const entry =
+      paymentMixMap.get(key) ?? { salesTotal: 0, incomesTotal: 0, count: 0 };
+    if (kind === 'sales') entry.salesTotal += amount;
+    else entry.incomesTotal += amount;
+    entry.count += count;
+    paymentMixMap.set(key, entry);
+  };
+  for (const r of salesByPaymentRows) {
+    bumpPaymentMix(r.method, Number(r.Total ?? 0), Number(r.Cnt ?? 0), 'sales');
+  }
+  for (const r of incomesByPaymentRows) {
+    bumpPaymentMix(r.method, Number(r.Total ?? 0), Number(r.Cnt ?? 0), 'incomes');
+  }
+  const paymentMixTotalRaw = [...paymentMixMap.values()].reduce(
+    (s, e) => s + e.salesTotal + e.incomesTotal,
+    0,
+  );
+  const paymentMixRows: FullDayPaymentMethodRow[] = [...paymentMixMap.entries()]
+    .map(([method, e]) => {
+      const total = roundMoney(e.salesTotal + e.incomesTotal);
+      return {
+        method,
+        salesTotal: roundMoney(e.salesTotal),
+        incomesTotal: roundMoney(e.incomesTotal),
+        total,
+        count: e.count,
+        percent:
+          paymentMixTotalRaw > 0
+            ? Math.round((total / paymentMixTotalRaw) * 1000) / 10
+            : 0,
+      };
+    })
+    .filter((r) => r.total > 0.009)
+    .sort((a, b) => b.total - a.total);
+  const paymentMixSalesTotal = roundMoney(
+    paymentMixRows.reduce((s, r) => s + r.salesTotal, 0),
+  );
+  const paymentMixIncomesTotal = roundMoney(
+    paymentMixRows.reduce((s, r) => s + r.incomesTotal, 0),
+  );
+  const paymentMixTotal = roundMoney(
+    paymentMixRows.reduce((s, r) => s + r.total, 0),
+  );
+
+  // تراكمي من أول الشهر حتى تاريخ التقرير (شامل اليوم)
+  const monthStart = `${workDate.slice(0, 7)}-01`;
+  const sumOne = async (
+    label: string,
+    query: string,
+  ): Promise<number> => {
+    const rows = await queryOrEmpty<{ Total: number }>(label, () =>
+      db
+        .request()
+        .input('from', sql.Date, monthStart)
+        .input('to', sql.Date, workDate)
+        .query(query),
+    );
+    return roundMoney(Number(rows[0]?.Total ?? 0));
+  };
+
+  const [
+    mtdSales,
+    mtdIncomes,
+    mtdExpenses,
+    mtdAdvances,
+    mtdStaffBase,
+    mtdStaffTarget,
+  ] = await Promise.all([
+    sumOne(
+      'mtd-sales',
+      `SELECT ISNULL(SUM(h.GrandTotal), 0) AS Total
+       FROM dbo.TblinvServHead h
+       WHERE CAST(h.invDate AS DATE) BETWEEN @from AND @to
+         AND h.invType = N'مبيعات'
+         AND ISNULL(h.isActive, N'no') = N'no'`,
+    ),
+    sumOne(
+      'mtd-incomes',
+      `SELECT ISNULL(SUM(GrandTolal), 0) AS Total
+       FROM dbo.TblCashMove
+       WHERE CAST(invDate AS DATE) BETWEEN @from AND @to
+         AND invType = N'ايرادات'`,
+    ),
+    sumOne(
+      'mtd-expenses',
+      `SELECT ISNULL(SUM(cm.GrandTolal), 0) AS Total
+       FROM dbo.TblCashMove cm
+       WHERE CAST(cm.invDate AS DATE) BETWEEN @from AND @to
+         AND cm.invType = N'مصروفات'
+         AND cm.inOut = N'out'
+         AND NOT EXISTS (
+           SELECT 1 FROM dbo.TblExpCatEmpMap m
+           WHERE m.ExpINID = cm.ExpINID AND m.IsActive = 1 AND m.TxnKind = N'advance'
+         )`,
+    ),
+    sumOne(
+      'mtd-advances',
+      `SELECT ISNULL(SUM(cm.GrandTolal), 0) AS Total
+       FROM dbo.TblCashMove cm
+       WHERE CAST(cm.invDate AS DATE) BETWEEN @from AND @to
+         AND cm.invType = N'مصروفات'
+         AND cm.inOut = N'out'
+         AND EXISTS (
+           SELECT 1 FROM dbo.TblExpCatEmpMap m
+           WHERE m.ExpINID = cm.ExpINID AND m.IsActive = 1 AND m.TxnKind = N'advance'
+         )`,
+    ),
+    sumOne(
+      'mtd-staff-base',
+      `SELECT ISNULL(SUM(DailyWage), 0) AS Total
+       FROM dbo.TblEmpDailyPayroll
+       WHERE WorkDate BETWEEN @from AND @to`,
+    ),
+    sumOne(
+      'mtd-staff-target',
+      `SELECT ISNULL(SUM(TargetAmount), 0) AS Total
+       FROM dbo.TblEmpDailyTarget
+       WHERE WorkDate BETWEEN @from AND @to`,
+    ),
+  ]);
+
+  const monthToDate: FullDayMonthToDate = {
+    month: workDate.slice(0, 7),
+    fromDate: monthStart,
+    toDate: workDate,
+    sales: mtdSales,
+    incomes: mtdIncomes,
+    operatingExpenses: mtdExpenses,
+    staffBase: mtdStaffBase,
+    staffTarget: mtdStaffTarget,
+    advances: mtdAdvances,
+    netProfit: roundMoney(
+      mtdSales + mtdIncomes - mtdExpenses - mtdStaffBase - mtdStaffTarget,
+    ),
+    treasuryNet: roundMoney(mtdSales + mtdIncomes - mtdExpenses - mtdAdvances),
+  };
 
   const payrollMonth = workDate.slice(0, 7);
   const advancesTodayByEmp = new Map(
@@ -553,6 +775,13 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
       },
       net: treasuryNet,
     },
+    paymentMix: {
+      total: paymentMixTotal,
+      salesTotal: paymentMixSalesTotal,
+      incomesTotal: paymentMixIncomesTotal,
+      rows: paymentMixRows,
+    },
+    monthToDate,
     whatsapp: {
       readyToSend: employees.filter((e) => e.hasPhone && (e.checkIn || e.baseWage > 0 || e.targetAmount > 0)).length,
       missingPhone: employees.filter((e) => !e.hasPhone && (e.checkIn || e.baseWage > 0 || e.targetAmount > 0)).length,

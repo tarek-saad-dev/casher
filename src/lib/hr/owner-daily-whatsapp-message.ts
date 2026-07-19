@@ -81,7 +81,26 @@ export function composeOwnerDailyWhatsAppMessage(report: FullDayReport): string 
   lines.push(`✅ *صافي ربح اليوم: ${money(o.net)}*`);
   lines.push('');
   lines.push('━━━━━━━━━━━━━━');
-  lines.push('*2️⃣ حركة الخزنة الفعلية*');
+  lines.push('*2️⃣ توزيع الفلوس على طرق الدفع*');
+  lines.push('');
+
+  const mix = report.paymentMix;
+  if (!mix || mix.rows.length === 0) {
+    lines.push('• لا توجد فلوس داخلة اليوم');
+  } else {
+    for (const row of mix.rows) {
+      const pct = row.percent > 0 ? ` (${row.percent}%)` : '';
+      lines.push(`• ${row.method}: ${moneyStar(row.total)}${pct}`);
+    }
+    lines.push('');
+    lines.push(`*إجمالي الفلوس الداخلة: ${money(mix.total)}*`);
+    lines.push(
+      `_(مبيعات ${money(mix.salesTotal)} + إيرادات ${money(mix.incomesTotal)})_`,
+    );
+  }
+  lines.push('');
+  lines.push('━━━━━━━━━━━━━━');
+  lines.push('*3️⃣ حركة الخزنة الفعلية*');
   lines.push('');
   lines.push(`*الفلوس الداخلة: ${money(t.inflows.total)}*`);
   lines.push(`• مبيعات: ${money(t.inflows.sales)}`);
@@ -92,14 +111,16 @@ export function composeOwnerDailyWhatsAppMessage(report: FullDayReport): string 
   lines.push(`• سلف موظفين: ${money(t.outflows.advancesTotal)}`);
   lines.push('');
   lines.push(`💵 *صافي حركة الخزنة: ${money(t.net)}*`);
+  lines.push(`🏦 *صافي السيولة بالخزنة حتى اليوم: ${money(report.monthToDate.treasuryNet)}*`);
   lines.push('');
   lines.push('━━━━━━━━━━━━━━');
-  lines.push('*3️⃣ تفاصيل مصروفات التشغيل*');
+  lines.push('*4️⃣ تفاصيل مصروفات التشغيل*');
   lines.push('');
 
   if (t.outflows.operatingByCategory.length === 0) {
     lines.push('• لا توجد مصروفات تشغيل');
   } else {
+    lines.push('▪️ *حسب التصنيف:*');
     for (const row of t.outflows.operatingByCategory) {
       const tx = transactionsLabel(row.count);
       lines.push(
@@ -108,12 +129,29 @@ export function composeOwnerDailyWhatsAppMessage(report: FullDayReport): string 
           : `• ${row.label}: ${moneyStar(row.amount)}`,
       );
     }
+
+    const expenseItems = report.expenses.lines;
+    if (expenseItems.length > 0) {
+      lines.push('');
+      lines.push('▪️ *البنود بالتفصيل:*');
+      let idx = 1;
+      for (const item of expenseItems) {
+        lines.push(`${idx}. ${item.label}: ${moneyStar(item.amount)}`);
+        if (item.meta) lines.push(`    ↳ ${item.meta}`);
+        idx += 1;
+      }
+      if (report.expenses.count > expenseItems.length) {
+        lines.push(
+          `_( + ${report.expenses.count - expenseItems.length} بند إضافي غير معروض )_`,
+        );
+      }
+    }
   }
   lines.push('');
   lines.push(`*الإجمالي: ${money(t.outflows.operatingTotal)}*`);
   lines.push('');
   lines.push('━━━━━━━━━━━━━━');
-  lines.push('*4️⃣ سلف الموظفين*');
+  lines.push('*5️⃣ سلف الموظفين*');
   lines.push('');
 
   if (t.outflows.advancesByEmployee.length === 0) {
@@ -132,7 +170,7 @@ export function composeOwnerDailyWhatsAppMessage(report: FullDayReport): string 
   lines.push(`*إجمالي السلف: ${money(t.outflows.advancesTotal)}*`);
   lines.push('');
   lines.push('━━━━━━━━━━━━━━');
-  lines.push('*5️⃣ حسابات الموظفين*');
+  lines.push('*6️⃣ حسابات الموظفين*');
   lines.push('');
   lines.push(`*استحقاق اليوم: ${money(a.totalDayCost)}*`);
   lines.push(`*سلف اليوم: ${money(a.totalAdvancesToday)}*`);
@@ -157,7 +195,7 @@ export function composeOwnerDailyWhatsAppMessage(report: FullDayReport): string 
   }
 
   lines.push('━━━━━━━━━━━━━━');
-  lines.push('*6️⃣ مواعيد الحضور والانصراف*');
+  lines.push('*7️⃣ مواعيد الحضور والانصراف*');
   lines.push('');
 
   const attendanceRows = report.payroll.employees;
@@ -189,6 +227,14 @@ export function composeOwnerDailyWhatsAppMessage(report: FullDayReport): string 
   lines.push(
     '*الربح يشمل استحقاقات الموظفين عن اليوم، بينما الخزنة تحسب الفلوس التي دخلت وخرجت فعليًا.*',
   );
+
+  const mtd = report.monthToDate;
+  lines.push('');
+  lines.push('━━━━━━━━━━━━━━');
+  lines.push('*📆 من أول الشهر حتى اليوم*');
+  lines.push('');
+  lines.push(`💰 *صافي الربح الشهري حتى اليوم: ${money(mtd.netProfit)}*`);
+  lines.push(`🏦 *صافي السيولة بالخزنة حتى اليوم: ${money(mtd.treasuryNet)}*`);
 
   return lines.join('\n');
 }

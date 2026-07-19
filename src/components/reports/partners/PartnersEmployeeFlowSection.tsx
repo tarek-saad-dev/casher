@@ -34,7 +34,9 @@ export default function PartnersEmployeeFlowSection({
   loading,
 }: PartnersEmployeeFlowSectionProps) {
   const totalEmployeeActualRevenue = totals.totalShopRevenue;
-  const totalPaidSalaryOrAdvance = totals.totalPaidSalaryAndAdvances;
+  // «الرواتب والسلف المدفوعة» = إجمالي استلم راتب (راتب + تارجت) + إجمالي السلف من قسم الموظفين.
+  const totalPaidSalaryOrAdvance =
+    (totals.totalSalaryAndTarget ?? 0) + (totals.totalAdvanceExcess ?? 0);
   const remaining = calcRemainingAfterEmployees(
     totalEmployeeActualRevenue,
     totalPaidSalaryOrAdvance

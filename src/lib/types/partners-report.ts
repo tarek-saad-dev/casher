@@ -68,11 +68,19 @@ export interface PartnersMonthlyReportCore {
     shopRevenue: number | null;
     paidSalaryAndAdvances: number;
     hasSpecialAccounting?: boolean;
+    // Breakdown sourced from the HR employee ledger (TblEmpLedgerEntry) for the month.
+    ledgerSalary: number;
+    ledgerTarget: number;
+    salaryAndTarget: number;
+    moneyTaken: number;
+    advanceExcess: number;
   }>;
 
   employeeSummaryTotals: {
     totalShopRevenue: number;
     totalPaidSalaryAndAdvances: number;
+    totalSalaryAndTarget?: number;
+    totalAdvanceExcess?: number;
   };
 
   metadata: {
