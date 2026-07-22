@@ -79,7 +79,15 @@ export default function SessionProvider({ children }: { children: ReactNode }) {
     // Clear stale shift/day immediately to prevent previous user's data leaking
     setShift(null);
     setDay(null);
-    setUserState(u);
+    setUserState({
+      UserID: u.UserID,
+      UserName: u.UserName,
+      UserLevel: u.UserLevel,
+      ActiveBranchID: u.ActiveBranchID,
+      ActiveBranchCode: u.ActiveBranchCode,
+      BranchSessionVersion: u.BranchSessionVersion ?? 1,
+    });
+    // Temporary client-side map until /api/auth/session refresh returns authoritative RBAC.
     setPermissions(getPermissions(u.UserLevel));
     setDefaultShiftId(u.defaultShiftId ?? null);
   }, []);

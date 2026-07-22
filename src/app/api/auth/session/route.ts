@@ -2,8 +2,33 @@ import { NextResponse } from "next/server";
 import { getSession, destroySession } from "@/lib/session";
 import { getPool, getUserFriendlyError, sql } from "@/lib/db";
 import { getPermissions } from "@/lib/permissions";
+import { getUserAccess } from "@/lib/permissions-server";
+import { getUserActiveStatus } from "@/lib/branch/repository";
+import { getActiveBranchContext } from "@/lib/branch/context";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+function buildAuthoritativePermissions(args: {
+  userLevel: string;
+  isSuperAdmin: boolean;
+  roles: string[];
+  isPartnerOnly: boolean;
+  allowedPageKeys: string[];
+}): string[] {
+  const isAuthAdmin =
+    args.isSuperAdmin ||
+    args.userLevel === "admin" ||
+    args.roles.includes("admin") ||
+    args.roles.includes("super_admin");
+
+  if (args.isPartnerOnly) {
+    return [...args.allowedPageKeys];
+  }
+
+  const legacy = getPermissions(isAuthAdmin ? "admin" : "user");
+  return [...new Set([...legacy, ...args.allowedPageKeys])];
+}
 
 // GET /api/auth/session — returns full operational session state
 export async function GET() {
@@ -15,12 +40,53 @@ export async function GET() {
         day: null,
         shift: null,
         permissions: [],
+        roles: [],
+        allowedPagePaths: [],
+        activeBranch: null,
       });
+    }
+
+    const status = await getUserActiveStatus(user.UserID);
+    if (!status.exists || status.isDeleted) {
+      await destroySession();
+      return NextResponse.json(
+        {
+          user: null,
+          day: null,
+          shift: null,
+          permissions: [],
+          roles: [],
+          allowedPagePaths: [],
+          activeBranch: null,
+          error: "تم تعطيل الحساب",
+          code: "USER_DELETED",
+        },
+        { status: 401 },
+      );
+    }
+
+    const branchContext = await getActiveBranchContext();
+    if (!branchContext) {
+      await destroySession();
+      return NextResponse.json(
+        {
+          user: null,
+          day: null,
+          shift: null,
+          permissions: [],
+          roles: [],
+          allowedPagePaths: [],
+          activeBranch: null,
+          error: "يلزم إعادة تسجيل الدخول لتحديث جلسة الفرع",
+          code: "SESSION_UPGRADE_REQUIRED",
+        },
+        { status: 401 },
+      );
     }
 
     const db = await getPool();
 
-    // Get current open business day
+    // Get current open business day (unchanged singleton logic in Phase 1B)
     const dayResult = await db.request().query(`
       SELECT TOP 1 ID, NewDay, Status
       FROM [dbo].[TblNewDay]
@@ -46,9 +112,41 @@ export async function GET() {
     const shift =
       shiftResult.recordset.length > 0 ? shiftResult.recordset[0] : null;
 
-    const permissions = getPermissions(user.UserLevel);
+    const access = await getUserAccess(user.UserID, user.UserName, user.UserLevel);
+    const permissions = buildAuthoritativePermissions({
+      userLevel: user.UserLevel,
+      isSuperAdmin: access.isSuperAdmin,
+      roles: access.roles,
+      isPartnerOnly: access.isPartnerOnly,
+      allowedPageKeys: access.allowedPageKeys,
+    });
 
-    return NextResponse.json({ user, day, shift, permissions });
+    return NextResponse.json({
+      user: {
+        UserID: user.UserID,
+        UserName: user.UserName,
+        UserLevel: user.UserLevel,
+        ActiveBranchID: user.ActiveBranchID,
+        ActiveBranchCode: user.ActiveBranchCode,
+        BranchSessionVersion: user.BranchSessionVersion,
+      },
+      day,
+      shift,
+      permissions,
+      roles: access.roles,
+      allowedPagePaths: access.allowedPagePaths,
+      activeBranch: {
+        BranchID: branchContext.branchId,
+        BranchCode: branchContext.branchCode,
+        BranchName: branchContext.branchName,
+        ShortName: branchContext.shortName,
+        TimeZone: branchContext.timeZone,
+        BusinessDayCutoffTime: branchContext.businessDayCutoffTime,
+        CanOperate: branchContext.canOperate,
+        CanViewReports: branchContext.canViewReports,
+        CanSwitch: branchContext.canSwitch,
+      },
+    });
   } catch (err: unknown) {
     const rawMessage = err instanceof Error ? err.message : "Unknown error";
     console.error("[auth/session] GET error:", rawMessage);

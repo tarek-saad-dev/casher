@@ -6,11 +6,15 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { isAuthResult, requireDevelopmentAdmin } from '@/lib/api-auth';
 import { getPool, sql } from "@/lib/db";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
+  const __auth = await requireDevelopmentAdmin();
+  if (!isAuthResult(__auth)) return __auth;
+
   try {
     const body = await req.json().catch(() => ({}));
     const { ticketCode, ticketPrefix, ticketNumber, empId } = body;
@@ -201,6 +205,9 @@ export async function POST(req: NextRequest) {
 
 // For GET requests - just show instructions
 export async function GET() {
+  const __auth = await requireDevelopmentAdmin();
+  if (!isAuthResult(__auth)) return __auth;
+
   return NextResponse.json({
     instructions: "Use POST to cleanup queue tickets",
     examples: {

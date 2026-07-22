@@ -4,12 +4,16 @@
 // ============================================
 
 import { NextResponse } from "next/server";
+import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import { getPool, sql } from "@/lib/db";
 
 export const runtime = "nodejs";
 
 // GET - List all mystery boxes with rewards
 export async function GET() {
+  const __auth = await requirePageAccess('/admin/cut-club');
+  if (!isAuthResult(__auth)) return __auth;
+
   try {
     const db = await getPool();
 
@@ -105,6 +109,9 @@ export async function GET() {
 
 // POST - Create a new mystery box
 export async function POST(req: Request) {
+  const __auth = await requirePageAccess('/admin/cut-club');
+  if (!isAuthResult(__auth)) return __auth;
+
   try {
     const body = await req.json();
     const db = await getPool();

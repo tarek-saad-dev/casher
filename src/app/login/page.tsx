@@ -55,13 +55,22 @@ export default function LoginPage() {
     ShiftID?: number | null;
     redirectTo?: string;
     skipShiftPrompt?: boolean;
+    ActiveBranchID?: number;
+    ActiveBranchCode?: string;
+    BranchSessionVersion?: 1;
   }) {
     setLoading(true);
     try {
+      if (loginUser.ActiveBranchID == null || !loginUser.ActiveBranchCode) {
+        throw new Error('Login response missing active branch metadata');
+      }
       setUser({
         UserID: loginUser.UserID,
         UserName: loginUser.UserName,
         UserLevel: loginUser.UserLevel as 'admin' | 'user',
+        ActiveBranchID: loginUser.ActiveBranchID,
+        ActiveBranchCode: loginUser.ActiveBranchCode,
+        BranchSessionVersion: loginUser.BranchSessionVersion ?? 1,
         defaultShiftId: loginUser.ShiftID ?? undefined,
       });
 

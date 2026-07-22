@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
+import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import {
   countPostedDailyPayroll,
   validateDailyPayrollAttendance,
@@ -15,6 +16,9 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // Body: { workDate: "YYYY-MM-DD" }
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requirePageAccess('/admin/hr');
+    if (!isAuthResult(auth)) return auth;
+
     const { workDate } = await req.json();
 
     if (!workDate || !DATE_RE.test(workDate)) {

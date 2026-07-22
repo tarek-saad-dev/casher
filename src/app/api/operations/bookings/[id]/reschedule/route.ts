@@ -50,6 +50,9 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
           ok: false,
           code: err.code,
           message: err.message,
+          details: err.conflict?.empId
+            ? { employeeId: err.conflict.empId }
+            : undefined,
           conflict: err.conflict,
         },
         { status: 409 },

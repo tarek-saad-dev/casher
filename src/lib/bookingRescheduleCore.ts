@@ -33,9 +33,17 @@ import {
 } from '@/lib/scheduleOverrides';
 import { salonDateTimeToMs, getPublicSettings } from '@/lib/publicBookingHelpers';
 import { getDefaultDuration } from '@/lib/queueEstimateEngine';
+import {
+  validateEmployeeSupportsServices,
+  buildUnsupportedServicesMessage,
+  type UnsupportedService,
+} from '@/lib/employeeServiceEligibility';
 
 /** dbo.Bookings.Notes column limit (see db/migrations/queue-booking-system.sql) */
 export const BOOKING_NOTES_MAX_LENGTH = 500;
+
+/** Dev-only diagnostics for the booking-move flow. Enable with DEBUG_BOOKING_MOVE=1. */
+const DEBUG_BOOKING_MOVE = process.env.DEBUG_BOOKING_MOVE === '1';
 
 export const RESCHEDULABLE_BOOKING_STATUSES = new Set([
   'confirmed',
@@ -70,6 +78,11 @@ export interface BookingMoveValidationResult {
   durationMinutes?: number;
   code?: string;
   message?: string;
+  details?: {
+    employeeId?: number;
+    employeeName?: string;
+    unsupportedServices?: UnsupportedService[];
+  };
   conflict?: {
     type: 'booking' | 'queue' | 'break' | 'shift' | 'block';
     startAt?: string;
@@ -252,14 +265,61 @@ function reasonToMessage(
   return code ? BOOKING_SLOT_REASON_AR[code] : 'الفترة غير متاحة';
 }
 
-/** Verify target barber is active, working, and can perform all booking services. */
+type EligibilityResult =
+  | { ok: true; empName: string }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      employeeName?: string;
+      unsupportedServices?: UnsupportedService[];
+    };
+
+/**
+ * Dev-only structured diagnostics for the booking-move flow.
+ * Never logs customer private data (no client name / mobile / notes).
+ */
+function logMoveDiagnostics(info: {
+  bookingId: number;
+  targetEmployeeId: number;
+  targetEmployeeName: string | null;
+  requiredServiceIds: number[];
+  assignedServiceIds: number[] | null;
+  unsupportedServiceIds: number[];
+  scheduleStatus: string;
+  overrideStatus: string;
+  conflictStatus: string;
+}): void {
+  console.log('[booking-move diagnostics]', JSON.stringify(info));
+}
+
+/** Does this employee have ANY weekly schedule rows configured at all? */
+async function hasWeeklySchedule(empId: number): Promise<boolean> {
+  const db = await getPool();
+  try {
+    const res = await db.request()
+      .input('id', sql.Int, empId)
+      .query(`
+        SELECT TOP 1 1 AS ok
+        FROM [dbo].[TblEmpWorkSchedule]
+        WHERE EmpID = @id
+      `);
+    return res.recordset.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Verify the target barber exists, is active, is a barber, and can perform every
+ * booking service. Schedule / shift eligibility is validated separately by the
+ * caller so failures surface in the correct priority order.
+ */
 export async function validateTargetBarberEligibility(args: {
   targetEmpId: number;
   serviceIds: number[];
-  operationalDate: string;
-  timezone: string;
-}): Promise<{ ok: true; empName: string } | { ok: false; code: string; message: string }> {
-  const { targetEmpId, serviceIds, operationalDate, timezone } = args;
+}): Promise<EligibilityResult> {
+  const { targetEmpId, serviceIds } = args;
   const db = await getPool();
 
   const empRes = await db.request()
@@ -279,6 +339,7 @@ export async function validateTargetBarberEligibility(args: {
       ok: false,
       code: 'BARBER_INACTIVE',
       message: `${emp.EmpName ?? 'الصنايعي'} غير نشط`,
+      employeeName: emp.EmpName ?? undefined,
     };
   }
 
@@ -289,63 +350,23 @@ export async function validateTargetBarberEligibility(args: {
       ok: false,
       code: 'NOT_BARBER',
       message: `${emp.EmpName ?? 'الموظف'} ليس صنايعي`,
+      employeeName: emp.EmpName ?? undefined,
     };
   }
 
-  const shift = await getBarberShiftBounds(targetEmpId, operationalDate, timezone);
-  if (!shift) {
+  // Service compatibility — single shared rule used by every booking flow.
+  const support = await validateEmployeeSupportsServices({
+    employeeId: targetEmpId,
+    serviceIds,
+  });
+  if (!support.valid) {
     return {
       ok: false,
-      code: 'OUTSIDE_SHIFT',
-      message: `${emp.EmpName ?? 'الصنايعي'} غير متاح في هذه الفترة`,
+      code: 'EMPLOYEE_SERVICE_UNSUPPORTED',
+      message: buildUnsupportedServicesMessage(emp.EmpName, support.unsupportedServices),
+      employeeName: emp.EmpName ?? undefined,
+      unsupportedServices: support.unsupportedServices,
     };
-  }
-
-  if (serviceIds.length > 0) {
-    const svcRes = await db.request()
-      .query(`
-        SELECT ProID FROM [dbo].[TblPro] p
-        WHERE ProID IN (${serviceIds.join(',')})
-          AND (p.isDeleted = 0 OR p.isDeleted IS NULL)
-      `);
-    const activeIds = new Set(svcRes.recordset.map((r: { ProID: number }) => r.ProID));
-    for (const sid of serviceIds) {
-      if (!activeIds.has(sid)) {
-        return {
-          ok: false,
-          code: 'SERVICE_UNAVAILABLE',
-          message: `${emp.EmpName ?? 'الصنايعي'} لا يقدم إحدى خدمات هذا الموعد`,
-        };
-      }
-    }
-
-    for (const sid of serviceIds) {
-      const whitelistRes = await db.request()
-        .input('proId', sql.Int, sid)
-        .query(`
-          SELECT COUNT(*) AS cnt
-          FROM [dbo].[TblEmpServiceSettings]
-          WHERE ProID = @proId AND IsActive = 1
-        `);
-      const hasWhitelist = (whitelistRes.recordset[0]?.cnt ?? 0) > 0;
-      if (!hasWhitelist) continue;
-
-      const allowedRes = await db.request()
-        .input('empId', sql.Int, targetEmpId)
-        .input('proId', sql.Int, sid)
-        .query(`
-          SELECT 1 AS ok
-          FROM [dbo].[TblEmpServiceSettings]
-          WHERE EmpID = @empId AND ProID = @proId AND IsActive = 1
-        `);
-      if (!allowedRes.recordset.length) {
-        return {
-          ok: false,
-          code: 'SERVICE_NOT_ELIGIBLE',
-          message: `${emp.EmpName ?? 'الصنايعي'} لا يقدم إحدى خدمات هذا الموعد`,
-        };
-      }
-    }
   }
 
   return { ok: true, empName: emp.EmpName ?? '' };
@@ -389,14 +410,31 @@ export async function validateBookingMove(args: {
   const eligibility = await validateTargetBarberEligibility({
     targetEmpId: effectiveEmpId,
     serviceIds: booking.serviceIds,
-    operationalDate,
-    timezone,
   });
   if (!eligibility.ok) {
+    if (DEBUG_BOOKING_MOVE) {
+      logMoveDiagnostics({
+        bookingId,
+        targetEmployeeId: effectiveEmpId,
+        targetEmployeeName: eligibility.employeeName ?? null,
+        requiredServiceIds: booking.serviceIds,
+        assignedServiceIds: null,
+        unsupportedServiceIds:
+          eligibility.unsupportedServices?.map((s) => s.serviceId) ?? [],
+        scheduleStatus: 'not_checked',
+        overrideStatus: 'not_checked',
+        conflictStatus: 'not_checked',
+      });
+    }
     return {
       valid: false,
       code: eligibility.code,
       message: eligibility.message,
+      details: {
+        employeeId: effectiveEmpId,
+        employeeName: eligibility.employeeName,
+        unsupportedServices: eligibility.unsupportedServices,
+      },
     };
   }
 
@@ -406,10 +444,22 @@ export async function validateBookingMove(args: {
     timezone,
   );
   if (!shift) {
+    // Distinguish "no weekly schedule configured at all" from "off this shift"
+    // so admins get a precise, actionable reason.
+    const scheduled = await hasWeeklySchedule(effectiveEmpId);
+    if (!scheduled) {
+      return {
+        valid: false,
+        code: 'NO_SCHEDULE',
+        message: 'لا يوجد جدول عمل أسبوعي لهذا الموظف',
+        details: { employeeId: effectiveEmpId, employeeName: eligibility.empName },
+      };
+    }
     return {
       valid: false,
       code: 'OUTSIDE_SHIFT',
       message: `لا يمكن نقل الموعد خارج وقت عمل ${eligibility.empName ?? 'الحلاق'}`,
+      details: { employeeId: effectiveEmpId, employeeName: eligibility.empName },
     };
   }
 
@@ -453,6 +503,20 @@ export async function validateBookingMove(args: {
       overrideBlock,
     },
   );
+
+  if (DEBUG_BOOKING_MOVE) {
+    logMoveDiagnostics({
+      bookingId,
+      targetEmployeeId: effectiveEmpId,
+      targetEmployeeName: eligibility.empName ?? null,
+      requiredServiceIds: booking.serviceIds,
+      assignedServiceIds: booking.serviceIds,
+      unsupportedServiceIds: [],
+      scheduleStatus: 'ok',
+      overrideStatus: overrideBlock ? 'blocked' : 'ok',
+      conflictStatus: evaluation.available ? 'none' : (evaluation.reasonCode ?? 'conflict'),
+    });
+  }
 
   if (evaluation.available) {
     return {
@@ -548,6 +612,8 @@ export async function rescheduleBookingMove(args: {
         reference: preCheck.conflict?.reference,
       },
     );
+    // Preserve the precise failure code so the client can render the exact reason.
+    if (preCheck.code) err.code = preCheck.code;
     throw err;
   }
 
@@ -583,6 +649,28 @@ export async function rescheduleBookingMove(args: {
       [booking.assignedEmpId, effectiveEmpId],
       operationalDate,
     );
+
+    // Authoritative service-compatibility re-check inside the transaction — the
+    // pre-validation may be stale if services or the target barber changed. Uses
+    // the same shared rule as every other flow.
+    const support = await validateEmployeeSupportsServices({
+      employeeId: effectiveEmpId,
+      serviceIds: booking.serviceIds,
+      transaction,
+    });
+    if (!support.valid) {
+      await transaction.rollback();
+      const empNameRes = await db.request()
+        .input('id', sql.Int, effectiveEmpId)
+        .query(`SELECT EmpName FROM [dbo].[TblEmp] WHERE EmpID = @id`);
+      const empName = empNameRes.recordset[0]?.EmpName ?? null;
+      const err = new ScheduleConflictError(
+        buildUnsupportedServicesMessage(empName, support.unsupportedServices),
+        { type: 'booking', id: bookingId, startAt: '', endAt: '' },
+      );
+      err.code = 'EMPLOYEE_SERVICE_UNSUPPORTED';
+      throw err;
+    }
 
     await assertEmployeeIntervalAvailable({
       empId: effectiveEmpId,

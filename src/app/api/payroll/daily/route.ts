@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // GET /api/payroll/daily?workDate=YYYY-MM-DD
 export async function GET(req: NextRequest) {
   try {
+    const auth = await requirePageAccess('/admin/hr');
+    if (!isAuthResult(auth)) return auth;
+
     const { searchParams } = new URL(req.url);
     const workDate = searchParams.get('workDate');
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAuthResult, requireAdmin } from '@/lib/api-auth';
 import { getPool } from '@/lib/db';
 import sql from 'mssql';
 
@@ -6,6 +7,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const __auth = await requireAdmin();
+  if (!isAuthResult(__auth)) return __auth;
+
   try {
     const { id } = await params;
     const empId = parseInt(id);

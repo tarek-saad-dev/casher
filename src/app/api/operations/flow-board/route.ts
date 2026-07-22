@@ -27,6 +27,7 @@ import {
 } from "@/lib/bookingDateTime";
 import { getBarbersDayStatus } from "@/lib/availabilityEngine";
 import { createDevTimer } from "@/lib/devRequestTiming";
+import { isAuthResult, requirePageAccess } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 
@@ -78,6 +79,8 @@ export interface FlowBoardBarber {
 }
 
 export async function GET(req: NextRequest) {
+  const auth = await requirePageAccess("/operations");
+  if (!isAuthResult(auth)) return auth;
   const timer = createDevTimer('flow_board');
 
   try {

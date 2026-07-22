@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isAuthResult, requireDevelopmentAdmin } from '@/lib/api-auth';
 import { getPool, sql } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -15,6 +16,9 @@ const SALON_TZ = "Africa/Cairo";
  * ⚠️ TEMPORARY DEBUG ENDPOINT - REMOVE AFTER TESTING
  */
 export async function GET(req: NextRequest) {
+  const __auth = await requireDevelopmentAdmin();
+  if (!isAuthResult(__auth)) return __auth;
+
   try {
     const db = await getPool();
     const date = "2026-05-23";

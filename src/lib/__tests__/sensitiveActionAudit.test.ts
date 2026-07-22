@@ -52,6 +52,9 @@ const mockUser: SessionUser = {
   UserID: 1,
   UserName: 'admin',
   UserLevel: 'admin',
+  ActiveBranchID: 1,
+  ActiveBranchCode: 'GLEEM',
+  BranchSessionVersion: 1,
 };
 
 interface FakeRequestHandle {

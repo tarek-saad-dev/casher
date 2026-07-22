@@ -8,6 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { isAuthResult, requireDevelopmentAdmin } from '@/lib/api-auth';
 import { getPool, sql } from '@/lib/db';
 import { getBarberWorkingWindow } from '@/lib/barberAvailability';
 import {
@@ -47,11 +48,6 @@ interface SlotAudit {
   reasonCode: string | null;
 }
 
-function isAuthorized(req: NextRequest): boolean {
-  const secretKey = req.headers.get('x-admin-secret');
-  const adminKey = process.env.ADMIN_SECRET_KEY || 'admin-secret-change-me';
-  return secretKey === adminKey;
-}
 
 function hhmmToMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
@@ -84,9 +80,10 @@ function generateAuditSlots(): Array<{ displayTime: string; dayOffset: 0 | 1 }> 
 }
 
 export async function GET(req: NextRequest) {
-  if (!isAuthorized(req)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const __auth = await requireDevelopmentAdmin();
+  if (!isAuthResult(__auth)) return __auth;
+
+  /* secret gate replaced by requireDevelopmentAdmin (Phase 1A) */
 
   const { searchParams } = new URL(req.url);
   const dateParam = searchParams.get('date');

@@ -5,6 +5,7 @@
 // ============================================
 
 import { NextRequest, NextResponse } from "next/server";
+import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import {
   getAllStoreItemsAdmin,
   createStoreItem,
@@ -14,6 +15,9 @@ export const runtime = "nodejs";
 
 // GET: List all store items (admin)
 export async function GET(req: NextRequest) {
+  const __auth = await requirePageAccess('/admin/cut-club');
+  if (!isAuthResult(__auth)) return __auth;
+
   try {
     const { searchParams } = new URL(req.url);
     const filters = {
@@ -39,6 +43,9 @@ export async function GET(req: NextRequest) {
 
 // POST: Create new store item
 export async function POST(req: NextRequest) {
+  const __auth = await requirePageAccess('/admin/cut-club');
+  if (!isAuthResult(__auth)) return __auth;
+
   try {
     const body = await req.json();
 

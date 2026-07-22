@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { toggleDbTarget, getDbConnectionInfo } from "@/lib/db";
+import {
+  isAuthResult,
+  logSecurityEvent,
+  requireDevelopmentAdmin,
+} from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 
@@ -16,8 +21,11 @@ function checkRateLimit(): boolean {
   return true;
 }
 
-// GET /api/db/toggle - Get current database target
+// GET /api/db/toggle - Get current database target (development admin only)
 export async function GET() {
+  const auth = await requireDevelopmentAdmin();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const info = getDbConnectionInfo();
     return NextResponse.json({
@@ -36,10 +44,12 @@ export async function GET() {
   }
 }
 
-// POST /api/db/toggle - Toggle between local and cloud
+// POST /api/db/toggle - Toggle between local and cloud (development admin only)
 export async function POST(req: NextRequest) {
+  const auth = await requireDevelopmentAdmin();
+  if (!isAuthResult(auth)) return auth;
+
   try {
-    // Check rate limit
     if (!checkRateLimit()) {
       return NextResponse.json(
         { success: false, error: "يرجى الانتظار 5 ثوانٍ بين كل تبديل" },
@@ -59,6 +69,12 @@ export async function POST(req: NextRequest) {
     } else {
       newTarget = await toggleDbTarget();
     }
+
+    logSecurityEvent("db_target_toggled", {
+      userId: auth.userId,
+      userName: auth.userName,
+      newTarget,
+    });
 
     const info = getDbConnectionInfo();
 

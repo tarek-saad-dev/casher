@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/session';
+import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import {
   EmployeeDailyTargetDomainError,
   EmployeeDailyTargetLedgerConflictError,
@@ -12,7 +12,8 @@ import {
 // Body: { workDate, empIds? }
 export async function POST(req: NextRequest) {
   try {
-    const session = await getSession();
+    const auth = await requirePageAccess('/admin/hr');
+    if (!isAuthResult(auth)) return auth;
 
     let body: unknown;
     try {
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
 
     const result = await generateEmployeeDailyTargets({
       workDate: parsed.workDate,
-      generatedByUserId: session?.UserID ?? null,
+      generatedByUserId: auth.userId,
       empIds: parsed.empIds,
     });
 

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isAuthResult, requireDevelopmentAdmin } from '@/lib/api-auth';
 import { getPool } from '@/lib/db';
 
 export const runtime = 'nodejs';
@@ -15,6 +16,9 @@ export const runtime = 'nodejs';
  * We do NOT create duplicate schedule tables.
  */
 export async function POST() {
+  const __auth = await requireDevelopmentAdmin();
+  if (!isAuthResult(__auth)) return __auth;
+
   const results: string[] = [];
 
   try {

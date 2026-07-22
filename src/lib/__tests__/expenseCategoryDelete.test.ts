@@ -49,6 +49,9 @@ const mockSessionUser = {
   UserID: 5,
   UserName: 'super_user',
   UserLevel: 'super_admin' as const,
+  ActiveBranchID: 1,
+  ActiveBranchCode: 'GLEEM',
+  BranchSessionVersion: 1 as const,
 };
 
 vi.mock('@/lib/session', () => ({

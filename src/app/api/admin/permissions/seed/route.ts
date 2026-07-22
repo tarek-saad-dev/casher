@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
-import { getSession } from '@/lib/session';
+import { isAuthResult, requireAdmin } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -180,8 +180,8 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
 ];
 
 export async function POST() {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+  const auth = await requireAdmin();
+  if (!isAuthResult(auth)) return auth;
 
   try {
     const db = await getPool();

@@ -5,6 +5,7 @@
 // ============================================
 
 import { NextRequest, NextResponse } from "next/server";
+import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import {
   updateStoreCategory,
   deleteStoreCategory,
@@ -17,6 +18,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const __auth = await requirePageAccess('/admin/cut-club');
+  if (!isAuthResult(__auth)) return __auth;
+
   try {
     const { id } = await params;
     const categoryId = parseInt(id, 10);
@@ -56,6 +60,9 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const __auth = await requirePageAccess('/admin/cut-club');
+  if (!isAuthResult(__auth)) return __auth;
+
   try {
     const { id } = await params;
     const categoryId = parseInt(id, 10);

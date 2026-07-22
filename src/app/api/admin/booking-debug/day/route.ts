@@ -8,6 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { isAuthResult, requireDevelopmentAdmin } from '@/lib/api-auth';
 import { getPool, sql } from "@/lib/db";
 import { getDefaultDuration, getServicesDuration } from "@/lib/queueEstimateEngine";
 
@@ -95,8 +96,8 @@ interface BarberDebugInfo {
 // Auth check
 function isAuthorized(req: NextRequest): boolean {
   const secretKey = req.headers.get("x-admin-secret");
-  const adminKey = process.env.ADMIN_SECRET_KEY || "admin-secret-change-me";
-  return secretKey === adminKey;
+  const adminKey = process.env.ADMIN_SECRET_KEY;
+  return Boolean(adminKey) && secretKey === adminKey;
 }
 
 // Parse time from SQL (handles both string and Date)
@@ -127,9 +128,10 @@ function rangesOverlap(start1: number, end1: number, start2: number, end2: numbe
 }
 
 export async function GET(req: NextRequest) {
-  if (!isAuthorized(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const __auth = await requireDevelopmentAdmin();
+  if (!isAuthResult(__auth)) return __auth;
+
+  /* secret gate replaced by requireDevelopmentAdmin (Phase 1A) */
 
   try {
     const { searchParams } = new URL(req.url);

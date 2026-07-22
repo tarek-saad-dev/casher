@@ -1,0 +1,61 @@
+{
+  "capturedAt": "2026-07-22T01:14:23.302Z",
+  "openDays": [
+    {
+      "ID": 4453,
+      "NewDay": "2026-07-21T00:00:00.000Z",
+      "Status": true
+    }
+  ],
+  "openShifts": [
+    {
+      "ID": 10806,
+      "UserID": 15,
+      "ShiftID": 1,
+      "NewDay": "2026-07-21T00:00:00.000Z",
+      "StartDate": "2026-07-21T00:00:00.000Z",
+      "StartTime": "01:52 PM  ",
+      "EndDate": null,
+      "EndTime": null,
+      "Status": true,
+      "UserName": "Hoda"
+    },
+    {
+      "ID": 10807,
+      "UserID": 13,
+      "ShiftID": 2,
+      "NewDay": "2026-07-21T00:00:00.000Z",
+      "StartDate": "2026-07-21T00:00:00.000Z",
+      "StartTime": "04:43 PM  ",
+      "EndDate": null,
+      "EndTime": null,
+      "Status": true,
+      "UserName": "Tarek"
+    },
+    {
+      "ID": 10808,
+      "UserID": 16,
+      "ShiftID": 1,
+      "NewDay": "2026-07-21T00:00:00.000Z",
+      "StartDate": "2026-07-21T00:00:00.000Z",
+      "StartTime": "08:21 PM  ",
+      "EndDate": null,
+      "EndTime": null,
+      "Status": true,
+      "UserName": "OMAR"
+    }
+  ],
+  "counts": {
+    "InvoiceHeadCount": 7749,
+    "CashMoveCount": 11711,
+    "AttendanceCount": 869,
+    "BookingCount": "1462",
+    "QueueTicketCount": "139",
+    "NewDayCount": 358,
+    "ShiftMoveCount": 804,
+    "OpenShiftChecksum": -1179226118,
+    "OpenDayChecksum": 1715681
+  },
+  "target": "cloud",
+  "database": "last132"
+}

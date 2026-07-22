@@ -56,6 +56,9 @@ const superAdminSession = {
   UserID: 1,
   UserName: 'admin',
   UserLevel: 'super_admin' as const,
+  ActiveBranchID: 1,
+  ActiveBranchCode: 'GLEEM',
+  BranchSessionVersion: 1 as const,
 };
 
 const mockGetSession = vi.fn().mockResolvedValue(superAdminSession);

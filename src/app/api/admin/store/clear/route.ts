@@ -5,11 +5,15 @@
 // ============================================
 
 import { NextResponse } from "next/server";
+import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import { getPool } from "@/lib/db";
 
 export const runtime = "nodejs";
 
 export async function POST() {
+  const __auth = await requirePageAccess('/admin/cut-club');
+  if (!isAuthResult(__auth)) return __auth;
+
   try {
     const db = await getPool();
 

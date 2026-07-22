@@ -3,9 +3,10 @@ import { NextRequest } from 'next/server';
 
 vi.mock('server-only', () => ({}));
 
-const getSession = vi.fn();
-vi.mock('@/lib/session', () => ({
-  getSession: (...a: unknown[]) => getSession(...a),
+const requirePageAccess = vi.fn();
+vi.mock('@/lib/api-auth', () => ({
+  isAuthResult: (v: { ok?: boolean }) => v?.ok === true,
+  requirePageAccess: (...a: unknown[]) => requirePageAccess(...a),
 }));
 
 const getEmployeeDailyTargetsForDate = vi.fn();
@@ -29,7 +30,14 @@ import { EmployeeDailyTargetDomainError } from '@/lib/payroll/employee-target';
 describe('daily targets APIs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    getSession.mockResolvedValue({ UserID: 7, UserName: 'Admin', UserLevel: 1 });
+    requirePageAccess.mockResolvedValue({
+      ok: true,
+      userId: 7,
+      userName: 'Admin',
+      userLevel: 'admin',
+      roles: ['admin'],
+      isSuperAdmin: false,
+    });
   });
 
   it('GET before generation returns not_generated employees', async () => {
@@ -71,6 +79,17 @@ describe('daily targets APIs', () => {
       new NextRequest('http://localhost/api/payroll/daily/targets?workDate=bad'),
     );
     expect(res.status).toBe(400);
+  });
+
+  it('GET rejects anonymous', async () => {
+    const { NextResponse } = await import('next/server');
+    requirePageAccess.mockResolvedValue(
+      NextResponse.json({ error: 'غير مصرح' }, { status: 401 }),
+    );
+    const res = await GET(
+      new NextRequest('http://localhost/api/payroll/daily/targets?workDate=2026-07-15'),
+    );
+    expect(res.status).toBe(401);
   });
 
   it('POST generate all employees', async () => {

@@ -19,6 +19,7 @@ import {
 } from './schedulerUtils';
 import {
   commitBookingMove,
+  describeMoveFailure,
   evaluateLocalBookingMove,
   validateMoveOnServer,
   type DragPreviewState,
@@ -179,14 +180,24 @@ export function useBookingDragReschedule({
             }
             return next;
           }
-          const nextState = result.message?.includes('خارج') ? 'outside' as const : 'conflict' as const;
+          const isOutside =
+            result.code === 'OUTSIDE_SHIFT'
+            || result.code === 'NO_SCHEDULE'
+            || result.message?.includes('خارج');
+          const nextState = isOutside ? 'outside' as const : 'conflict' as const;
+          const previewMessage = describeMoveFailure({
+            code: result.code,
+            message: result.message,
+            details: result.details,
+          });
           if (pointerRef.current?.item.sourceId === bookingId) {
             pointerRef.current.previewState = nextState;
+            pointerRef.current.previewMessage = previewMessage;
           }
           return {
             ...prev,
             previewState: nextState,
-            previewMessage: result.message,
+            previewMessage,
           };
         });
       }, 180);
@@ -274,7 +285,14 @@ export function useBookingDragReschedule({
       setActiveDrag(null);
 
       if (!result.ok) {
-        onToast?.(result.message ?? 'فشل نقل الموعد', false);
+        onToast?.(
+          describeMoveFailure({
+            code: result.code,
+            message: result.message,
+            details: result.details,
+          }),
+          false,
+        );
         return;
       }
 

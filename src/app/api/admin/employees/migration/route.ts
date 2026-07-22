@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
+import { isAuthResult, requireDevelopmentAdmin } from '@/lib/api-auth';
 import { getPool, sql } from "@/lib/db";
 
 export async function POST() {
+  const __auth = await requireDevelopmentAdmin();
+  if (!isAuthResult(__auth)) return __auth;
+
   try {
     const db = await getPool();
     const migrationResults = [];

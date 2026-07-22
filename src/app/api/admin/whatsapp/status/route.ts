@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isAuthResult, requireDevelopmentAdmin } from '@/lib/api-auth';
 import { checkWhatsAppStatus, isWhatsAppEnabled, getWhatsAppConfig } from '@/lib/integrations/whatsapp';
 
 export const runtime = 'nodejs';
@@ -9,12 +10,8 @@ export const runtime = 'nodejs';
  * Returns normalized WhatsApp status without exposing sensitive server details.
  */
 export async function GET() {
-  if (process.env.NODE_ENV !== 'development') {
-    return NextResponse.json(
-      { available: false, reason: 'development_only' },
-      { status: 200 },
-    );
-  }
+  const auth = await requireDevelopmentAdmin();
+  if (!isAuthResult(auth)) return auth;
 
   const cfg = getWhatsAppConfig();
   const status = await checkWhatsAppStatus();

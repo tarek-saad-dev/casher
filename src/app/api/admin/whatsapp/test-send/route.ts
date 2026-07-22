@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAuthResult, requireDevelopmentAdmin } from '@/lib/api-auth';
 import {
   sendSaleWhatsAppMessage,
   sendBookingWhatsAppMessage,
@@ -15,12 +16,8 @@ export const runtime = 'nodejs';
  * Development-only manual test endpoint.
  */
 export async function POST(req: NextRequest) {
-  if (process.env.NODE_ENV !== 'development') {
-    return NextResponse.json(
-      { error: 'Available in development mode only' },
-      { status: 403 },
-    );
-  }
+  const auth = await requireDevelopmentAdmin();
+  if (!isAuthResult(auth)) return auth;
 
   try {
     const body = await req.json();

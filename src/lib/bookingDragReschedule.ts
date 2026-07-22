@@ -3,6 +3,52 @@ import type { TimelineItem } from '@/components/operations/schedulerUtils';
 
 export type DragPreviewState = 'checking' | 'available' | 'conflict' | 'outside';
 
+export interface MoveUnsupportedService {
+  serviceId: number;
+  serviceName: string | null;
+}
+
+export interface MoveValidationDetails {
+  employeeId?: number;
+  employeeName?: string;
+  unsupportedServices?: MoveUnsupportedService[];
+}
+
+/**
+ * Build a precise, user-facing Arabic message from a structured move-validation
+ * failure. Relies on the stable error `code` — never on matching Arabic strings.
+ */
+export function describeMoveFailure(args: {
+  code?: string;
+  message?: string;
+  details?: MoveValidationDetails;
+}): string {
+  const { code, message, details } = args;
+  const empName = details?.employeeName?.trim();
+
+  if (code === 'EMPLOYEE_SERVICE_UNSUPPORTED') {
+    const names = (details?.unsupportedServices ?? [])
+      .map((s) => s.serviceName?.trim() || `خدمة #${s.serviceId}`)
+      .filter(Boolean);
+    const who = empName ? `إلى ${empName}` : '';
+    if (names.length === 1) {
+      return `لا يمكن نقل الموعد ${who} لأنه لا يقدم خدمة: ${names[0]}`.replace(/\s+/g, ' ').trim();
+    }
+    if (names.length > 1) {
+      return `لا يمكن نقل الموعد ${who} لأنه لا يقدم الخدمات التالية:\n${names.join('، ')}`;
+    }
+    // Structured details absent (e.g. commit-path 409) — the backend message is
+    // already a precise, complete sentence; show it verbatim without a prefix.
+    if (message) return message;
+  }
+
+  if (code === 'NO_SCHEDULE') {
+    return message || 'لا يوجد جدول عمل أسبوعي لهذا الموظف';
+  }
+
+  return message ? `لا يمكن النقل: ${message}` : 'لا يمكن النقل إلى هذا الوقت';
+}
+
 export interface LocalMoveEvaluation {
   state: DragPreviewState;
   reason?: string;
@@ -95,7 +141,9 @@ export async function validateMoveOnServer(args: {
   targetEmpName?: string;
   newStartAt?: string;
   newEndAt?: string;
+  code?: string;
   message?: string;
+  details?: MoveValidationDetails;
   nextAvailable?: { startAt: string; endAt: string };
 }> {
   const res = await fetch(`/api/operations/bookings/${args.bookingId}/validate-move`, {
@@ -119,7 +167,9 @@ export async function commitBookingMove(args: {
   targetEmpId?: number;
 }): Promise<{
   ok: boolean;
+  code?: string;
   message?: string;
+  details?: MoveValidationDetails;
   newStartAt?: string;
   newEndAt?: string;
   oldStartAt?: string;
@@ -141,7 +191,12 @@ export async function commitBookingMove(args: {
   });
   const data = await res.json();
   if (!res.ok) {
-    return { ok: false, message: data.message || data.error || 'فشل نقل الموعد' };
+    return {
+      ok: false,
+      code: data.code,
+      message: data.message || data.error || 'فشل نقل الموعد',
+      details: data.details,
+    };
   }
   return { ok: true, ...data };
 }

@@ -5,6 +5,7 @@
 // ============================================
 
 import { NextRequest, NextResponse } from "next/server";
+import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import {
   getStoreCategoriesAdmin,
   createStoreCategory,
@@ -14,6 +15,9 @@ export const runtime = "nodejs";
 
 // GET: List all categories
 export async function GET() {
+  const __auth = await requirePageAccess('/admin/cut-club');
+  if (!isAuthResult(__auth)) return __auth;
+
   try {
     const categories = await getStoreCategoriesAdmin();
     return NextResponse.json({ ok: true, categories });
@@ -26,6 +30,9 @@ export async function GET() {
 
 // POST: Create new category
 export async function POST(req: NextRequest) {
+  const __auth = await requirePageAccess('/admin/cut-club');
+  if (!isAuthResult(__auth)) return __auth;
+
   try {
     const body = await req.json();
 

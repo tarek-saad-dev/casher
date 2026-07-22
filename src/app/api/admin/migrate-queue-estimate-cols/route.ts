@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isAuthResult, requireDevelopmentAdmin } from '@/lib/api-auth';
 import { getPool } from '@/lib/db';
 
 export const runtime = 'nodejs';
@@ -11,6 +12,9 @@ export const runtime = 'nodejs';
  * to dbo.QueueTickets if they do not already exist.
  */
 export async function GET() {
+  const __auth = await requireDevelopmentAdmin();
+  if (!isAuthResult(__auth)) return __auth;
+
   try {
     const db = await getPool();
 

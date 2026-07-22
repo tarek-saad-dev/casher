@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAuthResult, requireAdmin } from '@/lib/api-auth';
 import { getPool, sql } from '@/lib/db';
 
 export const runtime = 'nodejs';
@@ -7,6 +8,9 @@ export const runtime = 'nodejs';
 const VALID_INVOICE = `h.invType = N'مبيعات' AND ISNULL(h.isActive, 'no') = 'no'`;
 
 export async function GET(req: NextRequest) {
+  const __auth = await requireAdmin();
+  if (!isAuthResult(__auth)) return __auth;
+
   try {
     const db = await getPool();
     const sp = req.nextUrl.searchParams;

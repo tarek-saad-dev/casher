@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isAuthResult, requireDevelopmentAdmin } from '@/lib/api-auth';
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,9 @@ export const runtime = "nodejs";
  * ⚠️ TEMPORARY DEBUG ENDPOINT - REMOVE AFTER TESTING
  */
 export async function POST(req: NextRequest) {
+  const __auth = await requireDevelopmentAdmin();
+  if (!isAuthResult(__auth)) return __auth;
+
   try {
     const baseUrl = req.nextUrl.origin;
 

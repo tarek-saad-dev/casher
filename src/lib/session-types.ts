@@ -40,6 +40,9 @@ export interface SessionUser {
   UserID: number;
   UserName: string;
   UserLevel: 'admin' | 'user';
+  ActiveBranchID: number;
+  ActiveBranchCode: string;
+  BranchSessionVersion: 1;
 }
 
 export interface BusinessDay {
@@ -108,9 +111,25 @@ export interface DaySummary {
 
 // ──── Session cookie payload ────
 
+export const BRANCH_SESSION_VERSION = 1 as const;
+
 export interface SessionPayload {
   UserID: number;
   UserName: string;
   UserLevel: 'admin' | 'user';
+  ActiveBranchID: number;
+  ActiveBranchCode: string;
+  BranchSessionVersion: typeof BRANCH_SESSION_VERSION;
   iat: number; // issued at (epoch seconds)
+}
+
+/** Legacy cookie shape (pre–Phase 1B). Must force re-login. */
+export interface LegacySessionPayload {
+  UserID: number;
+  UserName: string;
+  UserLevel: 'admin' | 'user';
+  iat: number;
+  ActiveBranchID?: undefined;
+  ActiveBranchCode?: undefined;
+  BranchSessionVersion?: undefined;
 }

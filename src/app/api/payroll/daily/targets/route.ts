@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/session';
+import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import {
   EmployeeTargetValidationError,
   getEmployeeDailyTargetsForDate,
@@ -9,8 +9,8 @@ import {
 // GET /api/payroll/daily/targets?workDate=YYYY-MM-DD
 export async function GET(req: NextRequest) {
   try {
-    // Match daily payroll route openness; session optional.
-    await getSession();
+    const auth = await requirePageAccess('/admin/hr');
+    if (!isAuthResult(auth)) return auth;
 
     const workDate = parseWorkDateQuery(req.nextUrl.searchParams.get('workDate'));
     const data = await getEmployeeDailyTargetsForDate(workDate);

@@ -9,6 +9,7 @@ import {
 } from 'react';
 import {
   commitBookingMove,
+  describeMoveFailure,
   enumeratePasteCandidateSlots,
   validateMoveOnServer,
   type BookingMoveSession,
@@ -150,9 +151,11 @@ export function useBookingCutPaste({
 
         if (!validation.valid) {
           onToast?.(
-            validation.message
-              ? `لا يمكن النقل: ${validation.message}`
-              : 'لا يمكن النقل إلى هذا الوقت',
+            describeMoveFailure({
+              code: validation.code,
+              message: validation.message,
+              details: validation.details,
+            }),
             false,
           );
           setPendingPaste(null);
@@ -170,7 +173,11 @@ export function useBookingCutPaste({
 
         if (!result.ok) {
           onToast?.(
-            result.message ? `لا يمكن النقل: ${result.message}` : 'فشل نقل الموعد',
+            describeMoveFailure({
+              code: result.code,
+              message: result.message,
+              details: result.details,
+            }),
             false,
           );
           return;

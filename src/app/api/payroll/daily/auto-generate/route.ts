@@ -10,6 +10,7 @@ import {
   EmployeeLedgerDualWriteError,
   runDailyPayrollGenerateWithOptionalLedger,
 } from '@/lib/services/employeeLedgerDualWrite';
+import { isSystemJobAuthResult, requireSystemJobAuth } from '@/lib/api-auth';
 
 function resolveWorkDate(override?: string): string {
   if (override && /^\d{4}-\d{2}-\d{2}$/.test(override)) return override;
@@ -23,14 +24,8 @@ function resolveWorkDate(override?: string): string {
 // POST /api/payroll/daily/auto-generate
 export async function POST(req: NextRequest) {
   try {
-    const secret = process.env.CRON_SECRET;
-    if (secret) {
-      const authHeader = req.headers.get('authorization') ?? '';
-      const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
-      if (token !== secret) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
-    }
+    const jobAuth = await requireSystemJobAuth(req);
+    if (!isSystemJobAuthResult(jobAuth)) return jobAuth;
 
     const body = await req.json().catch(() => ({}));
     const workDate = resolveWorkDate(body?.workDate);

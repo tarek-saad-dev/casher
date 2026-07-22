@@ -1,58 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  classifyProxyAuth,
+  isCronBearerAuthorized,
+} from '@/lib/proxyPublicRoutes';
 
 const COOKIE_NAME = 'pos_session';
 
-// Public routes that don't require authentication
-const PUBLIC_ROUTES = [
-  '/login',
-  '/api/auth/login',
-  '/api/public/',
-  '/api/admin/',
-  '/api/cron/',
-  '/api/payroll/daily/auto-generate',
-  '/api/operations/flow-board',
-];
-
-/** Cron paths without session cookie still need Bearer CRON_SECRET (or "dev"). */
-const CRON_BEARER_ROUTES = [
-  '/api/cron/',
-  '/api/admin/hr/nightly-close',
-  '/api/payroll/daily/auto-generate',
-];
-
-function isCronBearerAuthorized(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  const authHeader = req.headers.get('authorization') ?? '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
-  if (!token) return false;
-  if (secret) return token === secret;
-  return token === 'dev';
-}
-
+/**
+ * Edge proxy — defense-in-depth session gate.
+ * Route handlers remain authoritative for authorization.
+ *
+ * Public surface is an explicit allowlist (see proxyPublicRoutes.ts).
+ * `/api/admin/` is NOT public.
+ */
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const classification = classifyProxyAuth(pathname);
 
-  if (PUBLIC_ROUTES.some((r) => pathname.startsWith(r))) {
-    // Cron stays public at edge, but still requires Bearer when no session cookie.
-    if (
-      CRON_BEARER_ROUTES.some((r) => pathname.startsWith(r)) &&
-      !req.cookies.get(COOKIE_NAME)?.value &&
-      !isCronBearerAuthorized(req)
-    ) {
-      return NextResponse.json(
-        { error: 'غير مصرح — CRON_SECRET مطلوب (Bearer)' },
-        { status: 401 },
-      );
-    }
+  if (classification.kind === 'static') {
     return NextResponse.next();
   }
 
-  if (
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/favicon') ||
-    pathname.includes('.')
-  ) {
+  if (classification.kind === 'anonymous_public') {
     return NextResponse.next();
+  }
+
+  if (classification.kind === 'cron_bearer') {
+    const hasSession = Boolean(req.cookies.get(COOKIE_NAME)?.value);
+    if (hasSession || isCronBearerAuthorized(req.headers.get('authorization'))) {
+      return NextResponse.next();
+    }
+    return NextResponse.json(
+      { error: 'غير مصرح — CRON_SECRET مطلوب (Bearer)' },
+      { status: 401 },
+    );
   }
 
   const session = req.cookies.get(COOKIE_NAME);

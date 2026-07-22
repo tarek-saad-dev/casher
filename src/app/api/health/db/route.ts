@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getPool, sql, getUserFriendlyError } from '@/lib/db';
+import { isAuthResult, requireAdmin } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
-// GET /api/health/db — Database connectivity check
+// GET /api/health/db — Database connectivity check (admin only; exposes server metadata)
 export async function GET() {
+  const auth = await requireAdmin();
+  if (!isAuthResult(auth)) return auth;
+
   const startTime = Date.now();
 
   try {

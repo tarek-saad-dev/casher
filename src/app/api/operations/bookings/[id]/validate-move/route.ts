@@ -59,6 +59,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
       valid: false,
       code: result.code ?? 'SCHEDULE_CONFLICT',
       message: result.message,
+      details: result.details,
       conflict: result.conflict,
       nextAvailable: result.nextAvailable,
     });

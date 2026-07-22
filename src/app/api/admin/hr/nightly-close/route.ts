@@ -1,41 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/session';
 import { runNightlyClose } from '@/lib/hr/nightly-close.service';
 import { resolveNightlyCloseWorkDate } from '@/lib/hr/nightly-close-work-date';
+import { isSystemJobAuthResult, requireSystemJobAuth } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-function authorizeCronOrSession(
-  req: NextRequest,
-  session: Awaited<ReturnType<typeof getSession>>,
-): boolean {
-  const secret = process.env.CRON_SECRET;
-  const authHeader = req.headers.get('authorization') ?? '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
-
-  if (secret && token === secret) return true;
-  if (!secret && token === 'dev') return true;
-  if (session) return true;
-  return false;
-}
-
 /**
  * POST /api/admin/hr/nightly-close
- * Auth: Authorization: Bearer $CRON_SECRET  OR logged-in session
+ * Auth: Authorization: Bearer $CRON_SECRET  OR authenticated admin session
  * Body: { workDate?, dryRun?, skipWhatsApp? }
  *
  * Closes Cairo-yesterday by default (e.g. 01:00 on the 15th → workDate 14).
  */
 export async function POST(req: NextRequest) {
   try {
-    const session = await getSession();
-    if (!authorizeCronOrSession(req, session)) {
-      return NextResponse.json(
-        { error: 'Unauthorized — Bearer CRON_SECRET or login required' },
-        { status: 401 },
-      );
-    }
+    const jobAuth = await requireSystemJobAuth(req);
+    if (!isSystemJobAuthResult(jobAuth)) return jobAuth;
 
     const body = await req.json().catch(() => ({}));
     const workDate = resolveNightlyCloseWorkDate(body?.workDate);
@@ -58,10 +39,8 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getSession();
-    if (!authorizeCronOrSession(req, session)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const jobAuth = await requireSystemJobAuth(req);
+    if (!isSystemJobAuthResult(jobAuth)) return jobAuth;
 
     const { searchParams } = new URL(req.url);
     const workDate = resolveNightlyCloseWorkDate(searchParams.get('workDate'));

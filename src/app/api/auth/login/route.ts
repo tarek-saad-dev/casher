@@ -3,9 +3,23 @@ import { randomUUID } from 'crypto';
 import { getPool, getUserFriendlyError, sql } from '@/lib/db';
 import { createSession } from '@/lib/session';
 import { getUserAccess } from '@/lib/permissions-server';
+import { BranchDomainError, BRANCH_SESSION_VERSION } from '@/lib/branch/types';
+import { resolveLoginDefaultBranch } from '@/lib/branch/access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+function isBranchDomainError(err: unknown): err is BranchDomainError {
+  if (err instanceof BranchDomainError) return true;
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { name?: string }).name === 'BranchDomainError' &&
+    typeof (err as { code?: unknown }).code === 'string' &&
+    typeof (err as { message?: unknown }).message === 'string' &&
+    typeof (err as { status?: unknown }).status === 'number'
+  );
+}
 
 type LoginBody = {
   loginName?: string;
@@ -86,7 +100,7 @@ export async function POST(req: NextRequest) {
         FROM [dbo].[TblUser]
         WHERE loginName = @loginName
           AND Password = @password
-          AND isDeleted = 0
+          AND ISNULL(isDeleted, 0) = 0
       `);
 
     if (result.recordset.length === 0) {
@@ -98,22 +112,50 @@ export async function POST(req: NextRequest) {
     }
 
     const user = result.recordset[0];
-    logStep(requestId, 'session:create', { userId: user.UserID, userName: user.UserName });
+    logStep(requestId, 'branch:resolve-default', { userId: user.UserID });
+
+    let defaultAccess;
+    try {
+      defaultAccess = await resolveLoginDefaultBranch(user.UserID);
+    } catch (err: unknown) {
+      if (isBranchDomainError(err)) {
+        logStep(requestId, 'reject:branch-access', { code: err.code });
+        return NextResponse.json(
+          { error: err.message, code: err.code },
+          { status: err.status },
+        );
+      }
+      throw err;
+    }
+
+    logStep(requestId, 'session:create', {
+      userId: user.UserID,
+      userName: user.UserName,
+      branchId: defaultAccess.branchId,
+      branchCode: defaultAccess.branchCode,
+    });
 
     await createSession({
       UserID: user.UserID,
       UserName: user.UserName,
       UserLevel: user.UserLevel,
+      ActiveBranchID: defaultAccess.branchId,
+      ActiveBranchCode: defaultAccess.branchCode,
+      BranchSessionVersion: BRANCH_SESSION_VERSION,
     });
 
     let redirectTo = '/income/pos';
     let skipShiftPrompt = false;
+    let roles: string[] = [];
+    let allowedPagePaths: string[] = [];
 
     try {
       logStep(requestId, 'permissions:load', { userId: user.UserID });
       const access = await getUserAccess(user.UserID, user.UserName, user.UserLevel);
       redirectTo = access.defaultLandingPath;
       skipShiftPrompt = access.isPartnerOnly;
+      roles = access.roles;
+      allowedPagePaths = access.allowedPagePaths;
     } catch (permErr: unknown) {
       const message = permErr instanceof Error ? permErr.message : 'Unknown permissions error';
       logStep(requestId, 'permissions:fallback', { message });
@@ -134,6 +176,12 @@ export async function POST(req: NextRequest) {
       ShiftID: user.ShiftID,
       redirectTo,
       skipShiftPrompt,
+      ActiveBranchID: defaultAccess.branchId,
+      ActiveBranchCode: defaultAccess.branchCode,
+      ActiveBranchName: defaultAccess.branchName,
+      BranchSessionVersion: BRANCH_SESSION_VERSION,
+      roles,
+      allowedPagePaths,
     });
   } catch (err: unknown) {
     const rawMessage = err instanceof Error ? err.message : 'Unknown error';

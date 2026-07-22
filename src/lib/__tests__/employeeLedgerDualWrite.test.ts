@@ -364,6 +364,18 @@ describe('POST /api/payroll/daily/generate', () => {
   });
 
   it('returns ledgerDualWrite flag in success response', async () => {
+    vi.doMock('@/lib/api-auth', () => ({
+      isAuthResult: (v: { ok?: boolean }) => v?.ok === true,
+      requirePageAccess: vi.fn(async () => ({
+        ok: true,
+        userId: 1,
+        userName: 'Admin',
+        userLevel: 'admin',
+        roles: ['admin'],
+        isSuperAdmin: false,
+      })),
+    }));
+
     vi.doMock('@/lib/db', () => ({
       getPool: vi.fn(async () => ({
         request: vi.fn(() => ({
@@ -406,6 +418,18 @@ describe('POST /api/payroll/daily/generate', () => {
   });
 
   it('returns 503 when ledger dual-write fails', async () => {
+    vi.doMock('@/lib/api-auth', () => ({
+      isAuthResult: (v: { ok?: boolean }) => v?.ok === true,
+      requirePageAccess: vi.fn(async () => ({
+        ok: true,
+        userId: 1,
+        userName: 'Admin',
+        userLevel: 'admin',
+        roles: ['admin'],
+        isSuperAdmin: false,
+      })),
+    }));
+
     vi.doMock('@/lib/db', () => ({
       getPool: vi.fn(async () => ({
         request: vi.fn(() => ({
@@ -480,6 +504,19 @@ describe('POST /api/payroll/daily/auto-generate', () => {
         },
         ledgerDualWrite: true,
         ledgerSync: { inserted: 2, updated: 0, voided: 0, skipped: 0 },
+      })),
+    }));
+
+    vi.doMock('@/lib/api-auth', () => ({
+      isSystemJobAuthResult: (v: { ok?: boolean }) => v?.ok === true,
+      requireSystemJobAuth: vi.fn(async () => ({
+        ok: true,
+        userId: 0,
+        userName: 'system-job',
+        userLevel: 'admin',
+        roles: ['system_job'],
+        isSuperAdmin: true,
+        via: 'cron_bearer',
       })),
     }));
 

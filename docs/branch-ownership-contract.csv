@@ -1,0 +1,32 @@
+domain,aggregate_root,ownership_type,future_branch_source,children_inheriting_branch,cross_branch_behavior,authorization_rule,business_date_rule,notes
+identity_client,TblClient,global,n/a,n/a,shared identity; history lines tagged by transaction branch,session for mutate; public upsert limited,n/a,Shared clients across branches
+identity_user,TblUser,global,n/a,n/a,access via UserBranchAccess hybrid,authenticate + roles,n/a,No BranchID on user row
+identity_employee,TblEmp,global,n/a,n/a,multi-branch assignment; global time-overlap forbidden,HR admin for master data,n/a,Identity global; work is branch-scoped
+catalog_service,TblPro,global,override map later,n/a,overrides per branch later,admin services,n/a,TblCat also global
+catalog_category,TblCat,global,n/a,n/a,shared,admin categories,n/a,
+payment_method_def,TblPaymentMethods,global,n/a,n/a,balances via CashMove branch,admin,n/a,
+exp_income_cat,TblExpINCat,global,n/a,n/a,shared categories,finance admin,n/a,
+shift_definition,TblShift,global,n/a,n/a,instances branch-scoped,admin shift defs,n/a,
+business_day,TblNewDay,branch_scoped_aggregate,secure session branch,TblShiftMove summaries,independent open per branch later; ALL_BRANCHES forbidden,day.open/close + branch access,TblNewDay.NewDay per branch,Phase later; not in 1A
+shift_instance,TblShiftMove,branch_scoped_aggregate,session branch via open day,sales/cash ShiftMoveID refs,one open shift per user globally across branches,shift.open/close + branch; no dual open,inherits day NewDay,Cashier switch requires closed shift
+sale_invoice,TblinvServHead,branch_scoped_aggregate,secure session branch (day/shift),TblinvServDetail;TblinvServPayment,no ALL_BRANCHES writes,session + shift + branch,invDate from branch business day,Never trust body.branchId
+cash_move,TblCashMove,branch_scoped_aggregate,session branch or parent sale branch,ledger entries by CashMoveID,no cross-branch silent effect,auth + sensitive audit on edits,invDate/day of paying branch,Financial hub
+treasury_recon,TblTreasuryCloseRecon,branch_scoped_aggregate,session branch day,n/a,per-branch close,audited close + branch,branch NewDay, 
+booking,Bookings,branch_scoped_aggregate,session or public selected branch,BookingServices,global emp interval conflict; board filtered,ops/public with branch,Cairo business date + booking date,Public requires explicit branch
+queue_ticket,QueueTickets,branch_scoped_aggregate,session branch,QueueTicketServices; histories,unique Branch+date+code later,ops + branch,Cairo operational date, 
+queue_settings,QueueBookingSettings,branch_scoped_aggregate,session/admin branch,n/a,per-branch settings row,admin booking settings,n/a,Cache key must include BranchID later
+attendance,TblEmpAttendance,branch_scoped_aggregate,session branch + emp assignment,breaks,same calendar date multi-branch OK; overlap forbidden,attendance permission + branch,WorkDate,Unique key may become Emp+WorkDate+Branch
+daily_payroll,TblEmpDailyPayroll,branch_scoped_aggregate,attendance branch / job branch,n/a,no ALL_BRANCHES post,HR page + branch or system job,WorkDate, 
+daily_target,TblEmpDailyTarget,branch_scoped_aggregate,invoice revenue branch,recalc requests,per-branch targets,HR + branch,WorkDate,Revenue filter by branch
+emp_ledger_entry,TblEmpLedgerEntry,branch_scoped_aggregate,paying treasury or revenue parent,n/a,per-branch balances; consolidated=sum,HR + branch; payout on paying branch,payroll month from work date,Settlement for cross-pay deferred
+budget_month,TblBudgetMonth,branch_scoped_aggregate,admin selected branch,TblBudgetMonthLine,unique Year+Month+Branch later,budget admin + branch,calendar month, 
+partner_share_config,(future table),hybrid,admin config per branch,n/a,calc per branch then consolidate,partner admin,effective-dated,Replaces hardcoded PARTNERS
+user_branch_access,(future TblUserBranchAccess),hybrid,admin grant,n/a,validates session active branch,super_admin/admin,optional ExpiresAt,Phase 1B
+emp_branch_assignment,(future TblEmpBranchAssignment),hybrid,HR assign,n/a,filters boards/payroll eligibility,HR admin,n/a,Phase 1B
+branch_registry,(future TblBranch),global_registry,system,n/a,GLEEM founding seed,super_admin,n/a,Phase 1B — not created in 1A
+loyalty_points,TblClientLoyalty,global,optional tag on ledger lines,TblLoyaltyPointLedger,shared balance,loyalty admin / sale side effects,n/a,Earn may record branch later
+loyalty_store_stock,TblLoyaltyStoreItem,branch_scoped_aggregate,align SalonID→BranchID later,inventory usage,stock per branch,cut-club page access,n/a,Do not rename SalonID in 1A
+public_booking_site,Bookings+availability,branch_scoped_aggregate,customer-selected branch (required),services lines,no silent GLEEM default,public + abuse controls,Cairo business date,One website all branches
+reports_owner,full-day/partners/treasury,branch_scoped_read,selected or ALL_BRANCHES report-only,n/a,aggregate per branch before totals,page access; ALL_BRANCHES privileged,varies by report,Never use ALL_BRANCHES for writes
+system_jobs,nightly-close/auto-generate,branch_scoped_job,explicit branch iteration later,n/a,must not run once globally after multi-branch,Bearer CRON_SECRET or admin session,Cairo work date,Auth hardened in Phase 1A
+sync_infrastructure,sync.*,infrastructure,n/a,n/a,not a branch model,ops infra,n/a,Do not extend for branches

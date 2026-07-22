@@ -4,6 +4,7 @@
 // ============================================
 
 import { NextRequest, NextResponse } from "next/server";
+import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import { updateStoreItemStock } from "@/lib/store/store.service";
 
 export const runtime = "nodejs";
@@ -12,6 +13,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const __auth = await requirePageAccess('/admin/cut-club');
+  if (!isAuthResult(__auth)) return __auth;
+
   try {
     const { id } = await params;
     const itemId = parseInt(id, 10);

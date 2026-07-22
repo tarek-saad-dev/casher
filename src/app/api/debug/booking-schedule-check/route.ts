@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
+import { isAuthResult, requireDevelopmentAdmin } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 
@@ -22,13 +23,8 @@ const DAY_NAMES = [
 ];
 
 export async function GET(_req: NextRequest) {
-  // Only allow in development mode
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json(
-      { error: "Not available in production" },
-      { status: 404 },
-    );
-  }
+  const auth = await requireDevelopmentAdmin();
+  if (!isAuthResult(auth)) return auth;
 
   try {
     const db = await getPool();
