@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool, sql } from '@/lib/db';
-import { getSession } from '@/lib/session';
 import { hasPermission } from '@/lib/permissions';
+import { getSession } from '@/lib/session';
+import {
+  branchErrorResponse,
+  requireBranchOperatorContext,
+} from '@/lib/branch/operationalGates';
+import { isActiveBranchContext } from '@/lib/branch/context';
+import { openShift } from '@/lib/branch/shiftSession';
 
-// POST /api/shift/open — Open a new shift session
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+// POST /api/shift/open — Open a shift for the active branch day
 export async function POST(req: NextRequest) {
   try {
     const user = await getSession();
@@ -12,62 +20,40 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
+    // Ignore any client-supplied branchId — active branch comes from session only.
     const shiftID: number = body.shiftID;
     if (!shiftID) {
       return NextResponse.json({ error: 'يجب تحديد الوردية' }, { status: 400 });
     }
 
-    const db = await getPool();
+    const branch = await requireBranchOperatorContext();
+    if (!isActiveBranchContext(branch)) return branch;
 
-    // Check active business day exists
-    const dayResult = await db.request().query(`
-      SELECT TOP 1 ID, NewDay FROM [dbo].[TblNewDay] WHERE Status = 1 ORDER BY ID DESC
-    `);
-    if (dayResult.recordset.length === 0) {
-      return NextResponse.json({ error: 'لا يوجد يوم عمل مفتوح — يجب فتح يوم أولاً' }, { status: 400 });
-    }
-    const activeDay = dayResult.recordset[0];
+    const newShift = await openShift(branch, user.UserID, shiftID);
+    console.log(
+      `[shift] Opened shift: ID=${newShift.id}, Branch=${branch.branchCode}, ShiftID=${shiftID}, UserID=${user.UserID}, Day=${newShift.newDay}`,
+    );
 
-    // Check this user doesn't already have an open shift
-    const existingShift = await db.request()
-      .input('userID', sql.Int, user.UserID)
-      .query(`
-        SELECT TOP 1 ID FROM [dbo].[TblShiftMove]
-        WHERE UserID = @userID AND Status = 1
-      `);
-    if (existingShift.recordset.length > 0) {
-      return NextResponse.json(
-        { error: 'لديك وردية مفتوحة بالفعل — يجب إغلاقها أولاً' },
-        { status: 400 }
-      );
-    }
-
-    // Format start time
-    const now = new Date();
-    const hours = now.getHours();
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    const h12 = hours % 12 || 12;
-    const startTime = `${String(h12).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} ${ampm}`;
-
-    // Insert new shift move
-    const result = await db.request()
-      .input('newDay', sql.Date, activeDay.NewDay)
-      .input('userID', sql.Int, user.UserID)
-      .input('shiftID', sql.Int, shiftID)
-      .input('startDate', sql.Date, activeDay.NewDay)
-      .input('startTime', sql.NChar(10), startTime)
-      .query(`
-        INSERT INTO [dbo].[TblShiftMove] (NewDay, UserID, ShiftID, StartDate, StartTime, Status)
-        OUTPUT INSERTED.ID, INSERTED.NewDay, INSERTED.UserID, INSERTED.ShiftID,
-               INSERTED.StartDate, INSERTED.StartTime, INSERTED.Status
-        VALUES (@newDay, @userID, @shiftID, @startDate, @startTime, 1)
-      `);
-
-    const newShift = result.recordset[0];
-    console.log(`[shift] Opened shift: ID=${newShift.ID}, ShiftID=${shiftID}, UserID=${user.UserID} (${user.UserName}), Day=${activeDay.NewDay}`);
-
-    return NextResponse.json({ shift: newShift }, { status: 201 });
+    return NextResponse.json(
+      {
+        shift: {
+          ID: newShift.id,
+          NewDay: newShift.newDay,
+          UserID: newShift.userId,
+          ShiftID: newShift.shiftId,
+          StartDate: newShift.startDate,
+          StartTime: newShift.startTime,
+          Status: newShift.status,
+          BranchID: newShift.branchId,
+          BusinessDayID: newShift.businessDayId,
+          BranchCode: branch.branchCode,
+        },
+      },
+      { status: 201 },
+    );
   } catch (err: unknown) {
+    const mapped = branchErrorResponse(err);
+    if (mapped) return mapped;
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/shift/open] error:', message);
     return NextResponse.json({ error: message }, { status: 500 });

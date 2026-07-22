@@ -28,8 +28,16 @@ export async function GET(req: NextRequest) {
     const request = db.request();
 
     if (today === '1') {
-      // Use the current open business day date
-      whereClause += ` AND cm.invDate = (SELECT TOP 1 NewDay FROM [dbo].[TblNewDay] WHERE Status = 1 ORDER BY ID DESC)`;
+      // Use the current open business day date for the active branch
+      const { requireAuthenticatedBranchContext } = await import(
+        '@/lib/branch/operationalGates'
+      );
+      const { isActiveBranchContext } = await import('@/lib/branch/context');
+      const branch = await requireAuthenticatedBranchContext();
+      if (!isActiveBranchContext(branch)) return branch;
+      whereClause +=
+        ' AND cm.invDate = (SELECT TOP 1 NewDay FROM [dbo].[TblNewDay] WHERE Status = 1 AND BranchID = @branchId ORDER BY ID DESC)';
+      request.input('branchId', sql.Int, branch.branchId);
     } else {
       if (dateFrom) {
         whereClause += ' AND cm.invDate >= @dateFrom';
@@ -130,37 +138,22 @@ export async function POST(req: NextRequest) {
     const db = await getPool();
     log('db-connected');
 
-    // ──── Enforce active business day ────
+    // ──── Enforce active branch business day + user shift (Phase 1C) ────
     log('before-active-day-lookup');
-    const dayResult = await db.request().query(`
-      SELECT TOP 1 ID, NewDay FROM [dbo].[TblNewDay] WHERE Status = 1 ORDER BY ID DESC
-    `);
-    log('after-active-day-lookup');
-    if (dayResult.recordset.length === 0) {
-      log('rejected', { reason: 'no active business day' });
-      return NextResponse.json({ error: 'لا يوجد يوم عمل مفتوح — لا يمكن تسجيل مصروف' }, { status: 400 });
-    }
-    const activeDay = dayResult.recordset[0];
-    const invDate = activeDay.NewDay;
-    log('active-day-resolved', { dayId: activeDay.ID, invDate });
-
-    // ──── Enforce active shift for THIS user ────
-    log('before-active-shift-lookup');
-    const shiftResult = await db.request()
-      .input('shiftUserID', sql.Int, userID)
-      .query(`
-        SELECT TOP 1 ID, UserID, ShiftID FROM [dbo].[TblShiftMove]
-        WHERE Status = 1 AND UserID = @shiftUserID
-        ORDER BY ID DESC
-      `);
-    log('after-active-shift-lookup');
-    if (shiftResult.recordset.length === 0) {
+    const { resolveBranchDayAndShiftForWrite } = await import(
+      '@/lib/branch/operationalGates'
+    );
+    const gated = await resolveBranchDayAndShiftForWrite(userID);
+    if (!gated.ok) return gated.response;
+    if (!gated.shift) {
       log('rejected', { reason: 'no active shift for user', userID });
       return NextResponse.json({ error: 'لا يوجد وردية مفتوحة لهذا المستخدم — لا يمكن تسجيل مصروف' }, { status: 400 });
     }
-    const activeShift = shiftResult.recordset[0];
-    const shiftMoveID = activeShift.ID;
-    log('active-shift-resolved', { shiftMoveID, userID: activeShift.UserID });
+    const activeDay = { ID: gated.day.id, NewDay: gated.day.newDay };
+    const invDate = gated.day.newDay;
+    const shiftMoveID = gated.shift.id;
+    log('active-day-resolved', { dayId: activeDay.ID, invDate, branchId: gated.branch.branchId });
+    log('active-shift-resolved', { shiftMoveID, userID: gated.shift.userId });
 
     // ──── Validate category belongs to مصروفات ────
     log('before-category-lookup');

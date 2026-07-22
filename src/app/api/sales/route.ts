@@ -39,43 +39,30 @@ export async function POST(req: NextRequest) {
       `[pos-api] ──── SAVE SALE START ──── DB=${dbName}, UserID=${userID}`,
     );
 
-    // ──── Enforce active business day ────
-    const dayResult = await db.request().query(`
-      SELECT TOP 1 ID, NewDay FROM [dbo].[TblNewDay] WHERE Status = 1 ORDER BY ID DESC
-    `);
-    if (dayResult.recordset.length === 0) {
-      console.error(`[pos-api]   ❌ REJECTED: no active business day`);
-      return NextResponse.json(
-        { error: "لا يوجد يوم عمل مفتوح — لا يمكن إنشاء فاتورة" },
-        { status: 400 },
-      );
-    }
-    const activeDay = dayResult.recordset[0];
-    const invDate = activeDay.NewDay; // Use business day date, NOT JS Date
-    console.log(
-      `[pos-api]   Active Day: ID=${activeDay.ID}, NewDay=${invDate}`,
+    // ──── Enforce active branch business day + user shift (Phase 1C) ────
+    // Financial rows remain unscoped until Phase 1D; day/shift gating is branch-aware.
+    const { resolveBranchDayAndShiftForWrite } = await import(
+      '@/lib/branch/operationalGates'
     );
-
-    // ──── Enforce active shift for THIS user ────
-    const shiftResult = await db.request().input("shiftUserID", sql.Int, userID)
-      .query(`
-        SELECT TOP 1 ID, UserID, ShiftID FROM [dbo].[TblShiftMove]
-        WHERE Status = 1 AND UserID = @shiftUserID
-        ORDER BY ID DESC
-      `);
-    if (shiftResult.recordset.length === 0) {
+    const gated = await resolveBranchDayAndShiftForWrite(userID);
+    if (!gated.ok) return gated.response;
+    if (!gated.shift) {
       console.error(
-        `[pos-api]   ❌ REJECTED: no active shift for UserID=${userID}`,
+        `[pos-api]   ❌ REJECTED: no active shift for UserID=${userID} branch=${gated.branch.branchCode}`,
       );
       return NextResponse.json(
         { error: "لا يوجد وردية مفتوحة لهذا المستخدم — لا يمكن إنشاء فاتورة" },
         { status: 400 },
       );
     }
-    const activeShift = shiftResult.recordset[0];
-    const shiftMoveID = activeShift.ID;
+    const activeDay = { ID: gated.day.id, NewDay: gated.day.newDay };
+    const invDate = gated.day.newDay; // Use business day date, NOT JS Date
+    const shiftMoveID = gated.shift.id;
     console.log(
-      `[pos-api]   Active Shift: ID=${shiftMoveID}, UserID=${activeShift.UserID} (verified owner)`,
+      `[pos-api]   Active Day: ID=${activeDay.ID}, NewDay=${invDate}, Branch=${gated.branch.branchCode}`,
+    );
+    console.log(
+      `[pos-api]   Active Shift: ID=${shiftMoveID}, UserID=${gated.shift.userId} (verified owner)`,
     );
 
     // ──── Server-side discount validation ────
@@ -358,10 +345,7 @@ export async function POST(req: NextRequest) {
         const { enqueueTargetRecalcFromInvoiceSnapshots } = await import(
           '@/lib/payroll/employee-target/employee-target-invoice-sync'
         );
-        const workDateStr =
-          invDate instanceof Date
-            ? invDate.toISOString().slice(0, 10)
-            : String(invDate).slice(0, 10);
+        const workDateStr = String(invDate).slice(0, 10);
         targetRecalcScopes = await enqueueTargetRecalcFromInvoiceSnapshots({
           transaction,
           beforeSnapshot: null,

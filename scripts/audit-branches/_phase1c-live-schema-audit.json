@@ -1,0 +1,447 @@
+{
+  "generatedAt": "2026-07-22T01:33:53.146Z",
+  "target": "cloud",
+  "database": "last132",
+  "checks": [
+    {
+      "label": "newday_columns",
+      "rows": [
+        {
+          "column_id": 1,
+          "name": "ID",
+          "type_name": "int",
+          "max_length": 4,
+          "is_nullable": false,
+          "is_identity": true
+        },
+        {
+          "column_id": 2,
+          "name": "NewDay",
+          "type_name": "date",
+          "max_length": 3,
+          "is_nullable": false,
+          "is_identity": false
+        },
+        {
+          "column_id": 3,
+          "name": "Status",
+          "type_name": "bit",
+          "max_length": 1,
+          "is_nullable": true,
+          "is_identity": false
+        }
+      ]
+    },
+    {
+      "label": "shiftmove_columns",
+      "rows": [
+        {
+          "column_id": 1,
+          "name": "ID",
+          "type_name": "int",
+          "max_length": 4,
+          "is_nullable": false,
+          "is_identity": true
+        },
+        {
+          "column_id": 2,
+          "name": "NewDay",
+          "type_name": "date",
+          "max_length": 3,
+          "is_nullable": false,
+          "is_identity": false
+        },
+        {
+          "column_id": 3,
+          "name": "UserID",
+          "type_name": "int",
+          "max_length": 4,
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "column_id": 4,
+          "name": "ShiftID",
+          "type_name": "int",
+          "max_length": 4,
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "column_id": 5,
+          "name": "StartDate",
+          "type_name": "date",
+          "max_length": 3,
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "column_id": 6,
+          "name": "StartTime",
+          "type_name": "nchar",
+          "max_length": 20,
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "column_id": 7,
+          "name": "EndDate",
+          "type_name": "date",
+          "max_length": 3,
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "column_id": 8,
+          "name": "EndTime",
+          "type_name": "nvarchar",
+          "max_length": 100,
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "column_id": 9,
+          "name": "Status",
+          "type_name": "bit",
+          "max_length": 1,
+          "is_nullable": true,
+          "is_identity": false
+        }
+      ]
+    },
+    {
+      "label": "newday_indexes",
+      "rows": [
+        {
+          "name": "PK_TblNewDay",
+          "is_primary_key": true,
+          "is_unique": true,
+          "has_filter": false,
+          "filter_definition": null,
+          "cols": "NewDay"
+        }
+      ]
+    },
+    {
+      "label": "shiftmove_indexes",
+      "rows": [
+        {
+          "name": "PK_TblShiftMove",
+          "is_primary_key": true,
+          "is_unique": true,
+          "has_filter": false,
+          "filter_definition": null,
+          "cols": "ID"
+        }
+      ]
+    },
+    {
+      "label": "fks_referencing_newday",
+      "rows": [
+        {
+          "fk_name": "FK_TblShiftMove_TblNewDay",
+          "child_table": "dbo.TblShiftMove",
+          "child_col": "NewDay",
+          "parent_col": "NewDay",
+          "delete_referential_action_desc": "CASCADE",
+          "update_referential_action_desc": "CASCADE"
+        }
+      ]
+    },
+    {
+      "label": "fks_from_newday",
+      "rows": []
+    },
+    {
+      "label": "fks_referencing_shiftmove",
+      "rows": [
+        {
+          "fk_name": "FK_TblCashMove_TblShiftMove",
+          "child_table": "dbo.TblCashMove",
+          "child_col": "ShiftMoveID",
+          "parent_col": "ID"
+        },
+        {
+          "fk_name": "FK_TblinvPurchaseHead_TblShiftMove",
+          "child_table": "dbo.TblinvPurchaseHead",
+          "child_col": "ShiftMoveID",
+          "parent_col": "ID"
+        },
+        {
+          "fk_name": "FK_TblinvServHead_TblShiftMove",
+          "child_table": "dbo.TblinvServHead",
+          "child_col": "ShiftMoveID",
+          "parent_col": "ID"
+        },
+        {
+          "fk_name": "FK_TblinvServPayment_TblShiftMove",
+          "child_table": "dbo.TblinvServPayment",
+          "child_col": "ShiftMoveID",
+          "parent_col": "ID"
+        },
+        {
+          "fk_name": "FK_TblLoyaltyPointLedger_ShiftMove",
+          "child_table": "dbo.TblLoyaltyPointLedger",
+          "child_col": "ShiftMoveID",
+          "parent_col": "ID"
+        }
+      ]
+    },
+    {
+      "label": "columns_newday_businessdayid_branchid",
+      "rows": [
+        {
+          "schema_name": "dbo",
+          "table_name": "TblBranch",
+          "column_name": "BranchID",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "schema_name": "dbo",
+          "table_name": "TblEmpBranchAssignment",
+          "column_name": "BranchID",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "schema_name": "dbo",
+          "table_name": "TblNewDay",
+          "column_name": "NewDay",
+          "type_name": "date",
+          "is_nullable": false
+        },
+        {
+          "schema_name": "dbo",
+          "table_name": "TblShiftMove",
+          "column_name": "NewDay",
+          "type_name": "date",
+          "is_nullable": false
+        },
+        {
+          "schema_name": "dbo",
+          "table_name": "TblTreasuryCloseRecon",
+          "column_name": "NewDay",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "schema_name": "dbo",
+          "table_name": "TblUserBranchAccess",
+          "column_name": "BranchID",
+          "type_name": "int",
+          "is_nullable": false
+        }
+      ]
+    },
+    {
+      "label": "modules_referencing_day_shift",
+      "rows": [
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.AccountClient"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.CashStatementAllClient"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.CashStatementByTypeRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.CashStatementClient"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.CashStatementRcpt"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.CashStatementRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.ClientSalesFullRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.EndShift"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.ExpensesRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.iNCOMERPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.ReservPaymentRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.ReservResept"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalecServReservCardRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalecServReservClinetRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalecServReservRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalecServReservTransCardRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalecServReservTransRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalesResalesReset"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalesServByCatRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalesServByClientRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalesServByEmpRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalesServByProRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalesServCardRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalesServRPT"
+        },
+        {
+          "type_desc": "VIEW",
+          "object_name": "dbo.ViwAllSalesServ"
+        },
+        {
+          "type_desc": "VIEW",
+          "object_name": "dbo.ViwCashStatmentClient"
+        },
+        {
+          "type_desc": "VIEW",
+          "object_name": "dbo.ViwShiftMove"
+        }
+      ]
+    },
+    {
+      "label": "newday_id_integrity",
+      "rows": [
+        {
+          "total_rows": 358,
+          "null_ids": 0,
+          "distinct_ids": 358,
+          "open_count": 1,
+          "null_dates": 0
+        }
+      ]
+    },
+    {
+      "label": "newday_duplicate_dates",
+      "rows": []
+    },
+    {
+      "label": "shift_orphan_dates",
+      "rows": [
+        {
+          "shift_dates_missing_day": 0
+        }
+      ]
+    },
+    {
+      "label": "users_multiple_open_shifts",
+      "rows": []
+    },
+    {
+      "label": "treasury_recon_columns",
+      "rows": [
+        {
+          "name": "ID",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "NewDay",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "ShiftMoveID",
+          "type_name": "int",
+          "is_nullable": true
+        },
+        {
+          "name": "PaymentMethodID",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "SystemAmount",
+          "type_name": "decimal",
+          "is_nullable": false
+        },
+        {
+          "name": "CountedAmount",
+          "type_name": "decimal",
+          "is_nullable": false
+        },
+        {
+          "name": "Notes",
+          "type_name": "nvarchar",
+          "is_nullable": true
+        },
+        {
+          "name": "ClosedByUserID",
+          "type_name": "int",
+          "is_nullable": true
+        },
+        {
+          "name": "CreatedAt",
+          "type_name": "datetime2",
+          "is_nullable": false
+        }
+      ]
+    },
+    {
+      "label": "treasury_recon_fks",
+      "rows": []
+    },
+    {
+      "label": "treasury_recon_newday_join_shape",
+      "error": "Cannot perform an aggregate function on an expression containing an aggregate or a subquery."
+    },
+    {
+      "label": "gleem_branch",
+      "rows": [
+        {
+          "BranchID": 1,
+          "BranchCode": "GLEEM",
+          "BranchName": "جليم – سابا باشا"
+        }
+      ]
+    }
+  ]
+}

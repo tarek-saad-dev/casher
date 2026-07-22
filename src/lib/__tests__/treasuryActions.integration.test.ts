@@ -207,12 +207,13 @@ describe('treasuryActions integration', () => {
     try {
       // Find or create an open day
       const dayResult = await new sql.Request(transaction).query(
-        `SELECT TOP 1 ID, NewDay FROM dbo.TblNewDay WHERE Status = 1 ORDER BY ID DESC`
+        `SELECT TOP 1 ID, NewDay, BranchID FROM dbo.TblNewDay WHERE Status = 1 ORDER BY ID DESC`
       );
       if (dayResult.recordset.length === 0) {
         throw new Error('No open business day found for close-day test');
       }
       const dayId = dayResult.recordset[0].ID;
+      const branchId = Number(dayResult.recordset[0].BranchID);
       const newDay = dayResult.recordset[0].NewDay;
       const newDayDate = newDay instanceof Date
         ? newDay.toISOString().split('T')[0]
@@ -220,6 +221,7 @@ describe('treasuryActions integration', () => {
 
       const firstClose = await closeTreasuryDay(transaction, {
         newDay: newDayDate,
+        branchId,
         reconciliations: [
           { paymentMethodId: 1, systemAmount: 1000, countedAmount: 1000, notes: 'first' },
         ],
@@ -231,6 +233,7 @@ describe('treasuryActions integration', () => {
       await expect(
         closeTreasuryDay(transaction, {
           newDay: newDayDate,
+          branchId,
           reconciliations: [
             { paymentMethodId: 1, systemAmount: 1000, countedAmount: 1000, notes: 'second' },
           ],

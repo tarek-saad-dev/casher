@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { getSession, destroySession } from "@/lib/session";
-import { getPool, getUserFriendlyError, sql } from "@/lib/db";
+import { getUserFriendlyError } from "@/lib/db";
 import { getPermissions } from "@/lib/permissions";
 import { getUserAccess } from "@/lib/permissions-server";
 import { getUserActiveStatus } from "@/lib/branch/repository";
 import { getActiveBranchContext } from "@/lib/branch/context";
+import { getOpenBusinessDay } from "@/lib/branch/businessDay";
+import { getUserOpenShift } from "@/lib/branch/shiftSession";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -84,33 +86,31 @@ export async function GET() {
       );
     }
 
-    const db = await getPool();
+    // Get current open business day for the active branch (Phase 1C)
+    const day = await getOpenBusinessDay(branchContext.branchId);
+    const dayPayload = day
+      ? { ID: day.id, NewDay: day.newDay, Status: day.status, BranchID: day.branchId }
+      : null;
 
-    // Get current open business day (unchanged singleton logic in Phase 1B)
-    const dayResult = await db.request().query(`
-      SELECT TOP 1 ID, NewDay, Status
-      FROM [dbo].[TblNewDay]
-      WHERE Status = 1
-      ORDER BY ID DESC
-    `);
-    const day = dayResult.recordset.length > 0 ? dayResult.recordset[0] : null;
-
-    // Get current open shift for THIS authenticated user only
-    const shiftResult = await db.request().input("userID", sql.Int, user.UserID)
-      .query(`
-        SELECT TOP 1
-          sm.ID, sm.NewDay, sm.UserID, sm.ShiftID,
-          sm.StartDate, sm.StartTime, sm.EndDate, sm.EndTime, sm.Status,
-          u.UserName,
-          s.ShiftName
-        FROM [dbo].[TblShiftMove] sm
-        LEFT JOIN [dbo].[TblUser] u ON sm.UserID = u.UserID
-        LEFT JOIN [dbo].[TblShift] s ON sm.ShiftID = s.ShiftID
-        WHERE sm.Status = 1 AND sm.UserID = @userID
-        ORDER BY sm.ID DESC
-      `);
-    const shift =
-      shiftResult.recordset.length > 0 ? shiftResult.recordset[0] : null;
+    // Get current open shift for THIS authenticated user (may be other-branch; UI should prompt close)
+    const openShift = await getUserOpenShift(user.UserID);
+    const shift = openShift
+      ? {
+          ID: openShift.id,
+          NewDay: openShift.newDay,
+          UserID: openShift.userId,
+          ShiftID: openShift.shiftId,
+          StartDate: openShift.startDate,
+          StartTime: openShift.startTime,
+          EndDate: openShift.endDate,
+          EndTime: openShift.endTime,
+          Status: openShift.status,
+          UserName: openShift.userName,
+          ShiftName: openShift.shiftName,
+          BranchID: openShift.branchId,
+          BusinessDayID: openShift.businessDayId,
+        }
+      : null;
 
     const access = await getUserAccess(user.UserID, user.UserName, user.UserLevel);
     const permissions = buildAuthoritativePermissions({
@@ -130,7 +130,7 @@ export async function GET() {
         ActiveBranchCode: user.ActiveBranchCode,
         BranchSessionVersion: user.BranchSessionVersion,
       },
-      day,
+      day: dayPayload,
       shift,
       permissions,
       roles: access.roles,

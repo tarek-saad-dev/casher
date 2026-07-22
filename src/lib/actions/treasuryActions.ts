@@ -33,6 +33,7 @@ export interface TreasuryTransferResult {
 
 export interface CloseDayInput {
   newDay: string;
+  branchId: number;
   shiftMoveId?: number;
   reconciliations: Array<{
     paymentMethodId: number | null;
@@ -151,32 +152,44 @@ export async function executeTreasuryTransfer(
     log('Historical date resolved', { step: 'date-resolve:complete', invDate: invDate.toISOString().split('T')[0], invTime });
   } else {
     log('Active business day lookup:start', { step: 'day-lookup:start' });
-    const dayResult = await new sql.Request(connection).query(`
-      SELECT TOP 1 ID, NewDay FROM [dbo].[TblNewDay] WHERE Status = 1 ORDER BY ID DESC
-    `);
+    const shiftResult = await new sql.Request(connection)
+      .input('shiftUserID', sql.Int, userId)
+      .query(`
+        SELECT TOP 1 ID, ShiftID, BranchID, BusinessDayID, NewDay
+        FROM [dbo].[TblShiftMove]
+        WHERE Status = 1 AND UserID = @shiftUserID
+        ORDER BY ID DESC
+      `);
+    if (shiftResult.recordset.length === 0) {
+      throw new Error('لا يوجد وردية مفتوحة لهذا المستخدم — لا يمكن تنفيذ التحويل');
+    }
+    const activeShift = shiftResult.recordset[0];
+    shiftMoveID = activeShift.ID;
+
+    const dayResult = await new sql.Request(connection)
+      .input('branchId', sql.Int, activeShift.BranchID)
+      .query(`
+        SELECT TOP 1 ID, NewDay, BranchID
+        FROM [dbo].[TblNewDay]
+        WHERE Status = 1 AND BranchID = @branchId
+        ORDER BY ID DESC
+      `);
     log('Active business day lookup:complete', { step: 'day-lookup:complete' });
     if (dayResult.recordset.length === 0) {
       throw new Error('لا يوجد يوم عمل مفتوح — لا يمكن تنفيذ التحويل');
     }
     const activeDay = dayResult.recordset[0];
     invDate = activeDay.NewDay;
-    log('Active business day resolved', { dayId: activeDay.ID, invDate: invDate.toISOString().split('T')[0] });
-
-    log('Active shift lookup:start', { step: 'shift-lookup:start' });
-    const shiftResult = await new sql.Request(connection)
-      .input('shiftUserID', sql.Int, userId)
-      .query(`
-        SELECT TOP 1 ID, ShiftID FROM [dbo].[TblShiftMove]
-        WHERE Status = 1 AND UserID = @shiftUserID
-        ORDER BY ID DESC
-      `);
-    log('Active shift lookup:complete', { step: 'shift-lookup:complete' });
-    if (shiftResult.recordset.length === 0) {
-      throw new Error('لا يوجد وردية مفتوحة لهذا المستخدم — لا يمكن تنفيذ التحويل');
-    }
-    const activeShift = shiftResult.recordset[0];
-    shiftMoveID = activeShift.ID;
-    log('Active shift resolved', { shiftMoveID, shiftId: activeShift.ShiftID });
+    log('Active business day resolved', {
+      dayId: activeDay.ID,
+      invDate: invDate.toISOString().split('T')[0],
+      branchId: activeDay.BranchID,
+    });
+    log('Active shift resolved', {
+      shiftMoveID,
+      shiftId: activeShift.ShiftID,
+      branchId: activeShift.BranchID,
+    });
 
     const now = new Date();
     invTime = `${String(now.getHours()).padStart(2, '0')}.${String(now.getMinutes()).padStart(2, '0')}`;
@@ -369,15 +382,19 @@ export async function closeTreasuryDay(
   connection: sql.Transaction,
   input: CloseDayInput,
 ): Promise<CloseDayResult> {
-  const { newDay, shiftMoveId, reconciliations, closedByUserId } = input;
+  const { newDay, branchId, shiftMoveId, reconciliations, closedByUserId } = input;
 
-  // Resolve the business day ID from its date
+  // Resolve the business day ID from its date within the active branch
   const dayLookup = await new sql.Request(connection)
     .input('newDay', sql.Date, newDay)
-    .query(`SELECT TOP 1 ID FROM dbo.TblNewDay WHERE NewDay = @newDay`);
+    .input('branchId', sql.Int, branchId)
+    .query(`
+      SELECT TOP 1 ID FROM dbo.TblNewDay
+      WHERE NewDay = @newDay AND BranchID = @branchId
+    `);
   const dayId = dayLookup.recordset[0]?.ID;
   if (!dayId) {
-    throw new Error('لا يوجد يوم عمل مطابق للتاريخ المحدد');
+    throw new Error('لا يوجد يوم عمل مطابق للتاريخ المحدد في الفرع النشط');
   }
 
   // Idempotency guard: prevent duplicate reconciliation rows for the same day
@@ -389,10 +406,15 @@ export async function closeTreasuryDay(
     throw new Error('تم تقفيل هذا اليوم مسبقاً — لا يمكن إنشاء تسويات جديدة');
   }
 
-  // Update TblNewDay status
+  // Update TblNewDay status for this branch day only
   await new sql.Request(connection)
     .input('id', sql.Int, dayId)
-    .query(`UPDATE dbo.TblNewDay SET Status = 0 WHERE ID = @id`);
+    .input('branchId', sql.Int, branchId)
+    .query(`
+      UPDATE dbo.TblNewDay
+      SET Status = 0
+      WHERE ID = @id AND BranchID = @branchId
+    `);
 
   const reconciliationIds: number[] = [];
   const variances: CloseDayReconRow[] = [];

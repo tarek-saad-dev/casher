@@ -107,33 +107,21 @@ export async function POST(req: NextRequest) {
     const db = await getPool();
     console.log(`[deductions] ──── SAVE DEDUCTION START ──── UserID=${userID}, EmployeeID=${body.employeeId}`);
 
-    // ──── Enforce active business day ────
-    const dayResult = await db.request().query(`
-      SELECT TOP 1 ID, NewDay FROM [dbo].[TblNewDay] WHERE Status = 1 ORDER BY ID DESC
-    `);
-    if (dayResult.recordset.length === 0) {
-      console.error(`[deductions]   ❌ REJECTED: no active business day`);
-      return NextResponse.json({ error: 'لا يوجد يوم عمل مفتوح — لا يمكن تسجيل خصم' }, { status: 400 });
-    }
-    const activeDay = dayResult.recordset[0];
-    const invDate = activeDay.NewDay;
-    console.log(`[deductions]   Active Day: ID=${activeDay.ID}, NewDay=${invDate}`);
-
-    // ──── Enforce active shift for THIS user ────
-    const shiftResult = await db.request()
-      .input('shiftUserID', sql.Int, userID)
-      .query(`
-        SELECT TOP 1 ID, UserID, ShiftID FROM [dbo].[TblShiftMove]
-        WHERE Status = 1 AND UserID = @shiftUserID
-        ORDER BY ID DESC
-      `);
-    if (shiftResult.recordset.length === 0) {
+    // ──── Enforce active branch business day + user shift (Phase 1C) ────
+    const { resolveBranchDayAndShiftForWrite } = await import(
+      '@/lib/branch/operationalGates'
+    );
+    const gated = await resolveBranchDayAndShiftForWrite(userID);
+    if (!gated.ok) return gated.response;
+    if (!gated.shift) {
       console.error(`[deductions]   ❌ REJECTED: no active shift for UserID=${userID}`);
       return NextResponse.json({ error: 'لا يوجد وردية مفتوحة لهذا المستخدم — لا يمكن تسجيل خصم' }, { status: 400 });
     }
-    const activeShift = shiftResult.recordset[0];
-    const shiftMoveID = activeShift.ID;
-    console.log(`[deductions]   Active Shift: ID=${shiftMoveID}, UserID=${activeShift.UserID}`);
+    const activeDay = { ID: gated.day.id, NewDay: gated.day.newDay };
+    const invDate = gated.day.newDay;
+    const shiftMoveID = gated.shift.id;
+    console.log(`[deductions]   Active Day: ID=${activeDay.ID}, NewDay=${invDate}, Branch=${gated.branch.branchCode}`);
+    console.log(`[deductions]   Active Shift: ID=${shiftMoveID}, UserID=${gated.shift.userId}`);
 
     // ──── Get employee info and advance category ────
     const empResult = await db.request()

@@ -1,0 +1,109 @@
+{
+  "capturedAt": "2026-07-22T01:44:53.307Z",
+  "openDays": [
+    {
+      "ID": 4453,
+      "NewDay": "2026-07-21T00:00:00.000Z",
+      "Status": true
+    }
+  ],
+  "openShifts": [
+    {
+      "ID": 10806,
+      "UserID": 15,
+      "ShiftID": 1,
+      "NewDay": "2026-07-21T00:00:00.000Z",
+      "StartDate": "2026-07-21T00:00:00.000Z",
+      "StartTime": "01:52 PM  ",
+      "EndDate": null,
+      "EndTime": null,
+      "Status": true
+    },
+    {
+      "ID": 10807,
+      "UserID": 13,
+      "ShiftID": 2,
+      "NewDay": "2026-07-21T00:00:00.000Z",
+      "StartDate": "2026-07-21T00:00:00.000Z",
+      "StartTime": "04:43 PM  ",
+      "EndDate": null,
+      "EndTime": null,
+      "Status": true
+    },
+    {
+      "ID": 10808,
+      "UserID": 16,
+      "ShiftID": 1,
+      "NewDay": "2026-07-21T00:00:00.000Z",
+      "StartDate": "2026-07-21T00:00:00.000Z",
+      "StartTime": "08:21 PM  ",
+      "EndDate": null,
+      "EndTime": null,
+      "Status": true
+    }
+  ],
+  "openDayDetail": [
+    {
+      "ID": 4453,
+      "NewDay": "2026-07-21",
+      "Status": 1
+    }
+  ],
+  "openShiftDetail": [
+    {
+      "ID": 10806,
+      "UserID": 15,
+      "ShiftID": 1,
+      "NewDay": "2026-07-21",
+      "StartDate": "2026-07-21",
+      "StartTime": "01:52 PM",
+      "EndDate": null,
+      "EndTime": null,
+      "Status": 1
+    },
+    {
+      "ID": 10807,
+      "UserID": 13,
+      "ShiftID": 2,
+      "NewDay": "2026-07-21",
+      "StartDate": "2026-07-21",
+      "StartTime": "04:43 PM",
+      "EndDate": null,
+      "EndTime": null,
+      "Status": 1
+    },
+    {
+      "ID": 10808,
+      "UserID": 16,
+      "ShiftID": 1,
+      "NewDay": "2026-07-21",
+      "StartDate": "2026-07-21",
+      "StartTime": "08:21 PM",
+      "EndDate": null,
+      "EndTime": null,
+      "Status": 1
+    }
+  ],
+  "counts": {
+    "NewDayCount": 358,
+    "ShiftMoveCount": 804,
+    "InvoiceHeadCount": 7749,
+    "CashMoveCount": 11712,
+    "ServPaymentCount": 2254,
+    "TreasuryReconCount": 0,
+    "NewDayChecksum": 1839473,
+    "ShiftMoveChecksum": -1717166643,
+    "OpenShiftChecksum": -1179226118,
+    "OpenDayChecksum": 1715681,
+    "InvoiceChecksum": -1130242918,
+    "CashMoveChecksum": -448039934,
+    "ServPaymentChecksum": 364448737,
+    "ReconChecksum": null
+  },
+  "treasuryReconMatchesDayId": {
+    "recon_rows": 0,
+    "match_as_id": null
+  },
+  "target": "cloud",
+  "database": "last132"
+}

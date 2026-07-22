@@ -45,6 +45,11 @@ export async function POST(request: NextRequest) {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
 
+    const { requireBranchOperatorContext } = await import('@/lib/branch/operationalGates');
+    const { isActiveBranchContext } = await import('@/lib/branch/context');
+    const branch = await requireBranchOperatorContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     db = await getPool();
     const body: ReconciliationRequest & { reason?: string } = await request.json();
     const { newDay, shiftMoveId, reconciliations, reason } = body;
@@ -55,12 +60,15 @@ export async function POST(request: NextRequest) {
 
     const dayResult = await db.request()
       .input('newDay', sql.Date, newDay)
+      .input('branchId', sql.Int, branch.branchId)
       .query(`
-        SELECT TOP 1 ID, NewDay, Status FROM dbo.TblNewDay WHERE NewDay = @newDay
+        SELECT TOP 1 ID, NewDay, Status, BranchID
+        FROM dbo.TblNewDay
+        WHERE NewDay = @newDay AND BranchID = @branchId
       `);
     const dayRow = dayResult.recordset[0];
     if (!dayRow) {
-      return NextResponse.json({ error: 'اليوم المطلوب غير موجود' }, { status: 404 });
+      return NextResponse.json({ error: 'اليوم المطلوب غير موجود في الفرع النشط' }, { status: 404 });
     }
 
     const auditResult = await executeAuditedAction({
@@ -87,6 +95,7 @@ export async function POST(request: NextRequest) {
       },
       execute: async (transaction) => closeTreasuryDay(transaction, {
         newDay,
+        branchId: branch.branchId,
         shiftMoveId,
         reconciliations,
         closedByUserId: session.UserID,
