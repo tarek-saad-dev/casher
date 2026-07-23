@@ -1,5 +1,7 @@
 import { getAvailableBarbers } from '@/lib/barberAvailability';
 import { computeBarberEstimate } from '@/lib/queueEstimateEngine';
+import { listBookableEmployeeIdsForBranch } from '@/lib/branch/bookingQueueOwnership';
+import { getCairoBusinessDate } from '@/lib/businessDate';
 
 export interface NearestBarberEstimate {
   empId: number;
@@ -44,9 +46,17 @@ function toNearestShape(
 export async function findNearestBarberForServices(
   serviceIds: number[],
   requestedAt?: string,
+  /** Branch scoping: restricts candidates to branch-eligible employees. */
+  branchId?: number | null,
 ): Promise<FindNearestBarberResult> {
   const now = requestedAt ? new Date(requestedAt) : new Date();
-  const allBarbers = await getAvailableBarbers(now);
+  let allBarbers = await getAvailableBarbers(now);
+
+  if (branchId != null) {
+    const operationalDate = getCairoBusinessDate(now);
+    const eligibleIds = new Set(await listBookableEmployeeIdsForBranch(branchId, operationalDate));
+    allBarbers = allBarbers.filter((b) => eligibleIds.has(b.EmpID));
+  }
 
   if (allBarbers.length === 0) {
     return {

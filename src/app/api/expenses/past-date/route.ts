@@ -78,6 +78,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ──── Enforce active branch + matching business day for this date (Phase 1D) ────
+    // Never trust browser branchId — ownership comes only from validated session context.
+    // Does NOT attach to the open day and does NOT auto-create a day for this date.
+    const { requireBranchOperationAccess } = await import('@/lib/branch/context');
+    const { resolveBranchDayForDate } = await import('@/lib/branch/operationalGates');
+    const branch = await requireBranchOperationAccess();
+    if (branch instanceof NextResponse) return branch;
+    const dayResolution = await resolveBranchDayForDate(branch.branchId, invDate);
+    if (!dayResolution.ok) {
+      log('rejected', { reason: 'no business day for date', invDate, branchId: branch.branchId });
+      return dayResolution.response;
+    }
+    const branchId = branch.branchId;
+    const businessDayId = dayResolution.day.id;
+
     const db = await getPool();
     log('db-connected');
 
@@ -172,16 +187,18 @@ export async function POST(req: NextRequest) {
         .input("inOut", sql.NVarChar(10), "out")
         .input("notes", sql.NVarChar(sql.MAX), notesText)
         .input("shiftMoveID", sql.Int, null)
-        .input("paymentMethodID", sql.Int, paymentMethodId);
+        .input("paymentMethodID", sql.Int, paymentMethodId)
+        .input("branchID", sql.Int, branchId)
+        .input("businessDayID", sql.Int, businessDayId);
 
       const insertResult = await cashReq.query(`
         INSERT INTO [dbo].[TblCashMove]
-          (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID)
+          (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID)
         OUTPUT
           INSERTED.ID, INSERTED.invID, INSERTED.invDate, INSERTED.invTime,
           INSERTED.ExpINID, INSERTED.GrandTolal AS Amount, INSERTED.Notes
         VALUES
-          (@invID, @invType, @invDate, @invTime, @ClientID, @expINID, @amount, @inOut, @notes, @shiftMoveID, @paymentMethodID)
+          (@invID, @invType, @invDate, @invTime, @ClientID, @expINID, @amount, @inOut, @notes, @shiftMoveID, @paymentMethodID, @branchID, @businessDayID)
       `);
       log('after-cash-move-insert');
 

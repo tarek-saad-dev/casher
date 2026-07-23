@@ -1,16 +1,23 @@
 import { NextResponse } from 'next/server';
-import { getPool } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
+import { isActiveBranchContext, requireActiveBranchContext } from '@/lib/branch';
 
 /**
  * GET /api/treasury/balance
  * Returns the total cumulative balance in the treasury per payment method
- * = SUM of all-time inflows - SUM of all-time outflows (no date filter)
+ * = SUM of all-time inflows - SUM of all-time outflows (no date filter), scoped to the active branch
  */
 export async function GET() {
   try {
+    // PHASE1D: never trust browser branchId — always filter by the session's active branch
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const db = await getPool();
 
-    const result = await db.request().query(`
+    const result = await db.request()
+      .input('branchId', sql.Int, branch.branchId)
+      .query(`
       SELECT
         pm.PaymentMethod,
         SUM(CASE WHEN cm.inOut = N'in'  THEN cm.GrandTolal ELSE 0 END) AS TotalIn,
@@ -19,6 +26,7 @@ export async function GET() {
         SUM(CASE WHEN cm.inOut = N'out' THEN cm.GrandTolal ELSE 0 END) AS Balance
       FROM [dbo].[TblCashMove] cm
       INNER JOIN [dbo].[TblPaymentMethods] pm ON cm.PaymentMethodID = pm.PaymentID
+      WHERE cm.BranchID = @branchId
       GROUP BY pm.PaymentID, pm.PaymentMethod
       ORDER BY Balance DESC
     `);

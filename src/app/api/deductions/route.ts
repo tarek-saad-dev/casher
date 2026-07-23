@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql, allocateInvID } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { isActiveBranchContext, requireActiveBranchContext } from '@/lib/branch';
 import {
   EmployeeLedgerDualWriteError,
   formatLedgerEntryDate,
@@ -11,6 +12,10 @@ import { scheduleEmployeeAdvanceWhatsApp } from '@/lib/services/employeeAdvanceW
 // GET /api/deductions — List employee deductions with optional filters
 export async function GET(req: NextRequest) {
   try {
+    // PHASE1D: never trust browser branchId — always filter by the session's active branch
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const db = await getPool();
     const url = new URL(req.url);
     const dateFrom = url.searchParams.get('dateFrom');
@@ -19,12 +24,13 @@ export async function GET(req: NextRequest) {
     const today = url.searchParams.get('today'); // "1" = today only
     const paymentMethodId = url.searchParams.get('paymentMethodId');
 
-    let whereClause = "WHERE cm.invType = N'مصروفات' AND cm.inOut = N'out' AND cat.CatName LIKE N'%سلف%'";
+    let whereClause = "WHERE cm.invType = N'مصروفات' AND cm.inOut = N'out' AND cat.CatName LIKE N'%سلف%' AND cm.BranchID = @branchId";
     const request = db.request();
+    request.input('branchId', sql.Int, branch.branchId);
 
     if (today === '1') {
-      // Use the current open business day date
-      whereClause += ` AND cm.invDate = (SELECT TOP 1 NewDay FROM [dbo].[TblNewDay] WHERE Status = 1 ORDER BY ID DESC)`;
+      // Use the current open business day date for the active branch
+      whereClause += ` AND cm.invDate = (SELECT TOP 1 NewDay FROM [dbo].[TblNewDay] WHERE Status = 1 AND BranchID = @branchId ORDER BY ID DESC)`;
     } else {
       if (dateFrom) {
         whereClause += ' AND cm.invDate >= @dateFrom';
@@ -204,17 +210,19 @@ export async function POST(req: NextRequest) {
         .input('inOut',           sql.NVarChar(5),      N('out'))
         .input('Notes',           sql.NVarChar(sql.MAX), notesText)
         .input('ShiftMoveID',     sql.Int,              shiftMoveID)
-        .input('PaymentMethodID', sql.Int,              body.paymentMethodId);
+        .input('PaymentMethodID', sql.Int,              body.paymentMethodId)
+        .input('BranchID',        sql.Int,              gated.branch.branchId)
+        .input('BusinessDayID',   sql.Int,              gated.day.id);
 
       const deductionResult = await deductionReq.query(`
         INSERT INTO [dbo].[TblCashMove] (
           invID, invType, invDate, invTime, ClientID,
-          ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID
+          ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID
         )
         OUTPUT INSERTED.ID
         VALUES (
           @invID, @invType, @invDate, @invTime, @ClientID,
-          @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID
+          @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID, @BranchID, @BusinessDayID
         )
       `);
       const deductionCashMoveId = deductionResult.recordset[0].ID as number;
@@ -244,15 +252,17 @@ export async function POST(req: NextRequest) {
         .input('inOut',           sql.NVarChar(5),      N('in'))
         .input('Notes',           sql.NVarChar(sql.MAX), `معادلة خصم ${employee.EmpName}`)
         .input('ShiftMoveID',     sql.Int,              shiftMoveID)
-        .input('PaymentMethodID', sql.Int,              body.paymentMethodId);
+        .input('PaymentMethodID', sql.Int,              body.paymentMethodId)
+        .input('BranchID',        sql.Int,              gated.branch.branchId)
+        .input('BusinessDayID',   sql.Int,              gated.day.id);
 
       await incomeReq.query(`
         INSERT INTO [dbo].[TblCashMove] (
           invID, invType, invDate, invTime, ClientID,
-          ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID
+          ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID
         ) VALUES (
           @invID, @invType, @invDate, @invTime, @ClientID,
-          @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID
+          @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID, @BranchID, @BusinessDayID
         )
       `);
       console.log(`[deductions]   ✅ Settlement income inserted: invID=${incomeInvID}, Amount=${amount}`);

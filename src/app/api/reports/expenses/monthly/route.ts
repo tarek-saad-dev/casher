@@ -12,10 +12,25 @@ import {
   mergeExpenseOnlyClassification,
 } from '@/lib/accounting/financialReportClassificationService';
 import { buildCashMoveReportClassification } from '@/lib/accounting/financialReportClassification';
+import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
+import {
+  isReportBranchScope,
+  parseReportScopeQuery,
+  reportScopeMetadata,
+  resolveReportBranchScope,
+} from '@/lib/branch';
+
+const PAGE = '/reports/expenses/monthly';
 
 // GET /api/reports/expenses/monthly — Monthly expenses report with full breakdown
+// Phase 1E: branch-scoped. `branchId`/`scope=all` are hidden query params — no
+// branch switcher UI is exposed. Default = caller's active branch. When
+// scope=all, per-branch totals are summed into the same response shape.
 export async function GET(req: NextRequest) {
   try {
+    const auth = await requirePageAccess(PAGE);
+    if (!isAuthResult(auth)) return auth;
+
     const url = new URL(req.url);
     const yearParam = url.searchParams.get('year');
     const monthParam = url.searchParams.get('month');
@@ -33,16 +48,39 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'شهر غير صالح' }, { status: 400 });
     }
 
+    const { requestedBranchId, requestedAllBranches } = parseReportScopeQuery(url.searchParams);
+    const scope = await resolveReportBranchScope({
+      requestedBranchId,
+      requestedAllBranches,
+      allowAllBranchesIfPermitted: true,
+    });
+    if (!isReportBranchScope(scope)) return scope;
+
+    // "all" mode: union branchIds with an IN() filter — category/daily/transaction
+    // breakdowns remain meaningful when summed across branches.
+    const branchIds = scope.mode === 'single' ? [scope.branchId] : scope.branchIds;
+
     const db = await getPool();
 
     // Calculate days in month
     const daysInMonth = new Date(year, month, 0).getDate();
 
+    function branchRequest(alias = '') {
+      const request = db.request()
+        .input('year', sql.Int, year)
+        .input('month', sql.Int, month);
+      const placeholders = branchIds.map((id, i) => {
+        const name = `branchId${i}`;
+        request.input(name, sql.Int, id);
+        return `@${name}`;
+      });
+      const prefix = alias ? `${alias}.` : '';
+      return { request, branchFilter: `${prefix}BranchID IN (${placeholders.join(',')})` };
+    }
+
     // ═══════ 1. Summary Calculations ═══════
-    const summaryResult = await db.request()
-      .input('year', sql.Int, year)
-      .input('month', sql.Int, month)
-      .query(`
+    const summaryQ = branchRequest();
+    const summaryResult = await summaryQ.request.query(`
         SELECT 
           ISNULL(SUM(GrandTolal), 0) AS TotalExpenses,
           COUNT(*) AS TransactionCount,
@@ -52,6 +90,7 @@ export async function GET(req: NextRequest) {
           AND inOut = N'out'
           AND YEAR(invDate) = @year
           AND MONTH(invDate) = @month
+          AND ${summaryQ.branchFilter}
       `);
 
     const summaryData = summaryResult.recordset[0];
@@ -62,10 +101,8 @@ export async function GET(req: NextRequest) {
 
     // ═══════ 1.1. Uncategorized Expenses Count ═══════
     // Flag specific categories that need proper categorization
-    const uncategorizedResult = await db.request()
-      .input('year', sql.Int, year)
-      .input('month', sql.Int, month)
-      .query(`
+    const uncategorizedQ = branchRequest('cm');
+    const uncategorizedResult = await uncategorizedQ.request.query(`
         SELECT 
           COUNT(*) AS UncategorizedCount,
           ISNULL(SUM(GrandTolal), 0) AS UncategorizedAmount
@@ -75,6 +112,7 @@ export async function GET(req: NextRequest) {
           AND cm.inOut = N'out'
           AND YEAR(cm.invDate) = @year
           AND MONTH(cm.invDate) = @month
+          AND ${uncategorizedQ.branchFilter}
           AND (
             cat.CatName = N'تحويلات'
             OR cat.CatName = N'سلف'
@@ -87,10 +125,8 @@ export async function GET(req: NextRequest) {
     const uncategorizedAmount = uncategorizedResult.recordset[0].UncategorizedAmount;
 
     // ═══════ 2. Top Category ═══════
-    const topCategoryResult = await db.request()
-      .input('year', sql.Int, year)
-      .input('month', sql.Int, month)
-      .query(`
+    const topCategoryQ = branchRequest('cm');
+    const topCategoryResult = await topCategoryQ.request.query(`
         SELECT TOP 1
           cm.ExpINID,
           ISNULL(cat.CatName, N'غير مصنف') AS CatName,
@@ -102,6 +138,7 @@ export async function GET(req: NextRequest) {
           AND cm.inOut = N'out'
           AND YEAR(cm.invDate) = @year
           AND MONTH(cm.invDate) = @month
+          AND ${topCategoryQ.branchFilter}
         GROUP BY cm.ExpINID, cat.CatName
         ORDER BY SUM(cm.GrandTolal) DESC
       `);
@@ -116,10 +153,8 @@ export async function GET(req: NextRequest) {
       : null;
 
     // ═══════ 3. Highest Spend Day ═══════
-    const highestDayResult = await db.request()
-      .input('year', sql.Int, year)
-      .input('month', sql.Int, month)
-      .query(`
+    const highestDayQ = branchRequest();
+    const highestDayResult = await highestDayQ.request.query(`
         SELECT TOP 1
           invDate,
           SUM(GrandTolal) AS Amount,
@@ -129,6 +164,7 @@ export async function GET(req: NextRequest) {
           AND inOut = N'out'
           AND YEAR(invDate) = @year
           AND MONTH(invDate) = @month
+          AND ${highestDayQ.branchFilter}
         GROUP BY invDate
         ORDER BY SUM(GrandTolal) DESC
       `);
@@ -142,10 +178,8 @@ export async function GET(req: NextRequest) {
       : null;
 
     // ═══════ 4. Top Payment Method ═══════
-    const topPaymentResult = await db.request()
-      .input('year', sql.Int, year)
-      .input('month', sql.Int, month)
-      .query(`
+    const topPaymentQ = branchRequest('cm');
+    const topPaymentResult = await topPaymentQ.request.query(`
         SELECT TOP 1
           cm.PaymentMethodID,
           ISNULL(pm.PaymentMethod, N'غير محدد') AS PaymentMethod,
@@ -157,6 +191,7 @@ export async function GET(req: NextRequest) {
           AND cm.inOut = N'out'
           AND YEAR(cm.invDate) = @year
           AND MONTH(cm.invDate) = @month
+          AND ${topPaymentQ.branchFilter}
         GROUP BY cm.PaymentMethodID, pm.PaymentMethod
         ORDER BY SUM(cm.GrandTolal) DESC
       `);
@@ -171,10 +206,8 @@ export async function GET(req: NextRequest) {
       : null;
 
     // ═══════ 5. Category Breakdown ═══════
-    const categoryResult = await db.request()
-      .input('year', sql.Int, year)
-      .input('month', sql.Int, month)
-      .query(`
+    const categoryQ = branchRequest('cm');
+    const categoryResult = await categoryQ.request.query(`
         SELECT 
           cm.ExpINID,
           ISNULL(cat.CatName, N'غير مصنف') AS CatName,
@@ -187,6 +220,7 @@ export async function GET(req: NextRequest) {
           AND cm.inOut = N'out'
           AND YEAR(cm.invDate) = @year
           AND MONTH(cm.invDate) = @month
+          AND ${categoryQ.branchFilter}
         GROUP BY cm.ExpINID, cat.CatName
         ORDER BY SUM(cm.GrandTolal) DESC
       `);
@@ -201,10 +235,8 @@ export async function GET(req: NextRequest) {
     }));
 
     // ═══════ 6. Daily Trend ═══════
-    const dailyResult = await db.request()
-      .input('year', sql.Int, year)
-      .input('month', sql.Int, month)
-      .query(`
+    const dailyQ = branchRequest();
+    const dailyResult = await dailyQ.request.query(`
         SELECT 
           invDate,
           SUM(GrandTolal) AS Amount,
@@ -214,6 +246,7 @@ export async function GET(req: NextRequest) {
           AND inOut = N'out'
           AND YEAR(invDate) = @year
           AND MONTH(invDate) = @month
+          AND ${dailyQ.branchFilter}
         GROUP BY invDate
         ORDER BY invDate ASC
       `);
@@ -238,10 +271,8 @@ export async function GET(req: NextRequest) {
     }
 
     // ═══════ 7. Detailed Transactions ═══════
-    const transactionsResult = await db.request()
-      .input('year', sql.Int, year)
-      .input('month', sql.Int, month)
-      .query(`
+    const transactionsQ = branchRequest('cm');
+    const transactionsResult = await transactionsQ.request.query(`
         SELECT 
           cm.ID,
           cm.invID,
@@ -275,6 +306,7 @@ export async function GET(req: NextRequest) {
           AND cm.inOut = N'out'
           AND YEAR(cm.invDate) = @year
           AND MONTH(cm.invDate) = @month
+          AND ${transactionsQ.branchFilter}
         ORDER BY cm.invDate DESC, cm.invTime DESC
       `);
 
@@ -353,7 +385,7 @@ export async function GET(req: NextRequest) {
     };
 
     if (!classificationEnabled) {
-      return NextResponse.json(report);
+      return NextResponse.json({ ...report, scope: reportScopeMetadata(scope) });
     }
 
     const classification = mergeExpenseOnlyClassification(
@@ -370,6 +402,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       ...report,
+      scope: reportScopeMetadata(scope),
       ...classification,
     });
   } catch (err: unknown) {

@@ -62,14 +62,25 @@ function formatWorkDateLabelAr(workDate: string): string {
   return `${dayName} · ${pretty}`;
 }
 
-export async function resolveDefaultBusinessDate(): Promise<string> {
+/**
+ * Default business date for a branch: prefers that branch's open business day
+ * (TblNewDay.Status = 1) when branchId is provided, otherwise falls back to any
+ * open day (legacy behavior) and finally today's Cairo date.
+ */
+export async function resolveDefaultBusinessDate(branchId?: number): Promise<string> {
   const db = await getPool();
   try {
-    const dayResult = await db.request().query(`
+    const request = db.request();
+    let query = `
       SELECT TOP 1 NewDay FROM dbo.TblNewDay
       WHERE Status = 1
-      ORDER BY ID DESC
-    `);
+    `;
+    if (branchId != null) {
+      request.input('branchId', sql.Int, branchId);
+      query += ` AND BranchID = @branchId`;
+    }
+    query += ` ORDER BY ID DESC`;
+    const dayResult = await request.query(query);
     if (dayResult.recordset[0]?.NewDay) {
       return normalizeSqlDate(dayResult.recordset[0].NewDay);
     }
@@ -79,9 +90,18 @@ export async function resolveDefaultBusinessDate(): Promise<string> {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
 }
 
-export async function getFullDayReport(workDate: string): Promise<FullDayReport> {
+// Phase 1E: branch-scoped report — every financial query below is filtered by BranchID.
+// BusinessDayID is never required for inclusion (legacy rows can have a NULL BusinessDayID);
+// rows are matched via BranchID + invDate instead.
+export async function getFullDayReport(
+  workDate: string,
+  branchId: number,
+): Promise<FullDayReport> {
   if (!DATE_RE.test(workDate)) {
     throw new Error('workDate يجب أن يكون بصيغة YYYY-MM-DD');
+  }
+  if (!Number.isInteger(branchId) || branchId <= 0) {
+    throw new Error('branchId مطلوب وصحيح');
   }
 
   const db = await getPool();
@@ -90,7 +110,7 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
     queryOrEmpty<{ invoiceCount: number; totalSales: number; customerCount: number }>(
       'sales',
       () =>
-        db.request().input('d', sql.Date, workDate).query(`
+        db.request().input('d', sql.Date, workDate).input('branchId', sql.Int, branchId).query(`
           SELECT
             COUNT(*) AS invoiceCount,
             ISNULL(SUM(h.GrandTotal), 0) AS totalSales,
@@ -99,6 +119,7 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
           WHERE CAST(h.invDate AS DATE) = @d
             AND h.invType = N'مبيعات'
             AND ISNULL(h.isActive, N'no') = N'no'
+            AND h.BranchID = @branchId
         `),
     ),
 
@@ -109,7 +130,7 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
       PaymentMethod: string | null;
       Notes: string | null;
     }>('incomes', () =>
-      db.request().input('d', sql.Date, workDate).query(`
+      db.request().input('d', sql.Date, workDate).input('branchId', sql.Int, branchId).query(`
         SELECT TOP 40
           cm.ID,
           ISNULL(cm.GrandTolal, 0) AS Amount,
@@ -121,6 +142,7 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
         LEFT JOIN dbo.TblPaymentMethods pm ON pm.PaymentID = cm.PaymentMethodID
         WHERE CAST(cm.invDate AS DATE) = @d
           AND cm.invType = N'ايرادات'
+          AND cm.BranchID = @branchId
         ORDER BY cm.ID DESC
       `),
     ),
@@ -132,7 +154,7 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
       PaymentMethod: string | null;
       Notes: string | null;
     }>('expenses', () =>
-      db.request().input('d', sql.Date, workDate).query(`
+      db.request().input('d', sql.Date, workDate).input('branchId', sql.Int, branchId).query(`
         SELECT TOP 40
           cm.ID,
           ISNULL(cm.GrandTolal, 0) AS Amount,
@@ -145,6 +167,7 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
         WHERE CAST(cm.invDate AS DATE) = @d
           AND cm.invType = N'مصروفات'
           AND cm.inOut = N'out'
+          AND cm.BranchID = @branchId
           AND NOT EXISTS (
             SELECT 1
             FROM dbo.TblExpCatEmpMap m
@@ -219,11 +242,12 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
   let incomesTotalFull = roundMoney(incomeLines.reduce((s, l) => s + l.amount, 0));
   let incomesCount = incomeLines.length;
   try {
-    const sumRes = await db.request().input('d', sql.Date, workDate).query(`
+    const sumRes = await db.request().input('d', sql.Date, workDate).input('branchId', sql.Int, branchId).query(`
       SELECT ISNULL(SUM(GrandTolal), 0) AS Total, COUNT(*) AS Cnt
       FROM dbo.TblCashMove
       WHERE CAST(invDate AS DATE) = @d
         AND invType = N'ايرادات'
+        AND BranchID = @branchId
     `);
     incomesTotalFull = roundMoney(Number(sumRes.recordset[0]?.Total ?? incomesTotalFull));
     incomesCount = Number(sumRes.recordset[0]?.Cnt ?? incomesCount);
@@ -240,12 +264,13 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
   let expensesTotal = roundMoney(expenseLines.reduce((s, l) => s + l.amount, 0));
   let expensesCount = expenseLines.length;
   try {
-    const sumRes = await db.request().input('d', sql.Date, workDate).query(`
+    const sumRes = await db.request().input('d', sql.Date, workDate).input('branchId', sql.Int, branchId).query(`
       SELECT ISNULL(SUM(cm.GrandTolal), 0) AS Total, COUNT(*) AS Cnt
       FROM dbo.TblCashMove cm
       WHERE CAST(cm.invDate AS DATE) = @d
         AND cm.invType = N'مصروفات'
         AND cm.inOut = N'out'
+        AND cm.BranchID = @branchId
         AND NOT EXISTS (
           SELECT 1
           FROM dbo.TblExpCatEmpMap m
@@ -352,7 +377,7 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
       Total: number;
       Cnt: number;
     }>('expenses-by-category', () =>
-      db.request().input('d', sql.Date, workDate).query(`
+      db.request().input('d', sql.Date, workDate).input('branchId', sql.Int, branchId).query(`
         SELECT
           ISNULL(cat.CatName, N'بدون تصنيف') AS CatName,
           ISNULL(SUM(cm.GrandTolal), 0) AS Total,
@@ -362,6 +387,7 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
         WHERE CAST(cm.invDate AS DATE) = @d
           AND cm.invType = N'مصروفات'
           AND cm.inOut = N'out'
+          AND cm.BranchID = @branchId
           AND NOT EXISTS (
             SELECT 1
             FROM dbo.TblExpCatEmpMap m
@@ -380,7 +406,7 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
       Total: number;
       Cnt: number;
     }>('advances-by-employee', () =>
-      db.request().input('d', sql.Date, workDate).query(`
+      db.request().input('d', sql.Date, workDate).input('branchId', sql.Int, branchId).query(`
         SELECT
           mapped.EmpID,
           e.EmpName,
@@ -399,6 +425,7 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
         WHERE CAST(cm.invDate AS DATE) = @d
           AND cm.invType = N'مصروفات'
           AND cm.inOut = N'out'
+          AND cm.BranchID = @branchId
         GROUP BY mapped.EmpID, e.EmpName
         ORDER BY SUM(cm.GrandTolal) DESC
       `),
@@ -409,7 +436,7 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
     queryOrEmpty<{ method: string; Total: number; Cnt: number }>(
       'sales-by-payment',
       () =>
-        db.request().input('d', sql.Date, workDate).input('clearing', sql.NVarChar(60), SPLIT_CLEARING_METHOD).query(`
+        db.request().input('d', sql.Date, workDate).input('branchId', sql.Int, branchId).input('clearing', sql.NVarChar(60), SPLIT_CLEARING_METHOD).query(`
           WITH DayInvoices AS (
             SELECT h.invID, h.invType, h.PaymentMethodID,
                    COALESCE(NULLIF(h.Payment, 0), h.GrandTotal, 0) AS PayValue
@@ -417,6 +444,7 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
             WHERE CAST(h.invDate AS DATE) = @d
               AND h.invType = N'مبيعات'
               AND ISNULL(h.isActive, N'no') = N'no'
+              AND h.BranchID = @branchId
           ),
           PayRows AS (
             SELECT p.PaymentMethodID, ISNULL(p.PayValue, 0) AS PayValue
@@ -453,7 +481,7 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
     queryOrEmpty<{ method: string; Total: number; Cnt: number }>(
       'incomes-by-payment',
       () =>
-        db.request().input('d', sql.Date, workDate).input('clearing', sql.NVarChar(60), SPLIT_CLEARING_METHOD).query(`
+        db.request().input('d', sql.Date, workDate).input('branchId', sql.Int, branchId).input('clearing', sql.NVarChar(60), SPLIT_CLEARING_METHOD).query(`
           SELECT
             ISNULL(pm.PaymentMethod, N'غير محدد') AS method,
             COUNT(*) AS Cnt,
@@ -462,6 +490,7 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
           LEFT JOIN dbo.TblPaymentMethods pm ON pm.PaymentID = cm.PaymentMethodID
           WHERE CAST(cm.invDate AS DATE) = @d
             AND cm.invType = N'ايرادات'
+            AND cm.BranchID = @branchId
             AND ISNULL(pm.PaymentMethod, N'') <> @clearing
           GROUP BY pm.PaymentMethod
         `),
@@ -565,6 +594,7 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
         .request()
         .input('from', sql.Date, monthStart)
         .input('to', sql.Date, workDate)
+        .input('branchId', sql.Int, branchId)
         .query(query),
     );
     return roundMoney(Number(rows[0]?.Total ?? 0));
@@ -584,14 +614,16 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
        FROM dbo.TblinvServHead h
        WHERE CAST(h.invDate AS DATE) BETWEEN @from AND @to
          AND h.invType = N'مبيعات'
-         AND ISNULL(h.isActive, N'no') = N'no'`,
+         AND ISNULL(h.isActive, N'no') = N'no'
+         AND h.BranchID = @branchId`,
     ),
     sumOne(
       'mtd-incomes',
       `SELECT ISNULL(SUM(GrandTolal), 0) AS Total
        FROM dbo.TblCashMove
        WHERE CAST(invDate AS DATE) BETWEEN @from AND @to
-         AND invType = N'ايرادات'`,
+         AND invType = N'ايرادات'
+         AND BranchID = @branchId`,
     ),
     sumOne(
       'mtd-expenses',
@@ -600,6 +632,7 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
        WHERE CAST(cm.invDate AS DATE) BETWEEN @from AND @to
          AND cm.invType = N'مصروفات'
          AND cm.inOut = N'out'
+         AND cm.BranchID = @branchId
          AND NOT EXISTS (
            SELECT 1 FROM dbo.TblExpCatEmpMap m
            WHERE m.ExpINID = cm.ExpINID AND m.IsActive = 1 AND m.TxnKind = N'advance'
@@ -612,6 +645,7 @@ export async function getFullDayReport(workDate: string): Promise<FullDayReport>
        WHERE CAST(cm.invDate AS DATE) BETWEEN @from AND @to
          AND cm.invType = N'مصروفات'
          AND cm.inOut = N'out'
+         AND cm.BranchID = @branchId
          AND EXISTS (
            SELECT 1 FROM dbo.TblExpCatEmpMap m
            WHERE m.ExpINID = cm.ExpINID AND m.IsActive = 1 AND m.TxnKind = N'advance'

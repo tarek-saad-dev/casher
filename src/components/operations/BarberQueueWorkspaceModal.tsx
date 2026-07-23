@@ -192,8 +192,9 @@ export function BarberQueueWorkspaceModal({
     const svc = services.find((s) => s.ProID === proId);
     if (!svc) return;
     setSelectedServices((prev) => {
-      const addonIds = prev.filter((s) => !isMainService(s.ProName)).map((s) => s.ProID);
-      const addons = services.filter((s) => addonIds.includes(s.ProID));
+      const alreadyMain = prev.some((s) => s.ProID === proId && isMainService(s.ProName));
+      const addons = prev.filter((s) => !isMainService(s.ProName));
+      if (alreadyMain) return addons;
       return [svc, ...addons];
     });
     setPlan(null);

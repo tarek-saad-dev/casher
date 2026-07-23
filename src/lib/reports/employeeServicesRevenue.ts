@@ -96,18 +96,25 @@ export async function getEmployeeRevenueTotal(
 
 /**
  * Sum all employee revenue in range (no employee filter) — used by monthly report.
+ * Phase 1E: optional branchId filters h.BranchID when provided; existing callers
+ * that pre-date branch ownership keep working unfiltered.
  */
 export async function getAllEmployeesRevenueTotal(
   startDate: string,
   endDateExclusive: string,
+  branchId?: number,
 ): Promise<number> {
   const db = await getPool();
 
-  const result = await db
+  const request = db
     .request()
     .input('startDate', sql.Date, startDate)
-    .input('endDateExclusive', sql.Date, endDateExclusive)
-    .query(`
+    .input('endDateExclusive', sql.Date, endDateExclusive);
+  if (branchId !== undefined) {
+    request.input('branchId', sql.Int, branchId);
+  }
+
+  const result = await request.query(`
       SELECT ISNULL(SUM(${SERVICE_LINE_TOTAL_EXPR}), 0) AS TotalRevenue
       FROM dbo.TblinvServDetail d
       INNER JOIN dbo.TblinvServHead h
@@ -116,6 +123,7 @@ export async function getAllEmployeesRevenueTotal(
       WHERE CAST(h.invDate AS date) >= @startDate
         AND CAST(h.invDate AS date) < @endDateExclusive
         AND ${EMPLOYEE_SERVICES_INVOICE_FILTER}
+        ${branchId !== undefined ? 'AND h.BranchID = @branchId' : ''}
     `);
 
   return roundMoney(Number(result.recordset[0]?.TotalRevenue) || 0);

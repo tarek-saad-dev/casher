@@ -218,6 +218,11 @@ export function buildRecentInvoicesQueryString(
 
 export function buildRecentInvoicesCacheKey(params: RecentInvoicesQueryParams): string {
   return JSON.stringify({
+    // PHASE1D: branchId is not sent to the server (the server always filters by the
+    // session's validated active branch) — it is included here only so that switching
+    // the active branch invalidates the client-side response cache instead of showing
+    // another branch's cached invoices.
+    branchId: params.branchId ?? null,
     q: params.q ?? '',
     paymentMethodIds: params.paymentMethodIds ?? [],
     employeeIds: params.employeeIds ?? [],

@@ -76,7 +76,12 @@ export type BranchDomainErrorCode =
   | 'USER_DELETED'
   | 'USER_NOT_FOUND'
   | 'SESSION_UPGRADE_REQUIRED'
-  | 'UNSUPPORTED_BRANCH_SESSION_VERSION';
+  | 'UNSUPPORTED_BRANCH_SESSION_VERSION'
+  | 'SHIFT_BRANCH_MISMATCH'
+  | 'SHIFT_DAY_MISMATCH'
+  | 'FINANCIAL_BRANCH_MISMATCH'
+  | 'NO_BUSINESS_DAY_FOR_DATE'
+  | 'BRANCH_REQUIRED';
 
 export class BranchDomainError extends Error {
   readonly code: BranchDomainErrorCode;

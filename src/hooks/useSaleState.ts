@@ -2,6 +2,7 @@
 
 import { useReducer, useCallback, useMemo } from 'react';
 import type { Customer, Barber, CartItem, SaleState, SaleTotals, PaymentAllocation } from '@/lib/types';
+import { computeServiceLineTotals } from '@/lib/sales/service-line-totals';
 
 // ───────────────────────── Actions ─────────────────────────
 
@@ -11,8 +12,6 @@ type Action =
   | { type: 'ADD_ITEM'; item: CartItem }
   | { type: 'REMOVE_ITEM'; id: string }
   | { type: 'UPDATE_ITEM'; id: string; patch: Partial<CartItem> }
-  | { type: 'SET_DISCOUNT_PERCENT'; value: number }
-  | { type: 'SET_DISCOUNT_VALUE'; value: number }
   | { type: 'SET_PAYMENT_METHOD'; id: number | null }
   | { type: 'SET_PAYMENT_ALLOCATIONS'; allocations: PaymentAllocation[] }
   | { type: 'UPDATE_PAYMENT_AMOUNT'; paymentMethodId: number; amount: number }
@@ -35,6 +34,22 @@ const initialState: SaleState = {
   shiftMoveId: null,
 };
 
+function normalizeCartItem(item: CartItem): CartItem {
+  const totals = computeServiceLineTotals({
+    sPrice: item.SPrice,
+    qty: item.Qty,
+    discountPercent: item.Dis,
+    discountValue: item.DisVal,
+  });
+  return {
+    ...item,
+    Qty: item.Qty > 0 ? item.Qty : 1,
+    Dis: totals.discountPercent,
+    DisVal: totals.discountValue,
+    SPriceAfterDis: totals.netAmount,
+  };
+}
+
 // ───────────────────────── Reducer ─────────────────────────
 
 function reducer(state: SaleState, action: Action): SaleState {
@@ -44,17 +59,18 @@ function reducer(state: SaleState, action: Action): SaleState {
     case 'SET_BARBER':
       return { ...state, barber: action.barber };
     case 'ADD_ITEM':
-      return { ...state, items: [...state.items, action.item] };
+      return { ...state, items: [...state.items, normalizeCartItem(action.item)] };
     case 'REMOVE_ITEM':
-      return { ...state, items: state.items.filter(i => i.id !== action.id) };
+      return { ...state, items: state.items.filter((i) => i.id !== action.id) };
     case 'UPDATE_ITEM':
-      return { ...state, items: state.items.map(i => i.id === action.id ? { ...i, ...action.patch } : i) };
+      return {
+        ...state,
+        items: state.items.map((i) =>
+          i.id === action.id ? normalizeCartItem({ ...i, ...action.patch }) : i,
+        ),
+      };
     case 'CLEAR_ITEMS':
       return { ...state, items: [] };
-    case 'SET_DISCOUNT_PERCENT':
-      return { ...state, discountPercent: action.value, discountValue: 0 };
-    case 'SET_DISCOUNT_VALUE':
-      return { ...state, discountValue: action.value, discountPercent: 0 };
     case 'SET_PAYMENT_METHOD':
       return { ...state, paymentMethodId: action.id };
     case 'SET_PAYMENT_ALLOCATIONS':
@@ -62,10 +78,10 @@ function reducer(state: SaleState, action: Action): SaleState {
     case 'UPDATE_PAYMENT_AMOUNT':
       return {
         ...state,
-        paymentAllocations: state.paymentAllocations.map(pa =>
+        paymentAllocations: state.paymentAllocations.map((pa) =>
           pa.paymentMethodId === action.paymentMethodId
             ? { ...pa, amount: action.amount }
-            : pa
+            : pa,
         ),
       };
     case 'SET_NOTES':
@@ -85,38 +101,106 @@ export function useSaleState() {
   const [state, dispatch] = useReducer(reducer, initialState);
 
   const totals: SaleTotals = useMemo(() => {
-    const totalQty = state.items.reduce((sum, i) => sum + i.Qty, 0);
-    const subTotal = state.items.reduce((sum, i) => sum + (i.SPrice * i.Qty), 0);
-    const totalBonus = state.items.reduce((sum, i) => sum + i.Bonus, 0);
-
+    let totalQty = 0;
+    let subTotal = 0;
     let discountValue = 0;
-    if (state.discountPercent > 0) {
-      discountValue = Math.round(subTotal * state.discountPercent / 100 * 100) / 100;
-    } else {
-      discountValue = state.discountValue;
+    let grandTotal = 0;
+    let totalBonus = 0;
+
+    for (const item of state.items) {
+      const line = computeServiceLineTotals({
+        sPrice: item.SPrice,
+        qty: item.Qty,
+        discountPercent: item.Dis,
+        discountValue: item.DisVal,
+      });
+      totalQty += item.Qty > 0 ? item.Qty : 1;
+      subTotal += line.grossAmount;
+      discountValue += line.discountValue;
+      grandTotal += line.netAmount;
+      totalBonus += item.Bonus || 0;
     }
-    if (discountValue > subTotal) discountValue = subTotal;
 
-    const taxValue = 0; // No tax for now
-    const grandTotal = Math.max(0, subTotal - discountValue + taxValue);
-
-    return { totalQty, subTotal, discountValue, taxValue, grandTotal, totalBonus };
-  }, [state.items, state.discountPercent, state.discountValue]);
+    return {
+      totalQty,
+      subTotal: Math.round(subTotal * 100) / 100,
+      discountValue: Math.round(discountValue * 100) / 100,
+      taxValue: 0,
+      grandTotal: Math.round(grandTotal * 100) / 100,
+      totalBonus: Math.round(totalBonus * 100) / 100,
+    };
+  }, [state.items]);
 
   const setCustomer = useCallback((c: Customer | null) => dispatch({ type: 'SET_CUSTOMER', customer: c }), []);
   const setBarber = useCallback((b: Barber | null) => dispatch({ type: 'SET_BARBER', barber: b }), []);
   const addItem = useCallback((item: CartItem) => dispatch({ type: 'ADD_ITEM', item }), []);
   const removeItem = useCallback((id: string) => dispatch({ type: 'REMOVE_ITEM', id }), []);
-  const updateItem = useCallback((id: string, patch: Partial<CartItem>) => dispatch({ type: 'UPDATE_ITEM', id, patch }), []);
-  const setDiscountPercent = useCallback((v: number) => dispatch({ type: 'SET_DISCOUNT_PERCENT', value: v }), []);
-  const setDiscountValue = useCallback((v: number) => dispatch({ type: 'SET_DISCOUNT_VALUE', value: v }), []);
-  const setPaymentMethod = useCallback((id: number | null) => dispatch({ type: 'SET_PAYMENT_METHOD', id }), []);
-  const setPaymentAllocations = useCallback((allocations: PaymentAllocation[]) => dispatch({ type: 'SET_PAYMENT_ALLOCATIONS', allocations }), []);
-  const updatePaymentAmount = useCallback((paymentMethodId: number, amount: number) => dispatch({ type: 'UPDATE_PAYMENT_AMOUNT', paymentMethodId, amount }), []);
+  const updateItem = useCallback(
+    (id: string, patch: Partial<CartItem>) => dispatch({ type: 'UPDATE_ITEM', id, patch }),
+    [],
+  );
+  /** @deprecated Header discounts are no longer supported — no-op kept for call-site compatibility. */
+  const setDiscountPercent = useCallback((_v: number) => {}, []);
+  /** @deprecated Header discounts are no longer supported — no-op kept for call-site compatibility. */
+  const setDiscountValue = useCallback((_v: number) => {}, []);
+  const setPaymentMethod = useCallback(
+    (id: number | null) => dispatch({ type: 'SET_PAYMENT_METHOD', id }),
+    [],
+  );
+  const setPaymentAllocations = useCallback(
+    (allocations: PaymentAllocation[]) =>
+      dispatch({ type: 'SET_PAYMENT_ALLOCATIONS', allocations }),
+    [],
+  );
+  const updatePaymentAmount = useCallback(
+    (paymentMethodId: number, amount: number) =>
+      dispatch({ type: 'UPDATE_PAYMENT_AMOUNT', paymentMethodId, amount }),
+    [],
+  );
   const setNotes = useCallback((n: string) => dispatch({ type: 'SET_NOTES', notes: n }), []);
-  const setShift = useCallback((id: number | null) => dispatch({ type: 'SET_SHIFT', shiftMoveId: id }), []);
+  const setShift = useCallback(
+    (id: number | null) => dispatch({ type: 'SET_SHIFT', shiftMoveId: id }),
+    [],
+  );
   const clearItems = useCallback(() => dispatch({ type: 'CLEAR_ITEMS' }), []);
   const reset = useCallback(() => dispatch({ type: 'RESET' }), []);
+
+  const applyDiscountToLargestLine = useCallback(
+    (mode: 'value' | 'percent', amount: number) => {
+      if (!Number.isFinite(amount) || amount <= 0 || state.items.length === 0) return;
+      let bestIdx = 0;
+      let bestGross = -1;
+      state.items.forEach((item, idx) => {
+        const g = computeServiceLineTotals({
+          sPrice: item.SPrice,
+          qty: item.Qty,
+          discountValue: 0,
+        }).grossAmount;
+        if (g > bestGross) {
+          bestGross = g;
+          bestIdx = idx;
+        }
+      });
+      const target = state.items[bestIdx];
+      if (!target) return;
+      const totals = computeServiceLineTotals({
+        sPrice: target.SPrice,
+        qty: target.Qty,
+        discountPercent: mode === 'percent' ? amount : undefined,
+        discountValue: mode === 'value' ? amount : undefined,
+      });
+      dispatch({
+        type: 'UPDATE_ITEM',
+        id: target.id,
+        patch: {
+          Dis: totals.discountPercent,
+          DisVal: totals.discountValue,
+          SPriceAfterDis: totals.netAmount,
+        },
+      });
+    },
+    [state.items],
+  );
 
   return {
     state,
@@ -128,6 +212,7 @@ export function useSaleState() {
     updateItem,
     setDiscountPercent,
     setDiscountValue,
+    applyDiscountToLargestLine,
     setPaymentMethod,
     setPaymentAllocations,
     updatePaymentAmount,

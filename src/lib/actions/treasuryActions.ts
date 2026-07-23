@@ -11,9 +11,18 @@ export interface TreasuryTransferInput {
   fromPaymentMethodId: number;
   toPaymentMethodId: number;
   notes?: string;
+  /** Explicit past-date transfer — mutually exclusive with the current business day. */
   transferDate?: string;
+  /** Current business-day date (from gated session context) — used when transferDate is absent. */
+  invDate?: string;
+  /** Branch-scoped open shift, if any. Not required for past-date transfers. */
+  shiftMoveId?: number | null;
   userId: number;
   requestId?: string;
+  /** Never trust browser branchId — always resolved from gated session context or explicit past-date resolution. */
+  branchId: number;
+  /** Nullable only for legacy — new writes should always resolve a real business day. */
+  businessDayId: number | null;
 }
 
 export interface TreasuryTransferResult {
@@ -116,6 +125,8 @@ export async function executeTreasuryTransfer(
     transferDate,
     userId,
     requestId = 'unknown',
+    branchId,
+    businessDayId,
   } = input;
 
   const log = (msg: string, data?: unknown) => {
@@ -133,8 +144,10 @@ export async function executeTreasuryTransfer(
     userId,
   });
 
-  let invDate: Date;
-  let shiftMoveID: number | null = null;
+  // Branch, business day and (for current-day transfers) the shift are resolved by the
+  // caller from gated session context — never trust browser branchId here.
+  let invDate: Date | string;
+  let shiftMoveID: number | null = input.shiftMoveId ?? null;
   let invTime: string;
 
   if (transferDate) {
@@ -149,50 +162,12 @@ export async function executeTreasuryTransfer(
     }
     invDate = inputDate;
     invTime = '12:00';
-    log('Historical date resolved', { step: 'date-resolve:complete', invDate: invDate.toISOString().split('T')[0], invTime });
+    log('Historical date resolved', { step: 'date-resolve:complete', invDate: invDate.toISOString().split('T')[0], invTime, branchId });
   } else {
-    log('Active business day lookup:start', { step: 'day-lookup:start' });
-    const shiftResult = await new sql.Request(connection)
-      .input('shiftUserID', sql.Int, userId)
-      .query(`
-        SELECT TOP 1 ID, ShiftID, BranchID, BusinessDayID, NewDay
-        FROM [dbo].[TblShiftMove]
-        WHERE Status = 1 AND UserID = @shiftUserID
-        ORDER BY ID DESC
-      `);
-    if (shiftResult.recordset.length === 0) {
-      throw new Error('لا يوجد وردية مفتوحة لهذا المستخدم — لا يمكن تنفيذ التحويل');
-    }
-    const activeShift = shiftResult.recordset[0];
-    shiftMoveID = activeShift.ID;
-
-    const dayResult = await new sql.Request(connection)
-      .input('branchId', sql.Int, activeShift.BranchID)
-      .query(`
-        SELECT TOP 1 ID, NewDay, BranchID
-        FROM [dbo].[TblNewDay]
-        WHERE Status = 1 AND BranchID = @branchId
-        ORDER BY ID DESC
-      `);
-    log('Active business day lookup:complete', { step: 'day-lookup:complete' });
-    if (dayResult.recordset.length === 0) {
-      throw new Error('لا يوجد يوم عمل مفتوح — لا يمكن تنفيذ التحويل');
-    }
-    const activeDay = dayResult.recordset[0];
-    invDate = activeDay.NewDay;
-    log('Active business day resolved', {
-      dayId: activeDay.ID,
-      invDate: invDate.toISOString().split('T')[0],
-      branchId: activeDay.BranchID,
-    });
-    log('Active shift resolved', {
-      shiftMoveID,
-      shiftId: activeShift.ShiftID,
-      branchId: activeShift.BranchID,
-    });
-
+    invDate = input.invDate ?? new Date();
     const now = new Date();
     invTime = `${String(now.getHours()).padStart(2, '0')}.${String(now.getMinutes()).padStart(2, '0')}`;
+    log('Current business day resolved', { invDate, businessDayId, branchId, shiftMoveID });
   }
 
   if (fromPaymentMethodId === toPaymentMethodId) {
@@ -308,17 +283,19 @@ export async function executeTreasuryTransfer(
       ? `تحويل إلى ${toPm.PaymentMethod}: ${transferNotes}`
       : `${transferNotes} (تحويل إلى ${toPm.PaymentMethod})`)
     .input('shiftMoveID', sql.Int, shiftMoveID)
-    .input('paymentMethodID', sql.Int, fromPaymentMethodId);
+    .input('paymentMethodID', sql.Int, fromPaymentMethodId)
+    .input('branchID', sql.Int, branchId)
+    .input('businessDayID', sql.Int, businessDayId);
 
   let expenseId: number;
   try {
     log('insert-outgoing:start', { step: 'insert-outgoing:start', expenseInvID });
     const expInsert = await expenseReq.query(`
       INSERT INTO [dbo].[TblCashMove]
-        (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID)
+        (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID)
       OUTPUT INSERTED.ID
       VALUES
-        (@invID, @invType, @invDate, @invTime, @ClientID, @expINID, @amount, @inOut, @notes, @shiftMoveID, @paymentMethodID)
+        (@invID, @invType, @invDate, @invTime, @ClientID, @expINID, @amount, @inOut, @notes, @shiftMoveID, @paymentMethodID, @branchID, @businessDayID)
     `);
     expenseId = expInsert.recordset[0].ID;
     log('insert-outgoing:complete', { step: 'insert-outgoing:complete', expenseId, expenseInvID });
@@ -341,17 +318,19 @@ export async function executeTreasuryTransfer(
       ? `تحويل من ${fromPm.PaymentMethod}: ${transferNotes}`
       : `${transferNotes} (تحويل من ${fromPm.PaymentMethod})`)
     .input('shiftMoveID', sql.Int, shiftMoveID)
-    .input('paymentMethodID', sql.Int, toPaymentMethodId);
+    .input('paymentMethodID', sql.Int, toPaymentMethodId)
+    .input('branchID', sql.Int, branchId)
+    .input('businessDayID', sql.Int, businessDayId);
 
   let incomeId: number;
   try {
     log('insert-incoming:start', { step: 'insert-incoming:start', incomeInvID });
     const incInsert = await incomeReq.query(`
       INSERT INTO [dbo].[TblCashMove]
-        (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID)
+        (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID)
       OUTPUT INSERTED.ID
       VALUES
-        (@invID, @invType, @invDate, @invTime, @ClientID, @expINID, @amount, @inOut, @notes, @shiftMoveID, @paymentMethodID)
+        (@invID, @invType, @invDate, @invTime, @ClientID, @expINID, @amount, @inOut, @notes, @shiftMoveID, @paymentMethodID, @branchID, @businessDayID)
     `);
     incomeId = incInsert.recordset[0].ID;
     log('insert-incoming:complete', { step: 'insert-incoming:complete', incomeId, incomeInvID });
@@ -431,11 +410,12 @@ export async function closeTreasuryDay(
       .input('countedAmount', sql.Decimal(18, 2), recon.countedAmount)
       .input('notes', sql.NVarChar, recon.notes || null)
       .input('closedByUserId', sql.Int, closedByUserId)
+      .input('branchId', sql.Int, branchId)
       .query(`
         INSERT INTO [dbo].[TblTreasuryCloseRecon]
-          ([NewDay], [ShiftMoveID], [PaymentMethodID], [SystemAmount], [CountedAmount], [Notes], [ClosedByUserID])
+          ([NewDay], [ShiftMoveID], [PaymentMethodID], [SystemAmount], [CountedAmount], [Notes], [ClosedByUserID], [BranchID])
         VALUES
-          (@dayId, @shiftMoveId, @paymentMethodId, @systemAmount, @countedAmount, @notes, @closedByUserId);
+          (@dayId, @shiftMoveId, @paymentMethodId, @systemAmount, @countedAmount, @notes, @closedByUserId, @branchId);
         SELECT SCOPE_IDENTITY() AS ID;
       `);
 

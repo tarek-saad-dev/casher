@@ -163,6 +163,43 @@ export async function POST(req: NextRequest) {
 
     log('Validation passed', { parsedAmount: roundedAmount, fromPmId, toPmId, transferDate: transferDate ?? null });
 
+    // ──── Never trust browser branchId — resolve ownership from gated session context ────
+    const { requireBranchOperationAccess } = await import('@/lib/branch/context');
+    let branchId: number;
+    let businessDayId: number | null;
+    let shiftMoveId: number | null = null;
+    let resolvedInvDate: string | undefined;
+
+    if (transferDate) {
+      // Past-date transfer: branch comes from the session, day must already exist for that date.
+      const { resolveBranchDayForDate } = await import('@/lib/branch/operationalGates');
+      const branch = await requireBranchOperationAccess();
+      if (branch instanceof NextResponse) return branch;
+      const dayResolution = await resolveBranchDayForDate(branch.branchId, transferDate);
+      if (!dayResolution.ok) {
+        log('Validation failed: no business day for transferDate', { transferDate, branchId: branch.branchId });
+        return dayResolution.response;
+      }
+      branchId = branch.branchId;
+      businessDayId = dayResolution.day.id;
+    } else {
+      // Current-day transfer: branch, open day and open shift come from the gated write context.
+      const { resolveBranchDayAndShiftForWrite } = await import('@/lib/branch/operationalGates');
+      const gated = await resolveBranchDayAndShiftForWrite(session.UserID);
+      if (!gated.ok) return gated.response;
+      if (!gated.shift) {
+        log('Validation failed: no open shift for current-day transfer', { userId: session.UserID });
+        return NextResponse.json(
+          { error: 'لا يوجد وردية مفتوحة لهذا المستخدم — لا يمكن تنفيذ التحويل', requestId },
+          { status: 400 },
+        );
+      }
+      branchId = gated.branch.branchId;
+      businessDayId = gated.day.id;
+      shiftMoveId = gated.shift.id;
+      resolvedInvDate = gated.day.newDay;
+    }
+
     const result = await executeAuditedAction({
       actionType: 'treasury_transfer',
       user: session,
@@ -194,8 +231,12 @@ export async function POST(req: NextRequest) {
         toPaymentMethodId: toPmId,
         notes,
         transferDate,
+        invDate: resolvedInvDate,
+        shiftMoveId,
         userId: session.UserID,
         requestId,
+        branchId,
+        businessDayId,
       }),
       loadNewData: async (transaction, result) => {
         const balanceOpts = transferDate ? { asOfDate: transferDate } : undefined;

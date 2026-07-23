@@ -35,6 +35,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'لا يمكن إضافة إيراد لتاريخ في المستقبل' }, { status: 400 });
     }
 
+    // ──── Enforce active branch + matching business day for this date (Phase 1D) ────
+    // Never trust browser branchId — ownership comes only from validated session context.
+    // Does NOT attach to the open day and does NOT auto-create a day for this date.
+    const { requireBranchOperationAccess } = await import('@/lib/branch/context');
+    const { resolveBranchDayForDate } = await import('@/lib/branch/operationalGates');
+    const branch = await requireBranchOperationAccess();
+    if (branch instanceof NextResponse) return branch;
+    const dayResolution = await resolveBranchDayForDate(branch.branchId, invDate);
+    if (!dayResolution.ok) return dayResolution.response;
+    const branchId = branch.branchId;
+    const businessDayId = dayResolution.day.id;
+
     const db = await getPool();
     const transaction = new sql.Transaction(db);
     await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
@@ -72,17 +84,19 @@ export async function POST(req: NextRequest) {
         .input('expInId', sql.Int, expInId)
         .input('amount', sql.Decimal(10, 2), Number(amount))
         .input('notes', sql.NVarChar(sql.MAX), notesText || null)
-        .input('paymentMethodId', sql.Int, paymentMethodId);
+        .input('paymentMethodId', sql.Int, paymentMethodId)
+        .input('branchId', sql.Int, branchId)
+        .input('businessDayId', sql.Int, businessDayId);
 
       const insertRes = await insertReq.query(`
         INSERT INTO dbo.TblCashMove
-          (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID)
+          (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID)
         OUTPUT
           INSERTED.ID, INSERTED.invID, INSERTED.invDate, INSERTED.invTime,
           INSERTED.ExpINID, INSERTED.GrandTolal AS Amount, INSERTED.Notes,
           INSERTED.PaymentMethodID
         VALUES
-          (@invID, N'ايرادات', @invDate, @invTime, NULL, @expInId, @amount, N'in', @notes, NULL, @paymentMethodId)
+          (@invID, N'ايرادات', @invDate, @invTime, NULL, @expInId, @amount, N'in', @notes, NULL, @paymentMethodId, @branchId, @businessDayId)
       `);
 
       const newRecord = insertRes.recordset[0];

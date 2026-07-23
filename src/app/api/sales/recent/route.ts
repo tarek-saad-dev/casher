@@ -1,13 +1,19 @@
 import { NextResponse } from 'next/server';
-import { getPool } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
+import { isActiveBranchContext, requireActiveBranchContext } from '@/lib/branch';
 
-// GET /api/sales/recent — returns last 3 sales operations
+// GET /api/sales/recent — returns last 3 sales operations for the active branch
 export async function GET() {
   try {
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const db = await getPool();
     
     // First, try a simple query to get basic sales data
-    const result = await db.request().query(`
+    const result = await db.request()
+      .input('branchId', sql.Int, branch.branchId)
+      .query(`
       SELECT TOP 3
         h.invID AS InvID,
         h.invID AS InvNo,
@@ -35,6 +41,7 @@ export async function GET() {
         ON h.invID = d.invID
        AND h.invType = d.invType
       WHERE h.invType = N'مبيعات'
+        AND h.BranchID = @branchId
       GROUP BY 
         h.invID, h.invDate, h.GrandTotal, h.PayCash, h.PayVisa, 
         h.DisVal, h.PaymentMethodID, pm.PaymentMethod, h.ClientID, 

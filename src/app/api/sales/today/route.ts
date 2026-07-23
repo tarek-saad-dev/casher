@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import { isActiveBranchContext, requireActiveBranchContext } from '@/lib/branch';
 import type { TodaySalesData, TodaySalesKPI, ShiftSales, PaymentMethodSales, BarberSales, ServiceSales, HourlySales, TodaySaleTransaction } from '@/lib/types/today-sales';
 
 /**
@@ -20,6 +21,10 @@ export async function GET(request: NextRequest) {
   let db;
 
   try {
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+    const branchId = branch.branchId;
+
     db = await getPool();
     const searchParams = request.nextUrl.searchParams;
     
@@ -53,7 +58,7 @@ export async function GET(request: NextRequest) {
     const empIdFilter = searchParams.get('empId') ? parseInt(searchParams.get('empId')!) : null;
 
     // Build WHERE clause (CRITICAL: Use CAST for date comparison)
-    let whereConditions = [dateFilter('h'), `h.invType = N'مبيعات'`, activeSalesCondition('h')];
+    let whereConditions = [dateFilter('h'), `h.invType = N'مبيعات'`, activeSalesCondition('h'), 'h.BranchID = @branchId'];
     if (shiftMoveIdFilter) whereConditions.push('h.ShiftMoveID = @shiftMoveId');
     if (paymentMethodIdFilter) whereConditions.push('h.PaymentMethodID = @paymentMethodId');
     
@@ -68,6 +73,7 @@ export async function GET(request: NextRequest) {
     
     const kpiRequest = db.request();
     kpiRequest.input('targetDate', sql.Date, targetDate);
+    kpiRequest.input('branchId', sql.Int, branchId);
     if (shiftMoveIdFilter) kpiRequest.input('shiftMoveId', sql.Int, shiftMoveIdFilter);
     if (paymentMethodIdFilter) kpiRequest.input('paymentMethodId', sql.Int, paymentMethodIdFilter);
 
@@ -89,12 +95,13 @@ export async function GET(request: NextRequest) {
     // Top shift
     const topShiftReq = db.request();
     topShiftReq.input('targetDate', sql.Date, targetDate);
+    topShiftReq.input('branchId', sql.Int, branchId);
     const topShiftResult = await topShiftReq.query(`
       SELECT TOP 1 s.ShiftName
       FROM [dbo].[TblinvServHead] h
       INNER JOIN [dbo].[TblShiftMove] sm ON h.ShiftMoveID = sm.ID
       INNER JOIN [dbo].[TblShift] s ON sm.ShiftID = s.ShiftID
-      WHERE ${dateFilter('h')} AND h.invType = N'مبيعات' AND ${activeSalesCondition('h')}
+      WHERE ${dateFilter('h')} AND h.invType = N'مبيعات' AND ${activeSalesCondition('h')} AND h.BranchID = @branchId
       GROUP BY s.ShiftName
       ORDER BY SUM(h.GrandTotal) DESC
     `);
@@ -103,6 +110,7 @@ export async function GET(request: NextRequest) {
     // Top payment method
     const topPaymentReq = db.request();
     topPaymentReq.input('targetDate', sql.Date, targetDate);
+    topPaymentReq.input('branchId', sql.Int, branchId);
     const topPaymentResult = await topPaymentReq.query(`
       WITH HeadInvoices AS (
         SELECT
@@ -111,7 +119,7 @@ export async function GET(request: NextRequest) {
           h.PaymentMethodID,
           PayValue = COALESCE(NULLIF(h.Payment, 0), h.GrandTotal, 0)
         FROM [dbo].[TblinvServHead] h
-        WHERE ${dateFilter('h')} AND h.invType = N'مبيعات' AND ${activeSalesCondition('h')}
+        WHERE ${dateFilter('h')} AND h.invType = N'مبيعات' AND ${activeSalesCondition('h')} AND h.BranchID = @branchId
       ),
       PaymentRows AS (
         SELECT
@@ -154,12 +162,13 @@ export async function GET(request: NextRequest) {
     // Top barber
     const topBarberReq = db.request();
     topBarberReq.input('targetDate', sql.Date, targetDate);
+    topBarberReq.input('branchId', sql.Int, branchId);
     const topBarberResult = await topBarberReq.query(`
       SELECT TOP 1 e.EmpName
       FROM [dbo].[TblinvServHead] h
       INNER JOIN [dbo].[TblinvServDetail] d ON h.invID = d.invID AND h.invType = d.invType
       INNER JOIN [dbo].[TblEmp] e ON d.EmpID = e.EmpID
-      WHERE ${dateFilter('h')} AND h.invType = N'مبيعات' AND ${activeSalesCondition('h')}
+      WHERE ${dateFilter('h')} AND h.invType = N'مبيعات' AND ${activeSalesCondition('h')} AND h.BranchID = @branchId
       GROUP BY e.EmpName
       ORDER BY SUM(d.SPriceAfterDis) DESC
     `);
@@ -168,12 +177,13 @@ export async function GET(request: NextRequest) {
     // Top service
     const topServiceReq = db.request();
     topServiceReq.input('targetDate', sql.Date, targetDate);
+    topServiceReq.input('branchId', sql.Int, branchId);
     const topServiceResult = await topServiceReq.query(`
       SELECT TOP 1 p.ProName
       FROM [dbo].[TblinvServHead] h
       INNER JOIN [dbo].[TblinvServDetail] d ON h.invID = d.invID AND h.invType = d.invType
       INNER JOIN [dbo].[TblPro] p ON d.ProID = p.ProID
-      WHERE ${dateFilter('h')} AND h.invType = N'مبيعات' AND ${activeSalesCondition('h')}
+      WHERE ${dateFilter('h')} AND h.invType = N'مبيعات' AND ${activeSalesCondition('h')} AND h.BranchID = @branchId
       GROUP BY p.ProName
       ORDER BY SUM(d.SPriceAfterDis) DESC
     `);
@@ -196,6 +206,7 @@ export async function GET(request: NextRequest) {
 
     const shiftReq = db.request();
     shiftReq.input('targetDate', sql.Date, targetDate);
+    shiftReq.input('branchId', sql.Int, branchId);
     if (shiftMoveIdFilter) shiftReq.input('shiftMoveId', sql.Int, shiftMoveIdFilter);
     if (paymentMethodIdFilter) shiftReq.input('paymentMethodId', sql.Int, paymentMethodIdFilter);
 
@@ -215,8 +226,10 @@ export async function GET(request: NextRequest) {
       LEFT JOIN [dbo].[TblinvServHead] h ON h.ShiftMoveID = sm.ID 
         AND h.invType = N'مبيعات' 
         AND ${activeSalesCondition('h')}
+        AND h.BranchID = @branchId
         ${paymentMethodIdFilter ? 'AND h.PaymentMethodID = @paymentMethodId' : ''}
       WHERE CAST(sm.NewDay AS DATE) = @targetDate
+        AND sm.BranchID = @branchId
         ${shiftMoveIdFilter ? 'AND sm.ID = @shiftMoveId' : ''}
       GROUP BY sm.ID, s.ShiftName, u.UserName, sm.Status
       ORDER BY sm.ID
@@ -229,6 +242,7 @@ export async function GET(request: NextRequest) {
     // Batch query 1: Get top barber for each shift
     const batchBarberReq = db.request();
     batchBarberReq.input('targetDate', sql.Date, targetDate);
+    batchBarberReq.input('branchId', sql.Int, branchId);
     const batchBarberResult = await batchBarberReq.query(`
       SELECT 
         h.ShiftMoveID,
@@ -241,6 +255,7 @@ export async function GET(request: NextRequest) {
         AND h.invType = N'مبيعات'
         AND ${activeSalesCondition('h')}
         AND ${dateFilter('h')}
+        AND h.BranchID = @branchId
       GROUP BY h.ShiftMoveID, e.EmpName
     `);
     
@@ -265,6 +280,7 @@ export async function GET(request: NextRequest) {
     // Batch query 2: Get top payment method for each shift
     const batchPaymentReq = db.request();
     batchPaymentReq.input('targetDate', sql.Date, targetDate);
+    batchPaymentReq.input('branchId', sql.Int, branchId);
     const batchPaymentResult = await batchPaymentReq.query(`
       WITH ShiftInvoices AS (
         SELECT
@@ -278,6 +294,7 @@ export async function GET(request: NextRequest) {
           AND h.invType = N'مبيعات'
           AND ${activeSalesCondition('h')}
           AND ${dateFilter('h')}
+          AND h.BranchID = @branchId
       ),
       PaymentRows AS (
         SELECT p.ShiftMoveID, p.PaymentMethodID, ISNULL(p.PayValue, 0) as PayValue
@@ -351,6 +368,7 @@ export async function GET(request: NextRequest) {
 
     const paymentReq = db.request();
     paymentReq.input('targetDate', sql.Date, targetDate);
+    paymentReq.input('branchId', sql.Int, branchId);
     if (shiftMoveIdFilter) paymentReq.input('shiftMoveId', sql.Int, shiftMoveIdFilter);
     if (paymentMethodIdFilter) paymentReq.input('paymentMethodId', sql.Int, paymentMethodIdFilter);
 
@@ -448,6 +466,7 @@ export async function GET(request: NextRequest) {
 
     const barberReq = db.request();
     barberReq.input('targetDate', sql.Date, targetDate);
+    barberReq.input('branchId', sql.Int, branchId);
     if (shiftMoveIdFilter) barberReq.input('shiftMoveId', sql.Int, shiftMoveIdFilter);
     if (paymentMethodIdFilter) barberReq.input('paymentMethodId', sql.Int, paymentMethodIdFilter);
     if (empIdFilter) barberReq.input('empId', sql.Int, empIdFilter);
@@ -472,6 +491,7 @@ export async function GET(request: NextRequest) {
       const topServiceReq = db.request();
       topServiceReq.input('empId', sql.Int, barber.EmpID);
       topServiceReq.input('targetDate', sql.Date, targetDate);
+      topServiceReq.input('branchId', sql.Int, branchId);
       
       const topServiceResult = await topServiceReq.query(`
         SELECT TOP 1 p.ProName
@@ -482,6 +502,7 @@ export async function GET(request: NextRequest) {
           AND ${dateFilter('h4')}
           AND h4.invType = N'مبيعات'
           AND ${activeSalesCondition('h4')}
+          AND h4.BranchID = @branchId
         GROUP BY p.ProName
         ORDER BY SUM(d4.SPriceAfterDis) DESC
       `);
@@ -506,6 +527,7 @@ export async function GET(request: NextRequest) {
 
     const serviceReq = db.request();
     serviceReq.input('targetDate', sql.Date, targetDate);
+    serviceReq.input('branchId', sql.Int, branchId);
     if (shiftMoveIdFilter) serviceReq.input('shiftMoveId', sql.Int, shiftMoveIdFilter);
     if (paymentMethodIdFilter) serviceReq.input('paymentMethodId', sql.Int, paymentMethodIdFilter);
     if (empIdFilter) serviceReq.input('empId', sql.Int, empIdFilter);
@@ -542,6 +564,7 @@ export async function GET(request: NextRequest) {
 
     const hourReq = db.request();
     hourReq.input('targetDate', sql.Date, targetDate);
+    hourReq.input('branchId', sql.Int, branchId);
     if (shiftMoveIdFilter) hourReq.input('shiftMoveId', sql.Int, shiftMoveIdFilter);
     if (paymentMethodIdFilter) hourReq.input('paymentMethodId', sql.Int, paymentMethodIdFilter);
     if (empIdFilter) hourReq.input('empId', sql.Int, empIdFilter);
@@ -565,6 +588,7 @@ export async function GET(request: NextRequest) {
       const invIds = hourResult.recordset.map(r => r.invID).join(',');
       const barberBatchReq = db.request();
       barberBatchReq.input('targetDate', sql.Date, targetDate);
+      barberBatchReq.input('branchId', sql.Int, branchId);
       
       const barberBatchResult = await barberBatchReq.query(`
         SELECT 
@@ -581,6 +605,7 @@ export async function GET(request: NextRequest) {
         WHERE h5.invID IN (${invIds})
           AND CAST(h5.invDate AS DATE) = @targetDate
           AND h5.invType = N'مبيعات'
+          AND h5.BranchID = @branchId
       `);
       
       barberBatchResult.recordset.forEach((row: any) => {
@@ -645,6 +670,7 @@ export async function GET(request: NextRequest) {
 
     const txnReq = db.request();
     txnReq.input('targetDate', sql.Date, targetDate);
+    txnReq.input('branchId', sql.Int, branchId);
     if (shiftMoveIdFilter) txnReq.input('shiftMoveId', sql.Int, shiftMoveIdFilter);
     if (paymentMethodIdFilter) txnReq.input('paymentMethodId', sql.Int, paymentMethodIdFilter);
     if (empIdFilter) txnReq.input('empId', sql.Int, empIdFilter);

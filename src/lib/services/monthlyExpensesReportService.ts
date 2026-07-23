@@ -4,11 +4,13 @@ import { getPool, sql } from '@/lib/db';
 import { roundMoney } from '@/lib/reportMonthUtils';
 import type { CategoryBreakdown } from '@/lib/types';
 
+// Phase 1E: branch-scoped — every query below filters cm.BranchID = @branchId.
 const EXPENSE_BASE_WHERE = `
   invType = N'مصروفات'
   AND inOut = N'out'
   AND YEAR(invDate) = @year
   AND MONTH(invDate) = @month
+  AND BranchID = @branchId
 `;
 
 export interface EmployeeAdvanceRow {
@@ -21,12 +23,17 @@ export interface EmployeeAdvanceRow {
 /**
  * Total monthly expenses — matches /api/reports/expenses/monthly summary (حسب الفئة tab total).
  */
-export async function getMonthlyExpensesTotal(year: number, month: number): Promise<number> {
+export async function getMonthlyExpensesTotal(
+  year: number,
+  month: number,
+  branchId: number,
+): Promise<number> {
   const db = await getPool();
 
   const result = await db.request()
     .input('year', sql.Int, year)
     .input('month', sql.Int, month)
+    .input('branchId', sql.Int, branchId)
     .query(`
       SELECT ISNULL(SUM(GrandTolal), 0) AS TotalExpenses
       FROM [dbo].[TblCashMove]
@@ -41,14 +48,16 @@ export async function getMonthlyExpensesTotal(year: number, month: number): Prom
  */
 export async function getMonthlyExpensesByCategory(
   year: number,
-  month: number
+  month: number,
+  branchId: number,
 ): Promise<{ totalExpenses: number; categories: CategoryBreakdown[] }> {
   const db = await getPool();
-  const totalExpenses = await getMonthlyExpensesTotal(year, month);
+  const totalExpenses = await getMonthlyExpensesTotal(year, month, branchId);
 
   const categoryResult = await db.request()
     .input('year', sql.Int, year)
     .input('month', sql.Int, month)
+    .input('branchId', sql.Int, branchId)
     .query(`
       SELECT
         cm.ExpINID,
@@ -62,6 +71,7 @@ export async function getMonthlyExpensesByCategory(
         AND cm.inOut = N'out'
         AND YEAR(cm.invDate) = @year
         AND MONTH(cm.invDate) = @month
+        AND cm.BranchID = @branchId
       GROUP BY cm.ExpINID, cat.CatName
       ORDER BY SUM(cm.GrandTolal) DESC
     `);
@@ -89,13 +99,15 @@ export async function getMonthlyExpensesByCategory(
  */
 export async function getMonthlyEmployeeAdvances(
   year: number,
-  month: number
+  month: number,
+  branchId: number,
 ): Promise<EmployeeAdvanceRow[]> {
   const db = await getPool();
 
   const advancesResult = await db.request()
     .input('year', sql.Int, year)
     .input('month', sql.Int, month)
+    .input('branchId', sql.Int, branchId)
     .query(`
       SELECT
         em.EmpID AS employeeId,
@@ -111,6 +123,7 @@ export async function getMonthlyEmployeeAdvances(
         AND cm.inOut = N'out'
         AND YEAR(cm.invDate) = @year
         AND MONTH(cm.invDate) = @month
+        AND cm.BranchID = @branchId
       GROUP BY em.EmpID, e.EmpName
       ORDER BY SUM(cm.GrandTolal) DESC
     `);

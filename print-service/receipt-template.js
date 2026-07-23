@@ -207,6 +207,10 @@ const THERMAL_CSS = `
   tbody tr:nth-child(even) { background: #fff; }
   .service-name { font-weight: 700; margin-bottom: 0.5mm; font-size: 10px; }
   .barber-name  { font-size: 8px; font-weight: 600; color: #000; }
+  .line-price-block { text-align: left; }
+  .line-price-gross { font-size: 8px; text-decoration: line-through; opacity: 0.75; }
+  .line-price-disc { font-size: 8px; font-weight: 700; }
+  .line-price-net { font-size: 10px; font-weight: 900; }
 
   /* Totals Section */
   .receipt-totals {
@@ -319,7 +323,8 @@ const THERMAL_CSS = `
  *   customerName, customerPhone,
  *   SubTotal, Dis, DisVal, GrandTotal,
  *   PayCash, PayVisa, PaymentMethodID,
- *   items[].ProName, items[].EmpName, items[].SPrice, items[].Qty, items[].SPriceAfterDis
+ *   items[].ProName, items[].EmpName, items[].SPrice, items[].Qty,
+ *   items[].SPriceAfterDis, items[].DisVal, items[].SValue
  */
 function buildReceiptHTML(data) {
   const fmtDate = (d) => {
@@ -344,19 +349,47 @@ function buildReceiptHTML(data) {
 
   const items = Array.isArray(data.items) ? data.items : [];
 
+  const money = (n) => (Math.round(Number(n) * 100) / 100).toFixed(2);
+
   const itemRows = items.map((item, i) => {
+    const qty = Number(item.Qty) > 0 ? Number(item.Qty) : 1;
+    const gross =
+      item.SValue != null && Number(item.SValue) > 0
+        ? Number(item.SValue)
+        : Number(item.SPrice || 0) * qty;
+    const disVal = Math.max(0, Number(item.DisVal || 0));
+    const net =
+      item.SPriceAfterDis != null && Number.isFinite(Number(item.SPriceAfterDis))
+        ? Number(item.SPriceAfterDis)
+        : Math.max(0, gross - disVal);
+
     const serviceName = `<div class="service-name">${item.ProName || ''}</div>`;
     const barberName  = item.EmpName ? `<div class="barber-name">${item.EmpName}</div>` : '';
+    const priceCell =
+      disVal > 0
+        ? `<div class="line-price-block">
+            <div class="line-price-gross">${money(gross)} ج.م</div>
+            <div class="line-price-disc">خصم: -${money(disVal)}</div>
+            <div class="line-price-net">${money(net)} ج.م</div>
+          </div>`
+        : `<div class="line-price-net">${money(net > 0 ? net : gross)} ج.م</div>`;
+
     return `<tr>
         <td>${i + 1}</td>
         <td>${serviceName}${barberName}</td>
-        <td>${item.SPrice || 0} ج.م</td>
+        <td>${priceCell}</td>
       </tr>`;
   }).join('');
 
-  const disVal = Number(data.DisVal) || 0;
-  const discountRow = disVal > 0
-    ? `<div class="total-row discount"><span>الخصم:</span><span>- ${disVal} ج.م</span></div>`
+  const lineDiscountTotal = items.reduce(
+    (sum, item) => sum + Math.max(0, Number(item.DisVal || 0)),
+    0,
+  );
+  const headerDiscount = Math.max(0, Number(data.DisVal) || 0);
+  const shownDiscount = headerDiscount > 0 ? headerDiscount : lineDiscountTotal;
+  const discountLabel = headerDiscount > 0 ? 'الخصم:' : 'إجمالي خصومات الخدمات:';
+  const discountRow = shownDiscount > 0
+    ? `<div class="total-row discount"><span>${discountLabel}</span><span>- ${money(shownDiscount)} ج.م</span></div>`
     : '';
 
   const subTotal   = Number(data.SubTotal)   || 0;

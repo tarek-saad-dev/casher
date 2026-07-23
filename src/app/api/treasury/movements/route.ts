@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import sql from 'mssql';
+import { isActiveBranchContext, requireActiveBranchContext } from '@/lib/branch';
 import type { TreasuryMovementsResponse, TreasuryMovement } from '@/lib/types/treasury';
 
 /**
@@ -20,6 +21,10 @@ export async function GET(request: NextRequest) {
   let db;
   
   try {
+    // PHASE1D: never trust browser branchId — always filter by the session's active branch
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     db = await getPool();
     
     const searchParams = request.nextUrl.searchParams;
@@ -42,7 +47,7 @@ export async function GET(request: NextRequest) {
     const hasPaymentFilter = isUnassigned || (paymentMethodId !== null && !isNaN(paymentMethodId));
 
     // Build WHERE clause
-    let whereConditions: string[] = ['1=1'];
+    let whereConditions: string[] = ['cm.BranchID = @branchId'];
     const params: any = {};
     
     if (newDay !== null) {
@@ -93,6 +98,7 @@ export async function GET(request: NextRequest) {
     `;
     
     const countRequest = db.request();
+    countRequest.input('branchId', sql.Int, branch.branchId);
     Object.keys(params).forEach(key => {
       if (key === 'shiftMoveId' || key === 'userId' || key === 'paymentMethodId') {
         countRequest.input(key, sql.Int, params[key]);
@@ -138,6 +144,7 @@ export async function GET(request: NextRequest) {
     `;
     
     const movementsRequest = db.request();
+    movementsRequest.input('branchId', sql.Int, branch.branchId);
     Object.keys(params).forEach(key => {
       if (key === 'shiftMoveId' || key === 'userId' || key === 'paymentMethodId') {
         movementsRequest.input(key, sql.Int, params[key]);

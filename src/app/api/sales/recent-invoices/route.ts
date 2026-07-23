@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import { isActiveBranchContext, requireActiveBranchContext } from '@/lib/branch';
 import type { RecentInvoiceItem, RecentInvoicesResponse } from '@/lib/recentInvoices.types';
 import { parseRecentInvoicesSearchParams, buildRecentInvoicesWhereClause } from '@/lib/recentInvoicesQuery';
 import { computeInvoiceSearchRankScore } from '@/lib/invoiceSearch';
@@ -9,7 +10,9 @@ const INV_TYPE = 'مبيعات';
 function bindCommonFilters(
   request: sql.Request,
   parsed: ReturnType<typeof parseRecentInvoicesSearchParams>,
+  branchId: number,
 ) {
+  request.input('branchId', sql.Int, branchId);
   if (parsed.dateFrom) request.input('dateFrom', sql.Date, parsed.dateFrom);
   if (parsed.dateTo) request.input('dateTo', sql.Date, parsed.dateTo);
   if (parsed.minAmount !== undefined) request.input('minAmount', sql.Decimal(18, 2), parsed.minAmount);
@@ -131,15 +134,18 @@ const LIST_SELECT = `
 
 export async function GET(request: NextRequest) {
   try {
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const parsed = parseRecentInvoicesSearchParams(request.nextUrl.searchParams);
-    const whereClause = buildRecentInvoicesWhereClause(parsed);
+    const whereClause = `${buildRecentInvoicesWhereClause(parsed)} AND h.BranchID = @branchId`;
     const orderClause = buildOrderClause(parsed);
     const limit = parsed.limit ?? 20;
 
     const db = await getPool();
 
     const countRequest = db.request();
-    bindCommonFilters(countRequest, parsed);
+    bindCommonFilters(countRequest, parsed, branch.branchId);
     const countResult = await countRequest.query(`
       SELECT COUNT(*) AS total
       FROM [dbo].[TblinvServHead] h
@@ -149,7 +155,7 @@ export async function GET(request: NextRequest) {
     const total = countResult.recordset[0]?.total ?? 0;
 
     const listRequest = db.request();
-    bindCommonFilters(listRequest, parsed);
+    bindCommonFilters(listRequest, parsed, branch.branchId);
     listRequest.input('fetchLimit', sql.Int, limit + 1);
 
     const listResult = await listRequest.query(`

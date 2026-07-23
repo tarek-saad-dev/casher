@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql, allocateInvID } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { isActiveBranchContext, requireActiveBranchContext } from '@/lib/branch';
 import { isFinancialReportClassificationEnabled } from '@/lib/accounting/financialReportFlags';
 import {
   buildCashMoveReportClassification,
@@ -19,6 +20,10 @@ import { maybeScheduleFundingWhatsAppFromIncomeCategory } from '@/lib/services/e
 // Query params: fromDate, toDate, expInId?, paymentMethodId?, shiftMoveId?, search?
 export async function GET(req: NextRequest) {
   try {
+    // PHASE1D: never trust browser branchId — always filter by the session's active branch
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const db = await getPool();
     const url = new URL(req.url);
     const fromDate = url.searchParams.get('fromDate');
@@ -34,6 +39,7 @@ export async function GET(req: NextRequest) {
     const to    = toDate   || today;
 
     const req1 = db.request()
+      .input('branchId',        sql.Int,           branch.branchId)
       .input('fromDate',        sql.Date,          from)
       .input('toDate',          sql.Date,          to)
       .input('expInId',         sql.Int,           expInId         ? parseInt(expInId)  : null)
@@ -82,6 +88,7 @@ export async function GET(req: NextRequest) {
         ORDER BY m.ID DESC
       ) map
       WHERE CM.invType = N'ايرادات'
+        AND CM.BranchID = @branchId
         AND CM.invDate >= @fromDate
         AND CM.invDate <= @toDate
         AND (@expInId         IS NULL OR CM.ExpINID        = @expInId)
@@ -98,6 +105,7 @@ export async function GET(req: NextRequest) {
 
     // ── Summary ──
     const req2 = db.request()
+      .input('branchId', sql.Int, branch.branchId)
       .input('fromDate', sql.Date, from)
       .input('toDate',   sql.Date, to);
     const summaryResult = await req2.query(`
@@ -109,12 +117,14 @@ export async function GET(req: NextRequest) {
         MAX(invDate)                AS LastIncomeDate
       FROM dbo.TblCashMove
       WHERE invType = N'ايرادات'
+        AND BranchID = @branchId
         AND invDate >= @fromDate
         AND invDate <= @toDate
     `);
 
     // ── By Payment Method ──
     const req3 = db.request()
+      .input('branchId', sql.Int, branch.branchId)
       .input('fromDate', sql.Date, from)
       .input('toDate',   sql.Date, to);
     const byPmResult = await req3.query(`
@@ -126,6 +136,7 @@ export async function GET(req: NextRequest) {
       FROM dbo.TblCashMove CM
       LEFT JOIN dbo.TblPaymentMethods PM ON CM.PaymentMethodID = PM.PaymentID
       WHERE CM.invType = N'ايرادات'
+        AND CM.BranchID = @branchId
         AND CM.invDate >= @fromDate
         AND CM.invDate <= @toDate
       GROUP BY CM.PaymentMethodID, PM.PaymentMethod
@@ -134,6 +145,7 @@ export async function GET(req: NextRequest) {
 
     // ── By Category ──
     const req4 = db.request()
+      .input('branchId', sql.Int, branch.branchId)
       .input('fromDate', sql.Date, from)
       .input('toDate',   sql.Date, to);
     const byCatResult = await req4.query(`
@@ -145,6 +157,7 @@ export async function GET(req: NextRequest) {
       FROM dbo.TblCashMove CM
       LEFT JOIN dbo.TblExpINCat CAT ON CM.ExpINID = CAT.ExpINID
       WHERE CM.invType = N'ايرادات'
+        AND CM.BranchID = @branchId
         AND CM.invDate >= @fromDate
         AND CM.invDate <= @toDate
       GROUP BY CM.ExpINID, CAT.CatName
@@ -153,6 +166,7 @@ export async function GET(req: NextRequest) {
 
     // ── By Shift ──
     const req5 = db.request()
+      .input('branchId', sql.Int, branch.branchId)
       .input('fromDate', sql.Date, from)
       .input('toDate',   sql.Date, to);
     const byShiftResult = await req5.query(`
@@ -168,6 +182,7 @@ export async function GET(req: NextRequest) {
       LEFT JOIN dbo.TblShift S      ON SM.ShiftID     = S.ShiftID
       LEFT JOIN dbo.TblUser U       ON SM.UserID      = U.UserID
       WHERE CM.invType = N'ايرادات'
+        AND CM.BranchID = @branchId
         AND CM.invDate >= @fromDate
         AND CM.invDate <= @toDate
       GROUP BY CM.ShiftMoveID, SM.NewDay, S.ShiftName, U.UserName
@@ -250,27 +265,21 @@ export async function POST(req: NextRequest) {
     if (!expInId) return NextResponse.json({ error: 'يجب اختيار تصنيف الإيراد' }, { status: 400 });
     if (!paymentMethodId) return NextResponse.json({ error: 'يجب اختيار طريقة الدفع' }, { status: 400 });
 
+    // ──── Enforce active branch business day + user shift (Phase 1D) ────
+    // Never trust browser branchId — ownership comes only from validated session context.
+    const { resolveBranchDayAndShiftForWrite } = await import('@/lib/branch/operationalGates');
+    const gated = await resolveBranchDayAndShiftForWrite(session.UserID);
+    if (!gated.ok) return gated.response;
+    const branchId = gated.branch.branchId;
+    const businessDayId = gated.day.id;
+
     const db = await getPool();
     const transaction = new sql.Transaction(db);
     await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
 
     try {
-      // 1. Resolve ShiftMoveID
-      let resolvedShiftMoveId: number | null = shiftMoveId ?? null;
-      if (!resolvedShiftMoveId) {
-        const shiftReq = new sql.Request(transaction)
-          .input('userID', sql.Int, session.UserID);
-        const shiftRes = await shiftReq.query(`
-          SELECT TOP 1 SM.ID AS ShiftMoveID
-          FROM dbo.TblShiftMove SM
-          WHERE SM.Status = 1
-            AND SM.UserID = @userID
-          ORDER BY SM.ID DESC
-        `);
-        if (shiftRes.recordset.length > 0) {
-          resolvedShiftMoveId = shiftRes.recordset[0].ShiftMoveID;
-        }
-      }
+      // 1. Resolve ShiftMoveID (client may pass an explicit shift; otherwise use the branch-scoped open shift)
+      const resolvedShiftMoveId: number | null = shiftMoveId ?? gated.shift?.id ?? null;
       if (!resolvedShiftMoveId) {
         await transaction.rollback();
         return NextResponse.json({ error: 'لا توجد وردية مفتوحة. يجب فتح وردية قبل تسجيل الإيراد.' }, { status: 400 });
@@ -305,18 +314,20 @@ export async function POST(req: NextRequest) {
         .input('amount',          sql.Decimal(10, 2),   Number(amount))
         .input('notes',           sql.NVarChar(sql.MAX), notes?.trim() || null)
         .input('shiftMoveId',     sql.Int,              resolvedShiftMoveId)
-        .input('paymentMethodId', sql.Int,              paymentMethodId);
+        .input('paymentMethodId', sql.Int,              paymentMethodId)
+        .input('branchId',        sql.Int,              branchId)
+        .input('businessDayId',   sql.Int,              businessDayId);
 
       const insertRes = await insertReq.query(`
         INSERT INTO dbo.TblCashMove
-          (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID)
+          (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID)
         OUTPUT
           INSERTED.ID, INSERTED.invID, INSERTED.invDate, INSERTED.invTime,
           INSERTED.ExpINID, INSERTED.GrandTolal AS Amount, INSERTED.Notes,
           INSERTED.ShiftMoveID, INSERTED.PaymentMethodID
         VALUES
           (@invID, N'ايرادات', @invDate, CONVERT(nvarchar(8), GETDATE(), 108),
-           NULL, @expInId, @amount, N'in', @notes, @shiftMoveId, @paymentMethodId)
+           NULL, @expInId, @amount, N'in', @notes, @shiftMoveId, @paymentMethodId, @branchId, @businessDayId)
       `);
 
       const inserted = insertRes.recordset[0];

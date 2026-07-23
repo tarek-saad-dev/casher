@@ -7,7 +7,9 @@ import { PARTNERS } from '@/lib/types/monthly-report';
 
 describe('calculatePartnerProfitShares', () => {
   it('distributes profit by partner percentages', () => {
-    const shares = calculatePartnerProfitShares(100000);
+    // Phase 1E: production paths resolve real shares via getEffectiveBranchPartnerShares;
+    // this legacy test explicitly passes the deprecated PARTNERS constant as fixture data.
+    const shares = calculatePartnerProfitShares(100000, PARTNERS);
     expect(shares).toHaveLength(3);
     expect(shares[0].name).toBe('زياد');
     expect(shares[0].profitShare).toBeCloseTo(36666.66666666667, 2);
@@ -17,9 +19,15 @@ describe('calculatePartnerProfitShares', () => {
 
   it('keeps partner shares within 0.01 of distributable amount', () => {
     const amount = 67101.55;
-    const shares = calculatePartnerProfitShares(amount);
+    const shares = calculatePartnerProfitShares(amount, PARTNERS);
     const total = shares.reduce((sum, partner) => sum + partner.profitShare, 0);
     expect(Math.abs(total - amount)).toBeLessThanOrEqual(0.01);
+  });
+
+  it('throws when no partner shares are provided', () => {
+    expect(() => calculatePartnerProfitShares(100000, [])).toThrow(
+      'partner shares must be provided',
+    );
   });
 });
 
@@ -30,6 +38,7 @@ describe('calculateMonthlyFinancialEquations', () => {
       month: 6,
       baseAmount: 120000,
       mode: 'monthly',
+      partners: PARTNERS,
     });
 
     expect(result.finalDistributableAmount).toBe(120000);
@@ -44,6 +53,7 @@ describe('calculateMonthlyFinancialEquations', () => {
       month: 6,
       baseAmount: operatingNet,
       mode: 'partners',
+      partners: PARTNERS,
       baseAmountAlreadyNetOfEmployees: true,
       baseAmountAlreadyNetOfOperatingExpenses: true,
     });
@@ -59,6 +69,7 @@ describe('calculateMonthlyFinancialEquations', () => {
       month: 6,
       baseAmount: -15000,
       mode: 'partners',
+      partners: PARTNERS,
       baseAmountAlreadyNetOfEmployees: true,
       baseAmountAlreadyNetOfOperatingExpenses: true,
     });

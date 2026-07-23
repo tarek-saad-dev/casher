@@ -99,7 +99,7 @@ export default function PosPage() {
   const {
     state, totals,
     setCustomer: setCustomerBase, setBarber, addItem, removeItem, updateItem,
-    setDiscountPercent, setDiscountValue,
+    applyDiscountToLargestLine,
     setPaymentMethod,
     setPaymentAllocations,
     setNotes, setShift, clearItems, reset,
@@ -122,6 +122,7 @@ export default function PosPage() {
   const [printOpen, setPrintOpen] = useState(false);
   const [splitPaymentActive, setSplitPaymentActive] = useState(false);
   const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
+  const [legacyHeaderDiscountValue, setLegacyHeaderDiscountValue] = useState(0);
   const [vouchersOpen, setVouchersOpen] = useState(false);
   const [invoiceSheetOpen, setInvoiceSheetOpen] = useState(false);
   const [isPaymentTransferOpen, setIsPaymentTransferOpen] = useState(false);
@@ -302,8 +303,9 @@ export default function PosPage() {
           notes: i.ProName,
         })),
         subTotal: totals.subTotal,
-        dis: state.discountPercent,
-        disVal: totals.discountValue,
+        // New invoices: header discount always zero (line discounts only).
+        dis: 0,
+        disVal: 0,
         grandTotal: totals.grandTotal,
         totalBonus: totals.totalBonus,
         totalQty: totals.totalQty,
@@ -338,6 +340,7 @@ export default function PosPage() {
       // Reset everything (customer, barber, items, discount, payment, edit mode)
       reset();
       setEditingSaleId(null);
+      setLegacyHeaderDiscountValue(0);
       setSplitPaymentActive(false);
       setSaveError('');
 
@@ -357,7 +360,7 @@ export default function PosPage() {
           customerName: state.customer?.Name,
           customerPhone: state.customer?.Mobile ?? undefined,
           SubTotal: totals.subTotal,
-          Dis: state.discountPercent || 0,
+          Dis: 0,
           DisVal: totals.discountValue,
           GrandTotal: totals.grandTotal,
           PayCash: payCash,
@@ -366,9 +369,12 @@ export default function PosPage() {
           items: state.items.map(i => ({
             ProName: i.ProName,
             EmpName: i.EmpName,
-            SPrice: i.SPriceAfterDis,
+            SPrice: i.SPrice,
             Qty: i.Qty,
             SPriceAfterDis: i.SPriceAfterDis,
+            Dis: i.Dis,
+            DisVal: i.DisVal,
+            SValue: i.SPrice * i.Qty,
           })),
         };
         await printReceiptWithFallback(
@@ -417,6 +423,7 @@ export default function PosPage() {
     // Reset everything including barber selection and edit mode
     reset();
     setEditingSaleId(null);
+    setLegacyHeaderDiscountValue(0);
     setSplitPaymentActive(false);
     setSaveError('');
   }, [reset, setSplitPaymentActive]);
@@ -487,15 +494,9 @@ export default function PosPage() {
         setCustomer(customer);
       }
 
-      // 2. Set discount if exists
-      if (data.Dis || data.DisVal) {
-        if (data.Dis && data.Dis > 0) {
-          setDiscountPercent(data.Dis);
-        }
-        if (data.DisVal && data.DisVal > 0) {
-          setDiscountValue(data.DisVal);
-        }
-      }
+      // 2. Legacy header discount is preserved server-side — do not load into editable header fields.
+      const headerDisVal = Number(data.DisVal || 0);
+      setLegacyHeaderDiscountValue(headerDisVal > 0 ? headerDisVal : 0);
 
       // 3. Clear existing items and add services from the sale
       clearItems();
@@ -552,7 +553,7 @@ export default function PosPage() {
     } catch (e: any) {
       addToast('error', e.message || 'فشل تحميل بيانات الفاتورة');
     }
-  }, [findStaffById, setCustomer, clearItems, addItem, setPaymentMethod, setPaymentAllocations, paymentMethods, addToast, setDiscountPercent, setDiscountValue]);
+  }, [findStaffById, setCustomer, clearItems, addItem, setPaymentMethod, setPaymentAllocations, paymentMethods, addToast]);
 
   const handlePaymentMethodSelect = useCallback((id: number) => {
     setPaymentMethod(id);
@@ -597,11 +598,11 @@ export default function PosPage() {
     saving,
     onRemove: removeItem,
     onUpdateItem: updateItem,
-    onDiscountPercentChange: setDiscountPercent,
-    onDiscountValueChange: setDiscountValue,
     onPaymentMethodSelect: handlePaymentMethodSelect,
     onPaymentAllocationsChange: setPaymentAllocations,
     onSave: handleSave,
+    legacyHeaderDiscountWarning: legacyHeaderDiscountValue > 0,
+    legacyHeaderDiscountValue,
   };
 
   const invoiceLabel = editingSaleId
@@ -787,9 +788,9 @@ export default function PosPage() {
           onUseVoucher={(inventoryId, itemType, value, nameAr) => {
             addToast('success', `تم تطبيق: ${nameAr}`);
             if (itemType === 'DISCOUNT_AMOUNT' && value) {
-              setDiscountValue(value);
+              applyDiscountToLargestLine('value', value);
             } else if (itemType === 'DISCOUNT_PERCENT' && value) {
-              setDiscountPercent(value);
+              applyDiscountToLargestLine('percent', value);
             }
           }}
         />

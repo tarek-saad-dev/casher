@@ -5,6 +5,14 @@ import {
   checkRateLimit,
   PUBLIC_CORS_HEADERS,
 } from '@/lib/publicBookingHelpers';
+import {
+  extractPublicBranchCode,
+  resolvePublicBranchCode,
+  publicBranchRequiredResponse,
+  publicInvalidBranchResponse,
+  toPublicBranchSafe,
+} from '@/lib/branch/bookingQueueOwnership';
+import { BranchDomainError } from '@/lib/branch/types';
 
 export const runtime = 'nodejs';
 
@@ -13,8 +21,9 @@ export async function OPTIONS() {
 }
 
 /**
- * GET /api/public/booking/config
+ * GET /api/public/booking/config?branchCode=XXX
  * Returns public widget configuration — no auth required.
+ * Branch is required — never silently defaults to a founding branch.
  */
 export async function GET(req: NextRequest) {
   const ip = getRateLimitKey(req);
@@ -23,10 +32,25 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const settings = await getPublicSettings();
+    const { searchParams } = new URL(req.url);
+    const branchCode = extractPublicBranchCode(searchParams);
+    let branch;
+    try {
+      branch = await resolvePublicBranchCode(branchCode);
+    } catch (err) {
+      if (err instanceof BranchDomainError) {
+        return err.code === 'BRANCH_REQUIRED'
+          ? publicBranchRequiredResponse()
+          : publicInvalidBranchResponse();
+      }
+      throw err;
+    }
+
+    const settings = await getPublicSettings(branch.branchId);
 
     return NextResponse.json({
       ok: true,
+      branch: toPublicBranchSafe(branch),
       salon: {
         name:           settings.salonName,
         logoUrl:        null,

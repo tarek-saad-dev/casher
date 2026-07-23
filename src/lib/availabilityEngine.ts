@@ -24,6 +24,7 @@ import {
   EffectiveSchedule,
   ScheduleOverride,
 } from "@/lib/scheduleOverrides";
+import { loadFreelanceBookingUnlocks } from "@/lib/hr/freelanceBookingUnlock";
 
 export const SALON_TZ = "Africa/Cairo";
 
@@ -40,7 +41,7 @@ export interface BarberSchedule {
   isWorkingDay: boolean;
   start: string | null;  // "HH:MM" | null
   end:   string | null;  // "HH:MM" | null
-  source: "TblEmpWorkSchedule" | "TblEmp.Default" | "none";
+  source: "TblEmpWorkSchedule" | "TblEmp.Default" | "freelance_attendance" | "none";
 }
 
 export interface AttendanceInfo {
@@ -367,12 +368,28 @@ export async function getBarberDayStatus(
     (opts?.debugEmpId === empId && opts?.debugDate === dateStr);
 
   // 1. Load all data in parallel
-  const [schedule, dayOffEntry, overrides, attendance] = await Promise.all([
-    getDefaultSchedule(empId, dateStr),
-    getDayOff(empId, dateStr),
-    getScheduleOverrides(empId, dateStr),
-    isToday ? getAttendanceStatus(empId, dateStr) : Promise.resolve(null),
-  ]);
+  // Attendance is always loaded for the date so freelance Present unlocks booking
+  // even when the board date is not "today" in edge cases; Absent still only
+  // blocks bookability for today below.
+  const [baseSchedule, dayOffEntry, overrides, attendance, freelanceUnlocks] =
+    await Promise.all([
+      getDefaultSchedule(empId, dateStr),
+      getDayOff(empId, dateStr),
+      getScheduleOverrides(empId, dateStr),
+      getAttendanceStatus(empId, dateStr),
+      loadFreelanceBookingUnlocks([empId], dateStr),
+    ]);
+
+  const freelanceUnlock = !dayOffEntry ? freelanceUnlocks.get(empId) : undefined;
+  let schedule = baseSchedule;
+  if (freelanceUnlock && !baseSchedule.isWorkingDay) {
+    schedule = {
+      isWorkingDay: true,
+      start: freelanceUnlock.start,
+      end: freelanceUnlock.end,
+      source: "freelance_attendance",
+    };
+  }
 
   // 2. Apply overrides to base schedule
   const base = {
@@ -434,7 +451,7 @@ export async function getBarberDayStatus(
   } else if (isAbsent) {
     statusReasonArabic = "غائب";
     currentAvailabilityStatus = "absent";
-  } else if (isToday && attendance && !attendance.checkInTime) {
+  } else if (isToday && attendance && !attendance.checkInTime && schedule.source !== "freelance_attendance") {
     const now = new Date();
     const nowCairoMin = hhmmToMin(cairoTimeStr(now));
     const schedStartMin = effectiveStart ? hhmmToMin(effectiveStart) : null;
@@ -452,6 +469,8 @@ export async function getBarberDayStatus(
       statusReasonArabic = `مغادرة مبكرة (${effectiveEnd})`;
     } else if (isCustomHours) {
       statusReasonArabic = `ساعات مخصصة (${effectiveStart} - ${effectiveEnd})`;
+    } else if (schedule.source === "freelance_attendance") {
+      statusReasonArabic = `فري لانس حاضر (${effectiveStart} - ${effectiveEnd})`;
     } else {
       statusReasonArabic = "متاح";
     }
@@ -526,7 +545,8 @@ export async function getBarbersDayStatus(
   const idList = empIds.join(",");
 
   // Load all in parallel
-  const [schedulesRes, anyScheduleRes, dayOffRes, overridesMap, attendanceMap] = await Promise.all([
+  const [schedulesRes, anyScheduleRes, dayOffRes, overridesMap, attendanceMap, freelanceUnlocks] =
+    await Promise.all([
     // Schedules for this specific day-of-week
     db.request().input("dow", sql.TinyInt, dow).query(`
       SELECT EmpID,
@@ -552,9 +572,8 @@ export async function getBarbersDayStatus(
     // Overrides (via shared loader)
     loadOverridesForDate(db, empIds, dateStr),
 
-    // Attendance (today only)
-    isToday
-      ? db.request().input("workDate", sql.Date, dateStr).query(`
+    // Attendance for the board date (needed for freelance unlock + today's Absent)
+    db.request().input("workDate", sql.Date, dateStr).query(`
           SELECT EmpID,
             Status,
             CASE WHEN CheckInTime  IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), CheckInTime,  108), 5) ELSE NULL END AS CheckInTime,
@@ -563,8 +582,9 @@ export async function getBarbersDayStatus(
             ISNULL(EarlyLeaveMinutes, 0) AS EarlyLeaveMinutes
           FROM dbo.TblEmpAttendance
           WHERE EmpID IN (${idList}) AND WorkDate = @workDate
-        `).catch(() => ({ recordset: [] as any[] }))
-      : Promise.resolve({ recordset: [] as any[] }),
+        `).catch(() => ({ recordset: [] as any[] })),
+
+    loadFreelanceBookingUnlocks(empIds, dateStr),
   ]);
 
   // Build lookup maps
@@ -637,7 +657,16 @@ export async function getBarbersDayStatus(
 
     const dayOffEntry = dayOffEntryMap.get(empId) ?? null;
     const overrides   = overridesMap.get(empId) ?? [];
-    const attendance  = isToday ? (attMap.get(empId) ?? null) : null;
+    const attendance  = attMap.get(empId) ?? null;
+    const freelanceUnlock = !dayOffEntry ? freelanceUnlocks.get(empId) : undefined;
+    if (freelanceUnlock && !schedule.isWorkingDay) {
+      schedule = {
+        isWorkingDay: true,
+        start: freelanceUnlock.start,
+        end: freelanceUnlock.end,
+        source: "freelance_attendance",
+      };
+    }
 
     const base = {
       isWorking: schedule.isWorkingDay,
@@ -684,7 +713,12 @@ export async function getBarbersDayStatus(
     } else if (isAbsent) {
       statusReasonArabic = "غائب";
       currentAvailabilityStatus = "absent";
-    } else if (isToday && attendance && !attendance.checkInTime) {
+    } else if (
+      isToday &&
+      attendance &&
+      !attendance.checkInTime &&
+      schedule.source !== "freelance_attendance"
+    ) {
       const schedStartMin = effectiveStart ? hhmmToMin(effectiveStart) : null;
       if (schedStartMin !== null && nowCairoMin > schedStartMin + 15) {
         statusReasonArabic = "لم يسجل حضوره بعد";
@@ -697,6 +731,9 @@ export async function getBarbersDayStatus(
       if (isLateStart)       statusReasonArabic = `بداية متأخرة (${effectiveStart})`;
       else if (isEarlyLeave) statusReasonArabic = `مغادرة مبكرة (${effectiveEnd})`;
       else if (isCustomHours) statusReasonArabic = `ساعات مخصصة (${effectiveStart} - ${effectiveEnd})`;
+      else if (schedule.source === "freelance_attendance") {
+        statusReasonArabic = `فري لانس حاضر (${effectiveStart} - ${effectiveEnd})`;
+      }
       else                   statusReasonArabic = "متاح";
       currentAvailabilityStatus = "working";
     } else {
@@ -716,7 +753,8 @@ export async function getBarbersDayStatus(
     result.set(empId, {
       empId, dateStr, schedule, effectiveSchedule,
       isDayOff, isAbsent, isLateStart, isEarlyLeave, isCustomHours,
-      isWorkingDay, effectiveStart, effectiveEnd, attendance,
+      isWorkingDay, effectiveStart, effectiveEnd,
+      attendance,
       appliedOverride, dayOffReason, statusReasonArabic, currentAvailabilityStatus,
     });
   }

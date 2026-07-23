@@ -27,6 +27,7 @@ import {
   type FlowBoardPayload,
 } from '@/lib/operations/flowBoardRefreshController';
 import type { BookingCreateSuccess } from '@/lib/operations/bookingWorkspaceSubmit';
+import { useSession } from '@/hooks/useSession';
 
 interface FlowBoardBarber {
   empId: number;
@@ -122,6 +123,9 @@ function readMobileBarberSelection(): MobileBarberSelection | null {
 }
 
 export default function OperationsPage() {
+  const { user } = useSession();
+  const activeBranchIdRef = useRef<number | undefined>(user?.ActiveBranchID);
+  activeBranchIdRef.current = user?.ActiveBranchID;
   const [selectedDate, setSelectedDate] = useState<string>(getCairoBusinessDate());
   const [flowBoardData, setFlowBoardData] = useState<FlowBoardResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -164,6 +168,7 @@ export default function OperationsPage() {
   const refreshControllerRef = useRef(
     createFlowBoardRefreshController({
       getSelectedDate: () => selectedDateRef.current,
+      getBranchId: () => activeBranchIdRef.current ?? '_',
       fetchBoard: async (date, signal) => {
         const t0 = performance.now();
         if (process.env.NODE_ENV !== 'production') {

@@ -10,6 +10,16 @@ import {
   sendEmployeeSaleWhatsAppMessage,
 } from "@/lib/integrations/whatsapp";
 import { resolveEmployeeWhatsAppPhone } from "@/lib/integrations/whatsapp/payload-builders";
+import {
+  computeInvoiceItemsTotals,
+  hasNonZeroHeaderDiscount,
+} from "@/lib/sales/service-line-totals";
+import {
+  buildEmployeeSaleMessage,
+  employeeSaleGroupTotal,
+  groupEmployeeSaleDetails,
+} from "@/lib/sales/employee-sale-whatsapp";
+import { roundMoney } from "@/lib/reportMonthUtils";
 
 export const runtime = "nodejs";
 
@@ -22,6 +32,16 @@ export async function POST(req: NextRequest) {
     if (!body.items || body.items.length === 0) {
       return NextResponse.json(
         { error: "يجب إضافة خدمة واحدة على الأقل" },
+        { status: 400 },
+      );
+    }
+
+    if (hasNonZeroHeaderDiscount(body)) {
+      return NextResponse.json(
+        {
+          error:
+            "خصم إجمالي الفاتورة غير مسموح — استخدم خصم كل خدمة على حدة",
+        },
         { status: 400 },
       );
     }
@@ -39,8 +59,7 @@ export async function POST(req: NextRequest) {
       `[pos-api] ──── SAVE SALE START ──── DB=${dbName}, UserID=${userID}`,
     );
 
-    // ──── Enforce active branch business day + user shift (Phase 1C) ────
-    // Financial rows remain unscoped until Phase 1D; day/shift gating is branch-aware.
+    // ──── Enforce active branch business day + user shift; stamp financial ownership ────
     const { resolveBranchDayAndShiftForWrite } = await import(
       '@/lib/branch/operationalGates'
     );
@@ -55,6 +74,9 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+    // Never trust browser branchId — ownership comes only from validated session context.
+    const branchId = gated.branch.branchId;
+    const businessDayId = gated.day.id;
     const activeDay = { ID: gated.day.id, NewDay: gated.day.newDay };
     const invDate = gated.day.newDay; // Use business day date, NOT JS Date
     const shiftMoveID = gated.shift.id;
@@ -65,12 +87,40 @@ export async function POST(req: NextRequest) {
       `[pos-api]   Active Shift: ID=${shiftMoveID}, UserID=${gated.shift.userId} (verified owner)`,
     );
 
-    // ──── Server-side discount validation ────
-    const subTotal = Math.max(0, body.subTotal || 0);
-    let disPercent = Math.max(0, Math.min(100, body.dis || 0));
-    let disVal = Math.max(0, body.disVal || 0);
-    if (disVal > subTotal) disVal = subTotal;
-    const grandTotal = Math.max(0, subTotal - disVal);
+    // ──── Server-side totals from line items (never trust client grandTotal) ────
+    const computed = computeInvoiceItemsTotals(
+      body.items.map((item) => ({
+        sPrice: item.sPrice,
+        qty: item.qty,
+        discountPercent: item.dis,
+        discountValue: item.disVal,
+        bonus: item.bonus,
+      })),
+    );
+    const subTotal = computed.subTotal;
+    const disPercent = 0;
+    const disVal = 0;
+    const grandTotal = computed.grandTotal;
+    const totalBonus = computed.totalBonus;
+    const totalQty = computed.totalQty;
+
+    // Soft-check client totals (log only — server values win)
+    if (
+      body.subTotal != null &&
+      Math.abs(roundMoney(Number(body.subTotal)) - subTotal) > 0.01
+    ) {
+      console.warn(
+        `[pos-api]   ⚠️ client subTotal=${body.subTotal} ≠ server ${subTotal}`,
+      );
+    }
+    if (
+      body.grandTotal != null &&
+      Math.abs(roundMoney(Number(body.grandTotal)) - grandTotal) > 0.01
+    ) {
+      console.warn(
+        `[pos-api]   ⚠️ client grandTotal=${body.grandTotal} ≠ server ${grandTotal}`,
+      );
+    }
 
     // ──── Resolve split-payment clearing config early (needed for validation) ────
     const splitCfg = await resolveSplitPaymentConfig(db);
@@ -180,7 +230,7 @@ export async function POST(req: NextRequest) {
         .input("invTime", sql.NVarChar(50), invTime)
         .input("ClientID", sql.Int, body.clientId || null)
         .input("UserID", sql.Int, userID)
-        .input("TotalQty", sql.Decimal(10, 2), body.totalQty)
+        .input("TotalQty", sql.Decimal(10, 2), totalQty)
         .input("SubTotal", sql.Decimal(10, 2), subTotal)
         .input("Dis", sql.Decimal(6, 2), disPercent)
         .input("DisVal", sql.Decimal(10, 2), disVal)
@@ -188,7 +238,7 @@ export async function POST(req: NextRequest) {
         .input("TaxVal", sql.Decimal(10, 2), 0)
         .input("GrandTotal", sql.Decimal(10, 2), grandTotal)
         .input("invNotes", sql.NVarChar(50), notesText.substring(0, 50))
-        .input("TotalBonus", sql.Decimal(10, 2), body.totalBonus)
+        .input("TotalBonus", sql.Decimal(10, 2), totalBonus)
         .input("ShiftMoveID", sql.Int, shiftMoveID)
         .input("Notes", sql.NVarChar(100), notesText.substring(0, 100))
         .input("isActive", sql.NVarChar(5), "no")
@@ -197,7 +247,9 @@ export async function POST(req: NextRequest) {
         .input("PayDue", sql.Decimal(10, 2), 0)
         .input("PayCash", sql.Decimal(10, 2), payCash)
         .input("PayVisa", sql.Decimal(10, 2), payVisa)
-        .input("PaymentMethodID", sql.Int, headerPaymentMethodId);
+        .input("PaymentMethodID", sql.Int, headerPaymentMethodId)
+        .input("BranchID", sql.Int, branchId)
+        .input("BusinessDayID", sql.Int, businessDayId);
 
       await headReq.query(`
         INSERT INTO [dbo].[TblinvServHead] (
@@ -205,13 +257,15 @@ export async function POST(req: NextRequest) {
           TotalQty, SubTotal, Dis, DisVal, Tax, TaxVal, GrandTotal,
           invNotes, TotalBonus, ShiftMoveID,
           ReservDate, ReservTime, Notes,
-          PayCash, PayVisa, isActive, Notes2, Payment, PayDue, PaymentMethodID
+          PayCash, PayVisa, isActive, Notes2, Payment, PayDue, PaymentMethodID,
+          BranchID, BusinessDayID
         ) VALUES (
           @invID, @invType, @invDate, @invTime, @ClientID, @UserID,
           @TotalQty, @SubTotal, @Dis, @DisVal, @Tax, @TaxVal, @GrandTotal,
           @invNotes, @TotalBonus, @ShiftMoveID,
           NULL, NULL, @Notes,
-          @PayCash, @PayVisa, @isActive, @Notes2, @Payment, @PayDue, @PaymentMethodID
+          @PayCash, @PayVisa, @isActive, @Notes2, @Payment, @PayDue, @PaymentMethodID,
+          @BranchID, @BusinessDayID
         )
       `);
       console.log(
@@ -222,20 +276,21 @@ export async function POST(req: NextRequest) {
       let detailCount = 0;
       for (let i = 0; i < body.items.length; i++) {
         const item = body.items[i];
+        const line = computed.lines[i]!;
         const detReq = new sql.Request(transaction);
         detReq
           .input("invID", sql.Int, newInvID)
           .input("invType", sql.NVarChar(20), invType)
           .input("EmpID", sql.Int, item.empId)
           .input("ProID", sql.Int, item.proId)
-          .input("Dis", sql.Decimal(8, 2), item.dis)
-          .input("DisVal", sql.Decimal(8, 2), item.disVal)
+          .input("Dis", sql.Decimal(8, 2), line.discountPercent)
+          .input("DisVal", sql.Decimal(8, 2), line.discountValue)
           .input("SPrice", sql.Decimal(10, 2), item.sPrice)
-          .input("SValue", sql.Decimal(10, 2), item.sPrice * item.qty)
-          .input("SPriceAfterDis", sql.Decimal(10, 2), item.sPriceAfterDis)
+          .input("SValue", sql.Decimal(10, 2), line.grossAmount)
+          .input("SPriceAfterDis", sql.Decimal(10, 2), line.netAmount)
           .input("PPrice", sql.Decimal(10, 2), 0)
           .input("PValue", sql.Decimal(10, 2), 0)
-          .input("Qty", sql.Decimal(8, 2), item.qty)
+          .input("Qty", sql.Decimal(8, 2), item.qty > 0 ? item.qty : 1)
           .input("Notes", sql.NVarChar(50), (item.notes || "").substring(0, 50))
           .input("Bonus", sql.Decimal(8, 2), item.bonus)
           .input("ReservDate", sql.Date, null);
@@ -320,6 +375,8 @@ export async function POST(req: NextRequest) {
         if (existingSplitTransfers.recordset[0].cnt === 0) {
           await redistributeFromClearing({
             transaction,
+            branchId,
+            businessDayId,
             clearingMethodId: splitCfg.clearingMethodId,
             allocations: activeAllocations.map((a) => ({
               paymentMethodId: a.paymentMethodId,
@@ -510,7 +567,7 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // ── 9. Notify assigned employees via WhatsApp ──
+        // ── 9. Notify assigned employees via WhatsApp (one message per EmpID) ──
         try {
           const empWaDb = await getPool();
           const hasWhatsAppCol = await empWaDb.request().query(`
@@ -522,16 +579,35 @@ export async function POST(req: NextRequest) {
             ? 'e.WhatsApp'
             : 'NULL AS WhatsApp';
 
+          let customerNameForEmp = 'عميل';
+          if (body.clientId) {
+            const custNameRes = await empWaDb
+              .request()
+              .input('empWaClientId', sql.Int, body.clientId)
+              .query(`
+                SELECT [Name] FROM [dbo].[TblClient] WHERE ClientID = @empWaClientId
+              `);
+            const n = custNameRes.recordset[0]?.Name as string | undefined;
+            if (n?.trim()) customerNameForEmp = n.trim();
+          }
+
           const empDetailResult = await empWaDb
             .request()
             .input('empWaInvID', sql.Int, newInvID)
             .query(`
               SELECT
+                d.ID AS detailId,
                 d.EmpID,
                 e.EmpName,
                 e.Mobile,
                 ${whatsAppSelect},
-                p.ProName AS ServiceName
+                d.ProID,
+                p.ProName AS ServiceName,
+                d.SPrice,
+                d.Qty,
+                d.DisVal,
+                d.SValue,
+                d.SPriceAfterDis
               FROM [dbo].[TblinvServDetail] d
               INNER JOIN [dbo].[TblEmp] e ON d.EmpID = e.EmpID
               LEFT JOIN [dbo].[TblPro] p ON d.ProID = p.ProID
@@ -540,60 +616,118 @@ export async function POST(req: NextRequest) {
                 AND d.EmpID IS NOT NULL
             `);
 
-          const byEmployee = new Map<
-            number,
-            { empName: string; phone: string; services: string[] }
-          >();
+          const byEmployee = groupEmployeeSaleDetails(
+            (empDetailResult.recordset as Array<Record<string, unknown>>).map((row) => ({
+              EmpID: Number(row.EmpID),
+              EmpName: row.EmpName as string | null,
+              WhatsApp: row.WhatsApp as string | null,
+              Mobile: row.Mobile as string | null,
+              ProID: row.ProID != null ? Number(row.ProID) : null,
+              ServiceName: row.ServiceName as string | null,
+              detailId: row.detailId != null ? Number(row.detailId) : null,
+              SPrice: row.SPrice != null ? Number(row.SPrice) : null,
+              Qty: row.Qty != null ? Number(row.Qty) : null,
+              DisVal: row.DisVal != null ? Number(row.DisVal) : null,
+              SValue: row.SValue != null ? Number(row.SValue) : null,
+              SPriceAfterDis: row.SPriceAfterDis != null ? Number(row.SPriceAfterDis) : null,
+            })),
+            resolveEmployeeWhatsAppPhone,
+          );
 
-          for (const row of empDetailResult.recordset as Array<Record<string, unknown>>) {
-            const empId = row.EmpID as number;
-            const phone = resolveEmployeeWhatsAppPhone(
-              row.WhatsApp as string | null | undefined,
-              row.Mobile as string | null | undefined,
-            );
-            if (!phone) continue;
-
-            const serviceName = (row.ServiceName as string | undefined)?.trim();
-            const existing = byEmployee.get(empId);
-            if (existing) {
-              if (serviceName && !existing.services.includes(serviceName)) {
-                existing.services.push(serviceName);
-              }
-              continue;
-            }
-
-            byEmployee.set(empId, {
-              empName: (row.EmpName as string | undefined)?.trim() || 'موظف',
-              phone,
-              services: serviceName ? [serviceName] : [],
-            });
-          }
+          const sendJobs: Promise<unknown>[] = [];
 
           for (const emp of byEmployee.values()) {
             if (emp.services.length === 0) continue;
-            console.log(
-              `[pos-api]   📱 Employee WhatsApp: ${emp.empName} (${emp.phone}) services=${emp.services.join(', ')}`,
-            );
-            const empWaResult = await sendEmployeeSaleWhatsAppMessage({
-              phone: emp.phone,
-              employeeName: emp.empName,
+
+            if (!emp.phone) {
+              console.warn(
+                `[pos-api]   ⚠️ Employee WhatsApp skipped: missing phone invoiceId=${newInvID} empId=${emp.empId} name=${emp.employeeName}`,
+              );
+              continue;
+            }
+
+            const employeeTotal = employeeSaleGroupTotal(emp);
+            const message = buildEmployeeSaleMessage({
+              employeeName: emp.employeeName,
               invID: newInvID,
               services: emp.services,
             });
-            if (!empWaResult.sent) {
-              const reason =
-                'reason' in empWaResult ? empWaResult.reason : 'unknown';
-              const error =
-                'error' in empWaResult ? empWaResult.error : undefined;
-              console.log(
-                `[pos-api]   ⚠️ Employee WhatsApp not sent for ${emp.empName}: ${reason}${error ? ` — ${error}` : ''}`,
-              );
-            }
+
+            console.log(
+              `[pos-api]   📱 Employee WhatsApp: empId=${emp.empId} ${emp.employeeName} (${emp.phone}) total=${employeeTotal} services=${emp.services.map((s) => s.serviceName).join(', ')}`,
+            );
+
+            sendJobs.push(
+              sendEmployeeSaleWhatsAppMessage({
+                phone: emp.phone,
+                employeeName: emp.employeeName,
+                customerName: customerNameForEmp,
+                invID: newInvID,
+                employeeId: emp.empId,
+                services: emp.services.map((s) => s.serviceName),
+                serviceDetails: emp.services,
+                employeeTotal,
+                invoiceTotal: grandTotal,
+                message,
+              }),
+            );
           }
 
-          if (byEmployee.size === 0) {
+          if (sendJobs.length > 0) {
+            const settled = await Promise.allSettled(sendJobs);
+            let sent = 0;
+            let failed = 0;
+            let notRegistered = 0;
+            let queued = 0;
+
+            settled.forEach((result, idx) => {
+              if (result.status === 'rejected') {
+                failed += 1;
+                console.log(
+                  `[pos-api]   ⚠️ Employee WhatsApp promise rejected #${idx}: ${
+                    result.reason instanceof Error ? result.reason.message : String(result.reason)
+                  }`,
+                );
+                return;
+              }
+
+              const empWaResult = result.value as {
+                sent?: boolean;
+                status?: string;
+                reason?: string;
+                error?: string;
+                messageId?: string;
+              };
+
+              if (empWaResult?.sent && empWaResult.status === 'sent') {
+                sent += 1;
+                console.log(
+                  `[pos-api]   ✅ Employee WhatsApp sent #${idx} messageId=${empWaResult.messageId ?? 'n/a'}`,
+                );
+                return;
+              }
+
+              const reason = empWaResult?.reason ?? empWaResult?.status ?? 'unknown';
+              if (reason === 'not_registered') {
+                notRegistered += 1;
+              } else if (reason === 'queued') {
+                queued += 1;
+              } else {
+                failed += 1;
+              }
+              console.log(
+                `[pos-api]   ⚠️ Employee WhatsApp ${reason} #${idx}${
+                  empWaResult?.error ? ` — ${empWaResult.error}` : ''
+                }`,
+              );
+            });
+
             console.log(
-              `[pos-api]   ℹ️ Employee WhatsApp skipped: no employees with phone on invoice ${newInvID}`,
+              `[pos-api]   📊 Employee WhatsApp summary invoice=INV-${newInvID} employees=${sendJobs.length} sent=${sent} failed=${failed} notRegistered=${notRegistered} queued=${queued}`,
+            );
+          } else if (byEmployee.size === 0) {
+            console.log(
+              `[pos-api]   ℹ️ Employee WhatsApp skipped: no employees on invoice ${newInvID}`,
             );
           }
         } catch (employeeWhatsappErr) {

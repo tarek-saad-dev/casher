@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/session';
-import { canAccessPath } from '@/lib/permissions-server';
+import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import { parseMonthYearParams, validateMonthYear } from '@/lib/reportMonthUtils';
 import { validatePartnersReportMinimumPeriod } from '@/lib/reports/partnersReportPeriod';
 import { getPartnersExpenseCategoryTransactions } from '@/lib/services/partnersExpenseCategoryDetailsService';
+import {
+  isReportBranchScope,
+  parseReportScopeQuery,
+  reportScopeMetadata,
+  resolveReportBranchScope,
+} from '@/lib/branch';
 
 const PARTNERS_REPORT_PATH = '/admin/reports/partners';
 
@@ -15,24 +20,15 @@ function parseCategoryId(value: string | null): number | null {
 
 /**
  * GET /api/admin/reports/partners/expense-category-details
- *   ?year=2026&month=6&categoryId=123&categoryName=بضاعة
+ *   ?year=2026&month=6&categoryId=123&categoryName=بضاعة&branchId=&scope=all
+ *
+ * Phase 1E: branch-scoped. `branchId`/`scope=all` are hidden query params —
+ * no branch switcher UI is exposed. Default = caller's active branch.
  */
 export async function GET(req: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'غير مصرح — يرجى تسجيل الدخول' }, { status: 401 });
-    }
-
-    const allowed = await canAccessPath(
-      session.UserID,
-      session.UserName,
-      session.UserLevel,
-      PARTNERS_REPORT_PATH
-    );
-    if (!allowed) {
-      return NextResponse.json({ error: 'غير مصرح — لا تملك صلاحية عرض هذا التقرير' }, { status: 403 });
-    }
+    const auth = await requirePageAccess(PARTNERS_REPORT_PATH);
+    if (!isAuthResult(auth)) return auth;
 
     const url = new URL(req.url);
     const { year, month } = parseMonthYearParams(
@@ -56,12 +52,21 @@ export async function GET(req: NextRequest) {
 
     const categoryId = parseCategoryId(url.searchParams.get('categoryId'));
 
-    const transactions = await getPartnersExpenseCategoryTransactions(
-      year,
-      month,
-      categoryId,
-      categoryName
+    const { requestedBranchId, requestedAllBranches } = parseReportScopeQuery(url.searchParams);
+    const scope = await resolveReportBranchScope({
+      requestedBranchId,
+      requestedAllBranches,
+      allowAllBranchesIfPermitted: true,
+    });
+    if (!isReportBranchScope(scope)) return scope;
+
+    const branchIds = scope.mode === 'single' ? [scope.branchId] : scope.branchIds;
+    const transactionsByBranch = await Promise.all(
+      branchIds.map((branchId) =>
+        getPartnersExpenseCategoryTransactions(year, month, categoryId, categoryName, branchId),
+      ),
     );
+    const transactions = transactionsByBranch.flat();
 
     return NextResponse.json({
       year,
@@ -69,6 +74,7 @@ export async function GET(req: NextRequest) {
       categoryId,
       categoryName,
       transactions,
+      scope: reportScopeMetadata(scope),
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

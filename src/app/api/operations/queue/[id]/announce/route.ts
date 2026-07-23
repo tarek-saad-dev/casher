@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { detectQueueTicketsSchema } from "@/lib/queueSchema";
+import { requireBranchOperationAccess, isActiveBranchContext } from "@/lib/branch/context";
+import {
+  assertBookingOwnedByActiveBranch,
+  bookingQueueNotFoundResponse,
+} from "@/lib/branch/bookingQueueOwnership";
 
 export const runtime = "nodejs";
 
@@ -11,6 +16,9 @@ type RouteContext = { params: Promise<{ id: string }> };
 // Marks a queue ticket as announced (status = 'called', AnnouncedAt = now)
 export async function POST(req: NextRequest, context: RouteContext) {
   try {
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const { id } = await context.params;
     const ticketId = parseInt(id);
 
@@ -40,7 +48,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     console.log("[announce] Schema detected:", schema);
 
     // First, check if ticket exists and its current status
-    const selectColumns = ['QueueTicketID', 'Status', 'TicketCode'];
+    const selectColumns = ['QueueTicketID', 'Status', 'TicketCode', 'BranchID'];
     if (schema.hasAnnouncedAt) {
       selectColumns.push('AnnouncedAt');
     }
@@ -65,6 +73,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
     }
 
     const ticket = checkRes.recordset[0];
+
+    if (!assertBookingOwnedByActiveBranch(branch.branchId, ticket.BranchID)) {
+      return bookingQueueNotFoundResponse();
+    }
 
     // Check if already announced (unless force=true)
     const alreadyAnnounced = ticket.Status === "called" ||

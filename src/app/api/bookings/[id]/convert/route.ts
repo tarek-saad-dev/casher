@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { resolveBranchDayAndShiftForWrite } from "@/lib/branch/operationalGates";
+import {
+  assertBookingOwnedByActiveBranch,
+  bookingQueueNotFoundResponse,
+} from "@/lib/branch/bookingQueueOwnership";
 
 export const runtime = "nodejs";
 
@@ -16,6 +21,14 @@ export async function POST(req: NextRequest, context: RouteContext) {
     const body = await req.json();
     const { paymentMethodId, notes: invNotes } = body;
 
+    // Never trust browser branchId — resolve branch/open day/open shift from
+    // gated session context. The converted invoice is always created in the
+    // caller's active branch; the source booking must belong to that branch too.
+    const gated = await resolveBranchDayAndShiftForWrite(userID);
+    if (!gated.ok) return gated.response;
+    const branchId = gated.branch.branchId;
+    const businessDayId = gated.day.id;
+
     const db = await getPool();
 
     // Load booking
@@ -30,6 +43,11 @@ export async function POST(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "حجز غير موجود" }, { status: 404 });
 
     const booking = bkRes.recordset[0];
+
+    if (!assertBookingOwnedByActiveBranch(branchId, booking.BranchID)) {
+      return bookingQueueNotFoundResponse();
+    }
+
     if (booking.ConvertedInvID)
       return NextResponse.json({ error: "تم تحويل هذا الحجز مسبقاً إلى فاتورة" }, { status: 409 });
 
@@ -42,25 +60,11 @@ export async function POST(req: NextRequest, context: RouteContext) {
     if (!services.length)
       return NextResponse.json({ error: "لا توجد خدمات لتحويلها" }, { status: 400 });
 
-    // Enforce active business day
-    const dayRes = await db.request().query(
-      `SELECT TOP 1 ID, NewDay FROM [dbo].[TblNewDay] WHERE Status=1 ORDER BY ID DESC`
-    );
-    if (!dayRes.recordset.length)
-      return NextResponse.json({ error: "لا يوجد يوم عمل مفتوح" }, { status: 400 });
-    const activeDay = dayRes.recordset[0];
-    const invDate = activeDay.NewDay;
-
-    // Enforce active shift
-    const shiftRes = await db.request()
-      .input("uid", sql.Int, userID)
-      .query(`
-        SELECT TOP 1 ID FROM [dbo].[TblShiftMove]
-        WHERE Status=1 AND UserID=@uid ORDER BY ID DESC
-      `);
-    if (!shiftRes.recordset.length)
+    // Business day + shift already enforced by resolveBranchDayAndShiftForWrite above.
+    const invDate = gated.day.newDay;
+    if (!gated.shift)
       return NextResponse.json({ error: "لا يوجد وردية مفتوحة" }, { status: 400 });
-    const shiftMoveID = shiftRes.recordset[0].ID;
+    const shiftMoveID = gated.shift.id;
 
     // Get next invID
     const invTypeConv = "خدمة";
@@ -100,19 +104,23 @@ export async function POST(req: NextRequest, context: RouteContext) {
         .input("pmID",       sql.Int,             paymentMethodId || null)
         .input("notes",      sql.NVarChar(100),   (invNotes || 'حجز').substring(0, 100))
         .input("invNotes",   sql.NVarChar(50),    (invNotes || 'حجز').substring(0, 50))
+        .input("branchId",   sql.Int,             branchId)
+        .input("businessDayId", sql.Int,          businessDayId)
         .query(`
           INSERT INTO [dbo].[TblinvServHead] (
             invID, invType, invDate, invTime, ClientID, UserID,
             TotalQty, SubTotal, Dis, DisVal, Tax, TaxVal, GrandTotal,
             invNotes, TotalBonus, ShiftMoveID,
             ReservDate, ReservTime, Notes,
-            PayCash, PayVisa, isActive, Notes2, Payment, PayDue, PaymentMethodID
+            PayCash, PayVisa, isActive, Notes2, Payment, PayDue, PaymentMethodID,
+            BranchID, BusinessDayID
           ) VALUES (
             @invID, @invType, @invDate, @invTime, @clientId, @userID,
             @totalQty, @subTotal, 0, 0, 0, 0, @grandTotal,
             @invNotes, 0, @shift,
             NULL, NULL, @notes,
-            0, 0, 'no', '', @grandTotal, 0, @pmID
+            0, 0, 'no', '', @grandTotal, 0, @pmID,
+            @branchId, @businessDayId
           )
         `);
 

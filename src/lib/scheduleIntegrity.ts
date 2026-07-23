@@ -18,7 +18,7 @@ import {
   loadOverridesForDate,
   type EffectiveSchedule,
 } from '@/lib/scheduleOverrides';
-import { salonDateTimeToMs, getPublicSettings } from '@/lib/publicBookingHelpers';
+import { salonDateTimeToMs, getGlobalTimingDefaults } from '@/lib/publicBookingHelpers';
 import { SALON_TZ } from '@/lib/bookingDateTime';
 import { createStageTimer } from '@/lib/devStageTiming';
 
@@ -66,9 +66,9 @@ export async function getEmployeeEffectiveSchedule(args: {
   empId: number;
   operationalDate: string;
   transaction?: Transaction;
-  settings?: Awaited<ReturnType<typeof getPublicSettings>>;
+  settings?: Awaited<ReturnType<typeof getGlobalTimingDefaults>>;
 }): Promise<EmployeeShiftBounds | null> {
-  const settings = args.settings ?? (await getPublicSettings());
+  const settings = args.settings ?? (await getGlobalTimingDefaults());
   const timezone = settings.timezone || SALON_TZ;
 
   const dateObj = new Date(`${args.operationalDate}T12:00:00Z`);
@@ -121,14 +121,14 @@ export async function getEmployeeBusyIntervals(args: {
   rangeEndMs?: number;
   /** Reuse schedule already resolved after applock (do not treat as occupancy truth). */
   schedule?: EmployeeShiftBounds | null;
-  settings?: Awaited<ReturnType<typeof getPublicSettings>>;
+  settings?: Awaited<ReturnType<typeof getGlobalTimingDefaults>>;
   defaultDuration?: number;
 }): Promise<ScheduleInterval[]> {
   const timer = createStageTimer();
   const db = (args.transaction ?? (await getPool())) as Awaited<ReturnType<typeof getPool>>;
   timer.mark('poolMs');
 
-  const settings = args.settings ?? (await getPublicSettings());
+  const settings = args.settings ?? (await getGlobalTimingDefaults());
   timer.mark('settingsMs');
   const defaultDur =
     args.defaultDuration ??
@@ -301,7 +301,7 @@ export async function assertEmployeeIntervalAvailable(args: {
   const timer = createStageTimer();
   const now = args.now ?? new Date();
   const operationalDate = args.operationalDate ?? getCairoBusinessDate(now);
-  const settings = await getPublicSettings();
+  const settings = await getGlobalTimingDefaults();
   timer.mark('settingsMs');
 
   if (args.transaction) {

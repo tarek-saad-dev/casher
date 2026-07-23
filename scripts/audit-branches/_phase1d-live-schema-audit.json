@@ -1,0 +1,1222 @@
+{
+  "generatedAt": "2026-07-22T02:02:38.857Z",
+  "target": "cloud",
+  "database": "last132",
+  "checks": [
+    {
+      "label": "TblinvServHead_columns",
+      "rows": [
+        {
+          "name": "ID",
+          "type_name": "int",
+          "is_nullable": false,
+          "is_identity": true
+        },
+        {
+          "name": "invID",
+          "type_name": "int",
+          "is_nullable": false,
+          "is_identity": false
+        },
+        {
+          "name": "invType",
+          "type_name": "nvarchar",
+          "is_nullable": false,
+          "is_identity": false
+        },
+        {
+          "name": "invDate",
+          "type_name": "date",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "invTime",
+          "type_name": "nvarchar",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "ClientID",
+          "type_name": "int",
+          "is_nullable": false,
+          "is_identity": false
+        },
+        {
+          "name": "UserID",
+          "type_name": "int",
+          "is_nullable": false,
+          "is_identity": false
+        },
+        {
+          "name": "TotalQty",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "SubTotal",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "Dis",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "DisVal",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "Tax",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "TaxVal",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "GrandTotal",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "invNotes",
+          "type_name": "nvarchar",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "TotalBonus",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "ShiftMoveID",
+          "type_name": "int",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "ReservDate",
+          "type_name": "date",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "ReservTime",
+          "type_name": "nvarchar",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "Notes",
+          "type_name": "nvarchar",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "PayCash",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "PayVisa",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "isActive",
+          "type_name": "nvarchar",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "Notes2",
+          "type_name": "nvarchar",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "Payment",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "PayDue",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "PaymentMethodID",
+          "type_name": "int",
+          "is_nullable": true,
+          "is_identity": false
+        }
+      ]
+    },
+    {
+      "label": "TblinvServHead_pk_unique",
+      "rows": [
+        {
+          "name": "PK_TblinvServHead",
+          "is_primary_key": true,
+          "is_unique": true,
+          "has_filter": false,
+          "cols": "invID,invType"
+        }
+      ]
+    },
+    {
+      "label": "TblinvServHead_fks",
+      "rows": [
+        {
+          "name": "FK_TblinvServHead_TblClient",
+          "child_col": "ClientID",
+          "parent_table": "TblClient",
+          "parent_col": "ClientID"
+        },
+        {
+          "name": "FK_TblinvServHead_TblPaymentMethods",
+          "child_col": "PaymentMethodID",
+          "parent_table": "TblPaymentMethods",
+          "parent_col": "PaymentID"
+        },
+        {
+          "name": "FK_TblinvServHead_TblShiftMove",
+          "child_col": "ShiftMoveID",
+          "parent_table": "TblShiftMove",
+          "parent_col": "ID"
+        }
+      ]
+    },
+    {
+      "label": "TblinvServDetail_columns",
+      "rows": [
+        {
+          "name": "ID",
+          "type_name": "int",
+          "is_nullable": false,
+          "is_identity": true
+        },
+        {
+          "name": "invID",
+          "type_name": "int",
+          "is_nullable": false,
+          "is_identity": false
+        },
+        {
+          "name": "invType",
+          "type_name": "nvarchar",
+          "is_nullable": false,
+          "is_identity": false
+        },
+        {
+          "name": "EmpID",
+          "type_name": "int",
+          "is_nullable": false,
+          "is_identity": false
+        },
+        {
+          "name": "ProID",
+          "type_name": "int",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "Dis",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "DisVal",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "SPrice",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "SValue",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "SPriceAfterDis",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "PPrice",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "PValue",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "Qty",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "ProType",
+          "type_name": "nvarchar",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "Notes",
+          "type_name": "nvarchar",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "Bonus",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "ReservDate",
+          "type_name": "date",
+          "is_nullable": true,
+          "is_identity": false
+        }
+      ]
+    },
+    {
+      "label": "TblinvServDetail_pk_unique",
+      "rows": [
+        {
+          "name": "PK_TblinvServDetail",
+          "is_primary_key": true,
+          "is_unique": true,
+          "has_filter": false,
+          "cols": "ID"
+        }
+      ]
+    },
+    {
+      "label": "TblinvServDetail_fks",
+      "rows": [
+        {
+          "name": "FK_TblinvServDetail_TblEmp",
+          "child_col": "EmpID",
+          "parent_table": "TblEmp",
+          "parent_col": "EmpID"
+        },
+        {
+          "name": "FK_TblinvServDetail_TblinvServHead",
+          "child_col": "invID",
+          "parent_table": "TblinvServHead",
+          "parent_col": "invID"
+        },
+        {
+          "name": "FK_TblinvServDetail_TblinvServHead",
+          "child_col": "invType",
+          "parent_table": "TblinvServHead",
+          "parent_col": "invType"
+        },
+        {
+          "name": "FK_TblinvServDetail_TblPro",
+          "child_col": "ProID",
+          "parent_table": "TblPro",
+          "parent_col": "ProID"
+        }
+      ]
+    },
+    {
+      "label": "TblinvServPayment_columns",
+      "rows": [
+        {
+          "name": "ID",
+          "type_name": "int",
+          "is_nullable": false,
+          "is_identity": true
+        },
+        {
+          "name": "invID",
+          "type_name": "int",
+          "is_nullable": false,
+          "is_identity": false
+        },
+        {
+          "name": "invType",
+          "type_name": "nvarchar",
+          "is_nullable": false,
+          "is_identity": false
+        },
+        {
+          "name": "PayDate",
+          "type_name": "date",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "PayTime",
+          "type_name": "nvarchar",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "PayValue",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "Notes",
+          "type_name": "nvarchar",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "PaymentMethodID",
+          "type_name": "int",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "ShiftMoveID",
+          "type_name": "int",
+          "is_nullable": true,
+          "is_identity": false
+        }
+      ]
+    },
+    {
+      "label": "TblinvServPayment_pk_unique",
+      "rows": [
+        {
+          "name": "PK_TblinvServPayment",
+          "is_primary_key": true,
+          "is_unique": true,
+          "has_filter": false,
+          "cols": "ID"
+        }
+      ]
+    },
+    {
+      "label": "TblinvServPayment_fks",
+      "rows": [
+        {
+          "name": "FK_TblinvServPayment_TblinvServHead",
+          "child_col": "invID",
+          "parent_table": "TblinvServHead",
+          "parent_col": "invID"
+        },
+        {
+          "name": "FK_TblinvServPayment_TblinvServHead",
+          "child_col": "invType",
+          "parent_table": "TblinvServHead",
+          "parent_col": "invType"
+        },
+        {
+          "name": "FK_TblinvServPayment_TblPaymentMethods",
+          "child_col": "PaymentMethodID",
+          "parent_table": "TblPaymentMethods",
+          "parent_col": "PaymentID"
+        },
+        {
+          "name": "FK_TblinvServPayment_TblShiftMove",
+          "child_col": "ShiftMoveID",
+          "parent_table": "TblShiftMove",
+          "parent_col": "ID"
+        }
+      ]
+    },
+    {
+      "label": "TblCashMove_columns",
+      "rows": [
+        {
+          "name": "ID",
+          "type_name": "int",
+          "is_nullable": false,
+          "is_identity": true
+        },
+        {
+          "name": "invID",
+          "type_name": "int",
+          "is_nullable": false,
+          "is_identity": false
+        },
+        {
+          "name": "invType",
+          "type_name": "nvarchar",
+          "is_nullable": false,
+          "is_identity": false
+        },
+        {
+          "name": "invDate",
+          "type_name": "date",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "invTime",
+          "type_name": "nvarchar",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "ClientID",
+          "type_name": "int",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "ExpINID",
+          "type_name": "int",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "GrandTolal",
+          "type_name": "decimal",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "inOut",
+          "type_name": "nvarchar",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "Notes",
+          "type_name": "nvarchar",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "ShiftMoveID",
+          "type_name": "int",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "PaymentMethodID",
+          "type_name": "int",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "EditHistory",
+          "type_name": "nvarchar",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "EmpID",
+          "type_name": "int",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "IsPayrollDeduction",
+          "type_name": "bit",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "PayrollMonth",
+          "type_name": "date",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "IsEmployeePayrollIncome",
+          "type_name": "bit",
+          "is_nullable": false,
+          "is_identity": false
+        }
+      ]
+    },
+    {
+      "label": "TblCashMove_pk_unique",
+      "rows": [
+        {
+          "name": "PK_TblCashMove",
+          "is_primary_key": true,
+          "is_unique": true,
+          "has_filter": false,
+          "cols": "ID"
+        }
+      ]
+    },
+    {
+      "label": "TblCashMove_fks",
+      "rows": [
+        {
+          "name": "FK_TblCashMove_TblClient",
+          "child_col": "ClientID",
+          "parent_table": "TblClient",
+          "parent_col": "ClientID"
+        },
+        {
+          "name": "FK_TblCashMove_TblEmp",
+          "child_col": "EmpID",
+          "parent_table": "TblEmp",
+          "parent_col": "EmpID"
+        },
+        {
+          "name": "FK_TblCashMove_TblExpINCat",
+          "child_col": "ExpINID",
+          "parent_table": "TblExpINCat",
+          "parent_col": "ExpINID"
+        },
+        {
+          "name": "FK_TblCashMove_TblPaymentMethods",
+          "child_col": "PaymentMethodID",
+          "parent_table": "TblPaymentMethods",
+          "parent_col": "PaymentID"
+        },
+        {
+          "name": "FK_TblCashMove_TblShiftMove",
+          "child_col": "ShiftMoveID",
+          "parent_table": "TblShiftMove",
+          "parent_col": "ID"
+        }
+      ]
+    },
+    {
+      "label": "TblTreasuryCloseRecon_columns",
+      "rows": [
+        {
+          "name": "ID",
+          "type_name": "int",
+          "is_nullable": false,
+          "is_identity": true
+        },
+        {
+          "name": "NewDay",
+          "type_name": "int",
+          "is_nullable": false,
+          "is_identity": false
+        },
+        {
+          "name": "ShiftMoveID",
+          "type_name": "int",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "PaymentMethodID",
+          "type_name": "int",
+          "is_nullable": false,
+          "is_identity": false
+        },
+        {
+          "name": "SystemAmount",
+          "type_name": "decimal",
+          "is_nullable": false,
+          "is_identity": false
+        },
+        {
+          "name": "CountedAmount",
+          "type_name": "decimal",
+          "is_nullable": false,
+          "is_identity": false
+        },
+        {
+          "name": "Notes",
+          "type_name": "nvarchar",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "ClosedByUserID",
+          "type_name": "int",
+          "is_nullable": true,
+          "is_identity": false
+        },
+        {
+          "name": "CreatedAt",
+          "type_name": "datetime2",
+          "is_nullable": false,
+          "is_identity": false
+        }
+      ]
+    },
+    {
+      "label": "TblTreasuryCloseRecon_pk_unique",
+      "rows": [
+        {
+          "name": "PK__TblTreas__3214EC27D9C16C30",
+          "is_primary_key": true,
+          "is_unique": true,
+          "has_filter": false,
+          "cols": "ID"
+        }
+      ]
+    },
+    {
+      "label": "TblTreasuryCloseRecon_fks",
+      "rows": [
+        {
+          "name": "FK_TreasuryCloseRecon_BusinessDay",
+          "child_col": "NewDay",
+          "parent_table": "TblNewDay",
+          "parent_col": "ID"
+        }
+      ]
+    },
+    {
+      "label": "triggers_on_invoice_cash",
+      "rows": [
+        {
+          "trigger_name": "trg_TblinvServDetail_WhatsAppNotification",
+          "table_name": "TblinvServDetail",
+          "is_disabled": true,
+          "type_desc": "INSERT"
+        },
+        {
+          "trigger_name": "InsCashMoveSales",
+          "table_name": "TblinvServHead",
+          "is_disabled": false,
+          "type_desc": "INSERT"
+        }
+      ]
+    },
+    {
+      "label": "insCashMoveSales_definition",
+      "rows": [
+        {
+          "definition": "CREATE TRIGGER [dbo].[InsCashMoveSales]\r\n   ON [dbo].[TblinvServHead]\r\n   AFTER insert\r\n\r\nAS \r\n\r\nBEGIN\r\n\r\n\tdeclare  @invid int  = (select  i.invID  from inserted i)\r\n\tdeclare  @invType nvarchar(20)  = (select  i.invType  from inserted i);\r\n\tdeclare  @invDate date  = (select  i.invDate  from inserted i);\r\n\tdeclare  @invTime nvarchar(30)  = (select  i.invTime  from inserted i);\r\n\r\n\tdeclare  @clientID int  =  (select  i.ClientID from inserted i)\r\n\tdeclare  @value decimal(10,2)  = (select  i.GrandTotal  from inserted i);\r\n\r\n\t--declare  @PayCash decimal(10,2)  = (select  i.PayCash  from inserted i);\r\n\t--declare  @PayVisa decimal(10,2)  = (select  i.PayVisa  from inserted i);\r\n\r\n\tdeclare  @username nvarchar(50)  = (select  s.UserName  from inserted i,TblUser s where i.UserID=s.UserID);\r\n\tdeclare  @note nvarchar(100)  = (select  i.invNotes  from inserted i )\r\n\tdeclare @reservDate date =(select  i.ReservDate  from inserted i )\r\n\tdeclare @ReseervTime nvarchar(30) =(select i.ReservTime from inserted i)\r\n\tdeclare @shiftmoveID int =(select i.ShiftMoveID from inserted i)\r\n\r\n\tdeclare @PaymentMethodID int = (select i.PaymentMethodID from inserted i)\r\n\r\n\tif (@invType =N'مبيعات بالكارت' and @ReseervTime is null )\r\n\tbegin\r\n\t\tinsert into TblCashMove( invID , invType , invDate , invTime , ClientID , GrandTolal , inOut  , Notes,ShiftMoveID,PaymentMethodID)\r\n\t\t\t\t\t     values(@invid ,@invType ,@invDate ,@invTime ,@clientID ,   @value   , 'out'  ,@note,@shiftmoveID ,@PaymentMethodID)\r\n\tend\r\n\r\n\telse if @invType =N'م.مبيعات بالكارت'\r\n\tbegin\r\n\t\tinsert into TblCashMove( invID , invType , invDate , invTime , ClientID , GrandTolal , inOut , Notes,ShiftMoveID ,PaymentMethodID)\r\n\t\t\t\t\t values(@invid ,@invType ,@invDate ,@invTime ,@clientID ,@value , 'in'  ,@note,@shiftmoveID ,@PaymentMethodID)\r\n\tend\r\n\r\n\telse if (@invType =N'مبيعات' and @ReseervTime is null )\r\n\tbegin\r\n\t\t\tinsert into TblCashMove( invID , invType , invDate , invTime , ClientID , GrandTolal , inOut  , Notes,ShiftMoveID ,PaymentMethodID)\r\n\t\t\t\t\t values(@invid ,@invType ,@invDate ,@invTime ,@clientID ,@value , 'in'  ,@note,@shiftmoveID  ,@PaymentMethodID)\r\n\tend\r\n\r\n\telse if @invType =N'م.مبيعات'\r\n\tbegin\r\n\t\t\tinsert into TblCashMove( invID , invType , invDate , invTime , ClientID , GrandTolal , inOut  , Notes,ShiftMoveID ,PaymentMethodID)\r\n\t\t\t\t\t values(@invid ,@invType ,@invDate ,@invTime ,@clientID ,@value , 'out'  ,@note,@shiftmoveID  ,@PaymentMethodID)\r\n\tend\r\n\r\n\r\nEND"
+        }
+      ]
+    },
+    {
+      "label": "all_triggers_mentioning_cash_or_invoice",
+      "rows": [
+        {
+          "name": "InsCashMoveSales",
+          "parent_table": "TblinvServHead"
+        },
+        {
+          "name": "trg_TblinvServDetail_WhatsAppNotification",
+          "parent_table": "TblinvServDetail"
+        }
+      ]
+    },
+    {
+      "label": "ct_financial_tables",
+      "rows": [
+        {
+          "table_name": "TblCashMove",
+          "is_track_columns_updated_on": true
+        },
+        {
+          "table_name": "TblinvServDetail",
+          "is_track_columns_updated_on": true
+        },
+        {
+          "table_name": "TblinvServHead",
+          "is_track_columns_updated_on": true
+        },
+        {
+          "table_name": "TblinvServPayment",
+          "is_track_columns_updated_on": true
+        },
+        {
+          "table_name": "TblNewDay",
+          "is_track_columns_updated_on": true
+        },
+        {
+          "table_name": "TblShiftMove",
+          "is_track_columns_updated_on": true
+        }
+      ]
+    },
+    {
+      "label": "sync_table_registry",
+      "rows": [
+        {
+          "TableName": [
+            "TblCashMove",
+            "TblCashMove"
+          ],
+          "IsEnabled": [
+            true,
+            true
+          ],
+          "SchemaName": "dbo",
+          "FullName": "[dbo].[TblCashMove]",
+          "ApplyOrder": 31,
+          "DeleteOrder": 10,
+          "HasCompositePk": false,
+          "ConflictPolicy": "HashEqualElseConflict",
+          "BatchSize": 100,
+          "LastMetadataRefreshUtc": "2026-04-17T20:56:58.129Z"
+        },
+        {
+          "TableName": [
+            "TblinvServDetail",
+            "TblinvServDetail"
+          ],
+          "IsEnabled": [
+            true,
+            true
+          ],
+          "SchemaName": "dbo",
+          "FullName": "[dbo].[TblinvServDetail]",
+          "ApplyOrder": 38,
+          "DeleteOrder": 3,
+          "HasCompositePk": false,
+          "ConflictPolicy": "HashEqualElseConflict",
+          "BatchSize": 100,
+          "LastMetadataRefreshUtc": "2026-04-17T20:56:58.143Z"
+        },
+        {
+          "TableName": [
+            "TblinvServHead",
+            "TblinvServHead"
+          ],
+          "IsEnabled": [
+            true,
+            true
+          ],
+          "SchemaName": "dbo",
+          "FullName": "[dbo].[TblinvServHead]",
+          "ApplyOrder": 33,
+          "DeleteOrder": 8,
+          "HasCompositePk": true,
+          "ConflictPolicy": "HashEqualElseConflict",
+          "BatchSize": 100,
+          "LastMetadataRefreshUtc": "2026-04-17T20:56:58.144Z"
+        },
+        {
+          "TableName": [
+            "TblinvServPayment",
+            "TblinvServPayment"
+          ],
+          "IsEnabled": [
+            true,
+            true
+          ],
+          "SchemaName": "dbo",
+          "FullName": "[dbo].[TblinvServPayment]",
+          "ApplyOrder": 39,
+          "DeleteOrder": 2,
+          "HasCompositePk": false,
+          "ConflictPolicy": "HashEqualElseConflict",
+          "BatchSize": 100,
+          "LastMetadataRefreshUtc": "2026-04-17T20:56:58.145Z"
+        },
+        {
+          "TableName": [
+            "TblNewDay",
+            "TblNewDay"
+          ],
+          "IsEnabled": [
+            true,
+            true
+          ],
+          "SchemaName": "dbo",
+          "FullName": "[dbo].[TblNewDay]",
+          "ApplyOrder": 7,
+          "DeleteOrder": 34,
+          "HasCompositePk": false,
+          "ConflictPolicy": "HashEqualElseConflict",
+          "BatchSize": 100,
+          "LastMetadataRefreshUtc": "2026-04-17T20:56:58.146Z"
+        },
+        {
+          "TableName": [
+            "TblShiftMove",
+            "TblShiftMove"
+          ],
+          "IsEnabled": [
+            true,
+            true
+          ],
+          "SchemaName": "dbo",
+          "FullName": "[dbo].[TblShiftMove]",
+          "ApplyOrder": 28,
+          "DeleteOrder": 13,
+          "HasCompositePk": false,
+          "ConflictPolicy": "HashEqualElseConflict",
+          "BatchSize": 100,
+          "LastMetadataRefreshUtc": "2026-04-17T20:56:58.156Z"
+        }
+      ]
+    },
+    {
+      "label": "branchid_presence",
+      "rows": [
+        {
+          "table_name": "TblBranch",
+          "column_name": "BranchID",
+          "is_nullable": false
+        },
+        {
+          "table_name": "TblEmpBranchAssignment",
+          "column_name": "BranchID",
+          "is_nullable": false
+        },
+        {
+          "table_name": "TblNewDay",
+          "column_name": "BranchID",
+          "is_nullable": false
+        },
+        {
+          "table_name": "TblShiftMove",
+          "column_name": "BranchID",
+          "is_nullable": false
+        },
+        {
+          "table_name": "TblShiftMove",
+          "column_name": "BusinessDayID",
+          "is_nullable": false
+        },
+        {
+          "table_name": "TblUserBranchAccess",
+          "column_name": "BranchID",
+          "is_nullable": false
+        }
+      ]
+    },
+    {
+      "label": "gleem",
+      "rows": [
+        {
+          "BranchID": 1,
+          "BranchCode": "GLEEM"
+        }
+      ]
+    },
+    {
+      "label": "invoice_shift_join_stats",
+      "rows": [
+        {
+          "invoice_total": 7749,
+          "invoice_null_shift": 4,
+          "invoice_orphan_shift": 0,
+          "invoice_date_ne_shift_day": 7
+        }
+      ]
+    },
+    {
+      "label": "cash_shift_join_stats",
+      "rows": [
+        {
+          "cash_total": 11713,
+          "cash_null_shift": 1385,
+          "cash_orphan_shift": 0
+        }
+      ]
+    },
+    {
+      "label": "cash_invtypes",
+      "rows": [
+        {
+          "invType": "مبيعات",
+          "inOut": "in",
+          "cnt": 7603,
+          "total": 1486368.28
+        },
+        {
+          "invType": "مصروفات",
+          "inOut": "out",
+          "cnt": 3371,
+          "total": 1838215.37
+        },
+        {
+          "invType": "ايرادات",
+          "inOut": "in",
+          "cnt": 705,
+          "total": 2209749.74
+        },
+        {
+          "invType": "مبيعات",
+          "inOut": "out",
+          "cnt": 31,
+          "total": 9160
+        },
+        {
+          "invType": "حجز",
+          "inOut": "in",
+          "cnt": 3,
+          "total": 200
+        }
+      ]
+    },
+    {
+      "label": "invoice_types",
+      "rows": [
+        {
+          "invType": "مبيعات",
+          "cnt": 7571,
+          "total": 1477578.28
+        },
+        {
+          "invType": "حجز",
+          "cnt": 177,
+          "total": 30350
+        },
+        {
+          "invType": "خدمة",
+          "cnt": 1,
+          "total": 200
+        }
+      ]
+    },
+    {
+      "label": "sale_cash_match_sample",
+      "rows": [
+        {
+          "HeadSurrogate": 29080,
+          "invID": 7660,
+          "invType": "مبيعات",
+          "invDate": "2026-07-21T00:00:00.000Z",
+          "invShift": 10807,
+          "CashID": 36394,
+          "cashInvID": 7660,
+          "cashInvType": "مبيعات",
+          "cashShift": 10807
+        },
+        {
+          "HeadSurrogate": 29079,
+          "invID": 7659,
+          "invType": "مبيعات",
+          "invDate": "2026-07-21T00:00:00.000Z",
+          "invShift": 10807,
+          "CashID": 36393,
+          "cashInvID": 7659,
+          "cashInvType": "مبيعات",
+          "cashShift": 10807
+        },
+        {
+          "HeadSurrogate": 29078,
+          "invID": 7658,
+          "invType": "مبيعات",
+          "invDate": "2026-07-21T00:00:00.000Z",
+          "invShift": 10807,
+          "CashID": 36392,
+          "cashInvID": 7658,
+          "cashInvType": "مبيعات",
+          "cashShift": 10807
+        },
+        {
+          "HeadSurrogate": 29077,
+          "invID": 7657,
+          "invType": "مبيعات",
+          "invDate": "2026-07-21T00:00:00.000Z",
+          "invShift": 10807,
+          "CashID": 36390,
+          "cashInvID": 7657,
+          "cashInvType": "مبيعات",
+          "cashShift": null
+        },
+        {
+          "HeadSurrogate": 29076,
+          "invID": 7656,
+          "invType": "مبيعات",
+          "invDate": "2026-07-21T00:00:00.000Z",
+          "invShift": 10807,
+          "CashID": 36388,
+          "cashInvID": 7656,
+          "cashInvType": "مبيعات",
+          "cashShift": 10807
+        }
+      ]
+    },
+    {
+      "label": "modules_financial",
+      "rows": [
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.AccountClient"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.AllReservRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.CashStatementAllClient"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.CashStatementByTypeRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.CashStatementClient"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.CashStatementRcpt"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.CashStatementRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.ClientReservRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.ClientSalesFullRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.EmpReservBetweenDatesRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.EndShift"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.ExpensesRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.iNCOMERPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.ProReservRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.RcptInvDone"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.ReservPaymentRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.ReservPayRcptA5"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.ReservResept"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.ReviewEmpReservationRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalecServReservCardRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalecServReservClinetRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalecServReservRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalecServReservTransCardRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalecServReservTransRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalesResalesReset"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalesServByCatRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalesServByClientRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalesServByEmpRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalesServByProRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalesServCardRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalesServRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.SalesServWithProfitRPT"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.ServEmployee"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.sp_GetMonthlyPayroll"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.sp_Loyalty_EarnPointsFromSale"
+        },
+        {
+          "type_desc": "SQL_STORED_PROCEDURE",
+          "object_name": "dbo.TotalDay"
+        },
+        {
+          "type_desc": "SQL_TRIGGER",
+          "object_name": "dbo.InsCashMoveSales"
+        },
+        {
+          "type_desc": "SQL_TRIGGER",
+          "object_name": "dbo.trg_TblinvServDetail_WhatsAppNotification"
+        },
+        {
+          "type_desc": "VIEW",
+          "object_name": "dbo.ViwAllSalesServ"
+        },
+        {
+          "type_desc": "VIEW",
+          "object_name": "dbo.ViwCashStatmentClient"
+        },
+        {
+          "type_desc": "VIEW",
+          "object_name": "dbo.ViwShiftMove"
+        }
+      ]
+    }
+  ]
+}

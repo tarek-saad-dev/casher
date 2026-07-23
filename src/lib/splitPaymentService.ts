@@ -3,6 +3,10 @@ import type { Transaction } from "mssql";
 
 export interface PaymentTransferParams {
   transaction: Transaction;
+  /** Never trust browser branchId — always resolved from gated session context. */
+  branchId: number;
+  /** Nullable only for legacy invoices predating the business-day migration. */
+  businessDayId: number | null;
   invDate: Date | string;
   invTime: string;
   clientId: number | null;
@@ -50,14 +54,16 @@ export async function insertPaymentTransferPair(
     .input("inOut", sql.NVarChar(5), "out")
     .input("Notes", sql.NVarChar(sql.MAX), p.notes)
     .input("ShiftMoveID", sql.Int, p.shiftMoveId)
-    .input("PaymentMethodID", sql.Int, p.fromPaymentMethodId);
+    .input("PaymentMethodID", sql.Int, p.fromPaymentMethodId)
+    .input("BranchID", sql.Int, p.branchId)
+    .input("BusinessDayID", sql.Int, p.businessDayId);
 
   const expRes = await expReq.query(`
     INSERT INTO [dbo].[TblCashMove]
-      (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID)
+      (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID)
     OUTPUT INSERTED.ID
     VALUES
-      (@invID, @invType, @invDate, @invTime, @ClientID, @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID)
+      (@invID, @invType, @invDate, @invTime, @ClientID, @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID, @BranchID, @BusinessDayID)
   `);
   const expenseId: number = expRes.recordset[0].ID;
 
@@ -74,14 +80,16 @@ export async function insertPaymentTransferPair(
     .input("inOut", sql.NVarChar(5), "in")
     .input("Notes", sql.NVarChar(sql.MAX), p.notes)
     .input("ShiftMoveID", sql.Int, p.shiftMoveId)
-    .input("PaymentMethodID", sql.Int, p.toPaymentMethodId);
+    .input("PaymentMethodID", sql.Int, p.toPaymentMethodId)
+    .input("BranchID", sql.Int, p.branchId)
+    .input("BusinessDayID", sql.Int, p.businessDayId);
 
   const incRes = await incReq.query(`
     INSERT INTO [dbo].[TblCashMove]
-      (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID)
+      (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID)
     OUTPUT INSERTED.ID
     VALUES
-      (@invID, @invType, @invDate, @invTime, @ClientID, @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID)
+      (@invID, @invType, @invDate, @invTime, @ClientID, @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID, @BranchID, @BusinessDayID)
   `);
   const incomeId: number = incRes.recordset[0].ID;
 
@@ -102,6 +110,9 @@ export interface SplitAllocation {
  */
 export async function redistributeFromClearing(params: {
   transaction: Transaction;
+  /** Never trust browser branchId — always resolved from gated session context or invoice head. */
+  branchId: number;
+  businessDayId: number | null;
   clearingMethodId: number;
   allocations: SplitAllocation[];
   invDate: Date | string;
@@ -114,6 +125,8 @@ export async function redistributeFromClearing(params: {
 }): Promise<void> {
   const {
     transaction,
+    branchId,
+    businessDayId,
     clearingMethodId,
     allocations,
     invDate,
@@ -151,6 +164,8 @@ export async function redistributeFromClearing(params: {
 
     await insertPaymentTransferPair({
       transaction,
+      branchId,
+      businessDayId,
       invDate,
       invTime,
       clientId,
@@ -171,6 +186,9 @@ export async function redistributeFromClearing(params: {
  */
 export async function reverseSplitPaymentTransfers(params: {
   transaction: Transaction;
+  /** Never trust browser branchId — always resolved from gated session context or invoice head. */
+  branchId: number;
+  businessDayId: number | null;
   invoiceId: number;
   invoiceType: string;
   clearingMethodId: number;
@@ -183,6 +201,8 @@ export async function reverseSplitPaymentTransfers(params: {
 }): Promise<void> {
   const {
     transaction,
+    branchId,
+    businessDayId,
     invoiceId,
     invoiceType,
     clearingMethodId,
@@ -210,6 +230,8 @@ export async function reverseSplitPaymentTransfers(params: {
     // Reverse: money flows BACK from real method INTO clearing
     await insertPaymentTransferPair({
       transaction,
+      branchId,
+      businessDayId,
       invDate,
       invTime,
       clientId,

@@ -10,11 +10,24 @@ import {
   type AllocatedDetailLine,
 } from '@/lib/services/employeeInvoiceAllocation';
 import { roundMoney } from '@/lib/reportMonthUtils';
+import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
+import {
+  isReportBranchScope,
+  parseReportScopeQuery,
+  reportScopeMetadata,
+  resolveReportBranchScope,
+} from '@/lib/branch';
 
-// GET /api/reports/employee-services
-// Query params: fromDate=YYYY-MM-DD, toDate=YYYY-MM-DD, employeeId=optional
+const PAGE = '/admin/reports/employee-services';
+
+// GET /api/reports/employee-services?fromDate=&toDate=&employeeId=&branchId=&scope=all
+// Phase 1E: branch-scoped. `branchId`/`scope=all` are hidden query params — no
+// branch switcher UI is exposed. Default = caller's active branch.
 export async function GET(req: NextRequest) {
   try {
+    const auth = await requirePageAccess(PAGE);
+    if (!isAuthResult(auth)) return auth;
+
     const { searchParams } = new URL(req.url);
 
     const today = new Date().toISOString().split('T')[0];
@@ -28,7 +41,22 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'صيغة التاريخ غير صحيحة، استخدم YYYY-MM-DD' }, { status: 400 });
     }
 
+    const { requestedBranchId, requestedAllBranches } = parseReportScopeQuery(searchParams);
+    const scope = await resolveReportBranchScope({
+      requestedBranchId,
+      requestedAllBranches,
+      allowAllBranchesIfPermitted: true,
+    });
+    if (!isReportBranchScope(scope)) return scope;
+    const branchIds = scope.mode === 'single' ? [scope.branchId] : scope.branchIds;
+
     const db = await getPool();
+
+    const branchFilterSql = `h.BranchID IN (${branchIds.map((_, i) => `@branchId${i}`).join(',')})`;
+    function bindBranchIds(request: ReturnType<typeof db.request>): ReturnType<typeof db.request> {
+      branchIds.forEach((id, i) => request.input(`branchId${i}`, sql.Int, id));
+      return request;
+    }
 
     // ── Step 1: Discover actual column names from schema ──────────────────────
     const schemaResult = await db.request().query(`
@@ -92,9 +120,9 @@ export async function GET(req: NextRequest) {
       : `N''`;
 
     // ── Step 2: Debug queries — count heads/details in range ─────────────────
-    const debugRequest = db.request()
+    const debugRequest = bindBranchIds(db.request()
       .input('fromDate', sql.Date, fromDate)
-      .input('toDate',   sql.Date, toDate);
+      .input('toDate',   sql.Date, toDate));
 
     const headCountRes = await debugRequest.query(`
       SELECT COUNT(*) AS SalesHeadsCount
@@ -102,12 +130,13 @@ export async function GET(req: NextRequest) {
       WHERE CAST(h.invDate AS date) >= @fromDate
         AND CAST(h.invDate AS date) <= @toDate
         AND h.invType = N'مبيعات'
+        AND ${branchFilterSql}
     `);
     const salesHeadsCount: number = headCountRes.recordset[0]?.SalesHeadsCount ?? 0;
 
-    const detailCountRes = await db.request()
+    const detailCountRes = await bindBranchIds(db.request()
       .input('fromDate', sql.Date, fromDate)
-      .input('toDate',   sql.Date, toDate)
+      .input('toDate',   sql.Date, toDate))
       .query(`
         SELECT COUNT(*) AS SalesDetailsCount
         FROM dbo.TblinvServDetail d
@@ -117,12 +146,13 @@ export async function GET(req: NextRequest) {
         WHERE CAST(h.invDate AS date) >= @fromDate
           AND CAST(h.invDate AS date) <= @toDate
           AND h.invType = N'مبيعات'
+          AND ${branchFilterSql}
       `);
     const salesDetailsCount: number = detailCountRes.recordset[0]?.SalesDetailsCount ?? 0;
 
-    const sampleRes = await db.request()
+    const sampleRes = await bindBranchIds(db.request()
       .input('fromDate', sql.Date, fromDate)
-      .input('toDate',   sql.Date, toDate)
+      .input('toDate',   sql.Date, toDate))
       .query(`
         SELECT TOP 20
           h.invID, h.invType, CAST(h.invDate AS date) AS invDate,
@@ -136,18 +166,20 @@ export async function GET(req: NextRequest) {
         WHERE CAST(h.invDate AS date) >= @fromDate
           AND CAST(h.invDate AS date) <= @toDate
           AND h.invType = N'مبيعات'
+          AND ${branchFilterSql}
         ORDER BY h.invDate DESC, h.invTime DESC
       `);
     const sampleRows = sampleRes.recordset;
 
-    const distinctInvTypesForRange = await db.request()
+    const distinctInvTypesForRange = await bindBranchIds(db.request()
       .input('fromDate', sql.Date, fromDate)
-      .input('toDate',   sql.Date, toDate)
+      .input('toDate',   sql.Date, toDate))
       .query(`
         SELECT DISTINCT h.invType, COUNT(*) AS cnt
         FROM dbo.TblinvServHead h
         WHERE CAST(h.invDate AS date) >= @fromDate
           AND CAST(h.invDate AS date) <= @toDate
+          AND ${branchFilterSql}
         GROUP BY h.invType
         ORDER BY cnt DESC
       `);
@@ -158,10 +190,10 @@ export async function GET(req: NextRequest) {
     }
 
     // ── Step 3: Build & run the main query ───────────────────────────────────
-    const request = db.request()
+    const request = bindBranchIds(db.request()
       .input('fromDate',   sql.Date, fromDate)
       .input('toDate',     sql.Date, toDate)
-      .input('employeeId', sql.Int,  employeeId);
+      .input('employeeId', sql.Int,  employeeId));
 
     const serviceNameArExpr = proNameArCol
       ? `ISNULL(p.${proNameArCol}, N'')`
@@ -179,11 +211,12 @@ export async function GET(req: NextRequest) {
       CAST(h.invDate AS date) >= @fromDate
       AND CAST(h.invDate AS date) <= @toDate
       AND h.invType = N'مبيعات'
+      AND ${branchFilterSql}
     `;
 
-    const headersResult = await db.request()
+    const headersResult = await bindBranchIds(db.request()
       .input('fromDate', sql.Date, fromDate)
-      .input('toDate', sql.Date, toDate)
+      .input('toDate', sql.Date, toDate))
       .query(`
         SELECT
           h.invID,
@@ -195,9 +228,9 @@ export async function GET(req: NextRequest) {
         WHERE ${baseDateWhere}
       `);
 
-    const allocationLinesResult = await db.request()
+    const allocationLinesResult = await bindBranchIds(db.request()
       .input('fromDate', sql.Date, fromDate)
-      .input('toDate', sql.Date, toDate)
+      .input('toDate', sql.Date, toDate))
       .query(`
         SELECT
           d.ID                                                        AS DetailID,
@@ -471,6 +504,7 @@ export async function GET(req: NextRequest) {
       serviceBreakdown,
       revenueTotals: filteredRevenueTotals,
       details,
+      scope: reportScopeMetadata(scope),
       _meta: {
         fromDate,
         toDate,

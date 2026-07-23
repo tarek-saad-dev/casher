@@ -9,12 +9,28 @@ import {
 } from '@/lib/integrations/whatsapp';
 import { resolveEmployeeWhatsAppPhone } from '@/lib/integrations/whatsapp/payload-builders';
 import { getFullDayReport } from '@/lib/reports/full-day-report';
+import { getBranchByCode, listActiveBranches } from '@/lib/branch';
 import { composeOwnerDailyWhatsAppMessage } from '@/lib/hr/owner-daily-whatsapp-message';
 import { dailyWaReasonAr } from '@/lib/hr/employee-daily-whatsapp-reasons';
 import { JobType } from '@/lib/types';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const OWNER_PREFERRED_NAME = 'طارق';
+
+/**
+ * Phase 1E: the owner WhatsApp cron has no request-scoped branch context.
+ * Resolves the founding branch (GLEEM) when present, else the first active
+ * branch — this notification is not yet branch-aware in the UI.
+ */
+async function resolveOwnerReportBranchId(): Promise<number> {
+  const gleem = await getBranchByCode('GLEEM');
+  if (gleem) return gleem.branchId;
+  const active = await listActiveBranches();
+  if (active.length === 0) {
+    throw new Error('لا يوجد فرع نشط لإرسال تقرير المالك');
+  }
+  return active[0].branchId;
+}
 
 async function resolveOwnerPhone(): Promise<{
   phone: string | null;
@@ -231,7 +247,8 @@ export async function previewOwnerDailyWhatsApp(workDate: string): Promise<{
   }
 
   const cfg = getConfig();
-  const report = await getFullDayReport(workDate);
+  const branchId = await resolveOwnerReportBranchId();
+  const report = await getFullDayReport(workDate, branchId);
   const message = composeOwnerDailyWhatsAppMessage(report);
   const owner = await resolveOwnerPhone();
 

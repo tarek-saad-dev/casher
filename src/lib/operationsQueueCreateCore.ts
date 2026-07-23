@@ -41,6 +41,8 @@ export interface CreateOperationsQueueInput {
   trustExpectedStart?: boolean;
   /** When true, commit expectedStartTime/End from client after transactional validation (barber-header flow). */
   useClientPlannedTimes?: boolean;
+  /** Branch owning this ticket — stamped on write, scopes ticket numbering. */
+  branchId: number;
 }
 
 export class CreateOperationsQueueError extends Error {
@@ -68,10 +70,15 @@ export async function createOperationsQueueTicket(
     source,
     trustExpectedStart = false,
     useClientPlannedTimes = false,
+    branchId,
   } = input;
 
   if (!empId || typeof empId !== 'number') {
     throw new CreateOperationsQueueError(400, 'empId مطلوب');
+  }
+
+  if (!branchId || typeof branchId !== 'number') {
+    throw new CreateOperationsQueueError(400, 'branchId مطلوب');
   }
 
   if (!Array.isArray(serviceIds) || serviceIds.length === 0) {
@@ -216,13 +223,13 @@ export async function createOperationsQueueTicket(
     finalEndDate = new Date(sequentialPlan.endAt);
   }
 
-  const ticketCode = await generateTicketCode(db, dateStr, 'W');
+  const ticketCode = await generateTicketCode(db, dateStr, 'W', branchId);
 
   const schema = await detectQueueTicketsSchema();
   const nowMs = new Date().getTime();
   const startMs = new Date(finalStartTime).getTime();
   const estimatedWaitMinutes = Math.max(0, Math.round((startMs - nowMs) / 60000));
-  const { columns, paramNames } = buildInsertColumns(schema);
+  const { columns, paramNames } = buildInsertColumns(schema, branchId);
 
   await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
 
@@ -285,6 +292,9 @@ export async function createOperationsQueueTicket(
       .input('source', sql.NVarChar, source)
       .input('estimatedStartTime', sql.DateTime, new Date(finalStartTime));
 
+    if (schema.hasBranchID) {
+      ticketRequest.input('branchId', sql.Int, branchId);
+    }
     if (schema.hasTicketPrefix) {
       ticketRequest.input('ticketPrefix', sql.NVarChar, 'W');
     }
@@ -449,7 +459,9 @@ function formatCairoTimeLabel(iso: string): string {
   });
 }
 
-export async function executeQuickQueueOperation(): Promise<
+export async function executeQuickQueueOperation(
+  branchId: number,
+): Promise<
   CreateQueueResponse | { ok: false; error: string; reason?: string; nextAvailableTime?: string }
 > {
   if (!QUICK_QUEUE_ENABLED) {
@@ -476,7 +488,7 @@ export async function executeQuickQueueOperation(): Promise<
 
   const serviceIds = [service.ProID];
   const requestedAt = new Date().toISOString();
-  const nearest = await findNearestBarberForServices(serviceIds, requestedAt);
+  const nearest = await findNearestBarberForServices(serviceIds, requestedAt, branchId);
 
   if (!nearest.ok || !nearest.best) {
     let error = 'لا يوجد حلاق متاح لخدمة مدتها 30 دقيقة حاليًا';
@@ -521,6 +533,7 @@ export async function executeQuickQueueOperation(): Promise<
       expectedEndTime,
       source: 'walk_in',
       trustExpectedStart: true,
+      branchId,
     });
 
     return ticket;

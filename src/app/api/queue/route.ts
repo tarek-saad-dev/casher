@@ -15,6 +15,13 @@ import {
   type QueueTicketRaw,
 } from "@/lib/queueLifecycleEngine";
 import { getBarberAvailabilityReason } from "@/lib/barberAvailability";
+import {
+  requireActiveBranchContext,
+  requireBranchOperationAccess,
+  isActiveBranchContext,
+} from "@/lib/branch/context";
+import { detectQueueTicketsSchema } from "@/lib/queueSchema";
+import { isEmployeeEligibleForBranchBookings } from "@/lib/branch/bookingQueueOwnership";
 
 export const runtime = "nodejs";
 
@@ -101,6 +108,9 @@ async function getLifecycleColsSelect(
 // GET /api/queue?date=YYYY-MM-DD&empId=&status=
 export async function GET(req: NextRequest) {
   try {
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const { searchParams } = new URL(req.url);
     const date =
       searchParams.get("date") || getCairoBusinessDate();
@@ -122,9 +132,14 @@ export async function GET(req: NextRequest) {
 
     // Ensure estimate columns exist (idempotent) — falls back to NULL aliases if migration fails
     const estColsSql = await getEstimateColsSelect(db);
+    const schema = await detectQueueTicketsSchema();
 
     const request = db.request().input("date", sql.Date, date);
     let where = "qt.QueueDate = @date";
+    if (schema.hasBranchID) {
+      request.input("branchId", sql.Int, branch.branchId);
+      where += " AND qt.BranchID = @branchId";
+    }
     if (empId) {
       request.input("empId", sql.Int, parseInt(empId));
       where += " AND qt.EmpID = @empId";
@@ -179,6 +194,9 @@ export async function GET(req: NextRequest) {
 // POST /api/queue — create new queue ticket
 export async function POST(req: NextRequest) {
   try {
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const session = await getSession();
     const userID = session?.UserID ?? 0;
     const body = await req.json();
@@ -271,6 +289,17 @@ export async function POST(req: NextRequest) {
       if (!avail.available) {
         return NextResponse.json(
           { error: avail.reason ?? "الحلاق غير متاح", reason: "barber_unavailable" },
+          { status: 409 },
+        );
+      }
+      const eligible = await isEmployeeEligibleForBranchBookings({
+        empId,
+        branchId: branch.branchId,
+        operationalDate: today,
+      });
+      if (!eligible) {
+        return NextResponse.json(
+          { error: "الموظف غير مرتبط بهذا الفرع", reason: "employee_not_assigned_to_branch" },
           { status: 409 },
         );
       }
@@ -449,11 +478,14 @@ export async function POST(req: NextRequest) {
     let ticketNumber: number;
 
     try {
-      const tr = transaction.request();
-      const numRes = await tr.input("qDate", sql.Date, today).query(`
+      const tr = transaction.request().input("qDate", sql.Date, today);
+      const schema = await detectQueueTicketsSchema();
+      if (schema.hasBranchID) tr.input("branchIdTx", sql.Int, branch.branchId);
+      const numRes = await tr.query(`
           SELECT ISNULL(MAX(TicketNumber), ${startNumber - 1}) + 1 AS NextNum
           FROM [dbo].[QueueTickets] WITH (UPDLOCK, HOLDLOCK)
           WHERE QueueDate = @qDate
+            ${schema.hasBranchID ? "AND BranchID = @branchIdTx" : ""}
         `);
       ticketNumber = numRes.recordset[0].NextNum;
       ticketCode = `${prefix}${ticketNumber}`;
@@ -532,7 +564,7 @@ export async function POST(req: NextRequest) {
       const colCheck = await transaction.request().query(`
         SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
         WHERE TABLE_NAME = 'QueueTickets'
-          AND COLUMN_NAME IN ('EstimatedStartTime','EstimatedWaitMinutes','WaitingCountAtCreation','ExpectedStartAt','ExpectedEndAt','DurationMinutes')
+          AND COLUMN_NAME IN ('EstimatedStartTime','EstimatedWaitMinutes','WaitingCountAtCreation','ExpectedStartAt','ExpectedEndAt','DurationMinutes','BranchID')
       `);
       const existingCols = new Set(
         colCheck.recordset.map((r: { COLUMN_NAME: string }) => r.COLUMN_NAME),
@@ -544,11 +576,13 @@ export async function POST(req: NextRequest) {
       const hasExpStart = existingCols.has("ExpectedStartAt");
       const hasExpEnd = existingCols.has("ExpectedEndAt");
       const hasDurMin = existingCols.has("DurationMinutes");
+      const hasBranchIdCol = existingCols.has("BranchID");
 
       const insertSql = `
         INSERT INTO [dbo].[QueueTickets]
           (TicketCode, TicketNumber, TicketPrefix, ClientID, EmpID, BookingID,
            QueueDate, CreatedTime, Status, Source, Priority, CreatedByUserID, Notes
+           ${hasBranchIdCol ? ", BranchID" : ""}
            ${hasEst ? ", EstimatedStartTime" : ""}
            ${hasWait ? ", EstimatedWaitMinutes" : ""}
            ${hasWCount ? ", WaitingCountAtCreation" : ""}
@@ -559,6 +593,7 @@ export async function POST(req: NextRequest) {
         VALUES
           (@code, @num, @prefix, @clientId, @empId, @bookingId,
            @qDate, @cTime, 'waiting', @source, @priority, @userID, @notes
+           ${hasBranchIdCol ? ", @branchId" : ""}
            ${hasEst ? ", @estStart" : ""}
            ${hasWait ? ", @estWait" : ""}
            ${hasWCount ? ", @waitCount" : ""}
@@ -582,6 +617,7 @@ export async function POST(req: NextRequest) {
         .input("userID", sql.Int, userID)
         .input("notes", sql.NVarChar, notes || null);
 
+      if (hasBranchIdCol) insReq.input("branchId", sql.Int, branch.branchId);
       if (hasEst)
         insReq.input("estStart", sql.DateTime2, finalEstStart ?? null);
       if (hasWait) insReq.input("estWait", sql.Int, finalEstWait ?? null);

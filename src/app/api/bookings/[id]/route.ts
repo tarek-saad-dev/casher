@@ -3,6 +3,11 @@ import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { checkBarberAvailableForBooking, buildBookingIntervals, buildQueueIntervals } from "@/lib/queueEstimateEngine";
 import { normalizeBookingTimes } from "@/lib/bookingDateTime";
+import { requireActiveBranchContext, isActiveBranchContext } from "@/lib/branch/context";
+import {
+  assertBookingOwnedByActiveBranch,
+  bookingQueueNotFoundResponse,
+} from "@/lib/branch/bookingQueueOwnership";
 
 export const runtime = "nodejs";
 
@@ -11,6 +16,9 @@ type RouteContext = { params: Promise<{ id: string }> };
 // GET /api/bookings/[id]
 export async function GET(_req: NextRequest, context: RouteContext) {
   try {
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const { id } = await context.params;
     const db = await getPool();
 
@@ -20,7 +28,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
         SELECT
           b.BookingID, b.BookingCode, b.ClientID, b.AssignedEmpID,
           b.BookingDate, b.StartTime, b.EndTime, b.Status, b.Source,
-          b.Notes, b.QueueTicketID, b.CreatedAt, b.UpdatedAt,
+          b.Notes, b.QueueTicketID, b.CreatedAt, b.UpdatedAt, b.BranchID,
           c.[Name] AS ClientName, c.Mobile AS ClientMobile, e.EmpName,
           COALESCE(SUM(bs.DurationMinutes), 30) AS TotalDuration
         FROM [dbo].[Bookings] b
@@ -31,7 +39,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
         GROUP BY
           b.BookingID, b.BookingCode, b.ClientID, b.AssignedEmpID,
           b.BookingDate, b.StartTime, b.EndTime, b.Status, b.Source,
-          b.Notes, b.QueueTicketID, b.CreatedAt, b.UpdatedAt,
+          b.Notes, b.QueueTicketID, b.CreatedAt, b.UpdatedAt, b.BranchID,
           c.[Name], c.Mobile, e.EmpName
       `);
 
@@ -39,6 +47,10 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "حجز غير موجود" }, { status: 404 });
 
     const booking = bkRes.recordset[0];
+
+    if (!assertBookingOwnedByActiveBranch(branch.branchId, booking.BranchID)) {
+      return bookingQueueNotFoundResponse();
+    }
 
     const svcRes = await db.request()
       .input("id", sql.Int, parseInt(id))
@@ -95,11 +107,15 @@ export async function GET(_req: NextRequest, context: RouteContext) {
 // PATCH /api/bookings/[id]
 export async function PATCH(req: NextRequest, context: RouteContext) {
   try {
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const { id } = await context.params;
     const session = await getSession();
     const userID  = session?.UserID ?? 0;
     const bookingId = parseInt(id);
     const body = await req.json();
+    // Note: body.branchId, if present, is ignored — branch is always the active session branch.
     const { action, notes, cancelReason, rescheduleDate, rescheduleTime, empId } = body;
 
     console.log("[PATCH bookings] Received request:", { bookingId, action, body });
@@ -108,9 +124,13 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
     const cur = await db.request()
       .input("id", sql.Int, bookingId)
-      .query(`SELECT Status FROM [dbo].[Bookings] WHERE BookingID = @id`);
+      .query(`SELECT Status, BranchID FROM [dbo].[Bookings] WHERE BookingID = @id`);
     if (!cur.recordset.length)
       return NextResponse.json({ error: "حجز غير موجود" }, { status: 404 });
+
+    if (!assertBookingOwnedByActiveBranch(branch.branchId, cur.recordset[0].BranchID)) {
+      return bookingQueueNotFoundResponse();
+    }
 
     const currentStatus = cur.recordset[0].Status;
 

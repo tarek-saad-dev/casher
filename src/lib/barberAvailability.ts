@@ -13,6 +13,7 @@
 
 import { getPool, sql } from '@/lib/db';
 import { applyOverrides, loadOverridesForDate } from '@/lib/scheduleOverrides';
+import { loadFreelanceBookingUnlocks } from '@/lib/hr/freelanceBookingUnlock';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -135,6 +136,10 @@ export async function getBarberAvailabilityReason(
     } catch { /* table may not exist */ }
   }
 
+  // 2b. Freelance Present/Late/EarlyLeave unlocks the day for booking
+  const freelanceUnlocks = await loadFreelanceBookingUnlocks([empId], dateStr);
+  const freelanceUnlock = freelanceUnlocks.get(empId);
+
   // 3. Check TblEmpWorkSchedule — weekly per-day schedule
   try {
     const schedRes = await db.request()
@@ -146,23 +151,38 @@ export async function getBarberAvailabilityReason(
         WHERE EmpID = @empId AND DayOfWeek = @dayOfWeek
       `);
 
-    if (schedRes.recordset.length === 0) {
+    let isWorkingDay = false;
+    let startStr: string | null = null;
+    let endStr: string | null = null;
+    let scheduleNotes: string | null = null;
+
+    if (schedRes.recordset.length > 0) {
+      const row = schedRes.recordset[0];
+      isWorkingDay = !!row.IsWorkingDay;
+      startStr = fmtTime(row.StartTime);
+      endStr = fmtTime(row.EndTime);
+      scheduleNotes = row.Notes ?? null;
+    }
+
+    if (!isWorkingDay && freelanceUnlock) {
+      isWorkingDay = true;
+      startStr = freelanceUnlock.start;
+      endStr = freelanceUnlock.end;
+    }
+
+    if (schedRes.recordset.length === 0 && !freelanceUnlock) {
       // No TblEmpWorkSchedule row for this employee/day — treat as not working.
       // Do NOT fall back to TblEmp.DefaultCheckInTime/Out.
       return { available: false, reason: 'لا يوجد جدول عمل معرّف في HR لهذا اليوم', startTime: null, endTime: null };
     }
 
-    const row = schedRes.recordset[0];
-    if (!row.IsWorkingDay) {
+    if (!isWorkingDay) {
       return {
         available: false,
-        reason: row.Notes ?? 'إجازة أسبوعية',
+        reason: scheduleNotes ?? 'إجازة أسبوعية',
         startTime: null, endTime: null,
       };
     }
-
-    const startStr = fmtTime(row.StartTime);
-    const endStr   = fmtTime(row.EndTime);
 
     // 4. Apply schedule overrides
     const overridesMap = await loadOverridesForDate(db, [empId], dateStr);
@@ -175,7 +195,7 @@ export async function getBarberAvailabilityReason(
 
     if (overrides.length > 0) {
       const base = {
-        isWorking: !!row.IsWorkingDay,
+        isWorking: true,
         start: startStr,
         end:   endStr,
       };
@@ -228,7 +248,7 @@ export async function getBarberAvailabilityReason(
 
     return {
       available: true,
-      reason: 'متاح',
+      reason: freelanceUnlock ? 'فري لانس حاضر' : 'متاح',
       startTime: startStr,
       endTime:   endStr,
     };
@@ -308,6 +328,9 @@ export async function getBarberWorkingWindow(
   const cairoDs = cairoDateString(date);
   const dayOfWeek = new Date(`${cairoDs}T12:00:00Z`).getDay();
   try {
+    const freelanceUnlocks = await loadFreelanceBookingUnlocks([empId], cairoDs);
+    const freelanceUnlock = freelanceUnlocks.get(empId);
+
     const res = await db.request()
       .input('empId',     sql.Int,     empId)
       .input('dayOfWeek', sql.TinyInt, dayOfWeek)
@@ -316,8 +339,24 @@ export async function getBarberWorkingWindow(
         FROM dbo.TblEmpWorkSchedule
         WHERE EmpID = @empId AND DayOfWeek = @dayOfWeek
       `);
-    if (!res.recordset.length) return { startTime: null, endTime: null, isWorkingDay: false };
+    if (!res.recordset.length) {
+      if (freelanceUnlock) {
+        return {
+          isWorkingDay: true,
+          startTime: freelanceUnlock.start,
+          endTime: freelanceUnlock.end,
+        };
+      }
+      return { startTime: null, endTime: null, isWorkingDay: false };
+    }
     const row = res.recordset[0];
+    if (!row.IsWorkingDay && freelanceUnlock) {
+      return {
+        isWorkingDay: true,
+        startTime: freelanceUnlock.start,
+        endTime: freelanceUnlock.end,
+      };
+    }
     return {
       isWorkingDay: !!row.IsWorkingDay,
       startTime: fmtTime(row.StartTime),

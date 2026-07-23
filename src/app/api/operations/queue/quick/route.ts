@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import { executeQuickQueueOperation } from '@/lib/operationsQueueCreateCore';
+import { requireBranchOperationAccess, isActiveBranchContext } from '@/lib/branch/context';
 
 export const runtime = 'nodejs';
 
 export async function POST() {
   try {
-    const result = await executeQuickQueueOperation();
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
+    const result = await executeQuickQueueOperation(branch.branchId);
 
     if (!('ticketCode' in result)) {
       const status =

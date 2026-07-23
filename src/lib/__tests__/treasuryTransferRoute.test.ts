@@ -29,6 +29,49 @@ vi.mock('@/lib/session', () => ({
   getSession: vi.fn(async () => ({ UserID: 1, UserName: 'test', UserLevel: 1 })),
 }));
 
+vi.mock('server-only', () => ({}));
+
+const fakeBranch = {
+  userId: 1,
+  branchId: 7,
+  branchCode: 'MAIN',
+  branchName: 'Main Branch',
+  shortName: 'Main',
+  timeZone: 'Africa/Cairo',
+  businessDayCutoffTime: '04:00',
+  canOperate: true,
+  canViewReports: true,
+  canSwitch: true,
+};
+const fakeDay = { id: 42, branchId: 7, newDay: '2025-06-01', status: true };
+const fakeShift = {
+  id: 55,
+  branchId: 7,
+  businessDayId: 42,
+  newDay: '2025-06-01',
+  userId: 1,
+  shiftId: 1,
+  startDate: '2025-06-01',
+  startTime: '08:00',
+  endDate: null,
+  endTime: null,
+  status: true,
+};
+
+vi.mock('@/lib/branch/context', () => ({
+  requireBranchOperationAccess: vi.fn(async () => fakeBranch),
+}));
+
+vi.mock('@/lib/branch/operationalGates', () => ({
+  resolveBranchDayAndShiftForWrite: vi.fn(async () => ({
+    ok: true,
+    branch: fakeBranch,
+    day: fakeDay,
+    shift: fakeShift,
+  })),
+  resolveBranchDayForDate: vi.fn(async () => ({ ok: true, day: fakeDay })),
+}));
+
 vi.mock('@/lib/sensitiveActionAudit', () => ({
   executeAuditedAction: vi.fn(async (opts: any) => {
     if (shouldAuditThrow) throw auditError;
@@ -244,6 +287,8 @@ describe('POST /api/treasury/transfer', () => {
     expect(executeCall.toPaymentMethodId).toBe(2);
     expect(executeCall.transferDate).toBe('2025-01-15');
     expect(executeCall.requestId).toBe('test-request-id-123');
+    expect(executeCall.branchId).toBe(fakeBranch.branchId);
+    expect(executeCall.businessDayId).toBe(fakeDay.id);
   });
 
   it('returns 200 for valid current-day transfer', async () => {
@@ -258,6 +303,9 @@ describe('POST /api/treasury/transfer', () => {
 
     const executeCall = vi.mocked(executeTreasuryTransfer).mock.calls[0][1];
     expect(executeCall.transferDate).toBeUndefined();
+    expect(executeCall.branchId).toBe(fakeBranch.branchId);
+    expect(executeCall.businessDayId).toBe(fakeDay.id);
+    expect(executeCall.shiftMoveId).toBe(fakeShift.id);
   });
 
   it('returns 409 when audited action reports insufficient balance', async () => {

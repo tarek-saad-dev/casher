@@ -18,8 +18,21 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
         { status: 400 },
       );
 
+    const { requireBranchOperationAccess, isActiveBranchContext } = await import(
+      '@/lib/branch/context'
+    );
+    const { financialNotFoundResponse } = await import(
+      '@/lib/branch/financialOwnership'
+    );
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const db = await getPool();
-    const result = await db.request().input("id", sql.Int, incomeId).query(`
+    const result = await db
+      .request()
+      .input("id", sql.Int, incomeId)
+      .input("branchId", sql.Int, branch.branchId)
+      .query(`
         SELECT
           CM.ID, CM.invID, CM.invType, CM.invDate, CM.invTime,
           CM.ExpINID, ISNULL(CAT.CatName, N'غير مصنف') AS CategoryName,
@@ -32,11 +45,10 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
         LEFT JOIN dbo.TblUser U             ON SM.UserID         = U.UserID
         LEFT JOIN dbo.TblShift S            ON SM.ShiftID        = S.ShiftID
         LEFT JOIN dbo.TblPaymentMethods PM  ON CM.PaymentMethodID = PM.PaymentID
-        WHERE CM.ID = @id AND CM.invType = N'ايرادات'
+        WHERE CM.ID = @id AND CM.invType = N'ايرادات' AND CM.BranchID = @branchId
       `);
 
-    if (result.recordset.length === 0)
-      return NextResponse.json({ error: "الإيراد غير موجود" }, { status: 404 });
+    if (result.recordset.length === 0) return financialNotFoundResponse();
 
     return NextResponse.json(result.recordset[0]);
   } catch (err: unknown) {
@@ -86,6 +98,15 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
         { status: 400 },
       );
 
+    const { requireBranchOperationAccess, isActiveBranchContext } = await import(
+      '@/lib/branch/context'
+    );
+    const { financialNotFoundResponse } = await import(
+      '@/lib/branch/financialOwnership'
+    );
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const auditResult = await executeAuditedAction({
       actionType: 'edit_income',
       user: session,
@@ -94,18 +115,31 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       actionMethod: 'PATCH',
       endpointPath: `/api/incomes/${incomeId}`,
       reason: notes || null,
-      loadOldData: async (transaction) => getIncomeSnapshot(transaction, incomeId) as unknown as Record<string, unknown> | null,
-      execute: async (transaction) => updateIncome(transaction, incomeId, {
-        invDate,
-        amount: Number(amount),
-        expInId,
-        paymentMethodId,
-        notes,
-        shiftMoveId,
-        createdByUserId: session.UserID,
-      }),
-      loadNewData: async (transaction) => getIncomeSnapshot(transaction, incomeId) as unknown as Record<string, unknown> | null,
+      loadOldData: async (transaction) => {
+        const snap = await getIncomeSnapshot(transaction, incomeId);
+        if (!snap || Number(snap.BranchID) !== Number(branch.branchId)) return null;
+        return snap as unknown as Record<string, unknown>;
+      },
+      execute: async (transaction) =>
+        updateIncome(
+          transaction,
+          incomeId,
+          {
+            invDate,
+            amount: Number(amount),
+            expInId,
+            paymentMethodId,
+            notes,
+            shiftMoveId,
+            createdByUserId: session.UserID,
+          },
+          branch.branchId,
+        ),
+      loadNewData: async (transaction) =>
+        getIncomeSnapshot(transaction, incomeId) as unknown as Record<string, unknown> | null,
     });
+
+    if (!auditResult.data) return financialNotFoundResponse();
 
     return NextResponse.json({
       success: true,
@@ -138,6 +172,15 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
     const body = await req.json().catch(() => ({}));
     const reason = body.reason || null;
 
+    const { requireBranchOperationAccess, isActiveBranchContext } = await import(
+      '@/lib/branch/context'
+    );
+    const { financialNotFoundResponse } = await import(
+      '@/lib/branch/financialOwnership'
+    );
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const auditResult = await executeAuditedAction({
       actionType: 'delete_income',
       user: session,
@@ -146,8 +189,13 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
       actionMethod: 'DELETE',
       endpointPath: `/api/incomes/${incomeId}`,
       reason,
-      loadOldData: async (transaction) => getIncomeSnapshot(transaction, incomeId) as unknown as Record<string, unknown> | null,
-      execute: async (transaction) => deleteIncome(transaction, incomeId),
+      loadOldData: async (transaction) => {
+        const snap = await getIncomeSnapshot(transaction, incomeId);
+        if (!snap || Number(snap.BranchID) !== Number(branch.branchId)) return null;
+        return snap as unknown as Record<string, unknown>;
+      },
+      execute: async (transaction) =>
+        deleteIncome(transaction, incomeId, branch.branchId),
       loadNewData: async () => null,
     });
 

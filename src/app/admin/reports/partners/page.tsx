@@ -330,6 +330,7 @@ function PartnersReportPageContent() {
                   totalPaidSalaryAndAdvances: 0,
                 }
               }
+              partners={report?.partners ?? []}
               filteredOperatingExpenses={report?.summary.operatingExpenses ?? 0}
               loading={loading}
               classifiedOperatingNet={report?.classifiedPartnerSplit?.cleanNetProfit}

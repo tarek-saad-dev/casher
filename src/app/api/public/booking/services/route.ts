@@ -6,6 +6,13 @@ import {
   checkRateLimit,
   PUBLIC_CORS_HEADERS,
 } from "@/lib/publicBookingHelpers";
+import {
+  extractPublicBranchCode,
+  resolvePublicBranchCode,
+  publicBranchRequiredResponse,
+  publicInvalidBranchResponse,
+} from "@/lib/branch/bookingQueueOwnership";
+import { BranchDomainError } from "@/lib/branch/types";
 
 export const runtime = "nodejs";
 
@@ -110,7 +117,22 @@ export async function GET(req: NextRequest) {
       : null;
     const search = searchParams.get("search")?.trim().toLowerCase() ?? null;
 
-    const settings = await getPublicSettings();
+    // Branch required — the service catalog stays global, but settings
+    // (fallback duration, etc.) are resolved per branch.
+    const branchCode = extractPublicBranchCode(searchParams);
+    let branch;
+    try {
+      branch = await resolvePublicBranchCode(branchCode);
+    } catch (err) {
+      if (err instanceof BranchDomainError) {
+        return err.code === 'BRANCH_REQUIRED'
+          ? publicBranchRequiredResponse()
+          : publicInvalidBranchResponse();
+      }
+      throw err;
+    }
+
+    const settings = await getPublicSettings(branch.branchId);
     const fallbackDur = settings.defaultServiceDurationMinutes;
 
     const db = await getPool();

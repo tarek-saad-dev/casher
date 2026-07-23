@@ -20,6 +20,9 @@ export interface PrintReceiptData {
     SPrice: number;
     Qty: number;
     SPriceAfterDis: number;
+    Dis?: number;
+    DisVal?: number;
+    SValue?: number;
   }>;
 }
 

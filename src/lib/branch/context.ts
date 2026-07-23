@@ -1,6 +1,6 @@
 import 'server-only';
 import { NextResponse } from 'next/server';
-import { destroySession, getSessionPayload } from '@/lib/session';
+import { getSessionPayload } from '@/lib/session';
 import {
   branchNow,
   getBranchById,
@@ -101,7 +101,7 @@ async function resolveActiveBranchContext(at: Date): Promise<ActiveBranchContext
     throw new BranchDomainError('SESSION_UPGRADE_REQUIRED', 'يلزم إعادة تسجيل الدخول', 401);
   }
   if (payload.BranchSessionVersion !== BRANCH_SESSION_VERSION) {
-    await destroySession();
+    // Do not delete cookies here — callers in Route Handlers clear via destroySession.
     throw new BranchDomainError(
       'UNSUPPORTED_BRANCH_SESSION_VERSION',
       'يلزم إعادة تسجيل الدخول لتحديث جلسة الفرع',
@@ -111,11 +111,9 @@ async function resolveActiveBranchContext(at: Date): Promise<ActiveBranchContext
 
   const user = await getUserActiveStatus(payload.UserID);
   if (!user.exists) {
-    await destroySession();
     throw new BranchDomainError('USER_NOT_FOUND', 'المستخدم غير موجود', 401);
   }
   if (user.isDeleted) {
-    await destroySession();
     throw new BranchDomainError('USER_DELETED', 'تم تعطيل الحساب', 401);
   }
 

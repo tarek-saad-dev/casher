@@ -177,6 +177,23 @@ export function validateEmployeeSalePayload(input: unknown): EmployeeSaleWhatsAp
     payload.branchName = p.branchName;
   if (Array.isArray(p.services) && p.services.every((s) => typeof s === 'string'))
     payload.services = p.services as string[];
+  if (p.employeeName !== undefined && typeof p.employeeName === 'string')
+    payload.employeeName = p.employeeName;
+  if (p.clientName !== undefined && typeof p.clientName === 'string')
+    payload.clientName = p.clientName;
+  if (p.message !== undefined && typeof p.message === 'string')
+    payload.message = p.message;
+  if (p.invoiceId !== undefined)
+    payload.invoiceId = assertFiniteNumber(p.invoiceId, 'invoiceId');
+  if (p.employeeId !== undefined)
+    payload.employeeId = assertFiniteNumber(p.employeeId, 'employeeId');
+  if (p.employeeTotal !== undefined)
+    payload.employeeTotal = assertFiniteNumber(p.employeeTotal, 'employeeTotal');
+  if (p.invoiceTotal !== undefined)
+    payload.invoiceTotal = assertFiniteNumber(p.invoiceTotal, 'invoiceTotal');
+  if (Array.isArray(p.serviceDetails)) {
+    payload.serviceDetails = p.serviceDetails as EmployeeSaleWhatsAppPayload['serviceDetails'];
+  }
   if (p.variables !== undefined)
     payload.variables = validateExtraVariables(p.variables);
 

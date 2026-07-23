@@ -141,9 +141,28 @@ export function distributeProportionally(
 }
 
 /**
+ * True when invoice has no header discount and GrandTotal matches Σ line nets
+ * (new POS model: discounts live on detail rows only).
+ *
+ * `eligibleGrossTotal` is Σ (SValue − line DisVal) for eligible lines.
+ */
+export function isLineNetInvoice(
+  header: InvoiceHeaderInput,
+  eligibleGrossTotal: number,
+): boolean {
+  const grandTotal = roundMoney(Math.max(0, safeMoney(header.grandTotal)));
+  const headerDisVal = roundMoney(Math.max(0, safeMoney(header.disVal)));
+  if (headerDisVal > 0) return false;
+  return Math.abs(grandTotal - eligibleGrossTotal) <= 0.01;
+}
+
+/**
  * Allocate invoice GrandTotal to eligible employee service lines.
  *
- * Per eligible line (before header discount):
+ * New invoices (header DisVal = 0, GrandTotal ≈ Σ line nets):
+ *   actual = line net (gross after line DisVal) — no proportional header split.
+ *
+ * Legacy invoices (header DisVal > 0):
  *   actual = GrandTotal × grossLine / SubTotal
  *
  * Unattributed portion (products, tax, unassigned lines):
@@ -232,6 +251,36 @@ export function allocateEmployeeInvoiceRevenue(
     }
 
     const eligibleGrossTotal = roundMoney(grossByLine.reduce((s, r) => s + r.gross, 0));
+
+    // New model: no header discount → each employee keeps their line nets as-is.
+    if (isLineNetInvoice(header, eligibleGrossTotal)) {
+      let invoiceActualSum = 0;
+      for (const { line, gross } of grossByLine) {
+        const actual = gross;
+        const discount = 0;
+        invoiceActualSum = roundMoney(invoiceActualSum + actual);
+
+        allocatedLines.push({
+          ...line,
+          grossServiceValue: gross,
+          allocatedInvoiceDiscount: discount,
+          actualInvoiceRevenue: actual,
+          invoiceGrandTotal: grandTotal,
+          invoiceSubTotal: subTotal,
+          otherEmployeesOnInvoice: otherEmployees.filter((e) => e.empId !== line.empId),
+        });
+
+        totalGross = roundMoney(totalGross + gross);
+        totalDiscount = roundMoney(totalDiscount + discount);
+        totalActual = roundMoney(totalActual + actual);
+        accumulateEmployee(employeeAcc, line, gross, discount, actual, key);
+      }
+
+      const invoiceUnattributed = roundMoney(grandTotal - invoiceActualSum);
+      unattributed = roundMoney(unattributed + invoiceUnattributed);
+      continue;
+    }
+
     const employeePool =
       subTotal > 0
         ? roundMoney((grandTotal * eligibleGrossTotal) / subTotal)

@@ -28,6 +28,7 @@ import {
 import { getBarbersDayStatus } from "@/lib/availabilityEngine";
 import { createDevTimer } from "@/lib/devRequestTiming";
 import { isAuthResult, requirePageAccess } from "@/lib/api-auth";
+import { getBranchById } from "@/lib/branch/repository";
 
 export const runtime = "nodejs";
 
@@ -81,6 +82,7 @@ export interface FlowBoardBarber {
 export async function GET(req: NextRequest) {
   const auth = await requirePageAccess("/operations");
   if (!isAuthResult(auth)) return auth;
+  const branchId = auth.activeBranchId;
   const timer = createDevTimer('flow_board');
 
   try {
@@ -136,16 +138,26 @@ export async function GET(req: NextRequest) {
       queueRes,
       bookingsNextRes,
       queueNextRes,
+      activeBranchRecord,
     ] = await Promise.all([
-      timed('employeesMs', db.request().query(`
-        SELECT EmpID, EmpName
-        FROM [dbo].[TblEmp]
-        WHERE isActive = 1 AND Job = N'حلاق'
-        ORDER BY EmpName
-      `)),
+      timed('employeesMs', db.request()
+        .input("branchId", sql.Int, branchId)
+        .input("bdate", sql.Date, dateStr)
+        .query(`
+          SELECT DISTINCT e.EmpID, e.EmpName
+          FROM [dbo].[TblEmp] e
+          INNER JOIN [dbo].[TblEmpBranchAssignment] ea ON ea.EmpID = e.EmpID
+          WHERE e.isActive = 1 AND e.Job = N'حلاق'
+            AND ea.BranchID = @branchId
+            AND ea.IsActive = 1
+            AND ea.EffectiveFrom <= @bdate
+            AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @bdate)
+          ORDER BY e.EmpName
+        `)),
 
       timed('bookingsMs', db.request()
         .input("bdate", sql.Date, dateStr)
+        .input("branchId", sql.Int, branchId)
         .query(`
           SELECT 
             b.BookingID,
@@ -159,12 +171,14 @@ export async function GET(req: NextRequest) {
           FROM [dbo].[Bookings] b
           LEFT JOIN [dbo].[TblClient] c ON b.ClientID = c.ClientID
           WHERE b.BookingDate = @bdate
+            AND b.BranchID = @branchId
             AND b.AssignedEmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
             AND b.Status IN ('confirmed', 'arrived', 'in_progress', 'queued', 'in_service')
         `)),
 
       timed('queueMs', db.request()
         .input("qdate", sql.Date, dateStr)
+        .input("branchId", sql.Int, branchId)
         .query(`
           SELECT 
             qt.QueueTicketID,
@@ -181,12 +195,14 @@ export async function GET(req: NextRequest) {
           FROM [dbo].[QueueTickets] qt
           LEFT JOIN [dbo].[TblClient] c ON qt.ClientID = c.ClientID
           WHERE qt.QueueDate = @qdate
+            AND qt.BranchID = @branchId
             AND qt.EmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
             AND LOWER(qt.Status) IN ('waiting', 'called', 'arrived', 'in_service')
         `)),
 
       timed('nextDayBookingsMs', db.request()
         .input("bdate", sql.Date, nextDateStr)
+        .input("branchId", sql.Int, branchId)
         .query(`
           SELECT 
             b.BookingID,
@@ -200,12 +216,14 @@ export async function GET(req: NextRequest) {
           FROM [dbo].[Bookings] b
           LEFT JOIN [dbo].[TblClient] c ON b.ClientID = c.ClientID
           WHERE b.BookingDate = @bdate
+            AND b.BranchID = @branchId
             AND b.AssignedEmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
             AND b.Status IN ('confirmed', 'arrived', 'in_progress', 'queued', 'in_service')
         `)),
 
       timed('nextDayQueueMs', db.request()
         .input("qdate", sql.Date, nextDateStr)
+        .input("branchId", sql.Int, branchId)
         .query(`
           SELECT 
             qt.QueueTicketID,
@@ -222,9 +240,12 @@ export async function GET(req: NextRequest) {
           FROM [dbo].[QueueTickets] qt
           LEFT JOIN [dbo].[TblClient] c ON qt.ClientID = c.ClientID
           WHERE qt.QueueDate = @qdate
+            AND qt.BranchID = @branchId
             AND qt.EmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
             AND LOWER(qt.Status) IN ('waiting', 'called', 'arrived', 'in_service')
         `)),
+
+      timed('activeBranchMs', getBranchById(branchId)),
     ]);
 
     const bookingIds = [
@@ -537,6 +558,14 @@ export async function GET(req: NextRequest) {
       date: dateStr,
       generatedAt: now.toISOString(),
       barbers,
+      activeBranch: activeBranchRecord
+        ? {
+            branchId: activeBranchRecord.branchId,
+            branchCode: activeBranchRecord.branchCode,
+            branchName: activeBranchRecord.branchName,
+            shortName: activeBranchRecord.shortName,
+          }
+        : null,
     };
     timer.setAbsolute('responseBuildMs', Date.now() - respStart);
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import { isActiveBranchContext, requireActiveBranchContext } from '@/lib/branch';
 
 /**
  * GET /api/treasury/period-summary
@@ -15,6 +16,10 @@ import { getPool, sql } from '@/lib/db';
  */
 export async function GET(request: NextRequest) {
   try {
+    // PHASE1D: never trust browser branchId — always filter by the session's active branch
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const db = await getPool();
     const sp = request.nextUrl.searchParams;
 
@@ -43,8 +48,9 @@ export async function GET(request: NextRequest) {
     }));
 
     // ── 2. Build where clause for cash-move query ───────────────────────────
-    let whereConditions = ['cm.invDate >= @dateFrom', 'cm.invDate <= @dateTo'];
+    let whereConditions = ['cm.BranchID = @branchId', 'cm.invDate >= @dateFrom', 'cm.invDate <= @dateTo'];
     const req2 = db.request()
+      .input('branchId', sql.Int, branch.branchId)
       .input('dateFrom', sql.Date, dateFrom)
       .input('dateTo',   sql.Date, dateTo);
 
@@ -78,10 +84,11 @@ export async function GET(request: NextRequest) {
     const dayStatusResult = await db.request()
       .input('dateFrom', sql.Date, dateFrom)
       .input('dateTo',   sql.Date, dateTo)
+      .input('branchId', sql.Int, branch.branchId)
       .query(`
         SELECT NewDay, Status
         FROM dbo.TblNewDay
-        WHERE NewDay >= @dateFrom AND NewDay <= @dateTo
+        WHERE NewDay >= @dateFrom AND NewDay <= @dateTo AND BranchID = @branchId
       `);
 
     const dayStatusMap: Record<string, number> = {};
@@ -160,10 +167,12 @@ export async function GET(request: NextRequest) {
 
       // Query cumulative data for this month from its 1st day
       let mtdWhereConditions = [
+        'cm.BranchID = @mtdBranchId',
         'cm.invDate >= @mtdFrom',
         'cm.invDate <= @mtdTo',
       ];
       const mtdReq = db.request()
+        .input('mtdBranchId', sql.Int, branch.branchId)
         .input('mtdFrom', sql.Date, monthStart)
         .input('mtdTo',   sql.Date, monthEnd);
 

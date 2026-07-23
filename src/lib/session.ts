@@ -1,6 +1,9 @@
 // ──── Server-side session helpers ────
 // Uses a signed cookie (base64-encoded JSON + HMAC) for simplicity.
 // No external JWT library needed.
+//
+// Cookie mutation (set/delete) is only safe in Route Handlers / Server Actions.
+// getSessionPayload / getSession are read-only and safe in Server Components.
 
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
@@ -93,6 +96,26 @@ export function decodeSessionToken(
   };
 }
 
+/** Read-only: returns the raw cookie value if present. Does not mutate cookies. */
+export async function readSessionCookie(): Promise<string | null> {
+  const jar = await cookies();
+  return jar.get(COOKIE_NAME)?.value ?? null;
+}
+
+/**
+ * Read-only verification of the current request cookie.
+ * Safe in Server Components — never sets or deletes cookies.
+ */
+export async function verifySessionCookie(): Promise<DecodeSessionResult | { ok: false; reason: 'missing' }> {
+  const token = await readSessionCookie();
+  if (!token) return { ok: false, reason: 'missing' };
+  return decodeSessionToken(token);
+}
+
+/**
+ * Create / overwrite the session cookie.
+ * Call only from Route Handlers or Server Actions.
+ */
 export async function createSession(user: SessionUser): Promise<void> {
   if (
     user.ActiveBranchID == null ||
@@ -111,6 +134,14 @@ export async function createSession(user: SessionUser): Promise<void> {
     iat: Math.floor(Date.now() / 1000),
   };
   const token = encodeSessionPayload(payload);
+  await setSessionCookie(token);
+}
+
+/**
+ * Set the session cookie value.
+ * Call only from Route Handlers or Server Actions.
+ */
+export async function setSessionCookie(token: string): Promise<void> {
   const jar = await cookies();
   jar.set(COOKIE_NAME, token, {
     httpOnly: true,
@@ -120,30 +151,26 @@ export async function createSession(user: SessionUser): Promise<void> {
   });
 }
 
-async function clearSessionCookie(): Promise<void> {
+/**
+ * Delete the session cookie.
+ * Call only from Route Handlers or Server Actions — never from Server Components.
+ */
+export async function deleteSessionCookie(): Promise<void> {
   const jar = await cookies();
   jar.delete(COOKIE_NAME);
 }
 
+/**
+ * Read-only session payload.
+ * Invalid/legacy/expired cookies return null without mutating cookies.
+ */
 export async function getSessionPayload(): Promise<SessionPayload | null> {
-  const jar = await cookies();
-  const cookie = jar.get(COOKIE_NAME);
-  if (!cookie?.value) return null;
-  const decoded = decodeSessionToken(cookie.value);
-  if (!decoded.ok) {
-    if (
-      decoded.reason === 'legacy' ||
-      decoded.reason === 'unsupported_version' ||
-      decoded.reason === 'expired' ||
-      decoded.reason === 'tampered'
-    ) {
-      await clearSessionCookie();
-    }
-    return null;
-  }
-  return decoded.payload;
+  const verified = await verifySessionCookie();
+  if (!verified.ok) return null;
+  return verified.payload;
 }
 
+/** Read-only session user. Safe in Server Components. */
 export async function getSession(): Promise<SessionUser | null> {
   const payload = await getSessionPayload();
   if (!payload) return null;
@@ -157,8 +184,12 @@ export async function getSession(): Promise<SessionUser | null> {
   };
 }
 
+/**
+ * Destroy the session cookie.
+ * Call only from Route Handlers or Server Actions.
+ */
 export async function destroySession(): Promise<void> {
-  await clearSessionCookie();
+  await deleteSessionCookie();
 }
 
 export { COOKIE_NAME, MAX_AGE as SESSION_MAX_AGE, BRANCH_SESSION_VERSION };

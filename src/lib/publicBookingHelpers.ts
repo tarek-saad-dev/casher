@@ -59,6 +59,24 @@ export function isValidPhone(phone: string): boolean {
 }
 
 /**
+ * Placeholder phones used by legacy ops fallback / smoke tests.
+ * Never reuse these for upsert matching — they collide real walk-in customers.
+ */
+export const PLACEHOLDER_CUSTOMER_PHONES = new Set([
+  '01000000000',
+  '00000000000',
+  '01099999999',
+]);
+
+/** True when phone is present, valid, and not a known test/placeholder number. */
+export function isUsableCustomerPhone(phone: string | null | undefined): boolean {
+  const cleaned = (phone ?? '').trim();
+  if (!cleaned) return false;
+  if (PLACEHOLDER_CUSTOMER_PHONES.has(cleaned)) return false;
+  return isValidPhone(cleaned);
+}
+
+/**
  * Validate date string - must be YYYY-MM-DD only.
  * Rejects ISO strings with T or Z.
  */
@@ -97,7 +115,7 @@ export interface PublicSettings {
 }
 
 const PUBLIC_SETTINGS_TTL_MS = 45_000;
-const PUBLIC_SETTINGS_GLOBAL_KEY = "__pos_public_settings_cache_v1";
+const PUBLIC_SETTINGS_GLOBAL_KEY = "__pos_public_settings_cache_by_branch_v1";
 
 type PublicSettingsCacheState = {
   value: PublicSettings | null;
@@ -105,22 +123,35 @@ type PublicSettingsCacheState = {
   inflight: Promise<PublicSettings> | null;
 };
 
-function getPublicSettingsCacheState(): PublicSettingsCacheState {
+type PublicSettingsCacheByBranch = Map<number, PublicSettingsCacheState>;
+
+function getPublicSettingsCacheRoot(): PublicSettingsCacheByBranch {
   const g = globalThis as typeof globalThis & {
-    [PUBLIC_SETTINGS_GLOBAL_KEY]?: PublicSettingsCacheState;
+    [PUBLIC_SETTINGS_GLOBAL_KEY]?: PublicSettingsCacheByBranch;
   };
   if (!g[PUBLIC_SETTINGS_GLOBAL_KEY]) {
-    g[PUBLIC_SETTINGS_GLOBAL_KEY] = {
-      value: null,
-      expiresAt: 0,
-      inflight: null,
-    };
+    g[PUBLIC_SETTINGS_GLOBAL_KEY] = new Map();
   }
   return g[PUBLIC_SETTINGS_GLOBAL_KEY]!;
 }
 
-export function invalidatePublicSettingsCache(): void {
-  const state = getPublicSettingsCacheState();
+function getPublicSettingsCacheState(branchId: number): PublicSettingsCacheState {
+  const root = getPublicSettingsCacheRoot();
+  let state = root.get(branchId);
+  if (!state) {
+    state = { value: null, expiresAt: 0, inflight: null };
+    root.set(branchId, state);
+  }
+  return state;
+}
+
+/** Invalidate cache for one branch, or all branches when branchId is omitted. */
+export function invalidatePublicSettingsCache(branchId?: number): void {
+  if (branchId == null) {
+    getPublicSettingsCacheRoot().clear();
+    return;
+  }
+  const state = getPublicSettingsCacheState(branchId);
   state.value = null;
   state.expiresAt = 0;
   state.inflight = null;
@@ -158,7 +189,80 @@ function mapSettingsRow(row: Record<string, unknown> | undefined): PublicSetting
   };
 }
 
-async function loadPublicSettingsFromDb(): Promise<PublicSettings> {
+async function loadPublicSettingsFromDb(branchId: number): Promise<PublicSettings> {
+  try {
+    const db = await getPool();
+    const res = await db
+      .request()
+      .input("branchId", sql.Int, branchId)
+      .query(
+        `
+      SELECT TOP 1
+        ISNULL(SalonName, N'Cut Salon') AS SalonName,
+        ISNULL(Timezone, N'Africa/Cairo') AS Timezone,
+        ISNULL(Currency, N'EGP') AS Currency,
+        ISNULL(BookingEnabled, 1) AS BookingEnabled,
+        ISNULL(AllowSpecificBarber, 1) AS AllowSpecificBarber,
+        ISNULL(AllowNearestBarber, 1) AS AllowNearestBarber,
+        ISNULL(DefaultMode, N'nearest') AS DefaultMode,
+        ISNULL(SlotIntervalMinutes, 15) AS SlotIntervalMinutes,
+        ISNULL(MaxBookingDaysAhead, 14) AS MaxBookingDaysAhead,
+        ISNULL(MinNoticeMinutes, 30) AS MinNoticeMinutes,
+        ISNULL(DefaultServiceDurationMinutes, ISNULL(DefaultServiceMinutes, 30)) AS DefaultServiceDurationMinutes
+      FROM [dbo].[QueueBookingSettings]
+      WHERE BranchID = @branchId
+    `,
+      )
+      .catch(() => ({ recordset: [] as any[] }));
+
+    return mapSettingsRow(res.recordset[0]);
+  } catch (err) {
+    console.error("[getPublicSettings] DB error, using fallbacks:", err);
+    return mapSettingsRow(undefined);
+  }
+}
+
+/**
+ * Public booking settings — short TTL process cache + shared in-flight promise,
+ * keyed per BranchID so settings never leak across branches.
+ * Must not cache occupancy / dynamic availability.
+ */
+export async function getPublicSettings(branchId: number): Promise<PublicSettings> {
+  if (branchId == null || !Number.isFinite(branchId)) {
+    throw new Error('getPublicSettings requires a branchId');
+  }
+  const state = getPublicSettingsCacheState(branchId);
+  const now = Date.now();
+  if (state.value && now < state.expiresAt) {
+    return state.value;
+  }
+  if (state.inflight) {
+    return state.inflight;
+  }
+
+  state.inflight = loadPublicSettingsFromDb(branchId)
+    .then((value) => {
+      // Only retain successful-shaped results (including DB empty → defaults)
+      state.value = value;
+      state.expiresAt = Date.now() + PUBLIC_SETTINGS_TTL_MS;
+      state.inflight = null;
+      return value;
+    })
+    .catch((err) => {
+      state.inflight = null;
+      throw err;
+    });
+
+  return state.inflight;
+}
+
+let globalTimingCacheState: PublicSettingsCacheState = {
+  value: null,
+  expiresAt: 0,
+  inflight: null,
+};
+
+async function loadGlobalTimingDefaultsFromDb(): Promise<PublicSettings> {
   try {
     const db = await getPool();
     const res = await db
@@ -178,23 +282,27 @@ async function loadPublicSettingsFromDb(): Promise<PublicSettings> {
         ISNULL(MinNoticeMinutes, 30) AS MinNoticeMinutes,
         ISNULL(DefaultServiceDurationMinutes, ISNULL(DefaultServiceMinutes, 30)) AS DefaultServiceDurationMinutes
       FROM [dbo].[QueueBookingSettings]
+      ORDER BY BranchID
     `,
       )
       .catch(() => ({ recordset: [] as any[] }));
 
     return mapSettingsRow(res.recordset[0]);
   } catch (err) {
-    console.error("[getPublicSettings] DB error, using fallbacks:", err);
+    console.error("[getGlobalTimingDefaults] DB error, using fallbacks:", err);
     return mapSettingsRow(undefined);
   }
 }
 
 /**
- * Public booking settings — short TTL process cache + shared in-flight promise.
- * Must not cache occupancy / dynamic availability.
+ * Branch-agnostic timing defaults (timezone / default service duration) for the
+ * employee-global schedule engine (scheduleIntegrity, queueEstimateEngine,
+ * bookingRescheduleCore). Employee busy conflicts stay global across branches
+ * per Phase 1F frozen rules — this must never be used to gate per-branch
+ * visibility, capacity, or public settings.
  */
-export async function getPublicSettings(): Promise<PublicSettings> {
-  const state = getPublicSettingsCacheState();
+export async function getGlobalTimingDefaults(): Promise<PublicSettings> {
+  const state = globalTimingCacheState;
   const now = Date.now();
   if (state.value && now < state.expiresAt) {
     return state.value;
@@ -203,9 +311,8 @@ export async function getPublicSettings(): Promise<PublicSettings> {
     return state.inflight;
   }
 
-  state.inflight = loadPublicSettingsFromDb()
+  state.inflight = loadGlobalTimingDefaultsFromDb()
     .then((value) => {
-      // Only retain successful-shaped results (including DB empty → defaults)
       state.value = value;
       state.expiresAt = Date.now() + PUBLIC_SETTINGS_TTL_MS;
       state.inflight = null;
@@ -224,28 +331,34 @@ export async function getPublicSettings(): Promise<PublicSettings> {
 /**
  * Find an existing client by phone or create one.
  * Returns the ClientID.
+ *
+ * Empty / placeholder phones always create a NEW client (never match smoke-test rows).
  */
 export async function upsertCustomer(
   name: string,
-  phone: string,
+  phone: string | null | undefined,
 ): Promise<number> {
   const db = await getPool();
+  const cleanedPhone = (phone ?? '').trim();
+  const usablePhone = isUsableCustomerPhone(cleanedPhone) ? cleanedPhone : '';
 
-  const existing = await db
-    .request()
-    .input("mobile", sql.NVarChar, phone.trim())
-    .query(
-      `SELECT TOP 1 ClientID FROM [dbo].[TblClient] WHERE Mobile = @mobile`,
-    );
+  if (usablePhone) {
+    const existing = await db
+      .request()
+      .input('mobile', sql.NVarChar, usablePhone)
+      .query(
+        `SELECT TOP 1 ClientID FROM [dbo].[TblClient] WHERE Mobile = @mobile`,
+      );
 
-  if (existing.recordset.length > 0) {
-    return existing.recordset[0].ClientID as number;
+    if (existing.recordset.length > 0) {
+      return existing.recordset[0].ClientID as number;
+    }
   }
 
   const inserted = await db
     .request()
-    .input("name", sql.NVarChar, name.trim())
-    .input("mobile", sql.NVarChar, phone.trim()).query(`
+    .input('name', sql.NVarChar, name.trim())
+    .input('mobile', sql.NVarChar, usablePhone || null).query(`
       INSERT INTO [dbo].[TblClient] ([Name], Mobile, RegisterDate)
       OUTPUT INSERTED.ClientID
       VALUES (@name, @mobile, GETDATE())

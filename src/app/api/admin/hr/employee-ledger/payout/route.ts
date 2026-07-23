@@ -4,6 +4,8 @@ import {
   EmployeeLedgerPayoutError,
   executeEmployeePayout,
 } from '@/lib/services/employeeLedgerPayoutService';
+import { requireBranchOperationAccess } from '@/lib/branch/context';
+import { resolveBranchDayForDate } from '@/lib/branch/operationalGates';
 
 /**
  * POST /api/admin/hr/employee-ledger/payout
@@ -22,6 +24,12 @@ export async function POST(request: NextRequest) {
     const notes = body.notes != null ? String(body.notes) : undefined;
     const allowOverpay = body.allowOverpay === true;
 
+    // Never trust browser branchId — resolve ownership from gated session context.
+    const branch = await requireBranchOperationAccess();
+    if (branch instanceof NextResponse) return branch;
+    const dayResolution = await resolveBranchDayForDate(branch.branchId, payoutDate);
+    if (!dayResolution.ok) return dayResolution.response;
+
     const result = await executeEmployeePayout({
       empId,
       amount,
@@ -30,6 +38,8 @@ export async function POST(request: NextRequest) {
       notes,
       allowOverpay,
       createdByUserId: auth.userId,
+      branchId: branch.branchId,
+      businessDayId: dayResolution.day.id,
     });
 
     return NextResponse.json(result, { status: 201 });

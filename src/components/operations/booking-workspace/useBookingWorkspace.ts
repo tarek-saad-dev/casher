@@ -54,6 +54,9 @@ export function useBookingWorkspace({
   const [services, setServices] = useState<BookingService[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
   const [selectedServices, setSelectedServices] = useState<BookingService[]>([]);
+  /** Per-barber effective durations from TblEmpServiceSettings (ProID → minutes). */
+  const [empDurationByProId, setEmpDurationByProId] = useState<Record<number, number>>({});
+  const [loadingEmpDurations, setLoadingEmpDurations] = useState(false);
 
   const [bookingDate, setBookingDate] = useState(() => sanitizeDate(initialDate));
   const [selectedBarberId, setSelectedBarberId] = useState<number | null>(initialEmpId || null);
@@ -91,6 +94,21 @@ export function useBookingWorkspace({
   const modalRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const submittingRef = useRef(false);
+
+  const applyEmpDuration = useCallback(
+    (svc: BookingService): BookingService => {
+      const override = empDurationByProId[svc.ProID];
+      if (override == null || !(override > 0)) return svc;
+      if (svc.DurationMinutes === override) return svc;
+      return { ...svc, DurationMinutes: override };
+    },
+    [empDurationByProId],
+  );
+
+  const displayServices = useMemo(
+    () => services.map(applyEmpDuration),
+    [services, applyEmpDuration],
+  );
 
   const totalDuration = useMemo(
     () => selectedServices.reduce((s, svc) => s + (svc.DurationMinutes ?? 30), 0),
@@ -200,6 +218,53 @@ export function useBookingWorkspace({
       .finally(() => setLoadingServices(false));
   }, []);
 
+  // Resolve per-barber durations when a specific barber is selected
+  useEffect(() => {
+    if (!selectedBarberId || services.length === 0) {
+      setEmpDurationByProId({});
+      return;
+    }
+    let cancelled = false;
+    const ids = services.map((s) => s.ProID).join(',');
+    setLoadingEmpDurations(true);
+    fetch(`/api/services/resolve-durations?empId=${selectedBarberId}&serviceIds=${ids}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        if (d?.ok && d.byProId && typeof d.byProId === 'object') {
+          setEmpDurationByProId(d.byProId as Record<number, number>);
+        } else {
+          setEmpDurationByProId({});
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setEmpDurationByProId({});
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingEmpDurations(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBarberId, services]);
+
+  // Keep selected services' durations in sync with barber overrides
+  useEffect(() => {
+    setSelectedServices((prev) => {
+      if (!prev.length) return prev;
+      let changed = false;
+      const next = prev.map((svc) => {
+        const updated = applyEmpDuration(
+          services.find((s) => s.ProID === svc.ProID) ?? svc,
+        );
+        if (updated.DurationMinutes !== svc.DurationMinutes) changed = true;
+        return updated;
+      });
+      if (changed) invalidateSlotSelection();
+      return changed ? next : prev;
+    });
+  }, [empDurationByProId, services, applyEmpDuration, invalidateSlotSelection]);
+
   useEffect(() => {
     if (!open) return;
     returnFocusRef.current = document.activeElement as HTMLElement | null;
@@ -275,7 +340,11 @@ export function useBookingWorkspace({
         available: true,
       }));
 
-      const slots = rawSlots.filter((s) => Number(s.durationMinutes ?? 0) === expectedDuration);
+      // Specific mode: slots must match this barber's resolved duration.
+      // Nearest mode: each slot carries its own emp duration — do not force one total.
+      const slots = mode === 'specific'
+        ? rawSlots.filter((s) => Number(s.durationMinutes ?? 0) === expectedDuration)
+        : rawSlots.filter((s) => Number(s.durationMinutes ?? 0) > 0);
 
       setAvailableSlots(slots);
       setSlotsFetchedForKey(serviceIdsKey);
@@ -342,25 +411,27 @@ export function useBookingWorkspace({
   }, [MAIN_SERVICE_NAMES]);
 
   const handleMainSelect = useCallback((proId: number) => {
-    const svc = services.find((s) => s.ProID === proId);
+    const svc = displayServices.find((s) => s.ProID === proId);
     if (!svc) return;
     setSelectedServices((prev) => {
-      const addonIds = prev.filter((s) => !isMainService(s.ProName)).map((s) => s.ProID);
-      const addons = services.filter((s) => addonIds.includes(s.ProID));
+      const alreadyMain = prev.some((s) => s.ProID === proId && isMainService(s.ProName));
+      const addons = prev.filter((s) => !isMainService(s.ProName));
+      // Clicking the active main again clears it → allow addons-only booking
+      if (alreadyMain) return addons;
       return [svc, ...addons];
     });
     invalidateSlotSelection();
-  }, [services, isMainService, invalidateSlotSelection]);
+  }, [displayServices, isMainService, invalidateSlotSelection]);
 
   const handleToggleAddon = useCallback((proId: number) => {
     setSelectedServices((prev) => {
       const exists = prev.some((s) => s.ProID === proId);
       if (exists) return prev.filter((s) => s.ProID !== proId);
-      const svc = services.find((s) => s.ProID === proId);
+      const svc = displayServices.find((s) => s.ProID === proId);
       return svc ? [...prev, svc] : prev;
     });
     invalidateSlotSelection();
-  }, [services, invalidateSlotSelection]);
+  }, [displayServices, invalidateSlotSelection]);
 
   const removeService = useCallback((proId: number) => {
     setSelectedServices((prev) => prev.filter((s) => s.ProID !== proId));
@@ -387,7 +458,7 @@ export function useBookingWorkspace({
       const payload = {
         customer: {
           name: selectedClient?.Name || customerName,
-          phone: selectedClient?.Mobile || customerPhone || '01000000000',
+          phone: selectedClient?.Mobile || customerPhone.trim() || '',
         },
         serviceIds,
         date: bookingDate,
@@ -533,8 +604,8 @@ export function useBookingWorkspace({
     modalRef,
     step,
     mode,
-    services,
-    loadingServices,
+    services: displayServices,
+    loadingServices: loadingServices || loadingEmpDurations,
     selectedServices,
     bookingDate,
     selectedBarberId,

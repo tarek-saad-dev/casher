@@ -67,6 +67,28 @@ vi.mock('@/lib/api-auth', () => ({
   isAuthResult: vi.fn().mockReturnValue(true),
 }));
 
+vi.mock('@/lib/branch/context', () => ({
+  requireBranchOperationAccess: vi.fn(async () => ({
+    userId: 1,
+    branchId: 1,
+    branchCode: 'MAIN',
+    branchName: 'Main Branch',
+    shortName: 'Main',
+    timeZone: 'Africa/Cairo',
+    businessDayCutoffTime: '04:00',
+    canOperate: true,
+    canViewReports: true,
+    canSwitch: true,
+  })),
+}));
+
+vi.mock('@/lib/branch/operationalGates', () => ({
+  resolveBranchDayForDate: vi.fn(async () => ({
+    ok: true,
+    day: { id: 1, branchId: 1, newDay: '2026-07-10', status: true },
+  })),
+}));
+
 function resetMocks() {
   fakeCommit = vi.fn();
   fakeRollback = vi.fn();
@@ -113,6 +135,8 @@ describe('employeeLedgerFundingService', () => {
       date: '2026-07-10',
       notes: 'اختبار',
       createdByUserId: 1,
+      branchId: 1,
+      businessDayId: 1,
     });
 
     expect(result.success).toBe(true);
@@ -168,6 +192,8 @@ describe('employeeLedgerFundingService', () => {
       amount: 100,
       paymentMethodId: 2,
       date: '2026-07-10',
+      branchId: 1,
+      businessDayId: 1,
     })).rejects.toBeInstanceOf(EmployeeLedgerFundingError);
     expect(fakeRollback).toHaveBeenCalled();
     expect(fakeCommit).not.toHaveBeenCalled();
@@ -183,6 +209,8 @@ describe('employeeLedgerFundingService', () => {
       amount: 100,
       paymentMethodId: 2,
       date: '2026-07-10',
+      branchId: 1,
+      businessDayId: 1,
     })).rejects.toBeInstanceOf(EmployeeLedgerFundingError);
   });
 
@@ -206,6 +234,8 @@ describe('employeeLedgerFundingService', () => {
       amount: 500,
       paymentMethodId: 2,
       date: '2026-07-10',
+      branchId: 1,
+      businessDayId: 1,
     });
 
     expect(funding.newBalance).toBe(500);
@@ -228,6 +258,8 @@ describe('employeeLedgerFundingService', () => {
       amount: 200,
       paymentMethodId: 2,
       payoutDate: '2026-07-11',
+      branchId: 1,
+      businessDayId: 1,
     });
 
     expect(payout.previousBalance).toBe(500);

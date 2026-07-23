@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import sql from 'mssql';
+import { isActiveBranchContext, requireActiveBranchContext } from '@/lib/branch';
 import { EMPLOYEE_FUNDING_CATEGORY_NAME } from '@/lib/services/employeeLedgerFundingService';
 import type { DailyTreasuryData, TreasurySummary, PaymentMethodBreakdown, TreasuryFilters } from '@/lib/types/treasury';
 import { isFinancialReportClassificationEnabled } from '@/lib/accounting/financialReportFlags';
@@ -21,6 +22,10 @@ export async function GET(request: NextRequest) {
   let db;
   
   try {
+    // PHASE1D: never trust browser branchId — always filter by the session's active branch
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     db = await getPool();
     
     const searchParams = request.nextUrl.searchParams;
@@ -31,7 +36,7 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId') ? parseInt(searchParams.get('userId')!) : null;
     
     // Build WHERE clause dynamically
-    let whereConditions: string[] = ['1=1'];
+    let whereConditions: string[] = ['cm.BranchID = @branchId'];
     const params: any = {};
     
     if (newDay !== null) {
@@ -93,6 +98,7 @@ export async function GET(request: NextRequest) {
     
     const breakdownRequest = db.request();
     breakdownRequest.input('employeeFundingCategory', sql.NVarChar(200), EMPLOYEE_FUNDING_CATEGORY_NAME);
+    breakdownRequest.input('branchId', sql.Int, branch.branchId);
     Object.keys(params).forEach(key => {
       if (key === 'shiftMoveId' || key === 'userId') {
         breakdownRequest.input(key, sql.Int, params[key]);
@@ -179,8 +185,9 @@ export async function GET(request: NextRequest) {
     if (newDay !== null) {
       const dayInfoResult = await db.request()
         .input('newDay', sql.Date, newDay)
+        .input('branchId', sql.Int, branch.branchId)
         .query(`
-          SELECT NewDay AS DayDate FROM [dbo].[TblNewDay] WHERE NewDay = @newDay
+          SELECT NewDay AS DayDate FROM [dbo].[TblNewDay] WHERE NewDay = @newDay AND BranchID = @branchId
         `);
       
       if (dayInfoResult.recordset.length > 0) {
@@ -195,11 +202,12 @@ export async function GET(request: NextRequest) {
     if (shiftMoveId !== null) {
       const shiftInfoResult = await db.request()
         .input('shiftMoveId', sql.Int, shiftMoveId)
+        .input('branchId', sql.Int, branch.branchId)
         .query(`
           SELECT s.ShiftName
           FROM [dbo].[TblShiftMove] sm
           LEFT JOIN [dbo].[TblShift] s ON sm.ShiftID = s.ShiftID
-          WHERE sm.ShiftMoveID = @shiftMoveId
+          WHERE sm.ShiftMoveID = @shiftMoveId AND sm.BranchID = @branchId
         `);
       
       if (shiftInfoResult.recordset.length > 0) {

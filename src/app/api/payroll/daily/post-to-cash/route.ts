@@ -6,6 +6,8 @@ import {
   LEGACY_POST_TO_CASH_REDIRECT_TAB,
   shouldBlockLegacyPostToCash,
 } from '@/lib/payroll/legacyPostToCashFlags';
+import { requireBranchOperationAccess } from '@/lib/branch/context';
+import { resolveBranchDayForDate } from '@/lib/branch/operationalGates';
 
 const DATE_RE   = /^\d{4}-\d{2}-\d{2}$/;
 const CAT_NAME  = 'يوميات الموظفين';
@@ -58,6 +60,16 @@ export async function POST(req: NextRequest) {
         { status: 409 },
       );
     }
+
+    // Never trust browser branchId — resolve ownership from gated session context.
+    // BusinessDayID is resolved by (branchId, workDate); if no matching day row
+    // exists we reject rather than inventing or attaching to the open day.
+    const branch = await requireBranchOperationAccess();
+    if (branch instanceof NextResponse) return branch;
+    const dayResolution = await resolveBranchDayForDate(branch.branchId, workDate);
+    if (!dayResolution.ok) return dayResolution.response;
+    const branchId = branch.branchId;
+    const businessDayId = dayResolution.day.id;
 
     const legacyWarning = getLegacyPostToCashWarning();
 
@@ -199,13 +211,15 @@ export async function POST(req: NextRequest) {
             .input('EmpID',        sql.Int,            row.EmpID)
             .input('Notes',        sql.NVarChar(sql.MAX), `يومية موظف - ${row.EmpName} - ${workDate}`)
             .input('PayrollMonth', sql.Date,           payrollMonth)
+            .input('BranchID',     sql.Int,            branchId)
+            .input('BusinessDayID', sql.Int,           businessDayId)
             .query(`
               INSERT INTO dbo.TblCashMove
                 (invID, invType, invDate, invTime, ExpINID, GrandTolal, inOut, EmpID, Notes,
-                 IsPayrollDeduction, IsEmployeePayrollIncome, PayrollMonth)
+                 IsPayrollDeduction, IsEmployeePayrollIncome, PayrollMonth, BranchID, BusinessDayID)
               OUTPUT INSERTED.ID
               VALUES (@invID, N'مصروفات', @invDate, @invTime, @ExpINID, @GrandTolal, N'out',
-                      @EmpID, @Notes, 1, 0, @PayrollMonth);
+                      @EmpID, @Notes, 1, 0, @PayrollMonth, @BranchID, @BusinessDayID);
             `);
           expCashMoveID = expResult.recordset[0].ID;
         }
@@ -238,13 +252,15 @@ export async function POST(req: NextRequest) {
             .input('EmpID',        sql.Int,            row.EmpID)
             .input('Notes',        sql.NVarChar(sql.MAX), `إيراد يومية موظف - ${row.EmpName} - ${workDate}`)
             .input('PayrollMonth', sql.Date,           payrollMonth)
+            .input('BranchID',     sql.Int,            branchId)
+            .input('BusinessDayID', sql.Int,           businessDayId)
             .query(`
               INSERT INTO dbo.TblCashMove
                 (invID, invType, invDate, invTime, ExpINID, GrandTolal, inOut, EmpID, Notes,
-                 IsPayrollDeduction, IsEmployeePayrollIncome, PayrollMonth)
+                 IsPayrollDeduction, IsEmployeePayrollIncome, PayrollMonth, BranchID, BusinessDayID)
               OUTPUT INSERTED.ID
               VALUES (@invID, N'ايرادات', @invDate, @invTime, @RevExpINID, @GrandTolal, N'in',
-                      @EmpID, @Notes, 0, 1, @PayrollMonth);
+                      @EmpID, @Notes, 0, 1, @PayrollMonth, @BranchID, @BusinessDayID);
             `);
           incCashMoveID = incResult.recordset[0].ID;
         }
@@ -304,13 +320,15 @@ export async function POST(req: NextRequest) {
             .input('EmpID',        sql.Int,            row.EmpID)
             .input('Notes',        sql.NVarChar(sql.MAX), `إيراد يومية موظف - ${row.EmpName} - ${workDate}`)
             .input('PayrollMonth', sql.Date,           payrollMonth)
+            .input('BranchID',     sql.Int,            branchId)
+            .input('BusinessDayID', sql.Int,           businessDayId)
             .query(`
               INSERT INTO dbo.TblCashMove
                 (invID, invType, invDate, invTime, ExpINID, GrandTolal, inOut, EmpID, Notes,
-                 IsPayrollDeduction, IsEmployeePayrollIncome, PayrollMonth)
+                 IsPayrollDeduction, IsEmployeePayrollIncome, PayrollMonth, BranchID, BusinessDayID)
               OUTPUT INSERTED.ID
               VALUES (@invID, N'ايرادات', @invDate, @invTime, @RevExpINID, @GrandTolal, N'in',
-                      @EmpID, @Notes, 0, 1, @PayrollMonth);
+                      @EmpID, @Notes, 0, 1, @PayrollMonth, @BranchID, @BusinessDayID);
             `);
           repIncCashMoveID = repIncResult.recordset[0].ID;
         }

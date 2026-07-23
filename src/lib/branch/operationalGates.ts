@@ -6,7 +6,7 @@ import {
   requireBranchOperationAccess,
 } from './context';
 import { BranchDomainError, type ActiveBranchContext } from './types';
-import { getOpenBusinessDay, type BusinessDayRecord } from './businessDay';
+import { getBusinessDayByDate, getOpenBusinessDay, type BusinessDayRecord } from './businessDay';
 import {
   getUserOpenShift,
   getUserOpenShiftForBranch,
@@ -41,7 +41,7 @@ export async function requireBranchOperatorContext(): Promise<
 
 /**
  * Resolve open business day + optional user open shift for financial writes.
- * Day/shift are branch-aware; financial rows remain unscoped until Phase 1D.
+ * Callers must stamp BranchID + BusinessDayID on financial roots from this context.
  */
 export async function resolveBranchDayAndShiftForWrite(userId: number): Promise<
   | {
@@ -90,4 +90,32 @@ export async function requireAuthenticatedBranchContext(): Promise<
   ActiveBranchContext | NextResponse
 > {
   return requireActiveBranchContext();
+}
+
+/**
+ * Resolve the business day for an explicit (typically past) date on the active
+ * branch. Never attaches to the currently open day and never creates a day —
+ * callers must have a matching TblNewDay row already, or the write is rejected.
+ */
+export async function resolveBranchDayForDate(
+  branchId: number,
+  dateYmd: string,
+): Promise<
+  | { ok: true; day: BusinessDayRecord }
+  | { ok: false; response: NextResponse }
+> {
+  const day = await getBusinessDayByDate(branchId, dateYmd);
+  if (!day) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: 'لا يوجد يوم عمل مطابق لهذا التاريخ في الفرع النشط — لا يمكن الإضافة',
+          code: 'NO_BUSINESS_DAY_FOR_DATE',
+        },
+        { status: 400 },
+      ),
+    };
+  }
+  return { ok: true, day };
 }

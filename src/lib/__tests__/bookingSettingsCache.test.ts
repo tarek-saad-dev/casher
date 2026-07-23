@@ -14,6 +14,7 @@ describe('getPublicSettings cache', () => {
     vi.doMock('@/lib/db', () => ({
       getPool: vi.fn(async () => ({
         request: () => ({
+          input: function (this: any) { return this; },
           query: async () => {
             loads += 1;
             await new Promise((r) => setTimeout(r, 30));
@@ -44,9 +45,9 @@ describe('getPublicSettings cache', () => {
     mod.invalidatePublicSettingsCache();
 
     const [a, b, c] = await Promise.all([
-      mod.getPublicSettings(),
-      mod.getPublicSettings(),
-      mod.getPublicSettings(),
+      mod.getPublicSettings(1),
+      mod.getPublicSettings(1),
+      mod.getPublicSettings(1),
     ]);
 
     expect(loads).toBe(1);
@@ -60,6 +61,7 @@ describe('getPublicSettings cache', () => {
     vi.doMock('@/lib/db', () => ({
       getPool: vi.fn(async () => ({
         request: () => ({
+          input: function (this: any) { return this; },
           query: async () => {
             loads += 1;
             return {
@@ -87,8 +89,8 @@ describe('getPublicSettings cache', () => {
 
     const mod = await import('@/lib/publicBookingHelpers');
     mod.invalidatePublicSettingsCache();
-    await mod.getPublicSettings();
-    await mod.getPublicSettings();
+    await mod.getPublicSettings(1);
+    await mod.getPublicSettings(1);
     expect(loads).toBe(1);
   });
 
@@ -97,6 +99,7 @@ describe('getPublicSettings cache', () => {
     vi.doMock('@/lib/db', () => ({
       getPool: vi.fn(async () => ({
         request: () => ({
+          input: function (this: any) { return this; },
           query: async () => {
             loads += 1;
             return {
@@ -124,9 +127,9 @@ describe('getPublicSettings cache', () => {
 
     const mod = await import('@/lib/publicBookingHelpers');
     mod.invalidatePublicSettingsCache();
-    const first = await mod.getPublicSettings();
+    const first = await mod.getPublicSettings(1);
     mod.invalidatePublicSettingsCache();
-    const second = await mod.getPublicSettings();
+    const second = await mod.getPublicSettings(1);
     expect(loads).toBe(2);
     expect(first.salonName).toBe('Cut1');
     expect(second.salonName).toBe('Cut2');
@@ -137,6 +140,7 @@ describe('getPublicSettings cache', () => {
     vi.doMock('@/lib/db', () => ({
       getPool: vi.fn(async () => ({
         request: () => ({
+          input: function (this: any) { return this; },
           query: async () => {
             loads += 1;
             if (loads === 1) throw new Error('boom');
@@ -150,11 +154,55 @@ describe('getPublicSettings cache', () => {
     const mod = await import('@/lib/publicBookingHelpers');
     mod.invalidatePublicSettingsCache();
     // loadPublicSettingsFromDb catches and returns fallbacks — still clears inflight
-    const a = await mod.getPublicSettings();
+    const a = await mod.getPublicSettings(1);
     expect(a.timezone).toBe('Africa/Cairo');
     mod.invalidatePublicSettingsCache();
-    await mod.getPublicSettings();
+    await mod.getPublicSettings(1);
     expect(loads).toBeGreaterThanOrEqual(1);
+  });
+
+  it('scopes cache per branch — branch A load does not serve branch B', async () => {
+    let loads = 0;
+    vi.doMock('@/lib/db', () => ({
+      getPool: vi.fn(async () => ({
+        request: () => ({
+          input: function (this: any) { return this; },
+          query: async () => {
+            loads += 1;
+            return {
+              recordset: [
+                {
+                  SalonName: `Branch${loads}`,
+                  Timezone: 'Africa/Cairo',
+                  Currency: 'EGP',
+                  BookingEnabled: 1,
+                  AllowSpecificBarber: 1,
+                  AllowNearestBarber: 1,
+                  DefaultMode: 'nearest',
+                  SlotIntervalMinutes: 15,
+                  MaxBookingDaysAhead: 14,
+                  MinNoticeMinutes: 30,
+                  DefaultServiceDurationMinutes: 30,
+                },
+              ],
+            };
+          },
+        }),
+      })),
+      sql: { Int: 'Int' },
+    }));
+
+    const mod = await import('@/lib/publicBookingHelpers');
+    mod.invalidatePublicSettingsCache();
+
+    const branchA = await mod.getPublicSettings(1);
+    const branchB = await mod.getPublicSettings(2);
+    const branchAAgain = await mod.getPublicSettings(1);
+
+    expect(loads).toBe(2); // one load per distinct branchId, second branchA call hits cache
+    expect(branchA.salonName).toBe('Branch1');
+    expect(branchB.salonName).toBe('Branch2');
+    expect(branchAAgain.salonName).toBe(branchA.salonName);
   });
 });
 

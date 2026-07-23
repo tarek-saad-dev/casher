@@ -1,26 +1,52 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
+import {
+  isReportBranchScope,
+  parseReportScopeQuery,
+  reportScopeMetadata,
+  resolveReportBranchScope,
+} from '@/lib/branch';
+
+const PAGE = '/reports/deductions/monthly';
 
 // GET /api/deductions/monthly-summary — Get monthly deductions summary per employee
+// Phase 1E: branch-scoped. `branchId`/`scope=all` are hidden query params — no
+// branch switcher UI is exposed. Default = caller's active branch.
 export async function GET(req: NextRequest) {
   try {
+    const auth = await requirePageAccess(PAGE);
+    if (!isAuthResult(auth)) return auth;
+
     const db = await getPool();
     const url = new URL(req.url);
     const month = url.searchParams.get('month'); // Format: YYYY-MM
     const employeeId = url.searchParams.get('employeeId');
 
+    const { requestedBranchId, requestedAllBranches } = parseReportScopeQuery(url.searchParams);
+    const scope = await resolveReportBranchScope({
+      requestedBranchId,
+      requestedAllBranches,
+      allowAllBranchesIfPermitted: true,
+    });
+    if (!isReportBranchScope(scope)) return scope;
+    const branchIds = scope.mode === 'single' ? [scope.branchId] : scope.branchIds;
+
     // Default to current month if not specified
     const targetMonth = month || new Date().toISOString().slice(0, 7);
-    
+
+    const branchPlaceholders = branchIds.map((_, i) => `@branchId${i}`).join(',');
     let whereClause = `
       WHERE cm.invType = N'مصروفات' 
         AND cm.inOut = N'out' 
         AND cat.CatName LIKE N'%سلف%'
         AND FORMAT(cm.invDate, 'yyyy-MM') = @targetMonth
+        AND cm.BranchID IN (${branchPlaceholders})
     `;
     
     const request = db.request();
     request.input('targetMonth', sql.NVarChar(7), targetMonth);
+    branchIds.forEach((id, i) => request.input(`branchId${i}`, sql.Int, id));
 
     if (employeeId) {
       whereClause += ' AND EXISTS (SELECT 1 FROM dbo.TblExpCatEmpMap m WHERE m.ExpINID = cm.ExpINID AND m.EmpID = @employeeId AND m.TxnKind = N\'advance\')';
@@ -42,7 +68,7 @@ export async function GET(req: NextRequest) {
         ) WITHIN GROUP (ORDER BY cm.invDate DESC) AS DeductionDetails
       FROM [dbo].[TblCashMove] cm
       LEFT JOIN [dbo].[TblExpINCat] cat ON cm.ExpINID = cat.ExpINID
-      LEFT JOIN [dbo].[TblExpCatEmpMap map ON cm.ExpINID = map.ExpINID AND map.TxnKind = N\'advance\'
+      LEFT JOIN [dbo].[TblExpCatEmpMap] map ON cm.ExpINID = map.ExpINID AND map.TxnKind = N'advance'
       LEFT JOIN [dbo].[TblEmp] emp ON map.EmpID = emp.EmpID
       ${whereClause}
       GROUP BY emp.EmpID, emp.EmpName, emp.Job
@@ -51,21 +77,23 @@ export async function GET(req: NextRequest) {
     `);
 
     // Get overall summary
-    const summaryResult = await db.request()
-      .input('targetMonth', sql.NVarChar(7), targetMonth)
-      .query(`
+    const summaryRequest = db.request();
+    summaryRequest.input('targetMonth', sql.NVarChar(7), targetMonth);
+    branchIds.forEach((id, i) => summaryRequest.input(`branchId${i}`, sql.Int, id));
+    const summaryResult = await summaryRequest.query(`
         SELECT 
           COUNT(cm.ID) AS TotalDeductionCount,
           SUM(cm.GrandTolal) AS GrandTotalDeductions,
           COUNT(DISTINCT emp.EmpID) AS UniqueEmployeesCount
         FROM [dbo].[TblCashMove] cm
         LEFT JOIN [dbo].[TblExpINCat] cat ON cm.ExpINID = cat.ExpINID
-        LEFT JOIN [dbo].[TblExpCatEmpMap map ON cm.ExpINID = map.ExpINID AND map.TxnKind = N\'advance\'
+        LEFT JOIN [dbo].[TblExpCatEmpMap] map ON cm.ExpINID = map.ExpINID AND map.TxnKind = N'advance'
         LEFT JOIN [dbo].[TblEmp] emp ON map.EmpID = emp.EmpID
         WHERE cm.invType = N'مصروفات' 
           AND cm.inOut = N'out' 
           AND cat.CatName LIKE N'%سلف%'
           AND FORMAT(cm.invDate, 'yyyy-MM') = @targetMonth
+          AND cm.BranchID IN (${branchPlaceholders})
       `);
 
     const monthName = new Date(targetMonth + '-01').toLocaleDateString('ar-EG', { 
@@ -81,7 +109,8 @@ export async function GET(req: NextRequest) {
         TotalDeductionCount: 0,
         GrandTotalDeductions: 0,
         UniqueEmployeesCount: 0
-      }
+      },
+      scope: reportScopeMetadata(scope),
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

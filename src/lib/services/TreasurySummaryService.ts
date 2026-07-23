@@ -19,6 +19,12 @@ import { EMPLOYEE_FUNDING_CATEGORY_NAME } from '@/lib/services/employeeLedgerFun
 export interface FinancialSummaryParams {
   fromDate: string; // YYYY-MM-DD
   toDate: string;   // YYYY-MM-DD
+  /**
+   * Phase 1E: branch-scoped filter. Optional for backward compatibility with
+   * existing tests/callers that pre-date branch ownership; production report
+   * paths must always pass it.
+   */
+  branchId?: number;
   shiftMoveId?: number;
   userId?: number;
   newDay?: string;
@@ -47,12 +53,17 @@ export interface DailyFinancialData {
 export async function getFinancialSummary(params: FinancialSummaryParams): Promise<FinancialSummary> {
   const db = await getPool();
   
-  const { fromDate, toDate, shiftMoveId, userId, newDay } = params;
+  const { fromDate, toDate, branchId, shiftMoveId, userId, newDay } = params;
   
   // Build WHERE clause dynamically
   let whereConditions: string[] = ['1=1'];
   const queryParams: any = {};
-  
+
+  if (branchId !== undefined) {
+    whereConditions.push('cm.BranchID = @branchId');
+    queryParams.branchId = branchId;
+  }
+
   if (newDay !== undefined) {
     whereConditions.push('sm.NewDay = @newDay');
     queryParams.newDay = newDay;
@@ -105,7 +116,7 @@ export async function getFinancialSummary(params: FinancialSummaryParams): Promi
   const request = db.request();
   request.input('employeeFundingCategory', sql.NVarChar(200), EMPLOYEE_FUNDING_CATEGORY_NAME);
   Object.keys(queryParams).forEach(key => {
-    if (key === 'shiftMoveId' || key === 'userId') {
+    if (key === 'shiftMoveId' || key === 'userId' || key === 'branchId') {
       request.input(key, sql.Int, queryParams[key]);
     } else {
       request.input(key, sql.Date, queryParams[key]);
@@ -134,7 +145,8 @@ export async function getFinancialSummary(params: FinancialSummaryParams): Promi
  */
 export async function getDailyFinancialData(
   fromDate: string,
-  toDate: string
+  toDate: string,
+  branchId?: number,
 ): Promise<DailyFinancialData[]> {
   const db = await getPool();
   
@@ -145,14 +157,18 @@ export async function getDailyFinancialData(
       ISNULL(SUM(CASE WHEN cm.inOut = N'out' THEN cm.GrandTolal ELSE 0 END), 0) AS Outgoing
     FROM [dbo].[TblCashMove] cm
     WHERE cm.invDate >= @dateFrom AND cm.invDate <= @dateTo
+      ${branchId !== undefined ? 'AND cm.BranchID = @branchId' : ''}
     GROUP BY CAST(cm.invDate AS DATE)
     ORDER BY Day ASC
   `;
   
-  const result = await db.request()
+  const request = db.request()
     .input('dateFrom', sql.Date, fromDate)
-    .input('dateTo', sql.Date, toDate)
-    .query(query);
+    .input('dateTo', sql.Date, toDate);
+  if (branchId !== undefined) {
+    request.input('branchId', sql.Int, branchId);
+  }
+  const result = await request.query(query);
   
   return result.recordset.map((row: any) => ({
     day: new Date(row.Day).toISOString().split('T')[0],
@@ -168,7 +184,8 @@ export async function getDailyFinancialData(
  */
 export async function getMonthlyFinancialSummary(
   year: number,
-  month: number
+  month: number,
+  branchId?: number,
 ): Promise<FinancialSummary & { dailyData: DailyFinancialData[] }> {
   // Calculate date range for the month
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -176,10 +193,10 @@ export async function getMonthlyFinancialSummary(
   const toDate = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
   
   // Get summary
-  const summary = await getFinancialSummary({ fromDate, toDate });
+  const summary = await getFinancialSummary({ fromDate, toDate, branchId });
   
   // Get daily breakdown
-  const dailyData = await getDailyFinancialData(fromDate, toDate);
+  const dailyData = await getDailyFinancialData(fromDate, toDate, branchId);
   
   // Fill in missing days with zeros
   const completeDailyData: DailyFinancialData[] = [];

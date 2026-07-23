@@ -1,0 +1,61 @@
+{
+  "capturedAt": "2026-07-22T03:50:09.663Z",
+  "mode": "before",
+  "target": "cloud",
+  "database": "last132",
+  "note": "Branch-filtered fingerprints; with single founding branch unscoped==scoped",
+  "gleemBranchId": 1,
+  "dayTotals": [
+    {
+      "date": "2026-07-11",
+      "sales": {
+        "invoiceCount": 29,
+        "totalSales": 7450
+      },
+      "cash": {
+        "cashIn": 8615,
+        "cashOut": 7516,
+        "cashCount": 56
+      }
+    },
+    {
+      "date": "2026-06-15",
+      "sales": {
+        "invoiceCount": 19,
+        "totalSales": 5060
+      },
+      "cash": {
+        "cashIn": 9103.16,
+        "cashOut": 8746.29,
+        "cashCount": 52
+      }
+    },
+    {
+      "date": "2026-05-23",
+      "sales": {
+        "invoiceCount": 27,
+        "totalSales": 6730
+      },
+      "cash": {
+        "cashIn": 12810.74,
+        "cashOut": 13530.74,
+        "cashCount": 79
+      }
+    }
+  ],
+  "month2026_06": {
+    "salesTotal": 192621,
+    "cashIn": 443579.91,
+    "cashOut": 417784.76
+  },
+  "legacyNullDayCash": {
+    "cnt": 19,
+    "total": 1900000
+  },
+  "unscopedVsScopedSameDay": {
+    "unscopedInv": 29,
+    "scopedInv": 29,
+    "unscopedCash": 56,
+    "scopedCash": 56
+  }
+}

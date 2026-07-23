@@ -17,10 +17,12 @@ const LINE_TOTAL_SQL = `
   END
 `;
 
+// Phase 1E: branch-scoped — every query below filters h.BranchID = @branchId.
 const BASE_WHERE = `
   CAST(h.invDate AS date) >= @fromDate
   AND CAST(h.invDate AS date) <= @toDate
   AND h.invType = N'مبيعات'
+  AND h.BranchID = @branchId
   AND d.EmpID IS NOT NULL
   AND d.ProID IS NOT NULL
 `;
@@ -29,6 +31,7 @@ const BASE_HEAD_WHERE = `
   CAST(h.invDate AS date) >= @fromDate
   AND CAST(h.invDate AS date) <= @toDate
   AND h.invType = N'مبيعات'
+  AND h.BranchID = @branchId
 `;
 
 export interface EmployeeRevenueDetail {
@@ -63,13 +66,18 @@ export function isBarberOrServiceWorker(job: string | null | undefined): boolean
  * Total monthly revenue from employee services (TblinvServDetail).
  * Same source as /admin/reports/employee-services and /api/reports/monthly.
  */
-export async function getEmployeeServicesRevenue(year: number, month: number): Promise<number> {
+export async function getEmployeeServicesRevenue(
+  year: number,
+  month: number,
+  branchId: number,
+): Promise<number> {
   const { startDate, endDate } = getMonthDateRange(year, month);
   const db = await getPool();
 
   const result = await db.request()
     .input('fromDate', sql.Date, startDate)
     .input('toDate', sql.Date, endDate)
+    .input('branchId', sql.Int, branchId)
     .query(`
       SELECT ISNULL(SUM(${LINE_TOTAL_SQL}), 0) AS TotalRevenue
       FROM dbo.TblinvServDetail d
@@ -87,7 +95,8 @@ export async function getEmployeeServicesRevenue(year: number, month: number): P
  */
 export async function getEmployeeServicesRevenueByEmployee(
   year: number,
-  month: number
+  month: number,
+  branchId: number,
 ): Promise<EmployeeRevenueDetail[]> {
   const { startDate, endDate } = getMonthDateRange(year, month);
   const db = await getPool();
@@ -95,6 +104,7 @@ export async function getEmployeeServicesRevenueByEmployee(
   const result = await db.request()
     .input('fromDate', sql.Date, startDate)
     .input('toDate', sql.Date, endDate)
+    .input('branchId', sql.Int, branchId)
     .query(`
       SELECT
         d.EmpID AS employeeId,
@@ -134,7 +144,8 @@ export async function getEmployeeServicesRevenueByEmployee(
  */
 export async function getEmployeeActualInvoiceRevenueByEmployee(
   year: number,
-  month: number
+  month: number,
+  branchId: number,
 ): Promise<EmployeeActualRevenueDetail[]> {
   const { startDate, endDate } = getMonthDateRange(year, month);
   const db = await getPool();
@@ -142,6 +153,7 @@ export async function getEmployeeActualInvoiceRevenueByEmployee(
   const headersResult = await db.request()
     .input('fromDate', sql.Date, startDate)
     .input('toDate', sql.Date, endDate)
+    .input('branchId', sql.Int, branchId)
     .query(`
       SELECT
         h.invID,
@@ -156,6 +168,7 @@ export async function getEmployeeActualInvoiceRevenueByEmployee(
   const linesResult = await db.request()
     .input('fromDate', sql.Date, startDate)
     .input('toDate', sql.Date, endDate)
+    .input('branchId', sql.Int, branchId)
     .query(`
       SELECT
         d.ID AS DetailID,

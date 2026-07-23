@@ -37,7 +37,8 @@ export async function getPartnersExpenseCategoryTransactions(
   year: number,
   month: number,
   categoryId: number | null,
-  categoryName: string
+  categoryName: string,
+  branchId: number,
 ): Promise<PartnersExpenseCategoryTransaction[]> {
   if (isExcludedPartnersExpenseCategory(categoryName)) {
     throw new Error('هذه الفئة مستبعدة من تقرير الشركاء');
@@ -47,6 +48,7 @@ export async function getPartnersExpenseCategoryTransactions(
   const request = db.request()
     .input('year', sql.Int, year)
     .input('month', sql.Int, month)
+    .input('branchId', sql.Int, branchId)
     .input('categoryName', sql.NVarChar, categoryName);
 
   const categoryFilter =
@@ -75,6 +77,7 @@ export async function getPartnersExpenseCategoryTransactions(
       AND cm.inOut = N'out'
       AND YEAR(cm.invDate) = @year
       AND MONTH(cm.invDate) = @month
+      AND cm.BranchID = @branchId
       AND ${categoryFilter}
     ORDER BY cm.invDate DESC, cm.invTime DESC
   `);

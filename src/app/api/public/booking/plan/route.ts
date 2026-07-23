@@ -27,6 +27,13 @@ import {
   ScheduleConflictError,
 } from "@/lib/scheduleIntegrity";
 import { getCairoBusinessDate } from "@/lib/businessDate";
+import {
+  extractPublicBranchCode,
+  resolvePublicBranchCode,
+  publicBranchRequiredResponse,
+  publicInvalidBranchResponse,
+} from "@/lib/branch/bookingQueueOwnership";
+import { BranchDomainError } from "@/lib/branch/types";
 
 export const runtime = "nodejs";
 
@@ -187,7 +194,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const settings = await getPublicSettings();
+    // ── Resolve branch: public callers must supply branchCode ────────────────
+    const { searchParams } = new URL(req.url);
+    const branchCode = extractPublicBranchCode(searchParams, body);
+    let branchId: number;
+    try {
+      const branch = await resolvePublicBranchCode(branchCode);
+      branchId = branch.branchId;
+    } catch (err) {
+      if (err instanceof BranchDomainError) {
+        return err.code === 'BRANCH_REQUIRED'
+          ? publicBranchRequiredResponse()
+          : publicInvalidBranchResponse();
+      }
+      throw err;
+    }
+
+    const settings = await getPublicSettings(branchId);
     if (!settings.bookingEnabled) {
       return NextResponse.json(
         { error: "الحجز الإلكتروني غير متاح حالياً" },

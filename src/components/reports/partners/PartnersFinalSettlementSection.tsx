@@ -11,6 +11,8 @@ interface PartnersFinalSettlementSectionProps {
   year: number;
   month: number;
   totals: PartnersMonthlyReportResponse['employeeSummaryTotals'];
+  /** Effective branch partner shares from the API response (Phase 1E). */
+  partners: PartnersMonthlyReportResponse['partners'];
   filteredOperatingExpenses: number;
   loading: boolean;
   classifiedOperatingNet?: number | null;
@@ -21,6 +23,7 @@ export default function PartnersFinalSettlementSection({
   year,
   month,
   totals,
+  partners,
   filteredOperatingExpenses,
   loading,
   classifiedOperatingNet,
@@ -34,16 +37,23 @@ export default function PartnersFinalSettlementSection({
 
   const result = useMemo(
     () =>
-      calculateMonthlyFinancialEquations({
-        year,
-        month,
-        baseAmount,
-        mode: 'partners',
-        baseAmountAlreadyNetOfEmployees: classifiedOperatingNet == null,
-        baseAmountAlreadyNetOfOperatingExpenses: classifiedOperatingNet != null,
-      }),
-    [year, month, baseAmount, classifiedOperatingNet]
+      partners.length > 0
+        ? calculateMonthlyFinancialEquations({
+            year,
+            month,
+            baseAmount,
+            mode: 'partners',
+            partners,
+            baseAmountAlreadyNetOfEmployees: classifiedOperatingNet == null,
+            baseAmountAlreadyNetOfOperatingExpenses: classifiedOperatingNet != null,
+          })
+        : null,
+    [year, month, baseAmount, classifiedOperatingNet, partners]
   );
+
+  if (!result) {
+    return null;
+  }
 
   return (
     <MonthlyFinancialEquations

@@ -15,6 +15,13 @@ import {
 // GET /api/expenses — List expenses with optional filters
 export async function GET(req: NextRequest) {
   try {
+    const { requireAuthenticatedBranchContext } = await import(
+      '@/lib/branch/operationalGates'
+    );
+    const { isActiveBranchContext } = await import('@/lib/branch/context');
+    const branch = await requireAuthenticatedBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const db = await getPool();
     const url = new URL(req.url);
     const dateFrom = url.searchParams.get('dateFrom');
@@ -24,20 +31,15 @@ export async function GET(req: NextRequest) {
     const today = url.searchParams.get('today'); // "1" = today only
     const paymentMethodId = url.searchParams.get('paymentMethodId');
 
-    let whereClause = "WHERE cm.invType = N'مصروفات' AND cm.inOut = N'out'";
+    // PHASE1D: never trust browser branchId — always filter by the session's active branch
+    let whereClause = "WHERE cm.invType = N'مصروفات' AND cm.inOut = N'out' AND cm.BranchID = @branchId";
     const request = db.request();
+    request.input('branchId', sql.Int, branch.branchId);
 
     if (today === '1') {
       // Use the current open business day date for the active branch
-      const { requireAuthenticatedBranchContext } = await import(
-        '@/lib/branch/operationalGates'
-      );
-      const { isActiveBranchContext } = await import('@/lib/branch/context');
-      const branch = await requireAuthenticatedBranchContext();
-      if (!isActiveBranchContext(branch)) return branch;
       whereClause +=
         ' AND cm.invDate = (SELECT TOP 1 NewDay FROM [dbo].[TblNewDay] WHERE Status = 1 AND BranchID = @branchId ORDER BY ID DESC)';
-      request.input('branchId', sql.Int, branch.branchId);
     } else {
       if (dateFrom) {
         whereClause += ' AND cm.invDate >= @dateFrom';
@@ -248,17 +250,19 @@ export async function POST(req: NextRequest) {
         .input('inOut',           sql.NVarChar(5),      N('out'))
         .input('Notes',           sql.NVarChar(sql.MAX), notesText)
         .input('ShiftMoveID',     sql.Int,              shiftMoveID)
-        .input('PaymentMethodID', sql.Int,              body.paymentMethodId);
+        .input('PaymentMethodID', sql.Int,              body.paymentMethodId)
+        .input('BranchID',        sql.Int,              gated.branch.branchId)
+        .input('BusinessDayID',   sql.Int,              gated.day.id);
 
       const insertResult = await cashReq.query(`
         INSERT INTO [dbo].[TblCashMove] (
           invID, invType, invDate, invTime, ClientID,
-          ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID
+          ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID
         )
         OUTPUT INSERTED.ID
         VALUES (
           @invID, @invType, @invDate, @invTime, @ClientID,
-          @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID
+          @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID, @BranchID, @BusinessDayID
         )
       `);
       const cashMoveId = insertResult.recordset[0].ID as number;

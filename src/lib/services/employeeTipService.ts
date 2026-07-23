@@ -112,6 +112,10 @@ export async function executeEmployeeTip(params: {
   paymentMethodId: number;
   date: string;
   createdByUserId?: number | null;
+  /** Never trust browser branchId — always resolved from gated session context. */
+  branchId: number;
+  /** Nullable only for legacy records predating the business-day migration. */
+  businessDayId: number | null;
 }): Promise<EmpLedgerTipResponse> {
   if (!isEmployeeLedgerDualWriteEnabled()) {
     throw new EmployeeTipError(
@@ -206,17 +210,21 @@ export async function executeEmployeeTip(params: {
       .input('Notes', sql.NVarChar(sql.MAX), cashNotes)
       .input('ShiftMoveID', sql.Int, null)
       .input('PaymentMethodID', sql.Int, params.paymentMethodId)
-      .input('EmpID', sql.Int, params.empId);
+      .input('EmpID', sql.Int, params.empId)
+      .input('BranchID', sql.Int, params.branchId)
+      .input('BusinessDayID', sql.Int, params.businessDayId);
 
     const cashInsert = await cashReq.query(`
       INSERT INTO [dbo].[TblCashMove] (
         invID, invType, invDate, invTime, ClientID,
-        ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, EmpID
+        ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, EmpID,
+        BranchID, BusinessDayID
       )
       OUTPUT INSERTED.ID
       VALUES (
         @invID, @invType, @invDate, @invTime, @ClientID,
-        @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID, @EmpID
+        @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID, @EmpID,
+        @BranchID, @BusinessDayID
       )
     `);
     const cashMoveId = Number(cashInsert.recordset[0].ID);

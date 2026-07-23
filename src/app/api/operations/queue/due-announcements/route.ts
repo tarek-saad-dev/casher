@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { detectQueueTicketsSchema } from "@/lib/queueSchema";
 import { buildAnnouncementSequence, getChairNumber, getChairDisplayText } from "@/lib/chairMapping";
+import { requireActiveBranchContext, isActiveBranchContext } from "@/lib/branch/context";
 
 export const runtime = "nodejs";
 
@@ -25,6 +26,9 @@ function cairoTimeStr(date: Date): string {
 // Returns queue tickets that are due for announcement (waiting + estimated time <= now)
 export async function GET(req: NextRequest) {
   try {
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const { searchParams } = new URL(req.url);
     const date = searchParams.get("date") || cairoDateStr(new Date());
 
@@ -47,7 +51,9 @@ export async function GET(req: NextRequest) {
       : "AND qt.Status != 'called'";
 
     // Use CTE with ROW_NUMBER to avoid duplicates while preserving ORDER BY
-    const result = await db.request().input("date", sql.Date, date).query(`
+    const request = db.request().input("date", sql.Date, date);
+    if (schema.hasBranchID) request.input("branchId", sql.Int, branch.branchId);
+    const result = await request.query(`
       WITH RankedTickets AS (
         SELECT
           qt.QueueTicketID,
@@ -72,6 +78,7 @@ export async function GET(req: NextRequest) {
           AND qt.EmpID IS NOT NULL
           AND qt.EstimatedStartTime IS NOT NULL
           AND qt.EstimatedStartTime <= GETDATE()
+          ${schema.hasBranchID ? "AND qt.BranchID = @branchId" : ""}
           ${announcedCheck}
       )
       SELECT

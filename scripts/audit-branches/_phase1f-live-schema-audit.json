@@ -1,0 +1,612 @@
+{
+  "capturedAt": "2026-07-22T23:56:07.077Z",
+  "target": "cloud",
+  "database": "last132",
+  "counts": {
+    "BookingsCount": 1499,
+    "BookingServicesCount": 1526,
+    "QueueTicketsCount": 139,
+    "QueueHistoryCount": 176,
+    "SettingsCount": 1,
+    "NullBookingCodes": 20,
+    "DupBookingCodes": 0,
+    "DupTicketCodeDate": 0,
+    "QueueTicketServicesCount": 0
+  },
+  "columns": [
+    {
+      "table_name": "Bookings",
+      "column_name": "BookingID",
+      "type_name": "int",
+      "is_nullable": false
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "ClientID",
+      "type_name": "int",
+      "is_nullable": true
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "AssignedEmpID",
+      "type_name": "int",
+      "is_nullable": true
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "BookingDate",
+      "type_name": "date",
+      "is_nullable": false
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "StartTime",
+      "type_name": "time",
+      "is_nullable": false
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "EndTime",
+      "type_name": "time",
+      "is_nullable": true
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "Status",
+      "type_name": "nvarchar",
+      "is_nullable": false
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "Source",
+      "type_name": "nvarchar",
+      "is_nullable": false
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "Notes",
+      "type_name": "nvarchar",
+      "is_nullable": true
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "QueueTicketID",
+      "type_name": "int",
+      "is_nullable": true
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "OldInvID",
+      "type_name": "int",
+      "is_nullable": true
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "OldInvType",
+      "type_name": "nvarchar",
+      "is_nullable": true
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "ConvertedInvID",
+      "type_name": "int",
+      "is_nullable": true
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "ConvertedInvType",
+      "type_name": "nvarchar",
+      "is_nullable": true
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "CreatedByUserID",
+      "type_name": "int",
+      "is_nullable": true
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "CreatedAt",
+      "type_name": "datetime",
+      "is_nullable": false
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "UpdatedAt",
+      "type_name": "datetime",
+      "is_nullable": true
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "CancelledAt",
+      "type_name": "datetime",
+      "is_nullable": true
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "CancelReason",
+      "type_name": "nvarchar",
+      "is_nullable": true
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "BookingCode",
+      "type_name": "nvarchar",
+      "is_nullable": true
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "AnnouncedAt",
+      "type_name": "datetime",
+      "is_nullable": true
+    },
+    {
+      "table_name": "Bookings",
+      "column_name": "CalledAt",
+      "type_name": "datetime",
+      "is_nullable": true
+    },
+    {
+      "table_name": "BookingServices",
+      "column_name": "BookingServiceID",
+      "type_name": "int",
+      "is_nullable": false
+    },
+    {
+      "table_name": "BookingServices",
+      "column_name": "BookingID",
+      "type_name": "int",
+      "is_nullable": false
+    },
+    {
+      "table_name": "BookingServices",
+      "column_name": "ProID",
+      "type_name": "int",
+      "is_nullable": true
+    },
+    {
+      "table_name": "BookingServices",
+      "column_name": "EmpID",
+      "type_name": "int",
+      "is_nullable": true
+    },
+    {
+      "table_name": "BookingServices",
+      "column_name": "Qty",
+      "type_name": "decimal",
+      "is_nullable": false
+    },
+    {
+      "table_name": "BookingServices",
+      "column_name": "Price",
+      "type_name": "decimal",
+      "is_nullable": false
+    },
+    {
+      "table_name": "BookingServices",
+      "column_name": "DurationMinutes",
+      "type_name": "int",
+      "is_nullable": true
+    },
+    {
+      "table_name": "BookingServices",
+      "column_name": "Notes",
+      "type_name": "nvarchar",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "SettingID",
+      "type_name": "int",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "QueuePrefix",
+      "type_name": "nvarchar",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "QueueStartNumber",
+      "type_name": "int",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "ResetQueueDaily",
+      "type_name": "bit",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "DefaultServiceMinutes",
+      "type_name": "int",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "BookingGracePeriod",
+      "type_name": "int",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "AutoNoShowAfterMin",
+      "type_name": "int",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "AllowDoubleBooking",
+      "type_name": "bit",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "BookingPriorityMode",
+      "type_name": "nvarchar",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "UpdatedAt",
+      "type_name": "datetime",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "UpdatedByUserID",
+      "type_name": "int",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "SlotIntervalMinutes",
+      "type_name": "int",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "MaxBookingDaysAhead",
+      "type_name": "int",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "MinNoticeMinutes",
+      "type_name": "int",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "BookingEnabled",
+      "type_name": "bit",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "SalonName",
+      "type_name": "nvarchar",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "Timezone",
+      "type_name": "nvarchar",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "Currency",
+      "type_name": "nvarchar",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "AllowSpecificBarber",
+      "type_name": "bit",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "AllowNearestBarber",
+      "type_name": "bit",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "DefaultMode",
+      "type_name": "nvarchar",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "DefaultServiceDurationMinutes",
+      "type_name": "int",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueTicketHistory",
+      "column_name": "ID",
+      "type_name": "int",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueTicketHistory",
+      "column_name": "QueueTicketID",
+      "type_name": "int",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueTicketHistory",
+      "column_name": "OldStatus",
+      "type_name": "nvarchar",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueTicketHistory",
+      "column_name": "NewStatus",
+      "type_name": "nvarchar",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueTicketHistory",
+      "column_name": "ActionType",
+      "type_name": "nvarchar",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueTicketHistory",
+      "column_name": "ActionByUserID",
+      "type_name": "int",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueTicketHistory",
+      "column_name": "ActionAt",
+      "type_name": "datetime",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueTicketHistory",
+      "column_name": "Notes",
+      "type_name": "nvarchar",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "QueueTicketID",
+      "type_name": "int",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "TicketCode",
+      "type_name": "nvarchar",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "TicketNumber",
+      "type_name": "int",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "TicketPrefix",
+      "type_name": "nvarchar",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "ClientID",
+      "type_name": "int",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "EmpID",
+      "type_name": "int",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "BookingID",
+      "type_name": "int",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "QueueDate",
+      "type_name": "date",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "CreatedTime",
+      "type_name": "time",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "Status",
+      "type_name": "nvarchar",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "Source",
+      "type_name": "nvarchar",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "Priority",
+      "type_name": "int",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "CalledAt",
+      "type_name": "datetime",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "ArrivedAt",
+      "type_name": "datetime",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "ServiceStartedAt",
+      "type_name": "datetime",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "ServiceEndedAt",
+      "type_name": "datetime",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "CancelledAt",
+      "type_name": "datetime",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "CreatedByUserID",
+      "type_name": "int",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "Notes",
+      "type_name": "nvarchar",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "LegacySequenceID",
+      "type_name": "int",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "EstimatedStartTime",
+      "type_name": "datetime2",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "EstimatedWaitMinutes",
+      "type_name": "int",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "WaitingCountAtCreation",
+      "type_name": "int",
+      "is_nullable": true
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "AnnouncedAt",
+      "type_name": "datetime2",
+      "is_nullable": true
+    }
+  ],
+  "indexes": [
+    {
+      "table_name": "Bookings",
+      "index_name": "IX_Bookings_AssignedEmpID_BookingDate_Status",
+      "is_unique": false,
+      "is_primary_key": false,
+      "columns": "StartTime, EndTime, AssignedEmpID, BookingDate, Status"
+    },
+    {
+      "table_name": "Bookings",
+      "index_name": "IX_Bookings_Date_Emp_Status",
+      "is_unique": false,
+      "is_primary_key": false,
+      "columns": "BookingDate, AssignedEmpID, Status"
+    },
+    {
+      "table_name": "Bookings",
+      "index_name": "PK_Bookings",
+      "is_unique": true,
+      "is_primary_key": true,
+      "columns": "BookingID"
+    },
+    {
+      "table_name": "Bookings",
+      "index_name": "UX_Bookings_BookingCode",
+      "is_unique": true,
+      "is_primary_key": false,
+      "columns": "BookingCode"
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "index_name": "PK_QueueBookingSettings",
+      "is_unique": true,
+      "is_primary_key": true,
+      "columns": "SettingID"
+    },
+    {
+      "table_name": "QueueTickets",
+      "index_name": "IX_QueueTickets_Date_Emp_Status",
+      "is_unique": false,
+      "is_primary_key": false,
+      "columns": "QueueDate, EmpID, Status"
+    },
+    {
+      "table_name": "QueueTickets",
+      "index_name": "IX_QueueTickets_Date_Number",
+      "is_unique": false,
+      "is_primary_key": false,
+      "columns": "QueueDate, TicketNumber"
+    },
+    {
+      "table_name": "QueueTickets",
+      "index_name": "IX_QueueTickets_EmpID_QueueDate_Status",
+      "is_unique": false,
+      "is_primary_key": false,
+      "columns": "ServiceStartedAt, TicketCode, EmpID, QueueDate, Status"
+    },
+    {
+      "table_name": "QueueTickets",
+      "index_name": "PK_QueueTickets",
+      "is_unique": true,
+      "is_primary_key": true,
+      "columns": "QueueTicketID"
+    },
+    {
+      "table_name": "QueueTickets",
+      "index_name": "UQ_QueueTickets_Code_Date",
+      "is_unique": true,
+      "is_primary_key": false,
+      "columns": "TicketCode, QueueDate"
+    }
+  ],
+  "foreignKeys": [
+    {
+      "name": "FK_BookingServices_Bookings",
+      "parent_table": "BookingServices",
+      "ref_table": "Bookings"
+    },
+    {
+      "name": "FK_QueueTicketHistory_Tickets",
+      "parent_table": "QueueTicketHistory",
+      "ref_table": "QueueTickets"
+    }
+  ],
+  "changeTracking": [],
+  "branchIdPresent": {
+    "Bookings": false,
+    "QueueTickets": false,
+    "QueueBookingSettings": false
+  }
+}

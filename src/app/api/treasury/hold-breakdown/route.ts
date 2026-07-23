@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import sql from 'mssql';
+import { isActiveBranchContext, requireActiveBranchContext } from '@/lib/branch';
 import { getEmployeeLedgerOutstandingTotals } from '@/lib/services/employeeLedgerService';
 
 function round2(value: number): number {
@@ -18,6 +19,10 @@ function round2(value: number): number {
  */
 export async function GET(request: NextRequest) {
   try {
+    // PHASE1D: never trust browser branchId — always filter by the session's active branch
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const db = await getPool();
 
     const searchParams = request.nextUrl.searchParams;
@@ -28,7 +33,7 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId') ? parseInt(searchParams.get('userId')!) : null;
 
     // Build the same WHERE clause as daily-summary so the total matches the banner.
-    const whereConditions: string[] = ['1=1'];
+    const whereConditions: string[] = ['cm.BranchID = @branchId'];
     const params: Record<string, string | number> = {};
 
     if (newDay !== null) {
@@ -58,6 +63,7 @@ export async function GET(request: NextRequest) {
     const whereClause = whereConditions.join(' AND ');
 
     const cashRequest = db.request();
+    cashRequest.input('branchId', sql.Int, branch.branchId);
     Object.keys(params).forEach((key) => {
       if (key === 'shiftMoveId' || key === 'userId') {
         cashRequest.input(key, sql.Int, params[key]);

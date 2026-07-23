@@ -5,6 +5,8 @@ import {
   checkRateLimit,
   PUBLIC_CORS_HEADERS,
 } from '@/lib/publicBookingHelpers';
+import { getBranchById } from '@/lib/branch';
+import { toPublicBranchSafe } from '@/lib/branch/bookingQueueOwnership';
 
 export const runtime = 'nodejs';
 
@@ -35,12 +37,15 @@ export async function GET(req: NextRequest, context: RouteContext) {
   try {
     const db = await getPool();
 
-    // Try lookup by BookingCode column; fall back to numeric BookingID
+    // Try lookup by BookingCode column; fall back to numeric BookingID.
+    // No branchCode required here — booking codes are globally unique, so a
+    // customer can look up their confirmation without knowing the branch.
     const res = await db.request()
       .input('code', sql.NVarChar, code)
       .query(`
         SELECT
           b.BookingID,
+          b.BranchID,
           b.BookingDate,
           b.StartTime,
           b.EndTime,
@@ -66,6 +71,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
           .query(`
             SELECT
               b.BookingID,
+              b.BranchID,
               b.BookingDate,
               b.StartTime,
               b.EndTime,
@@ -92,6 +98,8 @@ export async function GET(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'الحجز غير موجود' }, { status: 404, headers: PUBLIC_CORS_HEADERS });
     }
 
+    const branch = row.BranchID != null ? await getBranchById(Number(row.BranchID)) : null;
+
     return NextResponse.json({
       ok: true,
       booking: {
@@ -106,6 +114,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
         startTime: fmtTime(row.StartTime),
         endTime:   fmtTime(row.EndTime),
         notes:     row.Notes ?? null,
+        branch: branch ? toPublicBranchSafe(branch) : null,
       },
     }, { headers: PUBLIC_CORS_HEADERS });
   } catch (err) {

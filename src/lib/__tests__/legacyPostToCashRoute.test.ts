@@ -57,6 +57,28 @@ vi.mock('@/lib/db', () => ({
   },
 }));
 
+vi.mock('@/lib/branch/context', () => ({
+  requireBranchOperationAccess: vi.fn(async () => ({
+    userId: 1,
+    branchId: 1,
+    branchCode: 'MAIN',
+    branchName: 'Main Branch',
+    shortName: 'Main',
+    timeZone: 'Africa/Cairo',
+    businessDayCutoffTime: '04:00',
+    canOperate: true,
+    canViewReports: true,
+    canSwitch: true,
+  })),
+}));
+
+vi.mock('@/lib/branch/operationalGates', () => ({
+  resolveBranchDayForDate: vi.fn(async () => ({
+    ok: true,
+    day: { id: 1, branchId: 1, newDay: '2026-07-12', status: true },
+  })),
+}));
+
 function resetMocks() {
   fakeCommit = vi.fn();
   fakeRollback = vi.fn();

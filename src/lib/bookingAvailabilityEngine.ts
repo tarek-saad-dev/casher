@@ -7,8 +7,10 @@
 import { getPool, sql } from '@/lib/db';
 import {
   getPublicSettings,
+  getGlobalTimingDefaults,
   salonDateTimeToMs,
 } from '@/lib/publicBookingHelpers';
+import { listBookableEmployeeIdsForBranch } from '@/lib/branch/bookingQueueOwnership';
 import {
   buildQueueIntervals,
   buildBookingIntervals,
@@ -16,6 +18,7 @@ import {
   type Interval,
 } from '@/lib/queueEstimateEngine';
 import { calculateServicePlanDuration, type ServicePlanDuration } from '@/lib/servicePlan';
+import { resolveDurationTotalsByEmp } from '@/lib/empServiceDuration';
 import {
   loadOverridesForDate,
   applyOverrides,
@@ -25,6 +28,7 @@ import {
 import { intervalsOverlap } from '@/lib/scheduleIntervals';
 import { getCairoBusinessDate } from '@/lib/businessDate';
 import { createStageTimer } from '@/lib/devStageTiming';
+import { loadFreelanceBookingUnlocks } from '@/lib/hr/freelanceBookingUnlock';
 
 function fmtScheduleTime(v: unknown): string | null {
   if (!v) return null;
@@ -226,6 +230,8 @@ async function buildBarberContexts(args: {
   durationOverride?: number;
   /** Preloaded service plan — skips a second TblPro round-trip. */
   servicePlan?: ServicePlanDuration;
+  /** Branch scoping: restricts visible barbers to branch-eligible employees. */
+  branchId?: number | null;
 }): Promise<{
   contexts: BarberCtx[];
   totalDuration: number;
@@ -240,8 +246,8 @@ async function buildBarberContexts(args: {
   servicePlan: ServicePlanDuration | null;
 }> {
   const timer = createStageTimer();
-  const { date, serviceIds, mode, empId, source = 'public', durationOverride, servicePlan } = args;
-  const settings = await getPublicSettings();
+  const { date, serviceIds, mode, empId, source = 'public', durationOverride, servicePlan, branchId } = args;
+  const settings = branchId != null ? await getPublicSettings(branchId) : await getGlobalTimingDefaults();
   timer.mark('settingsMs');
   const db = await getPool();
   timer.mark('poolMs');
@@ -259,11 +265,16 @@ async function buildBarberContexts(args: {
   let durationSource: string = durationOverride ? 'OVERRIDE' : 'SYSTEM_DEFAULT';
   let resolvedPlan: ServicePlanDuration | null = servicePlan ?? null;
 
+  // Catalog / specific-emp baseline (used when durationOverride not provided)
   if (!durationOverride && serviceIds.length > 0) {
     try {
-      resolvedPlan = servicePlan ?? (await calculateServicePlanDuration(serviceIds));
+      const planEmpId = mode === 'specific' && empId ? empId : null;
+      resolvedPlan =
+        servicePlan && (!planEmpId || servicePlan.empId === planEmpId)
+          ? servicePlan
+          : await calculateServicePlanDuration(serviceIds, { empId: planEmpId });
       totalDuration = resolvedPlan.totalDurationMinutes;
-      durationSource = 'SERVICE_SUM';
+      durationSource = resolvedPlan.durationSource || 'SERVICE_SUM';
     } catch (err) {
       console.error('[bookingAvailability] calculateServicePlanDuration failed', { serviceIds, err });
       throw err;
@@ -271,21 +282,95 @@ async function buildBarberContexts(args: {
   }
   timer.mark('servicesMs');
 
-  const barberIds: number[] =
+  let barberIds: number[] =
     mode === 'specific' && empId ? [empId] : await getAllBarberIds(db);
+  if (branchId != null) {
+    const eligibleIds = new Set(await listBookableEmployeeIdsForBranch(branchId, date));
+    barberIds = barberIds.filter((id) => eligibleIds.has(id));
+  }
   timer.mark('barbersMs');
+
+  // Per-barber duration map (overrides differ by emp in nearest mode)
+  let durationByEmp = new Map<number, number>();
+  if (!durationOverride && serviceIds.length > 0 && barberIds.length > 0) {
+    try {
+      const { totals, sources, basePlan } = await resolveDurationTotalsByEmp({
+        empIds: barberIds,
+        serviceIds,
+        systemDefaultMinutes: systemDefault,
+      });
+      durationByEmp = totals;
+      if (!resolvedPlan) {
+        resolvedPlan = {
+          serviceIds: basePlan.serviceIds,
+          totalDurationMinutes: basePlan.totalDurationMinutes,
+          totalPrice: basePlan.totalPrice,
+          durationSource: basePlan.durationSource === 'LEGACY_FALLBACK'
+            ? 'LEGACY_FALLBACK'
+            : basePlan.durationSource === 'EMPTY'
+              ? 'EMPTY'
+              : basePlan.durationSource === 'EMP_SERVICE_OVERRIDE' ||
+                  basePlan.durationSource === 'MIXED' ||
+                  basePlan.durationSource === 'SERVICE_DEFAULT' ||
+                  basePlan.durationSource === 'SYSTEM_DEFAULT'
+                ? basePlan.durationSource
+                : 'SERVICE_SUM',
+          services: basePlan.services.map((l) => ({
+            serviceId: l.serviceId,
+            serviceName: l.serviceName,
+            durationMinutes: l.durationMinutes,
+            price: l.price,
+            sequence: l.sequence,
+          })),
+          empId: null,
+        };
+      }
+      // Representational durationSource for the response envelope
+      const sourceValues = [...sources.values()];
+      if (sourceValues.some((s) => s === 'EMP_SERVICE_OVERRIDE' || s === 'MIXED')) {
+        durationSource = sourceValues.every((s) => s === 'EMP_SERVICE_OVERRIDE')
+          ? 'EMP_SERVICE_OVERRIDE'
+          : 'MIXED';
+      }
+      if (mode === 'specific' && empId && durationByEmp.has(empId)) {
+        totalDuration = durationByEmp.get(empId)!;
+      }
+    } catch (err) {
+      console.warn('[bookingAvailability] emp duration resolve failed; using catalog plan', err);
+      for (const id of barberIds) durationByEmp.set(id, totalDuration);
+    }
+  } else if (durationOverride) {
+    for (const id of barberIds) durationByEmp.set(id, durationOverride);
+  } else {
+    for (const id of barberIds) durationByEmp.set(id, totalDuration);
+  }
+  timer.mark('empDurationsMs');
 
   const contexts: BarberCtx[] = [];
   if (barberIds.length) {
     const dayOfWeek = new Date(`${date}T12:00:00Z`).getDay();
-    const [nameMap, dayOffSet, overridesMap, windowsMap, absentSet] = await Promise.all([
+    const [nameMap, dayOffSet, overridesMap, windowsMap, absentSet, freelanceUnlocks] = await Promise.all([
       getBarberNames(db, barberIds),
       loadDayOffSet(db, barberIds, date, isToday),
       loadOverridesForDate(db, barberIds, date),
       loadWorkingWindowsBatch(db, barberIds, dayOfWeek),
       isToday ? loadAbsentEmpIds(db, barberIds, date) : Promise.resolve(new Set<number>()),
+      loadFreelanceBookingUnlocks(barberIds, date),
     ]);
     timer.mark('staticBatchMs');
+
+    // Merge freelance attendance unlock into weekly windows (day-off / absent still exclude)
+    for (const [id, unlock] of freelanceUnlocks) {
+      if (dayOffSet.has(id) || absentSet.has(id)) continue;
+      const existing = windowsMap.get(id);
+      if (!existing?.isWorkingDay) {
+        windowsMap.set(id, {
+          isWorkingDay: true,
+          startTime: unlock.start,
+          endTime: unlock.end,
+        });
+      }
+    }
 
     const eligible = barberIds.filter((id) => !dayOffSet.has(id) && !absentSet.has(id));
 
@@ -334,10 +419,12 @@ async function buildBarberContexts(args: {
           ? [...qIntervalsNext, ...bIntervalsNext].filter(inShiftWindow)
           : [];
 
+        const empDuration = durationByEmp.get(id) ?? totalDuration;
+
         return {
           empId: id,
           empName: nameMap[id] ?? '',
-          durationMinutes: totalDuration,
+          durationMinutes: empDuration,
           busy: [...qIntervals, ...bIntervals, ...nextDayBusy],
           effSched,
           shiftStartMs,
@@ -496,8 +583,10 @@ export async function listAvailableBookingSlots(args: {
   mode: 'nearest' | 'specific';
   empId?: number | null;
   source?: 'public' | 'operations' | 'admin';
+  /** Branch scoping: restricts visible barbers to branch-eligible employees. */
+  branchId?: number | null;
 }): Promise<ListAvailableBookingSlotsResult> {
-  const { date, serviceIds, mode, empId, source = 'public' } = args;
+  const { date, serviceIds, mode, empId, source = 'public', branchId } = args;
   const today = new Date();
   const todayBusinessDate = getCairoBusinessDate(today);
   const isPast = date < todayBusinessDate;
@@ -517,6 +606,7 @@ export async function listAvailableBookingSlots(args: {
     mode,
     empId,
     source,
+    branchId,
   });
 
   if (isPast) {
@@ -824,6 +914,8 @@ export async function validateBookingSlot(args: {
    * Create path uses this; conflict handlers can compute nextAvailable separately.
    */
   skipNextAvailableWhenOk?: boolean;
+  /** Branch scoping: restricts visible barbers to branch-eligible employees. */
+  branchId?: number | null;
 }): Promise<BookingSlotValidation> {
   const {
     date,
@@ -836,6 +928,7 @@ export async function validateBookingSlot(args: {
     source = 'public',
     servicePlan,
     skipNextAvailableWhenOk = false,
+    branchId,
   } = args;
 
   const {
@@ -854,6 +947,7 @@ export async function validateBookingSlot(args: {
     source,
     durationOverride,
     servicePlan,
+    branchId,
   });
 
   const minNoticeMs = effectiveMinNotice * 60_000;
@@ -911,7 +1005,7 @@ export async function validateBookingSlot(args: {
     const slotTimes: Array<[string, 0 | 1]> = [];
     for (const ctx of contexts) {
       if (!ctx.effSched) continue;
-      for (const entry of generateSlotEntries(ctx.effSched.start, ctx.effSched.end, slotInterval, totalDuration)) {
+      for (const entry of generateSlotEntries(ctx.effSched.start, ctx.effSched.end, slotInterval, ctx.durationMinutes)) {
         if (!slotTimes.some(([t, d]) => t === entry.time && d === entry.dayOffset)) {
           slotTimes.push([entry.time, entry.dayOffset]);
         }
@@ -1190,6 +1284,8 @@ export async function findAvailableSlotsForEmployee(args: {
   mode?: 'nearest' | 'specific';
   source?: 'public' | 'operations' | 'admin';
   limit?: number;
+  /** Branch scoping: restricts visible barbers to branch-eligible employees. */
+  branchId?: number | null;
 }) {
   const result = await listAvailableBookingSlots({
     date: args.operationalDate,
@@ -1197,6 +1293,7 @@ export async function findAvailableSlotsForEmployee(args: {
     mode: args.mode ?? 'specific',
     empId: args.empId,
     source: args.source ?? 'operations',
+    branchId: args.branchId,
   });
 
   const slots = args.limit

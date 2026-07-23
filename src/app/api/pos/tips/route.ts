@@ -5,6 +5,8 @@ import {
   EmployeeTipError,
   executeEmployeeTip,
 } from '@/lib/services/employeeTipService';
+import { requireBranchOperationAccess } from '@/lib/branch/context';
+import { resolveBranchDayForDate } from '@/lib/branch/operationalGates';
 
 /**
  * POST /api/pos/tips
@@ -26,6 +28,12 @@ export async function POST(request: NextRequest) {
       String(body.date ?? '').trim() ||
       new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
 
+    // Never trust browser branchId — resolve ownership from gated session context.
+    const branch = await requireBranchOperationAccess();
+    if (branch instanceof NextResponse) return branch;
+    const dayResolution = await resolveBranchDayForDate(branch.branchId, date);
+    if (!dayResolution.ok) return dayResolution.response;
+
     const result = await executeEmployeeTip({
       empId,
       invoiceTotal,
@@ -33,6 +41,8 @@ export async function POST(request: NextRequest) {
       paymentMethodId,
       date,
       createdByUserId: auth.userId,
+      branchId: branch.branchId,
+      businessDayId: dayResolution.day.id,
     });
 
     scheduleEmployeeTipWhatsApp({

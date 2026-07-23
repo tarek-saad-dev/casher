@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import DeleteInvoiceDialog, { type DeleteInvoiceTarget } from '@/components/sales/DeleteInvoiceDialog';
 import RecentInvoiceCard from '@/components/pos/recent-invoices/RecentInvoiceCard';
 import { useRecentInvoices } from '@/hooks/useRecentInvoices';
+import { useSession } from '@/hooks/useSession';
 import {
   DEFAULT_RECENT_INVOICES_FILTERS,
   type RecentInvoiceDatePreset,
@@ -66,6 +67,7 @@ export default function RecentInvoicesPanel({
   const [employees, setEmployees] = useState<Barber[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<DeleteInvoiceTarget | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const { user } = useSession();
 
   const {
     items,
@@ -81,6 +83,7 @@ export default function RecentInvoicesPanel({
     enabled,
     filters,
     debouncedQuery,
+    branchId: user?.ActiveBranchID,
   });
 
   useEffect(() => {

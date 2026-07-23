@@ -1,0 +1,23 @@
+{
+  "capturedAt": "2026-07-22T03:50:37.281Z",
+  "target": "cloud",
+  "database": "last132",
+  "summary": {
+    "LegacyNullBusinessDayCount": 19,
+    "MinDate": "2024-01-01T00:00:00.000Z",
+    "MaxDate": "2024-01-01T00:00:00.000Z",
+    "TotalAmount": 1900000
+  },
+  "grouped": [
+    {
+      "BranchID": 1,
+      "invDate": "2024-01-01T00:00:00.000Z",
+      "invType": "ايرادات",
+      "inOut": "in",
+      "ExpINID": 36,
+      "Cnt": 19,
+      "TotalAmount": 1900000
+    }
+  ],
+  "note": "Phase 1E preflight. Reporting ownership uses BranchID; do not require BusinessDayID for inclusion."
+}

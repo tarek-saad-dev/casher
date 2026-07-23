@@ -19,6 +19,8 @@ export interface ExpenseSnapshot {
   PaymentMethodID: number;
   Notes: string | null;
   ShiftMoveID: number | null;
+  BranchID: number;
+  BusinessDayID: number | null;
   EditHistory: unknown;
 }
 
@@ -40,7 +42,7 @@ export async function getExpenseSnapshot(
     .query(`
       SELECT TOP 1
         ID, invID, invDate, invType, inOut, ExpINID, GrandTolal, PaymentMethodID,
-        Notes, ShiftMoveID, EditHistory
+        Notes, ShiftMoveID, BranchID, BusinessDayID, EditHistory
       FROM dbo.TblCashMove
       WHERE ID = @id AND invType = N'مصروفات'
     `);
@@ -51,9 +53,16 @@ export async function updateExpense(
   transaction: sql.Transaction,
   id: number,
   input: UpdateExpenseInput,
+  activeBranchId?: number,
 ): Promise<ExpenseSnapshot> {
   const current = await getExpenseSnapshot(transaction, id);
   if (!current) throw new Error('المصروف غير موجود');
+  if (
+    activeBranchId != null &&
+    Number(current.BranchID) !== Number(activeBranchId)
+  ) {
+    throw new Error('غير موجود');
+  }
 
   const editEntry = {
     editedAt: new Date().toISOString(),
@@ -103,9 +112,16 @@ export async function updateExpenseCategory(
   transaction: sql.Transaction,
   id: number,
   expINID: number,
+  activeBranchId?: number,
 ): Promise<ExpenseSnapshot> {
   const current = await getExpenseSnapshot(transaction, id);
   if (!current) throw new Error('المصروف غير موجود');
+  if (
+    activeBranchId != null &&
+    Number(current.BranchID) !== Number(activeBranchId)
+  ) {
+    throw new Error('غير موجود');
+  }
 
   if (current.invType !== 'مصروفات' || current.inOut !== 'out') {
     throw new Error('هذه المعاملة ليست مصروف');
@@ -131,10 +147,17 @@ export async function updateExpenseCategory(
 export async function deleteExpense(
   transaction: sql.Transaction,
   id: number,
+  activeBranchId?: number,
 ): Promise<Extract<DeleteCashMoveWithLedgerResult, { deleted: true }>> {
   const existing = await getExpenseSnapshot(transaction, id);
   if (!existing) {
     throw new Error('المصروف غير موجود أو تم حذفه');
+  }
+  if (
+    activeBranchId != null &&
+    Number(existing.BranchID) !== Number(activeBranchId)
+  ) {
+    throw new Error('غير موجود');
   }
 
   const result = await deleteCashMoveWithLinkedLedgerEntries(transaction, id);

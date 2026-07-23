@@ -13,6 +13,7 @@ import {
   type CreateOperationsQueueInput,
 } from '@/lib/operationsQueueCreateCore';
 import type { CreateQueueRequest } from '@/lib/operationsQueueTypes';
+import { requireBranchOperationAccess, isActiveBranchContext } from '@/lib/branch/context';
 
 export type { CreateQueueRequest, CreateQueueResponse } from '@/lib/operationsQueueTypes';
 
@@ -20,6 +21,9 @@ export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   try {
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const body = (await req.json()) as CreateQueueRequest;
 
     const useClientPlannedTimes =
@@ -34,6 +38,7 @@ export async function POST(req: NextRequest) {
       source: body.source,
       trustExpectedStart: useClientPlannedTimes,
       useClientPlannedTimes,
+      branchId: branch.branchId,
     };
 
     const response = await createOperationsQueueTicket(input);

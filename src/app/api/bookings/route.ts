@@ -3,12 +3,18 @@ import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { checkBarberAvailableForBooking } from "@/lib/queueEstimateEngine";
 import { normalizeBookingTimes } from "@/lib/bookingDateTime";
+import { requireActiveBranchContext, isActiveBranchContext } from "@/lib/branch/context";
+import { isEmployeeEligibleForBranchBookings } from "@/lib/branch/bookingQueueOwnership";
+import { getPublicSettings } from "@/lib/publicBookingHelpers";
 
 export const runtime = "nodejs";
 
 // GET /api/bookings?date=&dateFrom=&dateTo=&empId=&status=&source=&clientSearch=
 export async function GET(req: NextRequest) {
   try {
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const { searchParams } = new URL(req.url);
     const date       = searchParams.get("date");
     const dateFrom   = searchParams.get("dateFrom");
@@ -20,7 +26,8 @@ export async function GET(req: NextRequest) {
 
     const db = await getPool();
     const request = db.request();
-    const conditions: string[] = [];
+    const conditions: string[] = ["b.BranchID = @branchId"];
+    request.input("branchId", sql.Int, branch.branchId);
 
     if (date) {
       request.input("date", sql.Date, date);
@@ -37,7 +44,7 @@ export async function GET(req: NextRequest) {
       conditions.push("(c.[Name] LIKE @srch OR c.Mobile LIKE @srch)");
     }
 
-    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const where = `WHERE ${conditions.join(" AND ")}`;
 
     const result = await request.query(`
       SELECT
@@ -100,6 +107,9 @@ export async function GET(req: NextRequest) {
 // POST /api/bookings
 export async function POST(req: NextRequest) {
   try {
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const session = await getSession();
     const userID = session?.UserID ?? 0;
     const body = await req.json();
@@ -113,6 +123,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "التاريخ والوقت مطلوبان" }, { status: 400 });
 
     const db = await getPool();
+
+    // Employee must be eligible to receive bookings at the active branch.
+    if (empId) {
+      const eligible = await isEmployeeEligibleForBranchBookings({
+        empId,
+        branchId: branch.branchId,
+        operationalDate: bookingDate,
+      });
+      if (!eligible) {
+        return NextResponse.json(
+          { error: "الموظف غير متاح للحجز في هذا الفرع" },
+          { status: 409 },
+        );
+      }
+    }
 
     // ── Server-side availability check using shared timeline engine ─────────
     // Validates both booking conflicts AND queue ticket conflicts
@@ -132,10 +157,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Branch-scoped settings (cached) — used below for default service duration fallback.
+    const settings = await getPublicSettings(branch.branchId);
+
     // Check double booking setting (legacy — kept for settings that allow double booking)
-    const settingsRes = await db.request().query(
-      `SELECT TOP 1 AllowDoubleBooking FROM [dbo].[QueueBookingSettings]`
-    );
+    const settingsRes = await db.request()
+      .input("branchId", sql.Int, branch.branchId)
+      .query(
+        `SELECT TOP 1 AllowDoubleBooking FROM [dbo].[QueueBookingSettings] WHERE BranchID = @branchId`
+      );
     const allowDouble = settingsRes.recordset[0]?.AllowDoubleBooking ?? 0;
 
     if (!allowDouble && empId && endTime) {
@@ -157,7 +187,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "يوجد حجز متعارض لهذا الحلاق في نفس الوقت" }, { status: 409 });
     }
 
-    // Insert booking
+    // Insert booking — BranchID always stamped from the active session, never client input.
     const insertRes = await db.request()
       .input("clientId",  sql.Int,      clientId || null)
       .input("empId",     sql.Int,      empId    || null)
@@ -167,14 +197,15 @@ export async function POST(req: NextRequest) {
       .input("source",    sql.NVarChar, source)
       .input("notes",     sql.NVarChar, notes     || null)
       .input("userID",    sql.Int,      userID)
+      .input("branchId",  sql.Int,      branch.branchId)
       .query(`
         INSERT INTO [dbo].[Bookings]
           (ClientID, AssignedEmpID, BookingDate, StartTime, EndTime,
-           Status, Source, Notes, CreatedByUserID)
+           Status, Source, Notes, CreatedByUserID, BranchID)
         OUTPUT INSERTED.BookingID
         VALUES
           (@clientId, @empId, @bDate, @sTime, @eTime,
-           'pending', @source, @notes, @userID)
+           'pending', @source, @notes, @userID, @branchId)
       `);
 
     const bookingId = insertRes.recordset[0].BookingID;
@@ -187,7 +218,7 @@ export async function POST(req: NextRequest) {
         .input("eId",    sql.Int,         svc.empId  || empId || null)
         .input("qty",    sql.Decimal,     svc.qty    || 1)
         .input("price",  sql.Decimal,     svc.price  || 0)
-        .input("mins",   sql.Int,         svc.durationMinutes || null)
+        .input("mins",   sql.Int,         svc.durationMinutes || settings.defaultServiceDurationMinutes || null)
         .input("notes",  sql.NVarChar,    svc.notes  || null)
         .query(`
           INSERT INTO [dbo].[BookingServices]

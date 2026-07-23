@@ -4,6 +4,7 @@ import sql from 'mssql';
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
 import { closeTreasuryDay } from '@/lib/actions/treasuryActions';
 import { getSession } from '@/lib/session';
+import { isActiveBranchContext, requireActiveBranchContext } from '@/lib/branch';
 import type { 
   ReconciliationRequest, 
   ReconciliationResponse, 
@@ -151,6 +152,10 @@ export async function GET(request: NextRequest) {
   let db;
   
   try {
+    // PHASE1D: never trust browser branchId — always filter by the session's active branch
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     db = await getPool();
     
     const searchParams = request.nextUrl.searchParams;
@@ -161,11 +166,12 @@ export async function GET(request: NextRequest) {
     if (newDayDate) {
       const dayLookup = await db.request()
         .input('newDay', sql.Date, newDayDate)
-        .query(`SELECT TOP 1 ID FROM [dbo].[TblNewDay] WHERE NewDay = @newDay`);
+        .input('branchId', sql.Int, branch.branchId)
+        .query(`SELECT TOP 1 ID FROM [dbo].[TblNewDay] WHERE NewDay = @newDay AND BranchID = @branchId`);
       dayId = dayLookup.recordset[0]?.ID ?? null;
     }
     
-    let whereConditions: string[] = ['r.IsActive = 1'];
+    let whereConditions: string[] = ['r.IsActive = 1', 'r.BranchID = @branchId'];
     const params: any = {};
     
     if (dayId !== null) {
@@ -207,6 +213,7 @@ export async function GET(request: NextRequest) {
     `;
     
     const queryRequest = db.request();
+    queryRequest.input('branchId', sql.Int, branch.branchId);
     Object.keys(params).forEach(key => {
       queryRequest.input(key, sql.Int, params[key]);
     });

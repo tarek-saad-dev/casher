@@ -1,24 +1,20 @@
 'use client';
 
 import { Receipt } from 'lucide-react';
-import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import type { SaleTotals } from '@/lib/types';
 
 interface InvoiceSummaryProps {
   totals: SaleTotals;
-  discountPercent: number;
-  discountValue: number;
-  onDiscountPercentChange: (v: number) => void;
-  onDiscountValueChange: (v: number) => void;
+  /** Non-blocking notice when editing a legacy invoice with header DisVal > 0 */
+  legacyHeaderDiscountWarning?: boolean;
+  legacyHeaderDiscountValue?: number;
 }
 
 export default function InvoiceSummary({
   totals,
-  discountPercent,
-  discountValue,
-  onDiscountPercentChange,
-  onDiscountValueChange,
+  legacyHeaderDiscountWarning = false,
+  legacyHeaderDiscountValue = 0,
 }: InvoiceSummaryProps) {
   return (
     <div className="rounded-lg border border-border bg-card p-4">
@@ -27,46 +23,26 @@ export default function InvoiceSummary({
         <h3 className="text-sm font-semibold text-muted-foreground">ملخص الفاتورة</h3>
       </div>
 
+      {legacyHeaderDiscountWarning && (
+        <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
+          هذه فاتورة قديمة تحتوي على خصم عام
+          {legacyHeaderDiscountValue > 0
+            ? ` (${legacyHeaderDiscountValue.toFixed(2)} ج.م)`
+            : ''}
+          . سيظل الخصم محفوظًا كما هو، لكن لا يمكن إنشاء خصومات عامة جديدة. استخدم خصم كل خدمة
+          على حدة.
+        </div>
+      )}
+
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">
           <span className="text-muted-foreground">المجموع</span>
           <span className="font-medium">{totals.subTotal.toFixed(2)} ج.م</span>
         </div>
 
-        {/* Discount controls */}
-        <div className="flex items-center gap-2">
-          <span className="text-muted-foreground text-xs shrink-0">خصم %</span>
-          <Input
-            type="number"
-            min={0}
-            max={100}
-            step="1"
-            value={discountPercent || ''}
-            onChange={(e) => {
-              const v = parseFloat(e.target.value) || 0;
-              onDiscountPercentChange(Math.max(0, Math.min(100, v)));
-            }}
-            className="h-7 text-xs w-16 text-center"
-            dir="ltr"
-          />
-          <span className="text-muted-foreground text-xs shrink-0">أو قيمة</span>
-          <Input
-            type="number"
-            min={0}
-            step="1"
-            value={discountValue || ''}
-            onChange={(e) => {
-              const v = parseFloat(e.target.value) || 0;
-              onDiscountValueChange(Math.max(0, v));
-            }}
-            className="h-7 text-xs w-20 text-center"
-            dir="ltr"
-          />
-        </div>
-
         {totals.discountValue > 0 && (
           <div className="flex justify-between text-destructive">
-            <span>الخصم</span>
+            <span>إجمالي خصومات الخدمات</span>
             <span>- {totals.discountValue.toFixed(2)} ج.م</span>
           </div>
         )}

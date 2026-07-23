@@ -31,6 +31,8 @@ export function shouldRefreshBoardForBooking(
 
 export function createFlowBoardRefreshController(args: {
   getSelectedDate: () => string;
+  /** Active branch scoping the board — keeps dedupe/abort keys from colliding across branches. */
+  getBranchId?: () => string | number;
   fetchBoard: (date: string, signal: AbortSignal) => Promise<FlowBoardPayload>;
   onData: (data: FlowBoardPayload) => void;
   onLoading?: (loading: boolean) => void;
@@ -39,19 +41,24 @@ export function createFlowBoardRefreshController(args: {
   const inFlight = new Map<string, Promise<void>>();
   const abortByDate = new Map<string, AbortController>();
 
+  const cacheKey = (date: string): string =>
+    `${args.getBranchId ? args.getBranchId() : '_'}:${date}`;
+
   async function refreshFlowBoard(
     date: string,
     options: RefreshFlowBoardOptions = {},
   ): Promise<void> {
+    const key = cacheKey(date);
+
     if (!options.force) {
-      const existing = inFlight.get(date);
+      const existing = inFlight.get(key);
       if (existing) return existing;
     } else {
-      abortByDate.get(date)?.abort();
+      abortByDate.get(key)?.abort();
     }
 
     const ac = new AbortController();
-    abortByDate.set(date, ac);
+    abortByDate.set(key, ac);
     const requestedDate = date;
 
     let run!: Promise<void>;
@@ -74,20 +81,20 @@ export function createFlowBoardRefreshController(args: {
         if (!isSelected()) return;
         args.onError?.(err instanceof Error ? err.message : 'فشل تحميل لوحة التشغيل');
       } finally {
-        if (inFlight.get(date) === run) inFlight.delete(date);
-        if (abortByDate.get(date) === ac) abortByDate.delete(date);
+        if (inFlight.get(key) === run) inFlight.delete(key);
+        if (abortByDate.get(key) === ac) abortByDate.delete(key);
         if (isSelected()) {
           args.onLoading?.(false);
         }
       }
     })();
 
-    inFlight.set(date, run);
+    inFlight.set(key, run);
     return run;
   }
 
   return {
     refreshFlowBoard,
-    getInFlightDates: () => [...inFlight.keys()],
+    getInFlightDates: () => [...inFlight.keys()].map((key) => key.split(':').slice(1).join(':')),
   };
 }

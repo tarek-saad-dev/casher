@@ -29,6 +29,7 @@ export interface QueueTicketsSchema {
   hasDurationMinutes: boolean;
   hasExpectedStartAt: boolean;
   hasExpectedEndAt: boolean;
+  hasBranchID: boolean;                  // Phase 1F — branch ownership
   allColumns: string[];
 }
 
@@ -81,6 +82,7 @@ export async function detectQueueTicketsSchema(): Promise<QueueTicketsSchema> {
       hasDurationMinutes: columns.includes('durationminutes'),
       hasExpectedStartAt: columns.includes('expectedstartat'),
       hasExpectedEndAt: columns.includes('expectedendat'),
+      hasBranchID: columns.includes('branchid'),
       allColumns: columns,
     };
 
@@ -115,6 +117,7 @@ export async function detectQueueTicketsSchema(): Promise<QueueTicketsSchema> {
       hasDurationMinutes: false,
       hasExpectedStartAt: false,
       hasExpectedEndAt: false,
+      hasBranchID: false,
       allColumns: [],
     };
   }
@@ -124,7 +127,10 @@ export async function detectQueueTicketsSchema(): Promise<QueueTicketsSchema> {
  * Build INSERT columns for creating a queue ticket based on actual schema
  * ONLY includes columns that exist in the database
  */
-export function buildInsertColumns(schema: QueueTicketsSchema): {
+export function buildInsertColumns(
+  schema: QueueTicketsSchema,
+  branchId?: number,
+): {
   columns: string[];
   paramNames: string[];
 } {
@@ -143,10 +149,20 @@ export function buildInsertColumns(schema: QueueTicketsSchema): {
     '@status',
   ];
 
+  // Phase 1F — stamp BranchID on write when the column exists.
+  if (schema.hasBranchID && branchId != null) {
+    columns.push('BranchID');
+    paramNames.push('@branchId');
+  }
+
   // Optional columns based on actual schema
   if (schema.hasTicketNumber) {
     columns.push('TicketNumber');
-    paramNames.push('(SELECT ISNULL(MAX(TicketNumber), 0) + 1 FROM [dbo].[QueueTickets] WHERE QueueDate = @queueDate)');
+    paramNames.push(
+      schema.hasBranchID && branchId != null
+        ? '(SELECT ISNULL(MAX(TicketNumber), 0) + 1 FROM [dbo].[QueueTickets] WHERE BranchID = @branchId AND QueueDate = @queueDate)'
+        : '(SELECT ISNULL(MAX(TicketNumber), 0) + 1 FROM [dbo].[QueueTickets] WHERE QueueDate = @queueDate)',
+    );
   }
 
   if (schema.hasTicketPrefix) {

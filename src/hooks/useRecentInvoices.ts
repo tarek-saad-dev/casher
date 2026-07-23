@@ -17,6 +17,13 @@ interface UseRecentInvoicesOptions {
   enabled: boolean;
   filters: RecentInvoicesFilterState;
   debouncedQuery: string;
+  /**
+   * Active branch id, if known client-side (e.g. from session/`/api/branches/active`).
+   * Not sent to the server — the server independently re-validates the active branch and
+   * filters by it. Included here only to key the client-side response cache per branch so
+   * that switching branches doesn't surface another branch's cached invoices.
+   */
+  branchId?: number | null;
 }
 
 interface UseRecentInvoicesResult {
@@ -70,6 +77,7 @@ export function useRecentInvoices({
   enabled,
   filters,
   debouncedQuery,
+  branchId,
 }: UseRecentInvoicesOptions): UseRecentInvoicesResult {
   const [items, setItems] = useState<RecentInvoicesResponse['items']>([]);
   const [total, setTotal] = useState(0);
@@ -87,8 +95,9 @@ export function useRecentInvoices({
   const queryParams = useMemo(() => {
     const params = filtersToQueryParams(filters);
     params.q = debouncedQuery.trim() || undefined;
+    params.branchId = branchId ?? undefined;
     return params;
-  }, [filters, debouncedQuery]);
+  }, [filters, debouncedQuery, branchId]);
 
   const cacheKey = useMemo(() => buildRecentInvoicesCacheKey(queryParams), [queryParams]);
 

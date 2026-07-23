@@ -31,7 +31,7 @@ import {
   applyOverrides,
   slotBlockedByOverride,
 } from '@/lib/scheduleOverrides';
-import { salonDateTimeToMs, getPublicSettings } from '@/lib/publicBookingHelpers';
+import { salonDateTimeToMs, getGlobalTimingDefaults } from '@/lib/publicBookingHelpers';
 import { getDefaultDuration } from '@/lib/queueEstimateEngine';
 import {
   validateEmployeeSupportsServices,
@@ -393,7 +393,7 @@ export async function validateBookingMove(args: {
     };
   }
 
-  const settings = await getPublicSettings();
+  const settings = await getGlobalTimingDefaults();
   const timezone = settings.timezone || SALON_TZ;
   const now = new Date();
   const nowMs = now.getTime();
@@ -681,7 +681,7 @@ export async function rescheduleBookingMove(args: {
       transaction,
     });
 
-    const settings = await getPublicSettings();
+    const settings = await getGlobalTimingDefaults();
     const timezone = settings.timezone || SALON_TZ;
     const startTimeStr = `${msToHhmm(proposedStart.getTime(), timezone)}:00`;
     const endTimeStr = `${msToHhmm(proposedEnd.getTime(), timezone)}:00`;

@@ -1,11 +1,19 @@
 /**
  * POST /api/public/booking/upcoming
- * Get upcoming bookings for a customer by phone number
+ * Get upcoming bookings for a customer by phone number, scoped to a branch.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getPool } from "@/lib/db";
+import { getPool, sql } from "@/lib/db";
 import { PUBLIC_CORS_HEADERS } from "@/lib/publicBookingHelpers";
+import {
+  extractPublicBranchCode,
+  resolvePublicBranchCode,
+  publicBranchRequiredResponse,
+  publicInvalidBranchResponse,
+  toPublicBranchSafe,
+} from "@/lib/branch/bookingQueueOwnership";
+import { BranchDomainError } from "@/lib/branch/types";
 
 const MIN_CANCEL_MINUTES = 30;
 const SALON_TZ = "Africa/Cairo";
@@ -45,6 +53,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Branch required — never a silent default.
+    const { searchParams } = new URL(req.url);
+    const branchCode = extractPublicBranchCode(searchParams, body);
+    let branch;
+    try {
+      branch = await resolvePublicBranchCode(branchCode);
+    } catch (err) {
+      if (err instanceof BranchDomainError) {
+        return err.code === 'BRANCH_REQUIRED'
+          ? publicBranchRequiredResponse()
+          : publicInvalidBranchResponse();
+      }
+      throw err;
+    }
+
     const db = await getPool();
 
     // Get Cairo timezone current date and time
@@ -52,13 +75,15 @@ export async function POST(req: NextRequest) {
     const today = cairoNow.split(",")[0]; // YYYY/MM/DD format
     const nowTime = cairoNow.split(",")[1]?.trim() || "";
 
-    // Query upcoming bookings for this phone
+    // Query upcoming bookings for this phone, scoped to the branch
     // Join with TblClient to get phone and name
     const bookingsResult = await db
       .request()
       .input("phone", normalizedPhone)
       .input("today", today)
-      .input("nowTime", nowTime).query(`
+      .input("nowTime", nowTime)
+      .input("branchId", sql.Int, branch.branchId)
+      .query(`
         SELECT
           b.BookingID AS id,
           b.ClientID AS clientId,
@@ -75,6 +100,7 @@ export async function POST(req: NextRequest) {
         JOIN dbo.TblClient c ON c.ClientID = b.ClientID
         LEFT JOIN dbo.TblEmp e ON e.EmpID = b.AssignedEmpID
         WHERE c.Mobile = @phone
+          AND b.BranchID = @branchId
           AND b.Status NOT IN ('Cancelled', 'Completed')
           AND b.BookingDate >= CONVERT(DATE, @today)
           AND b.CancelledAt IS NULL
@@ -85,7 +111,7 @@ export async function POST(req: NextRequest) {
 
     if (bookings.length === 0) {
       return NextResponse.json(
-        { ok: true, bookings: [] },
+        { ok: true, branch: toPublicBranchSafe(branch), bookings: [] },
         { headers: PUBLIC_CORS_HEADERS },
       );
     }
@@ -154,13 +180,15 @@ export async function POST(req: NextRequest) {
       console.log(
         "[upcoming] phone:",
         normalizedPhone,
+        "branch:",
+        branch.branchCode,
         "bookings:",
         bookingsWithServices.length,
       );
     }
 
     return NextResponse.json(
-      { ok: true, bookings: bookingsWithServices },
+      { ok: true, branch: toPublicBranchSafe(branch), bookings: bookingsWithServices },
       { headers: PUBLIC_CORS_HEADERS },
     );
   } catch (err: unknown) {

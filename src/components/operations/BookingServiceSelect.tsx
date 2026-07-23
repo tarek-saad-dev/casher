@@ -1,10 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Scissors, Clock, Banknote, Check, Sparkles, Droplets, Plus, Paintbrush, HandHelping,
   type LucideIcon,
 } from 'lucide-react';
+import type { Service } from '@/lib/types';
+import { searchServices } from '@/lib/serviceSearch';
+import ServiceSearchInput from '@/components/pos/ServiceSearchInput';
 
 export interface BookingSelectService {
   ProID: number;
@@ -297,6 +300,31 @@ export function BookingServiceSelect({
   isLoading = false,
 }: Props) {
   const [activeAddonTab, setActiveAddonTab] = useState<AddonCatKey>('skincare');
+  const [serviceSearchQuery, setServiceSearchQuery] = useState('');
+  const deferredSearchQuery = useDeferredValue(serviceSearchQuery);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const clearSearch = useCallback(() => {
+    setServiceSearchQuery('');
+  }, []);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (event.key !== '/') return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const isEditable =
+        tag === 'input' ||
+        tag === 'textarea' ||
+        tag === 'select' ||
+        target?.isContentEditable;
+      if (isEditable) return;
+      event.preventDefault();
+      searchInputRef.current?.focus();
+    };
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  }, []);
 
   const findByNames = (names: string[]): BookingSelectService | null => {
     for (const n of names) {
@@ -390,8 +418,52 @@ export function BookingServiceSelect({
   const hasMainSelection = selectedMainId !== null;
   const effectiveTab = visibleTabs.find((t) => t.key === activeAddonTab)?.key ?? visibleTabs[0]?.key ?? 'skincare';
 
-  const visibleServices = services.filter(isServiceVisible);
+  const visibleServices = useMemo(
+    () => services.filter(isServiceVisible),
+    [services],
+  );
   const showFallbackList = mainPrimary.length + mainSecondary.length === 0 && visibleServices.length > 0;
+
+  const selectedAddonCount = useMemo(
+    () => selectedIds.filter((id) => !allMainIds.has(id)).length,
+    [selectedIds, allMainIds],
+  );
+  const addonsOnly = !hasMainSelection && selectedAddonCount > 0;
+
+  const searchablePool = useMemo((): Service[] => {
+    return visibleServices.map((s) => ({
+      ProID: s.ProID,
+      ProName: s.ProName,
+      ProNameAr: null,
+      SPrice1: s.SPrice,
+      Bonus: 0,
+      CatID: null,
+      CatName: s.CatName ?? null,
+      SalesCount: 0,
+      ImageUrl: null,
+    }));
+  }, [visibleServices]);
+
+  const searchMatchedServices = useMemo(() => {
+    const ranked = searchServices(searchablePool, deferredSearchQuery);
+    const byId = new Map(visibleServices.map((s) => [s.ProID, s]));
+    return ranked
+      .map((s) => byId.get(s.ProID))
+      .filter((s): s is BookingSelectService => s != null);
+  }, [searchablePool, deferredSearchQuery, visibleServices]);
+
+  const isSearchActive = serviceSearchQuery.trim().length > 0;
+
+  const handleSearchResultSelect = useCallback(
+    (service: BookingSelectService) => {
+      if (allMainIds.has(service.ProID)) {
+        onSelectMain(service.ProID);
+      } else {
+        onToggleAddon(service.ProID);
+      }
+    },
+    [allMainIds, onSelectMain, onToggleAddon],
+  );
 
   if (isLoading) {
     return (
@@ -414,107 +486,180 @@ export function BookingServiceSelect({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-sm font-bold text-foreground">اختر الخدمة الأساسية</h3>
-        <p className="text-xs text-muted-foreground mt-0.5">ابدأ بالخدمة الرئيسية ثم أضف خدمات إضافية</p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-bold text-foreground">اختر الخدمات</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            خدمة أساسية و/أو إضافات — أو إضافات فقط بدون خدمة رئيسية
+          </p>
+        </div>
+        {addonsOnly && (
+          <span
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold"
+            style={{ background: GOLD_BG, color: GOLD, border: `1px solid ${GOLD_BDR}` }}
+          >
+            <Plus className="w-3 h-3" />
+            حجز إضافات فقط
+          </span>
+        )}
       </div>
 
-      {showFallbackList && (
+      <ServiceSearchInput
+        ref={searchInputRef}
+        value={serviceSearchQuery}
+        onChange={setServiceSearchQuery}
+        onClear={clearSearch}
+        resultCount={isSearchActive ? searchMatchedServices.length : undefined}
+        className="w-full"
+      />
+
+      {isSearchActive ? (
         <div className="space-y-2">
-          {visibleServices.map((s) => (
-            <PrimaryCard
-              key={s.ProID}
-              service={s}
-              isSelected={selectedIds.includes(s.ProID)}
-              onSelect={() => onSelectMain(s.ProID)}
-            />
-          ))}
-        </div>
-      )}
-
-      {!showFallbackList && mainPrimary.length > 0 && (
-        <div className="space-y-2">
-          {mainPrimary.map((s) => (
-            <PrimaryCard
-              key={s.ProID}
-              service={s}
-              isSelected={selectedIds.includes(s.ProID)}
-              onSelect={() => onSelectMain(s.ProID)}
-              badge={PRIMARY_BADGES[s.ProName] ?? (flexMatch(s.ProName, ['Hair Cut', 'Haircut']) ? 'الأكثر طلبًا' : flexMatch(s.ProName, ['Haircut & Beard', 'Hair & Beard']) ? 'باكدج مميز' : undefined)}
-            />
-          ))}
-        </div>
-      )}
-
-      {!showFallbackList && mainSecondary.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <div className="h-px flex-1" style={{ background: BORDER }} />
-            <span className="text-[10px] font-bold text-muted-foreground whitespace-nowrap">اختيارات أخرى</span>
-            <div className="h-px flex-1" style={{ background: BORDER }} />
-          </div>
-          <div className="space-y-2">
-            {mainSecondary.map((s) => (
-              <SecondaryCard
-                key={s.ProID}
-                service={s}
-                isSelected={selectedIds.includes(s.ProID)}
-                onSelect={() => onSelectMain(s.ProID)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {hasMainSelection && visibleTabs.length > 0 && (
-        <div className="pt-4 border-t" style={{ borderColor: BORDER }}>
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: GOLD_BG }}>
-              <Plus className="w-3 h-3" style={{ color: GOLD }} />
+          {searchMatchedServices.length === 0 ? (
+            <div className="py-8 text-center rounded-xl border" style={{ borderColor: BORDER }}>
+              <Scissors className="w-8 h-8 mx-auto text-muted-foreground/50 mb-2" />
+              <p className="text-sm text-muted-foreground">لا توجد خدمات مطابقة للبحث</p>
+              <button
+                type="button"
+                onClick={clearSearch}
+                className="mt-3 text-xs font-bold underline"
+                style={{ color: GOLD }}
+              >
+                مسح البحث
+              </button>
             </div>
-            <h4 className="font-bold text-sm text-foreground">إضافات ممكن تعجبك</h4>
-          </div>
-          <p className="text-[11px] text-muted-foreground mb-3 mr-8">اختيارات إضافية لتحسين النتيجة</p>
-
-          <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1">
-            {visibleTabs.map((tab) => {
-              const isActive = effectiveTab === tab.key;
-              const TabIcon = tab.icon;
-              const count = addonGrouped[tab.key].length;
+          ) : (
+            searchMatchedServices.map((s) => {
+              const isMain = allMainIds.has(s.ProID);
+              const isSelected = selectedIds.includes(s.ProID);
+              if (isMain) {
+                return (
+                  <SecondaryCard
+                    key={s.ProID}
+                    service={s}
+                    isSelected={isSelected}
+                    onSelect={() => handleSearchResultSelect(s)}
+                  />
+                );
+              }
               return (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => setActiveAddonTab(tab.key)}
-                  className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap"
-                  style={{
-                    background: isActive ? GOLD : 'var(--surface-muted)',
-                    color: isActive ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
-                  }}
-                >
-                  <TabIcon className="w-3 h-3" />
-                  {tab.label}
-                  {!isActive && (
-                    <span className="w-4 h-4 rounded-full text-[9px] leading-4 text-center inline-block bg-muted text-muted-foreground">
-                      {count}
-                    </span>
-                  )}
-                </button>
+                <UpsellCard
+                  key={s.ProID}
+                  service={s}
+                  isSelected={isSelected}
+                  onToggle={() => handleSearchResultSelect(s)}
+                />
               );
-            })}
-          </div>
-
-          <div className="space-y-2">
-            {(addonGrouped[effectiveTab] ?? []).map((s) => (
-              <UpsellCard
-                key={s.ProID}
-                service={s}
-                isSelected={selectedIds.includes(s.ProID)}
-                onToggle={() => onToggleAddon(s.ProID)}
-              />
-            ))}
-          </div>
+            })
+          )}
         </div>
+      ) : (
+        <>
+          {showFallbackList && (
+            <div className="space-y-2">
+              {visibleServices.map((s) => (
+                <PrimaryCard
+                  key={s.ProID}
+                  service={s}
+                  isSelected={selectedIds.includes(s.ProID)}
+                  onSelect={() => onSelectMain(s.ProID)}
+                />
+              ))}
+            </div>
+          )}
+
+          {!showFallbackList && (
+            <div>
+              <h4 className="text-xs font-bold text-muted-foreground mb-2">الخدمة الأساسية (اختياري)</h4>
+              {mainPrimary.length > 0 && (
+                <div className="space-y-2">
+                  {mainPrimary.map((s) => (
+                    <PrimaryCard
+                      key={s.ProID}
+                      service={s}
+                      isSelected={selectedIds.includes(s.ProID)}
+                      onSelect={() => onSelectMain(s.ProID)}
+                      badge={PRIMARY_BADGES[s.ProName] ?? (flexMatch(s.ProName, ['Hair Cut', 'Haircut']) ? 'الأكثر طلبًا' : flexMatch(s.ProName, ['Haircut & Beard', 'Hair & Beard']) ? 'باكدج مميز' : undefined)}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {mainSecondary.length > 0 && (
+                <div className={mainPrimary.length > 0 ? 'mt-3' : undefined}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="h-px flex-1" style={{ background: BORDER }} />
+                    <span className="text-[10px] font-bold text-muted-foreground whitespace-nowrap">اختيارات أخرى</span>
+                    <div className="h-px flex-1" style={{ background: BORDER }} />
+                  </div>
+                  <div className="space-y-2">
+                    {mainSecondary.map((s) => (
+                      <SecondaryCard
+                        key={s.ProID}
+                        service={s}
+                        isSelected={selectedIds.includes(s.ProID)}
+                        onSelect={() => onSelectMain(s.ProID)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {visibleTabs.length > 0 && (
+            <div className="pt-4 border-t" style={{ borderColor: BORDER }}>
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: GOLD_BG }}>
+                  <Plus className="w-3 h-3" style={{ color: GOLD }} />
+                </div>
+                <h4 className="font-bold text-sm text-foreground">خدمات إضافية</h4>
+              </div>
+              <p className="text-[11px] text-muted-foreground mb-3 mr-8">
+                يمكن الحجز بها وحدها بدون خدمة أساسية
+              </p>
+
+              <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1">
+                {visibleTabs.map((tab) => {
+                  const isActive = effectiveTab === tab.key;
+                  const TabIcon = tab.icon;
+                  const count = addonGrouped[tab.key].length;
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setActiveAddonTab(tab.key)}
+                      className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap"
+                      style={{
+                        background: isActive ? GOLD : 'var(--surface-muted)',
+                        color: isActive ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
+                      }}
+                    >
+                      <TabIcon className="w-3 h-3" />
+                      {tab.label}
+                      {!isActive && (
+                        <span className="w-4 h-4 rounded-full text-[9px] leading-4 text-center inline-block bg-muted text-muted-foreground">
+                          {count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="space-y-2">
+                {(addonGrouped[effectiveTab] ?? []).map((s) => (
+                  <UpsellCard
+                    key={s.ProID}
+                    service={s}
+                    isSelected={selectedIds.includes(s.ProID)}
+                    onToggle={() => onToggleAddon(s.ProID)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

@@ -19,22 +19,50 @@ function calcPartnersOperatingNet(
 vi.mock('server-only', () => ({}));
 
 const mockBuildReport = vi.fn();
-const mockGetSession = vi.fn();
-const mockCanAccessPath = vi.fn();
+const mockRequirePageAccess = vi.fn();
+const mockResolveScope = vi.fn();
 
 vi.mock('@/lib/services/partnersReportService', () => ({
   buildPartnersMonthlyReport: (...args: unknown[]) => mockBuildReport(...args),
 }));
 
-vi.mock('@/lib/session', () => ({
-  getSession: () => mockGetSession(),
+// Phase 1E: the route now authorizes via requirePageAccess (session + page ACL)
+// and resolves branch scope via resolveReportBranchScope — mock both directly
+// rather than the lower-level session/permissions modules they wrap.
+vi.mock('@/lib/api-auth', () => ({
+  requirePageAccess: (...args: unknown[]) => mockRequirePageAccess(...args),
+  isAuthResult: (v: unknown) => Boolean(v) && (v as { ok?: unknown }).ok === true,
 }));
 
-vi.mock('@/lib/permissions-server', () => ({
-  canAccessPath: (...args: unknown[]) => mockCanAccessPath(...args),
-}));
+vi.mock('@/lib/branch', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/branch')>('@/lib/branch');
+  return {
+    ...actual,
+    resolveReportBranchScope: (...args: unknown[]) => mockResolveScope(...args),
+  };
+});
 
+import { NextResponse } from 'next/server';
 import { GET } from '@/app/api/admin/reports/partners/route';
+
+const AUTHORIZED_AUTH_RESULT = {
+  ok: true,
+  userId: 1,
+  userName: 'Admin',
+  userLevel: '1',
+  roles: ['admin'],
+  isSuperAdmin: true,
+  activeBranchId: 1,
+  activeBranchCode: 'MAIN',
+};
+
+const SINGLE_BRANCH_SCOPE = {
+  mode: 'single' as const,
+  branchId: 1,
+  branchCode: 'MAIN',
+  branchName: 'Main Branch',
+  shortName: null,
+};
 
 const sampleReport = {
   period: { year: 2026, month: 6, startDate: '2026-06-01', endDate: '2026-06-30' },
@@ -110,8 +138,8 @@ describe('partners operating net calculation', () => {
 describe('GET /api/admin/reports/partners', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetSession.mockResolvedValue({ UserID: 1, UserName: 'Admin', UserLevel: '1' });
-    mockCanAccessPath.mockResolvedValue(true);
+    mockRequirePageAccess.mockResolvedValue(AUTHORIZED_AUTH_RESULT);
+    mockResolveScope.mockResolvedValue(SINGLE_BRANCH_SCOPE);
     mockBuildReport.mockResolvedValue(sampleReport);
   });
 
@@ -124,13 +152,17 @@ describe('GET /api/admin/reports/partners', () => {
   }
 
   it('returns 401 for unauthenticated requests', async () => {
-    mockGetSession.mockResolvedValue(null);
+    mockRequirePageAccess.mockResolvedValue(
+      NextResponse.json({ error: 'غير مصرح' }, { status: 401 }),
+    );
     const res = await GET(makeRequest('2026', '6'));
     expect(res.status).toBe(401);
   });
 
   it('returns 403 for unauthorized users', async () => {
-    mockCanAccessPath.mockResolvedValue(false);
+    mockRequirePageAccess.mockResolvedValue(
+      NextResponse.json({ error: 'غير مصرح' }, { status: 403 }),
+    );
     const res = await GET(makeRequest('2026', '6'));
     expect(res.status).toBe(403);
   });
@@ -150,12 +182,56 @@ describe('GET /api/admin/reports/partners', () => {
     expect(mockBuildReport).not.toHaveBeenCalled();
   });
 
-  it('returns consolidated report for authorized users', async () => {
+  it('returns 403 when branch scope resolution denies access', async () => {
+    mockResolveScope.mockResolvedValue(
+      NextResponse.json({ error: 'غير مصرح', code: 'REPORT_NOT_ALLOWED' }, { status: 403 }),
+    );
+    const res = await GET(makeRequest('2026', '6'));
+    expect(res.status).toBe(403);
+    expect(mockBuildReport).not.toHaveBeenCalled();
+  });
+
+  it('returns single-branch report for authorized users, scoped to their active branch', async () => {
     const res = await GET(makeRequest('2026', '6'));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.summary.totalRevenue).toBe(100000);
-    expect(mockBuildReport).toHaveBeenCalledWith(2026, 6);
+    expect(body.scope.mode).toBe('single');
+    expect(body.scope.branch.BranchID).toBe(1);
+    expect(mockBuildReport).toHaveBeenCalledWith(2026, 6, 1);
+  });
+
+  it('consolidates partner entitlements per-branch when scope=all', async () => {
+    mockResolveScope.mockResolvedValue({
+      mode: 'all' as const,
+      branchIds: [1, 2],
+      branches: [
+        { branchId: 1, branchCode: 'A', branchName: 'Alpha', shortName: null },
+        { branchId: 2, branchCode: 'B', branchName: 'Beta', shortName: null },
+      ],
+    });
+    mockBuildReport.mockImplementation(async (_year: number, _month: number, branchId: number) => ({
+      ...sampleReport,
+      summary: { ...sampleReport.summary, operatingNet: branchId === 1 ? 10000 : 20000 },
+      partners: [
+        { name: 'Partner A', percentage: 50, partnerCode: 'A' },
+        { name: 'Partner B', percentage: 50, partnerCode: 'B' },
+      ],
+    }));
+
+    const res = await GET(makeRequest('2026', '6'));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.scope.mode).toBe('all');
+    expect(body.branches).toHaveLength(2);
+    expect(body.consolidated.operatingNet).toBe(30000);
+    const partnerA = body.consolidated.entitlements.find(
+      (e: { partnerCode: string }) => e.partnerCode === 'A',
+    );
+    // Each branch applies its OWN 50% share to its OWN operatingNet: 5000 + 10000 = 15000.
+    expect(partnerA.total).toBe(15000);
+    expect(mockBuildReport).toHaveBeenCalledWith(2026, 6, 1);
+    expect(mockBuildReport).toHaveBeenCalledWith(2026, 6, 2);
   });
 });
 

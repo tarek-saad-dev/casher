@@ -48,7 +48,14 @@ export default function SessionProvider({ children }: { children: ReactNode }) {
         cache: 'no-store',
         credentials: 'same-origin',
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        // Route Handler may have cleared an invalid/legacy cookie (401).
+        setUserState(null);
+        setDay(null);
+        setShift(null);
+        setPermissions([]);
+        return;
+      }
       const data = await res.json();
       setUserState(data.user || null);
       setDay(data.day || null);

@@ -1,0 +1,118 @@
+{
+  "capturedAt": "2026-07-22T02:54:19.045Z",
+  "counts": {
+    "InvoiceHeadCount": 7749,
+    "InvoiceDetailCount": 9041,
+    "ServPaymentCount": 2254,
+    "CashMoveCount": 11714,
+    "TreasuryReconCount": 0,
+    "ShiftMoveCount": 804,
+    "NewDayCount": 358,
+    "LedgerCount": 467,
+    "TargetRecalcCount": 38,
+    "ClientLoyaltyCount": 1034,
+    "LoyaltyLedgerCount": 2133,
+    "InvoiceGrandTotalSum": 1508128.28,
+    "PaymentValueSum": 516570.2,
+    "CashInSum": 3796318.02,
+    "CashOutSum": 1847375.37,
+    "InvoiceChecksum": 983971779,
+    "DetailChecksum": -2099107717,
+    "PaymentChecksum": 1832878609,
+    "CashChecksum": 380804227,
+    "ReconChecksum": null
+  },
+  "cashByType": [
+    {
+      "invType": "مبيعات",
+      "cnt": 7634,
+      "total": 1495528.28
+    },
+    {
+      "invType": "مصروفات",
+      "cnt": 3371,
+      "total": 1838215.37
+    },
+    {
+      "invType": "ايرادات",
+      "cnt": 706,
+      "total": 2309749.74
+    },
+    {
+      "invType": "حجز",
+      "cnt": 3,
+      "total": 200
+    }
+  ],
+  "cashByPaymentMethod": [
+    {
+      "PaymentMethodID": null,
+      "cnt": 737,
+      "total": 182331.67
+    },
+    {
+      "PaymentMethodID": 1,
+      "cnt": 8299,
+      "total": 4149401.03
+    },
+    {
+      "PaymentMethodID": 2,
+      "cnt": 1859,
+      "total": 546171.23
+    },
+    {
+      "PaymentMethodID": 3,
+      "cnt": 556,
+      "total": 600479.46
+    },
+    {
+      "PaymentMethodID": 4,
+      "cnt": 73,
+      "total": 13410
+    },
+    {
+      "PaymentMethodID": 5,
+      "cnt": 22,
+      "total": 12933
+    },
+    {
+      "PaymentMethodID": 6,
+      "cnt": 91,
+      "total": 19680
+    },
+    {
+      "PaymentMethodID": 7,
+      "cnt": 58,
+      "total": 111907
+    },
+    {
+      "PaymentMethodID": 8,
+      "cnt": 16,
+      "total": 6580
+    },
+    {
+      "PaymentMethodID": 9,
+      "cnt": 3,
+      "total": 800
+    }
+  ],
+  "saleCashPairs": {
+    "sale_cash_pairs": 7634
+  },
+  "changeTracking": [
+    {
+      "table_name": "TblCashMove",
+      "is_track_columns_updated_on": true
+    },
+    {
+      "table_name": "TblinvServDetail",
+      "is_track_columns_updated_on": true
+    },
+    {
+      "table_name": "TblinvServHead",
+      "is_track_columns_updated_on": true
+    }
+  ],
+  "target": "cloud",
+  "database": "last132"
+}

@@ -20,18 +20,35 @@ import {
   applyEmployeePartnerOverride,
   getEmployeePartnerOverrideFromMap,
   getOverrideEmployeeIdsFromMap,
+  type PartnersOverridesMap,
 } from '@/lib/reports/partnersEmployeeOverrides';
 import { loadPartnersEmployeeOverrides } from '@/lib/reports/partnersEmployeeOverridesStore';
 import { filterOperatingExpenseCategories } from '@/lib/reports/partnersExpenseCategories';
 import { isFinancialReportClassificationEnabled } from '@/lib/accounting/financialReportFlags';
 import { maybeBuildClassificationPayload } from '@/lib/accounting/financialReportClassificationService';
+import { getBranchById } from '@/lib/branch/repository';
+import { getEffectiveBranchPartnerShares, toPartnerPercentageList } from '@/lib/branch/partnerShares';
+
+/**
+ * Legacy filesystem-based employee overrides (data/partners-employee-overrides.json)
+ * were authored for the GLEEM branch only. Never apply them to other branches
+ * until each branch gets its own override store.
+ */
+const OVERRIDES_ONLY_BRANCH_CODE = 'GLEEM';
 
 export async function buildPartnersMonthlyReport(
   year: number,
-  month: number
+  month: number,
+  branchId: number,
 ): Promise<PartnersMonthlyReportResponse> {
   const period = getMonthDateRange(year, month);
   const ledgerMonth = `${year}-${String(month).padStart(2, '0')}`;
+
+  const branch = await getBranchById(branchId);
+  if (!branch) {
+    throw new Error('الفرع غير موجود');
+  }
+  const applyLegacyOverrides = branch.branchCode === OVERRIDES_ONLY_BRANCH_CODE;
 
   const [
     totalRevenue,
@@ -41,19 +58,25 @@ export async function buildPartnersMonthlyReport(
     employeeNames,
     expensesData,
     advanceRows,
-    partnerOverrides,
+    partnerOverridesRaw,
     ledgerSummary,
+    partnerShares,
   ] = await Promise.all([
-    getEmployeeServicesRevenue(year, month),
-    getEmployeeServicesRevenueByEmployee(year, month),
-    getEmployeeActualInvoiceRevenueByEmployee(year, month),
+    getEmployeeServicesRevenue(year, month, branchId),
+    getEmployeeServicesRevenueByEmployee(year, month, branchId),
+    getEmployeeActualInvoiceRevenueByEmployee(year, month, branchId),
     getEmployeeJobById(),
     getEmployeeNamesById(),
-    getMonthlyExpensesByCategory(year, month),
-    getMonthlyEmployeeAdvances(year, month),
+    getMonthlyExpensesByCategory(year, month, branchId),
+    getMonthlyEmployeeAdvances(year, month, branchId),
     loadPartnersEmployeeOverrides(),
     getEmployeeLedgerSummary(ledgerMonth),
+    getEffectiveBranchPartnerShares(branchId, period.endDate),
   ]);
+
+  const partnerOverrides: PartnersOverridesMap = applyLegacyOverrides
+    ? partnerOverridesRaw
+    : {};
 
   const { totalExpenses, categories } = expensesData;
   const rawTotalEmployeeAdvances = roundMoney(
@@ -207,8 +230,11 @@ export async function buildPartnersMonthlyReport(
   const operatingNetExplanation =
     'بعد خصم الرواتب والسلف من قسم الموظفين ومصروفات التشغيل الأخرى بعد استبعاد سلف وتارجت الموظفين';
 
+  const partners = toPartnerPercentageList(partnerShares);
+
   const baseReport = {
     period,
+    partners,
     summary: {
       totalRevenue,
       totalExpenses,

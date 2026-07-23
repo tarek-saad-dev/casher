@@ -6,8 +6,10 @@ import { getPool, sql } from '@/lib/db';
 import { getDefaultDuration } from '@/lib/queueEstimateEngine';
 import { calculateEndTime } from '@/lib/bookingDateTime';
 import { getServiceActiveWhereClause } from '@/lib/tblProSql';
-
-const DEV = process.env.NODE_ENV !== 'production';
+import {
+  resolveEmpServiceDurationPlan,
+  type EmpServiceDurationPlan,
+} from '@/lib/empServiceDuration';
 
 export class ServicePlanError extends Error {
   readonly code = 'SERVICE_NOT_AVAILABLE' as const;
@@ -35,8 +37,17 @@ export interface ServicePlanDuration {
   serviceIds: number[];
   totalDurationMinutes: number;
   totalPrice: number;
-  durationSource: 'SERVICE_SUM' | 'LEGACY_FALLBACK' | 'EMPTY';
+  durationSource:
+    | 'SERVICE_SUM'
+    | 'LEGACY_FALLBACK'
+    | 'EMPTY'
+    | 'EMP_SERVICE_OVERRIDE'
+    | 'SERVICE_DEFAULT'
+    | 'SYSTEM_DEFAULT'
+    | 'MIXED';
   services: ServicePlanLine[];
+  /** Present when plan was resolved for a specific barber. */
+  empId?: number | null;
 }
 
 export interface SequentialServicePlanLine extends ServicePlanLine {
@@ -52,6 +63,32 @@ export interface SequentialServicePlan {
   totalDurationMinutes: number;
   totalPrice: number;
   lines: SequentialServicePlanLine[];
+}
+
+function toServicePlanDuration(plan: EmpServiceDurationPlan): ServicePlanDuration {
+  const source = plan.durationSource;
+  return {
+    serviceIds: plan.serviceIds,
+    totalDurationMinutes: plan.totalDurationMinutes,
+    totalPrice: plan.totalPrice,
+    durationSource:
+      source === 'LEGACY_FALLBACK' ||
+      source === 'EMPTY' ||
+      source === 'EMP_SERVICE_OVERRIDE' ||
+      source === 'MIXED' ||
+      source === 'SERVICE_DEFAULT' ||
+      source === 'SYSTEM_DEFAULT'
+        ? source
+        : 'SERVICE_SUM',
+    services: plan.services.map((l) => ({
+      serviceId: l.serviceId,
+      serviceName: l.serviceName,
+      durationMinutes: l.durationMinutes,
+      price: l.price,
+      sequence: l.sequence,
+    })),
+    empId: plan.empId,
+  };
 }
 
 async function loadServicesInOrder(
@@ -111,53 +148,38 @@ async function loadServicesInOrder(
 
 /**
  * Sum durations and prices for selected services in user selection order.
+ * When empId is provided, applies TblEmpServiceSettings overrides.
  */
 export async function calculateServicePlanDuration(
   serviceIds: number[],
+  opts?: { empId?: number | null },
 ): Promise<ServicePlanDuration> {
-  const db = await getPool();
-  const defaultDur = await getDefaultDuration(db);
+  const empId = opts?.empId != null && opts.empId > 0 ? opts.empId : null;
 
-  if (!serviceIds.length) {
-    if (DEV) {
-      console.warn('[servicePlan] LEGACY_FALLBACK: empty serviceIds, using default', defaultDur);
+  try {
+    const plan = await resolveEmpServiceDurationPlan({
+      serviceIds,
+      empId,
+    });
+    return toServicePlanDuration(plan);
+  } catch (err) {
+    if (err instanceof Error && err.name === 'EmpServiceDurationError') {
+      throw new ServicePlanError(err.message);
     }
-    return {
-      serviceIds: [],
-      totalDurationMinutes: defaultDur,
-      totalPrice: 0,
-      durationSource: 'LEGACY_FALLBACK',
-      services: [],
-    };
+    throw err;
   }
-
-  const services = await loadServicesInOrder(db, serviceIds, defaultDur);
-  const totalDurationMinutes = services.reduce((s, l) => s + l.durationMinutes, 0);
-  const totalPrice = services.reduce((s, l) => s + l.price, 0);
-
-  const usedFallback = services.some((l) => l.durationMinutes === defaultDur);
-  if (DEV && usedFallback) {
-    console.warn('[servicePlan] Some services used system default duration', defaultDur);
-  }
-
-  return {
-    serviceIds: [...serviceIds],
-    totalDurationMinutes,
-    totalPrice,
-    durationSource: 'SERVICE_SUM',
-    services,
-  };
 }
 
 /**
  * Build ordered per-service intervals within one continuous block on one barber.
+ * Uses per-barber duration overrides for empId.
  */
 export async function buildSequentialServicePlan(args: {
   serviceIds: number[];
   startAt: string | Date;
   empId: number;
 }): Promise<SequentialServicePlan> {
-  const plan = await calculateServicePlanDuration(args.serviceIds);
+  const plan = await calculateServicePlanDuration(args.serviceIds, { empId: args.empId });
   const start = typeof args.startAt === 'string' ? new Date(args.startAt) : args.startAt;
 
   let cursor = start.getTime();
@@ -214,3 +236,12 @@ export function buildSequentialServicePlanFromLines(args: {
 }
 
 export { formatServiceSummary } from '@/lib/servicePlanFormat';
+
+/** Catalog-only lines (no emp overrides) — for callers that need TblPro defaults. */
+export async function loadCatalogServiceLines(
+  serviceIds: number[],
+): Promise<ServicePlanLine[]> {
+  const db = await getPool();
+  const defaultDur = await getDefaultDuration(db);
+  return loadServicesInOrder(db, serviceIds, defaultDur);
+}

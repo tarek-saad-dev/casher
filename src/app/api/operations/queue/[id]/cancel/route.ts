@@ -20,6 +20,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { requireBranchOperationAccess, isActiveBranchContext } from "@/lib/branch/context";
+import {
+  assertBookingOwnedByActiveBranch,
+  bookingQueueNotFoundResponse,
+} from "@/lib/branch/bookingQueueOwnership";
 
 export const runtime = "nodejs";
 
@@ -27,6 +32,9 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 export async function POST(req: NextRequest, context: RouteContext) {
   try {
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const { id } = await context.params;
     const ticketId = parseInt(id);
 
@@ -62,7 +70,8 @@ export async function POST(req: NextRequest, context: RouteContext) {
           Status,
           BookingID,
           EmpID,
-          ClientID
+          ClientID,
+          BranchID
         FROM dbo.QueueTickets
         WHERE QueueTicketID = @ticketId
       `);
@@ -75,6 +84,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
     }
 
     const ticket = checkRes.recordset[0];
+
+    if (!assertBookingOwnedByActiveBranch(branch.branchId, ticket.BranchID)) {
+      return bookingQueueNotFoundResponse();
+    }
 
     // Check if already in final state
     const finalStatuses = ['cancelled', 'done', 'completed', 'skipped', 'no_show'];

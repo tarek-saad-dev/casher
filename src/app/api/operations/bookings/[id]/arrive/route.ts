@@ -11,13 +11,17 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
-import { getSession } from "@/lib/session";
 import {
   buildQueueIntervals,
   buildBookingIntervals,
   getDefaultDuration,
   findFirstFreeSlot,
 } from "@/lib/queueEstimateEngine";
+import { requireBranchOperationAccess, isActiveBranchContext } from "@/lib/branch/context";
+import {
+  assertBookingOwnedByActiveBranch,
+  bookingQueueNotFoundResponse,
+} from "@/lib/branch/bookingQueueOwnership";
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
@@ -112,13 +116,8 @@ export interface BookingArriveResponse {
 
 export async function POST(req: NextRequest, { params }: Ctx) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json(
-        { error: "يجب تسجيل الدخول أولاً" },
-        { status: 401 }
-      );
-    }
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
 
     const { id } = await params;
     const bookingId = parseInt(id);
@@ -148,6 +147,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
           b.EndTime,
           b.Status,
           b.Notes AS BookingNotes,
+          b.BranchID,
           c.Name AS ClientName,
           e.EmpName
         FROM [dbo].[Bookings] b
@@ -164,6 +164,10 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     }
 
     const booking = bookingRes.recordset[0];
+
+    if (!assertBookingOwnedByActiveBranch(branch.branchId, booking.BranchID)) {
+      return bookingQueueNotFoundResponse();
+    }
 
     // 2. Validate booking status - must be confirmed or arrived
     const validStatuses = ["confirmed", "arrived", "queued"];
@@ -200,7 +204,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       );
     }
 
-    const userID = session.UserID ?? 0;
+    const userID = branch.userId ?? 0;
     const now = new Date();
     const createdTime = now.toLocaleTimeString("en-GB", {
       timeZone: "Africa/Cairo",
@@ -341,14 +345,15 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     let ticketNumber: number;
 
     try {
-      // Generate ticket number
+      // Generate ticket number — scoped to (BranchID, QueueDate)
       const numRes = await transaction
         .request()
         .input("qDate", sql.Date, queueDate)
+        .input("branchId", sql.Int, branch.branchId)
         .query(`
           SELECT ISNULL(MAX(TicketNumber), ${startNumber - 1}) + 1 AS NextNum
           FROM [dbo].[QueueTickets] WITH (UPDLOCK, HOLDLOCK)
-          WHERE QueueDate = @qDate
+          WHERE QueueDate = @qDate AND BranchID = @branchId
         `);
 
       ticketNumber = numRes.recordset[0].NextNum;
@@ -358,7 +363,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       const colCheck = await transaction.request().query(`
         SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
         WHERE TABLE_NAME = 'QueueTickets'
-          AND COLUMN_NAME IN ('EstimatedStartTime','EstimatedWaitMinutes','WaitingCountAtCreation')
+          AND COLUMN_NAME IN ('EstimatedStartTime','EstimatedWaitMinutes','WaitingCountAtCreation','BranchID')
       `);
       const existingCols = new Set(
         colCheck.recordset.map((r: { COLUMN_NAME: string }) => r.COLUMN_NAME)
@@ -367,6 +372,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       const hasEst = existingCols.has("EstimatedStartTime");
       const hasWait = existingCols.has("EstimatedWaitMinutes");
       const hasWCount = existingCols.has("WaitingCountAtCreation");
+      const hasBranchID = existingCols.has("BranchID");
 
       // Count waiting tickets before this one
       const waitingCountRes = await transaction
@@ -383,20 +389,23 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       const waitingCountAtCreation = waitingCountRes.recordset[0]?.cnt ?? 0;
 
       // Insert queue ticket — Status='waiting' (not 'arrived'; 'arrived' is not a valid QueueTicket status)
+      // BranchID is stamped from the booking's own branch (already asserted == active branch).
       const insertSql = `
         INSERT INTO [dbo].[QueueTickets]
           (TicketCode, TicketNumber, TicketPrefix, ClientID, EmpID, BookingID,
            QueueDate, CreatedTime, Status, Source, Priority, CreatedByUserID, Notes
            ${hasEst ? ", EstimatedStartTime" : ""}
            ${hasWait ? ", EstimatedWaitMinutes" : ""}
-           ${hasWCount ? ", WaitingCountAtCreation" : ""})
+           ${hasWCount ? ", WaitingCountAtCreation" : ""}
+           ${hasBranchID ? ", BranchID" : ""})
         OUTPUT INSERTED.QueueTicketID
         VALUES
           (@code, @num, @prefix, @clientId, @empId, @bookingId,
            @qDate, @cTime, 'waiting', 'booking', @priority, @userID, @notes
            ${hasEst ? ", @estStart" : ""}
            ${hasWait ? ", @estWait" : ""}
-           ${hasWCount ? ", @waitCount" : ""})
+           ${hasWCount ? ", @waitCount" : ""}
+           ${hasBranchID ? ", @branchId" : ""})
       `;
 
       const insReq = transaction
@@ -419,6 +428,8 @@ export async function POST(req: NextRequest, { params }: Ctx) {
         insReq.input("estWait", sql.Int, estimatedWaitMinutes);
       if (hasWCount)
         insReq.input("waitCount", sql.Int, waitingCountAtCreation);
+      if (hasBranchID)
+        insReq.input("branchId", sql.Int, branch.branchId);
 
       const insertRes = await insReq.query(insertSql);
       newTicketId = insertRes.recordset[0].QueueTicketID;

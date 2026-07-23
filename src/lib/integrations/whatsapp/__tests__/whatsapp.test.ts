@@ -64,7 +64,7 @@ import { WhatsAppValidationError } from '../errors';
 
 beforeEach(() => {
   setEnv('development', true);
-  setFetchResponse(200, { success: true, status: 'submitted', type: 'sale', sentAt: '2026-06-23T01:00:00.000Z' });
+  setFetchResponse(200, { success: true, ok: true, status: 'sent', messageId: 'wa-test-1', type: 'sale', sentAt: '2026-06-23T01:00:00.000Z' });
 });
 
 afterEach(() => {
@@ -249,7 +249,7 @@ describe('6. HTTP response mapping', () => {
   });
 
   it('maps successful 200 to sent: true', async () => {
-    setFetchResponse(200, { success: true, status: 'submitted', type: 'sale', sentAt: '2026-06-23T01:00:00.000Z' });
+    setFetchResponse(200, { success: true, ok: true, status: 'sent', messageId: 'wa-test-1', type: 'sale', sentAt: '2026-06-23T01:00:00.000Z' });
     const result = await sendSaleWhatsAppMessage({
       phone: '01557994946',
       customerName: 'طارق',
@@ -257,7 +257,40 @@ describe('6. HTTP response mapping', () => {
       total: 100,
     });
     expect(result.sent).toBe(true);
-    expect((result as { status: string }).status).toBe('submitted');
+    expect((result as { status: string }).status).toBe('sent');
+    expect((result as { messageId?: string }).messageId).toBe('wa-test-1');
+  });
+
+  it('does not treat legacy submitted without messageId as sent', async () => {
+    setFetchResponse(200, { success: true, status: 'submitted', type: 'sale', sentAt: '2026-06-23T01:00:00.000Z' });
+    const result = await sendSaleWhatsAppMessage({
+      phone: '01557994946',
+      customerName: 'طارق',
+      invID: 1,
+      total: 100,
+    });
+    expect(result.sent).toBe(false);
+    expect((result as { reason: string }).reason).toBe('invalid_response');
+  });
+
+  it('maps not_registered from bot', async () => {
+    setFetchResponse(400, {
+      ok: false,
+      success: false,
+      status: 'not_registered',
+      phone: '201039244023',
+      error: 'Phone number is not registered on WhatsApp',
+    });
+    const { sendEmployeeSaleWhatsAppMessage } = await import('../service');
+    const result = await sendEmployeeSaleWhatsAppMessage({
+      phone: '01039244023',
+      employeeName: 'زياد',
+      invID: 7705,
+      employeeId: 12,
+      services: ['Haircut'],
+    });
+    expect(result.sent).toBe(false);
+    expect((result as { reason: string }).reason).toBe('not_registered');
   });
 });
 
@@ -307,7 +340,7 @@ describe('7. Timeout and connection failure', () => {
 
 describe('8. Booking confirmation', () => {
   it('sends booking message correctly', async () => {
-    setFetchResponse(200, { success: true, status: 'submitted', type: 'booking', sentAt: '2026-06-23T01:00:00.000Z' });
+    setFetchResponse(200, { success: true, ok: true, status: 'sent', messageId: 'wa-booking-1', type: 'booking', sentAt: '2026-06-23T01:00:00.000Z' });
     const result = await sendBookingWhatsAppMessage({
       phone: '01557994946',
       customerName: 'طارق',

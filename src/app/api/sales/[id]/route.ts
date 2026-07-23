@@ -4,6 +4,13 @@ import { getSession } from "@/lib/session";
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
 import { getInvoiceSnapshot, updateInvoice, deleteInvoice } from '@/lib/actions/invoiceActions';
 import type { InvoiceItemInput } from '@/lib/actions/invoiceActions';
+import {
+  assertActiveBranchOwns,
+  financialNotFoundResponse,
+  isActiveBranchContext,
+  loadInvoiceOwnership,
+  requireActiveBranchContext,
+} from '@/lib/branch';
 
 // GET /api/sales/[id] — Get sale by invID for printing
 export async function GET(
@@ -15,6 +22,16 @@ export async function GET(
     const invID = parseInt(id);
     if (isNaN(invID)) {
       return NextResponse.json({ error: "Invalid invID" }, { status: 400 });
+    }
+
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
+    // PHASE1D: never trust browser branchId — re-validate ownership server-side and
+    // return a non-disclosing 404 if the invoice belongs to another branch.
+    const ownership = await loadInvoiceOwnership(invID, 'مبيعات');
+    if (!ownership || !assertActiveBranchOwns(branch.branchId, ownership.branchId)) {
+      return financialNotFoundResponse();
     }
 
     const db = await getPool();
@@ -47,7 +64,7 @@ export async function GET(
     const details = await db.request().input("invID", sql.Int, invID).query(`
         SELECT
           d.ProID, d.EmpID, d.SPrice, d.SValue, d.SPriceAfterDis,
-          d.Qty, d.Bonus, d.Notes,
+          d.Dis, d.DisVal, d.Qty, d.Bonus, d.Notes,
           p.ProName,
           e.EmpName
         FROM [dbo].[TblinvServDetail] d
@@ -98,6 +115,15 @@ export async function PUT(
     if (!sessionUser) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     const userID = sessionUser.UserID;
 
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
+    // PHASE1D: never trust browser branchId — re-validate ownership server-side.
+    const ownership = await loadInvoiceOwnership(invID, 'مبيعات');
+    if (!ownership || !assertActiveBranchOwns(branch.branchId, ownership.branchId)) {
+      return financialNotFoundResponse();
+    }
+
     const body = await req.json();
 
     if (!body.items || body.items.length === 0)
@@ -138,6 +164,7 @@ export async function PUT(
           serviceId: item.serviceId,
           sPrice: item.sPrice,
           qty: item.qty,
+          dis: item.dis,
           disVal: item.disVal,
           discount: item.discount,
           sValue: item.sValue,
@@ -221,6 +248,17 @@ export async function DELETE(
     const invID = parseInt(id);
     if (isNaN(invID)) return NextResponse.json({ error: 'Invalid invID' }, { status: 400 });
 
+    // Never trust browser branchId — active branch always comes from gated session context.
+    const { requireBranchOperationAccess } = await import('@/lib/branch/context');
+    const branch = await requireBranchOperationAccess();
+    if (branch instanceof NextResponse) return branch;
+
+    // PHASE1D: never trust browser branchId — re-validate ownership server-side.
+    const ownership = await loadInvoiceOwnership(invID, 'مبيعات');
+    if (!ownership || !assertActiveBranchOwns(branch.branchId, ownership.branchId)) {
+      return financialNotFoundResponse();
+    }
+
     const body = await req.json().catch(() => ({}));
     const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
 
@@ -242,7 +280,7 @@ export async function DELETE(
       endpointPath: `/api/sales/${invID}`,
       reason,
       loadOldData: async (transaction) => getInvoiceSnapshot(transaction, invID) as unknown as Record<string, unknown> | null,
-      execute: async (transaction) => deleteInvoice(transaction, invID),
+      execute: async (transaction) => deleteInvoice(transaction, invID, branch.branchId),
       loadNewData: async () => null,
       beforeCommit: async ({ transaction, oldData }) => {
         const { enqueueTargetRecalcFromInvoiceSnapshots } = await import(

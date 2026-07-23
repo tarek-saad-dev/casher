@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import Script from 'next/script';
 import {
   DEFAULT_THEME_CONFIG,
   parseThemeCookie,
@@ -11,7 +12,7 @@ import {
  * Server-side theme initializer.
  * Reads the theme cookie and renders:
  *  1. A style tag that applies the initial CSS variables.
- *  2. The correct class on <html> to avoid hydration flash.
+ *  2. A Next.js Script (beforeInteractive) to set html theme classes before paint.
  *
  * Use this inside the root layout <head>.
  */
@@ -38,6 +39,10 @@ export async function ThemeInit() {
 
   const paletteVars = paletteVarsMap[palette] ?? paletteVarsMap['cut-gold'];
 
+  // Escape for embedding in a JS string literal (mode/palette are controlled enums).
+  const safeMode = mode === 'dark' ? 'dark' : 'light';
+  const safePalette = String(palette).replace(/[^a-z0-9-]/gi, '');
+
   return (
     <>
       <style
@@ -46,17 +51,18 @@ export async function ThemeInit() {
           __html: `:root{${modeVars}${paletteVars}}`,
         }}
       />
-      <script
+      <Script
         id="theme-init-script"
+        strategy="afterInteractive"
         dangerouslySetInnerHTML={{
           __html: `
             (function() {
               try {
                 var html = document.documentElement;
                 html.classList.remove('light', 'dark');
-                html.classList.add('${mode}');
-                html.setAttribute('data-theme-mode', '${mode}');
-                html.setAttribute('data-theme-palette', '${palette}');
+                html.classList.add('${safeMode}');
+                html.setAttribute('data-theme-mode', '${safeMode}');
+                html.setAttribute('data-theme-palette', '${safePalette}');
               } catch (e) {}
             })();
           `,

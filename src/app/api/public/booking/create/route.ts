@@ -7,6 +7,7 @@ import {
   isValidDate,
   isValidTime,
   isValidPhone,
+  isUsableCustomerPhone,
   generateBookingCode,
   upsertCustomer,
   PUBLIC_CORS_HEADERS,
@@ -27,6 +28,14 @@ import {
   ScheduleConflictError,
   lastScheduleLockMs,
 } from '@/lib/scheduleIntegrity';
+import { requireActiveBranchContext, isActiveBranchContext } from '@/lib/branch/context';
+import {
+  extractPublicBranchCode,
+  resolvePublicBranchCode,
+  publicBranchRequiredResponse,
+  publicInvalidBranchResponse,
+} from '@/lib/branch/bookingQueueOwnership';
+import { BranchDomainError } from '@/lib/branch/types';
 
 export const runtime = "nodejs";
 
@@ -81,7 +90,7 @@ export async function POST(req: NextRequest) {
       notes = "",
       source = "public",
     } = body as {
-      customer: { name: string; phone: string };
+      customer: { name: string; phone?: string | null };
       serviceIds?: number[];
       mode?: "nearest" | "specific";
       empId?: number;
@@ -92,6 +101,10 @@ export async function POST(req: NextRequest) {
       source?: "public" | "operations" | "admin";
     };
 
+    // Determine source early — ops/admin allow walk-in without phone
+    const isInternalSource = source === "operations" || source === "admin";
+    const customerPhone = (customer?.phone ?? "").trim();
+
     // ── Validation ───────────────────────────────────────────────────────────
     if (!customer?.name || customer.name.trim().length < 2) {
       return NextResponse.json(
@@ -99,7 +112,14 @@ export async function POST(req: NextRequest) {
         { status: 400, headers: PUBLIC_CORS_HEADERS },
       );
     }
-    if (!customer?.phone || !isValidPhone(customer.phone)) {
+    if (!customerPhone) {
+      if (!isInternalSource) {
+        return NextResponse.json(
+          { error: "رقم الهاتف مطلوب" },
+          { status: 400, headers: PUBLIC_CORS_HEADERS },
+        );
+      }
+    } else if (!isValidPhone(customerPhone)) {
       return NextResponse.json(
         { error: "رقم الهاتف غير صالح" },
         { status: 400, headers: PUBLIC_CORS_HEADERS },
@@ -124,10 +144,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Determine source type early (needed for multiple checks)
-    const isInternalSource = source === "operations" || source === "admin";
+    // ── Resolve branch: internal callers use the authenticated session branch;
+    // public callers must supply branchCode (never a silent default). ────────
+    let branchId: number;
+    let branchName: string | undefined;
+    if (isInternalSource) {
+      const branchCtx = await requireActiveBranchContext();
+      if (!isActiveBranchContext(branchCtx)) return branchCtx;
+      branchId = branchCtx.branchId;
+      branchName = branchCtx.branchName;
+    } else {
+      const { searchParams } = new URL(req.url);
+      const branchCode = extractPublicBranchCode(searchParams, body);
+      try {
+        const branch = await resolvePublicBranchCode(branchCode);
+        branchId = branch.branchId;
+        branchName = branch.branchName;
+      } catch (err) {
+        if (err instanceof BranchDomainError) {
+          return err.code === 'BRANCH_REQUIRED'
+            ? publicBranchRequiredResponse()
+            : publicInvalidBranchResponse();
+        }
+        throw err;
+      }
+    }
 
-    const settings = await getPublicSettings();
+    const settings = await getPublicSettings(branchId);
     // Only check bookingEnabled for public bookings, skip for operations/admin
     if (!isInternalSource && !settings.bookingEnabled) {
       return NextResponse.json(
@@ -178,10 +221,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Load services once — reused by validation, insert lines, and WhatsApp payload.
+    // Load services — specific mode uses assigned emp overrides immediately.
     let resolvedServices;
     try {
-      resolvedServices = await calculateServicePlanDuration(serviceIds);
+      resolvedServices = await calculateServicePlanDuration(serviceIds, {
+        empId: mode === 'specific' && empId ? empId : null,
+      });
     } catch (planErr) {
       if (planErr instanceof ServicePlanError) {
         return NextResponse.json(
@@ -206,8 +251,9 @@ export async function POST(req: NextRequest) {
       empId,
       source,
       servicePlan: resolvedServices,
-      durationOverride: resolvedServices.totalDurationMinutes,
+      // Let the engine apply per-barber duration overrides (do not force catalog sum)
       skipNextAvailableWhenOk: true,
+      branchId,
     });
     timer.mark('availabilityMs');
 
@@ -236,8 +282,20 @@ export async function POST(req: NextRequest) {
     const resolvedEmpId = validation.plan.empId;
     const resolvedEmpName = validation.plan.empName;
 
+    // Insert lines always use the assigned barber's duration overrides
+    let insertServices = resolvedServices;
+    if (resolvedEmpId && resolvedServices.empId !== resolvedEmpId) {
+      try {
+        insertServices = await calculateServicePlanDuration(serviceIds, {
+          empId: resolvedEmpId,
+        });
+      } catch {
+        insertServices = resolvedServices;
+      }
+    }
+
     const servicePlan = buildSequentialServicePlanFromLines({
-      lines: resolvedServices.services,
+      lines: insertServices.services,
       startAt: slotDt,
       empId: resolvedEmpId!,
     });
@@ -259,7 +317,7 @@ export async function POST(req: NextRequest) {
     const endTimeStr = `${formatCairoHhmm(endEpochMs, timezone)}:00`;
 
     // ── Upsert customer ───────────────────────────────────────────────────
-    const clientId = await upsertCustomer(customer.name, customer.phone);
+    const clientId = await upsertCustomer(customer.name, customerPhone);
     timer.mark('customerMs');
 
     // ── Transactional conflict guard before insert ────────────────────────
@@ -316,10 +374,11 @@ export async function POST(req: NextRequest) {
 
     try {
       const insStart = Date.now();
+      const bookingsHasBranchId = await hasColumn(transaction, 'Bookings', 'BranchID');
       let ins: { recordset: any[] } | null = null;
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          ins = await transaction
+          const insReq = transaction
             .request()
             .input("clientId", sql.Int, clientId)
             .input("empId", sql.Int, resolvedEmpId!)
@@ -328,14 +387,16 @@ export async function POST(req: NextRequest) {
             .input("eTime", sql.VarChar, endTimeStr)
             .input("source", sql.NVarChar, isInternalSource ? source : "online")
             .input("notes", sql.NVarChar, notes?.trim() || null)
-            .input("code", sql.NVarChar, bookingCode).query(`
+            .input("code", sql.NVarChar, bookingCode);
+          if (bookingsHasBranchId) insReq.input("branchId", sql.Int, branchId);
+          ins = await insReq.query(`
               INSERT INTO [dbo].[Bookings]
                 (ClientID, AssignedEmpID, BookingDate, StartTime, EndTime,
-                 Status, Source, Notes, BookingCode, CreatedByUserID)
+                 Status, Source, Notes, BookingCode, CreatedByUserID${bookingsHasBranchId ? ", BranchID" : ""})
               OUTPUT INSERTED.BookingID, INSERTED.BookingDate, INSERTED.StartTime, INSERTED.EndTime, INSERTED.Status
               VALUES
                 (@clientId, @empId, @bDate, @sTime, @eTime,
-                 'confirmed', @source, @notes, @code, 0)
+                 'confirmed', @source, @notes, @code, 0${bookingsHasBranchId ? ", @branchId" : ""})
             `);
           break;
         } catch (codeErr: any) {
@@ -414,7 +475,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Post-commit: build response + schedule WhatsApp after HTTP 201 ────
-    const svcNames = resolvedServices.services.map((s) => s.serviceName).filter(Boolean);
+    const svcNames = insertServices.services.map((s) => s.serviceName).filter(Boolean);
     const servicesText = svcNames.join(", ") || "خدمة عامة";
 
     if (process.env.NODE_ENV !== "production") {
@@ -428,21 +489,29 @@ export async function POST(req: NextRequest) {
     }
 
     // Schedule WhatsApp after the response — must not block HTTP 201.
-    const schedStart = Date.now();
-    scheduleBookingWhatsAppAfterCommit({
-      phone: customer.phone,
-      customerName: customer.name,
-      bookingId,
-      bookingDate: actualDate,
-      bookingTime: time,
-      barberName: resolvedEmpName || undefined,
-      services: svcNames.length > 0 ? svcNames : undefined,
-    });
-    timer.setAbsolute('notificationSchedulingMs', Date.now() - schedStart);
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('[booking/create] post-response notification scheduled', {
+    // Skip when ops walk-in has no real phone (avoids messaging smoke-test placeholders).
+    if (isUsableCustomerPhone(customerPhone)) {
+      const schedStart = Date.now();
+      scheduleBookingWhatsAppAfterCommit({
+        phone: customerPhone,
+        customerName: customer.name,
         bookingId,
-        notificationSchedulingMs: timer.snapshot().notificationSchedulingMs,
+        bookingDate: actualDate,
+        bookingTime: time,
+        barberName: resolvedEmpName || undefined,
+        services: svcNames.length > 0 ? svcNames : undefined,
+        branchName,
+      });
+      timer.setAbsolute('notificationSchedulingMs', Date.now() - schedStart);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[booking/create] post-response notification scheduled', {
+          bookingId,
+          notificationSchedulingMs: timer.snapshot().notificationSchedulingMs,
+        });
+      }
+    } else if (process.env.NODE_ENV !== 'production') {
+      console.log('[booking/create] WhatsApp skipped — no usable customer phone', {
+        bookingId,
       });
     }
 
@@ -473,7 +542,7 @@ export async function POST(req: NextRequest) {
           code: bookingCode,
           status: "confirmed",
           customerName: customer.name,
-          customerPhone: customer.phone,
+          customerPhone: customerPhone || null,
           barberName: resolvedEmpName!,
           servicesText,
           date,
@@ -499,6 +568,17 @@ export async function POST(req: NextRequest) {
       { status: 500, headers: PUBLIC_CORS_HEADERS },
     );
   }
+}
+
+async function hasColumn(
+  transaction: sql.Transaction,
+  table: string,
+  column: string,
+): Promise<boolean> {
+  const res = await new sql.Request(transaction)
+    .query(`SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '${table}' AND COLUMN_NAME = '${column}'`)
+    .catch(() => ({ recordset: [] as any[] }));
+  return res.recordset.length > 0;
 }
 
 function nextDate(dateStr: string): string {

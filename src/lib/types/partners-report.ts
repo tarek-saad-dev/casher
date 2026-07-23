@@ -19,6 +19,13 @@ export interface PartnersMonthlyReportCore {
     endDate: string;
   };
 
+  /** Effective branch partner shares (Phase 1E) — source of truth for distribution %s. */
+  partners: Array<{
+    name: string;
+    percentage: number;
+    partnerCode: string;
+  }>;
+
   summary: {
     totalRevenue: number;
     totalExpenses: number;

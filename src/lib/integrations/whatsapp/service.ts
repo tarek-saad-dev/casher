@@ -215,10 +215,19 @@ export async function sendEmployeeSaleWhatsAppMessage(
   try {
     const payload = buildEmployeeSalePayload({ ...input, phone });
     validateEmployeeSalePayload(payload);
+    const maskPhone = (p: string) =>
+      p.length <= 4 ? '****' : `${p.slice(0, 3)}****${p.slice(-2)}`;
+    console.log(
+      `[whatsapp] employee_sale request accepted invoice=INV-${input.invID}` +
+        (input.employeeId != null ? ` empId=${input.employeeId}` : '') +
+        ` phone=${maskPhone(phone)}`,
+    );
     const result = await sendWhatsAppPayload(payload);
-    if (result.sent) {
+    if (result.sent && result.status === 'sent') {
       console.log(
-        `[whatsapp] Employee sale message submitted for invoice INV-${input.invID} -> ${input.employeeName}`,
+        `[whatsapp] employee_sale sent invoice=INV-${input.invID}` +
+          (input.employeeId != null ? ` empId=${input.employeeId}` : '') +
+          ` -> ${input.employeeName} messageId=${result.messageId ?? 'n/a'}`,
       );
     } else if (!result.skipped) {
       const detail =
@@ -227,8 +236,12 @@ export async function sendEmployeeSaleWhatsAppMessage(
           : 'reason' in result
             ? result.reason
             : 'unknown';
+      const status =
+        'status' in result && result.status ? String(result.status) : 'failed';
       console.log(
-        `[whatsapp] Employee sale message failed for INV-${input.invID} -> ${input.employeeName}: ${detail}`,
+        `[whatsapp] employee_sale ${status} invoice=INV-${input.invID}` +
+          (input.employeeId != null ? ` empId=${input.employeeId}` : '') +
+          ` -> ${input.employeeName}: ${detail}`,
       );
     }
     return result;

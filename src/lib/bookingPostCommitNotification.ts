@@ -17,6 +17,7 @@ export type BookingWhatsAppScheduleInput = {
   bookingTime: string;
   barberName?: string;
   services?: string[];
+  branchName?: string;
 };
 
 /** Mask phone for logs — never log full PII. */
@@ -57,6 +58,7 @@ export function scheduleBookingWhatsAppAfterCommit(
         bookingTime: input.bookingTime,
         barberName: input.barberName,
         services: input.services,
+        branchName: input.branchName,
       });
       if (process.env.NODE_ENV !== 'production') {
         console.log('[booking/create] WhatsApp completed', {

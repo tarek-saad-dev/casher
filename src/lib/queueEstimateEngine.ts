@@ -208,8 +208,8 @@ export async function getDefaultDuration(
   _db?: Awaited<ReturnType<typeof getPool>>,
 ): Promise<number> {
   try {
-    const { getPublicSettings } = await import('@/lib/publicBookingHelpers');
-    const settings = await getPublicSettings();
+    const { getGlobalTimingDefaults } = await import('@/lib/publicBookingHelpers');
+    const settings = await getGlobalTimingDefaults();
     return settings.defaultServiceDurationMinutes || 30;
   } catch {
     return 30;
@@ -220,11 +220,14 @@ export async function getServicesDuration(
   db: Awaited<ReturnType<typeof getPool>>,
   serviceIds: number[],
   fallback: number,
+  opts?: { empId?: number | null },
 ): Promise<number> {
   if (!serviceIds.length) return fallback;
   try {
     const { calculateServicePlanDuration } = await import('@/lib/servicePlan');
-    const plan = await calculateServicePlanDuration(serviceIds);
+    const plan = await calculateServicePlanDuration(serviceIds, {
+      empId: opts?.empId ?? null,
+    });
     if (plan.durationSource === 'LEGACY_FALLBACK') return fallback;
     return plan.totalDurationMinutes;
   } catch (err) {
@@ -787,7 +790,7 @@ export async function checkBarberAvailableForBooking(
   // 2. Resolve service duration
   const defaultDur = await getDefaultDuration(db);
   const customerDur =
-    durationOverride ?? (await getServicesDuration(db, serviceIds, defaultDur));
+    durationOverride ?? (await getServicesDuration(db, serviceIds, defaultDur, { empId }));
   const end = new Date(start.getTime() + customerDur * 60000);
 
   // 3. Build all blocking intervals (queue + booking) using the shared builders

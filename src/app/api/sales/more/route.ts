@@ -1,13 +1,19 @@
 import { NextResponse } from 'next/server';
-import { getPool } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
+import { isActiveBranchContext, requireActiveBranchContext } from '@/lib/branch';
 
-// GET /api/sales/more — returns all remaining sales for today (after the recent 3)
+// GET /api/sales/more — returns all remaining sales for today (after the recent 3), scoped to active branch
 export async function GET() {
   try {
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const db = await getPool();
     
     // Get all remaining sales for today (skip first 3, get all others)
-    const result = await db.request().query(`
+    const result = await db.request()
+      .input('branchId', sql.Int, branch.branchId)
+      .query(`
       SELECT 
         h.invID AS InvID,
         h.invID AS InvNo,
@@ -35,11 +41,13 @@ export async function GET() {
         ON h.invID = d.invID
        AND h.invType = d.invType
       WHERE h.invType = N'مبيعات'
+      AND h.BranchID = @branchId
       AND CAST(h.invDate AS DATE) = CAST(GETDATE() AS DATE)
       AND h.invID NOT IN (
         SELECT TOP 3 h2.invID
         FROM [dbo].[TblinvServHead] h2
         WHERE h2.invType = N'مبيعات'
+        AND h2.BranchID = @branchId
         AND CAST(h2.invDate AS DATE) = CAST(GETDATE() AS DATE)
         ORDER BY h2.invDate DESC, h2.invID DESC
       )

@@ -1,14 +1,16 @@
 'use client';
 
 import { Users } from 'lucide-react';
-import { PARTNERS } from '@/lib/types/monthly-report';
+import type { Partner } from '@/lib/types/monthly-report';
 
 interface PartnerDistributionProps {
   netProfit: number;
   loading: boolean;
+  /** Phase 1E: effective branch partner shares from the API response. */
+  partners: Partner[];
 }
 
-export default function PartnerDistribution({ netProfit, loading }: PartnerDistributionProps) {
+export default function PartnerDistribution({ netProfit, loading, partners }: PartnerDistributionProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('ar-EG', {
       style: 'decimal',
@@ -22,7 +24,7 @@ export default function PartnerDistribution({ netProfit, loading }: PartnerDistr
   };
 
   // Calculate profit share for each partner
-  const partnerShares = PARTNERS.map(partner => ({
+  const partnerShares = partners.map(partner => ({
     ...partner,
     profitShare: netProfit * (partner.percentage / 100),
   }));
@@ -36,6 +38,22 @@ export default function PartnerDistribution({ netProfit, loading }: PartnerDistr
             <div key={i} className="h-12 bg-muted rounded animate-pulse"></div>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (partners.length === 0) {
+    return (
+      <div className="p-6 bg-card border border-border rounded-lg">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 bg-blue-500/10 rounded-lg">
+            <Users className="h-5 w-5 text-blue-500" />
+          </div>
+          <h3 className="text-lg font-semibold">توزيع أرباح الشركاء</h3>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          لا توجد نسب شركاء مفعّلة لهذا الفرع في هذا التاريخ.
+        </p>
       </div>
     );
   }
@@ -118,7 +136,7 @@ export default function PartnerDistribution({ netProfit, loading }: PartnerDistr
               <td className="py-4 px-2 font-bold">الإجمالي</td>
               <td className="py-4 px-2 text-center">
                 <span className="inline-flex items-center px-2.5 py-1 rounded-full text-sm font-bold bg-primary/10 text-primary">
-                  {formatPercentage(PARTNERS.reduce((sum, p) => sum + p.percentage, 0))}
+                  {formatPercentage(partners.reduce((sum, p) => sum + p.percentage, 0))}
                 </span>
               </td>
               <td className="py-4 px-2 text-left">

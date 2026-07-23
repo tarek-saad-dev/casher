@@ -17,9 +17,39 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
 
+vi.mock('server-only', () => ({}));
+
 // ── Shared mutable state ──────────────────────────────────────────────────
 let fakeAuditId = 42;
 let fakeInvoiceExists = true;
+
+const fakeActiveBranch = {
+  userId: 1,
+  branchId: 1,
+  branchCode: 'GLEEM',
+  branchName: 'Gleem Branch',
+  shortName: 'Gleem',
+  timeZone: 'Africa/Cairo',
+  businessDayCutoffTime: '04:00',
+  canOperate: true,
+  canViewReports: true,
+  canSwitch: true,
+};
+
+vi.mock('@/lib/branch', () => ({
+  requireActiveBranchContext: vi.fn(async () => fakeActiveBranch),
+  requireBranchOperationAccess: vi.fn(async () => fakeActiveBranch),
+  isActiveBranchContext: (v: unknown) => !!v && typeof v === 'object' && 'branchId' in (v as object),
+  assertActiveBranchOwns: (activeBranchId: number, ownerBranchId: number) => activeBranchId === ownerBranchId,
+  financialNotFoundResponse: () => new Response(JSON.stringify({ error: 'غير موجود' }), { status: 404 }),
+  loadInvoiceOwnership: vi.fn(async () => ({ branchId: 1, businessDayId: 1 })),
+}));
+
+vi.mock('@/lib/branch/context', () => ({
+  requireActiveBranchContext: vi.fn(async () => fakeActiveBranch),
+  requireBranchOperationAccess: vi.fn(async () => fakeActiveBranch),
+  isActiveBranchContext: (v: unknown) => !!v && typeof v === 'object' && 'branchId' in (v as object),
+}));
 
 // ── Mock @/lib/db ─────────────────────────────────────────────────────────
 vi.mock('@/lib/db', () => ({

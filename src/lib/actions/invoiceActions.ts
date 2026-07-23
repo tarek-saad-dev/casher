@@ -5,6 +5,11 @@
 import { sql } from '@/lib/db';
 import { resolveSplitPaymentConfig } from '@/lib/clearingMethod';
 import { redistributeFromClearing } from '@/lib/splitPaymentService';
+import {
+  computeInvoiceItemsTotals,
+  hasNonZeroHeaderDiscount,
+} from '@/lib/sales/service-line-totals';
+import { roundMoney } from '@/lib/reportMonthUtils';
 
 export interface InvoiceItemInput {
   proId: number;
@@ -12,12 +17,14 @@ export interface InvoiceItemInput {
   serviceId?: number;
   sPrice: number;
   qty: number;
+  dis?: number;
   disVal?: number;
   discount?: number;
   sValue?: number;
   total?: number;
   bonus?: number;
   notes?: string;
+  sPriceAfterDis?: number;
 }
 
 export interface InvoicePaymentAllocationInput {
@@ -27,10 +34,10 @@ export interface InvoicePaymentAllocationInput {
 
 export interface UpdateInvoiceInput {
   clientId?: number;
-  subTotal: number;
+  subTotal?: number;
   dis?: number;
-  disVal: number;
-  grandTotal: number;
+  disVal?: number;
+  grandTotal?: number;
   totalBonus?: number;
   payCash?: number;
   payVisa?: number;
@@ -66,6 +73,8 @@ export interface InvoiceDetailSnapshot {
   SPrice: number;
   SValue: number;
   SPriceAfterDis: number | null;
+  Dis: number | null;
+  DisVal: number | null;
   Qty: number;
   Bonus: number;
   Notes: string | null;
@@ -125,7 +134,7 @@ export async function getInvoiceSnapshot(
   const details = await new sql.Request(transaction)
     .input('invID', sql.Int, invID)
     .query(`
-      SELECT d.ProID, d.EmpID, d.SPrice, d.SValue, d.SPriceAfterDis, d.Qty, d.Bonus, d.Notes,
+      SELECT d.ProID, d.EmpID, d.SPrice, d.SValue, d.SPriceAfterDis, d.Dis, d.DisVal, d.Qty, d.Bonus, d.Notes,
              p.ProName, e.EmpName
       FROM dbo.TblinvServDetail d
       LEFT JOIN dbo.TblPro p ON d.ProID = p.ProID
@@ -159,10 +168,27 @@ export async function getInvoiceSnapshot(
   };
 }
 
+/**
+ * Delete an invoice. `activeBranchId` must come from the caller's gated
+ * session context — never from the request payload — and must match the
+ * invoice's own BranchID or the delete is rejected.
+ */
 export async function deleteInvoice(
   transaction: sql.Transaction,
   invID: number,
+  activeBranchId: number,
 ): Promise<void> {
+  const head = await new sql.Request(transaction)
+    .input('invID', sql.Int, invID)
+    .query(`SELECT BranchID FROM dbo.TblinvServHead WHERE invID = @invID AND invType = N'مبيعات'`);
+  const headRow = head.recordset[0];
+  if (!headRow) {
+    throw new Error('الفاتورة غير موجودة');
+  }
+  if (Number(headRow.BranchID) !== Number(activeBranchId)) {
+    throw new Error('الفاتورة لا تنتمي للفرع النشط — لا يمكن حذفها');
+  }
+
   await new sql.Request(transaction)
     .input('id', sql.Int, invID)
     .query(`DELETE FROM dbo.TblCashMove WHERE InvID = @id`);
@@ -188,11 +214,56 @@ export async function updateInvoice(
 ): Promise<UpdateInvoiceResult> {
   const existing = await new sql.Request(transaction)
     .input('invID', sql.Int, invID)
-    .query(`SELECT invID FROM dbo.TblinvServHead WHERE invID = @invID AND invType = N'مبيعات'`);
+    .query(`
+      SELECT invID, BranchID, BusinessDayID, Dis, DisVal, SubTotal, GrandTotal
+      FROM dbo.TblinvServHead
+      WHERE invID = @invID AND invType = N'مبيعات'
+    `);
 
   if (existing.recordset.length === 0) {
     throw new Error('الفاتورة غير موجودة');
   }
+
+  const existingHead = existing.recordset[0] as {
+    BranchID: number;
+    BusinessDayID: number | null;
+    Dis: number | null;
+    DisVal: number | null;
+  };
+
+  // Ownership is always read from the existing head — never accepted from the payload.
+  const headBranchId: number = Number(existingHead.BranchID);
+  const headBusinessDayId: number | null =
+    existingHead.BusinessDayID == null ? null : Number(existingHead.BusinessDayID);
+
+  const preservedHeaderDis = roundMoney(Math.max(0, Number(existingHead.Dis ?? 0)));
+  const preservedHeaderDisVal = roundMoney(Math.max(0, Number(existingHead.DisVal ?? 0)));
+  const isLegacyHeaderDiscount = preservedHeaderDisVal > 0;
+
+  // New invoices must not gain a header discount via update.
+  if (!isLegacyHeaderDiscount && hasNonZeroHeaderDiscount(input)) {
+    throw new Error('خصم إجمالي الفاتورة غير مسموح — استخدم خصم كل خدمة على حدة');
+  }
+
+  const computed = computeInvoiceItemsTotals(
+    input.items.map((item) => ({
+      sPrice: item.sPrice,
+      qty: item.qty,
+      discountPercent: item.dis ?? item.discount,
+      discountValue: item.disVal,
+      bonus: item.bonus,
+    })),
+  );
+
+  const subTotal = computed.subTotal;
+  // Legacy: keep header Dis/DisVal; GrandTotal = SubTotal − header DisVal (classic).
+  // New: header Dis/DisVal = 0; GrandTotal = Σ line nets.
+  const headerDis = isLegacyHeaderDiscount ? preservedHeaderDis : 0;
+  const headerDisVal = isLegacyHeaderDiscount ? preservedHeaderDisVal : 0;
+  const grandTotal = isLegacyHeaderDiscount
+    ? roundMoney(Math.max(0, subTotal - headerDisVal))
+    : computed.grandTotal;
+  const totalBonus = computed.totalBonus;
 
   // 1. Delete old children
   await new sql.Request(transaction)
@@ -208,19 +279,13 @@ export async function updateInvoice(
     .input('invID', sql.Int, invID)
     .query(`DELETE FROM dbo.TblCashMove WHERE invID = @invID`);
 
-  // 2. Calculate totals
-  const subTotal = Math.max(0, input.subTotal || 0);
-  const disVal = Math.max(0, input.disVal || 0);
-  const grandTotal = Math.max(0, subTotal - disVal);
-  const totalBonus = input.totalBonus || 0;
-
-  // 3. Update header
+  // 2. Update header
   await new sql.Request(transaction)
     .input('invID', sql.Int, invID)
     .input('ClientID', sql.Int, input.clientId || null)
     .input('SubTotal', sql.Decimal(10, 2), subTotal)
-    .input('Dis', sql.Decimal(5, 2), input.dis || 0)
-    .input('DisVal', sql.Decimal(10, 2), disVal)
+    .input('Dis', sql.Decimal(5, 2), headerDis)
+    .input('DisVal', sql.Decimal(10, 2), headerDisVal)
     .input('GrandTotal', sql.Decimal(10, 2), grandTotal)
     .input('TotalBonus', sql.Decimal(10, 2), totalBonus)
     .input('PayCash', sql.Decimal(10, 2), input.payCash || 0)
@@ -244,28 +309,41 @@ export async function updateInvoice(
       WHERE invID = @invID AND invType = N'مبيعات'
     `);
 
-  // 4. Insert new details
-  for (const item of input.items) {
-    const itemValue = (item.sPrice || 0) * (item.qty || 1);
+  // 3. Insert new details — same price/discount columns as create
+  for (let i = 0; i < input.items.length; i++) {
+    const item = input.items[i]!;
+    const line = computed.lines[i]!;
     const empId = Number(item.empId) || 0;
     await new sql.Request(transaction)
       .input('invID', sql.Int, invID)
       .input('invType', sql.NVarChar(20), 'مبيعات')
       .input('ProID', sql.Int, item.proId)
       .input('EmpID', sql.Int, empId)
+      .input('Dis', sql.Decimal(8, 2), line.discountPercent)
+      .input('DisVal', sql.Decimal(8, 2), line.discountValue)
       .input('SPrice', sql.Decimal(10, 2), item.sPrice || 0)
-      .input('SValue', sql.Decimal(10, 2), itemValue)
-      .input('Qty', sql.Int, item.qty || 1)
-      .input('Bonus', sql.Decimal(10, 2), item.bonus || 0)
-      .input('Notes', sql.NVarChar(sql.MAX), item.notes || '')
+      .input('SValue', sql.Decimal(10, 2), line.grossAmount)
+      .input('SPriceAfterDis', sql.Decimal(10, 2), line.netAmount)
+      .input('PPrice', sql.Decimal(10, 2), 0)
+      .input('PValue', sql.Decimal(10, 2), 0)
+      .input('Qty', sql.Decimal(8, 2), item.qty > 0 ? item.qty : 1)
+      .input('Notes', sql.NVarChar(50), (item.notes || '').substring(0, 50))
+      .input('Bonus', sql.Decimal(8, 2), item.bonus || 0)
       .query(`
-        INSERT INTO dbo.TblinvServDetail (invID, invType, ProID, EmpID, Qty, SPrice, SValue, Notes, Bonus)
-        VALUES (@invID, @invType, @ProID, @EmpID, @Qty, @SPrice, @SValue, @Notes, @Bonus)
+        INSERT INTO dbo.TblinvServDetail (
+          invID, invType, EmpID, ProID,
+          Dis, DisVal, SPrice, SValue, SPriceAfterDis,
+          PPrice, PValue, Qty, ProType, Notes, Bonus, ReservDate
+        ) VALUES (
+          @invID, @invType, @EmpID, @ProID,
+          @Dis, @DisVal, @SPrice, @SValue, @SPriceAfterDis,
+          @PPrice, @PValue, @Qty, NULL, @Notes, @Bonus, NULL
+        )
       `);
   }
 
-  // 5. Resolve split payment config
-  const db = transaction; // use same transaction for split payment resolution
+  // 4. Resolve split payment config
+  const db = transaction;
   const splitCfg = await resolveSplitPaymentConfig(db);
 
   const rawAllocations = input.paymentAllocations || [];
@@ -311,7 +389,7 @@ export async function updateInvoice(
       `);
   }
 
-  // 7. Re-insert cash movement
+  // 7. Re-insert cash movement — ownership always stamped from the invoice head
   if (!isSplitPayment) {
     if (grandTotal > 0) {
       await new sql.Request(transaction)
@@ -321,10 +399,12 @@ export async function updateInvoice(
         .input('PaymentMethodID', sql.Int, headerPaymentMethodId)
         .input('Notes', sql.NVarChar(sql.MAX), input.notes || 'مبيعات')
         .input('ShiftMoveID', sql.Int, null)
+        .input('BranchID', sql.Int, headBranchId)
+        .input('BusinessDayID', sql.Int, headBusinessDayId)
         .query(`
-          INSERT INTO dbo.TblCashMove (invID, invType, invDate, invTime, GrandTolal, PaymentMethodID, inOut, Notes, ShiftMoveID)
+          INSERT INTO dbo.TblCashMove (invID, invType, invDate, invTime, GrandTolal, PaymentMethodID, inOut, Notes, ShiftMoveID, BranchID, BusinessDayID)
           VALUES (@invID, @invType, CONVERT(date, GETDATE()), CONVERT(varchar(5), GETDATE(), 8),
-                  @GrandTotal, @PaymentMethodID, N'in', @Notes, @ShiftMoveID)
+                  @GrandTotal, @PaymentMethodID, N'in', @Notes, @ShiftMoveID, @BranchID, @BusinessDayID)
         `);
     }
   } else {
@@ -336,15 +416,19 @@ export async function updateInvoice(
         .input('PaymentMethodID', sql.Int, splitCfg.clearingMethodId)
         .input('Notes', sql.NVarChar(sql.MAX), input.notes || 'مبيعات')
         .input('ShiftMoveID', sql.Int, null)
+        .input('BranchID', sql.Int, headBranchId)
+        .input('BusinessDayID', sql.Int, headBusinessDayId)
         .query(`
-          INSERT INTO dbo.TblCashMove (invID, invType, invDate, invTime, GrandTolal, PaymentMethodID, inOut, Notes, ShiftMoveID)
+          INSERT INTO dbo.TblCashMove (invID, invType, invDate, invTime, GrandTolal, PaymentMethodID, inOut, Notes, ShiftMoveID, BranchID, BusinessDayID)
           VALUES (@invID, @invType, CONVERT(date, GETDATE()), CONVERT(varchar(5), GETDATE(), 8),
-                  @GrandTotal, @PaymentMethodID, N'in', @Notes, @ShiftMoveID)
+                  @GrandTotal, @PaymentMethodID, N'in', @Notes, @ShiftMoveID, @BranchID, @BusinessDayID)
         `);
     }
 
     await redistributeFromClearing({
       transaction,
+      branchId: headBranchId,
+      businessDayId: headBusinessDayId,
       clearingMethodId: splitCfg.clearingMethodId,
       allocations: activeAllocations.map((a) => ({
         paymentMethodId: a.paymentMethodId,

@@ -32,7 +32,9 @@ export function BookingStepServices({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h3 className="text-base font-bold text-foreground">اختر الخدمات</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">المدة الإجمالية تحدد المواعيد المتاحة</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            خدمة أساسية و/أو إضافات — أو إضافات فقط · المدة تحدد المواعيد المتاحة
+          </p>
         </div>
         {selectedServices.length > 0 && (
           <div className="px-4 py-2 rounded-xl border text-right" style={{ borderColor: GOLD_BDR, background: 'color-mix(in srgb, var(--primary) 8%, transparent)' }}>

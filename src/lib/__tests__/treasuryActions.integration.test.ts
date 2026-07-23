@@ -40,12 +40,17 @@ describe('treasuryActions integration', () => {
     const [fromPm, toPm] = pmResult.recordset;
     const amount = 123.45;
 
+    // Resolve a real branch (BranchID is NOT NULL + FK-enforced after the Phase 1D migration)
+    const branchResult = await pool.request().query(`SELECT TOP 1 BranchID FROM dbo.TblBranch ORDER BY BranchID`);
+    const seedBranchId: number | null = branchResult.recordset[0]?.BranchID ?? null;
+
     // Seed balance outside the test transaction (auto-commit) so the transfer can succeed
     await pool.request().query(`
       DECLARE @seedCatID INT = ISNULL((SELECT TOP 1 ExpINID FROM dbo.TblExpINCat WHERE ExpINType = N'ايرادات'), 1);
       DECLARE @seedInvID INT = ISNULL((SELECT MAX(invID) FROM dbo.TblCashMove WHERE invType = N'ايرادات'), 0) + 99999;
-      INSERT INTO dbo.TblCashMove (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID)
-      VALUES (@seedInvID, N'ايرادات', '2024-01-01', '12:00', NULL, @seedCatID, 100000, N'in', N'seed balance for test', NULL, ${fromPm.PaymentID})
+      DECLARE @seedBranchID INT = ${seedBranchId ?? 1};
+      INSERT INTO dbo.TblCashMove (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID)
+      VALUES (@seedInvID, N'ايرادات', '2024-01-01', '12:00', NULL, @seedCatID, 100000, N'in', N'seed balance for test', NULL, ${fromPm.PaymentID}, @seedBranchID, NULL)
     `);
 
     const transaction = new sql.Transaction(pool);
@@ -59,6 +64,8 @@ describe('treasuryActions integration', () => {
         notes: 'integration test transfer',
         transferDate: '2025-01-01',
         userId: 1,
+        branchId: seedBranchId ?? 1,
+        businessDayId: null,
       });
 
       expect(transferResult.expenseId).toBeGreaterThan(0);
@@ -136,6 +143,8 @@ describe('treasuryActions integration', () => {
           toPaymentMethodId: pmId,
           transferDate: '2025-01-01',
           userId: 1,
+          branchId: 1,
+          businessDayId: null,
         })
       ).rejects.toThrow('يجب اختيار طرق دفع مختلفة');
     } finally {
@@ -162,6 +171,8 @@ describe('treasuryActions integration', () => {
           toPaymentMethodId: toPm.PaymentID,
           transferDate: '2025-01-01',
           userId: 1,
+          branchId: 1,
+          businessDayId: null,
         });
       } catch (err) {
         caught = err;
@@ -187,6 +198,8 @@ describe('treasuryActions integration', () => {
           toPaymentMethodId: 888888,
           transferDate: '2025-01-01',
           userId: 1,
+          branchId: 1,
+          businessDayId: null,
         });
       } catch (err) {
         caught = err;

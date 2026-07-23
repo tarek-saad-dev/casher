@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { getSession, destroySession } from "@/lib/session";
+import {
+  destroySession,
+  getSession,
+  readSessionCookie,
+  verifySessionCookie,
+} from "@/lib/session";
 import { getUserFriendlyError } from "@/lib/db";
 import { getPermissions } from "@/lib/permissions";
 import { getUserAccess } from "@/lib/permissions-server";
@@ -10,6 +15,19 @@ import { getUserOpenShift } from "@/lib/branch/shiftSession";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+function emptySessionBody(extra: Record<string, unknown> = {}) {
+  return {
+    user: null,
+    day: null,
+    shift: null,
+    permissions: [],
+    roles: [],
+    allowedPagePaths: [],
+    activeBranch: null,
+    ...extra,
+  };
+}
 
 function buildAuthoritativePermissions(args: {
   userLevel: string;
@@ -35,34 +53,44 @@ function buildAuthoritativePermissions(args: {
 // GET /api/auth/session — returns full operational session state
 export async function GET() {
   try {
+    const verified = await verifySessionCookie();
+    if (!verified.ok) {
+      // Stale/legacy/expired cookie may still be present — clear only in this Route Handler.
+      if (verified.reason !== "missing" && (await readSessionCookie())) {
+        await destroySession();
+      }
+      return NextResponse.json(
+        emptySessionBody(
+          verified.reason === "missing"
+            ? {}
+            : {
+                error: "يلزم إعادة تسجيل الدخول",
+                code:
+                  verified.reason === "legacy" ||
+                  verified.reason === "unsupported_version"
+                    ? "SESSION_UPGRADE_REQUIRED"
+                    : "SESSION_INVALID",
+              },
+        ),
+        verified.reason === "missing" ? undefined : { status: 401 },
+      );
+    }
+
     const user = await getSession();
     if (!user) {
-      return NextResponse.json({
-        user: null,
-        day: null,
-        shift: null,
-        permissions: [],
-        roles: [],
-        allowedPagePaths: [],
-        activeBranch: null,
-      });
+      // Defensive: verified ok but getSession null — clear cookie.
+      await destroySession();
+      return NextResponse.json(emptySessionBody());
     }
 
     const status = await getUserActiveStatus(user.UserID);
     if (!status.exists || status.isDeleted) {
       await destroySession();
       return NextResponse.json(
-        {
-          user: null,
-          day: null,
-          shift: null,
-          permissions: [],
-          roles: [],
-          allowedPagePaths: [],
-          activeBranch: null,
+        emptySessionBody({
           error: "تم تعطيل الحساب",
           code: "USER_DELETED",
-        },
+        }),
         { status: 401 },
       );
     }
@@ -71,17 +99,10 @@ export async function GET() {
     if (!branchContext) {
       await destroySession();
       return NextResponse.json(
-        {
-          user: null,
-          day: null,
-          shift: null,
-          permissions: [],
-          roles: [],
-          allowedPagePaths: [],
-          activeBranch: null,
+        emptySessionBody({
           error: "يلزم إعادة تسجيل الدخول لتحديث جلسة الفرع",
           code: "SESSION_UPGRADE_REQUIRED",
-        },
+        }),
         { status: 401 },
       );
     }

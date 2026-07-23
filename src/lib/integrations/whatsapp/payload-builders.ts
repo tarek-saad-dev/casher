@@ -54,6 +54,19 @@ export interface EmployeeSalePayloadInput {
   invID: number;
   services: string[];
   branchName?: string;
+  customerName?: string;
+  employeeId?: number;
+  employeeTotal?: number;
+  invoiceTotal?: number;
+  message?: string;
+  serviceDetails?: Array<{
+    detailId?: number;
+    proId: number;
+    serviceName: string;
+    grossAmount: number;
+    discountValue: number;
+    netAmount: number;
+  }>;
 }
 
 export interface EmployeeAdvancePayloadInput {
@@ -174,14 +187,31 @@ export function buildEmployeeSalePayload(
 ): EmployeeSaleWhatsAppPayload {
   const cfg = getConfig();
   const services = input.services.filter(Boolean);
+  const clientName = input.customerName?.trim() || undefined;
 
   return {
     type: 'employee_sale',
     phone: input.phone.trim(),
+    // Bot templates historically use customerName as the employee display name.
     customerName: input.employeeName.trim(),
+    employeeName: input.employeeName.trim(),
+    clientName,
     invoiceNumber: `INV-${input.invID}`,
+    invoiceId: input.invID,
+    employeeId: input.employeeId,
+    employeeTotal: input.employeeTotal,
+    invoiceTotal: input.invoiceTotal,
     branchName: input.branchName ?? cfg.defaultBranchName,
     services: services.length > 0 ? services : undefined,
+    message: input.message?.trim() || undefined,
+    serviceDetails: input.serviceDetails?.map((s) => ({
+      detailId: s.detailId,
+      proId: s.proId,
+      name: s.serviceName,
+      grossAmount: s.grossAmount,
+      discountValue: s.discountValue,
+      netAmount: s.netAmount,
+    })),
   };
 }
 

@@ -57,8 +57,23 @@ export interface FirstTimeWhatsAppPayload extends WhatsAppBasePayload {
 export interface EmployeeSaleWhatsAppPayload extends WhatsAppBasePayload {
   type: 'employee_sale';
   invoiceNumber?: string;
+  invoiceId?: number;
+  employeeId?: number;
+  employeeName?: string;
+  clientName?: string;
+  employeeTotal?: number;
+  invoiceTotal?: number;
   branchName?: string;
   services?: string[];
+  message?: string;
+  serviceDetails?: Array<{
+    detailId?: number;
+    proId: number;
+    name: string;
+    grossAmount: number;
+    discountValue: number;
+    netAmount: number;
+  }>;
   variables?: WhatsAppExtraVariables;
 }
 
@@ -144,9 +159,10 @@ export type WhatsAppSendResult =
   | {
       sent: true;
       skipped: false;
-      status: 'submitted';
+      status: 'sent' | 'queued';
       type: WhatsAppMessageType;
       phone?: string;
+      messageId?: string;
       sentAt?: string;
     }
   | {
@@ -169,9 +185,14 @@ export type WhatsAppSendResult =
         | 'timeout'
         | 'connection_failed'
         | 'remote_error'
-        | 'invalid_response';
+        | 'invalid_response'
+        | 'not_registered'
+        | 'failed'
+        | 'queued';
       httpStatus?: number;
       error?: string;
+      status?: string;
+      messageId?: string;
     };
 
 export type WhatsAppStatusResult =
@@ -203,8 +224,10 @@ export interface WhatsAppApiStatusResponse {
 }
 
 export interface WhatsAppApiSendResponse {
-  success: boolean;
-  status?: string;
+  ok?: boolean;
+  success?: boolean;
+  status?: 'sent' | 'queued' | 'failed' | 'not_registered' | 'submitted' | string;
+  messageId?: string;
   type?: string;
   phone?: string;
   message?: string;

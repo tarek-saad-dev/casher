@@ -4,6 +4,8 @@ import {
   EmployeeLedgerFundingError,
   executeEmployeeFunding,
 } from '@/lib/services/employeeLedgerFundingService';
+import { requireBranchOperationAccess } from '@/lib/branch/context';
+import { resolveBranchDayForDate } from '@/lib/branch/operationalGates';
 
 /**
  * POST /api/admin/hr/employee-ledger/employee-funding
@@ -21,6 +23,12 @@ export async function POST(request: NextRequest) {
     const date = String(body.date ?? '').trim();
     const notes = body.notes != null ? String(body.notes) : undefined;
 
+    // Never trust browser branchId — resolve ownership from gated session context.
+    const branch = await requireBranchOperationAccess();
+    if (branch instanceof NextResponse) return branch;
+    const dayResolution = await resolveBranchDayForDate(branch.branchId, date);
+    if (!dayResolution.ok) return dayResolution.response;
+
     const result = await executeEmployeeFunding({
       empId,
       amount,
@@ -28,6 +36,8 @@ export async function POST(request: NextRequest) {
       date,
       notes,
       createdByUserId: auth.userId,
+      branchId: branch.branchId,
+      businessDayId: dayResolution.day.id,
     });
 
     return NextResponse.json(result, { status: 201 });

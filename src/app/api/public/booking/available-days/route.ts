@@ -16,6 +16,15 @@ import {
   Interval,
 } from "@/lib/queueEstimateEngine";
 import { applyOverrides, ScheduleOverride } from "@/lib/scheduleOverrides";
+import {
+  extractPublicBranchCode,
+  resolvePublicBranchCode,
+  publicBranchRequiredResponse,
+  publicInvalidBranchResponse,
+  listBookableEmployeeIdsForBranch,
+  isEmployeeEligibleForBranchBookings,
+} from "@/lib/branch/bookingQueueOwnership";
+import { BranchDomainError } from "@/lib/branch/types";
 
 export const runtime = "nodejs";
 
@@ -131,7 +140,21 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const settings = await getPublicSettings();
+    // Branch required — never silently defaults to a founding branch.
+    const branchCode = extractPublicBranchCode(searchParams);
+    let branch;
+    try {
+      branch = await resolvePublicBranchCode(branchCode);
+    } catch (err) {
+      if (err instanceof BranchDomainError) {
+        return err.code === 'BRANCH_REQUIRED'
+          ? publicBranchRequiredResponse()
+          : publicInvalidBranchResponse();
+      }
+      throw err;
+    }
+
+    const settings = await getPublicSettings(branch.branchId);
     const totalDays = settings.maxBookingDaysAhead;
     const minNotice = settings.minNoticeMinutes;
     const slotIntervalMinutes = settings.slotIntervalMinutes;
@@ -197,16 +220,39 @@ export async function GET(req: NextRequest) {
         );
       }
 
+      // Branch eligibility — employee must be assigned + bookable at this branch.
+      const eligibleForBranch = await isEmployeeEligibleForBranchBookings({
+        empId,
+        branchId: branch.branchId,
+        operationalDate: startDate,
+      });
+      if (!eligibleForBranch) {
+        const days = generateAllUnavailableDays(
+          startMs,
+          totalDays,
+          REASON_CODES.BARBER_NOT_BOOKABLE,
+          "الحلاق غير متاح في هذا الفرع",
+        );
+        return NextResponse.json(
+          { ok: true, mode, empId, days },
+          { headers: PUBLIC_CORS_HEADERS },
+        );
+      }
+
       barberIds = [empId];
       specificBarberInfo = { id: empId, name: emp.EmpName };
     } else {
-      // Nearest mode: get all bookable barbers
+      // Nearest mode: active barbers, restricted to those bookable at this branch
       const bRes = await db.request().query(`
         SELECT EmpID FROM [dbo].[TblEmp]
         WHERE ISNULL(isActive,1)=1
           AND Job IN (N'حلاق',N'مساعد',N'Barber',N'barber')
       `);
-      barberIds = bRes.recordset.map((r) => r.EmpID as number);
+      const allBarberIds = bRes.recordset.map((r) => r.EmpID as number);
+      const eligibleIds = new Set(
+        await listBookableEmployeeIdsForBranch(branch.branchId, startDate),
+      );
+      barberIds = allBarberIds.filter((id) => eligibleIds.has(id));
     }
 
     if (barberIds.length === 0) {

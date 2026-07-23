@@ -1,0 +1,132 @@
+{
+  "capturedAt": "2026-07-23T00:57:40.096Z",
+  "gleem": {
+    "BranchID": 1,
+    "BranchCode": "GLEEM",
+    "BranchName": "جليم – سابا باشا",
+    "IsActive": true
+  },
+  "columnsPresent": {
+    "BookingsBranchID": true,
+    "QueueTicketsBranchID": true,
+    "QueueBookingSettingsBranchID": true
+  },
+  "counts": {
+    "BookingsCount": 1500,
+    "BookingServicesCount": 1527,
+    "QueueTicketsCount": 139,
+    "QueueHistoryCount": 176,
+    "SettingsCount": 1,
+    "QueueTicketServicesCount": 0,
+    "NullBookingCodes": 20,
+    "DistinctBookingCodes": 1480,
+    "DupBookingCodes": 0,
+    "DupTicketCodeDate": 0,
+    "BookingEmpDatePairs": 236,
+    "CrossMidnightBookings": 47,
+    "BookingsChecksum": -2070879060,
+    "BookingServicesChecksum": -3555009,
+    "QueueTicketsChecksum": -507429167,
+    "QueueHistoryChecksum": 16427568,
+    "EstimateWaitSum": "3997",
+    "EstimateWaitCount": 122,
+    "ConvertedBookingCount": 0,
+    "ConvertedSaleMatches": 0,
+    "BookingsNullBranch": 0,
+    "BookingsGleem": 1500,
+    "BookingsNonGleem": 0,
+    "QueueNullBranch": 0,
+    "QueueGleem": 139,
+    "QueueNonGleem": 0,
+    "SettingsNullBranch": 0,
+    "SettingsGleem": 1
+  },
+  "bookingStatusDist": [
+    {
+      "Status": "confirmed",
+      "cnt": 1196
+    },
+    {
+      "Status": "cancelled",
+      "cnt": 296
+    },
+    {
+      "Status": "pending",
+      "cnt": 5
+    },
+    {
+      "Status": "arrived",
+      "cnt": 1
+    },
+    {
+      "Status": "completed",
+      "cnt": 1
+    },
+    {
+      "Status": "queued",
+      "cnt": 1
+    }
+  ],
+  "queueStatusDist": [
+    {
+      "Status": "called",
+      "cnt": 47
+    },
+    {
+      "Status": "cancelled",
+      "cnt": 35
+    },
+    {
+      "Status": "done",
+      "cnt": 34
+    },
+    {
+      "Status": "waiting",
+      "cnt": 20
+    },
+    {
+      "Status": "in_service",
+      "cnt": 3
+    }
+  ],
+  "uniqueIndexes": [
+    {
+      "table_name": "Bookings",
+      "index_name": "PK_Bookings",
+      "is_unique": true,
+      "columns": "BookingID"
+    },
+    {
+      "table_name": "Bookings",
+      "index_name": "UX_Bookings_BookingCode",
+      "is_unique": true,
+      "columns": "BookingCode"
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "index_name": "PK_QueueBookingSettings",
+      "is_unique": true,
+      "columns": "SettingID"
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "index_name": "UQ_QueueBookingSettings_BranchID",
+      "is_unique": true,
+      "columns": "BranchID"
+    },
+    {
+      "table_name": "QueueTickets",
+      "index_name": "PK_QueueTickets",
+      "is_unique": true,
+      "columns": "QueueTicketID"
+    },
+    {
+      "table_name": "QueueTickets",
+      "index_name": "UQ_QueueTickets_Branch_Date_Code",
+      "is_unique": true,
+      "columns": "BranchID, QueueDate, TicketCode"
+    }
+  ],
+  "target": "cloud",
+  "database": "last132"
+}

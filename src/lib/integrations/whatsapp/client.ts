@@ -100,7 +100,18 @@ export async function sendWhatsAppPayload(
 
   if (response.status === 400) {
     const errorMsg = body.error || '';
-    console.log(`[whatsapp] Remote validation error (${payload.type}): ${errorMsg}`);
+    const remoteStatus = body.status;
+    console.log(`[whatsapp] Remote validation/error (${payload.type}): status=${remoteStatus || 'n/a'} ${errorMsg}`);
+    if (remoteStatus === 'not_registered') {
+      return {
+        sent: false,
+        skipped: false,
+        reason: 'not_registered',
+        httpStatus: 400,
+        error: errorMsg,
+        status: 'not_registered',
+      };
+    }
     if (errorMsg.toLowerCase().includes('phone') || errorMsg.toLowerCase().includes('invalid')) {
       return {
         sent: false,
@@ -120,26 +131,58 @@ export async function sendWhatsAppPayload(
   }
 
   if (response.status >= 500) {
-    console.log(`[whatsapp] Remote error HTTP ${response.status}`);
+    console.log(`[whatsapp] Remote error HTTP ${response.status} status=${body.status || 'n/a'}`);
     return {
       sent: false,
       skipped: false,
-      reason: 'remote_error',
+      reason: body.status === 'failed' ? 'failed' : 'remote_error',
       httpStatus: response.status,
       error: body.error,
+      status: body.status,
     };
   }
 
-  if (response.ok && body.success) {
+  // Success only when bot confirms actual send (or explicit queued).
+  // Do NOT treat bare response.ok / legacy "submitted" without messageId as sent.
+  if (response.ok && (body.ok === true || body.success === true)) {
+    if (body.status === 'queued') {
+      console.log(
+        `[whatsapp] ${payload.type} queued for ${maskPhone(payload.phone)}`,
+      );
+      return {
+        sent: false,
+        skipped: false,
+        reason: 'queued',
+        status: 'queued',
+      };
+    }
+
+    if (body.status === 'sent' && body.messageId) {
+      console.log(
+        `[whatsapp] ${payload.type} sent for ${maskPhone(payload.phone)} messageId=${body.messageId}`,
+      );
+      return {
+        sent: true,
+        skipped: false,
+        status: 'sent',
+        type: payload.type,
+        phone: body.phone,
+        messageId: body.messageId,
+        sentAt: body.sentAt,
+      };
+    }
+
+    // Legacy bots that still return status=submitted without messageId — not counted as sent.
     console.log(
-      `[whatsapp] ${payload.type} message submitted for ${maskPhone(payload.phone)}`,
+      `[whatsapp] ${payload.type} ambiguous success for ${maskPhone(payload.phone)} status=${body.status || 'n/a'} messageId=${body.messageId || 'missing'} — treating as failed`,
     );
     return {
-      sent: true,
+      sent: false,
       skipped: false,
-      status: 'submitted',
-      type: payload.type,
-      sentAt: body.sentAt,
+      reason: 'invalid_response',
+      httpStatus: response.status,
+      error: `Bot returned success without confirmed sent/messageId (status=${body.status || 'n/a'})`,
+      status: body.status,
     };
   }
 
@@ -149,6 +192,7 @@ export async function sendWhatsAppPayload(
     reason: 'remote_error',
     httpStatus: response.status,
     error: body.error,
+    status: body.status,
   };
 }
 

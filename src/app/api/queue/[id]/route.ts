@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import {
+  requireActiveBranchContext,
+  requireBranchOperationAccess,
+  isActiveBranchContext,
+} from "@/lib/branch/context";
+import {
+  assertBookingOwnedByActiveBranch,
+  bookingQueueNotFoundResponse,
+} from "@/lib/branch/bookingQueueOwnership";
+import { detectQueueTicketsSchema } from "@/lib/queueSchema";
 
 export const runtime = "nodejs";
 
@@ -31,6 +41,9 @@ const ACTION_MAP: Record<string, string> = {
 // GET /api/queue/[id]
 export async function GET(_req: NextRequest, context: RouteContext) {
   try {
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const { id } = await context.params;
     const db = await getPool();
     const result = await db.request()
@@ -44,6 +57,14 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       `);
     if (!result.recordset.length)
       return NextResponse.json({ error: "تذكرة غير موجودة" }, { status: 404 });
+
+    const schema = await detectQueueTicketsSchema();
+    if (
+      schema.hasBranchID &&
+      !assertBookingOwnedByActiveBranch(branch.branchId, result.recordset[0].BranchID)
+    ) {
+      return bookingQueueNotFoundResponse();
+    }
 
     const histRes = await db.request()
       .input("id", sql.Int, parseInt(id))
@@ -68,6 +89,9 @@ export async function GET(_req: NextRequest, context: RouteContext) {
 // PATCH /api/queue/[id]
 export async function PATCH(req: NextRequest, context: RouteContext) {
   try {
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const { id } = await context.params;
     const session = await getSession();
     const userID = session?.UserID ?? 0;
@@ -76,6 +100,19 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     const { action, notes, transferEmpId, incrementPrintCount } = body;
 
     const db = await getPool();
+    const schema = await detectQueueTicketsSchema();
+
+    if (schema.hasBranchID) {
+      const ownerCheck = await db.request()
+        .input("id", sql.Int, ticketId)
+        .query(`SELECT BranchID FROM [dbo].[QueueTickets] WHERE QueueTicketID = @id`);
+      if (!ownerCheck.recordset.length) {
+        return bookingQueueNotFoundResponse();
+      }
+      if (!assertBookingOwnedByActiveBranch(branch.branchId, ownerCheck.recordset[0].BranchID)) {
+        return bookingQueueNotFoundResponse();
+      }
+    }
 
     // Handle print count increment (non-status action)
     if (incrementPrintCount) {

@@ -19,6 +19,8 @@ export interface IncomeSnapshot {
   PaymentMethodID: number;
   Notes: string | null;
   ShiftMoveID: number | null;
+  BranchID: number;
+  BusinessDayID: number | null;
   IsEmployeePayrollIncome?: boolean | number;
 }
 
@@ -41,7 +43,7 @@ export async function getIncomeSnapshot(
     .query(`
       SELECT TOP 1
         ID, invID, invDate, invType, ExpINID, GrandTolal, PaymentMethodID,
-        Notes, ShiftMoveID,
+        Notes, ShiftMoveID, BranchID, BusinessDayID,
         ISNULL(IsEmployeePayrollIncome, 0) AS IsEmployeePayrollIncome
       FROM dbo.TblCashMove
       WHERE ID = @id AND invType = N'ايرادات'
@@ -53,9 +55,16 @@ export async function updateIncome(
   transaction: sql.Transaction,
   id: number,
   input: UpdateIncomeInput,
+  activeBranchId?: number,
 ): Promise<IncomeSnapshot> {
   const exists = await getIncomeSnapshot(transaction, id);
   if (!exists) throw new Error('الإيراد غير موجود');
+  if (
+    activeBranchId != null &&
+    Number(exists.BranchID) !== Number(activeBranchId)
+  ) {
+    throw new Error('غير موجود');
+  }
 
   const parsedDate = new Date(input.invDate);
   if (isNaN(parsedDate.getTime())) throw new Error(`تاريخ غير صالح: ${input.invDate}`);
@@ -105,10 +114,17 @@ export async function updateIncome(
 export async function deleteIncome(
   transaction: sql.Transaction,
   id: number,
+  activeBranchId?: number,
 ): Promise<Extract<DeleteCashMoveWithLedgerResult, { deleted: true }>> {
   const existing = await getIncomeSnapshot(transaction, id);
   if (!existing) {
     throw new Error('الإيراد غير موجود أو تم حذفه');
+  }
+  if (
+    activeBranchId != null &&
+    Number(existing.BranchID) !== Number(activeBranchId)
+  ) {
+    throw new Error('غير موجود');
   }
 
   const result = await deleteCashMoveWithLinkedLedgerEntries(transaction, id);

@@ -97,12 +97,14 @@ export default function MonthlyBusinessReportPage() {
 
   const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
 
-  const partnerEquations = report
+  const partners = report?.partners ?? [];
+  const partnerEquations = report && partners.length > 0
     ? calculateMonthlyFinancialEquations({
         year,
         month,
         baseAmount: report.classifiedTotals?.cleanNetProfit ?? report.netProfit,
         mode: 'monthly',
+        partners,
       })
     : null;
 

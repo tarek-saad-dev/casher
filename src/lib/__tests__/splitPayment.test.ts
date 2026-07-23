@@ -22,6 +22,8 @@ interface CashMoveRow {
   inOut: "in" | "out";
   ExpINID: number | null;
   Notes: string;
+  BranchID: number | null;
+  BusinessDayID: number | null;
 }
 
 // ─── Captured rows store (shared between mock factory and tests) ──────────────
@@ -71,6 +73,8 @@ vi.mock("@/lib/db", () => {
             inOut: (inputs["inOut"] as "in" | "out") ?? "in",
             ExpINID: (inputs["ExpINID"] as number | null) ?? null,
             Notes: (inputs["Notes"] as string) ?? "",
+            BranchID: (inputs["BranchID"] as number | null) ?? null,
+            BusinessDayID: (inputs["BusinessDayID"] as number | null) ?? null,
           };
 
           if (failOnNotesPhrase && row.Notes.includes(failOnNotesPhrase)) {
@@ -149,6 +153,8 @@ describe("Split Payment — redistributeFromClearing", () => {
     expenseCatId: EXPENSE_CAT_ID,
     incomeCatId: INCOME_CAT_ID,
     transaction: DUMMY_TX,
+    branchId: 1,
+    businessDayId: 1,
   };
 
   // ── 1. Mixed 100 Cash + 100 Visa ─────────────────────────────────────────
@@ -187,6 +193,12 @@ describe("Split Payment — redistributeFromClearing", () => {
     const totalIn  = inRows.reduce((s, r) => s + r.GrandTolal, 0);
     expect(totalOut).toBe(200);
     expect(totalIn).toBe(200);
+
+    // Every row is stamped with branch + business-day ownership
+    for (const r of capturedRows) {
+      expect(r.BranchID).toBe(1);
+      expect(r.BusinessDayID).toBe(1);
+    }
   });
 
   // ── 2. Clearing account nets to zero ─────────────────────────────────────

@@ -11,6 +11,14 @@ import {
   BOOKING_SLOT_REASON_AR,
   type BookingSlotReasonCode,
 } from '@/lib/bookingAvailabilityEngine';
+import {
+  extractPublicBranchCode,
+  resolvePublicBranchCode,
+  publicBranchRequiredResponse,
+  publicInvalidBranchResponse,
+} from '@/lib/branch/bookingQueueOwnership';
+import { BranchDomainError } from '@/lib/branch/types';
+import { requireActiveBranchContext, isActiveBranchContext } from '@/lib/branch/context';
 
 export const runtime = 'nodejs';
 
@@ -63,6 +71,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'empId مطلوب في وضع specific' }, { status: 400, headers: PUBLIC_CORS_HEADERS });
     }
 
+    // Resolve branch: internal callers use the authenticated session branch;
+    // public callers must supply branchCode (never a silent default).
+    const { searchParams } = new URL(req.url);
+    const isInternalSource = source === 'operations' || source === 'admin';
+    let branchId: number;
+    if (isInternalSource) {
+      const branchCtx = await requireActiveBranchContext();
+      if (!isActiveBranchContext(branchCtx)) return branchCtx;
+      branchId = branchCtx.branchId;
+    } else {
+      const branchCode = extractPublicBranchCode(searchParams, body);
+      try {
+        const branch = await resolvePublicBranchCode(branchCode);
+        branchId = branch.branchId;
+      } catch (err) {
+        if (err instanceof BranchDomainError) {
+          return err.code === 'BRANCH_REQUIRED'
+            ? publicBranchRequiredResponse()
+            : publicInvalidBranchResponse();
+        }
+        throw err;
+      }
+    }
+
     const validation = await validateBookingSlot({
       date,
       time,
@@ -71,6 +103,7 @@ export async function POST(req: NextRequest) {
       mode,
       empId,
       source,
+      branchId,
     });
 
     const plan = validation.plan;

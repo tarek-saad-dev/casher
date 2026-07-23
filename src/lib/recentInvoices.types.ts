@@ -47,6 +47,12 @@ export interface RecentInvoicesQueryParams {
   status?: RecentInvoiceStatusFilter;
   limit?: number;
   cursor?: number;
+  /**
+   * Client-known active branch id (from session/`/api/branches/active`), used only to key the
+   * client-side response cache per branch. The server independently re-validates and filters by
+   * the session's active branch — this value is never trusted for filtering.
+   */
+  branchId?: number;
 }
 
 export interface RecentInvoicesFilterState {
