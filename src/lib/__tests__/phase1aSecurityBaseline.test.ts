@@ -12,8 +12,15 @@ describe('proxy public allowlist (Phase 1A)', () => {
   it('keeps login and public booking anonymous', () => {
     expect(isAnonymousPublicPath('/login')).toBe(true);
     expect(isAnonymousPublicPath('/api/auth/login')).toBe(true);
+    expect(isAnonymousPublicPath('/api/auth/session')).toBe(true);
+    expect(isAnonymousPublicPath('/api/permissions/my-access')).toBe(true);
     expect(isAnonymousPublicPath('/api/public/booking/available-slots')).toBe(true);
     expect(isAnonymousPublicPath('/api/public/booking/create')).toBe(true);
+  });
+
+  it('lets auth/session and my-access reach handlers without a cookie', () => {
+    expect(classifyProxyAuth('/api/auth/session').kind).toBe('anonymous_public');
+    expect(classifyProxyAuth('/api/permissions/my-access').kind).toBe('anonymous_public');
   });
 
   it('does not expose /api/admin/* as anonymous public', () => {

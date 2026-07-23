@@ -58,7 +58,7 @@ Migration/seed/fix/test/debug/cleanup routes including: `employees/migration`, `
 ## 3. Proxy changes
 
 * Extracted pure matcher: `src/lib/proxyPublicRoutes.ts`
-* Anonymous public: `/login`, `/api/auth/login`, `/api/public/`
+* Anonymous public: `/login`, `/api/auth/login`, `/api/auth/session`, `/api/permissions/my-access`, `/api/public/`
 * Cron bearer (no cookie): nightly-close, auto-generate, `/api/cron/`
 * **No** `/api/admin/` prefix bypass
 * Production cron bearer rejects when `CRON_SECRET` unset
@@ -83,6 +83,8 @@ Existing `requireRole` / `requirePageAccess` reused — no second permission sys
 
 * `/login`
 * `/api/auth/login`
+* `/api/auth/session`
+* `/api/permissions/my-access`
 * `/api/public/**` (booking + public client surfaces)
 
 ---

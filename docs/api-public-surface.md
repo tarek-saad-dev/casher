@@ -27,6 +27,8 @@
 |------|-------|--------|
 | `/login` | Intentionally public | Login page |
 | `/api/auth/login` | Intentionally public | Credential exchange |
+| `/api/auth/session` | Intentionally public | Session probe / logout; handler returns empty session or clears cookie |
+| `/api/permissions/my-access` | Intentionally public | Root-layout permissions probe; handler returns 401 when unauthenticated |
 | `/api/public/*` | Public with rate limiting | Public booking + client loyalty/store surfaces |
 
 **Explicitly removed from allowlist in Phase 1A:**

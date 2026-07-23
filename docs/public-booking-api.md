@@ -896,7 +896,7 @@ These must be set on the production server. No new variables were added by the p
 ### Middleware
 Ensure `/api/public/` is in the allowed list in `src/middleware.ts`:
 ```ts
-const PUBLIC_ROUTES = ['/login', '/api/auth/login', '/api/public/'];
+const PUBLIC_ROUTES = ['/login', '/api/auth/login', '/api/auth/session', '/api/permissions/my-access', '/api/public/'];
 ```
 This is already configured. Do not remove it.
 

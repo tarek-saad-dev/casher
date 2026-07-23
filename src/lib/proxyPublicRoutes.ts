@@ -7,6 +7,10 @@
 export const PUBLIC_EXACT_ROUTES = [
   '/login',
   '/api/auth/login',
+  // Session probe / logout — handler returns empty session or clears cookie; must reach node.
+  '/api/auth/session',
+  // Permissions probe from root layout — handler returns 401 when unauthenticated.
+  '/api/permissions/my-access',
 ] as const;
 
 /**
