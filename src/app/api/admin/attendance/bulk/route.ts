@@ -12,6 +12,7 @@ import {
   replaceAttendanceBreakTimes,
 } from "@/lib/hr/attendance-break-time-db";
 import { syncBlockRangesFromBreaks, syncBlockRangesFromBreakTimes } from "@/lib/hr/attendance-break-schedule-sync";
+import { syncAttendanceShiftToOverrides } from "@/lib/hr/attendance-shift-schedule-sync";
 import { scheduleAttendanceCheckInOutWhatsApp } from "@/lib/services/employeeAttendanceWhatsAppNotify";
 import {
   isActiveBranchContext,
@@ -321,6 +322,14 @@ export async function PUT(req: NextRequest) {
             breakTimesToSave,
           );
         }
+
+        await syncAttendanceShiftToOverrides(txDb, Number(item.EmpID), WorkDate, {
+          checkInTime: checkIn,
+          checkOutTime: checkOut,
+          scheduledStart: schedStart,
+          scheduledEnd: schedEnd,
+          status: finalStatus,
+        });
 
         whatsappJobs.push({
           empId: Number(item.EmpID),

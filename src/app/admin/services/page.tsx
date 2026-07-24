@@ -189,6 +189,8 @@ export default function ServicesManagementPage() {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [categorySaving, setCategorySaving] = useState(false);
   const [reorderSaving, setReorderSaving] = useState(false);
+  /** Draft position inputs (1-based display rank) keyed by CatID */
+  const [positionDrafts, setPositionDrafts] = useState<Record<number, string>>({});
   const [categoryFormData, setCategoryFormData] = useState<CategoryFormData>({
     CatName: '',
     Description: '',
@@ -392,26 +394,17 @@ export default function ServicesManagementPage() {
     }
   };
 
-  /** Move category up/down in display order and persist via reorder API. */
-  const moveCategory = async (categoryId: number, direction: 'up' | 'down') => {
-    const sorted = [...categories].sort(
-      (a, b) => (a.SortOrder ?? 0) - (b.SortOrder ?? 0) || a.CatName.localeCompare(b.CatName, 'ar'),
-    );
-    const index = sorted.findIndex((c) => c.CatID === categoryId);
-    if (index < 0) return;
-    const swapWith = direction === 'up' ? index - 1 : index + 1;
-    if (swapWith < 0 || swapWith >= sorted.length) return;
-
-    const next = [...sorted];
-    [next[index], next[swapWith]] = [next[swapWith], next[index]];
-    const optimistic = next.map((c, i) => ({ ...c, SortOrder: (i + 1) * 10 }));
+  /** Persist full category display order (first id = shown first). */
+  const persistCategoryOrder = async (ordered: Category[]) => {
+    const optimistic = ordered.map((c, i) => ({ ...c, SortOrder: (i + 1) * 10 }));
     setCategories(optimistic);
+    setPositionDrafts({});
     setReorderSaving(true);
     try {
       const res = await fetch('/api/services/categories/reorder', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ categoryIds: next.map((c) => c.CatID) }),
+        body: JSON.stringify({ categoryIds: ordered.map((c) => c.CatID) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'فشل حفظ الترتيب');
@@ -424,6 +417,58 @@ export default function ServicesManagementPage() {
     } finally {
       setReorderSaving(false);
     }
+  };
+
+  const sortedCategories = [...categories].sort(
+    (a, b) => (a.SortOrder ?? 0) - (b.SortOrder ?? 0) || a.CatName.localeCompare(b.CatName, 'ar'),
+  );
+
+  /** Move category up/down in display order and persist via reorder API. */
+  const moveCategory = async (categoryId: number, direction: 'up' | 'down') => {
+    const sorted = sortedCategories;
+    const index = sorted.findIndex((c) => c.CatID === categoryId);
+    if (index < 0) return;
+    const swapWith = direction === 'up' ? index - 1 : index + 1;
+    if (swapWith < 0 || swapWith >= sorted.length) return;
+
+    const next = [...sorted];
+    [next[index], next[swapWith]] = [next[swapWith], next[index]];
+    await persistCategoryOrder(next);
+  };
+
+  /**
+   * Set absolute 1-based display position (1 = first).
+   * Clamps to 1..N and moves the category into that slot.
+   */
+  const setCategoryPosition = async (categoryId: number, rawPosition: string) => {
+    const sorted = sortedCategories;
+    const fromIndex = sorted.findIndex((c) => c.CatID === categoryId);
+    if (fromIndex < 0) return;
+
+    const parsed = parseInt(rawPosition.trim(), 10);
+    if (isNaN(parsed)) {
+      setPositionDrafts((prev) => {
+        const next = { ...prev };
+        delete next[categoryId];
+        return next;
+      });
+      return;
+    }
+
+    const toIndex = Math.max(0, Math.min(sorted.length - 1, parsed - 1));
+    if (toIndex === fromIndex) {
+      setPositionDrafts((prev) => {
+        const next = { ...prev };
+        delete next[categoryId];
+        return next;
+      });
+      return;
+    }
+
+    const next = [...sorted];
+    const [item] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, item);
+    await persistCategoryOrder(next);
   };
 
   // Statistics
@@ -739,7 +784,7 @@ export default function ServicesManagementPage() {
           <div>
             <h3 className="text-sm font-semibold text-zinc-300">الفئات وترتيب العرض</h3>
             <p className="text-xs text-zinc-500 mt-0.5">
-              استخدم الأسهم لتغيير ترتيب ظهور الفئات في كتالوج الأسعار والحجز
+              الأسهم أو رقم الظهور (1 = أول فئة). اكتب الرقم ثم Enter أو اخرج من الحقل
               {reorderSaving ? ' — جاري الحفظ...' : ''}
             </p>
           </div>
@@ -761,12 +806,14 @@ export default function ServicesManagementPage() {
           </div>
         ) : (
           <div className="space-y-2 p-4">
-            {[...categories]
-              .sort((a, b) => (a.SortOrder ?? 0) - (b.SortOrder ?? 0) || a.CatName.localeCompare(b.CatName, 'ar'))
-              .map((category, index, sorted) => {
+            {sortedCategories.map((category, index, sorted) => {
               const theme = getCategoryTheme(category.CatName, category.CatID);
               const isFirst = index === 0;
               const isLast = index === sorted.length - 1;
+              const positionValue =
+                positionDrafts[category.CatID] !== undefined
+                  ? positionDrafts[category.CatID]
+                  : String(index + 1);
               return (
                 <div
                   key={category.CatID}
@@ -799,11 +846,30 @@ export default function ServicesManagementPage() {
                           <ChevronDown className="h-4 w-4" />
                         </Button>
                       </div>
-                      <div
-                        className="text-xs font-mono text-zinc-500 w-8 text-center shrink-0"
-                        title={`SortOrder = ${category.SortOrder}`}
-                      >
-                        #{index + 1}
+                      <div className="flex flex-col items-center gap-0.5 shrink-0">
+                        <span className="text-[10px] text-zinc-500">ترتيب</span>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={sorted.length}
+                          disabled={reorderSaving}
+                          value={positionValue}
+                          onChange={(e) =>
+                            setPositionDrafts((prev) => ({
+                              ...prev,
+                              [category.CatID]: e.target.value,
+                            }))
+                          }
+                          onBlur={() => setCategoryPosition(category.CatID, positionValue)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.currentTarget.blur();
+                            }
+                          }}
+                          className="w-14 h-8 text-center bg-zinc-800 border-zinc-700 text-white text-sm font-mono px-1"
+                          title={`اكتب رقم من 1 إلى ${sorted.length}`}
+                          aria-label={`ترتيب ظهور ${category.CatName}`}
+                        />
                       </div>
                       <div style={{ width: 4, alignSelf: 'stretch', borderRadius: '9999px', ...theme.dotStyle }} />
                       <div
@@ -817,7 +883,7 @@ export default function ServicesManagementPage() {
                           <span style={{ fontWeight: 600, color: theme.color }}>{category.ServiceCount}</span>
                           {' '}خدمة
                           <span className="text-zinc-600 mx-1">·</span>
-                          ترتيب {category.SortOrder}
+                          موضع {index + 1} من {sorted.length}
                         </p>
                       </div>
                     </div>

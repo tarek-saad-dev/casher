@@ -35,6 +35,32 @@ vi.mock('@/lib/hr/attendance-break-schedule-sync', () => ({
   ATTENDANCE_BREAK_TIME_SOURCE: 'attendance-break-time',
 }));
 
+const syncAttendanceShiftToOverrides = vi.fn(async () => ({
+  deactivated: 0,
+  inserted: 0,
+  plan: { action: 'clear' as const },
+}));
+
+vi.mock('@/lib/hr/attendance-shift-schedule-sync', () => ({
+  syncAttendanceShiftToOverrides: (...args: unknown[]) =>
+    syncAttendanceShiftToOverrides(...args),
+  ATTENDANCE_SHIFT_SOURCE: 'attendance-shift',
+}));
+
+vi.mock('@/lib/branch', () => ({
+  isActiveBranchContext: vi.fn((b: unknown) => !!b),
+  requireBranchOperationAccess: vi.fn(async () => ({
+    ok: true,
+    branchId: 1,
+    branchCode: 'GLEEM',
+    branchName: 'Gleem',
+  })),
+}));
+
+vi.mock('@/lib/hr/attendance/branchAttendance.service', () => ({
+  assertEmployeeEligibleForBranchAttendance: vi.fn(async () => undefined),
+}));
+
 const ensureOverridesTable = vi.fn(async () => undefined);
 vi.mock('@/lib/scheduleOverrides', () => ({
   ensureOverridesTable: (...args: unknown[]) => ensureOverridesTable(...args),
@@ -221,6 +247,7 @@ describe('POST /api/operations/schedule-control/apply wiring', () => {
       '14:00',
       '15:00',
       'كافي',
+      1,
     );
   });
 
@@ -359,6 +386,18 @@ describe('PUT /api/admin/attendance wiring', () => {
           Minutes: 60,
         }),
       ],
+    );
+    expect(syncAttendanceShiftToOverrides).toHaveBeenCalledWith(
+      expect.anything(),
+      5,
+      '2026-07-15',
+      expect.objectContaining({
+        checkInTime: '12:00',
+        checkOutTime: '22:00',
+        scheduledStart: '12:00',
+        scheduledEnd: '00:00',
+        status: 'Present',
+      }),
     );
   });
 });

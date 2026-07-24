@@ -24,6 +24,7 @@ import {
 } from "@/lib/hr/attendance-break-time-db";
 import { normalizeBreaksInput } from "@/lib/hr/attendance-breaks";
 import { syncBlockRangesFromBreaks, syncBlockRangesFromBreakTimes } from "@/lib/hr/attendance-break-schedule-sync";
+import { syncAttendanceShiftToOverrides } from "@/lib/hr/attendance-shift-schedule-sync";
 import { scheduleAttendanceCheckInOutWhatsApp } from "@/lib/services/employeeAttendanceWhatsAppNotify";
 import {
   isActiveBranchContext,
@@ -509,6 +510,17 @@ export async function PUT(req: NextRequest) {
         console.warn("[api/admin/attendance] break-time block_range sync failed", err);
       });
     }
+
+    // Mirror تأخير / حضور مبكر / انصراف مبكر → نوافذ الحجز (available-slots)
+    await syncAttendanceShiftToOverrides(db, EmpID, WorkDate, {
+      checkInTime: CheckInTime || null,
+      checkOutTime: CheckOutTime || null,
+      scheduledStart: schedStart,
+      scheduledEnd: schedEnd,
+      status: finalStatus,
+    }).catch((err) => {
+      console.warn("[api/admin/attendance] shift override sync failed", err);
+    });
 
     scheduleAttendanceCheckInOutWhatsApp({
       empId: EmpID,
