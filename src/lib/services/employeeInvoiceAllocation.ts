@@ -281,15 +281,15 @@ export function allocateEmployeeInvoiceRevenue(
       continue;
     }
 
+    const headerDisVal = roundMoney(Math.max(0, safeMoney(header.disVal)));
+    // When header discount sits on top of line nets (GrandTotal ≈ Σnets − headerDisVal),
+    // split by line-net weights. Otherwise keep classic SubTotal basis (products / legacy).
+    const useLineNetBasis =
+      headerDisVal > 0 &&
+      Math.abs(grandTotal - (eligibleGrossTotal - headerDisVal)) <= 0.01;
+    const denom = useLineNetBasis ? eligibleGrossTotal : subTotal;
     const employeePool =
-      eligibleGrossTotal > 0
-        ? roundMoney(
-            (grandTotal * eligibleGrossTotal) /
-              // When line discounts exist, weights are line nets while SubTotal is Σ gross.
-              // Use eligibleGrossTotal as denominator so header discount splits across nets.
-              (Math.abs(subTotal - eligibleGrossTotal) > 0.01 ? eligibleGrossTotal : subTotal),
-          )
-        : 0;
+      denom > 0 ? roundMoney((grandTotal * eligibleGrossTotal) / denom) : 0;
     const distribution = distributeProportionally(
       grossByLine.map(({ line, gross }) => ({ detailId: line.detailId, weight: gross })),
       employeePool
