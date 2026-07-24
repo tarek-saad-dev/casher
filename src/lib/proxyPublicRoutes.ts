@@ -11,6 +11,8 @@ export const PUBLIC_EXACT_ROUTES = [
   '/api/auth/session',
   // Permissions probe from root layout — handler returns 401 when unauthenticated.
   '/api/permissions/my-access',
+  // Public bilingual services catalog (CORS-enabled; used by external price pages).
+  '/api/services/catalog',
 ] as const;
 
 /**

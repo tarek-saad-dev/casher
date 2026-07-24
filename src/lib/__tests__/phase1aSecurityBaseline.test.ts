@@ -16,6 +16,10 @@ describe('proxy public allowlist (Phase 1A)', () => {
     expect(isAnonymousPublicPath('/api/permissions/my-access')).toBe(true);
     expect(isAnonymousPublicPath('/api/public/booking/available-slots')).toBe(true);
     expect(isAnonymousPublicPath('/api/public/booking/create')).toBe(true);
+    expect(isAnonymousPublicPath('/api/services/catalog')).toBe(true);
+    // Mutating / flat services APIs stay session-gated
+    expect(isAnonymousPublicPath('/api/services')).toBe(false);
+    expect(isAnonymousPublicPath('/api/services/categories')).toBe(false);
   });
 
   it('lets auth/session and my-access reach handlers without a cookie', () => {
