@@ -7,6 +7,7 @@ import {
   isValidDate,
   PUBLIC_CORS_HEADERS,
   salonDateTimeToMs,
+  publicBookingPausedJson,
 } from "@/lib/publicBookingHelpers";
 import { sqlDateToStr } from "@/lib/availabilityEngine";
 import {
@@ -161,6 +162,12 @@ export async function GET(req: NextRequest) {
     }
 
     const settings = await getPublicSettings(branch.branchId);
+    if (!settings.bookingEnabled) {
+      return NextResponse.json(publicBookingPausedJson(), {
+        status: 503,
+        headers: PUBLIC_CORS_HEADERS,
+      });
+    }
     const totalDays = settings.maxBookingDaysAhead;
     const minNotice = settings.minNoticeMinutes;
     const slotIntervalMinutes = settings.slotIntervalMinutes;
@@ -829,6 +836,12 @@ function computeDayAvailabilityInMemory(
     const effectiveStart = effSched.start;
     const effectiveEnd   = effSched.end;
 
+    // Preserve overnight from the BASE weekly window even after early attendance expand
+    // (e.g. base 14:00→01:00, early start 11:30→01:00 must stay overnight).
+    const baseOvernight = timeToMinutes(schedEnd) <= timeToMinutes(schedStart);
+    const effOvernight = timeToMinutes(effectiveEnd) <= timeToMinutes(effectiveStart);
+    const isOvernight = baseOvernight || effOvernight;
+
     // 3. Build blocking intervals from queue, bookings, and override block_ranges
     const queueKey = `${empId}:${dateStr}`;
     const queueTickets = queueMap.get(queueKey) || [];
@@ -884,39 +897,41 @@ function computeDayAvailabilityInMemory(
     const startMin = timeToMinutes(effectiveStart);
     const endMin = timeToMinutes(effectiveEnd);
 
-    // Generate slots
-    const slots: string[] = [];
-    if (startMin <= endMin) {
-      // Normal shift
+    // Generate slots — overnight must place post-midnight times on the NEXT calendar day
+    const slots: Array<{ time: string; dayOffset: 0 | 1 }> = [];
+    if (!isOvernight) {
       for (let m = startMin; m < endMin; m += slotIntervalMinutes) {
         const hh = Math.floor(m / 60)
           .toString()
           .padStart(2, "0");
         const mm = (m % 60).toString().padStart(2, "0");
-        slots.push(`${hh}:${mm}`);
+        slots.push({ time: `${hh}:${mm}`, dayOffset: 0 });
       }
     } else {
-      // Overnight shift (e.g., 15:00-02:00)
-      for (let m = startMin; m < 24 * 60; m += slotIntervalMinutes) {
-        const hh = Math.floor(m / 60)
+      const endTotal = endMin + 24 * 60;
+      for (let m = startMin; m < endTotal; m += slotIntervalMinutes) {
+        const tod = m % (24 * 60);
+        const dayOffset: 0 | 1 = m >= 24 * 60 ? 1 : 0;
+        const hh = Math.floor(tod / 60)
           .toString()
           .padStart(2, "0");
-        const mm = (m % 60).toString().padStart(2, "0");
-        slots.push(`${hh}:${mm}`);
-      }
-      for (let m = 0; m < endMin; m += slotIntervalMinutes) {
-        const hh = Math.floor(m / 60)
-          .toString()
-          .padStart(2, "0");
-        const mm = (m % 60).toString().padStart(2, "0");
-        slots.push(`${hh}:${mm}`);
+        const mm = (tod % 60).toString().padStart(2, "0");
+        slots.push({ time: `${hh}:${mm}`, dayOffset });
       }
     }
 
     // Check each slot (early exit on first available)
-    for (const time of slots) {
+    for (const slot of slots) {
+      const slotDate =
+        slot.dayOffset === 1
+          ? (() => {
+              const d = new Date(`${dateStr}T12:00:00Z`);
+              d.setUTCDate(d.getUTCDate() + 1);
+              return d.toISOString().slice(0, 10);
+            })()
+          : dateStr;
       // Cairo-aware epoch: prevents server-TZ offset shifting slot times by ±2-3h
-      const slotMs = salonDateTimeToMs(dateStr, time, "Africa/Cairo");
+      const slotMs = salonDateTimeToMs(slotDate, slot.time, "Africa/Cairo");
       const slotDt = new Date(slotMs);
 
       // Skip past slots

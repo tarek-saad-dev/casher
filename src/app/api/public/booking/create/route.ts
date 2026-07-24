@@ -12,6 +12,7 @@ import {
   upsertCustomer,
   PUBLIC_CORS_HEADERS,
   salonDateTimeToMs,
+  publicBookingPausedJson,
 } from "@/lib/publicBookingHelpers";
 import { buildSequentialServicePlanFromLines, ServicePlanError, calculateServicePlanDuration } from '@/lib/servicePlan';
 import {
@@ -175,10 +176,10 @@ export async function POST(req: NextRequest) {
     const settings = await getPublicSettings(branchId);
     // Only check bookingEnabled for public bookings, skip for operations/admin
     if (!isInternalSource && !settings.bookingEnabled) {
-      return NextResponse.json(
-        { error: "الحجز الإلكتروني غير متاح حالياً" },
-        { status: 503, headers: PUBLIC_CORS_HEADERS },
-      );
+      return NextResponse.json(publicBookingPausedJson(), {
+        status: 503,
+        headers: PUBLIC_CORS_HEADERS,
+      });
     }
 
     // Use salon timezone-aware epoch calculation to avoid server TZ mismatches

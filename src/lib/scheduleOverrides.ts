@@ -366,8 +366,8 @@ function isEarlierThanBaseStart(
   const s = hhmmToMin(baseStart);
   const e = hhmmToMin(baseEnd);
   if (e > s) return c < s;
-  // Overnight: early arrival is still before evening start (e.g. 21:00 before 22:00)
-  return c < s && (c >= e || c >= 12 * 60);
+  // Overnight: only the daytime gap after shift end and before next start
+  return c > e && c < s;
 }
 
 /** Same-day or overnight: is candidate strictly after scheduled end? */
@@ -395,7 +395,8 @@ function isEarlierClockOnShift(
   const s = hhmmToMin(currentStart);
   const e = hhmmToMin(currentEnd);
   if (e > s) return c < s;
-  return c < s && (c >= e || c >= 12 * 60);
+  // Overnight effective window: only pull start earlier within the pre-start gap
+  return c > e && c < s;
 }
 
 /** Prefer moving effective end later along the shift. */

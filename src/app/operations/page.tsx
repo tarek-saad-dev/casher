@@ -152,6 +152,8 @@ export default function OperationsPage() {
   const [jumpToBookingDate, setJumpToBookingDate] = useState<string | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [musicPlayerExpanded, setMusicPlayerExpanded] = useState(false);
+  const [publicBookingEnabled, setPublicBookingEnabled] = useState(true);
+  const [publicBookingToggleLoading, setPublicBookingToggleLoading] = useState(false);
   const [mobileBarberSelection, setMobileBarberSelection] = useState<MobileBarberSelection>('all');
   const [quickQueueLoading, setQuickQueueLoading] = useState(false);
   const [quickQueueReprintTicket, setQuickQueueReprintTicket] = useState<CreateQueueResponse | null>(null);
@@ -217,6 +219,24 @@ export default function OperationsPage() {
     document.title = '💈 لوحة التشغيل - الصالون';
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/booking-settings');
+        const data = await res.json();
+        if (!cancelled && data?.ok && data.settings) {
+          setPublicBookingEnabled(!!data.settings.bookingEnabled);
+        }
+      } catch {
+        // Keep default enabled until user can toggle
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.ActiveBranchID]);
+
   const { reannounce } = useAutoVoiceAnnounce({
     date: selectedDate,
     enabled: voiceEnabled,
@@ -242,6 +262,40 @@ export default function OperationsPage() {
     setVoiceEnabled(false);
     showToast('تم إيقاف النداء الصوتي', true);
   }, [showToast]);
+
+  const handleTogglePublicBooking = useCallback(async () => {
+    if (publicBookingToggleLoading) return;
+    const next = !publicBookingEnabled;
+    setPublicBookingToggleLoading(true);
+    setPublicBookingEnabled(next);
+    try {
+      const res = await fetch('/api/admin/booking-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingEnabled: next }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        setPublicBookingEnabled(!next);
+        showToast(data?.error || 'فشل تحديث إعداد حجز الموقع', false);
+        return;
+      }
+      if (typeof data.bookingEnabled === 'boolean') {
+        setPublicBookingEnabled(data.bookingEnabled);
+      }
+      showToast(
+        next
+          ? 'تم تفعيل حجز الموقع'
+          : 'تم إيقاف حجز الموقع — الموقع يعرض «الحجز غير متاح اليوم»',
+        true,
+      );
+    } catch {
+      setPublicBookingEnabled(!next);
+      showToast('فشل تحديث إعداد حجز الموقع', false);
+    } finally {
+      setPublicBookingToggleLoading(false);
+    }
+  }, [publicBookingEnabled, publicBookingToggleLoading, showToast]);
 
   const handleQuickQueueReprint = useCallback(() => {
     if (!quickQueueReprintTicket) return;
@@ -448,6 +502,8 @@ export default function OperationsPage() {
           settlingExpired={settlingExpired}
           voiceEnabled={voiceEnabled}
           musicExpanded={musicPlayerExpanded}
+          publicBookingEnabled={publicBookingEnabled}
+          publicBookingToggleLoading={publicBookingToggleLoading}
           onPrevDay={handlePrevDay}
           onNextDay={handleNextDay}
           onToday={handleToday}
@@ -464,6 +520,7 @@ export default function OperationsPage() {
           onEnableVoice={handleEnableVoice}
           onDisableVoice={handleDisableVoice}
           onToggleMusic={() => setMusicPlayerExpanded((prev) => !prev)}
+          onTogglePublicBooking={handleTogglePublicBooking}
         />
 
         {quickQueueReprintTicket && (

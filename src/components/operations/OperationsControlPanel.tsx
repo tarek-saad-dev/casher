@@ -8,9 +8,11 @@ import {
   AlertTriangle,
   TicketPlus,
   Loader2,
+  Globe,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { DateNavigator } from './DateNavigator';
 import { EnvironmentControls } from './EnvironmentControls';
 import { SalonMusicPanel } from './SalonMusicPanel';
@@ -22,6 +24,8 @@ interface Props {
   settlingExpired?: boolean;
   voiceEnabled: boolean;
   musicExpanded: boolean;
+  publicBookingEnabled: boolean;
+  publicBookingToggleLoading?: boolean;
   onPrevDay: () => void;
   onNextDay: () => void;
   onToday: () => void;
@@ -37,6 +41,7 @@ interface Props {
   onEnableVoice: () => void;
   onDisableVoice: () => void;
   onToggleMusic: () => void;
+  onTogglePublicBooking: () => void;
 }
 
 const primaryBtnClass =
@@ -132,22 +137,58 @@ function ManagementActions({
   settlingExpired,
   voiceEnabled,
   musicExpanded,
+  publicBookingEnabled,
+  publicBookingToggleLoading,
   onScheduleControl,
   onSettleExpired,
   onToggleVoice,
   onToggleMusic,
+  onTogglePublicBooking,
 }: {
   loading?: boolean;
   settlingExpired?: boolean;
   voiceEnabled: boolean;
   musicExpanded: boolean;
+  publicBookingEnabled: boolean;
+  publicBookingToggleLoading?: boolean;
   onScheduleControl?: () => void;
   onSettleExpired?: () => void;
   onToggleVoice: () => void;
   onToggleMusic: () => void;
+  onTogglePublicBooking: () => void;
 }) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1.5 md:gap-2 min-[1200px]:justify-center">
+      <label
+        className={cn(
+          'inline-flex h-10 min-h-[42px] items-center gap-2 rounded-lg border px-3 text-[13px] font-medium transition-colors min-[768px]:h-[42px] min-[768px]:text-sm',
+          publicBookingEnabled
+            ? 'border-success/35 bg-success/10 text-success'
+            : 'border-destructive/30 bg-destructive/10 text-destructive',
+          publicBookingToggleLoading && 'opacity-70',
+        )}
+        title={
+          publicBookingEnabled
+            ? 'حجز الموقع مفعّل — يظهر للحلاقين في الموقع'
+            : 'حجز الموقع متوقف — الموقع يخفي الحلاقين ويعرض رسالة الواتساب'
+        }
+      >
+        <Globe className="size-4 shrink-0" aria-hidden />
+        <span className="whitespace-nowrap">
+          {publicBookingEnabled ? 'حجز الموقع' : 'الحجز متوقف'}
+        </span>
+        <Switch
+          checked={publicBookingEnabled}
+          disabled={publicBookingToggleLoading}
+          onCheckedChange={() => onTogglePublicBooking()}
+          aria-label={
+            publicBookingEnabled
+              ? 'إيقاف الحجز من الموقع'
+              : 'تفعيل الحجز من الموقع'
+          }
+          className="h-5 w-9 data-[state=checked]:bg-success data-[state=unchecked]:bg-destructive/60"
+        />
+      </label>
       {onScheduleControl && (
         <Button
           type="button"
@@ -194,6 +235,8 @@ export function OperationsControlPanel({
   settlingExpired,
   voiceEnabled,
   musicExpanded,
+  publicBookingEnabled,
+  publicBookingToggleLoading,
   onPrevDay,
   onNextDay,
   onToday,
@@ -209,6 +252,7 @@ export function OperationsControlPanel({
   onEnableVoice,
   onDisableVoice,
   onToggleMusic,
+  onTogglePublicBooking,
 }: Props) {
   const handleToggleVoice = () => {
     if (voiceEnabled) onDisableVoice();
@@ -260,10 +304,13 @@ export function OperationsControlPanel({
               settlingExpired={settlingExpired}
               voiceEnabled={voiceEnabled}
               musicExpanded={musicExpanded}
+              publicBookingEnabled={publicBookingEnabled}
+              publicBookingToggleLoading={publicBookingToggleLoading}
               onScheduleControl={onScheduleControl}
               onSettleExpired={onSettleExpired}
               onToggleVoice={handleToggleVoice}
               onToggleMusic={onToggleMusic}
+              onTogglePublicBooking={onTogglePublicBooking}
             />
           </div>
         </div>

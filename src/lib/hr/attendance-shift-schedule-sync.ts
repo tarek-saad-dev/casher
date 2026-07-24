@@ -95,13 +95,21 @@ export function planAttendanceShiftOverrides(
     checkIn && schedStart ? calcLateMinutes(checkIn, schedStart) : 0;
   const checkInMin = checkIn ? timeToMinutes(checkIn) : null;
   const schedStartMin = schedStart ? timeToMinutes(schedStart) : null;
+  const schedEndMin = schedEnd ? timeToMinutes(schedEnd) : null;
+
+  // Overnight (end <= start): early arrival only in the daytime gap after end and before start.
+  // Same-day: any check-in strictly before start.
+  const isOvernightSchedule =
+    schedStartMin != null && schedEndMin != null && schedEndMin <= schedStartMin;
   const isEarlyArrival =
     !!checkIn &&
     !!schedStart &&
     lateMinutes === 0 &&
     checkInMin != null &&
     schedStartMin != null &&
-    checkInMin < schedStartMin;
+    (isOvernightSchedule
+      ? schedEndMin != null && checkInMin > schedEndMin && checkInMin < schedStartMin
+      : checkInMin < schedStartMin);
 
   const lateLeaveMinutes = calcLateLeaveMinutes(checkOut, schedEnd, schedStart);
   const isLateLeave = lateLeaveMinutes > 0;

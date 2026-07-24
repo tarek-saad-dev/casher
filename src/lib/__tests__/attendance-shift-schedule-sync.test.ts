@@ -312,6 +312,37 @@ describe('applyOverrides: default + ops close + attendance open', () => {
     expect(eff.start).toBe('12:00');
     expect(eff.end).toBe('18:00');
   });
+
+  it('opens earlier overnight slots without collapsing the night end', () => {
+    const overnightBase = { isWorking: true, start: '14:00', end: '01:00' };
+    const eff = applyOverrides(25, '2026-07-24', overnightBase, [
+      ov({
+        Type: 'custom_hours',
+        StartTime: '11:30',
+        EndTime: null,
+        CreatedBy: ATTENDANCE_SHIFT_OVERRIDE_SOURCE,
+      }),
+    ]);
+    expect(eff.start).toBe('11:30');
+    expect(eff.end).toBe('01:00');
+    const toMin = (t: string) => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    };
+    expect(toMin(eff.end) <= toMin(eff.start)).toBe(true);
+  });
+
+  it('does not treat post-midnight check-in as early start for overnight base', () => {
+    expect(
+      planAttendanceShiftOverrides({
+        checkInTime: '00:30',
+        checkOutTime: null,
+        scheduledStart: '16:00',
+        scheduledEnd: '02:00',
+        status: 'Present',
+      }),
+    ).toEqual({ action: 'clear' });
+  });
 });
 
 describe('loadBookingOverridesForDate (canonical)', () => {

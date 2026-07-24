@@ -114,6 +114,27 @@ export interface PublicSettings {
   defaultServiceDurationMinutes: number;
 }
 
+/** Shown on public config + blocked booking APIs when BookingEnabled=0. */
+export const PUBLIC_BOOKING_PAUSED_MESSAGE =
+  "الحجز الإلكتروني متوقف حالياً — حاول لاحقاً";
+
+export const PUBLIC_BOOKING_PAUSED_CODE = "BOOKING_PAUSED";
+
+/** Client website copy when booking is off (barbers section hidden). */
+export const PUBLIC_BOOKING_DISABLED_CLIENT_MESSAGE =
+  "الحجز غير متاح اليوم. برجاء اتصل أو احجز عبر الواتساب";
+
+/** Standard 403 payload for paused public booking (client website). */
+export function publicBookingPausedJson(extra?: Record<string, unknown>) {
+  return {
+    ok: false as const,
+    error: PUBLIC_BOOKING_PAUSED_MESSAGE,
+    code: PUBLIC_BOOKING_PAUSED_CODE,
+    bookingEnabled: false as const,
+    ...extra,
+  };
+}
+
 const PUBLIC_SETTINGS_TTL_MS = 45_000;
 const PUBLIC_SETTINGS_GLOBAL_KEY = "__pos_public_settings_cache_by_branch_v1";
 
@@ -157,6 +178,18 @@ export function invalidatePublicSettingsCache(branchId?: number): void {
   state.inflight = null;
 }
 
+function bitEnabled(value: unknown, fallback = true): boolean {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const v = value.trim().toLowerCase();
+    if (v === "0" || v === "false") return false;
+    if (v === "1" || v === "true") return true;
+  }
+  return Boolean(value);
+}
+
 function mapSettingsRow(row: Record<string, unknown> | undefined): PublicSettings {
   if (!row) {
     return {
@@ -177,9 +210,10 @@ function mapSettingsRow(row: Record<string, unknown> | undefined): PublicSetting
     salonName: String(row.SalonName ?? "Cut Salon"),
     timezone: String(row.Timezone ?? "Africa/Cairo"),
     currency: String(row.Currency ?? "EGP"),
-    bookingEnabled: row.BookingEnabled !== 0,
-    allowSpecificBarber: row.AllowSpecificBarber !== 0,
-    allowNearestBarber: row.AllowNearestBarber !== 0,
+    // Same flag as /operations toggle + GET /api/public/booking/status
+    bookingEnabled: bitEnabled(row.BookingEnabled, true),
+    allowSpecificBarber: bitEnabled(row.AllowSpecificBarber, true),
+    allowNearestBarber: bitEnabled(row.AllowNearestBarber, true),
     defaultMode: row.DefaultMode === "specific" ? "specific" : "nearest",
     slotIntervalMinutes: Number(row.SlotIntervalMinutes) || 15,
     maxBookingDaysAhead: Number(row.MaxBookingDaysAhead) || 14,

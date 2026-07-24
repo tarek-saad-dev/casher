@@ -4,6 +4,8 @@ import {
   getRateLimitKey,
   checkRateLimit,
   PUBLIC_CORS_HEADERS,
+  PUBLIC_BOOKING_PAUSED_MESSAGE,
+  PUBLIC_BOOKING_PAUSED_CODE,
 } from '@/lib/publicBookingHelpers';
 import {
   extractPublicBranchCode,
@@ -68,6 +70,14 @@ export async function GET(req: NextRequest) {
         maxBookingDaysAhead:  settings.maxBookingDaysAhead,
         minNoticeMinutes:     settings.minNoticeMinutes,
       },
+      // Client website: if bookingEnabled=false, show a paused state (do not start the booking flow).
+      ...(settings.bookingEnabled
+        ? {}
+        : {
+            bookingPaused: true,
+            message: PUBLIC_BOOKING_PAUSED_MESSAGE,
+            code: PUBLIC_BOOKING_PAUSED_CODE,
+          }),
     }, { headers: PUBLIC_CORS_HEADERS });
   } catch (err) {
     console.error('[public/booking/config]', err);

@@ -162,7 +162,9 @@ export interface BookingSlotValidation {
 }
 
 /** Public booking UI cap — operations/admin receive the full set. */
-export const PUBLIC_AVAILABLE_SLOTS_LIMIT = 12;
+export const PUBLIC_AVAILABLE_SLOTS_LIMIT = 36;
+/** Overnight shifts need more slots so early-expand doesn't hide evening/night. */
+export const PUBLIC_OVERNIGHT_SLOTS_LIMIT = 56;
 
 export type SlotRejectionBucket =
   | 'past_or_min_notice'
@@ -219,6 +221,8 @@ type BarberCtx = {
   shiftStartMs: number;
   shiftEndMs: number;
   dayOff: boolean;
+  /** True when the weekly/base window crosses midnight (preserved after early expand). */
+  isOvernight: boolean;
 };
 
 async function buildBarberContexts(args: {
@@ -389,8 +393,16 @@ async function buildBarberContexts(args: {
         const effSched = applyOverrides(id, date, base, overridesMap.get(id) ?? []);
         if (!effSched.isWorking) return null;
 
+        // Preserve overnight from the BASE schedule. Early attendance expand can move
+        // start earlier (e.g. 11:30) while end stays 01:00 — still overnight.
+        // Never let a collapsed same-day read drop the post-midnight shift end.
+        const baseOvernight =
+          base.isWorking && hhmmToMinutes(base.end) <= hhmmToMinutes(base.start);
+        const effOvernight =
+          hhmmToMinutes(effSched.end) <= hhmmToMinutes(effSched.start);
+        const isOvernight = baseOvernight || effOvernight;
+
         const shiftStartMs = salonDateTimeToMs(date, effSched.start, timezone);
-        const isOvernight = hhmmToMinutes(effSched.end) <= hhmmToMinutes(effSched.start);
         const shiftEndMs = isOvernight
           ? salonDateTimeToMs(nextDate(date), effSched.end, timezone)
           : salonDateTimeToMs(date, effSched.end, timezone);
@@ -430,6 +442,7 @@ async function buildBarberContexts(args: {
           shiftStartMs,
           shiftEndMs,
           dayOff: false,
+          isOvernight,
         };
       }),
     );
@@ -627,6 +640,7 @@ export async function listAvailableBookingSlots(args: {
       ctx.effSched.end,
       slotIntervalMinutes,
       totalDuration,
+      ctx.isOvernight,
     )) {
       if (!slotMap.has(entry.time) || entry.dayOffset < slotMap.get(entry.time)!) {
         slotMap.set(entry.time, entry.dayOffset);
@@ -656,9 +670,13 @@ export async function listAvailableBookingSlots(args: {
   const availableSlotsUnlimited = allPlans.filter((s: BookingSlotPlan) => s.available);
   const validSlotCountBeforeLimit = availableSlotsUnlimited.length;
   const isInternalSource = source === 'operations' || source === 'admin';
-  const limitApplied = !isInternalSource && validSlotCountBeforeLimit > PUBLIC_AVAILABLE_SLOTS_LIMIT;
+  const hasOvernight = contexts.some((c) => c.isOvernight);
+  const publicLimit = hasOvernight
+    ? PUBLIC_OVERNIGHT_SLOTS_LIMIT
+    : PUBLIC_AVAILABLE_SLOTS_LIMIT;
+  const limitApplied = !isInternalSource && validSlotCountBeforeLimit > publicLimit;
   const availableSlots = limitApplied
-    ? availableSlotsUnlimited.slice(0, PUBLIC_AVAILABLE_SLOTS_LIMIT)
+    ? availableSlotsUnlimited.slice(0, publicLimit)
     : availableSlotsUnlimited;
   const returnedSlotCount = availableSlots.length;
   const nextAvailable = availableSlots[0] ?? null;
@@ -1005,7 +1023,13 @@ export async function validateBookingSlot(args: {
     const slotTimes: Array<[string, 0 | 1]> = [];
     for (const ctx of contexts) {
       if (!ctx.effSched) continue;
-      for (const entry of generateSlotEntries(ctx.effSched.start, ctx.effSched.end, slotInterval, ctx.durationMinutes)) {
+      for (const entry of generateSlotEntries(
+        ctx.effSched.start,
+        ctx.effSched.end,
+        slotInterval,
+        ctx.durationMinutes,
+        ctx.isOvernight,
+      )) {
         if (!slotTimes.some(([t, d]) => t === entry.time && d === entry.dayOffset)) {
           slotTimes.push([entry.time, entry.dayOffset]);
         }
@@ -1139,16 +1163,19 @@ function generateSlotEntries(
   end: string,
   intervalMin: number,
   minDurationMinutes = 0,
+  forceOvernight = false,
 ): Array<{ time: string; dayOffset: 0 | 1 }> {
   const entries: Array<{ time: string; dayOffset: 0 | 1 }> = [];
   const startMin = hhmmToMinutes(start);
   const endMin = hhmmToMinutes(end);
-  const overnight = endMin <= startMin;
+  const overnight = forceOvernight || endMin <= startMin;
   const endTotal = overnight ? endMin + 24 * 60 : endMin;
   const lastStartInclusive = minDurationMinutes > 0
     ? endTotal - minDurationMinutes
     : endTotal - intervalMin;
   let cur = startMin;
+  // If forceOvernight but start is after midnight portion (start < end on clock
+  // while base was overnight), still walk from start through next-day end.
   while (cur <= lastStartInclusive) {
     const tod = cur % (24 * 60);
     const dayOffset: 0 | 1 = cur >= 24 * 60 ? 1 : 0;

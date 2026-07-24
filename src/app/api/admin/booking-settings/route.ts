@@ -359,6 +359,9 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       message: "تم حفظ الإعدادات بنجاح",
+      ...(body.bookingEnabled !== undefined
+        ? { bookingEnabled: !!body.bookingEnabled }
+        : {}),
     });
   } catch (err) {
     console.error("[admin/booking-settings PATCH]", err);

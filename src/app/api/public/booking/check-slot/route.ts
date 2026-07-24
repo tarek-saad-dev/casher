@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  getPublicSettings,
   getRateLimitKey,
   checkRateLimit,
   isValidDate,
   isValidTime,
   PUBLIC_CORS_HEADERS,
+  publicBookingPausedJson,
 } from '@/lib/publicBookingHelpers';
 import {
   validateBookingSlot,
@@ -94,6 +96,16 @@ export async function POST(req: NextRequest) {
             : publicInvalidBranchResponse();
         }
         throw err;
+      }
+    }
+
+    if (!isInternalSource) {
+      const settings = await getPublicSettings(branchId);
+      if (!settings.bookingEnabled) {
+        return NextResponse.json(publicBookingPausedJson(), {
+          status: 503,
+          headers: PUBLIC_CORS_HEADERS,
+        });
       }
     }
 

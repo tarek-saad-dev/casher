@@ -10,6 +10,7 @@ import {
   generateBookingCode,
   upsertCustomer,
   PUBLIC_CORS_HEADERS,
+  publicBookingPausedJson,
 } from "@/lib/publicBookingHelpers";
 import {
   validateBookingSlot,
@@ -214,10 +215,10 @@ export async function POST(req: NextRequest) {
 
     const settings = await getPublicSettings(branchId);
     if (!settings.bookingEnabled) {
-      return NextResponse.json(
-        { error: "الحجز الإلكتروني غير متاح حالياً" },
-        { status: 503, headers: PUBLIC_CORS_HEADERS },
-      );
+      return NextResponse.json(publicBookingPausedJson(), {
+        status: 503,
+        headers: PUBLIC_CORS_HEADERS,
+      });
     }
 
     // ── Resolve actual booking date (handle dayOffset for overnight slots) ────
