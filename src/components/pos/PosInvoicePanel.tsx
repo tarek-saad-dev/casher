@@ -20,16 +20,12 @@ interface PosInvoicePanelProps {
   saving: boolean;
   onRemove: (id: string) => void;
   onUpdateItem: (id: string, patch: Partial<CartItem>) => void;
-  /** @deprecated Header discount removed — kept optional for call-site compatibility. */
-  onDiscountPercentChange?: (v: number) => void;
-  /** @deprecated Header discount removed — kept optional for call-site compatibility. */
-  onDiscountValueChange?: (v: number) => void;
+  onDiscountPercentChange: (v: number) => void;
+  onDiscountValueChange: (v: number) => void;
   onPaymentMethodSelect: (id: number) => void;
   onPaymentAllocationsChange: (allocations: SaleState['paymentAllocations']) => void;
   onSave: (forcePrint?: boolean, source?: string) => void;
   showKeyboardHints?: boolean;
-  legacyHeaderDiscountWarning?: boolean;
-  legacyHeaderDiscountValue?: number;
 }
 
 export default function PosInvoicePanel({
@@ -43,12 +39,12 @@ export default function PosInvoicePanel({
   saving: _saving,
   onRemove,
   onUpdateItem,
+  onDiscountPercentChange,
+  onDiscountValueChange,
   onPaymentMethodSelect,
   onPaymentAllocationsChange,
   onSave: _onSave,
   showKeyboardHints = true,
-  legacyHeaderDiscountWarning = false,
-  legacyHeaderDiscountValue = 0,
 }: PosInvoicePanelProps) {
   const hasSplitAllocations = state.paymentAllocations.some(
     (pa) => pa.amount > 0 && pa.amount !== totals.grandTotal,
@@ -65,8 +61,10 @@ export default function PosInvoicePanel({
       <Separator />
       <InvoiceSummary
         totals={totals}
-        legacyHeaderDiscountWarning={legacyHeaderDiscountWarning}
-        legacyHeaderDiscountValue={legacyHeaderDiscountValue}
+        discountPercent={state.discountPercent}
+        discountValue={state.discountValue}
+        onDiscountPercentChange={onDiscountPercentChange}
+        onDiscountValueChange={onDiscountValueChange}
       />
       <Separator />
       {paymentMethods.length > 0 && (

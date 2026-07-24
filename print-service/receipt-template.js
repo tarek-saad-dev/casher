@@ -386,11 +386,14 @@ function buildReceiptHTML(data) {
     0,
   );
   const headerDiscount = Math.max(0, Number(data.DisVal) || 0);
-  const shownDiscount = headerDiscount > 0 ? headerDiscount : lineDiscountTotal;
-  const discountLabel = headerDiscount > 0 ? 'الخصم:' : 'إجمالي خصومات الخدمات:';
-  const discountRow = shownDiscount > 0
-    ? `<div class="total-row discount"><span>${discountLabel}</span><span>- ${money(shownDiscount)} ج.م</span></div>`
-    : '';
+  const discountRow = [
+    lineDiscountTotal > 0
+      ? `<div class="total-row discount"><span>إجمالي خصومات الخدمات:</span><span>- ${money(lineDiscountTotal)} ج.م</span></div>`
+      : '',
+    headerDiscount > 0
+      ? `<div class="total-row discount"><span>خصم الفاتورة:</span><span>- ${money(headerDiscount)} ج.م</span></div>`
+      : '',
+  ].join('');
 
   const subTotal   = Number(data.SubTotal)   || 0;
   const grandTotal = Number(data.GrandTotal) || 0;

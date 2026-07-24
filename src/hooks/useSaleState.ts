@@ -2,7 +2,10 @@
 
 import { useReducer, useCallback, useMemo } from 'react';
 import type { Customer, Barber, CartItem, SaleState, SaleTotals, PaymentAllocation } from '@/lib/types';
-import { computeServiceLineTotals } from '@/lib/sales/service-line-totals';
+import {
+  computeInvoiceItemsTotals,
+  computeServiceLineTotals,
+} from '@/lib/sales/service-line-totals';
 
 // ───────────────────────── Actions ─────────────────────────
 
@@ -12,6 +15,8 @@ type Action =
   | { type: 'ADD_ITEM'; item: CartItem }
   | { type: 'REMOVE_ITEM'; id: string }
   | { type: 'UPDATE_ITEM'; id: string; patch: Partial<CartItem> }
+  | { type: 'SET_DISCOUNT_PERCENT'; value: number }
+  | { type: 'SET_DISCOUNT_VALUE'; value: number }
   | { type: 'SET_PAYMENT_METHOD'; id: number | null }
   | { type: 'SET_PAYMENT_ALLOCATIONS'; allocations: PaymentAllocation[] }
   | { type: 'UPDATE_PAYMENT_AMOUNT'; paymentMethodId: number; amount: number }
@@ -50,6 +55,40 @@ function normalizeCartItem(item: CartItem): CartItem {
   };
 }
 
+function syncHeaderDiscountFromPercent(items: CartItem[], percent: number) {
+  const linesNet = computeInvoiceItemsTotals(
+    items.map((item) => ({
+      sPrice: item.SPrice,
+      qty: item.Qty,
+      discountPercent: item.Dis,
+      discountValue: item.DisVal,
+    })),
+  ).linesNetTotal;
+  const discountPercent = Math.max(0, Math.min(100, percent));
+  const discountValue =
+    linesNet > 0
+      ? Math.round(((linesNet * discountPercent) / 100) * 100) / 100
+      : 0;
+  return { discountPercent, discountValue };
+}
+
+function syncHeaderDiscountFromValue(items: CartItem[], value: number) {
+  const linesNet = computeInvoiceItemsTotals(
+    items.map((item) => ({
+      sPrice: item.SPrice,
+      qty: item.Qty,
+      discountPercent: item.Dis,
+      discountValue: item.DisVal,
+    })),
+  ).linesNetTotal;
+  const discountValue = Math.max(0, Math.min(linesNet, value));
+  const discountPercent =
+    linesNet > 0
+      ? Math.round(Math.min(100, (discountValue / linesNet) * 100) * 100) / 100
+      : 0;
+  return { discountPercent, discountValue };
+}
+
 // ───────────────────────── Reducer ─────────────────────────
 
 function reducer(state: SaleState, action: Action): SaleState {
@@ -70,7 +109,15 @@ function reducer(state: SaleState, action: Action): SaleState {
         ),
       };
     case 'CLEAR_ITEMS':
-      return { ...state, items: [] };
+      return { ...state, items: [], discountPercent: 0, discountValue: 0 };
+    case 'SET_DISCOUNT_PERCENT': {
+      const synced = syncHeaderDiscountFromPercent(state.items, action.value);
+      return { ...state, ...synced };
+    }
+    case 'SET_DISCOUNT_VALUE': {
+      const synced = syncHeaderDiscountFromValue(state.items, action.value);
+      return { ...state, ...synced };
+    }
     case 'SET_PAYMENT_METHOD':
       return { ...state, paymentMethodId: action.id };
     case 'SET_PAYMENT_ALLOCATIONS':
@@ -101,35 +148,31 @@ export function useSaleState() {
   const [state, dispatch] = useReducer(reducer, initialState);
 
   const totals: SaleTotals = useMemo(() => {
-    let totalQty = 0;
-    let subTotal = 0;
-    let discountValue = 0;
-    let grandTotal = 0;
-    let totalBonus = 0;
-
-    for (const item of state.items) {
-      const line = computeServiceLineTotals({
+    const computed = computeInvoiceItemsTotals(
+      state.items.map((item) => ({
         sPrice: item.SPrice,
         qty: item.Qty,
         discountPercent: item.Dis,
         discountValue: item.DisVal,
-      });
-      totalQty += item.Qty > 0 ? item.Qty : 1;
-      subTotal += line.grossAmount;
-      discountValue += line.discountValue;
-      grandTotal += line.netAmount;
-      totalBonus += item.Bonus || 0;
-    }
+        bonus: item.Bonus,
+      })),
+      {
+        discountPercent: state.discountPercent,
+        discountValue: state.discountValue,
+      },
+    );
 
     return {
-      totalQty,
-      subTotal: Math.round(subTotal * 100) / 100,
-      discountValue: Math.round(discountValue * 100) / 100,
+      totalQty: computed.totalQty,
+      subTotal: computed.subTotal,
+      lineDiscountValue: computed.lineDiscountTotal,
+      headerDiscountValue: computed.headerDiscountValue,
+      discountValue: computed.totalDiscount,
       taxValue: 0,
-      grandTotal: Math.round(grandTotal * 100) / 100,
-      totalBonus: Math.round(totalBonus * 100) / 100,
+      grandTotal: computed.grandTotal,
+      totalBonus: computed.totalBonus,
     };
-  }, [state.items]);
+  }, [state.items, state.discountPercent, state.discountValue]);
 
   const setCustomer = useCallback((c: Customer | null) => dispatch({ type: 'SET_CUSTOMER', customer: c }), []);
   const setBarber = useCallback((b: Barber | null) => dispatch({ type: 'SET_BARBER', barber: b }), []);
@@ -139,10 +182,14 @@ export function useSaleState() {
     (id: string, patch: Partial<CartItem>) => dispatch({ type: 'UPDATE_ITEM', id, patch }),
     [],
   );
-  /** @deprecated Header discounts are no longer supported — no-op kept for call-site compatibility. */
-  const setDiscountPercent = useCallback((_v: number) => {}, []);
-  /** @deprecated Header discounts are no longer supported — no-op kept for call-site compatibility. */
-  const setDiscountValue = useCallback((_v: number) => {}, []);
+  const setDiscountPercent = useCallback(
+    (v: number) => dispatch({ type: 'SET_DISCOUNT_PERCENT', value: v }),
+    [],
+  );
+  const setDiscountValue = useCallback(
+    (v: number) => dispatch({ type: 'SET_DISCOUNT_VALUE', value: v }),
+    [],
+  );
   const setPaymentMethod = useCallback(
     (id: number | null) => dispatch({ type: 'SET_PAYMENT_METHOD', id }),
     [],
@@ -165,6 +212,7 @@ export function useSaleState() {
   const clearItems = useCallback(() => dispatch({ type: 'CLEAR_ITEMS' }), []);
   const reset = useCallback(() => dispatch({ type: 'RESET' }), []);
 
+  /** Apply a voucher-style discount onto the largest service line (keeps header discount separate). */
   const applyDiscountToLargestLine = useCallback(
     (mode: 'value' | 'percent', amount: number) => {
       if (!Number.isFinite(amount) || amount <= 0 || state.items.length === 0) return;
@@ -183,7 +231,7 @@ export function useSaleState() {
       });
       const target = state.items[bestIdx];
       if (!target) return;
-      const totals = computeServiceLineTotals({
+      const lineTotals = computeServiceLineTotals({
         sPrice: target.SPrice,
         qty: target.Qty,
         discountPercent: mode === 'percent' ? amount : undefined,
@@ -193,9 +241,9 @@ export function useSaleState() {
         type: 'UPDATE_ITEM',
         id: target.id,
         patch: {
-          Dis: totals.discountPercent,
-          DisVal: totals.discountValue,
-          SPriceAfterDis: totals.netAmount,
+          Dis: lineTotals.discountPercent,
+          DisVal: lineTotals.discountValue,
+          SPriceAfterDis: lineTotals.netAmount,
         },
       });
     },

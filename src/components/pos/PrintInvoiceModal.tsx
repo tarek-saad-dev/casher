@@ -453,11 +453,15 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
       0,
     );
     const headerDiscount = Math.max(0, Number(data.DisVal || 0));
-    const shownDiscount = headerDiscount > 0 ? headerDiscount : lineDiscountTotal;
-    const discountLabel = headerDiscount > 0 ? 'الخصم:' : 'إجمالي خصومات الخدمات:';
-    const discountRow = shownDiscount > 0
-      ? `<div class="total-row discount"><span>${discountLabel}</span><span>- ${money(shownDiscount)} ج.م</span></div>`
-      : '';
+    const discountRows = [
+      lineDiscountTotal > 0
+        ? `<div class="total-row discount"><span>إجمالي خصومات الخدمات:</span><span>- ${money(lineDiscountTotal)} ج.م</span></div>`
+        : '',
+      headerDiscount > 0
+        ? `<div class="total-row discount"><span>خصم الفاتورة:</span><span>- ${money(headerDiscount)} ج.م</span></div>`
+        : '',
+    ].join('');
+    const discountRow = discountRows;
 
     // Payment method display: use real allocations if available, else fall back to legacy PayCash/PayVisa
     let paymentMethodHtml: string;
@@ -813,13 +817,22 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
                     0,
                   );
                   const headerDiscount = Math.max(0, Number(data.DisVal || 0));
-                  const shown = headerDiscount > 0 ? headerDiscount : lineDiscountTotal;
-                  if (shown <= 0) return null;
+                  if (lineDiscountTotal <= 0 && headerDiscount <= 0) return null;
                   return (
-                    <div className="flex justify-between font-bold text-red-600 mb-1">
-                      <span>{headerDiscount > 0 ? 'الخصم:' : 'إجمالي خصومات الخدمات:'}</span>
-                      <span className="font-mono">- {shown.toFixed(2)} ج.م</span>
-                    </div>
+                    <>
+                      {lineDiscountTotal > 0 && (
+                        <div className="flex justify-between font-bold text-red-600 mb-1">
+                          <span>إجمالي خصومات الخدمات:</span>
+                          <span className="font-mono">- {lineDiscountTotal.toFixed(2)} ج.م</span>
+                        </div>
+                      )}
+                      {headerDiscount > 0 && (
+                        <div className="flex justify-between font-bold text-red-600 mb-1">
+                          <span>خصم الفاتورة:</span>
+                          <span className="font-mono">- {headerDiscount.toFixed(2)} ج.م</span>
+                        </div>
+                      )}
+                    </>
                   );
                 })()}
                 <div className="flex justify-between font-black text-base border-t-2 border-double border-black pt-2 mt-2">

@@ -78,6 +78,14 @@ export interface SaleState {
 export interface SaleTotals {
   totalQty: number;
   subTotal: number;
+  /** Σ service-line DisVal */
+  lineDiscountValue: number;
+  /** Header/invoice DisVal after clamp */
+  headerDiscountValue: number;
+  /**
+   * Total discount shown in compact contexts:
+   * lineDiscountValue + headerDiscountValue
+   */
   discountValue: number;
   taxValue: number;
   grandTotal: number;

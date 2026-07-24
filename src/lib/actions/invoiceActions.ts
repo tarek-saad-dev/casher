@@ -7,7 +7,6 @@ import { resolveSplitPaymentConfig } from '@/lib/clearingMethod';
 import { redistributeFromClearing } from '@/lib/splitPaymentService';
 import {
   computeInvoiceItemsTotals,
-  hasNonZeroHeaderDiscount,
 } from '@/lib/sales/service-line-totals';
 import { roundMoney } from '@/lib/reportMonthUtils';
 
@@ -245,15 +244,6 @@ export async function updateInvoice(
   const headBusinessDayId: number | null =
     existingHead.BusinessDayID == null ? null : Number(existingHead.BusinessDayID);
 
-  const preservedHeaderDis = roundMoney(Math.max(0, Number(existingHead.Dis ?? 0)));
-  const preservedHeaderDisVal = roundMoney(Math.max(0, Number(existingHead.DisVal ?? 0)));
-  const isLegacyHeaderDiscount = preservedHeaderDisVal > 0;
-
-  // New invoices must not gain a header discount via update.
-  if (!isLegacyHeaderDiscount && hasNonZeroHeaderDiscount(input)) {
-    throw new Error('خصم إجمالي الفاتورة غير مسموح — استخدم خصم كل خدمة على حدة');
-  }
-
   const computed = computeInvoiceItemsTotals(
     input.items.map((item) => ({
       sPrice: item.sPrice,
@@ -262,16 +252,16 @@ export async function updateInvoice(
       discountValue: item.disVal,
       bonus: item.bonus,
     })),
+    {
+      discountPercent: input.dis,
+      discountValue: input.disVal,
+    },
   );
 
   const subTotal = computed.subTotal;
-  // Legacy: keep header Dis/DisVal; GrandTotal = SubTotal − header DisVal (classic).
-  // New: header Dis/DisVal = 0; GrandTotal = Σ line nets.
-  const headerDis = isLegacyHeaderDiscount ? preservedHeaderDis : 0;
-  const headerDisVal = isLegacyHeaderDiscount ? preservedHeaderDisVal : 0;
-  const grandTotal = isLegacyHeaderDiscount
-    ? roundMoney(Math.max(0, subTotal - headerDisVal))
-    : computed.grandTotal;
+  const headerDis = computed.headerDiscountPercent;
+  const headerDisVal = computed.headerDiscountValue;
+  const grandTotal = computed.grandTotal;
   const totalBonus = computed.totalBonus;
 
   // Phase 1J: reverse prior SALE stock effects before replacing lines

@@ -12,7 +12,6 @@ import {
 import { resolveEmployeeWhatsAppPhone } from "@/lib/integrations/whatsapp/payload-builders";
 import {
   computeInvoiceItemsTotals,
-  hasNonZeroHeaderDiscount,
 } from "@/lib/sales/service-line-totals";
 import {
   buildEmployeeSaleMessage,
@@ -32,16 +31,6 @@ export async function POST(req: NextRequest) {
     if (!body.items || body.items.length === 0) {
       return NextResponse.json(
         { error: "يجب إضافة خدمة واحدة على الأقل" },
-        { status: 400 },
-      );
-    }
-
-    if (hasNonZeroHeaderDiscount(body)) {
-      return NextResponse.json(
-        {
-          error:
-            "خصم إجمالي الفاتورة غير مسموح — استخدم خصم كل خدمة على حدة",
-        },
         { status: 400 },
       );
     }
@@ -87,7 +76,7 @@ export async function POST(req: NextRequest) {
       `[pos-api]   Active Shift: ID=${shiftMoveID}, UserID=${gated.shift.userId} (verified owner)`,
     );
 
-    // ──── Server-side totals from line items (never trust client grandTotal) ────
+    // ──── Server-side totals from line items + optional header discount ────
     const computed = computeInvoiceItemsTotals(
       body.items.map((item) => ({
         sPrice: item.sPrice,
@@ -96,10 +85,14 @@ export async function POST(req: NextRequest) {
         discountValue: item.disVal,
         bonus: item.bonus,
       })),
+      {
+        discountPercent: body.dis,
+        discountValue: body.disVal,
+      },
     );
     const subTotal = computed.subTotal;
-    const disPercent = 0;
-    const disVal = 0;
+    const disPercent = computed.headerDiscountPercent;
+    const disVal = computed.headerDiscountValue;
     const grandTotal = computed.grandTotal;
     const totalBonus = computed.totalBonus;
     const totalQty = computed.totalQty;

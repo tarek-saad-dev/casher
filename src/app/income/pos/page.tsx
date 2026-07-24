@@ -99,6 +99,7 @@ export default function PosPage() {
   const {
     state, totals,
     setCustomer: setCustomerBase, setBarber, addItem, removeItem, updateItem,
+    setDiscountPercent, setDiscountValue,
     applyDiscountToLargestLine,
     setPaymentMethod,
     setPaymentAllocations,
@@ -122,7 +123,6 @@ export default function PosPage() {
   const [printOpen, setPrintOpen] = useState(false);
   const [splitPaymentActive, setSplitPaymentActive] = useState(false);
   const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
-  const [legacyHeaderDiscountValue, setLegacyHeaderDiscountValue] = useState(0);
   const [vouchersOpen, setVouchersOpen] = useState(false);
   const [invoiceSheetOpen, setInvoiceSheetOpen] = useState(false);
   const [isPaymentTransferOpen, setIsPaymentTransferOpen] = useState(false);
@@ -303,9 +303,8 @@ export default function PosPage() {
           notes: i.ProName,
         })),
         subTotal: totals.subTotal,
-        // New invoices: header discount always zero (line discounts only).
-        dis: 0,
-        disVal: 0,
+        dis: state.discountPercent,
+        disVal: state.discountValue,
         grandTotal: totals.grandTotal,
         totalBonus: totals.totalBonus,
         totalQty: totals.totalQty,
@@ -340,7 +339,6 @@ export default function PosPage() {
       // Reset everything (customer, barber, items, discount, payment, edit mode)
       reset();
       setEditingSaleId(null);
-      setLegacyHeaderDiscountValue(0);
       setSplitPaymentActive(false);
       setSaveError('');
 
@@ -360,8 +358,8 @@ export default function PosPage() {
           customerName: state.customer?.Name,
           customerPhone: state.customer?.Mobile ?? undefined,
           SubTotal: totals.subTotal,
-          Dis: 0,
-          DisVal: totals.discountValue,
+          Dis: state.discountPercent,
+          DisVal: state.discountValue,
           GrandTotal: totals.grandTotal,
           PayCash: payCash,
           PayVisa: payVisa,
@@ -423,7 +421,6 @@ export default function PosPage() {
     // Reset everything including barber selection and edit mode
     reset();
     setEditingSaleId(null);
-    setLegacyHeaderDiscountValue(0);
     setSplitPaymentActive(false);
     setSaveError('');
   }, [reset, setSplitPaymentActive]);
@@ -494,9 +491,9 @@ export default function PosPage() {
         setCustomer(customer);
       }
 
-      // 2. Legacy header discount is preserved server-side — do not load into editable header fields.
+      // 2. Load header discount into editable invoice discount fields
+      const headerDis = Number(data.Dis || 0);
       const headerDisVal = Number(data.DisVal || 0);
-      setLegacyHeaderDiscountValue(headerDisVal > 0 ? headerDisVal : 0);
 
       // 3. Clear existing items and add services from the sale
       clearItems();
@@ -517,6 +514,14 @@ export default function PosPage() {
             SPriceAfterDis: item.SPriceAfterDis || item.SPrice || 0,
           });
         });
+      }
+
+      if (headerDisVal > 0) {
+        setDiscountValue(headerDisVal);
+      } else if (headerDis > 0) {
+        setDiscountPercent(headerDis);
+      } else {
+        setDiscountValue(0);
       }
 
       // 4. Set payment method and allocations
@@ -553,7 +558,7 @@ export default function PosPage() {
     } catch (e: any) {
       addToast('error', e.message || 'فشل تحميل بيانات الفاتورة');
     }
-  }, [findStaffById, setCustomer, clearItems, addItem, setPaymentMethod, setPaymentAllocations, paymentMethods, addToast]);
+  }, [findStaffById, setCustomer, clearItems, addItem, setDiscountPercent, setDiscountValue, setPaymentMethod, setPaymentAllocations, paymentMethods, addToast]);
 
   const handlePaymentMethodSelect = useCallback((id: number) => {
     setPaymentMethod(id);
@@ -598,11 +603,11 @@ export default function PosPage() {
     saving,
     onRemove: removeItem,
     onUpdateItem: updateItem,
+    onDiscountPercentChange: setDiscountPercent,
+    onDiscountValueChange: setDiscountValue,
     onPaymentMethodSelect: handlePaymentMethodSelect,
     onPaymentAllocationsChange: setPaymentAllocations,
     onSave: handleSave,
-    legacyHeaderDiscountWarning: legacyHeaderDiscountValue > 0,
-    legacyHeaderDiscountValue,
   };
 
   const invoiceLabel = editingSaleId

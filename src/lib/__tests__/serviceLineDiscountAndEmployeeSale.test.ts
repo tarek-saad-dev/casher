@@ -99,10 +99,24 @@ describe('computeServiceLineTotals', () => {
     );
   });
 
-  it('rejects header discount detection for non-zero', () => {
+  it('detects header discount payload', () => {
     expect(hasNonZeroHeaderDiscount({ disVal: 10 })).toBe(true);
     expect(hasNonZeroHeaderDiscount({ dis: 5 })).toBe(true);
     expect(hasNonZeroHeaderDiscount({ dis: 0, disVal: 0 })).toBe(false);
+  });
+
+  it('applies header discount after line discounts', () => {
+    const totals = computeInvoiceItemsTotals(
+      [
+        { sPrice: 150, qty: 1, discountValue: 20 },
+        { sPrice: 100, qty: 1 },
+      ],
+      { discountPercent: 10 },
+    );
+    // nets 230, header 10% → 23, grand 207
+    expect(totals.linesNetTotal).toBe(230);
+    expect(totals.headerDiscountValue).toBe(23);
+    expect(totals.grandTotal).toBe(207);
   });
 
   it('clamps discount not above gross and not below zero', () => {
@@ -167,6 +181,20 @@ describe('allocateEmployeeInvoiceRevenue — line-net vs legacy header', () => {
     expect(result.employeeTotals.find((e) => e.employeeId === 5)!.actualInvoiceRevenue).toBe(135);
     expect(result.employeeTotals.find((e) => e.employeeId === 8)!.actualInvoiceRevenue).toBe(90);
     expect(result.employeeTotals.find((e) => e.employeeId === 12)!.actualInvoiceRevenue).toBe(900);
+  });
+
+  it('16. line + header discount allocates GrandTotal by line nets', () => {
+    // SubTotal gross 250, line nets 130+100=230, header 30 → GrandTotal 200
+    const result = allocateEmployeeInvoiceRevenue(
+      [header({ subTotal: 250, grandTotal: 200, disVal: 30 })],
+      [
+        line({ detailId: 1, empId: 5, lineTotal: 130 }),
+        line({ detailId: 2, empId: 8, lineTotal: 100 }),
+      ],
+    );
+    expect(result.employeeTotals.find((e) => e.employeeId === 5)!.actualInvoiceRevenue).toBe(113.04);
+    expect(result.employeeTotals.find((e) => e.employeeId === 8)!.actualInvoiceRevenue).toBe(86.96);
+    expect(result.reportTotals.totalActualInvoiceRevenue).toBe(200);
   });
 
   it('example Hair Cut 130 + Beard 100', () => {

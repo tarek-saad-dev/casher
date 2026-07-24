@@ -282,8 +282,13 @@ export function allocateEmployeeInvoiceRevenue(
     }
 
     const employeePool =
-      subTotal > 0
-        ? roundMoney((grandTotal * eligibleGrossTotal) / subTotal)
+      eligibleGrossTotal > 0
+        ? roundMoney(
+            (grandTotal * eligibleGrossTotal) /
+              // When line discounts exist, weights are line nets while SubTotal is Σ gross.
+              // Use eligibleGrossTotal as denominator so header discount splits across nets.
+              (Math.abs(subTotal - eligibleGrossTotal) > 0.01 ? eligibleGrossTotal : subTotal),
+          )
         : 0;
     const distribution = distributeProportionally(
       grossByLine.map(({ line, gross }) => ({ detailId: line.detailId, weight: gross })),

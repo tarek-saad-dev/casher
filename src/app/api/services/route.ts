@@ -2,7 +2,7 @@ import { NextResponse, NextRequest } from 'next/server';
 import { getPool } from '@/lib/db';
 import { ensureTblProImageUrlColumn, tblProImageUrlSelect } from '@/lib/migrations/ensureServiceImageUrl';
 
-// GET /api/services — returns services grouped by category, sorted by popularity
+// GET /api/services — flat list (legacy). Prefer GET /api/services/catalog for nested bilingual catalog.
 export async function GET() {
   try {
     const db = await getPool();

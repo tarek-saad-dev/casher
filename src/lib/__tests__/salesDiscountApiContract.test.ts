@@ -6,14 +6,26 @@ import { hasNonZeroHeaderDiscount, computeInvoiceItemsTotals } from '@/lib/sales
  * Route handlers are covered indirectly; pure helpers enforce the rules.
  */
 describe('sales discount API contracts', () => {
-  it('7. POST must reject non-zero header discount payload', () => {
+  it('7. POST accepts non-zero header discount and applies it after line nets', () => {
     expect(
       hasNonZeroHeaderDiscount({
         dis: 0,
         disVal: 25,
-        items: [],
-      } as { dis: number; disVal: number }),
+      }),
     ).toBe(true);
+
+    const totals = computeInvoiceItemsTotals(
+      [
+        { sPrice: 150, qty: 1, discountValue: 20 },
+        { sPrice: 100, qty: 1 },
+      ],
+      { discountValue: 30 },
+    );
+    // line nets 130+100=230, header 30 → grand 200
+    expect(totals.lineDiscountTotal).toBe(20);
+    expect(totals.headerDiscountValue).toBe(30);
+    expect(totals.grandTotal).toBe(200);
+    expect(totals.subTotal).toBe(250);
   });
 
   it('8. update line INSERT fields include Dis / DisVal / SPriceAfterDis via compute', () => {

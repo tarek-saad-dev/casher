@@ -17,13 +17,11 @@ interface MobileInvoiceSheetProps {
   saving: boolean;
   onRemove: (id: string) => void;
   onUpdateItem: (id: string, patch: Partial<CartItem>) => void;
-  onDiscountPercentChange?: (v: number) => void;
-  onDiscountValueChange?: (v: number) => void;
+  onDiscountPercentChange: (v: number) => void;
+  onDiscountValueChange: (v: number) => void;
   onPaymentMethodSelect: (id: number) => void;
   onPaymentAllocationsChange: (allocations: SaleState['paymentAllocations']) => void;
   onSave: (forcePrint?: boolean, source?: string) => void;
-  legacyHeaderDiscountWarning?: boolean;
-  legacyHeaderDiscountValue?: number;
 }
 
 export default function MobileInvoiceSheet({
