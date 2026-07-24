@@ -35,6 +35,7 @@ type ExistingLedgerRow = {
 type PayrollSourceRow = {
   payrollId: number;
   empId: number;
+  branchId: number;
   empName: string | null;
   workDate: string;
   attendanceId: number | null;
@@ -44,6 +45,7 @@ type PayrollSourceRow = {
 type AdvanceSourceRow = {
   cashMoveId: number;
   empId: number;
+  branchId: number;
   empName: string | null;
   invDate: string;
   amount: number;
@@ -300,7 +302,7 @@ async function fetchPayrollRows(
   if (empId) req.input('empId', sql.Int, empId);
   const whereEmp = empId ? 'AND p.EmpID = @empId' : '';
   const result = await req.query(`
-    SELECT p.ID AS payrollId, p.EmpID AS empId, e.EmpName AS empName, p.WorkDate AS workDate,
+    SELECT p.ID AS payrollId, p.EmpID AS empId, p.BranchID AS branchId, e.EmpName AS empName, p.WorkDate AS workDate,
            p.AttendanceID AS attendanceId, p.DailyWage AS dailyWage
     FROM dbo.TblEmpDailyPayroll p
     INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
@@ -312,6 +314,7 @@ async function fetchPayrollRows(
   return result.recordset.map((r: Record<string, unknown>) => ({
     payrollId: Number(r.payrollId),
     empId: Number(r.empId),
+    branchId: Number(r.branchId),
     empName: r.empName != null ? String(r.empName) : null,
     workDate: fmtDate(r.workDate),
     attendanceId: r.attendanceId != null ? Number(r.attendanceId) : null,
@@ -329,7 +332,7 @@ async function fetchAdvanceRows(
   if (empId) req.input('empId', sql.Int, empId);
   const whereEmp = empId ? 'AND m.EmpID = @empId' : '';
   const result = await req.query(`
-    SELECT cm.ID AS cashMoveId, m.EmpID AS empId, e.EmpName AS empName,
+    SELECT cm.ID AS cashMoveId, m.EmpID AS empId, cm.BranchID AS branchId, e.EmpName AS empName,
            cm.invDate AS invDate, cm.GrandTolal AS amount
     FROM dbo.TblCashMove cm
     INNER JOIN dbo.TblExpCatEmpMap m
@@ -347,6 +350,7 @@ async function fetchAdvanceRows(
   return result.recordset.map((r: Record<string, unknown>) => ({
     cashMoveId: Number(r.cashMoveId),
     empId: Number(r.empId),
+    branchId: Number(r.branchId),
     empName: r.empName != null ? String(r.empName) : null,
     invDate: fmtDate(r.invDate),
     amount: Number(r.amount ?? 0),
@@ -403,6 +407,7 @@ async function voidActiveEntry(req: sql.Request, refType: string, refId: number,
 
 async function insertPayrollCredit(req: sql.Request, row: PayrollSourceRow, payrollMonth: string, createdByUserId: number | null) {
   await req
+    .input('BranchID', sql.Int, row.branchId)
     .input('EmpID', sql.Int, row.empId)
     .input('EntryDate', sql.Date, row.workDate)
     .input('Amount', sql.Decimal(12, 2), row.dailyWage)
@@ -412,11 +417,11 @@ async function insertPayrollCredit(req: sql.Request, row: PayrollSourceRow, payr
     .input('CreatedByUserID', sql.Int, createdByUserId)
     .query(`
       INSERT INTO dbo.TblEmpLedgerEntry (
-        EmpID, EntryDate, EntryDirection, EntryReason, Amount, PayrollMonth,
+        BranchID, EmpID, EntryDate, EntryDirection, EntryReason, Amount, PayrollMonth,
         RefType, RefID, CashMoveID, AttendanceID, Notes, IsVoided, CreatedByUserID, CreatedAt
       )
       VALUES (
-        @EmpID, @EntryDate, N'credit', N'hourly_wage', @Amount, @PayrollMonth,
+        @BranchID, @EmpID, @EntryDate, N'credit', N'hourly_wage', @Amount, @PayrollMonth,
         N'TblEmpDailyPayroll', @RefID, NULL, @AttendanceID, N'${PAYROLL_SYNC_NOTE}', 0, @CreatedByUserID, SYSDATETIME()
       )
     `);
@@ -443,6 +448,7 @@ async function updatePayrollCredit(req: sql.Request, row: PayrollSourceRow, payr
 
 async function insertAdvanceDebit(req: sql.Request, row: AdvanceSourceRow, payrollMonth: string, createdByUserId: number | null) {
   await req
+    .input('BranchID', sql.Int, row.branchId)
     .input('EmpID', sql.Int, row.empId)
     .input('EntryDate', sql.Date, row.invDate)
     .input('Amount', sql.Decimal(12, 2), row.amount)
@@ -452,11 +458,11 @@ async function insertAdvanceDebit(req: sql.Request, row: AdvanceSourceRow, payro
     .input('CreatedByUserID', sql.Int, createdByUserId)
     .query(`
       INSERT INTO dbo.TblEmpLedgerEntry (
-        EmpID, EntryDate, EntryDirection, EntryReason, Amount, PayrollMonth,
+        BranchID, EmpID, EntryDate, EntryDirection, EntryReason, Amount, PayrollMonth,
         RefType, RefID, CashMoveID, AttendanceID, Notes, IsVoided, CreatedByUserID, CreatedAt
       )
       VALUES (
-        @EmpID, @EntryDate, N'debit', N'advance', @Amount, @PayrollMonth,
+        @BranchID, @EmpID, @EntryDate, N'debit', N'advance', @Amount, @PayrollMonth,
         N'TblCashMove', @RefID, @CashMoveID, NULL, N'${ADVANCE_SYNC_NOTE}', 0, @CreatedByUserID, SYSDATETIME()
       )
     `);

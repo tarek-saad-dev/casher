@@ -243,20 +243,50 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
 
   const empIdList = employees.map((e) => e.EmpID);
   const db = await getPool();
-  const [salesRows, serviceCountRows, breaksByEmp, attendanceBranchesByEmp] =
+  const { listActiveBranches } = await import('@/lib/branch');
+  const activeBranches = await listActiveBranches();
+  const [serviceCountRows, breaksByEmp, attendanceBranchesByEmp, ...branchSalesLists] =
     employees.length > 0
       ? await Promise.all([
-          getEmployeesNetServiceSalesByDate(workDate, empIdList),
           getEmployeesServiceCountsByDate(workDate, empIdList),
           loadBreaksByEmpIdsOnWorkDate(db, workDate, empIdList),
           loadAttendanceBranchNamesByEmp(db, workDate, empIdList),
+          ...activeBranches.map((b) =>
+            getEmployeesNetServiceSalesByDate(workDate, b.branchId, empIdList),
+          ),
         ])
       : [
-          [],
           [],
           new Map<number, AttendanceBreakInterval[]>(),
           new Map<number, string[]>(),
         ];
+
+  // Merge per-branch sales into employee totals (global display only — not a write path).
+  const salesMerged = new Map<
+    number,
+    { empId: number; invoiceCount: number; netSalesAfterDiscount: number }
+  >();
+  for (const list of branchSalesLists) {
+    if (!Array.isArray(list)) continue;
+    for (const row of list as Array<{
+      empId: number;
+      invoiceCount: number;
+      netSalesAfterDiscount: number;
+    }>) {
+      const prev = salesMerged.get(row.empId);
+      if (!prev) {
+        salesMerged.set(row.empId, {
+          empId: row.empId,
+          invoiceCount: row.invoiceCount,
+          netSalesAfterDiscount: row.netSalesAfterDiscount,
+        });
+      } else {
+        prev.invoiceCount += row.invoiceCount;
+        prev.netSalesAfterDiscount += row.netSalesAfterDiscount;
+      }
+    }
+  }
+  const salesRows = [...salesMerged.values()];
   const invoiceCountByEmp = new Map(
     salesRows.map((r) => [r.empId, r.invoiceCount] as const),
   );

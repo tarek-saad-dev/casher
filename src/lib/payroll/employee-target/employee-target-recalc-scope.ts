@@ -1,15 +1,18 @@
 /**
- * Pure helpers: resolve (EmpID, WorkDate) scopes from invoice snapshots.
+ * Pure helpers: resolve (EmpID, BranchID, WorkDate) scopes from invoice snapshots.
  * Header-discount allocation ⇒ always include ALL EmpIDs on the invoice dates.
+ * Branch ownership comes from persisted invoice head BranchID — never from client.
  */
 
 export interface InvoiceScopeSnapshot {
   workDate: string | null;
+  branchId: number | null;
   empIds: number[];
 }
 
 export interface TargetRecalcScope {
   empId: number;
+  branchId: number;
   workDate: string;
   reasons: string[];
 }
@@ -20,7 +23,6 @@ function toWorkDate(value: unknown): string | null {
     const y = value.getFullYear();
     const m = String(value.getMonth() + 1).padStart(2, '0');
     const d = String(value.getDate()).padStart(2, '0');
-    // Prefer UTC date if midnight UTC (SQL date often arrives as UTC midnight)
     if (
       value.getUTCHours() === 0 &&
       value.getUTCMinutes() === 0 &&
@@ -35,6 +37,12 @@ function toWorkDate(value: unknown): string | null {
   return m ? m[1]! : null;
 }
 
+function toBranchId(value: unknown): number | null {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n <= 0) return null;
+  return n;
+}
+
 function uniqueEmpIds(raw: unknown[]): number[] {
   const ids = raw
     .map((v) => Number(v))
@@ -43,16 +51,19 @@ function uniqueEmpIds(raw: unknown[]): number[] {
 }
 
 /**
- * Extract EmpIDs + workDate from getInvoiceSnapshot-shaped objects
+ * Extract EmpIDs + workDate + BranchID from getInvoiceSnapshot-shaped objects
  * or lightweight { header, details } / create payloads.
  */
 export function extractInvoiceScopeSnapshot(snapshot: unknown): InvoiceScopeSnapshot {
   if (!snapshot || typeof snapshot !== 'object') {
-    return { workDate: null, empIds: [] };
+    return { workDate: null, branchId: null, empIds: [] };
   }
   const s = snapshot as Record<string, unknown>;
   const header = (s.header ?? s) as Record<string, unknown>;
   const workDate = toWorkDate(header.invDate ?? header.workDate ?? s.invDate ?? s.workDate);
+  const branchId = toBranchId(
+    header.BranchID ?? header.branchId ?? s.BranchID ?? s.branchId,
+  );
 
   let details: unknown[] = [];
   if (Array.isArray(s.details)) details = s.details;
@@ -66,7 +77,7 @@ export function extractInvoiceScopeSnapshot(snapshot: unknown): InvoiceScopeSnap
     }),
   );
 
-  return { workDate, empIds };
+  return { workDate, branchId, empIds };
 }
 
 export function resolveInvoiceTargetRecalculationScope(params: {
@@ -80,42 +91,51 @@ export function resolveInvoiceTargetRecalculationScope(params: {
 
   const map = new Map<string, TargetRecalcScope>();
 
-  const add = (empId: number, workDate: string | null, reason: string) => {
+  const add = (
+    empId: number,
+    branchId: number | null,
+    workDate: string | null,
+    reason: string,
+  ) => {
     if (!workDate || !/^\d{4}-\d{2}-\d{2}$/.test(workDate)) return;
     if (!Number.isInteger(empId) || empId <= 0) return;
-    const key = `${empId}|${workDate}`;
+    if (branchId == null || !Number.isInteger(branchId) || branchId <= 0) return;
+    const key = `${empId}|${branchId}|${workDate}`;
     const existing = map.get(key);
     if (existing) {
       if (!existing.reasons.includes(reason)) existing.reasons.push(reason);
       return;
     }
-    map.set(key, { empId, workDate, reasons: [reason] });
+    map.set(key, { empId, branchId, workDate, reasons: [reason] });
   };
 
   for (const empId of before.empIds) {
-    add(empId, before.workDate, baseReasons[0] ?? 'before');
+    add(empId, before.branchId, before.workDate, baseReasons[0] ?? 'before');
   }
   for (const empId of after.empIds) {
-    add(empId, after.workDate, baseReasons[0] ?? 'after');
+    add(empId, after.branchId, after.workDate, baseReasons[0] ?? 'after');
   }
 
-  // Date move: emp from before on old date already added; also place before empIds on new date if date changed
   if (
     before.workDate &&
     after.workDate &&
     before.workDate !== after.workDate
   ) {
     for (const empId of before.empIds) {
-      add(empId, after.workDate, 'date_change');
+      add(empId, before.branchId, after.workDate, 'date_change');
+      add(empId, after.branchId ?? before.branchId, after.workDate, 'date_change');
     }
     for (const empId of after.empIds) {
-      add(empId, before.workDate, 'date_change');
+      add(empId, after.branchId, before.workDate, 'date_change');
+      add(empId, before.branchId ?? after.branchId, before.workDate, 'date_change');
     }
   }
 
-  // Stable order for deadlock avoidance: WorkDate, EmpID
-  return [...map.values()].sort((a, b) =>
-    a.workDate.localeCompare(b.workDate) || a.empId - b.empId,
+  return [...map.values()].sort(
+    (a, b) =>
+      a.workDate.localeCompare(b.workDate) ||
+      a.branchId - b.branchId ||
+      a.empId - b.empId,
   );
 }
 
@@ -123,17 +143,25 @@ export function resolveInvoiceTargetRecalculationScope(params: {
 export function dedupeTargetRecalcScopes(scopes: TargetRecalcScope[]): TargetRecalcScope[] {
   const map = new Map<string, TargetRecalcScope>();
   for (const s of scopes) {
-    const key = `${s.empId}|${s.workDate}`;
+    const key = `${s.empId}|${s.branchId}|${s.workDate}`;
     const existing = map.get(key);
     if (!existing) {
-      map.set(key, { empId: s.empId, workDate: s.workDate, reasons: [...s.reasons] });
+      map.set(key, {
+        empId: s.empId,
+        branchId: s.branchId,
+        workDate: s.workDate,
+        reasons: [...s.reasons],
+      });
     } else {
       for (const r of s.reasons) {
         if (!existing.reasons.includes(r)) existing.reasons.push(r);
       }
     }
   }
-  return [...map.values()].sort((a, b) =>
-    a.workDate.localeCompare(b.workDate) || a.empId - b.empId,
+  return [...map.values()].sort(
+    (a, b) =>
+      a.workDate.localeCompare(b.workDate) ||
+      a.branchId - b.branchId ||
+      a.empId - b.empId,
   );
 }

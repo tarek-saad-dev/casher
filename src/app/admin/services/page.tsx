@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Scissors, Plus, Edit2, Trash2, Loader2, FolderOpen,
   FolderPlus, Settings, Search, Clock, MoreVertical, Users,
-  ImageIcon, X,
+  ImageIcon, X, ChevronUp, ChevronDown,
 } from 'lucide-react';
 import { SERVICE_IMAGE_PRESETS } from '@/lib/serviceImages';
 import PageHeader from '@/components/shared/PageHeader';
@@ -57,6 +57,7 @@ interface Category {
   CatID: number;
   CatName: string;
   ServiceCount: number;
+  SortOrder: number;
 }
 
 interface ServiceFormData {
@@ -187,6 +188,7 @@ export default function ServicesManagementPage() {
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [categorySaving, setCategorySaving] = useState(false);
+  const [reorderSaving, setReorderSaving] = useState(false);
   const [categoryFormData, setCategoryFormData] = useState<CategoryFormData>({
     CatName: '',
     Description: '',
@@ -387,6 +389,40 @@ export default function ServicesManagementPage() {
       await loadData();
     } catch (e: any) {
       setError(e.message);
+    }
+  };
+
+  /** Move category up/down in display order and persist via reorder API. */
+  const moveCategory = async (categoryId: number, direction: 'up' | 'down') => {
+    const sorted = [...categories].sort(
+      (a, b) => (a.SortOrder ?? 0) - (b.SortOrder ?? 0) || a.CatName.localeCompare(b.CatName, 'ar'),
+    );
+    const index = sorted.findIndex((c) => c.CatID === categoryId);
+    if (index < 0) return;
+    const swapWith = direction === 'up' ? index - 1 : index + 1;
+    if (swapWith < 0 || swapWith >= sorted.length) return;
+
+    const next = [...sorted];
+    [next[index], next[swapWith]] = [next[swapWith], next[index]];
+    const optimistic = next.map((c, i) => ({ ...c, SortOrder: (i + 1) * 10 }));
+    setCategories(optimistic);
+    setReorderSaving(true);
+    try {
+      const res = await fetch('/api/services/categories/reorder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categoryIds: next.map((c) => c.CatID) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل حفظ الترتيب');
+      if (Array.isArray(data.categories)) {
+        setCategories(data.categories);
+      }
+    } catch (e: any) {
+      setError(e.message);
+      await loadData();
+    } finally {
+      setReorderSaving(false);
     }
   };
 
@@ -699,12 +735,18 @@ export default function ServicesManagementPage() {
 
       {/* Categories Section */}
       <div className="rounded-xl border border-zinc-800 overflow-hidden">
-        <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/40 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-zinc-300">الفئات</h3>
+        <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/40 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-300">الفئات وترتيب العرض</h3>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              استخدم الأسهم لتغيير ترتيب ظهور الفئات في كتالوج الأسعار والحجز
+              {reorderSaving ? ' — جاري الحفظ...' : ''}
+            </p>
+          </div>
           <Button
             variant="outline"
             size="sm"
-            className="gap-2 border-zinc-700 hover:bg-zinc-800"
+            className="gap-2 border-zinc-700 hover:bg-zinc-800 shrink-0"
             onClick={() => openCategoryModal()}
           >
             <FolderPlus className="w-4 h-4" />
@@ -718,36 +760,70 @@ export default function ServicesManagementPage() {
             <p className="text-sm">لا توجد فئات بعد</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
-            {categories.map((category) => {
+          <div className="space-y-2 p-4">
+            {[...categories]
+              .sort((a, b) => (a.SortOrder ?? 0) - (b.SortOrder ?? 0) || a.CatName.localeCompare(b.CatName, 'ar'))
+              .map((category, index, sorted) => {
               const theme = getCategoryTheme(category.CatName, category.CatID);
+              const isFirst = index === 0;
+              const isLast = index === sorted.length - 1;
               return (
                 <div
                   key={category.CatID}
-                  className="rounded-xl p-4 transition-all duration-200 hover:scale-[1.01]"
+                  className="rounded-xl p-3 transition-all duration-200"
                   style={theme.cardStyle}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-3">
-                      {/* Color accent bar */}
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex flex-col gap-0.5 shrink-0">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={isFirst || reorderSaving}
+                          onClick={() => moveCategory(category.CatID, 'up')}
+                          className="h-7 w-7 p-0 text-zinc-300 hover:bg-zinc-800 disabled:opacity-30"
+                          title="تحريك لأعلى (يعرض أولاً)"
+                        >
+                          <ChevronUp className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={isLast || reorderSaving}
+                          onClick={() => moveCategory(category.CatID, 'down')}
+                          className="h-7 w-7 p-0 text-zinc-300 hover:bg-zinc-800 disabled:opacity-30"
+                          title="تحريك لأسفل"
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div
+                        className="text-xs font-mono text-zinc-500 w-8 text-center shrink-0"
+                        title={`SortOrder = ${category.SortOrder}`}
+                      >
+                        #{index + 1}
+                      </div>
                       <div style={{ width: 4, alignSelf: 'stretch', borderRadius: '9999px', ...theme.dotStyle }} />
-                      {/* Icon */}
                       <div
                         style={{ width: 40, height: 40, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0, ...theme.iconStyle }}
                       >
                         {theme.emoji}
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <h4 style={{ fontWeight: 700, fontSize: 14, color: theme.color }}>{category.CatName}</h4>
                         <p className="text-xs text-zinc-500 mt-0.5">
                           <span style={{ fontWeight: 600, color: theme.color }}>{category.ServiceCount}</span>
                           {' '}خدمة
+                          <span className="text-zinc-600 mx-1">·</span>
+                          ترتيب {category.SortOrder}
                         </p>
                       </div>
                     </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-50 hover:opacity-100">
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-50 hover:opacity-100 shrink-0">
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -768,10 +844,6 @@ export default function ServicesManagementPage() {
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                  </div>
-                  {/* Bottom badge */}
-                  <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-                    <CategoryBadge name={category.CatName} catId={category.CatID} size="sm" showEmoji={false} />
                   </div>
                 </div>
               );

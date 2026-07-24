@@ -41,6 +41,8 @@ export {
 
 export interface GenerateEmployeeDailyTargetsParams {
   workDate: string;
+  /** Required Phase 1L — invoice/target branch; never from browser body alone. */
+  branchId: number;
   generatedByUserId: number | null;
   empIds?: number[] | null;
 }
@@ -105,8 +107,11 @@ function tiersForPlan(planId: number, allTiers: TargetTierDbRow[]): DailyTargetT
 export async function generateEmployeeDailyTargets(
   params: GenerateEmployeeDailyTargetsParams,
 ): Promise<GenerateEmployeeDailyTargetsResult> {
-  const { workDate, generatedByUserId } = params;
+  const { workDate, generatedByUserId, branchId } = params;
   assertValidWorkDate(workDate);
+  if (!Number.isInteger(branchId) || branchId <= 0) {
+    throw new EmployeeTargetValidationError('branchId مطلوب لتوليد التارجت (Phase 1L)');
+  }
 
   const empIds =
     params.empIds != null && params.empIds.length > 0
@@ -117,7 +122,7 @@ export async function generateEmployeeDailyTargets(
     throw new EmployeeTargetValidationError('empIds غير صالحة');
   }
 
-  const plans = await listEnabledPlansCoveringDate(workDate, empIds);
+  const plans = await listEnabledPlansCoveringDate(workDate, empIds, branchId);
   const planByEmp = resolveUniqueEffectivePlans(plans);
 
   if (planByEmp.size === 0) {
@@ -145,8 +150,12 @@ export async function generateEmployeeDailyTargets(
   const allTiers = await listTiersForPlanIds(planIds);
   const eligibleEmpIds = [...planByEmp.keys()];
 
-  // Shared sales core — never duplicate employee-services SQL here.
-  const salesRows = await getEmployeesNetServiceSalesByDate(workDate, eligibleEmpIds);
+  // Shared sales core — never combine invoice revenue across branches.
+  const salesRows = await getEmployeesNetServiceSalesByDate(
+    workDate,
+    branchId,
+    eligibleEmpIds,
+  );
   const salesByEmp = new Map(salesRows.map((r) => [r.empId, r]));
 
   const db = await getPool();
@@ -196,6 +205,7 @@ export async function generateEmployeeDailyTargets(
 
       const upsert = await upsertDailyTargetInTransaction(transaction, {
         empId,
+        branchId,
         workDate,
         targetPlanId: plan.planId,
         netSalesAfterDiscount: Number(moneyStr(calculation.netSalesAfterDiscount)),
@@ -210,6 +220,7 @@ export async function generateEmployeeDailyTargets(
         dailyTarget: {
           id: upsert.id,
           empId,
+          branchId,
           workDate,
           targetAmount,
         },

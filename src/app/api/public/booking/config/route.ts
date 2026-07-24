@@ -36,7 +36,9 @@ export async function GET(req: NextRequest) {
     const branchCode = extractPublicBranchCode(searchParams);
     let branch;
     try {
-      branch = await resolvePublicBranchCode(branchCode);
+      branch = await resolvePublicBranchCode(branchCode, {
+        route: '/api/public/booking/config',
+      });
     } catch (err) {
       if (err instanceof BranchDomainError) {
         return err.code === 'BRANCH_REQUIRED'

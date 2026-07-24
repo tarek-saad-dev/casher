@@ -6,6 +6,7 @@ import type { TargetRecalcRequestStatus } from './employee-target-recalc.schemas
 export interface TargetRecalcRequestRow {
   id: number;
   empId: number;
+  branchId: number;
   workDate: string;
   status: TargetRecalcRequestStatus;
   requestedVersion: number;
@@ -31,6 +32,7 @@ export function mapRecalcRequest(row: Record<string, unknown>): TargetRecalcRequ
   return {
     id: Number(row.ID),
     empId: Number(row.EmpID),
+    branchId: Number(row.BranchID),
     workDate: toDateStr(row.WorkDate),
     status: String(row.Status) as TargetRecalcRequestStatus,
     requestedVersion: Number(row.RequestedVersion),
@@ -49,7 +51,7 @@ export function mapRecalcRequest(row: Record<string, unknown>): TargetRecalcRequ
 }
 
 const SELECT_COLS = `
-  ID, EmpID, WorkDate, Status, RequestedVersion, ProcessedVersion, AttemptCount,
+  ID, EmpID, BranchID, WorkDate, Status, RequestedVersion, ProcessedVersion, AttemptCount,
   LastReason, SourceType, SourceRef, LastError,
   RequestedAt, ProcessingAt, ProcessedAt, CreatedAt, UpdatedAt
 `;
@@ -58,19 +60,25 @@ export async function enqueueTargetRecalcInTransaction(
   transaction: sql.Transaction,
   params: {
     empId: number;
+    branchId: number;
     workDate: string;
     reason: string;
     sourceType: string | null;
     sourceRef: string | null;
   },
 ): Promise<{ id: number; requestedVersion: number; created: boolean }> {
+  if (!Number.isInteger(params.branchId) || params.branchId <= 0) {
+    throw new Error('branchId مطلوب لطلب إعادة حساب التارجت (Phase 1L)');
+  }
+
   const locked = await new sql.Request(transaction)
     .input('empId', sql.Int, params.empId)
+    .input('branchId', sql.Int, params.branchId)
     .input('workDate', sql.Date, params.workDate)
     .query(`
       SELECT ID, RequestedVersion, ProcessedVersion
       FROM dbo.TblEmpTargetRecalcRequest WITH (UPDLOCK, HOLDLOCK)
-      WHERE EmpID = @empId AND WorkDate = @workDate
+      WHERE EmpID = @empId AND BranchID = @branchId AND WorkDate = @workDate
     `);
 
   const existing = locked.recordset[0] as
@@ -80,18 +88,19 @@ export async function enqueueTargetRecalcInTransaction(
   if (!existing) {
     const inserted = await new sql.Request(transaction)
       .input('empId', sql.Int, params.empId)
+      .input('branchId', sql.Int, params.branchId)
       .input('workDate', sql.Date, params.workDate)
       .input('reason', sql.NVarChar(100), params.reason.slice(0, 100))
       .input('sourceType', sql.NVarChar(50), params.sourceType)
       .input('sourceRef', sql.NVarChar(100), params.sourceRef)
       .query(`
         INSERT INTO dbo.TblEmpTargetRecalcRequest (
-          EmpID, WorkDate, Status, RequestedVersion, ProcessedVersion, AttemptCount,
+          EmpID, BranchID, WorkDate, Status, RequestedVersion, ProcessedVersion, AttemptCount,
           LastReason, SourceType, SourceRef, LastError, RequestedAt, CreatedAt
         )
         OUTPUT INSERTED.ID, INSERTED.RequestedVersion
         VALUES (
-          @empId, @workDate, N'pending', 1, 0, 0,
+          @empId, @branchId, @workDate, N'pending', 1, 0, 0,
           @reason, @sourceType, @sourceRef, NULL, SYSDATETIME(), SYSDATETIME()
         )
       `);

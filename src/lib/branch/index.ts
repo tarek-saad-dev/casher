@@ -104,6 +104,7 @@ export {
   resolvePublicBranchCode,
   toPublicBranchSafe,
   type PublicBranchSafe,
+  type ResolvePublicBranchOptions,
 } from './bookingQueueOwnership';
 export {
   listSwitchableBranchesForUser,

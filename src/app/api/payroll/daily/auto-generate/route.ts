@@ -3,7 +3,6 @@ import { getPool, sql } from '@/lib/db';
 import type { ValidationMissing } from '../validate-attendance/route';
 import {
   countPostedDailyPayroll,
-  countEligibleDailyPayrollEmployees,
   validateDailyPayrollAttendance,
 } from '@/lib/payroll/dailyPayrollGenerateCore';
 import {
@@ -11,6 +10,7 @@ import {
   runDailyPayrollGenerateWithOptionalLedger,
 } from '@/lib/services/employeeLedgerDualWrite';
 import { isSystemJobAuthResult, requireSystemJobAuth } from '@/lib/api-auth';
+import { listActiveBranches } from '@/lib/branch';
 
 function resolveWorkDate(override?: string): string {
   if (override && /^\d{4}-\d{2}-\d{2}$/.test(override)) return override;
@@ -21,18 +21,82 @@ function resolveWorkDate(override?: string): string {
   return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')}`;
 }
 
-// POST /api/payroll/daily/auto-generate
+// POST /api/payroll/daily/auto-generate — Phase 1L: per active branch
 export async function POST(req: NextRequest) {
   try {
     const jobAuth = await requireSystemJobAuth(req);
     if (!isSystemJobAuthResult(jobAuth)) return jobAuth;
 
     const body = await req.json().catch(() => ({}));
+    if (body?.branchId != null || body?.BranchID != null) {
+      return NextResponse.json(
+        { ok: false, error: 'BranchID في الطلب غير مسموح' },
+        { status: 400 },
+      );
+    }
     const workDate = resolveWorkDate(body?.workDate);
     const db = await getPool();
+    const branches = await listActiveBranches();
 
-    const postedCount = await countPostedDailyPayroll(db, workDate);
-    if (postedCount > 0) {
+    let employeesCount = 0;
+    let totalHours = 0;
+    let totalWages = 0;
+    let anyGenerated = false;
+    let anyIncomplete = false;
+    let allPosted = branches.length > 0;
+    let ledgerDualWrite: unknown = undefined;
+    let ledgerSync: unknown = null;
+    const branchErrors: string[] = [];
+    const allMissing: ValidationMissing[] = [];
+
+    for (const branch of branches) {
+      const postedCount = await countPostedDailyPayroll(db, workDate, branch.branchId);
+      if (postedCount > 0) {
+        continue;
+      }
+      allPosted = false;
+
+      const { missing } = await validateDailyPayrollAttendance(db, workDate, {
+        branchId: branch.branchId,
+      });
+      if (missing.length > 0) {
+        anyIncomplete = true;
+        allMissing.push(...missing);
+        branchErrors.push(`${branch.branchCode}: attendance incomplete (${missing.length})`);
+        continue;
+      }
+
+      try {
+        const { result, ledgerDualWrite: ld, ledgerSync: ls } =
+          await runDailyPayrollGenerateWithOptionalLedger(workDate, {
+            notesPrefix: `[Auto][${branch.branchCode}] `,
+            branchId: branch.branchId,
+          });
+        employeesCount += result.generatedCount;
+        totalHours += Number(result.totalHours) || 0;
+        totalWages += Number(result.totalWage) || 0;
+        ledgerDualWrite = ld;
+        ledgerSync = ls ?? null;
+        anyGenerated = true;
+      } catch (branchErr) {
+        const msg = branchErr instanceof Error ? branchErr.message : String(branchErr);
+        branchErrors.push(`${branch.branchCode}: ${msg}`);
+      }
+    }
+
+    if (branches.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        status: 'no_eligible_employees',
+        workDate,
+        message: 'لا يوجد فروع نشطة',
+        employeesCount: 0,
+        totalHours: 0,
+        totalWages: 0,
+      });
+    }
+
+    if (allPosted && !anyGenerated) {
       return NextResponse.json({
         ok: false,
         status: 'already_posted',
@@ -41,37 +105,32 @@ export async function POST(req: NextRequest) {
       }, { status: 409 });
     }
 
-    const eligibleCount = await countEligibleDailyPayrollEmployees(db);
-    if (eligibleCount === 0) {
-      return NextResponse.json({
-        ok: true,
-        status: 'no_eligible_employees',
-        workDate,
-        message: 'لا يوجد موظفون مؤهلون لنظام الرواتب',
-        employeesCount: 0,
-        totalHours: 0,
-        totalWages: 0,
-      });
-    }
-
-    const { missing } = await validateDailyPayrollAttendance(db, workDate);
-    if (missing.length > 0) {
-      await logAutoGenResult(db, workDate, false, missing, 0, 0, 0);
+    if (anyIncomplete && !anyGenerated) {
+      await logAutoGenResult(db, workDate, false, allMissing, 0, 0, 0);
       return NextResponse.json({
         ok: false,
         status: 'attendance_incomplete',
         workDate,
         message: 'لم يتم توليد اليوميات تلقائيًا بسبب نقص بيانات الحضور والانصراف',
-        missing,
+        missing: allMissing,
+        branchErrors,
       }, { status: 422 });
     }
 
-    const { result, ledgerDualWrite, ledgerSync } =
-      await runDailyPayrollGenerateWithOptionalLedger(workDate, { notesPrefix: '[Auto] ' });
-
-    const employeesCount = result.generatedCount;
-    const totalHours = result.totalHours;
-    const totalWages = result.totalWage;
+    if (!anyGenerated) {
+      return NextResponse.json({
+        ok: true,
+        status: 'no_eligible_employees',
+        workDate,
+        message: branchErrors.length
+          ? `فشل التوليد: ${branchErrors.join(' | ')}`
+          : 'لا يوجد موظفون مؤهلون لنظام الرواتب',
+        employeesCount: 0,
+        totalHours: 0,
+        totalWages: 0,
+        branchErrors,
+      });
+    }
 
     await logAutoGenResult(db, workDate, true, [], employeesCount, totalHours, totalWages);
 
@@ -84,7 +143,8 @@ export async function POST(req: NextRequest) {
       totalHours: Number(totalHours),
       totalWages: Number(totalWages),
       ledgerDualWrite,
-      ledgerSync: ledgerSync ?? null,
+      ledgerSync,
+      branchErrors: branchErrors.length ? branchErrors : undefined,
     });
 
   } catch (err: unknown) {
@@ -112,22 +172,23 @@ export async function GET(req: NextRequest) {
         FROM dbo.TblAutoGenLog
         WHERE WorkDate = @WorkDate
         ORDER BY CreatedAt DESC
-      `).catch(() => ({ recordset: [] as Record<string, unknown>[] }));
+      `);
 
     if (result.recordset.length === 0) {
-      return NextResponse.json({ found: false, workDate });
+      return NextResponse.json({ workDate, lastRun: null });
     }
 
     const row = result.recordset[0];
     return NextResponse.json({
-      found: true,
-      workDate: row.WorkDate,
-      success: row.Success,
-      employeesCount: row.EmployeesCount,
-      totalHours: row.TotalHours,
-      totalWages: row.TotalWages,
-      missing: row.MissingJson ? JSON.parse(String(row.MissingJson)) : [],
-      createdAt: row.CreatedAt,
+      workDate,
+      lastRun: {
+        success: Boolean(row.Success),
+        employeesCount: row.EmployeesCount,
+        totalHours: row.TotalHours,
+        totalWages: row.TotalWages,
+        missing: row.MissingJson ? JSON.parse(String(row.MissingJson)) : [],
+        createdAt: row.CreatedAt,
+      },
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -136,32 +197,31 @@ export async function GET(req: NextRequest) {
 }
 
 async function logAutoGenResult(
-  db: { request: () => sql.Request },
+  db: Awaited<ReturnType<typeof getPool>>,
   workDate: string,
   success: boolean,
   missing: ValidationMissing[],
   employeesCount: number,
   totalHours: number,
   totalWages: number,
-) {
+): Promise<void> {
   try {
     await db.request()
       .input('WorkDate', sql.Date, workDate)
       .input('Success', sql.Bit, success ? 1 : 0)
       .input('EmployeesCount', sql.Int, employeesCount)
-      .input('TotalHours', sql.Decimal(10, 2), totalHours)
+      .input('TotalHours', sql.Decimal(12, 2), totalHours)
       .input('TotalWages', sql.Decimal(12, 2), totalWages)
-      .input('MissingJson', sql.NVarChar(sql.MAX), missing.length ? JSON.stringify(missing) : null)
+      .input('MissingJson', sql.NVarChar(sql.MAX), JSON.stringify(missing))
       .query(`
-        IF OBJECT_ID('dbo.TblAutoGenLog', 'U') IS NOT NULL
-        BEGIN
-          INSERT INTO dbo.TblAutoGenLog
-            (WorkDate, Success, EmployeesCount, TotalHours, TotalWages, MissingJson, CreatedAt)
-          VALUES
-            (@WorkDate, @Success, @EmployeesCount, @TotalHours, @TotalWages, @MissingJson, GETDATE())
-        END
+        INSERT INTO dbo.TblAutoGenLog (
+          WorkDate, Success, EmployeesCount, TotalHours, TotalWages, MissingJson, CreatedAt
+        )
+        VALUES (
+          @WorkDate, @Success, @EmployeesCount, @TotalHours, @TotalWages, @MissingJson, SYSDATETIME()
+        )
       `);
-  } catch {
-    /* non-fatal */
+  } catch (err) {
+    console.error('[auto-generate] log failed:', err);
   }
 }

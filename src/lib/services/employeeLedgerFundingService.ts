@@ -69,6 +69,7 @@ export async function insertEmployeeFundingLedgerEntry(
   request: sql.Request,
   params: {
     empId: number;
+    branchId: number;
     cashMoveId: number;
     entryDate: string;
     amount: number;
@@ -79,6 +80,7 @@ export async function insertEmployeeFundingLedgerEntry(
   const payrollMonth = payrollMonthFromWorkDate(params.entryDate);
 
   const insertResult = await request
+    .input('BranchID', sql.Int, params.branchId)
     .input('EmpID', sql.Int, params.empId)
     .input('EntryDate', sql.Date, params.entryDate)
     .input('EntryReason', sql.NVarChar(40), EMP_LEDGER_REASON_EMPLOYEE_FUNDING)
@@ -91,13 +93,13 @@ export async function insertEmployeeFundingLedgerEntry(
     .input('CreatedByUserID', sql.Int, params.createdByUserId ?? null)
     .query(`
       INSERT INTO dbo.TblEmpLedgerEntry (
-        EmpID, EntryDate, EntryDirection, EntryReason, Amount,
+        BranchID, EmpID, EntryDate, EntryDirection, EntryReason, Amount,
         PayrollMonth, RefType, RefID, CashMoveID, AttendanceID,
         Notes, IsVoided, CreatedByUserID, CreatedAt
       )
       OUTPUT INSERTED.ID
       VALUES (
-        @EmpID, @EntryDate, N'credit', @EntryReason, @Amount,
+        @BranchID, @EmpID, @EntryDate, N'credit', @EntryReason, @Amount,
         @PayrollMonth, @RefType, @RefID, @CashMoveID, NULL,
         @Notes, 0, @CreatedByUserID, SYSDATETIME()
       )
@@ -221,6 +223,7 @@ export async function executeEmployeeFunding(params: {
 
     const ledgerEntryId = await insertEmployeeFundingLedgerEntry(new sql.Request(transaction), {
       empId: params.empId,
+      branchId: params.branchId,
       cashMoveId,
       entryDate: params.date,
       amount,

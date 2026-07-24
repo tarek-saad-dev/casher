@@ -84,7 +84,9 @@ export async function GET(req: NextRequest) {
     } else {
       const branchCode = extractPublicBranchCode(searchParams);
       try {
-        const branch = await resolvePublicBranchCode(branchCode);
+        const branch = await resolvePublicBranchCode(branchCode, {
+          route: '/api/public/booking/available-slots',
+        });
         branchId = branch.branchId;
       } catch (err) {
         if (err instanceof BranchDomainError) {

@@ -32,15 +32,19 @@ export interface EmployeeNetServiceSalesRow {
 
 /**
  * Shared sales core for daily target — parity with /admin/reports/employee-services
- * for a single work date (inclusive).
+ * for a single work date (inclusive), scoped to one invoice branch (Phase 1L).
  *
  * Uses allocateEmployeeInvoiceRevenue so NetSalesAfterDiscount === actualInvoiceRevenue.
  */
 export async function getEmployeesNetServiceSalesByDate(
   workDate: string,
+  branchId: number,
   empIds?: number[] | null,
 ): Promise<EmployeeNetServiceSalesRow[]> {
   assertValidWorkDate(workDate);
+  if (!Number.isInteger(branchId) || branchId <= 0) {
+    throw new Error('branchId مطلوب لمبيعات التارجت (Phase 1L)');
+  }
 
   const filterEmpIds =
     empIds != null && empIds.length > 0
@@ -52,6 +56,7 @@ export async function getEmployeesNetServiceSalesByDate(
   const headersResult = await db.request()
     .input('fromDate', sql.Date, workDate)
     .input('toDate', sql.Date, workDate)
+    .input('branchId', sql.Int, branchId)
     .query(`
       SELECT
         h.invID,
@@ -63,6 +68,7 @@ export async function getEmployeesNetServiceSalesByDate(
       WHERE CAST(h.invDate AS date) >= @fromDate
         AND CAST(h.invDate AS date) <= @toDate
         AND h.invType = N'مبيعات'
+        AND h.BranchID = @branchId
     `);
 
   const headers: InvoiceHeaderInput[] = headersResult.recordset.map((row: Record<string, unknown>) => ({
@@ -81,6 +87,7 @@ export async function getEmployeesNetServiceSalesByDate(
   const detailsResult = await db.request()
     .input('fromDate', sql.Date, workDate)
     .input('toDate', sql.Date, workDate)
+    .input('branchId', sql.Int, branchId)
     .query(`
       SELECT
         d.ID AS detailId,
@@ -102,6 +109,7 @@ export async function getEmployeesNetServiceSalesByDate(
       WHERE CAST(h.invDate AS date) >= @fromDate
         AND CAST(h.invDate AS date) <= @toDate
         AND h.invType = N'مبيعات'
+        AND h.BranchID = @branchId
         AND d.EmpID IS NOT NULL
         AND d.ProID IS NOT NULL
     `);
@@ -143,12 +151,13 @@ export async function getEmployeesNetServiceSalesByDate(
 export async function getEmployeeNetServiceSalesByDate(
   empId: number,
   workDate: string,
+  branchId: number,
 ): Promise<EmployeeNetServiceSalesRow> {
   if (!Number.isInteger(empId) || empId <= 0) {
     throw new Error('empId غير صالح');
   }
 
-  const rows = await getEmployeesNetServiceSalesByDate(workDate, [empId]);
+  const rows = await getEmployeesNetServiceSalesByDate(workDate, branchId, [empId]);
   if (rows.length > 0) return rows[0];
 
   const db = await getPool();

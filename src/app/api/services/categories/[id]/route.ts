@@ -1,36 +1,62 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getPool } from '@/lib/db';
+import { ensureTblCatSortOrderColumn } from '@/lib/migrations/ensureCategorySortOrder';
 
-// PUT /api/services/categories/[id] — update a category
+export const runtime = 'nodejs';
+
+// PUT /api/services/categories/[id] — update a category (name and/or sortOrder)
 export async function PUT(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params;
     const categoryId = parseInt(id);
-    
+
     if (isNaN(categoryId)) {
       return NextResponse.json({ error: 'معرف الفئة غير صالح' }, { status: 400 });
     }
 
     const body = await req.json();
-    const { CatName } = body;
+    const { CatName, SortOrder } = body;
 
-    if (!CatName || !CatName.trim()) {
+    if (CatName !== undefined && (!CatName || !String(CatName).trim())) {
       return NextResponse.json({ error: 'اسم الفئة مطلوب' }, { status: 400 });
     }
 
     const db = await getPool();
-    const result = await db.request()
-      .input('CatID', categoryId)
-      .input('CatName', CatName.trim())
-      .query(`
-        UPDATE [dbo].[TblCat]
-        SET CatName = @CatName
-        OUTPUT INSERTED.CatID, INSERTED.CatName
-        WHERE CatID = @CatID;
-      `);
+    const hasSortOrder = await ensureTblCatSortOrderColumn(db);
+
+    const sets: string[] = [];
+    const request = db.request().input('CatID', categoryId);
+
+    if (CatName !== undefined) {
+      sets.push('CatName = @CatName');
+      request.input('CatName', String(CatName).trim());
+    }
+
+    if (SortOrder !== undefined && hasSortOrder) {
+      if (typeof SortOrder !== 'number' || !Number.isFinite(SortOrder)) {
+        return NextResponse.json({ error: 'SortOrder غير صالح' }, { status: 400 });
+      }
+      sets.push('SortOrder = @SortOrder');
+      request.input('SortOrder', Math.trunc(SortOrder));
+    }
+
+    if (sets.length === 0) {
+      return NextResponse.json({ error: 'لا توجد حقول للتحديث' }, { status: 400 });
+    }
+
+    const outputCols = hasSortOrder
+      ? 'INSERTED.CatID, INSERTED.CatName, INSERTED.SortOrder'
+      : 'INSERTED.CatID, INSERTED.CatName';
+
+    const result = await request.query(`
+      UPDATE [dbo].[TblCat]
+      SET ${sets.join(', ')}
+      OUTPUT ${outputCols}
+      WHERE CatID = @CatID;
+    `);
 
     if (result.recordset.length === 0) {
       return NextResponse.json({ error: 'الفئة غير موجودة' }, { status: 404 });
@@ -38,7 +64,8 @@ export async function PUT(
 
     const updatedCategory = result.recordset[0];
 
-    const serviceCountResult = await db.request()
+    const serviceCountResult = await db
+      .request()
       .input('CatID', categoryId)
       .query(`
         SELECT COUNT(*) AS ServiceCount
@@ -49,7 +76,8 @@ export async function PUT(
     return NextResponse.json({
       CatID: updatedCategory.CatID,
       CatName: updatedCategory.CatName,
-      ServiceCount: serviceCountResult.recordset[0].ServiceCount
+      SortOrder: hasSortOrder ? Number(updatedCategory.SortOrder) || 0 : 0,
+      ServiceCount: serviceCountResult.recordset[0].ServiceCount,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -61,20 +89,20 @@ export async function PUT(
 // DELETE /api/services/categories/[id] — delete a category
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params;
     const categoryId = parseInt(id);
-    
+
     if (isNaN(categoryId)) {
       return NextResponse.json({ error: 'معرف الفئة غير صالح' }, { status: 400 });
     }
 
     const db = await getPool();
 
-    // Check if category exists
-    const categoryResult = await db.request()
+    const categoryResult = await db
+      .request()
       .input('CatID', categoryId)
       .query(`SELECT CatID FROM [dbo].[TblCat] WHERE CatID = @CatID`);
 
@@ -82,8 +110,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'الفئة غير موجودة' }, { status: 404 });
     }
 
-    // Remove category from all services (set to null)
-    await db.request()
+    await db
+      .request()
       .input('CatID', categoryId)
       .query(`
         UPDATE [dbo].[TblPro]
@@ -91,8 +119,8 @@ export async function DELETE(
         WHERE CatID = @CatID
       `);
 
-    // Delete the category
-    await db.request()
+    await db
+      .request()
       .input('CatID', categoryId)
       .query(`DELETE FROM [dbo].[TblCat] WHERE CatID = @CatID`);
 

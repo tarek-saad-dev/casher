@@ -348,11 +348,32 @@ export async function getEmployeeAllTimeBalance(
   const result = await req
     .input('empId', sql.Int, empId)
     .query(`
+      SELECT ISNULL(Balance, 0) AS Balance
+      FROM dbo.vw_EmpLedgerGlobalBalance
+      WHERE EmpID = @empId
+    `);
+
+  return roundMoney(Number(result.recordset[0]?.Balance ?? 0));
+}
+
+/** Phase 1L: branch account balance — only source for payout limits. */
+export async function getEmployeeBranchBalance(
+  empId: number,
+  branchId: number,
+  transaction?: sql.Transaction,
+): Promise<number> {
+  const db = await getPool();
+  const req = transaction ? new sql.Request(transaction) : db.request();
+  const result = await req
+    .input('empId', sql.Int, empId)
+    .input('branchId', sql.Int, branchId)
+    .query(`
       SELECT
         ISNULL(SUM(CASE WHEN l.EntryDirection = N'credit' THEN l.Amount ELSE 0 END), 0)
         - ISNULL(SUM(CASE WHEN l.EntryDirection = N'debit'  THEN l.Amount ELSE 0 END), 0) AS Balance
       FROM dbo.TblEmpLedgerEntry l WITH (UPDLOCK, HOLDLOCK)
       WHERE l.EmpID = @empId
+        AND l.BranchID = @branchId
         AND l.IsVoided = 0
     `);
 

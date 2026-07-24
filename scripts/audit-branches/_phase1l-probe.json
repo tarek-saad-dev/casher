@@ -1,0 +1,776 @@
+{
+  "database": "last132",
+  "capturedAt": "2026-07-24T09:18:19.511Z",
+  "tables": {
+    "TblEmpDailyPayroll": {
+      "exists": true,
+      "cols": [
+        {
+          "name": "ID",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "EmpID",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "AttendanceID",
+          "type_name": "int",
+          "is_nullable": true
+        },
+        {
+          "name": "WorkDate",
+          "type_name": "date",
+          "is_nullable": false
+        },
+        {
+          "name": "SalaryHistoryID",
+          "type_name": "int",
+          "is_nullable": true
+        },
+        {
+          "name": "DailyWage",
+          "type_name": "decimal",
+          "is_nullable": false
+        },
+        {
+          "name": "Status",
+          "type_name": "nvarchar",
+          "is_nullable": false
+        },
+        {
+          "name": "CashMoveID",
+          "type_name": "int",
+          "is_nullable": true
+        },
+        {
+          "name": "Notes",
+          "type_name": "nvarchar",
+          "is_nullable": true
+        },
+        {
+          "name": "CreatedAt",
+          "type_name": "datetime",
+          "is_nullable": false
+        },
+        {
+          "name": "UpdatedAt",
+          "type_name": "datetime",
+          "is_nullable": true
+        },
+        {
+          "name": "EmployeeIncomeCashMoveID",
+          "type_name": "int",
+          "is_nullable": true
+        },
+        {
+          "name": "HourlyRateSnapshot",
+          "type_name": "decimal",
+          "is_nullable": true
+        },
+        {
+          "name": "ActualHours",
+          "type_name": "decimal",
+          "is_nullable": true
+        }
+      ],
+      "idxs": [
+        {
+          "name": "IX_TblEmpDailyPayroll_WorkDate",
+          "is_unique": false,
+          "is_primary_key": false,
+          "cols": "WorkDate"
+        },
+        {
+          "name": "PK__TblEmpDa__3214EC273B08C810",
+          "is_unique": true,
+          "is_primary_key": true,
+          "cols": "ID"
+        },
+        {
+          "name": "UX_TblEmpDailyPayroll_EmpID_WorkDate",
+          "is_unique": true,
+          "is_primary_key": false,
+          "cols": "EmpID,WorkDate"
+        }
+      ]
+    },
+    "TblEmpLedgerEntry": {
+      "exists": true,
+      "cols": [
+        {
+          "name": "ID",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "EmpID",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "EntryDate",
+          "type_name": "date",
+          "is_nullable": false
+        },
+        {
+          "name": "EntryDirection",
+          "type_name": "nvarchar",
+          "is_nullable": false
+        },
+        {
+          "name": "EntryReason",
+          "type_name": "nvarchar",
+          "is_nullable": false
+        },
+        {
+          "name": "Amount",
+          "type_name": "decimal",
+          "is_nullable": false
+        },
+        {
+          "name": "PayrollMonth",
+          "type_name": "nvarchar",
+          "is_nullable": true
+        },
+        {
+          "name": "RefType",
+          "type_name": "nvarchar",
+          "is_nullable": true
+        },
+        {
+          "name": "RefID",
+          "type_name": "int",
+          "is_nullable": true
+        },
+        {
+          "name": "CashMoveID",
+          "type_name": "int",
+          "is_nullable": true
+        },
+        {
+          "name": "AttendanceID",
+          "type_name": "int",
+          "is_nullable": true
+        },
+        {
+          "name": "Notes",
+          "type_name": "nvarchar",
+          "is_nullable": true
+        },
+        {
+          "name": "IsVoided",
+          "type_name": "bit",
+          "is_nullable": false
+        },
+        {
+          "name": "VoidReason",
+          "type_name": "nvarchar",
+          "is_nullable": true
+        },
+        {
+          "name": "CreatedByUserID",
+          "type_name": "int",
+          "is_nullable": true
+        },
+        {
+          "name": "CreatedAt",
+          "type_name": "datetime2",
+          "is_nullable": false
+        },
+        {
+          "name": "UpdatedAt",
+          "type_name": "datetime2",
+          "is_nullable": true
+        }
+      ],
+      "idxs": [
+        {
+          "name": "IX_TblEmpLedgerEntry_CashMoveID",
+          "is_unique": false,
+          "is_primary_key": false,
+          "cols": "CashMoveID"
+        },
+        {
+          "name": "IX_TblEmpLedgerEntry_EmpID_EntryDate",
+          "is_unique": false,
+          "is_primary_key": false,
+          "cols": "EntryDirection,EntryReason,Amount,IsVoided,PayrollMonth,EmpID,EntryDate"
+        },
+        {
+          "name": "IX_TblEmpLedgerEntry_EntryReason",
+          "is_unique": false,
+          "is_primary_key": false,
+          "cols": "EmpID,EntryDate,EntryDirection,Amount,IsVoided,EntryReason"
+        },
+        {
+          "name": "IX_TblEmpLedgerEntry_PayrollMonth",
+          "is_unique": false,
+          "is_primary_key": false,
+          "cols": "EmpID,EntryDirection,EntryReason,Amount,IsVoided,PayrollMonth"
+        },
+        {
+          "name": "IX_TblEmpLedgerEntry_RefType_RefID",
+          "is_unique": false,
+          "is_primary_key": false,
+          "cols": "RefType,RefID"
+        },
+        {
+          "name": "PK_TblEmpLedgerEntry",
+          "is_unique": true,
+          "is_primary_key": true,
+          "cols": "ID"
+        },
+        {
+          "name": "UX_TblEmpLedgerEntry_ActiveRefReason",
+          "is_unique": true,
+          "is_primary_key": false,
+          "cols": "RefType,RefID,EntryReason"
+        },
+        {
+          "name": "UX_TblEmpLedgerEntry_DailyTargetRef",
+          "is_unique": true,
+          "is_primary_key": false,
+          "cols": "RefType,RefID,EntryReason"
+        }
+      ]
+    },
+    "TblEmpDailyTarget": {
+      "exists": true,
+      "cols": [
+        {
+          "name": "ID",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "EmpID",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "WorkDate",
+          "type_name": "date",
+          "is_nullable": false
+        },
+        {
+          "name": "TargetPlanID",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "NetSalesAfterDiscount",
+          "type_name": "decimal",
+          "is_nullable": false
+        },
+        {
+          "name": "TargetAmount",
+          "type_name": "decimal",
+          "is_nullable": false
+        },
+        {
+          "name": "CalculationBreakdownJson",
+          "type_name": "nvarchar",
+          "is_nullable": true
+        },
+        {
+          "name": "CalculationVersion",
+          "type_name": "nvarchar",
+          "is_nullable": false
+        },
+        {
+          "name": "Status",
+          "type_name": "nvarchar",
+          "is_nullable": false
+        },
+        {
+          "name": "GeneratedByUserID",
+          "type_name": "int",
+          "is_nullable": true
+        },
+        {
+          "name": "GeneratedAt",
+          "type_name": "datetime2",
+          "is_nullable": false
+        },
+        {
+          "name": "UpdatedAt",
+          "type_name": "datetime2",
+          "is_nullable": true
+        }
+      ],
+      "idxs": [
+        {
+          "name": "IX_TblEmpDailyTarget_EmpID",
+          "is_unique": false,
+          "is_primary_key": false,
+          "cols": "TargetAmount,Status,TargetPlanID,EmpID,WorkDate"
+        },
+        {
+          "name": "IX_TblEmpDailyTarget_TargetPlanID",
+          "is_unique": false,
+          "is_primary_key": false,
+          "cols": "TargetPlanID"
+        },
+        {
+          "name": "IX_TblEmpDailyTarget_WorkDate",
+          "is_unique": false,
+          "is_primary_key": false,
+          "cols": "EmpID,TargetAmount,NetSalesAfterDiscount,Status,WorkDate"
+        },
+        {
+          "name": "PK_TblEmpDailyTarget",
+          "is_unique": true,
+          "is_primary_key": true,
+          "cols": "ID"
+        },
+        {
+          "name": "UQ_TblEmpDailyTarget_Emp_WorkDate",
+          "is_unique": true,
+          "is_primary_key": false,
+          "cols": "EmpID,WorkDate"
+        }
+      ]
+    },
+    "TblEmpTargetRecalcRequest": {
+      "exists": true,
+      "cols": [
+        {
+          "name": "ID",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "EmpID",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "WorkDate",
+          "type_name": "date",
+          "is_nullable": false
+        },
+        {
+          "name": "Status",
+          "type_name": "nvarchar",
+          "is_nullable": false
+        },
+        {
+          "name": "RequestedVersion",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "ProcessedVersion",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "AttemptCount",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "LastReason",
+          "type_name": "nvarchar",
+          "is_nullable": true
+        },
+        {
+          "name": "SourceType",
+          "type_name": "nvarchar",
+          "is_nullable": true
+        },
+        {
+          "name": "SourceRef",
+          "type_name": "nvarchar",
+          "is_nullable": true
+        },
+        {
+          "name": "LastError",
+          "type_name": "nvarchar",
+          "is_nullable": true
+        },
+        {
+          "name": "RequestedAt",
+          "type_name": "datetime2",
+          "is_nullable": false
+        },
+        {
+          "name": "ProcessingAt",
+          "type_name": "datetime2",
+          "is_nullable": true
+        },
+        {
+          "name": "ProcessedAt",
+          "type_name": "datetime2",
+          "is_nullable": true
+        },
+        {
+          "name": "CreatedAt",
+          "type_name": "datetime2",
+          "is_nullable": false
+        },
+        {
+          "name": "UpdatedAt",
+          "type_name": "datetime2",
+          "is_nullable": true
+        }
+      ],
+      "idxs": [
+        {
+          "name": "IX_TblEmpTargetRecalcRequest_Status_RequestedAt",
+          "is_unique": false,
+          "is_primary_key": false,
+          "cols": "Status,RequestedAt"
+        },
+        {
+          "name": "IX_TblEmpTargetRecalcRequest_WorkDate",
+          "is_unique": false,
+          "is_primary_key": false,
+          "cols": "WorkDate"
+        },
+        {
+          "name": "PK_TblEmpTargetRecalcRequest",
+          "is_unique": true,
+          "is_primary_key": true,
+          "cols": "ID"
+        },
+        {
+          "name": "UX_TblEmpTargetRecalcRequest_EmpID_WorkDate",
+          "is_unique": true,
+          "is_primary_key": false,
+          "cols": "EmpID,WorkDate"
+        }
+      ]
+    },
+    "TblEmpSalaryHistory": {
+      "exists": true,
+      "cols": [
+        {
+          "name": "ID",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "EmpID",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "SalaryType",
+          "type_name": "nvarchar",
+          "is_nullable": false
+        },
+        {
+          "name": "SalaryAmount",
+          "type_name": "decimal",
+          "is_nullable": false
+        },
+        {
+          "name": "EffectiveFrom",
+          "type_name": "date",
+          "is_nullable": false
+        },
+        {
+          "name": "EffectiveTo",
+          "type_name": "date",
+          "is_nullable": true
+        },
+        {
+          "name": "IsActive",
+          "type_name": "bit",
+          "is_nullable": false
+        },
+        {
+          "name": "Notes",
+          "type_name": "nvarchar",
+          "is_nullable": true
+        },
+        {
+          "name": "CreatedAt",
+          "type_name": "datetime",
+          "is_nullable": false
+        }
+      ],
+      "idxs": [
+        {
+          "name": "IX_TblEmpSalaryHistory_EmpID_Active",
+          "is_unique": false,
+          "is_primary_key": false,
+          "cols": "EmpID,IsActive,EffectiveFrom"
+        },
+        {
+          "name": "PK__TblEmpSa__3214EC27B967AF5B",
+          "is_unique": true,
+          "is_primary_key": true,
+          "cols": "ID"
+        }
+      ]
+    },
+    "TblEmpTargetPlan": {
+      "exists": true,
+      "cols": [
+        {
+          "name": "ID",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "EmpID",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "IsEnabled",
+          "type_name": "bit",
+          "is_nullable": false
+        },
+        {
+          "name": "InputBasis",
+          "type_name": "nvarchar",
+          "is_nullable": false
+        },
+        {
+          "name": "ConversionDays",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "EffectiveFrom",
+          "type_name": "date",
+          "is_nullable": false
+        },
+        {
+          "name": "EffectiveTo",
+          "type_name": "date",
+          "is_nullable": true
+        },
+        {
+          "name": "Notes",
+          "type_name": "nvarchar",
+          "is_nullable": true
+        },
+        {
+          "name": "CreatedByUserID",
+          "type_name": "int",
+          "is_nullable": true
+        },
+        {
+          "name": "UpdatedByUserID",
+          "type_name": "int",
+          "is_nullable": true
+        },
+        {
+          "name": "CreatedAt",
+          "type_name": "datetime2",
+          "is_nullable": false
+        },
+        {
+          "name": "UpdatedAt",
+          "type_name": "datetime2",
+          "is_nullable": true
+        }
+      ],
+      "idxs": [
+        {
+          "name": "IX_TblEmpTargetPlan_EmpID_Effective",
+          "is_unique": false,
+          "is_primary_key": false,
+          "cols": "IsEnabled,InputBasis,ConversionDays,EmpID,EffectiveFrom,EffectiveTo"
+        },
+        {
+          "name": "PK_TblEmpTargetPlan",
+          "is_unique": true,
+          "is_primary_key": true,
+          "cols": "ID"
+        },
+        {
+          "name": "UX_TblEmpTargetPlan_EmpID_EffectiveFrom",
+          "is_unique": true,
+          "is_primary_key": false,
+          "cols": "EmpID,EffectiveFrom"
+        }
+      ]
+    },
+    "TblEmpTarget": {
+      "exists": false
+    },
+    "TblPayrollMonth": {
+      "exists": true,
+      "cols": [
+        {
+          "name": "PayrollMonthID",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "Year",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "Month",
+          "type_name": "int",
+          "is_nullable": false
+        },
+        {
+          "name": "Status",
+          "type_name": "nvarchar",
+          "is_nullable": false
+        },
+        {
+          "name": "Notes",
+          "type_name": "nvarchar",
+          "is_nullable": true
+        },
+        {
+          "name": "CreatedByUserID",
+          "type_name": "int",
+          "is_nullable": true
+        },
+        {
+          "name": "CreatedAt",
+          "type_name": "datetime2",
+          "is_nullable": false
+        },
+        {
+          "name": "ClosedAt",
+          "type_name": "datetime2",
+          "is_nullable": true
+        }
+      ],
+      "idxs": [
+        {
+          "name": "PK_TblPayrollMonth",
+          "is_unique": true,
+          "is_primary_key": true,
+          "cols": "PayrollMonthID"
+        },
+        {
+          "name": "UQ_TblPayrollMonth_YearMonth",
+          "is_unique": true,
+          "is_primary_key": false,
+          "cols": "Year,Month"
+        }
+      ]
+    },
+    "TblEmpBranchPayrollPlan": {
+      "exists": false
+    },
+    "TblEmpTargetRule": {
+      "exists": false
+    },
+    "TblEmpCommission": {
+      "exists": false
+    }
+  },
+  "payroll": {
+    "rows": 606,
+    "employees": 17,
+    "wageSum": 147999.66,
+    "hoursSum": 5808.94
+  },
+  "payrollByStatus": [
+    {
+      "Status": "Generated",
+      "c": 152,
+      "wageSum": 32606.73
+    },
+    {
+      "Status": "PostedToCashMove",
+      "c": 454,
+      "wageSum": 115392.93
+    }
+  ],
+  "payrollDupEmpDate": [],
+  "ledgerMeta": {
+    "amountCol": "Amount",
+    "reasonCol": "EntryReason",
+    "ledCols": [
+      "ID",
+      "EmpID",
+      "EntryDate",
+      "EntryDirection",
+      "EntryReason",
+      "Amount",
+      "PayrollMonth",
+      "RefType",
+      "RefID",
+      "CashMoveID",
+      "AttendanceID",
+      "Notes",
+      "IsVoided",
+      "VoidReason",
+      "CreatedByUserID",
+      "CreatedAt",
+      "UpdatedAt"
+    ]
+  },
+  "ledger": {
+    "rows": 517,
+    "employees": 14,
+    "credits": 141146.33,
+    "debits": 0
+  },
+  "ledgerByReason": [
+    {
+      "reason": "advance",
+      "c": 262,
+      "amountSum": 59111
+    },
+    {
+      "reason": "hourly_wage",
+      "c": 152,
+      "amountSum": 32606.73
+    },
+    {
+      "reason": "target",
+      "c": 82,
+      "amountSum": 30833.6
+    },
+    {
+      "reason": "employee_funding",
+      "c": 14,
+      "amountSum": 8415
+    },
+    {
+      "reason": "payout",
+      "c": 3,
+      "amountSum": 1050
+    },
+    {
+      "reason": "tip",
+      "c": 2,
+      "amountSum": 130
+    },
+    {
+      "reason": "monthly_salary",
+      "c": 2,
+      "amountSum": 9000
+    }
+  ],
+  "targets": {
+    "rows": 97
+  },
+  "targetDupEmpDate": [],
+  "recalc": {
+    "rows": 49
+  },
+  "branches": [
+    {
+      "BranchID": 1,
+      "BranchCode": "GLEEM",
+      "IsActive": true
+    },
+    {
+      "BranchID": 2,
+      "BranchCode": "PH1GTEST",
+      "IsActive": false
+    }
+  ],
+  "ledgerCashLinked": {
+    "c": 281
+  }
+}

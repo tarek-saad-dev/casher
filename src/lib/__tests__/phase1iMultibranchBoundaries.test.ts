@@ -25,7 +25,7 @@ describe('Phase 1I multibranch boundaries', () => {
     expect(classes.has('EMPLOYEE_GLOBAL_CONFLICT')).toBe(true);
 
     expect(GO_LIVE_BLOCKER_DOMAINS).not.toContain('attendance');
-    expect(GO_LIVE_BLOCKER_DOMAINS).toContain('payroll_ledger_targets');
+    expect(GO_LIVE_BLOCKER_DOMAINS).not.toContain('payroll_ledger_targets');
     // Phase 1J cleared inventory/purchases blockers
     expect(GO_LIVE_BLOCKER_DOMAINS).not.toContain('inventory_stock');
     expect(GO_LIVE_BLOCKER_DOMAINS).not.toContain('purchases');

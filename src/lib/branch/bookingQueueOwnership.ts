@@ -7,6 +7,7 @@
 import 'server-only';
 import { NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import { PUBLIC_CORS_HEADERS } from '@/lib/publicBookingHelpers';
 import { getBranchByCode, listActiveBranches } from './repository';
 import type { BranchRecord } from './types';
 import { BranchDomainError } from './types';
@@ -20,6 +21,12 @@ export type PublicBranchSafe = {
   address: string | null;
   phone: string | null;
   timeZone: string;
+};
+
+/** Optional context for public booking branch resolution (logging only). */
+export type ResolvePublicBranchOptions = {
+  /** Request path — used only when the temporary single-branch fallback fires. */
+  route?: string;
 };
 
 export function toPublicBranchSafe(b: BranchRecord): PublicBranchSafe {
@@ -43,14 +50,14 @@ export async function listPublicActiveBranches(): Promise<PublicBranchSafe[]> {
 export function publicInvalidBranchResponse(): NextResponse {
   return NextResponse.json(
     { ok: false, error: 'INVALID_BRANCH', message: 'الفرع غير متاح' },
-    { status: 404 },
+    { status: 404, headers: PUBLIC_CORS_HEADERS },
   );
 }
 
 export function publicBranchRequiredResponse(): NextResponse {
   return NextResponse.json(
     { ok: false, error: 'BRANCH_REQUIRED', message: 'يجب اختيار الفرع' },
-    { status: 400 },
+    { status: 400, headers: PUBLIC_CORS_HEADERS },
   );
 }
 
@@ -59,21 +66,58 @@ export function bookingQueueNotFoundResponse(): NextResponse {
 }
 
 /**
+ * TEMP HOTFIX — remove with public booking restructure.
+ * When branchCode is missing and exactly one active public branch exists,
+ * use that branch. Multiple or zero active branches → BRANCH_REQUIRED.
+ * Never hardcodes a branch code; never picks TOP 1 among many.
+ */
+function warnSingleActiveBranchFallback(args: {
+  route: string;
+  resolvedBranchID: number;
+  resolvedBranchCode: string;
+}): void {
+  console.warn(
+    '[public-booking] single-active-branch compatibility fallback',
+    {
+      route: args.route,
+      resolvedBranchID: args.resolvedBranchID,
+      resolvedBranchCode: args.resolvedBranchCode,
+    },
+  );
+}
+
+/**
  * Resolve public branchCode (preferred) from query/body.
- * Never defaults to GLEEM. Inactive/unknown → invalid branch response semantics via throw.
+ * Explicit code: must exist and be active.
+ * Missing code: temporary compatibility — only when exactly one active branch.
+ * Never defaults to a hardcoded branch code or BranchID=1.
  */
 export async function resolvePublicBranchCode(
   branchCode: string | null | undefined,
+  options?: ResolvePublicBranchOptions,
 ): Promise<BranchRecord> {
   const raw = (branchCode ?? '').trim();
-  if (!raw) {
-    throw new BranchDomainError('BRANCH_REQUIRED', 'يجب اختيار الفرع', 400);
+  if (raw) {
+    const branch = await getBranchByCode(raw);
+    if (!branch || !branch.isActive) {
+      throw new BranchDomainError('BRANCH_INACTIVE', 'الفرع غير متاح', 404);
+    }
+    return branch;
   }
-  const branch = await getBranchByCode(raw);
-  if (!branch || !branch.isActive) {
-    throw new BranchDomainError('BRANCH_INACTIVE', 'الفرع غير متاح', 404);
+
+  // Missing branchCode: fail closed unless uniquely one active public branch.
+  const active = await listActiveBranches();
+  if (active.length === 1) {
+    const only = active[0]!;
+    warnSingleActiveBranchFallback({
+      route: options?.route ?? 'unknown',
+      resolvedBranchID: only.branchId,
+      resolvedBranchCode: only.branchCode,
+    });
+    return only;
   }
-  return branch;
+
+  throw new BranchDomainError('BRANCH_REQUIRED', 'يجب اختيار الفرع', 400);
 }
 
 export function extractPublicBranchCode(

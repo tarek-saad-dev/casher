@@ -7,7 +7,6 @@ import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
 import {
-  countEligibleDailyPayrollEmployees,
   countPostedDailyPayroll,
   validateDailyPayrollAttendance,
 } from '@/lib/payroll/dailyPayrollGenerateCore';
@@ -297,59 +296,114 @@ export async function runNightlyClose(params?: {
     return result;
   }
 
-  // ── 2) Daily payroll generate (once, employee-global) ───────────────────
+  // ── 2) Daily payroll generate per active branch (Phase 1L) ──────────────
   try {
     const db = await getPool();
-    const postedCount = await countPostedDailyPayroll(db, workDate);
-    if (postedCount > 0) {
+    const payrollBranches = await listActiveBranches();
+    let totalEmployees = 0;
+    let totalHours = 0;
+    let totalWages = 0;
+    let anyGenerated = false;
+    let anyPosted = false;
+    let anyIncomplete = false;
+    let ledgerDualWrite: unknown = undefined;
+
+    for (const branch of payrollBranches) {
+      const postedCount = await countPostedDailyPayroll(
+        db,
+        workDate,
+        branch.branchId,
+      );
+      if (postedCount > 0) {
+        anyPosted = true;
+        console.log(
+          `[nightly-close] payroll already_posted branch=${branch.branchCode}`,
+        );
+        continue;
+      }
+
+      const { missing } = await validateDailyPayrollAttendance(db, workDate, {
+        branchId: branch.branchId,
+      });
+      if (missing.length > 0) {
+        anyIncomplete = true;
+        errors.push(
+          `payroll blocked ${branch.branchCode}: ${missing.length} attendance/rate issues`,
+        );
+        console.error(
+          `[nightly-close] payroll incomplete branch=${branch.branchCode} missing=${missing.length}`,
+        );
+        continue;
+      }
+
+      if (dryRun) {
+        anyGenerated = true;
+        continue;
+      }
+
+      try {
+        const { result: gen, ledgerDualWrite: ld } =
+          await runDailyPayrollGenerateWithOptionalLedger(workDate, {
+            notesPrefix: `[NightlyClose][${branch.branchCode}] `,
+            branchId: branch.branchId,
+          });
+        totalEmployees += gen.generatedCount;
+        totalHours += Number(gen.totalHours) || 0;
+        totalWages += Number(gen.totalWage) || 0;
+        ledgerDualWrite = ld;
+        anyGenerated = true;
+        console.log(
+          `[nightly-close] payroll branch=${branch.branchCode} generated=${gen.generatedCount}`,
+        );
+      } catch (branchPayErr) {
+        const msg =
+          branchPayErr instanceof Error
+            ? branchPayErr.message
+            : String(branchPayErr);
+        errors.push(`payroll-branch ${branch.branchCode}: ${msg}`);
+        console.error(
+          `[nightly-close] payroll failed branch=${branch.branchCode}`,
+          msg,
+        );
+      }
+    }
+
+    if (dryRun) {
+      result.steps.payroll = {
+        status: 'dry_run',
+        employeesCount: 0,
+        totalHours: 0,
+        totalWages: 0,
+      };
+    } else if (anyGenerated) {
+      result.steps.payroll = {
+        status: 'generated',
+        employeesCount: totalEmployees,
+        totalHours,
+        totalWages,
+        ledgerDualWrite,
+      };
+    } else if (anyPosted && !anyIncomplete) {
       result.steps.payroll = {
         status: 'already_posted',
         employeesCount: 0,
         totalHours: 0,
         totalWages: 0,
       };
+    } else if (anyIncomplete) {
+      result.steps.payroll = {
+        status: 'attendance_incomplete',
+        employeesCount: 0,
+        totalHours: 0,
+        totalWages: 0,
+      };
     } else {
-      const eligibleCount = await countEligibleDailyPayrollEmployees(db);
-      if (eligibleCount === 0) {
-        result.steps.payroll = {
-          status: 'no_eligible_employees',
-          employeesCount: 0,
-          totalHours: 0,
-          totalWages: 0,
-        };
-      } else {
-        const { missing } = await validateDailyPayrollAttendance(db, workDate);
-        if (missing.length > 0) {
-          errors.push(
-            `payroll blocked: ${missing.length} attendance/rate issues remain`,
-          );
-          result.steps.payroll = {
-            status: 'attendance_incomplete',
-            employeesCount: 0,
-            totalHours: 0,
-            totalWages: 0,
-          };
-        } else if (dryRun) {
-          result.steps.payroll = {
-            status: 'dry_run',
-            employeesCount: 0,
-            totalHours: 0,
-            totalWages: 0,
-          };
-        } else {
-          const { result: gen, ledgerDualWrite } =
-            await runDailyPayrollGenerateWithOptionalLedger(workDate, {
-              notesPrefix: '[NightlyClose] ',
-            });
-          result.steps.payroll = {
-            status: 'generated',
-            employeesCount: gen.generatedCount,
-            totalHours: Number(gen.totalHours),
-            totalWages: Number(gen.totalWage),
-            ledgerDualWrite,
-          };
-        }
-      }
+      result.steps.payroll = {
+        status: 'no_eligible_employees',
+        employeesCount: 0,
+        totalHours: 0,
+        totalWages: 0,
+      };
     }
     console.log(
       `[nightly-close] payroll status=${result.steps.payroll?.status}`,
@@ -362,7 +416,7 @@ export async function runNightlyClose(params?: {
     }
   }
 
-  // ── 3) Daily targets ────────────────────────────────────────────────────
+  // ── 3) Daily targets per active branch (Phase 1L) ───────────────────────
   try {
     if (dryRun) {
       result.steps.targets = {
@@ -372,15 +426,44 @@ export async function runNightlyClose(params?: {
         eligibleEmployees: 0,
       };
     } else {
-      const targets = await generateEmployeeDailyTargets({
-        workDate,
-        generatedByUserId: null,
-      });
+      const targetBranches = await listActiveBranches();
+      let generated = 0;
+      let recalculated = 0;
+      let totalTargetAmount = 0;
+      let eligibleEmployees = 0;
+
+      for (const branch of targetBranches) {
+        try {
+          const targets = await generateEmployeeDailyTargets({
+            workDate,
+            generatedByUserId: null,
+            branchId: branch.branchId,
+          });
+          generated += targets.totals.generated;
+          recalculated += targets.totals.recalculated;
+          totalTargetAmount += Number(targets.totals.totalTargetAmount) || 0;
+          eligibleEmployees += targets.totals.eligibleEmployees;
+          console.log(
+            `[nightly-close] targets branch=${branch.branchCode} generated=${targets.totals.generated}`,
+          );
+        } catch (branchTargetErr) {
+          const msg =
+            branchTargetErr instanceof Error
+              ? branchTargetErr.message
+              : String(branchTargetErr);
+          errors.push(`targets-branch ${branch.branchCode}: ${msg}`);
+          console.error(
+            `[nightly-close] targets failed branch=${branch.branchCode}`,
+            msg,
+          );
+        }
+      }
+
       result.steps.targets = {
-        generated: targets.totals.generated,
-        recalculated: targets.totals.recalculated,
-        totalTargetAmount: targets.totals.totalTargetAmount,
-        eligibleEmployees: targets.totals.eligibleEmployees,
+        generated,
+        recalculated,
+        totalTargetAmount: totalTargetAmount.toFixed(2),
+        eligibleEmployees,
       };
     }
     console.log(

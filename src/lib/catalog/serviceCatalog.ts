@@ -1,5 +1,9 @@
 import { getPool } from '@/lib/db';
 import { ensureTblProImageUrlColumn, tblProImageUrlSelect } from '@/lib/migrations/ensureServiceImageUrl';
+import {
+  ensureTblCatSortOrderColumn,
+  tblCatSortOrderSelect,
+} from '@/lib/migrations/ensureCategorySortOrder';
 import type {
   ServiceCatalogCategory,
   ServiceCatalogItem,
@@ -11,6 +15,8 @@ import type {
 } from '@/lib/catalog/serviceCatalog.types';
 
 const UNCATEGORIZED_NAME = 'بدون قسم';
+/** Uncategorized always last */
+const UNCATEGORIZED_SORT = 999999;
 
 export function normalizeCatalogQuery(
   input: ServiceCatalogQuery = {},
@@ -64,7 +70,7 @@ function matchesSearch(item: ServiceCatalogItem, search: string): boolean {
 
 /**
  * Pure: group flat SQL rows into categories → services.
- * Categories ordered by name (ar locale); services by salesCount desc then nameEn.
+ * Categories ordered by sortOrder ASC (then name); services by salesCount desc then nameEn.
  */
 export function groupServicesByCategory(
   rows: ServiceCatalogRow[],
@@ -80,7 +86,6 @@ export function groupServicesByCategory(
 
     const catType = (row.CatType ?? '').toLowerCase() || null;
     if (opts.type === 'serv') {
-      // Include null CatType as service (legacy rows); exclude explicit products
       if (catType === 'pro') continue;
     } else if (opts.type === 'pro') {
       if (catType !== 'pro') continue;
@@ -102,6 +107,7 @@ export function groupServicesByCategory(
         id: catId,
         name: row.CatName?.trim() || UNCATEGORIZED_NAME,
         type: catType,
+        sortOrder: catId == null ? UNCATEGORIZED_SORT : Number(row.SortOrder) || 0,
         serviceCount: 0,
         services: [],
       });
@@ -122,6 +128,8 @@ export function groupServicesByCategory(
   }
 
   categories.sort((a, b) => {
+    const orderDiff = a.sortOrder - b.sortOrder;
+    if (orderDiff !== 0) return orderDiff;
     if (a.id == null && b.id != null) return 1;
     if (a.id != null && b.id == null) return -1;
     return a.name.localeCompare(b.name, 'ar', { sensitivity: 'base' });
@@ -156,7 +164,13 @@ export async function fetchServiceCatalog(
   const opts = normalizeCatalogQuery(query);
   const db = await getPool();
   const hasImageUrl = await ensureTblProImageUrlColumn(db);
+  const hasSortOrder = await ensureTblCatSortOrderColumn(db);
   const imageUrlCol = tblProImageUrlSelect(hasImageUrl);
+  const sortOrderCol = tblCatSortOrderSelect(hasSortOrder);
+
+  const orderBySort = hasSortOrder
+    ? 'ISNULL(c.SortOrder, 999999)'
+    : '999999';
 
   const result = await db.request().query(`
     SELECT
@@ -171,7 +185,8 @@ export async function fetchServiceCatalog(
       ISNULL(pop.SalesCount, 0) AS SalesCount,
       p.CatID,
       c.CatName,
-      c.CatType
+      c.CatType,
+      ${sortOrderCol}
     FROM [dbo].[TblPro] p
     LEFT JOIN [dbo].[TblCat] c ON p.CatID = c.CatID
     LEFT JOIN (
@@ -179,7 +194,7 @@ export async function fetchServiceCatalog(
       FROM [dbo].[TblinvServDetail]
       GROUP BY ProID
     ) pop ON p.ProID = pop.ProID
-    ORDER BY c.CatName, ISNULL(pop.SalesCount, 0) DESC, p.ProName
+    ORDER BY ${orderBySort}, c.CatName, ISNULL(pop.SalesCount, 0) DESC, p.ProName
   `);
 
   const categories = groupServicesByCategory(

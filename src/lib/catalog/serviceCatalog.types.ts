@@ -32,6 +32,8 @@ export interface ServiceCatalogCategory {
   id: number | null;
   name: string;
   type: string | null;
+  /** Lower = first. Controlled from /admin/services */
+  sortOrder: number;
   serviceCount: number;
   services: ServiceCatalogItem[];
 }
@@ -69,4 +71,5 @@ export interface ServiceCatalogRow {
   CatID: number | null;
   CatName: string | null;
   CatType: string | null;
+  SortOrder: number | null;
 }

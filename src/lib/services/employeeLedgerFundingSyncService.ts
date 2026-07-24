@@ -179,7 +179,16 @@ async function upsertFundingFromCashMove(
     return 'updated';
   }
 
+  const branchRow = await ledgerRequest(transaction)
+    .input('CashMoveID', sql.Int, params.cashMoveId)
+    .query(`SELECT BranchID FROM dbo.TblCashMove WHERE ID = @CashMoveID`);
+  const branchId = Number(branchRow.recordset[0]?.BranchID);
+  if (!Number.isFinite(branchId) || branchId <= 0) {
+    throw new Error('تعذر تحديد فرع حركة الخزنة لتسجيل تمويل الموظف');
+  }
+
   await ledgerRequest(transaction)
+    .input('BranchID', sql.Int, branchId)
     .input('EmpID', sql.Int, params.empId)
     .input('EntryDate', sql.Date, params.entryDate)
     .input('EntryReason', sql.NVarChar(40), EMP_LEDGER_REASON_EMPLOYEE_FUNDING)
@@ -192,12 +201,12 @@ async function upsertFundingFromCashMove(
     .input('CreatedByUserID', sql.Int, params.createdByUserId ?? null)
     .query(`
       INSERT INTO dbo.TblEmpLedgerEntry (
-        EmpID, EntryDate, EntryDirection, EntryReason, Amount,
+        BranchID, EmpID, EntryDate, EntryDirection, EntryReason, Amount,
         PayrollMonth, RefType, RefID, CashMoveID, AttendanceID,
         Notes, IsVoided, CreatedByUserID, CreatedAt
       )
       VALUES (
-        @EmpID, @EntryDate, N'credit', @EntryReason, @Amount,
+        @BranchID, @EmpID, @EntryDate, N'credit', @EntryReason, @Amount,
         @PayrollMonth, @RefType, @RefID, @CashMoveID, NULL,
         @Notes, 0, @CreatedByUserID, SYSDATETIME()
       )

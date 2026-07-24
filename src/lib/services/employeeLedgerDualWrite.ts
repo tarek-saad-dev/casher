@@ -12,6 +12,7 @@ export const EMP_LEDGER_REASON_EMPLOYEE_FUNDING = 'employee_funding';
 export interface PayrollRowForLedger {
   payrollId: number;
   empId: number;
+  branchId: number;
   workDate: string;
   attendanceId: number | null;
   dailyWage: number;
@@ -190,8 +191,22 @@ export async function upsertAdvanceLedgerEntry(
     return 'updated';
   }
 
+  // Branch ownership must match the cash move that paid the advance.
+  const branchRow = await ledgerRequest(pool, transaction)
+    .input('CashMoveID', sql.Int, params.cashMoveId)
+    .query(`
+      SELECT BranchID FROM dbo.TblCashMove WHERE ID = @CashMoveID
+    `);
+  const branchId = Number(branchRow.recordset[0]?.BranchID);
+  if (!Number.isFinite(branchId) || branchId <= 0) {
+    throw new EmployeeLedgerDualWriteError(
+      'تعذر تحديد فرع حركة الخزنة لتسجيل سلفة دفتر الموظف',
+    );
+  }
+
   await ledgerRequest(pool, transaction)
     .input('EmpID', sql.Int, params.empId)
+    .input('BranchID', sql.Int, branchId)
     .input('EntryDate', sql.Date, params.entryDate)
     .input('EntryReason', sql.NVarChar(40), EMP_LEDGER_REASON_ADVANCE)
     .input('Amount', sql.Decimal(12, 2), params.amount)
@@ -203,12 +218,12 @@ export async function upsertAdvanceLedgerEntry(
     .input('CreatedByUserID', sql.Int, params.createdByUserId ?? null)
     .query(`
       INSERT INTO dbo.TblEmpLedgerEntry (
-        EmpID, EntryDate, EntryDirection, EntryReason, Amount,
+        BranchID, EmpID, EntryDate, EntryDirection, EntryReason, Amount,
         PayrollMonth, RefType, RefID, CashMoveID, AttendanceID,
         Notes, IsVoided, CreatedByUserID, CreatedAt
       )
       VALUES (
-        @EmpID, @EntryDate, N'debit', @EntryReason, @Amount,
+        @BranchID, @EmpID, @EntryDate, N'debit', @EntryReason, @Amount,
         @PayrollMonth, @RefType, @RefID, @CashMoveID, NULL,
         @Notes, 0, @CreatedByUserID, SYSDATETIME()
       )
@@ -315,25 +330,29 @@ export async function fetchGeneratedPayrollRowsForLedger(
   pool: { request: () => sql.Request },
   workDate: string,
   transaction?: sql.Transaction,
+  branchId?: number,
 ): Promise<PayrollRowForLedger[]> {
   const req = transaction ? new sql.Request(transaction) : pool.request();
-  const result = await req
-    .input('WorkDate', sql.Date, workDate)
-    .query(`
+  req.input('WorkDate', sql.Date, workDate);
+  if (branchId != null) req.input('BranchID', sql.Int, branchId);
+  const result = await req.query(`
       SELECT
         p.ID          AS payrollId,
         p.EmpID       AS empId,
+        p.BranchID    AS branchId,
         p.WorkDate    AS workDate,
         p.AttendanceID AS attendanceId,
         p.DailyWage   AS dailyWage
       FROM dbo.TblEmpDailyPayroll p
       WHERE p.WorkDate = @WorkDate
         AND p.Status = N'Generated'
+        ${branchId != null ? 'AND p.BranchID = @BranchID' : ''}
     `);
 
   return result.recordset.map((row: Record<string, unknown>) => ({
     payrollId: Number(row.payrollId),
     empId: Number(row.empId),
+    branchId: Number(row.branchId),
     workDate: formatDateValue(row.workDate),
     attendanceId: row.attendanceId != null ? Number(row.attendanceId) : null,
     dailyWage: Number(row.dailyWage ?? 0),
@@ -406,6 +425,7 @@ export async function upsertHourlyWageLedgerEntry(
 
   await ledgerRequest(pool, transaction)
     .input('EmpID', sql.Int, row.empId)
+    .input('BranchID', sql.Int, row.branchId)
     .input('EntryDate', sql.Date, row.workDate)
     .input('EntryReason', sql.NVarChar(40), EMP_LEDGER_REASON_HOURLY_WAGE)
     .input('Amount', sql.Decimal(12, 2), row.dailyWage)
@@ -416,12 +436,12 @@ export async function upsertHourlyWageLedgerEntry(
     .input('RefID', sql.Int, row.payrollId)
     .query(`
       INSERT INTO dbo.TblEmpLedgerEntry (
-        EmpID, EntryDate, EntryDirection, EntryReason, Amount,
+        BranchID, EmpID, EntryDate, EntryDirection, EntryReason, Amount,
         PayrollMonth, RefType, RefID, CashMoveID, AttendanceID,
         Notes, IsVoided, CreatedAt
       )
       VALUES (
-        @EmpID, @EntryDate, N'credit', @EntryReason, @Amount,
+        @BranchID, @EmpID, @EntryDate, N'credit', @EntryReason, @Amount,
         @PayrollMonth, @RefType, @RefID, NULL, @AttendanceID,
         @Notes, 0, SYSDATETIME()
       )
@@ -434,8 +454,14 @@ export async function syncHourlyWageLedgerForWorkDate(
   pool: { request: () => sql.Request },
   workDate: string,
   transaction?: sql.Transaction,
+  branchId?: number,
 ): Promise<HourlyWageLedgerSyncResult> {
-  const rows = await fetchGeneratedPayrollRowsForLedger(pool, workDate, transaction);
+  const rows = await fetchGeneratedPayrollRowsForLedger(
+    pool,
+    workDate,
+    transaction,
+    branchId,
+  );
   const result: HourlyWageLedgerSyncResult = {
     inserted: 0,
     updated: 0,
@@ -463,7 +489,7 @@ export class EmployeeLedgerDualWriteError extends Error {
  */
 export async function runDailyPayrollGenerateWithOptionalLedger(
   workDate: string,
-  options: { notesPrefix?: string } = {},
+  options: { notesPrefix?: string; branchId: number },
 ): Promise<{
   result: import('@/lib/payroll/dailyPayrollGenerateCore').DailyPayrollGenerateResult;
   ledgerDualWrite: boolean;
@@ -471,6 +497,10 @@ export async function runDailyPayrollGenerateWithOptionalLedger(
 }> {
   const db = await getPool();
   const dualWrite = isEmployeeLedgerDualWriteEnabled();
+  const branchId = Number(options.branchId);
+  if (!Number.isFinite(branchId) || branchId <= 0) {
+    throw new EmployeeLedgerDualWriteError('branchId مطلوب لتوليد اليومية');
+  }
 
   if (!dualWrite) {
     const result = await executeDailyPayrollGenerateOnly(db, workDate, options);
@@ -485,7 +515,12 @@ export async function runDailyPayrollGenerateWithOptionalLedger(
       ...options,
       transaction,
     });
-    const ledgerSync = await syncHourlyWageLedgerForWorkDate(db, workDate, transaction);
+    const ledgerSync = await syncHourlyWageLedgerForWorkDate(
+      db,
+      workDate,
+      transaction,
+      branchId,
+    );
     await transaction.commit();
     return { result, ledgerDualWrite: true, ledgerSync };
   } catch (err) {
@@ -510,7 +545,7 @@ export async function runDailyPayrollGenerateWithOptionalLedger(
 async function executeDailyPayrollGenerateOnly(
   db: { request: () => sql.Request },
   workDate: string,
-  options: { notesPrefix?: string; transaction?: sql.Transaction },
+  options: { notesPrefix?: string; transaction?: sql.Transaction; branchId: number },
 ) {
   const { executeDailyPayrollGenerate } = await import('@/lib/payroll/dailyPayrollGenerateCore');
   try {

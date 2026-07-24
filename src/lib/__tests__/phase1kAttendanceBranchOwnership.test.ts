@@ -68,26 +68,26 @@ describe('Phase 1K attendance branch ownership', () => {
     expect(team).toContain('a.BranchID = @branchId');
   });
 
-  it('payroll uses employee/day aggregate once (no per-branch payroll rows)', () => {
+  it('payroll aggregate helpers exist (1K day view; 1L adds branch-day)', () => {
     const core = read('src/lib/payroll/dailyPayrollGenerateCore.ts');
-    expect(core).toContain('vw_EmpAttendancePayrollDay');
+    expect(core).toContain('vw_EmpAttendancePayrollBranchDay');
     expect(core).toContain('AGGREGATE_ACTUAL_HOURS_EXPR');
-    expect(core).toContain('loadEmpDayAttendanceAggregates');
     expect(core).toContain('PrimaryAttendanceID');
     expect(core).not.toMatch(/INSERT INTO dbo\.TblEmpDailyPayroll[\s\S]{0,200}FROM dbo\.TblEmpAttendance a\s/);
 
     const agg = read('src/lib/payroll/attendancePayrollAggregate.ts');
-    expect(agg).toContain('employee + WorkDate');
+    expect(agg).toContain('loadEmpBranchDayAttendanceAggregates');
     expect(agg).toContain('Phase 1L');
   });
 
-  it('nightly finalizes per branch then payroll once', () => {
+  it('nightly finalizes per branch then payroll per branch (1L)', () => {
     const nightly = read('src/lib/hr/nightly-close.service.ts');
     expect(nightly).toContain('listActiveBranches');
     expect(nightly).toContain('finalizeIncompleteAttendanceWithDefaults');
     expect(nightly).toContain('branchId: branch.branchId');
-    // Payroll still single call after attendance loop
     expect(nightly).toContain('runDailyPayrollGenerateWithOptionalLedger');
+    expect(nightly).toContain('payrollBranches');
+    expect(nightly).toContain('generateEmployeeDailyTargets');
 
     const finalize = read('src/lib/hr/finalize-incomplete-attendance.ts');
     expect(finalize).toContain('options: { branchId: number }');
@@ -150,12 +150,12 @@ describe('Phase 1K attendance branch ownership', () => {
     expect(aggregateToValidationAttendance(undefined)).toBeNull();
   });
 
-  it('registry: attendance branch-owned and no longer go-live blocker', () => {
+  it('registry: attendance branch-owned; payroll_ledger_targets owned in 1L', () => {
     const att = DOMAIN_OWNERSHIP_REGISTRY.find((d) => d.domain === 'attendance');
     expect(att?.classification).toBe('BRANCH_OWNED_ROOT');
     expect(att?.goLiveBlocker).toBe(false);
     expect(GO_LIVE_BLOCKER_DOMAINS).not.toContain('attendance');
-    expect(GO_LIVE_BLOCKER_DOMAINS).toContain('payroll_ledger_targets');
+    expect(GO_LIVE_BLOCKER_DOMAINS).not.toContain('payroll_ledger_targets');
   });
 
   it('Phase 1K documentation set exists', () => {

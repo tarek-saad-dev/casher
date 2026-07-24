@@ -189,17 +189,25 @@ export const DOMAIN_OWNERSHIP_REGISTRY: DomainOwnershipEntry[] = [
     consolidatedReadAllowed: true,
     goLiveBlocker: false,
     notes:
-      'Phase 1K: BranchID NOT NULL; unique Branch+Emp+WorkDate; open-session conflict employee-global; payroll still employee/date aggregate until 1L',
+      'Phase 1K: BranchID NOT NULL; unique Branch+Emp+WorkDate; open-session conflict employee-global; Phase 1L owns payroll/ledger/targets',
   },
   {
     domain: 'payroll_ledger_targets',
-    classification: 'DEFERRED_REQUIRES_BUSINESS_DECISION',
-    roots: ['TblEmpPayroll', 'TblEmpLedgerEntry', 'TblEmpTarget'],
+    classification: 'BRANCH_OWNED_ROOT',
+    roots: [
+      'TblEmpDailyPayroll',
+      'TblEmpLedgerEntry',
+      'TblEmpDailyTarget',
+      'TblEmpTargetPlan',
+      'TblEmpTargetRecalcRequest',
+      'TblEmpBranchPayrollPlan',
+    ],
     masters: ['TblEmp'],
-    branchRequiredOnWrite: false,
+    branchRequiredOnWrite: true,
     consolidatedReadAllowed: true,
-    goLiveBlocker: true,
-    notes: 'Cost attribution / source branch undecided — no speculative redesign in 1I',
+    goLiveBlocker: false,
+    notes:
+      'Phase 1L: EmpID+BranchID accounts writable; global balance = read-only SUM; hourly/monthly/target/advance/payout branch-owned; no GLEEM fallback; no cross-branch payout',
   },
   {
     domain: 'budgets',

@@ -157,7 +157,9 @@ export async function POST(req: NextRequest) {
       const { searchParams } = new URL(req.url);
       const branchCode = extractPublicBranchCode(searchParams, body);
       try {
-        const branch = await resolvePublicBranchCode(branchCode);
+        const branch = await resolvePublicBranchCode(branchCode, {
+          route: '/api/public/booking/create',
+        });
         branchId = branch.branchId;
         branchName = branch.branchName;
       } catch (err) {

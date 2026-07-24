@@ -199,7 +199,9 @@ export async function POST(req: NextRequest) {
     const branchCode = extractPublicBranchCode(searchParams, body);
     let branchId: number;
     try {
-      const branch = await resolvePublicBranchCode(branchCode);
+      const branch = await resolvePublicBranchCode(branchCode, {
+        route: '/api/public/booking/plan',
+      });
       branchId = branch.branchId;
     } catch (err) {
       if (err instanceof BranchDomainError) {

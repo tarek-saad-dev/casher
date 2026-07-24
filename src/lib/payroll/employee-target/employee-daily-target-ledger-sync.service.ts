@@ -28,7 +28,7 @@ export class EmployeeDailyTargetLedgerConflictError extends Error {
 }
 
 export interface SyncEmployeeDailyTargetLedgerParams {
-  dailyTarget: Pick<DailyTargetRow, 'id' | 'empId' | 'workDate' | 'targetAmount'>;
+  dailyTarget: Pick<DailyTargetRow, 'id' | 'empId' | 'branchId' | 'workDate' | 'targetAmount'>;
   actorUserId: number | null;
   transaction: sql.Transaction;
 }
@@ -135,6 +135,7 @@ export async function syncEmployeeDailyTargetLedgerEntry(
   try {
     const id = await insertTargetLedgerEntry(transaction, {
       empId: dailyTarget.empId,
+      branchId: dailyTarget.branchId,
       workDate: dailyTarget.workDate,
       amount,
       dailyTargetId: dailyTarget.id,

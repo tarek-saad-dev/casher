@@ -82,10 +82,8 @@ const REQUIRED_BRANCH_INDEXES = [
 ];
 
 const FORBIDDEN_HR_TABLES = [
-  // Phase 1K owns attendance BranchID; payroll/ledger/target/budget stay deferred.
+  // Phase 1L owns payroll/ledger/target BranchID. Remaining deferred: legacy alias names + budgets.
   'TblEmpPayroll',
-  'TblEmpTarget',
-  'TblEmpLedgerEntry',
   'TblBudget',
 ];
 

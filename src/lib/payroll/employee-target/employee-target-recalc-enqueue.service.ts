@@ -10,6 +10,7 @@ import { assertValidWorkDate, EmployeeTargetValidationError } from './target.val
 
 export interface EnqueueResultItem {
   empId: number;
+  branchId: number;
   workDate: string;
   requestId: number;
   requestedVersion: number;
@@ -22,6 +23,7 @@ export interface EnqueueResultItem {
 export async function enqueueEmployeeTargetRecalculation(params: {
   transaction: sql.Transaction;
   empId: number;
+  branchId: number;
   workDate: string;
   reason: string;
   sourceType?: string | null;
@@ -31,8 +33,12 @@ export async function enqueueEmployeeTargetRecalculation(params: {
   if (!Number.isInteger(params.empId) || params.empId <= 0) {
     throw new EmployeeTargetValidationError('EmpID غير صالح');
   }
+  if (!Number.isInteger(params.branchId) || params.branchId <= 0) {
+    throw new EmployeeTargetValidationError('branchId غير صالح');
+  }
   const r = await enqueueTargetRecalcInTransaction(params.transaction, {
     empId: params.empId,
+    branchId: params.branchId,
     workDate: params.workDate,
     reason: params.reason || 'recalc',
     sourceType: params.sourceType ?? null,
@@ -40,6 +46,7 @@ export async function enqueueEmployeeTargetRecalculation(params: {
   });
   return {
     empId: params.empId,
+    branchId: params.branchId,
     workDate: params.workDate,
     requestId: r.id,
     requestedVersion: r.requestedVersion,
@@ -48,7 +55,7 @@ export async function enqueueEmployeeTargetRecalculation(params: {
 }
 
 /**
- * Batch enqueue — dedupe + stable sort (WorkDate, EmpID) to reduce deadlocks.
+ * Batch enqueue — dedupe + stable sort (WorkDate, BranchID, EmpID) to reduce deadlocks.
  */
 export async function enqueueEmployeeTargetRecalculations(params: {
   transaction: sql.Transaction;
@@ -67,6 +74,7 @@ export async function enqueueEmployeeTargetRecalculations(params: {
       await enqueueEmployeeTargetRecalculation({
         transaction: params.transaction,
         empId: scope.empId,
+        branchId: scope.branchId,
         workDate: scope.workDate,
         reason: reason.slice(0, 100),
         sourceType: params.sourceType,

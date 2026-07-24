@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
+import { requireBranchOperationAccess } from '@/lib/branch/context';
 import {
   EmployeeLedgerMonthlySalaryError,
   postMonthlySalaryEntitlements,
@@ -8,6 +9,7 @@ import {
 /**
  * POST /api/admin/hr/employee-ledger/monthly-salary/post
  * Post monthly salary entitlements to Employee Ledger (no cash movement).
+ * BranchID from session only (Phase 1L).
  */
 export async function POST(request: NextRequest) {
   const auth = await requirePageAccess('/admin/hr');
@@ -15,6 +17,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    if (body.branchId != null || body.BranchID != null) {
+      return NextResponse.json({ error: 'BranchID في الطلب غير مسموح' }, { status: 400 });
+    }
+
     const month = String(body.month ?? '').trim();
     const postingDate = body.postingDate != null ? String(body.postingDate).trim() : undefined;
     const empIdRaw = body.empId;
@@ -25,15 +31,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'month مطلوب بصيغة YYYY-MM' }, { status: 400 });
     }
 
+    const branch = await requireBranchOperationAccess();
+    if (branch instanceof NextResponse) return branch;
+
     const result = await postMonthlySalaryEntitlements({
       month,
+      branchId: branch.branchId,
       postingDate,
-      empId: empId != null && !Number.isNaN(empId) ? empId : undefined,
+      empId,
       dryRun,
       createdByUserId: auth.userId,
     });
 
-    return NextResponse.json(result, { status: dryRun ? 200 : 201 });
+    return NextResponse.json({ ...result, branchId: branch.branchId });
   } catch (error: unknown) {
     if (error instanceof EmployeeLedgerMonthlySalaryError) {
       const status = error.message.includes('EMP_LEDGER_DUAL_WRITE_ENABLED') ? 503 : 400;

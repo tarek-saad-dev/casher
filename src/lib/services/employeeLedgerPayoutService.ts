@@ -9,7 +9,7 @@ import {
   isMissingLedgerTableError,
   payrollMonthFromWorkDate,
 } from '@/lib/services/employeeLedgerDualWrite';
-import { getEmployeeAllTimeBalance } from '@/lib/services/employeeLedgerService';
+import { getEmployeeBranchBalance } from '@/lib/services/employeeLedgerService';
 import type { EmpLedgerPayoutResponse } from '@/lib/types/employee-ledger';
 
 export const PAYOUT_EXPENSE_CATEGORY_NAME = 'صرف مستحقات الموظفين';
@@ -63,6 +63,7 @@ export async function insertPayoutLedgerEntry(
   request: sql.Request,
   params: {
     empId: number;
+    branchId: number;
     cashMoveId: number;
     entryDate: string;
     amount: number;
@@ -73,6 +74,7 @@ export async function insertPayoutLedgerEntry(
 
   const insertResult = await request
     .input('EmpID', sql.Int, params.empId)
+    .input('BranchID', sql.Int, params.branchId)
     .input('EntryDate', sql.Date, params.entryDate)
     .input('EntryReason', sql.NVarChar(40), EMP_LEDGER_REASON_PAYOUT)
     .input('Amount', sql.Decimal(12, 2), params.amount)
@@ -84,13 +86,13 @@ export async function insertPayoutLedgerEntry(
     .input('CreatedByUserID', sql.Int, params.createdByUserId ?? null)
     .query(`
       INSERT INTO dbo.TblEmpLedgerEntry (
-        EmpID, EntryDate, EntryDirection, EntryReason, Amount,
+        BranchID, EmpID, EntryDate, EntryDirection, EntryReason, Amount,
         PayrollMonth, RefType, RefID, CashMoveID, AttendanceID,
         Notes, IsVoided, CreatedByUserID, CreatedAt
       )
       OUTPUT INSERTED.ID
       VALUES (
-        @EmpID, @EntryDate, N'debit', @EntryReason, @Amount,
+        @BranchID, @EmpID, @EntryDate, N'debit', @EntryReason, @Amount,
         @PayrollMonth, @RefType, @RefID, @CashMoveID, NULL,
         @Notes, 0, @CreatedByUserID, SYSDATETIME()
       )
@@ -167,10 +169,16 @@ export async function executeEmployeePayout(params: {
   await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
 
   try {
-    const previousBalance = await getEmployeeAllTimeBalance(params.empId, transaction);
+    const previousBalance = await getEmployeeBranchBalance(
+      params.empId,
+      params.branchId,
+      transaction,
+    );
 
     if (!allowOverpay && amount > previousBalance) {
-      throw new EmployeeLedgerPayoutError('المبلغ أكبر من رصيد الموظف الحالي');
+      throw new EmployeeLedgerPayoutError(
+        'المبلغ أكبر من رصيد الموظف في هذا الفرع',
+      );
     }
 
     const payoutExpINID = await ensurePayoutExpenseCategory(transaction);
@@ -210,6 +218,7 @@ export async function executeEmployeePayout(params: {
 
     const ledgerEntryId = await insertPayoutLedgerEntry(new sql.Request(transaction), {
       empId: params.empId,
+      branchId: params.branchId,
       cashMoveId,
       entryDate: params.payoutDate,
       amount,

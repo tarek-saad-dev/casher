@@ -18,6 +18,7 @@ function row(partial: Partial<ServiceCatalogRow> & Pick<ServiceCatalogRow, 'ProI
     CatID: 1,
     CatName: 'حلاقة',
     CatType: 'serv',
+    SortOrder: 10,
     ...partial,
   };
 }
@@ -41,6 +42,7 @@ describe('serviceCatalog', () => {
         ProNameAr: 'حلاقة عادية',
         CatID: 1,
         CatName: 'حلاقة',
+        SortOrder: 10,
         SalesCount: 50,
       }),
       row({
@@ -49,6 +51,7 @@ describe('serviceCatalog', () => {
         ProNameAr: 'حلاقة متقدمة',
         CatID: 1,
         CatName: 'حلاقة',
+        SortOrder: 10,
         SalesCount: 10,
       }),
       row({
@@ -58,12 +61,14 @@ describe('serviceCatalog', () => {
         CatID: 2,
         CatName: 'Skincare',
         CatType: 'serv',
+        SortOrder: 20,
         SalesCount: 5,
       }),
     ]);
 
     expect(categories).toHaveLength(2);
     expect(categories[0].name).toBe('حلاقة');
+    expect(categories[0].sortOrder).toBe(10);
     expect(categories[0].serviceCount).toBe(2);
     expect(categories[0].services[0]).toMatchObject({
       id: 1,
@@ -72,6 +77,35 @@ describe('serviceCatalog', () => {
       salesCount: 50,
     });
     expect(categories[1].services[0].nameEn).toBe('Basic Skin Care');
+  });
+
+  it('orders categories by sortOrder ascending (not name)', () => {
+    const categories = groupServicesByCategory([
+      row({
+        ProID: 1,
+        ProName: 'A',
+        CatID: 1,
+        CatName: 'آآآ',
+        SortOrder: 30,
+      }),
+      row({
+        ProID: 2,
+        ProName: 'B',
+        CatID: 2,
+        CatName: 'ببب',
+        SortOrder: 10,
+      }),
+      row({
+        ProID: 3,
+        ProName: 'C',
+        CatID: 3,
+        CatName: 'تتت',
+        SortOrder: 20,
+      }),
+    ]);
+
+    expect(categories.map((c) => c.id)).toEqual([2, 3, 1]);
+    expect(categories.map((c) => c.sortOrder)).toEqual([10, 20, 30]);
   });
 
   it('excludes product categories when type=serv', () => {
@@ -110,7 +144,7 @@ describe('serviceCatalog', () => {
   it('builds meta counts from grouped categories', () => {
     const categories = groupServicesByCategory([
       row({ ProID: 1, ProName: 'A' }),
-      row({ ProID: 2, ProName: 'B', CatID: 2, CatName: 'Other' }),
+      row({ ProID: 2, ProName: 'B', CatID: 2, CatName: 'Other', SortOrder: 20 }),
     ]);
     const meta = buildCatalogMeta(categories);
     expect(meta.categoryCount).toBe(2);

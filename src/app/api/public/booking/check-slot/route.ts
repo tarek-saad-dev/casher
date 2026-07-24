@@ -83,7 +83,9 @@ export async function POST(req: NextRequest) {
     } else {
       const branchCode = extractPublicBranchCode(searchParams, body);
       try {
-        const branch = await resolvePublicBranchCode(branchCode);
+        const branch = await resolvePublicBranchCode(branchCode, {
+          route: '/api/public/booking/check-slot',
+        });
         branchId = branch.branchId;
       } catch (err) {
         if (err instanceof BranchDomainError) {

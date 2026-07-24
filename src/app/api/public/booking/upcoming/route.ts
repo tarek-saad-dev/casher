@@ -58,7 +58,9 @@ export async function POST(req: NextRequest) {
     const branchCode = extractPublicBranchCode(searchParams, body);
     let branch;
     try {
-      branch = await resolvePublicBranchCode(branchCode);
+      branch = await resolvePublicBranchCode(branchCode, {
+        route: '/api/public/booking/upcoming',
+      });
     } catch (err) {
       if (err instanceof BranchDomainError) {
         return err.code === 'BRANCH_REQUIRED'

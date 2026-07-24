@@ -60,6 +60,7 @@ function mapDaily(row: Record<string, unknown>): DailyTargetRow {
   return {
     id: Number(row.ID),
     empId: Number(row.EmpID),
+    branchId: Number(row.BranchID),
     workDate: toDateStr(row.WorkDate),
     targetPlanId: Number(row.TargetPlanID),
     netSalesAfterDiscount: Number(row.NetSalesAfterDiscount),
@@ -100,6 +101,7 @@ export async function insertTargetLedgerEntry(
   transaction: sql.Transaction,
   params: {
     empId: number;
+    branchId: number;
     workDate: string;
     amount: number;
     dailyTargetId: number;
@@ -107,7 +109,11 @@ export async function insertTargetLedgerEntry(
   },
 ): Promise<number> {
   const amount = roundLedgerAmount(params.amount);
+  if (!Number.isInteger(params.branchId) || params.branchId <= 0) {
+    throw new Error('branchId مطلوب لقيد تارجت الدفتر (Phase 1L)');
+  }
   const result = await new sql.Request(transaction)
+    .input('branchId', sql.Int, params.branchId)
     .input('empId', sql.Int, params.empId)
     .input('entryDate', sql.Date, params.workDate)
     .input('direction', sql.NVarChar(10), EMP_LEDGER_DIRECTION_CREDIT)
@@ -120,13 +126,13 @@ export async function insertTargetLedgerEntry(
     .input('createdBy', sql.Int, params.actorUserId)
     .query(`
       INSERT INTO dbo.TblEmpLedgerEntry (
-        EmpID, EntryDate, EntryDirection, EntryReason, Amount,
+        BranchID, EmpID, EntryDate, EntryDirection, EntryReason, Amount,
         PayrollMonth, RefType, RefID, CashMoveID, AttendanceID,
         Notes, IsVoided, CreatedByUserID, CreatedAt
       )
       OUTPUT INSERTED.ID
       VALUES (
-        @empId, @entryDate, @direction, @reason, @amount,
+        @branchId, @empId, @entryDate, @direction, @reason, @amount,
         @payrollMonth, @refType, @refId, NULL, NULL,
         @notes, 0, @createdBy, SYSDATETIME()
       )
@@ -186,7 +192,7 @@ export async function getDailyTargetById(dailyTargetId: number): Promise<DailyTa
     .input('id', sql.Int, dailyTargetId)
     .query(`
       SELECT
-        ID, EmpID, WorkDate, TargetPlanID,
+        ID, EmpID, BranchID, WorkDate, TargetPlanID,
         NetSalesAfterDiscount, TargetAmount,
         CalculationBreakdownJson, CalculationVersion, Status,
         GeneratedByUserID, GeneratedAt, UpdatedAt
@@ -229,7 +235,7 @@ export async function listDailyTargetsForLedgerScope(params: {
 
   const result = await request.query(`
     SELECT
-      ID, EmpID, WorkDate, TargetPlanID,
+      ID, EmpID, BranchID, WorkDate, TargetPlanID,
       NetSalesAfterDiscount, TargetAmount,
       CalculationBreakdownJson, CalculationVersion, Status,
       GeneratedByUserID, GeneratedAt, UpdatedAt

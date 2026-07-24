@@ -210,8 +210,12 @@ function mapOneEmployee(params: {
 export async function getEmployeeDailyTargetsForDate(
   workDate: string,
   empIds?: number[] | null,
+  branchId?: number,
 ): Promise<DailyTargetDayQueryResult> {
   assertValidWorkDate(workDate);
+  if (branchId == null || !Number.isInteger(branchId) || branchId <= 0) {
+    throw new EmployeeTargetValidationError('branchId مطلوب لاستعلام التارجت (Phase 1L)');
+  }
 
   const filterIds =
     empIds != null && empIds.length > 0
@@ -222,7 +226,7 @@ export async function getEmployeeDailyTargetsForDate(
     throw new EmployeeTargetValidationError('empIds غير صالحة');
   }
 
-  const plans = await listEnabledPlansCoveringDate(workDate, filterIds);
+  const plans = await listEnabledPlansCoveringDate(workDate, filterIds, branchId);
 
   const planConflicts: string[] = [];
   let planByEmp: Map<number, EffectiveTargetPlanRow>;
@@ -257,15 +261,23 @@ export async function getEmployeeDailyTargetsForDate(
 
   const [salesRows, storedRows, recalcRows] = await Promise.all([
     eligibleEmpIds.length > 0
-      ? getEmployeesNetServiceSalesByDate(workDate, eligibleEmpIds)
+      ? getEmployeesNetServiceSalesByDate(workDate, branchId, eligibleEmpIds)
       : Promise.resolve([]),
     listDailyTargetsByWorkDate(workDate, filterIds),
     listTargetRecalcRequestsForDate(workDate, filterIds).catch(() => [] as TargetRecalcRequestRow[]),
   ]);
 
   const salesByEmp = new Map(salesRows.map((r) => [r.empId, r.netSalesAfterDiscount]));
-  const storedByEmp = new Map(storedRows.map((r) => [r.empId, r]));
-  const recalcByEmp = new Map(recalcRows.map((r) => [r.empId, r]));
+  const storedByEmp = new Map(
+    storedRows
+      .filter((r) => r.branchId === branchId)
+      .map((r) => [r.empId, r]),
+  );
+  const recalcByEmp = new Map(
+    recalcRows
+      .filter((r) => r.branchId === branchId)
+      .map((r) => [r.empId, r]),
+  );
 
   const employees: DailyTargetQueryEmployee[] = [];
   let notGenerated = 0;

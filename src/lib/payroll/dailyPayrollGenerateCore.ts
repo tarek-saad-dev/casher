@@ -11,6 +11,7 @@ import { ensureAttendanceBreakSchema } from '@/lib/hr/attendance-breaks-db';
 import {
   AGGREGATE_ACTUAL_HOURS_EXPR,
   aggregateToValidationAttendance,
+  loadEmpBranchDayAttendanceAggregates,
   loadEmpDayAttendanceAggregates,
 } from '@/lib/payroll/attendancePayrollAggregate';
 
@@ -60,6 +61,7 @@ export const ACTUAL_HOURS_EXPR = `
 
 export interface DailyPayrollGenerateResult {
   workDate: string;
+  branchId: number;
   generatedCount: number;
   totalHours: number;
   totalWage: number;
@@ -69,6 +71,8 @@ export interface DailyPayrollGenerateResult {
 export interface DailyPayrollGenerateOptions {
   notesPrefix?: string;
   transaction?: sql.Transaction;
+  /** Required Phase 1L — payroll is branch-owned. */
+  branchId: number;
 }
 
 export interface DailyPayrollValidationResult {
@@ -122,11 +126,17 @@ const EXCLUDED_INFO_REASONS = new Set<PayrollValidationReason>([
   'payroll_disabled',
 ]);
 
+/**
+ * Validate attendance readiness for payroll.
+ * When branchId is provided (Phase 1L), only that branch's sessions count.
+ */
 export async function validateDailyPayrollAttendance(
   pool: { request: () => sql.Request },
   workDate: string,
+  options?: { branchId?: number },
 ): Promise<DailyPayrollValidationResult> {
   const dayOfWeek = new Date(`${workDate}T12:00:00Z`).getDay();
+  const branchId = options?.branchId;
 
   const eligibleResult = await pool
     .request()
@@ -157,8 +167,11 @@ export async function validateDailyPayrollAttendance(
       WHERE e.isActive = 1 AND e.IsPayrollEnabled = 1
     `);
 
-  // Phase 1K: validate against employee/day aggregate (multi-branch sessions → one input)
-  const aggregates = await loadEmpDayAttendanceAggregates(pool, workDate);
+  const aggregates =
+    branchId != null
+      ? await loadEmpBranchDayAttendanceAggregates(pool, workDate, branchId)
+      : await loadEmpDayAttendanceAggregates(pool, workDate);
+
   const attMap = new Map<
     number,
     { Status: string; CheckInTime: unknown; CheckOutTime: unknown }
@@ -172,6 +185,9 @@ export async function validateDailyPayrollAttendance(
   const excluded: ValidationExcluded[] = [];
 
   for (const emp of eligibleResult.recordset as EmployeeValidationRow[]) {
+    // Branch-scoped validation: skip employees with no branch attendance
+    // only when checking open-session / incomplete for that branch —
+    // no_attendance still applies for eligible scheduled workers without a session.
     const att = attMap.get(emp.EmpID) ?? null;
     const hasScheduleRow = emp.ScheduleDayOfWeek != null;
     const reason = getPayrollValidationReason(
@@ -188,6 +204,18 @@ export async function validateDailyPayrollAttendance(
     );
 
     if (!reason) continue;
+
+    // For branch-scoped runs: do not block the branch on employees who simply
+    // have no attendance at this branch (they may work elsewhere). Only treat
+    // incomplete open sessions / missing checkout for employees who have a
+    // branch session.
+    if (
+      branchId != null &&
+      reason === 'no_attendance' &&
+      !attMap.has(emp.EmpID)
+    ) {
+      continue;
+    }
 
     if (ERROR_REASONS.has(reason)) {
       missing.push({ empId: emp.EmpID, empName: emp.EmpName, reason });
@@ -218,35 +246,48 @@ export async function countEligibleDailyPayrollEmployees(
 export async function countPostedDailyPayroll(
   pool: { request: () => sql.Request },
   workDate: string,
+  branchId?: number,
 ): Promise<number> {
-  const postedCheck = await pool
-    .request()
-    .input('WorkDate', sql.Date, workDate)
-    .query(`
-      SELECT COUNT(*) AS cnt
-      FROM dbo.TblEmpDailyPayroll
-      WHERE WorkDate = @WorkDate AND Status = N'PostedToCashMove'
-    `);
+  const req = pool.request().input('WorkDate', sql.Date, workDate);
+  if (branchId != null) {
+    req.input('BranchID', sql.Int, branchId);
+  }
+  const postedCheck = await req.query(`
+    SELECT COUNT(*) AS cnt
+    FROM dbo.TblEmpDailyPayroll
+    WHERE WorkDate = @WorkDate
+      AND Status = N'PostedToCashMove'
+      ${branchId != null ? 'AND BranchID = @BranchID' : ''}
+  `);
   return postedCheck.recordset[0].cnt as number;
 }
 
+/**
+ * Generate/refresh daily payroll for one branch (Phase 1L).
+ * Uses vw_EmpAttendancePayrollBranchDay — never combines branches.
+ */
 export async function executeDailyPayrollGenerate(
   pool: { request: () => sql.Request },
   workDate: string,
-  options: DailyPayrollGenerateOptions = {},
+  options: DailyPayrollGenerateOptions,
 ): Promise<DailyPayrollGenerateResult> {
+  const branchId = Number(options.branchId);
+  if (!Number.isFinite(branchId) || branchId <= 0) {
+    throw new Error('branchId مطلوب لتوليد اليومية (Phase 1L)');
+  }
+
   await ensureAttendanceBreakSchema(pool);
   const notesPrefix = options.notesPrefix ?? '';
   const req = () => requestFrom(pool, options.transaction);
   const dayOfWeek = new Date(`${workDate}T12:00:00Z`).getDay();
 
-  // Phase 1K: hours from employee/day aggregate view — one payroll row even with multi-branch sessions
   const dailyWageSql = buildDailyWageSql(AGGREGATE_ACTUAL_HOURS_EXPR);
   const hourlySnapshotSql = buildHourlyRateSnapshotSql();
   const notesSql = buildPayrollNotesSql(notesPrefix, AGGREGATE_ACTUAL_HOURS_EXPR);
 
   await req()
     .input('WorkDate', sql.Date, workDate)
+    .input('BranchID', sql.Int, branchId)
     .input('dayOfWeek', sql.TinyInt, dayOfWeek)
     .query(`
       UPDATE p
@@ -258,29 +299,32 @@ export async function executeDailyPayrollGenerate(
         p.Notes              = ${notesSql},
         p.UpdatedAt          = GETDATE()
       FROM dbo.TblEmpDailyPayroll p
-      INNER JOIN dbo.vw_EmpAttendancePayrollDay v
-        ON v.EmpID = p.EmpID AND v.WorkDate = p.WorkDate
+      INNER JOIN dbo.vw_EmpAttendancePayrollBranchDay v
+        ON v.EmpID = p.EmpID AND v.WorkDate = p.WorkDate AND v.BranchID = p.BranchID
       INNER JOIN dbo.TblEmpAttendance a ON a.ID = v.PrimaryAttendanceID
       INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
       LEFT JOIN dbo.TblEmpWorkSchedule ws
         ON ws.EmpID = e.EmpID AND ws.DayOfWeek = @dayOfWeek
       WHERE p.WorkDate = @WorkDate
+        AND p.BranchID = @BranchID
         AND p.Status IN (N'Generated', N'Earned', N'PendingCheckout')
         AND v.HasOpenSession = 0
     `);
 
   const insertResult = await req()
     .input('WorkDate', sql.Date, workDate)
+    .input('BranchID', sql.Int, branchId)
     .input('dayOfWeek', sql.TinyInt, dayOfWeek)
     .query(`
       INSERT INTO dbo.TblEmpDailyPayroll
-        (EmpID, AttendanceID, WorkDate, SalaryHistoryID,
+        (BranchID, EmpID, AttendanceID, WorkDate, SalaryHistoryID,
          HourlyRateSnapshot, ActualHours, DailyWage, Status, Notes)
       OUTPUT
-        INSERTED.ID, INSERTED.EmpID, INSERTED.WorkDate,
+        INSERTED.ID, INSERTED.EmpID, INSERTED.BranchID, INSERTED.WorkDate,
         INSERTED.HourlyRateSnapshot, INSERTED.ActualHours,
         INSERTED.DailyWage, INSERTED.Status, INSERTED.Notes
       SELECT
+        v.BranchID,
         v.EmpID,
         v.PrimaryAttendanceID                                   AS AttendanceID,
         v.WorkDate,
@@ -290,7 +334,7 @@ export async function executeDailyPayrollGenerate(
         ${dailyWageSql}                                         AS DailyWage,
         N'Generated'                                            AS Status,
         ${notesSql}                                             AS Notes
-      FROM dbo.vw_EmpAttendancePayrollDay v
+      FROM dbo.vw_EmpAttendancePayrollBranchDay v
       INNER JOIN dbo.TblEmpAttendance a ON a.ID = v.PrimaryAttendanceID
       INNER JOIN dbo.TblEmp e ON e.EmpID = v.EmpID
       INNER JOIN dbo.TblEmpSalaryHistory h
@@ -298,29 +342,34 @@ export async function executeDailyPayrollGenerate(
       LEFT JOIN dbo.TblEmpWorkSchedule ws
         ON ws.EmpID = e.EmpID AND ws.DayOfWeek = @dayOfWeek
       WHERE v.WorkDate = @WorkDate
+        AND v.BranchID = @BranchID
         AND v.HasOpenSession = 0
         AND ${SQL_INSERT_ELIGIBILITY_WHERE}
         AND NOT EXISTS (
           SELECT 1 FROM dbo.TblEmpDailyPayroll p
-          WHERE p.EmpID = v.EmpID AND p.WorkDate = v.WorkDate
+          WHERE p.EmpID = v.EmpID AND p.BranchID = v.BranchID AND p.WorkDate = v.WorkDate
         );
     `);
 
   const summaryResult = await req()
     .input('WorkDate', sql.Date, workDate)
+    .input('BranchID', sql.Int, branchId)
     .query(`
       SELECT
         COUNT(*)         AS total,
         SUM(ActualHours) AS totalHours,
         SUM(DailyWage)   AS totalWage
       FROM dbo.TblEmpDailyPayroll
-      WHERE WorkDate = @WorkDate AND Status = N'Generated'
+      WHERE WorkDate = @WorkDate
+        AND BranchID = @BranchID
+        AND Status = N'Generated'
     `);
 
   const summary = summaryResult.recordset[0];
 
   return {
     workDate,
+    branchId,
     generatedCount: summary.total ?? 0,
     totalHours: summary.totalHours ?? 0,
     totalWage: summary.totalWage ?? 0,

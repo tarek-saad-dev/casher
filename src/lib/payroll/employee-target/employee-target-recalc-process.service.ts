@@ -64,6 +64,7 @@ export async function processEmployeeTargetRecalcRequests(params: {
     try {
       await generateEmployeeDailyTargets({
         workDate: row.workDate,
+        branchId: row.branchId,
         empIds: [row.empId],
         generatedByUserId: params.actorUserId,
       });
@@ -114,11 +115,16 @@ export async function tryProcessEnqueuedTargetRecalcs(params: {
 }): Promise<ProcessEmployeeTargetRecalcRequestsResult | null> {
   if (params.scopes.length === 0) return null;
   try {
-    const byDate = new Map<string, number[]>();
+    const byDateBranch = new Map<string, { workDate: string; branchId: number; empIds: number[] }>();
     for (const s of params.scopes) {
-      const list = byDate.get(s.workDate) ?? [];
-      list.push(s.empId);
-      byDate.set(s.workDate, list);
+      const key = `${s.workDate}|${s.branchId}`;
+      const entry = byDateBranch.get(key) ?? {
+        workDate: s.workDate,
+        branchId: s.branchId,
+        empIds: [],
+      };
+      entry.empIds.push(s.empId);
+      byDateBranch.set(key, entry);
     }
     const merged: ProcessEmployeeTargetRecalcRequestsResult = {
       claimed: 0,
@@ -127,11 +133,11 @@ export async function tryProcessEnqueuedTargetRecalcs(params: {
       failed: 0,
       items: [],
     };
-    for (const [workDate, empIds] of byDate) {
+    for (const group of byDateBranch.values()) {
       const r = await processEmployeeTargetRecalcRequests({
-        workDate,
-        empIds: [...new Set(empIds)],
-        maxRequests: Math.min(50, empIds.length + 5),
+        workDate: group.workDate,
+        empIds: [...new Set(group.empIds)],
+        maxRequests: Math.min(50, group.empIds.length + 5),
         actorUserId: params.actorUserId,
       });
       merged.claimed += r.claimed;
@@ -162,11 +168,19 @@ export async function enqueueAndMaybeProcessTargetRecalc(params: {
 }> {
   let scopes: TargetRecalcScope[];
   if (params.empIds != null && params.empIds.length > 0) {
-    scopes = params.empIds.map((empId) => ({
-      empId,
-      workDate: params.workDate,
-      reasons: [params.reason],
-    }));
+    const { listActiveBranches } = await import('@/lib/branch');
+    const branches = await listActiveBranches();
+    scopes = [];
+    for (const branch of branches) {
+      for (const empId of params.empIds) {
+        scopes.push({
+          empId,
+          branchId: branch.branchId,
+          workDate: params.workDate,
+          reasons: [params.reason],
+        });
+      }
+    }
   } else {
     // Day-wide: only employees that already have a request OR we enqueue from enabled plans?
     // Spec: enqueue day means process pending for day OR create for given empIds.
@@ -198,11 +212,16 @@ export async function enqueueAndMaybeProcessTargetRecalc(params: {
         actorUserId: params.actorUserId,
       });
     } else {
-      // Whole day: generate all eligible plans + clear pending via process
-      await generateEmployeeDailyTargets({
-        workDate: params.workDate,
-        generatedByUserId: params.actorUserId,
-      });
+      // Whole day: generate all eligible plans per active branch + clear pending
+      const { listActiveBranches } = await import('@/lib/branch');
+      const branches = await listActiveBranches();
+      for (const branch of branches) {
+        await generateEmployeeDailyTargets({
+          workDate: params.workDate,
+          branchId: branch.branchId,
+          generatedByUserId: params.actorUserId,
+        });
+      }
       process = await processEmployeeTargetRecalcRequests({
         workDate: params.workDate,
         maxRequests: 50,

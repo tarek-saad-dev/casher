@@ -121,7 +121,7 @@ export async function getInvoiceSnapshot(
       SELECT
         h.invID, h.invType, h.invDate, h.ClientID, h.SubTotal, h.Dis, h.DisVal,
         h.Tax, h.TaxVal, h.GrandTotal, h.TotalBonus, h.PayCash, h.PayVisa,
-        h.PaymentMethodID, h.Notes,
+        h.PaymentMethodID, h.Notes, h.BranchID,
         c.[Name] AS customerName, c.Mobile AS customerPhone
       FROM dbo.TblinvServHead h
       LEFT JOIN dbo.TblClient c ON h.ClientID = c.ClientID

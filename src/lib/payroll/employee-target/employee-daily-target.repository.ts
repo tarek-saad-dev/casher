@@ -6,6 +6,7 @@ import type { TargetInputBasis } from './target.types';
 export interface EffectiveTargetPlanRow {
   planId: number;
   empId: number;
+  branchId: number;
   empName: string;
   isEnabled: boolean;
   inputBasis: TargetInputBasis;
@@ -26,6 +27,7 @@ export interface TargetTierDbRow {
 export interface DailyTargetRow {
   id: number;
   empId: number;
+  branchId: number;
   workDate: string;
   targetPlanId: number;
   netSalesAfterDiscount: number;
@@ -47,6 +49,7 @@ function mapPlan(row: Record<string, unknown>): EffectiveTargetPlanRow {
   return {
     planId: Number(row.PlanID),
     empId: Number(row.EmpID),
+    branchId: Number(row.BranchID),
     empName: String(row.EmpName ?? ''),
     isEnabled: Boolean(row.IsEnabled),
     inputBasis: row.InputBasis as TargetInputBasis,
@@ -71,6 +74,7 @@ function mapDaily(row: Record<string, unknown>): DailyTargetRow {
   return {
     id: Number(row.ID),
     empId: Number(row.EmpID),
+    branchId: Number(row.BranchID),
     workDate: toDateStr(row.WorkDate),
     targetPlanId: Number(row.TargetPlanID),
     netSalesAfterDiscount: Number(row.NetSalesAfterDiscount),
@@ -86,15 +90,23 @@ function mapDaily(row: Record<string, unknown>): DailyTargetRow {
 }
 
 /**
- * All enabled plans whose window covers workDate.
- * Caller must detect >1 plan per EmpID (domain conflict).
+ * All enabled plans whose window covers workDate for one branch.
+ * Caller must detect >1 plan per EmpID within the branch (domain conflict).
  */
 export async function listEnabledPlansCoveringDate(
   workDate: string,
   empIds?: number[] | null,
+  branchId?: number,
 ): Promise<EffectiveTargetPlanRow[]> {
+  if (branchId == null || !Number.isInteger(branchId) || branchId <= 0) {
+    throw new Error('branchId مطلوب لخطط التارجت (Phase 1L)');
+  }
+
   const db = await getPool();
-  const request = db.request().input('workDate', sql.Date, workDate);
+  const request = db
+    .request()
+    .input('workDate', sql.Date, workDate)
+    .input('branchId', sql.Int, branchId);
 
   let empFilter = '';
   if (empIds != null && empIds.length > 0) {
@@ -110,6 +122,7 @@ export async function listEnabledPlansCoveringDate(
     SELECT
       p.ID AS PlanID,
       p.EmpID,
+      p.BranchID,
       e.EmpName,
       p.IsEnabled,
       p.InputBasis,
@@ -119,6 +132,7 @@ export async function listEnabledPlansCoveringDate(
     FROM dbo.TblEmpTargetPlan p
     INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
     WHERE p.IsEnabled = 1
+      AND p.BranchID = @branchId
       AND p.EffectiveFrom <= @workDate
       AND (p.EffectiveTo IS NULL OR p.EffectiveTo >= @workDate)
       ${empFilter}
@@ -163,7 +177,7 @@ export async function listDailyTargetsByWorkDate(
   }
   const result = await request.query(`
     SELECT
-      ID, EmpID, WorkDate, TargetPlanID,
+      ID, EmpID, BranchID, WorkDate, TargetPlanID,
       NetSalesAfterDiscount, TargetAmount,
       CalculationBreakdownJson, CalculationVersion, Status,
       GeneratedByUserID, GeneratedAt, UpdatedAt
@@ -182,6 +196,7 @@ export function isUniqueConstraintError(err: unknown): boolean {
 
 export interface UpsertDailyTargetParams {
   empId: number;
+  branchId: number;
   workDate: string;
   targetPlanId: number;
   netSalesAfterDiscount: number;
@@ -200,19 +215,24 @@ export interface UpsertDailyTargetResult {
 
 /**
  * Safe upsert with UPDLOCK/HOLDLOCK — no MERGE.
- * Unique (EmpID, WorkDate) is the final duplicate barrier.
+ * Unique (EmpID, BranchID, WorkDate) is the final duplicate barrier (Phase 1L).
  */
 export async function upsertDailyTargetInTransaction(
   transaction: sql.Transaction,
   params: UpsertDailyTargetParams,
 ): Promise<UpsertDailyTargetResult> {
+  if (!Number.isInteger(params.branchId) || params.branchId <= 0) {
+    throw new Error('branchId مطلوب لتارجت يومي (Phase 1L)');
+  }
+
   const select = await new sql.Request(transaction)
     .input('empId', sql.Int, params.empId)
+    .input('branchId', sql.Int, params.branchId)
     .input('workDate', sql.Date, params.workDate)
     .query(`
       SELECT ID, GeneratedAt
       FROM dbo.TblEmpDailyTarget WITH (UPDLOCK, HOLDLOCK)
-      WHERE EmpID = @empId AND WorkDate = @workDate
+      WHERE EmpID = @empId AND BranchID = @branchId AND WorkDate = @workDate
     `);
 
   const existing = select.recordset[0] as { ID: number; GeneratedAt: unknown } | undefined;
@@ -221,6 +241,7 @@ export async function upsertDailyTargetInTransaction(
     try {
       const inserted = await new sql.Request(transaction)
         .input('empId', sql.Int, params.empId)
+        .input('branchId', sql.Int, params.branchId)
         .input('workDate', sql.Date, params.workDate)
         .input('planId', sql.Int, params.targetPlanId)
         .input('netSales', sql.Decimal(18, 2), params.netSalesAfterDiscount)
@@ -230,14 +251,14 @@ export async function upsertDailyTargetInTransaction(
         .input('userId', sql.Int, params.generatedByUserId)
         .query(`
           INSERT INTO dbo.TblEmpDailyTarget (
-            EmpID, WorkDate, TargetPlanID,
+            EmpID, BranchID, WorkDate, TargetPlanID,
             NetSalesAfterDiscount, TargetAmount,
             CalculationBreakdownJson, CalculationVersion,
             Status, GeneratedByUserID, GeneratedAt, UpdatedAt
           )
           OUTPUT INSERTED.ID, INSERTED.GeneratedAt, INSERTED.UpdatedAt
           VALUES (
-            @empId, @workDate, @planId,
+            @empId, @branchId, @workDate, @planId,
             @netSales, @targetAmount,
             @breakdown, @version,
             N'generated', @userId, SYSDATETIME(), NULL
@@ -262,6 +283,7 @@ export async function upsertDailyTargetInTransaction(
 
   const updated = await new sql.Request(transaction)
     .input('empId', sql.Int, params.empId)
+    .input('branchId', sql.Int, params.branchId)
     .input('workDate', sql.Date, params.workDate)
     .input('planId', sql.Int, params.targetPlanId)
     .input('netSales', sql.Decimal(18, 2), params.netSalesAfterDiscount)
@@ -280,7 +302,7 @@ export async function upsertDailyTargetInTransaction(
           GeneratedByUserID = @userId,
           UpdatedAt = SYSDATETIME()
       OUTPUT INSERTED.ID, INSERTED.GeneratedAt, INSERTED.UpdatedAt
-      WHERE EmpID = @empId AND WorkDate = @workDate
+      WHERE EmpID = @empId AND BranchID = @branchId AND WorkDate = @workDate
     `);
 
   const row = updated.recordset[0] as {

@@ -63,14 +63,6 @@ export class EmployeeLedgerMonthlySalaryError extends Error {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-const SQL_RESOLVED_PAYROLL_METHOD = `
-  CASE
-    WHEN e.PayrollMethod IN (N'hourly', N'daily', N'monthly') THEN e.PayrollMethod
-    WHEN e.SalaryType = N'monthly' THEN N'monthly'
-    ELSE N'hourly'
-  END
-`;
-
 export function buildMonthlySalaryRefType(month: string): string {
   return `${EMP_LEDGER_REF_TYPE_MONTHLY_SALARY_PREFIX}${month}`;
 }
@@ -119,26 +111,35 @@ function formatDateValue(value: unknown): string {
 
 async function fetchEligibleMonthlyEmployees(
   pool: { request: () => sql.Request },
+  branchId: number,
   empId?: number | null,
   transaction?: sql.Transaction,
 ): Promise<MonthlySalaryEmployeeRow[]> {
-  const req = ledgerRequest(pool, transaction);
+  if (!Number.isInteger(branchId) || branchId <= 0) {
+    throw new EmployeeLedgerMonthlySalaryError('branchId مطلوب لترحيل الراتب الشهري (Phase 1L)');
+  }
+
+  const req = ledgerRequest(pool, transaction).input('BranchID', sql.Int, branchId);
   if (empId != null && empId > 0) req.input('EmpID', sql.Int, empId);
 
+  // Prefer branch payroll plan; no GLEEM fallback for other branches.
   const result = await req.query(`
     SELECT
       e.EmpID AS empId,
       e.EmpName AS empName,
-      CAST(e.BaseSalary AS DECIMAL(12,2)) AS baseSalary,
-      (${SQL_RESOLVED_PAYROLL_METHOD}) AS payrollMethod,
-      e.EmploymentType AS employmentType,
-      e.isActive,
-      e.IsPayrollEnabled
-    FROM dbo.TblEmp e
-    WHERE ISNULL(e.isActive, 1) = 1
+      CAST(p.MonthlySalary AS DECIMAL(12,2)) AS baseSalary,
+      p.PayType AS payrollMethod,
+      e.EmploymentType AS employmentType
+    FROM dbo.TblEmpBranchPayrollPlan p
+    INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
+    WHERE p.BranchID = @BranchID
+      AND p.IsActive = 1
+      AND p.PayType = N'monthly'
+      AND ISNULL(p.MonthlySalary, 0) > 0
+      AND (p.EffectiveTo IS NULL OR p.EffectiveTo >= CAST(GETDATE() AS date))
+      AND p.EffectiveFrom <= CAST(GETDATE() AS date)
+      AND ISNULL(e.isActive, 1) = 1
       AND ISNULL(e.IsPayrollEnabled, 1) = 1
-      AND ISNULL(e.BaseSalary, 0) > 0
-      AND (${SQL_RESOLVED_PAYROLL_METHOD}) = N'monthly'
       AND ISNULL(e.EmploymentType, N'full_time') <> N'freelance'
       ${empId != null && empId > 0 ? 'AND e.EmpID = @EmpID' : ''}
     ORDER BY e.EmpName
@@ -157,18 +158,21 @@ async function fetchActiveMonthlySalaryEntry(
   pool: { request: () => sql.Request },
   month: string,
   empId: number,
+  branchId: number,
   transaction?: sql.Transaction,
 ): Promise<{ id: number; amount: number; entryDate: string; notes: string | null } | null> {
   const refType = buildMonthlySalaryRefType(month);
   const result = await ledgerRequest(pool, transaction)
     .input('RefType', sql.NVarChar(80), refType)
     .input('RefID', sql.Int, empId)
+    .input('BranchID', sql.Int, branchId)
     .input('EntryReason', sql.NVarChar(40), EMP_LEDGER_REASON_MONTHLY_SALARY)
     .query(`
       SELECT TOP 1 ID, Amount, EntryDate, Notes
       FROM dbo.TblEmpLedgerEntry
       WHERE RefType = @RefType
         AND RefID = @RefID
+        AND BranchID = @BranchID
         AND EntryReason = @EntryReason
         AND IsVoided = 0
     `);
@@ -188,6 +192,7 @@ async function upsertMonthlySalaryLedgerEntry(
   params: {
     month: string;
     empId: number;
+    branchId: number;
     amount: number;
     postingDate: string;
     notes: string;
@@ -200,6 +205,7 @@ async function upsertMonthlySalaryLedgerEntry(
     pool,
     params.month,
     params.empId,
+    params.branchId,
     transaction,
   );
   const status = classifyMonthlySalaryRow(
@@ -231,6 +237,7 @@ async function upsertMonthlySalaryLedgerEntry(
   }
 
   await ledgerRequest(pool, transaction)
+    .input('BranchID', sql.Int, params.branchId)
     .input('EmpID', sql.Int, params.empId)
     .input('EntryDate', sql.Date, params.postingDate)
     .input('EntryReason', sql.NVarChar(40), EMP_LEDGER_REASON_MONTHLY_SALARY)
@@ -242,12 +249,12 @@ async function upsertMonthlySalaryLedgerEntry(
     .input('CreatedByUserID', sql.Int, params.createdByUserId ?? null)
     .query(`
       INSERT INTO dbo.TblEmpLedgerEntry (
-        EmpID, EntryDate, EntryDirection, EntryReason, Amount,
+        BranchID, EmpID, EntryDate, EntryDirection, EntryReason, Amount,
         PayrollMonth, RefType, RefID, CashMoveID, AttendanceID,
         Notes, IsVoided, CreatedByUserID, CreatedAt
       )
       VALUES (
-        @EmpID, @EntryDate, N'credit', @EntryReason, @Amount,
+        @BranchID, @EmpID, @EntryDate, N'credit', @EntryReason, @Amount,
         @PayrollMonth, @RefType, @RefID, NULL, NULL,
         @Notes, 0, @CreatedByUserID, SYSDATETIME()
       )
@@ -258,6 +265,7 @@ async function upsertMonthlySalaryLedgerEntry(
 
 export async function postMonthlySalaryEntitlements(params: {
   month: string;
+  branchId: number;
   postingDate?: string | null;
   empId?: number | null;
   dryRun?: boolean;
@@ -277,8 +285,9 @@ export async function postMonthlySalaryEntitlements(params: {
   const postingDate = resolveMonthlySalaryPostingDate(params.month, params.postingDate);
   const dryRun = params.dryRun !== false;
   const pool = await getPool();
+  const branchId = params.branchId;
 
-  const employees = await fetchEligibleMonthlyEmployees(pool, params.empId);
+  const employees = await fetchEligibleMonthlyEmployees(pool, branchId, params.empId);
   const rows: MonthlySalaryPreviewRow[] = [];
   const counts: MonthlySalaryPostCounts = {
     eligible: 0,
@@ -294,7 +303,7 @@ export async function postMonthlySalaryEntitlements(params: {
   for (const emp of employees) {
     counts.eligible++;
     const notes = buildMonthlySalaryNote(params.month);
-    const existing = await fetchActiveMonthlySalaryEntry(pool, params.month, emp.empId);
+    const existing = await fetchActiveMonthlySalaryEntry(pool, params.month, emp.empId, branchId);
     const status = classifyMonthlySalaryRow(emp.baseSalary, existing, postingDate, notes);
 
     const previewRow: MonthlySalaryPreviewRow = {
@@ -343,6 +352,7 @@ export async function postMonthlySalaryEntitlements(params: {
           {
             month: params.month,
             empId: emp.empId,
+            branchId,
             amount: emp.baseSalary,
             postingDate,
             notes,

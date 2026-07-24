@@ -1,0 +1,58 @@
+{
+  "capturedAt": "2026-07-24T09:50:01.875Z",
+  "database": "last132",
+  "branches": [
+    {
+      "BranchID": 1,
+      "BranchCode": "GLEEM",
+      "IsActive": true
+    },
+    {
+      "BranchID": 2,
+      "BranchCode": "PH1GTEST",
+      "IsActive": false
+    }
+  ],
+  "nulls": {
+    "payroll": 0,
+    "ledger": 0,
+    "target": 0,
+    "recalc": 0,
+    "plan": 0
+  },
+  "payroll": {
+    "rows": 606,
+    "wageSum": 147999.66,
+    "hoursSum": 5808.94
+  },
+  "payrollByBranch": [
+    {
+      "BranchCode": "GLEEM",
+      "c": 606,
+      "wageSum": 147999.66
+    }
+  ],
+  "ph1Payroll": 0,
+  "ledger": {
+    "rows": 517,
+    "credits": 80985.33,
+    "debits": 59951,
+    "balance": 21034.33
+  },
+  "cashMismatch": 0,
+  "ph1Ledger": 0,
+  "targets": {
+    "rows": 97,
+    "targetSum": 30833.6
+  },
+  "ph1Targets": 0,
+  "branchBalanceSum": 21034.33,
+  "globalBalanceSum": 21034.33,
+  "branchPayrollPlans": 13,
+  "ph1PayrollPlans": 0,
+  "requiredIndexes": [
+    "UX_TblEmpDailyPayroll_Emp_Branch_WorkDate",
+    "UQ_TblEmpDailyTarget_Emp_Branch_WorkDate",
+    "UX_TblEmpTargetRecalcRequest_Emp_Branch_WorkDate"
+  ]
+}

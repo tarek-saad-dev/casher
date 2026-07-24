@@ -75,9 +75,10 @@ function buildConfig(mode: string): sql.config {
 }
 
 const FORBIDDEN_HR_BRANCH_TABLES = [
+  // Phase 1L owns TblEmpDailyPayroll / TblEmpLedgerEntry / TblEmpDailyTarget BranchID.
+  // Keep only truly deferred legacy alias / budget tables.
   'TblEmpPayroll',
-  'TblEmpTarget',
-  'TblEmpLedgerEntry',
+  'TblBudget',
 ];
 
 function checkSource(failures: string[]) {

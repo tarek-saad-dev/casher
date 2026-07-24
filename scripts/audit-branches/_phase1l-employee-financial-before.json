@@ -1,0 +1,136 @@
+{
+  "capturedAt": "2026-07-24T09:19:21.293Z",
+  "database": "last132",
+  "branches": [
+    {
+      "BranchID": 1,
+      "BranchCode": "GLEEM",
+      "IsActive": true
+    },
+    {
+      "BranchID": 2,
+      "BranchCode": "PH1GTEST",
+      "IsActive": false
+    }
+  ],
+  "hasPayBranch": false,
+  "hasLedBranch": false,
+  "payroll": {
+    "rows": 606,
+    "employees": 17,
+    "wageSum": 147999.66,
+    "hoursSum": 5808.94,
+    "minDate": "2026-05-01T00:00:00.000Z",
+    "maxDate": "2026-07-22T00:00:00.000Z"
+  },
+  "payrollByStatus": [
+    {
+      "Status": "Generated",
+      "c": 152,
+      "wageSum": 32606.73
+    },
+    {
+      "Status": "PostedToCashMove",
+      "c": 454,
+      "wageSum": 115392.93
+    }
+  ],
+  "payrollDupEmpDate": 0,
+  "ledger": {
+    "rows": 517,
+    "employees": 14,
+    "credits": 80985.33,
+    "debits": 59951,
+    "balance": 21034.33
+  },
+  "ledgerByReason": [
+    {
+      "EntryReason": "advance",
+      "EntryDirection": "debit",
+      "c": 260,
+      "amountSum": 58901
+    },
+    {
+      "EntryReason": "hourly_wage",
+      "EntryDirection": "credit",
+      "c": 152,
+      "amountSum": 32606.73
+    },
+    {
+      "EntryReason": "target",
+      "EntryDirection": "credit",
+      "c": 82,
+      "amountSum": 30833.6
+    },
+    {
+      "EntryReason": "employee_funding",
+      "EntryDirection": "credit",
+      "c": 14,
+      "amountSum": 8415
+    },
+    {
+      "EntryReason": "payout",
+      "EntryDirection": "debit",
+      "c": 3,
+      "amountSum": 1050
+    },
+    {
+      "EntryReason": "tip",
+      "EntryDirection": "credit",
+      "c": 2,
+      "amountSum": 130
+    },
+    {
+      "EntryReason": "monthly_salary",
+      "EntryDirection": "credit",
+      "c": 2,
+      "amountSum": 9000
+    }
+  ],
+  "ledgerCashLinked": {
+    "c": 281
+  },
+  "ledgerCashMismatchPreview": [
+    {
+      "ID": 1,
+      "CashMoveID": 35209,
+      "CashBranchID": 1
+    },
+    {
+      "ID": 2,
+      "CashMoveID": 35213,
+      "CashBranchID": 1
+    },
+    {
+      "ID": 3,
+      "CashMoveID": 35214,
+      "CashBranchID": 1
+    },
+    {
+      "ID": 4,
+      "CashMoveID": 35223,
+      "CashBranchID": 1
+    },
+    {
+      "ID": 225,
+      "CashMoveID": 35225,
+      "CashBranchID": 1
+    }
+  ],
+  "targets": {
+    "rows": 97,
+    "targetSum": 30833.6,
+    "salesSum": 166201
+  },
+  "targetDupEmpDate": 0,
+  "recalc": {
+    "rows": 49
+  },
+  "plans": {
+    "rows": 5
+  },
+  "salaryHist": {
+    "rows": 36,
+    "activeOpen": 19
+  }
+}
