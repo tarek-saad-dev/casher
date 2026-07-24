@@ -511,7 +511,7 @@ export async function PUT(req: NextRequest) {
       });
     }
 
-    // Mirror تأخير / حضور مبكر / انصراف مبكر → نوافذ الحجز (available-slots)
+    // Mirror حضور مبكر / انصراف متأخر → فتح مواعيد (available-slots + /operations)
     await syncAttendanceShiftToOverrides(db, EmpID, WorkDate, {
       checkInTime: CheckInTime || null,
       checkOutTime: CheckOutTime || null,

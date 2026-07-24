@@ -15,9 +15,9 @@ import {
 import { getBarberWorkingWindow } from '@/lib/barberAvailability';
 import {
   applyOverrides,
-  loadOverridesForDate,
   type EffectiveSchedule,
 } from '@/lib/scheduleOverrides';
+import { loadBookingOverridesForDate } from '@/lib/hr/attendance-shift-schedule-sync';
 import { salonDateTimeToMs, getGlobalTimingDefaults } from '@/lib/publicBookingHelpers';
 import { SALON_TZ } from '@/lib/bookingDateTime';
 import { createStageTimer } from '@/lib/devStageTiming';
@@ -78,7 +78,7 @@ export async function getEmployeeEffectiveSchedule(args: {
     : { isWorking: false, start: '00:00', end: '00:00' };
 
   const db = (args.transaction ?? (await getPool())) as Awaited<ReturnType<typeof getPool>>;
-  const overridesMap = await loadOverridesForDate(
+  const overridesMap = await loadBookingOverridesForDate(
     db,
     [args.empId],
     args.operationalDate,

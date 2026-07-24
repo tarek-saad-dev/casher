@@ -30,6 +30,9 @@ export type OverrideType =
   | "custom_hours"
   | "block_range";
 
+/** CreatedBy tag for HR attendance expand-only overrides (early in / late out). */
+export const ATTENDANCE_SHIFT_OVERRIDE_SOURCE = "attendance-shift";
+
 export interface ScheduleOverride {
   OverrideID: number;
   EmpID: number;
@@ -167,13 +170,13 @@ export async function loadOverridesForBarber(
 /**
  * Apply overrides to a base schedule and return the effective schedule.
  *
- * Priority (first matching override wins for shift-level types):
+ * Priority:
  *   1. day_off         → not working
- *   2. custom_hours    → replace start+end
- *   3. late_start      → push start forward
- *   4. early_leave     → pull end backward
- *
- * block_range overrides are additive — all of them produce blocked intervals.
+ *   2. Ops custom_hours / late_start / early_leave → shrink or replace window
+ *      (إدارة مواعيد اليوم — can close slots)
+ *   3. Attendance expand (CreatedBy = attendance-shift) → widen only
+ *      (حضور مبكر / انصراف متأخر — can reopen / open slots beyond default)
+ *   4. block_range → additive blocked intervals
  *
  * Overnight shift awareness:
  *   The effective schedule inherits the overnight flag from the base (or custom_hours).
@@ -197,6 +200,11 @@ export function applyOverrides(
   const active = overrides.filter((o) => o.IsActive);
   if (!active.length) return effective;
 
+  const isAttendanceExpand = (o: ScheduleOverride) =>
+    o.CreatedBy === ATTENDANCE_SHIFT_OVERRIDE_SOURCE;
+  const ops = active.filter((o) => !isAttendanceExpand(o));
+  const attendanceExpand = active.filter(isAttendanceExpand);
+
   // day_off wins over everything
   const dayOff = active.find((o) => o.Type === "day_off");
   if (dayOff) {
@@ -215,25 +223,51 @@ export function applyOverrides(
     return effective;
   }
 
-  // custom_hours replaces start+end entirely
-  const custom = active.find((o) => o.Type === "custom_hours");
+  // Ops shift controls (can close slots) — ignore attendance-tagged rows here
+  const custom = ops.find((o) => o.Type === "custom_hours");
   if (custom) {
     if (custom.StartTime) effective.start = custom.StartTime;
     if (custom.EndTime) effective.end = custom.EndTime;
     effective.appliedOverride = custom;
   } else {
     // late_start pushes start forward
-    const lateStart = active.find((o) => o.Type === "late_start");
+    const lateStart = ops.find((o) => o.Type === "late_start");
     if (lateStart?.StartTime) {
       effective.start = lateStart.StartTime;
       effective.appliedOverride = lateStart;
     }
 
     // early_leave pulls end backward
-    const earlyLeave = active.find((o) => o.Type === "early_leave");
+    const earlyLeave = ops.find((o) => o.Type === "early_leave");
     if (earlyLeave?.EndTime) {
       effective.end = earlyLeave.EndTime;
       effective.appliedOverride = effective.appliedOverride ?? earlyLeave;
+    }
+  }
+
+  // HR attendance expand — widen only (early arrival / stay late).
+  // Can reopen slots closed by ops late_start / early_leave when attendance proves expansion.
+  for (const att of attendanceExpand) {
+    if (att.Type !== "custom_hours") continue;
+
+    if (
+      att.StartTime &&
+      isEarlierThanBaseStart(att.StartTime, baseSchedule.start, baseSchedule.end)
+    ) {
+      if (isEarlierClockOnShift(att.StartTime, effective.start, effective.end)) {
+        effective.start = att.StartTime;
+        effective.appliedOverride = effective.appliedOverride ?? att;
+      }
+    }
+
+    if (
+      att.EndTime &&
+      isLaterThanBaseEnd(att.EndTime, baseSchedule.start, baseSchedule.end)
+    ) {
+      if (isLaterClockOnShift(att.EndTime, effective.end, effective.start)) {
+        effective.end = att.EndTime;
+        effective.appliedOverride = effective.appliedOverride ?? att;
+      }
     }
   }
 
@@ -320,6 +354,62 @@ export function slotBlockedByOverride(
 function hhmmToMin(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
   return (h || 0) * 60 + (m || 0);
+}
+
+/** Same-day or overnight: is candidate strictly before scheduled start? */
+function isEarlierThanBaseStart(
+  candidate: string,
+  baseStart: string,
+  baseEnd: string,
+): boolean {
+  const c = hhmmToMin(candidate);
+  const s = hhmmToMin(baseStart);
+  const e = hhmmToMin(baseEnd);
+  if (e > s) return c < s;
+  // Overnight: early arrival is still before evening start (e.g. 21:00 before 22:00)
+  return c < s && (c >= e || c >= 12 * 60);
+}
+
+/** Same-day or overnight: is candidate strictly after scheduled end? */
+function isLaterThanBaseEnd(
+  candidate: string,
+  baseStart: string,
+  baseEnd: string,
+): boolean {
+  const c = hhmmToMin(candidate);
+  const s = hhmmToMin(baseStart);
+  const e = hhmmToMin(baseEnd);
+  if (e > s) return c > e;
+  // Overnight end (e.g. 02:00): later leave is further into morning before next start
+  if (c > e && c < s) return true;
+  return false;
+}
+
+/** Prefer moving effective start earlier along the shift. */
+function isEarlierClockOnShift(
+  candidate: string,
+  currentStart: string,
+  currentEnd: string,
+): boolean {
+  const c = hhmmToMin(candidate);
+  const s = hhmmToMin(currentStart);
+  const e = hhmmToMin(currentEnd);
+  if (e > s) return c < s;
+  return c < s && (c >= e || c >= 12 * 60);
+}
+
+/** Prefer moving effective end later along the shift. */
+function isLaterClockOnShift(
+  candidate: string,
+  currentEnd: string,
+  currentStart: string,
+): boolean {
+  const c = hhmmToMin(candidate);
+  const e = hhmmToMin(currentEnd);
+  const s = hhmmToMin(currentStart);
+  if (e > s) return c > e;
+  if (c > e && c < s) return true;
+  return false;
 }
 
 function nextDate(dateStr: string): string {

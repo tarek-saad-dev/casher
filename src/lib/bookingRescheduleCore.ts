@@ -27,10 +27,10 @@ import {
 import { findEarliestAvailableInterval } from '@/lib/scheduleIntervals';
 import { getBarberWorkingWindow } from '@/lib/barberAvailability';
 import {
-  loadOverridesForDate,
   applyOverrides,
   slotBlockedByOverride,
 } from '@/lib/scheduleOverrides';
+import { loadBookingOverridesForDate } from '@/lib/hr/attendance-shift-schedule-sync';
 import { salonDateTimeToMs, getGlobalTimingDefaults } from '@/lib/publicBookingHelpers';
 import { getDefaultDuration } from '@/lib/queueEstimateEngine';
 import {
@@ -200,7 +200,7 @@ async function getBarberShiftBounds(
     return null;
   }
 
-  const overridesMap = await loadOverridesForDate(db, [empId], operationalDate);
+  const overridesMap = await loadBookingOverridesForDate(db, [empId], operationalDate);
   const base = {
     isWorking: true,
     start: baseWindow.startTime,
@@ -464,7 +464,7 @@ export async function validateBookingMove(args: {
   }
 
   const db = await getPool();
-  const overridesMap = await loadOverridesForDate(db, [effectiveEmpId], operationalDate);
+  const overridesMap = await loadBookingOverridesForDate(db, [effectiveEmpId], operationalDate);
   const baseWindow = await getBarberWorkingWindow(effectiveEmpId, new Date(`${operationalDate}T12:00:00`));
   const base = baseWindow.isWorkingDay && baseWindow.startTime && baseWindow.endTime
     ? { isWorking: true, start: baseWindow.startTime, end: baseWindow.endTime }

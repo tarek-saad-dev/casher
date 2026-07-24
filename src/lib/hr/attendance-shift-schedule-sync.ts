@@ -1,41 +1,42 @@
 /**
- * HR → Ops: mirror check-in / check-out onto TblEmpScheduleOverrides
- * so public `available-slots` reflects the real bookable window.
+ * HR → Ops: expand bookable window from attendance (does NOT close slots).
  *
- * - Late check-in  → late_start  (StartTime = CheckIn)
- * - Early arrival  → custom_hours (StartTime = CheckIn, EndTime = scheduled/checkout end)
- * - Early leave    → early_leave (EndTime = CheckOut)
+ * Default day hours stay as the weekly schedule.
+ * Ops «إدارة مواعيد اليوم» (late_start / early_leave / …) still closes slots.
  *
- * Only touches overrides with CreatedBy = "attendance-shift".
- * Ops-authored late_start / early_leave / custom_hours are left alone.
+ * Attendance only OPENS / widens:
+ * - Early check-in  → open slots before scheduled start
+ * - Late check-out  → open slots after scheduled end («هيمشي متأخر»)
+ *
+ * Stored as custom_hours with CreatedBy = "attendance-shift".
+ * applyOverrides widens only for this source (never shrinks).
  */
 
 import { sql } from '@/lib/db';
 import { normalizeTimeHHmm, timeToMinutes } from '@/lib/hr/attendance-breaks';
-import { ensureOverridesTable } from '@/lib/scheduleOverrides';
 import {
-  calcEarlyLeaveMinutes,
-  calcLateMinutes,
-} from '@/lib/timeUtils';
+  ATTENDANCE_SHIFT_OVERRIDE_SOURCE,
+  ensureOverridesTable,
+  loadOverridesForDate,
+  type ScheduleOverride,
+} from '@/lib/scheduleOverrides';
+import { calcLateMinutes } from '@/lib/timeUtils';
 
 type DbLike = { request: () => sql.Request };
 
-export const ATTENDANCE_SHIFT_SOURCE = 'attendance-shift';
-
-const SHIFT_TYPES = ['late_start', 'early_leave', 'custom_hours'] as const;
-type ShiftOverrideType = (typeof SHIFT_TYPES)[number];
+export const ATTENDANCE_SHIFT_SOURCE = ATTENDANCE_SHIFT_OVERRIDE_SOURCE;
 
 export type AttendanceShiftSyncInput = {
   checkInTime: string | null | undefined;
   checkOutTime: string | null | undefined;
   scheduledStart: string | null | undefined;
   scheduledEnd: string | null | undefined;
-  /** When Absent / DayOff / Excused — clear attendance-sourced shift overrides. */
+  /** When Absent / DayOff / Excused — clear attendance-sourced expand overrides. */
   status?: string | null;
 };
 
 export type AttendanceShiftOverrideRow = {
-  type: ShiftOverrideType;
+  type: 'custom_hours';
   startTime: string | null;
   endTime: string | null;
   reason: string;
@@ -47,9 +48,35 @@ export type AttendanceShiftPlan =
 
 const CLEAR_STATUSES = new Set(['Absent', 'DayOff', 'Excused']);
 
+/** Minutes past scheduled end (0 if on-time or early leave). Same-day + light overnight. */
+export function calcLateLeaveMinutes(
+  checkOut: string | null | undefined,
+  scheduledEnd: string | null | undefined,
+  scheduledStart?: string | null,
+): number {
+  const out = normalizeTimeHHmm(checkOut);
+  const end = normalizeTimeHHmm(scheduledEnd);
+  if (!out || !end) return 0;
+
+  const outMin = timeToMinutes(out)!;
+  const endMin = timeToMinutes(end)!;
+  const startMin = timeToMinutes(normalizeTimeHHmm(scheduledStart) ?? '') ?? null;
+
+  // Normal day shift (end after start)
+  if (startMin == null || endMin > startMin) {
+    const diff = outMin - endMin;
+    return diff > 0 ? diff : 0;
+  }
+
+  // Overnight: scheduled end after midnight; late leave is further into morning
+  if (outMin > endMin && outMin < startMin) {
+    return outMin - endMin;
+  }
+  return 0;
+}
+
 /**
- * Pure planner: given attendance times, decide which shift overrides to write.
- * Exported for unit tests.
+ * Pure planner: expand-only overrides from attendance times.
  */
 export function planAttendanceShiftOverrides(
   input: AttendanceShiftSyncInput,
@@ -64,72 +91,48 @@ export function planAttendanceShiftOverrides(
   const schedStart = normalizeTimeHHmm(input.scheduledStart);
   const schedEnd = normalizeTimeHHmm(input.scheduledEnd);
 
-  if (!checkIn || !schedStart) {
-    // No arrival signal → clear prior attendance late/early-start mirrors.
-    // Keep early_leave only if checkout already proves early leave.
-    if (checkOut && schedEnd && calcEarlyLeaveMinutes(checkOut, schedEnd) > 0) {
-      return {
-        action: 'apply',
-        overrides: [
-          {
-            type: 'early_leave',
-            startTime: null,
-            endTime: checkOut,
-            reason: 'انصراف مبكر من الحضور',
-          },
-        ],
-      };
-    }
-    return { action: 'clear' };
-  }
-
-  const lateMinutes = calcLateMinutes(checkIn, schedStart);
-  const checkInMin = timeToMinutes(checkIn);
-  const schedStartMin = timeToMinutes(schedStart);
+  const lateMinutes =
+    checkIn && schedStart ? calcLateMinutes(checkIn, schedStart) : 0;
+  const checkInMin = checkIn ? timeToMinutes(checkIn) : null;
+  const schedStartMin = schedStart ? timeToMinutes(schedStart) : null;
   const isEarlyArrival =
+    !!checkIn &&
+    !!schedStart &&
     lateMinutes === 0 &&
     checkInMin != null &&
     schedStartMin != null &&
     checkInMin < schedStartMin;
 
-  const earlyLeave =
-    checkOut && schedEnd && calcEarlyLeaveMinutes(checkOut, schedEnd) > 0
-      ? checkOut
-      : null;
+  const lateLeaveMinutes = calcLateLeaveMinutes(checkOut, schedEnd, schedStart);
+  const isLateLeave = lateLeaveMinutes > 0;
 
-  const overrides: AttendanceShiftOverrideRow[] = [];
-
-  if (isEarlyArrival) {
-    // Open earlier bookable window; end stays scheduled unless early leave.
-    overrides.push({
-      type: 'custom_hours',
-      startTime: checkIn,
-      endTime: earlyLeave ?? schedEnd ?? checkIn,
-      reason: earlyLeave
-        ? 'حضور مبكر + انصراف مبكر من الحضور'
-        : 'حضور مبكر — فتح مواعيد أبكر',
-    });
-  } else {
-    if (lateMinutes > 0) {
-      overrides.push({
-        type: 'late_start',
-        startTime: checkIn,
-        endTime: null,
-        reason: `تأخير ${lateMinutes} د من الحضور`,
-      });
-    }
-    if (earlyLeave) {
-      overrides.push({
-        type: 'early_leave',
-        startTime: null,
-        endTime: earlyLeave,
-        reason: 'انصراف مبكر من الحضور',
-      });
-    }
+  if (!isEarlyArrival && !isLateLeave) {
+    return { action: 'clear' };
   }
 
-  if (!overrides.length) return { action: 'clear' };
-  return { action: 'apply', overrides };
+  const startTime = isEarlyArrival ? checkIn : null;
+  const endTime = isLateLeave ? checkOut : null;
+
+  let reason: string;
+  if (isEarlyArrival && isLateLeave) {
+    reason = 'حضور مبكر + انصراف متأخر من الحضور — فتح مواعيد';
+  } else if (isEarlyArrival) {
+    reason = 'حضور مبكر — فتح مواعيد أبكر';
+  } else {
+    reason = `انصراف متأخر ${lateLeaveMinutes} د — فتح مواعيد بعد الشيفت`;
+  }
+
+  return {
+    action: 'apply',
+    overrides: [
+      {
+        type: 'custom_hours',
+        startTime,
+        endTime,
+        reason,
+      },
+    ],
+  };
 }
 
 async function deactivateAttendanceShiftOverrides(
@@ -158,12 +161,7 @@ async function insertShiftOverride(
   db: DbLike,
   empId: number,
   date: string,
-  row: {
-    type: ShiftOverrideType;
-    startTime: string | null;
-    endTime: string | null;
-    reason: string;
-  },
+  row: AttendanceShiftOverrideRow,
 ): Promise<void> {
   await db
     .request()
@@ -186,7 +184,7 @@ async function insertShiftOverride(
 }
 
 /**
- * Rebuild attendance-sourced shift overrides for one employee/day.
+ * Rebuild attendance-sourced expand overrides for one employee/day.
  * Safe to call after every attendance save (PUT or bulk).
  */
 export async function syncAttendanceShiftToOverrides(
@@ -211,4 +209,140 @@ export async function syncAttendanceShiftToOverrides(
   }
 
   return { deactivated, inserted, plan };
+}
+
+/**
+ * Read-time expand: build synthetic attendance-shift overrides from today's
+ * attendance rows so available-slots works even if write-time sync was skipped.
+ */
+export async function loadAttendanceExpandOverrides(
+  db: DbLike,
+  empIds: number[],
+  dateStr: string,
+): Promise<Map<number, ScheduleOverride[]>> {
+  const range = await loadAttendanceExpandOverridesRange(db, empIds, dateStr, dateStr);
+  return range.get(dateStr) ?? new Map();
+}
+
+/**
+ * Batch attendance expands for a date range (available-days).
+ * Returns Map<dateStr, Map<empId, ScheduleOverride[]>>
+ */
+export async function loadAttendanceExpandOverridesRange(
+  db: DbLike,
+  empIds: number[],
+  startDate: string,
+  endDate: string,
+): Promise<Map<string, Map<number, ScheduleOverride[]>>> {
+  const byDate = new Map<string, Map<number, ScheduleOverride[]>>();
+  if (!empIds.length) return byDate;
+
+  try {
+    const res = await db
+      .request()
+      .input('startDate', sql.Date, startDate)
+      .input('endDate', sql.Date, endDate)
+      .query(`
+        SELECT
+          EmpID,
+          CONVERT(VARCHAR(10), WorkDate, 120) AS WorkDate,
+          Status,
+          CASE WHEN CheckInTime IS NOT NULL
+               THEN LEFT(CONVERT(VARCHAR(8), CheckInTime, 108), 5) ELSE NULL END AS CheckInTime,
+          CASE WHEN CheckOutTime IS NOT NULL
+               THEN LEFT(CONVERT(VARCHAR(8), CheckOutTime, 108), 5) ELSE NULL END AS CheckOutTime,
+          CASE WHEN ScheduledStartTime IS NOT NULL
+               THEN LEFT(CONVERT(VARCHAR(8), ScheduledStartTime, 108), 5) ELSE NULL END AS ScheduledStartTime,
+          CASE WHEN ScheduledEndTime IS NOT NULL
+               THEN LEFT(CONVERT(VARCHAR(8), ScheduledEndTime, 108), 5) ELSE NULL END AS ScheduledEndTime
+        FROM dbo.TblEmpAttendance
+        WHERE WorkDate BETWEEN @startDate AND @endDate
+          AND EmpID IN (${empIds.join(',')})
+      `);
+
+    let syntheticId = -1;
+    for (const row of res.recordset) {
+      const empId = Number(row.EmpID);
+      const dateStr = String(row.WorkDate);
+      const plan = planAttendanceShiftOverrides({
+        checkInTime: row.CheckInTime,
+        checkOutTime: row.CheckOutTime,
+        scheduledStart: row.ScheduledStartTime,
+        scheduledEnd: row.ScheduledEndTime,
+        status: row.Status,
+      });
+      if (plan.action !== 'apply') continue;
+
+      if (!byDate.has(dateStr)) byDate.set(dateStr, new Map());
+      const empMap = byDate.get(dateStr)!;
+      const list = empMap.get(empId) ?? [];
+      for (const o of plan.overrides) {
+        list.push({
+          OverrideID: syntheticId--,
+          EmpID: empId,
+          OverrideDate: dateStr,
+          Type: o.type,
+          StartTime: o.startTime,
+          EndTime: o.endTime,
+          Reason: o.reason,
+          IsActive: true,
+          CreatedAt: new Date().toISOString(),
+          CreatedBy: ATTENDANCE_SHIFT_SOURCE,
+        });
+      }
+      empMap.set(empId, list);
+    }
+  } catch {
+    /* attendance table may be unavailable */
+  }
+
+  return byDate;
+}
+
+/** Prefer live attendance expands over stored attendance-shift rows. */
+export function mergeAttendanceExpandOverrides<T extends { CreatedBy: string | null }>(
+  existing: Map<number, T[]>,
+  fromAttendance: Map<number, T[]>,
+): Map<number, T[]> {
+  if (!fromAttendance.size) return existing;
+
+  for (const [empId, attList] of fromAttendance) {
+    const cur = existing.get(empId) ?? [];
+    const withoutStaleAtt = cur.filter(
+      (o) => o.CreatedBy !== ATTENDANCE_SHIFT_SOURCE,
+    );
+    existing.set(empId, [...withoutStaleAtt, ...attList]);
+  }
+  return existing;
+}
+
+/**
+ * Canonical booking/ops overrides for a date:
+ * schedule-control closes + attendance early-in / late-out opens.
+ * Use this (not raw loadOverridesForDate) for any bookable window.
+ */
+export async function loadBookingOverridesForDate(
+  db: DbLike,
+  empIds: number[],
+  dateStr: string,
+): Promise<Map<number, ScheduleOverride[]>> {
+  const [raw, expands] = await Promise.all([
+    loadOverridesForDate(
+      db as Parameters<typeof loadOverridesForDate>[0],
+      empIds,
+      dateStr,
+    ),
+    loadAttendanceExpandOverrides(db, empIds, dateStr),
+  ]);
+  return mergeAttendanceExpandOverrides(raw, expands);
+}
+
+/** Single-barber convenience for booking/ops window checks. */
+export async function loadBookingOverridesForBarber(
+  db: DbLike,
+  empId: number,
+  dateStr: string,
+): Promise<ScheduleOverride[]> {
+  const map = await loadBookingOverridesForDate(db, [empId], dateStr);
+  return map.get(empId) ?? [];
 }

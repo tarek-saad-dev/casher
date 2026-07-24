@@ -20,7 +20,6 @@ import {
 import { calculateServicePlanDuration, type ServicePlanDuration } from '@/lib/servicePlan';
 import { resolveDurationTotalsByEmp } from '@/lib/empServiceDuration';
 import {
-  loadOverridesForDate,
   applyOverrides,
   slotBlockedByOverride,
   type EffectiveSchedule,
@@ -29,6 +28,7 @@ import { intervalsOverlap } from '@/lib/scheduleIntervals';
 import { getCairoBusinessDate } from '@/lib/businessDate';
 import { createStageTimer } from '@/lib/devStageTiming';
 import { loadFreelanceBookingUnlocks } from '@/lib/hr/freelanceBookingUnlock';
+import { loadBookingOverridesForDate } from '@/lib/hr/attendance-shift-schedule-sync';
 
 function fmtScheduleTime(v: unknown): string | null {
   if (!v) return null;
@@ -352,7 +352,7 @@ async function buildBarberContexts(args: {
     const [nameMap, dayOffSet, overridesMap, windowsMap, absentSet, freelanceUnlocks] = await Promise.all([
       getBarberNames(db, barberIds),
       loadDayOffSet(db, barberIds, date, isToday),
-      loadOverridesForDate(db, barberIds, date),
+      loadBookingOverridesForDate(db, barberIds, date),
       loadWorkingWindowsBatch(db, barberIds, dayOfWeek),
       isToday ? loadAbsentEmpIds(db, barberIds, date) : Promise.resolve(new Set<number>()),
       loadFreelanceBookingUnlocks(barberIds, date),

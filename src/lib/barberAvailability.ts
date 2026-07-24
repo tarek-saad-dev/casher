@@ -12,7 +12,8 @@
  */
 
 import { getPool, sql } from '@/lib/db';
-import { applyOverrides, loadOverridesForDate } from '@/lib/scheduleOverrides';
+import { applyOverrides } from '@/lib/scheduleOverrides';
+import { loadBookingOverridesForDate } from '@/lib/hr/attendance-shift-schedule-sync';
 import { loadFreelanceBookingUnlocks } from '@/lib/hr/freelanceBookingUnlock';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -184,8 +185,8 @@ export async function getBarberAvailabilityReason(
       };
     }
 
-    // 4. Apply schedule overrides
-    const overridesMap = await loadOverridesForDate(db, [empId], dateStr);
+    // 4. Apply schedule overrides (+ attendance early-in / late-out)
+    const overridesMap = await loadBookingOverridesForDate(db, [empId], dateStr);
     const overrides    = overridesMap.get(empId) ?? [];
     if (!startStr || !endStr) {
       // Working-day row with NULL times = data error in HR schedule

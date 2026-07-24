@@ -17,10 +17,10 @@ import {
   type BookingSlotReasonCode,
 } from "@/lib/bookingAvailabilityEngine";
 import {
-  loadOverridesForBarber,
   applyOverrides,
   slotBlockedByOverride,
 } from "@/lib/scheduleOverrides";
+import { loadBookingOverridesForBarber } from "@/lib/hr/attendance-shift-schedule-sync";
 import {
   assertEmployeeIntervalAvailable,
   findNextAvailableForEmployee,
@@ -411,7 +411,7 @@ export async function POST(req: NextRequest) {
       }
 
       // ── Check schedule overrides for this segment date ──────────────────────
-      const segOverrides = await loadOverridesForBarber(
+      const segOverrides = await loadBookingOverridesForBarber(
         db,
         assignedEmpId,
         segDate,

@@ -20,11 +20,11 @@ import { getPool, sql } from "@/lib/db";
 import { salonDateTimeToMs } from "@/lib/publicBookingHelpers";
 import {
   applyOverrides,
-  loadOverridesForDate,
   EffectiveSchedule,
   ScheduleOverride,
 } from "@/lib/scheduleOverrides";
 import { loadFreelanceBookingUnlocks } from "@/lib/hr/freelanceBookingUnlock";
+import { loadBookingOverridesForDate } from "@/lib/hr/attendance-shift-schedule-sync";
 
 export const SALON_TZ = "Africa/Cairo";
 
@@ -48,6 +48,8 @@ export interface AttendanceInfo {
   status: string | null;       // "Present" | "Late" | "Absent" | "DayOff" | null (not recorded)
   checkInTime:  string | null; // "HH:MM" or null
   checkOutTime: string | null; // "HH:MM" or null
+  scheduledStartTime?: string | null;
+  scheduledEndTime?: string | null;
   lateMinutes:  number;
   earlyLeaveMinutes: number;
 }
@@ -344,7 +346,7 @@ export async function getScheduleOverrides(
   dateStr: string,
 ): Promise<ScheduleOverride[]> {
   const db = await getPool();
-  const overridesMap = await loadOverridesForDate(db, [empId], dateStr);
+  const overridesMap = await loadBookingOverridesForDate(db, [empId], dateStr);
   return overridesMap.get(empId) ?? [];
 }
 
@@ -569,15 +571,17 @@ export async function getBarbersDayStatus(
       WHERE EmpID IN (${idList}) AND OffDate = @offDate AND IsDeleted = 0
     `).catch(() => ({ recordset: [] as any[] })),
 
-    // Overrides (via shared loader)
-    loadOverridesForDate(db, empIds, dateStr),
+    // Booking overrides = ops closes + attendance early-in / late-out opens
+    loadBookingOverridesForDate(db, empIds, dateStr),
 
-    // Attendance for the board date (needed for freelance unlock + today's Absent)
+    // Attendance for the board date (needed for freelance unlock + today's Absent + expand)
     db.request().input("workDate", sql.Date, dateStr).query(`
           SELECT EmpID,
             Status,
             CASE WHEN CheckInTime  IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), CheckInTime,  108), 5) ELSE NULL END AS CheckInTime,
             CASE WHEN CheckOutTime IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), CheckOutTime, 108), 5) ELSE NULL END AS CheckOutTime,
+            CASE WHEN ScheduledStartTime IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), ScheduledStartTime, 108), 5) ELSE NULL END AS ScheduledStartTime,
+            CASE WHEN ScheduledEndTime IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), ScheduledEndTime, 108), 5) ELSE NULL END AS ScheduledEndTime,
             ISNULL(LateMinutes, 0)       AS LateMinutes,
             ISNULL(EarlyLeaveMinutes, 0) AS EarlyLeaveMinutes
           FROM dbo.TblEmpAttendance
@@ -619,6 +623,8 @@ export async function getBarbersDayStatus(
       status:            r.Status ?? null,
       checkInTime:       r.CheckInTime  ?? null,
       checkOutTime:      r.CheckOutTime ?? null,
+      scheduledStartTime: r.ScheduledStartTime ?? null,
+      scheduledEndTime:   r.ScheduledEndTime ?? null,
       lateMinutes:       r.LateMinutes,
       earlyLeaveMinutes: r.EarlyLeaveMinutes,
     });

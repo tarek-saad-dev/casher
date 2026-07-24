@@ -17,6 +17,10 @@ import {
 } from "@/lib/queueEstimateEngine";
 import { applyOverrides, ScheduleOverride } from "@/lib/scheduleOverrides";
 import {
+  loadAttendanceExpandOverridesRange,
+  mergeAttendanceExpandOverrides,
+} from "@/lib/hr/attendance-shift-schedule-sync";
+import {
   extractPublicBranchCode,
   resolvePublicBranchCode,
   publicBranchRequiredResponse,
@@ -465,6 +469,14 @@ export async function GET(req: NextRequest) {
           .catch(() => ({ recordset: [] as ScheduleOverride[] }))
       : { recordset: [] as ScheduleOverride[] };
 
+    // Attendance expand (early in / late out) for the same range
+    const attendanceExpandByDate = await loadAttendanceExpandOverridesRange(
+      db,
+      barberIds,
+      startDate,
+      endDate,
+    ).catch(() => new Map<string, Map<number, ScheduleOverride[]>>());
+
     // Build overrides map: dateStr → Map<empId, ScheduleOverride[]>
     const overridesRangeMap = new Map<
       string,
@@ -477,6 +489,15 @@ export async function GET(req: NextRequest) {
       const list = empMap.get(row.EmpID) ?? [];
       list.push(row);
       empMap.set(row.EmpID, list);
+    }
+
+    for (const [dateStr, attMap] of attendanceExpandByDate) {
+      const existing =
+        overridesRangeMap.get(dateStr) ?? new Map<number, ScheduleOverride[]>();
+      overridesRangeMap.set(
+        dateStr,
+        mergeAttendanceExpandOverrides(existing, attMap),
+      );
     }
 
     // Wait for all batch queries

@@ -1,5 +1,6 @@
 /**
- * Tests for HR check-in/out → schedule override mirror (available-slots window).
+ * Tests for HR expand-only attendance → schedule overrides
+ * + applyOverrides widen-after-ops behavior.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -14,9 +15,13 @@ vi.mock('@/lib/db', () => ({
 }));
 
 const ensureOverridesTable = vi.fn(async () => undefined);
-vi.mock('@/lib/scheduleOverrides', () => ({
-  ensureOverridesTable: (...args: unknown[]) => ensureOverridesTable(...args),
-}));
+vi.mock('@/lib/scheduleOverrides', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/scheduleOverrides')>();
+  return {
+    ...actual,
+    ensureOverridesTable: (...args: unknown[]) => ensureOverridesTable(...args),
+  };
+});
 
 type CapturedQuery = {
   sql: string;
@@ -49,16 +54,39 @@ function makeRecordingDb(queue: Array<{ recordset?: unknown[]; rowsAffected?: nu
 
 import {
   ATTENDANCE_SHIFT_SOURCE,
+  calcLateLeaveMinutes,
   planAttendanceShiftOverrides,
   syncAttendanceShiftToOverrides,
 } from '@/lib/hr/attendance-shift-schedule-sync';
+import {
+  ATTENDANCE_SHIFT_OVERRIDE_SOURCE,
+  applyOverrides,
+  type ScheduleOverride,
+} from '@/lib/scheduleOverrides';
 
-describe('planAttendanceShiftOverrides', () => {
-  it('clears when Absent / DayOff / Excused', () => {
+function ov(
+  partial: Partial<ScheduleOverride> & Pick<ScheduleOverride, 'Type'>,
+): ScheduleOverride {
+  return {
+    OverrideID: partial.OverrideID ?? 1,
+    EmpID: partial.EmpID ?? 1,
+    OverrideDate: partial.OverrideDate ?? '2026-07-24',
+    Type: partial.Type,
+    StartTime: partial.StartTime ?? null,
+    EndTime: partial.EndTime ?? null,
+    Reason: partial.Reason ?? null,
+    IsActive: partial.IsActive ?? true,
+    CreatedAt: partial.CreatedAt ?? '2026-07-24T10:00:00',
+    CreatedBy: partial.CreatedBy ?? null,
+  };
+}
+
+describe('planAttendanceShiftOverrides (expand only)', () => {
+  it('clears when Absent', () => {
     expect(
       planAttendanceShiftOverrides({
-        checkInTime: '11:00',
-        checkOutTime: null,
+        checkInTime: '09:00',
+        checkOutTime: '20:00',
         scheduledStart: '10:00',
         scheduledEnd: '18:00',
         status: 'Absent',
@@ -66,29 +94,31 @@ describe('planAttendanceShiftOverrides', () => {
     ).toEqual({ action: 'clear' });
   });
 
-  it('plans late_start when check-in is after scheduled start', () => {
+  it('does NOT close slots for late check-in', () => {
     expect(
       planAttendanceShiftOverrides({
-        checkInTime: '10:45',
+        checkInTime: '11:00',
         checkOutTime: null,
         scheduledStart: '10:00',
         scheduledEnd: '18:00',
         status: 'Late',
       }),
-    ).toEqual({
-      action: 'apply',
-      overrides: [
-        {
-          type: 'late_start',
-          startTime: '10:45',
-          endTime: null,
-          reason: 'تأخير 45 د من الحضور',
-        },
-      ],
-    });
+    ).toEqual({ action: 'clear' });
   });
 
-  it('plans custom_hours when employee arrives early (opens earlier slots)', () => {
+  it('does NOT close slots for early leave', () => {
+    expect(
+      planAttendanceShiftOverrides({
+        checkInTime: '10:00',
+        checkOutTime: '16:00',
+        scheduledStart: '10:00',
+        scheduledEnd: '18:00',
+        status: 'EarlyLeave',
+      }),
+    ).toEqual({ action: 'clear' });
+  });
+
+  it('opens earlier slots on early arrival', () => {
     expect(
       planAttendanceShiftOverrides({
         checkInTime: '09:00',
@@ -103,46 +133,40 @@ describe('planAttendanceShiftOverrides', () => {
         {
           type: 'custom_hours',
           startTime: '09:00',
-          endTime: '18:00',
+          endTime: null,
           reason: 'حضور مبكر — فتح مواعيد أبكر',
         },
       ],
     });
   });
 
-  it('plans late_start + early_leave together', () => {
+  it('opens later slots when check-out is after scheduled end', () => {
     expect(
       planAttendanceShiftOverrides({
-        checkInTime: '10:30',
-        checkOutTime: '16:00',
+        checkInTime: '10:00',
+        checkOutTime: '20:00',
         scheduledStart: '10:00',
         scheduledEnd: '18:00',
-        status: 'Late',
+        status: 'Present',
       }),
     ).toEqual({
       action: 'apply',
       overrides: [
         {
-          type: 'late_start',
-          startTime: '10:30',
-          endTime: null,
-          reason: 'تأخير 30 د من الحضور',
-        },
-        {
-          type: 'early_leave',
+          type: 'custom_hours',
           startTime: null,
-          endTime: '16:00',
-          reason: 'انصراف مبكر من الحضور',
+          endTime: '20:00',
+          reason: 'انصراف متأخر 120 د — فتح مواعيد بعد الشيفت',
         },
       ],
     });
   });
 
-  it('plans custom_hours with early leave end when both early arrival and early leave', () => {
+  it('opens both ends when early in and late out', () => {
     expect(
       planAttendanceShiftOverrides({
         checkInTime: '09:00',
-        checkOutTime: '16:00',
+        checkOutTime: '20:00',
         scheduledStart: '10:00',
         scheduledEnd: '18:00',
         status: 'Present',
@@ -153,14 +177,14 @@ describe('planAttendanceShiftOverrides', () => {
         {
           type: 'custom_hours',
           startTime: '09:00',
-          endTime: '16:00',
-          reason: 'حضور مبكر + انصراف مبكر من الحضور',
+          endTime: '20:00',
+          reason: 'حضور مبكر + انصراف متأخر من الحضور — فتح مواعيد',
         },
       ],
     });
   });
 
-  it('clears when on-time with no early leave', () => {
+  it('clears when on-time window', () => {
     expect(
       planAttendanceShiftOverrides({
         checkInTime: '10:00',
@@ -173,18 +197,158 @@ describe('planAttendanceShiftOverrides', () => {
   });
 });
 
+describe('calcLateLeaveMinutes', () => {
+  it('returns minutes past end', () => {
+    expect(calcLateLeaveMinutes('19:30', '18:00', '10:00')).toBe(90);
+    expect(calcLateLeaveMinutes('18:00', '18:00', '10:00')).toBe(0);
+    expect(calcLateLeaveMinutes('16:00', '18:00', '10:00')).toBe(0);
+  });
+});
+
+describe('applyOverrides: default + ops close + attendance open', () => {
+  const base = { isWorking: true, start: '10:00', end: '18:00' };
+
+  it('keeps default when no overrides', () => {
+    const eff = applyOverrides(1, '2026-07-24', base, []);
+    expect(eff.start).toBe('10:00');
+    expect(eff.end).toBe('18:00');
+  });
+
+  it('ops late_start closes morning slots', () => {
+    const eff = applyOverrides(1, '2026-07-24', base, [
+      ov({
+        Type: 'late_start',
+        StartTime: '12:00',
+        CreatedBy: 'schedule-control',
+      }),
+    ]);
+    expect(eff.start).toBe('12:00');
+    expect(eff.end).toBe('18:00');
+  });
+
+  it('attendance early arrival opens earlier than default', () => {
+    const eff = applyOverrides(1, '2026-07-24', base, [
+      ov({
+        Type: 'custom_hours',
+        StartTime: '09:00',
+        EndTime: null,
+        CreatedBy: ATTENDANCE_SHIFT_OVERRIDE_SOURCE,
+      }),
+    ]);
+    expect(eff.start).toBe('09:00');
+    expect(eff.end).toBe('18:00');
+  });
+
+  it('attendance early reopens slots closed by ops late_start', () => {
+    const eff = applyOverrides(1, '2026-07-24', base, [
+      ov({
+        OverrideID: 1,
+        Type: 'late_start',
+        StartTime: '12:00',
+        CreatedBy: 'schedule-control',
+      }),
+      ov({
+        OverrideID: 2,
+        Type: 'custom_hours',
+        StartTime: '09:30',
+        EndTime: null,
+        CreatedBy: ATTENDANCE_SHIFT_OVERRIDE_SOURCE,
+      }),
+    ]);
+    expect(eff.start).toBe('09:30');
+    expect(eff.end).toBe('18:00');
+  });
+
+  it('attendance late leave opens after scheduled end', () => {
+    const eff = applyOverrides(1, '2026-07-24', base, [
+      ov({
+        Type: 'custom_hours',
+        StartTime: null,
+        EndTime: '20:00',
+        CreatedBy: ATTENDANCE_SHIFT_OVERRIDE_SOURCE,
+      }),
+    ]);
+    expect(eff.start).toBe('10:00');
+    expect(eff.end).toBe('20:00');
+  });
+
+  it('attendance late leave reopens past ops early_leave', () => {
+    const eff = applyOverrides(1, '2026-07-24', base, [
+      ov({
+        OverrideID: 1,
+        Type: 'early_leave',
+        EndTime: '16:00',
+        CreatedBy: 'schedule-control',
+      }),
+      ov({
+        OverrideID: 2,
+        Type: 'custom_hours',
+        StartTime: null,
+        EndTime: '19:00',
+        CreatedBy: ATTENDANCE_SHIFT_OVERRIDE_SOURCE,
+      }),
+    ]);
+    expect(eff.start).toBe('10:00');
+    expect(eff.end).toBe('19:00');
+  });
+
+  it('attendance-tagged custom_hours does not replace like ops custom_hours', () => {
+    // Without expand intent vs base (start=10 = base), must not undo ops late_start
+    const eff = applyOverrides(1, '2026-07-24', base, [
+      ov({
+        OverrideID: 1,
+        Type: 'late_start',
+        StartTime: '12:00',
+        CreatedBy: 'schedule-control',
+      }),
+      ov({
+        OverrideID: 2,
+        Type: 'custom_hours',
+        StartTime: '10:00',
+        EndTime: '18:00',
+        CreatedBy: ATTENDANCE_SHIFT_OVERRIDE_SOURCE,
+      }),
+    ]);
+    expect(eff.start).toBe('12:00');
+    expect(eff.end).toBe('18:00');
+  });
+});
+
+describe('loadBookingOverridesForDate (canonical)', () => {
+  it('is exported for booking/ops window resolution', async () => {
+    const mod = await import('@/lib/hr/attendance-shift-schedule-sync');
+    expect(typeof mod.loadBookingOverridesForDate).toBe('function');
+    expect(typeof mod.loadBookingOverridesForBarber).toBe('function');
+  });
+});
+
 describe('syncAttendanceShiftToOverrides', () => {
   beforeEach(() => {
     ensureOverridesTable.mockClear();
   });
 
-  it('deactivates attendance-shift rows then inserts late_start', async () => {
-    const db = makeRecordingDb([
-      { rowsAffected: [1] }, // deactivate
-      { rowsAffected: [1] }, // insert
-    ]);
+  it('inserts expand custom_hours for early arrival', async () => {
+    const db = makeRecordingDb([{ rowsAffected: [1] }, { rowsAffected: [1] }]);
 
     const result = await syncAttendanceShiftToOverrides(db, 7, '2026-07-24', {
+      checkInTime: '09:00',
+      checkOutTime: null,
+      scheduledStart: '10:00',
+      scheduledEnd: '18:00',
+      status: 'Present',
+    });
+
+    expect(result.inserted).toBe(1);
+    expect(db.calls[1].inputs.type).toBe('custom_hours');
+    expect(db.calls[1].inputs.startT).toBe('09:00');
+    expect(db.calls[1].inputs.endT).toBeNull();
+    expect(db.calls[1].inputs.createdBy).toBe(ATTENDANCE_SHIFT_SOURCE);
+  });
+
+  it('only deactivates when on-time (no expand)', async () => {
+    const db = makeRecordingDb([{ rowsAffected: [2] }]);
+
+    const result = await syncAttendanceShiftToOverrides(db, 3, '2026-07-24', {
       checkInTime: '11:00',
       checkOutTime: null,
       scheduledStart: '10:00',
@@ -192,34 +356,10 @@ describe('syncAttendanceShiftToOverrides', () => {
       status: 'Late',
     });
 
-    expect(ensureOverridesTable).toHaveBeenCalled();
-    expect(result.deactivated).toBe(1);
-    expect(result.inserted).toBe(1);
-    expect(result.plan.action).toBe('apply');
-
-    expect(db.calls[0].inputs.src).toBe(ATTENDANCE_SHIFT_SOURCE);
-    expect(db.calls[0].sql).toContain('IsActive = 0');
-    expect(db.calls[1].inputs.type).toBe('late_start');
-    expect(db.calls[1].inputs.startT).toBe('11:00');
-    expect(db.calls[1].inputs.createdBy).toBe(ATTENDANCE_SHIFT_SOURCE);
-  });
-
-  it('only deactivates when plan is clear', async () => {
-    const db = makeRecordingDb([{ rowsAffected: [2] }]);
-
-    const result = await syncAttendanceShiftToOverrides(db, 3, '2026-07-24', {
-      checkInTime: '10:00',
-      checkOutTime: null,
-      scheduledStart: '10:00',
-      scheduledEnd: '18:00',
-      status: 'Present',
-    });
-
     expect(result).toEqual({
       deactivated: 2,
       inserted: 0,
       plan: { action: 'clear' },
     });
-    expect(db.calls).toHaveLength(1);
   });
 });
