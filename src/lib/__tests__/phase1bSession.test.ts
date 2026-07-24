@@ -3,6 +3,8 @@ import {
   decodeSessionToken,
   encodeSessionPayload,
   getSessionSecretForTests,
+  assertSessionSecretConfigured,
+  SessionConfigError,
   COOKIE_NAME,
 } from '@/lib/session';
 import { BRANCH_SESSION_VERSION, type SessionPayload } from '@/lib/session-types';
@@ -105,6 +107,12 @@ describe('Phase 1B session encode/decode', () => {
     expect(() => encodeSessionPayload(samplePayload(), env)).toThrow(
       /SESSION_SECRET must be configured/,
     );
+  });
+
+  it('assertSessionSecretConfigured fails fast in production without secret', () => {
+    expect(() =>
+      assertSessionSecretConfigured({ NODE_ENV: 'production' } as NodeJS.ProcessEnv),
+    ).toThrow(SessionConfigError);
   });
 });
 

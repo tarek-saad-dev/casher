@@ -11,6 +11,7 @@ import { User, CalendarDays, Clock, LogOut, ShieldCheck, ShieldAlert, XCircle } 
 import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
 import TopNav from '@/components/layout/TopNav';
+import BranchSwitcher from '@/components/session/BranchSwitcher';
 
 interface Props {
   onCloseDayClick?: () => void;
@@ -123,6 +124,10 @@ function ActiveSessionBar({ onCloseDayClick }: Props) {
             <ShieldAlert className="w-3.5 h-3.5 text-info shrink-0" />
           )}
         </div>
+
+        <span className="text-muted-foreground/40">|</span>
+
+        <BranchSwitcher />
 
         <span className="text-muted-foreground/40">|</span>
 

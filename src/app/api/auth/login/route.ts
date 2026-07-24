@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { getPool, getUserFriendlyError, sql } from '@/lib/db';
-import { createSession } from '@/lib/session';
+import {
+  assertSessionSecretConfigured,
+  createSession,
+  SessionConfigError,
+} from '@/lib/session';
 import { getUserAccess } from '@/lib/permissions-server';
 import { BranchDomainError, BRANCH_SESSION_VERSION } from '@/lib/branch/types';
 import { resolveLoginDefaultBranch } from '@/lib/branch/access';
@@ -73,6 +77,23 @@ export async function POST(req: NextRequest) {
   logStep(requestId, 'start');
 
   try {
+    try {
+      assertSessionSecretConfigured();
+    } catch (err: unknown) {
+      if (err instanceof SessionConfigError) {
+        logStep(requestId, 'reject:session-config', { code: err.code });
+        return NextResponse.json(
+          {
+            error: 'إعداد الجلسة غير مكتمل على الخادم — يلزم ضبط SESSION_SECRET',
+            code: err.code,
+            requestId,
+          },
+          { status: 500 },
+        );
+      }
+      throw err;
+    }
+
     const body = await parseLoginBody(req, requestId);
     if (body instanceof NextResponse) return body;
 
@@ -187,6 +208,16 @@ export async function POST(req: NextRequest) {
     const rawMessage = err instanceof Error ? err.message : 'Unknown error';
     const stack = err instanceof Error ? err.stack : undefined;
     console.error(`[auth/login:${requestId}] error`, { message: rawMessage, stack, durationMs: Date.now() - startedAt });
+    if (err instanceof SessionConfigError) {
+      return NextResponse.json(
+        {
+          error: 'إعداد الجلسة غير مكتمل على الخادم — يلزم ضبط SESSION_SECRET',
+          code: err.code,
+          requestId,
+        },
+        { status: 500 },
+      );
+    }
     const userMessage = getUserFriendlyError(err);
     return NextResponse.json(
       { error: userMessage, code: 'LOGIN_FAILED', requestId },

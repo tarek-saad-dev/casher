@@ -189,6 +189,15 @@ export async function deleteInvoice(
     throw new Error('الفاتورة لا تنتمي للفرع النشط — لا يمكن حذفها');
   }
 
+  const { reverseSaleStockMovements } = await import(
+    '@/lib/inventory/inventoryMutation.service'
+  );
+  await reverseSaleStockMovements(transaction, {
+    branchId: activeBranchId,
+    invId: invID,
+    invType: 'مبيعات',
+  });
+
   await new sql.Request(transaction)
     .input('id', sql.Int, invID)
     .query(`DELETE FROM dbo.TblCashMove WHERE InvID = @id`);
@@ -264,6 +273,17 @@ export async function updateInvoice(
     ? roundMoney(Math.max(0, subTotal - headerDisVal))
     : computed.grandTotal;
   const totalBonus = computed.totalBonus;
+
+  // Phase 1J: reverse prior SALE stock effects before replacing lines
+  const { reverseSaleStockMovements, applySaleStockDecrements } = await import(
+    '@/lib/inventory/inventoryMutation.service'
+  );
+  const { nextGeneration } = await reverseSaleStockMovements(transaction, {
+    branchId: headBranchId,
+    invId: invID,
+    invType: 'مبيعات',
+    userId: userID,
+  });
 
   // 1. Delete old children
   await new sql.Request(transaction)
@@ -341,6 +361,20 @@ export async function updateInvoice(
         )
       `);
   }
+
+  await applySaleStockDecrements(transaction, {
+    branchId: headBranchId,
+    invId: invID,
+    invType: 'مبيعات',
+    businessDayId: headBusinessDayId,
+    userId: userID,
+    generation: nextGeneration,
+    lines: input.items.map((item, idx) => ({
+      proId: item.proId,
+      qty: item.qty > 0 ? item.qty : 1,
+      lineKey: `${idx}:${item.proId}`,
+    })),
+  });
 
   // 4. Resolve split payment config
   const db = transaction;

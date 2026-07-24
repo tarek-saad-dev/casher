@@ -13,6 +13,7 @@ import {
   Menu,
 } from 'lucide-react';
 import { useMobileNavOptional } from '@/components/layout/MobileNavContext';
+import BranchSwitcher from '@/components/session/BranchSwitcher';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,6 +66,9 @@ export default function MobilePosHeader({
       <div className="min-w-0 flex-1">
         <h1 className="truncate text-sm font-bold leading-tight text-foreground">نقطة البيع</h1>
         <p className="truncate text-[11px] text-muted-foreground">{invoiceLabel}</p>
+        <div className="mt-0.5">
+          <BranchSwitcher />
+        </div>
       </div>
 
       <button

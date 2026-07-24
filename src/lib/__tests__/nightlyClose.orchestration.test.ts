@@ -68,10 +68,18 @@ vi.mock('@/lib/db', () => ({
   },
 }));
 
+const listActiveBranches = vi.fn();
+vi.mock('@/lib/branch', () => ({
+  listActiveBranches: (...args: unknown[]) => listActiveBranches(...args),
+}));
+
 describe('runNightlyClose orchestration', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    listActiveBranches.mockResolvedValue([
+      { branchId: 1, branchCode: 'GLEEM', branchName: 'جليم', isActive: true },
+    ]);
     getPool.mockResolvedValue({
       request: () => ({
         input: function input() {
@@ -165,7 +173,9 @@ describe('runNightlyClose orchestration', () => {
     const { runNightlyClose } = await import('@/lib/hr/nightly-close.service');
     const result = await runNightlyClose({ workDate: '2026-07-14' });
 
-    expect(finalizeIncompleteAttendanceAsDayOff).toHaveBeenCalledWith('2026-07-14');
+    expect(finalizeIncompleteAttendanceAsDayOff).toHaveBeenCalledWith('2026-07-14', {
+      branchId: 1,
+    });
     expect(runDailyPayrollGenerateWithOptionalLedger).toHaveBeenCalled();
     expect(generateEmployeeDailyTargets).toHaveBeenCalledWith({
       workDate: '2026-07-14',

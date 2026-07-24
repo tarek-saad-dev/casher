@@ -227,6 +227,14 @@ export function getDbConnectionInfo() {
 
 export function getUserFriendlyError(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err);
+  const name = err instanceof Error ? err.name : "";
+
+  if (
+    name === "SessionConfigError" ||
+    message.includes("SESSION_SECRET must be configured")
+  ) {
+    return "إعداد الجلسة غير مكتمل على الخادم — يلزم ضبط SESSION_SECRET";
+  }
 
   if (message.includes("ETIMEOUT") || message.includes("timeout")) {
     return "تعذر الاتصال بالخادم، يرجى التحقق من الإنترنت والمحاولة مرة أخرى";

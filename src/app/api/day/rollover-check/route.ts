@@ -1,20 +1,21 @@
 import { NextResponse } from 'next/server';
+import {
+  getOpenBusinessDay,
+  isActiveBranchContext,
+  listOpenShiftsForBranch,
+  requireActiveBranchContext,
+} from '@/lib/branch';
 import { getPool } from '@/lib/db';
 
-// GET /api/day/rollover-check — Check if current open day is stale vs today
+// GET /api/day/rollover-check — Check if active-branch open day is stale vs today
 export async function GET() {
   try {
-    const db = await getPool();
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
 
-    // Get current open day
-    const dayResult = await db.request().query(`
-      SELECT TOP 1 ID, NewDay, Status
-      FROM [dbo].[TblNewDay]
-      WHERE Status = 1
-      ORDER BY ID DESC
-    `);
+    const openDay = await getOpenBusinessDay(branch.branchId);
 
-    if (dayResult.recordset.length === 0) {
+    if (!openDay) {
       return NextResponse.json({
         needsRollover: false,
         isStale: false,
@@ -23,39 +24,39 @@ export async function GET() {
         openDayDate: null,
         todayDate: null,
         openShifts: [],
+        branchId: branch.branchId,
+        branchCode: branch.branchCode,
       });
     }
 
-    const openDay = dayResult.recordset[0];
-    const openDayDate = new Date(openDay.NewDay).toISOString().split('T')[0];
+    const openDayDate = openDay.newDay.slice(0, 10);
 
-    // Get server's today date (use SQL Server GETDATE to stay consistent)
+    const db = await getPool();
     const todayResult = await db.request().query(`SELECT CAST(GETDATE() AS DATE) AS today`);
     const todayDate = new Date(todayResult.recordset[0].today).toISOString().split('T')[0];
 
     const isStale = openDayDate < todayDate;
 
-    // Get open shifts for this day
-    const shiftsResult = await db.request().query(`
-      SELECT
-        sm.ID, sm.UserID, sm.ShiftID, sm.StartTime,
-        u.UserName,
-        s.ShiftName
-      FROM [dbo].[TblShiftMove] sm
-      LEFT JOIN [dbo].[TblUser] u ON sm.UserID = u.UserID
-      LEFT JOIN [dbo].[TblShift] s ON sm.ShiftID = s.ShiftID
-      WHERE sm.Status = 1
-      ORDER BY sm.ID
-    `);
+    const branchOpenShifts = await listOpenShiftsForBranch(branch.branchId);
+    const openShifts = branchOpenShifts.map((sm) => ({
+      ID: sm.id,
+      UserID: sm.userId,
+      ShiftID: sm.shiftId,
+      StartTime: sm.startTime,
+      UserName: sm.userName,
+      ShiftName: sm.shiftName,
+    }));
 
     return NextResponse.json({
       needsRollover: isStale,
       isStale,
       hasOpenDay: true,
-      openDay,
+      openDay: { ID: openDay.id, NewDay: openDay.newDay, Status: openDay.status ? 1 : 0 },
       openDayDate,
       todayDate,
-      openShifts: shiftsResult.recordset,
+      openShifts,
+      branchId: branch.branchId,
+      branchCode: branch.branchCode,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

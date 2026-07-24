@@ -28,6 +28,7 @@ import {
   checkWhatsAppStatus,
   isWhatsAppEnabled,
 } from '@/lib/integrations/whatsapp';
+import { listActiveBranches } from '@/lib/branch';
 
 export interface NightlyCloseDeliveryCheck {
   ok: boolean;
@@ -196,8 +197,14 @@ export async function runNightlyClose(params?: {
     `[nightly-close] start workDate=${workDate} dryRun=${dryRun} skipWhatsApp=${skipWhatsApp}`,
   );
 
-  // ── 1) Incomplete attendance → fill missing times from Defaults (D) ────
+  // ── 1) Incomplete attendance → Default fill (D) per active branch ───────
+  // Topology (Phase 1K): finalize independently per branch, then payroll/targets once.
   try {
+    const activeBranches = await listActiveBranches();
+    if (activeBranches.length === 0) {
+      throw new Error('لا يوجد فرع نشط لإنهاء الحضور');
+    }
+
     if (dryRun) {
       const db = await getPool();
       const { missing } = await validateDailyPayrollAttendance(db, workDate);
@@ -227,8 +234,57 @@ export async function runNightlyClose(params?: {
         remainingMissing: missing,
       };
     } else {
-      result.steps.attendanceClose =
-        await finalizeIncompleteAttendanceWithDefaults(workDate);
+      const mergedFilled: Awaited<
+        ReturnType<typeof finalizeIncompleteAttendanceWithDefaults>
+      >['filled'] = [];
+      const mergedSkipped: Awaited<
+        ReturnType<typeof finalizeIncompleteAttendanceWithDefaults>
+      >['skippedNoDefault'] = [];
+      const branchErrors: string[] = [];
+
+      for (const branch of activeBranches) {
+        try {
+          const branchResult = await finalizeIncompleteAttendanceWithDefaults(
+            workDate,
+            { branchId: branch.branchId },
+          );
+          mergedFilled.push(...branchResult.filled);
+          mergedSkipped.push(...branchResult.skippedNoDefault);
+          console.log(
+            `[nightly-close] attendance branch=${branch.branchCode}(${branch.branchId}) filled=${branchResult.filled.length}`,
+          );
+        } catch (branchErr) {
+          const msg =
+            branchErr instanceof Error ? branchErr.message : String(branchErr);
+          branchErrors.push(`${branch.branchCode}: ${msg}`);
+          console.error(
+            `[nightly-close] attendance finalize failed branch=${branch.branchCode}`,
+            msg,
+          );
+        }
+      }
+
+      if (branchErrors.length === activeBranches.length) {
+        throw new Error(
+          `فشل إنهاء الحضور لكل الفروع: ${branchErrors.join(' | ')}`,
+        );
+      }
+      for (const be of branchErrors) {
+        errors.push(`attendance-branch: ${be}`);
+      }
+
+      const db = await getPool();
+      const after = await validateDailyPayrollAttendance(db, workDate);
+      result.steps.attendanceClose = {
+        workDate,
+        statusCode: 'D',
+        action: 'DefaultFill',
+        status: 'DefaultFill',
+        filled: mergedFilled,
+        closed: mergedFilled,
+        skippedNoDefault: mergedSkipped,
+        remainingMissing: after.missing,
+      };
     }
     console.log(
       `[nightly-close] attendance default-filled=${result.steps.attendanceClose.filled?.length ?? result.steps.attendanceClose.closed.length}`,
@@ -241,7 +297,7 @@ export async function runNightlyClose(params?: {
     return result;
   }
 
-  // ── 2) Daily payroll generate ───────────────────────────────────────────
+  // ── 2) Daily payroll generate (once, employee-global) ───────────────────
   try {
     const db = await getPool();
     const postedCount = await countPostedDailyPayroll(db, workDate);

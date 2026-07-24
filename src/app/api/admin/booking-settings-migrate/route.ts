@@ -16,16 +16,13 @@
  * - MinNoticeMinutes = 30
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { isAuthResult, requireDevelopmentAdmin } from '@/lib/api-auth';
 import { getPool, sql } from "@/lib/db";
-
-// Simple auth check - requires admin session or secret key
-function isAuthorized(req: NextRequest): boolean {
-  const secretKey = req.headers.get("x-admin-secret");
-  const adminKey = process.env.ADMIN_SECRET_KEY;
-  return Boolean(adminKey) && secretKey === adminKey;
-}
+import {
+  isActiveBranchContext,
+  requireActiveBranchContext,
+} from "@/lib/branch";
 
 // Get column info for QueueBookingSettings
 async function getColumnInfo(db: sql.ConnectionPool) {
@@ -48,11 +45,16 @@ async function tableExists(db: sql.ConnectionPool): Promise<boolean> {
   return result.recordset[0].count > 0;
 }
 
-// Get current settings row
-async function getCurrentSettings(db: sql.ConnectionPool) {
-  const result = await db.request().query(`
+// Get current settings row for a specific branch (Phase 1I — never unscoped TOP 1)
+async function getCurrentSettings(db: sql.ConnectionPool, branchId: number) {
+  const result = await db
+    .request()
+    .input("branchId", sql.Int, branchId)
+    .query(`
     SELECT TOP 1 *
     FROM [dbo].[QueueBookingSettings]
+    WHERE BranchID = @branchId
+    ORDER BY SettingID DESC
   `);
   return result.recordset[0] || null;
 }
@@ -81,7 +83,7 @@ async function addColumnIfNotExists(
 }
 
 // GET: Check current state
-export async function GET(req: NextRequest) {
+export async function GET() {
   const __auth = await requireDevelopmentAdmin();
   if (!isAuthResult(__auth)) return __auth;
 
@@ -103,15 +105,20 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     // Get column info
     const columns = await getColumnInfo(db);
 
-    // Get current settings
-    const currentSettings = await getCurrentSettings(db);
+    // Get current settings for the active branch only (Phase 1I)
+    const currentSettings = await getCurrentSettings(db, branch.branchId);
 
     return NextResponse.json({
       ok: true,
       tableExists: true,
+      branchId: branch.branchId,
+      branchCode: branch.branchCode,
       columns: columns.map((c) => ({
         name: c.COLUMN_NAME,
         type: c.DATA_TYPE,
@@ -131,65 +138,45 @@ export async function GET(req: NextRequest) {
         MinNoticeMinutes: 30,
       },
     });
-  } catch (err: any) {
-    console.error("[admin/booking-settings-migrate] GET error:", err);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error("[admin/booking-settings-migrate] GET error:", message);
     return NextResponse.json(
-      { ok: false, error: err.message },
+      { ok: false, error: message },
       { status: 500 },
     );
   }
 }
 
 // POST: Run migration
-export async function POST(req: NextRequest) {
+export async function POST() {
   const __auth = await requireDevelopmentAdmin();
   if (!isAuthResult(__auth)) return __auth;
 
   /* secret gate replaced by requireDevelopmentAdmin (Phase 1A) */
 
   try {
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+    const branchId = branch.branchId;
+
     const db = await getPool();
     const changes: string[] = [];
 
     // Check if table exists
     const exists = await tableExists(db);
     if (!exists) {
-      // Create table
-      await db.request().query(`
-        CREATE TABLE [dbo].[QueueBookingSettings] (
-          SettingID INT PRIMARY KEY IDENTITY(1,1),
-          SalonName NVARCHAR(200) NOT NULL DEFAULT N'Cut Salon',
-          LogoUrl NVARCHAR(500) NULL,
-          Timezone NVARCHAR(100) NOT NULL DEFAULT N'Africa/Cairo',
-          Currency NVARCHAR(10) NOT NULL DEFAULT N'EGP',
-          BookingEnabled BIT NOT NULL DEFAULT 1,
-          AllowSpecificBarber BIT NOT NULL DEFAULT 1,
-          AllowNearestBarber BIT NOT NULL DEFAULT 1,
-          DefaultMode NVARCHAR(20) NOT NULL DEFAULT N'nearest',
-          SlotIntervalMinutes INT NOT NULL DEFAULT 15,
-          MaxBookingDaysAhead INT NOT NULL DEFAULT 14,
-          MinNoticeMinutes INT NOT NULL DEFAULT 30,
-          DefaultServiceDurationMinutes INT NULL,
-          DefaultServiceMinutes INT NULL,
-          CreatedAt DATETIME2 DEFAULT GETDATE(),
-          UpdatedAt DATETIME2 DEFAULT GETDATE()
-        )
-      `);
-      changes.push("Created table QueueBookingSettings");
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "QueueBookingSettings missing — use Phase 1F/1G bootstrap; do not recreate without BranchID",
+        },
+        { status: 409 },
+      );
+    }
 
-      // Insert default row
-      await db.request().query(`
-        INSERT INTO [dbo].[QueueBookingSettings] (
-          SalonName, Timezone, Currency, BookingEnabled,
-          AllowSpecificBarber, AllowNearestBarber, DefaultMode,
-          SlotIntervalMinutes, MaxBookingDaysAhead, MinNoticeMinutes
-        ) VALUES (
-          N'Cut Salon', N'Africa/Cairo', N'EGP', 1,
-          1, 1, N'nearest', 15, 14, 30
-        )
-      `);
-      changes.push("Inserted default settings row");
-    } else {
+    {
       // Table exists - ensure all columns exist
       const addedCols: string[] = [];
 
@@ -306,25 +293,23 @@ export async function POST(req: NextRequest) {
         changes.push(`Added columns: ${addedCols.join(", ")}`);
       }
 
-      // Check if any row exists
-      const currentRow = await getCurrentSettings(db);
+      // Check if any row exists for this branch
+      const currentRow = await getCurrentSettings(db, branchId);
 
       if (!currentRow) {
-        // Insert new row with target values
-        await db.request().query(`
+        await db.request().input("branchId", sql.Int, branchId).query(`
           INSERT INTO [dbo].[QueueBookingSettings] (
-            SalonName, Timezone, Currency, BookingEnabled,
+            BranchID, SalonName, Timezone, Currency, BookingEnabled,
             AllowSpecificBarber, AllowNearestBarber, DefaultMode,
             SlotIntervalMinutes, MaxBookingDaysAhead, MinNoticeMinutes
           ) VALUES (
-            N'Cut Salon', N'Africa/Cairo', N'EGP', 1,
+            @branchId, N'Cut Salon', N'Africa/Cairo', N'EGP', 1,
             1, 1, N'nearest', 15, 14, 30
           )
         `);
-        changes.push("Inserted settings row with target values");
+        changes.push(`Inserted settings row for BranchID=${branchId}`);
       } else {
-        // Update existing row to target values
-        await db.request().query(`
+        await db.request().input("branchId", sql.Int, branchId).query(`
           UPDATE [dbo].[QueueBookingSettings]
           SET
             SalonName = N'Cut Salon',
@@ -338,27 +323,31 @@ export async function POST(req: NextRequest) {
             MaxBookingDaysAhead = 14,
             MinNoticeMinutes = 30,
             UpdatedAt = GETDATE()
-          WHERE SettingID = (SELECT TOP 1 SettingID FROM [dbo].[QueueBookingSettings])
+          WHERE BranchID = @branchId
         `);
-        changes.push("Updated existing settings row to target values");
+        changes.push(`Updated settings for BranchID=${branchId}`);
       }
     }
 
     // Verify the update
-    const verifySettings = await getCurrentSettings(db);
+    const verifySettings = await getCurrentSettings(db, branchId);
 
     return NextResponse.json({
       ok: true,
+      branchId,
+      branchCode: branch.branchCode,
       changes,
       verifiedSettings: verifySettings,
       bookingEnabled:
         verifySettings?.BookingEnabled === 1 ||
         verifySettings?.BookingEnabled === true,
     });
-  } catch (err: any) {
-    console.error("[admin/booking-settings-migrate] POST error:", err);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    const details = err instanceof Error ? err.stack : undefined;
+    console.error("[admin/booking-settings-migrate] POST error:", message);
     return NextResponse.json(
-      { ok: false, error: err.message, details: err.stack },
+      { ok: false, error: message, details },
       { status: 500 },
     );
   }

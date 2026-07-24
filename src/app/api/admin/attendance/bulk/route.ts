@@ -13,6 +13,11 @@ import {
 } from "@/lib/hr/attendance-break-time-db";
 import { syncBlockRangesFromBreaks, syncBlockRangesFromBreakTimes } from "@/lib/hr/attendance-break-schedule-sync";
 import { scheduleAttendanceCheckInOutWhatsApp } from "@/lib/services/employeeAttendanceWhatsAppNotify";
+import {
+  isActiveBranchContext,
+  requireBranchOperationAccess,
+} from "@/lib/branch";
+import { assertEmployeeEligibleForBranchAttendance } from "@/lib/hr/attendance/branchAttendance.service";
 
 function timeToDate(timeStr: string | null | undefined): Date | null {
   if (!timeStr || timeStr.trim() === "") return null;
@@ -33,7 +38,16 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
     }
 
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const body = await req.json();
+    if (body.BranchID != null || body.branchId != null) {
+      return NextResponse.json(
+        { error: "BranchID في الطلب غير مسموح" },
+        { status: 400 },
+      );
+    }
     const { WorkDate, items } = body;
 
     if (!WorkDate || !/^\d{4}-\d{2}-\d{2}$/.test(WorkDate)) {
@@ -154,6 +168,24 @@ export async function PUT(req: NextRequest) {
 
     try {
       for (const item of items) {
+        try {
+          await assertEmployeeEligibleForBranchAttendance(
+            Number(item.EmpID),
+            branch.branchId,
+            WorkDate,
+          );
+        } catch (eligErr) {
+          if (eligErr instanceof Error && 'statusCode' in eligErr) {
+            const e = eligErr as { message: string; statusCode: number };
+            await transaction.rollback();
+            return NextResponse.json(
+              { error: `${e.message} (موظف ${item.EmpID})` },
+              { status: e.statusCode },
+            );
+          }
+          throw eligErr;
+        }
+
         const empDef = empDefaultMap.get(item.EmpID);
         const schedStart = empDef?.schedStart ?? null;
         const schedEnd   = empDef?.schedEnd   ?? null;
@@ -184,13 +216,14 @@ export async function PUT(req: NextRequest) {
           .request()
           .input("empId", sql.Int, item.EmpID)
           .input("workDate", sql.Date, WorkDate)
+          .input("branchId", sql.Int, branch.branchId)
           .query(`
             SELECT
               ID,
               CONVERT(VARCHAR(5), CheckInTime, 108) AS CheckInTime,
               CONVERT(VARCHAR(5), CheckOutTime, 108) AS CheckOutTime
             FROM dbo.TblEmpAttendance
-            WHERE EmpID = @empId AND WorkDate = @workDate
+            WHERE EmpID = @empId AND WorkDate = @workDate AND BranchID = @branchId
           `);
 
         const previousCheckIn =
@@ -208,6 +241,7 @@ export async function PUT(req: NextRequest) {
           await txDb
             .request()
             .input("id", sql.Int, attendanceId)
+            .input("branchId", sql.Int, branch.branchId)
             .input("checkInTime", sql.Time, timeToDate(checkIn))
             .input("checkOutTime", sql.Time, timeToDate(checkOut))
             .input("status", sql.NVarChar(50), finalStatus)
@@ -229,12 +263,13 @@ export async function PUT(req: NextRequest) {
                   ScheduledEndTime = @scheduledEnd,
                   UpdatedByUserID = @updatedBy,
                   UpdatedAt = GETDATE()
-              WHERE ID = @id
+              WHERE ID = @id AND BranchID = @branchId
             `);
           updatedCount++;
         } else {
           const insertResult = await txDb
             .request()
+            .input("branchId", sql.Int, branch.branchId)
             .input("empId", sql.Int, item.EmpID)
             .input("workDate", sql.Date, WorkDate)
             .input("checkInTime", sql.Time, timeToDate(checkIn))
@@ -248,10 +283,10 @@ export async function PUT(req: NextRequest) {
             .input("createdBy", sql.Int, session.UserID || null)
             .query(`
               INSERT INTO dbo.TblEmpAttendance
-                (EmpID, WorkDate, CheckInTime, CheckOutTime, Status, LateMinutes, EarlyLeaveMinutes, Notes, ScheduledStartTime, ScheduledEndTime, CreatedByUserID, CreatedAt)
+                (BranchID, EmpID, WorkDate, CheckInTime, CheckOutTime, Status, LateMinutes, EarlyLeaveMinutes, Notes, ScheduledStartTime, ScheduledEndTime, CreatedByUserID, CreatedAt)
               OUTPUT INSERTED.ID
               VALUES
-                (@empId, @workDate, @checkInTime, @checkOutTime, @status, @lateMinutes, @earlyLeaveMinutes, @notes, @scheduledStart, @scheduledEnd, @createdBy, GETDATE())
+                (@branchId, @empId, @workDate, @checkInTime, @checkOutTime, @status, @lateMinutes, @earlyLeaveMinutes, @notes, @scheduledStart, @scheduledEnd, @createdBy, GETDATE())
             `);
           attendanceId = insertResult.recordset[0].ID as number;
           insertedCount++;

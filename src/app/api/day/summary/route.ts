@@ -1,44 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import {
+  financialNotFoundResponse,
+  isActiveBranchContext,
+  requireActiveBranchContext,
+  validateBusinessDayBelongsToBranch,
+} from '@/lib/branch';
+import { BranchDomainError } from '@/lib/branch/types';
 
-// GET /api/day/summary?id=2332 — Get day summary for close screen
+// GET /api/day/summary?id=2332 — day summary for close screen (active branch only)
 export async function GET(req: NextRequest) {
   try {
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const dayID = req.nextUrl.searchParams.get('id');
     if (!dayID) {
       return NextResponse.json({ error: 'Missing day id' }, { status: 400 });
     }
 
-    const db = await getPool();
-
-    // Get day info
-    const dayResult = await db.request()
-      .input('dayID', sql.Int, parseInt(dayID))
-      .query(`SELECT ID, NewDay, Status FROM [dbo].[TblNewDay] WHERE ID = @dayID`);
-    if (dayResult.recordset.length === 0) {
-      return NextResponse.json({ error: 'Day not found' }, { status: 404 });
+    const dayIdNum = parseInt(dayID, 10);
+    let day;
+    try {
+      day = await validateBusinessDayBelongsToBranch(dayIdNum, branch.branchId);
+    } catch (err) {
+      if (err instanceof BranchDomainError) return financialNotFoundResponse();
+      throw err;
     }
-    const day = dayResult.recordset[0];
 
-    // Get shifts for this day
-    const shifts = await db.request()
-      .input('dayDate', sql.Date, day.NewDay)
+    const db = await getPool();
+    const branchId = branch.branchId;
+
+    const shifts = await db
+      .request()
+      .input('dayId', sql.Int, day.id)
+      .input('branchId', sql.Int, branchId)
       .query(`
         SELECT
           sm.ID, sm.UserID, u.UserName, sm.ShiftID, s.ShiftName,
           sm.StartTime, sm.EndTime, sm.Status,
-          (SELECT COUNT(*) FROM [dbo].[TblinvServHead] WHERE ShiftMoveID = sm.ID AND invType = N'مبيعات') AS salesCount,
-          (SELECT ISNULL(SUM(GrandTotal), 0) FROM [dbo].[TblinvServHead] WHERE ShiftMoveID = sm.ID AND invType = N'مبيعات') AS totalRevenue
+          (SELECT COUNT(*) FROM [dbo].[TblinvServHead]
+            WHERE ShiftMoveID = sm.ID AND BranchID = @branchId AND invType = N'مبيعات') AS salesCount,
+          (SELECT ISNULL(SUM(GrandTotal), 0) FROM [dbo].[TblinvServHead]
+            WHERE ShiftMoveID = sm.ID AND BranchID = @branchId AND invType = N'مبيعات') AS totalRevenue
         FROM [dbo].[TblShiftMove] sm
         LEFT JOIN [dbo].[TblUser] u ON sm.UserID = u.UserID
         LEFT JOIN [dbo].[TblShift] s ON sm.ShiftID = s.ShiftID
-        WHERE sm.NewDay = @dayDate
+        WHERE sm.BusinessDayID = @dayId AND sm.BranchID = @branchId
         ORDER BY sm.ID
       `);
 
-    // Payment breakdown for entire day
-    const payments = await db.request()
-      .input('dayDate', sql.Date, day.NewDay)
+    const payments = await db
+      .request()
+      .input('dayId', sql.Int, day.id)
+      .input('branchId', sql.Int, branchId)
       .query(`
         SELECT
           ISNULL(pm.PaymentMethod, N'غير محدد') AS method,
@@ -46,25 +61,26 @@ export async function GET(req: NextRequest) {
           SUM(h.GrandTotal) AS total
         FROM [dbo].[TblinvServHead] h
         LEFT JOIN [dbo].[TblPaymentMethods] pm ON h.PaymentMethodID = pm.PaymentID
-        WHERE h.invDate = @dayDate AND h.invType = N'مبيعات'
+        WHERE h.BusinessDayID = @dayId AND h.BranchID = @branchId AND h.invType = N'مبيعات'
         GROUP BY pm.PaymentMethod
       `);
 
-    // Day totals
-    const totals = await db.request()
-      .input('dayDate', sql.Date, day.NewDay)
+    const totals = await db
+      .request()
+      .input('dayId', sql.Int, day.id)
+      .input('branchId', sql.Int, branchId)
       .query(`
         SELECT
           COUNT(*) AS salesCount,
           ISNULL(SUM(GrandTotal), 0) AS totalRevenue
         FROM [dbo].[TblinvServHead]
-        WHERE invDate = @dayDate AND invType = N'مبيعات'
+        WHERE BusinessDayID = @dayId AND BranchID = @branchId AND invType = N'مبيعات'
       `);
 
     return NextResponse.json({
-      dayID: day.ID,
-      date: day.NewDay,
-      status: day.Status,
+      dayID: day.id,
+      date: day.newDay,
+      status: day.status ? 1 : 0,
       shiftsCount: shifts.recordset.length,
       shifts: shifts.recordset,
       salesCount: totals.recordset[0].salesCount,

@@ -20,6 +20,10 @@ import { getBarberDayStatus, getScheduleOverrides, cairoDateStr } from "@/lib/av
 import { computePreview } from "@/lib/scheduleControlPreview";
 import type { OverrideType } from "@/lib/scheduleOverrides";
 import { syncBreakFromBlockRange } from "@/lib/hr/attendance-break-schedule-sync";
+import {
+  isActiveBranchContext,
+  requireBranchOperationAccess,
+} from "@/lib/branch";
 
 export const runtime = "nodejs";
 
@@ -40,6 +44,9 @@ function hhmmToMin(hhmm: string) {
 
 export async function POST(req: NextRequest) {
   try {
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const body = await req.json();
     const {
       empId,
@@ -91,7 +98,7 @@ export async function POST(req: NextRequest) {
     // Load currently active overrides for this barber/date
     const existingOverrides = await getScheduleOverrides(empId, date);
     const activeTypes = new Set(
-      existingOverrides.filter(o => (o as any).IsActive !== false).map(o => o.Type),
+      existingOverrides.filter((o) => o.IsActive !== false).map((o) => o.Type),
     );
 
     // day_off blocks everything — if already day_off, nothing else makes sense
@@ -199,25 +206,34 @@ export async function POST(req: NextRequest) {
         .request()
         .input("empId",    sql.Int,          empId)
         .input("workDate", sql.Date,          date)
+        .input("branchId", sql.Int,           branch.branchId)
         .input("notes",    sql.NVarChar(300), attendanceNote)
         .query(`
           IF EXISTS (
             SELECT 1 FROM dbo.TblEmpAttendance
-            WHERE EmpID = @empId AND WorkDate = @workDate
+            WHERE EmpID = @empId AND WorkDate = @workDate AND BranchID = @branchId
           )
             UPDATE dbo.TblEmpAttendance
             SET Status = 'Absent', Notes = @notes
-            WHERE EmpID = @empId AND WorkDate = @workDate
+            WHERE EmpID = @empId AND WorkDate = @workDate AND BranchID = @branchId
           ELSE
-            INSERT INTO dbo.TblEmpAttendance (EmpID, WorkDate, Status, Notes)
-            VALUES (@empId, @workDate, 'Absent', @notes)
+            INSERT INTO dbo.TblEmpAttendance (BranchID, EmpID, WorkDate, Status, Notes)
+            VALUES (@branchId, @empId, @workDate, 'Absent', @notes)
         `)
         .catch(() => {});
     }
 
     // block_range → mirror as وقت مستقطع on attendance (same date)
     if (type === "block_range" && startTime && endTime) {
-      await syncBreakFromBlockRange(db, empId, date, startTime, endTime, reason).catch((err) => {
+      await syncBreakFromBlockRange(
+        db,
+        empId,
+        date,
+        startTime,
+        endTime,
+        reason,
+        branch.branchId,
+      ).catch((err) => {
         console.warn("[ops/schedule-control/apply] break sync failed", err);
       });
     }

@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import {
+  isActiveBranchContext,
+  requireBranchOperationAccess,
+} from "@/lib/branch";
 
 // GET /api/admin/attendance/freelancers?date=YYYY-MM-DD&query=
-// Read-only search for freelancers / attendance-exempt employees (manual add to board).
 export async function GET(req: NextRequest) {
   try {
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
     }
+
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
 
     const { searchParams } = new URL(req.url);
     const dateStr = searchParams.get("date");
@@ -26,6 +32,7 @@ export async function GET(req: NextRequest) {
     const result = await db
       .request()
       .input("workDate", sql.Date, dateStr)
+      .input("branchId", sql.Int, branch.branchId)
       .input("query", sql.NVarChar(100), query ? `%${query}%` : null)
       .query(`
         SELECT
@@ -38,7 +45,7 @@ export async function GET(req: NextRequest) {
           CASE WHEN a.ID IS NOT NULL THEN 1 ELSE 0 END AS HasAttendanceToday
         FROM dbo.TblEmp e
         LEFT JOIN dbo.TblEmpAttendance a
-          ON a.EmpID = e.EmpID AND a.WorkDate = @workDate
+          ON a.EmpID = e.EmpID AND a.WorkDate = @workDate AND a.BranchID = @branchId
         WHERE ISNULL(e.isActive, 1) = 1
           AND (
             e.EmploymentType = 'freelance'
@@ -61,16 +68,20 @@ export async function GET(req: NextRequest) {
         EmpID: row.EmpID,
         EmpName: row.EmpName,
         EmploymentType: row.EmploymentType,
-        IsAttendanceExempt: row.IsAttendanceExempt === true || row.IsAttendanceExempt === 1,
+        IsAttendanceExempt:
+          row.IsAttendanceExempt === true || row.IsAttendanceExempt === 1,
         DefaultCheckInTime: row.DefaultCheckInTime || null,
         DefaultCheckOutTime: row.DefaultCheckOutTime || null,
-        HasAttendanceToday: row.HasAttendanceToday === true || row.HasAttendanceToday === 1,
+        HasAttendanceToday:
+          row.HasAttendanceToday === true || row.HasAttendanceToday === 1,
       }),
     );
 
     return NextResponse.json({
       success: true,
       date: dateStr,
+      branchId: branch.branchId,
+      branchCode: branch.branchCode,
       freelancers,
     });
   } catch (err: unknown) {

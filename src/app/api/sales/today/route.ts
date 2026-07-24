@@ -31,10 +31,13 @@ export async function GET(request: NextRequest) {
     // Get target date
     let targetDate = searchParams.get('date');
     if (!targetDate) {
-      // Default to current open business day
-      const dayResult = await db.request().query(`
+      // Default to current open business day for the active branch only
+      const dayResult = await db
+        .request()
+        .input('branchId', sql.Int, branchId)
+        .query(`
         SELECT TOP 1 NewDay FROM [dbo].[TblNewDay] 
-        WHERE Status = 1 
+        WHERE Status = 1 AND BranchID = @branchId
         ORDER BY ID DESC
       `);
       if (dayResult.recordset.length > 0) {
@@ -58,7 +61,7 @@ export async function GET(request: NextRequest) {
     const empIdFilter = searchParams.get('empId') ? parseInt(searchParams.get('empId')!) : null;
 
     // Build WHERE clause (CRITICAL: Use CAST for date comparison)
-    let whereConditions = [dateFilter('h'), `h.invType = N'مبيعات'`, activeSalesCondition('h'), 'h.BranchID = @branchId'];
+    const whereConditions = [dateFilter('h'), `h.invType = N'مبيعات'`, activeSalesCondition('h'), 'h.BranchID = @branchId'];
     if (shiftMoveIdFilter) whereConditions.push('h.ShiftMoveID = @shiftMoveId');
     if (paymentMethodIdFilter) whereConditions.push('h.PaymentMethodID = @paymentMethodId');
     

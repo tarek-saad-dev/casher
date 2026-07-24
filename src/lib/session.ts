@@ -16,14 +16,29 @@ import {
 const COOKIE_NAME = 'pos_session';
 const MAX_AGE = 24 * 60 * 60; // 24 hours in seconds
 
+export class SessionConfigError extends Error {
+  readonly code = 'SESSION_CONFIG_ERROR' as const;
+  constructor(message: string) {
+    super(message);
+    this.name = 'SessionConfigError';
+  }
+}
+
 function resolveSessionSecret(env: NodeJS.ProcessEnv = process.env): string {
   const configured = env.SESSION_SECRET?.trim();
   if (configured) return configured;
   if (env.NODE_ENV === 'production') {
-    throw new Error('SESSION_SECRET must be configured in production');
+    throw new SessionConfigError('SESSION_SECRET must be configured in production');
   }
   // Development-only fallback — production refuses above.
   return 'hawai-pos-secret-key-change-in-prod';
+}
+
+/** Fail fast before DB work when production cannot mint a session cookie. */
+export function assertSessionSecretConfigured(
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  resolveSessionSecret(env);
 }
 
 export function getSessionSecretForTests(env: NodeJS.ProcessEnv = process.env): string {
@@ -146,6 +161,7 @@ export async function setSessionCookie(token: string): Promise<void> {
   jar.set(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
     path: '/',
     maxAge: MAX_AGE,
   });

@@ -1,16 +1,26 @@
 import { NextResponse } from 'next/server';
-import { getPool } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
+import { isActiveBranchContext, requireActiveBranchContext } from '@/lib/branch';
 
-// GET /api/shifts/current
+// GET /api/shifts/current — latest shift for the session active branch only
 export async function GET() {
   try {
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+    const branchId = branch.branchId;
+
     const db = await getPool();
 
-    // Level 1: latest open shift for today
-    let result = await db.request().query(`
-      SELECT TOP 1 ID, Status, NewDay
+    // Level 1: latest open shift for today on this branch
+    let result = await db
+      .request()
+      .input('branchId', sql.Int, branchId)
+      .query(`
+      SELECT TOP 1 ID, Status, NewDay, BranchID
       FROM [dbo].[TblShiftMove]
-      WHERE Status = 1 AND CAST(NewDay AS DATE) = CAST(GETDATE() AS DATE)
+      WHERE Status = 1
+        AND BranchID = @branchId
+        AND CAST(NewDay AS DATE) = CAST(GETDATE() AS DATE)
       ORDER BY ID DESC
     `);
 
@@ -18,11 +28,16 @@ export async function GET() {
       return NextResponse.json({ ...result.recordset[0], level: 'open_today' });
     }
 
-    // Level 2: latest closed shift for today
-    result = await db.request().query(`
-      SELECT TOP 1 ID, Status, NewDay
+    // Level 2: latest closed shift for today on this branch
+    result = await db
+      .request()
+      .input('branchId', sql.Int, branchId)
+      .query(`
+      SELECT TOP 1 ID, Status, NewDay, BranchID
       FROM [dbo].[TblShiftMove]
-      WHERE Status = 0 AND CAST(NewDay AS DATE) = CAST(GETDATE() AS DATE)
+      WHERE Status = 0
+        AND BranchID = @branchId
+        AND CAST(NewDay AS DATE) = CAST(GETDATE() AS DATE)
       ORDER BY ID DESC
     `);
 
@@ -30,11 +45,14 @@ export async function GET() {
       return NextResponse.json({ ...result.recordset[0], level: 'closed_today' });
     }
 
-    // Level 3: latest still-open shift regardless of date
-    result = await db.request().query(`
-      SELECT TOP 1 ID, Status, NewDay
+    // Level 3: latest still-open shift on this branch regardless of date
+    result = await db
+      .request()
+      .input('branchId', sql.Int, branchId)
+      .query(`
+      SELECT TOP 1 ID, Status, NewDay, BranchID
       FROM [dbo].[TblShiftMove]
-      WHERE Status = 1 AND EndDate IS NULL
+      WHERE Status = 1 AND BranchID = @branchId AND EndDate IS NULL
       ORDER BY ID DESC
     `);
 

@@ -29,11 +29,67 @@ import {
 } from '@/lib/hr/attendance-break-time-db';
 import { ensureOverridesTable } from '@/lib/scheduleOverrides';
 
+type DbLike = { request: () => sql.Request };
+
+async function resolveGleemBranchId(db: DbLike): Promise<number> {
+  const result = await db.request().query(`
+    SELECT TOP 1 BranchID FROM dbo.TblBranch WHERE BranchCode = N'GLEEM'
+  `);
+  const id = Number(result.recordset[0]?.BranchID);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error('GLEEM branch required for attendance row create');
+  }
+  return id;
+}
+
+/** Prefer explicit branch, else existing emp/date row, else home assignment, else GLEEM. */
+async function resolveAttendanceBranchId(
+  db: DbLike,
+  empId: number,
+  date: string,
+  branchId?: number | null,
+): Promise<number> {
+  if (branchId != null && Number(branchId) > 0) return Number(branchId);
+
+  const existing = await db
+    .request()
+    .input('empId', sql.Int, empId)
+    .input('workDate', sql.Date, date)
+    .query(`
+      SELECT TOP 1 BranchID
+      FROM dbo.TblEmpAttendance
+      WHERE EmpID = @empId AND WorkDate = @workDate
+      ORDER BY ID
+    `);
+  if (existing.recordset[0]?.BranchID != null) {
+    return Number(existing.recordset[0].BranchID);
+  }
+
+  const home = await db
+    .request()
+    .input('empId', sql.Int, empId)
+    .input('day', sql.Date, date)
+    .query(`
+      SELECT TOP 1 ea.BranchID
+      FROM dbo.TblEmpBranchAssignment ea
+      INNER JOIN dbo.TblBranch b ON b.BranchID = ea.BranchID
+      WHERE ea.EmpID = @empId
+        AND ea.IsActive = 1
+        AND b.IsActive = 1
+        AND ea.EffectiveFrom <= @day
+        AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @day)
+      ORDER BY ea.IsHomeBranch DESC, ea.ID
+    `);
+  if (home.recordset[0]?.BranchID != null) {
+    return Number(home.recordset[0].BranchID);
+  }
+
+  return resolveGleemBranchId(db);
+}
+
 export const SC_BLOCK_RANGE_SOURCE = 'schedule-control block_range';
 export const ATTENDANCE_BREAK_SOURCE = 'attendance-break';
 export const ATTENDANCE_BREAK_TIME_SOURCE = 'attendance-break-time';
-
-type DbLike = { request: () => sql.Request };
 
 export function isSyncedBlockRangeCreatedBy(createdBy: string | null | undefined): boolean {
   if (!createdBy) return false;
@@ -208,14 +264,16 @@ async function ensureAttendanceRow(
   db: DbLike,
   empId: number,
   date: string,
+  branchId: number,
 ): Promise<number> {
   const existing = await db
     .request()
     .input('empId', sql.Int, empId)
     .input('workDate', sql.Date, date)
+    .input('branchId', sql.Int, branchId)
     .query(`
       SELECT ID FROM dbo.TblEmpAttendance
-      WHERE EmpID = @empId AND WorkDate = @workDate
+      WHERE EmpID = @empId AND WorkDate = @workDate AND BranchID = @branchId
     `);
 
   if (existing.recordset.length > 0) {
@@ -226,10 +284,11 @@ async function ensureAttendanceRow(
     .request()
     .input('empId', sql.Int, empId)
     .input('workDate', sql.Date, date)
+    .input('branchId', sql.Int, branchId)
     .query(`
-      INSERT INTO dbo.TblEmpAttendance (EmpID, WorkDate, Status, Notes, CreatedAt)
+      INSERT INTO dbo.TblEmpAttendance (BranchID, EmpID, WorkDate, Status, Notes, CreatedAt)
       OUTPUT INSERTED.ID
-      VALUES (@empId, @workDate, N'Present', NULL, GETDATE())
+      VALUES (@branchId, @empId, @workDate, N'Present', NULL, GETDATE())
     `);
 
   return inserted.recordset[0].ID as number;
@@ -245,6 +304,7 @@ export async function syncBreakFromBlockRange(
   startTime: string,
   endTime: string,
   reason?: string | null,
+  branchId?: number | null,
 ): Promise<{ attendanceId: number; added: boolean }> {
   await ensureAttendanceBreakSchema(db);
 
@@ -254,7 +314,8 @@ export async function syncBreakFromBlockRange(
     return { attendanceId: 0, added: false };
   }
 
-  const attendanceId = await ensureAttendanceRow(db, empId, date);
+  const resolvedBranchId = await resolveAttendanceBranchId(db, empId, date, branchId);
+  const attendanceId = await ensureAttendanceRow(db, empId, date, resolvedBranchId);
   const breaksMap = await loadBreaksByAttendanceIds(db, [attendanceId]);
   const existing = breaksMap.get(attendanceId) ?? [];
   const key = intervalKey(leaveAt, returnAt);
@@ -302,8 +363,9 @@ export async function removeBreakMatchingBlockRange(
     .input('empId', sql.Int, empId)
     .input('workDate', sql.Date, date)
     .query(`
-      SELECT ID FROM dbo.TblEmpAttendance
+      SELECT TOP 1 ID FROM dbo.TblEmpAttendance
       WHERE EmpID = @empId AND WorkDate = @workDate
+      ORDER BY ID
     `);
 
   if (!existingAtt.recordset.length) return { removed: false };
@@ -341,8 +403,9 @@ export async function removeBreakTimeMatchingBlockRange(
     .input('empId', sql.Int, empId)
     .input('workDate', sql.Date, date)
     .query(`
-      SELECT ID FROM dbo.TblEmpAttendance
+      SELECT TOP 1 ID FROM dbo.TblEmpAttendance
       WHERE EmpID = @empId AND WorkDate = @workDate
+      ORDER BY ID
     `);
 
   if (!existingAtt.recordset.length) return { removed: false };

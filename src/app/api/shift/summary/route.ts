@@ -1,56 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import {
+  financialNotFoundResponse,
+  isActiveBranchContext,
+  requireActiveBranchContext,
+  validateShiftBelongsToBranch,
+} from '@/lib/branch';
+import { BranchDomainError } from '@/lib/branch/types';
 
-// GET /api/shift/summary?id=4457 — Get shift summary for close screen
+// GET /api/shift/summary?id=4457 — shift summary for close screen (active branch only)
 export async function GET(req: NextRequest) {
   try {
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const id = req.nextUrl.searchParams.get('id');
     if (!id) {
       return NextResponse.json({ error: 'Missing shift id' }, { status: 400 });
     }
-    const shiftMoveID = parseInt(id);
+    const shiftMoveID = parseInt(id, 10);
+
+    let shift;
+    try {
+      shift = await validateShiftBelongsToBranch(shiftMoveID, branch.branchId);
+    } catch (err) {
+      if (err instanceof BranchDomainError) return financialNotFoundResponse();
+      throw err;
+    }
 
     const db = await getPool();
+    const branchId = branch.branchId;
 
-    // Get shift info
-    const shiftResult = await db.request()
-      .input('id', sql.Int, shiftMoveID)
-      .query(`
-        SELECT sm.ID, sm.NewDay, sm.UserID, sm.ShiftID,
-               sm.StartDate, sm.StartTime, sm.EndDate, sm.EndTime, sm.Status,
-               u.UserName, s.ShiftName
-        FROM [dbo].[TblShiftMove] sm
-        LEFT JOIN [dbo].[TblUser] u ON sm.UserID = u.UserID
-        LEFT JOIN [dbo].[TblShift] s ON sm.ShiftID = s.ShiftID
-        WHERE sm.ID = @id
-      `);
-    if (shiftResult.recordset.length === 0) {
-      return NextResponse.json({ error: 'Shift not found' }, { status: 404 });
-    }
-    const shift = shiftResult.recordset[0];
-
-    // Sales count + total
-    const salesTotals = await db.request()
+    const salesTotals = await db
+      .request()
       .input('smID', sql.Int, shiftMoveID)
+      .input('branchId', sql.Int, branchId)
       .query(`
         SELECT
           COUNT(*) AS salesCount,
           ISNULL(SUM(GrandTotal), 0) AS totalRevenue
         FROM [dbo].[TblinvServHead]
-        WHERE ShiftMoveID = @smID AND invType = N'مبيعات'
+        WHERE ShiftMoveID = @smID AND BranchID = @branchId AND invType = N'مبيعات'
       `);
 
-    // Payment breakdown — read from TblinvServPayment (real per-method allocations)
-    // Falls back to header PaymentMethodID for older invoices without payment rows.
-    // Excludes the internal clearing account from display.
-    const payments = await db.request()
+    const payments = await db
+      .request()
       .input('smID', sql.Int, shiftMoveID)
+      .input('branchId', sql.Int, branchId)
       .query(`
         WITH ShiftInvoices AS (
           SELECT h.invID, h.invType, h.ShiftMoveID, h.PaymentMethodID,
                  COALESCE(NULLIF(h.Payment, 0), h.GrandTotal, 0) AS PayValue
           FROM [dbo].[TblinvServHead] h
-          WHERE h.ShiftMoveID = @smID AND h.invType = N'\u0645\u0628\u064a\u0639\u0627\u062a'
+          WHERE h.ShiftMoveID = @smID AND h.BranchID = @branchId AND h.invType = N'\u0645\u0628\u064a\u0639\u0627\u062a'
         ),
         PayRows AS (
           SELECT p.PaymentMethodID, ISNULL(p.PayValue, 0) AS PayValue
@@ -82,29 +84,32 @@ export async function GET(req: NextRequest) {
         GROUP BY pm.PaymentMethod
       `);
 
-    // Cash movement summary
-    const cashIn = await db.request()
+    const cashIn = await db
+      .request()
       .input('smID', sql.Int, shiftMoveID)
+      .input('branchId', sql.Int, branchId)
       .query(`
         SELECT ISNULL(SUM(GrandTolal), 0) AS total
         FROM [dbo].[TblCashMove]
-        WHERE ShiftMoveID = @smID AND inOut = 'in'
+        WHERE ShiftMoveID = @smID AND BranchID = @branchId AND inOut = 'in'
       `);
-    const cashOut = await db.request()
+    const cashOut = await db
+      .request()
       .input('smID', sql.Int, shiftMoveID)
+      .input('branchId', sql.Int, branchId)
       .query(`
         SELECT ISNULL(SUM(GrandTolal), 0) AS total
         FROM [dbo].[TblCashMove]
-        WHERE ShiftMoveID = @smID AND inOut = 'out'
+        WHERE ShiftMoveID = @smID AND BranchID = @branchId AND inOut = 'out'
       `);
 
     return NextResponse.json({
-      shiftMoveID: shift.ID,
-      userName: shift.UserName,
-      shiftName: shift.ShiftName,
-      startTime: shift.StartTime,
-      endTime: shift.EndTime,
-      status: shift.Status,
+      shiftMoveID: shift.id,
+      userName: shift.userName,
+      shiftName: shift.shiftName,
+      startTime: shift.startTime,
+      endTime: shift.endTime,
+      status: shift.status ? 1 : 0,
       salesCount: salesTotals.recordset[0].salesCount,
       totalRevenue: salesTotals.recordset[0].totalRevenue,
       paymentBreakdown: payments.recordset,

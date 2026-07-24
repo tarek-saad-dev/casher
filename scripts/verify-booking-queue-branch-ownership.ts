@@ -139,7 +139,7 @@ async function main() {
            INNER JOIN sys.schemas s ON s.schema_id = t.schema_id
            WHERE c.name = N'BranchID' AND s.name = N'dbo'
              AND t.name IN (
-               N'TblEmpAttendance', N'TblEmpPayroll', N'TblEmpTarget',
+               N'TblEmpPayroll', N'TblEmpTarget',
                N'TblEmpLedgerEntry', N'TblBudget'
              )) AS ForbiddenHrBranchColumns
     `);

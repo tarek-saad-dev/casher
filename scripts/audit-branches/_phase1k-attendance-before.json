@@ -1,0 +1,355 @@
+{
+  "capturedAt": "2026-07-24T04:05:46.442Z",
+  "database": "last132",
+  "branches": [
+    {
+      "BranchID": 1,
+      "BranchCode": "GLEEM",
+      "IsActive": true
+    },
+    {
+      "BranchID": 2,
+      "BranchCode": "PH1GTEST",
+      "IsActive": false
+    }
+  ],
+  "hasBranchId": false,
+  "cols": [
+    {
+      "name": "ID",
+      "type_name": "int",
+      "is_nullable": false,
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0
+    },
+    {
+      "name": "EmpID",
+      "type_name": "int",
+      "is_nullable": false,
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0
+    },
+    {
+      "name": "WorkDate",
+      "type_name": "date",
+      "is_nullable": false,
+      "max_length": 3,
+      "precision": 10,
+      "scale": 0
+    },
+    {
+      "name": "CheckInTime",
+      "type_name": "time",
+      "is_nullable": true,
+      "max_length": 5,
+      "precision": 16,
+      "scale": 7
+    },
+    {
+      "name": "CheckOutTime",
+      "type_name": "time",
+      "is_nullable": true,
+      "max_length": 5,
+      "precision": 16,
+      "scale": 7
+    },
+    {
+      "name": "Status",
+      "type_name": "nvarchar",
+      "is_nullable": false,
+      "max_length": 100,
+      "precision": 0,
+      "scale": 0
+    },
+    {
+      "name": "Notes",
+      "type_name": "nvarchar",
+      "is_nullable": true,
+      "max_length": 1000,
+      "precision": 0,
+      "scale": 0
+    },
+    {
+      "name": "CreatedAt",
+      "type_name": "datetime",
+      "is_nullable": false,
+      "max_length": 8,
+      "precision": 23,
+      "scale": 3
+    },
+    {
+      "name": "ScheduledStartTime",
+      "type_name": "time",
+      "is_nullable": true,
+      "max_length": 5,
+      "precision": 16,
+      "scale": 7
+    },
+    {
+      "name": "ScheduledEndTime",
+      "type_name": "time",
+      "is_nullable": true,
+      "max_length": 5,
+      "precision": 16,
+      "scale": 7
+    },
+    {
+      "name": "LateMinutes",
+      "type_name": "int",
+      "is_nullable": false,
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0
+    },
+    {
+      "name": "EarlyLeaveMinutes",
+      "type_name": "int",
+      "is_nullable": false,
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0
+    },
+    {
+      "name": "CreatedByUserID",
+      "type_name": "int",
+      "is_nullable": true,
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0
+    },
+    {
+      "name": "UpdatedByUserID",
+      "type_name": "int",
+      "is_nullable": true,
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0
+    },
+    {
+      "name": "UpdatedAt",
+      "type_name": "datetime",
+      "is_nullable": true,
+      "max_length": 8,
+      "precision": 23,
+      "scale": 3
+    },
+    {
+      "name": "BreakMinutesTotal",
+      "type_name": "int",
+      "is_nullable": false,
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0
+    },
+    {
+      "name": "BreakTimeMinutesTotal",
+      "type_name": "int",
+      "is_nullable": false,
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0
+    }
+  ],
+  "indexes": [
+    {
+      "name": "IX_TblEmpAttendance_EmpID_WorkDate",
+      "is_unique": false,
+      "is_primary_key": false,
+      "has_filter": false,
+      "filter_definition": null,
+      "cols": "EmpID,WorkDate"
+    },
+    {
+      "name": "PK__TblEmpAt__3214EC27CBACC853",
+      "is_unique": true,
+      "is_primary_key": true,
+      "has_filter": false,
+      "filter_definition": null,
+      "cols": "ID"
+    },
+    {
+      "name": "UQ_TblEmpAttendance_Emp_WorkDate",
+      "is_unique": true,
+      "is_primary_key": false,
+      "has_filter": false,
+      "filter_definition": null,
+      "cols": "EmpID,WorkDate"
+    }
+  ],
+  "fks": [
+    {
+      "name": "FK_TblEmpAttendance_UpdatedBy_TblUser",
+      "ref_table": "TblUser",
+      "col": "UpdatedByUserID",
+      "ref_col": "UserID"
+    },
+    {
+      "name": "FK_TblEmpAttendance_CreatedBy_TblUser",
+      "ref_table": "TblUser",
+      "col": "CreatedByUserID",
+      "ref_col": "UserID"
+    },
+    {
+      "name": "FK_TblEmpAttendance_TblEmp",
+      "ref_table": "TblEmp",
+      "col": "EmpID",
+      "ref_col": "EmpID"
+    }
+  ],
+  "stats": {
+    "rows": 893,
+    "employees": 21,
+    "minWorkDate": "2026-05-01T00:00:00.000Z",
+    "maxWorkDate": "2026-07-23T00:00:00.000Z",
+    "openNullCheckout": 285,
+    "nullCheckIn": 266
+  },
+  "duplicateEmpWorkDate": 0,
+  "duplicateSamples": [],
+  "assignmentCols": [
+    "ID",
+    "EmpID",
+    "BranchID",
+    "IsHomeBranch",
+    "CanReceiveBookings",
+    "IsActive",
+    "EffectiveFrom",
+    "EffectiveTo",
+    "CreatedAt",
+    "UpdatedAt",
+    "CreatedByUserID",
+    "Notes"
+  ],
+  "dist_Status": [
+    {
+      "v": "Pending",
+      "c": 45
+    },
+    {
+      "v": "Present",
+      "c": 221
+    },
+    {
+      "v": "Absent",
+      "c": 55
+    },
+    {
+      "v": "Excused",
+      "c": 5
+    },
+    {
+      "v": "DayOff",
+      "c": 136
+    },
+    {
+      "v": "EarlyLeave",
+      "c": 10
+    },
+    {
+      "v": "Late",
+      "c": 421
+    }
+  ],
+  "openSample": [
+    {
+      "ID": 2872,
+      "EmpID": 1033,
+      "WorkDate": "2026-07-23T00:00:00.000Z",
+      "CheckInTime": "1970-01-01T15:42:00.000Z",
+      "CheckOutTime": null,
+      "Status": "Present",
+      "Notes": null,
+      "CreatedAt": "2026-07-23T12:42:20.967Z",
+      "ScheduledStartTime": null,
+      "ScheduledEndTime": null,
+      "LateMinutes": 0,
+      "EarlyLeaveMinutes": 0,
+      "CreatedByUserID": 21,
+      "UpdatedByUserID": null,
+      "UpdatedAt": null,
+      "BreakMinutesTotal": 0,
+      "BreakTimeMinutesTotal": 0
+    },
+    {
+      "ID": 2873,
+      "EmpID": 1032,
+      "WorkDate": "2026-07-23T00:00:00.000Z",
+      "CheckInTime": "1970-01-01T12:00:00.000Z",
+      "CheckOutTime": null,
+      "Status": "Present",
+      "Notes": null,
+      "CreatedAt": "2026-07-23T16:07:38.300Z",
+      "ScheduledStartTime": "1970-01-01T12:00:00.000Z",
+      "ScheduledEndTime": "1970-01-01T20:00:00.000Z",
+      "LateMinutes": 0,
+      "EarlyLeaveMinutes": 0,
+      "CreatedByUserID": 21,
+      "UpdatedByUserID": null,
+      "UpdatedAt": "2026-07-23T16:07:39.373Z",
+      "BreakMinutesTotal": 0,
+      "BreakTimeMinutesTotal": 0
+    },
+    {
+      "ID": 2857,
+      "EmpID": 1028,
+      "WorkDate": "2026-07-22T00:00:00.000Z",
+      "CheckInTime": null,
+      "CheckOutTime": null,
+      "Status": "Absent",
+      "Notes": null,
+      "CreatedAt": "2026-07-22T11:45:51.140Z",
+      "ScheduledStartTime": "1970-01-01T11:00:00.000Z",
+      "ScheduledEndTime": "1970-01-01T23:00:00.000Z",
+      "LateMinutes": 0,
+      "EarlyLeaveMinutes": 0,
+      "CreatedByUserID": 15,
+      "UpdatedByUserID": 13,
+      "UpdatedAt": "2026-07-22T22:54:00.920Z",
+      "BreakMinutesTotal": 0,
+      "BreakTimeMinutesTotal": 0
+    },
+    {
+      "ID": 2861,
+      "EmpID": 1032,
+      "WorkDate": "2026-07-22T00:00:00.000Z",
+      "CheckInTime": null,
+      "CheckOutTime": null,
+      "Status": "Absent",
+      "Notes": null,
+      "CreatedAt": "2026-07-22T16:25:52.663Z",
+      "ScheduledStartTime": "1970-01-01T12:00:00.000Z",
+      "ScheduledEndTime": "1970-01-01T20:00:00.000Z",
+      "LateMinutes": 0,
+      "EarlyLeaveMinutes": 0,
+      "CreatedByUserID": 15,
+      "UpdatedByUserID": 13,
+      "UpdatedAt": "2026-07-22T22:54:01.810Z",
+      "BreakMinutesTotal": 0,
+      "BreakTimeMinutesTotal": 0
+    },
+    {
+      "ID": 2862,
+      "EmpID": 22,
+      "WorkDate": "2026-07-22T00:00:00.000Z",
+      "CheckInTime": null,
+      "CheckOutTime": null,
+      "Status": "Pending",
+      "Notes": null,
+      "CreatedAt": "2026-07-22T22:53:56.813Z",
+      "ScheduledStartTime": "1970-01-01T19:30:00.000Z",
+      "ScheduledEndTime": "1970-01-01T01:00:00.000Z",
+      "LateMinutes": 0,
+      "EarlyLeaveMinutes": 0,
+      "CreatedByUserID": 13,
+      "UpdatedByUserID": null,
+      "UpdatedAt": "2026-07-22T22:53:57.343Z",
+      "BreakMinutesTotal": 0,
+      "BreakTimeMinutesTotal": 0
+    }
+  ],
+  "dailyPayrollCount": {
+    "c": 606
+  }
+}

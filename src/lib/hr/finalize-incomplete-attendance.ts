@@ -143,12 +143,20 @@ export interface FinalizeIncompleteAttendanceResult {
 /**
  * Same D behavior as HR attendance: fill missing check-in/out from defaults,
  * then persist so nightly payroll can generate.
+ *
+ * Phase 1K: branch-scoped — only mutates/creates rows for `@branchId`.
+ * Does not finalize another branch's open sessions.
  */
 export async function finalizeIncompleteAttendanceWithDefaults(
   workDate: string,
+  options: { branchId: number },
 ): Promise<FinalizeIncompleteAttendanceResult> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate)) {
     throw new Error('workDate يجب أن يكون بصيغة YYYY-MM-DD');
+  }
+  const branchId = Number(options.branchId);
+  if (!Number.isFinite(branchId) || branchId <= 0) {
+    throw new Error('branchId مطلوب لإنهاء الحضور الناقص');
   }
 
   const db = await getPool();
@@ -238,7 +246,10 @@ export async function finalizeIncompleteAttendanceWithDefaults(
     }
   >();
 
-  const attReq = db.request().input('workDate', sql.Date, workDate);
+  const attReq = db
+    .request()
+    .input('workDate', sql.Date, workDate)
+    .input('branchId', sql.Int, branchId);
   const attPlaceholders = empIds.map((id, i) => {
     const name = `a${i}`;
     attReq.input(name, sql.Int, id);
@@ -257,6 +268,7 @@ export async function finalizeIncompleteAttendanceWithDefaults(
       ISNULL(EarlyLeaveMinutes, 0) AS EarlyLeaveMinutes
     FROM dbo.TblEmpAttendance
     WHERE WorkDate = @workDate
+      AND BranchID = @branchId
       AND EmpID IN (${attPlaceholders.join(',')})
   `);
 
@@ -283,9 +295,48 @@ export async function finalizeIncompleteAttendanceWithDefaults(
     });
   }
 
+  // Any-branch attendance for no_attendance create gate
+  const anyAttReq = db.request().input('workDate', sql.Date, workDate);
+  const anyPlaceholders = empIds.map((id, i) => {
+    const name = `g${i}`;
+    anyAttReq.input(name, sql.Int, id);
+    return `@${name}`;
+  });
+  const anyAttRows = await anyAttReq.query(`
+    SELECT EmpID, BranchID
+    FROM dbo.TblEmpAttendance
+    WHERE WorkDate = @workDate
+      AND EmpID IN (${anyPlaceholders.join(',')})
+  `);
+  const empsWithAnyAttendance = new Set(
+    (anyAttRows.recordset as Array<{ EmpID: number }>).map((r) => Number(r.EmpID)),
+  );
+
+  const assignReq = db
+    .request()
+    .input('branchId', sql.Int, branchId)
+    .input('workDate', sql.Date, workDate);
+  const assignPlaceholders = empIds.map((id, i) => {
+    const name = `as${i}`;
+    assignReq.input(name, sql.Int, id);
+    return `@${name}`;
+  });
+  const assignRows = await assignReq.query(`
+    SELECT EmpID
+    FROM dbo.TblEmpBranchAssignment
+    WHERE BranchID = @branchId
+      AND ISNULL(IsActive, 1) = 1
+      AND EmpID IN (${assignPlaceholders.join(',')})
+      AND EffectiveFrom <= @workDate
+      AND (EffectiveTo IS NULL OR EffectiveTo >= @workDate)
+  `);
+  const assignedToBranch = new Set(
+    (assignRows.recordset as Array<{ EmpID: number }>).map((r) => Number(r.EmpID)),
+  );
+
   const filled: FinalizeIncompleteAttendanceFilledRow[] = [];
   const skippedNoDefault: FinalizeIncompleteAttendanceResult['skippedNoDefault'] = [];
-  const note = `[NightlyClose] D — same as HR attendance Default fill`;
+  const note = `[NightlyClose] D branch=${branchId} — same as HR attendance Default fill`;
 
   const transaction = new sql.Transaction(db);
   await transaction.begin();
@@ -294,6 +345,22 @@ export async function finalizeIncompleteAttendanceWithDefaults(
     for (const item of toFix) {
       const defs = defaultsByEmp.get(item.empId);
       const att = attMap.get(item.empId);
+
+      // Open/incomplete session owned by another branch — skip (that branch finalizes it)
+      if (!att && empsWithAnyAttendance.has(item.empId)) {
+        continue;
+      }
+
+      // no_attendance: only create on this branch if assigned here and no row anywhere
+      if (!att && item.reason === 'no_attendance') {
+        if (!assignedToBranch.has(item.empId)) continue;
+        if (empsWithAnyAttendance.has(item.empId)) continue;
+      }
+
+      // incomplete on this branch only
+      if (!att && item.reason !== 'no_attendance') {
+        continue;
+      }
 
       const beforeIn = att?.checkIn ?? null;
       const beforeOut = att?.checkOut ?? null;
@@ -329,6 +396,7 @@ export async function finalizeIncompleteAttendanceWithDefaults(
       if (att) {
         await new sql.Request(transaction)
           .input('id', sql.Int, att.id)
+          .input('branchId', sql.Int, branchId)
           .input('checkInTime', sql.Time, timeToDate(updated.CheckInTime))
           .input('checkOutTime', sql.Time, timeToDate(updated.CheckOutTime))
           .input('status', sql.NVarChar(50), updated.Status)
@@ -352,10 +420,11 @@ export async function finalizeIncompleteAttendanceWithDefaults(
                 ELSE Notes + N' | ' + @notes
               END,
               UpdatedAt = GETDATE()
-            WHERE ID = @id
+            WHERE ID = @id AND BranchID = @branchId
           `);
       } else {
         await new sql.Request(transaction)
+          .input('branchId', sql.Int, branchId)
           .input('empId', sql.Int, item.empId)
           .input('workDate', sql.Date, workDate)
           .input('checkInTime', sql.Time, timeToDate(updated.CheckInTime))
@@ -368,11 +437,11 @@ export async function finalizeIncompleteAttendanceWithDefaults(
           .input('scheduledEnd', sql.Time, timeToDate(schedEnd))
           .query(`
             INSERT INTO dbo.TblEmpAttendance
-              (EmpID, WorkDate, CheckInTime, CheckOutTime, Status,
+              (BranchID, EmpID, WorkDate, CheckInTime, CheckOutTime, Status,
                LateMinutes, EarlyLeaveMinutes, Notes,
                ScheduledStartTime, ScheduledEndTime, CreatedAt)
             VALUES
-              (@empId, @workDate, @checkInTime, @checkOutTime, @status,
+              (@branchId, @empId, @workDate, @checkInTime, @checkOutTime, @status,
                @lateMinutes, @earlyLeaveMinutes, @notes,
                @scheduledStart, @scheduledEnd, GETDATE())
           `);

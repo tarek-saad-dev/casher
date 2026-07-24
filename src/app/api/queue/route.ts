@@ -261,13 +261,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Load settings safely
+    // Load settings safely — scoped to the active branch
     let prefix = "A";
     let startNumber = 1;
     if (found.includes("QueueBookingSettings")) {
-      const settRes = await db.request().query(`
-        SELECT TOP 1 QueuePrefix, QueueStartNumber FROM [dbo].[QueueBookingSettings]
-      `);
+      const settRes = await db
+        .request()
+        .input("branchId", sql.Int, branch.branchId)
+        .query(`
+          SELECT TOP 1 QueuePrefix, QueueStartNumber
+          FROM [dbo].[QueueBookingSettings]
+          WHERE BranchID = @branchId
+        `);
       if (settRes.recordset.length) {
         prefix = settRes.recordset[0].QueuePrefix ?? "A";
         startNumber = settRes.recordset[0].QueueStartNumber ?? 1;

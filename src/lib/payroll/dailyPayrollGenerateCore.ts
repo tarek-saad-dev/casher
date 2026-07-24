@@ -8,6 +8,11 @@ import {
   SQL_INSERT_ELIGIBILITY_WHERE,
 } from '@/lib/payroll/dailyPayrollHrRules';
 import { ensureAttendanceBreakSchema } from '@/lib/hr/attendance-breaks-db';
+import {
+  AGGREGATE_ACTUAL_HOURS_EXPR,
+  aggregateToValidationAttendance,
+  loadEmpDayAttendanceAggregates,
+} from '@/lib/payroll/attendancePayrollAggregate';
 
 export interface ValidationMissing {
   empId: number;
@@ -152,26 +157,16 @@ export async function validateDailyPayrollAttendance(
       WHERE e.isActive = 1 AND e.IsPayrollEnabled = 1
     `);
 
-  const attResult = await pool
-    .request()
-    .input('WorkDate', sql.Date, workDate)
-    .query(`
-      SELECT EmpID, Status, CheckInTime, CheckOutTime
-      FROM dbo.TblEmpAttendance
-      WHERE WorkDate = @WorkDate
-    `);
-
+  // Phase 1K: validate against employee/day aggregate (multi-branch sessions → one input)
+  const aggregates = await loadEmpDayAttendanceAggregates(pool, workDate);
   const attMap = new Map<
     number,
     { Status: string; CheckInTime: unknown; CheckOutTime: unknown }
-  >(
-    attResult.recordset.map(
-      (r: { EmpID: number; Status: string; CheckInTime: unknown; CheckOutTime: unknown }) => [
-        r.EmpID,
-        r,
-      ],
-    ),
-  );
+  >();
+  for (const [empId, agg] of aggregates) {
+    const synthetic = aggregateToValidationAttendance(agg);
+    if (synthetic) attMap.set(empId, synthetic);
+  }
 
   const missing: ValidationMissing[] = [];
   const excluded: ValidationExcluded[] = [];
@@ -245,9 +240,10 @@ export async function executeDailyPayrollGenerate(
   const req = () => requestFrom(pool, options.transaction);
   const dayOfWeek = new Date(`${workDate}T12:00:00Z`).getDay();
 
-  const dailyWageSql = buildDailyWageSql(ACTUAL_HOURS_EXPR);
+  // Phase 1K: hours from employee/day aggregate view — one payroll row even with multi-branch sessions
+  const dailyWageSql = buildDailyWageSql(AGGREGATE_ACTUAL_HOURS_EXPR);
   const hourlySnapshotSql = buildHourlyRateSnapshotSql();
-  const notesSql = buildPayrollNotesSql(notesPrefix, ACTUAL_HOURS_EXPR);
+  const notesSql = buildPayrollNotesSql(notesPrefix, AGGREGATE_ACTUAL_HOURS_EXPR);
 
   await req()
     .input('WorkDate', sql.Date, workDate)
@@ -256,18 +252,21 @@ export async function executeDailyPayrollGenerate(
       UPDATE p
       SET
         p.HourlyRateSnapshot = ${hourlySnapshotSql},
-        p.ActualHours        = ${ACTUAL_HOURS_EXPR},
+        p.ActualHours        = ${AGGREGATE_ACTUAL_HOURS_EXPR},
         p.DailyWage          = ${dailyWageSql},
         p.Status             = N'Generated',
         p.Notes              = ${notesSql},
         p.UpdatedAt          = GETDATE()
       FROM dbo.TblEmpDailyPayroll p
-      INNER JOIN dbo.TblEmpAttendance a ON a.ID = p.AttendanceID
+      INNER JOIN dbo.vw_EmpAttendancePayrollDay v
+        ON v.EmpID = p.EmpID AND v.WorkDate = p.WorkDate
+      INNER JOIN dbo.TblEmpAttendance a ON a.ID = v.PrimaryAttendanceID
       INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
       LEFT JOIN dbo.TblEmpWorkSchedule ws
         ON ws.EmpID = e.EmpID AND ws.DayOfWeek = @dayOfWeek
       WHERE p.WorkDate = @WorkDate
         AND p.Status IN (N'Generated', N'Earned', N'PendingCheckout')
+        AND v.HasOpenSession = 0
     `);
 
   const insertResult = await req()
@@ -282,26 +281,28 @@ export async function executeDailyPayrollGenerate(
         INSERTED.HourlyRateSnapshot, INSERTED.ActualHours,
         INSERTED.DailyWage, INSERTED.Status, INSERTED.Notes
       SELECT
-        a.EmpID,
-        a.ID                                                    AS AttendanceID,
-        a.WorkDate,
+        v.EmpID,
+        v.PrimaryAttendanceID                                   AS AttendanceID,
+        v.WorkDate,
         h.ID                                                    AS SalaryHistoryID,
         ${hourlySnapshotSql}                                    AS HourlyRateSnapshot,
-        ${ACTUAL_HOURS_EXPR}                                    AS ActualHours,
+        ${AGGREGATE_ACTUAL_HOURS_EXPR}                          AS ActualHours,
         ${dailyWageSql}                                         AS DailyWage,
         N'Generated'                                            AS Status,
         ${notesSql}                                             AS Notes
-      FROM dbo.TblEmpAttendance a
-      INNER JOIN dbo.TblEmp e ON e.EmpID = a.EmpID
+      FROM dbo.vw_EmpAttendancePayrollDay v
+      INNER JOIN dbo.TblEmpAttendance a ON a.ID = v.PrimaryAttendanceID
+      INNER JOIN dbo.TblEmp e ON e.EmpID = v.EmpID
       INNER JOIN dbo.TblEmpSalaryHistory h
         ON h.EmpID = e.EmpID AND h.IsActive = 1 AND h.EffectiveTo IS NULL
       LEFT JOIN dbo.TblEmpWorkSchedule ws
         ON ws.EmpID = e.EmpID AND ws.DayOfWeek = @dayOfWeek
-      WHERE a.WorkDate = @WorkDate
+      WHERE v.WorkDate = @WorkDate
+        AND v.HasOpenSession = 0
         AND ${SQL_INSERT_ELIGIBILITY_WHERE}
         AND NOT EXISTS (
           SELECT 1 FROM dbo.TblEmpDailyPayroll p
-          WHERE p.EmpID = a.EmpID AND p.WorkDate = a.WorkDate
+          WHERE p.EmpID = v.EmpID AND p.WorkDate = v.WorkDate
         );
     `);
 

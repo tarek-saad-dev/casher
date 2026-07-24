@@ -8,7 +8,6 @@ import {
   getEmployeeLedgerSummary,
 } from '@/lib/services/employeeLedgerService';
 import { getArabicDayName } from '@/lib/reports/reportFormatters';
-import { getConfig } from '@/lib/integrations/whatsapp/config';
 import {
   resolveEmployeeWhatsAppPhone,
   type EmployeeDailyReportPayloadInput,
@@ -28,6 +27,47 @@ import { loadBreaksByEmpIdsOnWorkDate } from '@/lib/hr/attendance-breaks-db';
 import type { AttendanceBreakInterval } from '@/lib/hr/attendance-breaks';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const NEUTRAL_SALON_BRAND = 'Cut Salon';
+
+/** Branch label for employee daily WA from persisted attendance (Phase 1K). */
+export function resolveEmployeeAttendanceBranchLabel(
+  branchNames: string[],
+): string {
+  const unique = [...new Set(branchNames.map((n) => n.trim()).filter(Boolean))];
+  if (unique.length === 1) return unique[0]!;
+  if (unique.length > 1) return 'عدة فروع';
+  return NEUTRAL_SALON_BRAND;
+}
+
+async function loadAttendanceBranchNamesByEmp(
+  db: { request: () => sql.Request },
+  workDate: string,
+  empIds: number[],
+): Promise<Map<number, string[]>> {
+  const map = new Map<number, string[]>();
+  if (empIds.length === 0) return map;
+  const req = db.request().input('workDate', sql.Date, workDate);
+  const placeholders = empIds.map((id, i) => {
+    const name = `e${i}`;
+    req.input(name, sql.Int, id);
+    return `@${name}`;
+  });
+  const result = await req.query(`
+    SELECT a.EmpID, b.BranchName
+    FROM dbo.TblEmpAttendance a
+    INNER JOIN dbo.TblBranch b ON b.BranchID = a.BranchID
+    WHERE a.WorkDate = @workDate
+      AND a.EmpID IN (${placeholders.join(',')})
+    ORDER BY a.EmpID, b.BranchName
+  `);
+  for (const row of result.recordset as Array<{ EmpID: number; BranchName: string }>) {
+    const empId = Number(row.EmpID);
+    const list = map.get(empId) ?? [];
+    list.push(String(row.BranchName));
+    map.set(empId, list);
+  }
+  return map;
+}
 
 export type DailyWhatsAppSkipReason =
   | 'no_phone'
@@ -193,7 +233,6 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
   const { workDate } = params;
   const { year, month } = parsed;
   const payrollMonth = payrollMonthFromWorkDate(workDate);
-  const branchName = getConfig().defaultBranchName;
   const dayNameAr = getArabicDayName(workDate);
 
   const employees = await loadActiveEmployeesWithPhone(params.employeeIds);
@@ -204,14 +243,20 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
 
   const empIdList = employees.map((e) => e.EmpID);
   const db = await getPool();
-  const [salesRows, serviceCountRows, breaksByEmp] =
+  const [salesRows, serviceCountRows, breaksByEmp, attendanceBranchesByEmp] =
     employees.length > 0
       ? await Promise.all([
           getEmployeesNetServiceSalesByDate(workDate, empIdList),
           getEmployeesServiceCountsByDate(workDate, empIdList),
           loadBreaksByEmpIdsOnWorkDate(db, workDate, empIdList),
+          loadAttendanceBranchNamesByEmp(db, workDate, empIdList),
         ])
-      : [[], [], new Map<number, AttendanceBreakInterval[]>()];
+      : [
+          [],
+          [],
+          new Map<number, AttendanceBreakInterval[]>(),
+          new Map<number, string[]>(),
+        ];
   const invoiceCountByEmp = new Map(
     salesRows.map((r) => [r.empId, r.invoiceCount] as const),
   );
@@ -219,6 +264,8 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
     serviceCountRows.map((r) => [r.empId, r] as const),
   );
 
+  // Preview-level label when no per-employee attendance: neutral brand (not false GLEEM).
+  const branchName = NEUTRAL_SALON_BRAND;
   const rows: EmployeeDailyWhatsAppRow[] = [];
 
   for (const emp of employees) {
@@ -228,6 +275,9 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
     const basicServiceCount = serviceCounts?.basicCount ?? 0;
     const otherServiceCount = serviceCounts?.otherCount ?? 0;
     const breakIntervals = breaksByEmp.get(emp.EmpID) ?? [];
+    const empBranchName = resolveEmployeeAttendanceBranchLabel(
+      attendanceBranchesByEmp.get(emp.EmpID) ?? [],
+    );
     const phone = resolveEmployeeWhatsAppPhone(emp.WhatsApp, emp.Mobile);
     const ledgerBalance = balanceByEmp.get(emp.EmpID) ?? 0;
 
@@ -311,7 +361,7 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
     if (!phone) {
       const message = composeEmployeeDailyWhatsAppMessage({
         employeeName: emp.EmpName,
-        branchName,
+        branchName: empBranchName,
         workDate,
         dayNameAr,
         day,
@@ -337,7 +387,7 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
 
     const message = composeEmployeeDailyWhatsAppMessage({
       employeeName: emp.EmpName,
-      branchName,
+      branchName: empBranchName,
       workDate,
       dayNameAr,
       day,
@@ -354,7 +404,7 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
       phone,
       workDate,
       payrollMonth,
-      branchName,
+      branchName: empBranchName,
       day,
       ledgerBalance: balance,
       message,

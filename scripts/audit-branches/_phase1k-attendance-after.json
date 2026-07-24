@@ -1,0 +1,49 @@
+{
+  "capturedAt": "2026-07-24T04:17:19.038Z",
+  "database": "last132",
+  "gleemBranchId": 1,
+  "stats": {
+    "rows": 893,
+    "employees": 21,
+    "minWorkDate": "2026-05-01T00:00:00.000Z",
+    "maxWorkDate": "2026-07-23T00:00:00.000Z",
+    "nullBranchId": 0,
+    "gleemRows": 893,
+    "ph1gtestRows": 0,
+    "openSessions": 19,
+    "nullCheckIn": 266
+  },
+  "multiOpenEmployees": 3,
+  "duplicateBranchEmpDate": 0,
+  "indexes": [
+    {
+      "name": "IX_TblEmpAttendance_Branch_WorkDate",
+      "is_unique": false,
+      "cols": "EmpID,Status,CheckInTime,CheckOutTime,BranchID,WorkDate"
+    },
+    {
+      "name": "IX_TblEmpAttendance_EmpID_WorkDate",
+      "is_unique": false,
+      "cols": "EmpID,WorkDate"
+    },
+    {
+      "name": "PK__TblEmpAt__3214EC27CBACC853",
+      "is_unique": true,
+      "cols": "ID"
+    },
+    {
+      "name": "UQ_TblEmpAttendance_Branch_Emp_WorkDate",
+      "is_unique": true,
+      "cols": "BranchID,EmpID,WorkDate"
+    }
+  ],
+  "viewExists": true,
+  "branchIdNullable": false,
+  "activeBranches": [
+    "GLEEM"
+  ],
+  "dailyPayrollCount": {
+    "c": 606
+  },
+  "beforeRowCount": 893
+}

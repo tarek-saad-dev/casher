@@ -223,14 +223,18 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     // QueueDate = booking's calendar date (used to group tickets per day)
     const queueDate = bookingDateStr;
 
-    // 4. Load queue settings for ticket code generation
+    // 4. Load queue settings for ticket code generation — scoped to the booking's own branch
     let prefix = "A";
     let startNumber = 1;
     try {
-      const settRes = await db.request().query(`
-        SELECT TOP 1 QueuePrefix, QueueStartNumber
-        FROM [dbo].[QueueBookingSettings]
-      `);
+      const settRes = await db
+        .request()
+        .input("branchId", sql.Int, booking.BranchID)
+        .query(`
+          SELECT TOP 1 QueuePrefix, QueueStartNumber
+          FROM [dbo].[QueueBookingSettings]
+          WHERE BranchID = @branchId
+        `);
       if (settRes.recordset.length) {
         prefix = settRes.recordset[0].QueuePrefix ?? "A";
         startNumber = settRes.recordset[0].QueueStartNumber ?? 1;

@@ -1,17 +1,22 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { getSession } from '@/lib/session';
-import {
-  calcLateMinutes as calcLate,
-} from '@/lib/timeUtils';
+import { calcLateMinutes as calcLate } from '@/lib/timeUtils';
 import type { TeamAttendanceMember } from '@/lib/teamAttendance';
+import {
+  isActiveBranchContext,
+  requireBranchOperationAccess,
+} from '@/lib/branch';
 
-async function ensureAttendanceTable(db: { request: () => { query: (q: string) => Promise<unknown> } }) {
+async function ensureAttendanceTable(db: {
+  request: () => { query: (q: string) => Promise<unknown> };
+}) {
   await db.request().query(`
     IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'TblEmpAttendance')
     BEGIN
         CREATE TABLE dbo.TblEmpAttendance (
             ID INT IDENTITY(1,1) PRIMARY KEY,
+            BranchID INT NOT NULL,
             EmpID INT NOT NULL,
             WorkDate DATE NOT NULL,
             ScheduledStartTime TIME NULL,
@@ -32,23 +37,30 @@ async function ensureAttendanceTable(db: { request: () => { query: (q: string) =
         ADD CONSTRAINT FK_TblEmpAttendance_TblEmp
         FOREIGN KEY (EmpID) REFERENCES dbo.TblEmp(EmpID);
 
-        CREATE UNIQUE INDEX UQ_TblEmpAttendance_Emp_Date
-        ON dbo.TblEmpAttendance (EmpID, WorkDate);
+        ALTER TABLE dbo.TblEmpAttendance
+        ADD CONSTRAINT FK_TblEmpAttendance_BranchID
+        FOREIGN KEY (BranchID) REFERENCES dbo.TblBranch(BranchID);
 
-        CREATE INDEX IX_TblEmpAttendance_WorkDate
-        ON dbo.TblEmpAttendance (WorkDate);
+        CREATE UNIQUE INDEX UQ_TblEmpAttendance_Branch_Emp_WorkDate
+        ON dbo.TblEmpAttendance (BranchID, EmpID, WorkDate);
+
+        CREATE INDEX IX_TblEmpAttendance_Branch_WorkDate
+        ON dbo.TblEmpAttendance (BranchID, WorkDate);
     END
   `);
 }
 
 // GET /api/pos/team-attendance?date=YYYY-MM-DD
-// Read-only summary for POS — same attendance source as /admin/attendance
+// Active session branch only (Phase 1K)
 export async function GET(req: NextRequest) {
   try {
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
+
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
 
     const { searchParams } = new URL(req.url);
     const dateStr = searchParams.get('date');
@@ -60,7 +72,6 @@ export async function GET(req: NextRequest) {
     }
 
     const dayOfWeek = new Date(`${dateStr}T12:00:00Z`).getDay();
-
     const db = await getPool();
     await ensureAttendanceTable(db);
 
@@ -68,6 +79,7 @@ export async function GET(req: NextRequest) {
       .request()
       .input('workDate', sql.Date, dateStr)
       .input('dayOfWeek', sql.TinyInt, dayOfWeek)
+      .input('branchId', sql.Int, branch.branchId)
       .query(`
         SELECT
           e.EmpID,
@@ -87,7 +99,7 @@ export async function GET(req: NextRequest) {
         LEFT JOIN dbo.TblEmpWorkSchedule ws
           ON ws.EmpID = e.EmpID AND ws.DayOfWeek = @dayOfWeek
         LEFT JOIN dbo.TblEmpAttendance a
-          ON a.EmpID = e.EmpID AND a.WorkDate = @workDate
+          ON a.EmpID = e.EmpID AND a.WorkDate = @workDate AND a.BranchID = @branchId
         WHERE ISNULL(e.isActive, 1) = 1
           AND ISNULL(e.IsPayrollEnabled, 1) = 1
         ORDER BY e.EmpName
@@ -112,12 +124,9 @@ export async function GET(req: NextRequest) {
         const hasAttendance = row.AttendanceID != null;
         const hasSchedule = row.DayOfWeek != null;
         const isWorkingDay = hasSchedule ? !!row.IsWorkingDay : dayOfWeek !== 5;
-
         const schedStart = row.DefaultCheckInTime || null;
-        const schedEnd = row.DefaultCheckOutTime || null;
         const checkIn = row.CheckInTime || null;
         const checkOut = row.CheckOutTime || null;
-
         const lateMin =
           hasAttendance && checkIn ? calcLate(checkIn, schedStart) : 0;
 
@@ -135,7 +144,7 @@ export async function GET(req: NextRequest) {
           employeeName: row.EmpName,
           jobTitle: row.Job || null,
           scheduledStartTime: schedStart,
-          scheduledEndTime: schedEnd,
+          scheduledEndTime: row.DefaultCheckOutTime || null,
           attendanceStatus: status,
           checkInTime: checkIn,
           checkOutTime: checkOut,
@@ -150,6 +159,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       date: dateStr,
+      branchId: branch.branchId,
+      branchCode: branch.branchCode,
       team,
     });
   } catch (err: unknown) {

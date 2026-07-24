@@ -9,7 +9,7 @@ import {
 } from '@/lib/integrations/whatsapp';
 import { resolveEmployeeWhatsAppPhone } from '@/lib/integrations/whatsapp/payload-builders';
 import { getFullDayReport } from '@/lib/reports/full-day-report';
-import { getBranchByCode, listActiveBranches } from '@/lib/branch';
+import { listActiveBranches } from '@/lib/branch';
 import { composeOwnerDailyWhatsAppMessage } from '@/lib/hr/owner-daily-whatsapp-message';
 import { dailyWaReasonAr } from '@/lib/hr/employee-daily-whatsapp-reasons';
 import { JobType } from '@/lib/types';
@@ -18,18 +18,22 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const OWNER_PREFERRED_NAME = 'طارق';
 
 /**
- * Phase 1E: the owner WhatsApp cron has no request-scoped branch context.
- * Resolves the founding branch (GLEEM) when present, else the first active
- * branch — this notification is not yet branch-aware in the UI.
+ * Phase 1I: owner WhatsApp has no request session — iterate every *active*
+ * branch independently. Never prefer GLEEM as an operational fallback when
+ * other branches are active; with only GLEEM active, behavior is unchanged.
  */
-async function resolveOwnerReportBranchId(): Promise<number> {
-  const gleem = await getBranchByCode('GLEEM');
-  if (gleem) return gleem.branchId;
+async function resolveOwnerReportBranchIds(): Promise<
+  Array<{ branchId: number; branchCode: string; branchName: string }>
+> {
   const active = await listActiveBranches();
   if (active.length === 0) {
     throw new Error('لا يوجد فرع نشط لإرسال تقرير المالك');
   }
-  return active[0].branchId;
+  return active.map((b) => ({
+    branchId: b.branchId,
+    branchCode: b.branchCode,
+    branchName: b.branchName,
+  }));
 }
 
 async function resolveOwnerPhone(): Promise<{
@@ -247,9 +251,18 @@ export async function previewOwnerDailyWhatsApp(workDate: string): Promise<{
   }
 
   const cfg = getConfig();
-  const branchId = await resolveOwnerReportBranchId();
-  const report = await getFullDayReport(workDate, branchId);
-  const message = composeOwnerDailyWhatsAppMessage(report);
+  const branches = await resolveOwnerReportBranchIds();
+  const sections: string[] = [];
+  for (const b of branches) {
+    const report = await getFullDayReport(workDate, b.branchId);
+    const section = composeOwnerDailyWhatsAppMessage(report);
+    sections.push(
+      branches.length > 1
+        ? `—— ${b.branchName} (${b.branchCode}) ——\n${section}`
+        : section,
+    );
+  }
+  const message = sections.join('\n\n');
   const owner = await resolveOwnerPhone();
 
   let skipReason: string | null = null;

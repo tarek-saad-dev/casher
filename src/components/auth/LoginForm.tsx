@@ -69,6 +69,10 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
             requestId: data.requestId,
             error: data.error,
           });
+          if (data.code === 'SESSION_CONFIG_ERROR') {
+            setError(data.error || 'إعداد الجلسة غير مكتمل على الخادم');
+            return;
+          }
         }
         setError(data.error || `تعذر تسجيل الدخول (${res.status})`);
         return;

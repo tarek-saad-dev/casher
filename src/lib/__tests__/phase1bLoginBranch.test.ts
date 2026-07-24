@@ -4,6 +4,21 @@ import { BranchDomainError } from '@/lib/branch/types';
 
 vi.mock('server-only', () => ({}));
 
+function mockSessionModule(createSession = vi.fn(async () => undefined)) {
+  vi.doMock('@/lib/session', () => ({
+    createSession,
+    assertSessionSecretConfigured: () => undefined,
+    SessionConfigError: class SessionConfigError extends Error {
+      code = 'SESSION_CONFIG_ERROR';
+      constructor(message: string) {
+        super(message);
+        this.name = 'SessionConfigError';
+      }
+    },
+  }));
+  return createSession;
+}
+
 describe('Phase 1B login branch gating', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -35,8 +50,7 @@ describe('Phase 1B login branch gating', () => {
       loginName: 'cashier',
       ShiftID: 1,
     });
-    const createSession = vi.fn(async () => undefined);
-    vi.doMock('@/lib/session', () => ({ createSession }));
+    const createSession = mockSessionModule();
     vi.doMock('@/lib/branch/access', () => ({
       resolveLoginDefaultBranch: vi.fn(async () => ({
         id: 1,
@@ -88,6 +102,45 @@ describe('Phase 1B login branch gating', () => {
     );
   });
 
+  it('rejects missing SESSION_SECRET in production before DB work', async () => {
+    class SessionConfigError extends Error {
+      code = 'SESSION_CONFIG_ERROR' as const;
+      constructor(message: string) {
+        super(message);
+        this.name = 'SessionConfigError';
+      }
+    }
+    const getPool = vi.fn();
+    vi.doMock('@/lib/db', () => ({
+      getPool,
+      sql: { NVarChar: (n: number) => n },
+      getUserFriendlyError: () => 'masked',
+    }));
+    vi.doMock('@/lib/session', () => ({
+      createSession: vi.fn(),
+      assertSessionSecretConfigured: () => {
+        throw new SessionConfigError('SESSION_SECRET must be configured in production');
+      },
+      SessionConfigError,
+    }));
+    vi.doMock('@/lib/branch/access', () => ({
+      resolveLoginDefaultBranch: vi.fn(),
+    }));
+    vi.doMock('@/lib/permissions-server', () => ({ getUserAccess: vi.fn() }));
+
+    const { POST } = await import('@/app/api/auth/login/route');
+    const req = new NextRequest('http://localhost/api/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ loginName: 'cashier', password: 'x' }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.code).toBe('SESSION_CONFIG_ERROR');
+    expect(getPool).not.toHaveBeenCalled();
+  });
+
   it('rejects missing mapping', async () => {
     mockDbUser({
       UserID: 11,
@@ -96,7 +149,7 @@ describe('Phase 1B login branch gating', () => {
       loginName: 'nomap',
       ShiftID: 1,
     });
-    vi.doMock('@/lib/session', () => ({ createSession: vi.fn() }));
+    mockSessionModule();
     vi.doMock('@/lib/branch/access', () => ({
       resolveLoginDefaultBranch: vi.fn(async () => {
         throw new BranchDomainError('NO_DEFAULT_BRANCH', 'لا يوجد فرع', 403);
@@ -132,7 +185,7 @@ describe('Phase 1B login branch gating', () => {
         loginName: 'u',
         ShiftID: 1,
       });
-      vi.doMock('@/lib/session', () => ({ createSession: vi.fn() }));
+      mockSessionModule();
       vi.doMock('@/lib/branch/access', () => ({
         resolveLoginDefaultBranch: vi.fn(async () => {
           throw new BranchDomainError(code, code, 403);
@@ -153,7 +206,7 @@ describe('Phase 1B login branch gating', () => {
 
   it('rejects deleted users at credential query time', async () => {
     mockDbUser(null);
-    vi.doMock('@/lib/session', () => ({ createSession: vi.fn() }));
+    mockSessionModule();
     vi.doMock('@/lib/branch/access', () => ({
       resolveLoginDefaultBranch: vi.fn(),
     }));

@@ -312,6 +312,33 @@ export async function POST(req: NextRequest) {
         `[pos-api]   ✅ TblinvServDetail inserted: ${detailCount} row(s)`,
       );
 
+      // ──── 3b. Phase 1J — branch stock decrements for tracked products ────
+      {
+        const { applySaleStockDecrements, InventoryDomainError } = await import(
+          '@/lib/inventory/inventoryMutation.service'
+        );
+        try {
+          await applySaleStockDecrements(transaction, {
+            branchId,
+            invId: newInvID,
+            invType,
+            businessDayId,
+            shiftMoveId: shiftMoveID,
+            userId: userID,
+            lines: body.items.map((item, idx) => ({
+              proId: item.proId,
+              qty: item.qty > 0 ? item.qty : 1,
+              lineKey: `${idx}:${item.proId}`,
+            })),
+          });
+        } catch (stockErr) {
+          if (stockErr instanceof InventoryDomainError) {
+            throw stockErr;
+          }
+          throw stockErr;
+        }
+      }
+
       // ──── 4. Insert TblinvServPayment (one row per real payment method) ────
       // Single payment: one row for the real method.
       // Mixed payment: one row per real allocation — do NOT insert the clearing method here.
@@ -550,12 +577,14 @@ export async function POST(req: NextRequest) {
                   paymentMethod: paymentMethodLabel,
                   services: serviceNames,
                   employeeNames,
+                  branchName: gated.branch.branchName,
                 });
 
                 if (isFirstTime) {
                   await sendFirstTimeWhatsAppMessage({
                     phone,
                     customerName,
+                    branchName: gated.branch.branchName,
                   });
                 }
               }
@@ -669,6 +698,7 @@ export async function POST(req: NextRequest) {
                 employeeTotal,
                 invoiceTotal: grandTotal,
                 message,
+                branchName: gated.branch.branchName,
               }),
             );
           }
@@ -754,6 +784,15 @@ export async function POST(req: NextRequest) {
       throw err;
     }
   } catch (err: unknown) {
+    const { InventoryDomainError } = await import(
+      '@/lib/inventory/inventoryMutation.service'
+    );
+    if (err instanceof InventoryDomainError) {
+      return NextResponse.json(
+        { error: err.message, code: err.code },
+        { status: err.statusCode },
+      );
+    }
     const message = err instanceof Error ? err.message : "Unknown error";
     const stack = err instanceof Error ? err.stack : "";
     console.error(`[pos-api] ❌ POST /api/sales FAILED: ${message}`);

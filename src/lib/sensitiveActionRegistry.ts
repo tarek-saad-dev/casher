@@ -114,6 +114,22 @@ export const SENSITIVE_ACTIONS: Record<string, SensitiveActionMetadata> = {
     requiresReason: false,
     sensitiveFields: ['password', 'token', 'secret', 'cookie'],
   },
+  BRANCH_SESSION_SWITCH: {
+    actionType: 'BRANCH_SESSION_SWITCH',
+    label: 'تبديل الفرع النشط',
+    entityType: 'TblBranch',
+    riskLevel: 'medium',
+    requiresReason: false,
+    sensitiveFields: ['password', 'token', 'secret', 'cookie', 'authorization'],
+  },
+  BRANCH_SESSION_SWITCH_DENIED: {
+    actionType: 'BRANCH_SESSION_SWITCH_DENIED',
+    label: 'رفض تبديل الفرع',
+    entityType: 'TblBranch',
+    riskLevel: 'medium',
+    requiresReason: false,
+    sensitiveFields: ['password', 'token', 'secret', 'cookie', 'authorization'],
+  },
 };
 
 export function getSensitiveAction(actionType: string): SensitiveActionMetadata {

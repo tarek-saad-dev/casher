@@ -1,0 +1,1315 @@
+{
+  "capturedAt": "2026-07-24T00:58:52.846Z",
+  "database": "last132",
+  "branches": [
+    {
+      "BranchID": 1,
+      "BranchCode": "GLEEM",
+      "BranchName": "جليم – سابا باشا",
+      "IsActive": true
+    },
+    {
+      "BranchID": 2,
+      "BranchCode": "PH1GTEST",
+      "BranchName": "Phase 1G Test Branch (disposable)",
+      "IsActive": false
+    }
+  ],
+  "proCols": [
+    {
+      "name": "ProID",
+      "type_name": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": false
+    },
+    {
+      "name": "CatID",
+      "type_name": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": true
+    },
+    {
+      "name": "ProType",
+      "type_name": "nvarchar",
+      "max_length": 10,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": true
+    },
+    {
+      "name": "ProName",
+      "type_name": "nvarchar",
+      "max_length": 180,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": true
+    },
+    {
+      "name": "PPrice",
+      "type_name": "decimal",
+      "max_length": 9,
+      "precision": 10,
+      "scale": 2,
+      "is_nullable": true
+    },
+    {
+      "name": "SPrice1",
+      "type_name": "decimal",
+      "max_length": 9,
+      "precision": 10,
+      "scale": 2,
+      "is_nullable": true
+    },
+    {
+      "name": "Barcode",
+      "type_name": "nvarchar",
+      "max_length": 60,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": true
+    },
+    {
+      "name": "btnColor",
+      "type_name": "nvarchar",
+      "max_length": 60,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": true
+    },
+    {
+      "name": "BonusPercent",
+      "type_name": "decimal",
+      "max_length": 5,
+      "precision": 8,
+      "scale": 2,
+      "is_nullable": true
+    },
+    {
+      "name": "Bonus",
+      "type_name": "decimal",
+      "max_length": 5,
+      "precision": 8,
+      "scale": 2,
+      "is_nullable": true
+    },
+    {
+      "name": "QuickSales",
+      "type_name": "nvarchar",
+      "max_length": 10,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": true
+    },
+    {
+      "name": "ProDis",
+      "type_name": "decimal",
+      "max_length": 5,
+      "precision": 8,
+      "scale": 2,
+      "is_nullable": true
+    },
+    {
+      "name": "ProDisVal",
+      "type_name": "decimal",
+      "max_length": 5,
+      "precision": 8,
+      "scale": 2,
+      "is_nullable": true
+    },
+    {
+      "name": "Qty",
+      "type_name": "decimal",
+      "max_length": 9,
+      "precision": 10,
+      "scale": 2,
+      "is_nullable": true
+    },
+    {
+      "name": "isDeleted",
+      "type_name": "bit",
+      "max_length": 1,
+      "precision": 1,
+      "scale": 0,
+      "is_nullable": true
+    },
+    {
+      "name": "DurationMinutes",
+      "type_name": "int",
+      "max_length": 4,
+      "precision": 10,
+      "scale": 0,
+      "is_nullable": true
+    },
+    {
+      "name": "ProNameAr",
+      "type_name": "nvarchar",
+      "max_length": 400,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": true
+    },
+    {
+      "name": "ImageUrl",
+      "type_name": "nvarchar",
+      "max_length": 2000,
+      "precision": 0,
+      "scale": 0,
+      "is_nullable": true
+    }
+  ],
+  "catTypes": [
+    {
+      "CatType": "(null",
+      "cnt": 6
+    },
+    {
+      "CatType": "pro",
+      "cnt": 8
+    },
+    {
+      "CatType": "serv",
+      "cnt": 36
+    }
+  ],
+  "proTypes": [
+    {
+      "ProType": "(null",
+      "cnt": 11,
+      "qtySum": 0
+    },
+    {
+      "ProType": "pro",
+      "cnt": 7,
+      "qtySum": 0
+    },
+    {
+      "ProType": "serv",
+      "cnt": 32,
+      "qtySum": 0
+    }
+  ],
+  "qtyStats": {
+    "rows": 50,
+    "nullQty": 18,
+    "nonzero": 0,
+    "totalQty": 0
+  },
+  "products": [
+    {
+      "ProID": 9,
+      "ProName": "Hair Cut",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 8,
+      "CatName": "حلاقة",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 10,
+      "ProName": "Beard Styling & Fade",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 8,
+      "CatName": "حلاقة",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 11,
+      "ProName": "Basic Skin Care",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 9,
+      "CatName": "Skincare",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 12,
+      "ProName": "Medical Skin Care",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 9,
+      "CatName": "Skincare",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 13,
+      "ProName": "Hand pedicure",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 9,
+      "CatName": "Skincare",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 14,
+      "ProName": "Foot pedicure",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 9,
+      "CatName": "Skincare",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 15,
+      "ProName": "Short Hair Protein",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 18,
+      "CatName": "Hair Treatments & Care",
+      "CatType": null,
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 16,
+      "ProName": "Long Hair Protein",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 10,
+      "CatName": "خدمات اضافيه للشعر",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 17,
+      "ProName": "Basic Hair Color",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 17,
+      "CatName": "Hair Color & Highlights",
+      "CatType": null,
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 18,
+      "ProName": "Hair & Beard Color",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 17,
+      "CatName": "Hair Color & Highlights",
+      "CatType": null,
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 19,
+      "ProName": "Silver Highlights",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 10,
+      "CatName": "خدمات اضافيه للشعر",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 20,
+      "ProName": "Haircut & Beard",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 8,
+      "CatName": "حلاقة",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 21,
+      "ProName": "Toppik Hair Spray",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 10,
+      "CatName": "خدمات اضافيه للشعر",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 22,
+      "ProName": "Hair Oil Treatment",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 18,
+      "CatName": "Hair Treatments & Care",
+      "CatType": null,
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 23,
+      "ProName": "Dry-Hair",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 18,
+      "CatName": "Hair Treatments & Care",
+      "CatType": null,
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 24,
+      "ProName": "ثيرم",
+      "ProType": "pro",
+      "Qty": null,
+      "CatID": 11,
+      "CatName": "منتجات اونكس",
+      "CatType": "pro",
+      "trackStockCandidate": true
+    },
+    {
+      "ProID": 25,
+      "ProName": "شامبو",
+      "ProType": "pro",
+      "Qty": null,
+      "CatID": 11,
+      "CatName": "منتجات اونكس",
+      "CatType": "pro",
+      "trackStockCandidate": true
+    },
+    {
+      "ProID": 26,
+      "ProName": "بلسم",
+      "ProType": "pro",
+      "Qty": null,
+      "CatID": 11,
+      "CatName": "منتجات اونكس",
+      "CatType": "pro",
+      "trackStockCandidate": true
+    },
+    {
+      "ProID": 27,
+      "ProName": "حمام كريم",
+      "ProType": "pro",
+      "Qty": null,
+      "CatID": 11,
+      "CatName": "منتجات اونكس",
+      "CatType": "pro",
+      "trackStockCandidate": true
+    },
+    {
+      "ProID": 28,
+      "ProName": "برفيوم SF",
+      "ProType": "pro",
+      "Qty": null,
+      "CatID": 13,
+      "CatName": "برفانات",
+      "CatType": "pro",
+      "trackStockCandidate": true
+    },
+    {
+      "ProID": 29,
+      "ProName": "Deep SkinCare",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 9,
+      "CatName": "Skincare",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 30,
+      "ProName": "عــــــــــــــــــائــــــد للخـــــزنه ( كاش )",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 14,
+      "CatName": "إداريات",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 31,
+      "ProName": "Partial Wax",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 9,
+      "CatName": "Skincare",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 32,
+      "ProName": "Full Wax",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 9,
+      "CatName": "Skincare",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 33,
+      "ProName": "بلوب كيرلي",
+      "ProType": "pro",
+      "Qty": null,
+      "CatID": 15,
+      "CatName": "كريم شعر",
+      "CatType": "pro",
+      "trackStockCandidate": true
+    },
+    {
+      "ProID": 34,
+      "ProName": "Beard Bleaching",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 10,
+      "CatName": "خدمات اضافيه للشعر",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 35,
+      "ProName": "Hair Straightening",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 18,
+      "CatName": "Hair Treatments & Care",
+      "CatType": null,
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 36,
+      "ProName": "Hair Design",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 10,
+      "CatName": "خدمات اضافيه للشعر",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 37,
+      "ProName": "معالج الشعر",
+      "ProType": "pro",
+      "Qty": null,
+      "CatID": 16,
+      "CatName": "معالجات شعر",
+      "CatType": "pro",
+      "trackStockCandidate": true
+    },
+    {
+      "ProID": 38,
+      "ProName": "Smoothing Cream",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 10,
+      "CatName": "خدمات اضافيه للشعر",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 39,
+      "ProName": "Face Mask",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 9,
+      "CatName": "Skincare",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 40,
+      "ProName": "peel-off Mask",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 9,
+      "CatName": "Skincare",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 41,
+      "ProName": "Gold Mask",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 9,
+      "CatName": "Skincare",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 42,
+      "ProName": "Coffee Mask",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 9,
+      "CatName": "Skincare",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 43,
+      "ProName": "Hot / Cold Towel",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 9,
+      "CatName": "Skincare",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 44,
+      "ProName": "Hair Mask",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 9,
+      "CatName": "Skincare",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 45,
+      "ProName": "Threading",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 10,
+      "CatName": "خدمات اضافيه للشعر",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 46,
+      "ProName": "Face Threading",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 8,
+      "CatName": "حلاقة",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 47,
+      "ProName": "Hair Styling",
+      "ProType": "serv",
+      "Qty": 0,
+      "CatID": 10,
+      "CatName": "خدمات اضافيه للشعر",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 1047,
+      "ProName": "Fade Cut",
+      "ProType": null,
+      "Qty": null,
+      "CatID": 8,
+      "CatName": "حلاقة",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 1048,
+      "ProName": "Zero Beard Shave",
+      "ProType": null,
+      "Qty": null,
+      "CatID": 8,
+      "CatName": "حلاقة",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 1049,
+      "ProName": "Advanced Cut",
+      "ProType": null,
+      "Qty": null,
+      "CatID": 8,
+      "CatName": "حلاقة",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 1050,
+      "ProName": "Wavy Styling",
+      "ProType": null,
+      "Qty": null,
+      "CatID": 10,
+      "CatName": "خدمات اضافيه للشعر",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 1051,
+      "ProName": "Hair Botox",
+      "ProType": null,
+      "Qty": null,
+      "CatID": 10,
+      "CatName": "خدمات اضافيه للشعر",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 1053,
+      "ProName": "Hair Cut",
+      "ProType": null,
+      "Qty": null,
+      "CatID": 8,
+      "CatName": "حلاقة",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 1054,
+      "ProName": "Deep Skin Care",
+      "ProType": null,
+      "Qty": null,
+      "CatID": 9,
+      "CatName": "Skincare",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 1055,
+      "ProName": "Test Arabic",
+      "ProType": null,
+      "Qty": null,
+      "CatID": 8,
+      "CatName": "حلاقة",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 1056,
+      "ProName": "Mullet Highlights",
+      "ProType": null,
+      "Qty": null,
+      "CatID": 10,
+      "CatName": "خدمات اضافيه للشعر",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 1057,
+      "ProName": "Full Highlights",
+      "ProType": null,
+      "Qty": null,
+      "CatID": 10,
+      "CatName": "خدمات اضافيه للشعر",
+      "CatType": "serv",
+      "trackStockCandidate": false
+    },
+    {
+      "ProID": 1058,
+      "ProName": "texture powder",
+      "ProType": null,
+      "Qty": null,
+      "CatID": 15,
+      "CatName": "كريم شعر",
+      "CatType": "pro",
+      "trackStockCandidate": true
+    }
+  ],
+  "trackStockCandidates": 8,
+  "nonTrackCandidates": 42,
+  "moveCols": [
+    "ID",
+    "invID",
+    "invType",
+    "invDate",
+    "invTime",
+    "ProID",
+    "Qty",
+    "inOut",
+    "Notes"
+  ],
+  "moveCount": 49,
+  "moves": [
+    {
+      "ID": 6,
+      "invID": 54,
+      "invType": "مبيعات",
+      "invDate": "2025-07-31T00:00:00.000Z",
+      "invTime": "20.25",
+      "ProID": 24,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / يوسف عبدالقادر"
+    },
+    {
+      "ID": 7,
+      "invID": 54,
+      "invType": "مبيعات",
+      "invDate": "2025-07-31T00:00:00.000Z",
+      "invTime": "20.25",
+      "ProID": 25,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / يوسف عبدالقادر"
+    },
+    {
+      "ID": 8,
+      "invID": 54,
+      "invType": "مبيعات",
+      "invDate": "2025-07-31T00:00:00.000Z",
+      "invTime": "20.25",
+      "ProID": 26,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / يوسف عبدالقادر"
+    },
+    {
+      "ID": 9,
+      "invID": 54,
+      "invType": "مبيعات",
+      "invDate": "2025-07-31T00:00:00.000Z",
+      "invTime": "20.25",
+      "ProID": 27,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / يوسف عبدالقادر"
+    },
+    {
+      "ID": 10,
+      "invID": 86,
+      "invType": "مبيعات",
+      "invDate": "2025-08-02T00:00:00.000Z",
+      "invTime": "16.17",
+      "ProID": 25,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / علي مصباح"
+    },
+    {
+      "ID": 11,
+      "invID": 154,
+      "invType": "مبيعات",
+      "invDate": "2025-08-05T00:00:00.000Z",
+      "invTime": "18.22",
+      "ProID": 24,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / عز الدين مصطفي"
+    },
+    {
+      "ID": 12,
+      "invID": 182,
+      "invType": "مبيعات",
+      "invDate": "2025-08-06T00:00:00.000Z",
+      "invTime": "22.23",
+      "ProID": 28,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / احمد السيد"
+    },
+    {
+      "ID": 13,
+      "invID": 194,
+      "invType": "مبيعات",
+      "invDate": "2025-08-07T00:00:00.000Z",
+      "invTime": "14.26",
+      "ProID": 24,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / نقدي"
+    },
+    {
+      "ID": 14,
+      "invID": 263,
+      "invType": "مبيعات",
+      "invDate": "2025-08-10T00:00:00.000Z",
+      "invTime": "15.31",
+      "ProID": 27,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / بودي غنيم"
+    },
+    {
+      "ID": 17,
+      "invID": 305,
+      "invType": "مبيعات",
+      "invDate": "2025-08-12T00:00:00.000Z",
+      "invTime": "17.11",
+      "ProID": 26,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / نقدي"
+    },
+    {
+      "ID": 18,
+      "invID": 529,
+      "invType": "مبيعات",
+      "invDate": "2025-08-21T00:00:00.000Z",
+      "invTime": "23.18",
+      "ProID": 33,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / ذياد "
+    },
+    {
+      "ID": 19,
+      "invID": 536,
+      "invType": "مبيعات",
+      "invDate": "2025-08-22T00:00:00.000Z",
+      "invTime": "16.53",
+      "ProID": 28,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / خيري"
+    },
+    {
+      "ID": 22,
+      "invID": 835,
+      "invType": "مبيعات",
+      "invDate": "2025-09-06T00:00:00.000Z",
+      "invTime": "21.01",
+      "ProID": 24,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات عمر هشام"
+    },
+    {
+      "ID": 23,
+      "invID": 835,
+      "invType": "مبيعات",
+      "invDate": "2025-09-06T00:00:00.000Z",
+      "invTime": "21.01",
+      "ProID": 24,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات عمر هشام"
+    },
+    {
+      "ID": 24,
+      "invID": 966,
+      "invType": "مبيعات",
+      "invDate": "2025-09-13T00:00:00.000Z",
+      "invTime": "16.04",
+      "ProID": 33,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / ادهم جابر "
+    },
+    {
+      "ID": 25,
+      "invID": 1355,
+      "invType": "مبيعات",
+      "invDate": "2025-10-01T00:00:00.000Z",
+      "invTime": "17.46",
+      "ProID": 33,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / نقدي"
+    },
+    {
+      "ID": 26,
+      "invID": 1386,
+      "invType": "مبيعات",
+      "invDate": "2025-10-01T00:00:00.000Z",
+      "invTime": "01.17",
+      "ProID": 24,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / أستاز كريم"
+    },
+    {
+      "ID": 27,
+      "invID": 1386,
+      "invType": "مبيعات",
+      "invDate": "2025-10-01T00:00:00.000Z",
+      "invTime": "01.17",
+      "ProID": 25,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / أستاز كريم"
+    },
+    {
+      "ID": 28,
+      "invID": 1386,
+      "invType": "مبيعات",
+      "invDate": "2025-10-01T00:00:00.000Z",
+      "invTime": "01.17",
+      "ProID": 26,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / أستاز كريم"
+    },
+    {
+      "ID": 29,
+      "invID": 1386,
+      "invType": "مبيعات",
+      "invDate": "2025-10-01T00:00:00.000Z",
+      "invTime": "01.17",
+      "ProID": 27,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / أستاز كريم"
+    },
+    {
+      "ID": 30,
+      "invID": 1403,
+      "invType": "مبيعات",
+      "invDate": "2025-10-02T00:00:00.000Z",
+      "invTime": "21.22",
+      "ProID": 28,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / نقدي"
+    },
+    {
+      "ID": 32,
+      "invID": 1473,
+      "invType": "مبيعات",
+      "invDate": "2025-10-05T00:00:00.000Z",
+      "invTime": "00.06",
+      "ProID": 33,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات عبدو فرخة"
+    },
+    {
+      "ID": 33,
+      "invID": 1490,
+      "invType": "مبيعات",
+      "invDate": "2025-10-07T00:00:00.000Z",
+      "invTime": "18.04",
+      "ProID": 27,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / عبدالله متولي"
+    },
+    {
+      "ID": 34,
+      "invID": 1741,
+      "invType": "مبيعات",
+      "invDate": "2025-10-21T00:00:00.000Z",
+      "invTime": "23.39",
+      "ProID": 24,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / محمود راشد"
+    },
+    {
+      "ID": 36,
+      "invID": 1903,
+      "invType": "مبيعات",
+      "invDate": "2025-10-30T00:00:00.000Z",
+      "invTime": "19.30",
+      "ProID": 24,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات احمد"
+    },
+    {
+      "ID": 37,
+      "invID": 2410,
+      "invType": "مبيعات",
+      "invDate": "2025-11-28T00:00:00.000Z",
+      "invTime": "15.25",
+      "ProID": 24,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / نقدي"
+    },
+    {
+      "ID": 38,
+      "invID": 2455,
+      "invType": "مبيعات",
+      "invDate": "2025-11-30T00:00:00.000Z",
+      "invTime": "17.38",
+      "ProID": 27,
+      "Qty": 2,
+      "inOut": "out",
+      "Notes": "مبيعات / نقدي"
+    },
+    {
+      "ID": 39,
+      "invID": 2455,
+      "invType": "مبيعات",
+      "invDate": "2025-11-30T00:00:00.000Z",
+      "invTime": "17.38",
+      "ProID": 24,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / نقدي"
+    },
+    {
+      "ID": 40,
+      "invID": 2634,
+      "invType": "مبيعات",
+      "invDate": "2025-12-11T00:00:00.000Z",
+      "invTime": "23.11",
+      "ProID": 27,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / محمد ذكريا "
+    },
+    {
+      "ID": 41,
+      "invID": 2772,
+      "invType": "مبيعات",
+      "invDate": "2025-12-18T00:00:00.000Z",
+      "invTime": "21.22",
+      "ProID": 27,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / حسين سلام"
+    },
+    {
+      "ID": 43,
+      "invID": 3192,
+      "invType": "مبيعات",
+      "invDate": "2026-01-08T00:00:00.000Z",
+      "invTime": "22.15",
+      "ProID": 37,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات وسام عاطف صلاح"
+    },
+    {
+      "ID": 46,
+      "invID": 3304,
+      "invType": "مبيعات",
+      "invDate": "2026-01-15T00:00:00.000Z",
+      "invTime": "16.49",
+      "ProID": 25,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / احمد  طارق"
+    },
+    {
+      "ID": 47,
+      "invID": 3304,
+      "invType": "مبيعات",
+      "invDate": "2026-01-15T00:00:00.000Z",
+      "invTime": "16.49",
+      "ProID": 26,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / احمد  طارق"
+    },
+    {
+      "ID": 49,
+      "invID": 3581,
+      "invType": "مبيعات",
+      "invDate": "2026-01-28T00:00:00.000Z",
+      "invTime": "19.18",
+      "ProID": 24,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / علي مصباح"
+    },
+    {
+      "ID": 50,
+      "invID": 3581,
+      "invType": "مبيعات",
+      "invDate": "2026-01-28T00:00:00.000Z",
+      "invTime": "19.18",
+      "ProID": 25,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / علي مصباح"
+    },
+    {
+      "ID": 51,
+      "invID": 3581,
+      "invType": "مبيعات",
+      "invDate": "2026-01-28T00:00:00.000Z",
+      "invTime": "19.18",
+      "ProID": 26,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / علي مصباح"
+    },
+    {
+      "ID": 52,
+      "invID": 3610,
+      "invType": "مبيعات",
+      "invDate": "2026-01-29T00:00:00.000Z",
+      "invTime": "18.08",
+      "ProID": 25,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / احمد سامي"
+    },
+    {
+      "ID": 53,
+      "invID": 3929,
+      "invType": "مبيعات",
+      "invDate": "2026-02-14T00:00:00.000Z",
+      "invTime": "20.33",
+      "ProID": 33,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / مصطفى شقور"
+    },
+    {
+      "ID": 54,
+      "invID": 3990,
+      "invType": "مبيعات",
+      "invDate": "2026-02-17T00:00:00.000Z",
+      "invTime": "22.45",
+      "ProID": 33,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / محمد شريف كامل"
+    },
+    {
+      "ID": 55,
+      "invID": 4151,
+      "invType": "مبيعات",
+      "invDate": "2026-02-26T00:00:00.000Z",
+      "invTime": "20.48",
+      "ProID": 33,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / مصطفي مغربي"
+    },
+    {
+      "ID": 56,
+      "invID": 4236,
+      "invType": "مبيعات",
+      "invDate": "2026-03-03T00:00:00.000Z",
+      "invTime": "02.06",
+      "ProID": 24,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / يحيي عمرو"
+    },
+    {
+      "ID": 57,
+      "invID": 4236,
+      "invType": "مبيعات",
+      "invDate": "2026-03-03T00:00:00.000Z",
+      "invTime": "02.06",
+      "ProID": 25,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / يحيي عمرو"
+    },
+    {
+      "ID": 58,
+      "invID": 4236,
+      "invType": "مبيعات",
+      "invDate": "2026-03-03T00:00:00.000Z",
+      "invTime": "02.06",
+      "ProID": 26,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / يحيي عمرو"
+    },
+    {
+      "ID": 59,
+      "invID": 4236,
+      "invType": "مبيعات",
+      "invDate": "2026-03-03T00:00:00.000Z",
+      "invTime": "02.06",
+      "ProID": 27,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / يحيي عمرو"
+    },
+    {
+      "ID": 60,
+      "invID": 4809,
+      "invType": "مبيعات",
+      "invDate": "2026-04-02T00:00:00.000Z",
+      "invTime": "15.34",
+      "ProID": 33,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / انس محمد"
+    },
+    {
+      "ID": 61,
+      "invID": 4900,
+      "invType": "مبيعات",
+      "invDate": "2026-04-06T00:00:00.000Z",
+      "invTime": "14.19",
+      "ProID": 26,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / احمد  طارق"
+    },
+    {
+      "ID": 62,
+      "invID": 4900,
+      "invType": "مبيعات",
+      "invDate": "2026-04-06T00:00:00.000Z",
+      "invTime": "14.19",
+      "ProID": 25,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / احمد  طارق"
+    },
+    {
+      "ID": 63,
+      "invID": 5456,
+      "invType": "مبيعات",
+      "invDate": "2026-05-02T00:00:00.000Z",
+      "invTime": "17.29",
+      "ProID": 33,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات / ابراهيم معتز"
+    },
+    {
+      "ID": 65,
+      "invID": 5613,
+      "invType": "مبيعات",
+      "invDate": "2026-05-08T00:00:00.000Z",
+      "invTime": "18.54",
+      "ProID": 24,
+      "Qty": 1,
+      "inOut": "out",
+      "Notes": "مبيعات د عبدالرحمن ندا_LOCAL_UPD"
+    }
+  ],
+  "purchaseHeadCols": [
+    "ID",
+    "invID",
+    "invType",
+    "invDate",
+    "invTime",
+    "ClientID",
+    "UserID",
+    "TotalQty",
+    "SubTotal",
+    "Dis",
+    "DisVal",
+    "GrandTotal",
+    "invNotes",
+    "ShiftMoveID",
+    "Notes",
+    "PaymentMethodID"
+  ],
+  "repurchaseCols": [
+    "ID",
+    "invID",
+    "invType",
+    "invDate",
+    "invTime",
+    "ProID",
+    "PPrice",
+    "PValue",
+    "Qty",
+    "Notes",
+    "Dis",
+    "DisVal"
+  ],
+  "purchaseCounts": [
+    {
+      "t": "TblinvPurchaseHead",
+      "c": 0
+    },
+    {
+      "t": "TblinvPurchaseDetail",
+      "c": 0
+    },
+    {
+      "t": "TblinvRePurchase",
+      "c": 0
+    }
+  ],
+  "triggers": [
+    {
+      "parentObj": "dbo.TblEmp",
+      "name": "trg_TblEmp_CalcHourlyRate"
+    },
+    {
+      "parentObj": "dbo.TblinvServHead",
+      "name": "InsCashMoveSales"
+    }
+  ],
+  "barcodeCount": 0
+}

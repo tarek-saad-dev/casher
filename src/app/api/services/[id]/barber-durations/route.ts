@@ -1,5 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import { getActiveBranchContext } from '@/lib/branch/context';
+import { getGlobalTimingDefaults, getPublicSettings } from '@/lib/publicBookingHelpers';
 
 /**
  * GET /api/services/:proId/barber-durations
@@ -30,11 +32,19 @@ export async function GET(
     }
     const svc = svcRes.recordset[0];
 
-    // Fetch system default
-    const defRes = await db.request()
-      .query(`SELECT TOP 1 ISNULL(DefaultServiceDurationMinutes, DefaultServiceMinutes) AS DefaultDur FROM dbo.QueueBookingSettings`)
-      .catch(() => ({ recordset: [{ DefaultDur: 30 }] }));
-    const systemDefault: number = defRes.recordset[0]?.DefaultDur ?? 30;
+    // Fetch system default duration — prefer the caller's active branch settings when
+    // authenticated (session-scoped), otherwise fall back to global timing defaults
+    // (this endpoint is read by both ops staff and unauthenticated callers).
+    let systemDefault = 30;
+    try {
+      const activeBranch = await getActiveBranchContext();
+      const settings = activeBranch
+        ? await getPublicSettings(activeBranch.branchId)
+        : await getGlobalTimingDefaults();
+      systemDefault = settings.defaultServiceDurationMinutes ?? 30;
+    } catch {
+      // Fallback to hardcoded default
+    }
     const serviceDefault: number | null = svc.DurationMinutes ?? null;
 
     // Fetch all active barbers

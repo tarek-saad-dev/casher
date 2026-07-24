@@ -105,3 +105,43 @@ export {
   toPublicBranchSafe,
   type PublicBranchSafe,
 } from './bookingQueueOwnership';
+export {
+  listSwitchableBranchesForUser,
+  switchActiveBranch,
+  resolvePostSwitchNavigationPath,
+  type SwitchableBranch,
+  type ActiveBranchSafe,
+  type SwitchBranchResult,
+} from './switchBranch';
+export {
+  DOMAIN_OWNERSHIP_REGISTRY,
+  BRANCH_OWNED_ROUTE_MARKERS,
+  GO_LIVE_BLOCKER_DOMAINS,
+  type OwnershipClassification,
+  type DomainOwnershipEntry,
+} from './domainOwnershipRegistry';
+export {
+  assertBranchIdentityAvailable,
+  bootstrapBranch,
+  createBranchRecord,
+  ensureQueueBookingSettingsForBranch,
+  grantUserBranchAccess,
+  seedPartnerSharesFromSourceBranch,
+  type BootstrapBranchOptions,
+  type BootstrapBranchResult,
+  type CreateBranchInput,
+  type GrantUserBranchAccessInput,
+  type GrantUserBranchAccessResult,
+  type SeedQueueSettingsInput,
+} from './bootstrap';
+export {
+  auditEmployeeAssignmentIntegrity,
+  ensureEmployeeBranchAssignment,
+  type AssignmentIntegrityIssue,
+  type AssignmentIntegrityReport,
+} from './assignmentIntegrity';
+export {
+  evaluateBranchOperationalReadiness,
+  type BranchReadinessReport,
+  type ReadinessCheck,
+} from './readiness';

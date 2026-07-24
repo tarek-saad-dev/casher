@@ -1,0 +1,77 @@
+{
+  "capturedAt": "2026-07-24T01:06:01.295Z",
+  "database": "last132",
+  "branches": [
+    {
+      "BranchID": 1,
+      "BranchCode": "GLEEM",
+      "IsActive": true
+    },
+    {
+      "BranchID": 2,
+      "BranchCode": "PH1GTEST",
+      "IsActive": false
+    }
+  ],
+  "inventoryByBranch": [
+    {
+      "BranchCode": "GLEEM",
+      "rows": 8,
+      "qtySum": 0
+    }
+  ],
+  "gleemBalances": [
+    {
+      "ProID": 24,
+      "ProName": "ثيرم",
+      "QtyOnHand": 0
+    },
+    {
+      "ProID": 25,
+      "ProName": "شامبو",
+      "QtyOnHand": 0
+    },
+    {
+      "ProID": 26,
+      "ProName": "بلسم",
+      "QtyOnHand": 0
+    },
+    {
+      "ProID": 27,
+      "ProName": "حمام كريم",
+      "QtyOnHand": 0
+    },
+    {
+      "ProID": 28,
+      "ProName": "برفيوم SF",
+      "QtyOnHand": 0
+    },
+    {
+      "ProID": 33,
+      "ProName": "بلوب كيرلي",
+      "QtyOnHand": 0
+    },
+    {
+      "ProID": 37,
+      "ProName": "معالج الشعر",
+      "QtyOnHand": 0
+    },
+    {
+      "ProID": 1058,
+      "ProName": "texture powder",
+      "QtyOnHand": 0
+    }
+  ],
+  "movementCount": {
+    "c": 0
+  },
+  "purchaseNullBranch": {
+    "c": 0
+  },
+  "purchaseCount": {
+    "c": 0
+  },
+  "tblProQtyStill": {
+    "totalQty": 0
+  }
+}

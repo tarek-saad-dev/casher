@@ -25,13 +25,19 @@ import {
 import { normalizeBreaksInput } from "@/lib/hr/attendance-breaks";
 import { syncBlockRangesFromBreaks, syncBlockRangesFromBreakTimes } from "@/lib/hr/attendance-break-schedule-sync";
 import { scheduleAttendanceCheckInOutWhatsApp } from "@/lib/services/employeeAttendanceWhatsAppNotify";
+import {
+  isActiveBranchContext,
+  requireBranchOperationAccess,
+} from "@/lib/branch";
+import { assertEmployeeEligibleForBranchAttendance } from "@/lib/hr/attendance/branchAttendance.service";
 
-async function ensureAttendanceTable(db: { request: () => any }) {
+async function ensureAttendanceTable(db: { request: () => sql.Request }) {
   await db.request().query(`
     IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'TblEmpAttendance')
     BEGIN
         CREATE TABLE dbo.TblEmpAttendance (
             ID INT IDENTITY(1,1) PRIMARY KEY,
+            BranchID INT NOT NULL,
             EmpID INT NOT NULL,
             WorkDate DATE NOT NULL,
             ScheduledStartTime TIME NULL,
@@ -52,11 +58,15 @@ async function ensureAttendanceTable(db: { request: () => any }) {
         ADD CONSTRAINT FK_TblEmpAttendance_TblEmp
         FOREIGN KEY (EmpID) REFERENCES dbo.TblEmp(EmpID);
 
-        CREATE UNIQUE INDEX UQ_TblEmpAttendance_Emp_Date
-        ON dbo.TblEmpAttendance (EmpID, WorkDate);
+        ALTER TABLE dbo.TblEmpAttendance
+        ADD CONSTRAINT FK_TblEmpAttendance_BranchID
+        FOREIGN KEY (BranchID) REFERENCES dbo.TblBranch(BranchID);
 
-        CREATE INDEX IX_TblEmpAttendance_WorkDate
-        ON dbo.TblEmpAttendance (WorkDate);
+        CREATE UNIQUE INDEX UQ_TblEmpAttendance_Branch_Emp_WorkDate
+        ON dbo.TblEmpAttendance (BranchID, EmpID, WorkDate);
+
+        CREATE INDEX IX_TblEmpAttendance_Branch_WorkDate
+        ON dbo.TblEmpAttendance (BranchID, WorkDate);
     END
   `);
   await ensureAttendanceBreakSchema(db);
@@ -98,6 +108,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
     }
 
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const { searchParams } = new URL(req.url);
     const dateStr = searchParams.get("date");
     const onlyPayrollEnabled = searchParams.get("onlyPayrollEnabled") === "true";
@@ -117,7 +130,8 @@ export async function GET(req: NextRequest) {
     const result = await db
       .request()
       .input("workDate", sql.Date, dateStr)
-      .input("dayOfWeek", sql.TinyInt, dayOfWeek).query(`
+      .input("dayOfWeek", sql.TinyInt, dayOfWeek)
+      .input("branchId", sql.Int, branch.branchId).query(`
         SELECT
           e.EmpID,
           e.EmpName,
@@ -134,6 +148,7 @@ export async function GET(req: NextRequest) {
           CONVERT(VARCHAR(5), e.DefaultCheckInTime,  108) AS DefaultCheckInTime,
           CONVERT(VARCHAR(5), e.DefaultCheckOutTime, 108) AS DefaultCheckOutTime,
           a.ID AS AttendanceID,
+          a.BranchID AS AttendanceBranchID,
           CONVERT(VARCHAR(5), a.CheckInTime,  108) AS CheckInTime,
           CONVERT(VARCHAR(5), a.CheckOutTime, 108) AS CheckOutTime,
           a.Status,
@@ -146,7 +161,7 @@ export async function GET(req: NextRequest) {
         LEFT JOIN dbo.TblEmpWorkSchedule ws
           ON ws.EmpID = e.EmpID AND ws.DayOfWeek = @dayOfWeek
         LEFT JOIN dbo.TblEmpAttendance a
-          ON a.EmpID = e.EmpID AND a.WorkDate = @workDate
+          ON a.EmpID = e.EmpID AND a.WorkDate = @workDate AND a.BranchID = @branchId
         WHERE ISNULL(e.isActive, 1) = 1
           ${onlyPayrollEnabled ? "AND ISNULL(e.IsPayrollEnabled, 1) = 1" : ""}
         ORDER BY e.EmpName
@@ -177,6 +192,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       date: dateStr,
+      branchId: branch.branchId,
+      branchCode: branch.branchCode,
       attendance: rows,
       summary,
     });
@@ -195,7 +212,16 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
     }
 
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const body = await req.json();
+    if (body.BranchID != null || body.branchId != null) {
+      return NextResponse.json(
+        { error: "BranchID في الطلب غير مسموح" },
+        { status: 400 },
+      );
+    }
     const { EmpID, WorkDate, CheckInTime, CheckOutTime, Status, Notes, Breaks, BreakTimes } = body;
 
     if (!EmpID || !WorkDate) {
@@ -267,6 +293,49 @@ export async function PUT(req: NextRequest) {
     const db = await getPool();
     await ensureAttendanceTable(db);
 
+    try {
+      await assertEmployeeEligibleForBranchAttendance(
+        Number(EmpID),
+        branch.branchId,
+        WorkDate,
+      );
+    } catch (eligErr) {
+      if (eligErr instanceof Error && 'statusCode' in eligErr) {
+        const e = eligErr as { message: string; statusCode: number; code?: string };
+        return NextResponse.json(
+          { error: e.message, code: e.code },
+          { status: e.statusCode },
+        );
+      }
+      throw eligErr;
+    }
+
+    // Reject open session in another branch when checking in
+    if (CheckInTime && !CheckOutTime) {
+      const openOther = await db
+        .request()
+        .input('empId', sql.Int, EmpID)
+        .input('branchId', sql.Int, branch.branchId)
+        .query(`
+          SELECT TOP 1 ID, BranchID, WorkDate
+          FROM dbo.TblEmpAttendance
+          WHERE EmpID = @empId
+            AND CheckInTime IS NOT NULL
+            AND CheckOutTime IS NULL
+            AND BranchID <> @branchId
+        `);
+      if (openOther.recordset[0]) {
+        return NextResponse.json(
+          {
+            error:
+              'الموظف لديه حضور مفتوح في فرع آخر — سجّل الانصراف أولاً',
+            code: 'ALREADY_OPEN',
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const dayOfWeek = new Date(`${WorkDate}T12:00:00Z`).getDay();
 
     const empResult = await db
@@ -328,18 +397,19 @@ export async function PUT(req: NextRequest) {
       }
     }
 
-    // UPSERT
+    // UPSERT scoped to active branch
     const existing = await db
       .request()
       .input("empId", sql.Int, EmpID)
       .input("workDate", sql.Date, WorkDate)
+      .input("branchId", sql.Int, branch.branchId)
       .query(`
         SELECT
           ID,
           CONVERT(VARCHAR(5), CheckInTime, 108) AS CheckInTime,
           CONVERT(VARCHAR(5), CheckOutTime, 108) AS CheckOutTime
         FROM dbo.TblEmpAttendance
-        WHERE EmpID = @empId AND WorkDate = @workDate
+        WHERE EmpID = @empId AND WorkDate = @workDate AND BranchID = @branchId
       `);
 
     const previousCheckIn =
@@ -357,6 +427,7 @@ export async function PUT(req: NextRequest) {
       await db
         .request()
         .input("id", sql.Int, attendanceId)
+        .input("branchId", sql.Int, branch.branchId)
         .input("checkInTime", sql.Time, timeToDate(CheckInTime))
         .input("checkOutTime", sql.Time, timeToDate(CheckOutTime))
         .input("status", sql.NVarChar(50), finalStatus)
@@ -377,11 +448,12 @@ export async function PUT(req: NextRequest) {
               ScheduledEndTime = @scheduledEnd,
               UpdatedByUserID = @updatedBy,
               UpdatedAt = GETDATE()
-          WHERE ID = @id
+          WHERE ID = @id AND BranchID = @branchId
         `);
     } else {
       const insertResult = await db
         .request()
+        .input("branchId", sql.Int, branch.branchId)
         .input("empId", sql.Int, EmpID)
         .input("workDate", sql.Date, WorkDate)
         .input("checkInTime", sql.Time, timeToDate(CheckInTime))
@@ -394,10 +466,10 @@ export async function PUT(req: NextRequest) {
         .input("scheduledEnd", sql.Time, timeToDate(schedEnd))
         .input("createdBy", sql.Int, session.UserID || null).query(`
           INSERT INTO dbo.TblEmpAttendance
-            (EmpID, WorkDate, CheckInTime, CheckOutTime, Status, LateMinutes, EarlyLeaveMinutes, Notes, ScheduledStartTime, ScheduledEndTime, CreatedByUserID, CreatedAt)
+            (BranchID, EmpID, WorkDate, CheckInTime, CheckOutTime, Status, LateMinutes, EarlyLeaveMinutes, Notes, ScheduledStartTime, ScheduledEndTime, CreatedByUserID, CreatedAt)
           OUTPUT INSERTED.ID
           VALUES
-            (@empId, @workDate, @checkInTime, @checkOutTime, @status, @lateMinutes, @earlyLeaveMinutes, @notes, @scheduledStart, @scheduledEnd, @createdBy, GETDATE())
+            (@branchId, @empId, @workDate, @checkInTime, @checkOutTime, @status, @lateMinutes, @earlyLeaveMinutes, @notes, @scheduledStart, @scheduledEnd, @createdBy, GETDATE())
         `);
       attendanceId = insertResult.recordset[0].ID as number;
     }

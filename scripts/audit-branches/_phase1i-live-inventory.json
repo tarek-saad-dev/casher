@@ -1,0 +1,522 @@
+{
+  "capturedAt": "2026-07-23T23:50:50.556Z",
+  "target": "cloud",
+  "database": "last132",
+  "branches": [
+    {
+      "BranchID": 1,
+      "BranchCode": "GLEEM",
+      "BranchName": "جليم – سابا باشا",
+      "IsActive": true
+    },
+    {
+      "BranchID": 2,
+      "BranchCode": "PH1GTEST",
+      "BranchName": "Phase 1G Test Branch (disposable)",
+      "IsActive": false
+    }
+  ],
+  "tablesWithBranchID": [
+    {
+      "table_name": "Bookings",
+      "column_name": "BranchID",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueBookingSettings",
+      "column_name": "BranchID",
+      "is_nullable": false
+    },
+    {
+      "table_name": "QueueTickets",
+      "column_name": "BranchID",
+      "is_nullable": false
+    },
+    {
+      "table_name": "TblBranch",
+      "column_name": "BranchID",
+      "is_nullable": false
+    },
+    {
+      "table_name": "TblBranchPartnerShare",
+      "column_name": "BranchID",
+      "is_nullable": false
+    },
+    {
+      "table_name": "TblCashMove",
+      "column_name": "BranchID",
+      "is_nullable": false
+    },
+    {
+      "table_name": "TblEmpBranchAssignment",
+      "column_name": "BranchID",
+      "is_nullable": false
+    },
+    {
+      "table_name": "TblinvServHead",
+      "column_name": "BranchID",
+      "is_nullable": false
+    },
+    {
+      "table_name": "TblNewDay",
+      "column_name": "BranchID",
+      "is_nullable": false
+    },
+    {
+      "table_name": "TblShiftMove",
+      "column_name": "BranchID",
+      "is_nullable": false
+    },
+    {
+      "table_name": "TblTreasuryCloseRecon",
+      "column_name": "BranchID",
+      "is_nullable": false
+    },
+    {
+      "table_name": "TblUserBranchAccess",
+      "column_name": "BranchID",
+      "is_nullable": false
+    }
+  ],
+  "tableCount": 88,
+  "interest": {
+    "TblPro": {
+      "exists": true,
+      "rows": 50
+    },
+    "TblBarCode": {
+      "exists": true,
+      "rows": 0
+    },
+    "TblinvPurchaseHead": {
+      "exists": true,
+      "rows": 0
+    },
+    "TblinvPurchaseDetail": {
+      "exists": true,
+      "rows": 0
+    },
+    "TblProMove": {
+      "exists": true,
+      "rows": 49
+    },
+    "TblEmpAttendance": {
+      "exists": true,
+      "rows": 893
+    },
+    "TblEmpPayroll": false,
+    "TblEmpLedgerEntry": {
+      "exists": true,
+      "rows": 517
+    },
+    "TblEmpTarget": false,
+    "TblBudget": false,
+    "TblClient": {
+      "exists": true,
+      "rows": 2292
+    },
+    "TblClientLoyalty": {
+      "exists": true,
+      "rows": 1056
+    },
+    "TblLoyaltyPointLedger": {
+      "exists": true,
+      "rows": 2225
+    },
+    "TblPrinter": {
+      "exists": true,
+      "rows": 2
+    },
+    "TblPrintSetting": {
+      "exists": true,
+      "rows": 5
+    },
+    "TblSettings": {
+      "exists": true,
+      "rows": 2
+    },
+    "TblSettingValues": {
+      "exists": true,
+      "rows": 4
+    },
+    "TblOffers": false,
+    "TblOffer": false,
+    "TblCalendarSync": {
+      "exists": true,
+      "rows": 124
+    },
+    "TblCalendarOutboundSync": {
+      "exists": true,
+      "rows": 37
+    },
+    "Bookings": {
+      "exists": true,
+      "rows": 1524
+    },
+    "QueueTickets": {
+      "exists": true,
+      "rows": 140
+    },
+    "QueueBookingSettings": {
+      "exists": true,
+      "rows": 2
+    },
+    "TblinvServHead": {
+      "exists": true,
+      "rows": 7838
+    },
+    "TblCashMove": {
+      "exists": true,
+      "rows": 11856
+    },
+    "TblNewDay": {
+      "exists": true,
+      "rows": 361
+    },
+    "TblShiftMove": {
+      "exists": true,
+      "rows": 810
+    }
+  },
+  "TblProColumns": [
+    "ProID",
+    "CatID",
+    "ProType",
+    "ProName",
+    "PPrice",
+    "SPrice1",
+    "Barcode",
+    "btnColor",
+    "BonusPercent",
+    "Bonus",
+    "QuickSales",
+    "ProDis",
+    "ProDisVal",
+    "Qty",
+    "isDeleted",
+    "DurationMinutes",
+    "ProNameAr",
+    "ImageUrl"
+  ],
+  "TblinvPurchaseHeadColumns": [
+    "ID",
+    "invID",
+    "invType",
+    "invDate",
+    "invTime",
+    "ClientID",
+    "UserID",
+    "TotalQty",
+    "SubTotal",
+    "Dis",
+    "DisVal",
+    "GrandTotal",
+    "invNotes",
+    "ShiftMoveID",
+    "Notes",
+    "PaymentMethodID"
+  ],
+  "TblEmpAttendanceColumns": [
+    "ID",
+    "EmpID",
+    "WorkDate",
+    "CheckInTime",
+    "CheckOutTime",
+    "Status",
+    "Notes",
+    "CreatedAt",
+    "ScheduledStartTime",
+    "ScheduledEndTime",
+    "LateMinutes",
+    "EarlyLeaveMinutes",
+    "CreatedByUserID",
+    "UpdatedByUserID",
+    "UpdatedAt",
+    "BreakMinutesTotal",
+    "BreakTimeMinutesTotal"
+  ],
+  "changeTracking": [
+    {
+      "table_name": "TblBudgetMonth"
+    },
+    {
+      "table_name": "TblBudgetMonthLine"
+    },
+    {
+      "table_name": "TblCalendarOutboundSync"
+    },
+    {
+      "table_name": "TblCalendarSync"
+    },
+    {
+      "table_name": "TblCashMove"
+    },
+    {
+      "table_name": "TblCat"
+    },
+    {
+      "table_name": "TblCatOffer"
+    },
+    {
+      "table_name": "TblCatOfferDetails"
+    },
+    {
+      "table_name": "TblClient"
+    },
+    {
+      "table_name": "TblEmp"
+    },
+    {
+      "table_name": "TblEmpCompRule"
+    },
+    {
+      "table_name": "TblEmpPayrollTxn"
+    },
+    {
+      "table_name": "TblExpCatEmpMap"
+    },
+    {
+      "table_name": "TblExpINCat"
+    },
+    {
+      "table_name": "TblFixedExpenses"
+    },
+    {
+      "table_name": "TblinvPurchaseDetail"
+    },
+    {
+      "table_name": "TblinvPurchaseHead"
+    },
+    {
+      "table_name": "TblinvRePurchase"
+    },
+    {
+      "table_name": "TblinvReServ"
+    },
+    {
+      "table_name": "TblinvServDetail"
+    },
+    {
+      "table_name": "TblinvServHead"
+    },
+    {
+      "table_name": "TblinvServPayment"
+    },
+    {
+      "table_name": "TblNewDay"
+    },
+    {
+      "table_name": "TblPaymentMethods"
+    },
+    {
+      "table_name": "TblPayrollMonth"
+    },
+    {
+      "table_name": "TblPayrollMonthLine"
+    },
+    {
+      "table_name": "TblPrinter"
+    },
+    {
+      "table_name": "TblPrintSetting"
+    },
+    {
+      "table_name": "TblPro"
+    },
+    {
+      "table_name": "TblProMove"
+    },
+    {
+      "table_name": "TblReservDone"
+    },
+    {
+      "table_name": "TblSequence"
+    },
+    {
+      "table_name": "TblSettingPasswords"
+    },
+    {
+      "table_name": "TblSettings"
+    },
+    {
+      "table_name": "TblSettingValues"
+    },
+    {
+      "table_name": "TblShift"
+    },
+    {
+      "table_name": "TblShiftMove"
+    },
+    {
+      "table_name": "TblTools"
+    },
+    {
+      "table_name": "TblToolsTransactions"
+    },
+    {
+      "table_name": "TblUser"
+    }
+  ],
+  "syncEnabled": [
+    {
+      "TableName": "TblBudgetMonth",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblBudgetMonthLine",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblCalendarOutboundSync",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblCalendarSync",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblCashMove",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblCat",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblCatOffer",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblCatOfferDetails",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblClient",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblEmp",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblEmpCompRule",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblEmpPayrollTxn",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblExpCatEmpMap",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblExpINCat",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblFixedExpenses",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblinvPurchaseDetail",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblinvPurchaseHead",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblinvRePurchase",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblinvReServ",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblinvServDetail",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblinvServHead",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblinvServPayment",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblNewDay",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblPaymentMethods",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblPayrollMonth",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblPayrollMonthLine",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblPrinter",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblPrintSetting",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblPro",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblProMove",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblReservDone",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblSequence",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblSettingPasswords",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblSettings",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblSettingValues",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblShift",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblShiftMove",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblTools",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblToolsTransactions",
+      "IsEnabled": true
+    },
+    {
+      "TableName": "TblUser",
+      "IsEnabled": true
+    }
+  ]
+}

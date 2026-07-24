@@ -4,12 +4,20 @@ import { createContext, useCallback, useEffect, useMemo, useState, type ReactNod
 import type { OperationalSession, SessionUser, BusinessDay, ActiveShift } from '@/lib/session-types';
 import { getPermissions } from '@/lib/permissions';
 
+export type SessionActiveBranch = {
+  branchId: number;
+  branchCode: string;
+  branchName: string;
+  shortName: string | null;
+};
+
 interface SessionContextValue extends OperationalSession {
   loading: boolean;
   isAuthenticated: boolean;
   hasActiveDay: boolean;
   hasActiveShift: boolean;
   defaultShiftId: number | null;
+  activeBranch: SessionActiveBranch | null;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
   setUser: (user: SessionUser & { defaultShiftId?: number }) => void;
@@ -27,6 +35,7 @@ export const SessionContext = createContext<SessionContextValue>({
   hasActiveDay: false,
   hasActiveShift: false,
   defaultShiftId: null,
+  activeBranch: null,
   refresh: async () => {},
   logout: async () => {},
   setUser: () => {},
@@ -41,6 +50,7 @@ export default function SessionProvider({ children }: { children: ReactNode }) {
   const [permissions, setPermissions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [defaultShiftId, setDefaultShiftId] = useState<number | null>(null);
+  const [activeBranch, setActiveBranch] = useState<SessionActiveBranch | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -54,6 +64,7 @@ export default function SessionProvider({ children }: { children: ReactNode }) {
         setDay(null);
         setShift(null);
         setPermissions([]);
+        setActiveBranch(null);
         return;
       }
       const data = await res.json();
@@ -61,6 +72,18 @@ export default function SessionProvider({ children }: { children: ReactNode }) {
       setDay(data.day || null);
       setShift(data.shift || null);
       setPermissions(data.permissions || []);
+      // /api/auth/session returns PascalCase branch fields (BranchID, BranchCode, ...);
+      // normalize to the camelCase SessionActiveBranch shape consumed from context.
+      setActiveBranch(
+        data.activeBranch
+          ? {
+              branchId: data.activeBranch.BranchID,
+              branchCode: data.activeBranch.BranchCode,
+              branchName: data.activeBranch.BranchName,
+              shortName: data.activeBranch.ShortName ?? null,
+            }
+          : null,
+      );
     } catch {
       // Silent — will retry on next refresh
     } finally {
@@ -79,6 +102,7 @@ export default function SessionProvider({ children }: { children: ReactNode }) {
     setShift(null);
     setPermissions([]);
     setDefaultShiftId(null);
+    setActiveBranch(null);
     window.location.href = '/login';
   }, []);
 
@@ -86,6 +110,16 @@ export default function SessionProvider({ children }: { children: ReactNode }) {
     // Clear stale shift/day immediately to prevent previous user's data leaking
     setShift(null);
     setDay(null);
+    setActiveBranch(
+      u.ActiveBranchID != null
+        ? {
+            branchId: u.ActiveBranchID,
+            branchCode: u.ActiveBranchCode,
+            branchName: u.ActiveBranchCode,
+            shortName: null,
+          }
+        : null,
+    );
     setUserState({
       UserID: u.UserID,
       UserName: u.UserName,
@@ -163,12 +197,13 @@ export default function SessionProvider({ children }: { children: ReactNode }) {
     hasActiveDay: !!day && day.Status === true,
     hasActiveShift: !!user && !!shift && shift.Status === true && shift.UserID === user.UserID,
     defaultShiftId,
+    activeBranch,
     refresh,
     logout,
     setUser,
     openMyShift,
     closeMyShift,
-  }), [user, day, shift, permissions, loading, defaultShiftId, refresh, logout, setUser, openMyShift, closeMyShift]);
+  }), [user, day, shift, permissions, loading, defaultShiftId, activeBranch, refresh, logout, setUser, openMyShift, closeMyShift]);
 
   return (
     <SessionContext.Provider value={contextValue}>

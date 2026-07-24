@@ -1,17 +1,18 @@
 import { NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import {
+  getOpenBusinessDay,
+  isActiveBranchContext,
+  listOpenShiftsForBranch,
+  getUserOpenShiftForBranch,
+  requireActiveBranchContext,
+} from '@/lib/branch';
 
 export const runtime = 'nodejs';
 
 // GET /api/operations/status
-// Returns a full operational snapshot in one request:
-// - current open day
-// - current user's open shift
-// - all open shifts (for admin)
-// - shift financial summary (if shift open)
-// - day financial summary (if day open)
-// - alerts
+// Returns a full operational snapshot for the session active branch only.
 export async function GET() {
   try {
     const user = await getSession();
@@ -19,44 +20,47 @@ export async function GET() {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
 
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+    const branchId = branch.branchId;
+
     const db = await getPool();
 
-    // ─── 1. Current open day ─────────────────────────────────
-    const dayResult = await db.request().query(`
-      SELECT TOP 1 ID, NewDay, Status
-      FROM [dbo].[TblNewDay]
-      WHERE Status = 1
-      ORDER BY ID DESC
-    `);
-    const day = dayResult.recordset[0] || null;
+    // ─── 1. Current open day (active branch) ─────────────────
+    const openDay = await getOpenBusinessDay(branchId);
+    const day = openDay
+      ? { ID: openDay.id, NewDay: openDay.newDay, Status: openDay.status ? 1 : 0 }
+      : null;
 
-    // ─── 2. Current user's open shift ────────────────────────
-    const shiftResult = await db.request()
-      .input('userID', sql.Int, user.UserID)
-      .query(`
-        SELECT TOP 1
-          sm.ID, sm.NewDay, sm.UserID, sm.ShiftID,
-          sm.StartDate, sm.StartTime, sm.EndDate, sm.EndTime, sm.Status,
-          u.UserName, s.ShiftName
-        FROM [dbo].[TblShiftMove] sm
-        LEFT JOIN [dbo].[TblUser] u ON sm.UserID = u.UserID
-        LEFT JOIN [dbo].[TblShift] s ON sm.ShiftID = s.ShiftID
-        WHERE sm.Status = 1 AND sm.UserID = @userID
-        ORDER BY sm.ID DESC
-      `);
-    const shift = shiftResult.recordset[0] || null;
+    // ─── 2. Current user's open shift on active branch ────────
+    const openShift = await getUserOpenShiftForBranch(user.UserID, branchId);
+    const shift = openShift
+      ? {
+          ID: openShift.id,
+          NewDay: openShift.newDay,
+          UserID: openShift.userId,
+          ShiftID: openShift.shiftId,
+          StartDate: openShift.startDate,
+          StartTime: openShift.startTime,
+          EndDate: openShift.endDate,
+          EndTime: openShift.endTime,
+          Status: openShift.status ? 1 : 0,
+          UserName: openShift.userName,
+          ShiftName: openShift.shiftName,
+        }
+      : null;
 
-    // ─── 3. All currently open shifts (for alerts) ───────────
-    const allOpenShiftsResult = await db.request().query(`
-      SELECT sm.ID, sm.UserID, u.UserName, sm.ShiftID, s.ShiftName,
-             sm.StartDate, sm.StartTime
-      FROM [dbo].[TblShiftMove] sm
-      LEFT JOIN [dbo].[TblUser] u ON sm.UserID = u.UserID
-      LEFT JOIN [dbo].[TblShift] s ON sm.ShiftID = s.ShiftID
-      WHERE sm.Status = 1
-      ORDER BY sm.ID
-    `);
-    const allOpenShifts = allOpenShiftsResult.recordset;
+    // ─── 3. All currently open shifts on active branch ───────
+    const branchOpenShifts = await listOpenShiftsForBranch(branchId);
+    const allOpenShifts = branchOpenShifts.map((sm) => ({
+      ID: sm.id,
+      UserID: sm.userId,
+      UserName: sm.userName,
+      ShiftID: sm.shiftId,
+      ShiftName: sm.shiftName,
+      StartDate: sm.startDate,
+      StartTime: sm.startTime,
+    }));
 
     // ─── 4. Shift financial summary (if shift open) ──────────
     let shiftSummary = null;
@@ -64,32 +68,32 @@ export async function GET() {
       const smID = shift.ID;
 
       const [salesQ, paymentsQ, cashInQ, cashOutQ] = await Promise.all([
-        db.request().input('smID', sql.Int, smID).query(`
+        db.request().input('smID', sql.Int, smID).input('branchId', sql.Int, branchId).query(`
           SELECT
             COUNT(*) AS salesCount,
             ISNULL(SUM(GrandTotal), 0) AS totalRevenue
           FROM [dbo].[TblinvServHead]
-          WHERE ShiftMoveID = @smID AND invType = N'مبيعات'
+          WHERE ShiftMoveID = @smID AND BranchID = @branchId AND invType = N'مبيعات'
         `),
-        db.request().input('smID', sql.Int, smID).query(`
+        db.request().input('smID', sql.Int, smID).input('branchId', sql.Int, branchId).query(`
           SELECT
             ISNULL(pm.PaymentMethod, N'غير محدد') AS method,
             COUNT(*) AS cnt,
             ISNULL(SUM(h.GrandTotal), 0) AS total
           FROM [dbo].[TblinvServHead] h
           LEFT JOIN [dbo].[TblPaymentMethods] pm ON h.PaymentMethodID = pm.PaymentID
-          WHERE h.ShiftMoveID = @smID AND h.invType = N'مبيعات'
+          WHERE h.ShiftMoveID = @smID AND h.BranchID = @branchId AND h.invType = N'مبيعات'
           GROUP BY pm.PaymentMethod
         `),
-        db.request().input('smID', sql.Int, smID).query(`
+        db.request().input('smID', sql.Int, smID).input('branchId', sql.Int, branchId).query(`
           SELECT ISNULL(SUM(GrandTolal), 0) AS total
           FROM [dbo].[TblCashMove]
-          WHERE ShiftMoveID = @smID AND inOut = 'in'
+          WHERE ShiftMoveID = @smID AND BranchID = @branchId AND inOut = 'in'
         `),
-        db.request().input('smID', sql.Int, smID).query(`
+        db.request().input('smID', sql.Int, smID).input('branchId', sql.Int, branchId).query(`
           SELECT ISNULL(SUM(GrandTolal), 0) AS total
           FROM [dbo].[TblCashMove]
-          WHERE ShiftMoveID = @smID AND inOut = 'out'
+          WHERE ShiftMoveID = @smID AND BranchID = @branchId AND inOut = 'out'
         `),
       ]);
 
@@ -107,26 +111,26 @@ export async function GET() {
     let daySummary = null;
     if (day) {
       const [dayTotalsQ, dayPaymentsQ, dayExpensesQ] = await Promise.all([
-        db.request().input('dayDate', sql.Date, day.NewDay).query(`
+        db.request().input('dayDate', sql.Date, day.NewDay).input('branchId', sql.Int, branchId).query(`
           SELECT
             COUNT(*) AS salesCount,
             ISNULL(SUM(GrandTotal), 0) AS totalRevenue
           FROM [dbo].[TblinvServHead]
-          WHERE invDate = @dayDate AND invType = N'مبيعات'
+          WHERE invDate = @dayDate AND BranchID = @branchId AND invType = N'مبيعات'
         `),
-        db.request().input('dayDate', sql.Date, day.NewDay).query(`
+        db.request().input('dayDate', sql.Date, day.NewDay).input('branchId', sql.Int, branchId).query(`
           SELECT
             ISNULL(pm.PaymentMethod, N'غير محدد') AS method,
             ISNULL(SUM(h.GrandTotal), 0) AS total
           FROM [dbo].[TblinvServHead] h
           LEFT JOIN [dbo].[TblPaymentMethods] pm ON h.PaymentMethodID = pm.PaymentID
-          WHERE h.invDate = @dayDate AND h.invType = N'مبيعات'
+          WHERE h.invDate = @dayDate AND h.BranchID = @branchId AND h.invType = N'مبيعات'
           GROUP BY pm.PaymentMethod
         `),
-        db.request().input('dayDate', sql.Date, day.NewDay).query(`
+        db.request().input('dayDate', sql.Date, day.NewDay).input('branchId', sql.Int, branchId).query(`
           SELECT ISNULL(SUM(GrandTolal), 0) AS total
           FROM [dbo].[TblCashMove]
-          WHERE CAST(invDate AS DATE) = @dayDate AND inOut = 'out'
+          WHERE CAST(invDate AS DATE) = @dayDate AND BranchID = @branchId AND inOut = 'out'
         `),
       ]);
 
@@ -170,6 +174,11 @@ export async function GET() {
 
     return NextResponse.json({
       user: { UserID: user.UserID, UserName: user.UserName, UserLevel: user.UserLevel },
+      branch: {
+        branchId: branch.branchId,
+        branchCode: branch.branchCode,
+        branchName: branch.branchName,
+      },
       day,
       shift,
       allOpenShifts,

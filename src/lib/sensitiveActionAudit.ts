@@ -210,6 +210,55 @@ async function recordFailedAudit(
   return insertAuditRecord(db, record);
 }
 
+/**
+ * Standalone audit write (no business transaction). Used for session-level
+ * events such as branch switching where cookie mutation must not be rolled back
+ * with a DB transaction.
+ */
+export async function writeSensitiveAuditEvent(options: {
+  actionType: string;
+  user: SessionUser;
+  request?: Request;
+  actionMethod?: string;
+  endpointPath?: string;
+  entityType?: string;
+  entityId?: string | number | null;
+  executionStatus: AuditExecutionStatus;
+  errorMessage?: string | null;
+  reason?: string | null;
+  oldData?: unknown;
+  newData?: unknown;
+  changedFields?: string[] | null;
+  requestId?: string;
+}): Promise<number> {
+  const metaData = getSensitiveAction(options.actionType);
+  const meta = requestMeta(options.request);
+  const userRolesSnapshot = await loadUserRolesSnapshot(options.user);
+  const record: AuditRecord = {
+    actionType: metaData.actionType,
+    actionLabel: metaData.label,
+    entityType: options.entityType || metaData.entityType,
+    entityId: normalizeEntityId(options.entityId),
+    performedByUserId: options.user.UserID,
+    performedByUserName: options.user.UserName,
+    userRolesSnapshot,
+    actionMethod: options.actionMethod || null,
+    endpointPath: options.endpointPath || null,
+    oldData: safeSerialize(options.oldData, metaData.sensitiveFields),
+    newData: safeSerialize(options.newData, metaData.sensitiveFields),
+    changedFields: options.changedFields ? JSON.stringify(options.changedFields) : null,
+    reason: options.reason || null,
+    riskLevel: metaData.riskLevel,
+    requestId: options.requestId || randomUUID(),
+    ipAddress: meta.ipAddress,
+    userAgent: meta.userAgent,
+    executionStatus: options.executionStatus,
+    errorMessage: options.errorMessage ?? null,
+  };
+  const db = await getPool();
+  return insertAuditRecord(db, record);
+}
+
 function auditOptionsToUnknown<T>(options: AuditExecutionOptions<T>): AuditExecutionOptions<unknown> {
   return options as unknown as AuditExecutionOptions<unknown>;
 }

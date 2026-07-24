@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
-import { getSession } from "@/lib/session";
+import {
+  requireActiveBranchContext,
+  requireBranchOperationAccess,
+  isActiveBranchContext,
+} from "@/lib/branch/context";
 
 export const runtime = "nodejs";
 
@@ -19,7 +23,8 @@ const DEFAULT_SETTINGS = {
   DefaultServiceDurationMinutes: 30,
 };
 
-// Helper to ensure table and columns exist
+// Helper to ensure table and columns exist (schema-level only — never seeds an
+// unscoped row; per-branch rows are lazily inserted by ensureBranchSettingsRow).
 async function ensureTableAndColumns(db: sql.ConnectionPool) {
   // Check if table exists
   const tableCheck = await db.request().query(`
@@ -29,10 +34,12 @@ async function ensureTableAndColumns(db: sql.ConnectionPool) {
   `);
 
   if (tableCheck.recordset[0].count === 0) {
-    // Create table with all required columns
+    // Create table with all required columns (BranchID is required — Phase 1G
+    // never creates branch-less settings rows).
     await db.request().query(`
       CREATE TABLE [dbo].[QueueBookingSettings] (
         SettingID INT PRIMARY KEY IDENTITY(1,1),
+        BranchID INT NOT NULL,
         SalonName NVARCHAR(200) NOT NULL DEFAULT N'Cut Salon',
         Timezone NVARCHAR(100) NOT NULL DEFAULT N'Africa/Cairo',
         Currency NVARCHAR(10) NOT NULL DEFAULT N'EGP',
@@ -47,19 +54,6 @@ async function ensureTableAndColumns(db: sql.ConnectionPool) {
         DefaultServiceMinutes INT NULL,
         CreatedAt DATETIME2 DEFAULT GETDATE(),
         UpdatedAt DATETIME2 DEFAULT GETDATE()
-      )
-    `);
-
-    // Insert default row
-    await db.request().query(`
-      INSERT INTO [dbo].[QueueBookingSettings] (
-        SalonName, Timezone, Currency, BookingEnabled,
-        AllowSpecificBarber, AllowNearestBarber, DefaultMode,
-        SlotIntervalMinutes, MinNoticeMinutes, MaxBookingDaysAhead,
-        DefaultServiceDurationMinutes
-      ) VALUES (
-        N'Cut Salon', N'Africa/Cairo', N'EGP', 1,
-        1, 1, N'nearest', 15, 30, 14, 30
       )
     `);
 
@@ -113,43 +107,47 @@ async function ensureTableAndColumns(db: sql.ConnectionPool) {
     }
   }
 
-  // Ensure at least one row exists
-  const rowCheck = await db.request().query(`
-    SELECT COUNT(*) as count FROM [dbo].[QueueBookingSettings]
-  `);
+  return { created: false, added };
+}
 
-  if (rowCheck.recordset[0].count === 0) {
-    await db.request().query(`
+/** Lazily insert a scoped default settings row for this branch only (idempotent). */
+async function ensureBranchSettingsRow(db: sql.ConnectionPool, branchId: number) {
+  const existing = await db
+    .request()
+    .input("branchId", sql.Int, branchId)
+    .query(`SELECT TOP 1 SettingID FROM [dbo].[QueueBookingSettings] WHERE BranchID = @branchId`);
+  if (existing.recordset.length) return;
+
+  await db
+    .request()
+    .input("branchId", sql.Int, branchId)
+    .query(`
       INSERT INTO [dbo].[QueueBookingSettings] (
-        SalonName, Timezone, Currency, BookingEnabled,
+        BranchID, SalonName, Timezone, Currency, BookingEnabled,
         AllowSpecificBarber, AllowNearestBarber, DefaultMode,
         SlotIntervalMinutes, MinNoticeMinutes, MaxBookingDaysAhead,
         DefaultServiceDurationMinutes
       ) VALUES (
-        N'Cut Salon', N'Africa/Cairo', N'EGP', 1,
+        @branchId, N'Cut Salon', N'Africa/Cairo', N'EGP', 1,
         1, 1, N'nearest', 15, 30, 14, 30
       )
     `);
-  }
-
-  return { created: false, added };
 }
 
-// GET: Retrieve booking settings
+// GET: Retrieve booking settings for the caller's active branch
 export async function GET() {
   try {
-    const session = await getSession();
-    if (!session?.UserID) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
 
     const db = await getPool();
     await ensureTableAndColumns(db);
+    await ensureBranchSettingsRow(db, branch.branchId);
 
-    const result = await db.request().query(`
+    const result = await db
+      .request()
+      .input("branchId", sql.Int, branch.branchId)
+      .query(`
       SELECT TOP 1
         SalonName,
         Timezone,
@@ -164,6 +162,7 @@ export async function GET() {
         DefaultServiceDurationMinutes,
         DefaultServiceMinutes
       FROM [dbo].[QueueBookingSettings]
+      WHERE BranchID = @branchId
     `);
 
     const row = result.recordset[0] || DEFAULT_SETTINGS;
@@ -201,20 +200,16 @@ export async function GET() {
   }
 }
 
-// PATCH: Update booking settings
+// PATCH: Update booking settings for the caller's active branch
 export async function PATCH(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session?.UserID) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
 
     const body = await request.json();
     const db = await getPool();
     await ensureTableAndColumns(db);
+    await ensureBranchSettingsRow(db, branch.branchId);
 
     // Validation helpers
     const validModes = ["nearest", "specific"];
@@ -273,9 +268,9 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Build update query dynamically
+    // Build update query dynamically — scoped to the caller's active branch
     const updates: string[] = [];
-    const req = db.request();
+    const req = db.request().input("branchId", sql.Int, branch.branchId);
 
     if (body.salonName !== undefined) {
       updates.push("SalonName = @salonName");
@@ -355,10 +350,11 @@ export async function PATCH(request: NextRequest) {
     await req.query(`
       UPDATE [dbo].[QueueBookingSettings]
       SET ${updates.join(", ")}
+      WHERE BranchID = @branchId
     `);
 
     const { invalidatePublicSettingsCache } = await import("@/lib/publicBookingHelpers");
-    invalidatePublicSettingsCache();
+    invalidatePublicSettingsCache(branch.branchId);
 
     return NextResponse.json({
       ok: true,
