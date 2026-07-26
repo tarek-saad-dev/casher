@@ -10,6 +10,8 @@ export type AdvanceIssueReason =
 export interface ReconciliationSummary {
   month: string;
   empId: number | null;
+  /** Phase 1L: session/report branch scope (null = legacy unscoped callers only). */
+  branchId?: number | null;
   payrollGeneratedTotal: number;
   ledgerSalaryCreditsTotal: number;
   payrollLedgerCreditDiff: number;

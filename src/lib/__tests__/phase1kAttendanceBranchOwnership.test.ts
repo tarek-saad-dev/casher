@@ -116,12 +116,13 @@ describe('Phase 1K attendance branch ownership', () => {
     expect(label([])).toBe('Cut Salon');
   });
 
-  it('aggregate validation synthetic attendance handles open sessions', () => {
+  it('aggregate validation uses real status; Absent without punches does not enter gate', () => {
     expect(
       aggregateToValidationAttendance({
         empId: 1,
         workDate: '2026-07-01',
         primaryAttendanceId: 10,
+        primaryStatus: 'Late',
         sessionCount: 2,
         netMinutes: 480,
         breakMinutesTotal: 30,
@@ -129,7 +130,7 @@ describe('Phase 1K attendance branch ownership', () => {
         hasAnyCheckIn: true,
       }),
     ).toEqual({
-      Status: 'Present',
+      Status: 'Late',
       CheckInTime: '00:00',
       CheckOutTime: null,
     });
@@ -139,6 +140,7 @@ describe('Phase 1K attendance branch ownership', () => {
         empId: 1,
         workDate: '2026-07-01',
         primaryAttendanceId: 10,
+        primaryStatus: 'Present',
         sessionCount: 1,
         netMinutes: 480,
         breakMinutesTotal: 0,
@@ -146,6 +148,21 @@ describe('Phase 1K attendance branch ownership', () => {
         hasAnyCheckIn: true,
       })?.CheckOutTime,
     ).toBe('00:00');
+
+    // Absent placeholder must NOT become synthetic Present with missing_checkin
+    expect(
+      aggregateToValidationAttendance({
+        empId: 1026,
+        workDate: '2026-07-23',
+        primaryAttendanceId: 2866,
+        primaryStatus: 'Absent',
+        sessionCount: 1,
+        netMinutes: 0,
+        breakMinutesTotal: 0,
+        hasOpenSession: false,
+        hasAnyCheckIn: false,
+      }),
+    ).toBeNull();
 
     expect(aggregateToValidationAttendance(undefined)).toBeNull();
   });

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
+import { requireBranchOperationAccess } from '@/lib/branch/context';
 import { getEmployeeLedgerReconciliation } from '@/lib/services/employeeLedgerReconciliationService';
 import { validateLedgerMonth } from '@/lib/services/employeeLedgerService';
 
@@ -13,7 +14,7 @@ function isMissingLedgerTableError(message: string): boolean {
 
 /**
  * GET /api/admin/hr/employee-ledger/reconciliation?month=YYYY-MM&empId=
- * Read-only reconciliation between payroll, ledger, cash moves, and legacy mirrors.
+ * Branch scope = authenticated session branch (Phase 1L). Query BranchID rejected.
  */
 export async function GET(request: NextRequest) {
   const auth = await requirePageAccess('/admin/hr');
@@ -21,6 +22,13 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url);
+    if (searchParams.has('branchId') || searchParams.has('BranchID')) {
+      return NextResponse.json(
+        { error: 'BranchID في الطلب غير مسموح' },
+        { status: 400 },
+      );
+    }
+
     const month = searchParams.get('month');
     const empIdParam = searchParams.get('empId');
     const empId = empIdParam ? parseInt(empIdParam, 10) : null;
@@ -38,7 +46,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'empId غير صالح' }, { status: 400 });
     }
 
-    const result = await getEmployeeLedgerReconciliation(month, empId);
+    const branch = await requireBranchOperationAccess();
+    if (branch instanceof NextResponse) return branch;
+
+    const result = await getEmployeeLedgerReconciliation(
+      month,
+      empId,
+      branch.branchId,
+    );
     return NextResponse.json(result);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';

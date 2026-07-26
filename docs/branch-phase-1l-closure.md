@@ -1,89 +1,101 @@
-# Phase 1L Closure — Branch Employee Financial Ownership
+# Phase 1L — Closure
 
-**Status:** Accepted for GLEEM continuity + branch-account infrastructure  
-**Date:** 2026-07-24  
-**Database:** cloud / `last132` only  
-**Live active branches:** **1** (GLEEM) — unchanged  
-**PH1GTEST:** inactive (`BranchID=2`) — unchanged  
-**Sync:** stopped and unused  
-**Attendance / inventory:** Phase 1K / 1J preserved
+**Date:** 2026-07-25  
+**Database:** cloud / `last132`  
+**Authoritative audit:** `docs/branch-phase-1l-final-application-audit.md`
 
 ---
 
-## 1. Executive verdict
+## Ownership proof
 
-| Decision | Verdict |
-|---|---|
-| GLEEM employee accounts (historical continuity) | **GO** |
-| Branch employee account infrastructure | **GO** |
-| Hourly wage separation | **GO** |
-| Monthly salary separation | **GO** (plan-based; GLEEM seeded) |
-| Target separation | **GO** |
-| Branch payouts | **GO** |
-| Global consolidated account | **GO** (read-only SUM) |
-| Controlled second-branch smoke | **CONDITIONAL GO** (infra ready; do not activate yet) |
-| Activating production branch #2 | **NO-GO** |
-| Reactivate PH1GTEST for production | **NO-GO** |
-| Restart sync service | **NO-GO** |
-
-**Summary:** Phase 1L freezes writable **EmpID+BranchID** accounts and read-only global SUM. Historical GLEEM totals preserved. No second production branch.
-
----
-
-## 2. Ownership contract (frozen)
-
-```
-Employee identity          = global (TblEmp)
-Branch employee account    = writable (EmpID + BranchID)
-Global employee account    = read-only SUM
-Hourly wage                = branch attendance
-Monthly salary             = configured branch plan component
-Target                     = invoice branch
-Advance / payout           = paying CashMove branch
-BranchID                   = immutable after create
+```text
+Employee identity = global
+Branch employee account = writable source (EmpID + BranchID)
+Global employee account = read-only SUM
+Hourly wage = attendance branch
+Monthly salary = configured branch plan
+Target = invoice branch
+Advance/payout = CashMove branch
 ```
 
+Registry: `payroll_ledger_targets` → `BRANCH_OWNED_ROOT`, `goLiveBlocker: false`.
+
 ---
 
-## 3. Post-migration fingerprints (`last132`)
+## Application paths closed
 
-| Metric | Before → After |
+| Area | Status |
 |---|---|
-| Payroll rows / wageSum | 606 / 147999.66 → **same** (all GLEEM) |
-| Ledger credits / debits / balance | 80985.33 / 59951 / 21034.33 → **same** |
-| Targets / targetSum | 97 / 30833.6 → **same** |
-| Null BranchID | **0** on payroll/ledger/target/recalc/plan |
+| Manual / auto / nightly payroll with branchId | Done |
+| Operational rates from `TblEmpBranchPayrollPlan` | Done |
+| Monthly salary from branch plan + nightly month-end | Done |
+| Targets / recalc / plan admin BranchID | Done |
+| Payout branch balance | Done |
+| Reconciliation + payroll expense BranchID | Done |
+| Employee WhatsApp branch breakdown | Done |
+| `resolveLedgerEntryBranchSource` | Done |
+| Validate-attendance session branch | Done |
+
+---
+
+## Live fingerprints (after script 2026-07-25)
+
+| Check | Value |
+|---|---|
+| Null BranchID (payroll/ledger/target/recalc/plan) | **0** |
 | PH1GTEST financial rows | **0** |
-| CashMove↔ledger BranchID mismatch | **0** |
-| Branch balance sum = global sum | **21034.33** |
-| Branch payroll plans | **13** (GLEEM only) |
+| CashMove/ledger BranchID mismatch | **0** |
+| Branch balance sum = global sum | **23209.04** |
+| Only GLEEM active | **yes** |
+| Branch payroll plans | **13 GLEEM / 0 PH1GTEST** |
+| Payroll rows / wageSum | **612 / 149614.17** (all GLEEM) |
+| Ledger rows / credits / debits / balance | **543 / 84580.04 / 61371 / 23209.04** |
+| Targets rows / targetSum | **107 / 32713.8** |
+
+Pre-1L capture (2026-07-24): payroll 606 / 147999.66. Live growth after migration is new GLEEM operational rows — not PH1GTEST / not null BranchID.
 
 ---
 
-## 4. Verification
+## Verification (this workspace)
 
-* Vitest regression: **10 files / 121 tests passed** (includes Phase 1L **10** tests)
-* Verifier: `scripts/verify-employee-financial-branch-ownership.ts --with-phase1k..1g` **PASS**
-* `npm run build` **PASS**
-* Targeted ESLint **0 warnings** on touched Phase 1L files
-
----
-
-## 5. Remaining go-live blockers (branch #2)
-
-* Explicit second-branch payroll/target plans before any smoke
-* Controlled smoke only after ops approval
-* No cross-branch payout / settlement
-* Sync remains stopped
-* Partner-share formulas unchanged
+| Check | Result |
+|---|---|
+| Vitest Phase 1L file | **12 passed** |
+| Vitest regression suite (11 files incl. monthly salary) | **143 passed** |
+| `20-phase1l-employee-financial-after.cjs` | **PASS** (wrote after JSON) |
+| `verify-employee-financial-branch-ownership.ts` + nested 1K→1G | **PASS** |
+| `npm run build` | **PASS** |
+| ESLint touched files | **0 errors / 0 warnings** |
 
 ---
 
-## 6. Explicit non-goals (honored)
+## GO / NO-GO
 
-* No second branch activation  
-* No PH1GTEST financial ownership  
-* No writable global ledger account  
+| Item | Verdict |
+|---|---|
+| GLEEM hourly payroll | **GO** |
+| GLEEM monthly salary | **GO** |
+| GLEEM targets | **GO** |
+| Branch ledger accounts | **GO** |
+| Branch payouts | **GO** |
+| Global account view (read-only SUM) | **GO** |
+| Nightly automation | **GO** |
+| Reports/reconciliation (branch-scoped) | **GO** |
+| Controlled second-branch smoke | **NO-GO** (not activated; code ready) |
+| Production second-branch activation | **NO-GO** (explicitly deferred) |
+
+---
+
+## Regression boundary confirmed
+
+* Attendance ownership (1K) unchanged  
+* Inventory ownership (1J) unchanged  
+* PH1GTEST inactive  
+* Sync stopped  
+* No writable global account  
 * No GLEEM plan fallback  
-* No attendance / inventory ownership regression  
-* No sync restart  
+* No cross-branch payout  
+* No second branch activation  
+
+**Phase 1L application closure for GLEEM single-branch production: GO.**  
+**Production multi-branch activation: NO-GO until controlled smoke.**

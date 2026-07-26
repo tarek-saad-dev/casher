@@ -21,6 +21,7 @@ export type PayrollValidationReason =
   | 'missing_checkout'
   | 'no_hourly_rate'
   | 'no_daily_rate'
+  | 'no_branch_payroll_plan'
   | 'unsupported_payroll_method'
   | 'not_scheduled_working_day';
 
@@ -120,7 +121,7 @@ export function scheduledHoursFromTimes(
   const [sh, sm] = start.split(':').map(Number);
   const [eh, em] = end.split(':').map(Number);
   if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) return null;
-  let startMin = sh * 60 + sm;
+  const startMin = sh * 60 + sm;
   let endMin = eh * 60 + em;
   if (endMin <= startMin) endMin += 1440;
   const hours = (endMin - startMin) / 60;
@@ -284,6 +285,7 @@ export const PAYROLL_VALIDATION_REASON_LABELS: Record<PayrollValidationReason, s
   missing_checkout: 'لم يسجل انصراف',
   no_hourly_rate: 'سعر الساعة غير محدد',
   no_daily_rate: 'اليومية الثابتة غير محددة',
+  no_branch_payroll_plan: 'لا توجد خطة راتب للفرع',
   unsupported_payroll_method: 'طريقة محاسبة غير مدعومة',
   not_scheduled_working_day: 'يوم غير مجدول للعمل',
 };
@@ -421,5 +423,120 @@ export const SQL_INSERT_ELIGIBILITY_WHERE = `
   AND (
     ((${SQL_RESOLVED_PAYROLL_METHOD}) = N'hourly' AND ISNULL((${SQL_EFFECTIVE_HOURLY_RATE_EXPR}), 0) > 0)
     OR ((${SQL_RESOLVED_PAYROLL_METHOD}) = N'daily' AND ISNULL(e.DailyRate, 0) > 0)
+  )
+`;
+
+/* ------------------------------------------------------------------ */
+/* Phase 1L — branch payroll plan (alias bp). No TblEmp rate fallback. */
+/* ------------------------------------------------------------------ */
+
+/** CROSS APPLY subquery: one effective hourly/daily plan for Emp+Branch+WorkDate. */
+export const SQL_BRANCH_PAYROLL_PLAN_APPLY = `
+  CROSS APPLY (
+    SELECT TOP 1
+      bp0.PlanID,
+      bp0.PayType,
+      bp0.HourlyRate,
+      bp0.DailyRate
+    FROM dbo.TblEmpBranchPayrollPlan bp0
+    WHERE bp0.EmpID = v.EmpID
+      AND bp0.BranchID = v.BranchID
+      AND bp0.IsActive = 1
+      AND bp0.EffectiveFrom <= v.WorkDate
+      AND (bp0.EffectiveTo IS NULL OR bp0.EffectiveTo >= v.WorkDate)
+      AND bp0.PayType IN (N'hourly', N'daily')
+    ORDER BY bp0.EffectiveFrom DESC, bp0.PlanID DESC
+  ) bp
+`;
+
+export const SQL_BRANCH_PLAN_HOURLY_RATE = `
+  NULLIF(CAST(bp.HourlyRate AS DECIMAL(10,4)), 0)
+`;
+
+export function buildDailyWageSqlFromBranchPlan(actualHoursExpr: string): string {
+  return `
+    CASE
+      WHEN bp.PayType = N'daily'
+        AND ISNULL(bp.DailyRate, 0) > 0
+        AND a.CheckInTime IS NOT NULL AND a.CheckOutTime IS NOT NULL
+      THEN CAST(bp.DailyRate AS DECIMAL(12,2))
+      WHEN bp.PayType = N'hourly'
+        AND a.CheckInTime IS NOT NULL AND a.CheckOutTime IS NOT NULL
+        AND (${SQL_BRANCH_PLAN_HOURLY_RATE}) IS NOT NULL
+      THEN CAST((${SQL_BRANCH_PLAN_HOURLY_RATE}) AS DECIMAL(10,4)) * (${actualHoursExpr})
+      ELSE 0
+    END
+  `;
+}
+
+export function buildHourlyRateSnapshotSqlFromBranchPlan(): string {
+  return `
+    CASE
+      WHEN bp.PayType = N'daily' THEN NULL
+      ELSE (${SQL_BRANCH_PLAN_HOURLY_RATE})
+    END
+  `;
+}
+
+export function buildPayrollNotesSqlFromBranchPlan(
+  notesPrefix: string,
+  actualHoursExpr: string,
+): string {
+  const prefix = notesPrefix.replace(/'/g, "''");
+  const dailyRateText = sqlDecimalToNvarchar('bp.DailyRate', 2, 32);
+  const hourlyRateText = sqlDecimalToNvarchar(SQL_BRANCH_PLAN_HOURLY_RATE, 4, 32);
+  const hoursText = sqlDecimalToNvarchar(actualHoursExpr, 2, 32);
+  return `
+    N'${prefix}'
+    + N'Plan#' + CONVERT(NVARCHAR(20), bp.PlanID) + N' | '
+    + CASE WHEN (${SQL_RESOLVED_EMPLOYMENT_TYPE}) = N'freelance' THEN N'فري لانس — ' ELSE N'' END
+    + CASE
+        WHEN (${SQL_RESOLVED_EMPLOYMENT_TYPE}) = N'part_time'
+          AND (ws.EmpID IS NULL OR ws.IsWorkingDay = 0)
+        THEN N'حضور خارج أيام العمل المحددة — '
+        ELSE N''
+      END
+    + CASE
+        WHEN bp.PayType = N'daily'
+        THEN N'يومية ثابتة: ' + ${dailyRateText} + N' ج.م'
+        ELSE N'بالساعة: ' + ${hourlyRateText}
+          + N' x ' + ${hoursText} + N'h'
+      END
+    + CASE
+        WHEN ISNULL(a.BreakMinutesTotal, 0) > 0
+        THEN N' | مستقطع: ' + CONVERT(NVARCHAR(16), a.BreakMinutesTotal) + N'د'
+        ELSE N''
+      END
+    + N' | ' + ISNULL(a.Status, N'')
+  `;
+}
+
+/** Eligibility using branch plan PayType/rates — never TblEmp ManualHourlyRate/BaseSalary. */
+export const SQL_INSERT_ELIGIBILITY_WHERE_BRANCH_PLAN = `
+  e.isActive = 1
+  AND e.IsPayrollEnabled = 1
+  AND bp.PayType IN (N'hourly', N'daily')
+  AND a.Status IN (N'Present', N'Late', N'EarlyLeave')
+  AND (
+    (${SQL_RESOLVED_EMPLOYMENT_TYPE}) = N'freelance'
+    OR (
+      (${SQL_RESOLVED_EMPLOYMENT_TYPE}) = N'part_time'
+      AND (
+        (ws.EmpID IS NOT NULL AND ws.IsWorkingDay = 1)
+        OR a.ID IS NOT NULL
+      )
+    )
+    OR (
+      (${SQL_RESOLVED_EMPLOYMENT_TYPE}) = N'full_time'
+      AND (
+        (ws.EmpID IS NOT NULL AND ws.IsWorkingDay = 1)
+        OR (ws.EmpID IS NULL AND e.DefaultCheckInTime IS NOT NULL AND e.DefaultCheckOutTime IS NOT NULL)
+        OR a.ID IS NOT NULL
+      )
+    )
+  )
+  AND (
+    (bp.PayType = N'hourly' AND ISNULL((${SQL_BRANCH_PLAN_HOURLY_RATE}), 0) > 0)
+    OR (bp.PayType = N'daily' AND ISNULL(bp.DailyRate, 0) > 0)
   )
 `;

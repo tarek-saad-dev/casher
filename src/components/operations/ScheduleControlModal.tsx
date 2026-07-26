@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   X, Clock, Calendar, ChevronDown, AlertTriangle, CheckCircle,
-  Loader2, Trash2, UserX, Coffee, ArrowRight, Settings,
+  Loader2, Trash2, UserX, Coffee, ArrowRight, Settings, UserCheck,
 } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -15,6 +15,13 @@ type ScheduleSource = 'TblEmpWorkSchedule' | 'TblEmp.Default' | 'missing_hr_sche
 interface BarberRow {
   empId: number;
   empName: string;
+  section?: 'present' | 'transferred_in' | 'elsewhere' | 'off';
+  statusLabelAr?: string;
+  baseBranch?: { branchId: number; branchCode: string; branchName: string } | null;
+  currentBranch?: { branchId: number; branchCode: string; branchName: string } | null;
+  isTransferred?: boolean;
+  transferReason?: string | null;
+  isGlobalDayOff?: boolean;
   defaultSchedule: { isWorkingDay: boolean; start: string | null; end: string | null; source: ScheduleSource } | null;
   effectiveStart: string | null;
   effectiveEnd: string | null;
@@ -104,8 +111,37 @@ const DANGER_TYPES: OverrideType[] = ['day_off'];
 export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: Props) {
   const [date, setDate] = useState(initialDate);
   const [barbers, setBarbers] = useState<BarberRow[]>([]);
+  const [transferDestinations, setTransferDestinations] = useState<
+    Array<{ branchId: number; branchCode: string; branchName: string }>
+  >([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Transfer dialog
+  const [transferEmpId, setTransferEmpId] = useState<number | null>(null);
+  const [transferToBranchId, setTransferToBranchId] = useState<number | ''>('');
+  const [transferReason, setTransferReason] = useState('');
+  const [transferStart, setTransferStart] = useState('');
+  const [transferEnd, setTransferEnd] = useState('');
+  const [transferPreview, setTransferPreview] = useState<{
+    canTransfer?: boolean;
+    blockers?: Array<{ code: string; message: string }>;
+    affectedBookings?: Array<{
+      bookingId: number;
+      bookingCode: string | null;
+      startTime: string;
+    }>;
+    sourceBranch?: { branchName: string } | null;
+    destinationBranch?: { branchName: string } | null;
+    resolvedDestinationWindow?: {
+      startTime: string | null;
+      endTime: string | null;
+      overnight: boolean;
+    };
+  } | null>(null);
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
+  const [restoringEmpId, setRestoringEmpId] = useState<number | null>(null);
 
   // Per-barber action panel state
   const [activeEmpId, setActiveEmpId] = useState<number | null>(null);
@@ -144,12 +180,148 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
       const data = await res.json();
       if (!data.ok) throw new Error(data.error ?? 'فشل التحميل');
       setBarbers(data.barbers ?? []);
+      setTransferDestinations(data.transferDestinations ?? []);
     } catch (e: any) {
       setError(e.message ?? 'فشل تحميل البيانات');
     } finally {
       setLoading(false);
     }
   }, [date]);
+
+  const openTransferDialog = (empId: number) => {
+    setTransferEmpId(empId);
+    setTransferToBranchId(transferDestinations[0]?.branchId ?? '');
+    setTransferReason('');
+    setTransferStart('');
+    setTransferEnd('');
+    setTransferPreview(null);
+    setTransferError(null);
+  };
+
+  const runTransferPreview = async () => {
+    if (!transferEmpId || !transferToBranchId) return;
+    setTransferBusy(true);
+    setTransferError(null);
+    try {
+      const res = await fetch(
+        `/api/operations/employees/${transferEmpId}/temporary-transfer/preview`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workDate: date,
+            toBranchId: transferToBranchId,
+            startTime: transferStart || undefined,
+            endTime: transferEnd || undefined,
+          }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error ?? 'فشل معاينة النقل');
+      setTransferPreview(data.preview);
+    } catch (e: any) {
+      setTransferError(e.message ?? 'فشل معاينة النقل');
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  const applyTransfer = async () => {
+    if (!transferEmpId || !transferToBranchId || !transferReason.trim()) return;
+    setTransferBusy(true);
+    setTransferError(null);
+    try {
+      const res = await fetch(
+        `/api/operations/employees/${transferEmpId}/temporary-transfer`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workDate: date,
+            toBranchId: transferToBranchId,
+            startTime: transferStart || undefined,
+            endTime: transferEnd || undefined,
+            reason: transferReason.trim(),
+          }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error ?? 'فشل النقل');
+      setTransferEmpId(null);
+      setTransferPreview(null);
+      await loadBarbers();
+      onApplied();
+    } catch (e: any) {
+      setTransferError(e.message ?? 'فشل النقل');
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  const cancelTransfer = async (empId: number) => {
+    const reason = window.prompt('سبب إلغاء النقل الطارئ');
+    if (!reason?.trim()) return;
+    setTransferBusy(true);
+    try {
+      const res = await fetch(`/api/operations/employees/${empId}/temporary-transfer`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workDate: date, reason: reason.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error ?? 'فشل الإلغاء');
+      await loadBarbers();
+      onApplied();
+    } catch (e: any) {
+      setError(e.message ?? 'فشل إلغاء النقل');
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  /** Clear absence / weekly-off block and check in as Present for today. */
+  const restorePresentAndCheckIn = async (empId: number) => {
+    setRestoringEmpId(empId);
+    setError(null);
+    setAttendanceWarning(null);
+    try {
+      const res = await fetch('/api/operations/schedule-control/restore-present', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ empId, date }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error ?? 'فشل تسجيل الحضور');
+      setSaveSuccess(data.message ?? 'تم إلغاء الغياب وتسجيل الحضور');
+      setActiveEmpId(null);
+      await loadBarbers();
+      onApplied();
+    } catch (e: any) {
+      setError(e.message ?? 'فشل إلغاء الغياب وتسجيل الحضور');
+    } finally {
+      setRestoringEmpId(null);
+    }
+  };
+
+  const needsRestorePresent = (b: BarberRow) => {
+    if (b.isWorkingDay && !b.isAbsent && b.appliedOverride?.type !== 'day_off') {
+      return false;
+    }
+    const hasDayOffOverride = b.appliedOverride?.type === 'day_off';
+    const absent =
+      b.isAbsent ||
+      b.attendance?.status === 'Absent' ||
+      b.currentAvailabilityStatus === 'absent';
+    const weeklyOff =
+      !b.isWorkingDay &&
+      (b.section === 'off' ||
+        b.isGlobalDayOff ||
+        b.currentAvailabilityStatus === 'day_off');
+    return Boolean(hasDayOffOverride || absent || weeklyOff);
+  };
+
+  const blockedByDayOffOverride = (b: BarberRow) =>
+    b.appliedOverride?.type === 'day_off' || b.isAbsent;
 
   useEffect(() => {
     if (open) {
@@ -269,12 +441,19 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
 
   // ── Remove override ──────────────────────────────────────────────────────────
 
-  const handleRemoveOverride = async (overrideId: number) => {
+  const handleRemoveOverride = async (overrideId: number, empId?: number, type?: OverrideType) => {
     setAttendanceWarning(null);
     try {
       const res = await fetch(`/api/operations/schedule-control/override/${overrideId}`, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'فشل الحذف');
+
+      // If day_off was removed but Absent still lingers — finish with one-click restore
+      if (type === 'day_off' && empId && isToday && (data.attendanceWarning || data.barberStatus?.isAbsent)) {
+        await restorePresentAndCheckIn(empId);
+        return;
+      }
+
       if (data.attendanceWarning) {
         setAttendanceWarning(data.attendanceWarning);
       }
@@ -375,9 +554,39 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
 
         {/* Attendance warning banner (persists after day_off delete) */}
         {attendanceWarning && (
-          <div className="mx-6 mt-3 px-4 py-2 rounded-xl flex items-start gap-2 text-xs" style={{ background: 'color-mix(in srgb, var(--destructive) 10%, transparent)', color: 'var(--destructive)', border: '1px solid color-mix(in srgb, var(--destructive) 25%, transparent)' }}>
-            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-            <span>{attendanceWarning}</span>
+          <div
+            className="mx-6 mt-3 px-4 py-3 rounded-xl flex flex-col gap-2 text-xs"
+            style={{
+              background: 'color-mix(in srgb, var(--destructive) 10%, transparent)',
+              color: 'var(--destructive)',
+              border: '1px solid color-mix(in srgb, var(--destructive) 25%, transparent)',
+            }}
+          >
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+              <span>{attendanceWarning}</span>
+            </div>
+            {isToday && (
+              <button
+                type="button"
+                disabled={restoringEmpId != null}
+                onClick={() => {
+                  const empId =
+                    activeEmpId ??
+                    barbers.find((b) => b.isAbsent || b.attendance?.status === 'Absent')?.empId;
+                  if (empId) void restorePresentAndCheckIn(empId);
+                }}
+                className="self-start flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold"
+                style={{
+                  background: 'color-mix(in srgb, var(--primary) 18%, transparent)',
+                  color: 'var(--primary)',
+                  border: '1px solid color-mix(in srgb, var(--primary) 40%, transparent)',
+                }}
+              >
+                <UserCheck size={13} />
+                إلغاء الغياب وتسجيل الحضور الآن
+              </button>
+            )}
           </div>
         )}
 
@@ -423,8 +632,18 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                         className="text-xs px-2 py-0.5 rounded-full font-medium"
                         style={{ background: sc.bg, color: sc.text, border: `1px solid ${sc.border}` }}
                       >
-                        {b.statusReasonArabic}
+                        {b.statusLabelAr || b.statusReasonArabic}
                       </span>
+                      {b.currentBranch && (
+                        <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--primary) 12%, transparent)', color: 'var(--primary)', border: '1px solid color-mix(in srgb, var(--primary) 28%, transparent)' }}>
+                          {b.currentBranch.branchName}
+                        </span>
+                      )}
+                      {b.isTransferred && (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: 'color-mix(in srgb, var(--primary) 18%, transparent)', color: 'var(--primary)', border: '1px solid color-mix(in srgb, var(--primary) 45%, transparent)' }}>
+                          نقل طارئ
+                        </span>
+                      )}
                       {b.appliedOverride && (
                         <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--primary) 10%, transparent)', color: 'var(--primary)', border: '1px solid color-mix(in srgb, var(--primary) 20%, transparent)' }}>
                           {ACTION_LABELS[b.appliedOverride.type]}
@@ -432,6 +651,22 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                       )}
                     </div>
                     <div className="flex items-center gap-3 mt-1 flex-wrap">
+                      {b.baseBranch && b.isTransferred && (
+                        <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                          الموقع الأساسي: {b.baseBranch.branchName}
+                          {b.transferReason ? ` · سبب النقل: ${b.transferReason}` : ''}
+                        </span>
+                      )}
+                      {b.section === 'elsewhere' && b.currentBranch && (
+                        <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                          {b.empName} موجود اليوم في فرع {b.currentBranch.branchName}
+                        </span>
+                      )}
+                      {b.section === 'off' && (
+                        <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                          إجازة أسبوعية
+                        </span>
+                      )}
                       {/* Missing HR schedule warning */}
                       {b.defaultSchedule?.source === 'missing_hr_schedule' && (
                         <span className="text-xs flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ background: 'color-mix(in srgb, var(--destructive) 10%, transparent)', color: 'var(--destructive)', border: '1px solid color-mix(in srgb, var(--destructive) 20%, transparent)' }}>
@@ -449,15 +684,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                       {/* Default schedule + source */}
                       {b.defaultSchedule?.isWorkingDay && b.defaultSchedule.start && (
                         <span className="text-xs flex items-center gap-1" style={{ color: 'var(--muted-foreground)' }}>
-                          <span>الجدول الأساسي: {b.defaultSchedule.start} — {b.defaultSchedule.end}</span>
-                          <span className="px-1 py-0.5 rounded text-xs" style={{
-                            background: b.defaultSchedule.source === 'TblEmpWorkSchedule'
-                              ? 'color-mix(in srgb, var(--success) 8%, transparent)' : 'color-mix(in srgb, var(--warning) 12%, transparent)',
-                            color: b.defaultSchedule.source === 'TblEmpWorkSchedule'
-                              ? 'var(--success)' : 'var(--warning)',
-                          }}>
-                            {b.defaultSchedule.source === 'TblEmpWorkSchedule' ? 'HR' : 'تعريف افتراضي ⚠'}
-                          </span>
+                          <span>الجدول: {b.defaultSchedule.start} → {b.defaultSchedule.end}</span>
                         </span>
                       )}
                       {/* Effective — only show if override is active */}
@@ -483,6 +710,11 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                           {b.activeQueueCount > 0 && `${b.activeQueueCount} دور`}
                         </span>
                       )}
+                      {b.attendance && (
+                        <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                          الحضور: {b.attendance.checkInTime ? (b.attendance.checkOutTime ? 'انصرف' : 'مسجل') : 'لم يسجل'}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -491,7 +723,14 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                     <button
                       className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-colors"
                       style={{ color: 'var(--muted-foreground)', border: '1px solid color-mix(in srgb, var(--foreground) 8%, transparent)' }}
-                      onClick={e => { e.stopPropagation(); handleRemoveOverride(b.appliedOverride!.overrideId!); }}
+                      onClick={e => {
+                        e.stopPropagation();
+                        handleRemoveOverride(
+                          b.appliedOverride!.overrideId!,
+                          b.empId,
+                          b.appliedOverride!.type,
+                        );
+                      }}
                       title="إلغاء التعديل"
                     >
                       <Trash2 size={12} />
@@ -509,11 +748,51 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                 {isOpen && (
                   <div className="border-t px-4 pb-4 pt-3 space-y-4" style={{ borderColor: 'color-mix(in srgb, var(--foreground) 6%, transparent)' }}>
 
-                    {/* day_off already active warning */}
-                    {b.isDayOff && b.appliedOverride?.type !== 'day_off' && (
-                      <div className="px-3 py-2 rounded-xl text-xs flex items-center gap-2" style={{ background: 'color-mix(in srgb, var(--accent) 10%, transparent)', color: 'var(--accent)', border: '1px solid color-mix(in srgb, var(--accent) 20%, transparent)' }}>
-                        <AlertTriangle size={12} />
-                        الصنايعي لديه غياب مسجل — أزل الغياب أولاً لإضافة تعديل آخر
+                    {/* Absence / weekly-off — one-click restore + check-in */}
+                    {needsRestorePresent(b) && (
+                      <div
+                        className="px-3 py-3 rounded-xl space-y-2"
+                        style={{
+                          background: 'color-mix(in srgb, var(--primary) 10%, transparent)',
+                          border: '1px solid color-mix(in srgb, var(--primary) 35%, transparent)',
+                        }}
+                      >
+                        <div className="flex items-start gap-2 text-xs" style={{ color: 'var(--primary)' }}>
+                          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-semibold">
+                              {b.appliedOverride?.type === 'day_off' || b.isAbsent
+                                ? 'الصنايعي مسجّل غياب اليوم'
+                                : 'إجازة أسبوعية / غير مجدول اليوم'}
+                            </p>
+                            <p style={{ color: 'var(--muted-foreground)' }}>
+                              اضغط الزر لإلغاء الغياب وتشغيله اليوم وتسجيل حضوره تلقائياً — يظهر فوراً في متابعة الحضور.
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={restoringEmpId === b.empId || !isToday}
+                          onClick={() => void restorePresentAndCheckIn(b.empId)}
+                          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+                          style={{
+                            background: 'color-mix(in srgb, var(--primary) 22%, transparent)',
+                            color: 'var(--primary)',
+                            border: '1px solid color-mix(in srgb, var(--primary) 55%, transparent)',
+                          }}
+                        >
+                          {restoringEmpId === b.empId ? (
+                            <Loader2 size={16} className="animate-spin" />
+                          ) : (
+                            <UserCheck size={16} />
+                          )}
+                          إلغاء الغياب وتسجيل الحضور الآن
+                        </button>
+                        {!isToday && (
+                          <p className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
+                            التسجيل السريع متاح لتاريخ اليوم فقط
+                          </p>
+                        )}
                       </div>
                     )}
 
@@ -524,8 +803,8 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                         {(Object.keys(ACTION_LABELS) as OverrideType[]).map(t => {
                           const isDanger = DANGER_TYPES.includes(t);
                           const isSelected = actionForm.type === t;
-                          // Disable non-day_off types when a day_off override is active
-                          const isDisabledByDayOff = b.isDayOff && t !== 'day_off';
+                          // Only hard-block when an active day_off override or Absent remains
+                          const isDisabledByDayOff = blockedByDayOffOverride(b) && t !== 'day_off';
                           return (
                             <button
                               key={t}
@@ -549,6 +828,35 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                             </button>
                           );
                         })}
+                        {(b.section === 'present' || b.section === 'transferred_in') && !b.isGlobalDayOff && (
+                          b.isTransferred ? (
+                            <button
+                              type="button"
+                              onClick={() => void cancelTransfer(b.empId)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium"
+                              style={{
+                                color: 'var(--destructive)',
+                                border: '1px solid color-mix(in srgb, var(--destructive) 40%, transparent)',
+                                background: 'color-mix(in srgb, var(--destructive) 10%, transparent)',
+                              }}
+                            >
+                              إلغاء النقل الطارئ
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => openTransferDialog(b.empId)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold"
+                              style={{
+                                color: 'var(--primary)',
+                                border: '1px solid color-mix(in srgb, var(--primary) 55%, transparent)',
+                                background: 'transparent',
+                              }}
+                            >
+                              نقل اليوم لفرع آخر
+                            </button>
+                          )
+                        )}
                       </div>
                     </div>
 
@@ -761,6 +1069,112 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
           </button>
         </div>
       </div>
+
+      {/* Emergency transfer dialog */}
+      {transferEmpId != null && (
+        <div
+          className="absolute inset-0 z-10 flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.55)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setTransferEmpId(null); }}
+        >
+          <div
+            className="w-full max-w-md mx-4 rounded-2xl p-5 space-y-3"
+            style={{
+              background: 'var(--surface-elevated)',
+              border: '1px solid color-mix(in srgb, var(--primary) 30%, transparent)',
+            }}
+            dir="rtl"
+          >
+            <h3 className="font-bold text-foreground">نقل اليوم لفرع آخر</h3>
+            <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+              لا يعدّل الجدول الأسبوعي — نقل طارئ لتاريخ {date} فقط
+            </p>
+            <label className="block text-xs space-y-1">
+              <span style={{ color: 'var(--muted-foreground)' }}>فرع الوجهة</span>
+              <select
+                className="w-full rounded-lg px-3 py-2 text-sm border"
+                style={{ background: 'var(--surface-muted)', borderColor: 'color-mix(in srgb, var(--primary) 25%, transparent)' }}
+                value={transferToBranchId}
+                onChange={(e) => setTransferToBranchId(e.target.value ? Number(e.target.value) : '')}
+              >
+                <option value="">اختر فرعاً</option>
+                {transferDestinations.map((d) => (
+                  <option key={d.branchId} value={d.branchId}>{d.branchName}</option>
+                ))}
+              </select>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block text-xs space-y-1">
+                <span style={{ color: 'var(--muted-foreground)' }}>من (اختياري)</span>
+                <input type="time" value={transferStart} onChange={(e) => setTransferStart(e.target.value)}
+                  className="w-full rounded-lg px-3 py-2 text-sm border"
+                  style={{ background: 'var(--surface-muted)', borderColor: 'color-mix(in srgb, var(--primary) 25%, transparent)', colorScheme: 'dark' }}
+                />
+              </label>
+              <label className="block text-xs space-y-1">
+                <span style={{ color: 'var(--muted-foreground)' }}>إلى (اختياري)</span>
+                <input type="time" value={transferEnd} onChange={(e) => setTransferEnd(e.target.value)}
+                  className="w-full rounded-lg px-3 py-2 text-sm border"
+                  style={{ background: 'var(--surface-muted)', borderColor: 'color-mix(in srgb, var(--primary) 25%, transparent)', colorScheme: 'dark' }}
+                />
+              </label>
+            </div>
+            <label className="block text-xs space-y-1">
+              <span style={{ color: 'var(--muted-foreground)' }}>السبب *</span>
+              <input
+                value={transferReason}
+                onChange={(e) => setTransferReason(e.target.value)}
+                className="w-full rounded-lg px-3 py-2 text-sm border"
+                style={{ background: 'var(--surface-muted)', borderColor: 'color-mix(in srgb, var(--primary) 25%, transparent)' }}
+                placeholder="تغطية الفرع"
+              />
+            </label>
+            {transferError && (
+              <p className="text-xs" style={{ color: 'var(--destructive)' }}>{transferError}</p>
+            )}
+            {transferPreview && (
+              <div className="rounded-xl p-3 text-xs space-y-1" style={{ background: 'color-mix(in srgb, var(--foreground) 5%, transparent)' }}>
+                <p>المصدر: {transferPreview.sourceBranch?.branchName ?? '—'}</p>
+                <p>الوجهة: {transferPreview.destinationBranch?.branchName ?? '—'}</p>
+                <p>
+                  النافذة: {transferPreview.resolvedDestinationWindow?.startTime} →{' '}
+                  {transferPreview.resolvedDestinationWindow?.endTime}
+                  {transferPreview.resolvedDestinationWindow?.overnight ? ' +1' : ''}
+                </p>
+                {transferPreview.blockers?.map((b: { code: string; message: string }) => (
+                  <p key={b.code} style={{ color: 'var(--destructive)' }}>{b.message}</p>
+                ))}
+                {transferPreview.affectedBookings?.length > 0 && (
+                  <div>
+                    <p style={{ color: 'var(--warning)' }}>حجوزات المصدر تمنع النقل:</p>
+                    {transferPreview.affectedBookings.map((bk: { bookingId: number; bookingCode: string | null; startTime: string }) => (
+                      <p key={bk.bookingId}>{bk.bookingCode || bk.bookingId} — {bk.startTime}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2 justify-end pt-1">
+              <button type="button" onClick={() => setTransferEmpId(null)} className="px-3 py-1.5 rounded-xl text-xs"
+                style={{ color: 'var(--muted-foreground)' }}>إلغاء النقل</button>
+              <button type="button" disabled={transferBusy || !transferToBranchId} onClick={() => void runTransferPreview()}
+                className="px-3 py-1.5 rounded-xl text-xs font-medium"
+                style={{ border: '1px solid color-mix(in srgb, var(--primary) 40%, transparent)', color: 'var(--primary)' }}>
+                معاينة
+              </button>
+              <button
+                type="button"
+                disabled={transferBusy || !transferReason.trim() || !transferPreview?.canTransfer}
+                onClick={() => void applyTransfer()}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold"
+                style={{ background: 'color-mix(in srgb, var(--primary) 22%, transparent)', color: 'var(--primary)', border: '1px solid color-mix(in srgb, var(--primary) 50%, transparent)' }}
+              >
+                تطبيق النقل
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

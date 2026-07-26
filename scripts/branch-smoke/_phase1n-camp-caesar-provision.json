@@ -1,0 +1,130 @@
+{
+  "createdAt": "2026-07-26T00:01:33.293Z",
+  "englishDisplayName": "Camp Caesar",
+  "branch": {
+    "branchId": 3,
+    "branchCode": "CAMP_CAESAR",
+    "branchName": "فرع كامب شيزار",
+    "shortName": "كامب شيزار",
+    "address": null,
+    "phone": null,
+    "timeZone": "Africa/Cairo",
+    "businessDayCutoffTime": "04:00:00",
+    "defaultOpenTime": null,
+    "defaultCloseTime": null,
+    "isActive": false,
+    "lifecycleStatus": "SETUP",
+    "publicBookingEnabled": false,
+    "externalNotificationsEnabled": false,
+    "createdAt": "2026-07-26T00:01:27.000Z",
+    "updatedAt": null
+  },
+  "queueBookingSettings": {
+    "SettingID": 3,
+    "BookingEnabled": false,
+    "SalonName": "Cut Salon"
+  },
+  "rowsCreated": {
+    "TblBranch": 1,
+    "QueueBookingSettings": 1,
+    "TblUserBranchAccess": 1,
+    "TblBranchLifecycleAudit": 1,
+    "PartnerShares": 0
+  },
+  "ownershipZeros": {
+    "Bookings": 0,
+    "Queue": 0,
+    "Cash": 0,
+    "Attendance": 0,
+    "Payroll": 0,
+    "Ledger": 0,
+    "Targets": 0,
+    "Recalc": 0,
+    "PayPlans": 0,
+    "TargetPlans": 0,
+    "Assignments": 0,
+    "InvMoves": 0,
+    "InvBalances": 0,
+    "InvTransfers": 0
+  },
+  "access": [
+    {
+      "ID": "11",
+      "UserID": 10,
+      "CanOperate": true,
+      "CanViewReports": true,
+      "CanSwitch": true,
+      "IsActive": true,
+      "GrantReason": "phase1m-provision"
+    }
+  ],
+  "readiness": {
+    "score": 83,
+    "isReadyForSmoke": false,
+    "isReadyForInternalLive": false,
+    "isReadyForPublicLive": false,
+    "blockers": [
+      {
+        "requiredFor": [
+          "internal_live",
+          "public_live"
+        ],
+        "key": "legacy.ELIGIBLE_BARBER",
+        "section": "employees",
+        "title": "ELIGIBLE_BARBER",
+        "status": "blocker",
+        "details": "No eligible barber with CanReceiveBookings on this branch"
+      },
+      {
+        "requiredFor": [
+          "smoke"
+        ],
+        "key": "smoke.assignment",
+        "section": "employees",
+        "title": "تعيين موظف للـ smoke",
+        "status": "blocker",
+        "details": "No bookable assignment on branch (required before SMOKE_TEST)"
+      }
+    ],
+    "warnings": [
+      {
+        "requiredFor": [
+          "internal_live",
+          "public_live"
+        ],
+        "key": "identity.address",
+        "section": "identity",
+        "title": "العنوان",
+        "status": "warning",
+        "details": "Address recommended before live"
+      },
+      {
+        "requiredFor": [
+          "public_live"
+        ],
+        "key": "legacy.PARTNER_SHARES",
+        "section": "reports",
+        "title": "PARTNER_SHARES",
+        "status": "warning",
+        "details": "No effective partner shares (partner reports will fail)"
+      },
+      {
+        "requiredFor": [
+          "public_live"
+        ],
+        "key": "public.frontend_multi_branch",
+        "section": "public_website",
+        "title": "واجهة الحجز تدعم اختيار الفرع",
+        "status": "warning",
+        "details": "Public live requires cutsaloon.com multi-branch selection deployment (see docs/branch-phase-1m-public-booking-readiness.md)",
+        "remediationUrl": "/docs/branch-phase-1m-public-booking-readiness.md"
+      }
+    ]
+  },
+  "isolation": {
+    "inActive": false,
+    "inPublic": false
+  },
+  "gleemModified": 0,
+  "partnerSharesSeeded": 0
+}

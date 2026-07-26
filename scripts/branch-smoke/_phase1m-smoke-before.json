@@ -1,0 +1,32 @@
+{
+  "capturedAt": "2026-07-25T23:43:13.995Z",
+  "workDate": "2026-07-26",
+  "actorUserId": 10,
+  "before": {
+    "GleemId": 1,
+    "Ph1gId": 2,
+    "GleemMaxBookingId": 2130,
+    "GleemMaxTicketId": 146,
+    "GleemMaxAttendanceId": 2894,
+    "GleemMaxPayrollId": 1635,
+    "GleemMaxLedgerId": 576,
+    "GleemMaxTargetId": 107,
+    "GleemMaxCashMoveId": 36672,
+    "GleemBookings": 1546,
+    "GleemQueue": 142,
+    "GleemAttendance": 914,
+    "GleemPayroll": 628,
+    "GleemLedger": 560,
+    "GleemTargets": 107,
+    "GleemCashMoves": 11951,
+    "PhBookings": 1,
+    "PhQueue": 1,
+    "PhAttendance": 0,
+    "PhPayroll": 0,
+    "PhLedger": 0,
+    "PhTargets": 0,
+    "PhCashMoves": 0,
+    "GleemBranchJson": "{\"BranchID\":1,\"LifecycleStatus\":\"PUBLIC_LIVE\",\"IsActive\":true,\"PublicBookingEnabled\":true,\"ExternalNotificationsEnabled\":true}",
+    "PhBranchJson": "{\"BranchID\":2,\"LifecycleStatus\":\"SETUP\",\"IsActive\":false,\"PublicBookingEnabled\":false,\"ExternalNotificationsEnabled\":false}"
+  }
+}

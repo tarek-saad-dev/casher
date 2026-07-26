@@ -14,6 +14,13 @@ import {
   type AttendanceBreakInterval,
 } from '@/lib/hr/attendance-breaks';
 
+export interface BranchEarningSection {
+  branchName: string;
+  hourlyWage: number;
+  monthlySalary: number;
+  target: number;
+}
+
 export interface ComposeEmployeeDailyWhatsAppInput {
   employeeName: string;
   branchName: string;
@@ -31,6 +38,8 @@ export interface ComposeEmployeeDailyWhatsAppInput {
   otherServiceCount?: number | null;
   /** وقت مستقطع intervals (LeaveAt → ReturnAt). */
   breakIntervals?: AttendanceBreakInterval[] | null;
+  /** Phase 1L: per-branch earned breakdown (read-only sum). */
+  branchEarnings?: BranchEarningSection[] | null;
 }
 
 function hoursLabel(hours: number | null | undefined): string {
@@ -85,6 +94,7 @@ export function composeEmployeeDailyWhatsAppMessage(
     basicServiceCount,
     otherServiceCount,
     breakIntervals,
+    branchEarnings,
   } = input;
   const heading = formatWorkDateHeadingAr(workDate, dayNameAr);
   const lines: string[] = [
@@ -187,6 +197,29 @@ export function composeEmployeeDailyWhatsAppMessage(
   }
   lines.push(`📌 صافي اليوم: ${money(day.dayNet)}`);
   lines.push('');
+
+  if (branchEarnings && branchEarnings.length > 0) {
+    lines.push('━━━━━━━━━━━━');
+    lines.push('🏢 تفصيل الفروع');
+    let overall = 0;
+    for (const section of branchEarnings) {
+      const earned =
+        (section.hourlyWage || 0) +
+        (section.monthlySalary || 0) +
+        (section.target || 0);
+      overall += earned;
+      lines.push('');
+      lines.push(section.branchName);
+      lines.push(`Hourly wage: ${money(section.hourlyWage)}`);
+      lines.push(`Monthly salary: ${money(section.monthlySalary)}`);
+      lines.push(`Target: ${money(section.target)}`);
+      lines.push(`Total earned: ${money(earned)}`);
+    }
+    lines.push('');
+    lines.push(`Overall earned: ${money(overall)}`);
+    lines.push('');
+  }
+
   lines.push('━━━━━━━━━━━━');
   lines.push(`📒 رصيد حسابك حتى الآن: ${money(ledgerBalance)}`);
   lines.push('(أساسي + تارجت − سلف − خصومات − مصروف)');

@@ -51,6 +51,7 @@ function serializePlan(plan: TargetPlanWithTiers) {
   return {
     id: plan.id,
     empId: plan.empId,
+    branchId: plan.branchId,
     isEnabled: plan.isEnabled,
     inputBasis: plan.inputBasis,
     conversionDays: plan.conversionDays,
@@ -104,6 +105,7 @@ function findEffectivePlan(
 export async function getEmployeeTargetSettings(
   empId: number,
   effectiveDate?: string | null,
+  branchId?: number | null,
 ) {
   const employee = await getEmployeeBasic(empId);
   if (!employee) {
@@ -112,11 +114,15 @@ export async function getEmployeeTargetSettings(
     throw err;
   }
 
+  if (branchId == null || !(branchId > 0)) {
+    throw new EmployeeTargetValidationError('branchId مطلوب لإعدادات التارجت');
+  }
+
   const asOf = effectiveDate && /^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)
     ? effectiveDate
     : getCairoBusinessDate();
 
-  const plans = await listPlansForEmployee(empId);
+  const plans = await listPlansForEmployee(empId, branchId);
   const tiers = await listTiersForPlans(plans.map((p) => p.id));
   const withTiers = attachTiers(plans, tiers);
 
@@ -188,12 +194,17 @@ export async function saveEmployeeTargetPlan(
   empId: number,
   body: TargetSaveBody,
   userId: number | null,
+  branchId: number,
 ) {
   const employee = await getEmployeeBasic(empId);
   if (!employee) {
     const err = new Error('الموظف غير موجود');
     (err as Error & { status?: number }).status = 404;
     throw err;
+  }
+
+  if (!(branchId > 0)) {
+    throw new EmployeeTargetValidationError('branchId مطلوب لحفظ خطة التارجت');
   }
 
   const isEnabled = body.isEnabled;
@@ -229,7 +240,7 @@ export async function saveEmployeeTargetPlan(
     requireAtLeastOne: isEnabled,
   });
 
-  const existing = await listPlansForEmployee(empId);
+  const existing = await listPlansForEmployee(empId, branchId);
   const monthKey = effectiveFrom.slice(0, 7);
 
   // أي خطة في نفس الشهر تُدمَج في خطة واحدة من أول الشهر (بدون تاريخ بداية يدوي)
@@ -326,6 +337,7 @@ export async function saveEmployeeTargetPlan(
 
         planId = await insertPlanWithTiers(transaction, {
           empId,
+          branchId,
           isEnabled,
           inputBasis,
           conversionDays,
@@ -386,7 +398,7 @@ export async function deleteEmployeeTargetPlan(
     );
   }
 
-  const allPlans = await listPlansForEmployee(empId);
+  const allPlans = await listPlansForEmployee(empId, plan.branchId);
   const prior = [...allPlans]
     .filter((p) => p.effectiveFrom < plan.effectiveFrom)
     .sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? 1 : -1))[0];

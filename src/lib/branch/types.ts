@@ -2,6 +2,13 @@
 
 export const BRANCH_SESSION_VERSION = 1 as const;
 
+export type BranchLifecycleStatus =
+  | 'SETUP'
+  | 'SMOKE_TEST'
+  | 'INTERNAL_LIVE'
+  | 'PUBLIC_LIVE'
+  | 'SUSPENDED';
+
 export interface BranchRecord {
   branchId: number;
   branchCode: string;
@@ -14,6 +21,12 @@ export interface BranchRecord {
   defaultOpenTime: string | null;
   defaultCloseTime: string | null;
   isActive: boolean;
+  /** Phase 1M — authoritative stage. Defaults to SETUP when column absent in old rows. */
+  lifecycleStatus: BranchLifecycleStatus;
+  /** Phase 1M — public website discovery / booking gate (independent of ops IsActive). */
+  publicBookingEnabled: boolean;
+  /** Phase 1M — real WhatsApp / customer messaging gate. */
+  externalNotificationsEnabled: boolean;
   createdAt: Date;
   updatedAt: Date | null;
 }
@@ -81,7 +94,10 @@ export type BranchDomainErrorCode =
   | 'SHIFT_DAY_MISMATCH'
   | 'FINANCIAL_BRANCH_MISMATCH'
   | 'NO_BUSINESS_DAY_FOR_DATE'
-  | 'BRANCH_REQUIRED';
+  | 'BRANCH_REQUIRED'
+  | 'BRANCH_LIFECYCLE_FORBIDDEN'
+  | 'BRANCH_NOT_READY'
+  | 'BRANCH_ADMIN_REQUIRED';
 
 export class BranchDomainError extends Error {
   readonly code: BranchDomainErrorCode;

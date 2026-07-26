@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-07-24T09:50:01.875Z",
+  "capturedAt": "2026-07-25T20:14:48.935Z",
   "database": "last132",
   "branches": [
     {
@@ -21,33 +21,33 @@
     "plan": 0
   },
   "payroll": {
-    "rows": 606,
-    "wageSum": 147999.66,
-    "hoursSum": 5808.94
+    "rows": 612,
+    "wageSum": 149614.17,
+    "hoursSum": 5876.34
   },
   "payrollByBranch": [
     {
       "BranchCode": "GLEEM",
-      "c": 606,
-      "wageSum": 147999.66
+      "c": 612,
+      "wageSum": 149614.17
     }
   ],
   "ph1Payroll": 0,
   "ledger": {
-    "rows": 517,
-    "credits": 80985.33,
-    "debits": 59951,
-    "balance": 21034.33
+    "rows": 543,
+    "credits": 84580.04,
+    "debits": 61371,
+    "balance": 23209.04
   },
   "cashMismatch": 0,
   "ph1Ledger": 0,
   "targets": {
-    "rows": 97,
-    "targetSum": 30833.6
+    "rows": 107,
+    "targetSum": 32713.8
   },
   "ph1Targets": 0,
-  "branchBalanceSum": 21034.33,
-  "globalBalanceSum": 21034.33,
+  "branchBalanceSum": 23209.04,
+  "globalBalanceSum": 23209.04,
   "branchPayrollPlans": 13,
   "ph1PayrollPlans": 0,
   "requiredIndexes": [

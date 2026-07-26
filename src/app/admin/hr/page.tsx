@@ -7,7 +7,7 @@ import {
   Users, Plus, CheckCircle2, AlertCircle,
   Loader2, UserPlus, Link2, Scissors, X, Zap, Clock, UserX, UserCheck,
   Banknote, CalendarCheck, Wallet, UsersRound, BookOpen, Scale, MessageCircle, Pencil, Target,
-  FileSpreadsheet,
+  FileSpreadsheet, CalendarRange, MoreHorizontal,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { parseTimeToMinutes } from '@/lib/timeUtils';
@@ -20,7 +20,7 @@ import {
   labelPayrollMethod,
   type HrEmployeeListRow,
 } from '@/components/hr/employee-hr-form-utils';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -28,7 +28,12 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { JobType } from '@/lib/types';
+import { cn } from '@/lib/utils';
+import Link from 'next/link';
 
 function TabLoader() {
   return (
@@ -698,47 +703,68 @@ function EmployeesPanel() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-left">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <Button variant="outline" size="sm" onClick={() => openEditModal(emp)} className="gap-1 text-xs h-8">
-                        <Pencil className="w-3 h-3" />تعديل
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setTargetEmployee(emp);
-                          setTargetModalOpen(true);
-                        }}
-                        className="gap-1 text-xs h-8"
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                      <Link
+                        href={`/admin/hr/employees/${emp.EmpID}/branch-schedule`}
+                        className={cn(
+                          buttonVariants({ variant: 'secondary', size: 'sm' }),
+                          'gap-1 text-xs h-8',
+                        )}
+                        title="الفروع ومواعيد العمل"
                       >
-                        <Target className="w-3 h-3" />إعداد التارجت
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => openFinanceModal(emp)} className="gap-1 text-xs h-8">
-                        <Link2 className="w-3 h-3" />الربط المالي
-                      </Button>
-                      {emp.isActive ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => deactivateEmployee(emp.EmpID)}
-                          disabled={deactivatingId === emp.EmpID}
-                          className="gap-1 text-xs h-8 border-destructive/30 text-destructive hover:bg-destructive/10"
+                        <CalendarRange className="w-3 h-3" />
+                        الفروع ومواعيد العمل
+                      </Link>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          className={cn(
+                            buttonVariants({ variant: 'outline', size: 'sm' }),
+                            'gap-1 text-xs h-8',
+                          )}
                         >
-                          {deactivatingId === emp.EmpID ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserX className="w-3 h-3" />}
-                          إيقاف
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => activateEmployee(emp.EmpID)}
-                          disabled={activatingId === emp.EmpID}
-                          className="gap-1 text-xs h-8 border-success/30 text-success hover:bg-success/10"
-                        >
-                          {activatingId === emp.EmpID ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserCheck className="w-3 h-3" />}
-                          تفعيل
-                        </Button>
-                      )}
+                          <MoreHorizontal className="w-3 h-3" />
+                          إدارة العمل
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="min-w-[200px]">
+                          <DropdownMenuItem onClick={() => openEditModal(emp)}>
+                            <Pencil className="w-3.5 h-3.5 ml-2" />
+                            تعديل الموظف
+                          </DropdownMenuItem>
+                          <DropdownMenuItem asChild>
+                            <Link href={`/admin/hr/employees/${emp.EmpID}/branch-schedule`}>
+                              <CalendarRange className="w-3.5 h-3.5 ml-2" />
+                              الفروع ومواعيد العمل
+                            </Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setTargetEmployee(emp);
+                              setTargetModalOpen(true);
+                            }}
+                          >
+                            <Target className="w-3.5 h-3.5 ml-2" />
+                            إعداد التارجت
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openFinanceModal(emp)}>
+                            <Link2 className="w-3.5 h-3.5 ml-2" />
+                            الربط المالي
+                          </DropdownMenuItem>
+                          {emp.isActive ? (
+                            <DropdownMenuItem
+                              onClick={() => deactivateEmployee(emp.EmpID)}
+                              className="text-destructive"
+                            >
+                              <UserX className="w-3.5 h-3.5 ml-2" />
+                              إيقاف
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem onClick={() => activateEmployee(emp.EmpID)}>
+                              <UserCheck className="w-3.5 h-3.5 ml-2" />
+                              تفعيل
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </td>
                 </tr>

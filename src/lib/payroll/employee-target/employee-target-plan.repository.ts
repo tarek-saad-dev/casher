@@ -6,6 +6,7 @@ import type { TargetInputBasis } from './target.types';
 export interface TargetPlanRow {
   id: number;
   empId: number;
+  branchId: number;
   isEnabled: boolean;
   inputBasis: TargetInputBasis;
   conversionDays: number;
@@ -53,6 +54,7 @@ function mapPlan(row: Record<string, unknown>): TargetPlanRow {
   return {
     id: Number(row.ID),
     empId: Number(row.EmpID),
+    branchId: Number(row.BranchID),
     isEnabled: Boolean(row.IsEnabled),
     inputBasis: row.InputBasis as TargetInputBasis,
     conversionDays: Number(row.ConversionDays),
@@ -98,18 +100,22 @@ export async function getEmployeeBasic(
   };
 }
 
-export async function listPlansForEmployee(empId: number): Promise<TargetPlanRow[]> {
+export async function listPlansForEmployee(
+  empId: number,
+  branchId: number,
+): Promise<TargetPlanRow[]> {
   const db = await getPool();
   const result = await db
     .request()
     .input('empId', sql.Int, empId)
+    .input('branchId', sql.Int, branchId)
     .query(`
       SELECT
-        ID, EmpID, IsEnabled, InputBasis, ConversionDays,
+        ID, EmpID, BranchID, IsEnabled, InputBasis, ConversionDays,
         EffectiveFrom, EffectiveTo, Notes,
         CreatedByUserID, UpdatedByUserID, CreatedAt, UpdatedAt
       FROM dbo.TblEmpTargetPlan
-      WHERE EmpID = @empId
+      WHERE EmpID = @empId AND BranchID = @branchId
       ORDER BY EffectiveFrom ASC, ID ASC
     `);
   return (result.recordset as Record<string, unknown>[]).map(mapPlan);
@@ -141,7 +147,7 @@ export async function getPlanWithTiers(planId: number): Promise<TargetPlanWithTi
     .input('planId', sql.Int, planId)
     .query(`
       SELECT
-        ID, EmpID, IsEnabled, InputBasis, ConversionDays,
+        ID, EmpID, BranchID, IsEnabled, InputBasis, ConversionDays,
         EffectiveFrom, EffectiveTo, Notes,
         CreatedByUserID, UpdatedByUserID, CreatedAt, UpdatedAt
       FROM dbo.TblEmpTargetPlan
@@ -176,6 +182,7 @@ export async function insertPlanWithTiers(
   transaction: sql.Transaction,
   params: {
     empId: number;
+    branchId: number;
     isEnabled: boolean;
     inputBasis: TargetInputBasis;
     conversionDays: number;
@@ -193,6 +200,7 @@ export async function insertPlanWithTiers(
 ): Promise<number> {
   const planResult = await new sql.Request(transaction)
     .input('empId', sql.Int, params.empId)
+    .input('branchId', sql.Int, params.branchId)
     .input('isEnabled', sql.Bit, params.isEnabled ? 1 : 0)
     .input('inputBasis', sql.NVarChar(10), params.inputBasis)
     .input('conversionDays', sql.Int, params.conversionDays)
@@ -202,12 +210,12 @@ export async function insertPlanWithTiers(
     .input('createdBy', sql.Int, params.createdByUserId)
     .query(`
       INSERT INTO dbo.TblEmpTargetPlan (
-        EmpID, IsEnabled, InputBasis, ConversionDays,
+        EmpID, BranchID, IsEnabled, InputBasis, ConversionDays,
         EffectiveFrom, EffectiveTo, Notes, CreatedByUserID
       )
       OUTPUT INSERTED.ID AS ID
       VALUES (
-        @empId, @isEnabled, @inputBasis, @conversionDays,
+        @empId, @branchId, @isEnabled, @inputBasis, @conversionDays,
         @effectiveFrom, @effectiveTo, @notes, @createdBy
       )
     `);

@@ -1,0 +1,38 @@
+{
+  "meta": {
+    "SmokeRunID": "11",
+    "Status": "CLEANED",
+    "CleanupStatus": "COMPLETED",
+    "JsonLen": "2320"
+  },
+  "keys": [
+    "inventory.adjustment",
+    "inventory.consumption",
+    "pos.cashInvoice",
+    "pos.cardInvoice",
+    "payroll.hourlyLedgerCredit",
+    "payroll.monthlySalaryPost",
+    "target.positiveEntitlement",
+    "target.ledgerCredit",
+    "advance.payout",
+    "gleem.isolation",
+    "external.whatsapp",
+    "external.prints",
+    "cleanup.completed"
+  ],
+  "sample": {
+    "inventory.adjustment": true,
+    "inventory.consumption": true,
+    "pos.cashInvoice": true,
+    "pos.cardInvoice": true,
+    "payroll.hourlyLedgerCredit": true,
+    "payroll.monthlySalaryPost": true,
+    "target.positiveEntitlement": true,
+    "target.ledgerCredit": true,
+    "advance.payout": true,
+    "gleem.isolation": true,
+    "external.whatsapp": true,
+    "external.prints": true,
+    "cleanup.completed": true
+  }
+}

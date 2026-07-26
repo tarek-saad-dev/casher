@@ -1,0 +1,20 @@
+{
+  "capturedAt": "2026-07-25T23:46:57.942Z",
+  "smokeRunId": 3,
+  "postCleanup": {
+    "Bookings": 1,
+    "Queue": 1,
+    "Attendance": 0,
+    "Payroll": 0,
+    "Ledger": 0,
+    "Targets": 0,
+    "CashMoves": 0,
+    "SmokeEmps": 0,
+    "Lifecycle": "SETUP",
+    "IsActive": 0,
+    "PublicBooking": 0,
+    "Run3Status": "CLEANED",
+    "Run3Cleanup": "COMPLETED",
+    "PendingArts": 0
+  }
+}

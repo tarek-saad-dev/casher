@@ -173,6 +173,47 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Phase 1Q — specific barber must be scheduled in the selected branch on WorkDate
+    if (mode === 'specific' && empId) {
+      const { resolveEmployeeBranchSchedule, resolveEmployeeGlobalSchedule } = await import(
+        '@/lib/hr/employeeBranchScheduleResolver'
+      );
+      const sched = await resolveEmployeeBranchSchedule({
+        empId: Number(empId),
+        branchId,
+        workDate: date,
+      });
+      if (!sched?.isWorking) {
+        const global = await resolveEmployeeGlobalSchedule({
+          empId: Number(empId),
+          workDate: date,
+          publicOnly: !isInternalSource,
+        });
+        if (global.branches[0] && global.branches[0].branchId !== branchId) {
+          return NextResponse.json(
+            {
+              ok: false,
+              code: 'BARBER_AVAILABLE_AT_DIFFERENT_BRANCH',
+              error: 'الحلاق متاح في فرع آخر في هذا اليوم',
+              availableBranch: {
+                branchCode: global.branches[0].branchCode,
+                branchName: global.branches[0].branchName,
+              },
+            },
+            { status: 409, headers: PUBLIC_CORS_HEADERS },
+          );
+        }
+        return NextResponse.json(
+          {
+            ok: false,
+            code: 'BARBER_NOT_WORKING',
+            error: 'الحلاق غير متاح في هذا اليوم',
+          },
+          { status: 409, headers: PUBLIC_CORS_HEADERS },
+        );
+      }
+    }
+
     const settings = await getPublicSettings(branchId);
     // Only check bookingEnabled for public bookings, skip for operations/admin
     if (!isInternalSource && !settings.bookingEnabled) {

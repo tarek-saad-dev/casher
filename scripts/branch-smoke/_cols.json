@@ -1,0 +1,58 @@
+﻿node.exe : node:internal/process/promises:394
+At C:\Program Files\nodejs\npx.ps1:29 char:3
++   & $NODE_EXE $NPX_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (node:internal/process/promises:394:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+Error: Transform failed with 1 error:
+/eval.ts:1:432: ERROR: Expected ")" but found "COLUMN_NAME"
+    at failureErrorWithLog 
+(C:\Users\user\AppData\Local\npm-cache\_npx\fd45a72a545557e9\node_modules\esbuild\lib\main.js:1748:15)
+    at C:\Users\user\AppData\Local\npm-cache\_npx\fd45a72a545557e9\node_modules\esbuild\lib\main.js:1017:50
+    at responseCallbacks.<computed> 
+(C:\Users\user\AppData\Local\npm-cache\_npx\fd45a72a545557e9\node_modules\esbuild\lib\main.js:884:9)
+    at handleIncomingPacket 
+(C:\Users\user\AppData\Local\npm-cache\_npx\fd45a72a545557e9\node_modules\esbuild\lib\main.js:939:12)
+    at Socket.readFromStdout 
+(C:\Users\user\AppData\Local\npm-cache\_npx\fd45a72a545557e9\node_modules\esbuild\lib\main.js:862:7)
+    at Socket.emit (node:events:518:28)
+    at addChunk (node:internal/streams/readable:561:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+    at Readable.push (node:internal/streams/readable:392:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+  errors: [
+    {
+      detail: undefined,
+      id: '',
+      location: {
+        column: 432,
+        file: '/eval.ts',
+        length: 11,
+        line: 1,
+        lineText: "import sql from 'mssql'; import dotenv from 'dotenv'; dotenv.config({path:'.env'}); 
+dotenv.config({path:'.env.local',override:true}); const p=await sql.connect({server:process.env.CLOUD_DB_SERVER,port:+p
+rocess.env.CLOUD_DB_PORT||1433,database:process.env.CLOUD_DB_NAME,user:process.env.CLOUD_DB_USER,password:process.env.C
+LOUD_DB_PASSWORD,options:{encrypt:true,trustServerCertificate:true}}); const a=await p.request().query(SELECT 
+COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='TblEmpWorkSchedule'); const b=await 
+p.request().query(SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='TblEmpTargetPlan'); const 
+c=await p.request().query(SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE 
+TABLE_NAME='TblEmpBranchAssignment'); const d=await p.request().query(SELECT COLUMN_NAME FROM 
+INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='TblEmpBranchPayrollPlan'); 
+console.log(JSON.stringify({sched:a.recordset,target:b.recordset,assign:c.recordset,pay:d.recordset},null,2)); await 
+p.close();",
+        namespace: '',
+        suggestion: ')'
+      },
+      notes: [],
+      pluginName: '',
+      text: 'Expected ")" but found "COLUMN_NAME"'
+    }
+  ],
+  warnings: []
+}
+
+Node.js v22.17.0

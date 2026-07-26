@@ -1,0 +1,125 @@
+{
+  "smokeRunId": 14,
+  "empId": 1041,
+  "empName": "[TEST] Ziad Cross-Branch 14",
+  "adminPreview": {
+    "sat": {
+      "date": "2026-08-01",
+      "codes": [
+        "GLEEM"
+      ],
+      "off": false
+    },
+    "sun": {
+      "date": "2026-08-02",
+      "codes": [
+        "GLEEM"
+      ],
+      "off": false
+    },
+    "mon": {
+      "date": "2026-07-27",
+      "codes": [
+        "GLEEM"
+      ],
+      "off": false
+    },
+    "tue": {
+      "date": "2026-07-28",
+      "codes": [
+        "CAMP_CAESAR"
+      ],
+      "off": false
+    },
+    "wed": {
+      "date": "2026-07-29",
+      "codes": [
+        "CAMP_CAESAR"
+      ],
+      "off": false
+    },
+    "thu": {
+      "date": "2026-07-30",
+      "codes": [
+        "CAMP_CAESAR"
+      ],
+      "off": false
+    },
+    "fri": {
+      "date": "2026-07-31",
+      "codes": [],
+      "off": true
+    }
+  },
+  "proofs": {
+    "schedule.admin_preview_six_days": {
+      "sat": {
+        "date": "2026-08-01",
+        "codes": [
+          "GLEEM"
+        ],
+        "off": false
+      },
+      "sun": {
+        "date": "2026-08-02",
+        "codes": [
+          "GLEEM"
+        ],
+        "off": false
+      },
+      "mon": {
+        "date": "2026-07-27",
+        "codes": [
+          "GLEEM"
+        ],
+        "off": false
+      },
+      "tue": {
+        "date": "2026-07-28",
+        "codes": [
+          "CAMP_CAESAR"
+        ],
+        "off": false
+      },
+      "wed": {
+        "date": "2026-07-29",
+        "codes": [
+          "CAMP_CAESAR"
+        ],
+        "off": false
+      },
+      "thu": {
+        "date": "2026-07-30",
+        "codes": [
+          "CAMP_CAESAR"
+        ],
+        "off": false
+      },
+      "fri": {
+        "date": "2026-07-31",
+        "codes": [],
+        "off": true
+      }
+    },
+    "schedule.friday_off": true,
+    "schedule.same_workday_conflict": true,
+    "public.cc_hidden": true,
+    "transfer.id": 1,
+    "transfer.internal_cc": "CAMP_CAESAR",
+    "overnight.cc_tuesday": {
+      "endTime": "01:30",
+      "endDayOffset": 1
+    },
+    "cleanup.zero_active": {
+      "Sched": 0,
+      "Assign": 0,
+      "Xfer": 0
+    },
+    "cc.lifecycle_unchanged": true
+  },
+  "remaining": {
+    "Sched": 0,
+    "Assign": 0,
+    "Xfer": 0
+  }
+}

@@ -22,6 +22,7 @@ export interface DateRangeClassificationParams {
   /** Invoice-based sales revenue override for profit semantics */
   salesRevenueOverride?: number | null;
   invTypeFilter?: 'all' | 'income' | 'expense';
+  branchId?: number | null;
 }
 
 export interface MonthClassificationParams {
@@ -29,6 +30,7 @@ export interface MonthClassificationParams {
   month: number;
   salesRevenueOverride?: number | null;
   invTypeFilter?: 'all' | 'income' | 'expense';
+  branchId?: number | null;
 }
 
 interface DbCashMoveRow {
@@ -95,13 +97,22 @@ function filterRowsByInvType(
 export async function fetchCashMovesForClassification(
   startDate: string,
   endDate: string,
+  branchId?: number | null,
 ): Promise<CashMoveForReportInput[]> {
   const db = await getPool();
-  const result = await db
+  const request = db
     .request()
     .input('startDate', sql.Date, startDate)
-    .input('endDate', sql.Date, endDate)
-    .query(CASH_MOVE_CLASSIFICATION_QUERY);
+    .input('endDate', sql.Date, endDate);
+  const branchClause =
+    branchId != null && branchId > 0 ? 'AND cm.BranchID = @branchId' : '';
+  if (branchId != null && branchId > 0) {
+    request.input('branchId', sql.Int, branchId);
+  }
+  const result = await request.query(`
+${CASH_MOVE_CLASSIFICATION_QUERY}
+${branchClause}
+`);
 
   return result.recordset.map((row: DbCashMoveRow) => mapDbRow(row));
 }
@@ -113,7 +124,11 @@ export async function buildClassifiedReportForDateRange(
   classificationBreakdown: ClassificationBreakdownItem[];
   payrollExpenseFromLedger: number;
 }> {
-  const allRows = await fetchCashMovesForClassification(params.startDate, params.endDate);
+  const allRows = await fetchCashMovesForClassification(
+    params.startDate,
+    params.endDate,
+    params.branchId,
+  );
   const filteredRows = filterRowsByInvType(allRows, params.invTypeFilter ?? 'all');
   const { classifiedTotals, classificationBreakdown } = aggregateClassifiedCashMoves(filteredRows);
 
@@ -121,10 +136,12 @@ export async function buildClassifiedReportForDateRange(
     ? await getPayrollExpenseFromLedger({
         year: parseInt(params.startDate.slice(0, 4), 10),
         month: parseInt(params.startDate.slice(5, 7), 10),
+        branchId: params.branchId,
       })
     : await getPayrollExpenseFromLedgerForDateRange({
         startDate: params.startDate,
         endDate: params.endDate,
+        branchId: params.branchId,
       });
 
   classifiedTotals.payrollExpenseFromLedger = payroll.totalPayrollExpense;
@@ -155,6 +172,7 @@ export async function buildClassifiedReportForMonth(
     endDate,
     salesRevenueOverride: params.salesRevenueOverride,
     invTypeFilter: params.invTypeFilter,
+    branchId: params.branchId,
   });
 }
 

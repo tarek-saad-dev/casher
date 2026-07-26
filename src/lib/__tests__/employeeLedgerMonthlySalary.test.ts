@@ -99,7 +99,7 @@ describe('postMonthlySalaryEntitlements', () => {
   it('rejects when dual-write flag is false', async () => {
     delete process.env.EMP_LEDGER_DUAL_WRITE_ENABLED;
     const { postMonthlySalaryEntitlements, EmployeeLedgerMonthlySalaryError } = await loadService();
-    await expect(postMonthlySalaryEntitlements({ month: '2026-07', dryRun: true }))
+    await expect(postMonthlySalaryEntitlements({ branchId: 1, month: '2026-07', dryRun: true }))
       .rejects.toThrow(EmployeeLedgerMonthlySalaryError);
     expect(fakeGetPool).not.toHaveBeenCalled();
   });
@@ -119,7 +119,7 @@ describe('postMonthlySalaryEntitlements', () => {
     ];
 
     const { postMonthlySalaryEntitlements } = await loadService();
-    const result = await postMonthlySalaryEntitlements({ month: '2026-07', dryRun: true });
+    const result = await postMonthlySalaryEntitlements({ branchId: 1, month: '2026-07', dryRun: true });
 
     expect(result.dryRun).toBe(true);
     expect(result.rows).toHaveLength(1);
@@ -147,8 +147,7 @@ describe('postMonthlySalaryEntitlements', () => {
     ];
 
     const { postMonthlySalaryEntitlements } = await loadService();
-    const result = await postMonthlySalaryEntitlements({
-      month: '2026-07',
+    const result = await postMonthlySalaryEntitlements({ branchId: 1, month: '2026-07',
       dryRun: false,
       createdByUserId: 1,
     });
@@ -192,7 +191,7 @@ describe('postMonthlySalaryEntitlements', () => {
     ];
 
     const { postMonthlySalaryEntitlements } = await loadService();
-    const result = await postMonthlySalaryEntitlements({ month: '2026-07', dryRun: false });
+    const result = await postMonthlySalaryEntitlements({ branchId: 1, month: '2026-07', dryRun: false });
 
     expect(result.counts.updated).toBe(1);
     expect(result.rows[0]?.status).toBe('willUpdate');
@@ -230,7 +229,7 @@ describe('postMonthlySalaryEntitlements', () => {
     ];
 
     const { postMonthlySalaryEntitlements } = await loadService();
-    const result = await postMonthlySalaryEntitlements({ month: '2026-07', dryRun: false });
+    const result = await postMonthlySalaryEntitlements({ branchId: 1, month: '2026-07', dryRun: false });
 
     expect(result.counts.alreadyPosted).toBe(1);
   });
@@ -250,8 +249,7 @@ describe('postMonthlySalaryEntitlements', () => {
     ];
 
     const { postMonthlySalaryEntitlements } = await loadService();
-    const result = await postMonthlySalaryEntitlements({
-      month: '2026-07',
+    const result = await postMonthlySalaryEntitlements({ branchId: 1, month: '2026-07',
       empId: 1032,
       dryRun: true,
     });
@@ -271,6 +269,14 @@ vi.mock('@/lib/api-auth', () => ({
     isSuperAdmin: false,
   })),
   isAuthResult: vi.fn().mockReturnValue(true),
+}));
+
+vi.mock('@/lib/branch/context', () => ({
+  requireBranchOperationAccess: vi.fn(async () => ({
+    branchId: 1,
+    branchCode: 'GLEEM',
+    branchName: 'GLEEM',
+  })),
 }));
 
 describe('monthly salary API route', () => {

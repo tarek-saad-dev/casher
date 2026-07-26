@@ -1,24 +1,21 @@
 /**
  * GET /api/operations/schedule-control?date=YYYY-MM-DD
- *
- * Returns all active barbers with their full day status for the given date:
- *  - default schedule
- *  - effective schedule (after overrides)
- *  - current override
- *  - day-off status
- *  - attendance status (today only)
- *  - currentAvailabilityStatus + statusReasonArabic
- *  - active bookings count
- *  - active queue tickets count
+ * Phase 1R: session-branch day-state from resolvers + legacy override timing.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getPool, sql } from "@/lib/db";
-import { getBarbersDayStatus, cairoDateStr, BARBER_JOBS_SQL_LIST } from "@/lib/availabilityEngine";
+import { isAuthResult, requirePageAccess } from "@/lib/api-auth";
+import { getBarbersDayStatus, cairoDateStr } from "@/lib/availabilityEngine";
+import { loadOperationsDayState } from "@/lib/hr/operationsDayState";
+import { listActiveBranches } from "@/lib/branch/repository";
+import { listUserValidBranchAccess } from "@/lib/branch/repository";
 
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
+  const auth = await requirePageAccess("/operations");
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const { searchParams } = new URL(req.url);
     const date =
@@ -32,131 +29,107 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const db = await getPool();
     const todayStr = cairoDateStr(new Date());
     const isToday = date === todayStr;
 
-    // 1. Load all active barbers
-    const barbersRes = await db.request().query(`
-      SELECT EmpID, EmpName, Job
-      FROM dbo.TblEmp
-      WHERE ISNULL(isActive, 1) = 1
-        AND Job IN (${BARBER_JOBS_SQL_LIST})
-      ORDER BY EmpName
-    `);
-    const barbers: Array<{ EmpID: number; EmpName: string; Job: string }> =
-      barbersRes.recordset;
+    const access = await listUserValidBranchAccess(auth.userId);
+    const includeElsewhere =
+      auth.isSuperAdmin ||
+      access.filter((a) => a.canOperate || a.canSwitch).length > 1;
 
-    if (!barbers.length) {
-      return NextResponse.json({ ok: true, date, isToday, barbers: [] });
-    }
+    const dayState = await loadOperationsDayState({
+      sessionBranchId: auth.activeBranchId,
+      workDate: date,
+      includeElsewhere,
+    });
 
-    const empIds = barbers.map((b) => b.EmpID);
-    const idList = empIds.join(",");
+    const ordered = [
+      ...dayState.sections.present,
+      ...dayState.sections.transferredIn,
+      ...dayState.sections.elsewhere,
+      ...dayState.sections.off,
+    ];
 
-    // 2. Batch-load day statuses (schedules, day-offs, overrides, attendance)
-    const statusMap = await getBarbersDayStatus(empIds, date, { isToday });
+    const empIds = ordered.map((e) => e.empId);
+    const statusMap = empIds.length
+      ? await getBarbersDayStatus(empIds, date, { isToday })
+      : new Map();
 
-    // 3. Load active bookings count per barber for this date
-    const bookingsRes = await db
-      .request()
-      .input("bDate", sql.Date, date)
-      .query(`
-        SELECT AssignedEmpID AS EmpID, COUNT(*) AS BookingCount
-        FROM dbo.Bookings
-        WHERE BookingDate = @bDate
-          AND AssignedEmpID IN (${idList})
-          AND Status IN ('confirmed', 'arrived', 'queued', 'in_service')
-        GROUP BY AssignedEmpID
-      `)
-      .catch(() => ({ recordset: [] as any[] }));
+    const allBranches = await listActiveBranches();
+    const transferDestinations = allBranches
+      .filter((b) => b.branchId !== auth.activeBranchId)
+      .filter((b) => b.isActive && b.lifecycleStatus !== "SETUP")
+      .filter((b) =>
+        auth.isSuperAdmin
+          ? true
+          : access.some((a) => a.branchId === b.branchId && (a.canOperate || a.canSwitch)),
+      )
+      .map((b) => ({
+        branchId: b.branchId,
+        branchCode: b.branchCode,
+        branchName: b.branchName,
+      }));
 
-    const bookingCountMap = new Map<number, number>();
-    for (const r of bookingsRes.recordset) {
-      bookingCountMap.set(r.EmpID, r.BookingCount);
-    }
+    const result = ordered.map((e) => {
+      const s = statusMap.get(e.empId);
+      const windowStart = e.scheduleWindow?.startTime ?? s?.effectiveStart ?? null;
+      const windowEnd = e.scheduleWindow?.endTime ?? s?.effectiveEnd ?? null;
 
-    // 4. Load active queue tickets count per barber for this date
-    const queueRes = await db
-      .request()
-      .input("qDate", sql.Date, date)
-      .query(`
-        SELECT EmpID, COUNT(*) AS QueueCount
-        FROM dbo.QueueTickets
-        WHERE QueueDate = @qDate
-          AND EmpID IN (${idList})
-          AND LOWER(Status) IN ('waiting', 'called', 'in_service')
-        GROUP BY EmpID
-      `)
-      .catch(() => ({ recordset: [] as any[] }));
-
-    const queueCountMap = new Map<number, number>();
-    for (const r of queueRes.recordset) {
-      queueCountMap.set(r.EmpID, r.QueueCount);
-    }
-
-    // 5. Debug log: schedule source per barber (always logged for tracing)
-    for (const b of barbers) {
-      const s = statusMap.get(b.EmpID);
-      console.log("[schedule-control] SCHEDULE_DEBUG", {
-        empId:           b.EmpID,
-        empName:         b.EmpName,
-        date,
-        dayOfWeek:       new Date(`${date}T12:00:00Z`).getDay(),
-        scheduleSource:  s?.schedule.source ?? "unknown",
-        baseStart:       s?.schedule.start ?? null,
-        baseEnd:         s?.schedule.end ?? null,
-        isWorkingDay:    s?.schedule.isWorkingDay ?? false,
-        effectiveStart:  s?.effectiveStart ?? null,
-        effectiveEnd:    s?.effectiveEnd ?? null,
-        appliedOverride: s?.appliedOverride?.Type ?? null,
-        isDayOff:        s?.isDayOff ?? false,
-      });
-    }
-
-    // 6. Assemble response
-    const result = barbers.map((b) => {
-      const s = statusMap.get(b.EmpID);
       return {
-        empId: b.EmpID,
-        empName: b.EmpName,
-        job: b.Job,
+        empId: e.empId,
+        empName: e.empName,
+        baseBranch: e.baseBranch,
+        currentBranch: e.currentBranch,
+        isTransferred: e.isTransferred,
+        transferReason: e.transferReason,
+        isGlobalDayOff: e.isGlobalDayOff,
+        scheduleSource: e.source,
 
         defaultSchedule: s
           ? {
-              isWorkingDay: s.schedule.isWorkingDay,
-              start: s.schedule.start,
-              end: s.schedule.end,
-              source: s.schedule.source,
+              isWorkingDay: s.isWorkingDay || s.schedule.isWorkingDay,
+              start: s.effectiveStart ?? windowStart ?? s.schedule.start,
+              end: s.effectiveEnd ?? windowEnd ?? s.schedule.end,
+              source: e.source ?? s.schedule.source,
             }
-          : null,
+          : {
+              isWorkingDay: e.section === "present" || e.section === "transferred_in",
+              start: windowStart,
+              end: windowEnd,
+              source: e.source ?? "resolver",
+            },
 
         effectiveSchedule: s
           ? {
-              isWorking: s.effectiveSchedule.isWorking,
-              start: s.effectiveSchedule.start,
-              end: s.effectiveSchedule.end,
+              isWorking: s.effectiveSchedule.isWorking || s.isWorkingDay,
+              start: s.effectiveStart ?? s.effectiveSchedule.start ?? windowStart,
+              end: s.effectiveEnd ?? s.effectiveSchedule.end ?? windowEnd,
               blockedIntervals: s.effectiveSchedule.blockedIntervals,
             }
-          : null,
+          : {
+              isWorking: e.section === "present" || e.section === "transferred_in",
+              start: windowStart,
+              end: windowEnd,
+              blockedIntervals: [],
+            },
 
-        effectiveStart: s?.effectiveStart ?? null,
-        effectiveEnd: s?.effectiveEnd ?? null,
-        isWorkingDay: s?.isWorkingDay ?? false,
+        effectiveStart: s?.effectiveStart ?? windowStart,
+        effectiveEnd: s?.effectiveEnd ?? windowEnd,
 
-        isDayOff: s?.isDayOff ?? false,
+        isDayOff: s?.isDayOff ?? (e.isGlobalDayOff || e.section === "off"),
         isAbsent: s?.isAbsent ?? false,
         isLateStart: s?.isLateStart ?? false,
         isEarlyLeave: s?.isEarlyLeave ?? false,
         isCustomHours: s?.isCustomHours ?? false,
 
         dayOffReason: s?.dayOffReason ?? null,
-        statusReasonArabic: s?.statusReasonArabic ?? "غير معروف",
-        currentAvailabilityStatus: s?.currentAvailabilityStatus ?? "unknown",
+        currentAvailabilityStatus:
+          s?.currentAvailabilityStatus ??
+          (e.section === "off" ? "day_off" : e.section === "elsewhere" ? "off" : "working"),
 
         appliedOverride: s?.appliedOverride
           ? {
-              overrideId: (s.appliedOverride as any).OverrideID ?? null,
+              overrideId: (s.appliedOverride as { OverrideID?: number }).OverrideID ?? null,
               type: s.appliedOverride.Type,
               startTime: s.appliedOverride.StartTime ?? null,
               endTime: s.appliedOverride.EndTime ?? null,
@@ -164,14 +137,46 @@ export async function GET(req: NextRequest) {
             }
           : null,
 
-        attendance: s?.attendance ?? null,
+        attendance: e.attendance ?? s?.attendance ?? null,
 
-        activeBookingsCount: bookingCountMap.get(b.EmpID) ?? 0,
-        activeQueueCount: queueCountMap.get(b.EmpID) ?? 0,
+        activeBookingsCount: e.activeBookingsCount,
+        activeQueueCount: e.activeQueueCount,
+
+        // Prefer availability engine after restore-present / custom_hours unlock
+        isWorkingDay: s
+          ? Boolean(s.isWorkingDay)
+          : e.section === "present" || e.section === "transferred_in",
+        section:
+          s?.isWorkingDay && (e.section === "off" || e.section === "elsewhere")
+            ? "present"
+            : e.section,
+        statusLabelAr:
+          s?.isWorkingDay && !s.isAbsent
+            ? s.statusReasonArabic
+            : e.statusLabelAr,
+        statusReasonArabic:
+          s && !s.isDayOff
+            ? s.statusReasonArabic
+            : e.statusLabelAr || s?.statusReasonArabic || "غير معروف",
       };
     });
 
-    return NextResponse.json({ ok: true, date, isToday, barbers: result });
+    return NextResponse.json({
+      ok: true,
+      date,
+      isToday,
+      sessionBranchId: auth.activeBranchId,
+      sessionBranchCode: dayState.sessionBranchCode,
+      version: dayState.version,
+      transferDestinations,
+      sections: {
+        present: dayState.sections.present.map((x) => x.empId),
+        transferredIn: dayState.sections.transferredIn.map((x) => x.empId),
+        elsewhere: dayState.sections.elsewhere.map((x) => x.empId),
+        off: dayState.sections.off.map((x) => x.empId),
+      },
+      barbers: result,
+    });
   } catch (err) {
     console.error("[operations/schedule-control GET]", err);
     return NextResponse.json(

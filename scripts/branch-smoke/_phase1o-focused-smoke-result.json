@@ -1,0 +1,58 @@
+{
+  "smokeRunId": 13,
+  "proofs": [
+    "inventory.adjustment",
+    "inventory.consumption",
+    "pos.cashInvoice",
+    "pos.cardInvoice",
+    "payroll.hourlyLedgerCredit",
+    "payroll.monthlySalaryPost",
+    "target.positiveEntitlement",
+    "target.ledgerCredit",
+    "advance.payout",
+    "gleem.isolation",
+    "external.whatsapp",
+    "external.prints",
+    "cleanup.completed",
+    "config.overnight_hours",
+    "config.service_parity",
+    "config.user_access_prepared",
+    "config.switcher_hides_setup",
+    "config.payment_methods",
+    "config.receipt_identity",
+    "config.whatsapp_render",
+    "config.gleem_isolation",
+    "config.shared_printer_whatsapp",
+    "prior.smoke_run_11_retained",
+    "cleanup"
+  ],
+  "readiness": {
+    "smoke": false,
+    "internal": false,
+    "public": false,
+    "blockers": [
+      "legacy.ELIGIBLE_BARBER",
+      "smoke.assignment",
+      "smoke.work_schedule",
+      "smoke.service_price",
+      "smoke.service_duration",
+      "biz.opening_cash",
+      "biz.opening_inventory",
+      "biz.partner_shares_effective_date",
+      "biz.real_employees",
+      "payroll.plan_coverage",
+      "target.policy_coverage",
+      "public.frontend_multi_branch",
+      "public.branch_selection",
+      "public.explicit_branch_code",
+      "public.booking_flow_smoke",
+      "public.customer_notifications"
+    ]
+  },
+  "preservedConfig": {
+    "address": "كامب شيزار",
+    "phone": "01012126899",
+    "english": "Camp Caesar",
+    "arabic": "فرع كامب شيزار"
+  }
+}

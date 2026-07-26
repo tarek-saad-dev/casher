@@ -29,6 +29,10 @@ import { getBarbersDayStatus } from "@/lib/availabilityEngine";
 import { createDevTimer } from "@/lib/devRequestTiming";
 import { isAuthResult, requirePageAccess } from "@/lib/api-auth";
 import { getBranchById } from "@/lib/branch/repository";
+import { listResolvedOperationalEmpIdsForBranch } from "@/lib/hr/operationsDayState";
+import {
+  resolveEmployeeBranchSchedule,
+} from "@/lib/hr/employeeBranchScheduleResolver";
 
 export const runtime = "nodejs";
 
@@ -47,6 +51,8 @@ export interface FlowBoardBarber {
   workStart: string | null;
   workEnd: string | null;
   isOvernightShift: boolean;
+  /** Phase 1R — present via TblEmpTemporaryBranchTransfer */
+  isEmergencyTransfer?: boolean;
   nextAvailableAt: string | null;
   waitingCount: number;
   bookingsCount: number;
@@ -303,7 +309,37 @@ export async function GET(req: NextRequest) {
 
     // schedules + overrides + attendance/day-off live inside getBarbersDayStatus
     const isToday = dateStr === getCairoBusinessDate(now);
-    const allBarberIds: number[] = barbersRes.recordset.map((b: any) => b.EmpID as number);
+    const operationalEmpIds = new Set(
+      await listResolvedOperationalEmpIdsForBranch(branchId, dateStr),
+    );
+    // Include assigned barbers who resolve here; drop those scheduled/transferred elsewhere
+    const assignedBarbers = barbersRes.recordset as Array<{ EmpID: number; EmpName: string }>;
+    const locationFiltered = assignedBarbers.filter((b) =>
+      operationalEmpIds.has(Number(b.EmpID)),
+    );
+    // Also include transfer-in employees who might appear in operational set but not assignment edge cases
+    const assignedIds = new Set(locationFiltered.map((b) => Number(b.EmpID)));
+    for (const empId of operationalEmpIds) {
+      if (!assignedIds.has(empId)) {
+        const nameRow = assignedBarbers.find((b) => Number(b.EmpID) === empId);
+        if (nameRow) locationFiltered.push(nameRow);
+        else {
+          // Load name for transfer-in not in assignment query (should be rare)
+          const nm = await db
+            .request()
+            .input("empId", sql.Int, empId)
+            .query(`SELECT EmpID, EmpName FROM dbo.TblEmp WHERE EmpID=@empId`);
+          if (nm.recordset[0]) {
+            locationFiltered.push({
+              EmpID: Number(nm.recordset[0].EmpID),
+              EmpName: String(nm.recordset[0].EmpName),
+            });
+          }
+        }
+      }
+    }
+
+    const allBarberIds: number[] = locationFiltered.map((b) => Number(b.EmpID));
     const dayStatusStart = Date.now();
     const dayStatusMap = await getBarbersDayStatus(allBarberIds, dateStr, { isToday });
     timer.setAbsolute('otherQueriesMs', Date.now() - dayStatusStart);
@@ -312,7 +348,7 @@ export async function GET(req: NextRequest) {
     timer.setAbsolute('overridesMs', 0);
 
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`[flow-board] Barbers: ${barbersRes.recordset.length}, Bookings: ${bookingsRes.recordset.length}, Queue: ${queueRes.recordset.length}`);
+      console.log(`[flow-board] Barbers: ${locationFiltered.length}, Bookings: ${bookingsRes.recordset.length}, Queue: ${queueRes.recordset.length}`);
     }
 
     const processStart = Date.now();
@@ -347,9 +383,15 @@ export async function GET(req: NextRequest) {
     const barbers: FlowBoardBarber[] = [];
     const defaultDuration = 30; // minutes
 
-    for (const barber of barbersRes.recordset) {
+    for (const barber of locationFiltered) {
       const empId = barber.EmpID;
       const dayStatus = dayStatusMap.get(empId);
+      const resolved = await resolveEmployeeBranchSchedule({
+        empId,
+        branchId,
+        workDate: dateStr,
+      });
+      const transferBadge = resolved?.source === 'temporary_transfer';
 
       const statusFields = {
         isWorkingDay:              dayStatus?.isWorkingDay ?? false,
@@ -371,9 +413,10 @@ export async function GET(req: NextRequest) {
           empName: barber.EmpName,
           status: statusCode,
           ...statusFields,
-          workStart: null,
-          workEnd: null,
-          isOvernightShift: false,
+          workStart: resolved?.isWorking ? resolved.startTime : null,
+          workEnd: resolved?.isWorking ? resolved.endTime : null,
+          isOvernightShift: resolved?.endDayOffset === 1,
+          isEmergencyTransfer: transferBadge,
           nextAvailableAt: null,
           waitingCount: 0,
           bookingsCount: 0,
@@ -383,8 +426,8 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      const workStart = dayStatus.effectiveStart ?? null;
-      const workEnd   = dayStatus.effectiveEnd   ?? null;
+      const workStart = resolved?.startTime ?? dayStatus.effectiveStart ?? null;
+      const workEnd   = resolved?.endTime ?? dayStatus.effectiveEnd   ?? null;
       const isOvernight = !!(workStart && workEnd && timeToMinutes(workEnd) <= timeToMinutes(workStart));
 
       const timeline: FlowBoardBarber["timeline"] = [];
@@ -542,6 +585,7 @@ export async function GET(req: NextRequest) {
         workStart,
         workEnd,
         isOvernightShift: isOvernight,
+        isEmergencyTransfer: transferBadge,
         nextAvailableAt,
         waitingCount: effectiveWaitingCount,
         bookingsCount: displayedBookingsCount,

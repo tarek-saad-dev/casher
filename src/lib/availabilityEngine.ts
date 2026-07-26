@@ -411,7 +411,7 @@ export async function getBarberDayStatus(
   const isDayOff =
     !!dayOffEntry ||
     isDayOffOverride ||
-    !schedule.isWorkingDay;
+    (!schedule.isWorkingDay && !(isCustomHours && effectiveSchedule.isWorking));
 
   const isAbsent =
     isToday &&
@@ -687,7 +687,10 @@ export async function getBarbersDayStatus(
     const isCustomHours     = appliedOverride?.Type === "custom_hours";
     const isDayOffOverride  = appliedOverride?.Type === "day_off";
 
-    const isDayOff  = !!dayOffEntry || isDayOffOverride || !schedule.isWorkingDay;
+    const isDayOff  =
+      !!dayOffEntry ||
+      isDayOffOverride ||
+      (!schedule.isWorkingDay && !(isCustomHours && effectiveSchedule.isWorking));
     const isAbsent  = isToday && attendance !== null && attendance.status === "Absent";
     const isWorkingDay = !isDayOff && effectiveSchedule.isWorking;
 

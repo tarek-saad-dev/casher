@@ -1,0 +1,398 @@
+{
+  "at": "2026-07-26T01:45:13.242Z",
+  "branchAfter": {
+    "address": "كامب شيزار",
+    "phone": "01012126899",
+    "open": "11:00:00",
+    "close": "01:30:00",
+    "cutoff": "04:00:00",
+    "lifecycle": "SETUP",
+    "isActive": false
+  },
+  "ccState": {
+    "BranchID": 3,
+    "BranchCode": "CAMP_CAESAR",
+    "BranchName": "فرع كامب شيزار",
+    "ShortName": "كامب شيزار",
+    "Address": "كامب شيزار",
+    "Phone": "01012126899",
+    "TimeZone": "Africa/Cairo",
+    "DefaultOpenTime": "11:00:00",
+    "DefaultCloseTime": "01:30:00",
+    "BusinessDayCutoffTime": "04:00:00",
+    "LifecycleStatus": "SETUP",
+    "IsActive": false,
+    "PublicBookingEnabled": false,
+    "ExternalNotificationsEnabled": false
+  },
+  "qbs": {
+    "SalonName": "Camp Caesar",
+    "BookingEnabled": false,
+    "Timezone": "Africa/Cairo",
+    "SlotIntervalMinutes": 15,
+    "MinNoticeMinutes": 15
+  },
+  "template": {
+    "sourceBranchId": 1,
+    "targetBranchId": 3,
+    "domains": [
+      {
+        "domain": "queue_booking_timing",
+        "beforeCount": 1,
+        "afterCount": 1,
+        "created": 0,
+        "updated": 1,
+        "skipped": 0,
+        "notes": [
+          "Updated QueueBookingSettings; BookingEnabled forced 0"
+        ]
+      },
+      {
+        "domain": "service_availability",
+        "beforeCount": 1,
+        "afterCount": 1,
+        "created": 0,
+        "updated": 0,
+        "skipped": 1,
+        "notes": [
+          "Services are global (TblPro). No branch-owned price/availability rows to copy.",
+          "Parity = shared catalog snapshot; future price changes require explicit sync.",
+          "Deleted/inactive services were not reactivated."
+        ]
+      },
+      {
+        "domain": "service_prices",
+        "beforeCount": 1,
+        "afterCount": 1,
+        "created": 0,
+        "updated": 0,
+        "skipped": 1,
+        "notes": [
+          "Services are global (TblPro). No branch-owned price/availability rows to copy.",
+          "Parity = shared catalog snapshot; future price changes require explicit sync.",
+          "Deleted/inactive services were not reactivated."
+        ]
+      },
+      {
+        "domain": "service_durations",
+        "beforeCount": 1,
+        "afterCount": 1,
+        "created": 0,
+        "updated": 0,
+        "skipped": 1,
+        "notes": [
+          "Services are global (TblPro). No branch-owned price/availability rows to copy.",
+          "Parity = shared catalog snapshot; future price changes require explicit sync.",
+          "Deleted/inactive services were not reactivated."
+        ]
+      },
+      {
+        "domain": "user_branch_access",
+        "beforeCount": 1,
+        "afterCount": 9,
+        "created": 8,
+        "updated": 1,
+        "skipped": 0,
+        "notes": []
+      },
+      {
+        "domain": "payment_method_enablement",
+        "beforeCount": 9,
+        "afterCount": 9,
+        "created": 0,
+        "updated": 0,
+        "skipped": 9,
+        "notes": [
+          "Payment methods are global definitions (TblPaymentMethods). No balances copied.",
+          "Camp Caesar uses the same method catalog; SETUP still blocks normal ops."
+        ]
+      },
+      {
+        "domain": "printer_endpoint",
+        "beforeCount": 0,
+        "afterCount": 1,
+        "created": 0,
+        "updated": 1,
+        "skipped": 0,
+        "notes": [
+          "Shared printer policy approved; no production print performed"
+        ]
+      },
+      {
+        "domain": "whatsapp_integration",
+        "beforeCount": 0,
+        "afterCount": 1,
+        "created": 0,
+        "updated": 1,
+        "skipped": 0,
+        "notes": [
+          "Shared WhatsApp policy approved; ExternalNotificationsEnabled remains 0"
+        ]
+      }
+    ],
+    "auditedAt": "2026-07-26T01:45:04.888Z"
+  },
+  "partners": {
+    "resolutions": [
+      {
+        "partnerCode": "AAYIDA",
+        "partnerName": "أ/ عايدة",
+        "sharePercent": 40,
+        "partnerUserId": null,
+        "status": "unmatched",
+        "matchedUserIds": [],
+        "matchedUserNames": [],
+        "detail": "No matching user — draft partner identity without PartnerUserID"
+      },
+      {
+        "partnerCode": "TAREK",
+        "partnerName": "أ/ طارق",
+        "sharePercent": 20,
+        "partnerUserId": 13,
+        "status": "resolved",
+        "matchedUserIds": [
+          13
+        ],
+        "matchedUserNames": [
+          "Tarek"
+        ],
+        "detail": "Mapped to UserID=13"
+      },
+      {
+        "partnerCode": "ZIYAD_CC",
+        "partnerName": "أ/ ذياد",
+        "sharePercent": 20,
+        "partnerUserId": 17,
+        "status": "resolved",
+        "matchedUserIds": [
+          17
+        ],
+        "matchedUserNames": [
+          "mr.ziad"
+        ],
+        "detail": "Mapped to UserID=17"
+      },
+      {
+        "partnerCode": "OMAR_CC",
+        "partnerName": "أ/ عمر",
+        "sharePercent": 20,
+        "partnerUserId": 16,
+        "status": "resolved",
+        "matchedUserIds": [
+          16
+        ],
+        "matchedUserNames": [
+          "OMAR"
+        ],
+        "detail": "Mapped to UserID=16"
+      }
+    ],
+    "inserted": 4,
+    "updated": 0,
+    "totalPercent": 100,
+    "effectiveFromStatus": "PENDING_OPENING_DATE",
+    "draftRows": [
+      {
+        "branchPartnerShareId": 7,
+        "partnerCode": "AAYIDA",
+        "sharePercent": 40,
+        "isActive": false
+      },
+      {
+        "branchPartnerShareId": 8,
+        "partnerCode": "TAREK",
+        "sharePercent": 20,
+        "isActive": false
+      },
+      {
+        "branchPartnerShareId": 9,
+        "partnerCode": "ZIYAD_CC",
+        "sharePercent": 20,
+        "isActive": false
+      },
+      {
+        "branchPartnerShareId": 10,
+        "partnerCode": "OMAR_CC",
+        "sharePercent": 20,
+        "isActive": false
+      }
+    ]
+  },
+  "parity": {
+    "activeServices": [
+      {
+        "serviceId": 23,
+        "serviceName": "Dry-Hair",
+        "gleemPrice": 100,
+        "campCaesarPrice": 100,
+        "gleemDuration": 10,
+        "campCaesarDuration": 10,
+        "availabilityMatch": true,
+        "ownershipResult": "GLOBAL_TBLPRO_SHARED — no branch-owned clone"
+      }
+    ],
+    "mismatchCount": 0
+  },
+  "access": [
+    {
+      "UserID": 10,
+      "UserName": "admin",
+      "CanOperate": true,
+      "CanViewReports": true,
+      "CanSwitch": true,
+      "IsActive": true
+    },
+    {
+      "UserID": 13,
+      "UserName": "Tarek",
+      "CanOperate": true,
+      "CanViewReports": true,
+      "CanSwitch": true,
+      "IsActive": true
+    },
+    {
+      "UserID": 15,
+      "UserName": "Hoda",
+      "CanOperate": true,
+      "CanViewReports": true,
+      "CanSwitch": true,
+      "IsActive": true
+    },
+    {
+      "UserID": 16,
+      "UserName": "OMAR",
+      "CanOperate": true,
+      "CanViewReports": true,
+      "CanSwitch": true,
+      "IsActive": true
+    },
+    {
+      "UserID": 17,
+      "UserName": "mr.ziad",
+      "CanOperate": true,
+      "CanViewReports": false,
+      "CanSwitch": false,
+      "IsActive": true
+    },
+    {
+      "UserID": 18,
+      "UserName": "أ / علي الزيني",
+      "CanOperate": true,
+      "CanViewReports": false,
+      "CanSwitch": false,
+      "IsActive": true
+    },
+    {
+      "UserID": 19,
+      "UserName": "أ / محمد حمدي",
+      "CanOperate": true,
+      "CanViewReports": false,
+      "CanSwitch": false,
+      "IsActive": true
+    },
+    {
+      "UserID": 20,
+      "UserName": "mohamed",
+      "CanOperate": true,
+      "CanViewReports": false,
+      "CanSwitch": false,
+      "IsActive": true
+    },
+    {
+      "UserID": 21,
+      "UserName": "mariam",
+      "CanOperate": true,
+      "CanViewReports": false,
+      "CanSwitch": false,
+      "IsActive": true
+    }
+  ],
+  "receiptPayload": {
+    "mode": "mock-no-print",
+    "branchDisplayName": "فرع كامب شيزار",
+    "englishDisplayName": "Camp Caesar",
+    "phone": "01012126899",
+    "address": "كامب شيزار",
+    "branchCode": "CAMP_CAESAR",
+    "branchId": 3,
+    "containsGleemName": false,
+    "productionPrintJobs": 0,
+    "realWhatsAppSends": 0
+  },
+  "gleemIsolation": {
+    "configUnintentionallyChanged": 0,
+    "accessCountBefore": 9,
+    "gleemCfgUnchanged": true
+  },
+  "readiness": {
+    "isReadyForSmoke": false,
+    "isReadyForInternalLive": false,
+    "isReadyForPublicLive": false,
+    "blockers": [
+      {
+        "key": "legacy.ELIGIBLE_BARBER",
+        "details": "No eligible barber with CanReceiveBookings on this branch"
+      },
+      {
+        "key": "smoke.assignment",
+        "details": "No bookable assignment on branch (required before SMOKE_TEST)"
+      },
+      {
+        "key": "smoke.work_schedule",
+        "details": "No work schedule for assigned smoke employee"
+      },
+      {
+        "key": "smoke.service_price",
+        "details": "No enabled service with valid price (smoke needs at least one)"
+      },
+      {
+        "key": "smoke.service_duration",
+        "details": "No service with valid duration"
+      },
+      {
+        "key": "biz.opening_cash",
+        "details": "BUSINESS_DECISION_REQUIRED: Opening cash balance"
+      },
+      {
+        "key": "biz.opening_inventory",
+        "details": "BUSINESS_DECISION_REQUIRED: Opening inventory (A/B/C)"
+      },
+      {
+        "key": "biz.partner_shares_effective_date",
+        "details": "Partner draft 100% ready — EffectiveFrom/opening date still required"
+      },
+      {
+        "key": "biz.real_employees",
+        "details": "BUSINESS_DECISION_REQUIRED: Real employee assignments (not smoke-only)"
+      },
+      {
+        "key": "payroll.plan_coverage",
+        "details": "No assignments yet — coverage blocked until real employees assigned with plans"
+      },
+      {
+        "key": "target.policy_coverage",
+        "details": "No assignments yet — target policy blocked until real employees assigned"
+      },
+      {
+        "key": "public.frontend_multi_branch",
+        "details": "PUBLIC_LIVE blocked until cutsaloon.com multi-branch selection is deployed and verified"
+      },
+      {
+        "key": "public.branch_selection",
+        "details": "PUBLIC_LIVE blocked until public branch selection UX ships (Phase 1P)"
+      },
+      {
+        "key": "public.explicit_branch_code",
+        "details": "PUBLIC_LIVE blocked until every public booking request carries branchCode"
+      },
+      {
+        "key": "public.booking_flow_smoke",
+        "details": "PUBLIC_LIVE blocked until public booking flow smoke passes"
+      },
+      {
+        "key": "public.customer_notifications",
+        "details": "PUBLIC_LIVE blocked until customer notifications are branch-scoped and enabled"
+      }
+    ]
+  }
+}

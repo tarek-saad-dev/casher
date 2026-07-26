@@ -1,0 +1,14 @@
+{
+  "at": "2026-07-26T03:31:55.168Z",
+  "backfill": {
+    "inserted": 98,
+    "skipped": 0,
+    "fingerprintBefore": 98,
+    "fingerprintAfter": 98
+  },
+  "gleemBranchRows": 98,
+  "campCaesarRealSchedules": 0,
+  "ph1gtestRealSchedules": 0,
+  "gleemLegacyFingerprintUnchanged": true,
+  "gleemScheduleMismatches": 0
+}

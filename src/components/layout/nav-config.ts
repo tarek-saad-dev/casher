@@ -8,7 +8,7 @@ import {
   Calculator, Settings, Scissors, Tags, Shield, Activity, Star,
   UsersRound, FileBarChart, Calendar, Ticket, CalendarCheck, MonitorPlay,
   AlertTriangle, Crown, KeyRound, FileKey2, Banknote, ShieldCheck, Users,
-  HeartHandshake, Layers, Beaker, Settings2, Sun,
+  HeartHandshake, Layers, Beaker, Settings2, Sun, Building2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -205,6 +205,7 @@ export const NAV_SECTIONS: NavSection[] = [
     icon: Settings,
     items: [
       { href: '/admin/operations',                label: 'مركز التشغيل',          icon: Activity   },
+      { href: '/admin/branches',                  label: 'الفروع',                 icon: Building2  },
       { href: '/admin/users',                     label: 'المستخدمون',             icon: Shield     },
       { href: '/admin/services',                  label: 'الخدمات',                icon: Scissors   },
       { href: '/admin/payment-methods',           label: 'طرق الدفع',             icon: CreditCard },

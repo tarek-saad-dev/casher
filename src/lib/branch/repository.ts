@@ -1,10 +1,12 @@
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
 import type {
+  BranchLifecycleStatus,
   BranchRecord,
   EmpBranchAssignmentRecord,
   UserBranchAccessRecord,
 } from './types';
+import { isBranchLifecycleStatus } from './lifecycle';
 
 /** One consistent current-time source for branch validity checks. */
 export function branchNow(): Date {
@@ -27,6 +29,11 @@ function formatDate(value: unknown): string {
   return String(value).slice(0, 10);
 }
 
+function mapLifecycleStatus(value: unknown): BranchLifecycleStatus {
+  if (isBranchLifecycleStatus(value)) return value;
+  return 'SETUP';
+}
+
 function mapBranch(row: Record<string, unknown>): BranchRecord {
   return {
     branchId: Number(row.BranchID),
@@ -40,6 +47,13 @@ function mapBranch(row: Record<string, unknown>): BranchRecord {
     defaultOpenTime: row.DefaultOpenTime == null ? null : formatTime(row.DefaultOpenTime),
     defaultCloseTime: row.DefaultCloseTime == null ? null : formatTime(row.DefaultCloseTime),
     isActive: Boolean(row.IsActive),
+    lifecycleStatus: mapLifecycleStatus(row.LifecycleStatus),
+    publicBookingEnabled:
+      row.PublicBookingEnabled == null ? Boolean(row.IsActive) : Boolean(row.PublicBookingEnabled),
+    externalNotificationsEnabled:
+      row.ExternalNotificationsEnabled == null
+        ? Boolean(row.IsActive)
+        : Boolean(row.ExternalNotificationsEnabled),
     createdAt: row.CreatedAt instanceof Date ? row.CreatedAt : new Date(String(row.CreatedAt)),
     updatedAt:
       row.UpdatedAt == null
@@ -53,7 +67,10 @@ function mapBranch(row: Record<string, unknown>): BranchRecord {
 const BRANCH_SELECT = `
   BranchID, BranchCode, BranchName, ShortName, Address, Phone,
   TimeZone, BusinessDayCutoffTime, DefaultOpenTime, DefaultCloseTime,
-  IsActive, CreatedAt, UpdatedAt
+  IsActive, CreatedAt, UpdatedAt,
+  ISNULL(LifecycleStatus, N'SETUP') AS LifecycleStatus,
+  ISNULL(PublicBookingEnabled, CASE WHEN IsActive = 1 THEN 1 ELSE 0 END) AS PublicBookingEnabled,
+  ISNULL(ExternalNotificationsEnabled, CASE WHEN IsActive = 1 THEN 1 ELSE 0 END) AS ExternalNotificationsEnabled
 `;
 
 export async function getBranchById(branchId: number): Promise<BranchRecord | null> {
@@ -91,6 +108,17 @@ export async function listActiveBranches(): Promise<BranchRecord[]> {
     SELECT ${BRANCH_SELECT}
     FROM dbo.TblBranch
     WHERE IsActive = 1
+    ORDER BY BranchCode
+  `);
+  return result.recordset.map(mapBranch);
+}
+
+/** Admin hub — all branches including SETUP / inactive. */
+export async function listAllBranches(): Promise<BranchRecord[]> {
+  const db = await getPool();
+  const result = await db.request().query(`
+    SELECT ${BRANCH_SELECT}
+    FROM dbo.TblBranch
     ORDER BY BranchCode
   `);
   return result.recordset.map(mapBranch);
@@ -226,6 +254,65 @@ export async function listEmployeeActiveBranchAssignments(
         AND ea.EffectiveFrom <= @day
         AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @day)
       ORDER BY ea.IsHomeBranch DESC, b.BranchCode
+    `);
+  return result.recordset.map((row: Record<string, unknown>) => ({
+    id: Number(row.ID),
+    empId: Number(row.EmpID),
+    branchId: Number(row.BranchID),
+    branchCode: String(row.BranchCode),
+    branchName: String(row.BranchName),
+    isHomeBranch: Boolean(row.IsHomeBranch),
+    canReceiveBookings: Boolean(row.CanReceiveBookings),
+    isActive: Boolean(row.IsActive),
+    effectiveFrom: formatDate(row.EffectiveFrom),
+    effectiveTo: row.EffectiveTo == null ? null : formatDate(row.EffectiveTo),
+  }));
+}
+
+/**
+ * Phase 1M-S / 1N-B — assignment lookup for an explicit smoke execution context only.
+ * Allows allowed smoke branches while IsActive=0 AND LifecycleStatus=SMOKE_TEST.
+ * Never widens production listEmployeeActiveBranchAssignments.
+ */
+export async function listEmployeeAssignmentsForSmokeBranch(
+  empId: number,
+  smokeBranchId: number,
+  at: Date = branchNow(),
+): Promise<EmpBranchAssignmentRecord[]> {
+  const { getSmokeExecutionContext } = await import('./smokeExecutionContext');
+  const { isAllowedSmokeBranchCode } = await import('./smokeBranchPolicy');
+  const ctx = getSmokeExecutionContext();
+  if (!ctx || ctx.branchId !== smokeBranchId) {
+    return [];
+  }
+  if (!isAllowedSmokeBranchCode(ctx.branchCode)) {
+    return [];
+  }
+
+  const db = await getPool();
+  const day = at.toISOString().slice(0, 10);
+  const result = await db
+    .request()
+    .input('empId', sql.Int, empId)
+    .input('branchId', sql.Int, smokeBranchId)
+    .input('day', sql.Date, day)
+    .input('code', sql.NVarChar(30), ctx.branchCode)
+    .query(`
+      SELECT
+        ea.ID, ea.EmpID, ea.BranchID, b.BranchCode, b.BranchName,
+        ea.IsHomeBranch, ea.CanReceiveBookings, ea.IsActive,
+        ea.EffectiveFrom, ea.EffectiveTo
+      FROM dbo.TblEmpBranchAssignment ea
+      INNER JOIN dbo.TblBranch b ON b.BranchID = ea.BranchID
+      WHERE ea.EmpID = @empId
+        AND ea.BranchID = @branchId
+        AND ea.IsActive = 1
+        AND b.BranchCode = @code
+        AND b.LifecycleStatus = N'SMOKE_TEST'
+        AND b.IsActive = 0
+        AND ISNULL(b.PublicBookingEnabled, 0) = 0
+        AND ea.EffectiveFrom <= @day
+        AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @day)
     `);
   return result.recordset.map((row: Record<string, unknown>) => ({
     id: Number(row.ID),

@@ -1,0 +1,297 @@
+{
+  "TblEmpWorkSchedule": [
+    {
+      "COLUMN_NAME": "ID",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "EmpID",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "DayOfWeek",
+      "DATA_TYPE": "tinyint",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "IsWorkingDay",
+      "DATA_TYPE": "bit",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "StartTime",
+      "DATA_TYPE": "time",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "EndTime",
+      "DATA_TYPE": "time",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "BreakStartTime",
+      "DATA_TYPE": "time",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "BreakEndTime",
+      "DATA_TYPE": "time",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "Notes",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "CreatedAt",
+      "DATA_TYPE": "datetime",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "UpdatedAt",
+      "DATA_TYPE": "datetime",
+      "IS_NULLABLE": "YES"
+    }
+  ],
+  "TblEmpTargetPlan": [
+    {
+      "COLUMN_NAME": "ID",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "EmpID",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "IsEnabled",
+      "DATA_TYPE": "bit",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "InputBasis",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "ConversionDays",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "EffectiveFrom",
+      "DATA_TYPE": "date",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "EffectiveTo",
+      "DATA_TYPE": "date",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "Notes",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "CreatedByUserID",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "UpdatedByUserID",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "CreatedAt",
+      "DATA_TYPE": "datetime2",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "UpdatedAt",
+      "DATA_TYPE": "datetime2",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "BranchID",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "NO"
+    }
+  ],
+  "TblEmpBranchAssignment": [
+    {
+      "COLUMN_NAME": "ID",
+      "DATA_TYPE": "bigint",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "EmpID",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "BranchID",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "IsHomeBranch",
+      "DATA_TYPE": "bit",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "CanReceiveBookings",
+      "DATA_TYPE": "bit",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "IsActive",
+      "DATA_TYPE": "bit",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "EffectiveFrom",
+      "DATA_TYPE": "date",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "EffectiveTo",
+      "DATA_TYPE": "date",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "CreatedAt",
+      "DATA_TYPE": "datetime2",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "UpdatedAt",
+      "DATA_TYPE": "datetime2",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "CreatedByUserID",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "Notes",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "YES"
+    }
+  ],
+  "TblEmpBranchPayrollPlan": [
+    {
+      "COLUMN_NAME": "PlanID",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "EmpID",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "BranchID",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "PayType",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "HourlyRate",
+      "DATA_TYPE": "decimal",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "DailyRate",
+      "DATA_TYPE": "decimal",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "MonthlySalary",
+      "DATA_TYPE": "decimal",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "EffectiveFrom",
+      "DATA_TYPE": "date",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "EffectiveTo",
+      "DATA_TYPE": "date",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "IsActive",
+      "DATA_TYPE": "bit",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "SourceNotes",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "CreatedAt",
+      "DATA_TYPE": "datetime2",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "UpdatedAt",
+      "DATA_TYPE": "datetime2",
+      "IS_NULLABLE": "YES"
+    }
+  ],
+  "TblBranchLifecycleAudit": [
+    {
+      "COLUMN_NAME": "AuditID",
+      "DATA_TYPE": "bigint",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "BranchID",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "FromStatus",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "ToStatus",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "Reason",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "ActorUserID",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "ReadinessJson",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "CreatedAt",
+      "DATA_TYPE": "datetime2",
+      "IS_NULLABLE": "NO"
+    }
+  ]
+}

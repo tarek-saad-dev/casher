@@ -1,0 +1,155 @@
+{
+  "capturedAt": "2026-07-25T23:43:35.536Z",
+  "smokeRunId": 3,
+  "workDate": "2026-07-26",
+  "steps": [
+    {
+      "step": "preconditions",
+      "ok": true,
+      "detail": "GLEEM/PH1GTEST lifecycle OK; no RUNNING run"
+    },
+    {
+      "step": "baseline",
+      "ok": true,
+      "detail": "wrote C:\\Users\\user\\Desktop\\pos-system\\scripts\\branch-smoke\\_phase1m-smoke-before.json"
+    },
+    {
+      "step": "readiness",
+      "ok": true,
+      "detail": "score=90 blockers=legacy.ELIGIBLE_BARBER"
+    },
+    {
+      "step": "lifecycle.SMOKE_TEST",
+      "ok": true,
+      "detail": "SETUP→SMOKE_TEST; IsActive=0; PublicBookingEnabled=0"
+    },
+    {
+      "step": "smoke.start",
+      "ok": true,
+      "detail": "SmokeRunID=3 ExternalSideEffectsEnabled=0",
+      "ids": {
+        "smokeRunId": 3
+      }
+    },
+    {
+      "step": "A.access_isolation",
+      "ok": true,
+      "detail": "gleemReject=true missingRunReject=true isActive=0"
+    },
+    {
+      "step": "B.employee_setup",
+      "ok": true,
+      "detail": "empId=1036 planId=16 assignmentId=17",
+      "ids": {
+        "empId": 1036,
+        "payrollPlanId": 16,
+        "assignmentId": 17
+      }
+    },
+    {
+      "step": "business_day",
+      "ok": true,
+      "detail": "BusinessDayID=4460 date=2026-07-26",
+      "ids": {
+        "businessDayId": 4460
+      }
+    },
+    {
+      "step": "C.attendance",
+      "ok": true,
+      "detail": "AttendanceID=2897 BranchID=2 ok=1",
+      "ids": {
+        "attendanceId": 2897
+      }
+    },
+    {
+      "step": "D.booking_queue",
+      "ok": true,
+      "detail": "BookingID=2133 QueueTicketID=149",
+      "ids": {
+        "bookingId": 2133,
+        "ticketId": 149
+      }
+    },
+    {
+      "step": "E_F.treasury_cashmove",
+      "ok": true,
+      "detail": "CashMoveID=36673 BranchID=2 Amount=100 [SMOKE]",
+      "ids": {
+        "cashMoveId": 36673
+      }
+    },
+    {
+      "step": "G.inventory",
+      "ok": false,
+      "detail": "inventory skipped: Cannot read properties of undefined (reading 'reason')"
+    },
+    {
+      "step": "H.payroll",
+      "ok": true,
+      "detail": "generated=1 wage=200 retryNewRows=0"
+    },
+    {
+      "step": "I.targets",
+      "ok": true,
+      "detail": "targets generated; count=0 result={\"workDate\":\"2026-07-26\",\"totals\":{\"eligibleEmployees\":0,\"generated\":0,\"recalculated\":0,\"zeroSales\":0,\"belowFirstTier\":0"
+    },
+    {
+      "step": "J.ledger_isolation",
+      "ok": true,
+      "detail": "PH1GTEST ledger rows for emp=0; gleem smoke refs=0"
+    },
+    {
+      "step": "K.monthly_salary_dry_run",
+      "ok": true,
+      "detail": "dryRun month=2026-07 {\"success\":true,\"dryRun\":true,\"month\":\"2026-07\",\"postingDate\":\"2026-07-31\",\"totalAmount\":0,\"counts\":{\"eligible\":0,\"inserted\":0,\"updated\":0,\"alreadyPosted\":0,\"sk"
+    },
+    {
+      "step": "L.smoke_nightly_subset",
+      "ok": true,
+      "detail": "finalize+payroll for BranchID=2 only; retry idempotent"
+    },
+    {
+      "step": "M.reports_scope",
+      "ok": true,
+      "detail": "{\"PhAtt\":1,\"PhPay\":1,\"PhBook\":1,\"GleemHasSmokeAtt\":0}"
+    },
+    {
+      "step": "external_side_effects",
+      "ok": true,
+      "detail": "whatsappMaster=false ExternalSideEffectsEnabled=false printers=0 public=0"
+    },
+    {
+      "step": "gleem_isolation",
+      "ok": true,
+      "detail": "smokeArtifactsOnGleem=0"
+    }
+  ],
+  "afterOps": {
+    "GleemId": 1,
+    "Ph1gId": 2,
+    "GleemMaxBookingId": 2130,
+    "GleemMaxTicketId": 146,
+    "GleemMaxAttendanceId": 2894,
+    "GleemMaxPayrollId": 1635,
+    "GleemMaxLedgerId": 576,
+    "GleemMaxTargetId": 107,
+    "GleemMaxCashMoveId": 36672,
+    "GleemBookings": 1546,
+    "GleemQueue": 142,
+    "GleemAttendance": 914,
+    "GleemPayroll": 628,
+    "GleemLedger": 560,
+    "GleemTargets": 107,
+    "GleemCashMoves": 11951,
+    "PhBookings": 2,
+    "PhQueue": 2,
+    "PhAttendance": 1,
+    "PhPayroll": 1,
+    "PhLedger": 0,
+    "PhTargets": 0,
+    "PhCashMoves": 1,
+    "GleemBranchJson": "{\"BranchID\":1,\"LifecycleStatus\":\"PUBLIC_LIVE\",\"IsActive\":true,\"PublicBookingEnabled\":true,\"ExternalNotificationsEnabled\":true}",
+    "PhBranchJson": "{\"BranchID\":2,\"LifecycleStatus\":\"SMOKE_TEST\",\"IsActive\":false,\"PublicBookingEnabled\":false,\"ExternalNotificationsEnabled\":false}"
+  }
+}

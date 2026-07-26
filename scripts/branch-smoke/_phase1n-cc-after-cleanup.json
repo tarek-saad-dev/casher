@@ -1,0 +1,161 @@
+{
+  "smokeRunId": 11,
+  "proofs": {
+    "inventory.adjustment": true,
+    "inventory.consumption": true,
+    "pos.cashInvoice": true,
+    "pos.cardInvoice": true,
+    "payroll.hourlyLedgerCredit": true,
+    "payroll.monthlySalaryPost": true,
+    "target.positiveEntitlement": true,
+    "target.ledgerCredit": true,
+    "advance.payout": true,
+    "gleem.isolation": true,
+    "external.whatsapp": true,
+    "external.prints": true,
+    "cleanup.completed": true
+  },
+  "ids": {
+    "hourlyEmpId": 1037,
+    "monthlyEmpId": 1038,
+    "serviceProId": 1063,
+    "productProId": 1064,
+    "businessDayId": 4468,
+    "shiftMoveId": 10830,
+    "cashInvId": 7799,
+    "cardInvId": 7800,
+    "cashMoveCashId": 36688,
+    "cashMoveCardId": 36689,
+    "attendanceId": 2905,
+    "bookingId": 2141,
+    "ticketId": 157,
+    "payrollId": 1643,
+    "hourlyLedgerId": 590,
+    "monthlyLedgerId": 591,
+    "targetId": 111,
+    "targetLedgerId": 592,
+    "targetPlanId": 14,
+    "payoutLedgerId": 593
+  },
+  "steps": [
+    {
+      "step": "A.security_gleem_refuse",
+      "ok": true,
+      "detail": "GLEEM smoke refused"
+    },
+    {
+      "step": "baseline",
+      "ok": true,
+      "detail": "GLEEM fingerprint captured"
+    },
+    {
+      "step": "B.seed",
+      "ok": true,
+      "detail": "hourly=1037 monthly=1038 svc=1063 prod=1064",
+      "ids": {
+        "hourlyEmpId": 1037,
+        "monthlyEmpId": 1038
+      }
+    },
+    {
+      "step": "C.readiness",
+      "ok": true,
+      "detail": "score=80 smoke=true"
+    },
+    {
+      "step": "D.lifecycle",
+      "ok": true,
+      "detail": "SETUP→SMOKE_TEST"
+    },
+    {
+      "step": "E.smoke_start",
+      "ok": true,
+      "detail": "SmokeRunID=11"
+    },
+    {
+      "step": "F.attendance",
+      "ok": true,
+      "detail": "AttendanceID=2905"
+    },
+    {
+      "step": "F.booking_queue",
+      "ok": true,
+      "detail": "Booking=2141 Queue=157"
+    },
+    {
+      "step": "G.inventory",
+      "ok": true,
+      "detail": "after=4 consAfter=3"
+    },
+    {
+      "step": "H.pos",
+      "ok": true,
+      "detail": "cashInv=7799 cardInv=7800 cmCash=36688 cmCard=36689"
+    },
+    {
+      "step": "I.payroll_hourly",
+      "ok": true,
+      "detail": "PayrollID=1643 LedgerID=590 dual=true"
+    },
+    {
+      "step": "J.monthly",
+      "ok": true,
+      "detail": "LedgerID=591 result={\"success\":true,\"dryRun\":false,\"month\":\"2026-07\",\"postingDate\":\"2026-07-31\",\"totalAmount\":3000,\"counts\":{\"eligible\":1,\"inserted\":1,\"updated\":0,\"alreadyPosted\":0,\"skipped\":0,\"errors\":0},\"rows\":[{\"empId"
+    },
+    {
+      "step": "K.targets",
+      "ok": true,
+      "detail": "targetId=111 entitlement=30 ledger=592"
+    },
+    {
+      "step": "L.payout",
+      "ok": true,
+      "detail": "amt=10 overpayRejected=true crossRejected=true"
+    },
+    {
+      "step": "M.isolation",
+      "ok": true,
+      "detail": "artifactsOnGleem=0 activeHasCC=false"
+    },
+    {
+      "step": "N.external",
+      "ok": true,
+      "detail": "WhatsApp forced off; no production print"
+    },
+    {
+      "step": "O.cleanup",
+      "ok": true,
+      "detail": "all zeros; SETUP restored"
+    }
+  ],
+  "branch": {
+    "branchId": 3,
+    "branchCode": "CAMP_CAESAR",
+    "branchName": "فرع كامب شيزار",
+    "shortName": "كامب شيزار",
+    "address": null,
+    "phone": null,
+    "timeZone": "Africa/Cairo",
+    "businessDayCutoffTime": "04:00:00",
+    "defaultOpenTime": null,
+    "defaultCloseTime": null,
+    "isActive": false,
+    "lifecycleStatus": "SETUP",
+    "publicBookingEnabled": false,
+    "externalNotificationsEnabled": false,
+    "createdAt": "2026-07-26T00:01:27.000Z",
+    "updatedAt": "2026-07-26T01:02:43.000Z"
+  },
+  "zeros": {
+    "Bookings": 0,
+    "Queue": 0,
+    "Attendance": 0,
+    "Payroll": 0,
+    "Ledger": 0,
+    "Targets": 0,
+    "Cash": 0,
+    "Inv": 0,
+    "Pending": 0
+  },
+  "at": "2026-07-26T01:02:43.626Z"
+}

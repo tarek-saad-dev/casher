@@ -160,7 +160,12 @@ export async function createBranchRecord(input: CreateBranchInput): Promise<Bran
   const cutoff = toSqlTime(input.businessDayCutoffTime, '04:00:00')!;
   const openT = toSqlTime(input.defaultOpenTime ?? null, null);
   const closeT = toSqlTime(input.defaultCloseTime ?? null, null);
-  const isActive = input.isActive !== false;
+  // Phase 1M non-negotiable: creating a branch never activates it.
+  // Ignore body/CLI isActive escalation — transitions own IsActive + lifecycle.
+  const isActive = false;
+  const lifecycleStatus = 'SETUP';
+  const publicBookingEnabled = false;
+  const externalNotificationsEnabled = false;
 
   const result = await db
     .request()
@@ -174,12 +179,16 @@ export async function createBranchRecord(input: CreateBranchInput): Promise<Bran
     .input('openT', sql.NVarChar(8), openT)
     .input('closeT', sql.NVarChar(8), closeT)
     .input('isActive', sql.Bit, isActive ? 1 : 0)
+    .input('lifecycle', sql.NVarChar(30), lifecycleStatus)
+    .input('publicBooking', sql.Bit, publicBookingEnabled ? 1 : 0)
+    .input('extNotify', sql.Bit, externalNotificationsEnabled ? 1 : 0)
     .input('createdBy', sql.Int, input.createdByUserId ?? null)
     .query(`
       INSERT INTO dbo.TblBranch (
         BranchCode, BranchName, ShortName, Address, Phone,
         TimeZone, BusinessDayCutoffTime, DefaultOpenTime, DefaultCloseTime,
-        IsActive, CreatedByUserID
+        IsActive, LifecycleStatus, PublicBookingEnabled, ExternalNotificationsEnabled,
+        CreatedByUserID
       )
       OUTPUT INSERTED.BranchID
       VALUES (
@@ -187,7 +196,7 @@ export async function createBranchRecord(input: CreateBranchInput): Promise<Bran
         @tz, CAST(@cutoff AS time(0)),
         CASE WHEN @openT IS NULL THEN NULL ELSE CAST(@openT AS time(0)) END,
         CASE WHEN @closeT IS NULL THEN NULL ELSE CAST(@closeT AS time(0)) END,
-        @isActive, @createdBy
+        @isActive, @lifecycle, @publicBooking, @extNotify, @createdBy
       )
     `);
 
@@ -242,7 +251,12 @@ export async function ensureQueueBookingSettingsForBranch(
     options.currency ?? (template?.Currency != null ? String(template.Currency) : 'EGP');
   const bookingEnabled =
     options.bookingEnabled ??
-    (template?.BookingEnabled != null ? Boolean(template.BookingEnabled) : true);
+    // Phase 1M: never inherit public booking ON from template during provisioning
+    (options.copyFromBranchCode != null
+      ? false
+      : template?.BookingEnabled != null
+        ? Boolean(template.BookingEnabled)
+        : false);
   const allowSpecific =
     options.allowSpecificBarber ??
     (template?.AllowSpecificBarber != null ? Boolean(template.AllowSpecificBarber) : true);

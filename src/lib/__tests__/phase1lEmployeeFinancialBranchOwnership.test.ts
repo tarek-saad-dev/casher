@@ -57,6 +57,51 @@ describe('Phase 1L employee financial branch ownership', () => {
     expect(nightly).toContain('payrollBranches');
     expect(nightly).toContain('targetBranches');
     expect(nightly).toContain('branchId: branch.branchId');
+    expect(nightly).toContain('postMonthlySalaryEntitlements');
+    expect(nightly).toContain('salaryBranches');
+  });
+
+  it('operational wage rates resolve from TblEmpBranchPayrollPlan (no TblEmp fallback)', () => {
+    const rules = read('src/lib/payroll/dailyPayrollHrRules.ts');
+    expect(rules).toContain('SQL_BRANCH_PAYROLL_PLAN_APPLY');
+    expect(rules).toContain('buildDailyWageSqlFromBranchPlan');
+    expect(rules).toContain('no_branch_payroll_plan');
+
+    const core = read('src/lib/payroll/dailyPayrollGenerateCore.ts');
+    expect(core).toContain('SQL_BRANCH_PAYROLL_PLAN_APPLY');
+    expect(core).toContain('buildDailyWageSqlFromBranchPlan');
+    expect(core).not.toMatch(
+      /INSERT[\s\S]{0,800}ManualHourlyRate[\s\S]{0,200}INTO dbo\.TblEmpDailyPayroll/i,
+    );
+
+    const plan = read('src/lib/payroll/branchPayrollPlan.ts');
+    expect(plan).toContain('resolveBranchPayrollPlanForDate');
+    expect(plan).toContain('assertNoOverlappingBranchPayrollPlans');
+  });
+
+  it('reconciliation and reports scope by BranchID; WhatsApp includes branchEarnings', () => {
+    const recon = read('src/lib/services/employeeLedgerReconciliationService.ts');
+    expect(recon).toContain('branchFilter');
+    expect(recon).toContain('branchId');
+
+    const reconRoute = read('src/app/api/admin/hr/employee-ledger/reconciliation/route.ts');
+    expect(reconRoute).toContain('requireBranchOperationAccess');
+    expect(reconRoute).toContain('BranchID في الطلب غير مسموح');
+
+    const expense = read('src/lib/accounting/payrollExpenseFromLedger.ts');
+    expect(expense).toContain('l.BranchID = @branchId');
+
+    const waMsg = read('src/lib/hr/employee-daily-whatsapp-message.ts');
+    expect(waMsg).toContain('branchEarnings');
+    expect(waMsg).toContain('Overall earned');
+
+    const waSvc = read('src/lib/hr/employee-daily-whatsapp-report.service.ts');
+    expect(waSvc).toContain('loadBranchEarningsByEmp');
+    expect(waSvc).toContain('branchEarnings');
+
+    const ledgerSrc = read('src/lib/services/resolveLedgerEntryBranchSource.ts');
+    expect(ledgerSrc).toContain('resolveLedgerEntryBranchSource');
+    expect(ledgerSrc).toContain('hourly_wage');
   });
 
   it('payout validates branch balance; advance ledger inherits CashMove branch', () => {
@@ -142,6 +187,7 @@ describe('Phase 1L employee financial branch ownership', () => {
 
   it('Phase 1L documentation set exists', () => {
     const docs = [
+      'docs/branch-phase-1l-final-application-audit.md',
       'docs/branch-phase-1l-employee-financial-dependency-audit.md',
       'docs/branch-phase-1l-branch-account-contract.md',
       'docs/branch-phase-1l-payroll-plan-contract.md',

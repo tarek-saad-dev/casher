@@ -1,0 +1,301 @@
+{
+  "score": 83,
+  "gates": {
+    "smoke": false,
+    "internal": false,
+    "public": false
+  },
+  "sections": [
+    {
+      "section": "identity",
+      "items": [
+        {
+          "requiredFor": [
+            "smoke",
+            "internal_live",
+            "public_live"
+          ],
+          "key": "identity.code",
+          "section": "identity",
+          "title": "رمز الفرع",
+          "status": "pass",
+          "details": "CAMP_CAESAR",
+          "remediationUrl": "/admin/branches/3/setup"
+        },
+        {
+          "requiredFor": [
+            "smoke",
+            "internal_live",
+            "public_live"
+          ],
+          "key": "identity.name",
+          "section": "identity",
+          "title": "اسم الفرع",
+          "status": "pass",
+          "details": "فرع كامب شيزار"
+        },
+        {
+          "requiredFor": [
+            "smoke",
+            "internal_live",
+            "public_live"
+          ],
+          "key": "identity.timezone",
+          "section": "identity",
+          "title": "المنطقة الزمنية",
+          "status": "pass",
+          "details": "Africa/Cairo"
+        },
+        {
+          "requiredFor": [
+            "internal_live",
+            "public_live"
+          ],
+          "key": "identity.address",
+          "section": "identity",
+          "title": "العنوان",
+          "status": "warning",
+          "details": "Address recommended before live"
+        },
+        {
+          "requiredFor": [
+            "smoke",
+            "internal_live",
+            "public_live"
+          ],
+          "key": "lifecycle.valid",
+          "section": "identity",
+          "title": "حالة دورة الحياة",
+          "status": "pass",
+          "details": "LifecycleStatus=SETUP"
+        }
+      ]
+    },
+    {
+      "section": "lifecycle",
+      "items": [
+        {
+          "requiredFor": [
+            "internal_live",
+            "public_live"
+          ],
+          "key": "ops.is_active",
+          "section": "lifecycle",
+          "title": "IsActive للتشغيل اليومي",
+          "status": "pass",
+          "details": "IsActive=0; lifecycle=SETUP"
+        }
+      ]
+    },
+    {
+      "section": "operations",
+      "items": [
+        {
+          "requiredFor": [
+            "smoke",
+            "internal_live",
+            "public_live"
+          ],
+          "key": "legacy.BRANCH_METADATA",
+          "section": "operations",
+          "title": "BRANCH_METADATA",
+          "status": "pass",
+          "details": "Required metadata present (code, name, timezone, cutoff)"
+        },
+        {
+          "requiredFor": [
+            "public_live"
+          ],
+          "key": "legacy.REPORT_VISIBILITY",
+          "section": "operations",
+          "title": "REPORT_VISIBILITY",
+          "status": "pass",
+          "details": "1 user(s) with CanViewReports"
+        },
+        {
+          "requiredFor": [
+            "smoke",
+            "internal_live",
+            "public_live"
+          ],
+          "key": "legacy.BUSINESS_DAY_SCHEMA",
+          "section": "operations",
+          "title": "BUSINESS_DAY_SCHEMA",
+          "status": "pass",
+          "details": "TblNewDay.BranchID present"
+        },
+        {
+          "requiredFor": [
+            "smoke",
+            "internal_live",
+            "public_live"
+          ],
+          "key": "legacy.SHIFT_SCHEMA",
+          "section": "operations",
+          "title": "SHIFT_SCHEMA",
+          "status": "pass",
+          "details": "TblShiftMove.BranchID present"
+        }
+      ]
+    },
+    {
+      "section": "booking",
+      "items": [
+        {
+          "requiredFor": [
+            "smoke",
+            "internal_live",
+            "public_live"
+          ],
+          "key": "legacy.QUEUE_SETTINGS",
+          "section": "booking",
+          "title": "QUEUE_SETTINGS",
+          "status": "pass",
+          "details": "QueueBookingSettings row exists"
+        },
+        {
+          "requiredFor": [
+            "public_live"
+          ],
+          "key": "booking.public_flag",
+          "section": "booking",
+          "title": "حجز الموقع",
+          "status": "pass",
+          "details": "PublicBookingEnabled=0",
+          "remediationUrl": "/admin/branches/3/readiness"
+        },
+        {
+          "requiredFor": [
+            "smoke",
+            "internal_live",
+            "public_live"
+          ],
+          "key": "legacy.BOOKING_SCHEMA",
+          "section": "booking",
+          "title": "BOOKING_SCHEMA",
+          "status": "pass",
+          "details": "Bookings.BranchID present"
+        },
+        {
+          "requiredFor": [
+            "smoke",
+            "internal_live",
+            "public_live"
+          ],
+          "key": "legacy.QUEUE_SCHEMA",
+          "section": "booking",
+          "title": "QUEUE_SCHEMA",
+          "status": "pass",
+          "details": "QueueTickets.BranchID present"
+        }
+      ]
+    },
+    {
+      "section": "employees",
+      "items": [
+        {
+          "requiredFor": [
+            "internal_live",
+            "public_live"
+          ],
+          "key": "legacy.ELIGIBLE_BARBER",
+          "section": "employees",
+          "title": "ELIGIBLE_BARBER",
+          "status": "blocker",
+          "details": "No eligible barber with CanReceiveBookings on this branch"
+        },
+        {
+          "requiredFor": [
+            "smoke",
+            "internal_live",
+            "public_live"
+          ],
+          "key": "legacy.ASSIGNMENT_INTEGRITY",
+          "section": "employees",
+          "title": "ASSIGNMENT_INTEGRITY",
+          "status": "pass",
+          "details": "No assignment integrity errors for this branch scope"
+        },
+        {
+          "requiredFor": [
+            "smoke"
+          ],
+          "key": "smoke.assignment",
+          "section": "employees",
+          "title": "تعيين موظف للـ smoke",
+          "status": "blocker",
+          "details": "No bookable assignment on branch (required before SMOKE_TEST)"
+        }
+      ]
+    },
+    {
+      "section": "users",
+      "items": [
+        {
+          "requiredFor": [
+            "smoke",
+            "internal_live",
+            "public_live"
+          ],
+          "key": "legacy.OPERATOR_ACCESS",
+          "section": "users",
+          "title": "OPERATOR_ACCESS",
+          "status": "pass",
+          "details": "1 user(s) with CanOperate access"
+        }
+      ]
+    },
+    {
+      "section": "reports",
+      "items": [
+        {
+          "requiredFor": [
+            "public_live"
+          ],
+          "key": "legacy.PARTNER_SHARES",
+          "section": "reports",
+          "title": "PARTNER_SHARES",
+          "status": "warning",
+          "details": "No effective partner shares (partner reports will fail)"
+        }
+      ]
+    },
+    {
+      "section": "payroll",
+      "items": [
+        {
+          "requiredFor": [
+            "smoke",
+            "internal_live",
+            "public_live"
+          ],
+          "key": "payroll.plan_coverage",
+          "section": "payroll",
+          "title": "خطط الرواتب للموظفين المعيّنين",
+          "status": "pass",
+          "details": "كل الموظفين المعيّنين لديهم خطة راتب فرعية سارية",
+          "remediationUrl": "/admin/employees"
+        }
+      ]
+    },
+    {
+      "section": "public_website",
+      "items": [
+        {
+          "requiredFor": [
+            "public_live"
+          ],
+          "key": "public.frontend_multi_branch",
+          "section": "public_website",
+          "title": "واجهة الحجز تدعم اختيار الفرع",
+          "status": "warning",
+          "details": "Public live requires cutsaloon.com multi-branch selection deployment (see docs/branch-phase-1m-public-booking-readiness.md)",
+          "remediationUrl": "/docs/branch-phase-1m-public-booking-readiness.md"
+        }
+      ]
+    }
+  ],
+  "publicCodes": [
+    "GLEEM"
+  ]
+}

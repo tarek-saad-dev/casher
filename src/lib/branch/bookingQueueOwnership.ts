@@ -12,6 +12,7 @@ import { getBranchByCode, listActiveBranches } from './repository';
 import type { BranchRecord } from './types';
 import { BranchDomainError } from './types';
 import { assertActiveBranchOwns, financialNotFoundResponse } from './financialOwnership';
+import { isPubliclyDiscoverable } from './lifecycle';
 
 export type PublicBranchSafe = {
   branchId: number;
@@ -43,7 +44,28 @@ export function toPublicBranchSafe(b: BranchRecord): PublicBranchSafe {
 
 export async function listPublicActiveBranches(): Promise<PublicBranchSafe[]> {
   const rows = await listActiveBranches();
-  return rows.map(toPublicBranchSafe);
+  return rows
+    .filter((b) =>
+      isPubliclyDiscoverable({
+        lifecycleStatus: b.lifecycleStatus,
+        publicBookingEnabled: b.publicBookingEnabled,
+        isActive: b.isActive,
+      }),
+    )
+    .map(toPublicBranchSafe);
+}
+
+function assertPublicBookable(branch: BranchRecord): BranchRecord {
+  if (
+    !isPubliclyDiscoverable({
+      lifecycleStatus: branch.lifecycleStatus,
+      publicBookingEnabled: branch.publicBookingEnabled,
+      isActive: branch.isActive,
+    })
+  ) {
+    throw new BranchDomainError('BRANCH_INACTIVE', 'الفرع غير متاح', 404);
+  }
+  return branch;
 }
 
 /** Non-disclosing invalid branch for public callers. */
@@ -88,9 +110,11 @@ function warnSingleActiveBranchFallback(args: {
 
 /**
  * Resolve public branchCode (preferred) from query/body.
- * Explicit code: must exist and be active.
- * Missing code: temporary compatibility — only when exactly one active branch.
+ * Explicit code: must exist and be publicly discoverable (PUBLIC_LIVE + PublicBookingEnabled).
+ * Missing code: temporary compatibility — only when exactly one public branch.
+ * Fail closed when multiple public branches exist.
  * Never defaults to a hardcoded branch code or BranchID=1.
+ * PH1GTEST / SETUP / SMOKE_TEST never resolve publicly.
  */
 export async function resolvePublicBranchCode(
   branchCode: string | null | undefined,
@@ -102,19 +126,23 @@ export async function resolvePublicBranchCode(
     if (!branch || !branch.isActive) {
       throw new BranchDomainError('BRANCH_INACTIVE', 'الفرع غير متاح', 404);
     }
-    return branch;
+    return assertPublicBookable(branch);
   }
 
-  // Missing branchCode: fail closed unless uniquely one active public branch.
-  const active = await listActiveBranches();
-  if (active.length === 1) {
-    const only = active[0]!;
+  // Missing branchCode: fail closed unless uniquely one public branch.
+  const publicBranches = await listPublicActiveBranches();
+  if (publicBranches.length === 1) {
+    const onlySafe = publicBranches[0]!;
+    const only = await getBranchByCode(onlySafe.branchCode);
+    if (!only) {
+      throw new BranchDomainError('BRANCH_REQUIRED', 'يجب اختيار الفرع', 400);
+    }
     warnSingleActiveBranchFallback({
       route: options?.route ?? 'unknown',
       resolvedBranchID: only.branchId,
       resolvedBranchCode: only.branchCode,
     });
-    return only;
+    return assertPublicBookable(only);
   }
 
   throw new BranchDomainError('BRANCH_REQUIRED', 'يجب اختيار الفرع', 400);

@@ -1,0 +1,127 @@
+{
+  "smokeRunId": 10,
+  "proofs": {
+    "inventory.adjustment": true,
+    "inventory.consumption": true,
+    "pos.cashInvoice": true,
+    "pos.cardInvoice": true,
+    "payroll.hourlyLedgerCredit": true,
+    "payroll.monthlySalaryPost": true,
+    "target.positiveEntitlement": true,
+    "target.ledgerCredit": true,
+    "advance.payout": true,
+    "gleem.isolation": true,
+    "external.whatsapp": true,
+    "external.prints": true
+  },
+  "ids": {
+    "hourlyEmpId": 1037,
+    "monthlyEmpId": 1038,
+    "serviceProId": 1061,
+    "productProId": 1062,
+    "businessDayId": 4467,
+    "shiftMoveId": 10829,
+    "cashInvId": 7799,
+    "cardInvId": 7800,
+    "cashMoveCashId": 36685,
+    "cashMoveCardId": 36686,
+    "attendanceId": 2904,
+    "bookingId": 2140,
+    "ticketId": 156,
+    "payrollId": 1642,
+    "hourlyLedgerId": 586,
+    "monthlyLedgerId": 587,
+    "targetId": 110,
+    "targetLedgerId": 588,
+    "targetPlanId": 13,
+    "payoutLedgerId": 589
+  },
+  "steps": [
+    {
+      "step": "A.security_gleem_refuse",
+      "ok": true,
+      "detail": "GLEEM smoke refused"
+    },
+    {
+      "step": "baseline",
+      "ok": true,
+      "detail": "GLEEM fingerprint captured"
+    },
+    {
+      "step": "B.seed",
+      "ok": true,
+      "detail": "hourly=1037 monthly=1038 svc=1061 prod=1062",
+      "ids": {
+        "hourlyEmpId": 1037,
+        "monthlyEmpId": 1038
+      }
+    },
+    {
+      "step": "C.readiness",
+      "ok": true,
+      "detail": "score=80 smoke=true"
+    },
+    {
+      "step": "D.lifecycle",
+      "ok": true,
+      "detail": "SETUP→SMOKE_TEST"
+    },
+    {
+      "step": "E.smoke_start",
+      "ok": true,
+      "detail": "SmokeRunID=10"
+    },
+    {
+      "step": "F.attendance",
+      "ok": true,
+      "detail": "AttendanceID=2904"
+    },
+    {
+      "step": "F.booking_queue",
+      "ok": true,
+      "detail": "Booking=2140 Queue=156"
+    },
+    {
+      "step": "G.inventory",
+      "ok": true,
+      "detail": "after=4 consAfter=3"
+    },
+    {
+      "step": "H.pos",
+      "ok": true,
+      "detail": "cashInv=7799 cardInv=7800 cmCash=36685 cmCard=36686"
+    },
+    {
+      "step": "I.payroll_hourly",
+      "ok": true,
+      "detail": "PayrollID=1642 LedgerID=586 dual=true"
+    },
+    {
+      "step": "J.monthly",
+      "ok": true,
+      "detail": "LedgerID=587 result={\"success\":true,\"dryRun\":false,\"month\":\"2026-07\",\"postingDate\":\"2026-07-31\",\"totalAmount\":3000,\"counts\":{\"eligible\":1,\"inserted\":1,\"updated\":0,\"alreadyPosted\":0,\"skipped\":0,\"errors\":0},\"rows\":[{\"empId"
+    },
+    {
+      "step": "K.targets",
+      "ok": true,
+      "detail": "targetId=110 entitlement=30 ledger=588"
+    },
+    {
+      "step": "L.payout",
+      "ok": true,
+      "detail": "amt=10 overpayRejected=true crossRejected=true"
+    },
+    {
+      "step": "M.isolation",
+      "ok": true,
+      "detail": "artifactsOnGleem=0 activeHasCC=false"
+    },
+    {
+      "step": "N.external",
+      "ok": true,
+      "detail": "WhatsApp forced off; no production print"
+    }
+  ],
+  "error": "RequestError: The DELETE statement conflicted with the REFERENCE constraint \"FK_TblEmpSalaryHistory_TblEmp\". The conflict occurred in database \"last132\", table \"dbo.TblEmpSalaryHistory\", column 'EmpID'.",
+  "at": "2026-07-26T01:01:37.198Z"
+}

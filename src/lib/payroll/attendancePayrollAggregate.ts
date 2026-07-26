@@ -7,11 +7,14 @@
 import 'server-only';
 
 import { sql } from '@/lib/db';
+import { isPayableAttendanceStatus } from '@/lib/payroll/dailyPayrollHrRules';
 
 export type EmpDayAttendanceAggregate = {
   empId: number;
   workDate: string;
   primaryAttendanceId: number;
+  /** Real Status from PrimaryAttendanceID (Present/Late/Absent/…). */
+  primaryStatus: string | null;
   sessionCount: number;
   netMinutes: number;
   breakMinutesTotal: number;
@@ -19,6 +22,36 @@ export type EmpDayAttendanceAggregate = {
   hasAnyCheckIn: boolean;
   branchId?: number;
 };
+
+function mapAggregateRow(row: {
+  EmpID: number;
+  WorkDate: Date | string;
+  PrimaryAttendanceID: number;
+  PrimaryStatus: string | null;
+  SessionCount: number;
+  NetMinutesRaw: number;
+  BreakMinutesTotal: number;
+  HasOpenSession: number;
+  HasAnyCheckIn: number;
+  BranchID?: number;
+}): EmpDayAttendanceAggregate {
+  const workDateStr =
+    row.WorkDate instanceof Date
+      ? row.WorkDate.toISOString().slice(0, 10)
+      : String(row.WorkDate).slice(0, 10);
+  return {
+    empId: Number(row.EmpID),
+    workDate: workDateStr,
+    primaryAttendanceId: Number(row.PrimaryAttendanceID),
+    primaryStatus: row.PrimaryStatus != null ? String(row.PrimaryStatus) : null,
+    sessionCount: Number(row.SessionCount) || 0,
+    netMinutes: Math.max(0, Number(row.NetMinutesRaw) || 0),
+    breakMinutesTotal: Number(row.BreakMinutesTotal) || 0,
+    hasOpenSession: Number(row.HasOpenSession) === 1,
+    hasAnyCheckIn: Number(row.HasAnyCheckIn) === 1,
+    ...(row.BranchID != null ? { branchId: Number(row.BranchID) } : {}),
+  };
+}
 
 /**
  * Load employee/day aggregates from vw_EmpAttendancePayrollDay (cross-branch).
@@ -33,16 +66,18 @@ export async function loadEmpDayAttendanceAggregates(
     .input('WorkDate', sql.Date, workDate)
     .query(`
       SELECT
-        EmpID,
-        WorkDate,
-        PrimaryAttendanceID,
-        SessionCount,
-        ISNULL(NetMinutesRaw, 0) AS NetMinutesRaw,
-        ISNULL(BreakMinutesTotal, 0) AS BreakMinutesTotal,
-        CAST(HasOpenSession AS INT) AS HasOpenSession,
-        CAST(HasAnyCheckIn AS INT) AS HasAnyCheckIn
-      FROM dbo.vw_EmpAttendancePayrollDay
-      WHERE WorkDate = @WorkDate
+        v.EmpID,
+        v.WorkDate,
+        v.PrimaryAttendanceID,
+        a.Status AS PrimaryStatus,
+        v.SessionCount,
+        ISNULL(v.NetMinutesRaw, 0) AS NetMinutesRaw,
+        ISNULL(v.BreakMinutesTotal, 0) AS BreakMinutesTotal,
+        CAST(v.HasOpenSession AS INT) AS HasOpenSession,
+        CAST(v.HasAnyCheckIn AS INT) AS HasAnyCheckIn
+      FROM dbo.vw_EmpAttendancePayrollDay v
+      INNER JOIN dbo.TblEmpAttendance a ON a.ID = v.PrimaryAttendanceID
+      WHERE v.WorkDate = @WorkDate
     `);
 
   const map = new Map<number, EmpDayAttendanceAggregate>();
@@ -50,26 +85,14 @@ export async function loadEmpDayAttendanceAggregates(
     EmpID: number;
     WorkDate: Date | string;
     PrimaryAttendanceID: number;
+    PrimaryStatus: string | null;
     SessionCount: number;
     NetMinutesRaw: number;
     BreakMinutesTotal: number;
     HasOpenSession: number;
     HasAnyCheckIn: number;
   }>) {
-    const workDateStr =
-      row.WorkDate instanceof Date
-        ? row.WorkDate.toISOString().slice(0, 10)
-        : String(row.WorkDate).slice(0, 10);
-    map.set(Number(row.EmpID), {
-      empId: Number(row.EmpID),
-      workDate: workDateStr,
-      primaryAttendanceId: Number(row.PrimaryAttendanceID),
-      sessionCount: Number(row.SessionCount) || 0,
-      netMinutes: Math.max(0, Number(row.NetMinutesRaw) || 0),
-      breakMinutesTotal: Number(row.BreakMinutesTotal) || 0,
-      hasOpenSession: Number(row.HasOpenSession) === 1,
-      hasAnyCheckIn: Number(row.HasAnyCheckIn) === 1,
-    });
+    map.set(Number(row.EmpID), mapAggregateRow(row));
   }
   return map;
 }
@@ -86,17 +109,19 @@ export async function loadEmpBranchDayAttendanceAggregates(
     .input('BranchID', sql.Int, branchId)
     .query(`
       SELECT
-        BranchID,
-        EmpID,
-        WorkDate,
-        PrimaryAttendanceID,
-        SessionCount,
-        ISNULL(NetMinutesRaw, 0) AS NetMinutesRaw,
-        ISNULL(BreakMinutesTotal, 0) AS BreakMinutesTotal,
-        CAST(HasOpenSession AS INT) AS HasOpenSession,
-        CAST(HasAnyCheckIn AS INT) AS HasAnyCheckIn
-      FROM dbo.vw_EmpAttendancePayrollBranchDay
-      WHERE WorkDate = @WorkDate AND BranchID = @BranchID
+        v.BranchID,
+        v.EmpID,
+        v.WorkDate,
+        v.PrimaryAttendanceID,
+        a.Status AS PrimaryStatus,
+        v.SessionCount,
+        ISNULL(v.NetMinutesRaw, 0) AS NetMinutesRaw,
+        ISNULL(v.BreakMinutesTotal, 0) AS BreakMinutesTotal,
+        CAST(v.HasOpenSession AS INT) AS HasOpenSession,
+        CAST(v.HasAnyCheckIn AS INT) AS HasAnyCheckIn
+      FROM dbo.vw_EmpAttendancePayrollBranchDay v
+      INNER JOIN dbo.TblEmpAttendance a ON a.ID = v.PrimaryAttendanceID
+      WHERE v.WorkDate = @WorkDate AND v.BranchID = @BranchID
     `);
 
   const map = new Map<number, EmpDayAttendanceAggregate>();
@@ -105,32 +130,23 @@ export async function loadEmpBranchDayAttendanceAggregates(
     EmpID: number;
     WorkDate: Date | string;
     PrimaryAttendanceID: number;
+    PrimaryStatus: string | null;
     SessionCount: number;
     NetMinutesRaw: number;
     BreakMinutesTotal: number;
     HasOpenSession: number;
     HasAnyCheckIn: number;
   }>) {
-    const workDateStr =
-      row.WorkDate instanceof Date
-        ? row.WorkDate.toISOString().slice(0, 10)
-        : String(row.WorkDate).slice(0, 10);
-    map.set(Number(row.EmpID), {
-      empId: Number(row.EmpID),
-      workDate: workDateStr,
-      primaryAttendanceId: Number(row.PrimaryAttendanceID),
-      sessionCount: Number(row.SessionCount) || 0,
-      netMinutes: Math.max(0, Number(row.NetMinutesRaw) || 0),
-      breakMinutesTotal: Number(row.BreakMinutesTotal) || 0,
-      hasOpenSession: Number(row.HasOpenSession) === 1,
-      hasAnyCheckIn: Number(row.HasAnyCheckIn) === 1,
-      branchId: Number(row.BranchID),
-    });
+    map.set(Number(row.EmpID), mapAggregateRow(row));
   }
   return map;
 }
 
-/** Synthetic attendance row shape for existing payroll validation helpers. */
+/**
+ * Synthetic attendance for payroll validation.
+ * Uses the real primary Status — never force Present.
+ * Absent/Leave/etc. without punches return null so they do not block generate.
+ */
 export function aggregateToValidationAttendance(
   agg: EmpDayAttendanceAggregate | undefined,
 ): {
@@ -139,10 +155,19 @@ export function aggregateToValidationAttendance(
   CheckOutTime: unknown;
 } | null {
   if (!agg || agg.sessionCount === 0) return null;
+
+  const status = (agg.primaryStatus ?? '').trim() || 'Present';
+
+  // Placeholder non-payable rows (e.g. Absent with no punches) must not enter
+  // the generate gate as incomplete Present — that blocked the whole day.
+  if (!isPayableAttendanceStatus(status) && !agg.hasAnyCheckIn) {
+    return null;
+  }
+
   return {
-    Status: 'Present',
+    Status: status,
     CheckInTime: agg.hasAnyCheckIn ? '00:00' : null,
-    CheckOutTime: agg.hasOpenSession ? null : '00:00',
+    CheckOutTime: !agg.hasAnyCheckIn ? null : agg.hasOpenSession ? null : '00:00',
   };
 }
 

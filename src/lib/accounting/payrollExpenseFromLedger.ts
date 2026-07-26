@@ -27,12 +27,14 @@ export interface PayrollExpenseFromLedgerParams {
   year: number;
   month: number;
   empId?: number | null;
+  branchId?: number | null;
 }
 
 export interface PayrollExpenseFromLedgerDateRangeParams {
   startDate: string;
   endDate: string;
   empId?: number | null;
+  branchId?: number | null;
 }
 
 async function queryPayrollExpense(
@@ -42,7 +44,7 @@ async function queryPayrollExpense(
 ): Promise<PayrollExpenseFromLedgerResult> {
   const request = db.request();
   for (const [key, value] of Object.entries(inputs)) {
-    if (key === 'empId') {
+    if (key === 'empId' || key === 'branchId') {
       request.input(key, sql.Int, value);
     } else if (key === 'month' || key === 'rangeStartMonth' || key === 'rangeEndMonth') {
       request.input(key, sql.NVarChar(7), value);
@@ -53,6 +55,10 @@ async function queryPayrollExpense(
 
   const empClause =
     inputs.empId != null && Number(inputs.empId) > 0 ? 'AND l.EmpID = @empId' : '';
+  const branchClause =
+    inputs.branchId != null && Number(inputs.branchId) > 0
+      ? 'AND l.BranchID = @branchId'
+      : '';
 
   const byEmployeeResult = await request.query(`
       SELECT
@@ -72,13 +78,14 @@ async function queryPayrollExpense(
         AND l.EntryReason IN (N'hourly_wage', N'monthly_salary', N'commission', N'bonus', N'target')
         AND ${whereClause}
         ${empClause}
+        ${branchClause}
       GROUP BY l.EmpID, e.EmpName
       ORDER BY totalAmount DESC, e.EmpName
     `);
 
   const byReasonResult = await db.request();
   for (const [key, value] of Object.entries(inputs)) {
-    if (key === 'empId') {
+    if (key === 'empId' || key === 'branchId') {
       byReasonResult.input(key, sql.Int, value);
     } else if (key === 'month' || key === 'rangeStartMonth' || key === 'rangeEndMonth') {
       byReasonResult.input(key, sql.NVarChar(7), value);
@@ -98,6 +105,7 @@ async function queryPayrollExpense(
         AND l.EntryReason IN (N'hourly_wage', N'monthly_salary', N'commission', N'bonus', N'target')
         AND ${whereClause}
         ${empClause}
+        ${branchClause}
       GROUP BY l.EntryReason
       ORDER BY totalAmount DESC
     `);
@@ -167,13 +175,14 @@ export async function getPayrollExpenseFromLedgerForDateRange(
     rangeStartMonth: params.startDate.slice(0, 7),
     rangeEndMonth: params.endDate.slice(0, 7),
     empId: params.empId ?? null,
+    branchId: params.branchId ?? null,
   });
 }
 
 export async function getPayrollExpenseFromLedger(
   params: PayrollExpenseFromLedgerParams,
 ): Promise<PayrollExpenseFromLedgerResult> {
-  const { year, month, empId } = params;
+  const { year, month, empId, branchId } = params;
   const { startDate, endDate } = getMonthDateRange(year, month);
   const payrollMonth = `${year}-${String(month).padStart(2, '0')}`;
 
@@ -185,6 +194,7 @@ export async function getPayrollExpenseFromLedger(
     monthStart: startDate,
     monthEnd: endDate,
     empId: empId ?? null,
+    branchId: branchId ?? null,
   });
 }
 

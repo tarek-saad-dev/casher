@@ -39,32 +39,107 @@ function fmtScheduleTime(v: unknown): string | null {
   return null;
 }
 
-/** Batch weekly schedule for many barbers (one query). */
+/** Batch weekly schedule for many barbers — prefer branch-owned table, fallback legacy. */
 async function loadWorkingWindowsBatch(
   db: Awaited<ReturnType<typeof getPool>>,
   empIds: number[],
   dayOfWeek: number,
+  opts?: { branchId?: number; workDate?: string },
 ): Promise<Map<number, { startTime: string | null; endTime: string | null; isWorkingDay: boolean }>> {
   const map = new Map<number, { startTime: string | null; endTime: string | null; isWorkingDay: boolean }>();
   if (!empIds.length) return map;
-  try {
-    const res = await db
-      .request()
-      .input('dow', sql.TinyInt, dayOfWeek)
-      .query(`
-        SELECT EmpID, IsWorkingDay, StartTime, EndTime
-        FROM dbo.TblEmpWorkSchedule
-        WHERE DayOfWeek = @dow AND EmpID IN (${empIds.join(',')})
-      `);
-    for (const row of res.recordset) {
-      map.set(row.EmpID as number, {
-        isWorkingDay: !!row.IsWorkingDay,
-        startTime: fmtScheduleTime(row.StartTime),
-        endTime: fmtScheduleTime(row.EndTime),
-      });
+
+  // Phase 1Q: branch-owned schedules when branchId+workDate provided
+  if (opts?.branchId != null && opts.workDate) {
+    try {
+      const { ensureEmpBranchWorkScheduleTable } = await import('@/lib/hr/empBranchWorkSchedule');
+      await ensureEmpBranchWorkScheduleTable();
+      const res = await db
+        .request()
+        .input('dow', sql.TinyInt, dayOfWeek)
+        .input('branchId', sql.Int, opts.branchId)
+        .input('day', sql.Date, opts.workDate)
+        .query(`
+          SELECT EmpID, IsWorking, StartTime, EndTime,
+            ROW_NUMBER() OVER (
+              PARTITION BY EmpID ORDER BY EffectiveFrom DESC, ScheduleID DESC
+            ) AS rn
+          FROM dbo.TblEmpBranchWorkSchedule
+          WHERE DayOfWeek = @dow AND BranchID = @branchId AND IsActive = 1
+            AND EffectiveFrom <= @day
+            AND (EffectiveTo IS NULL OR EffectiveTo >= @day)
+            AND EmpID IN (${empIds.join(',')})
+        `);
+      for (const row of res.recordset) {
+        if (Number(row.rn) !== 1) continue;
+        map.set(row.EmpID as number, {
+          isWorkingDay: !!row.IsWorking,
+          startTime: fmtScheduleTime(row.StartTime),
+          endTime: fmtScheduleTime(row.EndTime),
+        });
+      }
+      // Temporary transfers into this branch
+      const xfer = await db
+        .request()
+        .input('branchId', sql.Int, opts.branchId)
+        .input('day', sql.Date, opts.workDate)
+        .query(`
+          SELECT EmpID, StartTime, EndTime
+          FROM dbo.TblEmpTemporaryBranchTransfer
+          WHERE ToBranchID = @branchId AND WorkDate = @day AND IsActive = 1
+            AND EmpID IN (${empIds.join(',')})
+        `);
+      for (const row of xfer.recordset) {
+        map.set(row.EmpID as number, {
+          isWorkingDay: true,
+          startTime: fmtScheduleTime(row.StartTime),
+          endTime: fmtScheduleTime(row.EndTime),
+        });
+      }
+      // Transfers away from this branch
+      const away = await db
+        .request()
+        .input('branchId', sql.Int, opts.branchId)
+        .input('day', sql.Date, opts.workDate)
+        .query(`
+          SELECT EmpID FROM dbo.TblEmpTemporaryBranchTransfer
+          WHERE FromBranchID = @branchId AND WorkDate = @day AND IsActive = 1
+            AND EmpID IN (${empIds.join(',')})
+        `);
+      for (const row of away.recordset) {
+        map.set(row.EmpID as number, {
+          isWorkingDay: false,
+          startTime: null,
+          endTime: null,
+        });
+      }
+    } catch {
+      /* fall through to legacy */
     }
-  } catch {
-    /* empty */
+  }
+
+  // Legacy fallback for emps still missing a branch row (GLEEM continuity)
+  const missing = empIds.filter((id) => !map.has(id));
+  if (missing.length) {
+    try {
+      const res = await db
+        .request()
+        .input('dow', sql.TinyInt, dayOfWeek)
+        .query(`
+          SELECT EmpID, IsWorkingDay, StartTime, EndTime
+          FROM dbo.TblEmpWorkSchedule
+          WHERE DayOfWeek = @dow AND EmpID IN (${missing.join(',')})
+        `);
+      for (const row of res.recordset) {
+        map.set(row.EmpID as number, {
+          isWorkingDay: !!row.IsWorkingDay,
+          startTime: fmtScheduleTime(row.StartTime),
+          endTime: fmtScheduleTime(row.EndTime),
+        });
+      }
+    } catch {
+      /* empty */
+    }
   }
   return map;
 }
@@ -357,7 +432,10 @@ async function buildBarberContexts(args: {
       getBarberNames(db, barberIds),
       loadDayOffSet(db, barberIds, date, isToday),
       loadBookingOverridesForDate(db, barberIds, date),
-      loadWorkingWindowsBatch(db, barberIds, dayOfWeek),
+      loadWorkingWindowsBatch(db, barberIds, dayOfWeek, {
+        branchId: branchId ?? undefined,
+        workDate: date,
+      }),
       isToday ? loadAbsentEmpIds(db, barberIds, date) : Promise.resolve(new Set<number>()),
       loadFreelanceBookingUnlocks(barberIds, date),
     ]);

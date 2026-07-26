@@ -1,0 +1,290 @@
+﻿[dotenv@17.3.1] injecting env (22) from .env -- tip: ≡ƒöÉ prevent committing .env to code: https://dotenvx.com/precommit
+[dotenv@17.3.1] injecting env (30) from .env.local -- tip: ΓÜÖ∩╕Å  specify custom .env file path with { path: '/custom/path/.env' }
+{
+  "at": "2026-07-26T01:38:42.924Z",
+  "branches": [
+    {
+      "BranchID": 1,
+      "BranchCode": "GLEEM",
+      "BranchName": "╪¼┘ä┘è┘à ΓÇô ╪│╪º╪¿╪º ╪¿╪º╪┤╪º",
+      "ShortName": "╪¼┘ä┘è┘à",
+      "Address": null,
+      "Phone": null,
+      "TimeZone": "Africa/Cairo",
+      "DefaultOpenTime": null,
+      "DefaultCloseTime": null,
+      "BusinessDayCutoffTime": "04:00:00",
+      "LifecycleStatus": "PUBLIC_LIVE",
+      "IsActive": true,
+      "PublicBookingEnabled": true,
+      "ExternalNotificationsEnabled": true
+    },
+    {
+      "BranchID": 2,
+      "BranchCode": "PH1GTEST",
+      "BranchName": "Phase 1G Test Branch (disposable)",
+      "ShortName": "PH1G",
+      "Address": null,
+      "Phone": null,
+      "TimeZone": "Africa/Cairo",
+      "DefaultOpenTime": null,
+      "DefaultCloseTime": null,
+      "BusinessDayCutoffTime": "04:00:00",
+      "LifecycleStatus": "SETUP",
+      "IsActive": false,
+      "PublicBookingEnabled": false,
+      "ExternalNotificationsEnabled": false
+    },
+    {
+      "BranchID": 3,
+      "BranchCode": "CAMP_CAESAR",
+      "BranchName": "┘ü╪▒╪╣ ┘â╪º┘à╪¿ ╪┤┘è╪▓╪º╪▒",
+      "ShortName": "┘â╪º┘à╪¿ ╪┤┘è╪▓╪º╪▒",
+      "Address": null,
+      "Phone": null,
+      "TimeZone": "Africa/Cairo",
+      "DefaultOpenTime": null,
+      "DefaultCloseTime": null,
+      "BusinessDayCutoffTime": "04:00:00",
+      "LifecycleStatus": "SETUP",
+      "IsActive": false,
+      "PublicBookingEnabled": false,
+      "ExternalNotificationsEnabled": false
+    }
+  ],
+  "queueBookingSettings": [
+    {
+      "BranchID": 1,
+      "SettingID": 1,
+      "SalonName": null,
+      "Timezone": "Africa/Cairo",
+      "BookingEnabled": false,
+      "SlotIntervalMinutes": 15,
+      "MaxBookingDaysAhead": 14,
+      "MinNoticeMinutes": 15,
+      "DefaultServiceDurationMinutes": 30
+    },
+    {
+      "BranchID": 2,
+      "SettingID": 2,
+      "SalonName": "Cut Salon",
+      "Timezone": "Africa/Cairo",
+      "BookingEnabled": false,
+      "SlotIntervalMinutes": 15,
+      "MaxBookingDaysAhead": 14,
+      "MinNoticeMinutes": 15,
+      "DefaultServiceDurationMinutes": 30
+    },
+    {
+      "BranchID": 3,
+      "SettingID": 3,
+      "SalonName": "Cut Salon",
+      "Timezone": "Africa/Cairo",
+      "BookingEnabled": false,
+      "SlotIntervalMinutes": 15,
+      "MaxBookingDaysAhead": 14,
+      "MinNoticeMinutes": 30,
+      "DefaultServiceDurationMinutes": 30
+    }
+  ],
+  "gleemAccess": [
+    {
+      "UserID": 10,
+      "UserName": "admin",
+      "CanOperate": true,
+      "CanViewReports": true,
+      "CanSwitch": true,
+      "IsActive": true,
+      "isDeleted": false
+    },
+    {
+      "UserID": 13,
+      "UserName": "Tarek",
+      "CanOperate": true,
+      "CanViewReports": true,
+      "CanSwitch": true,
+      "IsActive": true,
+      "isDeleted": false
+    },
+    {
+      "UserID": 15,
+      "UserName": "Hoda",
+      "CanOperate": true,
+      "CanViewReports": true,
+      "CanSwitch": true,
+      "IsActive": true,
+      "isDeleted": false
+    },
+    {
+      "UserID": 16,
+      "UserName": "OMAR",
+      "CanOperate": true,
+      "CanViewReports": true,
+      "CanSwitch": true,
+      "IsActive": true,
+      "isDeleted": false
+    },
+    {
+      "UserID": 17,
+      "UserName": "mr.ziad",
+      "CanOperate": true,
+      "CanViewReports": false,
+      "CanSwitch": false,
+      "IsActive": true,
+      "isDeleted": false
+    },
+    {
+      "UserID": 18,
+      "UserName": "╪ú / ╪╣┘ä┘è ╪º┘ä╪▓┘è┘å┘è",
+      "CanOperate": true,
+      "CanViewReports": false,
+      "CanSwitch": false,
+      "IsActive": true,
+      "isDeleted": false
+    },
+    {
+      "UserID": 19,
+      "UserName": "╪ú / ┘à╪¡┘à╪» ╪¡┘à╪»┘è",
+      "CanOperate": true,
+      "CanViewReports": false,
+      "CanSwitch": false,
+      "IsActive": true,
+      "isDeleted": false
+    },
+    {
+      "UserID": 20,
+      "UserName": "mohamed",
+      "CanOperate": true,
+      "CanViewReports": false,
+      "CanSwitch": false,
+      "IsActive": true,
+      "isDeleted": false
+    },
+    {
+      "UserID": 21,
+      "UserName": "mariam",
+      "CanOperate": true,
+      "CanViewReports": false,
+      "CanSwitch": false,
+      "IsActive": true,
+      "isDeleted": false
+    }
+  ],
+  "ccAccess": [
+    {
+      "UserID": 10,
+      "UserName": "admin",
+      "CanOperate": true,
+      "CanViewReports": true,
+      "CanSwitch": true,
+      "IsActive": true,
+      "GrantReason": "phase1m-provision"
+    }
+  ],
+  "partners": [
+    {
+      "BranchID": 1,
+      "PartnerUserID": null,
+      "PartnerCode": "ZIYAD",
+      "PartnerName": "╪▓┘è╪º╪»",
+      "SharePercent": 36.666667,
+      "EffectiveFrom": "2026-06-01",
+      "EffectiveTo": null,
+      "IsActive": true
+    },
+    {
+      "BranchID": 1,
+      "PartnerUserID": null,
+      "PartnerCode": "ALIZAINY",
+      "PartnerName": "╪╣┘ä┘è ╪º┘ä╪▓┘è┘å┘è",
+      "SharePercent": 31.666666,
+      "EffectiveFrom": "2026-06-01",
+      "EffectiveTo": null,
+      "IsActive": true
+    },
+    {
+      "BranchID": 1,
+      "PartnerUserID": null,
+      "PartnerCode": "MHAMDY",
+      "PartnerName": "┘à╪¡┘à╪» ╪¡┘à╪»┘è",
+      "SharePercent": 31.666667,
+      "EffectiveFrom": "2026-06-01",
+      "EffectiveTo": null,
+      "IsActive": true
+    }
+  ],
+  "activePricedServices": {
+    "ActiveServ": 0
+  },
+  "payments": [
+    {
+      "PaymentID": 1,
+      "PaymentMethod": "┘â╪º╪┤"
+    },
+    {
+      "PaymentID": 2,
+      "PaymentMethod": "┘ü┘è╪▓╪º"
+    },
+    {
+      "PaymentID": 3,
+      "PaymentMethod": "╪º┘å╪│╪¬╪º╪¿╪º┘è"
+    },
+    {
+      "PaymentID": 4,
+      "PaymentMethod": "╪¬┘è┘ä╪»╪º"
+    },
+    {
+      "PaymentID": 5,
+      "PaymentMethod": "┘ü┘ê╪»╪º┘ü┘ê┘å ┘â╪º╪┤"
+    },
+    {
+      "PaymentID": 6,
+      "PaymentMethod": "┘ü┘è╪▓╪º ( paymob )"
+    },
+    {
+      "PaymentID": 7,
+      "PaymentMethod": "╪º┘å╪│╪¬╪º ╪¿╪º┘è ( ┘â╪▒┘è┘à )"
+    },
+    {
+      "PaymentID": 8,
+      "PaymentMethod": "╪¬┘è┘ä╪»╪º ( ┘â╪▒┘è┘à )"
+    },
+    {
+      "PaymentID": 9,
+      "PaymentMethod": "╪»┘ü╪╣ ┘à╪¬╪╣╪»╪» - ╪¡╪│╪º╪¿ ╪¬╪│┘ê┘è╪⌐"
+    }
+  ],
+  "assignments": [
+    {
+      "BranchID": 1,
+      "Cnt": 13
+    }
+  ],
+  "inventory": [
+    {
+      "BranchID": 1,
+      "Rows": 8,
+      "Qty": 0
+    }
+  ],
+  "recentSmoke": [
+    {
+      "SmokeRunID": "11",
+      "Status": "CLEANED",
+      "CleanupStatus": "COMPLETED",
+      "Purpose": "Phase 1N-B Camp Caesar operational smoke"
+    },
+    {
+      "SmokeRunID": "10",
+      "Status": "CLEANED",
+      "CleanupStatus": "COMPLETED",
+      "Purpose": "Phase 1N-B Camp Caesar operational smoke"
+    },
+    {
+      "SmokeRunID": "9",
+      "Status": "CLEANED",
+      "CleanupStatus": "COMPLETED",
+      "Purpose": "Phase 1N-B Camp Caesar operational smoke"
+    }
+  ]
+}

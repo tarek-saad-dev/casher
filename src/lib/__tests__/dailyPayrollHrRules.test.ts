@@ -211,6 +211,28 @@ describe('getPayrollValidationReason', () => {
       ),
     ).toBe('inactive_employee');
   });
+
+  it('Absent without punches does not return missing_checkin (does not block day)', () => {
+    expect(
+      getPayrollValidationReason(
+        emp({ ManualHourlyRate: 20 }),
+        workingSchedule,
+        { Status: 'Absent', CheckInTime: null, CheckOutTime: null },
+        '09:00',
+        '17:00',
+      ),
+    ).toBeNull();
+  });
+
+  it('monthly employee is monthly_excluded even with complete attendance', () => {
+    expect(
+      getPayrollValidationReason(
+        emp({ PayrollMethod: 'monthly', ManualHourlyRate: 40 }),
+        workingSchedule,
+        presentAtt,
+      ),
+    ).toBe('monthly_excluded');
+  });
 });
 
 describe('shouldIncludeInPayrollValidation', () => {

@@ -1,0 +1,17 @@
+{
+  "at": "2026-07-26T01:02:04.286Z",
+  "workDate": "2026-07-26",
+  "before": {
+    "GleemId": 1,
+    "Bookings": "1546",
+    "Queue": "142",
+    "Cash": "11951",
+    "Attendance": "914",
+    "Payroll": "628",
+    "Ledger": "560",
+    "Targets": "107",
+    "InvMoves": "0",
+    "Invoices": "7886",
+    "QbsChecksum": 13228871
+  }
+}

@@ -191,6 +191,21 @@ export async function requireBranchReportAccess(
   return ctx;
 }
 
+/**
+ * Phase 1M — high-level branch administration (provision / lifecycle / smoke).
+ * Requires authenticated admin (requireAdmin) PLUS valid active branch context
+ * when an operating branch is needed; provisioning itself uses admin only.
+ */
+export async function requireBranchAdminAccess(): Promise<
+  | { userId: number; role: 'admin' }
+  | NextResponse
+> {
+  const { requireAdmin, isAuthResult } = await import('@/lib/api-auth');
+  const auth = await requireAdmin();
+  if (!isAuthResult(auth)) return auth;
+  return { userId: auth.userId, role: 'admin' };
+}
+
 export async function validateSessionBranch(
   userId: number,
   branchId: number,

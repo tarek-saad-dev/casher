@@ -19,6 +19,7 @@ import {
 import {
   composeEmployeeDailyWhatsAppMessage,
   shouldSkipEmptyDayOff,
+  type BranchEarningSection,
 } from '@/lib/hr/employee-daily-whatsapp-message';
 import { dailyWaReasonAr } from '@/lib/hr/employee-daily-whatsapp-reasons';
 import { isWhatsAppEnabled } from '@/lib/integrations/whatsapp';
@@ -64,6 +65,89 @@ async function loadAttendanceBranchNamesByEmp(
     const empId = Number(row.EmpID);
     const list = map.get(empId) ?? [];
     list.push(String(row.BranchName));
+    map.set(empId, list);
+  }
+  return map;
+}
+
+/** Phase 1L: per-branch earned sections for one WorkDate (payroll + target + monthly). */
+async function loadBranchEarningsByEmp(
+  db: { request: () => sql.Request },
+  workDate: string,
+  empIds: number[],
+): Promise<Map<number, BranchEarningSection[]>> {
+  const map = new Map<number, BranchEarningSection[]>();
+  if (empIds.length === 0) return map;
+  const payrollMonth = workDate.slice(0, 7);
+  const req = db
+    .request()
+    .input('workDate', sql.Date, workDate)
+    .input('payrollMonth', sql.NVarChar(7), payrollMonth);
+  const placeholders = empIds.map((id, i) => {
+    const name = `be${i}`;
+    req.input(name, sql.Int, id);
+    return `@${name}`;
+  });
+  const result = await req.query(`
+    SELECT
+      x.EmpID,
+      x.BranchID,
+      b.BranchName,
+      SUM(x.HourlyWage) AS HourlyWage,
+      SUM(x.MonthlySalary) AS MonthlySalary,
+      SUM(x.TargetAmount) AS TargetAmount
+    FROM (
+      SELECT
+        p.EmpID,
+        p.BranchID,
+        ISNULL(p.DailyWage, 0) AS HourlyWage,
+        CAST(0 AS DECIMAL(18, 2)) AS MonthlySalary,
+        CAST(0 AS DECIMAL(18, 2)) AS TargetAmount
+      FROM dbo.TblEmpDailyPayroll p
+      WHERE p.WorkDate = @workDate
+        AND p.EmpID IN (${placeholders.join(',')})
+        AND p.Status IN (N'Generated', N'Earned', N'PostedToCashMove')
+
+      UNION ALL
+
+      SELECT
+        t.EmpID,
+        t.BranchID,
+        CAST(0 AS DECIMAL(18, 2)),
+        CAST(0 AS DECIMAL(18, 2)),
+        ISNULL(t.TargetAmount, 0)
+      FROM dbo.TblEmpDailyTarget t
+      WHERE t.WorkDate = @workDate
+        AND t.EmpID IN (${placeholders.join(',')})
+
+      UNION ALL
+
+      SELECT
+        l.EmpID,
+        l.BranchID,
+        CAST(0 AS DECIMAL(18, 2)),
+        ISNULL(l.Amount, 0),
+        CAST(0 AS DECIMAL(18, 2))
+      FROM dbo.TblEmpLedgerEntry l
+      WHERE l.IsVoided = 0
+        AND l.EntryDirection = N'credit'
+        AND l.EntryReason = N'monthly_salary'
+        AND l.PayrollMonth = @payrollMonth
+        AND l.EmpID IN (${placeholders.join(',')})
+    ) x
+    INNER JOIN dbo.TblBranch b ON b.BranchID = x.BranchID
+    GROUP BY x.EmpID, x.BranchID, b.BranchName
+    ORDER BY x.EmpID, b.BranchName
+  `);
+  for (const row of result.recordset as Array<Record<string, unknown>>) {
+    const empId = Number(row.EmpID);
+    const list = map.get(empId) ?? [];
+    list.push({
+      branchName: String(row.BranchName),
+      hourlyWage: Number(row.HourlyWage ?? 0),
+      monthlySalary: Number(row.MonthlySalary ?? 0),
+      target: Number(row.TargetAmount ?? 0),
+    });
     map.set(empId, list);
   }
   return map;
@@ -245,12 +329,13 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
   const db = await getPool();
   const { listActiveBranches } = await import('@/lib/branch');
   const activeBranches = await listActiveBranches();
-  const [serviceCountRows, breaksByEmp, attendanceBranchesByEmp, ...branchSalesLists] =
+  const [serviceCountRows, breaksByEmp, attendanceBranchesByEmp, branchEarningsByEmp, ...branchSalesLists] =
     employees.length > 0
       ? await Promise.all([
           getEmployeesServiceCountsByDate(workDate, empIdList),
           loadBreaksByEmpIdsOnWorkDate(db, workDate, empIdList),
           loadAttendanceBranchNamesByEmp(db, workDate, empIdList),
+          loadBranchEarningsByEmp(db, workDate, empIdList),
           ...activeBranches.map((b) =>
             getEmployeesNetServiceSalesByDate(workDate, b.branchId, empIdList),
           ),
@@ -259,6 +344,7 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
           [],
           new Map<number, AttendanceBreakInterval[]>(),
           new Map<number, string[]>(),
+          new Map<number, BranchEarningSection[]>(),
         ];
 
   // Merge per-branch sales into employee totals (global display only — not a write path).
@@ -356,6 +442,7 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
     }
 
     const day = report.days.find((d) => d.date === workDate) ?? null;
+    const branchEarnings = branchEarningsByEmp.get(emp.EmpID) ?? [];
 
     if (day?.isFutureDate) {
       rows.push({
@@ -401,6 +488,7 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
         basicServiceCount,
         otherServiceCount,
         breakIntervals,
+        branchEarnings,
       });
       rows.push({
         empId: emp.EmpID,
@@ -427,6 +515,7 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
       basicServiceCount,
       otherServiceCount,
       breakIntervals,
+      branchEarnings,
     });
 
     const payload = buildPayloadForRow({

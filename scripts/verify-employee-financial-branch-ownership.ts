@@ -98,6 +98,9 @@ function checkSource(failures: string[]) {
   if (!core.includes('branchId مطلوب')) {
     failures.push('payroll generate must require branchId');
   }
+  if (!core.includes('buildDailyWageSqlFromBranchPlan')) {
+    failures.push('generate core must use buildDailyWageSqlFromBranchPlan');
+  }
 
   const payout = read('src/lib/services/employeeLedgerPayoutService.ts');
   if (!payout.includes('getEmployeeBranchBalance')) {
@@ -111,10 +114,53 @@ function checkSource(failures: string[]) {
   if (!nightly.includes('generateEmployeeDailyTargets')) {
     failures.push('nightly must generate targets');
   }
+  if (!nightly.includes('postMonthlySalaryEntitlements')) {
+    failures.push('nightly must post monthly salary when due');
+  }
+
+  const rules = read('src/lib/payroll/dailyPayrollHrRules.ts');
+  if (!rules.includes('SQL_BRANCH_PAYROLL_PLAN_APPLY')) {
+    failures.push('payroll rates must use SQL_BRANCH_PAYROLL_PLAN_APPLY');
+  }
+  if (!core.includes('TblEmpBranchPayrollPlan') && !rules.includes('TblEmpBranchPayrollPlan')) {
+    failures.push('generate must reference TblEmpBranchPayrollPlan');
+  }
+
+  const recon = read('src/lib/services/employeeLedgerReconciliationService.ts');
+  if (!recon.includes('branchFilter') || !recon.includes('BranchID')) {
+    failures.push('reconciliation must filter by BranchID');
+  }
+
+  const expense = read('src/lib/accounting/payrollExpenseFromLedger.ts');
+  if (!expense.includes('l.BranchID = @branchId')) {
+    failures.push('payroll expense reports must support BranchID filter');
+  }
+
+  const wa = read('src/lib/hr/employee-daily-whatsapp-report.service.ts');
+  if (!wa.includes('loadBranchEarningsByEmp') || !wa.includes('branchEarnings')) {
+    failures.push('employee WhatsApp must pass branchEarnings breakdown');
+  }
+
+  const ledgerSrc = read('src/lib/services/resolveLedgerEntryBranchSource.ts');
+  if (!ledgerSrc.includes('resolveLedgerEntryBranchSource')) {
+    failures.push('missing resolveLedgerEntryBranchSource map');
+  }
+
+  const targetPlanRepo = read(
+    'src/lib/payroll/employee-target/employee-target-plan.repository.ts',
+  );
+  if (!targetPlanRepo.includes('BranchID') || !targetPlanRepo.includes('@branchId')) {
+    failures.push('target plan repository must stamp/filter BranchID');
+  }
 
   const gen = read('src/app/api/payroll/daily/generate/route.ts');
   if (!gen.includes('BranchID في الطلب غير مسموح')) {
     failures.push('payroll generate must reject body BranchID');
+  }
+
+  const validate = read('src/app/api/payroll/daily/validate-attendance/route.ts');
+  if (!validate.includes('requireBranchOperationAccess') || !validate.includes('branchId')) {
+    failures.push('validate-attendance must use session branchId');
   }
 
   const registry = read('src/lib/branch/domainOwnershipRegistry.ts');

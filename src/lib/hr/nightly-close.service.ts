@@ -28,6 +28,16 @@ import {
   isWhatsAppEnabled,
 } from '@/lib/integrations/whatsapp';
 import { listActiveBranches } from '@/lib/branch';
+import { postMonthlySalaryEntitlements } from '@/lib/services/employeeLedgerMonthlySalaryService';
+import { isEmployeeLedgerDualWriteEnabled } from '@/lib/employeeLedgerConfig';
+
+/** Month-end (Cairo calendar day) — when monthly branch salary components are due. */
+function isLastCalendarDayOfMonth(workDate: string): boolean {
+  const [y, m, d] = workDate.split('-').map((x) => parseInt(x, 10));
+  if (!y || !m || !d) return false;
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return d === lastDay;
+}
 
 export interface NightlyCloseDeliveryCheck {
   ok: boolean;
@@ -62,6 +72,12 @@ export interface NightlyCloseResult {
       recalculated: number;
       totalTargetAmount: string;
       eligibleEmployees: number;
+    } | null;
+    monthlySalary: {
+      status: string;
+      month: string;
+      branches: number;
+      inserted: number;
     } | null;
     employeesWhatsApp: EmployeeDailyWhatsAppSendResponse | null;
     ownerWhatsApp: {
@@ -177,6 +193,7 @@ export async function runNightlyClose(params?: {
       attendanceClose: null,
       payroll: null,
       targets: null,
+      monthlySalary: null,
       employeesWhatsApp: null,
       ownerWhatsApp: null,
     },
@@ -471,6 +488,74 @@ export async function runNightlyClose(params?: {
     );
   } catch (err) {
     errors.push(`targets: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // ── 3b) Monthly salary components when due (Phase 1L, per active branch) ─
+  try {
+    const month = workDate.slice(0, 7);
+    const due = isLastCalendarDayOfMonth(workDate);
+    if (!due) {
+      result.steps.monthlySalary = {
+        status: 'not_due',
+        month,
+        branches: 0,
+        inserted: 0,
+      };
+    } else if (dryRun) {
+      result.steps.monthlySalary = {
+        status: 'dry_run',
+        month,
+        branches: 0,
+        inserted: 0,
+      };
+    } else if (!isEmployeeLedgerDualWriteEnabled()) {
+      result.steps.monthlySalary = {
+        status: 'ledger_disabled',
+        month,
+        branches: 0,
+        inserted: 0,
+      };
+      console.log('[nightly-close] monthly salary skipped (ledger dual-write off)');
+    } else {
+      const salaryBranches = await listActiveBranches();
+      let inserted = 0;
+      let branchesOk = 0;
+      for (const branch of salaryBranches) {
+        try {
+          const posted = await postMonthlySalaryEntitlements({
+            month,
+            branchId: branch.branchId,
+            dryRun: false,
+            createdByUserId: null,
+          });
+          inserted += posted.counts.inserted + posted.counts.updated;
+          branchesOk += 1;
+          console.log(
+            `[nightly-close] monthly-salary branch=${branch.branchCode} inserted=${posted.counts.inserted} updated=${posted.counts.updated}`,
+          );
+        } catch (branchSalErr) {
+          const msg =
+            branchSalErr instanceof Error
+              ? branchSalErr.message
+              : String(branchSalErr);
+          errors.push(`monthly-salary ${branch.branchCode}: ${msg}`);
+          console.error(
+            `[nightly-close] monthly-salary failed branch=${branch.branchCode}`,
+            msg,
+          );
+        }
+      }
+      result.steps.monthlySalary = {
+        status: 'posted',
+        month,
+        branches: branchesOk,
+        inserted,
+      };
+    }
+  } catch (err) {
+    errors.push(
+      `monthly-salary: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   // ── 4+5) WhatsApp employees + owner ─────────────────────────────────────

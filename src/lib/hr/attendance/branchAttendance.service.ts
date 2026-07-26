@@ -98,12 +98,39 @@ export async function assertEmployeeEligibleForBranchAttendance(
   }
 
   const at = new Date(`${workDate}T12:00:00.000Z`);
-  const assignments = await listEmployeeActiveBranchAssignments(empId, at);
+  const { getSmokeExecutionContext } = await import('@/lib/branch/smokeExecutionContext');
+  const smoke = getSmokeExecutionContext();
+  let assignments = await listEmployeeActiveBranchAssignments(empId, at);
+  if (smoke && smoke.branchId === branchId && assignments.every((a) => a.branchId !== branchId)) {
+    const { listEmployeeAssignmentsForSmokeBranch } = await import('@/lib/branch/repository');
+    assignments = await listEmployeeAssignmentsForSmokeBranch(empId, branchId, at);
+  }
   const ok = assignments.some((a) => a.branchId === branchId && a.isActive);
   if (!ok) {
     throw new AttendanceDomainError(
       'ASSIGNMENT_REQUIRED',
       'الموظف غير مُعيَّن لهذا الفرع في تاريخ العمل',
+      403,
+    );
+  }
+
+  // Phase 1Q — must be scheduled in this branch on WorkDate (no global schedule fallback)
+  const { resolveEmployeeBranchSchedule, resolveEmployeeGlobalSchedule } = await import(
+    '@/lib/hr/employeeBranchScheduleResolver'
+  );
+  const branchSched = await resolveEmployeeBranchSchedule({ empId, branchId, workDate });
+  if (!branchSched?.isWorking) {
+    const global = await resolveEmployeeGlobalSchedule({ empId, workDate, publicOnly: false });
+    if (global.isGloballyWorking && global.branches[0]?.branchId !== branchId) {
+      throw new AttendanceDomainError(
+        'EMPLOYEE_NOT_SCHEDULED_IN_THIS_BRANCH',
+        `الموظف مجدول في فرع آخر في هذا اليوم (${global.branches[0]?.branchCode ?? ''})`,
+        403,
+      );
+    }
+    throw new AttendanceDomainError(
+      'EMPLOYEE_NOT_SCHEDULED_IN_THIS_BRANCH',
+      'الموظف غير مجدول للعمل في هذا الفرع في تاريخ العمل',
       403,
     );
   }
@@ -219,7 +246,9 @@ export async function checkInEmployee(
       return anyOpen; // idempotent retry
     }
     throw new AttendanceDomainError(
-      'ALREADY_OPEN',
+      anyOpen.branchId !== args.branch.branchId
+        ? 'EMPLOYEE_ALREADY_CHECKED_IN_OTHER_BRANCH'
+        : 'ALREADY_OPEN',
       'الموظف لديه حضور مفتوح في فرع آخر أو يوم آخر — سجّل الانصراف أولاً',
       409,
     );

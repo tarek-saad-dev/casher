@@ -226,6 +226,8 @@ export function applyOverrides(
   // Ops shift controls (can close slots) — ignore attendance-tagged rows here
   const custom = ops.find((o) => o.Type === "custom_hours");
   if (custom) {
+    // Ops custom_hours can unlock a weekly-off day for today (restore-present / shift edit).
+    effective.isWorking = true;
     if (custom.StartTime) effective.start = custom.StartTime;
     if (custom.EndTime) effective.end = custom.EndTime;
     effective.appliedOverride = custom;

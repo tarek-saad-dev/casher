@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
+import { requireBranchOperationAccess } from '@/lib/branch/context';
 import {
   EmployeeTargetConflictError,
   EmployeeTargetValidationError,
@@ -26,6 +27,16 @@ export async function GET(
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
 
+    if (req.nextUrl.searchParams.has('branchId') || req.nextUrl.searchParams.has('BranchID')) {
+      return NextResponse.json(
+        { error: 'BranchID في الطلب غير مسموح' },
+        { status: 400 },
+      );
+    }
+
+    const branch = await requireBranchOperationAccess();
+    if (branch instanceof NextResponse) return branch;
+
     const { id } = await params;
     const empId = parseInt(id, 10);
     if (Number.isNaN(empId)) {
@@ -33,10 +44,17 @@ export async function GET(
     }
 
     const effectiveDate = req.nextUrl.searchParams.get('effectiveDate');
-    const data = await getEmployeeTargetSettings(empId, effectiveDate);
+    const data = await getEmployeeTargetSettings(
+      empId,
+      effectiveDate,
+      branch.branchId,
+    );
 
     return NextResponse.json(data);
   } catch (err: unknown) {
+    if (err instanceof EmployeeTargetValidationError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
     const message = err instanceof Error ? err.message : 'خطأ غير متوقع';
     const status = statusFromError(err);
     if (status === 404) {
@@ -58,13 +76,23 @@ export async function PUT(
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
 
+    const body = await req.json();
+    if (body.branchId != null || body.BranchID != null) {
+      return NextResponse.json(
+        { error: 'BranchID في الطلب غير مسموح' },
+        { status: 400 },
+      );
+    }
+
+    const branch = await requireBranchOperationAccess();
+    if (branch instanceof NextResponse) return branch;
+
     const { id } = await params;
     const empId = parseInt(id, 10);
     if (Number.isNaN(empId)) {
       return NextResponse.json({ error: 'معرف الموظف غير صالح' }, { status: 400 });
     }
 
-    const body = await req.json();
     let parsed;
     try {
       parsed = parseTargetSaveBody(body);
@@ -75,7 +103,12 @@ export async function PUT(
       );
     }
 
-    const saved = await saveEmployeeTargetPlan(empId, parsed, session.UserID ?? null);
+    const saved = await saveEmployeeTargetPlan(
+      empId,
+      parsed,
+      session.UserID ?? null,
+      branch.branchId,
+    );
     return NextResponse.json({ plan: saved });
   } catch (err: unknown) {
     if (err instanceof EmployeeTargetValidationError) {

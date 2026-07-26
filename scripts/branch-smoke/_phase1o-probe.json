@@ -1,0 +1,253 @@
+{
+  "hasSPrice1": true,
+  "nameCol": "ProName",
+  "durCols": [
+    {
+      "COLUMN_NAME": "ProType",
+      "DATA_TYPE": "nvarchar"
+    },
+    {
+      "COLUMN_NAME": "ProName",
+      "DATA_TYPE": "nvarchar"
+    },
+    {
+      "COLUMN_NAME": "PPrice",
+      "DATA_TYPE": "decimal"
+    },
+    {
+      "COLUMN_NAME": "SPrice1",
+      "DATA_TYPE": "decimal"
+    },
+    {
+      "COLUMN_NAME": "DurationMinutes",
+      "DATA_TYPE": "int"
+    },
+    {
+      "COLUMN_NAME": "ProNameAr",
+      "DATA_TYPE": "nvarchar"
+    }
+  ],
+  "priceCnt": {
+    "ActiveRows": 4,
+    "WithPPrice": 3,
+    "WithDur": 1,
+    "ServType": 1
+  },
+  "servSample": [
+    {
+      "ProID": 23,
+      "PName": "Dry-Hair",
+      "ProType": "serv",
+      "PPrice": 0,
+      "DurationMinutes": 10
+    },
+    {
+      "ProID": 24,
+      "PName": "ثيرم",
+      "ProType": "pro",
+      "PPrice": 200,
+      "DurationMinutes": null
+    },
+    {
+      "ProID": 25,
+      "PName": "شامبو",
+      "ProType": "pro",
+      "PPrice": 200,
+      "DurationMinutes": null
+    },
+    {
+      "ProID": 26,
+      "PName": "بلسم",
+      "ProType": "pro",
+      "PPrice": 200,
+      "DurationMinutes": null
+    }
+  ],
+  "users": [
+    {
+      "UserID": 10,
+      "UserName": "admin",
+      "isDeleted": false
+    },
+    {
+      "UserID": 13,
+      "UserName": "Tarek",
+      "isDeleted": false
+    },
+    {
+      "UserID": 14,
+      "UserName": "mohamed",
+      "isDeleted": true
+    },
+    {
+      "UserID": 15,
+      "UserName": "Hoda",
+      "isDeleted": false
+    },
+    {
+      "UserID": 16,
+      "UserName": "OMAR",
+      "isDeleted": false
+    },
+    {
+      "UserID": 17,
+      "UserName": "mr.ziad",
+      "isDeleted": false
+    },
+    {
+      "UserID": 18,
+      "UserName": "أ / علي الزيني",
+      "isDeleted": false
+    },
+    {
+      "UserID": 19,
+      "UserName": "أ / محمد حمدي",
+      "isDeleted": false
+    },
+    {
+      "UserID": 20,
+      "UserName": "mohamed",
+      "isDeleted": false
+    },
+    {
+      "UserID": 21,
+      "UserName": "mariam",
+      "isDeleted": false
+    }
+  ],
+  "partnerShareCols": [
+    {
+      "COLUMN_NAME": "BranchPartnerShareID",
+      "IS_NULLABLE": "NO",
+      "DATA_TYPE": "bigint"
+    },
+    {
+      "COLUMN_NAME": "BranchID",
+      "IS_NULLABLE": "NO",
+      "DATA_TYPE": "int"
+    },
+    {
+      "COLUMN_NAME": "PartnerUserID",
+      "IS_NULLABLE": "YES",
+      "DATA_TYPE": "int"
+    },
+    {
+      "COLUMN_NAME": "PartnerCode",
+      "IS_NULLABLE": "NO",
+      "DATA_TYPE": "nvarchar"
+    },
+    {
+      "COLUMN_NAME": "PartnerName",
+      "IS_NULLABLE": "NO",
+      "DATA_TYPE": "nvarchar"
+    },
+    {
+      "COLUMN_NAME": "SharePercent",
+      "IS_NULLABLE": "NO",
+      "DATA_TYPE": "decimal"
+    },
+    {
+      "COLUMN_NAME": "EffectiveFrom",
+      "IS_NULLABLE": "NO",
+      "DATA_TYPE": "date"
+    },
+    {
+      "COLUMN_NAME": "EffectiveTo",
+      "IS_NULLABLE": "YES",
+      "DATA_TYPE": "date"
+    },
+    {
+      "COLUMN_NAME": "IsActive",
+      "IS_NULLABLE": "NO",
+      "DATA_TYPE": "bit"
+    },
+    {
+      "COLUMN_NAME": "CreatedAt",
+      "IS_NULLABLE": "NO",
+      "DATA_TYPE": "datetime2"
+    },
+    {
+      "COLUMN_NAME": "UpdatedAt",
+      "IS_NULLABLE": "YES",
+      "DATA_TYPE": "datetime2"
+    },
+    {
+      "COLUMN_NAME": "CreatedByUserID",
+      "IS_NULLABLE": "YES",
+      "DATA_TYPE": "int"
+    },
+    {
+      "COLUMN_NAME": "Notes",
+      "IS_NULLABLE": "YES",
+      "DATA_TYPE": "nvarchar"
+    }
+  ],
+  "configTables": [],
+  "gleemHoursSample": [
+    {
+      "EmpID": 5,
+      "DayOfWeek": 0,
+      "StartTime": null,
+      "EndTime": null
+    },
+    {
+      "EmpID": 5,
+      "DayOfWeek": 1,
+      "StartTime": "16:00:00",
+      "EndTime": "02:00:00"
+    },
+    {
+      "EmpID": 5,
+      "DayOfWeek": 2,
+      "StartTime": "16:00:00",
+      "EndTime": "02:00:00"
+    },
+    {
+      "EmpID": 5,
+      "DayOfWeek": 3,
+      "StartTime": "16:00:00",
+      "EndTime": "02:00:00"
+    },
+    {
+      "EmpID": 5,
+      "DayOfWeek": 4,
+      "StartTime": "16:00:00",
+      "EndTime": "02:00:00"
+    }
+  ],
+  "schedCols": [
+    {
+      "COLUMN_NAME": "ID"
+    },
+    {
+      "COLUMN_NAME": "EmpID"
+    },
+    {
+      "COLUMN_NAME": "DayOfWeek"
+    },
+    {
+      "COLUMN_NAME": "IsWorkingDay"
+    },
+    {
+      "COLUMN_NAME": "StartTime"
+    },
+    {
+      "COLUMN_NAME": "EndTime"
+    },
+    {
+      "COLUMN_NAME": "BreakStartTime"
+    },
+    {
+      "COLUMN_NAME": "BreakEndTime"
+    },
+    {
+      "COLUMN_NAME": "Notes"
+    },
+    {
+      "COLUMN_NAME": "CreatedAt"
+    },
+    {
+      "COLUMN_NAME": "UpdatedAt"
+    }
+  ]
+}

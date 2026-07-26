@@ -1,11 +1,14 @@
 import { sql } from '@/lib/db';
 import type { PayrollValidationReason } from '@/lib/payroll/dailyPayrollHrRules';
 import {
-  buildDailyWageSql,
-  buildHourlyRateSnapshotSql,
-  buildPayrollNotesSql,
+  buildDailyWageSqlFromBranchPlan,
+  buildHourlyRateSnapshotSqlFromBranchPlan,
+  buildPayrollNotesSqlFromBranchPlan,
   getPayrollValidationReason,
-  SQL_INSERT_ELIGIBILITY_WHERE,
+  isPayableAttendanceStatus,
+  resolvePayrollMethod,
+  SQL_BRANCH_PAYROLL_PLAN_APPLY,
+  SQL_INSERT_ELIGIBILITY_WHERE_BRANCH_PLAN,
 } from '@/lib/payroll/dailyPayrollHrRules';
 import { ensureAttendanceBreakSchema } from '@/lib/hr/attendance-breaks-db';
 import {
@@ -14,6 +17,7 @@ import {
   loadEmpBranchDayAttendanceAggregates,
   loadEmpDayAttendanceAggregates,
 } from '@/lib/payroll/attendancePayrollAggregate';
+import { loadBranchDayPayrollPlans } from '@/lib/payroll/branchPayrollPlan';
 
 export interface ValidationMissing {
   empId: number;
@@ -114,6 +118,7 @@ const ERROR_REASONS = new Set<PayrollValidationReason>([
   'missing_checkout',
   'no_hourly_rate',
   'no_daily_rate',
+  'no_branch_payroll_plan',
   'unsupported_payroll_method',
 ]);
 
@@ -172,6 +177,11 @@ export async function validateDailyPayrollAttendance(
       ? await loadEmpBranchDayAttendanceAggregates(pool, workDate, branchId)
       : await loadEmpDayAttendanceAggregates(pool, workDate);
 
+  const branchPlans =
+    branchId != null
+      ? await loadBranchDayPayrollPlans(branchId, workDate)
+      : null;
+
   const attMap = new Map<
     number,
     { Status: string; CheckInTime: unknown; CheckOutTime: unknown }
@@ -185,13 +195,55 @@ export async function validateDailyPayrollAttendance(
   const excluded: ValidationExcluded[] = [];
 
   for (const emp of eligibleResult.recordset as EmployeeValidationRow[]) {
-    // Branch-scoped validation: skip employees with no branch attendance
-    // only when checking open-session / incomplete for that branch —
-    // no_attendance still applies for eligible scheduled workers without a session.
     const att = attMap.get(emp.EmpID) ?? null;
+    const hasPayableBranchAttendance =
+      att != null && isPayableAttendanceStatus(att.Status);
     const hasScheduleRow = emp.ScheduleDayOfWeek != null;
+
+    // Phase 1L: when validating a branch, operational rates come from branch plan only.
+    let empForValidation: EmployeeValidationRow = emp;
+    if (branchId != null && branchPlans) {
+      const plan = branchPlans.get(emp.EmpID);
+      const empMethod = resolvePayrollMethod(emp);
+
+      // Payable attendance needs an hourly/daily branch plan — but monthly staff
+      // are not daily-payroll candidates (they correctly have no hourly/daily plan).
+      // Requiring a plan for them blocked the whole day (e.g. طارق/مريم → خيري).
+      if (hasPayableBranchAttendance && !plan) {
+        if (empMethod === 'monthly') {
+          excluded.push({
+            empId: emp.EmpID,
+            empName: emp.EmpName,
+            reason: 'monthly_excluded',
+          });
+          continue;
+        }
+        missing.push({
+          empId: emp.EmpID,
+          empName: emp.EmpName,
+          reason: 'no_branch_payroll_plan',
+        });
+        continue;
+      }
+      if (plan) {
+        empForValidation = {
+          ...emp,
+          PayrollMethod: plan.payType,
+          SalaryType: plan.payType === 'monthly' ? 'monthly' : emp.SalaryType,
+          ManualHourlyRate: plan.hourlyRate,
+          HourlyRate: plan.hourlyRate,
+          DailyRate: plan.dailyRate,
+          BaseSalary: null,
+          Salary: null,
+        };
+      } else if (!hasPayableBranchAttendance) {
+        // No payable attendance at this branch and no plan — skip (may work elsewhere).
+        continue;
+      }
+    }
+
     const reason = getPayrollValidationReason(
-      emp,
+      empForValidation,
       {
         hasScheduleRow,
         isWorkingDay: hasScheduleRow ? !!emp.IsWorkingDay : null,
@@ -205,10 +257,6 @@ export async function validateDailyPayrollAttendance(
 
     if (!reason) continue;
 
-    // For branch-scoped runs: do not block the branch on employees who simply
-    // have no attendance at this branch (they may work elsewhere). Only treat
-    // incomplete open sessions / missing checkout for employees who have a
-    // branch session.
     if (
       branchId != null &&
       reason === 'no_attendance' &&
@@ -281,9 +329,12 @@ export async function executeDailyPayrollGenerate(
   const req = () => requestFrom(pool, options.transaction);
   const dayOfWeek = new Date(`${workDate}T12:00:00Z`).getDay();
 
-  const dailyWageSql = buildDailyWageSql(AGGREGATE_ACTUAL_HOURS_EXPR);
-  const hourlySnapshotSql = buildHourlyRateSnapshotSql();
-  const notesSql = buildPayrollNotesSql(notesPrefix, AGGREGATE_ACTUAL_HOURS_EXPR);
+  const dailyWageSql = buildDailyWageSqlFromBranchPlan(AGGREGATE_ACTUAL_HOURS_EXPR);
+  const hourlySnapshotSql = buildHourlyRateSnapshotSqlFromBranchPlan();
+  const notesSql = buildPayrollNotesSqlFromBranchPlan(
+    notesPrefix,
+    AGGREGATE_ACTUAL_HOURS_EXPR,
+  );
 
   await req()
     .input('WorkDate', sql.Date, workDate)
@@ -303,6 +354,7 @@ export async function executeDailyPayrollGenerate(
         ON v.EmpID = p.EmpID AND v.WorkDate = p.WorkDate AND v.BranchID = p.BranchID
       INNER JOIN dbo.TblEmpAttendance a ON a.ID = v.PrimaryAttendanceID
       INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
+      ${SQL_BRANCH_PAYROLL_PLAN_APPLY}
       LEFT JOIN dbo.TblEmpWorkSchedule ws
         ON ws.EmpID = e.EmpID AND ws.DayOfWeek = @dayOfWeek
       WHERE p.WorkDate = @WorkDate
@@ -328,7 +380,7 @@ export async function executeDailyPayrollGenerate(
         v.EmpID,
         v.PrimaryAttendanceID                                   AS AttendanceID,
         v.WorkDate,
-        h.ID                                                    AS SalaryHistoryID,
+        NULL                                                    AS SalaryHistoryID,
         ${hourlySnapshotSql}                                    AS HourlyRateSnapshot,
         ${AGGREGATE_ACTUAL_HOURS_EXPR}                          AS ActualHours,
         ${dailyWageSql}                                         AS DailyWage,
@@ -337,14 +389,13 @@ export async function executeDailyPayrollGenerate(
       FROM dbo.vw_EmpAttendancePayrollBranchDay v
       INNER JOIN dbo.TblEmpAttendance a ON a.ID = v.PrimaryAttendanceID
       INNER JOIN dbo.TblEmp e ON e.EmpID = v.EmpID
-      INNER JOIN dbo.TblEmpSalaryHistory h
-        ON h.EmpID = e.EmpID AND h.IsActive = 1 AND h.EffectiveTo IS NULL
+      ${SQL_BRANCH_PAYROLL_PLAN_APPLY}
       LEFT JOIN dbo.TblEmpWorkSchedule ws
         ON ws.EmpID = e.EmpID AND ws.DayOfWeek = @dayOfWeek
       WHERE v.WorkDate = @WorkDate
         AND v.BranchID = @BranchID
         AND v.HasOpenSession = 0
-        AND ${SQL_INSERT_ELIGIBILITY_WHERE}
+        AND ${SQL_INSERT_ELIGIBILITY_WHERE_BRANCH_PLAN}
         AND NOT EXISTS (
           SELECT 1 FROM dbo.TblEmpDailyPayroll p
           WHERE p.EmpID = v.EmpID AND p.BranchID = v.BranchID AND p.WorkDate = v.WorkDate

@@ -1,0 +1,529 @@
+{
+  "pro": {
+    "c": 47,
+    "active": 4,
+    "activeServ": 1
+  },
+  "allPro": [
+    {
+      "ProID": 9,
+      "ProName": "Hair Cut",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 200,
+      "DurationMinutes": 30,
+      "del": true
+    },
+    {
+      "ProID": 10,
+      "ProName": "Beard Styling & Fade",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 100,
+      "DurationMinutes": 20,
+      "del": true
+    },
+    {
+      "ProID": 11,
+      "ProName": "Basic Skin Care",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 200,
+      "DurationMinutes": 20,
+      "del": true
+    },
+    {
+      "ProID": 12,
+      "ProName": "Medical Skin Care",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 400,
+      "DurationMinutes": 35,
+      "del": true
+    },
+    {
+      "ProID": 13,
+      "ProName": "Hand pedicure",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 150,
+      "DurationMinutes": null,
+      "del": true
+    },
+    {
+      "ProID": 14,
+      "ProName": "Foot pedicure",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 250,
+      "DurationMinutes": null,
+      "del": true
+    },
+    {
+      "ProID": 15,
+      "ProName": "Short Hair Protein",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 500,
+      "DurationMinutes": 60,
+      "del": true
+    },
+    {
+      "ProID": 16,
+      "ProName": "Long Hair Protein",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 1000,
+      "DurationMinutes": 90,
+      "del": true
+    },
+    {
+      "ProID": 17,
+      "ProName": "Basic Hair Color",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 150,
+      "DurationMinutes": 15,
+      "del": true
+    },
+    {
+      "ProID": 18,
+      "ProName": "Hair & Beard Color",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 200,
+      "DurationMinutes": 20,
+      "del": true
+    },
+    {
+      "ProID": 19,
+      "ProName": "Silver Highlights",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 700,
+      "DurationMinutes": 60,
+      "del": true
+    },
+    {
+      "ProID": 20,
+      "ProName": "Haircut & Beard",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 250,
+      "DurationMinutes": 45,
+      "del": true
+    },
+    {
+      "ProID": 21,
+      "ProName": "Toppik Hair Spray",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 50,
+      "DurationMinutes": 5,
+      "del": true
+    },
+    {
+      "ProID": 22,
+      "ProName": "Hair Oil Treatment",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 120,
+      "DurationMinutes": 5,
+      "del": true
+    },
+    {
+      "ProID": 23,
+      "ProName": "Dry-Hair",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 100,
+      "DurationMinutes": 10,
+      "del": false
+    },
+    {
+      "ProID": 24,
+      "ProName": "ثيرم",
+      "ProType": "pro",
+      "PPrice": 200,
+      "SPrice1": 300,
+      "DurationMinutes": null,
+      "del": false
+    },
+    {
+      "ProID": 25,
+      "ProName": "شامبو",
+      "ProType": "pro",
+      "PPrice": 200,
+      "SPrice1": 300,
+      "DurationMinutes": null,
+      "del": false
+    },
+    {
+      "ProID": 26,
+      "ProName": "بلسم",
+      "ProType": "pro",
+      "PPrice": 200,
+      "SPrice1": 300,
+      "DurationMinutes": null,
+      "del": false
+    },
+    {
+      "ProID": 27,
+      "ProName": "حمام كريم",
+      "ProType": "pro",
+      "PPrice": 200,
+      "SPrice1": 300,
+      "DurationMinutes": null,
+      "del": true
+    },
+    {
+      "ProID": 28,
+      "ProName": "برفيوم SF",
+      "ProType": "pro",
+      "PPrice": 0,
+      "SPrice1": 300,
+      "DurationMinutes": null,
+      "del": true
+    },
+    {
+      "ProID": 29,
+      "ProName": "Deep SkinCare",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 300,
+      "DurationMinutes": 30,
+      "del": true
+    },
+    {
+      "ProID": 30,
+      "ProName": "عــــــــــــــــــائــــــد للخـــــزنه ( كاش )",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 0,
+      "DurationMinutes": null,
+      "del": true
+    },
+    {
+      "ProID": 31,
+      "ProName": "Partial Wax",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 50,
+      "DurationMinutes": 5,
+      "del": true
+    },
+    {
+      "ProID": 32,
+      "ProName": "Full Wax",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 100,
+      "DurationMinutes": 10,
+      "del": true
+    },
+    {
+      "ProID": 33,
+      "ProName": "بلوب كيرلي",
+      "ProType": "pro",
+      "PPrice": 100,
+      "SPrice1": 100,
+      "DurationMinutes": null,
+      "del": true
+    },
+    {
+      "ProID": 34,
+      "ProName": "Beard Bleaching",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 200,
+      "DurationMinutes": 30,
+      "del": true
+    },
+    {
+      "ProID": 35,
+      "ProName": "Hair Straightening",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 100,
+      "DurationMinutes": 5,
+      "del": true
+    },
+    {
+      "ProID": 36,
+      "ProName": "Hair Design",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 50,
+      "DurationMinutes": 5,
+      "del": true
+    },
+    {
+      "ProID": 37,
+      "ProName": "معالج الشعر",
+      "ProType": "pro",
+      "PPrice": 100,
+      "SPrice1": 100,
+      "DurationMinutes": null,
+      "del": true
+    },
+    {
+      "ProID": 38,
+      "ProName": "Smoothing Cream",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 100,
+      "DurationMinutes": 5,
+      "del": true
+    },
+    {
+      "ProID": 39,
+      "ProName": "Face Mask",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 50,
+      "DurationMinutes": 5,
+      "del": true
+    },
+    {
+      "ProID": 40,
+      "ProName": "peel-off Mask",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 80,
+      "DurationMinutes": 5,
+      "del": true
+    },
+    {
+      "ProID": 43,
+      "ProName": "Hot / Cold Towel",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 50,
+      "DurationMinutes": 5,
+      "del": true
+    },
+    {
+      "ProID": 44,
+      "ProName": "Hair Mask",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 50,
+      "DurationMinutes": 5,
+      "del": true
+    },
+    {
+      "ProID": 45,
+      "ProName": "Threading",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 50,
+      "DurationMinutes": 10,
+      "del": true
+    },
+    {
+      "ProID": 46,
+      "ProName": "Face Threading",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 50,
+      "DurationMinutes": 10,
+      "del": true
+    },
+    {
+      "ProID": 47,
+      "ProName": "Hair Styling",
+      "ProType": "serv",
+      "PPrice": 0,
+      "SPrice1": 50,
+      "DurationMinutes": 5,
+      "del": true
+    },
+    {
+      "ProID": 1047,
+      "ProName": "Fade Cut",
+      "ProType": null,
+      "PPrice": null,
+      "SPrice1": 180,
+      "DurationMinutes": 30,
+      "del": true
+    },
+    {
+      "ProID": 1049,
+      "ProName": "Advanced Cut",
+      "ProType": null,
+      "PPrice": null,
+      "SPrice1": 250,
+      "DurationMinutes": 40,
+      "del": true
+    },
+    {
+      "ProID": 1050,
+      "ProName": "Wavy Styling",
+      "ProType": null,
+      "PPrice": null,
+      "SPrice1": 100,
+      "DurationMinutes": 10,
+      "del": true
+    },
+    {
+      "ProID": 1051,
+      "ProName": "Hair Botox",
+      "ProType": null,
+      "PPrice": null,
+      "SPrice1": 900,
+      "DurationMinutes": 60,
+      "del": true
+    },
+    {
+      "ProID": 1053,
+      "ProName": "Hair Cut",
+      "ProType": null,
+      "PPrice": null,
+      "SPrice1": 50,
+      "DurationMinutes": null,
+      "del": true
+    },
+    {
+      "ProID": 1056,
+      "ProName": "Mullet Highlights",
+      "ProType": null,
+      "PPrice": null,
+      "SPrice1": 850,
+      "DurationMinutes": null,
+      "del": true
+    },
+    {
+      "ProID": 1057,
+      "ProName": "Full Highlights",
+      "ProType": null,
+      "PPrice": null,
+      "SPrice1": 800,
+      "DurationMinutes": null,
+      "del": true
+    },
+    {
+      "ProID": 1058,
+      "ProName": "texture powder",
+      "ProType": null,
+      "PPrice": null,
+      "SPrice1": 500,
+      "DurationMinutes": null,
+      "del": true
+    },
+    {
+      "ProID": 1063,
+      "ProName": "[SMOKE CC] Haircut",
+      "ProType": "serv",
+      "PPrice": 150,
+      "SPrice1": null,
+      "DurationMinutes": 30,
+      "del": true
+    },
+    {
+      "ProID": 1064,
+      "ProName": "[SMOKE CC] Product",
+      "ProType": "pro",
+      "PPrice": 50,
+      "SPrice1": null,
+      "DurationMinutes": null,
+      "del": true
+    }
+  ],
+  "emps": [
+    {
+      "EmpID": 12,
+      "EmpName": "زياد",
+      "Job": "حلاق",
+      "isActive": true
+    },
+    {
+      "EmpID": 16,
+      "EmpName": "ذياد المساعد",
+      "Job": "مساعد",
+      "isActive": false
+    },
+    {
+      "EmpID": 22,
+      "EmpName": "طارق",
+      "Job": "مدير",
+      "isActive": true
+    },
+    {
+      "EmpID": 25,
+      "EmpName": "عمر",
+      "Job": "حلاق",
+      "isActive": true
+    }
+  ],
+  "qbsCols": [
+    {
+      "COLUMN_NAME": "SettingID"
+    },
+    {
+      "COLUMN_NAME": "QueuePrefix"
+    },
+    {
+      "COLUMN_NAME": "QueueStartNumber"
+    },
+    {
+      "COLUMN_NAME": "ResetQueueDaily"
+    },
+    {
+      "COLUMN_NAME": "DefaultServiceMinutes"
+    },
+    {
+      "COLUMN_NAME": "BookingGracePeriod"
+    },
+    {
+      "COLUMN_NAME": "AutoNoShowAfterMin"
+    },
+    {
+      "COLUMN_NAME": "AllowDoubleBooking"
+    },
+    {
+      "COLUMN_NAME": "BookingPriorityMode"
+    },
+    {
+      "COLUMN_NAME": "UpdatedAt"
+    },
+    {
+      "COLUMN_NAME": "UpdatedByUserID"
+    },
+    {
+      "COLUMN_NAME": "SlotIntervalMinutes"
+    },
+    {
+      "COLUMN_NAME": "MaxBookingDaysAhead"
+    },
+    {
+      "COLUMN_NAME": "MinNoticeMinutes"
+    },
+    {
+      "COLUMN_NAME": "BookingEnabled"
+    },
+    {
+      "COLUMN_NAME": "SalonName"
+    },
+    {
+      "COLUMN_NAME": "Timezone"
+    },
+    {
+      "COLUMN_NAME": "Currency"
+    },
+    {
+      "COLUMN_NAME": "AllowSpecificBarber"
+    },
+    {
+      "COLUMN_NAME": "AllowNearestBarber"
+    },
+    {
+      "COLUMN_NAME": "DefaultMode"
+    },
+    {
+      "COLUMN_NAME": "DefaultServiceDurationMinutes"
+    },
+    {
+      "COLUMN_NAME": "BranchID"
+    }
+  ]
+}
