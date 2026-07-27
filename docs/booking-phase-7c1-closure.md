@@ -1,6 +1,6 @@
 # Booking Phase 7C1 — Closure
 
-**Status:** OPEN items remain for Phase 8A1 Expose-Headers redeploy
+**Status:** CLOSED for CORS allowlist; Phase 8A2 Expose-Headers **GO** (2026-07-27)
 
 ## Delivered (7C1)
 
@@ -9,18 +9,16 @@
 - Env: `PUBLIC_BOOKING_ALLOWED_ORIGINS` (documented in `.env.example`)
 - Docs under `docs/booking-phase-7c1-*`
 
-## Phase 8A1 update (2026-07-27)
+## Phase 8A1 / 8A2 update (2026-07-27)
 
 - Production allowlist confirmed live for root + www cutsaloon.com
 - Create/cancel Idempotency-Key preflight confirmed on production alias
-- Central `Access-Control-Expose-Headers` added in code; **not yet on production alias** (Vercel CLI unavailable — manual redeploy required)
-- Browser JS on `https://cutsaloon.com` can call the API but **cannot** yet read contract/request-id/rate-limit headers
+- Central `Access-Control-Expose-Headers` shipped in commit `39e1e9e` and verified on production
+- Browser JS on `https://cutsaloon.com` can read contract / request-id / rate-limit headers
 
-See: `docs/booking-phase-8a1-production-cors-proof.md`
+See: `docs/booking-phase-8a2-expose-headers-proof.md`
 
-## Remaining
+## Remaining (not 7C1 / 8A blockers)
 
-- Redeploy Casher Production with Expose-Headers change
-- Re-run browser-readable header proof from cutsaloon.com
-- Frontend Phase 8B UI migration (separate repo)
+- Frontend Phase 8B UI migration (BookingModal etc.) — separate task
 - Keep `PUBLIC_BOOKING_CONTRACT_MODE=compat` until frontend cutover

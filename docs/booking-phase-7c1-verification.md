@@ -20,10 +20,10 @@
 | No-Origin GET | **PASS** |
 | Camp Caesar | **PASS** (`BRANCH_NOT_PUBLIC`) |
 | Admin isolation | **PASS** (401) |
-| Access-Control-Expose-Headers on production | **FAIL** (code ready, redeploy pending) |
-| Browser-readable metadata from cutsaloon.com | **FAIL** until Expose-Headers deploy |
+| Access-Control-Expose-Headers on production | **PASS** (Phase 8A2 commit `39e1e9e`) |
+| Browser-readable metadata from cutsaloon.com | **PASS** (Phase 8A2) |
 
-Full detail: `docs/booking-phase-8a1-production-cors-proof.md`
+Full detail: `docs/booking-phase-8a2-expose-headers-proof.md` (supersedes 8A1 NO-GO for Expose-Headers)
 
 ## Tests / build (8A1 session)
 

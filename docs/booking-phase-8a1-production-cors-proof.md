@@ -107,32 +107,23 @@ Disallowed GET `/branches` with `Origin: https://example.com` → **200** body, 
 
 ## Browser-readable metadata proof
 
-**Method:** Chrome DevTools `Runtime.evaluate` fetch from page origin `https://cutsaloon.com` against `https://casher-five.vercel.app/api/public/branches`.
+### Pre–Phase 8A2 (historical)
+
+Cross-origin fetch succeeded but contract/request-id/rate-limit headers were **null** in browser JS (missing Expose-Headers).
+
+### Phase 8A2 (2026-07-27) — GO
+
+**Method:** Chrome DevTools `Runtime.evaluate` fetch from page origin `https://cutsaloon.com`.
 
 | Check | Result |
 |---|---|
-| Cross-origin fetch succeeds | **yes** (`status: 200`, `ok: true`) |
-| JS-visible header keys | only `cache-control`, `content-type` |
-| `X-Booking-Contract-Version` | **null** (not exposed) |
-| `X-Request-Id` | **null** |
-| `X-RateLimit-*` | **null** |
-| `Access-Control-Expose-Headers` | **null** |
+| Cross-origin fetch succeeds | **yes** (`status: 200`) |
+| `X-Booking-Contract-Version` | `booking-public-v1` |
+| `X-Request-Id` | non-null (`pb-…`) |
+| `X-RateLimit-Limit` | `60` |
+| Typed-client `contractUnverified` | **false** |
 
-**Verdict:** browser-readable metadata **NO-GO** until Expose-Headers redeploy lands.
-
-After redeploy, re-check via:
-
-1. Open `https://cutsaloon.com/dev/booking-api-proof` (frontend Phase 8A page; requires that frontend deploy), **or**
-2. From DevTools on `https://cutsaloon.com`:
-
-```js
-const r = await fetch('https://casher-five.vercel.app/api/public/branches', { credentials: 'omit' });
-console.log(r.headers.get('X-Booking-Contract-Version'));
-console.log(r.headers.get('X-Request-Id'));
-console.log(r.headers.get('X-RateLimit-Limit'));
-```
-
-Expected after Expose-Headers deploy: non-null contract version + request id; rate-limit readable when present.
+See: `docs/booking-phase-8a2-expose-headers-proof.md`
 
 ## Camp Caesar / admin
 
@@ -154,16 +145,11 @@ Expected after Expose-Headers deploy: non-null contract version + request id; ra
 
 ## Verdicts
 
-| Item | Verdict |
+Historical 8A1 session left Expose-Headers as NO-GO. **Superseded by Phase 8A2** (`docs/booking-phase-8a2-expose-headers-proof.md`):
+
+| Item | Verdict (8A2) |
 |---|---|
-| Production environment | **GO** (operator-supplied; live probes confirm both origins) |
-| Production deployment freshness (Expose-Headers code) | **NO-GO** (code change not deployed; CLI cannot redeploy) |
-| Root-domain CORS | **GO** |
-| WWW-domain CORS | **GO** |
-| Create/cancel preflight | **GO** |
-| Exposed metadata headers (server sends Expose-Headers) | **NO-GO** until redeploy |
-| Browser-readable metadata | **NO-GO** until Expose-Headers redeploy |
-| Admin/internal isolation | **GO** |
-| Camp Caesar privacy | **GO** |
-| Phase 8A final closure | **NO-GO** (blocked on Expose-Headers + browser re-proof) |
-| Phase 8B UI migration | **GO** for ACAO/preflight-dependent UI work; treat metadata header reads as soft until Expose-Headers ships |
+| Production Expose-Headers | **GO** |
+| Browser-readable metadata | **GO** |
+| Phase 8A final closure | **GO** |
+| Phase 8B UI migration | **GO** (may begin; keep contract mode `compat`) |
