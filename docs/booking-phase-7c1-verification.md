@@ -1,19 +1,33 @@
-# Booking Phase 7C1 — Verification
+# Booking Phase 7C1 — Verification (updated Phase 8A1)
 
-## Live probe
+## Live probe — historical 7C1
 
 | Field | Value |
 |---|---|
 | Phase | booking-phase-7c1-cors-proof |
-| Result | **PASSED** |
+| Result | **PASSED** (earlier artifact) |
 | Artifact | `_booking-phase7c1-cors-proof.json` |
-| create OPTIONS overhead | ~6ms |
 
-Proofs: create/cancel Idempotency-Key preflight, disallowed 403, no-Origin OK, error ACAO, branches OPTIONS.
+## Live probe — Phase 8A1 production alias (2026-07-27)
 
-## Tests / build
+| Field | Value |
+|---|---|
+| Alias | `https://casher-five.vercel.app` |
+| Origins | `https://cutsaloon.com`, `https://www.cutsaloon.com` |
+| Root/www GET ACAO | **PASS** |
+| Create/cancel OPTIONS + Idempotency-Key | **PASS** |
+| Disallowed / null Origin | **PASS** (403, no ACAO) |
+| No-Origin GET | **PASS** |
+| Camp Caesar | **PASS** (`BRANCH_NOT_PUBLIC`) |
+| Admin isolation | **PASS** (401) |
+| Access-Control-Expose-Headers on production | **FAIL** (code ready, redeploy pending) |
+| Browser-readable metadata from cutsaloon.com | **FAIL** until Expose-Headers deploy |
 
-- Phase 7C1 CORS suites PASS
-- Phase 7A/7B + Phase 2–5 regression sample PASS
-- ESLint clean on touched files
-- `npm run build` (run on closure)
+Full detail: `docs/booking-phase-8a1-production-cors-proof.md`
+
+## Tests / build (8A1 session)
+
+- Phase 7C1 + 8A1 CORS suites PASS
+- Contract/security sample PASS
+- ESLint clean on touched CORS files
+- `npm run build` PASS

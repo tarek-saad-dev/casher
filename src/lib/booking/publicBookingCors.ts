@@ -20,6 +20,32 @@ const DEFAULT_ALLOWED_HEADERS = ['Content-Type'] as const;
 const IDEMPOTENCY_HEADERS = ['Content-Type', 'Idempotency-Key'] as const;
 const LOOKUP_HEADERS = ['Content-Type', 'Authorization'] as const;
 
+/**
+ * Headers browsers may read from public booking responses.
+ * Configured once here — do not duplicate per route.
+ * Do not expose tokens or internal-only headers.
+ */
+export const PUBLIC_BOOKING_EXPOSED_HEADERS = [
+  'X-Booking-Contract-Version',
+  'X-Request-Id',
+  'Retry-After',
+  'X-RateLimit-Limit',
+  'X-RateLimit-Remaining',
+  'X-RateLimit-Reset',
+  'Deprecation',
+  'Warning',
+] as const;
+
+/** @deprecated Use PUBLIC_BOOKING_EXPOSED_HEADERS — alias retained for Phase 8A1 tests. */
+export const PUBLIC_BOOKING_CORS_EXPOSE_HEADERS = PUBLIC_BOOKING_EXPOSED_HEADERS;
+
+export const PUBLIC_BOOKING_EXPOSED_HEADERS_VALUE =
+  PUBLIC_BOOKING_EXPOSED_HEADERS.join(', ');
+
+/** @deprecated Use PUBLIC_BOOKING_EXPOSED_HEADERS_VALUE */
+export const PUBLIC_BOOKING_CORS_EXPOSE_HEADERS_VALUE =
+  PUBLIC_BOOKING_EXPOSED_HEADERS_VALUE;
+
 export const PUBLIC_BOOKING_CORS_HEADER_PRESETS = {
   read: [...DEFAULT_ALLOWED_HEADERS],
   mutate: [...IDEMPOTENCY_HEADERS],
@@ -260,6 +286,8 @@ export function buildPublicBookingCorsHeaders(
   const headers: Record<string, string> = {
     'Access-Control-Allow-Origin': policy.origin,
     Vary: 'Origin',
+    // Required so browser JS on cutsaloon.com can read booking metadata headers.
+    'Access-Control-Expose-Headers': PUBLIC_BOOKING_EXPOSED_HEADERS_VALUE,
   };
 
   if (args.forPreflight) {
