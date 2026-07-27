@@ -1,0 +1,254 @@
+{
+  "today": "2026-07-27",
+  "dow": 1,
+  "gleem": {
+    "BranchID": 1,
+    "BranchCode": "GLEEM",
+    "LifecycleStatus": "PUBLIC_LIVE",
+    "PublicBookingEnabled": true,
+    "IsActive": true,
+    "BookingEnabled": false,
+    "MaxBookingDaysAhead": 365,
+    "MinNoticeMinutes": 15
+  },
+  "camp": {
+    "BranchID": 3,
+    "LifecycleStatus": "SETUP",
+    "PublicBookingEnabled": false,
+    "IsActive": false
+  },
+  "eligibleServiceCount": 30,
+  "barberCount": 5,
+  "barbers": [
+    {
+      "empId": 5,
+      "name": "كريم",
+      "job": "حلاق"
+    },
+    {
+      "empId": 7,
+      "name": "محمد",
+      "job": "حلاق"
+    },
+    {
+      "empId": 12,
+      "name": "زياد",
+      "job": "حلاق"
+    },
+    {
+      "empId": 18,
+      "name": "احمد",
+      "job": "حلاق"
+    },
+    {
+      "empId": 25,
+      "name": "عمر",
+      "job": "حلاق"
+    }
+  ],
+  "weeklyWorkingRowCount": 75,
+  "workingTodayDowCount": 11,
+  "workingTodayEmpIds": [
+    5,
+    6,
+    7,
+    12,
+    13,
+    21,
+    22,
+    25,
+    1025,
+    1030,
+    1032
+  ],
+  "weeklySample": [
+    {
+      "EmpID": 5,
+      "DayOfWeek": 1,
+      "IsWorking": 1,
+      "StartTime": "16:00:00",
+      "EndTime": "02:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    },
+    {
+      "EmpID": 5,
+      "DayOfWeek": 2,
+      "IsWorking": 1,
+      "StartTime": "16:00:00",
+      "EndTime": "02:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    },
+    {
+      "EmpID": 5,
+      "DayOfWeek": 3,
+      "IsWorking": 1,
+      "StartTime": "16:00:00",
+      "EndTime": "02:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    },
+    {
+      "EmpID": 5,
+      "DayOfWeek": 4,
+      "IsWorking": 1,
+      "StartTime": "16:00:00",
+      "EndTime": "02:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    },
+    {
+      "EmpID": 5,
+      "DayOfWeek": 5,
+      "IsWorking": 1,
+      "StartTime": "16:00:00",
+      "EndTime": "02:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    },
+    {
+      "EmpID": 5,
+      "DayOfWeek": 6,
+      "IsWorking": 1,
+      "StartTime": "16:00:00",
+      "EndTime": "02:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    },
+    {
+      "EmpID": 6,
+      "DayOfWeek": 0,
+      "IsWorking": 1,
+      "StartTime": "09:00:00",
+      "EndTime": "21:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    },
+    {
+      "EmpID": 6,
+      "DayOfWeek": 1,
+      "IsWorking": 1,
+      "StartTime": "09:00:00",
+      "EndTime": "21:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    },
+    {
+      "EmpID": 6,
+      "DayOfWeek": 2,
+      "IsWorking": 1,
+      "StartTime": "09:00:00",
+      "EndTime": "21:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    },
+    {
+      "EmpID": 6,
+      "DayOfWeek": 3,
+      "IsWorking": 1,
+      "StartTime": "09:00:00",
+      "EndTime": "21:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    },
+    {
+      "EmpID": 6,
+      "DayOfWeek": 4,
+      "IsWorking": 1,
+      "StartTime": "09:00:00",
+      "EndTime": "21:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    },
+    {
+      "EmpID": 6,
+      "DayOfWeek": 5,
+      "IsWorking": 1,
+      "StartTime": "09:00:00",
+      "EndTime": "21:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    },
+    {
+      "EmpID": 6,
+      "DayOfWeek": 6,
+      "IsWorking": 1,
+      "StartTime": "09:00:00",
+      "EndTime": "21:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    },
+    {
+      "EmpID": 7,
+      "DayOfWeek": 0,
+      "IsWorking": 1,
+      "StartTime": "11:00:00",
+      "EndTime": "23:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    },
+    {
+      "EmpID": 7,
+      "DayOfWeek": 1,
+      "IsWorking": 1,
+      "StartTime": "11:00:00",
+      "EndTime": "23:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    },
+    {
+      "EmpID": 7,
+      "DayOfWeek": 2,
+      "IsWorking": 1,
+      "StartTime": "11:00:00",
+      "EndTime": "23:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    },
+    {
+      "EmpID": 7,
+      "DayOfWeek": 3,
+      "IsWorking": 1,
+      "StartTime": "11:00:00",
+      "EndTime": "23:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    },
+    {
+      "EmpID": 7,
+      "DayOfWeek": 4,
+      "IsWorking": 1,
+      "StartTime": "11:00:00",
+      "EndTime": "23:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    },
+    {
+      "EmpID": 7,
+      "DayOfWeek": 5,
+      "IsWorking": 1,
+      "StartTime": "11:00:00",
+      "EndTime": "23:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    },
+    {
+      "EmpID": 7,
+      "DayOfWeek": 6,
+      "IsWorking": 1,
+      "StartTime": "11:00:00",
+      "EndTime": "23:00:00",
+      "EffectiveFrom": "2020-01-01T00:00:00.000Z",
+      "EffectiveTo": null
+    }
+  ],
+  "overrideDayOffs": [
+    {
+      "EmpID": 12,
+      "OverrideDate": "2026-07-27T00:00:00.000Z",
+      "Type": "day_off"
+    }
+  ],
+  "note": "When BookingEnabled=0, canBranchAppearInPublicBooking(GLEEM)=false, so publicOnly schedule resolution returns isGlobalDayOff for all barbers even if weekly rows exist."
+}

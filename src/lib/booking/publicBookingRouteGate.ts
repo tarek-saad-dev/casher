@@ -1,5 +1,6 @@
 /**
  * Booking Phase 7C2 — shared route gate (rate limit + request ID).
+ * Phase 8D — anonymized request logging + health samples.
  */
 import 'server-only';
 import type { NextRequest } from 'next/server';
@@ -18,27 +19,74 @@ import { publicBookingErrorBody, PUBLIC_BOOKING_ERROR_CATALOG } from '@/lib/book
 import {
   applyPublicBookingResponseHeaders,
   getOrCreateRequestId,
+  logPublicBookingRequest,
   mergeCompatibilityIntoBody,
 } from '@/lib/booking/publicBookingResponse';
 import type { ContractCompatibilityFlags } from '@/lib/booking/publicBookingContractMode';
+import {
+  recordPublicBookingHealthSample,
+  type PublicBookingHealthOutcome,
+} from '@/lib/booking/publicBookingHealthMetrics';
 
 export type PublicBookingRouteGate = {
   requestId: string;
   rateLimit: RateLimitCheckResult;
   routeKey: string;
   cors: { methods: PublicBookingCorsMethod[]; headers: readonly string[] };
+  startedAtMs: number;
 };
+
+export type PublicBookingTelemetry = {
+  outcome?: PublicBookingHealthOutcome;
+  errorCode?: string | null;
+};
+
+function emitTelemetry(
+  req: NextRequest,
+  gate: PublicBookingRouteGate,
+  args: {
+    status: number;
+    errorCode?: string | null;
+    outcome: PublicBookingHealthOutcome;
+  },
+): void {
+  const durationMs = Math.max(0, Date.now() - gate.startedAtMs);
+  logPublicBookingRequest({
+    requestId: gate.requestId,
+    routeFamily: gate.routeKey,
+    method: req.method,
+    status: args.status,
+    errorCode: args.errorCode ?? null,
+    durationMs,
+  });
+  void recordPublicBookingHealthSample({
+    routeKey: gate.routeKey,
+    outcome: args.outcome,
+    errorCode: args.errorCode ?? null,
+    durationMs,
+    httpStatus: args.status,
+  });
+}
 
 export function gatePublicBookingRoute(
   req: NextRequest,
   routeKey: string,
   subjectDigest?: string | null,
 ): { gate: PublicBookingRouteGate; blocked: NextResponse | null } {
+  const startedAtMs = Date.now();
   const family = PUBLIC_BOOKING_ROUTE_RATE_FAMILY[routeKey] ?? 'discovery';
   const rateLimit = resolveRateLimitFromRequest(req, family, subjectDigest);
   const requestId = getOrCreateRequestId(req);
   const cors =
     PUBLIC_BOOKING_ROUTE_CORS[routeKey] ?? PUBLIC_BOOKING_ROUTE_CORS.branches;
+
+  const gate: PublicBookingRouteGate = {
+    requestId,
+    rateLimit,
+    routeKey,
+    cors,
+    startedAtMs,
+  };
 
   if (!rateLimit.allowed) {
     const body = publicBookingErrorBody('RATE_LIMIT_EXCEEDED', {
@@ -59,16 +107,15 @@ export function gatePublicBookingRoute(
         retryAfterSeconds: rateLimit.retryAfterSeconds,
       },
     });
-    return {
-      gate: { requestId, rateLimit, routeKey, cors },
-      blocked: res,
-    };
+    emitTelemetry(req, gate, {
+      status: 429,
+      errorCode: 'RATE_LIMIT_EXCEEDED',
+      outcome: 'rate_limited',
+    });
+    return { gate, blocked: res };
   }
 
-  return {
-    gate: { requestId, rateLimit, routeKey, cors },
-    blocked: null,
-  };
+  return { gate, blocked: null };
 }
 
 export function finalizePublicBookingJson(
@@ -79,13 +126,15 @@ export function finalizePublicBookingJson(
     status?: number;
     cacheControl?: string | null;
     compatibility?: ContractCompatibilityFlags | null;
+    telemetry?: PublicBookingTelemetry;
   },
 ): NextResponse {
   const responseBody =
     options?.compatibility && body && typeof body === 'object' && !Array.isArray(body)
       ? mergeCompatibilityIntoBody(body as Record<string, unknown>, options.compatibility)
       : body;
-  let res: NextResponse = NextResponse.json(responseBody, { status: options?.status ?? 200 });
+  const status = options?.status ?? 200;
+  let res: NextResponse = NextResponse.json(responseBody, { status });
   res = withPublicBookingCors(res, req, {
     allowedMethods: [...gate.cors.methods],
     allowedHeaders: gate.cors.headers,
@@ -100,6 +149,15 @@ export function finalizePublicBookingJson(
       resetAt: gate.rateLimit.resetAt,
     },
   });
+
+  const outcome: PublicBookingHealthOutcome =
+    options?.telemetry?.outcome ??
+    (status >= 200 && status < 400 ? 'success' : 'failure');
+  emitTelemetry(req, gate, {
+    status,
+    errorCode: options?.telemetry?.errorCode ?? null,
+    outcome,
+  });
   return res;
 }
 
@@ -108,6 +166,7 @@ export function finalizePublicBookingError(
   gate: PublicBookingRouteGate,
   code: keyof typeof PUBLIC_BOOKING_ERROR_CATALOG,
   metadata?: Record<string, unknown>,
+  telemetry?: PublicBookingTelemetry,
 ): NextResponse {
   const def = PUBLIC_BOOKING_ERROR_CATALOG[code];
   let res: NextResponse = NextResponse.json(publicBookingErrorBody(code, metadata), {
@@ -125,6 +184,11 @@ export function finalizePublicBookingError(
       remaining: gate.rateLimit.remaining,
       resetAt: gate.rateLimit.resetAt,
     },
+  });
+  emitTelemetry(req, gate, {
+    status: def.httpStatus,
+    errorCode: code,
+    outcome: telemetry?.outcome ?? 'failure',
   });
   return res;
 }

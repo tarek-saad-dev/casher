@@ -1,4 +1,4 @@
-import { Clock, Calendar, CreditCard } from 'lucide-react';
+import { Clock, Calendar, User } from 'lucide-react';
 
 interface SaleDetail {
   serviceName: string;
@@ -13,6 +13,7 @@ interface RecentSale {
   daysAgo: number;
   services: SaleDetail[];
   paymentMethod?: string | null;
+  userName?: string | null;
 }
 
 interface CustomerRecentSalesProps {
@@ -103,20 +104,28 @@ export default function CustomerRecentSales({ sales }: CustomerRecentSalesProps)
             ))}
           </div>
 
-          {/* Footer: days ago + payment method */}
-          <div className="mt-2 pt-2 border-t border-border flex items-center justify-between">
+          {/* Footer: days ago + cashier + payment method */}
+          <div className="mt-2 pt-2 border-t border-border flex items-center justify-between gap-2 flex-wrap">
             <span className="text-[10px] text-muted-foreground">
               {getDaysAgoText(sale.daysAgo)}
             </span>
-            {sale.paymentMethod && (() => {
-              const style = getPaymentStyle(sale.paymentMethod);
-              return (
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${style.bg} ${style.text}`}>
-                  <span>{style.icon}</span>
-                  {sale.paymentMethod}
+            <div className="flex items-center gap-2">
+              {sale.userName && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <User className="w-3 h-3" />
+                  {sale.userName}
                 </span>
-              );
-            })()}
+              )}
+              {sale.paymentMethod && (() => {
+                const style = getPaymentStyle(sale.paymentMethod);
+                return (
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${style.bg} ${style.text}`}>
+                    <span>{style.icon}</span>
+                    {sale.paymentMethod}
+                  </span>
+                );
+              })()}
+            </div>
           </div>
         </div>
       ))}

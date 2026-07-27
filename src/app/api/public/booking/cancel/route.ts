@@ -4,7 +4,6 @@
  * Rejects numeric BookingID. Requires ownership + idempotency key.
  */
 import { NextRequest } from 'next/server';
-import { publicBookingErrorResponse } from '@/lib/booking/publicBookingErrorCatalog';
 import {
   publicBookingOptionsResponse,
   PUBLIC_BOOKING_ROUTE_CORS,
@@ -77,14 +76,22 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    const replay =
+      (result.body as { cancellation?: { idempotentReplay?: boolean } } | null)
+        ?.cancellation?.idempotentReplay === true;
     return finalizePublicBookingJson(req, gate, result.body, {
       status: result.httpStatus,
+      telemetry: {
+        outcome: replay ? 'idempotent_replay' : 'success',
+      },
     });
   } catch (err) {
     if (err instanceof PublicBookingCancelError) {
       return finalizePublicBookingError(req, gate, err.code, err.metadata);
     }
     console.error('[public/booking/cancel]', err);
-    return finalizePublicBookingError(req, gate, 'BOOKING_CANCELLATION_FAILED');
+    return finalizePublicBookingError(req, gate, 'BOOKING_CANCELLATION_FAILED', undefined, {
+      outcome: 'mutation_outcome_unknown',
+    });
   }
 }

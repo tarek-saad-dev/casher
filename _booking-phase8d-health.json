@@ -1,0 +1,63 @@
+{
+  "phase": "booking-phase-8d-post-cutover-monitoring",
+  "ok": true,
+  "summary": {
+    "windowHours": 24,
+    "generatedAt": "2026-07-27T23:26:33.884Z",
+    "contractMode": "compat",
+    "create": {
+      "success": 28,
+      "failure": 12,
+      "idempotentReplay": 0,
+      "byErrorCode": {
+        "SLOT_UNAVAILABLE": 12
+      },
+      "planTokenErrors": 0,
+      "mutationOutcomeUnknown": 0
+    },
+    "cancel": {
+      "success": 37,
+      "failure": 7,
+      "idempotentReplay": 0,
+      "byErrorCode": {
+        "BOOKING_ALREADY_IN_SERVICE": 3,
+        "BOOKING_CANCELLATION_WINDOW_CLOSED": 4
+      },
+      "mutationOutcomeUnknown": 0
+    },
+    "rateLimitEvents": 0,
+    "timingsMs": {
+      "availability": {
+        "count": 0,
+        "p50": null,
+        "p95": null
+      },
+      "plan": {
+        "count": 0,
+        "p50": null,
+        "p95": null
+      },
+      "create": {
+        "count": 0,
+        "p50": null,
+        "p95": null
+      },
+      "cancel": {
+        "count": 0,
+        "p50": null,
+        "p95": null
+      },
+      "other": {
+        "count": 0,
+        "p50": null,
+        "p95": null
+      }
+    },
+    "notes": [
+      "Create/cancel success|failure from TblPublicBooking*Request (idempotency).",
+      "Idempotent replays and rate-limit events from TblPublicBookingHealthSample (post-8D wiring).",
+      "mutation_outcome_unknown = stuck PENDING idempotency rows older than 5 minutes.",
+      "No tokens, phones, names, or booking codes in this report."
+    ]
+  }
+}

@@ -31,6 +31,7 @@ interface RecentSale {
   daysAgo: number;
   services: SaleDetail[];
   paymentMethod: string | null;
+  userName: string | null;
 }
 
 // GET /api/customers/[id]/history-summary — Customer intelligence summary
@@ -70,9 +71,11 @@ export async function GET(
           h.invID, h.invDate, h.invTime, h.GrandTotal,
           DATEDIFF(day, h.invDate, GETDATE()) AS DaysAgo,
           h.PaymentMethodID,
-          pm.PaymentMethod
+          pm.PaymentMethod,
+          u.UserName
         FROM [dbo].[TblinvServHead] h
         LEFT JOIN [dbo].[TblPaymentMethods] pm ON h.PaymentMethodID = pm.PaymentID
+        LEFT JOIN [dbo].[TblUser] u ON h.UserID = u.UserID
         WHERE h.ClientID = @clientID
           AND h.invType = N'مبيعات'
         ORDER BY h.invDate DESC, h.invTime DESC
@@ -117,6 +120,7 @@ export async function GET(
         daysAgo: sale.DaysAgo || 0,
         services,
         paymentMethod: sale.PaymentMethod || null,
+        userName: sale.UserName || null,
       });
 
       // Build auto-fill from the most recent sale (i === 0)

@@ -20,6 +20,7 @@ interface RecentSale {
   daysAgo: number;
   services: SaleDetail[];
   paymentMethod?: string | null;
+  userName?: string | null;
 }
 
 interface VisitSummary {

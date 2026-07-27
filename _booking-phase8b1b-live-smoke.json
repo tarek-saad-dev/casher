@@ -1,0 +1,66 @@
+{
+  "phase": "booking-phase-8b1b-live-smoke",
+  "passed": true,
+  "failed": [],
+  "timings": {
+    "branches_ms": 1232,
+    "services_ms": 936,
+    "barbers_ms": 4332,
+    "available_days_ms": 11523,
+    "available_slots_ms": 2907,
+    "check_slot_ms": 2909,
+    "plan_ms": 2885,
+    "create_ms": 7155,
+    "replay_ms": 595,
+    "lookup_ms": 691,
+    "cancel_ms": 4529
+  },
+  "proofs": {
+    "phase": "booking-phase-8b1b-live-smoke",
+    "base": "https://casher-five.vercel.app",
+    "smokedAt": "2026-07-27T20:36:47.091Z",
+    "smokePhone": "****8888",
+    "branches_ok": true,
+    "branchCodes": [
+      "GLEEM"
+    ],
+    "services_ok": true,
+    "serviceCount": 30,
+    "barbers_ok": true,
+    "barberCount": 5,
+    "available_days_ok": true,
+    "available_days_statuses": [
+      "available"
+    ],
+    "available_slots_ok": true,
+    "slot_startDateTime": "2026-07-28T08:00:00.000Z",
+    "selected": {
+      "date": "2026-07-28",
+      "time": "11:00",
+      "dayOffset": 0,
+      "serviceIds": [
+        9
+      ],
+      "mode": "any_barber"
+    },
+    "check_slot_ok": true,
+    "check_slot_available": true,
+    "plan_ok": true,
+    "planTokenRedacted": "eyJmaW…-b_I",
+    "planFingerprintRedacted": "2cAvWe…W-R0",
+    "planSubtotal": 200,
+    "planDuration": 30,
+    "create_ok": true,
+    "bookingCode": "BK-KQJ5SP",
+    "accessTokenRedacted": "eyJjb2…xRHw",
+    "createStatus": 201,
+    "idempotent_replay": true,
+    "lookup_ok": true,
+    "lookupStatus": "confirmed",
+    "cancel_ok": true,
+    "lookup_cancelled": true,
+    "slot_released": true,
+    "slot_release_check_status": 200,
+    "camp_caesar_hidden": true
+  }
+}

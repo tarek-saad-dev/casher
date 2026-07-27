@@ -78,9 +78,13 @@ export async function POST(req: NextRequest) {
       suppressNotification: body.suppressNotification === true,
     });
 
+    const replay = result.body?.meta?.idempotentReplay === true;
     return finalizePublicBookingJson(req, gate, result.body, {
       status: result.httpStatus,
       compatibility: result.body?.compatibility ?? null,
+      telemetry: {
+        outcome: replay ? 'idempotent_replay' : 'success',
+      },
     });
   } catch (err) {
     if (err instanceof PublicBookingCreateError) {
@@ -90,6 +94,8 @@ export async function POST(req: NextRequest) {
       return finalizePublicBookingError(req, gate, err.code, err.metadata);
     }
     console.error('[public/booking/create]', err);
-    return finalizePublicBookingError(req, gate, 'BOOKING_CREATE_FAILED');
+    return finalizePublicBookingError(req, gate, 'BOOKING_CREATE_FAILED', undefined, {
+      outcome: 'mutation_outcome_unknown',
+    });
   }
 }

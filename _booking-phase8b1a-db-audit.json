@@ -1,0 +1,544 @@
+{
+  "phase": "booking-phase-8b1a-db-audit",
+  "auditedAt": "2026-07-27T20:04:29.509Z",
+  "cairoBusinessDate": "2026-07-27",
+  "gleem": {
+    "branchId": 1,
+    "branchCode": "GLEEM",
+    "lifecycleStatus": "PUBLIC_LIVE",
+    "publicBookingEnabled": true,
+    "isActive": true,
+    "qbsBookingEnabled": false,
+    "maxBookingDaysAhead": 365,
+    "minNoticeMinutes": 15,
+    "slotIntervalMinutes": 15
+  },
+  "campCaesar": {
+    "branchId": 3,
+    "lifecycleStatus": "SETUP",
+    "publicBookingEnabled": false,
+    "isActive": false
+  },
+  "services": {
+    "eligiblePublicCount": 30,
+    "catalogError": null,
+    "publicApiStyleCatalog": {
+      "ok": false,
+      "count": 0,
+      "error": "BRANCH_BOOKING_DISABLED_GATE"
+    },
+    "eligibleSample": [
+      {
+        "serviceId": 9,
+        "nameAr": "حلاقة شعر",
+        "price": 200,
+        "durationMinutes": 30,
+        "categoryId": "19"
+      },
+      {
+        "serviceId": 10,
+        "nameAr": "دقن",
+        "price": 100,
+        "durationMinutes": 20,
+        "categoryId": "20"
+      },
+      {
+        "serviceId": 11,
+        "nameAr": "تنظيف بشرة عادي",
+        "price": 200,
+        "durationMinutes": 20,
+        "categoryId": "9"
+      },
+      {
+        "serviceId": 12,
+        "nameAr": "تنظيف بشرة طبي",
+        "price": 400,
+        "durationMinutes": 35,
+        "categoryId": "9"
+      },
+      {
+        "serviceId": 15,
+        "nameAr": "بروتين شعر قصير",
+        "price": 500,
+        "durationMinutes": 60,
+        "categoryId": "18"
+      },
+      {
+        "serviceId": 16,
+        "nameAr": "بروتين شعر طويل",
+        "price": 1000,
+        "durationMinutes": 90,
+        "categoryId": "18"
+      },
+      {
+        "serviceId": 17,
+        "nameAr": "صبغة شعر",
+        "price": 150,
+        "durationMinutes": 15,
+        "categoryId": "17"
+      },
+      {
+        "serviceId": 18,
+        "nameAr": "صبغة شعر ودقن",
+        "price": 200,
+        "durationMinutes": 20,
+        "categoryId": "17"
+      },
+      {
+        "serviceId": 19,
+        "nameAr": "خصل فضي",
+        "price": 700,
+        "durationMinutes": 60,
+        "categoryId": "17"
+      },
+      {
+        "serviceId": 20,
+        "nameAr": "شعر ودقن",
+        "price": 250,
+        "durationMinutes": 45,
+        "categoryId": "20"
+      },
+      {
+        "serviceId": 21,
+        "nameAr": "توبك للشعر",
+        "price": 50,
+        "durationMinutes": 5,
+        "categoryId": "21"
+      },
+      {
+        "serviceId": 22,
+        "nameAr": "حمام زيت",
+        "price": 120,
+        "durationMinutes": 5,
+        "categoryId": "18"
+      },
+      {
+        "serviceId": 23,
+        "nameAr": "سشوار",
+        "price": 100,
+        "durationMinutes": 10,
+        "categoryId": "21"
+      },
+      {
+        "serviceId": 29,
+        "nameAr": "Deep SkinCare",
+        "price": 300,
+        "durationMinutes": 30,
+        "categoryId": "9"
+      },
+      {
+        "serviceId": 31,
+        "nameAr": "واكس جزئي",
+        "price": 50,
+        "durationMinutes": 5,
+        "categoryId": "9"
+      }
+    ],
+    "duplicateIds": [],
+    "zeroDuration": 0,
+    "missingPrice": 0
+  },
+  "barbers": {
+    "assignedActiveCount": 11,
+    "publicVisibleCount": 11,
+    "hiddenCount": 0,
+    "list": [
+      {
+        "empId": 5,
+        "displayName": "كريم",
+        "hiddenFromPublic": false,
+        "canReceiveBookings": true,
+        "next14WorkingAtGleem": 0,
+        "next14GlobalLeave": 2,
+        "nextWorkingDate": null
+      },
+      {
+        "empId": 7,
+        "displayName": "محمد",
+        "hiddenFromPublic": false,
+        "canReceiveBookings": true,
+        "next14WorkingAtGleem": 0,
+        "next14GlobalLeave": 0,
+        "nextWorkingDate": null
+      },
+      {
+        "empId": 12,
+        "displayName": "زياد",
+        "hiddenFromPublic": false,
+        "canReceiveBookings": true,
+        "next14WorkingAtGleem": 0,
+        "next14GlobalLeave": 1,
+        "nextWorkingDate": null
+      },
+      {
+        "empId": 18,
+        "displayName": "احمد",
+        "hiddenFromPublic": false,
+        "canReceiveBookings": true,
+        "next14WorkingAtGleem": 0,
+        "next14GlobalLeave": 14,
+        "nextWorkingDate": null
+      },
+      {
+        "empId": 21,
+        "displayName": "هدى",
+        "hiddenFromPublic": false,
+        "canReceiveBookings": true,
+        "next14WorkingAtGleem": 0,
+        "next14GlobalLeave": 2,
+        "nextWorkingDate": null
+      },
+      {
+        "empId": 22,
+        "displayName": "طارق",
+        "hiddenFromPublic": false,
+        "canReceiveBookings": true,
+        "next14WorkingAtGleem": 0,
+        "next14GlobalLeave": 0,
+        "nextWorkingDate": null
+      },
+      {
+        "empId": 25,
+        "displayName": "عمر",
+        "hiddenFromPublic": false,
+        "canReceiveBookings": true,
+        "next14WorkingAtGleem": 0,
+        "next14GlobalLeave": 2,
+        "nextWorkingDate": null
+      },
+      {
+        "empId": 1030,
+        "displayName": "خيري",
+        "hiddenFromPublic": false,
+        "canReceiveBookings": true,
+        "next14WorkingAtGleem": 0,
+        "next14GlobalLeave": 0,
+        "nextWorkingDate": null
+      },
+      {
+        "empId": 1031,
+        "displayName": "بودي",
+        "hiddenFromPublic": false,
+        "canReceiveBookings": true,
+        "next14WorkingAtGleem": 0,
+        "next14GlobalLeave": 14,
+        "nextWorkingDate": null
+      },
+      {
+        "empId": 1032,
+        "displayName": "مريم",
+        "hiddenFromPublic": false,
+        "canReceiveBookings": true,
+        "next14WorkingAtGleem": 0,
+        "next14GlobalLeave": 0,
+        "nextWorkingDate": null
+      },
+      {
+        "empId": 1033,
+        "displayName": "ميدو",
+        "hiddenFromPublic": false,
+        "canReceiveBookings": true,
+        "next14WorkingAtGleem": 0,
+        "next14GlobalLeave": 14,
+        "nextWorkingDate": null
+      }
+    ]
+  },
+  "dayMatrix": [
+    {
+      "date": "2026-07-27",
+      "publicBarberCount": 11,
+      "workingAtGleem": 0,
+      "globalLeave": 11,
+      "otherUnavailable": 0,
+      "workingEmpIds": [],
+      "leaveEmpIdsSample": [
+        5,
+        7,
+        12,
+        18,
+        21,
+        22,
+        25,
+        1030
+      ],
+      "wouldBeGlobalLeaveIfSpecificOnly": true,
+      "anyBarberCapacity": "all_global_leave"
+    },
+    {
+      "date": "2026-07-28",
+      "publicBarberCount": 11,
+      "workingAtGleem": 0,
+      "globalLeave": 11,
+      "otherUnavailable": 0,
+      "workingEmpIds": [],
+      "leaveEmpIdsSample": [
+        5,
+        7,
+        12,
+        18,
+        21,
+        22,
+        25,
+        1030
+      ],
+      "wouldBeGlobalLeaveIfSpecificOnly": true,
+      "anyBarberCapacity": "all_global_leave"
+    },
+    {
+      "date": "2026-07-29",
+      "publicBarberCount": 11,
+      "workingAtGleem": 0,
+      "globalLeave": 11,
+      "otherUnavailable": 0,
+      "workingEmpIds": [],
+      "leaveEmpIdsSample": [
+        5,
+        7,
+        12,
+        18,
+        21,
+        22,
+        25,
+        1030
+      ],
+      "wouldBeGlobalLeaveIfSpecificOnly": true,
+      "anyBarberCapacity": "all_global_leave"
+    },
+    {
+      "date": "2026-07-30",
+      "publicBarberCount": 11,
+      "workingAtGleem": 0,
+      "globalLeave": 11,
+      "otherUnavailable": 0,
+      "workingEmpIds": [],
+      "leaveEmpIdsSample": [
+        5,
+        7,
+        12,
+        18,
+        21,
+        22,
+        25,
+        1030
+      ],
+      "wouldBeGlobalLeaveIfSpecificOnly": true,
+      "anyBarberCapacity": "all_global_leave"
+    },
+    {
+      "date": "2026-07-31",
+      "publicBarberCount": 11,
+      "workingAtGleem": 0,
+      "globalLeave": 11,
+      "otherUnavailable": 0,
+      "workingEmpIds": [],
+      "leaveEmpIdsSample": [
+        5,
+        7,
+        12,
+        18,
+        21,
+        22,
+        25,
+        1030
+      ],
+      "wouldBeGlobalLeaveIfSpecificOnly": true,
+      "anyBarberCapacity": "all_global_leave"
+    },
+    {
+      "date": "2026-08-01",
+      "publicBarberCount": 11,
+      "workingAtGleem": 0,
+      "globalLeave": 11,
+      "otherUnavailable": 0,
+      "workingEmpIds": [],
+      "leaveEmpIdsSample": [
+        5,
+        7,
+        12,
+        18,
+        21,
+        22,
+        25,
+        1030
+      ],
+      "wouldBeGlobalLeaveIfSpecificOnly": true,
+      "anyBarberCapacity": "all_global_leave"
+    },
+    {
+      "date": "2026-08-02",
+      "publicBarberCount": 11,
+      "workingAtGleem": 0,
+      "globalLeave": 11,
+      "otherUnavailable": 0,
+      "workingEmpIds": [],
+      "leaveEmpIdsSample": [
+        5,
+        7,
+        12,
+        18,
+        21,
+        22,
+        25,
+        1030
+      ],
+      "wouldBeGlobalLeaveIfSpecificOnly": true,
+      "anyBarberCapacity": "all_global_leave"
+    },
+    {
+      "date": "2026-08-03",
+      "publicBarberCount": 11,
+      "workingAtGleem": 0,
+      "globalLeave": 11,
+      "otherUnavailable": 0,
+      "workingEmpIds": [],
+      "leaveEmpIdsSample": [
+        5,
+        7,
+        12,
+        18,
+        21,
+        22,
+        25,
+        1030
+      ],
+      "wouldBeGlobalLeaveIfSpecificOnly": true,
+      "anyBarberCapacity": "all_global_leave"
+    },
+    {
+      "date": "2026-08-04",
+      "publicBarberCount": 11,
+      "workingAtGleem": 0,
+      "globalLeave": 11,
+      "otherUnavailable": 0,
+      "workingEmpIds": [],
+      "leaveEmpIdsSample": [
+        5,
+        7,
+        12,
+        18,
+        21,
+        22,
+        25,
+        1030
+      ],
+      "wouldBeGlobalLeaveIfSpecificOnly": true,
+      "anyBarberCapacity": "all_global_leave"
+    },
+    {
+      "date": "2026-08-05",
+      "publicBarberCount": 11,
+      "workingAtGleem": 0,
+      "globalLeave": 11,
+      "otherUnavailable": 0,
+      "workingEmpIds": [],
+      "leaveEmpIdsSample": [
+        5,
+        7,
+        12,
+        18,
+        21,
+        22,
+        25,
+        1030
+      ],
+      "wouldBeGlobalLeaveIfSpecificOnly": true,
+      "anyBarberCapacity": "all_global_leave"
+    },
+    {
+      "date": "2026-08-06",
+      "publicBarberCount": 11,
+      "workingAtGleem": 0,
+      "globalLeave": 11,
+      "otherUnavailable": 0,
+      "workingEmpIds": [],
+      "leaveEmpIdsSample": [
+        5,
+        7,
+        12,
+        18,
+        21,
+        22,
+        25,
+        1030
+      ],
+      "wouldBeGlobalLeaveIfSpecificOnly": true,
+      "anyBarberCapacity": "all_global_leave"
+    },
+    {
+      "date": "2026-08-07",
+      "publicBarberCount": 11,
+      "workingAtGleem": 0,
+      "globalLeave": 11,
+      "otherUnavailable": 0,
+      "workingEmpIds": [],
+      "leaveEmpIdsSample": [
+        5,
+        7,
+        12,
+        18,
+        21,
+        22,
+        25,
+        1030
+      ],
+      "wouldBeGlobalLeaveIfSpecificOnly": true,
+      "anyBarberCapacity": "all_global_leave"
+    },
+    {
+      "date": "2026-08-08",
+      "publicBarberCount": 11,
+      "workingAtGleem": 0,
+      "globalLeave": 11,
+      "otherUnavailable": 0,
+      "workingEmpIds": [],
+      "leaveEmpIdsSample": [
+        5,
+        7,
+        12,
+        18,
+        21,
+        22,
+        25,
+        1030
+      ],
+      "wouldBeGlobalLeaveIfSpecificOnly": true,
+      "anyBarberCapacity": "all_global_leave"
+    },
+    {
+      "date": "2026-08-09",
+      "publicBarberCount": 11,
+      "workingAtGleem": 0,
+      "globalLeave": 11,
+      "otherUnavailable": 0,
+      "workingEmpIds": [],
+      "leaveEmpIdsSample": [
+        5,
+        7,
+        12,
+        18,
+        21,
+        22,
+        25,
+        1030
+      ],
+      "wouldBeGlobalLeaveIfSpecificOnly": true,
+      "anyBarberCapacity": "all_global_leave"
+    }
+  ],
+  "approvedLeavesInHorizon": 0,
+  "leaveSample": [],
+  "overrideDayOffSample": [
+    {
+      "empId": 12,
+      "name": "زياد",
+      "overrideDate": "2026-07-27T00:00:00.000Z"
+    }
+  ],
+  "overrideDayOffCount": 1,
+  "rootCauseHints": {
+    "bookingPaused": true,
+    "publicBranchesEmptyWhenPaused": true,
+    "services409WhenPaused": "BRANCH_BOOKING_DISABLED"
+  }
+}

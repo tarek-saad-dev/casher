@@ -1,0 +1,101 @@
+{
+  "phase": "booking-phase-8c-enforce-smoke",
+  "passed": true,
+  "failed": [],
+  "proofs": {
+    "phase": "booking-phase-8c-enforce-smoke",
+    "smokedAt": "2026-07-27T22:58:18.773Z",
+    "base": "https://casher-five.vercel.app",
+    "branches_ok": true,
+    "branchCodes": [
+      "GLEEM"
+    ],
+    "cors_expose": true,
+    "contract_version": true,
+    "reject_no_planToken": true,
+    "reject_no_idempotency": true,
+    "reject_cancel_no_idempotency": true,
+    "reject_cancel_detail": {
+      "status": 400,
+      "code": "IDEMPOTENCY_KEY_REQUIRED"
+    },
+    "enforce_active": true,
+    "branch_first": {
+      "label": "branch",
+      "selected": {
+        "date": "2026-07-29",
+        "time": "11:00",
+        "dayOffset": 0,
+        "mode": "any_barber",
+        "empId": null,
+        "serviceIds": [
+          9
+        ]
+      },
+      "planTokenRedacted": "eyJmaW…jHO8",
+      "bookingCode": "BK-GJWN68",
+      "createStatus": 201,
+      "idempotentReplay": true,
+      "lookupOk": true,
+      "cancelOk": true,
+      "cancelReplayOk": true,
+      "lookupCancelled": true,
+      "timings": {
+        "check_ms": 2881,
+        "plan_ms": 2875,
+        "create_ms": 7579,
+        "replay_ms": 570,
+        "cancel_ms": 4431
+      }
+    },
+    "barber_first": {
+      "label": "barber-25",
+      "selected": {
+        "date": "2026-07-29",
+        "time": "14:00",
+        "dayOffset": 0,
+        "mode": "specific_barber",
+        "empId": 25,
+        "serviceIds": [
+          9
+        ]
+      },
+      "planTokenRedacted": "eyJmaW…fxdg",
+      "bookingCode": "BK-ADRBMH",
+      "createStatus": 201,
+      "idempotentReplay": true,
+      "lookupOk": true,
+      "cancelOk": true,
+      "cancelReplayOk": true,
+      "lookupCancelled": true,
+      "timings": {
+        "check_ms": 7729,
+        "plan_ms": 7924,
+        "create_ms": 12030,
+        "replay_ms": 563,
+        "cancel_ms": 4700
+      }
+    },
+    "barber_first_attempts": [
+      "empId=18: no available day empId=18 statuses=global_leave count=15",
+      "empId=12: barber-12 create failed: {\"ok\":false,\"error\":{\"code\":\"SLOT_UNAVAILABLE\",\"message\":\"الموعد غير متاح\",\"technicalMessage\":\"Slot unavailable\",\"metadata\":{}}}"
+    ],
+    "camp_caesar_hidden": true,
+    "browser_ui": {
+      "origin": "https://cutsaloon.com",
+      "passed": true,
+      "bookingCode": "BK-J4GW2H",
+      "selected": { "date": "2026-07-29", "time": "11:00", "dayOffset": 0 },
+      "createStatus": 201,
+      "lookupStatus": 200,
+      "cancelStatus": 200,
+      "rejectNoPlan": "PLAN_TOKEN_REQUIRED",
+      "campCaesar": "BRANCH_NOT_PUBLIC",
+      "corsReadable": {
+        "contract": "booking-public-v1",
+        "rateLimit": true,
+        "requestIdPresent": true
+      }
+    }
+  }
+}
