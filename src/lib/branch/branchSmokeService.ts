@@ -26,6 +26,7 @@ export type SmokeRunRecord = {
   purpose: string;
   externalSideEffectsEnabled: boolean;
   cleanupStatus: string;
+  startedByUserId: number;
   startedAt: Date;
   completedAt: Date | null;
 };
@@ -113,6 +114,7 @@ export async function startBranchSmokeRun(args: {
     purpose,
     externalSideEffectsEnabled: false,
     cleanupStatus: String(row.CleanupStatus),
+    startedByUserId: args.actorUserId,
     startedAt: row.StartedAt instanceof Date ? row.StartedAt : new Date(String(row.StartedAt)),
     completedAt: null,
   };
@@ -151,7 +153,7 @@ export async function getBranchSmokeRun(
     .input('branchId', sql.Int, branchId)
     .query(`
       SELECT SmokeRunID, BranchID, Status, Purpose, ExternalSideEffectsEnabled,
-             CleanupStatus, StartedAt, CompletedAt
+             CleanupStatus, StartedByUserID, StartedAt, CompletedAt
       FROM dbo.TblBranchSmokeRun
       WHERE SmokeRunID = @runId AND BranchID = @branchId
     `);
@@ -176,6 +178,7 @@ export async function getBranchSmokeRun(
     purpose: String(row.Purpose),
     externalSideEffectsEnabled: Boolean(row.ExternalSideEffectsEnabled),
     cleanupStatus: String(row.CleanupStatus),
+    startedByUserId: Number(row.StartedByUserID ?? 0),
     startedAt: row.StartedAt instanceof Date ? row.StartedAt : new Date(String(row.StartedAt)),
     completedAt:
       row.CompletedAt == null

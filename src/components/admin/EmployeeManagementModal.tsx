@@ -15,7 +15,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { 
-  User, Calendar, Clock, DollarSign, Link2, 
+  User, Clock, DollarSign, Link2, 
   Save, Loader2, CheckCircle2, AlertCircle, Copy, X, Briefcase, Phone, CreditCard, FileText, MessageCircle
 } from 'lucide-react';
 import type { Employee } from '@/lib/types';
@@ -96,8 +96,9 @@ interface FinanceCategory {
 //   /api/admin/employees/:id/days-off
 
 export default function EmployeeManagementModal({ 
-  employee, open, onClose, onRefresh, onOpenWorkHours 
+  employee, open, onClose, onRefresh, onOpenWorkHours: _onOpenWorkHours 
 }: EmployeeManagementModalProps) {
+  void _onOpenWorkHours;
   const [activeTab, setActiveTab] = useState('profile');
   
   // Profile state
@@ -107,13 +108,12 @@ export default function EmployeeManagementModal({
   const [profileError, setProfileError] = useState('');
   const [profileSuccess, setProfileSuccess] = useState('');
 
-  // Schedule state
+  // Schedule state (read-only legacy view)
   const [schedule, setSchedule] = useState<WorkScheduleItem[]>([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
-  const [scheduleSaving, setScheduleSaving] = useState(false);
   const [scheduleError, setScheduleError] = useState('');
   const [scheduleSuccess, setScheduleSuccess] = useState('');
-  const [hasSchedule, setHasSchedule] = useState(false);
+  const [, setHasSchedule] = useState(false);
 
   // Finance categories state
   const [advanceCategories, setAdvanceCategories] = useState<FinanceCategory[]>([]);
@@ -276,72 +276,30 @@ export default function EmployeeManagementModal({
     }
   };
 
-  // Schedule helpers
-  const updateScheduleDay = (dayOfWeek: number, field: keyof WorkScheduleItem, value: WorkScheduleItem[keyof WorkScheduleItem]) => {
-    setSchedule(prev => prev.map(day => 
-      day.DayOfWeek === dayOfWeek 
-        ? { ...day, [field]: value }
-        : day
-    ));
-    setHasSchedule(true);
-  };
-
-  const applyStandardSchedule = () => {
-    setSchedule(prev => prev.map((day, index) => {
-      if (index === 5) {
-        return { ...day, IsWorkingDay: false, StartTime: '', EndTime: '', BreakStartTime: '', BreakEndTime: '', Notes: 'جمعة - إجازة أسبوعية' };
-      }
-      return { ...day, IsWorkingDay: true, StartTime: '09:00', EndTime: '17:00', BreakStartTime: '13:00', BreakEndTime: '14:00', Notes: '' };
-    }));
-    setHasSchedule(true);
-  };
-
-  const copyFromSunday = () => {
-    const sunday = schedule.find(d => d.DayOfWeek === 0);
-    if (!sunday) return;
-    setSchedule(prev => prev.map(day => {
-      if (day.DayOfWeek === 0) return day;
-      return {
-        ...day,
-        IsWorkingDay: sunday.IsWorkingDay,
-        StartTime: sunday.StartTime,
-        EndTime: sunday.EndTime,
-        BreakStartTime: sunday.BreakStartTime,
-        BreakEndTime: sunday.BreakEndTime,
-        Notes: sunday.Notes,
-      };
-    }));
-    setHasSchedule(true);
-  };
-
-  const setAllWeekOff = () => {
-    setSchedule(prev => prev.map(day => ({ ...day, IsWorkingDay: false, StartTime: '', EndTime: '', BreakStartTime: '', BreakEndTime: '', Notes: '' })));
-    setHasSchedule(true);
-  };
-
-  const openCopyModal = (day: WorkScheduleItem) => {
-    setSourceDay(day);
-    setSelectedTargetDays([]);
-    setCopyModalOpen(true);
+  // Phase 1S — legacy weekly schedule editors removed (SoT = branch-schedule).
+  const openBranchSchedule = () => {
+    if (!profile?.EmpID) return;
+    window.location.href = `/admin/hr/employees/${profile.EmpID}/branch-schedule`;
   };
 
   const handleCopySchedule = () => {
     if (!sourceDay || selectedTargetDays.length === 0) return;
-
-    setSchedule(prev => prev.map(day => {
-      if (selectedTargetDays.includes(day.DayOfWeek)) {
-        return {
-          ...day,
-          IsWorkingDay: sourceDay.IsWorkingDay,
-          StartTime: sourceDay.StartTime,
-          EndTime: sourceDay.EndTime,
-          BreakStartTime: sourceDay.BreakStartTime,
-          BreakEndTime: sourceDay.BreakEndTime,
-          Notes: sourceDay.Notes
-        };
-      }
-      return day;
-    }));
+    setSchedule((prev) =>
+      prev.map((day) => {
+        if (selectedTargetDays.includes(day.DayOfWeek)) {
+          return {
+            ...day,
+            IsWorkingDay: sourceDay.IsWorkingDay,
+            StartTime: sourceDay.StartTime,
+            EndTime: sourceDay.EndTime,
+            BreakStartTime: sourceDay.BreakStartTime,
+            BreakEndTime: sourceDay.BreakEndTime,
+            Notes: sourceDay.Notes,
+          };
+        }
+        return day;
+      }),
+    );
     setHasSchedule(true);
     setCopyModalOpen(false);
     setSourceDay(null);
@@ -349,49 +307,9 @@ export default function EmployeeManagementModal({
   };
 
   const toggleTargetDay = (dayOfWeek: number) => {
-    setSelectedTargetDays(prev => 
-      prev.includes(dayOfWeek) 
-        ? prev.filter(d => d !== dayOfWeek)
-        : [...prev, dayOfWeek]
+    setSelectedTargetDays((prev) =>
+      prev.includes(dayOfWeek) ? prev.filter((d) => d !== dayOfWeek) : [...prev, dayOfWeek],
     );
-  };
-
-  // Schedule handlers
-  const handleScheduleSave = async () => {
-    if (!profile) return;
-
-    setScheduleSaving(true);
-    setScheduleError('');
-    setScheduleSuccess('');
-
-    try {
-      const response = await fetch(`/api/admin/employees/${profile.EmpID}/schedule`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ schedule })
-      });
-
-      if (!response.ok) {
-        let errMsg = 'خطأ في حفظ جدول العمل';
-        try { const d = await response.json(); errMsg = d.error || errMsg; } catch {}
-        setScheduleError(errMsg);
-        return;
-      }
-      const data = await response.json();
-      
-      if (data.success) {
-        setScheduleSuccess('تم حفظ جدول العمل بنجاح');
-        const normalized = normalizeSchedule(data.schedule);
-        setSchedule(normalized);
-        setHasSchedule(normalized.some((d: WorkScheduleItem) => d.StartTime || d.EndTime));
-      } else {
-        setScheduleError(data.error || 'خطأ في حفظ جدول العمل');
-      }
-    } catch {
-      setScheduleError('خطأ في الاتصال بالخادم');
-    } finally {
-      setScheduleSaving(false);
-    }
   };
 
   // Finance mapping handlers
@@ -701,60 +619,22 @@ export default function EmployeeManagementModal({
                       <div className="flex items-center justify-center py-16">
                         <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
                       </div>
-                    ) : schedule.length === 0 ? (
-                      <div className="text-center py-16 bg-zinc-800/30 rounded-lg border border-zinc-800">
-                        <Clock className="w-12 h-12 mx-auto mb-4 text-zinc-500" />
-                        <p className="text-zinc-400 mb-4">لا يوجد جدول عمل محفوظ لهذا الموظف</p>
-                        <Button onClick={applyStandardSchedule} className="bg-amber-600 hover:bg-amber-700 text-white">
-                          <Clock className="w-4 h-4 ml-2" />
-                          تطبيق جدول قياسي
-                        </Button>
-                      </div>
                     ) : (
                       <>
-                        <div className="flex flex-wrap gap-2">
-                          {onOpenWorkHours && (
-                            <Button 
-                              variant="outline" 
-                              onClick={() => employee && onOpenWorkHours(employee)}
-                              className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                            >
-                              <Clock className="w-4 h-4 ml-2" />
-                              تعديل المواعيد السريع
-                            </Button>
-                          )}
-                          <Button 
-                            variant="outline" 
-                            onClick={applyStandardSchedule}
-                            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                          >
-                            <Clock className="w-4 h-4 ml-2" />
-                            تطبيق جدول قياسي
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            onClick={copyFromSunday}
-                            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                          >
-                            <Copy className="w-4 h-4 ml-2" />
-                            نسخ الأحد لباقي الأسبوع
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            onClick={setAllWeekOff}
-                            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                          >
-                            <Calendar className="w-4 h-4 ml-2" />
-                            إجازة الأسبوع كله
-                          </Button>
+                        <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-200 text-sm">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          <span>
+                            العرض للتوافق فقط (TblEmpWorkSchedule). المصدر التشغيلي هو مواعيد الفروع —
+                            لا يمكن الحفظ من هذا التبويب.
+                          </span>
                         </div>
-
-                        {!hasSchedule && (
-                          <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-400 text-sm">
-                            <AlertCircle className="w-4 h-4" />
-                            <span>لم يتم تحديد مواعيد عمل بعد. اضبط الأيام والأوقات ثم احفظ.</span>
-                          </div>
-                        )}
+                        <Button
+                          onClick={openBranchSchedule}
+                          className="w-full h-11 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg"
+                        >
+                          <Clock className="w-5 h-5 ml-2" />
+                          الفروع ومواعيد العمل
+                        </Button>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                           {schedule.map((day) => (
@@ -764,11 +644,6 @@ export default function EmployeeManagementModal({
                             >
                               <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-2">
-                                  <Switch
-                                    checked={day.IsWorkingDay}
-                                    onCheckedChange={(checked) => updateScheduleDay(day.DayOfWeek, 'IsWorkingDay', checked)}
-                                    className="data-[state=checked]:bg-emerald-500"
-                                  />
                                   <span className={`font-medium ${day.IsWorkingDay ? 'text-white' : 'text-zinc-400'}`}>
                                     {DAY_NAMES[day.DayOfWeek]}
                                   </span>
@@ -791,8 +666,9 @@ export default function EmployeeManagementModal({
                                     <Input
                                       type="time"
                                       value={normalizeTime(day.StartTime)}
-                                      onChange={(e) => updateScheduleDay(day.DayOfWeek, 'StartTime', e.target.value)}
-                                      className="bg-zinc-900 border-zinc-700 text-white h-9 text-center focus:border-amber-500"
+                                      disabled
+                                      readOnly
+                                      className="bg-zinc-900 border-zinc-700 text-white h-9 text-center opacity-80"
                                     />
                                   </div>
                                   <div className="space-y-1">
@@ -800,8 +676,9 @@ export default function EmployeeManagementModal({
                                     <Input
                                       type="time"
                                       value={normalizeTime(day.EndTime)}
-                                      onChange={(e) => updateScheduleDay(day.DayOfWeek, 'EndTime', e.target.value)}
-                                      className="bg-zinc-900 border-zinc-700 text-white h-9 text-center focus:border-amber-500"
+                                      disabled
+                                      readOnly
+                                      className="bg-zinc-900 border-zinc-700 text-white h-9 text-center opacity-80"
                                     />
                                   </div>
                                   <div className="space-y-1">
@@ -809,8 +686,9 @@ export default function EmployeeManagementModal({
                                     <Input
                                       type="time"
                                       value={normalizeTime(day.BreakStartTime)}
-                                      onChange={(e) => updateScheduleDay(day.DayOfWeek, 'BreakStartTime', e.target.value)}
-                                      className="bg-zinc-900 border-zinc-700 text-white h-9 text-center focus:border-amber-500"
+                                      disabled
+                                      readOnly
+                                      className="bg-zinc-900 border-zinc-700 text-white h-9 text-center opacity-80"
                                     />
                                   </div>
                                   <div className="space-y-1">
@@ -818,8 +696,9 @@ export default function EmployeeManagementModal({
                                     <Input
                                       type="time"
                                       value={normalizeTime(day.BreakEndTime)}
-                                      onChange={(e) => updateScheduleDay(day.DayOfWeek, 'BreakEndTime', e.target.value)}
-                                      className="bg-zinc-900 border-zinc-700 text-white h-9 text-center focus:border-amber-500"
+                                      disabled
+                                      readOnly
+                                      className="bg-zinc-900 border-zinc-700 text-white h-9 text-center opacity-80"
                                     />
                                   </div>
                                 </div>
@@ -829,24 +708,11 @@ export default function EmployeeManagementModal({
                                 <Label className="text-xs text-zinc-400">ملاحظات</Label>
                                 <Input
                                   value={day.Notes || ''}
-                                  onChange={(e) => updateScheduleDay(day.DayOfWeek, 'Notes', e.target.value)}
-                                  placeholder="ملاحظات..."
-                                  disabled={!day.IsWorkingDay}
-                                  className="bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-600 h-9 disabled:opacity-50"
+                                  disabled
+                                  readOnly
+                                  placeholder="—"
+                                  className="bg-zinc-900 border-zinc-700 text-white placeholder:text-zinc-600 h-9 opacity-80"
                                 />
-                              </div>
-                              
-                              <div className="mt-3 flex justify-end">
-                                <Button 
-                                  size="sm" 
-                                  variant="ghost" 
-                                  onClick={() => openCopyModal(day)}
-                                  disabled={!day.IsWorkingDay}
-                                  className="text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-50"
-                                >
-                                  <Copy className="w-4 h-4 ml-1" />
-                                  نسخ
-                                </Button>
                               </div>
                             </div>
                           ))}
@@ -868,16 +734,12 @@ export default function EmployeeManagementModal({
                       </div>
                     )}
 
-                    <Button 
-                      onClick={handleScheduleSave} 
-                      disabled={scheduleSaving || scheduleLoading || schedule.length === 0} 
-                      className="w-full h-11 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg transition-all disabled:opacity-50"
+                    <Button
+                      onClick={openBranchSchedule}
+                      className="w-full h-11 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg"
                     >
-                      {scheduleSaving ? (
-                        <><Loader2 className="w-5 h-5 animate-spin ml-2" /> جاري الحفظ...</>
-                      ) : (
-                        <><Save className="w-5 h-5 ml-2" /> حفظ مواعيد العمل</>
-                      )}
+                      <Clock className="w-5 h-5 ml-2" />
+                      الفروع ومواعيد العمل
                     </Button>
                   </div>
                 </TabsContent>

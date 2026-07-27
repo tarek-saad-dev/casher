@@ -1,0 +1,475 @@
+{
+  "probedAt": "2026-07-26T22:27:28.935Z",
+  "branch": {
+    "BranchID": 3,
+    "BranchCode": "CAMP_CAESAR",
+    "BranchName": "فرع كامب شيزار",
+    "LifecycleStatus": "INTERNAL_LIVE",
+    "IsActive": true,
+    "PublicBookingEnabled": false,
+    "ExternalNotificationsEnabled": true,
+    "OpenT": "11:00:00",
+    "CloseT": "01:30:00"
+  },
+  "gleem": {
+    "BranchID": 1,
+    "BranchCode": "GLEEM",
+    "LifecycleStatus": "PUBLIC_LIVE",
+    "IsActive": true,
+    "PublicBookingEnabled": true,
+    "ExternalNotificationsEnabled": true
+  },
+  "qbs": {
+    "BookingEnabled": false,
+    "SalonName": "Camp Caesar",
+    "Timezone": "Africa/Cairo"
+  },
+  "policy": {
+    "OpeningCashDecision": "ZERO",
+    "OpeningCashAmount": 0,
+    "OpeningCashEffectiveDate": "2026-07-27T00:00:00.000Z",
+    "OpeningInventoryOption": "ZERO_STOCK",
+    "OpeningInventoryApprovedAt": "2026-07-26T21:24:17.370Z",
+    "InternalLiveEffectiveDate": "2026-07-27T00:00:00.000Z",
+    "SharedPrinterApproved": true,
+    "SharedWhatsAppApproved": true
+  },
+  "partners": [
+    {
+      "BranchPartnerShareID": "7",
+      "PartnerName": "أ/ عايدة",
+      "PartnerCode": "AAYIDA",
+      "SharePercent": 40,
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z",
+      "EffectiveTo": null,
+      "IsActive": true
+    },
+    {
+      "BranchPartnerShareID": "8",
+      "PartnerName": "أ/ طارق",
+      "PartnerCode": "TAREK",
+      "SharePercent": 20,
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z",
+      "EffectiveTo": null,
+      "IsActive": true
+    },
+    {
+      "BranchPartnerShareID": "9",
+      "PartnerName": "أ/ ذياد",
+      "PartnerCode": "ZIYAD_CC",
+      "SharePercent": 20,
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z",
+      "EffectiveTo": null,
+      "IsActive": true
+    },
+    {
+      "BranchPartnerShareID": "10",
+      "PartnerName": "أ/ عمر",
+      "PartnerCode": "OMAR_CC",
+      "SharePercent": 20,
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z",
+      "EffectiveTo": null,
+      "IsActive": true
+    }
+  ],
+  "roster": [
+    {
+      "ID": "30",
+      "EmpID": 12,
+      "EmpName": "زياد",
+      "IsActive": true,
+      "CanReceiveBookings": true,
+      "IsHomeBranch": false,
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z",
+      "Notes": "services:1049,17,11,34,10,29,23,39,46,1047,14,1057,32,18,1051,9,36,44,22,35,47,20,13,43,16,12,1056,31,40,15,19,38,21,1050",
+      "PayType": "hourly",
+      "HourlyRate": 27.2727,
+      "PlanID": 29
+    }
+  ],
+  "schedules": [
+    {
+      "EmpID": 12,
+      "EmpName": "زياد",
+      "DayOfWeek": 5,
+      "IsWorking": true,
+      "S": "11:00",
+      "E": "01:30",
+      "CanReceiveBookings": true
+    }
+  ],
+  "targets": [
+    {
+      "ID": 17,
+      "EmpID": 12,
+      "EmpName": "زياد",
+      "IsEnabled": false,
+      "Notes": "NO_TARGET",
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z"
+    },
+    {
+      "ID": 15,
+      "EmpID": 1039,
+      "EmpName": "[SMOKE 1O] Config Emp 12",
+      "IsEnabled": false,
+      "Notes": "NO_TARGET",
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z"
+    },
+    {
+      "ID": 16,
+      "EmpID": 1040,
+      "EmpName": "[SMOKE 1O] Config Emp 13",
+      "IsEnabled": false,
+      "Notes": "NO_TARGET",
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z"
+    },
+    {
+      "ID": 19,
+      "EmpID": 1042,
+      "EmpName": "[SMOKE 1S] Cross-Branch Employee 15",
+      "IsEnabled": false,
+      "Notes": "NO_TARGET [SMOKE 1S]",
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z"
+    },
+    {
+      "ID": 21,
+      "EmpID": 1043,
+      "EmpName": "[SMOKE 1S] Cross-Branch Employee 16",
+      "IsEnabled": false,
+      "Notes": "NO_TARGET [SMOKE 1S]",
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z"
+    }
+  ],
+  "services": {
+    "ActiveRows": 42,
+    "Priced": 42,
+    "Bookable": 30,
+    "SoftDeleted": 13
+  },
+  "audits": [
+    {
+      "AuditID": "4",
+      "FromStatus": "SETUP",
+      "ToStatus": "SETUP",
+      "ActorUserID": 10,
+      "Reason": "Branch provisioned in SETUP mode",
+      "CreatedAt": "2026-07-26T00:01:28.134Z",
+      "ReadinessHead": "{\"queueSettingsCreated\":true,\"partnerSharesSeeded\":0,\"template\":{\"queueBookingSettings\":false,\"partnerShares\":false}}"
+    },
+    {
+      "AuditID": "5",
+      "FromStatus": "SETUP",
+      "ToStatus": "SMOKE_TEST",
+      "ActorUserID": 10,
+      "Reason": "Phase 1N-B Camp Caesar controlled smoke",
+      "CreatedAt": "2026-07-26T00:52:06.942Z",
+      "ReadinessHead": "{\"score\":59,\"blockers\":[\"legacy.ELIGIBLE_BARBER\",\"biz.address\",\"biz.operating_hours\",\"biz.opening_cash\",\"biz.opening_inventory\",\"biz.printer_policy\",\"biz.whatsapp_policy\",\"biz.partner_shares\",\"biz.real_employees\",\"internal.passed_smoke_run\",\"proof.inventory.adjustment\",\"proof.inventory.consumption\","
+    },
+    {
+      "AuditID": "6",
+      "FromStatus": "SETUP",
+      "ToStatus": "SMOKE_TEST",
+      "ActorUserID": 10,
+      "Reason": "Phase 1N-B Camp Caesar controlled smoke",
+      "CreatedAt": "2026-07-26T00:53:32.727Z",
+      "ReadinessHead": "{\"score\":65,\"blockers\":[\"legacy.ELIGIBLE_BARBER\",\"biz.address\",\"biz.operating_hours\",\"biz.opening_cash\",\"biz.opening_inventory\",\"biz.printer_policy\",\"biz.whatsapp_policy\",\"biz.partner_shares\",\"biz.real_employees\",\"proof.pos.cashInvoice\",\"proof.pos.cardInvoice\",\"proof.payroll.hourlyLedgerCredit\",\"pro"
+    },
+    {
+      "AuditID": "7",
+      "FromStatus": "SETUP",
+      "ToStatus": "SMOKE_TEST",
+      "ActorUserID": 10,
+      "Reason": "Phase 1N-B Camp Caesar controlled smoke",
+      "CreatedAt": "2026-07-26T00:55:16.373Z",
+      "ReadinessHead": "{\"score\":65,\"blockers\":[\"legacy.ELIGIBLE_BARBER\",\"biz.address\",\"biz.operating_hours\",\"biz.opening_cash\",\"biz.opening_inventory\",\"biz.printer_policy\",\"biz.whatsapp_policy\",\"biz.partner_shares\",\"biz.real_employees\",\"proof.pos.cashInvoice\",\"proof.pos.cardInvoice\",\"proof.payroll.hourlyLedgerCredit\",\"pro"
+    },
+    {
+      "AuditID": "8",
+      "FromStatus": "SETUP",
+      "ToStatus": "SMOKE_TEST",
+      "ActorUserID": 10,
+      "Reason": "Phase 1N-B Camp Caesar controlled smoke",
+      "CreatedAt": "2026-07-26T00:57:25.797Z",
+      "ReadinessHead": "{\"score\":65,\"blockers\":[\"legacy.ELIGIBLE_BARBER\",\"biz.address\",\"biz.operating_hours\",\"biz.opening_cash\",\"biz.opening_inventory\",\"biz.printer_policy\",\"biz.whatsapp_policy\",\"biz.partner_shares\",\"biz.real_employees\",\"proof.pos.cashInvoice\",\"proof.pos.cardInvoice\",\"proof.payroll.hourlyLedgerCredit\",\"pro"
+    },
+    {
+      "AuditID": "9",
+      "FromStatus": "SETUP",
+      "ToStatus": "SMOKE_TEST",
+      "ActorUserID": 10,
+      "Reason": "Phase 1N-B Camp Caesar controlled smoke",
+      "CreatedAt": "2026-07-26T00:58:15.783Z",
+      "ReadinessHead": "{\"score\":69,\"blockers\":[\"legacy.ELIGIBLE_BARBER\",\"biz.address\",\"biz.operating_hours\",\"biz.opening_cash\",\"biz.opening_inventory\",\"biz.printer_policy\",\"biz.whatsapp_policy\",\"biz.partner_shares\",\"biz.real_employees\",\"proof.payroll.hourlyLedgerCredit\",\"proof.payroll.monthlySalaryPost\",\"proof.target.posi"
+    },
+    {
+      "AuditID": "10",
+      "FromStatus": "SETUP",
+      "ToStatus": "SMOKE_TEST",
+      "ActorUserID": 10,
+      "Reason": "Phase 1N-B Camp Caesar controlled smoke",
+      "CreatedAt": "2026-07-26T01:00:09.301Z",
+      "ReadinessHead": "{\"score\":80,\"blockers\":[\"legacy.ELIGIBLE_BARBER\",\"biz.address\",\"biz.operating_hours\",\"biz.opening_cash\",\"biz.opening_inventory\",\"biz.printer_policy\",\"biz.whatsapp_policy\",\"biz.partner_shares\",\"biz.real_employees\",\"public.frontend_multi_branch\"],\"smokeRunId\":null}"
+    },
+    {
+      "AuditID": "11",
+      "FromStatus": "SETUP",
+      "ToStatus": "SMOKE_TEST",
+      "ActorUserID": 10,
+      "Reason": "Phase 1N-B Camp Caesar controlled smoke",
+      "CreatedAt": "2026-07-26T01:01:13.249Z",
+      "ReadinessHead": "{\"score\":80,\"blockers\":[\"legacy.ELIGIBLE_BARBER\",\"biz.address\",\"biz.operating_hours\",\"biz.opening_cash\",\"biz.opening_inventory\",\"biz.printer_policy\",\"biz.whatsapp_policy\",\"biz.partner_shares\",\"biz.real_employees\",\"public.frontend_multi_branch\"],\"smokeRunId\":null}"
+    },
+    {
+      "AuditID": "12",
+      "FromStatus": "SETUP",
+      "ToStatus": "SMOKE_TEST",
+      "ActorUserID": 10,
+      "Reason": "Phase 1N-B Camp Caesar controlled smoke",
+      "CreatedAt": "2026-07-26T01:02:18.539Z",
+      "ReadinessHead": "{\"score\":80,\"blockers\":[\"legacy.ELIGIBLE_BARBER\",\"biz.address\",\"biz.operating_hours\",\"biz.opening_cash\",\"biz.opening_inventory\",\"biz.printer_policy\",\"biz.whatsapp_policy\",\"biz.partner_shares\",\"biz.real_employees\",\"public.frontend_multi_branch\"],\"smokeRunId\":null}"
+    },
+    {
+      "AuditID": "13",
+      "FromStatus": "SETUP",
+      "ToStatus": "SETUP",
+      "ActorUserID": 10,
+      "Reason": "phase1o-identity-contact-overnight-hours",
+      "CreatedAt": "2026-07-26T01:44:52.954Z",
+      "ReadinessHead": null
+    },
+    {
+      "AuditID": "14",
+      "FromStatus": "SETUP",
+      "ToStatus": "SETUP",
+      "ActorUserID": 10,
+      "Reason": "phase1o-template:queue_booking_timing from=1",
+      "CreatedAt": "2026-07-26T01:44:55.695Z",
+      "ReadinessHead": null
+    },
+    {
+      "AuditID": "15",
+      "FromStatus": "SETUP",
+      "ToStatus": "SETUP",
+      "ActorUserID": 10,
+      "Reason": "phase1o-template:service_availability from=1",
+      "CreatedAt": "2026-07-26T01:44:56.052Z",
+      "ReadinessHead": null
+    },
+    {
+      "AuditID": "16",
+      "FromStatus": "SETUP",
+      "ToStatus": "SETUP",
+      "ActorUserID": 10,
+      "Reason": "phase1o-template:service_prices from=1",
+      "CreatedAt": "2026-07-26T01:44:56.409Z",
+      "ReadinessHead": null
+    },
+    {
+      "AuditID": "17",
+      "FromStatus": "SETUP",
+      "ToStatus": "SETUP",
+      "ActorUserID": 10,
+      "Reason": "phase1o-template:service_durations from=1",
+      "CreatedAt": "2026-07-26T01:44:56.771Z",
+      "ReadinessHead": null
+    },
+    {
+      "AuditID": "18",
+      "FromStatus": "SETUP",
+      "ToStatus": "SETUP",
+      "ActorUserID": 10,
+      "Reason": "phase1o-template:user_branch_access from=1",
+      "CreatedAt": "2026-07-26T01:45:02.706Z",
+      "ReadinessHead": null
+    },
+    {
+      "AuditID": "19",
+      "FromStatus": "SETUP",
+      "ToStatus": "SETUP",
+      "ActorUserID": 10,
+      "Reason": "phase1o-template:payment_method_enablement from=1",
+      "CreatedAt": "2026-07-26T01:45:03.059Z",
+      "ReadinessHead": null
+    },
+    {
+      "AuditID": "20",
+      "FromStatus": "SETUP",
+      "ToStatus": "SETUP",
+      "ActorUserID": 10,
+      "Reason": "phase1o-template:printer_endpoint from=1",
+      "CreatedAt": "2026-07-26T01:45:03.763Z",
+      "ReadinessHead": null
+    },
+    {
+      "AuditID": "21",
+      "FromStatus": "SETUP",
+      "ToStatus": "SETUP",
+      "ActorUserID": 10,
+      "Reason": "phase1o-template:whatsapp_integration from=1",
+      "CreatedAt": "2026-07-26T01:45:04.490Z",
+      "ReadinessHead": null
+    },
+    {
+      "AuditID": "22",
+      "FromStatus": "SETUP",
+      "ToStatus": "SMOKE_TEST",
+      "ActorUserID": 10,
+      "Reason": "مرحلة smoke قبل التشغيل الداخلي لكامب شيزار 2026-07-27",
+      "CreatedAt": "2026-07-26T21:40:35.236Z",
+      "ReadinessHead": "{\"score\":92,\"blockers\":[\"public.frontend_multi_branch\",\"public.branch_selection\",\"public.explicit_branch_code\",\"public.booking_flow_smoke\",\"public.customer_notifications\"],\"smokeRunId\":null}"
+    },
+    {
+      "AuditID": "23",
+      "FromStatus": "SMOKE_TEST",
+      "ToStatus": "INTERNAL_LIVE",
+      "ActorUserID": 10,
+      "Reason": "فتح فرع كامب شيزار للتشغيل الداخلي بتاريخ 2026-07-27",
+      "CreatedAt": "2026-07-26T21:41:27.517Z",
+      "ReadinessHead": "{\"score\":92,\"blockers\":[\"public.frontend_multi_branch\",\"public.branch_selection\",\"public.explicit_branch_code\",\"public.booking_flow_smoke\",\"public.customer_notifications\"],\"smokeRunId\":18}"
+    }
+  ],
+  "smokes": [
+    {
+      "SmokeRunID": "16",
+      "Status": "CLEANED",
+      "CleanupStatus": "COMPLETED",
+      "phase": "1S-1R",
+      "retained": null,
+      "finalCurrent": false,
+      "proofKeys": [
+        "phase",
+        "smokeRunId",
+        "empId",
+        "empName",
+        "saturday",
+        "tuesday",
+        "baseline",
+        "apply",
+        "cancel",
+        "boards",
+        "weeklyUnchanged",
+        "legacyUnchanged",
+        "noFinancialSideEffects",
+        "publicCcHidden",
+        "blockerProofs",
+        "cleanup"
+      ]
+    },
+    {
+      "SmokeRunID": "18",
+      "Status": "CLEANED",
+      "CleanupStatus": "COMPLETED",
+      "phase": "1S-Final",
+      "retained": 13,
+      "finalCurrent": false,
+      "proofKeys": [
+        "inventory.adjustment",
+        "inventory.consumption",
+        "pos.cashInvoice",
+        "pos.cardInvoice",
+        "payroll.hourlyLedgerCredit",
+        "payroll.monthlySalaryPost",
+        "target.positiveEntitlement",
+        "target.ledgerCredit",
+        "advance.payout",
+        "gleem.isolation",
+        "external.whatsapp",
+        "external.prints",
+        "cleanup.completed",
+        "config.overnight_hours",
+        "config.service_parity",
+        "config.user_access_prepared",
+        "config.switcher_hides_setup",
+        "config.payment_methods",
+        "config.receipt_identity",
+        "config.whatsapp_render",
+        "config.gleem_isolation",
+        "config.shared_printer_whatsapp",
+        "prior.smoke_run_11_retained",
+        "cleanup",
+        "opening.cash_zero",
+        "opening.inventory_zero_stock",
+        "opening.no_fake_cashmove",
+        "opening.no_fake_qty",
+        "partners.active_40_20_20_20",
+        "roster.ziad_assigned",
+        "roster.ziad_payroll",
+        "roster.ziad_no_target",
+        "public.booking_disabled",
+        "public.not_in_public_active",
+        "active.not_yet_listed_while_setup",
+        "printer.camp_caesar_identity",
+        "whatsapp.camp_caesar_identity",
+        "reconciliation.mismatch_count",
+        "retainedFromSmokeRunId",
+        "target.policy_no_target_explicit"
+      ]
+    },
+    {
+      "SmokeRunID": "22",
+      "Status": "CLEANED",
+      "CleanupStatus": "COMPLETED",
+      "phase": "1S-R-final",
+      "retained": null,
+      "finalCurrent": true,
+      "proofKeys": [
+        "roster.ziad_assigned",
+        "opening.cash_zero",
+        "inventory.adjustment",
+        "inventory.consumption",
+        "pos.cashInvoice",
+        "pos.cardInvoice",
+        "payroll.hourlyLedgerCredit",
+        "payroll.monthlySalaryPost",
+        "target.positiveEntitlement",
+        "target.ledgerCredit",
+        "target.ziad_no_target_zero",
+        "advance.payout",
+        "printer.camp_caesar_identity",
+        "whatsapp.camp_caesar_identity",
+        "external.whatsapp",
+        "external.prints",
+        "public.booking_disabled",
+        "gleem.isolation",
+        "reconciliation.mismatch_count",
+        "cleanup.completed",
+        "final.current_config"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "SmokeRunID": "16",
+      "Cnt": 3
+    },
+    {
+      "SmokeRunID": "22",
+      "Cnt": 26
+    }
+  ],
+  "postActivation": {
+    "listActiveIncludesCC": true,
+    "publicIncludesCC": false,
+    "activeCodes": [
+      "CAMP_CAESAR",
+      "GLEEM"
+    ],
+    "publicCodes": [
+      "GLEEM"
+    ]
+  },
+  "weeklyCoverage": {
+    "coveredDays": [
+      "Fri"
+    ],
+    "uncoveredOpenDays": [
+      "Sun",
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Sat"
+    ],
+    "blocker": true
+  }
+}

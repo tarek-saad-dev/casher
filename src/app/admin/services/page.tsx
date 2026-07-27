@@ -1,12 +1,16 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Scissors, Plus, Edit2, Trash2, Loader2, FolderOpen,
   FolderPlus, Settings, Search, Clock, MoreVertical, Users,
-  ImageIcon, X, ChevronUp, ChevronDown,
+  ImageIcon, X, ChevronUp, ChevronDown, RotateCcw, CheckCircle2, AlertTriangle,
 } from 'lucide-react';
 import { SERVICE_IMAGE_PRESETS } from '@/lib/serviceImages';
+import {
+  evaluateServiceEligibility,
+  isRetailProductClassification,
+} from '@/lib/booking/publicBookingServicePolicy';
 import PageHeader from '@/components/shared/PageHeader';
 import KpiCard from '@/components/shared/KpiCard';
 import { Button } from '@/components/ui/button';
@@ -30,6 +34,46 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 
+function isServiceSoftDeleted(service: { isDeleted?: boolean | number | null }): boolean {
+  return Number(service.isDeleted) === 1 || service.isDeleted === true;
+}
+
+function serviceDataQuality(service: Service) {
+  const eligibility = evaluateServiceEligibility({
+    ProID: service.ProID,
+    ProName: service.ProName,
+    ProNameAr: service.ProNameAr,
+    SPrice1: service.SPrice1,
+    DurationMinutes: service.DurationMinutes,
+    isDeleted: service.isDeleted,
+    ProType: service.ProType,
+    CatID: service.CatID,
+    CatName: service.CatName,
+    CatType: service.CatType,
+  });
+  const missingDuration =
+    service.DurationMinutes == null ||
+    !Number.isFinite(Number(service.DurationMinutes)) ||
+    Number(service.DurationMinutes) <= 0;
+  const invalidPrice =
+    service.SPrice1 == null ||
+    !Number.isFinite(Number(service.SPrice1)) ||
+    Number(service.SPrice1) < 0 ||
+    Number(service.SPrice1) === 0;
+  const isProduct = isRetailProductClassification({
+    ProType: service.ProType,
+    CatType: service.CatType,
+    CatName: service.CatName,
+  });
+  return {
+    eligibility,
+    missingDuration,
+    invalidPrice,
+    isProduct,
+    publicBookable: eligibility.eligible,
+  };
+}
+
 interface Service {
   ProID: number;
   ProName: string;
@@ -38,6 +82,8 @@ interface Service {
   Bonus: number;
   CatID: number | null;
   CatName: string | null;
+  CatType?: string | null;
+  ProType?: string | null;
   SalesCount: number;
   isDeleted?: boolean;
   DurationMinutes: number | null;
@@ -114,6 +160,19 @@ export default function ServicesManagementPage() {
   const [barberDurItems, setBarberDurItems] = useState<BarberDurationItem[]>([]);
   const [barberDurLoading, setBarberDurLoading] = useState(false);
   const [barberDurSaving, setBarberDurSaving] = useState(false);
+
+  // Restore soft-deleted service
+  const [restoreTarget, setRestoreTarget] = useState<Service | null>(null);
+  const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
+  const [restoreSaving, setRestoreSaving] = useState(false);
+  const [toasts, setToasts] = useState<{ id: number; type: 'success' | 'error'; message: string }[]>([]);
+  const toastIdRef = useRef(0);
+
+  const addToast = useCallback((type: 'success' | 'error', message: string) => {
+    const id = ++toastIdRef.current;
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4500);
+  }, []);
 
   const openBarberDurModal = async (service: Service) => {
     setBarberDurService(service);
@@ -243,7 +302,7 @@ export default function ServicesManagementPage() {
         SPrice1: service.SPrice1,
         Bonus: service.Bonus,
         CatID: service.CatID,
-        isActive: !service.isDeleted,
+        isActive: !isServiceSoftDeleted(service),
         ImageUrl: service.ImageUrl || '',
       });
       if (service.DurationMinutes !== null && service.DurationMinutes !== undefined) {
@@ -314,8 +373,42 @@ export default function ServicesManagementPage() {
       }
 
       await loadData();
+      addToast('success', 'تم حذف الخدمة');
     } catch (e: any) {
       setError(e.message);
+      addToast('error', e.message || 'فشل حذف الخدمة');
+    }
+  };
+
+  const openRestoreConfirm = (service: Service) => {
+    setRestoreTarget(service);
+    setRestoreConfirmOpen(true);
+  };
+
+  const confirmRestoreService = async () => {
+    if (!restoreTarget || restoreSaving) return;
+    setRestoreSaving(true);
+    try {
+      const response = await fetch(`/api/services/${restoreTarget.ProID}/restore`, {
+        method: 'PATCH',
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'فشل استعادة الخدمة');
+      }
+      setRestoreConfirmOpen(false);
+      setRestoreTarget(null);
+      await loadData();
+      addToast(
+        'success',
+        data.alreadyActive
+          ? 'الخدمة كانت نشطة بالفعل'
+          : `تم استعادة «${restoreTarget.ProName}» بنجاح`,
+      );
+    } catch (e: any) {
+      addToast('error', e.message || 'فشل استعادة الخدمة');
+    } finally {
+      setRestoreSaving(false);
     }
   };
 
@@ -473,7 +566,7 @@ export default function ServicesManagementPage() {
 
   // Statistics
   const totalServices = services.length;
-  const activeServices = services.filter(s => !s.isDeleted).length;
+  const activeServices = services.filter(s => !isServiceSoftDeleted(s)).length;
   const totalCategories = categories.length;
   const avgPrice = services.length > 0 
     ? services.reduce((sum, s) => sum + s.SPrice1, 0) / services.length 
@@ -732,12 +825,50 @@ export default function ServicesManagementPage() {
                   </TableCell>
                   <TableCell className="text-zinc-300">{service.SalesCount}</TableCell>
                   <TableCell>
-                    <Badge 
-                      variant={service.isDeleted ? "destructive" : "default"}
-                      className="text-xs"
-                    >
-                      {service.isDeleted ? "محذوفة" : "نشطة"}
-                    </Badge>
+                    <div className="flex flex-wrap gap-1 items-center">
+                      <Badge 
+                        variant={isServiceSoftDeleted(service) ? "destructive" : "default"}
+                        className="text-xs"
+                      >
+                        {isServiceSoftDeleted(service) ? "محذوفة" : "نشطة"}
+                      </Badge>
+                      {(() => {
+                        const q = serviceDataQuality(service);
+                        return (
+                          <>
+                            {q.isProduct ? (
+                              <Badge variant="outline" className="text-[10px] border-sky-700 text-sky-300">
+                                منتج
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] border-zinc-600 text-zinc-300">
+                                خدمة
+                              </Badge>
+                            )}
+                            {q.missingDuration && (
+                              <Badge variant="outline" className="text-[10px] border-amber-700 text-amber-300">
+                                بلا مدة
+                              </Badge>
+                            )}
+                            {q.invalidPrice && (
+                              <Badge variant="outline" className="text-[10px] border-rose-700 text-rose-300">
+                                سعر غير صالح
+                              </Badge>
+                            )}
+                            <Badge
+                              variant="outline"
+                              className={
+                                q.publicBookable
+                                  ? 'text-[10px] border-emerald-700 text-emerald-300'
+                                  : 'text-[10px] border-zinc-700 text-zinc-500'
+                              }
+                            >
+                              {q.publicBookable ? 'حجز عام' : 'غير عام'}
+                            </Badge>
+                          </>
+                        );
+                      })()}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -761,13 +892,23 @@ export default function ServicesManagementPage() {
                           <Clock className="w-4 h-4 ml-2" />
                           تخصيص مدة الصنايعية
                         </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => deleteService(service.ProID)}
-                          className="text-rose-400 hover:bg-rose-500/10"
-                        >
-                          <Trash2 className="w-4 h-4 ml-2" />
-                          حذف
-                        </DropdownMenuItem>
+                        {isServiceSoftDeleted(service) ? (
+                          <DropdownMenuItem
+                            onClick={() => openRestoreConfirm(service)}
+                            className="text-emerald-400 hover:bg-emerald-500/10"
+                          >
+                            <RotateCcw className="w-4 h-4 ml-2" />
+                            استعادة
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem
+                            onClick={() => deleteService(service.ProID)}
+                            className="text-rose-400 hover:bg-rose-500/10"
+                          >
+                            <Trash2 className="w-4 h-4 ml-2" />
+                            حذف
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
@@ -1182,6 +1323,89 @@ export default function ServicesManagementPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Restore soft-deleted service */}
+      <Dialog
+        open={restoreConfirmOpen}
+        onOpenChange={(open) => {
+          if (restoreSaving) return;
+          setRestoreConfirmOpen(open);
+          if (!open) setRestoreTarget(null);
+        }}
+      >
+        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl">استعادة الخدمة</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-zinc-300 leading-relaxed">
+            هل تريد استعادة الخدمة
+            {restoreTarget ? (
+              <> «<span className="text-white font-medium">{restoreTarget.ProName}</span>» </>
+            ) : (
+              ' '
+            )}
+            وإعادتها إلى الحالة النشطة؟ لن يتم إنشاء سجل جديد.
+          </p>
+          {restoreTarget && !serviceDataQuality({ ...restoreTarget, isDeleted: false }).publicBookable && (
+            <p className="text-xs text-amber-300/90 mt-3 leading-relaxed border border-amber-800/50 rounded-md p-2 bg-amber-950/30">
+              الاستعادة لا تتجاوز قواعد الحجز العام. هذه الخدمة لن تظهر في كتالوج الحجز العام حتى تكتمل
+              المدة والسعر والتصنيف كخدمة صالون (وليست منتجًا أو صف اختبار).
+            </p>
+          )}
+          <div className="flex justify-end gap-2 mt-6">
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (restoreSaving) return;
+                setRestoreConfirmOpen(false);
+                setRestoreTarget(null);
+              }}
+              disabled={restoreSaving}
+              className="border-zinc-700 hover:bg-zinc-800"
+            >
+              إلغاء
+            </Button>
+            <Button
+              onClick={confirmRestoreService}
+              disabled={restoreSaving}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              {restoreSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 ml-2 animate-spin" />
+                  جاري الاستعادة...
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="w-4 h-4 ml-2" />
+                  تأكيد الاستعادة
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Toasts */}
+      <div className="fixed bottom-4 left-4 z-[100] flex flex-col gap-2 max-w-sm">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm shadow-lg ${
+              toast.type === 'success'
+                ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-300'
+                : 'bg-rose-950/90 border-rose-500/40 text-rose-300'
+            }`}
+          >
+            {toast.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+            )}
+            <span>{toast.message}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

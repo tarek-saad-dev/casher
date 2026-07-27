@@ -94,7 +94,7 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
 
   // ── Load services + barbers on mount ──────────────────────────────────────
   useEffect(() => {
-    fetch('/api/services?active=true')
+    fetch('/api/services?active=true&bookable=true')
       .then(r => r.json()).then(d => setServices(d.services ?? d ?? [])).catch(() => { });
     fetch('/api/barbers/available')
       .then(r => r.json()).then(d => setBarbers(d.barbers ?? [])).catch(() => { });

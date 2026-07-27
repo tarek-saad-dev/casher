@@ -1,164 +1,90 @@
 /**
  * POST /api/public/booking/cancel
- * Cancel a booking (customer can cancel their own booking)
+ * Phase 7B — generic compatibility cancel (code in body).
+ * Rejects numeric BookingID. Requires ownership + idempotency key.
  */
+import { NextRequest } from 'next/server';
+import { publicBookingErrorResponse } from '@/lib/booking/publicBookingErrorCatalog';
+import {
+  publicBookingOptionsResponse,
+  PUBLIC_BOOKING_ROUTE_CORS,
+} from '@/lib/booking/publicBookingCors';
+import {
+  cancelPublicBooking,
+  PublicBookingCancelError,
+} from '@/lib/booking/publicBookingCancellation';
+import { resolvePublicBookingClientIp } from '@/lib/booking/publicBookingClientIp';
+import { digestPublicBookingRateSubject } from '@/lib/booking/publicBookingRateLimitPolicy';
+import {
+  gatePublicBookingRoute,
+  finalizePublicBookingError,
+  finalizePublicBookingJson,
+} from '@/lib/booking/publicBookingRouteGate';
 
-import { NextRequest, NextResponse } from "next/server";
-import { getPool } from "@/lib/db";
-import { PUBLIC_CORS_HEADERS } from "@/lib/publicBookingHelpers";
+export const runtime = 'nodejs';
 
-const MIN_CANCEL_MINUTES = 30;
-const SALON_TZ = "Africa/Cairo";
-
-function normalizePhone(phone: string): string {
-  return phone.trim().replace(/\s+/g, "").replace(/^\+20/, "0");
-}
-
-function getCairoNow() {
-  return new Date().toLocaleString("en-US", { timeZone: SALON_TZ });
-}
-
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: PUBLIC_CORS_HEADERS });
+export async function OPTIONS(req: NextRequest) {
+  const cors = PUBLIC_BOOKING_ROUTE_CORS['cancel'];
+  return publicBookingOptionsResponse({
+    request: req,
+    allowedMethods: [...cors.methods],
+    allowedHeaders: cors.headers,
+  });
 }
 
 export async function POST(req: NextRequest) {
-  const isDev = process.env.NODE_ENV !== "production";
+  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const codeForSubject = typeof body.code === 'string' ? body.code : '';
+  const subjectDigest = digestPublicBookingRateSubject('code', codeForSubject);
+  const { gate, blocked } = gatePublicBookingRoute(req, 'cancel', subjectDigest);
+  if (blocked) return blocked;
+  const clientIp = resolvePublicBookingClientIp(req);
 
   try {
-    const body = await req.json();
-    const { bookingId, phone } = body;
-
-    // Validation
-    if (!bookingId || typeof bookingId !== "number") {
-      return NextResponse.json(
-        { ok: false, error: "Booking ID is required" },
-        { status: 400, headers: PUBLIC_CORS_HEADERS },
-      );
+    if (body.bookingId != null || body.BookingID != null) {
+      return finalizePublicBookingError(req, gate, 'INVALID_BOOKING_CODE', {
+        reason: 'numeric_booking_id_rejected',
+      });
+    }
+    if (body.branchId != null || body.BranchID != null || body.customerId != null) {
+      return finalizePublicBookingError(req, gate, 'INVALID_BOOKING_CODE', {
+        reason: 'forbidden_client_fields',
+      });
     }
 
-    if (!phone || typeof phone !== "string") {
-      return NextResponse.json(
-        { ok: false, error: "Phone number is required" },
-        { status: 400, headers: PUBLIC_CORS_HEADERS },
-      );
+    const idempotencyKey =
+      (typeof body.clientRequestId === 'string' && body.clientRequestId) ||
+      (typeof body.idempotencyKey === 'string' && body.idempotencyKey) ||
+      req.headers.get('idempotency-key') ||
+      null;
+
+    const result = await cancelPublicBooking({
+      code: String(body.code ?? ''),
+      phone: body.phone != null ? String(body.phone) : null,
+      accessToken:
+        body.bookingAccessToken != null
+          ? String(body.bookingAccessToken)
+          : body.accessToken != null
+            ? String(body.accessToken)
+            : null,
+      reasonCode: body.reasonCode != null ? String(body.reasonCode) : null,
+      reasonText: body.reasonText != null ? String(body.reasonText) : null,
+      clientRequestId: idempotencyKey,
+      idempotencyKey,
+      requestContext: {
+        ip: clientIp,
+        userAgent: req.headers.get('user-agent') || undefined,
+      },
+    });
+
+    return finalizePublicBookingJson(req, gate, result.body, {
+      status: result.httpStatus,
+    });
+  } catch (err) {
+    if (err instanceof PublicBookingCancelError) {
+      return finalizePublicBookingError(req, gate, err.code, err.metadata);
     }
-
-    const normalizedPhone = normalizePhone(phone);
-    if (!normalizedPhone || normalizedPhone.length < 10) {
-      return NextResponse.json(
-        { ok: false, error: "Invalid phone number" },
-        { status: 400, headers: PUBLIC_CORS_HEADERS },
-      );
-    }
-
-    const db = await getPool();
-
-    // Get booking details with client phone verification
-    const bookingResult = await db.request().input("bookingId", bookingId)
-      .query(`
-        SELECT
-          b.BookingID,
-          b.ClientID,
-          c.Mobile AS Phone,
-          b.Status,
-          CONVERT(VARCHAR(10), b.BookingDate, 120) AS BookingDate,
-          CONVERT(VARCHAR(5), b.StartTime, 108) AS BookingTime,
-          b.CancelledAt
-        FROM dbo.Bookings b
-        JOIN dbo.TblClient c ON c.ClientID = b.ClientID
-        WHERE b.BookingID = @bookingId
-      `);
-
-    const booking = bookingResult.recordset[0];
-
-    if (!booking) {
-      return NextResponse.json(
-        { ok: false, error: "Booking not found" },
-        { status: 404, headers: PUBLIC_CORS_HEADERS },
-      );
-    }
-
-    // Verify phone matches
-    if (normalizePhone(booking.Phone) !== normalizedPhone) {
-      if (isDev) {
-        console.log("[cancel] phone mismatch:", {
-          provided: normalizedPhone,
-          bookingPhone: normalizePhone(booking.Phone),
-        });
-      }
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Unauthorized: Phone number does not match booking",
-        },
-        { status: 403, headers: PUBLIC_CORS_HEADERS },
-      );
-    }
-
-    // Check if already cancelled
-    if (booking.Status === "Cancelled" || booking.Status === "Canceled") {
-      return NextResponse.json(
-        { ok: false, error: "Booking is already cancelled" },
-        { status: 400, headers: PUBLIC_CORS_HEADERS },
-      );
-    }
-
-    // Check if already completed
-    if (booking.Status === "Completed") {
-      return NextResponse.json(
-        { ok: false, error: "Cannot cancel completed booking" },
-        { status: 400, headers: PUBLIC_CORS_HEADERS },
-      );
-    }
-
-    // Check cancellation window (30 min before)
-    const bookingDateTime = new Date(
-      `${booking.BookingDate}T${booking.BookingTime}`,
-    );
-    const now = new Date(getCairoNow());
-    const minutesUntilBooking =
-      (bookingDateTime.getTime() - now.getTime()) / (1000 * 60);
-
-    if (minutesUntilBooking < MIN_CANCEL_MINUTES) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: `Cannot cancel less than ${MIN_CANCEL_MINUTES} minutes before appointment`,
-          minutesUntilBooking: Math.floor(minutesUntilBooking),
-        },
-        { status: 400, headers: PUBLIC_CORS_HEADERS },
-      );
-    }
-
-    // Update booking status
-    await db
-      .request()
-      .input("bookingId", bookingId)
-      .input("clientId", booking.ClientID).query(`
-        UPDATE dbo.Bookings
-        SET 
-          Status = 'Cancelled',
-          CancelledAt = GETDATE(),
-          CancelReason = 'Cancelled by customer',
-          UpdatedAt = GETDATE()
-        WHERE BookingID = @bookingId
-          AND ClientID = @clientId
-      `);
-
-    if (isDev) {
-      console.log("[cancel] success:", { bookingId, phone: normalizedPhone });
-    }
-
-    return NextResponse.json(
-      { ok: true, message: "Booking cancelled successfully" },
-      { headers: PUBLIC_CORS_HEADERS },
-    );
-  } catch (err: unknown) {
-    console.error("[cancel] error:", err);
-    return NextResponse.json(
-      { ok: false, error: "Failed to cancel booking" },
-      { status: 500, headers: PUBLIC_CORS_HEADERS },
-    );
+    console.error('[public/booking/cancel]', err);
+    return finalizePublicBookingError(req, gate, 'BOOKING_CANCELLATION_FAILED');
   }
 }

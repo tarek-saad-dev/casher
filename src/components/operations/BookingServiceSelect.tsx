@@ -53,7 +53,7 @@ function isServiceVisible(s: BookingSelectService): boolean {
 }
 
 const PRIMARY_SLOTS: { names: string[] }[] = [
-  { names: ['Hair Cut', 'Haircut', 'Detailed Cut', 'Detail Cut', 'DetailedCut'] },
+  { names: ['Hair Cut', 'Haircut', 'Basic Cut', 'Detailed Cut', 'Detail Cut', 'DetailedCut'] },
   { names: ['Beard Styling & Fade', 'Beard Styling', 'Beard'] },
   { names: ['Haircut & Beard', 'Hair & Beard', 'Hair cut & Beard', 'Hair cut + Beard', 'Hair and Beard'] },
 ];
@@ -90,7 +90,7 @@ const ADDON_CATEGORIES: AddonCat[] = [
       'Basic Hair Color', 'Dry-Hair', 'Hair & Beard Color', 'Hair Botox', 'Hair Design',
       'Hair Oil Treatment', 'Hair Straightening', 'Hair Styling', 'Long Hair Protein',
       'Short Hair Protein', 'Silver Highlights', 'Smoothing Cream', 'Toppik Hair Spray',
-      'Wavy Styling', 'بلوب كيرلي', 'معالج الشعر', 'بلسم', 'ثيرم', 'حمام كريم', 'شامبو',
+      'Wavy Styling', 'بلوب كيرلي', 'معالج الشعر', 'حمام كريم',
     ],
   },
   {

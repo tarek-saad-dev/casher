@@ -236,7 +236,7 @@ export async function previewTemporaryBranchTransfer(args: {
       SELECT TOP 1 BranchID, CheckOutTime
       FROM dbo.TblEmpAttendance
       WHERE EmpID=@empId AND WorkDate=@day AND CheckInTime IS NOT NULL
-      ORDER BY AttendanceID DESC
+      ORDER BY ID DESC
     `);
   const attRow = openAtt.recordset[0];
   const hasOpen = Boolean(attRow && attRow.CheckOutTime == null);

@@ -147,18 +147,42 @@ export async function getEmployeeBusyIntervals(args: {
         });
   timer.mark('scheduleMs');
 
-  const [qIvs, bIvs] = await Promise.all([
-    buildQueueIntervals(
+  // node-mssql: one request per connection. Never Promise.all on a Transaction.
+  const onTx = !!args.transaction;
+  let qIvs: Interval[];
+  let bIvs: Interval[];
+  if (onTx) {
+    qIvs = await buildQueueIntervals(
       db,
       args.empId,
       args.operationalDate,
       args.now,
       defaultDur,
       args.excludeQueueTicketId,
-      { filterStale: true, graceMinutes: 30, debugContext: 'schedule-integrity' },
-    ),
-    buildBookingIntervals(db, args.empId, args.operationalDate, defaultDur),
-  ]);
+      {
+        filterStale: true,
+        graceMinutes: 30,
+        debugContext: 'schedule-integrity',
+        failHard: true,
+      },
+    );
+    bIvs = await buildBookingIntervals(db, args.empId, args.operationalDate, defaultDur, {
+      failHard: true,
+    });
+  } else {
+    [qIvs, bIvs] = await Promise.all([
+      buildQueueIntervals(
+        db,
+        args.empId,
+        args.operationalDate,
+        args.now,
+        defaultDur,
+        args.excludeQueueTicketId,
+        { filterStale: true, graceMinutes: 30, debugContext: 'schedule-integrity' },
+      ),
+      buildBookingIntervals(db, args.empId, args.operationalDate, defaultDur),
+    ]);
+  }
   timer.mark('sameDayBusyMs');
 
   const filteredBookings = args.excludeBookingId
@@ -174,14 +198,36 @@ export async function getEmployeeBusyIntervals(args: {
   let nextDayBusy: Interval[] = [];
   if (schedule?.isWorking && (overnightShift || rangeNeedsNextDay)) {
     const nextDayStr = nextDate(args.operationalDate);
-    const [qIvsNext, bIvsNext] = await Promise.all([
-      buildQueueIntervals(db, args.empId, nextDayStr, args.now, defaultDur, args.excludeQueueTicketId, {
-        filterStale: true,
-        graceMinutes: 30,
-        debugContext: 'schedule-integrity-next-day',
-      }),
-      buildBookingIntervals(db, args.empId, nextDayStr, defaultDur),
-    ]);
+    let qIvsNext: Interval[];
+    let bIvsNext: Interval[];
+    if (onTx) {
+      qIvsNext = await buildQueueIntervals(
+        db,
+        args.empId,
+        nextDayStr,
+        args.now,
+        defaultDur,
+        args.excludeQueueTicketId,
+        {
+          filterStale: true,
+          graceMinutes: 30,
+          debugContext: 'schedule-integrity-next-day',
+          failHard: true,
+        },
+      );
+      bIvsNext = await buildBookingIntervals(db, args.empId, nextDayStr, defaultDur, {
+        failHard: true,
+      });
+    } else {
+      [qIvsNext, bIvsNext] = await Promise.all([
+        buildQueueIntervals(db, args.empId, nextDayStr, args.now, defaultDur, args.excludeQueueTicketId, {
+          filterStale: true,
+          graceMinutes: 30,
+          debugContext: 'schedule-integrity-next-day',
+        }),
+        buildBookingIntervals(db, args.empId, nextDayStr, defaultDur),
+      ]);
+    }
     const inShiftWindow = (iv: Interval) =>
       iv.start.getTime() < schedule.shiftEndMs && iv.end.getTime() > schedule.shiftStartMs;
     const filteredNextBookings = args.excludeBookingId

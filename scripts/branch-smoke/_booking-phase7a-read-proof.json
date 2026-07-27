@@ -1,0 +1,16 @@
+{
+  "smokeRunId": 66,
+  "status": "PASSED",
+  "proofs": {
+    "lookup_phone_ok": true,
+    "canonical_dates": true,
+    "has_token": true,
+    "wrong_phone": true,
+    "token_ok": true,
+    "token_code_mismatch": true,
+    "code_only_minimal": true,
+    "upcoming_contains": true,
+    "upcoming_no_ids": true,
+    "smoke_hidden": true
+  }
+}

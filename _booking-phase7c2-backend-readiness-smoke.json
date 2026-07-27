@@ -1,0 +1,35 @@
+{
+  "phase": "booking-phase-7c2-backend-readiness",
+  "smokeRunId": 74,
+  "passed": true,
+  "failed": [],
+  "timings": {
+    "branches_ms": 550,
+    "available_days_cold_ms": 10520,
+    "check_slot_ms": 2197,
+    "plan_ms": 1965,
+    "create_ms": 5329
+  },
+  "proofs": {
+    "smokeRunId": 74,
+    "phase": "booking-phase-7c2-backend-readiness",
+    "branches_ok": true,
+    "branches_contract_version": true,
+    "available_days_ok": true,
+    "check_slot_ok": true,
+    "plan_ok": true,
+    "create_ok": true,
+    "idempotent_replay": true,
+    "lookup_ok": true,
+    "upcoming_includes": true,
+    "cancel_ok": true,
+    "lookup_cancelled": true,
+    "upcoming_excludes": true,
+    "cors_allowed": true,
+    "rate_limit_429": true,
+    "camp_caesar_hidden": true,
+    "enforce_mode_active": true,
+    "enforce_blocks_missing_plan": true,
+    "cleanup_ok": true
+  }
+}

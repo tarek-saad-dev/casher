@@ -1,0 +1,13 @@
+[
+  {
+    "requiredFor": [
+      "smoke",
+      "internal_live"
+    ],
+    "key": "smoke.notifications_off",
+    "section": "notifications",
+    "title": "إشعارات خارجية معطّلة",
+    "status": "blocker",
+    "details": "ExternalNotificationsEnabled=1"
+  }
+]

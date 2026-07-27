@@ -1,39 +1,41 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import {
-  getRateLimitKey,
-  checkRateLimit,
-  PUBLIC_CORS_HEADERS,
-} from '@/lib/publicBookingHelpers';
-import { listPublicActiveBranches } from '@/lib/branch/bookingQueueOwnership';
+  publicBookingOptionsResponse,
+  PUBLIC_BOOKING_ROUTE_CORS,
+} from '@/lib/booking/publicBookingCors';
+import { listPublicDiscoverableBranches } from '@/lib/booking/publicBookingBranchContext';
+import {
+  gatePublicBookingRoute,
+  finalizePublicBookingJson,
+} from '@/lib/booking/publicBookingRouteGate';
 
 export const runtime = 'nodejs';
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: PUBLIC_CORS_HEADERS });
+export async function OPTIONS(req: NextRequest) {
+  const cors = PUBLIC_BOOKING_ROUTE_CORS['branches'];
+  return publicBookingOptionsResponse({
+    request: req,
+    allowedMethods: [...cors.methods],
+    allowedHeaders: cors.headers,
+  });
 }
 
 /**
  * GET /api/public/branches
- * Returns active branches — no auth required. Used by the public booking
- * widget to let the customer pick a branch before loading branch-scoped data.
+ * Public discovery list — PUBLIC_LIVE + PublicBookingEnabled + QBS.BookingEnabled only.
+ * Never includes Camp Caesar while public booking is disabled.
  */
 export async function GET(req: NextRequest) {
-  const ip = getRateLimitKey(req);
-  if (!checkRateLimit(ip)) {
-    return NextResponse.json(
-      { error: 'طلبات كثيرة — حاول لاحقاً' },
-      { status: 429, headers: PUBLIC_CORS_HEADERS },
-    );
-  }
+  const { gate, blocked } = gatePublicBookingRoute(req, 'branches');
+  if (blocked) return blocked;
 
   try {
-    const branches = await listPublicActiveBranches();
-    return NextResponse.json({ ok: true, branches }, { headers: PUBLIC_CORS_HEADERS });
+    const branches = await listPublicDiscoverableBranches();
+    return finalizePublicBookingJson(req, gate, { ok: true, branches });
   } catch (err) {
     console.error('[public/branches]', err);
-    return NextResponse.json(
-      { error: 'فشل تحميل الفروع' },
-      { status: 500, headers: PUBLIC_CORS_HEADERS },
-    );
+    return finalizePublicBookingJson(req, gate, { error: 'فشل تحميل الفروع' }, {
+      status: 500,
+    });
   }
 }

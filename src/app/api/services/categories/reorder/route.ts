@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { ensureTblCatSortOrderColumn } from '@/lib/migrations/ensureCategorySortOrder';
+import { invalidatePublicBookingServicesCache } from '@/lib/booking/publicBookingServices';
 
 export const runtime = 'nodejs';
 
@@ -99,6 +100,7 @@ export async function PUT(req: NextRequest) {
       ORDER BY c.SortOrder, c.CatName
     `);
 
+    invalidatePublicBookingServicesCache();
     return NextResponse.json({
       ok: true,
       categories: result.recordset.map((r: Record<string, unknown>) => ({

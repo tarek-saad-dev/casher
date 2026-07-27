@@ -1,926 +1,135 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getPool, sql } from "@/lib/db";
+import { NextRequest } from 'next/server';
+import { extractPublicBranchCode } from '@/lib/branch/bookingQueueOwnership';
+import { publicBookingErrorResponse } from '@/lib/booking/publicBookingErrorCatalog';
 import {
-  getPublicSettings,
-  getRateLimitKey,
-  checkRateLimit,
-  isValidDate,
-  isValidTime,
-  isValidPhone,
-  generateBookingCode,
-  upsertCustomer,
-  PUBLIC_CORS_HEADERS,
-  publicBookingPausedJson,
-} from "@/lib/publicBookingHelpers";
+  publicBookingOptionsResponse,
+  PUBLIC_BOOKING_ROUTE_CORS,
+} from '@/lib/booking/publicBookingCors';
 import {
-  validateBookingSlot,
-  BOOKING_SLOT_REASON_AR,
-  type BookingSlotReasonCode,
-} from "@/lib/bookingAvailabilityEngine";
+  PublicBookingSelectionError,
+  evaluatePublicBookingSelection,
+} from '@/lib/booking/publicBookingSelectionEvaluator';
 import {
-  applyOverrides,
-  slotBlockedByOverride,
-} from "@/lib/scheduleOverrides";
-import { loadBookingOverridesForBarber } from "@/lib/hr/attendance-shift-schedule-sync";
-import {
-  assertEmployeeIntervalAvailable,
-  findNextAvailableForEmployee,
-  ScheduleConflictError,
-} from "@/lib/scheduleIntegrity";
-import { getCairoBusinessDate } from "@/lib/businessDate";
-import {
-  extractPublicBranchCode,
-  resolvePublicBranchCode,
-  publicBranchRequiredResponse,
-  publicInvalidBranchResponse,
-} from "@/lib/branch/bookingQueueOwnership";
-import { BranchDomainError } from "@/lib/branch/types";
+  gatePublicBookingRoute,
+  finalizePublicBookingError,
+  finalizePublicBookingJson,
+} from '@/lib/booking/publicBookingRouteGate';
 
-export const runtime = "nodejs";
+export const runtime = 'nodejs';
 
-const DEV = process.env.NODE_ENV !== "production";
-
-// ── Service routing rules ─────────────────────────────────────────────────────
-// Maps category keywords → preferred empId or role.
-// Falls back to the selected / nearest barber if no rule matches.
-// To add a rule: push to SERVICE_ROUTING_RULES before this file loads,
-// or load from DB in a future migration.
-
-interface RoutingRule {
-  categoryKeyword: string; // case-insensitive substring match on category name
-  preferredEmpId?: number; // hard-coded preferred employee
-  role?: string; // future: resolve by job role
-}
-
-const SERVICE_ROUTING_RULES: RoutingRule[] = [
-  // Example (uncomment and fill in real empId):
-  // { categoryKeyword: "skin", preferredEmpId: 42 },
-];
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface ServiceRow {
-  ProID: number;
-  ProName: string;
-  SPrice1: number;
-  DurationMinutes: number;
-  CatName: string | null;
-}
-
-interface PlanSegment {
-  serviceId: number;
-  serviceName: string;
-  empId: number;
-  empName: string;
-  date: string;
-  startTime: string; // "HH:MM"
-  endTime: string; // "HH:MM"
-  durationMinutes: number;
-  price: number;
-}
-
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: PUBLIC_CORS_HEADERS });
+export async function OPTIONS(req: NextRequest) {
+  const cors = PUBLIC_BOOKING_ROUTE_CORS['plan'];
+  return publicBookingOptionsResponse({
+    request: req,
+    allowedMethods: [...cors.methods],
+    allowedHeaders: cors.headers,
+  });
 }
 
 /**
  * POST /api/public/booking/plan
- *
- * Builds a sequential multi-service booking plan and commits all bookings
- * atomically. Each service becomes one Booking row + one BookingServices row.
- *
- * Body:
- * {
- *   customer: { name: string, phone: string },
- *   serviceIds: number[],         // ordered list — executed in this order
- *   date: "YYYY-MM-DD",
- *   time: "HH:MM",                // start of the FIRST service
- *   dayOffset?: 0 | 1,            // 1 = slot is on date+1 (overnight)
- *   mode: "nearest" | "specific",
- *   empId?: number,               // required when mode="specific"
- *   notes?: string
- * }
- *
- * Response (200 = plan preview / 201 = confirmed):
- * {
- *   ok: true,
- *   plan: PlanSegment[],
- *   totalDurationMinutes: number,
- *   totalPrice: number,
- *   bookingCodes: string[]        // one per segment
- * }
+ * Phase-5 read-only booking plan. Does NOT create bookings or holds.
+ * Create remains POST /create (Booking Phase 6).
  */
 export async function POST(req: NextRequest) {
-  const ip = getRateLimitKey(req);
-  if (!checkRateLimit(ip, 10)) {
-    return NextResponse.json(
-      { error: "طلبات كثيرة — حاول لاحقاً" },
-      { status: 429, headers: PUBLIC_CORS_HEADERS },
-    );
-  }
-
-  // Diagnostic info for 409 responses
-  const diag: any = {
-    env: DEV ? "development" : "production",
-    timestamp: new Date().toISOString(),
-  };
+  const { gate, blocked } = gatePublicBookingRoute(req, 'plan');
+  if (blocked) return blocked;
 
   try {
-    const body = await req.json();
-
-    // Capture payload for diagnostics
-    diag.requestedPayload = {
-      date: body.date,
-      time: body.time,
-      dayOffset: body.dayOffset ?? 0,
-      mode: body.mode ?? "nearest",
-      empId: body.empId,
-      serviceIds: body.serviceIds ?? [],
-    };
-    const {
-      customer,
-      serviceIds = [],
-      date,
-      time,
-      dayOffset = 0,
-      mode = "nearest",
-      empId,
-      notes = "",
-    } = body as {
-      customer: { name: string; phone: string };
-      serviceIds?: number[];
-      date: string;
-      time: string;
-      dayOffset?: 0 | 1;
-      mode?: "nearest" | "specific";
-      empId?: number;
-      notes?: string;
-    };
-
-    // ── Validation ────────────────────────────────────────────────────────────
-    if (!customer?.name || customer.name.trim().length < 2) {
-      return NextResponse.json(
-        { error: "الاسم مطلوب (حرفان على الأقل)" },
-        { status: 400, headers: PUBLIC_CORS_HEADERS },
-      );
-    }
-    if (!customer?.phone || !isValidPhone(customer.phone)) {
-      return NextResponse.json(
-        { error: "رقم الهاتف غير صالح" },
-        { status: 400, headers: PUBLIC_CORS_HEADERS },
-      );
-    }
-    if (!date || !isValidDate(date)) {
-      return NextResponse.json(
-        { error: "التاريخ غير صالح" },
-        { status: 400, headers: PUBLIC_CORS_HEADERS },
-      );
-    }
-    if (!time || !isValidTime(time)) {
-      return NextResponse.json(
-        { error: "الوقت غير صالح" },
-        { status: 400, headers: PUBLIC_CORS_HEADERS },
-      );
-    }
-    if (!serviceIds.length) {
-      return NextResponse.json(
-        { error: "يجب اختيار خدمة واحدة على الأقل" },
-        { status: 400, headers: PUBLIC_CORS_HEADERS },
-      );
-    }
-    if (mode === "specific" && !empId) {
-      return NextResponse.json(
-        { error: "empId مطلوب في وضع specific" },
-        { status: 400, headers: PUBLIC_CORS_HEADERS },
-      );
-    }
-
-    // ── Resolve branch: public callers must supply branchCode ────────────────
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const { searchParams } = new URL(req.url);
+    void body.BranchID;
+    void body.price;
+    void body.duration;
+    void body.durationMinutes;
+    void body.endTime;
+    void body.timezone;
+    void body.includeBusy;
+    void body.customer; // ignored — plan is selection-only
+    void searchParams.get('preview');
+
     const branchCode = extractPublicBranchCode(searchParams, body);
-    let branchId: number;
-    try {
-      const branch = await resolvePublicBranchCode(branchCode, {
-        route: '/api/public/booking/plan',
-      });
-      branchId = branch.branchId;
-    } catch (err) {
-      if (err instanceof BranchDomainError) {
-        return err.code === 'BRANCH_REQUIRED'
-          ? publicBranchRequiredResponse()
-          : publicInvalidBranchResponse();
-      }
-      throw err;
-    }
-
-    const settings = await getPublicSettings(branchId);
-    if (!settings.bookingEnabled) {
-      return NextResponse.json(publicBookingPausedJson(), {
-        status: 503,
-        headers: PUBLIC_CORS_HEADERS,
-      });
-    }
-
-    // ── Resolve actual booking date (handle dayOffset for overnight slots) ────
-    // dayOffset=1 means the slot time belongs to the next calendar day.
-    const bookingDate = dayOffset === 1 ? nextDateStr(date) : date;
-
-    // Construct the start Date object in the correct timezone-aware way.
-    // salonDateTimeToMs gives the correct UTC epoch for "bookingDate HH:MM" in salon TZ.
-    const timezone = settings.timezone || "Africa/Cairo";
-    const firstSlotMs = salonDateTimeToMs(bookingDate, time, timezone);
-
-    // ── minNotice check ───────────────────────────────────────────────────────
-    const noticeMs = settings.minNoticeMinutes * 60_000;
-    if (firstSlotMs - Date.now() < noticeMs) {
-      return NextResponse.json(
-        {
-          error: `يجب الحجز قبل الموعد بـ ${settings.minNoticeMinutes} دقيقة على الأقل`,
-        },
-        { status: 400, headers: PUBLIC_CORS_HEADERS },
-      );
-    }
-
-    // ── maxDaysAhead check ────────────────────────────────────────────────────
-    const maxMs = settings.maxBookingDaysAhead * 86_400_000;
-    if (firstSlotMs - Date.now() > maxMs) {
-      return NextResponse.json(
-        {
-          error: `لا يمكن الحجز أكثر من ${settings.maxBookingDaysAhead} يوم مسبقاً`,
-        },
-        { status: 400, headers: PUBLIC_CORS_HEADERS },
-      );
-    }
-
-    const db = await getPool();
-
-    // ── Load service data (name, duration, price, category) ───────────────────
-    const svcRes = await db
-      .request()
-      .query(
-        `
-      SELECT p.ProID, p.ProName, p.SPrice1,
-             ISNULL(p.DurationMinutes, ${settings.defaultServiceDurationMinutes}) AS DurationMinutes,
-             c.CatName
-      FROM [dbo].[TblPro] p
-      LEFT JOIN [dbo].[TblCat] c ON c.CatID = p.CatID
-      WHERE p.ProID IN (${serviceIds.join(",")})
-    `,
-      )
-      .catch(() => ({
-        recordset: [] as Array<{
-          ProID: number;
-          ProName: string;
-          SPrice1: number;
-          DurationMinutes: number;
-          CatName: string | null;
-        }>,
-      }));
-
-    const serviceMap = new Map<number, ServiceRow>();
-    for (const r of svcRes.recordset) {
-      serviceMap.set(r.ProID, {
-        ProID: r.ProID,
-        ProName: r.ProName,
-        SPrice1: Number(r.SPrice1) || 0,
-        DurationMinutes:
-          Number(r.DurationMinutes) || settings.defaultServiceDurationMinutes,
-        CatName: r.CatName ?? null,
-      });
-    }
-
-    // Validate all serviceIds exist
-    for (const sid of serviceIds) {
-      if (!serviceMap.has(sid)) {
-        return NextResponse.json(
-          { error: `الخدمة رقم ${sid} غير موجودة` },
-          { status: 400, headers: PUBLIC_CORS_HEADERS },
-        );
-      }
-    }
-
-    // ── Load all active barbers ───────────────────────────────────────────────
-    const barberRes = await db
-      .request()
-      .query(
-        `
-      SELECT EmpID, EmpName FROM [dbo].[TblEmp]
-      WHERE ISNULL(isActive,1)=1 AND Job IN (N'حلاق',N'مساعد',N'Barber',N'barber')
-      ORDER BY EmpName
-    `,
-      )
-      .catch(() => ({
-        recordset: [] as Array<{ EmpID: number; EmpName: string }>,
-      }));
-
-    const barberMap = new Map<number, string>();
-    for (const r of barberRes.recordset) barberMap.set(r.EmpID, r.EmpName);
-
-    // If specific mode, verify barber exists
-    if (mode === "specific" && empId && !barberMap.has(empId)) {
-      return NextResponse.json(
-        { error: "الحلاق غير موجود" },
-        { status: 404, headers: PUBLIC_CORS_HEADERS },
-      );
-    }
-
-    // ── Build sequential plan ─────────────────────────────────────────────────
-    // Each service starts immediately after the previous one ends.
-    // Cursor walks forward in time; if it crosses midnight, date advances.
-
-    const plan: PlanSegment[] = [];
-    let cursorMs = firstSlotMs; // rolling start pointer
-
-    // Correlation log — always print so we can compare with available-slots
-    console.log('[booking/plan] slot correlation', {
-      endpoint: 'plan',
-      date,
-      bookingDate,
-      time,
-      dayOffset,
-      mode,
-      empId: empId ?? null,
-      serviceIds,
-      firstSlotMs,
-      firstSlotCairo: msToHHMM(firstSlotMs, timezone),
-      timezone,
+    const evaluation = await evaluatePublicBookingSelection({
+      branchCode,
+      date: typeof body.date === 'string' ? body.date : null,
+      time: typeof body.time === 'string' ? body.time : null,
+      dayOffset: body.dayOffset,
+      serviceIds: body.serviceIds,
+      empId: body.empId,
+      mode: body.mode,
+      purpose: 'plan',
+      previewQueryParam: searchParams.get('preview') ?? (body.preview as string | undefined) ?? null,
     });
 
-    for (const sid of serviceIds) {
-      const svc = serviceMap.get(sid)!;
-      const durMs = svc.DurationMinutes * 60_000;
-      const segStartDt = new Date(cursorMs);
-      const segEndDt = new Date(cursorMs + durMs);
-
-      // Compute date string for this segment (cursor may have crossed midnight)
-      const segDate = msToDateStr(cursorMs, timezone);
-      const segStartTime = msToHHMM(cursorMs, timezone);
-      const segEndTime = msToHHMM(cursorMs + durMs, timezone);
-
-      // ── Resolve employee for this service ─────────────────────────────────
-      let assignedEmpId: number;
-      let assignedEmpName: string;
-
-      const routedEmpId = resolveServiceEmployee(
-        svc,
-        mode === "specific" ? empId : undefined,
-      );
-
-      if (routedEmpId) {
-        // Rule matched a preferred employee — verify they exist
-        if (!barberMap.has(routedEmpId)) {
-          return NextResponse.json(
-            {
-              ok: false,
-              error: `الموظف المخصص للخدمة "${svc.ProName}" غير موجود`,
-              reason: "routing_employee_not_found",
-              serviceId: sid,
-            },
-            { status: 409, headers: PUBLIC_CORS_HEADERS },
-          );
-        }
-        assignedEmpId = routedEmpId;
-        assignedEmpName = barberMap.get(routedEmpId)!;
-      } else if (mode === "specific" && empId) {
-        assignedEmpId = empId;
-        assignedEmpName = barberMap.get(empId)!;
-      } else {
-        // Nearest mode — use canonical engine to find first available barber
-        const nearest = await validateBookingSlot({
-          date: segDate,
-          time: segStartTime,
-          serviceIds: [sid],
-          durationOverride: svc.DurationMinutes,
-          mode: 'nearest',
-          source: 'public',
-        });
-        if (!nearest.available || !nearest.plan) {
-          return NextResponse.json(
-            {
-              ok: false,
-              error: `لا يوجد حلاق متاح للخدمة "${svc.ProName}" في الوقت ${segStartTime}`,
-              reason: "no_barber_available",
-              serviceId: sid,
-              slotTime: segStartTime,
-              slotDate: segDate,
-            },
-            { status: 409, headers: PUBLIC_CORS_HEADERS },
-          );
-        }
-        assignedEmpId = nearest.plan.empId;
-        assignedEmpName = nearest.plan.empName;
-      }
-
-      // ── Check schedule overrides for this segment date ──────────────────────
-      const segOverrides = await loadBookingOverridesForBarber(
-        db,
-        assignedEmpId,
-        segDate,
-      );
-      const segDayOfWeek = new Date(`${segDate}T12:00:00`).getDay();
-
-      // Look up base schedule for the segment day from TblEmpWorkSchedule
-      const baseSchedRes = await db
-        .request()
-        .input("eid", sql.Int, assignedEmpId)
-        .input("dow", sql.TinyInt, segDayOfWeek)
-        .query(
-          `
-          SELECT IsWorkingDay, StartTime, EndTime
-          FROM dbo.TblEmpWorkSchedule
-          WHERE EmpID = @eid AND DayOfWeek = @dow
-        `,
-        )
-        .catch(() => ({
-          recordset: [] as Array<{
-            IsWorkingDay: boolean;
-            StartTime: unknown;
-            EndTime: unknown;
-          }>,
-        }));
-
-      if (segOverrides.length && baseSchedRes.recordset.length) {
-        const baseRow = baseSchedRes.recordset[0];
-        const fmtT = (v: unknown): string => {
-          if (!v) return "00:00";
-          if (typeof v === "string") return v.slice(0, 5);
-          if (v instanceof Date)
-            return `${String(v.getUTCHours()).padStart(2, "0")}:${String(v.getUTCMinutes()).padStart(2, "0")}`;
-          return "00:00";
-        };
-        const baseSchedule = {
-          isWorking: !!baseRow.IsWorkingDay,
-          start: fmtT(baseRow.StartTime),
-          end: fmtT(baseRow.EndTime),
-        };
-        const effSched = applyOverrides(
-          assignedEmpId,
-          segDate,
-          baseSchedule,
-          segOverrides,
-        );
-
-        if (!effSched.isWorking) {
-          return NextResponse.json(
-            {
-              ok: false,
-              error: `الموظف "${assignedEmpName}" لديه استثناء إجازة في ${segDate}`,
-              reason: "employee_day_off",
-              serviceId: sid,
-              slotDate: segDate,
-            },
-            { status: 409, headers: PUBLIC_CORS_HEADERS },
-          );
-        }
-
-        const slotEndMs = segStartDt.getTime() + svc.DurationMinutes * 60_000;
-        const overrideBlockReason = slotBlockedByOverride(
-          segStartDt.getTime(),
-          slotEndMs,
-          effSched,
-        );
-        if (overrideBlockReason) {
-          return NextResponse.json(
-            {
-              ok: false,
-              error: `الموظف "${assignedEmpName}" لديه فترة مغلقة في هذا الوقت`,
-              reason: "employee_blocked_range",
-              serviceId: sid,
-              slotTime: segStartTime,
-              slotDate: segDate,
-            },
-            { status: 409, headers: PUBLIC_CORS_HEADERS },
-          );
-        }
-      }
-
-      // ── Validate availability for assigned employee (queue + bookings) ─────────
-      const avail = await validateBookingSlot({
-        date: segDate,
-        time: segStartTime,
-        serviceIds: [sid],
-        durationOverride: svc.DurationMinutes,
-        mode: 'specific',
-        empId: assignedEmpId,
-        source: 'public',
-      });
-
-      if (!avail.available || !avail.plan) {
-        const reasonCode: BookingSlotReasonCode = avail.reasonCode ?? 'booking_conflict';
-        const reasonMessage = avail.reasonMessage ?? BOOKING_SLOT_REASON_AR[reasonCode] ?? `الموظف "${assignedEmpName}" غير متاح في الوقت ${segStartTime}`;
-
-        const debugPayload = {
-          requestedPayload: diag.requestedPayload,
-          selectedEmpId: assignedEmpId,
-          selectedEmpName: assignedEmpName,
-          totalDuration: svc.DurationMinutes,
-          serviceDurations: { [sid]: svc.DurationMinutes },
-          timezone: settings.timezone,
-          startMs: segStartDt.getTime(),
-          endMs: segEndDt.getTime(),
-          startCairo: segStartTime,
-          endCairo: segEndTime,
-          nowMs: Date.now(),
-          isPastTime: segStartDt.getTime() < Date.now(),
-          isOutsideWorkingHours: reasonCode === 'outside_working_hours',
-          hasBookingConflict: reasonCode === 'booking_conflict',
-          hasQueueConflict: reasonCode === 'queue_conflict',
-          reasonCode,
-          reasonMessage,
-          checkResult: avail,
-        };
-
-        // Always log — critical for diagnosing available-slots vs plan mismatch
-        console.log('[booking/plan] 409 slot_not_available', JSON.stringify(debugPayload, null, 2));
-
-        return NextResponse.json({
-          ok: false,
-          error: 'slot_not_available',
-          reason: reasonCode,
-          message: reasonMessage,
-          debug: debugPayload,
-        }, {
-          status: 409,
-          headers: PUBLIC_CORS_HEADERS,
-        });
-      }
-
-      if (DEV) {
-        console.log("[booking/plan] segment planned:", {
-          serviceId: sid,
-          serviceName: svc.ProName,
-          empId: assignedEmpId,
-          date: segDate,
-          startTime: segStartTime,
-          endTime: segEndTime,
-          durationMinutes: svc.DurationMinutes,
-        });
-      }
-
-      plan.push({
-        serviceId: sid,
-        serviceName: svc.ProName,
-        empId: assignedEmpId,
-        empName: assignedEmpName,
-        date: segDate,
-        startTime: segStartTime,
-        endTime: segEndTime,
-        durationMinutes: svc.DurationMinutes,
-        price: svc.SPrice1,
-      });
-
-      cursorMs += durMs; // advance cursor
-    }
-
-    const totalDurationMinutes = plan.reduce(
-      (s, p) => s + p.durationMinutes,
-      0,
-    );
-    const totalPrice = plan.reduce((s, p) => s + p.price, 0);
-
-    // ── Upsert customer ───────────────────────────────────────────────────────
-    const clientId = await upsertCustomer(customer.name, customer.phone);
-
-    // ── Commit all bookings atomically ────────────────────────────────────────
-    // mssql (tedious) doesn't expose explicit transactions via the pool easily,
-    // so we acquire one connection and wrap in BEGIN/COMMIT TRAN.
-    // On any error we ROLLBACK and throw so no partial state is left.
-    const bookingCodes: string[] = [];
-    const bookingIds: number[] = [];
-
-    // Generate unique codes up front
-    for (let i = 0; i < plan.length; i++) {
-      let code = generateBookingCode();
-      for (let attempt = 0; attempt < 5; attempt++) {
-        const dup = await db
-          .request()
-          .query(
-            `SELECT 1 FROM [dbo].[Bookings] WHERE BookingCode = N'${code}'`,
-          )
-          .catch(() => ({ recordset: [] }));
-        if (!dup.recordset.length) break;
-        code = generateBookingCode();
-      }
-      bookingCodes.push(code);
-    }
-
-    // Insert each booking sequentially; roll back on failure
-    for (let i = 0; i < plan.length; i++) {
-      const seg = plan[i];
-      const code = bookingCodes[i];
-
-      try {
-        // ── Start transaction for this segment ────────────────────────────────
-        const transaction = new sql.Transaction(db);
-        await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
-
-        try {
-          // Shared write guard with /create and reschedule: SERIALIZABLE transaction +
-          // operations-schedule:{empId}:{operationalDate} applock + busy intervals
-          // (bookings, queue, blocks/overrides, cross-midnight).
-          const segStartMs = salonDateTimeToMs(seg.date, seg.startTime, timezone);
-          let segEndMs = salonDateTimeToMs(seg.date, seg.endTime, timezone);
-          if (segEndMs <= segStartMs) {
-            segEndMs = segStartMs + seg.durationMinutes * 60_000;
-          }
-          const startAt = new Date(segStartMs);
-          const endAt = new Date(segEndMs);
-          const operationalDate = getCairoBusinessDate(startAt);
-
-          try {
-            await assertEmployeeIntervalAvailable({
-              empId: seg.empId,
-              startAt,
-              endAt,
-              operationalDate,
-              transaction,
-            });
-          } catch (guardErr) {
-            await transaction.rollback();
-            if (guardErr instanceof ScheduleConflictError) {
-              if (bookingIds.length) {
-                await db
-                  .request()
-                  .query(
-                    `UPDATE [dbo].[Bookings] SET Status='cancelled'
-                     WHERE BookingID IN (${bookingIds.join(",")})`,
-                  )
-                  .catch(() => {});
-              }
-
-              const nextAvailable = await findNextAvailableForEmployee({
-                empId: seg.empId,
-                operationalDate,
-                candidateStart: startAt,
-                durationMinutes: seg.durationMinutes,
-              });
-
-              if (DEV) {
-                console.log("[booking/plan] CONFLICT DETECTED via assertEmployeeIntervalAvailable:", {
-                  empId: seg.empId,
-                  date: seg.date,
-                  startTime: seg.startTime,
-                  endTime: seg.endTime,
-                  conflict: guardErr.conflict,
-                });
-              }
-
-              return NextResponse.json(
-                {
-                  ok: false,
-                  error: `الموعد ${seg.startTime} لم يعد متاحاً للحلاق ${seg.empName} - تم حجزه للتو`,
-                  reason: "booking_conflict",
-                  conflictType: guardErr.conflict?.type ?? "booking",
-                  code: guardErr.code,
-                  message: guardErr.message,
-                  conflict: guardErr.conflict,
-                  nextAvailable,
-                  serviceId: seg.serviceId,
-                  slotTime: seg.startTime,
-                  slotDate: seg.date,
-                  conflictingBooking: {
-                    bookingId: guardErr.conflict?.id,
-                    bookingCode: guardErr.conflict?.reference,
-                    startTime: guardErr.conflict?.startAt,
-                    endTime: guardErr.conflict?.endAt,
-                  },
-                  _diag: {
-                    ...diag,
-                    selectedEmpId: seg.empId,
-                    segStartMs,
-                    segEndMs,
-                    operationalDate,
-                  },
-                },
-                { status: 409, headers: PUBLIC_CORS_HEADERS },
-              );
-            }
-            throw guardErr;
-          }
-
-          // ── Insert booking with OUTPUT clause ────────────────────────────────
-          const ins = await transaction
-            .request()
-            .input("clientId", sql.Int, clientId)
-            .input("empId", sql.Int, seg.empId)
-            .input("bDate", sql.Date, seg.date)
-            .input("sTime", sql.VarChar, seg.startTime + ":00")
-            .input("eTime", sql.VarChar, seg.endTime + ":00")
-            .input("source", sql.NVarChar, "online")
-            .input("notes", sql.NVarChar, notes?.trim() || null)
-            .input("code", sql.NVarChar, code).query(`
-              INSERT INTO [dbo].[Bookings]
-                (ClientID, AssignedEmpID, BookingDate, StartTime, EndTime,
-                 Status, Source, Notes, BookingCode, CreatedByUserID)
-              OUTPUT INSERTED.BookingID, INSERTED.BookingDate, INSERTED.StartTime, INSERTED.EndTime, INSERTED.Status
-              VALUES
-                (@clientId, @empId, @bDate, @sTime, @eTime,
-                 'confirmed', @source, @notes, @code, 0)
-            `);
-          const bookingId = ins.recordset[0].BookingID as number;
-          bookingIds.push(bookingId);
-
-          // ── Insert booking service row within same transaction ───────────────
-          await transaction
-            .request()
-            .input("bId", sql.Int, bookingId)
-            .input("proId", sql.Int, seg.serviceId)
-            .input("eId", sql.Int, seg.empId)
-            .input("qty", sql.Decimal, 1)
-            .input("price", sql.Decimal, seg.price)
-            .input("mins", sql.Int, seg.durationMinutes)
-            .query(
-              `
-              INSERT INTO [dbo].[BookingServices]
-                (BookingID, ProID, EmpID, Qty, Price, DurationMinutes)
-              VALUES (@bId, @proId, @eId, @qty, @price, @mins)
-            `,
-            );
-
-          // ── Commit transaction ───────────────────────────────────────────────
-          await transaction.commit();
-
-          // Log inserted booking for debugging (inside transaction block)
-          if (DEV) {
-            console.log("[booking/plan] inserted booking:", {
-              bookingId,
-              bookingCode: code,
-              assignedEmpId: seg.empId,
-              empName: seg.empName,
-              serviceId: seg.serviceId,
-              serviceName: seg.serviceName,
-              durationMinutes: seg.durationMinutes,
-            });
-          }
-        } catch (txErr) {
-          // Rollback transaction on any error
-          try {
-            await transaction.rollback();
-          } catch {}
-          throw txErr;
-        }
-
-        // Note: All inserts moved inside transaction above
-      } catch (err: unknown) {
-        // Rollback: cancel all successfully inserted bookings
-        if (bookingIds.length) {
-          await db
-            .request()
-            .query(
-              `UPDATE [dbo].[Bookings] SET Status='cancelled'
-               WHERE BookingID IN (${bookingIds.join(",")})`,
-            )
-            .catch(() => {});
-        }
-
-        console.error("[booking/plan] insert failed at segment", i, err);
-        const msg = err instanceof Error ? err.message : "";
-        const isMissingColumn =
-          msg.includes("BookingCode") || msg.includes("Invalid column");
-
-        return NextResponse.json(
-          {
-            ok: false,
-            error: isMissingColumn
-              ? "BookingCode column is missing. Please run bookings migration."
-              : `فشل حجز الخدمة "${seg.serviceName}" — تم إلغاء جميع الحجوزات`,
-            rolledBack: true,
-            cancelledCount: bookingIds.length,
-          },
-          { status: 500, headers: PUBLIC_CORS_HEADERS },
-        );
-      }
-    }
-
-    if (DEV) {
-      console.log("[booking/plan] committed", {
-        clientId,
-        bookingIds,
-        bookingCodes,
-        totalDurationMinutes,
-        totalPrice,
+    if (!evaluation.available) {
+      const code = evaluation.availabilityCode ?? 'BOOKING_PLAN_UNAVAILABLE';
+      const planCode =
+        code === 'SLOT_UNAVAILABLE' || code === 'CHECK_SLOT_UNAVAILABLE'
+          ? 'BOOKING_PLAN_UNAVAILABLE'
+          : code;
+      return finalizePublicBookingError(req, gate, planCode, {
+        ...evaluation.safeMetadata,
+        availabilityCode: code,
+        messageHint: evaluation.availabilityMessage,
       });
     }
 
-    return NextResponse.json(
+    const branch = evaluation.branchContext;
+    return finalizePublicBookingJson(
+      req,
+      gate,
       {
         ok: true,
-        plan: plan.map((seg, i) => ({
-          ...seg,
-          bookingCode: bookingCodes[i],
-          bookingId: bookingIds[i],
-        })),
-        totalDurationMinutes,
-        totalPrice,
-        bookingCodes,
-        message: "تم تأكيد جميع الحجوزات بنجاح",
-      },
-      { status: 201, headers: PUBLIC_CORS_HEADERS },
+        plan: {
+          contractVersion: evaluation.contractVersion,
+          branch: {
+            branchCode: branch.branchCode,
+            branchName: branch.branchName,
+            address: branch.address,
+            phone: branch.phone,
+          },
+          mode: evaluation.mode,
+          assignmentStrategy: evaluation.assignmentStrategy,
+          barber:
+            evaluation.mode === 'specific_barber' && evaluation.specificBarber
+              ? {
+                  empId: evaluation.specificBarber.empId,
+                  nameAr: evaluation.specificBarber.nameAr,
+                  imageUrl: evaluation.specificBarber.imageUrl,
+                }
+              : null,
+          candidateBarbers: evaluation.candidateBarbers,
+          date: evaluation.workDate,
+          time: evaluation.requestedTime,
+          dayOffset: evaluation.requestedDayOffset,
+          startDateTime: evaluation.startDateTime,
+          endDateTime: evaluation.endDateTime,
+          services: evaluation.selectedServices.map((s) => ({
+            serviceId: s.serviceId,
+            nameAr: s.nameAr,
+            nameEn: s.nameEn,
+            price: s.price,
+            durationMinutes: s.durationMinutes,
+          })),
+          totalDurationMinutes: evaluation.totalDurationMinutes,
+          subtotal: evaluation.subtotal,
+          discount: 0,
+          total: evaluation.subtotal,
+          currency: 'EGP',
+          pricingScope: evaluation.pricingScope,
+          planFingerprint: evaluation.planFingerprint,
+          planToken: evaluation.planToken,
+          planExpiresAt: evaluation.planExpiresAt,
+          evaluatedAt: evaluation.evaluatedAt,
+          evaluationMode: evaluation.evaluationMode,
+        },
+      }
     );
   } catch (err) {
-    console.error("[public/booking/plan]", err);
-    return NextResponse.json(
-      { error: "فشل إنشاء خطة الحجز" },
-      { status: 500, headers: PUBLIC_CORS_HEADERS },
-    );
-  }
-}
-
-// ── Service routing ───────────────────────────────────────────────────────────
-
-/**
- * Returns a preferred empId for this service based on routing rules,
- * or undefined to fall through to the selected/nearest barber.
- */
-function resolveServiceEmployee(
-  svc: ServiceRow,
-  selectedEmpId: number | undefined,
-): number | undefined {
-  const catLower = (svc.CatName ?? "").toLowerCase();
-  for (const rule of SERVICE_ROUTING_RULES) {
-    if (catLower.includes(rule.categoryKeyword.toLowerCase())) {
-      // If caller already specified a specific employee, don't override with routing
-      // unless the rule has a preferredEmpId explicitly set.
-      if (rule.preferredEmpId && !selectedEmpId) {
-        return rule.preferredEmpId;
-      }
+    if (err instanceof PublicBookingSelectionError) {
+      return finalizePublicBookingError(req, gate, err.code, err.metadata);
     }
-  }
-  return undefined;
-}
-
-// ── Time helpers ──────────────────────────────────────────────────────────────
-
-/** "YYYY-MM-DD" for the next day after dateStr */
-function nextDateStr(dateStr: string): string {
-  const d = new Date(`${dateStr}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
-
-/**
- * Returns the UTC epoch ms for a given "YYYY-MM-DD" + "HH:MM" in a salon timezone.
- * Derives the TZ offset from Intl to avoid server-local-time errors.
- */
-function salonDateTimeToMs(dateStr: string, hhmm: string, tz: string): number {
-  try {
-    const [h, m] = hhmm.split(":").map(Number);
-    const noonUtc = new Date(`${dateStr}T12:00:00Z`);
-    const parts = new Intl.DateTimeFormat("en-GB", {
-      timeZone: tz,
-      timeZoneName: "shortOffset",
-    }).formatToParts(noonUtc);
-    const offsetPart =
-      parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT+0";
-    const match = offsetPart.match(/GMT([+-]\d+(?::\d+)?)/);
-    let offsetMinutes = 0;
-    if (match) {
-      const segs = match[1].split(":");
-      offsetMinutes =
-        parseInt(segs[0], 10) * 60 +
-        (segs[1]
-          ? parseInt(segs[1], 10) * Math.sign(parseInt(segs[0], 10))
-          : 0);
-    }
-    const midnightUtcMs = new Date(`${dateStr}T00:00:00Z`).getTime();
-    return midnightUtcMs - offsetMinutes * 60_000 + (h * 60 + m) * 60_000;
-  } catch {
-    return new Date(`${dateStr}T${hhmm}:00`).getTime();
-  }
-}
-
-/** Returns "YYYY-MM-DD" for a UTC epoch in the salon timezone */
-function msToDateStr(ms: number, tz: string): string {
-  try {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: tz,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(new Date(ms));
-    const y = parts.find((p) => p.type === "year")?.value ?? "";
-    const mo = parts.find((p) => p.type === "month")?.value ?? "";
-    const d = parts.find((p) => p.type === "day")?.value ?? "";
-    return `${y}-${mo}-${d}`;
-  } catch {
-    return new Date(ms).toISOString().slice(0, 10);
-  }
-}
-
-/** Returns "HH:MM" for a UTC epoch in the salon timezone */
-function msToHHMM(ms: number, tz: string): string {
-  try {
-    const parts = new Intl.DateTimeFormat("en-GB", {
-      timeZone: tz,
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).formatToParts(new Date(ms));
-    const h = parts.find((p) => p.type === "hour")?.value ?? "00";
-    const m = parts.find((p) => p.type === "minute")?.value ?? "00";
-    return `${h}:${m}`;
-  } catch {
-    const d = new Date(ms);
-    return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+    console.error('[public/booking/plan]', err);
+    return finalizePublicBookingError(req, gate, 'BOOKING_PLAN_GENERATION_FAILED');
   }
 }

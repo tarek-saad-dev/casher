@@ -1,6 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { ensureTblProImageUrlColumn, tblProImageUrlSelect } from '@/lib/migrations/ensureServiceImageUrl';
+import { invalidatePublicBookingServicesCache } from '@/lib/booking/publicBookingServices';
 
 // PUT /api/services/[id] — update a service
 export async function PUT(
@@ -82,6 +83,7 @@ export async function PUT(
     }
 
     const updatedService = result.recordset[0];
+    invalidatePublicBookingServicesCache();
     return NextResponse.json(updatedService);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -151,6 +153,7 @@ export async function PATCH(
     if (!result.recordset[0]) {
       return NextResponse.json({ error: 'الخدمة غير موجودة' }, { status: 404 });
     }
+    invalidatePublicBookingServicesCache();
     return NextResponse.json({ ok: true, service: result.recordset[0] });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -188,6 +191,7 @@ export async function DELETE(
       .input('ProID', serviceId)
       .query(`UPDATE [dbo].[TblPro] SET isDeleted = 1 WHERE ProID = @ProID`);
 
+    invalidatePublicBookingServicesCache();
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

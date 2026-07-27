@@ -1,0 +1,23 @@
+{
+  "transition": {
+    "from": "SMOKE_TEST",
+    "to": "INTERNAL_LIVE",
+    "readinessBlockers": 5
+  },
+  "finalFlags": {
+    "lifecycleStatus": "INTERNAL_LIVE",
+    "isActive": true,
+    "publicBookingEnabled": false,
+    "queueBookingEnabled": false,
+    "externalNotificationsEnabled": true
+  },
+  "postActivation": {
+    "inActiveBranches": true,
+    "inPublicActiveBranches": false,
+    "publicBookingVisible": false,
+    "authorizedSwitcherSees": true,
+    "unauthorizedSwitcherSees": false,
+    "ziadFridayCcWorking": true,
+    "gleemStillPublicLive": true
+  }
+}

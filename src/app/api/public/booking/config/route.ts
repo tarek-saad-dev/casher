@@ -1,86 +1,103 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import {
   getPublicSettings,
-  getRateLimitKey,
-  checkRateLimit,
-  PUBLIC_CORS_HEADERS,
   PUBLIC_BOOKING_PAUSED_MESSAGE,
   PUBLIC_BOOKING_PAUSED_CODE,
 } from '@/lib/publicBookingHelpers';
 import {
-  extractPublicBranchCode,
-  resolvePublicBranchCode,
-  publicBranchRequiredResponse,
-  publicInvalidBranchResponse,
-  toPublicBranchSafe,
-} from '@/lib/branch/bookingQueueOwnership';
-import { BranchDomainError } from '@/lib/branch/types';
+  PublicBookingBranchContextError,
+  resolvePublicBookingBranchContext,
+  toPublicBranchSafeWire,
+} from '@/lib/booking/publicBookingBranchContext';
+import { publicBookingErrorResponse } from '@/lib/booking/publicBookingErrorCatalog';
+import {
+  publicBookingOptionsResponse,
+  PUBLIC_BOOKING_ROUTE_CORS,
+} from '@/lib/booking/publicBookingCors';
+import { extractPublicBranchCode } from '@/lib/branch/bookingQueueOwnership';
+import {
+  gatePublicBookingRoute,
+  finalizePublicBookingError,
+  finalizePublicBookingJson,
+} from '@/lib/booking/publicBookingRouteGate';
 
 export const runtime = 'nodejs';
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: PUBLIC_CORS_HEADERS });
+export async function OPTIONS(req: NextRequest) {
+  const cors = PUBLIC_BOOKING_ROUTE_CORS['config'];
+  return publicBookingOptionsResponse({
+    request: req,
+    allowedMethods: [...cors.methods],
+    allowedHeaders: cors.headers,
+  });
 }
 
 /**
  * GET /api/public/booking/config?branchCode=XXX
- * Returns public widget configuration — no auth required.
- * Branch is required — never silently defaults to a founding branch.
+ * Branch-scoped — missing branchCode → BRANCH_REQUIRED (no GLEEM fallback).
  */
 export async function GET(req: NextRequest) {
-  const ip = getRateLimitKey(req);
-  if (!checkRateLimit(ip)) {
-    return NextResponse.json({ error: 'طلبات كثيرة — حاول لاحقاً' }, { status: 429, headers: PUBLIC_CORS_HEADERS });
-  }
+  const { gate, blocked } = gatePublicBookingRoute(req, 'config');
+  if (blocked) return blocked;
 
   try {
     const { searchParams } = new URL(req.url);
     const branchCode = extractPublicBranchCode(searchParams);
-    let branch;
+    // preview=true must never escalate to internal_preview
+    const preview = searchParams.get('preview');
+
+    let ctx;
     try {
-      branch = await resolvePublicBranchCode(branchCode, {
-        route: '/api/public/booking/config',
+      ctx = await resolvePublicBookingBranchContext({
+        branchCode,
+        purpose: 'public_booking',
+        previewQueryParam: preview,
       });
     } catch (err) {
-      if (err instanceof BranchDomainError) {
-        return err.code === 'BRANCH_REQUIRED'
-          ? publicBranchRequiredResponse()
-          : publicInvalidBranchResponse();
+      if (err instanceof PublicBookingBranchContextError) {
+        return finalizePublicBookingError(req, gate, err.code);
       }
       throw err;
     }
 
-    const settings = await getPublicSettings(branch.branchId);
+    const settings = await getPublicSettings(ctx.branchId);
+    const bookingEnabled = !!settings.bookingEnabled && ctx.bookingEnabled;
 
-    return NextResponse.json({
-      ok: true,
-      branch: toPublicBranchSafe(branch),
-      salon: {
-        name:           settings.salonName,
-        logoUrl:        null,
-        timezone:       settings.timezone,
-        currency:       settings.currency,
-        bookingEnabled: settings.bookingEnabled,
-      },
-      settings: {
-        allowSpecificBarber:  settings.allowSpecificBarber,
-        allowNearestBarber:   settings.allowNearestBarber,
-        defaultMode:          settings.defaultMode,
-        slotIntervalMinutes:  settings.slotIntervalMinutes,
-        maxBookingDaysAhead:  settings.maxBookingDaysAhead,
-        minNoticeMinutes:     settings.minNoticeMinutes,
-      },
-      // Client website: if bookingEnabled=false, show a paused state (do not start the booking flow).
-      ...(settings.bookingEnabled
-        ? {}
-        : {
-            bookingPaused: true,
-            message: PUBLIC_BOOKING_PAUSED_MESSAGE,
-            code: PUBLIC_BOOKING_PAUSED_CODE,
-          }),
-    }, { headers: PUBLIC_CORS_HEADERS });
+    return finalizePublicBookingJson(
+      req,
+      gate,
+      {
+        ok: true,
+        branch: toPublicBranchSafeWire(ctx),
+        salon: {
+          name: settings.salonName,
+          logoUrl: null,
+          timezone: settings.timezone || ctx.timezone,
+          currency: settings.currency,
+          bookingEnabled,
+        },
+        settings: {
+          allowSpecificBarber: settings.allowSpecificBarber,
+          allowNearestBarber: settings.allowNearestBarber,
+          defaultMode: settings.defaultMode,
+          slotIntervalMinutes: settings.slotIntervalMinutes,
+          maxBookingDaysAhead: settings.maxBookingDaysAhead,
+          minNoticeMinutes: settings.minNoticeMinutes,
+        },
+        operatingHours: ctx.operatingHours,
+        ...(bookingEnabled
+          ? {}
+          : {
+              bookingPaused: true,
+              message: PUBLIC_BOOKING_PAUSED_MESSAGE,
+              code: PUBLIC_BOOKING_PAUSED_CODE,
+            }),
+      }
+    );
   } catch (err) {
     console.error('[public/booking/config]', err);
-    return NextResponse.json({ error: 'فشل تحميل الإعدادات' }, { status: 500, headers: PUBLIC_CORS_HEADERS });
+    return finalizePublicBookingJson(req, gate, { error: 'فشل تحميل الإعدادات' }, {
+      status: 500,
+    });
   }
 }

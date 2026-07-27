@@ -1,151 +1,157 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { extractPublicBranchCode } from '@/lib/branch/bookingQueueOwnership';
 import {
-  getPublicSettings,
-  getRateLimitKey,
-  checkRateLimit,
-  isValidDate,
-  isValidTime,
-  PUBLIC_CORS_HEADERS,
-  publicBookingPausedJson,
-} from '@/lib/publicBookingHelpers';
+  publicBookingErrorResponse,
+  PUBLIC_BOOKING_ERROR_CATALOG,
+} from '@/lib/booking/publicBookingErrorCatalog';
 import {
-  validateBookingSlot,
-  BOOKING_SLOT_REASON_AR,
-  type BookingSlotReasonCode,
-} from '@/lib/bookingAvailabilityEngine';
+  publicBookingOptionsResponse,
+  PUBLIC_BOOKING_ROUTE_CORS,
+} from '@/lib/booking/publicBookingCors';
 import {
-  extractPublicBranchCode,
-  resolvePublicBranchCode,
-  publicBranchRequiredResponse,
-  publicInvalidBranchResponse,
-} from '@/lib/branch/bookingQueueOwnership';
-import { BranchDomainError } from '@/lib/branch/types';
-import { requireActiveBranchContext, isActiveBranchContext } from '@/lib/branch/context';
+  PublicBookingSelectionError,
+  evaluatePublicBookingSelection,
+} from '@/lib/booking/publicBookingSelectionEvaluator';
+import {
+  gatePublicBookingRoute,
+  finalizePublicBookingError,
+  finalizePublicBookingJson,
+} from '@/lib/booking/publicBookingRouteGate';
 
 export const runtime = 'nodejs';
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: PUBLIC_CORS_HEADERS });
+export async function OPTIONS(req: NextRequest) {
+  const cors = PUBLIC_BOOKING_ROUTE_CORS['check-slot'];
+  return publicBookingOptionsResponse({
+    request: req,
+    allowedMethods: [...cors.methods],
+    allowedHeaders: cors.headers,
+  });
 }
 
 /**
  * POST /api/public/booking/check-slot
+ * Canonical Phase-5 selection evaluation (strong/fresh busy). Does not reserve.
  *
- * Body:
- *   { date, time, serviceIds, mode, empId?, source? }
- *
- * Returns availability for the requested slot using the canonical engine.
- * For nearest mode, picks the first available barber.
+ * Business unavailability → HTTP 200 { ok:true, available:false, reason }
+ * (compatibility with prior check-slot clients).
  */
 export async function POST(req: NextRequest) {
-  const ip = getRateLimitKey(req);
-  if (!checkRateLimit(ip, 120)) {
-    return NextResponse.json({ error: 'طلبات كثيرة' }, { status: 429, headers: PUBLIC_CORS_HEADERS });
-  }
+  const { gate, blocked } = gatePublicBookingRoute(req, 'check-slot');
+  if (blocked) return blocked;
 
   try {
-    const body = await req.json();
-    const {
-      date,
-      time,
-      serviceIds = [],
-      mode       = 'nearest',
-      empId,
-      dayOffset  = 0,
-      source     = 'public',
-    } = body as {
-      date:        string;
-      time:        string;
-      serviceIds?: number[];
-      mode?:       'nearest' | 'specific';
-      empId?:      number;
-      dayOffset?:  0 | 1;
-      source?:     'public' | 'operations' | 'admin';
-    };
-
-    if (!date || !isValidDate(date)) {
-      return NextResponse.json({ error: 'تاريخ غير صالح' }, { status: 400, headers: PUBLIC_CORS_HEADERS });
-    }
-    if (!time || !isValidTime(time)) {
-      return NextResponse.json({ error: 'وقت غير صالح' }, { status: 400, headers: PUBLIC_CORS_HEADERS });
-    }
-    if (mode === 'specific' && !empId) {
-      return NextResponse.json({ error: 'empId مطلوب في وضع specific' }, { status: 400, headers: PUBLIC_CORS_HEADERS });
-    }
-
-    // Resolve branch: internal callers use the authenticated session branch;
-    // public callers must supply branchCode (never a silent default).
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const { searchParams } = new URL(req.url);
-    const isInternalSource = source === 'operations' || source === 'admin';
-    let branchId: number;
-    if (isInternalSource) {
-      const branchCtx = await requireActiveBranchContext();
-      if (!isActiveBranchContext(branchCtx)) return branchCtx;
-      branchId = branchCtx.branchId;
-    } else {
-      const branchCode = extractPublicBranchCode(searchParams, body);
-      try {
-        const branch = await resolvePublicBranchCode(branchCode, {
-          route: '/api/public/booking/check-slot',
-        });
-        branchId = branch.branchId;
-      } catch (err) {
-        if (err instanceof BranchDomainError) {
-          return err.code === 'BRANCH_REQUIRED'
-            ? publicBranchRequiredResponse()
-            : publicInvalidBranchResponse();
-        }
-        throw err;
-      }
-    }
+    // Client may not drive BranchID / price / duration / timezone / preview
+    void body.BranchID;
+    void body.price;
+    void body.duration;
+    void body.durationMinutes;
+    void body.endTime;
+    void body.timezone;
+    void body.includeBusy;
+    void searchParams.get('preview');
 
-    if (!isInternalSource) {
-      const settings = await getPublicSettings(branchId);
-      if (!settings.bookingEnabled) {
-        return NextResponse.json(publicBookingPausedJson(), {
-          status: 503,
-          headers: PUBLIC_CORS_HEADERS,
-        });
-      }
-    }
-
-    const validation = await validateBookingSlot({
-      date,
-      time,
-      dayOffset,
-      serviceIds,
-      mode,
-      empId,
-      source,
-      branchId,
+    const branchCode = extractPublicBranchCode(searchParams, body);
+    const evaluation = await evaluatePublicBookingSelection({
+      branchCode,
+      date: typeof body.date === 'string' ? body.date : null,
+      time: typeof body.time === 'string' ? body.time : null,
+      dayOffset: body.dayOffset,
+      serviceIds: body.serviceIds,
+      empId: body.empId,
+      mode: body.mode,
+      purpose: 'check_slot',
+      previewQueryParam: searchParams.get('preview') ?? (body.preview as string | undefined) ?? null,
     });
 
-    const plan = validation.plan;
-    const reasonCode: BookingSlotReasonCode = validation.reasonCode ?? 'booking_conflict';
-
-    if (validation.available && plan) {
-      return NextResponse.json({
-        ok:        true,
-        available: true,
-        barber:    { id: plan.empId, name: plan.empName },
-        slot: {
-          start:           plan.startAt,
-          end:             plan.endAt,
-          durationMinutes: plan.durationMinutes,
+    if (!evaluation.available) {
+      const code = evaluation.availabilityCode ?? 'SLOT_UNAVAILABLE';
+      const def = PUBLIC_BOOKING_ERROR_CATALOG[code];
+      return finalizePublicBookingJson(
+        req,
+        gate,
+        {
+          ok: true,
+          available: false,
+          mode: evaluation.mode,
+          assignmentStrategy: evaluation.assignmentStrategy,
+          branch: {
+            branchCode: evaluation.branchContext.branchCode,
+            branchName: evaluation.branchContext.branchName,
+          },
+          slot: {
+            date: evaluation.workDate,
+            time: evaluation.requestedTime,
+            dayOffset: evaluation.requestedDayOffset,
+            startDateTime: evaluation.startDateTime,
+            endDateTime: evaluation.endDateTime,
+          },
+          services: {
+            serviceIds: evaluation.selectedServices.map((s) => s.serviceId),
+            totalDurationMinutes: evaluation.totalDurationMinutes,
+            subtotal: evaluation.subtotal,
+          },
+          barber: evaluation.specificBarber
+            ? { empId: evaluation.specificBarber.empId, nameAr: evaluation.specificBarber.nameAr }
+            : null,
+          candidateBarbers: evaluation.candidateBarbers,
+          reason: {
+            code,
+            message: evaluation.availabilityMessage ?? def.messageAr,
+          },
+          meta: {
+            evaluationMode: evaluation.evaluationMode,
+            evaluatedAt: evaluation.evaluatedAt,
+            ...(evaluation.safeMetadata.expectedDayOffset != null
+              ? { expectedDayOffset: evaluation.safeMetadata.expectedDayOffset }
+              : {}),
+          },
         },
-      }, { headers: PUBLIC_CORS_HEADERS });
+        { status: 200 },
+      );
     }
 
-    return NextResponse.json({
-      ok:           false,
-      available:    false,
-      reason:       validation.reasonMessage ?? BOOKING_SLOT_REASON_AR[reasonCode],
-      reasonCode,
-      conflictType: reasonCode === 'queue_conflict' ? 'queue' : 'booking',
-      nextAvailableTime: validation.nextAvailable?.startAt ?? null,
-    }, { status: 200, headers: PUBLIC_CORS_HEADERS });
+    return finalizePublicBookingJson(
+      req,
+      gate,
+      {
+        ok: true,
+        available: true,
+        mode: evaluation.mode,
+        assignmentStrategy: evaluation.assignmentStrategy,
+        branch: {
+          branchCode: evaluation.branchContext.branchCode,
+          branchName: evaluation.branchContext.branchName,
+        },
+        slot: {
+          date: evaluation.workDate,
+          time: evaluation.requestedTime,
+          dayOffset: evaluation.requestedDayOffset,
+          startDateTime: evaluation.startDateTime,
+          endDateTime: evaluation.endDateTime,
+        },
+        services: {
+          serviceIds: evaluation.selectedServices.map((s) => s.serviceId),
+          totalDurationMinutes: evaluation.totalDurationMinutes,
+          subtotal: evaluation.subtotal,
+        },
+        barber: evaluation.specificBarber
+          ? { empId: evaluation.specificBarber.empId, nameAr: evaluation.specificBarber.nameAr }
+          : null,
+        candidateBarbers: evaluation.candidateBarbers,
+        meta: {
+          evaluationMode: evaluation.evaluationMode,
+          evaluatedAt: evaluation.evaluatedAt,
+        },
+      }
+    );
   } catch (err) {
+    if (err instanceof PublicBookingSelectionError) {
+      return finalizePublicBookingError(req, gate, err.code, err.metadata);
+    }
     console.error('[public/booking/check-slot]', err);
-    return NextResponse.json({ error: 'فشل التحقق من الموعد' }, { status: 500, headers: PUBLIC_CORS_HEADERS });
+    return finalizePublicBookingError(req, gate, 'AVAILABILITY_UNAVAILABLE');
   }
 }

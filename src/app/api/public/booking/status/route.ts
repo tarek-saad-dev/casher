@@ -1,79 +1,78 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import {
   getPublicSettings,
-  getRateLimitKey,
-  checkRateLimit,
-  PUBLIC_CORS_HEADERS,
   PUBLIC_BOOKING_DISABLED_CLIENT_MESSAGE,
 } from '@/lib/publicBookingHelpers';
 import {
-  extractPublicBranchCode,
-  resolvePublicBranchCode,
-  publicBranchRequiredResponse,
-  publicInvalidBranchResponse,
-} from '@/lib/branch/bookingQueueOwnership';
-import { BranchDomainError } from '@/lib/branch/types';
+  PublicBookingBranchContextError,
+  resolvePublicBookingBranchContext,
+} from '@/lib/booking/publicBookingBranchContext';
+import { publicBookingErrorResponse } from '@/lib/booking/publicBookingErrorCatalog';
+import {
+  publicBookingOptionsResponse,
+  PUBLIC_BOOKING_ROUTE_CORS,
+} from '@/lib/booking/publicBookingCors';
+import { extractPublicBranchCode } from '@/lib/branch/bookingQueueOwnership';
+import {
+  gatePublicBookingRoute,
+  finalizePublicBookingError,
+  finalizePublicBookingJson,
+} from '@/lib/booking/publicBookingRouteGate';
 
 export const runtime = 'nodejs';
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: PUBLIC_CORS_HEADERS });
+export async function OPTIONS(req: NextRequest) {
+  const cors = PUBLIC_BOOKING_ROUTE_CORS['status'];
+  return publicBookingOptionsResponse({
+    request: req,
+    allowedMethods: [...cors.methods],
+    allowedHeaders: cors.headers,
+  });
 }
 
 /**
  * GET /api/public/booking/status?branchCode=XXX
- *
- * Lightweight public gate for the client website.
- * Driven by the same QueueBookingSettings.BookingEnabled flag as the
- * «حجز الموقع» toggle on /operations (PATCH /api/admin/booking-settings).
- *
- * - bookingEnabled=true  → show booking UI
- * - bookingEnabled=false → hide barbers section; show `message`
+ * Branch-scoped gate — Camp Caesar → BRANCH_NOT_PUBLIC.
  */
 export async function GET(req: NextRequest) {
-  const ip = getRateLimitKey(req);
-  if (!checkRateLimit(ip)) {
-    return NextResponse.json(
-      { ok: false, error: 'طلبات كثيرة — حاول لاحقاً' },
-      { status: 429, headers: PUBLIC_CORS_HEADERS },
-    );
-  }
+  const { gate, blocked } = gatePublicBookingRoute(req, 'status');
+  if (blocked) return blocked;
 
   try {
     const { searchParams } = new URL(req.url);
     const branchCode = extractPublicBranchCode(searchParams);
-    let branch;
+    const preview = searchParams.get('preview');
+
+    let ctx;
     try {
-      branch = await resolvePublicBranchCode(branchCode, {
-        route: '/api/public/booking/status',
+      ctx = await resolvePublicBookingBranchContext({
+        branchCode,
+        purpose: 'public_booking',
+        previewQueryParam: preview,
       });
     } catch (err) {
-      if (err instanceof BranchDomainError) {
-        return err.code === 'BRANCH_REQUIRED'
-          ? publicBranchRequiredResponse()
-          : publicInvalidBranchResponse();
+      if (err instanceof PublicBookingBranchContextError) {
+        return finalizePublicBookingError(req, gate, err.code);
       }
       throw err;
     }
 
-    const settings = await getPublicSettings(branch.branchId);
-    const bookingEnabled = !!settings.bookingEnabled;
+    const settings = await getPublicSettings(ctx.branchId);
+    const bookingEnabled = !!settings.bookingEnabled && ctx.bookingEnabled;
 
-    return NextResponse.json(
+    return finalizePublicBookingJson(
+      req,
+      gate,
       {
         ok: true,
         bookingEnabled,
-        ...(bookingEnabled
-          ? {}
-          : { message: PUBLIC_BOOKING_DISABLED_CLIENT_MESSAGE }),
+        ...(bookingEnabled ? {} : { message: PUBLIC_BOOKING_DISABLED_CLIENT_MESSAGE }),
       },
-      { headers: PUBLIC_CORS_HEADERS },
     );
   } catch (err) {
     console.error('[public/booking/status]', err);
-    return NextResponse.json(
-      { ok: false, error: 'فشل تحميل حالة الحجز' },
-      { status: 500, headers: PUBLIC_CORS_HEADERS },
-    );
+    return finalizePublicBookingJson(req, gate, { ok: false, error: 'فشل تحميل حالة الحجز' }, {
+      status: 500,
+    });
   }
 }

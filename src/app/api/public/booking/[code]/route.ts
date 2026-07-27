@@ -1,137 +1,82 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getPool, sql } from '@/lib/db';
+import { NextRequest } from 'next/server';
+import { publicBookingErrorResponse } from '@/lib/booking/publicBookingErrorCatalog';
 import {
-  getRateLimitKey,
-  checkRateLimit,
-  PUBLIC_CORS_HEADERS,
-} from '@/lib/publicBookingHelpers';
-import { getBranchById } from '@/lib/branch';
-import { toPublicBranchSafe } from '@/lib/branch/bookingQueueOwnership';
+  publicBookingOptionsResponse,
+  PUBLIC_BOOKING_ROUTE_CORS,
+} from '@/lib/booking/publicBookingCors';
+import {
+  PublicBookingReadError,
+  getPublicBookingByCode,
+} from '@/lib/booking/publicBookingReader';
+import {
+  digestPublicBookingRateSubject,
+} from '@/lib/booking/publicBookingRateLimitPolicy';
+import {
+  gatePublicBookingRoute,
+  finalizePublicBookingError,
+  finalizePublicBookingJson,
+} from '@/lib/booking/publicBookingRouteGate';
 
 export const runtime = 'nodejs';
 
 type RouteContext = { params: Promise<{ code: string }> };
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: PUBLIC_CORS_HEADERS });
+export async function OPTIONS(req: NextRequest) {
+  const cors = PUBLIC_BOOKING_ROUTE_CORS['lookup'];
+  return publicBookingOptionsResponse({
+    request: req,
+    allowedMethods: [...cors.methods],
+    allowedHeaders: cors.headers,
+  });
 }
-
-// ── GET /api/public/booking/:code ─────────────────────────────────────────────
 
 /**
- * Returns public booking details for the confirmation page.
- * Only exposes safe fields — no internal IDs beyond booking code.
+ * GET /api/public/booking/:code
+ * Phase 7A — canonical lookup via publicBookingReader.
+ * Ownership: ?phone=… and/or ?accessToken=… (or Authorization: Bearer).
+ * Code-only returns temporary minimal summary (no customer PII).
  */
 export async function GET(req: NextRequest, context: RouteContext) {
-  const ip = getRateLimitKey(req);
-  if (!checkRateLimit(ip)) {
-    return NextResponse.json({ error: 'طلبات كثيرة' }, { status: 429, headers: PUBLIC_CORS_HEADERS });
-  }
-
-  const { code: rawCode } = await context.params;
-  const code = rawCode?.trim().toUpperCase();
-  if (!code) {
-    return NextResponse.json({ error: 'كود الحجز مطلوب' }, { status: 400, headers: PUBLIC_CORS_HEADERS });
-  }
+  const { code } = await context.params;
+  const subjectDigest = digestPublicBookingRateSubject('code', code);
+  const { gate, blocked } = gatePublicBookingRoute(req, 'lookup', subjectDigest);
+  if (blocked) return blocked;
 
   try {
-    const db = await getPool();
+    const { searchParams } = new URL(req.url);
+    const phone = searchParams.get('phone');
+    const tokenParam = searchParams.get('accessToken') || searchParams.get('token');
+    const auth = req.headers.get('authorization');
+    const bearer =
+      auth && /^Bearer\s+/i.test(auth) ? auth.replace(/^Bearer\s+/i, '').trim() : null;
+    const accessToken = tokenParam || bearer;
 
-    // Try lookup by BookingCode column; fall back to numeric BookingID.
-    // No branchCode required here — booking codes are globally unique, so a
-    // customer can look up their confirmation without knowing the branch.
-    const res = await db.request()
-      .input('code', sql.NVarChar, code)
-      .query(`
-        SELECT
-          b.BookingID,
-          b.BranchID,
-          b.BookingDate,
-          b.StartTime,
-          b.EndTime,
-          b.Status,
-          b.Notes,
-          c.[Name]   AS CustomerName,
-          c.Mobile   AS CustomerPhone,
-          e.EmpName  AS BarberName,
-          (
-            SELECT STRING_AGG(p.ProName, ', ')
-            FROM [dbo].[BookingServices] bs
-            JOIN [dbo].[TblPro] p ON p.ProID = bs.ProID
-            WHERE bs.BookingID = b.BookingID
-          ) AS ServicesText
-        FROM [dbo].[Bookings] b
-        LEFT JOIN [dbo].[TblClient] c ON c.ClientID = b.ClientID
-        LEFT JOIN [dbo].[TblEmp]    e ON e.EmpID    = b.AssignedEmpID
-        WHERE b.BookingCode = @code
-      `).catch(() =>
-        // Fallback: BookingCode column may not exist — search by numeric ID
-        db.request()
-          .input('id', sql.Int, isNaN(Number(code)) ? -1 : Number(code))
-          .query(`
-            SELECT
-              b.BookingID,
-              b.BranchID,
-              b.BookingDate,
-              b.StartTime,
-              b.EndTime,
-              b.Status,
-              b.Notes,
-              c.[Name]   AS CustomerName,
-              c.Mobile   AS CustomerPhone,
-              e.EmpName  AS BarberName,
-              (
-                SELECT STRING_AGG(p.ProName, ', ')
-                FROM [dbo].[BookingServices] bs
-                JOIN [dbo].[TblPro] p ON p.ProID = bs.ProID
-                WHERE bs.BookingID = b.BookingID
-              ) AS ServicesText
-            FROM [dbo].[Bookings] b
-            LEFT JOIN [dbo].[TblClient] c ON c.ClientID = b.ClientID
-            LEFT JOIN [dbo].[TblEmp]    e ON e.EmpID    = b.AssignedEmpID
-            WHERE b.BookingID = @id
-          `)
-      );
+    const result = await getPublicBookingByCode({
+      code,
+      phone,
+      accessToken,
+    });
 
-    const row = res.recordset[0];
-    if (!row) {
-      return NextResponse.json({ error: 'الحجز غير موجود' }, { status: 404, headers: PUBLIC_CORS_HEADERS });
-    }
-
-    const branch = row.BranchID != null ? await getBranchById(Number(row.BranchID)) : null;
-
-    return NextResponse.json({
-      ok: true,
-      booking: {
-        code,
-        status:        row.Status,
-        customerName:  row.CustomerName ?? null,
-        barberName:    row.BarberName   ?? null,
-        servicesText:  row.ServicesText ?? null,
-        date:          typeof row.BookingDate === 'string'
-          ? row.BookingDate.slice(0, 10)
-          : new Date(row.BookingDate).toISOString().slice(0, 10),
-        startTime: fmtTime(row.StartTime),
-        endTime:   fmtTime(row.EndTime),
-        notes:     row.Notes ?? null,
-        branch: branch ? toPublicBranchSafe(branch) : null,
-      },
-    }, { headers: PUBLIC_CORS_HEADERS });
+    return finalizePublicBookingJson(
+      req,
+      gate,
+      {
+        ok: true,
+        booking: result.booking,
+        ...(result.bookingAccessToken
+          ? { bookingAccessToken: result.bookingAccessToken }
+          : {}),
+        meta: {
+          ownership: result.ownership,
+          dateSource: result.booking.dateSource,
+        },
+      }
+    );
   } catch (err) {
+    if (err instanceof PublicBookingReadError) {
+      return finalizePublicBookingError(req, gate, err.code, err.metadata);
+    }
     console.error('[public/booking/:code GET]', err);
-    return NextResponse.json({ error: 'فشل تحميل الحجز' }, { status: 500, headers: PUBLIC_CORS_HEADERS });
+    return finalizePublicBookingError(req, gate, 'BOOKING_LOOKUP_UNAVAILABLE');
   }
-}
-
-// ── POST /api/public/booking/:code/cancel lives in [code]/cancel/route.ts ─────
-// This route only handles GET — see adjacent cancel route.
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function fmtTime(v: unknown): string | null {
-  if (!v) return null;
-  if (typeof v === 'string') return v.slice(0, 5);
-  if (v instanceof Date)
-    return `${String(v.getHours()).padStart(2, '0')}:${String(v.getMinutes()).padStart(2, '0')}`;
-  return null;
 }

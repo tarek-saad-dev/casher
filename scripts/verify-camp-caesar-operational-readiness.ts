@@ -109,20 +109,29 @@ async function main() {
   const row = cc.recordset[0];
   if (!row) fail('CAMP_CAESAR missing');
   if (Number(row.BranchID) !== 3) fail('CAMP_CAESAR BranchID must be 3');
-  if (Boolean(row.IsActive)) fail('Camp Caesar IsActive=1');
   if (Boolean(row.PublicBookingEnabled)) fail('Camp Caesar PublicBookingEnabled=1');
-  if (String(row.LifecycleStatus) === 'INTERNAL_LIVE' || String(row.LifecycleStatus) === 'PUBLIC_LIVE') {
-    fail('Camp Caesar must not be live in this phase');
+  if (String(row.LifecycleStatus) === 'PUBLIC_LIVE') {
+    fail('Camp Caesar must not be PUBLIC_LIVE');
   }
-  ok(`Camp Caesar safe: Lifecycle=${row.LifecycleStatus} IsActive=0 Public=0`);
+  if (String(row.LifecycleStatus) === 'INTERNAL_LIVE') {
+    if (!Boolean(row.IsActive)) fail('INTERNAL_LIVE requires IsActive=1');
+    ok(`Camp Caesar INTERNAL_LIVE: IsActive=1 Public=0`);
+  } else {
+    if (Boolean(row.IsActive)) fail('Camp Caesar IsActive=1 before INTERNAL_LIVE');
+    ok(`Camp Caesar safe: Lifecycle=${row.LifecycleStatus} IsActive=0 Public=0`);
+  }
 
   const active = await pool.request().query(`
     SELECT BranchCode FROM dbo.TblBranch WHERE IsActive=1
   `);
-  if (active.recordset.some((r: { BranchCode: string }) => r.BranchCode === 'CAMP_CAESAR')) {
-    fail('Camp Caesar in nightly/active enumeration');
+  const ccActive = active.recordset.some((r: { BranchCode: string }) => r.BranchCode === 'CAMP_CAESAR');
+  if (String(row.LifecycleStatus) === 'INTERNAL_LIVE') {
+    if (!ccActive) fail('INTERNAL_LIVE Camp Caesar missing from active/nightly enumeration');
+    ok('included in active/nightly list (INTERNAL_LIVE)');
+  } else {
+    if (ccActive) fail('Camp Caesar in nightly/active enumeration');
+    ok('excluded from active/nightly list');
   }
-  ok('excluded from active/nightly list');
 
   // Nested verifiers
   const { spawnSync } = await import('child_process');

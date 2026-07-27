@@ -332,6 +332,43 @@ export async function getBarberWorkingWindow(
     const freelanceUnlocks = await loadFreelanceBookingUnlocks([empId], cairoDs);
     const freelanceUnlock = freelanceUnlocks.get(empId);
 
+    // Phase 1Q: prefer branch-owned weekly schedule when an active assignment exists.
+    const branchRes = await db.request()
+      .input('empId',     sql.Int,     empId)
+      .input('dayOfWeek', sql.TinyInt, dayOfWeek)
+      .input('day',       sql.Date,    cairoDs)
+      .query(`
+        SELECT TOP 1 s.IsWorking, s.StartTime, s.EndTime
+        FROM dbo.TblEmpBranchWorkSchedule s
+        INNER JOIN dbo.TblEmpBranchAssignment a
+          ON a.EmpID = s.EmpID AND a.BranchID = s.BranchID
+        WHERE s.EmpID = @empId
+          AND s.DayOfWeek = @dayOfWeek
+          AND s.IsActive = 1
+          AND s.EffectiveFrom <= @day
+          AND (s.EffectiveTo IS NULL OR s.EffectiveTo >= @day)
+          AND a.IsActive = 1
+          AND a.EffectiveFrom <= @day
+          AND (a.EffectiveTo IS NULL OR a.EffectiveTo >= @day)
+        ORDER BY s.EffectiveFrom DESC, s.ScheduleID DESC
+      `);
+    if (branchRes.recordset.length) {
+      const row = branchRes.recordset[0];
+      if (!row.IsWorking && freelanceUnlock) {
+        return {
+          isWorkingDay: true,
+          startTime: freelanceUnlock.start,
+          endTime: freelanceUnlock.end,
+        };
+      }
+      return {
+        isWorkingDay: !!row.IsWorking,
+        startTime: fmtTime(row.StartTime),
+        endTime:   fmtTime(row.EndTime),
+      };
+    }
+
+    // Legacy fallback for pre-Phase-1Q employees.
     const res = await db.request()
       .input('empId',     sql.Int,     empId)
       .input('dayOfWeek', sql.TinyInt, dayOfWeek)

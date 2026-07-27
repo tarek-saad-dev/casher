@@ -1,0 +1,56 @@
+{
+  "days": {
+    "coldMs": 64161,
+    "warmMs": 698,
+    "statuses": [
+      "available",
+      "not_available_publicly"
+    ],
+    "availableDays": 6,
+    "totalDuration": 30
+  },
+  "slotsWorking": {
+    "date": "2026-08-01",
+    "coldMs": 5447,
+    "warmMs": 4743,
+    "slotCount": 47,
+    "first": {
+      "time": "13:00",
+      "dayOffset": 0,
+      "startDateTime": "2026-08-01T10:00:00.000Z",
+      "endDateTime": "2026-08-01T10:30:00.000Z",
+      "barbers": [
+        {
+          "empId": 12,
+          "nameAr": "زياد"
+        }
+      ]
+    },
+    "overnightCount": 3,
+    "duplicateTopLevelTimes": [],
+    "duration": 30,
+    "price": 200
+  },
+  "anyBarber": {
+    "slotCount": 56,
+    "eligibleBarberCount": 4,
+    "maxBarbersOnSlot": 4
+  },
+  "multiService": {
+    "totalDuration": 50
+  },
+  "calendar": {
+    "presenceOnly": true,
+    "withServicesPresenceOnly": false,
+    "withServicesStatuses": [
+      "available"
+    ]
+  },
+  "offDay": {
+    "date": "2026-08-07",
+    "slotCount": 0
+  },
+  "campCaesar": {
+    "code": "BRANCH_NOT_PUBLIC"
+  }
+}

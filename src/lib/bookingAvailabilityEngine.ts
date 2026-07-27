@@ -364,7 +364,11 @@ async function buildBarberContexts(args: {
   let barberIds: number[] =
     mode === 'specific' && empId ? [empId] : await getAllBarberIds(db);
   if (branchId != null) {
-    const eligibleIds = new Set(await listBookableEmployeeIdsForBranch(branchId, date));
+    const eligibleIds = new Set(
+      await listBookableEmployeeIdsForBranch(branchId, date, {
+        publicOnly: source === 'public',
+      }),
+    );
     barberIds = barberIds.filter((id) => eligibleIds.has(id));
   }
   timer.mark('barbersMs');
@@ -676,8 +680,27 @@ export async function listAvailableBookingSlots(args: {
   source?: 'public' | 'operations' | 'admin';
   /** Branch scoping: restricts visible barbers to branch-eligible employees. */
   branchId?: number | null;
+  /**
+   * When set, every barber uses this duration (Phase 4 public catalog sum).
+   * Skips emp-override / system-default duration resolution.
+   */
+  durationOverride?: number;
+  /**
+   * Nearest/any-barber: include every available barber at each time
+   * (merged later by public wrapper). Specific mode ignores this.
+   */
+  collectAllCandidates?: boolean;
 }): Promise<ListAvailableBookingSlotsResult> {
-  const { date, serviceIds, mode, empId, source = 'public', branchId } = args;
+  const {
+    date,
+    serviceIds,
+    mode,
+    empId,
+    source = 'public',
+    branchId,
+    durationOverride,
+    collectAllCandidates,
+  } = args;
   const today = new Date();
   const todayBusinessDate = getCairoBusinessDate(today);
   const isPast = date < todayBusinessDate;
@@ -698,6 +721,7 @@ export async function listAvailableBookingSlots(args: {
     empId,
     source,
     branchId,
+    durationOverride,
   });
 
   if (isPast) {
@@ -743,20 +767,26 @@ export async function listAvailableBookingSlots(args: {
     nowMs,
     minNoticeMs,
     rejectionCounts,
+    collectAllCandidates: !!collectAllCandidates && mode !== 'specific',
   });
 
   const availableSlotsUnlimited = allPlans.filter((s: BookingSlotPlan) => s.available);
-  const validSlotCountBeforeLimit = availableSlotsUnlimited.length;
+  const validSlotCountBeforeLimit = collectAllCandidates
+    ? new Set(availableSlotsUnlimited.map((s) => `${s.dayOffset}|${s.time}`)).size
+    : availableSlotsUnlimited.length;
   const isInternalSource = source === 'operations' || source === 'admin';
   const hasOvernight = contexts.some((c) => c.isOvernight);
   const publicLimit = hasOvernight
     ? PUBLIC_OVERNIGHT_SLOTS_LIMIT
     : PUBLIC_AVAILABLE_SLOTS_LIMIT;
-  const limitApplied = !isInternalSource && validSlotCountBeforeLimit > publicLimit;
+  const limitApplied =
+    !isInternalSource && !collectAllCandidates && validSlotCountBeforeLimit > publicLimit;
   const availableSlots = limitApplied
     ? availableSlotsUnlimited.slice(0, publicLimit)
     : availableSlotsUnlimited;
-  const returnedSlotCount = availableSlots.length;
+  const returnedSlotCount = collectAllCandidates
+    ? new Set(availableSlots.map((s) => `${s.dayOffset}|${s.time}`)).size
+    : availableSlots.length;
   const nextAvailable = availableSlots[0] ?? null;
 
   const primaryCtx =
@@ -898,6 +928,7 @@ function evaluateSlotsForContexts(args: {
   nowMs: number;
   minNoticeMs: number;
   rejectionCounts?: Record<SlotRejectionBucket, number>;
+  collectAllCandidates?: boolean;
 }): BookingSlotPlan[] {
   const {
     date,
@@ -910,6 +941,7 @@ function evaluateSlotsForContexts(args: {
     nowMs,
     minNoticeMs,
     rejectionCounts,
+    collectAllCandidates,
   } = args;
   const allPlans: BookingSlotPlan[] = [];
 
@@ -940,6 +972,41 @@ function evaluateSlotsForContexts(args: {
       });
       recordRejection(plan);
       if (plan) allPlans.push(plan);
+    } else if (collectAllCandidates) {
+      let anyAvailable = false;
+      for (const ctx of contexts) {
+        const plan = evaluateBarberSlot({
+          ctx,
+          time,
+          dayOffset,
+          slotDate,
+          slotStartMs,
+          timezone,
+          isToday,
+          nowMs,
+          minNoticeMs,
+          includeSilentRejections: false,
+        });
+        if (plan?.available) {
+          allPlans.push(plan);
+          anyAvailable = true;
+        }
+      }
+      if (!anyAvailable && rejectionCounts && contexts[0]) {
+        const probe = evaluateBarberSlot({
+          ctx: contexts[0],
+          time,
+          dayOffset,
+          slotDate,
+          slotStartMs,
+          timezone,
+          isToday,
+          nowMs,
+          minNoticeMs,
+          includeSilentRejections: true,
+        });
+        recordRejection(probe);
+      }
     } else {
       let best: BookingSlotPlan | null = null;
       let bestOrder = Number.POSITIVE_INFINITY;

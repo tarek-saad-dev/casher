@@ -1,0 +1,15 @@
+{
+  "phase": "booking-phase-7c1-cors-proof",
+  "passed": true,
+  "failed": [],
+  "proofs": {
+    "create_options_allowed": true,
+    "create_options_ms": 7,
+    "cancel_options_idempotency": true,
+    "disallowed_options_403": true,
+    "no_origin_ok": true,
+    "error_has_acao": true,
+    "disallowed_get_no_acao": true,
+    "branches_options_allowed": true
+  }
+}

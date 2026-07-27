@@ -271,9 +271,16 @@ export async function buildQueueIntervals(
     filterStale?: boolean; // if true, exclude stale tickets (default: true for operations)
     graceMinutes?: number;
     debugContext?: string; // for logging context
+    /** When true, query failures throw (required under Transaction — never fake empty busy). */
+    failHard?: boolean;
   },
 ): Promise<Interval[]> {
-  const { filterStale = true, graceMinutes = STALE_GRACE_MINUTES, debugContext = "" } = options || {};
+  const {
+    filterStale = true,
+    graceMinutes = STALE_GRACE_MINUTES,
+    debugContext = "",
+    failHard = false,
+  } = options || {};
   // Build SELECT defensively — guard QueueTicketServices with cached Object_ID check
   const svcTableExists = await queueTicketServicesExists(db);
 
@@ -334,6 +341,7 @@ export async function buildQueueIntervals(
     )
     .catch((err: any) => {
       console.error("[buildQueueIntervals] query error", err?.message ?? err);
+      if (failHard) throw err;
       return { recordset: [] as any[] };
     });
 
@@ -475,7 +483,9 @@ export async function buildBookingIntervals(
   empId: number,
   dateStr: string,
   defaultDuration: number,
+  options?: { failHard?: boolean },
 ): Promise<Interval[]> {
+  const failHard = !!options?.failHard;
   const statusList = ACTIVE_BOOKING_BLOCK_STATUSES.map((s) => `'${s}'`).join(',');
 
   const res = await db
@@ -502,7 +512,10 @@ export async function buildBookingIntervals(
       ORDER BY b.StartTime ASC
     `,
     )
-    .catch(() => ({ recordset: [] as any[] }));
+    .catch((err: unknown) => {
+      if (failHard) throw err;
+      return { recordset: [] as any[] };
+    });
 
   return res.recordset.map((b: {
     BookingID: number;

@@ -96,15 +96,25 @@ async function main() {
   `);
   const cc = b.recordset[0];
   if (!cc) fail('Camp Caesar missing');
-  if (cc.LifecycleStatus !== 'SETUP') fail(`CC must be SETUP, got ${cc.LifecycleStatus}`);
-  if (cc.IsActive) fail('CC must not be active');
+  if (cc.LifecycleStatus === 'PUBLIC_LIVE') fail('CC must not be PUBLIC_LIVE');
+  if (!['SETUP', 'SMOKE_TEST', 'INTERNAL_LIVE'].includes(String(cc.LifecycleStatus))) {
+    fail(`unexpected CC lifecycle ${cc.LifecycleStatus}`);
+  }
+  if (cc.LifecycleStatus === 'INTERNAL_LIVE') {
+    if (!cc.IsActive) fail('INTERNAL_LIVE requires IsActive=1');
+  } else if (cc.IsActive) {
+    fail('CC must not be active before INTERNAL_LIVE');
+  }
   if (cc.PublicBookingEnabled) fail('CC public booking must be off');
-  if (cc.ExternalNotificationsEnabled) fail('CC external notifications must be off');
+  // External notifications may be enabled for INTERNAL_LIVE per lifecycle capabilities
+  if (cc.LifecycleStatus !== 'INTERNAL_LIVE' && cc.ExternalNotificationsEnabled) {
+    fail('CC external notifications must be off before INTERNAL_LIVE');
+  }
   if (String(cc.Address) !== 'كامب شيزار') fail('wrong address');
   if (String(cc.Phone) !== '01012126899') fail('wrong phone');
   if (String(cc.OpenT).slice(0, 5) !== '11:00') fail('wrong open time');
   if (String(cc.CloseT).slice(0, 5) !== '01:30') fail('wrong close time');
-  ok('CC identity/hours/lifecycle');
+  ok(`CC identity/hours/lifecycle=${cc.LifecycleStatus}`);
 
   const gleem = await pool.request().query(`
     SELECT Address, Phone,
@@ -126,18 +136,21 @@ async function main() {
   ok('English display + booking off');
 
   const partners = await pool.request().query(`
-    SELECT PartnerCode, SharePercent, IsActive, Notes
-    FROM dbo.TblBranchPartnerShare WHERE BranchID=3
+    SELECT PartnerCode, PartnerName, SharePercent, IsActive, EffectiveFrom
+    FROM dbo.TblBranchPartnerShare WHERE BranchID=3 AND IsActive=1
   `);
   const total = partners.recordset.reduce(
     (s: number, r: { SharePercent: number }) => s + Number(r.SharePercent),
     0,
   );
-  if (Math.abs(total - 100) > 0.001) fail(`partner draft total ${total}`);
-  if (partners.recordset.some((r: { IsActive: boolean }) => r.IsActive)) {
-    fail('draft partners must be inactive');
-  }
-  ok('partner draft 100% inactive');
+  if (Math.abs(total - 100) > 0.001) fail(`active partner total ${total}`);
+  if (partners.recordset.length !== 4) fail(`expected 4 active partners, got ${partners.recordset.length}`);
+  const datesOk = partners.recordset.every((r: { EffectiveFrom: Date }) => {
+    const d = new Date(r.EffectiveFrom).toISOString().slice(0, 10);
+    return d === '2026-07-27';
+  });
+  if (!datesOk) fail('active partners must be effective 2026-07-27');
+  ok('partner shares active 100% @ 2026-07-27');
 
   const gleemPartners = await pool.request().query(`
     SELECT COUNT(*) AS Cnt FROM dbo.TblBranchPartnerShare WHERE BranchID=1 AND IsActive=1
@@ -173,27 +186,77 @@ async function main() {
 
   const { evaluateBranchReadiness } = await import('@/lib/branch/branchReadinessService');
   const evalRes = await evaluateBranchReadiness(3);
-  if (evalRes.isReadyForInternalLive) fail('INTERNAL_LIVE falsely ready');
   if (evalRes.isReadyForPublicLive) fail('PUBLIC_LIVE falsely ready');
   const keys = evalRes.blockers.map((b) => b.key);
-  for (const k of [
-    'biz.opening_cash',
-    'biz.opening_inventory',
-    'biz.real_employees',
-    'biz.partner_shares_effective_date',
-  ]) {
-    if (!keys.includes(k)) fail(`missing expected blocker ${k}`);
+  const publicKeys = [
+    'public.frontend_multi_branch',
+    'public.branch_selection',
+    'public.explicit_branch_code',
+    'public.booking_flow_smoke',
+    'public.customer_notifications',
+  ];
+  for (const k of publicKeys) {
+    if (!keys.includes(k)) fail(`missing expected public blocker ${k}`);
   }
-  ok('readiness correctly blocks internal/public live');
+  if (String(cc.LifecycleStatus) === 'INTERNAL_LIVE') {
+    // Opening/employees/partners should be cleared after Phase 1S
+    for (const k of [
+      'biz.opening_cash',
+      'biz.opening_inventory',
+      'biz.real_employees',
+      'biz.partner_shares_effective_date',
+    ]) {
+      if (keys.includes(k)) fail(`unexpected internal blocker after go-live: ${k}`);
+    }
+    if (!keys.includes('ops.weekly_employee_coverage')) {
+      fail('expected ops.weekly_employee_coverage business blocker (Fri-only roster)');
+    }
+    if (keys.includes('final.current_config_smoke')) {
+      fail('final.current_config_smoke still blocking — retained-only smoke not replaced?');
+    }
+    if (keys.includes('services.catalog_operational')) {
+      fail('services.catalog_operational unexpectedly blocking');
+    }
+    ok('readiness: INTERNAL_LIVE config green; weekly coverage blocker present; public blockers retained');
+  } else {
+    if (evalRes.isReadyForInternalLive) fail('INTERNAL_LIVE falsely ready');
+    for (const k of [
+      'biz.opening_cash',
+      'biz.opening_inventory',
+      'biz.real_employees',
+      'biz.partner_shares_effective_date',
+    ]) {
+      if (!keys.includes(k)) fail(`missing expected blocker ${k}`);
+    }
+    ok('readiness correctly blocks internal/public live');
+  }
 
   const smoke = await pool.request().query(`
-    SELECT TOP 1 SmokeRunID, Status, CleanupStatus
+    SELECT TOP 1 SmokeRunID, Status, CleanupStatus, ResultJson
     FROM dbo.TblBranchSmokeRun WHERE BranchID=3
+      AND Status IN (N'PASSED', N'CLEANED')
     ORDER BY SmokeRunID DESC
   `);
   if (!smoke.recordset[0]) fail('no smoke run');
   if (String(smoke.recordset[0].Status) !== 'CLEANED') fail('latest smoke not CLEANED');
-  ok(`latest smoke CLEANED (SmokeRunID=${smoke.recordset[0].SmokeRunID})`);
+  const smokeId = Number(smoke.recordset[0].SmokeRunID);
+  let rj: Record<string, unknown> = {};
+  try {
+    rj = JSON.parse(String(smoke.recordset[0].ResultJson || '{}'));
+  } catch {
+    fail('latest smoke ResultJson invalid');
+  }
+  const proofs = (rj.proofs as Record<string, unknown>) || {};
+  if (proofs['prior.smoke_run_11_retained'] || proofs.retainedFromSmokeRunId) {
+    fail(`latest smoke SmokeRunID=${smokeId} is retained-only — not a valid final smoke`);
+  }
+  if (smokeId < 22) {
+    fail(`expected authoritative final smoke >= 22, got ${smokeId}`);
+  }
+  if (!proofs['final.current_config'] && rj.phase !== '1S-R-final') {
+    fail(`SmokeRunID=${smokeId} missing final.current_config / 1S-R-final phase`);
+  }
+  ok(`latest current-config smoke CLEANED (SmokeRunID=${smokeId})`);
 
   await pool.close();
   console.log('VERIFY_CAMP_CAESAR_REAL_CONFIGURATION: PASS');

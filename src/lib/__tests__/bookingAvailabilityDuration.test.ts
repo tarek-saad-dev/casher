@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('server-only', () => ({}));
+
 import { evaluateBookingSlotAt } from '@/lib/bookingAvailabilityEngine';
 
 function at(h: number, m = 0): Date {

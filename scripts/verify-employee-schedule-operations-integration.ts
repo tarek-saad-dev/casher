@@ -49,11 +49,51 @@ async function main() {
   }
   ok('no legacy WorkSchedule writes from global save');
 
-  const dayState = read('src/lib/hr/operationsDayState.ts');
-  if (!dayState.includes('resolveEmployeeGlobalSchedule') || !dayState.includes('resolveEmployeeBranchSchedule')) {
-    fail('Daily modal reconstructs schedule independently');
+  const legacyScheduleRoute = read('src/app/api/admin/employees/[id]/schedule/route.ts');
+  if (!legacyScheduleRoute.includes('LEGACY_EMP_WORK_SCHEDULE_WRITE_LOCKED')) {
+    fail('Ordinary /schedule PUT is not write-locked');
   }
-  ok('day-state uses central resolvers');
+  if (
+    /export async function PUT[\s\S]*INSERT INTO dbo\.TblEmpWorkSchedule/i.test(legacyScheduleRoute)
+  ) {
+    fail('Ordinary /schedule PUT still inserts into TblEmpWorkSchedule');
+  }
+  if (
+    /export async function PUT[\s\S]*UPDATE dbo\.TblEmpWorkSchedule/i.test(legacyScheduleRoute)
+  ) {
+    fail('Ordinary /schedule PUT still updates TblEmpWorkSchedule');
+  }
+  ok('legacy /schedule PUT write-locked');
+
+  const empModal = read('src/components/admin/EmployeeManagementModal.tsx');
+  if (!empModal.includes('الفروع ومواعيد العمل')) {
+    fail('Employee modal missing branch-schedule CTA');
+  }
+  ok('employee modal redirects to branch schedule');
+
+  const dayState = read('src/lib/hr/operationsDayState.ts');
+  if (!dayState.includes('listOperationalPresenceForBranch') || !dayState.includes('TblEmpBranchWorkSchedule')) {
+    fail('Daily modal / presence missing batched branch schedule path');
+  }
+  if (dayState.includes('resolveEmployeeGlobalSchedule') || dayState.includes('resolveEmployeeBranchSchedule')) {
+    fail('Daily modal reconstructs schedule via per-employee resolvers (N+1)');
+  }
+  ok('day-state uses batched schedule/transfer presence');
+
+  const fb = read('src/app/api/operations/flow-board/route.ts');
+  const fbLoader = exists('src/lib/operations/loadFlowBoardForBranch.ts')
+    ? read('src/lib/operations/loadFlowBoardForBranch.ts')
+    : '';
+  if (
+    !fb.includes('listOperationalPresenceForBranch') &&
+    !fbLoader.includes('listOperationalPresenceForBranch')
+  ) {
+    fail('Flow-board not refreshed / not location-filtered');
+  }
+  if (fb.includes('resolveEmployeeBranchSchedule') || fbLoader.includes('resolveEmployeeBranchSchedule')) {
+    fail('Flow-board still N+1 resolves per barber');
+  }
+  ok('flow-board location filter (batched)');
 
   const transfer = read('src/lib/hr/temporaryBranchTransfer.ts');
   if (!transfer.includes('previewTemporaryBranchTransfer')) fail('transfer preview missing');
@@ -89,12 +129,6 @@ async function main() {
   if (!modal.includes('نقل اليوم لفرع آخر')) fail('ops modal missing transfer action');
   if (!modal.includes('temporary-transfer')) fail('ops modal not wired to transfer API');
   ok('ops modal transfer UI');
-
-  const fb = read('src/app/api/operations/flow-board/route.ts');
-  if (!fb.includes('listResolvedOperationalEmpIdsForBranch')) {
-    fail('Flow-board not refreshed / not location-filtered');
-  }
-  ok('flow-board location filter');
 
   const booking = read('src/app/api/public/booking/create/route.ts');
   if (!booking.includes('BARBER_AVAILABLE_AT_DIFFERENT_BRANCH')) {

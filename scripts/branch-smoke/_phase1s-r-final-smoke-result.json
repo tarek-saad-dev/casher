@@ -1,0 +1,130 @@
+{
+  "smokeRunId": 22,
+  "finalStatus": "PASSED",
+  "proofs": {
+    "roster.ziad_assigned": true,
+    "opening.cash_zero": true,
+    "inventory.adjustment": true,
+    "inventory.consumption": true,
+    "pos.cashInvoice": true,
+    "pos.cardInvoice": true,
+    "payroll.hourlyLedgerCredit": true,
+    "payroll.monthlySalaryPost": true,
+    "target.positiveEntitlement": true,
+    "target.ledgerCredit": true,
+    "target.ziad_no_target_zero": true,
+    "advance.payout": true,
+    "printer.camp_caesar_identity": true,
+    "whatsapp.camp_caesar_identity": true,
+    "external.whatsapp": true,
+    "external.prints": true,
+    "public.booking_disabled": true,
+    "gleem.isolation": true,
+    "reconciliation.mismatch_count": 0,
+    "cleanup.completed": true,
+    "final.current_config": true
+  },
+  "ids": {
+    "hourlyEmpId": 1050,
+    "monthlyEmpId": 1051,
+    "hourlyAsgId": 42,
+    "monthlyAsgId": 43,
+    "hourlyPlanId": 40,
+    "monthlyPlanId": 41,
+    "serviceProId": 1071,
+    "productProId": 1072,
+    "businessDayId": 4470,
+    "shiftMoveId": 10836,
+    "createdShift": false,
+    "cashInvId": 7817,
+    "cardInvId": 7818,
+    "cashMoveCashId": 36793,
+    "cashMoveCardId": 36794,
+    "attendanceId": 2920,
+    "bookingId": 2144,
+    "ticketId": 160,
+    "payrollId": 1646,
+    "hourlyLedgerId": 617,
+    "monthlyLedgerId": 618,
+    "targetPlanId": 23,
+    "targetId": 116,
+    "targetLedgerId": 619,
+    "payoutLedgerId": 620,
+    "invAdjUpId": 34,
+    "invAdjDownId": 35,
+    "invConsId": 36
+  },
+  "steps": [
+    {
+      "step": "0.leftover_smoke_emps",
+      "ok": true,
+      "detail": "Deactivated leftover [SMOKE 1S]/[SMOKE 1SR] CC assignments (IsActive only)"
+    },
+    {
+      "step": "A.preconditions",
+      "ok": true,
+      "detail": "INTERNAL_LIVE + GLEEM smoke refused"
+    },
+    {
+      "step": "B.smoke_start",
+      "ok": true,
+      "detail": "SmokeRunID=22"
+    },
+    {
+      "step": "C.seed",
+      "ok": true,
+      "detail": "hourly=1050 monthly=1051 svc=1071"
+    },
+    {
+      "step": "D.attendance",
+      "ok": true,
+      "detail": "AttendanceID=2920"
+    },
+    {
+      "step": "E.queue",
+      "ok": true,
+      "detail": "Booking=2144 Queue=160 start/finish ok"
+    },
+    {
+      "step": "F.inventory",
+      "ok": true,
+      "detail": "consAfter=3"
+    },
+    {
+      "step": "G.pos",
+      "ok": true,
+      "detail": "cashInv=7817 cardInv=7818 cmCash=36793 cmCard=36794"
+    },
+    {
+      "step": "H.payroll_hourly",
+      "ok": true,
+      "detail": "PayrollID=1646 LedgerID=617 dual=true"
+    },
+    {
+      "step": "I.monthly",
+      "ok": true,
+      "detail": "LedgerID=618"
+    },
+    {
+      "step": "J.targets",
+      "ok": true,
+      "detail": "smokeEnt=30 ziadEnt=0"
+    },
+    {
+      "step": "K.payout",
+      "ok": true,
+      "detail": "amt=10 overpayRejected=true"
+    },
+    {
+      "step": "L.isolation_identity",
+      "ok": true,
+      "detail": "GLEEM unchanged; public off"
+    }
+  ],
+  "branch": {
+    "lifecycleStatus": "INTERNAL_LIVE",
+    "isActive": true,
+    "publicBookingEnabled": false
+  },
+  "at": "2026-07-26T22:22:37.836Z"
+}

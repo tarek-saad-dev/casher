@@ -201,7 +201,8 @@ export function useBookingWorkspace({
 
   useEffect(() => {
     setLoadingServices(true);
-    fetch('/api/services?active=true')
+    // bookable=true: salon services only (excludes products / CatType=pro / zero price)
+    fetch('/api/services?active=true&bookable=true')
       .then((r) => r.json())
       .then((d) => {
         const raw: BookingService[] = d.services ?? (Array.isArray(d) ? d : []);
@@ -394,7 +395,7 @@ export function useBookingWorkspace({
 
   const MAIN_SERVICE_NAMES = useMemo(
     () => [
-      'Hair Cut', 'Haircut', 'Detailed Cut', 'Detail Cut', 'DetailedCut',
+      'Hair Cut', 'Haircut', 'Basic Cut', 'Detailed Cut', 'Detail Cut', 'DetailedCut',
       'Beard Styling & Fade', 'Beard Styling', 'Beard',
       'Haircut & Beard', 'Hair & Beard', 'Hair cut & Beard', 'Hair cut + Beard', 'Hair and Beard',
       'Advanced Cut', 'Fade Cut',

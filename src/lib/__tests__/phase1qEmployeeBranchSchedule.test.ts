@@ -59,11 +59,13 @@ describe('phase1qBranchFilteredAvailability', () => {
 describe('phase1qCrossBranchBookingGuard', () => {
   it('create and slots reject wrong branch', () => {
     const create = read('src/app/api/public/booking/create/route.ts');
+    const avail = read('src/lib/booking/publicBookingAvailability.ts');
     const slots = read(
       'src/app/api/public/booking/barbers/[empId]/available-slots/route.ts',
     );
     expect(create).toContain('BARBER_AVAILABLE_AT_DIFFERENT_BRANCH');
-    expect(slots).toContain('BARBER_AVAILABLE_AT_DIFFERENT_BRANCH');
+    expect(avail).toContain('BARBER_AVAILABLE_AT_DIFFERENT_BRANCH');
+    expect(slots).toContain('getPublicAvailableSlots');
   });
 });
 

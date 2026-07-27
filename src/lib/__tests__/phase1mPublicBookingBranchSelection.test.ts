@@ -12,22 +12,24 @@ function read(rel: string) {
 }
 
 describe('Phase 1M public booking branch selection', () => {
-  it('listPublicActiveBranches filters by PUBLIC_LIVE + PublicBookingEnabled', () => {
+  it('listPublicActiveBranches filters by PUBLIC_LIVE + PublicBookingEnabled + QBS', () => {
     const src = read('src/lib/branch/bookingQueueOwnership.ts');
     expect(src).toContain('isPubliclyDiscoverable');
     expect(src).toContain('listPublicActiveBranches');
     expect(src).toContain('assertPublicBookable');
+    expect(src).toContain('BookingEnabled');
     expect(src).toContain('publicBranches.length === 1');
     expect(src).toContain('PH1GTEST / SETUP / SMOKE_TEST never resolve publicly');
   });
 
-  it('status + config endpoints remain branchCode scoped', () => {
+  it('status + config endpoints remain branchCode scoped via Phase 1 resolver', () => {
     const status = read('src/app/api/public/booking/status/route.ts');
     expect(status).toContain('extractPublicBranchCode');
-    expect(status).toContain('resolvePublicBranchCode');
+    expect(status).toContain('resolvePublicBookingBranchContext');
 
     const config = read('src/app/api/public/booking/config/route.ts');
     expect(config).toContain('extractPublicBranchCode');
+    expect(config).toContain('resolvePublicBookingBranchContext');
     expect(config).toContain('bookingEnabled');
   });
 

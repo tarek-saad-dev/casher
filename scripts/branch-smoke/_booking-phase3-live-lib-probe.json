@@ -1,0 +1,62 @@
+{
+  "global": {
+    "count": 5,
+    "duplicateEmpIds": [],
+    "testSmokeLeak": 0,
+    "branches": [
+      "GLEEM"
+    ],
+    "bytes": 2057,
+    "coldMs": 5243,
+    "warmMs": 529,
+    "sample": [
+      {
+        "empId": 18,
+        "name": "احمد"
+      },
+      {
+        "empId": 12,
+        "name": "زياد"
+      },
+      {
+        "empId": 25,
+        "name": "عمر"
+      }
+    ]
+  },
+  "branchGleem": {
+    "count": 5,
+    "branch": {
+      "branchCode": "GLEEM",
+      "branchName": "جليم – سابا باشا"
+    }
+  },
+  "campCaesar": {
+    "code": "BRANCH_NOT_PUBLIC"
+  },
+  "calendar": {
+    "empId": 18,
+    "from": "2026-07-27",
+    "to": "2026-08-02",
+    "days": 7,
+    "statuses": [
+      "global_leave"
+    ],
+    "overnight": false
+  },
+  "locationWorking": {
+    "date": "2026-07-27",
+    "isWorking": false,
+    "status": "global_leave",
+    "branchCode": null
+  },
+  "locationOff": {
+    "date": "2026-07-27",
+    "isWorking": false,
+    "status": "global_leave",
+    "branch": null
+  },
+  "testEmpDirect": {
+    "code": "BARBER_NOT_FOUND"
+  }
+}

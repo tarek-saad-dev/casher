@@ -130,6 +130,14 @@ export const SENSITIVE_ACTIONS: Record<string, SensitiveActionMetadata> = {
     requiresReason: false,
     sensitiveFields: ['password', 'token', 'secret', 'cookie', 'authorization'],
   },
+  restore_service: {
+    actionType: 'restore_service',
+    label: 'استعادة خدمة',
+    entityType: 'TblPro',
+    riskLevel: 'medium',
+    requiresReason: false,
+    sensitiveFields: ['password', 'token', 'secret', 'cookie'],
+  },
 };
 
 export function getSensitiveAction(actionType: string): SensitiveActionMetadata {

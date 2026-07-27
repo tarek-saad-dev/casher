@@ -62,5 +62,9 @@ export async function canEmployeeReceivePublicBookings(args: {
   workDate: string;
 }): Promise<boolean> {
   if (!(await canBranchAppearInPublicBooking(args.branchId))) return false;
-  return isEmployeeEligibleForBranchBookings(args.empId, args.branchId, args.workDate);
+  return isEmployeeEligibleForBranchBookings({
+    empId: args.empId,
+    branchId: args.branchId,
+    operationalDate: args.workDate,
+  });
 }

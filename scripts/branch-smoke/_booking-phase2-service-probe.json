@@ -1,0 +1,355 @@
+{
+  "columns": [
+    {
+      "COLUMN_NAME": "CatID",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "CatName",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "btnColor",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "CatType",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "SortOrder",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "ProID",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "NO"
+    },
+    {
+      "COLUMN_NAME": "CatID",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "ProType",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "ProName",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "PPrice",
+      "DATA_TYPE": "decimal",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "SPrice1",
+      "DATA_TYPE": "decimal",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "Barcode",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "btnColor",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "BonusPercent",
+      "DATA_TYPE": "decimal",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "Bonus",
+      "DATA_TYPE": "decimal",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "QuickSales",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "ProDis",
+      "DATA_TYPE": "decimal",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "ProDisVal",
+      "DATA_TYPE": "decimal",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "Qty",
+      "DATA_TYPE": "decimal",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "isDeleted",
+      "DATA_TYPE": "bit",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "DurationMinutes",
+      "DATA_TYPE": "int",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "ProNameAr",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "YES"
+    },
+    {
+      "COLUMN_NAME": "ImageUrl",
+      "DATA_TYPE": "nvarchar",
+      "IS_NULLABLE": "YES"
+    }
+  ],
+  "counts": {
+    "TotalRows": 59,
+    "ActiveRows": 44,
+    "ActivePriced": 44,
+    "ActiveTimed": 30,
+    "SoftDeleted": 15,
+    "LegitimateBookable": 30,
+    "RetailProducts": 10,
+    "InvalidDuration": 14,
+    "InvalidPriceNeg": 0,
+    "Uncategorized": 2
+  },
+  "deletedSample": [
+    {
+      "ProID": 30,
+      "ProName": "عــــــــــــــــــائــــــد للخـــــزنه ( كاش )",
+      "ProNameAr": "عــــــــــــــــــائــــــد للخـــــزنه ( كاش )",
+      "SPrice1": 0,
+      "DurationMinutes": null,
+      "ProType": "serv",
+      "CatName": "إداريات",
+      "CatType": "serv"
+    },
+    {
+      "ProID": 45,
+      "ProName": "Threading",
+      "ProNameAr": "فتلة",
+      "SPrice1": 50,
+      "DurationMinutes": 10,
+      "ProType": "serv",
+      "CatName": "Beard Cut",
+      "CatType": null
+    },
+    {
+      "ProID": 1053,
+      "ProName": "Hair Cut",
+      "ProNameAr": "حلاقة شعر",
+      "SPrice1": 50,
+      "DurationMinutes": null,
+      "ProType": null,
+      "CatName": null,
+      "CatType": null
+    },
+    {
+      "ProID": 1063,
+      "ProName": "[SMOKE CC] Haircut",
+      "ProNameAr": null,
+      "SPrice1": null,
+      "DurationMinutes": 30,
+      "ProType": "serv",
+      "CatName": "Hair & Beard Cut",
+      "CatType": "serv"
+    },
+    {
+      "ProID": 1064,
+      "ProName": "[SMOKE CC] Product",
+      "ProNameAr": null,
+      "SPrice1": null,
+      "DurationMinutes": null,
+      "ProType": "pro",
+      "CatName": "منتجات اونكس",
+      "CatType": "pro"
+    },
+    {
+      "ProID": 1065,
+      "ProName": "[SMOKE 1O] Cut 12",
+      "ProNameAr": null,
+      "SPrice1": 150,
+      "DurationMinutes": 30,
+      "ProType": "serv",
+      "CatName": null,
+      "CatType": null
+    },
+    {
+      "ProID": 1066,
+      "ProName": "[SMOKE 1O] Cut 13",
+      "ProNameAr": null,
+      "SPrice1": 150,
+      "DurationMinutes": 30,
+      "ProType": "serv",
+      "CatName": null,
+      "CatType": null
+    },
+    {
+      "ProID": 1067,
+      "ProName": "[SMOKE 1SR] Haircut 20",
+      "ProNameAr": null,
+      "SPrice1": null,
+      "DurationMinutes": 30,
+      "ProType": "serv",
+      "CatName": "Hair & Beard Cut",
+      "CatType": "serv"
+    },
+    {
+      "ProID": 1068,
+      "ProName": "[SMOKE 1SR] Product 20",
+      "ProNameAr": null,
+      "SPrice1": null,
+      "DurationMinutes": null,
+      "ProType": "pro",
+      "CatName": null,
+      "CatType": null
+    },
+    {
+      "ProID": 1069,
+      "ProName": "[SMOKE 1SR] Haircut 21",
+      "ProNameAr": null,
+      "SPrice1": null,
+      "DurationMinutes": 30,
+      "ProType": "serv",
+      "CatName": "Hair & Beard Cut",
+      "CatType": "serv"
+    },
+    {
+      "ProID": 1070,
+      "ProName": "[SMOKE 1SR] Product 21",
+      "ProNameAr": null,
+      "SPrice1": null,
+      "DurationMinutes": null,
+      "ProType": "pro",
+      "CatName": null,
+      "CatType": null
+    },
+    {
+      "ProID": 1071,
+      "ProName": "[SMOKE 1SR] Haircut 22",
+      "ProNameAr": null,
+      "SPrice1": null,
+      "DurationMinutes": 30,
+      "ProType": "serv",
+      "CatName": "Hair & Beard Cut",
+      "CatType": "serv"
+    },
+    {
+      "ProID": 1072,
+      "ProName": "[SMOKE 1SR] Product 22",
+      "ProNameAr": null,
+      "SPrice1": null,
+      "DurationMinutes": null,
+      "ProType": "pro",
+      "CatName": null,
+      "CatType": null
+    },
+    {
+      "ProID": 1075,
+      "ProName": "[TEST] 1U Product 27",
+      "ProNameAr": null,
+      "SPrice1": null,
+      "DurationMinutes": 0,
+      "ProType": "pro",
+      "CatName": null,
+      "CatType": null
+    },
+    {
+      "ProID": 1076,
+      "ProName": "[TEST] 1U Product 28",
+      "ProNameAr": null,
+      "SPrice1": null,
+      "DurationMinutes": 0,
+      "ProType": "pro",
+      "CatName": null,
+      "CatType": null
+    }
+  ],
+  "categories": [
+    {
+      "CatID": 20,
+      "CatName": "Beard Cut",
+      "CatType": null
+    },
+    {
+      "CatID": 8,
+      "CatName": "Hair & Beard Cut",
+      "CatType": "serv"
+    },
+    {
+      "CatID": 17,
+      "CatName": "Hair Color & Highlights",
+      "CatType": null
+    },
+    {
+      "CatID": 19,
+      "CatName": "Hair Cut",
+      "CatType": null
+    },
+    {
+      "CatID": 21,
+      "CatName": "Hair Styling & Finishing",
+      "CatType": null
+    },
+    {
+      "CatID": 18,
+      "CatName": "Hair Treatments & Care",
+      "CatType": null
+    },
+    {
+      "CatID": 9,
+      "CatName": "Skincare",
+      "CatType": "serv"
+    },
+    {
+      "CatID": 14,
+      "CatName": "إداريات",
+      "CatType": "serv"
+    },
+    {
+      "CatID": 13,
+      "CatName": "برفانات",
+      "CatType": "pro"
+    },
+    {
+      "CatID": 10,
+      "CatName": "خدمات اضافيه للشعر",
+      "CatType": "serv"
+    },
+    {
+      "CatID": 15,
+      "CatName": "كريم شعر",
+      "CatType": "pro"
+    },
+    {
+      "CatID": 12,
+      "CatName": "مساعدين",
+      "CatType": "serv"
+    },
+    {
+      "CatID": 16,
+      "CatName": "معالجات شعر",
+      "CatType": "pro"
+    },
+    {
+      "CatID": 11,
+      "CatName": "منتجات اونكس",
+      "CatType": "pro"
+    }
+  ]
+}

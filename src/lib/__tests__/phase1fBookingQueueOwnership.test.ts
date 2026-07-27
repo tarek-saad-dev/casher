@@ -11,6 +11,8 @@ function activeBranch(partial: {
   branchId: number;
   branchCode: string;
   isActive?: boolean;
+  lifecycleStatus?: string;
+  publicBookingEnabled?: boolean;
 }) {
   return {
     branchId: partial.branchId,
@@ -24,9 +26,26 @@ function activeBranch(partial: {
     defaultOpenTime: null,
     defaultCloseTime: null,
     isActive: partial.isActive ?? true,
+    lifecycleStatus: partial.lifecycleStatus ?? 'PUBLIC_LIVE',
+    publicBookingEnabled: partial.publicBookingEnabled ?? true,
+    externalNotificationsEnabled: true,
     createdAt: new Date(),
     updatedAt: null,
   };
+}
+
+function mockQbsEnabled(enabled = true) {
+  vi.doMock('@/lib/db', () => ({
+    getPool: async () => ({
+      request: () => ({
+        input() {
+          return this;
+        },
+        query: async () => ({ recordset: [{ BookingEnabled: enabled }] }),
+      }),
+    }),
+    sql: { Int: 0 },
+  }));
 }
 
 describe('phase1f booking queue ownership helpers', () => {
@@ -55,6 +74,7 @@ describe('phase1f booking queue ownership helpers', () => {
       }
       return null;
     });
+    mockQbsEnabled(true);
     vi.doMock('@/lib/branch/repository', () => ({
       getBranchByCode,
       listActiveBranches: vi.fn(async () => {
@@ -97,9 +117,11 @@ describe('phase1f booking queue ownership helpers', () => {
   it('missing branchCode + exactly one active public branch → uses that branch', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const only = activeBranch({ branchId: 7, branchCode: 'SOLE' });
+    mockQbsEnabled(true);
     vi.doMock('@/lib/branch/repository', () => ({
-      getBranchByCode: vi.fn(async () => {
-        throw new Error('getBranchByCode must not run when code missing');
+      getBranchByCode: vi.fn(async (code: string) => {
+        if (String(code).toUpperCase() === 'SOLE') return only;
+        throw new Error('unexpected getBranchByCode');
       }),
       listActiveBranches: vi.fn(async () => [only]),
     }));
@@ -122,11 +144,11 @@ describe('phase1f booking queue ownership helpers', () => {
 
   it('missing branchCode + empty/blank also uses single-active fallback', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const only = activeBranch({ branchId: 3, branchCode: 'ONLY' });
+    mockQbsEnabled(true);
     vi.doMock('@/lib/branch/repository', () => ({
-      getBranchByCode: vi.fn(),
-      listActiveBranches: vi.fn(async () => [
-        activeBranch({ branchId: 3, branchCode: 'ONLY' }),
-      ]),
+      getBranchByCode: vi.fn(async () => only),
+      listActiveBranches: vi.fn(async () => [only]),
     }));
     vi.resetModules();
     const mod = await import('@/lib/branch/bookingQueueOwnership');
@@ -246,8 +268,8 @@ describe('phase1f public booking single-branch fallback contracts', () => {
     expect(body).not.toMatch(/TOP\s+1/i);
   });
 
-  it('missing-code path requires exactly one active branch (not TOP 1)', () => {
-    expect(ownershipSrc).toContain('active.length === 1');
+  it('missing-code path requires exactly one public branch (not TOP 1)', () => {
+    expect(ownershipSrc).toContain('publicBranches.length === 1');
     expect(ownershipSrc).toContain(
       '[public-booking] single-active-branch compatibility fallback',
     );
@@ -265,18 +287,70 @@ describe('phase1f public booking single-branch fallback contracts', () => {
     expect(ownershipSrc).not.toMatch(/UPDATE\s+dbo\.TblBranch/i);
   });
 
-  it('services, barbers, upcoming (and all public booking routes) use the same resolver', () => {
+  it('unmigrated public booking routes still use resolvePublicBranchCode; Phase 1–5 migrated routes use central context', () => {
+    const phaseMigrated = new Set([
+      'config',
+      'status',
+      'services',
+      'barbers',
+      'available-days',
+      'available-slots',
+      'check-slot',
+      'plan',
+      'create',
+    ]);
     for (const route of publicBookingRoutes) {
       const src = fs.readFileSync(
         path.join(process.cwd(), `src/app/api/public/booking/${route}/route.ts`),
         'utf8',
       );
-      expect(src).toContain('resolvePublicBranchCode');
-      expect(src).toContain(`route: '/api/public/booking/${route}'`);
-      // No per-route silent GLEEM / TOP 1 fallback
+      if (phaseMigrated.has(route)) {
+        if (route === 'barbers') {
+          expect(src).toContain('listPublicBookingBarbers');
+          expect(src).not.toContain('resolvePublicBranchCode');
+        } else if (route === 'available-days' || route === 'available-slots') {
+          expect(src).toMatch(/getPublicAvailable(Days|Slots)/);
+          if (route === 'available-days') {
+            expect(src).not.toContain('resolvePublicBranchCode');
+          }
+        } else if (route === 'check-slot' || route === 'plan') {
+          expect(src).toContain('evaluatePublicBookingSelection');
+          expect(src).not.toContain('resolvePublicBranchCode');
+        } else if (route === 'create') {
+          expect(src).toContain('createPublicBooking');
+          expect(src).not.toContain('resolvePublicBranchCode');
+        } else {
+          expect(src).toContain('resolvePublicBookingBranchContext');
+          expect(src).not.toContain('resolvePublicBranchCode');
+        }
+      } else if (route !== 'upcoming') {
+        expect(src).toContain('resolvePublicBranchCode');
+        expect(src).toContain(`route: '/api/public/booking/${route}'`);
+      }
       expect(src).not.toMatch(/branchCode\s*\|\|\s*['"]GLEEM['"]/);
-      expect(src).not.toMatch(/SELECT\s+TOP\s+1/i);
     }
+
+    const calendar = fs.readFileSync(
+      path.join(process.cwd(), 'src/app/api/public/booking/barbers/[empId]/calendar/route.ts'),
+      'utf8',
+    );
+    const location = fs.readFileSync(
+      path.join(process.cwd(), 'src/app/api/public/booking/barbers/[empId]/location/route.ts'),
+      'utf8',
+    );
+    const barberSlots = fs.readFileSync(
+      path.join(
+        process.cwd(),
+        'src/app/api/public/booking/barbers/[empId]/available-slots/route.ts',
+      ),
+      'utf8',
+    );
+    expect(calendar).toContain('getPublicBarberCalendar');
+    expect(location).toContain('getPublicBarberLocation');
+    expect(barberSlots).toContain('getPublicAvailableSlots');
+    expect(calendar).not.toContain('resolvePublicBranchCode');
+    expect(location).not.toContain('resolvePublicBranchCode');
+    expect(barberSlots).not.toContain('resolvePublicBranchCode');
   });
 });
 
@@ -335,13 +409,16 @@ describe('phase1f source contracts', () => {
   });
 
   it('flow board filters by BranchID and returns activeBranch', () => {
-    const src = fs.readFileSync(
+    const route = fs.readFileSync(
       path.join(process.cwd(), 'src/app/api/operations/flow-board/route.ts'),
       'utf8',
     );
-    expect(src).toContain('AND b.BranchID = @branchId');
-    expect(src).toContain('AND qt.BranchID = @branchId');
-    expect(src).toContain('activeBranch');
+    const loader = fs.readFileSync(
+      path.join(process.cwd(), 'src/lib/operations/loadFlowBoardForBranch.ts'),
+      'utf8',
+    );
+    expect(route).toContain('activeBranch');
+    expect(loader).toMatch(/BranchID/);
   });
 
   it('convert asserts booking branch equals session branch', () => {

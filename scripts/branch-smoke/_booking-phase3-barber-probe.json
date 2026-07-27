@@ -1,0 +1,102 @@
+{
+  "counts": {
+    "ActiveEmployees": 11,
+    "ActiveBarberJobs": 5,
+    "TestSmokeEmployees": 21,
+    "GleemAssigned": 13,
+    "GleemCanBook": 11,
+    "ActiveNoAssignment": 0,
+    "CanBookNoWeeklySchedule": 3
+  },
+  "gleemWeekday": [
+    {
+      "DayOfWeek": 0,
+      "EmpCount": 12
+    },
+    {
+      "DayOfWeek": 1,
+      "EmpCount": 12
+    },
+    {
+      "DayOfWeek": 2,
+      "EmpCount": 12
+    },
+    {
+      "DayOfWeek": 3,
+      "EmpCount": 12
+    },
+    {
+      "DayOfWeek": 4,
+      "EmpCount": 12
+    },
+    {
+      "DayOfWeek": 5,
+      "EmpCount": 12
+    },
+    {
+      "DayOfWeek": 6,
+      "EmpCount": 12
+    }
+  ],
+  "duplicateNames": [],
+  "empImageLikeColumns": [],
+  "globalPublicBarbers": {
+    "count": 5,
+    "duplicateEmpIds": [],
+    "sample": [
+      {
+        "empId": 18,
+        "name": "احمد",
+        "branches": [
+          {
+            "branchCode": "GLEEM",
+            "branchName": "جليم – سابا باشا"
+          }
+        ]
+      },
+      {
+        "empId": 12,
+        "name": "زياد",
+        "branches": [
+          {
+            "branchCode": "GLEEM",
+            "branchName": "جليم – سابا باشا"
+          }
+        ]
+      },
+      {
+        "empId": 25,
+        "name": "عمر",
+        "branches": [
+          {
+            "branchCode": "GLEEM",
+            "branchName": "جليم – سابا باشا"
+          }
+        ]
+      },
+      {
+        "empId": 5,
+        "name": "كريم",
+        "branches": [
+          {
+            "branchCode": "GLEEM",
+            "branchName": "جليم – سابا باشا"
+          }
+        ]
+      },
+      {
+        "empId": 7,
+        "name": "محمد",
+        "branches": [
+          {
+            "branchCode": "GLEEM",
+            "branchName": "جليم – سابا باشا"
+          }
+        ]
+      }
+    ],
+    "branches": [
+      "GLEEM"
+    ]
+  }
+}

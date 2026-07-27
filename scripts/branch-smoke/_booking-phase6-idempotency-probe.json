@@ -1,0 +1,18 @@
+{
+  "firstCode": "BK-VQ6WGD",
+  "replayOk": true,
+  "replaySameCode": true,
+  "mismatchCode": "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST",
+  "conc": {
+    "a": {
+      "ok": false,
+      "code": "SLOT_UNAVAILABLE"
+    },
+    "b": {
+      "ok": false,
+      "code": "SLOT_UNAVAILABLE"
+    },
+    "successCount": 0
+  },
+  "campCaesar": "BRANCH_NOT_PUBLIC"
+}

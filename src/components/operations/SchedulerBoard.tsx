@@ -38,6 +38,10 @@ interface Barber {
   bookingsCount: number;
   inServiceCount: number;
   timeline: TimelineItem[];
+  branchId?: number;
+  branchName?: string;
+  branchShortName?: string | null;
+  isEmergencyTransfer?: boolean;
 }
 
 interface Props {
@@ -383,7 +387,7 @@ export function SchedulerBoard({
 
             {displayBarbers.map((barber, index) => (
               <BarberLane
-                key={barber.empId}
+                key={`${barber.branchId ?? 'b'}-${barber.empId}`}
                 barber={barber}
                 color={getBarberColor(barber.empId, index)}
                 drag={dragHandlers}
@@ -405,7 +409,7 @@ export function SchedulerBoard({
             <div className="space-y-4 p-2">
               {displayBarbers.map((barber, index) => (
                 <div
-                  key={barber.empId}
+                  key={`${barber.branchId ?? 'b'}-${barber.empId}`}
                   className="overflow-hidden rounded-xl border border-border/70 bg-card/50"
                 >
                   <BarberLane

@@ -108,10 +108,17 @@ async function main() {
     FROM dbo.TblBranch WHERE BranchID=3
   `);
   const row = cc.recordset[0];
-  if (row.LifecycleStatus !== 'SETUP') fail('CC activated');
-  if (row.IsActive) fail('CC IsActive=1');
+  if (row.LifecycleStatus === 'PUBLIC_LIVE') fail('CC PUBLIC_LIVE forbidden');
+  if (!['SETUP', 'SMOKE_TEST', 'INTERNAL_LIVE'].includes(String(row.LifecycleStatus))) {
+    fail(`unexpected CC lifecycle ${row.LifecycleStatus}`);
+  }
+  if (row.LifecycleStatus === 'INTERNAL_LIVE') {
+    if (!row.IsActive) fail('INTERNAL_LIVE requires IsActive=1');
+  } else if (row.IsActive) {
+    fail('CC IsActive=1 before INTERNAL_LIVE');
+  }
   if (row.PublicBookingEnabled) fail('CC public booking enabled');
-  ok('Camp Caesar remains SETUP/non-public');
+  ok(`Camp Caesar lifecycle=${row.LifecycleStatus} non-public`);
 
   const table = await pool.request().query(`
     SELECT CASE WHEN OBJECT_ID(N'dbo.TblEmpBranchWorkSchedule', N'U') IS NULL THEN 0 ELSE 1 END AS Has

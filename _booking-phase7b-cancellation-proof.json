@@ -1,0 +1,40 @@
+{
+  "phase": "booking-phase-7b-cancellation-proof",
+  "passed": true,
+  "failed": [],
+  "proofs": {
+    "slot_blocked_before": true,
+    "phone_cancel_ok": true,
+    "slot_release_removed": true,
+    "slot_unblocked_after": true,
+    "lookup_cancelled": true,
+    "upcoming_excludes": true,
+    "same_key_replay": true,
+    "already_cancelled_idempotent": true,
+    "wrong_phone": true,
+    "code_only_rejected": true,
+    "numeric_id_rejected": true,
+    "token_cancel_ok": true,
+    "token_mismatch": true,
+    "concurrent_same_key_status": true,
+    "concurrent_same_key_race_handled": true,
+    "concurrent_diff_keys": true,
+    "cancel_create_rebook": true,
+    "no_active_overlap": true,
+    "overnight_workdate_preserved": true,
+    "overnight_debug": {
+      "pwdBefore": "2026-12-29",
+      "pwdAfter": "2026-12-29",
+      "dayOffset": 1,
+      "status": "cancelled",
+      "bodyWorkDate": "2026-12-29",
+      "bodyDayOffset": 1
+    },
+    "cutoff_closed": true,
+    "service_start_race": true,
+    "camp_still_non_public": true,
+    "no_hard_delete": true,
+    "service_snapshots_preserved": true
+  },
+  "smokeRunId": 69
+}

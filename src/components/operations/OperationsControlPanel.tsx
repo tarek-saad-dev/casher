@@ -9,6 +9,8 @@ import {
   TicketPlus,
   Loader2,
   Globe,
+  Building2,
+  Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -16,6 +18,16 @@ import { Switch } from '@/components/ui/switch';
 import { DateNavigator } from './DateNavigator';
 import { EnvironmentControls } from './EnvironmentControls';
 import { SalonMusicPanel } from './SalonMusicPanel';
+
+export type OpsBranchScope = 'active' | 'all' | number;
+export type OpsPresenceFilter = 'present' | 'all';
+
+export type OpsBranchOption = {
+  branchId: number;
+  branchCode: string;
+  branchName: string;
+  shortName?: string | null;
+};
 
 interface Props {
   date: string;
@@ -26,6 +38,13 @@ interface Props {
   musicExpanded: boolean;
   publicBookingEnabled: boolean;
   publicBookingToggleLoading?: boolean;
+  /** Branch filter — default active session branch */
+  branchScope: OpsBranchScope;
+  presenceFilter: OpsPresenceFilter;
+  branchOptions: OpsBranchOption[];
+  activeBranchLabel?: string;
+  onBranchScopeChange: (scope: OpsBranchScope) => void;
+  onPresenceFilterChange: (presence: OpsPresenceFilter) => void;
   onPrevDay: () => void;
   onNextDay: () => void;
   onToday: () => void;
@@ -237,6 +256,12 @@ export function OperationsControlPanel({
   musicExpanded,
   publicBookingEnabled,
   publicBookingToggleLoading,
+  branchScope,
+  presenceFilter,
+  branchOptions,
+  activeBranchLabel,
+  onBranchScopeChange,
+  onPresenceFilterChange,
   onPrevDay,
   onNextDay,
   onToday,
@@ -259,8 +284,58 @@ export function OperationsControlPanel({
     else onEnableVoice();
   };
 
+  const branchSelectValue =
+    branchScope === 'all' ? 'all' : branchScope === 'active' ? 'active' : String(branchScope);
+
+  const selectClass =
+    'h-10 min-h-[42px] rounded-lg border border-border/80 bg-surface-muted/40 px-2.5 text-[13px] font-medium text-foreground outline-none transition-colors hover:bg-surface-muted/70 focus-visible:ring-2 focus-visible:ring-primary/30 min-[768px]:h-[42px] min-[768px]:text-sm';
+
   return (
     <section className="flex shrink-0 flex-col gap-2 rounded-2xl border border-border/80 bg-card/80 px-3.5 py-2.5 shadow-sm backdrop-blur-sm md:px-4 md:py-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border/50 pb-2">
+        <label className="inline-flex min-w-0 flex-1 items-center gap-1.5 sm:flex-none">
+          <Building2 className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <span className="sr-only">الفرع</span>
+          <select
+            className={cn(selectClass, 'min-w-0 flex-1 sm:min-w-[180px]')}
+            value={branchSelectValue}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === 'all') onBranchScopeChange('all');
+              else if (v === 'active') onBranchScopeChange('active');
+              else onBranchScopeChange(Number(v));
+            }}
+            aria-label="فلتر الفرع"
+          >
+            <option value="active">
+              فرعي الحالي{activeBranchLabel ? ` — ${activeBranchLabel}` : ''}
+            </option>
+            {branchOptions.map((b) => (
+              <option key={b.branchId} value={String(b.branchId)}>
+                {b.shortName || b.branchName}
+              </option>
+            ))}
+            {branchOptions.length > 1 && <option value="all">كل الفروع</option>}
+          </select>
+        </label>
+
+        <label className="inline-flex min-w-0 flex-1 items-center gap-1.5 sm:flex-none">
+          <Users className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <span className="sr-only">الصنايعية</span>
+          <select
+            className={cn(selectClass, 'min-w-0 flex-1 sm:min-w-[180px]')}
+            value={presenceFilter}
+            onChange={(e) =>
+              onPresenceFilterChange(e.target.value === 'all' ? 'all' : 'present')
+            }
+            aria-label="فلتر الحضور"
+          >
+            <option value="present">الحاضرين اليوم فقط</option>
+            <option value="all">كل الصنايعية</option>
+          </select>
+        </label>
+      </div>
+
       <div
         className={cn(
           'grid grid-cols-1 gap-2',
@@ -268,7 +343,6 @@ export function OperationsControlPanel({
           'min-[1200px]:grid-cols-[max-content_minmax(0,1fr)_max-content] min-[1200px]:grid-rows-1 min-[1200px]:items-center min-[1200px]:gap-4',
         )}
       >
-        {/* Date — mobile first; tablet row 2; desktop left zone (RTL col 3) */}
         <div className="order-1 md:col-span-2 md:row-start-2 md:flex md:justify-end min-[1200px]:col-span-1 min-[1200px]:col-start-3 min-[1200px]:row-start-1 min-[1200px]:flex min-[1200px]:items-center min-[1200px]:gap-3">
           <span className={zoneDivider} aria-hidden />
           <DateNavigator
@@ -285,7 +359,6 @@ export function OperationsControlPanel({
           />
         </div>
 
-        {/* Primary + management — tablet row 1; desktop uses contents to join parent grid */}
         <div className="order-2 flex flex-col gap-2 md:col-span-2 md:row-start-1 md:flex-row md:flex-wrap md:items-center md:gap-x-3 md:gap-y-2 min-[1200px]:contents">
           <div className="flex shrink-0 items-center gap-3 min-[1200px]:col-start-1 min-[1200px]:row-start-1">
             <PrimaryActions

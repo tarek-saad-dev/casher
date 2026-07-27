@@ -1,0 +1,557 @@
+{
+  "ts": "2026-07-27T02:17:33.084Z",
+  "listingSlotCount": 47,
+  "sampleSlot": {
+    "time": "13:00",
+    "dayOffset": 0,
+    "startDateTime": "2026-08-03T10:00:00.000Z",
+    "endDateTime": "2026-08-03T10:30:00.000Z",
+    "barbers": [
+      {
+        "empId": 12,
+        "nameAr": "زياد"
+      }
+    ]
+  },
+  "overnightSample": {
+    "time": "00:00",
+    "dayOffset": 1,
+    "startDateTime": "2026-08-03T21:00:00.000Z",
+    "endDateTime": "2026-08-03T21:30:00.000Z",
+    "barbers": [
+      {
+        "empId": 12,
+        "nameAr": "زياد"
+      }
+    ]
+  },
+  "specific_check_cold": {
+    "ms": 5758,
+    "ok": true,
+    "result": {
+      "branchContext": {
+        "branchId": 1,
+        "branchCode": "GLEEM",
+        "branchName": "جليم – سابا باشا",
+        "shortName": "جليم",
+        "address": null,
+        "phone": null,
+        "timezone": "Africa/Cairo",
+        "publicBookingEnabled": true,
+        "bookingEnabled": true,
+        "operatingHours": {
+          "openTime": null,
+          "closeTime": null
+        },
+        "businessDayCutoffTime": "04:00:00"
+      },
+      "mode": "specific_barber",
+      "assignmentStrategy": "fixed_barber",
+      "workDate": "2026-08-03",
+      "requestedTime": "13:00",
+      "requestedDayOffset": 0,
+      "startDateTime": "2026-08-03T10:00:00.000Z",
+      "endDateTime": "2026-08-03T10:30:00.000Z",
+      "selectedServices": [
+        {
+          "serviceId": 9,
+          "nameAr": "حلاقة شعر",
+          "nameEn": "Hair Cut",
+          "price": 200,
+          "durationMinutes": 30
+        }
+      ],
+      "totalDurationMinutes": 30,
+      "subtotal": 200,
+      "pricingScope": "global",
+      "specificBarber": {
+        "empId": 12,
+        "nameAr": "زياد",
+        "imageUrl": null
+      },
+      "candidateBarbers": [],
+      "available": true,
+      "availabilityCode": null,
+      "availabilityMessage": null,
+      "safeMetadata": {
+        "evaluationMode": "strong_fresh",
+        "purpose": "check_slot"
+      },
+      "evaluatedAt": "2026-07-27T02:17:42.535Z",
+      "purpose": "check_slot",
+      "planFingerprint": "7RccVqapwtZerfuuaHSJoivs9Y99c2851797uovQK0Y",
+      "planToken": "eyJmaW5nZXJwcmludCI6IjdSY2NWcWFwd3RaZXJmdXVhSFNKb2l2czlZOTljMjg1MTc5N3VvdlFLMFkiLCJjb250cmFjdFZlcnNpb24iOiJib29raW5nLXBsYW4tdjEiLCJicmFuY2hDb2RlIjoiR0xFRU0iLCJzZXJ2aWNlSWRzIjpbOV0sIm1vZGUiOiJzcGVjaWZpY19iYXJiZXIiLCJlbXBJZCI6MTIsIndvcmtEYXRlIjoiMjAyNi0wOC0wMyIsInRpbWUiOiIxMzowMCIsImRheU9mZnNldCI6MCwidG90YWxEdXJhdGlvbk1pbnV0ZXMiOjMwLCJzdWJ0b3RhbCI6MjAwLCJldmFsdWF0ZWRBdCI6IjIwMjYtMDctMjdUMDI6MTc6NDIuNTM1WiIsImV4cCI6MTc4NTExODk2OH0.iT1qVES7beBVVXLpKw4Lhr_6RJe7JkP7cxxvLl6VpYs",
+      "planExpiresAt": "2026-07-27T02:22:48.000Z",
+      "contractVersion": "booking-plan-v1",
+      "evaluationMode": "strong_fresh"
+    }
+  },
+  "specific_check_warm": {
+    "ms": 5443,
+    "ok": true,
+    "result": {
+      "branchContext": {
+        "branchId": 1,
+        "branchCode": "GLEEM",
+        "branchName": "جليم – سابا باشا",
+        "shortName": "جليم",
+        "address": null,
+        "phone": null,
+        "timezone": "Africa/Cairo",
+        "publicBookingEnabled": true,
+        "bookingEnabled": true,
+        "operatingHours": {
+          "openTime": null,
+          "closeTime": null
+        },
+        "businessDayCutoffTime": "04:00:00"
+      },
+      "mode": "specific_barber",
+      "assignmentStrategy": "fixed_barber",
+      "workDate": "2026-08-03",
+      "requestedTime": "13:00",
+      "requestedDayOffset": 0,
+      "startDateTime": "2026-08-03T10:00:00.000Z",
+      "endDateTime": "2026-08-03T10:30:00.000Z",
+      "selectedServices": [
+        {
+          "serviceId": 9,
+          "nameAr": "حلاقة شعر",
+          "nameEn": "Hair Cut",
+          "price": 200,
+          "durationMinutes": 30
+        }
+      ],
+      "totalDurationMinutes": 30,
+      "subtotal": 200,
+      "pricingScope": "global",
+      "specificBarber": {
+        "empId": 12,
+        "nameAr": "زياد",
+        "imageUrl": null
+      },
+      "candidateBarbers": [],
+      "available": true,
+      "availabilityCode": null,
+      "availabilityMessage": null,
+      "safeMetadata": {
+        "evaluationMode": "strong_fresh",
+        "purpose": "check_slot"
+      },
+      "evaluatedAt": "2026-07-27T02:17:48.292Z",
+      "purpose": "check_slot",
+      "planFingerprint": "7RccVqapwtZerfuuaHSJoivs9Y99c2851797uovQK0Y",
+      "planToken": "eyJmaW5nZXJwcmludCI6IjdSY2NWcWFwd3RaZXJmdXVhSFNKb2l2czlZOTljMjg1MTc5N3VvdlFLMFkiLCJjb250cmFjdFZlcnNpb24iOiJib29raW5nLXBsYW4tdjEiLCJicmFuY2hDb2RlIjoiR0xFRU0iLCJzZXJ2aWNlSWRzIjpbOV0sIm1vZGUiOiJzcGVjaWZpY19iYXJiZXIiLCJlbXBJZCI6MTIsIndvcmtEYXRlIjoiMjAyNi0wOC0wMyIsInRpbWUiOiIxMzowMCIsImRheU9mZnNldCI6MCwidG90YWxEdXJhdGlvbk1pbnV0ZXMiOjMwLCJzdWJ0b3RhbCI6MjAwLCJldmFsdWF0ZWRBdCI6IjIwMjYtMDctMjdUMDI6MTc6NDguMjkyWiIsImV4cCI6MTc4NTExODk3M30.14eotmmGNiPbpuxnBsN33aVbZcxmziFfSejb0wBq8sY",
+      "planExpiresAt": "2026-07-27T02:22:53.000Z",
+      "contractVersion": "booking-plan-v1",
+      "evaluationMode": "strong_fresh"
+    }
+  },
+  "specific_plan_cold": {
+    "ms": 5614,
+    "ok": true,
+    "result": {
+      "branchContext": {
+        "branchId": 1,
+        "branchCode": "GLEEM",
+        "branchName": "جليم – سابا باشا",
+        "shortName": "جليم",
+        "address": null,
+        "phone": null,
+        "timezone": "Africa/Cairo",
+        "publicBookingEnabled": true,
+        "bookingEnabled": true,
+        "operatingHours": {
+          "openTime": null,
+          "closeTime": null
+        },
+        "businessDayCutoffTime": "04:00:00"
+      },
+      "mode": "specific_barber",
+      "assignmentStrategy": "fixed_barber",
+      "workDate": "2026-08-03",
+      "requestedTime": "13:00",
+      "requestedDayOffset": 0,
+      "startDateTime": "2026-08-03T10:00:00.000Z",
+      "endDateTime": "2026-08-03T10:30:00.000Z",
+      "selectedServices": [
+        {
+          "serviceId": 9,
+          "nameAr": "حلاقة شعر",
+          "nameEn": "Hair Cut",
+          "price": 200,
+          "durationMinutes": 30
+        }
+      ],
+      "totalDurationMinutes": 30,
+      "subtotal": 200,
+      "pricingScope": "global",
+      "specificBarber": {
+        "empId": 12,
+        "nameAr": "زياد",
+        "imageUrl": null
+      },
+      "candidateBarbers": [],
+      "available": true,
+      "availabilityCode": null,
+      "availabilityMessage": null,
+      "safeMetadata": {
+        "evaluationMode": "strong_fresh",
+        "purpose": "plan"
+      },
+      "evaluatedAt": "2026-07-27T02:17:53.735Z",
+      "purpose": "plan",
+      "planFingerprint": "7RccVqapwtZerfuuaHSJoivs9Y99c2851797uovQK0Y",
+      "planToken": "eyJmaW5nZXJwcmludCI6IjdSY2NWcWFwd3RaZXJmdXVhSFNKb2l2czlZOTljMjg1MTc5N3VvdlFLMFkiLCJjb250cmFjdFZlcnNpb24iOiJib29raW5nLXBsYW4tdjEiLCJicmFuY2hDb2RlIjoiR0xFRU0iLCJzZXJ2aWNlSWRzIjpbOV0sIm1vZGUiOiJzcGVjaWZpY19iYXJiZXIiLCJlbXBJZCI6MTIsIndvcmtEYXRlIjoiMjAyNi0wOC0wMyIsInRpbWUiOiIxMzowMCIsImRheU9mZnNldCI6MCwidG90YWxEdXJhdGlvbk1pbnV0ZXMiOjMwLCJzdWJ0b3RhbCI6MjAwLCJldmFsdWF0ZWRBdCI6IjIwMjYtMDctMjdUMDI6MTc6NTMuNzM1WiIsImV4cCI6MTc4NTExODk3OX0.Vq2g6j-qm3luBgl7r1edeV4yPVHc2U6Ch7w7SPedf3Q",
+      "planExpiresAt": "2026-07-27T02:22:59.000Z",
+      "contractVersion": "booking-plan-v1",
+      "evaluationMode": "strong_fresh"
+    }
+  },
+  "specific_plan_warm": {
+    "ms": 5435,
+    "ok": true,
+    "result": {
+      "branchContext": {
+        "branchId": 1,
+        "branchCode": "GLEEM",
+        "branchName": "جليم – سابا باشا",
+        "shortName": "جليم",
+        "address": null,
+        "phone": null,
+        "timezone": "Africa/Cairo",
+        "publicBookingEnabled": true,
+        "bookingEnabled": true,
+        "operatingHours": {
+          "openTime": null,
+          "closeTime": null
+        },
+        "businessDayCutoffTime": "04:00:00"
+      },
+      "mode": "specific_barber",
+      "assignmentStrategy": "fixed_barber",
+      "workDate": "2026-08-03",
+      "requestedTime": "13:00",
+      "requestedDayOffset": 0,
+      "startDateTime": "2026-08-03T10:00:00.000Z",
+      "endDateTime": "2026-08-03T10:30:00.000Z",
+      "selectedServices": [
+        {
+          "serviceId": 9,
+          "nameAr": "حلاقة شعر",
+          "nameEn": "Hair Cut",
+          "price": 200,
+          "durationMinutes": 30
+        }
+      ],
+      "totalDurationMinutes": 30,
+      "subtotal": 200,
+      "pricingScope": "global",
+      "specificBarber": {
+        "empId": 12,
+        "nameAr": "زياد",
+        "imageUrl": null
+      },
+      "candidateBarbers": [],
+      "available": true,
+      "availabilityCode": null,
+      "availabilityMessage": null,
+      "safeMetadata": {
+        "evaluationMode": "strong_fresh",
+        "purpose": "plan"
+      },
+      "evaluatedAt": "2026-07-27T02:17:59.349Z",
+      "purpose": "plan",
+      "planFingerprint": "7RccVqapwtZerfuuaHSJoivs9Y99c2851797uovQK0Y",
+      "planToken": "eyJmaW5nZXJwcmludCI6IjdSY2NWcWFwd3RaZXJmdXVhSFNKb2l2czlZOTljMjg1MTc5N3VvdlFLMFkiLCJjb250cmFjdFZlcnNpb24iOiJib29raW5nLXBsYW4tdjEiLCJicmFuY2hDb2RlIjoiR0xFRU0iLCJzZXJ2aWNlSWRzIjpbOV0sIm1vZGUiOiJzcGVjaWZpY19iYXJiZXIiLCJlbXBJZCI6MTIsIndvcmtEYXRlIjoiMjAyNi0wOC0wMyIsInRpbWUiOiIxMzowMCIsImRheU9mZnNldCI6MCwidG90YWxEdXJhdGlvbk1pbnV0ZXMiOjMwLCJzdWJ0b3RhbCI6MjAwLCJldmFsdWF0ZWRBdCI6IjIwMjYtMDctMjdUMDI6MTc6NTkuMzQ5WiIsImV4cCI6MTc4NTExODk4NH0.UqqIkgm5DTCeSVizFVq0Sdg9BiTiabyZ5OffkaQYeBA",
+      "planExpiresAt": "2026-07-27T02:23:04.000Z",
+      "contractVersion": "booking-plan-v1",
+      "evaluationMode": "strong_fresh"
+    }
+  },
+  "parity": {
+    "ok": true,
+    "available": true,
+    "fingerprint": "7RccVqapwtZerfuuaHSJoivs9Y99c2851797uovQK0Y"
+  },
+  "any_check": {
+    "ms": 1982,
+    "ok": true,
+    "result": {
+      "branchContext": {
+        "branchId": 1,
+        "branchCode": "GLEEM",
+        "branchName": "جليم – سابا باشا",
+        "shortName": "جليم",
+        "address": null,
+        "phone": null,
+        "timezone": "Africa/Cairo",
+        "publicBookingEnabled": true,
+        "bookingEnabled": true,
+        "operatingHours": {
+          "openTime": null,
+          "closeTime": null
+        },
+        "businessDayCutoffTime": "04:00:00"
+      },
+      "mode": "any_barber",
+      "assignmentStrategy": "server_select_on_create",
+      "workDate": "2026-08-03",
+      "requestedTime": "13:00",
+      "requestedDayOffset": 0,
+      "startDateTime": "2026-08-03T10:00:00.000Z",
+      "endDateTime": "2026-08-03T10:30:00.000Z",
+      "selectedServices": [
+        {
+          "serviceId": 9,
+          "nameAr": "حلاقة شعر",
+          "nameEn": "Hair Cut",
+          "price": 200,
+          "durationMinutes": 30
+        }
+      ],
+      "totalDurationMinutes": 30,
+      "subtotal": 200,
+      "pricingScope": "global",
+      "specificBarber": null,
+      "candidateBarbers": [
+        {
+          "empId": 12,
+          "nameAr": "زياد",
+          "imageUrl": null
+        },
+        {
+          "empId": 7,
+          "nameAr": "محمد",
+          "imageUrl": null
+        }
+      ],
+      "available": true,
+      "availabilityCode": null,
+      "availabilityMessage": null,
+      "safeMetadata": {
+        "evaluationMode": "strong_fresh",
+        "purpose": "check_slot"
+      },
+      "evaluatedAt": "2026-07-27T02:18:15.951Z",
+      "purpose": "check_slot",
+      "planFingerprint": "gFdqDZu8_BHUgSBlQ1qzNWzJlMXogI4_xHHTCYxEdj8",
+      "planToken": "eyJmaW5nZXJwcmludCI6ImdGZHFEWnU4X0JIVWdTQmxRMXF6Tld6SmxNWG9nSTRfeEhIVENZeEVkajgiLCJjb250cmFjdFZlcnNpb24iOiJib29raW5nLXBsYW4tdjEiLCJicmFuY2hDb2RlIjoiR0xFRU0iLCJzZXJ2aWNlSWRzIjpbOV0sIm1vZGUiOiJhbnlfYmFyYmVyIiwiZW1wSWQiOm51bGwsIndvcmtEYXRlIjoiMjAyNi0wOC0wMyIsInRpbWUiOiIxMzowMCIsImRheU9mZnNldCI6MCwidG90YWxEdXJhdGlvbk1pbnV0ZXMiOjMwLCJzdWJ0b3RhbCI6MjAwLCJldmFsdWF0ZWRBdCI6IjIwMjYtMDctMjdUMDI6MTg6MTUuOTUxWiIsImV4cCI6MTc4NTExODk5N30.SZ7AEv6Qu1UTu0DD4AAKom9DkAzIeEl8ejF0WTUlLEE",
+      "planExpiresAt": "2026-07-27T02:23:17.000Z",
+      "contractVersion": "booking-plan-v1",
+      "evaluationMode": "strong_fresh"
+    }
+  },
+  "any_plan": {
+    "ms": 1973,
+    "ok": true,
+    "result": {
+      "branchContext": {
+        "branchId": 1,
+        "branchCode": "GLEEM",
+        "branchName": "جليم – سابا باشا",
+        "shortName": "جليم",
+        "address": null,
+        "phone": null,
+        "timezone": "Africa/Cairo",
+        "publicBookingEnabled": true,
+        "bookingEnabled": true,
+        "operatingHours": {
+          "openTime": null,
+          "closeTime": null
+        },
+        "businessDayCutoffTime": "04:00:00"
+      },
+      "mode": "any_barber",
+      "assignmentStrategy": "server_select_on_create",
+      "workDate": "2026-08-03",
+      "requestedTime": "13:00",
+      "requestedDayOffset": 0,
+      "startDateTime": "2026-08-03T10:00:00.000Z",
+      "endDateTime": "2026-08-03T10:30:00.000Z",
+      "selectedServices": [
+        {
+          "serviceId": 9,
+          "nameAr": "حلاقة شعر",
+          "nameEn": "Hair Cut",
+          "price": 200,
+          "durationMinutes": 30
+        }
+      ],
+      "totalDurationMinutes": 30,
+      "subtotal": 200,
+      "pricingScope": "global",
+      "specificBarber": null,
+      "candidateBarbers": [
+        {
+          "empId": 12,
+          "nameAr": "زياد",
+          "imageUrl": null
+        },
+        {
+          "empId": 7,
+          "nameAr": "محمد",
+          "imageUrl": null
+        }
+      ],
+      "available": true,
+      "availabilityCode": null,
+      "availabilityMessage": null,
+      "safeMetadata": {
+        "evaluationMode": "strong_fresh",
+        "purpose": "plan"
+      },
+      "evaluatedAt": "2026-07-27T02:18:17.933Z",
+      "purpose": "plan",
+      "planFingerprint": "gFdqDZu8_BHUgSBlQ1qzNWzJlMXogI4_xHHTCYxEdj8",
+      "planToken": "eyJmaW5nZXJwcmludCI6ImdGZHFEWnU4X0JIVWdTQmxRMXF6Tld6SmxNWG9nSTRfeEhIVENZeEVkajgiLCJjb250cmFjdFZlcnNpb24iOiJib29raW5nLXBsYW4tdjEiLCJicmFuY2hDb2RlIjoiR0xFRU0iLCJzZXJ2aWNlSWRzIjpbOV0sIm1vZGUiOiJhbnlfYmFyYmVyIiwiZW1wSWQiOm51bGwsIndvcmtEYXRlIjoiMjAyNi0wOC0wMyIsInRpbWUiOiIxMzowMCIsImRheU9mZnNldCI6MCwidG90YWxEdXJhdGlvbk1pbnV0ZXMiOjMwLCJzdWJ0b3RhbCI6MjAwLCJldmFsdWF0ZWRBdCI6IjIwMjYtMDctMjdUMDI6MTg6MTcuOTMzWiIsImV4cCI6MTc4NTExODk5OX0.yfXBoOc_GeNfUaYN659dnmp3dVEfHry4Sy7bGcqr82Y",
+      "planExpiresAt": "2026-07-27T02:23:19.000Z",
+      "contractVersion": "booking-plan-v1",
+      "evaluationMode": "strong_fresh"
+    }
+  },
+  "invalid_day_offset": {
+    "ms": 351,
+    "ok": false,
+    "code": "INVALID_DAY_OFFSET"
+  },
+  "camp_caesar_check": {
+    "ms": 351,
+    "ok": false,
+    "code": "BRANCH_NOT_PUBLIC"
+  },
+  "camp_caesar_plan": {
+    "ms": 352,
+    "ok": false,
+    "code": "BRANCH_NOT_PUBLIC"
+  },
+  "overnight_check": {
+    "ms": 5653,
+    "ok": true,
+    "result": {
+      "branchContext": {
+        "branchId": 1,
+        "branchCode": "GLEEM",
+        "branchName": "جليم – سابا باشا",
+        "shortName": "جليم",
+        "address": null,
+        "phone": null,
+        "timezone": "Africa/Cairo",
+        "publicBookingEnabled": true,
+        "bookingEnabled": true,
+        "operatingHours": {
+          "openTime": null,
+          "closeTime": null
+        },
+        "businessDayCutoffTime": "04:00:00"
+      },
+      "mode": "specific_barber",
+      "assignmentStrategy": "fixed_barber",
+      "workDate": "2026-08-03",
+      "requestedTime": "00:00",
+      "requestedDayOffset": 1,
+      "startDateTime": "2026-08-03T21:00:00.000Z",
+      "endDateTime": "2026-08-03T21:30:00.000Z",
+      "selectedServices": [
+        {
+          "serviceId": 9,
+          "nameAr": "حلاقة شعر",
+          "nameEn": "Hair Cut",
+          "price": 200,
+          "durationMinutes": 30
+        }
+      ],
+      "totalDurationMinutes": 30,
+      "subtotal": 200,
+      "pricingScope": "global",
+      "specificBarber": {
+        "empId": 12,
+        "nameAr": "زياد",
+        "imageUrl": null
+      },
+      "candidateBarbers": [],
+      "available": true,
+      "availabilityCode": null,
+      "availabilityMessage": null,
+      "safeMetadata": {
+        "evaluationMode": "strong_fresh",
+        "purpose": "check_slot"
+      },
+      "evaluatedAt": "2026-07-27T02:18:20.960Z",
+      "purpose": "check_slot",
+      "planFingerprint": "O-wnBqumjvomQIFkF22RD0ezP1_-2xgOy89Ec3PEpTk",
+      "planToken": "eyJmaW5nZXJwcmludCI6Ik8td25CcXVtanZvbVFJRmtGMjJSRDBlelAxXy0yeGdPeTg5RWMzUEVwVGsiLCJjb250cmFjdFZlcnNpb24iOiJib29raW5nLXBsYW4tdjEiLCJicmFuY2hDb2RlIjoiR0xFRU0iLCJzZXJ2aWNlSWRzIjpbOV0sIm1vZGUiOiJzcGVjaWZpY19iYXJiZXIiLCJlbXBJZCI6MTIsIndvcmtEYXRlIjoiMjAyNi0wOC0wMyIsInRpbWUiOiIwMDowMCIsImRheU9mZnNldCI6MSwidG90YWxEdXJhdGlvbk1pbnV0ZXMiOjMwLCJzdWJ0b3RhbCI6MjAwLCJldmFsdWF0ZWRBdCI6IjIwMjYtMDctMjdUMDI6MTg6MjAuOTYwWiIsImV4cCI6MTc4NTExOTAwNn0.5XsSBbIAqIDUGNeonS1yJEdrBIXukLS3t8a5DhtpgIE",
+      "planExpiresAt": "2026-07-27T02:23:26.000Z",
+      "contractVersion": "booking-plan-v1",
+      "evaluationMode": "strong_fresh"
+    }
+  },
+  "multi_service_check": {
+    "ms": 5441,
+    "ok": true,
+    "result": {
+      "branchContext": {
+        "branchId": 1,
+        "branchCode": "GLEEM",
+        "branchName": "جليم – سابا باشا",
+        "shortName": "جليم",
+        "address": null,
+        "phone": null,
+        "timezone": "Africa/Cairo",
+        "publicBookingEnabled": true,
+        "bookingEnabled": true,
+        "operatingHours": {
+          "openTime": null,
+          "closeTime": null
+        },
+        "businessDayCutoffTime": "04:00:00"
+      },
+      "mode": "specific_barber",
+      "assignmentStrategy": "fixed_barber",
+      "workDate": "2026-08-03",
+      "requestedTime": "13:00",
+      "requestedDayOffset": 0,
+      "startDateTime": "2026-08-03T10:00:00.000Z",
+      "endDateTime": "2026-08-03T11:30:00.000Z",
+      "selectedServices": [
+        {
+          "serviceId": 9,
+          "nameAr": "حلاقة شعر",
+          "nameEn": "Hair Cut",
+          "price": 200,
+          "durationMinutes": 30
+        },
+        {
+          "serviceId": 15,
+          "nameAr": "بروتين شعر قصير",
+          "nameEn": "Short Hair Protein",
+          "price": 500,
+          "durationMinutes": 60
+        }
+      ],
+      "totalDurationMinutes": 90,
+      "subtotal": 700,
+      "pricingScope": "global",
+      "specificBarber": {
+        "empId": 12,
+        "nameAr": "زياد",
+        "imageUrl": null
+      },
+      "candidateBarbers": [],
+      "available": true,
+      "availabilityCode": null,
+      "availabilityMessage": null,
+      "safeMetadata": {
+        "evaluationMode": "strong_fresh",
+        "purpose": "check_slot"
+      },
+      "evaluatedAt": "2026-07-27T02:18:26.613Z",
+      "purpose": "check_slot",
+      "planFingerprint": "jePZrhSamFGar_ItqFGVRm9xvH3dEm29zJI-Xz89qYI",
+      "planToken": "eyJmaW5nZXJwcmludCI6ImplUFpyaFNhbUZHYXJfSXRxRkdWUm05eHZIM2RFbTI5ekpJLVh6ODlxWUkiLCJjb250cmFjdFZlcnNpb24iOiJib29raW5nLXBsYW4tdjEiLCJicmFuY2hDb2RlIjoiR0xFRU0iLCJzZXJ2aWNlSWRzIjpbOSwxNV0sIm1vZGUiOiJzcGVjaWZpY19iYXJiZXIiLCJlbXBJZCI6MTIsIndvcmtEYXRlIjoiMjAyNi0wOC0wMyIsInRpbWUiOiIxMzowMCIsImRheU9mZnNldCI6MCwidG90YWxEdXJhdGlvbk1pbnV0ZXMiOjkwLCJzdWJ0b3RhbCI6NzAwLCJldmFsdWF0ZWRBdCI6IjIwMjYtMDctMjdUMDI6MTg6MjYuNjEzWiIsImV4cCI6MTc4NTExOTAxMn0.Z0As0CQZWfj16yJUrJzFdLGjUFGgKYu2aI5-pe2_i_w",
+      "planExpiresAt": "2026-07-27T02:23:32.000Z",
+      "contractVersion": "booking-plan-v1",
+      "evaluationMode": "strong_fresh"
+    }
+  }
+}

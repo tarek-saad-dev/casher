@@ -1,0 +1,451 @@
+{
+  "smokeRunId": 28,
+  "finalStatus": "PASSED",
+  "empId": 1057,
+  "proofs": {
+    "serviceCatalog": {
+      "count": 30,
+      "sample": [
+        {
+          "serviceId": 1049,
+          "name": "Advanced Cut",
+          "price": 250,
+          "duration": 40,
+          "eligibility": "assigned"
+        },
+        {
+          "serviceId": 17,
+          "name": "Basic Hair Color",
+          "price": 150,
+          "duration": 15,
+          "eligibility": "assigned"
+        },
+        {
+          "serviceId": 11,
+          "name": "Basic Skin Care",
+          "price": 200,
+          "duration": 20,
+          "eligibility": "assigned"
+        },
+        {
+          "serviceId": 34,
+          "name": "Beard Bleaching",
+          "price": 200,
+          "duration": 30,
+          "eligibility": "assigned"
+        },
+        {
+          "serviceId": 10,
+          "name": "Beard Styling & Fade",
+          "price": 100,
+          "duration": 20,
+          "eligibility": "assigned"
+        }
+      ]
+    },
+    "ziadFridayPreserved": true,
+    "weeklySchedule": [
+      {
+        "dow": 6,
+        "date": "2026-08-01",
+        "expectWork": true,
+        "ok": true,
+        "gleemLeak": false,
+        "globalWorking": true,
+        "branchCode": "CAMP_CAESAR",
+        "endDayOffset": 1,
+        "start": "11:00",
+        "end": "01:30"
+      },
+      {
+        "dow": 0,
+        "date": "2026-08-02",
+        "expectWork": true,
+        "ok": true,
+        "gleemLeak": false,
+        "globalWorking": true,
+        "branchCode": "CAMP_CAESAR",
+        "endDayOffset": 1,
+        "start": "11:00",
+        "end": "01:30"
+      },
+      {
+        "dow": 1,
+        "date": "2026-07-27",
+        "expectWork": true,
+        "ok": true,
+        "gleemLeak": false,
+        "globalWorking": true,
+        "branchCode": "CAMP_CAESAR",
+        "endDayOffset": 1,
+        "start": "11:00",
+        "end": "01:30"
+      },
+      {
+        "dow": 2,
+        "date": "2026-07-28",
+        "expectWork": true,
+        "ok": true,
+        "gleemLeak": false,
+        "globalWorking": true,
+        "branchCode": "CAMP_CAESAR",
+        "endDayOffset": 1,
+        "start": "11:00",
+        "end": "01:30"
+      },
+      {
+        "dow": 3,
+        "date": "2026-07-29",
+        "expectWork": true,
+        "ok": true,
+        "gleemLeak": false,
+        "globalWorking": true,
+        "branchCode": "CAMP_CAESAR",
+        "endDayOffset": 1,
+        "start": "11:00",
+        "end": "01:30"
+      },
+      {
+        "dow": 4,
+        "date": "2026-07-30",
+        "expectWork": true,
+        "ok": true,
+        "gleemLeak": false,
+        "globalWorking": true,
+        "branchCode": "CAMP_CAESAR",
+        "endDayOffset": 1,
+        "start": "11:00",
+        "end": "01:30"
+      },
+      {
+        "dow": 5,
+        "date": "2026-07-31",
+        "expectWork": false,
+        "ok": true,
+        "gleemLeak": false,
+        "globalWorking": false,
+        "branchCode": null,
+        "endDayOffset": 0,
+        "start": null,
+        "end": null
+      }
+    ],
+    "technicalWeeklyCoverage": "PASS",
+    "fridayCheckInRejected": true,
+    "inventory": true,
+    "pos": {
+      "cashInvId": 7817,
+      "cardInvId": 7818,
+      "cashMoves": [
+        {
+          "ID": 36800,
+          "BranchID": 3
+        },
+        {
+          "ID": 36799,
+          "BranchID": 3
+        },
+        {
+          "ID": 36798,
+          "BranchID": 3
+        },
+        {
+          "ID": 36797,
+          "BranchID": 3
+        }
+      ]
+    },
+    "payroll": {
+      "payrollId": 1655,
+      "ledgerId": 631,
+      "rate": 1,
+      "noTarget": true
+    },
+    "transferPreview": {
+      "canTransfer": false,
+      "blockers": [
+        {
+          "code": "INVALID_OVERNIGHT_SCHEDULE",
+          "message": "نافذة عمل الوجهة غير صالحة"
+        },
+        {
+          "code": "EMPLOYEE_NOT_ASSIGNED_TO_BRANCH",
+          "message": "التعيين مطلوب في فرع الوجهة"
+        },
+        {
+          "code": "EMPLOYEE_BRANCH_PAYROLL_PLAN_REQUIRED",
+          "message": "خطة راتب فرع الوجهة مطلوبة"
+        },
+        {
+          "code": "EMPLOYEE_BOOKING_SERVICES_REQUIRED",
+          "message": "أهلية الخدمات مطلوبة في فرع الوجهة قبل النقل التشغيلي"
+        }
+      ]
+    },
+    "slots": {
+      "slotDate": "2026-08-01",
+      "availableCount": 56,
+      "overnightSample": [
+        {
+          "time": "00:00",
+          "dayOffset": 1
+        },
+        {
+          "time": "00:15",
+          "dayOffset": 1
+        },
+        {
+          "time": "00:30",
+          "dayOffset": 1
+        }
+      ],
+      "fridayAvailableCount": 0,
+      "firstSlot": {
+        "time": "11:00",
+        "dayOffset": 0
+      }
+    },
+    "slotBoundaries": [
+      {
+        "time": "10:59",
+        "found": false,
+        "available": false,
+        "dayOffset": null,
+        "reason": null
+      },
+      {
+        "time": "11:00",
+        "found": true,
+        "available": true,
+        "dayOffset": 0,
+        "reason": null
+      },
+      {
+        "time": "23:45",
+        "found": true,
+        "available": true,
+        "dayOffset": 0,
+        "reason": null
+      },
+      {
+        "time": "00:15",
+        "found": true,
+        "available": true,
+        "dayOffset": 1,
+        "reason": null
+      },
+      {
+        "time": "01:15",
+        "found": false,
+        "available": false,
+        "dayOffset": null,
+        "reason": null
+      },
+      {
+        "time": "01:30",
+        "found": false,
+        "available": false,
+        "dayOffset": null,
+        "reason": null
+      },
+      {
+        "time": "01:45",
+        "found": false,
+        "available": false,
+        "dayOffset": null,
+        "reason": null
+      }
+    ],
+    "publicIsolation": true,
+    "realWeeklyEmployeeCoverage": "NO-GO",
+    "postActivation": {
+      "activeIncludesCc": true,
+      "publicIncludesCc": false
+    },
+    "cleanup": {
+      "EmpActive": 0,
+      "Asg": 0,
+      "Sched": 0,
+      "Ziad": 1,
+      "ZiadAsg": 1
+    },
+    "gleemIsolation": true,
+    "findings": [
+      {
+        "severity": "MEDIUM",
+        "kind": "transfer",
+        "message": "Transfer blocked: [{\"code\":\"INVALID_OVERNIGHT_SCHEDULE\",\"message\":\"نافذة عمل الوجهة غير صالحة\"},{\"code\":\"EMPLOYEE_NOT_ASSIGNED_TO_BRANCH\",\"message\":\"التعيين مطلوب في فرع الوجهة\"},{\"code\":\"EMPLOYEE_BRANCH_PAYROLL_PLAN_R"
+      }
+    ],
+    "matrix": [
+      {
+        "endpoint": "GET /api/public/branches",
+        "method": "GET",
+        "branchCodeRequired": false,
+        "campCaesar": "hidden",
+        "gleem": "ok",
+        "status": 200,
+        "knownIssue": null,
+        "fix": null
+      },
+      {
+        "endpoint": "resolvePublicBranchCode(CAMP_CAESAR)",
+        "method": "lib",
+        "branchCodeRequired": true,
+        "campCaesar": "BRANCH_INACTIVE",
+        "gleem": "PUBLIC_LIVE",
+        "status": 404,
+        "knownIssue": null,
+        "fix": null
+      },
+      {
+        "endpoint": "GET /api/public/booking/barbers?mode=global",
+        "method": "GET",
+        "branchCodeRequired": false,
+        "campCaesar": "test_hidden",
+        "gleem": "ok",
+        "status": 200,
+        "knownIssue": null,
+        "fix": "applied"
+      },
+      {
+        "endpoint": "listAvailableBookingSlots admin CC",
+        "method": "lib",
+        "branchCodeRequired": true,
+        "campCaesar": "slots=56",
+        "gleem": "n/a",
+        "status": 200,
+        "knownIssue": null,
+        "fix": null
+      }
+    ],
+    "smokeRunId": 28,
+    "empId": 1057,
+    "opsDate": "2026-07-27",
+    "phase": "1U-full-week-pre-booking-audit"
+  },
+  "ids": {
+    "empId": 1057,
+    "assignmentId": 49,
+    "payrollPlanId": 47,
+    "serviceProId": 1049,
+    "productProId": 1076,
+    "attendanceId": 2925,
+    "bookingId": 2148,
+    "ticketId": 164,
+    "cashInvId": 7817,
+    "cardInvId": 7818,
+    "payrollId": 1655,
+    "ledgerId": 631,
+    "transferId": 0,
+    "invAdjId": 0,
+    "customerId": 0,
+    "businessDayId": 4470
+  },
+  "steps": [
+    {
+      "step": "A.smoke_start",
+      "ok": true,
+      "detail": "SmokeRunID=28"
+    },
+    {
+      "step": "B.services",
+      "ok": true,
+      "detail": "30 bookable"
+    },
+    {
+      "step": "C.assignment",
+      "ok": true,
+      "detail": "EmpID=1057 asg=49 plan=47"
+    },
+    {
+      "step": "D.schedule",
+      "ok": true,
+      "detail": "PASS"
+    },
+    {
+      "step": "E.attendance",
+      "ok": true,
+      "detail": "AttendanceID=2925 friReject=true"
+    },
+    {
+      "step": "F.queue",
+      "ok": true,
+      "detail": "Booking=2148 Ticket=164"
+    },
+    {
+      "step": "G.inventory",
+      "ok": true,
+      "detail": "pro=1076"
+    },
+    {
+      "step": "H.pos",
+      "ok": true,
+      "detail": "cash=7817 card=7818 moves=4"
+    },
+    {
+      "step": "I.payroll",
+      "ok": true,
+      "detail": "PayrollID=1655 Ledger=631"
+    },
+    {
+      "step": "J.transfer",
+      "ok": true,
+      "detail": "{\"canTransfer\":false,\"blockers\":[{\"code\":\"INVALID_OVERNIGHT_SCHEDULE\",\"message\":\"نافذة عمل الوجهة غير صالحة\"},{\"code\":\"EMPLOYEE_NOT_ASSIGNED_TO_BRANCH\",\"message\":\"التعيين مطلوب في "
+    },
+    {
+      "step": "K.booking_audit",
+      "ok": true,
+      "detail": "pubCc=false testPublic=false slots=56 realCoverage=NO-GO"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "MEDIUM",
+      "kind": "transfer",
+      "message": "Transfer blocked: [{\"code\":\"INVALID_OVERNIGHT_SCHEDULE\",\"message\":\"نافذة عمل الوجهة غير صالحة\"},{\"code\":\"EMPLOYEE_NOT_ASSIGNED_TO_BRANCH\",\"message\":\"التعيين مطلوب في فرع الوجهة\"},{\"code\":\"EMPLOYEE_BRANCH_PAYROLL_PLAN_R"
+    }
+  ],
+  "matrix": [
+    {
+      "endpoint": "GET /api/public/branches",
+      "method": "GET",
+      "branchCodeRequired": false,
+      "campCaesar": "hidden",
+      "gleem": "ok",
+      "status": 200,
+      "knownIssue": null,
+      "fix": null
+    },
+    {
+      "endpoint": "resolvePublicBranchCode(CAMP_CAESAR)",
+      "method": "lib",
+      "branchCodeRequired": true,
+      "campCaesar": "BRANCH_INACTIVE",
+      "gleem": "PUBLIC_LIVE",
+      "status": 404,
+      "knownIssue": null,
+      "fix": null
+    },
+    {
+      "endpoint": "GET /api/public/booking/barbers?mode=global",
+      "method": "GET",
+      "branchCodeRequired": false,
+      "campCaesar": "test_hidden",
+      "gleem": "ok",
+      "status": 200,
+      "knownIssue": null,
+      "fix": "applied"
+    },
+    {
+      "endpoint": "listAvailableBookingSlots admin CC",
+      "method": "lib",
+      "branchCodeRequired": true,
+      "campCaesar": "slots=56",
+      "gleem": "n/a",
+      "status": 200,
+      "knownIssue": null,
+      "fix": null
+    }
+  ]
+}

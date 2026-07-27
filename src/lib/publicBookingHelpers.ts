@@ -70,10 +70,21 @@ export const PLACEHOLDER_CUSTOMER_PHONES = new Set([
 
 /** True when phone is present, valid, and not a known test/placeholder number. */
 export function isUsableCustomerPhone(phone: string | null | undefined): boolean {
-  const cleaned = (phone ?? '').trim();
+  const cleaned = normalizePublicBookingPhone(phone ?? '');
   if (!cleaned) return false;
   if (PLACEHOLDER_CUSTOMER_PHONES.has(cleaned)) return false;
   return isValidPhone(cleaned);
+}
+
+/**
+ * Normalize Egyptian / local phones for identity matching.
+ * Strips spaces; maps +20 / 0020 prefixes to leading 0.
+ */
+export function normalizePublicBookingPhone(phone: string): string {
+  let p = phone.trim().replace(/\s+/g, '').replace(/-/g, '');
+  if (p.startsWith('+20')) p = `0${p.slice(3)}`;
+  else if (p.startsWith('0020')) p = `0${p.slice(4)}`;
+  return p;
 }
 
 /**
@@ -371,14 +382,19 @@ export async function getGlobalTimingDefaults(): Promise<PublicSettings> {
 export async function upsertCustomer(
   name: string,
   phone: string | null | undefined,
+  transaction?: import('mssql').Transaction,
 ): Promise<number> {
-  const db = await getPool();
-  const cleanedPhone = (phone ?? '').trim();
+  const db = (transaction ?? (await getPool())) as
+    | Awaited<ReturnType<typeof getPool>>
+    | import('mssql').Transaction;
+  const cleanedPhone = normalizePublicBookingPhone(phone ?? '');
   const usablePhone = isUsableCustomerPhone(cleanedPhone) ? cleanedPhone : '';
 
+  const req = () =>
+    transaction ? new sql.Request(transaction) : (db as Awaited<ReturnType<typeof getPool>>).request();
+
   if (usablePhone) {
-    const existing = await db
-      .request()
+    const existing = await req()
       .input('mobile', sql.NVarChar, usablePhone)
       .query(
         `SELECT TOP 1 ClientID FROM [dbo].[TblClient] WHERE Mobile = @mobile`,
@@ -389,23 +405,39 @@ export async function upsertCustomer(
     }
   }
 
-  const inserted = await db
-    .request()
-    .input('name', sql.NVarChar, name.trim())
-    .input('mobile', sql.NVarChar, usablePhone || null).query(`
+  try {
+    const inserted = await req()
+      .input('name', sql.NVarChar, name.trim())
+      .input('mobile', sql.NVarChar, usablePhone || null).query(`
       INSERT INTO [dbo].[TblClient] ([Name], Mobile, RegisterDate)
       OUTPUT INSERTED.ClientID
       VALUES (@name, @mobile, GETDATE())
     `);
-  return inserted.recordset[0].ClientID as number;
+    return inserted.recordset[0].ClientID as number;
+  } catch (err: unknown) {
+    // Concurrent insert race — re-select by phone
+    if (usablePhone) {
+      const again = await req()
+        .input('mobile', sql.NVarChar, usablePhone)
+        .query(`SELECT TOP 1 ClientID FROM [dbo].[TblClient] WHERE Mobile = @mobile`);
+      if (again.recordset[0]?.ClientID) return again.recordset[0].ClientID as number;
+    }
+    throw err;
+  }
 }
 
 // ── CORS headers for public endpoints ────────────────────────────────────────
+//
+// Booking Phase 7C1: public *booking* routes must use
+// `src/lib/booking/publicBookingCors.ts` (origin allowlist).
+// This wildcard constant remains only for legacy non-booking public/client helpers
+// that have not yet migrated (e.g. /api/public/client/*). Do not use for booking.
 
 export const PUBLIC_CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, x-public-booking-key",
+  "Access-Control-Allow-Headers":
+    "Content-Type, x-public-booking-key, Idempotency-Key",
   "Cache-Control": "no-store",
 };
 

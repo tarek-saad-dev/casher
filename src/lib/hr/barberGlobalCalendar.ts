@@ -231,6 +231,10 @@ export async function listGlobalPublicBarbers(args?: {
       AND a.IsActive = 1 AND a.CanReceiveBookings = 1
       AND a.EffectiveFrom <= @day
       AND (a.EffectiveTo IS NULL OR a.EffectiveTo >= @day)
+      AND (e.EmpName IS NULL OR (
+        e.EmpName NOT LIKE N'%[[]TEST]%'
+        AND e.EmpName NOT LIKE N'%[[]SMOKE%'
+      ))
     ORDER BY e.EmpName, b.BranchCode
   `);
 

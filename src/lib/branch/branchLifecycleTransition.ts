@@ -124,15 +124,19 @@ export async function transitionBranchLifecycle(
       .input('runId', sql.BigInt, input.smokeRunId)
       .input('branchId', sql.Int, branch.branchId)
       .query(`
-        SELECT TOP 1 Status
+        SELECT TOP 1 Status, CleanupStatus
         FROM dbo.TblBranchSmokeRun
         WHERE SmokeRunID = @runId AND BranchID = @branchId
       `);
-    const status = run.recordset[0]?.Status;
-    if (status !== 'PASSED') {
+    const status = String(run.recordset[0]?.Status ?? '');
+    const cleanup = String(run.recordset[0]?.CleanupStatus ?? '');
+    const ok =
+      status === 'PASSED' ||
+      (status === 'CLEANED' && (cleanup === 'COMPLETED' || cleanup === 'CLEANED'));
+    if (!ok) {
       throw new BranchDomainError(
         'BRANCH_NOT_READY',
-        'يجب أن تكون نتيجة الـ smoke PASSED قبل INTERNAL_LIVE',
+        'يجب أن تكون نتيجة الـ smoke PASSED أو CLEANED(مكتمل) قبل INTERNAL_LIVE',
         409,
       );
     }

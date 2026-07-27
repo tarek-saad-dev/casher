@@ -1,0 +1,83 @@
+{
+  "ts": "2026-07-27T02:37:33.436Z",
+  "marker": "P6CREATE",
+  "specific_create": {
+    "ms": 8285,
+    "ok": true,
+    "code": "BK-HY92TE",
+    "bookingId": 2155,
+    "empId": 12,
+    "replay": false,
+    "planTokenStatus": "absent_legacy",
+    "assignmentStrategy": "fixed_barber",
+    "whatsapp": {
+      "scheduled": false,
+      "skipped": true,
+      "reason": "placeholder_or_invalid_phone"
+    }
+  },
+  "idempotent_replay": {
+    "ms": 5671,
+    "ok": false,
+    "code": "SLOT_UNAVAILABLE"
+  },
+  "idempotency_mismatch": {
+    "ms": 6383,
+    "ok": false,
+    "code": "SLOT_OUTSIDE_BRANCH_HOURS"
+  },
+  "camp_caesar": {
+    "ok": false,
+    "code": "PublicBookingSelectionError: BRANCH_NOT_PUBLIC"
+  },
+  "concurrency_specific": {
+    "a": {
+      "ok": false,
+      "code": "SLOT_UNAVAILABLE"
+    },
+    "b": {
+      "ok": false,
+      "code": "SLOT_UNAVAILABLE"
+    },
+    "successCount": 0
+  },
+  "any_barber_create": {
+    "ms": 4355,
+    "ok": true,
+    "code": "BK-N8WKGC",
+    "bookingId": 2156,
+    "empId": 7,
+    "replay": false,
+    "planTokenStatus": "absent_legacy",
+    "assignmentStrategy": "server_selected",
+    "whatsapp": {
+      "scheduled": false,
+      "skipped": true,
+      "reason": "placeholder_or_invalid_phone"
+    }
+  },
+  "overnight_create": {
+    "ms": 8214,
+    "ok": true,
+    "code": "BK-LK9T9F",
+    "bookingId": 2157,
+    "empId": 12,
+    "replay": false,
+    "planTokenStatus": "absent_legacy",
+    "assignmentStrategy": "fixed_barber",
+    "whatsapp": {
+      "scheduled": false,
+      "skipped": true,
+      "reason": "placeholder_or_invalid_phone"
+    }
+  },
+  "cleanup": {
+    "bookingIds": [
+      2155,
+      2156,
+      2157
+    ],
+    "cleaned": 3
+  },
+  "createdCount": 3
+}

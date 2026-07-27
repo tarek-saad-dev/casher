@@ -104,7 +104,7 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
 
   useEffect(() => {
     if (!isOpen) return;
-    fetch('/api/services?active=true')
+    fetch('/api/services?active=true&bookable=true')
       .then((r) => r.json())
       .then((d) => setServices(d.services ?? d ?? []))
       .catch(() => {});

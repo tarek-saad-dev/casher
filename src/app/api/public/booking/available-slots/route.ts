@@ -1,173 +1,125 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { extractPublicBranchCode } from '@/lib/branch/bookingQueueOwnership';
+import { publicBookingErrorResponse } from '@/lib/booking/publicBookingErrorCatalog';
 import {
-  getPublicSettings,
-  getRateLimitKey,
-  checkRateLimit,
-  isValidDate,
-  PUBLIC_CORS_HEADERS,
-  publicBookingPausedJson,
-} from '@/lib/publicBookingHelpers';
-import { listAvailableBookingSlots } from '@/lib/bookingAvailabilityEngine';
-import { ServicePlanError } from '@/lib/servicePlan';
+  publicBookingOptionsResponse,
+  PUBLIC_BOOKING_ROUTE_CORS,
+} from '@/lib/booking/publicBookingCors';
 import {
-  extractPublicBranchCode,
-  resolvePublicBranchCode,
-  publicBranchRequiredResponse,
-  publicInvalidBranchResponse,
-} from '@/lib/branch/bookingQueueOwnership';
-import { BranchDomainError } from '@/lib/branch/types';
+  PublicBookingAvailabilityError,
+  getPublicAvailableSlots,
+} from '@/lib/booking/publicBookingAvailability';
 import { requireActiveBranchContext, isActiveBranchContext } from '@/lib/branch/context';
+import {
+  gatePublicBookingRoute,
+  finalizePublicBookingError,
+  finalizePublicBookingJson,
+} from '@/lib/booking/publicBookingRouteGate';
 
 export const runtime = 'nodejs';
 
-export type DurationSource =
-  | 'EMP_SERVICE_OVERRIDE'
-  | 'SERVICE_DEFAULT'
-  | 'SYSTEM_DEFAULT'
-  | 'HARDCODED_FALLBACK';
-
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: PUBLIC_CORS_HEADERS });
+export async function OPTIONS(req: NextRequest) {
+  const cors = PUBLIC_BOOKING_ROUTE_CORS['available-slots'];
+  return publicBookingOptionsResponse({
+    request: req,
+    allowedMethods: [...cors.methods],
+    allowedHeaders: cors.headers,
+  });
 }
 
 /**
  * GET /api/public/booking/available-slots
- *
- * Delegates to listAvailableBookingSlots — canonical engine shared with
- * operations timeline (buildQueueIntervals + buildBookingIntervals).
+ * Public: branchCode + date + serviceIds (+ optional empId)
+ * Internal operations/admin: session branch + source=operations|admin (legacy path via engine still available through this wrapper for public)
  */
 export async function GET(req: NextRequest) {
-  const ip = getRateLimitKey(req);
-  if (!checkRateLimit(ip)) {
-    return NextResponse.json(
-      { error: 'طلبات كثيرة' },
-      { status: 429, headers: PUBLIC_CORS_HEADERS },
-    );
-  }
+  const { gate, blocked } = gatePublicBookingRoute(req, 'available-slots');
+  if (blocked) return blocked;
 
   try {
     const { searchParams } = new URL(req.url);
-    const date = searchParams.get('date') ?? '';
-    const serviceParam = searchParams.get('serviceIds') ?? '';
-    const mode = (searchParams.get('mode') ?? 'nearest') as 'nearest' | 'specific';
-    const empIdParam = searchParams.get('empId');
-    const source = (searchParams.get('source') ?? 'public') as
-      | 'public'
-      | 'operations'
-      | 'admin';
+    void searchParams.get('BranchID');
+    void searchParams.get('includeTest');
+    void searchParams.get('duration');
+    void searchParams.get('includeBusy');
+    const preview = searchParams.get('preview');
+    const source = (searchParams.get('source') ?? 'public').toLowerCase();
+    const isInternal = source === 'operations' || source === 'admin';
 
-    if (!date || !isValidDate(date)) {
-      return NextResponse.json(
-        { error: 'تاريخ غير صالح' },
-        { status: 400, headers: PUBLIC_CORS_HEADERS },
-      );
-    }
-
-    const serviceIds = serviceParam
-      ? serviceParam.split(',').map(Number).filter((n) => n > 0)
-      : [];
-    const empId = empIdParam ? Number(empIdParam) : null;
-
-    if (mode === 'specific' && !empId) {
-      return NextResponse.json(
-        { error: 'empId مطلوب في وضع specific' },
-        { status: 400, headers: PUBLIC_CORS_HEADERS },
-      );
-    }
-
-    // Resolve branch: internal callers use the authenticated session branch;
-    // public callers must supply branchCode (never a silent default).
-    const isInternalSource = source === 'operations' || source === 'admin';
-    let branchId: number;
-    if (isInternalSource) {
+    // Internal callers keep session branch; public must use branchCode + Phase 4 contract.
+    if (isInternal) {
       const branchCtx = await requireActiveBranchContext();
       if (!isActiveBranchContext(branchCtx)) return branchCtx;
-      branchId = branchCtx.branchId;
-    } else {
-      const branchCode = extractPublicBranchCode(searchParams);
-      try {
-        const branch = await resolvePublicBranchCode(branchCode, {
-          route: '/api/public/booking/available-slots',
-        });
-        branchId = branch.branchId;
-      } catch (err) {
-        if (err instanceof BranchDomainError) {
-          return err.code === 'BRANCH_REQUIRED'
-            ? publicBranchRequiredResponse()
-            : publicInvalidBranchResponse();
-        }
-        throw err;
+      // Delegate to legacy engine path for ops UI compatibility
+      const { listAvailableBookingSlots } = await import('@/lib/bookingAvailabilityEngine');
+      const { isValidDate } = await import('@/lib/publicBookingHelpers');
+      const date = searchParams.get('date') ?? '';
+      const serviceIds = (searchParams.get('serviceIds') ?? '')
+        .split(',')
+        .map(Number)
+        .filter((n) => n > 0);
+      const mode = (searchParams.get('mode') ?? 'nearest') as 'nearest' | 'specific';
+      const empIdParam = searchParams.get('empId');
+      const empId = empIdParam ? Number(empIdParam) : null;
+      if (!isValidDate(date)) {
+        return finalizePublicBookingError(req, gate, 'INVALID_DATE');
       }
-    }
-
-    if (!isInternalSource) {
-      const settings = await getPublicSettings(branchId);
-      if (!settings.bookingEnabled) {
-        return NextResponse.json(publicBookingPausedJson(), {
-          status: 503,
-          headers: PUBLIC_CORS_HEADERS,
-        });
-      }
-    }
-
-    const result = await listAvailableBookingSlots({
-      date,
-      serviceIds,
-      mode,
-      empId,
-      source,
-      branchId,
-    });
-
-    const slots = result.availableSlots.map((s) => ({
-      time: s.time,
-      endTime: s.endTime,
-      label: s.label,
-      available: true,
-      dayOffset: s.dayOffset,
-      empId: s.empId,
-      barberName: s.empName,
-      durationMinutes: s.durationMinutes,
-      durationSource: result.durationSource as DurationSource,
-      startAt: s.startAt,
-      endAt: s.endAt,
-    }));
-
-    return NextResponse.json(
-      {
-        ok: true,
-        date: result.date,
-        mode: result.mode,
-        serviceDurationMinutes: result.durationMinutes,
-        durationSource: result.durationSource,
-        ...(result.empId ? { empId: result.empId } : {}),
-        slots,
-        availableSlots: slots,
-        noSlotsReason: result.noSlotsReason,
-        gapNotice: result.gapNotice,
-        nextAvailable: result.nextAvailable,
-        alternativeBarbers: result.alternativeBarbers,
-        debug: {
-          ...result.debug,
+      const result = await listAvailableBookingSlots({
+        date,
+        serviceIds,
+        mode,
+        empId,
+        source: source as 'operations' | 'admin',
+        branchId: branchCtx.branchId,
+      });
+      return finalizePublicBookingJson(
+        req,
+        gate,
+        {
+          ok: true,
+          date: result.date,
+          mode: result.mode,
+          serviceDurationMinutes: result.durationMinutes,
+          durationSource: result.durationSource,
+          empId: result.empId ?? null,
+          slots: result.slots,
+          availableSlots: result.availableSlots,
           noSlotsReason: result.noSlotsReason,
           gapNotice: result.gapNotice,
-          nextAvailable: result.nextAvailable?.time ?? null,
+          nextAvailable: result.nextAvailable,
           alternativeBarbers: result.alternativeBarbers,
-        },
-      },
-      { headers: PUBLIC_CORS_HEADERS },
-    );
-  } catch (err) {
-    if (err instanceof ServicePlanError) {
-      return NextResponse.json(
-        { ok: false, code: err.code, message: err.message },
-        { status: err.status, headers: PUBLIC_CORS_HEADERS },
+          debug: result.debug,
+        }
       );
     }
-    console.error('[public/booking/available-slots]', err);
-    return NextResponse.json(
-      { error: 'فشل تحميل المواعيد' },
-      { status: 500, headers: PUBLIC_CORS_HEADERS },
-    );
+
+    const branchCode = extractPublicBranchCode(searchParams);
+    const date = searchParams.get('date') ?? '';
+    const serviceIds = searchParams.get('serviceIds');
+    const empIdRaw = searchParams.get('empId');
+    const empId = empIdRaw ? Number(empIdRaw) : null;
+
+    if (!serviceIds?.trim()) {
+      return finalizePublicBookingError(req, gate, 'SERVICE_NOT_AVAILABLE_AT_BRANCH');
+    }
+    if (empIdRaw && (!Number.isFinite(empId) || (empId ?? 0) <= 0)) {
+      return finalizePublicBookingError(req, gate, 'BARBER_NOT_FOUND');
+    }
+
+    const result = await getPublicAvailableSlots({
+      branchCode,
+      date,
+      serviceIds,
+      empId,
+      previewQueryParam: preview,
+    });
+
+    return finalizePublicBookingJson(req, gate, result);
+  } catch (err) {
+    if (err instanceof PublicBookingAvailabilityError) {
+      return finalizePublicBookingError(req, gate, err.code);
+    }
+    console.error('[public/booking/available-slots]', err instanceof Error ? err.message : 'error');
+    return finalizePublicBookingError(req, gate, 'AVAILABILITY_UNAVAILABLE');
   }
 }

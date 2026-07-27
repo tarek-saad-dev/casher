@@ -38,6 +38,10 @@ interface Barber {
   bookingsCount: number;
   inServiceCount: number;
   timeline: TimelineItem[];
+  branchId?: number;
+  branchName?: string;
+  branchShortName?: string | null;
+  isEmergencyTransfer?: boolean;
 }
 
 interface BarberColor {
@@ -206,6 +210,12 @@ export function BarberLane({
                   {getStatusLabel()}
                 </span>
               </div>
+              {(barber.branchShortName || barber.branchName) && (
+                <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                  {barber.branchShortName || barber.branchName}
+                  {barber.isEmergencyTransfer ? ' · نقل طارئ' : ''}
+                </p>
+              )}
             </div>
             {onQueueClick && (
               <BarberHeaderQueueButton

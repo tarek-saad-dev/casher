@@ -208,6 +208,12 @@ export {
   upsertBranchSetupPolicy,
 } from './branchSetupPolicy';
 export {
+  decideOpeningCashZero,
+  decideOpeningCashAmount,
+  isOpeningCashResolved,
+} from './openingCashDecision';
+export { activateBranchPartnerShares } from './activatePartnerShares';
+export {
   buildMockBranchReceiptPayload,
   renderWhatsAppTemplateProof,
 } from './branchReceiptIdentity';

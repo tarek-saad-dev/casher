@@ -334,14 +334,13 @@ export async function loadBookingOverridesForDate(
   empIds: number[],
   dateStr: string,
 ): Promise<Map<number, ScheduleOverride[]>> {
-  const [raw, expands] = await Promise.all([
-    loadOverridesForDate(
-      db as Parameters<typeof loadOverridesForDate>[0],
-      empIds,
-      dateStr,
-    ),
-    loadAttendanceExpandOverrides(db, empIds, dateStr),
-  ]);
+  // Sequential: db may be a Transaction (one request per connection).
+  const raw = await loadOverridesForDate(
+    db as Parameters<typeof loadOverridesForDate>[0],
+    empIds,
+    dateStr,
+  );
+  const expands = await loadAttendanceExpandOverrides(db, empIds, dateStr);
   return mergeAttendanceExpandOverrides(raw, expands);
 }
 

@@ -189,13 +189,21 @@ async function checkLive(expectedDatabase: string, failures: string[]) {
     console.log(`    OK database=${dbName}`);
 
     const active = await pool.request().query(`
-      SELECT BranchCode FROM dbo.TblBranch WHERE IsActive = 1
+      SELECT BranchCode, LifecycleStatus FROM dbo.TblBranch WHERE IsActive = 1
     `);
     const codes = active.recordset.map((r: { BranchCode: string }) => r.BranchCode);
-    if (codes.length !== 1 || codes[0] !== 'GLEEM') {
-      failures.push(`expected only GLEEM active, got [${codes.join(',')}]`);
+    const allowed = new Set(['GLEEM', 'CAMP_CAESAR']);
+    const unexpected = codes.filter((c: string) => !allowed.has(c));
+    const hasGleem = codes.includes('GLEEM');
+    const cc = active.recordset.find((r: { BranchCode: string }) => r.BranchCode === 'CAMP_CAESAR') as
+      | { BranchCode: string; LifecycleStatus: string }
+      | undefined;
+    if (!hasGleem || unexpected.length > 0) {
+      failures.push(`unexpected active branches: [${codes.join(',')}]`);
+    } else if (cc && cc.LifecycleStatus === 'PUBLIC_LIVE') {
+      failures.push('CAMP_CAESAR must not be PUBLIC_LIVE');
     } else {
-      console.log('    OK only GLEEM active');
+      console.log(`    OK active branches=[${codes.join(',')}] (GLEEM required; CAMP_CAESAR INTERNAL_LIVE allowed)`);
     }
 
     const ph1 = await pool.request().query(`

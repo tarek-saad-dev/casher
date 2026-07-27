@@ -1,0 +1,91 @@
+{
+  "ts": "2026-07-27T03:04:22.565Z",
+  "marker": "P6B",
+  "workDate": "2026-08-05",
+  "slot": {
+    "time": "14:30",
+    "dayOffset": 0,
+    "startDateTime": "2026-08-05T11:30:00.000Z",
+    "endDateTime": "2026-08-05T12:00:00.000Z",
+    "barbers": [
+      {
+        "empId": 12,
+        "nameAr": "زياد"
+      }
+    ]
+  },
+  "specific_same_slot": {
+    "a": {
+      "ok": true,
+      "code": "BK-NJX2CY",
+      "empId": 12,
+      "ms": 8593
+    },
+    "b": {
+      "ok": false,
+      "code": "SLOT_UNAVAILABLE",
+      "ms": 9927,
+      "poolError": false
+    }
+  },
+  "persistence": {
+    "hasWorkDate": true,
+    "dayOffset": 0,
+    "hasAbsStart": true,
+    "hasAbsEnd": true,
+    "hasIdempotencyRequestID": true
+  },
+  "same_idempotency_key": {
+    "s1": {
+      "ok": true,
+      "code": "BK-F3AXRC",
+      "empId": 12,
+      "ms": 8182
+    },
+    "s2": {
+      "ok": true,
+      "code": "BK-F3AXRC",
+      "empId": 12,
+      "ms": 8095
+    }
+  },
+  "reused_key_mismatch": "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST",
+  "any_barber_precheck_candidates": 2,
+  "any_barber_capacity": [
+    {
+      "ok": true,
+      "code": "BK-KK3VQQ",
+      "empId": 25,
+      "ms": 7646
+    },
+    {
+      "ok": true,
+      "code": "BK-BDWKXD",
+      "empId": 7,
+      "ms": 4838
+    },
+    {
+      "ok": false,
+      "code": "SLOT_UNAVAILABLE",
+      "ms": 10051,
+      "poolError": false
+    }
+  ],
+  "overnight": {
+    "ok": true,
+    "code": "BK-GU8TE9",
+    "empId": 12,
+    "ms": 8476
+  },
+  "cleanup": {
+    "cleaned": 5,
+    "leftover": 0
+  },
+  "verdict": {
+    "specific_same_slot": "PASS",
+    "same_idempotency_key": "PASS",
+    "reused_key": "PASS",
+    "persistence": "PASS",
+    "pool_safe": "PASS"
+  }
+}

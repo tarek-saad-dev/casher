@@ -13,6 +13,7 @@ import type { BranchRecord } from './types';
 import { BranchDomainError } from './types';
 import { assertActiveBranchOwns, financialNotFoundResponse } from './financialOwnership';
 import { isPubliclyDiscoverable } from './lifecycle';
+import { getSmokeExecutionContext } from './smokeExecutionContext';
 
 export type PublicBranchSafe = {
   branchId: number;
@@ -44,15 +45,29 @@ export function toPublicBranchSafe(b: BranchRecord): PublicBranchSafe {
 
 export async function listPublicActiveBranches(): Promise<PublicBranchSafe[]> {
   const rows = await listActiveBranches();
-  return rows
-    .filter((b) =>
-      isPubliclyDiscoverable({
+  const db = await getPool();
+  const out: PublicBranchSafe[] = [];
+  for (const b of rows) {
+    if (
+      !isPubliclyDiscoverable({
         lifecycleStatus: b.lifecycleStatus,
         publicBookingEnabled: b.publicBookingEnabled,
         isActive: b.isActive,
-      }),
-    )
-    .map(toPublicBranchSafe);
+      })
+    ) {
+      continue;
+    }
+    const qbs = await db
+      .request()
+      .input('branchId', sql.Int, b.branchId)
+      .query(`
+        SELECT TOP 1 ISNULL(BookingEnabled, 0) AS BookingEnabled
+        FROM dbo.QueueBookingSettings WHERE BranchID = @branchId
+      `);
+    if (!qbs.recordset[0]?.BookingEnabled) continue;
+    out.push(toPublicBranchSafe(b));
+  }
+  return out;
 }
 
 function assertPublicBookable(branch: BranchRecord): BranchRecord {
@@ -71,7 +86,13 @@ function assertPublicBookable(branch: BranchRecord): BranchRecord {
 /** Non-disclosing invalid branch for public callers. */
 export function publicInvalidBranchResponse(): NextResponse {
   return NextResponse.json(
-    { ok: false, error: 'INVALID_BRANCH', message: 'الفرع غير متاح' },
+    {
+      ok: false,
+      error: 'INVALID_BRANCH',
+      code: 'BRANCH_NOT_PUBLIC',
+      message: 'الفرع غير متاح',
+      messageEn: 'Branch is not publicly bookable',
+    },
     { status: 404, headers: PUBLIC_CORS_HEADERS },
   );
 }
@@ -229,7 +250,7 @@ export async function isEmployeeEligibleForBranchBookings(args: {
   return result.recordset.length > 0;
 }
 
-/** SQL fragment: employee ids assigned to branch for bookings on @day. */
+/** SQL fragment: employee ids assigned to branch for bookings on @day (includes test). */
 export const EMP_BOOKABLE_AT_BRANCH_SQL = `
   SELECT ea.EmpID
   FROM dbo.TblEmpBranchAssignment ea
@@ -244,15 +265,28 @@ export const EMP_BOOKABLE_AT_BRANCH_SQL = `
     AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @day)
 `;
 
+/** Public booking: same as above but excludes disposable [TEST]/[SMOKE] identities. */
+export const EMP_BOOKABLE_AT_BRANCH_PUBLIC_SQL = `
+  ${EMP_BOOKABLE_AT_BRANCH_SQL.trim()}
+    AND (e.EmpName IS NULL OR (
+      e.EmpName NOT LIKE N'%[[]TEST]%'
+      AND e.EmpName NOT LIKE N'%[[]SMOKE%'
+    ))
+`;
+
 export async function listBookableEmployeeIdsForBranch(
   branchId: number,
   operationalDate: string,
+  opts?: { publicOnly?: boolean },
 ): Promise<number[]> {
   const db = await getPool();
+  const publicOnly = opts?.publicOnly === true;
+  const smokeContext = getSmokeExecutionContext();
+  const useExclusion = publicOnly && !smokeContext;
   const result = await db
     .request()
     .input('branchId', sql.Int, branchId)
     .input('day', sql.Date, operationalDate)
-    .query(EMP_BOOKABLE_AT_BRANCH_SQL);
+    .query(useExclusion ? EMP_BOOKABLE_AT_BRANCH_PUBLIC_SQL : EMP_BOOKABLE_AT_BRANCH_SQL);
   return result.recordset.map((r: { EmpID: number }) => Number(r.EmpID));
 }

@@ -1,0 +1,1074 @@
+{
+  "probedAt": "2026-07-26T22:12:41.429Z",
+  "database": "last132",
+  "branch": {
+    "BranchID": 3,
+    "BranchCode": "CAMP_CAESAR",
+    "BranchName": "فرع كامب شيزار",
+    "LifecycleStatus": "INTERNAL_LIVE",
+    "IsActive": true,
+    "PublicBookingEnabled": false,
+    "ExternalNotificationsEnabled": true,
+    "Address": "كامب شيزار",
+    "Phone": "01012126899",
+    "OpenT": "11:00:00",
+    "CloseT": "01:30:00"
+  },
+  "qbsCols": [
+    "SettingID",
+    "QueuePrefix",
+    "QueueStartNumber",
+    "ResetQueueDaily",
+    "DefaultServiceMinutes",
+    "BookingGracePeriod",
+    "AutoNoShowAfterMin",
+    "AllowDoubleBooking",
+    "BookingPriorityMode",
+    "UpdatedAt",
+    "UpdatedByUserID",
+    "SlotIntervalMinutes",
+    "MaxBookingDaysAhead",
+    "MinNoticeMinutes",
+    "BookingEnabled",
+    "SalonName",
+    "Timezone",
+    "Currency",
+    "AllowSpecificBarber",
+    "AllowNearestBarber",
+    "DefaultMode",
+    "DefaultServiceDurationMinutes",
+    "BranchID"
+  ],
+  "qbs": {
+    "SettingID": 3,
+    "QueuePrefix": "A",
+    "QueueStartNumber": 1,
+    "ResetQueueDaily": true,
+    "DefaultServiceMinutes": 30,
+    "BookingGracePeriod": 15,
+    "AutoNoShowAfterMin": 30,
+    "AllowDoubleBooking": false,
+    "BookingPriorityMode": "fifo",
+    "UpdatedAt": "2026-07-26T21:41:27.430Z",
+    "UpdatedByUserID": null,
+    "SlotIntervalMinutes": 15,
+    "MaxBookingDaysAhead": 14,
+    "MinNoticeMinutes": 15,
+    "BookingEnabled": false,
+    "SalonName": "Camp Caesar",
+    "Timezone": "Africa/Cairo",
+    "Currency": "EGP",
+    "AllowSpecificBarber": true,
+    "AllowNearestBarber": true,
+    "DefaultMode": "nearest",
+    "DefaultServiceDurationMinutes": 30,
+    "BranchID": 3
+  },
+  "policyColNames": [
+    "BranchID",
+    "SharedPrinterApproved",
+    "SharedWhatsAppApproved",
+    "OpeningInventoryOption",
+    "OpeningInventoryApprovedAt",
+    "OpeningInventoryApprovedByUserID",
+    "UsersAccessReviewedAt",
+    "PartnerSharesDraftReady",
+    "EnglishDisplayName",
+    "Notes",
+    "CreatedAt",
+    "UpdatedAt",
+    "OpeningCashDecision",
+    "OpeningCashAmount",
+    "OpeningCashEffectiveDate",
+    "OpeningCashReason",
+    "OpeningCashApprovedAt",
+    "OpeningCashApprovedByUserID",
+    "InternalLiveEffectiveDate"
+  ],
+  "policy": {
+    "BranchID": 3,
+    "SharedPrinterApproved": true,
+    "SharedWhatsAppApproved": true,
+    "OpeningInventoryOption": "ZERO_STOCK",
+    "OpeningInventoryApprovedAt": "2026-07-26T21:24:17.370Z",
+    "OpeningInventoryApprovedByUserID": 1,
+    "UsersAccessReviewedAt": "2026-07-26T01:45:02.353Z",
+    "PartnerSharesDraftReady": true,
+    "EnglishDisplayName": "Camp Caesar",
+    "Notes": "Phase 1S partner shares activated EffectiveFrom=2026-07-27 by user 1",
+    "CreatedAt": "2026-07-26T01:44:53.503Z",
+    "UpdatedAt": "2026-07-26T21:24:19.075Z",
+    "OpeningCashDecision": "ZERO",
+    "OpeningCashAmount": 0,
+    "OpeningCashEffectiveDate": "2026-07-27T00:00:00.000Z",
+    "OpeningCashReason": "بدء تشغيل فرع كامب شيزار بخزنة افتتاحية صفر",
+    "OpeningCashApprovedAt": "2026-07-26T21:24:16.838Z",
+    "OpeningCashApprovedByUserID": 1,
+    "InternalLiveEffectiveDate": "2026-07-27T00:00:00.000Z"
+  },
+  "partners": [
+    {
+      "BranchPartnerShareID": "7",
+      "PartnerName": "أ/ عايدة",
+      "PartnerCode": "AAYIDA",
+      "SharePercent": 40,
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z",
+      "EffectiveTo": null,
+      "IsActive": true,
+      "PartnerUserID": null
+    },
+    {
+      "BranchPartnerShareID": "8",
+      "PartnerName": "أ/ طارق",
+      "PartnerCode": "TAREK",
+      "SharePercent": 20,
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z",
+      "EffectiveTo": null,
+      "IsActive": true,
+      "PartnerUserID": 13
+    },
+    {
+      "BranchPartnerShareID": "9",
+      "PartnerName": "أ/ ذياد",
+      "PartnerCode": "ZIYAD_CC",
+      "SharePercent": 20,
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z",
+      "EffectiveTo": null,
+      "IsActive": true,
+      "PartnerUserID": 17
+    },
+    {
+      "BranchPartnerShareID": "10",
+      "PartnerName": "أ/ عمر",
+      "PartnerCode": "OMAR_CC",
+      "SharePercent": 20,
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z",
+      "EffectiveTo": null,
+      "IsActive": true,
+      "PartnerUserID": 16
+    }
+  ],
+  "assignments": [
+    {
+      "ID": "32",
+      "EmpID": 1042,
+      "EmpName": "[SMOKE 1S] Cross-Branch Employee 15",
+      "IsActive": true,
+      "CanReceiveBookings": true,
+      "Notes": "services:23",
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z",
+      "EffectiveTo": null,
+      "IsHomeBranch": false
+    },
+    {
+      "ID": "30",
+      "EmpID": 12,
+      "EmpName": "زياد",
+      "IsActive": true,
+      "CanReceiveBookings": true,
+      "Notes": "services:1049,17,11,34,10,29,23,39,46,1047,14,1057,32,18,1051,9,36,44,22,35,47,20,13,43,16,12,1056,31,40,15,19,38,21,1050",
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z",
+      "EffectiveTo": null,
+      "IsHomeBranch": false
+    },
+    {
+      "ID": "36",
+      "EmpID": 1044,
+      "EmpName": "[SMOKE 1S] NoPay 16",
+      "IsActive": false,
+      "CanReceiveBookings": true,
+      "Notes": null,
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z",
+      "EffectiveTo": null,
+      "IsHomeBranch": false
+    },
+    {
+      "ID": "34",
+      "EmpID": 1043,
+      "EmpName": "[SMOKE 1S] Cross-Branch Employee 16",
+      "IsActive": false,
+      "CanReceiveBookings": true,
+      "Notes": "services:23",
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z",
+      "EffectiveTo": "2026-07-26T00:00:00.000Z",
+      "IsHomeBranch": false
+    },
+    {
+      "ID": "29",
+      "EmpID": 1041,
+      "EmpName": "[TEST] Ziad Cross-Branch 14",
+      "IsActive": false,
+      "CanReceiveBookings": true,
+      "Notes": "services:23",
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z",
+      "EffectiveTo": "2026-07-26T00:00:00.000Z",
+      "IsHomeBranch": false
+    },
+    {
+      "ID": "27",
+      "EmpID": 1040,
+      "EmpName": "[SMOKE 1O] Config Emp 13",
+      "IsActive": false,
+      "CanReceiveBookings": true,
+      "Notes": "services:smoke",
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z",
+      "EffectiveTo": "2026-07-26T00:00:00.000Z",
+      "IsHomeBranch": true
+    },
+    {
+      "ID": "26",
+      "EmpID": 1039,
+      "EmpName": "[SMOKE 1O] Config Emp 12",
+      "IsActive": false,
+      "CanReceiveBookings": true,
+      "Notes": "services:smoke",
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z",
+      "EffectiveTo": "2026-07-26T00:00:00.000Z",
+      "IsHomeBranch": true
+    }
+  ],
+  "schedules": [
+    {
+      "EmpID": 12,
+      "EmpName": "زياد",
+      "DayOfWeek": 0,
+      "IsWorking": false,
+      "S": null,
+      "E": null,
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z"
+    },
+    {
+      "EmpID": 12,
+      "EmpName": "زياد",
+      "DayOfWeek": 1,
+      "IsWorking": false,
+      "S": null,
+      "E": null,
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z"
+    },
+    {
+      "EmpID": 12,
+      "EmpName": "زياد",
+      "DayOfWeek": 2,
+      "IsWorking": false,
+      "S": null,
+      "E": null,
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z"
+    },
+    {
+      "EmpID": 12,
+      "EmpName": "زياد",
+      "DayOfWeek": 3,
+      "IsWorking": false,
+      "S": null,
+      "E": null,
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z"
+    },
+    {
+      "EmpID": 12,
+      "EmpName": "زياد",
+      "DayOfWeek": 4,
+      "IsWorking": false,
+      "S": null,
+      "E": null,
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z"
+    },
+    {
+      "EmpID": 12,
+      "EmpName": "زياد",
+      "DayOfWeek": 5,
+      "IsWorking": true,
+      "S": "11:00",
+      "E": "01:30",
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z"
+    },
+    {
+      "EmpID": 12,
+      "EmpName": "زياد",
+      "DayOfWeek": 6,
+      "IsWorking": false,
+      "S": null,
+      "E": null,
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z"
+    },
+    {
+      "EmpID": 1042,
+      "EmpName": "[SMOKE 1S] Cross-Branch Employee 15",
+      "DayOfWeek": 0,
+      "IsWorking": false,
+      "S": "11:00",
+      "E": "01:30",
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z"
+    },
+    {
+      "EmpID": 1042,
+      "EmpName": "[SMOKE 1S] Cross-Branch Employee 15",
+      "DayOfWeek": 1,
+      "IsWorking": false,
+      "S": "11:00",
+      "E": "01:30",
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z"
+    },
+    {
+      "EmpID": 1042,
+      "EmpName": "[SMOKE 1S] Cross-Branch Employee 15",
+      "DayOfWeek": 2,
+      "IsWorking": true,
+      "S": "11:00",
+      "E": "01:30",
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z"
+    },
+    {
+      "EmpID": 1042,
+      "EmpName": "[SMOKE 1S] Cross-Branch Employee 15",
+      "DayOfWeek": 3,
+      "IsWorking": false,
+      "S": "11:00",
+      "E": "01:30",
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z"
+    },
+    {
+      "EmpID": 1042,
+      "EmpName": "[SMOKE 1S] Cross-Branch Employee 15",
+      "DayOfWeek": 4,
+      "IsWorking": false,
+      "S": "11:00",
+      "E": "01:30",
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z"
+    },
+    {
+      "EmpID": 1042,
+      "EmpName": "[SMOKE 1S] Cross-Branch Employee 15",
+      "DayOfWeek": 5,
+      "IsWorking": false,
+      "S": "11:00",
+      "E": "01:30",
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z"
+    },
+    {
+      "EmpID": 1042,
+      "EmpName": "[SMOKE 1S] Cross-Branch Employee 15",
+      "DayOfWeek": 6,
+      "IsWorking": false,
+      "S": "11:00",
+      "E": "01:30",
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z"
+    }
+  ],
+  "payroll": [
+    {
+      "PlanID": 29,
+      "EmpID": 12,
+      "EmpName": "زياد",
+      "PayType": "hourly",
+      "HourlyRate": 27.2727,
+      "DailyRate": null,
+      "MonthlySalary": null,
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z",
+      "IsActive": true
+    },
+    {
+      "PlanID": 31,
+      "EmpID": 1042,
+      "EmpName": "[SMOKE 1S] Cross-Branch Employee 15",
+      "PayType": "hourly",
+      "HourlyRate": 40,
+      "DailyRate": null,
+      "MonthlySalary": null,
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z",
+      "IsActive": true
+    },
+    {
+      "PlanID": 25,
+      "EmpID": 1039,
+      "EmpName": "[SMOKE 1O] Config Emp 12",
+      "PayType": "hourly",
+      "HourlyRate": 50,
+      "DailyRate": null,
+      "MonthlySalary": null,
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z",
+      "IsActive": false
+    },
+    {
+      "PlanID": 26,
+      "EmpID": 1040,
+      "EmpName": "[SMOKE 1O] Config Emp 13",
+      "PayType": "hourly",
+      "HourlyRate": 50,
+      "DailyRate": null,
+      "MonthlySalary": null,
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z",
+      "IsActive": false
+    },
+    {
+      "PlanID": 28,
+      "EmpID": 1041,
+      "EmpName": "[TEST] Ziad Cross-Branch 14",
+      "PayType": "hourly",
+      "HourlyRate": 40,
+      "DailyRate": null,
+      "MonthlySalary": null,
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z",
+      "IsActive": false
+    },
+    {
+      "PlanID": 33,
+      "EmpID": 1043,
+      "EmpName": "[SMOKE 1S] Cross-Branch Employee 16",
+      "PayType": "hourly",
+      "HourlyRate": 40,
+      "DailyRate": null,
+      "MonthlySalary": null,
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z",
+      "IsActive": false
+    }
+  ],
+  "targets": [
+    {
+      "ID": 17,
+      "EmpID": 12,
+      "EmpName": "زياد",
+      "IsEnabled": false,
+      "Notes": "NO_TARGET",
+      "EffectiveFrom": "2026-07-27T00:00:00.000Z"
+    },
+    {
+      "ID": 15,
+      "EmpID": 1039,
+      "EmpName": "[SMOKE 1O] Config Emp 12",
+      "IsEnabled": false,
+      "Notes": "NO_TARGET",
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z"
+    },
+    {
+      "ID": 16,
+      "EmpID": 1040,
+      "EmpName": "[SMOKE 1O] Config Emp 13",
+      "IsEnabled": false,
+      "Notes": "NO_TARGET",
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z"
+    },
+    {
+      "ID": 19,
+      "EmpID": 1042,
+      "EmpName": "[SMOKE 1S] Cross-Branch Employee 15",
+      "IsEnabled": false,
+      "Notes": "NO_TARGET [SMOKE 1S]",
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z"
+    },
+    {
+      "ID": 21,
+      "EmpID": 1043,
+      "EmpName": "[SMOKE 1S] Cross-Branch Employee 16",
+      "IsEnabled": false,
+      "Notes": "NO_TARGET [SMOKE 1S]",
+      "EffectiveFrom": "2026-07-26T00:00:00.000Z"
+    }
+  ],
+  "smokesPreview": [
+    {
+      "SmokeRunID": "16",
+      "BranchID": 3,
+      "Status": "CLEANED",
+      "StartedAt": "2026-07-26T21:36:45.123Z",
+      "CompletedAt": "2026-07-26T21:37:27.200Z",
+      "StartedByUserID": 10,
+      "Purpose": "Phase 1S-1R live cross-branch temporary transfer smoke",
+      "ExternalSideEffectsEnabled": false,
+      "BeforeFingerprintJson": null,
+      "AfterFingerprintJson": null,
+      "ResultJson": "{\"status\":\"PASSED\",\"proofs\":{\"phase\":\"1S-1R\",\"smokeRunId\":16,\"empId\":1043,\"empName\":\"[SMOKE 1S] Cross-Branch Employee 16\",\"saturday\":\"2026-08-01\",\"tuesday\":\"2026-07-28\",\"baseline\":{\"global\":\"GLEEM\",\"gleemPresent\":true,\"ccPresent\":false},\"apply\":{\"transferId\":2,\"fromBranchId\":1,\"toBranchId\":3,\"isEmergencyTransfer\":true,\"resolver\":\"CAMP_CAESAR\",\"gleemPresent\":false,\"ccPresent\":true},\"cancel\":{\"isActive\":0,\"hardDeleted\":false,\"resolver\":\"GLEEM\"},\"boards\":{\"afterApply\":{\"gleem\":false,\"cc\":true},\"afterCancel\":{\"gleem\":true,\"cc\":false}},\"weeklyUnchanged\":true,\"legacyUnchanged\":true,\"noFinancialSideEffects\":true,\"publicCcHidden\":true,\"blockerProofs\":{\"TRANSFER_FROM_BRANCH_MISMATCH\":true,\"TRANSFER_DESTINATION_ACCESS_DENIED\":true,\"EMPLOYEE_BRANCH_PAYROLL_PLAN_REQUIRED\":true,\"TEMPORARY_TRANSFER_HAS_SOURCE_BOOKINGS\":true,\"TRANSFER_ATTENDANCE_CONFLICT\":true,\"TRANSFER_ACTIVE_SERVICE_CONFLICT\":true,\"TRANSFER_PAYROLL_ALREADY_GENERATED\":true,\"TRANSFER_LEDGER_ALREADY_POSTED\":true,\"TRANSFER_GLOBAL_LEAVE_BLOCKS\":true},\"cleanup\":{\"completed\":true}},\"phase\":\"1S-1R\"}",
+      "CleanupStatus": "COMPLETED"
+    },
+    {
+      "SmokeRunID": "18",
+      "BranchID": 3,
+      "Status": "CLEANED",
+      "StartedAt": "2026-07-26T21:38:07.176Z",
+      "CompletedAt": "2026-07-26T21:38:12.940Z",
+      "StartedByUserID": 10,
+      "Purpose": "Phase 1S-Final Camp Caesar controlled smoke (real config + retained proofs)",
+      "ExternalSideEffectsEnabled": false,
+      "BeforeFingerprintJson": null,
+      "AfterFingerprintJson": null,
+      "ResultJson": "{\"status\":\"PASSED\",\"proofs\":{\"inventory.adjustment\":true,\"inventory.consumption\":true,\"pos.cashInvoice\":true,\"pos.cardInvoice\":true,\"payroll.hourlyLedgerCredit\":true,\"payroll.monthlySalaryPost\":true,\"target.positiveEntitlement\":true,\"target.ledgerCredit\":true,\"advance.payout\":true,\"gleem.isolation\":true,\"external.whatsapp\":true,\"external.prints\":true,\"cleanup.completed\":true,\"config.overnight_hours\":{\"11:00\":{\"available\":true,\"dayOffset\":0},\"00:30\":{\"available\":true,\"dayOffset\":1},\"01:15\":{\"available\":true,\"dayOffset\":1},\"01:30\":{\"available\":false,\"dayOffset\":0,\"reason\":\"outside_overnight_window\"},\"10:59\":{\"available\":false,\"dayOffset\":0,\"reason\":\"outside_overnight_window\"}},\"config.service_parity\":{\"mismatchCount\":0,\"active\":2},\"config.user_access_prepared\":true,\"config.switcher_hides_setup\":true,\"config.payment_methods\":9,\"config.receipt_identity\":{\"mode\":\"mock-no-print\",\"branchId\":3,\"branchCode\":\"CAMP_CAESAR\",\"branchDisplayName\":\"فرع كامب شيزار\",\"englishDisplayName\":\"Camp Caesar\",\"phone\":\"01012126899\",\"address\":\"كامب شيزار\",\"invoiceId\":null,\"containsGleemName\":false,\"productionPrintJobs\":0},\"config.whatsapp_render\":[{\"template\":\"booking_confirmation\",\"branchDisplayName\":\"فرع كامب شيزار\",\"phone\":\"01012126899\",\"containsGleemName\":false,\"realSends\":0},{\"template\":\"upcoming_booking\",\"branchDisplayName\":\"فرع كامب شيزار\",\"phone\":\"01012126899\",\"containsGleemName\":false,\"realSends\":0},{\"template\":\"sale_message\",\"branchDisplayName\":\"فرع كامب شيزار\",\"phone\":\"01012126899\",\"containsGleemName\":false,\"realSends\":0},{\"template\":\"employee_daily_report\",\"branchDisplayName\":\"فرع كامب شيزار\",\"phone\":\"01012126899\",\"containsGleemName\":false,\"realSends\":0},{\"template\":\"owner_report\",\"branchDisplayName\":\"فرع كامب شيزار\",\"phone\":\"01012126899\",\"containsGleemName\":false,\"realSends\":0}],\"config.gleem_isolation\":{\"addressUnchanged\":true,\"phoneUnchanged\":true,\"invRowsUnchanged\":true,\"cashMovesCopiedFromGleem\":0},\"config.shared_printer_whatsapp\":{\"productionPrintJobs\":0,\"realSends\":0},\"prior.smoke_run_11_retained\":true,\"cleanup\":{\"completed\":true},\"opening.cash_zero\":true,\"opening.inventory_zero_stock\":true,\"opening.no_fake_cashmove\":true,\"opening.no_fake_qty\":true,\"partners.active_40_20_20_20\":true,\"roster.ziad_assigned\":true,\"roster.ziad_payroll\":true,\"roster.ziad_no_target\":true,\"public.booking_disabled\":true,\"public.not_in_public_active\":true,\"active.not_yet_listed_while_setup\":true,\"printer.camp_caesar_identity\":true,\"whatsapp.camp_caesar_identity\":true,\"reconciliation.mismatch_count\":0,\"retainedFromSmokeRunId\":13,\"target.policy_no_target_explicit\":true},\"phase\":\"1S-Final\",\"retainedFromSmokeRunId\":13}",
+      "CleanupStatus": "COMPLETED"
+    }
+  ],
+  "smokeArtifacts": [
+    {
+      "SmokeRunID": "16",
+      "EntityType": "EMP",
+      "Cnt": 2
+    },
+    {
+      "SmokeRunID": "16",
+      "EntityType": "TRANSFER",
+      "Cnt": 1
+    }
+  ],
+  "smokeParsed": [
+    {
+      "smokeRunId": 16,
+      "status": "CLEANED",
+      "cleanupStatus": "COMPLETED",
+      "purpose": "Phase 1S-1R live cross-branch temporary transfer smoke",
+      "phase": "1S-1R",
+      "retainedFrom": null,
+      "proofKeys": [
+        "phase",
+        "smokeRunId",
+        "empId",
+        "empName",
+        "saturday",
+        "tuesday",
+        "baseline",
+        "apply",
+        "cancel",
+        "boards",
+        "weeklyUnchanged",
+        "legacyUnchanged",
+        "noFinancialSideEffects",
+        "publicCcHidden",
+        "blockerProofs",
+        "cleanup"
+      ],
+      "hasPosCash": false,
+      "hasPosCard": false,
+      "hasPayrollHourly": false,
+      "hasOpeningCash": false,
+      "hasRosterZiad": false,
+      "hasTransferApply": true,
+      "looksRetainedOnly": false
+    },
+    {
+      "smokeRunId": 18,
+      "status": "CLEANED",
+      "cleanupStatus": "COMPLETED",
+      "purpose": "Phase 1S-Final Camp Caesar controlled smoke (real config + retained proofs)",
+      "phase": "1S-Final",
+      "retainedFrom": 13,
+      "proofKeys": [
+        "inventory.adjustment",
+        "inventory.consumption",
+        "pos.cashInvoice",
+        "pos.cardInvoice",
+        "payroll.hourlyLedgerCredit",
+        "payroll.monthlySalaryPost",
+        "target.positiveEntitlement",
+        "target.ledgerCredit",
+        "advance.payout",
+        "gleem.isolation",
+        "external.whatsapp",
+        "external.prints",
+        "cleanup.completed",
+        "config.overnight_hours",
+        "config.service_parity",
+        "config.user_access_prepared",
+        "config.switcher_hides_setup",
+        "config.payment_methods",
+        "config.receipt_identity",
+        "config.whatsapp_render",
+        "config.gleem_isolation",
+        "config.shared_printer_whatsapp",
+        "prior.smoke_run_11_retained",
+        "cleanup",
+        "opening.cash_zero",
+        "opening.inventory_zero_stock",
+        "opening.no_fake_cashmove",
+        "opening.no_fake_qty",
+        "partners.active_40_20_20_20",
+        "roster.ziad_assigned",
+        "roster.ziad_payroll",
+        "roster.ziad_no_target",
+        "public.booking_disabled",
+        "public.not_in_public_active",
+        "active.not_yet_listed_while_setup",
+        "printer.camp_caesar_identity",
+        "whatsapp.camp_caesar_identity",
+        "reconciliation.mismatch_count",
+        "retainedFromSmokeRunId",
+        "target.policy_no_target_explicit"
+      ],
+      "hasPosCash": true,
+      "hasPosCard": true,
+      "hasPayrollHourly": true,
+      "hasOpeningCash": true,
+      "hasRosterZiad": true,
+      "hasTransferApply": false,
+      "looksRetainedOnly": true
+    }
+  ],
+  "auditTables": [
+    {
+      "TABLE_NAME": "TblBranchLifecycleAudit"
+    }
+  ],
+  "lifecycleAuditSample": [
+    {
+      "AuditID": "23",
+      "BranchID": 3,
+      "FromStatus": "SMOKE_TEST",
+      "ToStatus": "INTERNAL_LIVE",
+      "Reason": "فتح فرع كامب شيزار للتشغيل الداخلي بتاريخ 2026-07-27",
+      "ActorUserID": 10,
+      "ReadinessJson": "{\"score\":92,\"blockers\":[\"public.frontend_multi_branch\",\"public.branch_selection\",\"public.explicit_branch_code\",\"public.booking_flow_smoke\",\"public.customer_notifications\"],\"smokeRunId\":18}",
+      "CreatedAt": "2026-07-26T21:41:27.517Z"
+    },
+    {
+      "AuditID": "22",
+      "BranchID": 3,
+      "FromStatus": "SETUP",
+      "ToStatus": "SMOKE_TEST",
+      "Reason": "مرحلة smoke قبل التشغيل الداخلي لكامب شيزار 2026-07-27",
+      "ActorUserID": 10,
+      "ReadinessJson": "{\"score\":92,\"blockers\":[\"public.frontend_multi_branch\",\"public.branch_selection\",\"public.explicit_branch_code\",\"public.booking_flow_smoke\",\"public.customer_notifications\"],\"smokeRunId\":null}",
+      "CreatedAt": "2026-07-26T21:40:35.236Z"
+    },
+    {
+      "AuditID": "21",
+      "BranchID": 3,
+      "FromStatus": "SETUP",
+      "ToStatus": "SETUP",
+      "Reason": "phase1o-template:whatsapp_integration from=1",
+      "ActorUserID": 10,
+      "ReadinessJson": null,
+      "CreatedAt": "2026-07-26T01:45:04.490Z"
+    },
+    {
+      "AuditID": "20",
+      "BranchID": 3,
+      "FromStatus": "SETUP",
+      "ToStatus": "SETUP",
+      "Reason": "phase1o-template:printer_endpoint from=1",
+      "ActorUserID": 10,
+      "ReadinessJson": null,
+      "CreatedAt": "2026-07-26T01:45:03.763Z"
+    },
+    {
+      "AuditID": "19",
+      "BranchID": 3,
+      "FromStatus": "SETUP",
+      "ToStatus": "SETUP",
+      "Reason": "phase1o-template:payment_method_enablement from=1",
+      "ActorUserID": 10,
+      "ReadinessJson": null,
+      "CreatedAt": "2026-07-26T01:45:03.059Z"
+    },
+    {
+      "AuditID": "18",
+      "BranchID": 3,
+      "FromStatus": "SETUP",
+      "ToStatus": "SETUP",
+      "Reason": "phase1o-template:user_branch_access from=1",
+      "ActorUserID": 10,
+      "ReadinessJson": null,
+      "CreatedAt": "2026-07-26T01:45:02.706Z"
+    },
+    {
+      "AuditID": "17",
+      "BranchID": 3,
+      "FromStatus": "SETUP",
+      "ToStatus": "SETUP",
+      "Reason": "phase1o-template:service_durations from=1",
+      "ActorUserID": 10,
+      "ReadinessJson": null,
+      "CreatedAt": "2026-07-26T01:44:56.771Z"
+    },
+    {
+      "AuditID": "16",
+      "BranchID": 3,
+      "FromStatus": "SETUP",
+      "ToStatus": "SETUP",
+      "Reason": "phase1o-template:service_prices from=1",
+      "ActorUserID": 10,
+      "ReadinessJson": null,
+      "CreatedAt": "2026-07-26T01:44:56.409Z"
+    },
+    {
+      "AuditID": "15",
+      "BranchID": 3,
+      "FromStatus": "SETUP",
+      "ToStatus": "SETUP",
+      "Reason": "phase1o-template:service_availability from=1",
+      "ActorUserID": 10,
+      "ReadinessJson": null,
+      "CreatedAt": "2026-07-26T01:44:56.052Z"
+    },
+    {
+      "AuditID": "14",
+      "BranchID": 3,
+      "FromStatus": "SETUP",
+      "ToStatus": "SETUP",
+      "Reason": "phase1o-template:queue_booking_timing from=1",
+      "ActorUserID": 10,
+      "ReadinessJson": null,
+      "CreatedAt": "2026-07-26T01:44:55.695Z"
+    }
+  ],
+  "services": {
+    "ActiveRows": 42,
+    "DeletedRows": 7,
+    "PricedNonProduct": 35,
+    "BookableServices": 30,
+    "TimedPriced": 30,
+    "ActiveProducts": 8
+  },
+  "topServices": [
+    {
+      "ProID": 1049,
+      "ProName": "Advanced Cut",
+      "ProType": null,
+      "Price": 250,
+      "DurationMinutes": 40,
+      "CatName": "Hair Cut",
+      "CatType": null
+    },
+    {
+      "ProID": 17,
+      "ProName": "Basic Hair Color",
+      "ProType": "serv",
+      "Price": 150,
+      "DurationMinutes": 15,
+      "CatName": "Hair Color & Highlights",
+      "CatType": null
+    },
+    {
+      "ProID": 11,
+      "ProName": "Basic Skin Care",
+      "ProType": "serv",
+      "Price": 200,
+      "DurationMinutes": 20,
+      "CatName": "Skincare",
+      "CatType": "serv"
+    },
+    {
+      "ProID": 34,
+      "ProName": "Beard Bleaching",
+      "ProType": "serv",
+      "Price": 200,
+      "DurationMinutes": 30,
+      "CatName": "Beard Cut",
+      "CatType": null
+    },
+    {
+      "ProID": 10,
+      "ProName": "Beard Styling & Fade",
+      "ProType": "serv",
+      "Price": 100,
+      "DurationMinutes": 20,
+      "CatName": "Beard Cut",
+      "CatType": null
+    },
+    {
+      "ProID": 29,
+      "ProName": "Deep SkinCare",
+      "ProType": "serv",
+      "Price": 300,
+      "DurationMinutes": 30,
+      "CatName": "Skincare",
+      "CatType": "serv"
+    },
+    {
+      "ProID": 23,
+      "ProName": "Dry-Hair",
+      "ProType": "serv",
+      "Price": 100,
+      "DurationMinutes": 10,
+      "CatName": "Hair Styling & Finishing",
+      "CatType": null
+    },
+    {
+      "ProID": 39,
+      "ProName": "Face Mask",
+      "ProType": "serv",
+      "Price": 50,
+      "DurationMinutes": 5,
+      "CatName": "Skincare",
+      "CatType": "serv"
+    },
+    {
+      "ProID": 46,
+      "ProName": "Face Threading",
+      "ProType": "serv",
+      "Price": 50,
+      "DurationMinutes": 10,
+      "CatName": "Beard Cut",
+      "CatType": null
+    },
+    {
+      "ProID": 1047,
+      "ProName": "Fade Cut",
+      "ProType": null,
+      "Price": 180,
+      "DurationMinutes": 30,
+      "CatName": "Hair Cut",
+      "CatType": null
+    },
+    {
+      "ProID": 14,
+      "ProName": "Foot pedicure",
+      "ProType": "serv",
+      "Price": 400,
+      "DurationMinutes": null,
+      "CatName": "Skincare",
+      "CatType": "serv"
+    },
+    {
+      "ProID": 1057,
+      "ProName": "Full Highlights",
+      "ProType": null,
+      "Price": 800,
+      "DurationMinutes": null,
+      "CatName": "Hair Color & Highlights",
+      "CatType": null
+    },
+    {
+      "ProID": 32,
+      "ProName": "Full Wax",
+      "ProType": "serv",
+      "Price": 100,
+      "DurationMinutes": 10,
+      "CatName": "Skincare",
+      "CatType": "serv"
+    },
+    {
+      "ProID": 18,
+      "ProName": "Hair & Beard Color",
+      "ProType": "serv",
+      "Price": 200,
+      "DurationMinutes": 20,
+      "CatName": "Hair Color & Highlights",
+      "CatType": null
+    },
+    {
+      "ProID": 1051,
+      "ProName": "Hair Botox",
+      "ProType": null,
+      "Price": 900,
+      "DurationMinutes": 60,
+      "CatName": "Hair Treatments & Care",
+      "CatType": null
+    },
+    {
+      "ProID": 9,
+      "ProName": "Hair Cut",
+      "ProType": "serv",
+      "Price": 200,
+      "DurationMinutes": 30,
+      "CatName": "Hair Cut",
+      "CatType": null
+    },
+    {
+      "ProID": 36,
+      "ProName": "Hair Design",
+      "ProType": "serv",
+      "Price": 50,
+      "DurationMinutes": 5,
+      "CatName": "Hair Cut",
+      "CatType": null
+    },
+    {
+      "ProID": 44,
+      "ProName": "Hair Mask",
+      "ProType": "serv",
+      "Price": 50,
+      "DurationMinutes": 5,
+      "CatName": "Skincare",
+      "CatType": "serv"
+    },
+    {
+      "ProID": 22,
+      "ProName": "Hair Oil Treatment",
+      "ProType": "serv",
+      "Price": 120,
+      "DurationMinutes": 5,
+      "CatName": "Hair Treatments & Care",
+      "CatType": null
+    },
+    {
+      "ProID": 35,
+      "ProName": "Hair Straightening",
+      "ProType": "serv",
+      "Price": 100,
+      "DurationMinutes": 5,
+      "CatName": "Hair Treatments & Care",
+      "CatType": null
+    },
+    {
+      "ProID": 47,
+      "ProName": "Hair Styling",
+      "ProType": "serv",
+      "Price": 50,
+      "DurationMinutes": 5,
+      "CatName": "Hair Styling & Finishing",
+      "CatType": null
+    },
+    {
+      "ProID": 20,
+      "ProName": "Haircut & Beard",
+      "ProType": "serv",
+      "Price": 250,
+      "DurationMinutes": 45,
+      "CatName": "Beard Cut",
+      "CatType": null
+    },
+    {
+      "ProID": 13,
+      "ProName": "Hand pedicure",
+      "ProType": "serv",
+      "Price": 200,
+      "DurationMinutes": null,
+      "CatName": "Skincare",
+      "CatType": "serv"
+    },
+    {
+      "ProID": 43,
+      "ProName": "Hot / Cold Towel",
+      "ProType": "serv",
+      "Price": 50,
+      "DurationMinutes": 5,
+      "CatName": "Skincare",
+      "CatType": "serv"
+    },
+    {
+      "ProID": 16,
+      "ProName": "Long Hair Protein",
+      "ProType": "serv",
+      "Price": 1000,
+      "DurationMinutes": 90,
+      "CatName": "Hair Treatments & Care",
+      "CatType": null
+    },
+    {
+      "ProID": 12,
+      "ProName": "Medical Skin Care",
+      "ProType": "serv",
+      "Price": 400,
+      "DurationMinutes": 35,
+      "CatName": "Skincare",
+      "CatType": "serv"
+    },
+    {
+      "ProID": 1056,
+      "ProName": "Mullet Highlights",
+      "ProType": null,
+      "Price": 850,
+      "DurationMinutes": null,
+      "CatName": "Hair Color & Highlights",
+      "CatType": null
+    },
+    {
+      "ProID": 31,
+      "ProName": "Partial Wax",
+      "ProType": "serv",
+      "Price": 50,
+      "DurationMinutes": 5,
+      "CatName": "Skincare",
+      "CatType": "serv"
+    },
+    {
+      "ProID": 40,
+      "ProName": "peel-off Mask",
+      "ProType": "serv",
+      "Price": 80,
+      "DurationMinutes": 5,
+      "CatName": "Skincare",
+      "CatType": "serv"
+    },
+    {
+      "ProID": 15,
+      "ProName": "Short Hair Protein",
+      "ProType": "serv",
+      "Price": 500,
+      "DurationMinutes": 60,
+      "CatName": "Hair Treatments & Care",
+      "CatType": null
+    }
+  ],
+  "dryHairOnly": [
+    {
+      "ProID": 23,
+      "ProName": "Dry-Hair",
+      "isDeleted": false,
+      "SPrice1": 100,
+      "PPrice": 0,
+      "DurationMinutes": 10
+    }
+  ],
+  "weeklyCoverage": [
+    {
+      "dayOfWeek": 0,
+      "day": "Sun",
+      "workingEmployees": [],
+      "covered": false
+    },
+    {
+      "dayOfWeek": 1,
+      "day": "Mon",
+      "workingEmployees": [],
+      "covered": false
+    },
+    {
+      "dayOfWeek": 2,
+      "day": "Tue",
+      "workingEmployees": [
+        {
+          "empId": 1042,
+          "empName": "[SMOKE 1S] Cross-Branch Employee 15",
+          "hours": "11:00-01:30"
+        }
+      ],
+      "covered": true
+    },
+    {
+      "dayOfWeek": 3,
+      "day": "Wed",
+      "workingEmployees": [],
+      "covered": false
+    },
+    {
+      "dayOfWeek": 4,
+      "day": "Thu",
+      "workingEmployees": [],
+      "covered": false
+    },
+    {
+      "dayOfWeek": 5,
+      "day": "Fri",
+      "workingEmployees": [
+        {
+          "empId": 12,
+          "empName": "زياد",
+          "hours": "11:00-01:30"
+        }
+      ],
+      "covered": true
+    },
+    {
+      "dayOfWeek": 6,
+      "day": "Sat",
+      "workingEmployees": [],
+      "covered": false
+    }
+  ],
+  "gleem": {
+    "LifecycleStatus": "PUBLIC_LIVE",
+    "IsActive": true,
+    "PublicBookingEnabled": true
+  }
+}

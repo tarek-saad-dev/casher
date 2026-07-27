@@ -1144,10 +1144,10 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                 {transferPreview.blockers?.map((b: { code: string; message: string }) => (
                   <p key={b.code} style={{ color: 'var(--destructive)' }}>{b.message}</p>
                 ))}
-                {transferPreview.affectedBookings?.length > 0 && (
+                {(transferPreview.affectedBookings?.length ?? 0) > 0 && (
                   <div>
                     <p style={{ color: 'var(--warning)' }}>حجوزات المصدر تمنع النقل:</p>
-                    {transferPreview.affectedBookings.map((bk: { bookingId: number; bookingCode: string | null; startTime: string }) => (
+                    {transferPreview.affectedBookings?.map((bk: { bookingId: number; bookingCode: string | null; startTime: string }) => (
                       <p key={bk.bookingId}>{bk.bookingCode || bk.bookingId} — {bk.startTime}</p>
                     ))}
                   </div>

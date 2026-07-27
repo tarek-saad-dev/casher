@@ -1,0 +1,19 @@
+{
+  "phase": "booking-phase-7c2-readiness-proof",
+  "passed": true,
+  "failed": [],
+  "proofs": {
+    "no_legacy_rate_limit_helpers": true,
+    "legacy_rate_limit_offenders": [],
+    "routes_use_gate": true,
+    "missing_gate_routes": [],
+    "rate_limit_policy_exists": true,
+    "rate_limit_policy_exports_gate_inputs": true,
+    "contract_mode_module_exists": true,
+    "contract_mode_default_compat": true,
+    "error_code_PLAN_TOKEN_REQUIRED": true,
+    "error_code_RATE_LIMIT_EXCEEDED": true,
+    "error_code_LEGACY_BOOKING_CONTRACT_DISABLED": true,
+    "env_example_contract_mode_compat": true
+  }
+}

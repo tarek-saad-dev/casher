@@ -72,6 +72,7 @@ export async function evaluateBranchReadiness(
 
   const legacy = await evaluateBranchOperationalReadiness({ branchId }, at);
   const items: BranchReadinessItem[] = [];
+  const db = await getPool();
 
   items.push(
     item({
@@ -169,6 +170,51 @@ export async function evaluateBranchReadiness(
       continue;
     }
 
+    // ELIGIBLE_BARBER uses listBookable which requires Branch.IsActive=1.
+    // SETUP/SMOKE_TEST intentionally keep IsActive=0 until INTERNAL_LIVE transition —
+    // evaluate assignment readiness without the active-branch gate so go-live is not deadlocked.
+    if (c.code === 'ELIGIBLE_BARBER') {
+      const preLive =
+        branch.lifecycleStatus === 'SETUP' ||
+        branch.lifecycleStatus === 'SMOKE_TEST' ||
+        !branch.isActive;
+      let eligibleOk = c.ok;
+      let eligibleDetails = c.message;
+      if (preLive && !c.ok) {
+        const pre = await db
+          .request()
+          .input('branchId', sql.Int, branch.branchId)
+          .input('day', sql.Date, day)
+          .query(`
+            SELECT COUNT(*) AS cnt
+            FROM dbo.TblEmpBranchAssignment ea
+            INNER JOIN dbo.TblEmp e ON e.EmpID = ea.EmpID
+            WHERE ea.BranchID = @branchId
+              AND ea.IsActive = 1
+              AND ISNULL(e.isActive, 1) = 1
+              AND ea.CanReceiveBookings = 1
+              AND ea.EffectiveFrom <= @day
+              AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @day)
+          `);
+        const n = Number(pre.recordset[0]?.cnt ?? 0);
+        eligibleOk = n > 0;
+        eligibleDetails = eligibleOk
+          ? `${n} bookable assignment(s) ready (branch IsActive deferred until INTERNAL_LIVE)`
+          : 'No eligible barber with CanReceiveBookings on this branch';
+      }
+      items.push(
+        item({
+          key: 'legacy.ELIGIBLE_BARBER',
+          section: 'employees',
+          title: 'ELIGIBLE_BARBER',
+          status: eligibleOk ? 'pass' : 'blocker',
+          requiredFor: ['internal_live', 'public_live'],
+          details: eligibleDetails,
+        }),
+      );
+      continue;
+    }
+
     const section =
       c.code.startsWith('QUEUE') || c.code.includes('BOOK')
         ? 'booking'
@@ -187,11 +233,8 @@ export async function evaluateBranchReadiness(
         title: c.code,
         status,
         requiredFor:
-          c.code === 'ELIGIBLE_BARBER'
-            ? // Bookable listing requires IsActive=1; smoke keeps IsActive=0 — use smoke.assignment instead
-              (['internal_live', 'public_live'] as ReadinessGate[])
-            : c.code === 'BRANCH_ACTIVE'
-              ? (['internal_live', 'public_live'] as ReadinessGate[])
+          c.code === 'BRANCH_ACTIVE'
+            ? (['internal_live', 'public_live'] as ReadinessGate[])
             : c.severity === 'blocker'
               ? (['smoke', 'internal_live', 'public_live'] as ReadinessGate[])
               : (['public_live'] as ReadinessGate[]),
@@ -199,8 +242,6 @@ export async function evaluateBranchReadiness(
       }),
     );
   }
-
-  const db = await getPool();
 
   // Smoke-specific: assignment exists even while IsActive=0
   const assignCnt = await db
@@ -292,15 +333,25 @@ export async function evaluateBranchReadiness(
              AND ws.IsWorkingDay = 1) AS Schedules,
         (SELECT COUNT(*) FROM dbo.TblPro p
            WHERE ISNULL(p.isDeleted, 0) = 0
-             AND ISNULL(p.PPrice, 0) > 0
              AND (
-               LOWER(ISNULL(p.ProType, N'')) IN (N'service', N'serv')
-               OR p.ProName LIKE N'%[SMOKE%'
+               ISNULL(p.PPrice, 0) > 0
+               OR ISNULL(p.SPrice1, 0) > 0
+             )
+             AND (
+               LOWER(ISNULL(p.ProType, N'')) IN (N'service', N'serv', N'')
+               OR p.ProName LIKE N'%[[]SMOKE%'
+               OR (
+                 LOWER(ISNULL(p.ProType, N'')) NOT IN (N'pro', N'product')
+                 AND ISNULL(p.DurationMinutes, 0) > 0
+               )
              )) AS PricedServices,
         (SELECT COUNT(*) FROM dbo.TblPro p
            WHERE ISNULL(p.isDeleted, 0) = 0
              AND ISNULL(p.DurationMinutes, 0) > 0
-             AND ISNULL(p.PPrice, 0) > 0) AS TimedServices,
+             AND (
+               ISNULL(p.PPrice, 0) > 0
+               OR ISNULL(p.SPrice1, 0) > 0
+             )) AS TimedServices,
         (SELECT COUNT(*) FROM dbo.TblPaymentMethods) AS PaymentMethods,
         (SELECT COUNT(*) FROM dbo.TblPro p
            LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID
@@ -422,9 +473,15 @@ export async function evaluateBranchReadiness(
       key: 'smoke.notifications_off',
       section: 'notifications',
       title: 'إشعارات خارجية معطّلة',
-      status: !branch.externalNotificationsEnabled ? 'pass' : 'blocker',
-      requiredFor: ['smoke', 'internal_live'],
-      details: `ExternalNotificationsEnabled=${branch.externalNotificationsEnabled ? 1 : 0}`,
+      status:
+        branch.lifecycleStatus === 'INTERNAL_LIVE' ||
+        branch.lifecycleStatus === 'PUBLIC_LIVE'
+          ? 'pass'
+          : !branch.externalNotificationsEnabled
+            ? 'pass'
+            : 'blocker',
+      requiredFor: ['smoke'],
+      details: `ExternalNotificationsEnabled=${branch.externalNotificationsEnabled ? 1 : 0}; lifecycle=${branch.lifecycleStatus}`,
     }),
     item({
       key: 'smoke.public_booking_off',
@@ -475,8 +532,10 @@ export async function evaluateBranchReadiness(
   // ── INTERNAL_LIVE: business decisions + proven smoke proofs ──
   const { getBranchSetupPolicy } = await import('./branchSetupPolicy');
   const { isOpeningInventoryResolved } = await import('./openingInventoryDecision');
+  const { isOpeningCashResolved } = await import('./openingCashDecision');
   const setupPolicy = await getBranchSetupPolicy(branch.branchId);
   const openingInvOk = await isOpeningInventoryResolved(branch.branchId);
+  const openingCashOk = await isOpeningCashResolved(branch.branchId);
 
   const phoneOk = !!(branch.phone && String(branch.phone).trim());
   const addressOk = !!(branch.address && String(branch.address).trim());
@@ -506,7 +565,7 @@ export async function evaluateBranchReadiness(
         INNER JOIN dbo.TblEmp e ON e.EmpID = ea.EmpID
         WHERE ea.BranchID = @branchId AND ea.IsActive = 1
           AND ISNULL(e.isActive,1) = 1
-          AND (e.EmpName IS NULL OR e.EmpName NOT LIKE N'%[SMOKE%')
+          AND (e.EmpName IS NULL OR e.EmpName NOT LIKE N'%[[]SMOKE%')
       `);
     return Number(empRes.recordset[0].Cnt) > 0;
   })();
@@ -543,8 +602,10 @@ export async function evaluateBranchReadiness(
     {
       key: 'biz.opening_cash',
       title: 'رصيد نقدي افتتاحي',
-      ok: false,
-      details: 'BUSINESS_DECISION_REQUIRED: Opening cash balance',
+      ok: openingCashOk,
+      details: openingCashOk
+        ? `Opening cash decision=${setupPolicy?.openingCashDecision}`
+        : 'BUSINESS_DECISION_REQUIRED: Opening cash balance',
     },
     {
       key: 'biz.opening_inventory',
@@ -643,21 +704,31 @@ export async function evaluateBranchReadiness(
     );
   }
 
-  // payroll / target coverage when real assignments exist
+  // payroll / target coverage when real assignments exist (exclude smoke/test identities)
   const coverage = await db
     .request()
     .input('branchId', sql.Int, branch.branchId)
     .query(`
       SELECT
-        (SELECT COUNT(*) FROM dbo.TblEmpBranchAssignment WHERE BranchID=@branchId AND IsActive=1) AS Assignments,
         (SELECT COUNT(*) FROM dbo.TblEmpBranchAssignment ea
+          INNER JOIN dbo.TblEmp e ON e.EmpID=ea.EmpID
           WHERE ea.BranchID=@branchId AND ea.IsActive=1
+            AND ISNULL(e.isActive,1)=1
+            AND (e.EmpName IS NULL OR (e.EmpName NOT LIKE N'%[[]SMOKE%' AND e.EmpName NOT LIKE N'%[[]TEST%'))) AS Assignments,
+        (SELECT COUNT(*) FROM dbo.TblEmpBranchAssignment ea
+          INNER JOIN dbo.TblEmp e ON e.EmpID=ea.EmpID
+          WHERE ea.BranchID=@branchId AND ea.IsActive=1
+            AND ISNULL(e.isActive,1)=1
+            AND (e.EmpName IS NULL OR (e.EmpName NOT LIKE N'%[[]SMOKE%' AND e.EmpName NOT LIKE N'%[[]TEST%'))
             AND EXISTS (
               SELECT 1 FROM dbo.TblEmpBranchPayrollPlan p
               WHERE p.EmpID=ea.EmpID AND p.BranchID=ea.BranchID AND p.IsActive=1
             )) AS WithPayroll,
         (SELECT COUNT(*) FROM dbo.TblEmpBranchAssignment ea
+          INNER JOIN dbo.TblEmp e ON e.EmpID=ea.EmpID
           WHERE ea.BranchID=@branchId AND ea.IsActive=1
+            AND ISNULL(e.isActive,1)=1
+            AND (e.EmpName IS NULL OR (e.EmpName NOT LIKE N'%[[]SMOKE%' AND e.EmpName NOT LIKE N'%[[]TEST%'))
             AND (
               EXISTS (
                 SELECT 1 FROM dbo.TblEmpTargetPlan t
@@ -707,6 +778,91 @@ export async function evaluateBranchReadiness(
     }),
   );
 
+  // Service catalog operational (shared TblPro — bookable priced services with duration)
+  const catalog = await db.request().query(`
+    SELECT COUNT(*) AS Cnt
+    FROM dbo.TblPro p
+    LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID
+    WHERE ISNULL(p.isDeleted, 0) = 0
+      AND (ISNULL(p.SPrice1, 0) > 0 OR ISNULL(p.PPrice, 0) > 0)
+      AND ISNULL(p.DurationMinutes, 0) > 0
+      AND LOWER(ISNULL(p.ProType, N'')) NOT IN (N'pro', N'product')
+      AND LOWER(ISNULL(c.CatType, N'')) <> N'pro'
+      AND ISNULL(c.CatName, N'') NOT LIKE N'%منتج%'
+  `);
+  const bookableN = Number(catalog.recordset[0]?.Cnt ?? 0);
+  items.push(
+    item({
+      key: 'services.catalog_operational',
+      section: 'services',
+      title: 'كتالوج خدمات تشغيلي',
+      status: bookableN >= 10 ? 'pass' : 'blocker',
+      requiredFor: ['internal_live', 'public_live'],
+      details:
+        bookableN >= 10
+          ? `${bookableN} bookable priced timed services`
+          : `BUSINESS_DECISION_REQUIRED: Only ${bookableN} bookable services — catalog incomplete`,
+    }),
+  );
+
+  // Weekly employee coverage: every open weekday needs ≥1 real CanOperate worker OR explicit closed day
+  const closedDaysRes = await db.request().input('branchId', sql.Int, branch.branchId).query(`
+    IF OBJECT_ID(N'dbo.TblBranchClosedWeekday', N'U') IS NULL
+      SELECT CAST(NULL AS tinyint) AS DayOfWeek WHERE 1=0;
+    ELSE
+      SELECT DayOfWeek FROM dbo.TblBranchClosedWeekday
+      WHERE BranchID=@branchId AND IsActive=1;
+  `);
+  const closedDays = new Set(
+    closedDaysRes.recordset.map((r: { DayOfWeek: number }) => Number(r.DayOfWeek)),
+  );
+  const weekSched = await db
+    .request()
+    .input('branchId', sql.Int, branch.branchId)
+    .query(`
+      SELECT s.DayOfWeek, COUNT(*) AS Workers
+      FROM dbo.TblEmpBranchWorkSchedule s
+      INNER JOIN dbo.TblEmp e ON e.EmpID = s.EmpID
+      INNER JOIN dbo.TblEmpBranchAssignment ea
+        ON ea.EmpID = s.EmpID AND ea.BranchID = s.BranchID AND ea.IsActive = 1
+      WHERE s.BranchID = @branchId
+        AND s.IsActive = 1
+        AND s.IsWorking = 1
+        AND ISNULL(e.isActive, 1) = 1
+        AND (e.EmpName IS NULL OR (e.EmpName NOT LIKE N'%[[]SMOKE%' AND e.EmpName NOT LIKE N'%[[]TEST%'))
+        AND (
+          ea.Notes LIKE N'%services:%[0-9]%'
+          OR ea.CanReceiveBookings = 1
+        )
+      GROUP BY s.DayOfWeek
+    `);
+  const workersByDow = new Map<number, number>();
+  for (const r of weekSched.recordset as Array<{ DayOfWeek: number; Workers: number }>) {
+    workersByDow.set(Number(r.DayOfWeek), Number(r.Workers));
+  }
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const uncovered: string[] = [];
+  for (let dow = 0; dow <= 6; dow++) {
+    if (closedDays.has(dow)) continue;
+    // Branch default hours imply open every day when DefaultOpen/Close set
+    if (branch.defaultOpenTime && branch.defaultCloseTime) {
+      if ((workersByDow.get(dow) ?? 0) < 1) uncovered.push(dayNames[dow]);
+    }
+  }
+  items.push(
+    item({
+      key: 'ops.weekly_employee_coverage',
+      section: 'employees',
+      title: 'تغطية موظفين لكل يوم تشغيل',
+      status: uncovered.length === 0 ? 'pass' : 'blocker',
+      requiredFor: ['internal_live', 'public_live'],
+      details:
+        uncovered.length === 0
+          ? 'Every open weekday has ≥1 real operational employee'
+          : `BUSINESS_DECISION_REQUIRED: Open weekdays with zero operational staff: ${uncovered.join(', ')} — assign staff or mark days closed`,
+    }),
+  );
+
   // Smoke proof keys from latest PASSED/CLEANED ResultJson for this branch
   const { INTERNAL_LIVE_SMOKE_PROOF_KEYS } = await import('./smokeBranchPolicy');
   const proofRes = await db
@@ -733,6 +889,42 @@ export async function evaluateBranchReadiness(
       ? (proof.proofs as Record<string, unknown>)
       : proof;
 
+  const retainedOnly =
+    Boolean(proofsObj['prior.smoke_run_11_retained']) ||
+    Boolean(proofsObj.retainedFromSmokeRunId) ||
+    (typeof proof === 'object' &&
+      proof !== null &&
+      Boolean((proof as { retainedFromSmokeRunId?: unknown }).retainedFromSmokeRunId));
+  const phaseStr = String(
+    (proof as { phase?: string }).phase ?? proofsObj.phase ?? '',
+  );
+  const currentConfigLive =
+    Boolean(proofRow) &&
+    !retainedOnly &&
+    Boolean(proofsObj['pos.cashInvoice']) &&
+    Boolean(proofsObj['gleem.isolation']) &&
+    (phaseStr === '1S-R' ||
+      phaseStr === '1S-R-Final' ||
+      phaseStr === '1S-R-final' ||
+      Boolean(proofsObj['final.current_config']));
+
+  items.push(
+    item({
+      key: 'final.current_config_smoke',
+      section: 'smoke_framework',
+      title: 'Smoke نهائي على الإعداد الحالي',
+      status: currentConfigLive ? 'pass' : 'blocker',
+      requiredFor: ['internal_live'],
+      details: retainedOnly
+        ? `SmokeRunID=${proofRow?.SmokeRunID} rejected: retained/copied proofs only`
+        : currentConfigLive
+          ? `SmokeRunID=${proofRow?.SmokeRunID} current-config live ops accepted`
+          : proofRow
+            ? `SmokeRunID=${proofRow.SmokeRunID} missing current-config live marker (phase=${phaseStr || 'n/a'})`
+            : 'No current-config final smoke',
+    }),
+  );
+
   items.push(
     item({
       key: 'internal.passed_smoke_run',
@@ -742,12 +934,13 @@ export async function evaluateBranchReadiness(
         proofRow &&
         (String(proofRow.Status) === 'PASSED' || String(proofRow.Status) === 'CLEANED') &&
         (String(proofRow.CleanupStatus) === 'COMPLETED' ||
-          String(proofRow.Status) === 'CLEANED')
+          String(proofRow.Status) === 'CLEANED') &&
+        !retainedOnly
           ? 'pass'
           : 'blocker',
       requiredFor: ['internal_live'],
       details: proofRow
-        ? `SmokeRunID=${proofRow.SmokeRunID} Status=${proofRow.Status} Cleanup=${proofRow.CleanupStatus}`
+        ? `SmokeRunID=${proofRow.SmokeRunID} Status=${proofRow.Status} Cleanup=${proofRow.CleanupStatus}${retainedOnly ? ' RETAINED_ONLY' : ''}`
         : 'No PASSED/CLEANED smoke run for this branch',
     }),
   );

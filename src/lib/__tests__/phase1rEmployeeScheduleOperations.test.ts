@@ -51,10 +51,14 @@ describe('phase1rEmployeeWeeklyPlanner', () => {
 describe('phase1rOperationsDayState', () => {
   it('day-state service uses resolvers not attendance inference alone', () => {
     const s = read('src/lib/hr/operationsDayState.ts');
-    expect(s).toContain('resolveEmployeeGlobalSchedule');
-    expect(s).toContain('resolveEmployeeBranchSchedule');
+    expect(s).toContain('listOperationalPresenceForBranch');
+    expect(s).toContain('TblEmpBranchWorkSchedule');
+    expect(s).toContain('TblEmpTemporaryBranchTransfer');
     expect(s).toContain('transferred_in');
     expect(s).toContain('نقل طارئ');
+    // Must stay batched — no per-employee resolveEmployee* loops
+    expect(s).not.toContain('resolveEmployeeGlobalSchedule');
+    expect(s).not.toContain('resolveEmployeeBranchSchedule');
     const api = read('src/app/api/operations/employees/day-state/route.ts');
     expect(api).toContain('loadOperationsDayState');
   });
@@ -121,9 +125,12 @@ describe('phase1rTransferConflictGuards', () => {
 describe('phase1rFlowBoardTransferIntegration', () => {
   it('flow-board filters by resolved operational location', () => {
     const fb = read('src/app/api/operations/flow-board/route.ts');
-    expect(fb).toContain('listResolvedOperationalEmpIdsForBranch');
+    expect(fb).toContain('listOperationalPresenceForBranch');
     expect(fb).toContain('isEmergencyTransfer');
-    expect(fb).toContain('resolveEmployeeBranchSchedule');
+    expect(fb).not.toContain('resolveEmployeeBranchSchedule');
+    const day = read('src/lib/hr/operationsDayState.ts');
+    expect(day).toContain('listOperationalPresenceForBranch');
+    expect(day).not.toMatch(/for \(const b of barbers\.recordset\)[\s\S]*resolveEmployeeGlobalSchedule/);
   });
 });
 

@@ -1,0 +1,55 @@
+{
+  "phase": "1S-1R",
+  "smokeRunId": 16,
+  "empId": 1043,
+  "empName": "[SMOKE 1S] Cross-Branch Employee 16",
+  "saturday": "2026-08-01",
+  "tuesday": "2026-07-28",
+  "baseline": {
+    "global": "GLEEM",
+    "gleemPresent": true,
+    "ccPresent": false
+  },
+  "apply": {
+    "transferId": 2,
+    "fromBranchId": 1,
+    "toBranchId": 3,
+    "isEmergencyTransfer": true,
+    "resolver": "CAMP_CAESAR",
+    "gleemPresent": false,
+    "ccPresent": true
+  },
+  "cancel": {
+    "isActive": 0,
+    "hardDeleted": false,
+    "resolver": "GLEEM"
+  },
+  "boards": {
+    "afterApply": {
+      "gleem": false,
+      "cc": true
+    },
+    "afterCancel": {
+      "gleem": true,
+      "cc": false
+    }
+  },
+  "weeklyUnchanged": true,
+  "legacyUnchanged": true,
+  "noFinancialSideEffects": true,
+  "publicCcHidden": true,
+  "blockerProofs": {
+    "TRANSFER_FROM_BRANCH_MISMATCH": true,
+    "TRANSFER_DESTINATION_ACCESS_DENIED": true,
+    "EMPLOYEE_BRANCH_PAYROLL_PLAN_REQUIRED": true,
+    "TEMPORARY_TRANSFER_HAS_SOURCE_BOOKINGS": true,
+    "TRANSFER_ATTENDANCE_CONFLICT": true,
+    "TRANSFER_ACTIVE_SERVICE_CONFLICT": true,
+    "TRANSFER_PAYROLL_ALREADY_GENERATED": true,
+    "TRANSFER_LEDGER_ALREADY_POSTED": true,
+    "TRANSFER_GLOBAL_LEAVE_BLOCKS": true
+  },
+  "cleanup": {
+    "completed": true
+  }
+}

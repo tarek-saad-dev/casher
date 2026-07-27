@@ -9,6 +9,11 @@ import { FindNearestQueueDrawer } from '@/components/operations/FindNearestQueue
 import { CreateBookingDrawer } from '@/components/operations/CreateBookingDrawer';
 import { ScheduleControlModal } from '@/components/operations/ScheduleControlModal';
 import { OperationsControlPanel } from '@/components/operations/OperationsControlPanel';
+import type {
+  OpsBranchOption,
+  OpsBranchScope,
+  OpsPresenceFilter,
+} from '@/components/operations/OperationsControlPanel';
 import type { CreateQueueResponse } from '@/lib/operationsQueueTypes';
 import {
   createQueueResponseToPrintData,
@@ -43,6 +48,11 @@ interface FlowBoardBarber {
   workStart: string | null;
   workEnd: string | null;
   isOvernightShift: boolean;
+  isEmergencyTransfer?: boolean;
+  branchId?: number;
+  branchCode?: string;
+  branchName?: string;
+  branchShortName?: string | null;
   nextAvailableAt: string | null;
   waitingCount: number;
   bookingsCount: number;
@@ -123,13 +133,20 @@ function readMobileBarberSelection(): MobileBarberSelection | null {
 }
 
 export default function OperationsPage() {
-  const { user } = useSession();
+  const { user, activeBranch } = useSession();
   const activeBranchIdRef = useRef<number | undefined>(user?.ActiveBranchID);
   activeBranchIdRef.current = user?.ActiveBranchID;
   const [selectedDate, setSelectedDate] = useState<string>(getCairoBusinessDate());
   const [flowBoardData, setFlowBoardData] = useState<FlowBoardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [branchScope, setBranchScope] = useState<OpsBranchScope>('active');
+  const [presenceFilter, setPresenceFilter] = useState<OpsPresenceFilter>('present');
+  const [branchOptions, setBranchOptions] = useState<OpsBranchOption[]>([]);
+  const branchScopeRef = useRef<OpsBranchScope>(branchScope);
+  const presenceFilterRef = useRef<OpsPresenceFilter>(presenceFilter);
+  branchScopeRef.current = branchScope;
+  presenceFilterRef.current = presenceFilter;
   const [showCreateDrawer, setShowCreateDrawer] = useState(false);
   const [barberQueueModal, setBarberQueueModal] = useState<{
     empId: number;
@@ -170,13 +187,31 @@ export default function OperationsPage() {
   const refreshControllerRef = useRef(
     createFlowBoardRefreshController({
       getSelectedDate: () => selectedDateRef.current,
-      getBranchId: () => activeBranchIdRef.current ?? '_',
+      getBranchId: () => {
+        const scope = branchScopeRef.current;
+        const presence = presenceFilterRef.current;
+        const scopeKey = scope === 'all' || scope === 'active' ? scope : `b${scope}`;
+        return `${scopeKey}:${presence}:${activeBranchIdRef.current ?? '_'}`;
+      },
       fetchBoard: async (date, signal) => {
         const t0 = performance.now();
+        const scope = branchScopeRef.current;
+        const presence = presenceFilterRef.current;
+        const branchIdParam =
+          scope === 'all' || scope === 'active' ? scope : String(scope);
         if (process.env.NODE_ENV !== 'production') {
-          console.log('[ops-booking-perf] flow_board_refresh_start', { date });
+          console.log('[ops-booking-perf] flow_board_refresh_start', {
+            date,
+            branchId: branchIdParam,
+            presence,
+          });
         }
-        const res = await fetch(`/api/operations/flow-board?date=${date}`, { signal });
+        const qs = new URLSearchParams({
+          date,
+          branchId: branchIdParam,
+          presence,
+        });
+        const res = await fetch(`/api/operations/flow-board?${qs}`, { signal });
         const data = (await res.json()) as FlowBoardPayload;
         if (process.env.NODE_ENV !== 'production') {
           console.log('[ops-booking-perf] flow_board_refresh_done', {
@@ -218,6 +253,36 @@ export default function OperationsPage() {
   useEffect(() => {
     document.title = '💈 لوحة التشغيل - الصالون';
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/branches/available');
+        const data = await res.json();
+        if (cancelled || !res.ok) return;
+        const rows = Array.isArray(data.branches) ? data.branches : [];
+        setBranchOptions(
+          rows.map((b: {
+            BranchID: number;
+            BranchCode: string;
+            BranchName: string;
+            ShortName?: string | null;
+          }) => ({
+            branchId: b.BranchID,
+            branchCode: b.BranchCode,
+            branchName: b.BranchName,
+            shortName: b.ShortName ?? null,
+          })),
+        );
+      } catch {
+        // keep empty — filter still works with "active"
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.ActiveBranchID]);
 
   useEffect(() => {
     let cancelled = false;
@@ -358,7 +423,7 @@ export default function OperationsPage() {
   }, [fetchFlowBoard, showToast]);
 
   useEffect(() => {
-    void refreshFlowBoard(selectedDate, { reason: 'date-or-mount' });
+    void refreshFlowBoard(selectedDate, { reason: 'date-or-filters', force: true });
     if (refreshTimer.current) clearInterval(refreshTimer.current);
     refreshTimer.current = setInterval(() => {
       void refreshFlowBoard(selectedDateRef.current, { reason: 'poll' });
@@ -366,7 +431,7 @@ export default function OperationsPage() {
     return () => {
       if (refreshTimer.current) clearInterval(refreshTimer.current);
     };
-  }, [selectedDate, refreshFlowBoard]);
+  }, [selectedDate, branchScope, presenceFilter, refreshFlowBoard]);
 
   useEffect(() => {
     const barbers = flowBoardData?.barbers.filter((b) => b.status !== 'unknown') ?? [];
@@ -504,6 +569,14 @@ export default function OperationsPage() {
           musicExpanded={musicPlayerExpanded}
           publicBookingEnabled={publicBookingEnabled}
           publicBookingToggleLoading={publicBookingToggleLoading}
+          branchScope={branchScope}
+          presenceFilter={presenceFilter}
+          branchOptions={branchOptions}
+          activeBranchLabel={
+            activeBranch?.shortName || activeBranch?.branchName || user?.ActiveBranchCode
+          }
+          onBranchScopeChange={setBranchScope}
+          onPresenceFilterChange={setPresenceFilter}
           onPrevDay={handlePrevDay}
           onNextDay={handleNextDay}
           onToday={handleToday}

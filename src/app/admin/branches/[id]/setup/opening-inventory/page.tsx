@@ -1,86 +1,153 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { Loader2 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
+import { Button } from '@/components/ui/button';
 
-const OPTIONS = [
-  {
-    id: 'ZERO_STOCK',
-    title: 'A. البدء بمخزون صفر',
-    body: 'يتطلب موافقة صريحة. لا تُنشأ حركات مخزون. الجاهزية تسجّل اعتماد المخزون الصفري.',
-  },
-  {
-    id: 'NEW_PURCHASE',
-    title: 'B. إدخال مخزون مشتريات افتتاحي',
-    body: 'شبكة/استيراد: منتج، كمية، تكلفة وحدة، مورد، تاريخ، سبب — عبر واجهات الحركة المعتمدة فقط.',
-  },
-  {
-    id: 'TRANSFER_FROM_GLEEM',
-    title: 'C. تحويل من جليم',
-    body: 'مسار Phase 1J: خروج جليم + دخول كامب شيزار بنفس المرجع والكمية. ممنوع نسخ الكميات مباشرة.',
-  },
-] as const;
+type Option = 'ZERO_STOCK' | 'NEW_PURCHASE' | 'TRANSFER_FROM_GLEEM';
 
-export default function OpeningInventoryOptionsPage() {
+export default function OpeningInventorySetupPage() {
   const params = useParams<{ id: string }>();
   const branchId = params.id;
-  const [selected, setSelected] = useState<string | null>(null);
-  const [message, setMessage] = useState<string>(
-    'المخزون الافتتاحي ما زال BLOCKER حتى يُعتمد خيار صريح (لا تُختلق كميات في Phase 1O).',
-  );
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [option, setOption] = useState<Option>('ZERO_STOCK');
+  const [approveZero, setApproveZero] = useState(false);
+  const [resolved, setResolved] = useState(false);
+  const [current, setCurrent] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/branches/${branchId}/setup/opening-inventory`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل التحميل');
+      setResolved(!!data.resolved);
+      setCurrent(data.current);
+      if (data.current) setOption(data.current);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'خطأ');
+    } finally {
+      setLoading(false);
+    }
+  }, [branchId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/admin/branches/${branchId}/setup/opening-inventory`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          option,
+          approveZeroStock: option === 'ZERO_STOCK' ? approveZero : false,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل الحفظ');
+      setMessage(
+        data.blockerCleared
+          ? 'تم اعتماد المخزون الافتتاحي وتصفية المانع'
+          : 'تم تسجيل الخيار — يلزم إكمال الحركات (شراء/نقل) لتصفية المانع',
+      );
+      await load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'خطأ');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <div className="mx-auto max-w-3xl p-6" dir="rtl">
+    <div className="mx-auto max-w-2xl p-4 sm:p-6" dir="rtl">
+      <Link href={`/admin/branches/${branchId}/setup`} className="text-sm text-muted-foreground">
+        ← معالج الإعداد
+      </Link>
       <PageHeader
-        title="خيارات المخزون الافتتاحي"
-        description="قرار إنتاجي إلزامي قبل INTERNAL_LIVE — لا اختلاق كميات أو تكاليف"
+        title="المخزون الافتتاحي"
+        description="اختر مسارًا واحدًا واعتمده — لا تُنسخ كميات جليم مباشرة"
       />
-      <p className="mt-2 text-sm text-muted-foreground">BranchID: {branchId}</p>
 
-      <div className="mt-6 space-y-3">
-        {OPTIONS.map((opt) => (
-          <button
-            key={opt.id}
-            type="button"
-            onClick={() => {
-              setSelected(opt.id);
-              setMessage(
-                `تم اختيار ${opt.id} محلياً للعرض فقط. التثبيت الإنتاجي يتطلب استدعاء selectOpeningInventoryOption مع اعتماد صريح — Phase 1O لا يفعّل ZERO_STOCK تلقائياً.`,
-              );
-            }}
-            className={`w-full rounded-lg border px-4 py-3 text-right text-sm transition ${
-              selected === opt.id
-                ? 'border-primary bg-primary/10'
-                : 'border-border/60 bg-surface'
-            }`}
+      {loading ? (
+        <Loader2 className="mt-6 size-5 animate-spin" />
+      ) : (
+        <div className="mt-6 space-y-4">
+          {resolved && (
+            <div className="rounded-xl border border-emerald-500/35 bg-emerald-950/25 p-3 text-sm text-emerald-200">
+              معتمد: {current}
+            </div>
+          )}
+          {error && (
+            <div className="rounded-xl border border-rose-500/40 bg-rose-950/30 p-3 text-sm text-rose-200">
+              {error}
+            </div>
+          )}
+          {message && (
+            <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/30 p-3 text-sm text-emerald-200">
+              {message}
+            </div>
+          )}
+
+          {(
+            [
+              ['ZERO_STOCK', 'أ. بدء بدون مخزون افتتاحي'],
+              ['NEW_PURCHASE', 'ب. مخزون مشترى جديد (يتطلب حركات لاحقًا)'],
+              ['TRANSFER_FROM_GLEEM', 'ج. نقل من جليم (نقل مزدوج موثّق)'],
+            ] as const
+          ).map(([value, label]) => (
+            <label
+              key={value}
+              className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/70 bg-card/70 p-4"
+            >
+              <input
+                type="radio"
+                name="inv"
+                checked={option === value}
+                onChange={() => setOption(value)}
+                className="mt-1"
+              />
+              <span className="text-sm font-medium">{label}</span>
+            </label>
+          ))}
+
+          {option === 'ZERO_STOCK' && (
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={approveZero}
+                onChange={(e) => setApproveZero(e.target.checked)}
+                className="mt-1"
+              />
+              <span>أؤكد بدء الفرع بدون مخزون افتتاحي</span>
+            </label>
+          )}
+
+          {(option === 'NEW_PURCHASE' || option === 'TRANSFER_FROM_GLEEM') && (
+            <p className="text-xs text-amber-200/90">
+              تسجيل الخيار لا يصفّي المانع وحده — يلزم إكمال شبكة الشراء أو نقل 1J ثم إعادة التقييم.
+            </p>
+          )}
+
+          <Button
+            disabled={saving || (option === 'ZERO_STOCK' && !approveZero)}
+            onClick={() => void save()}
+            className="bg-amber-600 hover:bg-amber-500"
           >
-            <div className="font-semibold">{opt.title}</div>
-            <p className="mt-1 text-muted-foreground">{opt.body}</p>
-          </button>
-        ))}
-      </div>
-
-      <p className="mt-4 rounded-lg border border-border/60 bg-surface px-3 py-2 text-sm">{message}</p>
-      <p className="mt-2 text-xs text-muted-foreground">
-        biz.opening_inventory = BLOCKER حتى اعتماد خيار وإنشاء الحركات المطلوبة (أو ZERO_STOCK بموافقة).
-      </p>
-
-      <div className="mt-6 flex flex-wrap gap-3">
-        <Link
-          href={`/admin/branches/${branchId}/setup`}
-          className="rounded-xl border border-border px-4 py-2 text-sm"
-        >
-          العودة للإعداد
-        </Link>
-        <Link
-          href={`/admin/branches/${branchId}/setup/employees`}
-          className="rounded-xl border border-border px-4 py-2 text-sm"
-        >
-          معالج الموظفين
-        </Link>
-      </div>
+            {saving ? <Loader2 className="size-4 animate-spin" /> : 'حفظ القرار'}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

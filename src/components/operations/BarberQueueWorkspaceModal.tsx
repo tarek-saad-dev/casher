@@ -42,7 +42,7 @@ const STEPS: Array<{ id: Step; label: string }> = [
 ];
 
 const MAIN_SERVICE_NAMES = [
-  'Hair Cut', 'Haircut', 'Detailed Cut', 'Detail Cut', 'DetailedCut',
+  'Hair Cut', 'Haircut', 'Basic Cut', 'Detailed Cut', 'Detail Cut', 'DetailedCut',
   'Beard Styling & Fade', 'Beard Styling', 'Beard',
   'Haircut & Beard', 'Hair & Beard', 'Hair cut & Beard', 'Hair cut + Beard', 'Hair and Beard',
   'Advanced Cut', 'Fade Cut',
@@ -129,7 +129,7 @@ export function BarberQueueWorkspaceModal({
       return;
     }
     setLoadingServices(true);
-    fetch('/api/services?active=true')
+    fetch('/api/services?active=true&bookable=true')
       .then((r) => r.json())
       .then((d) => setServices(d.services ?? d ?? []))
       .catch(() => setError('تعذر تحميل الخدمات'))

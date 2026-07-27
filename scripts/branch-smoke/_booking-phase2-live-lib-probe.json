@@ -1,0 +1,55 @@
+{
+  "gleem": {
+    "status": 200,
+    "coldMs": 3231,
+    "warmMs": 179,
+    "bytes": 27181,
+    "categoryCount": 6,
+    "serviceCount": 30,
+    "duplicateIds": [],
+    "invalidDurationCount": 0,
+    "invalidPriceCount": 0,
+    "productsLeaked": false,
+    "deletedLeaked": false,
+    "pricingScope": "global",
+    "sampleCategories": [
+      {
+        "id": "19",
+        "nameEn": "Hair Cut",
+        "n": 4
+      },
+      {
+        "id": "20",
+        "nameEn": "Beard Cut",
+        "n": 4
+      },
+      {
+        "id": "21",
+        "nameEn": "Hair Styling & Finishing",
+        "n": 5
+      },
+      {
+        "id": "18",
+        "nameEn": "Hair Treatments & Care",
+        "n": 5
+      },
+      {
+        "id": "17",
+        "nameEn": "Hair Color & Highlights",
+        "n": 3
+      },
+      {
+        "id": "9",
+        "nameEn": "Skincare",
+        "n": 9
+      }
+    ]
+  },
+  "campCaesar": {
+    "code": "BRANCH_NOT_PUBLIC",
+    "httpStatus": 404
+  },
+  "missingBranch": {
+    "code": "BRANCH_REQUIRED"
+  }
+}
