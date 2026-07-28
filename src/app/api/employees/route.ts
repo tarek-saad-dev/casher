@@ -22,6 +22,9 @@ import {
 } from '@/lib/hr/employee-hr-db';
 import { ensureEmployeeAdvanceMapping } from '@/lib/hr/employee-hr-advance';
 import { getEmployeesTargetSummaryBatch } from '@/lib/payroll/employee-target';
+import { ensureTblEmpImageUrlColumn } from '@/lib/migrations/ensureEmployeeImageUrl';
+import { normalizeEmployeeImageUrlInput } from '@/lib/hr/employeeImageUrl';
+import { invalidatePublicBookingBarbersCache } from '@/lib/booking/publicBookingBarbers';
 
 // GET /api/employees — list employees with finance mapping
 // Query params: ?inactive=true to get inactive employees
@@ -89,7 +92,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
 
-    const body = (await req.json()) as EmployeeHrPayload;
+    const body = (await req.json()) as EmployeeHrPayload & { imageUrl?: string | null };
     const isHrPayload = usesHrModelPayload(body);
 
     const validation = validateEmployeeHrPayload(body, {
@@ -99,6 +102,15 @@ export async function POST(req: NextRequest) {
 
     if (!validation.ok) {
       return NextResponse.json({ error: validation.errors[0] }, { status: 400 });
+    }
+
+    let imageUrlValue: string | null | undefined;
+    if (body.imageUrl !== undefined) {
+      const normalized = normalizeEmployeeImageUrlInput(body.imageUrl);
+      if (!normalized.ok) {
+        return NextResponse.json({ error: normalized.error }, { status: 400 });
+      }
+      imageUrlValue = normalized.value;
     }
 
     const name = String(body.empName).trim();
@@ -148,6 +160,17 @@ export async function POST(req: NextRequest) {
       const newEmpID = newEmp.EmpID;
       console.log(`[api/employees] Inserted EmpID=${newEmpID}  EmpName=${name}`);
 
+      if (imageUrlValue !== undefined) {
+        const hasCol = await ensureTblEmpImageUrlColumn(db);
+        if (!hasCol) {
+          throw new Error('عمود ImageUrl غير متوفر — شغّل /api/admin/migrate-employee-image-url');
+        }
+        await new sql.Request(transaction)
+          .input('empId', sql.Int, newEmpID)
+          .input('imageUrl', sql.NVarChar(1000), imageUrlValue)
+          .query(`UPDATE dbo.TblEmp SET ImageUrl = @imageUrl WHERE EmpID = @empId`);
+      }
+
       const { expINID, catName } = await ensureEmployeeAdvanceMapping(
         transaction,
         newEmpID,
@@ -156,11 +179,16 @@ export async function POST(req: NextRequest) {
 
       await transaction.commit();
 
+      if (imageUrlValue) {
+        invalidatePublicBookingBarbersCache();
+      }
+
       return NextResponse.json(
         {
           EmpID: newEmpID,
           EmpName: newEmp.EmpName,
           isActive: newEmp.isActive,
+          ImageUrl: imageUrlValue ?? null,
           AdvanceExpINID: expINID,
           AdvanceCatName: catName,
           ...(isHrPayload && validation.normalized

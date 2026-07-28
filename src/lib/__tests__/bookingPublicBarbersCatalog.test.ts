@@ -143,6 +143,23 @@ describe('bookingPublicBarbersCatalog / policy', () => {
     const json = JSON.stringify(b);
     expect(json).not.toMatch(/salary|payroll|target|phone|NationalID|ledger/i);
     expect(b.availabilityType).toBe('presence_only');
-    expect(b.imageUrl).toBeNull();
+    expect(b.imageUrl).toBe('https://casher-five.vercel.app/barber-ziad.jpg');
+    expect(b.photoUrl).toBe(b.imageUrl);
+  });
+
+  it('prefers PUBLIC_ASSET_ORIGIN when set', () => {
+    const prev = process.env.PUBLIC_ASSET_ORIGIN;
+    process.env.PUBLIC_ASSET_ORIGIN = 'https://assets.example.com';
+    try {
+      const [b] = assemblePublicBarbersFromCandidates(
+        [{ empId: 12, name: 'زياد', branchCode: 'GLEEM', branchName: 'جليم' }],
+        [9],
+      );
+      expect(b.imageUrl).toBe('https://assets.example.com/barber-ziad.jpg');
+      expect(b.photoUrl).toBe(b.imageUrl);
+    } finally {
+      if (prev === undefined) delete process.env.PUBLIC_ASSET_ORIGIN;
+      else process.env.PUBLIC_ASSET_ORIGIN = prev;
+    }
   });
 });

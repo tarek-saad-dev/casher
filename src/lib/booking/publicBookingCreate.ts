@@ -14,6 +14,7 @@ import {
   buildPlanContentDigest,
   verifyPlanToken,
 } from '@/lib/booking/publicBookingPlanFingerprint';
+import { resolveBarberPublicImageUrl } from '@/lib/booking/publicBookingBarberPolicy';
 import {
   PUBLIC_BOOKING_ERROR_CATALOG,
   type PublicBookingErrorCode,
@@ -284,7 +285,9 @@ function buildPublicResponse(args: {
       barber: {
         empId: args.selectedEmpId,
         nameAr: args.selectedNameAr,
-        imageUrl: null,
+        imageUrl:
+          args.evaluation.specificBarber?.imageUrl ??
+          resolveBarberPublicImageUrl(null, args.selectedNameAr),
       },
       assignmentStrategy: args.assignmentStrategy,
       date: e.workDate,

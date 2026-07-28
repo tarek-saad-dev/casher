@@ -8,9 +8,11 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  ImageIcon,
   Loader2,
   UserPlus,
   Users,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,6 +39,7 @@ import {
   DAY_OFF_POLICY_LABELS,
   FREELANCE_MONTHLY_ERROR,
 } from '@/lib/hr/employee-hr-model';
+import { BARBER_IMAGE_PRESETS } from '@/lib/barberImages';
 import {
   availablePayrollMethods,
   buildEmployeeHrApiPayload,
@@ -103,10 +106,39 @@ export default function EmployeeHrFormModal({
   const [error, setError] = useState('');
   const [optionalOpen, setOptionalOpen] = useState(false);
   const [scheduleTouched, setScheduleTouched] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageUploadError, setImageUploadError] = useState('');
 
   const patchForm = useCallback((partial: Partial<EmployeeHrFormState>) => {
     setForm((prev) => ({ ...prev, ...partial }));
   }, []);
+
+  const handleImageFileUpload = useCallback(
+    async (file: File | null) => {
+      if (!file) return;
+      setImageUploadError('');
+      setUploadingImage(true);
+      try {
+        const body = new FormData();
+        body.append('file', file);
+        if (employee?.EmpID) body.append('empId', String(employee.EmpID));
+        const res = await fetch('/api/admin/employees/upload-image', {
+          method: 'POST',
+          body,
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok || !data.imageUrl) {
+          throw new Error(data.error || 'فشل رفع الصورة');
+        }
+        patchForm({ imageUrl: String(data.imageUrl) });
+      } catch (e: unknown) {
+        setImageUploadError(e instanceof Error ? e.message : 'فشل رفع الصورة');
+      } finally {
+        setUploadingImage(false);
+      }
+    },
+    [employee?.EmpID, patchForm],
+  );
 
   const markScheduleTouched = useCallback(() => {
     setScheduleTouched(true);
@@ -141,6 +173,7 @@ export default function EmployeeHrFormModal({
   useEffect(() => {
     if (!open) return;
     setError('');
+    setImageUploadError('');
     setOptionalOpen(false);
     if (mode === 'create') {
       const empty = createEmptyEmployeeHrFormState();
@@ -342,6 +375,135 @@ export default function EmployeeHrFormModal({
                   checked={form.isActive}
                   onCheckedChange={(v) => patchForm({ isActive: v })}
                 />
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-lg border border-border/70 bg-surface-muted/20 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="employeeImageUrl" className="flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4 text-primary" />
+                  صورة الموظف (موقع الحجز)
+                </Label>
+                {form.imageUrl.trim() && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => patchForm({ imageUrl: '' })}
+                    className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="w-3.5 h-3.5 ml-1" />
+                    مسح الصورة
+                  </Button>
+                )}
+              </div>
+              <Input
+                id="employeeImageUrl"
+                value={form.imageUrl}
+                onChange={(e) => patchForm({ imageUrl: e.target.value })}
+                placeholder="https://res.cloudinary.com/... أو /barber-ziad.jpg"
+                dir="ltr"
+                className="font-mono text-xs"
+              />
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Label
+                  htmlFor="employeeImageFile"
+                  className={`inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs cursor-pointer hover:bg-surface-muted ${
+                    uploadingImage ? 'opacity-60 pointer-events-none' : ''
+                  }`}
+                >
+                  {uploadingImage ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <ImageIcon className="w-3.5 h-3.5 text-primary" />
+                  )}
+                  {uploadingImage ? 'جاري الرفع على Cloudinary...' : 'رفع صورة من الجهاز'}
+                </Label>
+                <input
+                  id="employeeImageFile"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="sr-only"
+                  disabled={uploadingImage || saving}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    e.target.value = '';
+                    void handleImageFileUpload(file);
+                  }}
+                />
+                <span className="text-[11px] text-muted-foreground">
+                  JPG / PNG / WebP — حتى 5MB
+                </span>
+              </div>
+              {imageUploadError && (
+                <p className="text-xs text-destructive">{imageUploadError}</p>
+              )}
+
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                ارفع صورة من الجهاز (Cloudinary) أو الصق رابط https — أو اختر من صور المشروع أدناه.
+                بعد الحفظ تظهر في API الحجز للموقع.
+              </p>
+
+              {form.imageUrl.trim() ? (
+                <div className="rounded-lg border border-border overflow-hidden bg-surface">
+                  <div className="px-3 py-2 border-b border-border text-xs text-muted-foreground">
+                    معاينة الصورة
+                  </div>
+                  <div className="relative h-40 bg-surface-muted">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={form.imageUrl.trim()}
+                      alt="معاينة صورة الموظف"
+                      className="h-full w-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.opacity = '0.25';
+                      }}
+                    />
+                  </div>
+                  <div className="px-3 py-2 text-xs text-muted-foreground font-mono truncate" dir="ltr">
+                    {form.imageUrl.trim()}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex h-20 items-center justify-center rounded-lg border border-dashed border-border bg-surface-muted/30 text-muted-foreground">
+                  <div className="flex flex-col items-center gap-1 text-xs">
+                    <ImageIcon className="w-5 h-5 opacity-50" />
+                    <span>لا توجد صورة — الموقع سيعرض Placeholder</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">اختيار سريع من صور المشروع</Label>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  {BARBER_IMAGE_PRESETS.map((preset) => {
+                    const isSelected = form.imageUrl.trim() === preset.path;
+                    return (
+                      <button
+                        key={preset.path}
+                        type="button"
+                        title={preset.label}
+                        onClick={() => patchForm({ imageUrl: preset.path })}
+                        className={`group relative overflow-hidden rounded-lg border transition-all ${
+                          isSelected
+                            ? 'border-primary ring-1 ring-primary/40'
+                            : 'border-border hover:border-muted-foreground/50'
+                        }`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={preset.path}
+                          alt={preset.label}
+                          className="h-16 w-full object-cover"
+                        />
+                        <span className="absolute inset-x-0 bottom-0 bg-background/80 text-[10px] py-0.5 text-center truncate px-1">
+                          {preset.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 

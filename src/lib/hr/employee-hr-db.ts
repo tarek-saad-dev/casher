@@ -164,6 +164,10 @@ export const EMPLOYEE_LIST_SELECT = `
       WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'WhatsApp')
       THEN e.WhatsApp ELSE NULL
     END AS WhatsApp,
+    CASE
+      WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'ImageUrl')
+      THEN e.ImageUrl ELSE NULL
+    END AS ImageUrl,
     e.Mobile,
     adv.ExpINID AS AdvanceExpINID, adv.CatName AS AdvanceCatName,
     rev.ExpINID AS RevenueExpINID, rev.CatName AS RevenueCatName
@@ -199,6 +203,10 @@ export const EMPLOYEE_SELECT_BY_ID = `
       WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'WhatsApp')
       THEN WhatsApp ELSE NULL
     END AS WhatsApp,
+    CASE
+      WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'ImageUrl')
+      THEN ImageUrl ELSE NULL
+    END AS ImageUrl,
     Mobile
   FROM dbo.TblEmp
   WHERE EmpID = @empID

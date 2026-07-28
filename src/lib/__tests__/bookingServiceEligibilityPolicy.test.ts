@@ -87,6 +87,35 @@ describe('bookingServiceEligibilityPolicy', () => {
     expect(sanitizePublicImageUrl('C:\\images\\x.png')).toBeNull();
     expect(sanitizePublicImageUrl('file:///tmp/x')).toBeNull();
     expect(sanitizePublicImageUrl('https://cdn.example.com/a.jpg')).toContain('https://');
+    expect(sanitizePublicImageUrl('/etc/passwd')).toBeNull();
+  });
+
+  it('rewrites allowlisted relative asset paths to absolute URLs', () => {
+    const prev = process.env.PUBLIC_ASSET_ORIGIN;
+    delete process.env.PUBLIC_ASSET_ORIGIN;
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    delete process.env.VERCEL_URL;
+    try {
+      // Production alias fallback when no env is set
+      expect(sanitizePublicImageUrl('/barber-ziad.jpg')).toBe(
+        'https://casher-five.vercel.app/barber-ziad.jpg',
+      );
+      expect(sanitizePublicImageUrl('/services/haircut.jpg')).toBe(
+        'https://casher-five.vercel.app/services/haircut.jpg',
+      );
+    } finally {
+      if (prev === undefined) delete process.env.PUBLIC_ASSET_ORIGIN;
+      else process.env.PUBLIC_ASSET_ORIGIN = prev;
+    }
+
+    process.env.PUBLIC_ASSET_ORIGIN = 'https://cdn.example.com';
+    try {
+      expect(sanitizePublicImageUrl('/barber-ziad.jpg')).toBe(
+        'https://cdn.example.com/barber-ziad.jpg',
+      );
+    } finally {
+      delete process.env.PUBLIC_ASSET_ORIGIN;
+    }
   });
 
   it('respects HideFromPublicBooking when present', () => {

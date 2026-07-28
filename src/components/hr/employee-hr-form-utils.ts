@@ -39,6 +39,7 @@ export interface HrEmployeeListRow {
   dayOffPolicyLabel?: string | null;
   WhatsApp?: string | null;
   Mobile?: string | null;
+  ImageUrl?: string | null;
 }
 
 export interface ProfileScheduleRow {
@@ -81,6 +82,7 @@ export interface EmployeeHrFormState {
   emergencyContactName: string;
   emergencyContactPhone: string;
   notes: string;
+  imageUrl: string;
 }
 
 export function createEmptyEmployeeHrFormState(): EmployeeHrFormState {
@@ -107,6 +109,7 @@ export function createEmptyEmployeeHrFormState(): EmployeeHrFormState {
     emergencyContactName: '',
     emergencyContactPhone: '',
     notes: '',
+    imageUrl: '',
   };
 }
 
@@ -189,6 +192,7 @@ export function employeeToFormState(
     emergencyContactName: profile?.EmergencyContactName ?? '',
     emergencyContactPhone: profile?.EmergencyContactPhone ?? '',
     notes: profile?.Notes ?? profile?.PersonalNotes ?? '',
+    imageUrl: emp.ImageUrl?.trim() || '',
   };
 }
 
@@ -283,6 +287,9 @@ export function buildEmployeeHrApiPayload(
 
   if (form.defaultStartTime) payload.defaultStartTime = form.defaultStartTime;
   if (form.defaultEndTime) payload.defaultEndTime = form.defaultEndTime;
+
+  // Always send imageUrl on save (including empty → clear photo)
+  payload.imageUrl = form.imageUrl.trim() || null;
 
   const shouldIncludeSchedule =
     options.includeSchedule &&

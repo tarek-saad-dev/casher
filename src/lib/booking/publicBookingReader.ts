@@ -22,6 +22,7 @@ import {
   verifyBookingAccessToken,
 } from '@/lib/booking/publicBookingAccessToken';
 import type { PublicBookingErrorCode } from '@/lib/booking/publicBookingErrorCatalog';
+import { resolveBarberPublicImageUrl } from '@/lib/booking/publicBookingBarberPolicy';
 
 const DEFAULT_UPCOMING_LIMIT = 10;
 const MAX_UPCOMING_LIMIT = 25;
@@ -69,7 +70,7 @@ export type PublicBookingDto = {
   barber: {
     empId: number | null;
     nameAr: string | null;
-    imageUrl: null;
+    imageUrl: string | null;
   } | null;
   assignmentStrategy: string | null;
   workDate: string | null;
@@ -394,7 +395,7 @@ function mapRowToDto(
     barber: {
       empId: row.BarberEmpID != null ? Number(row.BarberEmpID) : null,
       nameAr: row.BarberName ?? null,
-      imageUrl: null,
+      imageUrl: resolveBarberPublicImageUrl(null, row.BarberName),
     },
     assignmentStrategy: null,
     workDate: dates.workDate,

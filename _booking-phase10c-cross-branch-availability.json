@@ -1,0 +1,49 @@
+{
+  "phase": "booking-phase-10c-cross-branch-availability",
+  "generatedAt": "2026-07-28T02:21:20.605Z",
+  "base": "https://casher-five.vercel.app",
+  "passed": false,
+  "failures": [
+    "ahmed missing CAMP_CAESAR",
+    "ziad branches expected GLEEM+CAMP_CAESAR got "
+  ],
+  "proofs": {
+    "options": {
+      "status": 200,
+      "acam": null
+    },
+    "ahmedCold": {
+      "status": 200,
+      "ms": 251,
+      "branches": [],
+      "slotBranches": [],
+      "contractHeader": null
+    },
+    "ahmedWarm": {
+      "status": 200,
+      "ms": 243
+    },
+    "ahmedSaturday": {
+      "date": "2026-08-01",
+      "status": 200,
+      "slotCount": 0,
+      "branches": []
+    },
+    "ziadCold": {
+      "status": 200,
+      "ms": 219,
+      "branches": [],
+      "slotBranches": []
+    },
+    "planParity": {
+      "skipped": true,
+      "reason": "no Ahmed Camp slots in window"
+    },
+    "timingTargets": {
+      "coldUnder3s": true,
+      "warmUnder1_2s": true,
+      "ahmedColdMs": 251,
+      "ahmedWarmMs": 243
+    }
+  }
+}

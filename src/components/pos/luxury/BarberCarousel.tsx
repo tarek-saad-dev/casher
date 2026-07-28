@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { deriveAttendanceDisplay, type TeamAttendanceMember } from '@/lib/teamAttendance';
 import NonBarberEmployeeModal from '@/components/pos/NonBarberEmployeeModal';
 import type { Barber } from '@/lib/types';
+import { getBarberImagePathByName } from '@/lib/barberImages';
 
 interface BarberCarouselProps {
   barbers: Barber[];
@@ -15,19 +16,6 @@ interface BarberCarouselProps {
   onSelect: (barber: Barber) => void;
   attendanceByEmpId?: Map<number, TeamAttendanceMember>;
 }
-
-// Barber images mapping
-const BARBER_IMAGES: Record<string, string> = {
-  'بلسم': '/barber-bassem.jpg',
-  'بسم': '/barber-bassem.jpg',
-  'زيد': '/barber-ziad.jpg',
-  'محمد': '/barber-mohamed.jpg',
-  'كريم': '/barber-kareem.jpg',
-  'يوسف': '/barber-yousef.jpg',
-};
-
-// Employees without photos - will show initials placeholder
-const NO_PHOTO_EMPLOYEES = ['ذياد', 'ذياد المساعد', 'أحمد الصنايعي', 'أحمد المساعد', 'عمر'];
 
 // Barber colors for borders
 const BARBER_COLORS = [
@@ -45,6 +33,7 @@ const getBarberRating = (name: string): number => {
     'بلسم': 4.8,
     'بسم': 4.8,
     'زيد': 4.7,
+    'زياد': 4.7,
     'محمد': 4.9,
     'كريم': 4.8,
     'يوسف': 4.6,
@@ -141,8 +130,9 @@ export default function BarberCarousel({
           const isSelected = selected?.EmpID === barber.EmpID;
           const colorClass = BARBER_COLORS[idx % BARBER_COLORS.length];
           const rating = getBarberRating(barber.EmpName);
-          const hasNoPhoto = NO_PHOTO_EMPLOYEES.includes(barber.EmpName);
-          const imageSrc = hasNoPhoto ? undefined : (BARBER_IMAGES[barber.EmpName] || '/barber-bassem.jpg');
+          const mappedPhoto = getBarberImagePathByName(barber.EmpName);
+          const hasNoPhoto = !mappedPhoto;
+          const imageSrc = mappedPhoto ?? undefined;
           const initials = barber.EmpName.split(' ').map(n => n[0]).join('').slice(0, 2);
           const attendance = attendanceByEmpId?.get(barber.EmpID);
           const attendanceDisplay = attendance ? deriveAttendanceDisplay(attendance) : null;

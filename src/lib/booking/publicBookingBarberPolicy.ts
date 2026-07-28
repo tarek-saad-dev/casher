@@ -2,6 +2,7 @@
  * Booking Phase 3 — pure public barber eligibility / contract helpers.
  * No DB / server-only — safe for unit tests.
  */
+import { getBarberImagePathByName } from '@/lib/barberImages';
 import { isEmployeeHiddenFromPublicBooking } from '@/lib/hr/testEmployeePolicy';
 import { sanitizePublicImageUrl } from '@/lib/booking/publicBookingServicePolicy';
 
@@ -128,6 +129,16 @@ export function isEmployeeEligibleForPublicBooking(
 
 export function sanitizePublicBarberImageUrl(raw: string | null | undefined): string | null {
   return sanitizePublicImageUrl(raw);
+}
+
+/** DB ImageUrl first, then known public/ barber photo by EmpName. */
+export function resolveBarberPublicImageUrl(
+  dbImageUrl: string | null | undefined,
+  empName?: string | null,
+): string | null {
+  const fromDb = sanitizePublicBarberImageUrl(dbImageUrl);
+  if (fromDb) return fromDb;
+  return sanitizePublicBarberImageUrl(getBarberImagePathByName(empName));
 }
 
 export function sanitizePublicShortBio(raw: string | null | undefined): string | null {

@@ -21,7 +21,7 @@ import {
   PUBLIC_BOOKING_ERROR_CATALOG,
   type PublicBookingErrorCode,
 } from '@/lib/booking/publicBookingErrorCatalog';
-import { isOutsideBookingHorizon } from '@/lib/booking/publicBookingBarberPolicy';
+import { isOutsideBookingHorizon, resolveBarberPublicImageUrl, comparePublicBarbers } from '@/lib/booking/publicBookingBarberPolicy';
 import {
   listAvailableBookingSlots,
   validateBookingSlot,
@@ -33,11 +33,13 @@ import { getCairoBusinessDate } from '@/lib/businessDate';
 import { isEmployeeHiddenFromPublicBooking } from '@/lib/hr/testEmployeePolicy';
 import { getPool, sql } from '@/lib/db';
 import { canBranchAppearInPublicBooking } from '@/lib/branch/publicBranchVisibility';
-import { comparePublicBarbers } from '@/lib/booking/publicBookingBarberPolicy';
 import {
   BOOKING_PLAN_CONTRACT_VERSION,
   mintPlanFingerprint,
 } from '@/lib/booking/publicBookingPlanFingerprint';
+import {
+  ensureTblEmpImageUrlColumn,
+} from '@/lib/migrations/ensureEmployeeImageUrl';
 
 export type PublicSelectionPurpose = 'check_slot' | 'plan' | 'create_precheck' | 'internal_preview';
 export type PublicSelectionMode = 'specific_barber' | 'any_barber';
@@ -163,16 +165,27 @@ function parseDayOffset(raw: unknown): 0 | 1 {
 
 async function loadEmpPublicIdentity(
   empId: number,
-): Promise<{ nameAr: string } | null> {
+): Promise<{ nameAr: string; imageUrl: string | null } | null> {
   const db = await getPool();
+  const hasImageUrl = await ensureTblEmpImageUrlColumn(db);
+  const imageSelect = hasImageUrl
+    ? 'ImageUrl'
+    : 'CAST(NULL AS NVARCHAR(1000)) AS ImageUrl';
   const r = await db
     .request()
     .input('empId', sql.Int, empId)
-    .query(`SELECT EmpName, ISNULL(isActive,1) AS isActive FROM dbo.TblEmp WHERE EmpID=@empId`);
+    .query(`
+      SELECT EmpName, ISNULL(isActive,1) AS isActive, ${imageSelect}
+      FROM dbo.TblEmp WHERE EmpID=@empId
+    `);
   const row = r.recordset[0];
   if (!row || !row.isActive) return null;
   if (isEmployeeHiddenFromPublicBooking(row.EmpName)) return null;
-  return { nameAr: String(row.EmpName) };
+  const nameAr = String(row.EmpName);
+  return {
+    nameAr,
+    imageUrl: resolveBarberPublicImageUrl(row.ImageUrl, nameAr),
+  };
 }
 
 async function classifySpecificBarberDay(args: {
@@ -380,7 +393,7 @@ export async function evaluatePublicBookingSelection(args: {
     if (!empId) throw new PublicBookingSelectionError('BARBER_NOT_FOUND');
     const identity = await loadEmpPublicIdentity(empId);
     if (!identity) throw new PublicBookingSelectionError('BARBER_NOT_FOUND');
-    specificBarber = { empId, nameAr: identity.nameAr, imageUrl: null };
+    specificBarber = { empId, nameAr: identity.nameAr, imageUrl: identity.imageUrl };
 
     const dayClass = await classifySpecificBarberDay({
       empId,
@@ -478,7 +491,11 @@ export async function evaluatePublicBookingSelection(args: {
     const byEmp = new Map<number, PublicCandidateBarber>();
     for (const m of matches) {
       if (!byEmp.has(m.empId)) {
-        byEmp.set(m.empId, { empId: m.empId, nameAr: m.empName, imageUrl: null });
+        byEmp.set(m.empId, {
+          empId: m.empId,
+          nameAr: m.empName,
+          imageUrl: resolveBarberPublicImageUrl(null, m.empName),
+        });
       }
     }
     candidateBarbers = sortCandidates([...byEmp.values()]);

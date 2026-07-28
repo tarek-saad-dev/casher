@@ -18,6 +18,9 @@ import {
   ensureScheduleTable,
   upsertEmployeeSchedule,
 } from '@/lib/hr/employee-hr-db';
+import { ensureTblEmpImageUrlColumn } from '@/lib/migrations/ensureEmployeeImageUrl';
+import { invalidatePublicBookingBarbersCache } from '@/lib/booking/publicBookingBarbers';
+import { normalizeEmployeeImageUrlInput } from '@/lib/hr/employeeImageUrl';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -63,7 +66,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       return NextResponse.json({ error: 'معرف الموظف غير صالح' }, { status: 400 });
     }
 
-    const body = (await req.json()) as EmployeeHrPayload;
+    const body = (await req.json()) as EmployeeHrPayload & { imageUrl?: string | null };
     const {
       empName,
       isActive,
@@ -75,6 +78,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       defaultCheckOutTime,
       isPayrollEnabled,
       whatsApp,
+      imageUrl,
     } = body;
 
     const pool = await getPool();
@@ -193,6 +197,22 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     if (whatsApp !== undefined) {
       addClause('WhatsApp = @whatsApp', (req) =>
         req.input('whatsApp', sql.NVarChar(30), whatsApp ? String(whatsApp).trim() : null),
+      );
+    }
+    if (imageUrl !== undefined) {
+      const normalized = normalizeEmployeeImageUrlInput(imageUrl);
+      if (!normalized.ok) {
+        return NextResponse.json({ error: normalized.error }, { status: 400 });
+      }
+      const hasCol = await ensureTblEmpImageUrlColumn(pool);
+      if (!hasCol) {
+        return NextResponse.json(
+          { error: 'عمود ImageUrl غير متوفر — شغّل /api/admin/migrate-employee-image-url' },
+          { status: 500 },
+        );
+      }
+      addClause('ImageUrl = @imageUrl', (req) =>
+        req.input('imageUrl', sql.NVarChar(1000), normalized.value),
       );
     }
 
@@ -341,6 +361,10 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 
     if (sel.recordset.length === 0) {
       return NextResponse.json({ error: 'الموظف غير موجود' }, { status: 404 });
+    }
+
+    if (imageUrl !== undefined) {
+      invalidatePublicBookingBarbersCache();
     }
 
     return NextResponse.json(enrichEmployeeRow(sel.recordset[0]));

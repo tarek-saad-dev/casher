@@ -172,15 +172,51 @@ export function isZeroPriceAllowedForPublicBooking(): boolean {
   return false;
 }
 
+/** Absolute origin for public static assets (client website is cross-origin). */
+export function getPublicAssetOrigin(): string | null {
+  const explicit =
+    process.env.PUBLIC_ASSET_ORIGIN?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    '';
+  if (explicit) return explicit.replace(/\/$/, '');
+  const vercel = process.env.VERCEL_URL?.trim();
+  if (vercel) {
+    const host = vercel.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+    return host ? `https://${host}` : null;
+  }
+  // Stable production alias — public booking client site is cross-origin.
+  return 'https://casher-five.vercel.app';
+}
+
+/** Allowlisted same-origin public files under /public (barbers + services). */
+export function isSafePublicAssetPath(path: string): boolean {
+  return /^\/(barber-[a-z0-9-]+\.(jpe?g|png|webp|gif)|services\/[a-z0-9._-]+\.(jpe?g|png|webp|gif))$/i.test(
+    path,
+  );
+}
+
+/**
+ * Sanitize image URLs for the public booking API.
+ * Accepts absolute http(s), or allowlisted relative `/barber-*` / `/services/*`
+ * paths rewritten to absolute URLs using PUBLIC_ASSET_ORIGIN / VERCEL_URL.
+ */
 export function sanitizePublicImageUrl(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const trimmed = String(raw).trim();
   if (!trimmed) return null;
-  // Reject filesystem / UNC / relative local paths
-  if (/^[a-zA-Z]:[\\/]/.test(trimmed) || trimmed.startsWith('\\\\') || trimmed.startsWith('/')) {
+  // Reject filesystem / UNC paths
+  if (/^[a-zA-Z]:[\\/]/.test(trimmed) || trimmed.startsWith('\\\\')) {
     return null;
   }
   if (/^(file|data|javascript):/i.test(trimmed)) return null;
+
+  if (trimmed.startsWith('/')) {
+    if (!isSafePublicAssetPath(trimmed)) return null;
+    const origin = getPublicAssetOrigin();
+    if (!origin) return null;
+    return `${origin}${trimmed}`;
+  }
+
   try {
     const u = new URL(trimmed);
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;

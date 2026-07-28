@@ -600,8 +600,17 @@ function EmployeesPanel() {
                   <td className="px-4 py-3 text-muted-foreground/70 font-mono text-xs">{emp.EmpID}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2.5">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary shrink-0">
-                        <Scissors className="w-3.5 h-3.5" />
+                      <div className="flex items-center justify-center w-9 h-9 rounded-full bg-primary/10 text-primary shrink-0 overflow-hidden border border-border">
+                        {emp.ImageUrl?.trim() ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={emp.ImageUrl.trim()}
+                            alt={emp.EmpName}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <Scissors className="w-3.5 h-3.5" />
+                        )}
                       </div>
                       <div>
                         <span className="font-medium text-foreground">{emp.EmpName}</span>
