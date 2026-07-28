@@ -62,6 +62,7 @@ const PAGES = [
   { key: 'hr.salaries',            name: 'مرتبات العاملين',        path: '/expenses-review/salaries',        section: 'الموارد البشرية',    access: 'roles', sort: 94 },
   // Admin
   { key: 'admin.operations',       name: 'مركز التشغيل',           path: '/admin/operations',                section: 'الإدارة',            access: 'roles', sort: 100 },
+  { key: 'admin.booking_operations', name: 'تشغيل الحجز العام',    path: '/admin/booking/operations',        section: 'الإدارة',            access: 'roles', sort: 100 },
   { key: 'admin.users',            name: 'المستخدمون',             path: '/admin/users',                     section: 'الإدارة',            access: 'roles', sort: 101 },
   { key: 'admin.services',         name: 'الخدمات',                path: '/admin/services',                  section: 'الإدارة',            access: 'roles', sort: 102 },
   { key: 'admin.payment_methods',  name: 'طرق الدفع',              path: '/admin/payment-methods',           section: 'الإدارة',            access: 'roles', sort: 103 },
@@ -107,7 +108,7 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
       'queue.live','queue.new',
       'bookings.list','bookings.new','bookings.calendar',
       'hr.employees','hr.attendance','hr.payroll','hr.advances','hr.salaries',
-      'admin.operations','admin.users','admin.services','admin.payment_methods',
+      'admin.operations','admin.booking_operations','admin.users','admin.services','admin.payment_methods',
       'admin.categories','admin.loyalty','admin.shift','admin.settings','admin.queue_settings',
       'operations.main','cut_club.main',
       'audit.payment_methods',

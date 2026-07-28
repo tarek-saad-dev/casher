@@ -1,0 +1,140 @@
+{
+  "phase": "booking-phase-10a-preflight",
+  "capturedAt": "2026-07-28T00:57:45.091Z",
+  "ahmed": {
+    "empId": 18,
+    "empName": "احمد",
+    "job": "حلاق",
+    "isActive": true,
+    "ambiguous": false
+  },
+  "branches": [
+    {
+      "BranchID": 1,
+      "BranchCode": "GLEEM",
+      "BranchName": "جليم – سابا باشا",
+      "ShortName": "جليم",
+      "IsActive": true,
+      "LifecycleStatus": "PUBLIC_LIVE",
+      "PublicBookingEnabled": true,
+      "ExternalNotificationsEnabled": true,
+      "TimeZone": "Africa/Cairo",
+      "DefaultOpenTime": null,
+      "DefaultCloseTime": null,
+      "BusinessDayCutoffTime": "1970-01-01T04:00:00.000Z",
+      "Address": null,
+      "Phone": null
+    },
+    {
+      "BranchID": 2,
+      "BranchCode": "PH1GTEST",
+      "BranchName": "Phase 1G Test Branch (disposable)",
+      "ShortName": "PH1G",
+      "IsActive": false,
+      "LifecycleStatus": "SETUP",
+      "PublicBookingEnabled": false,
+      "ExternalNotificationsEnabled": false,
+      "TimeZone": "Africa/Cairo",
+      "DefaultOpenTime": null,
+      "DefaultCloseTime": null,
+      "BusinessDayCutoffTime": "1970-01-01T04:00:00.000Z",
+      "Address": null,
+      "Phone": null
+    },
+    {
+      "BranchID": 3,
+      "BranchCode": "CAMP_CAESAR",
+      "BranchName": "فرع كامب شيزار",
+      "ShortName": "كامب شيزار",
+      "IsActive": false,
+      "LifecycleStatus": "SETUP",
+      "PublicBookingEnabled": false,
+      "ExternalNotificationsEnabled": false,
+      "TimeZone": "Africa/Cairo",
+      "DefaultOpenTime": "1970-01-01T11:00:00.000Z",
+      "DefaultCloseTime": "1970-01-01T01:30:00.000Z",
+      "BusinessDayCutoffTime": "1970-01-01T04:00:00.000Z",
+      "Address": "كامب شيزار",
+      "Phone": "01012126899"
+    }
+  ],
+  "queueBookingSettings": [
+    {
+      "BranchID": 1,
+      "SalonName": null,
+      "Timezone": "Africa/Cairo",
+      "Currency": "EGP",
+      "BookingEnabled": true
+    },
+    {
+      "BranchID": 2,
+      "SalonName": "Cut Salon",
+      "Timezone": "Africa/Cairo",
+      "Currency": "EGP",
+      "BookingEnabled": false
+    },
+    {
+      "BranchID": 3,
+      "SalonName": "Camp Caesar",
+      "Timezone": "Africa/Cairo",
+      "Currency": "EGP",
+      "BookingEnabled": false
+    }
+  ],
+  "assignments": [
+    {
+      "AssignmentID": "4",
+      "EmpID": 18,
+      "BranchID": 1,
+      "BranchCode": "GLEEM",
+      "IsHomeBranch": true,
+      "CanReceiveBookings": true,
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-22",
+      "EffectiveTo": null,
+      "NotesPreview": "Phase 1B founding home assignment to GLEEM"
+    }
+  ],
+  "activeSchedules": [],
+  "payrollPlans": [
+    {
+      "PlanID": 4,
+      "EmpID": 18,
+      "BranchID": 1,
+      "PayType": "daily",
+      "HourlyRate": 25,
+      "DailyRate": 300,
+      "MonthlySalary": 300,
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-08"
+    }
+  ],
+  "futureOverridesCount": 0,
+  "readiness": {
+    "lifecycleStatus": "SETUP",
+    "score": 77,
+    "isReadyForPublicLive": false,
+    "publicLiveBlockers": [
+      {
+        "key": "ops.weekly_employee_coverage",
+        "details": "BUSINESS_DECISION_REQUIRED: Open weekdays with zero operational staff: Sun, Mon, Tue, Wed, Thu, Sat — assign staff or mark days closed"
+      },
+      {
+        "key": "public.frontend_multi_branch",
+        "details": "PUBLIC_LIVE blocked until cutsaloon.com multi-branch selection is deployed and verified (set PUBLIC_BOOKING_MULTI_BRANCH_VERIFIED=1)"
+      },
+      {
+        "key": "public.branch_selection",
+        "details": "PUBLIC_LIVE blocked until public branch selection UX ships (Phase 1P/10A)"
+      },
+      {
+        "key": "public.booking_flow_smoke",
+        "details": "PUBLIC_LIVE blocked until public booking flow smoke passes"
+      },
+      {
+        "key": "public.customer_notifications",
+        "details": "PUBLIC_LIVE blocked until customer notifications are branch-scoped and enabled"
+      }
+    ]
+  }
+}

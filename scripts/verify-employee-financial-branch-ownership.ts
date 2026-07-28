@@ -200,10 +200,15 @@ async function checkLive(expectedDatabase: string, failures: string[]) {
       | undefined;
     if (!hasGleem || unexpected.length > 0) {
       failures.push(`unexpected active branches: [${codes.join(',')}]`);
-    } else if (cc && cc.LifecycleStatus === 'PUBLIC_LIVE') {
-      failures.push('CAMP_CAESAR must not be PUBLIC_LIVE');
+    } else if (
+      cc &&
+      !['PUBLIC_LIVE', 'INTERNAL_LIVE'].includes(String(cc.LifecycleStatus))
+    ) {
+      failures.push(`CAMP_CAESAR unexpected lifecycle ${cc.LifecycleStatus}`);
     } else {
-      console.log(`    OK active branches=[${codes.join(',')}] (GLEEM required; CAMP_CAESAR INTERNAL_LIVE allowed)`);
+      console.log(
+        `    OK active branches=[${codes.join(',')}] (GLEEM required; CAMP_CAESAR PUBLIC_LIVE allowed after Phase 10A)`,
+      );
     }
 
     const ph1 = await pool.request().query(`

@@ -1,0 +1,140 @@
+{
+  "phase": "booking-phase-10a-dual-branch-smoke",
+  "passed": true,
+  "failed": [],
+  "proofs": {
+    "phase": "booking-phase-10a-dual-branch-smoke",
+    "smokedAt": "2026-07-28T01:07:58.073Z",
+    "base": "https://casher-five.vercel.app",
+    "branches": {
+      "status": 200,
+      "codes": [
+        "CAMP_CAESAR",
+        "GLEEM"
+      ],
+      "hasGleem": true,
+      "hasCamp": true
+    },
+    "services": {
+      "gleemStatus": 200,
+      "gleemCount": 30,
+      "campStatus": 200,
+      "campCount": 30,
+      "campNotPublic": false
+    },
+    "barbers": {
+      "gleemHasAhmed": false,
+      "campHasAhmed": true,
+      "gleemCount": 4,
+      "campCount": 2
+    },
+    "ahmedSaturday": {
+      "date": "2026-08-01",
+      "row": {
+        "date": "2026-08-01",
+        "status": "global_leave",
+        "isAvailable": false,
+        "availableSlotCount": 0,
+        "firstAvailableTime": null,
+        "firstAvailableDayOffset": null
+      },
+      "unavailable": true
+    },
+    "ahmedSunFri": {
+      "availableCount": 13,
+      "sample": [
+        {
+          "date": "2026-07-28",
+          "status": "available",
+          "isAvailable": true,
+          "availableSlotCount": 56,
+          "firstAvailableTime": "11:00",
+          "firstAvailableDayOffset": 0
+        },
+        {
+          "date": "2026-07-29",
+          "status": "available",
+          "isAvailable": true,
+          "availableSlotCount": 56,
+          "firstAvailableTime": "11:00",
+          "firstAvailableDayOffset": 0
+        },
+        {
+          "date": "2026-07-30",
+          "status": "available",
+          "isAvailable": true,
+          "availableSlotCount": 56,
+          "firstAvailableTime": "11:00",
+          "firstAvailableDayOffset": 0
+        }
+      ]
+    },
+    "gleem_branch_first": {
+      "label": "gleem-branch",
+      "selected": {
+        "branchCode": "GLEEM",
+        "date": "2026-07-29",
+        "time": "11:00",
+        "dayOffset": 0,
+        "mode": "any_barber",
+        "empId": null,
+        "serviceIds": [
+          9
+        ]
+      },
+      "planTokenRedacted": "eyJmaW…yTs0",
+      "bookingCode": "BK-84S5A4",
+      "createStatus": 201,
+      "idempotentReplay": true,
+      "lookupOk": true,
+      "cancelOk": true,
+      "slotReleased": true,
+      "contract": "booking-public-v1"
+    },
+    "camp_barber_first": {
+      "label": "camp-ahmed",
+      "selected": {
+        "branchCode": "CAMP_CAESAR",
+        "date": "2026-07-29",
+        "time": "11:00",
+        "dayOffset": 0,
+        "mode": "specific_barber",
+        "empId": 18,
+        "serviceIds": [
+          9
+        ]
+      },
+      "planTokenRedacted": "eyJmaW…r9zg",
+      "bookingCode": "BK-RZK63D",
+      "createStatus": 201,
+      "idempotentReplay": true,
+      "lookupOk": true,
+      "cancelOk": true,
+      "slotReleased": true,
+      "contract": "booking-public-v1"
+    },
+    "camp_branch_first": {
+      "label": "camp-branch",
+      "selected": {
+        "branchCode": "CAMP_CAESAR",
+        "date": "2026-07-29",
+        "time": "11:00",
+        "dayOffset": 0,
+        "mode": "any_barber",
+        "empId": null,
+        "serviceIds": [
+          9
+        ]
+      },
+      "planTokenRedacted": "eyJmaW…phYQ",
+      "bookingCode": "BK-LW8QP3",
+      "createStatus": 201,
+      "idempotentReplay": true,
+      "lookupOk": true,
+      "cancelOk": true,
+      "slotReleased": true,
+      "contract": "booking-public-v1"
+    },
+    "contractModeHeader": "booking-public-v1"
+  }
+}

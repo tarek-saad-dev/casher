@@ -138,6 +138,22 @@ export const SENSITIVE_ACTIONS: Record<string, SensitiveActionMetadata> = {
     requiresReason: false,
     sensitiveFields: ['password', 'token', 'secret', 'cookie'],
   },
+  pause_public_booking: {
+    actionType: 'pause_public_booking',
+    label: 'إيقاف الحجز العام',
+    entityType: 'QueueBookingSettings',
+    riskLevel: 'high',
+    requiresReason: true,
+    sensitiveFields: ['password', 'token', 'secret', 'cookie', 'phone', 'planToken', 'accessToken'],
+  },
+  resume_public_booking: {
+    actionType: 'resume_public_booking',
+    label: 'استئناف الحجز العام',
+    entityType: 'QueueBookingSettings',
+    riskLevel: 'high',
+    requiresReason: true,
+    sensitiveFields: ['password', 'token', 'secret', 'cookie', 'phone', 'planToken', 'accessToken'],
+  },
 };
 
 export function getSensitiveAction(actionType: string): SensitiveActionMetadata {

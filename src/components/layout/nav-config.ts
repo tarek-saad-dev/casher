@@ -205,6 +205,7 @@ export const NAV_SECTIONS: NavSection[] = [
     icon: Settings,
     items: [
       { href: '/admin/operations',                label: 'مركز التشغيل',          icon: Activity   },
+      { href: '/admin/booking/operations',        label: 'تشغيل الحجز العام',     icon: CalendarCheck },
       { href: '/admin/branches',                  label: 'الفروع',                 icon: Building2  },
       { href: '/admin/users',                     label: 'المستخدمون',             icon: Shield     },
       { href: '/admin/services',                  label: 'الخدمات',                icon: Scissors   },

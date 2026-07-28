@@ -58,6 +58,7 @@ export const SYSTEM_PAGES: PageDefinition[] = [
   { key: 'hr.salaries',             name: 'مرتبات العاملين',         path: '/expenses-review/salaries',        section: 'الموارد البشرية',   accessMode: 'roles', sort: 94,  defaultRoles: ['super_admin','admin'] },
   // ── Admin ────────────────────────────────────────────────────────────────────
   { key: 'admin.operations',        name: 'مركز التشغيل',            path: '/admin/operations',                section: 'الإدارة',           accessMode: 'roles', sort: 100, defaultRoles: ['super_admin','admin','manager'] },
+  { key: 'admin.booking_operations', name: 'تشغيل الحجز العام',      path: '/admin/booking/operations',        section: 'الإدارة',           accessMode: 'roles', sort: 100, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.branches',          name: 'الفروع',                  path: '/admin/branches',                  section: 'الإدارة',           accessMode: 'roles', sort: 101, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.users',             name: 'المستخدمون',              path: '/admin/users',                     section: 'الإدارة',           accessMode: 'roles', sort: 102, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.services',          name: 'الخدمات',                 path: '/admin/services',                  section: 'الإدارة',           accessMode: 'roles', sort: 103, defaultRoles: ['super_admin','admin'] },

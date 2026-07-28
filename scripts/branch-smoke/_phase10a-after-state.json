@@ -1,0 +1,171 @@
+{
+  "phase": "booking-phase-10a-activation",
+  "activatedAt": "2026-07-28T01:05:02.088Z",
+  "ahmedEmpId": 18,
+  "ahmedName": "احمد",
+  "effectiveFrom": "2026-07-28",
+  "gleemAssignmentEndedOn": "2026-07-27",
+  "gleemAssignmentsBeforeSoftEnd": [],
+  "assignResult": {
+    "skipped": true,
+    "assignmentId": 183,
+    "reason": "Ahmed already active on CAMP_CAESAR"
+  },
+  "serviceCount": 34,
+  "transitions": [
+    {
+      "from": "SMOKE_TEST",
+      "to": "INTERNAL_LIVE"
+    },
+    {
+      "from": "INTERNAL_LIVE",
+      "to": "PUBLIC_LIVE"
+    }
+  ],
+  "branch": {
+    "branchId": 3,
+    "branchCode": "CAMP_CAESAR",
+    "branchName": "كامب شيزار",
+    "shortName": "كامب شيزار",
+    "address": "كامب شيزار",
+    "phone": "01012126899",
+    "timeZone": "Africa/Cairo",
+    "businessDayCutoffTime": "04:00:00",
+    "defaultOpenTime": "11:00:00",
+    "defaultCloseTime": "01:30:00",
+    "isActive": true,
+    "lifecycleStatus": "PUBLIC_LIVE",
+    "publicBookingEnabled": true,
+    "externalNotificationsEnabled": true,
+    "createdAt": "2026-07-26T00:01:27.000Z",
+    "updatedAt": "2026-07-28T01:05:01.000Z"
+  },
+  "qbs": {
+    "BookingEnabled": true,
+    "SalonName": "كامب شيزار",
+    "Timezone": "Africa/Cairo"
+  },
+  "assignments": [
+    {
+      "ID": "183",
+      "BranchID": 3,
+      "BranchCode": "CAMP_CAESAR",
+      "IsActive": true,
+      "IsHomeBranch": true,
+      "CanReceiveBookings": true,
+      "EffectiveFrom": "2026-07-28",
+      "EffectiveTo": null
+    },
+    {
+      "ID": "4",
+      "BranchID": 1,
+      "BranchCode": "GLEEM",
+      "IsActive": false,
+      "IsHomeBranch": false,
+      "CanReceiveBookings": true,
+      "EffectiveFrom": "2026-07-22",
+      "EffectiveTo": "2026-07-27"
+    }
+  ],
+  "weeklySchedule": [
+    {
+      "BranchID": 3,
+      "DayOfWeek": 0,
+      "IsWorking": true,
+      "StartTime": "11:00",
+      "EndTime": "01:30"
+    },
+    {
+      "BranchID": 3,
+      "DayOfWeek": 0,
+      "IsWorking": true,
+      "StartTime": "11:00",
+      "EndTime": "01:30"
+    },
+    {
+      "BranchID": 3,
+      "DayOfWeek": 1,
+      "IsWorking": true,
+      "StartTime": "11:00",
+      "EndTime": "01:30"
+    },
+    {
+      "BranchID": 3,
+      "DayOfWeek": 1,
+      "IsWorking": true,
+      "StartTime": "11:00",
+      "EndTime": "01:30"
+    },
+    {
+      "BranchID": 3,
+      "DayOfWeek": 2,
+      "IsWorking": true,
+      "StartTime": "11:00",
+      "EndTime": "01:30"
+    },
+    {
+      "BranchID": 3,
+      "DayOfWeek": 2,
+      "IsWorking": true,
+      "StartTime": "11:00",
+      "EndTime": "01:30"
+    },
+    {
+      "BranchID": 3,
+      "DayOfWeek": 3,
+      "IsWorking": true,
+      "StartTime": "11:00",
+      "EndTime": "01:30"
+    },
+    {
+      "BranchID": 3,
+      "DayOfWeek": 3,
+      "IsWorking": true,
+      "StartTime": "11:00",
+      "EndTime": "01:30"
+    },
+    {
+      "BranchID": 3,
+      "DayOfWeek": 4,
+      "IsWorking": true,
+      "StartTime": "11:00",
+      "EndTime": "01:30"
+    },
+    {
+      "BranchID": 3,
+      "DayOfWeek": 4,
+      "IsWorking": true,
+      "StartTime": "11:00",
+      "EndTime": "01:30"
+    },
+    {
+      "BranchID": 3,
+      "DayOfWeek": 5,
+      "IsWorking": true,
+      "StartTime": "11:00",
+      "EndTime": "01:30"
+    },
+    {
+      "BranchID": 3,
+      "DayOfWeek": 5,
+      "IsWorking": true,
+      "StartTime": "11:00",
+      "EndTime": "01:30"
+    },
+    {
+      "BranchID": 3,
+      "DayOfWeek": 6,
+      "IsWorking": false,
+      "StartTime": null,
+      "EndTime": null
+    },
+    {
+      "BranchID": 3,
+      "DayOfWeek": 6,
+      "IsWorking": false,
+      "StartTime": null,
+      "EndTime": null
+    }
+  ],
+  "rollbackSqlPath": "scripts/branch-smoke/_phase10a-rollback.sql"
+}
