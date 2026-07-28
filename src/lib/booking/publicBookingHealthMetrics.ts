@@ -41,6 +41,7 @@ export function mapRouteKeyToTimingFamily(
     case 'available-days':
     case 'available-slots':
     case 'barber-available-slots':
+    case 'cross-branch-availability':
     case 'check-slot':
     case 'calendar':
       return 'availability';

@@ -1,0 +1,66 @@
+{
+  "phase": "booking-phase-10c-domain-probe",
+  "generatedAt": "2026-07-28T02:05:29.046Z",
+  "passed": true,
+  "failures": [],
+  "proofs": {
+    "ahmed": {
+      "coldMs": 1860,
+      "warmMs": 0,
+      "branches": [
+        "CAMP_CAESAR"
+      ],
+      "slotBranches": [
+        "CAMP_CAESAR"
+      ],
+      "queryCount": 20,
+      "timingMs": {
+        "barberMs": 172,
+        "eligibilityMs": 171,
+        "publicFilterMs": 0,
+        "scheduleBatchMs": 341,
+        "slotsMs": 1175,
+        "totalMs": 1859
+      },
+      "cacheHitWarm": true,
+      "slotCount": 336
+    },
+    "ahmedSaturday": {
+      "date": "2026-08-01",
+      "slotCount": 0
+    },
+    "ziad": {
+      "branches": [
+        "CAMP_CAESAR",
+        "GLEEM"
+      ],
+      "slotBranches": [
+        "GLEEM",
+        "CAMP_CAESAR"
+      ],
+      "queryCount": 32,
+      "timingMs": {
+        "barberMs": 172,
+        "eligibilityMs": 219,
+        "publicFilterMs": 0,
+        "scheduleBatchMs": 350,
+        "slotsMs": 1547,
+        "totalMs": 2288
+      },
+      "slotCount": 338
+    },
+    "planParity": {
+      "available": true,
+      "sample": {
+        "branchCode": "CAMP_CAESAR",
+        "date": "2026-07-28",
+        "time": "11:00",
+        "dayOffset": 0
+      }
+    },
+    "timingTargets": {
+      "coldUnder3s": true,
+      "warmUnder1_2s": true
+    }
+  }
+}

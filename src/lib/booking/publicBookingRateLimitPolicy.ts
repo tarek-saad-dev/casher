@@ -55,6 +55,7 @@ export const PUBLIC_BOOKING_ROUTE_RATE_FAMILY: Record<string, PublicBookingRateL
   calendar: 'availability',
   location: 'barbers',
   'barber-available-slots': 'availability',
+  'cross-branch-availability': 'availability',
   'available-days': 'available-days',
   'available-slots': 'availability',
   'check-slot': 'validation',

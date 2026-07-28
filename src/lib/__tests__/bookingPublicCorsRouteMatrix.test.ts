@@ -15,6 +15,7 @@ describe('bookingPublicCorsRouteMatrix', () => {
       'calendar',
       'location',
       'barber-available-slots',
+      'cross-branch-availability',
       'available-days',
       'available-slots',
       'check-slot',

@@ -499,6 +499,10 @@ export const PUBLIC_BOOKING_ROUTE_CORS: Record<
     methods: ['GET', 'OPTIONS'],
     headers: PUBLIC_BOOKING_CORS_HEADER_PRESETS.read,
   },
+  'cross-branch-availability': {
+    methods: ['POST', 'OPTIONS'],
+    headers: PUBLIC_BOOKING_CORS_HEADER_PRESETS.read,
+  },
   'available-days': { methods: ['GET', 'OPTIONS'], headers: PUBLIC_BOOKING_CORS_HEADER_PRESETS.read },
   'available-slots': {
     methods: ['GET', 'OPTIONS'],

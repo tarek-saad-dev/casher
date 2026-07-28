@@ -23,6 +23,7 @@ import {
   applyOverrides,
   slotBlockedByOverride,
   type EffectiveSchedule,
+  type ScheduleOverride,
 } from '@/lib/scheduleOverrides';
 import { intervalsOverlap } from '@/lib/scheduleIntervals';
 import { getCairoBusinessDate } from '@/lib/businessDate';
@@ -1488,4 +1489,407 @@ export async function findAvailableSlotsForEmployee(args: {
     ...result,
     slots,
   };
+}
+
+/**
+ * Phase 10C — specific emp × one branch × many dates (batched, low round-trips).
+ */
+export async function listSpecificEmpPublicSlotsMultiDate(args: {
+  empId: number;
+  branchId: number;
+  dates: string[];
+  serviceIds: number[];
+  durationOverride: number;
+  /** Caller already filtered bookable assignment days — skip per-date eligibility SQL. */
+  assumeEligible?: boolean;
+}): Promise<Map<string, BookingSlotPlan[]>> {
+  const out = new Map<string, BookingSlotPlan[]>();
+  const dates = [...new Set(args.dates)].filter(Boolean).sort();
+  if (!dates.length) return out;
+
+  const settings = await getPublicSettings(args.branchId);
+  const db = await getPool();
+  const timezone = settings.timezone || 'Africa/Cairo';
+  const effectiveMinNotice = settings.minNoticeMinutes;
+  const slotIntervalMinutes = settings.slotIntervalMinutes || 15;
+  const totalDuration = args.durationOverride;
+  const now = new Date();
+  const nowMs = now.getTime();
+  const todayBusinessDate = getCairoBusinessDate(now);
+  const defaultDur = settings.defaultServiceDurationMinutes || 30;
+
+  let workDates = dates.filter((d) => d >= todayBusinessDate);
+  if (!args.assumeEligible) {
+    const eligibleByDate = await Promise.all(
+      workDates.map(async (date) => {
+        const ids = await listBookableEmployeeIdsForBranch(args.branchId, date, {
+          publicOnly: true,
+        });
+        return { date, ok: ids.includes(args.empId) };
+      }),
+    );
+    workDates = eligibleByDate.filter((d) => d.ok).map((d) => d.date);
+  }
+  for (const d of dates) {
+    if (!workDates.includes(d)) out.set(d, []);
+  }
+  if (!workDates.length) return out;
+
+  const dateFrom = workDates[0];
+  const dateTo = workDates[workDates.length - 1];
+  const dateToPlus1 = nextDate(dateTo);
+
+  const fmtWin = (v: unknown): string | null => {
+    if (!v) return null;
+    if (typeof v === 'string') return v.slice(0, 5);
+    if (v instanceof Date) {
+      return `${String(v.getUTCHours()).padStart(2, '0')}:${String(v.getUTCMinutes()).padStart(2, '0')}`;
+    }
+    return null;
+  };
+
+  const [
+    nameMap,
+    dayOffRows,
+    weeklyByDow,
+    transfers,
+    rawOverridesByDate,
+    todayOverrides,
+    bookingBusyByDate,
+    queueBusyToday,
+    queueBusyTomorrow,
+  ] = await Promise.all([
+    getBarberNames(db, [args.empId]),
+    (async () => {
+      const set = new Set<string>();
+      try {
+        const r = await db
+          .request()
+          .input('empId', sql.Int, args.empId)
+          .input('from', sql.Date, dateFrom)
+          .input('to', sql.Date, dateTo)
+          .query(`
+            SELECT CONVERT(VARCHAR(10), OffDate, 120) AS OffDate
+            FROM dbo.TblEmpDayOff
+            WHERE EmpID = @empId AND OffDate >= @from AND OffDate <= @to AND IsDeleted = 0
+          `);
+        for (const row of r.recordset) set.add(String(row.OffDate).slice(0, 10));
+      } catch {
+        /* optional */
+      }
+      if (workDates.includes(todayBusinessDate)) {
+        try {
+          const a = await db
+            .request()
+            .input('empId', sql.Int, args.empId)
+            .input('workDate', sql.Date, todayBusinessDate)
+            .query(`
+              SELECT EmpID FROM dbo.TblEmpAttendance
+              WHERE EmpID = @empId AND WorkDate = @workDate AND Status = 'Absent'
+            `);
+          if (a.recordset.length) set.add(todayBusinessDate);
+        } catch {
+          /* optional */
+        }
+      }
+      return set;
+    })(),
+    (async () => {
+      const map = new Map<
+        number,
+        { startTime: string | null; endTime: string | null; isWorkingDay: boolean }
+      >();
+      try {
+        const r = await db
+          .request()
+          .input('empId', sql.Int, args.empId)
+          .input('branchId', sql.Int, args.branchId)
+          .input('from', sql.Date, dateFrom)
+          .input('to', sql.Date, dateTo)
+          .query(`
+            SELECT DayOfWeek, IsWorking, StartTime, EndTime,
+              ROW_NUMBER() OVER (
+                PARTITION BY DayOfWeek ORDER BY EffectiveFrom DESC, ScheduleID DESC
+              ) AS rn
+            FROM dbo.TblEmpBranchWorkSchedule
+            WHERE EmpID = @empId AND BranchID = @branchId AND IsActive = 1
+              AND EffectiveFrom <= @to
+              AND (EffectiveTo IS NULL OR EffectiveTo >= @from)
+          `);
+        for (const row of r.recordset) {
+          if (Number(row.rn) !== 1) continue;
+          map.set(Number(row.DayOfWeek), {
+            isWorkingDay: !!row.IsWorking,
+            startTime: fmtWin(row.StartTime),
+            endTime: fmtWin(row.EndTime),
+          });
+        }
+      } catch {
+        /* optional */
+      }
+      return map;
+    })(),
+    (async () => {
+      type Xfer = {
+        workDate: string;
+        toBranchId: number;
+        fromBranchId: number;
+        startTime: string | null;
+        endTime: string | null;
+      };
+      const list: Xfer[] = [];
+      try {
+        const r = await db
+          .request()
+          .input('empId', sql.Int, args.empId)
+          .input('from', sql.Date, dateFrom)
+          .input('to', sql.Date, dateTo)
+          .query(`
+            SELECT ToBranchID, FromBranchID, WorkDate, StartTime, EndTime
+            FROM dbo.TblEmpTemporaryBranchTransfer
+            WHERE EmpID = @empId AND IsActive = 1
+              AND WorkDate >= @from AND WorkDate <= @to
+          `);
+        for (const row of r.recordset) {
+          list.push({
+            workDate: String(row.WorkDate instanceof Date
+              ? row.WorkDate.toISOString().slice(0, 10)
+              : row.WorkDate).slice(0, 10),
+            toBranchId: Number(row.ToBranchID),
+            fromBranchId: Number(row.FromBranchID),
+            startTime: fmtWin(row.StartTime),
+            endTime: fmtWin(row.EndTime),
+          });
+        }
+      } catch {
+        /* optional */
+      }
+      return list;
+    })(),
+    (async () => {
+      const map = new Map<string, ScheduleOverride[]>();
+      for (const d of workDates) map.set(d, []);
+      try {
+        const { ensureOverridesTable } = await import('@/lib/scheduleOverrides');
+        await ensureOverridesTable(db);
+        const r = await db
+          .request()
+          .input('empId', sql.Int, args.empId)
+          .input('from', sql.Date, dateFrom)
+          .input('to', sql.Date, dateTo)
+          .query(`
+            SELECT
+              OverrideID, EmpID, CONVERT(VARCHAR(10), OverrideDate, 120) AS OverrideDate,
+              Type,
+              CASE WHEN StartTime IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), StartTime, 108), 5) ELSE NULL END AS StartTime,
+              CASE WHEN EndTime IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), EndTime, 108), 5) ELSE NULL END AS EndTime,
+              Reason, IsActive,
+              CONVERT(VARCHAR(30), CreatedAt, 126) AS CreatedAt,
+              CreatedBy
+            FROM dbo.TblEmpScheduleOverrides
+            WHERE EmpID = @empId AND OverrideDate >= @from AND OverrideDate <= @to AND IsActive = 1
+            ORDER BY OverrideDate, OverrideID
+          `);
+        for (const row of r.recordset) {
+          const d = String(row.OverrideDate).slice(0, 10);
+          const list = map.get(d) ?? [];
+          list.push(row as ScheduleOverride);
+          map.set(d, list);
+        }
+      } catch {
+        /* optional */
+      }
+      return map;
+    })(),
+    workDates.includes(todayBusinessDate)
+      ? loadBookingOverridesForDate(db, [args.empId], todayBusinessDate)
+      : Promise.resolve(new Map<number, ScheduleOverride[]>()),
+    (async () => {
+      const map = new Map<string, Interval[]>();
+      for (const d of [...workDates, dateToPlus1]) map.set(d, []);
+      const statusList = (
+        await import('@/lib/scheduleIntervals')
+      ).ACTIVE_BOOKING_BLOCK_STATUSES.map((s) => `'${s}'`).join(',');
+      const { normalizeBookingTimes } = await import('@/lib/bookingDateTime');
+      try {
+        const r = await db
+          .request()
+          .input('empId', sql.Int, args.empId)
+          .input('from', sql.Date, dateFrom)
+          .input('to', sql.Date, dateToPlus1)
+          .query(`
+            SELECT
+              b.BookingID,
+              CONVERT(VARCHAR(10), b.BookingDate, 120) AS BookingDate,
+              b.StartTime,
+              b.EndTime,
+              ISNULL((
+                SELECT SUM(bs.DurationMinutes)
+                FROM [dbo].[BookingServices] bs
+                WHERE bs.BookingID = b.BookingID
+              ), 0) AS TotalDuration
+            FROM [dbo].[Bookings] b
+            WHERE b.AssignedEmpID = @empId
+              AND b.BookingDate >= @from
+              AND b.BookingDate <= @to
+              AND LOWER(b.Status) IN (${statusList})
+            ORDER BY b.BookingDate, b.StartTime
+          `);
+        for (const b of r.recordset) {
+          const d = String(b.BookingDate).slice(0, 10);
+          const totalDurationRow =
+            Number(b.TotalDuration) > 0 ? Number(b.TotalDuration) : defaultDur;
+          const normalized = normalizeBookingTimes(
+            b.BookingDate ?? d,
+            b.StartTime,
+            b.EndTime,
+            totalDurationRow,
+            b.BookingID,
+          );
+          const list = map.get(d) ?? [];
+          list.push({
+            start: new Date(normalized.startDateTimeCairo),
+            end: new Date(normalized.endDateTimeCairo),
+            source: 'booking' as const,
+            id: b.BookingID as number,
+          });
+          map.set(d, list);
+        }
+      } catch {
+        /* fall back empty */
+      }
+      return map;
+    })(),
+    workDates.includes(todayBusinessDate)
+      ? buildQueueIntervals(db, args.empId, todayBusinessDate, now, defaultDur, undefined, {
+          filterStale: true,
+          graceMinutes: 30,
+          debugContext: 'xbranch-availability',
+        })
+      : Promise.resolve([] as Interval[]),
+    workDates.includes(todayBusinessDate)
+      ? buildQueueIntervals(db, args.empId, nextDate(todayBusinessDate), now, defaultDur, undefined, {
+          filterStale: true,
+          graceMinutes: 30,
+          debugContext: 'xbranch-availability-next',
+        })
+      : Promise.resolve([] as Interval[]),
+  ]);
+
+  const empName = nameMap[args.empId] ?? '';
+  const tomorrow = nextDate(todayBusinessDate);
+
+  for (const date of workDates) {
+    if (dayOffRows.has(date)) {
+      out.set(date, []);
+      continue;
+    }
+
+    const dow = new Date(`${date}T12:00:00Z`).getDay();
+    let baseWindow = weeklyByDow.get(dow) ?? {
+      isWorkingDay: false,
+      startTime: null,
+      endTime: null,
+    };
+    for (const x of transfers) {
+      if (x.workDate !== date) continue;
+      if (x.toBranchId === args.branchId) {
+        baseWindow = {
+          isWorkingDay: true,
+          startTime: x.startTime,
+          endTime: x.endTime,
+        };
+      } else if (x.fromBranchId === args.branchId) {
+        baseWindow = { isWorkingDay: false, startTime: null, endTime: null };
+      }
+    }
+
+    const base =
+      baseWindow.isWorkingDay && baseWindow.startTime && baseWindow.endTime
+        ? { isWorking: true, start: baseWindow.startTime, end: baseWindow.endTime }
+        : { isWorking: false, start: '00:00', end: '00:00' };
+
+    const overrides =
+      date === todayBusinessDate
+        ? todayOverrides.get(args.empId) ?? []
+        : rawOverridesByDate.get(date) ?? [];
+    const effSched = applyOverrides(args.empId, date, base, overrides);
+    if (!effSched.isWorking) {
+      out.set(date, []);
+      continue;
+    }
+
+    const baseOvernight =
+      base.isWorking && hhmmToMinutes(base.end) <= hhmmToMinutes(base.start);
+    const effOvernight = hhmmToMinutes(effSched.end) <= hhmmToMinutes(effSched.start);
+    const isOvernight = baseOvernight || effOvernight;
+    const shiftStartMs = salonDateTimeToMs(date, effSched.start, timezone);
+    const shiftEndMs = isOvernight
+      ? salonDateTimeToMs(nextDate(date), effSched.end, timezone)
+      : salonDateTimeToMs(date, effSched.end, timezone);
+
+    const bIntervals = bookingBusyByDate.get(date) ?? [];
+    const bIntervalsNext = isOvernight ? bookingBusyByDate.get(nextDate(date)) ?? [] : [];
+    const qIntervals =
+      date === todayBusinessDate ? queueBusyToday : date === tomorrow ? queueBusyTomorrow : [];
+    const qIntervalsNext =
+      isOvernight && date === todayBusinessDate ? queueBusyTomorrow : [];
+
+    const inShiftWindow = (iv: Interval) =>
+      iv.start.getTime() < shiftEndMs && iv.end.getTime() > shiftStartMs;
+    const nextDayBusy = isOvernight
+      ? [...qIntervalsNext, ...bIntervalsNext].filter(inShiftWindow)
+      : [];
+    const busy = [...qIntervals, ...bIntervals, ...nextDayBusy];
+
+    const ctx: BarberCtx = {
+      empId: args.empId,
+      empName,
+      durationMinutes: totalDuration,
+      busy,
+      effSched,
+      shiftStartMs,
+      shiftEndMs,
+      dayOff: false,
+      isOvernight,
+    };
+
+    const slotMap = new Map<string, 0 | 1>();
+    for (const entry of generateSlotEntries(
+      effSched.start,
+      effSched.end,
+      slotIntervalMinutes,
+      totalDuration,
+      isOvernight,
+    )) {
+      if (!slotMap.has(entry.time) || entry.dayOffset < slotMap.get(entry.time)!) {
+        slotMap.set(entry.time, entry.dayOffset);
+      }
+    }
+    const sortedSlotTimes = [...slotMap.entries()].sort(([aT, aD], [bT, bD]) =>
+      aD !== bD ? aD - bD : aT.localeCompare(bT),
+    );
+
+    const isToday = date === todayBusinessDate;
+    const rejectionCounts = { ...EMPTY_REJECTION_COUNTS };
+    const allPlans = evaluateSlotsForContexts({
+      date,
+      contexts: [ctx],
+      sortedSlotTimes,
+      mode: 'specific',
+      empId: args.empId,
+      timezone,
+      isToday,
+      nowMs,
+      minNoticeMs: effectiveMinNotice * 60_000,
+      rejectionCounts,
+      collectAllCandidates: false,
+    });
+
+    const available = allPlans.filter((s) => s.available);
+    const limit = isOvernight ? PUBLIC_OVERNIGHT_SLOTS_LIMIT : PUBLIC_AVAILABLE_SLOTS_LIMIT;
+    out.set(date, available.slice(0, limit));
+  }
+
+  return out;
 }

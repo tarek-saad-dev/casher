@@ -46,6 +46,10 @@ function cacheMap(): Map<string, CacheEntry> {
 
 export function invalidatePublicBookingAvailabilityCache(): void {
   cacheMap().clear();
+  // Phase 10C — cross-branch availability shares create/cancel invalidation.
+  void import('@/lib/booking/publicBookingCrossBranchAvailability').then((m) => {
+    m.invalidatePublicBookingCrossBranchAvailabilityCache();
+  });
 }
 
 function cacheGet<T>(key: string): T | null {

@@ -23,7 +23,7 @@ import {
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -977,19 +977,30 @@ function EmployeesPanel() {
 
       {/* ── Employee Status Modal ── */}
       <Dialog open={inactiveModalOpen} onOpenChange={setInactiveModalOpen}>
-        <DialogContent className="sm:max-w-3xl" dir="rtl">
-          <DialogHeader>
+        <DialogContent
+          dir="rtl"
+          className={cn(
+            'sm:max-w-3xl p-0 gap-0 overflow-hidden',
+            'flex flex-col max-h-[min(90dvh,720px)]',
+            'top-[5dvh] translate-y-0 sm:top-[5dvh]',
+          )}
+        >
+          <DialogHeader className="shrink-0 px-4 pt-4 pb-3 ps-12 border-b border-border/60">
             <DialogTitle className="flex items-center gap-2">
               <Users className="w-5 h-5 text-primary" />
               إدارة نشاط الموظفين
             </DialogTitle>
+            <DialogDescription className="text-muted-foreground text-xs mt-1">
+              تفعيل أو إيقاف الموظفين دون مغادرة الصفحة
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            {/* Tabs */}
-            <div className="flex gap-1 p-1 bg-surface/60 border border-border/60 rounded-xl w-fit">
+
+          <div className="shrink-0 px-4 pt-3">
+            <div className="flex gap-1 p-1 bg-surface/60 border border-border/60 rounded-xl w-full sm:w-fit">
               <button
+                type="button"
                 onClick={() => setStatusTab('inactive')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                className={`flex flex-1 sm:flex-initial items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                   statusTab === 'inactive'
                     ? 'bg-surface-muted/80 text-foreground border border-border'
                     : 'text-muted-foreground hover:text-foreground hover:bg-surface-muted/60'
@@ -998,12 +1009,15 @@ function EmployeesPanel() {
                 <UserX className="w-4 h-4" />
                 غير النشطين
                 {inactiveEmployees.length > 0 && (
-                  <span className="px-1.5 py-0.5 rounded-full text-xs bg-muted-foreground text-foreground">{inactiveEmployees.length}</span>
+                  <span className="px-1.5 py-0.5 rounded-full text-xs bg-muted-foreground text-foreground">
+                    {inactiveEmployees.length}
+                  </span>
                 )}
               </button>
               <button
+                type="button"
                 onClick={() => setStatusTab('active')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                className={`flex flex-1 sm:flex-initial items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                   statusTab === 'active'
                     ? 'bg-success/20 text-success border border-success/30'
                     : 'text-muted-foreground hover:text-foreground hover:bg-surface-muted/60'
@@ -1011,12 +1025,18 @@ function EmployeesPanel() {
               >
                 <UserCheck className="w-4 h-4" />
                 النشطون
-                <span className="px-1.5 py-0.5 rounded-full text-xs bg-success/20 text-success">{employees.length}</span>
+                <span className="px-1.5 py-0.5 rounded-full text-xs bg-success/20 text-success">
+                  {employees.length}
+                </span>
               </button>
             </div>
+          </div>
 
+          <div className="flex-1 min-h-0 overflow-auto overscroll-contain px-4 py-3">
             {loadingInactive ? (
-              <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground/70" /></div>
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground/70" />
+              </div>
             ) : statusTab === 'inactive' ? (
               inactiveEmployees.length === 0 ? (
                 <div className="py-12 text-center border border-dashed border-border rounded-xl">
@@ -1024,10 +1044,10 @@ function EmployeesPanel() {
                   <p className="text-sm text-muted-foreground/70">جميع الموظفين نشطون</p>
                 </div>
               ) : (
-                <div className="rounded-lg border border-border overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border bg-surface/40 text-muted-foreground/70 text-xs uppercase tracking-wider">
+                <div className="rounded-lg border border-border">
+                  <table className="w-full min-w-[32rem] text-sm">
+                    <thead className="sticky top-0 z-10 bg-surface/95 backdrop-blur-sm">
+                      <tr className="border-b border-border text-muted-foreground/70 text-xs tracking-wider">
                         <th className="px-4 py-3 text-right font-medium">#</th>
                         <th className="px-4 py-3 text-right font-medium">الموظف</th>
                         <th className="px-4 py-3 text-right font-medium">الوظيفة</th>
@@ -1037,66 +1057,42 @@ function EmployeesPanel() {
                     <tbody className="divide-y divide-border/60">
                       {inactiveEmployees.map((emp) => (
                         <tr key={emp.EmpID} className="hover:bg-surface-muted/30 transition-colors">
-                          <td className="px-4 py-3 text-muted-foreground/70 font-mono text-xs">{emp.EmpID}</td>
+                          <td className="px-4 py-3 text-muted-foreground/70 font-mono text-xs">
+                            {emp.EmpID}
+                          </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2.5">
-                              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-surface-muted/50 text-muted-foreground/70 shrink-0"><UserX className="w-3.5 h-3.5" /></div>
+                              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-surface-muted/50 text-muted-foreground/70 shrink-0">
+                                <UserX className="w-3.5 h-3.5" />
+                              </div>
                               <span className="font-medium text-foreground">{emp.EmpName}</span>
                             </div>
                           </td>
                           <td className="px-4 py-3">
-                            {emp.Job ? <span className="text-xs text-muted-foreground">{emp.Job}</span> : <span className="text-xs text-muted-foreground/60 italic">—</span>}
-                          </td>
-                          <td className="px-4 py-3">
-                            <Button size="sm" onClick={() => activateEmployee(emp.EmpID)} disabled={activatingId === emp.EmpID} className="gap-1.5 bg-success hover:bg-success/90 text-xs">
-                              {activatingId === emp.EmpID ? <><Loader2 className="w-3 h-3 animate-spin" />جاري...</> : <><UserCheck className="w-3 h-3" />تفعيل</>}
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )
-            ) : (
-              employees.length === 0 ? (
-                <div className="py-12 text-center border border-dashed border-border rounded-xl">
-                  <UserX className="w-12 h-12 mx-auto mb-3 text-muted-foreground/60" />
-                  <p className="text-sm text-muted-foreground/70">لا يوجد موظفون نشطون</p>
-                </div>
-              ) : (
-                <div className="rounded-lg border border-border overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border bg-surface/40 text-muted-foreground/70 text-xs uppercase tracking-wider">
-                        <th className="px-4 py-3 text-right font-medium">#</th>
-                        <th className="px-4 py-3 text-right font-medium">الموظف</th>
-                        <th className="px-4 py-3 text-right font-medium">الوظيفة</th>
-                        <th className="px-4 py-3 text-right font-medium">إجراءات</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/60">
-                      {employees.map((emp) => (
-                        <tr key={emp.EmpID} className="hover:bg-surface-muted/30 transition-colors">
-                          <td className="px-4 py-3 text-muted-foreground/70 font-mono text-xs">{emp.EmpID}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2.5">
-                              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-success/10 text-success shrink-0"><UserCheck className="w-3.5 h-3.5" /></div>
-                              <span className="font-medium text-foreground">{emp.EmpName}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            {emp.Job ? <span className="text-xs text-muted-foreground">{emp.Job}</span> : <span className="text-xs text-muted-foreground/60 italic">—</span>}
+                            {emp.Job ? (
+                              <span className="text-xs text-muted-foreground">{emp.Job}</span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground/60 italic">—</span>
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             <Button
                               size="sm"
-                              variant="outline"
-                              onClick={() => deactivateEmployee(emp.EmpID)}
-                              disabled={deactivatingId === emp.EmpID}
-                              className="gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive/80 text-xs"
+                              onClick={() => activateEmployee(emp.EmpID)}
+                              disabled={activatingId === emp.EmpID}
+                              className="gap-1.5 bg-success hover:bg-success/90 text-xs"
                             >
-                              {deactivatingId === emp.EmpID ? <><Loader2 className="w-3 h-3 animate-spin" />جاري...</> : <><UserX className="w-3 h-3" />إيقاف</>}
+                              {activatingId === emp.EmpID ? (
+                                <>
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  جاري...
+                                </>
+                              ) : (
+                                <>
+                                  <UserCheck className="w-3 h-3" />
+                                  تفعيل
+                                </>
+                              )}
                             </Button>
                           </td>
                         </tr>
@@ -1105,11 +1101,77 @@ function EmployeesPanel() {
                   </table>
                 </div>
               )
+            ) : employees.length === 0 ? (
+              <div className="py-12 text-center border border-dashed border-border rounded-xl">
+                <UserX className="w-12 h-12 mx-auto mb-3 text-muted-foreground/60" />
+                <p className="text-sm text-muted-foreground/70">لا يوجد موظفون نشطون</p>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-border">
+                <table className="w-full min-w-[32rem] text-sm">
+                  <thead className="sticky top-0 z-10 bg-surface/95 backdrop-blur-sm">
+                    <tr className="border-b border-border text-muted-foreground/70 text-xs tracking-wider">
+                      <th className="px-4 py-3 text-right font-medium">#</th>
+                      <th className="px-4 py-3 text-right font-medium">الموظف</th>
+                      <th className="px-4 py-3 text-right font-medium">الوظيفة</th>
+                      <th className="px-4 py-3 text-right font-medium">إجراءات</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {employees.map((emp) => (
+                      <tr key={emp.EmpID} className="hover:bg-surface-muted/30 transition-colors">
+                        <td className="px-4 py-3 text-muted-foreground/70 font-mono text-xs">
+                          {emp.EmpID}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-success/10 text-success shrink-0">
+                              <UserCheck className="w-3.5 h-3.5" />
+                            </div>
+                            <span className="font-medium text-foreground">{emp.EmpName}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {emp.Job ? (
+                            <span className="text-xs text-muted-foreground">{emp.Job}</span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground/60 italic">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => deactivateEmployee(emp.EmpID)}
+                            disabled={deactivatingId === emp.EmpID}
+                            className="gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive/80 text-xs"
+                          >
+                            {deactivatingId === emp.EmpID ? (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                جاري...
+                              </>
+                            ) : (
+                              <>
+                                <UserX className="w-3 h-3" />
+                                إيقاف
+                              </>
+                            )}
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
-            <div className="flex justify-end pt-2">
-              <Button variant="outline" onClick={() => setInactiveModalOpen(false)}>إغلاق</Button>
-            </div>
           </div>
+
+          <DialogFooter className="shrink-0 mx-0 mb-0 rounded-none border-border/60">
+            <Button variant="outline" onClick={() => setInactiveModalOpen(false)}>
+              إغلاق
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
