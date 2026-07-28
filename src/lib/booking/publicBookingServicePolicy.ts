@@ -3,7 +3,7 @@
  * No DB / server-only imports — safe for admin client badges + unit tests.
  */
 
-export const PUBLIC_BOOKING_SERVICE_CONTRACT_VERSION = 'v2';
+export const PUBLIC_BOOKING_SERVICE_CONTRACT_VERSION = 'v3';
 export const PUBLIC_BOOKING_PRICING_SCOPE = 'global' as const;
 export const PUBLIC_BOOKING_CURRENCY = 'EGP';
 
@@ -312,6 +312,52 @@ export const TEMPORARY_CATEGORY_LABELS: Record<
 
 function hasArabicChars(s: string): boolean {
   return /[\u0600-\u06FF]/.test(s);
+}
+
+/** Known English labels when ProName was stored in Arabic only. */
+export const SERVICE_NAME_EN_BY_AR: Record<string, string> = {
+  ثيرم: 'Therm',
+  شامبو: 'Shampoo',
+  بلسم: 'Conditioner',
+  'حمام كريم': 'Cream Bath',
+  'برفيوم SF': 'Perfume SF',
+  'بلوب كيرلي': 'Blow Curly',
+  'معالج الشعر': 'Hair Treatment',
+};
+
+/**
+ * Resolve bilingual service display names from TblPro.ProName / ProNameAr.
+ * - nameEn ← English ProName when Latin; mapped EN when ProName is Arabic-only
+ * - nameAr ← ProNameAr, else Arabic ProName, else English
+ */
+export function resolveServiceDisplayNames(
+  proName: string | null | undefined,
+  proNameAr: string | null | undefined,
+): { nameAr: string; nameEn: string } {
+  const rawEn = String(proName ?? '').trim();
+  const rawAr = String(proNameAr ?? '').trim();
+
+  let nameAr = rawAr;
+  let nameEn = rawEn;
+
+  if (!nameAr && nameEn) {
+    nameAr = nameEn;
+  }
+
+  if (nameEn && hasArabicChars(nameEn)) {
+    const mapped = SERVICE_NAME_EN_BY_AR[nameEn] ?? (nameAr ? SERVICE_NAME_EN_BY_AR[nameAr] : undefined);
+    nameEn = mapped ?? nameEn;
+    if (!rawAr) nameAr = rawEn;
+  }
+
+  if (!nameEn && nameAr) {
+    nameEn = SERVICE_NAME_EN_BY_AR[nameAr] ?? nameAr;
+  }
+
+  if (!nameAr) nameAr = nameEn || 'خدمة';
+  if (!nameEn) nameEn = nameAr;
+
+  return { nameAr, nameEn };
 }
 
 export function resolveCategoryNames(catName: string | null | undefined): {

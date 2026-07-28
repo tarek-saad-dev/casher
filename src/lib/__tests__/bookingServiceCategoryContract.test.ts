@@ -109,6 +109,14 @@ describe('bookingServiceCategoryContract', () => {
     expect(catalog.categories.every((c) => c.services.length > 0)).toBe(true);
     expect(catalog.categories.some((c) => c.categoryId === '99')).toBe(false);
     expect(catalog.meta.serviceCount).toBe(2);
+
+    const hair = catalog.services.find((s) => s.serviceId === 2)!;
+    expect(hair.nameAr).toBe('قصة ب');
+    expect(hair.nameEn).toBe('B Cut');
+    expect(hair.categoryNameAr).toBeTruthy();
+    expect(hair.categoryNameEn).toBe('Hair Cut');
+    expect(catalog.groups[0]?.categoryNameAr).toBeTruthy();
+    expect(catalog.groups[0]?.categoryNameEn).toBeTruthy();
   });
 
   it('does not duplicate service IDs across categories', () => {

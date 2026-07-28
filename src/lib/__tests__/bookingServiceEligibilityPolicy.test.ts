@@ -9,6 +9,7 @@ import {
   isZeroPriceAllowedForPublicBooking,
   resolvePublicCatalogDurationMinutes,
   resolvePublicCatalogPrice,
+  resolveServiceDisplayNames,
   sanitizePublicImageUrl,
 } from '@/lib/booking/publicBookingServicePolicy';
 
@@ -116,6 +117,19 @@ describe('bookingServiceEligibilityPolicy', () => {
     } finally {
       delete process.env.PUBLIC_ASSET_ORIGIN;
     }
+  });
+
+  it('resolves bilingual service names from ProName / ProNameAr', () => {
+    expect(resolveServiceDisplayNames('Hair Cut', 'حلاقة شعر')).toEqual({
+      nameAr: 'حلاقة شعر',
+      nameEn: 'Hair Cut',
+    });
+    expect(resolveServiceDisplayNames('شامبو', 'شامبو')).toEqual({
+      nameAr: 'شامبو',
+      nameEn: 'Shampoo',
+    });
+    expect(resolveServiceDisplayNames('Fade Cut', null).nameEn).toBe('Fade Cut');
+    expect(resolveServiceDisplayNames('Fade Cut', null).nameAr).toBe('Fade Cut');
   });
 
   it('respects HideFromPublicBooking when present', () => {

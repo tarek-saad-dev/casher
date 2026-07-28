@@ -21,6 +21,7 @@ import {
   compareServices,
   evaluateServiceEligibility,
   resolveCategoryNames,
+  resolveServiceDisplayNames,
   sanitizePublicDescription,
   sanitizePublicImageUrl,
   type PublicBookingServiceRow,
@@ -35,7 +36,7 @@ export {
 
 const CACHE_TTL_MS = 30_000;
 const CACHE_MAX = 32;
-const cacheRootKey = '__pos_public_booking_services_v2';
+const cacheRootKey = '__pos_public_booking_services_v3';
 
 export type PublicBookingServiceWire = {
   serviceId: number;
@@ -43,7 +44,7 @@ export type PublicBookingServiceWire = {
   id: number;
   nameAr: string;
   nameEn: string;
-  /** Legacy flat-list display name */
+  /** Legacy flat-list display name (Arabic-first for booking UI) */
   name: string;
   descriptionAr: string | null;
   descriptionEn: string | null;
@@ -53,7 +54,10 @@ export type PublicBookingServiceWire = {
   bookable: true;
   imageUrl: string | null;
   categoryId: string;
+  /** @deprecated Prefer categoryNameAr — kept for older clients */
   categoryName: string;
+  categoryNameAr: string;
+  categoryNameEn: string;
 };
 
 export type PublicBookingCategoryWire = {
@@ -79,6 +83,8 @@ export type PublicBookingServicesCatalogResponse = {
   groups: Array<{
     categoryId: string;
     categoryName: string;
+    categoryNameAr: string;
+    categoryNameEn: string;
     services: PublicBookingServiceWire[];
   }>;
   meta: {
@@ -204,17 +210,17 @@ function toWireService(
   price: number,
   durationMinutes: number,
   catId: string,
-  categoryName: string,
+  categoryNameAr: string,
+  categoryNameEn: string,
   sortOrder: number,
 ): PublicBookingServiceWire {
-  const nameEn = String(row.ProName ?? '').trim() || String(row.ProNameAr ?? '').trim();
-  const nameAr = String(row.ProNameAr ?? '').trim() || nameEn;
+  const { nameAr, nameEn } = resolveServiceDisplayNames(row.ProName, row.ProNameAr);
   return {
     serviceId: Number(row.ProID),
     id: Number(row.ProID),
     nameAr,
     nameEn,
-    name: nameEn || nameAr,
+    name: nameAr || nameEn,
     descriptionAr: sanitizePublicDescription(row.DescriptionAr),
     descriptionEn: sanitizePublicDescription(row.DescriptionEn),
     price,
@@ -223,7 +229,9 @@ function toWireService(
     bookable: true,
     imageUrl: sanitizePublicImageUrl(row.ImageUrl),
     categoryId: catId,
-    categoryName,
+    categoryName: categoryNameAr,
+    categoryNameAr,
+    categoryNameEn,
   };
 }
 
@@ -285,6 +293,7 @@ export function buildPublicServicesCatalog(
       evalResult.durationMinutes,
       catId,
       names.nameAr,
+      names.nameEn,
       serviceSort,
     );
     catMap.get(catId)!.services.push(wire);
@@ -313,6 +322,8 @@ export function buildPublicServicesCatalog(
   const groups = categories.map((c) => ({
     categoryId: c.categoryId,
     categoryName: c.nameAr,
+    categoryNameAr: c.nameAr,
+    categoryNameEn: c.nameEn,
     services: c.services,
   }));
 
