@@ -19,6 +19,7 @@ import {
   upsertEmployeeSchedule,
 } from '@/lib/hr/employee-hr-db';
 import { ensureTblEmpImageUrlColumn } from '@/lib/migrations/ensureEmployeeImageUrl';
+import { ensureTblEmpNameEnColumn, normalizeEmpNameEn } from '@/lib/migrations/ensureEmployeeNameEn';
 import { invalidatePublicBookingBarbersCache } from '@/lib/booking/publicBookingBarbers';
 import { normalizeEmployeeImageUrlInput } from '@/lib/hr/employeeImageUrl';
 
@@ -66,7 +67,10 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       return NextResponse.json({ error: 'معرف الموظف غير صالح' }, { status: 400 });
     }
 
-    const body = (await req.json()) as EmployeeHrPayload & { imageUrl?: string | null };
+    const body = (await req.json()) as EmployeeHrPayload & {
+      imageUrl?: string | null;
+      empNameEn?: string | null;
+    };
     const {
       empName,
       isActive,
@@ -79,6 +83,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       isPayrollEnabled,
       whatsApp,
       imageUrl,
+      empNameEn,
     } = body;
 
     const pool = await getPool();
@@ -213,6 +218,18 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       }
       addClause('ImageUrl = @imageUrl', (req) =>
         req.input('imageUrl', sql.NVarChar(1000), normalized.value),
+      );
+    }
+    if (empNameEn !== undefined) {
+      const hasCol = await ensureTblEmpNameEnColumn(pool);
+      if (!hasCol) {
+        return NextResponse.json(
+          { error: 'عمود EmpNameEn غير متوفر — شغّل /api/admin/migrate-employee-name-en' },
+          { status: 500 },
+        );
+      }
+      addClause('EmpNameEn = @empNameEn', (req) =>
+        req.input('empNameEn', sql.NVarChar(200), normalizeEmpNameEn(empNameEn)),
       );
     }
 
@@ -363,7 +380,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       return NextResponse.json({ error: 'الموظف غير موجود' }, { status: 404 });
     }
 
-    if (imageUrl !== undefined) {
+    if (imageUrl !== undefined || empNameEn !== undefined) {
       invalidatePublicBookingBarbersCache();
     }
 

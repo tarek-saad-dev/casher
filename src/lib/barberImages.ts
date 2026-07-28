@@ -45,6 +45,32 @@ export const BARBER_NO_PHOTO_NAMES = new Set([
   'أحمد',
 ]);
 
+/**
+ * Default English display names by Arabic EmpName (for seed / fallback).
+ * EmpName remains the Arabic source of truth in TblEmp.
+ */
+export const BARBER_NAME_EN_BY_EMP_NAME: Record<string, string> = {
+  بلسم: 'Bassem',
+  بسم: 'Bassem',
+  باسم: 'Bassem',
+  زيد: 'Ziad',
+  زياد: 'Ziad',
+  محمد: 'Mohamed',
+  كريم: 'Kareem',
+  يوسف: 'Yousef',
+  احمد: 'Ahmed',
+  أحمد: 'Ahmed',
+  عمر: 'Omar',
+};
+
+export function getBarberNameEnByArabicName(
+  nameAr: string | null | undefined,
+): string | null {
+  const key = String(nameAr ?? '').trim();
+  if (!key) return null;
+  return BARBER_NAME_EN_BY_EMP_NAME[key] ?? null;
+}
+
 export function getBarberImagePathByName(
   name: string | null | undefined,
 ): BarberImagePath | null {

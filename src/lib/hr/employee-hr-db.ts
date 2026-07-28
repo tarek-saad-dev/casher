@@ -168,6 +168,10 @@ export const EMPLOYEE_LIST_SELECT = `
       WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'ImageUrl')
       THEN e.ImageUrl ELSE NULL
     END AS ImageUrl,
+    CASE
+      WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'EmpNameEn')
+      THEN e.EmpNameEn ELSE NULL
+    END AS EmpNameEn,
     e.Mobile,
     adv.ExpINID AS AdvanceExpINID, adv.CatName AS AdvanceCatName,
     rev.ExpINID AS RevenueExpINID, rev.CatName AS RevenueCatName
@@ -207,6 +211,10 @@ export const EMPLOYEE_SELECT_BY_ID = `
       WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'ImageUrl')
       THEN ImageUrl ELSE NULL
     END AS ImageUrl,
+    CASE
+      WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'EmpNameEn')
+      THEN EmpNameEn ELSE NULL
+    END AS EmpNameEn,
     Mobile
   FROM dbo.TblEmp
   WHERE EmpID = @empID

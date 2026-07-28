@@ -40,6 +40,11 @@ import {
 import {
   ensureTblEmpImageUrlColumn,
 } from '@/lib/migrations/ensureEmployeeImageUrl';
+import {
+  ensureTblEmpNameEnColumn,
+  normalizeEmpNameEn,
+} from '@/lib/migrations/ensureEmployeeNameEn';
+import { getBarberNameEnByArabicName } from '@/lib/barberImages';
 
 export type PublicSelectionPurpose = 'check_slot' | 'plan' | 'create_precheck' | 'internal_preview';
 export type PublicSelectionMode = 'specific_barber' | 'any_barber';
@@ -59,6 +64,7 @@ export class PublicBookingSelectionError extends Error {
 export type PublicCandidateBarber = {
   empId: number;
   nameAr: string;
+  nameEn: string | null;
   imageUrl: string | null;
 };
 
@@ -165,17 +171,21 @@ function parseDayOffset(raw: unknown): 0 | 1 {
 
 async function loadEmpPublicIdentity(
   empId: number,
-): Promise<{ nameAr: string; imageUrl: string | null } | null> {
+): Promise<{ nameAr: string; nameEn: string | null; imageUrl: string | null } | null> {
   const db = await getPool();
   const hasImageUrl = await ensureTblEmpImageUrlColumn(db);
+  const hasNameEn = await ensureTblEmpNameEnColumn(db);
   const imageSelect = hasImageUrl
     ? 'ImageUrl'
     : 'CAST(NULL AS NVARCHAR(1000)) AS ImageUrl';
+  const nameEnSelect = hasNameEn
+    ? 'EmpNameEn'
+    : 'CAST(NULL AS NVARCHAR(200)) AS EmpNameEn';
   const r = await db
     .request()
     .input('empId', sql.Int, empId)
     .query(`
-      SELECT EmpName, ISNULL(isActive,1) AS isActive, ${imageSelect}
+      SELECT EmpName, ISNULL(isActive,1) AS isActive, ${imageSelect}, ${nameEnSelect}
       FROM dbo.TblEmp WHERE EmpID=@empId
     `);
   const row = r.recordset[0];
@@ -184,6 +194,7 @@ async function loadEmpPublicIdentity(
   const nameAr = String(row.EmpName);
   return {
     nameAr,
+    nameEn: normalizeEmpNameEn(row.EmpNameEn) ?? getBarberNameEnByArabicName(nameAr),
     imageUrl: resolveBarberPublicImageUrl(row.ImageUrl, nameAr),
   };
 }
@@ -393,7 +404,12 @@ export async function evaluatePublicBookingSelection(args: {
     if (!empId) throw new PublicBookingSelectionError('BARBER_NOT_FOUND');
     const identity = await loadEmpPublicIdentity(empId);
     if (!identity) throw new PublicBookingSelectionError('BARBER_NOT_FOUND');
-    specificBarber = { empId, nameAr: identity.nameAr, imageUrl: identity.imageUrl };
+    specificBarber = {
+      empId,
+      nameAr: identity.nameAr,
+      nameEn: identity.nameEn,
+      imageUrl: identity.imageUrl,
+    };
 
     const dayClass = await classifySpecificBarberDay({
       empId,
@@ -494,6 +510,7 @@ export async function evaluatePublicBookingSelection(args: {
         byEmp.set(m.empId, {
           empId: m.empId,
           nameAr: m.empName,
+          nameEn: getBarberNameEnByArabicName(m.empName),
           imageUrl: resolveBarberPublicImageUrl(null, m.empName),
         });
       }

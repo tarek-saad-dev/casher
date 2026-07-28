@@ -40,6 +40,12 @@ import {
   ensureTblEmpImageUrlColumn,
   tblEmpImageUrlSelect,
 } from '@/lib/migrations/ensureEmployeeImageUrl';
+import {
+  ensureTblEmpNameEnColumn,
+  normalizeEmpNameEn,
+  tblEmpNameEnSelect,
+} from '@/lib/migrations/ensureEmployeeNameEn';
+import { getBarberNameEnByArabicName } from '@/lib/barberImages';
 
 export {
   isEmployeeEligibleForPublicBooking,
@@ -153,7 +159,13 @@ export type PublicBarberCalendarDayWire = {
 
 export type PublicBarberCalendarResponse = {
   ok: true;
-  barber: { empId: number; nameAr: string; name: string; imageUrl: string | null };
+  barber: {
+    empId: number;
+    nameAr: string;
+    nameEn: string | null;
+    name: string;
+    imageUrl: string | null;
+  };
   from: string;
   to: string;
   presenceOnly: boolean;
@@ -183,6 +195,7 @@ export type PublicBarberLocationResponse = {
 type CandidateRow = {
   EmpID: number;
   EmpName: string;
+  EmpNameEn: string | null;
   Job: string | null;
   ImageUrl: string | null;
   BranchID: number;
@@ -219,14 +232,24 @@ async function assertRequestedServicesPublic(serviceIds: number[]): Promise<numb
   return serviceIds;
 }
 
+function resolvePublicBarberNameEn(
+  dbNameEn: string | null | undefined,
+  nameAr: string,
+): string | null {
+  return normalizeEmpNameEn(dbNameEn) ?? getBarberNameEnByArabicName(nameAr);
+}
+
 async function loadAssignmentCandidates(day: string): Promise<CandidateRow[]> {
   const db = await getPool();
   const hasImageUrl = await ensureTblEmpImageUrlColumn(db);
+  const hasNameEn = await ensureTblEmpNameEnColumn(db);
   const imageUrlCol = tblEmpImageUrlSelect(hasImageUrl);
+  const nameEnCol = tblEmpNameEnSelect(hasNameEn);
   const res = await db.request().input('day', sql.Date, day).query(`
     SELECT
       e.EmpID, e.EmpName, e.Job,
       ${imageUrlCol},
+      ${nameEnCol},
       b.BranchID, b.BranchCode, b.BranchName,
       a.CanReceiveBookings,
       a.IsActive AS IsActiveAssign
@@ -248,6 +271,7 @@ async function loadAssignmentCandidates(day: string): Promise<CandidateRow[]> {
 async function loadPublicEmployeeOrThrow(empId: number): Promise<{
   empId: number;
   name: string;
+  nameEn: string | null;
   imageUrl: string | null;
 }> {
   if (!Number.isFinite(empId) || empId <= 0) {
@@ -255,14 +279,18 @@ async function loadPublicEmployeeOrThrow(empId: number): Promise<{
   }
   const db = await getPool();
   const hasImageUrl = await ensureTblEmpImageUrlColumn(db);
+  const hasNameEn = await ensureTblEmpNameEnColumn(db);
   const imageSelect = hasImageUrl
     ? 'ImageUrl'
     : 'CAST(NULL AS NVARCHAR(1000)) AS ImageUrl';
+  const nameEnSelect = hasNameEn
+    ? 'EmpNameEn'
+    : 'CAST(NULL AS NVARCHAR(200)) AS EmpNameEn';
   const res = await db
     .request()
     .input('empId', sql.Int, empId)
     .query(`
-      SELECT EmpID, EmpName, ISNULL(isActive, 1) AS isActive, Job, ${imageSelect}
+      SELECT EmpID, EmpName, ISNULL(isActive, 1) AS isActive, Job, ${imageSelect}, ${nameEnSelect}
       FROM dbo.TblEmp WHERE EmpID = @empId
     `);
   const row = res.recordset[0];
@@ -285,14 +313,13 @@ async function loadPublicEmployeeOrThrow(empId: number): Promise<{
     }
   }
   if (!anyPublic) {
-    // Still allow calendar for employees with public presence on some dates via transfer?
-    // Spec: inactive/private → BARBER_NOT_FOUND. Without public assignment, hide.
     throw new PublicBookingBarberError('BARBER_NOT_FOUND');
   }
   const name = String(row.EmpName);
   return {
     empId,
     name,
+    nameEn: resolvePublicBarberNameEn(row.EmpNameEn, name),
     imageUrl: resolveBarberPublicImageUrl(row.ImageUrl, name),
   };
 }
@@ -300,17 +327,19 @@ async function loadPublicEmployeeOrThrow(empId: number): Promise<{
 function toWireBarber(args: {
   empId: number;
   name: string;
+  nameEn?: string | null;
   serviceIds: number[];
   branches: PublicBarberBranchWire[];
   imageUrl?: string | null;
 }): PublicBarberWire {
   const nameAr = args.name;
+  const nameEn = resolvePublicBarberNameEn(args.nameEn, nameAr);
   const imageUrl = resolveBarberPublicImageUrl(args.imageUrl, nameAr);
   return {
     empId: args.empId,
     id: args.empId,
     nameAr,
-    nameEn: null,
+    nameEn,
     name: nameAr,
     imageUrl,
     shortBio: null,
@@ -387,6 +416,7 @@ export async function listPublicBookingBarbers(args: {
     {
       empId: number;
       name: string;
+      nameEn: string | null;
       imageUrl: string | null;
       branches: PublicBarberBranchWire[];
       branchIds: number[];
@@ -419,6 +449,7 @@ export async function listPublicBookingBarbers(args: {
       entry = {
         empId,
         name: String(row.EmpName),
+        nameEn: row.EmpNameEn ?? null,
         imageUrl: row.ImageUrl ?? null,
         branches: [],
         branchIds: [],
@@ -464,6 +495,7 @@ export async function listPublicBookingBarbers(args: {
     const wire = toWireBarber({
       empId: entry.empId,
       name: entry.name,
+      nameEn: entry.nameEn,
       imageUrl: entry.imageUrl,
       serviceIds: serviceIds.length ? serviceIds : publicServiceIds,
       branches: entry.branches,
@@ -726,6 +758,7 @@ export async function getPublicBarberCalendar(args: {
     barber: {
       empId: emp.empId,
       nameAr: emp.name,
+      nameEn: emp.nameEn,
       name: emp.name,
       imageUrl: emp.imageUrl,
     },
@@ -809,6 +842,7 @@ export function assemblePublicBarbersFromCandidates(
   rows: Array<{
     empId: number;
     name: string;
+    nameEn?: string | null;
     branchCode: string;
     branchName: string;
     imageUrl?: string | null;
@@ -822,6 +856,7 @@ export function assemblePublicBarbersFromCandidates(
       entry = toWireBarber({
         empId: row.empId,
         name: row.name,
+        nameEn: row.nameEn,
         imageUrl: row.imageUrl,
         serviceIds,
         branches: [],

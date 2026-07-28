@@ -15,6 +15,7 @@ import {
   verifyPlanToken,
 } from '@/lib/booking/publicBookingPlanFingerprint';
 import { resolveBarberPublicImageUrl } from '@/lib/booking/publicBookingBarberPolicy';
+import { getBarberNameEnByArabicName } from '@/lib/barberImages';
 import {
   PUBLIC_BOOKING_ERROR_CATALOG,
   type PublicBookingErrorCode,
@@ -285,6 +286,9 @@ function buildPublicResponse(args: {
       barber: {
         empId: args.selectedEmpId,
         nameAr: args.selectedNameAr,
+        nameEn:
+          args.evaluation.specificBarber?.nameEn ??
+          getBarberNameEnByArabicName(args.selectedNameAr),
         imageUrl:
           args.evaluation.specificBarber?.imageUrl ??
           resolveBarberPublicImageUrl(null, args.selectedNameAr),

@@ -23,6 +23,7 @@ import {
 import { ensureEmployeeAdvanceMapping } from '@/lib/hr/employee-hr-advance';
 import { getEmployeesTargetSummaryBatch } from '@/lib/payroll/employee-target';
 import { ensureTblEmpImageUrlColumn } from '@/lib/migrations/ensureEmployeeImageUrl';
+import { ensureTblEmpNameEnColumn, normalizeEmpNameEn } from '@/lib/migrations/ensureEmployeeNameEn';
 import { normalizeEmployeeImageUrlInput } from '@/lib/hr/employeeImageUrl';
 import { invalidatePublicBookingBarbersCache } from '@/lib/booking/publicBookingBarbers';
 
@@ -92,7 +93,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
 
-    const body = (await req.json()) as EmployeeHrPayload & { imageUrl?: string | null };
+    const body = (await req.json()) as EmployeeHrPayload & {
+      imageUrl?: string | null;
+      empNameEn?: string | null;
+    };
     const isHrPayload = usesHrModelPayload(body);
 
     const validation = validateEmployeeHrPayload(body, {
@@ -111,6 +115,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: normalized.error }, { status: 400 });
       }
       imageUrlValue = normalized.value;
+    }
+
+    let empNameEnValue: string | null | undefined;
+    if (body.empNameEn !== undefined) {
+      empNameEnValue = normalizeEmpNameEn(body.empNameEn);
     }
 
     const name = String(body.empName).trim();
@@ -171,6 +180,17 @@ export async function POST(req: NextRequest) {
           .query(`UPDATE dbo.TblEmp SET ImageUrl = @imageUrl WHERE EmpID = @empId`);
       }
 
+      if (empNameEnValue !== undefined) {
+        const hasCol = await ensureTblEmpNameEnColumn(db);
+        if (!hasCol) {
+          throw new Error('عمود EmpNameEn غير متوفر — شغّل /api/admin/migrate-employee-name-en');
+        }
+        await new sql.Request(transaction)
+          .input('empId', sql.Int, newEmpID)
+          .input('empNameEn', sql.NVarChar(200), empNameEnValue)
+          .query(`UPDATE dbo.TblEmp SET EmpNameEn = @empNameEn WHERE EmpID = @empId`);
+      }
+
       const { expINID, catName } = await ensureEmployeeAdvanceMapping(
         transaction,
         newEmpID,
@@ -179,7 +199,7 @@ export async function POST(req: NextRequest) {
 
       await transaction.commit();
 
-      if (imageUrlValue) {
+      if (imageUrlValue || empNameEnValue) {
         invalidatePublicBookingBarbersCache();
       }
 
@@ -187,6 +207,7 @@ export async function POST(req: NextRequest) {
         {
           EmpID: newEmpID,
           EmpName: newEmp.EmpName,
+          EmpNameEn: empNameEnValue ?? null,
           isActive: newEmp.isActive,
           ImageUrl: imageUrlValue ?? null,
           AdvanceExpINID: expINID,

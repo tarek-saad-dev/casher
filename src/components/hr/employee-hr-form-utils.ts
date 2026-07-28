@@ -40,6 +40,7 @@ export interface HrEmployeeListRow {
   WhatsApp?: string | null;
   Mobile?: string | null;
   ImageUrl?: string | null;
+  EmpNameEn?: string | null;
 }
 
 export interface ProfileScheduleRow {
@@ -61,6 +62,7 @@ export interface EmployeeProfileExtras {
 
 export interface EmployeeHrFormState {
   empName: string;
+  empNameEn: string;
   isActive: boolean;
   hireDate: string;
   employmentType: EmploymentType;
@@ -88,6 +90,7 @@ export interface EmployeeHrFormState {
 export function createEmptyEmployeeHrFormState(): EmployeeHrFormState {
   return {
     empName: '',
+    empNameEn: '',
     isActive: true,
     hireDate: '',
     employmentType: 'full_time',
@@ -165,6 +168,7 @@ export function employeeToFormState(
 
   return {
     empName: emp.EmpName ?? '',
+    empNameEn: emp.EmpNameEn?.trim() || '',
     isActive: emp.isActive !== false,
     hireDate,
     employmentType,
@@ -290,6 +294,8 @@ export function buildEmployeeHrApiPayload(
 
   // Always send imageUrl on save (including empty → clear photo)
   payload.imageUrl = form.imageUrl.trim() || null;
+  // English display name for public booking / bilingual UI
+  payload.empNameEn = form.empNameEn.trim() || null;
 
   const shouldIncludeSchedule =
     options.includeSchedule &&

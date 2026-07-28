@@ -346,13 +346,25 @@ export default function EmployeeHrFormModal({
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label>اسم الموظف *</Label>
+              <div className="space-y-1.5">
+                <Label>اسم الموظف (عربي) *</Label>
                 <Input
                   value={form.empName}
                   onChange={(e) => patchForm({ empName: e.target.value })}
-                  placeholder="مثال: محمد أحمد"
+                  placeholder="مثال: محمد"
                 />
+              </div>
+              <div className="space-y-1.5">
+                <Label>اسم الموظف (إنجليزي)</Label>
+                <Input
+                  value={form.empNameEn}
+                  onChange={(e) => patchForm({ empNameEn: e.target.value })}
+                  placeholder="Example: Mohamed"
+                  dir="ltr"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  يظهر في موقع الحجز بالإنجليزية (`nameEn` في الـ API)
+                </p>
               </div>
 
               <div className="space-y-1.5">

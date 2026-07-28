@@ -94,7 +94,12 @@ export async function POST(req: NextRequest) {
             subtotal: evaluation.subtotal,
           },
           barber: evaluation.specificBarber
-            ? { empId: evaluation.specificBarber.empId, nameAr: evaluation.specificBarber.nameAr }
+            ? {
+                empId: evaluation.specificBarber.empId,
+                nameAr: evaluation.specificBarber.nameAr,
+                nameEn: evaluation.specificBarber.nameEn,
+                imageUrl: evaluation.specificBarber.imageUrl,
+              }
             : null,
           candidateBarbers: evaluation.candidateBarbers,
           reason: {
@@ -138,7 +143,12 @@ export async function POST(req: NextRequest) {
           subtotal: evaluation.subtotal,
         },
         barber: evaluation.specificBarber
-          ? { empId: evaluation.specificBarber.empId, nameAr: evaluation.specificBarber.nameAr }
+          ? {
+              empId: evaluation.specificBarber.empId,
+              nameAr: evaluation.specificBarber.nameAr,
+              nameEn: evaluation.specificBarber.nameEn,
+              imageUrl: evaluation.specificBarber.imageUrl,
+            }
           : null,
         candidateBarbers: evaluation.candidateBarbers,
         meta: {

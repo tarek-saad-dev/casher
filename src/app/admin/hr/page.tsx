@@ -614,7 +614,11 @@ function EmployeesPanel() {
                       </div>
                       <div>
                         <span className="font-medium text-foreground">{emp.EmpName}</span>
-                        {emp.Job && <p className="text-xs text-muted-foreground/70">{emp.Job}</p>}
+                        {(emp.EmpNameEn || emp.Job) && (
+                          <p className="text-xs text-muted-foreground/70">
+                            {[emp.EmpNameEn, emp.Job].filter(Boolean).join(' · ')}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </td>

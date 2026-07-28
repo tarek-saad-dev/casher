@@ -95,6 +95,7 @@ export async function POST(req: NextRequest) {
               ? {
                   empId: evaluation.specificBarber.empId,
                   nameAr: evaluation.specificBarber.nameAr,
+                  nameEn: evaluation.specificBarber.nameEn,
                   imageUrl: evaluation.specificBarber.imageUrl,
                 }
               : null,

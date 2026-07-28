@@ -145,6 +145,8 @@ describe('bookingPublicBarbersCatalog / policy', () => {
     expect(b.availabilityType).toBe('presence_only');
     expect(b.imageUrl).toBe('https://casher-five.vercel.app/barber-ziad.jpg');
     expect(b.photoUrl).toBe(b.imageUrl);
+    expect(b.nameAr).toBe('زياد');
+    expect(b.nameEn).toBe('Ziad');
   });
 
   it('prefers PUBLIC_ASSET_ORIGIN when set', () => {
