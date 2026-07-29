@@ -351,6 +351,11 @@ export async function finalizeIncompleteAttendanceWithDefaults(
         continue;
       }
 
+      // Manual statuses must not get invented clock times
+      if (att && ['Absent', 'DayOff', 'Excused'].includes(att.status)) {
+        continue;
+      }
+
       // no_attendance: only create on this branch if assigned here and no row anywhere
       if (!att && item.reason === 'no_attendance') {
         if (!assignedToBranch.has(item.empId)) continue;

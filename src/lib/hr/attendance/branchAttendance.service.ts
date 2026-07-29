@@ -114,26 +114,63 @@ export async function assertEmployeeEligibleForBranchAttendance(
     );
   }
 
-  // Phase 1Q — must be scheduled in this branch on WorkDate (no global schedule fallback)
+  // Align with GET /api/admin/attendance board eligibility:
+  // working branch schedule OR existing attendance row OR temporary transfer in.
+  // Do not hard-fail solely on global leave / resolver isWorking=false when the
+  // employee is still on the board (that caused 403 on bulk save for past dates).
   const { resolveEmployeeBranchSchedule, resolveEmployeeGlobalSchedule } = await import(
     '@/lib/hr/employeeBranchScheduleResolver'
   );
+  const { getEffectiveBranchScheduleRow } = await import('@/lib/hr/empBranchWorkSchedule');
+
   const branchSched = await resolveEmployeeBranchSchedule({ empId, branchId, workDate });
-  if (!branchSched?.isWorking) {
-    const global = await resolveEmployeeGlobalSchedule({ empId, workDate, publicOnly: false });
-    if (global.isGloballyWorking && global.branches[0]?.branchId !== branchId) {
-      throw new AttendanceDomainError(
-        'EMPLOYEE_NOT_SCHEDULED_IN_THIS_BRANCH',
-        `الموظف مجدول في فرع آخر في هذا اليوم (${global.branches[0]?.branchCode ?? ''})`,
-        403,
-      );
-    }
+  if (branchSched?.isWorking) return;
+
+  const existingAtt = await db
+    .request()
+    .input('empId', sql.Int, empId)
+    .input('branchId', sql.Int, branchId)
+    .input('workDate', sql.Date, workDate)
+    .query(`
+      SELECT TOP 1 ID
+      FROM dbo.TblEmpAttendance
+      WHERE EmpID = @empId AND BranchID = @branchId AND WorkDate = @workDate
+    `);
+  if (existingAtt.recordset[0]) return;
+
+  // Branch weekly schedule says working (even if resolver marked global leave)
+  const scheduleRow = await getEffectiveBranchScheduleRow({ empId, branchId, workDate });
+  if (scheduleRow?.isWorking) return;
+
+  // Temporary transfer into this branch today
+  const xfer = await db
+    .request()
+    .input('empId', sql.Int, empId)
+    .input('branchId', sql.Int, branchId)
+    .input('workDate', sql.Date, workDate)
+    .query(`
+      SELECT TOP 1 TransferID
+      FROM dbo.TblEmpTemporaryBranchTransfer
+      WHERE EmpID = @empId
+        AND WorkDate = @workDate
+        AND IsActive = 1
+        AND ToBranchID = @branchId
+    `);
+  if (xfer.recordset[0]) return;
+
+  const global = await resolveEmployeeGlobalSchedule({ empId, workDate, publicOnly: false });
+  if (global.isGloballyWorking && global.branches[0]?.branchId !== branchId) {
     throw new AttendanceDomainError(
       'EMPLOYEE_NOT_SCHEDULED_IN_THIS_BRANCH',
-      'الموظف غير مجدول للعمل في هذا الفرع في تاريخ العمل',
+      `الموظف مجدول في فرع آخر في هذا اليوم (${global.branches[0]?.branchCode ?? ''})`,
       403,
     );
   }
+  throw new AttendanceDomainError(
+    'EMPLOYEE_NOT_SCHEDULED_IN_THIS_BRANCH',
+    'الموظف غير مجدول للعمل في هذا الفرع في تاريخ العمل',
+    403,
+  );
 }
 
 export async function resolveAttendanceWorkDate(

@@ -75,6 +75,10 @@ describe('phase1qEmployeeAttendanceBranchGuard', () => {
     expect(a).toContain('EMPLOYEE_NOT_SCHEDULED_IN_THIS_BRANCH');
     expect(a).toContain('EMPLOYEE_ALREADY_CHECKED_IN_OTHER_BRANCH');
     expect(a).toContain('resolveEmployeeBranchSchedule');
+    // Board/save alignment: existing attendance or branch schedule row still allow save
+    expect(a).toContain('getEffectiveBranchScheduleRow');
+    expect(a).toContain('TblEmpAttendance');
+    expect(a).toContain('TblEmpTemporaryBranchTransfer');
   });
 });
 

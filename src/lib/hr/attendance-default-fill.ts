@@ -21,15 +21,18 @@ const MANUAL_STATUSES = ['Absent', 'DayOff', 'Excused'];
 
 /** D — fill missing times from employee defaults (HR attendance board button). */
 export function applyDefaultTimesToRow<T extends AttendanceTimeFillRow>(row: T): T {
+  // Never invent clock times for manual statuses (DayOff / Absent / Excused).
+  if (MANUAL_STATUSES.includes(row.Status)) {
+    return { ...row };
+  }
+
   const updated = { ...row };
 
   if (!row.CheckInTime && row.DefaultCheckInTime) {
     updated.CheckInTime = row.DefaultCheckInTime;
-    if (!MANUAL_STATUSES.includes(updated.Status)) {
-      const late = calcLateMinutes(row.DefaultCheckInTime, row.ScheduledStartTime);
-      updated.LateMinutes = late;
-      updated.Status = late > 0 ? 'Late' : 'Present';
-    }
+    const late = calcLateMinutes(row.DefaultCheckInTime, row.ScheduledStartTime);
+    updated.LateMinutes = late;
+    updated.Status = late > 0 ? 'Late' : 'Present';
   }
 
   if (!row.CheckOutTime && row.DefaultCheckOutTime) {
@@ -41,7 +44,7 @@ export function applyDefaultTimesToRow<T extends AttendanceTimeFillRow>(row: T):
         row.ScheduledEndTime,
       );
       updated.EarlyLeaveMinutes = earlyLeave > 0 ? earlyLeave : 0;
-      if (!MANUAL_STATUSES.includes(updated.Status) && earlyLeave > 0) {
+      if (earlyLeave > 0) {
         updated.Status = 'EarlyLeave';
       }
     }
@@ -52,15 +55,17 @@ export function applyDefaultTimesToRow<T extends AttendanceTimeFillRow>(row: T):
 
 /** N — fill missing times with current clock time (HR attendance board button). */
 export function applyNowTimesToRow<T extends AttendanceTimeFillRow>(row: T, now: string): T {
+  if (MANUAL_STATUSES.includes(row.Status)) {
+    return { ...row };
+  }
+
   const updated = { ...row };
 
   if (!row.CheckInTime) {
     updated.CheckInTime = now;
-    if (!MANUAL_STATUSES.includes(updated.Status)) {
-      const late = calcLateMinutes(now, row.ScheduledStartTime);
-      updated.LateMinutes = late;
-      updated.Status = late > 0 ? 'Late' : 'Present';
-    }
+    const late = calcLateMinutes(now, row.ScheduledStartTime);
+    updated.LateMinutes = late;
+    updated.Status = late > 0 ? 'Late' : 'Present';
   }
 
   if (!row.CheckOutTime) {
@@ -68,7 +73,7 @@ export function applyNowTimesToRow<T extends AttendanceTimeFillRow>(row: T, now:
     if (updated.CheckInTime && row.ScheduledEndTime) {
       const earlyLeave = calcEarlyLeaveMinutes(now, row.ScheduledEndTime);
       updated.EarlyLeaveMinutes = earlyLeave > 0 ? earlyLeave : 0;
-      if (!MANUAL_STATUSES.includes(updated.Status) && earlyLeave > 0) {
+      if (earlyLeave > 0) {
         updated.Status = 'EarlyLeave';
       }
     }
