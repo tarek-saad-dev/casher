@@ -13,8 +13,12 @@ export interface TargetLikeRow {
   persistenceStatus: 'not_generated' | 'generated' | 'recalculated';
   displayStatus: 'no_sales' | 'below_first_tier' | 'earned_target' | null;
   currentNetSalesAfterDiscount: string;
+  currentMtdSales?: string;
+  previewMtdTargetAmount?: string;
   storedNetSalesAfterDiscount: string | null;
   storedTargetAmount: string | null;
+  storedMtdSales?: string | null;
+  storedMtdTargetAmount?: string | null;
   planSummary: string;
   targetPlanId: number;
   tierCount: number;

@@ -8,6 +8,10 @@ vi.mock('@/lib/session', () => ({
   getSession: (...args: unknown[]) => getSession(...args),
 }));
 
+vi.mock('@/lib/branch/context', () => ({
+  requireBranchOperationAccess: vi.fn(async () => ({ branchId: 1 })),
+}));
+
 const getEmployeeTargetSettings = vi.fn();
 const previewEmployeeTargetPlan = vi.fn();
 const saveEmployeeTargetPlan = vi.fn();
@@ -53,7 +57,7 @@ describe('target-settings APIs', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.employee.empName).toBe('أحمد');
-    expect(getEmployeeTargetSettings).toHaveBeenCalledWith(5, null);
+    expect(getEmployeeTargetSettings).toHaveBeenCalledWith(5, null, 1);
   });
 
   it('GET unauthorized', async () => {
@@ -67,17 +71,29 @@ describe('target-settings APIs', () => {
 
   it('preview returns converted tiers + calculation', async () => {
     previewEmployeeTargetPlan.mockReturnValue({
-      convertedTiers: [{ dailyStartAmount: 1000, ratePercent: 20 }],
+      convertedTiers: [{ dailyStartAmount: 10000, ratePercent: 20 }],
       preview: { targetAmount: 100, breakdown: [] },
     });
 
-    // Use real parse; mock only preview function — wait, we mocked the whole module's preview
-    // Actually importActual spreads real parseTargetPreviewBody; preview is mocked.
-    // But route calls previewEmployeeTargetPlan which is mocked — good.
-    // However route will call real parse then mocked preview. If we mock return, fine.
+    const res = await previewPost(
+      new NextRequest('http://localhost/api/admin/employees/5/target-settings/preview', {
+        method: 'POST',
+        body: JSON.stringify({
+          inputBasis: 'monthly',
+          conversionDays: 26,
+          tiers: [{ inputStartAmount: 10000, ratePercent: 20 }],
+          sampleDailySales: 15000,
+        }),
+      }),
+      { params: Promise.resolve({ id: '5' }) },
+    );
 
-    // Re-import path: preview route imports previewEmployeeTargetPlan from module — mocked.
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.preview.targetAmount).toBe(100);
+  });
 
+  it('preview rejects daily input basis', async () => {
     const res = await previewPost(
       new NextRequest('http://localhost/api/admin/employees/5/target-settings/preview', {
         method: 'POST',
@@ -90,20 +106,9 @@ describe('target-settings APIs', () => {
       }),
       { params: Promise.resolve({ id: '5' }) },
     );
-
-    // Because we mocked preview to ignore args, but real parse runs first in route...
-    // Our mock replaces previewEmployeeTargetPlan - the route imports at load time.
-    // Need to check - vi.mock hoists so route uses mocked preview.
-    // But I set mockReturnValue - then real parse still runs for body.
-    // Problem: I mocked get/preview/save but previewEmployeeTargetPlan.mockReturnValue
-    // means real conversion won't run. That's ok for API wiring test.
-
-    // Actually wait - importActual includes real previewEmployeeTargetPlan then we override.
-    // Good.
-
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.preview.targetAmount).toBe(100);
+    expect(String(body.error)).toMatch(/شهري/);
   });
 
   it('PUT validation error returns 400 Arabic message', async () => {
@@ -116,7 +121,7 @@ describe('target-settings APIs', () => {
         method: 'PUT',
         body: JSON.stringify({
           isEnabled: true,
-          inputBasis: 'daily',
+          inputBasis: 'monthly',
           conversionDays: 26,
           effectiveFrom: '2026-07-14',
           tiers: [{ inputStartAmount: 1000, ratePercent: 20 }],

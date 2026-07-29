@@ -5,6 +5,7 @@
 
 import type { FullDayReport } from '@/lib/reports/full-day-report.types';
 import { formatTime12hAr } from '@/lib/reports/reportFormatters';
+import { formatTargetBreakdownLinesAr } from '@/lib/payroll/employee-target/mtd-target-snapshot';
 
 function money(value: number): string {
   const abs = Math.abs(value);
@@ -76,7 +77,14 @@ export function composeOwnerDailyWhatsAppMessage(report: FullDayReport): string 
   lines.push(`• إيرادات أخرى: ${moneyStar(o.incomes)}`);
   lines.push(`• مصروفات التشغيل: *${moneySigned(o.operatingExpenses, true)}*`);
   lines.push(`• أساسي الموظفين: *${moneySigned(o.staffBase, true)}*`);
-  lines.push(`• تارجت الموظفين: *${moneySigned(o.staffTarget, true)}*`);
+  lines.push(`• تارجت اليوم (فرق): *${moneySigned(o.staffTarget, true)}*`);
+  const staffMtdTarget = report.payroll.employees.reduce(
+    (s, e) => s + (e.mtdTargetAmount ?? 0),
+    0,
+  );
+  if (staffMtdTarget > 0) {
+    lines.push(`• تارجت الموظفين حتى الآن: *${money(staffMtdTarget)}*`);
+  }
   lines.push('');
   lines.push(`✅ *صافي ربح اليوم: ${money(o.net)}*`);
   lines.push('');
@@ -182,14 +190,32 @@ export function composeOwnerDailyWhatsAppMessage(report: FullDayReport): string 
     if (row.dayBase > 0 || row.dayTarget > 0) {
       const parts: string[] = [];
       if (row.dayBase > 0) parts.push(`أساسي ${moneyPlain(row.dayBase)}`);
-      if (row.dayTarget > 0) parts.push(`تارجت ${moneyPlain(row.dayTarget)}`);
+      if (row.dayTarget > 0) parts.push(`فرق تارجت اليوم ${moneyPlain(row.dayTarget)}`);
       lines.push(parts.join(' + '));
+    }
+    if (row.mtdTargetAmount != null) {
+      lines.push(`تارجت حتى الآن: *${moneyPlain(row.mtdTargetAmount)}*`);
+      if (row.mtdSales != null) {
+        lines.push(`مبيعات الشهر: ${moneyPlain(row.mtdSales)}`);
+      }
+      if (
+        row.mtdTargetAmount <= 0 &&
+        row.mtdSales != null &&
+        row.mtdSales > 0
+      ) {
+        lines.push('لسه متحسبلهوش تارجت — تحت أول شريحة في اتفاقه.');
+      }
+      const breakdownLines = formatTargetBreakdownLinesAr(row.targetBreakdown ?? []);
+      if (breakdownLines.length > 0) {
+        lines.push('الحسبة حسب اتفاق التارجت:');
+        for (const bl of breakdownLines) lines.push(bl);
+      }
     }
     const advancePart =
       row.advancesToday > 0
         ? `سلف: *${moneyPlain(row.advancesToday)}*`
         : 'بدون سلف';
-    lines.push(`استحقاق: *${moneyPlain(row.dayTotal)}* | ${advancePart}`);
+    lines.push(`استحقاق اليوم: *${moneyPlain(row.dayTotal)}* | ${advancePart}`);
     lines.push(`الرصيد: *${moneyPlainSigned(row.ledgerBalance)} ج.م*`);
     lines.push('');
   }

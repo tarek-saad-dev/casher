@@ -169,6 +169,7 @@ export async function PUT(req: NextRequest) {
 
     try {
       for (const item of items) {
+        const empDef = empDefaultMap.get(item.EmpID);
         try {
           await assertEmployeeEligibleForBranchAttendance(
             Number(item.EmpID),
@@ -180,14 +181,17 @@ export async function PUT(req: NextRequest) {
             const e = eligErr as { message: string; statusCode: number };
             await transaction.rollback();
             return NextResponse.json(
-              { error: `${e.message} (موظف ${item.EmpID})` },
+              {
+                error: `${e.message} (موظف ${item.EmpID}${
+                  empDef?.empName ? ` — ${empDef.empName}` : ''
+                })`,
+              },
               { status: e.statusCode },
             );
           }
           throw eligErr;
         }
 
-        const empDef = empDefaultMap.get(item.EmpID);
         const schedStart = empDef?.schedStart ?? null;
         const schedEnd   = empDef?.schedEnd   ?? null;
 

@@ -129,6 +129,36 @@ export async function PUT(
     if (!body.items || body.items.length === 0)
       return NextResponse.json({ error: 'يجب إضافة خدمة واحدة على الأقل' }, { status: 400 });
 
+    {
+      const { isEmployeeEligibleForBranchBookings } = await import(
+        '@/lib/branch/bookingQueueOwnership'
+      );
+      const operationalDate = new Date().toLocaleDateString('en-CA', {
+        timeZone: 'Africa/Cairo',
+      });
+      const uniqueEmpIds = [
+        ...new Set(
+          (body.items as Array<{ empId?: number }>)
+            .map((item) => Number(item.empId))
+            .filter((id) => Number.isFinite(id) && id > 0),
+        ),
+      ];
+      for (const empId of uniqueEmpIds) {
+        const ok = await isEmployeeEligibleForBranchBookings({
+          empId,
+          branchId: branch.branchId,
+          operationalDate,
+          requireCanReceiveBookings: false,
+        });
+        if (!ok) {
+          return NextResponse.json(
+            { error: `الموظف #${empId} غير معيَّن على فرع ${branch.branchCode}` },
+            { status: 400 },
+          );
+        }
+      }
+    }
+
     const db = await getPool();
     const existingSnap = await db.request()
       .input('id', sql.Int, invID)

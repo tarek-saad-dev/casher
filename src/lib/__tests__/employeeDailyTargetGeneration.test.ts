@@ -51,27 +51,35 @@ describe('deriveTargetDisplayStatus', () => {
 });
 
 describe('buildCalculationBreakdownJson', () => {
-  it('stores decimals as strings and includes plan snapshot', () => {
+  it('stores MTD v2 snapshot with day delta as targetAmount', () => {
     const tiers = [
       { sortOrder: 1, inputStartAmount: 1000, dailyStartAmount: 1000, ratePercent: 20 },
     ];
-    const calculation = calculateDailyTarget(1500, tiers);
+    const mtdCalculation = calculateDailyTarget(1500, tiers);
     const json = buildCalculationBreakdownJson({
       workDate: '2026-07-15',
+      monthStart: '2026-07-01',
       targetPlanId: 12,
-      inputBasis: 'daily',
+      inputBasis: 'monthly',
       conversionDays: 26,
       tiers,
-      calculation,
+      mtdCalculation,
+      daySales: 500,
+      mtdSales: 1500,
+      mtdTargetAmount: mtdCalculation.targetAmount,
+      dayDelta: 40,
+      priorWorkDate: '2026-07-14',
+      priorMtdTargetAmount: 60,
     });
     const parsed = JSON.parse(json);
-    expect(parsed.calculationVersion).toBe('v1');
+    expect(parsed.calculationVersion).toBe('v2-mtd');
     expect(parsed.targetPlanId).toBe(12);
-    expect(typeof parsed.netSalesAfterDiscount).toBe('string');
-    expect(typeof parsed.targetAmount).toBe('string');
+    expect(parsed.mtdSales).toBe('1500.00');
+    expect(parsed.mtdTargetAmount).toBe('100.00');
+    expect(parsed.dayDelta).toBe('40.00');
+    expect(parsed.targetAmount).toBe('40.00');
     expect(typeof parsed.tiers[0].dailyStartAmount).toBe('string');
     expect(typeof parsed.breakdown[0].eligibleAmount).toBe('string');
-    expect(parsed.targetAmount).toBe('100.00');
   });
 });
 
@@ -185,6 +193,7 @@ const listEnabledPlansCoveringDate = vi.fn();
 const listTiersForPlanIds = vi.fn();
 const upsertDailyTargetInTransaction = vi.fn();
 const getEmployeesNetServiceSalesByDate = vi.fn();
+const getEmployeesNetServiceSalesByDateRange = vi.fn();
 const syncEmployeeDailyTargetLedgerEntry = vi.fn();
 const fakeBegin = vi.fn();
 const fakeCommit = vi.fn();
@@ -220,6 +229,7 @@ vi.mock('@/lib/payroll/employee-target/employee-daily-target.repository', () => 
 
 vi.mock('@/lib/payroll/employee-target/employee-target-sales-service', () => ({
   getEmployeesNetServiceSalesByDate: (...a: unknown[]) => getEmployeesNetServiceSalesByDate(...a),
+  getEmployeesNetServiceSalesByDateRange: (...a: unknown[]) => getEmployeesNetServiceSalesByDateRange(...a),
   getEmployeeNetServiceSalesByDate: vi.fn(),
   EMPLOYEE_TARGET_LINE_TOTAL_SQL: '',
 }));
@@ -254,6 +264,7 @@ describe('generateEmployeeDailyTargets', () => {
       { id: 1, targetPlanId: 5, inputStartAmount: 1000, dailyStartAmount: 1000, ratePercent: 20, sortOrder: 1 },
     ]);
     getEmployeesNetServiceSalesByDate.mockResolvedValue([]);
+    getEmployeesNetServiceSalesByDateRange.mockResolvedValue([]);
     upsertDailyTargetInTransaction.mockResolvedValue({
       id: 100,
       persistenceStatus: 'generated',
@@ -263,6 +274,7 @@ describe('generateEmployeeDailyTargets', () => {
 
     const result = await generateEmployeeDailyTargets({
       workDate: '2026-07-15',
+      branchId: 1,
       generatedByUserId: 1,
     });
 
@@ -287,6 +299,7 @@ describe('generateEmployeeDailyTargets', () => {
     listEnabledPlansCoveringDate.mockResolvedValue([]);
     const result = await generateEmployeeDailyTargets({
       workDate: '2026-07-15',
+      branchId: 1,
       generatedByUserId: null,
     });
     expect(result.employees).toHaveLength(0);
@@ -301,20 +314,24 @@ describe('generateEmployeeDailyTargets', () => {
     listTiersForPlanIds.mockResolvedValue([
       { id: 1, targetPlanId: 1, inputStartAmount: 0, dailyStartAmount: 0, ratePercent: 10, sortOrder: 1 },
     ]);
-    getEmployeesNetServiceSalesByDate.mockResolvedValue([
+    const sales = [
       { empId: 10, empName: 'A', netSalesAfterDiscount: 200, grossServiceRevenue: 200, allocatedInvoiceDiscount: 0, serviceCount: 1, invoiceCount: 1 },
-    ]);
+    ];
+    getEmployeesNetServiceSalesByDate.mockResolvedValue(sales);
+    getEmployeesNetServiceSalesByDateRange.mockResolvedValue(sales);
     upsertDailyTargetInTransaction.mockResolvedValue({
       id: 1, persistenceStatus: 'generated', generatedAt: 't', updatedAt: null,
     });
 
     await generateEmployeeDailyTargets({
       workDate: '2026-07-15',
+      branchId: 1,
       generatedByUserId: 1,
       empIds: [10],
     });
-    expect(listEnabledPlansCoveringDate).toHaveBeenCalledWith('2026-07-15', [10]);
-    expect(getEmployeesNetServiceSalesByDate).toHaveBeenCalledWith('2026-07-15', [10]);
+    expect(listEnabledPlansCoveringDate).toHaveBeenCalledWith('2026-07-15', [10], 1);
+    expect(getEmployeesNetServiceSalesByDate).toHaveBeenCalledWith('2026-07-15', 1, [10]);
+    expect(getEmployeesNetServiceSalesByDateRange).toHaveBeenCalledWith('2026-07-01', '2026-07-15', 1, [10]);
   });
 
   it('rolls back when upsert fails', async () => {
@@ -325,10 +342,11 @@ describe('generateEmployeeDailyTargets', () => {
       { id: 1, targetPlanId: 1, inputStartAmount: 1000, dailyStartAmount: 1000, ratePercent: 20, sortOrder: 1 },
     ]);
     getEmployeesNetServiceSalesByDate.mockResolvedValue([]);
+    getEmployeesNetServiceSalesByDateRange.mockResolvedValue([]);
     upsertDailyTargetInTransaction.mockRejectedValue(new Error('db fail'));
 
     await expect(
-      generateEmployeeDailyTargets({ workDate: '2026-07-15', generatedByUserId: 1 }),
+      generateEmployeeDailyTargets({ workDate: '2026-07-15', branchId: 1, generatedByUserId: 1 }),
     ).rejects.toThrow('db fail');
     expect(fakeRollback).toHaveBeenCalled();
     expect(fakeCommit).not.toHaveBeenCalled();
@@ -342,39 +360,203 @@ describe('generateEmployeeDailyTargets', () => {
       { id: 1, targetPlanId: 1, inputStartAmount: 1000, dailyStartAmount: 1000, ratePercent: 20, sortOrder: 1 },
     ]);
     getEmployeesNetServiceSalesByDate.mockResolvedValue([]);
+    getEmployeesNetServiceSalesByDateRange.mockResolvedValue([]);
     upsertDailyTargetInTransaction.mockResolvedValue({
       id: 9, persistenceStatus: 'generated', generatedAt: 't', updatedAt: null,
     });
     syncEmployeeDailyTargetLedgerEntry.mockRejectedValue(new Error('ledger fail'));
 
     await expect(
-      generateEmployeeDailyTargets({ workDate: '2026-07-15', generatedByUserId: 1 }),
+      generateEmployeeDailyTargets({ workDate: '2026-07-15', branchId: 1, generatedByUserId: 1 }),
     ).rejects.toThrow('ledger fail');
     expect(fakeRollback).toHaveBeenCalled();
     expect(fakeCommit).not.toHaveBeenCalled();
   });
 
-  it('second run marks recalculated', async () => {
+  it('second run marks recalculated with MTD day delta', async () => {
     listEnabledPlansCoveringDate.mockResolvedValue([
       plan({ planId: 1, empId: 10 }),
     ]);
     listTiersForPlanIds.mockResolvedValue([
       { id: 1, targetPlanId: 1, inputStartAmount: 1000, dailyStartAmount: 1000, ratePercent: 20, sortOrder: 1 },
     ]);
-    getEmployeesNetServiceSalesByDate.mockResolvedValue([
+    const sales = [
       { empId: 10, empName: 'A', netSalesAfterDiscount: 1500, grossServiceRevenue: 1500, allocatedInvoiceDiscount: 0, serviceCount: 1, invoiceCount: 1 },
-    ]);
+    ];
+    getEmployeesNetServiceSalesByDate.mockResolvedValue(sales);
+    // Same MTD as day → prior MTD sales 0 → dayDelta = full mtdTarget (100)
+    getEmployeesNetServiceSalesByDateRange.mockResolvedValue(sales);
     upsertDailyTargetInTransaction.mockResolvedValue({
       id: 55, persistenceStatus: 'recalculated', generatedAt: 'old', updatedAt: 'new',
     });
 
     const result = await generateEmployeeDailyTargets({
       workDate: '2026-07-15',
+      branchId: 1,
       generatedByUserId: 1,
     });
     expect(result.totals.recalculated).toBe(1);
     expect(result.employees[0].targetAmount).toBe('100.00');
+    expect(result.employees[0].mtdTargetAmount).toBe('100.00');
     expect(result.employees[0].displayStatus).toBe('earned_target');
+  });
+
+  it('MTD mid-month: dayDelta = mtdTarget(D) − mtdTarget(D−1) on cumulative sales', async () => {
+    listEnabledPlansCoveringDate.mockResolvedValue([
+      plan({ planId: 1, empId: 10, empName: 'زياد' }),
+    ]);
+    listTiersForPlanIds.mockResolvedValue([
+      { id: 1, targetPlanId: 1, inputStartAmount: 10000, dailyStartAmount: 10000, ratePercent: 10, sortOrder: 1 },
+      { id: 2, targetPlanId: 1, inputStartAmount: 20000, dailyStartAmount: 20000, ratePercent: 20, sortOrder: 2 },
+    ]);
+    // Day sales 5k; month-to-date 25k → prior MTD sales = 20k
+    getEmployeesNetServiceSalesByDate.mockResolvedValue([
+      {
+        empId: 10,
+        empName: 'زياد',
+        netSalesAfterDiscount: 5000,
+        grossServiceRevenue: 5000,
+        allocatedInvoiceDiscount: 0,
+        serviceCount: 2,
+        invoiceCount: 1,
+      },
+    ]);
+    getEmployeesNetServiceSalesByDateRange.mockResolvedValue([
+      {
+        empId: 10,
+        empName: 'زياد',
+        netSalesAfterDiscount: 25000,
+        grossServiceRevenue: 25000,
+        allocatedInvoiceDiscount: 0,
+        serviceCount: 10,
+        invoiceCount: 5,
+      },
+    ]);
+    upsertDailyTargetInTransaction.mockResolvedValue({
+      id: 77,
+      persistenceStatus: 'generated',
+      generatedAt: '2026-07-15T02:00:00',
+      updatedAt: null,
+    });
+
+    const result = await generateEmployeeDailyTargets({
+      workDate: '2026-07-15',
+      branchId: 1,
+      generatedByUserId: null,
+    });
+
+    // mtd 25k → 10k@10% + 5k@20% = 1000+1000 = 2000
+    // prior 20k → 10k@10% = 1000 (at tier2 start eligible=0)
+    // dayDelta = 1000
+    expect(getEmployeesNetServiceSalesByDateRange).toHaveBeenCalledWith(
+      '2026-07-01',
+      '2026-07-15',
+      1,
+      [10],
+    );
+    expect(result.employees[0].mtdSales).toBe('25000.00');
+    expect(result.employees[0].mtdTargetAmount).toBe('2000.00');
+    expect(result.employees[0].dayDelta).toBe('1000.00');
+    expect(result.employees[0].targetAmount).toBe('1000.00');
+    expect(upsertDailyTargetInTransaction.mock.calls[0][1].targetAmount).toBe(1000);
+    expect(upsertDailyTargetInTransaction.mock.calls[0][1].netSalesAfterDiscount).toBe(5000);
+    const breakdown = JSON.parse(
+      upsertDailyTargetInTransaction.mock.calls[0][1].calculationBreakdownJson,
+    );
+    expect(breakdown.calculationVersion).toBe('v2-mtd');
+    expect(breakdown.mtdSales).toBe('25000.00');
+    expect(breakdown.mtdTargetAmount).toBe('2000.00');
+    expect(breakdown.dayDelta).toBe('1000.00');
+    expect(breakdown.monthStart).toBe('2026-07-01');
+  });
+
+  it('below first monthly tier on MTD → dayDelta 0 even with day sales', async () => {
+    listEnabledPlansCoveringDate.mockResolvedValue([
+      plan({ planId: 1, empId: 10 }),
+    ]);
+    listTiersForPlanIds.mockResolvedValue([
+      { id: 1, targetPlanId: 1, inputStartAmount: 10000, dailyStartAmount: 10000, ratePercent: 10, sortOrder: 1 },
+    ]);
+    getEmployeesNetServiceSalesByDate.mockResolvedValue([
+      {
+        empId: 10,
+        empName: 'A',
+        netSalesAfterDiscount: 2000,
+        grossServiceRevenue: 2000,
+        allocatedInvoiceDiscount: 0,
+        serviceCount: 1,
+        invoiceCount: 1,
+      },
+    ]);
+    getEmployeesNetServiceSalesByDateRange.mockResolvedValue([
+      {
+        empId: 10,
+        empName: 'A',
+        netSalesAfterDiscount: 8000,
+        grossServiceRevenue: 8000,
+        allocatedInvoiceDiscount: 0,
+        serviceCount: 4,
+        invoiceCount: 3,
+      },
+    ]);
+    upsertDailyTargetInTransaction.mockResolvedValue({
+      id: 88,
+      persistenceStatus: 'generated',
+      generatedAt: 't',
+      updatedAt: null,
+    });
+
+    const result = await generateEmployeeDailyTargets({
+      workDate: '2026-07-15',
+      branchId: 1,
+      generatedByUserId: 1,
+    });
+    expect(result.employees[0].mtdSales).toBe('8000.00');
+    expect(result.employees[0].mtdTargetAmount).toBe('0.00');
+    expect(result.employees[0].targetAmount).toBe('0.00');
+    expect(result.employees[0].displayStatus).toBe('below_first_tier');
+  });
+
+  it('first day of month: dayDelta equals full MTD target', async () => {
+    listEnabledPlansCoveringDate.mockResolvedValue([
+      plan({ planId: 1, empId: 10 }),
+    ]);
+    listTiersForPlanIds.mockResolvedValue([
+      { id: 1, targetPlanId: 1, inputStartAmount: 1000, dailyStartAmount: 1000, ratePercent: 20, sortOrder: 1 },
+    ]);
+    const sales = [
+      {
+        empId: 10,
+        empName: 'A',
+        netSalesAfterDiscount: 1500,
+        grossServiceRevenue: 1500,
+        allocatedInvoiceDiscount: 0,
+        serviceCount: 1,
+        invoiceCount: 1,
+      },
+    ];
+    getEmployeesNetServiceSalesByDate.mockResolvedValue(sales);
+    getEmployeesNetServiceSalesByDateRange.mockResolvedValue(sales);
+    upsertDailyTargetInTransaction.mockResolvedValue({
+      id: 1,
+      persistenceStatus: 'generated',
+      generatedAt: 't',
+      updatedAt: null,
+    });
+
+    const result = await generateEmployeeDailyTargets({
+      workDate: '2026-07-01',
+      branchId: 1,
+      generatedByUserId: null,
+    });
+    expect(getEmployeesNetServiceSalesByDateRange).toHaveBeenCalledWith(
+      '2026-07-01',
+      '2026-07-01',
+      1,
+      [10],
+    );
+    expect(result.employees[0].mtdTargetAmount).toBe('100.00');
+    expect(result.employees[0].dayDelta).toBe('100.00');
   });
 
   it('rejects ambiguous overlapping plans', async () => {
@@ -383,7 +565,7 @@ describe('generateEmployeeDailyTargets', () => {
       plan({ planId: 2, empId: 10, effectiveFrom: '2026-03-01' }),
     ]);
     await expect(
-      generateEmployeeDailyTargets({ workDate: '2026-07-15', generatedByUserId: 1 }),
+      generateEmployeeDailyTargets({ workDate: '2026-07-15', branchId: 1, generatedByUserId: 1 }),
     ).rejects.toThrow(EmployeeDailyTargetDomainError);
     expect(upsertDailyTargetInTransaction).not.toHaveBeenCalled();
   });

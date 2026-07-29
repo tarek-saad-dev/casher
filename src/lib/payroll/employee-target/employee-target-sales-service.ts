@@ -31,17 +31,22 @@ export interface EmployeeNetServiceSalesRow {
 }
 
 /**
- * Shared sales core for daily target — parity with /admin/reports/employee-services
- * for a single work date (inclusive), scoped to one invoice branch (Phase 1L).
+ * Shared sales core — parity with /admin/reports/employee-services
+ * for an inclusive date range, scoped to one invoice branch (Phase 1L).
  *
  * Uses allocateEmployeeInvoiceRevenue so NetSalesAfterDiscount === actualInvoiceRevenue.
  */
-export async function getEmployeesNetServiceSalesByDate(
-  workDate: string,
+export async function getEmployeesNetServiceSalesByDateRange(
+  fromDate: string,
+  toDate: string,
   branchId: number,
   empIds?: number[] | null,
 ): Promise<EmployeeNetServiceSalesRow[]> {
-  assertValidWorkDate(workDate);
+  assertValidWorkDate(fromDate);
+  assertValidWorkDate(toDate);
+  if (fromDate > toDate) {
+    throw new Error('fromDate يجب أن يكون قبل أو يساوي toDate');
+  }
   if (!Number.isInteger(branchId) || branchId <= 0) {
     throw new Error('branchId مطلوب لمبيعات التارجت (Phase 1L)');
   }
@@ -54,8 +59,8 @@ export async function getEmployeesNetServiceSalesByDate(
   const db = await getPool();
 
   const headersResult = await db.request()
-    .input('fromDate', sql.Date, workDate)
-    .input('toDate', sql.Date, workDate)
+    .input('fromDate', sql.Date, fromDate)
+    .input('toDate', sql.Date, toDate)
     .input('branchId', sql.Int, branchId)
     .query(`
       SELECT
@@ -83,10 +88,9 @@ export async function getEmployeesNetServiceSalesByDate(
     return [];
   }
 
-  // Load all eligible lines for invoices in range (report loads all then filters employee).
   const detailsResult = await db.request()
-    .input('fromDate', sql.Date, workDate)
-    .input('toDate', sql.Date, workDate)
+    .input('fromDate', sql.Date, fromDate)
+    .input('toDate', sql.Date, toDate)
     .input('branchId', sql.Int, branchId)
     .query(`
       SELECT
@@ -146,6 +150,17 @@ export async function getEmployeesNetServiceSalesByDate(
   }
 
   return rows.sort((a, b) => a.empName.localeCompare(b.empName, 'ar'));
+}
+
+/**
+ * Single work-date wrapper (inclusive) — same branch-scoped sales core.
+ */
+export async function getEmployeesNetServiceSalesByDate(
+  workDate: string,
+  branchId: number,
+  empIds?: number[] | null,
+): Promise<EmployeeNetServiceSalesRow[]> {
+  return getEmployeesNetServiceSalesByDateRange(workDate, workDate, branchId, empIds);
 }
 
 export async function getEmployeeNetServiceSalesByDate(

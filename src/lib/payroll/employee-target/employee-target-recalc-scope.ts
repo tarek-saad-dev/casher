@@ -2,7 +2,15 @@
  * Pure helpers: resolve (EmpID, BranchID, WorkDate) scopes from invoice snapshots.
  * Header-discount allocation ⇒ always include ALL EmpIDs on the invoice dates.
  * Branch ownership comes from persisted invoice head BranchID — never from client.
+ *
+ * MTD cascade: changing day D changes dayDelta for D..cascadeEnd — expand scopes.
  */
+
+import {
+  listDatesInclusive,
+  monthEndFromWorkDate,
+  monthStartFromWorkDate,
+} from './target.validation';
 
 export interface InvoiceScopeSnapshot {
   workDate: string | null;
@@ -164,4 +172,42 @@ export function dedupeTargetRecalcScopes(scopes: TargetRecalcScope[]): TargetRec
       a.branchId - b.branchId ||
       a.empId - b.empId,
   );
+}
+
+/**
+ * Expand each scope from its workDate through cascadeEnd (inclusive),
+ * capped to the same calendar month. Default cascadeEnd = today (Cairo-ish ISO date)
+ * or month end — caller passes an explicit YYYY-MM-DD.
+ */
+export function expandTargetRecalcScopesForMtdCascade(
+  scopes: TargetRecalcScope[],
+  cascadeEndDate: string,
+): TargetRecalcScope[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cascadeEndDate)) {
+    return dedupeTargetRecalcScopes(scopes);
+  }
+
+  const expanded: TargetRecalcScope[] = [];
+  for (const s of scopes) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s.workDate)) continue;
+    const monthEnd = monthEndFromWorkDate(s.workDate);
+    const monthStart = monthStartFromWorkDate(s.workDate);
+    const end =
+      cascadeEndDate < s.workDate
+        ? s.workDate
+        : cascadeEndDate > monthEnd
+          ? monthEnd
+          : cascadeEndDate;
+    // Never expand before month start (defensive).
+    const from = s.workDate < monthStart ? monthStart : s.workDate;
+    for (const d of listDatesInclusive(from, end)) {
+      expanded.push({
+        empId: s.empId,
+        branchId: s.branchId,
+        workDate: d,
+        reasons: d === s.workDate ? [...s.reasons] : [...s.reasons, 'mtd_cascade'],
+      });
+    }
+  }
+  return dedupeTargetRecalcScopes(expanded);
 }

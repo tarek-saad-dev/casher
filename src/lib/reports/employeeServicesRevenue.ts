@@ -42,15 +42,23 @@ export async function getEmployeeRevenueByDate(
   employeeId: number,
   startDate: string,
   endDateExclusive: string,
+  branchId?: number | null,
 ): Promise<Map<string, DailyEmployeeRevenueRow>> {
   const db = await getPool();
 
-  const result = await db
+  const branchFilter =
+    branchId != null && branchId > 0 ? 'AND h.BranchID = @branchId' : '';
+
+  const request = db
     .request()
     .input('employeeId', sql.Int, employeeId)
     .input('startDate', sql.Date, startDate)
-    .input('endDateExclusive', sql.Date, endDateExclusive)
-    .query(`
+    .input('endDateExclusive', sql.Date, endDateExclusive);
+  if (branchId != null && branchId > 0) {
+    request.input('branchId', sql.Int, branchId);
+  }
+
+  const result = await request.query(`
       SELECT
         CONVERT(VARCHAR(10), CAST(h.invDate AS date), 120) AS OperationDate,
         ISNULL(SUM(${SERVICE_LINE_TOTAL_EXPR}), 0) AS Revenue,
@@ -64,6 +72,7 @@ export async function getEmployeeRevenueByDate(
         AND CAST(h.invDate AS date) < @endDateExclusive
         AND ${EMPLOYEE_SERVICES_INVOICE_FILTER}
         AND d.EmpID = @employeeId
+        ${branchFilter}
       GROUP BY CAST(h.invDate AS date)
     `);
 

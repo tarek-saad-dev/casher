@@ -35,6 +35,17 @@ function sampleReport(): FullDayReport {
           baseWage: 368.18,
           targetAmount: 426,
           targetSales: 5000,
+          mtdSales: 45000,
+          mtdTargetAmount: 1500,
+          targetBreakdown: [
+            {
+              from: 40000,
+              to: 50000,
+              eligibleAmount: 5000,
+              ratePercent: 30,
+              targetAmount: 1500,
+            },
+          ],
           dayTotal: 794.18,
           payrollStatus: 'approved',
           hasPhone: true,
@@ -49,6 +60,9 @@ function sampleReport(): FullDayReport {
           baseWage: 0,
           targetAmount: 0,
           targetSales: null,
+          mtdSales: null,
+          mtdTargetAmount: null,
+          targetBreakdown: null,
           dayTotal: 0,
           payrollStatus: null,
           hasPhone: true,
@@ -78,6 +92,17 @@ function sampleReport(): FullDayReport {
           empName: 'زياد',
           dayBase: 368.18,
           dayTarget: 426,
+          mtdTargetAmount: 1500,
+          mtdSales: 45000,
+          targetBreakdown: [
+            {
+              from: 40000,
+              to: 50000,
+              eligibleAmount: 5000,
+              ratePercent: 30,
+              targetAmount: 1500,
+            },
+          ],
           dayTotal: 794.18,
           advancesToday: 550,
           ledgerBalance: -11462.19,
@@ -87,6 +112,9 @@ function sampleReport(): FullDayReport {
           empName: 'طارق',
           dayBase: 0,
           dayTarget: 0,
+          mtdTargetAmount: null,
+          mtdSales: null,
+          targetBreakdown: null,
           dayTotal: 0,
           advancesToday: 10,
           ledgerBalance: 9045,
@@ -166,5 +194,9 @@ describe('composeOwnerDailyWhatsAppMessage', () => {
     expect(msg).toContain('من أول الشهر حتى اليوم');
     expect(msg).toContain('صافي الربح الشهري حتى اليوم: 34,500.00 ج.م');
     expect(msg).toContain('صافي السيولة بالخزنة حتى اليوم: 63,500.00 ج.م');
+    expect(msg).toContain('تارجت اليوم (فرق)');
+    expect(msg).toContain('تارجت الموظفين حتى الآن');
+    expect(msg).toContain('تارجت حتى الآن');
+    expect(msg).toContain('الحسبة حسب اتفاق التارجت');
   });
 });

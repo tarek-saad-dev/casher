@@ -145,6 +145,8 @@ export async function previewEmployeeGlobalWeeklySchedule(args: {
           branchId: day.branchId,
           effectiveFrom: args.effectiveFrom,
           canReceiveBookings: day.canReceiveBookings !== false,
+          // HR weekly planner sets hours first; booking service eligibility is a separate setup step.
+          requireServicesIfBooking: false,
         });
       } catch (err) {
         if (err instanceof SchedulePolicyError) {

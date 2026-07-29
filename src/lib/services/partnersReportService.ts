@@ -70,7 +70,7 @@ export async function buildPartnersMonthlyReport(
     getMonthlyExpensesByCategory(year, month, branchId),
     getMonthlyEmployeeAdvances(year, month, branchId),
     loadPartnersEmployeeOverrides(),
-    getEmployeeLedgerSummary(ledgerMonth),
+    getEmployeeLedgerSummary(ledgerMonth, branchId),
     getEffectiveBranchPartnerShares(branchId, period.endDate),
   ]);
 
@@ -262,6 +262,7 @@ export async function buildPartnersMonthlyReport(
   const classification = await maybeBuildClassificationPayload({
     year,
     month,
+    branchId,
     salesRevenueOverride: totalRevenue,
     legacyTotals: {
       totalRevenue,

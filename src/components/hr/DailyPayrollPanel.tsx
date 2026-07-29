@@ -235,7 +235,9 @@ export default function DailyPayrollPanel() {
     notGenerated: number;
     earnedTarget: number;
     totalCurrentNetSalesAfterDiscount: string;
+    totalCurrentMtdSales?: string;
     totalStoredTargetAmount: string;
+    totalStoredMtdTargetAmount?: string;
   } | null>(null);
   const [planConflicts, setPlanConflicts] = useState<string[]>([]);
   const [regeneratingTarget, setRegeneratingTarget] = useState(false);
@@ -717,8 +719,20 @@ export default function DailyPayrollPanel() {
           {targetTotals && (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               <KpiCard title="موظفو التارجت" value={targetTotals.eligibleEmployees} icon={<Target className="w-5 h-5" />} variant="default" />
-              <KpiCard title="مبيعات موظفي التارجت" value={`${fmt(Number(targetTotals.totalCurrentNetSalesAfterDiscount))} ج.م`} icon={<TrendingUp className="w-5 h-5" />} variant="default" />
-              <KpiCard title="إجمالي تارجت اليوم" value={`${fmt(Number(targetTotals.totalStoredTargetAmount))} ج.م`} icon={<Target className="w-5 h-5" />} variant="primary" />
+              <KpiCard title="مبيعات اليوم (تارجت)" value={`${fmt(Number(targetTotals.totalCurrentNetSalesAfterDiscount))} ج.م`} icon={<TrendingUp className="w-5 h-5" />} variant="default" />
+              <KpiCard
+                title="مبيعات الشهر حتى الآن"
+                value={`${fmt(Number(targetTotals.totalCurrentMtdSales ?? 0))} ج.م`}
+                icon={<TrendingUp className="w-5 h-5" />}
+                variant="default"
+              />
+              <KpiCard
+                title="تارجت حتى الآن"
+                value={`${fmt(Number(targetTotals.totalStoredMtdTargetAmount ?? 0))} ج.م`}
+                icon={<Target className="w-5 h-5" />}
+                variant="primary"
+              />
+              <KpiCard title="فرق تارجت اليوم" value={`${fmt(Number(targetTotals.totalStoredTargetAmount))} ج.م`} icon={<Target className="w-5 h-5" />} variant="default" />
               <KpiCard title="استحقوا تارجت" value={targetTotals.earnedTarget} icon={<CheckCircle2 className="w-5 h-5" />} variant="success" />
               <KpiCard title="لم يُولَّد تارجتهم" value={targetTotals.notGenerated} icon={<AlertTriangle className="w-5 h-5" />} variant="warning" />
             </div>
@@ -782,9 +796,9 @@ export default function DailyPayrollPanel() {
                   <th className="px-3 py-3 text-center font-medium">حالة الحضور</th>
                   <th className="px-3 py-3 text-center font-medium">عدد الساعات</th>
                   <th className="px-3 py-3 text-left font-medium">الأساسي اليومي</th>
-                  <th className="px-3 py-3 text-left font-medium">مبيعات التارجت بعد الخصم</th>
+                  <th className="px-3 py-3 text-left font-medium">مبيعات اليوم / تراكمي الشهر</th>
                   <th className="px-3 py-3 text-center font-medium">نظام التارجت</th>
-                  <th className="px-3 py-3 text-left font-medium">تارجت اليوم</th>
+                  <th className="px-3 py-3 text-left font-medium">تارجت حتى الآن / فرق اليوم</th>
                   <th className="px-3 py-3 text-center font-medium">حالة التوليد</th>
                   <th className="px-3 py-3 text-center font-medium">مزامنة التارجت</th>
                   <th className="px-3 py-3 text-center font-medium">التفاصيل</th>
@@ -835,9 +849,20 @@ export default function DailyPayrollPanel() {
                         )}
                       </td>
                       <td className="px-3 py-3 text-left text-xs">
-                        {target
-                          ? <span className="text-sky-300 font-medium">{fmt(Number(target.currentNetSalesAfterDiscount))}</span>
-                          : <span className="text-zinc-600">—</span>}
+                        {target ? (
+                          <div className="space-y-0.5">
+                            <span className="text-sky-300 font-medium">
+                              {fmt(Number(target.currentNetSalesAfterDiscount))}
+                            </span>
+                            {target.currentMtdSales != null && (
+                              <div className="text-[10px] text-zinc-500">
+                                تراكمي {fmt(Number(target.currentMtdSales))}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-zinc-600">—</span>
+                        )}
                       </td>
                       <td className="px-3 py-3 text-center text-[11px] text-zinc-300 max-w-[140px]">
                         {target ? target.planSummary : 'لا يوجد تارجت'}
@@ -854,12 +879,25 @@ export default function DailyPayrollPanel() {
                               className="font-bold text-violet-300 hover:underline"
                               onClick={() => setDetailTarget(target)}
                             >
-                              {fmt(Number(target.storedTargetAmount ?? 0))}
+                              {fmt(
+                                Number(
+                                  target.storedMtdTargetAmount ??
+                                    target.previewMtdTargetAmount ??
+                                    target.storedTargetAmount ??
+                                    0,
+                                ),
+                              )}
+                              <span className="text-[10px] font-normal text-zinc-500 mr-1">
+                                حتى الآن
+                              </span>
                             </button>
+                            <div className="text-[10px] text-zinc-400">
+                              فرق اليوم {fmt(Number(target.storedTargetAmount ?? 0))}
+                            </div>
                             {target.displayStatus === 'below_first_tier' && (
                               <div>
                                 <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] border border-amber-500/30 text-amber-400 bg-amber-500/10">
-                                  أقل من بداية التارجت
+                                  لسه متحسبلهوش تارجت
                                 </span>
                               </div>
                             )}
@@ -928,8 +966,15 @@ export default function DailyPayrollPanel() {
                     </td>
                     <td />
                     <td className="px-3 py-3 text-left font-bold text-violet-300 whitespace-nowrap">
-                      {targetTotals ? `${fmt(Number(targetTotals.totalStoredTargetAmount))} ج.م` : '—'}
-                      <div className="text-[10px] text-zinc-500 font-normal">تارجت فقط</div>
+                      {targetTotals
+                        ? `${fmt(Number(targetTotals.totalStoredMtdTargetAmount ?? targetTotals.totalStoredTargetAmount))} ج.م`
+                        : '—'}
+                      <div className="text-[10px] text-zinc-500 font-normal">حتى الآن</div>
+                      {targetTotals && (
+                        <div className="text-[10px] text-zinc-500 font-normal">
+                          فرق اليوم {fmt(Number(targetTotals.totalStoredTargetAmount))}
+                        </div>
+                      )}
                     </td>
                     <td colSpan={2} />
                   </tr>

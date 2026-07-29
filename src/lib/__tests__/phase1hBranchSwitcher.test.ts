@@ -173,6 +173,8 @@ describe('Phase 1H — resolvePostSwitchNavigationPath', () => {
       '/income/9',
       '/expenses/3',
       '/incomes/1',
+      '/admin/hr/employees/42/branch-schedule',
+      '/admin/hr/employees/7',
     ];
     for (const p of unsafe) {
       expect(resolvePostSwitchNavigationPath(p)).toBe('/');

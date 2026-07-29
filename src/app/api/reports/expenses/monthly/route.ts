@@ -392,6 +392,7 @@ export async function GET(req: NextRequest) {
       await maybeBuildClassificationPayload({
         year,
         month,
+        branchId: scope.mode === 'single' ? scope.branchId : null,
         invTypeFilter: 'expense',
         legacyTotals: {
           totalExpenses,

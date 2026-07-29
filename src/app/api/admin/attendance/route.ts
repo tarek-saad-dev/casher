@@ -127,7 +127,15 @@ export async function GET(req: NextRequest) {
 
     const db = await getPool();
     await ensureAttendanceTable(db);
+    const { ensureEmpBranchWorkScheduleTable } = await import(
+      '@/lib/hr/empBranchWorkSchedule'
+    );
+    await ensureEmpBranchWorkScheduleTable();
 
+    // Branch-scoped roster: only employees scheduled to work at the active
+    // branch on this WorkDate (or who already have an attendance row here /
+    // temporary transfer into this branch). Never fall back to global legacy
+    // TblEmpWorkSchedule — that caused cross-branch 403 on bulk save.
     const result = await db
       .request()
       .input("workDate", sql.Date, dateStr)
@@ -142,10 +150,10 @@ export async function GET(req: NextRequest) {
           e.DayOffPolicy,
           e.IsAttendanceExempt,
           e.IsPayrollEnabled,
-          ws.DayOfWeek AS ScheduleDayOfWeek,
+          ws.ScheduleDayOfWeek,
           ws.IsWorkingDay,
-          CONVERT(VARCHAR(5), ws.StartTime, 108) AS ScheduleStartTime,
-          CONVERT(VARCHAR(5), ws.EndTime, 108) AS ScheduleEndTime,
+          ws.ScheduleStartTime,
+          ws.ScheduleEndTime,
           CONVERT(VARCHAR(5), e.DefaultCheckInTime,  108) AS DefaultCheckInTime,
           CONVERT(VARCHAR(5), e.DefaultCheckOutTime, 108) AS DefaultCheckOutTime,
           a.ID AS AttendanceID,
@@ -159,12 +167,46 @@ export async function GET(req: NextRequest) {
           ISNULL(a.BreakMinutesTotal, 0) AS BreakMinutesTotal,
           ISNULL(a.BreakTimeMinutesTotal, 0) AS BreakTimeMinutesTotal
         FROM dbo.TblEmp e
-        LEFT JOIN dbo.TblEmpWorkSchedule ws
-          ON ws.EmpID = e.EmpID AND ws.DayOfWeek = @dayOfWeek
         LEFT JOIN dbo.TblEmpAttendance a
           ON a.EmpID = e.EmpID AND a.WorkDate = @workDate AND a.BranchID = @branchId
+        OUTER APPLY (
+          SELECT TOP 1
+            s.DayOfWeek AS ScheduleDayOfWeek,
+            CAST(s.IsWorking AS bit) AS IsWorkingDay,
+            CONVERT(VARCHAR(5), s.StartTime, 108) AS ScheduleStartTime,
+            CONVERT(VARCHAR(5), s.EndTime, 108) AS ScheduleEndTime
+          FROM dbo.TblEmpBranchWorkSchedule s
+          WHERE s.EmpID = e.EmpID
+            AND s.BranchID = @branchId
+            AND s.DayOfWeek = @dayOfWeek
+            AND s.IsActive = 1
+            AND s.EffectiveFrom <= @workDate
+            AND (s.EffectiveTo IS NULL OR s.EffectiveTo >= @workDate)
+          ORDER BY s.EffectiveFrom DESC, s.ScheduleID DESC
+        ) ws
+        OUTER APPLY (
+          SELECT TOP 1 1 AS X
+          FROM dbo.TblEmpTemporaryBranchTransfer t
+          WHERE t.EmpID = e.EmpID
+            AND t.WorkDate = @workDate
+            AND t.IsActive = 1
+            AND t.ToBranchID = @branchId
+        ) xferIn
         WHERE ISNULL(e.isActive, 1) = 1
           ${onlyPayrollEnabled ? "AND ISNULL(e.IsPayrollEnabled, 1) = 1" : ""}
+          AND (
+            -- Working today at this branch
+            (ws.IsWorkingDay = 1 AND EXISTS (
+              SELECT 1 FROM dbo.TblEmpBranchAssignment ea
+              WHERE ea.EmpID = e.EmpID AND ea.BranchID = @branchId AND ea.IsActive = 1
+                AND ea.EffectiveFrom <= @workDate
+                AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @workDate)
+            ))
+            -- Or already checked in / has a row here
+            OR a.ID IS NOT NULL
+            -- Or temporary transfer into this branch today
+            OR xferIn.X IS NOT NULL
+          )
         ORDER BY e.EmpName
       `);
 
@@ -343,19 +385,34 @@ export async function PUT(req: NextRequest) {
       .request()
       .input("empId", sql.Int, EmpID)
       .input("dayOfWeek", sql.TinyInt, dayOfWeek)
+      .input("workDate", sql.Date, WorkDate)
+      .input("branchId", sql.Int, branch.branchId)
       .query(`
         SELECT
           e.EmpName,
           e.EmploymentType,
           CONVERT(VARCHAR(5), e.DefaultCheckInTime,  108) AS DefaultCheckInTime,
           CONVERT(VARCHAR(5), e.DefaultCheckOutTime, 108) AS DefaultCheckOutTime,
-          ws.DayOfWeek AS ScheduleDayOfWeek,
+          ws.ScheduleDayOfWeek,
           ws.IsWorkingDay,
-          CONVERT(VARCHAR(5), ws.StartTime, 108) AS ScheduleStartTime,
-          CONVERT(VARCHAR(5), ws.EndTime, 108) AS ScheduleEndTime
+          ws.ScheduleStartTime,
+          ws.ScheduleEndTime
         FROM dbo.TblEmp e
-        LEFT JOIN dbo.TblEmpWorkSchedule ws
-          ON ws.EmpID = e.EmpID AND ws.DayOfWeek = @dayOfWeek
+        OUTER APPLY (
+          SELECT TOP 1
+            s.DayOfWeek AS ScheduleDayOfWeek,
+            CAST(s.IsWorking AS bit) AS IsWorkingDay,
+            CONVERT(VARCHAR(5), s.StartTime, 108) AS ScheduleStartTime,
+            CONVERT(VARCHAR(5), s.EndTime, 108) AS ScheduleEndTime
+          FROM dbo.TblEmpBranchWorkSchedule s
+          WHERE s.EmpID = e.EmpID
+            AND s.BranchID = @branchId
+            AND s.DayOfWeek = @dayOfWeek
+            AND s.IsActive = 1
+            AND s.EffectiveFrom <= @workDate
+            AND (s.EffectiveTo IS NULL OR s.EffectiveTo >= @workDate)
+          ORDER BY s.EffectiveFrom DESC, s.ScheduleID DESC
+        ) ws
         WHERE e.EmpID = @empId
       `);
 

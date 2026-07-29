@@ -60,12 +60,17 @@ export async function GET(
       .input('day', sql.Date, from)
       .query(`
         SELECT DISTINCT b.BranchID, b.BranchCode, b.BranchName, b.LifecycleStatus,
-               b.IsActive, b.DefaultOpenTime, b.DefaultCloseTime
-        FROM dbo.TblEmpBranchAssignment a
-        INNER JOIN dbo.TblBranch b ON b.BranchID = a.BranchID
-        WHERE a.EmpID = @empId AND a.IsActive = 1
-          AND a.EffectiveFrom <= @day
-          AND (a.EffectiveTo IS NULL OR a.EffectiveTo >= @day)
+               b.IsActive, b.DefaultOpenTime, b.DefaultCloseTime,
+               CAST(CASE WHEN a.ID IS NOT NULL THEN 1 ELSE 0 END AS bit) AS IsAssigned
+        FROM dbo.TblBranch b
+        LEFT JOIN dbo.TblEmpBranchAssignment a
+          ON a.BranchID = b.BranchID
+         AND a.EmpID = @empId
+         AND a.IsActive = 1
+         AND a.EffectiveFrom <= @day
+         AND (a.EffectiveTo IS NULL OR a.EffectiveTo >= @day)
+        WHERE b.IsActive = 1
+           OR a.ID IS NOT NULL
         ORDER BY b.BranchID
       `);
 
@@ -131,9 +136,11 @@ export async function GET(
         branchName: String(b.BranchName),
         lifecycleStatus: String(b.LifecycleStatus),
         isActive: Boolean(b.IsActive),
+        isAssigned: Boolean(b.IsAssigned),
         defaultOpenTime: fmtTime(b.DefaultOpenTime),
         defaultCloseTime: fmtTime(b.DefaultCloseTime),
       })),
+      hasActiveAssignment: branches.recordset.some((b) => Boolean(b.IsAssigned)),
       days,
     });
   } catch (err) {

@@ -27,6 +27,7 @@ import {
 import { normalizePayrollMethod } from '@/lib/hr/employee-hr-model';
 import { computeNetWorkedHours } from '@/lib/hr/attendance-breaks';
 import { ensureAttendanceBreakSchema } from '@/lib/hr/attendance-breaks-db';
+import { parseMtdTargetSnapshot } from '@/lib/payroll/employee-target/mtd-target-snapshot';
 import type {
   BaseWageKind,
   EmployeeMonthlyPayrollDayRow,
@@ -76,6 +77,7 @@ interface TargetRow {
   NetSalesAfterDiscount: number;
   TargetAmount: number;
   Status: string | null;
+  CalculationBreakdownJson: string | null;
 }
 
 interface LedgerDayAgg {
@@ -319,7 +321,7 @@ async function loadEmployee(employeeId: number): Promise<EmployeeRow | null> {
 export async function getEmployeeMonthlyPayrollReport(
   params: GetEmployeeMonthlyPayrollParams,
 ): Promise<EmployeeMonthlyPayrollReport | null> {
-  const { employeeId, year, month } = params;
+  const { employeeId, year, month, branchId } = params;
   const { startDate, endDateExclusive, endDate, calendarDays } = getMonthDateRange(year, month);
   const todayStr = getCairoTodayStr();
 
@@ -386,12 +388,13 @@ export async function getEmployeeMonthlyPayrollReport(
           `),
       ),
 
-      queryRecordsetOrEmpty<AttendanceRow>('TblEmpAttendance', () =>
-        db.request()
+      queryRecordsetOrEmpty<AttendanceRow>('TblEmpAttendance', () => {
+        const req = db.request()
           .input('empId', sql.Int, employeeId)
           .input('startDate', sql.Date, startDate)
-          .input('endDateExclusive', sql.Date, endDateExclusive)
-          .query(`
+          .input('endDateExclusive', sql.Date, endDateExclusive);
+        if (branchId != null && branchId > 0) req.input('branchId', sql.Int, branchId);
+        return req.query(`
             SELECT
               CONVERT(VARCHAR(10), WorkDate, 120) AS WorkDate,
               ID AS AttendanceID,
@@ -408,15 +411,17 @@ export async function getEmployeeMonthlyPayrollReport(
             WHERE EmpID = @empId
               AND WorkDate >= @startDate
               AND WorkDate < @endDateExclusive
-          `),
-      ),
+              ${branchId != null && branchId > 0 ? 'AND BranchID = @branchId' : ''}
+          `);
+      }),
 
-      queryRecordsetOrEmpty<PayrollRow>('TblEmpDailyPayroll', () =>
-        db.request()
+      queryRecordsetOrEmpty<PayrollRow>('TblEmpDailyPayroll', () => {
+        const req = db.request()
           .input('empId', sql.Int, employeeId)
           .input('startDate', sql.Date, startDate)
-          .input('endDateExclusive', sql.Date, endDateExclusive)
-          .query(`
+          .input('endDateExclusive', sql.Date, endDateExclusive);
+        if (branchId != null && branchId > 0) req.input('branchId', sql.Int, branchId);
+        return req.query(`
             SELECT
               CONVERT(VARCHAR(10), WorkDate, 120) AS WorkDate,
               ActualHours,
@@ -428,38 +433,43 @@ export async function getEmployeeMonthlyPayrollReport(
             WHERE EmpID = @empId
               AND WorkDate >= @startDate
               AND WorkDate < @endDateExclusive
-          `),
-      ),
+              ${branchId != null && branchId > 0 ? 'AND BranchID = @branchId' : ''}
+          `);
+      }),
 
-      queryRecordsetOrEmpty<TargetRow>('TblEmpDailyTarget', () =>
-        db.request()
+      queryRecordsetOrEmpty<TargetRow>('TblEmpDailyTarget', () => {
+        const req = db.request()
           .input('empId', sql.Int, employeeId)
           .input('startDate', sql.Date, startDate)
-          .input('endDateExclusive', sql.Date, endDateExclusive)
-          .query(`
+          .input('endDateExclusive', sql.Date, endDateExclusive);
+        if (branchId != null && branchId > 0) req.input('branchId', sql.Int, branchId);
+        return req.query(`
             SELECT
               CONVERT(VARCHAR(10), WorkDate, 120) AS WorkDate,
               NetSalesAfterDiscount,
               TargetAmount,
-              Status
+              Status,
+              CalculationBreakdownJson
             FROM dbo.TblEmpDailyTarget
             WHERE EmpID = @empId
               AND WorkDate >= @startDate
               AND WorkDate < @endDateExclusive
-          `),
-      ),
+              ${branchId != null && branchId > 0 ? 'AND BranchID = @branchId' : ''}
+          `);
+      }),
 
       queryRecordsetOrEmpty<{
         EntryDate: string;
         EntryReason: string;
         Amount: number;
         Notes: string | null;
-      }>('TblEmpLedgerEntry', () =>
-        db.request()
+      }>('TblEmpLedgerEntry', () => {
+        const req = db.request()
           .input('empId', sql.Int, employeeId)
           .input('startDate', sql.Date, startDate)
-          .input('endDateExclusive', sql.Date, endDateExclusive)
-          .query(`
+          .input('endDateExclusive', sql.Date, endDateExclusive);
+        if (branchId != null && branchId > 0) req.input('branchId', sql.Int, branchId);
+        return req.query(`
             SELECT
               CONVERT(VARCHAR(10), EntryDate, 120) AS EntryDate,
               EntryReason,
@@ -472,8 +482,9 @@ export async function getEmployeeMonthlyPayrollReport(
               AND EntryDate < @endDateExclusive
               AND EntryReason IN (N'deduction', N'settlement', N'adjustment', N'advance')
               AND EntryDirection = N'debit'
-          `),
-      ),
+              ${branchId != null && branchId > 0 ? 'AND BranchID = @branchId' : ''}
+          `);
+      }),
     ]);
 
   const weeklyMap = buildWeeklyScheduleMap(weeklyRows);
@@ -648,6 +659,18 @@ export async function getEmployeeMonthlyPayrollReport(
 
     const targetSales = target ? roundMoney(target.NetSalesAfterDiscount) : null;
     const targetAmount = target ? roundMoney(target.TargetAmount) : null;
+    const mtdSnap = parseMtdTargetSnapshot(target?.CalculationBreakdownJson);
+    const mtdSales =
+      mtdSnap.mtdSales != null ? roundMoney(mtdSnap.mtdSales) : null;
+    const mtdTargetAmount =
+      mtdSnap.mtdTargetAmount != null ? roundMoney(mtdSnap.mtdTargetAmount) : null;
+    const targetBreakdown = mtdSnap.breakdown.map((b) => ({
+      from: b.from,
+      to: b.to,
+      eligibleAmount: b.eligibleAmount,
+      ratePercent: b.ratePercent,
+      targetAmount: b.targetAmount,
+    }));
     const targetPersistence: EmployeeMonthlyPayrollDayRow['targetPersistence'] = target
       ? 'generated'
       : 'not_generated';
@@ -716,6 +739,9 @@ export async function getEmployeeMonthlyPayrollReport(
       deductionNotes: ledger.notes,
       targetSales,
       targetAmount,
+      mtdSales,
+      mtdTargetAmount,
+      targetBreakdown,
       targetPersistence: target ? targetPersistence : effective.isScheduledWorkDay && !isFutureDate ? 'not_generated' : 'none',
       dayNet,
     });

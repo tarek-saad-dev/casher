@@ -180,6 +180,7 @@ describe('runNightlyClose orchestration', () => {
     expect(generateEmployeeDailyTargets).toHaveBeenCalledWith({
       workDate: '2026-07-14',
       generatedByUserId: null,
+      branchId: 1,
     });
     expect(sendEmployeeDailyWhatsAppReports).toHaveBeenCalledWith({
       workDate: '2026-07-14',

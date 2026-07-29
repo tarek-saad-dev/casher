@@ -45,7 +45,12 @@ export function convertInputTiersToDaily(params: ConvertInputTiersParams): Conve
   try {
     assertValidInputBasis(inputBasis);
   } catch {
-    throw new EmployeeTargetValidationError('طريقة الإدخال يجب أن تكون شهري أو يومي');
+    throw new EmployeeTargetValidationError('طريقة الإدخال يجب أن تكون شهري');
+  }
+  if (inputBasis !== 'monthly') {
+    throw new EmployeeTargetValidationError(
+      'طريقة الإدخال يجب أن تكون شهري — التارجت يُحسب على إجمالي الشهر حتى اليوم',
+    );
   }
   try {
     assertValidConversionDays(conversionDays);
@@ -96,27 +101,25 @@ export function convertInputTiersToDaily(params: ConvertInputTiersParams): Conve
 
   const converted: ConvertedTargetTier[] = tiers.map((tier, index) => {
     const inputStart = toSixDp(new Decimal(tier.inputStartAmount));
+    // MTD: store monthly threshold as DailyStartAmount (no ÷ conversionDays).
     const dailyStart = toDailyStartAmount(inputStart, inputBasis, conversionDays);
     const rate = toSixDp(new Decimal(tier.ratePercent));
-    const monthlyEquivalent = toSixDp(new Decimal(dailyStart).mul(conversionDays));
 
     return {
       sortOrder: index + 1,
       inputStartAmount: inputStart,
       dailyStartAmount: dailyStart,
-      monthlyEquivalent,
+      monthlyEquivalent: inputStart,
       ratePercent: rate,
     };
   });
 
-  // Duplicates after conversion to 6dp
+  // Duplicates after normalize to 6dp
   const dailySeen = new Set<string>();
   for (const tier of converted) {
     const key = new Decimal(tier.dailyStartAmount).toFixed(6);
     if (dailySeen.has(key)) {
-      throw new EmployeeTargetValidationError(
-        'لا يمكن تكرار بداية شريحتين بعد التحويل لليوم (تحقق من ConversionDays)',
-      );
+      throw new EmployeeTargetValidationError('لا يمكن تكرار بداية شريحتين');
     }
     dailySeen.add(key);
   }

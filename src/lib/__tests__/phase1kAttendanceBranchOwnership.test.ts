@@ -49,6 +49,8 @@ describe('Phase 1K attendance branch ownership', () => {
     expect(admin).toContain('BranchID في الطلب غير مسموح');
     expect(admin).toContain('a.BranchID = @branchId');
     expect(admin).toContain('assertEmployeeEligibleForBranchAttendance');
+    expect(admin).toContain('TblEmpBranchWorkSchedule');
+    expect(admin).not.toMatch(/LEFT JOIN dbo\.TblEmpWorkSchedule/);
 
     const bulk = read('src/app/api/admin/attendance/bulk/route.ts');
     expect(bulk).toContain('requireBranchOperationAccess');

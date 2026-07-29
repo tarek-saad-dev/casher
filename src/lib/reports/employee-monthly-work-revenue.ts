@@ -206,9 +206,13 @@ async function loadMonthContext(
   employeeId: number,
   startDate: string,
   endDateExclusive: string,
+  branchId?: number | null,
 ) {
   const db = await getPool();
   await ensureOverridesTable(db);
+
+  const attendanceBranchFilter =
+    branchId != null && branchId > 0 ? 'AND BranchID = @branchId' : '';
 
   const [weeklyRows, dayOffRows, overrideRows, attendanceRows] = await Promise.all([
     queryRecordsetOrEmpty<WeeklyScheduleRow>('TblEmpWorkSchedule', () =>
@@ -266,12 +270,15 @@ async function loadMonthContext(
         `),
     ),
 
-    queryRecordsetOrEmpty<AttendanceRow>('TblEmpAttendance', () =>
-      db.request()
+    queryRecordsetOrEmpty<AttendanceRow>('TblEmpAttendance', () => {
+      const req = db.request()
         .input('empId', sql.Int, employeeId)
         .input('startDate', sql.Date, startDate)
-        .input('endDateExclusive', sql.Date, endDateExclusive)
-        .query(`
+        .input('endDateExclusive', sql.Date, endDateExclusive);
+      if (branchId != null && branchId > 0) {
+        req.input('branchId', sql.Int, branchId);
+      }
+      return req.query(`
           SELECT
             CONVERT(VARCHAR(10), WorkDate, 120) AS WorkDate,
             CASE WHEN ScheduledStartTime IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), ScheduledStartTime, 108), 5) ELSE NULL END AS ScheduledStartTime,
@@ -286,8 +293,9 @@ async function loadMonthContext(
           WHERE EmpID = @empId
             AND WorkDate >= @startDate
             AND WorkDate < @endDateExclusive
-        `),
-    ),
+            ${attendanceBranchFilter}
+        `);
+    }),
   ]);
 
   const weeklyMap = buildWeeklyScheduleMap(weeklyRows);
@@ -317,7 +325,7 @@ async function loadMonthContext(
 export async function getEmployeeMonthlyWorkRevenueReport(
   params: GetEmployeeMonthlyWorkRevenueParams,
 ): Promise<EmployeeMonthlyWorkRevenueReport | null> {
-  const { employeeId, year, month } = params;
+  const { employeeId, year, month, branchId } = params;
   const { startDate, endDateExclusive, endDate, calendarDays } = getMonthDateRange(year, month);
   const todayStr = getCairoTodayStr();
 
@@ -325,8 +333,8 @@ export async function getEmployeeMonthlyWorkRevenueReport(
   if (!employee) return null;
 
   const [context, revenueByDate] = await Promise.all([
-    loadMonthContext(employeeId, startDate, endDateExclusive),
-    getEmployeeRevenueByDate(employeeId, startDate, endDateExclusive),
+    loadMonthContext(employeeId, startDate, endDateExclusive, branchId),
+    getEmployeeRevenueByDate(employeeId, startDate, endDateExclusive, branchId),
   ]);
 
   const dates = generateMonthDates(year, month, calendarDays);

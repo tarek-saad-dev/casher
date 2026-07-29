@@ -54,6 +54,14 @@ export async function processEmployeeTargetRecalcRequests(params: {
     maxRequests,
   });
 
+  // Safety: process ascending by workDate so MTD day-deltas see prior days first.
+  claimed.sort(
+    (a, b) =>
+      a.workDate.localeCompare(b.workDate) ||
+      a.branchId - b.branchId ||
+      a.empId - b.empId ||
+      a.id - b.id,
+  );
   const items: ProcessRecalcResultItem[] = [];
   let completed = 0;
   let pendingNewer = 0;

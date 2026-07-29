@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
+import { requireBranchOperationAccess, isActiveBranchContext } from '@/lib/branch/context';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-// GET /api/payroll/daily?workDate=YYYY-MM-DD
+// GET /api/payroll/daily?workDate=YYYY-MM-DD — active branch only
 export async function GET(req: NextRequest) {
   try {
     const auth = await requirePageAccess('/admin/hr');
     if (!isAuthResult(auth)) return auth;
+
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
 
     const { searchParams } = new URL(req.url);
     const workDate = searchParams.get('workDate');
@@ -23,6 +27,7 @@ export async function GET(req: NextRequest) {
     const db = await getPool();
     const result = await db.request()
       .input('WorkDate', sql.Date, workDate)
+      .input('branchId', sql.Int, branch.branchId)
       .query(`
         SELECT
           p.ID,
@@ -67,6 +72,7 @@ export async function GET(req: NextRequest) {
         LEFT JOIN dbo.TblExpINCat rev_cat
           ON rev_cat.ExpINID = rev_map.ExpINID
         WHERE p.WorkDate = @WorkDate
+          AND p.BranchID = @branchId
         ORDER BY e.EmpName
       `);
 
@@ -102,7 +108,14 @@ export async function GET(req: NextRequest) {
         .reduce((s: number, r: any) => s + (r.IncomeCashMoveAmount ?? 0), 0),
     };
 
-    return NextResponse.json({ success: true, workDate, rows: annotatedRows, summary, missingMappingEmps });
+    return NextResponse.json({
+      success: true,
+      workDate,
+      branchId: branch.branchId,
+      rows: annotatedRows,
+      summary,
+      missingMappingEmps,
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/payroll/daily] GET error:', message);

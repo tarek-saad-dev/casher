@@ -85,6 +85,7 @@ export default function FullDayReportPage() {
   } | null>(null);
   const [employeePickOpen, setEmployeePickOpen] = useState(false);
   const [selectedEmpId, setSelectedEmpId] = useState<string>('');
+  const [targetDetailsEmpId, setTargetDetailsEmpId] = useState<number | null>(null);
   const [recipientsOpen, setRecipientsOpen] = useState(false);
   const [recipientsLoading, setRecipientsLoading] = useState(false);
   const [recipientsError, setRecipientsError] = useState<string | null>(null);
@@ -674,7 +675,7 @@ export default function FullDayReportPage() {
                       <th className="px-3 py-2.5 text-right font-medium">انصراف</th>
                       <th className="px-3 py-2.5 text-right font-medium">ساعات</th>
                       <th className="px-3 py-2.5 text-right font-medium">الأساسي</th>
-                      <th className="px-3 py-2.5 text-right font-medium">تارجت</th>
+                      <th className="px-3 py-2.5 text-right font-medium">تارجت الشهر (حتى الآن)</th>
                       <th className="px-3 py-2.5 text-right font-medium">الإجمالي</th>
                       <th className="px-3 py-2.5 text-right font-medium">واتساب</th>
                     </tr>
@@ -701,12 +702,50 @@ export default function FullDayReportPage() {
                           {formatCurrencyAr(e.baseWage)}
                         </td>
                         <td className="px-3 py-2.5 whitespace-nowrap">
-                          <div className="text-emerald-300">{formatCurrencyAr(e.targetAmount)}</div>
-                          {e.targetSales != null && (
-                            <div className="text-[10px] text-zinc-500">
-                              مبيعات {formatCurrencyAr(e.targetSales)}
-                            </div>
-                          )}
+                          {(() => {
+                            const mtdTarget = e.mtdTargetAmount;
+                            const hasMtd = mtdTarget != null;
+                            const belowTier =
+                              hasMtd && mtdTarget <= 0 && (e.mtdSales == null || e.mtdSales > 0);
+                            const noSales =
+                              (e.mtdSales == null || e.mtdSales <= 0) && e.targetAmount <= 0;
+                            return (
+                              <button
+                                type="button"
+                                className="text-right hover:bg-zinc-800/50 rounded-lg px-1.5 py-1 -mx-1.5 transition-colors"
+                                onClick={() => setTargetDetailsEmpId(e.empId)}
+                                title="عرض تفاصيل حساب التارجت"
+                              >
+                                {hasMtd ? (
+                                  <div className="text-emerald-300 font-medium">
+                                    {formatCurrencyAr(mtdTarget)}
+                                    <span className="text-[10px] text-zinc-400 font-normal mr-1">
+                                      (حتى الآن)
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <div className="text-emerald-300">
+                                    {formatCurrencyAr(e.targetAmount)}
+                                  </div>
+                                )}
+                                {belowTier || (hasMtd && mtdTarget <= 0 && !noSales) ? (
+                                  <div className="text-[10px] text-amber-400/90">
+                                    لسه متحسبلهوش تارجت
+                                  </div>
+                                ) : null}
+                                {e.mtdSales != null && (
+                                  <div className="text-[10px] text-zinc-500">
+                                    مبيعات الشهر {formatCurrencyAr(e.mtdSales)}
+                                  </div>
+                                )}
+                                {e.targetAmount > 0 && (
+                                  <div className="text-[10px] text-zinc-500">
+                                    فرق اليوم {formatCurrencyAr(e.targetAmount)}
+                                  </div>
+                                )}
+                              </button>
+                            );
+                          })()}
                         </td>
                         <td className="px-3 py-2.5 font-semibold text-[#D6A84F] whitespace-nowrap">
                           {formatCurrencyAr(e.dayTotal)}
@@ -785,7 +824,7 @@ export default function FullDayReportPage() {
                       { label: 'إيرادات', amount: report.ownerDay.incomes, sign: '+' },
                       { label: 'مصروفات تشغيل', amount: report.ownerDay.operatingExpenses, sign: '−' },
                       { label: 'أساسي موظفين', amount: report.ownerDay.staffBase, sign: '−' },
-                      { label: 'تارجت', amount: report.ownerDay.staffTarget, sign: '−' },
+                      { label: 'تارجت اليوم (فرق)', amount: report.ownerDay.staffTarget, sign: '−' },
                     ]}
                   />
 
@@ -931,7 +970,7 @@ export default function FullDayReportPage() {
                       <tr>
                         <th className="px-4 py-2.5 text-right font-medium">الموظف</th>
                         <th className="px-4 py-2.5 text-right font-medium">اساسي اليوم</th>
-                        <th className="px-4 py-2.5 text-right font-medium">تارجت اليوم</th>
+                        <th className="px-4 py-2.5 text-right font-medium">تارجت حتى الآن</th>
                         <th className="px-4 py-2.5 text-right font-medium">استحقاق اليوم</th>
                         <th className="px-4 py-2.5 text-right font-medium">سلف اليوم</th>
                         <th className="px-4 py-2.5 text-right font-medium">رصيد الحساب</th>
@@ -947,8 +986,28 @@ export default function FullDayReportPage() {
                           <td className="px-4 py-2.5 text-zinc-300 whitespace-nowrap">
                             {formatCurrencyAr(row.dayBase)}
                           </td>
-                          <td className="px-4 py-2.5 text-emerald-300/90 whitespace-nowrap">
-                            {formatCurrencyAr(row.dayTarget)}
+                          <td className="px-4 py-2.5 whitespace-nowrap">
+                            {row.mtdTargetAmount != null ? (
+                              <button
+                                type="button"
+                                className="text-right hover:bg-zinc-800/50 rounded-lg px-1.5 py-1 -mx-1.5 transition-colors"
+                                onClick={() => setTargetDetailsEmpId(row.empId)}
+                                title="عرض تفاصيل حساب التارجت"
+                              >
+                                <div className="text-emerald-300/90 font-medium">
+                                  {formatCurrencyAr(row.mtdTargetAmount)}
+                                </div>
+                                {row.dayTarget > 0 && (
+                                  <div className="text-[10px] text-zinc-500">
+                                    فرق اليوم {formatCurrencyAr(row.dayTarget)}
+                                  </div>
+                                )}
+                              </button>
+                            ) : (
+                              <span className="text-emerald-300/90">
+                                {formatCurrencyAr(row.dayTarget)}
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-2.5 text-[#D6A84F] font-medium whitespace-nowrap">
                             {formatCurrencyAr(row.dayTotal)}
@@ -1008,6 +1067,94 @@ export default function FullDayReportPage() {
           </section>
         </>
       )}
+
+      {(() => {
+        const emp =
+          report?.payroll.employees.find((e) => e.empId === targetDetailsEmpId) ?? null;
+        return (
+          <Dialog
+            open={targetDetailsEmpId != null}
+            onOpenChange={(open) => {
+              if (!open) setTargetDetailsEmpId(null);
+            }}
+          >
+            <DialogContent className="max-w-md bg-zinc-950 border-zinc-800" dir="rtl">
+              <DialogHeader>
+                <DialogTitle className="text-zinc-100 flex items-center gap-2">
+                  <Target className="h-4 w-4 text-emerald-400" />
+                  تفاصيل التارجت
+                  {emp ? ` — ${emp.empName}` : ''}
+                </DialogTitle>
+              </DialogHeader>
+              {emp ? (
+                <div className="space-y-3 text-sm">
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2.5 space-y-1">
+                    <div className="flex justify-between gap-2">
+                      <span className="text-zinc-400">مبيعات الشهر حتى الآن</span>
+                      <span className="text-zinc-100 font-medium">
+                        {emp.mtdSales != null ? formatCurrencyAr(emp.mtdSales) : '—'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-zinc-400">تارجت الشهر (حتى الآن)</span>
+                      <span className="text-emerald-300 font-semibold">
+                        {emp.mtdTargetAmount != null
+                          ? formatCurrencyAr(emp.mtdTargetAmount)
+                          : formatCurrencyAr(emp.targetAmount)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-zinc-400">فرق اليوم (استحقاق اليوم)</span>
+                      <span className="text-[#D6A84F] font-medium">
+                        {formatCurrencyAr(emp.targetAmount)}
+                      </span>
+                    </div>
+                    {emp.mtdSales != null &&
+                      emp.mtdSales > 0 &&
+                      (emp.mtdTargetAmount ?? 0) <= 0 && (
+                        <p className="text-[11px] text-amber-400/90 pt-1">
+                          لسه متحسبلهوش تارجت — الإجمالي تحت أول شريحة متفق عليها.
+                        </p>
+                      )}
+                  </div>
+
+                  {emp.targetBreakdown && emp.targetBreakdown.length > 0 ? (
+                    <div className="space-y-1.5">
+                      <p className="text-xs text-zinc-400 font-medium">
+                        طريقة الحسبة حسب اتفاق التارجت (إعدادات الموظف في HR)
+                      </p>
+                      {emp.targetBreakdown.map((row, i) => (
+                        <div
+                          key={`${row.from}-${i}`}
+                          className="rounded-lg border border-zinc-800 px-3 py-2 text-xs text-zinc-300"
+                        >
+                          من {formatCurrencyAr(row.from)}
+                          {row.to != null ? ` إلى ${formatCurrencyAr(row.to)}` : ' فأعلى'}
+                          {' · '}
+                          {row.ratePercent}% على {formatCurrencyAr(row.eligibleAmount)}
+                          {' → '}
+                          <span className="text-emerald-300 font-medium">
+                            {formatCurrencyAr(row.targetAmount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-zinc-500">
+                      تفاصيل الشرائح تظهر بعد إعادة توليد التارجت بالنظام الشهري التراكمي.
+                    </p>
+                  )}
+                </div>
+              ) : null}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setTargetDetailsEmpId(null)}>
+                  إغلاق
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
 
       <Dialog open={employeePickOpen} onOpenChange={setEmployeePickOpen}>
         <DialogContent className="max-w-md bg-zinc-950 border-zinc-800" dir="rtl">
@@ -1311,7 +1458,7 @@ function MonthToDateCard({ mtd }: { mtd: FullDayMonthToDate }) {
           value={formatCurrencyAr(mtd.operatingExpenses)}
         />
         <MiniTile label="أساسي الموظفين" value={formatCurrencyAr(mtd.staffBase)} />
-        <MiniTile label="تارجت الموظفين" value={formatCurrencyAr(mtd.staffTarget)} />
+        <MiniTile label="تارجت الموظفين (حتى الآن)" value={formatCurrencyAr(mtd.staffTarget)} />
         <MiniTile
           label="سلف الموظفين"
           value={formatCurrencyAr(mtd.advances)}

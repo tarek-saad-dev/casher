@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
+import { requireBranchOperationAccess, isActiveBranchContext } from '@/lib/branch/context';
 import { getEmployeeLedgerEntries } from '@/lib/services/employeeLedgerService';
 
 function isMissingLedgerTableError(message: string): boolean {
@@ -12,7 +13,7 @@ function isMissingLedgerTableError(message: string): boolean {
 
 /**
  * GET /api/admin/hr/employee-ledger
- * Read-only employee ledger entries.
+ * Read-only employee ledger entries for the active branch.
  *
  * Query params:
  *   empId     optional employee filter
@@ -25,6 +26,9 @@ export async function GET(request: NextRequest) {
   if (!isAuthResult(auth)) return auth;
 
   try {
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const { searchParams } = new URL(request.url);
     const empIdParam = searchParams.get('empId');
     const empId = empIdParam ? parseInt(empIdParam, 10) : null;
@@ -38,6 +42,7 @@ export async function GET(request: NextRequest) {
       dateFrom: searchParams.get('dateFrom'),
       dateTo: searchParams.get('dateTo'),
       month: searchParams.get('month'),
+      branchId: branch.branchId,
     });
 
     return NextResponse.json(result);

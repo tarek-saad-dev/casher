@@ -95,6 +95,28 @@ export async function createOperationsQueueTicket(
     .query(`SELECT TOP 1 EmpName FROM [dbo].[TblEmp] WHERE EmpID = @eid`);
   const empName = empRes.recordset[0]?.EmpName ?? '';
 
+  {
+    const { isEmployeeEligibleForBranchBookings } = await import(
+      '@/lib/branch/bookingQueueOwnership'
+    );
+    const operationalDate = new Date().toLocaleDateString('en-CA', {
+      timeZone: 'Africa/Cairo',
+    });
+    const assigned = await isEmployeeEligibleForBranchBookings({
+      empId,
+      branchId,
+      operationalDate,
+      requireCanReceiveBookings: false,
+    });
+    if (!assigned) {
+      throw new CreateOperationsQueueError(
+        400,
+        'الموظف غير معيَّن على هذا الفرع',
+        { reason: 'emp_not_assigned' },
+      );
+    }
+  }
+
   const availGuard = await getBarberAvailabilityReason(empId, new Date());
   if (!availGuard.available) {
     throw new CreateOperationsQueueError(409, availGuard.reason ?? 'الحلاق غير متاح', {

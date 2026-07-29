@@ -397,7 +397,7 @@ export async function getEmployeesTargetSummaryBatch(
           p.EffectiveFrom,
           (SELECT COUNT(*) FROM dbo.TblEmpTargetTier t WHERE t.TargetPlanID = p.ID) AS TierCount,
           (
-            SELECT TOP 1 t.DailyStartAmount
+            SELECT TOP 1 t.InputStartAmount
             FROM dbo.TblEmpTargetTier t
             WHERE t.TargetPlanID = p.ID
             ORDER BY t.SortOrder ASC, t.ID ASC

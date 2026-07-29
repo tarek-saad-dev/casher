@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import { requireBranchOperationAccess, isActiveBranchContext } from '@/lib/branch/context';
 
-// GET /api/expenses/distribute/summary - Get staff expense distribution summary
+// GET /api/expenses/distribute/summary - Get staff expense distribution summary (active branch)
 export async function GET(req: NextRequest) {
   try {
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const db = await getPool();
     const url = new URL(req.url);
     const dateFrom = url.searchParams.get('dateFrom');
@@ -11,8 +15,8 @@ export async function GET(req: NextRequest) {
     const staffId = url.searchParams.get('staffId');
     const categoryId = url.searchParams.get('categoryId');
 
-    let whereClause = "WHERE cm.invType = N'staff_expense'";
-    const request = db.request();
+    let whereClause = "WHERE cm.invType = N'staff_expense' AND cm.BranchID = @branchId";
+    const request = db.request().input('branchId', sql.Int, branch.branchId);
 
     if (dateFrom) {
       whereClause += ' AND cm.invDate >= @dateFrom';
@@ -54,8 +58,14 @@ export async function GET(req: NextRequest) {
       ORDER BY e.EmpName, cat.CatName
     `);
 
-    // Get overall summary
-    const summaryResult = await db.request().query(`
+    // Get overall summary — rebuild request with same filters
+    const summaryRequest = db.request().input('branchId', sql.Int, branch.branchId);
+    if (dateFrom) summaryRequest.input('dateFrom', sql.Date, dateFrom);
+    if (dateTo) summaryRequest.input('dateTo', sql.Date, dateTo);
+    if (staffId) summaryRequest.input('staffId', sql.Int, parseInt(staffId));
+    if (categoryId) summaryRequest.input('categoryId', sql.Int, parseInt(categoryId));
+
+    const summaryResult = await summaryRequest.query(`
       SELECT 
         COUNT(DISTINCT e.EmpID) AS StaffCount,
         COUNT(DISTINCT cat.ExpINID) AS CategoryCount,

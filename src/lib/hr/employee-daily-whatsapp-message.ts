@@ -13,6 +13,7 @@ import {
   formatBreakMinutesLabel,
   type AttendanceBreakInterval,
 } from '@/lib/hr/attendance-breaks';
+import { formatTargetBreakdownLinesAr } from '@/lib/payroll/employee-target/mtd-target-snapshot';
 
 export interface BranchEarningSection {
   branchName: string;
@@ -70,6 +71,7 @@ export function shouldSkipEmptyDayOff(day: EmployeeMonthlyPayrollDayRow | null):
   if (day.checkIn) return false;
   if ((day.baseWage ?? 0) > 0) return false;
   if ((day.targetAmount ?? 0) > 0) return false;
+  if ((day.mtdTargetAmount ?? 0) > 0) return false;
   if (day.deductions > 0 || day.advances > 0) return false;
   return true;
 }
@@ -172,6 +174,8 @@ export function composeEmployeeDailyWhatsAppMessage(
   if (
     day.targetSales != null ||
     day.targetAmount != null ||
+    day.mtdTargetAmount != null ||
+    day.mtdSales != null ||
     invoiceCount != null ||
     serviceCount != null
   ) {
@@ -181,7 +185,25 @@ export function composeEmployeeDailyWhatsAppMessage(
       `خدمات أساسية (شعر / دقن / شعر ودقن): ${countLabel(basicServiceCount)}`,
     );
     lines.push(`خدمات أخرى: ${countLabel(otherServiceCount)}`);
-    lines.push(`مستحق تارجت: ${money(day.targetAmount)}`);
+    if (day.mtdSales != null) {
+      lines.push(`مبيعات الشهر حتى الآن: ${money(day.mtdSales)}`);
+    }
+    if (day.mtdTargetAmount != null) {
+      lines.push(`تارجت الشهر حتى الآن: ${money(day.mtdTargetAmount)}`);
+    } else {
+      lines.push(`مستحق تارجت اليوم: ${money(day.targetAmount)}`);
+    }
+    if (day.mtdTargetAmount != null && (day.mtdTargetAmount <= 0) && (day.mtdSales ?? 0) > 0) {
+      lines.push('لسه متحسبلكش تارجت — إجمالي الشهر تحت أول شريحة في اتفاقك.');
+    }
+    const breakdownLines = formatTargetBreakdownLinesAr(day.targetBreakdown ?? []);
+    if (breakdownLines.length > 0) {
+      lines.push('الحسبة حسب اتفاقك:');
+      for (const bl of breakdownLines) lines.push(bl);
+    }
+    if (day.targetAmount != null && day.mtdTargetAmount != null) {
+      lines.push(`فرق اليوم: ${money(day.targetAmount)}`);
+    }
   } else if (day.targetPersistence === 'not_generated') {
     lines.push('لم يُولَّد تارجت لليوم ده');
   } else {

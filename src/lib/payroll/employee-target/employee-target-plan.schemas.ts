@@ -5,6 +5,7 @@ export interface TargetPreviewBody {
   inputBasis: TargetInputBasis;
   conversionDays: number;
   tiers: ConvertibleTierInput[];
+  /** Sample MTD (month-to-date) cumulative sales for preview. */
   sampleDailySales: number | string;
 }
 
@@ -47,9 +48,13 @@ export function parseTargetPreviewBody(body: unknown): TargetPreviewBody {
   if (!body || typeof body !== 'object') throw new Error('بيانات غير صالحة');
   const b = body as Record<string, unknown>;
 
-  const inputBasis = b.inputBasis;
-  if (inputBasis !== 'monthly' && inputBasis !== 'daily') {
-    throw new Error('طريقة الإدخال يجب أن تكون شهري أو يومي');
+  // Lock to monthly MTD engine — ignore/reject daily input.
+  let inputBasis: TargetInputBasis = 'monthly';
+  if (b.inputBasis !== undefined && b.inputBasis !== null && b.inputBasis !== '') {
+    if (b.inputBasis !== 'monthly') {
+      throw new Error('طريقة الإدخال يجب أن تكون شهري');
+    }
+    inputBasis = 'monthly';
   }
 
   const conversionDays =
@@ -84,12 +89,12 @@ export function parseTargetSaveBody(body: unknown): TargetSaveBody {
     throw new Error('تاريخ السريان غير صالح');
   }
 
-  let inputBasis: TargetInputBasis | undefined;
-  if (b.inputBasis !== undefined && b.inputBasis !== null) {
-    if (b.inputBasis !== 'monthly' && b.inputBasis !== 'daily') {
-      throw new Error('طريقة الإدخال يجب أن تكون شهري أو يومي');
+  let inputBasis: TargetInputBasis | undefined = 'monthly';
+  if (b.inputBasis !== undefined && b.inputBasis !== null && b.inputBasis !== '') {
+    if (b.inputBasis !== 'monthly') {
+      throw new Error('طريقة الإدخال يجب أن تكون شهري');
     }
-    inputBasis = b.inputBasis;
+    inputBasis = 'monthly';
   }
 
   let conversionDays: number | undefined;

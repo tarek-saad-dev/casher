@@ -59,16 +59,29 @@ async function getAlternativeBarbers(
   excludeEmpId: number,
   serviceIds: number[],
   now: Date,
-  defaultDur: number
+  defaultDur: number,
+  branchId: number,
 ): Promise<QueueInsertCheckResponse["alternativeBarbers"]> {
   try {
-    // Get all active barbers
-    const barbersRes = await db.request().query(`
-      SELECT EmpID, EmpName, IsWorkingDay
-      FROM [dbo].[TblEmp]
-      WHERE IsWorkingDay = 1
-        AND EmpID <> ${excludeEmpId}
-      ORDER BY EmpName
+    const dateStr = cairoDateStr(now);
+    // Active barbers assigned to this branch only
+    const barbersRes = await db.request()
+      .input('branchId', sql.Int, branchId)
+      .input('day', sql.Date, dateStr)
+      .input('excludeEmpId', sql.Int, excludeEmpId)
+      .query(`
+      SELECT e.EmpID, e.EmpName, e.IsWorkingDay
+      FROM [dbo].[TblEmp] e
+      INNER JOIN dbo.TblEmpBranchAssignment ea
+        ON ea.EmpID = e.EmpID
+       AND ea.BranchID = @branchId
+       AND ea.IsActive = 1
+       AND ea.EffectiveFrom <= @day
+       AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @day)
+      WHERE ISNULL(e.isActive, 1) = 1
+        AND e.IsWorkingDay = 1
+        AND e.EmpID <> @excludeEmpId
+      ORDER BY e.EmpName
     `);
 
     const alternatives: QueueInsertCheckResponse["alternativeBarbers"] = [];
@@ -143,12 +156,19 @@ export async function POST(req: NextRequest) {
     const now = requestedAt ? new Date(requestedAt) : new Date();
     const dateStr = cairoDateStr(now);
 
+    const { requireActiveBranchContext, isActiveBranchContext } = await import(
+      '@/lib/branch/context'
+    );
+    const branch = await requireActiveBranchContext();
+    if (!isActiveBranchContext(branch)) return branch;
+    const branchId = branch.branchId;
+
     // 1. Check barber availability
     const avail = await getBarberAvailabilityReason(empId, now);
     if (!avail.available) {
       // Get alternatives since this barber is not available
       const defaultDur = await getDefaultDuration(db);
-      const alternatives = await getAlternativeBarbers(db, empId, serviceIds, now, defaultDur);
+      const alternatives = await getAlternativeBarbers(db, empId, serviceIds, now, defaultDur, branchId);
 
       const response: QueueInsertCheckResponse = {
         ok: false,
@@ -251,7 +271,8 @@ export async function POST(req: NextRequest) {
       empId,
       serviceIds,
       now,
-      defaultDur
+      defaultDur,
+      branchId,
     );
 
     // 8. Calculate available gap

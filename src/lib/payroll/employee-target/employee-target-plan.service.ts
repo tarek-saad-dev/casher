@@ -208,7 +208,7 @@ export async function saveEmployeeTargetPlan(
   }
 
   const isEnabled = body.isEnabled;
-  const inputBasis: TargetInputBasis = body.inputBasis ?? 'monthly';
+  const inputBasis: TargetInputBasis = 'monthly';
   const conversionDays = body.conversionDays ?? 26;
   const effectiveFrom = body.effectiveFrom;
   const notes = body.notes === undefined ? null : body.notes;
@@ -222,8 +222,8 @@ export async function saveEmployeeTargetPlan(
       if (e.message.includes('ConversionDays')) {
         throw new EmployeeTargetValidationError('عدد أيام التحويل من 1 إلى 31');
       }
-      if (e.message.includes('InputBasis')) {
-        throw new EmployeeTargetValidationError('طريقة الإدخال يجب أن تكون شهري أو يومي');
+      if (e.message.includes('InputBasis') || e.message.includes('شهري')) {
+        throw new EmployeeTargetValidationError('طريقة الإدخال يجب أن تكون شهري');
       }
     }
     throw e;

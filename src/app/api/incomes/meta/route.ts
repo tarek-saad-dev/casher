@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { getActiveBranchContext } from '@/lib/branch/context';
+import { getUserOpenShiftForBranch } from '@/lib/branch/shiftSession';
 
-// GET /api/incomes/meta — categories, payment methods, open shift
+// GET /api/incomes/meta — categories, payment methods, open shift (active branch)
 export async function GET() {
   try {
     const session = await getSession();
@@ -37,44 +39,25 @@ export async function GET() {
         ORDER BY PaymentID ASC
       `);
 
-    // Open shift for current user (or any open shift if no session)
+    // Open shift for current user on the active branch only (no cross-branch fallback)
     let openShift = null;
     if (session) {
-      const shiftRes = await db.request()
-        .input('userID', sql.Int, session.UserID)
-        .query(`
-          SELECT TOP 1
-            SM.ID AS ShiftMoveID,
-            SM.NewDay,
-            SM.UserID,
-            U.UserName,
-            SM.ShiftID,
-            S.ShiftName,
-            SM.StartDate,
-            SM.StartTime,
-            SM.Status
-          FROM dbo.TblShiftMove SM
-          LEFT JOIN dbo.TblUser U  ON SM.UserID  = U.UserID
-          LEFT JOIN dbo.TblShift S ON SM.ShiftID = S.ShiftID
-          WHERE SM.Status = 1 AND SM.UserID = @userID
-          ORDER BY SM.ID DESC
-        `);
-      if (shiftRes.recordset.length > 0) {
-        openShift = shiftRes.recordset[0];
-      } else {
-        // Fallback: any open shift
-        const anyShiftRes = await db.request().query(`
-          SELECT TOP 1
-            SM.ID AS ShiftMoveID, SM.NewDay, SM.UserID,
-            U.UserName, SM.ShiftID, S.ShiftName,
-            SM.StartDate, SM.StartTime, SM.Status
-          FROM dbo.TblShiftMove SM
-          LEFT JOIN dbo.TblUser U  ON SM.UserID  = U.UserID
-          LEFT JOIN dbo.TblShift S ON SM.ShiftID = S.ShiftID
-          WHERE SM.Status = 1
-          ORDER BY SM.ID DESC
-        `);
-        if (anyShiftRes.recordset.length > 0) openShift = anyShiftRes.recordset[0];
+      const branchCtx = await getActiveBranchContext();
+      if (branchCtx) {
+        const shift = await getUserOpenShiftForBranch(session.UserID, branchCtx.branchId);
+        if (shift) {
+          openShift = {
+            ShiftMoveID: shift.id,
+            NewDay: shift.newDay,
+            UserID: shift.userId,
+            UserName: shift.userName,
+            ShiftID: shift.shiftId,
+            ShiftName: shift.shiftName,
+            StartDate: shift.startDate,
+            StartTime: shift.startTime,
+            Status: shift.status,
+          };
+        }
       }
     }
 

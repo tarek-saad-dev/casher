@@ -13,6 +13,8 @@
     "nightly-close": "npx tsx scripts/run-nightly-close.ts",
     "nightly-close:watch": "npx tsx scripts/run-nightly-close.ts --watch",
     "nightly-close:dry": "npx tsx scripts/run-nightly-close.ts --dry-run",
+    "recalc:mtd-targets": "npx tsx scripts/recalc-employee-mtd-targets-current-month.ts",
+    "recalc:mtd-targets:dry": "npx tsx scripts/recalc-employee-mtd-targets-current-month.ts --dry-run",
     "sync:install": "cd sync-service && npm install && npm run build",
     "sync:setup": "cd sync-service && npm run setup",
     "sync:bootstrap": "cd sync-service && npm run bootstrap",

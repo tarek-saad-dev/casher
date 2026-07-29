@@ -84,10 +84,15 @@ export async function getEmployeeLedgerEntries(params: {
   dateFrom?: string | null;
   dateTo?: string | null;
   month?: string | null;
+  branchId?: number | null;
 }): Promise<EmpLedgerListResponse> {
   const db = await getPool();
 
   const where: string[] = [ACTIVE_ENTRY_FILTER];
+
+  if (params.branchId != null && params.branchId > 0) {
+    where.push('l.BranchID = @branchId');
+  }
 
   if (params.empId != null && params.empId > 0) {
     where.push('l.EmpID = @empId');
@@ -117,6 +122,9 @@ export async function getEmployeeLedgerEntries(params: {
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
 
   const bindFilters = (req: sql.Request) => {
+    if (params.branchId != null && params.branchId > 0) {
+      req.input('branchId', sql.Int, params.branchId);
+    }
     if (params.empId != null && params.empId > 0) {
       req.input('empId', sql.Int, params.empId);
     }
@@ -193,7 +201,10 @@ export async function getEmployeeLedgerEntries(params: {
   };
 }
 
-export async function getEmployeeLedgerSummary(month: string): Promise<EmpLedgerSummaryResponse> {
+export async function getEmployeeLedgerSummary(
+  month: string,
+  branchId?: number | null,
+): Promise<EmpLedgerSummaryResponse> {
   const monthError = validateLedgerMonth(month);
   if (monthError) {
     throw new Error(monthError);
@@ -205,11 +216,18 @@ export async function getEmployeeLedgerSummary(month: string): Promise<EmpLedger
     parseInt(monthStr, 10),
   );
 
+  const branchFilter =
+    branchId != null && branchId > 0 ? 'AND l.BranchID = @branchId' : '';
+
   const db = await getPool();
-  const result = await db.request()
+  const request = db.request()
     .input('month', sql.NVarChar(7), month)
     .input('monthStart', sql.Date, startDate)
-    .input('monthEnd', sql.Date, endDate)
+    .input('monthEnd', sql.Date, endDate);
+  if (branchId != null && branchId > 0) {
+    request.input('branchId', sql.Int, branchId);
+  }
+  const result = await request
     .query(`
       SELECT
         e.EmpID,
@@ -249,6 +267,7 @@ export async function getEmployeeLedgerSummary(month: string): Promise<EmpLedger
         ON l.EmpID = e.EmpID
        AND l.IsVoided = 0
        AND ${buildMonthEntryFilter('l')}
+       ${branchFilter}
       WHERE ISNULL(e.isActive, 1) = 1
       GROUP BY e.EmpID, e.EmpName
       ORDER BY e.EmpName

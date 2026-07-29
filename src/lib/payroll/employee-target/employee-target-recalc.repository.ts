@@ -167,7 +167,7 @@ export async function claimTargetRecalcRequests(params: {
         SELECT TOP (@max) *
         FROM dbo.TblEmpTargetRecalcRequest WITH (UPDLOCK, READPAST, ROWLOCK)
         WHERE ${filters.join(' AND ')}
-        ORDER BY RequestedAt ASC, ID ASC
+        ORDER BY WorkDate ASC, RequestedAt ASC, ID ASC
       )
       UPDATE cte
       SET Status = N'processing',

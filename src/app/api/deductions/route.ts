@@ -129,6 +129,24 @@ export async function POST(req: NextRequest) {
     console.log(`[deductions]   Active Day: ID=${activeDay.ID}, NewDay=${invDate}, Branch=${gated.branch.branchCode}`);
     console.log(`[deductions]   Active Shift: ID=${shiftMoveID}, UserID=${gated.shift.userId}`);
 
+    {
+      const { isEmployeeEligibleForBranchBookings } = await import(
+        '@/lib/branch/bookingQueueOwnership'
+      );
+      const assigned = await isEmployeeEligibleForBranchBookings({
+        empId: Number(body.employeeId),
+        branchId: gated.branch.branchId,
+        operationalDate: invDate,
+        requireCanReceiveBookings: false,
+      });
+      if (!assigned) {
+        return NextResponse.json(
+          { error: `الموظف غير معيَّن على فرع ${gated.branch.branchCode}` },
+          { status: 400 },
+        );
+      }
+    }
+
     // ──── Get employee info and advance category ────
     const empResult = await db.request()
       .input('employeeId', sql.Int, body.employeeId)

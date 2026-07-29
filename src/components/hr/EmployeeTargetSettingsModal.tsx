@@ -8,9 +8,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
 
 export type TargetInputBasis = 'monthly' | 'daily';
 
@@ -93,54 +90,79 @@ export function toMonthlyEquivalentDisplay(
 
 export function buildTierInterpretation(
   tiers: Array<{ inputStartAmount: string; ratePercent: string }>,
-  basis: TargetInputBasis,
-  conversionDays: number,
+  _basis: TargetInputBasis = 'monthly',
+  _conversionDays = 26,
 ): string[] {
   if (tiers.length === 0) {
     return ['لا توجد شرائح — لن يُحسب تارجت.'];
   }
 
-  const starts = tiers.map((t) => {
-    const input = Number(t.inputStartAmount);
-    const daily = basis === 'monthly' ? input / conversionDays : input;
-    return {
-      daily: Number.isFinite(daily) ? daily : NaN,
-      rate: t.ratePercent,
-    };
-  });
+  const starts = tiers.map((t) => ({
+    monthly: Number(t.inputStartAmount),
+    rate: t.ratePercent,
+  }));
 
   const lines: string[] = [];
   const first = starts[0];
-  if (first && Number.isFinite(first.daily)) {
-    lines.push(`أقل من ${fmtAmount(first.daily)} يوميًا: بدون تارجت`);
+  if (first && Number.isFinite(first.monthly)) {
+    lines.push(`أقل من ${fmtAmount(first.monthly)} تراكمي: بدون تارجت`);
   }
 
   for (let i = 0; i < starts.length; i++) {
     const cur = starts[i];
     const next = starts[i + 1];
-    if (!cur || !Number.isFinite(cur.daily)) continue;
-    if (next && Number.isFinite(next.daily)) {
+    if (!cur || !Number.isFinite(cur.monthly)) continue;
+    if (next && Number.isFinite(next.monthly)) {
+      const width = next.monthly - cur.monthly;
+      const fullBand = Number.isFinite(width) && width > 0
+        ? Number((width * Number(cur.rate) / 100).toFixed(2))
+        : null;
       lines.push(
-        `من ${fmtAmount(cur.daily)} إلى ${fmtAmount(next.daily)}: نسبة ${cur.rate}% على الجزء داخل الشريحة`,
+        fullBand != null && Number.isFinite(Number(cur.rate))
+          ? `من ${fmtAmount(cur.monthly)} لـ ${fmtAmount(next.monthly)} كامل ← ${fmtMoney(fullBand)} (${cur.rate}%)`
+          : `من ${fmtAmount(cur.monthly)} إلى ${fmtAmount(next.monthly)}: ${cur.rate}%`,
       );
     } else {
       lines.push(
-        `من ${fmtAmount(cur.daily)} فأعلى: نسبة ${cur.rate}% على الجزء الزائد`,
+        `من ${fmtAmount(cur.monthly)} فأعلى ← ${cur.rate}% على الزيادة`,
       );
     }
   }
   return lines;
 }
 
+/** Suggest next tier start = last start + 10000 (or 10000 if first). */
+export function suggestNextTierStart(tiers: Array<{ inputStartAmount: string }>): string {
+  if (tiers.length === 0) return '10000';
+  const last = Number(tiers[tiers.length - 1]?.inputStartAmount);
+  if (!Number.isFinite(last) || last < 0) return '';
+  return String(last + 10000);
+}
+
+function tierBandMeta(
+  tiers: TargetTierDraft[],
+  index: number,
+): { from: number | null; to: number | null; width: number | null; fullBandTarget: number | null } {
+  const from = Number(tiers[index]?.inputStartAmount);
+  const toRaw = tiers[index + 1] ? Number(tiers[index + 1]!.inputStartAmount) : null;
+  const rate = Number(tiers[index]?.ratePercent);
+  if (!Number.isFinite(from)) {
+    return { from: null, to: null, width: null, fullBandTarget: null };
+  }
+  const to = toRaw != null && Number.isFinite(toRaw) ? toRaw : null;
+  const width = to != null && to > from ? to - from : null;
+  const fullBandTarget =
+    width != null && Number.isFinite(rate)
+      ? Number((width * rate / 100).toFixed(2))
+      : null;
+  return { from, to, width, fullBandTarget };
+}
+
 function validateClientForm(params: {
   isEnabled: boolean;
-  conversionDays: number;
   tiers: TargetTierDraft[];
 }): string | null {
-  const { isEnabled, conversionDays, tiers } = params;
-  if (!Number.isInteger(conversionDays) || conversionDays < 1 || conversionDays > 31) {
-    return 'عدد أيام التحويل من 1 إلى 31';
-  }
+  const { isEnabled, tiers } = params;
   if (isEnabled && tiers.length === 0) {
     return 'التارجت المفعّل يحتاج شريحة واحدة على الأقل';
   }
@@ -180,17 +202,15 @@ export default function EmployeeTargetSettingsModal({
   const [successMsg, setSuccessMsg] = useState('');
 
   const [isEnabled, setIsEnabled] = useState(false);
-  const [inputBasis, setInputBasis] = useState<TargetInputBasis>('monthly');
-  const [conversionDays, setConversionDays] = useState(26);
   const [tiers, setTiers] = useState<TargetTierDraft[]>([]);
   const [showPreview, setShowPreview] = useState(false);
-  const [sampleDailySales, setSampleDailySales] = useState('1500');
+  const [sampleDailySales, setSampleDailySales] = useState('40000');
   const [previewTotal, setPreviewTotal] = useState<number | null>(null);
   const [previewBreakdown, setPreviewBreakdown] = useState<PreviewBreakdownRow[]>([]);
 
   const interpretation = useMemo(
-    () => buildTierInterpretation(tiers, inputBasis, conversionDays),
-    [tiers, inputBasis, conversionDays],
+    () => buildTierInterpretation(tiers, 'monthly', 26),
+    [tiers],
   );
 
   const busy = saving || loading;
@@ -212,8 +232,6 @@ export default function EmployeeTargetSettingsModal({
       const source = data.effectivePlan ?? data.latestPlan;
       if (source) {
         setIsEnabled(Boolean(source.isEnabled));
-        setInputBasis(source.inputBasis === 'daily' ? 'daily' : 'monthly');
-        setConversionDays(Number(source.conversionDays) || 26);
         setTiers(
           (source.tiers ?? []).map((t: { inputStartAmount: number; ratePercent: number }) => ({
             key: newTierKey(),
@@ -223,8 +241,6 @@ export default function EmployeeTargetSettingsModal({
         );
       } else {
         setIsEnabled(false);
-        setInputBasis('monthly');
-        setConversionDays(26);
         setTiers([]);
       }
       resetPreview();
@@ -244,7 +260,7 @@ export default function EmployeeTargetSettingsModal({
     setError('');
     setSuccessMsg('');
 
-    const v = validateClientForm({ isEnabled, conversionDays, tiers });
+    const v = validateClientForm({ isEnabled, tiers });
     if (v) {
       setError(v);
       return;
@@ -260,8 +276,8 @@ export default function EmployeeTargetSettingsModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           isEnabled,
-          inputBasis,
-          conversionDays,
+          inputBasis: 'monthly',
+          conversionDays: 26,
           effectiveFrom,
           notes: null,
           tiers: tiers.map((t) => ({
@@ -288,7 +304,11 @@ export default function EmployeeTargetSettingsModal({
   const addTier = () => {
     setTiers((prev) => [
       ...prev,
-      { key: newTierKey(), inputStartAmount: prev.length === 0 ? '0' : '', ratePercent: '20' },
+      {
+        key: newTierKey(),
+        inputStartAmount: suggestNextTierStart(prev),
+        ratePercent: prev.length === 0 ? '10' : '20',
+      },
     ]);
     resetPreview();
   };
@@ -309,7 +329,7 @@ export default function EmployeeTargetSettingsModal({
       setError('أضف شريحة واحدة على الأقل للمعاينة');
       return;
     }
-    const v = validateClientForm({ isEnabled: true, conversionDays, tiers });
+    const v = validateClientForm({ isEnabled: true, tiers });
     if (v) {
       setError(v);
       return;
@@ -320,8 +340,8 @@ export default function EmployeeTargetSettingsModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          inputBasis,
-          conversionDays,
+          inputBasis: 'monthly',
+          conversionDays: 26,
           sampleDailySales: Number(sampleDailySales),
           tiers: tiers.map((t) => ({
             inputStartAmount: Number(t.inputStartAmount),
@@ -346,7 +366,7 @@ export default function EmployeeTargetSettingsModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v && !busy) onClose(); }}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto" dir="rtl">
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto" dir="rtl">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between gap-2 flex-wrap">
             <span className="flex items-center gap-2">
@@ -393,134 +413,160 @@ export default function EmployeeTargetSettingsModal({
               />
             </section>
 
-            <div className="rounded-lg border border-border bg-surface-muted/20 px-3 py-2.5 text-xs text-muted-foreground">
-              يسري على <span className="font-medium text-foreground">الشهر الحالي بالكامل</span>
-              {' '}من {month.effectiveFrom} إلى {month.monthEnd}
-              {' '}— حتى لو الحفظ اليوم منتصف الشهر.
+            <div className="rounded-lg border border-border bg-surface-muted/20 px-3 py-2.5 text-xs text-muted-foreground space-y-1">
+              <p>
+                يسري على <span className="font-medium text-foreground">الشهر الحالي بالكامل</span>
+                {' '}من {month.effectiveFrom} إلى {month.monthEnd}
+                {' '}— حتى لو الحفظ اليوم منتصف الشهر.
+              </p>
+              <p>
+                الحسبة على <span className="font-medium text-foreground">إجمالي مبيعات الشهر حتى اليوم</span>
+                {' '}(شرائح شهرية) — تحت أول شريحة = بدون تارجت.
+              </p>
             </div>
 
-            <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">إدخال الحدود</label>
-                <Select
-                  value={inputBasis}
-                  onValueChange={(v) => {
-                    setInputBasis(v as TargetInputBasis);
-                    resetPreview();
-                  }}
-                  disabled={busy}
-                >
-                  <SelectTrigger className="text-right h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="monthly">شهري</SelectItem>
-                    <SelectItem value="daily">يومي</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {inputBasis === 'monthly' && (
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">أيام التحويل</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={31}
-                    className="h-9"
-                    value={conversionDays}
-                    onChange={(e) => {
-                      setConversionDays(Number(e.target.value));
-                      resetPreview();
-                    }}
-                    disabled={busy}
-                  />
+            <section className="space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1 min-w-0">
+                  <h3 className="text-sm font-semibold">الشرائح الشهرية</h3>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    كل شريحة لها حد بداية ونسبة. تحت أول حد = بدون تارجت.
+                  </p>
                 </div>
-              )}
-            </section>
-
-            <section className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-semibold">الشرائح</h3>
-                  <p className="text-[11px] text-muted-foreground">شريحة واحدة = ثابت · أكثر = متغير</p>
-                </div>
-                <Button type="button" variant="outline" size="sm" className="h-8 gap-1" onClick={addTier} disabled={busy}>
+                <Button type="button" variant="outline" size="sm" className="h-8 gap-1 shrink-0" onClick={addTier} disabled={busy}>
                   <Plus className="w-3.5 h-3.5" />
                   إضافة شريحة
                 </Button>
               </div>
 
               {tiers.length === 0 ? (
-                <div className="text-sm text-muted-foreground border border-dashed border-border rounded-xl p-5 text-center">
-                  لا توجد شرائح — اضغط «إضافة شريحة»
+                <div className="text-sm border border-dashed border-border rounded-xl p-5 space-y-2 text-center">
+                  <p className="text-muted-foreground">لا توجد شرائح — اضغط «إضافة شريحة»</p>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    مثال: من ١٠٬٠٠٠ بنسبة ١٠٪ · من ٣٠٬٠٠٠ بنسبة ٢٠٪ · من ٤٠٬٠٠٠ بنسبة ٣٠٪
+                  </p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {tiers.map((tier, idx) => (
-                    <div
-                      key={tier.key}
-                      className="grid grid-cols-12 gap-2 items-end rounded-xl border border-border p-3"
-                    >
-                      <div className="col-span-5 sm:col-span-3 space-y-1">
-                        <label className="text-[11px] text-muted-foreground">البداية</label>
-                        <Input
-                          type="number"
-                          className="h-9"
-                          value={tier.inputStartAmount}
-                          onChange={(e) => updateTier(tier.key, 'inputStartAmount', e.target.value)}
-                          disabled={busy}
-                        />
+                <div className="space-y-3">
+                  {tiers.map((tier, idx) => {
+                    const band = tierBandMeta(tiers, idx);
+                    const nextExists = idx + 1 < tiers.length;
+                    return (
+                      <div
+                        key={tier.key}
+                        className="rounded-xl border border-border bg-surface-muted/10 overflow-hidden"
+                        data-testid={`tier-card-${idx}`}
+                      >
+                        <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border/70 bg-surface-muted/30">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-primary/10 text-primary text-xs font-bold px-1.5">
+                              {idx + 1}
+                            </span>
+                            <span className="text-xs font-medium text-foreground truncate">
+                              {idx === 0 ? 'الشريحة الأولى (أقل حد للتارجت)' : `الشريحة رقم ${idx + 1}`}
+                            </span>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 w-8 p-0 border-destructive/30 text-destructive shrink-0"
+                            onClick={() => removeTier(tier.key)}
+                            disabled={busy}
+                            aria-label={`حذف الشريحة ${idx + 1}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+
+                        <div className="p-3 space-y-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div className="space-y-1.5">
+                              <label className="text-[11px] font-medium text-foreground">
+                                تبدأ عندما يصل التراكمي إلى
+                              </label>
+                              <Input
+                                type="number"
+                                min={0}
+                                className="h-10 text-base"
+                                placeholder="مثال: 40000"
+                                value={tier.inputStartAmount}
+                                onChange={(e) => updateTier(tier.key, 'inputStartAmount', e.target.value)}
+                                disabled={busy}
+                              />
+                              <p className="text-[10px] text-muted-foreground">إجمالي مبيعات الشهر</p>
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <label className="text-[11px] font-medium text-muted-foreground">
+                                تنتهي عند
+                              </label>
+                              <Input
+                                readOnly
+                                className="h-10 bg-surface-muted/50 text-base"
+                                value={
+                                  nextExists && band.to != null
+                                    ? fmtAmount(band.to)
+                                    : 'فأعلى'
+                                }
+                              />
+                              <p className="text-[10px] text-muted-foreground">
+                                {nextExists ? 'من الشريحة التالية' : 'آخر شريحة'}
+                              </p>
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <label className="text-[11px] font-medium text-foreground">
+                                النسبة ٪
+                              </label>
+                              <Input
+                                type="number"
+                                min={0}
+                                max={100}
+                                className="h-10 text-base"
+                                placeholder="مثال: 30"
+                                value={tier.ratePercent}
+                                onChange={(e) => updateTier(tier.key, 'ratePercent', e.target.value)}
+                                disabled={busy}
+                              />
+                              <p className="text-[10px] text-muted-foreground">على جزء الشريحة</p>
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg border border-border/80 bg-background px-3 py-2 text-[11px] leading-relaxed">
+                            {band.from != null ? (
+                              band.width != null && band.fullBandTarget != null ? (
+                                <p className="text-foreground">
+                                  لو جاب من {fmtAmount(band.from)} لـ {fmtAmount(band.to!)} كامل
+                                  {' '}({fmtAmount(band.width)} ج.م) ← التارجت ={' '}
+                                  <span className="font-semibold text-primary">{fmtMoney(band.fullBandTarget)}</span>
+                                  {' '}({tier.ratePercent}%)
+                                </p>
+                              ) : (
+                                <p className="text-foreground">
+                                  من {fmtAmount(band.from)} فأعلى ← كل مبلغ زيادة بنسبة {tier.ratePercent || '—'}%
+                                </p>
+                              )
+                            ) : (
+                              <p className="text-muted-foreground">اكتب رقم البداية عشان يظهر الحساب.</p>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div className="col-span-4 sm:col-span-2 space-y-1">
-                        <label className="text-[11px] text-muted-foreground">٪</label>
-                        <Input
-                          type="number"
-                          className="h-9"
-                          value={tier.ratePercent}
-                          onChange={(e) => updateTier(tier.key, 'ratePercent', e.target.value)}
-                          disabled={busy}
-                        />
-                      </div>
-                      <div className="col-span-7 sm:col-span-3 space-y-1">
-                        <label className="text-[11px] text-muted-foreground">يوميًا</label>
-                        <Input
-                          readOnly
-                          className="h-9 bg-surface-muted/40"
-                          value={toDailyDisplay(tier.inputStartAmount, inputBasis, conversionDays)}
-                        />
-                      </div>
-                      <div className="col-span-4 sm:col-span-3 space-y-1">
-                        <label className="text-[11px] text-muted-foreground">شهري ≈</label>
-                        <Input
-                          readOnly
-                          className="h-9 bg-surface-muted/40"
-                          value={toMonthlyEquivalentDisplay(tier.inputStartAmount, inputBasis, conversionDays)}
-                        />
-                      </div>
-                      <div className="col-span-1 flex justify-end">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-9 w-9 p-0 border-destructive/30 text-destructive"
-                          onClick={() => removeTier(tier.key)}
-                          disabled={busy}
-                          aria-label={`حذف الشريحة ${idx + 1}`}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
               {tiers.length > 0 && (
-                <ul className="text-xs text-muted-foreground space-y-1 list-disc pr-4">
-                  {interpretation.map((line) => (
-                    <li key={line}>{line}</li>
-                  ))}
-                </ul>
+                <div className="rounded-xl border border-border px-3 py-2.5 space-y-1.5">
+                  <p className="text-xs font-semibold text-foreground">ملخص الاتفاق</p>
+                  <ul className="text-[11px] text-muted-foreground space-y-1 list-disc pr-4">
+                    {interpretation.map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </section>
 
@@ -540,7 +586,7 @@ export default function EmployeeTargetSettingsModal({
                 <div className="border-t border-border p-3 space-y-3">
                   <div className="flex flex-wrap items-end gap-2">
                     <div className="space-y-1 flex-1 min-w-[140px]">
-                      <label className="text-[11px] text-muted-foreground">مبيعات يوم (عينة)</label>
+                      <label className="text-[11px] text-muted-foreground">مبيعات الشهر حتى اليوم (عينة)</label>
                       <Input
                         type="number"
                         className="h-9"
@@ -561,18 +607,44 @@ export default function EmployeeTargetSettingsModal({
                     </Button>
                   </div>
                   {previewTotal != null && (
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                       <p className="text-sm">
-                        النتيجة:{' '}
+                        تارجت الشهر (حتى الآن):{' '}
                         <span className="font-semibold text-primary">{fmtMoney(previewTotal)}</span>
                       </p>
-                      {previewBreakdown.map((row, i) => (
-                        <div key={`${row.from}-${i}`} className="text-xs text-muted-foreground">
-                          من {fmtAmount(row.from)}
-                          {row.to != null ? ` إلى ${fmtAmount(row.to)}` : ' فأعلى'}
-                          {' · '}{row.ratePercent}% → {fmtAmount(row.targetAmount)}
-                        </div>
-                      ))}
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        الناتج = الجزء اللي دخل كل شريحة × نسبتها. مثال: ٤٥٬٠٠٠ جوه ٤٠→٥٠ = ٥٬٠٠٠ × ٣٠٪ = ١٬٥٠٠
+                        (٣٬٠٠٠ لو وصل ٥٠٬٠٠٠ كامل).
+                      </p>
+                      <div className="rounded-lg border border-border overflow-hidden">
+                        <table className="w-full text-[11px]">
+                          <thead className="bg-surface-muted/40 text-muted-foreground">
+                            <tr>
+                              <th className="text-right font-medium px-2 py-1.5">الشريحة</th>
+                              <th className="text-right font-medium px-2 py-1.5">داخل الشريحة</th>
+                              <th className="text-right font-medium px-2 py-1.5">٪</th>
+                              <th className="text-right font-medium px-2 py-1.5">الناتج</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {previewBreakdown.map((row, i) => (
+                              <tr key={`${row.from}-${i}`} className="border-t border-border">
+                                <td className="px-2 py-1.5 text-muted-foreground">
+                                  {fmtAmount(row.from)}
+                                  {row.to != null ? ` → ${fmtAmount(row.to)}` : ' فأعلى'}
+                                </td>
+                                <td className="px-2 py-1.5 font-medium text-foreground">
+                                  {fmtMoney(row.eligibleAmount)}
+                                </td>
+                                <td className="px-2 py-1.5">{row.ratePercent}%</td>
+                                <td className="px-2 py-1.5 font-semibold text-primary">
+                                  {fmtMoney(row.targetAmount)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   )}
                 </div>

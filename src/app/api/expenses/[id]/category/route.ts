@@ -19,6 +19,15 @@ export async function DELETE(
     const user = await getSession();
     if (!user) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
 
+    const { requireBranchOperationAccess, isActiveBranchContext } = await import(
+      '@/lib/branch/context'
+    );
+    const { financialNotFoundResponse } = await import(
+      '@/lib/branch/financialOwnership'
+    );
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const body = await req.json().catch(() => ({}));
     const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
 
@@ -37,10 +46,18 @@ export async function DELETE(
       actionMethod: 'DELETE',
       endpointPath: `/api/expenses/${expenseId}/category`,
       reason,
-      loadOldData: async (transaction) => getExpenseSnapshot(transaction, expenseId) as unknown as Record<string, unknown> | null,
-      execute: async (transaction) => deleteExpense(transaction, expenseId),
+      loadOldData: async (transaction) => {
+        const snap = await getExpenseSnapshot(transaction, expenseId);
+        if (!snap || Number(snap.BranchID) !== Number(branch.branchId)) return null;
+        return snap as unknown as Record<string, unknown>;
+      },
+      execute: async (transaction) => deleteExpense(transaction, expenseId, branch.branchId),
       loadNewData: async () => null,
     });
+
+    if (!auditResult.data) {
+      return financialNotFoundResponse();
+    }
 
     const ledgerDeletedCount = auditResult.data.ledgerDeletedCount;
     return NextResponse.json({
@@ -79,6 +96,15 @@ export async function PUT(
     const user = await getSession();
     if (!user) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
 
+    const { requireBranchOperationAccess, isActiveBranchContext } = await import(
+      '@/lib/branch/context'
+    );
+    const { financialNotFoundResponse } = await import(
+      '@/lib/branch/financialOwnership'
+    );
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const body = await req.json();
     const { ExpINID, reason } = body;
 
@@ -94,10 +120,20 @@ export async function PUT(
       actionMethod: 'PUT',
       endpointPath: `/api/expenses/${expenseId}/category`,
       reason: reason || null,
-      loadOldData: async (transaction) => getExpenseSnapshot(transaction, expenseId) as unknown as Record<string, unknown> | null,
-      execute: async (transaction) => updateExpenseCategory(transaction, expenseId, Number(ExpINID)),
-      loadNewData: async (transaction) => getExpenseSnapshot(transaction, expenseId) as unknown as Record<string, unknown> | null,
+      loadOldData: async (transaction) => {
+        const snap = await getExpenseSnapshot(transaction, expenseId);
+        if (!snap || Number(snap.BranchID) !== Number(branch.branchId)) return null;
+        return snap as unknown as Record<string, unknown>;
+      },
+      execute: async (transaction) =>
+        updateExpenseCategory(transaction, expenseId, Number(ExpINID), branch.branchId),
+      loadNewData: async (transaction) =>
+        getExpenseSnapshot(transaction, expenseId) as unknown as Record<string, unknown> | null,
     });
+
+    if (!auditResult.data) {
+      return financialNotFoundResponse();
+    }
 
     const data = auditResult.data as { ExpINID: number; invDate?: string | Date } | undefined;
 

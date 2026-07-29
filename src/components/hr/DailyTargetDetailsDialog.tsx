@@ -56,7 +56,7 @@ export default function DailyTargetDetailsDialog({ open, onClose, workDate, targ
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-lg max-h-[90vh] overflow-y-auto" dir="rtl">
         <DialogHeader>
-          <DialogTitle>تفاصيل تارجت اليوم — {target.empName}</DialogTitle>
+          <DialogTitle>تفاصيل التارجت — {target.empName}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 text-sm">
           {!persisted && (
@@ -68,15 +68,41 @@ export default function DailyTargetDetailsDialog({ open, onClose, workDate, targ
             <div><span className="text-zinc-500">التاريخ</span><p>{workDate}</p></div>
             <div><span className="text-zinc-500">خطة</span><p>#{target.targetPlanId}</p></div>
             <div><span className="text-zinc-500">السريان</span><p>{target.planEffectiveFrom}{target.planEffectiveTo ? ` → ${target.planEffectiveTo}` : ' → مفتوح'}</p></div>
-            <div><span className="text-zinc-500">أساس الإدخال</span><p>{target.inputBasis === 'monthly' ? 'شهري' : 'يومي'} · {target.conversionDays} يوم</p></div>
-            <div><span className="text-zinc-500">مبيعات بعد الخصم</span><p className="text-sky-400">{fmt2(sales ?? 0)}</p></div>
-            <div><span className="text-zinc-500">تارجت اليوم</span><p className="text-emerald-400 font-bold">{fmt2(amount ?? 0)}</p></div>
+            <div><span className="text-zinc-500">أساس الحساب</span><p>شهري تراكمي (من أول الشهر حتى اليوم)</p></div>
+            <div><span className="text-zinc-500">مبيعات اليوم</span><p className="text-sky-400">{fmt2(sales ?? 0)}</p></div>
+            <div>
+              <span className="text-zinc-500">مبيعات الشهر حتى الآن</span>
+              <p className="text-sky-300">
+                {fmt2(
+                  persisted
+                    ? (target.storedMtdSales ?? target.currentMtdSales ?? 0)
+                    : (target.currentMtdSales ?? 0),
+                )}
+              </p>
+            </div>
+            <div>
+              <span className="text-zinc-500">تارجت الشهر (حتى الآن)</span>
+              <p className="text-emerald-300 font-bold">
+                {fmt2(
+                  persisted
+                    ? (target.storedMtdTargetAmount ?? target.previewMtdTargetAmount ?? 0)
+                    : (target.previewMtdTargetAmount ?? 0),
+                )}
+              </p>
+            </div>
+            <div><span className="text-zinc-500">فرق اليوم</span><p className="text-violet-300 font-bold">{fmt2(amount ?? 0)}</p></div>
             <div><span className="text-zinc-500">حالة التخزين</span><p>{target.persistenceStatus}</p></div>
             <div><span className="text-zinc-500">آخر حساب</span><p>{target.updatedAt ?? target.generatedAt ?? '—'}</p></div>
           </div>
 
+          {target.displayStatus === 'below_first_tier' && (
+            <div className="p-2 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 text-xs">
+              لسه متحسبلهوش تارجت — إجمالي الشهر تحت أول شريحة متفق عليها.
+            </div>
+          )}
+
           <div>
-            <p className="text-xs text-zinc-500 mb-1">الشرائح</p>
+            <p className="text-xs text-zinc-500 mb-1">الشرائح الشهرية</p>
             <ul className="text-xs space-y-1 text-zinc-300">
               {(target.tiers as Array<{ sortOrder: number; dailyStartAmount: string; ratePercent: string }>).map((t) => (
                 <li key={t.sortOrder}>
@@ -87,6 +113,7 @@ export default function DailyTargetDetailsDialog({ open, onClose, workDate, targ
           </div>
 
           <div className="overflow-x-auto">
+            <p className="text-xs text-zinc-500 mb-1">طريقة الحسبة على الإجمالي التراكمي</p>
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-zinc-500 border-b border-zinc-700">
@@ -111,7 +138,17 @@ export default function DailyTargetDetailsDialog({ open, onClose, workDate, targ
             </table>
           </div>
           <p className="text-sm">
-            الإجمالي (قرشين): <span className="font-bold text-emerald-400">{fmt2(amount ?? 0)}</span>
+            تارجت الشهر حتى الآن:{' '}
+            <span className="font-bold text-emerald-400">
+              {fmt2(
+                persisted
+                  ? (target.storedMtdTargetAmount ?? target.previewMtdTargetAmount ?? amount ?? 0)
+                  : (target.previewMtdTargetAmount ?? amount ?? 0),
+              )}
+            </span>
+          </p>
+          <p className="text-xs text-zinc-500">
+            فرق اليوم (استحقاق الدفتر): {fmt2(amount ?? 0)}
           </p>
         </div>
       </DialogContent>

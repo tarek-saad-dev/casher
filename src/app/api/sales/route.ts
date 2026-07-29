@@ -76,6 +76,34 @@ export async function POST(req: NextRequest) {
       `[pos-api]   Active Shift: ID=${shiftMoveID}, UserID=${gated.shift.userId} (verified owner)`,
     );
 
+    // Reject EmpIDs not assigned to the active branch
+    {
+      const { isEmployeeEligibleForBranchBookings } = await import(
+        '@/lib/branch/bookingQueueOwnership'
+      );
+      const uniqueEmpIds = [
+        ...new Set(
+          body.items
+            .map((item) => Number(item.empId))
+            .filter((id) => Number.isFinite(id) && id > 0),
+        ),
+      ];
+      for (const empId of uniqueEmpIds) {
+        const ok = await isEmployeeEligibleForBranchBookings({
+          empId,
+          branchId,
+          operationalDate: invDate,
+          requireCanReceiveBookings: false,
+        });
+        if (!ok) {
+          return NextResponse.json(
+            { error: `الموظف #${empId} غير معيَّن على فرع ${gated.branch.branchCode}` },
+            { status: 400 },
+          );
+        }
+      }
+    }
+
     // ──── Server-side totals from line items + optional header discount ────
     const computed = computeInvoiceItemsTotals(
       body.items.map((item) => ({

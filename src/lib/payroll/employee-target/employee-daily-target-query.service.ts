@@ -17,8 +17,16 @@ import {
   type TargetTierDbRow,
 } from './employee-daily-target.repository';
 import { resolveUniqueEffectivePlans } from './effective-plan-resolve';
-import { getEmployeesNetServiceSalesByDate } from './employee-target-sales-service';
-import { assertValidWorkDate, EmployeeTargetValidationError } from './target.validation';
+import {
+  getEmployeesNetServiceSalesByDate,
+  getEmployeesNetServiceSalesByDateRange,
+} from './employee-target-sales-service';
+import {
+  assertValidWorkDate,
+  EmployeeTargetValidationError,
+  monthStartFromWorkDate,
+  previousWorkDateInMonth,
+} from './target.validation';
 import type { DailyTargetTier, TargetInputBasis } from './target.types';
 import { listTargetRecalcRequestsForDate } from './employee-target-recalc.repository';
 import type { TargetSyncStatus } from './employee-target-recalc.schemas';
@@ -36,11 +44,19 @@ export interface DailyTargetQueryEmployee {
   firstDailyStartAmount: string;
   firstRatePercent: string;
   planSummary: string;
-  /** Live sales from shared core for the work date. */
+  /** Live day-only sales. */
   currentNetSalesAfterDiscount: string;
+  /** Live MTD sales (month start → workDate). */
+  currentMtdSales: string;
+  /** Preview MTD target from live MTD sales. */
+  previewMtdTargetAmount: string;
+  /** Preview day delta from live MTD vs prior. */
+  previewDayDelta: string;
   /** Stored value when generated; null if not_generated. */
   storedNetSalesAfterDiscount: string | null;
   storedTargetAmount: string | null;
+  storedMtdSales: string | null;
+  storedMtdTargetAmount: string | null;
   persistenceStatus: TargetPersistenceStatus;
   displayStatus: TargetDisplayStatus | null;
   dailyTargetId: number | null;
@@ -48,7 +64,7 @@ export interface DailyTargetQueryEmployee {
   calculationBreakdownJson: string | null;
   generatedAt: string | null;
   updatedAt: string | null;
-  /** Preview using current sales + plan (not persisted). */
+  /** Preview day delta (alias of previewDayDelta for older UI). */
   previewTargetAmount: string;
   previewBreakdown: Array<{
     from: string;
@@ -81,7 +97,11 @@ export interface DailyTargetDayQueryResult {
     belowFirstTier: number;
     earnedTarget: number;
     totalCurrentNetSalesAfterDiscount: string;
+    /** Live sum of MTD sales (month start → workDate). */
+    totalCurrentMtdSales: string;
     totalStoredTargetAmount: string;
+    /** Sum of stored MTD target amounts when available. */
+    totalStoredMtdTargetAmount: string;
   };
   employees: DailyTargetQueryEmployee[];
   planConflicts: string[];
@@ -91,9 +111,9 @@ function planSummaryLabel(tiers: DailyTargetTier[]): string {
   if (tiers.length === 0) return 'لا توجد شرائح';
   const first = tiers[0]!;
   if (tiers.length === 1) {
-    return `فوق ${amountStr(first.dailyStartAmount, 2)} = ${amountStr(first.ratePercent, 2)}%`;
+    return `فوق ${amountStr(first.dailyStartAmount, 2)} شهريًا = ${amountStr(first.ratePercent, 2)}%`;
   }
-  return `${tiers.length} شرائح · يبدأ من ${amountStr(first.dailyStartAmount, 2)}`;
+  return `${tiers.length} شرائح · يبدأ من ${amountStr(first.dailyStartAmount, 2)} شهريًا`;
 }
 
 function toCalcTiers(planId: number, allTiers: TargetTierDbRow[]): DailyTargetTier[] {
@@ -102,9 +122,37 @@ function toCalcTiers(planId: number, allTiers: TargetTierDbRow[]): DailyTargetTi
     .map((t) => ({
       sortOrder: t.sortOrder,
       inputStartAmount: t.inputStartAmount,
-      dailyStartAmount: t.dailyStartAmount,
+      dailyStartAmount: t.inputStartAmount,
       ratePercent: t.ratePercent,
     }));
+}
+
+export function parseMtdFieldsFromBreakdown(json: string | null | undefined): {
+  mtdSales: number | null;
+  mtdTargetAmount: number | null;
+  dayDelta: number | null;
+} {
+  if (!json) return { mtdSales: null, mtdTargetAmount: null, dayDelta: null };
+  try {
+    const parsed = JSON.parse(json) as Record<string, unknown>;
+    const mtdSales =
+      parsed.mtdSales != null && Number.isFinite(Number(parsed.mtdSales))
+        ? Number(parsed.mtdSales)
+        : null;
+    const mtdTargetAmount =
+      parsed.mtdTargetAmount != null && Number.isFinite(Number(parsed.mtdTargetAmount))
+        ? Number(parsed.mtdTargetAmount)
+        : null;
+    const dayDelta =
+      parsed.dayDelta != null && Number.isFinite(Number(parsed.dayDelta))
+        ? Number(parsed.dayDelta)
+        : parsed.targetAmount != null && Number.isFinite(Number(parsed.targetAmount))
+          ? Number(parsed.targetAmount)
+          : null;
+    return { mtdSales, mtdTargetAmount, dayDelta };
+  } catch {
+    return { mtdSales: null, mtdTargetAmount: null, dayDelta: null };
+  }
 }
 
 export function deriveTargetSyncStatus(
@@ -145,20 +193,38 @@ export function deriveTargetSyncStatus(
 function mapOneEmployee(params: {
   plan: EffectiveTargetPlanRow;
   tiers: DailyTargetTier[];
-  currentSales: number;
+  daySales: number;
+  mtdSales: number;
+  workDate: string;
   stored: DailyTargetRow | null;
   recalcRequest: TargetRecalcRequestRow | null;
 }): DailyTargetQueryEmployee {
-  const { plan, tiers, currentSales, stored, recalcRequest } = params;
-  const calc = calculateDailyTarget(currentSales, tiers);
-  const first = tiers[0];
+  const { plan, tiers, daySales, mtdSales, workDate, stored, recalcRequest } = params;
 
+  const mtdCalc = calculateDailyTarget(mtdSales, tiers);
+  const mtdTarget = Math.max(0, mtdCalc.targetAmount);
+  const priorWorkDate = previousWorkDateInMonth(workDate);
+  let priorMtdTarget = 0;
+  if (priorWorkDate) {
+    const priorMtdSales = Math.max(0, Number(new Decimal(mtdSales).minus(daySales).toFixed(2)));
+    priorMtdTarget = Math.max(0, calculateDailyTarget(priorMtdSales, tiers).targetAmount);
+  }
+  const previewDayDelta = Math.max(
+    0,
+    Number(new Decimal(mtdTarget).minus(priorMtdTarget).toDecimalPlaces(2).toString()),
+  );
+
+  const first = tiers[0];
   let persistenceStatus: TargetPersistenceStatus = 'not_generated';
   if (stored?.status === 'recalculated') persistenceStatus = 'recalculated';
   else if (stored) persistenceStatus = 'generated';
 
+  const storedMtd = parseMtdFieldsFromBreakdown(stored?.calculationBreakdownJson);
   const displayStatus: TargetDisplayStatus | null = stored
-    ? deriveTargetDisplayStatus(stored.netSalesAfterDiscount, stored.targetAmount)
+    ? deriveTargetDisplayStatus(
+        storedMtd.mtdSales ?? mtdSales,
+        storedMtd.mtdTargetAmount ?? stored.targetAmount,
+      )
     : null;
 
   const sync = deriveTargetSyncStatus(recalcRequest);
@@ -175,9 +241,15 @@ function mapOneEmployee(params: {
     firstDailyStartAmount: first ? amountStr(first.dailyStartAmount) : '0.000000',
     firstRatePercent: first ? amountStr(first.ratePercent) : '0.000000',
     planSummary: planSummaryLabel(tiers),
-    currentNetSalesAfterDiscount: moneyStr(currentSales),
+    currentNetSalesAfterDiscount: moneyStr(daySales),
+    currentMtdSales: moneyStr(mtdSales),
+    previewMtdTargetAmount: moneyStr(mtdTarget),
+    previewDayDelta: moneyStr(previewDayDelta),
     storedNetSalesAfterDiscount: stored ? moneyStr(stored.netSalesAfterDiscount) : null,
     storedTargetAmount: stored ? moneyStr(stored.targetAmount) : null,
+    storedMtdSales: storedMtd.mtdSales != null ? moneyStr(storedMtd.mtdSales) : null,
+    storedMtdTargetAmount:
+      storedMtd.mtdTargetAmount != null ? moneyStr(storedMtd.mtdTargetAmount) : null,
     persistenceStatus,
     displayStatus,
     dailyTargetId: stored?.id ?? null,
@@ -185,8 +257,8 @@ function mapOneEmployee(params: {
     calculationBreakdownJson: stored?.calculationBreakdownJson ?? null,
     generatedAt: stored?.generatedAt ?? null,
     updatedAt: stored?.updatedAt ?? null,
-    previewTargetAmount: moneyStr(calc.targetAmount),
-    previewBreakdown: calc.breakdown.map((b) => ({
+    previewTargetAmount: moneyStr(previewDayDelta),
+    previewBreakdown: mtdCalc.breakdown.map((b) => ({
       from: amountStr(b.from),
       to: b.to == null ? null : amountStr(b.to),
       eligibleAmount: amountStr(b.eligibleAmount),
@@ -205,7 +277,7 @@ function mapOneEmployee(params: {
 
 /**
  * Read model for a work date: all employees with an enabled covering plan,
- * live sales, and optional stored TblEmpDailyTarget — no N+1.
+ * live day + MTD sales, and optional stored TblEmpDailyTarget — no N+1.
  */
 export async function getEmployeeDailyTargetsForDate(
   workDate: string,
@@ -233,7 +305,6 @@ export async function getEmployeeDailyTargetsForDate(
   try {
     planByEmp = resolveUniqueEffectivePlans(plans);
   } catch (err) {
-    // Still return partials for GET: drop conflicting emps and surface message.
     const byEmp = new Map<number, EffectiveTargetPlanRow[]>();
     for (const p of plans) {
       const list = byEmp.get(p.empId) ?? [];
@@ -258,16 +329,21 @@ export async function getEmployeeDailyTargetsForDate(
   const planIds = [...planByEmp.values()].map((p) => p.planId);
   const allTiers = await listTiersForPlanIds(planIds);
   const eligibleEmpIds = [...planByEmp.keys()];
+  const monthStart = monthStartFromWorkDate(workDate);
 
-  const [salesRows, storedRows, recalcRows] = await Promise.all([
+  const [daySalesRows, mtdSalesRows, storedRows, recalcRows] = await Promise.all([
     eligibleEmpIds.length > 0
       ? getEmployeesNetServiceSalesByDate(workDate, branchId, eligibleEmpIds)
+      : Promise.resolve([]),
+    eligibleEmpIds.length > 0
+      ? getEmployeesNetServiceSalesByDateRange(monthStart, workDate, branchId, eligibleEmpIds)
       : Promise.resolve([]),
     listDailyTargetsByWorkDate(workDate, filterIds),
     listTargetRecalcRequestsForDate(workDate, filterIds).catch(() => [] as TargetRecalcRequestRow[]),
   ]);
 
-  const salesByEmp = new Map(salesRows.map((r) => [r.empId, r.netSalesAfterDiscount]));
+  const daySalesByEmp = new Map(daySalesRows.map((r) => [r.empId, r.netSalesAfterDiscount]));
+  const mtdSalesByEmp = new Map(mtdSalesRows.map((r) => [r.empId, r.netSalesAfterDiscount]));
   const storedByEmp = new Map(
     storedRows
       .filter((r) => r.branchId === branchId)
@@ -287,23 +363,29 @@ export async function getEmployeeDailyTargetsForDate(
   let belowFirstTier = 0;
   let earnedTarget = 0;
   let totalCurrentSales = new Decimal(0);
+  let totalCurrentMtdSales = new Decimal(0);
   let totalStoredTarget = new Decimal(0);
+  let totalStoredMtdTarget = new Decimal(0);
 
   for (const empId of eligibleEmpIds.sort((a, b) => a - b)) {
     const plan = planByEmp.get(empId)!;
     const tiers = toCalcTiers(plan.planId, allTiers);
-    const currentSales = Number(salesByEmp.get(empId) ?? 0);
+    const daySales = Number(daySalesByEmp.get(empId) ?? 0);
+    const mtdSales = Number(mtdSalesByEmp.get(empId) ?? 0);
     const stored = storedByEmp.get(empId) ?? null;
     const row = mapOneEmployee({
       plan,
       tiers,
-      currentSales,
+      daySales,
+      mtdSales,
+      workDate,
       stored,
       recalcRequest: recalcByEmp.get(empId) ?? null,
     });
     employees.push(row);
 
-    totalCurrentSales = totalCurrentSales.plus(currentSales);
+    totalCurrentSales = totalCurrentSales.plus(daySales);
+    totalCurrentMtdSales = totalCurrentMtdSales.plus(mtdSales);
     if (row.persistenceStatus === 'not_generated') notGenerated += 1;
     else if (row.persistenceStatus === 'generated') generated += 1;
     else recalculated += 1;
@@ -313,6 +395,12 @@ export async function getEmployeeDailyTargetsForDate(
     else if (row.displayStatus === 'earned_target') earnedTarget += 1;
 
     if (stored) totalStoredTarget = totalStoredTarget.plus(stored.targetAmount);
+    if (row.storedMtdTargetAmount != null) {
+      totalStoredMtdTarget = totalStoredMtdTarget.plus(row.storedMtdTargetAmount);
+    } else if (stored) {
+      // Fallback preview when older rows lack v2-mtd snapshot.
+      totalStoredMtdTarget = totalStoredMtdTarget.plus(row.previewMtdTargetAmount);
+    }
   }
 
   employees.sort((a, b) => a.empName.localeCompare(b.empName, 'ar'));
@@ -328,7 +416,9 @@ export async function getEmployeeDailyTargetsForDate(
       belowFirstTier,
       earnedTarget,
       totalCurrentNetSalesAfterDiscount: moneyStr(totalCurrentSales),
+      totalCurrentMtdSales: moneyStr(totalCurrentMtdSales),
       totalStoredTargetAmount: moneyStr(totalStoredTarget),
+      totalStoredMtdTargetAmount: moneyStr(totalStoredMtdTarget),
     },
     employees,
     planConflicts,

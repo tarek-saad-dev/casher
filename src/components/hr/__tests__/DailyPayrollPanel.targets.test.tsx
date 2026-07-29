@@ -143,10 +143,11 @@ describe('DailyPayrollPanel Phase 3 target UI', () => {
     });
 
     expect(screen.getByText('الأساسي اليومي')).toBeInTheDocument();
-    expect(screen.getByText('تارجت اليوم')).toBeInTheDocument();
+    expect(screen.getByText('تارجت حتى الآن / فرق اليوم')).toBeInTheDocument();
     expect(screen.queryByText(/إجمالي الاستحقاق|CombinedPay|الأساسي \+ التارجت/i)).not.toBeInTheDocument();
     expect(screen.getByText('إجمالي الأساسي اليومي')).toBeInTheDocument();
-    expect(screen.getByText('إجمالي تارجت اليوم')).toBeInTheDocument();
+    expect(screen.getByText('تارجت حتى الآن')).toBeInTheDocument();
+    expect(screen.getByText('فرق تارجت اليوم')).toBeInTheDocument();
     expect(screen.getAllByText('لم يتم التوليد').length).toBeGreaterThan(0);
   });
 
@@ -160,11 +161,11 @@ describe('DailyPayrollPanel Phase 3 target UI', () => {
           json: async () => ({ generatedCount: 1, totalHours: 8, totalWage: 400 }),
         };
       }
-      if (init?.method === 'POST' && u.includes('/targets/generate')) {
+      if (init?.method === 'POST' && u.includes('/targets/recalc-requests')) {
         return {
           ok: true,
           json: async () => ({
-            totals: { eligibleEmployees: 1, earnedTarget: 0, totalTargetAmount: '0.00' },
+            process: { completed: 1, failed: 0, claimed: 1 },
           }),
         };
       }
@@ -217,7 +218,7 @@ describe('DailyPayrollPanel Phase 3 target UI', () => {
     await waitFor(() => {
       const posts = fetchMock.mock.calls.filter((c) => c[1]?.method === 'POST');
       expect(posts.some((c) => String(c[0]).includes('/api/payroll/daily/generate') && !String(c[0]).includes('targets'))).toBe(true);
-      expect(posts.some((c) => String(c[0]).includes('/targets/generate'))).toBe(true);
+      expect(posts.some((c) => String(c[0]).includes('/targets/recalc-requests'))).toBe(true);
     });
   });
 
@@ -227,11 +228,11 @@ describe('DailyPayrollPanel Phase 3 target UI', () => {
     fetchMock.mockImplementation(async (url: RequestInfo | URL, init?: RequestInit) => {
       const u = String(url);
       if (init?.method === 'POST') posts.push(u);
-      if (init?.method === 'POST' && u.includes('/targets/generate')) {
+      if (init?.method === 'POST' && u.includes('/targets/recalc-requests')) {
         return {
           ok: true,
           json: async () => ({
-            totals: { eligibleEmployees: 1, earnedTarget: 1, totalTargetAmount: '40.00' },
+            process: { completed: 1, failed: 0, claimed: 1 },
           }),
         };
       }
@@ -268,7 +269,7 @@ describe('DailyPayrollPanel Phase 3 target UI', () => {
     fireEvent.click(screen.getByRole('button', { name: /إعادة حساب التارجت فقط/ }));
 
     await waitFor(() => {
-      expect(posts.some((p) => p.includes('/targets/generate'))).toBe(true);
+      expect(posts.some((p) => p.includes('/targets/recalc-requests'))).toBe(true);
     });
     expect(posts.some((p) => p.includes('/api/payroll/daily/generate') && !p.includes('targets'))).toBe(false);
   });

@@ -17,6 +17,7 @@ type BranchOpt = {
   branchName: string;
   lifecycleStatus: string;
   isActive: boolean;
+  isAssigned?: boolean;
   defaultOpenTime: string | null;
   defaultCloseTime: string | null;
 };
@@ -51,6 +52,7 @@ export default function EmployeeBranchSchedulePage() {
   const [error, setError] = useState<string | null>(null);
   const [employee, setEmployee] = useState<{ empName: string; isActive: boolean } | null>(null);
   const [branches, setBranches] = useState<BranchOpt[]>([]);
+  const [hasActiveAssignment, setHasActiveAssignment] = useState(true);
   const [effectiveFrom, setEffectiveFrom] = useState('');
   const [reason, setReason] = useState('تحديث توزيع الفروع الأسبوعي');
   const [days, setDays] = useState<DayDraft[]>([]);
@@ -77,6 +79,7 @@ export default function EmployeeBranchSchedulePage() {
       }
       setEmployee(data.employee);
       setBranches(data.assignedBranches || []);
+      setHasActiveAssignment(data.hasActiveAssignment !== false);
       const from = data.weekStart || new Date().toISOString().slice(0, 10);
       setEffectiveFrom(from);
       const drafts: DayDraft[] = (data.days || []).map(
@@ -251,6 +254,13 @@ export default function EmployeeBranchSchedulePage() {
         </Badge>
       </PageHeader>
 
+      {!hasActiveAssignment && (
+        <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+          الموظف ده لسه متعيّنش على أي فرع. تقدر تختار الفرع من القائمة تحت وتحفظ الجدول —
+          هيتعمل له تعيين تلقائي مع خطة الراتب من بيانات الموظف إن وجدت.
+        </div>
+      )}
+
       <div className="mb-4 rounded-xl border border-border bg-surface p-4">
         <p className="mb-3 text-sm font-semibold">الملخص العام (من نفس المحلّل)</p>
         <div className="flex flex-wrap gap-2">
@@ -355,6 +365,7 @@ export default function EmployeeBranchSchedulePage() {
                     {branches.map((b) => (
                       <option key={b.branchId} value={b.branchId}>
                         {b.branchName}
+                        {!b.isAssigned ? ' (غير معيّن بعد)' : ''}
                         {!b.isActive || b.lifecycleStatus === 'SETUP' ? ' (إعداد)' : ''}
                       </option>
                     ))}

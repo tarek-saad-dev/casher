@@ -14,6 +14,7 @@ export function resolvePostSwitchNavigationPath(pathname: string | null | undefi
     /^\/income\/\d+/i,
     /^\/expenses\/\d+/i,
     /^\/incomes\/\d+/i,
+    /^\/admin\/hr\/employees\/\d+/i,
   ];
   if (unsafePatterns.some((re) => re.test(path))) {
     return '/';

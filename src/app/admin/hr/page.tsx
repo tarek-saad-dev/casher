@@ -90,11 +90,11 @@ function formatTargetBadge(emp: Employee): { label: string; tone: 'muted' | 'war
     const rateTxt = new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(rate);
     if (tierCount > 1) {
       return {
-        label: `يبدأ من ${startTxt} يوميًا • ${rateTxt}% · ${tierCount} شرائح`,
+        label: `يبدأ من ${startTxt} شهريًا • ${rateTxt}% · ${tierCount} شرائح`,
         tone: 'ok',
       };
     }
-    return { label: `يبدأ من ${startTxt} يوميًا • ${rateTxt}%`, tone: 'ok' };
+    return { label: `يبدأ من ${startTxt} شهريًا • ${rateTxt}%`, tone: 'ok' };
   }
   if (tierCount > 1) return { label: `${tierCount} شرائح`, tone: 'ok' };
   return { label: 'التارجت مفعّل', tone: 'ok' };

@@ -191,7 +191,7 @@ export async function getFullDayReport(
       WhatsApp: string | null;
       Mobile: string | null;
     }>('payroll', () =>
-      db.request().input('d', sql.Date, workDate).query(`
+      db.request().input('d', sql.Date, workDate).input('branchId', sql.Int, branchId).query(`
         SELECT
           p.EmpID,
           e.EmpName,
@@ -206,8 +206,11 @@ export async function getFullDayReport(
         FROM dbo.TblEmpDailyPayroll p
         INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
         LEFT JOIN dbo.TblEmpAttendance a
-          ON a.EmpID = p.EmpID AND a.WorkDate = p.WorkDate
+          ON a.EmpID = p.EmpID
+         AND a.WorkDate = p.WorkDate
+         AND a.BranchID = p.BranchID
         WHERE p.WorkDate = @d
+          AND p.BranchID = @branchId
         ORDER BY e.EmpName
       `),
     ),
@@ -216,14 +219,17 @@ export async function getFullDayReport(
       EmpID: number;
       TargetAmount: number;
       NetSalesAfterDiscount: number;
+      CalculationBreakdownJson: string | null;
     }>('targets', () =>
-      db.request().input('d', sql.Date, workDate).query(`
+      db.request().input('d', sql.Date, workDate).input('branchId', sql.Int, branchId).query(`
         SELECT
           EmpID,
           ISNULL(TargetAmount, 0) AS TargetAmount,
-          ISNULL(NetSalesAfterDiscount, 0) AS NetSalesAfterDiscount
+          ISNULL(NetSalesAfterDiscount, 0) AS NetSalesAfterDiscount,
+          CalculationBreakdownJson
         FROM dbo.TblEmpDailyTarget
         WHERE WorkDate = @d
+          AND BranchID = @branchId
       `),
     ),
   ]);
@@ -285,11 +291,61 @@ export async function getFullDayReport(
     /* keep */
   }
 
-  const targetByEmp = new Map<number, { amount: number; sales: number }>();
+  const targetByEmp = new Map<
+    number,
+    {
+      amount: number;
+      sales: number;
+      mtdSales: number | null;
+      mtdTargetAmount: number | null;
+      breakdown: Array<{
+        from: number;
+        to: number | null;
+        eligibleAmount: number;
+        ratePercent: number;
+        targetAmount: number;
+      }> | null;
+    }
+  >();
   for (const t of targetRows) {
+    let mtdSales: number | null = null;
+    let mtdTargetAmount: number | null = null;
+    let breakdown: Array<{
+      from: number;
+      to: number | null;
+      eligibleAmount: number;
+      ratePercent: number;
+      targetAmount: number;
+    }> | null = null;
+    const rawJson = t.CalculationBreakdownJson;
+    if (rawJson) {
+      try {
+        const parsed = JSON.parse(String(rawJson)) as Record<string, unknown>;
+        if (parsed.mtdSales != null && Number.isFinite(Number(parsed.mtdSales))) {
+          mtdSales = roundMoney(Number(parsed.mtdSales));
+        }
+        if (parsed.mtdTargetAmount != null && Number.isFinite(Number(parsed.mtdTargetAmount))) {
+          mtdTargetAmount = roundMoney(Number(parsed.mtdTargetAmount));
+        }
+        if (Array.isArray(parsed.breakdown)) {
+          breakdown = parsed.breakdown.map((b: Record<string, unknown>) => ({
+            from: Number(b.from ?? 0),
+            to: b.to == null ? null : Number(b.to),
+            eligibleAmount: Number(b.eligibleAmount ?? 0),
+            ratePercent: Number(b.ratePercent ?? 0),
+            targetAmount: Number(b.targetAmount ?? 0),
+          }));
+        }
+      } catch {
+        /* ignore bad snapshot */
+      }
+    }
     targetByEmp.set(Number(t.EmpID), {
       amount: roundMoney(Number(t.TargetAmount ?? 0)),
       sales: roundMoney(Number(t.NetSalesAfterDiscount ?? 0)),
+      mtdSales,
+      mtdTargetAmount,
+      breakdown,
     });
   }
 
@@ -309,6 +365,9 @@ export async function getFullDayReport(
       baseWage,
       targetAmount,
       targetSales: target ? target.sales : null,
+      mtdSales: target?.mtdSales ?? null,
+      mtdTargetAmount: target?.mtdTargetAmount ?? null,
+      targetBreakdown: target?.breakdown ?? null,
       dayTotal: roundMoney(baseWage + targetAmount),
       payrollStatus: r.Status ?? null,
       hasPhone: !!phone,
@@ -348,6 +407,9 @@ export async function getFullDayReport(
         baseWage: 0,
         targetAmount: target.amount,
         targetSales: target.sales,
+        mtdSales: target.mtdSales,
+        mtdTargetAmount: target.mtdTargetAmount,
+        targetBreakdown: target.breakdown,
         dayTotal: target.amount,
         payrollStatus: null,
         hasPhone: !!resolveEmployeeWhatsAppPhone(emp.WhatsApp, emp.Mobile),
@@ -655,13 +717,15 @@ export async function getFullDayReport(
       'mtd-staff-base',
       `SELECT ISNULL(SUM(DailyWage), 0) AS Total
        FROM dbo.TblEmpDailyPayroll
-       WHERE WorkDate BETWEEN @from AND @to`,
+       WHERE WorkDate BETWEEN @from AND @to
+         AND BranchID = @branchId`,
     ),
     sumOne(
       'mtd-staff-target',
       `SELECT ISNULL(SUM(TargetAmount), 0) AS Total
        FROM dbo.TblEmpDailyTarget
-       WHERE WorkDate BETWEEN @from AND @to`,
+       WHERE WorkDate BETWEEN @from AND @to
+         AND BranchID = @branchId`,
     ),
   ]);
 
@@ -691,7 +755,7 @@ export async function getFullDayReport(
 
   let ledgerByEmp = new Map<number, { empName: string; balance: number }>();
   try {
-    const ledgerSummary = await getEmployeeLedgerSummary(payrollMonth);
+    const ledgerSummary = await getEmployeeLedgerSummary(payrollMonth, branchId);
     ledgerByEmp = new Map(
       ledgerSummary.employees.map((e) => [
         e.empId,
@@ -718,6 +782,9 @@ export async function getFullDayReport(
       empName: dayEmp?.empName || ledger?.empName || `موظف #${empId}`,
       dayBase,
       dayTarget,
+      mtdTargetAmount: dayEmp?.mtdTargetAmount ?? null,
+      mtdSales: dayEmp?.mtdSales ?? null,
+      targetBreakdown: dayEmp?.targetBreakdown ?? null,
       dayTotal: roundMoney(dayBase + dayTarget),
       advancesToday: advancesTodayByEmp.get(empId) ?? 0,
       ledgerBalance: ledger?.balance ?? 0,

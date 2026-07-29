@@ -257,7 +257,7 @@ export async function POST(req: NextRequest) {
     if (!session) return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
 
     const body = await req.json();
-    const { invDate, amount, expInId, paymentMethodId, notes, shiftMoveId } = body;
+    const { invDate, amount, expInId, paymentMethodId, notes } = body;
 
     // ── Client-side validation ──
     if (!invDate) return NextResponse.json({ error: 'التاريخ مطلوب' }, { status: 400 });
@@ -278,8 +278,8 @@ export async function POST(req: NextRequest) {
     await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
 
     try {
-      // 1. Resolve ShiftMoveID (client may pass an explicit shift; otherwise use the branch-scoped open shift)
-      const resolvedShiftMoveId: number | null = shiftMoveId ?? gated.shift?.id ?? null;
+      // Always use the gated open shift for this branch — never trust client shiftMoveId.
+      const resolvedShiftMoveId: number | null = gated.shift?.id ?? null;
       if (!resolvedShiftMoveId) {
         await transaction.rollback();
         return NextResponse.json({ error: 'لا توجد وردية مفتوحة. يجب فتح وردية قبل تسجيل الإيراد.' }, { status: 400 });

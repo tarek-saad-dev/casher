@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import PageGuard from '@/components/guards/PageGuard';
 import { getEmployeeMonthlyWorkRevenueReport } from '@/lib/reports/employee-monthly-work-revenue';
 import { validateReportParams } from '@/lib/reports/employee-monthly-work-revenue.types';
+import { requireBranchReportAccess, isActiveBranchContext } from '@/lib/branch/context';
 import {
   formatCurrencyAr,
   formatDurationAr,
@@ -34,10 +35,16 @@ export default async function EmployeeMonthlyWorkRevenuePrintPage({ searchParams
     redirect('/admin/reports/employee-monthly-work-revenue');
   }
 
+  const branch = await requireBranchReportAccess();
+  if (!isActiveBranchContext(branch)) {
+    redirect('/admin/reports/employee-monthly-work-revenue');
+  }
+
   const report = await getEmployeeMonthlyWorkRevenueReport({
     employeeId: validated.employeeId,
     year: validated.year,
     month: validated.month,
+    branchId: branch.branchId,
   });
 
   if (!report) {

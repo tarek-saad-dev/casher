@@ -112,6 +112,7 @@ export async function GET(req: NextRequest) {
       const classification = await maybeBuildClassificationPayload({
         year,
         month,
+        branchId: scope.branchId,
         salesRevenueOverride: report.totalRevenue,
         legacyTotals: {
           totalRevenue: report.totalRevenue,

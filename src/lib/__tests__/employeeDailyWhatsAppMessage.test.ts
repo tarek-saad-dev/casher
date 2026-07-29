@@ -39,11 +39,50 @@ function baseDay(overrides: Partial<EmployeeMonthlyPayrollDayRow> = {}): Employe
     deductionNotes: [],
     targetSales: 184.1,
     targetAmount: 0,
+    mtdSales: null,
+    mtdTargetAmount: null,
+    targetBreakdown: [],
     targetPersistence: 'generated',
     dayNet: 213.75,
     ...overrides,
   };
 }
+
+describe('composeEmployeeDailyWhatsAppMessage MTD target', () => {
+  it('shows month-to-date target and tier breakdown', () => {
+    const msg = composeEmployeeDailyWhatsAppMessage({
+      employeeName: 'زياد',
+      branchName: 'جليم',
+      workDate: '2026-07-06',
+      dayNameAr: 'الأحد',
+      day: baseDay({
+        targetAmount: 150,
+        mtdSales: 45000,
+        mtdTargetAmount: 1500,
+        targetBreakdown: [
+          {
+            from: 40000,
+            to: 50000,
+            eligibleAmount: 5000,
+            ratePercent: 30,
+            targetAmount: 1500,
+          },
+        ],
+      }),
+      ledgerBalance: 1850,
+      invoiceCount: 7,
+      serviceCount: 12,
+      basicServiceCount: 9,
+      otherServiceCount: 3,
+    });
+
+    expect(msg).toContain('تارجت الشهر حتى الآن');
+    expect(msg).toContain('مبيعات الشهر حتى الآن');
+    expect(msg).toContain('الحسبة حسب اتفاقك');
+    expect(msg).toContain('فرق اليوم');
+  });
+});
+
 
 describe('composeEmployeeDailyWhatsAppMessage', () => {
   it('includes partial-day note and ledger balance', () => {

@@ -20,20 +20,48 @@ function tier(dailyStartAmount: number, ratePercent: number, sortOrder = 1): Dai
 }
 
 describe('toDailyStartAmount', () => {
-  it('monthly start=26000, conversionDays=26 → daily=1000', () => {
-    expect(toDailyStartAmount(26000, 'monthly', 26)).toBe(1000);
+  it('monthly MTD keeps threshold as-is (no ÷ conversionDays)', () => {
+    expect(toDailyStartAmount(26000, 'monthly', 26)).toBe(26000);
   });
 
-  it('monthly start=10000, conversionDays=26 → ~384.615385 (6dp half-up)', () => {
-    // 10000/26 = 384.615384615... → 6dp ROUND_HALF_UP = 384.615385
-    // Spec asked ~384.615384 internally; we store 6dp. Document exact:
-    const daily = toDailyStartAmount(10000, 'monthly', 26);
-    expect(daily).toBeCloseTo(384.615385, 6);
-    // Progressive example in product uses 384.615384 — allow either by using exact string for engine tests
+  it('monthly start=10000 stays 10000 for MTD tiers', () => {
+    expect(toDailyStartAmount(10000, 'monthly', 26)).toBe(10000);
   });
 
-  it('daily basis leaves amount unchanged', () => {
-    expect(toDailyStartAmount(1000, 'daily', 26)).toBe(1000);
+  it('daily basis is rejected', () => {
+    expect(() => toDailyStartAmount(1000, 'daily', 26)).toThrow(EmployeeTargetValidationError);
+  });
+});
+
+describe('calculateDailyTarget — MTD progressive on cumulative sales', () => {
+  it('mtdSales=8000 below first tier 10000 → 0', () => {
+    const r = calculateDailyTarget(8000, [tier(10000, 10), tier(20000, 20)]);
+    expect(r.targetAmount).toBe(0);
+    expect(r.activeTierIndex).toBeNull();
+  });
+
+  it('mtdSales=40000 with 10k@10% and 20k@20% → 1000+4000=5000', () => {
+    // 10k→20k: 10000×10%=1000; 20k→∞: 20000×20%=4000
+    const r = calculateDailyTarget(40000, [tier(10000, 10), tier(20000, 20)]);
+    expect(r.targetAmount).toBe(5000);
+  });
+
+  it('mtdSales=40000 with three tiers 10k/20k/30k → 1000+2000+2000=5000 at 20% last', () => {
+    const r = calculateDailyTarget(40000, [
+      tier(10000, 10),
+      tier(20000, 20),
+      tier(30000, 20),
+    ]);
+    expect(r.targetAmount).toBe(5000);
+  });
+
+  it('day payable is MTD delta: mtdTarget(25k) − mtdTarget(20k) = 1000', () => {
+    const tiers = [tier(10000, 10), tier(20000, 20)];
+    const mtd = calculateDailyTarget(25000, tiers).targetAmount;
+    const prior = calculateDailyTarget(20000, tiers).targetAmount;
+    expect(mtd).toBe(2000);
+    expect(prior).toBe(1000);
+    expect(mtd - prior).toBe(1000);
   });
 });
 

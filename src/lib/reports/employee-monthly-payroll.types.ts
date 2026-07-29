@@ -43,7 +43,20 @@ export interface EmployeeMonthlyPayrollDayRow {
   deductionNotes: string[];
 
   targetSales: number | null;
+  /** Day payable (MTD day-delta). */
   targetAmount: number | null;
+  /** Month-to-date sales used for progressive tiers. */
+  mtdSales: number | null;
+  /** Progressive commission earned from month start through this date. */
+  mtdTargetAmount: number | null;
+  /** Tier slices explaining mtdTargetAmount. */
+  targetBreakdown: Array<{
+    from: number;
+    to: number | null;
+    eligibleAmount: number;
+    ratePercent: number;
+    targetAmount: number;
+  }>;
   targetPersistence: 'not_generated' | 'generated' | 'none';
 
   dayNet: number;
@@ -94,4 +107,6 @@ export interface GetEmployeeMonthlyPayrollParams {
   employeeId: number;
   year: number;
   month: number;
+  /** When set, attendance/payroll/targets/ledger are filtered to this branch. */
+  branchId?: number | null;
 }

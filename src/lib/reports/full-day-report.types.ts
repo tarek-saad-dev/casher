@@ -5,6 +5,14 @@ export interface FullDayMoneyLine {
   meta?: string | null;
 }
 
+export interface FullDayTargetBreakdownRow {
+  from: number;
+  to: number | null;
+  eligibleAmount: number;
+  ratePercent: number;
+  targetAmount: number;
+}
+
 export interface FullDayEmployeeRow {
   empId: number;
   empName: string;
@@ -13,8 +21,16 @@ export interface FullDayEmployeeRow {
   actualHours: number | null;
   attendanceStatus: string | null;
   baseWage: number;
+  /** Day payable (MTD day-delta). */
   targetAmount: number;
+  /** Day-only target sales. */
   targetSales: number | null;
+  /** Month-to-date cumulative sales used for progressive tiers. */
+  mtdSales: number | null;
+  /** Progressive commission earned from month start through report date. */
+  mtdTargetAmount: number | null;
+  /** Tier slices for MTD calculation (how mtdTarget was computed). */
+  targetBreakdown: FullDayTargetBreakdownRow[] | null;
   dayTotal: number;
   payrollStatus: string | null;
   hasPhone: boolean;
@@ -88,8 +104,20 @@ export interface FullDayEmployeeAccountRow {
   empName: string;
   /** أساسي اليوم */
   dayBase: number;
-  /** تارجت اليوم */
+  /** تارجت اليوم (فرق اليوم) */
   dayTarget: number;
+  /** تارجت الشهر حتى تاريخ التقرير */
+  mtdTargetAmount: number | null;
+  /** مبيعات الشهر حتى تاريخ التقرير */
+  mtdSales: number | null;
+  /** تفصيل الشرائح على الإجمالي التراكمي */
+  targetBreakdown: Array<{
+    from: number;
+    to: number | null;
+    eligibleAmount: number;
+    ratePercent: number;
+    targetAmount: number;
+  }> | null;
   /** إجمالي استحقاق اليوم */
   dayTotal: number;
   /** سلف اليوم (مجمّعة) */

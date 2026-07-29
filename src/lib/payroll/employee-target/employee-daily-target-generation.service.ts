@@ -24,8 +24,16 @@ import {
   EmployeeDailyTargetDomainError,
   resolveUniqueEffectivePlans,
 } from './effective-plan-resolve';
-import { getEmployeesNetServiceSalesByDate } from './employee-target-sales-service';
-import { assertValidWorkDate, EmployeeTargetValidationError } from './target.validation';
+import {
+  getEmployeesNetServiceSalesByDate,
+  getEmployeesNetServiceSalesByDateRange,
+} from './employee-target-sales-service';
+import {
+  assertValidWorkDate,
+  EmployeeTargetValidationError,
+  monthStartFromWorkDate,
+  previousWorkDateInMonth,
+} from './target.validation';
 import type { DailyTargetTier } from './target.types';
 import {
   syncEmployeeDailyTargetLedgerEntry,
@@ -54,8 +62,13 @@ export interface GeneratedTargetEmployeeResult {
   targetPlanId: number;
   planEffectiveFrom: string;
   planEffectiveTo: string | null;
+  /** Day-only sales (column NetSalesAfterDiscount). */
   netSalesAfterDiscount: string;
+  /** Day payable = MTD target delta (column TargetAmount). */
   targetAmount: string;
+  mtdSales: string;
+  mtdTargetAmount: string;
+  dayDelta: string;
   persistenceStatus: TargetUpsertStatus;
   displayStatus: TargetDisplayStatus;
   ledgerSyncAction: TargetLedgerSyncAction;
@@ -99,9 +112,14 @@ function tiersForPlan(planId: number, allTiers: TargetTierDbRow[]): DailyTargetT
     .map((t) => ({
       sortOrder: t.sortOrder,
       inputStartAmount: t.inputStartAmount,
-      dailyStartAmount: t.dailyStartAmount,
+      // MTD engine: monthly input thresholds applied to cumulative sales.
+      dailyStartAmount: t.inputStartAmount,
       ratePercent: t.ratePercent,
     }));
+}
+
+function moneyNumber(value: Decimal | number | string): number {
+  return Number(moneyStr(value));
 }
 
 export async function generateEmployeeDailyTargets(
@@ -149,14 +167,15 @@ export async function generateEmployeeDailyTargets(
   const planIds = [...planByEmp.values()].map((p) => p.planId);
   const allTiers = await listTiersForPlanIds(planIds);
   const eligibleEmpIds = [...planByEmp.keys()];
+  const monthStart = monthStartFromWorkDate(workDate);
+  const priorWorkDate = previousWorkDateInMonth(workDate);
 
-  // Shared sales core — never combine invoice revenue across branches.
-  const salesRows = await getEmployeesNetServiceSalesByDate(
-    workDate,
-    branchId,
-    eligibleEmpIds,
-  );
-  const salesByEmp = new Map(salesRows.map((r) => [r.empId, r]));
+  const [daySalesRows, mtdSalesRows] = await Promise.all([
+    getEmployeesNetServiceSalesByDate(workDate, branchId, eligibleEmpIds),
+    getEmployeesNetServiceSalesByDateRange(monthStart, workDate, branchId, eligibleEmpIds),
+  ]);
+  const daySalesByEmp = new Map(daySalesRows.map((r) => [r.empId, r]));
+  const mtdSalesByEmp = new Map(mtdSalesRows.map((r) => [r.empId, r]));
 
   const db = await getPool();
   const transaction = new sql.Transaction(db);
@@ -185,22 +204,38 @@ export async function generateEmployeeDailyTargets(
         );
       }
 
-      const salesRow = salesByEmp.get(empId);
-      const netSales = new Decimal(salesRow?.netSalesAfterDiscount ?? 0);
-      if (netSales.isNeg()) {
+      const daySales = new Decimal(daySalesByEmp.get(empId)?.netSalesAfterDiscount ?? 0);
+      const mtdSales = new Decimal(mtdSalesByEmp.get(empId)?.netSalesAfterDiscount ?? 0);
+      if (daySales.isNeg() || mtdSales.isNeg()) {
         throw new EmployeeTargetValidationError('صافي المبيعات لا يمكن أن يكون سالبًا');
       }
 
-      const calculation = calculateDailyTarget(netSales.toString(), tiers);
-      const targetAmount = Math.max(0, calculation.targetAmount);
+      const mtdCalculation = calculateDailyTarget(mtdSales.toString(), tiers);
+      const mtdTargetAmount = Math.max(0, mtdCalculation.targetAmount);
+
+      let priorMtdTargetAmount = 0;
+      if (priorWorkDate) {
+        const priorMtdSales = Decimal.max(0, mtdSales.minus(daySales));
+        const priorCalc = calculateDailyTarget(priorMtdSales.toString(), tiers);
+        priorMtdTargetAmount = Math.max(0, priorCalc.targetAmount);
+      }
+
+      const dayDelta = Math.max(0, moneyNumber(new Decimal(mtdTargetAmount).minus(priorMtdTargetAmount)));
 
       const breakdownJson = buildCalculationBreakdownJson({
         workDate,
+        monthStart,
         targetPlanId: plan.planId,
-        inputBasis: plan.inputBasis,
+        inputBasis: 'monthly',
         conversionDays: plan.conversionDays,
         tiers,
-        calculation,
+        mtdCalculation,
+        daySales: daySales.toString(),
+        mtdSales: mtdSales.toString(),
+        mtdTargetAmount,
+        dayDelta,
+        priorWorkDate,
+        priorMtdTargetAmount,
       });
 
       const upsert = await upsertDailyTargetInTransaction(transaction, {
@@ -208,21 +243,20 @@ export async function generateEmployeeDailyTargets(
         branchId,
         workDate,
         targetPlanId: plan.planId,
-        netSalesAfterDiscount: Number(moneyStr(calculation.netSalesAfterDiscount)),
-        targetAmount,
+        netSalesAfterDiscount: moneyNumber(daySales),
+        targetAmount: dayDelta,
         calculationBreakdownJson: breakdownJson,
         calculationVersion: CALCULATION_VERSION,
         generatedByUserId,
       });
 
-      // Same TX as DailyTarget upsert — no CashMove, no DailyPayroll.
       const ledgerSync = await syncEmployeeDailyTargetLedgerEntry({
         dailyTarget: {
           id: upsert.id,
           empId,
           branchId,
           workDate,
-          targetAmount,
+          targetAmount: dayDelta,
         },
         actorUserId: generatedByUserId,
         transaction,
@@ -233,9 +267,10 @@ export async function generateEmployeeDailyTargets(
       else if (ledgerSync.action === 'deleted') ledgerDeleted += 1;
       else ledgerUnchanged += 1;
 
+      // Display: earned if MTD progressive target > 0 (not merely today's delta).
       const displayStatus = deriveTargetDisplayStatus(
-        calculation.netSalesAfterDiscount,
-        targetAmount,
+        moneyNumber(mtdSales),
+        mtdTargetAmount,
       );
       if (upsert.persistenceStatus === 'generated') generated += 1;
       else recalculated += 1;
@@ -243,8 +278,8 @@ export async function generateEmployeeDailyTargets(
       else if (displayStatus === 'below_first_tier') belowFirstTier += 1;
       else earnedTarget += 1;
 
-      totalSales = totalSales.plus(calculation.netSalesAfterDiscount);
-      totalTarget = totalTarget.plus(targetAmount);
+      totalSales = totalSales.plus(daySales);
+      totalTarget = totalTarget.plus(dayDelta);
 
       const first = tiers[0]!;
       employees.push({
@@ -254,8 +289,11 @@ export async function generateEmployeeDailyTargets(
         targetPlanId: plan.planId,
         planEffectiveFrom: plan.effectiveFrom,
         planEffectiveTo: plan.effectiveTo,
-        netSalesAfterDiscount: moneyStr(calculation.netSalesAfterDiscount),
-        targetAmount: moneyStr(targetAmount),
+        netSalesAfterDiscount: moneyStr(daySales),
+        targetAmount: moneyStr(dayDelta),
+        mtdSales: moneyStr(mtdSales),
+        mtdTargetAmount: moneyStr(mtdTargetAmount),
+        dayDelta: moneyStr(dayDelta),
         persistenceStatus: upsert.persistenceStatus,
         displayStatus,
         ledgerSyncAction: ledgerSync.action,
@@ -263,7 +301,7 @@ export async function generateEmployeeDailyTargets(
         tierCount: tiers.length,
         firstDailyStartAmount: amountStr(first.dailyStartAmount),
         firstRatePercent: amountStr(first.ratePercent),
-        breakdown: calculation.breakdown.map((b) => ({
+        breakdown: mtdCalculation.breakdown.map((b) => ({
           from: amountStr(b.from),
           to: b.to == null ? null : amountStr(b.to),
           eligibleAmount: amountStr(b.eligibleAmount),

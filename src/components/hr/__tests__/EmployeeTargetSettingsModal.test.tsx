@@ -3,7 +3,6 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import EmployeeTargetSettingsModal, {
-  toDailyDisplay,
   buildTierInterpretation,
   currentMonthCoverage,
 } from '@/components/hr/EmployeeTargetSettingsModal';
@@ -35,29 +34,6 @@ vi.mock('@/components/ui/switch', () => ({
   ),
 }));
 
-vi.mock('@/components/ui/select', () => ({
-  Select: ({
-    value,
-    onValueChange,
-    children,
-  }: {
-    value: string;
-    onValueChange: (v: string) => void;
-    children: React.ReactNode;
-  }) => (
-    <div data-testid="basis-select">
-      <button type="button" onClick={() => onValueChange('daily')}>set-daily</button>
-      <button type="button" onClick={() => onValueChange('monthly')}>set-monthly</button>
-      <span data-testid="basis-value">{value}</span>
-      {children}
-    </div>
-  ),
-  SelectTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectValue: () => null,
-  SelectContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectItem: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-}));
-
 describe('month coverage', () => {
   it('mid-month date still starts from day 1', () => {
     const c = currentMonthCoverage('2026-07-15');
@@ -67,22 +43,19 @@ describe('month coverage', () => {
 });
 
 describe('EmployeeTargetSettingsModal helpers', () => {
-  it('converts monthly start to daily display when conversion days change', () => {
-    expect(toDailyDisplay('26000', 'monthly', 26)).toMatch(/1|١/);
-    expect(toDailyDisplay('26000', 'monthly', 20)).not.toBe(toDailyDisplay('26000', 'monthly', 26));
-  });
-
-  it('builds Arabic interpretation for tiers', () => {
+  it('builds Arabic MTD interpretation for monthly tiers', () => {
     const lines = buildTierInterpretation(
       [
-        { inputStartAmount: '1000', ratePercent: '10' },
-        { inputStartAmount: '3000', ratePercent: '20' },
+        { inputStartAmount: '10000', ratePercent: '10' },
+        { inputStartAmount: '20000', ratePercent: '20' },
       ],
-      'daily',
+      'monthly',
       26,
     );
     expect(lines[0]).toMatch(/بدون تارجت/);
-    expect(lines[lines.length - 1]).toMatch(/الجزء الزائد/);
+    expect(lines[1]).toMatch(/كامل/);
+    expect(lines[1]).toMatch(/١٬٠٠٠|1000/);
+    expect(lines[lines.length - 1]).toMatch(/فأعلى/);
   });
 });
 
@@ -111,6 +84,7 @@ describe('EmployeeTargetSettingsModal', () => {
     expect(within(dialog).queryByText(/سجل الخطط/)).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: /تشغيل/ })).not.toBeInTheDocument();
     expect(within(dialog).getByText(/الشهر الحالي بالكامل/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/إجمالي مبيعات الشهر حتى اليوم/)).toBeInTheDocument();
     expect(within(dialog).getByText('تشغيل التارجت')).toBeInTheDocument();
   });
 
@@ -120,9 +94,9 @@ describe('EmployeeTargetSettingsModal', () => {
     );
     const dialog = await screen.findByTestId('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: /إضافة شريحة/ }));
-    expect(within(dialog).getByText('البداية')).toBeInTheDocument();
+    expect(within(dialog).getByText(/تبدأ عندما يصل التراكمي إلى/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByLabelText(/حذف الشريحة/));
-    expect(within(dialog).queryByText('البداية')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/تبدأ عندما يصل التراكمي إلى/)).not.toBeInTheDocument();
   });
 
   it('validates enabled save without tiers', async () => {
@@ -138,7 +112,7 @@ describe('EmployeeTargetSettingsModal', () => {
     });
   });
 
-  it('saves with month-start effectiveFrom', async () => {
+  it('saves monthly plan with month-start effectiveFrom', async () => {
     const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === 'PUT') {
         return { ok: true, json: async () => ({ plan: { id: 1, isEnabled: true } }) };
@@ -169,6 +143,7 @@ describe('EmployeeTargetSettingsModal', () => {
       const body = JSON.parse(String(put![1]?.body));
       expect(body.effectiveFrom.endsWith('-01')).toBe(true);
       expect(body.isEnabled).toBe(true);
+      expect(body.inputBasis).toBe('monthly');
     });
   });
 });

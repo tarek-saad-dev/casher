@@ -165,16 +165,33 @@ export async function openBusinessDay(
       .input('branchId', sql.Int, branchContext.branchId)
       .input('newDay', sql.Date, newDayDate)
       .query(`
-        SELECT TOP 1 ID
+        SELECT TOP 1 ID, BranchID, NewDay, Status
         FROM dbo.TblNewDay WITH (UPDLOCK, HOLDLOCK)
         WHERE BranchID = @branchId AND NewDay = @newDay
+        ORDER BY ID DESC
       `);
     if (dup.recordset[0]) {
-      throw new BranchDomainError(
-        'OPERATION_NOT_ALLOWED',
-        'يوجد يوم عمل بنفس التاريخ لهذا الفرع بالفعل',
-        400,
-      );
+      const existing = mapDay(dup.recordset[0]);
+      if (existing.status) {
+        throw new BranchDomainError(
+          'OPERATION_NOT_ALLOWED',
+          'يوجد يوم عمل بنفس التاريخ لهذا الفرع بالفعل',
+          400,
+        );
+      }
+
+      // Re-open the same branch day instead of failing when it exists but is closed.
+      const reopened = await new sql.Request(tx)
+        .input('id', sql.Int, existing.id)
+        .input('branchId', sql.Int, branchContext.branchId)
+        .query(`
+          UPDATE dbo.TblNewDay
+          SET Status = 1
+          OUTPUT INSERTED.ID, INSERTED.BranchID, INSERTED.NewDay, INSERTED.Status
+          WHERE ID = @id AND BranchID = @branchId
+        `);
+      await tx.commit();
+      return mapDay(reopened.recordset[0]);
     }
 
     const inserted = await new sql.Request(tx)

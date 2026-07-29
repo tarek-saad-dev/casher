@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
+import { requireBranchOperationAccess, isActiveBranchContext } from '@/lib/branch/context';
 import { getEmployeeMonthlyPayrollReport } from '@/lib/reports/employee-monthly-payroll';
 import { validateReportParams } from '@/lib/reports/employee-monthly-payroll.types';
 
 /**
  * GET /api/admin/hr/employee-monthly-report?employeeId=&year=&month=
  * Monthly employee report: attendance, base wage, shortfall notes, deductions, targets.
+ * Scoped to the active session branch.
  */
 export async function GET(req: NextRequest) {
   try {
     const auth = await requirePageAccess('/admin/hr');
     if (!isAuthResult(auth)) return auth;
+
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
 
     const { searchParams } = new URL(req.url);
     const validated = validateReportParams(
@@ -27,6 +32,7 @@ export async function GET(req: NextRequest) {
       employeeId: validated.employeeId,
       year: validated.year,
       month: validated.month,
+      branchId: branch.branchId,
     });
 
     if (!report) {

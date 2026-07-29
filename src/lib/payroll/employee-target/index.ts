@@ -15,6 +15,10 @@ export {
   assertNonNegativeSales,
   normalizeTiersForCalculation,
   toDailyStartAmount,
+  monthStartFromWorkDate,
+  previousWorkDateInMonth,
+  monthEndFromWorkDate,
+  listDatesInclusive,
 } from './target.validation';
 
 export { calculateDailyTarget } from './calculate-daily-target';
@@ -23,6 +27,7 @@ export {
   EMPLOYEE_TARGET_LINE_TOTAL_SQL,
   getEmployeeNetServiceSalesByDate,
   getEmployeesNetServiceSalesByDate,
+  getEmployeesNetServiceSalesByDateRange,
   getEmployeesServiceCountsByDate,
   type EmployeeDayServiceCounts,
   type EmployeeNetServiceSalesRow,
@@ -125,6 +130,7 @@ export {
   resolveInvoiceTargetRecalculationScope,
   extractInvoiceScopeSnapshot,
   dedupeTargetRecalcScopes,
+  expandTargetRecalcScopesForMtdCascade,
   type TargetRecalcScope,
 } from './employee-target-recalc-scope';
 

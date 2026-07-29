@@ -33,9 +33,11 @@ export function assertValidInputBasis(basis: string): asserts basis is TargetInp
 }
 
 /**
- * Convert an input start amount to a daily start amount.
- * monthly → divide by ConversionDays; daily → unchanged.
- * Keeps up to 6 decimal places (matches DailyStartAmount column).
+ * Map an input start amount onto the calculation threshold column (DailyStartAmount).
+ *
+ * MTD monthly engine: thresholds are monthly amounts applied to month-to-date sales.
+ * `inputBasis` must be `monthly`; `conversionDays` is ignored (kept for DB/API compat).
+ * Legacy `daily` basis is rejected.
  */
 export function toDailyStartAmount(
   inputStartAmount: number | string,
@@ -45,17 +47,65 @@ export function toDailyStartAmount(
   assertValidInputBasis(inputBasis);
   assertValidConversionDays(conversionDays);
 
+  if (inputBasis !== 'monthly') {
+    throw new EmployeeTargetValidationError(
+      'طريقة الإدخال يجب أن تكون شهري — التارجت يُحسب على إجمالي الشهر حتى اليوم',
+    );
+  }
+
   const input = new Decimal(inputStartAmount);
   if (input.isNeg()) {
     throw new EmployeeTargetValidationError('StartAmount لا يمكن أن يكون سالبًا');
   }
 
-  if (inputBasis === 'daily') {
-    return Number(input.toDecimalPlaces(6, Decimal.ROUND_HALF_UP).toString());
-  }
+  // Store monthly threshold as-is in DailyStartAmount (used against MTD sales).
+  return Number(input.toDecimalPlaces(6, Decimal.ROUND_HALF_UP).toString());
+}
 
-  const daily = input.div(conversionDays);
-  return Number(daily.toDecimalPlaces(6, Decimal.ROUND_HALF_UP).toString());
+/** Calendar month start (YYYY-MM-01) for a work date. */
+export function monthStartFromWorkDate(workDate: string): string {
+  assertValidWorkDate(workDate);
+  return `${workDate.slice(0, 7)}-01`;
+}
+
+/** Previous calendar day as YYYY-MM-DD, or null if workDate is month start. */
+export function previousWorkDateInMonth(workDate: string): string | null {
+  assertValidWorkDate(workDate);
+  const monthStart = monthStartFromWorkDate(workDate);
+  if (workDate === monthStart) return null;
+  const d = new Date(`${workDate}T12:00:00`);
+  d.setDate(d.getDate() - 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Inclusive list of YYYY-MM-DD from fromDate through toDate (same or later). */
+export function listDatesInclusive(fromDate: string, toDate: string): string[] {
+  assertValidWorkDate(fromDate);
+  assertValidWorkDate(toDate);
+  if (fromDate > toDate) return [];
+  const out: string[] = [];
+  const d = new Date(`${fromDate}T12:00:00`);
+  const end = new Date(`${toDate}T12:00:00`);
+  while (d.getTime() <= end.getTime()) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    out.push(`${y}-${m}-${day}`);
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+/** Last day of the calendar month containing workDate. */
+export function monthEndFromWorkDate(workDate: string): string {
+  assertValidWorkDate(workDate);
+  const y = Number(workDate.slice(0, 4));
+  const m = Number(workDate.slice(5, 7));
+  const last = new Date(y, m, 0).getDate();
+  return `${workDate.slice(0, 7)}-${String(last).padStart(2, '0')}`;
 }
 
 /**

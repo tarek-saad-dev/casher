@@ -152,6 +152,7 @@ export default function AttendancePanel() {
   const [date, setDate]               = useState(getBusinessDateStr());
   const [attendance, setAttendance]   = useState<AttendanceRow[]>([]);
   const [summary, setSummary]         = useState<AttendanceSummary | null>(null);
+  const [branchLabel, setBranchLabel] = useState<string | null>(null);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState('');
   const [savingAll, setSavingAll]     = useState(false);
@@ -181,6 +182,7 @@ export default function AttendancePanel() {
       if (data.success) {
         setAttendance(data.attendance);
         setSummary(data.summary ?? null);
+        setBranchLabel(data.branchCode ?? data.branchName ?? null);
       } else {
         setError(data.error || 'خطأ في تحميل البيانات');
       }
@@ -476,6 +478,9 @@ export default function AttendancePanel() {
 
       <div className="text-xs text-zinc-500">
         {DAY_NAMES[new Date(date + 'T12:00:00Z').getDay()]} — {date}
+        {branchLabel ? (
+          <span className="mr-2 text-emerald-400/90">· موظفو فرع {branchLabel} المجدولون اليوم</span>
+        ) : null}
         {summary?.requiredCount != null && (
           <span className="mr-2 text-zinc-600">({summary.requiredCount} مطلوب الحضور)</span>
         )}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
+import { requireBranchReportAccess, isActiveBranchContext } from '@/lib/branch/context';
 import {
   getEmployeeMonthlyWorkRevenueReport,
 } from '@/lib/reports/employee-monthly-work-revenue';
@@ -11,6 +12,9 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await requirePageAccess(REPORT_PAGE_PATH);
     if (!isAuthResult(auth)) return auth;
+
+    const branch = await requireBranchReportAccess();
+    if (!isActiveBranchContext(branch)) return branch;
 
     const { searchParams } = new URL(req.url);
     const validated = validateReportParams(
@@ -27,6 +31,7 @@ export async function GET(req: NextRequest) {
       employeeId: validated.employeeId,
       year: validated.year,
       month: validated.month,
+      branchId: branch.branchId,
     });
 
     if (!report) {

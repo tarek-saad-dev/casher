@@ -89,6 +89,8 @@ export interface GetEmployeeMonthlyWorkRevenueParams {
   employeeId: number;
   year: number;
   month: number;
+  /** When set, attendance and revenue are filtered to this branch. */
+  branchId?: number | null;
 }
 
 export function validateReportParams(

@@ -170,7 +170,7 @@ export async function DELETE(
 
 /**
  * GET /api/expenses/[id]
- * Get expense details with edit history
+ * Get expense details with edit history (active branch only)
  */
 export async function GET(
   req: NextRequest,
@@ -184,10 +184,20 @@ export async function GET(
       return NextResponse.json({ error: 'معرف المصروف غير صالح' }, { status: 400 });
     }
 
+    const { requireBranchOperationAccess, isActiveBranchContext } = await import(
+      '@/lib/branch/context'
+    );
+    const { financialNotFoundResponse } = await import(
+      '@/lib/branch/financialOwnership'
+    );
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const db = await getPool();
 
     const result = await db.request()
       .input('id', sql.Int, expenseId)
+      .input('branchId', sql.Int, branch.branchId)
       .query(`
         SELECT
           cm.ID,
@@ -208,11 +218,13 @@ export async function GET(
         LEFT JOIN [dbo].[TblPaymentMethods] pm ON cm.PaymentMethodID = pm.PaymentID
         LEFT JOIN [dbo].[TblShiftMove] sm ON cm.ShiftMoveID = sm.ID
         LEFT JOIN [dbo].[TblUser] u ON sm.UserID = u.UserID
-        WHERE cm.ID = @id AND cm.invType = N'مصروفات'
+        WHERE cm.ID = @id
+          AND cm.invType = N'مصروفات'
+          AND cm.BranchID = @branchId
       `);
 
     if (result.recordset.length === 0) {
-      return NextResponse.json({ error: 'المصروف غير موجود' }, { status: 404 });
+      return financialNotFoundResponse();
     }
 
     const expense = result.recordset[0];

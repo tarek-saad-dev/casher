@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
+import { requireBranchOperationAccess, isActiveBranchContext } from '@/lib/branch/context';
 import { isEmployeeLedgerDualWriteEnabled } from '@/lib/employeeLedgerConfig';
 import { getLegacyPostToCashConfig } from '@/lib/payroll/legacyPostToCashFlags';
 import {
   getEmployeeLedgerSummary,
   validateLedgerMonth,
 } from '@/lib/services/employeeLedgerService';
+
 function isMissingLedgerTableError(message: string): boolean {
   const lower = message.toLowerCase();
   return lower.includes('tblempledgerentry') && (
@@ -16,13 +18,16 @@ function isMissingLedgerTableError(message: string): boolean {
 
 /**
  * GET /api/admin/hr/employee-ledger/summary?month=YYYY-MM
- * Per-employee ledger summary for a payroll month.
+ * Per-employee ledger summary for a payroll month (active branch only).
  */
 export async function GET(request: NextRequest) {
   const auth = await requirePageAccess('/admin/hr');
   if (!isAuthResult(auth)) return auth;
 
   try {
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
 
@@ -35,7 +40,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: monthError }, { status: 400 });
     }
 
-    const result = await getEmployeeLedgerSummary(month);
+    const result = await getEmployeeLedgerSummary(month, branch.branchId);
     const legacyConfig = getLegacyPostToCashConfig();
     return NextResponse.json({
       ...result,

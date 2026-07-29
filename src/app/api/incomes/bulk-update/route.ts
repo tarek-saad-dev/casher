@@ -57,6 +57,12 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
       }
     }
 
+    const { requireBranchOperationAccess, isActiveBranchContext } = await import(
+      '@/lib/branch/context'
+    );
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const db = await getPool();
     const transaction = new sql.Transaction(db);
     await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
@@ -79,27 +85,34 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
       }
 
       const idsList = body.itemIds.join(',');
-      const itemsCheck = await new sql.Request(transaction).query(`
+      const itemsCheck = await new sql.Request(transaction)
+        .input('branchId', sql.Int, branch.branchId)
+        .query(`
         SELECT COUNT(*) as validCount
         FROM dbo.TblCashMove
-        WHERE ID IN (${idsList}) AND invType = N'ايرادات'
+        WHERE ID IN (${idsList})
+          AND invType = N'ايرادات'
+          AND BranchID = @branchId
       `);
 
       const validCount = itemsCheck.recordset[0]?.validCount || 0;
       if (validCount !== body.itemIds.length) {
         await transaction.rollback();
         return NextResponse.json(
-          { error: 'Some items are invalid or not income items' },
+          { error: 'Some items are invalid, not income items, or belong to another branch' },
           { status: 400 },
         );
       }
 
       const updateResult = await new sql.Request(transaction)
         .input('expInId', sql.Int, body.expInId)
+        .input('branchId', sql.Int, branch.branchId)
         .query(`
           UPDATE dbo.TblCashMove
           SET ExpINID = @expInId
-          WHERE ID IN (${idsList}) AND invType = N'ايرادات'
+          WHERE ID IN (${idsList})
+            AND invType = N'ايرادات'
+            AND BranchID = @branchId
 
           SELECT @@ROWCOUNT as updatedCount
         `);
