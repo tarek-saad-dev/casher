@@ -4,6 +4,7 @@ import { getSession } from '@/lib/session';
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
 import { getExpenseSnapshot, updateExpense, deleteExpense } from '@/lib/actions/expenseActions';
 import { cashMoveHardDeleteSuccessMessage } from '@/lib/services/cashMoveHardDeleteService';
+import { EmployeeLedgerDualWriteError } from '@/lib/services/employeeLedgerDualWrite';
 
 /**
  * PUT /api/expenses/[id]
@@ -90,8 +91,14 @@ export async function PUT(
     });
 
   } catch (err: unknown) {
+    if (err instanceof EmployeeLedgerDualWriteError) {
+      return NextResponse.json({ error: err.message }, { status: 503 });
+    }
     if (isAuditedActionError(err)) {
-      return NextResponse.json({ error: err.message, auditId: err.failedAuditId }, { status: 500 });
+      return NextResponse.json(
+        { error: err.message, auditId: err.failedAuditId },
+        { status: err.statusCode || 500 },
+      );
     }
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/expenses/[id]] PUT error:', message);

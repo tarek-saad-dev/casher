@@ -8,6 +8,7 @@ import { BarberQueueWorkspaceModal } from '@/components/operations/BarberQueueWo
 import { FindNearestQueueDrawer } from '@/components/operations/FindNearestQueueDrawer';
 import { CreateBookingDrawer } from '@/components/operations/CreateBookingDrawer';
 import { ScheduleControlModal } from '@/components/operations/ScheduleControlModal';
+import { TemporaryBranchTransferModal } from '@/components/operations/TemporaryBranchTransferModal';
 import { OperationsControlPanel } from '@/components/operations/OperationsControlPanel';
 import type {
   OpsBranchOption,
@@ -157,6 +158,7 @@ export default function OperationsPage() {
   const [showBookingDrawer, setShowBookingDrawer] = useState(false);
   const [settlingExpired, setSettlingExpired] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showTemporaryTransferModal, setShowTemporaryTransferModal] = useState(false);
   const [bookingInitialData, setBookingInitialData] = useState<{
     date?: string;
     time?: string;
@@ -589,6 +591,7 @@ export default function OperationsPage() {
           onFindNearestQueue={() => setShowFindNearestDrawer(true)}
           onCreateBooking={() => openCreateBooking({ date: selectedDate })}
           onScheduleControl={() => setShowScheduleModal(true)}
+          onTemporaryTransfer={() => setShowTemporaryTransferModal(true)}
           onSettleExpired={handleSettleExpired}
           onEnableVoice={handleEnableVoice}
           onDisableVoice={handleDisableVoice}
@@ -685,6 +688,18 @@ export default function OperationsPage() {
             });
           }}
           onBarberQueueClick={(barber) => {
+            const sessionId = user?.ActiveBranchID ?? activeBranch?.branchId;
+            if (
+              sessionId != null &&
+              barber.branchId != null &&
+              barber.branchId !== sessionId
+            ) {
+              showToast(
+                'هذا الحلاق على فرع آخر — بدّل الفرع من الشريط العلوي قبل إنشاء الدور',
+                false,
+              );
+              return;
+            }
             setBarberQueueModal({ empId: barber.empId, empName: barber.empName });
           }}
           barberQueueLoadingEmpId={barberQueueLoadingEmpId}
@@ -795,6 +810,16 @@ export default function OperationsPage() {
           }}
         />
       )}
+
+      <TemporaryBranchTransferModal
+        open={showTemporaryTransferModal}
+        onClose={() => setShowTemporaryTransferModal(false)}
+        workDate={selectedDate}
+        onTransferred={() => {
+          void fetchFlowBoard({ reason: 'temporary-transfer' });
+          showToast('تم نقل الموظف لفرع آخر لهذا اليوم');
+        }}
+      />
 
       {jumpToBookingDate && (
         <button

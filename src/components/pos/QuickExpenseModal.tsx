@@ -21,6 +21,7 @@ import ExpenseReceiptPopup, {
   type ExpenseReceiptData,
 } from '@/components/expenses/ExpenseReceiptPopup';
 import type { PaymentMethod } from '@/lib/types';
+import { getCairoBusinessDate } from '@/lib/businessDate';
 
 interface QuickExpenseCompleteInfo {
   advanceWhatsApp?: boolean;
@@ -31,10 +32,6 @@ interface QuickExpenseModalProps {
   open: boolean;
   onClose: () => void;
   onExpenseComplete?: (info?: QuickExpenseCompleteInfo) => void;
-}
-
-function getCairoDateString(date = new Date()): string {
-  return date.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
 }
 
 /** Yesterday relative to a YYYY-MM-DD calendar day (Cairo date string). */
@@ -248,7 +245,8 @@ export default function QuickExpenseModal({
     if (!open) return;
 
     const now = new Date();
-    const today = getCairoDateString(now);
+    // Before 04:00 Cairo, business "today" is still yesterday.
+    const today = getCairoBusinessDate(now);
     const yesterday = getPreviousDateString(today);
     setAllowedDateMin(yesterday);
     setAllowedDateMax(today);

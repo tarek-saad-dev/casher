@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAvailableBarbers } from '@/lib/barberAvailability';
 import { computeBarberEstimate } from '@/lib/queueEstimateEngine';
 import { getPool, sql } from '@/lib/db';
+import { requireBranchOperationAccess, isActiveBranchContext } from '@/lib/branch/context';
+import { listQueueEligibleEmployeeIdsForBranch } from '@/lib/branch/bookingQueueOwnership';
+import { getCairoBusinessDate } from '@/lib/businessDate';
 
 export const runtime = 'nodejs';
 const isDev = process.env.NODE_ENV !== 'production';
@@ -18,6 +21,9 @@ const isDev = process.env.NODE_ENV !== 'production';
  */
 export async function POST(req: NextRequest) {
   try {
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const body = await req.json();
     const {
       mode = 'specific',
@@ -40,11 +46,12 @@ export async function POST(req: NextRequest) {
       requestedAtFromClient: requestedAt,
       serverNowUtc: serverNow.toISOString(),
       serverNowCairo: serverNow.toLocaleString('en-GB', { timeZone: 'Africa/Cairo' }),
+      branchId: branch.branchId,
     });
 
     // ── Nearest barber mode ───────────────────────────────────────────────
     if (mode === 'nearest') {
-      const result = await handleNearest(serviceIds, requestedAt);
+      const result = await handleNearest(serviceIds, requestedAt, branch.branchId);
       return result;
     }
 
@@ -192,6 +199,7 @@ function buildEstimateShape(e: Awaited<ReturnType<typeof computeBarberEstimate>>
 async function handleNearest(
   serviceIds: number[],
   requestedAt: string | undefined,
+  branchId: number,
 ) {
   try {
     const now        = requestedAt ? new Date(requestedAt) : new Date();
@@ -200,9 +208,14 @@ async function handleNearest(
       effectiveNow: now.toISOString(),
       effectiveNowCairo: now.toLocaleString('en-GB', { timeZone: 'Africa/Cairo' }),
       serviceIds,
+      branchId,
     });
 
-    const allBarbers = await getAvailableBarbers(now);
+    const eligibleIds = new Set(
+      await listQueueEligibleEmployeeIdsForBranch(branchId, getCairoBusinessDate(now)),
+    );
+    let allBarbers = await getAvailableBarbers(now);
+    allBarbers = allBarbers.filter((b) => eligibleIds.has(b.EmpID));
 
     if (allBarbers.length === 0) {
       return NextResponse.json({ ok: false, best: null, alternatives: [], unavailable: [],

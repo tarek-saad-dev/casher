@@ -17,19 +17,39 @@ import { JobType } from '@/lib/types';
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const OWNER_PREFERRED_NAME = 'طارق';
 
+export type OwnerBranchWhatsAppMessage = {
+  branchId: number;
+  branchCode: string;
+  branchName: string;
+  message: string;
+};
+
+export type OwnerBranchWhatsAppSendResult = OwnerBranchWhatsAppMessage & {
+  status: 'sent' | 'skipped' | 'failed' | 'dry_run';
+  reason?: string;
+  reasonAr?: string;
+  result?: WhatsAppSendResult;
+};
+
 /**
  * Phase 1I: owner WhatsApp has no request session — iterate every *active*
  * branch independently. Never prefer GLEEM as an operational fallback when
  * other branches are active; with only GLEEM active, behavior is unchanged.
+ *
+ * SETUP / inactive branches are excluded so each live salon gets its own message.
  */
 async function resolveOwnerReportBranchIds(): Promise<
   Array<{ branchId: number; branchCode: string; branchName: string }>
 > {
   const active = await listActiveBranches();
-  if (active.length === 0) {
+  const operational = active.filter(
+    (b) => b.isActive && b.lifecycleStatus !== 'SETUP',
+  );
+  const list = operational.length > 0 ? operational : active;
+  if (list.length === 0) {
     throw new Error('لا يوجد فرع نشط لإرسال تقرير المالك');
   }
-  return active.map((b) => ({
+  return list.map((b) => ({
     branchId: b.branchId,
     branchCode: b.branchCode,
     branchName: b.branchName,
@@ -236,12 +256,35 @@ export async function resolveOwnerReportRecipients(): Promise<{
   }
 }
 
+async function buildOwnerBranchMessages(
+  workDate: string,
+): Promise<OwnerBranchWhatsAppMessage[]> {
+  const branches = await resolveOwnerReportBranchIds();
+  const messages: OwnerBranchWhatsAppMessage[] = [];
+  for (const b of branches) {
+    const report = await getFullDayReport(workDate, b.branchId);
+    const message = composeOwnerDailyWhatsAppMessage(report, {
+      branchName: b.branchName,
+    });
+    messages.push({
+      branchId: b.branchId,
+      branchCode: b.branchCode,
+      branchName: b.branchName,
+      message,
+    });
+  }
+  return messages;
+}
+
 export async function previewOwnerDailyWhatsApp(workDate: string): Promise<{
   workDate: string;
   ownerName: string;
   empId: number | null;
   phone: string | null;
   phoneSource: 'manager_employee' | 'named_employee' | 'none';
+  /** Separate WhatsApp body per branch (one message each when sending). */
+  messages: OwnerBranchWhatsAppMessage[];
+  /** Joined preview for UI/logs only — not what gets sent as a single bubble. */
   message: string;
   ready: boolean;
   skipReason: string | null;
@@ -251,18 +294,10 @@ export async function previewOwnerDailyWhatsApp(workDate: string): Promise<{
   }
 
   const cfg = getConfig();
-  const branches = await resolveOwnerReportBranchIds();
-  const sections: string[] = [];
-  for (const b of branches) {
-    const report = await getFullDayReport(workDate, b.branchId);
-    const section = composeOwnerDailyWhatsAppMessage(report);
-    sections.push(
-      branches.length > 1
-        ? `—— ${b.branchName} (${b.branchCode}) ——\n${section}`
-        : section,
-    );
-  }
-  const message = sections.join('\n\n');
+  const messages = await buildOwnerBranchMessages(workDate);
+  const message = messages
+    .map((m) => `—— ${m.branchName} (${m.branchCode}) ——\n${m.message}`)
+    .join('\n\n');
   const owner = await resolveOwnerPhone();
 
   let skipReason: string | null = null;
@@ -276,6 +311,7 @@ export async function previewOwnerDailyWhatsApp(workDate: string): Promise<{
     empId: owner.empId,
     phone: owner.phone,
     phoneSource: owner.source,
+    messages,
     message,
     ready: skipReason == null,
     skipReason,
@@ -292,10 +328,12 @@ export async function sendOwnerDailyWhatsApp(params: {
   ownerName: string;
   phone: string | null;
   message: string;
-  status: 'sent' | 'skipped' | 'failed' | 'dry_run';
+  messages: OwnerBranchWhatsAppSendResult[];
+  status: 'sent' | 'skipped' | 'failed' | 'dry_run' | 'partial';
   reason?: string;
   reasonAr?: string;
-  result?: WhatsAppSendResult;
+  sentCount: number;
+  failedCount: number;
 }> {
   const preview = await previewOwnerDailyWhatsApp(params.workDate);
   const dryRun = Boolean(params.dryRun);
@@ -308,9 +346,12 @@ export async function sendOwnerDailyWhatsApp(params: {
       ownerName: preview.ownerName,
       phone: preview.phone,
       message: preview.message,
+      messages: preview.messages.map((m) => ({ ...m, status: 'dry_run' as const })),
       status: 'dry_run',
       reason: 'dry_run',
       reasonAr: dailyWaReasonAr('dry_run'),
+      sentCount: 0,
+      failedCount: 0,
     };
   }
 
@@ -323,23 +364,65 @@ export async function sendOwnerDailyWhatsApp(params: {
       ownerName: preview.ownerName,
       phone: preview.phone,
       message: preview.message,
+      messages: preview.messages.map((m) => ({
+        ...m,
+        status: 'skipped' as const,
+        reason,
+        reasonAr: dailyWaReasonAr(reason),
+      })),
       status: 'skipped',
       reason,
       reasonAr: dailyWaReasonAr(reason),
+      sentCount: 0,
+      failedCount: 0,
     };
   }
 
-  console.log(
-    `[owner-daily-whatsapp] sending workDate=${preview.workDate} -> ${preview.ownerName} (${preview.phone})`,
-  );
+  const branchResults: OwnerBranchWhatsAppSendResult[] = [];
+  let sentCount = 0;
+  let failedCount = 0;
 
-  const result = await sendQuickWhatsAppMessage({
-    phone: preview.phone,
-    customerName: preview.ownerName,
-    message: preview.message,
-  });
+  for (const branchMsg of preview.messages) {
+    console.log(
+      `[owner-daily-whatsapp] sending workDate=${preview.workDate} branch=${branchMsg.branchCode} -> ${preview.ownerName} (${preview.phone})`,
+    );
 
-  if (result.sent) {
+    const result = await sendQuickWhatsAppMessage({
+      phone: preview.phone,
+      customerName: preview.ownerName,
+      message: branchMsg.message,
+    });
+
+    if (result.sent) {
+      sentCount += 1;
+      branchResults.push({ ...branchMsg, status: 'sent', result });
+      continue;
+    }
+
+    if (result.skipped) {
+      failedCount += 1;
+      branchResults.push({
+        ...branchMsg,
+        status: 'skipped',
+        reason: result.reason,
+        reasonAr: dailyWaReasonAr(result.reason),
+        result,
+      });
+      continue;
+    }
+
+    failedCount += 1;
+    const failReason = ('error' in result && result.error) || result.reason;
+    branchResults.push({
+      ...branchMsg,
+      status: 'failed',
+      reason: failReason,
+      reasonAr: dailyWaReasonAr(failReason),
+      result,
+    });
+  }
+
+  if (sentCount === preview.messages.length && failedCount === 0) {
     return {
       ok: true,
       workDate: preview.workDate,
@@ -347,12 +430,15 @@ export async function sendOwnerDailyWhatsApp(params: {
       ownerName: preview.ownerName,
       phone: preview.phone,
       message: preview.message,
+      messages: branchResults,
       status: 'sent',
-      result,
+      sentCount,
+      failedCount,
     };
   }
 
-  if (result.skipped) {
+  if (sentCount === 0) {
+    const firstFail = branchResults.find((m) => m.status !== 'sent');
     return {
       ok: false,
       workDate: preview.workDate,
@@ -360,10 +446,12 @@ export async function sendOwnerDailyWhatsApp(params: {
       ownerName: preview.ownerName,
       phone: preview.phone,
       message: preview.message,
-      status: 'skipped',
-      reason: result.reason,
-      reasonAr: dailyWaReasonAr(result.reason),
-      result,
+      messages: branchResults,
+      status: 'failed',
+      reason: firstFail?.reason ?? 'send_failed',
+      reasonAr: firstFail?.reasonAr ?? dailyWaReasonAr('send_failed'),
+      sentCount,
+      failedCount,
     };
   }
 
@@ -374,11 +462,11 @@ export async function sendOwnerDailyWhatsApp(params: {
     ownerName: preview.ownerName,
     phone: preview.phone,
     message: preview.message,
-    status: 'failed',
-    reason: ('error' in result && result.error) || result.reason,
-    reasonAr: dailyWaReasonAr(
-      ('error' in result && result.error) || result.reason,
-    ),
-    result,
+    messages: branchResults,
+    status: 'partial',
+    reason: 'partial_branch_send',
+    reasonAr: `اتبعت ${sentCount} من ${preview.messages.length} فروع — في فروع فشلت`,
+    sentCount,
+    failedCount,
   };
 }

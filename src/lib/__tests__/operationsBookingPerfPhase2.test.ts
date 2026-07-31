@@ -9,6 +9,7 @@ import {
 import {
   acquireSubmitGuard,
   BOOKING_SUCCESS_CLOSE_DELAY_MS,
+  extractBookingCreateErrorMessage,
   parseBookingCreateSuccess,
   releaseSubmitGuard,
 } from '@/lib/operations/bookingWorkspaceSubmit';
@@ -97,6 +98,17 @@ describe('booking workspace submit lifecycle helpers', () => {
       booking: { id: 1, code: 'BK-X', actualDate: '2026-07-20', date: '2026-07-19' },
     });
     expect(parsed?.actualDate).toBe('2026-07-20');
+  });
+
+  it('extracts nested public booking error message', () => {
+    expect(
+      extractBookingCreateErrorMessage({
+        ok: false,
+        error: { code: 'BRANCH_REQUIRED', message: 'اختر الفرع أولًا' },
+      }),
+    ).toBe('اختر الفرع أولًا');
+    expect(extractBookingCreateErrorMessage({ error: 'flat' })).toBe('flat');
+    expect(extractBookingCreateErrorMessage(null)).toBe('فشل إنشاء الحجز');
   });
 
   it('refresh failure must not flip booking success (parent responsibility)', () => {

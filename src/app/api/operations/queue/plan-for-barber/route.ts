@@ -9,11 +9,17 @@ import {
   planQueueForBarber,
   QueuePlanForBarberError,
 } from '@/lib/operationsQueuePlanCore';
+import { requireBranchOperationAccess, isActiveBranchContext } from '@/lib/branch/context';
+import { isEmployeeEligibleForBranchBookings } from '@/lib/branch/bookingQueueOwnership';
+import { getCairoBusinessDate } from '@/lib/businessDate';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   try {
+    const branch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(branch)) return branch;
+
     const body = await req.json();
     const { empId, serviceIds, date, requestedFrom, source } = body;
 
@@ -27,6 +33,28 @@ export async function POST(req: NextRequest) {
     if (!Array.isArray(serviceIds) || serviceIds.length === 0) {
       return NextResponse.json(
         { available: false, code: 'NO_SERVICES', message: 'اختر خدمة واحدة على الأقل' },
+        { status: 400 },
+      );
+    }
+
+    const operationalDate =
+      typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)
+        ? date
+        : getCairoBusinessDate();
+    const eligible = await isEmployeeEligibleForBranchBookings({
+      empId,
+      branchId: branch.branchId,
+      operationalDate,
+      requireCanReceiveBookings: false,
+      includeTemporaryTransfer: true,
+    });
+    if (!eligible) {
+      return NextResponse.json(
+        {
+          available: false,
+          code: 'EMP_NOT_ASSIGNED',
+          message: 'الموظف غير معيَّن على هذا الفرع — بدّل للفرع الصحيح من شريط الجلسة',
+        },
         { status: 400 },
       );
     }

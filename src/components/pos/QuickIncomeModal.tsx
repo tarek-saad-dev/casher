@@ -1,6 +1,7 @@
 'use client';
 
 import PastDateIncomeModal from '@/components/treasury/PastDateIncomeModal';
+import { getCairoBusinessDate } from '@/lib/businessDate';
 
 export interface QuickIncomeCompleteInfo {
   advanceWhatsApp?: boolean;
@@ -18,9 +19,8 @@ export default function QuickIncomeModal({
   onClose,
   onIncomeComplete,
 }: QuickIncomeModalProps) {
-  const defaultDate = open
-    ? new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' })
-    : undefined;
+  // Business date (before 04:00 Cairo stays previous day), not calendar midnight.
+  const defaultDate = open ? getCairoBusinessDate() : undefined;
 
   return (
     <PastDateIncomeModal
@@ -31,6 +31,7 @@ export default function QuickIncomeModal({
       title="إضافة إيراد فوري"
       subtitle="تسجيل إيراد لليوم الحالي"
       entryDateReadOnly
+      attachToOpenDay
     />
   );
 }

@@ -6,7 +6,12 @@ import {
   requireBranchOperationAccess,
 } from './context';
 import { BranchDomainError, type ActiveBranchContext } from './types';
-import { getBusinessDayByDate, getOpenBusinessDay, type BusinessDayRecord } from './businessDay';
+import {
+  getBranchBusinessDate,
+  getBusinessDayByDate,
+  getOpenBusinessDay,
+  type BusinessDayRecord,
+} from './businessDay';
 import {
   getUserOpenShift,
   getUserOpenShiftForBranch,
@@ -118,4 +123,28 @@ export async function resolveBranchDayForDate(
     };
   }
   return { ok: true, day };
+}
+
+/**
+ * POS "today" writes on the active branch:
+ * 1) Prefer the currently open business day (correct branch + overnight continuity).
+ * 2) Else look up the cutoff-aware branch business date (before 04:00 stays prior day).
+ *
+ * Never trusts a browser calendar date that rolled at midnight.
+ */
+export async function resolveActiveBranchDayForPosWrite(
+  branch: ActiveBranchContext,
+): Promise<
+  | { ok: true; day: BusinessDayRecord; dateYmd: string }
+  | { ok: false; response: NextResponse }
+> {
+  const open = await getOpenBusinessDay(branch.branchId);
+  if (open) {
+    return { ok: true, day: open, dateYmd: open.newDay };
+  }
+
+  const businessDate = getBranchBusinessDate(branch);
+  const byDate = await resolveBranchDayForDate(branch.branchId, businessDate);
+  if (!byDate.ok) return byDate;
+  return { ok: true, day: byDate.day, dateYmd: byDate.day.newDay };
 }

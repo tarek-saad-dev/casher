@@ -336,7 +336,14 @@ export function CreateQueueDrawer({ onClose, onCreated }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(submitPayload),
       });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'خطأ'); }
+      if (!res.ok) {
+        const d = await res.json();
+        const msg =
+          (typeof d.message === 'string' && d.message) ||
+          (typeof d.error === 'string' && d.error) ||
+          'فشل إصدار الدور';
+        throw new Error(msg);
+      }
       const data = await res.json();
 
       if (process.env.NODE_ENV !== 'production') {

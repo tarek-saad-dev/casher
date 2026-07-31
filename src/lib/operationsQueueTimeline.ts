@@ -413,6 +413,38 @@ export async function simulateQueueInsertion({
   const suggestedStart = findFirstFreeSlot(now, serviceDur, allIntervals);
   const suggestedEnd = new Date(suggestedStart.getTime() + serviceDur * 60000);
 
+  // Reject slots that overrun the barber's shift (overnight-aware).
+  if (timeline.workStart && timeline.workEnd) {
+    const { salonDateTimeToMs } = await import('@/lib/publicBookingHelpers');
+    const startMin = timeToMinutes(timeline.workStart);
+    const endMin = timeToMinutes(timeline.workEnd);
+    const overnight = endMin <= startMin;
+    const nextDay = (() => {
+      const d = new Date(`${dateStr}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + 1);
+      return d.toISOString().slice(0, 10);
+    })();
+    const shiftEndMs = overnight
+      ? salonDateTimeToMs(nextDay, timeline.workEnd, 'Africa/Cairo')
+      : salonDateTimeToMs(dateStr, timeline.workEnd, 'Africa/Cairo');
+    if (suggestedEnd.getTime() > shiftEndMs) {
+      return {
+        ok: false,
+        decision: 'outside_hours',
+        empId,
+        empName,
+        serviceDurationMinutes: serviceDur,
+        suggestedStartTime: '',
+        suggestedEndTime: '',
+        peopleBefore: 0,
+        message: 'لا يوجد وقت كافٍ قبل نهاية وردية الحلاق',
+        timeline: timeline.timeline,
+        protectedBookings: [],
+        queueBefore: [],
+      };
+    }
+  }
+
   // CRITICAL: Log conflict detection results for the proposed slot
   console.log("[simulate debug] === CONFLICT DETECTION ===");
   console.log("[simulate debug] Proposed interval:", {

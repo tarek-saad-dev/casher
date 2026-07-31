@@ -1,8 +1,10 @@
 'use client';
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { CalendarCheck, Loader2, X } from 'lucide-react';
+import { ArrowLeftRight, CalendarCheck, Loader2, X } from 'lucide-react';
+import { TemporaryBranchTransferModal } from '@/components/operations/TemporaryBranchTransferModal';
+import { getBusinessDateStr } from '@/lib/timeUtils';
 
 function PanelLoader() {
   return (
@@ -24,9 +26,14 @@ interface AttendancePanelModalProps {
 }
 
 export default function AttendancePanelModal({ open, onClose }: AttendancePanelModalProps) {
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [panelKey, setPanelKey] = useState(0);
+  const workDate = getBusinessDateStr();
+
   const handleEscape = useCallback(
     (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      if (transferOpen) return;
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName?.toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
@@ -34,7 +41,7 @@ export default function AttendancePanelModal({ open, onClose }: AttendancePanelM
       if (document.querySelector('[data-slot="dialog-content"]')) return;
       onClose();
     },
-    [onClose],
+    [onClose, transferOpen],
   );
 
   useEffect(() => {
@@ -47,6 +54,10 @@ export default function AttendancePanelModal({ open, onClose }: AttendancePanelM
     };
   }, [open, handleEscape]);
 
+  useEffect(() => {
+    if (!open) setTransferOpen(false);
+  }, [open]);
+
   if (!open) return null;
 
   return (
@@ -56,14 +67,27 @@ export default function AttendancePanelModal({ open, onClose }: AttendancePanelM
           <CalendarCheck className="h-5 w-5 shrink-0 text-primary" />
           <span>متابعة الحضور</span>
         </h2>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="إغلاق"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-muted text-muted-foreground transition-colors hover:bg-surface-muted/80 hover:text-foreground"
-        >
-          <X className="h-5 w-5" />
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setTransferOpen(true)}
+            data-testid="pos-attendance-temporary-transfer"
+            title="نقل موظف ليوم واحد لفرع آخر"
+            className="flex h-10 items-center gap-1.5 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-500/20 sm:text-sm"
+          >
+            <ArrowLeftRight className="h-4 w-4 shrink-0" />
+            <span className="hidden sm:inline">نقل موظف اليوم</span>
+            <span className="sm:hidden">نقل</span>
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="إغلاق"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-muted text-muted-foreground transition-colors hover:bg-surface-muted/80 hover:text-foreground"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
       </header>
 
       <div
@@ -72,8 +96,17 @@ export default function AttendancePanelModal({ open, onClose }: AttendancePanelM
         aria-label="متابعة الحضور"
         className="min-h-0 flex-1 overflow-y-auto px-4 py-4 scrollbar-luxury-v sm:px-6"
       >
-        <AttendancePanel />
+        <AttendancePanel key={panelKey} />
       </div>
+
+      <TemporaryBranchTransferModal
+        open={transferOpen}
+        onClose={() => setTransferOpen(false)}
+        workDate={workDate}
+        onTransferred={() => {
+          setPanelKey((k) => k + 1);
+        }}
+      />
     </div>
   );
 }

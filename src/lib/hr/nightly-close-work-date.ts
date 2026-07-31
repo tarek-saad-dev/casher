@@ -1,11 +1,13 @@
 /**
- * Cairo calendar helpers for the nightly close job (02:00 Africa/Cairo).
+ * Cairo calendar helpers for the nightly close job (02:40 Africa/Cairo).
  */
 
-/** Vercel cron fires at 23:00 UTC ≈ 02:00 Africa/Cairo during DST. */
-export const NIGHTLY_CLOSE_CRON_UTC = '0 23 * * *';
+/** Vercel cron fires at 23:40 UTC ≈ 02:40 Africa/Cairo during DST. */
+export const NIGHTLY_CLOSE_CRON_UTC = '40 23 * * *';
 export const NIGHTLY_CLOSE_HOUR_CAIRO = 2;
-export const NIGHTLY_CLOSE_MINUTE_CAIRO = 0;
+export const NIGHTLY_CLOSE_MINUTE_CAIRO = 40;
+/** Inclusive end of local watcher fire window (minutes past the hour). */
+export const NIGHTLY_CLOSE_WATCH_WINDOW_END_MINUTE = 45;
 
 export function shiftYmd(yyyyMmDd: string, days: number): string {
   const [y, m, d] = yyyyMmDd.split('-').map(Number);
@@ -50,8 +52,18 @@ export function getCairoClockParts(now: Date = new Date()): {
   };
 }
 
-/** True when Cairo clock is in the 02:00 fire window (minute 0 only). */
+/** True when Cairo clock is in the 02:40 fire minute. */
 export function isNightlyCloseFireWindow(now: Date = new Date()): boolean {
   const { hour, minute } = getCairoClockParts(now);
   return hour === NIGHTLY_CLOSE_HOUR_CAIRO && minute === NIGHTLY_CLOSE_MINUTE_CAIRO;
+}
+
+/** True when Cairo clock is inside the local watcher forgiving window (02:40–02:45). */
+export function isNightlyCloseWatchFireWindow(now: Date = new Date()): boolean {
+  const { hour, minute } = getCairoClockParts(now);
+  return (
+    hour === NIGHTLY_CLOSE_HOUR_CAIRO &&
+    minute >= NIGHTLY_CLOSE_MINUTE_CAIRO &&
+    minute <= NIGHTLY_CLOSE_WATCH_WINDOW_END_MINUTE
+  );
 }

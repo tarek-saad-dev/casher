@@ -35,7 +35,7 @@ export type AdvanceEmployeeResolution =
   | ({ kind: 'resolved' } & AdvanceEmployeeMapping)
   | { kind: 'unresolved' };
 
-export type AdvanceLedgerUpsertOutcome = 'inserted' | 'updated';
+export type AdvanceLedgerUpsertOutcome = 'inserted' | 'updated' | 'removed';
 
 export type RevenueEmployeeMapping = AdvanceEmployeeMapping;
 
@@ -233,8 +233,33 @@ export async function upsertAdvanceLedgerEntry(
 }
 
 /**
+ * Remove advance ledger row linked to a CashMove (e.g. expense category left advance map).
+ */
+export async function deleteAdvanceLedgerForCashMove(
+  pool: { request: () => sql.Request },
+  cashMoveId: number,
+  transaction?: sql.Transaction,
+): Promise<boolean> {
+  const result = await ledgerRequest(pool, transaction)
+    .input('CashMoveID', sql.Int, cashMoveId)
+    .input('RefType', sql.NVarChar(80), EMP_LEDGER_REF_TYPE_CASH_MOVE)
+    .input('RefID', sql.Int, cashMoveId)
+    .input('EntryReason', sql.NVarChar(40), EMP_LEDGER_REASON_ADVANCE)
+    .query(`
+      DELETE FROM dbo.TblEmpLedgerEntry
+      WHERE (
+          CashMoveID = @CashMoveID
+          OR (RefType = @RefType AND RefID = @RefID)
+        )
+        AND EntryReason = @EntryReason
+    `);
+  return Number(result.rowsAffected[0] ?? 0) > 0;
+}
+
+/**
  * When dual-write is enabled: if ExpINID is an advance category, upsert ledger debit.
- * Returns null when category is not advance-mapped (normal operating expense).
+ * If category is not advance-mapped, delete any prior advance ledger row for this cash move
+ * (so expense edits that leave "سلف الموظفين" stay consistent with دفتر الموظفين).
  */
 export async function maybeSyncAdvanceLedgerForExpenseCashMove(
   pool: { request: () => sql.Request },
@@ -253,7 +278,22 @@ export async function maybeSyncAdvanceLedgerForExpenseCashMove(
 
   const resolution = await resolveAdvanceEmployeeFromExpINID(pool, params.expINID, transaction);
   if (resolution.kind === 'not_advance') {
-    return { ledgerDualWrite: false };
+    try {
+      const removed = await deleteAdvanceLedgerForCashMove(pool, params.cashMoveId, transaction);
+      return removed
+        ? { ledgerDualWrite: true, outcome: 'removed' }
+        : { ledgerDualWrite: false };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (isMissingLedgerTableError(message)) {
+        throw new EmployeeLedgerDualWriteError(
+          'جدول دفتر الموظفين غير موجود — شغّل db/migrations/create-tbl-emp-ledger-entry.sql ثم أعد المحاولة',
+        );
+      }
+      throw new EmployeeLedgerDualWriteError(
+        `فشل حذف قيد سلفة دفتر الموظف: ${message}`,
+      );
+    }
   }
   if (resolution.kind === 'unresolved') {
     throw new EmployeeLedgerDualWriteError('تعذر ربط تصنيف السلفة بموظف لتسجيل دفتر الموظف');
@@ -478,6 +518,8 @@ export async function syncHourlyWageLedgerForWorkDate(
 }
 
 export class EmployeeLedgerDualWriteError extends Error {
+  statusCode = 503;
+
   constructor(message: string) {
     super(message);
     this.name = 'EmployeeLedgerDualWriteError';

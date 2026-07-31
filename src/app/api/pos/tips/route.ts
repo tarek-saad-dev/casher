@@ -6,13 +6,17 @@ import {
   executeEmployeeTip,
 } from '@/lib/services/employeeTipService';
 import { requireBranchOperationAccess } from '@/lib/branch/context';
-import { resolveBranchDayForDate } from '@/lib/branch/operationalGates';
+import { resolveActiveBranchDayForPosWrite } from '@/lib/branch/operationalGates';
 
 /**
  * POST /api/pos/tips
  * Record tip from overpayment: cash-in (تبس) + employee ledger credit.
  *
- * Body: { empId, invoiceTotal, amountPaid, paymentMethodId, date? }
+ * Body: { empId, invoiceTotal, amountPaid, paymentMethodId }
+ *
+ * Date/branch ownership always come from the active-branch open day (or the
+ * cutoff-aware business date). Browser calendar dates are ignored so midnight
+ * before 04:00 still attaches to the same operational day.
  */
 export async function POST(request: NextRequest) {
   const auth = await requirePageAccess('/income/pos');
@@ -24,14 +28,11 @@ export async function POST(request: NextRequest) {
     const invoiceTotal = Number(body.invoiceTotal);
     const amountPaid = Number(body.amountPaid);
     const paymentMethodId = Number(body.paymentMethodId);
-    const date =
-      String(body.date ?? '').trim() ||
-      new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
 
-    // Never trust browser branchId — resolve ownership from gated session context.
+    // Never trust browser branchId/date — resolve ownership from gated session context.
     const branch = await requireBranchOperationAccess();
     if (branch instanceof NextResponse) return branch;
-    const dayResolution = await resolveBranchDayForDate(branch.branchId, date);
+    const dayResolution = await resolveActiveBranchDayForPosWrite(branch);
     if (!dayResolution.ok) return dayResolution.response;
 
     const result = await executeEmployeeTip({
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
       invoiceTotal,
       amountPaid,
       paymentMethodId,
-      date,
+      date: dayResolution.dateYmd,
       createdByUserId: auth.userId,
       branchId: branch.branchId,
       businessDayId: dayResolution.day.id,

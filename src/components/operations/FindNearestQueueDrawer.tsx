@@ -290,7 +290,14 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
           customer: customerPayload,
         }),
       });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'خطأ'); }
+      if (!res.ok) {
+        const d = await res.json();
+        const msg =
+          (typeof d.message === 'string' && d.message) ||
+          (typeof d.error === 'string' && d.error) ||
+          'فشل إصدار الدور';
+        throw new Error(msg);
+      }
       const data = await res.json();
 
       const t = data.ticket;

@@ -31,10 +31,6 @@ interface TipsModalProps {
   onTipComplete?: (info: TipsCompleteInfo) => void;
 }
 
-function getCairoDateString(date = new Date()): string {
-  return date.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
-}
-
 function parseAmount(value: string): number | null {
   const trimmed = value.trim().replace(/,/g, '');
   if (!trimmed) return null;
@@ -130,7 +126,6 @@ export default function TipsModal({
             invoiceTotal,
             amountPaid,
             paymentMethodId,
-            date: getCairoDateString(),
           }),
         });
 

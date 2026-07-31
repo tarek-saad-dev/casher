@@ -1,6 +1,7 @@
 'use client';
 
 import PastDateTransferModal from '@/components/treasury/PastDateTransferModal';
+import { getCairoBusinessDate } from '@/lib/businessDate';
 
 interface PaymentTransferModalProps {
   open: boolean;
@@ -13,9 +14,8 @@ export default function PaymentTransferModal({
   onClose,
   onTransferComplete,
 }: PaymentTransferModalProps) {
-  const defaultDate = open
-    ? new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' })
-    : undefined;
+  // Business date (before 04:00 Cairo stays previous day), not calendar midnight.
+  const defaultDate = open ? getCairoBusinessDate() : undefined;
 
   return (
     <PastDateTransferModal
@@ -26,6 +26,7 @@ export default function PaymentTransferModal({
       title="تحويل بين طرق الدفع"
       subtitle="الفلوس بتطلع من طريقة وتتضاف لأخرى"
       transferDateReadOnly
+      attachToOpenDay
     />
   );
 }

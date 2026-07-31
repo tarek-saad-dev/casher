@@ -5,6 +5,7 @@ import { X, User, Scissors, Loader2, CheckCircle2, Clock, Users, AlertCircle, Ar
 import type { Customer } from '@/lib/types';
 import type { CreateQueueResponse } from '@/lib/operationsQueueTypes';
 import { PrintQueueTicketModal } from './PrintQueueTicketModal';
+import { useSession } from '@/hooks/useSession';
 
 interface Service {
   ProID: number;
@@ -23,6 +24,7 @@ interface Barber {
   nextAvailableAt: string | null;
   waitingCount: number;
   bookingsCount: number;
+  branchId?: number;
 }
 
 interface SimulateResult {
@@ -67,6 +69,11 @@ function formatTime(iso: string): string {
 }
 
 export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, debugInfo }: Props) {
+  const { activeBranch, user } = useSession();
+  const sessionBranchId = activeBranch?.branchId ?? user?.ActiveBranchID ?? null;
+  const sessionBarbers = barbers.filter(
+    (b) => sessionBranchId == null || b.branchId == null || b.branchId === sessionBranchId,
+  );
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedBarber, setSelectedBarber] = useState<Barber | null>(null);
   const [services, setServices] = useState<Service[]>([]);
@@ -375,12 +382,12 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                 </div>
-              ) : barbers.filter(b => b.status === 'working').length === 0 ? (
+              ) : sessionBarbers.filter(b => b.status === 'working').length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
-                  لا يوجد صنايعية متاحين للعمل
+                  لا يوجد صنايعية متاحين للعمل على الفرع النشط
                 </div>
               ) : (
-                barbers.filter(b => b.status === 'working').map(barber => (
+                sessionBarbers.filter(b => b.status === 'working').map(barber => (
                   <button
                     key={barber.empId}
                     onClick={() => {

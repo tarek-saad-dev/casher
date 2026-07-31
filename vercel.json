@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/admin/hr/nightly-close",
-      "schedule": "0 23 * * *"
+      "schedule": "40 23 * * *"
     }
   ]
 }

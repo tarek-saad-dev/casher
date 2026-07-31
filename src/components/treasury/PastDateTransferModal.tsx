@@ -24,6 +24,8 @@ interface PastDateTransferModalProps {
   title?: string;
   subtitle?: string;
   transferDateReadOnly?: boolean;
+  /** POS current-day mode: attach to open day on active branch (omit transferDate). */
+  attachToOpenDay?: boolean;
 }
 
 function formatAmount(value: string): string {
@@ -43,6 +45,7 @@ export default function PastDateTransferModal({
   title = 'تحويل في يوم سابق',
   subtitle = 'تحويل مبلغ بين طرق دفع مختلفة',
   transferDateReadOnly = false,
+  attachToOpenDay = false,
 }: PastDateTransferModalProps) {
   const [transferDate, setTransferDate] = useState('');
   const [amount, setAmount] = useState('');
@@ -99,8 +102,13 @@ export default function PastDateTransferModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!transferDate || !amount || !fromPaymentMethod || !toPaymentMethod) {
+    if (!amount || !fromPaymentMethod || !toPaymentMethod) {
       setError('جميع الحقول مطلوبة');
+      return;
+    }
+
+    if (!attachToOpenDay && !transferDate) {
+      setError('تاريخ التحويل مطلوب');
       return;
     }
 
@@ -115,13 +123,15 @@ export default function PastDateTransferModal({
       return;
     }
 
-    const inputDate = new Date(transferDate);
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
+    if (!attachToOpenDay) {
+      const inputDate = new Date(`${transferDate}T12:00:00`);
+      const today = new Date();
+      today.setHours(23, 59, 59, 999);
 
-    if (inputDate > today) {
-      setError('لا يمكن التحويل لتاريخ في المستقبل');
-      return;
+      if (inputDate > today) {
+        setError('لا يمكن التحويل لتاريخ في المستقبل');
+        return;
+      }
     }
 
     setLoading(true);
@@ -140,7 +150,9 @@ export default function PastDateTransferModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          transferDate,
+          // POS current-day: omit date so server uses active-branch open day + shift.
+          // Past-date treasury: send explicit transferDate for day lookup.
+          ...(attachToOpenDay ? {} : { transferDate }),
           amount: transferAmount,
           fromPaymentMethodId: parseInt(fromPaymentMethod),
           toPaymentMethodId: parseInt(toPaymentMethod),
@@ -359,21 +371,35 @@ export default function PastDateTransferModal({
             )}
           </div>
 
-          {/* Date */}
+          {/* Date — POS attaches to open day; don't show a disabled "old" date input */}
           <div>
             <label className="mb-2 block text-sm font-medium text-foreground/80">
               تاريخ التحويل
             </label>
-            <Input
-              type="date"
-              value={transferDate}
-              onChange={(e) => setTransferDate(e.target.value)}
-              readOnly={transferDateReadOnly}
-              disabled={transferDateReadOnly}
-              className="bg-surface-muted border-border text-foreground disabled:cursor-not-allowed disabled:opacity-80"
-              required
-            />
-            {transferDateReadOnly && (
+            {attachToOpenDay ? (
+              <div className="rounded-lg border border-border bg-surface-muted px-3 py-2.5">
+                <p className="text-sm font-medium text-foreground">
+                  يوم العمل الحالي
+                  {transferDate ? (
+                    <span className="mr-2 text-muted-foreground">({transferDate})</span>
+                  ) : null}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground/80">
+                  قبل الساعة 4 فجرًا يظل نفس يوم العمل — التحويل على الفرع والوردية المفتوحة
+                </p>
+              </div>
+            ) : (
+              <Input
+                type="date"
+                value={transferDate}
+                onChange={(e) => setTransferDate(e.target.value)}
+                readOnly={transferDateReadOnly}
+                disabled={transferDateReadOnly}
+                className="bg-surface-muted border-border text-foreground disabled:cursor-not-allowed disabled:opacity-80"
+                required
+              />
+            )}
+            {transferDateReadOnly && !attachToOpenDay && (
               <p className="mt-1.5 text-xs text-muted-foreground/70">
                 تاريخ اليوم الحالي — غير قابل للتعديل من نقطة البيع
               </p>
@@ -411,7 +437,7 @@ export default function PastDateTransferModal({
             </Button>
             <Button
               type="submit"
-              disabled={loading || !canPreview || !hasValidAmount}
+              disabled={loading}
               className="flex-1 bg-primary font-medium text-primary-foreground hover:bg-primary-hover"
             >
               {loading ? (

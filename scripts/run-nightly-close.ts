@@ -1,6 +1,6 @@
 #!/usr/bin/env npx tsx
 /**
- * Local nightly-close runner / watcher for Africa/Cairo 02:00 AM.
+ * Local nightly-close runner / watcher for Africa/Cairo 02:40 AM.
  *
  * Once (Cairo yesterday):
  *   npm run nightly-close
@@ -8,7 +8,7 @@
  *   npx tsx scripts/run-nightly-close.ts --date=2026-07-14
  *   npx tsx scripts/run-nightly-close.ts --skip-whatsapp
  *
- * Watch until 02:00 Cairo then fire:
+ * Watch until 02:40 Cairo then fire:
  *   npm run nightly-close:watch
  *
  * Env:
@@ -22,6 +22,14 @@ import dotenv from 'dotenv';
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 dotenv.config({ path: path.join(__dirname, '..', '.env.local') });
 
+import {
+  getCairoClockParts,
+  isNightlyCloseWatchFireWindow,
+  NIGHTLY_CLOSE_HOUR_CAIRO,
+  NIGHTLY_CLOSE_MINUTE_CAIRO,
+  NIGHTLY_CLOSE_WATCH_WINDOW_END_MINUTE,
+} from '../src/lib/hr/nightly-close-work-date';
+
 const BASE_URL = (process.env.NIGHTLY_CLOSE_BASE_URL || 'http://localhost:5500').replace(
   /\/$/,
   '',
@@ -29,6 +37,8 @@ const BASE_URL = (process.env.NIGHTLY_CLOSE_BASE_URL || 'http://localhost:5500')
 const CRON_SECRET = process.env.CRON_SECRET || 'dev';
 const REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 const ENDPOINT = '/api/admin/hr/nightly-close';
+const FIRE_LABEL = `${String(NIGHTLY_CLOSE_HOUR_CAIRO).padStart(2, '0')}:${String(NIGHTLY_CLOSE_MINUTE_CAIRO).padStart(2, '0')}`;
+const WINDOW_END_LABEL = `${String(NIGHTLY_CLOSE_HOUR_CAIRO).padStart(2, '0')}:${String(NIGHTLY_CLOSE_WATCH_WINDOW_END_MINUTE).padStart(2, '0')}`;
 
 function parseArgs(argv: string[]) {
   const flags = new Set(argv.filter((a) => a.startsWith('--') && !a.includes('=')));
@@ -45,24 +55,6 @@ function parseArgs(argv: string[]) {
     dryRun: flags.has('--dry-run'),
     skipWhatsApp: flags.has('--skip-whatsapp'),
     date: kv.date as string | undefined,
-  };
-}
-
-function getCairoClockParts(now = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Africa/Cairo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(now);
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '0';
-  return {
-    date: `${get('year')}-${get('month')}-${get('day')}`,
-    hour: Number(get('hour')),
-    minute: Number(get('minute')),
   };
 }
 
@@ -136,15 +128,15 @@ async function runOnce(opts: ReturnType<typeof parseArgs>) {
 
 async function watch() {
   console.log(
-    `[run-nightly-close] watching for 02:00–02:05 Africa/Cairo → ${BASE_URL}${ENDPOINT}`,
+    `[run-nightly-close] watching for ${FIRE_LABEL}–${WINDOW_END_LABEL} Africa/Cairo → ${BASE_URL}${ENDPOINT}`,
   );
   let lastFiredKey: string | null = null;
 
   for (;;) {
     const clock = getCairoClockParts();
-    // Forgiving window: fires once per Cairo calendar night if process is up by 02:05
-    if (clock.hour === 2 && clock.minute <= 5) {
-      const key = `${clock.date}-02:00`;
+    // Forgiving window: fires once per Cairo calendar night if process is up by window end
+    if (isNightlyCloseWatchFireWindow()) {
+      const key = `${clock.date}-${FIRE_LABEL}`;
       if (lastFiredKey !== key) {
         lastFiredKey = key;
         console.log(`[run-nightly-close] FIRE ${key} → closes ${cairoYesterday()}`);

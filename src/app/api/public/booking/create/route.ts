@@ -1,6 +1,10 @@
 import { NextRequest } from 'next/server';
 import { extractPublicBranchCode } from '@/lib/branch/bookingQueueOwnership';
 import {
+  isActiveBranchContext,
+  requireBranchOperationAccess,
+} from '@/lib/branch/context';
+import {
   publicBookingOptionsResponse,
   PUBLIC_BOOKING_ROUTE_CORS,
 } from '@/lib/booking/publicBookingCors';
@@ -29,6 +33,7 @@ export async function OPTIONS(req: NextRequest) {
 /**
  * POST /api/public/booking/create
  * Phase 6 — transactional create via createPublicBooking.
+ * Internal ops/admin (`source=operations|admin`): session active branch (no client branchCode).
  */
 export async function POST(req: NextRequest) {
   const { gate, blocked } = gatePublicBookingRoute(req, 'create');
@@ -49,7 +54,24 @@ export async function POST(req: NextRequest) {
     void body.endTime;
     void body.timezone;
 
-    const branchCode = extractPublicBranchCode(searchParams, body);
+    const sourceRaw = typeof body.source === 'string' ? body.source.trim().toLowerCase() : '';
+    const isInternalOps = sourceRaw === 'operations' || sourceRaw === 'admin';
+
+    let branchCode = extractPublicBranchCode(searchParams, body);
+    let purpose: 'public_booking' | 'internal_preview' | undefined;
+    let auth: { userId: number; canOperate?: boolean } | null = null;
+    let bookingSource: 'online' | 'operations' | 'admin' = 'online';
+
+    if (isInternalOps) {
+      const branch = await requireBranchOperationAccess();
+      if (!isActiveBranchContext(branch)) return branch;
+      // Session branch wins — never trust client branchCode for staff create.
+      branchCode = branch.branchCode;
+      purpose = 'internal_preview';
+      auth = { userId: branch.userId, canOperate: branch.canOperate };
+      bookingSource = sourceRaw === 'admin' ? 'admin' : 'operations';
+    }
+
     const customer = (body.customer ?? {}) as { name?: string; phone?: string | null };
     const idempotencyKeyHeader =
       req.headers.get('Idempotency-Key') ?? req.headers.get('idempotency-key');
@@ -76,6 +98,9 @@ export async function POST(req: NextRequest) {
         searchParams.get('preview') ??
         (typeof body.preview === 'string' ? body.preview : null),
       suppressNotification: body.suppressNotification === true,
+      purpose,
+      auth,
+      bookingSource,
     });
 
     const replay = result.body?.meta?.idempotentReplay === true;

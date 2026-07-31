@@ -50,6 +50,7 @@ export {
 export {
   branchErrorResponse,
   requireBranchOperatorContext,
+  resolveActiveBranchDayForPosWrite,
   resolveBranchDayAndShiftForWrite,
   resolveBranchDayForDate,
 } from './operationalGates';
@@ -98,6 +99,7 @@ export {
   extractPublicBranchCode,
   isEmployeeEligibleForBranchBookings,
   listBookableEmployeeIdsForBranch,
+  listQueueEligibleEmployeeIdsForBranch,
   listPublicActiveBranches,
   loadBookingBranchId,
   loadQueueTicketBranchId,

@@ -17,6 +17,7 @@ import {
   MessageCircle,
   MinusCircle,
   Moon,
+  Lock,
   RefreshCw,
   Target,
   TrendingDown,
@@ -302,7 +303,7 @@ export default function FullDayReportPage() {
     const ownerLabel = ownerPreview?.ownerName || 'المدير';
     if (
       !window.confirm(
-        `إرسال تقرير المالك ليوم ${report.workDate} إلى ${ownerLabel}؟`,
+        `إرسال تقرير المالك ليوم ${report.workDate} إلى ${ownerLabel}؟\n(رسالة منفصلة لكل فرع نشط)`,
       )
     ) {
       return;
@@ -323,8 +324,26 @@ export default function FullDayReportPage() {
           data.reasonAr || data.error || data.reason || 'فشل إرسال تقرير المالك',
         );
       }
-      setWaSuccess(`تم إرسال تقرير المالك إلى ${data.ownerName || 'طارق'}`);
-      setWaLog([`✓ المالك: ${data.ownerName || 'طارق'} (${data.phone || '—'})`]);
+      const branchCount = Array.isArray(data.messages) ? data.messages.length : 0;
+      const branchNames = Array.isArray(data.messages)
+        ? data.messages
+            .map((m: { branchName?: string }) => m.branchName)
+            .filter(Boolean)
+            .join(' + ')
+        : '';
+      setWaSuccess(
+        branchCount > 1
+          ? `تم إرسال ${branchCount} رسائل للمالك (${branchNames || 'كل الفروع'})`
+          : `تم إرسال تقرير المالك إلى ${data.ownerName || 'طارق'}`,
+      );
+      setWaLog(
+        Array.isArray(data.messages) && data.messages.length > 0
+          ? data.messages.map(
+              (m: { branchName?: string; branchCode?: string; status?: string }) =>
+                `✓ ${m.branchName || m.branchCode || 'فرع'}: ${m.status || 'sent'}`,
+            )
+          : [`✓ المالك: ${data.ownerName || 'طارق'} (${data.phone || '—'})`],
+      );
     } catch (err) {
       setWaError(err instanceof Error ? err.message : 'خطأ في إرسال المالك');
     } finally {
@@ -333,14 +352,24 @@ export default function FullDayReportPage() {
   };
 
   const runNightlyCloseNow = async (dryRun: boolean) => {
-    if (!report) return;
-    const mode = dryRun ? 'معاينة بدون تنفيذ' : 'تنفيذ كامل';
+    // Resolve Cairo-yesterday at the exact click moment (same as cron), so we don't
+    // wait for 02:40 — optional override = the date currently open on this page.
+    const cairoToday = new Date().toLocaleDateString('en-CA', {
+      timeZone: 'Africa/Cairo',
+    });
+    const [y, m, d] = cairoToday.split('-').map(Number);
+    const yesterdayUtc = new Date(Date.UTC(y, m - 1, d));
+    yesterdayUtc.setUTCDate(yesterdayUtc.getUTCDate() - 1);
+    const closeAtClickWorkDate = yesterdayUtc.toISOString().slice(0, 10);
+    const workDate = report?.workDate || closeAtClickWorkDate;
+
+    const mode = dryRun ? 'معاينة بدون تنفيذ' : 'قفل اليوم الآن — تنفيذ كامل';
     if (
       !window.confirm(
-        `${mode}: إقفال ليلي ليوم ${report.workDate}؟\n` +
+        `${mode}\nيوم العمل: ${workDate}\n` +
           (dryRun
             ? 'هيعرض مين حضوره ناقص وهيتملى من الـ Default (D) من غير حفظ.'
-            : 'هيكمّل الحضور الناقص من الـ Default (D) → يولّد اليوميات والتارجت → يبعت واتساب للموظفين والمدير ويتأكد من الإرسال.'),
+            : 'هيشتغل فورًا من غير انتظار الكرون: يكمل الحضور → يوميات → تارجت → واتساب موظفين + المدير (رسالة لكل فرع).'),
       )
     ) {
       return;
@@ -352,35 +381,41 @@ export default function FullDayReportPage() {
       const res = await fetch('/api/admin/hr/nightly-close', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workDate: report.workDate, dryRun }),
+        body: JSON.stringify({ workDate, dryRun }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
         throw new Error(
           data.error ||
             (Array.isArray(data.errors) ? data.errors[0] : null) ||
-            'فشل الإقفال الليلي',
+            'فشل قفل اليوم',
         );
       }
       const closed = data.steps?.attendanceClose?.closed?.length ?? 0;
       const empSent = data.delivery?.employeesSent ?? 0;
       const ownerOk = data.delivery?.ownerSent ? '✓' : '✗';
+      const ownerBranchMsgs = Array.isArray(data.steps?.ownerWhatsApp?.messages)
+        ? data.steps.ownerWhatsApp.messages.length
+        : Array.isArray(data.messages)
+          ? data.messages.length
+          : 0;
       setWaSuccess(
         dryRun
-          ? `معاينة: ${closed} هيتملاهم من Default (D) · جاهز موظفين ${data.delivery?.employeesReady ?? 0}`
-          : `تم الإقفال الليلي: DefaultFill(D)=${closed} · موظفين ${empSent} · مدير ${ownerOk}`,
+          ? `معاينة قفل ${workDate}: ${closed} هيتملاهم من Default (D) · جاهز موظفين ${data.delivery?.employeesReady ?? 0}`
+          : `تم قفل اليوم ${workDate} الآن: DefaultFill(D)=${closed} · موظفين ${empSent} · مدير ${ownerOk}` +
+              (ownerBranchMsgs > 1 ? ` (${ownerBranchMsgs} رسائل فروع)` : ''),
       );
       setWaLog([
-        `إقفال ليلي ${dryRun ? '(dry-run)' : ''} ${data.workDate}`,
+        `قفل اليوم ${dryRun ? '(معاينة)' : 'الآن'} · ${data.workDate}`,
         `حضور→Default(D): ${closed}`,
         `يوميات: ${data.steps?.payroll?.status ?? '—'}`,
         `تارجت: ${data.steps?.targets?.generated ?? 0}`,
         `واتساب موظفين: ${empSent} (فشل ${data.delivery?.employeesFailed ?? 0})`,
         `واتساب مدير: ${data.steps?.ownerWhatsApp?.status ?? '—'} (${data.delivery?.ownerPhone ?? '—'})`,
       ]);
-      if (!dryRun) await load(report.workDate);
+      if (!dryRun) await load(workDate);
     } catch (err) {
-      setWaError(err instanceof Error ? err.message : 'خطأ في الإقفال الليلي');
+      setWaError(err instanceof Error ? err.message : 'خطأ في قفل اليوم');
     } finally {
       setWaBusy(false);
     }
@@ -481,27 +516,27 @@ export default function FullDayReportPage() {
               إرسال للمدير
             </Button>
             <Button
-              disabled={!report || waBusy || loading}
+              disabled={waBusy || loading}
               variant="outline"
               onClick={() => void runNightlyCloseNow(true)}
               className="border-zinc-600 text-zinc-300"
-              title="معاينة الإقفال الليلي بدون تنفيذ"
+              title="معاينة قفل اليوم بدون حفظ أو إرسال"
             >
               <Moon className="h-4 w-4 ml-1" />
-              معاينة إقفال 1ص
+              معاينة قفل اليوم
             </Button>
             <Button
-              disabled={!report || waBusy || loading}
+              disabled={waBusy || loading}
               onClick={() => void runNightlyCloseNow(false)}
-              className="bg-violet-700 hover:bg-violet-600 text-white"
-              title="تنفيذ الإقفال الليلي: Default(D) → يوميات → واتساب"
+              className="bg-violet-700 hover:bg-violet-600 text-white min-w-[150px]"
+              title="يشغّل سكربت قفل اليوم فور الضغط — من غير انتظار الكرون 02:40"
             >
               {waBusy ? (
                 <Loader2 className="h-4 w-4 animate-spin ml-1" />
               ) : (
-                <Moon className="h-4 w-4 ml-1" />
+                <Lock className="h-4 w-4 ml-1" />
               )}
-              تشغيل إقفال 1ص
+              قفل اليوم الآن
             </Button>
           </div>
         </div>

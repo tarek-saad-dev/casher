@@ -11,6 +11,7 @@ import {
   Globe,
   Building2,
   Users,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -56,6 +57,7 @@ interface Props {
   onFindNearestQueue?: () => void;
   onCreateBooking: () => void;
   onScheduleControl?: () => void;
+  onTemporaryTransfer?: () => void;
   onSettleExpired?: () => void;
   onEnableVoice: () => void;
   onDisableVoice: () => void;
@@ -159,6 +161,7 @@ function ManagementActions({
   publicBookingEnabled,
   publicBookingToggleLoading,
   onScheduleControl,
+  onTemporaryTransfer,
   onSettleExpired,
   onToggleVoice,
   onToggleMusic,
@@ -171,6 +174,7 @@ function ManagementActions({
   publicBookingEnabled: boolean;
   publicBookingToggleLoading?: boolean;
   onScheduleControl?: () => void;
+  onTemporaryTransfer?: () => void;
   onSettleExpired?: () => void;
   onToggleVoice: () => void;
   onToggleMusic: () => void;
@@ -220,6 +224,21 @@ function ManagementActions({
         >
           <CalendarClock />
           إدارة مواعيد اليوم
+        </Button>
+      )}
+      {onTemporaryTransfer && (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onTemporaryTransfer}
+          className={cn(
+            adminBtnClass,
+            'border-amber-500/35 bg-amber-500/10 text-amber-200 hover:bg-amber-500/15',
+          )}
+          title="نقل موظف ليوم واحد لفرع آخر بدون تعديل الجدول الأسبوعي"
+        >
+          <ArrowLeftRight />
+          نقل موظف اليوم
         </Button>
       )}
       {onSettleExpired && (
@@ -273,6 +292,7 @@ export function OperationsControlPanel({
   onFindNearestQueue,
   onCreateBooking,
   onScheduleControl,
+  onTemporaryTransfer,
   onSettleExpired,
   onEnableVoice,
   onDisableVoice,
@@ -380,6 +400,7 @@ export function OperationsControlPanel({
               publicBookingEnabled={publicBookingEnabled}
               publicBookingToggleLoading={publicBookingToggleLoading}
               onScheduleControl={onScheduleControl}
+              onTemporaryTransfer={onTemporaryTransfer}
               onSettleExpired={onSettleExpired}
               onToggleVoice={handleToggleVoice}
               onToggleMusic={onToggleMusic}

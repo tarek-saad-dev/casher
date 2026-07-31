@@ -7,6 +7,10 @@ import {
   deleteCashMoveWithLinkedLedgerEntries,
   type DeleteCashMoveWithLedgerResult,
 } from '@/lib/services/cashMoveHardDeleteService';
+import {
+  formatLedgerEntryDate,
+  maybeSyncAdvanceLedgerForExpenseCashMove,
+} from '@/lib/services/employeeLedgerDualWrite';
 
 export interface ExpenseSnapshot {
   ID: number;
@@ -105,6 +109,19 @@ export async function updateExpense(
 
   const updated = await getExpenseSnapshot(transaction, id);
   if (!updated) throw new Error('فشل تحديث المصروف');
+
+  await maybeSyncAdvanceLedgerForExpenseCashMove(
+    { request: () => new sql.Request(transaction) },
+    transaction,
+    {
+      cashMoveId: id,
+      expINID: Number(updated.ExpINID),
+      entryDate: formatLedgerEntryDate(updated.invDate),
+      amount: Number(updated.GrandTolal),
+      createdByUserId: input.editedByUserId,
+    },
+  );
+
   return updated;
 }
 
@@ -113,6 +130,7 @@ export async function updateExpenseCategory(
   id: number,
   expINID: number,
   activeBranchId?: number,
+  createdByUserId?: number | null,
 ): Promise<ExpenseSnapshot> {
   const current = await getExpenseSnapshot(transaction, id);
   if (!current) throw new Error('المصروف غير موجود');
@@ -141,6 +159,19 @@ export async function updateExpenseCategory(
 
   const updated = await getExpenseSnapshot(transaction, id);
   if (!updated) throw new Error('فشل تحديث تصنيف المصروف');
+
+  await maybeSyncAdvanceLedgerForExpenseCashMove(
+    { request: () => new sql.Request(transaction) },
+    transaction,
+    {
+      cashMoveId: id,
+      expINID: Number(updated.ExpINID),
+      entryDate: formatLedgerEntryDate(updated.invDate),
+      amount: Number(updated.GrandTolal),
+      createdByUserId: createdByUserId ?? null,
+    },
+  );
+
   return updated;
 }
 

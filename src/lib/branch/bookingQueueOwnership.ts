@@ -224,6 +224,8 @@ export async function isEmployeeEligibleForBranchBookings(args: {
   branchId: number;
   operationalDate: string; // YYYY-MM-DD
   requireCanReceiveBookings?: boolean;
+  /** Walk-in / ops: also accept active temporary transfer-in for the day. */
+  includeTemporaryTransfer?: boolean;
 }): Promise<boolean> {
   const requireBookings = args.requireCanReceiveBookings !== false;
   const db = await getPool();
@@ -247,7 +249,87 @@ export async function isEmployeeEligibleForBranchBookings(args: {
         AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @day)
         AND (@requireBookings = 0 OR ea.CanReceiveBookings = 1)
     `);
-  return result.recordset.length > 0;
+  if (result.recordset.length > 0) return true;
+
+  if (!args.includeTemporaryTransfer) return false;
+
+  try {
+    const transfer = await db
+      .request()
+      .input('empId', sql.Int, args.empId)
+      .input('branchId', sql.Int, args.branchId)
+      .input('day', sql.Date, args.operationalDate)
+      .query(`
+        SELECT TOP 1 t.TransferID
+        FROM dbo.TblEmpTemporaryBranchTransfer t
+        INNER JOIN dbo.TblEmp e ON e.EmpID = t.EmpID
+        INNER JOIN dbo.TblBranch b ON b.BranchID = t.ToBranchID
+        WHERE t.EmpID = @empId
+          AND t.ToBranchID = @branchId
+          AND t.WorkDate = @day
+          AND t.IsActive = 1
+          AND b.IsActive = 1
+          AND ISNULL(e.isActive, 1) = 1
+      `);
+    return transfer.recordset.length > 0;
+  } catch {
+    // Table may not exist on older DBs — fail closed to assignment-only.
+    return false;
+  }
+}
+
+/**
+ * Walk-in / ops queue: assigned OR transferred-in; Does NOT require CanReceiveBookings.
+ */
+export async function listQueueEligibleEmployeeIdsForBranch(
+  branchId: number,
+  operationalDate: string,
+): Promise<number[]> {
+  const db = await getPool();
+  const assigned = await db
+    .request()
+    .input('branchId', sql.Int, branchId)
+    .input('day', sql.Date, operationalDate)
+    .query(`
+      SELECT ea.EmpID
+      FROM dbo.TblEmpBranchAssignment ea
+      INNER JOIN dbo.TblBranch b ON b.BranchID = ea.BranchID
+      INNER JOIN dbo.TblEmp e ON e.EmpID = ea.EmpID
+      WHERE ea.BranchID = @branchId
+        AND ea.IsActive = 1
+        AND b.IsActive = 1
+        AND ISNULL(e.isActive, 1) = 1
+        AND ea.EffectiveFrom <= @day
+        AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @day)
+    `);
+  const ids = new Set<number>(
+    assigned.recordset.map((r: { EmpID: number }) => Number(r.EmpID)),
+  );
+
+  try {
+    const transferred = await db
+      .request()
+      .input('branchId', sql.Int, branchId)
+      .input('day', sql.Date, operationalDate)
+      .query(`
+        SELECT t.EmpID
+        FROM dbo.TblEmpTemporaryBranchTransfer t
+        INNER JOIN dbo.TblEmp e ON e.EmpID = t.EmpID
+        INNER JOIN dbo.TblBranch b ON b.BranchID = t.ToBranchID
+        WHERE t.ToBranchID = @branchId
+          AND t.WorkDate = @day
+          AND t.IsActive = 1
+          AND b.IsActive = 1
+          AND ISNULL(e.isActive, 1) = 1
+      `);
+    for (const r of transferred.recordset as Array<{ EmpID: number }>) {
+      ids.add(Number(r.EmpID));
+    }
+  } catch {
+    /* optional table */
+  }
+
+  return [...ids];
 }
 
 /** SQL fragment: employee ids assigned to branch for bookings on @day (includes test). */

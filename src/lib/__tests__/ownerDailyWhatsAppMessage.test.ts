@@ -199,4 +199,12 @@ describe('composeOwnerDailyWhatsAppMessage', () => {
     expect(msg).toContain('تارجت حتى الآن');
     expect(msg).toContain('الحسبة حسب اتفاق التارجت');
   });
+
+  it('puts branch name in the title when provided', () => {
+    const msg = composeOwnerDailyWhatsAppMessage(sampleReport(), {
+      branchName: 'كامب شيزار',
+    });
+    expect(msg).toContain('تقرير المالك اليومي — كامب شيزار');
+    expect(msg).toContain('الثلاثاء · 14 يوليو 2026');
+  });
 });

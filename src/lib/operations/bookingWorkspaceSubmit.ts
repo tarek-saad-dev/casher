@@ -21,6 +21,20 @@ export function releaseSubmitGuard(submittingRef: { current: boolean }): void {
   submittingRef.current = false;
 }
 
+/** Extract Arabic/user message from public booking error JSON (nested or flat). */
+export function extractBookingCreateErrorMessage(data: unknown, fallback = 'فشل إنشاء الحجز'): string {
+  if (!data || typeof data !== 'object') return fallback;
+  const d = data as Record<string, unknown>;
+  const nested = d.error;
+  if (nested && typeof nested === 'object') {
+    const msg = (nested as { message?: unknown }).message;
+    if (typeof msg === 'string' && msg.trim()) return msg;
+  }
+  if (typeof d.message === 'string' && d.message.trim()) return d.message;
+  if (typeof nested === 'string' && nested.trim()) return nested;
+  return fallback;
+}
+
 export function parseBookingCreateSuccess(data: unknown): BookingCreateSuccess | null {
   if (!data || typeof data !== 'object') return null;
   const booking = (data as { booking?: Record<string, unknown> }).booking;

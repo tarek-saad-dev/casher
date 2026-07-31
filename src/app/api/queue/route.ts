@@ -301,6 +301,8 @@ export async function POST(req: NextRequest) {
         empId,
         branchId: branch.branchId,
         operationalDate: today,
+        requireCanReceiveBookings: false,
+        includeTemporaryTransfer: true,
       });
       if (!eligible) {
         return NextResponse.json(

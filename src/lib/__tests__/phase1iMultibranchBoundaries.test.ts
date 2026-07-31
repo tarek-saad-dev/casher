@@ -68,10 +68,13 @@ describe('Phase 1I multibranch boundaries', () => {
     expect(src).toContain('branchName: gated.branch.branchName');
   });
 
-  it('owner daily WhatsApp iterates active branches instead of preferring GLEEM', () => {
+  it('owner daily WhatsApp iterates active branches and sends one message per branch', () => {
     const src = read('src/lib/hr/owner-daily-whatsapp-report.service.ts');
     expect(src).toContain('listActiveBranches');
     expect(src).toContain('resolveOwnerReportBranchIds');
+    expect(src).toContain('buildOwnerBranchMessages');
+    expect(src).toContain('for (const branchMsg of preview.messages)');
+    expect(src).toContain('sendQuickWhatsAppMessage');
     expect(src).not.toContain("getBranchByCode('GLEEM')");
   });
 

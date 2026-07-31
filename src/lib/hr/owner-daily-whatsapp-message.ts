@@ -60,15 +60,24 @@ function advancesLabel(count: number): string {
   return `${count} سلفة`;
 }
 
-export function composeOwnerDailyWhatsAppMessage(report: FullDayReport): string {
+export function composeOwnerDailyWhatsAppMessage(
+  report: FullDayReport,
+  options?: { branchName?: string | null },
+): string {
   const dateLabel = report.workDateLabelAr;
+  const branchName = options?.branchName?.trim() || null;
   const o = report.ownerDay;
   const t = report.treasury;
   const a = report.employeeAccounts;
 
   const lines: string[] = [];
 
-  lines.push(`📊 *تقرير المالك اليومي — ${dateLabel}*`);
+  if (branchName) {
+    lines.push(`📊 *تقرير المالك اليومي — ${branchName}*`);
+    lines.push(`📅 ${dateLabel}`);
+  } else {
+    lines.push(`📊 *تقرير المالك اليومي — ${dateLabel}*`);
+  }
   lines.push('');
   lines.push('━━━━━━━━━━━━━━');
   lines.push('*1️⃣ نتيجة التشغيل*');

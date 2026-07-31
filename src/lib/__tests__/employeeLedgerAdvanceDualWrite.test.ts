@@ -164,7 +164,10 @@ describe('maybeSyncAdvanceLedgerForExpenseCashMove', () => {
     process.env.EMP_LEDGER_DUAL_WRITE_ENABLED = 'true';
     const { maybeSyncAdvanceLedgerForExpenseCashMove } = await import('@/lib/services/employeeLedgerDualWrite');
     const { sql } = await import('@/lib/db');
-    txQueryResults = [{ recordset: [] }];
+    txQueryResults = [
+      { recordset: [] },
+      { rowsAffected: [0] },
+    ];
     const transaction = new sql.Transaction({} as never);
 
     const result = await maybeSyncAdvanceLedgerForExpenseCashMove({ request: vi.fn() } as never, transaction, {
@@ -175,6 +178,26 @@ describe('maybeSyncAdvanceLedgerForExpenseCashMove', () => {
     });
 
     expect(result).toEqual({ ledgerDualWrite: false });
+  });
+
+  it('removes prior advance ledger when category is no longer advance-mapped', async () => {
+    process.env.EMP_LEDGER_DUAL_WRITE_ENABLED = 'true';
+    const { maybeSyncAdvanceLedgerForExpenseCashMove } = await import('@/lib/services/employeeLedgerDualWrite');
+    const { sql } = await import('@/lib/db');
+    txQueryResults = [
+      { recordset: [] },
+      { rowsAffected: [1] },
+    ];
+    const transaction = new sql.Transaction({} as never);
+
+    const result = await maybeSyncAdvanceLedgerForExpenseCashMove({ request: vi.fn() } as never, transaction, {
+      cashMoveId: 10,
+      expINID: 5,
+      entryDate: '2026-04-15',
+      amount: 100,
+    });
+
+    expect(result).toEqual({ ledgerDualWrite: true, outcome: 'removed' });
   });
 
   it('creates ledger debit for advance-mapped expense category', async () => {

@@ -5,7 +5,7 @@ import {
   Users, Clock, CheckCircle2, AlertCircle,
   Loader2, RefreshCw, Save, CalendarDays, UserCheck,
   UserX, Coffee, Timer, UserPlus, Search, PauseCircle,
-  AlertTriangle, Sunrise,
+  AlertTriangle, Sunrise, ArrowLeftRight,
 } from 'lucide-react';
 import KpiCard from '@/components/shared/KpiCard';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import {
   applyNowTimesToRow,
 } from '@/components/hr/attendance-row-time-fill';
 import AttendanceBreaksDialog from '@/components/hr/AttendanceBreaksDialog';
+import { TemporaryBranchTransferModal } from '@/components/operations/TemporaryBranchTransferModal';
 import {
   detectCheckInPeriodMismatch,
   formatClockAr,
@@ -173,6 +174,8 @@ export default function AttendancePanel() {
   const [freelanceAmConfirmed, setFreelanceAmConfirmed] = useState(false);
   const [breaksEmpId, setBreaksEmpId]           = useState<number | null>(null);
   const [breakTimesEmpId, setBreakTimesEmpId]   = useState<number | null>(null);
+  const [transferOpen, setTransferOpen]         = useState(false);
+  const [transferEmpId, setTransferEmpId]       = useState<number | null>(null);
 
   const fetchAttendance = useCallback(async (targetDate: string) => {
     setLoading(true); setError(''); setSuccessMsg(''); setDirty(new Set());
@@ -473,6 +476,20 @@ export default function AttendancePanel() {
             <UserPlus className="w-3.5 h-3.5" />
             إضافة فري لانس للحضور
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setTransferEmpId(null);
+              setTransferOpen(true);
+            }}
+            data-testid="attendance-temporary-transfer"
+            title="نقل موظف ليوم واحد لفرع آخر بدون تعديل الجدول الأسبوعي"
+            className="h-9 text-xs gap-1 border-amber-500/35 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
+          >
+            <ArrowLeftRight className="w-3.5 h-3.5" />
+            نقل موظف اليوم
+          </Button>
         </div>
       </div>
 
@@ -721,6 +738,19 @@ export default function AttendancePanel() {
                           className={`h-7 w-7 p-0 ${isDirty ? 'text-amber-400 hover:bg-amber-500/20' : 'text-zinc-600'}`}>
                           {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                         </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setTransferEmpId(row.EmpID);
+                            setTransferOpen(true);
+                          }}
+                          title="نقل اليوم لفرع آخر"
+                          data-testid={`attendance-transfer-${row.EmpID}`}
+                          className="h-7 w-7 p-0 text-amber-400/80 hover:bg-amber-500/20 hover:text-amber-300"
+                        >
+                          <ArrowLeftRight className="w-3.5 h-3.5" />
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -883,6 +913,21 @@ export default function AttendancePanel() {
           />
         );
       })()}
+
+      <TemporaryBranchTransferModal
+        open={transferOpen}
+        onClose={() => {
+          setTransferOpen(false);
+          setTransferEmpId(null);
+        }}
+        workDate={date}
+        initialEmpId={transferEmpId}
+        onTransferred={() => {
+          void fetchAttendance(date);
+          setSuccessMsg('تم نقل الموظف لفرع آخر لهذا اليوم');
+          setTimeout(() => setSuccessMsg(''), 4000);
+        }}
+      />
     </div>
   );
 }

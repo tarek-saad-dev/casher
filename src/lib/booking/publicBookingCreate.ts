@@ -54,6 +54,7 @@ import {
   isValidPhone,
   isValidTime,
   normalizePublicBookingPhone,
+  PLACEHOLDER_CUSTOMER_PHONES,
   upsertCustomer,
 } from '@/lib/publicBookingHelpers';
 import { scheduleBookingWhatsAppAfterCommit } from '@/lib/bookingPostCommitNotification';
@@ -142,6 +143,8 @@ export type PublicBookingCreateInput = {
   auth?: { userId: number; canOperate?: boolean } | null;
   /** Verifier-only purpose override. Defaults to public_booking. */
   purpose?: 'public_booking' | 'internal_preview';
+  /** Persisted Bookings.Source — public stays online; ops/admin set by authenticated route. */
+  bookingSource?: 'online' | 'operations' | 'admin';
 };
 
 export type PublicBookingCreateResult = {
@@ -336,14 +339,22 @@ function buildPublicResponse(args: {
 export async function createPublicBooking(
   input: PublicBookingCreateInput,
 ): Promise<PublicBookingCreateResult> {
+  const isInternalPreview =
+    input.purpose === 'internal_preview' && !!input.auth?.userId;
+
   const customerName = String(input.customer?.name ?? '').trim();
   if (customerName.length < 2 || customerName.length > MAX_NAME) {
     throw new PublicBookingCreateError('INVALID_CUSTOMER');
   }
   const rawPhone = String(input.customer?.phone ?? '');
-  const customerPhone = normalizePublicBookingPhone(rawPhone);
+  let customerPhone = normalizePublicBookingPhone(rawPhone);
   if (!customerPhone || !isValidPhone(customerPhone)) {
-    throw new PublicBookingCreateError('INVALID_CUSTOMER');
+    // Staff create may omit phone; placeholder skips WhatsApp + client upsert match.
+    if (isInternalPreview) {
+      customerPhone = [...PLACEHOLDER_CUSTOMER_PHONES][0]!;
+    } else {
+      throw new PublicBookingCreateError('INVALID_CUSTOMER');
+    }
   }
 
   const notes = (input.notes ?? '').toString().trim();
@@ -364,14 +375,15 @@ export async function createPublicBooking(
 
   const hasPlanTokenEarly = !!(input.planToken && String(input.planToken).trim());
   const hasIdempotencyEarly = !!idempotencyKey;
-  if (isPublicBookingEnforceMode()) {
+  // Staff/internal create is not the public plan→create contract.
+  if (!isInternalPreview && isPublicBookingEnforceMode()) {
     if (!hasPlanTokenEarly) {
       throw new PublicBookingCreateError('PLAN_TOKEN_REQUIRED');
     }
     if (!hasIdempotencyEarly) {
       throw new PublicBookingCreateError('IDEMPOTENCY_KEY_REQUIRED');
     }
-  } else if (!hasPlanTokenEarly || !hasIdempotencyEarly) {
+  } else if (!isInternalPreview && (!hasPlanTokenEarly || !hasIdempotencyEarly)) {
     logLegacyContractUsed({
       routeFamily: 'create',
       missingRequirement:
@@ -382,10 +394,12 @@ export async function createPublicBooking(
             : 'idempotencyKey',
     });
   }
-  const createCompatibility = buildContractCompatibilityMetadata({
-    missingPlanToken: !hasPlanTokenEarly,
-    missingIdempotencyKey: !hasIdempotencyEarly,
-  });
+  const createCompatibility = isInternalPreview
+    ? undefined
+    : buildContractCompatibilityMetadata({
+        missingPlanToken: !hasPlanTokenEarly,
+        missingIdempotencyKey: !hasIdempotencyEarly,
+      });
 
   // Normalize selection fields for fingerprint before availability (idempotent replay).
   const { parsePublicServiceIdsParam } = await import(
@@ -736,7 +750,7 @@ export async function createPublicBooking(
           .input('bDate', sql.Date, calendarDate)
           .input('sTime', sql.VarChar, startTimeStr)
           .input('eTime', sql.VarChar, endTimeStr)
-          .input('source', sql.NVarChar, 'online')
+          .input('source', sql.NVarChar, input.bookingSource ?? 'online')
           .input('notes', sql.NVarChar, notesPersist || null)
           .input('code', sql.NVarChar, bookingCode)
           .input('branchId', sql.Int, branchNow.branchId)
@@ -746,6 +760,7 @@ export async function createPublicBooking(
           .input('absEnd', sql.DateTime2, new Date(endMs))
           .input('planFp', sql.NVarChar(128), planFp)
           .input('idemReqId', sql.BigInt, idempotencyRequestId)
+          .input('createdBy', sql.Int, input.auth?.userId ?? 0)
           .query(`
             INSERT INTO [dbo].[Bookings]
               (ClientID, AssignedEmpID, BookingDate, StartTime, EndTime,
@@ -755,7 +770,7 @@ export async function createPublicBooking(
             OUTPUT INSERTED.BookingID
             VALUES
               (@clientId, @empId, @bDate, @sTime, @eTime,
-               'confirmed', @source, @notes, @code, 0, @branchId,
+               'confirmed', @source, @notes, @code, @createdBy, @branchId,
                @workDate, @dayOffset, @absStart, @absEnd,
                @planFp, @idemReqId)
           `);

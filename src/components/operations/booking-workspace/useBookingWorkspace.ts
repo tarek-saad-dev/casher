@@ -20,6 +20,7 @@ import {
 import {
   acquireSubmitGuard,
   BOOKING_SUCCESS_CLOSE_DELAY_MS,
+  extractBookingCreateErrorMessage,
   parseBookingCreateSuccess,
   releaseSubmitGuard,
   type BookingCreateSuccess,
@@ -493,13 +494,20 @@ export function useBookingWorkspace({
         });
       }
       if (res.status === 409) {
-        setError(data.message || data.error || 'الوقت المختار لم يعد متاحًا، اختر موعدًا آخر.');
+        setError(
+          extractBookingCreateErrorMessage(
+            data,
+            'الوقت المختار لم يعد متاحًا، اختر موعدًا آخر.',
+          ),
+        );
         invalidateSlotSelection();
         setStep(3);
         void fetchSlots();
         return;
       }
-      if (!res.ok || !data.ok) throw new Error(data.error || 'فشل إنشاء الحجز');
+      if (!res.ok || !data.ok) {
+        throw new Error(extractBookingCreateErrorMessage(data));
+      }
 
       const successResult = parseBookingCreateSuccess(data) ?? {
         actualDate: data.booking?.actualDate || data.booking?.date || bookingDate,

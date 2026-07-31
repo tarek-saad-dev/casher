@@ -26,6 +26,8 @@ interface PastDateIncomeModalProps {
   title?: string;
   subtitle?: string;
   entryDateReadOnly?: boolean;
+  /** POS current-day mode: POST /api/incomes (open day + shift on active branch). */
+  attachToOpenDay?: boolean;
 }
 
 export default function PastDateIncomeModal({
@@ -36,6 +38,7 @@ export default function PastDateIncomeModal({
   title = 'اضافه ايراد في يوم سابق',
   subtitle = 'إضافة إيراد لتاريخ سابق',
   entryDateReadOnly = false,
+  attachToOpenDay = false,
 }: PastDateIncomeModalProps) {
   const [incomeDate, setIncomeDate] = useState('');
   const [incomeTime, setIncomeTime] = useState('');
@@ -99,26 +102,29 @@ export default function PastDateIncomeModal({
       return;
     }
 
-    // Validate that date is not in the future
-    const inputDate = new Date(incomeDate);
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
+    // Validate that date is not in the future (past-date mode only)
+    if (!attachToOpenDay) {
+      const inputDate = new Date(`${incomeDate}T12:00:00`);
+      const today = new Date();
+      today.setHours(23, 59, 59, 999);
 
-    if (inputDate > today) {
-      setError('لا يمكن إضافة إيراد لتاريخ في المستقبل');
-      return;
+      if (inputDate > today) {
+        setError('لا يمكن إضافة إيراد لتاريخ في المستقبل');
+        return;
+      }
     }
 
     setLoading(true);
     setError('');
 
     try {
-      const response = await fetch('/api/incomes/past-date', {
+      const endpoint = attachToOpenDay ? '/api/incomes' : '/api/incomes/past-date';
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           invDate: incomeDate,
-          invTime: incomeTime || '12:00',
+          ...(attachToOpenDay ? {} : { invTime: incomeTime || '12:00' }),
           amount: incomeAmount,
           expInId: parseInt(categoryId),
           paymentMethodId: parseInt(paymentMethodId),
@@ -193,16 +199,30 @@ export default function PastDateIncomeModal({
             <label className="block text-sm font-medium text-foreground/80 mb-2">
               التاريخ
             </label>
-            <Input
-              type="date"
-              value={incomeDate}
-              onChange={(e) => setIncomeDate(e.target.value)}
-              readOnly={entryDateReadOnly}
-              disabled={entryDateReadOnly}
-              className="bg-surface-muted border-border text-foreground disabled:cursor-not-allowed disabled:opacity-80"
-              required
-            />
-            {entryDateReadOnly && (
+            {attachToOpenDay ? (
+              <div className="rounded-lg border border-border bg-surface-muted px-3 py-2.5">
+                <p className="text-sm font-medium text-foreground">
+                  يوم العمل الحالي
+                  {incomeDate ? (
+                    <span className="mr-2 text-muted-foreground">({incomeDate})</span>
+                  ) : null}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground/80">
+                  قبل الساعة 4 فجرًا يظل نفس يوم العمل — الإيراد على الفرع والوردية المفتوحة
+                </p>
+              </div>
+            ) : (
+              <Input
+                type="date"
+                value={incomeDate}
+                onChange={(e) => setIncomeDate(e.target.value)}
+                readOnly={entryDateReadOnly}
+                disabled={entryDateReadOnly}
+                className="bg-surface-muted border-border text-foreground disabled:cursor-not-allowed disabled:opacity-80"
+                required
+              />
+            )}
+            {entryDateReadOnly && !attachToOpenDay && (
               <p className="mt-1.5 text-xs text-muted-foreground/60">تاريخ اليوم الحالي — غير قابل للتعديل من نقطة البيع</p>
             )}
           </div>

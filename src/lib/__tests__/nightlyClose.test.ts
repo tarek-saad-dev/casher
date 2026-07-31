@@ -14,6 +14,7 @@ import {
   resolveNightlyCloseWorkDate,
   shiftYmd,
   isNightlyCloseFireWindow,
+  isNightlyCloseWatchFireWindow,
   getCairoClockParts,
 } from '@/lib/hr/nightly-close-work-date';
 import { verifyNightlyWhatsAppDelivery } from '@/lib/hr/nightly-close.service';
@@ -108,15 +109,26 @@ describe('nightly-close-work-date', () => {
     expect(resolveNightlyCloseWorkDate(null, now)).toBe('2026-07-14');
   });
 
-  it('detects 02:00 Cairo fire window', () => {
-    const fire = new Date('2026-07-14T23:00:30.000Z');
+  it('detects 02:40 Cairo fire window', () => {
+    // 23:40 UTC ≈ 02:40 Africa/Cairo during DST
+    const fire = new Date('2026-07-14T23:40:30.000Z');
     expect(isNightlyCloseFireWindow(fire)).toBe(true);
     const clock = getCairoClockParts(fire);
     expect(clock.hour).toBe(2);
-    expect(clock.minute).toBe(0);
+    expect(clock.minute).toBe(40);
 
-    const later = new Date('2026-07-14T23:01:00.000Z');
+    const earlier = new Date('2026-07-14T23:00:30.000Z');
+    expect(isNightlyCloseFireWindow(earlier)).toBe(false);
+
+    const later = new Date('2026-07-14T23:41:00.000Z');
     expect(isNightlyCloseFireWindow(later)).toBe(false);
+  });
+
+  it('watcher forgiving window covers 02:40–02:45 Cairo', () => {
+    expect(isNightlyCloseWatchFireWindow(new Date('2026-07-14T23:40:00.000Z'))).toBe(true);
+    expect(isNightlyCloseWatchFireWindow(new Date('2026-07-14T23:45:00.000Z'))).toBe(true);
+    expect(isNightlyCloseWatchFireWindow(new Date('2026-07-14T23:39:00.000Z'))).toBe(false);
+    expect(isNightlyCloseWatchFireWindow(new Date('2026-07-14T23:46:00.000Z'))).toBe(false);
   });
 });
 

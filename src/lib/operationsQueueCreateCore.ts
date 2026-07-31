@@ -56,6 +56,15 @@ export class CreateOperationsQueueError extends Error {
   }
 }
 
+/** QueueTickets.Source is NVARCHAR(20) — map long API sources to short persisted values. */
+export function persistQueueTicketSource(
+  source: CreateOperationsQueueInput['source'] | string,
+): string {
+  if (source === 'operations_barber_header') return 'ops_header';
+  const s = String(source || 'walk_in');
+  return s.length <= 20 ? s : s.slice(0, 20);
+}
+
 export async function createOperationsQueueTicket(
   input: CreateOperationsQueueInput,
 ): Promise<CreateQueueResponse> {
@@ -99,14 +108,13 @@ export async function createOperationsQueueTicket(
     const { isEmployeeEligibleForBranchBookings } = await import(
       '@/lib/branch/bookingQueueOwnership'
     );
-    const operationalDate = new Date().toLocaleDateString('en-CA', {
-      timeZone: 'Africa/Cairo',
-    });
+    const operationalDate = getCairoBusinessDate();
     const assigned = await isEmployeeEligibleForBranchBookings({
       empId,
       branchId,
       operationalDate,
       requireCanReceiveBookings: false,
+      includeTemporaryTransfer: true,
     });
     if (!assigned) {
       throw new CreateOperationsQueueError(
@@ -311,7 +319,7 @@ export async function createOperationsQueueTicket(
       .input('queueDate', sql.Date, dateStr)
       .input('empId', sql.Int, empId)
       .input('status', sql.NVarChar, 'waiting')
-      .input('source', sql.NVarChar, source)
+      .input('source', sql.NVarChar, persistQueueTicketSource(source))
       .input('estimatedStartTime', sql.DateTime, new Date(finalStartTime));
 
     if (schema.hasBranchID) {
