@@ -477,7 +477,9 @@ export async function loadFlowBoardForBranch(opts: {
     if (timeline.length > 0) {
       nextAvailableAt = timeline[timeline.length - 1].endTime;
     } else if (workStart) {
-      nextAvailableAt = new Date(`${dateStr}T${workStart}`).toISOString();
+      // Anchor to Cairo wall clock so overnight HH:MM (01:05) formats as AM, not shifted local time.
+      const hhmm = workStart.length === 5 ? `${workStart}:00` : workStart;
+      nextAvailableAt = new Date(`${dateStr}T${hhmm}+03:00`).toISOString();
     }
 
     const effectiveWaitingCount = timeline.filter(

@@ -1,5 +1,6 @@
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
+import { getOperationalDate } from '@/lib/businessDate';
 import type { ActiveBranchContext } from './types';
 import { BranchDomainError } from './types';
 
@@ -24,10 +25,6 @@ function mapDay(row: Record<string, unknown>): BusinessDayRecord {
   };
 }
 
-function formatDateInTimeZone(timeZone: string, now = new Date()): string {
-  return now.toLocaleDateString('en-CA', { timeZone });
-}
-
 function parseCutoffHour(cutoff: string): number {
   const hour = Number(String(cutoff).slice(0, 2));
   return Number.isFinite(hour) ? hour : 4;
@@ -38,22 +35,11 @@ export function getBranchBusinessDate(
   branch: Pick<ActiveBranchContext, 'timeZone' | 'businessDayCutoffTime'>,
   now = new Date(),
 ): string {
-  const timeZone = branch.timeZone || 'Africa/Cairo';
-  const cutoff = parseCutoffHour(branch.businessDayCutoffTime || '04:00:00');
-  const hourStr = new Intl.DateTimeFormat('en-GB', {
-    timeZone,
-    hour: '2-digit',
-    hour12: false,
-  }).format(now);
-  const hour = parseInt(hourStr, 10);
-  const calendar = formatDateInTimeZone(timeZone, now);
-  if (hour < cutoff) {
-    const [y, m, d] = calendar.split('-').map(Number);
-    const dt = new Date(Date.UTC(y, m - 1, d));
-    dt.setUTCDate(dt.getUTCDate() - 1);
-    return dt.toISOString().slice(0, 10);
-  }
-  return calendar;
+  return getOperationalDate({
+    now,
+    timeZone: branch.timeZone || 'Africa/Cairo',
+    cutoffHour: parseCutoffHour(branch.businessDayCutoffTime || '04:00:00'),
+  });
 }
 
 export async function getBusinessDayById(

@@ -11,9 +11,9 @@ import {
   type BookingWorkspaceBarber,
   type GapNotice,
   formatDateLabel,
-  getCairoToday,
-  getCairoTomorrow,
-  isPastCairoDate,
+  getOperationalToday,
+  getOperationalTomorrow,
+  isBeforeOperationalDate,
   isSlotInsideRange,
   sanitizeDate,
 } from './types';
@@ -132,9 +132,9 @@ export function useBookingWorkspace({
   }, [mode, selectedBarberId, barbers, initialBarberName]);
 
   const hasTimeRange = !!initialTimeRangeStart && !!initialTimeRangeEnd;
-  const isDatePast = isPastCairoDate(bookingDate);
-  const isToday = bookingDate === getCairoToday();
-  const isTomorrow = bookingDate === getCairoTomorrow();
+  const isDatePast = isBeforeOperationalDate(bookingDate);
+  const isToday = bookingDate === getOperationalToday();
+  const isTomorrow = bookingDate === getOperationalTomorrow();
   const lockedBarber = !!initialEmpId;
 
   const filteredSlots = useMemo(() => {
@@ -310,7 +310,8 @@ export function useBookingWorkspace({
 
   const fetchSlots = useCallback(async () => {
     if (!serviceIds.length || !bookingDate) return;
-    if (isPastCairoDate(bookingDate)) return;
+    // Floor is the operational day (not Cairo calendar): overnight previous date stays fetchable.
+    if (isBeforeOperationalDate(bookingDate)) return;
     if (mode === 'specific' && !selectedBarberId) return;
 
     fetchAbortRef.current?.abort();
@@ -388,7 +389,7 @@ export function useBookingWorkspace({
   }, [step, bookingDate, serviceIdsKey, mode, selectedBarberId, fetchSlots, serviceIds.length]);
 
   const handleDateChange = (newDate: string) => {
-    setBookingDate(newDate);
+    setBookingDate(sanitizeDate(newDate));
     invalidateSlotSelection();
     setFilterByTimeRange(false);
     setShowDatePicker(false);
@@ -693,8 +694,12 @@ export function useBookingWorkspace({
     stepSummaries,
     fetchSlots,
     formatDateLabel,
-    getCairoToday,
-    getCairoTomorrow,
+    getOperationalToday,
+    getOperationalTomorrow,
+    /** @deprecated alias — returns operational today for booking date picker */
+    getCairoToday: getOperationalToday,
+    /** @deprecated alias — returns day after operational today */
+    getCairoTomorrow: getOperationalTomorrow,
   };
 }
 

@@ -1,3 +1,9 @@
+import {
+  getCairoCalendarDate,
+  getOperationalDate,
+  shiftCalendarDate,
+} from '@/lib/businessDate';
+
 export interface BookingService {
   ProID: number;
   ProName: string;
@@ -69,23 +75,46 @@ export const GOLD_BDR = 'color-mix(in srgb, var(--primary) 35%, transparent)';
 export const SURFACE = 'var(--surface)';
 export const BORDER = 'var(--border)';
 
+/** @deprecated Prefer getOperationalToday — calendar date ignores overnight shifts. */
 export function getCairoToday(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+  return getCairoCalendarDate();
 }
 
+/** Active operational day (before 04:00 Cairo → previous calendar date). */
+export function getOperationalToday(now?: Date): string {
+  return getOperationalDate({ now });
+}
+
+/** Next calendar day after the active operational day. */
+export function getOperationalTomorrow(now?: Date): string {
+  return shiftCalendarDate(getOperationalDate({ now }), 1);
+}
+
+/** @deprecated Prefer getOperationalTomorrow. */
 export function getCairoTomorrow(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+  return getOperationalTomorrow();
 }
 
-export function isPastCairoDate(dateStr: string): boolean {
-  return dateStr < getCairoToday();
+/**
+ * True when `dateStr` is before the current operational day.
+ * The previous calendar date remains bookable while its overnight shift is still active.
+ */
+export function isBeforeOperationalDate(dateStr: string, now?: Date): boolean {
+  return dateStr < getOperationalDate({ now });
 }
 
-export function sanitizeDate(dateStr: string | undefined): string {
-  const today = getCairoToday();
-  if (!dateStr || dateStr < today) return today;
+/** @deprecated Prefer isBeforeOperationalDate. */
+export function isPastCairoDate(dateStr: string, now?: Date): boolean {
+  return isBeforeOperationalDate(dateStr, now);
+}
+
+/**
+ * Clamp booking dates to the operational-day floor (no arbitrary historical dates).
+ * Availability API remains the source of truth for slots / day-off.
+ */
+export function sanitizeDate(dateStr: string | undefined, now?: Date): string {
+  const operational = getOperationalDate({ now });
+  if (!dateStr || dateStr < operational) return operational;
   return dateStr;
 }
 
@@ -96,11 +125,50 @@ export function formatDateLabel(dateStr: string): string {
   return `${days[date.getDay()]} ${date.getDate()} ${months[date.getMonth()]}`;
 }
 
+function parseHhMm(timeStr: string): { h: number; m: number } | null {
+  const match = String(timeStr).trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || h > 23 || m < 0 || m > 59) {
+    return null;
+  }
+  return { h, m };
+}
+
+/** Format HH:MM (24h) as Arabic 12h with ص/م — `01:05` → `1:05 ص`, `13:05` → `1:05 م`. */
 export function fmt(timeStr: string): string {
-  const [h, m] = timeStr.split(':').map(Number);
+  const parsed = parseHhMm(timeStr);
+  if (!parsed) return timeStr;
+  const { h, m } = parsed;
   const suffix = h >= 12 ? 'م' : 'ص';
   const h12 = h % 12 || 12;
   return `${h12}:${String(m).padStart(2, '0')} ${suffix}`;
+}
+
+/** Format HH:MM (24h) as English 12h with AM/PM — `01:05` → `1:05 AM`, `13:05` → `1:05 PM`. */
+export function fmtEn(timeStr: string): string {
+  const parsed = parseHhMm(timeStr);
+  if (!parsed) return timeStr;
+  const { h, m } = parsed;
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${suffix}`;
+}
+
+function cairoHhMmFromInstant(iso: string): string | null {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Africa/Cairo',
+    });
+  } catch {
+    return null;
+  }
 }
 
 function timeToMinutes(t: string): number {
@@ -143,12 +211,9 @@ export function isSlotInsideRange(
 
 export function hourGroupLabel(slot: AvailableSlot): string {
   const ref = slot.startAt ? new Date(slot.startAt) : null;
-  if (ref) {
-    return ref.toLocaleTimeString('ar-EG', {
-      hour: 'numeric',
-      hour12: true,
-      timeZone: 'Africa/Cairo',
-    });
+  if (ref && !Number.isNaN(ref.getTime())) {
+    const hhmm = cairoHhMmFromInstant(ref.toISOString());
+    if (hhmm) return fmt(hhmm).replace(/:\d{2}.*/, '');
   }
   return fmt(slot.time).replace(/:\d{2}.*/, '');
 }
@@ -171,9 +236,9 @@ export function groupSlotsByHour(slots: AvailableSlot[]): Array<{ label: string;
 export function slotDisplayLabel(slot: AvailableSlot): string {
   if (slot.label) return slot.label;
   if (slot.startAt && slot.endAt) {
-    const start = fmt(new Date(slot.startAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Africa/Cairo' }));
-    const end = fmt(new Date(slot.endAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Africa/Cairo' }));
-    return `${start} – ${end}`;
+    const startHh = cairoHhMmFromInstant(slot.startAt);
+    const endHh = cairoHhMmFromInstant(slot.endAt);
+    if (startHh && endHh) return `${fmt(startHh)} – ${fmt(endHh)}`;
   }
   return `${fmt(slot.time)} – ${fmt(slot.endTime)}`;
 }
@@ -189,16 +254,17 @@ export function barberStatusLabel(status?: BookingWorkspaceBarber['status']): st
   }
 }
 
-export function formatNextAvailable(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  try {
-    return new Date(iso).toLocaleTimeString('ar-EG', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-      timeZone: 'Africa/Cairo',
-    });
-  } catch {
-    return null;
+/**
+ * Format next-available instant or HH:MM for display.
+ * Overnight early-morning hours (01:05) always render as ص / AM, never PM.
+ */
+export function formatNextAvailable(isoOrTime: string | null | undefined): string | null {
+  if (!isoOrTime) return null;
+  const asHhMm = parseHhMm(isoOrTime);
+  if (asHhMm && !isoOrTime.includes('T') && isoOrTime.length <= 8) {
+    return fmt(isoOrTime);
   }
+  const hhmm = cairoHhMmFromInstant(isoOrTime) ?? (asHhMm ? isoOrTime.slice(0, 5) : null);
+  if (!hhmm) return null;
+  return fmt(hhmm);
 }

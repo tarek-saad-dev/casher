@@ -49,17 +49,49 @@ export function shiftCalendarDate(dateStr: string, deltaDays: number): string {
   return utc.toISOString().slice(0, 10);
 }
 
+export type OperationalDateOptions = {
+  now?: Date;
+  /** IANA timezone. Defaults to Africa/Cairo. */
+  timeZone?: string;
+  /** Local hour (0–23) before which the calendar date rolls back one day. Defaults to 4. */
+  cutoffHour?: number;
+};
+
+function hourInTimeZone(now: Date, timeZone: string): number {
+  const hourStr = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    hour12: false,
+  }).format(now);
+  return parseInt(hourStr, 10);
+}
+
+function calendarDateInTimeZone(now: Date, timeZone: string): string {
+  return now.toLocaleDateString('en-CA', { timeZone });
+}
+
+/**
+ * Branch-aware operational (business) date as YYYY-MM-DD.
+ * Before the cutoff hour in the branch timezone, returns the previous calendar day
+ * so overnight shifts stay on the open operational day.
+ */
+export function getOperationalDate(options: OperationalDateOptions = {}): string {
+  const now = options.now ?? new Date();
+  const timeZone = options.timeZone ?? SALON_TZ;
+  const cutoffHour = options.cutoffHour ?? BUSINESS_DAY_CUTOFF_HOUR;
+  const calendar = calendarDateInTimeZone(now, timeZone);
+  if (hourInTimeZone(now, timeZone) < cutoffHour) {
+    return shiftCalendarDate(calendar, -1);
+  }
+  return calendar;
+}
+
 /**
  * Get Cairo business date as YYYY-MM-DD.
  * If Cairo hour < 4 AM, returns yesterday's Cairo calendar date.
  */
 export function getCairoBusinessDate(now?: Date): string {
-  const d = now ?? new Date();
-  const cairoHour = getCairoHour(d);
-  if (cairoHour < BUSINESS_DAY_CUTOFF_HOUR) {
-    return shiftCalendarDate(getCairoCalendarDate(d), -1);
-  }
-  return getCairoCalendarDate(d);
+  return getOperationalDate({ now });
 }
 
 /**
