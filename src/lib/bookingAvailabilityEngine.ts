@@ -1931,6 +1931,7 @@ export async function listSpecificEmpPublicSlotsMultiDate(args: {
       durationMinutes: totalDuration,
       busy,
       effSched,
+      baseStart: base.isWorking ? base.start : null,
       shiftStartMs,
       shiftEndMs,
       dayOff: false,
