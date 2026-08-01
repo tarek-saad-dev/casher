@@ -32,9 +32,13 @@ import { getPool, sql } from '@/lib/db';
 import { canBranchAppearInPublicBooking } from '@/lib/branch/publicBranchVisibility';
 
 const CACHE_TTL_MS = 45_000;
-const CACHE_MAX = 48;
+/** Calendar days change less often than live slots — keep longer. */
+const DAYS_CACHE_TTL_MS = 90_000;
+const CACHE_MAX = 64;
 const cacheRoot = '__pos_public_booking_availability_v4';
 const CONTRACT = 'v4';
+/** available-days only needs first free time for calendar highlighting. */
+const DAYS_SUMMARY_SLOT_CAP = 1;
 
 type CacheEntry = { expiresAt: number; value: unknown };
 
@@ -58,13 +62,13 @@ function cacheGet<T>(key: string): T | null {
   return hit.value as T;
 }
 
-function cacheSet(key: string, value: unknown): void {
+function cacheSet(key: string, value: unknown, ttlMs: number = CACHE_TTL_MS): void {
   const map = cacheMap();
   if (map.size >= CACHE_MAX) {
     const first = map.keys().next().value;
     if (first) map.delete(first);
   }
-  map.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, value });
+  map.set(key, { expiresAt: Date.now() + ttlMs, value });
 }
 
 /** Bound parallel day fan-out so available-days does not thrash the SQL pool. */
@@ -433,9 +437,12 @@ async function listSlotsForPreloadedContext(args: {
   selected: ResolvedSelectedBookingServices;
   date: string;
   empId: number | null;
+  /** Calendar summary: stop after first free slot. */
+  summaryOnly?: boolean;
 }): Promise<PreloadedSlotsSnapshot | null> {
+  const summaryOnly = !!args.summaryOnly;
   const cacheKey = [
-    'slots-pre',
+    summaryOnly ? 'slots-pre-summary' : 'slots-pre',
     args.branchCtx.branchCode,
     args.date,
     args.empId ?? 'ANY',
@@ -454,11 +461,17 @@ async function listSlotsForPreloadedContext(args: {
     branchId: args.branchCtx.branchId,
     source: 'public',
     durationOverride: args.selected.totalDurationMinutes,
-    collectAllCandidates: !args.empId,
+    // Calendar only needs "is there any free time" — not every barber at every slot.
+    collectAllCandidates: !args.empId && !summaryOnly,
+    maxAvailableSlots: summaryOnly ? DAYS_SUMMARY_SLOT_CAP : undefined,
   });
 
   const hasOvernight = engine.availableSlots.some((s) => s.dayOffset === 1);
-  const limit = hasOvernight ? PUBLIC_OVERNIGHT_SLOTS_LIMIT : PUBLIC_AVAILABLE_SLOTS_LIMIT;
+  const limit = summaryOnly
+    ? DAYS_SUMMARY_SLOT_CAP
+    : hasOvernight
+      ? PUBLIC_OVERNIGHT_SLOTS_LIMIT
+      : PUBLIC_AVAILABLE_SLOTS_LIMIT;
   const slots = mergeCandidateSlots(engine.availableSlots, limit);
   const eligibleBarberCount = Number(engine.debug.barberCount ?? 0);
 
@@ -471,7 +484,7 @@ async function listSlotsForPreloadedContext(args: {
     slotCount: slots.length,
     ...(args.empId ? {} : { eligibleBarberCount }),
   };
-  cacheSet(cacheKey, snapshot);
+  cacheSet(cacheKey, snapshot, summaryOnly ? DAYS_CACHE_TTL_MS : CACHE_TTL_MS);
   return snapshot;
 }
 
@@ -538,6 +551,7 @@ async function buildAvailableDayWire(args: {
     selected,
     date,
     empId,
+    summaryOnly: true,
   }).catch((err) => {
     if (err instanceof PublicBookingAvailabilityError && err.code === 'NO_ELIGIBLE_BARBER') {
       return null;
@@ -648,7 +662,8 @@ export async function getPublicAvailableDays(args: {
   if (cached) return cached;
 
   const dateRange = eachDateInclusive(from, to);
-  const days = await mapPool(dateRange, 3, (date) =>
+  // Summary path is cheaper — allow slightly higher fan-out than full slot grids.
+  const days = await mapPool(dateRange, 5, (date) =>
     buildAvailableDayWire({
       date,
       branchCtx,
@@ -674,7 +689,7 @@ export async function getPublicAvailableDays(args: {
       contractVersion: CONTRACT,
     },
   };
-  cacheSet(cacheKey, response);
+  cacheSet(cacheKey, response, DAYS_CACHE_TTL_MS);
   return response;
 }
 

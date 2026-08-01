@@ -538,15 +538,19 @@ async function buildBarberContexts(args: {
     const overnightIds = pending.filter((p) => p.isOvernight).map((p) => p.empId);
     const nextDayStr = overnightIds.length ? nextDate(date) : null;
     const emptyBusy = new Map<number, Interval[]>();
+    // Future public days have no live queue — skip those round-trips (calendar fan-out).
+    const loadQueue = !(source === 'public' && date > todayBusinessDate);
 
     const [qToday, bToday, qNext, bNext] = await Promise.all([
-      buildQueueIntervalsForEmps(db, pendingIds, date, now, defaultDur, {
-        filterStale: true,
-        graceMinutes: 30,
-        debugContext: 'booking-availability',
-      }),
+      loadQueue
+        ? buildQueueIntervalsForEmps(db, pendingIds, date, now, defaultDur, {
+            filterStale: true,
+            graceMinutes: 30,
+            debugContext: 'booking-availability',
+          })
+        : Promise.resolve(emptyBusy),
       buildBookingIntervalsForEmps(db, pendingIds, date, defaultDur),
-      nextDayStr
+      loadQueue && nextDayStr
         ? buildQueueIntervalsForEmps(db, overnightIds, nextDayStr, now, defaultDur, {
             filterStale: true,
             graceMinutes: 30,
@@ -735,6 +739,11 @@ export async function listAvailableBookingSlots(args: {
    * (merged later by public wrapper). Specific mode ignores this.
    */
   collectAllCandidates?: boolean;
+  /**
+   * Stop after this many available slot times (calendar/summary path).
+   * Skips full-day grid evaluation once enough free slots are found.
+   */
+  maxAvailableSlots?: number;
 }): Promise<ListAvailableBookingSlotsResult> {
   const {
     date,
@@ -745,6 +754,7 @@ export async function listAvailableBookingSlots(args: {
     branchId,
     durationOverride,
     collectAllCandidates,
+    maxAvailableSlots,
   } = args;
   const today = new Date();
   const todayBusinessDate = getCairoBusinessDate(today);
@@ -813,6 +823,8 @@ export async function listAvailableBookingSlots(args: {
     minNoticeMs,
     rejectionCounts,
     collectAllCandidates: !!collectAllCandidates && mode !== 'specific',
+    maxAvailableSlots:
+      maxAvailableSlots != null && maxAvailableSlots > 0 ? maxAvailableSlots : undefined,
   });
 
   const availableSlotsUnlimited = allPlans.filter((s: BookingSlotPlan) => s.available);
@@ -890,8 +902,13 @@ export async function listAvailableBookingSlots(args: {
     }
   }
 
-  const alternativeBarbers: BarberAlternative[] = [];
-  if (mode === 'specific' && empId && availableSlots.length === 0) {
+  let alternativeBarbers: BarberAlternative[] = [];
+  if (
+    mode === 'specific' &&
+    empId &&
+    availableSlots.length === 0 &&
+    !(maxAvailableSlots != null && maxAvailableSlots > 0)
+  ) {
     for (const ctx of contexts) {
       if (ctx.empId === empId) continue;
       for (const [time, dayOffset] of sortedSlotTimes) {
@@ -978,6 +995,8 @@ function evaluateSlotsForContexts(args: {
   minNoticeMs: number;
   rejectionCounts?: Record<SlotRejectionBucket, number>;
   collectAllCandidates?: boolean;
+  /** Stop once this many available plans (or unique times) are found. */
+  maxAvailableSlots?: number;
 }): BookingSlotPlan[] {
   const {
     date,
@@ -991,8 +1010,10 @@ function evaluateSlotsForContexts(args: {
     minNoticeMs,
     rejectionCounts,
     collectAllCandidates,
+    maxAvailableSlots,
   } = args;
   const allPlans: BookingSlotPlan[] = [];
+  const availableTimeKeys = new Set<string>();
 
   const recordRejection = (plan: BookingSlotPlan | null) => {
     if (!rejectionCounts || !plan || plan.available) return;
@@ -1000,7 +1021,14 @@ function evaluateSlotsForContexts(args: {
     rejectionCounts[bucket] += 1;
   };
 
+  const hitCap = () =>
+    maxAvailableSlots != null &&
+    maxAvailableSlots > 0 &&
+    availableTimeKeys.size >= maxAvailableSlots;
+
   for (const [time, dayOffset] of sortedSlotTimes) {
+    if (hitCap()) break;
+
     const slotDate = dayOffset === 1 ? nextDate(date) : date;
     const slotStartMs = salonDateTimeToMs(slotDate, time, timezone);
 
@@ -1020,7 +1048,10 @@ function evaluateSlotsForContexts(args: {
         includeSilentRejections: !!rejectionCounts,
       });
       recordRejection(plan);
-      if (plan) allPlans.push(plan);
+      if (plan) {
+        allPlans.push(plan);
+        if (plan.available) availableTimeKeys.add(`${dayOffset}|${time}`);
+      }
     } else if (collectAllCandidates) {
       let anyAvailable = false;
       for (const ctx of contexts) {
@@ -1041,6 +1072,7 @@ function evaluateSlotsForContexts(args: {
           anyAvailable = true;
         }
       }
+      if (anyAvailable) availableTimeKeys.add(`${dayOffset}|${time}`);
       if (!anyAvailable && rejectionCounts && contexts[0]) {
         const probe = evaluateBarberSlot({
           ctx: contexts[0],
@@ -1098,7 +1130,10 @@ function evaluateSlotsForContexts(args: {
           recordRejection(probe);
         }
       }
-      if (best) allPlans.push(best);
+      if (best) {
+        allPlans.push(best);
+        if (best.available) availableTimeKeys.add(`${dayOffset}|${time}`);
+      }
     }
   }
 

@@ -279,7 +279,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
     }
   };
 
-  /** Clear absence / weekly-off block and check in as Present for today. */
+  /** Clear absence / weekly-off block; check-in only when date is today. */
   const restorePresentAndCheckIn = async (empId: number) => {
     setRestoringEmpId(empId);
     setError(null);
@@ -291,13 +291,16 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
         body: JSON.stringify({ empId, date }),
       });
       const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error ?? 'فشل تسجيل الحضور');
-      setSaveSuccess(data.message ?? 'تم إلغاء الغياب وتسجيل الحضور');
+      if (!res.ok || !data.ok) throw new Error(data.error ?? 'فشل تشغيل اليوم');
+      setSaveSuccess(
+        data.message ??
+          (isToday ? 'تم إلغاء الغياب وتسجيل الحضور' : 'تم تشغيل هذا اليوم للحجز'),
+      );
       setActiveEmpId(null);
       await loadBarbers();
       onApplied();
     } catch (e: any) {
-      setError(e.message ?? 'فشل إلغاء الغياب وتسجيل الحضور');
+      setError(e.message ?? 'فشل إلغاء الغياب وتشغيل اليوم');
     } finally {
       setRestoringEmpId(null);
     }
@@ -748,7 +751,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                 {isOpen && (
                   <div className="border-t px-4 pb-4 pt-3 space-y-4" style={{ borderColor: 'color-mix(in srgb, var(--foreground) 6%, transparent)' }}>
 
-                    {/* Absence / weekly-off — one-click restore + check-in */}
+                    {/* Absence / weekly-off — unlock schedule (+ check-in when today) */}
                     {needsRestorePresent(b) && (
                       <div
                         className="px-3 py-3 rounded-xl space-y-2"
@@ -762,17 +765,23 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                           <div>
                             <p className="font-semibold">
                               {b.appliedOverride?.type === 'day_off' || b.isAbsent
-                                ? 'الصنايعي مسجّل غياب اليوم'
-                                : 'إجازة أسبوعية / غير مجدول اليوم'}
+                                ? isToday
+                                  ? 'الصنايعي مسجّل غياب اليوم'
+                                  : 'الصنايعي مسجّل غياب / إجازة في هذا التاريخ'
+                                : isToday
+                                  ? 'إجازة أسبوعية / غير مجدول اليوم'
+                                  : 'إجازة أسبوعية / غير مجدول في هذا التاريخ'}
                             </p>
                             <p style={{ color: 'var(--muted-foreground)' }}>
-                              اضغط الزر لإلغاء الغياب وتشغيله اليوم وتسجيل حضوره تلقائياً — يظهر فوراً في متابعة الحضور.
+                              {isToday
+                                ? 'اضغط الزر لإلغاء الغياب وتشغيله اليوم وتسجيل حضوره تلقائياً — يظهر فوراً في متابعة الحضور.'
+                                : 'اضغط الزر لتشغيله في هذا التاريخ ليظهر للحجز. تسجيل الحضور يتم يوم العمل نفسه.'}
                             </p>
                           </div>
                         </div>
                         <button
                           type="button"
-                          disabled={restoringEmpId === b.empId || !isToday}
+                          disabled={restoringEmpId === b.empId}
                           onClick={() => void restorePresentAndCheckIn(b.empId)}
                           className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
                           style={{
@@ -786,13 +795,10 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                           ) : (
                             <UserCheck size={16} />
                           )}
-                          إلغاء الغياب وتسجيل الحضور الآن
+                          {isToday
+                            ? 'إلغاء الغياب وتسجيل الحضور الآن'
+                            : 'تشغيل هذا اليوم للحجز'}
                         </button>
-                        {!isToday && (
-                          <p className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
-                            التسجيل السريع متاح لتاريخ اليوم فقط
-                          </p>
-                        )}
                       </div>
                     )}
 

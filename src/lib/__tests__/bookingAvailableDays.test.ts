@@ -132,8 +132,9 @@ describe('bookingAvailabilityCache / performance contract', () => {
     'utf8',
   );
   it('bounded short TTL cache with invalidate', () => {
-    expect(avail).toContain('CACHE_MAX = 48');
+    expect(avail).toContain('CACHE_MAX = 64');
     expect(avail).toContain('CACHE_TTL_MS = 45_000');
+    expect(avail).toContain('DAYS_CACHE_TTL_MS = 90_000');
     expect(avail).toContain('invalidatePublicBookingAvailabilityCache');
   });
 

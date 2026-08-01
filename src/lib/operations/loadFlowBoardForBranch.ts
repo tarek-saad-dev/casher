@@ -343,8 +343,11 @@ export async function loadFlowBoardForBranch(opts: {
       continue;
     }
 
-    const workStart = presenceRow?.startTime ?? dayStatus.effectiveStart ?? null;
-    const workEnd = presenceRow?.endTime ?? dayStatus.effectiveEnd ?? null;
+    // Prefer override-aware effective hours (custom_hours / late_start / early_leave)
+    // so bookings allowed by schedule-control still appear on the board.
+    // Presence weekly times are fallback when day status has no window.
+    const workStart = dayStatus.effectiveStart ?? presenceRow?.startTime ?? null;
+    const workEnd = dayStatus.effectiveEnd ?? presenceRow?.endTime ?? null;
     const isOvernight = !!(
       workStart &&
       workEnd &&
