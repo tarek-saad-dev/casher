@@ -56,14 +56,13 @@ export async function GET(req: NextRequest) {
       : new Map();
 
     const allBranches = await listActiveBranches();
+    // Temporary day-transfer destinations: every active operational branch except the
+    // session branch. Do not require destination canOperate/canSwitch — operators at
+    // the source branch must be able to send staff to any live branch (e.g. Camp).
     const transferDestinations = allBranches
       .filter((b) => b.branchId !== auth.activeBranchId)
-      .filter((b) => b.isActive && b.lifecycleStatus !== "SETUP")
-      .filter((b) =>
-        auth.isSuperAdmin
-          ? true
-          : access.some((a) => a.branchId === b.branchId && (a.canOperate || a.canSwitch)),
-      )
+      .filter((b) => b.isActive)
+      .filter((b) => auth.isSuperAdmin || b.lifecycleStatus !== 'SETUP')
       .map((b) => ({
         branchId: b.branchId,
         branchCode: b.branchCode,

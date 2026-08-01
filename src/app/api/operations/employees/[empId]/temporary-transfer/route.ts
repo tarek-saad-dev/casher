@@ -12,13 +12,27 @@ export const runtime = 'nodejs';
 
 type Ctx = { params: Promise<{ empId: string }> };
 
-async function accessFlags(userId: number, fromBranchId: number | null, toBranchId: number) {
+async function accessFlags(
+  userId: number,
+  fromBranchId: number | null,
+  toBranchId: number,
+  opts?: { isSuperAdmin?: boolean },
+) {
   const access = await listUserValidBranchAccess(userId);
-  const can = (branchId: number) =>
+  const canOperateOrSwitch = (branchId: number) =>
     access.some((a) => a.branchId === branchId && (a.canOperate || a.canSwitch));
+  const canOperateAnywhere = access.some((a) => a.canOperate || a.canSwitch);
+  // Destination: allow any active transfer target when the caller can operate somewhere
+  // (matches schedule-control destination list). Superadmin always allowed.
   return {
-    callerHasSourceAccess: fromBranchId == null ? true : can(fromBranchId),
-    callerHasDestinationAccess: can(toBranchId),
+    callerHasSourceAccess:
+      opts?.isSuperAdmin === true ||
+      fromBranchId == null ||
+      canOperateOrSwitch(fromBranchId),
+    callerHasDestinationAccess:
+      opts?.isSuperAdmin === true ||
+      canOperateOrSwitch(toBranchId) ||
+      canOperateAnywhere,
   };
 }
 
@@ -59,6 +73,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       auth.userId,
       draft.sourceBranch?.branchId ?? auth.activeBranchId,
       toBranchId,
+      { isSuperAdmin: auth.isSuperAdmin },
     );
     if (smokePreview && auth.isSuperAdmin) {
       flags.callerHasDestinationAccess = true;

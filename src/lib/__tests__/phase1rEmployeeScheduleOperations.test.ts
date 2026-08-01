@@ -87,6 +87,8 @@ describe('phase1rTemporaryTransferPreview', () => {
     expect(t).toContain('TRANSFER_GLOBAL_LEAVE_BLOCKS');
     expect(t).toContain('TRANSFER_DESTINATION_NOT_OPERATIONAL');
     expect(t).toContain('TRANSFER_FROM_BRANCH_MISMATCH');
+    expect(t).toContain('resolveFreelanceOperationalSource');
+    expect(t).toContain('provisionFreelanceDestinationForTransfer');
     expect(t).toContain('cancelTemporaryBranchTransfer');
     expect(t).toContain('IsActive = 0');
     expect(t).not.toMatch(/DELETE FROM dbo\.TblEmpTemporaryBranchTransfer/);
@@ -149,6 +151,11 @@ describe('phase1rTransferLifecycleSecurity', () => {
     const ctrl = read('src/app/api/operations/schedule-control/route.ts');
     expect(ctrl).toContain('SETUP');
     expect(ctrl).toContain('transferDestinations');
+    // Destinations are org-wide active branches (not gated on destination canOperate)
+    expect(ctrl).toContain('every active operational branch');
+    expect(ctrl).not.toMatch(
+      /transferDestinations[\s\S]{0,400}canOperate \|\| a\.canSwitch/,
+    );
     const inv = read('src/lib/hr/scheduleAvailabilityInvalidation.ts');
     expect(inv).toContain('invalidateTemporaryTransferCaches');
   });

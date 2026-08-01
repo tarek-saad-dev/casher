@@ -43,6 +43,7 @@ vi.mock('@/lib/hr/employeeBranchScheduleResolver', () => ({
     branches: [],
     isGloballyWorking: false,
     isGlobalDayOff: false,
+    hasExplicitDayOff: false,
   }),
 }));
 

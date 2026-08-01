@@ -35,6 +35,8 @@ export type EmployeeGlobalScheduleResult = {
   branches: ResolvedBranchSchedule[];
   isGloballyWorking: boolean;
   isGlobalDayOff: boolean;
+  /** True only when TblEmpDayOff / day_off override exists — not merely "no working branch". */
+  hasExplicitDayOff: boolean;
   conflict: {
     code: string;
     message: string;
@@ -326,6 +328,7 @@ export async function resolveEmployeeGlobalSchedule(args: {
       branches: [],
       isGloballyWorking: false,
       isGlobalDayOff: true,
+      hasExplicitDayOff: true,
       conflict: null,
     };
   }
@@ -391,6 +394,7 @@ export async function resolveEmployeeGlobalSchedule(args: {
     branches,
     isGloballyWorking: branches.length > 0,
     isGlobalDayOff: branches.length === 0,
+    hasExplicitDayOff: false,
     conflict,
   };
 }

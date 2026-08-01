@@ -18,6 +18,7 @@ type TransferableBarber = {
   isTransferred?: boolean;
   isGlobalDayOff?: boolean;
   transferReason?: string | null;
+  attendance?: { status: string; checkInTime: string | null; checkOutTime: string | null } | null;
 };
 
 type TransferPreview = {
@@ -57,7 +58,7 @@ function sectionLabel(section?: TransferableBarber['section']): string {
     case 'elsewhere':
       return 'في فرع آخر';
     case 'off':
-      return 'إجازة / غير مجدول';
+      return 'حضور/غير مجدول';
     default:
       return '';
   }
@@ -91,11 +92,19 @@ export function TemporaryBranchTransferModal({
 
   const transferableBarbers = useMemo(
     () =>
-      barbers.filter(
-        (b) =>
-          !b.isGlobalDayOff &&
-          (b.section === 'present' || b.section === 'transferred_in' || b.section === 'elsewhere'),
-      ),
+      barbers.filter((b) => {
+        if (b.isGlobalDayOff) return false;
+        if (
+          b.section === 'present' ||
+          b.section === 'transferred_in' ||
+          b.section === 'elsewhere'
+        ) {
+          return true;
+        }
+        // Freelance / day-off in weekly schedule but already on today's attendance board
+        if (b.section === 'off' && b.attendance) return true;
+        return false;
+      }),
     [barbers],
   );
 
