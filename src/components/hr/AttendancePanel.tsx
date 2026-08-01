@@ -5,7 +5,7 @@ import {
   Users, Clock, CheckCircle2, AlertCircle,
   Loader2, RefreshCw, Save, CalendarDays, UserCheck,
   UserX, Coffee, Timer, UserPlus, Search, PauseCircle,
-  AlertTriangle, Sunrise, ArrowLeftRight,
+  AlertTriangle, Sunrise, ArrowLeftRight, CalendarOff,
 } from 'lucide-react';
 import KpiCard from '@/components/shared/KpiCard';
 import { Button } from '@/components/ui/button';
@@ -82,6 +82,13 @@ interface FreelancerOption {
   EmpName: string;
   DefaultCheckInTime: string | null;
   HasAttendanceToday: boolean;
+}
+
+interface DayOffEmployeeOption {
+  EmpID: number;
+  EmpName: string;
+  DefaultCheckInTime: string | null;
+  DayOffReason: string;
 }
 
 const STATUS_OPTIONS = [
@@ -176,6 +183,13 @@ export default function AttendancePanel() {
   const [breakTimesEmpId, setBreakTimesEmpId]   = useState<number | null>(null);
   const [transferOpen, setTransferOpen]         = useState(false);
   const [transferEmpId, setTransferEmpId]       = useState<number | null>(null);
+
+  const [dayOffWorkOpen, setDayOffWorkOpen]         = useState(false);
+  const [dayOffWorkQuery, setDayOffWorkQuery]       = useState('');
+  const [dayOffWorkList, setDayOffWorkList]         = useState<DayOffEmployeeOption[]>([]);
+  const [dayOffWorkLoading, setDayOffWorkLoading]   = useState(false);
+  const [selectedDayOffEmp, setSelectedDayOffEmp]   = useState<DayOffEmployeeOption | null>(null);
+  const [dayOffWorkSaving, setDayOffWorkSaving]     = useState(false);
 
   const fetchAttendance = useCallback(async (targetDate: string) => {
     setLoading(true); setError(''); setSuccessMsg(''); setDirty(new Set());
@@ -272,6 +286,67 @@ export default function AttendancePanel() {
       setError('خطأ في الاتصال بالخادم');
     } finally {
       setFreelanceSaving(false);
+    }
+  };
+
+  const searchDayOffEmployees = useCallback(async (q: string) => {
+    setDayOffWorkLoading(true);
+    try {
+      const params = new URLSearchParams({ date });
+      if (q.trim()) params.set('query', q.trim());
+      const res = await fetch(`/api/admin/attendance/day-off?${params}`);
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setDayOffWorkList(data.employees || []);
+      } else {
+        setDayOffWorkList([]);
+      }
+    } catch {
+      setDayOffWorkList([]);
+    } finally {
+      setDayOffWorkLoading(false);
+    }
+  }, [date]);
+
+  useEffect(() => {
+    if (!dayOffWorkOpen) return;
+    const timer = setTimeout(() => searchDayOffEmployees(dayOffWorkQuery), 300);
+    return () => clearTimeout(timer);
+  }, [dayOffWorkOpen, dayOffWorkQuery, searchDayOffEmployees]);
+
+  const openDayOffWorkModal = () => {
+    setDayOffWorkQuery('');
+    setSelectedDayOffEmp(null);
+    setDayOffWorkOpen(true);
+  };
+
+  const saveDayOffWorkAttendance = async () => {
+    if (!selectedDayOffEmp) return;
+    setDayOffWorkSaving(true);
+    setError('');
+    try {
+      const res = await fetch('/api/admin/attendance/work-on-day-off', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          empId: selectedDayOffEmp.EmpID,
+          date,
+          reason: 'نزل يشتغل يوم إجازته',
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setDayOffWorkOpen(false);
+        setSuccessMsg(`تم تسجيل حضور ${selectedDayOffEmp.EmpName} (يوم إجازة)`);
+        await fetchAttendance(date);
+        setTimeout(() => setSuccessMsg(''), 3500);
+      } else {
+        setError(data.error || 'فشل تسجيل الحضور في يوم الإجازة');
+      }
+    } catch {
+      setError('خطأ في الاتصال بالخادم');
+    } finally {
+      setDayOffWorkSaving(false);
     }
   };
 
@@ -475,6 +550,16 @@ export default function AttendancePanel() {
             className="h-9 text-xs gap-1 bg-cyan-600/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-600/30">
             <UserPlus className="w-3.5 h-3.5" />
             إضافة فري لانس للحضور
+          </Button>
+          <Button
+            type="button"
+            onClick={openDayOffWorkModal}
+            data-testid="add-day-off-work-attendance"
+            title="إضافة موظف أجازته اليوم ونزل يشتغل"
+            className="h-9 text-xs gap-1 bg-violet-600/20 text-violet-300 border border-violet-500/30 hover:bg-violet-600/30"
+          >
+            <CalendarOff className="w-3.5 h-3.5" />
+            إضافة موظف أجازته اليوم
           </Button>
           <Button
             type="button"
@@ -875,6 +960,68 @@ export default function AttendancePanel() {
               className="w-full bg-cyan-600 hover:bg-cyan-700 text-white"
             >
               {freelanceSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'تسجيل الحضور'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dayOffWorkOpen} onOpenChange={setDayOffWorkOpen}>
+        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>إضافة موظف أجازته اليوم</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-zinc-400 -mt-2">
+            موظفو الفرع اللي أجازتهم النهارده — اختَر من نزل يشتغل يوم إجازته عشان يتسجّل حاضر ويظهر في القائمة.
+          </p>
+          <div className="space-y-4">
+            <div className="relative">
+              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+              <Input
+                value={dayOffWorkQuery}
+                onChange={(e) => setDayOffWorkQuery(e.target.value)}
+                placeholder="بحث بالاسم..."
+                className="pr-9 bg-zinc-800 border-zinc-700 text-white"
+              />
+            </div>
+            <div className="max-h-56 overflow-y-auto space-y-1 border border-zinc-800 rounded-lg p-2">
+              {dayOffWorkLoading ? (
+                <div className="text-center py-4 text-zinc-500 text-sm">
+                  <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+                </div>
+              ) : dayOffWorkList.length === 0 ? (
+                <p className="text-center text-zinc-500 text-sm py-4">
+                  لا يوجد موظفون في إجازة لهذا اليوم
+                </p>
+              ) : (
+                dayOffWorkList.map((emp) => (
+                  <button
+                    key={emp.EmpID}
+                    type="button"
+                    onClick={() => setSelectedDayOffEmp(emp)}
+                    className={`w-full text-right px-3 py-2 rounded-lg text-sm transition-colors ${
+                      selectedDayOffEmp?.EmpID === emp.EmpID
+                        ? 'bg-violet-500/20 text-violet-200 border border-violet-500/30'
+                        : 'hover:bg-zinc-800 text-zinc-300'
+                    }`}
+                  >
+                    <span className="font-medium">{emp.EmpName}</span>
+                    <span className="block text-[11px] text-zinc-500 mt-0.5">
+                      {emp.DayOffReason}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+            <Button
+              onClick={saveDayOffWorkAttendance}
+              disabled={!selectedDayOffEmp || dayOffWorkSaving}
+              className="w-full bg-violet-600 hover:bg-violet-500 text-white"
+            >
+              {dayOffWorkSaving ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                'تسجيل حضور (يوم إجازة)'
+              )}
             </Button>
           </div>
         </DialogContent>

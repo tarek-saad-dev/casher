@@ -698,6 +698,9 @@ export default function TreasuryPeriodSummaryPage() {
           onClose={closeModal}
           onIncomeComplete={onActionSuccess}
           defaultDate={modalDate}
+          entryDateReadOnly
+          title="إضافة إيراد"
+          subtitle="إضافة إيراد ليوم الصف"
         />
       )}
       {activeModal === 'expense' && (

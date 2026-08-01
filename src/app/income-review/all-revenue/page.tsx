@@ -346,7 +346,12 @@ export default function AllRevenuePage() {
       if (!res.ok || !data.success) {
         showToast(data.error || 'فشل تعديل الإيراد', false);
       } else {
-        showToast('تم تعديل الإيراد بنجاح', true);
+        showToast(
+          data.ledgerDualWrite
+            ? 'تم تعديل الإيراد ومزامنة دفتر الموظفين'
+            : 'تم تعديل الإيراد بنجاح',
+          true,
+        );
         setIsEditModalOpen(false);
         setEditingItem(null);
         fetchData();

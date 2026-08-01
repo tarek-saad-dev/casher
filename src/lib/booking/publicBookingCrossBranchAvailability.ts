@@ -30,7 +30,7 @@ export const MAX_CROSS_BRANCH_AVAILABILITY_DAYS = 14;
 export const MAX_CROSS_BRANCH_AVAILABILITY_SERVICES = 12;
 export const CROSS_BRANCH_AVAILABILITY_CONTRACT = 'xbranch-v1';
 
-const CACHE_TTL_MS = 8_000;
+const CACHE_TTL_MS = 45_000;
 const CACHE_MAX = 32;
 const cacheRoot = '__pos_public_booking_xbranch_avail_v1';
 

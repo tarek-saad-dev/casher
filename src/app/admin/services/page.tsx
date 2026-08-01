@@ -5,6 +5,7 @@ import {
   Scissors, Plus, Edit2, Trash2, Loader2, FolderOpen,
   FolderPlus, Settings, Search, Clock, MoreVertical, Users,
   ImageIcon, X, ChevronUp, ChevronDown, RotateCcw, CheckCircle2, AlertTriangle,
+  Eye, EyeOff,
 } from 'lucide-react';
 import { SERVICE_IMAGE_PRESETS } from '@/lib/serviceImages';
 import {
@@ -130,6 +131,7 @@ export default function ServicesManagementPage() {
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [showDeleted, setShowDeleted] = useState(false);
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
@@ -285,12 +287,15 @@ export default function ServicesManagementPage() {
     loadData();
   }, [loadData]);
 
-  // Filter services
+  // Filter services — hide soft-deleted unless showDeleted is on
   const filteredServices = services.filter(service => {
+    if (!showDeleted && isServiceSoftDeleted(service)) return false;
     const matchesSearch = service.ProName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = !selectedCategory || selectedCategory === 'all' || service.CatID?.toString() === selectedCategory;
     return matchesSearch && matchesCategory;
   });
+
+  const deletedCount = services.filter(isServiceSoftDeleted).length;
 
   // Service CRUD operations
   const openServiceModal = (service?: Service) => {
@@ -711,7 +716,7 @@ export default function ServicesManagementPage() {
             className="pr-10 bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-400"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <label className="text-sm text-zinc-400">الفئة:</label>
           {isClient ? (
             <Select value={selectedCategory} onValueChange={setSelectedCategory}>
@@ -732,6 +737,24 @@ export default function ServicesManagementPage() {
               جميع الفئات
             </div>
           )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setShowDeleted((v) => !v)}
+            className={`gap-1.5 border-zinc-700 ${
+              showDeleted
+                ? 'bg-zinc-700/60 text-zinc-200 border-zinc-600'
+                : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            {showDeleted ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            {showDeleted
+              ? 'إخفاء المحذوف'
+              : deletedCount > 0
+                ? `إظهار المحذوف (${deletedCount})`
+                : 'إظهار المحذوف'}
+          </Button>
         </div>
       </div>
 

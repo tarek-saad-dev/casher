@@ -251,6 +251,246 @@ export async function getServicesDuration(
 
 // ── Interval builder ──────────────────────────────────────────────────────────
 
+type QueueIntervalOptions = {
+  filterStale?: boolean;
+  graceMinutes?: number;
+  debugContext?: string;
+  /** When true, query failures throw (required under Transaction — never fake empty busy). */
+  failHard?: boolean;
+};
+
+function queueTicketsToIntervals(
+  tickets: QueueTicketRow[],
+  empId: number,
+  now: Date,
+  defaultDuration: number,
+  options: {
+    filterStale: boolean;
+    graceMinutes: number;
+    debugContext: string;
+  },
+): Interval[] {
+  const { filterStale, graceMinutes, debugContext } = options;
+  const { active: activeTickets, stale: staleTickets } = classifyQueueTickets(
+    tickets,
+    now,
+    graceMinutes,
+  );
+
+  if (DEBUG_BOOKING || staleTickets.length > 0) {
+    console.log(`[buildQueueIntervals] ${debugContext}`, {
+      empId,
+      total: tickets.length,
+      active: activeTickets.length,
+      stale: staleTickets.length,
+      staleDetails: staleTickets.map((t) => ({
+        id: t.QueueTicketID,
+        code: t.TicketCode,
+        status: t.Status,
+        estimatedStart: t.EstimatedStartTime,
+        duration: t.DurationMinutes,
+      })),
+    });
+  }
+
+  const ticketsToUse = filterStale ? activeTickets : tickets;
+  const intervals: Interval[] = [];
+  const inServiceTickets = ticketsToUse.filter(
+    (t) => String(t.Status).toLowerCase() === "in_service",
+  );
+  const otherTickets = ticketsToUse.filter(
+    (t) => String(t.Status).toLowerCase() !== "in_service",
+  );
+
+  let cursor = new Date(now);
+
+  for (const t of inServiceTickets) {
+    const dur = Math.max(1, Number(t.DurationMinutes) || defaultDuration);
+    const start = t.ServiceStartedAt
+      ? new Date(t.ServiceStartedAt)
+      : new Date(now);
+    const end = new Date(start.getTime() + dur * 60000);
+    intervals.push({
+      start,
+      end,
+      source: "queue",
+      id: t.QueueTicketID,
+      label: t.Status,
+      ticketCode: t.TicketCode,
+    });
+    if (end > cursor) cursor = end;
+  }
+
+  // Prefer stored EstimatedStartTime so conflict detection matches reserved slots.
+  for (const t of otherTickets) {
+    const dur = Math.max(1, Number(t.DurationMinutes) || defaultDuration);
+    const storedEstStart = t.EstimatedStartTime
+      ? new Date(t.EstimatedStartTime)
+      : null;
+    const start =
+      storedEstStart && storedEstStart.getTime() > 0
+        ? storedEstStart
+        : new Date(cursor);
+    const end = new Date(start.getTime() + dur * 60000);
+    intervals.push({
+      start,
+      end,
+      source: "queue",
+      id: t.QueueTicketID,
+      label: t.Status,
+      ticketCode: t.TicketCode,
+    });
+    if (end > cursor) cursor = end;
+  }
+
+  if (DEBUG_BOOKING || intervals.length > 0) {
+    console.log(
+      `[buildQueueIntervals] ${debugContext} Built intervals:`,
+      intervals.map((iv) => ({
+        id: iv.id,
+        code: iv.ticketCode,
+        source: iv.source,
+        start: iv.start.toISOString(),
+        end: iv.end.toISOString(),
+        label: iv.label,
+      })),
+    );
+  }
+
+  if (DEBUG_BOOKING) {
+    const totalQueueBlockMinutes =
+      intervals.length > 0
+        ? Math.round((cursor.getTime() - now.getTime()) / 60000)
+        : 0;
+    console.log("[timeline] totalQueueBlockMinutes", totalQueueBlockMinutes);
+  }
+
+  return intervals;
+}
+
+function bookingRowsToIntervals(
+  rows: Array<{
+    BookingID: number;
+    BookingDate: unknown;
+    StartTime: unknown;
+    EndTime: unknown;
+    TotalDuration: number;
+    AssignedEmpID?: number;
+  }>,
+  dateStr: string,
+  defaultDuration: number,
+): Interval[] {
+  return rows.map((b) => {
+    const totalDuration = b.TotalDuration > 0 ? b.TotalDuration : defaultDuration;
+    const normalized = normalizeBookingTimes(
+      b.BookingDate ?? dateStr,
+      b.StartTime,
+      b.EndTime,
+      totalDuration,
+      b.BookingID,
+    );
+    const start = new Date(normalized.startDateTimeCairo);
+    const end = new Date(normalized.endDateTimeCairo);
+    return { start, end, source: "booking" as const, id: b.BookingID };
+  });
+}
+
+/**
+ * Load active queue tickets for many barbers on one date (single query),
+ * then convert per-emp to intervals.
+ */
+export async function buildQueueIntervalsForEmps(
+  db: Awaited<ReturnType<typeof getPool>>,
+  empIds: number[],
+  dateStr: string,
+  now: Date,
+  defaultDuration: number,
+  options?: QueueIntervalOptions,
+): Promise<Map<number, Interval[]>> {
+  const result = new Map<number, Interval[]>();
+  for (const id of empIds) result.set(id, []);
+  if (!empIds.length) return result;
+
+  const {
+    filterStale = true,
+    graceMinutes = STALE_GRACE_MINUTES,
+    debugContext = "",
+    failHard = false,
+  } = options || {};
+  const svcTableExists = await queueTicketServicesExists(db);
+  const durationSql = svcTableExists
+    ? `ISNULL(
+        (SELECT SUM(ISNULL(qts.DurationMinutes, ${defaultDuration}))
+         FROM [dbo].[QueueTicketServices] qts
+         WHERE qts.QueueTicketID = qt.QueueTicketID),
+        ${defaultDuration}
+      )`
+    : `${defaultDuration}`;
+  const estSelectSql = `
+    CASE WHEN COL_LENGTH('dbo.QueueTickets','EstimatedStartTime') IS NOT NULL
+         THEN qt.EstimatedStartTime ELSE NULL END AS EstimatedStartTime,
+    ${durationSql} AS DurationMinutes
+  `;
+  const idList = empIds.join(",");
+
+  const res = await db
+    .request()
+    .input("qdate", sql.Date, dateStr)
+    .query(
+      `
+      SELECT
+        qt.QueueTicketID,
+        qt.TicketCode,
+        qt.TicketNumber,
+        qt.Status,
+        qt.EmpID,
+        qt.ServiceStartedAt,
+        ${estSelectSql}
+      FROM [dbo].[QueueTickets] qt
+      WHERE qt.QueueDate = @qdate
+        AND qt.EmpID IN (${idList})
+        AND LOWER(qt.Status) IN ('waiting','called','in_service')
+      ORDER BY
+        qt.EmpID ASC,
+        CASE LOWER(qt.Status) WHEN 'in_service' THEN 0 WHEN 'called' THEN 1 ELSE 2 END ASC,
+        ISNULL(
+          CASE WHEN COL_LENGTH('dbo.QueueTickets','EstimatedStartTime') IS NOT NULL
+               THEN qt.EstimatedStartTime ELSE NULL END,
+          qt.CreatedTime
+        ) ASC,
+        qt.TicketNumber ASC
+    `,
+    )
+    .catch((err: any) => {
+      console.error("[buildQueueIntervalsForEmps] query error", err?.message ?? err);
+      if (failHard) throw err;
+      return { recordset: [] as any[] };
+    });
+
+  const byEmp = new Map<number, QueueTicketRow[]>();
+  for (const row of res.recordset as QueueTicketRow[]) {
+    const empId = Number(row.EmpID);
+    if (!byEmp.has(empId)) byEmp.set(empId, []);
+    byEmp.get(empId)!.push(row);
+  }
+
+  for (const empId of empIds) {
+    const tickets = byEmp.get(empId) ?? [];
+    if (DEBUG_BOOKING) {
+      console.log("[timeline] empId", empId, "activeQueueTickets count", tickets.length);
+    }
+    result.set(
+      empId,
+      queueTicketsToIntervals(tickets, empId, now, defaultDuration, {
+        filterStale,
+        graceMinutes,
+        debugContext,
+      }),
+    );
+  }
+  return result;
+}
+
 /**
  * Load all active queue tickets for the barber on the given date
  * and convert them to [start, end] intervals.
@@ -267,21 +507,26 @@ export async function buildQueueIntervals(
   now: Date, // actual current time — cursor starts here
   defaultDuration: number,
   excludeTicketId?: number, // skip this ticket (for re-estimate of existing)
-  options?: {
-    filterStale?: boolean; // if true, exclude stale tickets (default: true for operations)
-    graceMinutes?: number;
-    debugContext?: string; // for logging context
-    /** When true, query failures throw (required under Transaction — never fake empty busy). */
-    failHard?: boolean;
-  },
+  options?: QueueIntervalOptions,
 ): Promise<Interval[]> {
+  if (excludeTicketId == null) {
+    const map = await buildQueueIntervalsForEmps(
+      db,
+      [empId],
+      dateStr,
+      now,
+      defaultDuration,
+      options,
+    );
+    return map.get(empId) ?? [];
+  }
+
   const {
     filterStale = true,
     graceMinutes = STALE_GRACE_MINUTES,
     debugContext = "",
     failHard = false,
   } = options || {};
-  // Build SELECT defensively — guard QueueTicketServices with cached Object_ID check
   const svcTableExists = await queueTicketServicesExists(db);
 
   if (DEBUG_BOOKING)
@@ -345,134 +590,77 @@ export async function buildQueueIntervals(
       return { recordset: [] as any[] };
     });
 
-  if (DEBUG_BOOKING) {
-    console.log(
-      "[timeline] empId",
+  const allTickets = (res.recordset as QueueTicketRow[]).filter(
+    (t) => t.QueueTicketID !== excludeTicketId,
+  );
+  return queueTicketsToIntervals(allTickets, empId, now, defaultDuration, {
+    filterStale,
+    graceMinutes,
+    debugContext,
+  });
+}
+
+/**
+ * Load active bookings for many barbers on one date (single query).
+ */
+export async function buildBookingIntervalsForEmps(
+  db: Awaited<ReturnType<typeof getPool>>,
+  empIds: number[],
+  dateStr: string,
+  defaultDuration: number,
+  options?: { failHard?: boolean },
+): Promise<Map<number, Interval[]>> {
+  const result = new Map<number, Interval[]>();
+  for (const id of empIds) result.set(id, []);
+  if (!empIds.length) return result;
+
+  const failHard = !!options?.failHard;
+  const statusList = ACTIVE_BOOKING_BLOCK_STATUSES.map((s) => `'${s}'`).join(",");
+  const idList = empIds.join(",");
+
+  const res = await db
+    .request()
+    .input("bdate", sql.Date, dateStr)
+    .query(
+      `
+      SELECT
+        b.BookingID,
+        b.AssignedEmpID,
+        b.BookingDate,
+        b.StartTime,
+        b.EndTime,
+        b.Status,
+        ISNULL((
+          SELECT SUM(bs.DurationMinutes)
+          FROM [dbo].[BookingServices] bs
+          WHERE bs.BookingID = b.BookingID
+        ), 0) AS TotalDuration
+      FROM [dbo].[Bookings] b
+      WHERE b.BookingDate     = @bdate
+        AND b.AssignedEmpID   IN (${idList})
+        AND LOWER(b.Status) IN (${statusList})
+      ORDER BY b.AssignedEmpID ASC, b.StartTime ASC
+    `,
+    )
+    .catch((err: unknown) => {
+      if (failHard) throw err;
+      return { recordset: [] as any[] };
+    });
+
+  const byEmp = new Map<number, typeof res.recordset>();
+  for (const row of res.recordset) {
+    const empId = Number(row.AssignedEmpID);
+    if (!byEmp.has(empId)) byEmp.set(empId, []);
+    byEmp.get(empId)!.push(row);
+  }
+
+  for (const empId of empIds) {
+    result.set(
       empId,
-      "activeQueueTickets count",
-      res.recordset.length,
+      bookingRowsToIntervals(byEmp.get(empId) ?? [], dateStr, defaultDuration),
     );
   }
-
-  // Classify tickets into active and stale
-  const allTickets = res.recordset.filter(
-    (t: any) => !excludeTicketId || t.QueueTicketID !== excludeTicketId
-  );
-
-  const { active: activeTickets, stale: staleTickets } = classifyQueueTickets(
-    allTickets as QueueTicketRow[],
-    now,
-    graceMinutes
-  );
-
-  // Log classification for debugging
-  if (DEBUG_BOOKING || staleTickets.length > 0) {
-    console.log(`[buildQueueIntervals] ${debugContext}`, {
-      empId,
-      total: allTickets.length,
-      active: activeTickets.length,
-      stale: staleTickets.length,
-      staleDetails: staleTickets.map(t => ({
-        id: t.QueueTicketID,
-        code: t.TicketCode,
-        status: t.Status,
-        estimatedStart: t.EstimatedStartTime,
-        duration: t.DurationMinutes,
-      })),
-    });
-  }
-
-  // Use only active tickets for interval building (if filterStale is true)
-  const ticketsToUse = filterStale ? activeTickets : allTickets;
-
-  const intervals: Interval[] = [];
-
-  // Step 1: handle in_service ticket first (if any) — it has a real start in the past
-  const inServiceTickets = ticketsToUse.filter(
-    (t) => String(t.Status).toLowerCase() === "in_service",
-  );
-  const otherTickets = ticketsToUse.filter(
-    (t) => String(t.Status).toLowerCase() !== "in_service",
-  );
-
-  // cursor: the end of the last placed interval — new tickets start here
-  let cursor = new Date(now);
-
-  for (const t of inServiceTickets) {
-    const dur = Math.max(1, Number(t.DurationMinutes) || defaultDuration);
-    const start = t.ServiceStartedAt
-      ? new Date(t.ServiceStartedAt)
-      : new Date(now);
-    const end = new Date(start.getTime() + dur * 60000);
-    intervals.push({
-      start,
-      end,
-      source: "queue",
-      id: t.QueueTicketID,
-      label: t.Status,
-      ticketCode: t.TicketCode,
-    });
-    // cursor must be at least the end of in_service (even if that's in the future)
-    if (end > cursor) cursor = end;
-  }
-
-  // Step 2: For waiting/called tickets, use their stored EstimatedStartTime if available
-  // This is CRITICAL for conflict detection - we must use the ACTUAL stored intervals
-  // not recompute them, or we won't detect overlaps with bookings correctly.
-  for (const t of otherTickets) {
-    const dur = Math.max(1, Number(t.DurationMinutes) || defaultDuration);
-
-    // Priority for start time:
-    // 1. Stored EstimatedStartTime (already reserved slot)
-    // 2. Sequential placement from cursor (fallback for old tickets without estimate)
-    let start: Date;
-    const storedEstStart = t.EstimatedStartTime
-      ? new Date(t.EstimatedStartTime)
-      : null;
-
-    if (storedEstStart && storedEstStart.getTime() > 0) {
-      // Use the stored estimated start time (this is the actual reservation)
-      start = storedEstStart;
-    } else {
-      // Fallback: place sequentially from cursor (for old tickets without estimate)
-      start = new Date(cursor);
-    }
-
-    const end = new Date(start.getTime() + dur * 60000);
-    intervals.push({
-      start,
-      end,
-      source: "queue",
-      id: t.QueueTicketID,
-      label: t.Status,
-      ticketCode: t.TicketCode,
-    });
-
-    // Advance cursor to after this ticket's end (for sequential fallback of future tickets)
-    if (end > cursor) cursor = end;
-  }
-
-  // Log the built intervals for debugging overlap detection
-  if (DEBUG_BOOKING || intervals.length > 0) {
-    console.log(`[buildQueueIntervals] ${debugContext} Built intervals:`, intervals.map(iv => ({
-      id: iv.id,
-      code: iv.ticketCode,
-      source: iv.source,
-      start: iv.start.toISOString(),
-      end: iv.end.toISOString(),
-      label: iv.label,
-    })));
-  }
-
-  if (DEBUG_BOOKING) {
-    const totalQueueBlockMinutes =
-      intervals.length > 0
-        ? Math.round((cursor.getTime() - now.getTime()) / 60000)
-        : 0;
-    console.log("[timeline] totalQueueBlockMinutes", totalQueueBlockMinutes);
-  }
-
-  return intervals;
+  return result;
 }
 
 /**
@@ -485,57 +673,14 @@ export async function buildBookingIntervals(
   defaultDuration: number,
   options?: { failHard?: boolean },
 ): Promise<Interval[]> {
-  const failHard = !!options?.failHard;
-  const statusList = ACTIVE_BOOKING_BLOCK_STATUSES.map((s) => `'${s}'`).join(',');
-
-  const res = await db
-    .request()
-    .input("bdate", sql.Date, dateStr)
-    .input("empId", sql.Int, empId)
-    .query(
-      `
-      SELECT
-        b.BookingID,
-        b.BookingDate,
-        b.StartTime,
-        b.EndTime,
-        b.Status,
-        ISNULL((
-          SELECT SUM(bs.DurationMinutes)
-          FROM [dbo].[BookingServices] bs
-          WHERE bs.BookingID = b.BookingID
-        ), 0) AS TotalDuration
-      FROM [dbo].[Bookings] b
-      WHERE b.BookingDate     = @bdate
-        AND b.AssignedEmpID   = @empId
-        AND LOWER(b.Status) IN (${statusList})
-      ORDER BY b.StartTime ASC
-    `,
-    )
-    .catch((err: unknown) => {
-      if (failHard) throw err;
-      return { recordset: [] as any[] };
-    });
-
-  return res.recordset.map((b: {
-    BookingID: number;
-    BookingDate: unknown;
-    StartTime: unknown;
-    EndTime: unknown;
-    TotalDuration: number;
-  }) => {
-    const totalDuration = b.TotalDuration > 0 ? b.TotalDuration : defaultDuration;
-    const normalized = normalizeBookingTimes(
-      b.BookingDate ?? dateStr,
-      b.StartTime,
-      b.EndTime,
-      totalDuration,
-      b.BookingID,
-    );
-    const start = new Date(normalized.startDateTimeCairo);
-    const end = new Date(normalized.endDateTimeCairo);
-    return { start, end, source: "booking" as const, id: b.BookingID };
-  });
+  const map = await buildBookingIntervalsForEmps(
+    db,
+    [empId],
+    dateStr,
+    defaultDuration,
+    options,
+  );
+  return map.get(empId) ?? [];
 }
 
 // ── Core slot finder ──────────────────────────────────────────────────────────

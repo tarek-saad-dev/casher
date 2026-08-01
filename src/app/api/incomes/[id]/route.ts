@@ -143,13 +143,20 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 
     return NextResponse.json({
       success: true,
-      message: 'تم تحديث الإيراد',
+      message: auditResult.data.fundingSync.ledgerDualWrite
+        ? 'تم تحديث الإيراد ومزامنة دفتر الموظفين'
+        : 'تم تحديث الإيراد',
       auditId: auditResult.auditId,
-      data: auditResult.data,
+      data: auditResult.data.snapshot,
+      ledgerDualWrite: auditResult.data.fundingSync.ledgerDualWrite,
+      ledgerSync: auditResult.data.fundingSync.outcome,
     });
   } catch (err: unknown) {
     if (isAuditedActionError(err)) {
-      return NextResponse.json({ error: err.message, auditId: err.failedAuditId }, { status: 500 });
+      return NextResponse.json(
+        { error: err.message, auditId: err.failedAuditId },
+        { status: err.statusCode || 500 },
+      );
     }
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[api/incomes/[id]] PATCH error:", message);

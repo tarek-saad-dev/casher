@@ -518,11 +518,12 @@ export async function syncHourlyWageLedgerForWorkDate(
 }
 
 export class EmployeeLedgerDualWriteError extends Error {
-  statusCode = 503;
+  statusCode: number;
 
-  constructor(message: string) {
+  constructor(message: string, statusCode = 400) {
     super(message);
     this.name = 'EmployeeLedgerDualWriteError';
+    this.statusCode = statusCode;
   }
 }
 

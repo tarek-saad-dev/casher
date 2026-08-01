@@ -123,19 +123,17 @@ export async function getBarberAvailabilityReason(
     }
   } catch { /* TblEmpDayOff may not exist yet — non-fatal */ }
 
-  // 2. Check attendance (today only) — Absent barber is unavailable
-  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
-  if (dateStr === todayStr) {
-    try {
-      const attRes = await db.request()
-        .input('empId',     sql.Int,  empId)
-        .input('workDate',  sql.Date, dateStr)
-        .query(`SELECT TOP 1 Status FROM dbo.TblEmpAttendance WHERE EmpID = @empId AND WorkDate = @workDate`);
-      if (attRes.recordset[0]?.Status === 'Absent') {
-        return { available: false, reason: 'غائب', startTime: null, endTime: null };
-      }
-    } catch { /* table may not exist */ }
-  }
+  // 2. Check attendance for this work date — Absent barber is unavailable
+  //    (not limited to calendar-today; pre-marked Absent for tomorrow must block too)
+  try {
+    const attRes = await db.request()
+      .input('empId',     sql.Int,  empId)
+      .input('workDate',  sql.Date, dateStr)
+      .query(`SELECT TOP 1 Status FROM dbo.TblEmpAttendance WHERE EmpID = @empId AND WorkDate = @workDate`);
+    if (attRes.recordset[0]?.Status === 'Absent') {
+      return { available: false, reason: 'غائب', startTime: null, endTime: null };
+    }
+  } catch { /* table may not exist */ }
 
   // 2b. Freelance Present/Late/EarlyLeave unlocks the day for booking
   const freelanceUnlocks = await loadFreelanceBookingUnlocks([empId], dateStr);

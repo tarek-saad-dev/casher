@@ -24,13 +24,14 @@ import {
 } from "@/lib/hr/attendance-break-time-db";
 import { normalizeBreaksInput } from "@/lib/hr/attendance-breaks";
 import { syncBlockRangesFromBreaks, syncBlockRangesFromBreakTimes } from "@/lib/hr/attendance-break-schedule-sync";
-import { syncAttendanceShiftToOverrides } from "@/lib/hr/attendance-shift-schedule-sync";
+import { syncAttendanceShiftToOverrides, syncAttendanceAbsenceToDayOffOverride } from "@/lib/hr/attendance-shift-schedule-sync";
 import { scheduleAttendanceCheckInOutWhatsApp } from "@/lib/services/employeeAttendanceWhatsAppNotify";
 import {
   isActiveBranchContext,
   requireBranchOperationAccess,
 } from "@/lib/branch";
 import { assertEmployeeEligibleForBranchAttendance } from "@/lib/hr/attendance/branchAttendance.service";
+import { unlockScheduleForWorkOnDayOff } from "@/lib/hr/attendance/workOnDayOff.service";
 
 async function ensureAttendanceTable(db: { request: () => sql.Request }) {
   await db.request().query(`
@@ -132,10 +133,9 @@ export async function GET(req: NextRequest) {
     );
     await ensureEmpBranchWorkScheduleTable();
 
-    // Branch-scoped roster: only employees scheduled to work at the active
-    // branch on this WorkDate (or who already have an attendance row here /
-    // temporary transfer into this branch). Never fall back to global legacy
-    // TblEmpWorkSchedule — that caused cross-branch 403 on bulk save.
+    // Branch-scoped roster: working today here, or true weekly day-off here
+    // (not working at another branch), or existing attendance / temp transfer.
+    // Never fall back to global legacy TblEmpWorkSchedule — that caused cross-branch 403 on bulk save.
     const result = await db
       .request()
       .input("workDate", sql.Date, dateStr)
@@ -202,6 +202,28 @@ export async function GET(req: NextRequest) {
                 AND ea.EffectiveFrom <= @workDate
                 AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @workDate)
             ))
+            -- Weekly day-off here, and not working at any other branch today
+            -- (avoids showing multi-branch staff as DayOff at GLEEM while scheduled at CAMP)
+            OR (
+              ws.IsWorkingDay = 0
+              AND EXISTS (
+                SELECT 1 FROM dbo.TblEmpBranchAssignment ea
+                WHERE ea.EmpID = e.EmpID AND ea.BranchID = @branchId AND ea.IsActive = 1
+                  AND ea.EffectiveFrom <= @workDate
+                  AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @workDate)
+              )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM dbo.TblEmpBranchWorkSchedule s2
+                WHERE s2.EmpID = e.EmpID
+                  AND s2.BranchID <> @branchId
+                  AND s2.DayOfWeek = @dayOfWeek
+                  AND s2.IsActive = 1
+                  AND s2.IsWorking = 1
+                  AND s2.EffectiveFrom <= @workDate
+                  AND (s2.EffectiveTo IS NULL OR s2.EffectiveTo >= @workDate)
+              )
+            )
             -- Or already checked in / has a row here
             OR a.ID IS NOT NULL
             -- Or temporary transfer into this branch today
@@ -455,6 +477,27 @@ export async function PUT(req: NextRequest) {
       }
     }
 
+    // Came to work on weekly day-off → unlock bookable hours for the day
+    const isWorkingDayFromSchedule =
+      empResult.recordset[0]?.ScheduleDayOfWeek != null
+        ? !!empResult.recordset[0]?.IsWorkingDay
+        : null;
+    if (
+      CheckInTime &&
+      !manualStatuses.includes(finalStatus) &&
+      isWorkingDayFromSchedule === false
+    ) {
+      await unlockScheduleForWorkOnDayOff({
+        empId: Number(EmpID),
+        date: WorkDate,
+        branchId: branch.branchId,
+        reason: "نزل يشتغل يوم إجازته — تسجيل حضور",
+        sourceTag: "work-on-day-off",
+      }).catch((err) => {
+        console.warn("[api/admin/attendance] day-off unlock failed", err);
+      });
+    }
+
     // UPSERT scoped to active branch
     const existing = await db
       .request()
@@ -577,6 +620,11 @@ export async function PUT(req: NextRequest) {
       status: finalStatus,
     }).catch((err) => {
       console.warn("[api/admin/attendance] shift override sync failed", err);
+    });
+
+    // Absent ↔ day_off: closing/opening booking must stay consistent with HR status
+    await syncAttendanceAbsenceToDayOffOverride(db, EmpID, WorkDate, finalStatus).catch((err) => {
+      console.warn("[api/admin/attendance] day_off sync failed", err);
     });
 
     scheduleAttendanceCheckInOutWhatsApp({

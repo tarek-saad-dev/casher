@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import { getCairoMonthCloseAwareDate } from '@/lib/businessDate';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
@@ -35,8 +36,7 @@ interface EmployeePayoutModalProps {
 }
 
 function todayDateStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return getCairoMonthCloseAwareDate();
 }
 
 export default function EmployeePayoutModal({

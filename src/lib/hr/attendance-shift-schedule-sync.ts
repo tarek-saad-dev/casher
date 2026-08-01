@@ -325,6 +325,71 @@ export function mergeAttendanceExpandOverrides<T extends { CreatedBy: string | n
 }
 
 /**
+ * Keep schedule-control day_off in sync with HR attendance Status.
+ * - Absent  → ensure an active day_off override (blocks booking everywhere)
+ * - Present/Late/EarlyLeave → clear day_off so restoring presence actually reopens booking
+ */
+export async function syncAttendanceAbsenceToDayOffOverride(
+  db: DbLike,
+  empId: number,
+  date: string,
+  status: string | null | undefined,
+): Promise<{ cleared: number; ensured: boolean }> {
+  await ensureOverridesTable(db as Parameters<typeof ensureOverridesTable>[0]);
+  const normalized = String(status ?? '').trim();
+
+  if (normalized === 'Present' || normalized === 'Late' || normalized === 'EarlyLeave') {
+    const res = await db
+      .request()
+      .input('empId', sql.Int, empId)
+      .input('odate', sql.Date, date)
+      .query(`
+        UPDATE dbo.TblEmpScheduleOverrides
+        SET IsActive = 0
+        WHERE EmpID = @empId
+          AND OverrideDate = @odate
+          AND IsActive = 1
+          AND Type = N'day_off'
+      `);
+    return { cleared: res.rowsAffected?.[0] ?? 0, ensured: false };
+  }
+
+  if (normalized !== 'Absent') {
+    return { cleared: 0, ensured: false };
+  }
+
+  const existing = await db
+    .request()
+    .input('empId', sql.Int, empId)
+    .input('odate', sql.Date, date)
+    .query(`
+      SELECT TOP 1 OverrideID
+      FROM dbo.TblEmpScheduleOverrides
+      WHERE EmpID = @empId
+        AND OverrideDate = @odate
+        AND IsActive = 1
+        AND Type = N'day_off'
+    `);
+  if (existing.recordset.length) {
+    return { cleared: 0, ensured: false };
+  }
+
+  await db
+    .request()
+    .input('empId', sql.Int, empId)
+    .input('odate', sql.Date, date)
+    .input('reason', sql.NVarChar(300), 'غياب من الحضور — إغلاق الحجز')
+    .input('createdBy', sql.NVarChar(100), 'attendance-absent')
+    .query(`
+      INSERT INTO dbo.TblEmpScheduleOverrides
+        (EmpID, OverrideDate, Type, StartTime, EndTime, Reason, IsActive, CreatedBy)
+      VALUES
+        (@empId, @odate, N'day_off', NULL, NULL, @reason, 1, @createdBy)
+    `);
+  return { cleared: 0, ensured: true };
+}
+
+/**
  * Canonical booking/ops overrides for a date:
  * schedule-control closes + attendance early-in / late-out opens.
  * Use this (not raw loadOverridesForDate) for any bookable window.

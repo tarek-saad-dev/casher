@@ -68,6 +68,9 @@ describe('Phase 1K attendance branch ownership', () => {
     const team = read('src/app/api/pos/team-attendance/route.ts');
     expect(team).toContain('requireBranchOperationAccess');
     expect(team).toContain('a.BranchID = @branchId');
+    expect(team).toContain('TblEmpBranchWorkSchedule');
+    expect(team).not.toMatch(/LEFT JOIN dbo\.TblEmpWorkSchedule/);
+    expect(team).toContain('s2.BranchID <> @branchId');
   });
 
   it('payroll aggregate helpers exist (1K day view; 1L adds branch-day)', () => {

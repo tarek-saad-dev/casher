@@ -228,10 +228,18 @@ export default function NewRevenuePage() {
       const method = editingId ? 'PATCH' : 'POST';
       const res    = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data   = await res.json();
-      if (!res.ok || !data.success) {
+      if (!res.ok) {
         setFormError(data.error || 'خطأ في الحفظ');
       } else {
-        addToast('success', editingId ? 'تم تعديل الإيراد بنجاح' : 'تم حفظ الإيراد بنجاح');
+        const ledgerNote = data.ledgerDualWrite
+          ? ' وتم تحديث دفتر الموظفين'
+          : '';
+        addToast(
+          'success',
+          editingId
+            ? `تم تعديل الإيراد بنجاح${ledgerNote}`
+            : `تم حفظ الإيراد بنجاح${ledgerNote}`,
+        );
         resetForm();
         await loadData();
       }

@@ -20,7 +20,11 @@ describe('phase1qEmployeeBranchSchedule', () => {
     expect(t).toContain('backfillGleemBranchSchedulesFromLegacy');
     expect(s).toContain('EMPLOYEE_MULTI_BRANCH_SAME_WORKDAY_NOT_ALLOWED');
     expect(s).toContain('saveEmployeeBranchWeeklySchedule');
+    // Re-saving the same EffectiveFrom must supersede prior active rows (Karim Thu duplicate bug).
+    expect(s).toContain('EffectiveFrom = @from');
+    expect(s).toMatch(/SET IsActive = 0/);
   });
+
 
   it('resolver aggregates globally and resolves per branch', () => {
     const r = read('src/lib/hr/employeeBranchScheduleResolver.ts');

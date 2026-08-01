@@ -51,7 +51,7 @@ async function ensureAttendanceTable(db: {
 }
 
 // GET /api/pos/team-attendance?date=YYYY-MM-DD
-// Active session branch only (Phase 1K)
+// Active session branch only — same roster rules as admin attendance board
 export async function GET(req: NextRequest) {
   try {
     const session = await getSession();
@@ -74,6 +74,10 @@ export async function GET(req: NextRequest) {
     const dayOfWeek = new Date(`${dateStr}T12:00:00Z`).getDay();
     const db = await getPool();
     await ensureAttendanceTable(db);
+    const { ensureEmpBranchWorkScheduleTable } = await import(
+      '@/lib/hr/empBranchWorkSchedule'
+    );
+    await ensureEmpBranchWorkScheduleTable();
 
     const result = await db
       .request()
@@ -85,10 +89,10 @@ export async function GET(req: NextRequest) {
           e.EmpID,
           e.EmpName,
           e.Job,
-          ws.DayOfWeek,
+          ws.ScheduleDayOfWeek AS DayOfWeek,
           ws.IsWorkingDay,
-          CONVERT(VARCHAR(5), e.DefaultCheckInTime,  108) AS DefaultCheckInTime,
-          CONVERT(VARCHAR(5), e.DefaultCheckOutTime, 108) AS DefaultCheckOutTime,
+          CONVERT(VARCHAR(5), COALESCE(ws.ScheduleStartTime, e.DefaultCheckInTime),  108) AS DefaultCheckInTime,
+          CONVERT(VARCHAR(5), COALESCE(ws.ScheduleEndTime, e.DefaultCheckOutTime), 108) AS DefaultCheckOutTime,
           a.ID AS AttendanceID,
           CONVERT(VARCHAR(5), a.CheckInTime,  108) AS CheckInTime,
           CONVERT(VARCHAR(5), a.CheckOutTime, 108) AS CheckOutTime,
@@ -96,12 +100,63 @@ export async function GET(req: NextRequest) {
           a.LateMinutes,
           a.Notes
         FROM dbo.TblEmp e
-        LEFT JOIN dbo.TblEmpWorkSchedule ws
-          ON ws.EmpID = e.EmpID AND ws.DayOfWeek = @dayOfWeek
         LEFT JOIN dbo.TblEmpAttendance a
           ON a.EmpID = e.EmpID AND a.WorkDate = @workDate AND a.BranchID = @branchId
+        OUTER APPLY (
+          SELECT TOP 1
+            s.DayOfWeek AS ScheduleDayOfWeek,
+            CAST(s.IsWorking AS bit) AS IsWorkingDay,
+            s.StartTime AS ScheduleStartTime,
+            s.EndTime AS ScheduleEndTime
+          FROM dbo.TblEmpBranchWorkSchedule s
+          WHERE s.EmpID = e.EmpID
+            AND s.BranchID = @branchId
+            AND s.DayOfWeek = @dayOfWeek
+            AND s.IsActive = 1
+            AND s.EffectiveFrom <= @workDate
+            AND (s.EffectiveTo IS NULL OR s.EffectiveTo >= @workDate)
+          ORDER BY s.EffectiveFrom DESC, s.ScheduleID DESC
+        ) ws
+        OUTER APPLY (
+          SELECT TOP 1 1 AS X
+          FROM dbo.TblEmpTemporaryBranchTransfer t
+          WHERE t.EmpID = e.EmpID
+            AND t.WorkDate = @workDate
+            AND t.IsActive = 1
+            AND t.ToBranchID = @branchId
+        ) xferIn
         WHERE ISNULL(e.isActive, 1) = 1
           AND ISNULL(e.IsPayrollEnabled, 1) = 1
+          AND (
+            (ws.IsWorkingDay = 1 AND EXISTS (
+              SELECT 1 FROM dbo.TblEmpBranchAssignment ea
+              WHERE ea.EmpID = e.EmpID AND ea.BranchID = @branchId AND ea.IsActive = 1
+                AND ea.EffectiveFrom <= @workDate
+                AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @workDate)
+            ))
+            OR (
+              ws.IsWorkingDay = 0
+              AND EXISTS (
+                SELECT 1 FROM dbo.TblEmpBranchAssignment ea
+                WHERE ea.EmpID = e.EmpID AND ea.BranchID = @branchId AND ea.IsActive = 1
+                  AND ea.EffectiveFrom <= @workDate
+                  AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @workDate)
+              )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM dbo.TblEmpBranchWorkSchedule s2
+                WHERE s2.EmpID = e.EmpID
+                  AND s2.BranchID <> @branchId
+                  AND s2.DayOfWeek = @dayOfWeek
+                  AND s2.IsActive = 1
+                  AND s2.IsWorking = 1
+                  AND s2.EffectiveFrom <= @workDate
+                  AND (s2.EffectiveTo IS NULL OR s2.EffectiveTo >= @workDate)
+              )
+            )
+            OR a.ID IS NOT NULL
+            OR xferIn.X IS NOT NULL
+          )
         ORDER BY e.EmpName
       `);
 
@@ -122,8 +177,7 @@ export async function GET(req: NextRequest) {
         Notes: string | null;
       }) => {
         const hasAttendance = row.AttendanceID != null;
-        const hasSchedule = row.DayOfWeek != null;
-        const isWorkingDay = hasSchedule ? !!row.IsWorkingDay : dayOfWeek !== 5;
+        const isWorkingDay = !!row.IsWorkingDay;
         const schedStart = row.DefaultCheckInTime || null;
         const checkIn = row.CheckInTime || null;
         const checkOut = row.CheckOutTime || null;

@@ -14,6 +14,52 @@ import {
 /** Shared manual funding category written by executeEmployeeFunding — never wipe via map sync. */
 const MANUAL_EMPLOYEE_FUNDING_CATEGORY_NAME = 'تمويل من موظف';
 
+/**
+ * Categories that must dual-write to employee ledger (fail-closed if unmapped).
+ * Covers "سد ذياد", "سد محمد", "تمويل …", etc. — the silent-skip bug that dropped
+ * funding incomes like 4000 EGP for سد ذياد.
+ */
+export function isEmployeeFundingLikeCategoryName(
+  name: string | null | undefined,
+): boolean {
+  const n = (name ?? '').trim();
+  if (!n) return false;
+  if (n === MANUAL_EMPLOYEE_FUNDING_CATEGORY_NAME) return false;
+
+  const normalized = n.replace(/\s+/g, ' ');
+  // "سد …" / "سداد …" employee repayment / capital-from-employee style names
+  if (/^سد(اد)?(\s|$|_|-)/u.test(normalized)) return true;
+  if (normalized.includes('تمويل')) return true;
+  return false;
+}
+
+async function resolveEmployeeByCategoryNameHint(
+  transaction: sql.Transaction,
+  categoryName: string,
+): Promise<{ empId: number; empName: string } | null> {
+  const result = await ledgerRequest(transaction)
+    .input('CatName', sql.NVarChar(200), categoryName.trim())
+    .query(`
+      SELECT TOP 1 e.EmpID, e.EmpName
+      FROM dbo.TblEmp e
+      WHERE ISNULL(e.isActive, 1) = 1
+        AND e.EmpName IS NOT NULL
+        AND LEN(LTRIM(RTRIM(e.EmpName))) >= 2
+        AND (
+          @CatName LIKE N'%' + LTRIM(RTRIM(e.EmpName)) + N'%'
+          OR LTRIM(RTRIM(e.EmpName)) LIKE N'%' + @CatName + N'%'
+        )
+      ORDER BY LEN(LTRIM(RTRIM(e.EmpName))) DESC, e.EmpID ASC
+    `);
+
+  const row = result.recordset[0] as { EmpID?: number; EmpName?: string } | undefined;
+  if (!row?.EmpID) return null;
+  return {
+    empId: Number(row.EmpID),
+    empName: String(row.EmpName ?? ''),
+  };
+}
+
 export type EmployeeFundingSyncOutcome =
   | 'inserted'
   | 'updated'
@@ -244,6 +290,15 @@ export async function syncEmployeeFundingFromCashMove(
   },
 ): Promise<EmployeeFundingSyncResult> {
   if (!options?.force && !isEmployeeLedgerDualWriteEnabled()) {
+    // Fail closed for funding-like categories — never silently drop "سد ذياد"-style incomes.
+    // We still need the cash-move row to know the category name, so peek when force is off.
+    const peek = await loadCashMoveForFundingSync(transaction, cashMoveId).catch(() => null);
+    if (peek && isEmployeeFundingLikeCategoryName(peek.CategoryName)) {
+      throw new EmployeeLedgerDualWriteError(
+        `تصنيف «${peek.CategoryName}» تمويل موظف — مزامنة دفتر الموظفين متوقفة (EMP_LEDGER_DUAL_WRITE_ENABLED). فعّل العلم ثم أعد المحاولة.`,
+        503,
+      );
+    }
     return { outcome: 'skipped_flag_off', ledgerDualWrite: false };
   }
 
@@ -271,6 +326,11 @@ export async function syncEmployeeFundingFromCashMove(
     }
 
     if (cashMove.ExpINID == null) {
+      if (isEmployeeFundingLikeCategoryName(cashMove.CategoryName)) {
+        throw new EmployeeLedgerDualWriteError(
+          `تصنيف «${cashMove.CategoryName ?? ''}» يبدو تمويل موظف لكن بدون ExpINID — اختر التصنيف من القائمة`,
+        );
+      }
       const deleted = await deleteFundingLedgerForCashMove(transaction, cashMoveId);
       return {
         outcome: deleted ? 'deleted' : 'skipped_not_mapped',
@@ -288,20 +348,38 @@ export async function syncEmployeeFundingFromCashMove(
     }
 
     const pool = { request: () => new sql.Request(transaction) };
-    const resolution = await resolveRevenueEmployeeFromExpINID(pool, cashMove.ExpINID, transaction);
+    let resolution = await resolveRevenueEmployeeFromExpINID(pool, cashMove.ExpINID, transaction);
 
+    // Funding-like names without EmpMap: try name hint (سد ذياد → ذياد), else fail closed.
     if (resolution.kind === 'not_revenue') {
-      const deleted = await deleteFundingLedgerForCashMove(transaction, cashMoveId);
-      return {
-        outcome: deleted ? 'deleted' : 'skipped_not_mapped',
-        ledgerDualWrite: deleted,
-        categoryName: cashMove.CategoryName,
-      };
+      if (isEmployeeFundingLikeCategoryName(cashMove.CategoryName)) {
+        const hint = cashMove.CategoryName
+          ? await resolveEmployeeByCategoryNameHint(transaction, cashMove.CategoryName)
+          : null;
+        if (hint) {
+          resolution = {
+            kind: 'resolved',
+            empId: hint.empId,
+            empName: hint.empName,
+          };
+        } else {
+          throw new EmployeeLedgerDualWriteError(
+            `تصنيف «${cashMove.CategoryName}» تمويل موظف وغير مربوط في خريطة الموظفين (TblExpCatEmpMap). اربط التصنيف بالموظف من إدارة الموظف ثم أعد الحفظ — لن يُحفظ الإيراد بدون تسجيل في الدفتر.`,
+          );
+        }
+      } else {
+        const deleted = await deleteFundingLedgerForCashMove(transaction, cashMoveId);
+        return {
+          outcome: deleted ? 'deleted' : 'skipped_not_mapped',
+          ledgerDualWrite: deleted,
+          categoryName: cashMove.CategoryName,
+        };
+      }
     }
 
     if (resolution.kind === 'unresolved') {
       throw new EmployeeLedgerDualWriteError(
-        `تعذر ربط تصنيف الإيراد ExpINID=${cashMove.ExpINID} بموظف نشط لتسجيل التمويل`,
+        `تعذر ربط تصنيف الإيراد «${cashMove.CategoryName ?? cashMove.ExpINID}» بموظف نشط لتسجيل التمويل`,
       );
     }
 
@@ -337,6 +415,7 @@ export async function syncEmployeeFundingFromCashMove(
     if (isMissingLedgerTableError(message)) {
       throw new EmployeeLedgerDualWriteError(
         'جدول دفتر الموظفين غير موجود — شغّل db/migrations/create-tbl-emp-ledger-entry.sql ثم أعد المحاولة',
+        503,
       );
     }
     throw new EmployeeLedgerDualWriteError(`فشل مزامنة تمويل الموظف من حركة الخزنة: ${message}`);

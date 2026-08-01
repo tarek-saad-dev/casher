@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   calculateMonthlyFinancialEquations,
   calculatePartnerProfitShares,
+  calculatePartnersManagementFee,
+  PARTNERS_MANAGEMENT_FEE_PERCENT,
 } from '@/lib/reports/monthlyFinancialEquations';
 import { PARTNERS } from '@/lib/types/monthly-report';
 
@@ -31,8 +33,32 @@ describe('calculatePartnerProfitShares', () => {
   });
 });
 
+describe('calculatePartnersManagementFee', () => {
+  it('deducts 5% from positive totals', () => {
+    expect(PARTNERS_MANAGEMENT_FEE_PERCENT).toBe(5);
+    expect(calculatePartnersManagementFee(100000)).toEqual({
+      feePercent: 5,
+      feeAmount: 5000,
+      afterFee: 95000,
+    });
+  });
+
+  it('skips fee on zero or loss', () => {
+    expect(calculatePartnersManagementFee(0)).toEqual({
+      feePercent: 0,
+      feeAmount: 0,
+      afterFee: 0,
+    });
+    expect(calculatePartnersManagementFee(-15000)).toEqual({
+      feePercent: 0,
+      feeAmount: 0,
+      afterFee: -15000,
+    });
+  });
+});
+
 describe('calculateMonthlyFinancialEquations', () => {
-  it('uses treasury net profit for monthly mode without extra deductions', () => {
+  it('uses treasury net profit for monthly mode without management fee', () => {
     const result = calculateMonthlyFinancialEquations({
       year: 2026,
       month: 6,
@@ -41,13 +67,14 @@ describe('calculateMonthlyFinancialEquations', () => {
       partners: PARTNERS,
     });
 
+    expect(result.managementFeeAmount).toBe(0);
     expect(result.finalDistributableAmount).toBe(120000);
     expect(result.partnerShares[0].profitShare).toBeCloseTo(44000, 0);
     expect(Math.abs(result.totalPartnerShares - 120000)).toBeLessThanOrEqual(0.01);
   });
 
-  it('uses operating net for partners mode without deducting payroll or expenses again', () => {
-    const operatingNet = 67101;
+  it('deducts 5% management fee in partners mode before distribution', () => {
+    const operatingNet = 100000;
     const result = calculateMonthlyFinancialEquations({
       year: 2026,
       month: 6,
@@ -59,11 +86,13 @@ describe('calculateMonthlyFinancialEquations', () => {
     });
 
     expect(result.baseAmount).toBe(operatingNet);
-    expect(result.finalDistributableAmount).toBe(operatingNet);
-    expect(Math.abs(result.totalPartnerShares - operatingNet)).toBeLessThanOrEqual(0.01);
+    expect(result.managementFeePercent).toBe(5);
+    expect(result.managementFeeAmount).toBe(5000);
+    expect(result.finalDistributableAmount).toBe(95000);
+    expect(Math.abs(result.totalPartnerShares - 95000)).toBeLessThanOrEqual(0.01);
   });
 
-  it('handles negative operating months as loss', () => {
+  it('handles negative operating months as loss without management fee', () => {
     const result = calculateMonthlyFinancialEquations({
       year: 2026,
       month: 6,
@@ -75,6 +104,8 @@ describe('calculateMonthlyFinancialEquations', () => {
     });
 
     expect(result.isLoss).toBe(true);
+    expect(result.managementFeeAmount).toBe(0);
+    expect(result.finalDistributableAmount).toBe(-15000);
     expect(result.partnerShares.every((partner) => partner.profitShare < 0)).toBe(true);
     expect(PARTNERS.reduce((sum, partner) => sum + partner.percentage, 0)).toBeCloseTo(100, 4);
   });

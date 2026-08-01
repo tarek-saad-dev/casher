@@ -199,8 +199,8 @@ export async function POST(req: NextRequest) {
 
     const newId: number = insRes.recordset[0]?.OverrideID;
 
-    // day_off + today → upsert attendance Absent, tagged with source
-    if (type === "day_off" && isToday) {
+    // day_off → upsert attendance Absent for that WorkDate (any date, not only calendar-today)
+    if (type === "day_off") {
       const attendanceNote = `schedule-control day_off${reason ? `: ${reason}` : ""}`;
       await db
         .request()
@@ -214,7 +214,8 @@ export async function POST(req: NextRequest) {
             WHERE EmpID = @empId AND WorkDate = @workDate AND BranchID = @branchId
           )
             UPDATE dbo.TblEmpAttendance
-            SET Status = 'Absent', Notes = @notes
+            SET Status = 'Absent', Notes = @notes,
+                CheckInTime = NULL, CheckOutTime = NULL
             WHERE EmpID = @empId AND WorkDate = @workDate AND BranchID = @branchId
           ELSE
             INSERT INTO dbo.TblEmpAttendance (BranchID, EmpID, WorkDate, Status, Notes)

@@ -31,7 +31,7 @@ import { isEmployeeHiddenFromPublicBooking } from '@/lib/hr/testEmployeePolicy';
 import { getPool, sql } from '@/lib/db';
 import { canBranchAppearInPublicBooking } from '@/lib/branch/publicBranchVisibility';
 
-const CACHE_TTL_MS = 8_000;
+const CACHE_TTL_MS = 45_000;
 const CACHE_MAX = 48;
 const cacheRoot = '__pos_public_booking_availability_v4';
 const CONTRACT = 'v4';
@@ -65,6 +65,26 @@ function cacheSet(key: string, value: unknown): void {
     if (first) map.delete(first);
   }
   map.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, value });
+}
+
+/** Bound parallel day fan-out so available-days does not thrash the SQL pool. */
+async function mapPool<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (!items.length) return [];
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i]!, i);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 export class PublicBookingAvailabilityError extends Error {
@@ -231,6 +251,7 @@ function mergeCandidateSlots(
       ? a.dayOffset - b.dayOffset
       : a.time.localeCompare(b.time),
   );
+  // Nearest mode has no single base start — keep soonest times (product intent).
   return sorted.slice(0, limit);
 }
 
@@ -627,16 +648,14 @@ export async function getPublicAvailableDays(args: {
   if (cached) return cached;
 
   const dateRange = eachDateInclusive(from, to);
-  const days = await Promise.all(
-    dateRange.map((date) =>
-      buildAvailableDayWire({
-        date,
-        branchCtx,
-        selected,
-        empId,
-        horizonEnd,
-      }),
-    ),
+  const days = await mapPool(dateRange, 3, (date) =>
+    buildAvailableDayWire({
+      date,
+      branchCtx,
+      selected,
+      empId,
+      horizonEnd,
+    }),
   );
 
   const response: PublicAvailableDaysResponse = {

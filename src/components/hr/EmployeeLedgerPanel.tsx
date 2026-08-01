@@ -23,13 +23,17 @@ import EmployeeDailyTargetLedgerDetailsDialog from '@/components/hr/EmployeeDail
 import Link from 'next/link';
 import { EMPLOYEE_LEDGER_REFRESH_EVENT } from '@/lib/cashMoveDeleteClient';
 import { attachRunningBalances } from '@/lib/hr/employee-ledger-running-balance';
+import {
+  getCairoMonthCloseAwareMonth,
+  isInMonthCloseGraceWindow,
+  MONTH_CLOSE_GRACE_CUTOFF_HOUR,
+} from '@/lib/businessDate';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
 function currentMonthStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  return getCairoMonthCloseAwareMonth();
 }
 
 interface EmployeeOption {
@@ -219,6 +223,11 @@ export default function EmployeeLedgerPanel() {
             onChange={(e) => setMonth(e.target.value)}
             className="w-40 h-9 text-sm bg-surface border-border"
           />
+          {isInMonthCloseGraceWindow() ? (
+            <span className="text-[11px] text-amber-400/90 max-w-[220px] leading-snug">
+              حتى {MONTH_CLOSE_GRACE_CUTOFF_HOUR}:00 صباحًا يُحسب اليوم السابق لإقفال الشهر
+            </span>
+          ) : null}
           <Select value={empId} onValueChange={setEmpId}>
             <SelectTrigger className="w-44 h-9 text-sm bg-surface border-border text-foreground">
               <SelectValue placeholder="الموظف" />

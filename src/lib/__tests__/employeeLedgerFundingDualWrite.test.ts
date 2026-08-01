@@ -126,6 +126,8 @@ describe('syncEmployeeFundingFromCashMove', () => {
       { rowsAffected: [0] },
       // revive miss
       { rowsAffected: [0] },
+      // branch id
+      { recordset: [{ BranchID: 1 }] },
       // insert
       { rowsAffected: [1] },
     ];
@@ -196,6 +198,78 @@ describe('syncEmployeeFundingFromCashMove', () => {
     const result = await syncEmployeeFundingFromCashMove(transaction, 88);
     expect(result.outcome).toBe('skipped_payroll_mirror');
   });
+
+  it('fail-closes when سد-style category has no EmpMap and no name match', async () => {
+    process.env.EMP_LEDGER_DUAL_WRITE_ENABLED = 'true';
+    const { syncEmployeeFundingFromCashMove, isEmployeeFundingLikeCategoryName } = await import(
+      '@/lib/services/employeeLedgerFundingSyncService'
+    );
+    expect(isEmployeeFundingLikeCategoryName('سد ذياد')).toBe(true);
+
+    const { sql } = await import('@/lib/db');
+    const { EmployeeLedgerDualWriteError } = await import(
+      '@/lib/services/employeeLedgerDualWrite'
+    );
+    txQueryResults = [
+      {
+        recordset: [{
+          ID: 88,
+          invType: 'ايرادات',
+          inOut: 'in',
+          ExpINID: 30,
+          GrandTolal: 4000,
+          invDate: '2026-07-01',
+          IsEmployeePayrollIncome: 0,
+          CategoryName: 'سد ذياد',
+        }],
+      },
+      { recordset: [] }, // no revenue EmpMap
+      { recordset: [] }, // no employee name hint
+    ];
+    const transaction = new sql.Transaction({} as never);
+
+    await expect(syncEmployeeFundingFromCashMove(transaction, 88)).rejects.toBeInstanceOf(
+      EmployeeLedgerDualWriteError,
+    );
+  });
+
+  it('resolves سد ذياد via employee name hint when EmpMap missing', async () => {
+    process.env.EMP_LEDGER_DUAL_WRITE_ENABLED = 'true';
+    const { syncEmployeeFundingFromCashMove } = await import(
+      '@/lib/services/employeeLedgerFundingSyncService'
+    );
+    const { sql } = await import('@/lib/db');
+    txQueryResults = [
+      {
+        recordset: [{
+          ID: 88,
+          invType: 'ايرادات',
+          inOut: 'in',
+          ExpINID: 30,
+          GrandTolal: 4000,
+          invDate: '2026-07-01',
+          IsEmployeePayrollIncome: 0,
+          CategoryName: 'سد ذياد',
+        }],
+      },
+      { recordset: [] }, // no EmpMap
+      { recordset: [{ EmpID: 7, EmpName: 'ذياد' }] }, // name hint
+      { rowsAffected: [1] }, // attach emp
+      { rowsAffected: [0] }, // update miss
+      { rowsAffected: [0] }, // revive miss
+      { recordset: [{ BranchID: 1 }] }, // branch
+      { rowsAffected: [1] }, // insert funding
+    ];
+    const transaction = new sql.Transaction({} as never);
+
+    const result = await syncEmployeeFundingFromCashMove(transaction, 88, {
+      createdByUserId: 1,
+    });
+    expect(result.ledgerDualWrite).toBe(true);
+    expect(result.outcome).toBe('inserted');
+    expect(result.empId).toBe(7);
+    expect(result.amount).toBe(4000);
+  });
 });
 
 describe('POST /api/incomes funding dual-write', () => {
@@ -257,6 +331,7 @@ describe('POST /api/incomes funding dual-write', () => {
       { rowsAffected: [1] },
       { rowsAffected: [0] },
       { rowsAffected: [0] },
+      { recordset: [{ BranchID: 1 }] },
       { rowsAffected: [1] },
     ];
 

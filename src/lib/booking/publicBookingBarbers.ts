@@ -52,7 +52,7 @@ export {
   evaluateEmployeePublicBookingEligibility,
 } from '@/lib/booking/publicBookingBarberPolicy';
 
-const CACHE_TTL_MS = 20_000;
+const CACHE_TTL_MS = 45_000;
 const CACHE_MAX = 32;
 const cacheRootKey = '__pos_public_booking_barbers_v3';
 
@@ -423,9 +423,18 @@ export async function listPublicBookingBarbers(args: {
     }
   >();
 
+  const branchVisibility = new Map<number, boolean>();
+  const isBranchPublic = async (branchId: number) => {
+    const cached = branchVisibility.get(branchId);
+    if (cached != null) return cached;
+    const ok = await canBranchAppearInPublicBooking(branchId);
+    branchVisibility.set(branchId, ok);
+    return ok;
+  };
+
   for (const row of candidates) {
     const branchId = Number(row.BranchID);
-    if (!(await canBranchAppearInPublicBooking(branchId))) continue;
+    if (!(await isBranchPublic(branchId))) continue;
     if (branchCtx && branchId !== branchCtx.branchId) continue;
 
     const empId = Number(row.EmpID);

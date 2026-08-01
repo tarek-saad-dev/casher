@@ -45,7 +45,10 @@ export default function PartnersEmployeesSection({
 }: PartnersEmployeesSectionProps) {
   return (
     <section className="w-full min-w-0 bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-3 sm:p-4 md:p-6 print:break-inside-avoid">
-      <h2 className="text-base sm:text-lg font-bold text-white mb-3 sm:mb-4">الموظفون</h2>
+      <h2 className="text-base sm:text-lg font-bold text-white mb-1 sm:mb-2">الموظفون</h2>
+      <p className="text-xs text-zinc-500 mb-3 sm:mb-4">
+        عمود السلف = ما زاد عن الراتب والتارجت والتمويل المسجّل في الدفتر (نفس منطق دفتر الموظفين). إيراد الفواتير منفصل في «دخل للمحل».
+      </p>
 
       {loading && rows.length === 0 ? (
         <TableSkeleton />
@@ -130,7 +133,12 @@ export default function PartnersEmployeesSection({
                   <th className="text-right py-3 px-2 font-medium">الموظف</th>
                   <th className="text-right py-3 px-2 font-medium">دخل للمحل</th>
                   <th className="text-right py-3 px-2 font-medium">استلم راتب (راتب + تارجت)</th>
-                  <th className="text-right py-3 px-2 font-medium">سلف</th>
+                  <th
+                    className="text-right py-3 px-2 font-medium"
+                    title="ما زاد عن الراتب + التارجت + التمويل في الدفتر"
+                  >
+                    سلف
+                  </th>
                 </tr>
               </thead>
               <tbody>

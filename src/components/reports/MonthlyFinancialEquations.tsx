@@ -146,7 +146,17 @@ export default function MonthlyFinancialEquations({
               {formatCurrency(result.baseAmount, variant)}
             </p>
           </div>
-          <div className="min-w-0">
+          {isPartners && result.managementFeeAmount > 0 ? (
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm text-zinc-400 print:text-zinc-600 mb-1">
+                نسبة الإدارة ({result.managementFeePercent}%)
+              </p>
+              <p className="text-lg sm:text-xl font-bold tabular-nums text-amber-400 print:text-amber-700">
+                − {formatCurrency(result.managementFeeAmount, variant)}
+              </p>
+            </div>
+          ) : null}
+          <div className="min-w-0 sm:col-span-2">
             <p
               className={
                 isPartners
@@ -159,6 +169,11 @@ export default function MonthlyFinancialEquations({
             <p className={`text-xl sm:text-2xl md:text-3xl font-bold tabular-nums ${amountClass}`}>
               {formatCurrency(Math.abs(result.finalDistributableAmount), variant)}
             </p>
+            {isPartners && result.managementFeeAmount > 0 ? (
+              <p className="mt-1 text-[11px] text-zinc-500 print:text-zinc-600">
+                بعد خصم نسبة الإدارة من الإجمالي وقبل التوزيع على الشركاء
+              </p>
+            ) : null}
           </div>
         </div>
       </div>

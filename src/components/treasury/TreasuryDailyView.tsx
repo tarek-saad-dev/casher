@@ -365,6 +365,9 @@ export default function TreasuryDailyView({
           onClose={() => setShowPastIncomeModal(false)}
           onIncomeComplete={handleReload}
           defaultDate={filters.dateTo || undefined}
+          entryDateReadOnly={Boolean(filters.dateTo)}
+          title="إضافة إيراد"
+          subtitle="إضافة إيراد لتاريخ محدد"
         />
       )}
 

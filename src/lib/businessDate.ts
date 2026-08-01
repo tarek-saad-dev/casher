@@ -17,6 +17,8 @@
 
 export const SALON_TZ = 'Africa/Cairo';
 export const BUSINESS_DAY_CUTOFF_HOUR = 4;
+/** On the 1st of each month, before this Cairo hour, keep previous calendar day (month close grace). */
+export const MONTH_CLOSE_GRACE_CUTOFF_HOUR = 6;
 
 /**
  * Get current Cairo hour (0–23).
@@ -39,6 +41,14 @@ export function getCairoCalendarDate(now?: Date): string {
   return d.toLocaleDateString('en-CA', { timeZone: SALON_TZ });
 }
 
+/** Shift a YYYY-MM-DD calendar date by N days (UTC date arithmetic — safe for Cairo calendar strings). */
+export function shiftCalendarDate(dateStr: string, deltaDays: number): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  if (!year || !month || !day) return dateStr;
+  const utc = new Date(Date.UTC(year, month - 1, day + deltaDays));
+  return utc.toISOString().slice(0, 10);
+}
+
 /**
  * Get Cairo business date as YYYY-MM-DD.
  * If Cairo hour < 4 AM, returns yesterday's Cairo calendar date.
@@ -47,10 +57,37 @@ export function getCairoBusinessDate(now?: Date): string {
   const d = now ?? new Date();
   const cairoHour = getCairoHour(d);
   if (cairoHour < BUSINESS_DAY_CUTOFF_HOUR) {
-    const yesterday = new Date(d.getTime() - 24 * 60 * 60 * 1000);
-    return yesterday.toLocaleDateString('en-CA', { timeZone: SALON_TZ });
+    return shiftCalendarDate(getCairoCalendarDate(d), -1);
   }
-  return d.toLocaleDateString('en-CA', { timeZone: SALON_TZ });
+  return getCairoCalendarDate(d);
+}
+
+/**
+ * True on Cairo calendar day 1 before MONTH_CLOSE_GRACE_CUTOFF_HOUR (6 AM).
+ * Used so month-end closing can finish early on the 1st.
+ */
+export function isInMonthCloseGraceWindow(now?: Date): boolean {
+  const calendar = getCairoCalendarDate(now);
+  const day = Number(calendar.slice(8, 10));
+  return day === 1 && getCairoHour(now) < MONTH_CLOSE_GRACE_CUTOFF_HOUR;
+}
+
+/**
+ * Cairo date for employee-ledger / month-close UI:
+ * On the 1st before 6:00 AM Cairo → previous calendar day (so month stays the previous one).
+ * Otherwise → Cairo calendar date.
+ */
+export function getCairoMonthCloseAwareDate(now?: Date): string {
+  const calendar = getCairoCalendarDate(now);
+  if (isInMonthCloseGraceWindow(now)) {
+    return shiftCalendarDate(calendar, -1);
+  }
+  return calendar;
+}
+
+/** YYYY-MM for ledger month filters — respects 1st-of-month until 6 AM Cairo grace. */
+export function getCairoMonthCloseAwareMonth(now?: Date): string {
+  return getCairoMonthCloseAwareDate(now).slice(0, 7);
 }
 
 /**

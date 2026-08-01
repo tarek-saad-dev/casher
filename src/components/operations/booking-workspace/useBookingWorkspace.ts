@@ -337,10 +337,19 @@ export function useBookingWorkspace({
         return;
       }
       const expectedDuration = Number(data.serviceDurationMinutes ?? totalDuration);
-      const rawSlots: AvailableSlot[] = (data.slots ?? data.availableSlots ?? []).map((s: AvailableSlot) => ({
-        ...s,
-        available: true,
-      }));
+      // Prefer availableSlots (engine already filtered). `slots` includes unavailable
+      // candidates (conflicts/breaks) — never force those to available:true.
+      const rawList = Array.isArray(data.availableSlots)
+        ? data.availableSlots
+        : Array.isArray(data.slots)
+          ? data.slots
+          : [];
+      const rawSlots: AvailableSlot[] = rawList
+        .filter((s: AvailableSlot) => s.available !== false)
+        .map((s: AvailableSlot) => ({
+          ...s,
+          available: true,
+        }));
 
       // Specific mode: slots must match this barber's resolved duration.
       // Nearest mode: each slot carries its own emp duration — do not force one total.

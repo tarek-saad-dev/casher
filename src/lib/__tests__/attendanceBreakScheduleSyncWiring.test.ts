@@ -40,10 +40,16 @@ const syncAttendanceShiftToOverrides = vi.fn(async () => ({
   inserted: 0,
   plan: { action: 'clear' as const },
 }));
+const syncAttendanceAbsenceToDayOffOverride = vi.fn(async () => ({
+  cleared: 0,
+  ensured: false,
+}));
 
 vi.mock('@/lib/hr/attendance-shift-schedule-sync', () => ({
   syncAttendanceShiftToOverrides: (...args: unknown[]) =>
     syncAttendanceShiftToOverrides(...args),
+  syncAttendanceAbsenceToDayOffOverride: (...args: unknown[]) =>
+    syncAttendanceAbsenceToDayOffOverride(...args),
   ATTENDANCE_SHIFT_SOURCE: 'attendance-shift',
 }));
 
@@ -398,6 +404,12 @@ describe('PUT /api/admin/attendance wiring', () => {
         scheduledEnd: '00:00',
         status: 'Present',
       }),
+    );
+    expect(syncAttendanceAbsenceToDayOffOverride).toHaveBeenCalledWith(
+      expect.anything(),
+      5,
+      '2026-07-15',
+      'Present',
     );
   });
 });

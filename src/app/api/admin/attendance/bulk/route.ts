@@ -12,13 +12,15 @@ import {
   replaceAttendanceBreakTimes,
 } from "@/lib/hr/attendance-break-time-db";
 import { syncBlockRangesFromBreaks, syncBlockRangesFromBreakTimes } from "@/lib/hr/attendance-break-schedule-sync";
-import { syncAttendanceShiftToOverrides } from "@/lib/hr/attendance-shift-schedule-sync";
+import { syncAttendanceShiftToOverrides, syncAttendanceAbsenceToDayOffOverride } from "@/lib/hr/attendance-shift-schedule-sync";
 import { scheduleAttendanceCheckInOutWhatsApp } from "@/lib/services/employeeAttendanceWhatsAppNotify";
 import {
   isActiveBranchContext,
   requireBranchOperationAccess,
 } from "@/lib/branch";
 import { assertEmployeeEligibleForBranchAttendance } from "@/lib/hr/attendance/branchAttendance.service";
+import { unlockScheduleForWorkOnDayOff } from "@/lib/hr/attendance/workOnDayOff.service";
+import { getEffectiveBranchScheduleRow } from "@/lib/hr/empBranchWorkSchedule";
 
 function timeToDate(timeStr: string | null | undefined): Date | null {
   if (!timeStr || timeStr.trim() === "") return null;
@@ -212,6 +214,25 @@ export async function PUT(req: NextRequest) {
           }
         }
 
+        if (checkIn && !manualStatuses.includes(finalStatus)) {
+          const scheduleRow = await getEffectiveBranchScheduleRow({
+            empId: Number(item.EmpID),
+            branchId: branch.branchId,
+            workDate: WorkDate,
+          });
+          if (scheduleRow && !scheduleRow.isWorking) {
+            await unlockScheduleForWorkOnDayOff({
+              empId: Number(item.EmpID),
+              date: WorkDate,
+              branchId: branch.branchId,
+              reason: "نزل يشتغل يوم إجازته — تسجيل حضور",
+              sourceTag: "work-on-day-off",
+            }).catch((err) => {
+              console.warn("[api/admin/attendance/bulk] day-off unlock failed", err);
+            });
+          }
+        }
+
         const clearBreaks =
           finalStatus === "Absent" ||
           finalStatus === "DayOff" ||
@@ -334,6 +355,13 @@ export async function PUT(req: NextRequest) {
           scheduledEnd: schedEnd,
           status: finalStatus,
         });
+
+        await syncAttendanceAbsenceToDayOffOverride(
+          txDb,
+          Number(item.EmpID),
+          WorkDate,
+          finalStatus,
+        );
 
         whatsappJobs.push({
           empId: Number(item.EmpID),

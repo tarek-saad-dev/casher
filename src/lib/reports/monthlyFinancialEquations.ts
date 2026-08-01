@@ -3,6 +3,9 @@ import type { Partner, PartnerProfitShare } from '@/lib/types/monthly-report';
 
 export type MonthlyFinancialEquationsMode = 'monthly' | 'partners';
 
+/** Management fee taken from partners-report total before partner distribution. */
+export const PARTNERS_MANAGEMENT_FEE_PERCENT = 5;
+
 export interface MonthlyFinancialEquationsInput {
   year: number;
   month: number;
@@ -22,7 +25,13 @@ export interface MonthlyFinancialEquationsResult {
   year: number;
   month: number;
   mode: MonthlyFinancialEquationsMode;
+  /** Amount before management fee (operating / clean net). */
   baseAmount: number;
+  /** Percent applied in partners mode (0 in monthly mode or on loss). */
+  managementFeePercent: number;
+  /** Absolute management fee deducted before partner split. */
+  managementFeeAmount: number;
+  /** Amount distributed to partners after management fee. */
   finalDistributableAmount: number;
   partnerShares: PartnerProfitShare[];
   totalPartnerShares: number;
@@ -45,14 +54,31 @@ export function calculatePartnerProfitShares(
   }));
 }
 
+export function calculatePartnersManagementFee(
+  baseAmount: number,
+  feePercent: number = PARTNERS_MANAGEMENT_FEE_PERCENT
+): { feePercent: number; feeAmount: number; afterFee: number } {
+  const base = Number.isFinite(baseAmount) ? baseAmount : 0;
+  // Fee only on positive totals — losses are distributed in full.
+  if (base <= 0 || feePercent <= 0) {
+    return { feePercent: 0, feeAmount: 0, afterFee: roundMoney(base) };
+  }
+  const feeAmount = roundMoney((base * feePercent) / 100);
+  const afterFee = roundMoney(base - feeAmount);
+  return { feePercent, feeAmount, afterFee };
+}
+
 export function calculateMonthlyFinancialEquations(
   input: MonthlyFinancialEquationsInput
 ): MonthlyFinancialEquationsResult {
-  const baseAmount = Number.isFinite(input.baseAmount) ? input.baseAmount : 0;
+  const baseAmount = roundMoney(Number.isFinite(input.baseAmount) ? input.baseAmount : 0);
 
-  // Partners mode starts from operatingNet; monthly mode starts from treasury netProfit.
-  // Neither mode applies further salary, advance, or operating-expense deductions here.
-  const finalDistributableAmount = roundMoney(baseAmount);
+  const fee =
+    input.mode === 'partners'
+      ? calculatePartnersManagementFee(baseAmount)
+      : { feePercent: 0, feeAmount: 0, afterFee: baseAmount };
+
+  const finalDistributableAmount = fee.afterFee;
   const partnerShares = calculatePartnerProfitShares(finalDistributableAmount, input.partners);
   const totalPartnerShares = roundMoney(
     partnerShares.reduce((sum, partner) => sum + partner.profitShare, 0)
@@ -62,7 +88,9 @@ export function calculateMonthlyFinancialEquations(
     year: input.year,
     month: input.month,
     mode: input.mode,
-    baseAmount: finalDistributableAmount,
+    baseAmount,
+    managementFeePercent: fee.feePercent,
+    managementFeeAmount: fee.feeAmount,
     finalDistributableAmount,
     partnerShares,
     totalPartnerShares,

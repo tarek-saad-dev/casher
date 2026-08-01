@@ -171,16 +171,15 @@ export async function buildPartnersMonthlyReport(
       const ledgerSalary = roundMoney(ledger?.salaryCredits ?? 0);
       const ledgerTarget = roundMoney(ledger?.targetCredits ?? 0);
       const salaryAndTarget = roundMoney(ledgerSalary + ledgerTarget);
-      // إذا كان الموظف يحقق إيراداً للمحل، فسحبه يُغطّى أولاً بالإيراد ثم بالراتب + التارجت،
-      // ولا يُعتبر سلفة إلا ما زاد عن ذلك. الإيراد = تمويل الموظف للمحل من الدفتر أو دخله الفعلي.
-      const employeeRevenue = roundMoney(
-        Math.max(overridden.shopRevenue ?? 0, ledger?.fundingCredits ?? 0)
-      );
+      // سلفة الشركاء = نفس منطق الدفتر: ما زاد عن (راتب+تارجت+تمويل دفتر).
+      // إيراد الفواتير يظهر في عمود «إيراد للمحل» ولا يغطي السحب — الزيادة دين على الموظف
+      // (رد سلف أو ترحيل عند التقفيل).
+      const fundingCredits = roundMoney(ledger?.fundingCredits ?? 0);
       const { moneyTaken, advanceExcess } = computeEmployeeWithdrawalBuckets({
         advanceDebits: ledger?.advanceDebits ?? 0,
         payoutDebits: ledger?.payoutDebits ?? 0,
         salaryAndTarget,
-        revenue: employeeRevenue,
+        revenue: fundingCredits,
       });
 
       return {

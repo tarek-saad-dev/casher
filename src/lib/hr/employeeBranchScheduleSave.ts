@@ -305,6 +305,22 @@ export async function saveEmployeeBranchWeeklySchedule(args: {
             AND (EffectiveTo IS NULL OR EffectiveTo >= @from)
         `);
 
+      // Same EffectiveFrom re-save used to leave duplicate active rows; supersede them.
+      await new sql.Request(tx)
+        .input('empId', sql.Int, args.empId)
+        .input('branchId', sql.Int, args.branchId)
+        .input('dow', sql.TinyInt, cell.dayOfWeek)
+        .input('from', sql.Date, args.effectiveFrom)
+        .query(`
+          UPDATE dbo.TblEmpBranchWorkSchedule
+          SET IsActive = 0,
+              UpdatedAt = SYSUTCDATETIME()
+          WHERE EmpID = @empId AND BranchID = @branchId AND DayOfWeek = @dow
+            AND IsActive = 1
+            AND EffectiveFrom = @from
+            AND (EffectiveTo IS NULL OR EffectiveTo >= @from)
+        `);
+
       await new sql.Request(tx)
         .input('empId', sql.Int, args.empId)
         .input('branchId', sql.Int, args.branchId)

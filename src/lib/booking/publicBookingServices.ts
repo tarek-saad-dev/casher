@@ -111,16 +111,23 @@ function getCacheMap(): Map<string, CacheEntry> {
   return g[cacheRootKey]!;
 }
 
+const STAMP_TTL_MS = 20_000;
+const stampRootKey = '__pos_public_booking_services_stamp_v1';
+
 export function invalidatePublicBookingServicesCache(branchCode?: string): void {
   const map = getCacheMap();
   if (!branchCode) {
     map.clear();
-    return;
+  } else {
+    const prefix = `${branchCode.toUpperCase()}::`;
+    for (const k of map.keys()) {
+      if (k.startsWith(prefix)) map.delete(k);
+    }
   }
-  const prefix = `${branchCode.toUpperCase()}::`;
-  for (const k of map.keys()) {
-    if (k.startsWith(prefix)) map.delete(k);
-  }
+  const g = globalThis as typeof globalThis & {
+    [stampRootKey]?: { expiresAt: number; value: string };
+  };
+  delete g[stampRootKey];
 }
 
 async function loadCatalogVersionStamp(): Promise<string> {
@@ -151,6 +158,17 @@ async function loadCatalogVersionStamp(): Promise<string> {
   } catch {
     return `fallback|${Date.now()}|${PUBLIC_BOOKING_SERVICE_CONTRACT_VERSION}`;
   }
+}
+
+async function loadCatalogVersionStampCached(): Promise<string> {
+  const g = globalThis as typeof globalThis & {
+    [stampRootKey]?: { expiresAt: number; value: string };
+  };
+  const hit = g[stampRootKey];
+  if (hit && hit.expiresAt > Date.now()) return hit.value;
+  const value = await loadCatalogVersionStamp();
+  g[stampRootKey] = { expiresAt: Date.now() + STAMP_TTL_MS, value };
+  return value;
 }
 
 function branchContextVersion(ctx: PublicBookingBranchContext): string {
@@ -352,10 +370,18 @@ export function buildPublicServicesCatalog(
 export async function getPublicBookingServicesCatalog(
   ctx: PublicBookingBranchContext,
 ): Promise<PublicBookingServicesCatalogResponse> {
-  const catalogVersion = await loadCatalogVersionStamp();
   const branchVersion = branchContextVersion(ctx);
-  const key = cacheKeyFor(ctx.branchCode, branchVersion, catalogVersion);
   const map = getCacheMap();
+  // Soft hit: any fresh catalog for this branch+branchVersion avoids a stamp round-trip.
+  const branchPrefix = `${ctx.branchCode.toUpperCase()}::${branchVersion}::`;
+  for (const [k, hit] of map) {
+    if (k.startsWith(branchPrefix) && hit.expiresAt > Date.now()) {
+      return hit.value;
+    }
+  }
+
+  const catalogVersion = await loadCatalogVersionStampCached();
+  const key = cacheKeyFor(ctx.branchCode, branchVersion, catalogVersion);
   const hit = map.get(key);
   if (hit && hit.expiresAt > Date.now()) {
     return hit.value;

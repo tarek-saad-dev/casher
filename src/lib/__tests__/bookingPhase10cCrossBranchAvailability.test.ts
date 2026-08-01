@@ -87,7 +87,7 @@ describe('bookingPhase10cCrossBranchAvailability', () => {
     expect(domain).toContain('a.date.localeCompare(b.date)');
     expect(domain).toContain('a.time.localeCompare(b.time)');
     expect(domain).toContain('a.branchCode.localeCompare(b.branchCode)');
-    expect(domain).toContain('CACHE_TTL_MS = 8_000');
+    expect(domain).toContain('CACHE_TTL_MS = 45_000');
     expect(domain).toContain('invalidatePublicBookingCrossBranchAvailabilityCache');
     expect(avail).toContain('invalidatePublicBookingCrossBranchAvailabilityCache');
   });

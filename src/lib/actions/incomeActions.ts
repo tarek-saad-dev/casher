@@ -8,6 +8,7 @@ import {
   type DeleteCashMoveWithLedgerResult,
 } from '@/lib/services/cashMoveHardDeleteService';
 import { syncEmployeeFundingFromCashMove } from '@/lib/services/employeeLedgerFundingSyncService';
+import type { EmployeeFundingSyncResult } from '@/lib/services/employeeLedgerFundingSyncService';
 
 export interface IncomeSnapshot {
   ID: number;
@@ -51,12 +52,17 @@ export async function getIncomeSnapshot(
   return result.recordset[0] || null;
 }
 
+export interface UpdateIncomeResult {
+  snapshot: IncomeSnapshot;
+  fundingSync: EmployeeFundingSyncResult;
+}
+
 export async function updateIncome(
   transaction: sql.Transaction,
   id: number,
   input: UpdateIncomeInput,
   activeBranchId?: number,
-): Promise<IncomeSnapshot> {
+): Promise<UpdateIncomeResult> {
   const exists = await getIncomeSnapshot(transaction, id);
   if (!exists) throw new Error('الإيراد غير موجود');
   if (
@@ -104,11 +110,12 @@ export async function updateIncome(
   const updated = await getIncomeSnapshot(transaction, id);
   if (!updated) throw new Error('فشل تحديث الإيراد');
 
-  await syncEmployeeFundingFromCashMove(transaction, id, {
+  // Same sync as create — upsert/delete employee_funding so ledger stays in sync on edit
+  const fundingSync = await syncEmployeeFundingFromCashMove(transaction, id, {
     createdByUserId: input.createdByUserId ?? null,
   });
 
-  return updated;
+  return { snapshot: updated, fundingSync };
 }
 
 export async function deleteIncome(

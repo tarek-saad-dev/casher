@@ -32,6 +32,12 @@ interface QuickExpenseModalProps {
   open: boolean;
   onClose: () => void;
   onExpenseComplete?: (info?: QuickExpenseCompleteInfo) => void;
+  /** When set, prefill this date (YYYY-MM-DD). */
+  defaultDate?: string;
+  /** Lock the date field (no today/yesterday toggle). */
+  entryDateReadOnly?: boolean;
+  title?: string;
+  subtitle?: string;
 }
 
 /** Yesterday relative to a YYYY-MM-DD calendar day (Cairo date string). */
@@ -161,6 +167,10 @@ export default function QuickExpenseModal({
   open,
   onClose,
   onExpenseComplete,
+  defaultDate,
+  entryDateReadOnly = false,
+  title = 'إضافة مصروف فوري',
+  subtitle,
 }: QuickExpenseModalProps) {
   const amountInputRef = useRef<HTMLInputElement>(null);
   const submittingRef = useRef(false);
@@ -182,6 +192,13 @@ export default function QuickExpenseModal({
   });
   const [allowedDateMin, setAllowedDateMin] = useState('');
   const [allowedDateMax, setAllowedDateMax] = useState('');
+  const [businessToday, setBusinessToday] = useState('');
+
+  const resolvedSubtitle =
+    subtitle ??
+    (entryDateReadOnly
+      ? 'إضافة مصروف لتاريخ محدد'
+      : 'تسجيل مصروف لليوم أو يوم أمس');
 
   const resetForm = useCallback(() => {
     setForm(INITIAL_FORM_STATE);
@@ -248,18 +265,33 @@ export default function QuickExpenseModal({
     // Before 04:00 Cairo, business "today" is still yesterday.
     const today = getCairoBusinessDate(now);
     const yesterday = getPreviousDateString(today);
-    setAllowedDateMin(yesterday);
-    setAllowedDateMax(today);
-    setForm({
-      ...INITIAL_FORM_STATE,
-      expenseDate: today,
-      expenseTime: getCurrentTimeValue(now),
-    });
+    setBusinessToday(today);
+
+    const lockedDate = defaultDate?.trim() || '';
+    if (entryDateReadOnly && lockedDate) {
+      setAllowedDateMin(lockedDate);
+      setAllowedDateMax(lockedDate);
+      setForm({
+        ...INITIAL_FORM_STATE,
+        expenseDate: lockedDate,
+        expenseTime: getCurrentTimeValue(now),
+      });
+    } else {
+      setAllowedDateMin(yesterday);
+      setAllowedDateMax(today);
+      setForm({
+        ...INITIAL_FORM_STATE,
+        expenseDate: lockedDate && lockedDate >= yesterday && lockedDate <= today
+          ? lockedDate
+          : today,
+        expenseTime: getCurrentTimeValue(now),
+      });
+    }
     setSubmitError(null);
     setTouched({ amount: false, category: false, payment: false });
     void loadCategories();
     void loadPaymentMethods();
-  }, [open, loadCategories, loadPaymentMethods]);
+  }, [open, defaultDate, entryDateReadOnly, loadCategories, loadPaymentMethods]);
 
   useEffect(() => {
     if (!open) return;
@@ -309,12 +341,13 @@ export default function QuickExpenseModal({
     (method) => method.ID === form.paymentMethodId,
   );
 
-  const dateAllowed =
-    !!form.expenseDate &&
-    !!allowedDateMin &&
-    !!allowedDateMax &&
-    form.expenseDate >= allowedDateMin &&
-    form.expenseDate <= allowedDateMax;
+  const dateAllowed = entryDateReadOnly
+    ? !!form.expenseDate && (!businessToday || form.expenseDate <= businessToday)
+    : !!form.expenseDate &&
+      !!allowedDateMin &&
+      !!allowedDateMax &&
+      form.expenseDate >= allowedDateMin &&
+      form.expenseDate <= allowedDateMax;
 
   const canSubmit =
     !amountError &&
@@ -343,12 +376,13 @@ export default function QuickExpenseModal({
 
     const currentAmount = parseAmount(form.amount);
     const amountValidation = getAmountValidationError(form.amount);
-    const dateAllowed =
-      !!form.expenseDate &&
-      !!allowedDateMin &&
-      !!allowedDateMax &&
-      form.expenseDate >= allowedDateMin &&
-      form.expenseDate <= allowedDateMax;
+    const dateOk = entryDateReadOnly
+      ? !!form.expenseDate && (!businessToday || form.expenseDate <= businessToday)
+      : !!form.expenseDate &&
+        !!allowedDateMin &&
+        !!allowedDateMax &&
+        form.expenseDate >= allowedDateMin &&
+        form.expenseDate <= allowedDateMax;
 
     const readyToSubmit =
       !amountValidation &&
@@ -356,7 +390,7 @@ export default function QuickExpenseModal({
       currentAmount > 0 &&
       form.categoryId !== null &&
       form.paymentMethodId !== null &&
-      dateAllowed;
+      dateOk;
 
     if (!readyToSubmit || submittingRef.current) return;
 
@@ -365,11 +399,12 @@ export default function QuickExpenseModal({
     setSubmitError(null);
 
     try {
-      const isToday = form.expenseDate === allowedDateMax;
+      const todayForApi = businessToday || getCairoBusinessDate();
+      const isToday = form.expenseDate === todayForApi;
       const notes = form.notes.trim() || undefined;
 
       // Today → same /api/expenses path as /expenses (shift + advance WhatsApp)
-      // Yesterday → past-date API (also sends advance WhatsApp)
+      // Other dates → past-date API (also sends advance WhatsApp)
       const response = await fetch(isToday ? '/api/expenses' : '/api/expenses/past-date', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -441,7 +476,7 @@ export default function QuickExpenseModal({
       submittingRef.current = false;
       setSubmitting(false);
     }
-  }, [form, allowedDateMin, allowedDateMax, categories, paymentMethods, onClose, onExpenseComplete, resetForm]);
+  }, [form, allowedDateMin, allowedDateMax, businessToday, entryDateReadOnly, categories, paymentMethods, onClose, onExpenseComplete, resetForm]);
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -517,10 +552,10 @@ export default function QuickExpenseModal({
               </div>
               <div className="min-w-0">
                 <h2 id="quick-expense-title" className="text-lg font-semibold text-foreground">
-                  إضافة مصروف فوري
+                  {title}
                 </h2>
                 <p className="mt-0.5 text-sm text-muted-foreground">
-                  تسجيل مصروف لليوم أو يوم أمس
+                  {resolvedSubtitle}
                 </p>
               </div>
             </div>
@@ -548,41 +583,49 @@ export default function QuickExpenseModal({
                   <CalendarDays className="h-3.5 w-3.5" />
                   <span>التاريخ</span>
                 </div>
-                <div className="mt-2 flex gap-2">
-                  <button
-                    type="button"
-                    disabled={submitting || !allowedDateMax}
-                    onClick={() =>
-                      setForm((current) => ({ ...current, expenseDate: allowedDateMax }))
-                    }
-                    className={cn(
-                      'flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors',
-                      form.expenseDate === allowedDateMax
-                        ? 'border-primary/40 bg-primary/10 text-primary'
-                        : 'border-border bg-surface text-muted-foreground hover:bg-surface-muted hover:text-foreground',
-                    )}
-                  >
-                    اليوم
-                  </button>
-                  <button
-                    type="button"
-                    disabled={submitting || !allowedDateMin}
-                    onClick={() =>
-                      setForm((current) => ({ ...current, expenseDate: allowedDateMin }))
-                    }
-                    className={cn(
-                      'flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors',
-                      form.expenseDate === allowedDateMin
-                        ? 'border-primary/40 bg-primary/10 text-primary'
-                        : 'border-border bg-surface text-muted-foreground hover:bg-surface-muted hover:text-foreground',
-                    )}
-                  >
-                    أمس
-                  </button>
-                </div>
-                <p className="mt-1.5 text-sm font-medium text-foreground">
-                  {formatDisplayDate(form.expenseDate)}
-                </p>
+                {entryDateReadOnly ? (
+                  <p className="mt-2 text-sm font-medium text-foreground">
+                    {formatDisplayDate(form.expenseDate)}
+                  </p>
+                ) : (
+                  <>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        disabled={submitting || !allowedDateMax}
+                        onClick={() =>
+                          setForm((current) => ({ ...current, expenseDate: allowedDateMax }))
+                        }
+                        className={cn(
+                          'flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors',
+                          form.expenseDate === allowedDateMax
+                            ? 'border-primary/40 bg-primary/10 text-primary'
+                            : 'border-border bg-surface text-muted-foreground hover:bg-surface-muted hover:text-foreground',
+                        )}
+                      >
+                        اليوم
+                      </button>
+                      <button
+                        type="button"
+                        disabled={submitting || !allowedDateMin}
+                        onClick={() =>
+                          setForm((current) => ({ ...current, expenseDate: allowedDateMin }))
+                        }
+                        className={cn(
+                          'flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors',
+                          form.expenseDate === allowedDateMin
+                            ? 'border-primary/40 bg-primary/10 text-primary'
+                            : 'border-border bg-surface text-muted-foreground hover:bg-surface-muted hover:text-foreground',
+                        )}
+                      >
+                        أمس
+                      </button>
+                    </div>
+                    <p className="mt-1.5 text-sm font-medium text-foreground">
+                      {formatDisplayDate(form.expenseDate)}
+                    </p>
+                  </>
+                )}
               </div>
               <div className="rounded-xl border border-border bg-surface-muted/30 px-3 py-2.5">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -594,7 +637,9 @@ export default function QuickExpenseModal({
                 </p>
               </div>
               <p className="sm:col-span-2 text-xs text-muted-foreground">
-                متاح لليوم الحالي أو يوم أمس فقط
+                {entryDateReadOnly
+                  ? 'التاريخ مربوط بيوم الصف — غير قابل للتعديل'
+                  : 'متاح لليوم الحالي أو يوم أمس فقط'}
               </p>
             </section>
 

@@ -1,7 +1,7 @@
 /**
  * Canonical booking availability — shared by public booking, operations drawer,
- * check-slot, and create guard. Uses buildQueueIntervals + buildBookingIntervals
- * from queueEstimateEngine (same source as operations timeline).
+ * check-slot, and create guard. Uses batched buildQueueIntervalsForEmps +
+ * buildBookingIntervalsForEmps from queueEstimateEngine (same source as operations timeline).
  */
 
 import { getPool, sql } from '@/lib/db';
@@ -13,7 +13,8 @@ import {
 import { listBookableEmployeeIdsForBranch } from '@/lib/branch/bookingQueueOwnership';
 import {
   buildQueueIntervals,
-  buildBookingIntervals,
+  buildQueueIntervalsForEmps,
+  buildBookingIntervalsForEmps,
   getDefaultDuration,
   type Interval,
 } from '@/lib/queueEstimateEngine';
@@ -145,32 +146,6 @@ async function loadWorkingWindowsBatch(
   return map;
 }
 
-/** Attendance absences for a date (one query). */
-async function loadAbsentEmpIds(
-  db: Awaited<ReturnType<typeof getPool>>,
-  empIds: number[],
-  dateStr: string,
-): Promise<Set<number>> {
-  const absent = new Set<number>();
-  if (!empIds.length) return absent;
-  try {
-    const res = await db
-      .request()
-      .input('workDate', sql.Date, dateStr)
-      .query(`
-        SELECT EmpID
-        FROM dbo.TblEmpAttendance
-        WHERE WorkDate = @workDate
-          AND EmpID IN (${empIds.join(',')})
-          AND Status = N'Absent'
-      `);
-    for (const row of res.recordset) absent.add(row.EmpID as number);
-  } catch {
-    /* empty */
-  }
-  return absent;
-}
-
 export type BookingSlotReasonCode =
   | 'insufficient_continuous_time'
   | 'booking_conflict'
@@ -239,6 +214,41 @@ export interface BookingSlotValidation {
 
 /** Public booking UI cap — operations/admin receive the full set. */
 export const PUBLIC_AVAILABLE_SLOTS_LIMIT = 36;
+
+/**
+ * Cap public slot lists without dropping evening/base-shift times when
+ * attendance early-expand opens many morning slots (those would otherwise
+ * consume the entire limit via a naive slice(0, limit)).
+ *
+ * Prefer slots at/after the weekly base start (and overnight dayOffset=1),
+ * then fill remaining quota with the latest early-expand slots.
+ */
+export function applyPublicAvailableSlotsLimit<
+  T extends { time: string; dayOffset?: 0 | 1 },
+>(slots: T[], limit: number, baseStartHhmm?: string | null): T[] {
+  if (slots.length <= limit) return slots;
+  if (!baseStartHhmm) return slots.slice(0, limit);
+
+  const baseMin = hhmmToMinutes(baseStartHhmm);
+  const inBaseWindow = (s: T) =>
+    (s.dayOffset ?? 0) === 1 || hhmmToMinutes(s.time) >= baseMin;
+  const core = slots.filter(inBaseWindow);
+  const early = slots.filter((s) => !inBaseWindow(s));
+
+  if (core.length >= limit) {
+    // Prefer keeping post-midnight slots when the base window itself exceeds the cap.
+    const overnight = core.filter((s) => (s.dayOffset ?? 0) === 1);
+    const sameDay = core.filter((s) => (s.dayOffset ?? 0) === 0);
+    if (overnight.length > 0 && overnight.length < limit) {
+      return [...sameDay.slice(0, limit - overnight.length), ...overnight];
+    }
+    return core.slice(0, limit);
+  }
+
+  const remaining = limit - core.length;
+  const earlyKeep = early.slice(Math.max(0, early.length - remaining));
+  return [...earlyKeep, ...core];
+}
 /** Overnight shifts need more slots so early-expand doesn't hide evening/night. */
 export const PUBLIC_OVERNIGHT_SLOTS_LIMIT = 56;
 
@@ -294,6 +304,8 @@ type BarberCtx = {
   durationMinutes: number;
   busy: Interval[];
   effSched: EffectiveSchedule | null;
+  /** Weekly/base start before attendance early-expand (for public slot capping). */
+  baseStart: string | null;
   shiftStartMs: number;
   shiftEndMs: number;
   dayOff: boolean;
@@ -362,15 +374,24 @@ async function buildBarberContexts(args: {
   }
   timer.mark('servicesMs');
 
-  let barberIds: number[] =
-    mode === 'specific' && empId ? [empId] : await getAllBarberIds(db);
-  if (branchId != null) {
-    const eligibleIds = new Set(
-      await listBookableEmployeeIdsForBranch(branchId, date, {
-        publicOnly: source === 'public',
-      }),
-    );
-    barberIds = barberIds.filter((id) => eligibleIds.has(id));
+  // Branch-first roster avoids loading every barber then filtering.
+  let barberIds: number[];
+  if (mode === 'specific' && empId) {
+    barberIds = [empId];
+    if (branchId != null) {
+      const eligibleIds = new Set(
+        await listBookableEmployeeIdsForBranch(branchId, date, {
+          publicOnly: source === 'public',
+        }),
+      );
+      barberIds = barberIds.filter((id) => eligibleIds.has(id));
+    }
+  } else if (branchId != null) {
+    barberIds = await listBookableEmployeeIdsForBranch(branchId, date, {
+      publicOnly: source === 'public',
+    });
+  } else {
+    barberIds = await getAllBarberIds(db);
   }
   timer.mark('barbersMs');
 
@@ -433,22 +454,22 @@ async function buildBarberContexts(args: {
   const contexts: BarberCtx[] = [];
   if (barberIds.length) {
     const dayOfWeek = new Date(`${date}T12:00:00Z`).getDay();
-    const [nameMap, dayOffSet, overridesMap, windowsMap, absentSet, freelanceUnlocks] = await Promise.all([
+    // loadDayOffSet already includes Absent for the requested work date (any day).
+    const [nameMap, dayOffSet, overridesMap, windowsMap, freelanceUnlocks] = await Promise.all([
       getBarberNames(db, barberIds),
-      loadDayOffSet(db, barberIds, date, isToday),
+      loadDayOffSet(db, barberIds, date),
       loadBookingOverridesForDate(db, barberIds, date),
       loadWorkingWindowsBatch(db, barberIds, dayOfWeek, {
         branchId: branchId ?? undefined,
         workDate: date,
       }),
-      isToday ? loadAbsentEmpIds(db, barberIds, date) : Promise.resolve(new Set<number>()),
       loadFreelanceBookingUnlocks(barberIds, date),
     ]);
     timer.mark('staticBatchMs');
 
     // Merge freelance attendance unlock into weekly windows (day-off / absent still exclude)
     for (const [id, unlock] of freelanceUnlocks) {
-      if (dayOffSet.has(id) || absentSet.has(id)) continue;
+      if (dayOffSet.has(id)) continue;
       const existing = windowsMap.get(id);
       if (!existing?.isWorkingDay) {
         windowsMap.set(id, {
@@ -459,79 +480,102 @@ async function buildBarberContexts(args: {
       }
     }
 
-    const eligible = barberIds.filter((id) => !dayOffSet.has(id) && !absentSet.has(id));
+    const eligible = barberIds.filter((id) => !dayOffSet.has(id));
 
-    const built = await Promise.all(
-      eligible.map(async (id): Promise<BarberCtx | null> => {
-        const baseWindow = windowsMap.get(id) ?? {
-          isWorkingDay: false,
-          startTime: null,
-          endTime: null,
-        };
-        const base =
-          baseWindow.isWorkingDay && baseWindow.startTime && baseWindow.endTime
-            ? { isWorking: true, start: baseWindow.startTime, end: baseWindow.endTime }
-            : { isWorking: false, start: '00:00', end: '00:00' };
+    type PendingBarber = {
+      empId: number;
+      empName: string;
+      durationMinutes: number;
+      effSched: EffectiveSchedule;
+      baseStart: string | null;
+      shiftStartMs: number;
+      shiftEndMs: number;
+      isOvernight: boolean;
+    };
+    const pending: PendingBarber[] = [];
 
-        const effSched = applyOverrides(id, date, base, overridesMap.get(id) ?? []);
-        if (!effSched.isWorking) return null;
+    for (const id of eligible) {
+      const baseWindow = windowsMap.get(id) ?? {
+        isWorkingDay: false,
+        startTime: null,
+        endTime: null,
+      };
+      const base =
+        baseWindow.isWorkingDay && baseWindow.startTime && baseWindow.endTime
+          ? { isWorking: true, start: baseWindow.startTime, end: baseWindow.endTime }
+          : { isWorking: false, start: '00:00', end: '00:00' };
 
-        // Preserve overnight from the BASE schedule. Early attendance expand can move
-        // start earlier (e.g. 11:30) while end stays 01:00 — still overnight.
-        // Never let a collapsed same-day read drop the post-midnight shift end.
-        const baseOvernight =
-          base.isWorking && hhmmToMinutes(base.end) <= hhmmToMinutes(base.start);
-        const effOvernight =
-          hhmmToMinutes(effSched.end) <= hhmmToMinutes(effSched.start);
-        const isOvernight = baseOvernight || effOvernight;
+      const effSched = applyOverrides(id, date, base, overridesMap.get(id) ?? []);
+      if (!effSched.isWorking) continue;
 
-        const shiftStartMs = salonDateTimeToMs(date, effSched.start, timezone);
-        const shiftEndMs = isOvernight
-          ? salonDateTimeToMs(nextDate(date), effSched.end, timezone)
-          : salonDateTimeToMs(date, effSched.end, timezone);
+      // Preserve overnight from the BASE schedule. Early attendance expand can move
+      // start earlier (e.g. 11:30) while end stays 01:00 — still overnight.
+      // Never let a collapsed same-day read drop the post-midnight shift end.
+      const baseOvernight =
+        base.isWorking && hhmmToMinutes(base.end) <= hhmmToMinutes(base.start);
+      const effOvernight =
+        hhmmToMinutes(effSched.end) <= hhmmToMinutes(effSched.start);
+      const isOvernight = baseOvernight || effOvernight;
 
-        const nextDayStr = isOvernight ? nextDate(date) : null;
-        const [qIntervals, bIntervals, qIntervalsNext, bIntervalsNext] = await Promise.all([
-          buildQueueIntervals(db, id, date, now, defaultDur, undefined, {
+      const shiftStartMs = salonDateTimeToMs(date, effSched.start, timezone);
+      const shiftEndMs = isOvernight
+        ? salonDateTimeToMs(nextDate(date), effSched.end, timezone)
+        : salonDateTimeToMs(date, effSched.end, timezone);
+
+      pending.push({
+        empId: id,
+        empName: nameMap[id] ?? '',
+        durationMinutes: durationByEmp.get(id) ?? totalDuration,
+        effSched,
+        baseStart: base.isWorking ? base.start : null,
+        shiftStartMs,
+        shiftEndMs,
+        isOvernight,
+      });
+    }
+
+    const pendingIds = pending.map((p) => p.empId);
+    const overnightIds = pending.filter((p) => p.isOvernight).map((p) => p.empId);
+    const nextDayStr = overnightIds.length ? nextDate(date) : null;
+    const emptyBusy = new Map<number, Interval[]>();
+
+    const [qToday, bToday, qNext, bNext] = await Promise.all([
+      buildQueueIntervalsForEmps(db, pendingIds, date, now, defaultDur, {
+        filterStale: true,
+        graceMinutes: 30,
+        debugContext: 'booking-availability',
+      }),
+      buildBookingIntervalsForEmps(db, pendingIds, date, defaultDur),
+      nextDayStr
+        ? buildQueueIntervalsForEmps(db, overnightIds, nextDayStr, now, defaultDur, {
             filterStale: true,
             graceMinutes: 30,
-            debugContext: 'booking-availability',
-          }),
-          buildBookingIntervals(db, id, date, defaultDur),
-          nextDayStr
-            ? buildQueueIntervals(db, id, nextDayStr, now, defaultDur, undefined, {
-                filterStale: true,
-                graceMinutes: 30,
-                debugContext: 'booking-availability-next-day',
-              })
-            : Promise.resolve<Interval[]>([]),
-          nextDayStr ? buildBookingIntervals(db, id, nextDayStr, defaultDur) : Promise.resolve<Interval[]>([]),
-        ]);
+            debugContext: 'booking-availability-next-day',
+          })
+        : Promise.resolve(emptyBusy),
+      nextDayStr
+        ? buildBookingIntervalsForEmps(db, overnightIds, nextDayStr, defaultDur)
+        : Promise.resolve(emptyBusy),
+    ]);
 
-        const inShiftWindow = (iv: Interval) =>
-          iv.start.getTime() < shiftEndMs && iv.end.getTime() > shiftStartMs;
-        const nextDayBusy = nextDayStr
-          ? [...qIntervalsNext, ...bIntervalsNext].filter(inShiftWindow)
-          : [];
-
-        const empDuration = durationByEmp.get(id) ?? totalDuration;
-
-        return {
-          empId: id,
-          empName: nameMap[id] ?? '',
-          durationMinutes: empDuration,
-          busy: [...qIntervals, ...bIntervals, ...nextDayBusy],
-          effSched,
-          shiftStartMs,
-          shiftEndMs,
-          dayOff: false,
-          isOvernight,
-        };
-      }),
-    );
-
-    for (const ctx of built) {
-      if (ctx) contexts.push(ctx);
+    for (const p of pending) {
+      const inShiftWindow = (iv: Interval) =>
+        iv.start.getTime() < p.shiftEndMs && iv.end.getTime() > p.shiftStartMs;
+      const nextDayBusy = p.isOvernight
+        ? [...(qNext.get(p.empId) ?? []), ...(bNext.get(p.empId) ?? [])].filter(inShiftWindow)
+        : [];
+      contexts.push({
+        empId: p.empId,
+        empName: p.empName,
+        durationMinutes: p.durationMinutes,
+        busy: [...(qToday.get(p.empId) ?? []), ...(bToday.get(p.empId) ?? []), ...nextDayBusy],
+        effSched: p.effSched,
+        baseStart: p.baseStart,
+        shiftStartMs: p.shiftStartMs,
+        shiftEndMs: p.shiftEndMs,
+        dayOff: false,
+        isOvernight: p.isOvernight,
+      });
     }
     timer.mark('busyParallelMs');
   }
@@ -780,20 +824,24 @@ export async function listAvailableBookingSlots(args: {
   const publicLimit = hasOvernight
     ? PUBLIC_OVERNIGHT_SLOTS_LIMIT
     : PUBLIC_AVAILABLE_SLOTS_LIMIT;
+  const primaryCtx =
+    (mode === 'specific' && empId ? contexts.find((c) => c.empId === empId) : null)
+    ?? contexts[0]
+    ?? null;
   const limitApplied =
     !isInternalSource && !collectAllCandidates && validSlotCountBeforeLimit > publicLimit;
   const availableSlots = limitApplied
-    ? availableSlotsUnlimited.slice(0, publicLimit)
+    ? applyPublicAvailableSlotsLimit(
+        availableSlotsUnlimited,
+        publicLimit,
+        primaryCtx?.baseStart ?? primaryCtx?.effSched?.start ?? null,
+      )
     : availableSlotsUnlimited;
   const returnedSlotCount = collectAllCandidates
     ? new Set(availableSlots.map((s) => `${s.dayOffset}|${s.time}`)).size
     : availableSlots.length;
   const nextAvailable = availableSlots[0] ?? null;
 
-  const primaryCtx =
-    (mode === 'specific' && empId ? contexts.find((c) => c.empId === empId) : null)
-    ?? contexts[0]
-    ?? null;
   const scheduleStartAt = primaryCtx?.effSched?.start ?? null;
   const scheduleEndAt = primaryCtx?.effSched?.end ?? null;
   const isOvernight = scheduleStartAt && scheduleEndAt
@@ -1366,7 +1414,6 @@ async function loadDayOffSet(
   db: Awaited<ReturnType<typeof getPool>>,
   barberIds: number[],
   date: string,
-  isToday: boolean,
 ): Promise<Set<number>> {
   const set = new Set<number>();
   const list = barberIds.join(',');
@@ -1378,15 +1425,13 @@ async function loadDayOffSet(
     for (const r of doRes.recordset) set.add(r.EmpID);
   } catch { /* optional table */ }
 
-  if (isToday) {
-    try {
-      const attRes = await db.request().input('workDate', sql.Date, date).query(`
-        SELECT EmpID FROM dbo.TblEmpAttendance
-        WHERE EmpID IN (${list}) AND WorkDate = @workDate AND Status = 'Absent'
-      `);
-      for (const r of attRes.recordset) set.add(r.EmpID);
-    } catch { /* optional table */ }
-  }
+  try {
+    const attRes = await db.request().input('workDate', sql.Date, date).query(`
+      SELECT EmpID FROM dbo.TblEmpAttendance
+      WHERE EmpID IN (${list}) AND WorkDate = @workDate AND Status = N'Absent'
+    `);
+    for (const r of attRes.recordset) set.add(r.EmpID);
+  } catch { /* optional table */ }
   return set;
 }
 
@@ -1577,20 +1622,23 @@ export async function listSpecificEmpPublicSlotsMultiDate(args: {
       } catch {
         /* optional */
       }
-      if (workDates.includes(todayBusinessDate)) {
-        try {
-          const a = await db
-            .request()
-            .input('empId', sql.Int, args.empId)
-            .input('workDate', sql.Date, todayBusinessDate)
-            .query(`
-              SELECT EmpID FROM dbo.TblEmpAttendance
-              WHERE EmpID = @empId AND WorkDate = @workDate AND Status = 'Absent'
-            `);
-          if (a.recordset.length) set.add(todayBusinessDate);
-        } catch {
-          /* optional */
-        }
+      // Absent on any date in the horizon blocks that date (not only business-today).
+      try {
+        const a = await db
+          .request()
+          .input('empId', sql.Int, args.empId)
+          .input('from', sql.Date, dateFrom)
+          .input('to', sql.Date, dateTo)
+          .query(`
+            SELECT CONVERT(VARCHAR(10), WorkDate, 120) AS WorkDate
+            FROM dbo.TblEmpAttendance
+            WHERE EmpID = @empId
+              AND WorkDate >= @from AND WorkDate <= @to
+              AND Status = N'Absent'
+          `);
+        for (const row of a.recordset) set.add(String(row.WorkDate).slice(0, 10));
+      } catch {
+        /* optional */
       }
       return set;
     })(),
@@ -1888,7 +1936,14 @@ export async function listSpecificEmpPublicSlotsMultiDate(args: {
 
     const available = allPlans.filter((s) => s.available);
     const limit = isOvernight ? PUBLIC_OVERNIGHT_SLOTS_LIMIT : PUBLIC_AVAILABLE_SLOTS_LIMIT;
-    out.set(date, available.slice(0, limit));
+    out.set(
+      date,
+      applyPublicAvailableSlotsLimit(
+        available,
+        limit,
+        base.isWorking ? base.start : effSched.start,
+      ),
+    );
   }
 
   return out;

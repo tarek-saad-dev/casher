@@ -160,17 +160,16 @@ export async function assertEmployeeEligibleForBranchAttendance(
 
   const global = await resolveEmployeeGlobalSchedule({ empId, workDate, publicOnly: false });
   if (global.isGloballyWorking && global.branches[0]?.branchId !== branchId) {
+    const other = global.branches[0];
     throw new AttendanceDomainError(
       'EMPLOYEE_NOT_SCHEDULED_IN_THIS_BRANCH',
-      `الموظف مجدول في فرع آخر في هذا اليوم (${global.branches[0]?.branchCode ?? ''})`,
+      `الموظف مجدول في فرع آخر في هذا اليوم (${other?.branchCode ?? ''}). سجّل الحضور من ذلك الفرع أو استخدم «نقل موظف اليوم».`,
       403,
     );
   }
-  throw new AttendanceDomainError(
-    'EMPLOYEE_NOT_SCHEDULED_IN_THIS_BRANCH',
-    'الموظف غير مجدول للعمل في هذا الفرع في تاريخ العمل',
-    403,
-  );
+
+  // Assigned here and not working at another branch → OK.
+  // Weekly day-off / came to work on leave is normal shop practice.
 }
 
 export async function resolveAttendanceWorkDate(

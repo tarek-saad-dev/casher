@@ -371,8 +371,7 @@ export async function getBarberDayStatus(
 
   // 1. Load all data in parallel
   // Attendance is always loaded for the date so freelance Present unlocks booking
-  // even when the board date is not "today" in edge cases; Absent still only
-  // blocks bookability for today below.
+  // and Absent / day_off always block bookability for that work date.
   const [baseSchedule, dayOffEntry, overrides, attendance, freelanceUnlocks] =
     await Promise.all([
       getDefaultSchedule(empId, dateStr),
@@ -414,7 +413,6 @@ export async function getBarberDayStatus(
     (!schedule.isWorkingDay && !(isCustomHours && effectiveSchedule.isWorking));
 
   const isAbsent =
-    isToday &&
     attendance !== null &&
     attendance.status === "Absent";
 
@@ -691,7 +689,7 @@ export async function getBarbersDayStatus(
       !!dayOffEntry ||
       isDayOffOverride ||
       (!schedule.isWorkingDay && !(isCustomHours && effectiveSchedule.isWorking));
-    const isAbsent  = isToday && attendance !== null && attendance.status === "Absent";
+    const isAbsent  = attendance !== null && attendance.status === "Absent";
     const isWorkingDay = !isDayOff && effectiveSchedule.isWorking;
 
     const effectiveStart = isWorkingDay ? (effectiveSchedule.start || schedule.start) : null;
@@ -776,9 +774,7 @@ export async function getBarbersDayStatus(
 /**
  * Check if a barber is available to accept a booking/queue slot.
  *
- * For today: also checks attendance (Absent = unavailable).
- * For future dates: skips attendance check.
- *
+ * For any work date: also checks attendance (Absent = unavailable).
  * Returns { available, reason } where reason is an Arabic string.
  */
 export async function checkBarberAvailableAt(
