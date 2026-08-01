@@ -7,7 +7,7 @@ import {
   isReportBranchScope,
   parseReportScopeQuery,
   reportScopeMetadata,
-  resolveReportBranchScope,
+  resolvePartnersReportBranchScope,
   type ReportBranchRef,
 } from '@/lib/branch';
 import type { PartnersMonthlyReportResponse } from '@/lib/types/partners-report';
@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
     }
 
     const { requestedBranchId, requestedAllBranches } = parseReportScopeQuery(url.searchParams);
-    const scope = await resolveReportBranchScope({
+    const scope = await resolvePartnersReportBranchScope(auth.roles, {
       requestedBranchId,
       requestedAllBranches,
       allowAllBranchesIfPermitted: true,

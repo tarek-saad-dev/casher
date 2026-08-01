@@ -35,6 +35,7 @@ const PAGES = [
   { key: 'reports.monthly',        name: 'التقرير الشهري',         path: '/reports/monthly',                 section: 'تقارير مدير',      access: 'roles', sort: 28 },
   { key: 'reports.partners',       name: 'تقرير الشركاء',          path: '/admin/reports/partners',          section: 'تقارير شريك',      access: 'roles', sort: 29 },
   { key: 'reports.partners_overrides', name: 'حسابات الشركاء الخاصة', path: '/admin/reports/partners-overrides', section: 'تقارير شريك', access: 'roles', sort: 30 },
+  { key: 'admin.partners',         name: 'إدارة الشركاء',           path: '/admin/partners',                  section: 'تقارير شريك',      access: 'roles', sort: 31 },
   // Expenses
   { key: 'expenses.new',           name: 'تسجيل مصروف',           path: '/expenses',                        section: 'المصروفات',          access: 'roles', sort: 30 },
   { key: 'reports.expenses',       name: 'تقرير المصروفات',        path: '/reports/expenses/monthly',        section: 'مراجعة المصروفات',  access: 'roles', sort: 40 },
@@ -101,7 +102,7 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
     pages: [
       'income.pos','income.new',
       'sales.today','income_review.all_sales','income_review.today_rev','income_review.all_rev',
-      'income_review.payments','reports.emp_services','reports.emp_monthly_work_revenue','reports.monthly','reports.partners',
+      'income_review.payments','reports.emp_services','reports.emp_monthly_work_revenue','reports.monthly','reports.partners','reports.partners_overrides','admin.partners',
       'expenses.new','reports.expenses',
       'treasury.daily','treasury.period_summary','treasury.movement','treasury.summary',
       'treasury.shift_close','treasury.monthly_close',
@@ -109,7 +110,7 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
       'queue.live','queue.new',
       'bookings.list','bookings.new','bookings.calendar',
       'hr.employees','hr.attendance','hr.payroll','hr.advances','hr.salaries',
-      'admin.operations','admin.booking_operations','admin.users','admin.services','admin.packages','admin.payment_methods',
+      'admin.operations','admin.booking_operations','admin.branches','admin.users','admin.services','admin.packages','admin.payment_methods',
       'admin.categories','admin.loyalty','admin.shift','admin.settings','admin.queue_settings',
       'operations.main','cut_club.main',
       'audit.payment_methods',

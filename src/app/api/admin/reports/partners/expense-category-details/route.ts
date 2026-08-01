@@ -7,7 +7,7 @@ import {
   isReportBranchScope,
   parseReportScopeQuery,
   reportScopeMetadata,
-  resolveReportBranchScope,
+  resolvePartnersReportBranchScope,
 } from '@/lib/branch';
 
 const PARTNERS_REPORT_PATH = '/admin/reports/partners';
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
     const categoryId = parseCategoryId(url.searchParams.get('categoryId'));
 
     const { requestedBranchId, requestedAllBranches } = parseReportScopeQuery(url.searchParams);
-    const scope = await resolveReportBranchScope({
+    const scope = await resolvePartnersReportBranchScope(auth.roles, {
       requestedBranchId,
       requestedAllBranches,
       allowAllBranchesIfPermitted: true,

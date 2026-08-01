@@ -38,7 +38,7 @@ vi.mock('@/lib/branch', async () => {
   const actual = await vi.importActual<typeof import('@/lib/branch')>('@/lib/branch');
   return {
     ...actual,
-    resolveReportBranchScope: (...args: unknown[]) => mockResolveScope(...args),
+    resolvePartnersReportBranchScope: (...args: unknown[]) => mockResolveScope(...args),
   };
 });
 
@@ -180,6 +180,29 @@ describe('GET /api/admin/reports/partners', () => {
     const body = await res.json();
     expect(body.error).toContain('يونيو 2026');
     expect(mockBuildReport).not.toHaveBeenCalled();
+  });
+
+  it('returns single-branch report for partner-only users on their active branch', async () => {
+    mockRequirePageAccess.mockResolvedValue({
+      ...AUTHORIZED_AUTH_RESULT,
+      userId: 17,
+      userName: 'mr.ziad',
+      roles: ['partner'],
+      isSuperAdmin: false,
+      activeBranchId: 2,
+      activeBranchCode: 'CC',
+    });
+    mockResolveScope.mockResolvedValue({
+      mode: 'single' as const,
+      branchId: 2,
+      branchCode: 'CC',
+      branchName: 'Camp Caesar',
+      shortName: 'CC',
+    });
+
+    const res = await GET(makeRequest('2026', '7'));
+    expect(res.status).toBe(200);
+    expect(mockBuildReport).toHaveBeenCalledWith(2026, 7, 2);
   });
 
   it('returns 403 when branch scope resolution denies access', async () => {

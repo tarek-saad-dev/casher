@@ -16,6 +16,7 @@ const ROLE_COLORS: Record<string, string> = {
   cashier:     'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
   accountant:  'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
   receptionist:'bg-pink-500/20 text-pink-300 border-pink-500/30',
+  partner:     'bg-amber-500/20 text-amber-300 border-amber-500/30',
   viewer:      'bg-zinc-500/20 text-zinc-300 border-zinc-500/30',
 };
 
@@ -103,7 +104,10 @@ export default function UsersPermissionsPage() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-white">صلاحيات المستخدمين</h1>
-              <p className="text-xs text-zinc-500">إدارة الأدوار لكل مستخدم</p>
+              <p className="text-xs text-zinc-500">
+                إدارة الأدوار لكل مستخدم — لربط الشريك بفرع استخدم{' '}
+                <a href="/admin/partners" className="text-amber-400 hover:underline">إدارة الشركاء</a>
+              </p>
             </div>
           </div>
           <button onClick={load} className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors">

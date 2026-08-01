@@ -58,6 +58,21 @@ export async function updateUserRoles(
       `);
   }
 
+  // Partner accounts exist to view the partners report — enable CanViewReports
+  // on every active branch link when the partner role is assigned.
+  if (roleKeys.includes('partner')) {
+    await new sql.Request(transaction)
+      .input('uid', sql.Int, userId)
+      .query(`
+        UPDATE dbo.TblUserBranchAccess
+        SET CanViewReports = 1,
+            UpdatedAt = SYSUTCDATETIME()
+        WHERE UserID = @uid
+          AND IsActive = 1
+          AND CanViewReports = 0
+      `);
+  }
+
   const newRoles = await getUserRolesSnapshot(transaction, userId);
 
   return {

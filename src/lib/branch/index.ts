@@ -79,6 +79,15 @@ export {
   type ReportBranchScope,
   type ReportScopeRequest,
 } from './reportScope';
+export { resolvePartnersReportBranchScope } from './partnersReportScope';
+export { ensurePartnerUsersCanViewReports } from './ensurePartnerReportAccess';
+export {
+  assignPartnerHomeBranch,
+  listBranchesForPartnerAssignment,
+  listPartnerUsersWithBranches,
+  type AssignPartnerHomeBranchResult,
+  type PartnerUserBranchRow,
+} from './partnerHomeBranch';
 export {
   GLEEM_PARTNER_SHARE_EFFECTIVE_FROM,
   PARTNER_SHARE_SUM_TOLERANCE,

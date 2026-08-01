@@ -146,6 +146,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/admin/reports/partners',           label: 'تقرير الشركاء',          icon: UsersRound },
       { href: '/admin/reports/partners-overrides', label: 'حسابات الشركاء الخاصة', icon: FileKey2   },
+      { href: '/admin/partners',                   label: 'إدارة الشركاء',           icon: Building2  },
     ],
   },
   {
