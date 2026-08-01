@@ -24,6 +24,7 @@ import {
   PUBLIC_OVERNIGHT_SLOTS_LIMIT,
   listAvailableBookingSlots,
 } from '@/lib/bookingAvailabilityEngine';
+import { summarizeAvailableDaysRange } from '@/lib/booking/publicAvailableDaysRange';
 import { resolveEmployeeGlobalSchedule } from '@/lib/hr/employeeBranchScheduleResolver';
 import { getPublicSettings, isValidDate } from '@/lib/publicBookingHelpers';
 import { getCairoBusinessDate } from '@/lib/businessDate';
@@ -421,7 +422,11 @@ export async function getPublicAvailableSlots(args: {
       generatedAt: new Date().toISOString(),
     },
   };
-  cacheSet(cacheKey, response);
+  cacheSet(
+    cacheKey,
+    response,
+    args.date > getCairoBusinessDate() ? DAYS_CACHE_TTL_MS : CACHE_TTL_MS,
+  );
   return response;
 }
 
@@ -662,16 +667,77 @@ export async function getPublicAvailableDays(args: {
   if (cached) return cached;
 
   const dateRange = eachDateInclusive(from, to);
-  // Summary path is cheaper — allow slightly higher fan-out than full slot grids.
-  const days = await mapPool(dateRange, 5, (date) =>
-    buildAvailableDayWire({
+  const probeDates = dateRange.filter((d) => !isOutsideBookingHorizon(d, horizonEnd));
+
+  const probes = await summarizeAvailableDaysRange({
+    dates: probeDates,
+    branchId: branchCtx.branchId,
+    serviceIds: selected.serviceIds,
+    durationMinutes: selected.totalDurationMinutes,
+    mode: empId ? 'specific' : 'nearest',
+    empId,
+  });
+
+  const days: PublicAvailableDayWire[] = dateRange.map((date) => {
+    if (isOutsideBookingHorizon(date, horizonEnd)) {
+      return {
+        date,
+        status: 'outside_booking_horizon' as const,
+        isAvailable: false,
+        availableSlotCount: 0,
+        firstAvailableTime: null,
+        firstAvailableDayOffset: null,
+      };
+    }
+    const p = probes.get(date);
+    if (!p) {
+      return {
+        date,
+        status: (empId ? 'barber_day_off' : 'no_eligible_barber') as PublicDayStatus,
+        isAvailable: false,
+        availableSlotCount: 0,
+        firstAvailableTime: null,
+        firstAvailableDayOffset: null,
+        ...(empId ? {} : { eligibleBarberCount: 0, availableBarberCount: 0 }),
+      };
+    }
+    if (!empId && p.eligibleBarberCount === 0) {
+      return {
+        date,
+        status: 'no_eligible_barber' as const,
+        isAvailable: false,
+        availableSlotCount: 0,
+        firstAvailableTime: null,
+        firstAvailableDayOffset: null,
+        eligibleBarberCount: 0,
+        availableBarberCount: 0,
+      };
+    }
+    if (empId && p.eligibleBarberCount === 0) {
+      return {
+        date,
+        status: 'barber_day_off' as const,
+        isAvailable: false,
+        availableSlotCount: 0,
+        firstAvailableTime: null,
+        firstAvailableDayOffset: null,
+      };
+    }
+    return {
       date,
-      branchCtx,
-      selected,
-      empId,
-      horizonEnd,
-    }),
-  );
+      status: (p.available ? 'available' : 'fully_booked') as PublicDayStatus,
+      isAvailable: p.available,
+      availableSlotCount: p.available ? 1 : 0,
+      firstAvailableTime: p.firstAvailableTime,
+      firstAvailableDayOffset: p.firstAvailableDayOffset,
+      ...(empId
+        ? {}
+        : {
+            eligibleBarberCount: p.eligibleBarberCount,
+            availableBarberCount: p.availableBarberCount,
+          }),
+    };
+  });
 
   const response: PublicAvailableDaysResponse = {
     ok: true,

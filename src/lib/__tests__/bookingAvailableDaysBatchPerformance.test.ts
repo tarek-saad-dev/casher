@@ -1,33 +1,31 @@
 /**
- * Phase 7C2+ — available-days uses bounded parallel summary path (not full slot grids).
+ * available-days uses ONE range preload (not N engines).
  */
 import { describe, expect, it } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 
 describe('bookingAvailableDaysBatchPerformance', () => {
-  it('uses mapPool + summary-only preloaded slots (not per-day getPublicAvailableSlots)', () => {
+  it('getPublicAvailableDays uses summarizeAvailableDaysRange', () => {
     const src = fs.readFileSync(
       path.join(process.cwd(), 'src/lib/booking/publicBookingAvailability.ts'),
       'utf8',
     );
-    expect(src).toContain('listSlotsForPreloadedContext');
-    expect(src).toContain('buildAvailableDayWire');
-    expect(src).toContain('summaryOnly: true');
-    expect(src).toContain('maxAvailableSlots');
+    expect(src).toContain('summarizeAvailableDaysRange');
     expect(src).toContain('DAYS_CACHE_TTL_MS');
-    expect(src).toContain('mapPool');
     expect(src).not.toMatch(
-      /getPublicAvailableDays[\s\S]*?for \(const date of eachDateInclusive[\s\S]*?getPublicAvailableSlots/,
+      /getPublicAvailableDays[\s\S]*?mapPool\(dateRange/,
     );
   });
 
-  it('engine supports early-exit maxAvailableSlots and skips future public queue', () => {
+  it('range engine batches day-offs, bookings, and windows', () => {
     const eng = fs.readFileSync(
-      path.join(process.cwd(), 'src/lib/bookingAvailabilityEngine.ts'),
+      path.join(process.cwd(), 'src/lib/booking/publicAvailableDaysRange.ts'),
       'utf8',
     );
-    expect(eng).toContain('maxAvailableSlots');
-    expect(eng).toContain('source === \'public\' && date > todayBusinessDate');
+    expect(eng).toContain('export async function summarizeAvailableDaysRange');
+    expect(eng).toContain('BookingDate BETWEEN');
+    expect(eng).toContain('loadAttendanceExpandOverridesRange');
+    expect(eng).toContain('break outer');
   });
 });

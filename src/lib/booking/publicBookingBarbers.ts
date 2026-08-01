@@ -789,6 +789,16 @@ export async function getPublicBarberLocation(args: {
   if (!isValidDate(args.date)) {
     throw new PublicBookingBarberError('INVALID_DATE');
   }
+
+  const locKey = [
+    'location',
+    args.empId,
+    args.date,
+    (args.serviceIds ?? []).join(',') || 'ALL',
+  ].join('::');
+  const locCached = cacheGet<PublicBarberLocationResponse>(locKey);
+  if (locCached) return locCached;
+
   await assertRequestedServicesPublic(args.serviceIds ?? []);
   const emp = await loadPublicEmployeeOrThrow(args.empId);
 
@@ -805,7 +815,7 @@ export async function getPublicBarberLocation(args: {
   });
 
   if (!day.isWorking || !day.branches[0]) {
-    return {
+    const off: PublicBarberLocationResponse = {
       ok: true,
       barber: { empId: emp.empId, nameAr: emp.name, name: emp.name },
       date: args.date,
@@ -815,6 +825,8 @@ export async function getPublicBarberLocation(args: {
       schedule: null,
       reason: day.status,
     };
+    cacheSet(locKey, off);
+    return off;
   }
 
   const br = day.branches[0];
@@ -826,7 +838,7 @@ export async function getPublicBarberLocation(args: {
   const resolved = global.branches.find((b) => b.branchCode === br.branchCode);
   const full = resolved ? await getBranchById(resolved.branchId) : null;
 
-  return {
+  const value: PublicBarberLocationResponse = {
     ok: true,
     barber: { empId: emp.empId, nameAr: emp.name, name: emp.name },
     date: args.date,
@@ -844,6 +856,86 @@ export async function getPublicBarberLocation(args: {
       endDayOffset: br.endDayOffset,
     },
   };
+  cacheSet(locKey, value);
+  return value;
+}
+
+/**
+ * Single-barber public profile — avoids shipping the full global roster.
+ */
+export async function getPublicBarberProfileById(args: {
+  empId: number;
+  previewQueryParam?: string | null;
+}): Promise<{
+  ok: true;
+  barber: PublicBarberWire;
+  meta: { generatedAt: string; contractVersion: string };
+}> {
+  void args.previewQueryParam;
+  const cacheKey = `profile::${args.empId}::${PUBLIC_BOOKING_BARBER_CONTRACT_VERSION}`;
+  const cached = cacheGet<{
+    ok: true;
+    barber: PublicBarberWire;
+    meta: { generatedAt: string; contractVersion: string };
+  }>(cacheKey);
+  if (cached) return cached;
+
+  const emp = await loadPublicEmployeeOrThrow(args.empId);
+  const publicServiceIds = await loadPublicServiceIds();
+  if (publicServiceIds.length === 0) {
+    throw new PublicBookingBarberError('SERVICES_NOT_CONFIGURED');
+  }
+
+  const day = getCairoBusinessDate();
+  const candidates = await loadAssignmentCandidates(day);
+  const branches: PublicBarberBranchWire[] = [];
+  const seen = new Set<string>();
+  for (const row of candidates) {
+    if (Number(row.EmpID) !== args.empId) continue;
+    const branchId = Number(row.BranchID);
+    if (!(await canBranchAppearInPublicBooking(branchId))) continue;
+    const code = String(row.BranchCode);
+    if (seen.has(code)) continue;
+    seen.add(code);
+    branches.push({
+      branchCode: code,
+      branchName: String(row.BranchName),
+    });
+  }
+
+  if (!branches.length) {
+    throw new PublicBookingBarberError('BARBER_NOT_FOUND');
+  }
+
+  const nameEn = emp.nameEn ?? getBarberNameEnByArabicName(emp.name);
+  const imageUrl = resolveBarberPublicImageUrl(emp.imageUrl, emp.name);
+
+  const barber: PublicBarberWire = {
+    empId: emp.empId,
+    id: emp.empId,
+    nameAr: emp.name,
+    nameEn,
+    name: emp.name,
+    imageUrl,
+    shortBio: null,
+    photoUrl: imageUrl,
+    bio: null,
+    serviceIds: publicServiceIds,
+    branches,
+    availabilityType: 'presence_only',
+    isBookableOnline: true,
+  };
+
+  const value = {
+    ok: true as const,
+    barber,
+    meta: {
+      generatedAt: new Date().toISOString(),
+      contractVersion: PUBLIC_BOOKING_BARBER_CONTRACT_VERSION,
+    },
+  };
+  cacheSet(cacheKey, value);
+  return value;
 }
 
 /** Pure helper exported for tests — assemble wire from rows. */

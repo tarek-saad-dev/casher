@@ -114,7 +114,9 @@ export async function GET(req: NextRequest) {
       previewQueryParam: preview,
     });
 
-    return finalizePublicBookingJson(req, gate, result);
+    return finalizePublicBookingJson(req, gate, result, {
+      cacheControl: 'private, max-age=30, stale-while-revalidate=20',
+    });
   } catch (err) {
     if (err instanceof PublicBookingAvailabilityError) {
       return finalizePublicBookingError(req, gate, err.code);
