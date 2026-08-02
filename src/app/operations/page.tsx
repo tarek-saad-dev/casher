@@ -767,6 +767,7 @@ export default function OperationsPage() {
           open={showBookingDrawer}
           onClose={() => setShowBookingDrawer(false)}
           initialDate={bookingInitialData.date}
+          boardDate={selectedDate}
           initialEmpId={bookingInitialData.empId}
           initialBarberName={bookingInitialData.barberName}
           initialTimeRangeStart={bookingInitialData.timeRangeStart}

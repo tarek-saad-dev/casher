@@ -9,10 +9,15 @@ import {
 import {
   fmt,
   fmtEn,
+  formatBarberHours,
   formatNextAvailable,
   isBeforeOperationalDate,
+  mapFlowBoardBarbersForBooking,
   sanitizeDate,
+  stripStaleBarberDayMeta,
 } from '@/components/operations/booking-workspace/types';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 /** Cairo wall-clock instant via fixed UTC+3 offset (no DST). */
 function cairoWall(isoLocal: string): Date {
@@ -100,5 +105,51 @@ describe('overnight AM/PM time formatting', () => {
   it('formatNextAvailable formats bare HH:MM without flipping AM/PM', () => {
     expect(formatNextAvailable('01:05')).toBe('1:05 ص');
     expect(formatNextAvailable('13:05')).toBe('1:05 م');
+  });
+
+  it('formatBarberHours uses Arabic 12h for overnight end', () => {
+    expect(formatBarberHours('13:20', '02:00')).toBe('1:20 م – 2:00 ص');
+    expect(formatBarberHours('11:00', '01:30')).toBe('11:00 ص – 1:30 ص');
+    expect(formatBarberHours(null, '02:00')).toBeNull();
+  });
+});
+
+describe('booking barber cards follow bookingDate (not board day)', () => {
+  it('maps flow-board rows and strips stale day metadata', () => {
+    const mapped = mapFlowBoardBarbersForBooking([
+      {
+        empId: 5,
+        empName: 'كريم',
+        status: 'working',
+        workStart: '11:00',
+        workEnd: '01:30',
+        nextAvailableAt: '2026-08-02T08:00:00.000Z',
+      },
+    ]);
+    expect(mapped[0]).toMatchObject({
+      empId: 5,
+      workStart: '11:00',
+      workEnd: '01:30',
+    });
+    expect(stripStaleBarberDayMeta(mapped)[0]).toMatchObject({
+      empId: 5,
+      empName: 'كريم',
+      workStart: null,
+      workEnd: null,
+      nextAvailableAt: null,
+      status: 'unknown',
+    });
+  });
+
+  it('workspace refetches flow-board when bookingDate diverges from boardDate', () => {
+    const src = readFileSync(
+      join(process.cwd(), 'src/components/operations/booking-workspace/useBookingWorkspace.ts'),
+      'utf8',
+    );
+    expect(src).toContain('boardDate');
+    expect(src).toContain('/api/operations/flow-board?date=');
+    expect(src).toContain('presence=all');
+    expect(src).toContain('mapFlowBoardBarbersForBooking');
+    expect(src).toContain('stripStaleBarberDayMeta');
   });
 });

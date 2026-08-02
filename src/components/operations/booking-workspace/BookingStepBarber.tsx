@@ -9,6 +9,7 @@ import {
   type BookingMode,
   type BookingWorkspaceBarber,
   barberStatusLabel,
+  formatBarberHours,
   formatNextAvailable,
 } from './types';
 
@@ -18,6 +19,7 @@ interface Props {
   selectedBarberId: number | null;
   lockedBarber: boolean;
   initialBarberName?: string;
+  loadingBarbers?: boolean;
   onModeChange: (mode: BookingMode) => void;
   onSelectBarber: (empId: number) => void;
 }
@@ -28,6 +30,7 @@ export function BookingStepBarber({
   selectedBarberId,
   lockedBarber,
   initialBarberName,
+  loadingBarbers = false,
   onModeChange,
   onSelectBarber,
 }: Props) {
@@ -93,11 +96,14 @@ export function BookingStepBarber({
               تم التحديد من لوحة العمليات: {initialBarberName}
             </p>
           )}
+          {loadingBarbers && (
+            <p className="text-xs text-muted-foreground">جاري تحديث جداول الحلاقين لهذا اليوم…</p>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {barbers.map((b) => {
               const active = selectedBarberId === b.empId;
               const nextAt = formatNextAvailable(b.nextAvailableAt);
-              const hours = b.workStart && b.workEnd ? `${b.workStart} – ${b.workEnd}` : null;
+              const hours = formatBarberHours(b.workStart, b.workEnd);
               return (
                 <button
                   key={b.empId}

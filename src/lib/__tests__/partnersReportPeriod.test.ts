@@ -7,7 +7,7 @@ import {
   getPartnersReportCurrentMonth,
   isAtPartnersReportMinimum,
   isBeforePartnersReportMinimum,
-  isPartnersReportClosingGraceDay,
+  shiftPartnersReportMonthBack,
   validatePartnersReportMinimumPeriod,
 } from '@/lib/reports/partnersReportPeriod';
 
@@ -48,33 +48,42 @@ describe('partnersReportPeriod', () => {
     expect(isAtPartnersReportMinimum(2027, 1)).toBe(false);
   });
 
-  it('uses Cairo month; clamps when before minimum', () => {
-    expect(getPartnersReportCurrentMonth(cairoWallClock('2026-04-15T12:00:00'))).toEqual({
+  it('shifts calendar month back correctly across year boundary', () => {
+    expect(shiftPartnersReportMonthBack(2026, 8)).toEqual({ year: 2026, month: 7 });
+    expect(shiftPartnersReportMonthBack(2027, 1)).toEqual({ year: 2026, month: 12 });
+  });
+
+  it('defaults to previous Cairo month for review/closing', () => {
+    // Mid July → June (still within minimum)
+    expect(getPartnersReportCurrentMonth(cairoWallClock('2026-07-15T12:00:00'))).toEqual({
       year: 2026,
       month: 6,
     });
-    expect(getPartnersReportCurrentMonth(cairoWallClock('2026-07-15T12:00:00'))).toEqual({
+    // Mid August → July
+    expect(getPartnersReportCurrentMonth(cairoWallClock('2026-08-15T12:00:00'))).toEqual({
       year: 2026,
       month: 7,
     });
-  });
-
-  it('on Cairo day 1 keeps previous month open for closing', () => {
-    expect(isPartnersReportClosingGraceDay(cairoWallClock('2026-08-01T00:30:00'))).toBe(true);
-    expect(isPartnersReportClosingGraceDay(cairoWallClock('2026-08-01T23:59:00'))).toBe(true);
-    expect(isPartnersReportClosingGraceDay(cairoWallClock('2026-08-02T00:30:00'))).toBe(false);
-
+    // Day 1 August → July
     expect(getPartnersReportCurrentMonth(cairoWallClock('2026-08-01T01:45:00'))).toEqual({
       year: 2026,
       month: 7,
     });
-    expect(getPartnersReportCurrentMonth(cairoWallClock('2026-08-01T18:00:00'))).toEqual({
+    // January → December previous year
+    expect(getPartnersReportCurrentMonth(cairoWallClock('2027-01-10T12:00:00'))).toEqual({
       year: 2026,
-      month: 7,
+      month: 12,
     });
-    expect(getPartnersReportCurrentMonth(cairoWallClock('2026-08-02T00:00:00'))).toEqual({
+  });
+
+  it('clamps default when previous month is before June 2026', () => {
+    expect(getPartnersReportCurrentMonth(cairoWallClock('2026-06-15T12:00:00'))).toEqual({
       year: 2026,
-      month: 8,
+      month: 6,
+    });
+    expect(getPartnersReportCurrentMonth(cairoWallClock('2026-04-15T12:00:00'))).toEqual({
+      year: 2026,
+      month: 6,
     });
   });
 

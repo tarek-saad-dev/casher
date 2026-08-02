@@ -11,6 +11,7 @@ import {
   salonDateTimeToMs,
 } from '@/lib/publicBookingHelpers';
 import { listBookableEmployeeIdsForBranch } from '@/lib/branch/bookingQueueOwnership';
+import { BOOKING_SLOT_BARBER_JOBS_SQL_LIST } from '@/lib/availabilityEngine';
 import {
   buildQueueIntervals,
   buildQueueIntervalsForEmps,
@@ -1424,7 +1425,7 @@ async function getAllBarberIds(
     .request()
     .query(`
       SELECT EmpID FROM dbo.TblEmp
-      WHERE ISNULL(isActive,1)=1 AND Job IN (N'حلاق',N'مساعد',N'Barber',N'barber')
+      WHERE ISNULL(isActive,1)=1 AND Job IN (${BOOKING_SLOT_BARBER_JOBS_SQL_LIST})
       ORDER BY EmpName
     `)
     .catch(() => ({ recordset: [] as Array<{ EmpID: number }> }));

@@ -15,7 +15,9 @@ import {
   getOperationalTomorrow,
   isBeforeOperationalDate,
   isSlotInsideRange,
+  mapFlowBoardBarbersForBooking,
   sanitizeDate,
+  stripStaleBarberDayMeta,
 } from './types';
 import {
   acquireSubmitGuard,
@@ -29,6 +31,8 @@ import {
 export interface UseBookingWorkspaceArgs {
   open: boolean;
   initialDate?: string;
+  /** Ops board selected date — barber card hours come from this snapshot until bookingDate diverges. */
+  boardDate?: string;
   initialEmpId?: number;
   initialBarberName?: string;
   initialTimeRangeStart?: string;
@@ -41,6 +45,7 @@ export interface UseBookingWorkspaceArgs {
 export function useBookingWorkspace({
   open,
   initialDate,
+  boardDate,
   initialEmpId,
   initialBarberName,
   initialTimeRangeStart,
@@ -92,9 +97,14 @@ export function useBookingWorkspace({
 
   const fetchAbortRef = useRef<AbortController | null>(null);
   const fetchGenRef = useRef(0);
+  const barberDayAbortRef = useRef<AbortController | null>(null);
+  const [dateBarbers, setDateBarbers] = useState<BookingWorkspaceBarber[] | null>(null);
+  const [loadingDateBarbers, setLoadingDateBarbers] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const submittingRef = useRef(false);
+
+  const displayBarbers = dateBarbers ?? barbers;
 
   const applyEmpDuration = useCallback(
     (svc: BookingService): BookingService => {
@@ -124,12 +134,73 @@ export function useBookingWorkspace({
 
   const selectedBarberName = useMemo(() => {
     if (mode === 'specific' && selectedBarberId) {
-      return barbers.find((b) => b.empId === selectedBarberId)?.empName
+      return displayBarbers.find((b) => b.empId === selectedBarberId)?.empName
         ?? initialBarberName
         ?? '';
     }
     return '';
-  }, [mode, selectedBarberId, barbers, initialBarberName]);
+  }, [mode, selectedBarberId, displayBarbers, initialBarberName]);
+
+  /**
+   * Barber cards must reflect bookingDate, not the ops board day.
+   * When dates match, reuse the board snapshot; otherwise refetch flow-board for bookingDate.
+   */
+  useEffect(() => {
+    if (!open) {
+      barberDayAbortRef.current?.abort();
+      setDateBarbers(null);
+      setLoadingDateBarbers(false);
+      return;
+    }
+
+    if (boardDate && bookingDate === boardDate) {
+      barberDayAbortRef.current?.abort();
+      setDateBarbers(null);
+      setLoadingDateBarbers(false);
+      return;
+    }
+
+    barberDayAbortRef.current?.abort();
+    const controller = new AbortController();
+    barberDayAbortRef.current = controller;
+    setLoadingDateBarbers(true);
+
+    fetch(
+      `/api/operations/flow-board?date=${encodeURIComponent(bookingDate)}&branchId=active&presence=all`,
+      { signal: controller.signal },
+    )
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (controller.signal.aborted) return;
+        if (!res.ok || !data?.ok || !Array.isArray(data.barbers)) {
+          setDateBarbers(stripStaleBarberDayMeta(barbers));
+          return;
+        }
+        const mapped = mapFlowBoardBarbersForBooking(data.barbers);
+        // Keep a locked barber visible even if presence filter differs.
+        if (
+          initialEmpId
+          && !mapped.some((b) => b.empId === initialEmpId)
+        ) {
+          const locked = barbers.find((b) => b.empId === initialEmpId);
+          if (locked) {
+            mapped.unshift(...stripStaleBarberDayMeta([locked]));
+          }
+        }
+        setDateBarbers(mapped);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof Error && err.name === 'AbortError') return;
+        if (!controller.signal.aborted) {
+          setDateBarbers(stripStaleBarberDayMeta(barbers));
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingDateBarbers(false);
+      });
+
+    return () => controller.abort();
+  }, [open, bookingDate, boardDate, barbers, initialEmpId]);
 
   const hasTimeRange = !!initialTimeRangeStart && !!initialTimeRangeEnd;
   const isDatePast = isBeforeOperationalDate(bookingDate);
@@ -673,7 +744,8 @@ export function useBookingWorkspace({
     initialTimeRangeStart,
     initialTimeRangeEnd,
     initialBarberName,
-    barbers,
+    barbers: displayBarbers,
+    loadingDateBarbers,
     slotsAreCurrent,
     canGoStep2,
     canGoStep3,

@@ -7,6 +7,7 @@
 import 'server-only';
 import { NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import { BOOKING_SLOT_BARBER_JOBS_SQL_LIST } from '@/lib/availabilityEngine';
 import { PUBLIC_CORS_HEADERS } from '@/lib/publicBookingHelpers';
 import { getBranchByCode, listActiveBranches } from './repository';
 import type { BranchRecord } from './types';
@@ -247,7 +248,13 @@ export async function isEmployeeEligibleForBranchBookings(args: {
         AND ISNULL(e.isActive, 1) = 1
         AND ea.EffectiveFrom <= @day
         AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @day)
-        AND (@requireBookings = 0 OR ea.CanReceiveBookings = 1)
+        AND (
+          @requireBookings = 0
+          OR (
+            ea.CanReceiveBookings = 1
+            AND e.Job IN (${BOOKING_SLOT_BARBER_JOBS_SQL_LIST})
+          )
+        )
     `);
   if (result.recordset.length > 0) return true;
 
@@ -332,7 +339,10 @@ export async function listQueueEligibleEmployeeIdsForBranch(
   return [...ids];
 }
 
-/** SQL fragment: employee ids assigned to branch for bookings on @day (includes test). */
+/**
+ * SQL fragment: lead barber ids assigned to branch for bookings on @day.
+ * Job = حلاق only (no cashiers, admins, or assistants) — nearest-available slots.
+ */
 export const EMP_BOOKABLE_AT_BRANCH_SQL = `
   SELECT ea.EmpID
   FROM dbo.TblEmpBranchAssignment ea
@@ -343,6 +353,7 @@ export const EMP_BOOKABLE_AT_BRANCH_SQL = `
     AND b.IsActive = 1
     AND ISNULL(e.isActive, 1) = 1
     AND ea.CanReceiveBookings = 1
+    AND e.Job IN (${BOOKING_SLOT_BARBER_JOBS_SQL_LIST})
     AND ea.EffectiveFrom <= @day
     AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @day)
 `;

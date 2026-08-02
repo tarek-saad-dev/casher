@@ -34,6 +34,22 @@ vi.mock('@/lib/services/employeeLedgerDualWrite', () => ({
   EmployeeLedgerDualWriteError: class EmployeeLedgerDualWriteError extends Error {},
   runDailyPayrollGenerateWithOptionalLedger: (...args: unknown[]) =>
     runDailyPayrollGenerateWithOptionalLedger(...args),
+  syncHourlyWageLedgerForWorkDate: vi.fn(async () => ({
+    inserted: 0,
+    updated: 0,
+    voided: 0,
+    skipped: 0,
+  })),
+}));
+
+vi.mock('@/lib/employeeLedgerConfig', () => ({
+  isEmployeeLedgerDualWriteEnabled: () => true,
+}));
+
+vi.mock('@/lib/services/employeeLedgerMonthlySalaryService', () => ({
+  postMonthlySalaryEntitlements: vi.fn(async () => ({
+    counts: { inserted: 0, updated: 0, skipped: 0 },
+  })),
 }));
 
 vi.mock('@/lib/payroll/employee-target/employee-daily-target-generation.service', () => ({

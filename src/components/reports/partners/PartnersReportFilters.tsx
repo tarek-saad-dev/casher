@@ -10,7 +10,6 @@ import {
   getPartnersReportAllowedMonths,
   getPartnersReportAllowedYears,
   isAtPartnersReportMinimum,
-  isPartnersReportClosingGraceDay,
   PARTNERS_REPORT_PREVIOUS_MONTH_DISABLED_TITLE,
 } from '@/lib/reports/partnersReportPeriod';
 
@@ -49,15 +48,9 @@ export default function PartnersReportFilters({
   const allowedYears = getPartnersReportAllowedYears();
   const allowedMonths = getPartnersReportAllowedMonths(year);
   const isPreviousMonthDisabled = isAtPartnersReportMinimum(year, month);
-  const closingGrace = isPartnersReportClosingGraceDay();
 
   return (
     <div className="print:hidden w-full min-w-0 bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-3 sm:p-4 space-y-3">
-      {closingGrace && (
-        <p className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-200/90">
-          أول يوم في الشهر — «الشهر الحالي» يفتح الشهر السابق لتسهيل التقفيل.
-        </p>
-      )}
       {/* Row 1: month + year */}
       <div className="grid grid-cols-2 gap-2 sm:gap-3">
         <Select value={String(month)} onValueChange={(v) => onMonthChange(parseInt(v, 10))}>
@@ -118,11 +111,12 @@ export default function PartnersReportFilters({
           variant="outline"
           onClick={onCurrentMonth}
           disabled={isCurrentMonth}
-          aria-label="الشهر الحالي"
+          aria-label="شهر المراجعة"
+          title="الشهر السابق من التقويم — شهر التقفيل المعتاد"
           className="min-h-11 border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 text-xs sm:text-sm px-2 focus-visible:ring-2 focus-visible:ring-amber-500/50"
         >
-          <span className="truncate sm:hidden">الحالي</span>
-          <span className="truncate hidden sm:inline">الشهر الحالي</span>
+          <span className="truncate sm:hidden">مراجعة</span>
+          <span className="truncate hidden sm:inline">شهر المراجعة</span>
         </Button>
 
         <Button

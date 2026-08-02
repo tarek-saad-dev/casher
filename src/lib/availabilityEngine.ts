@@ -29,8 +29,18 @@ import { loadBookingOverridesForDate } from "@/lib/hr/attendance-shift-schedule-
 export const SALON_TZ = "Africa/Cairo";
 
 // ── Barber job titles treated as "bookable" ────────────────────────────────────
+/** Working barbers + assistants (queue / schedule roster). */
 export const BARBER_JOB_VALUES = ["حلاق", "مساعد", "Barber", "barber"] as const;
 export const BARBER_JOBS_SQL_LIST = BARBER_JOB_VALUES.map((j) => `N'${j}'`).join(", ");
+
+/**
+ * Appointment / "nearest barber" slots — lead barbers only (no assistants).
+ * Matches flow-board Job = حلاق.
+ */
+export const BOOKING_SLOT_BARBER_JOB_VALUES = ["حلاق", "Barber", "barber"] as const;
+export const BOOKING_SLOT_BARBER_JOBS_SQL_LIST = BOOKING_SLOT_BARBER_JOB_VALUES.map(
+  (j) => `N'${j}'`,
+).join(", ");
 
 // ── Debug flag ─────────────────────────────────────────────────────────────────
 const DEBUG_AVAIL = process.env.DEBUG_AVAILABILITY === "true";

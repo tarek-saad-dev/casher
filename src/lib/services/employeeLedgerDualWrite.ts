@@ -2,6 +2,7 @@ import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
 import { isEmployeeLedgerDualWriteEnabled } from '@/lib/employeeLedgerConfig';
+import { isLegacyPostToCashDisabled } from '@/lib/payroll/legacyPostToCashFlags';
 
 export const EMP_LEDGER_REF_TYPE_DAILY_PAYROLL = 'TblEmpDailyPayroll';
 export const EMP_LEDGER_REF_TYPE_CASH_MOVE = 'TblCashMove';
@@ -529,6 +530,9 @@ export class EmployeeLedgerDualWriteError extends Error {
 
 /**
  * Runs payroll generate + optional ledger dual-write in one transaction when enabled.
+ *
+ * Fail-closed: when legacy post-to-cash is disabled, dual-write MUST be on —
+ * otherwise Generated payroll never appears in دفتر الموظفين.
  */
 export async function runDailyPayrollGenerateWithOptionalLedger(
   workDate: string,
@@ -546,6 +550,12 @@ export async function runDailyPayrollGenerateWithOptionalLedger(
   }
 
   if (!dualWrite) {
+    if (isLegacyPostToCashDisabled()) {
+      throw new EmployeeLedgerDualWriteError(
+        'توليد اليوميات يتطلب EMP_LEDGER_DUAL_WRITE_ENABLED=true لأن ترحيل الخزنة القديم متوقف — وإلا لن تظهر الرواتب في دفتر الموظفين',
+        503,
+      );
+    }
     const result = await executeDailyPayrollGenerateOnly(db, workDate, options);
     return { result, ledgerDualWrite: false };
   }
@@ -553,19 +563,21 @@ export async function runDailyPayrollGenerateWithOptionalLedger(
   const transaction = new sql.Transaction(db);
   await transaction.begin();
 
+  let result: import('@/lib/payroll/dailyPayrollGenerateCore').DailyPayrollGenerateResult;
+  let ledgerSync: HourlyWageLedgerSyncResult;
+
   try {
-    const result = await executeDailyPayrollGenerateOnly(db, workDate, {
+    result = await executeDailyPayrollGenerateOnly(db, workDate, {
       ...options,
       transaction,
     });
-    const ledgerSync = await syncHourlyWageLedgerForWorkDate(
+    ledgerSync = await syncHourlyWageLedgerForWorkDate(
       db,
       workDate,
       transaction,
       branchId,
     );
     await transaction.commit();
-    return { result, ledgerDualWrite: true, ledgerSync };
   } catch (err) {
     try {
       await transaction.rollback();
@@ -579,10 +591,23 @@ export async function runDailyPayrollGenerateWithOptionalLedger(
     if (isMissingLedgerTableError(message)) {
       throw new EmployeeLedgerDualWriteError(
         'جدول دفتر الموظفين غير موجود — شغّل db/migrations/create-tbl-emp-ledger-entry.sql ثم أعد المحاولة',
+        503,
       );
     }
     throw err;
   }
+
+  // Safety net: if in-txn sync saw no rows but Generated payroll exists, heal after commit.
+  const syncTouched =
+    ledgerSync.inserted + ledgerSync.updated + ledgerSync.voided + ledgerSync.skipped;
+  if (result.generatedCount > 0 && syncTouched === 0) {
+    console.warn(
+      `[employee-ledger] dual-write in-txn sync empty workDate=${workDate} branchId=${branchId} generated=${result.generatedCount} — retrying after commit`,
+    );
+    ledgerSync = await syncHourlyWageLedgerForWorkDate(db, workDate, undefined, branchId);
+  }
+
+  return { result, ledgerDualWrite: true, ledgerSync };
 }
 
 async function executeDailyPayrollGenerateOnly(

@@ -103,6 +103,7 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
                 selectedBarberId={ws.selectedBarberId}
                 lockedBarber={ws.lockedBarber}
                 initialBarberName={ws.initialBarberName}
+                loadingBarbers={ws.loadingDateBarbers}
                 onModeChange={ws.handleModeChange}
                 onSelectBarber={ws.handleSelectBarber}
               />

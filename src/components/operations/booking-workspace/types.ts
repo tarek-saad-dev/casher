@@ -254,6 +254,55 @@ export function barberStatusLabel(status?: BookingWorkspaceBarber['status']): st
   }
 }
 
+/** Format barber work window as Arabic 12h — `13:20`/`02:00` → `1:20 م – 2:00 ص`. */
+export function formatBarberHours(
+  workStart?: string | null,
+  workEnd?: string | null,
+): string | null {
+  if (!workStart || !workEnd) return null;
+  return `${fmt(workStart)} – ${fmt(workEnd)}`;
+}
+
+/** Map flow-board barber rows into booking workspace card props. */
+export function mapFlowBoardBarbersForBooking(
+  rows: Array<{
+    empId: number;
+    empName: string;
+    status?: BookingWorkspaceBarber['status'];
+    workStart?: string | null;
+    workEnd?: string | null;
+    nextAvailableAt?: string | null;
+    statusReasonArabic?: string;
+  }>,
+): BookingWorkspaceBarber[] {
+  return rows.map((b) => ({
+    empId: b.empId,
+    empName: b.empName,
+    status: b.status,
+    workStart: b.workStart ?? null,
+    workEnd: b.workEnd ?? null,
+    nextAvailableAt: b.nextAvailableAt ?? null,
+    statusReasonArabic: b.statusReasonArabic,
+  }));
+}
+
+/**
+ * When bookingDate diverges from the ops board date, board hours/status are stale.
+ * Strip schedule metadata so cards do not show the wrong day's window.
+ */
+export function stripStaleBarberDayMeta(
+  barbers: BookingWorkspaceBarber[],
+): BookingWorkspaceBarber[] {
+  return barbers.map((b) => ({
+    ...b,
+    workStart: null,
+    workEnd: null,
+    nextAvailableAt: null,
+    status: 'unknown' as const,
+    statusReasonArabic: undefined,
+  }));
+}
+
 /**
  * Format next-available instant or HH:MM for display.
  * Overnight early-morning hours (01:05) always render as ص / AM, never PM.

@@ -288,6 +288,7 @@ describe('runDailyPayrollGenerateWithOptionalLedger', () => {
 
   it('skips ledger writes when feature flag is disabled', async () => {
     process.env.EMP_LEDGER_DUAL_WRITE_ENABLED = 'false';
+    delete process.env.EMP_LEDGER_DISABLE_LEGACY_POST_TO_CASH;
 
     vi.doMock('@/lib/db', () => ({
       getPool: vi.fn(async () => ({ request: vi.fn() })),
@@ -304,6 +305,7 @@ describe('runDailyPayrollGenerateWithOptionalLedger', () => {
     vi.doMock('@/lib/payroll/dailyPayrollGenerateCore', () => ({
       executeDailyPayrollGenerate: vi.fn(async () => ({
         workDate: '2026-04-15',
+        branchId: 1,
         generatedCount: 2,
         totalHours: 16,
         totalWage: 400,
@@ -321,11 +323,41 @@ describe('runDailyPayrollGenerateWithOptionalLedger', () => {
     });
 
     const { runDailyPayrollGenerateWithOptionalLedger } = await import('@/lib/services/employeeLedgerDualWrite');
-    const result = await runDailyPayrollGenerateWithOptionalLedger('2026-04-15');
+    const result = await runDailyPayrollGenerateWithOptionalLedger('2026-04-15', { branchId: 1 });
 
     expect(result.ledgerDualWrite).toBe(false);
     expect(result.ledgerSync).toBeUndefined();
     expect(syncSpy).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when dual-write off but legacy post-to-cash is disabled', async () => {
+    process.env.EMP_LEDGER_DUAL_WRITE_ENABLED = 'false';
+    process.env.EMP_LEDGER_DISABLE_LEGACY_POST_TO_CASH = 'true';
+
+    vi.doMock('@/lib/db', () => ({
+      getPool: vi.fn(async () => ({ request: vi.fn() })),
+      sql: {
+        Transaction: class {
+          async begin() {}
+          async commit() {}
+          async rollback() {}
+        },
+        Request: class {},
+      },
+    }));
+
+    const generateSpy = vi.fn();
+    vi.doMock('@/lib/payroll/dailyPayrollGenerateCore', () => ({
+      executeDailyPayrollGenerate: generateSpy,
+    }));
+
+    const { runDailyPayrollGenerateWithOptionalLedger, EmployeeLedgerDualWriteError } =
+      await import('@/lib/services/employeeLedgerDualWrite');
+
+    await expect(
+      runDailyPayrollGenerateWithOptionalLedger('2026-04-15', { branchId: 1 }),
+    ).rejects.toBeInstanceOf(EmployeeLedgerDualWriteError);
+    expect(generateSpy).not.toHaveBeenCalled();
   });
 
   it('throws clear error when ledger table is missing and flag is enabled', async () => {
@@ -352,7 +384,7 @@ describe('runDailyPayrollGenerateWithOptionalLedger', () => {
     const { runDailyPayrollGenerateWithOptionalLedger, EmployeeLedgerDualWriteError } =
       await import('@/lib/services/employeeLedgerDualWrite');
 
-    await expect(runDailyPayrollGenerateWithOptionalLedger('2026-04-15'))
+    await expect(runDailyPayrollGenerateWithOptionalLedger('2026-04-15', { branchId: 1 }))
       .rejects
       .toBeInstanceOf(EmployeeLedgerDualWriteError);
   });
@@ -376,6 +408,14 @@ describe('POST /api/payroll/daily/generate', () => {
       })),
     }));
 
+    vi.doMock('@/lib/branch/context', () => ({
+      requireBranchOperationAccess: vi.fn(async () => ({
+        branchId: 1,
+        branchCode: 'GLEEM',
+        branchName: 'جليم',
+      })),
+    }));
+
     vi.doMock('@/lib/db', () => ({
       getPool: vi.fn(async () => ({
         request: vi.fn(() => ({
@@ -395,6 +435,7 @@ describe('POST /api/payroll/daily/generate', () => {
       runDailyPayrollGenerateWithOptionalLedger: vi.fn(async () => ({
         result: {
           workDate: '2026-04-15',
+          branchId: 1,
           generatedCount: 1,
           totalHours: 8,
           totalWage: 200,
@@ -430,6 +471,14 @@ describe('POST /api/payroll/daily/generate', () => {
       })),
     }));
 
+    vi.doMock('@/lib/branch/context', () => ({
+      requireBranchOperationAccess: vi.fn(async () => ({
+        branchId: 1,
+        branchCode: 'GLEEM',
+        branchName: 'جليم',
+      })),
+    }));
+
     vi.doMock('@/lib/db', () => ({
       getPool: vi.fn(async () => ({
         request: vi.fn(() => ({
@@ -445,6 +494,7 @@ describe('POST /api/payroll/daily/generate', () => {
     }));
 
     class EmployeeLedgerDualWriteError extends Error {
+      statusCode = 503;
       constructor(message: string) {
         super(message);
         this.name = 'EmployeeLedgerDualWriteError';

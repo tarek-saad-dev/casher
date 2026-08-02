@@ -1,14 +1,14 @@
 /**
- * Tiered classification of the money an employee has physically taken out
+ * Classification of money an employee has physically taken out
  * (advances + payouts) for a given month.
  *
- * The total withdrawn is covered in this order:
- *  1) سحب الايراد (revenueWithdrawal): first covered by the revenue/funding the
- *     employee brought to the shop. He is drawing against his own money — NOT a loan.
- *  2) صرف (payoutWithinDues): then covered by the employee's dues
- *     (salary + target). This is a legitimate disbursement of what he is owed.
- *  3) سلفة (advanceExcess): whatever remains after revenue + dues are exhausted.
- *     This is the real advance/loan recorded against the employee.
+ * Funding/revenue the employee brought in covers withdrawals first
+ * (سلف قبل صرف المستحقات). After that:
+ *  - remaining EntryReason=advance → سلفة (advanceExcess)
+ *  - remaining EntryReason=payout  → صرف (payoutWithinDues)
+ *
+ * Advances are NEVER reclassified as «صرف» just because salary/target
+ * dues exist — صرف only reflects real payout ledger rows.
  *
  * revenueWithdrawal + payoutWithinDues + advanceExcess === moneyTaken.
  */
@@ -26,20 +26,24 @@ function round2(value: number): number {
 export function computeEmployeeWithdrawalBuckets(params: {
   advanceDebits: number;
   payoutDebits: number;
-  salaryAndTarget: number;
+  /** Kept for callers; dues no longer move advances into «صرف». */
+  salaryAndTarget?: number;
   revenue: number;
 }): EmployeeWithdrawalBuckets {
-  const moneyTaken = round2(
-    Math.max(0, params.advanceDebits) + Math.max(0, params.payoutDebits)
-  );
-  const dues = Math.max(0, params.salaryAndTarget);
+  const advance = Math.max(0, params.advanceDebits);
+  const payout = Math.max(0, params.payoutDebits);
   const revenue = Math.max(0, params.revenue);
+  const moneyTaken = round2(advance + payout);
 
-  // 1) revenue/funding first, 2) then salary + target dues, 3) the rest is a loan.
-  const revenueWithdrawal = round2(Math.min(moneyTaken, revenue));
-  const afterRevenue = Math.max(0, moneyTaken - revenue);
-  const payoutWithinDues = round2(Math.min(afterRevenue, dues));
-  const advanceExcess = round2(Math.max(0, afterRevenue - dues));
+  // Funding covers advances first, then real payouts.
+  let fundingLeft = revenue;
+  const advCoveredByFunding = round2(Math.min(advance, fundingLeft));
+  fundingLeft = round2(Math.max(0, fundingLeft - advCoveredByFunding));
+  const payCoveredByFunding = round2(Math.min(payout, fundingLeft));
+
+  const revenueWithdrawal = round2(advCoveredByFunding + payCoveredByFunding);
+  const advanceExcess = round2(advance - advCoveredByFunding);
+  const payoutWithinDues = round2(payout - payCoveredByFunding);
 
   return { moneyTaken, payoutWithinDues, revenueWithdrawal, advanceExcess };
 }

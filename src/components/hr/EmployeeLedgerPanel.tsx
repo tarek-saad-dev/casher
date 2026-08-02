@@ -288,10 +288,10 @@ export default function EmployeeLedgerPanel() {
 
       <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-sky-200/90 space-y-1">
         <p>
-          مسحوبات الموظف تُغطّى بالترتيب: أولاً{' '}
-          <span className="text-amber-200">سحب الايراد</span> من إيراد/تمويل الموظف للمحل · ثم{' '}
-          <span className="text-sky-100">صرف</span> من الاستحقاقات (راتب + تارجت) · وما يتبقّى{' '}
-          <span className="text-rose-200">سلفة</span> على الموظف.
+          مسحوبات الموظف تُصنَّف حسب نوع القيد: أولاً{' '}
+          <span className="text-amber-200">سحب الايراد</span> من تمويل/إيراد الموظف للمحل ·{' '}
+          <span className="text-rose-200">سلفة</span> = سلف الخزنة المسجّلة على الموظف ·{' '}
+          <span className="text-sky-100">صرف</span> = صرف مستحقات فعلي من زر «صرف مستحقات» فقط.
         </p>
         <p>الرصيد = استحقاقات + تمويل من موظف − سلف − صرف مستحقات − خصومات</p>
         <p>تمويل الموظف يزيد الخزنة ويُسجَّل التزاماً في الدفتر — ليس إيراد مبيعات.</p>
@@ -311,7 +311,7 @@ export default function EmployeeLedgerPanel() {
           <KpiCard title="استحقاق راتب" value={`${fmt(displayTotals.salaryCredits)} ج.م`} icon={<TrendingUp className="w-5 h-5" />} variant="success" />
           <KpiCard title="تارجت" value={`${fmt(displayTotals.targetCredits)} ج.م`} icon={<TrendingUp className="w-5 h-5" />} variant="success" />
           <KpiCard title="تمويل من موظف" value={`${fmt(displayTotals.fundingCredits)} ج.م`} icon={<HandCoins className="w-5 h-5" />} variant="primary" />
-          <KpiCard title="صرف (ضمن الاستحقاقات)" value={`${fmt(displayTotals.payoutWithinDues)} ج.م`} icon={<TrendingDown className="w-5 h-5" />} variant="danger" />
+          <KpiCard title="صرف مستحقات" value={`${fmt(displayTotals.payoutWithinDues)} ج.م`} icon={<TrendingDown className="w-5 h-5" />} variant="danger" />
           <KpiCard title="سحب الايراد" value={`${fmt(displayTotals.revenueWithdrawal)} ج.م`} icon={<TrendingDown className="w-5 h-5" />} variant="warning" />
           <KpiCard title="سلفة" value={`${fmt(displayTotals.advanceExcess)} ج.م`} icon={<TrendingDown className="w-5 h-5" />} variant="danger" />
           <KpiCard title="خصومات" value={`${fmt(displayTotals.deductionDebits)} ج.م`} icon={<TrendingDown className="w-5 h-5" />} variant="warning" />
@@ -333,9 +333,9 @@ export default function EmployeeLedgerPanel() {
                 <th className="px-4 py-3 text-right font-medium">راتب</th>
                 <th className="px-4 py-3 text-right font-medium">تارجت</th>
                 <th className="px-4 py-3 text-right font-medium">تمويل للمحل</th>
-                <th className="px-4 py-3 text-right font-medium" title="المسحوب المتبقي بعد تغطية الإيراد — ضمن الاستحقاقات (راتب + تارجت)">صرف</th>
+                <th className="px-4 py-3 text-right font-medium" title="صرف مستحقات فعلي من زر صرف مستحقات فقط">صرف</th>
                 <th className="px-4 py-3 text-right font-medium" title="أول ما يُسحب يُخصم من إيراد/تمويل الموظف للمحل">سحب الايراد</th>
-                <th className="px-4 py-3 text-right font-medium" title="ما تجاوز (الإيراد + راتب + تارجت)">سلفة</th>
+                <th className="px-4 py-3 text-right font-medium" title="سلف الخزنة المسجّلة على الموظف (بعد خصم التمويل)">سلفة</th>
                 <th className="px-4 py-3 text-right font-medium">خصومات</th>
                 <th className="px-4 py-3 text-right font-medium">الرصيد</th>
                 <th className="px-4 py-3 text-right font-medium">إجراء</th>

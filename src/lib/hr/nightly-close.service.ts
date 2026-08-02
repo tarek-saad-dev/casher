@@ -13,6 +13,7 @@ import {
 import {
   EmployeeLedgerDualWriteError,
   runDailyPayrollGenerateWithOptionalLedger,
+  syncHourlyWageLedgerForWorkDate,
 } from '@/lib/services/employeeLedgerDualWrite';
 import { generateEmployeeDailyTargets } from '@/lib/payroll/employee-target/employee-daily-target-generation.service';
 import { finalizeIncompleteAttendanceWithDefaults } from '@/lib/hr/finalize-incomplete-attendance';
@@ -425,6 +426,36 @@ export async function runNightlyClose(params?: {
     console.log(
       `[nightly-close] payroll status=${result.steps.payroll?.status}`,
     );
+
+    // Heal any Generated payroll that is missing hourly_wage ledger rows
+    // (e.g. earlier manual generate with dual-write off).
+    if (!dryRun && isEmployeeLedgerDualWriteEnabled()) {
+      const dbHeal = await getPool();
+      for (const branch of payrollBranches) {
+        try {
+          const heal = await syncHourlyWageLedgerForWorkDate(
+            dbHeal,
+            workDate,
+            undefined,
+            branch.branchId,
+          );
+          const touched =
+            heal.inserted + heal.updated + heal.voided + heal.skipped;
+          if (touched > 0) {
+            console.log(
+              `[nightly-close] ledger heal branch=${branch.branchCode} inserted=${heal.inserted} updated=${heal.updated}`,
+            );
+          }
+        } catch (healErr) {
+          const msg = healErr instanceof Error ? healErr.message : String(healErr);
+          errors.push(`ledger-heal ${branch.branchCode}: ${msg}`);
+          console.error(
+            `[nightly-close] ledger heal failed branch=${branch.branchCode}`,
+            msg,
+          );
+        }
+      }
+    }
   } catch (err) {
     if (err instanceof EmployeeLedgerDualWriteError) {
       errors.push(`payroll ledger: ${err.message}`);

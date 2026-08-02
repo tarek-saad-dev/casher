@@ -402,6 +402,15 @@ describe('phase1f source contracts', () => {
     expect(sqlText).toContain('UQ_QueueBookingSettings_BranchID');
   });
 
+  it('bookable-at-branch SQL only includes lead barber jobs (no assistants)', async () => {
+    const mod = await import('@/lib/branch/bookingQueueOwnership');
+    expect(mod.EMP_BOOKABLE_AT_BRANCH_SQL).toContain('e.Job IN');
+    expect(mod.EMP_BOOKABLE_AT_BRANCH_SQL).toContain("N'حلاق'");
+    expect(mod.EMP_BOOKABLE_AT_BRANCH_SQL).not.toContain("N'مساعد'");
+    expect(mod.EMP_BOOKABLE_AT_BRANCH_PUBLIC_SQL).toContain("N'حلاق'");
+    expect(mod.EMP_BOOKABLE_AT_BRANCH_PUBLIC_SQL).not.toContain("N'مساعد'");
+  });
+
   it('public branches route exists', () => {
     expect(
       fs.existsSync(path.join(process.cwd(), 'src/app/api/public/branches/route.ts')),

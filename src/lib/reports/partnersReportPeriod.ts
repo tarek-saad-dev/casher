@@ -2,13 +2,12 @@
  * Partners Report minimum period — reports are available from June 2026 onward.
  * Months use calendar convention: January = 1, December = 12.
  *
- * Default "current month": on Cairo day 1 of a new month, keep the previous
- * month selected so partners can finish month-end closing.
+ * Default open period is always the previous Cairo calendar month — partners
+ * typically review last month's closing when they open the report.
  */
 
 import {
   getCairoCalendarDate,
-  shiftCalendarDate,
 } from '@/lib/businessDate';
 
 export const PARTNERS_REPORT_MIN_YEAR = 2026;
@@ -68,27 +67,28 @@ export function getPartnersReportAllowedMonths(year: number): number[] {
   return months;
 }
 
-/** True on Cairo calendar day 1 — partners default stays on previous month for closing. */
-export function isPartnersReportClosingGraceDay(now: Date = new Date()): boolean {
-  const day = Number(getCairoCalendarDate(now).slice(8, 10));
-  return day === 1;
+/** Shift a calendar year/month back by one month. */
+export function shiftPartnersReportMonthBack(
+  year: number,
+  month: number
+): { year: number; month: number } {
+  if (month <= 1) return { year: year - 1, month: 12 };
+  return { year, month: month - 1 };
 }
 
 /**
- * Default month for partners report ("الشهر الحالي").
- * Uses Cairo calendar; on the 1st, returns previous month so closing stays open.
+ * Default month for partners report ("شهر المراجعة").
+ * Always the previous Cairo calendar month (clamped to June 2026+).
  */
 export function getPartnersReportCurrentMonth(
   now: Date = new Date()
 ): { year: number; month: number } {
-  let calendar = getCairoCalendarDate(now);
-  if (isPartnersReportClosingGraceDay(now)) {
-    calendar = shiftCalendarDate(calendar, -1);
-  }
+  const calendar = getCairoCalendarDate(now);
   const [yearStr, monthStr] = calendar.split('-');
   const year = Number(yearStr);
   const month = Number(monthStr);
-  return clampPartnersReportMonth(year, month);
+  const previous = shiftPartnersReportMonthBack(year, month);
+  return clampPartnersReportMonth(previous.year, previous.month);
 }
 
 export function validatePartnersReportMinimumPeriod(
