@@ -230,6 +230,7 @@ export async function getEmployeeBusyIntervals(args: {
       failHard: true,
     });
   } else {
+    // Same fail-closed policy off-TX: soft-empty busy causes phantom free slots.
     [qIvs, bIvs] = await Promise.all([
       buildQueueIntervals(
         db,
@@ -238,9 +239,16 @@ export async function getEmployeeBusyIntervals(args: {
         args.now,
         defaultDur,
         args.excludeQueueTicketId,
-        { filterStale: true, graceMinutes: 30, debugContext: 'schedule-integrity' },
+        {
+          filterStale: true,
+          graceMinutes: 30,
+          debugContext: 'schedule-integrity',
+          failHard: true,
+        },
       ),
-      buildBookingIntervals(db, args.empId, args.operationalDate, defaultDur),
+      buildBookingIntervals(db, args.empId, args.operationalDate, defaultDur, {
+        failHard: true,
+      }),
     ]);
   }
   timer.mark('sameDayBusyMs');
@@ -284,8 +292,11 @@ export async function getEmployeeBusyIntervals(args: {
           filterStale: true,
           graceMinutes: 30,
           debugContext: 'schedule-integrity-next-day',
+          failHard: true,
         }),
-        buildBookingIntervals(db, args.empId, nextDayStr, defaultDur),
+        buildBookingIntervals(db, args.empId, nextDayStr, defaultDur, {
+          failHard: true,
+        }),
       ]);
     }
     const inShiftWindow = (iv: Interval) =>

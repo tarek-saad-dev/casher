@@ -119,6 +119,8 @@ export async function recordPublicBookingHealthSample(
   input: PublicBookingHealthSampleInput,
 ): Promise<void> {
   if (process.env.VITEST || process.env.NODE_ENV === 'test') return;
+  // Sample ~10% — full-rate inserts contend with booking reads under pool pressure.
+  if (Math.random() > 0.1) return;
   try {
     await ensurePublicBookingHealthSampleTable();
     const routeKey = String(input.routeKey || 'unknown').slice(0, 48);

@@ -645,6 +645,7 @@ export async function createPublicBooking(
     ) {
       throw new PublicBookingCreateError('HOLD_CONFLICT');
     }
+    throw holdErr;
   }
 
   const servicesNow = await resolveSelectedBookingServices({
@@ -655,7 +656,12 @@ export async function createPublicBooking(
     servicesNow.totalDurationMinutes !== precheck.totalDurationMinutes ||
     servicesNow.totalPrice !== precheck.subtotal
   ) {
-    throw new PublicBookingCreateError('SLOT_UNAVAILABLE');
+    throw new PublicBookingCreateError('PLAN_CREATE_MISMATCH', {
+      precheckDuration: precheck.totalDurationMinutes,
+      nowDuration: servicesNow.totalDurationMinutes,
+      precheckPrice: precheck.subtotal,
+      nowPrice: servicesNow.totalPrice,
+    });
   }
 
   const startMs = new Date(precheck.startDateTime!).getTime();

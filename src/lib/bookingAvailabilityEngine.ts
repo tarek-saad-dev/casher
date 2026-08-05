@@ -541,6 +541,33 @@ async function buildBarberContexts(args: {
     }
   }
 
+  // Public reads must see active holds — write guard already does; mismatch → SLOT_UNAVAILABLE.
+  if (source === 'public' && contexts.length > 0) {
+    try {
+      const { listActiveBookingHoldsForEmployee } = await import('@/lib/booking/bookingHold');
+      await Promise.all(
+        contexts.map(async (ctx) => {
+          const holds = await listActiveBookingHoldsForEmployee({
+            empId: ctx.empId,
+            rangeStart: new Date(ctx.shiftStartMs),
+            rangeEnd: new Date(ctx.shiftEndMs),
+          });
+          for (const h of holds) {
+            ctx.busy.push({
+              id: -(100_000 + h.holdId),
+              source: 'booking',
+              start: h.startAt,
+              end: h.endAt,
+              label: 'HOLD_CONFLICT',
+            });
+          }
+        }),
+      );
+    } catch {
+      /* hold table optional until ensured */
+    }
+  }
+
   timer.finish('[buildBarberContexts perf]', {
     mode,
     barberCount: barberIds.length,
