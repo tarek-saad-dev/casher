@@ -1,6 +1,6 @@
 {
   "phase": "booking-phase-10a-preflight",
-  "capturedAt": "2026-07-28T00:57:45.091Z",
+  "capturedAt": "2026-08-04T02:16:58.237Z",
   "ahmed": {
     "empId": 18,
     "empName": "احمد",
@@ -19,8 +19,8 @@
       "PublicBookingEnabled": true,
       "ExternalNotificationsEnabled": true,
       "TimeZone": "Africa/Cairo",
-      "DefaultOpenTime": null,
-      "DefaultCloseTime": null,
+      "DefaultOpenTime": "1970-01-01T11:00:00.000Z",
+      "DefaultCloseTime": "1970-01-01T01:30:00.000Z",
       "BusinessDayCutoffTime": "1970-01-01T04:00:00.000Z",
       "Address": null,
       "Phone": null
@@ -44,7 +44,7 @@
     {
       "BranchID": 3,
       "BranchCode": "CAMP_CAESAR",
-      "BranchName": "فرع كامب شيزار",
+      "BranchName": "كامب شيزار",
       "ShortName": "كامب شيزار",
       "IsActive": false,
       "LifecycleStatus": "SETUP",
@@ -75,7 +75,7 @@
     },
     {
       "BranchID": 3,
-      "SalonName": "Camp Caesar",
+      "SalonName": "كامب شيزار",
       "Timezone": "Africa/Cairo",
       "Currency": "EGP",
       "BookingEnabled": false
@@ -83,19 +83,128 @@
   ],
   "assignments": [
     {
+      "AssignmentID": "189",
+      "EmpID": 18,
+      "BranchID": 1,
+      "BranchCode": "GLEEM",
+      "IsHomeBranch": false,
+      "CanReceiveBookings": true,
+      "IsActive": true,
+      "EffectiveFrom": "2026-08-01",
+      "EffectiveTo": null,
+      "NotesPreview": "services:1049,17,11,34,10,29,23,39,46,1047,14,1057,32,18,1051,9,36,44,22,35,47,20,13,43,16,12,1056,31,40,15,19,38,21,1050"
+    },
+    {
+      "AssignmentID": "183",
+      "EmpID": 18,
+      "BranchID": 3,
+      "BranchCode": "CAMP_CAESAR",
+      "IsHomeBranch": true,
+      "CanReceiveBookings": true,
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-28",
+      "EffectiveTo": null,
+      "NotesPreview": "services:1049,17,11,34,10,29,23,39,46,1047,14,1057,32,18,1051,9,36,44,22,35,47,20,13,43,16,12,1056,31,40,15,19,38,21,1050"
+    },
+    {
       "AssignmentID": "4",
       "EmpID": 18,
       "BranchID": 1,
       "BranchCode": "GLEEM",
-      "IsHomeBranch": true,
+      "IsHomeBranch": false,
       "CanReceiveBookings": true,
-      "IsActive": true,
+      "IsActive": false,
       "EffectiveFrom": "2026-07-22",
-      "EffectiveTo": null,
-      "NotesPreview": "Phase 1B founding home assignment to GLEEM"
+      "EffectiveTo": "2026-07-27",
+      "NotesPreview": "Phase 1B founding home assignment to GLEEM | Phase10A soft-end GLEEM 2026-07-27"
     }
   ],
-  "activeSchedules": [],
+  "activeSchedules": [
+    {
+      "ScheduleID": "357",
+      "EmpID": 18,
+      "BranchID": 3,
+      "DayOfWeek": 0,
+      "IsWorking": true,
+      "StartTime": "11:00",
+      "EndTime": "01:30",
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-28",
+      "EffectiveTo": null
+    },
+    {
+      "ScheduleID": "358",
+      "EmpID": 18,
+      "BranchID": 3,
+      "DayOfWeek": 1,
+      "IsWorking": true,
+      "StartTime": "11:00",
+      "EndTime": "01:30",
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-28",
+      "EffectiveTo": null
+    },
+    {
+      "ScheduleID": "359",
+      "EmpID": 18,
+      "BranchID": 3,
+      "DayOfWeek": 2,
+      "IsWorking": true,
+      "StartTime": "11:00",
+      "EndTime": "01:30",
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-28",
+      "EffectiveTo": null
+    },
+    {
+      "ScheduleID": "360",
+      "EmpID": 18,
+      "BranchID": 3,
+      "DayOfWeek": 3,
+      "IsWorking": true,
+      "StartTime": "11:00",
+      "EndTime": "01:30",
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-28",
+      "EffectiveTo": null
+    },
+    {
+      "ScheduleID": "361",
+      "EmpID": 18,
+      "BranchID": 3,
+      "DayOfWeek": 4,
+      "IsWorking": true,
+      "StartTime": "11:00",
+      "EndTime": "01:30",
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-28",
+      "EffectiveTo": null
+    },
+    {
+      "ScheduleID": "362",
+      "EmpID": 18,
+      "BranchID": 3,
+      "DayOfWeek": 5,
+      "IsWorking": true,
+      "StartTime": "11:00",
+      "EndTime": "01:30",
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-28",
+      "EffectiveTo": null
+    },
+    {
+      "ScheduleID": "363",
+      "EmpID": 18,
+      "BranchID": 3,
+      "DayOfWeek": 6,
+      "IsWorking": false,
+      "StartTime": null,
+      "EndTime": null,
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-28",
+      "EffectiveTo": null
+    }
+  ],
   "payrollPlans": [
     {
       "PlanID": 4,
@@ -107,33 +216,28 @@
       "MonthlySalary": 300,
       "IsActive": true,
       "EffectiveFrom": "2026-07-08"
+    },
+    {
+      "PlanID": 180,
+      "EmpID": 18,
+      "BranchID": 3,
+      "PayType": "daily",
+      "HourlyRate": 25,
+      "DailyRate": 300,
+      "MonthlySalary": 300,
+      "IsActive": true,
+      "EffectiveFrom": "2026-07-28"
     }
   ],
   "futureOverridesCount": 0,
   "readiness": {
     "lifecycleStatus": "SETUP",
-    "score": 77,
+    "score": 83,
     "isReadyForPublicLive": false,
     "publicLiveBlockers": [
       {
-        "key": "ops.weekly_employee_coverage",
-        "details": "BUSINESS_DECISION_REQUIRED: Open weekdays with zero operational staff: Sun, Mon, Tue, Wed, Thu, Sat — assign staff or mark days closed"
-      },
-      {
-        "key": "public.frontend_multi_branch",
-        "details": "PUBLIC_LIVE blocked until cutsaloon.com multi-branch selection is deployed and verified (set PUBLIC_BOOKING_MULTI_BRANCH_VERIFIED=1)"
-      },
-      {
-        "key": "public.branch_selection",
-        "details": "PUBLIC_LIVE blocked until public branch selection UX ships (Phase 1P/10A)"
-      },
-      {
-        "key": "public.booking_flow_smoke",
-        "details": "PUBLIC_LIVE blocked until public booking flow smoke passes"
-      },
-      {
-        "key": "public.customer_notifications",
-        "details": "PUBLIC_LIVE blocked until customer notifications are branch-scoped and enabled"
+        "key": "target.policy_coverage",
+        "details": "2/3 assignments have target or NO_TARGET"
       }
     ]
   }

@@ -25,14 +25,16 @@ import {
   ScheduleConflictError,
 } from '@/lib/scheduleIntegrity';
 import { findEarliestAvailableInterval } from '@/lib/scheduleIntervals';
-import { getBarberWorkingWindow } from '@/lib/barberAvailability';
-import {
-  applyOverrides,
-  slotBlockedByOverride,
-} from '@/lib/scheduleOverrides';
-import { loadBookingOverridesForDate } from '@/lib/hr/attendance-shift-schedule-sync';
+import { slotBlockedByOverride } from '@/lib/scheduleOverrides';
 import { salonDateTimeToMs, getGlobalTimingDefaults } from '@/lib/publicBookingHelpers';
 import { getDefaultDuration } from '@/lib/queueEstimateEngine';
+import { resolveEmployeeDayPlan } from '@/lib/availability/resolveEmployeeDayPlan';
+import type { DayPlanWindow } from '@/lib/availability/resolveEmployeeDayPlan';
+import {
+  findWindowContainingInterval,
+  normalizeEffectiveWindows,
+  outerDisplayBounds,
+} from '@/lib/availability/effectiveWindows';
 import {
   validateEmployeeSupportsServices,
   buildUnsupportedServicesMessage,
@@ -67,6 +69,8 @@ export interface LoadedBookingForReschedule {
   startAt: Date;
   endAt: Date;
   serviceIds: number[];
+  /** Booking's branch when present — used for day-plan resolution. */
+  branchId: number | null;
 }
 
 export interface BookingMoveValidationResult {
@@ -93,11 +97,6 @@ export interface BookingMoveValidationResult {
     startAt: string;
     endAt: string;
   };
-}
-
-function hhmmToMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
 }
 
 function msToHhmm(ms: number, timezone: string): string {
@@ -133,6 +132,7 @@ export async function loadBookingForReschedule(
       SELECT
         b.BookingID, b.BookingCode, b.ClientID, b.AssignedEmpID,
         b.BookingDate, b.StartTime, b.EndTime, b.Status, b.Notes,
+        b.BranchID,
         c.[Name] AS ClientName, e.EmpName
       FROM [dbo].[Bookings] b
       LEFT JOIN [dbo].[TblClient] c ON c.ClientID = b.ClientID
@@ -185,37 +185,111 @@ export async function loadBookingForReschedule(
     startAt: new Date(normalized.startDateTimeCairo),
     endAt: new Date(normalized.endDateTimeCairo),
     serviceIds: services.map((s: { ProID: number }) => s.ProID).filter(Boolean),
+    branchId:
+      booking.BranchID != null && Number.isFinite(Number(booking.BranchID))
+        ? Number(booking.BranchID)
+        : null,
   };
 }
 
+/**
+ * Canonical day-plan shift bounds (Phase 2).
+ * Uses resolveEmployeeDayPlan — no local override apply / TblEmpWorkSchedule probe.
+ */
 async function getBarberShiftBounds(
   empId: number,
   operationalDate: string,
+  branchId: number | null,
   timezone: string,
-): Promise<{ shiftStartMs: number; shiftEndMs: number } | null> {
-  const db = await getPool();
-  const dateObj = new Date(`${operationalDate}T12:00:00`);
-  const baseWindow = await getBarberWorkingWindow(empId, dateObj);
-  if (!baseWindow.isWorkingDay || !baseWindow.startTime || !baseWindow.endTime) {
-    return null;
+): Promise<{
+  shiftStartMs: number;
+  shiftEndMs: number;
+  effSched: NonNullable<Awaited<ReturnType<typeof resolveEmployeeDayPlan>>['effSched']>;
+  denyReasonCode: string | null;
+  baseScheduleSource: string;
+  isWorking: boolean;
+  effectiveWindows: DayPlanWindow[];
+}> {
+  const plan = await resolveEmployeeDayPlan({
+    empId,
+    businessDate: operationalDate,
+    branchId,
+    source: 'operations',
+  });
+
+  if (!plan.isWorking || !plan.effSched) {
+    return {
+      shiftStartMs: 0,
+      shiftEndMs: 0,
+      effSched: plan.effSched ?? {
+        isWorking: false,
+        start: '00:00',
+        end: '00:00',
+        blockedIntervals: [],
+        appliedOverride: null,
+      },
+      denyReasonCode: plan.denyReasonCode,
+      baseScheduleSource: plan.baseScheduleSource,
+      isWorking: false,
+      effectiveWindows: [],
+    };
   }
 
-  const overridesMap = await loadBookingOverridesForDate(db, [empId], operationalDate);
-  const base = {
+  const windows = normalizeEffectiveWindows(plan.effectiveWindows);
+  const outer = outerDisplayBounds(windows);
+  const shiftStartMs =
+    outer?.startMs ?? salonDateTimeToMs(operationalDate, plan.effSched.start, timezone);
+  const shiftEndMs =
+    outer?.endMs
+    ?? (plan.isOvernight
+      ? salonDateTimeToMs(nextDate(operationalDate), plan.effSched.end, timezone)
+      : salonDateTimeToMs(operationalDate, plan.effSched.end, timezone));
+
+  return {
+    shiftStartMs,
+    shiftEndMs,
+    effSched: plan.effSched,
+    denyReasonCode: null,
+    baseScheduleSource: plan.baseScheduleSource,
     isWorking: true,
-    start: baseWindow.startTime,
-    end: baseWindow.endTime,
+    effectiveWindows: windows,
   };
-  const effSched = applyOverrides(empId, operationalDate, base, overridesMap.get(empId) ?? []);
-  if (!effSched.isWorking) return null;
+}
 
-  const shiftStartMs = salonDateTimeToMs(operationalDate, effSched.start, timezone);
-  const isOvernight = hhmmToMinutes(effSched.end) <= hhmmToMinutes(effSched.start);
-  const shiftEndMs = isOvernight
-    ? salonDateTimeToMs(nextDate(operationalDate), effSched.end, timezone)
-    : salonDateTimeToMs(operationalDate, effSched.end, timezone);
-
-  return { shiftStartMs, shiftEndMs };
+function dayPlanDenyToMoveCode(
+  deny: string | null,
+  baseScheduleSource: string,
+  empName: string,
+): {
+  code: string;
+  message: string;
+} {
+  if (
+    deny === 'SCHEDULE_NOT_CONFIGURED'
+    || deny === 'FREELANCER_NOT_PLANNED'
+    || baseScheduleSource === 'NONE'
+  ) {
+    return {
+      code: 'NO_SCHEDULE',
+      message: 'لا يوجد جدول عمل أسبوعي لهذا الموظف',
+    };
+  }
+  if (deny === 'EMPLOYEE_ABSENT') {
+    return {
+      code: 'OUTSIDE_SHIFT',
+      message: 'الحلاق غائب في هذا اليوم',
+    };
+  }
+  if (deny === 'EMPLOYEE_OFF_DAY') {
+    return {
+      code: 'OUTSIDE_SHIFT',
+      message: 'الحلاق في إجازة في هذا اليوم',
+    };
+  }
+  return {
+    code: 'OUTSIDE_SHIFT',
+    message: `لا يمكن نقل الموعد خارج وقت عمل ${empName || 'الحلاق'}`,
+  };
 }
 
 /** Append audit line without exceeding dbo.Bookings.Notes NVARCHAR(500). */
@@ -279,6 +353,7 @@ type EligibilityResult =
  * Dev-only structured diagnostics for the booking-move flow.
  * Never logs customer private data (no client name / mobile / notes).
  */
+/** Dev-only structured diagnostics for the booking-move flow. */
 function logMoveDiagnostics(info: {
   bookingId: number;
   targetEmployeeId: number;
@@ -291,23 +366,6 @@ function logMoveDiagnostics(info: {
   conflictStatus: string;
 }): void {
   console.log('[booking-move diagnostics]', JSON.stringify(info));
-}
-
-/** Does this employee have ANY weekly schedule rows configured at all? */
-async function hasWeeklySchedule(empId: number): Promise<boolean> {
-  const db = await getPool();
-  try {
-    const res = await db.request()
-      .input('id', sql.Int, empId)
-      .query(`
-        SELECT TOP 1 1 AS ok
-        FROM [dbo].[TblEmpWorkSchedule]
-        WHERE EmpID = @id
-      `);
-    return res.recordset.length > 0;
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -438,57 +496,64 @@ export async function validateBookingMove(args: {
     };
   }
 
+  const branchId = booking.branchId;
   const shift = await getBarberShiftBounds(
     effectiveEmpId,
     operationalDate,
+    branchId,
     timezone,
   );
-  if (!shift) {
-    // Distinguish "no weekly schedule configured at all" from "off this shift"
-    // so admins get a precise, actionable reason.
-    const scheduled = await hasWeeklySchedule(effectiveEmpId);
-    if (!scheduled) {
-      return {
-        valid: false,
-        code: 'NO_SCHEDULE',
-        message: 'لا يوجد جدول عمل أسبوعي لهذا الموظف',
-        details: { employeeId: effectiveEmpId, employeeName: eligibility.empName },
-      };
-    }
+  if (!shift.isWorking || !shift.effSched.isWorking || !shift.effectiveWindows.length) {
+    const mapped = dayPlanDenyToMoveCode(
+      shift.denyReasonCode,
+      shift.baseScheduleSource,
+      eligibility.empName,
+    );
     return {
       valid: false,
-      code: 'OUTSIDE_SHIFT',
-      message: `لا يمكن نقل الموعد خارج وقت عمل ${eligibility.empName ?? 'الحلاق'}`,
+      code: mapped.code,
+      message: mapped.message,
       details: { employeeId: effectiveEmpId, employeeName: eligibility.empName },
     };
   }
 
-  const db = await getPool();
-  const overridesMap = await loadBookingOverridesForDate(db, [effectiveEmpId], operationalDate);
-  const baseWindow = await getBarberWorkingWindow(effectiveEmpId, new Date(`${operationalDate}T12:00:00`));
-  const base = baseWindow.isWorkingDay && baseWindow.startTime && baseWindow.endTime
-    ? { isWorking: true, start: baseWindow.startTime, end: baseWindow.endTime }
-    : { isWorking: false, start: '00:00', end: '00:00' };
-  const effSched = applyOverrides(
-    effectiveEmpId,
-    operationalDate,
-    base,
-    overridesMap.get(effectiveEmpId) ?? [],
-  );
+  // Gap / cross-window rejection before conflict checks.
+  if (
+    !findWindowContainingInterval({
+      windows: shift.effectiveWindows,
+      startMs: proposedStart.getTime(),
+      endMs: proposedEnd.getTime(),
+    })
+  ) {
+    return {
+      valid: false,
+      code: 'OUTSIDE_SHIFT',
+      message: 'خارج وقت العمل',
+      details: { employeeId: effectiveEmpId, employeeName: eligibility.empName },
+    };
+  }
 
-  const overrideBlock = effSched
-    ? !!slotBlockedByOverride(
-        proposedStart.getTime(),
-        proposedEnd.getTime(),
-        effSched,
-      )
-    : false;
+  const effSched = shift.effSched;
+  const overrideBlockReason = slotBlockedByOverride(
+    proposedStart.getTime(),
+    proposedEnd.getTime(),
+    effSched,
+  );
+  const overrideBlock = !!overrideBlockReason;
 
   const busy = await getEmployeeBusyIntervals({
     empId: effectiveEmpId,
     operationalDate,
     now,
     excludeBookingId: bookingId,
+    branchId,
+    schedule: {
+      shiftStartMs: shift.shiftStartMs,
+      shiftEndMs: shift.shiftEndMs,
+      effSched,
+      isWorking: true,
+      effectiveWindows: shift.effectiveWindows,
+    },
   });
 
   const evaluation = evaluateBookingSlotAt(
@@ -498,9 +563,11 @@ export async function validateBookingMove(args: {
     {
       shiftStartMs: shift.shiftStartMs,
       shiftEndMs: shift.shiftEndMs,
+      effectiveWindows: shift.effectiveWindows,
       nowMs,
       minNoticeMs: 0,
       overrideBlock,
+      overrideBlockReason,
     },
   );
 
@@ -678,6 +745,7 @@ export async function rescheduleBookingMove(args: {
       endAt: proposedEnd,
       operationalDate,
       excludeBookingId: bookingId,
+      branchId: booking.branchId,
       transaction,
     });
 
@@ -735,6 +803,33 @@ export async function rescheduleBookingMove(args: {
     }
 
     await transaction.commit();
+
+    try {
+      const { scheduleBookingEventWhatsApp } = await import(
+        '@/lib/booking/bookingEventWhatsApp'
+      );
+      const { loadBookingCustomerContact } = await import(
+        '@/lib/booking/bookingCustomerContact'
+      );
+      const contact = await loadBookingCustomerContact(bookingId);
+      const dateStr = bookingDateForRow;
+      const timeStr = msToHhmm(proposedStart.getTime(), timezone);
+      await scheduleBookingEventWhatsApp({
+        bookingId,
+        bookingCode: contact?.bookingCode ?? booking.bookingCode ?? `BK-${bookingId}`,
+        eventType: 'move',
+        eventVersion: `${proposedStart.toISOString()}:${effectiveEmpId}`,
+        phone: contact?.phone ?? null,
+        customerName: contact?.customerName ?? booking.clientName,
+        bookingDate: dateStr,
+        bookingTime: timeStr,
+        barberName: newEmpName,
+        branchName: contact?.branchName ?? null,
+        servicesSummary: contact?.servicesSummary ?? null,
+      });
+    } catch {
+      /* notify best-effort; move already committed */
+    }
 
     return {
       bookingId,

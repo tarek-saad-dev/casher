@@ -2,10 +2,16 @@
  * Scheduler utility functions for operational hours (11 AM - 4 AM next day)
  */
 
+import {
+  BUSINESS_DAY_CUTOFF_HOUR,
+  getCairoBusinessDate as getCairoBusinessDateShared,
+  getCairoCalendarDate as getCairoCalendarDateShared,
+} from '@/lib/businessDate';
+
 export const OPERATION_START_HOUR = 11;
 export const OPERATION_END_HOUR = 28; // 4 AM next day (24 + 4)
 export const HOUR_CELL_HEIGHT = 120; // px
-export const BUSINESS_DAY_CUTOFF_HOUR = 4;
+export { BUSINESS_DAY_CUTOFF_HOUR };
 export const SLOT_INTERVAL_MINUTES = 15;
 export const PX_PER_MINUTE = HOUR_CELL_HEIGHT / 60;
 export const DRAG_ACTIVATION_PX = 4;
@@ -50,29 +56,14 @@ export interface TimelineItem {
   dateDisplay?: string;      // e.g., "2026-06-12"
 }
 
-/** Calendar date in Africa/Cairo (YYYY-MM-DD) */
+/** Calendar date in Africa/Cairo (YYYY-MM-DD) — owned by businessDate.ts */
 export function getCairoCalendarDate(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+  return getCairoCalendarDateShared();
 }
 
 /** Operational business date — before 4 AM Cairo belongs to the previous operational day */
 export function getCairoBusinessDate(): string {
-  const now = new Date();
-  const cairoHour = parseInt(
-    new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Africa/Cairo',
-      hour: '2-digit',
-      hour12: false,
-    }).format(now),
-    10,
-  );
-
-  if (cairoHour < BUSINESS_DAY_CUTOFF_HOUR) {
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    return yesterday.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
-  }
-
-  return getCairoCalendarDate();
+  return getCairoBusinessDateShared();
 }
 
 export function getCairoTimeParts(): CairoTimeParts {

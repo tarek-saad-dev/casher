@@ -86,27 +86,38 @@ describe('freelanceBookingUnlock', () => {
       ).toEqual({ start: '12:00', end: '00:00' });
     });
 
-    it('falls back to attendance times then salon defaults', () => {
+    it('uses attendance times when defaults missing; null when hours incomplete', () => {
+      expect(
+        resolveFreelanceWorkingWindow({
+          checkInTime: '13:15',
+          checkOutTime: '22:00',
+        }),
+      ).toEqual({ start: '13:15', end: '22:00' });
+
       expect(
         resolveFreelanceWorkingWindow({
           checkInTime: '13:15',
           checkOutTime: null,
         }),
-      ).toEqual({ start: '13:15', end: FREELANCE_BOOKING_FALLBACK_END });
+      ).toBeNull();
 
-      expect(resolveFreelanceWorkingWindow({})).toEqual({
-        start: FREELANCE_BOOKING_FALLBACK_START,
-        end: FREELANCE_BOOKING_FALLBACK_END,
-      });
+      expect(resolveFreelanceWorkingWindow({})).toBeNull();
     });
 
-    it('replaces identical start/end with salon fallbacks', () => {
+    it('returns null for identical start/end (do not invent hours)', () => {
       expect(
         resolveFreelanceWorkingWindow({
           defaultStart: '18:00',
           defaultEnd: '18:00',
         }),
-      ).toEqual({
+      ).toBeNull();
+    });
+
+    it('legacy fallback helper still invents salon hours when needed', async () => {
+      const { resolveFreelanceWorkingWindowWithFallback } = await import(
+        '@/lib/hr/freelanceBookingUnlock'
+      );
+      expect(resolveFreelanceWorkingWindowWithFallback({})).toEqual({
         start: FREELANCE_BOOKING_FALLBACK_START,
         end: FREELANCE_BOOKING_FALLBACK_END,
       });

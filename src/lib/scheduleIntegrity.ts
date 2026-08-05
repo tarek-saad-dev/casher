@@ -12,15 +12,22 @@ import {
   findEarliestAvailableInterval,
   type ScheduleInterval,
 } from '@/lib/scheduleIntervals';
-import { getBarberWorkingWindow } from '@/lib/barberAvailability';
 import {
-  applyOverrides,
   type EffectiveSchedule,
 } from '@/lib/scheduleOverrides';
-import { loadBookingOverridesForDate } from '@/lib/hr/attendance-shift-schedule-sync';
 import { salonDateTimeToMs, getGlobalTimingDefaults } from '@/lib/publicBookingHelpers';
 import { SALON_TZ } from '@/lib/bookingDateTime';
 import { createStageTimer } from '@/lib/devStageTiming';
+import {
+  resolveEmployeeDayPlan,
+  type DayPlanWindow,
+  type EmployeeDayPlan,
+} from '@/lib/availability/resolveEmployeeDayPlan';
+import {
+  findWindowContainingInterval,
+  normalizeEffectiveWindows,
+  outerDisplayBounds,
+} from '@/lib/availability/effectiveWindows';
 
 export class ScheduleConflictError extends Error {
   status = 409;
@@ -43,11 +50,6 @@ export class ScheduleConflictError extends Error {
   }
 }
 
-function hhmmToMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + (m || 0);
-}
-
 function nextDate(dateStr: string): string {
   const d = new Date(`${dateStr}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + 1);
@@ -55,52 +57,104 @@ function nextDate(dateStr: string): string {
 }
 
 export interface EmployeeShiftBounds {
+  /**
+   * Outer display / occupancy-load bounds (min window start / max window end).
+   * NOT runtime eligibility — gaps between windows remain unbookable.
+   */
   shiftStartMs: number;
   shiftEndMs: number;
   effSched: EffectiveSchedule;
   isWorking: boolean;
+  /** Phase 3C — all effective windows for containment checks. */
+  effectiveWindows?: DayPlanWindow[];
 }
 
-/** Effective shift window + block ranges for one employee on an operational date. */
+export type EmployeeEffectiveWindowsResult = {
+  isWorking: boolean;
+  windows: DayPlanWindow[];
+  blockedIntervals: Array<{ startMs: number; endMs: number; reason?: string }>;
+  effSched: EffectiveSchedule | null;
+  dayPlan: EmployeeDayPlan;
+  plan: EmployeeDayPlan;
+  /** Outer display bounds only — never use for eligibility. */
+  displayStartMs: number;
+  displayEndMs: number;
+};
+
+/**
+ * Phase 3C — multi-window schedule for runtime write guards.
+ * Resolves the day plan once; iterates windows in memory.
+ */
+export async function getEmployeeEffectiveWindows(args: {
+  empId: number;
+  operationalDate: string;
+  branchId?: number | null;
+  transaction?: Transaction;
+  settings?: Awaited<ReturnType<typeof getGlobalTimingDefaults>>;
+}): Promise<EmployeeEffectiveWindowsResult> {
+  const plan = await resolveEmployeeDayPlan({
+    empId: args.empId,
+    businessDate: args.operationalDate,
+    branchId: args.branchId ?? null,
+    transaction: args.transaction,
+    source: 'operations',
+  });
+  const windows = normalizeEffectiveWindows(plan.effectiveWindows);
+  const outer = outerDisplayBounds(windows);
+  const blockedIntervals = (plan.effSched?.blockedIntervals ?? []).map((b) => ({
+    startMs: b.startMs,
+    endMs: b.endMs,
+    reason: b.reason,
+  }));
+  return {
+    isWorking: Boolean(plan.isWorking && plan.effSched?.isWorking && windows.length),
+    windows,
+    blockedIntervals,
+    effSched: plan.effSched,
+    dayPlan: plan,
+    plan,
+    displayStartMs: outer?.startMs ?? 0,
+    displayEndMs: outer?.endMs ?? 0,
+  };
+}
+
+/**
+ * Effective schedule for one employee on an operational date.
+ * Phase 3C: `effectiveWindows` is authoritative for eligibility;
+ * `shiftStartMs`/`shiftEndMs` are outer display / next-day busy load bounds only.
+ */
 export async function getEmployeeEffectiveSchedule(args: {
   empId: number;
   operationalDate: string;
+  branchId?: number | null;
   transaction?: Transaction;
   settings?: Awaited<ReturnType<typeof getGlobalTimingDefaults>>;
 }): Promise<EmployeeShiftBounds | null> {
-  const settings = args.settings ?? (await getGlobalTimingDefaults());
-  const timezone = settings.timezone || SALON_TZ;
+  const multi = await getEmployeeEffectiveWindows(args);
 
-  const dateObj = new Date(`${args.operationalDate}T12:00:00Z`);
-  const baseWindow = await getBarberWorkingWindow(args.empId, dateObj);
-  const base = baseWindow.isWorkingDay && baseWindow.startTime && baseWindow.endTime
-    ? { isWorking: true, start: baseWindow.startTime, end: baseWindow.endTime }
-    : { isWorking: false, start: '00:00', end: '00:00' };
-
-  const db = (args.transaction ?? (await getPool())) as Awaited<ReturnType<typeof getPool>>;
-  const overridesMap = await loadBookingOverridesForDate(
-    db,
-    [args.empId],
-    args.operationalDate,
-  );
-  const effSched = applyOverrides(
-    args.empId,
-    args.operationalDate,
-    base,
-    overridesMap.get(args.empId) ?? [],
-  );
-
-  if (!effSched.isWorking) {
-    return { shiftStartMs: 0, shiftEndMs: 0, effSched, isWorking: false };
+  if (!multi.isWorking || !multi.effSched) {
+    return {
+      shiftStartMs: 0,
+      shiftEndMs: 0,
+      effSched: multi.effSched ?? {
+        isWorking: false,
+        start: '00:00',
+        end: '00:00',
+        blockedIntervals: [],
+        appliedOverride: null,
+      },
+      isWorking: false,
+      effectiveWindows: [],
+    };
   }
 
-  const shiftStartMs = salonDateTimeToMs(args.operationalDate, effSched.start, timezone);
-  const isOvernight = hhmmToMinutes(effSched.end) <= hhmmToMinutes(effSched.start);
-  const shiftEndMs = isOvernight
-    ? salonDateTimeToMs(nextDate(args.operationalDate), effSched.end, timezone)
-    : salonDateTimeToMs(args.operationalDate, effSched.end, timezone);
-
-  return { shiftStartMs, shiftEndMs, effSched, isWorking: true };
+  return {
+    shiftStartMs: multi.displayStartMs,
+    shiftEndMs: multi.displayEndMs,
+    effSched: multi.effSched,
+    isWorking: true,
+    effectiveWindows: multi.windows,
+  };
 }
 
 /**
@@ -116,7 +170,10 @@ export async function getEmployeeBusyIntervals(args: {
   now: Date;
   excludeQueueTicketId?: number;
   excludeBookingId?: number;
+  /** Ignore this hold during occupancy (create after own hold). */
+  excludeHoldKey?: string | null;
   transaction?: Transaction;
+  branchId?: number | null;
   /** Absolute end of the candidate interval — when past operationalDate midnight, next-day busy is loaded. */
   rangeEndMs?: number;
   /** Reuse schedule already resolved after applock (do not treat as occupancy truth). */
@@ -128,7 +185,9 @@ export async function getEmployeeBusyIntervals(args: {
   const db = (args.transaction ?? (await getPool())) as Awaited<ReturnType<typeof getPool>>;
   timer.mark('poolMs');
 
-  const settings = args.settings ?? (await getGlobalTimingDefaults());
+  const settings = args.settings ?? (await getGlobalTimingDefaults({
+    transaction: args.transaction,
+  }));
   timer.mark('settingsMs');
   const defaultDur =
     args.defaultDuration ??
@@ -142,6 +201,7 @@ export async function getEmployeeBusyIntervals(args: {
       : await getEmployeeEffectiveSchedule({
           empId: args.empId,
           operationalDate: args.operationalDate,
+          branchId: args.branchId,
           transaction: args.transaction,
           settings,
         });
@@ -251,6 +311,33 @@ export async function getEmployeeBusyIntervals(args: {
 
   timer.finish('[busy-intervals perf]', { empId: args.empId, date: args.operationalDate });
 
+  let holdIvs: ScheduleInterval[] = [];
+  try {
+    const { listActiveBookingHoldsForEmployee } = await import('@/lib/booking/bookingHold');
+    const rangeStart = new Date(
+      salonDateTimeToMs(args.operationalDate, '00:00', timezone),
+    );
+    const rangeEnd = new Date(
+      args.rangeEndMs ??
+        salonDateTimeToMs(nextDate(args.operationalDate), '04:00', timezone),
+    );
+    const holds = await listActiveBookingHoldsForEmployee({
+      empId: args.empId,
+      rangeStart,
+      rangeEnd,
+      excludeHoldKey: args.excludeHoldKey ?? null,
+    });
+    holdIvs = holds.map((h, idx) => ({
+      id: -(10_000 + idx),
+      source: 'block' as const,
+      start: h.startAt,
+      end: h.endAt,
+      label: 'HOLD_CONFLICT',
+    }));
+  } catch {
+    /* hold table optional until ensured */
+  }
+
   return [
     ...qIvs.map((iv) => ({
       id: iv.id,
@@ -277,6 +364,7 @@ export async function getEmployeeBusyIntervals(args: {
       ticketCode: iv.ticketCode,
     })),
     ...blockIvs,
+    ...holdIvs,
   ];
 }
 
@@ -340,14 +428,18 @@ export async function assertEmployeeIntervalAvailable(args: {
   endAt: Date;
   now?: Date;
   operationalDate?: string;
+  branchId?: number | null;
   excludeQueueTicketId?: number;
   excludeBookingId?: number;
+  excludeHoldKey?: string | null;
   transaction?: Transaction;
 }): Promise<void> {
   const timer = createStageTimer();
   const now = args.now ?? new Date();
   const operationalDate = args.operationalDate ?? getCairoBusinessDate(now);
-  const settings = await getGlobalTimingDefaults();
+  const settings = await getGlobalTimingDefaults({
+    transaction: args.transaction,
+  });
   timer.mark('settingsMs');
 
   if (args.transaction) {
@@ -358,6 +450,7 @@ export async function assertEmployeeIntervalAvailable(args: {
   const schedule = await getEmployeeEffectiveSchedule({
     empId: args.empId,
     operationalDate,
+    branchId: args.branchId,
     transaction: args.transaction,
     settings,
   });
@@ -373,7 +466,27 @@ export async function assertEmployeeIntervalAvailable(args: {
   const startMs = args.startAt.getTime();
   const endMs = args.endAt.getTime();
 
-  if (startMs < schedule.shiftStartMs || endMs > schedule.shiftEndMs) {
+  // Phase 3C: must fit completely inside ONE effective window (no gap bridging).
+  const windows =
+    schedule.effectiveWindows && schedule.effectiveWindows.length > 0
+      ? schedule.effectiveWindows
+      : schedule.shiftEndMs > schedule.shiftStartMs
+        ? [
+            {
+              start: schedule.effSched.start,
+              end: schedule.effSched.end,
+              endDayOffset: 0 as const,
+              startMs: schedule.shiftStartMs,
+              endMs: schedule.shiftEndMs,
+            },
+          ]
+        : [];
+  const containing = findWindowContainingInterval({
+    windows,
+    startMs,
+    endMs,
+  });
+  if (!containing) {
     throw new ScheduleConflictError(
       'الفترة خارج ساعات عمل الحلاق',
       {
@@ -393,6 +506,7 @@ export async function assertEmployeeIntervalAvailable(args: {
     now,
     excludeQueueTicketId: args.excludeQueueTicketId,
     excludeBookingId: args.excludeBookingId,
+    excludeHoldKey: args.excludeHoldKey,
     transaction: args.transaction,
     rangeEndMs: endMs,
     schedule,

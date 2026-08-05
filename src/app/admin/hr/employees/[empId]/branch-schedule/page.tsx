@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ArrowRight, Loader2, Save, AlertTriangle } from 'lucide-react';
+import { ArrowRight, Copy, Clock, Loader2, Save, AlertTriangle } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -34,6 +34,13 @@ type DayDraft = {
   conflict?: string | null;
 };
 
+type EmployeeInfo = {
+  empName: string;
+  isActive: boolean;
+  defaultCheckInTime: string | null;
+  defaultCheckOutTime: string | null;
+};
+
 const BRANCH_BADGE: Record<string, string> = {
   GLEEM: 'bg-amber-500/15 text-amber-200 border-amber-500/40',
   CAMP_CAESAR: 'bg-sky-500/15 text-sky-200 border-sky-500/40',
@@ -50,13 +57,14 @@ export default function EmployeeBranchSchedulePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [employee, setEmployee] = useState<{ empName: string; isActive: boolean } | null>(null);
+  const [employee, setEmployee] = useState<EmployeeInfo | null>(null);
   const [branches, setBranches] = useState<BranchOpt[]>([]);
   const [hasActiveAssignment, setHasActiveAssignment] = useState(true);
   const [effectiveFrom, setEffectiveFrom] = useState('');
   const [reason, setReason] = useState('تحديث توزيع الفروع الأسبوعي');
   const [days, setDays] = useState<DayDraft[]>([]);
   const [dirty, setDirty] = useState(false);
+  const [actionHint, setActionHint] = useState<string | null>(null);
   const [preview, setPreview] = useState<{
     canSave: boolean;
     blockers: Array<{ code: string; message: string }>;
@@ -77,11 +85,17 @@ export default function EmployeeBranchSchedulePage() {
         setError(data.error || 'فشل التحميل');
         return;
       }
-      setEmployee(data.employee);
+      setEmployee({
+        empName: data.employee?.empName ?? '',
+        isActive: Boolean(data.employee?.isActive),
+        defaultCheckInTime: data.employee?.defaultCheckInTime?.slice?.(0, 5) ?? null,
+        defaultCheckOutTime: data.employee?.defaultCheckOutTime?.slice?.(0, 5) ?? null,
+      });
       setBranches(data.assignedBranches || []);
       setHasActiveAssignment(data.hasActiveAssignment !== false);
       const from = data.weekStart || new Date().toISOString().slice(0, 10);
       setEffectiveFrom(from);
+      setActionHint(null);
       const drafts: DayDraft[] = (data.days || []).map(
         (d: {
           dayOfWeek: number;
@@ -144,6 +158,79 @@ export default function EmployeeBranchSchedulePage() {
     setDays((prev) => prev.map((d) => (d.dayOfWeek === dow ? { ...d, ...patch } : d)));
     setDirty(true);
     setPreview(null);
+    setActionHint(null);
+  };
+
+  const savedEmployeeHours =
+    employee?.defaultCheckInTime && employee?.defaultCheckOutTime
+      ? {
+          startTime: employee.defaultCheckInTime,
+          endTime: employee.defaultCheckOutTime,
+        }
+      : null;
+
+  const applySavedEmployeeHours = (scope: 'all-working' | number) => {
+    if (!savedEmployeeHours) {
+      setError('لا توجد مواعيد عمل محفوظة لهذا الموظف (من/إلى في بيانات الموظف)');
+      return;
+    }
+    setDays((prev) =>
+      prev.map((d) => {
+        const match =
+          scope === 'all-working'
+            ? d.status === 'working'
+            : d.dayOfWeek === scope;
+        if (!match || d.status !== 'working') return d;
+        return {
+          ...d,
+          useBranchHours: false,
+          startTime: savedEmployeeHours.startTime,
+          endTime: savedEmployeeHours.endTime,
+        };
+      }),
+    );
+    setDirty(true);
+    setPreview(null);
+    setError(null);
+    setActionHint(
+      scope === 'all-working'
+        ? `تم تطبيق مواعيد الموظف المحفوظة (${savedEmployeeHours.startTime} → ${savedEmployeeHours.endTime}) على كل أيام العمل`
+        : `تم تطبيق مواعيد الموظف المحفوظة (${savedEmployeeHours.startTime} → ${savedEmployeeHours.endTime}) على هذا اليوم`,
+    );
+  };
+
+  const copyHoursToOtherWorkingDays = (sourceDow: number) => {
+    const source = days.find((d) => d.dayOfWeek === sourceDow);
+    if (!source || source.status !== 'working') return;
+    if (
+      !source.useBranchHours &&
+      (!source.startTime || !source.endTime)
+    ) {
+      setError('حدّد وقت من/إلى أولاً قبل النسخ');
+      return;
+    }
+    const targets = days.filter(
+      (d) => d.dayOfWeek !== sourceDow && d.status === 'working',
+    );
+    if (targets.length === 0) {
+      setActionHint('لا توجد أيام عمل أخرى للنسخ إليها');
+      return;
+    }
+    setDays((prev) =>
+      prev.map((d) => {
+        if (d.dayOfWeek === sourceDow || d.status !== 'working') return d;
+        return {
+          ...d,
+          useBranchHours: source.useBranchHours,
+          startTime: source.startTime,
+          endTime: source.endTime,
+        };
+      }),
+    );
+    setDirty(true);
+    setPreview(null);
+    setError(null);
+    setActionHint(`تم نسخ مواعيد ${source.dayNameAr} إلى ${targets.length} يوم عمل`);
   };
 
   const summary = useMemo(() => {
@@ -302,11 +389,42 @@ export default function EmployeeBranchSchedulePage() {
           توجد تغييرات غير محفوظة
         </div>
       )}
+      {actionHint && (
+        <div className="mb-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
+          {actionHint}
+        </div>
+      )}
       {error && (
         <div className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </div>
       )}
+
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-3">
+        {savedEmployeeHours ? (
+          <>
+            <span className="text-sm text-muted-foreground">
+              مواعيد الموظف المحفوظة:{' '}
+              <strong className="text-foreground" dir="ltr">
+                {savedEmployeeHours.startTime} → {savedEmployeeHours.endTime}
+              </strong>
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => applySavedEmployeeHours('all-working')}
+            >
+              <Clock className="ml-1.5 h-3.5 w-3.5" />
+              استخدام مواعيد عمل الموظف المحفوظة
+            </Button>
+          </>
+        ) : (
+          <span className="text-sm text-muted-foreground">
+            لا توجد مواعيد محفوظة في بيانات الموظف — يمكن ضبطها من صفحة الموظفين ثم استخدامها هنا.
+          </span>
+        )}
+      </div>
 
       <div className="space-y-3">
         {days.map((day) => {
@@ -331,12 +449,40 @@ export default function EmployeeBranchSchedulePage() {
             >
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-semibold">{day.dayNameAr}</h3>
-                {day.conflict && (
-                  <span className="inline-flex items-center gap-1 text-xs text-destructive">
-                    <AlertTriangle className="h-3.5 w-3.5" />
-                    هذا اليوم يتعارض مع جدول فرع آخر ({day.conflict})
-                  </span>
-                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  {day.conflict && (
+                    <span className="inline-flex items-center gap-1 text-xs text-destructive">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      هذا اليوم يتعارض مع جدول فرع آخر ({day.conflict})
+                    </span>
+                  )}
+                  {day.status === 'working' && (
+                    <>
+                      {savedEmployeeHours && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 text-xs"
+                          onClick={() => applySavedEmployeeHours(day.dayOfWeek)}
+                        >
+                          <Clock className="ml-1 h-3.5 w-3.5" />
+                          مواعيد الموظف
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 text-xs"
+                        onClick={() => copyHoursToOtherWorkingDays(day.dayOfWeek)}
+                      >
+                        <Copy className="ml-1 h-3.5 w-3.5" />
+                        نسخ لباقي أيام العمل
+                      </Button>
+                    </>
+                  )}
+                </div>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -378,11 +524,26 @@ export default function EmployeeBranchSchedulePage() {
                     className="w-full rounded-lg border border-border bg-background px-3 py-2"
                     disabled={day.status !== 'working'}
                     value={day.useBranchHours ? 'branch' : 'custom'}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const useBranchHours = e.target.value === 'branch';
+                      if (useBranchHours) {
+                        updateDay(day.dayOfWeek, { useBranchHours: true });
+                        return;
+                      }
                       updateDay(day.dayOfWeek, {
-                        useBranchHours: e.target.value === 'branch',
-                      })
-                    }
+                        useBranchHours: false,
+                        startTime:
+                          day.startTime ||
+                          savedEmployeeHours?.startTime ||
+                          branch?.defaultOpenTime ||
+                          '',
+                        endTime:
+                          day.endTime ||
+                          savedEmployeeHours?.endTime ||
+                          branch?.defaultCloseTime ||
+                          '',
+                      });
+                    }}
                   >
                     <option value="branch">استخدام ساعات الفرع</option>
                     <option value="custom">وقت مخصص</option>

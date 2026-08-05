@@ -20,6 +20,12 @@ export type BookingWhatsAppScheduleInput = {
   branchName?: string;
 };
 
+export type BookingWhatsAppSendOutcome = {
+  ok: boolean;
+  providerMessageId?: string | null;
+  error?: string | null;
+};
+
 /** Mask phone for logs — never log full PII. */
 export function maskPhoneForLog(phone: string): string {
   const digits = phone.replace(/\D/g, '');
@@ -30,16 +36,19 @@ export function maskPhoneForLog(phone: string): string {
 /**
  * Schedules WhatsApp exactly once via post-response `after()`.
  * Call only after a successful transaction commit.
+ * Optional onResult updates idempotency status (sent/failed) after provider response.
  */
 export function scheduleBookingWhatsAppAfterCommit(
   input: BookingWhatsAppScheduleInput,
   deps?: {
     schedule?: typeof schedulePostResponse;
     send?: typeof sendBookingWhatsAppMessage;
+    onResult?: (result: BookingWhatsAppSendOutcome) => void | Promise<void>;
   },
 ): { scheduled: true; mechanism: typeof BOOKING_WHATSAPP_EXECUTION } {
   const schedule = deps?.schedule ?? schedulePostResponse;
   const send = deps?.send ?? sendBookingWhatsAppMessage;
+  const onResult = deps?.onResult;
 
   schedule(async () => {
     if (process.env.NODE_ENV !== 'production') {
@@ -50,7 +59,7 @@ export function scheduleBookingWhatsAppAfterCommit(
     }
     const t0 = Date.now();
     try {
-      await send({
+      const result = await send({
         phone: input.phone,
         customerName: input.customerName,
         bookingId: input.bookingId,
@@ -64,14 +73,35 @@ export function scheduleBookingWhatsAppAfterCommit(
         console.log('[booking/create] WhatsApp completed', {
           bookingId: input.bookingId,
           durationMs: Date.now() - t0,
+          sent: result.sent,
+        });
+      }
+      if (onResult) {
+        const providerMessageId =
+          'messageId' in result && result.messageId != null
+            ? String(result.messageId)
+            : 'providerMessageId' in result &&
+                (result as { providerMessageId?: string }).providerMessageId != null
+              ? String((result as { providerMessageId?: string }).providerMessageId)
+              : null;
+        await onResult({
+          ok: Boolean(result.sent),
+          providerMessageId,
+          error: result.sent
+            ? null
+            : (result.reason ?? 'send_failed'),
         });
       }
     } catch (err) {
+      const error = err instanceof Error ? err.message : 'unknown_error';
       console.log('[booking/create] WhatsApp error (non-critical)', {
         bookingId: input.bookingId,
         phone: maskPhoneForLog(input.phone),
-        error: err instanceof Error ? err.message : 'unknown_error',
+        error,
       });
+      if (onResult) {
+        await onResult({ ok: false, error });
+      }
     }
   });
 

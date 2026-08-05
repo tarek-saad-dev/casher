@@ -316,43 +316,38 @@ export async function isBarberWorkingAt(empId: number, dt: Date): Promise<boolea
 
 /**
  * Get working window (startTime, endTime) for a barber on a given date.
+ * Phase 1A: uses shared loadWorkingWindowsBatch (branch-first + legacy fallback).
  * Returns null times if no schedule row exists.
+ *
+ * Note: this returns the *weekly base* (+ freelance unlock), not override-adjusted
+ * effective windows. For write guards use resolveEmployeeDayPlan / scheduleIntegrity.
+ *
+ * @deprecated Phase 2.5 — Prefer `resolveEmployeeDayPlan` for effective hours.
+ * Classification: Legacy / HR fallback (GLEEM) + Debug only for admin overnight route.
+ * Not used by booking create, day-status, timeline, or reschedule paths.
  */
 export async function getBarberWorkingWindow(
   empId: number,
   date: Date,
+  opts?: { branchId?: number },
 ): Promise<{ startTime: string | null; endTime: string | null; isWorkingDay: boolean }> {
   const db = await getPool();
-  // Use Cairo local date to derive correct dayOfWeek
   const cairoDs = cairoDateString(date);
   const dayOfWeek = new Date(`${cairoDs}T12:00:00Z`).getDay();
   try {
-    const freelanceUnlocks = await loadFreelanceBookingUnlocks([empId], cairoDs);
+    const { loadWorkingWindowsBatch } = await import('@/lib/availability/loadWorkingWindowsBatch');
+    const [windowsMap, freelanceUnlocks] = await Promise.all([
+      loadWorkingWindowsBatch(db, [empId], dayOfWeek, {
+        branchId: opts?.branchId,
+        workDate: cairoDs,
+      }),
+      loadFreelanceBookingUnlocks([empId], cairoDs),
+    ]);
+    const weekly = windowsMap.get(empId);
     const freelanceUnlock = freelanceUnlocks.get(empId);
 
-    // Phase 1Q: prefer branch-owned weekly schedule when an active assignment exists.
-    const branchRes = await db.request()
-      .input('empId',     sql.Int,     empId)
-      .input('dayOfWeek', sql.TinyInt, dayOfWeek)
-      .input('day',       sql.Date,    cairoDs)
-      .query(`
-        SELECT TOP 1 s.IsWorking, s.StartTime, s.EndTime
-        FROM dbo.TblEmpBranchWorkSchedule s
-        INNER JOIN dbo.TblEmpBranchAssignment a
-          ON a.EmpID = s.EmpID AND a.BranchID = s.BranchID
-        WHERE s.EmpID = @empId
-          AND s.DayOfWeek = @dayOfWeek
-          AND s.IsActive = 1
-          AND s.EffectiveFrom <= @day
-          AND (s.EffectiveTo IS NULL OR s.EffectiveTo >= @day)
-          AND a.IsActive = 1
-          AND a.EffectiveFrom <= @day
-          AND (a.EffectiveTo IS NULL OR a.EffectiveTo >= @day)
-        ORDER BY s.EffectiveFrom DESC, s.ScheduleID DESC
-      `);
-    if (branchRes.recordset.length) {
-      const row = branchRes.recordset[0];
-      if (!row.IsWorking && freelanceUnlock) {
+    if (weekly) {
+      if (!weekly.isWorkingDay && freelanceUnlock) {
         return {
           isWorkingDay: true,
           startTime: freelanceUnlock.start,
@@ -360,44 +355,20 @@ export async function getBarberWorkingWindow(
         };
       }
       return {
-        isWorkingDay: !!row.IsWorking,
-        startTime: fmtTime(row.StartTime),
-        endTime:   fmtTime(row.EndTime),
+        isWorkingDay: !!weekly.isWorkingDay,
+        startTime: weekly.startTime,
+        endTime: weekly.endTime,
       };
     }
 
-    // Legacy fallback for pre-Phase-1Q employees.
-    const res = await db.request()
-      .input('empId',     sql.Int,     empId)
-      .input('dayOfWeek', sql.TinyInt, dayOfWeek)
-      .query(`
-        SELECT TOP 1 IsWorkingDay, StartTime, EndTime
-        FROM dbo.TblEmpWorkSchedule
-        WHERE EmpID = @empId AND DayOfWeek = @dayOfWeek
-      `);
-    if (!res.recordset.length) {
-      if (freelanceUnlock) {
-        return {
-          isWorkingDay: true,
-          startTime: freelanceUnlock.start,
-          endTime: freelanceUnlock.end,
-        };
-      }
-      return { startTime: null, endTime: null, isWorkingDay: false };
-    }
-    const row = res.recordset[0];
-    if (!row.IsWorkingDay && freelanceUnlock) {
+    if (freelanceUnlock) {
       return {
         isWorkingDay: true,
         startTime: freelanceUnlock.start,
         endTime: freelanceUnlock.end,
       };
     }
-    return {
-      isWorkingDay: !!row.IsWorkingDay,
-      startTime: fmtTime(row.StartTime),
-      endTime:   fmtTime(row.EndTime),
-    };
+    return { startTime: null, endTime: null, isWorkingDay: false };
   } catch {
     return { startTime: null, endTime: null, isWorkingDay: false };
   }

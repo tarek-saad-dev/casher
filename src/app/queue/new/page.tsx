@@ -7,6 +7,7 @@ import {
   CheckCircle2, Loader2, AlertCircle, Star,
 } from 'lucide-react';
 import { QueueTicketCreatedModal, type QueueTicketCreatedModalProps } from '@/components/queue/QueueTicketCreatedModal';
+import { getOperationalDate } from '@/lib/businessDate';
 
 interface Barber {
   EmpID: number;
@@ -60,7 +61,7 @@ export default function NewQueuePage() {
 
   // ── Bootstrap ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getOperationalDate();
     const nowTime = new Date().toTimeString().slice(0, 5);
     Promise.all([
       fetch(`/api/barbers/available?date=${today}&time=${nowTime}`).then(r => r.json()).catch(() => ({ barbers: [] })),

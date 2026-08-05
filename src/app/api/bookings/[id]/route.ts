@@ -174,6 +174,14 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
             SET Status='cancelled', CancelReason=@reason, CancelledAt=GETDATE(), UpdatedAt=GETDATE()
             WHERE BookingID=@id
           `);
+        try {
+          const { scheduleCancelWhatsAppAfterCommit } = await import(
+            '@/lib/booking/bookingEventWhatsApp'
+          );
+          await scheduleCancelWhatsAppAfterCommit(bookingId);
+        } catch {
+          /* best-effort; cancel already committed */
+        }
         break;
 
       case "no_show":

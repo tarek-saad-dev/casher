@@ -39,7 +39,11 @@ import {
   DAY_OFF_POLICY_LABELS,
   FREELANCE_MONTHLY_ERROR,
 } from '@/lib/hr/employee-hr-model';
+import { JobType } from '@/lib/types';
 import { BARBER_IMAGE_PRESETS } from '@/lib/barberImages';
+
+const JOB_NONE_VALUE = '__none__';
+const JOB_TYPE_OPTIONS = Object.values(JobType);
 import {
   availablePayrollMethods,
   buildEmployeeHrApiPayload,
@@ -387,6 +391,31 @@ export default function EmployeeHrFormModal({
                   checked={form.isActive}
                   onCheckedChange={(v) => patchForm({ isActive: v })}
                 />
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>دور الموظف</Label>
+                <Select
+                  value={form.job || JOB_NONE_VALUE}
+                  onValueChange={(value) =>
+                    patchForm({ job: value === JOB_NONE_VALUE ? '' : value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختر دور الموظف" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    <SelectItem value={JOB_NONE_VALUE}>بدون تحديد</SelectItem>
+                    {JOB_TYPE_OPTIONS.map((job) => (
+                      <SelectItem key={job} value={job}>
+                        {job}
+                      </SelectItem>
+                    ))}
+                    {form.job && !JOB_TYPE_OPTIONS.includes(form.job as JobType) && (
+                      <SelectItem value={form.job}>{form.job}</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -765,10 +794,6 @@ export default function EmployeeHrFormModal({
 
             {optionalOpen && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-                <div className="space-y-1.5">
-                  <Label>المسمى الوظيفي</Label>
-                  <Input value={form.job} onChange={(e) => patchForm({ job: e.target.value })} />
-                </div>
                 <div className="space-y-1.5">
                   <Label>رقم الهاتف</Label>
                   <Input

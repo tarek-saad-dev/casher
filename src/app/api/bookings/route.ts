@@ -6,6 +6,12 @@ import { normalizeBookingTimes } from "@/lib/bookingDateTime";
 import { requireActiveBranchContext, isActiveBranchContext } from "@/lib/branch/context";
 import { isEmployeeEligibleForBranchBookings } from "@/lib/branch/bookingQueueOwnership";
 import { getPublicSettings } from "@/lib/publicBookingHelpers";
+import {
+  isLegacyBookingsCreateEnabled,
+  isCanonicalCreateEligibleShape,
+  logLegacyBookingCreate,
+  legacyBookingCreateDisabledBody,
+} from "@/lib/availability/legacyBookingCreateFence";
 
 export const runtime = "nodejs";
 
@@ -104,8 +110,23 @@ export async function GET(req: NextRequest) {
   }
 }
 
+/**
+ * @deprecated LEGACY booking create — non-transactional insert path.
+ * Prefer POST /api/public/booking/create (source=operations|admin) which uses
+ * createPublicBooking + SERIALIZABLE scheduleIntegrity.
+ * Phase 0 fence: LEGACY_BOOKINGS_CREATE_ENABLED (default true).
+ */
 // POST /api/bookings
 export async function POST(req: NextRequest) {
+  const requestId =
+    req.headers.get('x-request-id') ??
+    req.headers.get('x-correlation-id') ??
+    null;
+  const callerSource =
+    req.headers.get('x-booking-source') ??
+    req.headers.get('referer') ??
+    null;
+
   try {
     const branch = await requireActiveBranchContext();
     if (!isActiveBranchContext(branch)) return branch;
@@ -118,6 +139,43 @@ export async function POST(req: NextRequest) {
       clientId, empId, bookingDate, startTime, endTime,
       source = "phone", notes, services = [],
     } = body;
+
+    const canonicalCreateEligible = isCanonicalCreateEligibleShape({
+      empId,
+      bookingDate,
+      startTime,
+      services,
+    });
+
+    if (!isLegacyBookingsCreateEnabled()) {
+      logLegacyBookingCreate({
+        path: '/api/bookings',
+        callerSource,
+        branchId: branch.branchId,
+        empId: empId != null ? Number(empId) : null,
+        bookingDate: bookingDate ?? null,
+        startTime: startTime ?? null,
+        userId: userID || null,
+        requestId,
+        outcome: 'blocked',
+        errorCode: 'LEGACY_BOOKING_CREATE_DISABLED',
+        canonicalCreateEligible,
+      });
+      return NextResponse.json(legacyBookingCreateDisabledBody(), { status: 410 });
+    }
+
+    logLegacyBookingCreate({
+      path: '/api/bookings',
+      callerSource,
+      branchId: branch.branchId,
+      empId: empId != null ? Number(empId) : null,
+      bookingDate: bookingDate ?? null,
+      startTime: startTime ?? null,
+      userId: userID || null,
+      requestId,
+      outcome: 'allowed',
+      canonicalCreateEligible,
+    });
 
     if (!bookingDate || !startTime)
       return NextResponse.json({ error: "التاريخ والوقت مطلوبان" }, { status: 400 });
@@ -132,6 +190,19 @@ export async function POST(req: NextRequest) {
         operationalDate: bookingDate,
       });
       if (!eligible) {
+        logLegacyBookingCreate({
+          path: '/api/bookings',
+          callerSource,
+          branchId: branch.branchId,
+          empId: Number(empId),
+          bookingDate,
+          startTime,
+          userId: userID || null,
+          requestId,
+          outcome: 'failure',
+          errorCode: 'EMPLOYEE_NOT_ELIGIBLE',
+          canonicalCreateEligible,
+        });
         return NextResponse.json(
           { error: "الموظف غير متاح للحجز في هذا الفرع" },
           { status: 409 },
@@ -147,6 +218,19 @@ export async function POST(req: NextRequest) {
         .map(s => s.proId).filter((id): id is number => !!id);
       const availCheck = await checkBarberAvailableForBooking(empId, '', bookingStart, serviceIds);
       if (!availCheck.available) {
+        logLegacyBookingCreate({
+          path: '/api/bookings',
+          callerSource,
+          branchId: branch.branchId,
+          empId: Number(empId),
+          bookingDate,
+          startTime,
+          userId: userID || null,
+          requestId,
+          outcome: 'failure',
+          errorCode: 'AVAILABILITY_CONFLICT',
+          canonicalCreateEligible,
+        });
         return NextResponse.json({
           error:               availCheck.reason ?? 'الحلاق غير متاح في هذا الوقت',
           conflictType:        availCheck.conflictType,
@@ -183,11 +267,26 @@ export async function POST(req: NextRequest) {
             AND StartTime < @eTime
             AND ISNULL(EndTime, @sTime) > @sTime
         `);
-      if (conflict.recordset[0].cnt > 0)
+      if (conflict.recordset[0].cnt > 0) {
+        logLegacyBookingCreate({
+          path: '/api/bookings',
+          callerSource,
+          branchId: branch.branchId,
+          empId: Number(empId),
+          bookingDate,
+          startTime,
+          userId: userID || null,
+          requestId,
+          outcome: 'failure',
+          errorCode: 'DOUBLE_BOOKING',
+          canonicalCreateEligible,
+        });
         return NextResponse.json({ error: "يوجد حجز متعارض لهذا الحلاق في نفس الوقت" }, { status: 409 });
+      }
     }
 
     // Insert booking — BranchID always stamped from the active session, never client input.
+    // @deprecated legacy non-TX insert — migrate callers to createPublicBooking.
     const insertRes = await db.request()
       .input("clientId",  sql.Int,      clientId || null)
       .input("empId",     sql.Int,      empId    || null)
@@ -227,9 +326,35 @@ export async function POST(req: NextRequest) {
         `);
     }
 
+    logLegacyBookingCreate({
+      path: '/api/bookings',
+      callerSource,
+      branchId: branch.branchId,
+      empId: empId != null ? Number(empId) : null,
+      bookingDate,
+      startTime,
+      userId: userID || null,
+      requestId,
+      outcome: 'success',
+      canonicalCreateEligible,
+    });
+
     return NextResponse.json({ bookingId }, { status: 201 });
   } catch (err) {
-    console.error("[bookings POST]", err);
+    console.error("[legacy-booking-create] POST failure", err);
+    logLegacyBookingCreate({
+      path: '/api/bookings',
+      callerSource,
+      branchId: null,
+      empId: null,
+      bookingDate: null,
+      startTime: null,
+      userId: null,
+      requestId,
+      outcome: 'failure',
+      errorCode: 'UNHANDLED',
+      canonicalCreateEligible: false,
+    });
     return NextResponse.json({ error: "فشل إنشاء الحجز" }, { status: 500 });
   }
 }

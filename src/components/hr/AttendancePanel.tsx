@@ -10,7 +10,8 @@ import {
 import KpiCard from '@/components/shared/KpiCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { getBusinessDateStr, sqlTimeForInput } from '@/lib/timeUtils';
+import { getOperationalDate } from '@/lib/businessDate';
+import { sqlTimeForInput } from '@/lib/timeUtils';
 import {
   applyDefaultTimesToRow,
   applyNowTimesToRow,
@@ -157,7 +158,7 @@ function EmploymentBadges({ row }: { row: AttendanceRow }) {
 }
 
 export default function AttendancePanel() {
-  const [date, setDate]               = useState(getBusinessDateStr());
+  const [date, setDate]               = useState(getOperationalDate());
   const [attendance, setAttendance]   = useState<AttendanceRow[]>([]);
   const [summary, setSummary]         = useState<AttendanceSummary | null>(null);
   const [branchLabel, setBranchLabel] = useState<string | null>(null);
@@ -538,7 +539,7 @@ export default function AttendancePanel() {
             onChange={(e) => setDate(e.target.value)}
             className="bg-zinc-900 border-zinc-700 text-white w-44 h-9 text-sm"
           />
-          <Button variant="outline" onClick={() => setDate(getBusinessDateStr())}
+          <Button variant="outline" onClick={() => setDate(getOperationalDate())}
             className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-9 text-xs gap-1">
             <CalendarDays className="w-3.5 h-3.5" />اليوم
           </Button>

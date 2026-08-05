@@ -239,8 +239,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Return fresh barber status
-    const updatedStatus = await getBarberDayStatus(empId, date, { isToday });
+    // Return fresh barber status (branch-scoped day plan)
+    const updatedStatus = await getBarberDayStatus(empId, date, {
+      isToday,
+      branchId: branch.branchId,
+    });
 
     console.log("[ops/schedule-control/apply] SAVED", { ...qaLog, overrideId: newId });
 

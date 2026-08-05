@@ -114,6 +114,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
   const [transferDestinations, setTransferDestinations] = useState<
     Array<{ branchId: number; branchCode: string; branchName: string }>
   >([]);
+  const [sessionBranchId, setSessionBranchId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -180,7 +181,18 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
       const data = await res.json();
       if (!data.ok) throw new Error(data.error ?? 'فشل التحميل');
       setBarbers(data.barbers ?? []);
-      setTransferDestinations(data.transferDestinations ?? []);
+      const sessionId =
+        typeof data.sessionBranchId === 'number' ? data.sessionBranchId : null;
+      setSessionBranchId(sessionId);
+      // Ops transfer is always from the session branch — hide it as destination.
+      const dests = (data.transferDestinations ?? []) as Array<{
+        branchId: number;
+        branchCode: string;
+        branchName: string;
+      }>;
+      setTransferDestinations(
+        sessionId == null ? dests : dests.filter((d) => d.branchId !== sessionId),
+      );
     } catch (e: any) {
       setError(e.message ?? 'فشل تحميل البيانات');
     } finally {
@@ -190,7 +202,11 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
 
   const openTransferDialog = (empId: number) => {
     setTransferEmpId(empId);
-    setTransferToBranchId(transferDestinations[0]?.branchId ?? '');
+    const dests =
+      sessionBranchId == null
+        ? transferDestinations
+        : transferDestinations.filter((d) => d.branchId !== sessionBranchId);
+    setTransferToBranchId(dests[0]?.branchId ?? '');
     setTransferReason('');
     setTransferStart('');
     setTransferEnd('');
@@ -523,6 +539,25 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
           </button>
         </div>
 
+        <div
+          className="mx-6 mt-3 rounded-lg px-3 py-2 text-xs"
+          style={{
+            background: 'color-mix(in srgb, var(--warning) 12%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--warning) 35%, transparent)',
+            color: 'var(--foreground)',
+          }}
+        >
+          لإدارة تعديلات التوافر اليومية، استخدم صفحة{' '}
+          <a
+            href="/admin/workforce/availability"
+            className="underline font-medium"
+            style={{ color: 'var(--primary)' }}
+          >
+            توافر الموظفين
+          </a>
+          . هذه الواجهة تكتب تجاوزات قديمة للتوافق فقط.
+        </div>
+
         {/* Date selector */}
         <div className="px-6 py-3 border-b flex items-center gap-4" style={{ borderColor: 'color-mix(in srgb, var(--foreground) 6%, transparent)', background: 'var(--background)' }}>
           <Calendar size={15} style={{ color: 'var(--primary)', flexShrink: 0 }} />
@@ -809,13 +844,22 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                         {(Object.keys(ACTION_LABELS) as OverrideType[]).map(t => {
                           const isDanger = DANGER_TYPES.includes(t);
                           const isSelected = actionForm.type === t;
+                          // Phase 3B.1 — use workforce page for day_off / custom_hours / block_range
+                          const movedToWorkforce =
+                            t === 'day_off' || t === 'custom_hours' || t === 'block_range';
                           // Only hard-block when an active day_off override or Absent remains
                           const isDisabledByDayOff = blockedByDayOffOverride(b) && t !== 'day_off';
+                          const isDisabled = isDisabledByDayOff || movedToWorkforce;
                           return (
                             <button
                               key={t}
-                              disabled={isDisabledByDayOff}
-                              onClick={() => { if (!isDisabledByDayOff) { setActionForm(f => ({ ...f, type: t })); setPreview(null); setConfirmed(false); } }}
+                              disabled={isDisabled}
+                              title={
+                                movedToWorkforce
+                                  ? 'استخدم صفحة توافر الموظفين لهذا الإجراء'
+                                  : undefined
+                              }
+                              onClick={() => { if (!isDisabled) { setActionForm(f => ({ ...f, type: t })); setPreview(null); setConfirmed(false); } }}
                               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                               style={{
                                 background: isSelected
@@ -831,6 +875,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                             >
                               {ACTION_ICONS[t]}
                               {ACTION_LABELS[t]}
+                              {movedToWorkforce ? ' ↗' : ''}
                             </button>
                           );
                         })}

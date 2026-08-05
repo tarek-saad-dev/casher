@@ -121,7 +121,10 @@ export async function POST(req: NextRequest) {
         `);
     }
 
-    const updatedStatus = await getBarberDayStatus(empId, date, { isToday });
+    const updatedStatus = await getBarberDayStatus(empId, date, {
+      isToday,
+      branchId: branch.branchId,
+    });
 
     return NextResponse.json({
       ok: true,

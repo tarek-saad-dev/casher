@@ -11,6 +11,7 @@
 
 import { getPool, sql } from "@/lib/db";
 import { NextRequest } from "next/server";
+import type { Transaction } from "mssql";
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 
@@ -307,10 +308,12 @@ let globalTimingCacheState: PublicSettingsCacheState = {
   inflight: null,
 };
 
-async function loadGlobalTimingDefaultsFromDb(): Promise<PublicSettings> {
+async function loadGlobalTimingDefaultsFromDb(
+  db?: Awaited<ReturnType<typeof getPool>> | Transaction,
+): Promise<PublicSettings> {
   try {
-    const db = await getPool();
-    const res = await db
+    const conn = (db ?? (await getPool())) as Awaited<ReturnType<typeof getPool>>;
+    const res = await conn
       .request()
       .query(
         `
@@ -345,8 +348,17 @@ async function loadGlobalTimingDefaultsFromDb(): Promise<PublicSettings> {
  * bookingRescheduleCore). Employee busy conflicts stay global across branches
  * per Phase 1F frozen rules — this must never be used to gate per-branch
  * visibility, capacity, or public settings.
+ *
+ * Phase 2.5: optional `transaction` reads on the TX connection (bypasses cache
+ * so write-guard evaluations see the same connection context).
  */
-export async function getGlobalTimingDefaults(): Promise<PublicSettings> {
+export async function getGlobalTimingDefaults(opts?: {
+  transaction?: Transaction;
+}): Promise<PublicSettings> {
+  if (opts?.transaction) {
+    return loadGlobalTimingDefaultsFromDb(opts.transaction);
+  }
+
   const state = globalTimingCacheState;
   const now = Date.now();
   if (state.value && now < state.expiresAt) {

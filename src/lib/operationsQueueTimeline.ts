@@ -22,9 +22,14 @@ import {
   Interval,
 } from "@/lib/queueEstimateEngine";
 import { countQueueCustomersAhead } from "@/lib/queueCustomersAhead";
-import { getBarberWorkingWindow } from "@/lib/barberAvailability";
+import { resolveEmployeeDayPlan } from "@/lib/availability/resolveEmployeeDayPlan";
+import {
+  findEarliestFitInWindows,
+  normalizeEffectiveWindows,
+} from "@/lib/availability/effectiveWindows";
 import { getCairoBusinessDate } from "@/lib/businessDate";
 import { intervalsOverlap } from "@/lib/scheduleIntervals";
+import { salonDateTimeToMs } from "@/lib/publicBookingHelpers";
 
 const SALON_TZ = "Africa/Cairo";
 const DEBUG_OPS = process.env.DEBUG_OPERATIONS === "true";
@@ -49,6 +54,7 @@ export interface BarberOperationalTimeline {
   empId: number;
   empName: string;
   date: string; // YYYY-MM-DD
+  /** Outer display bounds only — runtime uses workingWindows. */
   workStart: string | null; // HH:MM
   workEnd: string | null; // HH:MM
   isWorkingDay: boolean;
@@ -59,6 +65,18 @@ export interface BarberOperationalTimeline {
   bookingCount: number;
   timeline: TimelineItem[];
   gaps: Array<{ start: string; end: string; durationMinutes: number }>;
+  /** Phase 3C — all effective working windows. */
+  workingWindows: Array<{
+    startAt: string;
+    endAt: string;
+    endDayOffset: 0 | 1;
+  }>;
+  /** Phase 3C — working / gap / blocked segments. */
+  segments?: Array<{
+    type: "working" | "gap" | "blocked";
+    startAt: string;
+    endAt: string;
+  }>;
 }
 
 export interface SimulateQueueResult {
@@ -99,11 +117,14 @@ export async function buildBarberOperationalTimeline({
   date,
   now,
   serviceIds,
+  branchId,
 }: {
   empId: number;
   date: string; // YYYY-MM-DD
   now: Date;
   serviceIds?: number[];
+  /** Optional branch for canonical day-plan resolution. */
+  branchId?: number | null;
 }): Promise<BarberOperationalTimeline> {
   const db = await getPool();
 
@@ -114,15 +135,56 @@ export async function buildBarberOperationalTimeline({
     .query(`SELECT TOP 1 EmpName FROM [dbo].[TblEmp] WHERE EmpID = @eid`);
   const empName = empRes.recordset[0]?.EmpName ?? "";
 
-  // Get working window
-  const dateObj = new Date(`${date}T12:00:00`);
-  const window = await getBarberWorkingWindow(empId, dateObj);
-
+  // Canonical effective day plan — all windows (Phase 3C)
+  const plan = await resolveEmployeeDayPlan({
+    empId,
+    businessDate: date,
+    branchId: branchId ?? null,
+    source: 'operations',
+  });
+  const windows = normalizeEffectiveWindows(plan.effectiveWindows);
+  const workStart = plan.isWorking
+    ? (windows[0]?.start ?? plan.effSched?.start ?? null)
+    : null;
+  const workEnd = plan.isWorking
+    ? (windows[windows.length - 1]?.end ?? plan.effSched?.end ?? null)
+    : null;
+  const isWorkingDay = plan.isWorking;
   const isOvernightShift = Boolean(
-    window.startTime &&
-    window.endTime &&
-    timeToMinutes(window.endTime) <= timeToMinutes(window.startTime)
+    plan.isWorking && (plan.isOvernight || windows.some((w) => w.endDayOffset === 1)),
   );
+
+  const workingWindows = windows.map((w) => ({
+    startAt: new Date(w.startMs).toISOString(),
+    endAt: new Date(w.endMs).toISOString(),
+    endDayOffset: w.endDayOffset,
+  }));
+
+  const segments: NonNullable<BarberOperationalTimeline['segments']> = [];
+  for (let i = 0; i < windows.length; i++) {
+    const w = windows[i]!;
+    segments.push({
+      type: 'working',
+      startAt: new Date(w.startMs).toISOString(),
+      endAt: new Date(w.endMs).toISOString(),
+    });
+    const next = windows[i + 1];
+    if (next && next.startMs > w.endMs) {
+      segments.push({
+        type: 'gap',
+        startAt: new Date(w.endMs).toISOString(),
+        endAt: new Date(next.startMs).toISOString(),
+      });
+    }
+  }
+  for (const b of plan.effSched?.blockedIntervals ?? []) {
+    segments.push({
+      type: 'blocked',
+      startAt: new Date(b.startMs).toISOString(),
+      endAt: new Date(b.endMs).toISOString(),
+    });
+  }
+  segments.sort((a, b) => a.startAt.localeCompare(b.startAt));
 
   // Get default duration for calculations
   const defaultDur = await getDefaultDuration(db);
@@ -251,8 +313,8 @@ export async function buildBarberOperationalTimeline({
     }
   } else {
     // No items - whole day is a gap (within working hours)
-    if (window.isWorkingDay && window.startTime && window.endTime) {
-      const startMin = timeToMinutes(window.startTime);
+    if (isWorkingDay && workStart && workEnd) {
+      const startMin = timeToMinutes(workStart);
       const nowMin = now.getHours() * 60 + now.getMinutes();
 
       if (startMin > nowMin) {
@@ -261,9 +323,9 @@ export async function buildBarberOperationalTimeline({
         const gapEnd = new Date(gapStart);
         if (isOvernightShift) {
           gapEnd.setDate(gapEnd.getDate() + 1);
-          gapEnd.setHours(Math.floor(timeToMinutes(window.endTime) / 60), timeToMinutes(window.endTime) % 60, 0, 0);
+          gapEnd.setHours(Math.floor(timeToMinutes(workEnd) / 60), timeToMinutes(workEnd) % 60, 0, 0);
         } else {
-          gapEnd.setHours(Math.floor(timeToMinutes(window.endTime) / 60), timeToMinutes(window.endTime) % 60, 0, 0);
+          gapEnd.setHours(Math.floor(timeToMinutes(workEnd) / 60), timeToMinutes(workEnd) % 60, 0, 0);
         }
         const gapMinutes = Math.round(
           (gapEnd.getTime() - gapStart.getTime()) / 60000
@@ -279,19 +341,42 @@ export async function buildBarberOperationalTimeline({
     }
   }
 
-  // Calculate next available slot
-  const nextAvailable = findFirstFreeSlot(now, serviceDur, allIntervals);
+  // Calculate next available slot across all windows
+  const occupied = [
+    ...allIntervals.map((iv) => ({
+      startMs: iv.start.getTime(),
+      endMs: iv.end.getTime(),
+    })),
+    ...(plan.effSched?.blockedIntervals ?? []).map((b) => ({
+      startMs: b.startMs,
+      endMs: b.endMs,
+    })),
+  ];
+  const fitMs = windows.length
+    ? findEarliestFitInWindows({
+        windows,
+        fromMs: now.getTime(),
+        durationMinutes: serviceDur,
+        occupied,
+      })
+    : null;
+  const nextAvailable =
+    fitMs != null ? new Date(fitMs) : findFirstFreeSlot(now, serviceDur, allIntervals);
 
   if (DEBUG_OPS) {
     console.log("[buildBarberOperationalTimeline]", {
       empId,
       empName,
       date,
+      workStart,
+      workEnd,
+      workingWindows: workingWindows.length,
+      isWorkingDay,
+      isOvernightShift,
+      denyReasonCode: plan.denyReasonCode,
       queueCount: qIntervals.length,
       bookingCount: bIntervals.length,
-      timelineLength: timeline.length,
-      gapsCount: gaps.length,
-      nextAvailable: nextAvailable.toISOString(),
+      gapCount: gaps.length,
     });
   }
 
@@ -299,9 +384,9 @@ export async function buildBarberOperationalTimeline({
     empId,
     empName,
     date,
-    workStart: window.startTime,
-    workEnd: window.endTime,
-    isWorkingDay: window.isWorkingDay,
+    workStart,
+    workEnd,
+    isWorkingDay,
     isOvernightShift,
     now: now.toISOString(),
     nextAvailableAt: nextAvailable.toISOString(),
@@ -309,6 +394,8 @@ export async function buildBarberOperationalTimeline({
     bookingCount: bIntervals.length,
     timeline,
     gaps,
+    workingWindows,
+    segments,
   };
 }
 
@@ -318,10 +405,12 @@ export async function simulateQueueInsertion({
   empId,
   serviceIds,
   requestedAt,
+  branchId,
 }: {
   empId: number;
   serviceIds: number[];
   requestedAt?: string; // ISO string
+  branchId?: number | null;
 }): Promise<SimulateQueueResult> {
   const db = await getPool();
   const now = requestedAt ? new Date(requestedAt) : new Date();
@@ -344,6 +433,7 @@ export async function simulateQueueInsertion({
     date: dateStr,
     now,
     serviceIds,
+    branchId,
   });
 
   // Check working hours
@@ -409,13 +499,69 @@ export async function simulateQueueInsertion({
     end: iv.end.toISOString(),
   })));
 
-  // Find first free slot
-  const suggestedStart = findFirstFreeSlot(now, serviceDur, allIntervals);
+  // Find first free slot across all effective windows (Phase 3C) —
+  // reuse timeline.workingWindows (already resolved once).
+  const simWindows = (timeline.workingWindows ?? []).map((w) => ({
+    start: '',
+    end: '',
+    endDayOffset: w.endDayOffset,
+    startMs: new Date(w.startAt).getTime(),
+    endMs: new Date(w.endAt).getTime(),
+  }));
+  const simOccupied = [
+    ...allIntervals.map((iv) => ({
+      startMs: iv.start.getTime(),
+      endMs: iv.end.getTime(),
+    })),
+    ...(timeline.segments ?? [])
+      .filter((s) => s.type === 'blocked')
+      .map((s) => ({
+        startMs: new Date(s.startAt).getTime(),
+        endMs: new Date(s.endAt).getTime(),
+      })),
+  ];
+  const fitMs = simWindows.length
+    ? findEarliestFitInWindows({
+        windows: simWindows,
+        fromMs: now.getTime(),
+        durationMinutes: serviceDur,
+        occupied: simOccupied,
+      })
+    : null;
+  const suggestedStart =
+    fitMs != null
+      ? new Date(fitMs)
+      : findFirstFreeSlot(now, serviceDur, allIntervals);
   const suggestedEnd = new Date(suggestedStart.getTime() + serviceDur * 60000);
 
-  // Reject slots that overrun the barber's shift (overnight-aware).
-  if (timeline.workStart && timeline.workEnd) {
-    const { salonDateTimeToMs } = await import('@/lib/publicBookingHelpers');
+  // Reject slots that do not fit any single effective window.
+  if (simWindows.length) {
+    const { findWindowContainingInterval } = await import(
+      '@/lib/availability/effectiveWindows'
+    );
+    if (
+      !findWindowContainingInterval({
+        windows: simWindows,
+        startMs: suggestedStart.getTime(),
+        endMs: suggestedEnd.getTime(),
+      })
+    ) {
+      return {
+        ok: false,
+        decision: 'outside_hours',
+        empId,
+        empName,
+        serviceDurationMinutes: serviceDur,
+        suggestedStartTime: '',
+        suggestedEndTime: '',
+        peopleBefore: 0,
+        message: 'لا يوجد وقت كافٍ قبل نهاية وردية الحلاق',
+        timeline: timeline.timeline,
+        protectedBookings: [],
+        queueBefore: [],
+      };
+    }
+  } else if (timeline.workStart && timeline.workEnd) {
     const startMin = timeToMinutes(timeline.workStart);
     const endMin = timeToMinutes(timeline.workEnd);
     const overnight = endMin <= startMin;

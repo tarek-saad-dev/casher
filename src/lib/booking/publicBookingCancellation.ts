@@ -826,6 +826,16 @@ export async function cancelPublicBooking(
 
     await transaction.commit();
 
+    // Post-commit WhatsApp cancel (idempotent; never blocks cancel success).
+    try {
+      const { scheduleCancelWhatsAppAfterCommit } = await import(
+        '@/lib/booking/bookingEventWhatsApp'
+      );
+      await scheduleCancelWhatsAppAfterCommit(row.BookingID);
+    } catch {
+      /* best-effort */
+    }
+
     // Post-commit: cache + slot probe (never inside TX).
     invalidatePublicBookingAvailabilityCache();
     try {

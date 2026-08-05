@@ -331,7 +331,10 @@ export function buildProfileApiPayload(
     hasOptional = true;
   };
 
-  if (form.job.trim()) set('Job', form.job);
+  // Always persist role selection (including clear → null)
+  payload.Job = form.job.trim() || null;
+  hasOptional = true;
+
   if (form.mobile.trim()) set('Mobile', form.mobile);
   if (form.whatsApp.trim()) set('WhatsApp', form.whatsApp);
   if (form.nationalID.trim()) set('NationalID', form.nationalID);

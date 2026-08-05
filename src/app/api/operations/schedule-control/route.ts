@@ -52,15 +52,16 @@ export async function GET(req: NextRequest) {
 
     const empIds = ordered.map((e) => e.empId);
     const statusMap = empIds.length
-      ? await getBarbersDayStatus(empIds, date, { isToday })
+      ? await getBarbersDayStatus(empIds, date, {
+          isToday,
+          branchId: auth.activeBranchId,
+        })
       : new Map();
 
     const allBranches = await listActiveBranches();
-    // Temporary day-transfer destinations: every active operational branch except the
-    // session branch. Do not require destination canOperate/canSwitch — operators at
-    // the source branch must be able to send staff to any live branch (e.g. Camp).
+    // All live operational branches. The client excludes the employee's *from*
+    // branch for the day (may differ from session when schedule is split-week).
     const transferDestinations = allBranches
-      .filter((b) => b.branchId !== auth.activeBranchId)
       .filter((b) => b.isActive)
       .filter((b) => auth.isSuperAdmin || b.lifecycleStatus !== 'SETUP')
       .map((b) => ({

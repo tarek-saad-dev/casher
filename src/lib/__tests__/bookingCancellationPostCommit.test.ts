@@ -1,18 +1,20 @@
-/** Phase 7B — post-commit side-effect contract. */
+/**
+ * bookingCancellationPostCommit — cancel must schedule WhatsApp only after commit.
+ */
 import { describe, expect, it } from 'vitest';
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 
 describe('bookingCancellationPostCommit', () => {
-  it('invalidates cache only after commit; no WhatsApp inside TX', () => {
+  it('schedules cancel WhatsApp after transaction commit (not before)', () => {
     const svc = fs.readFileSync(
-      path.join(__dirname, '../booking/publicBookingCancellation.ts'),
+      path.join(process.cwd(), 'src/lib/booking/publicBookingCancellation.ts'),
       'utf8',
     );
-    const commitIdx = svc.lastIndexOf('await transaction.commit()');
-    const invalidateIdx = svc.lastIndexOf('invalidatePublicBookingAvailabilityCache()');
-    expect(commitIdx).toBeGreaterThan(0);
-    expect(invalidateIdx).toBeGreaterThan(commitIdx);
-    expect(svc).not.toContain('scheduleBookingWhatsApp');
+    expect(svc).toContain('scheduleCancelWhatsAppAfterCommit');
+    const commitIdx = svc.indexOf('await transaction.commit()');
+    const waIdx = svc.indexOf('scheduleCancelWhatsAppAfterCommit');
+    expect(commitIdx).toBeGreaterThan(-1);
+    expect(waIdx).toBeGreaterThan(commitIdx);
   });
 });

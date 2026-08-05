@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeftRight, Loader2, X } from 'lucide-react';
+import { ArrowLeftRight, Loader2, MapPin, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -25,7 +25,7 @@ type TransferPreview = {
   canTransfer: boolean;
   blockers?: Array<{ code: string; message: string }>;
   warnings?: string[];
-  sourceBranch?: { branchName: string } | null;
+  sourceBranch?: { branchId?: number; branchName: string } | null;
   destinationBranch?: { branchName: string } | null;
   resolvedDestinationWindow?: {
     startTime: string | null;
@@ -40,12 +40,28 @@ type TransferPreview = {
   activeTransfer?: { transferId: number; toBranchId: number; reason: string | null } | null;
 };
 
+/** Optional context from workforce layers / day board — makes the modal self-explanatory. */
+export type TransferAssignmentContext = {
+  employeeName?: string | null;
+  /** e.g. الجدول الأساسي للفرع */
+  assignedLayerTitleAr: string;
+  /** Branch where they are placed today by that layer */
+  assignedBranchName: string;
+  /** Auto-filled "from" branch for the transfer */
+  fromBranchName: string;
+  fromBranchId?: number | null;
+  assignedHoursLabel?: string | null;
+  baseScheduleSourceAr?: string | null;
+};
+
 interface Props {
   open: boolean;
   onClose: () => void;
   workDate: string;
   /** Prefill employee when opened from a barber lane / schedule row. */
   initialEmpId?: number | null;
+  /** Rich assignment summary when opened from workforce availability. */
+  assignmentContext?: TransferAssignmentContext | null;
   onTransferred?: () => void;
 }
 
@@ -69,11 +85,13 @@ export function TemporaryBranchTransferModal({
   onClose,
   workDate,
   initialEmpId = null,
+  assignmentContext = null,
   onTransferred,
 }: Props) {
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [barbers, setBarbers] = useState<TransferableBarber[]>([]);
   const [destinations, setDestinations] = useState<TransferDestination[]>([]);
+  const [sessionBranchId, setSessionBranchId] = useState<number | null>(null);
   const [metaError, setMetaError] = useState<string | null>(null);
 
   const [empId, setEmpId] = useState<number | ''>('');
@@ -101,12 +119,42 @@ export function TemporaryBranchTransferModal({
         ) {
           return true;
         }
-        // Freelance / day-off in weekly schedule but already on today's attendance board
         if (b.section === 'off' && b.attendance) return true;
         return false;
       }),
     [barbers],
   );
+
+  /** Never offer the branch the employee is already assigned to today. */
+  const excludeFromBranchId =
+    assignmentContext?.fromBranchId ??
+    preview?.sourceBranch?.branchId ??
+    sessionBranchId ??
+    null;
+
+  const destinationOptions = useMemo(
+    () =>
+      destinations.filter(
+        (d) => excludeFromBranchId == null || d.branchId !== excludeFromBranchId,
+      ),
+    [destinations, excludeFromBranchId],
+  );
+
+  useEffect(() => {
+    if (toBranchId === '') return;
+    if (destinationOptions.some((d) => d.branchId === toBranchId)) return;
+    setToBranchId(destinationOptions[0]?.branchId ?? '');
+  }, [destinationOptions, toBranchId]);
+
+  const fromBranchLabel =
+    preview?.sourceBranch?.branchName ||
+    assignmentContext?.fromBranchName ||
+    '—';
+
+  const employeeDisplayName =
+    assignmentContext?.employeeName ||
+    selectedBarber?.empName ||
+    (empId ? `موظف #${empId}` : '—');
 
   const resetForm = useCallback((preferEmpId?: number | null) => {
     setEmpId(preferEmpId && preferEmpId > 0 ? preferEmpId : '');
@@ -133,23 +181,33 @@ export function TemporaryBranchTransferModal({
       }
       const list = (data.barbers ?? []) as TransferableBarber[];
       setBarbers(list);
-      setDestinations((data.transferDestinations ?? []) as TransferDestination[]);
+      const dests = (data.transferDestinations ?? []) as TransferDestination[];
+      setDestinations(dests);
+      setSessionBranchId(
+        typeof data.sessionBranchId === 'number' ? data.sessionBranchId : null,
+      );
 
       const prefer =
         preferEmpIdFrom(list, initialEmpId) ??
         list.find((b) => b.section === 'present' && !b.isGlobalDayOff)?.empId ??
         '';
       setEmpId(prefer || '');
-      const dest0 = (data.transferDestinations ?? [])[0]?.branchId;
-      setToBranchId(dest0 ?? '');
+
+      // Exclude the employee's current assignment branch (not merely session).
+      const fromId =
+        assignmentContext?.fromBranchId ??
+        (typeof data.sessionBranchId === 'number' ? data.sessionBranchId : null);
+      const available = dests.filter((d) => fromId == null || d.branchId !== fromId);
+      setToBranchId(available[0]?.branchId ?? '');
     } catch (e) {
       setMetaError(e instanceof Error ? e.message : 'تعذر تحميل البيانات');
       setBarbers([]);
       setDestinations([]);
+      setSessionBranchId(null);
     } finally {
       setLoadingMeta(false);
     }
-  }, [workDate, initialEmpId]);
+  }, [workDate, initialEmpId, assignmentContext?.fromBranchId]);
 
   useEffect(() => {
     if (!open) return;
@@ -294,7 +352,7 @@ export function TemporaryBranchTransferModal({
           </button>
         </div>
 
-        <div className="space-y-4 p-5">
+        <div className="space-y-4 p-5 max-h-[70vh] overflow-y-auto">
           {loadingMeta ? (
             <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -306,13 +364,48 @@ export function TemporaryBranchTransferModal({
             </div>
           ) : (
             <>
+              {/* Assignment context */}
+              {assignmentContext ? (
+                <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3.5 py-3 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <MapPin className="h-4 w-4 text-sky-300 mt-0.5 shrink-0" />
+                    <div className="min-w-0 space-y-1 text-sm">
+                      <p className="font-medium text-sky-50">
+                        هذا الموظف معيَّن اليوم من الطبقة:{' '}
+                        <span className="text-white">
+                          {assignmentContext.assignedLayerTitleAr}
+                        </span>
+                      </p>
+                      <p className="text-sky-100/90 text-[13px]">
+                        في فرع:{' '}
+                        <strong className="text-white">
+                          {assignmentContext.assignedBranchName}
+                        </strong>
+                        {assignmentContext.assignedHoursLabel
+                          ? ` · ${assignmentContext.assignedHoursLabel}`
+                          : ''}
+                      </p>
+                      {assignmentContext.baseScheduleSourceAr && (
+                        <p className="text-[11px] text-sky-200/70">
+                          مصدر الجدول: {assignmentContext.baseScheduleSourceAr}
+                        </p>
+                      )}
+                      <p className="text-[11px] text-sky-200/60">
+                        الموظف:{' '}
+                        <strong className="text-sky-50">{employeeDisplayName}</strong>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               <label className="block space-y-1.5 text-sm">
                 <span className="font-medium text-foreground/80">الموظف</span>
                 <select
                   className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2.5 text-sm text-foreground"
                   value={empId}
                   onChange={(e) => setEmpId(e.target.value ? Number(e.target.value) : '')}
-                  disabled={busy}
+                  disabled={busy || !!assignmentContext?.employeeName}
                 >
                   <option value="">اختر موظفًا</option>
                   {transferableBarbers.map((b) => (
@@ -344,31 +437,47 @@ export function TemporaryBranchTransferModal({
                 </div>
               )}
 
-              <label className="block space-y-1.5 text-sm">
-                <span className="font-medium text-foreground/80">فرع الوجهة</span>
-                <select
-                  className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2.5 text-sm text-foreground"
-                  value={toBranchId}
-                  onChange={(e) => setToBranchId(e.target.value ? Number(e.target.value) : '')}
-                  disabled={busy || destinations.length === 0}
-                >
-                  <option value="">اختر فرعًا</option>
-                  {destinations.map((d) => (
-                    <option key={d.branchId} value={d.branchId}>
-                      {d.branchName}
-                    </option>
-                  ))}
-                </select>
-                {destinations.length === 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    لا توجد فروع متاحة للنقل (صلاحية أو إعداد الفرع)
-                  </p>
-                )}
-              </label>
+              {/* From / To branches */}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block space-y-1.5 text-sm">
+                  <span className="font-medium text-foreground/80">نقل من الفرع</span>
+                  <div
+                    className="w-full rounded-lg border border-border bg-zinc-900/60 px-3 py-2.5 text-sm text-foreground"
+                    aria-readonly
+                  >
+                    {fromBranchLabel}
+                    <span className="block text-[10px] text-muted-foreground mt-0.5">
+                      معبّأ تلقائيًا من تعيين اليوم
+                    </span>
+                  </div>
+                </label>
+
+                <label className="block space-y-1.5 text-sm">
+                  <span className="font-medium text-foreground/80">إلى الفرع</span>
+                  <select
+                    className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2.5 text-sm text-foreground"
+                    value={toBranchId}
+                    onChange={(e) => setToBranchId(e.target.value ? Number(e.target.value) : '')}
+                    disabled={busy || destinationOptions.length === 0}
+                  >
+                    <option value="">اختر فرع الوجهة</option>
+                    {destinationOptions.map((d) => (
+                      <option key={d.branchId} value={d.branchId}>
+                        {d.branchName}
+                      </option>
+                    ))}
+                  </select>
+                  {destinationOptions.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      لا توجد فروع أخرى متاحة للنقل (تم استبعاد فرع التعيين الحالي)
+                    </p>
+                  )}
+                </label>
+              </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <label className="block space-y-1.5 text-sm">
-                  <span className="font-medium text-foreground/80">من (اختياري)</span>
+                  <span className="font-medium text-foreground/80">من ساعة (اختياري)</span>
                   <input
                     type="time"
                     value={startTime}
@@ -378,7 +487,7 @@ export function TemporaryBranchTransferModal({
                   />
                 </label>
                 <label className="block space-y-1.5 text-sm">
-                  <span className="font-medium text-foreground/80">إلى (اختياري)</span>
+                  <span className="font-medium text-foreground/80">إلى ساعة (اختياري)</span>
                   <input
                     type="time"
                     value={endTime}
@@ -388,6 +497,9 @@ export function TemporaryBranchTransferModal({
                   />
                 </label>
               </div>
+              <p className="text-[11px] text-muted-foreground -mt-2">
+                لو سبت الساعات فاضي، هيُستخدم شيفت الوجهة أو مواعيد التعيين الحالية.
+              </p>
 
               <label className="block space-y-1.5 text-sm">
                 <span className="font-medium text-foreground/80">سبب النقل *</span>
@@ -408,14 +520,15 @@ export function TemporaryBranchTransferModal({
 
               {preview && (
                 <div className="space-y-1.5 rounded-xl border border-border bg-surface-muted/40 p-3 text-xs text-foreground/90">
+                  <p className="font-medium text-foreground mb-1">نتيجة المعاينة</p>
                   <p>
-                    المصدر: <strong>{preview.sourceBranch?.branchName ?? '—'}</strong>
+                    نقل من: <strong>{preview.sourceBranch?.branchName ?? fromBranchLabel}</strong>
                   </p>
                   <p>
-                    الوجهة: <strong>{preview.destinationBranch?.branchName ?? '—'}</strong>
+                    إلى: <strong>{preview.destinationBranch?.branchName ?? '—'}</strong>
                   </p>
                   <p>
-                    النافذة:{' '}
+                    نافذة العمل:{' '}
                     {preview.resolvedDestinationWindow?.startTime ?? '—'} →{' '}
                     {preview.resolvedDestinationWindow?.endTime ?? '—'}
                     {preview.resolvedDestinationWindow?.overnight ? ' (+1)' : ''}

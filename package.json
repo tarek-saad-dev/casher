@@ -34,7 +34,11 @@
     "sync:production": "cd sync-service && npm run production",
     "sync:prod": "cd sync-service && npm run prod",
     "sync:live": "cd sync-service && npm run live",
-    "sync:status": "cd sync-service && npm run status"
+    "sync:status": "cd sync-service && npm run status",
+    "seed:permissions": "npx tsx scripts/seed-permissions.ts",
+    "verify:availability-permissions": "npx tsx scripts/verify-availability-permissions.ts",
+    "verify:availability-phase3c": "npx tsx scripts/verify-availability-phase3c.ts",
+    "verify:availability-phase3c:acceptance": "npx tsx scripts/verify-availability-phase3c-acceptance.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",

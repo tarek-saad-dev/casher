@@ -85,6 +85,8 @@ export async function GET(req: NextRequest) {
           slots: result.slots,
           availableSlots: result.availableSlots,
           noSlotsReason: result.noSlotsReason,
+          reasonCode: result.reasonCode ?? null,
+          employeeReasons: result.employeeReasons ?? [],
           gapNotice: result.gapNotice,
           nextAvailable: result.nextAvailable,
           alternativeBarbers: result.alternativeBarbers,

@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCairoBusinessDate } from '@/lib/businessDate';
+import { getOperationalDateContext } from '@/lib/availability/operationalDateContext';
 import { createDevTimer } from '@/lib/devRequestTiming';
 import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import { listUserValidBranchAccess } from '@/lib/branch/repository';
@@ -113,10 +114,23 @@ export async function GET(req: NextRequest) {
       boards[0]?.branch ??
       null;
 
+    const { getOperationsDayStateVersion } = await import(
+      '@/lib/hr/scheduleAvailabilityInvalidation'
+    );
+    const availabilityVersion = targetBranchIds.reduce(
+      (max, id) => Math.max(max, getOperationsDayStateVersion(id, dateStr)),
+      0,
+    );
+
+    const opDate = getOperationalDateContext({ now });
     const payload = {
       ok: true as const,
       date: dateStr,
+      businessDate: opDate.businessDate,
+      timezone: opDate.timezone,
+      cutoffHour: opDate.cutoffHour,
       generatedAt: now.toISOString(),
+      availabilityVersion,
       filters: {
         branchId: branchParam === 'all' ? 'all' : targetBranchIds[0],
         presence: presenceMode,

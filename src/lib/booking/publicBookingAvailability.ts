@@ -136,6 +136,12 @@ export type PublicAvailableSlotsResponse = {
     totalPrice: number;
   };
   slots: PublicSlotWire[];
+  /** Present when slots are empty — machine-readable (Phase 1C). */
+  reasonCode?: string | null;
+  message?: string | null;
+  messageAr?: string | null;
+  recoverySuggestionAr?: string | null;
+  employeeReasons?: Array<{ empId: number; reasonCode: string; message?: string }>;
   meta: {
     slotCount: number;
     eligibleBarberCount?: number;
@@ -402,6 +408,52 @@ export async function getPublicAvailableSlots(args: {
 
   if (!empId && eligibleBarberCount === 0) {
     throw new PublicBookingAvailabilityError('NO_ELIGIBLE_BARBER');
+  }
+
+  const emptyReason = engine.reasonCode ?? 'SLOT_UNAVAILABLE';
+  if (slots.length === 0) {
+    const { logEmptySlotsMetric } = await import(
+      '@/lib/availability/bookingAvailabilityMetrics'
+    );
+    const { buildEmptySlotsUx } = await import('@/lib/availability/emptySlotsUx');
+    const ux = buildEmptySlotsUx(emptyReason);
+    logEmptySlotsMetric({
+      reasonCode: emptyReason,
+      branchCode: branchCtx.branchCode,
+      branchId: branchCtx.branchId,
+      empId: empId ?? null,
+      businessDate: args.date,
+      source: 'public_available_slots',
+    });
+    const response: PublicAvailableSlotsResponse = {
+      ok: true,
+      branch: { branchCode: branchCtx.branchCode, branchName: branchCtx.branchName },
+      date: args.date,
+      mode,
+      services: {
+        serviceIds: selected.serviceIds,
+        totalDurationMinutes: selected.totalDurationMinutes,
+        totalPrice: selected.totalPrice,
+      },
+      slots,
+      reasonCode: ux.reasonCode,
+      message: engine.noSlotsReason ?? ux.messageAr,
+      messageAr: ux.messageAr,
+      recoverySuggestionAr: ux.recoverySuggestionAr,
+      employeeReasons: engine.employeeReasons,
+      meta: {
+        slotCount: 0,
+        ...(empId ? {} : { eligibleBarberCount }),
+        contractVersion: CONTRACT,
+        generatedAt: new Date().toISOString(),
+      },
+    };
+    cacheSet(
+      cacheKey,
+      response,
+      args.date > getCairoBusinessDate() ? DAYS_CACHE_TTL_MS : CACHE_TTL_MS,
+    );
+    return response;
   }
 
   const response: PublicAvailableSlotsResponse = {

@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
       empId,
       serviceIds,
       requestedAt,
+      branchId: branch.branchId,
     });
 
     console.log('[simulate API] Response:', {

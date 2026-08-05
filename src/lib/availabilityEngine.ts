@@ -23,8 +23,8 @@ import {
   EffectiveSchedule,
   ScheduleOverride,
 } from "@/lib/scheduleOverrides";
-import { loadFreelanceBookingUnlocks } from "@/lib/hr/freelanceBookingUnlock";
 import { loadBookingOverridesForDate } from "@/lib/hr/attendance-shift-schedule-sync";
+// loadFreelanceBookingUnlocks removed from day-status path (canonical day plan).
 
 export const SALON_TZ = "Africa/Cairo";
 
@@ -51,7 +51,7 @@ export interface BarberSchedule {
   isWorkingDay: boolean;
   start: string | null;  // "HH:MM" | null
   end:   string | null;  // "HH:MM" | null
-  source: "TblEmpWorkSchedule" | "TblEmp.Default" | "freelance_attendance" | "none";
+  source: "TblEmpWorkSchedule" | "TblEmpBranchWorkSchedule" | "TblEmpTemporaryBranchTransfer" | "TblEmp.Default" | "freelance_attendance" | "none";
 }
 
 export interface AttendanceInfo {
@@ -210,6 +210,10 @@ export function dowFromDateStr(dateStr: string): number {
  *
  * Source: TblEmpWorkSchedule ONLY. No fallback to TblEmp.DefaultCheckInTime/Out.
  *
+ * @deprecated Phase 2.5 — Legacy / HR / schedule-control preview only.
+ * Prefer `resolveEmployeeDayPlan` or `loadWorkingWindowsBatch` for booking/ops availability.
+ * Classification: Legacy (production callers limited to scheduleControlPreview).
+ *
  * Rules:
  *   - Row found with IsWorkingDay=1 and valid times → working day.
  *   - Row found with IsWorkingDay=1 but NULL times  → invalid, source="invalid_hr_schedule".
@@ -360,422 +364,79 @@ export async function getScheduleOverrides(
   return overridesMap.get(empId) ?? [];
 }
 
-// ── Composite day-status loader ────────────────────────────────────────────────
-
 /**
  * Build a complete BarberDayStatus for one barber on one date.
- *
- * For today: includes attendance. For future dates: attendance is null.
- *
- * Debug: set DEBUG_AVAIL=true env var, or pass debugEmpId + debugDate.
+ * Phase 2: canonical resolveEmployeeDayPlan (+ optional branchId).
+ * Phase 2.5: optional transaction for shared DB context.
  */
 export async function getBarberDayStatus(
   empId: number,
   dateStr: string,
-  opts?: { isToday?: boolean; debugEmpId?: number; debugDate?: string },
+  opts?: {
+    isToday?: boolean;
+    debugEmpId?: number;
+    debugDate?: string;
+    branchId?: number;
+    transaction?: import('mssql').Transaction;
+  },
 ): Promise<BarberDayStatus> {
   const isToday = opts?.isToday ?? (dateStr === cairoDateStr(new Date()));
-  const isDebug =
-    DEBUG_AVAIL ||
-    (opts?.debugEmpId === empId && opts?.debugDate === dateStr);
-
-  // 1. Load all data in parallel
-  // Attendance is always loaded for the date so freelance Present unlocks booking
-  // and Absent / day_off always block bookability for that work date.
-  const [baseSchedule, dayOffEntry, overrides, attendance, freelanceUnlocks] =
-    await Promise.all([
-      getDefaultSchedule(empId, dateStr),
-      getDayOff(empId, dateStr),
-      getScheduleOverrides(empId, dateStr),
-      getAttendanceStatus(empId, dateStr),
-      loadFreelanceBookingUnlocks([empId], dateStr),
-    ]);
-
-  const freelanceUnlock = !dayOffEntry ? freelanceUnlocks.get(empId) : undefined;
-  let schedule = baseSchedule;
-  if (freelanceUnlock && !baseSchedule.isWorkingDay) {
-    schedule = {
-      isWorkingDay: true,
-      start: freelanceUnlock.start,
-      end: freelanceUnlock.end,
-      source: "freelance_attendance",
-    };
-  }
-
-  // 2. Apply overrides to base schedule
-  const base = {
-    isWorking: schedule.isWorkingDay,
-    start: schedule.start ?? "00:00",
-    end:   schedule.end   ?? "00:00",
-  };
-  const effectiveSchedule = applyOverrides(empId, dateStr, base, overrides);
-
-  // 3. Determine flags
-  const appliedOverride = effectiveSchedule.appliedOverride;
-  const isLateStart   = appliedOverride?.Type === "late_start";
-  const isEarlyLeave  = appliedOverride?.Type === "early_leave";
-  const isCustomHours = appliedOverride?.Type === "custom_hours";
-  const isDayOffOverride = appliedOverride?.Type === "day_off";
-
-  const isDayOff =
-    !!dayOffEntry ||
-    isDayOffOverride ||
-    (!schedule.isWorkingDay && !(isCustomHours && effectiveSchedule.isWorking));
-
-  const isAbsent =
-    attendance !== null &&
-    attendance.status === "Absent";
-
-  const isWorkingDay = !isDayOff && effectiveSchedule.isWorking;
-
-  const effectiveStart = isWorkingDay
-    ? (effectiveSchedule.start || schedule.start)
-    : null;
-  const effectiveEnd = isWorkingDay
-    ? (effectiveSchedule.end || schedule.end)
-    : null;
-
-  // 4. Day-off reason Arabic
-  let dayOffReason: string | null = null;
-  if (dayOffEntry) {
-    const typeLabel: Record<string, string> = {
-      day_off: "إجازة", sick: "إجازة مرضية",
-      emergency: "إجازة طارئة", annual: "إجازة سنوية",
-    };
-    dayOffReason = dayOffEntry.reason
-      ? `${typeLabel[dayOffEntry.offType] ?? "إجازة"}: ${dayOffEntry.reason}`
-      : (typeLabel[dayOffEntry.offType] ?? "إجازة");
-  } else if (isDayOffOverride) {
-    dayOffReason = appliedOverride?.Reason ?? "إجازة (تعديل)";
-  } else if (!schedule.isWorkingDay) {
-    dayOffReason = "إجازة أسبوعية";
-  }
-
-  // 5. Arabic status reason
-  let statusReasonArabic: string;
-  let currentAvailabilityStatus: BarberDayStatus["currentAvailabilityStatus"];
-
-  if (isDayOff) {
-    statusReasonArabic = dayOffReason ?? "إجازة";
-    currentAvailabilityStatus = "day_off";
-  } else if (isAbsent) {
-    statusReasonArabic = "غائب";
-    currentAvailabilityStatus = "absent";
-  } else if (isToday && attendance && !attendance.checkInTime && schedule.source !== "freelance_attendance") {
-    const now = new Date();
-    const nowCairoMin = hhmmToMin(cairoTimeStr(now));
-    const schedStartMin = effectiveStart ? hhmmToMin(effectiveStart) : null;
-    if (schedStartMin !== null && nowCairoMin > schedStartMin + 15) {
-      statusReasonArabic = "لم يسجل حضوره بعد";
-      currentAvailabilityStatus = "not_checked_in";
-    } else {
-      statusReasonArabic = "متاح";
-      currentAvailabilityStatus = "working";
-    }
-  } else if (isWorkingDay) {
-    if (isLateStart) {
-      statusReasonArabic = `بداية متأخرة (${effectiveStart})`;
-    } else if (isEarlyLeave) {
-      statusReasonArabic = `مغادرة مبكرة (${effectiveEnd})`;
-    } else if (isCustomHours) {
-      statusReasonArabic = `ساعات مخصصة (${effectiveStart} - ${effectiveEnd})`;
-    } else if (schedule.source === "freelance_attendance") {
-      statusReasonArabic = `فري لانس حاضر (${effectiveStart} - ${effectiveEnd})`;
-    } else {
-      statusReasonArabic = "متاح";
-    }
-    currentAvailabilityStatus = "working";
-  } else {
-    statusReasonArabic = "غير متاح";
-    currentAvailabilityStatus = "off";
-  }
-
-  if (isDebug) {
-    console.log(`[availabilityEngine] EMP ${empId} / ${dateStr}`, {
-      schedule,
-      dayOffEntry,
-      overrides,
-      attendance,
-      effectiveSchedule: {
-        isWorking: effectiveSchedule.isWorking,
-        start: effectiveSchedule.start,
-        end: effectiveSchedule.end,
-        blockedIntervals: effectiveSchedule.blockedIntervals,
-        appliedOverride: effectiveSchedule.appliedOverride,
-      },
-      isDayOff,
-      isAbsent,
-      isLateStart,
-      isEarlyLeave,
-      isCustomHours,
-      isWorkingDay,
-      effectiveStart,
-      effectiveEnd,
-      currentAvailabilityStatus,
-      statusReasonArabic,
-    });
-  }
-
-  return {
+  const { resolveEmployeeDayPlan } = await import('@/lib/availability/resolveEmployeeDayPlan');
+  const { mapEmployeeDayPlanToBarberDayStatus } = await import(
+    '@/lib/availability/mapEmployeeDayPlanToBarberDayStatus'
+  );
+  const plan = await resolveEmployeeDayPlan({
     empId,
-    dateStr,
-    schedule,
-    effectiveSchedule,
-    isDayOff,
-    isAbsent,
-    isLateStart,
-    isEarlyLeave,
-    isCustomHours,
-    isWorkingDay,
-    effectiveStart,
-    effectiveEnd,
-    attendance,
-    appliedOverride,
-    dayOffReason,
-    statusReasonArabic,
-    currentAvailabilityStatus,
-  };
+    businessDate: dateStr,
+    branchId: opts?.branchId ?? null,
+    source: 'operations',
+    transaction: opts?.transaction,
+  });
+  const status = mapEmployeeDayPlanToBarberDayStatus({ plan, isToday }) as BarberDayStatus;
+  if (DEBUG_AVAIL || (opts?.debugEmpId === empId && opts?.debugDate === dateStr)) {
+    console.log('[availabilityEngine] EMP', empId, dateStr, { plan, status, branchId: opts?.branchId ?? null });
+  }
+  return status;
 }
 
 /**
- * Batch-load BarberDayStatus for multiple barbers on a single date.
- * Minimizes DB round trips by pre-loading schedules, day-offs, and overrides
- * in 3 queries instead of N×3.
+ * Batch-load BarberDayStatus via resolveEmployeeDayPlansBatch (Phase 2).
+ * Phase 2.5: optional transaction for shared DB context.
  */
 export async function getBarbersDayStatus(
   empIds: number[],
   dateStr: string,
-  opts?: { isToday?: boolean; debugEmpId?: number; debugDate?: string },
+  opts?: {
+    isToday?: boolean;
+    debugEmpId?: number;
+    debugDate?: string;
+    branchId?: number;
+    transaction?: import('mssql').Transaction;
+  },
 ): Promise<Map<number, BarberDayStatus>> {
   if (!empIds.length) return new Map();
-
   const isToday = opts?.isToday ?? (dateStr === cairoDateStr(new Date()));
-  const dow = dowFromDateStr(dateStr);
-  const db = await getPool();
-  const idList = empIds.join(",");
-
-  // Load all in parallel
-  const [schedulesRes, anyScheduleRes, dayOffRes, overridesMap, attendanceMap, freelanceUnlocks] =
-    await Promise.all([
-    // Schedules for this specific day-of-week
-    db.request().input("dow", sql.TinyInt, dow).query(`
-      SELECT EmpID,
-        IsWorkingDay,
-        CASE WHEN StartTime IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), StartTime, 108), 5) ELSE NULL END AS StartTime,
-        CASE WHEN EndTime   IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), EndTime,   108), 5) ELSE NULL END AS EndTime
-      FROM dbo.TblEmpWorkSchedule
-      WHERE EmpID IN (${idList}) AND DayOfWeek = @dow
-    `).catch(() => ({ recordset: [] as any[] })),
-
-    // Which employees have ANY schedule rows (to distinguish "day not configured" from "no HR schedule at all")
-    db.request().query(`
-      SELECT DISTINCT EmpID FROM dbo.TblEmpWorkSchedule WHERE EmpID IN (${idList})
-    `).catch(() => ({ recordset: [] as any[] })),
-
-    // Day offs
-    db.request().input("offDate", sql.Date, dateStr).query(`
-      SELECT EmpID, OffType, Reason
-      FROM dbo.TblEmpDayOff
-      WHERE EmpID IN (${idList}) AND OffDate = @offDate AND IsDeleted = 0
-    `).catch(() => ({ recordset: [] as any[] })),
-
-    // Booking overrides = ops closes + attendance early-in / late-out opens
-    loadBookingOverridesForDate(db, empIds, dateStr),
-
-    // Attendance for the board date (needed for freelance unlock + today's Absent + expand)
-    db.request().input("workDate", sql.Date, dateStr).query(`
-          SELECT EmpID,
-            Status,
-            CASE WHEN CheckInTime  IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), CheckInTime,  108), 5) ELSE NULL END AS CheckInTime,
-            CASE WHEN CheckOutTime IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), CheckOutTime, 108), 5) ELSE NULL END AS CheckOutTime,
-            CASE WHEN ScheduledStartTime IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), ScheduledStartTime, 108), 5) ELSE NULL END AS ScheduledStartTime,
-            CASE WHEN ScheduledEndTime IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), ScheduledEndTime, 108), 5) ELSE NULL END AS ScheduledEndTime,
-            ISNULL(LateMinutes, 0)       AS LateMinutes,
-            ISNULL(EarlyLeaveMinutes, 0) AS EarlyLeaveMinutes
-          FROM dbo.TblEmpAttendance
-          WHERE EmpID IN (${idList}) AND WorkDate = @workDate
-        `).catch(() => ({ recordset: [] as any[] })),
-
-    loadFreelanceBookingUnlocks(empIds, dateStr),
-  ]);
-
-  // Build lookup maps
-  const empsWithAnySchedule = new Set<number>(anyScheduleRes.recordset.map((r: any) => r.EmpID as number));
-
-  const schedMap = new Map<number, { isWorkingDay: boolean; start: string | null; end: string | null }>();
-  for (const r of schedulesRes.recordset) {
-    schedMap.set(r.EmpID, {
-      isWorkingDay: !!r.IsWorkingDay,
-      start: r.StartTime ?? null,
-      end:   r.EndTime   ?? null,
-    });
-  }
-
-  // Employees with no TblEmpWorkSchedule rows at all → missing_hr_schedule, not working
-  const empIdsNeedingDefault = empIds.filter(id => !empsWithAnySchedule.has(id));
-  if (empIdsNeedingDefault.length) {
-    console.warn(
-      `[availabilityEngine BATCH] ${dateStr}: EMP IDs [${empIdsNeedingDefault.join(",")}] have NO TblEmpWorkSchedule rows. ` +
-      `Treating as not working. Configure a weekly schedule in /admin/hr.`,
-    );
-  }
-
-  const dayOffEntryMap = new Map<number, { offType: string; reason: string | null }>();
-  for (const r of dayOffRes.recordset) {
-    dayOffEntryMap.set(r.EmpID, { offType: r.OffType, reason: r.Reason ?? null });
-  }
-
-  const attMap = new Map<number, AttendanceInfo>();
-  for (const r of attendanceMap.recordset) {
-    attMap.set(r.EmpID, {
-      status:            r.Status ?? null,
-      checkInTime:       r.CheckInTime  ?? null,
-      checkOutTime:      r.CheckOutTime ?? null,
-      scheduledStartTime: r.ScheduledStartTime ?? null,
-      scheduledEndTime:   r.ScheduledEndTime ?? null,
-      lateMinutes:       r.LateMinutes,
-      earlyLeaveMinutes: r.EarlyLeaveMinutes,
-    });
-  }
-
+  const { resolveEmployeeDayPlansBatch } = await import('@/lib/availability/resolveEmployeeDayPlan');
+  const { mapEmployeeDayPlanToBarberDayStatus } = await import(
+    '@/lib/availability/mapEmployeeDayPlanToBarberDayStatus'
+  );
+  const plans = await resolveEmployeeDayPlansBatch({
+    empIds,
+    businessDate: dateStr,
+    branchId: opts?.branchId ?? null,
+    source: 'operations',
+    transaction: opts?.transaction,
+  });
   const result = new Map<number, BarberDayStatus>();
-  const now = new Date();
-  const nowCairoMin = hhmmToMin(cairoTimeStr(now));
-
   for (const empId of empIds) {
-    const isDebug =
-      DEBUG_AVAIL ||
-      (opts?.debugEmpId === empId && opts?.debugDate === dateStr);
-
-    const rawSched = schedMap.get(empId);
-    let schedule: BarberSchedule;
-    if (rawSched) {
-      const isWorking = rawSched.isWorkingDay;
-      if (isWorking && (!rawSched.start || !rawSched.end)) {
-        // Working-day row with NULL times = data error
-        console.warn(
-          `[availabilityEngine BATCH] EMP ${empId} / ${dateStr} (dow=${dow}): ` +
-          `TblEmpWorkSchedule row IsWorkingDay=1 but NULL times. Fix in /admin/hr.`,
-        );
-        schedule = { isWorkingDay: false, start: null, end: null, source: "invalid_hr_schedule" as any };
-      } else {
-        schedule = { isWorkingDay: isWorking, start: rawSched.start, end: rawSched.end, source: "TblEmpWorkSchedule" };
-      }
-    } else if (empsWithAnySchedule.has(empId)) {
-      // Has rows for other days but not this one → day not configured = not working
-      schedule = { isWorkingDay: false, start: null, end: null, source: "TblEmpWorkSchedule" };
-    } else {
-      // No rows at all → missing HR schedule, not working
-      schedule = { isWorkingDay: false, start: null, end: null, source: "missing_hr_schedule" as any };
+    const plan = plans.get(empId);
+    if (!plan) continue;
+    const status = mapEmployeeDayPlanToBarberDayStatus({ plan, isToday }) as BarberDayStatus;
+    if (DEBUG_AVAIL || (opts?.debugEmpId === empId && opts?.debugDate === dateStr)) {
+      console.log('[availabilityEngine BATCH] EMP', empId, dateStr, { plan, status, branchId: opts?.branchId ?? null });
     }
-
-    const dayOffEntry = dayOffEntryMap.get(empId) ?? null;
-    const overrides   = overridesMap.get(empId) ?? [];
-    const attendance  = attMap.get(empId) ?? null;
-    const freelanceUnlock = !dayOffEntry ? freelanceUnlocks.get(empId) : undefined;
-    if (freelanceUnlock && !schedule.isWorkingDay) {
-      schedule = {
-        isWorkingDay: true,
-        start: freelanceUnlock.start,
-        end: freelanceUnlock.end,
-        source: "freelance_attendance",
-      };
-    }
-
-    const base = {
-      isWorking: schedule.isWorkingDay,
-      start: schedule.start ?? "00:00",
-      end:   schedule.end   ?? "00:00",
-    };
-    const effectiveSchedule = applyOverrides(empId, dateStr, base, overrides);
-
-    const appliedOverride   = effectiveSchedule.appliedOverride;
-    const isLateStart       = appliedOverride?.Type === "late_start";
-    const isEarlyLeave      = appliedOverride?.Type === "early_leave";
-    const isCustomHours     = appliedOverride?.Type === "custom_hours";
-    const isDayOffOverride  = appliedOverride?.Type === "day_off";
-
-    const isDayOff  =
-      !!dayOffEntry ||
-      isDayOffOverride ||
-      (!schedule.isWorkingDay && !(isCustomHours && effectiveSchedule.isWorking));
-    const isAbsent  = attendance !== null && attendance.status === "Absent";
-    const isWorkingDay = !isDayOff && effectiveSchedule.isWorking;
-
-    const effectiveStart = isWorkingDay ? (effectiveSchedule.start || schedule.start) : null;
-    const effectiveEnd   = isWorkingDay ? (effectiveSchedule.end   || schedule.end  ) : null;
-
-    // Day off reason
-    let dayOffReason: string | null = null;
-    if (dayOffEntry) {
-      const typeLabel: Record<string, string> = {
-        day_off: "إجازة", sick: "إجازة مرضية",
-        emergency: "إجازة طارئة", annual: "إجازة سنوية",
-      };
-      dayOffReason = dayOffEntry.reason
-        ? `${typeLabel[dayOffEntry.offType] ?? "إجازة"}: ${dayOffEntry.reason}`
-        : (typeLabel[dayOffEntry.offType] ?? "إجازة");
-    } else if (isDayOffOverride) {
-      dayOffReason = appliedOverride?.Reason ?? "إجازة (تعديل)";
-    } else if (!schedule.isWorkingDay) {
-      dayOffReason = "إجازة أسبوعية";
-    }
-
-    let statusReasonArabic: string;
-    let currentAvailabilityStatus: BarberDayStatus["currentAvailabilityStatus"];
-
-    if (isDayOff) {
-      statusReasonArabic = dayOffReason ?? "إجازة";
-      currentAvailabilityStatus = "day_off";
-    } else if (isAbsent) {
-      statusReasonArabic = "غائب";
-      currentAvailabilityStatus = "absent";
-    } else if (
-      isToday &&
-      attendance &&
-      !attendance.checkInTime &&
-      schedule.source !== "freelance_attendance"
-    ) {
-      const schedStartMin = effectiveStart ? hhmmToMin(effectiveStart) : null;
-      if (schedStartMin !== null && nowCairoMin > schedStartMin + 15) {
-        statusReasonArabic = "لم يسجل حضوره بعد";
-        currentAvailabilityStatus = "not_checked_in";
-      } else {
-        statusReasonArabic = "متاح";
-        currentAvailabilityStatus = "working";
-      }
-    } else if (isWorkingDay) {
-      if (isLateStart)       statusReasonArabic = `بداية متأخرة (${effectiveStart})`;
-      else if (isEarlyLeave) statusReasonArabic = `مغادرة مبكرة (${effectiveEnd})`;
-      else if (isCustomHours) statusReasonArabic = `ساعات مخصصة (${effectiveStart} - ${effectiveEnd})`;
-      else if (schedule.source === "freelance_attendance") {
-        statusReasonArabic = `فري لانس حاضر (${effectiveStart} - ${effectiveEnd})`;
-      }
-      else                   statusReasonArabic = "متاح";
-      currentAvailabilityStatus = "working";
-    } else {
-      statusReasonArabic = "غير متاح";
-      currentAvailabilityStatus = "off";
-    }
-
-    if (isDebug) {
-      console.log(`[availabilityEngine BATCH] EMP ${empId} / ${dateStr}`, {
-        schedule, dayOffEntry, overridesCount: overrides.length, attendance,
-        isDayOff, isAbsent, isLateStart, isEarlyLeave, isCustomHours,
-        isWorkingDay, effectiveStart, effectiveEnd,
-        currentAvailabilityStatus, statusReasonArabic,
-      });
-    }
-
-    result.set(empId, {
-      empId, dateStr, schedule, effectiveSchedule,
-      isDayOff, isAbsent, isLateStart, isEarlyLeave, isCustomHours,
-      isWorkingDay, effectiveStart, effectiveEnd,
-      attendance,
-      appliedOverride, dayOffReason, statusReasonArabic, currentAvailabilityStatus,
-    });
+    result.set(empId, status);
   }
-
   return result;
 }
 
@@ -791,11 +452,16 @@ export async function checkBarberAvailableAt(
   empId: number,
   startDateTime: Date,
   endDateTime: Date,
-  opts?: { debugEmpId?: number; debugDate?: string },
+  opts?: { debugEmpId?: number; debugDate?: string; branchId?: number },
 ): Promise<{ available: boolean; reason: string; statusReasonArabic: string }> {
   const dateStr = cairoDateStr(startDateTime);
   const isToday = dateStr === cairoDateStr(new Date());
-  const status = await getBarberDayStatus(empId, dateStr, { isToday, ...opts });
+  const status = await getBarberDayStatus(empId, dateStr, {
+    isToday,
+    branchId: opts?.branchId,
+    debugEmpId: opts?.debugEmpId,
+    debugDate: opts?.debugDate,
+  });
 
   if (!status.isWorkingDay) {
     return {

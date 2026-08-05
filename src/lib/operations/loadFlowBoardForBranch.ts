@@ -266,7 +266,10 @@ export async function loadFlowBoardForBranch(opts: {
   }
 
   const allBarberIds = locationFiltered.map((b) => Number(b.EmpID));
-  const dayStatusMap = await getBarbersDayStatus(allBarberIds, dateStr, { isToday });
+  const dayStatusMap = await getBarbersDayStatus(allBarberIds, dateStr, {
+    isToday,
+    branchId,
+  });
 
   const bookingsMap = new Map<number, any[]>();
   for (const b of bookingsRes.recordset) {

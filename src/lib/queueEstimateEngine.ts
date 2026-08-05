@@ -17,12 +17,17 @@
 import { getPool, sql } from "@/lib/db";
 import {
   getBarberAvailabilityReason,
-  getBarberWorkingWindow,
 } from "@/lib/barberAvailability";
 import { salonDateTimeToMs } from "@/lib/publicBookingHelpers";
 import { getCairoBusinessDate } from "@/lib/businessDate";
 import { normalizeBookingTimes } from "@/lib/bookingDateTime";
 import { ACTIVE_BOOKING_BLOCK_STATUSES, intervalsOverlap } from "@/lib/scheduleIntervals";
+import { resolveEmployeeDayPlan } from "@/lib/availability/resolveEmployeeDayPlan";
+import {
+  findEarliestFitInWindows,
+  iterateWindowSlotStarts,
+  normalizeEffectiveWindows,
+} from "@/lib/availability/effectiveWindows";
 
 const SALON_TZ = 'Africa/Cairo';
 
@@ -813,8 +818,35 @@ export async function computeBarberEstimate(
     (a, b) => a.start.getTime() - b.start.getTime(),
   );
 
-  // Find first free slot
-  const slot = findFirstFreeSlot(now, customerDur, allIntervals);
+  // Phase 3C — search all effective windows chronologically (no gap bridging).
+  const plan = await resolveEmployeeDayPlan({
+    empId,
+    businessDate: dateStr,
+    source: 'operations',
+  });
+  const windows = normalizeEffectiveWindows(plan.effectiveWindows);
+  const occupied = [
+    ...allIntervals.map((iv) => ({
+      startMs: iv.start.getTime(),
+      endMs: iv.end.getTime(),
+    })),
+    ...(plan.effSched?.blockedIntervals ?? []).map((b) => ({
+      startMs: b.startMs,
+      endMs: b.endMs,
+    })),
+  ];
+  const fitMs = windows.length
+    ? findEarliestFitInWindows({
+        windows,
+        fromMs: now.getTime(),
+        durationMinutes: customerDur,
+        occupied,
+      })
+    : null;
+  const slot =
+    fitMs != null
+      ? new Date(fitMs)
+      : findFirstFreeSlot(now, customerDur, allIntervals);
   const estimatedWaitMinutes = Math.max(
     0,
     Math.round((slot.getTime() - now.getTime()) / 60000),
@@ -1118,28 +1150,49 @@ export async function hasAnyAvailableSlotForBarberOnDay(
   slotIntervalMinutes: number,
   minNoticeMinutes: number,
   nowMs: number,
+  opts?: { branchId?: number | null },
 ): Promise<DayAvailabilityResult> {
   const db = await getPool();
 
-  // 1. Get working window (uses getBarberWorkingWindow which checks IsWorkingDay)
-  const dateObj = new Date(`${dateStr}T12:00:00Z`);
-  const window = await getBarberWorkingWindow(empId, dateObj);
+  // 1. Canonical day plan (effective windows + blocks; first outer window when product supports one)
+  const plan = await resolveEmployeeDayPlan({
+    empId,
+    businessDate: dateStr,
+    branchId: opts?.branchId ?? null,
+    source: 'operations',
+  });
 
-  if (!window.isWorkingDay) {
+  if (!plan.isWorking || !plan.effSched) {
+    if (plan.denyReasonCode === 'EMPLOYEE_ABSENT') {
+      return { available: false, reason: 'غائب', reasonCode: 'DAY_OFF' };
+    }
+    if (plan.denyReasonCode === 'EMPLOYEE_OFF_DAY') {
+      return { available: false, reason: 'إجازة أسبوعية', reasonCode: 'DAY_OFF' };
+    }
+    if (plan.denyReasonCode === 'SCHEDULE_NOT_CONFIGURED' || plan.denyReasonCode === 'FREELANCER_NOT_PLANNED') {
+      return {
+        available: false,
+        reason: 'لا توجد مواعيد عمل لهذا الحلاق في هذا اليوم',
+        reasonCode: 'NO_WORKING_SCHEDULE',
+      };
+    }
     return {
       available: false,
-      reason: "إجازة أسبوعية",
-      reasonCode: "DAY_OFF",
+      reason: 'إجازة أسبوعية',
+      reasonCode: 'DAY_OFF',
     };
   }
 
-  if (!window.startTime || !window.endTime) {
+  const windows = normalizeEffectiveWindows(plan.effectiveWindows);
+  if (!windows.length) {
     return {
       available: false,
-      reason: "لا توجد مواعيد عمل لهذا الحلاق في هذا اليوم",
-      reasonCode: "NO_WORKING_SCHEDULE",
+      reason: 'لا توجد مواعيد عمل لهذا الحلاق في هذا اليوم',
+      reasonCode: 'NO_WORKING_SCHEDULE',
     };
   }
+
+  const blockedIntervals = plan.effSched.blockedIntervals ?? [];
 
   // 2. Preload all blocking intervals ONCE
   const [qIntervals, bIntervals] = await Promise.all([
@@ -1153,78 +1206,92 @@ export async function hasAnyAvailableSlotForBarberOnDay(
     (a, b) => a.start.getTime() - b.start.getTime(),
   );
 
-  // 3. Generate slots and check in memory (early exit on first valid)
-  const startMin = timeToMinutes(window.startTime);
-  const endMin = timeToMinutes(window.endTime);
+  const occupied = [
+    ...allIntervals.map((iv) => ({
+      startMs: iv.start.getTime(),
+      endMs: iv.end.getTime(),
+    })),
+    ...blockedIntervals.map((b) => ({ startMs: b.startMs, endMs: b.endMs })),
+  ];
 
-  // Handle overnight shifts (e.g., 15:00-02:00)
-  // Generate slots from startTime up to midnight, and from midnight to endTime if overnight
-  const slots: string[] = [];
+  // 3. Probe slot starts across ALL effective windows (Phase 3C)
+  const starts = iterateWindowSlotStarts({
+    windows,
+    durationMinutes,
+    intervalMinutes: slotIntervalMinutes,
+    notBeforeMs: nowMs + minNoticeMinutes * 60_000,
+  });
 
-  if (startMin <= endMin) {
-    // Normal shift (e.g., 09:00-17:00)
-    for (let m = startMin; m < endMin; m += slotIntervalMinutes) {
-      const hh = Math.floor(m / 60)
-        .toString()
-        .padStart(2, "0");
-      const mm = (m % 60).toString().padStart(2, "0");
-      slots.push(`${hh}:${mm}`);
+  for (const slot of starts) {
+    const slotMs = slot.startMs;
+    const slotEndMs = slot.endMs;
+    let blocked = false;
+    for (const iv of blockedIntervals) {
+      if (slotMs < iv.endMs && slotEndMs > iv.startMs) {
+        blocked = true;
+        break;
+      }
     }
-  } else {
-    // Overnight shift (e.g., 15:00-02:00)
-    // First part: startTime to midnight
-    for (let m = startMin; m < 24 * 60; m += slotIntervalMinutes) {
-      const hh = Math.floor(m / 60)
-        .toString()
-        .padStart(2, "0");
-      const mm = (m % 60).toString().padStart(2, "0");
-      slots.push(`${hh}:${mm}`);
-    }
-    // Second part: midnight to endTime
-    for (let m = 0; m < endMin; m += slotIntervalMinutes) {
-      const hh = Math.floor(m / 60)
-        .toString()
-        .padStart(2, "0");
-      const mm = (m % 60).toString().padStart(2, "0");
-      slots.push(`${hh}:${mm}`);
-    }
-  }
+    if (blocked) continue;
 
-  // 4. Check each slot in memory (early exit)
-  const isOvernightShift = endMin <= startMin;
-  const nextDateStr = isOvernightShift ? nextDate(dateStr) : null;
-
-  for (const time of slots) {
-    // Use salon timezone-aware epoch — same as available-slots uses.
-    // Post-midnight slots belong to the next calendar day.
-    const timeMin = timeToMinutes(time);
-    const slotDate = isOvernightShift && timeMin < startMin ? nextDateStr! : dateStr;
-    const slotMs = salonDateTimeToMs(slotDate, time, SALON_TZ);
-
-    // Skip past slots
-    if (slotMs - nowMs < minNoticeMinutes * 60_000) {
-      continue;
-    }
-
-    const slotEnd = new Date(slotMs + durationMinutes * 60000);
-
-    // Check overlap with blocking intervals in memory
     let hasConflict = false;
     const slotDt = new Date(slotMs);
+    const slotEnd = new Date(slotEndMs);
     for (const iv of allIntervals) {
       if (slotDt < iv.end && slotEnd > iv.start) {
         hasConflict = true;
-        break; // Conflict found, move to next slot
+        break;
       }
     }
+    if (hasConflict) continue;
 
-    if (!hasConflict) {
-      // Found valid slot!
-      return {
-        available: true,
-        firstAvailableSlot: time,
-      };
-    }
+    // Format HH:MM in Cairo
+    const time = (() => {
+      try {
+        const parts = new Intl.DateTimeFormat('en-GB', {
+          timeZone: SALON_TZ,
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).formatToParts(new Date(slotMs));
+        const h = parts.find((p) => p.type === 'hour')?.value ?? '00';
+        const m = parts.find((p) => p.type === 'minute')?.value ?? '00';
+        return `${h}:${m}`;
+      } catch {
+        return new Date(slotMs).toISOString().slice(11, 16);
+      }
+    })();
+
+    return {
+      available: true,
+      firstAvailableSlot: time,
+    };
+  }
+
+  // Also try continuous earliest-fit (handles mid-window after occupancy)
+  const fit = findEarliestFitInWindows({
+    windows,
+    fromMs: nowMs + minNoticeMinutes * 60_000,
+    durationMinutes,
+    occupied,
+  });
+  if (fit != null) {
+    const time = (() => {
+      try {
+        const parts = new Intl.DateTimeFormat('en-GB', {
+          timeZone: SALON_TZ,
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).formatToParts(new Date(fit));
+        const h = parts.find((p) => p.type === 'hour')?.value ?? '00';
+        const m = parts.find((p) => p.type === 'minute')?.value ?? '00';
+        return `${h}:${m}`;
+      } catch {
+        return new Date(fit).toISOString().slice(11, 16);
+      }
+    })();
+    return { available: true, firstAvailableSlot: time };
   }
 
   // No available slots found

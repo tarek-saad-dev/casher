@@ -6,6 +6,7 @@
  * Pure helpers + one batch DB loader shared by availability engines.
  */
 
+import type { Transaction } from 'mssql';
 import { getPool, sql } from '@/lib/db';
 import { resolveIsFreelance } from '@/lib/hr/attendance-eligibility';
 import { normalizeEmploymentType } from '@/lib/hr/employee-hr-model';
@@ -52,31 +53,43 @@ export function isFreelanceBookingUnlockStatus(
 
 /**
  * Resolve the working window used once a freelance day is unlocked.
- * Prefer HR defaults, then attendance times, then salon fallbacks.
+ * Prefer HR defaults, then attendance times.
+ * Returns null when hours are not configured — callers must deny with
+ * FREELANCER_HOURS_NOT_CONFIGURED (do not invent salon-wide hours).
  */
 export function resolveFreelanceWorkingWindow(input: {
   checkInTime?: string | null;
   checkOutTime?: string | null;
   defaultStart?: string | null;
   defaultEnd?: string | null;
-}): { start: string; end: string } {
+}): { start: string; end: string } | null {
   const start =
     normalizeFreelanceHhmm(input.defaultStart) ??
-    normalizeFreelanceHhmm(input.checkInTime) ??
-    FREELANCE_BOOKING_FALLBACK_START;
+    normalizeFreelanceHhmm(input.checkInTime);
   const end =
     normalizeFreelanceHhmm(input.defaultEnd) ??
-    normalizeFreelanceHhmm(input.checkOutTime) ??
-    FREELANCE_BOOKING_FALLBACK_END;
+    normalizeFreelanceHhmm(input.checkOutTime);
 
-  if (start === end) {
-    return {
-      start: FREELANCE_BOOKING_FALLBACK_START,
-      end: FREELANCE_BOOKING_FALLBACK_END,
-    };
+  if (!start || !end || start === end) {
+    return null;
   }
 
   return { start, end };
+}
+
+/** @deprecated Prefer resolveFreelanceWorkingWindow — kept for tests expecting legacy fallback. */
+export function resolveFreelanceWorkingWindowWithFallback(input: {
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
+  defaultStart?: string | null;
+  defaultEnd?: string | null;
+}): { start: string; end: string } {
+  return (
+    resolveFreelanceWorkingWindow(input) ?? {
+      start: FREELANCE_BOOKING_FALLBACK_START,
+      end: FREELANCE_BOOKING_FALLBACK_END,
+    }
+  );
 }
 
 export function shouldUnlockFreelanceForBooking(input: {
@@ -100,10 +113,15 @@ export function shouldUnlockFreelanceForBooking(input: {
  * Only returns entries that should unlock booking that day.
  * Explicit day-off is caller-side (pass hasExplicitDayOff when filtering).
  */
+/**
+ * Load freelance booking unlock windows for employees on a date.
+ * Phase 2.5: optional `transaction` binds reads to the caller context.
+ * When on a Transaction, queries run sequentially (mssql: one request per connection).
+ */
 export async function loadFreelanceBookingUnlocks(
   empIds: number[],
   dateStr: string,
-  options?: { excludeEmpIds?: Set<number> },
+  options?: { excludeEmpIds?: Set<number>; transaction?: Transaction },
 ): Promise<Map<number, FreelanceUnlockWindow>> {
   const result = new Map<number, FreelanceUnlockWindow>();
   if (!empIds.length) return result;
@@ -114,12 +132,13 @@ export async function loadFreelanceBookingUnlocks(
     : empIds;
   if (!ids.length) return result;
 
-  const db = await getPool();
+  const transaction = options?.transaction;
+  const db = (transaction ?? (await getPool())) as Awaited<ReturnType<typeof getPool>>;
+  const onTx = !!transaction;
   const idList = ids.join(',');
 
   try {
-    const [empRes, attRes] = await Promise.all([
-      db.request().query(`
+    const empSql = `
         SELECT
           EmpID,
           EmploymentType,
@@ -128,8 +147,8 @@ export async function loadFreelanceBookingUnlocks(
           CASE WHEN DefaultCheckOutTime IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), DefaultCheckOutTime, 108), 5) ELSE NULL END AS DefaultCheckOutTime
         FROM dbo.TblEmp
         WHERE EmpID IN (${idList})
-      `),
-      db.request().input('workDate', sql.Date, dateStr).query(`
+      `;
+    const attSql = `
         SELECT
           EmpID,
           Status,
@@ -137,8 +156,19 @@ export async function loadFreelanceBookingUnlocks(
           CASE WHEN CheckOutTime IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), CheckOutTime, 108), 5) ELSE NULL END AS CheckOutTime
         FROM dbo.TblEmpAttendance
         WHERE EmpID IN (${idList}) AND WorkDate = @workDate
-      `),
-    ]);
+      `;
+
+    let empRes: { recordset: any[] };
+    let attRes: { recordset: any[] };
+    if (onTx) {
+      empRes = await db.request().query(empSql);
+      attRes = await db.request().input('workDate', sql.Date, dateStr).query(attSql);
+    } else {
+      [empRes, attRes] = await Promise.all([
+        db.request().query(empSql),
+        db.request().input('workDate', sql.Date, dateStr).query(attSql),
+      ]);
+    }
 
     const attByEmp = new Map<number, {
       Status: string | null;
@@ -171,6 +201,18 @@ export async function loadFreelanceBookingUnlocks(
         defaultStart: emp.DefaultCheckInTime ?? null,
         defaultEnd: emp.DefaultCheckOutTime ?? null,
       });
+      if (!window) {
+        // Attendance present but hours not configured — still record unlock marker
+        // with empty times so day-plan can emit FREELANCER_HOURS_NOT_CONFIGURED.
+        result.set(empId, {
+          start: '',
+          end: '',
+          attendanceStatus: att!.Status as string,
+          checkInTime: att?.CheckInTime ?? null,
+          checkOutTime: att?.CheckOutTime ?? null,
+        });
+        continue;
+      }
 
       result.set(empId, {
         start: window.start,

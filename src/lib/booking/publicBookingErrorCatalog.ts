@@ -22,6 +22,7 @@ export type PublicBookingErrorCode =
   | 'BARBER_CANNOT_PERFORM_SERVICE'
   | 'INVALID_DAY_OFFSET'
   | 'SLOT_UNAVAILABLE'
+  | 'HOLD_CONFLICT'
   | 'SLOT_OUTSIDE_BRANCH_HOURS'
   | 'BOOKING_HORIZON_EXCEEDED'
   | 'MIN_NOTICE_NOT_MET'
@@ -165,8 +166,14 @@ export const PUBLIC_BOOKING_ERROR_CATALOG: Record<PublicBookingErrorCode, Public
   SLOT_UNAVAILABLE: {
     code: 'SLOT_UNAVAILABLE',
     httpStatus: 409,
-    messageAr: 'الموعد غير متاح',
-    messageEn: 'Slot unavailable',
+    messageAr: 'الموعد غير متاح — حدّث المواعيد المتاحة وحاول مرة أخرى',
+    messageEn: 'Slot unavailable — refresh available slots and try again',
+  },
+  HOLD_CONFLICT: {
+    code: 'HOLD_CONFLICT',
+    httpStatus: 409,
+    messageAr: 'هذا الموعد محجوز مؤقتاً لعميل آخر — اختر موعداً غيره أو انتظر قليلاً',
+    messageEn: 'Slot temporarily held — choose another time or retry shortly',
   },
   SLOT_OUTSIDE_BRANCH_HOURS: {
     code: 'SLOT_OUTSIDE_BRANCH_HOURS',

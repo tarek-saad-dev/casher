@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { isAuthResult, requireAdmin } from '@/lib/api-auth';
+import { ensureWorkforceAvailabilityGrants } from '@/lib/permissions/workforceAvailabilityPermissions';
 
 export const runtime = 'nodejs';
 
@@ -59,6 +60,7 @@ const PAGES = [
   { key: 'hr.employees',           name: 'الموظفون',               path: '/admin/hr',                        section: 'الموارد البشرية',    access: 'roles', sort: 90 },
   { key: 'hr.attendance',          name: 'متابعة الحضور',          path: '/admin/hr?tab=attendance',         section: 'الموارد البشرية',    access: 'roles', sort: 91 },
   { key: 'hr.payroll',             name: 'يوميات الموظفين',        path: '/admin/hr?tab=daily-payroll',      section: 'الموارد البشرية',    access: 'roles', sort: 92 },
+  { key: 'hr.workforce_availability', name: 'توافر الموظفين',     path: '/admin/workforce/availability',    section: 'الموارد البشرية',    access: 'roles', sort: 93 },
   { key: 'hr.advances',            name: 'سلف الموظفين',           path: '/expenses-review/advances',        section: 'الموارد البشرية',    access: 'roles', sort: 93 },
   { key: 'hr.salaries',            name: 'مرتبات العاملين',        path: '/expenses-review/salaries',        section: 'الموارد البشرية',    access: 'roles', sort: 94 },
   // Admin
@@ -109,7 +111,7 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
       'budget.main',
       'queue.live','queue.new',
       'bookings.list','bookings.new','bookings.calendar',
-      'hr.employees','hr.attendance','hr.payroll','hr.advances','hr.salaries',
+      'hr.employees','hr.attendance','hr.payroll','hr.workforce_availability','hr.advances','hr.salaries',
       'admin.operations','admin.booking_operations','admin.branches','admin.users','admin.services','admin.packages','admin.payment_methods',
       'admin.categories','admin.loyalty','admin.shift','admin.settings','admin.queue_settings',
       'operations.main','cut_club.main',
@@ -128,7 +130,7 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
       'treasury.daily','treasury.period_summary','cashier_treasury_daily',
       'queue.live','queue.new',
       'bookings.list','bookings.new','bookings.calendar',
-      'hr.attendance','hr.payroll',
+      'hr.attendance','hr.payroll','hr.workforce_availability',
       'admin.operations','operations.main',
     ],
     canEdit: true, canDelete: false,
@@ -163,6 +165,7 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
       'bookings.list','bookings.new','bookings.calendar',
       'queue.live','queue.new',
       'operations.main',
+      'hr.workforce_availability',
     ],
     canEdit: true, canDelete: false,
   },
@@ -238,6 +241,9 @@ export async function POST() {
           `);
       }
     }
+
+    // Phase 3B.1 — focused idempotent ensure for workforce availability page
+    await ensureWorkforceAvailabilityGrants(db);
 
     // ── Seed UserRoles — Tarek = super_admin + admin, others by UserLevel ─────
     const usersRes = await db.request().query(`

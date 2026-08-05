@@ -145,6 +145,14 @@ export type PublicBookingCreateInput = {
   purpose?: 'public_booking' | 'internal_preview';
   /** Persisted Bookings.Source — public stays online; ops/admin set by authenticated route. */
   bookingSource?: 'online' | 'operations' | 'admin';
+  /**
+   * Internal staff lead channel (admin bookings/new).
+   * Only honored when purpose=internal_preview and bookingSource is admin|operations.
+   * Persisted as Bookings.Source when valid; public callers must not set this.
+   */
+  leadSource?: 'phone' | 'whatsapp' | 'website' | 'admin' | 'walk_in' | null;
+  /** Optional 5-minute slot hold key to consume on success (Phase G). */
+  holdKey?: string | null;
 };
 
 export type PublicBookingCreateResult = {
@@ -195,6 +203,34 @@ function normalizeMode(raw: unknown, empId: number | null): PublicSelectionMode 
     return 'specific_barber';
   }
   return empId ? 'specific_barber' : 'any_barber';
+}
+
+const INTERNAL_LEAD_SOURCES = new Set([
+  'phone',
+  'whatsapp',
+  'website',
+  'admin',
+  'walk_in',
+]);
+
+/**
+ * Resolve Bookings.Source for insert.
+ * Public: always bookingSource (online).
+ * Internal admin/ops: optional leadSource (phone/whatsapp/…) when valid; else bookingSource.
+ */
+export function resolvePersistedBookingSource(input: {
+  purpose?: 'public_booking' | 'internal_preview';
+  bookingSource?: 'online' | 'operations' | 'admin';
+  leadSource?: string | null;
+}): string {
+  const isInternal =
+    input.purpose === 'internal_preview' &&
+    (input.bookingSource === 'admin' || input.bookingSource === 'operations');
+  if (isInternal) {
+    const lead = String(input.leadSource ?? '').trim().toLowerCase();
+    if (INTERNAL_LEAD_SOURCES.has(lead)) return lead;
+  }
+  return input.bookingSource ?? 'online';
 }
 
 function parseOptionalEmpId(raw: unknown): number | null {
@@ -261,6 +297,7 @@ function validatePlanTokenAgainstRequest(
 
 function buildPublicResponse(args: {
   evaluation: PublicSelectionEvaluation;
+  bookingId: number;
   bookingCode: string;
   selectedEmpId: number;
   selectedNameAr: string;
@@ -278,6 +315,7 @@ function buildPublicResponse(args: {
   return {
     ok: true,
     booking: {
+      id: args.bookingId,
       code: args.bookingCode,
       status: 'confirmed',
       branch: {
@@ -584,6 +622,31 @@ export async function createPublicBooking(
   ) {
     throw new PublicBookingCreateError('BRANCH_BOOKING_DISABLED');
   }
+
+  try {
+    const { assertNoHoldConflict } = await import('@/lib/booking/bookingHold');
+    const holdEmpId = Number(
+      precheck.specificBarber?.empId ?? input.empId ?? 0,
+    );
+    if (holdEmpId > 0 && precheck.startDateTime && precheck.endDateTime) {
+      await assertNoHoldConflict({
+        empId: holdEmpId,
+        startAt: new Date(precheck.startDateTime),
+        endAt: new Date(precheck.endDateTime),
+        excludeHoldKey: typeof input.holdKey === 'string' ? input.holdKey : null,
+      });
+    }
+  } catch (holdErr) {
+    if (
+      holdErr &&
+      typeof holdErr === 'object' &&
+      'code' in holdErr &&
+      (holdErr as { code: string }).code === 'HOLD_CONFLICT'
+    ) {
+      throw new PublicBookingCreateError('HOLD_CONFLICT');
+    }
+  }
+
   const servicesNow = await resolveSelectedBookingServices({
     branchContext: branchNow,
     serviceIds: precheck.selectedServices.map((s) => s.serviceId),
@@ -683,6 +746,8 @@ export async function createPublicBooking(
         startAt: new Date(startMs),
         endAt: new Date(endMs),
         operationalDate: precheck.workDate,
+        branchId: branchNow.branchId,
+        excludeHoldKey: typeof input.holdKey === 'string' ? input.holdKey : null,
         transaction,
       });
     } else {
@@ -710,6 +775,8 @@ export async function createPublicBooking(
             startAt: new Date(startMs),
             endAt: new Date(endMs),
             operationalDate: precheck.workDate,
+            branchId: branchNow.branchId,
+            excludeHoldKey: typeof input.holdKey === 'string' ? input.holdKey : null,
             transaction,
           });
           chosen = c;
@@ -750,7 +817,7 @@ export async function createPublicBooking(
           .input('bDate', sql.Date, calendarDate)
           .input('sTime', sql.VarChar, startTimeStr)
           .input('eTime', sql.VarChar, endTimeStr)
-          .input('source', sql.NVarChar, input.bookingSource ?? 'online')
+          .input('source', sql.NVarChar, resolvePersistedBookingSource(input))
           .input('notes', sql.NVarChar, notesPersist || null)
           .input('code', sql.NVarChar, bookingCode)
           .input('branchId', sql.Int, branchNow.branchId)
@@ -833,6 +900,7 @@ export async function createPublicBooking(
           ...branchNow,
         },
       },
+      bookingId,
       bookingCode,
       selectedEmpId,
       selectedNameAr,
@@ -899,6 +967,35 @@ export async function createPublicBooking(
       whatsapp = { scheduled: false, skipped: true, reason: 'suppressed' };
     }
 
+    if (typeof input.holdKey === 'string' && input.holdKey.trim()) {
+      try {
+        const { consumeBookingHold } = await import('@/lib/booking/bookingHold');
+        await consumeBookingHold(input.holdKey.trim());
+      } catch {
+        /* hold consume best-effort after commit */
+      }
+    }
+
+    try {
+      const { logCreateOutcomeMetric } = await import(
+        '@/lib/availability/bookingAvailabilityMetrics'
+      );
+      logCreateOutcomeMetric({
+        ok: true,
+        branchId: branchNow.branchId,
+        branchCode: branchNow.branchCode,
+        empId: selectedEmpId,
+        businessDate: calendarDate,
+        dayOffset: precheck.requestedDayOffset ?? 0,
+        bookingId,
+        bookingCode: String(body.booking?.code ?? ''),
+        source: input.bookingSource ?? null,
+        purpose: input.purpose ?? null,
+      });
+    } catch {
+      /* metrics optional */
+    }
+
     return {
       httpStatus: 201,
       body: { ...body, whatsapp },
@@ -908,6 +1005,29 @@ export async function createPublicBooking(
       await transaction.rollback();
     } catch {
       /* ignore */
+    }
+    try {
+      const { logCreateOutcomeMetric } = await import(
+        '@/lib/availability/bookingAvailabilityMetrics'
+      );
+      const code =
+        err instanceof PublicBookingCreateError
+          ? err.code
+          : err instanceof Error
+            ? err.message
+            : 'BOOKING_CREATE_FAILED';
+      logCreateOutcomeMetric({
+        ok: false,
+        reasonCode: String(code),
+        branchCode: input.branchCode ?? null,
+        empId: Number(input.empId) > 0 ? Number(input.empId) : null,
+        businessDate: typeof input.date === 'string' ? input.date : null,
+        dayOffset: Number(input.dayOffset) === 1 ? 1 : 0,
+        source: input.bookingSource ?? null,
+        purpose: input.purpose ?? null,
+      });
+    } catch {
+      /* metrics optional */
     }
     if (err instanceof IdempotencyConflictError) {
       throw new PublicBookingCreateError(err.code);

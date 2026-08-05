@@ -60,6 +60,7 @@ function runQuery(q: string, inputs: Record<string, unknown>) {
           Notes: null,
           ClientName: 'X',
           EmpName: 'كريم',
+          BranchID: 1,
         },
       ],
     };
@@ -158,6 +159,10 @@ vi.mock('@/lib/db', () => ({
 // ── Collaborator mocks (kept minimal / deterministic) ─────────────────────────
 vi.mock('@/lib/publicBookingHelpers', () => ({
   getPublicSettings: vi.fn(async () => ({ timezone: 'Africa/Cairo' })),
+  getGlobalTimingDefaults: vi.fn(async () => ({
+    timezone: 'Africa/Cairo',
+    defaultServiceDurationMinutes: 30,
+  })),
   salonDateTimeToMs: (dateStr: string, hhmm: string) =>
     new Date(`${dateStr}T${hhmm}:00+03:00`).getTime(),
 }));
@@ -171,12 +176,98 @@ vi.mock('@/lib/barberAvailability', () => ({
 }));
 
 vi.mock('@/lib/scheduleOverrides', () => ({
+  ATTENDANCE_SHIFT_OVERRIDE_SOURCE: 'attendance-shift',
   loadOverridesForDate: vi.fn(async () => new Map()),
   applyOverrides: vi.fn((_e: number, _d: string, base: unknown) => ({
     ...(base as object),
     blockedIntervals: [],
+    appliedOverride: null,
   })),
   slotBlockedByOverride: vi.fn(() => false),
+}));
+
+vi.mock('@/lib/availability/resolveEmployeeDayPlan', () => ({
+  resolveEmployeeDayPlan: vi.fn(async () => {
+    // Overnight 15:30→01:30 on 2026-07-21 (Cairo) — absolute ms for Phase 3C containment.
+    const startMs = Date.parse('2026-07-21T15:30:00+03:00');
+    const endMs = Date.parse('2026-07-22T01:30:00+03:00');
+    if (!state.hasSchedule) {
+      return {
+        employeeId: 5,
+        branchId: null,
+        businessDate: '2026-07-21',
+        isWorking: false,
+        effectiveWindows: [],
+        baseScheduleSource: 'NONE',
+        weeklyWindows: null,
+        appliedOverrides: [],
+        attendanceState: null,
+        denyReasonCode: 'SCHEDULE_NOT_CONFIGURED',
+        warnings: [],
+        effSched: null,
+        isOvernight: false,
+        dailyAdjustments: [],
+        dailyAdjustmentState: 'NONE',
+      };
+    }
+    if (!state.isWorkingDay) {
+      return {
+        employeeId: 5,
+        branchId: null,
+        businessDate: '2026-07-21',
+        isWorking: false,
+        effectiveWindows: [],
+        baseScheduleSource: 'BRANCH_WEEKLY',
+        weeklyWindows: { startTime: null, endTime: null, isWorkingDay: false },
+        appliedOverrides: [],
+        attendanceState: null,
+        denyReasonCode: 'EMPLOYEE_OFF_DAY',
+        warnings: [],
+        effSched: {
+          isWorking: false,
+          start: '00:00',
+          end: '00:00',
+          blockedIntervals: [],
+          appliedOverride: null,
+        },
+        isOvernight: false,
+        dailyAdjustments: [],
+        dailyAdjustmentState: 'NONE',
+      };
+    }
+    return {
+      employeeId: 5,
+      branchId: null,
+      businessDate: '2026-07-21',
+      isWorking: true,
+      effectiveWindows: [{ start: '15:30', end: '01:30', endDayOffset: 1, startMs, endMs }],
+      baseScheduleSource: 'BRANCH_WEEKLY',
+      weeklyWindows: { startTime: '15:30', endTime: '01:30', isWorkingDay: true },
+      appliedOverrides: [],
+      attendanceState: null,
+      denyReasonCode: null,
+      warnings: [],
+      effSched: {
+        isWorking: true,
+        start: '15:30',
+        end: '01:30',
+        blockedIntervals: [],
+        appliedOverride: null,
+      },
+      isOvernight: true,
+      dailyAdjustments: [],
+      dailyAdjustmentState: 'NONE',
+    };
+  }),
+  resolveEmployeeDayPlansBatch: vi.fn(async () => new Map()),
+}));
+
+vi.mock('@/lib/hr/attendance-shift-schedule-sync', () => ({
+  loadBookingOverridesForDate: vi.fn(async () => new Map()),
+}));
+
+vi.mock('@/lib/hr/freelanceBookingUnlock', () => ({
+  loadFreelanceBookingUnlocks: vi.fn(async () => new Map()),
 }));
 
 vi.mock('@/lib/scheduleIntegrity', async () => {

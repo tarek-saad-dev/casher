@@ -32,126 +32,31 @@ import { getCairoBusinessDate } from '@/lib/businessDate';
 import { createStageTimer } from '@/lib/devStageTiming';
 import { loadFreelanceBookingUnlocks } from '@/lib/hr/freelanceBookingUnlock';
 import { loadBookingOverridesForDate } from '@/lib/hr/attendance-shift-schedule-sync';
-
-function fmtScheduleTime(v: unknown): string | null {
-  if (!v) return null;
-  if (typeof v === 'string') return v.slice(0, 5);
-  if (v instanceof Date) {
-    return `${String(v.getUTCHours()).padStart(2, '0')}:${String(v.getUTCMinutes()).padStart(2, '0')}`;
-  }
-  return null;
-}
-
-/** Batch weekly schedule for many barbers — prefer branch-owned table, fallback legacy. */
-async function loadWorkingWindowsBatch(
-  db: Awaited<ReturnType<typeof getPool>>,
-  empIds: number[],
-  dayOfWeek: number,
-  opts?: { branchId?: number; workDate?: string },
-): Promise<Map<number, { startTime: string | null; endTime: string | null; isWorkingDay: boolean }>> {
-  const map = new Map<number, { startTime: string | null; endTime: string | null; isWorkingDay: boolean }>();
-  if (!empIds.length) return map;
-
-  // Phase 1Q: branch-owned schedules when branchId+workDate provided
-  if (opts?.branchId != null && opts.workDate) {
-    try {
-      const { ensureEmpBranchWorkScheduleTable } = await import('@/lib/hr/empBranchWorkSchedule');
-      await ensureEmpBranchWorkScheduleTable();
-      const res = await db
-        .request()
-        .input('dow', sql.TinyInt, dayOfWeek)
-        .input('branchId', sql.Int, opts.branchId)
-        .input('day', sql.Date, opts.workDate)
-        .query(`
-          SELECT EmpID, IsWorking, StartTime, EndTime,
-            ROW_NUMBER() OVER (
-              PARTITION BY EmpID ORDER BY EffectiveFrom DESC, ScheduleID DESC
-            ) AS rn
-          FROM dbo.TblEmpBranchWorkSchedule
-          WHERE DayOfWeek = @dow AND BranchID = @branchId AND IsActive = 1
-            AND EffectiveFrom <= @day
-            AND (EffectiveTo IS NULL OR EffectiveTo >= @day)
-            AND EmpID IN (${empIds.join(',')})
-        `);
-      for (const row of res.recordset) {
-        if (Number(row.rn) !== 1) continue;
-        map.set(row.EmpID as number, {
-          isWorkingDay: !!row.IsWorking,
-          startTime: fmtScheduleTime(row.StartTime),
-          endTime: fmtScheduleTime(row.EndTime),
-        });
-      }
-      // Temporary transfers into this branch
-      const xfer = await db
-        .request()
-        .input('branchId', sql.Int, opts.branchId)
-        .input('day', sql.Date, opts.workDate)
-        .query(`
-          SELECT EmpID, StartTime, EndTime
-          FROM dbo.TblEmpTemporaryBranchTransfer
-          WHERE ToBranchID = @branchId AND WorkDate = @day AND IsActive = 1
-            AND EmpID IN (${empIds.join(',')})
-        `);
-      for (const row of xfer.recordset) {
-        map.set(row.EmpID as number, {
-          isWorkingDay: true,
-          startTime: fmtScheduleTime(row.StartTime),
-          endTime: fmtScheduleTime(row.EndTime),
-        });
-      }
-      // Transfers away from this branch
-      const away = await db
-        .request()
-        .input('branchId', sql.Int, opts.branchId)
-        .input('day', sql.Date, opts.workDate)
-        .query(`
-          SELECT EmpID FROM dbo.TblEmpTemporaryBranchTransfer
-          WHERE FromBranchID = @branchId AND WorkDate = @day AND IsActive = 1
-            AND EmpID IN (${empIds.join(',')})
-        `);
-      for (const row of away.recordset) {
-        map.set(row.EmpID as number, {
-          isWorkingDay: false,
-          startTime: null,
-          endTime: null,
-        });
-      }
-    } catch {
-      /* fall through to legacy */
-    }
-  }
-
-  // Legacy fallback for emps still missing a branch row (GLEEM continuity)
-  const missing = empIds.filter((id) => !map.has(id));
-  if (missing.length) {
-    try {
-      const res = await db
-        .request()
-        .input('dow', sql.TinyInt, dayOfWeek)
-        .query(`
-          SELECT EmpID, IsWorkingDay, StartTime, EndTime
-          FROM dbo.TblEmpWorkSchedule
-          WHERE DayOfWeek = @dow AND EmpID IN (${missing.join(',')})
-        `);
-      for (const row of res.recordset) {
-        map.set(row.EmpID as number, {
-          isWorkingDay: !!row.IsWorkingDay,
-          startTime: fmtScheduleTime(row.StartTime),
-          endTime: fmtScheduleTime(row.EndTime),
-        });
-      }
-    } catch {
-      /* empty */
-    }
-  }
-  return map;
-}
+import { loadWorkingWindowsBatch } from '@/lib/availability/loadWorkingWindowsBatch';
+import {
+  mapLegacySlotReason,
+  inferDayDenyReason,
+  type AvailabilityReasonCode,
+  type EmployeeAvailabilityReason,
+} from '@/lib/availability/reasonCodes';
+import {
+  resolveEmployeeDayPlansBatch,
+  type DayPlanWindow,
+} from '@/lib/availability/resolveEmployeeDayPlan';
+import {
+  findWindowContainingInterval,
+  findContainingWindow,
+  iterateWindowSlotStarts,
+  normalizeEffectiveWindows,
+  outerDisplayBounds,
+} from '@/lib/availability/effectiveWindows';
 
 export type BookingSlotReasonCode =
   | 'insufficient_continuous_time'
   | 'booking_conflict'
   | 'queue_conflict'
   | 'break'
+  | 'daily_adjustment'
   | 'outside_working_hours'
   | 'minimum_notice'
   | 'barber_unavailable'
@@ -201,7 +106,12 @@ export interface ListAvailableBookingSlotsResult {
   gapNotice: GapNotice | null;
   nextAvailable: BookingSlotPlan | null;
   alternativeBarbers: BarberAlternative[];
+  /** Human-readable Arabic message (kept for existing clients). */
   noSlotsReason: string | null;
+  /** Machine-readable reason when no available slots (Phase 1C). */
+  reasonCode?: AvailabilityReasonCode | null;
+  /** Per-employee deny/unavailable reasons when practical. */
+  employeeReasons?: EmployeeAvailabilityReason[];
   debug: Record<string, unknown>;
 }
 
@@ -282,7 +192,7 @@ function mapReasonToBucket(code?: BookingSlotReasonCode): SlotRejectionBucket {
   if (code === 'outside_working_hours') return 'outside_working_hours';
   if (code === 'booking_conflict') return 'booking_conflict';
   if (code === 'queue_conflict') return 'queue_conflict';
-  if (code === 'break') return 'break';
+  if (code === 'break' || code === 'daily_adjustment') return 'break';
   if (code === 'insufficient_continuous_time') return 'insufficient_duration';
   if (code === 'barber_unavailable') return 'barber_unavailable';
   return 'unknown';
@@ -293,6 +203,7 @@ export const BOOKING_SLOT_REASON_AR: Record<BookingSlotReasonCode, string> = {
   booking_conflict: 'يوجد حجز في هذا الوقت',
   queue_conflict: 'يوجد دور نشط في هذا الوقت',
   break: 'فترة مغلقة أو استراحة',
+  daily_adjustment: 'محظور بتعديل يومي',
   outside_working_hours: 'خارج ساعات العمل',
   minimum_notice: 'قريب جداً من الوقت الحالي',
   barber_unavailable: 'الحلاق غير متاح',
@@ -307,11 +218,14 @@ type BarberCtx = {
   effSched: EffectiveSchedule | null;
   /** Weekly/base start before attendance early-expand (for public slot capping). */
   baseStart: string | null;
+  /** Outer display bounds only — eligibility uses effectiveWindows. */
   shiftStartMs: number;
   shiftEndMs: number;
   dayOff: boolean;
-  /** True when the weekly/base window crosses midnight (preserved after early expand). */
+  /** True when any effective window crosses midnight. */
   isOvernight: boolean;
+  /** Phase 3C — all bookable windows for this operational date. */
+  effectiveWindows: DayPlanWindow[];
 };
 
 async function buildBarberContexts(args: {
@@ -337,6 +251,8 @@ async function buildBarberContexts(args: {
   timezone: string;
   effectiveMinNotice: number;
   servicePlan: ServicePlanDuration | null;
+  /** Candidate emp IDs before day-off / override filtering (for reason enrichment). */
+  candidateEmpIds: number[];
 }> {
   const timer = createStageTimer();
   const { date, serviceIds, mode, empId, source = 'public', durationOverride, servicePlan, branchId } = args;
@@ -542,24 +458,31 @@ async function buildBarberContexts(args: {
     // Future public days have no live queue — skip those round-trips (calendar fan-out).
     const loadQueue = !(source === 'public' && date > todayBusinessDate);
 
+    const failHardBusy = source === 'public';
     const [qToday, bToday, qNext, bNext] = await Promise.all([
       loadQueue
         ? buildQueueIntervalsForEmps(db, pendingIds, date, now, defaultDur, {
             filterStale: true,
             graceMinutes: 30,
             debugContext: 'booking-availability',
+            failHard: failHardBusy,
           })
         : Promise.resolve(emptyBusy),
-      buildBookingIntervalsForEmps(db, pendingIds, date, defaultDur),
+      buildBookingIntervalsForEmps(db, pendingIds, date, defaultDur, {
+        failHard: failHardBusy,
+      }),
       loadQueue && nextDayStr
         ? buildQueueIntervalsForEmps(db, overnightIds, nextDayStr, now, defaultDur, {
             filterStale: true,
             graceMinutes: 30,
             debugContext: 'booking-availability-next-day',
+            failHard: failHardBusy,
           })
         : Promise.resolve(emptyBusy),
       nextDayStr
-        ? buildBookingIntervalsForEmps(db, overnightIds, nextDayStr, defaultDur)
+        ? buildBookingIntervalsForEmps(db, overnightIds, nextDayStr, defaultDur, {
+            failHard: failHardBusy,
+          })
         : Promise.resolve(emptyBusy),
     ]);
 
@@ -580,9 +503,42 @@ async function buildBarberContexts(args: {
         shiftEndMs: p.shiftEndMs,
         dayOff: false,
         isOvernight: p.isOvernight,
+        // Populated from canonical day plan immediately after (Phase 3C).
+        effectiveWindows: [
+          {
+            start: p.effSched.start,
+            end: p.effSched.end,
+            endDayOffset: p.isOvernight ? 1 : 0,
+            startMs: p.shiftStartMs,
+            endMs: p.shiftEndMs,
+          },
+        ],
       });
     }
     timer.mark('busyParallelMs');
+  }
+
+  // Phase 3C — attach canonical multi-window day plans (one batch resolve).
+  if (contexts.length > 0) {
+    const plans = await resolveEmployeeDayPlansBatch({
+      empIds: contexts.map((c) => c.empId),
+      businessDate: date,
+      branchId: branchId ?? null,
+      source: source === 'public' ? 'public' : 'operations',
+    });
+    for (const ctx of contexts) {
+      const plan = plans.get(ctx.empId);
+      if (!plan?.isWorking || !plan.effSched) continue;
+      const windows = normalizeEffectiveWindows(plan.effectiveWindows);
+      if (!windows.length) continue;
+      ctx.effectiveWindows = windows;
+      ctx.effSched = plan.effSched;
+      const outer = outerDisplayBounds(windows)!;
+      ctx.shiftStartMs = outer.startMs;
+      ctx.shiftEndMs = outer.endMs;
+      ctx.isOvernight =
+        plan.isOvernight || windows.some((w) => w.endDayOffset === 1);
+    }
   }
 
   timer.finish('[buildBarberContexts perf]', {
@@ -603,6 +559,7 @@ async function buildBarberContexts(args: {
     timezone,
     effectiveMinNotice,
     servicePlan: resolvedPlan,
+    candidateEmpIds: barberIds,
   };
 }
 
@@ -612,11 +569,17 @@ export function evaluateBookingSlotAt(
   durationMinutes: number,
   busyIntervals: Array<{ start: Date; end: Date; source?: string }>,
   options?: {
+    /** @deprecated Outer bounds only — prefer effectiveWindows for multi-window. */
     shiftStartMs?: number;
+    /** @deprecated Outer bounds only — prefer effectiveWindows for multi-window. */
     shiftEndMs?: number;
+    /** Phase 3C — when set, interval must fit entirely inside one window. */
+    effectiveWindows?: DayPlanWindow[] | null;
     nowMs?: number;
     minNoticeMs?: number;
     overrideBlock?: boolean;
+    /** Raw block reason from effSched (may be tagged `daily_adjustment:…`). */
+    overrideBlockReason?: string | null;
   },
 ): {
   available: boolean;
@@ -627,9 +590,11 @@ export function evaluateBookingSlotAt(
   const {
     shiftStartMs,
     shiftEndMs,
+    effectiveWindows,
     nowMs,
     minNoticeMs = 0,
     overrideBlock = false,
+    overrideBlockReason = null,
   } = options ?? {};
 
   if (nowMs != null && slotStartMs <= nowMs) {
@@ -638,14 +603,41 @@ export function evaluateBookingSlotAt(
   if (nowMs != null && slotStartMs < nowMs + minNoticeMs) {
     return { available: false, slotEndMs, reasonCode: 'minimum_notice' };
   }
-  if (shiftStartMs != null && slotStartMs < shiftStartMs) {
-    return { available: false, slotEndMs, reasonCode: 'outside_working_hours' };
+
+  const windows = effectiveWindows?.length
+    ? normalizeEffectiveWindows(effectiveWindows)
+    : null;
+  if (windows) {
+    const containing = findWindowContainingInterval({
+      windows,
+      startMs: slotStartMs,
+      endMs: slotEndMs,
+    });
+    if (!containing) {
+      const pointWin = findContainingWindow(windows, slotStartMs);
+      if (pointWin && slotEndMs > pointWin.endMs) {
+        return { available: false, slotEndMs, reasonCode: 'insufficient_continuous_time' };
+      }
+      return { available: false, slotEndMs, reasonCode: 'outside_working_hours' };
+    }
+  } else {
+    if (shiftStartMs != null && slotStartMs < shiftStartMs) {
+      return { available: false, slotEndMs, reasonCode: 'outside_working_hours' };
+    }
+    if (shiftEndMs != null && slotEndMs > shiftEndMs) {
+      return { available: false, slotEndMs, reasonCode: 'insufficient_continuous_time' };
+    }
   }
-  if (shiftEndMs != null && slotEndMs > shiftEndMs) {
-    return { available: false, slotEndMs, reasonCode: 'insufficient_continuous_time' };
-  }
-  if (overrideBlock) {
-    return { available: false, slotEndMs, reasonCode: 'break' };
+
+  if (overrideBlock || overrideBlockReason) {
+    const tagged =
+      typeof overrideBlockReason === 'string' &&
+      overrideBlockReason.startsWith('daily_adjustment');
+    return {
+      available: false,
+      slotEndMs,
+      reasonCode: tagged ? 'daily_adjustment' : 'break',
+    };
   }
 
   const slotStart = new Date(slotStartMs);
@@ -770,6 +762,7 @@ export async function listAvailableBookingSlots(args: {
     isToday,
     timezone,
     effectiveMinNotice,
+    candidateEmpIds,
   } = await buildBarberContexts({
     date,
     serviceIds,
@@ -793,13 +786,13 @@ export async function listAvailableBookingSlots(args: {
   const slotMap = new Map<string, 0 | 1>();
   for (const ctx of contexts) {
     if (!ctx.effSched) continue;
-    for (const entry of generateSlotEntries(
-      ctx.effSched.start,
-      ctx.effSched.end,
-      slotIntervalMinutes,
-      totalDuration,
-      ctx.isOvernight,
-    )) {
+    const starts = iterateWindowSlotStarts({
+      windows: ctx.effectiveWindows,
+      durationMinutes: totalDuration,
+      intervalMinutes: slotIntervalMinutes,
+    });
+    for (const slot of starts) {
+      const entry = absoluteMsToSlotEntry(slot.startMs, date, timezone);
       if (!slotMap.has(entry.time) || entry.dayOffset < slotMap.get(entry.time)!) {
         slotMap.set(entry.time, entry.dayOffset);
       }
@@ -943,14 +936,104 @@ export async function listAvailableBookingSlots(args: {
   }
 
   let noSlotsReason: string | null = null;
+  let reasonCode: AvailabilityReasonCode | null = null;
+  const employeeReasons: EmployeeAvailabilityReason[] = [];
+
   if (availableSlots.length === 0) {
     const barberName = mode === 'specific' && empId ? nameMap[empId] ?? 'الحلاق' : null;
+    const reasonEmpIds =
+      candidateEmpIds.length > 0
+        ? candidateEmpIds
+        : mode === 'specific' && empId
+          ? [empId]
+          : [...new Set(allPlans.map((p) => p.empId))];
+
+    const dayPlans =
+      reasonEmpIds.length > 0
+        ? await resolveEmployeeDayPlansBatch({
+            empIds: reasonEmpIds,
+            businessDate: date,
+            branchId: branchId ?? null,
+            source: source === 'public' ? 'public' : 'operations',
+          })
+        : new Map();
+
+    const DAY_DENY_PRECEDENCE: AvailabilityReasonCode[] = [
+      'EMPLOYEE_INACTIVE',
+      'NOT_ASSIGNED_TO_BRANCH',
+      'EMPLOYEE_ABSENT',
+      'DAY_CLOSED_BY_ADJUSTMENT',
+      'NO_USABLE_WINDOW_AFTER_ADJUSTMENTS',
+      'EMPLOYEE_OFF_DAY',
+      'FREELANCER_NOT_PLANNED',
+      'SCHEDULE_NOT_CONFIGURED',
+      'OUTSIDE_WORKING_WINDOW',
+      'BLOCKED_BY_DAILY_ADJUSTMENT',
+      'BLOCKED_BY_OVERRIDE',
+    ];
+
+    const byEmp = new Map<number, AvailabilityReasonCode>();
+    for (const id of reasonEmpIds) {
+      const plan = dayPlans.get(id);
+      if (plan && !plan.isWorking && plan.denyReasonCode) {
+        byEmp.set(id, plan.denyReasonCode);
+        continue;
+      }
+      // Working day but no slots — prefer slot rejection reasons
+      const samplePlan = allPlans.find((p) => p.empId === id && p.reasonCode && !p.available);
+      const mapped = mapLegacySlotReason(samplePlan?.reasonCode);
+      if (mapped) byEmp.set(id, mapped);
+    }
+
+    for (const [id, code] of byEmp) {
+      const samplePlan = allPlans.find((p) => p.empId === id && p.reasonCode);
+      employeeReasons.push({
+        empId: id,
+        reasonCode: code,
+        message: samplePlan?.reasonMessage,
+      });
+    }
+
     if (contexts.length === 0) {
       noSlotsReason = 'جميع الموظفين في إجازة أو بدون جدول عمل';
+      const firstDeny = [...byEmp.values()].sort(
+        (a, b) => DAY_DENY_PRECEDENCE.indexOf(a) - DAY_DENY_PRECEDENCE.indexOf(b),
+      )[0];
+      reasonCode =
+        firstDeny
+        ?? inferDayDenyReason({
+          contextsEmpty: true,
+          specificEmp: mode === 'specific' && !!empId,
+        });
+      if (mode === 'specific' && empId && !byEmp.has(empId)) {
+        employeeReasons.push({ empId, reasonCode: reasonCode });
+      }
     } else if (barberName) {
       noSlotsReason = `لا توجد فترة متصلة مدتها ${totalDuration} دقيقة متاحة مع ${barberName} في هذا اليوم.`;
+      const empDeny = empId != null ? byEmp.get(empId) : undefined;
+      const samplePlan = allPlans.find((p) => p.empId === empId && p.reasonCode);
+      const mapped = mapLegacySlotReason(samplePlan?.reasonCode);
+      // Prefer day-plan deny over generic envelope when the employee has no usable day
+      reasonCode =
+        (empDeny && DAY_DENY_PRECEDENCE.includes(empDeny) ? empDeny : undefined)
+        ?? mapped
+        ?? 'NO_CONTIGUOUS_WINDOW';
     } else {
       noSlotsReason = `لا توجد فترة متصلة مدتها ${totalDuration} دقيقة متاحة في هذا اليوم.`;
+      const distinct = [...new Set(byEmp.values())];
+      const preferredDeny = distinct
+        .filter((c) => DAY_DENY_PRECEDENCE.includes(c))
+        .sort((a, b) => DAY_DENY_PRECEDENCE.indexOf(a) - DAY_DENY_PRECEDENCE.indexOf(b))[0];
+      reasonCode =
+        preferredDeny
+        ?? (distinct.length === 1 ? distinct[0] : 'NO_EMPLOYEE_AVAILABLE');
+      // Prefer day-plan deny over generic NO_EMPLOYEE_AVAILABLE / SLOT_UNAVAILABLE
+      if (
+        (reasonCode === 'NO_EMPLOYEE_AVAILABLE' || reasonCode === 'SLOT_UNAVAILABLE')
+        && preferredDeny
+      ) {
+        reasonCode = preferredDeny;
+      }
     }
   }
 
@@ -967,6 +1050,8 @@ export async function listAvailableBookingSlots(args: {
     nextAvailable,
     alternativeBarbers,
     noSlotsReason,
+    reasonCode,
+    employeeReasons: employeeReasons.length ? employeeReasons : undefined,
     debug: {
       serviceIds,
       totalDurationMinutes: totalDuration,
@@ -1253,13 +1338,13 @@ export async function validateBookingSlot(args: {
     const slotTimes: Array<[string, 0 | 1]> = [];
     for (const ctx of contexts) {
       if (!ctx.effSched) continue;
-      for (const entry of generateSlotEntries(
-        ctx.effSched.start,
-        ctx.effSched.end,
-        slotInterval,
-        ctx.durationMinutes,
-        ctx.isOvernight,
-      )) {
+      const starts = iterateWindowSlotStarts({
+        windows: ctx.effectiveWindows,
+        durationMinutes: ctx.durationMinutes,
+        intervalMinutes: slotInterval,
+      });
+      for (const slot of starts) {
+        const entry = absoluteMsToSlotEntry(slot.startMs, date, timezone);
         if (!slotTimes.some(([t, d]) => t === entry.time && d === entry.dayOffset)) {
           slotTimes.push([entry.time, entry.dayOffset]);
         }
@@ -1305,6 +1390,7 @@ function evaluateBarberSlot(args: {
     effSched: EffectiveSchedule | null;
     shiftStartMs: number;
     shiftEndMs: number;
+    effectiveWindows?: DayPlanWindow[];
   };
   time: string;
   dayOffset: 0 | 1;
@@ -1317,20 +1403,22 @@ function evaluateBarberSlot(args: {
   includeSilentRejections?: boolean;
 }): BookingSlotPlan | null {
   const { ctx, time, dayOffset, slotDate, slotStartMs, isToday, nowMs, minNoticeMs, includeSilentRejections } = args;
-  const overrideBlock = ctx.effSched
-    ? !!slotBlockedByOverride(
+  const overrideBlockReason = ctx.effSched
+    ? slotBlockedByOverride(
         slotStartMs,
         slotStartMs + ctx.durationMinutes * 60_000,
         ctx.effSched,
       )
-    : false;
+    : null;
 
   const evalResult = evaluateBookingSlotAt(slotStartMs, ctx.durationMinutes, ctx.busy, {
     shiftStartMs: ctx.shiftStartMs,
     shiftEndMs: ctx.shiftEndMs,
+    effectiveWindows: ctx.effectiveWindows,
     nowMs: isToday ? nowMs : undefined,
     minNoticeMs: isToday ? minNoticeMs : 0,
-    overrideBlock,
+    overrideBlock: !!overrideBlockReason,
+    overrideBlockReason,
   });
 
   if (!evalResult.available) {
@@ -1370,6 +1458,7 @@ function emptyResult(
   durationMinutes: number,
   durationSource: string,
   noSlotsReason: string,
+  reasonCode: AvailabilityReasonCode = 'SLOT_UNAVAILABLE',
 ): ListAvailableBookingSlotsResult {
   return {
     ok: true,
@@ -1384,6 +1473,10 @@ function emptyResult(
     nextAvailable: null,
     alternativeBarbers: [],
     noSlotsReason,
+    reasonCode,
+    employeeReasons: args.empId
+      ? [{ empId: args.empId, reasonCode }]
+      : undefined,
     debug: {},
   };
 }
@@ -1497,6 +1590,46 @@ function msToCairoHhmm(ms: number): string {
     const d = new Date(ms);
     return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
   }
+}
+
+/** Convert absolute slot start to HH:MM + dayOffset relative to business date. */
+function absoluteMsToSlotEntry(
+  ms: number,
+  businessDate: string,
+  timezone: string,
+): { time: string; dayOffset: 0 | 1 } {
+  const time = (() => {
+    try {
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: timezone,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).formatToParts(new Date(ms));
+      const h = parts.find((p) => p.type === 'hour')?.value ?? '00';
+      const m = parts.find((p) => p.type === 'minute')?.value ?? '00';
+      return `${h}:${m}`;
+    } catch {
+      return msToCairoHhmm(ms);
+    }
+  })();
+  let ymd = businessDate;
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date(ms));
+    const y = parts.find((p) => p.type === 'year')?.value;
+    const mo = parts.find((p) => p.type === 'month')?.value;
+    const d = parts.find((p) => p.type === 'day')?.value;
+    if (y && mo && d) ymd = `${y}-${mo}-${d}`;
+  } catch {
+    /* keep businessDate */
+  }
+  const dayOffset: 0 | 1 = ymd > businessDate ? 1 : 0;
+  return { time, dayOffset };
 }
 
 function msToHhmm(ms: number, timezone: string, _dateStr: string): string {
@@ -1926,27 +2059,57 @@ export async function listSpecificEmpPublicSlotsMultiDate(args: {
       : [];
     const busy = [...qIntervals, ...bIntervals, ...nextDayBusy];
 
+    // Phase 3C — prefer canonical day-plan windows for this date.
+    const dayPlan = (
+      await resolveEmployeeDayPlansBatch({
+        empIds: [args.empId],
+        businessDate: date,
+        branchId: args.branchId,
+        source: 'public',
+      })
+    ).get(args.empId);
+    const windows = normalizeEffectiveWindows(
+      dayPlan?.isWorking ? dayPlan.effectiveWindows : [],
+    );
+    const useWindows =
+      windows.length > 0
+        ? windows
+        : [
+            {
+              start: effSched.start,
+              end: effSched.end,
+              endDayOffset: (isOvernight ? 1 : 0) as 0 | 1,
+              startMs: shiftStartMs,
+              endMs: shiftEndMs,
+            },
+          ];
+    const outer = outerDisplayBounds(useWindows);
+    const sched = dayPlan?.effSched ?? effSched;
+
     const ctx: BarberCtx = {
       empId: args.empId,
       empName,
       durationMinutes: totalDuration,
       busy,
-      effSched,
+      effSched: sched,
       baseStart: base.isWorking ? base.start : null,
-      shiftStartMs,
-      shiftEndMs,
+      shiftStartMs: outer?.startMs ?? shiftStartMs,
+      shiftEndMs: outer?.endMs ?? shiftEndMs,
       dayOff: false,
-      isOvernight,
+      isOvernight:
+        dayPlan?.isOvernight
+        || useWindows.some((w) => w.endDayOffset === 1)
+        || isOvernight,
+      effectiveWindows: useWindows,
     };
 
     const slotMap = new Map<string, 0 | 1>();
-    for (const entry of generateSlotEntries(
-      effSched.start,
-      effSched.end,
-      slotIntervalMinutes,
-      totalDuration,
-      isOvernight,
-    )) {
+    for (const slot of iterateWindowSlotStarts({
+      windows: ctx.effectiveWindows,
+      durationMinutes: totalDuration,
+      intervalMinutes: slotIntervalMinutes,
+    })) {
+      const entry = absoluteMsToSlotEntry(slot.startMs, date, timezone);
       if (!slotMap.has(entry.time) || entry.dayOffset < slotMap.get(entry.time)!) {
         slotMap.set(entry.time, entry.dayOffset);
       }

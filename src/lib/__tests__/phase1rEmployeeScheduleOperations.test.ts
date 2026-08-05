@@ -72,7 +72,7 @@ describe('phase1rOperationsDayState', () => {
     const ctrl = read('src/app/api/operations/schedule-control/route.ts');
     expect(ctrl).toContain('loadOperationsDayState');
     expect(ctrl).toContain('transferDestinations');
-    expect(ctrl).toContain("lifecycleStatus !== \"SETUP\"");
+    expect(ctrl).toMatch(/lifecycleStatus\s*!==\s*['"]SETUP['"]/);
   });
 });
 
@@ -126,10 +126,12 @@ describe('phase1rTransferConflictGuards', () => {
 
 describe('phase1rFlowBoardTransferIntegration', () => {
   it('flow-board filters by resolved operational location', () => {
-    const fb = read('src/app/api/operations/flow-board/route.ts');
-    expect(fb).toContain('listOperationalPresenceForBranch');
-    expect(fb).toContain('isEmergencyTransfer');
-    expect(fb).not.toContain('resolveEmployeeBranchSchedule');
+    const fbRoute = read('src/app/api/operations/flow-board/route.ts');
+    const fbSvc = read('src/lib/operations/loadFlowBoardForBranch.ts');
+    expect(fbRoute).toContain('loadFlowBoardForBranch');
+    expect(fbSvc).toContain('listOperationalPresenceForBranch');
+    expect(fbSvc).toContain('isEmergencyTransfer');
+    expect(fbRoute).not.toContain('resolveEmployeeBranchSchedule');
     const day = read('src/lib/hr/operationsDayState.ts');
     expect(day).toContain('listOperationalPresenceForBranch');
     expect(day).not.toMatch(/for \(const b of barbers\.recordset\)[\s\S]*resolveEmployeeGlobalSchedule/);
@@ -139,7 +141,9 @@ describe('phase1rFlowBoardTransferIntegration', () => {
 describe('phase1rBookingAttendancePayrollIntegration', () => {
   it('booking and attendance remain resolver-backed after transfer module', () => {
     const create = read('src/app/api/public/booking/create/route.ts');
-    expect(create).toContain('BARBER_AVAILABLE_AT_DIFFERENT_BRANCH');
+    const evalr = read('src/lib/booking/publicBookingSelectionEvaluator.ts');
+    expect(create).toContain('createPublicBooking');
+    expect(evalr).toContain('BARBER_AVAILABLE_AT_DIFFERENT_BRANCH');
     const att = read('src/lib/hr/attendance/branchAttendance.service.ts');
     expect(att).toContain('EMPLOYEE_NOT_SCHEDULED_IN_THIS_BRANCH');
     expect(att).toContain('resolveEmployeeBranchSchedule');
@@ -151,8 +155,8 @@ describe('phase1rTransferLifecycleSecurity', () => {
     const ctrl = read('src/app/api/operations/schedule-control/route.ts');
     expect(ctrl).toContain('SETUP');
     expect(ctrl).toContain('transferDestinations');
-    // Destinations are org-wide active branches (not gated on destination canOperate)
-    expect(ctrl).toContain('every active operational branch');
+    // Destinations are org-wide active branches; client excludes the from-branch
+    expect(ctrl).toContain('All live operational branches');
     expect(ctrl).not.toMatch(
       /transferDestinations[\s\S]{0,400}canOperate \|\| a\.canSwitch/,
     );
@@ -167,5 +171,7 @@ describe('phase1rResponsiveUiContract', () => {
     expect(page).toContain('dir="rtl"');
     expect(page).toContain('rounded-2xl');
     expect(page).toContain('sm:grid-cols');
+    expect(page).toContain('نسخ لباقي أيام العمل');
+    expect(page).toContain('استخدام مواعيد عمل الموظف المحفوظة');
   });
 });

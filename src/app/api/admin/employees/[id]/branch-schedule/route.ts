@@ -47,7 +47,9 @@ export async function GET(
       .request()
       .input('empId', sql.Int, empId)
       .query(`
-        SELECT EmpID, EmpName, ISNULL(isActive, 1) AS IsActive
+        SELECT EmpID, EmpName, ISNULL(isActive, 1) AS IsActive,
+          CONVERT(VARCHAR(5), DefaultCheckInTime, 108) AS DefaultCheckInTime,
+          CONVERT(VARCHAR(5), DefaultCheckOutTime, 108) AS DefaultCheckOutTime
         FROM dbo.TblEmp WHERE EmpID = @empId
       `);
     if (!empRes.recordset[0]) {
@@ -121,13 +123,17 @@ export async function GET(
     const fmtTime = (v: unknown) =>
       v == null ? null : typeof v === 'string' ? v.slice(0, 5) : String(v).slice(0, 5);
 
+    const empRow = empRes.recordset[0];
+
     return NextResponse.json({
       ok: true,
       empId,
       employee: {
         empId,
-        empName: String(empRes.recordset[0].EmpName),
-        isActive: Boolean(empRes.recordset[0].IsActive),
+        empName: String(empRow.EmpName),
+        isActive: Boolean(empRow.IsActive),
+        defaultCheckInTime: fmtTime(empRow.DefaultCheckInTime),
+        defaultCheckOutTime: fmtTime(empRow.DefaultCheckOutTime),
       },
       weekStart: start.toISOString().slice(0, 10),
       assignedBranches: branches.recordset.map((b) => ({

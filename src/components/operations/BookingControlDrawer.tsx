@@ -260,7 +260,11 @@ function ActionModal({ modal, date, onClose, onSaved, onError }: ActionModalProp
           {/* Info note */}
           <div className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-xs text-primary" style={{ background: 'color-mix(in srgb, var(--primary) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--primary) 20%, transparent)' }}>
             <Shield size={13} className="mt-0.5 shrink-0"/>
-            <span>هذا التعديل يطبق على الحجوزات الأونلاين فورًا ولا يغير جدول الأسبوع الأساسي.</span>
+            <span>
+              هذا التعديل يطبق على الحجوزات الأونلاين فورًا ولا يغير جدول الأسبوع الأساسي.
+              {' '}لإدارة تعديلات التوافر اليومية، استخدم صفحة{' '}
+              <a href="/admin/workforce/availability" className="underline font-medium">توافر الموظفين</a>.
+            </span>
           </div>
         </div>
 

@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import {
   getAvailableBarbers,
-  getBarberWorkingWindow,
 } from "@/lib/barberAvailability";
 import {
   checkBarberAvailableForBooking,
   BookingAvailability,
   cairoDateStr,
 } from "@/lib/queueEstimateEngine";
+import { resolveEmployeeDayPlan } from "@/lib/availability/resolveEmployeeDayPlan";
+import { iterateEffectiveWindows } from "@/lib/availability/effectiveWindows";
 import { isValidDate, isValidTime } from "@/lib/publicBookingHelpers";
 import type { BookingBarberResult } from "@/lib/operationsTypes";
 
@@ -142,15 +143,19 @@ export async function POST(req: NextRequest) {
           { status: 404 },
         );
 
-      // Get working window using consistent dayOfWeek calculation (0-6, Sunday=0)
-      const window = await getBarberWorkingWindow(
+      // Effective day-plan windows (Phase 3C — display all; eligibility via check)
+      const plan = await resolveEmployeeDayPlan({
         empId,
-        new Date(`${resolvedDate}T12:00:00`),
-      );
+        businessDate: resolvedDate,
+        source: 'operations',
+      });
+      const wins = iterateEffectiveWindows(plan.effectiveWindows);
       const ww =
-        window.startTime && window.endTime
-          ? `${window.startTime} – ${window.endTime}`
-          : null;
+        plan.isWorking && wins.length
+          ? wins.map((w) => `${w.start} – ${w.end}`).join(' | ')
+          : plan.isWorking && plan.effSched?.start && plan.effSched?.end
+            ? `${plan.effSched.start} – ${plan.effSched.end}`
+            : null;
 
       const check = await checkBarberAvailableForBooking(
         empId,

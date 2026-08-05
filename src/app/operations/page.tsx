@@ -9,6 +9,7 @@ import { FindNearestQueueDrawer } from '@/components/operations/FindNearestQueue
 import { CreateBookingDrawer } from '@/components/operations/CreateBookingDrawer';
 import { ScheduleControlModal } from '@/components/operations/ScheduleControlModal';
 import { TemporaryBranchTransferModal } from '@/components/operations/TemporaryBranchTransferModal';
+import { AffectedBookingsDrawer } from '@/components/operations/AffectedBookingsDrawer';
 import { OperationsControlPanel } from '@/components/operations/OperationsControlPanel';
 import type {
   OpsBranchOption,
@@ -16,6 +17,9 @@ import type {
   OpsPresenceFilter,
 } from '@/components/operations/OperationsControlPanel';
 import type { CreateQueueResponse } from '@/lib/operationsQueueTypes';
+import {
+  subscribeAvailabilityChanged,
+} from '@/lib/availability/availabilityChangedEvent';
 import {
   createQueueResponseToPrintData,
   formatQuickQueueSuccessToast,
@@ -87,6 +91,7 @@ interface FlowBoardResponse {
   ok: boolean;
   date: string;
   generatedAt: string;
+  availabilityVersion?: number;
   barbers: FlowBoardBarber[];
 }
 
@@ -159,6 +164,8 @@ export default function OperationsPage() {
   const [settlingExpired, setSettlingExpired] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showTemporaryTransferModal, setShowTemporaryTransferModal] = useState(false);
+  const [showAffectedBookings, setShowAffectedBookings] = useState(false);
+  const [affectedBookingsCount, setAffectedBookingsCount] = useState(0);
   const [bookingInitialData, setBookingInitialData] = useState<{
     date?: string;
     time?: string;
@@ -255,6 +262,48 @@ export default function OperationsPage() {
   useEffect(() => {
     document.title = '💈 لوحة التشغيل - الصالون';
   }, []);
+
+  useEffect(() => {
+    return subscribeAvailabilityChanged((detail) => {
+      if (detail.businessDate !== selectedDate) return;
+      void fetchFlowBoard({ reason: 'schedule-applied' });
+    });
+  }, [selectedDate, fetchFlowBoard]);
+
+  // Poll availabilityVersion so ops picks up workforce mutations even without BroadcastChannel.
+  useEffect(() => {
+    let cancelled = false;
+    let lastVersion = flowBoardData?.availabilityVersion ?? 0;
+    const id = window.setInterval(() => {
+      void (async () => {
+        try {
+          const scope = branchScopeRef.current;
+          const presence = presenceFilterRef.current;
+          const branchIdParam =
+            scope === 'all' || scope === 'active' ? scope : String(scope);
+          const qs = new URLSearchParams({
+            date: selectedDateRef.current,
+            branchId: branchIdParam,
+            presence,
+          });
+          const res = await fetch(`/api/operations/flow-board?${qs}`);
+          const data = (await res.json()) as FlowBoardResponse;
+          if (cancelled || !data.ok) return;
+          const next = data.availabilityVersion ?? 0;
+          if (next > lastVersion) {
+            lastVersion = next;
+            setFlowBoardData(data);
+          }
+        } catch {
+          /* ignore poll errors */
+        }
+      })();
+    }, 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [flowBoardData?.availabilityVersion]);
 
   useEffect(() => {
     let cancelled = false;
@@ -436,6 +485,33 @@ export default function OperationsPage() {
   }, [selectedDate, branchScope, presenceFilter, refreshFlowBoard]);
 
   useEffect(() => {
+    let cancelled = false;
+    const loadCount = async () => {
+      try {
+        const sp = new URLSearchParams({
+          date: selectedDate,
+          unresolved: '1',
+        });
+        const res = await fetch(`/api/operations/affected-bookings?${sp}`, {
+          credentials: 'include',
+        });
+        const data = (await res.json()) as { ok?: boolean; bookings?: unknown[] };
+        if (!cancelled && data.ok) {
+          setAffectedBookingsCount(data.bookings?.length ?? 0);
+        }
+      } catch {
+        /* non-critical badge */
+      }
+    };
+    void loadCount();
+    const t = setInterval(() => void loadCount(), 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [selectedDate, showAffectedBookings]);
+
+  useEffect(() => {
     const barbers = flowBoardData?.barbers.filter((b) => b.status !== 'unknown') ?? [];
     if (barbers.length === 0) return;
 
@@ -592,6 +668,8 @@ export default function OperationsPage() {
           onCreateBooking={() => openCreateBooking({ date: selectedDate })}
           onScheduleControl={() => setShowScheduleModal(true)}
           onTemporaryTransfer={() => setShowTemporaryTransferModal(true)}
+          onAffectedBookings={() => setShowAffectedBookings(true)}
+          affectedBookingsCount={affectedBookingsCount}
           onSettleExpired={handleSettleExpired}
           onEnableVoice={handleEnableVoice}
           onDisableVoice={handleDisableVoice}
@@ -819,6 +897,16 @@ export default function OperationsPage() {
         onTransferred={() => {
           void fetchFlowBoard({ reason: 'temporary-transfer' });
           showToast('تم نقل الموظف لفرع آخر لهذا اليوم');
+        }}
+      />
+
+      <AffectedBookingsDrawer
+        isOpen={showAffectedBookings}
+        onClose={() => setShowAffectedBookings(false)}
+        businessDate={selectedDate}
+        onMoved={() => {
+          void fetchFlowBoard({ reason: 'affected-booking-moved' });
+          showToast('تم تحديث الحجز المتأثر');
         }}
       />
 

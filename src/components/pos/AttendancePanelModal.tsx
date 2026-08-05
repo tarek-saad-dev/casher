@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { ArrowLeftRight, CalendarCheck, Loader2, X } from 'lucide-react';
 import { TemporaryBranchTransferModal } from '@/components/operations/TemporaryBranchTransferModal';
-import { getBusinessDateStr } from '@/lib/timeUtils';
+import { getOperationalDate } from '@/lib/businessDate';
 
 function PanelLoader() {
   return (
@@ -28,7 +28,7 @@ interface AttendancePanelModalProps {
 export default function AttendancePanelModal({ open, onClose }: AttendancePanelModalProps) {
   const [transferOpen, setTransferOpen] = useState(false);
   const [panelKey, setPanelKey] = useState(0);
-  const workDate = getBusinessDateStr();
+  const workDate = getOperationalDate();
 
   const handleEscape = useCallback(
     (e: KeyboardEvent) => {

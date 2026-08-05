@@ -30,6 +30,12 @@ import { loadFreelanceBookingUnlocks } from '@/lib/hr/freelanceBookingUnlock';
 import { evaluateBookingSlotAt } from '@/lib/bookingAvailabilityEngine';
 import { ACTIVE_BOOKING_BLOCK_STATUSES } from '@/lib/scheduleIntervals';
 import { normalizeBookingTimes } from '@/lib/bookingDateTime';
+import { resolveEmployeeDayPlansBatch } from '@/lib/availability/resolveEmployeeDayPlan';
+import {
+  iterateWindowSlotStarts,
+  normalizeEffectiveWindows,
+  outerDisplayBounds,
+} from '@/lib/availability/effectiveWindows';
 
 export type DaySummaryProbe = {
   date: string;
@@ -91,6 +97,43 @@ function generateSlotEntries(
     cur += intervalMin;
   }
   return entries;
+}
+
+function absoluteMsToSlotEntry(
+  ms: number,
+  businessDate: string,
+  timezone: string,
+): { time: string; dayOffset: 0 | 1 } {
+  let time = '00:00';
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(new Date(ms));
+    const h = parts.find((p) => p.type === 'hour')?.value ?? '00';
+    const m = parts.find((p) => p.type === 'minute')?.value ?? '00';
+    time = `${h}:${m}`;
+  } catch {
+    time = new Date(ms).toISOString().slice(11, 16);
+  }
+  let ymd = businessDate;
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date(ms));
+    const y = parts.find((p) => p.type === 'year')?.value;
+    const mo = parts.find((p) => p.type === 'month')?.value;
+    const d = parts.find((p) => p.type === 'day')?.value;
+    if (y && mo && d) ymd = `${y}-${mo}-${d}`;
+  } catch {
+    /* keep */
+  }
+  return { time, dayOffset: ymd > businessDate ? 1 : 0 };
 }
 
 async function loadOverridesForDateRange(
@@ -521,11 +564,52 @@ export async function summarizeAvailableDaysRange(args: {
       shiftStartMs: number;
       shiftEndMs: number;
       isOvernight: boolean;
+      effectiveWindows: ReturnType<typeof normalizeEffectiveWindows>;
     };
     const contexts: Ctx[] = [];
 
+    const dayPlans = await resolveEmployeeDayPlansBatch({
+      empIds: barberIds.filter((id) => !dayOff.has(id)),
+      businessDate: date,
+      branchId: args.branchId,
+      source: 'public',
+    });
+
     for (const empId of barberIds) {
       if (dayOff.has(empId)) continue;
+
+      const plan = dayPlans.get(empId);
+      if (plan?.isWorking && plan.effSched && plan.effectiveWindows.length) {
+        const windows = normalizeEffectiveWindows(plan.effectiveWindows);
+        const outer = outerDisplayBounds(windows)!;
+        const isOvernight =
+          plan.isOvernight || windows.some((w) => w.endDayOffset === 1);
+        const bToday = bookingsByDate.get(date)?.get(empId) ?? [];
+        const bNext = isOvernight
+          ? bookingsByDate.get(nextDate(date))?.get(empId) ?? []
+          : [];
+        const qToday = isToday ? queueToday.get(empId) ?? [] : [];
+        const qNext =
+          isToday && isOvernight ? queueTomorrow.get(empId) ?? [] : [];
+        const inShift = (iv: Interval) =>
+          iv.start.getTime() < outer.endMs && iv.end.getTime() > outer.startMs;
+        const nextBusy = isOvernight ? [...qNext, ...bNext].filter(inShift) : [];
+
+        contexts.push({
+          empId,
+          empName: nameMap[empId] ?? '',
+          durationMinutes: duration,
+          busy: [...qToday, ...bToday, ...nextBusy],
+          effSched: plan.effSched,
+          shiftStartMs: outer.startMs,
+          shiftEndMs: outer.endMs,
+          isOvernight,
+          effectiveWindows: windows,
+        });
+        continue;
+      }
+
+      // Fallback: legacy weekly + overrides when day plan has no windows
       let win = windowForEmpDate(schedules, transfersIn, transfersOut, empId, date);
       if (isToday) {
         const unlock = freelanceToday.get(empId);
@@ -575,6 +659,15 @@ export async function summarizeAvailableDaysRange(args: {
         shiftStartMs,
         shiftEndMs,
         isOvernight,
+        effectiveWindows: [
+          {
+            start: effSched.start,
+            end: effSched.end,
+            endDayOffset: isOvernight ? 1 : 0,
+            startMs: shiftStartMs,
+            endMs: shiftEndMs,
+          },
+        ],
       });
     }
 
@@ -582,16 +675,15 @@ export async function summarizeAvailableDaysRange(args: {
     let firstOffset: 0 | 1 | null = null;
     const availableBarbers = new Set<number>();
 
-    // Build unique slot times across contexts (sorted)
+    // Build unique slot times across ALL windows (Phase 3C)
     const slotMap = new Map<string, 0 | 1>();
     for (const ctx of contexts) {
-      for (const entry of generateSlotEntries(
-        ctx.effSched.start,
-        ctx.effSched.end,
-        slotInterval,
-        duration,
-        ctx.isOvernight,
-      )) {
+      for (const slot of iterateWindowSlotStarts({
+        windows: ctx.effectiveWindows,
+        durationMinutes: duration,
+        intervalMinutes: slotInterval,
+      })) {
+        const entry = absoluteMsToSlotEntry(slot.startMs, date, timezone);
         if (!slotMap.has(entry.time) || entry.dayOffset < slotMap.get(entry.time)!) {
           slotMap.set(entry.time, entry.dayOffset);
         }
@@ -606,13 +698,15 @@ export async function summarizeAvailableDaysRange(args: {
       const slotStartMs = salonDateTimeToMs(slotDate, time, timezone);
       for (const ctx of contexts) {
         const slotEndMs = slotStartMs + ctx.durationMinutes * 60_000;
-        const overrideBlock = !!slotBlockedByOverride(slotStartMs, slotEndMs, ctx.effSched);
+        const overrideBlockReason = slotBlockedByOverride(slotStartMs, slotEndMs, ctx.effSched);
         const r = evaluateBookingSlotAt(slotStartMs, ctx.durationMinutes, ctx.busy, {
           shiftStartMs: ctx.shiftStartMs,
           shiftEndMs: ctx.shiftEndMs,
+          effectiveWindows: ctx.effectiveWindows,
           nowMs: isToday ? nowMs : undefined,
           minNoticeMs: isToday ? minNoticeMs : 0,
-          overrideBlock,
+          overrideBlock: !!overrideBlockReason,
+          overrideBlockReason,
         });
         if (r.available) {
           availableBarbers.add(ctx.empId);

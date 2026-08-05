@@ -48,6 +48,7 @@ export default function NewBookingPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [newBookingId, setNewBookingId] = useState<number | null>(null);
+  const [newBookingCode, setNewBookingCode] = useState<string | null>(null);
 
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -126,44 +127,64 @@ export default function NewBookingPage() {
   const totalPrice = selectedServices.reduce((s, sv) => s + sv.SPrice * sv.qty, 0);
 
   const canSubmit = (selectedClient || (showNewClient && newClientName.trim())) &&
-    bookingDate && startTime && selectedServices.length > 0;
+    bookingDate && startTime && selectedServices.length > 0 && !!selectedBarber?.EmpID;
 
   const handleSubmit = async () => {
     setSubmitting(true);
     setError(null);
     try {
-      let clientId = selectedClient?.ClientID ?? null;
-      if (showNewClient && newClientName.trim()) {
-        const cRes = await fetch('/api/customers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: newClientName.trim(), mobile: newClientMobile.trim() || null }),
-        });
-        const cData = await cRes.json();
-        clientId = cData.ClientID ?? null;
+      if (!selectedBarber?.EmpID) {
+        throw new Error('اختر حلاقاً لإنشاء الحجز');
       }
 
-      const res = await fetch('/api/bookings', {
+      const customerName = showNewClient
+        ? newClientName.trim()
+        : (selectedClient?.ClientName ?? selectedClient?.Name ?? '').trim();
+      const customerPhone = showNewClient
+        ? (newClientMobile.trim() || null)
+        : (selectedClient?.ClientMobile ?? selectedClient?.Mobile ?? null);
+
+      if (!customerName || customerName.length < 2) {
+        throw new Error('اسم العميل مطلوب');
+      }
+
+      const res = await fetch('/api/public/booking/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          clientId,
-          empId: selectedBarber?.EmpID ?? null,
-          bookingDate,
-          startTime,
-          endTime: endTime || null,
-          source,
+          customer: {
+            name: customerName,
+            phone: customerPhone,
+          },
+          serviceIds: selectedServices.map((s) => s.ProID),
+          date: bookingDate,
+          time: startTime,
+          dayOffset: 0,
+          mode: 'specific',
+          empId: selectedBarber.EmpID,
           notes: notes || null,
-          services: selectedServices.map(s => ({
-            proId: s.ProID, empId: s.empId || selectedBarber?.EmpID || null,
-            qty: s.qty, price: s.SPrice, durationMinutes: s.DurationMinutes,
-          })),
+          source: 'admin',
+          leadSource: source,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'فشل إنشاء الحجز');
+      if (!res.ok || data?.ok === false) {
+        const msg =
+          data?.error?.message ||
+          data?.error?.technicalMessage ||
+          data?.error ||
+          data?.message ||
+          'فشل إنشاء الحجز';
+        throw new Error(typeof msg === 'string' ? msg : 'فشل إنشاء الحجز');
+      }
+      const bookingId = Number(data?.booking?.id);
+      const bookingCode = typeof data?.booking?.code === 'string' ? data.booking.code : null;
+      if (!Number.isFinite(bookingId) || bookingId <= 0) {
+        throw new Error('تم إنشاء الحجز لكن رقم المعرف غير متاح');
+      }
       setSuccess(true);
-      setNewBookingId(data.bookingId);
+      setNewBookingId(bookingId);
+      setNewBookingCode(bookingCode);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'خطأ');
     } finally {
@@ -178,7 +199,15 @@ export default function NewBookingPage() {
         <CheckCircle2 size={36} className="text-emerald-400" />
       </div>
       <h2 className="text-xl font-black text-white mb-2">تم إنشاء الحجز!</h2>
-      <p className="text-zinc-400 text-sm mb-6">رقم الحجز: <span className="text-amber-400 font-bold">#{newBookingId}</span></p>
+      <p className="text-zinc-400 text-sm mb-1">
+        رقم الحجز: <span className="text-amber-400 font-bold">#{newBookingId}</span>
+      </p>
+      {newBookingCode && (
+        <p className="text-zinc-500 text-xs mb-6">
+          الكود: <span className="text-white font-mono">{newBookingCode}</span>
+        </p>
+      )}
+      {!newBookingCode && <div className="mb-6" />}
       <div className="flex gap-3">
         <button
           onClick={() => router.push(`/bookings/${newBookingId}`)}

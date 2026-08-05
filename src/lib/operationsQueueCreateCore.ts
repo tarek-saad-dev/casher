@@ -150,6 +150,7 @@ export async function createOperationsQueueTicket(
         empId,
         serviceIds,
         requestedAt: new Date().toISOString(),
+        branchId,
       });
 
   if (!useClientPlannedTimes) {
@@ -184,6 +185,7 @@ export async function createOperationsQueueTicket(
       empId,
       serviceIds,
       requestedAt: finalStartTime,
+      branchId,
     });
     waitingCountAtCreation = simForCount.ok ? simForCount.peopleBefore : 0;
   } else {
@@ -270,6 +272,7 @@ export async function createOperationsQueueTicket(
       endAt: finalEndDate,
       now,
       operationalDate: dateStr,
+      branchId,
       transaction,
     });
 
@@ -537,6 +540,7 @@ export async function executeQuickQueueOperation(
     empId: nearest.best.empId,
     serviceIds,
     requestedAt,
+    branchId,
   });
 
   if (!simulation.ok) {

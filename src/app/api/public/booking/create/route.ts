@@ -76,6 +76,17 @@ export async function POST(req: NextRequest) {
     const idempotencyKeyHeader =
       req.headers.get('Idempotency-Key') ?? req.headers.get('idempotency-key');
 
+    const leadRaw = typeof body.leadSource === 'string' ? body.leadSource.trim().toLowerCase() : null;
+    const leadSource =
+      isInternalOps &&
+      (leadRaw === 'phone' ||
+        leadRaw === 'whatsapp' ||
+        leadRaw === 'website' ||
+        leadRaw === 'admin' ||
+        leadRaw === 'walk_in')
+        ? (leadRaw as 'phone' | 'whatsapp' | 'website' | 'admin' | 'walk_in')
+        : null;
+
     const result = await createPublicBooking({
       branchCode,
       date: typeof body.date === 'string' ? body.date : null,
@@ -85,6 +96,7 @@ export async function POST(req: NextRequest) {
       empId: body.empId,
       mode: body.mode,
       planToken: typeof body.planToken === 'string' ? body.planToken : null,
+      holdKey: typeof body.holdKey === 'string' ? body.holdKey : null,
       customer,
       notes: typeof body.notes === 'string' ? body.notes : null,
       clientRequestId:
@@ -101,6 +113,7 @@ export async function POST(req: NextRequest) {
       purpose,
       auth,
       bookingSource,
+      leadSource,
     });
 
     const replay = result.body?.meta?.idempotentReplay === true;

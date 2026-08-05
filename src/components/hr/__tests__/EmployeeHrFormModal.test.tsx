@@ -30,6 +30,7 @@ describe('EmployeeHrFormModal', () => {
 
     expect(screen.getByText('إضافة موظف جديد')).toBeInTheDocument();
     expect(screen.getByText('١ — البيانات الأساسية')).toBeInTheDocument();
+    expect(screen.getByText('دور الموظف')).toBeInTheDocument();
     expect(screen.getByText(/صورة الموظف/)).toBeInTheDocument();
     expect(screen.getByText('٢ — مواعيد وأيام العمل')).toBeInTheDocument();
     expect(screen.getByText('دوام كامل')).toBeInTheDocument();

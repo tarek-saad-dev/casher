@@ -58,6 +58,8 @@ interface Props {
   onCreateBooking: () => void;
   onScheduleControl?: () => void;
   onTemporaryTransfer?: () => void;
+  onAffectedBookings?: () => void;
+  affectedBookingsCount?: number;
   onSettleExpired?: () => void;
   onEnableVoice: () => void;
   onDisableVoice: () => void;
@@ -162,6 +164,8 @@ function ManagementActions({
   publicBookingToggleLoading,
   onScheduleControl,
   onTemporaryTransfer,
+  onAffectedBookings,
+  affectedBookingsCount,
   onSettleExpired,
   onToggleVoice,
   onToggleMusic,
@@ -175,6 +179,8 @@ function ManagementActions({
   publicBookingToggleLoading?: boolean;
   onScheduleControl?: () => void;
   onTemporaryTransfer?: () => void;
+  onAffectedBookings?: () => void;
+  affectedBookingsCount?: number;
   onSettleExpired?: () => void;
   onToggleVoice: () => void;
   onToggleMusic: () => void;
@@ -241,6 +247,26 @@ function ManagementActions({
           نقل موظف اليوم
         </Button>
       )}
+      {onAffectedBookings && (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onAffectedBookings}
+          className={cn(
+            adminBtnClass,
+            'border-orange-500/40 bg-orange-500/10 text-orange-100 hover:bg-orange-500/15',
+          )}
+          title="الحجوزات التي تحتاج إجراء بسبب غياب أو تعديل جدول"
+        >
+          <AlertTriangle />
+          حجوزات تحتاج إجراء
+          {typeof affectedBookingsCount === 'number' && affectedBookingsCount > 0 ? (
+            <span className="ms-1 rounded-full bg-orange-500/30 px-1.5 text-[11px] font-bold">
+              {affectedBookingsCount}
+            </span>
+          ) : null}
+        </Button>
+      )}
       {onSettleExpired && (
         <Button
           type="button"
@@ -293,6 +319,8 @@ export function OperationsControlPanel({
   onCreateBooking,
   onScheduleControl,
   onTemporaryTransfer,
+  onAffectedBookings,
+  affectedBookingsCount,
   onSettleExpired,
   onEnableVoice,
   onDisableVoice,
@@ -401,6 +429,8 @@ export function OperationsControlPanel({
               publicBookingToggleLoading={publicBookingToggleLoading}
               onScheduleControl={onScheduleControl}
               onTemporaryTransfer={onTemporaryTransfer}
+              onAffectedBookings={onAffectedBookings}
+              affectedBookingsCount={affectedBookingsCount}
               onSettleExpired={onSettleExpired}
               onToggleVoice={handleToggleVoice}
               onToggleMusic={onToggleMusic}

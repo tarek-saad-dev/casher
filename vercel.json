@@ -3,6 +3,10 @@
     {
       "path": "/api/admin/hr/nightly-close",
       "schedule": "40 23 * * *"
+    },
+    {
+      "path": "/api/admin/attendance/auto-absence/run",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
