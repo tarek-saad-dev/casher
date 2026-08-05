@@ -14,7 +14,8 @@
 ## API / scheduler
 
 - `POST /api/admin/attendance/auto-absence/run` — admin session **or** `Authorization: Bearer $CRON_SECRET` (`requireSystemJobAuth`).
-- Vercel cron every 15 minutes: `vercel.json` → `/api/admin/attendance/auto-absence/run`.
+- Vercel cron once daily (`0 7 * * *` UTC ≈ 10:00 Cairo): `vercel.json` → `/api/admin/attendance/auto-absence/run`.
+  - Note: Hobby plan only allows **once-per-day** crons; sub-daily (`*/15`) blocks the whole deploy. Use Pro or an external scheduler for 15-minute scans.
 - Concurrent full scans: transaction-scoped `sp_getapplock` (`auto_absence_scan`).
 
 ## Live verification

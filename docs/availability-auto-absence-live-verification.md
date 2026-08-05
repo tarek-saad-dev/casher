@@ -37,7 +37,7 @@ No customer PII or credentials are logged.
 - Future booking selection uses **Cairo** wall-clock (not `toISOString()` UTC slice).
 - Attendance table has **no** `IsDeleted` — queries updated accordingly.
 - Global scan uses transaction-scoped `sp_getapplock`; emp-scoped scans skip lock (safe live harness).
-- Cron: `vercel.json` → `POST /api/admin/attendance/auto-absence/run` every 15 minutes with `requireSystemJobAuth` (CRON_SECRET Bearer or admin session).
+- Cron: `vercel.json` → `POST /api/admin/attendance/auto-absence/run` once daily (`0 7 * * *` UTC) with `requireSystemJobAuth` (CRON_SECRET Bearer or admin session). Hobby forbids sub-daily crons (deploy fails).
 
 ## Cleanup
 
