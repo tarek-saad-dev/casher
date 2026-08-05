@@ -55,6 +55,10 @@ export function invalidatePublicBookingAvailabilityCache(): void {
   void import('@/lib/booking/publicBookingCrossBranchAvailability').then((m) => {
     m.invalidatePublicBookingCrossBranchAvailabilityCache();
   });
+  // Phase 1C — multi-branch barber days/slots.
+  void import('@/lib/booking/publicBarberMultiBranchAvailability').then((m) => {
+    m.invalidatePublicBarberMultiBranchAvailabilityCache();
+  });
 }
 
 function cacheGet<T>(key: string): T | null {

@@ -75,7 +75,12 @@ export type PublicBookingErrorCode =
   | 'PLAN_TOKEN_REQUIRED'
   | 'RATE_LIMIT_EXCEEDED'
   | 'LEGACY_BOOKING_CONTRACT_DISABLED'
-  | 'INVALID_REQUEST';
+  | 'INVALID_REQUEST'
+  | 'BARBER_NOT_BOOKABLE'
+  | 'INVALID_SERVICE_IDS'
+  | 'INVALID_AVAILABILITY_SCOPE'
+  | 'NO_PUBLIC_BRANCHES_FOR_BARBER'
+  | 'BRANCH_AVAILABILITY_UNAVAILABLE';
 
 export type PublicBookingErrorDef = {
   code: PublicBookingErrorCode;
@@ -492,6 +497,36 @@ export const PUBLIC_BOOKING_ERROR_CATALOG: Record<PublicBookingErrorCode, Public
     httpStatus: 400,
     messageAr: 'الطلب غير صالح',
     messageEn: 'Invalid request',
+  },
+  BARBER_NOT_BOOKABLE: {
+    code: 'BARBER_NOT_BOOKABLE',
+    httpStatus: 409,
+    messageAr: 'هذا الحلاق غير متاح للحجز حالياً',
+    messageEn: 'Barber is not bookable for public booking',
+  },
+  INVALID_SERVICE_IDS: {
+    code: 'INVALID_SERVICE_IDS',
+    httpStatus: 400,
+    messageAr: 'معرفات الخدمات غير صالحة',
+    messageEn: 'serviceIds must be a non-empty list of valid service ids',
+  },
+  INVALID_AVAILABILITY_SCOPE: {
+    code: 'INVALID_AVAILABILITY_SCOPE',
+    httpStatus: 400,
+    messageAr: 'نطاق البحث غير صالح',
+    messageEn: 'scope must be all_public or specific_branch',
+  },
+  NO_PUBLIC_BRANCHES_FOR_BARBER: {
+    code: 'NO_PUBLIC_BRANCHES_FOR_BARBER',
+    httpStatus: 409,
+    messageAr: 'لا توجد فروع عامة متاحة لهذا الحلاق',
+    messageEn: 'Barber has no active assignments at public bookable branches',
+  },
+  BRANCH_AVAILABILITY_UNAVAILABLE: {
+    code: 'BRANCH_AVAILABILITY_UNAVAILABLE',
+    httpStatus: 503,
+    messageAr: 'تعذر تحميل مواعيد هذا الفرع',
+    messageEn: 'Branch availability temporarily unavailable',
   },
 };
 

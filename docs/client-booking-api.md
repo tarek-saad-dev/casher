@@ -27,6 +27,9 @@ Derived from route handlers under `src/app/api/public/booking/**` and `src/app/a
 7. [Client implementation checklist](#7-client-implementation-checklist)
 8. [Gaps & notes](#8-gaps--notes)
 
+**Phase 1C multi-branch barber availability:** see [`docs/api/public-booking/MULTI_BRANCH_BARBER_AVAILABILITY.md`](./api/public-booking/MULTI_BRANCH_BARBER_AVAILABILITY.md)  
+(`POST …/barbers/:empId/availability/days` and `…/slots`).
+
 ---
 
 ## 1. Recommended client flow (steps 1–12)
@@ -37,6 +40,8 @@ Derived from route handlers under `src/app/api/public/booking/**` and `src/app/a
      GET  /api/public/booking/status?branchCode=…     (optional gate)
  3  GET  /api/public/booking/services?branchCode=…
  4  GET  /api/public/booking/barbers?mode=branch&branchCode=…&serviceIds=…
+     or (multi-branch barber) POST /api/public/booking/barbers/{empId}/availability/days
+                              POST /api/public/booking/barbers/{empId}/availability/slots
  5  GET  /api/public/booking/available-days?branchCode=…&serviceIds=…[&empId=]
  6  GET  /api/public/booking/available-slots?branchCode=…&date=…&serviceIds=…[&empId=]
  7  POST /api/public/booking/check-slot
@@ -86,7 +91,7 @@ From `publicBookingRateLimitPolicy.ts` (per IP, 60s window; lookup/upcoming/canc
 | discovery | 60 | branches, config, status |
 | catalog | 45 | services |
 | barbers | 45 | barbers list/profile, location |
-| availability | 30 | available-slots, barber slots, calendar, cross-branch |
+| availability | 30 | available-slots, barber slots, calendar, cross-branch, barber-availability-slots |
 | available-days | 20 | available-days |
 | validation | 20 | check-slot |
 | plan | 15 | plan |
@@ -347,7 +352,9 @@ type PublicBookingServiceWire = {
 | GET | `/api/public/booking/barbers/{empId}/location?date=&serviceIds=` | Branch for WorkDate |
 | GET | `/api/public/booking/barbers/{empId}/calendar?from=&to=&branchCode=&serviceIds=` | Presence calendar |
 | GET | `/api/public/booking/barbers/{empId}/available-slots?branchCode=&date=&serviceIds=` | Same as available-slots with path empId |
-| POST | `/api/public/booking/barbers/{empId}/cross-branch-availability` | Body: `serviceIds`, `dateFrom`, `days` → `{ ok, barber, branches, days, slots, meta }` |
+| POST | `/api/public/booking/barbers/{empId}/cross-branch-availability` | Phase 10C flat slots across public branches |
+| POST | `/api/public/booking/barbers/{empId}/availability/days` | Phase 1C — multi-branch days (`scope` all_public \| specific_branch). See [MULTI_BRANCH_BARBER_AVAILABILITY.md](./api/public-booking/MULTI_BRANCH_BARBER_AVAILABILITY.md) |
+| POST | `/api/public/booking/barbers/{empId}/availability/slots` | Phase 1C — multi-branch slots for one date |
 
 ---
 

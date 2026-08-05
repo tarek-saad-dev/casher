@@ -61,6 +61,52 @@ vi.mock('@/lib/session', () => ({
   getSession: vi.fn(async () => ({ UserID: 1, UserName: 'Admin', UserLevel: 1 })),
 }));
 
+vi.mock('@/lib/payroll/branchPayrollPlan', () => ({
+  loadPrimaryBranchPayrollRatesForEmployee: vi.fn(async () => ({
+    hourlyRate: 25,
+    dailyRate: null,
+    monthlySalary: null,
+    payType: 'hourly',
+    planId: 1,
+    branchId: 1,
+  })),
+  loadActiveBranchPayrollRatesByEmpIds: vi.fn(async (ids: number[]) => {
+    const map = new Map();
+    for (const id of ids) {
+      map.set(id, {
+        hourlyRate: 25,
+        dailyRate: null,
+        monthlySalary: null,
+        payType: 'hourly',
+        planId: 1,
+        branchId: 1,
+      });
+    }
+    return map;
+  }),
+  overlayEmployeeRowWithBranchPlanRates: (
+    row: Record<string, unknown>,
+    rates: { hourlyRate: number | null; dailyRate: number | null; monthlySalary: number | null } | null,
+  ) => {
+    if (!rates) return row;
+    return {
+      ...row,
+      ManualHourlyRate: rates.hourlyRate,
+      HourlyRate: rates.hourlyRate,
+      DailyRate: rates.dailyRate,
+      BaseSalary: rates.monthlySalary ?? row.BaseSalary,
+    };
+  },
+  syncHrRatesToActiveBranchPlans: vi.fn(async () => ({
+    updatedPlanIds: [1],
+    createdPlanId: null,
+  })),
+}));
+
+vi.mock('@/lib/payroll/employee-target', () => ({
+  getEmployeesTargetSummaryBatch: vi.fn(async () => new Map()),
+}));
+
 function resetMocks() {
   executedSql.length = 0;
   poolQueryResults = [];

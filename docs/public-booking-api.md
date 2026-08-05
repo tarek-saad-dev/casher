@@ -19,6 +19,7 @@
    - [GET /barbers](#3-get-barbers)
    - [GET /available-days](#4-get-available-days)
    - [GET /available-slots](#5-get-available-slots)
+   - [POST /barbers/:empId/availability/days|slots](./api/public-booking/MULTI_BRANCH_BARBER_AVAILABILITY.md) (Phase 1C multi-branch)
    - [POST /check-slot](#6-post-check-slot)
    - [POST /create](#7-post-create)
    - [GET /:bookingCode](#8-get-bookingcode)

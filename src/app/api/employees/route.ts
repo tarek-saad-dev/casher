@@ -26,6 +26,12 @@ import { ensureTblEmpImageUrlColumn } from '@/lib/migrations/ensureEmployeeImage
 import { ensureTblEmpNameEnColumn, normalizeEmpNameEn } from '@/lib/migrations/ensureEmployeeNameEn';
 import { normalizeEmployeeImageUrlInput } from '@/lib/hr/employeeImageUrl';
 import { invalidatePublicBookingBarbersCache } from '@/lib/booking/publicBookingBarbers';
+import {
+  loadActiveBranchPayrollRatesByEmpIds,
+  overlayEmployeeRowWithBranchPlanRates,
+  syncHrRatesToActiveBranchPlans,
+  type BranchPayrollPayType,
+} from '@/lib/payroll/branchPayrollPlan';
 
 // GET /api/employees — list employees with finance mapping
 // Query params: ?inactive=true to get inactive employees
@@ -61,9 +67,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const empIds = result.recordset.map((row: Record<string, unknown>) =>
+      Number(row.EmpID),
+    );
+    const planRates = await loadActiveBranchPayrollRatesByEmpIds(empIds);
+
     const rows = result.recordset.map((row: Record<string, unknown>) => {
-      const enriched = enrichEmployeeRow(row);
-      const empId = Number(enriched.EmpID);
+      const empId = Number(row.EmpID);
+      const enriched = enrichEmployeeRow(
+        overlayEmployeeRowWithBranchPlanRates(row, planRates.get(empId)),
+      );
       const summary = targetSummary.get(empId);
       return {
         ...enriched,

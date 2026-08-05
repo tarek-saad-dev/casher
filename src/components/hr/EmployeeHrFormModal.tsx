@@ -609,6 +609,9 @@ export default function EmployeeHrFormModal({
                   dir="ltr"
                   className="font-mono"
                 />
+                <p className="text-xs text-muted-foreground">
+                  يُحفظ في خطة راتب الفرع فقط — نفس المصدر المستخدم في اليومية
+                </p>
               </div>
             )}
 
@@ -625,6 +628,9 @@ export default function EmployeeHrFormModal({
                   dir="ltr"
                   className="font-mono"
                 />
+                <p className="text-xs text-muted-foreground">
+                  تُحفظ في خطة راتب الفرع فقط — نفس المصدر المستخدم في اليومية
+                </p>
               </div>
             )}
 

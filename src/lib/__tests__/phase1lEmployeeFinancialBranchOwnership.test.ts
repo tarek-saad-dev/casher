@@ -77,6 +77,12 @@ describe('Phase 1L employee financial branch ownership', () => {
     const plan = read('src/lib/payroll/branchPayrollPlan.ts');
     expect(plan).toContain('resolveBranchPayrollPlanForDate');
     expect(plan).toContain('assertNoOverlappingBranchPayrollPlans');
+    expect(plan).toContain('syncHrRatesToActiveBranchPlans');
+    expect(plan).toContain('overlayEmployeeRowWithBranchPlanRates');
+
+    const patch = read('src/app/api/employees/[id]/route.ts');
+    expect(patch).toContain('syncHrRatesToActiveBranchPlans');
+    expect(patch).not.toMatch(/ManualHourlyRate = @manualHourlyRate/);
   });
 
   it('reconciliation and reports scope by BranchID; WhatsApp includes branchEarnings', () => {

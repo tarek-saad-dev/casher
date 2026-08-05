@@ -22,6 +22,13 @@ import { ensureTblEmpImageUrlColumn } from '@/lib/migrations/ensureEmployeeImage
 import { ensureTblEmpNameEnColumn, normalizeEmpNameEn } from '@/lib/migrations/ensureEmployeeNameEn';
 import { invalidatePublicBookingBarbersCache } from '@/lib/booking/publicBookingBarbers';
 import { normalizeEmployeeImageUrlInput } from '@/lib/hr/employeeImageUrl';
+import { getCairoBusinessDate } from '@/lib/businessDate';
+import {
+  loadPrimaryBranchPayrollRatesForEmployee,
+  overlayEmployeeRowWithBranchPlanRates,
+  syncHrRatesToActiveBranchPlans,
+  type BranchPayrollPayType,
+} from '@/lib/payroll/branchPayrollPlan';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -102,6 +109,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     const current = currentRes.recordset[0];
     const patchPayload = parsePatchHrPayload(body);
     const hasHrFields = patchTouchesHrModel(body);
+    const planRates = await loadPrimaryBranchPayrollRatesForEmployee(empID);
 
     if (body.employmentType !== undefined || body.payrollMethod !== undefined) {
       const et =
@@ -234,6 +242,12 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     }
 
     let scheduleToApply: ReturnType<typeof buildScheduleRows> | null = null;
+    let pendingRateSync: {
+      payType: BranchPayrollPayType;
+      hourlyRate: number | null;
+      dailyRate: number | null;
+      monthlySalary: number | null;
+    } | null = null;
 
     if (hasHrFields) {
       const validation = validateEmployeeHrPayload(patchPayload, {
@@ -243,10 +257,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
         currentPayrollMethod: normalizePayrollMethod(current.PayrollMethod),
         currentDayOffPolicy: normalizeDayOffPolicy(current.DayOffPolicy),
         currentIsPayrollEnabled: Boolean(current.IsPayrollEnabled),
-        currentManualHourlyRate:
-          current.ManualHourlyRate != null ? Number(current.ManualHourlyRate) : null,
-        currentDailyRate: current.DailyRate != null ? Number(current.DailyRate) : null,
-        currentBaseSalary: current.BaseSalary != null ? Number(current.BaseSalary) : null,
+        currentManualHourlyRate: planRates.hourlyRate,
+        currentDailyRate: planRates.dailyRate,
+        currentBaseSalary: planRates.monthlySalary,
       });
 
       if (!validation.ok) {
@@ -308,30 +321,28 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
             req.input('hireDate', sql.Date, dbCols.HireDate),
           );
         }
-        if (body.manualHourlyRate !== undefined || body.hourlyRate !== undefined) {
-          addClause('ManualHourlyRate = @manualHourlyRate', (req) =>
-            req.input('manualHourlyRate', sql.Decimal(10, 4), dbCols.ManualHourlyRate),
-          );
-        }
-        if (body.dailyRate !== undefined) {
-          addClause('DailyRate = @dailyRate', (req) =>
-            req.input('dailyRate', sql.Decimal(10, 2), dbCols.DailyRate),
-          );
-        }
+        // Rates live only on TblEmpBranchPayrollPlan — do not mirror to TblEmp.
         if (body.payrollMethod !== undefined) {
           addClause('SalaryType = @hrSalaryType', (req) =>
             req.input('hrSalaryType', sql.NVarChar(20), dbCols.SalaryType),
           );
         }
-        if (body.monthlySalary !== undefined) {
-          addClause('BaseSalary = @hrBaseSalary', (req) =>
-            req.input('hrBaseSalary', sql.Decimal(10, 2), dbCols.BaseSalary),
-          );
-        }
-        if (body.dailyRate !== undefined || body.salary !== undefined) {
-          addClause('Salary = @hrSalary', (req) =>
-            req.input('hrSalary', sql.Decimal(10, 2), dbCols.Salary),
-          );
+
+        const rateFieldsTouched =
+          body.manualHourlyRate !== undefined ||
+          body.hourlyRate !== undefined ||
+          body.dailyRate !== undefined ||
+          body.monthlySalary !== undefined ||
+          body.payrollMethod !== undefined;
+        if (rateFieldsTouched) {
+          const payTypeRaw = (n.payrollMethod ?? 'hourly') as BranchPayrollPayType;
+          pendingRateSync = {
+            payType:
+              payTypeRaw === 'daily' || payTypeRaw === 'monthly' ? payTypeRaw : 'hourly',
+            hourlyRate: n.manualHourlyRate,
+            dailyRate: n.dailyRate,
+            monthlySalary: n.monthlySalary,
+          };
         }
 
         if (n.scheduleConfig) {
@@ -346,7 +357,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       }
     }
 
-    if (setClauses.length === 0) {
+    if (setClauses.length === 0 && !pendingRateSync) {
       return NextResponse.json({ error: 'لا توجد بيانات للتعديل' }, { status: 400 });
     }
 
@@ -354,14 +365,16 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     await transaction.begin();
 
     try {
-      const updateReq = new sql.Request(transaction);
-      for (const bind of bindInputs) bind(updateReq);
-      updateReq.input('empID', sql.Int, empID);
-      await updateReq.query(`
-        UPDATE dbo.TblEmp
-        SET ${setClauses.join(', ')}
-        WHERE EmpID = @empID
-      `);
+      if (setClauses.length > 0) {
+        const updateReq = new sql.Request(transaction);
+        for (const bind of bindInputs) bind(updateReq);
+        updateReq.input('empID', sql.Int, empID);
+        await updateReq.query(`
+          UPDATE dbo.TblEmp
+          SET ${setClauses.join(', ')}
+          WHERE EmpID = @empID
+        `);
+      }
 
       if (scheduleToApply) {
         await ensureScheduleTable(pool);
@@ -374,6 +387,18 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       throw txErr;
     }
 
+    if (pendingRateSync) {
+      await syncHrRatesToActiveBranchPlans({
+        empId: empID,
+        payType: pendingRateSync.payType,
+        hourlyRate: pendingRateSync.hourlyRate,
+        dailyRate: pendingRateSync.dailyRate,
+        monthlySalary: pendingRateSync.monthlySalary,
+        effectiveFrom: getCairoBusinessDate(),
+        sourceNotes: 'hr_employee_patch_sole_source',
+      });
+    }
+
     const sel = await pool.request().input('empID', sql.Int, empID).query(EMPLOYEE_SELECT_BY_ID);
 
     if (sel.recordset.length === 0) {
@@ -384,7 +409,15 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       invalidatePublicBookingBarbersCache();
     }
 
-    return NextResponse.json(enrichEmployeeRow(sel.recordset[0]));
+    const freshRates = await loadPrimaryBranchPayrollRatesForEmployee(empID);
+    return NextResponse.json(
+      enrichEmployeeRow(
+        overlayEmployeeRowWithBranchPlanRates(
+          sel.recordset[0] as Record<string, unknown>,
+          freshRates,
+        ),
+      ),
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/employees/:id] PATCH error:', message);

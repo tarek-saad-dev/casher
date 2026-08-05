@@ -16,6 +16,8 @@ PayType: hourly | daily | monthly.
 
 * No GLEEM fallback  
 * No TblEmp.HourlyRate / ManualHourlyRate / BaseSalary for operational generation  
+* HR employee form rate edits write **only** to `TblEmpBranchPayrollPlan` via `syncHrRatesToActiveBranchPlans` (TblEmp rate columns are not updated)  
+* Employee list/GET overlays rate fields from the active branch plan for display  
 * Overlap detection via `assertNoOverlappingBranchPayrollPlans`  
 * Historical payroll keeps stored rate/breakdown  
 

@@ -74,6 +74,8 @@ export const GLOBAL_CAPABLE_PUBLIC_BOOKING_ROUTES = [
   'barbers',
   'barber-calendar',
   'cross-branch-availability',
+  'barber-availability-days',
+  'barber-availability-slots',
 ] as const;
 
 const BRANCH_CODE_RE = /^[A-Z][A-Z0-9_]{0,29}$/;

@@ -160,3 +160,232 @@ export async function assertNoOverlappingBranchPayrollPlans(params: {
     );
   }
 }
+
+export type EmployeeBranchPayrollRateView = {
+  hourlyRate: number | null;
+  dailyRate: number | null;
+  monthlySalary: number | null;
+  payType: BranchPayrollPayType | null;
+  planId: number | null;
+  branchId: number | null;
+};
+
+/**
+ * Single source of truth for operational rates: TblEmpBranchPayrollPlan.
+ * Prefers home-branch active open plan, else any active open plan.
+ */
+export async function loadPrimaryBranchPayrollRatesForEmployee(
+  empId: number,
+): Promise<EmployeeBranchPayrollRateView> {
+  const map = await loadActiveBranchPayrollRatesByEmpIds([empId]);
+  return (
+    map.get(empId) ?? {
+      hourlyRate: null,
+      dailyRate: null,
+      monthlySalary: null,
+      payType: null,
+      planId: null,
+      branchId: null,
+    }
+  );
+}
+
+/** Batch: EmpID → rates from preferred active open branch plan. */
+export async function loadActiveBranchPayrollRatesByEmpIds(
+  empIds: number[],
+): Promise<Map<number, EmployeeBranchPayrollRateView>> {
+  const out = new Map<number, EmployeeBranchPayrollRateView>();
+  const ids = [...new Set(empIds.map((n) => Number(n)).filter((n) => n > 0))];
+  if (!ids.length) return out;
+
+  const db = await getPool();
+  const req = db.request();
+  const placeholders = ids.map((id, i) => {
+    const name = `e${i}`;
+    req.input(name, sql.Int, id);
+    return `@${name}`;
+  });
+
+  const result = await req.query(`
+    WITH ranked AS (
+      SELECT
+        p.PlanID, p.EmpID, p.BranchID, p.PayType, p.HourlyRate, p.DailyRate, p.MonthlySalary,
+        ROW_NUMBER() OVER (
+          PARTITION BY p.EmpID
+          ORDER BY
+            CASE WHEN ISNULL(ea.IsHomeBranch, 0) = 1 THEN 0 ELSE 1 END,
+            p.EffectiveFrom DESC,
+            p.PlanID DESC
+        ) AS rn
+      FROM dbo.TblEmpBranchPayrollPlan p
+      LEFT JOIN dbo.TblEmpBranchAssignment ea
+        ON ea.EmpID = p.EmpID
+       AND ea.BranchID = p.BranchID
+       AND ea.IsActive = 1
+       AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= CAST(SYSUTCDATETIME() AS date))
+      WHERE p.EmpID IN (${placeholders.join(',')})
+        AND p.IsActive = 1
+        AND p.EffectiveTo IS NULL
+    )
+    SELECT PlanID, EmpID, BranchID, PayType, HourlyRate, DailyRate, MonthlySalary
+    FROM ranked
+    WHERE rn = 1
+  `);
+
+  for (const row of result.recordset as Record<string, unknown>[]) {
+    const plan = mapPlan(row);
+    out.set(plan.empId, {
+      hourlyRate: plan.hourlyRate,
+      dailyRate: plan.dailyRate,
+      monthlySalary: plan.monthlySalary,
+      payType: plan.payType,
+      planId: plan.planId,
+      branchId: plan.branchId,
+    });
+  }
+  return out;
+}
+
+/**
+ * HR rate edits write ONLY to active open branch payroll plans (no TblEmp rate mirror).
+ * Updates every active open plan for the employee; creates home-branch plan if none exist.
+ */
+export async function syncHrRatesToActiveBranchPlans(args: {
+  empId: number;
+  payType: BranchPayrollPayType;
+  hourlyRate: number | null;
+  dailyRate: number | null;
+  monthlySalary: number | null;
+  effectiveFrom: string;
+  sourceNotes?: string;
+}): Promise<{ updatedPlanIds: number[]; createdPlanId: number | null }> {
+  const db = await getPool();
+  const existing = await db
+    .request()
+    .input('empId', sql.Int, args.empId)
+    .query(`
+      SELECT PlanID, BranchID
+      FROM dbo.TblEmpBranchPayrollPlan
+      WHERE EmpID = @empId
+        AND IsActive = 1
+        AND EffectiveTo IS NULL
+    `);
+
+  const hourly =
+    args.payType === 'hourly' && args.hourlyRate != null && args.hourlyRate > 0
+      ? args.hourlyRate
+      : args.hourlyRate != null && args.hourlyRate > 0
+        ? args.hourlyRate
+        : null;
+  const daily =
+    args.payType === 'daily' && args.dailyRate != null && args.dailyRate > 0
+      ? args.dailyRate
+      : args.dailyRate != null && args.dailyRate > 0
+        ? args.dailyRate
+        : null;
+  const monthly =
+    args.payType === 'monthly' && args.monthlySalary != null && args.monthlySalary > 0
+      ? args.monthlySalary
+      : args.monthlySalary != null && args.monthlySalary > 0
+        ? args.monthlySalary
+        : null;
+
+  const updatedPlanIds: number[] = [];
+  for (const row of existing.recordset as Array<{ PlanID: number }>) {
+    const planId = Number(row.PlanID);
+    await db
+      .request()
+      .input('planId', sql.Int, planId)
+      .input('payType', sql.NVarChar(20), args.payType)
+      .input('hourly', sql.Decimal(18, 4), hourly)
+      .input('daily', sql.Decimal(18, 4), daily)
+      .input('monthly', sql.Decimal(18, 4), monthly)
+      .input('notes', sql.NVarChar(200), args.sourceNotes ?? 'hr_rate_sync')
+      .query(`
+        UPDATE dbo.TblEmpBranchPayrollPlan
+        SET PayType = @payType,
+            HourlyRate = @hourly,
+            DailyRate = @daily,
+            MonthlySalary = @monthly,
+            SourceNotes = @notes
+        WHERE PlanID = @planId
+      `);
+    updatedPlanIds.push(planId);
+  }
+
+  if (updatedPlanIds.length > 0) {
+    return { updatedPlanIds, createdPlanId: null };
+  }
+
+  const home = await db
+    .request()
+    .input('empId', sql.Int, args.empId)
+    .query(`
+      SELECT TOP 1 BranchID
+      FROM dbo.TblEmpBranchAssignment
+      WHERE EmpID = @empId
+        AND IsActive = 1
+        AND (EffectiveTo IS NULL OR EffectiveTo >= CAST(SYSUTCDATETIME() AS date))
+      ORDER BY IsHomeBranch DESC, ID DESC
+    `);
+  const branchId = home.recordset[0]
+    ? Number((home.recordset[0] as { BranchID: number }).BranchID)
+    : null;
+  if (!branchId) {
+    throw new Error(
+      'لا توجد خطة راتب فرع ولا تعيين فرع نشط — عيّن الموظف على فرع قبل حفظ سعر الساعة',
+    );
+  }
+
+  await assertNoOverlappingBranchPayrollPlans({
+    empId: args.empId,
+    branchId,
+    effectiveFrom: args.effectiveFrom,
+    effectiveTo: null,
+  });
+
+  const ins = await db
+    .request()
+    .input('empId', sql.Int, args.empId)
+    .input('branchId', sql.Int, branchId)
+    .input('payType', sql.NVarChar(20), args.payType)
+    .input('hourly', sql.Decimal(18, 4), hourly)
+    .input('daily', sql.Decimal(18, 4), daily)
+    .input('monthly', sql.Decimal(18, 4), monthly)
+    .input('from', sql.Date, args.effectiveFrom)
+    .input('notes', sql.NVarChar(200), args.sourceNotes ?? 'hr_rate_create')
+    .query(`
+      INSERT INTO dbo.TblEmpBranchPayrollPlan (
+        EmpID, BranchID, PayType, HourlyRate, DailyRate, MonthlySalary,
+        EffectiveFrom, EffectiveTo, IsActive, SourceNotes
+      )
+      OUTPUT INSERTED.PlanID
+      VALUES (
+        @empId, @branchId, @payType, @hourly, @daily, @monthly,
+        @from, NULL, 1, @notes
+      )
+    `);
+
+  return {
+    updatedPlanIds: [],
+    createdPlanId: Number(ins.recordset[0]?.PlanID ?? 0) || null,
+  };
+}
+
+/** Overlay TblEmp rate columns with branch-plan rates for API/UI (plan is sole source). */
+export function overlayEmployeeRowWithBranchPlanRates<T extends Record<string, unknown>>(
+  row: T,
+  rates: EmployeeBranchPayrollRateView | null | undefined,
+): T {
+  if (!rates) return row;
+  return {
+    ...row,
+    ManualHourlyRate: rates.hourlyRate,
+    HourlyRate: rates.hourlyRate,
+    DailyRate: rates.dailyRate,
+    BaseSalary: rates.monthlySalary ?? row.BaseSalary,
+    BranchPayrollPlanID: rates.planId,
+    BranchPayrollBranchID: rates.branchId,
+    BranchPayrollPayType: rates.payType,
+  };
+}
