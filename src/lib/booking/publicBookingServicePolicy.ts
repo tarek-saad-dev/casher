@@ -71,6 +71,8 @@ export type PublicBookingServiceRow = {
   DescriptionEn?: string | null;
   /** Optional future flag; absent ⇒ not hidden. */
   HideFromPublicBooking?: boolean | number | null;
+  /** Invoice line count — used for public most-popular ranking (not exposed raw). */
+  SalesCount?: number | null;
 };
 
 export type ServiceEligibilityReason =

@@ -151,4 +151,61 @@ describe('bookingPublicServicesCatalog', () => {
     expect(catalog.categories[0]?.services.map((s) => s.serviceId)).toEqual([1]);
     expect(catalog.categories[1]?.services.map((s) => s.serviceId)).toEqual([2]);
   });
+
+  it('builds mostPopular from SalesCount without exposing raw counts', () => {
+    const catalog = buildPublicServicesCatalog(
+      [
+        {
+          ProID: 9,
+          ProName: 'Hair Cut',
+          ProNameAr: 'حلاقة شعر',
+          SPrice1: 200,
+          DurationMinutes: 30,
+          isDeleted: 0,
+          ProType: 'serv',
+          CatID: 19,
+          CatName: 'قص الشعر',
+          CatType: 'serv',
+          SortOrder: 10,
+          SalesCount: 50,
+        },
+        {
+          ProID: 10,
+          ProName: 'Beard',
+          ProNameAr: 'دقن',
+          SPrice1: 100,
+          DurationMinutes: 20,
+          isDeleted: 0,
+          ProType: 'serv',
+          CatID: 20,
+          CatName: 'خدمات اللحية',
+          CatType: 'serv',
+          SortOrder: 20,
+          SalesCount: 120,
+        },
+        {
+          ProID: 11,
+          ProName: 'Rare',
+          ProNameAr: 'نادر',
+          SPrice1: 80,
+          DurationMinutes: 15,
+          isDeleted: 0,
+          ProType: 'serv',
+          CatID: 19,
+          CatName: 'قص الشعر',
+          CatType: 'serv',
+          SortOrder: 10,
+          SalesCount: 0,
+        },
+      ],
+      { branchCode: 'GLEEM', branchName: 'جليم' },
+      'v',
+    );
+    expect(catalog.mostPopular.id).toBe('most_popular');
+    expect(catalog.mostPopular.titleEn).toBe('Most Popular');
+    expect(catalog.mostPopular.services.map((s) => s.serviceId)).toEqual([10, 9]);
+    expect(catalog.mostPopular.services[0]?.popularityRank).toBe(1);
+    expect(catalog.meta.mostPopularCount).toBe(2);
+    expect(JSON.stringify(catalog.mostPopular)).not.toMatch(/SalesCount/i);
+  });
 });

@@ -187,13 +187,29 @@ GET /api/public/booking/services?branchCode=GLEEM
       ]
     }
   ],
+  "mostPopular": {
+    "id": "most_popular",
+    "title": "الأكثر طلباً",
+    "titleAr": "الأكثر طلباً",
+    "titleEn": "Most Popular",
+    "services": [
+      {
+        "serviceId": 20,
+        "name": "شعر ودقن",
+        "popularityRank": 1,
+        "price": 250,
+        "durationMinutes": 45,
+        "imageUrl": "https://res.cloudinary.com/.../hb.jpg"
+      }
+    ]
+  },
   "services": [],
   "groups": [],
-  "meta": { "preferredShape": "categories", "categoryCount": 6, "serviceCount": 31 }
+  "meta": { "preferredShape": "categories", "categoryCount": 6, "serviceCount": 31, "mostPopularCount": 8 }
 }
 ```
 
-> **Frontend:** loop `categories`, then each category’s `services`. Do not rebuild groups from the flat `services` list unless you need a legacy fallback.
+> **Frontend:** show `mostPopular` as a horizontal/featured section, then loop `categories` for the full catalog. Ranking uses historical invoice lines (`TblinvServDetail`) — raw sales counts are not exposed.
 
 | Field | Type | Description |
 |---|---|---|

@@ -37,6 +37,8 @@ export {
 const CACHE_TTL_MS = 30_000;
 const CACHE_MAX = 32;
 const cacheRootKey = '__pos_public_booking_services_v3';
+/** Top services by historical invoice lines for the booking widget. */
+export const PUBLIC_BOOKING_MOST_POPULAR_LIMIT = 8;
 
 export type PublicBookingServiceWire = {
   serviceId: number;
@@ -60,6 +62,16 @@ export type PublicBookingServiceWire = {
   categoryName: string;
   categoryNameAr: string;
   categoryNameEn: string;
+  /** Present on `mostPopular.services` only (1 = most booked). */
+  popularityRank?: number;
+};
+
+export type PublicBookingMostPopularWire = {
+  id: 'most_popular';
+  title: string;
+  titleAr: string;
+  titleEn: string;
+  services: PublicBookingServiceWire[];
 };
 
 export type PublicBookingCategoryWire = {
@@ -88,6 +100,8 @@ export type PublicBookingServicesCatalogResponse = {
   };
   currency: typeof PUBLIC_BOOKING_CURRENCY;
   pricingScope: typeof PUBLIC_BOOKING_PRICING_SCOPE;
+  /** Top booked services for the booking UI "Most Popular" section. */
+  mostPopular: PublicBookingMostPopularWire;
   categories: PublicBookingCategoryWire[];
   /** Flat compatibility list (same services, deterministic order). */
   services: PublicBookingServiceWire[];
@@ -97,11 +111,14 @@ export type PublicBookingServicesCatalogResponse = {
     categoryName: string;
     categoryNameAr: string;
     categoryNameEn: string;
+    sortOrder?: number;
+    serviceCount?: number;
     services: PublicBookingServiceWire[];
   }>;
   meta: {
     serviceCount: number;
     categoryCount: number;
+    mostPopularCount: number;
     generatedAt: string;
     catalogVersion: string;
     contractVersion: string;
@@ -228,9 +245,15 @@ async function loadRawServiceRows(): Promise<PublicBookingServiceRow[]> {
       c.CatName,
       c.CatType,
       ${sortOrderCol},
-      ${imageUrlCol}
+      ${imageUrlCol},
+      ISNULL(pop.SalesCount, 0) AS SalesCount
     FROM dbo.TblPro p
     LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID
+    LEFT JOIN (
+      SELECT ProID, COUNT(*) AS SalesCount
+      FROM dbo.TblinvServDetail
+      GROUP BY ProID
+    ) pop ON pop.ProID = p.ProID
     ORDER BY ISNULL(SortOrder, 999999), ISNULL(c.CatName, N''), p.ProID
   `);
 
@@ -295,6 +318,7 @@ export function buildPublicServicesCatalog(
       services: PublicBookingServiceWire[];
     }
   >();
+  const popularCandidates: Array<{ wire: PublicBookingServiceWire; salesCount: number }> = [];
 
   for (const row of rows) {
     const evalResult = evaluateServiceEligibility(row);
@@ -337,6 +361,9 @@ export function buildPublicServicesCatalog(
       serviceSort,
     );
     catMap.get(catId)!.services.push(wire);
+
+    const salesCount = Math.max(0, Number(row.SalesCount) || 0);
+    popularCandidates.push({ wire, salesCount });
   }
 
   const categories = Array.from(catMap.values())
@@ -387,6 +414,27 @@ export function buildPublicServicesCatalog(
     services: c.services,
   }));
 
+  const mostPopularServices = [...popularCandidates]
+    .filter((c) => c.salesCount > 0)
+    .sort((a, b) => {
+      if (b.salesCount !== a.salesCount) return b.salesCount - a.salesCount;
+      return a.wire.serviceId - b.wire.serviceId;
+    })
+    .slice(0, PUBLIC_BOOKING_MOST_POPULAR_LIMIT)
+    .map((c, idx) => ({
+      ...c.wire,
+      sortOrder: idx + 1,
+      popularityRank: idx + 1,
+    }));
+
+  const mostPopular: PublicBookingMostPopularWire = {
+    id: 'most_popular',
+    title: 'الأكثر طلباً',
+    titleAr: 'الأكثر طلباً',
+    titleEn: 'Most Popular',
+    services: mostPopularServices,
+  };
+
   return {
     ok: true,
     branch: {
@@ -395,6 +443,7 @@ export function buildPublicServicesCatalog(
     },
     currency: PUBLIC_BOOKING_CURRENCY,
     pricingScope: PUBLIC_BOOKING_PRICING_SCOPE,
+    mostPopular,
     /** Preferred: render booking UI from this array (admin category order). */
     categories,
     /** Flat compatibility list — same services, category order preserved. */
@@ -404,6 +453,7 @@ export function buildPublicServicesCatalog(
     meta: {
       serviceCount: services.length,
       categoryCount: categories.length,
+      mostPopularCount: mostPopularServices.length,
       generatedAt,
       catalogVersion,
       contractVersion: PUBLIC_BOOKING_SERVICE_CONTRACT_VERSION,

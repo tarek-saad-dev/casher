@@ -273,6 +273,13 @@ Only branches that pass public discovery (`PUBLIC_LIVE` + active + `PublicBookin
     serviceCount: number;
     services: PublicBookingServiceWire[];
   }>;
+  mostPopular: {
+    id: "most_popular";
+    title: string;            // الأكثر طلباً
+    titleAr: string;
+    titleEn: "Most Popular";
+    services: PublicBookingServiceWire[]; // top by sales, max 8
+  };
   services: PublicBookingServiceWire[]; // flat (same services, category order)
   groups: Array<{             // legacy
     categoryId: string;
@@ -286,6 +293,7 @@ Only branches that pass public discovery (`PUBLIC_LIVE` + active + `PublicBookin
   meta: {
     serviceCount: number;
     categoryCount: number;
+    mostPopularCount: number;
     generatedAt: string;
     catalogVersion: string;
     contractVersion: string;
