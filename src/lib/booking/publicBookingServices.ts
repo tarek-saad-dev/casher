@@ -21,9 +21,9 @@ import {
   compareServices,
   evaluateServiceEligibility,
   resolveCategoryNames,
+  resolvePublicServiceImageUrl,
   resolveServiceDisplayNames,
   sanitizePublicDescription,
-  sanitizePublicImageUrl,
   type PublicBookingServiceRow,
 } from '@/lib/booking/publicBookingServicePolicy';
 
@@ -53,6 +53,8 @@ export type PublicBookingServiceWire = {
   sortOrder: number;
   bookable: true;
   imageUrl: string | null;
+  /** Alias of imageUrl for clients that mirror the barbers wire. */
+  photoUrl: string | null;
   categoryId: string;
   /** @deprecated Prefer categoryNameAr — kept for older clients */
   categoryName: string;
@@ -233,6 +235,13 @@ function toWireService(
   sortOrder: number,
 ): PublicBookingServiceWire {
   const { nameAr, nameEn } = resolveServiceDisplayNames(row.ProName, row.ProNameAr);
+  const imageUrl = resolvePublicServiceImageUrl({
+    imageUrl: row.ImageUrl,
+    proName: row.ProName,
+    proNameAr: row.ProNameAr,
+    nameEn,
+    nameAr,
+  });
   return {
     serviceId: Number(row.ProID),
     id: Number(row.ProID),
@@ -245,7 +254,8 @@ function toWireService(
     durationMinutes,
     sortOrder,
     bookable: true,
-    imageUrl: sanitizePublicImageUrl(row.ImageUrl),
+    imageUrl,
+    photoUrl: imageUrl,
     categoryId: catId,
     categoryName: categoryNameAr,
     categoryNameAr,

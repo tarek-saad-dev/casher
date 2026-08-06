@@ -295,6 +295,7 @@ type PublicBookingServiceWire = {
   sortOrder: number;
   bookable: true;
   imageUrl: string | null;
+  photoUrl: string | null; // alias of imageUrl
   categoryId: string;
   categoryName: string;
   categoryNameAr: string;

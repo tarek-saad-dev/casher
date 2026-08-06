@@ -142,6 +142,8 @@ export default function ServicesManagementPage() {
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [serviceSaving, setServiceSaving] = useState(false);
+  const [uploadingServiceImage, setUploadingServiceImage] = useState(false);
+  const [serviceImageUploadError, setServiceImageUploadError] = useState('');
   const [serviceFormData, setServiceFormData] = useState<ServiceFormData>({
     ProName: '',
     ProNameAr: '',
@@ -299,6 +301,7 @@ export default function ServicesManagementPage() {
 
   // Service CRUD operations
   const openServiceModal = (service?: Service) => {
+    setServiceImageUploadError('');
     if (service) {
       setEditingService(service);
       setServiceFormData({
@@ -327,6 +330,33 @@ export default function ServicesManagementPage() {
     }
     setServiceModalOpen(true);
   };
+
+  const handleServiceImageUpload = useCallback(
+    async (file: File | null) => {
+      if (!file) return;
+      setServiceImageUploadError('');
+      setUploadingServiceImage(true);
+      try {
+        const body = new FormData();
+        body.append('file', file);
+        if (editingService?.ProID) body.append('serviceId', String(editingService.ProID));
+        const res = await fetch('/api/admin/services/upload-image', {
+          method: 'POST',
+          body,
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok || !data.imageUrl) {
+          throw new Error(data.error || 'فشل رفع الصورة');
+        }
+        setServiceFormData((prev) => ({ ...prev, ImageUrl: String(data.imageUrl) }));
+      } catch (e: unknown) {
+        setServiceImageUploadError(e instanceof Error ? e.message : 'فشل رفع الصورة');
+      } finally {
+        setUploadingServiceImage(false);
+      }
+    },
+    [editingService?.ProID],
+  );
 
   const saveService = async () => {
     if (!serviceFormData.ProName.trim()) {
@@ -1162,7 +1192,10 @@ export default function ServicesManagementPage() {
             </div>
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="imageUrl">رابط الصورة</Label>
+                <Label htmlFor="imageUrl" className="flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4 text-amber-400" />
+                  صورة الخدمة
+                </Label>
                 {serviceFormData.ImageUrl.trim() && (
                   <Button
                     type="button"
@@ -1180,24 +1213,58 @@ export default function ServicesManagementPage() {
                 id="imageUrl"
                 value={serviceFormData.ImageUrl}
                 onChange={(e) => setServiceFormData({ ...serviceFormData, ImageUrl: e.target.value })}
-                className="bg-zinc-800 border-zinc-700 text-white"
-                placeholder="/services/haircut.jpg أو رابط خارجي"
+                className="bg-zinc-800 border-zinc-700 text-white font-mono text-xs"
+                placeholder="https://res.cloudinary.com/... أو /services/haircut.jpg"
                 dir="ltr"
               />
-              <p className="text-xs text-zinc-500">
-                أدخل مسارًا محليًا مثل <span dir="ltr" className="font-mono text-zinc-400">/services/haircut.jpg</span> أو رابطًا خارجيًا.
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Label
+                  htmlFor="serviceImageFile"
+                  className={`inline-flex items-center gap-2 rounded-md border border-zinc-600 px-3 py-2 text-xs cursor-pointer hover:bg-zinc-800 ${
+                    uploadingServiceImage || serviceSaving ? 'opacity-60 pointer-events-none' : ''
+                  }`}
+                >
+                  {uploadingServiceImage ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <ImageIcon className="w-3.5 h-3.5 text-amber-400" />
+                  )}
+                  {uploadingServiceImage ? 'جاري الرفع على Cloudinary...' : 'رفع صورة من الجهاز'}
+                </Label>
+                <input
+                  id="serviceImageFile"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="sr-only"
+                  disabled={uploadingServiceImage || serviceSaving}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    e.target.value = '';
+                    void handleServiceImageUpload(file);
+                  }}
+                />
+                <span className="text-[11px] text-zinc-500">JPG / PNG / WebP — حتى 5MB</span>
+              </div>
+              {serviceImageUploadError && (
+                <p className="text-xs text-rose-400">{serviceImageUploadError}</p>
+              )}
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                ارفع صورة من الجهاز (Cloudinary) أو الصق رابط https — أو اختر من صور المشروع أدناه.
+                بعد الحفظ تظهر في API الحجز العام.
               </p>
 
               {serviceFormData.ImageUrl.trim() ? (
                 <div className="rounded-lg border border-zinc-700 overflow-hidden bg-zinc-800/50">
                   <div className="px-3 py-2 border-b border-zinc-700 text-xs text-zinc-400">معاينة الصورة</div>
                   <div className="relative h-36 bg-zinc-900">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={serviceFormData.ImageUrl.trim()}
                       alt="معاينة صورة الخدمة"
                       className="h-full w-full object-cover"
                       onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = 'none';
+                        (e.target as HTMLImageElement).style.opacity = '0.25';
                       }}
                     />
                   </div>
@@ -1215,7 +1282,7 @@ export default function ServicesManagementPage() {
               )}
 
               <div className="space-y-2">
-                <Label className="text-xs text-zinc-400">اختيار سريع من الصور المتاحة</Label>
+                <Label className="text-xs text-zinc-400">اختيار سريع من الصور المتاحة (محلي)</Label>
                 <div className="grid grid-cols-4 gap-2">
                   {SERVICE_IMAGE_PRESETS.map((preset) => {
                     const isSelected = serviceFormData.ImageUrl.trim() === preset.path;
@@ -1232,6 +1299,7 @@ export default function ServicesManagementPage() {
                         }`}
                       >
                         <div className="aspect-4/3 bg-zinc-800">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={preset.path}
                             alt={preset.label}

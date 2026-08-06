@@ -58,19 +58,12 @@ export type CloudinaryUploadResult = {
   bytes: number | null;
 };
 
-/** Upload image buffer to Cloudinary folder `employees/`. */
-export async function uploadEmployeeImageBuffer(args: {
+async function uploadImageBuffer(args: {
   buffer: Buffer;
-  mimeType: string;
-  empId?: number | null;
-  fileName?: string | null;
+  folder: string;
+  publicIdBase: string;
 }): Promise<CloudinaryUploadResult> {
   const api = getCloudinary();
-  const folder = 'employees';
-  const publicIdBase =
-    args.empId && Number.isFinite(args.empId)
-      ? `emp-${args.empId}-${Date.now()}`
-      : `emp-${Date.now()}`;
 
   let result: {
     secure_url?: string;
@@ -84,12 +77,12 @@ export async function uploadEmployeeImageBuffer(args: {
     result = await new Promise((resolve, reject) => {
       const stream = api.uploader.upload_stream(
         {
-          folder,
-          public_id: publicIdBase,
+          folder: args.folder,
+          public_id: args.publicIdBase,
           resource_type: 'image',
           overwrite: true,
           // Eager transforms can fail on some plans; keep upload simple.
-          transformation: [{ width: 800, height: 800, crop: 'limit', quality: 'auto:good' }],
+          transformation: [{ width: 1200, height: 1200, crop: 'limit', quality: 'auto:good' }],
         },
         (err, res) => {
           if (err || !res?.secure_url) {
@@ -126,4 +119,46 @@ export async function uploadEmployeeImageBuffer(args: {
     format: result.format ?? null,
     bytes: result.bytes ?? null,
   };
+}
+
+/** Upload image buffer to Cloudinary folder `employees/`. */
+export async function uploadEmployeeImageBuffer(args: {
+  buffer: Buffer;
+  mimeType: string;
+  empId?: number | null;
+  fileName?: string | null;
+}): Promise<CloudinaryUploadResult> {
+  const publicIdBase =
+    args.empId && Number.isFinite(args.empId)
+      ? `emp-${args.empId}-${Date.now()}`
+      : `emp-${Date.now()}`;
+  return uploadImageBuffer({
+    buffer: args.buffer,
+    folder: 'employees',
+    publicIdBase,
+  });
+}
+
+/** Upload image buffer to Cloudinary folder `services/`. */
+export async function uploadServiceImageBuffer(args: {
+  buffer: Buffer;
+  mimeType?: string;
+  serviceId?: number | null;
+  /** Stable slug e.g. "haircut" — used as public_id when provided. */
+  slug?: string | null;
+  fileName?: string | null;
+}): Promise<CloudinaryUploadResult> {
+  const slug =
+    args.slug?.trim().replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') ||
+    null;
+  const publicIdBase =
+    slug ||
+    (args.serviceId && Number.isFinite(args.serviceId)
+      ? `svc-${args.serviceId}-${Date.now()}`
+      : `svc-${Date.now()}`);
+  return uploadImageBuffer({
+    buffer: args.buffer,
+    folder: 'services',
+    publicIdBase,
+  });
 }

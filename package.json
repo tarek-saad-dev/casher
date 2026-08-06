@@ -36,6 +36,8 @@
     "sync:live": "cd sync-service && npm run live",
     "sync:status": "cd sync-service && npm run status",
     "seed:permissions": "npx tsx scripts/seed-permissions.ts",
+    "upload:service-images": "npx tsx scripts/upload-service-images-to-cloudinary.ts",
+    "upload:service-images:dry": "npx tsx scripts/upload-service-images-to-cloudinary.ts --dry-run",
     "verify:availability-permissions": "npx tsx scripts/verify-availability-permissions.ts",
     "verify:availability-phase3c": "npx tsx scripts/verify-availability-phase3c.ts",
     "verify:availability-phase3c:acceptance": "npx tsx scripts/verify-availability-phase3c-acceptance.ts"

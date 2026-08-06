@@ -3,6 +3,8 @@
  * No DB / server-only imports — safe for admin client badges + unit tests.
  */
 
+import { resolveServiceImagePathByName } from '@/lib/serviceImages';
+
 export const PUBLIC_BOOKING_SERVICE_CONTRACT_VERSION = 'v3';
 export const PUBLIC_BOOKING_PRICING_SCOPE = 'global' as const;
 export const PUBLIC_BOOKING_CURRENCY = 'EGP';
@@ -179,12 +181,13 @@ export function getPublicAssetOrigin(): string | null {
     process.env.NEXT_PUBLIC_APP_URL?.trim() ||
     '';
   if (explicit) return explicit.replace(/\/$/, '');
-  const vercel = process.env.VERCEL_URL?.trim();
-  if (vercel) {
-    const host = vercel.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+  // Prefer stable production host — never ephemeral VERCEL_URL deployment hosts
+  // (those break cross-origin booking clients after redeploy).
+  const prod = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() || '';
+  if (prod) {
+    const host = prod.replace(/^https?:\/\//i, '').replace(/\/$/, '');
     return host ? `https://${host}` : null;
   }
-  // Stable production alias — public booking client site is cross-origin.
   return 'https://casher-five.vercel.app';
 }
 
@@ -224,6 +227,29 @@ export function sanitizePublicImageUrl(raw: string | null | undefined): string |
   } catch {
     return null;
   }
+}
+
+/**
+ * Public service image: DB ImageUrl first, then known ProName / Arabic name presets.
+ * Always returns absolute http(s) or null.
+ */
+export function resolvePublicServiceImageUrl(args: {
+  imageUrl?: string | null;
+  proName?: string | null;
+  proNameAr?: string | null;
+  nameEn?: string | null;
+  nameAr?: string | null;
+}): string | null {
+  const direct = sanitizePublicImageUrl(args.imageUrl);
+  if (direct) return direct;
+
+  const fallbackPath = resolveServiceImagePathByName(
+    args.proName,
+    args.nameEn,
+    args.proNameAr,
+    args.nameAr,
+  );
+  return sanitizePublicImageUrl(fallbackPath);
 }
 
 export function sanitizePublicDescription(raw: string | null | undefined): string | null {
