@@ -95,7 +95,7 @@ describe('bookingPublicServicesCatalog', () => {
           isDeleted: 0,
           ProType: 'serv',
           CatID: 19,
-          CatName: 'Hair Cut',
+          CatName: 'قص الشعر',
           CatType: 'serv',
           SortOrder: 10,
         },
@@ -107,5 +107,48 @@ describe('bookingPublicServicesCatalog', () => {
     expect(catalog.services[0]?.name).toBeTruthy();
     expect(catalog.groups[0]?.categoryName).toBeTruthy();
     expect(catalog.categories[0]?.services[0]?.serviceId).toBe(9);
+    expect(catalog.categories[0]?.id).toBe(19);
+    expect(catalog.categories[0]?.name).toBe('قص الشعر');
+    expect(catalog.categories[0]?.nameEn).toBe('Hair Cut');
+    expect(catalog.categories[0]?.serviceCount).toBe(1);
+    expect(catalog.meta.preferredShape).toBe('categories');
+  });
+
+  it('orders categories by admin SortOrder with services nested under each', () => {
+    const catalog = buildPublicServicesCatalog(
+      [
+        {
+          ProID: 2,
+          ProName: 'Beard',
+          ProNameAr: 'دقن',
+          SPrice1: 100,
+          DurationMinutes: 20,
+          isDeleted: 0,
+          ProType: 'serv',
+          CatID: 20,
+          CatName: 'خدمات اللحية',
+          CatType: 'serv',
+          SortOrder: 20,
+        },
+        {
+          ProID: 1,
+          ProName: 'Cut',
+          ProNameAr: 'قص',
+          SPrice1: 200,
+          DurationMinutes: 30,
+          isDeleted: 0,
+          ProType: 'serv',
+          CatID: 19,
+          CatName: 'قص الشعر',
+          CatType: 'serv',
+          SortOrder: 10,
+        },
+      ],
+      { branchCode: 'GLEEM', branchName: 'جليم' },
+      'v',
+    );
+    expect(catalog.categories.map((c) => c.categoryId)).toEqual(['19', '20']);
+    expect(catalog.categories[0]?.services.map((s) => s.serviceId)).toEqual([1]);
+    expect(catalog.categories[1]?.services.map((s) => s.serviceId)).toEqual([2]);
   });
 });

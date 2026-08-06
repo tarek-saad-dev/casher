@@ -146,46 +146,63 @@ No parameters required.
 
 ### 2. GET /services
 
-**Purpose:** Returns all services available for online booking.
+**Purpose:** Returns all services available for online booking, **grouped by admin categories**.
 
 **Request:**
 ```
-GET /api/public/booking/services
+GET /api/public/booking/services?branchCode=GLEEM
 ```
-No parameters required.
 
-**Response `200`:**
+**Preferred response field:** `categories` (ordered by admin `SortOrder`).
+
+**Response `200` (abbreviated):**
 ```json
 {
   "ok": true,
-  "services": [
+  "branch": { "branchCode": "GLEEM", "branchName": "جليم" },
+  "currency": "EGP",
+  "categories": [
     {
-      "id": 9,
-      "name": "Basic Cut",
-      "price": 150,
-      "durationMinutes": 30,
-      "categoryName": "Hair",
-      "isBookableOnline": true
-    },
-    {
-      "id": 10,
-      "name": "Beard Trim",
-      "price": 80,
-      "durationMinutes": 20,
-      "categoryName": "Beard",
-      "isBookableOnline": true
+      "categoryId": "19",
+      "id": 19,
+      "name": "قص الشعر",
+      "nameAr": "قص الشعر",
+      "nameEn": "Hair Cut",
+      "sortOrder": 10,
+      "serviceCount": 4,
+      "services": [
+        {
+          "serviceId": 9,
+          "id": 9,
+          "name": "حلاقة شعر",
+          "nameAr": "حلاقة شعر",
+          "nameEn": "Hair Cut",
+          "price": 200,
+          "durationMinutes": 30,
+          "bookable": true,
+          "imageUrl": "https://res.cloudinary.com/.../haircut.jpg",
+          "categoryId": "19",
+          "categoryName": "قص الشعر"
+        }
+      ]
     }
-  ]
+  ],
+  "services": [],
+  "groups": [],
+  "meta": { "preferredShape": "categories", "categoryCount": 6, "serviceCount": 31 }
 }
 ```
 
+> **Frontend:** loop `categories`, then each category’s `services`. Do not rebuild groups from the flat `services` list unless you need a legacy fallback.
+
 | Field | Type | Description |
 |---|---|---|
-| `id` | number | Use this as `serviceIds` in subsequent requests |
-| `durationMinutes` | number | Used to calculate slot end time |
-| `price` | number | In EGP |
+| `categories[].id` | number \| null | Admin CatID |
+| `categories[].services[].serviceId` | number | Use in `serviceIds` for availability / plan / create |
+| `durationMinutes` | number | Slot length |
+| `price` | number | EGP |
 
-> **Note:** If a service does not have a duration set in the database, the system falls back to `settings.defaultServiceDurationMinutes` (typically 30).
+> Flat `services` remains for older clients (same items, category order preserved).
 
 ---
 

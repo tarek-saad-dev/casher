@@ -249,6 +249,9 @@ Only branches that pass public discovery (`PUBLIC_LIVE` + active + `PublicBookin
 | **Rate limit** | catalog — 45/min |
 | **Errors** | `BRANCH_BOOKING_DISABLED`, `SERVICES_NOT_CONFIGURED`, … |
 
+**Preferred client shape:** render from **`categories`** (admin category order).  
+`services` is a flat compatibility list; `groups` is a legacy alias of categories.
+
 **Response `200`**
 
 ```ts
@@ -258,18 +261,26 @@ Only branches that pass public discovery (`PUBLIC_LIVE` + active + `PublicBookin
   currency: "EGP";
   pricingScope: "global";
   categories: Array<{
-    categoryId: string;
+    categoryId: string;       // "19"
+    id: number | null;        // 19
+    name: string;             // Arabic display
     nameAr: string;
     nameEn: string;
-    sortOrder: number;
+    categoryName: string;     // alias of nameAr
+    categoryNameAr: string;
+    categoryNameEn: string;
+    sortOrder: number;        // admin SortOrder
+    serviceCount: number;
     services: PublicBookingServiceWire[];
   }>;
-  services: PublicBookingServiceWire[]; // flat
-  groups: Array<{
+  services: PublicBookingServiceWire[]; // flat (same services, category order)
+  groups: Array<{             // legacy
     categoryId: string;
     categoryName: string;
     categoryNameAr: string;
     categoryNameEn: string;
+    sortOrder: number;
+    serviceCount: number;
     services: PublicBookingServiceWire[];
   }>;
   meta: {
@@ -279,6 +290,7 @@ Only branches that pass public discovery (`PUBLIC_LIVE` + active + `PublicBookin
     catalogVersion: string;
     contractVersion: string;
     pricingScope: "global";
+    preferredShape: "categories";
   };
 }
 

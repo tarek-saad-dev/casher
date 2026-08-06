@@ -336,6 +336,17 @@ export const TEMPORARY_CATEGORY_LABELS: Record<
   skincare: { nameAr: 'العناية بالبشرة', nameEn: 'Skincare' },
 };
 
+/** Arabic category name → English (admin stores CatName in Arabic). */
+export const CATEGORY_NAME_EN_BY_AR: Record<string, string> = {
+  'قص الشعر': 'Hair Cut',
+  'خدمات اللحية': 'Beard Cut',
+  'تصفيف وتشطيب': 'Hair Styling & Finishing',
+  'معالجات وعناية': 'Hair Treatments & Care',
+  'صبغات وهايلايت': 'Hair Color & Highlights',
+  'العناية بالبشرة': 'Skincare',
+  أخرى: UNCATEGORIZED_CATEGORY_NAME_EN,
+};
+
 function hasArabicChars(s: string): boolean {
   return /[\u0600-\u06FF]/.test(s);
 }
@@ -397,7 +408,10 @@ export function resolveCategoryNames(catName: string | null | undefined): {
   const mapped = TEMPORARY_CATEGORY_LABELS[raw.toLowerCase()];
   if (mapped) return mapped;
   if (hasArabicChars(raw)) {
-    return { nameAr: raw, nameEn: raw };
+    return {
+      nameAr: raw,
+      nameEn: CATEGORY_NAME_EN_BY_AR[raw] ?? raw,
+    };
   }
   return { nameAr: raw, nameEn: raw };
 }

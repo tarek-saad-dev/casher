@@ -63,10 +63,20 @@ export type PublicBookingServiceWire = {
 };
 
 export type PublicBookingCategoryWire = {
+  /** Stable string id (CatID as string, or `uncategorized`). */
   categoryId: string;
+  /** Numeric CatID when available; null for uncategorized. */
+  id: number | null;
+  /** Arabic-first display name (preferred for UI). */
+  name: string;
   nameAr: string;
   nameEn: string;
+  /** Aliases matching the legacy `groups[]` shape. */
+  categoryName: string;
+  categoryNameAr: string;
+  categoryNameEn: string;
   sortOrder: number;
+  serviceCount: number;
   services: PublicBookingServiceWire[];
 };
 
@@ -96,6 +106,8 @@ export type PublicBookingServicesCatalogResponse = {
     catalogVersion: string;
     contractVersion: string;
     pricingScope: typeof PUBLIC_BOOKING_PRICING_SCOPE;
+    /** Client should render `categories` (not the flat `services` list). */
+    preferredShape: 'categories';
   };
 };
 
@@ -336,7 +348,25 @@ export function buildPublicServicesCatalog(
         ),
       );
       const ranked = services.map((s, idx) => ({ ...s, sortOrder: idx + 1 }));
-      return { ...cat, services: ranked };
+      const numericId =
+        cat.categoryId === UNCATEGORIZED_CATEGORY_ID
+          ? null
+          : Number.isFinite(Number(cat.categoryId))
+            ? Number(cat.categoryId)
+            : null;
+      return {
+        categoryId: cat.categoryId,
+        id: numericId,
+        name: cat.nameAr,
+        nameAr: cat.nameAr,
+        nameEn: cat.nameEn,
+        categoryName: cat.nameAr,
+        categoryNameAr: cat.nameAr,
+        categoryNameEn: cat.nameEn,
+        sortOrder: cat.sortOrder,
+        serviceCount: ranked.length,
+        services: ranked,
+      } satisfies PublicBookingCategoryWire;
     })
     .filter((c) => c.services.length > 0)
     .sort((a, b) =>
@@ -349,9 +379,11 @@ export function buildPublicServicesCatalog(
   const services = categories.flatMap((c) => c.services);
   const groups = categories.map((c) => ({
     categoryId: c.categoryId,
-    categoryName: c.nameAr,
-    categoryNameAr: c.nameAr,
-    categoryNameEn: c.nameEn,
+    categoryName: c.categoryName,
+    categoryNameAr: c.categoryNameAr,
+    categoryNameEn: c.categoryNameEn,
+    sortOrder: c.sortOrder,
+    serviceCount: c.serviceCount,
     services: c.services,
   }));
 
@@ -363,8 +395,11 @@ export function buildPublicServicesCatalog(
     },
     currency: PUBLIC_BOOKING_CURRENCY,
     pricingScope: PUBLIC_BOOKING_PRICING_SCOPE,
+    /** Preferred: render booking UI from this array (admin category order). */
     categories,
+    /** Flat compatibility list — same services, category order preserved. */
     services,
+    /** Legacy groups shape for older clients. */
     groups,
     meta: {
       serviceCount: services.length,
@@ -373,6 +408,7 @@ export function buildPublicServicesCatalog(
       catalogVersion,
       contractVersion: PUBLIC_BOOKING_SERVICE_CONTRACT_VERSION,
       pricingScope: PUBLIC_BOOKING_PRICING_SCOPE,
+      preferredShape: 'categories',
     },
   };
 }
