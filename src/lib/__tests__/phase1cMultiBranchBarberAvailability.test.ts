@@ -60,7 +60,7 @@ describe('phase1c multi-branch barber availability — routes & wiring', () => {
     expect(domain).not.toMatch(/FROM dbo\.Bookings[\s\S]{0,200}busy/i);
     expect(domain).toContain('BRANCH_EVAL_CONCURRENCY');
     expect(BRANCH_EVAL_CONCURRENCY).toBe(2);
-    expect(MAX_BARBER_AVAILABILITY_DAYS).toBe(14);
+    expect(MAX_BARBER_AVAILABILITY_DAYS).toBe(31);
     expect(MAX_BARBER_AVAILABILITY_SERVICES).toBe(12);
   });
 

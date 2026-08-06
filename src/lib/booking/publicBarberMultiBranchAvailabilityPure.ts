@@ -32,6 +32,6 @@ export function sortBarberAvailabilitySlotsByAbsoluteStart<
   });
 }
 
-export const MAX_BARBER_AVAILABILITY_DAYS = 14;
+export const MAX_BARBER_AVAILABILITY_DAYS = 31;
 export const MAX_BARBER_AVAILABILITY_SERVICES = 12;
 export const BRANCH_EVAL_CONCURRENCY = 2;

@@ -78,7 +78,7 @@ Related legacy aggregate (Phase 10C, flat slots contract — still available):
 | `empId` | Path param; active public-bookable barber |
 | `serviceIds` | Non-empty, deduplicated; max 12; each public-bookable |
 | `dateFrom` | `YYYY-MM-DD` |
-| `days` | Integer 1…14 |
+| `days` | Integer 1…31 (aligned with public calendar / `MAX_PUBLIC_BARBER_CALENDAR_DAYS`) |
 | `scope` | `all_public` \| `specific_branch` |
 | `branchCode` | Required for `specific_branch`; identity is **code**, never name |
 
@@ -211,7 +211,7 @@ Every requested calendar date is returned in ascending order (including unavaila
 - `scope` must be `all_public` or `specific_branch`.
 - `specific_branch` requires `branchCode`; branch must be active + public-bookable; barber must have an **active** `CanReceiveBookings` assignment overlapping the window.
 - `all_public` includes only active public branches with such an assignment (inactive assignments and non-public branches excluded).
-- Date / horizon limits match public booking settings (max **14** days window on these routes).
+- Date / horizon limits match public booking settings (max **31** days window on these routes; engine still clips to each branch `maxBookingDaysAhead`).
 
 ---
 

@@ -99,6 +99,7 @@ All existing engine rules remain active: branch hours, employee schedules, overn
 - Branch evaluation uses **bounded parallelism** (`BRANCH_EVAL_CONCURRENCY = 2`).
 - Does **not** HTTP-call public available-slots; calls engine internals.
 - Short in-process cache (45s); keys include emp, services, date/range, scope, branch; cleared with create/cancel availability invalidation.
+- Request window max **31** days (aligned with `MAX_PUBLIC_BARBER_CALENDAR_DAYS`); engine still clips to branch `maxBookingDaysAhead`.
 - Duration logging without customer PII (`empId`, scope, branchCount, timings).
 
 ---
