@@ -36,9 +36,9 @@ describe('public available-slots lean path', () => {
     expect(engineSrc).toContain('Public path: skip second day-plan batch');
   });
 
-  it('bumps availability contract/cache to v6', () => {
-    expect(availabilitySrc).toContain("__pos_public_booking_availability_v6");
-    expect(availabilitySrc).toMatch(/const CONTRACT = 'v6'/);
+  it('bumps availability contract/cache to v7', () => {
+    expect(availabilitySrc).toContain("__pos_public_booking_availability_v7");
+    expect(availabilitySrc).toMatch(/const CONTRACT = 'v7'/);
   });
 
   it('does not re-truncate slots in getPublicAvailableSlots merge', () => {

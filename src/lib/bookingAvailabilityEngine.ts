@@ -518,7 +518,9 @@ async function buildBarberContexts(args: {
     timer.mark('busyParallelMs');
   }
 
-  // Phase 3C — attach canonical multi-window day plans (one batch resolve).
+  // Phase 3C — canonical day plan is authoritative over legacy weekly+override
+  // windows. CLOSE_DAY / empty windows must drop the barber (otherwise public
+  // slots/check/plan stay open while assertEmployeeIntervalAvailable 409s).
   if (contexts.length > 0) {
     const plans = await resolveEmployeeDayPlansBatch({
       empIds: contexts.map((c) => c.empId),
@@ -526,11 +528,19 @@ async function buildBarberContexts(args: {
       branchId: branchId ?? null,
       source: source === 'public' ? 'public' : 'operations',
     });
+    const deniedEmpIds = new Set<number>();
     for (const ctx of contexts) {
       const plan = plans.get(ctx.empId);
-      if (!plan?.isWorking || !plan.effSched) continue;
+      if (!plan) continue;
+      if (!plan.isWorking || !plan.effSched) {
+        deniedEmpIds.add(ctx.empId);
+        continue;
+      }
       const windows = normalizeEffectiveWindows(plan.effectiveWindows);
-      if (!windows.length) continue;
+      if (!windows.length) {
+        deniedEmpIds.add(ctx.empId);
+        continue;
+      }
       ctx.effectiveWindows = windows;
       ctx.effSched = plan.effSched;
       const outer = outerDisplayBounds(windows)!;
@@ -538,6 +548,11 @@ async function buildBarberContexts(args: {
       ctx.shiftEndMs = outer.endMs;
       ctx.isOvernight =
         plan.isOvernight || windows.some((w) => w.endDayOffset === 1);
+    }
+    if (deniedEmpIds.size > 0) {
+      for (let i = contexts.length - 1; i >= 0; i--) {
+        if (deniedEmpIds.has(contexts[i].empId)) contexts.splice(i, 1);
+      }
     }
   }
 

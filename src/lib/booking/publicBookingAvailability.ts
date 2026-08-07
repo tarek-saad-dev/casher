@@ -34,8 +34,8 @@ const CACHE_TTL_MS = 45_000;
 /** Calendar days change less often than live slots — keep longer. */
 const DAYS_CACHE_TTL_MS = 90_000;
 const CACHE_MAX = 64;
-const cacheRoot = '__pos_public_booking_availability_v6';
-const CONTRACT = 'v6';
+const cacheRoot = '__pos_public_booking_availability_v7';
+const CONTRACT = 'v7';
 /** available-days only needs first free time for calendar highlighting. */
 const DAYS_SUMMARY_SLOT_CAP = 1;
 

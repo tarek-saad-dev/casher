@@ -453,6 +453,18 @@ describe('Phase 3C — available-days continuous duration rule', () => {
   });
 });
 
+describe('Phase 3C — engine must not keep legacy windows when day plan denies', () => {
+  it('drops barbers when canonical plan is closed / empty (create parity)', () => {
+    const engine = read('src/lib/bookingAvailabilityEngine.ts');
+    const attachIdx = engine.indexOf('canonical day plan is authoritative');
+    expect(attachIdx).toBeGreaterThan(-1);
+    const slice = engine.slice(attachIdx, attachIdx + 1800);
+    expect(slice).toContain('deniedEmpIds');
+    expect(slice).toContain('!plan.isWorking');
+    expect(slice).toMatch(/contexts\s*=\s*contexts\.filter|contexts\.splice/);
+  });
+});
+
 describe('Phase 3C — contract audit (critical runtime files)', () => {
   const critical = [
     'src/lib/bookingAvailabilityEngine.ts',
