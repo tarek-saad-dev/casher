@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { getActiveBranchContext } from '@/lib/branch/context';
+import {
+  ensureTblEmpImageUrlColumn,
+  tblEmpImageUrlSelect,
+} from '@/lib/migrations/ensureEmployeeImageUrl';
 
 /**
  * GET /api/barbers
@@ -43,6 +47,8 @@ export async function GET(req: NextRequest) {
     const day = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
 
     const db = await getPool();
+    const hasImageUrl = await ensureTblEmpImageUrlColumn(db);
+    const imageUrlCol = tblEmpImageUrlSelect(hasImageUrl);
     const request = db.request();
     let assignmentJoin = '';
     if (branchCtx) {
@@ -63,6 +69,7 @@ export async function GET(req: NextRequest) {
         e.EmpID, 
         e.EmpName,
         e.Job,
+        ${imageUrlCol},
         ISNULL(sales.SalesCount, 0) AS SalesCount
       FROM [dbo].[TblEmp] e
       ${assignmentJoin}

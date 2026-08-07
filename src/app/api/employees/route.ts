@@ -24,6 +24,10 @@ import { ensureEmployeeAdvanceMapping } from '@/lib/hr/employee-hr-advance';
 import { getEmployeesTargetSummaryBatch } from '@/lib/payroll/employee-target';
 import { ensureTblEmpImageUrlColumn } from '@/lib/migrations/ensureEmployeeImageUrl';
 import { ensureTblEmpNameEnColumn, normalizeEmpNameEn } from '@/lib/migrations/ensureEmployeeNameEn';
+import {
+  ensureTblEmpDisplaySortOrderColumn,
+  normalizeDisplaySortOrder,
+} from '@/lib/migrations/ensureEmployeeDisplaySortOrder';
 import { normalizeEmployeeImageUrlInput } from '@/lib/hr/employeeImageUrl';
 import { invalidatePublicBookingBarbersCache } from '@/lib/booking/publicBookingBarbers';
 import {
@@ -41,10 +45,14 @@ export async function GET(req: NextRequest) {
     const showInactive = searchParams.get('inactive') === 'true';
 
     const db = await getPool();
+    const hasSort = await ensureTblEmpDisplaySortOrderColumn(db);
+    const orderBy = hasSort
+      ? 'ISNULL(e.DisplaySortOrder, 999), e.EmpName'
+      : 'e.EmpName';
     const result = await db.request().query(`
       ${EMPLOYEE_LIST_SELECT}
       WHERE ISNULL(e.isActive, 1) = ${showInactive ? '0' : '1'}
-      ORDER BY e.EmpName
+      ORDER BY ${orderBy}
     `);
 
     let targetSummary = new Map<
@@ -109,6 +117,7 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as EmployeeHrPayload & {
       imageUrl?: string | null;
       empNameEn?: string | null;
+      displaySortOrder?: number | null;
     };
     const isHrPayload = usesHrModelPayload(body);
 
@@ -133,6 +142,15 @@ export async function POST(req: NextRequest) {
     let empNameEnValue: string | null | undefined;
     if (body.empNameEn !== undefined) {
       empNameEnValue = normalizeEmpNameEn(body.empNameEn);
+    }
+
+    let displaySortOrderValue: number | undefined;
+    if (body.displaySortOrder !== undefined) {
+      const normalized = normalizeDisplaySortOrder(body.displaySortOrder);
+      if (!normalized.ok) {
+        return NextResponse.json({ error: normalized.error }, { status: 400 });
+      }
+      displaySortOrderValue = normalized.value;
     }
 
     const name = String(body.empName).trim();
@@ -204,6 +222,21 @@ export async function POST(req: NextRequest) {
           .query(`UPDATE dbo.TblEmp SET EmpNameEn = @empNameEn WHERE EmpID = @empId`);
       }
 
+      if (displaySortOrderValue !== undefined) {
+        const hasCol = await ensureTblEmpDisplaySortOrderColumn(db);
+        if (!hasCol) {
+          throw new Error(
+            'عمود DisplaySortOrder غير متوفر — شغّل /api/admin/migrate-employee-display-sort-order',
+          );
+        }
+        await new sql.Request(transaction)
+          .input('empId', sql.Int, newEmpID)
+          .input('displaySortOrder', sql.Int, displaySortOrderValue)
+          .query(
+            `UPDATE dbo.TblEmp SET DisplaySortOrder = @displaySortOrder WHERE EmpID = @empId`,
+          );
+      }
+
       const { expINID, catName } = await ensureEmployeeAdvanceMapping(
         transaction,
         newEmpID,
@@ -212,7 +245,11 @@ export async function POST(req: NextRequest) {
 
       await transaction.commit();
 
-      if (imageUrlValue || empNameEnValue) {
+      if (
+        imageUrlValue ||
+        empNameEnValue ||
+        displaySortOrderValue !== undefined
+      ) {
         invalidatePublicBookingBarbersCache();
       }
 
@@ -223,6 +260,7 @@ export async function POST(req: NextRequest) {
           EmpNameEn: empNameEnValue ?? null,
           isActive: newEmp.isActive,
           ImageUrl: imageUrlValue ?? null,
+          DisplaySortOrder: displaySortOrderValue ?? 999,
           AdvanceExpINID: expINID,
           AdvanceCatName: catName,
           ...(isHrPayload && validation.normalized

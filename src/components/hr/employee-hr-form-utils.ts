@@ -41,6 +41,7 @@ export interface HrEmployeeListRow {
   Mobile?: string | null;
   ImageUrl?: string | null;
   EmpNameEn?: string | null;
+  DisplaySortOrder?: number | null;
 }
 
 export interface ProfileScheduleRow {
@@ -85,6 +86,8 @@ export interface EmployeeHrFormState {
   emergencyContactPhone: string;
   notes: string;
   imageUrl: string;
+  /** Public booking list order — lower first. */
+  displaySortOrder: string;
 }
 
 export function createEmptyEmployeeHrFormState(): EmployeeHrFormState {
@@ -113,6 +116,7 @@ export function createEmptyEmployeeHrFormState(): EmployeeHrFormState {
     emergencyContactPhone: '',
     notes: '',
     imageUrl: '',
+    displaySortOrder: '999',
   };
 }
 
@@ -197,6 +201,10 @@ export function employeeToFormState(
     emergencyContactPhone: profile?.EmergencyContactPhone ?? '',
     notes: profile?.Notes ?? profile?.PersonalNotes ?? '',
     imageUrl: emp.ImageUrl?.trim() || '',
+    displaySortOrder:
+      emp.DisplaySortOrder != null && Number.isFinite(Number(emp.DisplaySortOrder))
+        ? String(emp.DisplaySortOrder)
+        : '999',
   };
 }
 
@@ -296,6 +304,14 @@ export function buildEmployeeHrApiPayload(
   payload.imageUrl = form.imageUrl.trim() || null;
   // English display name for public booking / bilingual UI
   payload.empNameEn = form.empNameEn.trim() || null;
+
+  const sortRaw = form.displaySortOrder.trim();
+  if (sortRaw !== '') {
+    const n = Number(sortRaw);
+    if (Number.isFinite(n) && Number.isInteger(n)) {
+      payload.displaySortOrder = n;
+    }
+  }
 
   const shouldIncludeSchedule =
     options.includeSchedule &&

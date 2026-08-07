@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { deriveAttendanceDisplay, type TeamAttendanceMember } from '@/lib/teamAttendance';
 import NonBarberEmployeeModal from '@/components/pos/NonBarberEmployeeModal';
 import type { Barber } from '@/lib/types';
-import { getBarberImagePathByName } from '@/lib/barberImages';
+import { resolvePosBarberImageUrl } from '@/lib/barberImages';
 
 interface BarberCarouselProps {
   barbers: Barber[];
@@ -44,6 +44,57 @@ const getBarberRating = (name: string): number => {
 function isBarberInList(barbers: Barber[], empId: number | undefined): boolean {
   if (empId == null) return false;
   return barbers.some((b) => b.EmpID === empId);
+}
+
+function barberInitials(name: string): string {
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .slice(0, 2);
+}
+
+function BarberAvatar({
+  barber,
+  colorClass,
+  isSelected,
+}: {
+  barber: Barber;
+  colorClass: string;
+  isSelected: boolean;
+}) {
+  const imageSrc = resolvePosBarberImageUrl(barber.ImageUrl, barber.EmpName);
+  const [broken, setBroken] = useState(false);
+  const showPhoto = Boolean(imageSrc) && !broken;
+  const initials = barberInitials(barber.EmpName);
+
+  return (
+    <div
+      className={cn(
+        'relative mb-2 flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border-2 bg-surface-muted transition-all duration-300 md:h-[4.5rem] md:w-[4.5rem]',
+        isSelected ? colorClass : 'border-border group-hover:border-muted',
+      )}
+    >
+      {showPhoto ? (
+        <img
+          src={imageSrc!}
+          alt={barber.EmpName}
+          className="h-full w-full object-cover"
+          loading="lazy"
+          onError={() => setBroken(true)}
+        />
+      ) : (
+        <span className="text-base font-bold text-primary">{initials}</span>
+      )}
+      {isSelected && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/40">
+          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary">
+            <Check className="h-3 w-3 text-primary-foreground" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function BarberCarousel({
@@ -130,10 +181,6 @@ export default function BarberCarousel({
           const isSelected = selected?.EmpID === barber.EmpID;
           const colorClass = BARBER_COLORS[idx % BARBER_COLORS.length];
           const rating = getBarberRating(barber.EmpName);
-          const mappedPhoto = getBarberImagePathByName(barber.EmpName);
-          const hasNoPhoto = !mappedPhoto;
-          const imageSrc = mappedPhoto ?? undefined;
-          const initials = barber.EmpName.split(' ').map(n => n[0]).join('').slice(0, 2);
           const attendance = attendanceByEmpId?.get(barber.EmpID);
           const attendanceDisplay = attendance ? deriveAttendanceDisplay(attendance) : null;
 
@@ -143,36 +190,17 @@ export default function BarberCarousel({
               type="button"
               onClick={() => onSelect(barber)}
               className={cn(
-                'group relative flex min-w-[92px] shrink-0 flex-col items-center rounded-2xl border p-2.5 transition-all duration-300 md:min-w-[100px] md:p-3',
+                'group relative flex min-w-[100px] shrink-0 flex-col items-center rounded-2xl border p-2.5 transition-all duration-300 md:min-w-[112px] md:p-3',
                 isSelected
                   ? `bg-surface-muted ${colorClass} border-2 shadow-lg shadow-primary/10`
                   : 'bg-surface border-border hover:border-muted hover:bg-surface-muted'
               )}
             >
-              {/* Profile Image or Initials Placeholder */}
-              <div className={cn(
-                'relative mb-2 flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border-2 transition-all duration-300 md:h-14 md:w-14',
-                isSelected ? colorClass : 'border-border group-hover:border-muted',
-                hasNoPhoto ? 'bg-surface-muted' : ''
-              )}>
-                {hasNoPhoto ? (
-                  <span className="text-base font-bold text-primary">{initials}</span>
-                ) : (
-                  <img
-                    src={imageSrc}
-                    alt={barber.EmpName}
-                    className="w-full h-full object-cover"
-                  />
-                )}
-                {/* Selected Checkmark */}
-                {isSelected && (
-                  <div className="absolute inset-0 bg-background/40 flex items-center justify-center">
-                    <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                      <Check className="w-3 h-3 text-primary-foreground" />
-                    </div>
-                  </div>
-                )}
-              </div>
+              <BarberAvatar
+                barber={barber}
+                colorClass={colorClass}
+                isSelected={isSelected}
+              />
 
               {/* Barber Name */}
               <span className={cn(

@@ -383,3 +383,29 @@ export async function listBookableEmployeeIdsForBranch(
     .query(useExclusion ? EMP_BOOKABLE_AT_BRANCH_PUBLIC_SQL : EMP_BOOKABLE_AT_BRANCH_SQL);
   return result.recordset.map((r: { EmpID: number }) => Number(r.EmpID));
 }
+
+/**
+ * Cheap single-employee eligibility check (avoids loading the full branch roster).
+ */
+export async function isEmployeeBookableAtBranch(
+  empId: number,
+  branchId: number,
+  operationalDate: string,
+  opts?: { publicOnly?: boolean },
+): Promise<boolean> {
+  if (!Number.isInteger(empId) || empId <= 0) return false;
+  const db = await getPool();
+  const publicOnly = opts?.publicOnly === true;
+  const smokeContext = getSmokeExecutionContext();
+  const useExclusion = publicOnly && !smokeContext;
+  const baseSql = useExclusion
+    ? EMP_BOOKABLE_AT_BRANCH_PUBLIC_SQL
+    : EMP_BOOKABLE_AT_BRANCH_SQL;
+  const result = await db
+    .request()
+    .input('branchId', sql.Int, branchId)
+    .input('day', sql.Date, operationalDate)
+    .input('empId', sql.Int, empId)
+    .query(`${baseSql.trim()} AND ea.EmpID = @empId`);
+  return result.recordset.length > 0;
+}

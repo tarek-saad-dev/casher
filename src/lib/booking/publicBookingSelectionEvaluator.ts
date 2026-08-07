@@ -44,6 +44,10 @@ import {
   ensureTblEmpNameEnColumn,
   normalizeEmpNameEn,
 } from '@/lib/migrations/ensureEmployeeNameEn';
+import {
+  coerceDisplaySortOrder,
+  ensureTblEmpDisplaySortOrderColumn,
+} from '@/lib/migrations/ensureEmployeeDisplaySortOrder';
 import { getBarberNameEnByArabicName } from '@/lib/barberImages';
 
 export type PublicSelectionPurpose = 'check_slot' | 'plan' | 'create_precheck' | 'internal_preview';
@@ -66,6 +70,7 @@ export type PublicCandidateBarber = {
   nameAr: string;
   nameEn: string | null;
   imageUrl: string | null;
+  displaySortOrder?: number;
 };
 
 export type PublicSelectionEvaluation = {
@@ -199,6 +204,36 @@ async function loadEmpPublicIdentity(
   };
 }
 
+async function loadEmpDisplaySortOrders(
+  empIds: number[],
+): Promise<Map<number, number>> {
+  const map = new Map<number, number>();
+  const unique = [...new Set(empIds.filter((id) => Number.isInteger(id) && id > 0))];
+  for (const id of unique) map.set(id, 999);
+  if (!unique.length) return map;
+
+  const db = await getPool();
+  const hasCol = await ensureTblEmpDisplaySortOrderColumn(db);
+  if (!hasCol) return map;
+
+  const req = db.request();
+  const placeholders = unique
+    .map((id, i) => {
+      req.input(`e${i}`, sql.Int, id);
+      return `@e${i}`;
+    })
+    .join(',');
+  const res = await req.query(`
+    SELECT EmpID, DisplaySortOrder
+    FROM dbo.TblEmp
+    WHERE EmpID IN (${placeholders})
+  `);
+  for (const row of res.recordset) {
+    map.set(Number(row.EmpID), coerceDisplaySortOrder(row.DisplaySortOrder));
+  }
+  return map;
+}
+
 async function classifySpecificBarberDay(args: {
   empId: number;
   branchCtx: PublicBookingBranchContext;
@@ -261,8 +296,18 @@ async function classifySpecificBarberDay(args: {
 function sortCandidates(rows: PublicCandidateBarber[]): PublicCandidateBarber[] {
   return [...rows].sort((a, b) =>
     comparePublicBarbers(
-      { displaySortOrder: 999, isFeatured: false, nameAr: a.nameAr, empId: a.empId },
-      { displaySortOrder: 999, isFeatured: false, nameAr: b.nameAr, empId: b.empId },
+      {
+        displaySortOrder: a.displaySortOrder ?? 999,
+        isFeatured: false,
+        nameAr: a.nameAr,
+        empId: a.empId,
+      },
+      {
+        displaySortOrder: b.displaySortOrder ?? 999,
+        isFeatured: false,
+        nameAr: b.nameAr,
+        empId: b.empId,
+      },
     ),
   );
 }
@@ -514,6 +559,13 @@ export async function evaluatePublicBookingSelection(args: {
           imageUrl: resolveBarberPublicImageUrl(null, m.empName),
         });
       }
+    }
+    const sortOrders = await loadEmpDisplaySortOrders([...byEmp.keys()]);
+    for (const [empId, row] of byEmp) {
+      byEmp.set(empId, {
+        ...row,
+        displaySortOrder: sortOrders.get(empId) ?? 999,
+      });
     }
     candidateBarbers = sortCandidates([...byEmp.values()]);
 

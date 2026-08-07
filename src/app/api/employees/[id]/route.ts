@@ -20,6 +20,10 @@ import {
 } from '@/lib/hr/employee-hr-db';
 import { ensureTblEmpImageUrlColumn } from '@/lib/migrations/ensureEmployeeImageUrl';
 import { ensureTblEmpNameEnColumn, normalizeEmpNameEn } from '@/lib/migrations/ensureEmployeeNameEn';
+import {
+  ensureTblEmpDisplaySortOrderColumn,
+  normalizeDisplaySortOrder,
+} from '@/lib/migrations/ensureEmployeeDisplaySortOrder';
 import { invalidatePublicBookingBarbersCache } from '@/lib/booking/publicBookingBarbers';
 import { normalizeEmployeeImageUrlInput } from '@/lib/hr/employeeImageUrl';
 import { getCairoBusinessDate } from '@/lib/businessDate';
@@ -77,6 +81,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     const body = (await req.json()) as EmployeeHrPayload & {
       imageUrl?: string | null;
       empNameEn?: string | null;
+      displaySortOrder?: number | null;
     };
     const {
       empName,
@@ -91,6 +96,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       whatsApp,
       imageUrl,
       empNameEn,
+      displaySortOrder,
     } = body;
 
     const pool = await getPool();
@@ -238,6 +244,25 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       }
       addClause('EmpNameEn = @empNameEn', (req) =>
         req.input('empNameEn', sql.NVarChar(200), normalizeEmpNameEn(empNameEn)),
+      );
+    }
+    if (displaySortOrder !== undefined) {
+      const normalized = normalizeDisplaySortOrder(displaySortOrder);
+      if (!normalized.ok) {
+        return NextResponse.json({ error: normalized.error }, { status: 400 });
+      }
+      const hasCol = await ensureTblEmpDisplaySortOrderColumn(pool);
+      if (!hasCol) {
+        return NextResponse.json(
+          {
+            error:
+              'عمود DisplaySortOrder غير متوفر — شغّل /api/admin/migrate-employee-display-sort-order',
+          },
+          { status: 500 },
+        );
+      }
+      addClause('DisplaySortOrder = @displaySortOrder', (req) =>
+        req.input('displaySortOrder', sql.Int, normalized.value),
       );
     }
 
@@ -405,7 +430,11 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       return NextResponse.json({ error: 'الموظف غير موجود' }, { status: 404 });
     }
 
-    if (imageUrl !== undefined || empNameEn !== undefined) {
+    if (
+      imageUrl !== undefined ||
+      empNameEn !== undefined ||
+      displaySortOrder !== undefined
+    ) {
       invalidatePublicBookingBarbersCache();
     }
 

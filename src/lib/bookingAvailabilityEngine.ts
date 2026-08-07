@@ -10,7 +10,7 @@ import {
   getGlobalTimingDefaults,
   salonDateTimeToMs,
 } from '@/lib/publicBookingHelpers';
-import { listBookableEmployeeIdsForBranch } from '@/lib/branch/bookingQueueOwnership';
+import { listBookableEmployeeIdsForBranch, isEmployeeBookableAtBranch } from '@/lib/branch/bookingQueueOwnership';
 import { BOOKING_SLOT_BARBER_JOBS_SQL_LIST } from '@/lib/availabilityEngine';
 import {
   buildQueueIntervals,
@@ -294,14 +294,14 @@ async function buildBarberContexts(args: {
   // Branch-first roster avoids loading every barber then filtering.
   let barberIds: number[];
   if (mode === 'specific' && empId) {
-    barberIds = [empId];
+    // Specific: do NOT load the full branch roster — one cheap eligibility check.
     if (branchId != null) {
-      const eligibleIds = new Set(
-        await listBookableEmployeeIdsForBranch(branchId, date, {
-          publicOnly: source === 'public',
-        }),
-      );
-      barberIds = barberIds.filter((id) => eligibleIds.has(id));
+      const ok = await isEmployeeBookableAtBranch(empId, branchId, date, {
+        publicOnly: source === 'public',
+      });
+      barberIds = ok ? [empId] : [];
+    } else {
+      barberIds = [empId];
     }
   } else if (branchId != null) {
     barberIds = await listBookableEmployeeIdsForBranch(branchId, date, {
@@ -924,7 +924,9 @@ export async function listAvailableBookingSlots(args: {
   }
 
   let alternativeBarbers: BarberAlternative[] = [];
+  // Public clients do not consume alternatives — skip the O(barbers×slots) scan.
   if (
+    source !== 'public' &&
     mode === 'specific' &&
     empId &&
     availableSlots.length === 0 &&
@@ -975,15 +977,16 @@ export async function listAvailableBookingSlots(args: {
           ? [empId]
           : [...new Set(allPlans.map((p) => p.empId))];
 
+    // Public path: skip second day-plan batch — use in-memory rejections only.
     const dayPlans =
-      reasonEmpIds.length > 0
-        ? await resolveEmployeeDayPlansBatch({
+      source === 'public' || reasonEmpIds.length === 0
+        ? new Map()
+        : await resolveEmployeeDayPlansBatch({
             empIds: reasonEmpIds,
             businessDate: date,
             branchId: branchId ?? null,
-            source: source === 'public' ? 'public' : 'operations',
-          })
-        : new Map();
+            source: 'operations',
+          });
 
     const DAY_DENY_PRECEDENCE: AvailabilityReasonCode[] = [
       'EMPLOYEE_INACTIVE',

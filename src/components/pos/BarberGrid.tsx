@@ -1,7 +1,7 @@
 'use client';
 
-import { User } from 'lucide-react';
 import type { Barber } from '@/lib/types';
+import { resolvePosBarberImageUrl } from '@/lib/barberImages';
 
 interface BarberGridProps {
   barbers: Barber[];
@@ -26,6 +26,8 @@ export default function BarberGrid({ barbers, selected, onSelect }: BarberGridPr
         {barbers.map((b, idx) => {
           const isSelected = selected?.EmpID === b.EmpID;
           const colorClass = BARBER_COLORS[idx % BARBER_COLORS.length];
+          const imageSrc = resolvePosBarberImageUrl(b.ImageUrl, b.EmpName);
+          const initials = b.EmpName.split(' ').map((n) => n[0]).join('').slice(0, 2);
           return (
             <button
               key={b.EmpID}
@@ -39,10 +41,14 @@ export default function BarberGrid({ barbers, selected, onSelect }: BarberGridPr
               `}
             >
               <div className={`
-                flex items-center justify-center w-10 h-10 rounded-full
+                flex items-center justify-center w-10 h-10 rounded-full overflow-hidden
                 ${isSelected ? 'bg-primary text-primary-foreground' : colorClass}
               `}>
-                <User className="w-5 h-5" />
+                {imageSrc ? (
+                  <img src={imageSrc} alt={b.EmpName} className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-xs font-bold">{initials}</span>
+                )}
               </div>
               <span className={`text-xs font-medium ${isSelected ? 'text-primary' : ''}`}>
                 {b.EmpName}

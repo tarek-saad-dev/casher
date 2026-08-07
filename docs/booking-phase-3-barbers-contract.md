@@ -14,3 +14,8 @@
 `availabilityType` / day `status` for working public days: **`presence_only`** (exact slots = Phase 4).
 
 Compat fields retained: `id`, `name`, `photoUrl`, `bio`, `isBookableOnline`, calendar `isPresent`/`isBookable`.
+
+## Ordering
+
+List responses are sorted by `displaySortOrder` ascending (lower first), then Arabic name, then `empId`.  
+Admin control: **الموارد البشرية → الموظفين → ترتيب الظهور في موقع الحجز** (`TblEmp.DisplaySortOrder`). Default `999`.

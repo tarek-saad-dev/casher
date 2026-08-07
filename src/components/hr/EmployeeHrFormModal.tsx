@@ -372,6 +372,23 @@ export default function EmployeeHrFormModal({
               </div>
 
               <div className="space-y-1.5">
+                <Label>ترتيب الظهور في موقع الحجز</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={999999}
+                  step={1}
+                  value={form.displaySortOrder}
+                  onChange={(e) => patchForm({ displaySortOrder: e.target.value })}
+                  dir="ltr"
+                  placeholder="10"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  الرقم الأصغر يظهر أولاً في قائمة الحلاقين للعميل (مثلاً 10 ثم 20 ثم 30)
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
                 <Label>تاريخ بداية العمل</Label>
                 <Input
                   type="date"

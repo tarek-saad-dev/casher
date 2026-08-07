@@ -17,6 +17,8 @@ export interface Barber {
   EmpID: number;
   EmpName: string;
   Job?: string | null;
+  /** TblEmp.ImageUrl — relative `/barber-*.jpg` or absolute http(s). */
+  ImageUrl?: string | null;
 }
 
 export interface Service {

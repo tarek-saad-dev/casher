@@ -79,3 +79,24 @@ export function getBarberImagePathByName(
   if (BARBER_NO_PHOTO_NAMES.has(key)) return null;
   return BARBER_IMAGE_BY_EMP_NAME[key] ?? null;
 }
+
+/**
+ * POS display: prefer TblEmp.ImageUrl (relative or http(s)), then name presets.
+ * Keeps relative `/barber-*.jpg` paths as-is for same-origin POS.
+ */
+export function resolvePosBarberImageUrl(
+  dbImageUrl: string | null | undefined,
+  empName?: string | null,
+): string | null {
+  const raw = String(dbImageUrl ?? '').trim();
+  if (raw) {
+    if (/^[a-zA-Z]:[\\/]/.test(raw) || raw.startsWith('\\\\')) {
+      // fall through to name map
+    } else if (/^(file|data|javascript):/i.test(raw)) {
+      // fall through
+    } else if (raw.startsWith('/') || /^https?:\/\//i.test(raw)) {
+      return raw;
+    }
+  }
+  return getBarberImagePathByName(empName);
+}

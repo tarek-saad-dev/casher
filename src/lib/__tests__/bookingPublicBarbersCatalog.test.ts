@@ -116,6 +116,44 @@ describe('bookingPublicBarbersCatalog / policy', () => {
     expect(dedupeBarbersByEmpId(assembled).map((b) => b.empId).sort()).toEqual([12, 99]);
   });
 
+  it('orders by displaySortOrder then Arabic name', () => {
+    expect(
+      comparePublicBarbers(
+        { displaySortOrder: 10, isFeatured: false, nameAr: 'زياد', empId: 12 },
+        { displaySortOrder: 20, isFeatured: false, nameAr: 'احمد', empId: 18 },
+      ),
+    ).toBeLessThan(0);
+
+    const assembled = assemblePublicBarbersFromCandidates(
+      [
+        {
+          empId: 18,
+          name: 'احمد',
+          branchCode: 'GLEEM',
+          branchName: 'جليم',
+          displaySortOrder: 20,
+        },
+        {
+          empId: 12,
+          name: 'زياد',
+          branchCode: 'GLEEM',
+          branchName: 'جليم',
+          displaySortOrder: 10,
+        },
+        {
+          empId: 5,
+          name: 'كريم',
+          branchCode: 'GLEEM',
+          branchName: 'جليم',
+          displaySortOrder: 30,
+        },
+      ],
+      [9],
+    );
+    expect(assembled.map((b) => b.empId)).toEqual([12, 18, 5]);
+    expect(assembled.map((b) => b.displaySortOrder)).toEqual([10, 20, 30]);
+  });
+
   it('deterministic ordering by Arabic name then EmpID', () => {
     expect(
       comparePublicBarbers(

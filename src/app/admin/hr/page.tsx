@@ -582,6 +582,7 @@ function EmployeesPanel() {
             <thead>
               <tr className="border-b border-border text-muted-foreground/70 text-xs uppercase tracking-wider">
                 <th className="px-4 py-3 text-right font-medium">#</th>
+                <th className="px-4 py-3 text-right font-medium">ترتيب</th>
                 <th className="px-4 py-3 text-right font-medium">الموظف</th>
                 <th className="px-4 py-3 text-right font-medium">نوع التوظيف</th>
                 <th className="px-4 py-3 text-right font-medium">المحاسبة</th>
@@ -598,6 +599,9 @@ function EmployeesPanel() {
               {filteredEmployees.map((emp) => (
                 <tr key={emp.EmpID} className="hover:bg-surface-muted/30 transition-colors">
                   <td className="px-4 py-3 text-muted-foreground/70 font-mono text-xs">{emp.EmpID}</td>
+                  <td className="px-4 py-3 text-muted-foreground font-mono text-xs tabular-nums">
+                    {emp.DisplaySortOrder ?? 999}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2.5">
                       <div className="flex items-center justify-center w-9 h-9 rounded-full bg-primary/10 text-primary shrink-0 overflow-hidden border border-border">

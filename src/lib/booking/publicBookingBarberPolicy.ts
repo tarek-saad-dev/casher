@@ -6,7 +6,7 @@ import { getBarberImagePathByName } from '@/lib/barberImages';
 import { isEmployeeHiddenFromPublicBooking } from '@/lib/hr/testEmployeePolicy';
 import { sanitizePublicImageUrl } from '@/lib/booking/publicBookingServicePolicy';
 
-export const PUBLIC_BOOKING_BARBER_CONTRACT_VERSION = 'v3';
+export const PUBLIC_BOOKING_BARBER_CONTRACT_VERSION = 'v4';
 export const MAX_PUBLIC_BARBER_CALENDAR_DAYS = 31;
 
 export type PublicBarberAvailabilityType = 'presence_only';

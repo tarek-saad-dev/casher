@@ -36,8 +36,8 @@ const CACHE_TTL_MS = 45_000;
 /** Calendar days change less often than live slots — keep longer. */
 const DAYS_CACHE_TTL_MS = 90_000;
 const CACHE_MAX = 64;
-const cacheRoot = '__pos_public_booking_availability_v4';
-const CONTRACT = 'v4';
+const cacheRoot = '__pos_public_booking_availability_v5';
+const CONTRACT = 'v5';
 /** available-days only needs first free time for calendar highlighting. */
 const DAYS_SUMMARY_SLOT_CAP = 1;
 
@@ -279,28 +279,30 @@ async function classifySpecificBarberDay(args: {
   if (isOutsideBookingHorizon(args.date, args.horizonEnd)) {
     return 'outside_booking_horizon';
   }
-  const global = await resolveEmployeeGlobalSchedule({
+
+  // Single public schedule resolve (was 2× global + private fan-out before).
+  const publicGlobal = await resolveEmployeeGlobalSchedule({
+    empId: args.empId,
+    workDate: args.date,
+    publicOnly: true,
+  });
+  if (publicGlobal.isGlobalDayOff) return 'global_leave';
+
+  const publicWorking = publicGlobal.branches.filter((b) => b.isWorking);
+  const atBranch = publicWorking.find((b) => b.branchId === args.branchCtx.branchId);
+  if (atBranch) return null; // proceed to slot calc
+
+  if (publicWorking[0]) return 'barber_at_different_branch';
+
+  // Not on any public branch — one private resolve to distinguish hidden vs day off.
+  const privateGlobal = await resolveEmployeeGlobalSchedule({
     empId: args.empId,
     workDate: args.date,
     publicOnly: false,
   });
-  if (global.isGlobalDayOff) return 'global_leave';
+  if (privateGlobal.isGlobalDayOff) return 'global_leave';
 
-  const publicWorking = (
-    await resolveEmployeeGlobalSchedule({
-      empId: args.empId,
-      workDate: args.date,
-      publicOnly: true,
-    })
-  ).branches.filter((b) => b.isWorking);
-
-  const atBranch = publicWorking.find((b) => b.branchId === args.branchCtx.branchId);
-  if (atBranch) return null; // proceed to slot calc
-
-  const otherPublic = publicWorking[0];
-  if (otherPublic) return 'barber_at_different_branch';
-
-  const privateWorking = global.branches.filter((b) => b.isWorking);
+  const privateWorking = privateGlobal.branches.filter((b) => b.isWorking);
   if (privateWorking.length) {
     const dest = privateWorking[0];
     if (await canBranchAppearInPublicBooking(dest.branchId)) {
@@ -342,45 +344,7 @@ export async function getPublicAvailableSlots(args: {
       : null;
   const mode: PublicAvailabilityMode = empId ? 'specific_barber' : 'any_barber';
 
-  if (empId) {
-    const name = await loadEmpName(empId);
-    if (!name) throw new PublicBookingAvailabilityError('BARBER_NOT_FOUND');
-    const dayStatus = await classifySpecificBarberDay({
-      empId,
-      branchCtx,
-      date: args.date,
-      horizonEnd: addDaysYmd(
-        getCairoBusinessDate(),
-        (await getPublicSettings(branchCtx.branchId)).maxBookingDaysAhead,
-      ),
-    });
-    if (dayStatus === 'global_leave') {
-      throw new PublicBookingAvailabilityError('BARBER_DAY_OFF');
-    }
-    if (dayStatus === 'barber_at_different_branch') {
-      throw new PublicBookingAvailabilityError('BARBER_AVAILABLE_AT_DIFFERENT_BRANCH');
-    }
-    if (dayStatus === 'not_available_publicly' || dayStatus === 'barber_day_off') {
-      return {
-        ok: true,
-        branch: { branchCode: branchCtx.branchCode, branchName: branchCtx.branchName },
-        date: args.date,
-        mode,
-        services: {
-          serviceIds: selected.serviceIds,
-          totalDurationMinutes: selected.totalDurationMinutes,
-          totalPrice: selected.totalPrice,
-        },
-        slots: [],
-        meta: {
-          slotCount: 0,
-          contractVersion: CONTRACT,
-          generatedAt: new Date().toISOString(),
-        },
-      };
-    }
-  }
-
+  // Cache BEFORE any schedule / day classification (was paying 2× global schedule on every hit).
   const cacheKey = [
     'slots',
     branchCtx.branchCode,
@@ -393,6 +357,11 @@ export async function getPublicAvailableSlots(args: {
   ].join('::');
   const cached = cacheGet<PublicAvailableSlotsResponse>(cacheKey);
   if (cached) return cached;
+
+  if (empId) {
+    const name = await loadEmpName(empId);
+    if (!name) throw new PublicBookingAvailabilityError('BARBER_NOT_FOUND');
+  }
 
   const engine = await listAvailableBookingSlots({
     date: args.date,
@@ -412,6 +381,27 @@ export async function getPublicAvailableSlots(args: {
 
   if (!empId && eligibleBarberCount === 0) {
     throw new PublicBookingAvailabilityError('NO_ELIGIBLE_BARBER');
+  }
+
+  // Empty specific-barber result: classify location only then (happy path skips this).
+  if (empId && slots.length === 0) {
+    const settings = await getPublicSettings(branchCtx.branchId);
+    const dayStatus = await classifySpecificBarberDay({
+      empId,
+      branchCtx,
+      date: args.date,
+      horizonEnd: addDaysYmd(getCairoBusinessDate(), settings.maxBookingDaysAhead),
+    });
+    if (dayStatus === 'global_leave') {
+      throw new PublicBookingAvailabilityError('BARBER_DAY_OFF');
+    }
+    if (dayStatus === 'barber_at_different_branch') {
+      throw new PublicBookingAvailabilityError('BARBER_AVAILABLE_AT_DIFFERENT_BRANCH');
+    }
+    if (dayStatus === 'outside_booking_horizon') {
+      throw new PublicBookingAvailabilityError('BOOKING_HORIZON_EXCEEDED');
+    }
+    // barber_day_off / not_available_publicly → empty slots envelope below
   }
 
   const emptyReason = engine.reasonCode ?? 'SLOT_UNAVAILABLE';

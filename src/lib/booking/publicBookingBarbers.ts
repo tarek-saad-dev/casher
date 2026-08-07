@@ -45,6 +45,11 @@ import {
   normalizeEmpNameEn,
   tblEmpNameEnSelect,
 } from '@/lib/migrations/ensureEmployeeNameEn';
+import {
+  coerceDisplaySortOrder,
+  ensureTblEmpDisplaySortOrderColumn,
+  tblEmpDisplaySortOrderSelect,
+} from '@/lib/migrations/ensureEmployeeDisplaySortOrder';
 import { getBarberNameEnByArabicName } from '@/lib/barberImages';
 
 export {
@@ -54,7 +59,7 @@ export {
 
 const CACHE_TTL_MS = 45_000;
 const CACHE_MAX = 32;
-const cacheRootKey = '__pos_public_booking_barbers_v3';
+const cacheRootKey = '__pos_public_booking_barbers_v4';
 
 type CacheEntry = { expiresAt: number; value: unknown };
 
@@ -117,6 +122,8 @@ export type PublicBarberWire = {
   shortBio: string | null;
   photoUrl: string | null;
   bio: string | null;
+  /** Lower = earlier in client lists (admin-controlled via employees page). */
+  displaySortOrder: number;
   serviceIds: number[];
   branches: PublicBarberBranchWire[];
   availabilityType: 'presence_only';
@@ -198,6 +205,7 @@ type CandidateRow = {
   EmpNameEn: string | null;
   Job: string | null;
   ImageUrl: string | null;
+  DisplaySortOrder: number;
   BranchID: number;
   BranchCode: string;
   BranchName: string;
@@ -243,13 +251,19 @@ async function loadAssignmentCandidates(day: string): Promise<CandidateRow[]> {
   const db = await getPool();
   const hasImageUrl = await ensureTblEmpImageUrlColumn(db);
   const hasNameEn = await ensureTblEmpNameEnColumn(db);
+  const hasSort = await ensureTblEmpDisplaySortOrderColumn(db);
   const imageUrlCol = tblEmpImageUrlSelect(hasImageUrl);
   const nameEnCol = tblEmpNameEnSelect(hasNameEn);
+  const sortCol = tblEmpDisplaySortOrderSelect(hasSort);
+  const orderBySort = hasSort
+    ? 'ISNULL(e.DisplaySortOrder, 999),'
+    : '';
   const res = await db.request().input('day', sql.Date, day).query(`
     SELECT
       e.EmpID, e.EmpName, e.Job,
       ${imageUrlCol},
       ${nameEnCol},
+      ${sortCol},
       b.BranchID, b.BranchCode, b.BranchName,
       a.CanReceiveBookings,
       a.IsActive AS IsActiveAssign
@@ -263,7 +277,7 @@ async function loadAssignmentCandidates(day: string): Promise<CandidateRow[]> {
       AND a.EffectiveFrom <= @day
       AND (a.EffectiveTo IS NULL OR a.EffectiveTo >= @day)
       ${excludeTestSmokeSqlPredicate()}
-    ORDER BY e.EmpName, e.EmpID, b.BranchCode
+    ORDER BY ${orderBySort} e.EmpName, e.EmpID, b.BranchCode
   `);
   return res.recordset as CandidateRow[];
 }
@@ -331,10 +345,12 @@ function toWireBarber(args: {
   serviceIds: number[];
   branches: PublicBarberBranchWire[];
   imageUrl?: string | null;
+  displaySortOrder?: number | null;
 }): PublicBarberWire {
   const nameAr = args.name;
   const nameEn = resolvePublicBarberNameEn(args.nameEn, nameAr);
   const imageUrl = resolveBarberPublicImageUrl(args.imageUrl, nameAr);
+  const displaySortOrder = coerceDisplaySortOrder(args.displaySortOrder);
   return {
     empId: args.empId,
     id: args.empId,
@@ -345,6 +361,7 @@ function toWireBarber(args: {
     shortBio: null,
     photoUrl: imageUrl,
     bio: null,
+    displaySortOrder,
     serviceIds: args.serviceIds,
     branches: args.branches,
     availabilityType: 'presence_only',
@@ -418,6 +435,7 @@ export async function listPublicBookingBarbers(args: {
       name: string;
       nameEn: string | null;
       imageUrl: string | null;
+      displaySortOrder: number;
       branches: PublicBarberBranchWire[];
       branchIds: number[];
     }
@@ -460,6 +478,7 @@ export async function listPublicBookingBarbers(args: {
         name: String(row.EmpName),
         nameEn: row.EmpNameEn ?? null,
         imageUrl: row.ImageUrl ?? null,
+        displaySortOrder: coerceDisplaySortOrder(row.DisplaySortOrder),
         branches: [],
         branchIds: [],
       };
@@ -506,6 +525,7 @@ export async function listPublicBookingBarbers(args: {
       name: entry.name,
       nameEn: entry.nameEn,
       imageUrl: entry.imageUrl,
+      displaySortOrder: entry.displaySortOrder,
       serviceIds: serviceIds.length ? serviceIds : publicServiceIds,
       branches: entry.branches,
     });
@@ -515,13 +535,13 @@ export async function listPublicBookingBarbers(args: {
   barbers = dedupeBarbersByEmpId(barbers).sort((a, b) =>
     comparePublicBarbers(
       {
-        displaySortOrder: 999,
+        displaySortOrder: a.displaySortOrder,
         isFeatured: false,
         nameAr: a.nameAr,
         empId: a.empId,
       },
       {
-        displaySortOrder: 999,
+        displaySortOrder: b.displaySortOrder,
         isFeatured: false,
         nameAr: b.nameAr,
         empId: b.empId,
@@ -947,6 +967,7 @@ export function assemblePublicBarbersFromCandidates(
     branchCode: string;
     branchName: string;
     imageUrl?: string | null;
+    displaySortOrder?: number | null;
   }>,
   serviceIds: number[],
 ): PublicBarberWire[] {
@@ -959,6 +980,7 @@ export function assemblePublicBarbersFromCandidates(
         name: row.name,
         nameEn: row.nameEn,
         imageUrl: row.imageUrl,
+        displaySortOrder: row.displaySortOrder,
         serviceIds,
         branches: [],
       });
@@ -973,8 +995,18 @@ export function assemblePublicBarbersFromCandidates(
   }
   return dedupeBarbersByEmpId([...byEmp.values()]).sort((a, b) =>
     comparePublicBarbers(
-      { displaySortOrder: 999, isFeatured: false, nameAr: a.nameAr, empId: a.empId },
-      { displaySortOrder: 999, isFeatured: false, nameAr: b.nameAr, empId: b.empId },
+      {
+        displaySortOrder: a.displaySortOrder,
+        isFeatured: false,
+        nameAr: a.nameAr,
+        empId: a.empId,
+      },
+      {
+        displaySortOrder: b.displaySortOrder,
+        isFeatured: false,
+        nameAr: b.nameAr,
+        empId: b.empId,
+      },
     ),
   );
 }
