@@ -1,17 +1,24 @@
 'use client';
 
 import { useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { usePathname } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
-import MainNav from '@/components/layout/MainNav';
-import ActiveSessionBar from '@/components/session/ActiveSessionBar';
-import PartnerOnlyShell from '@/components/layout/PartnerOnlyShell';
 import { usePermissions } from '@/components/providers/PermissionsProvider';
 import { useSession } from '@/hooks/useSession';
-import { cn } from '@/lib/utils';
-import { MobileNavProvider } from '@/components/layout/MobileNavContext';
 
 const AUTH_DEBUG = process.env.NODE_ENV === 'development';
+
+const AuthenticatedAppShell = dynamic(
+  () => import('@/components/layout/AuthenticatedAppShell'),
+  {
+    loading: () => (
+      <div className="flex-1 flex items-center justify-center min-h-0 bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" aria-label="جاري التحميل" />
+      </div>
+    ),
+  },
+);
 
 interface AuthLayoutProps {
   children: React.ReactNode;
@@ -48,7 +55,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
     );
   }
 
-  if (authResolving) {
+  if (authResolving || !access) {
     return (
       <div className="flex-1 flex items-center justify-center min-h-0 bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" aria-label="جاري التحميل" />
@@ -56,31 +63,13 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
     );
   }
 
-  if (access?.isPartnerOnly) {
-    return <PartnerOnlyShell>{children}</PartnerOnlyShell>;
-  }
-
   return (
-    <MobileNavProvider>
-      <div className={cn(isPosPage && 'max-md:hidden')}>
-        <ActiveSessionBar />
-      </div>
-      {/* Responsive layout: column on mobile (nav header on top), sidebar on desktop */}
-      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
-        <MainNav suppressMobileChrome={isPosPage} />
-        <main
-          className={cn(
-            'flex-1 w-full min-h-0 min-w-0',
-            isOperationsPage
-              ? 'overflow-hidden'
-              : isPosPage
-                ? 'max-md:overflow-hidden overflow-y-auto'
-                : 'overflow-y-auto',
-          )}
-        >
-          {children}
-        </main>
-      </div>
-    </MobileNavProvider>
+    <AuthenticatedAppShell
+      access={access}
+      isPosPage={isPosPage}
+      isOperationsPage={isOperationsPage}
+    >
+      {children}
+    </AuthenticatedAppShell>
   );
 }

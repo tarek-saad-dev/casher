@@ -33,7 +33,10 @@ describe('Phase 3B.1 — permissions contracts', () => {
       'super_admin',
       'admin',
       'manager',
+      'cashier',
+      'accountant',
       'receptionist',
+      'viewer',
     ]);
   });
 
@@ -70,7 +73,7 @@ describe('Phase 3B.1 — permissions contracts', () => {
     const result = await verifyWorkforceAvailabilityPermissions(fakeDb as never);
     expect(result.ok).toBe(false);
     expect(result.pageExists).toBe(false);
-    expect(result.missingRoleGrants.length).toBe(4);
+    expect(result.missingRoleGrants.length).toBe(7);
   });
 });
 

@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
+import { isAuthResult, requireWorkforceAvailabilityAccess } from '@/lib/api-auth';
 import {
   isActiveBranchContext,
   requireBranchOperationAccess,
@@ -26,7 +26,7 @@ import {
 export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest) {
-  const auth = await requirePageAccess('/admin');
+  const auth = await requireWorkforceAvailabilityAccess();
   if (!isAuthResult(auth)) return auth;
 
   const branch = await requireBranchOperationAccess();
@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requirePageAccess('/admin');
+  const auth = await requireWorkforceAvailabilityAccess();
   if (!isAuthResult(auth)) return auth;
 
   const branch = await requireBranchOperationAccess();

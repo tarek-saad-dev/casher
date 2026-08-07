@@ -1,5 +1,6 @@
 @echo off
 chcp 65001 >nul
+setlocal enabledelayedexpansion
 title POS System - Dev Server
 color 0A
 
@@ -23,6 +24,9 @@ if not exist "node_modules" (
 )
 
 echo [OK] Project folder: C:\Users\user\Desktop\pos-system
+
+:: If Turbopack cache ballooned (multi-GB), cold compiles become painfully slow.
+powershell -NoProfile -Command "if (Test-Path '.next\dev\cache\turbopack') { $s=(Get-ChildItem -LiteralPath '.next\dev\cache\turbopack' -Recurse -File -EA SilentlyContinue | Measure-Object Length -Sum).Sum; if ($s -ge 2GB) { Write-Host '[!] Turbopack cache is large — clearing .next for faster compiles...'; Remove-Item -LiteralPath '.next' -Recurse -Force -EA SilentlyContinue; Write-Host '[OK] Cleared .next cache' } }"
 
 :: Check if print-service node_modules exists
 if not exist "print-service\node_modules" (

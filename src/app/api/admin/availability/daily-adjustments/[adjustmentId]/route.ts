@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
+import { isAuthResult, requireWorkforceAvailabilityAccess } from '@/lib/api-auth';
 import {
   isActiveBranchContext,
   requireBranchOperationAccess,
@@ -19,7 +19,7 @@ export const runtime = 'nodejs';
 type RouteContext = { params: Promise<{ adjustmentId: string }> };
 
 export async function DELETE(_req: NextRequest, context: RouteContext) {
-  const auth = await requirePageAccess('/admin');
+  const auth = await requireWorkforceAvailabilityAccess();
   if (!isAuthResult(auth)) return auth;
 
   const branch = await requireBranchOperationAccess();

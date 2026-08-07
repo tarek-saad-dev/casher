@@ -132,6 +132,20 @@ export async function requirePageAccess(
 }
 
 /**
+ * Workforce availability page + daily adjustments (CLOSE_DAY, etc.).
+ * Prefer `/admin/workforce/availability`; fall back to `/admin` for legacy admins.
+ */
+export async function requireWorkforceAvailabilityAccess(): Promise<
+  AuthResult | NextResponse
+> {
+  let auth = await requirePageAccess('/admin/workforce/availability');
+  if (!isAuthResult(auth)) {
+    auth = await requirePageAccess('/admin');
+  }
+  return auth;
+}
+
+/**
  * Development-only admin utilities.
  * Returns 404 in production (hide existence); admin session required in development.
  */

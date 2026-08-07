@@ -2,7 +2,7 @@
  * POST /api/admin/availability/daily-adjustments/preview
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
+import { isAuthResult, requireWorkforceAvailabilityAccess } from '@/lib/api-auth';
 import {
   isActiveBranchContext,
   requireBranchOperationAccess,
@@ -17,7 +17,7 @@ import { previewDailyAdjustmentMutation } from '@/lib/availability/dailyAdjustme
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
-  const auth = await requirePageAccess('/admin');
+  const auth = await requireWorkforceAvailabilityAccess();
   if (!isAuthResult(auth)) return auth;
 
   const branch = await requireBranchOperationAccess();

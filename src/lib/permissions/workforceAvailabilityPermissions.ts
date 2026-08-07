@@ -1,22 +1,30 @@
 /**
  * Phase 3B.1 — Workforce availability permission constants + DB helpers.
  * Idempotent grants; never deletes custom role access.
+ *
+ * Page is AccessMode=`all` so every authenticated (non–partner-only) user can open it
+ * and run daily adjustments (CLOSE_DAY, etc.) without being admin/manager.
  */
 
 import type { ConnectionPool } from 'mssql';
 
 export const WORKFORCE_AVAILABILITY_PAGE_KEY = 'hr.workforce_availability';
 export const WORKFORCE_AVAILABILITY_PAGE_PATH = '/admin/workforce/availability';
+/** Explicit role grants (CanEdit) — partner excluded (partner-only shell). */
 export const WORKFORCE_AVAILABILITY_EXPECTED_ROLES = [
   'super_admin',
   'admin',
   'manager',
+  'cashier',
+  'accountant',
   'receptionist',
+  'viewer',
 ] as const;
 
 export type WorkforcePermissionVerifyResult = {
   ok: boolean;
   pageExists: boolean;
+  accessModeAll: boolean;
   missingRoleGrants: string[];
   grantedRoles: string[];
   message: string;
@@ -32,7 +40,7 @@ export async function ensureWorkforceAvailabilityGrants(
     .input('name', 'توافر الموظفين')
     .input('path', WORKFORCE_AVAILABILITY_PAGE_PATH)
     .input('section', 'الموارد البشرية')
-    .input('access', 'roles')
+    .input('access', 'all')
     .input('sort', 93)
     .query(`
       IF NOT EXISTS (SELECT 1 FROM dbo.TblSystemPages WHERE PageKey = @key)
@@ -77,16 +85,19 @@ export async function verifyWorkforceAvailabilityPermissions(
     .request()
     .input('key', WORKFORCE_AVAILABILITY_PAGE_KEY)
     .query(`
-      SELECT PageID, PagePath
+      SELECT PageID, PagePath, AccessMode
       FROM dbo.TblSystemPages
       WHERE PageKey = @key
     `);
   const pageExists = pageRes.recordset.length > 0;
+  const accessModeAll =
+    pageExists && String(pageRes.recordset[0]?.AccessMode ?? '').toLowerCase() === 'all';
 
   if (!pageExists) {
     return {
       ok: false,
       pageExists: false,
+      accessModeAll: false,
       missingRoleGrants: [...WORKFORCE_AVAILABILITY_EXPECTED_ROLES],
       grantedRoles: [],
       message: `Missing page key ${WORKFORCE_AVAILABILITY_PAGE_KEY}`,
@@ -109,14 +120,17 @@ export async function verifyWorkforceAvailabilityPermissions(
     (role) => !grantedRoles.includes(role),
   );
 
-  const ok = missingRoleGrants.length === 0;
+  const ok = accessModeAll && missingRoleGrants.length === 0;
   return {
     ok,
     pageExists: true,
+    accessModeAll,
     missingRoleGrants: [...missingRoleGrants],
     grantedRoles,
     message: ok
-      ? 'Workforce availability permissions OK'
-      : `Missing role grants: ${missingRoleGrants.join(', ')}`,
+      ? 'Workforce availability permissions OK (AccessMode=all + role grants)'
+      : !accessModeAll
+        ? 'Workforce availability page must use AccessMode=all'
+        : `Missing role grants: ${missingRoleGrants.join(', ')}`,
   };
 }
