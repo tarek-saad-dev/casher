@@ -929,22 +929,17 @@ export async function getPublicBarberProfileById(args: {
 
   const nameEn = emp.nameEn ?? getBarberNameEnByArabicName(emp.name);
   const imageUrl = resolveBarberPublicImageUrl(emp.imageUrl, emp.name);
+  const sortFromAssignment = candidates.find((c) => Number(c.EmpID) === args.empId);
 
-  const barber: PublicBarberWire = {
+  const barber = toWireBarber({
     empId: emp.empId,
-    id: emp.empId,
-    nameAr: emp.name,
-    nameEn,
     name: emp.name,
+    nameEn,
     imageUrl,
-    shortBio: null,
-    photoUrl: imageUrl,
-    bio: null,
+    displaySortOrder: sortFromAssignment?.DisplaySortOrder,
     serviceIds: publicServiceIds,
     branches,
-    availabilityType: 'presence_only',
-    isBookableOnline: true,
-  };
+  });
 
   const value = {
     ok: true as const,
