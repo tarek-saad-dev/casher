@@ -123,8 +123,10 @@ export interface BookingSlotValidation {
   reasonMessage?: string;
 }
 
-/** Public booking UI cap — operations/admin receive the full set. */
+/** Soft historical caps — kept for helpers/tests; public available-slots no longer truncates. */
 export const PUBLIC_AVAILABLE_SLOTS_LIMIT = 36;
+/** Overnight soft cap (legacy); public path returns the full available set. */
+export const PUBLIC_OVERNIGHT_SLOTS_LIMIT = 56;
 
 /**
  * Cap public slot lists without dropping evening/base-shift times when
@@ -160,8 +162,6 @@ export function applyPublicAvailableSlotsLimit<
   const earlyKeep = early.slice(Math.max(0, early.length - remaining));
   return [...earlyKeep, ...core];
 }
-/** Overnight shifts need more slots so early-expand doesn't hide evening/night. */
-export const PUBLIC_OVERNIGHT_SLOTS_LIMIT = 56;
 
 export type SlotRejectionBucket =
   | 'past_or_min_notice'
@@ -853,23 +853,13 @@ export async function listAvailableBookingSlots(args: {
     ? new Set(availableSlotsUnlimited.map((s) => `${s.dayOffset}|${s.time}`)).size
     : availableSlotsUnlimited.length;
   const isInternalSource = source === 'operations' || source === 'admin';
-  const hasOvernight = contexts.some((c) => c.isOvernight);
-  const publicLimit = hasOvernight
-    ? PUBLIC_OVERNIGHT_SLOTS_LIMIT
-    : PUBLIC_AVAILABLE_SLOTS_LIMIT;
+  // Public clients need every bookable start (e.g. 12:00→23:00 shift) — do not truncate.
+  const limitApplied = false;
+  const availableSlots = availableSlotsUnlimited;
   const primaryCtx =
     (mode === 'specific' && empId ? contexts.find((c) => c.empId === empId) : null)
     ?? contexts[0]
     ?? null;
-  const limitApplied =
-    !isInternalSource && !collectAllCandidates && validSlotCountBeforeLimit > publicLimit;
-  const availableSlots = limitApplied
-    ? applyPublicAvailableSlotsLimit(
-        availableSlotsUnlimited,
-        publicLimit,
-        primaryCtx?.baseStart ?? primaryCtx?.effSched?.start ?? null,
-      )
-    : availableSlotsUnlimited;
   const returnedSlotCount = collectAllCandidates
     ? new Set(availableSlots.map((s) => `${s.dayOffset}|${s.time}`)).size
     : availableSlots.length;
@@ -2165,15 +2155,7 @@ export async function listSpecificEmpPublicSlotsMultiDate(args: {
     });
 
     const available = allPlans.filter((s) => s.available);
-    const limit = isOvernight ? PUBLIC_OVERNIGHT_SLOTS_LIMIT : PUBLIC_AVAILABLE_SLOTS_LIMIT;
-    out.set(
-      date,
-      applyPublicAvailableSlotsLimit(
-        available,
-        limit,
-        base.isWorking ? base.start : effSched.start,
-      ),
-    );
+    out.set(date, available);
   }
 
   return out;

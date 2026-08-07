@@ -15,3 +15,8 @@ Happy-path specific barber (slots found):
 4. Location classify (`resolveEmployeeGlobalSchedule`) runs **only when slots are empty**
 
 Also skipped on public path: alternative-barber scan + day-plan reason enrichment batch.
+
+## Full slot list (v6)
+
+Public `available-slots` returns **every** bookable start for the shift (no 36/56 soft cap).  
+Last start for a 12:00→23:00 barber with a 30-minute service is **22:30**.

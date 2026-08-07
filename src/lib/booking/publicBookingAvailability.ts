@@ -20,8 +20,6 @@ import {
   isOutsideBookingHorizon,
 } from '@/lib/booking/publicBookingBarberPolicy';
 import {
-  PUBLIC_AVAILABLE_SLOTS_LIMIT,
-  PUBLIC_OVERNIGHT_SLOTS_LIMIT,
   listAvailableBookingSlots,
 } from '@/lib/bookingAvailabilityEngine';
 import { summarizeAvailableDaysRange } from '@/lib/booking/publicAvailableDaysRange';
@@ -36,8 +34,8 @@ const CACHE_TTL_MS = 45_000;
 /** Calendar days change less often than live slots — keep longer. */
 const DAYS_CACHE_TTL_MS = 90_000;
 const CACHE_MAX = 64;
-const cacheRoot = '__pos_public_booking_availability_v5';
-const CONTRACT = 'v5';
+const cacheRoot = '__pos_public_booking_availability_v6';
+const CONTRACT = 'v6';
 /** available-days only needs first free time for calendar highlighting. */
 const DAYS_SUMMARY_SLOT_CAP = 1;
 
@@ -240,7 +238,7 @@ function mergeCandidateSlots(
     empName: string;
     available: boolean;
   }>,
-  limit: number,
+  limit?: number | null,
 ): PublicSlotWire[] {
   const map = new Map<string, PublicSlotWire>();
   for (const p of plans) {
@@ -266,8 +264,10 @@ function mergeCandidateSlots(
       ? a.dayOffset - b.dayOffset
       : a.time.localeCompare(b.time),
   );
-  // Nearest mode has no single base start — keep soonest times (product intent).
-  return sorted.slice(0, limit);
+  if (limit != null && limit > 0 && Number.isFinite(limit)) {
+    return sorted.slice(0, limit);
+  }
+  return sorted;
 }
 
 async function classifySpecificBarberDay(args: {
@@ -374,9 +374,7 @@ export async function getPublicAvailableSlots(args: {
     collectAllCandidates: !empId,
   });
 
-  const hasOvernight = engine.availableSlots.some((s) => s.dayOffset === 1);
-  const limit = hasOvernight ? PUBLIC_OVERNIGHT_SLOTS_LIMIT : PUBLIC_AVAILABLE_SLOTS_LIMIT;
-  const slots = mergeCandidateSlots(engine.availableSlots, limit);
+  const slots = mergeCandidateSlots(engine.availableSlots);
   const eligibleBarberCount = Number(engine.debug.barberCount ?? 0);
 
   if (!empId && eligibleBarberCount === 0) {
@@ -517,13 +515,10 @@ async function listSlotsForPreloadedContext(args: {
     maxAvailableSlots: summaryOnly ? DAYS_SUMMARY_SLOT_CAP : undefined,
   });
 
-  const hasOvernight = engine.availableSlots.some((s) => s.dayOffset === 1);
-  const limit = summaryOnly
-    ? DAYS_SUMMARY_SLOT_CAP
-    : hasOvernight
-      ? PUBLIC_OVERNIGHT_SLOTS_LIMIT
-      : PUBLIC_AVAILABLE_SLOTS_LIMIT;
-  const slots = mergeCandidateSlots(engine.availableSlots, limit);
+  const slots = mergeCandidateSlots(
+    engine.availableSlots,
+    summaryOnly ? DAYS_SUMMARY_SLOT_CAP : null,
+  );
   const eligibleBarberCount = Number(engine.debug.barberCount ?? 0);
 
   if (!args.empId && eligibleBarberCount === 0) {

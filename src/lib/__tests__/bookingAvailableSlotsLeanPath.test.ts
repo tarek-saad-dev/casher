@@ -36,8 +36,15 @@ describe('public available-slots lean path', () => {
     expect(engineSrc).toContain('Public path: skip second day-plan batch');
   });
 
-  it('bumps availability contract/cache to v5', () => {
-    expect(availabilitySrc).toContain("__pos_public_booking_availability_v5");
-    expect(availabilitySrc).toMatch(/const CONTRACT = 'v5'/);
+  it('bumps availability contract/cache to v6', () => {
+    expect(availabilitySrc).toContain("__pos_public_booking_availability_v6");
+    expect(availabilitySrc).toMatch(/const CONTRACT = 'v6'/);
+  });
+
+  it('does not re-truncate slots in getPublicAvailableSlots merge', () => {
+    expect(availabilitySrc).toMatch(/mergeCandidateSlots\(engine\.availableSlots\)/);
+    expect(availabilitySrc).not.toMatch(
+      /mergeCandidateSlots\(engine\.availableSlots,\s*(hasOvernight|PUBLIC_)/,
+    );
   });
 });

@@ -102,12 +102,10 @@ describe('false-unavailable recurrence guards', () => {
     expect(src).not.toMatch(/\(data\.slots\s*\?\?\s*data\.availableSlots/);
   });
 
-  it('engine uses applyPublicAvailableSlotsLimit instead of naive slice for public cap', () => {
+  it('engine returns full public slot sets without applying the soft cap', () => {
     const src = read('src/lib/bookingAvailabilityEngine.ts');
-    expect(src).toContain('applyPublicAvailableSlotsLimit(');
-    expect(src).toContain('baseStart');
-    expect(src).not.toMatch(
-      /availableSlotsUnlimited\.slice\(\s*0\s*,\s*publicLimit\s*\)/,
-    );
+    expect(src).toContain('Public clients need every bookable start');
+    expect(src).toContain('const limitApplied = false');
+    expect(src).toContain('applyPublicAvailableSlotsLimit');
   });
 });
