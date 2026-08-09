@@ -72,6 +72,11 @@ export default function SessionProvider({ children }: { children: ReactNode }) {
       setDay(data.day || null);
       setShift(data.shift || null);
       setPermissions(data.permissions || []);
+      setDefaultShiftId(
+        data.defaultShiftId != null && Number.isFinite(Number(data.defaultShiftId))
+          ? Number(data.defaultShiftId)
+          : null,
+      );
       // /api/auth/session returns PascalCase branch fields (BranchID, BranchCode, ...);
       // normalize to the camelCase SessionActiveBranch shape consumed from context.
       setActiveBranch(

@@ -5,7 +5,7 @@ import {
   readSessionCookie,
   verifySessionCookie,
 } from "@/lib/session";
-import { getUserFriendlyError } from "@/lib/db";
+import { getPool, getUserFriendlyError, sql } from "@/lib/db";
 import { getPermissions } from "@/lib/permissions";
 import { getUserAccess } from "@/lib/permissions-server";
 import { getUserActiveStatus } from "@/lib/branch/repository";
@@ -25,6 +25,7 @@ function emptySessionBody(extra: Record<string, unknown> = {}) {
     roles: [],
     allowedPagePaths: [],
     activeBranch: null,
+    defaultShiftId: null,
     ...extra,
   };
 }
@@ -145,6 +146,22 @@ export async function GET() {
       allowedPageKeys: access.allowedPageKeys,
     });
 
+    // User's preferred shift definition (TblUser.ShiftID) — used by open-shift UI after reload.
+    let defaultShiftId: number | null = null;
+    try {
+      const db = await getPool();
+      const shiftRes = await db
+        .request()
+        .input("userId", sql.Int, user.UserID)
+        .query(`SELECT TOP 1 ShiftID FROM dbo.TblUser WHERE UserID = @userId`);
+      const raw = shiftRes.recordset[0]?.ShiftID;
+      if (raw != null && Number.isFinite(Number(raw))) {
+        defaultShiftId = Number(raw);
+      }
+    } catch {
+      // Non-fatal — overlay can still pick from definitions list
+    }
+
     return NextResponse.json({
       user: {
         UserID: user.UserID,
@@ -159,6 +176,7 @@ export async function GET() {
       permissions,
       roles: access.roles,
       allowedPagePaths: access.allowedPagePaths,
+      defaultShiftId,
       activeBranch: {
         BranchID: branchContext.branchId,
         BranchCode: branchContext.branchCode,

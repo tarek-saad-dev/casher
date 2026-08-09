@@ -18,6 +18,22 @@ interface ShiftDef {
   ShiftName: string;
 }
 
+function parseShiftDefinitions(data: unknown): ShiftDef[] {
+  // /api/shift/definitions returns a raw array; some callers wrap as { shifts: [] }.
+  if (Array.isArray(data)) {
+    return data.filter(
+      (s): s is ShiftDef =>
+        s != null &&
+        typeof s === 'object' &&
+        Number.isFinite(Number((s as ShiftDef).ShiftID)),
+    );
+  }
+  if (data && typeof data === 'object' && Array.isArray((data as { shifts?: unknown }).shifts)) {
+    return parseShiftDefinitions((data as { shifts: unknown }).shifts);
+  }
+  return [];
+}
+
 /**
  * Blocks POS/expenses/deductions until the active branch has an open day
  * and this user has an open shift on that branch.
@@ -61,17 +77,28 @@ export default function ShiftRequiredOverlay() {
 
   const needsShiftPicker = needsGate && hasActiveDay && canOpenShift;
 
+  const effectiveShiftId =
+    (selectedShift && Number.parseInt(selectedShift, 10)) ||
+    defaultShiftId ||
+    shift?.ShiftID ||
+    shiftDefs[0]?.ShiftID ||
+    null;
+
   useEffect(() => {
     if (!needsShiftPicker) return;
 
     let cancelled = false;
     async function loadDefs() {
       setLoadingDefs(true);
+      setError('');
       try {
         const res = await fetch('/api/shift/definitions');
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (!cancelled) setError('تعذر تحميل قائمة الورديات');
+          return;
+        }
         const data = await res.json();
-        const list: ShiftDef[] = data.shifts || [];
+        const list = parseShiftDefinitions(data);
         if (cancelled) return;
         setShiftDefs(list);
         const preferred =
@@ -82,9 +109,9 @@ export default function ShiftRequiredOverlay() {
             ? String(shift.ShiftID)
             : null) ||
           (list[0] ? String(list[0].ShiftID) : '');
-        setSelectedShift((prev) => prev || preferred);
+        setSelectedShift(preferred);
       } catch {
-        // open action will surface errors
+        if (!cancelled) setError('تعذر تحميل قائمة الورديات');
       } finally {
         if (!cancelled) setLoadingDefs(false);
       }
@@ -118,15 +145,14 @@ export default function ShiftRequiredOverlay() {
   }
 
   async function handleOpenShift() {
-    const shiftId = selectedShift ? parseInt(selectedShift, 10) : defaultShiftId;
-    if (!shiftId) {
+    if (!effectiveShiftId) {
       setError('يرجى اختيار الوردية');
       return;
     }
     setBusy(true);
     setError('');
     try {
-      await openMyShift(shiftId);
+      await openMyShift(effectiveShiftId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'فشل فتح الوردية');
     } finally {
@@ -135,10 +161,7 @@ export default function ShiftRequiredOverlay() {
   }
 
   async function handleCloseOtherAndOpen() {
-    const shiftId = selectedShift
-      ? parseInt(selectedShift, 10)
-      : defaultShiftId || shift?.ShiftID;
-    if (!shiftId) {
+    if (!effectiveShiftId) {
       setError('يرجى اختيار الوردية');
       return;
     }
@@ -150,7 +173,7 @@ export default function ShiftRequiredOverlay() {
     setError('');
     try {
       await closeMyShift(shift.ID);
-      await openMyShift(shiftId);
+      await openMyShift(effectiveShiftId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'فشل نقل الوردية للفرع الحالي');
       await refresh();
@@ -158,6 +181,8 @@ export default function ShiftRequiredOverlay() {
       setBusy(false);
     }
   }
+
+  const openDisabled = busy || loadingDefs || !effectiveShiftId;
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-sm p-4">
@@ -233,11 +258,11 @@ export default function ShiftRequiredOverlay() {
                   <div className="flex justify-center py-3">
                     <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
                   </div>
-                ) : shiftDefs.length > 0 ? (
+                ) : shiftDefs.length > 1 ? (
                   <div className="space-y-2 text-right">
                     <label className="text-sm font-medium">اختيار الوردية</label>
                     <Select
-                      value={selectedShift}
+                      value={selectedShift || undefined}
                       onValueChange={setSelectedShift}
                       disabled={busy}
                     >
@@ -254,16 +279,16 @@ export default function ShiftRequiredOverlay() {
                       </SelectContent>
                     </Select>
                   </div>
+                ) : shiftDefs.length === 0 && !loadingDefs ? (
+                  <div className="bg-destructive/10 rounded-lg p-3 text-center text-sm">
+                    لا توجد تعريفات ورديات — راجع إعدادات الورديات.
+                  </div>
                 ) : null}
 
                 {shiftOnOtherBranch ? (
                   <Button
                     onClick={handleCloseOtherAndOpen}
-                    disabled={
-                      busy ||
-                      (!selectedShift && !defaultShiftId && !shift?.ShiftID) ||
-                      !canCloseShift
-                    }
+                    disabled={openDisabled || !canCloseShift}
                     className="w-full h-11"
                   >
                     {busy ? (
@@ -281,13 +306,13 @@ export default function ShiftRequiredOverlay() {
                 ) : (
                   <Button
                     onClick={handleOpenShift}
-                    disabled={busy || (!selectedShift && !defaultShiftId)}
+                    disabled={openDisabled}
                     className="w-full h-11"
                   >
-                    {busy ? (
+                    {busy || loadingDefs ? (
                       <>
                         <Loader2 className="w-4 h-4 ml-2 animate-spin" />
-                        جاري الفتح...
+                        {loadingDefs ? 'جاري التحميل...' : 'جاري الفتح...'}
                       </>
                     ) : (
                       <>
