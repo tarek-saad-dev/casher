@@ -11,7 +11,7 @@ import { getUserAccess } from "@/lib/permissions-server";
 import { getUserActiveStatus } from "@/lib/branch/repository";
 import { getActiveBranchContext } from "@/lib/branch/context";
 import { getOpenBusinessDay } from "@/lib/branch/businessDay";
-import { getUserOpenShift } from "@/lib/branch/shiftSession";
+import { getUserOpenShiftForBranch } from "@/lib/branch/shiftSession";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -113,8 +113,11 @@ export async function GET() {
       ? { ID: day.id, NewDay: day.newDay, Status: day.status, BranchID: day.branchId }
       : null;
 
-    // Get current open shift for THIS authenticated user (may be other-branch; UI should prompt close)
-    const openShift = await getUserOpenShift(user.UserID);
+    // Active-branch shift only — other branches keep their own open shifts independently
+    const openShift = await getUserOpenShiftForBranch(
+      user.UserID,
+      branchContext.branchId,
+    );
     const shift = openShift
       ? {
           ID: openShift.id,

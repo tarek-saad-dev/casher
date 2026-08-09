@@ -289,6 +289,15 @@ export const BRANCH_OWNED_ROUTE_MARKERS = [
   { path: 'src/app/api/sales/today/route.ts', mustContain: 'BranchID = @branchId' },
   { path: 'src/app/api/queue/settings/route.ts', mustContain: 'WHERE BranchID = @branchId' },
   { path: 'src/app/api/treasury/current/route.ts', mustContain: 'BranchID = @branchId' },
+  // Financial writes share the branch-scoped day+shift gate (never block on other-branch shifts)
+  { path: 'src/app/api/sales/route.ts', mustContain: 'resolveBranchDayAndShiftForWrite' },
+  { path: 'src/app/api/expenses/route.ts', mustContain: 'resolveBranchDayAndShiftForWrite' },
+  { path: 'src/app/api/incomes/route.ts', mustContain: 'resolveBranchDayAndShiftForWrite' },
+  { path: 'src/app/api/deductions/route.ts', mustContain: 'resolveBranchDayAndShiftForWrite' },
+  { path: 'src/app/api/purchases/route.ts', mustContain: 'resolveBranchDayAndShiftForWrite' },
+  { path: 'src/app/api/treasury/transfer/route.ts', mustContain: 'resolveBranchDayAndShiftForWrite' },
+  { path: 'src/app/api/bookings/[id]/convert/route.ts', mustContain: 'resolveBranchDayAndShiftForWrite' },
+  { path: 'src/lib/branch/operationalGates.ts', mustContain: 'getUserOpenShiftForBranch' },
 ] as const;
 
 export const GO_LIVE_BLOCKER_DOMAINS = DOMAIN_OWNERSHIP_REGISTRY.filter((d) => d.goLiveBlocker).map(

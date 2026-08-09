@@ -24,7 +24,7 @@ describe('GET /api/auth/session clears invalid cookies', () => {
     vi.doMock('@/lib/branch/repository', () => ({ getUserActiveStatus: vi.fn() }));
     vi.doMock('@/lib/branch/context', () => ({ getActiveBranchContext: vi.fn() }));
     vi.doMock('@/lib/branch/businessDay', () => ({ getOpenBusinessDay: vi.fn() }));
-    vi.doMock('@/lib/branch/shiftSession', () => ({ getUserOpenShift: vi.fn() }));
+    vi.doMock('@/lib/branch/shiftSession', () => ({ getUserOpenShiftForBranch: vi.fn() }));
 
     const { GET } = await import('@/app/api/auth/session/route');
     const res = await GET();
@@ -50,7 +50,7 @@ describe('GET /api/auth/session clears invalid cookies', () => {
     vi.doMock('@/lib/branch/repository', () => ({ getUserActiveStatus: vi.fn() }));
     vi.doMock('@/lib/branch/context', () => ({ getActiveBranchContext: vi.fn() }));
     vi.doMock('@/lib/branch/businessDay', () => ({ getOpenBusinessDay: vi.fn() }));
-    vi.doMock('@/lib/branch/shiftSession', () => ({ getUserOpenShift: vi.fn() }));
+    vi.doMock('@/lib/branch/shiftSession', () => ({ getUserOpenShiftForBranch: vi.fn() }));
 
     const { DELETE } = await import('@/app/api/auth/session/route');
     const res = await DELETE();

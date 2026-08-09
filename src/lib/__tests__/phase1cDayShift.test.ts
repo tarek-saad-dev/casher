@@ -92,7 +92,7 @@ describe('Phase 1C shift service rules', () => {
     vi.doMock('server-only', () => ({}));
   });
 
-  it('rejects opening a second shift when user already has one in another branch', async () => {
+  it('rejects opening a second shift on the same branch', async () => {
     vi.doMock('@/lib/branch/businessDay', () => ({
       getOpenBusinessDay: vi.fn(async () => ({
         id: 5,
@@ -111,12 +111,12 @@ describe('Phase 1C shift service rules', () => {
               recordset: [
                 {
                   ID: 99,
-                  BranchID: 1,
-                  BusinessDayID: 1,
-                  NewDay: '2026-07-21',
+                  BranchID: 2,
+                  BusinessDayID: 5,
+                  NewDay: '2026-07-22',
                   UserID: 7,
                   ShiftID: 1,
-                  StartDate: '2026-07-21',
+                  StartDate: '2026-07-22',
                   StartTime: '10:00 AM',
                   EndDate: null,
                   EndTime: null,
@@ -151,8 +151,74 @@ describe('Phase 1C shift service rules', () => {
       ),
     ).rejects.toMatchObject({
       name: 'BranchDomainError',
-      message: expect.stringContaining('فرع آخر'),
+      message: expect.stringContaining('بالفعل'),
     });
+  });
+
+  it('allows opening a shift when the user only has an open shift on another branch', async () => {
+    let call = 0;
+    vi.doMock('@/lib/branch/businessDay', () => ({
+      getOpenBusinessDay: vi.fn(async () => ({
+        id: 5,
+        branchId: 2,
+        newDay: '2026-07-22',
+        status: true,
+      })),
+      validateBusinessDayBelongsToBranch: vi.fn(),
+    }));
+    vi.doMock('@/lib/db', () => ({
+      getPool: vi.fn(async () => ({
+        request: () => {
+          const api: any = {
+            input: () => api,
+            query: async () => {
+              call += 1;
+              // 1) getUserOpenShiftForBranch → none on this branch
+              if (call === 1) return { recordset: [] };
+              // 2) INSERT … OUTPUT
+              return {
+                recordset: [
+                  {
+                    ID: 100,
+                    BranchID: 2,
+                    BusinessDayID: 5,
+                    NewDay: '2026-07-22',
+                    UserID: 7,
+                    ShiftID: 1,
+                    StartDate: '2026-07-22',
+                    StartTime: '10:00 AM',
+                    EndDate: null,
+                    EndTime: null,
+                    Status: true,
+                  },
+                ],
+              };
+            },
+          };
+          return api;
+        },
+      })),
+      sql: { Int: 'Int', Date: 'Date', NChar: () => 'NChar', NVarChar: () => 'NVarChar' },
+    }));
+
+    const { openShift } = await import('@/lib/branch/shiftSession');
+    const opened = await openShift(
+      {
+        userId: 7,
+        branchId: 2,
+        branchCode: 'OTHER',
+        branchName: 'Other',
+        shortName: null,
+        timeZone: 'Africa/Cairo',
+        businessDayCutoffTime: '04:00:00',
+        canOperate: true,
+        canViewReports: true,
+        canSwitch: true,
+      },
+      7,
+      1,
+    );
+    expect(opened).toMatchObject({ id: 100, branchId: 2, userId: 7 });
   });
 
   it('rejects closing a shift that belongs to another branch', async () => {
@@ -207,6 +273,132 @@ describe('Phase 1C shift service rules', () => {
         50,
       ),
     ).rejects.toMatchObject({ code: 'BRANCH_ACCESS_MISMATCH' });
+  });
+});
+
+describe('resolveBranchDayAndShiftForWrite (shared financial gate)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.doMock('server-only', () => ({}));
+  });
+
+  it('does not block when user has an open shift only on another branch', async () => {
+    const branch = {
+      userId: 7,
+      branchId: 2,
+      branchCode: 'CAMP_CAESAR',
+      branchName: 'كامب شيزار',
+      shortName: 'كامب',
+      timeZone: 'Africa/Cairo',
+      businessDayCutoffTime: '04:00:00',
+      canOperate: true,
+      canViewReports: true,
+      canSwitch: true,
+    };
+
+    vi.doMock('@/lib/branch/context', () => ({
+      isActiveBranchContext: () => true,
+      requireActiveBranchContext: vi.fn(),
+      requireBranchOperationAccess: vi.fn(async () => branch),
+    }));
+    vi.doMock('@/lib/branch/businessDay', () => ({
+      getOpenBusinessDay: vi.fn(async () => ({
+        id: 5,
+        branchId: 2,
+        newDay: '2026-08-09',
+        status: true,
+      })),
+      getBusinessDayByDate: vi.fn(),
+      getBranchBusinessDate: vi.fn(() => '2026-08-09'),
+    }));
+    vi.doMock('@/lib/branch/shiftSession', () => ({
+      getUserOpenShift: vi.fn(async () => ({
+        id: 99,
+        branchId: 1,
+        businessDayId: 1,
+        newDay: '2026-08-09',
+        userId: 7,
+        shiftId: 1,
+        status: true,
+      })),
+      // Active branch has its own open shift
+      getUserOpenShiftForBranch: vi.fn(async (_userId: number, branchId: number) =>
+        branchId === 2
+          ? {
+              id: 100,
+              branchId: 2,
+              businessDayId: 5,
+              newDay: '2026-08-09',
+              userId: 7,
+              shiftId: 1,
+              status: true,
+            }
+          : null,
+      ),
+    }));
+
+    const { resolveBranchDayAndShiftForWrite } = await import(
+      '@/lib/branch/operationalGates'
+    );
+    const gated = await resolveBranchDayAndShiftForWrite(7);
+    expect(gated.ok).toBe(true);
+    if (gated.ok) {
+      expect(gated.shift?.id).toBe(100);
+      expect(gated.shift?.branchId).toBe(2);
+      expect(gated.branch.branchId).toBe(2);
+    }
+  });
+
+  it('returns ok with null shift when active branch has no open shift', async () => {
+    const branch = {
+      userId: 7,
+      branchId: 2,
+      branchCode: 'CAMP_CAESAR',
+      branchName: 'كامب شيزار',
+      shortName: 'كامب',
+      timeZone: 'Africa/Cairo',
+      businessDayCutoffTime: '04:00:00',
+      canOperate: true,
+      canViewReports: true,
+      canSwitch: true,
+    };
+
+    vi.doMock('@/lib/branch/context', () => ({
+      isActiveBranchContext: () => true,
+      requireActiveBranchContext: vi.fn(),
+      requireBranchOperationAccess: vi.fn(async () => branch),
+    }));
+    vi.doMock('@/lib/branch/businessDay', () => ({
+      getOpenBusinessDay: vi.fn(async () => ({
+        id: 5,
+        branchId: 2,
+        newDay: '2026-08-09',
+        status: true,
+      })),
+      getBusinessDayByDate: vi.fn(),
+      getBranchBusinessDate: vi.fn(() => '2026-08-09'),
+    }));
+    vi.doMock('@/lib/branch/shiftSession', () => ({
+      getUserOpenShift: vi.fn(async () => ({
+        id: 99,
+        branchId: 1,
+        businessDayId: 1,
+        newDay: '2026-08-09',
+        userId: 7,
+        shiftId: 1,
+        status: true,
+      })),
+      getUserOpenShiftForBranch: vi.fn(async () => null),
+    }));
+
+    const { resolveBranchDayAndShiftForWrite } = await import(
+      '@/lib/branch/operationalGates'
+    );
+    const gated = await resolveBranchDayAndShiftForWrite(7);
+    expect(gated.ok).toBe(true);
+    if (gated.ok) {
+      expect(gated.shift).toBeNull();
+    }
   });
 });
 
