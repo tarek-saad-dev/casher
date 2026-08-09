@@ -14,6 +14,16 @@ import { invalidateTemporaryTransferCaches } from '@/lib/hr/scheduleAvailability
 import { resolveBranchPayrollPlanForDate } from '@/lib/payroll/branchPayrollPlan';
 import { normalizeEmploymentType } from '@/lib/hr/employee-hr-model';
 import { ensureEmployeeBranchAssignment } from '@/lib/branch/assignmentIntegrity';
+import {
+  RELOCATABLE_TRANSFER_BLOCKER_CODES,
+  splitTransferBlockers,
+} from '@/lib/hr/temporaryTransferBlockers';
+
+export {
+  FORCEABLE_TRANSFER_BLOCKER_CODES,
+  RELOCATABLE_TRANSFER_BLOCKER_CODES,
+  splitTransferBlockers,
+} from '@/lib/hr/temporaryTransferBlockers';
 
 type OperationalSourceBranch = {
   branchId: number;
@@ -25,7 +35,22 @@ type OperationalSourceBranch = {
 
 export type TransferPreviewResult = {
   canTransfer: boolean;
+  /**
+   * True when only soft/ops blockers remain (assignment, payroll, services, source bookings)
+   * and an operator may force the emergency transfer.
+   */
+  canForceTransfer: boolean;
+  /**
+   * True when remaining blockers are soft and/or relocatable (completed attendance /
+   * non-posted payroll) — requires relocateAttendance on apply for past-date fixups.
+   */
+  canForceWithRelocate: boolean;
+  /** Completed attendance / generated payroll that move with relocateAttendance. */
+  requiresRelocate: boolean;
   blockers: Array<{ code: string; message: string }>;
+  /** Soft blockers that `forceDespiteBlockers` may override. */
+  forceableBlockers: Array<{ code: string; message: string }>;
+  relocatableBlockers: Array<{ code: string; message: string }>;
   warnings: string[];
   affectedBookings: Array<{
     bookingId: number;
@@ -48,6 +73,8 @@ export type TransferPreviewResult = {
   };
   payrollState: {
     hasPayroll: boolean;
+    hasGeneratedPayroll: boolean;
+    hasPostedPayroll: boolean;
     hasLedger: boolean;
   };
   sourceBranch: {
@@ -256,6 +283,11 @@ export async function previewTemporaryBranchTransfer(args: {
   allowSetupDestination?: boolean;
   callerHasSourceAccess?: boolean;
   callerHasDestinationAccess?: boolean;
+  /**
+   * When true, completed attendance + non-posted payroll blockers become forceable
+   * (HR past-date correction). Open attendance / posted payroll stay hard.
+   */
+  relocateAttendance?: boolean;
 }): Promise<TransferPreviewResult> {
   await ensureEmpBranchWorkScheduleTable();
   const blockers: Array<{ code: string; message: string }> = [];
@@ -429,6 +461,7 @@ export async function previewTemporaryBranchTransfer(args: {
       ORDER BY ID DESC
     `);
   const attRow = openAtt.recordset[0];
+  const attBranchId = attRow ? Number(attRow.BranchID) : null;
   const hasOpen = Boolean(attRow && attRow.CheckOutTime == null);
   const hasCompleted = Boolean(attRow && attRow.CheckOutTime != null);
   if (hasOpen) {
@@ -436,11 +469,13 @@ export async function previewTemporaryBranchTransfer(args: {
       code: 'TRANSFER_ATTENDANCE_CONFLICT',
       message: 'لا يمكن التحويل مع حضور مفتوح',
     });
-  }
-  if (hasCompleted) {
+  } else if (hasCompleted && attBranchId === args.toBranchId) {
+    warnings.push('الحضور مسجّل بالفعل في فرع الوجهة');
+  } else if (hasCompleted) {
     blockers.push({
-      code: 'TRANSFER_ATTENDANCE_CONFLICT',
-      message: 'تم تسجيل حضور/انصراف لهذا اليوم — لا يمكن النقل',
+      code: 'TRANSFER_ATTENDANCE_COMPLETED',
+      message:
+        'تم تسجيل حضور/انصراف لهذا اليوم — فعّل «نقل الحضور مع النقل» لتصحيح تاريخ قديم',
     });
   }
 
@@ -504,7 +539,8 @@ export async function previewTemporaryBranchTransfer(args: {
     });
   }
 
-  let hasPayroll = false;
+  let hasGeneratedPayroll = false;
+  let hasPostedPayroll = false;
   let hasLedger = false;
   try {
     const pr = await db
@@ -512,10 +548,14 @@ export async function previewTemporaryBranchTransfer(args: {
       .input('empId', sql.Int, args.empId)
       .input('day', sql.Date, args.workDate)
       .query(`
-        SELECT TOP 1 1 AS X FROM dbo.TblEmpDailyPayroll
+        SELECT
+          SUM(CASE WHEN Status = N'PostedToCashMove' THEN 1 ELSE 0 END) AS PostedCnt,
+          SUM(CASE WHEN Status IN (N'Generated', N'Earned', N'PendingCheckout') THEN 1 ELSE 0 END) AS GenCnt
+        FROM dbo.TblEmpDailyPayroll
         WHERE EmpID=@empId AND WorkDate=@day
       `);
-    hasPayroll = Boolean(pr.recordset[0]);
+    hasPostedPayroll = Number(pr.recordset[0]?.PostedCnt ?? 0) > 0;
+    hasGeneratedPayroll = Number(pr.recordset[0]?.GenCnt ?? 0) > 0;
   } catch {
     /* table may differ */
   }
@@ -525,20 +565,39 @@ export async function previewTemporaryBranchTransfer(args: {
       .input('empId', sql.Int, args.empId)
       .input('day', sql.Date, args.workDate)
       .query(`
-        SELECT TOP 1 1 AS X FROM dbo.TblEmpHourlyLedger
-        WHERE EmpID=@empId AND WorkDate=@day
+        SELECT TOP 1 1 AS X FROM dbo.TblEmpLedgerEntry
+        WHERE EmpID=@empId AND EntryDate=@day AND IsVoided=0
+          AND EntryReason=N'hourly_wage'
       `);
     hasLedger = Boolean(ld.recordset[0]);
   } catch {
-    /* optional */
+    try {
+      const ld2 = await db
+        .request()
+        .input('empId', sql.Int, args.empId)
+        .input('day', sql.Date, args.workDate)
+        .query(`
+          SELECT TOP 1 1 AS X FROM dbo.TblEmpHourlyLedger
+          WHERE EmpID=@empId AND WorkDate=@day
+        `);
+      hasLedger = Boolean(ld2.recordset[0]);
+    } catch {
+      /* optional */
+    }
   }
-  if (hasPayroll) {
+  if (hasPostedPayroll) {
+    blockers.push({
+      code: 'TRANSFER_PAYROLL_ALREADY_POSTED',
+      message: 'اليومية مرحلة للخزنة — ألغِ الترحيل أولاً قبل النقل بتاريخ قديم',
+    });
+  } else if (hasGeneratedPayroll) {
     blockers.push({
       code: 'TRANSFER_PAYROLL_ALREADY_GENERATED',
-      message: 'تم توليد يومية راتب لهذا اليوم',
+      message:
+        'تم توليد يومية راتب — مع «نقل الحضور» سيتم نقل اليومية غير المرحلة لفرع الوجهة',
     });
   }
-  if (hasLedger) {
+  if (hasLedger && hasPostedPayroll) {
     blockers.push({
       code: 'TRANSFER_LEDGER_ALREADY_POSTED',
       message: 'تم ترحيل دفتر الساعات لهذا اليوم',
@@ -566,18 +625,49 @@ export async function previewTemporaryBranchTransfer(args: {
     warnings.push('يوجد نقل نشط لنفس اليوم — سيتم استبداله عبر الخدمة عند التطبيق');
   }
 
-  return {
-    canTransfer: blockers.length === 0,
+  const { hard: hardNoRelocate, soft: softForceableOnly, relocatable } = splitTransferBlockers(
     blockers,
+    { relocateAttendance: false },
+  );
+  // True hard excludes relocatable (those become soft only with relocateAttendance)
+  const trueHard = hardNoRelocate.filter(
+    (b) => !RELOCATABLE_TRANSFER_BLOCKER_CODES.has(b.code),
+  );
+  const canTransfer = blockers.length === 0;
+  const canForceTransfer =
+    !canTransfer &&
+    trueHard.length === 0 &&
+    relocatable.length === 0 &&
+    softForceableOnly.length > 0 &&
+    source != null;
+  const canForceWithRelocate =
+    !canTransfer &&
+    trueHard.length === 0 &&
+    relocatable.length > 0 &&
+    source != null;
+
+  return {
+    canTransfer,
+    canForceTransfer,
+    canForceWithRelocate,
+    requiresRelocate: relocatable.length > 0,
+    blockers,
+    forceableBlockers: softForceableOnly,
+    relocatableBlockers: relocatable,
     warnings,
     affectedBookings,
     affectedQueueTickets,
     attendance: {
       hasOpen,
       hasCompleted,
-      branchId: attRow ? Number(attRow.BranchID) : null,
+      branchId: attBranchId,
     },
-    payrollState: { hasPayroll, hasLedger },
+    payrollState: {
+      hasPayroll: hasGeneratedPayroll || hasPostedPayroll,
+      hasGeneratedPayroll,
+      hasPostedPayroll,
+      hasLedger,
+    },
     sourceBranch: source
       ? {
           branchId: source.branchId,
@@ -615,11 +705,27 @@ export async function createTemporaryBranchTransfer(args: {
   allowSetupDestination?: boolean;
   callerHasSourceAccess?: boolean;
   callerHasDestinationAccess?: boolean;
-}): Promise<{ transferId: number; fromBranchId: number }> {
+  /**
+   * Emergency override for soft blockers (missing dest assignment/payroll/services,
+   * or remaining source bookings that are not auto-moved).
+   */
+  forceDespiteBlockers?: boolean;
+  /**
+   * Past-date correction: move completed attendance + non-posted payroll/ledger
+   * BranchID to destination. Required when canForceWithRelocate.
+   */
+  relocateAttendance?: boolean;
+}): Promise<{
+  transferId: number;
+  fromBranchId: number;
+  forced: boolean;
+  relocatedAttendance: boolean;
+}> {
   if (!args.reason?.trim()) {
     throw new SchedulePolicyError('TRANSFER_REASON_REQUIRED', 'السبب مطلوب', 400);
   }
 
+  const relocate = args.relocateAttendance === true;
   const preview = await previewTemporaryBranchTransfer({
     empId: args.empId,
     workDate: args.workDate,
@@ -629,20 +735,31 @@ export async function createTemporaryBranchTransfer(args: {
     allowSetupDestination: args.allowSetupDestination,
     callerHasSourceAccess: args.callerHasSourceAccess,
     callerHasDestinationAccess: args.callerHasDestinationAccess,
+    relocateAttendance: relocate,
   });
 
-  if (!preview.canTransfer || !preview.sourceBranch) {
-    const first = preview.blockers[0];
+  const force = args.forceDespiteBlockers === true;
+  const allowed =
+    preview.sourceBranch != null &&
+    (preview.canTransfer ||
+      (force && preview.canForceTransfer) ||
+      (force && relocate && preview.canForceWithRelocate));
+
+  if (!allowed) {
+    const { hard } = splitTransferBlockers(preview.blockers, {
+      relocateAttendance: relocate,
+    });
+    const first = (force ? hard[0] : preview.blockers[0]) ?? null;
     throw new SchedulePolicyError(
       first?.code ?? 'TRANSFER_BLOCKED',
       first?.message ?? 'النقل غير مسموح',
       409,
-      { preview },
+      { preview, forceRequested: force, relocateRequested: relocate },
     );
   }
 
   // Never trust browser FromBranchID — resolver / operational source is authoritative
-  const fromBranchId = preview.sourceBranch.branchId;
+  const fromBranchId = preview.sourceBranch!.branchId;
   if (args.fromBranchId != null && args.fromBranchId !== fromBranchId) {
     throw new SchedulePolicyError(
       'TRANSFER_FROM_BRANCH_MISMATCH',
@@ -661,8 +778,28 @@ export async function createTemporaryBranchTransfer(args: {
     });
   }
 
+  const forced = force && !preview.canTransfer;
+  const overrideCodes = [
+    ...preview.forceableBlockers.map((b) => b.code),
+    ...(relocate ? preview.relocatableBlockers.map((b) => b.code) : []),
+  ];
+  const reasonText = forced
+    ? `${args.reason.trim()} [نقل إجباري رغم: ${overrideCodes.join(', ')}${
+        relocate ? ' | relocateAttendance' : ''
+      }]`
+    : args.reason.trim();
+
   const window = preview.resolvedDestinationWindow;
   const db = await getPool();
+
+  if (relocate && preview.requiresRelocate) {
+    await relocateAttendanceAndPayrollForTransfer({
+      empId: args.empId,
+      workDate: args.workDate,
+      fromBranchId,
+      toBranchId: args.toBranchId,
+    });
+  }
 
   await db
     .request()
@@ -682,7 +819,7 @@ export async function createTemporaryBranchTransfer(args: {
     .input('day', sql.Date, args.workDate)
     .input('start', sql.VarChar(8), window.startTime ?? null)
     .input('end', sql.VarChar(8), window.endTime ?? null)
-    .input('reason', sql.NVarChar(250), args.reason.trim())
+    .input('reason', sql.NVarChar(250), reasonText.slice(0, 250))
     .input('actor', sql.Int, args.createdByUserId ?? null)
     .query(`
       INSERT INTO dbo.TblEmpTemporaryBranchTransfer (
@@ -706,7 +843,157 @@ export async function createTemporaryBranchTransfer(args: {
     toBranchId: args.toBranchId,
   });
 
-  return { transferId, fromBranchId };
+  return {
+    transferId,
+    fromBranchId,
+    forced,
+    relocatedAttendance: Boolean(relocate && preview.requiresRelocate),
+  };
+}
+
+async function relocateAttendanceAndPayrollForTransfer(args: {
+  empId: number;
+  workDate: string;
+  fromBranchId: number;
+  toBranchId: number;
+}): Promise<void> {
+  const db = await getPool();
+
+  await db
+    .request()
+    .input('empId', sql.Int, args.empId)
+    .input('day', sql.Date, args.workDate)
+    .input('from', sql.Int, args.fromBranchId)
+    .input('to', sql.Int, args.toBranchId)
+    .query(`
+      UPDATE dbo.TblEmpAttendance
+      SET BranchID = @to
+      WHERE EmpID = @empId AND WorkDate = @day AND BranchID = @from
+        AND CheckInTime IS NOT NULL AND CheckOutTime IS NOT NULL
+    `);
+
+  // Also move attendance that landed on a third branch (ops mistake) toward destination
+  await db
+    .request()
+    .input('empId', sql.Int, args.empId)
+    .input('day', sql.Date, args.workDate)
+    .input('to', sql.Int, args.toBranchId)
+    .query(`
+      UPDATE dbo.TblEmpAttendance
+      SET BranchID = @to
+      WHERE EmpID = @empId AND WorkDate = @day AND BranchID <> @to
+        AND CheckInTime IS NOT NULL AND CheckOutTime IS NOT NULL
+    `);
+
+  const payroll = await db
+    .request()
+    .input('empId', sql.Int, args.empId)
+    .input('day', sql.Date, args.workDate)
+    .input('to', sql.Int, args.toBranchId)
+    .query(`
+      UPDATE dbo.TblEmpDailyPayroll
+      SET BranchID = @to, UpdatedAt = GETDATE()
+      OUTPUT INSERTED.ID
+      WHERE EmpID = @empId AND WorkDate = @day AND BranchID <> @to
+        AND Status IN (N'Generated', N'Earned', N'PendingCheckout')
+    `);
+
+  const payrollIds = payroll.recordset.map((r) => Number(r.ID)).filter((id) => id > 0);
+  if (payrollIds.length === 0) return;
+
+  try {
+    for (const payrollId of payrollIds) {
+      await db
+        .request()
+        .input('payrollId', sql.Int, payrollId)
+        .input('to', sql.Int, args.toBranchId)
+        .query(`
+          UPDATE dbo.TblEmpLedgerEntry
+          SET BranchID = @to
+          WHERE RefType = N'TblEmpDailyPayroll' AND RefID = @payrollId AND IsVoided = 0
+        `);
+    }
+  } catch {
+    /* ledger table optional / schema differs */
+  }
+}
+
+export type TemporaryTransferListRow = {
+  transferId: number;
+  empId: number;
+  empName: string;
+  fromBranchId: number;
+  fromBranchCode: string;
+  fromBranchName: string;
+  toBranchId: number;
+  toBranchCode: string;
+  toBranchName: string;
+  workDate: string;
+  startTime: string | null;
+  endTime: string | null;
+  reason: string | null;
+  isActive: boolean;
+  createdAt: string | null;
+};
+
+export async function listTemporaryBranchTransfers(args: {
+  fromDate: string;
+  toDate: string;
+  empId?: number | null;
+  activeOnly?: boolean;
+}): Promise<TemporaryTransferListRow[]> {
+  await ensureEmpBranchWorkScheduleTable();
+  const db = await getPool();
+  const req = db
+    .request()
+    .input('from', sql.Date, args.fromDate)
+    .input('to', sql.Date, args.toDate);
+  if (args.empId != null) req.input('empId', sql.Int, args.empId);
+
+  const result = await req.query(`
+    SELECT
+      t.TransferID,
+      t.EmpID,
+      e.EmpName,
+      t.FromBranchID,
+      fb.BranchCode AS FromBranchCode,
+      fb.BranchName AS FromBranchName,
+      t.ToBranchID,
+      tb.BranchCode AS ToBranchCode,
+      tb.BranchName AS ToBranchName,
+      CONVERT(varchar(10), t.WorkDate, 23) AS WorkDate,
+      CONVERT(varchar(5), t.StartTime, 108) AS StartTime,
+      CONVERT(varchar(5), t.EndTime, 108) AS EndTime,
+      t.Reason,
+      t.IsActive,
+      CONVERT(varchar(33), t.CreatedAt, 126) AS CreatedAt
+    FROM dbo.TblEmpTemporaryBranchTransfer t
+    INNER JOIN dbo.TblEmp e ON e.EmpID = t.EmpID
+    LEFT JOIN dbo.TblBranch fb ON fb.BranchID = t.FromBranchID
+    LEFT JOIN dbo.TblBranch tb ON tb.BranchID = t.ToBranchID
+    WHERE t.WorkDate >= @from AND t.WorkDate <= @to
+      ${args.empId != null ? 'AND t.EmpID = @empId' : ''}
+      ${args.activeOnly === true ? 'AND t.IsActive = 1' : ''}
+    ORDER BY t.WorkDate DESC, t.TransferID DESC
+  `);
+
+  return result.recordset.map((r) => ({
+    transferId: Number(r.TransferID),
+    empId: Number(r.EmpID),
+    empName: String(r.EmpName ?? ''),
+    fromBranchId: Number(r.FromBranchID),
+    fromBranchCode: String(r.FromBranchCode ?? ''),
+    fromBranchName: String(r.FromBranchName ?? ''),
+    toBranchId: Number(r.ToBranchID),
+    toBranchCode: String(r.ToBranchCode ?? ''),
+    toBranchName: String(r.ToBranchName ?? ''),
+    workDate: String(r.WorkDate).slice(0, 10),
+    startTime: r.StartTime == null ? null : String(r.StartTime).slice(0, 5),
+    endTime: r.EndTime == null ? null : String(r.EndTime).slice(0, 5),
+    reason: r.Reason == null ? null : String(r.Reason),
+    isActive: Boolean(r.IsActive),
+    createdAt: r.CreatedAt == null ? null : String(r.CreatedAt),
+  }));
 }
 
 export async function cancelTemporaryBranchTransfer(args: {

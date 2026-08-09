@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { Loader2, Shield, Save, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { readFetchErrorMessage } from '@/lib/readFetchErrorMessage';
 
 interface Role { RoleID: number; RoleKey: string; RoleName: string; }
 interface UserRow {
@@ -31,18 +32,27 @@ export default function UsersPermissionsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setMsg(null);
     try {
       const res = await fetch('/api/admin/permissions/users');
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        throw new Error(await readFetchErrorMessage(res, 'فشل تحميل صلاحيات المستخدمين'));
+      }
       const data = await res.json();
-      setUsers(data.users);
-      setRoles(data.roles);
+      const list = Array.isArray(data.users) ? (data.users as UserRow[]) : [];
+      const roleList = Array.isArray(data.roles) ? (data.roles as Role[]) : [];
+      setUsers(list);
+      setRoles(roleList);
       const map: Record<number, string[]> = {};
-      data.users.forEach((u: UserRow) => { map[u.userID] = [...u.roles]; });
+      list.forEach((u) => { map[u.userID] = [...(u.roles || [])]; });
       setEditMap(map);
-    } catch (e: any) {
-      setMsg({ type: 'err', text: e.message });
-    } finally { setLoading(false); }
+    } catch (e: unknown) {
+      setMsg({ type: 'err', text: e instanceof Error ? e.message : 'فشل التحميل' });
+      setUsers([]);
+      setRoles([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -72,31 +82,38 @@ export default function UsersPermissionsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userID: uid, roles: editMap[uid] || [], reason: reason.trim() }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({} as { success?: boolean; error?: string }));
       if (!res.ok || !data.success) {
-        setMsg({ type: 'err', text: data.error || 'فشل حفظ الصلاحيات' });
+        setMsg({
+          type: 'err',
+          text:
+            typeof data.error === 'string' && data.error.trim()
+              ? data.error
+              : 'فشل حفظ الصلاحيات',
+        });
       } else {
         setMsg({ type: 'ok', text: 'تم حفظ الصلاحيات بنجاح' });
         await load();
       }
-    } catch (e: any) {
-      setMsg({ type: 'err', text: e.message });
+    } catch (e: unknown) {
+      setMsg({ type: 'err', text: e instanceof Error ? e.message : 'فشل الحفظ' });
     } finally {
       setSaving(null);
       setTimeout(() => setMsg(null), 4500);
     }
   };
 
-  if (loading) return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-      <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
-    </div>
-  );
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 p-6" dir="rtl">
       <div className="max-w-4xl mx-auto space-y-6">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-purple-500/15 border border-purple-500/25">
@@ -110,28 +127,48 @@ export default function UsersPermissionsPage() {
               </p>
             </div>
           </div>
-          <button onClick={load} className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors">
+          <button
+            onClick={load}
+            className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors"
+          >
             <RefreshCw className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Feedback */}
         {msg && (
-          <div className={`px-4 py-3 rounded-xl text-sm font-medium border ${msg.type === 'ok' ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20' : 'bg-rose-500/10 text-rose-300 border-rose-500/20'}`}>
+          <div
+            className={`px-4 py-3 rounded-xl text-sm font-medium border break-words ${
+              msg.type === 'ok'
+                ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
+                : 'bg-rose-500/10 text-rose-300 border-rose-500/20'
+            }`}
+          >
             {msg.text}
           </div>
         )}
 
-        {/* Users list */}
         <div className="space-y-3">
-          {users.map(user => {
-            const isOpen    = expanded === user.userID;
+          {users.length === 0 && !msg ? (
+            <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/50 px-5 py-8 text-center text-sm text-zinc-500">
+              لا يوجد مستخدمون للعرض
+            </div>
+          ) : null}
+          {users.map((user) => {
+            const isOpen = expanded === user.userID;
             const userRoles = editMap[user.userID] || [];
-            const isDirty   = JSON.stringify(userRoles.slice().sort()) !== JSON.stringify((user.roles).slice().sort());
+            const isDirty =
+              JSON.stringify(userRoles.slice().sort()) !==
+              JSON.stringify((user.roles || []).slice().sort());
 
             return (
-              <div key={user.userID} className={`rounded-2xl border transition-colors ${user.isDeleted ? 'border-zinc-800/40 opacity-50' : 'border-zinc-800/60 bg-zinc-900/50'}`}>
-                {/* Row header */}
+              <div
+                key={user.userID}
+                className={`rounded-2xl border transition-colors ${
+                  user.isDeleted
+                    ? 'border-zinc-800/40 opacity-50'
+                    : 'border-zinc-800/60 bg-zinc-900/50'
+                }`}
+              >
                 <button
                   onClick={() => setExpanded(isOpen ? null : user.userID)}
                   className="w-full flex items-center gap-4 px-5 py-4 text-right"
@@ -141,31 +178,58 @@ export default function UsersPermissionsPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-zinc-200">{user.userName}</span>
                       <span className="text-xs text-zinc-500">({user.loginName})</span>
-                      {user.isDeleted && <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-500 border border-zinc-700">محذوف</span>}
+                      {user.isDeleted && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-500 border border-zinc-700">
+                          محذوف
+                        </span>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-1.5 mt-1.5">
-                      {userRoles.length === 0
-                        ? <span className="text-[11px] text-zinc-600">لا توجد أدوار</span>
-                        : userRoles.map(r => (
-                          <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${ROLE_COLORS[r] || 'bg-zinc-700/40 text-zinc-400 border-zinc-600/40'}`}>{r}</span>
+                      {userRoles.length === 0 ? (
+                        <span className="text-[11px] text-zinc-600">لا توجد أدوار</span>
+                      ) : (
+                        userRoles.map((r) => (
+                          <span
+                            key={r}
+                            className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${
+                              ROLE_COLORS[r] ||
+                              'bg-zinc-700/40 text-zinc-400 border-zinc-600/40'
+                            }`}
+                          >
+                            {r}
+                          </span>
                         ))
-                      }
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    {isDirty && <span className="text-[10px] text-amber-400 border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 rounded-full">غير محفوظ</span>}
-                    {isOpen ? <ChevronUp className="w-4 h-4 text-zinc-500" /> : <ChevronDown className="w-4 h-4 text-zinc-500" />}
+                    {isDirty && (
+                      <span className="text-[10px] text-amber-400 border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 rounded-full">
+                        غير محفوظ
+                      </span>
+                    )}
+                    {isOpen ? (
+                      <ChevronUp className="w-4 h-4 text-zinc-500" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-zinc-500" />
+                    )}
                   </div>
                 </button>
 
-                {/* Expanded role assignment */}
                 {isOpen && !user.isDeleted && (
                   <div className="border-t border-zinc-800/50 px-5 py-4 space-y-4">
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {roles.map(role => {
+                      {roles.map((role) => {
                         const active = userRoles.includes(role.RoleKey);
                         return (
-                          <label key={role.RoleID} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer border transition-colors ${active ? 'bg-purple-500/15 border-purple-500/30' : 'bg-zinc-800/30 border-zinc-700/40 hover:border-zinc-600/60'}`}>
+                          <label
+                            key={role.RoleID}
+                            className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer border transition-colors ${
+                              active
+                                ? 'bg-purple-500/15 border-purple-500/30'
+                                : 'bg-zinc-800/30 border-zinc-700/40 hover:border-zinc-600/60'
+                            }`}
+                          >
                             <input
                               type="checkbox"
                               checked={active}
@@ -186,7 +250,11 @@ export default function UsersPermissionsPage() {
                         disabled={saving === user.userID}
                         className="flex items-center gap-2 px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
                       >
-                        {saving === user.userID ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                        {saving === user.userID ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Save className="w-3.5 h-3.5" />
+                        )}
                         حفظ
                       </button>
                     </div>

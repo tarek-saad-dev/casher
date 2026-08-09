@@ -17,39 +17,49 @@ async function requireSuperAdmin() {
 
 // GET — all pages with their current accessMode and role assignments
 export async function GET() {
-  const session = await requireSuperAdmin();
-  if (!session) return NextResponse.json({ error: 'غير مصرح — super_admin فقط' }, { status: 403 });
+  try {
+    const session = await requireSuperAdmin();
+    if (!session) {
+      return NextResponse.json({ error: 'غير مصرح — super_admin فقط' }, { status: 403 });
+    }
 
-  const db = await getPool();
+    const db = await getPool();
 
-  const pagesRes = await db.request().query(`
-    SELECT
-      sp.PageID, sp.PageKey, sp.PageName, sp.PagePath,
-      sp.Section, sp.AccessMode, sp.SortOrder, sp.IsActive,
-      STRING_AGG(r.RoleKey, ',') AS roles
-    FROM dbo.TblSystemPages sp
-    LEFT JOIN dbo.TblPageRoleAccess pra ON pra.PageID = sp.PageID
-    LEFT JOIN dbo.TblRoles r ON r.RoleID = pra.RoleID AND r.IsActive = 1
-    GROUP BY sp.PageID, sp.PageKey, sp.PageName, sp.PagePath,
-             sp.Section, sp.AccessMode, sp.SortOrder, sp.IsActive
-    ORDER BY sp.SortOrder, sp.PageKey
-  `);
+    const pagesRes = await db.request().query(`
+      SELECT
+        sp.PageID, sp.PageKey, sp.PageName, sp.PagePath,
+        sp.Section, sp.AccessMode, sp.SortOrder, sp.IsActive,
+        STRING_AGG(r.RoleKey, ',') AS roles
+      FROM dbo.TblSystemPages sp
+      LEFT JOIN dbo.TblPageRoleAccess pra ON pra.PageID = sp.PageID
+      LEFT JOIN dbo.TblRoles r ON r.RoleID = pra.RoleID AND r.IsActive = 1
+      GROUP BY sp.PageID, sp.PageKey, sp.PageName, sp.PagePath,
+               sp.Section, sp.AccessMode, sp.SortOrder, sp.IsActive
+      ORDER BY sp.SortOrder, sp.PageKey
+    `);
 
-  const rolesRes = await db.request().query(`SELECT RoleID, RoleKey, RoleName FROM dbo.TblRoles WHERE IsActive=1 ORDER BY RoleID`);
+    const rolesRes = await db
+      .request()
+      .query(`SELECT RoleID, RoleKey, RoleName FROM dbo.TblRoles WHERE IsActive=1 ORDER BY RoleID`);
 
-  const pages = pagesRes.recordset.map((p: any) => ({
-    pageID:     p.PageID,
-    pageKey:    p.PageKey,
-    pageName:   p.PageName,
-    pagePath:   p.PagePath,
-    section:    p.Section,
-    accessMode: p.AccessMode,
-    sortOrder:  p.SortOrder,
-    isActive:   p.IsActive,
-    roles:      p.roles ? p.roles.split(',') : [],
-  }));
+    const pages = pagesRes.recordset.map((p: Record<string, unknown>) => ({
+      pageID:     p.PageID,
+      pageKey:    p.PageKey,
+      pageName:   p.PageName,
+      pagePath:   p.PagePath,
+      section:    p.Section,
+      accessMode: p.AccessMode,
+      sortOrder:  p.SortOrder,
+      isActive:   p.IsActive,
+      roles:      p.roles ? String(p.roles).split(',') : [],
+    }));
 
-  return NextResponse.json({ pages, roles: rolesRes.recordset });
+    return NextResponse.json({ pages, roles: rolesRes.recordset });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[api/admin/permissions/pages] GET error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 // POST — update a page's accessMode and/or role assignments

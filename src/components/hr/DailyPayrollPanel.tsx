@@ -6,10 +6,12 @@ import {
   CheckCircle2, AlertCircle, Users, Banknote,
   CheckCheck, X, TrendingDown, TrendingUp,
   AlertTriangle, ShieldCheck, ClipboardList, Timer, BookOpen, Target,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import Link from 'next/link';
 import KpiCard from '@/components/shared/KpiCard';
 import { getBusinessDateStr } from '@/lib/timeUtils';
+import { shiftCalendarDate } from '@/lib/businessDate';
 import {
   PAYROLL_VALIDATION_REASON_LABELS,
   type PayrollValidationReason,
@@ -490,8 +492,30 @@ export default function DailyPayrollPanel() {
           <span>يوميات الموظفين — فحص · توليد · ترحيل</span>
         </div>
         <div className="flex items-center gap-2 mr-auto">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => handleDateChange(shiftCalendarDate(date, -1))}
+            disabled={loading}
+            title="اليوم السابق"
+            aria-label="اليوم السابق"
+            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-9 w-9 p-0"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </Button>
           <Input type="date" value={date} onChange={e => handleDateChange(e.target.value)}
             className="bg-zinc-900 border-zinc-700 text-white w-44 h-9 text-sm" />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => handleDateChange(shiftCalendarDate(date, 1))}
+            disabled={loading}
+            title="اليوم التالي"
+            aria-label="اليوم التالي"
+            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-9 w-9 p-0"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
           <Button variant="outline" onClick={() => handleDateChange(getBusinessDateStr())}
             className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-9 text-xs gap-1">
             <CalendarDays className="w-3.5 h-3.5" />اليوم

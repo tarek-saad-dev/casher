@@ -81,9 +81,17 @@ describe('phase1rTemporaryTransferPreview', () => {
     const t = read('src/lib/hr/temporaryBranchTransfer.ts');
     expect(t).toContain('previewTemporaryBranchTransfer');
     expect(t).toContain('TEMPORARY_TRANSFER_HAS_SOURCE_BOOKINGS');
+    expect(t).toContain('FORCEABLE_TRANSFER_BLOCKER_CODES');
+    expect(t).toContain('canForceTransfer');
+    expect(t).toContain('forceDespiteBlockers');
     expect(t).toContain('TRANSFER_ATTENDANCE_CONFLICT');
+    expect(t).toContain('TRANSFER_ATTENDANCE_COMPLETED');
     expect(t).toContain('TRANSFER_ACTIVE_SERVICE_CONFLICT');
     expect(t).toContain('TRANSFER_PAYROLL_ALREADY_GENERATED');
+    expect(t).toContain('TRANSFER_PAYROLL_ALREADY_POSTED');
+    expect(t).toContain('RELOCATABLE_TRANSFER_BLOCKER_CODES');
+    expect(t).toContain('canForceWithRelocate');
+    expect(t).toContain('relocateAttendance');
     expect(t).toContain('TRANSFER_GLOBAL_LEAVE_BLOCKS');
     expect(t).toContain('TRANSFER_DESTINATION_NOT_OPERATIONAL');
     expect(t).toContain('TRANSFER_FROM_BRANCH_MISMATCH');

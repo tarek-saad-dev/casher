@@ -126,7 +126,9 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
   const [transferEnd, setTransferEnd] = useState('');
   const [transferPreview, setTransferPreview] = useState<{
     canTransfer?: boolean;
+    canForceTransfer?: boolean;
     blockers?: Array<{ code: string; message: string }>;
+    forceableBlockers?: Array<{ code: string; message: string }>;
     affectedBookings?: Array<{
       bookingId: number;
       bookingCode: string | null;
@@ -140,6 +142,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
       overnight: boolean;
     };
   } | null>(null);
+  const [transferForce, setTransferForce] = useState(false);
   const [transferBusy, setTransferBusy] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
   const [restoringEmpId, setRestoringEmpId] = useState<number | null>(null);
@@ -211,6 +214,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
     setTransferStart('');
     setTransferEnd('');
     setTransferPreview(null);
+    setTransferForce(false);
     setTransferError(null);
   };
 
@@ -235,6 +239,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error ?? 'فشل معاينة النقل');
       setTransferPreview(data.preview);
+      setTransferForce(false);
     } catch (e: any) {
       setTransferError(e.message ?? 'فشل معاينة النقل');
     } finally {
@@ -244,6 +249,17 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
 
   const applyTransfer = async () => {
     if (!transferEmpId || !transferToBranchId || !transferReason.trim()) return;
+    const canApply =
+      transferPreview?.canTransfer ||
+      (transferForce && transferPreview?.canForceTransfer);
+    if (!canApply) {
+      setTransferError(
+        transferPreview?.canForceTransfer
+          ? 'فعّل «تطبيق رغم الموانع» ثم أعد المحاولة'
+          : 'نفّذ المعاينة أولاً',
+      );
+      return;
+    }
     setTransferBusy(true);
     setTransferError(null);
     try {
@@ -258,6 +274,8 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
             startTime: transferStart || undefined,
             endTime: transferEnd || undefined,
             reason: transferReason.trim(),
+            forceDespiteBlockers:
+              transferForce && transferPreview?.canForceTransfer === true,
           }),
         },
       );
@@ -265,6 +283,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
       if (!res.ok || !data.ok) throw new Error(data.error ?? 'فشل النقل');
       setTransferEmpId(null);
       setTransferPreview(null);
+      setTransferForce(false);
       await loadBarbers();
       onApplied();
     } catch (e: any) {
@@ -1192,16 +1211,33 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
                   {transferPreview.resolvedDestinationWindow?.endTime}
                   {transferPreview.resolvedDestinationWindow?.overnight ? ' +1' : ''}
                 </p>
-                {transferPreview.blockers?.map((b: { code: string; message: string }) => (
-                  <p key={b.code} style={{ color: 'var(--destructive)' }}>{b.message}</p>
-                ))}
+                {transferPreview.blockers?.map((b: { code: string; message: string }) => {
+                  const soft = transferPreview.forceableBlockers?.some((f) => f.code === b.code);
+                  return (
+                    <p key={b.code} style={{ color: soft ? 'var(--warning)' : 'var(--destructive)' }}>
+                      {soft ? '⚠ ' : ''}{b.message}
+                    </p>
+                  );
+                })}
                 {(transferPreview.affectedBookings?.length ?? 0) > 0 && (
                   <div>
-                    <p style={{ color: 'var(--warning)' }}>حجوزات المصدر تمنع النقل:</p>
+                    <p style={{ color: 'var(--warning)' }}>حجوزات في فرع المصدر (لا تُنقل تلقائياً):</p>
                     {transferPreview.affectedBookings?.map((bk: { bookingId: number; bookingCode: string | null; startTime: string }) => (
                       <p key={bk.bookingId}>{bk.bookingCode || bk.bookingId} — {bk.startTime}</p>
                     ))}
                   </div>
+                )}
+                {transferPreview.canForceTransfer && !transferPreview.canTransfer && (
+                  <label className="flex items-start gap-2 pt-1 cursor-pointer" style={{ color: 'var(--warning)' }}>
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={transferForce}
+                      onChange={(e) => setTransferForce(e.target.checked)}
+                      disabled={transferBusy}
+                    />
+                    <span>تطبيق النقل رغم الموانع (تعيين/راتب/خدمات/حجوزات المصدر)</span>
+                  </label>
                 )}
               </div>
             )}
@@ -1215,7 +1251,14 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
               </button>
               <button
                 type="button"
-                disabled={transferBusy || !transferReason.trim() || !transferPreview?.canTransfer}
+                disabled={
+                  transferBusy ||
+                  !transferReason.trim() ||
+                  !(
+                    transferPreview?.canTransfer ||
+                    (transferForce && transferPreview?.canForceTransfer)
+                  )
+                }
                 onClick={() => void applyTransfer()}
                 className="px-3 py-1.5 rounded-xl text-xs font-semibold"
                 style={{ background: 'color-mix(in srgb, var(--primary) 22%, transparent)', color: 'var(--primary)', border: '1px solid color-mix(in srgb, var(--primary) 50%, transparent)' }}

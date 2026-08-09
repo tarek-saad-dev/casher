@@ -6,12 +6,13 @@ import {
   requireBranchOperatorContext,
 } from '@/lib/branch/operationalGates';
 import { isActiveBranchContext } from '@/lib/branch/context';
-import { closeShift } from '@/lib/branch/shiftSession';
+import { closeOwnOpenShift, closeShift, getUserOpenShift } from '@/lib/branch/shiftSession';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 // POST /api/shift/close — Close a shift belonging to the active branch
+// (or the caller's own open shift on another branch after a session switch)
 export async function POST(req: NextRequest) {
   try {
     const user = await getSession();
@@ -28,9 +29,19 @@ export async function POST(req: NextRequest) {
     const branch = await requireBranchOperatorContext();
     if (!isActiveBranchContext(branch)) return branch;
 
-    const closed = await closeShift(branch, shiftMoveID);
+    const ownOpen = await getUserOpenShift(user.UserID);
+    const closingOwnOtherBranch =
+      !!ownOpen &&
+      ownOpen.id === shiftMoveID &&
+      ownOpen.userId === user.UserID &&
+      ownOpen.branchId !== branch.branchId;
+
+    const closed = closingOwnOtherBranch
+      ? await closeOwnOpenShift(user.UserID)
+      : await closeShift(branch, shiftMoveID);
+
     console.log(
-      `[shift] Closed shift: ID=${shiftMoveID}, Branch=${branch.branchCode}, by ${user.UserName}`,
+      `[shift] Closed shift: ID=${shiftMoveID}, Branch=${closed.branchId}, active=${branch.branchCode}, by ${user.UserName}`,
     );
 
     return NextResponse.json({

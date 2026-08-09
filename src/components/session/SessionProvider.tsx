@@ -186,6 +186,11 @@ export default function SessionProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(id);
   }, [refresh]);
 
+  const shiftBelongsToActiveBranch =
+    !!shift &&
+    !!activeBranch &&
+    (shift.BranchID == null || shift.BranchID === activeBranch.branchId);
+
   // Memoize context value to prevent unnecessary re-renders
   const contextValue = useMemo(() => ({
     user,
@@ -195,7 +200,13 @@ export default function SessionProvider({ children }: { children: ReactNode }) {
     loading,
     isAuthenticated: !!user,
     hasActiveDay: !!day && day.Status === true,
-    hasActiveShift: !!user && !!shift && shift.Status === true && shift.UserID === user.UserID,
+    // Open shift counts only when it belongs to the active branch (sales gates are branch-scoped).
+    hasActiveShift:
+      !!user &&
+      !!shift &&
+      shift.Status === true &&
+      shift.UserID === user.UserID &&
+      shiftBelongsToActiveBranch,
     defaultShiftId,
     activeBranch,
     refresh,
@@ -203,7 +214,7 @@ export default function SessionProvider({ children }: { children: ReactNode }) {
     setUser,
     openMyShift,
     closeMyShift,
-  }), [user, day, shift, permissions, loading, defaultShiftId, activeBranch, refresh, logout, setUser, openMyShift, closeMyShift]);
+  }), [user, day, shift, permissions, loading, defaultShiftId, activeBranch, shiftBelongsToActiveBranch, refresh, logout, setUser, openMyShift, closeMyShift]);
 
   return (
     <SessionContext.Provider value={contextValue}>

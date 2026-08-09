@@ -17,34 +17,43 @@ async function requireSuperAdmin() {
 
 // GET — list all users with their roles
 export async function GET() {
-  const session = await requireSuperAdmin();
-  if (!session) return NextResponse.json({ error: 'غير مصرح — super_admin فقط' }, { status: 403 });
+  try {
+    const session = await requireSuperAdmin();
+    if (!session) {
+      return NextResponse.json({ error: 'غير مصرح — super_admin فقط' }, { status: 403 });
+    }
 
-  const db = await getPool();
-  const res = await db.request().query(`
-    SELECT
-      u.UserID, u.UserName, u.loginName, u.UserLevel, u.isDeleted,
-      STRING_AGG(r.RoleKey, ',') AS roles
-    FROM dbo.TblUser u
-    LEFT JOIN dbo.TblUserRoles ur ON ur.UserID = u.UserID
-    LEFT JOIN dbo.TblRoles r     ON r.RoleID  = ur.RoleID AND r.IsActive = 1
-    GROUP BY u.UserID, u.UserName, u.loginName, u.UserLevel, u.isDeleted
-    ORDER BY u.UserID
-  `);
+    const db = await getPool();
+    const res = await db.request().query(`
+      SELECT
+        u.UserID, u.UserName, u.loginName, u.UserLevel, u.isDeleted,
+        STRING_AGG(r.RoleKey, ',') AS roles
+      FROM dbo.TblUser u
+      LEFT JOIN dbo.TblUserRoles ur ON ur.UserID = u.UserID
+      LEFT JOIN dbo.TblRoles r     ON r.RoleID  = ur.RoleID AND r.IsActive = 1
+      GROUP BY u.UserID, u.UserName, u.loginName, u.UserLevel, u.isDeleted
+      ORDER BY u.UserID
+    `);
 
-  const users = res.recordset.map((u: any) => ({
-    userID:    u.UserID,
-    userName:  u.UserName,
-    loginName: u.loginName,
-    userLevel: u.UserLevel,
-    isDeleted: u.isDeleted,
-    roles:     u.roles ? u.roles.split(',') : [],
-  }));
+    const users = res.recordset.map((u: Record<string, unknown>) => ({
+      userID:    u.UserID,
+      userName:  u.UserName,
+      loginName: u.loginName,
+      userLevel: u.UserLevel,
+      isDeleted: u.isDeleted,
+      roles:     u.roles ? String(u.roles).split(',') : [],
+    }));
 
-  // Also return all available roles
-  const rolesRes = await db.request().query(`SELECT RoleID, RoleKey, RoleName FROM dbo.TblRoles WHERE IsActive=1 ORDER BY RoleID`);
+    const rolesRes = await db
+      .request()
+      .query(`SELECT RoleID, RoleKey, RoleName FROM dbo.TblRoles WHERE IsActive=1 ORDER BY RoleID`);
 
-  return NextResponse.json({ users, roles: rolesRes.recordset });
+    return NextResponse.json({ users, roles: rolesRes.recordset });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[api/admin/permissions/users] GET error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 // POST — assign or remove roles for a user

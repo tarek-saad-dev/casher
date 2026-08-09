@@ -197,31 +197,16 @@ export async function openShift(
   return mapShift(result.recordset[0]);
 }
 
-export async function closeShift(
-  branchContext: ActiveBranchContext,
+async function finalizeCloseShift(
   shiftMoveId: number,
+  branchId: number,
 ): Promise<ShiftMoveRecord> {
-  if (!branchContext.canOperate) {
-    throw new BranchDomainError(
-      'OPERATION_NOT_ALLOWED',
-      'غير مصرح — لا تملك صلاحية تشغيل هذا الفرع',
-      403,
-    );
-  }
-
-  const shift = await validateShiftBelongsToBranch(shiftMoveId, branchContext.branchId);
-  if (!shift.status) {
-    throw new BranchDomainError('OPERATION_NOT_ALLOWED', 'هذه الوردية مغلقة بالفعل', 400);
-  }
-
-  await validateBusinessDayBelongsToBranch(shift.businessDayId, branchContext.branchId);
-
   const db = await getPool();
   const now = new Date();
   const result = await db
     .request()
     .input('id', sql.Int, shiftMoveId)
-    .input('branchId', sql.Int, branchContext.branchId)
+    .input('branchId', sql.Int, branchId)
     .input('endDate', sql.Date, now)
     .input('endTime', sql.NVarChar(50), formatLegacyEndTime(now))
     .query(`
@@ -243,6 +228,43 @@ export async function closeShift(
     throw new BranchDomainError('OPERATION_NOT_ALLOWED', 'تعذر إغلاق الوردية', 400);
   }
   return mapShift(result.recordset[0]);
+}
+
+export async function closeShift(
+  branchContext: ActiveBranchContext,
+  shiftMoveId: number,
+): Promise<ShiftMoveRecord> {
+  if (!branchContext.canOperate) {
+    throw new BranchDomainError(
+      'OPERATION_NOT_ALLOWED',
+      'غير مصرح — لا تملك صلاحية تشغيل هذا الفرع',
+      403,
+    );
+  }
+
+  const shift = await validateShiftBelongsToBranch(shiftMoveId, branchContext.branchId);
+  if (!shift.status) {
+    throw new BranchDomainError('OPERATION_NOT_ALLOWED', 'هذه الوردية مغلقة بالفعل', 400);
+  }
+
+  await validateBusinessDayBelongsToBranch(shift.businessDayId, branchContext.branchId);
+
+  return finalizeCloseShift(shiftMoveId, branchContext.branchId);
+}
+
+/**
+ * Close the caller's own open shift even if it belongs to another branch.
+ * Used after branch switch so the user can open a shift on the active branch.
+ */
+export async function closeOwnOpenShift(userId: number): Promise<ShiftMoveRecord> {
+  const open = await getUserOpenShift(userId);
+  if (!open || !open.status) {
+    throw new BranchDomainError('OPERATION_NOT_ALLOWED', 'لا توجد وردية مفتوحة', 400);
+  }
+  if (open.userId !== userId) {
+    throw new BranchDomainError('OPERATION_NOT_ALLOWED', 'غير مصرح بإغلاق هذه الوردية', 403);
+  }
+  return finalizeCloseShift(open.id, open.branchId);
 }
 
 export { forceCloseBranchShifts } from './businessDay';

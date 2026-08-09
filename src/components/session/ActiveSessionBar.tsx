@@ -20,8 +20,16 @@ interface Props {
 function ActiveSessionBar({ onCloseDayClick }: Props) {
   const pathname = usePathname();
   const isPosPage = pathname === '/income/pos';
-  const { user, day, shift, hasActiveDay, hasActiveShift, logout, closeMyShift } = useSession();
+  const { user, day, shift, hasActiveDay, hasActiveShift, activeBranch, logout, closeMyShift } = useSession();
   const canCloseDay = usePermission('day.close');
+  const shiftOnOtherBranch =
+    !!user &&
+    !!shift &&
+    shift.Status === true &&
+    shift.UserID === user.UserID &&
+    !!activeBranch &&
+    shift.BranchID != null &&
+    shift.BranchID !== activeBranch.branchId;
   const [mounted, setMounted] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showPrintReceipt, setShowPrintReceipt] = useState(false);
@@ -171,6 +179,10 @@ function ActiveSessionBar({ onCloseDayClick }: Props) {
                 </span>
               </span>
             )
+          ) : shiftOnOtherBranch ? (
+            <span className="text-amber-600 dark:text-amber-400 font-medium whitespace-nowrap">
+              وردية بفرع آخر
+            </span>
           ) : (
             <span className="text-destructive font-medium whitespace-nowrap">لا يوجد وردية مفتوحة</span>
           )}

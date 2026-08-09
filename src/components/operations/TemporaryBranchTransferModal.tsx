@@ -23,7 +23,9 @@ type TransferableBarber = {
 
 type TransferPreview = {
   canTransfer: boolean;
+  canForceTransfer?: boolean;
   blockers?: Array<{ code: string; message: string }>;
+  forceableBlockers?: Array<{ code: string; message: string }>;
   warnings?: string[];
   sourceBranch?: { branchId?: number; branchName: string } | null;
   destinationBranch?: { branchName: string } | null;
@@ -100,6 +102,7 @@ export function TemporaryBranchTransferModal({
   const [endTime, setEndTime] = useState('');
   const [reason, setReason] = useState('');
   const [preview, setPreview] = useState<TransferPreview | null>(null);
+  const [forceDespiteBlockers, setForceDespiteBlockers] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -163,6 +166,7 @@ export function TemporaryBranchTransferModal({
     setEndTime('');
     setReason('');
     setPreview(null);
+    setForceDespiteBlockers(false);
     setError(null);
   }, []);
 
@@ -217,6 +221,7 @@ export function TemporaryBranchTransferModal({
 
   useEffect(() => {
     setPreview(null);
+    setForceDespiteBlockers(false);
     setError(null);
   }, [empId, toBranchId, startTime, endTime]);
 
@@ -260,8 +265,15 @@ export function TemporaryBranchTransferModal({
       setError('سبب النقل مطلوب');
       return;
     }
-    if (!preview?.canTransfer) {
-      setError('نفّذ المعاينة أولاً وتأكد أن النقل مسموح');
+    const canApply =
+      preview?.canTransfer ||
+      (forceDespiteBlockers && preview?.canForceTransfer);
+    if (!canApply) {
+      setError(
+        preview?.canForceTransfer
+          ? 'فعّل «تطبيق رغم الموانع» ثم أعد المحاولة'
+          : 'نفّذ المعاينة أولاً وتأكد أن النقل مسموح',
+      );
       return;
     }
 
@@ -277,6 +289,8 @@ export function TemporaryBranchTransferModal({
           startTime: startTime || undefined,
           endTime: endTime || undefined,
           reason: reason.trim(),
+          forceDespiteBlockers:
+            forceDespiteBlockers && preview?.canForceTransfer === true,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -538,14 +552,23 @@ export function TemporaryBranchTransferModal({
                       {w}
                     </p>
                   ))}
-                  {preview.blockers?.map((b) => (
-                    <p key={b.code} className="text-destructive">
-                      {b.message}
-                    </p>
-                  ))}
+                  {preview.blockers?.map((b) => {
+                    const soft = preview.forceableBlockers?.some((f) => f.code === b.code);
+                    return (
+                      <p
+                        key={b.code}
+                        className={soft ? 'text-amber-300' : 'text-destructive'}
+                      >
+                        {soft ? '⚠ ' : ''}
+                        {b.message}
+                      </p>
+                    );
+                  })}
                   {(preview.affectedBookings?.length ?? 0) > 0 && (
                     <div className="pt-1">
-                      <p className="font-medium text-amber-300">حجوزات المصدر تمنع النقل:</p>
+                      <p className="font-medium text-amber-300">
+                        حجوزات في فرع المصدر (لا تُنقل تلقائياً):
+                      </p>
                       {preview.affectedBookings?.map((bk) => (
                         <p key={bk.bookingId}>
                           {bk.bookingCode || bk.bookingId} — {bk.startTime}
@@ -555,6 +578,21 @@ export function TemporaryBranchTransferModal({
                   )}
                   {preview.canTransfer && (
                     <p className="pt-1 font-medium text-emerald-300">المعاينة ناجحة — يمكن تطبيق النقل</p>
+                  )}
+                  {preview.canForceTransfer && !preview.canTransfer && (
+                    <label className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-[12px] text-amber-100 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={forceDespiteBlockers}
+                        onChange={(e) => setForceDespiteBlockers(e.target.checked)}
+                        disabled={busy}
+                      />
+                      <span>
+                        تطبيق النقل رغم الموانع أعلاه (تعيين/راتب/خدمات الوجهة أو حجوزات المصدر).
+                        الحجوزات تبقى في فرع المصدر ولن تُنقل تلقائياً.
+                      </span>
+                    </label>
                   )}
                 </div>
               )}
@@ -589,7 +627,10 @@ export function TemporaryBranchTransferModal({
               !empId ||
               !toBranchId ||
               !reason.trim() ||
-              !preview?.canTransfer
+              !(
+                preview?.canTransfer ||
+                (forceDespiteBlockers && preview?.canForceTransfer)
+              )
             }
             onClick={() => void applyTransfer()}
             className="flex-1 bg-primary text-primary-foreground"

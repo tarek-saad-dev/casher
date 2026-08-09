@@ -63,6 +63,9 @@ export interface ActiveShift {
   EndDate: string | null;
   EndTime: string | null;
   Status: boolean;
+  /** Present when session returns branch-scoped shift (may differ from active branch). */
+  BranchID?: number;
+  BusinessDayID?: number;
 }
 
 export interface OperationalSession {

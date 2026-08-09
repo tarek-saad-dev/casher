@@ -5,6 +5,7 @@ import {
   Loader2, FileKey2, Save, RefreshCw, Globe, Lock, Users,
   Plus, X, Search, ChevronDown, ChevronUp, Info, AlertTriangle,
 } from 'lucide-react';
+import { readFetchErrorMessage } from '@/lib/readFetchErrorMessage';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -352,15 +353,17 @@ export default function PagesPermissionsPage() {
     setLoading(true);
     try {
       const res = await fetch('/api/admin/permissions/pages');
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        throw new Error(await readFetchErrorMessage(res, 'فشل تحميل صلاحيات الصفحات'));
+      }
       const data = await res.json();
       setPages(data.pages);
       setRoles(data.roles);
       const map: Record<string, { accessMode: string; roles: string[] }> = {};
       data.pages.forEach((p: PageRow) => { map[p.pageKey] = { accessMode: p.accessMode, roles: [...p.roles] }; });
       setEditMap(map);
-    } catch (e: any) {
-      showMsg('err', e.message);
+    } catch (e: unknown) {
+      showMsg('err', e instanceof Error ? e.message : 'فشل التحميل');
     } finally { setLoading(false); }
   }, []);
 
@@ -407,11 +410,13 @@ export default function PagesPermissionsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pageKey, accessMode: edit.accessMode, roles: edit.roles, reason: reason.trim() }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        throw new Error(await readFetchErrorMessage(res, 'فشل الحفظ'));
+      }
       showMsg('ok', 'تم الحفظ');
       await load();
-    } catch (e: any) {
-      showMsg('err', e.message);
+    } catch (e: unknown) {
+      showMsg('err', e instanceof Error ? e.message : 'فشل الحفظ');
     } finally { setSaving(null); }
   };
 

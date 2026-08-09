@@ -146,6 +146,20 @@ export async function requireWorkforceAvailabilityAccess(): Promise<
 }
 
 /**
+ * Temporary branch transfer (ops modal + HR full page).
+ * Accepts `/admin/hr/branch-transfer`, `/admin/hr`, or `/operations`.
+ */
+export async function requireTemporaryTransferAccess(): Promise<
+  AuthResult | NextResponse
+> {
+  let auth = await requirePageAccess('/admin/hr/branch-transfer');
+  if (isAuthResult(auth)) return auth;
+  auth = await requirePageAccess('/admin/hr');
+  if (isAuthResult(auth)) return auth;
+  return requirePageAccess('/operations');
+}
+
+/**
  * Development-only admin utilities.
  * Returns 404 in production (hide existence); admin session required in development.
  */

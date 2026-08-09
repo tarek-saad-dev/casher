@@ -199,6 +199,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/admin/hr',                        label: 'الموظفون',          icon: UsersRound },
       { href: '/admin/hr?tab=attendance',       label: 'متابعة الحضور',    icon: Clock      },
+      { href: '/admin/hr/branch-transfer',      label: 'نقل بين الفروع',    icon: ArrowLeftRight },
       { href: '/admin/workforce/availability',  label: 'توافر الموظفين',   icon: CalendarCheck },
     ],
   },

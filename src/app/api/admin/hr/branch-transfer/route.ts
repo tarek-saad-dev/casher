@@ -1,62 +1,90 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthResult, requireTemporaryTransferAccess } from '@/lib/api-auth';
-import { getBranchByCode } from '@/lib/branch/repository';
 import {
-  createTemporaryBranchTransfer,
+  isAuthResult,
+  requireTemporaryTransferAccess,
+} from '@/lib/api-auth';
+import {
   cancelTemporaryBranchTransfer,
+  createTemporaryBranchTransfer,
+  listTemporaryBranchTransfers,
   previewTemporaryBranchTransfer,
 } from '@/lib/hr/temporaryBranchTransfer';
 import { SchedulePolicyError } from '@/lib/hr/employeeBranchScheduleSave';
-import { resolveTransferAccessFlags } from '@/lib/hr/branchTransferApiHelpers';
+import {
+  resolveDestinationBranchId,
+  resolveTransferAccessFlags,
+} from '@/lib/hr/branchTransferApiHelpers';
 
 export const runtime = 'nodejs';
 
-type Ctx = { params: Promise<{ empId: string }> };
-
 /**
- * POST /api/operations/employees/[empId]/temporary-transfer
- * Apply transfer. Never trusts body.fromBranchId as authority.
+ * GET /api/admin/hr/branch-transfer?from=&to=&empId=&activeOnly=
+ * List temporary transfers in a date range (history + audit).
  */
-export async function POST(req: NextRequest, ctx: Ctx) {
+export async function GET(req: NextRequest) {
   const auth = await requireTemporaryTransferAccess();
   if (!isAuthResult(auth)) return auth;
 
   try {
-    const { empId: empIdRaw } = await ctx.params;
-    const empId = Number(empIdRaw);
+    const { searchParams } = new URL(req.url);
+    const from = String(searchParams.get('from') || '');
+    const to = String(searchParams.get('to') || '');
+    const empIdRaw = searchParams.get('empId');
+    const empId = empIdRaw != null && empIdRaw !== '' ? Number(empIdRaw) : null;
+    const activeOnly = searchParams.get('activeOnly') === 'true';
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      return NextResponse.json(
+        { ok: false, error: 'from/to مطلوبان بصيغة YYYY-MM-DD' },
+        { status: 400 },
+      );
+    }
+
+    const transfers = await listTemporaryBranchTransfers({
+      fromDate: from,
+      toDate: to,
+      empId: empId != null && Number.isFinite(empId) ? empId : null,
+      activeOnly,
+    });
+
+    return NextResponse.json({ ok: true, transfers });
+  } catch (err) {
+    console.error('[admin/hr/branch-transfer GET]', err);
+    return NextResponse.json({ ok: false, error: 'فشل تحميل سجل النقل' }, { status: 500 });
+  }
+}
+
+/**
+ * POST /api/admin/hr/branch-transfer — apply temporary transfer (supports past dates + relocate).
+ */
+export async function POST(req: NextRequest) {
+  const auth = await requireTemporaryTransferAccess();
+  if (!isAuthResult(auth)) return auth;
+
+  try {
     const body = await req.json();
+    const empId = Number(body.empId);
     const workDate = String(body.workDate || '');
     const reason = String(body.reason || '');
-    const toBranchCode = body.toBranchCode ? String(body.toBranchCode).toUpperCase() : null;
-    let toBranchId = body.toBranchId != null ? Number(body.toBranchId) : null;
-    if (!toBranchId && toBranchCode) {
-      const b = await getBranchByCode(toBranchCode);
-      toBranchId = b?.branchId ?? null;
-    }
-    if (!Number.isFinite(empId) || !toBranchId || !workDate) {
+    const toBranchId = await resolveDestinationBranchId(body);
+
+    if (!Number.isFinite(empId) || !toBranchId || !/^\d{4}-\d{2}-\d{2}$/.test(workDate)) {
       return NextResponse.json({ ok: false, error: 'معاملات ناقصة' }, { status: 400 });
     }
 
-    const smokePreview = body.smokePreview === true;
-    const relocateAttendance = body.relocateAttendance === true;
     const draft = await previewTemporaryBranchTransfer({
       empId,
       workDate,
       toBranchId,
       startTime: body.startTime ?? null,
       endTime: body.endTime ?? null,
-      allowSetupDestination: smokePreview,
-      relocateAttendance,
+      relocateAttendance: body.relocateAttendance === true,
     });
     const flags = await resolveTransferAccessFlags(
       auth,
       draft.sourceBranch?.branchId ?? auth.activeBranchId,
       toBranchId,
     );
-    if (smokePreview && auth.isSuperAdmin) {
-      flags.callerHasDestinationAccess = true;
-      flags.callerHasSourceAccess = true;
-    }
 
     const result = await createTemporaryBranchTransfer({
       empId,
@@ -66,11 +94,10 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       endTime: body.endTime ?? null,
       reason,
       createdByUserId: auth.userId,
-      allowSetupDestination: smokePreview,
       forceDespiteBlockers: body.forceDespiteBlockers === true,
-      relocateAttendance,
-      ...flags,
+      relocateAttendance: body.relocateAttendance === true,
       fromBranchId: body.fromBranchId != null ? Number(body.fromBranchId) : undefined,
+      ...flags,
     });
 
     return NextResponse.json({
@@ -83,8 +110,8 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       message: result.relocatedAttendance
         ? 'تم النقل مع نقل الحضور/اليومية لفرع الوجهة'
         : result.forced
-          ? 'تم تطبيق النقل الطارئ رغم التحذيرات'
-          : 'تم تطبيق النقل الطارئ',
+          ? 'تم تطبيق النقل رغم التحذيرات'
+          : 'تم تطبيق النقل',
     });
   } catch (err) {
     if (err instanceof SchedulePolicyError) {
@@ -93,27 +120,26 @@ export async function POST(req: NextRequest, ctx: Ctx) {
         { status: err.status },
       );
     }
-    console.error('[temporary-transfer POST]', err);
+    console.error('[admin/hr/branch-transfer POST]', err);
     return NextResponse.json({ ok: false, error: 'فشل تطبيق النقل' }, { status: 500 });
   }
 }
 
 /**
- * DELETE /api/operations/employees/[empId]/temporary-transfer
- * Soft-cancel active transfer for workDate.
+ * DELETE /api/admin/hr/branch-transfer — soft-cancel active transfer for workDate.
  */
-export async function DELETE(req: NextRequest, ctx: Ctx) {
+export async function DELETE(req: NextRequest) {
   const auth = await requireTemporaryTransferAccess();
   if (!isAuthResult(auth)) return auth;
 
   try {
-    const { empId: empIdRaw } = await ctx.params;
-    const empId = Number(empIdRaw);
     const body = await req.json().catch(() => ({}));
+    const empId = Number(body.empId);
     const workDate =
       String(body.workDate || new URL(req.url).searchParams.get('workDate') || '');
-    const reason = String(body.reason || 'إلغاء النقل الطارئ');
-    if (!Number.isFinite(empId) || !workDate) {
+    const reason = String(body.reason || 'إلغاء النقل من صفحة الموارد البشرية');
+
+    if (!Number.isFinite(empId) || !/^\d{4}-\d{2}-\d{2}$/.test(workDate)) {
       return NextResponse.json({ ok: false, error: 'معاملات ناقصة' }, { status: 400 });
     }
 
@@ -127,7 +153,7 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
     return NextResponse.json({
       ok: true,
       cancelledTransferId: result.cancelledTransferId,
-      message: 'تم إلغاء النقل الطارئ',
+      message: 'تم إلغاء النقل',
     });
   } catch (err) {
     if (err instanceof SchedulePolicyError) {
@@ -136,7 +162,7 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
         { status: err.status },
       );
     }
-    console.error('[temporary-transfer DELETE]', err);
+    console.error('[admin/hr/branch-transfer DELETE]', err);
     return NextResponse.json({ ok: false, error: 'فشل إلغاء النقل' }, { status: 500 });
   }
 }

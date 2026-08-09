@@ -40,6 +40,7 @@ export {
   validateBusinessDayBelongsToBranch,
 } from './businessDay';
 export {
+  closeOwnOpenShift,
   closeShift,
   getUserOpenShift,
   getUserOpenShiftForBranch,
