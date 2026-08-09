@@ -11,9 +11,10 @@ type TransferDestination = {
   branchName: string;
 };
 
-type TransferableBarber = {
+type TransferableEmployee = {
   empId: number;
   empName: string;
+  job: string | null;
   section?: 'present' | 'transferred_in' | 'elsewhere' | 'off';
   isTransferred?: boolean;
   isGlobalDayOff?: boolean;
@@ -67,7 +68,7 @@ interface Props {
   onTransferred?: () => void;
 }
 
-function sectionLabel(section?: TransferableBarber['section']): string {
+function sectionLabel(section?: TransferableEmployee['section']): string {
   switch (section) {
     case 'present':
       return 'حاضر هنا';
@@ -82,6 +83,14 @@ function sectionLabel(section?: TransferableBarber['section']): string {
   }
 }
 
+function isBarberJob(job: string | null | undefined): boolean {
+  if (!job) return false;
+  const j = job.trim().toLowerCase();
+  return j === 'حلاق' || j === 'مساعد' || j === 'barber';
+}
+
+type JobFilter = 'all' | 'barbers' | 'other';
+
 export function TemporaryBranchTransferModal({
   open,
   onClose,
@@ -91,10 +100,11 @@ export function TemporaryBranchTransferModal({
   onTransferred,
 }: Props) {
   const [loadingMeta, setLoadingMeta] = useState(false);
-  const [barbers, setBarbers] = useState<TransferableBarber[]>([]);
+  const [employees, setEmployees] = useState<TransferableEmployee[]>([]);
   const [destinations, setDestinations] = useState<TransferDestination[]>([]);
   const [sessionBranchId, setSessionBranchId] = useState<number | null>(null);
   const [metaError, setMetaError] = useState<string | null>(null);
+  const [jobFilter, setJobFilter] = useState<JobFilter>('all');
 
   const [empId, setEmpId] = useState<number | ''>('');
   const [toBranchId, setToBranchId] = useState<number | ''>('');
@@ -106,27 +116,20 @@ export function TemporaryBranchTransferModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const selectedBarber = useMemo(
-    () => barbers.find((b) => b.empId === empId) ?? null,
-    [barbers, empId],
+  const selectedEmployee = useMemo(
+    () => employees.find((b) => b.empId === empId) ?? null,
+    [employees, empId],
   );
 
-  const transferableBarbers = useMemo(
-    () =>
-      barbers.filter((b) => {
-        if (b.isGlobalDayOff) return false;
-        if (
-          b.section === 'present' ||
-          b.section === 'transferred_in' ||
-          b.section === 'elsewhere'
-        ) {
-          return true;
-        }
-        if (b.section === 'off' && b.attendance) return true;
-        return false;
-      }),
-    [barbers],
-  );
+  const transferableEmployees = useMemo(() => {
+    return employees.filter((b) => {
+      if (jobFilter === 'barbers' && !isBarberJob(b.job)) return false;
+      if (jobFilter === 'other' && isBarberJob(b.job)) return false;
+      // Global day-off stays blocked; everyone else can be transferred.
+      if (b.isGlobalDayOff) return false;
+      return true;
+    });
+  }, [employees, jobFilter]);
 
   /** Never offer the branch the employee is already assigned to today. */
   const excludeFromBranchId =
@@ -156,7 +159,7 @@ export function TemporaryBranchTransferModal({
 
   const employeeDisplayName =
     assignmentContext?.employeeName ||
-    selectedBarber?.empName ||
+    selectedEmployee?.empName ||
     (empId ? `موظف #${empId}` : '—');
 
   const resetForm = useCallback((preferEmpId?: number | null) => {
@@ -174,38 +177,110 @@ export function TemporaryBranchTransferModal({
     setLoadingMeta(true);
     setMetaError(null);
     try {
-      const res = await fetch(
-        `/api/operations/schedule-control?date=${encodeURIComponent(workDate)}`,
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      // Meta = all active employees (HR + ops). Schedule-control is optional
+      // enrichment for day sections — HR attendance may lack /operations access.
+      const [empsRes, schedRes] = await Promise.all([
+        fetch('/api/admin/hr/branch-transfer/meta'),
+        fetch(`/api/operations/schedule-control?date=${encodeURIComponent(workDate)}`),
+      ]);
+      const empsData = await empsRes.json().catch(() => ({}));
+      const schedData = await schedRes.json().catch(() => ({}));
+
+      if (!empsRes.ok) {
         throw new Error(
-          typeof data.error === 'string' ? data.error : 'تعذر تحميل قائمة الموظفين',
+          typeof empsData.error === 'string'
+            ? empsData.error
+            : 'تعذر تحميل قائمة الموظفين',
         );
       }
-      const list = (data.barbers ?? []) as TransferableBarber[];
-      setBarbers(list);
-      const dests = (data.transferDestinations ?? []) as TransferDestination[];
+
+      const dayPeople = schedRes.ok
+        ? ((schedData.barbers ?? []) as Array<{
+            empId: number;
+            empName: string;
+            section?: TransferableEmployee['section'];
+            isTransferred?: boolean;
+            isGlobalDayOff?: boolean;
+            transferReason?: string | null;
+            attendance?: TransferableEmployee['attendance'];
+          }>)
+        : [];
+      const dayById = new Map(dayPeople.map((b) => [b.empId, b]));
+
+      const allEmps: TransferableEmployee[] = (
+        (empsData.employees ?? []) as Array<{
+          empId: number;
+          empName: string;
+          job: string | null;
+        }>
+      ).map((e) => {
+        const day = dayById.get(e.empId);
+        return {
+          empId: e.empId,
+          empName: e.empName,
+          job: e.job,
+          section: day?.section,
+          isTransferred: day?.isTransferred,
+          isGlobalDayOff: day?.isGlobalDayOff,
+          transferReason: day?.transferReason,
+          attendance: day?.attendance ?? null,
+        };
+      });
+
+      for (const d of dayPeople) {
+        if (allEmps.some((e) => e.empId === d.empId)) continue;
+        allEmps.push({
+          empId: d.empId,
+          empName: d.empName,
+          job: null,
+          section: d.section,
+          isTransferred: d.isTransferred,
+          isGlobalDayOff: d.isGlobalDayOff,
+          transferReason: d.transferReason,
+          attendance: d.attendance ?? null,
+        });
+      }
+
+      allEmps.sort((a, b) => a.empName.localeCompare(b.empName, 'ar'));
+      setEmployees(allEmps);
+
+      const destsFromSched = schedRes.ok
+        ? ((schedData.transferDestinations ?? []) as TransferDestination[])
+        : [];
+      const destsFromMeta = (
+        (empsData.destinations ?? []) as Array<{
+          branchId: number;
+          branchCode: string;
+          branchName: string;
+        }>
+      ).map((d) => ({
+        branchId: d.branchId,
+        branchCode: d.branchCode,
+        branchName: d.branchName,
+      }));
+      const dests = destsFromSched.length > 0 ? destsFromSched : destsFromMeta;
       setDestinations(dests);
-      setSessionBranchId(
-        typeof data.sessionBranchId === 'number' ? data.sessionBranchId : null,
-      );
+
+      const sessionId =
+        schedRes.ok && typeof schedData.sessionBranchId === 'number'
+          ? schedData.sessionBranchId
+          : typeof empsData.activeBranchId === 'number'
+            ? empsData.activeBranchId
+            : null;
+      setSessionBranchId(sessionId);
 
       const prefer =
-        preferEmpIdFrom(list, initialEmpId) ??
-        list.find((b) => b.section === 'present' && !b.isGlobalDayOff)?.empId ??
+        preferEmpIdFrom(allEmps, initialEmpId) ||
+        allEmps.find((b) => b.section === 'present' && !b.isGlobalDayOff)?.empId ||
         '';
       setEmpId(prefer || '');
 
-      // Exclude the employee's current assignment branch (not merely session).
-      const fromId =
-        assignmentContext?.fromBranchId ??
-        (typeof data.sessionBranchId === 'number' ? data.sessionBranchId : null);
+      const fromId = assignmentContext?.fromBranchId ?? sessionId;
       const available = dests.filter((d) => fromId == null || d.branchId !== fromId);
       setToBranchId(available[0]?.branchId ?? '');
     } catch (e) {
       setMetaError(e instanceof Error ? e.message : 'تعذر تحميل البيانات');
-      setBarbers([]);
+      setEmployees([]);
       setDestinations([]);
       setSessionBranchId(null);
     } finally {
@@ -307,7 +382,7 @@ export function TemporaryBranchTransferModal({
   };
 
   const cancelActiveTransfer = async () => {
-    if (!empId || !selectedBarber?.isTransferred) return;
+    if (!empId || !selectedEmployee?.isTransferred) return;
     const cancelReason = window.prompt('سبب إلغاء النقل الطارئ');
     if (!cancelReason?.trim()) return;
 
@@ -413,8 +488,32 @@ export function TemporaryBranchTransferModal({
                 </div>
               ) : null}
 
-              <label className="block space-y-1.5 text-sm">
-                <span className="font-medium text-foreground/80">الموظف</span>
+              <div className="space-y-1.5">
+                <span className="block text-sm font-medium text-foreground/80">الموظف</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {(
+                    [
+                      { id: 'all', label: 'الكل' },
+                      { id: 'barbers', label: 'حلاقين' },
+                      { id: 'other', label: 'باقي الوظائف' },
+                    ] as const
+                  ).map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      disabled={busy || !!assignmentContext?.employeeName}
+                      onClick={() => setJobFilter(f.id)}
+                      className={cn(
+                        'rounded-lg border px-2.5 py-1 text-xs transition-colors',
+                        jobFilter === f.id
+                          ? 'border-primary/50 bg-primary/15 text-primary'
+                          : 'border-border bg-surface-muted text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
                 <select
                   className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2.5 text-sm text-foreground"
                   value={empId}
@@ -422,21 +521,22 @@ export function TemporaryBranchTransferModal({
                   disabled={busy || !!assignmentContext?.employeeName}
                 >
                   <option value="">اختر موظفًا</option>
-                  {transferableBarbers.map((b) => (
+                  {transferableEmployees.map((b) => (
                     <option key={b.empId} value={b.empId}>
                       {b.empName}
+                      {b.job ? ` · ${b.job}` : ''}
                       {sectionLabel(b.section) ? ` — ${sectionLabel(b.section)}` : ''}
                       {b.isTransferred ? ' · نقل طارئ نشط' : ''}
                     </option>
                   ))}
                 </select>
-              </label>
+              </div>
 
-              {selectedBarber?.isTransferred && (
+              {selectedEmployee?.isTransferred && (
                 <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
                   <p className="font-medium">هذا الموظف عليه نقل طارئ نشط اليوم.</p>
-                  {selectedBarber.transferReason ? (
-                    <p className="mt-1 text-amber-200/80">السبب: {selectedBarber.transferReason}</p>
+                  {selectedEmployee.transferReason ? (
+                    <p className="mt-1 text-amber-200/80">السبب: {selectedEmployee.transferReason}</p>
                   ) : null}
                   <Button
                     type="button"
@@ -644,7 +744,7 @@ export function TemporaryBranchTransferModal({
 }
 
 function preferEmpIdFrom(
-  list: TransferableBarber[],
+  list: TransferableEmployee[],
   initialEmpId: number | null | undefined,
 ): number | '' {
   if (!initialEmpId) return '';

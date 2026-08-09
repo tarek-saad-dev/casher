@@ -109,6 +109,7 @@ export function BranchTransferPage() {
   const [employees, setEmployees] = useState<EmployeeOpt[]>([]);
   const [destinations, setDestinations] = useState<DestinationOpt[]>([]);
   const [empFilter, setEmpFilter] = useState('');
+  const [jobFilter, setJobFilter] = useState<'all' | 'barbers' | 'other'>('all');
   const [empId, setEmpId] = useState<number | ''>('');
   const [toBranchId, setToBranchId] = useState<number | ''>('');
   const [startTime, setStartTime] = useState('');
@@ -129,11 +130,18 @@ export function BranchTransferPage() {
 
   const filteredEmployees = useMemo(() => {
     const q = empFilter.trim();
-    if (!q) return employees;
-    return employees.filter(
-      (e) => e.empName.includes(q) || String(e.empId).includes(q),
-    );
-  }, [employees, empFilter]);
+    return employees.filter((e) => {
+      if (jobFilter === 'barbers') {
+        const j = (e.job ?? '').trim().toLowerCase();
+        if (!(j === 'حلاق' || j === 'مساعد' || j === 'barber')) return false;
+      } else if (jobFilter === 'other') {
+        const j = (e.job ?? '').trim().toLowerCase();
+        if (j === 'حلاق' || j === 'مساعد' || j === 'barber') return false;
+      }
+      if (!q) return true;
+      return e.empName.includes(q) || String(e.empId).includes(q);
+    });
+  }, [employees, empFilter, jobFilter]);
 
   const destinationOptions = useMemo(() => {
     const fromId = preview?.sourceBranch?.branchId ?? null;
@@ -425,6 +433,29 @@ export function BranchTransferPage() {
 
               <div className="space-y-1.5 sm:col-span-2">
                 <Label>الموظف</Label>
+                <div className="flex flex-wrap gap-1.5 mb-1.5">
+                  {(
+                    [
+                      { id: 'all' as const, label: 'الكل' },
+                      { id: 'barbers' as const, label: 'حلاقين' },
+                      { id: 'other' as const, label: 'باقي الوظائف' },
+                    ]
+                  ).map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setJobFilter(f.id)}
+                      className={cn(
+                        'rounded-md border px-2.5 py-1 text-xs transition-colors',
+                        jobFilter === f.id
+                          ? 'border-primary/50 bg-primary/15 text-primary'
+                          : 'border-border bg-background text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
                 <select
                   className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
                   value={empId === '' ? '' : String(empId)}

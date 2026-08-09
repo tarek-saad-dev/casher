@@ -5,6 +5,7 @@ import {
   X, Clock, Calendar, ChevronDown, AlertTriangle, CheckCircle,
   Loader2, Trash2, UserX, Coffee, ArrowRight, Settings, UserCheck,
 } from 'lucide-react';
+import { TemporaryBranchTransferModal } from '@/components/operations/TemporaryBranchTransferModal';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -111,40 +112,12 @@ const DANGER_TYPES: OverrideType[] = ['day_off'];
 export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: Props) {
   const [date, setDate] = useState(initialDate);
   const [barbers, setBarbers] = useState<BarberRow[]>([]);
-  const [transferDestinations, setTransferDestinations] = useState<
-    Array<{ branchId: number; branchCode: string; branchName: string }>
-  >([]);
-  const [sessionBranchId, setSessionBranchId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Transfer dialog
+  // Shared «نقل موظف اليوم» modal (all employees + job filter)
   const [transferEmpId, setTransferEmpId] = useState<number | null>(null);
-  const [transferToBranchId, setTransferToBranchId] = useState<number | ''>('');
-  const [transferReason, setTransferReason] = useState('');
-  const [transferStart, setTransferStart] = useState('');
-  const [transferEnd, setTransferEnd] = useState('');
-  const [transferPreview, setTransferPreview] = useState<{
-    canTransfer?: boolean;
-    canForceTransfer?: boolean;
-    blockers?: Array<{ code: string; message: string }>;
-    forceableBlockers?: Array<{ code: string; message: string }>;
-    affectedBookings?: Array<{
-      bookingId: number;
-      bookingCode: string | null;
-      startTime: string;
-    }>;
-    sourceBranch?: { branchName: string } | null;
-    destinationBranch?: { branchName: string } | null;
-    resolvedDestinationWindow?: {
-      startTime: string | null;
-      endTime: string | null;
-      overnight: boolean;
-    };
-  } | null>(null);
-  const [transferForce, setTransferForce] = useState(false);
   const [transferBusy, setTransferBusy] = useState(false);
-  const [transferError, setTransferError] = useState<string | null>(null);
   const [restoringEmpId, setRestoringEmpId] = useState<number | null>(null);
 
   // Per-barber action panel state
@@ -184,18 +157,6 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
       const data = await res.json();
       if (!data.ok) throw new Error(data.error ?? 'فشل التحميل');
       setBarbers(data.barbers ?? []);
-      const sessionId =
-        typeof data.sessionBranchId === 'number' ? data.sessionBranchId : null;
-      setSessionBranchId(sessionId);
-      // Ops transfer is always from the session branch — hide it as destination.
-      const dests = (data.transferDestinations ?? []) as Array<{
-        branchId: number;
-        branchCode: string;
-        branchName: string;
-      }>;
-      setTransferDestinations(
-        sessionId == null ? dests : dests.filter((d) => d.branchId !== sessionId),
-      );
     } catch (e: any) {
       setError(e.message ?? 'فشل تحميل البيانات');
     } finally {
@@ -205,92 +166,6 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
 
   const openTransferDialog = (empId: number) => {
     setTransferEmpId(empId);
-    const dests =
-      sessionBranchId == null
-        ? transferDestinations
-        : transferDestinations.filter((d) => d.branchId !== sessionBranchId);
-    setTransferToBranchId(dests[0]?.branchId ?? '');
-    setTransferReason('');
-    setTransferStart('');
-    setTransferEnd('');
-    setTransferPreview(null);
-    setTransferForce(false);
-    setTransferError(null);
-  };
-
-  const runTransferPreview = async () => {
-    if (!transferEmpId || !transferToBranchId) return;
-    setTransferBusy(true);
-    setTransferError(null);
-    try {
-      const res = await fetch(
-        `/api/operations/employees/${transferEmpId}/temporary-transfer/preview`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            workDate: date,
-            toBranchId: transferToBranchId,
-            startTime: transferStart || undefined,
-            endTime: transferEnd || undefined,
-          }),
-        },
-      );
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error ?? 'فشل معاينة النقل');
-      setTransferPreview(data.preview);
-      setTransferForce(false);
-    } catch (e: any) {
-      setTransferError(e.message ?? 'فشل معاينة النقل');
-    } finally {
-      setTransferBusy(false);
-    }
-  };
-
-  const applyTransfer = async () => {
-    if (!transferEmpId || !transferToBranchId || !transferReason.trim()) return;
-    const canApply =
-      transferPreview?.canTransfer ||
-      (transferForce && transferPreview?.canForceTransfer);
-    if (!canApply) {
-      setTransferError(
-        transferPreview?.canForceTransfer
-          ? 'فعّل «تطبيق رغم الموانع» ثم أعد المحاولة'
-          : 'نفّذ المعاينة أولاً',
-      );
-      return;
-    }
-    setTransferBusy(true);
-    setTransferError(null);
-    try {
-      const res = await fetch(
-        `/api/operations/employees/${transferEmpId}/temporary-transfer`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            workDate: date,
-            toBranchId: transferToBranchId,
-            startTime: transferStart || undefined,
-            endTime: transferEnd || undefined,
-            reason: transferReason.trim(),
-            forceDespiteBlockers:
-              transferForce && transferPreview?.canForceTransfer === true,
-          }),
-        },
-      );
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error ?? 'فشل النقل');
-      setTransferEmpId(null);
-      setTransferPreview(null);
-      setTransferForce(false);
-      await loadBarbers();
-      onApplied();
-    } catch (e: any) {
-      setTransferError(e.message ?? 'فشل النقل');
-    } finally {
-      setTransferBusy(false);
-    }
   };
 
   const cancelTransfer = async (empId: number) => {
@@ -1140,135 +1015,17 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
         </div>
       </div>
 
-      {/* Emergency transfer dialog */}
-      {transferEmpId != null && (
-        <div
-          className="absolute inset-0 z-10 flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.55)' }}
-          onClick={(e) => { if (e.target === e.currentTarget) setTransferEmpId(null); }}
-        >
-          <div
-            className="w-full max-w-md mx-4 rounded-2xl p-5 space-y-3"
-            style={{
-              background: 'var(--surface-elevated)',
-              border: '1px solid color-mix(in srgb, var(--primary) 30%, transparent)',
-            }}
-            dir="rtl"
-          >
-            <h3 className="font-bold text-foreground">نقل اليوم لفرع آخر</h3>
-            <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-              لا يعدّل الجدول الأسبوعي — نقل طارئ لتاريخ {date} فقط
-            </p>
-            <label className="block text-xs space-y-1">
-              <span style={{ color: 'var(--muted-foreground)' }}>فرع الوجهة</span>
-              <select
-                className="w-full rounded-lg px-3 py-2 text-sm border"
-                style={{ background: 'var(--surface-muted)', borderColor: 'color-mix(in srgb, var(--primary) 25%, transparent)' }}
-                value={transferToBranchId}
-                onChange={(e) => setTransferToBranchId(e.target.value ? Number(e.target.value) : '')}
-              >
-                <option value="">اختر فرعاً</option>
-                {transferDestinations.map((d) => (
-                  <option key={d.branchId} value={d.branchId}>{d.branchName}</option>
-                ))}
-              </select>
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block text-xs space-y-1">
-                <span style={{ color: 'var(--muted-foreground)' }}>من (اختياري)</span>
-                <input type="time" value={transferStart} onChange={(e) => setTransferStart(e.target.value)}
-                  className="w-full rounded-lg px-3 py-2 text-sm border"
-                  style={{ background: 'var(--surface-muted)', borderColor: 'color-mix(in srgb, var(--primary) 25%, transparent)', colorScheme: 'dark' }}
-                />
-              </label>
-              <label className="block text-xs space-y-1">
-                <span style={{ color: 'var(--muted-foreground)' }}>إلى (اختياري)</span>
-                <input type="time" value={transferEnd} onChange={(e) => setTransferEnd(e.target.value)}
-                  className="w-full rounded-lg px-3 py-2 text-sm border"
-                  style={{ background: 'var(--surface-muted)', borderColor: 'color-mix(in srgb, var(--primary) 25%, transparent)', colorScheme: 'dark' }}
-                />
-              </label>
-            </div>
-            <label className="block text-xs space-y-1">
-              <span style={{ color: 'var(--muted-foreground)' }}>السبب *</span>
-              <input
-                value={transferReason}
-                onChange={(e) => setTransferReason(e.target.value)}
-                className="w-full rounded-lg px-3 py-2 text-sm border"
-                style={{ background: 'var(--surface-muted)', borderColor: 'color-mix(in srgb, var(--primary) 25%, transparent)' }}
-                placeholder="تغطية الفرع"
-              />
-            </label>
-            {transferError && (
-              <p className="text-xs" style={{ color: 'var(--destructive)' }}>{transferError}</p>
-            )}
-            {transferPreview && (
-              <div className="rounded-xl p-3 text-xs space-y-1" style={{ background: 'color-mix(in srgb, var(--foreground) 5%, transparent)' }}>
-                <p>المصدر: {transferPreview.sourceBranch?.branchName ?? '—'}</p>
-                <p>الوجهة: {transferPreview.destinationBranch?.branchName ?? '—'}</p>
-                <p>
-                  النافذة: {transferPreview.resolvedDestinationWindow?.startTime} →{' '}
-                  {transferPreview.resolvedDestinationWindow?.endTime}
-                  {transferPreview.resolvedDestinationWindow?.overnight ? ' +1' : ''}
-                </p>
-                {transferPreview.blockers?.map((b: { code: string; message: string }) => {
-                  const soft = transferPreview.forceableBlockers?.some((f) => f.code === b.code);
-                  return (
-                    <p key={b.code} style={{ color: soft ? 'var(--warning)' : 'var(--destructive)' }}>
-                      {soft ? '⚠ ' : ''}{b.message}
-                    </p>
-                  );
-                })}
-                {(transferPreview.affectedBookings?.length ?? 0) > 0 && (
-                  <div>
-                    <p style={{ color: 'var(--warning)' }}>حجوزات في فرع المصدر (لا تُنقل تلقائياً):</p>
-                    {transferPreview.affectedBookings?.map((bk: { bookingId: number; bookingCode: string | null; startTime: string }) => (
-                      <p key={bk.bookingId}>{bk.bookingCode || bk.bookingId} — {bk.startTime}</p>
-                    ))}
-                  </div>
-                )}
-                {transferPreview.canForceTransfer && !transferPreview.canTransfer && (
-                  <label className="flex items-start gap-2 pt-1 cursor-pointer" style={{ color: 'var(--warning)' }}>
-                    <input
-                      type="checkbox"
-                      className="mt-0.5"
-                      checked={transferForce}
-                      onChange={(e) => setTransferForce(e.target.checked)}
-                      disabled={transferBusy}
-                    />
-                    <span>تطبيق النقل رغم الموانع (تعيين/راتب/خدمات/حجوزات المصدر)</span>
-                  </label>
-                )}
-              </div>
-            )}
-            <div className="flex flex-wrap gap-2 justify-end pt-1">
-              <button type="button" onClick={() => setTransferEmpId(null)} className="px-3 py-1.5 rounded-xl text-xs"
-                style={{ color: 'var(--muted-foreground)' }}>إلغاء النقل</button>
-              <button type="button" disabled={transferBusy || !transferToBranchId} onClick={() => void runTransferPreview()}
-                className="px-3 py-1.5 rounded-xl text-xs font-medium"
-                style={{ border: '1px solid color-mix(in srgb, var(--primary) 40%, transparent)', color: 'var(--primary)' }}>
-                معاينة
-              </button>
-              <button
-                type="button"
-                disabled={
-                  transferBusy ||
-                  !transferReason.trim() ||
-                  !(
-                    transferPreview?.canTransfer ||
-                    (transferForce && transferPreview?.canForceTransfer)
-                  )
-                }
-                onClick={() => void applyTransfer()}
-                className="px-3 py-1.5 rounded-xl text-xs font-semibold"
-                style={{ background: 'color-mix(in srgb, var(--primary) 22%, transparent)', color: 'var(--primary)', border: '1px solid color-mix(in srgb, var(--primary) 50%, transparent)' }}
-              >
-                تطبيق النقل
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <TemporaryBranchTransferModal
+        open={transferEmpId != null}
+        onClose={() => setTransferEmpId(null)}
+        workDate={date}
+        initialEmpId={transferEmpId}
+        onTransferred={() => {
+          setTransferEmpId(null);
+          void loadBarbers();
+          onApplied();
+        }}
+      />
     </div>
   );
 }
