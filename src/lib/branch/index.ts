@@ -150,6 +150,11 @@ export {
   type SeedQueueSettingsInput,
 } from './bootstrap';
 export {
+  assignUserLoginBranch,
+  grantStaffAccessToAllActiveBranches,
+  type AssignUserLoginBranchResult,
+} from './userLoginBranch';
+export {
   auditEmployeeAssignmentIntegrity,
   ensureEmployeeBranchAssignment,
   type AssignmentIntegrityIssue,

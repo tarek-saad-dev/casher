@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, getUserFriendlyError, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
+import { grantStaffAccessToAllActiveBranches } from "@/lib/branch/userLoginBranch";
+import { validateUserBranchAccess } from "@/lib/branch/access";
+import { BranchDomainError } from "@/lib/branch/types";
+import { branchErrorResponse } from "@/lib/branch/operationalGates";
 
 export const runtime = "nodejs";
 
@@ -16,9 +20,15 @@ export async function GET() {
     const db = await getPool();
     const result = await db.request().query(`
       SELECT u.UserID, u.UserName, u.UserLevel, u.loginName, u.ShiftID, u.CardNO,
-             s.ShiftName
+             s.ShiftName,
+             def.BranchID AS DefaultBranchID,
+             b.BranchCode AS DefaultBranchCode,
+             b.BranchName AS DefaultBranchName
       FROM [dbo].[TblUser] u
       LEFT JOIN [dbo].[TblShift] s ON u.ShiftID = s.ShiftID
+      LEFT JOIN [dbo].[TblUserBranchAccess] def
+        ON def.UserID = u.UserID AND def.IsDefault = 1 AND def.IsActive = 1
+      LEFT JOIN [dbo].[TblBranch] b ON b.BranchID = def.BranchID
       WHERE u.isDeleted = 0
       ORDER BY u.UserID
     `);
@@ -33,7 +43,7 @@ export async function GET() {
   }
 }
 
-// POST /api/users — Create a new user
+// POST /api/users — Create a new user + default branch login link
 export async function POST(req: NextRequest) {
   try {
     const sessionUser = await getSession();
@@ -42,7 +52,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { UserName, loginName, Password, UserLevel, ShiftID } = body;
+    const { UserName, loginName, Password, UserLevel, ShiftID, BranchID } = body;
 
     if (!UserName || !loginName || !Password) {
       return NextResponse.json(
@@ -50,6 +60,17 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+
+    const branchId = Number(BranchID) || sessionUser.ActiveBranchID;
+    if (!branchId || !Number.isFinite(branchId)) {
+      return NextResponse.json(
+        { error: "يجب تحديد فرع البداية للمستخدم" },
+        { status: 400 },
+      );
+    }
+
+    // Creator must themselves have access to the starting branch they assign.
+    await validateUserBranchAccess(sessionUser.UserID, branchId);
 
     const db = await getPool();
 
@@ -80,11 +101,37 @@ export async function POST(req: NextRequest) {
         VALUES (@UserName, @loginName, @Password, @UserLevel, @ShiftID, @CardNO, 0)
       `);
 
+    const created = result.recordset[0];
+    // Grant operate access on all active branches so staff can switch freely.
+    const loginBranch = await grantStaffAccessToAllActiveBranches({
+      userId: Number(created.UserID),
+      actorUserId: sessionUser.UserID,
+      preferredBranchId: branchId,
+      grantReason: "user-create-all-active-branches",
+    });
+
     console.log(
-      `[users] Created user: ${result.recordset[0].UserName} by ${sessionUser.UserName}`,
+      `[users] Created user: ${created.UserName} (start=${loginBranch.branchCode}, branches=${loginBranch.grantedBranchIds.length}) by ${sessionUser.UserName}`,
     );
-    return NextResponse.json(result.recordset[0], { status: 201 });
+    return NextResponse.json(
+      {
+        ...created,
+        DefaultBranchID: loginBranch.branchId,
+        DefaultBranchCode: loginBranch.branchCode,
+        DefaultBranchName: loginBranch.branchName,
+        GrantedBranchIds: loginBranch.grantedBranchIds,
+      },
+      { status: 201 },
+    );
   } catch (err: unknown) {
+    const mapped = branchErrorResponse(err);
+    if (mapped) return mapped;
+    if (err instanceof BranchDomainError) {
+      return NextResponse.json(
+        { error: err.message, code: err.code },
+        { status: err.status || 403 },
+      );
+    }
     const rawMessage = err instanceof Error ? err.message : "Unknown error";
     console.error("[api/users] POST error:", rawMessage);
     return NextResponse.json(

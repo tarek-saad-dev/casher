@@ -152,7 +152,7 @@ describe('Phase 1B login branch gating', () => {
     mockSessionModule();
     vi.doMock('@/lib/branch/access', () => ({
       resolveLoginDefaultBranch: vi.fn(async () => {
-        throw new BranchDomainError('NO_DEFAULT_BRANCH', 'لا يوجد فرع', 403);
+        throw new BranchDomainError('NO_BRANCH_ACCESS', 'لا توجد صلاحية فرع', 403);
       }),
     }));
     vi.doMock('@/lib/permissions-server', () => ({
@@ -166,15 +166,14 @@ describe('Phase 1B login branch gating', () => {
     });
     const res = await POST(req);
     expect(res.status).toBe(403);
-    expect((await res.json()).code).toBe('NO_DEFAULT_BRANCH');
+    expect((await res.json()).code).toBe('NO_BRANCH_ACCESS');
   });
 
-  it('rejects expired, inactive mapping, inactive branch, and multiple defaults', async () => {
+  it('rejects expired, inactive mapping, and inactive branch', async () => {
     const cases = [
       'BRANCH_ACCESS_EXPIRED',
       'BRANCH_ACCESS_INACTIVE',
       'BRANCH_INACTIVE',
-      'MULTIPLE_DEFAULT_BRANCHES',
     ] as const;
     for (const code of cases) {
       vi.resetModules();

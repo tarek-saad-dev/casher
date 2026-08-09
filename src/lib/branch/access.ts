@@ -1,9 +1,7 @@
 import 'server-only';
 import {
   branchNow,
-  countUserValidDefaults,
   getUserBranchAccess,
-  getUserDefaultBranch,
   isValidUserBranchAccess,
   listUserValidBranchAccess,
 } from './repository';
@@ -52,30 +50,40 @@ export async function validateUserBranchAccess(
   return row;
 }
 
+/**
+ * Pick a branch for the login session.
+ * Prefers IsDefault when present, otherwise any valid operable branch.
+ * Does not fail on missing/multiple defaults — only when the user has no
+ * valid branch access at all.
+ */
 export async function resolveLoginDefaultBranch(
   userId: number,
   at: Date = branchNow(),
 ): Promise<UserBranchAccessRecord> {
-  const defaultCount = await countUserValidDefaults(userId, at);
-  if (defaultCount === 0) {
+  const valid = await listUserValidBranchAccess(userId, at);
+  if (valid.length === 0) {
     throw new BranchDomainError(
-      'NO_DEFAULT_BRANCH',
-      'لا يوجد فرع افتراضي صالح — يلزم ربط المستخدم بفرع',
+      'NO_BRANCH_ACCESS',
+      'لا توجد صلاحية فرع لهذا المستخدم — راجع المدير',
       403,
     );
   }
-  if (defaultCount > 1) {
-    throw new BranchDomainError(
-      'MULTIPLE_DEFAULT_BRANCHES',
-      'يوجد أكثر من فرع افتراضي صالح — راجع صلاحيات الفروع',
-      403,
-    );
+
+  const defaults = valid.filter((r) => r.isDefault);
+  if (defaults.length >= 1) {
+    return pickPreferredAccess(defaults);
   }
-  const row = await getUserDefaultBranch(userId, at);
-  if (!row) {
-    throw new BranchDomainError('NO_DEFAULT_BRANCH', 'لا يوجد فرع افتراضي صالح', 403);
+
+  const operable = valid.filter((r) => r.canOperate);
+  if (operable.length >= 1) {
+    return pickPreferredAccess(operable);
   }
-  return row;
+
+  return pickPreferredAccess(valid);
+}
+
+function pickPreferredAccess(rows: UserBranchAccessRecord[]): UserBranchAccessRecord {
+  return [...rows].sort((a, b) => a.branchId - b.branchId)[0]!;
 }
 
 export { listUserValidBranchAccess };

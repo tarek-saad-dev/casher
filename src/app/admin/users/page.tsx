@@ -20,6 +20,9 @@ interface UserRow {
   loginName: string;
   ShiftID: number;
   ShiftName: string | null;
+  DefaultBranchID?: number | null;
+  DefaultBranchCode?: string | null;
+  DefaultBranchName?: string | null;
 }
 
 interface ShiftDef {
@@ -27,18 +30,26 @@ interface ShiftDef {
   ShiftName: string;
 }
 
+interface BranchOption {
+  branchId: number;
+  branchCode: string;
+  branchName: string;
+  shortName?: string | null;
+}
+
 type SortField = 'UserName' | 'UserLevel' | 'ShiftName';
 type SortDir = 'asc' | 'desc';
 type DrawerMode = 'create' | 'edit' | 'reset-password' | null;
 
 export default function UsersPage() {
-  const { user: sessionUser } = useSession();
+  const { user: sessionUser, activeBranch } = useSession();
   const canEdit = usePermission('users.edit');
   const canCreate = usePermission('users.create');
   const canDelete = usePermission('users.delete');
 
   const [users, setUsers] = useState<UserRow[]>([]);
   const [shifts, setShifts] = useState<ShiftDef[]>([]);
+  const [branches, setBranches] = useState<BranchOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [globalError, setGlobalError] = useState('');
@@ -58,6 +69,7 @@ export default function UsersPage() {
   const [fShowPassword, setFShowPassword] = useState(false);
   const [fUserLevel, setFUserLevel] = useState('user');
   const [fShiftID, setFShiftID] = useState(1);
+  const [fBranchID, setFBranchID] = useState<number>(0);
 
   const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
 
@@ -66,15 +78,33 @@ export default function UsersPage() {
     else setRefreshing(true);
     setGlobalError('');
     try {
-      const [uRes, sRes] = await Promise.all([
+      const [uRes, sRes, bRes] = await Promise.all([
         fetch('/api/users'),
         fetch('/api/shift/definitions'),
+        fetch('/api/auth/branches'),
       ]);
       const uData = await uRes.json();
       const sData = await sRes.json();
+      const bData = await bRes.json();
       if (Array.isArray(uData)) setUsers(uData);
       else setGlobalError(uData.error || 'خطأ في تحميل المستخدمين');
       if (Array.isArray(sData)) setShifts(sData);
+      if (bData?.ok && Array.isArray(bData.branches)) {
+        const list: BranchOption[] = bData.branches.map((b: BranchOption) => ({
+          branchId: b.branchId,
+          branchCode: b.branchCode,
+          branchName: b.branchName,
+          shortName: b.shortName ?? null,
+        }));
+        // Ensure active branch is in the list even if somehow missing
+        if (
+          bData.activeBranch &&
+          !list.some((b) => b.branchId === bData.activeBranch.branchId)
+        ) {
+          list.unshift(bData.activeBranch);
+        }
+        setBranches(list);
+      }
     } catch { setGlobalError('خطأ في الاتصال بالخادم'); }
     finally { setLoading(false); setRefreshing(false); }
   }, []);
@@ -105,6 +135,7 @@ export default function UsersPage() {
   function openCreate() {
     setFUserName(''); setFLoginName(''); setFPassword('');
     setFUserLevel('user'); setFShiftID(shifts[0]?.ShiftID || 1);
+    setFBranchID(activeBranch?.branchId || branches[0]?.branchId || 0);
     setFShowPassword(false); setDrawerError('');
     setDrawerUser(null); setDrawerMode('create');
   }
@@ -112,6 +143,7 @@ export default function UsersPage() {
   function openEdit(u: UserRow) {
     setFUserName(u.UserName); setFLoginName(u.loginName); setFPassword('');
     setFUserLevel(u.UserLevel); setFShiftID(u.ShiftID);
+    setFBranchID(u.DefaultBranchID || activeBranch?.branchId || branches[0]?.branchId || 0);
     setFShowPassword(false); setDrawerError('');
     setDrawerUser(u); setDrawerMode('edit');
   }
@@ -134,6 +166,9 @@ export default function UsersPage() {
     if (drawerMode === 'create' && !fPassword.trim()) {
       setDrawerError('يجب إدخال كلمة المرور'); return;
     }
+    if (!fBranchID) {
+      setDrawerError('يجب اختيار فرع البداية'); return;
+    }
     setDrawerLoading(true);
     try {
       const payload: Record<string, unknown> = {
@@ -141,6 +176,7 @@ export default function UsersPage() {
         loginName: fLoginName.trim(),
         UserLevel: fUserLevel,
         ShiftID: fShiftID,
+        BranchID: fBranchID,
       };
       if (fPassword.trim()) payload.Password = fPassword.trim();
       const url = drawerMode === 'edit' && drawerUser ? `/api/users/${drawerUser.UserID}` : '/api/users';
@@ -300,6 +336,9 @@ export default function UsersPage() {
                 <th className="px-4 py-3 text-right">
                   <SortBtn field="ShiftName" label="الوردية" />
                 </th>
+                <th className="px-4 py-3 text-right text-xs text-zinc-500 font-medium">
+                  الفرع
+                </th>
                 {(canEdit || canDelete) && (
                   <th className="px-4 py-3 text-center text-xs text-zinc-500 font-medium">إجراءات</th>
                 )}
@@ -347,6 +386,15 @@ export default function UsersPage() {
                   </td>
                   <td className="px-4 py-3 text-zinc-400 text-sm">
                     {u.ShiftName || `وردية #${u.ShiftID}`}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {u.DefaultBranchName || u.DefaultBranchCode ? (
+                      <span className="text-zinc-300">
+                        {u.DefaultBranchName || u.DefaultBranchCode}
+                      </span>
+                    ) : (
+                      <span className="text-rose-400 text-xs">بدون فرع</span>
+                    )}
                   </td>
                   {(canEdit || canDelete) && (
                     <td className="px-4 py-3">
@@ -480,6 +528,26 @@ export default function UsersPage() {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs text-zinc-400">فرع البداية</Label>
+                <select
+                  value={fBranchID || ''}
+                  onChange={e => setFBranchID(parseInt(e.target.value, 10))}
+                  className="w-full h-9 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-white focus:outline-none"
+                  required
+                >
+                  <option value="" disabled>اختر الفرع</option>
+                  {branches.map(b => (
+                    <option key={b.branchId} value={b.branchId}>
+                      {b.shortName || b.branchName} ({b.branchCode})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-zinc-500">
+                  نقطة الدخول الأولى فقط — المستخدم يحصل على كل الفروع النشطة ويقدر ينقل بينها عادي.
+                </p>
               </div>
 
               {drawerError && <ErrorBox message={drawerError} />}

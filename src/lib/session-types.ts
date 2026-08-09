@@ -1,4 +1,4 @@
-// ──── Database row types (match HawaiDB exactly) ────
+// Database row types (match HawaiDB exactly)
 
 export interface DbUser {
   UserID: number;
@@ -34,7 +34,7 @@ export interface DbShiftMove {
   Status: boolean;
 }
 
-// ──── Session / client-facing types ────
+// Session / client-facing types
 
 export interface SessionUser {
   UserID: number;
@@ -49,6 +49,7 @@ export interface BusinessDay {
   ID: number;
   NewDay: string;
   Status: boolean;
+  BranchID?: number;
 }
 
 export interface ActiveShift {
@@ -75,7 +76,7 @@ export interface OperationalSession {
   permissions: string[];
 }
 
-// ──── Summary types ────
+// Summary types
 
 export interface PaymentBreakdownItem {
   method: string;
@@ -112,7 +113,7 @@ export interface DaySummary {
   paymentBreakdown: PaymentBreakdownItem[];
 }
 
-// ──── Session cookie payload ────
+// Session cookie payload
 
 export const BRANCH_SESSION_VERSION = 1 as const;
 
@@ -126,7 +127,7 @@ export interface SessionPayload {
   iat: number; // issued at (epoch seconds)
 }
 
-/** Legacy cookie shape (pre–Phase 1B). Must force re-login. */
+/** Legacy cookie shape (pre-Phase 1B). Must force re-login. */
 export interface LegacySessionPayload {
   UserID: number;
   UserName: string;
