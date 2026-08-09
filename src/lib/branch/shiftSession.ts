@@ -67,10 +67,24 @@ export async function getUserOpenShiftForBranch(
   userId: number,
   branchId: number,
 ): Promise<ShiftMoveRecord | null> {
-  const open = await getUserOpenShift(userId);
-  if (!open) return null;
-  if (open.branchId !== branchId) return null;
-  return open;
+  const db = await getPool();
+  const result = await db
+    .request()
+    .input('userId', sql.Int, userId)
+    .input('branchId', sql.Int, branchId)
+    .query(`
+      SELECT TOP 1
+        sm.ID, sm.BranchID, sm.BusinessDayID, sm.NewDay, sm.UserID, sm.ShiftID,
+        sm.StartDate, sm.StartTime, sm.EndDate, sm.EndTime, sm.Status,
+        u.UserName, s.ShiftName
+      FROM dbo.TblShiftMove sm
+      LEFT JOIN dbo.TblUser u ON u.UserID = sm.UserID
+      LEFT JOIN dbo.TblShift s ON s.ShiftID = sm.ShiftID
+      WHERE sm.Status = 1 AND sm.UserID = @userId AND sm.BranchID = @branchId
+      ORDER BY sm.ID DESC
+    `);
+  if (!result.recordset[0]) return null;
+  return mapShift(result.recordset[0]);
 }
 
 export async function listOpenShiftsForBranch(branchId: number): Promise<ShiftMoveRecord[]> {
@@ -160,13 +174,12 @@ export async function openShift(
     );
   }
 
-  const existing = await getUserOpenShift(userId);
+  // One open shift per user per branch — other branches may keep their own open shift.
+  const existing = await getUserOpenShiftForBranch(userId, branchContext.branchId);
   if (existing) {
     throw new BranchDomainError(
       'OPERATION_NOT_ALLOWED',
-      existing.branchId === branchContext.branchId
-        ? 'لديك وردية مفتوحة بالفعل — يجب إغلاقها أولاً'
-        : 'لديك وردية مفتوحة في فرع آخر — يجب إغلاقها أولاً',
+      'لديك وردية مفتوحة بالفعل — يجب إغلاقها أولاً',
       400,
     );
   }

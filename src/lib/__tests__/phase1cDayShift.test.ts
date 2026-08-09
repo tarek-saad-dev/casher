@@ -92,7 +92,7 @@ describe('Phase 1C shift service rules', () => {
     vi.doMock('server-only', () => ({}));
   });
 
-  it('rejects opening a second shift when user already has one in another branch', async () => {
+  it('rejects opening a second shift on the same branch', async () => {
     vi.doMock('@/lib/branch/businessDay', () => ({
       getOpenBusinessDay: vi.fn(async () => ({
         id: 5,
@@ -111,12 +111,12 @@ describe('Phase 1C shift service rules', () => {
               recordset: [
                 {
                   ID: 99,
-                  BranchID: 1,
-                  BusinessDayID: 1,
-                  NewDay: '2026-07-21',
+                  BranchID: 2,
+                  BusinessDayID: 5,
+                  NewDay: '2026-07-22',
                   UserID: 7,
                   ShiftID: 1,
-                  StartDate: '2026-07-21',
+                  StartDate: '2026-07-22',
                   StartTime: '10:00 AM',
                   EndDate: null,
                   EndTime: null,
@@ -151,8 +151,74 @@ describe('Phase 1C shift service rules', () => {
       ),
     ).rejects.toMatchObject({
       name: 'BranchDomainError',
-      message: expect.stringContaining('فرع آخر'),
+      message: expect.stringContaining('بالفعل'),
     });
+  });
+
+  it('allows opening a shift when the user only has an open shift on another branch', async () => {
+    let call = 0;
+    vi.doMock('@/lib/branch/businessDay', () => ({
+      getOpenBusinessDay: vi.fn(async () => ({
+        id: 5,
+        branchId: 2,
+        newDay: '2026-07-22',
+        status: true,
+      })),
+      validateBusinessDayBelongsToBranch: vi.fn(),
+    }));
+    vi.doMock('@/lib/db', () => ({
+      getPool: vi.fn(async () => ({
+        request: () => {
+          const api: any = {
+            input: () => api,
+            query: async () => {
+              call += 1;
+              // 1) getUserOpenShiftForBranch → none on this branch
+              if (call === 1) return { recordset: [] };
+              // 2) INSERT … OUTPUT
+              return {
+                recordset: [
+                  {
+                    ID: 100,
+                    BranchID: 2,
+                    BusinessDayID: 5,
+                    NewDay: '2026-07-22',
+                    UserID: 7,
+                    ShiftID: 1,
+                    StartDate: '2026-07-22',
+                    StartTime: '10:00 AM',
+                    EndDate: null,
+                    EndTime: null,
+                    Status: true,
+                  },
+                ],
+              };
+            },
+          };
+          return api;
+        },
+      })),
+      sql: { Int: 'Int', Date: 'Date', NChar: () => 'NChar', NVarChar: () => 'NVarChar' },
+    }));
+
+    const { openShift } = await import('@/lib/branch/shiftSession');
+    const opened = await openShift(
+      {
+        userId: 7,
+        branchId: 2,
+        branchCode: 'OTHER',
+        branchName: 'Other',
+        shortName: null,
+        timeZone: 'Africa/Cairo',
+        businessDayCutoffTime: '04:00:00',
+        canOperate: true,
+        canViewReports: true,
+        canSwitch: true,
+      },
+      7,
+      1,
+    );
+    expect(opened).toMatchObject({ id: 100, branchId: 2, userId: 7 });
   });
 
   it('rejects closing a shift that belongs to another branch', async () => {

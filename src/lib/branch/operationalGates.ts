@@ -13,7 +13,6 @@ import {
   type BusinessDayRecord,
 } from './businessDay';
 import {
-  getUserOpenShift,
   getUserOpenShiftForBranch,
   type ShiftMoveRecord,
 } from './shiftSession';
@@ -73,20 +72,7 @@ export async function resolveBranchDayAndShiftForWrite(userId: number): Promise<
     };
   }
 
-  const anyOpen = await getUserOpenShift(userId);
-  if (anyOpen && anyOpen.branchId !== branch.branchId) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        {
-          error: 'لديك وردية مفتوحة في فرع آخر — يجب إغلاقها أولاً',
-          code: 'OPEN_SHIFT_OTHER_BRANCH',
-        },
-        { status: 400 },
-      ),
-    };
-  }
-
+  // Scope to the active branch only — an open shift on another branch must not block POS.
   const shift = await getUserOpenShiftForBranch(userId, branch.branchId);
   return { ok: true, branch, day, shift };
 }

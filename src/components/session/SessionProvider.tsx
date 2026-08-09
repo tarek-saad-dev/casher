@@ -195,7 +195,14 @@ export default function SessionProvider({ children }: { children: ReactNode }) {
     loading,
     isAuthenticated: !!user,
     hasActiveDay: !!day && day.Status === true,
-    hasActiveShift: !!user && !!shift && shift.Status === true && shift.UserID === user.UserID,
+    hasActiveShift:
+      !!user &&
+      !!shift &&
+      shift.Status === true &&
+      shift.UserID === user.UserID &&
+      (shift.BranchID == null ||
+        activeBranch == null ||
+        shift.BranchID === activeBranch.branchId),
     defaultShiftId,
     activeBranch,
     refresh,

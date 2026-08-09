@@ -63,6 +63,8 @@ export interface ActiveShift {
   EndDate: string | null;
   EndTime: string | null;
   Status: boolean;
+  BranchID?: number;
+  BusinessDayID?: number;
 }
 
 export interface OperationalSession {
