@@ -45,6 +45,8 @@ export async function requireBranchOperatorContext(): Promise<
 
 /**
  * Resolve open business day + optional user open shift for financial writes.
+ * Shared by sales, expenses, incomes, deductions, purchases, treasury transfer,
+ * and booking convert — an open shift on another branch must never block these.
  * Callers must stamp BranchID + BusinessDayID on financial roots from this context.
  */
 export async function resolveBranchDayAndShiftForWrite(userId: number): Promise<
@@ -72,7 +74,7 @@ export async function resolveBranchDayAndShiftForWrite(userId: number): Promise<
     };
   }
 
-  // Scope to the active branch only — an open shift on another branch must not block POS.
+  // Active-branch shift only (one open shift per user per branch).
   const shift = await getUserOpenShiftForBranch(userId, branch.branchId);
   return { ok: true, branch, day, shift };
 }

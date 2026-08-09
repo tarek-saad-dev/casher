@@ -88,9 +88,10 @@ async function main() {
            INNER JOIN dbo.TblNewDay d ON d.ID = sm.BusinessDayID
            WHERE sm.NewDay <> d.NewDay) AS ShiftDayDateMismatch,
         (SELECT COUNT(*) FROM (
-           SELECT UserID FROM dbo.TblShiftMove WHERE Status = 1 AND UserID IS NOT NULL
-           GROUP BY UserID HAVING COUNT(*) > 1
-         ) u) AS UsersMultipleOpenShifts,
+           SELECT UserID, BranchID FROM dbo.TblShiftMove
+           WHERE Status = 1 AND UserID IS NOT NULL AND BranchID IS NOT NULL
+           GROUP BY UserID, BranchID HAVING COUNT(*) > 1
+         ) u) AS UsersMultipleOpenShiftsPerBranch,
         (SELECT COUNT(*) FROM sys.columns c
            INNER JOIN sys.tables t ON t.object_id = c.object_id
            INNER JOIN sys.schemas s ON s.schema_id = t.schema_id
@@ -115,7 +116,7 @@ async function main() {
     console.log(`  Shift BusinessDayID null: ${row.ShiftNullBusinessDay}`);
     console.log(`  Shift/day branch mismatches: ${row.ShiftDayBranchMismatch}`);
     console.log(`  Shift/day date mismatches: ${row.ShiftDayDateMismatch}`);
-    console.log(`  Users with multiple open shifts: ${row.UsersMultipleOpenShifts}`);
+    console.log(`  Users with multiple open shifts on same branch: ${row.UsersMultipleOpenShiftsPerBranch}`);
     console.log(`  Unexpected operational BranchID columns: ${row.UnexpectedBranchIDColumns}`);
     console.log(`  Shifts not GLEEM: ${row.ShiftNotGleem}`);
 
@@ -137,7 +138,9 @@ async function main() {
     if (Number(row.ShiftNullBusinessDay) !== 0) failures.push('Shift null BusinessDayID');
     if (Number(row.ShiftDayBranchMismatch) !== 0) failures.push('Shift/day branch mismatch');
     if (Number(row.ShiftDayDateMismatch) !== 0) failures.push('Shift/day date mismatch');
-    if (Number(row.UsersMultipleOpenShifts) !== 0) failures.push('Users with multiple open shifts');
+    if (Number(row.UsersMultipleOpenShiftsPerBranch) !== 0) {
+      failures.push('Users with multiple open shifts on the same branch');
+    }
     if (Number(row.UnexpectedBranchIDColumns) !== 0) {
       failures.push('Unexpected tables gained BranchID');
     }

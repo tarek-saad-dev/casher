@@ -276,6 +276,132 @@ describe('Phase 1C shift service rules', () => {
   });
 });
 
+describe('resolveBranchDayAndShiftForWrite (shared financial gate)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.doMock('server-only', () => ({}));
+  });
+
+  it('does not block when user has an open shift only on another branch', async () => {
+    const branch = {
+      userId: 7,
+      branchId: 2,
+      branchCode: 'CAMP_CAESAR',
+      branchName: 'كامب شيزار',
+      shortName: 'كامب',
+      timeZone: 'Africa/Cairo',
+      businessDayCutoffTime: '04:00:00',
+      canOperate: true,
+      canViewReports: true,
+      canSwitch: true,
+    };
+
+    vi.doMock('@/lib/branch/context', () => ({
+      isActiveBranchContext: () => true,
+      requireActiveBranchContext: vi.fn(),
+      requireBranchOperationAccess: vi.fn(async () => branch),
+    }));
+    vi.doMock('@/lib/branch/businessDay', () => ({
+      getOpenBusinessDay: vi.fn(async () => ({
+        id: 5,
+        branchId: 2,
+        newDay: '2026-08-09',
+        status: true,
+      })),
+      getBusinessDayByDate: vi.fn(),
+      getBranchBusinessDate: vi.fn(() => '2026-08-09'),
+    }));
+    vi.doMock('@/lib/branch/shiftSession', () => ({
+      getUserOpenShift: vi.fn(async () => ({
+        id: 99,
+        branchId: 1,
+        businessDayId: 1,
+        newDay: '2026-08-09',
+        userId: 7,
+        shiftId: 1,
+        status: true,
+      })),
+      // Active branch has its own open shift
+      getUserOpenShiftForBranch: vi.fn(async (_userId: number, branchId: number) =>
+        branchId === 2
+          ? {
+              id: 100,
+              branchId: 2,
+              businessDayId: 5,
+              newDay: '2026-08-09',
+              userId: 7,
+              shiftId: 1,
+              status: true,
+            }
+          : null,
+      ),
+    }));
+
+    const { resolveBranchDayAndShiftForWrite } = await import(
+      '@/lib/branch/operationalGates'
+    );
+    const gated = await resolveBranchDayAndShiftForWrite(7);
+    expect(gated.ok).toBe(true);
+    if (gated.ok) {
+      expect(gated.shift?.id).toBe(100);
+      expect(gated.shift?.branchId).toBe(2);
+      expect(gated.branch.branchId).toBe(2);
+    }
+  });
+
+  it('returns ok with null shift when active branch has no open shift', async () => {
+    const branch = {
+      userId: 7,
+      branchId: 2,
+      branchCode: 'CAMP_CAESAR',
+      branchName: 'كامب شيزار',
+      shortName: 'كامب',
+      timeZone: 'Africa/Cairo',
+      businessDayCutoffTime: '04:00:00',
+      canOperate: true,
+      canViewReports: true,
+      canSwitch: true,
+    };
+
+    vi.doMock('@/lib/branch/context', () => ({
+      isActiveBranchContext: () => true,
+      requireActiveBranchContext: vi.fn(),
+      requireBranchOperationAccess: vi.fn(async () => branch),
+    }));
+    vi.doMock('@/lib/branch/businessDay', () => ({
+      getOpenBusinessDay: vi.fn(async () => ({
+        id: 5,
+        branchId: 2,
+        newDay: '2026-08-09',
+        status: true,
+      })),
+      getBusinessDayByDate: vi.fn(),
+      getBranchBusinessDate: vi.fn(() => '2026-08-09'),
+    }));
+    vi.doMock('@/lib/branch/shiftSession', () => ({
+      getUserOpenShift: vi.fn(async () => ({
+        id: 99,
+        branchId: 1,
+        businessDayId: 1,
+        newDay: '2026-08-09',
+        userId: 7,
+        shiftId: 1,
+        status: true,
+      })),
+      getUserOpenShiftForBranch: vi.fn(async () => null),
+    }));
+
+    const { resolveBranchDayAndShiftForWrite } = await import(
+      '@/lib/branch/operationalGates'
+    );
+    const gated = await resolveBranchDayAndShiftForWrite(7);
+    expect(gated.ok).toBe(true);
+    if (gated.ok) {
+      expect(gated.shift).toBeNull();
+    }
+  });
+});
+
 describe('Phase 1C migration artifacts', () => {
   it('documents CT-aware PK swap and does not add financial BranchID', async () => {
     const fs = await import('fs');
