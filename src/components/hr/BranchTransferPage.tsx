@@ -346,16 +346,15 @@ export function BranchTransferPage() {
       <PageHeader
         title="نقل موظف بين الفروع"
         description="نقل يومي (طارئ أو بتاريخ قديم) مع معاينة الموانع وسجل النقل — لا يغيّر الجدول الأسبوعي"
-        actions={
-          <Link
-            href="/admin/hr"
-            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'gap-1')}
-          >
-            <ArrowRight className="w-4 h-4" />
-            الموظفون
-          </Link>
-        }
-      />
+      >
+        <Link
+          href="/admin/hr"
+          className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'gap-1')}
+        >
+          <ArrowRight className="w-4 h-4" />
+          الموظفون
+        </Link>
+      </PageHeader>
 
       {loadingMeta ? (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
