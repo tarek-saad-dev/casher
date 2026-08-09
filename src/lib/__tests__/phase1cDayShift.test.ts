@@ -155,7 +155,7 @@ describe('Phase 1C shift service rules', () => {
     });
   });
 
-  it('allows opening a shift when the user only has an open shift on another branch', async () => {
+  it('closes an other-branch open shift then opens on the active branch', async () => {
     let call = 0;
     vi.doMock('@/lib/branch/businessDay', () => ({
       getOpenBusinessDay: vi.fn(async () => ({
@@ -171,11 +171,49 @@ describe('Phase 1C shift service rules', () => {
         request: () => {
           const api: any = {
             input: () => api,
-            query: async () => {
+            query: async (sqlText: string) => {
               call += 1;
-              // 1) getUserOpenShiftForBranch → none on this branch
-              if (call === 1) return { recordset: [] };
-              // 2) INSERT … OUTPUT
+              // 1) getUserOpenShift → open on branch 1
+              if (call === 1) {
+                return {
+                  recordset: [
+                    {
+                      ID: 99,
+                      BranchID: 1,
+                      BusinessDayID: 1,
+                      NewDay: '2026-07-22',
+                      UserID: 7,
+                      ShiftID: 1,
+                      StartDate: '2026-07-22',
+                      StartTime: '09:00 AM',
+                      EndDate: null,
+                      EndTime: null,
+                      Status: true,
+                    },
+                  ],
+                };
+              }
+              // 2) finalizeCloseShift UPDATE + SELECT
+              if (call === 2 || String(sqlText).includes('UPDATE dbo.TblShiftMove')) {
+                return {
+                  recordset: [
+                    {
+                      ID: 99,
+                      BranchID: 1,
+                      BusinessDayID: 1,
+                      NewDay: '2026-07-22',
+                      UserID: 7,
+                      ShiftID: 1,
+                      StartDate: '2026-07-22',
+                      StartTime: '09:00 AM',
+                      EndDate: '2026-07-22',
+                      EndTime: '10:00:00 AM',
+                      Status: false,
+                    },
+                  ],
+                };
+              }
+              // 3) INSERT on active branch
               return {
                 recordset: [
                   {
@@ -218,7 +256,9 @@ describe('Phase 1C shift service rules', () => {
       7,
       1,
     );
-    expect(opened).toMatchObject({ id: 100, branchId: 2, userId: 7 });
+    expect(opened.id).toBe(100);
+    expect(opened.branchId).toBe(2);
+    expect(call).toBeGreaterThanOrEqual(3);
   });
 
   it('rejects closing a shift that belongs to another branch', async () => {

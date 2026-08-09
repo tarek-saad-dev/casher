@@ -174,40 +174,59 @@ export async function openShift(
     );
   }
 
-  // One open shift per user per branch — other branches may keep their own open shift.
-  const existing = await getUserOpenShiftForBranch(userId, branchContext.branchId);
-  if (existing) {
-    throw new BranchDomainError(
-      'OPERATION_NOT_ALLOWED',
-      'لديك وردية مفتوحة بالفعل — يجب إغلاقها أولاً',
-      400,
-    );
+  // DB enforces UX_TblShiftMove_OneOpenPerUser (one open shift globally per user).
+  // If the open shift is on another branch, close it so the user can open here.
+  const anyOpen = await getUserOpenShift(userId);
+  if (anyOpen) {
+    if (anyOpen.branchId === branchContext.branchId) {
+      throw new BranchDomainError(
+        'OPERATION_NOT_ALLOWED',
+        'لديك وردية مفتوحة بالفعل — يجب إغلاقها أولاً',
+        400,
+      );
+    }
+    await finalizeCloseShift(anyOpen.id, anyOpen.branchId);
   }
 
   const db = await getPool();
   const startTime = formatLegacyStartTime();
-  const result = await db
-    .request()
-    .input('branchId', sql.Int, branchContext.branchId)
-    .input('businessDayId', sql.Int, day.id)
-    .input('newDay', sql.Date, day.newDay)
-    .input('userID', sql.Int, userId)
-    .input('shiftID', sql.Int, shiftId)
-    .input('startDate', sql.Date, day.newDay)
-    .input('startTime', sql.NChar(10), startTime)
-    .query(`
-      INSERT INTO dbo.TblShiftMove (
-        BranchID, BusinessDayID, NewDay, UserID, ShiftID, StartDate, StartTime, Status
-      )
-      OUTPUT INSERTED.ID, INSERTED.BranchID, INSERTED.BusinessDayID, INSERTED.NewDay,
-             INSERTED.UserID, INSERTED.ShiftID, INSERTED.StartDate, INSERTED.StartTime,
-             INSERTED.EndDate, INSERTED.EndTime, INSERTED.Status
-      VALUES (
-        @branchId, @businessDayId, @newDay, @userID, @shiftID, @startDate, @startTime, 1
-      )
-    `);
+  try {
+    const result = await db
+      .request()
+      .input('branchId', sql.Int, branchContext.branchId)
+      .input('businessDayId', sql.Int, day.id)
+      .input('newDay', sql.Date, day.newDay)
+      .input('userID', sql.Int, userId)
+      .input('shiftID', sql.Int, shiftId)
+      .input('startDate', sql.Date, day.newDay)
+      .input('startTime', sql.NChar(10), startTime)
+      .query(`
+        INSERT INTO dbo.TblShiftMove (
+          BranchID, BusinessDayID, NewDay, UserID, ShiftID, StartDate, StartTime, Status
+        )
+        OUTPUT INSERTED.ID, INSERTED.BranchID, INSERTED.BusinessDayID, INSERTED.NewDay,
+               INSERTED.UserID, INSERTED.ShiftID, INSERTED.StartDate, INSERTED.StartTime,
+               INSERTED.EndDate, INSERTED.EndTime, INSERTED.Status
+        VALUES (
+          @branchId, @businessDayId, @newDay, @userID, @shiftID, @startDate, @startTime, 1
+        )
+      `);
 
-  return mapShift(result.recordset[0]);
+    return mapShift(result.recordset[0]);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (
+      /UX_TblShiftMove_OneOpenPerUser/i.test(message) ||
+      /Cannot insert duplicate key/i.test(message)
+    ) {
+      throw new BranchDomainError(
+        'OPERATION_NOT_ALLOWED',
+        'لديك وردية مفتوحة بالفعل — أغلقها أولاً ثم افتح وردية في هذا الفرع',
+        400,
+      );
+    }
+    throw err;
+  }
 }
 
 async function finalizeCloseShift(

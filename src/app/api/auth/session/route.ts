@@ -11,7 +11,7 @@ import { getUserAccess } from "@/lib/permissions-server";
 import { getUserActiveStatus } from "@/lib/branch/repository";
 import { getActiveBranchContext } from "@/lib/branch/context";
 import { getOpenBusinessDay } from "@/lib/branch/businessDay";
-import { getUserOpenShiftForBranch } from "@/lib/branch/shiftSession";
+import { getUserOpenShift, getUserOpenShiftForBranch } from "@/lib/branch/shiftSession";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -114,11 +114,15 @@ export async function GET() {
       ? { ID: day.id, NewDay: day.newDay, Status: day.status, BranchID: day.branchId }
       : null;
 
-    // Active-branch shift only — other branches keep their own open shifts independently
+    // Active-branch shift for POS; also detect any open shift elsewhere
+    // (DB unique index UX_TblShiftMove_OneOpenPerUser is still global per user).
     const openShift = await getUserOpenShiftForBranch(
       user.UserID,
       branchContext.branchId,
     );
+    const anyOpenShift = openShift
+      ? null
+      : await getUserOpenShift(user.UserID);
     const shift = openShift
       ? {
           ID: openShift.id,
@@ -135,7 +139,23 @@ export async function GET() {
           BranchID: openShift.branchId,
           BusinessDayID: openShift.businessDayId,
         }
-      : null;
+      : anyOpenShift
+        ? {
+            ID: anyOpenShift.id,
+            NewDay: anyOpenShift.newDay,
+            UserID: anyOpenShift.userId,
+            ShiftID: anyOpenShift.shiftId,
+            StartDate: anyOpenShift.startDate,
+            StartTime: anyOpenShift.startTime,
+            EndDate: anyOpenShift.endDate,
+            EndTime: anyOpenShift.endTime,
+            Status: anyOpenShift.status,
+            UserName: anyOpenShift.userName,
+            ShiftName: anyOpenShift.shiftName,
+            BranchID: anyOpenShift.branchId,
+            BusinessDayID: anyOpenShift.businessDayId,
+          }
+        : null;
 
     const access = await getUserAccess(user.UserID, user.UserName, user.UserLevel);
     const permissions = buildAuthoritativePermissions({
