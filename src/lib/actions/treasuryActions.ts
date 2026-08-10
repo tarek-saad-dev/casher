@@ -5,6 +5,7 @@
  */
 
 import { sql, allocateInvID } from '@/lib/db';
+import { getCairoInvTimeDotStr } from '@/lib/businessDate';
 
 export interface TreasuryTransferInput {
   amount: number;
@@ -165,8 +166,7 @@ export async function executeTreasuryTransfer(
     log('Historical date resolved', { step: 'date-resolve:complete', invDate: invDate.toISOString().split('T')[0], invTime, branchId });
   } else {
     invDate = input.invDate ?? new Date();
-    const now = new Date();
-    invTime = `${String(now.getHours()).padStart(2, '0')}.${String(now.getMinutes()).padStart(2, '0')}`;
+    invTime = getCairoInvTimeDotStr();
     log('Current business day resolved', { invDate, businessDayId, branchId, shiftMoveID });
   }
 

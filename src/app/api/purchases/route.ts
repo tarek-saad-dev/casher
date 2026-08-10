@@ -11,6 +11,7 @@ import {
   InventoryDomainError,
   type PurchaseLineInput,
 } from '@/lib/inventory/purchaseInventory.service';
+import { getCairoInvTimeDotStr } from '@/lib/businessDate';
 
 export const runtime = 'nodejs';
 
@@ -87,8 +88,7 @@ export async function POST(req: NextRequest) {
         `);
       const purchaseInvId = Number(idRes.recordset[0].newInvID);
 
-      const now = new Date();
-      const invTime = `${String(now.getHours()).padStart(2, '0')}.${String(now.getMinutes()).padStart(2, '0')}`;
+      const invTime = getCairoInvTimeDotStr();
       const invDate = gated.day.newDay;
 
       await new sql.Request(transaction)

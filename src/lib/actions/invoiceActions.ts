@@ -9,6 +9,7 @@ import {
   computeInvoiceItemsTotals,
 } from '@/lib/sales/service-line-totals';
 import { roundMoney } from '@/lib/reportMonthUtils';
+import { getCairoInvTimeDotStr, getCairoPayTimeStr } from '@/lib/businessDate';
 
 export interface InvoiceItemInput {
   proId: number;
@@ -388,14 +389,11 @@ export async function updateInvoice(
     .input('PaymentMethodID', sql.Int, headerPaymentMethodId)
     .query(`UPDATE dbo.TblinvServHead SET PaymentMethodID = @PaymentMethodID WHERE invID = @invID AND invType = N'مبيعات'`);
 
-  // 6. Insert payment allocations
+  // 6. Insert payment allocations (Cairo wall-clock — not server-local TZ)
   const now = new Date();
-  const payHours = now.getHours();
-  const payAmPm = payHours >= 12 ? 'PM' : 'AM';
-  const payH12 = payHours % 12 || 12;
-  const payTimeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(payH12).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')} ${payAmPm}`;
+  const payTimeStr = getCairoPayTimeStr(now);
   const editInvDate = now;
-  const editInvTime = `${String(now.getHours()).padStart(2, '0')}.${String(now.getMinutes()).padStart(2, '0')}`;
+  const editInvTime = getCairoInvTimeDotStr(now);
 
   for (const alloc of activeAllocations) {
     await new sql.Request(transaction)

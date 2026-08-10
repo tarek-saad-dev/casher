@@ -12,6 +12,7 @@ import {
 } from '@/lib/services/employeeLedgerDualWrite';
 import { getEmployeeAllTimeBalance, validateLedgerMonth } from '@/lib/services/employeeLedgerService';
 import type { EmpLedgerFundingResponse } from '@/lib/types/employee-ledger';
+import { getCairoInvTimeDotStr } from '@/lib/businessDate';
 
 export const EMPLOYEE_FUNDING_CATEGORY_NAME = 'تمويل من موظف';
 export { EMP_LEDGER_REASON_EMPLOYEE_FUNDING };
@@ -177,8 +178,7 @@ export async function executeEmployeeFunding(params: {
     throw new EmployeeLedgerFundingError('طريقة الدفع غير موجودة');
   }
 
-  const now = new Date();
-  const invTime = `${String(now.getHours()).padStart(2, '0')}.${String(now.getMinutes()).padStart(2, '0')}`;
+  const invTime = getCairoInvTimeDotStr();
   const cashNotes = buildCashMoveNotes(employeeName, params.notes);
 
   const transaction = new sql.Transaction(db);

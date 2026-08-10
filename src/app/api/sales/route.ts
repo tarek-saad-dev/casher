@@ -19,6 +19,7 @@ import {
   groupEmployeeSaleDetails,
 } from "@/lib/sales/employee-sale-whatsapp";
 import { roundMoney } from "@/lib/reportMonthUtils";
+import { getCairoInvTimeDotStr, getCairoPayTimeStr } from "@/lib/businessDate";
 
 export const runtime = "nodejs";
 
@@ -220,17 +221,14 @@ export async function POST(req: NextRequest) {
       `[pos-api]   Payment: headerMethodId=${headerPaymentMethodId}, isSplit=${isSplitPayment}, allocations=${activeAllocations.length}`,
     );
 
-    // Format invTime as "HH.mm"
+    // Format invTime as "HH.mm" in Africa/Cairo (not server-local TZ)
     const now = new Date();
-    const invTime = `${String(now.getHours()).padStart(2, "0")}.${String(now.getMinutes()).padStart(2, "0")}`;
+    const invTime = getCairoInvTimeDotStr(now);
     const invType = "مبيعات";
     const notesText = body.notes || "مبيعات";
 
-    // Build PayTime string matching existing format: "YYYY-MM-DD HH:MM:SS AM/PM"
-    const payHours = now.getHours();
-    const payAmPm = payHours >= 12 ? "PM" : "AM";
-    const payH12 = payHours % 12 || 12;
-    const payTimeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(payH12).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")} ${payAmPm}`;
+    // Build PayTime string matching existing format: "YYYY-MM-DD HH:MM:SS AM/PM" (Cairo)
+    const payTimeStr = getCairoPayTimeStr(now);
 
     // Begin serializable transaction
     const transaction = new sql.Transaction(db);

@@ -12,6 +12,7 @@ import {
 import { getEmployeeAllTimeBalance, validateLedgerMonth } from '@/lib/services/employeeLedgerService';
 import type { EmpLedgerTipResponse } from '@/lib/types/employee-ledger';
 import { calculateTipAmount } from '@/lib/pos/tipMath';
+import { getCairoInvTimeDotStr } from '@/lib/businessDate';
 
 export { calculateTipAmount } from '@/lib/pos/tipMath';
 export const EMP_LEDGER_REASON_TIP = 'tip';
@@ -187,8 +188,7 @@ export async function executeEmployeeTip(params: {
     throw new EmployeeTipError('طريقة الدفع غير موجودة');
   }
 
-  const now = new Date();
-  const invTime = `${String(now.getHours()).padStart(2, '0')}.${String(now.getMinutes()).padStart(2, '0')}`;
+  const invTime = getCairoInvTimeDotStr();
   const cashNotes = buildCashMoveNotes(employeeName, tipAmount, invoiceTotal, amountPaid);
 
   const transaction = new sql.Transaction(db);

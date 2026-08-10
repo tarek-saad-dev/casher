@@ -11,6 +11,7 @@ import {
 } from '@/lib/services/employeeLedgerDualWrite';
 import { getEmployeeBranchBalance } from '@/lib/services/employeeLedgerService';
 import type { EmpLedgerPayoutResponse } from '@/lib/types/employee-ledger';
+import { getCairoInvTimeDotStr } from '@/lib/businessDate';
 
 export const PAYOUT_EXPENSE_CATEGORY_NAME = 'صرف مستحقات الموظفين';
 export const EMP_LEDGER_REASON_PAYOUT = 'payout';
@@ -161,8 +162,7 @@ export async function executeEmployeePayout(params: {
     throw new EmployeeLedgerPayoutError('طريقة الدفع غير موجودة');
   }
 
-  const now = new Date();
-  const invTime = `${String(now.getHours()).padStart(2, '0')}.${String(now.getMinutes()).padStart(2, '0')}`;
+  const invTime = getCairoInvTimeDotStr();
   const cashNotes = buildCashMoveNotes(String(employee.EmpName), params.notes);
 
   const transaction = new sql.Transaction(db);

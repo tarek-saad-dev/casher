@@ -144,6 +144,33 @@ export function getCairoTimeStr(now?: Date): string {
 }
 
 /**
+ * Cairo wall-clock for TblinvServHead / TblCashMove invTime: "HH.mm"
+ * (legacy NVARCHAR format — must not use server-local getHours()).
+ */
+export function getCairoInvTimeDotStr(now?: Date): string {
+  return getCairoTimeStr(now).slice(0, 5).replace(':', '.');
+}
+
+/**
+ * Cairo PayTime string matching existing invoice payment format:
+ * "YYYY-MM-DD HH:MM:SS AM/PM"
+ */
+export function getCairoPayTimeStr(now?: Date): string {
+  const d = now ?? new Date();
+  const date = getCairoCalendarDate(d);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: SALON_TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  }).formatToParts(d);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? '00';
+  return `${date} ${get('hour')}:${get('minute')}:${get('second')} ${get('dayPeriod')}`;
+}
+
+/**
  * Get current Cairo datetime as a Date object (approximation using offset).
  * Useful for comparisons like "is it past expected end?"
  */

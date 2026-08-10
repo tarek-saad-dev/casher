@@ -6,6 +6,7 @@ import {
   assertBookingOwnedByActiveBranch,
   bookingQueueNotFoundResponse,
 } from "@/lib/branch/bookingQueueOwnership";
+import { getCairoInvTimeDotStr } from "@/lib/businessDate";
 
 export const runtime = "nodejs";
 
@@ -86,8 +87,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     try {
       const tr = transaction.request();
 
-      const now = new Date();
-      const invTime = `${String(now.getHours()).padStart(2,'0')}.${String(now.getMinutes()).padStart(2,'0')}`;
+      const invTime = getCairoInvTimeDotStr();
 
       // Insert TblinvServHead — matches exact column set from sales API
       await tr

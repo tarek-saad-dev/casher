@@ -11,6 +11,7 @@ import {
 import {
   maybeScheduleAdvanceWhatsAppFromExpenseCategory,
 } from '@/lib/services/employeeAdvanceWhatsAppNotify';
+import { getCairoInvTimeDotStr } from '@/lib/businessDate';
 
 // GET /api/expenses — List expenses with optional filters
 export async function GET(req: NextRequest) {
@@ -175,8 +176,7 @@ export async function POST(req: NextRequest) {
 
     // ──── Prepare values ────
     const amount = Math.max(0, body.amount);
-    const now = new Date();
-    const invTime = `${String(now.getHours()).padStart(2, '0')}.${String(now.getMinutes()).padStart(2, '0')}`;
+    const invTime = getCairoInvTimeDotStr();
     const notesText = body.notes || catName;
 
     // ──── Transaction (minimal: only invID allocation + insert) ────

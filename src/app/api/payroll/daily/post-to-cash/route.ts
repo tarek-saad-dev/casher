@@ -8,6 +8,7 @@ import {
 } from '@/lib/payroll/legacyPostToCashFlags';
 import { requireBranchOperationAccess } from '@/lib/branch/context';
 import { resolveBranchDayForDate } from '@/lib/branch/operationalGates';
+import { getCairoTimeStr } from '@/lib/businessDate';
 
 const DATE_RE   = /^\d{4}-\d{2}-\d{2}$/;
 const CAT_NAME  = 'يوميات الموظفين';
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
     const legacyWarning = getLegacyPostToCashWarning();
 
     const payrollMonth = workDate.substring(0, 7) + '-01';
-    const nowTime      = new Date().toTimeString().substring(0, 5);
+    const nowTime      = getCairoTimeStr().slice(0, 5);
     const db           = await getPool();
 
     // ── 1. Ensure expense category exists (CatName + ExpINType only, no Description) ──
