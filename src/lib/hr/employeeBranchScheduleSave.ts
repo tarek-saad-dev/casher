@@ -125,7 +125,7 @@ export async function assertAssignmentAndPayrollForWorkingSchedule(args: {
   if (!plan) {
     throw new SchedulePolicyError(
       'EMPLOYEE_BRANCH_PAYROLL_PLAN_REQUIRED',
-      'خطة راتب الفرع مطلوبة قبل حفظ جدول عمل تشغيلي — اضبط الراتب من بيانات الموظف أو إعداد الفرع',
+      'اتفاقية الراتب مطلوبة قبل حفظ جدول عمل تشغيلي — اضبط الراتب مرة واحدة من بيانات الموظف (تُطبَّق على كل الفروع)',
       400,
     );
   }

@@ -18,10 +18,8 @@ import {
   findFirstFreeSlot,
 } from "@/lib/queueEstimateEngine";
 import { requireBranchOperationAccess, isActiveBranchContext } from "@/lib/branch/context";
-import {
-  assertBookingOwnedByActiveBranch,
-  bookingQueueNotFoundResponse,
-} from "@/lib/branch/bookingQueueOwnership";
+import { bookingQueueNotFoundResponse } from "@/lib/branch/bookingQueueOwnership";
+import { userCanManageOpsBranchRecord } from "@/lib/branch/opsWriteBranch";
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
@@ -165,7 +163,13 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 
     const booking = bookingRes.recordset[0];
 
-    if (!assertBookingOwnedByActiveBranch(branch.branchId, booking.BranchID)) {
+    if (
+      !(await userCanManageOpsBranchRecord({
+        userId: branch.userId,
+        sessionBranchId: branch.branchId,
+        recordBranchId: booking.BranchID,
+      }))
+    ) {
       return bookingQueueNotFoundResponse();
     }
 
@@ -349,11 +353,12 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     let ticketNumber: number;
 
     try {
-      // Generate ticket number — scoped to (BranchID, QueueDate)
+      // Generate ticket number — scoped to (BranchID, QueueDate) of the booking's branch
+      const ticketBranchId = Number(booking.BranchID);
       const numRes = await transaction
         .request()
         .input("qDate", sql.Date, queueDate)
-        .input("branchId", sql.Int, branch.branchId)
+        .input("branchId", sql.Int, ticketBranchId)
         .query(`
           SELECT ISNULL(MAX(TicketNumber), ${startNumber - 1}) + 1 AS NextNum
           FROM [dbo].[QueueTickets] WITH (UPDLOCK, HOLDLOCK)
@@ -393,7 +398,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       const waitingCountAtCreation = waitingCountRes.recordset[0]?.cnt ?? 0;
 
       // Insert queue ticket — Status='waiting' (not 'arrived'; 'arrived' is not a valid QueueTicket status)
-      // BranchID is stamped from the booking's own branch (already asserted == active branch).
+      // BranchID is stamped from the booking's own branch (cross-branch ops allowed).
       const insertSql = `
         INSERT INTO [dbo].[QueueTickets]
           (TicketCode, TicketNumber, TicketPrefix, ClientID, EmpID, BookingID,
@@ -433,7 +438,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       if (hasWCount)
         insReq.input("waitCount", sql.Int, waitingCountAtCreation);
       if (hasBranchID)
-        insReq.input("branchId", sql.Int, branch.branchId);
+        insReq.input("branchId", sql.Int, ticketBranchId);
 
       const insertRes = await insReq.query(insertSql);
       newTicketId = insertRes.recordset[0].QueueTicketID;

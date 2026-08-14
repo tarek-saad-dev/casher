@@ -21,6 +21,8 @@ interface Service {
 export interface BarberQueueWorkspaceBarber {
   empId: number;
   empName: string;
+  /** Operational branch for this barber (cross-branch ops without session switch). */
+  branchId?: number;
 }
 
 interface Props {
@@ -156,6 +158,7 @@ export function BarberQueueWorkspaceModal({
           date: operationalDate,
           requestedFrom: requestedFrom ?? new Date().toISOString(),
           source: 'operations_barber_header',
+          ...(barber.branchId != null ? { branchId: barber.branchId } : {}),
         }),
       });
       const result: QueuePlanForBarberResult = await res.json();
@@ -175,7 +178,7 @@ export function BarberQueueWorkspaceModal({
       setPlanLoading(false);
       onLoadingChange?.(null);
     }
-  }, [barber.empId, serviceIds, operationalDate, requestedFrom, onLoadingChange]);
+  }, [barber.empId, barber.branchId, serviceIds, operationalDate, requestedFrom, onLoadingChange]);
 
   useEffect(() => {
     if (!open || step < 2 || !serviceIds.length) return;
@@ -262,6 +265,7 @@ export function BarberQueueWorkspaceModal({
           expectedStartTime: selectedSlot.startAt,
           expectedEndTime: selectedSlot.endAt,
           source: 'operations_barber_header',
+          ...(barber.branchId != null ? { branchId: barber.branchId } : {}),
         }),
       });
 

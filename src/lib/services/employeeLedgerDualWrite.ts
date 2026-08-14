@@ -2,6 +2,7 @@ import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
 import { isEmployeeLedgerDualWriteEnabled } from '@/lib/employeeLedgerConfig';
+import { assertEmpBranchWorkDayMutable } from '@/lib/hr/empBranchWorkDayClose.service';
 import { isLegacyPostToCashDisabled } from '@/lib/payroll/legacyPostToCashFlags';
 
 export const EMP_LEDGER_REF_TYPE_DAILY_PAYROLL = 'TblEmpDailyPayroll';
@@ -497,12 +498,24 @@ export async function syncHourlyWageLedgerForWorkDate(
   transaction?: sql.Transaction,
   branchId?: number,
 ): Promise<HourlyWageLedgerSyncResult> {
+  if (branchId != null && Number.isFinite(branchId) && branchId > 0) {
+    await assertEmpBranchWorkDayMutable(branchId, workDate);
+  }
+
   const rows = await fetchGeneratedPayrollRowsForLedger(
     pool,
     workDate,
     transaction,
     branchId,
   );
+
+  if (branchId == null || !(branchId > 0)) {
+    const branchIds = [...new Set(rows.map((r) => r.branchId).filter((id) => id > 0))];
+    for (const id of branchIds) {
+      await assertEmpBranchWorkDayMutable(id, workDate);
+    }
+  }
+
   const result: HourlyWageLedgerSyncResult = {
     inserted: 0,
     updated: 0,
@@ -536,7 +549,7 @@ export class EmployeeLedgerDualWriteError extends Error {
  */
 export async function runDailyPayrollGenerateWithOptionalLedger(
   workDate: string,
-  options: { notesPrefix?: string; branchId: number },
+  options: { notesPrefix?: string; branchId: number; empIds?: number[] },
 ): Promise<{
   result: import('@/lib/payroll/dailyPayrollGenerateCore').DailyPayrollGenerateResult;
   ledgerDualWrite: boolean;
@@ -548,6 +561,7 @@ export async function runDailyPayrollGenerateWithOptionalLedger(
   if (!Number.isFinite(branchId) || branchId <= 0) {
     throw new EmployeeLedgerDualWriteError('branchId مطلوب لتوليد اليومية');
   }
+  await assertEmpBranchWorkDayMutable(branchId, workDate);
 
   if (!dualWrite) {
     if (isLegacyPostToCashDisabled()) {
@@ -613,7 +627,12 @@ export async function runDailyPayrollGenerateWithOptionalLedger(
 async function executeDailyPayrollGenerateOnly(
   db: { request: () => sql.Request },
   workDate: string,
-  options: { notesPrefix?: string; transaction?: sql.Transaction; branchId: number },
+  options: {
+    notesPrefix?: string;
+    transaction?: sql.Transaction;
+    branchId: number;
+    empIds?: number[];
+  },
 ) {
   const { executeDailyPayrollGenerate } = await import('@/lib/payroll/dailyPayrollGenerateCore');
   try {

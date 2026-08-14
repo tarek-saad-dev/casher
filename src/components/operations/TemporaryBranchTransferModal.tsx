@@ -20,7 +20,11 @@ type TransferableEmployee = {
   isGlobalDayOff?: boolean;
   transferReason?: string | null;
   attendance?: { status: string; checkInTime: string | null; checkOutTime: string | null } | null;
+  currentBranch?: { branchId: number; branchName: string } | null;
 };
+
+/** send = من الفرع الحالي لفرع آخر · pull = من فرع آخر للفرع الحالي */
+type TransferDirection = 'send' | 'pull';
 
 type TransferPreview = {
   canTransfer: boolean;
@@ -103,8 +107,10 @@ export function TemporaryBranchTransferModal({
   const [employees, setEmployees] = useState<TransferableEmployee[]>([]);
   const [destinations, setDestinations] = useState<TransferDestination[]>([]);
   const [sessionBranchId, setSessionBranchId] = useState<number | null>(null);
+  const [sessionBranchName, setSessionBranchName] = useState<string | null>(null);
   const [metaError, setMetaError] = useState<string | null>(null);
   const [jobFilter, setJobFilter] = useState<JobFilter>('all');
+  const [direction, setDirection] = useState<TransferDirection>('send');
 
   const [empId, setEmpId] = useState<number | ''>('');
   const [toBranchId, setToBranchId] = useState<number | ''>('');
@@ -121,41 +127,76 @@ export function TemporaryBranchTransferModal({
     [employees, empId],
   );
 
+  const directionLocked = Boolean(assignmentContext?.employeeName);
+
   const transferableEmployees = useMemo(() => {
     return employees.filter((b) => {
       if (jobFilter === 'barbers' && !isBarberJob(b.job)) return false;
       if (jobFilter === 'other' && isBarberJob(b.job)) return false;
-      // Global day-off stays blocked; everyone else can be transferred.
       if (b.isGlobalDayOff) return false;
-      return true;
+
+      if (direction === 'pull') {
+        // استدعاء: موظفون على فروع أخرى (مش الحاضرين هنا)
+        if (b.section === 'elsewhere') return true;
+        if (b.section === 'present' || b.section === 'transferred_in') return false;
+        if (b.currentBranch?.branchId != null && sessionBranchId != null) {
+          return b.currentBranch.branchId !== sessionBranchId;
+        }
+        // بدون بيانات يوم: نعرضهم عشان المعاينة تحسم المصدر
+        return b.section == null || b.section === 'off';
+      }
+
+      // إرسال: الحاضرون / المنقولون لهذا الفرع أولوية؛ باقي القائمة لو مفيش section
+      if (b.section === 'elsewhere') return false;
+      if (b.section === 'present' || b.section === 'transferred_in') return true;
+      if (b.currentBranch?.branchId != null && sessionBranchId != null) {
+        return b.currentBranch.branchId === sessionBranchId;
+      }
+      return b.section == null || b.section === 'off';
     });
-  }, [employees, jobFilter]);
+  }, [employees, jobFilter, direction, sessionBranchId]);
 
   /** Never offer the branch the employee is already assigned to today. */
   const excludeFromBranchId =
     assignmentContext?.fromBranchId ??
+    selectedEmployee?.currentBranch?.branchId ??
     preview?.sourceBranch?.branchId ??
-    sessionBranchId ??
+    (direction === 'send' ? sessionBranchId : null) ??
     null;
 
-  const destinationOptions = useMemo(
-    () =>
-      destinations.filter(
-        (d) => excludeFromBranchId == null || d.branchId !== excludeFromBranchId,
-      ),
-    [destinations, excludeFromBranchId],
-  );
+  const destinationOptions = useMemo(() => {
+    if (direction === 'pull' && sessionBranchId != null) {
+      return destinations.filter((d) => d.branchId === sessionBranchId);
+    }
+    return destinations.filter(
+      (d) => excludeFromBranchId == null || d.branchId !== excludeFromBranchId,
+    );
+  }, [destinations, excludeFromBranchId, direction, sessionBranchId]);
 
   useEffect(() => {
+    if (direction === 'pull' && sessionBranchId != null) {
+      if (toBranchId !== sessionBranchId) setToBranchId(sessionBranchId);
+      return;
+    }
     if (toBranchId === '') return;
     if (destinationOptions.some((d) => d.branchId === toBranchId)) return;
     setToBranchId(destinationOptions[0]?.branchId ?? '');
-  }, [destinationOptions, toBranchId]);
+  }, [destinationOptions, toBranchId, direction, sessionBranchId]);
 
   const fromBranchLabel =
     preview?.sourceBranch?.branchName ||
     assignmentContext?.fromBranchName ||
+    selectedEmployee?.currentBranch?.branchName ||
+    (direction === 'send' ? sessionBranchName : null) ||
     '—';
+
+  const toBranchLabel =
+    preview?.destinationBranch?.branchName ||
+    (direction === 'pull'
+      ? sessionBranchName ||
+        destinations.find((d) => d.branchId === sessionBranchId)?.branchName ||
+        'الفرع الحالي'
+      : null);
 
   const employeeDisplayName =
     assignmentContext?.employeeName ||
@@ -171,7 +212,31 @@ export function TemporaryBranchTransferModal({
     setPreview(null);
     setForceDespiteBlockers(false);
     setError(null);
-  }, []);
+    if (!assignmentContext?.employeeName) {
+      setDirection('send');
+    }
+  }, [assignmentContext?.employeeName]);
+
+  const applyDirection = useCallback(
+    (next: TransferDirection) => {
+      if (directionLocked || next === direction) return;
+      setDirection(next);
+      setEmpId('');
+      setPreview(null);
+      setForceDespiteBlockers(false);
+      setError(null);
+      if (next === 'pull' && sessionBranchId != null) {
+        setToBranchId(sessionBranchId);
+      } else {
+        const fromId = sessionBranchId;
+        const available = destinations.filter(
+          (d) => fromId == null || d.branchId !== fromId,
+        );
+        setToBranchId(available[0]?.branchId ?? '');
+      }
+    },
+    [directionLocked, direction, sessionBranchId, destinations],
+  );
 
   const loadMeta = useCallback(async () => {
     setLoadingMeta(true);
@@ -203,6 +268,11 @@ export function TemporaryBranchTransferModal({
             isGlobalDayOff?: boolean;
             transferReason?: string | null;
             attendance?: TransferableEmployee['attendance'];
+            currentBranch?: {
+              branchId: number;
+              branchCode?: string;
+              branchName: string;
+            } | null;
           }>)
         : [];
       const dayById = new Map(dayPeople.map((b) => [b.empId, b]));
@@ -224,6 +294,12 @@ export function TemporaryBranchTransferModal({
           isGlobalDayOff: day?.isGlobalDayOff,
           transferReason: day?.transferReason,
           attendance: day?.attendance ?? null,
+          currentBranch: day?.currentBranch
+            ? {
+                branchId: day.currentBranch.branchId,
+                branchName: day.currentBranch.branchName,
+              }
+            : null,
         };
       });
 
@@ -238,6 +314,12 @@ export function TemporaryBranchTransferModal({
           isGlobalDayOff: d.isGlobalDayOff,
           transferReason: d.transferReason,
           attendance: d.attendance ?? null,
+          currentBranch: d.currentBranch
+            ? {
+                branchId: d.currentBranch.branchId,
+                branchName: d.currentBranch.branchName,
+              }
+            : null,
         });
       }
 
@@ -268,21 +350,51 @@ export function TemporaryBranchTransferModal({
             ? empsData.activeBranchId
             : null;
       setSessionBranchId(sessionId);
+      const sessionName =
+        (typeof schedData.sessionBranchName === 'string' && schedData.sessionBranchName) ||
+        dests.find((d) => d.branchId === sessionId)?.branchName ||
+        null;
+      setSessionBranchName(sessionName);
+
+      // اتجاه افتراضي: لو فتح من موظف على فرع تاني → استدعاء، وإلا إرسال
+      let nextDirection: TransferDirection = 'send';
+      if (assignmentContext?.fromBranchId != null && sessionId != null) {
+        nextDirection =
+          assignmentContext.fromBranchId === sessionId ? 'send' : 'pull';
+      } else if (initialEmpId) {
+        const seeded = allEmps.find((b) => b.empId === initialEmpId);
+        if (seeded?.section === 'elsewhere') nextDirection = 'pull';
+        else if (
+          seeded?.currentBranch?.branchId != null &&
+          sessionId != null &&
+          seeded.currentBranch.branchId !== sessionId
+        ) {
+          nextDirection = 'pull';
+        }
+      }
+      setDirection(nextDirection);
 
       const prefer =
         preferEmpIdFrom(allEmps, initialEmpId) ||
-        allEmps.find((b) => b.section === 'present' && !b.isGlobalDayOff)?.empId ||
+        (nextDirection === 'pull'
+          ? allEmps.find((b) => b.section === 'elsewhere' && !b.isGlobalDayOff)?.empId
+          : allEmps.find((b) => b.section === 'present' && !b.isGlobalDayOff)?.empId) ||
         '';
       setEmpId(prefer || '');
 
-      const fromId = assignmentContext?.fromBranchId ?? sessionId;
-      const available = dests.filter((d) => fromId == null || d.branchId !== fromId);
-      setToBranchId(available[0]?.branchId ?? '');
+      if (nextDirection === 'pull' && sessionId != null) {
+        setToBranchId(sessionId);
+      } else {
+        const fromId = assignmentContext?.fromBranchId ?? sessionId;
+        const available = dests.filter((d) => fromId == null || d.branchId !== fromId);
+        setToBranchId(available[0]?.branchId ?? '');
+      }
     } catch (e) {
       setMetaError(e instanceof Error ? e.message : 'تعذر تحميل البيانات');
       setEmployees([]);
       setDestinations([]);
       setSessionBranchId(null);
+      setSessionBranchName(null);
     } finally {
       setLoadingMeta(false);
     }
@@ -488,6 +600,48 @@ export function TemporaryBranchTransferModal({
                 </div>
               ) : null}
 
+              {/* Direction: send out vs pull in */}
+              {!directionLocked && (
+                <div className="space-y-1.5">
+                  <span className="block text-sm font-medium text-foreground/80">
+                    اتجاه النقل
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => applyDirection('send')}
+                      className={cn(
+                        'rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors',
+                        direction === 'send'
+                          ? 'border-amber-500/50 bg-amber-500/15 text-amber-100'
+                          : 'border-border bg-surface-muted text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      إرسال لفرع آخر
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => applyDirection('pull')}
+                      className={cn(
+                        'rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors',
+                        direction === 'pull'
+                          ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-100'
+                          : 'border-border bg-surface-muted text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      استدعاء لهذا الفرع
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    {direction === 'pull'
+                      ? 'هتجيب موظف من فرع تاني للفرع اللي واقف فيه دلوقتي.'
+                      : 'هتبعت موظف من الفرع الحالي لفرع تاني.'}
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-1.5">
                 <span className="block text-sm font-medium text-foreground/80">الموظف</span>
                 <div className="flex flex-wrap gap-1.5">
@@ -520,16 +674,30 @@ export function TemporaryBranchTransferModal({
                   onChange={(e) => setEmpId(e.target.value ? Number(e.target.value) : '')}
                   disabled={busy || !!assignmentContext?.employeeName}
                 >
-                  <option value="">اختر موظفًا</option>
+                  <option value="">
+                    {direction === 'pull'
+                      ? 'اختر موظفًا من فرع آخر'
+                      : 'اختر موظفًا من هذا الفرع'}
+                  </option>
                   {transferableEmployees.map((b) => (
                     <option key={b.empId} value={b.empId}>
                       {b.empName}
                       {b.job ? ` · ${b.job}` : ''}
                       {sectionLabel(b.section) ? ` — ${sectionLabel(b.section)}` : ''}
+                      {b.section === 'elsewhere' && b.currentBranch?.branchName
+                        ? ` (${b.currentBranch.branchName})`
+                        : ''}
                       {b.isTransferred ? ' · نقل طارئ نشط' : ''}
                     </option>
                   ))}
                 </select>
+                {transferableEmployees.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {direction === 'pull'
+                      ? 'مفيش موظفين ظاهرين على فروع تانية اليوم (أو مفيش صلاحية عرض الفروع الأخرى).'
+                      : 'مفيش موظفين ظاهرين على هذا الفرع اليوم للنقل.'}
+                  </p>
+                )}
               </div>
 
               {selectedEmployee?.isTransferred && (
@@ -561,30 +729,48 @@ export function TemporaryBranchTransferModal({
                   >
                     {fromBranchLabel}
                     <span className="block text-[10px] text-muted-foreground mt-0.5">
-                      معبّأ تلقائيًا من تعيين اليوم
+                      {direction === 'pull'
+                        ? 'فرع الموظف الحالي (من تعيين اليوم)'
+                        : 'معبّأ تلقائيًا من تعيين اليوم'}
                     </span>
                   </div>
                 </label>
 
                 <label className="block space-y-1.5 text-sm">
                   <span className="font-medium text-foreground/80">إلى الفرع</span>
-                  <select
-                    className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2.5 text-sm text-foreground"
-                    value={toBranchId}
-                    onChange={(e) => setToBranchId(e.target.value ? Number(e.target.value) : '')}
-                    disabled={busy || destinationOptions.length === 0}
-                  >
-                    <option value="">اختر فرع الوجهة</option>
-                    {destinationOptions.map((d) => (
-                      <option key={d.branchId} value={d.branchId}>
-                        {d.branchName}
-                      </option>
-                    ))}
-                  </select>
-                  {destinationOptions.length === 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      لا توجد فروع أخرى متاحة للنقل (تم استبعاد فرع التعيين الحالي)
-                    </p>
+                  {direction === 'pull' ? (
+                    <div
+                      className="w-full rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-sm text-foreground"
+                      aria-readonly
+                    >
+                      {toBranchLabel || 'الفرع الحالي'}
+                      <span className="block text-[10px] text-emerald-200/70 mt-0.5">
+                        الفرع اللي واقف فيه دلوقتي
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      <select
+                        className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2.5 text-sm text-foreground"
+                        value={toBranchId}
+                        onChange={(e) =>
+                          setToBranchId(e.target.value ? Number(e.target.value) : '')
+                        }
+                        disabled={busy || destinationOptions.length === 0}
+                      >
+                        <option value="">اختر فرع الوجهة</option>
+                        {destinationOptions.map((d) => (
+                          <option key={d.branchId} value={d.branchId}>
+                            {d.branchName}
+                          </option>
+                        ))}
+                      </select>
+                      {destinationOptions.length === 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          لا توجد فروع أخرى متاحة للنقل (تم استبعاد فرع التعيين الحالي)
+                        </p>
+                      )}
+                    </>
                   )}
                 </label>
               </div>
@@ -621,7 +807,11 @@ export function TemporaryBranchTransferModal({
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   disabled={busy}
-                  placeholder="مثلاً: تغطية فرع كامب شيزار"
+                  placeholder={
+                    direction === 'pull'
+                      ? 'مثلاً: محتاج تغطية هنا النهاردة'
+                      : 'مثلاً: تغطية فرع كامب شيزار'
+                  }
                   className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2.5 text-sm text-foreground"
                 />
               </label>

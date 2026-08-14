@@ -244,6 +244,17 @@ vi.mock('@/lib/payroll/employee-target/employee-daily-target-ledger-sync.service
   },
 }));
 
+vi.mock('@/lib/hr/empBranchWorkDayClose.service', () => ({
+  assertEmpBranchWorkDayMutable: vi.fn(async () => undefined),
+  getEmpBranchWorkDayCloseState: vi.fn(async () => ({
+    branchId: 1,
+    workDate: '2026-07-15',
+    state: 'OPEN',
+    isVirtualOpen: true,
+    row: null,
+  })),
+}));
+
 import { generateEmployeeDailyTargets } from '@/lib/payroll/employee-target/employee-daily-target-generation.service';
 
 describe('generateEmployeeDailyTargets', () => {

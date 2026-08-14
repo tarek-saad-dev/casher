@@ -4,10 +4,8 @@ import { getSession } from "@/lib/session";
 import { checkBarberAvailableForBooking, buildBookingIntervals, buildQueueIntervals } from "@/lib/queueEstimateEngine";
 import { normalizeBookingTimes } from "@/lib/bookingDateTime";
 import { requireActiveBranchContext, isActiveBranchContext } from "@/lib/branch/context";
-import {
-  assertBookingOwnedByActiveBranch,
-  bookingQueueNotFoundResponse,
-} from "@/lib/branch/bookingQueueOwnership";
+import { bookingQueueNotFoundResponse } from "@/lib/branch/bookingQueueOwnership";
+import { userCanManageOpsBranchRecord } from "@/lib/branch/opsWriteBranch";
 
 export const runtime = "nodejs";
 
@@ -48,7 +46,13 @@ export async function GET(_req: NextRequest, context: RouteContext) {
 
     const booking = bkRes.recordset[0];
 
-    if (!assertBookingOwnedByActiveBranch(branch.branchId, booking.BranchID)) {
+    if (
+      !(await userCanManageOpsBranchRecord({
+        userId: branch.userId,
+        sessionBranchId: branch.branchId,
+        recordBranchId: booking.BranchID,
+      }))
+    ) {
       return bookingQueueNotFoundResponse();
     }
 
@@ -128,7 +132,13 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     if (!cur.recordset.length)
       return NextResponse.json({ error: "حجز غير موجود" }, { status: 404 });
 
-    if (!assertBookingOwnedByActiveBranch(branch.branchId, cur.recordset[0].BranchID)) {
+    if (
+      !(await userCanManageOpsBranchRecord({
+        userId: branch.userId,
+        sessionBranchId: branch.branchId,
+        recordBranchId: cur.recordset[0].BranchID,
+      }))
+    ) {
       return bookingQueueNotFoundResponse();
     }
 

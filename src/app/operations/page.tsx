@@ -157,6 +157,7 @@ export default function OperationsPage() {
   const [barberQueueModal, setBarberQueueModal] = useState<{
     empId: number;
     empName: string;
+    branchId?: number;
   } | null>(null);
   const [barberQueueLoadingEmpId, setBarberQueueLoadingEmpId] = useState<number | null>(null);
   const [showFindNearestDrawer, setShowFindNearestDrawer] = useState(false);
@@ -173,6 +174,7 @@ export default function OperationsPage() {
     barberName?: string;
     timeRangeStart?: string;
     timeRangeEnd?: string;
+    branchId?: number;
   }>({});
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [jumpToBookingDate, setJumpToBookingDate] = useState<string | null>(null);
@@ -748,6 +750,7 @@ export default function OperationsPage() {
               barberName: barber.empName,
               timeRangeStart,
               timeRangeEnd,
+              branchId: barber.branchId,
             });
           }}
           onFreeSegmentClick={(segment, barber) => {
@@ -763,22 +766,15 @@ export default function OperationsPage() {
               barberName: barber.empName,
               timeRangeStart,
               timeRangeEnd,
+              branchId: barber.branchId,
             });
           }}
           onBarberQueueClick={(barber) => {
-            const sessionId = user?.ActiveBranchID ?? activeBranch?.branchId;
-            if (
-              sessionId != null &&
-              barber.branchId != null &&
-              barber.branchId !== sessionId
-            ) {
-              showToast(
-                'هذا الحلاق على فرع آخر — بدّل الفرع من الشريط العلوي قبل إنشاء الدور',
-                false,
-              );
-              return;
-            }
-            setBarberQueueModal({ empId: barber.empId, empName: barber.empName });
+            setBarberQueueModal({
+              empId: barber.empId,
+              empName: barber.empName,
+              branchId: barber.branchId,
+            });
           }}
           barberQueueLoadingEmpId={barberQueueLoadingEmpId}
           barberQueueSourceEmpId={barberQueueModal?.empId ?? null}
@@ -850,6 +846,7 @@ export default function OperationsPage() {
           initialBarberName={bookingInitialData.barberName}
           initialTimeRangeStart={bookingInitialData.timeRangeStart}
           initialTimeRangeEnd={bookingInitialData.timeRangeEnd}
+          initialBranchId={bookingInitialData.branchId}
           barbers={flowBoardData?.barbers.map((b) => ({
             empId: b.empId,
             empName: b.empName,
@@ -858,6 +855,7 @@ export default function OperationsPage() {
             workEnd: b.workEnd,
             nextAvailableAt: b.nextAvailableAt,
             statusReasonArabic: b.statusReasonArabic,
+            branchId: b.branchId,
           })) || []}
           onCreated={(result?: BookingCreateSuccess) => {
             showToast('تم إنشاء الحجز بنجاح');

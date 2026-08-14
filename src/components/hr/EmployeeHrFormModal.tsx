@@ -32,7 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { DayOffPolicy, EmploymentType, PayrollMethod } from '@/lib/hr/employee-hr-model';
+import type { DayOffPolicy, EmploymentType } from '@/lib/hr/employee-hr-model';
 import {
   EMPLOYMENT_TYPE_LABELS,
   PAYROLL_METHOD_LABELS,
@@ -627,7 +627,7 @@ export default function EmployeeHrFormModal({
                   className="font-mono"
                 />
                 <p className="text-xs text-muted-foreground">
-                  يُحفظ في خطة راتب الفرع فقط — نفس المصدر المستخدم في اليومية
+                  اتفاقية راتب عامة للموظف — تُطبَّق على كل الفروع ما لم تُضبط خطة فرع صريحة
                 </p>
               </div>
             )}
@@ -646,7 +646,7 @@ export default function EmployeeHrFormModal({
                   className="font-mono"
                 />
                 <p className="text-xs text-muted-foreground">
-                  تُحفظ في خطة راتب الفرع فقط — نفس المصدر المستخدم في اليومية
+                  اتفاقية راتب عامة للموظف — تُطبَّق على كل الفروع ما لم تُضبط خطة فرع صريحة
                 </p>
               </div>
             )}
@@ -664,6 +664,9 @@ export default function EmployeeHrFormModal({
                   dir="ltr"
                   className="font-mono"
                 />
+                <p className="text-xs text-muted-foreground">
+                  اتفاقية راتب عامة للموظف — تُطبَّق على كل الفروع ما لم تُضبط خطة فرع صريحة
+                </p>
               </div>
             )}
           </section>

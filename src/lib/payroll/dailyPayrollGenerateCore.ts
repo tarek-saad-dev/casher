@@ -77,6 +77,8 @@ export interface DailyPayrollGenerateOptions {
   transaction?: sql.Transaction;
   /** Required Phase 1L — payroll is branch-owned. */
   branchId: number;
+  /** Optional: generate/refresh only these employees (same BranchID + WorkDate). */
+  empIds?: number[];
 }
 
 export interface DailyPayrollValidationResult {
@@ -138,7 +140,7 @@ const EXCLUDED_INFO_REASONS = new Set<PayrollValidationReason>([
 export async function validateDailyPayrollAttendance(
   pool: { request: () => sql.Request },
   workDate: string,
-  options?: { branchId?: number },
+  options?: { branchId?: number; empIds?: number[] },
 ): Promise<DailyPayrollValidationResult> {
   const dayOfWeek = new Date(`${workDate}T12:00:00Z`).getDay();
   const branchId = options?.branchId;
@@ -200,15 +202,14 @@ export async function validateDailyPayrollAttendance(
       att != null && isPayableAttendanceStatus(att.Status);
     const hasScheduleRow = emp.ScheduleDayOfWeek != null;
 
-    // Phase 1L: when validating a branch, operational rates come from branch plan only.
+    // Phase 1L/6C: operational rates from branch plan, else global employee agreement.
     let empForValidation: EmployeeValidationRow = emp;
     if (branchId != null && branchPlans) {
       const plan = branchPlans.get(emp.EmpID);
       const empMethod = resolvePayrollMethod(emp);
 
-      // Payable attendance needs an hourly/daily branch plan — but monthly staff
-      // are not daily-payroll candidates (they correctly have no hourly/daily plan).
-      // Requiring a plan for them blocked the whole day (e.g. طارق/مريم → خيري).
+      // Payable attendance needs hourly/daily rates (branch override or inherited
+      // primary agreement). Monthly staff are not daily-payroll candidates.
       if (hasPayableBranchAttendance && !plan) {
         if (empMethod === 'monthly') {
           excluded.push({
@@ -272,6 +273,17 @@ export async function validateDailyPayrollAttendance(
     }
   }
 
+  const focusEmpIds = (options?.empIds ?? [])
+    .map((n) => Number(n))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (focusEmpIds.length > 0) {
+    const focus = new Set(focusEmpIds);
+    return {
+      missing: missing.filter((m) => focus.has(m.empId)),
+      excluded: excluded.filter((e) => focus.has(e.empId)),
+    };
+  }
+
   return { missing, excluded };
 }
 
@@ -295,10 +307,21 @@ export async function countPostedDailyPayroll(
   pool: { request: () => sql.Request },
   workDate: string,
   branchId?: number,
+  empIds?: number[],
 ): Promise<number> {
   const req = pool.request().input('WorkDate', sql.Date, workDate);
   if (branchId != null) {
     req.input('BranchID', sql.Int, branchId);
+  }
+  const focus = [...new Set((empIds ?? []).map(Number).filter((n) => n > 0))];
+  let empFilter = '';
+  if (focus.length > 0) {
+    const ph = focus.map((id, i) => {
+      const name = `postedEmp${i}`;
+      req.input(name, sql.Int, id);
+      return `@${name}`;
+    });
+    empFilter = `AND EmpID IN (${ph.join(',')})`;
   }
   const postedCheck = await req.query(`
     SELECT COUNT(*) AS cnt
@@ -306,6 +329,7 @@ export async function countPostedDailyPayroll(
     WHERE WorkDate = @WorkDate
       AND Status = N'PostedToCashMove'
       ${branchId != null ? 'AND BranchID = @BranchID' : ''}
+      ${empFilter}
   `);
   return postedCheck.recordset[0].cnt as number;
 }
@@ -328,6 +352,19 @@ export async function executeDailyPayrollGenerate(
   const notesPrefix = options.notesPrefix ?? '';
   const req = () => requestFrom(pool, options.transaction);
   const dayOfWeek = new Date(`${workDate}T12:00:00Z`).getDay();
+  const focusEmpIds = [
+    ...new Set((options.empIds ?? []).map(Number).filter((n) => Number.isFinite(n) && n > 0)),
+  ];
+
+  const bindEmpFilter = (request: sql.Request, columnSql: string): string => {
+    if (focusEmpIds.length === 0) return '';
+    const ph = focusEmpIds.map((id, i) => {
+      const name = `genEmp${i}`;
+      request.input(name, sql.Int, id);
+      return `@${name}`;
+    });
+    return ` AND ${columnSql} IN (${ph.join(',')})`;
+  };
 
   const dailyWageSql = buildDailyWageSqlFromBranchPlan(AGGREGATE_ACTUAL_HOURS_EXPR);
   const hourlySnapshotSql = buildHourlyRateSnapshotSqlFromBranchPlan();
@@ -336,11 +373,12 @@ export async function executeDailyPayrollGenerate(
     AGGREGATE_ACTUAL_HOURS_EXPR,
   );
 
-  await req()
+  const updateReq = req()
     .input('WorkDate', sql.Date, workDate)
     .input('BranchID', sql.Int, branchId)
-    .input('dayOfWeek', sql.TinyInt, dayOfWeek)
-    .query(`
+    .input('dayOfWeek', sql.TinyInt, dayOfWeek);
+  const updateEmpFilter = bindEmpFilter(updateReq, 'p.EmpID');
+  await updateReq.query(`
       UPDATE p
       SET
         p.HourlyRateSnapshot = ${hourlySnapshotSql},
@@ -361,13 +399,15 @@ export async function executeDailyPayrollGenerate(
         AND p.BranchID = @BranchID
         AND p.Status IN (N'Generated', N'Earned', N'PendingCheckout')
         AND v.HasOpenSession = 0
+        ${updateEmpFilter}
     `);
 
-  const insertResult = await req()
+  const insertReq = req()
     .input('WorkDate', sql.Date, workDate)
     .input('BranchID', sql.Int, branchId)
-    .input('dayOfWeek', sql.TinyInt, dayOfWeek)
-    .query(`
+    .input('dayOfWeek', sql.TinyInt, dayOfWeek);
+  const insertEmpFilter = bindEmpFilter(insertReq, 'v.EmpID');
+  const insertResult = await insertReq.query(`
       INSERT INTO dbo.TblEmpDailyPayroll
         (BranchID, EmpID, AttendanceID, WorkDate, SalaryHistoryID,
          HourlyRateSnapshot, ActualHours, DailyWage, Status, Notes)
@@ -396,16 +436,18 @@ export async function executeDailyPayrollGenerate(
         AND v.BranchID = @BranchID
         AND v.HasOpenSession = 0
         AND ${SQL_INSERT_ELIGIBILITY_WHERE_BRANCH_PLAN}
+        ${insertEmpFilter}
         AND NOT EXISTS (
           SELECT 1 FROM dbo.TblEmpDailyPayroll p
           WHERE p.EmpID = v.EmpID AND p.BranchID = v.BranchID AND p.WorkDate = v.WorkDate
         );
     `);
 
-  const summaryResult = await req()
+  const summaryReq = req()
     .input('WorkDate', sql.Date, workDate)
-    .input('BranchID', sql.Int, branchId)
-    .query(`
+    .input('BranchID', sql.Int, branchId);
+  const summaryEmpFilter = bindEmpFilter(summaryReq, 'EmpID');
+  const summaryResult = await summaryReq.query(`
       SELECT
         COUNT(*)         AS total,
         SUM(ActualHours) AS totalHours,
@@ -414,6 +456,7 @@ export async function executeDailyPayrollGenerate(
       WHERE WorkDate = @WorkDate
         AND BranchID = @BranchID
         AND Status = N'Generated'
+        ${summaryEmpFilter}
     `);
 
   const summary = summaryResult.recordset[0];

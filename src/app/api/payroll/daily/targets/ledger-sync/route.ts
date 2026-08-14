@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import {
+  empBranchWorkDayCloseErrorResponse,
+  isEmpBranchWorkDayCloseError,
+} from '@/lib/hr/empBranchWorkDayClose.http';
+import {
   EmployeeDailyTargetLedgerConflictError,
   EmployeeTargetValidationError,
   parseTargetLedgerSyncBody,
@@ -49,6 +53,9 @@ export async function POST(req: NextRequest) {
       ...result,
     });
   } catch (err: unknown) {
+    if (isEmpBranchWorkDayCloseError(err)) {
+      return empBranchWorkDayCloseErrorResponse(err);
+    }
     if (err instanceof EmployeeTargetValidationError) {
       return NextResponse.json({ error: err.message }, { status: 400 });
     }

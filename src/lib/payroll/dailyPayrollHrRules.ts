@@ -427,10 +427,13 @@ export const SQL_INSERT_ELIGIBILITY_WHERE = `
 `;
 
 /* ------------------------------------------------------------------ */
-/* Phase 1L — branch payroll plan (alias bp). No TblEmp rate fallback. */
+/* Phase 1L/6C — branch plan with global employee-agreement inherit.   */
+/* Explicit Emp+Branch plan wins; else home/primary plan rates.        */
+/* Payroll rows still attribute to v.BranchID (working branch).        */
+/* Never falls back to TblEmp rate columns.                            */
 /* ------------------------------------------------------------------ */
 
-/** CROSS APPLY subquery: one effective hourly/daily plan for Emp+Branch+WorkDate. */
+/** CROSS APPLY: effective hourly/daily plan — branch override → primary agreement. */
 export const SQL_BRANCH_PAYROLL_PLAN_APPLY = `
   CROSS APPLY (
     SELECT TOP 1
@@ -439,13 +442,35 @@ export const SQL_BRANCH_PAYROLL_PLAN_APPLY = `
       bp0.HourlyRate,
       bp0.DailyRate
     FROM dbo.TblEmpBranchPayrollPlan bp0
+    LEFT JOIN dbo.TblEmpBranchAssignment ea
+      ON ea.EmpID = bp0.EmpID
+     AND ea.BranchID = bp0.BranchID
+     AND ea.IsActive = 1
+     AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= v.WorkDate)
     WHERE bp0.EmpID = v.EmpID
-      AND bp0.BranchID = v.BranchID
       AND bp0.IsActive = 1
       AND bp0.EffectiveFrom <= v.WorkDate
       AND (bp0.EffectiveTo IS NULL OR bp0.EffectiveTo >= v.WorkDate)
       AND bp0.PayType IN (N'hourly', N'daily')
-    ORDER BY bp0.EffectiveFrom DESC, bp0.PlanID DESC
+      AND (
+        bp0.BranchID = v.BranchID
+        OR NOT EXISTS (
+          SELECT 1
+          FROM dbo.TblEmpBranchPayrollPlan bx
+          WHERE bx.EmpID = v.EmpID
+            AND bx.BranchID = v.BranchID
+            AND bx.IsActive = 1
+            AND bx.EffectiveFrom <= v.WorkDate
+            AND (bx.EffectiveTo IS NULL OR bx.EffectiveTo >= v.WorkDate)
+            AND bx.PayType IN (N'hourly', N'daily')
+        )
+      )
+    ORDER BY
+      CASE WHEN bp0.BranchID = v.BranchID THEN 0 ELSE 1 END,
+      CASE WHEN ISNULL(ea.IsHomeBranch, 0) = 1 THEN 0 ELSE 1 END,
+      CASE WHEN bp0.EffectiveTo IS NULL THEN 0 ELSE 1 END,
+      bp0.EffectiveFrom DESC,
+      bp0.PlanID DESC
   ) bp
 `;
 

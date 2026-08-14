@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import { requireBranchOperationAccess, isActiveBranchContext } from '@/lib/branch/context';
+import { listUserValidBranchAccess, listActiveBranches } from '@/lib/branch/repository';
 import { isEmployeeLedgerDualWriteEnabled } from '@/lib/employeeLedgerConfig';
 import { getLegacyPostToCashConfig } from '@/lib/payroll/legacyPostToCashFlags';
 import {
@@ -16,9 +17,26 @@ function isMissingLedgerTableError(message: string): boolean {
   );
 }
 
+async function resolveAccessibleBranchIds(userId: number): Promise<number[]> {
+  const [access, active] = await Promise.all([
+    listUserValidBranchAccess(userId),
+    listActiveBranches(),
+  ]);
+  const activeIds = new Set(active.map((b) => b.branchId));
+  const ids = access
+    .filter(
+      (a) =>
+        activeIds.has(a.branchId) &&
+        (a.canOperate || a.canSwitch || a.canViewReports || a.isDefault),
+    )
+    .map((a) => a.branchId);
+  // Always include session-operable set; prefer stable order by id
+  return [...new Set(ids)].sort((a, b) => a - b);
+}
+
 /**
- * GET /api/admin/hr/employee-ledger/summary?month=YYYY-MM
- * Per-employee ledger summary for a payroll month (active branch only).
+ * GET /api/admin/hr/employee-ledger/summary?month=YYYY-MM&branchId=all|<id>
+ * Per-employee ledger summary + branch financial strip (entry BranchID).
  */
 export async function GET(request: NextRequest) {
   const auth = await requirePageAccess('/admin/hr');
@@ -30,6 +48,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
+    const branchParam = (searchParams.get('branchId') || 'all').trim().toLowerCase();
 
     if (!month) {
       return NextResponse.json({ error: 'month مطلوب بصيغة YYYY-MM' }, { status: 400 });
@@ -40,10 +59,37 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: monthError }, { status: 400 });
     }
 
-    const result = await getEmployeeLedgerSummary(month, branch.branchId);
+    const accessible = await resolveAccessibleBranchIds(branch.userId);
+    // Ensure session branch is always visible
+    if (!accessible.includes(branch.branchId)) {
+      accessible.push(branch.branchId);
+    }
+
+    let filterBranchId: number | null = null;
+    if (branchParam !== 'all' && branchParam !== '') {
+      const bid = Number(branchParam);
+      if (!Number.isFinite(bid) || bid <= 0) {
+        return NextResponse.json({ error: 'معرف الفرع غير صالح' }, { status: 400 });
+      }
+      if (!accessible.includes(bid)) {
+        return NextResponse.json({ error: 'غير مصرح بالوصول لهذا الفرع' }, { status: 403 });
+      }
+      filterBranchId = bid;
+    }
+
+    const result = await getEmployeeLedgerSummary(month, filterBranchId, {
+      accessibleBranchIds: accessible,
+    });
     const legacyConfig = getLegacyPostToCashConfig();
     return NextResponse.json({
       ...result,
+      accessibleBranches: (await listActiveBranches())
+        .filter((b) => accessible.includes(b.branchId))
+        .map((b) => ({
+          branchId: b.branchId,
+          branchCode: b.branchCode,
+          branchName: b.branchName,
+        })),
       ledgerDualWriteEnabled: isEmployeeLedgerDualWriteEnabled(),
       legacyPostToCashDisabled: legacyConfig.legacyPostToCashDisabled,
       legacyPostToCashWarning: legacyConfig.legacyPostToCashWarning,

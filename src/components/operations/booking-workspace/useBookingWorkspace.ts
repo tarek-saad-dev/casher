@@ -37,6 +37,8 @@ export interface UseBookingWorkspaceArgs {
   initialBarberName?: string;
   initialTimeRangeStart?: string;
   initialTimeRangeEnd?: string;
+  /** Flow-board branch for the locked barber (cross-branch ops without session switch). */
+  initialBranchId?: number;
   barbers: BookingWorkspaceBarber[];
   onClose: () => void;
   onCreated?: (result?: BookingCreateSuccess) => void;
@@ -50,6 +52,7 @@ export function useBookingWorkspace({
   initialBarberName,
   initialTimeRangeStart,
   initialTimeRangeEnd,
+  initialBranchId,
   barbers,
   onClose,
   onCreated,
@@ -166,7 +169,7 @@ export function useBookingWorkspace({
     setLoadingDateBarbers(true);
 
     fetch(
-      `/api/operations/flow-board?date=${encodeURIComponent(bookingDate)}&branchId=active&presence=all`,
+      `/api/operations/flow-board?date=${encodeURIComponent(bookingDate)}&branchId=all&presence=all`,
       { signal: controller.signal },
     )
       .then(async (res) => {
@@ -394,7 +397,15 @@ export function useBookingWorkspace({
     invalidateSlotSelection();
 
     const requestId = `r${gen}`;
-    const base = `/api/public/booking/available-slots?date=${bookingDate}&serviceIds=${serviceIdsKey}&source=operations&requestId=${requestId}`;
+    const targetBranchId =
+      (selectedBarberId
+        ? barbers.find((b) => b.empId === selectedBarberId)?.branchId
+        : null) ??
+      initialBranchId ??
+      null;
+    const base = `/api/public/booking/available-slots?date=${bookingDate}&serviceIds=${serviceIdsKey}&source=operations&requestId=${requestId}${
+      targetBranchId != null ? `&branchId=${targetBranchId}` : ''
+    }`;
     const url = mode === 'specific' && selectedBarberId
       ? `${base}&mode=specific&empId=${selectedBarberId}`
       : `${base}&mode=nearest`;
@@ -452,7 +463,7 @@ export function useBookingWorkspace({
     } finally {
       if (gen === fetchGenRef.current) setLoadingSlots(false);
     }
-  }, [bookingDate, serviceIdsKey, mode, selectedBarberId, invalidateSlotSelection, totalDuration, serviceIds.length]);
+  }, [bookingDate, serviceIdsKey, mode, selectedBarberId, invalidateSlotSelection, totalDuration, serviceIds.length, barbers, initialBranchId]);
 
   useEffect(() => {
     if (step === 3 && serviceIds.length > 0) fetchSlots();
@@ -538,6 +549,12 @@ export function useBookingWorkspace({
     }
     setSubmitting(true);
     try {
+      const targetBranchId =
+        (selectedSlot.empId
+          ? barbers.find((b) => b.empId === selectedSlot.empId)?.branchId
+          : null) ??
+        initialBranchId ??
+        null;
       const payload = {
         customer: {
           name: selectedClient?.Name || customerName,
@@ -551,6 +568,7 @@ export function useBookingWorkspace({
         empId: selectedSlot.empId,
         notes: notes.trim(),
         source: 'operations',
+        ...(targetBranchId != null ? { branchId: targetBranchId } : {}),
       };
       if (process.env.NODE_ENV !== 'production') {
         console.log('[ops-booking-perf] post_start', {

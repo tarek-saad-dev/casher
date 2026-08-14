@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // One-off live verification runners (tsx scripts, not app runtime)
+    "scripts/verify-phase5-daily-payroll-closing.ts",
   ]),
 ]);
 

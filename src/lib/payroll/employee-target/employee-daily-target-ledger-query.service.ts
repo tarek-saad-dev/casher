@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
+import { assertEmpBranchWorkDayMutable } from '@/lib/hr/empBranchWorkDayClose.service';
 import {
   EMP_LEDGER_DIRECTION_CREDIT,
   EMP_LEDGER_REASON_TARGET,
@@ -360,6 +361,14 @@ export async function reconcileEmployeeDailyTargetLedger(
   };
 
   if (!body.dryRun) {
+    const closedKeys = new Set<string>();
+    for (const daily of dailyRows) {
+      const key = `${daily.branchId}|${daily.workDate}`;
+      if (closedKeys.has(key)) continue;
+      closedKeys.add(key);
+      await assertEmpBranchWorkDayMutable(daily.branchId, daily.workDate);
+    }
+
     const db = await getPool();
     const transaction = new sql.Transaction(db);
     await transaction.begin();

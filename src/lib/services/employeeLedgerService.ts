@@ -4,11 +4,21 @@ import { getPool, sql } from '@/lib/db';
 import { getMonthDateRange, roundMoney } from '@/lib/reportMonthUtils';
 import { computeEmployeeWithdrawalBuckets } from '@/lib/hr/employee-withdrawal-buckets';
 import type {
+  EmpLedgerBranchFinancialOverall,
+  EmpLedgerBranchFinancialRow,
+  EmpLedgerBranchFinancialSummary,
+  EmpLedgerEmployeeBranchBreakdown,
   EmpLedgerEmployeeSummaryRow,
   EmpLedgerEntryRow,
   EmpLedgerListResponse,
   EmpLedgerSummaryResponse,
+  EmpLedgerTableBranchCode,
 } from '@/lib/types/employee-ledger';
+import { EMP_LEDGER_TABLE_BRANCH_CODES } from '@/lib/types/employee-ledger';
+import {
+  CAMP_CAESAR_BRANCH_CODE,
+  GLEEM_BRANCH_CODE,
+} from '@/lib/branch/smokeBranchPolicy';
 
 const MONTH_RE = /^\d{4}-\d{2}$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -35,6 +45,9 @@ function mapEntryRow(row: Record<string, unknown>): EmpLedgerEntryRow {
     createdByUserId: row.CreatedByUserID != null ? Number(row.CreatedByUserID) : null,
     createdAt: formatDateTimeValue(row.CreatedAt),
     updatedAt: row.UpdatedAt ? formatDateTimeValue(row.UpdatedAt) : null,
+    branchId: row.BranchID != null ? Number(row.BranchID) : null,
+    branchCode: (row.BranchCode as string | null) ?? null,
+    branchName: (row.BranchName as string | null) ?? null,
   };
 }
 
@@ -85,6 +98,8 @@ export async function getEmployeeLedgerEntries(params: {
   dateTo?: string | null;
   month?: string | null;
   branchId?: number | null;
+  /** When set (and branchId not set), restrict to these BranchIDs. */
+  branchIds?: number[] | null;
 }): Promise<EmpLedgerListResponse> {
   const db = await getPool();
 
@@ -92,6 +107,11 @@ export async function getEmployeeLedgerEntries(params: {
 
   if (params.branchId != null && params.branchId > 0) {
     where.push('l.BranchID = @branchId');
+  } else if (params.branchIds && params.branchIds.length > 0) {
+    const ids = params.branchIds.filter((id) => Number.isFinite(id) && id > 0);
+    if (ids.length > 0) {
+      where.push(`l.BranchID IN (${ids.join(',')})`);
+    }
   }
 
   if (params.empId != null && params.empId > 0) {
@@ -167,9 +187,13 @@ export async function getEmployeeLedgerEntries(params: {
       l.VoidReason,
       l.CreatedByUserID,
       l.CreatedAt,
-      l.UpdatedAt
+      l.UpdatedAt,
+      l.BranchID,
+      b.BranchCode,
+      b.BranchName
     FROM dbo.TblEmpLedgerEntry l
     INNER JOIN dbo.TblEmp e ON e.EmpID = l.EmpID
+    LEFT JOIN dbo.TblBranch b ON b.BranchID = l.BranchID
     ${whereClause}
     ORDER BY l.EntryDate DESC, l.ID DESC
   `);
@@ -197,13 +221,310 @@ export async function getEmployeeLedgerEntries(params: {
       dateFrom: params.dateFrom ?? null,
       dateTo: params.dateTo ?? null,
       month: params.month ?? null,
+      branchId: params.branchId ?? null,
     },
+  };
+}
+
+function emptyBranchOverall(): EmpLedgerBranchFinancialOverall {
+  return {
+    accrued: 0,
+    paid: 0,
+    advances: 0,
+    deductions: 0,
+    transfers: 0,
+    balance: 0,
+    salaryCredits: 0,
+    targetCredits: 0,
+    fundingCredits: 0,
+    advanceDebits: 0,
+    payoutDebits: 0,
+    deductionDebits: 0,
+  };
+}
+
+function mapBranchFinancialRow(row: Record<string, unknown>): EmpLedgerBranchFinancialRow {
+  const salaryCredits = roundMoney(Number(row.SalaryCredits ?? 0));
+  const targetCredits = roundMoney(Number(row.TargetCredits ?? 0));
+  const fundingCredits = roundMoney(Number(row.FundingCredits ?? 0));
+  const advanceDebits = roundMoney(Number(row.AdvanceDebits ?? 0));
+  const payoutDebits = roundMoney(Number(row.PayoutDebits ?? 0));
+  const deductionDebits = roundMoney(Number(row.DeductionDebits ?? 0));
+  const accrued = roundMoney(salaryCredits + targetCredits);
+  const balance = roundMoney(
+    salaryCredits + targetCredits + fundingCredits - advanceDebits - payoutDebits - deductionDebits,
+  );
+  return {
+    branchId: Number(row.BranchID),
+    branchCode: String(row.BranchCode ?? ''),
+    branchName: String(row.BranchName ?? ''),
+    accrued,
+    paid: payoutDebits,
+    advances: advanceDebits,
+    deductions: deductionDebits,
+    transfers: fundingCredits,
+    balance,
+    salaryCredits,
+    targetCredits,
+    fundingCredits,
+    advanceDebits,
+    payoutDebits,
+    deductionDebits,
+  };
+}
+
+const LEDGER_BUCKET_SELECT = `
+  ISNULL(SUM(CASE
+    WHEN l.ID IS NOT NULL
+     AND l.EntryDirection = N'credit'
+     AND l.EntryReason IN (N'hourly_wage', N'monthly_salary')
+    THEN l.Amount ELSE 0 END), 0) AS SalaryCredits,
+  ISNULL(SUM(CASE
+    WHEN l.ID IS NOT NULL
+     AND l.EntryDirection = N'credit'
+     AND l.EntryReason IN (N'target', N'commission', N'bonus')
+    THEN l.Amount ELSE 0 END), 0) AS TargetCredits,
+  ISNULL(SUM(CASE
+    WHEN l.ID IS NOT NULL
+     AND l.EntryDirection = N'credit'
+     AND l.EntryReason IN (N'employee_funding', N'tip')
+    THEN l.Amount ELSE 0 END), 0) AS FundingCredits,
+  ISNULL(SUM(CASE
+    WHEN l.ID IS NOT NULL
+     AND l.EntryDirection = N'debit'
+     AND l.EntryReason = N'advance'
+    THEN l.Amount ELSE 0 END), 0) AS AdvanceDebits,
+  ISNULL(SUM(CASE
+    WHEN l.ID IS NOT NULL
+     AND l.EntryDirection = N'debit'
+     AND l.EntryReason = N'payout'
+    THEN l.Amount ELSE 0 END), 0) AS PayoutDebits,
+  ISNULL(SUM(CASE
+    WHEN l.ID IS NOT NULL
+     AND l.EntryDirection = N'debit'
+     AND l.EntryReason IN (N'deduction', N'settlement', N'adjustment')
+    THEN l.Amount ELSE 0 END), 0) AS DeductionDebits
+`;
+
+/**
+ * Branch financial summary for a payroll month — aggregates by entry BranchID
+ * (never by employee home/current assignment).
+ */
+export async function getEmployeeLedgerBranchFinancialSummary(args: {
+  month: string;
+  /** Restrict to these branch IDs (accessible set). Empty = no rows. */
+  branchIds: number[];
+  /** When set, only that branch is returned (must be in branchIds). */
+  filterBranchId?: number | null;
+}): Promise<EmpLedgerBranchFinancialSummary> {
+  const monthError = validateLedgerMonth(args.month);
+  if (monthError) throw new Error(monthError);
+
+  const ids = args.branchIds.filter((id) => Number.isFinite(id) && id > 0);
+  if (ids.length === 0) {
+    return { branches: [], overall: emptyBranchOverall() };
+  }
+
+  const filterId =
+    args.filterBranchId != null && args.filterBranchId > 0 ? args.filterBranchId : null;
+  if (filterId != null && !ids.includes(filterId)) {
+    return { branches: [], overall: emptyBranchOverall() };
+  }
+
+  const [yearStr, monthStr] = args.month.split('-');
+  const { startDate, endDate } = getMonthDateRange(
+    parseInt(yearStr, 10),
+    parseInt(monthStr, 10),
+  );
+
+  const scopeIds = filterId != null ? [filterId] : ids;
+  const db = await getPool();
+  const req = db
+    .request()
+    .input('month', sql.NVarChar(7), args.month)
+    .input('monthStart', sql.Date, startDate)
+    .input('monthEnd', sql.Date, endDate);
+
+  // Bind branch ids as a table-valued list via CSV + IN (safe: ints only)
+  const idList = scopeIds.join(',');
+  const result = await req.query(`
+    SELECT
+      b.BranchID,
+      b.BranchCode,
+      b.BranchName,
+      ${LEDGER_BUCKET_SELECT}
+    FROM dbo.TblBranch b
+    LEFT JOIN dbo.TblEmpLedgerEntry l
+      ON l.BranchID = b.BranchID
+     AND l.IsVoided = 0
+     AND ${buildMonthEntryFilter('l')}
+    WHERE b.BranchID IN (${idList})
+    GROUP BY b.BranchID, b.BranchCode, b.BranchName
+    ORDER BY b.BranchName
+  `);
+
+  const branches = result.recordset.map((row: Record<string, unknown>) =>
+    mapBranchFinancialRow(row),
+  );
+
+  const overall = branches.reduce(
+    (acc, row) => ({
+      accrued: acc.accrued + row.accrued,
+      paid: acc.paid + row.paid,
+      advances: acc.advances + row.advances,
+      deductions: acc.deductions + row.deductions,
+      transfers: acc.transfers + row.transfers,
+      balance: acc.balance + row.balance,
+      salaryCredits: acc.salaryCredits + row.salaryCredits,
+      targetCredits: acc.targetCredits + row.targetCredits,
+      fundingCredits: acc.fundingCredits + row.fundingCredits,
+      advanceDebits: acc.advanceDebits + row.advanceDebits,
+      payoutDebits: acc.payoutDebits + row.payoutDebits,
+      deductionDebits: acc.deductionDebits + row.deductionDebits,
+    }),
+    emptyBranchOverall(),
+  );
+
+  return {
+    branches,
+    overall: {
+      accrued: roundMoney(overall.accrued),
+      paid: roundMoney(overall.paid),
+      advances: roundMoney(overall.advances),
+      deductions: roundMoney(overall.deductions),
+      transfers: roundMoney(overall.transfers),
+      balance: roundMoney(overall.balance),
+      salaryCredits: roundMoney(overall.salaryCredits),
+      targetCredits: roundMoney(overall.targetCredits),
+      fundingCredits: roundMoney(overall.fundingCredits),
+      advanceDebits: roundMoney(overall.advanceDebits),
+      payoutDebits: roundMoney(overall.payoutDebits),
+      deductionDebits: roundMoney(overall.deductionDebits),
+    },
+  };
+}
+
+function emptyBranchBreakdown(
+  meta: { branchId: number; branchCode: string; branchName: string },
+): EmpLedgerEmployeeBranchBreakdown {
+  return {
+    branchId: meta.branchId,
+    branchCode: meta.branchCode,
+    branchName: meta.branchName,
+    salary: 0,
+    target: 0,
+    funding: 0,
+    payout: 0,
+    revenueWithdrawal: 0,
+    advance: 0,
+    deductions: 0,
+    balance: 0,
+    salaryCredits: 0,
+    targetCredits: 0,
+    fundingCredits: 0,
+    advanceDebits: 0,
+    payoutDebits: 0,
+    deductionDebits: 0,
+  };
+}
+
+function mapEmployeeBranchBreakdown(row: Record<string, unknown>): EmpLedgerEmployeeBranchBreakdown {
+  const salaryCredits = roundMoney(Number(row.SalaryCredits ?? 0));
+  const targetCredits = roundMoney(Number(row.TargetCredits ?? 0));
+  const fundingCredits = roundMoney(Number(row.FundingCredits ?? 0));
+  const advanceDebits = roundMoney(Number(row.AdvanceDebits ?? 0));
+  const payoutDebits = roundMoney(Number(row.PayoutDebits ?? 0));
+  const deductionDebits = roundMoney(Number(row.DeductionDebits ?? 0));
+
+  const { payoutWithinDues, revenueWithdrawal, advanceExcess } =
+    computeEmployeeWithdrawalBuckets({
+      advanceDebits,
+      payoutDebits,
+      salaryAndTarget: salaryCredits + targetCredits,
+      revenue: fundingCredits,
+    });
+
+  const salary = salaryCredits;
+  const target = targetCredits;
+  const funding = fundingCredits;
+  const payout = payoutWithinDues;
+  const advance = advanceExcess;
+  const deductions = deductionDebits;
+  // Same ledger identity: salary+target+funding − (payout+revenueWithdrawal+advance) − deductions
+  // because payout+revenueWithdrawal+advance === advanceDebits+payoutDebits.
+  const balance = roundMoney(
+    salary + target + funding - payout - revenueWithdrawal - advance - deductions,
+  );
+
+  return {
+    branchId: Number(row.BranchID),
+    branchCode: String(row.BranchCode ?? ''),
+    branchName: String(row.BranchName ?? ''),
+    salary,
+    target,
+    funding,
+    payout,
+    revenueWithdrawal,
+    advance,
+    deductions,
+    balance,
+    salaryCredits,
+    targetCredits,
+    fundingCredits,
+    advanceDebits,
+    payoutDebits,
+    deductionDebits,
+  };
+}
+
+function sumBranchBreakdowns(
+  parts: EmpLedgerEmployeeBranchBreakdown[],
+): Pick<
+  EmpLedgerEmployeeSummaryRow,
+  | 'salaryCredits'
+  | 'targetCredits'
+  | 'fundingCredits'
+  | 'advanceDebits'
+  | 'payoutDebits'
+  | 'deductionDebits'
+  | 'balance'
+  | 'revenue'
+  | 'payoutWithinDues'
+  | 'revenueWithdrawal'
+  | 'advanceExcess'
+> {
+  const salaryCredits = roundMoney(parts.reduce((s, p) => s + p.salaryCredits, 0));
+  const targetCredits = roundMoney(parts.reduce((s, p) => s + p.targetCredits, 0));
+  const fundingCredits = roundMoney(parts.reduce((s, p) => s + p.fundingCredits, 0));
+  const advanceDebits = roundMoney(parts.reduce((s, p) => s + p.advanceDebits, 0));
+  const payoutDebits = roundMoney(parts.reduce((s, p) => s + p.payoutDebits, 0));
+  const deductionDebits = roundMoney(parts.reduce((s, p) => s + p.deductionDebits, 0));
+  const payoutWithinDues = roundMoney(parts.reduce((s, p) => s + p.payout, 0));
+  const revenueWithdrawal = roundMoney(parts.reduce((s, p) => s + p.revenueWithdrawal, 0));
+  const advanceExcess = roundMoney(parts.reduce((s, p) => s + p.advance, 0));
+  const balance = roundMoney(parts.reduce((s, p) => s + p.balance, 0));
+  return {
+    salaryCredits,
+    targetCredits,
+    fundingCredits,
+    advanceDebits,
+    payoutDebits,
+    deductionDebits,
+    balance,
+    revenue: fundingCredits,
+    payoutWithinDues,
+    revenueWithdrawal,
+    advanceExcess,
   };
 }
 
 export async function getEmployeeLedgerSummary(
   month: string,
   branchId?: number | null,
+  options?: {
+    /** When viewing all branches: limit to accessible branch IDs and attach per-emp branchBalances. */
+    accessibleBranchIds?: number[];
+  },
 ): Promise<EmpLedgerSummaryResponse> {
   const monthError = validateLedgerMonth(month);
   if (monthError) {
@@ -216,99 +537,131 @@ export async function getEmployeeLedgerSummary(
     parseInt(monthStr, 10),
   );
 
-  const branchFilter =
-    branchId != null && branchId > 0 ? 'AND l.BranchID = @branchId' : '';
+  const accessible = (options?.accessibleBranchIds ?? []).filter(
+    (id) => Number.isFinite(id) && id > 0,
+  );
+  const singleBranch = branchId != null && branchId > 0 ? branchId : null;
 
   const db = await getPool();
-  const request = db.request()
+
+  // Resolve GLEEM + CAMP_CAESAR ids (table always shows both).
+  const tableBranchResult = await db.request().query(`
+    SELECT BranchID, BranchCode, BranchName
+    FROM dbo.TblBranch
+    WHERE BranchCode IN (N'${GLEEM_BRANCH_CODE}', N'${CAMP_CAESAR_BRANCH_CODE}')
+    ORDER BY CASE BranchCode WHEN N'${GLEEM_BRANCH_CODE}' THEN 0 ELSE 1 END
+  `);
+  const tableBranchMeta = (tableBranchResult.recordset as Array<Record<string, unknown>>).map(
+    (r) => ({
+      branchId: Number(r.BranchID),
+      branchCode: String(r.BranchCode ?? '') as EmpLedgerTableBranchCode,
+      branchName: String(r.BranchName ?? ''),
+    }),
+  );
+  const tableBranchIds = tableBranchMeta.map((b) => b.branchId);
+  const metaByCode = new Map(tableBranchMeta.map((b) => [b.branchCode, b]));
+
+  // One query: employee × table-branch buckets (entry BranchID). No N+1.
+  const scopeIds =
+    tableBranchIds.length > 0
+      ? tableBranchIds
+      : accessible.length > 0
+        ? accessible
+        : [];
+
+  const request = db
+    .request()
     .input('month', sql.NVarChar(7), month)
     .input('monthStart', sql.Date, startDate)
     .input('monthEnd', sql.Date, endDate);
-  if (branchId != null && branchId > 0) {
-    request.input('branchId', sql.Int, branchId);
+
+  const empBranchResult =
+    scopeIds.length > 0
+      ? await request.query(`
+          SELECT
+            e.EmpID,
+            e.EmpName,
+            b.BranchID,
+            b.BranchCode,
+            b.BranchName,
+            ${LEDGER_BUCKET_SELECT}
+          FROM dbo.TblEmp e
+          CROSS JOIN dbo.TblBranch b
+          LEFT JOIN dbo.TblEmpLedgerEntry l
+            ON l.EmpID = e.EmpID
+           AND l.BranchID = b.BranchID
+           AND l.IsVoided = 0
+           AND ${buildMonthEntryFilter('l')}
+          WHERE ISNULL(e.isActive, 1) = 1
+            AND b.BranchID IN (${scopeIds.join(',')})
+          GROUP BY e.EmpID, e.EmpName, b.BranchID, b.BranchCode, b.BranchName
+          ORDER BY e.EmpName, CASE b.BranchCode WHEN N'${GLEEM_BRANCH_CODE}' THEN 0 ELSE 1 END
+        `)
+      : { recordset: [] as Array<Record<string, unknown>> };
+
+  type EmpAcc = {
+    empId: number;
+    empName: string;
+    byCode: Map<string, EmpLedgerEmployeeBranchBreakdown>;
+  };
+  const empMap = new Map<number, EmpAcc>();
+
+  for (const row of empBranchResult.recordset as Array<Record<string, unknown>>) {
+    const empId = Number(row.EmpID);
+    let acc = empMap.get(empId);
+    if (!acc) {
+      acc = { empId, empName: String(row.EmpName ?? ''), byCode: new Map() };
+      empMap.set(empId, acc);
+    }
+    const breakdown = mapEmployeeBranchBreakdown(row);
+    acc.byCode.set(breakdown.branchCode, breakdown);
   }
-  const result = await request
-    .query(`
-      SELECT
-        e.EmpID,
-        e.EmpName,
-        ISNULL(SUM(CASE
-          WHEN l.ID IS NOT NULL
-           AND l.EntryDirection = N'credit'
-           AND l.EntryReason IN (N'hourly_wage', N'monthly_salary')
-          THEN l.Amount ELSE 0 END), 0) AS SalaryCredits,
-        ISNULL(SUM(CASE
-          WHEN l.ID IS NOT NULL
-           AND l.EntryDirection = N'credit'
-           AND l.EntryReason IN (N'target', N'commission', N'bonus')
-          THEN l.Amount ELSE 0 END), 0) AS TargetCredits,
-        ISNULL(SUM(CASE
-          WHEN l.ID IS NOT NULL
-           AND l.EntryDirection = N'credit'
-           AND l.EntryReason IN (N'employee_funding', N'tip')
-          THEN l.Amount ELSE 0 END), 0) AS FundingCredits,
-        ISNULL(SUM(CASE
-          WHEN l.ID IS NOT NULL
-           AND l.EntryDirection = N'debit'
-           AND l.EntryReason = N'advance'
-          THEN l.Amount ELSE 0 END), 0) AS AdvanceDebits,
-        ISNULL(SUM(CASE
-          WHEN l.ID IS NOT NULL
-           AND l.EntryDirection = N'debit'
-           AND l.EntryReason = N'payout'
-          THEN l.Amount ELSE 0 END), 0) AS PayoutDebits,
-        ISNULL(SUM(CASE
-          WHEN l.ID IS NOT NULL
-           AND l.EntryDirection = N'debit'
-           AND l.EntryReason IN (N'deduction', N'settlement', N'adjustment')
-          THEN l.Amount ELSE 0 END), 0) AS DeductionDebits
-      FROM dbo.TblEmp e
-      LEFT JOIN dbo.TblEmpLedgerEntry l
-        ON l.EmpID = e.EmpID
-       AND l.IsVoided = 0
-       AND ${buildMonthEntryFilter('l')}
-       ${branchFilter}
-      WHERE ISNULL(e.isActive, 1) = 1
-      GROUP BY e.EmpID, e.EmpName
-      ORDER BY e.EmpName
-    `);
 
-  const employees: EmpLedgerEmployeeSummaryRow[] = result.recordset.map((row: Record<string, unknown>) => {
-    const empId = row.EmpID as number;
-    const salaryCredits = roundMoney(Number(row.SalaryCredits ?? 0));
-    const targetCredits = roundMoney(Number(row.TargetCredits ?? 0));
-    const fundingCredits = roundMoney(Number(row.FundingCredits ?? 0));
-    const advanceDebits = roundMoney(Number(row.AdvanceDebits ?? 0));
-    const payoutDebits = roundMoney(Number(row.PayoutDebits ?? 0));
-    const deductionDebits = roundMoney(Number(row.DeductionDebits ?? 0));
+  // Ensure active employees with no ledger rows still appear (CROSS JOIN should already).
+  // Fill missing GLEEM/CAMP slots with zeros.
+  const employees: EmpLedgerEmployeeSummaryRow[] = [...empMap.values()].map((acc) => {
+    const branches = {} as Record<EmpLedgerTableBranchCode, EmpLedgerEmployeeBranchBreakdown>;
+    for (const code of EMP_LEDGER_TABLE_BRANCH_CODES) {
+      const existing = acc.byCode.get(code);
+      const meta = metaByCode.get(code);
+      branches[code] =
+        existing ??
+        emptyBranchBreakdown(
+          meta ?? { branchId: 0, branchCode: code, branchName: code },
+        );
+    }
 
-    // إيراد/تمويل الموظف للمحل يُغطّي مسحوباته أولاً قبل الراتب والتارجت.
-    const { payoutWithinDues, revenueWithdrawal, advanceExcess } =
-      computeEmployeeWithdrawalBuckets({
-        advanceDebits,
-        payoutDebits,
-        salaryAndTarget: salaryCredits + targetCredits,
-        revenue: fundingCredits,
-      });
+    const allParts = EMP_LEDGER_TABLE_BRANCH_CODES.map((c) => branches[c]);
+    const overallBalance = roundMoney(allParts.reduce((s, p) => s + p.balance, 0));
+
+    // Flat aggregates respect branch filter (summary cards / payout scope).
+    const flatParts =
+      singleBranch != null
+        ? allParts.filter((p) => p.branchId === singleBranch)
+        : allParts;
+    const flat = sumBranchBreakdowns(flatParts.length > 0 ? flatParts : allParts);
+
+    const branchBalances = allParts
+      .filter((p) => p.balance !== 0)
+      .map((p) => ({
+        branchId: p.branchId,
+        branchCode: p.branchCode,
+        branchName: p.branchName,
+        balance: p.balance,
+      }));
 
     return {
-      empId,
-      empName: row.EmpName as string,
-      salaryCredits,
-      targetCredits,
-      fundingCredits,
-      advanceDebits,
-      payoutDebits,
-      deductionDebits,
-      balance: roundMoney(
-        salaryCredits + targetCredits + fundingCredits - advanceDebits - payoutDebits - deductionDebits,
-      ),
-      revenue: fundingCredits,
-      payoutWithinDues,
-      revenueWithdrawal,
-      advanceExcess,
+      empId: acc.empId,
+      empName: acc.empName,
+      ...flat,
+      overallBalance,
+      branches,
+      ...(branchBalances.length > 0 ? { branchBalances } : {}),
     };
   });
+
+  // Stable name order
+  employees.sort((a, b) => a.empName.localeCompare(b.empName, 'ar'));
 
   const totals = employees.reduce(
     (acc, row) => ({
@@ -339,8 +692,25 @@ export async function getEmployeeLedgerSummary(
     },
   );
 
+  const branchScopeIds =
+    singleBranch != null
+      ? [singleBranch]
+      : accessible.length > 0
+        ? accessible
+        : tableBranchIds;
+
+  const branchFinancial =
+    branchScopeIds.length > 0
+      ? await getEmployeeLedgerBranchFinancialSummary({
+          month,
+          branchIds: accessible.length > 0 ? accessible : branchScopeIds,
+          filterBranchId: singleBranch,
+        })
+      : undefined;
+
   return {
     month,
+    branchId: singleBranch,
     employees,
     totals: {
       salaryCredits: roundMoney(totals.salaryCredits),
@@ -355,6 +725,7 @@ export async function getEmployeeLedgerSummary(
       revenueWithdrawal: roundMoney(totals.revenueWithdrawal),
       advanceExcess: roundMoney(totals.advanceExcess),
     },
+    ...(branchFinancial ? { branchFinancial } : {}),
   };
 }
 

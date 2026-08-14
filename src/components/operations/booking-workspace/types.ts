@@ -56,6 +56,8 @@ export interface BookingWorkspaceBarber {
   workEnd?: string | null;
   nextAvailableAt?: string | null;
   statusReasonArabic?: string;
+  /** Operational branch for this barber on the board (cross-branch ops). */
+  branchId?: number;
 }
 
 export type BookingMode = 'nearest' | 'specific';
@@ -273,6 +275,7 @@ export function mapFlowBoardBarbersForBooking(
     workEnd?: string | null;
     nextAvailableAt?: string | null;
     statusReasonArabic?: string;
+    branchId?: number;
   }>,
 ): BookingWorkspaceBarber[] {
   return rows.map((b) => ({
@@ -283,6 +286,7 @@ export function mapFlowBoardBarbersForBooking(
     workEnd: b.workEnd ?? null,
     nextAvailableAt: b.nextAvailableAt ?? null,
     statusReasonArabic: b.statusReasonArabic,
+    branchId: b.branchId,
   }));
 }
 

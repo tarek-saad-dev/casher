@@ -3,6 +3,17 @@ import { NextRequest } from 'next/server';
 
 vi.mock('server-only', () => ({}));
 
+vi.mock('@/lib/hr/empBranchWorkDayClose.service', () => ({
+  assertEmpBranchWorkDayMutable: vi.fn(async () => undefined),
+  getEmpBranchWorkDayCloseState: vi.fn(async () => ({
+    branchId: 1,
+    workDate: '2026-04-15',
+    state: 'OPEN',
+    isVirtualOpen: true,
+    row: null,
+  })),
+}));
+
 describe('employeeLedgerConfig', () => {
   const original = process.env.EMP_LEDGER_DUAL_WRITE_ENABLED;
 

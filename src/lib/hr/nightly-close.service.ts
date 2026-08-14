@@ -17,6 +17,7 @@ import {
 } from '@/lib/services/employeeLedgerDualWrite';
 import { generateEmployeeDailyTargets } from '@/lib/payroll/employee-target/employee-daily-target-generation.service';
 import { finalizeIncompleteAttendanceWithDefaults } from '@/lib/hr/finalize-incomplete-attendance';
+import { getEmpBranchWorkDayCloseState } from '@/lib/hr/empBranchWorkDayClose.service';
 import { resolveNightlyCloseWorkDate } from '@/lib/hr/nightly-close-work-date';
 import {
   buildEmployeeDailyWhatsAppPreview,
@@ -327,6 +328,14 @@ export async function runNightlyClose(params?: {
     let ledgerDualWrite: unknown = undefined;
 
     for (const branch of payrollBranches) {
+      const closeView = await getEmpBranchWorkDayCloseState(branch.branchId, workDate);
+      if (closeView.state === 'CLOSED') {
+        console.log(
+          `[nightly-close] payroll skipped CLOSED branch=${branch.branchCode} workDate=${workDate}`,
+        );
+        continue;
+      }
+
       const postedCount = await countPostedDailyPayroll(
         db,
         workDate,
@@ -482,6 +491,13 @@ export async function runNightlyClose(params?: {
 
       for (const branch of targetBranches) {
         try {
+          const closeView = await getEmpBranchWorkDayCloseState(branch.branchId, workDate);
+          if (closeView.state === 'CLOSED') {
+            console.log(
+              `[nightly-close] targets skipped CLOSED branch=${branch.branchCode} workDate=${workDate}`,
+            );
+            continue;
+          }
           const targets = await generateEmployeeDailyTargets({
             workDate,
             generatedByUserId: null,

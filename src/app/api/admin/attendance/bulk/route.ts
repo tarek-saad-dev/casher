@@ -21,6 +21,11 @@ import {
 import { assertEmployeeEligibleForBranchAttendance } from "@/lib/hr/attendance/branchAttendance.service";
 import { unlockScheduleForWorkOnDayOff } from "@/lib/hr/attendance/workOnDayOff.service";
 import { getEffectiveBranchScheduleRow } from "@/lib/hr/empBranchWorkSchedule";
+import { assertEmpBranchWorkDayMutable } from "@/lib/hr/empBranchWorkDayClose.service";
+import {
+  empBranchWorkDayCloseErrorResponse,
+  isEmpBranchWorkDayCloseError,
+} from "@/lib/hr/empBranchWorkDayClose.http";
 
 function timeToDate(timeStr: string | null | undefined): Date | null {
   if (!timeStr || timeStr.trim() === "") return null;
@@ -59,6 +64,8 @@ export async function PUT(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    await assertEmpBranchWorkDayMutable(branch.branchId, WorkDate);
 
     if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
@@ -393,6 +400,9 @@ export async function PUT(req: NextRequest) {
       throw innerErr;
     }
   } catch (err: unknown) {
+    if (isEmpBranchWorkDayCloseError(err)) {
+      return empBranchWorkDayCloseErrorResponse(err);
+    }
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[api/admin/attendance/bulk] PUT error:", message);
     return NextResponse.json({ error: message }, { status: 500 });

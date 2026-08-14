@@ -5,6 +5,11 @@ import {
   isActiveBranchContext,
   requireBranchOperationAccess,
 } from '@/lib/branch';
+import { assertEmpBranchWorkDayMutable } from '@/lib/hr/empBranchWorkDayClose.service';
+import {
+  empBranchWorkDayCloseErrorResponse,
+  isEmpBranchWorkDayCloseError,
+} from '@/lib/hr/empBranchWorkDayClose.http';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -40,11 +45,18 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
       .request()
       .input('id', sql.Int, recordId)
       .query(`
-        SELECT ID, BranchID FROM dbo.TblEmpAttendance WHERE ID = @id
+        SELECT ID, BranchID, WorkDate FROM dbo.TblEmpAttendance WHERE ID = @id
       `);
     if (!owned.recordset[0] || Number(owned.recordset[0].BranchID) !== branch.branchId) {
       return NextResponse.json({ error: 'غير موجود' }, { status: 404 });
     }
+
+    const workDateRaw = owned.recordset[0].WorkDate;
+    const workDate =
+      workDateRaw instanceof Date
+        ? `${workDateRaw.getFullYear()}-${String(workDateRaw.getMonth() + 1).padStart(2, '0')}-${String(workDateRaw.getDate()).padStart(2, '0')}`
+        : String(workDateRaw ?? '').slice(0, 10);
+    await assertEmpBranchWorkDayMutable(branch.branchId, workDate);
 
     const setClauses: string[] = ['UpdatedAt = GETDATE()'];
     const request = db.request();
@@ -87,6 +99,9 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
 
     return NextResponse.json(result.recordset[0]);
   } catch (err: unknown) {
+    if (isEmpBranchWorkDayCloseError(err)) {
+      return empBranchWorkDayCloseErrorResponse(err);
+    }
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/employees/attendance/:id] PUT error:', message);
     return NextResponse.json({ error: message }, { status: 500 });

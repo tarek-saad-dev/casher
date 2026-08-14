@@ -161,12 +161,15 @@ export async function GET(req: NextRequest) {
       };
     });
 
+    const sessionBranch = allBranches.find((b) => b.branchId === auth.activeBranchId);
+
     return NextResponse.json({
       ok: true,
       date,
       isToday,
       sessionBranchId: auth.activeBranchId,
       sessionBranchCode: dayState.sessionBranchCode,
+      sessionBranchName: sessionBranch?.branchName ?? dayState.sessionBranchCode,
       version: dayState.version,
       transferDestinations,
       sections: {

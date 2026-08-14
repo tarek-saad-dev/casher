@@ -1,6 +1,13 @@
 /**
  * Phase 1L — branch payroll plan resolution (TblEmpBranchPayrollPlan).
- * Operational rates never fall back to TblEmp or another branch.
+ *
+ * Precedence (Phase 6C — global employee agreement):
+ *   1) Explicit branch plan for EmpID + BranchID + WorkDate
+ *   2) Primary/global employee agreement (home-branch plan preferred, else any open plan)
+ *   3) null → SALARY_CONFIG_MISSING / no_branch_payroll_plan
+ *
+ * Operational rates never fall back to TblEmp columns.
+ * Accounting stays branch-scoped via attendance/payroll BranchID.
  */
 import 'server-only';
 
@@ -19,6 +26,8 @@ export interface BranchPayrollPlanRow {
   effectiveFrom: string;
   effectiveTo: string | null;
   isActive: boolean;
+  /** True when rates came from another branch's agreement (not an explicit override). */
+  inheritedFromPrimary?: boolean;
 }
 
 function toDateStr(value: unknown): string {
@@ -38,19 +47,57 @@ function mapPlan(row: Record<string, unknown>): BranchPayrollPlanRow {
     effectiveFrom: toDateStr(row.EffectiveFrom),
     effectiveTo: row.EffectiveTo == null ? null : toDateStr(row.EffectiveTo),
     isActive: Boolean(row.IsActive),
+    inheritedFromPrimary: Boolean(row.InheritedFromPrimary),
   };
 }
 
 /**
+ * Pure precedence picker (testable): explicit branch override → primary agreement.
+ * Does not invent rates; only selects among provided plan rows.
+ */
+export function pickEffectivePayrollPlan(args: {
+  branchId: number;
+  /** Plans already scoped to Emp + covering WorkDate. */
+  candidates: BranchPayrollPlanRow[];
+  /** Home branch IDs for this emp (optional ranking). */
+  homeBranchIds?: Set<number>;
+}): BranchPayrollPlanRow | null {
+  if (!args.candidates.length) return null;
+  const explicit = args.candidates.filter((p) => p.branchId === args.branchId);
+  const pool = explicit.length > 0 ? explicit : args.candidates;
+  const home = args.homeBranchIds ?? new Set<number>();
+  const sorted = [...pool].sort((a, b) => {
+    if (explicit.length === 0) {
+      const aHome = home.has(a.branchId) ? 0 : 1;
+      const bHome = home.has(b.branchId) ? 0 : 1;
+      if (aHome !== bHome) return aHome - bHome;
+    }
+    if (a.effectiveFrom !== b.effectiveFrom) {
+      return a.effectiveFrom < b.effectiveFrom ? 1 : -1;
+    }
+    return b.planId - a.planId;
+  });
+  const chosen = sorted[0];
+  if (!chosen) return null;
+  if (explicit.length === 0 && chosen.branchId !== args.branchId) {
+    return { ...chosen, inheritedFromPrimary: true };
+  }
+  return { ...chosen, inheritedFromPrimary: false };
+}
+
+/**
  * Resolve the effective plan for EmpID + BranchID + WorkDate.
- * Prefer latest EffectiveFrom; no GLEEM / other-branch fallback.
+ * Default: branch override → global employee agreement → null.
  */
 export async function resolveBranchPayrollPlanForDate(params: {
   empId: number;
   branchId: number;
   workDate: string;
   payTypes?: BranchPayrollPayType[];
+  /** @default true */
+  inheritPrimaryAgreement?: boolean;
 }): Promise<BranchPayrollPlanRow | null> {
+  const inherit = params.inheritPrimaryAgreement !== false;
   const payTypes = params.payTypes ?? ['hourly', 'daily', 'monthly'];
   const db = await getPool();
   const request = db
@@ -68,7 +115,8 @@ export async function resolveBranchPayrollPlanForDate(params: {
   const result = await request.query(`
     SELECT TOP 1
       PlanID, EmpID, BranchID, PayType, HourlyRate, DailyRate, MonthlySalary,
-      EffectiveFrom, EffectiveTo, IsActive
+      EffectiveFrom, EffectiveTo, IsActive,
+      CAST(0 AS bit) AS InheritedFromPrimary
     FROM dbo.TblEmpBranchPayrollPlan
     WHERE EmpID = @empId
       AND BranchID = @branchId
@@ -80,10 +128,50 @@ export async function resolveBranchPayrollPlanForDate(params: {
   `);
 
   const row = result.recordset[0] as Record<string, unknown> | undefined;
-  return row ? mapPlan(row) : null;
+  if (row) return mapPlan(row);
+  if (!inherit) return null;
+
+  const primaryReq = db
+    .request()
+    .input('empId', sql.Int, params.empId)
+    .input('workDate', sql.Date, params.workDate);
+  const primaryTypes = payTypes.map((t, i) => {
+    const name = `pt${i}`;
+    primaryReq.input(name, sql.NVarChar(20), t);
+    return `@${name}`;
+  });
+
+  const primary = await primaryReq.query(`
+    SELECT TOP 1
+      p.PlanID, p.EmpID, p.BranchID, p.PayType, p.HourlyRate, p.DailyRate, p.MonthlySalary,
+      p.EffectiveFrom, p.EffectiveTo, p.IsActive,
+      CAST(1 AS bit) AS InheritedFromPrimary
+    FROM dbo.TblEmpBranchPayrollPlan p
+    LEFT JOIN dbo.TblEmpBranchAssignment ea
+      ON ea.EmpID = p.EmpID
+     AND ea.BranchID = p.BranchID
+     AND ea.IsActive = 1
+     AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @workDate)
+    WHERE p.EmpID = @empId
+      AND p.IsActive = 1
+      AND p.EffectiveFrom <= @workDate
+      AND (p.EffectiveTo IS NULL OR p.EffectiveTo >= @workDate)
+      AND p.PayType IN (${primaryTypes.join(',')})
+    ORDER BY
+      CASE WHEN ISNULL(ea.IsHomeBranch, 0) = 1 THEN 0 ELSE 1 END,
+      CASE WHEN p.EffectiveTo IS NULL THEN 0 ELSE 1 END,
+      p.EffectiveFrom DESC,
+      p.PlanID DESC
+  `);
+
+  const prow = primary.recordset[0] as Record<string, unknown> | undefined;
+  return prow ? mapPlan(prow) : null;
 }
 
-/** Load effective hourly/daily plans for a branch/workDate (map by EmpID). */
+/**
+ * Load effective hourly/daily plans for a branch/workDate (map by EmpID).
+ * Includes inherited primary agreements when no explicit branch override exists.
+ */
 export async function loadBranchDayPayrollPlans(
   branchId: number,
   workDate: string,
@@ -94,27 +182,76 @@ export async function loadBranchDayPayrollPlans(
     .input('branchId', sql.Int, branchId)
     .input('workDate', sql.Date, workDate)
     .query(`
-      SELECT
-        PlanID, EmpID, BranchID, PayType, HourlyRate, DailyRate, MonthlySalary,
-        EffectiveFrom, EffectiveTo, IsActive,
-        ROW_NUMBER() OVER (
-          PARTITION BY EmpID
-          ORDER BY EffectiveFrom DESC, PlanID DESC
-        ) AS rn
-      FROM dbo.TblEmpBranchPayrollPlan
-      WHERE BranchID = @branchId
-        AND IsActive = 1
-        AND EffectiveFrom <= @workDate
-        AND (EffectiveTo IS NULL OR EffectiveTo >= @workDate)
-        AND PayType IN (N'hourly', N'daily')
+      WITH ranked AS (
+        SELECT
+          PlanID, EmpID, BranchID, PayType, HourlyRate, DailyRate, MonthlySalary,
+          EffectiveFrom, EffectiveTo, IsActive,
+          CAST(0 AS bit) AS InheritedFromPrimary,
+          ROW_NUMBER() OVER (
+            PARTITION BY EmpID
+            ORDER BY EffectiveFrom DESC, PlanID DESC
+          ) AS rn
+        FROM dbo.TblEmpBranchPayrollPlan
+        WHERE BranchID = @branchId
+          AND IsActive = 1
+          AND EffectiveFrom <= @workDate
+          AND (EffectiveTo IS NULL OR EffectiveTo >= @workDate)
+          AND PayType IN (N'hourly', N'daily')
+      )
+      SELECT PlanID, EmpID, BranchID, PayType, HourlyRate, DailyRate, MonthlySalary,
+             EffectiveFrom, EffectiveTo, IsActive, InheritedFromPrimary
+      FROM ranked
+      WHERE rn = 1
     `);
 
   const map = new Map<number, BranchPayrollPlanRow>();
   for (const row of result.recordset as Record<string, unknown>[]) {
-    if (Number(row.rn) !== 1) continue;
     const plan = mapPlan(row);
     map.set(plan.empId, plan);
   }
+
+  // Inherit primary/global agreements for employees without an explicit branch override.
+  const primary = await db
+    .request()
+    .input('workDate', sql.Date, workDate)
+    .query(`
+      WITH ranked AS (
+        SELECT
+          p.PlanID, p.EmpID, p.BranchID, p.PayType, p.HourlyRate, p.DailyRate, p.MonthlySalary,
+          p.EffectiveFrom, p.EffectiveTo, p.IsActive,
+          CAST(1 AS bit) AS InheritedFromPrimary,
+          ROW_NUMBER() OVER (
+            PARTITION BY p.EmpID
+            ORDER BY
+              CASE WHEN ISNULL(ea.IsHomeBranch, 0) = 1 THEN 0 ELSE 1 END,
+              CASE WHEN p.EffectiveTo IS NULL THEN 0 ELSE 1 END,
+              p.EffectiveFrom DESC,
+              p.PlanID DESC
+          ) AS rn
+        FROM dbo.TblEmpBranchPayrollPlan p
+        LEFT JOIN dbo.TblEmpBranchAssignment ea
+          ON ea.EmpID = p.EmpID
+         AND ea.BranchID = p.BranchID
+         AND ea.IsActive = 1
+         AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @workDate)
+        WHERE p.IsActive = 1
+          AND p.EffectiveFrom <= @workDate
+          AND (p.EffectiveTo IS NULL OR p.EffectiveTo >= @workDate)
+          AND p.PayType IN (N'hourly', N'daily')
+      )
+      SELECT PlanID, EmpID, BranchID, PayType, HourlyRate, DailyRate, MonthlySalary,
+             EffectiveFrom, EffectiveTo, IsActive, InheritedFromPrimary
+      FROM ranked
+      WHERE rn = 1
+    `);
+
+  for (const row of primary.recordset as Record<string, unknown>[]) {
+    const plan = mapPlan(row);
+    if (!map.has(plan.empId)) {
+      map.set(plan.empId, plan);
+    }
+  }
+
   return map;
 }
 
@@ -248,7 +385,8 @@ export async function loadActiveBranchPayrollRatesByEmpIds(
 
 /**
  * HR rate edits write ONLY to active open branch payroll plans (no TblEmp rate mirror).
- * Updates every active open plan for the employee; creates home-branch plan if none exist.
+ * Updates every active open plan for the employee; creates one primary (home) plan if none exist.
+ * That primary plan is the global employee agreement — other branches inherit it at resolve time.
  */
 export async function syncHrRatesToActiveBranchPlans(args: {
   empId: number;

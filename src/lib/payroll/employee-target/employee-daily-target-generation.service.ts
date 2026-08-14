@@ -2,6 +2,7 @@ import 'server-only';
 
 import Decimal from 'decimal.js';
 import { getPool, sql } from '@/lib/db';
+import { assertEmpBranchWorkDayMutable } from '@/lib/hr/empBranchWorkDayClose.service';
 import { calculateDailyTarget } from './calculate-daily-target';
 import {
   buildCalculationBreakdownJson,
@@ -130,6 +131,7 @@ export async function generateEmployeeDailyTargets(
   if (!Number.isInteger(branchId) || branchId <= 0) {
     throw new EmployeeTargetValidationError('branchId مطلوب لتوليد التارجت (Phase 1L)');
   }
+  await assertEmpBranchWorkDayMutable(branchId, workDate);
 
   const empIds =
     params.empIds != null && params.empIds.length > 0

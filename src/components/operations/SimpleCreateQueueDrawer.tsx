@@ -5,7 +5,6 @@ import { X, User, Scissors, Loader2, CheckCircle2, Clock, Users, AlertCircle, Ar
 import type { Customer } from '@/lib/types';
 import type { CreateQueueResponse } from '@/lib/operationsQueueTypes';
 import { PrintQueueTicketModal } from './PrintQueueTicketModal';
-import { useSession } from '@/hooks/useSession';
 
 interface Service {
   ProID: number;
@@ -69,11 +68,8 @@ function formatTime(iso: string): string {
 }
 
 export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, debugInfo }: Props) {
-  const { activeBranch, user } = useSession();
-  const sessionBranchId = activeBranch?.branchId ?? user?.ActiveBranchID ?? null;
-  const sessionBarbers = barbers.filter(
-    (b) => sessionBranchId == null || b.branchId == null || b.branchId === sessionBranchId,
-  );
+  // All operable barbers from flow-board (any branch) — create stamps the barber's branch.
+  const sessionBarbers = barbers;
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedBarber, setSelectedBarber] = useState<Barber | null>(null);
   const [services, setServices] = useState<Service[]>([]);
@@ -191,6 +187,7 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
       empId: selectedBarber.empId,
       serviceIds,
       requestedAt: browserNow.toISOString(),
+      ...(selectedBarber.branchId != null ? { branchId: selectedBarber.branchId } : {}),
     };
     console.log('[simulate payload]', {
       ...simulatePayload,
@@ -302,6 +299,7 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
         expectedStartTime: simulateResult.suggestedStartTime,
         expectedEndTime: simulateResult.suggestedEndTime,
         source: 'walk_in',
+        ...(selectedBarber.branchId != null ? { branchId: selectedBarber.branchId } : {}),
       };
       console.log('=== CREATE PAYLOAD ===', createPayload);
 

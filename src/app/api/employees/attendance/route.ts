@@ -9,6 +9,11 @@ import {
   assertEmployeeEligibleForBranchAttendance,
   AttendanceDomainError,
 } from '@/lib/hr/attendance/branchAttendance.service';
+import { assertEmpBranchWorkDayMutable } from '@/lib/hr/empBranchWorkDayClose.service';
+import {
+  empBranchWorkDayCloseErrorResponse,
+  isEmpBranchWorkDayCloseError,
+} from '@/lib/hr/empBranchWorkDayClose.http';
 
 /** Convert "HH:mm" or "HH:mm:ss" string to Date anchored to 1970-01-01 UTC for sql.Time. */
 function timeToDate(timeStr: string | null | undefined): Date | null {
@@ -107,6 +112,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'empId و workDate مطلوبان' }, { status: 400 });
     }
 
+    await assertEmpBranchWorkDayMutable(branch.branchId, String(workDate).slice(0, 10));
+
     try {
       await assertEmployeeEligibleForBranchAttendance(
         Number(empId),
@@ -191,6 +198,9 @@ export async function POST(req: NextRequest) {
     const isNew = result.recordset[0]?.UpdatedAt === null;
     return NextResponse.json(result.recordset[0], { status: isNew ? 201 : 200 });
   } catch (err: unknown) {
+    if (isEmpBranchWorkDayCloseError(err)) {
+      return empBranchWorkDayCloseErrorResponse(err);
+    }
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/employees/attendance] POST error:', message);
     return NextResponse.json({ error: message }, { status: 500 });

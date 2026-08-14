@@ -6,10 +6,8 @@ import {
   requireBranchOperationAccess,
   isActiveBranchContext,
 } from "@/lib/branch/context";
-import {
-  assertBookingOwnedByActiveBranch,
-  bookingQueueNotFoundResponse,
-} from "@/lib/branch/bookingQueueOwnership";
+import { bookingQueueNotFoundResponse } from "@/lib/branch/bookingQueueOwnership";
+import { userCanManageOpsBranchRecord } from "@/lib/branch/opsWriteBranch";
 import { detectQueueTicketsSchema } from "@/lib/queueSchema";
 
 export const runtime = "nodejs";
@@ -59,11 +57,15 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "تذكرة غير موجودة" }, { status: 404 });
 
     const schema = await detectQueueTicketsSchema();
-    if (
-      schema.hasBranchID &&
-      !assertBookingOwnedByActiveBranch(branch.branchId, result.recordset[0].BranchID)
-    ) {
-      return bookingQueueNotFoundResponse();
+    if (schema.hasBranchID) {
+      const canManage = await userCanManageOpsBranchRecord({
+        userId: branch.userId,
+        sessionBranchId: branch.branchId,
+        recordBranchId: result.recordset[0].BranchID,
+      });
+      if (!canManage) {
+        return bookingQueueNotFoundResponse();
+      }
     }
 
     const histRes = await db.request()
@@ -109,7 +111,13 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       if (!ownerCheck.recordset.length) {
         return bookingQueueNotFoundResponse();
       }
-      if (!assertBookingOwnedByActiveBranch(branch.branchId, ownerCheck.recordset[0].BranchID)) {
+      if (
+        !(await userCanManageOpsBranchRecord({
+          userId: branch.userId,
+          sessionBranchId: branch.branchId,
+          recordBranchId: ownerCheck.recordset[0].BranchID,
+        }))
+      ) {
         return bookingQueueNotFoundResponse();
       }
     }

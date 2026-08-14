@@ -418,6 +418,12 @@ export async function evaluatePublicBookingSelection(args: {
     throw new PublicBookingSelectionError('BOOKING_HORIZON_EXCEEDED');
   }
 
+  // Ops/admin create must match available-slots: no public min-notice gate.
+  const engineSource: 'public' | 'operations' =
+    purpose === 'internal_preview' ? 'operations' : 'public';
+  const effectiveMinNoticeMinutes =
+    purpose === 'internal_preview' ? 0 : settings.minNoticeMinutes || 0;
+
   const timezone = settings.timezone || branchContext.timezone || 'Africa/Cairo';
   const bounds = absoluteBounds({
     workDate,
@@ -429,7 +435,7 @@ export async function evaluatePublicBookingSelection(args: {
 
   // Min notice on absolute start (today or any day before notice window)
   const nowMs = Date.now();
-  const minNoticeMs = (settings.minNoticeMinutes || 0) * 60_000;
+  const minNoticeMs = effectiveMinNoticeMinutes * 60_000;
   if (bounds.startMs < nowMs + minNoticeMs) {
     // Still evaluate for richer codes below, but mark — engine also enforces for "today"
     // For past WorkDates outside today, horizon already covers far future; past dates fail here.
@@ -480,7 +486,7 @@ export async function evaluatePublicBookingSelection(args: {
         serviceIds: selected.serviceIds,
         mode: 'specific',
         empId,
-        source: 'public',
+        source: engineSource,
         branchId: branchContext.branchId,
         durationOverride: selected.totalDurationMinutes,
         skipNextAvailableWhenOk: true,
@@ -509,7 +515,7 @@ export async function evaluatePublicBookingSelection(args: {
             serviceIds: selected.serviceIds,
             mode: 'specific',
             empId,
-            source: 'public',
+            source: engineSource,
             branchId: branchContext.branchId,
             durationOverride: selected.totalDurationMinutes,
             skipNextAvailableWhenOk: true,
@@ -536,7 +542,7 @@ export async function evaluatePublicBookingSelection(args: {
       mode: 'nearest',
       empId: null,
       branchId: branchContext.branchId,
-      source: 'public',
+      source: engineSource,
       durationOverride: selected.totalDurationMinutes,
       collectAllCandidates: true,
     });
@@ -579,7 +585,7 @@ export async function evaluatePublicBookingSelection(args: {
         dayOffset: requestedDayOffset,
         serviceIds: selected.serviceIds,
         mode: 'nearest',
-        source: 'public',
+        source: engineSource,
         branchId: branchContext.branchId,
         durationOverride: selected.totalDurationMinutes,
         skipNextAvailableWhenOk: true,
@@ -607,8 +613,9 @@ export async function evaluatePublicBookingSelection(args: {
     }
   }
 
-  // Absolute min-notice override when start is too soon (covers non-today WorkDate edge)
-  if (available && bounds.startMs < nowMs + minNoticeMs) {
+  // Absolute min-notice override when start is too soon (public only;
+  // internal ops/admin already waive min notice like available-slots).
+  if (available && minNoticeMs > 0 && bounds.startMs < nowMs + minNoticeMs) {
     available = false;
     availabilityCode = 'MIN_NOTICE_NOT_MET';
     availabilityMessage = PUBLIC_BOOKING_ERROR_CATALOG.MIN_NOTICE_NOT_MET.messageAr;

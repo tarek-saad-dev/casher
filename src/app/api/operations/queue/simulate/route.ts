@@ -2,24 +2,27 @@
  * POST /api/operations/queue/simulate
  *
  * Simulates creating a queue ticket without actually creating it.
- * Returns the suggested time, people before, and timeline analysis.
+ * Optional body.branchId targets the barber's operational branch across sessions.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { simulateQueueInsertion } from '@/lib/operationsQueueTimeline';
 import { requireBranchOperationAccess, isActiveBranchContext } from '@/lib/branch/context';
-import { isEmployeeEligibleForBranchBookings } from '@/lib/branch/bookingQueueOwnership';
+import {
+  opsWriteBranchErrorResponse,
+  resolveOpsWriteBranch,
+} from '@/lib/branch/opsWriteBranch';
 import { getCairoBusinessDate } from '@/lib/businessDate';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   try {
-    const branch = await requireBranchOperationAccess();
-    if (!isActiveBranchContext(branch)) return branch;
+    const sessionBranch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(sessionBranch)) return sessionBranch;
 
     const body = await req.json();
-    const { empId, serviceIds, requestedAt } = body;
+    const { empId, serviceIds, requestedAt, branchId } = body;
 
     const serverNow = new Date();
     console.log('[simulate API] Request received:', {
@@ -27,7 +30,8 @@ export async function POST(req: NextRequest) {
       serviceIds,
       requestedAtFromClient: requestedAt,
       serverNowUtc: serverNow.toISOString(),
-      branchId: branch.branchId,
+      sessionBranchId: sessionBranch.branchId,
+      requestedBranchId: branchId,
     });
 
     if (!empId || typeof empId !== 'number') {
@@ -44,30 +48,43 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const operationalDate = getCairoBusinessDate(requestedAt ? new Date(requestedAt) : serverNow);
-    const eligible = await isEmployeeEligibleForBranchBookings({
-      empId,
-      branchId: branch.branchId,
-      operationalDate,
-      requireCanReceiveBookings: false,
-      includeTemporaryTransfer: true,
-    });
-    if (!eligible) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: 'الموظف غير معيَّن على هذا الفرع — بدّل للفرع الصحيح من شريط الجلسة',
-          reason: 'emp_not_assigned',
-        },
-        { status: 400 },
-      );
+    const operationalDate = getCairoBusinessDate(
+      requestedAt ? new Date(requestedAt) : serverNow,
+    );
+
+    let targetBranchId = sessionBranch.branchId;
+    try {
+      const target = await resolveOpsWriteBranch({
+        userId: sessionBranch.userId,
+        sessionBranchId: sessionBranch.branchId,
+        empId,
+        workDate: operationalDate,
+        requestedBranchId: branchId,
+      });
+      targetBranchId = target.branchId;
+    } catch (err) {
+      const branchErr = opsWriteBranchErrorResponse(err);
+      if (branchErr) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              err instanceof Error
+                ? err.message
+                : 'الموظف غير متاح على فرع تملك صلاحية التشغيل عليه',
+            reason: 'emp_not_assigned',
+          },
+          { status: 400 },
+        );
+      }
+      throw err;
     }
 
     const result = await simulateQueueInsertion({
       empId,
       serviceIds,
       requestedAt,
-      branchId: branch.branchId,
+      branchId: targetBranchId,
     });
 
     console.log('[simulate API] Response:', {
@@ -76,6 +93,7 @@ export async function POST(req: NextRequest) {
       suggestedStartTime: result.suggestedStartTime,
       suggestedEndTime: result.suggestedEndTime,
       peopleBefore: result.peopleBefore,
+      branchId: targetBranchId,
     });
 
     return NextResponse.json(result);

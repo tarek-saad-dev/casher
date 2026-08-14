@@ -1,26 +1,30 @@
-# Phase 1L — Payroll Plan Contract
+# Phase 1L / 6C — Payroll Plan Contract
 
-**Date:** 2026-07-25  
+**Date:** 2026-08-13 (6C global agreement inherit)  
 **Table:** `TblEmpBranchPayrollPlan`  
 **Resolver:** `src/lib/payroll/branchPayrollPlan.ts`
 
-## Resolve
+## Resolve precedence
 
 ```text
-EmpID + BranchID + WorkDate between EffectiveFrom/EffectiveTo + IsActive=1
+1) Explicit EmpID + BranchID + WorkDate plan (branch override)
+2) Primary / global employee agreement (home-branch plan preferred, else any covering plan)
+3) null → no_branch_payroll_plan / salary_config_missing
 ```
 
 PayType: hourly | daily | monthly.
 
 ## Rules
 
-* No GLEEM fallback  
 * No TblEmp.HourlyRate / ManualHourlyRate / BaseSalary for operational generation  
-* HR employee form rate edits write **only** to `TblEmpBranchPayrollPlan` via `syncHrRatesToActiveBranchPlans` (TblEmp rate columns are not updated)  
-* Employee list/GET overlays rate fields from the active branch plan for display  
-* Overlap detection via `assertNoOverlappingBranchPayrollPlans`  
+* Branch assignment / schedule / attendance control **where** work happens  
+* Compensation agreement is **global per employee** (configure once in `/admin/hr?tab=employees`)  
+* Existing per-branch plan rows remain valid **explicit overrides** (not deleted)  
+* HR employee form rate edits write **only** to `TblEmpBranchPayrollPlan` via `syncHrRatesToActiveBranchPlans`  
+* Employee list/GET overlays rate fields from the primary/active plan for display  
+* Generated payroll / ledger rows stay attributed to the working `BranchID`  
 * Historical payroll keeps stored rate/breakdown  
 
 ## Status
 
-Generate path uses `SQL_BRANCH_PAYROLL_PLAN_APPLY` + `buildDailyWageSqlFromBranchPlan`.
+Generate path uses `SQL_BRANCH_PAYROLL_PLAN_APPLY` + `buildDailyWageSqlFromBranchPlan` (with primary inherit).

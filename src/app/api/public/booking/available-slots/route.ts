@@ -46,11 +46,10 @@ export async function GET(req: NextRequest) {
     const source = (searchParams.get('source') ?? 'public').toLowerCase();
     const isInternal = source === 'operations' || source === 'admin';
 
-    // Internal callers keep session branch; public must use branchCode + Phase 4 contract.
+    // Internal callers: resolve target branch from emp (cross-branch ops) or session.
     if (isInternal) {
       const branchCtx = await requireActiveBranchContext();
       if (!isActiveBranchContext(branchCtx)) return branchCtx;
-      // Delegate to legacy engine path for ops UI compatibility
       const { listAvailableBookingSlots } = await import('@/lib/bookingAvailabilityEngine');
       const { isValidDate } = await import('@/lib/publicBookingHelpers');
       const date = searchParams.get('date') ?? '';
@@ -61,16 +60,36 @@ export async function GET(req: NextRequest) {
       const mode = (searchParams.get('mode') ?? 'nearest') as 'nearest' | 'specific';
       const empIdParam = searchParams.get('empId');
       const empId = empIdParam ? Number(empIdParam) : null;
+      const requestedBranchId = searchParams.get('branchId');
       if (!isValidDate(date)) {
         return finalizePublicBookingError(req, gate, 'INVALID_DATE');
       }
+
+      let slotBranchId = branchCtx.branchId;
+      if (empId && Number.isFinite(empId) && empId > 0) {
+        const { resolveOpsWriteBranch } = await import('@/lib/branch/opsWriteBranch');
+        try {
+          const target = await resolveOpsWriteBranch({
+            userId: branchCtx.userId,
+            sessionBranchId: branchCtx.branchId,
+            empId,
+            workDate: date,
+            requestedBranchId,
+          });
+          slotBranchId = target.branchId;
+        } catch {
+          // Fall back to session — engine will return empty/unavailable if wrong branch
+          slotBranchId = branchCtx.branchId;
+        }
+      }
+
       const result = await listAvailableBookingSlots({
         date,
         serviceIds,
         mode,
         empId,
         source: source as 'operations' | 'admin',
-        branchId: branchCtx.branchId,
+        branchId: slotBranchId,
       });
       return finalizePublicBookingJson(
         req,

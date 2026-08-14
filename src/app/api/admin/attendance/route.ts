@@ -32,6 +32,11 @@ import {
 } from "@/lib/branch";
 import { assertEmployeeEligibleForBranchAttendance } from "@/lib/hr/attendance/branchAttendance.service";
 import { unlockScheduleForWorkOnDayOff } from "@/lib/hr/attendance/workOnDayOff.service";
+import { assertEmpBranchWorkDayMutable } from "@/lib/hr/empBranchWorkDayClose.service";
+import {
+  empBranchWorkDayCloseErrorResponse,
+  isEmpBranchWorkDayCloseError,
+} from "@/lib/hr/empBranchWorkDayClose.http";
 
 async function ensureAttendanceTable(db: { request: () => sql.Request }) {
   await db.request().query(`
@@ -302,6 +307,8 @@ export async function PUT(req: NextRequest) {
         { status: 400 },
       );
     }
+
+    await assertEmpBranchWorkDayMutable(branch.branchId, WorkDate);
 
     const validStatuses = [
       "Pending",
@@ -653,6 +660,9 @@ export async function PUT(req: NextRequest) {
       },
     });
   } catch (err: unknown) {
+    if (isEmpBranchWorkDayCloseError(err)) {
+      return empBranchWorkDayCloseErrorResponse(err);
+    }
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[api/admin/attendance] PUT error:", message);
     return NextResponse.json({ error: message }, { status: 500 });

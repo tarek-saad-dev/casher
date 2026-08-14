@@ -37,6 +37,11 @@ export interface CreateQueueRequest {
   source: 'walk_in' | 'booking' | 'reschedule' | 'operations_barber_header';
   /** When true, use client planned times after server validation (barber-header flow). */
   useClientPlannedTimes?: boolean;
+  /**
+   * Optional target branch (flow-board barber lane). When set and authorized,
+   * ticket is stamped there even if session active branch differs.
+   */
+  branchId?: number;
 }
 
 export interface CreateQueueResponse {

@@ -11,6 +11,7 @@ import {
 } from '@/lib/services/employeeLedgerDualWrite';
 import { isSystemJobAuthResult, requireSystemJobAuth } from '@/lib/api-auth';
 import { listActiveBranches } from '@/lib/branch';
+import { getEmpBranchWorkDayCloseState } from '@/lib/hr/empBranchWorkDayClose.service';
 
 function resolveWorkDate(override?: string): string {
   if (override && /^\d{4}-\d{2}-\d{2}$/.test(override)) return override;
@@ -50,6 +51,12 @@ export async function POST(req: NextRequest) {
     const allMissing: ValidationMissing[] = [];
 
     for (const branch of branches) {
+      const closeState = await getEmpBranchWorkDayCloseState(branch.branchId, workDate);
+      if (closeState.state === 'CLOSED') {
+        branchErrors.push(`${branch.branchCode}: payroll day CLOSED — skipped`);
+        continue;
+      }
+
       const postedCount = await countPostedDailyPayroll(db, workDate, branch.branchId);
       if (postedCount > 0) {
         continue;

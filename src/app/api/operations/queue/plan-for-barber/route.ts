@@ -2,6 +2,7 @@
  * POST /api/operations/queue/plan-for-barber
  *
  * Plans earliest available queue slot for a fixed barber and service set.
+ * Optional body.branchId targets the barber's operational branch across sessions.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -10,18 +11,21 @@ import {
   QueuePlanForBarberError,
 } from '@/lib/operationsQueuePlanCore';
 import { requireBranchOperationAccess, isActiveBranchContext } from '@/lib/branch/context';
-import { isEmployeeEligibleForBranchBookings } from '@/lib/branch/bookingQueueOwnership';
+import {
+  opsWriteBranchErrorResponse,
+  resolveOpsWriteBranch,
+} from '@/lib/branch/opsWriteBranch';
 import { getCairoBusinessDate } from '@/lib/businessDate';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   try {
-    const branch = await requireBranchOperationAccess();
-    if (!isActiveBranchContext(branch)) return branch;
+    const sessionBranch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(sessionBranch)) return sessionBranch;
 
     const body = await req.json();
-    const { empId, serviceIds, date, requestedFrom, source } = body;
+    const { empId, serviceIds, date, requestedFrom, source, branchId } = body;
 
     if (!empId || typeof empId !== 'number') {
       return NextResponse.json(
@@ -41,22 +45,31 @@ export async function POST(req: NextRequest) {
       typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)
         ? date
         : getCairoBusinessDate();
-    const eligible = await isEmployeeEligibleForBranchBookings({
-      empId,
-      branchId: branch.branchId,
-      operationalDate,
-      requireCanReceiveBookings: false,
-      includeTemporaryTransfer: true,
-    });
-    if (!eligible) {
-      return NextResponse.json(
-        {
-          available: false,
-          code: 'EMP_NOT_ASSIGNED',
-          message: 'الموظف غير معيَّن على هذا الفرع — بدّل للفرع الصحيح من شريط الجلسة',
-        },
-        { status: 400 },
-      );
+
+    try {
+      await resolveOpsWriteBranch({
+        userId: sessionBranch.userId,
+        sessionBranchId: sessionBranch.branchId,
+        empId,
+        workDate: operationalDate,
+        requestedBranchId: branchId,
+      });
+    } catch (err) {
+      const branchErr = opsWriteBranchErrorResponse(err);
+      if (branchErr) {
+        return NextResponse.json(
+          {
+            available: false,
+            code: 'EMP_NOT_ASSIGNED',
+            message:
+              err instanceof Error
+                ? err.message
+                : 'الموظف غير متاح على فرع تملك صلاحية التشغيل عليه',
+          },
+          { status: 400 },
+        );
+      }
+      throw err;
     }
 
     const result = await planQueueForBarber({

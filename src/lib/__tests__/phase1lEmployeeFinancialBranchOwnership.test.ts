@@ -66,6 +66,9 @@ describe('Phase 1L employee financial branch ownership', () => {
     expect(rules).toContain('SQL_BRANCH_PAYROLL_PLAN_APPLY');
     expect(rules).toContain('buildDailyWageSqlFromBranchPlan');
     expect(rules).toContain('no_branch_payroll_plan');
+    // Phase 6C: branch override then primary/global agreement inherit
+    expect(rules).toContain('IsHomeBranch');
+    expect(rules).toContain('bp0.BranchID = v.BranchID');
 
     const core = read('src/lib/payroll/dailyPayrollGenerateCore.ts');
     expect(core).toContain('SQL_BRANCH_PAYROLL_PLAN_APPLY');
@@ -76,6 +79,8 @@ describe('Phase 1L employee financial branch ownership', () => {
 
     const plan = read('src/lib/payroll/branchPayrollPlan.ts');
     expect(plan).toContain('resolveBranchPayrollPlanForDate');
+    expect(plan).toContain('inheritPrimaryAgreement');
+    expect(plan).toContain('pickEffectivePayrollPlan');
     expect(plan).toContain('assertNoOverlappingBranchPayrollPlans');
     expect(plan).toContain('syncHrRatesToActiveBranchPlans');
     expect(plan).toContain('overlayEmployeeRowWithBranchPlanRates');

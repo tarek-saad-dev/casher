@@ -42,6 +42,17 @@ vi.mock('@/lib/services/employeeLedgerDualWrite', () => ({
   })),
 }));
 
+vi.mock('@/lib/hr/empBranchWorkDayClose.service', () => ({
+  getEmpBranchWorkDayCloseState: vi.fn(async () => ({
+    branchId: 1,
+    workDate: '2026-04-15',
+    state: 'OPEN',
+    isVirtualOpen: true,
+    row: null,
+  })),
+  assertEmpBranchWorkDayMutable: vi.fn(async () => undefined),
+}));
+
 vi.mock('@/lib/employeeLedgerConfig', () => ({
   isEmployeeLedgerDualWriteEnabled: () => true,
 }));

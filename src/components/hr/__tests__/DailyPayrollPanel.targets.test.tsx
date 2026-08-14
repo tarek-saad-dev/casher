@@ -2,6 +2,20 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
+
+vi.mock('@/hooks/useSession', () => ({
+  useSession: () => ({
+    user: { UserID: 1, UserName: 'admin', UserLevel: 'admin' },
+  }),
+}));
+
+vi.mock('@/components/providers/PermissionsProvider', () => ({
+  usePermissions: () => ({
+    access: { isSuperAdmin: true, roles: ['admin'] },
+    hasRole: (r: string) => r === 'admin',
+  }),
+}));
+
 import DailyPayrollPanel from '@/components/hr/DailyPayrollPanel';
 
 vi.mock('next/link', () => ({
@@ -16,6 +30,7 @@ vi.mock('@/components/ui/dialog', () => ({
   DialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
+  DialogDescription: ({ children }: { children: React.ReactNode }) => <p>{children}</p>,
   DialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
@@ -24,6 +39,69 @@ describe('DailyPayrollPanel Phase 3 target UI', () => {
     vi.restoreAllMocks();
     global.fetch = vi.fn(async (url: RequestInfo | URL) => {
       const u = String(url);
+      if (u.includes('/api/branches/active')) {
+        return {
+          ok: true,
+          json: async () => ({ activeBranch: { BranchID: 1, BranchCode: 'GLEEM', BranchName: 'جليم' } }),
+        };
+      }
+      if (u.includes('/api/branches/available')) {
+        return {
+          ok: true,
+          json: async () => ({
+            branches: [
+              {
+                BranchID: 1,
+                BranchCode: 'GLEEM',
+                BranchName: 'جليم',
+                ShortName: 'جليم',
+                IsDefault: true,
+                CanOperate: true,
+                CanViewReports: true,
+                CanSwitch: true,
+                ValidTo: null,
+              },
+            ],
+          }),
+        };
+      }
+      if (u.includes('/api/admin/hr/daily-payroll/open-days')) {
+        return { ok: true, json: async () => ({ items: [], lookbackDays: 45, elapsedMs: 1 }) };
+      }
+      if (u.includes('/api/admin/hr/daily-payroll/readiness')) {
+        return {
+          ok: true,
+          json: async () => ({
+            branchId: 1,
+            branchCode: 'GLEEM',
+            branchName: 'جليم',
+            workDate: '2026-07-15',
+            persistedState: 'OPEN',
+            isVirtualOpen: true,
+            recommendedState: 'OPEN',
+            readyToClose: false,
+            blockers: [],
+            warnings: [],
+            employees: [],
+            summary: {
+              employeeCount: 0,
+              readyEmployeeCount: 0,
+              blockerCount: 0,
+              warningCount: 0,
+              payrollRowCount: 1,
+              targetRowCount: 0,
+              totalHours: 8,
+              totalWage: 400,
+              totalTargetAmount: 0,
+              hasActivity: true,
+            },
+            elapsedMs: 5,
+          }),
+        };
+      }
+      if (u.includes('/api/auth/switch-branch')) {
+        return { ok: true, json: async () => ({ ok: true, changed: false }) };
+      }
       if (u.includes('/api/payroll/daily/auto-generate')) {
         return { ok: true, json: async () => ({ found: false }) };
       }
@@ -56,6 +134,9 @@ describe('DailyPayrollPanel Phase 3 target UI', () => {
               {
                 empId: 3,
                 empName: 'كريم',
+                branchId: 1,
+                branchCode: 'GLEEM',
+                branchName: 'جليم',
                 persistenceStatus: 'not_generated',
                 displayStatus: null,
                 currentNetSalesAfterDiscount: '700.00',
@@ -92,6 +173,9 @@ describe('DailyPayrollPanel Phase 3 target UI', () => {
                 ID: 1,
                 EmpID: 1,
                 EmpName: 'أحمد',
+                BranchID: 3,
+                BranchCode: 'CAMP_CAESAR',
+                BranchName: 'كامب شيزار',
                 EmploymentType: 'full_time',
                 PayrollMethod: 'hourly',
                 HourlyRateSnapshot: 50,
@@ -124,6 +208,7 @@ describe('DailyPayrollPanel Phase 3 target UI', () => {
               totalEmployeeIncomeAmount: 0,
             },
             missingMappingEmps: [],
+            sameDayMultiBranchEmployees: [],
           }),
         };
       }
@@ -135,18 +220,18 @@ describe('DailyPayrollPanel Phase 3 target UI', () => {
 
   it('loads and merges payroll + target-only rows; shows separate columns', async () => {
     render(<DailyPayrollPanel />);
-    fireEvent.click(screen.getByRole('button', { name: /تحميل البيانات/ }));
 
     await waitFor(() => {
       expect(screen.getByText('أحمد')).toBeInTheDocument();
       expect(screen.getByText('كريم')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('الأساسي اليومي')).toBeInTheDocument();
+    expect(screen.getAllByText('كامب شيزار').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('جليم').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'كل الموظفين' })).toBeInTheDocument();
+    expect(screen.getAllByText('الأساسي اليومي').length).toBeGreaterThan(0);
     expect(screen.getByText('تارجت حتى الآن / فرق اليوم')).toBeInTheDocument();
     expect(screen.queryByText(/إجمالي الاستحقاق|CombinedPay|الأساسي \+ التارجت/i)).not.toBeInTheDocument();
-    expect(screen.getByText('إجمالي الأساسي اليومي')).toBeInTheDocument();
-    expect(screen.getByText('تارجت حتى الآن')).toBeInTheDocument();
     expect(screen.getByText('فرق تارجت اليوم')).toBeInTheDocument();
     expect(screen.getAllByText('لم يتم التوليد').length).toBeGreaterThan(0);
   });
@@ -155,6 +240,35 @@ describe('DailyPayrollPanel Phase 3 target UI', () => {
     const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
     fetchMock.mockImplementation(async (url: RequestInfo | URL, init?: RequestInit) => {
       const u = String(url);
+      if (u.includes('/api/branches/active')) {
+        return { ok: true, json: async () => ({ activeBranch: { BranchID: 1 } }) };
+      }
+      if (u.includes('/api/branches/available')) {
+        return {
+          ok: true,
+          json: async () => ({
+            branches: [{ BranchID: 1, BranchCode: 'GLEEM', BranchName: 'جليم' }],
+          }),
+        };
+      }
+      if (u.includes('/api/admin/hr/daily-payroll/open-days')) {
+        return { ok: true, json: async () => ({ items: [], lookbackDays: 45, elapsedMs: 1 }) };
+      }
+      if (u.includes('/api/admin/hr/daily-payroll/readiness')) {
+        return {
+          ok: true,
+          json: async () => ({
+            branchId: 1, branchCode: 'GLEEM', branchName: 'جليم', workDate: '2026-07-15',
+            persistedState: 'OPEN', isVirtualOpen: true, recommendedState: 'OPEN', readyToClose: false,
+            blockers: [], warnings: [], employees: [],
+            summary: { employeeCount: 0, readyEmployeeCount: 0, blockerCount: 0, warningCount: 0, payrollRowCount: 0, targetRowCount: 0, totalHours: 0, totalWage: 0, totalTargetAmount: 0, hasActivity: false },
+            elapsedMs: 1,
+          }),
+        };
+      }
+      if (u.includes('/api/auth/switch-branch')) {
+        return { ok: true, json: async () => ({ ok: true }) };
+      }
       if (init?.method === 'POST' && u.includes('/api/payroll/daily/generate') && !u.includes('targets')) {
         return {
           ok: true,
@@ -213,6 +327,7 @@ describe('DailyPayrollPanel Phase 3 target UI', () => {
     });
 
     render(<DailyPayrollPanel />);
+    await waitFor(() => expect(screen.getByRole('button', { name: /توليد اليوميات والتارجت/ })).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /توليد اليوميات والتارجت/ }));
 
     await waitFor(() => {
@@ -227,6 +342,35 @@ describe('DailyPayrollPanel Phase 3 target UI', () => {
     const posts: string[] = [];
     fetchMock.mockImplementation(async (url: RequestInfo | URL, init?: RequestInit) => {
       const u = String(url);
+      if (u.includes('/api/branches/active')) {
+        return { ok: true, json: async () => ({ activeBranch: { BranchID: 1 } }) };
+      }
+      if (u.includes('/api/branches/available')) {
+        return {
+          ok: true,
+          json: async () => ({
+            branches: [{ BranchID: 1, BranchCode: 'GLEEM', BranchName: 'جليم' }],
+          }),
+        };
+      }
+      if (u.includes('/api/admin/hr/daily-payroll/open-days')) {
+        return { ok: true, json: async () => ({ items: [], lookbackDays: 45, elapsedMs: 1 }) };
+      }
+      if (u.includes('/api/admin/hr/daily-payroll/readiness')) {
+        return {
+          ok: true,
+          json: async () => ({
+            branchId: 1, branchCode: 'GLEEM', branchName: 'جليم', workDate: '2026-07-15',
+            persistedState: 'OPEN', isVirtualOpen: true, recommendedState: 'OPEN', readyToClose: false,
+            blockers: [], warnings: [], employees: [],
+            summary: { employeeCount: 0, readyEmployeeCount: 0, blockerCount: 0, warningCount: 0, payrollRowCount: 0, targetRowCount: 0, totalHours: 0, totalWage: 0, totalTargetAmount: 0, hasActivity: false },
+            elapsedMs: 1,
+          }),
+        };
+      }
+      if (u.includes('/api/auth/switch-branch')) {
+        return { ok: true, json: async () => ({ ok: true }) };
+      }
       if (init?.method === 'POST') posts.push(u);
       if (init?.method === 'POST' && u.includes('/targets/recalc-requests')) {
         return {
@@ -266,6 +410,7 @@ describe('DailyPayrollPanel Phase 3 target UI', () => {
     });
 
     render(<DailyPayrollPanel />);
+    await waitFor(() => expect(screen.getByRole('button', { name: /إعادة حساب التارجت فقط/ })).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /إعادة حساب التارجت فقط/ }));
 
     await waitFor(() => {

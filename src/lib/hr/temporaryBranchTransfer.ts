@@ -418,7 +418,7 @@ export async function previewTemporaryBranchTransfer(args: {
     } else {
       blockers.push({
         code: 'EMPLOYEE_BRANCH_PAYROLL_PLAN_REQUIRED',
-        message: 'خطة راتب فرع الوجهة مطلوبة',
+        message: 'اتفاقية راتب الموظف مطلوبة (اضبطها مرة واحدة من بيانات الموظف)',
       });
     }
   }

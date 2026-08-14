@@ -35,6 +35,10 @@ import type { TargetRecalcRequestRow } from './employee-target-recalc.repository
 export interface DailyTargetQueryEmployee {
   empId: number;
   empName: string;
+  /** Working BranchID for this target row (never home-branch fallback). */
+  branchId: number;
+  branchCode?: string;
+  branchName?: string;
   targetPlanId: number;
   planEffectiveFrom: string;
   planEffectiveTo: string | null;
@@ -198,8 +202,12 @@ function mapOneEmployee(params: {
   workDate: string;
   stored: DailyTargetRow | null;
   recalcRequest: TargetRecalcRequestRow | null;
+  branchId: number;
+  branchCode?: string;
+  branchName?: string;
 }): DailyTargetQueryEmployee {
-  const { plan, tiers, daySales, mtdSales, workDate, stored, recalcRequest } = params;
+  const { plan, tiers, daySales, mtdSales, workDate, stored, recalcRequest, branchId, branchCode, branchName } =
+    params;
 
   const mtdCalc = calculateDailyTarget(mtdSales, tiers);
   const mtdTarget = Math.max(0, mtdCalc.targetAmount);
@@ -232,6 +240,9 @@ function mapOneEmployee(params: {
   return {
     empId: plan.empId,
     empName: plan.empName,
+    branchId,
+    ...(branchCode != null ? { branchCode } : {}),
+    ...(branchName != null ? { branchName } : {}),
     targetPlanId: plan.planId,
     planEffectiveFrom: plan.effectiveFrom,
     planEffectiveTo: plan.effectiveTo,
@@ -381,6 +392,7 @@ export async function getEmployeeDailyTargetsForDate(
       workDate,
       stored,
       recalcRequest: recalcByEmp.get(empId) ?? null,
+      branchId,
     });
     employees.push(row);
 

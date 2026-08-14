@@ -21,10 +21,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { requireBranchOperationAccess, isActiveBranchContext } from "@/lib/branch/context";
-import {
-  assertBookingOwnedByActiveBranch,
-  bookingQueueNotFoundResponse,
-} from "@/lib/branch/bookingQueueOwnership";
+import { bookingQueueNotFoundResponse } from "@/lib/branch/bookingQueueOwnership";
+import { userCanManageOpsBranchRecord } from "@/lib/branch/opsWriteBranch";
 
 export const runtime = "nodejs";
 
@@ -85,7 +83,13 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     const ticket = checkRes.recordset[0];
 
-    if (!assertBookingOwnedByActiveBranch(branch.branchId, ticket.BranchID)) {
+    if (
+      !(await userCanManageOpsBranchRecord({
+        userId: branch.userId,
+        sessionBranchId: branch.branchId,
+        recordBranchId: ticket.BranchID,
+      }))
+    ) {
       return bookingQueueNotFoundResponse();
     }
 

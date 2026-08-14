@@ -33,7 +33,9 @@ export async function OPTIONS(req: NextRequest) {
 /**
  * POST /api/public/booking/create
  * Phase 6 — transactional create via createPublicBooking.
- * Internal ops/admin (`source=operations|admin`): session active branch (no client branchCode).
+ * Internal ops/admin (`source=operations|admin`): resolves write branch from
+ * emp operational location (optional body.branchId) when authorized — no forced
+ * session branch switch.
  */
 export async function POST(req: NextRequest) {
   const { gate, blocked } = gatePublicBookingRoute(req, 'create');
@@ -65,8 +67,33 @@ export async function POST(req: NextRequest) {
     if (isInternalOps) {
       const branch = await requireBranchOperationAccess();
       if (!isActiveBranchContext(branch)) return branch;
-      // Session branch wins — never trust client branchCode for staff create.
-      branchCode = branch.branchCode;
+
+      const empIdNum =
+        typeof body.empId === 'number'
+          ? body.empId
+          : body.empId != null
+            ? Number(body.empId)
+            : NaN;
+      const workDate =
+        typeof body.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.date)
+          ? body.date
+          : undefined;
+
+      if (Number.isFinite(empIdNum) && empIdNum > 0) {
+        const { resolveOpsWriteBranch } = await import('@/lib/branch/opsWriteBranch');
+        const target = await resolveOpsWriteBranch({
+          userId: branch.userId,
+          sessionBranchId: branch.branchId,
+          empId: empIdNum,
+          workDate,
+          requestedBranchId: body.branchId ?? body.BranchID,
+        });
+        branchCode = target.branchCode;
+      } else {
+        // Nearest / no emp yet — stay on session branch (legacy).
+        branchCode = branch.branchCode;
+      }
+
       purpose = 'internal_preview';
       auth = { userId: branch.userId, canOperate: branch.canOperate };
       bookingSource = sourceRaw === 'admin' ? 'admin' : 'operations';
@@ -125,6 +152,9 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
+    const { opsWriteBranchErrorResponse } = await import('@/lib/branch/opsWriteBranch');
+    const branchErr = opsWriteBranchErrorResponse(err);
+    if (branchErr) return branchErr;
     if (err instanceof PublicBookingCreateError) {
       return finalizePublicBookingError(req, gate, err.code, err.metadata);
     }

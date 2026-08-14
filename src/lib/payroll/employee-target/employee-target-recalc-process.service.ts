@@ -177,9 +177,17 @@ export async function enqueueAndMaybeProcessTargetRecalc(params: {
   let scopes: TargetRecalcScope[];
   if (params.empIds != null && params.empIds.length > 0) {
     const { listActiveBranches } = await import('@/lib/branch');
+    const { getEmpBranchWorkDayCloseState } = await import(
+      '@/lib/hr/empBranchWorkDayClose.service'
+    );
     const branches = await listActiveBranches();
     scopes = [];
     for (const branch of branches) {
+      const closeView = await getEmpBranchWorkDayCloseState(
+        branch.branchId,
+        params.workDate,
+      );
+      if (closeView.state === 'CLOSED') continue;
       for (const empId of params.empIds) {
         scopes.push({
           empId,
@@ -222,8 +230,16 @@ export async function enqueueAndMaybeProcessTargetRecalc(params: {
     } else {
       // Whole day: generate all eligible plans per active branch + clear pending
       const { listActiveBranches } = await import('@/lib/branch');
+      const { getEmpBranchWorkDayCloseState } = await import(
+        '@/lib/hr/empBranchWorkDayClose.service'
+      );
       const branches = await listActiveBranches();
       for (const branch of branches) {
+        const closeView = await getEmpBranchWorkDayCloseState(
+          branch.branchId,
+          params.workDate,
+        );
+        if (closeView.state === 'CLOSED') continue;
         await generateEmployeeDailyTargets({
           workDate: params.workDate,
           branchId: branch.branchId,

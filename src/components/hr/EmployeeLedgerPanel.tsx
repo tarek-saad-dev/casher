@@ -11,11 +11,15 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import type {
+  EmpLedgerBranchFinancialOverall,
+  EmpLedgerBranchFinancialRow,
+  EmpLedgerEmployeeBranchBreakdown,
   EmpLedgerEmployeeSummaryRow,
   EmpLedgerListResponse,
   EmpLedgerSummaryResponse,
+  EmpLedgerTableBranchCode,
 } from '@/lib/types/employee-ledger';
-import { EMP_LEDGER_REASON_LABELS } from '@/lib/types/employee-ledger';
+import { EMP_LEDGER_REASON_LABELS, EMP_LEDGER_TABLE_BRANCH_CODES } from '@/lib/types/employee-ledger';
 import EmployeePayoutModal, { type EmployeePayoutTarget } from '@/components/hr/EmployeePayoutModal';
 import EmployeeFundingModal from '@/components/hr/EmployeeFundingModal';
 import MonthlySalaryPostModal from '@/components/hr/MonthlySalaryPostModal';
@@ -28,6 +32,7 @@ import {
   isInMonthCloseGraceWindow,
   MONTH_CLOSE_GRACE_CUTOFF_HOUR,
 } from '@/lib/businessDate';
+import { cn } from '@/lib/utils';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
@@ -39,6 +44,40 @@ function currentMonthStr(): string {
 interface EmployeeOption {
   EmpID: number;
   EmpName: string;
+}
+
+interface AccessibleBranch {
+  branchId: number;
+  branchCode: string;
+  branchName: string;
+}
+
+function shortBranchLabel(b: { branchCode: string; branchName: string }): string {
+  if (b.branchCode === 'GLEEM') return 'جليم';
+  if (b.branchCode === 'CAMP_CAESAR') return 'كامب شيزار';
+  return b.branchName || b.branchCode;
+}
+
+function balanceTone(n: number): string {
+  if (n > 0) return 'text-emerald-400';
+  if (n < 0) return 'text-rose-400';
+  return 'text-zinc-400';
+}
+
+function BranchRowBadge({ code }: { code: string }) {
+  const gleem = code === 'GLEEM';
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold',
+        gleem
+          ? 'border-sky-500/35 bg-sky-500/10 text-sky-300'
+          : 'border-violet-500/35 bg-violet-500/10 text-violet-300',
+      )}
+    >
+      {shortBranchLabel({ branchCode: code, branchName: code })}
+    </span>
+  );
 }
 
 function directionBadge(direction: string) {
@@ -58,10 +97,57 @@ function directionBadge(direction: string) {
   );
 }
 
+function BranchSummaryCard({
+  title,
+  row,
+  highlight,
+}: {
+  title: string;
+  row: Pick<
+    EmpLedgerBranchFinancialRow,
+    'accrued' | 'paid' | 'advances' | 'deductions' | 'transfers' | 'balance'
+  >;
+  highlight?: boolean;
+}) {
+  const impacting = row.advances + row.deductions + row.transfers;
+  return (
+    <div
+      className={cn(
+        'rounded-xl border p-4 space-y-3',
+        highlight
+          ? 'border-primary/40 bg-primary/5'
+          : 'border-zinc-800 bg-zinc-900/40',
+      )}
+    >
+      <h4 className="text-sm font-bold text-white">{title}</h4>
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-lg bg-zinc-950/50 px-2.5 py-2">
+          <p className="text-zinc-500 mb-0.5">إجمالي المستحقات</p>
+          <p className="font-mono text-emerald-400 font-semibold">{fmt(row.accrued)} ج.م</p>
+        </div>
+        <div className="rounded-lg bg-zinc-950/50 px-2.5 py-2">
+          <p className="text-zinc-500 mb-0.5">المصروف / المدفوع</p>
+          <p className="font-mono text-rose-400 font-semibold">{fmt(row.paid)} ج.م</p>
+        </div>
+        <div className="rounded-lg bg-zinc-950/50 px-2.5 py-2">
+          <p className="text-zinc-500 mb-0.5">سلف / خصومات / حركات</p>
+          <p className="font-mono text-amber-300 font-semibold">{fmt(impacting)} ج.م</p>
+        </div>
+        <div className="rounded-lg bg-zinc-950/50 px-2.5 py-2">
+          <p className="text-zinc-500 mb-0.5">الرصيد الحالي</p>
+          <p className="font-mono text-amber-400 font-bold">{fmt(row.balance)} ج.م</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EmployeeLedgerPanel() {
   const [month, setMonth] = useState(currentMonthStr);
   const [empId, setEmpId] = useState<string>('all');
+  const [branchFilter, setBranchFilter] = useState<string>('all');
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
+  const [accessibleBranches, setAccessibleBranches] = useState<AccessibleBranch[]>([]);
 
   const [summary, setSummary] = useState<EmpLedgerSummaryResponse | null>(null);
   const [ledger, setLedger] = useState<EmpLedgerListResponse | null>(null);
@@ -98,25 +184,32 @@ export default function EmployeeLedgerPanel() {
   const loadSummary = useCallback(async () => {
     setLoadingSummary(true);
     try {
-      const res = await fetch(`/api/admin/hr/employee-ledger/summary?month=${month}`);
-      const data: EmpLedgerSummaryResponse & { error?: string } = await res.json();
+      const params = new URLSearchParams({ month, branchId: branchFilter });
+      const res = await fetch(`/api/admin/hr/employee-ledger/summary?${params}`);
+      const data: EmpLedgerSummaryResponse & {
+        error?: string;
+        accessibleBranches?: AccessibleBranch[];
+      } = await res.json();
       if (!res.ok && res.status !== 503) {
         throw new Error(data.error || 'خطأ في تحميل الملخص');
       }
       setSummary(data);
       setDualWriteEnabled(Boolean(data.ledgerDualWriteEnabled));
+      if (Array.isArray(data.accessibleBranches)) {
+        setAccessibleBranches(data.accessibleBranches);
+      }
       if (data.error) setError(data.error);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'خطأ في تحميل الملخص');
     } finally {
       setLoadingSummary(false);
     }
-  }, [month]);
+  }, [month, branchFilter]);
 
   const loadEntries = useCallback(async () => {
     setLoadingEntries(true);
     try {
-      const params = new URLSearchParams({ month });
+      const params = new URLSearchParams({ month, branchId: branchFilter });
       if (empId !== 'all') params.set('empId', empId);
       const res = await fetch(`/api/admin/hr/employee-ledger?${params.toString()}`);
       const data: EmpLedgerListResponse & { error?: string } = await res.json();
@@ -131,7 +224,7 @@ export default function EmployeeLedgerPanel() {
     } finally {
       setLoadingEntries(false);
     }
-  }, [month, empId]);
+  }, [month, empId, branchFilter]);
 
   const refresh = useCallback(async () => {
     setError('');
@@ -160,6 +253,7 @@ export default function EmployeeLedgerPanel() {
 
   const entries = ledger?.entries ?? [];
   const showRunningBalance = empId !== 'all';
+  const showBranchColumn = branchFilter === 'all';
   const entriesWithBalance = useMemo(
     () => (showRunningBalance ? attachRunningBalances(entries) : entries.map((e) => ({ ...e, runningBalance: null as number | null }))),
     [entries, showRunningBalance],
@@ -182,10 +276,40 @@ export default function EmployeeLedgerPanel() {
         }
       : null;
 
+  const branchFinancial = summary?.branchFinancial;
+  type BranchCard = {
+    key: string;
+    title: string;
+    row: EmpLedgerBranchFinancialRow | EmpLedgerBranchFinancialOverall;
+    highlight?: boolean;
+  };
+  const branchCards = useMemo((): BranchCard[] => {
+    if (!branchFinancial) return [];
+    if (branchFilter !== 'all') {
+      const only = branchFinancial.branches[0];
+      if (!only) return [];
+      return [{ key: String(only.branchId), title: shortBranchLabel(only), row: only }];
+    }
+    return [
+      ...branchFinancial.branches.map((b) => ({
+        key: String(b.branchId),
+        title: shortBranchLabel(b),
+        row: b as EmpLedgerBranchFinancialRow | EmpLedgerBranchFinancialOverall,
+      })),
+      {
+        key: 'overall',
+        title: 'الإجمالي العام',
+        row: branchFinancial.overall,
+        highlight: true,
+      },
+    ];
+  }, [branchFinancial, branchFilter]);
+
   const openPayout = (row: EmpLedgerEmployeeSummaryRow) => {
     setPayoutTarget({
       empId: row.empId,
       empName: row.empName,
+      // Filter-scoped balance (session payout still validates branch account server-side).
       monthBalance: row.balance,
     });
     setPayoutOpen(true);
@@ -207,6 +331,7 @@ export default function EmployeeLedgerPanel() {
   };
 
   const loading = loadingSummary || loadingEntries;
+  const entryColSpan = (showRunningBalance ? 9 : 8) + (showBranchColumn ? 1 : 0);
 
   return (
     <div className="space-y-5">
@@ -241,6 +366,35 @@ export default function EmployeeLedgerPanel() {
               ))}
             </SelectContent>
           </Select>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setBranchFilter('all')}
+              className={cn(
+                'rounded-lg border px-2.5 py-1.5 text-xs transition-colors',
+                branchFilter === 'all'
+                  ? 'border-primary/50 bg-primary/15 text-primary'
+                  : 'border-border bg-surface-muted text-muted-foreground hover:text-foreground',
+              )}
+            >
+              الكل
+            </button>
+            {accessibleBranches.map((b) => (
+              <button
+                key={b.branchId}
+                type="button"
+                onClick={() => setBranchFilter(String(b.branchId))}
+                className={cn(
+                  'rounded-lg border px-2.5 py-1.5 text-xs transition-colors',
+                  branchFilter === String(b.branchId)
+                    ? 'border-primary/50 bg-primary/15 text-primary'
+                    : 'border-border bg-surface-muted text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {shortBranchLabel(b)}
+              </button>
+            ))}
+          </div>
           <Button
             onClick={refresh}
             disabled={loading}
@@ -294,6 +448,7 @@ export default function EmployeeLedgerPanel() {
           <span className="text-sky-100">صرف</span> = صرف مستحقات فعلي من زر «صرف مستحقات» فقط.
         </p>
         <p>الرصيد = استحقاقات + تمويل من موظف − سلف − صرف مستحقات − خصومات</p>
+        <p>كل حركة تُنسب لفرع القيد الأصلي (BranchID) — ليس فرع التعيين الحالي للموظف.</p>
         <p>تمويل الموظف يزيد الخزنة ويُسجَّل التزاماً في الدفتر — ليس إيراد مبيعات.</p>
         <p>أي إيراد يُسجَّل على تصنيف مربوط بالموظف من «الربط المالي» يُضاف تلقائياً كتمويل في الدفتر.</p>
         <p>الصرف الحقيقي يتم من زر &quot;صرف مستحقات&quot; — الزر اليدوي «تمويل من موظف» للحالات غير المربوطة فقط.</p>
@@ -304,6 +459,20 @@ export default function EmployeeLedgerPanel() {
           مراجعة تطابق الدفتر مع اليوميات والخزنة
         </Link>
       </div>
+
+      {/* Branch financial summary */}
+      {branchCards.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {branchCards.map((c) => (
+            <BranchSummaryCard
+              key={c.key}
+              title={c.title}
+              row={c.row}
+              highlight={c.highlight}
+            />
+          ))}
+        </div>
+      )}
 
       {/* KPI cards */}
       {displayTotals && (
@@ -319,74 +488,135 @@ export default function EmployeeLedgerPanel() {
         </div>
       )}
 
-      {/* Per-employee summary */}
+      {/* Per-employee summary — 2 rows per employee (GLEEM + CAMP_CAESAR) */}
       <div className="rounded-xl border border-zinc-800 overflow-hidden">
         <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/40 flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-zinc-300">أرصدة الموظفين — {month}</h3>
+          <h3 className="text-sm font-semibold text-zinc-300">أرصدة الموظفين حسب الفرع — {month}</h3>
           {loadingSummary && <Loader2 className="w-4 h-4 animate-spin text-zinc-500" />}
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[1100px]">
             <thead>
               <tr className="border-b border-zinc-800 text-zinc-500 text-xs uppercase tracking-wider">
                 <th className="px-4 py-3 text-right font-medium">الموظف</th>
+                <th className="px-4 py-3 text-right font-medium">الفرع</th>
                 <th className="px-4 py-3 text-right font-medium">راتب</th>
                 <th className="px-4 py-3 text-right font-medium">تارجت</th>
                 <th className="px-4 py-3 text-right font-medium">تمويل للمحل</th>
                 <th className="px-4 py-3 text-right font-medium" title="صرف مستحقات فعلي من زر صرف مستحقات فقط">صرف</th>
-                <th className="px-4 py-3 text-right font-medium" title="أول ما يُسحب يُخصم من إيراد/تمويل الموظف للمحل">سحب الايراد</th>
+                <th className="px-4 py-3 text-right font-medium" title="أول ما يُسحب يُخصم من إيراد/تمويل الموظف للمحل">سحب الإيراد</th>
                 <th className="px-4 py-3 text-right font-medium" title="سلف الخزنة المسجّلة على الموظف (بعد خصم التمويل)">سلفة</th>
                 <th className="px-4 py-3 text-right font-medium">خصومات</th>
-                <th className="px-4 py-3 text-right font-medium">الرصيد</th>
+                <th className="px-4 py-3 text-right font-medium">رصيد الفرع</th>
+                <th className="px-4 py-3 text-right font-medium">الرصيد الإجمالي</th>
                 <th className="px-4 py-3 text-right font-medium">إجراء</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800/60">
+            <tbody>
               {summaryRows.length === 0 && !loadingSummary && (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-zinc-500 text-sm">
+                  <td colSpan={12} className="px-4 py-8 text-center text-zinc-500 text-sm">
                     لا توجد قيود في هذا الشهر — الدفتر جاهز لاستقبال البيانات في المراحل القادمة
                   </td>
                 </tr>
               )}
-              {summaryRows.map((row) => (
-                <tr
-                  key={row.empId}
-                  className={`hover:bg-zinc-800/30 transition-colors cursor-pointer ${
-                    empId === String(row.empId) ? 'bg-primary/5' : ''
-                  }`}
-                  onClick={() => setEmpId(String(row.empId))}
-                >
-                  <td className="px-4 py-3 font-medium text-white">{row.empName}</td>
-                  <td className="px-4 py-3 font-mono text-emerald-400">{fmt(row.salaryCredits)}</td>
-                  <td className="px-4 py-3 font-mono text-emerald-400/80">{fmt(row.targetCredits)}</td>
-                  <td className="px-4 py-3 font-mono text-sky-400">{fmt(row.fundingCredits)}</td>
-                  <td className="px-4 py-3 font-mono text-rose-400/80">{fmt(row.payoutWithinDues)}</td>
-                  <td className="px-4 py-3 font-mono text-amber-300">{fmt(row.revenueWithdrawal)}</td>
-                  <td className="px-4 py-3 font-mono text-rose-400 font-semibold">{fmt(row.advanceExcess)}</td>
-                  <td className="px-4 py-3 font-mono text-rose-300">{fmt(row.deductionDebits)}</td>
-                  <td className="px-4 py-3 font-mono font-bold text-amber-400">{fmt(row.balance)}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="h-8 gap-1 border-border text-xs"
-                        disabled={!dualWriteEnabled || row.balance <= 0}
-                        title={!dualWriteEnabled ? 'يتطلب تفعيل EMP_LEDGER_DUAL_WRITE_ENABLED' : undefined}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openPayout(row);
-                        }}
-                      >
-                        <Wallet className="w-3.5 h-3.5" />
-                        صرف مستحقات
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {summaryRows.map((row) => {
+                const branchCodes = EMP_LEDGER_TABLE_BRANCH_CODES as readonly EmpLedgerTableBranchCode[];
+                const selected = empId === String(row.empId);
+                const overall = row.overallBalance ?? row.balance;
+                return branchCodes.map((code, idx) => {
+                  const br: EmpLedgerEmployeeBranchBreakdown = row.branches?.[code] ?? {
+                    branchId: 0,
+                    branchCode: code,
+                    branchName: code,
+                    salary: 0,
+                    target: 0,
+                    funding: 0,
+                    payout: 0,
+                    revenueWithdrawal: 0,
+                    advance: 0,
+                    deductions: 0,
+                    balance: 0,
+                    salaryCredits: 0,
+                    targetCredits: 0,
+                    fundingCredits: 0,
+                    advanceDebits: 0,
+                    payoutDebits: 0,
+                    deductionDebits: 0,
+                  };
+                  const isGleem = code === 'GLEEM';
+                  return (
+                    <tr
+                      key={`${row.empId}-${code}`}
+                      className={cn(
+                        'transition-colors cursor-pointer border-b border-zinc-800/50',
+                        isGleem ? 'bg-sky-950/20' : 'bg-violet-950/15',
+                        selected && 'ring-1 ring-inset ring-primary/30',
+                        'hover:brightness-110',
+                      )}
+                      onClick={() => setEmpId(String(row.empId))}
+                    >
+                      {idx === 0 && (
+                        <td
+                          rowSpan={2}
+                          className="px-4 py-3 font-medium text-white align-middle border-l border-zinc-800/40"
+                        >
+                          {row.empName}
+                        </td>
+                      )}
+                      <td className="px-4 py-2.5">
+                        <BranchRowBadge code={code} />
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-emerald-400">{fmt(br.salary)}</td>
+                      <td className="px-4 py-2.5 font-mono text-emerald-400/80">{fmt(br.target)}</td>
+                      <td className="px-4 py-2.5 font-mono text-sky-400">{fmt(br.funding)}</td>
+                      <td className="px-4 py-2.5 font-mono text-rose-400/80">{fmt(br.payout)}</td>
+                      <td className="px-4 py-2.5 font-mono text-amber-300">{fmt(br.revenueWithdrawal)}</td>
+                      <td className="px-4 py-2.5 font-mono text-rose-400 font-semibold">{fmt(br.advance)}</td>
+                      <td className="px-4 py-2.5 font-mono text-rose-300">{fmt(br.deductions)}</td>
+                      <td className={cn('px-4 py-2.5 font-mono font-bold', balanceTone(br.balance))}>
+                        {fmt(br.balance)}
+                      </td>
+                      {idx === 0 && (
+                        <td
+                          rowSpan={2}
+                          className={cn(
+                            'px-4 py-3 font-mono font-bold align-middle border-r border-zinc-800/40',
+                            balanceTone(overall),
+                          )}
+                        >
+                          {fmt(overall)}
+                        </td>
+                      )}
+                      {idx === 0 && (
+                        <td rowSpan={2} className="px-4 py-3 align-middle">
+                          <div className="flex flex-wrap gap-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8 gap-1 border-border text-xs"
+                              disabled={!dualWriteEnabled || row.balance <= 0}
+                              title={
+                                !dualWriteEnabled
+                                  ? 'يتطلب تفعيل EMP_LEDGER_DUAL_WRITE_ENABLED'
+                                  : undefined
+                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openPayout(row);
+                              }}
+                            >
+                              <Wallet className="w-3.5 h-3.5" />
+                              صرف مستحقات
+                            </Button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                });
+              })}
             </tbody>
           </table>
         </div>
@@ -411,6 +641,9 @@ export default function EmployeeLedgerPanel() {
               <tr className="border-b border-zinc-800 text-zinc-500 text-xs uppercase tracking-wider">
                 <th className="px-4 py-3 text-right font-medium">التاريخ</th>
                 <th className="px-4 py-3 text-right font-medium">الموظف</th>
+                {showBranchColumn && (
+                  <th className="px-4 py-3 text-right font-medium">الفرع</th>
+                )}
                 <th className="px-4 py-3 text-right font-medium">الاتجاه</th>
                 <th className="px-4 py-3 text-right font-medium">السبب</th>
                 <th className="px-4 py-3 text-right font-medium">المبلغ</th>
@@ -427,7 +660,7 @@ export default function EmployeeLedgerPanel() {
             <tbody className="divide-y divide-zinc-800/60">
               {entriesWithBalance.length === 0 && !loadingEntries && (
                 <tr>
-                  <td colSpan={showRunningBalance ? 9 : 8} className="px-4 py-8 text-center text-zinc-500 text-sm">
+                  <td colSpan={entryColSpan} className="px-4 py-8 text-center text-zinc-500 text-sm">
                     لا توجد قيود مسجّلة بعد
                   </td>
                 </tr>
@@ -456,6 +689,16 @@ export default function EmployeeLedgerPanel() {
                   >
                     <td className="px-4 py-3 font-mono text-xs text-zinc-400">{entry.entryDate}</td>
                     <td className="px-4 py-3 text-white">{entry.empName}</td>
+                    {showBranchColumn && (
+                      <td className="px-4 py-3 text-xs text-zinc-400">
+                        {entry.branchCode || entry.branchName
+                          ? shortBranchLabel({
+                              branchCode: entry.branchCode ?? '',
+                              branchName: entry.branchName ?? '',
+                            })
+                          : '—'}
+                      </td>
+                    )}
                     <td className="px-4 py-3">{directionBadge(entry.entryDirection)}</td>
                     <td className="px-4 py-3 text-zinc-300">{reasonLabel}</td>
                     <td className={`px-4 py-3 font-mono font-medium ${
@@ -522,7 +765,7 @@ export default function EmployeeLedgerPanel() {
       )}
 
       <p className="text-xs text-zinc-600 px-1">
-        الرصيد المعروض في الجدول حسب شهر الرواتب المحدد. عند اختيار موظف يظهر «الرصيد التراكمي» بعد كل قيد. عند الصرف يُتحقق من الرصيد الإجمالي (كل القيود غير الملغاة).
+        الرصيد المعروض حسب شهر الرواتب وفلتر الفرع. الصرف يتحقق من رصيد فرع الجلسة النشط. الإجمالي العام = مجموع أرصدة الفروع بدون تكرار.
       </p>
     </div>
   );
