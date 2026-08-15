@@ -30,6 +30,10 @@ import {
   isActiveBranchContext,
   requireBranchOperationAccess,
 } from "@/lib/branch";
+import {
+  isDailyPayrollViewScope,
+  resolveDailyPayrollViewScope,
+} from "@/lib/payroll/dailyPayrollEmployeeScope";
 import { assertEmployeeEligibleForBranchAttendance } from "@/lib/hr/attendance/branchAttendance.service";
 import { unlockScheduleForWorkOnDayOff } from "@/lib/hr/attendance/workOnDayOff.service";
 import { assertEmpBranchWorkDayMutable } from "@/lib/hr/empBranchWorkDayClose.service";
@@ -107,16 +111,15 @@ function calcEarlyLeaveMinutes(
   return calcEarlyLeave(checkOut, scheduledEnd);
 }
 
-// GET /api/admin/attendance?date=YYYY-MM-DD&onlyPayrollEnabled=true&includeFreelance=false
+// GET /api/admin/attendance?date=YYYY-MM-DD&employeeScope=all|GLEEM|CAMP_CAESAR&onlyPayrollEnabled=true&includeFreelance=false
+// employeeScope is read-only visibility — does not switch session branch.
+// Omitted employeeScope → active session branch only (legacy callers / smart-fix).
 export async function GET(req: NextRequest) {
   try {
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
     }
-
-    const branch = await requireBranchOperationAccess();
-    if (!isActiveBranchContext(branch)) return branch;
 
     const { searchParams } = new URL(req.url);
     const dateStr = searchParams.get("date");
@@ -129,6 +132,15 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const viewScope = await resolveDailyPayrollViewScope(
+      searchParams.get("employeeScope"),
+    );
+    if (!isDailyPayrollViewScope(viewScope)) return viewScope;
+
+    // Still require an operable active session (mutations stay session-scoped).
+    const sessionBranch = await requireBranchOperationAccess();
+    if (!isActiveBranchContext(sessionBranch)) return sessionBranch;
+
     const dayOfWeek = new Date(`${dateStr}T12:00:00Z`).getDay();
 
     const db = await getPool();
@@ -138,14 +150,24 @@ export async function GET(req: NextRequest) {
     );
     await ensureEmpBranchWorkScheduleTable();
 
-    // Branch-scoped roster: working today here, or true weekly day-off here
-    // (not working at another branch), or existing attendance / temp transfer.
-    // Never fall back to global legacy TblEmpWorkSchedule — that caused cross-branch 403 on bulk save.
-    const result = await db
-      .request()
-      .input("workDate", sql.Date, dateStr)
-      .input("dayOfWeek", sql.TinyInt, dayOfWeek)
-      .input("branchId", sql.Int, branch.branchId).query(`
+    const payrollFilter = onlyPayrollEnabled
+      ? "AND ISNULL(e.IsPayrollEnabled, 1) = 1"
+      : "";
+
+    const allRows: Array<
+      ReturnType<typeof filterAttendanceBoardRows>[number] & {
+        BranchID: number;
+        BranchCode: string;
+        BranchName: string;
+      }
+    > = [];
+
+    for (const vb of viewScope.branches) {
+      const result = await db
+        .request()
+        .input("workDate", sql.Date, dateStr)
+        .input("dayOfWeek", sql.TinyInt, dayOfWeek)
+        .input("branchId", sql.Int, vb.branchId).query(`
         SELECT
           e.EmpID,
           e.EmpName,
@@ -198,17 +220,14 @@ export async function GET(req: NextRequest) {
             AND t.ToBranchID = @branchId
         ) xferIn
         WHERE ISNULL(e.isActive, 1) = 1
-          ${onlyPayrollEnabled ? "AND ISNULL(e.IsPayrollEnabled, 1) = 1" : ""}
+          ${payrollFilter}
           AND (
-            -- Working today at this branch
             (ws.IsWorkingDay = 1 AND EXISTS (
               SELECT 1 FROM dbo.TblEmpBranchAssignment ea
               WHERE ea.EmpID = e.EmpID AND ea.BranchID = @branchId AND ea.IsActive = 1
                 AND ea.EffectiveFrom <= @workDate
                 AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @workDate)
             ))
-            -- Weekly day-off here, and not working at any other branch today
-            -- (avoids showing multi-branch staff as DayOff at GLEEM while scheduled at CAMP)
             OR (
               ws.IsWorkingDay = 0
               AND EXISTS (
@@ -229,42 +248,53 @@ export async function GET(req: NextRequest) {
                   AND (s2.EffectiveTo IS NULL OR s2.EffectiveTo >= @workDate)
               )
             )
-            -- Or already checked in / has a row here
             OR a.ID IS NOT NULL
-            -- Or temporary transfer into this branch today
             OR xferIn.X IS NOT NULL
           )
         ORDER BY e.EmpName
       `);
 
-    const rawRows = result.recordset as RawAttendanceDbRow[];
-    const attendanceIds = rawRows
-      .map((r) => r.AttendanceID)
-      .filter((id): id is number => id != null && id > 0);
-    const breaksMap = await loadBreaksByAttendanceIds(db, attendanceIds);
-    const breakTimesMap = await loadBreakTimesByAttendanceIds(db, attendanceIds);
-    for (const row of rawRows) {
-      if (row.AttendanceID != null) {
-        row.Breaks = breaksMap.get(row.AttendanceID) ?? [];
-        row.BreakTimes = breakTimesMap.get(row.AttendanceID) ?? [];
+      const rawRows = result.recordset as RawAttendanceDbRow[];
+      const attendanceIds = rawRows
+        .map((r) => r.AttendanceID)
+        .filter((id): id is number => id != null && id > 0);
+      const breaksMap = await loadBreaksByAttendanceIds(db, attendanceIds);
+      const breakTimesMap = await loadBreakTimesByAttendanceIds(db, attendanceIds);
+      for (const row of rawRows) {
+        if (row.AttendanceID != null) {
+          row.Breaks = breaksMap.get(row.AttendanceID) ?? [];
+          row.BreakTimes = breakTimesMap.get(row.AttendanceID) ?? [];
+        }
       }
+
+      const rows = filterAttendanceBoardRows(rawRows, dateStr, dayOfWeek, {
+        includeFreelance,
+      }).map((r) => ({
+        ...r,
+        BranchID: vb.branchId,
+        BranchCode: vb.branchCode,
+        BranchName: vb.branchName,
+      }));
+      allRows.push(...rows);
     }
 
-    const rows = filterAttendanceBoardRows(
-      rawRows,
-      dateStr,
-      dayOfWeek,
-      { includeFreelance },
-    );
+    allRows.sort((a, b) => {
+      const bc = String(a.BranchCode).localeCompare(String(b.BranchCode));
+      if (bc !== 0) return bc;
+      return String(a.EmpName).localeCompare(String(b.EmpName), "ar");
+    });
 
-    const summary = computeAttendanceSummary(rows);
+    const summary = computeAttendanceSummary(allRows);
 
     return NextResponse.json({
       success: true,
       date: dateStr,
-      branchId: branch.branchId,
-      branchCode: branch.branchCode,
-      attendance: rows,
+      employeeScope: viewScope.employeeScope,
+      branchIds: viewScope.branchIds,
+      branches: viewScope.branches,
+      branchId: sessionBranch.branchId,
+      branchCode: sessionBranch.branchCode,
+      attendance: allRows,
       summary,
     });
   } catch (err: unknown) {

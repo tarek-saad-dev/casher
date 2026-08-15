@@ -15,6 +15,9 @@ vi.mock('@/components/ui/dialog', () => ({
 const fullTimeRow = {
   EmpID: 1,
   EmpName: 'محمد',
+  BranchID: 1,
+  BranchCode: 'GLEEM',
+  BranchName: 'جليم',
   WorkDate: '2026-07-12',
   DayOfWeek: 0,
   IsWorkingDay: true,
@@ -60,6 +63,9 @@ describe('AttendancePanel', () => {
     global.fetch = vi.fn().mockResolvedValue({
       json: async () => ({
         success: true,
+        employeeScope: 'all',
+        branchId: 1,
+        branchCode: 'GLEEM',
         attendance: [fullTimeRow],
         summary: {
           total: 1,
@@ -77,6 +83,19 @@ describe('AttendancePanel', () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+  });
+
+  it('loads all-branches scope by default and shows branch badge', async () => {
+    render(<AttendancePanel />);
+    await waitFor(() => expect(screen.getByTestId('attendance-scope-all')).toBeInTheDocument());
+    expect(screen.getByTestId('attendance-scope-GLEEM')).toBeInTheDocument();
+    expect(screen.getByTestId('attendance-scope-CAMP_CAESAR')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('محمد')).toBeInTheDocument());
+    expect(screen.getAllByText('جليم').length).toBeGreaterThan(0);
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(
+      fetchMock.mock.calls.some((c) => String(c[0]).includes('employeeScope=all')),
+    ).toBe(true);
   });
 
   it('does not render freelancer without attendance by default', async () => {
@@ -177,6 +196,9 @@ describe('AttendancePanel', () => {
       return Promise.resolve({
         json: async () => ({
           success: true,
+          employeeScope: 'all',
+          branchId: 1,
+          branchCode: 'GLEEM',
           attendance: [fullTimeRow],
           summary: { total: 1, present: 0, late: 0, absent: 0, dayOff: 0, pending: 1, requiredCount: 1 },
         }),
@@ -215,6 +237,12 @@ describe('AttendancePanel', () => {
 
   function mockPmRow() {
     global.fetch = vi.fn((url: string, init?: RequestInit) => {
+      if (String(url).includes('/api/auth/switch-branch')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ ok: true, activeBranch: { BranchID: 1 } }),
+        });
+      }
       if (init?.method === 'PUT') {
         return Promise.resolve({
           json: async () => ({ success: true, data: { Status: 'Present', LateMinutes: 0, EarlyLeaveMinutes: 0 } }),
@@ -223,6 +251,9 @@ describe('AttendancePanel', () => {
       return Promise.resolve({
         json: async () => ({
           success: true,
+          employeeScope: 'all',
+          branchId: 1,
+          branchCode: 'GLEEM',
           attendance: [pmDefaultRow],
           summary: { total: 1, present: 0, late: 0, absent: 0, dayOff: 0, pending: 1, requiredCount: 1 },
         }),

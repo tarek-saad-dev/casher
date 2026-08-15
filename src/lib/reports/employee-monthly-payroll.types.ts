@@ -19,6 +19,10 @@ export interface EmployeeMonthlyPayrollDayRow {
 
   checkIn: string | null;
   checkOut: string | null;
+  /** Branch that owns the attendance row used for this day (may differ from report session branch). */
+  attendanceBranchId: number | null;
+  attendanceBranchCode: string | null;
+  attendanceBranchName: string | null;
   checkOutLabelAr: string | null;
   breakMinutes: number;
   actualHours: number | null;
@@ -73,6 +77,12 @@ export interface EmployeeMonthlyPayrollReport {
     hourlyRate: number | null;
     dailyRate: number | null;
     baseSalary: number | null;
+  };
+  /** Active operating branch the report was scoped to (Phase 1L). */
+  branch: {
+    branchId: number;
+    branchCode: string;
+    branchName: string;
   };
   period: {
     year: number;

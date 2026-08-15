@@ -7,7 +7,9 @@ import { validateReportParams } from '@/lib/reports/employee-monthly-payroll.typ
 /**
  * GET /api/admin/hr/employee-monthly-report?employeeId=&year=&month=
  * Monthly employee report: attendance, base wage, shortfall notes, deductions, targets.
- * Scoped to the active session branch.
+ * Session branch labels the report context; attendance + daily wage rows are loaded
+ * across branches (prefer session, else any with check-in / wage) to match the
+ * multi-branch attendance board.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -39,7 +41,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'الموظف غير موجود' }, { status: 404 });
     }
 
-    return NextResponse.json(report);
+    return NextResponse.json({
+      ...report,
+      branch: {
+        branchId: branch.branchId,
+        branchCode: branch.branchCode,
+        branchName: branch.branchName,
+      },
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/admin/hr/employee-monthly-report] GET error:', message);

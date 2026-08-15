@@ -6,11 +6,12 @@ import {
   Loader2, RefreshCw, Save, CalendarDays, UserCheck,
   UserX, Coffee, Timer, UserPlus, Search, PauseCircle,
   AlertTriangle, Sunrise, ArrowLeftRight, CalendarOff,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import KpiCard from '@/components/shared/KpiCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { getOperationalDate } from '@/lib/businessDate';
+import { getOperationalDate, shiftCalendarDate } from '@/lib/businessDate';
 import { sqlTimeForInput } from '@/lib/timeUtils';
 import {
   applyDefaultTimesToRow,
@@ -34,6 +35,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
+import { shortBranchName } from '@/lib/hr/dailyPayrollClosingUi';
 
 interface AttendanceSummary {
   total: number;
@@ -48,6 +50,9 @@ interface AttendanceSummary {
 interface AttendanceRow {
   EmpID: number;
   EmpName: string;
+  BranchID?: number;
+  BranchCode?: string;
+  BranchName?: string;
   WorkDate: string;
   DayOfWeek: number;
   IsWorkingDay: boolean;
@@ -137,19 +142,19 @@ function calcLate(checkIn: string | null, schedStart: string | null): number {
 
 function EmploymentBadges({ row }: { row: AttendanceRow }) {
   return (
-    <div className="flex flex-wrap gap-1 mt-1">
+    <div className="flex flex-wrap gap-0.5 mt-0.5">
       {row.employmentTypeLabel && (
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+        <span className="text-[9px] px-1 py-0 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
           {row.employmentTypeLabel}
         </span>
       )}
       {row.payrollMethodLabel && (
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800/60 text-zinc-500 border border-zinc-700/50">
+        <span className="text-[9px] px-1 py-0 rounded bg-zinc-800/60 text-zinc-500 border border-zinc-700/50">
           {row.payrollMethodLabel}
         </span>
       )}
       {row.dayOffPolicyLabel && row.dayOffPolicyLabel !== '—' && (
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+        <span className="text-[9px] px-1 py-0 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
           {row.dayOffPolicyLabel}
         </span>
       )}
@@ -157,20 +162,60 @@ function EmploymentBadges({ row }: { row: AttendanceRow }) {
   );
 }
 
+type EmployeeScopeFilter = 'all' | 'GLEEM' | 'CAMP_CAESAR';
+
+function attendanceRowKey(empId: number, branchId: number | null | undefined): string {
+  return `${empId}|${branchId ?? 0}`;
+}
+
+function sameAttendanceRow(
+  row: AttendanceRow,
+  empId: number,
+  branchId: number | null | undefined,
+): boolean {
+  if (row.EmpID !== empId) return false;
+  if (branchId == null || !(branchId > 0)) return true;
+  if (row.BranchID == null) return true;
+  return Number(row.BranchID) === Number(branchId);
+}
+
+function branchBadge(row: Pick<AttendanceRow, 'BranchCode' | 'BranchName'>) {
+  if (!row.BranchCode && !row.BranchName) return null;
+  const code = String(row.BranchCode ?? '');
+  const label = shortBranchName({
+    branchCode: code || '—',
+    branchName: row.BranchName || code || '—',
+  });
+  const tone =
+    code === 'GLEEM'
+      ? 'border-sky-500/25 bg-sky-500/10 text-sky-300/90'
+      : code === 'CAMP_CAESAR'
+        ? 'border-amber-500/25 bg-amber-500/10 text-amber-300/90'
+        : 'border-zinc-600/40 bg-zinc-800/60 text-zinc-400';
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${tone}`}>
+      {label}
+    </span>
+  );
+}
+
 export default function AttendancePanel() {
   const [date, setDate]               = useState(getOperationalDate());
+  const [employeeScope, setEmployeeScope] = useState<EmployeeScopeFilter>('all');
   const [attendance, setAttendance]   = useState<AttendanceRow[]>([]);
   const [summary, setSummary]         = useState<AttendanceSummary | null>(null);
   const [branchLabel, setBranchLabel] = useState<string | null>(null);
+  const [sessionBranchId, setSessionBranchId] = useState<number | null>(null);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState('');
   const [savingAll, setSavingAll]     = useState(false);
-  const [savingId, setSavingId]       = useState<number | null>(null);
+  const [savingKey, setSavingKey]     = useState<string | null>(null);
+  const [switchingBranch, setSwitchingBranch] = useState(false);
   const [successMsg, setSuccessMsg]   = useState('');
-  const [dirty, setDirty]             = useState<Set<number>>(new Set());
-  // EmpIDs where the operator explicitly confirmed a morning (AM) check-in
+  const [dirty, setDirty]             = useState<Set<string>>(new Set());
+  // Row keys where the operator explicitly confirmed a morning (AM) check-in
   // for a PM-default employee, silencing the mismatch guard.
-  const [periodConfirmed, setPeriodConfirmed] = useState<Set<number>>(new Set());
+  const [periodConfirmed, setPeriodConfirmed] = useState<Set<string>>(new Set());
 
   const [freelanceOpen, setFreelanceOpen]       = useState(false);
   const [freelanceQuery, setFreelanceQuery]     = useState('');
@@ -181,7 +226,9 @@ export default function AttendancePanel() {
   const [freelanceSaving, setFreelanceSaving]   = useState(false);
   const [freelanceAmConfirmed, setFreelanceAmConfirmed] = useState(false);
   const [breaksEmpId, setBreaksEmpId]           = useState<number | null>(null);
+  const [breaksBranchId, setBreaksBranchId]     = useState<number | null>(null);
   const [breakTimesEmpId, setBreakTimesEmpId]   = useState<number | null>(null);
+  const [breakTimesBranchId, setBreakTimesBranchId] = useState<number | null>(null);
   const [transferOpen, setTransferOpen]         = useState(false);
   const [transferEmpId, setTransferEmpId]       = useState<number | null>(null);
 
@@ -192,15 +239,48 @@ export default function AttendancePanel() {
   const [selectedDayOffEmp, setSelectedDayOffEmp]   = useState<DayOffEmployeeOption | null>(null);
   const [dayOffWorkSaving, setDayOffWorkSaving]     = useState(false);
 
-  const fetchAttendance = useCallback(async (targetDate: string) => {
+  const ensureSessionBranch = useCallback(async (branchId: number) => {
+    if (sessionBranchId === branchId) return true;
+    setSwitchingBranch(true);
+    try {
+      const res = await fetch('/api/auth/switch-branch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branchId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.message || data.error || 'تعذر تبديل الفرع');
+      }
+      setSessionBranchId(branchId);
+      return true;
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'تعذر تبديل الفرع قبل حفظ الحضور');
+      return false;
+    } finally {
+      setSwitchingBranch(false);
+    }
+  }, [sessionBranchId]);
+
+  const fetchAttendance = useCallback(async (
+    targetDate: string,
+    scope: EmployeeScopeFilter = employeeScope,
+  ) => {
     setLoading(true); setError(''); setSuccessMsg(''); setDirty(new Set());
     try {
-      const res  = await fetch(`/api/admin/attendance?date=${targetDate}`);
+      const res  = await fetch(
+        `/api/admin/attendance?date=${encodeURIComponent(targetDate)}&employeeScope=${encodeURIComponent(scope)}`,
+      );
       const data = await res.json();
       if (data.success) {
         setAttendance(data.attendance);
         setSummary(data.summary ?? null);
-        setBranchLabel(data.branchCode ?? data.branchName ?? null);
+        if (data.employeeScope === 'all') {
+          setBranchLabel('كل الفروع');
+        } else {
+          setBranchLabel(data.branches?.[0]?.branchCode ?? data.branchCode ?? data.branchName ?? null);
+        }
+        if (data.branchId != null) setSessionBranchId(Number(data.branchId));
       } else {
         setError(data.error || 'خطأ في تحميل البيانات');
       }
@@ -209,7 +289,12 @@ export default function AttendancePanel() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [employeeScope]);
+
+  const handleEmployeeScopeChange = (scope: EmployeeScopeFilter) => {
+    setEmployeeScope(scope);
+    void fetchAttendance(date, scope);
+  };
 
   const searchFreelancers = useCallback(async (query: string) => {
     setFreelanceLoading(true);
@@ -351,9 +436,15 @@ export default function AttendancePanel() {
     }
   };
 
-  const updateRow = (empId: number, field: string, value: string | null) => {
+  const updateRow = (
+    empId: number,
+    branchId: number | null | undefined,
+    field: string,
+    value: string | null,
+  ) => {
+    const key = attendanceRowKey(empId, branchId);
     setAttendance(prev => prev.map(row => {
-      if (row.EmpID !== empId) return row;
+      if (!sameAttendanceRow(row, empId, branchId)) return row;
       const updated = { ...row, [field]: value };
       if (field === 'CheckInTime' && value) {
         const manualStatuses = ['Absent', 'DayOff', 'Excused'];
@@ -365,13 +456,13 @@ export default function AttendancePanel() {
       }
       return updated;
     }));
-    setDirty(prev => new Set(prev).add(empId));
+    setDirty(prev => new Set(prev).add(key));
     // A fresh check-in value must be re-validated: drop any prior confirmation.
     if (field === 'CheckInTime') {
       setPeriodConfirmed(prev => {
-        if (!prev.has(empId)) return prev;
+        if (!prev.has(key)) return prev;
         const next = new Set(prev);
-        next.delete(empId);
+        next.delete(key);
         return next;
       });
     }
@@ -384,54 +475,68 @@ export default function AttendancePanel() {
     );
 
   const showPeriodWarning = (row: AttendanceRow) =>
-    periodCheckFor(row).mismatch && !periodConfirmed.has(row.EmpID);
+    periodCheckFor(row).mismatch &&
+    !periodConfirmed.has(attendanceRowKey(row.EmpID, row.BranchID));
 
-  const fixCheckInPeriod = (empId: number, suggested: string) => {
-    updateRow(empId, 'CheckInTime', suggested);
+  const fixCheckInPeriod = (
+    empId: number,
+    branchId: number | null | undefined,
+    suggested: string,
+  ) => {
+    updateRow(empId, branchId, 'CheckInTime', suggested);
   };
 
-  const confirmMorningCheckIn = (empId: number) => {
-    setPeriodConfirmed(prev => new Set(prev).add(empId));
+  const confirmMorningCheckIn = (empId: number, branchId: number | null | undefined) => {
+    setPeriodConfirmed(prev => new Set(prev).add(attendanceRowKey(empId, branchId)));
   };
 
-  const autoFillDefaultTimes = (empId: number) => {
+  const autoFillDefaultTimes = (empId: number, branchId: number | null | undefined) => {
     setAttendance(prev => prev.map(row =>
-      row.EmpID !== empId ? row : applyDefaultTimesToRow(row)
+      !sameAttendanceRow(row, empId, branchId) ? row : applyDefaultTimesToRow(row)
     ));
-    setDirty(prev => new Set(prev).add(empId));
+    setDirty(prev => new Set(prev).add(attendanceRowKey(empId, branchId)));
   };
 
-  const fillNowTimes = (empId: number) => {
+  const fillNowTimes = (empId: number, branchId: number | null | undefined) => {
     const now = getCurrentTime();
     setAttendance(prev => prev.map(row =>
-      row.EmpID !== empId ? row : applyNowTimesToRow(row, now)
+      !sameAttendanceRow(row, empId, branchId) ? row : applyNowTimesToRow(row, now)
     ));
-    setDirty(prev => new Set(prev).add(empId));
+    setDirty(prev => new Set(prev).add(attendanceRowKey(empId, branchId)));
   };
 
-  const updateBreaks = (empId: number, breaks: AttendanceBreakInterval[]) => {
+  const updateBreaks = (
+    empId: number,
+    branchId: number | null | undefined,
+    breaks: AttendanceBreakInterval[],
+  ) => {
     const total = sumBreakMinutes(breaks);
     setAttendance(prev => prev.map(row =>
-      row.EmpID !== empId
+      !sameAttendanceRow(row, empId, branchId)
         ? row
         : { ...row, Breaks: breaks, BreakMinutesTotal: total },
     ));
-    setDirty(prev => new Set(prev).add(empId));
+    setDirty(prev => new Set(prev).add(attendanceRowKey(empId, branchId)));
   };
 
-  const updateBreakTimes = (empId: number, breakTimes: AttendanceBreakInterval[]) => {
+  const updateBreakTimes = (
+    empId: number,
+    branchId: number | null | undefined,
+    breakTimes: AttendanceBreakInterval[],
+  ) => {
     const total = sumBreakMinutes(breakTimes);
     setAttendance(prev => prev.map(row =>
-      row.EmpID !== empId
+      !sameAttendanceRow(row, empId, branchId)
         ? row
         : { ...row, BreakTimes: breakTimes, BreakTimeMinutesTotal: total },
     ));
-    setDirty(prev => new Set(prev).add(empId));
+    setDirty(prev => new Set(prev).add(attendanceRowKey(empId, branchId)));
   };
 
-  const saveSingle = async (empId: number) => {
-    const row = attendance.find(r => r.EmpID === empId);
+  const saveSingle = async (empId: number, branchId: number | null | undefined) => {
+    const row = attendance.find(r => sameAttendanceRow(r, empId, branchId));
     if (!row) return;
+    const key = attendanceRowKey(empId, row.BranchID ?? branchId);
     if (showPeriodWarning(row)) {
       const chk = periodCheckFor(row);
       setError(
@@ -439,8 +544,15 @@ export default function AttendancePanel() {
       );
       return;
     }
-    setSavingId(empId); setError(''); setSuccessMsg('');
+    const targetBranchId = row.BranchID ?? sessionBranchId;
+    if (targetBranchId == null) {
+      setError('لا يمكن الحفظ بدون BranchID للصف');
+      return;
+    }
+    setSavingKey(key); setError(''); setSuccessMsg('');
     try {
+      const switched = await ensureSessionBranch(targetBranchId);
+      if (!switched) return;
       const res  = await fetch('/api/admin/attendance', {
         method:  'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -458,9 +570,9 @@ export default function AttendancePanel() {
       const data = await res.json();
       if (data.success) {
         setSuccessMsg(`تم حفظ حضور ${row.EmpName}`);
-        setDirty(prev => { const n = new Set(prev); n.delete(empId); return n; });
+        setDirty(prev => { const n = new Set(prev); n.delete(key); return n; });
         setAttendance(prev => prev.map(r =>
-          r.EmpID === empId
+          sameAttendanceRow(r, empId, row.BranchID)
             ? {
                 ...r,
                 HasRecord: true,
@@ -480,7 +592,7 @@ export default function AttendancePanel() {
         setError(data.error || 'خطأ في الحفظ');
       }
     } catch { setError('خطأ في الاتصال بالخادم'); }
-    finally { setSavingId(null); }
+    finally { setSavingKey(null); }
   };
 
   const saveAll = async () => {
@@ -494,26 +606,53 @@ export default function AttendancePanel() {
     }
     setSavingAll(true); setError(''); setSuccessMsg('');
     try {
-      const items = attendance.map(row => ({
-        EmpID: row.EmpID, CheckInTime: row.CheckInTime || null,
-        CheckOutTime: row.CheckOutTime || null, Status: row.Status, Notes: row.Notes || '',
-        Breaks: isHourlyRow(row) ? rowBreaks(row) : [],
-        BreakTimes: isHourlyRow(row) ? rowBreakTimes(row) : [],
-      }));
-      const res  = await fetch('/api/admin/attendance/bulk', {
-        method:  'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ WorkDate: date, items }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSuccessMsg(`تم الحفظ: ${data.summary.savedCount} موظف (${data.summary.insertedCount} جديد، ${data.summary.updatedCount} تحديث)`);
-        setDirty(new Set());
-        await fetchAttendance(date);
-        setTimeout(() => setSuccessMsg(''), 5000);
-      } else {
-        setError(data.error || 'خطأ في الحفظ');
+      const byBranch = new Map<number, AttendanceRow[]>();
+      for (const row of attendance) {
+        const bid = row.BranchID ?? sessionBranchId;
+        if (bid == null) continue;
+        const list = byBranch.get(bid) ?? [];
+        list.push(row);
+        byBranch.set(bid, list);
       }
+      if (byBranch.size === 0) {
+        setError('لا توجد صفوف للحفظ');
+        return;
+      }
+
+      let savedCount = 0;
+      let insertedCount = 0;
+      let updatedCount = 0;
+      for (const [branchId, rows] of byBranch) {
+        const switched = await ensureSessionBranch(branchId);
+        if (!switched) return;
+        const items = rows.map(row => ({
+          EmpID: row.EmpID,
+          CheckInTime: row.CheckInTime || null,
+          CheckOutTime: row.CheckOutTime || null,
+          Status: row.Status,
+          Notes: row.Notes || '',
+          Breaks: isHourlyRow(row) ? rowBreaks(row) : [],
+          BreakTimes: isHourlyRow(row) ? rowBreakTimes(row) : [],
+        }));
+        const res  = await fetch('/api/admin/attendance/bulk', {
+          method:  'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ WorkDate: date, items }),
+        });
+        const data = await res.json();
+        if (!data.success) {
+          setError(data.error || `خطأ في حفظ فرع #${branchId}`);
+          return;
+        }
+        savedCount += Number(data.summary?.savedCount ?? 0);
+        insertedCount += Number(data.summary?.insertedCount ?? 0);
+        updatedCount += Number(data.summary?.updatedCount ?? 0);
+      }
+
+      setSuccessMsg(`تم الحفظ: ${savedCount} موظف (${insertedCount} جديد، ${updatedCount} تحديث)`);
+      setDirty(new Set());
+      await fetchAttendance(date);
+      setTimeout(() => setSuccessMsg(''), 5000);
     } catch { setError('خطأ في الاتصال بالخادم'); }
     finally { setSavingAll(false); }
   };
@@ -533,12 +672,36 @@ export default function AttendancePanel() {
           <span>تسجيل حضور وتأخيرات الموظفين يوميًا</span>
         </div>
         <div className="flex items-center gap-2 mr-auto">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setDate(shiftCalendarDate(date, -1))}
+            disabled={loading}
+            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-9 w-9 p-0"
+            aria-label="اليوم السابق"
+            data-testid="attendance-prev-day"
+            title="اليوم السابق"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </Button>
           <Input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
             className="bg-zinc-900 border-zinc-700 text-white w-44 h-9 text-sm"
           />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setDate(shiftCalendarDate(date, 1))}
+            disabled={loading}
+            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-9 w-9 p-0"
+            aria-label="اليوم التالي"
+            data-testid="attendance-next-day"
+            title="اليوم التالي"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
           <Button variant="outline" onClick={() => setDate(getOperationalDate())}
             className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-9 text-xs gap-1">
             <CalendarDays className="w-3.5 h-3.5" />اليوم
@@ -579,14 +742,42 @@ export default function AttendancePanel() {
         </div>
       </div>
 
-      <div className="text-xs text-zinc-500">
-        {DAY_NAMES[new Date(date + 'T12:00:00Z').getDay()]} — {date}
-        {branchLabel ? (
-          <span className="mr-2 text-emerald-400/90">· موظفو فرع {branchLabel} المجدولون اليوم</span>
-        ) : null}
-        {summary?.requiredCount != null && (
-          <span className="mr-2 text-zinc-600">({summary.requiredCount} مطلوب الحضور)</span>
-        )}
+      <div className="text-xs text-zinc-500 flex flex-wrap items-center gap-2">
+        <span>
+          {DAY_NAMES[new Date(date + 'T12:00:00Z').getDay()]} — {date}
+          {branchLabel ? (
+            <span className="mr-2 text-emerald-400/90">· عرض: {branchLabel}</span>
+          ) : null}
+          {summary?.requiredCount != null && (
+            <span className="mr-2 text-zinc-600">({summary.requiredCount} مطلوب الحضور)</span>
+          )}
+        </span>
+        <span className="text-zinc-600">|</span>
+        <span className="text-zinc-500">عرض الموظفين</span>
+        {(
+          [
+            { id: 'all' as const, label: 'كل الفروع' },
+            { id: 'GLEEM' as const, label: 'جليم' },
+            { id: 'CAMP_CAESAR' as const, label: 'كامب شيزار' },
+          ] as const
+        ).map((opt) => (
+          <Button
+            key={opt.id}
+            type="button"
+            size="sm"
+            variant={employeeScope === opt.id ? 'default' : 'outline'}
+            className={
+              employeeScope === opt.id
+                ? 'h-7 text-[11px] bg-zinc-100 text-zinc-900 hover:bg-white'
+                : 'h-7 text-[11px] border-zinc-700 text-zinc-300'
+            }
+            disabled={loading || switchingBranch}
+            onClick={() => handleEmployeeScopeChange(opt.id)}
+            data-testid={`attendance-scope-${opt.id}`}
+          >
+            {opt.label}
+          </Button>
+        ))}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -612,239 +803,232 @@ export default function AttendancePanel() {
       )}
 
       <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-zinc-800">
-                <th className="text-right p-3 text-zinc-400 font-semibold whitespace-nowrap">الموظف</th>
-                <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">الميعاد الرسمي</th>
-                <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">وقت الحضور</th>
-                <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">وقت الانصراف</th>
-                <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">مستقطع</th>
-                <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">بريك</th>
-                <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">صافي الساعات</th>
-                <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">الحالة</th>
-                <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">التأخير</th>
-                <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">انصراف مبكر</th>
-                <th className="text-right p-3 text-zinc-400 font-semibold whitespace-nowrap">ملاحظات</th>
-                <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">إجراءات</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={12} className="text-center p-12">
-                  <Loader2 className="w-8 h-8 animate-spin mx-auto text-zinc-500" />
-                  <p className="mt-2 text-zinc-500 text-sm">جاري تحميل البيانات...</p>
-                </td></tr>
-              ) : attendance.length === 0 ? (
-                <tr><td colSpan={12} className="text-center p-12 text-zinc-500">لا يوجد موظفون متوقع حضورهم اليوم</td></tr>
-              ) : attendance.map((row) => {
-                const statusCfg = getStatusConfig(row.Status);
-                const isDirty   = dirty.has(row.EmpID);
-                const isSaving  = savingId === row.EmpID;
-                const hourly    = isHourlyRow(row);
-                const breaks    = rowBreaks(row);
-                const breakMins = row.BreakMinutesTotal ?? sumBreakMinutes(breaks);
-                const breakTimes = rowBreakTimes(row);
-                const breakTimeMins =
-                  row.BreakTimeMinutesTotal ?? sumBreakMinutes(breakTimes);
-                const netHours  = hourly
-                  ? computeNetWorkedHours(row.CheckInTime, row.CheckOutTime, breaks, breakMins)
-                  : null;
-                const periodChk    = periodCheckFor(row);
-                const periodWarned = periodChk.mismatch && !periodConfirmed.has(row.EmpID);
-                const subLabel = row.displayReason
-                  || (row.isScheduledWorkingDay ? 'يوم عمل' : 'إجازة')
-                  || row.scheduleWarning;
-                return (
-                  <tr key={row.EmpID}
-                    className={`border-b border-zinc-800/50 hover:bg-zinc-800/20 transition-colors ${isDirty ? 'bg-amber-500/5' : ''}`}>
-                    <td className="p-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-bold text-zinc-400">
-                          {row.EmpName?.charAt(0)}
-                        </div>
-                        <div>
-                          <div className="font-semibold text-white text-sm">{row.EmpName}</div>
-                          <div className={`text-[11px] ${row.scheduleWarning ? 'text-amber-500' : 'text-zinc-500'}`}>
-                            {subLabel}
-                          </div>
-                          <EmploymentBadges row={row} />
-                        </div>
+        <table className="w-full table-fixed border-collapse text-sm">
+          <colgroup>
+            <col className="w-[22%]" />
+            <col className="w-[12%]" />
+            <col className="w-[12%]" />
+            <col className="w-[14%]" />
+            <col className="w-[16%]" />
+            <col className="w-[12%]" />
+            <col className="w-[12%]" />
+          </colgroup>
+          <thead>
+            <tr className="border-b border-zinc-800 bg-zinc-950/60">
+              <th className="text-right px-2 py-2.5 text-[11px] text-zinc-400 font-semibold">الموظف</th>
+              <th className="text-center px-1 py-2.5 text-[11px] text-zinc-400 font-semibold">حضور</th>
+              <th className="text-center px-1 py-2.5 text-[11px] text-zinc-400 font-semibold">انصراف</th>
+              <th className="text-center px-1 py-2.5 text-[11px] text-zinc-400 font-semibold">الحالة</th>
+              <th className="text-center px-1 py-2.5 text-[11px] text-zinc-400 font-semibold">ملخص</th>
+              <th className="text-right px-1 py-2.5 text-[11px] text-zinc-400 font-semibold">ملاحظات</th>
+              <th className="text-center px-1 py-2.5 text-[11px] text-zinc-400 font-semibold sticky left-0 bg-zinc-950 z-10">إجراءات</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={7} className="text-center p-12">
+                <Loader2 className="w-8 h-8 animate-spin mx-auto text-zinc-500" />
+                <p className="mt-2 text-zinc-500 text-sm">جاري تحميل البيانات...</p>
+              </td></tr>
+            ) : attendance.length === 0 ? (
+              <tr><td colSpan={7} className="text-center p-12 text-zinc-500">لا يوجد موظفون متوقع حضورهم اليوم</td></tr>
+            ) : attendance.map((row) => {
+              const rowBranchId = row.BranchID ?? null;
+              const key = attendanceRowKey(row.EmpID, rowBranchId);
+              const statusCfg = getStatusConfig(row.Status);
+              const isDirty   = dirty.has(key);
+              const isSaving  = savingKey === key;
+              const hourly    = isHourlyRow(row);
+              const breaks    = rowBreaks(row);
+              const breakMins = row.BreakMinutesTotal ?? sumBreakMinutes(breaks);
+              const breakTimes = rowBreakTimes(row);
+              const breakTimeMins =
+                row.BreakTimeMinutesTotal ?? sumBreakMinutes(breakTimes);
+              const netHours  = hourly
+                ? computeNetWorkedHours(row.CheckInTime, row.CheckOutTime, breaks, breakMins)
+                : null;
+              const periodChk    = periodCheckFor(row);
+              const periodWarned = periodChk.mismatch && !periodConfirmed.has(key);
+              const subLabel = row.displayReason
+                || (row.isScheduledWorkingDay ? 'يوم عمل' : 'إجازة')
+                || row.scheduleWarning;
+              return (
+                <tr key={key}
+                  className={`border-b border-zinc-800/50 hover:bg-zinc-800/20 transition-colors ${isDirty ? 'bg-amber-500/5' : ''}`}>
+                  <td className="px-2 py-2 align-top">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className="font-semibold text-white text-sm truncate max-w-[9rem]">{row.EmpName}</span>
+                        {branchBadge(row)}
                       </div>
-                    </td>
-                    <td className="text-center p-3">
-                      <span className="text-xs text-zinc-400">
-                        {row.ScheduledStartTime || '--:--'} — {row.ScheduledEndTime || '--:--'}
-                      </span>
-                    </td>
-                    <td className="text-center p-3">
-                      <Input type="time" value={sqlTimeForInput(row.CheckInTime)}
-                        onChange={(e) => updateRow(row.EmpID, 'CheckInTime', e.target.value || null)}
-                        data-testid={`attendance-checkin-${row.EmpID}`}
-                        aria-invalid={periodWarned}
-                        className={`bg-zinc-800/50 text-white h-9 w-28 mx-auto text-center text-xs ${
-                          periodWarned
-                            ? 'border-amber-500 ring-1 ring-amber-500/40 focus-visible:ring-amber-500'
-                            : 'border-zinc-700'
-                        }`} />
-                      {periodWarned && (
-                        <div
-                          data-testid={`attendance-period-warning-${row.EmpID}`}
-                          className="mt-1.5 mx-auto w-44 rounded-lg border border-amber-500/40 bg-amber-500/10 p-1.5 text-[10px] leading-snug text-amber-300"
-                        >
-                          <div className="flex items-center justify-center gap-1 font-semibold">
-                            <AlertTriangle className="w-3 h-3 shrink-0" />
-                            <span>ميعاده مساءً ({formatClockAr(periodChk.reference)})</span>
-                          </div>
-                          <p className="text-amber-400/80">
-                            مسجّل صباحًا ({formatClockAr(periodChk.checkIn)})؟
-                          </p>
-                          <div className="mt-1 flex items-center justify-center gap-1">
-                            {periodChk.suggested && (
-                              <button
-                                type="button"
-                                onClick={() => fixCheckInPeriod(row.EmpID, periodChk.suggested!)}
-                                data-testid={`attendance-period-fix-${row.EmpID}`}
-                                className="inline-flex items-center gap-0.5 rounded-md bg-amber-500 px-1.5 py-0.5 font-bold text-black hover:bg-amber-400"
-                              >
-                                <Clock className="w-3 h-3" />
-                                صحّح لـ {formatClockAr(periodChk.suggested)}
-                              </button>
-                            )}
+                      <div className={`text-[10px] mt-0.5 ${row.scheduleWarning ? 'text-amber-500' : 'text-zinc-500'}`}>
+                        {subLabel}
+                        {(row.ScheduledStartTime || row.ScheduledEndTime) ? (
+                          <span className="text-zinc-600"> · {row.ScheduledStartTime || '--:--'}–{row.ScheduledEndTime || '--:--'}</span>
+                        ) : null}
+                      </div>
+                      <EmploymentBadges row={row} />
+                    </div>
+                  </td>
+                  <td className="text-center px-1 py-2 align-top">
+                    <Input type="time" value={sqlTimeForInput(row.CheckInTime)}
+                      onChange={(e) => updateRow(row.EmpID, rowBranchId, 'CheckInTime', e.target.value || null)}
+                      data-testid={`attendance-checkin-${row.EmpID}`}
+                      aria-invalid={periodWarned}
+                      className={`bg-zinc-800/50 text-white h-8 w-full max-w-[6.5rem] mx-auto text-center text-[11px] px-1 ${
+                        periodWarned
+                          ? 'border-amber-500 ring-1 ring-amber-500/40 focus-visible:ring-amber-500'
+                          : 'border-zinc-700'
+                      }`} />
+                    {periodWarned && (
+                      <div
+                        data-testid={`attendance-period-warning-${row.EmpID}`}
+                        className="mt-1 mx-auto max-w-[8.5rem] rounded-md border border-amber-500/40 bg-amber-500/10 p-1 text-[9px] leading-snug text-amber-300"
+                      >
+                        <div className="flex items-center justify-center gap-0.5 font-semibold">
+                          <AlertTriangle className="w-3 h-3 shrink-0" />
+                          <span>مساءً ({formatClockAr(periodChk.reference)})</span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center justify-center gap-0.5">
+                          {periodChk.suggested && (
                             <button
                               type="button"
-                              onClick={() => confirmMorningCheckIn(row.EmpID)}
-                              data-testid={`attendance-period-confirm-${row.EmpID}`}
-                              className="inline-flex items-center gap-0.5 rounded-md border border-amber-500/40 px-1.5 py-0.5 text-amber-300 hover:bg-amber-500/20"
+                              onClick={() => fixCheckInPeriod(row.EmpID, rowBranchId, periodChk.suggested!)}
+                              data-testid={`attendance-period-fix-${row.EmpID}`}
+                              className="rounded px-1 py-0.5 bg-amber-500 font-bold text-black hover:bg-amber-400"
                             >
-                              <Sunrise className="w-3 h-3" />
-                              صباحًا فعلاً
+                              {formatClockAr(periodChk.suggested)}
                             </button>
-                          </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => confirmMorningCheckIn(row.EmpID, rowBranchId)}
+                            data-testid={`attendance-period-confirm-${row.EmpID}`}
+                            className="rounded border border-amber-500/40 px-1 py-0.5 text-amber-300 hover:bg-amber-500/20"
+                          >
+                            صباحًا
+                          </button>
                         </div>
-                      )}
-                    </td>
-                    <td className="text-center p-3">
-                      <Input type="time" value={sqlTimeForInput(row.CheckOutTime)}
-                        onChange={(e) => updateRow(row.EmpID, 'CheckOutTime', e.target.value || null)}
-                        className="bg-zinc-800/50 border-zinc-700 text-white h-9 w-28 mx-auto text-center text-xs" />
-                    </td>
-                    <td className="text-center p-3">
-                      {hourly ? (
-                        breakMins > 0
-                          ? <span className="text-xs font-semibold text-amber-400">{formatBreakMinutesLabel(breakMins)}</span>
-                          : <span className="text-xs text-zinc-600">—</span>
-                      ) : (
-                        <span className="text-xs text-zinc-700">—</span>
-                      )}
-                    </td>
-                    <td className="text-center p-3">
-                      {hourly ? (
-                        breakTimeMins > 0
-                          ? <span className="text-xs font-semibold text-teal-400">{formatBreakMinutesLabel(breakTimeMins)}</span>
-                          : <span className="text-xs text-zinc-600">—</span>
-                      ) : (
-                        <span className="text-xs text-zinc-700">—</span>
-                      )}
-                    </td>
-                    <td className="text-center p-3">
-                      {hourly && netHours != null
-                        ? <span className="text-xs font-semibold text-sky-400" data-testid={`net-hours-${row.EmpID}`}>{netHours.toFixed(2)} س</span>
-                        : <span className="text-xs text-zinc-600">—</span>}
-                    </td>
-                    <td className="text-center p-3">
-                      <Select value={row.Status} onValueChange={(val) => updateRow(row.EmpID, 'Status', val)}>
-                        <SelectTrigger className={`h-9 w-32 mx-auto text-xs border rounded-lg ${statusCfg.color}`}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="bg-zinc-900 border-zinc-700">
-                          {STATUS_OPTIONS.filter(o => !['FreelanceAvailable', 'NotRequired'].includes(o.value)).map(opt => (
-                            <SelectItem key={opt.value} value={opt.value} className="text-white text-xs">{opt.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="text-center p-3">
-                      {row.LateMinutes > 0
-                        ? <span className="text-xs font-semibold text-amber-400">{row.LateMinutes} د</span>
-                        : <span className="text-xs text-zinc-600">—</span>}
-                    </td>
-                    <td className="text-center p-3">
-                      {row.EarlyLeaveMinutes > 0
-                        ? <span className="text-xs font-semibold text-orange-400">{row.EarlyLeaveMinutes} د</span>
-                        : <span className="text-xs text-zinc-600">—</span>}
-                    </td>
-                    <td className="p-3">
-                      <Input value={row.Notes || ''} onChange={(e) => updateRow(row.EmpID, 'Notes', e.target.value)}
-                        placeholder="ملاحظات..." className="bg-zinc-800/50 border-zinc-700 text-white placeholder:text-zinc-600 h-9 text-xs min-w-[120px]" />
-                    </td>
-                    <td className="p-3">
-                      <div className="flex items-center gap-1 justify-center flex-wrap">
-                        <Button size="sm" variant="ghost" onClick={() => autoFillDefaultTimes(row.EmpID)}
-                          title="املأ بالوقت الافتراضي (D)"
-                          data-testid={`attendance-fill-default-${row.EmpID}`}
-                          disabled={!row.DefaultCheckInTime && !row.DefaultCheckOutTime}
-                          className={`h-7 w-7 p-0 ${(row.DefaultCheckInTime || row.DefaultCheckOutTime) ? 'text-cyan-400 hover:bg-cyan-500/20' : 'text-zinc-600 cursor-not-allowed'}`}>
-                          <span className="text-xs font-bold">D</span>
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => fillNowTimes(row.EmpID)}
-                          title="الآن — الوقت الحالي (N)"
-                          data-testid={`attendance-fill-now-${row.EmpID}`}
-                          disabled={!!row.CheckInTime && !!row.CheckOutTime}
-                          className={`h-7 w-7 p-0 ${(!row.CheckInTime || !row.CheckOutTime) ? 'text-indigo-400 hover:bg-indigo-500/20' : 'text-zinc-600 cursor-not-allowed'}`}>
-                          <span className="text-xs font-bold">N</span>
-                        </Button>
-                        {hourly && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setBreaksEmpId(row.EmpID)}
-                            title="وقت مستقطع"
-                            data-testid={`attendance-breaks-${row.EmpID}`}
-                            className={`h-7 w-7 p-0 ${breakMins > 0 ? 'text-amber-400 hover:bg-amber-500/20' : 'text-zinc-400 hover:bg-zinc-700/40'}`}
-                          >
-                            <PauseCircle className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                        {hourly && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setBreakTimesEmpId(row.EmpID)}
-                            title="وقت البريك"
-                            data-testid={`attendance-break-times-${row.EmpID}`}
-                            className={`h-7 w-7 p-0 ${breakTimeMins > 0 ? 'text-teal-400 hover:bg-teal-500/20' : 'text-zinc-400 hover:bg-zinc-700/40'}`}
-                          >
-                            <Coffee className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                        <Button size="sm" variant="ghost" onClick={() => saveSingle(row.EmpID)} disabled={isSaving || !isDirty} title="حفظ"
-                          data-testid={`attendance-save-${row.EmpID}`}
-                          className={`h-7 w-7 p-0 ${isDirty ? 'text-amber-400 hover:bg-amber-500/20' : 'text-zinc-600'}`}>
-                          {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                        </Button>
+                      </div>
+                    )}
+                  </td>
+                  <td className="text-center px-1 py-2 align-top">
+                    <Input type="time" value={sqlTimeForInput(row.CheckOutTime)}
+                      onChange={(e) => updateRow(row.EmpID, rowBranchId, 'CheckOutTime', e.target.value || null)}
+                      className="bg-zinc-800/50 border-zinc-700 text-white h-8 w-full max-w-[6.5rem] mx-auto text-center text-[11px] px-1" />
+                  </td>
+                  <td className="text-center px-1 py-2 align-top">
+                    <Select value={row.Status} onValueChange={(val) => updateRow(row.EmpID, rowBranchId, 'Status', val)}>
+                      <SelectTrigger className={`h-8 w-full max-w-[7.5rem] mx-auto text-[11px] border rounded-lg px-2 ${statusCfg.color}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-zinc-900 border-zinc-700">
+                        {STATUS_OPTIONS.filter(o => !['FreelanceAvailable', 'NotRequired'].includes(o.value)).map(opt => (
+                          <SelectItem key={opt.value} value={opt.value} className="text-white text-xs">{opt.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  <td className="text-center px-1 py-2 align-top">
+                    <div className="text-[10px] leading-relaxed space-y-0.5 text-zinc-400">
+                      {hourly && netHours != null ? (
+                        <div className="text-sky-400 font-semibold" data-testid={`net-hours-${row.EmpID}`}>{netHours.toFixed(2)} س</div>
+                      ) : null}
+                      {row.LateMinutes > 0 ? (
+                        <div className="text-amber-400">تأخير {row.LateMinutes}د</div>
+                      ) : null}
+                      {row.EarlyLeaveMinutes > 0 ? (
+                        <div className="text-orange-400">مبكر {row.EarlyLeaveMinutes}د</div>
+                      ) : null}
+                      {hourly && breakMins > 0 ? (
+                        <div className="text-amber-400/80">مستقطع {formatBreakMinutesLabel(breakMins)}</div>
+                      ) : null}
+                      {hourly && breakTimeMins > 0 ? (
+                        <div className="text-teal-400/80">بريك {formatBreakMinutesLabel(breakTimeMins)}</div>
+                      ) : null}
+                      {!hourly && row.LateMinutes <= 0 && row.EarlyLeaveMinutes <= 0 ? (
+                        <span className="text-zinc-600">—</span>
+                      ) : null}
+                      {hourly && netHours == null && breakMins <= 0 && breakTimeMins <= 0 && row.LateMinutes <= 0 && row.EarlyLeaveMinutes <= 0 ? (
+                        <span className="text-zinc-600">—</span>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td className="px-1 py-2 align-top">
+                    <Input value={row.Notes || ''} onChange={(e) => updateRow(row.EmpID, rowBranchId, 'Notes', e.target.value)}
+                      placeholder="…" className="bg-zinc-800/50 border-zinc-700 text-white placeholder:text-zinc-600 h-8 text-[11px] w-full min-w-0" />
+                  </td>
+                  <td className={`px-1 py-2 align-top sticky left-0 z-10 ${isDirty ? 'bg-amber-500/5' : 'bg-zinc-900/95'}`}>
+                    <div className="flex items-center gap-0.5 justify-center flex-wrap">
+                      <Button size="sm" variant="ghost" onClick={() => autoFillDefaultTimes(row.EmpID, rowBranchId)}
+                        title="املأ بالوقت الافتراضي (D)"
+                        data-testid={`attendance-fill-default-${row.EmpID}`}
+                        disabled={!row.DefaultCheckInTime && !row.DefaultCheckOutTime}
+                        className={`h-7 w-7 p-0 ${(row.DefaultCheckInTime || row.DefaultCheckOutTime) ? 'text-cyan-400 hover:bg-cyan-500/20' : 'text-zinc-600 cursor-not-allowed'}`}>
+                        <span className="text-xs font-bold">D</span>
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => fillNowTimes(row.EmpID, rowBranchId)}
+                        title="الآن — الوقت الحالي (N)"
+                        data-testid={`attendance-fill-now-${row.EmpID}`}
+                        disabled={!!row.CheckInTime && !!row.CheckOutTime}
+                        className={`h-7 w-7 p-0 ${(!row.CheckInTime || !row.CheckOutTime) ? 'text-indigo-400 hover:bg-indigo-500/20' : 'text-zinc-600 cursor-not-allowed'}`}>
+                        <span className="text-xs font-bold">N</span>
+                      </Button>
+                      {hourly && (
                         <Button
                           size="sm"
                           variant="ghost"
                           onClick={() => {
-                            setTransferEmpId(row.EmpID);
-                            setTransferOpen(true);
+                            setBreaksEmpId(row.EmpID);
+                            setBreaksBranchId(rowBranchId);
                           }}
-                          title="نقل اليوم لفرع آخر"
-                          data-testid={`attendance-transfer-${row.EmpID}`}
-                          className="h-7 w-7 p-0 text-amber-400/80 hover:bg-amber-500/20 hover:text-amber-300"
+                          title="وقت مستقطع"
+                          data-testid={`attendance-breaks-${row.EmpID}`}
+                          className={`h-7 w-7 p-0 ${breakMins > 0 ? 'text-amber-400 hover:bg-amber-500/20' : 'text-zinc-400 hover:bg-zinc-700/40'}`}
                         >
-                          <ArrowLeftRight className="w-3.5 h-3.5" />
+                          <PauseCircle className="w-3.5 h-3.5" />
                         </Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      )}
+                      {hourly && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setBreakTimesEmpId(row.EmpID);
+                            setBreakTimesBranchId(rowBranchId);
+                          }}
+                          title="وقت البريك"
+                          data-testid={`attendance-break-times-${row.EmpID}`}
+                          className={`h-7 w-7 p-0 ${breakTimeMins > 0 ? 'text-teal-400 hover:bg-teal-500/20' : 'text-zinc-400 hover:bg-zinc-700/40'}`}
+                        >
+                          <Coffee className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                      <Button size="sm" variant="ghost" onClick={() => void saveSingle(row.EmpID, rowBranchId)} disabled={isSaving || !isDirty || switchingBranch} title="حفظ"
+                        data-testid={`attendance-save-${row.EmpID}`}
+                        className={`h-7 w-7 p-0 ${isDirty ? 'text-amber-400 hover:bg-amber-500/20' : 'text-zinc-600'}`}>
+                        {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setTransferEmpId(row.EmpID);
+                          setTransferOpen(true);
+                        }}
+                        title="نقل اليوم لفرع آخر"
+                        data-testid={`attendance-transfer-${row.EmpID}`}
+                        className="h-7 w-7 p-0 text-amber-400/80 hover:bg-amber-500/20 hover:text-amber-300"
+                      >
+                        <ArrowLeftRight className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
       {attendance.length > 0 && (
@@ -1029,35 +1213,49 @@ export default function AttendancePanel() {
       </Dialog>
 
       {breaksEmpId != null && (() => {
-        const breakRow = attendance.find((r) => r.EmpID === breaksEmpId);
+        const breakRow = attendance.find((r) =>
+          sameAttendanceRow(r, breaksEmpId, breaksBranchId),
+        );
         if (!breakRow) return null;
         return (
           <AttendanceBreaksDialog
             open
             mode="interrupt"
-            onOpenChange={(open) => { if (!open) setBreaksEmpId(null); }}
+            onOpenChange={(open) => {
+              if (!open) {
+                setBreaksEmpId(null);
+                setBreaksBranchId(null);
+              }
+            }}
             empName={breakRow.EmpName}
             checkInTime={breakRow.CheckInTime}
             checkOutTime={breakRow.CheckOutTime}
             breaks={rowBreaks(breakRow)}
-            onChange={(next) => updateBreaks(breaksEmpId, next)}
+            onChange={(next) => updateBreaks(breaksEmpId, breaksBranchId, next)}
           />
         );
       })()}
 
       {breakTimesEmpId != null && (() => {
-        const breakRow = attendance.find((r) => r.EmpID === breakTimesEmpId);
+        const breakRow = attendance.find((r) =>
+          sameAttendanceRow(r, breakTimesEmpId, breakTimesBranchId),
+        );
         if (!breakRow) return null;
         return (
           <AttendanceBreaksDialog
             open
             mode="rest"
-            onOpenChange={(open) => { if (!open) setBreakTimesEmpId(null); }}
+            onOpenChange={(open) => {
+              if (!open) {
+                setBreakTimesEmpId(null);
+                setBreakTimesBranchId(null);
+              }
+            }}
             empName={breakRow.EmpName}
             checkInTime={breakRow.CheckInTime}
             checkOutTime={breakRow.CheckOutTime}
             breaks={rowBreakTimes(breakRow)}
-            onChange={(next) => updateBreakTimes(breakTimesEmpId, next)}
+            onChange={(next) => updateBreakTimes(breakTimesEmpId, breakTimesBranchId, next)}
           />
         );
       })()}

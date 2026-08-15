@@ -6,6 +6,7 @@ import {
   AlertCircle,
   Banknote,
   Calendar,
+  CalendarClock,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -26,17 +27,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import SmartAttendanceFixDialog from '@/components/hr/SmartAttendanceFixDialog';
 import {
   EMPLOYMENT_TYPE_LABELS,
   PAYROLL_METHOD_LABELS,
 } from '@/lib/hr/employee-hr-model';
-import type { EmployeeMonthlyPayrollReport } from '@/lib/reports/employee-monthly-payroll.types';
+import type {
+  EmployeeMonthlyPayrollReport,
+} from '@/lib/reports/employee-monthly-payroll.types';
+import {
+  canEditAttendanceForWage,
+  needsAttendanceWageReview,
+} from '@/lib/reports/employeeMonthlyAttendanceFix';
 import {
   formatCurrencyAr,
   formatDurationAr,
   formatScheduleRangeAr,
   formatTime12hAr,
 } from '@/lib/reports/reportFormatters';
+import { shortBranchName } from '@/lib/hr/dailyPayrollClosingUi';
 
 interface EmployeeOption {
   EmpID: number;
@@ -102,6 +111,32 @@ function moneyOrDash(value: number | null | undefined): string {
   return formatCurrencyAr(value);
 }
 
+function dayBranchBadge(day: {
+  attendanceBranchCode: string | null;
+  attendanceBranchName: string | null;
+}) {
+  if (!day.attendanceBranchCode && !day.attendanceBranchName) return null;
+  const code = String(day.attendanceBranchCode ?? '');
+  const label = shortBranchName({
+    branchCode: code || '—',
+    branchName: day.attendanceBranchName || code || '—',
+  });
+  const tone =
+    code === 'GLEEM'
+      ? 'border-sky-500/25 bg-sky-500/10 text-sky-300/90'
+      : code === 'CAMP_CAESAR'
+        ? 'border-amber-500/25 bg-amber-500/10 text-amber-300/90'
+        : 'border-zinc-600/40 bg-zinc-800/60 text-zinc-400';
+  return (
+    <span
+      className={`inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium border ${tone}`}
+      title={`اليومية من فرع ${label}`}
+    >
+      {label}
+    </span>
+  );
+}
+
 export default function EmployeeMonthlyReportPanel() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -116,6 +151,13 @@ export default function EmployeeMonthlyReportPanel() {
   const [error, setError] = useState<string | null>(null);
   const [employeesLoading, setEmployeesLoading] = useState(true);
   const [onlyWorkDays, setOnlyWorkDays] = useState(false);
+  const [sessionBranchId, setSessionBranchId] = useState<number | null>(null);
+  const [attendanceFix, setAttendanceFix] = useState<{
+    workDate: string;
+    branchId: number;
+  } | null>(null);
+  const [fixBusy, setFixBusy] = useState(false);
+  const [fixMsg, setFixMsg] = useState('');
 
   const yearOptions = useMemo(() => {
     const current = cairoNow.year;
@@ -153,6 +195,7 @@ export default function EmployeeMonthlyReportPanel() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'فشل تحميل التقرير');
       setReport(data);
+      if (data.branch?.branchId) setSessionBranchId(Number(data.branch.branchId));
     } catch (err) {
       setReport(null);
       setError(err instanceof Error ? err.message : 'خطأ غير معروف');
@@ -191,9 +234,69 @@ export default function EmployeeMonthlyReportPanel() {
   }, [searchParams, fetchReport, cairoNow.year, cairoNow.month]);
 
 
+  const ensureSessionBranch = useCallback(async (branchId: number) => {
+    if (sessionBranchId === branchId) return true;
+    try {
+      const res = await fetch('/api/auth/switch-branch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branchId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.message || data.error || 'تعذر تبديل الفرع');
+      }
+      setSessionBranchId(branchId);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [sessionBranchId]);
+
+  const refreshAfterAttendanceFix = useCallback(async (workDate: string, branchId: number) => {
+    if (!employeeId) return;
+    setFixBusy(true);
+    setFixMsg('');
+    try {
+      const switched = await ensureSessionBranch(branchId);
+      if (!switched) {
+        setFixMsg('تم حفظ الحضور — تعذر تبديل الفرع لإعادة احتساب اليومية');
+        await fetchReport(employeeId, year, month);
+        setFixBusy(false);
+        setTimeout(() => setFixMsg(''), 6000);
+        return;
+      }
+      // Re-generate daily wage from updated hours so the report stays up to date.
+      const genRes = await fetch('/api/payroll/daily/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workDate,
+          empIds: [Number(employeeId)],
+        }),
+      });
+      const genData = await genRes.json().catch(() => ({}));
+      if (!genRes.ok) {
+        setFixMsg(
+          genData.error ||
+            'تم حفظ الحضور — تعذر إعادة توليد اليومية تلقائيًا (اضغط عرض بعد التوليد)',
+        );
+      } else {
+        setFixMsg('تم تحديث الحضور وإعادة احتساب أساسي اليوم');
+      }
+    } catch {
+      setFixMsg('تم حفظ الحضور — حدّث التقرير بعد توليد اليومية');
+    } finally {
+      await fetchReport(employeeId, year, month);
+      setFixBusy(false);
+      setTimeout(() => setFixMsg(''), 6000);
+    }
+  }, [employeeId, year, month, fetchReport, ensureSessionBranch]);
+
+
   const handleApply = () => {
     syncUrl(employeeId, year, month);
-    fetchReport(employeeId, year, month);
+    void fetchReport(employeeId, year, month);
   };
 
   const shiftMonth = (delta: number) => {
@@ -382,6 +485,13 @@ export default function EmployeeMonthlyReportPanel() {
         </div>
       )}
 
+      {(fixMsg || fixBusy) && (
+        <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 flex items-center gap-2 text-sm text-emerald-200">
+          {fixBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          {fixBusy ? 'جاري تحديث الحضور والراتب...' : fixMsg}
+        </div>
+      )}
+
       {loading && employeeId && (
         <div className="flex items-center justify-center py-16 text-zinc-400">
           <Loader2 className="h-7 w-7 animate-spin ml-3" />
@@ -476,7 +586,7 @@ export default function EmployeeMonthlyReportPanel() {
 
           <div className="rounded-xl border border-zinc-800 overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1280px] text-sm">
+              <table className="w-full min-w-[1180px] text-sm">
                 <thead className="sticky top-0 z-10 bg-zinc-900 border-b border-zinc-800">
                   <tr className="text-zinc-400 text-xs">
                     <th className="px-3 py-3 text-right font-medium">اليوم</th>
@@ -490,6 +600,7 @@ export default function EmployeeMonthlyReportPanel() {
                     <th className="px-3 py-3 text-right font-medium">خصم</th>
                     <th className="px-3 py-3 text-right font-medium">تارجت</th>
                     <th className="px-3 py-3 text-right font-medium">صافي اليوم</th>
+                    <th className="px-3 py-3 text-center font-medium">تصحيح</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -509,6 +620,7 @@ export default function EmployeeMonthlyReportPanel() {
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           <div className="text-zinc-200 font-medium">{day.dayNameAr}</div>
                           <div className="text-[11px] text-zinc-500 font-mono">{day.date}</div>
+                          {dayBranchBadge(day)}
                         </td>
                         <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap text-xs">
                           {day.scheduledStart && day.scheduledEnd
@@ -609,6 +721,41 @@ export default function EmployeeMonthlyReportPanel() {
                         <td className="px-3 py-2.5 whitespace-nowrap font-semibold text-[#D6A84F]">
                           {day.isFutureDate ? '—' : formatCurrencyAr(day.dayNet)}
                         </td>
+                        <td className="px-2 py-2.5 text-center">
+                          {canEditAttendanceForWage(day) &&
+                          (day.attendanceBranchId || report.branch?.branchId) ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={fixBusy}
+                              title={
+                                needsAttendanceWageReview(day)
+                                  ? 'مراجعة الحضور — الأساسي يعتمد على الساعات'
+                                  : 'تعديل الحضور والانصراف'
+                              }
+                              className={
+                                needsAttendanceWageReview(day)
+                                  ? 'h-8 text-[11px] gap-1 border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20'
+                                  : 'h-8 text-[11px] gap-1 border-zinc-700 text-zinc-300'
+                              }
+                              data-testid={`monthly-fix-attendance-${day.date}`}
+                              onClick={() =>
+                                setAttendanceFix({
+                                  workDate: day.date,
+                                  branchId: Number(
+                                    day.attendanceBranchId || report.branch.branchId,
+                                  ),
+                                })
+                              }
+                            >
+                              <CalendarClock className="w-3.5 h-3.5" />
+                              {needsAttendanceWageReview(day) ? 'راجع الحضور' : 'تعديل'}
+                            </Button>
+                          ) : (
+                            <span className="text-zinc-700 text-xs">—</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -639,6 +786,7 @@ export default function EmployeeMonthlyReportPanel() {
                     <td className="px-3 py-3 font-bold text-[#D6A84F]">
                       {formatCurrencyAr(report.summary.monthNet)}
                     </td>
+                    <td />
                   </tr>
                 </tfoot>
               </table>
@@ -648,8 +796,30 @@ export default function EmployeeMonthlyReportPanel() {
           <p className="text-[11px] text-zinc-500 leading-relaxed">
             * مرجع اليوم الكامل = سعر الساعة × الساعات المجدولة (أو اليومية الثابتة). صافي اليوم =
             الأساسي + التارجت − الخصومات − السلف المسجّلة في دفتر الموظف لنفس التاريخ.
+            زر «راجع الحضور» يظهر للأيام اللي ساعات الحضور/الانصراف ممكن تأثر على الراتب — بعد التعديل
+            بنعيد توليد أساسية اليوم ونحدّث الكشف.
           </p>
         </>
+      )}
+
+      {attendanceFix && report && (
+        <SmartAttendanceFixDialog
+          open={Boolean(attendanceFix)}
+          onOpenChange={(open) => {
+            if (!open) setAttendanceFix(null);
+          }}
+          branchId={attendanceFix.branchId}
+          workDate={attendanceFix.workDate}
+          empId={Number(employeeId)}
+          empName={report.employee.name}
+          ensureSessionBranch={ensureSessionBranch}
+          onSaved={() => {
+            const workDate = attendanceFix.workDate;
+            const branchId = attendanceFix.branchId;
+            setAttendanceFix(null);
+            void refreshAfterAttendanceFix(workDate, branchId);
+          }}
+        />
       )}
 
     </div>

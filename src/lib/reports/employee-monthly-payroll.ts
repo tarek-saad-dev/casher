@@ -28,6 +28,10 @@ import { normalizePayrollMethod } from '@/lib/hr/employee-hr-model';
 import { computeNetWorkedHours } from '@/lib/hr/attendance-breaks';
 import { ensureAttendanceBreakSchema } from '@/lib/hr/attendance-breaks-db';
 import { parseMtdTargetSnapshot } from '@/lib/payroll/employee-target/mtd-target-snapshot';
+import {
+  preferAttendanceRowForDate,
+  preferPayrollRowForDate,
+} from '@/lib/reports/employeeMonthlyCrossBranchPrefer';
 import type {
   BaseWageKind,
   EmployeeMonthlyPayrollDayRow,
@@ -51,6 +55,7 @@ interface WeeklyScheduleRow {
 
 interface AttendanceRow {
   WorkDate: string;
+  BranchID: number | null;
   AttendanceID: number | null;
   ScheduledStartTime: string | null;
   ScheduledEndTime: string | null;
@@ -65,6 +70,7 @@ interface AttendanceRow {
 
 interface PayrollRow {
   WorkDate: string;
+  BranchID: number | null;
   ActualHours: number | null;
   DailyWage: number | null;
   HourlyRateSnapshot: number | null;
@@ -388,15 +394,17 @@ export async function getEmployeeMonthlyPayrollReport(
           `),
       ),
 
-      queryRecordsetOrEmpty<AttendanceRow>('TblEmpAttendance', () => {
-        const req = db.request()
+      // Attendance is employee-centric: load all branches (attendance board uses
+      // employeeScope=all). Prefer session-branch row, else any with check-in.
+      queryRecordsetOrEmpty<AttendanceRow>('TblEmpAttendance', () =>
+        db.request()
           .input('empId', sql.Int, employeeId)
           .input('startDate', sql.Date, startDate)
-          .input('endDateExclusive', sql.Date, endDateExclusive);
-        if (branchId != null && branchId > 0) req.input('branchId', sql.Int, branchId);
-        return req.query(`
+          .input('endDateExclusive', sql.Date, endDateExclusive)
+          .query(`
             SELECT
               CONVERT(VARCHAR(10), WorkDate, 120) AS WorkDate,
+              BranchID,
               ID AS AttendanceID,
               CASE WHEN ScheduledStartTime IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), ScheduledStartTime, 108), 5) ELSE NULL END AS ScheduledStartTime,
               CASE WHEN ScheduledEndTime   IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), ScheduledEndTime,   108), 5) ELSE NULL END AS ScheduledEndTime,
@@ -411,19 +419,19 @@ export async function getEmployeeMonthlyPayrollReport(
             WHERE EmpID = @empId
               AND WorkDate >= @startDate
               AND WorkDate < @endDateExclusive
-              ${branchId != null && branchId > 0 ? 'AND BranchID = @branchId' : ''}
-          `);
-      }),
+          `),
+      ),
 
-      queryRecordsetOrEmpty<PayrollRow>('TblEmpDailyPayroll', () => {
-        const req = db.request()
+      // Daily wage may live on the same branch as attendance (not always session).
+      queryRecordsetOrEmpty<PayrollRow>('TblEmpDailyPayroll', () =>
+        db.request()
           .input('empId', sql.Int, employeeId)
           .input('startDate', sql.Date, startDate)
-          .input('endDateExclusive', sql.Date, endDateExclusive);
-        if (branchId != null && branchId > 0) req.input('branchId', sql.Int, branchId);
-        return req.query(`
+          .input('endDateExclusive', sql.Date, endDateExclusive)
+          .query(`
             SELECT
               CONVERT(VARCHAR(10), WorkDate, 120) AS WorkDate,
+              BranchID,
               ActualHours,
               DailyWage,
               HourlyRateSnapshot,
@@ -433,9 +441,8 @@ export async function getEmployeeMonthlyPayrollReport(
             WHERE EmpID = @empId
               AND WorkDate >= @startDate
               AND WorkDate < @endDateExclusive
-              ${branchId != null && branchId > 0 ? 'AND BranchID = @branchId' : ''}
-          `);
-      }),
+          `),
+      ),
 
       queryRecordsetOrEmpty<TargetRow>('TblEmpDailyTarget', () => {
         const req = db.request()
@@ -494,24 +501,44 @@ export async function getEmployeeMonthlyPayrollReport(
     overrideRows.map((r) => ({ ...r, OverrideDate: normalizeSqlDate(r.OverrideDate) })),
   );
 
-  const attendanceMap = new Map<string, AttendanceRow>();
+  const attendanceByDate = new Map<string, AttendanceRow[]>();
   for (const row of attendanceRows) {
-    attendanceMap.set(normalizeSqlDate(row.WorkDate), {
+    const key = normalizeSqlDate(row.WorkDate);
+    const normalized: AttendanceRow = {
       ...row,
-      WorkDate: normalizeSqlDate(row.WorkDate),
+      WorkDate: key,
+      BranchID: row.BranchID != null ? Number(row.BranchID) : null,
       BreakMinutesTotal: Number(row.BreakMinutesTotal ?? 0),
-    });
+    };
+    const list = attendanceByDate.get(key) ?? [];
+    list.push(normalized);
+    attendanceByDate.set(key, list);
+  }
+  const attendanceMap = new Map<string, AttendanceRow>();
+  for (const [key, list] of attendanceByDate) {
+    const preferred = preferAttendanceRowForDate(list, branchId);
+    if (preferred) attendanceMap.set(key, preferred);
   }
 
-  const payrollMap = new Map<string, PayrollRow>();
+  const payrollByDate = new Map<string, PayrollRow[]>();
   for (const row of payrollRows) {
-    payrollMap.set(normalizeSqlDate(row.WorkDate), {
+    const key = normalizeSqlDate(row.WorkDate);
+    const normalized: PayrollRow = {
       ...row,
-      WorkDate: normalizeSqlDate(row.WorkDate),
+      WorkDate: key,
+      BranchID: row.BranchID != null ? Number(row.BranchID) : null,
       ActualHours: row.ActualHours != null ? Number(row.ActualHours) : null,
       DailyWage: row.DailyWage != null ? Number(row.DailyWage) : null,
       HourlyRateSnapshot: row.HourlyRateSnapshot != null ? Number(row.HourlyRateSnapshot) : null,
-    });
+    };
+    const list = payrollByDate.get(key) ?? [];
+    list.push(normalized);
+    payrollByDate.set(key, list);
+  }
+  const payrollMap = new Map<string, PayrollRow>();
+  for (const [key, list] of payrollByDate) {
+    const preferred = preferPayrollRowForDate(list, branchId);
+    if (preferred) payrollMap.set(key, preferred);
   }
 
   const targetMap = new Map<string, TargetRow>();
@@ -522,6 +549,37 @@ export async function getEmployeeMonthlyPayrollReport(
       NetSalesAfterDiscount: Number(row.NetSalesAfterDiscount ?? 0),
       TargetAmount: Number(row.TargetAmount ?? 0),
     });
+  }
+
+  const branchIdsNeeded = new Set<number>();
+  for (const row of attendanceMap.values()) {
+    if (row.BranchID != null && row.BranchID > 0) branchIdsNeeded.add(row.BranchID);
+  }
+  for (const row of payrollMap.values()) {
+    if (row.BranchID != null && row.BranchID > 0) branchIdsNeeded.add(row.BranchID);
+  }
+  const branchMetaById = new Map<number, { branchCode: string; branchName: string }>();
+  if (branchIdsNeeded.size > 0) {
+    try {
+      const branchResult = await db.request().query(`
+        SELECT BranchID, BranchCode, BranchName
+        FROM dbo.TblBranch
+      `);
+      for (const row of branchResult.recordset as Array<{
+        BranchID: number;
+        BranchCode: string | null;
+        BranchName: string | null;
+      }>) {
+        const id = Number(row.BranchID);
+        if (!branchIdsNeeded.has(id)) continue;
+        branchMetaById.set(id, {
+          branchCode: String(row.BranchCode ?? ''),
+          branchName: String(row.BranchName ?? row.BranchCode ?? ''),
+        });
+      }
+    } catch (err) {
+      console.warn('[employee-monthly-payroll] branch meta load skipped', err);
+    }
   }
 
   const ledgerByDate = new Map<string, LedgerDayAgg>();
@@ -706,6 +764,15 @@ export async function getEmployeeMonthlyPayrollReport(
     if (targetAmount != null) totalTargetAmount += targetAmount;
     if (targetSales != null) totalTargetSales += targetSales;
 
+    const sourceBranchId =
+      attendance?.BranchID != null && Number(attendance.BranchID) > 0
+        ? Number(attendance.BranchID)
+        : payroll?.BranchID != null && Number(payroll.BranchID) > 0
+          ? Number(payroll.BranchID)
+          : null;
+    const sourceBranchMeta =
+      sourceBranchId != null ? branchMetaById.get(sourceBranchId) ?? null : null;
+
     days.push({
       date,
       dayNameAr: getArabicDayName(date),
@@ -718,6 +785,9 @@ export async function getEmployeeMonthlyPayrollReport(
       scheduledHours,
       checkIn,
       checkOut,
+      attendanceBranchId: sourceBranchId,
+      attendanceBranchCode: sourceBranchMeta?.branchCode ?? null,
+      attendanceBranchName: sourceBranchMeta?.branchName ?? null,
       checkOutLabelAr: checkIn && !checkOut ? 'لم يسجل انصراف' : null,
       breakMinutes,
       actualHours: actualHours != null ? roundMoney(actualHours) : null,
@@ -771,6 +841,11 @@ export async function getEmployeeMonthlyPayrollReport(
         employee.ManualHourlyRate ?? employee.HourlyRate ?? null,
       dailyRate: employee.DailyRate ?? null,
       baseSalary: employee.BaseSalary ?? employee.Salary ?? null,
+    },
+    branch: {
+      branchId: branchId != null && branchId > 0 ? branchId : 0,
+      branchCode: '',
+      branchName: '',
     },
     period: {
       year,
