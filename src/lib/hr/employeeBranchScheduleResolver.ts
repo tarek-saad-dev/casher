@@ -11,6 +11,11 @@ import {
   type EmpBranchWorkScheduleRow,
 } from '@/lib/hr/empBranchWorkSchedule';
 import { getBarberWorkingWindow } from '@/lib/barberAvailability';
+import {
+  isTransferDestinationActive,
+  isTransferSourceInactive,
+  resolveTemporaryTransferPhase,
+} from '@/lib/hr/temporaryTransferWindow';
 
 export type ResolvedBranchSchedule = {
   branchId: number;
@@ -213,7 +218,23 @@ export async function resolveEmployeeBranchSchedule(args: {
 
   const transfer = await loadTemporaryTransfer(args.empId, args.workDate);
   if (transfer) {
-    if (transfer.fromBranchId === args.branchId) {
+    const phase = resolveTemporaryTransferPhase({
+      workDate: args.workDate,
+      startTime: transfer.startTime,
+      endTime: transfer.endTime,
+    });
+    const sourceInactive = isTransferSourceInactive({
+      workDate: args.workDate,
+      startTime: transfer.startTime,
+      endTime: transfer.endTime,
+    });
+    const destActive = isTransferDestinationActive({
+      workDate: args.workDate,
+      startTime: transfer.startTime,
+      endTime: transfer.endTime,
+    });
+
+    if (transfer.fromBranchId === args.branchId && sourceInactive) {
       const branch = await getBranchById(args.branchId);
       if (!branch) return null;
       return {
@@ -229,32 +250,37 @@ export async function resolveEmployeeBranchSchedule(args: {
         endDateTime: null,
         sourceScheduleId: null,
         source: 'temporary_transfer',
-        appliedOverrides: ['temporary_branch_transfer_away'],
+        appliedOverrides: ['temporary_branch_transfer_away', `transfer_phase:${phase}`],
         canReceiveBookings: false,
       };
     }
     if (transfer.toBranchId === args.branchId) {
-      const assigned = await hasActiveAssignment(args.empId, args.branchId, args.workDate);
-      if (!assigned) return null;
-      const overnight = isOvernight(transfer.startTime, transfer.endTime);
-      const branch = await getBranchById(args.branchId);
-      if (!branch) return null;
-      return {
-        branchId: branch.branchId,
-        branchCode: branch.branchCode,
-        branchName: branch.branchName,
-        isWorking: true,
-        startTime: transfer.startTime,
-        endTime: transfer.endTime,
-        startDayOffset: 0,
-        endDayOffset: overnight ? 1 : 0,
-        startDateTime: toAbs(args.workDate, transfer.startTime, 0),
-        endDateTime: toAbs(args.workDate, transfer.endTime, overnight ? 1 : 0),
-        sourceScheduleId: null,
-        source: 'temporary_transfer',
-        appliedOverrides: ['temporary_branch_transfer'],
-        canReceiveBookings: true,
-      };
+      if (!destActive) {
+        // Split-day: before destination window starts, do not appear here —
+        // fall through to weekly schedule (usually day-off at destination).
+      } else {
+        const assigned = await hasActiveAssignment(args.empId, args.branchId, args.workDate);
+        if (!assigned) return null;
+        const overnight = isOvernight(transfer.startTime, transfer.endTime);
+        const branch = await getBranchById(args.branchId);
+        if (!branch) return null;
+        return {
+          branchId: branch.branchId,
+          branchCode: branch.branchCode,
+          branchName: branch.branchName,
+          isWorking: true,
+          startTime: transfer.startTime,
+          endTime: transfer.endTime,
+          startDayOffset: 0,
+          endDayOffset: overnight ? 1 : 0,
+          startDateTime: toAbs(args.workDate, transfer.startTime, 0),
+          endDateTime: toAbs(args.workDate, transfer.endTime, overnight ? 1 : 0),
+          sourceScheduleId: null,
+          source: 'temporary_transfer',
+          appliedOverrides: ['temporary_branch_transfer', `transfer_phase:${phase}`],
+          canReceiveBookings: true,
+        };
+      }
     }
   }
 
@@ -337,10 +363,22 @@ export async function resolveEmployeeGlobalSchedule(args: {
   const workingRows = await listActiveBranchSchedulesForEmp(args.empId, args.workDate);
 
   const branchIds = new Set<number>();
-  for (const r of workingRows) branchIds.add(r.branchId);
+  for (const r of workingRows) {
+    if (r.isWorking) branchIds.add(r.branchId);
+  }
   if (transfer) {
-    branchIds.delete(transfer.fromBranchId);
-    branchIds.add(transfer.toBranchId);
+    const destActive = isTransferDestinationActive({
+      workDate: args.workDate,
+      startTime: transfer.startTime,
+      endTime: transfer.endTime,
+    });
+    const sourceInactive = isTransferSourceInactive({
+      workDate: args.workDate,
+      startTime: transfer.startTime,
+      endTime: transfer.endTime,
+    });
+    if (sourceInactive) branchIds.delete(transfer.fromBranchId);
+    if (destActive) branchIds.add(transfer.toBranchId);
   }
 
   // Include GLEEM legacy if no branch-table rows and GLEEM allowed

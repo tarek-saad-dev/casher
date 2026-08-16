@@ -3,6 +3,7 @@ import { getPool } from '@/lib/db';
 import sql from 'mssql';
 import { isActiveBranchContext, requireActiveBranchContext } from '@/lib/branch';
 import type { TreasuryMovementsResponse, TreasuryMovement } from '@/lib/types/treasury';
+import { appendTreasuryCashMoveFilters } from '@/lib/services/treasuryCashMoveFilters';
 
 /**
  * GET /api/treasury/movements
@@ -47,35 +48,16 @@ export async function GET(request: NextRequest) {
     const hasPaymentFilter = isUnassigned || (paymentMethodId !== null && !isNaN(paymentMethodId));
 
     // Build WHERE clause
-    let whereConditions: string[] = ['cm.BranchID = @branchId'];
-    const params: any = {};
-    
-    if (newDay !== null) {
-      whereConditions.push('sm.NewDay = @newDay');
-      params.newDay = newDay;
-    }
-    
-    if (dateFrom && dateTo) {
-      whereConditions.push('cm.invDate >= @dateFrom AND cm.invDate <= @dateTo');
-      params.dateFrom = dateFrom;
-      params.dateTo = dateTo;
-    } else if (dateFrom) {
-      whereConditions.push('cm.invDate >= @dateFrom');
-      params.dateFrom = dateFrom;
-    } else if (dateTo) {
-      whereConditions.push('cm.invDate <= @dateTo');
-      params.dateTo = dateTo;
-    }
-    
-    if (shiftMoveId !== null) {
-      whereConditions.push('sm.ID = @shiftMoveId');
-      params.shiftMoveId = shiftMoveId;
-    }
-    
-    if (userId !== null) {
-      whereConditions.push('sm.UserID = @userId');
-      params.userId = userId;
-    }
+    const whereConditions: string[] = ['cm.BranchID = @branchId'];
+    const params: Record<string, string | number> = {};
+
+    appendTreasuryCashMoveFilters(whereConditions, params, {
+      newDay,
+      dateFrom,
+      dateTo,
+      shiftMoveId,
+      userId,
+    });
 
     if (hasPaymentFilter) {
       if (isUnassigned) {
@@ -83,7 +65,7 @@ export async function GET(request: NextRequest) {
         whereConditions.push('cm.PaymentMethodID IS NULL');
       } else {
         whereConditions.push('cm.PaymentMethodID = @paymentMethodId');
-        params.paymentMethodId = paymentMethodId;
+        params.paymentMethodId = paymentMethodId!;
       }
     }
     

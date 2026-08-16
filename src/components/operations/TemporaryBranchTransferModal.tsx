@@ -44,6 +44,11 @@ type TransferPreview = {
     bookingCode: string | null;
     startTime: string;
   }>;
+  attendance?: {
+    hasOpen?: boolean;
+    hasCompleted?: boolean;
+    branchId?: number | null;
+  } | null;
   activeTransfer?: { transferId: number; toBranchId: number; reason: string | null } | null;
 };
 
@@ -540,6 +545,10 @@ export function TemporaryBranchTransferModal({
               <p className="text-xs text-muted-foreground">
                 نقل طارئ لتاريخ {workDate} فقط — لا يعدّل الجدول الأسبوعي
               </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-amber-200/90">
+                قبل ساعة البداية يفضل يظهر في الفرع الأصلي فقط. من ساعة البداية يظهر في
+                الوجهة — بعد ما تقفل حضور الفرع السابق (انصراف).
+              </p>
             </div>
           </div>
           <button
@@ -777,7 +786,7 @@ export function TemporaryBranchTransferModal({
 
               <div className="grid grid-cols-2 gap-3">
                 <label className="block space-y-1.5 text-sm">
-                  <span className="font-medium text-foreground/80">من ساعة (اختياري)</span>
+                  <span className="font-medium text-foreground/80">يبدأ الظهور من ساعة</span>
                   <input
                     type="time"
                     value={startTime}
@@ -787,7 +796,7 @@ export function TemporaryBranchTransferModal({
                   />
                 </label>
                 <label className="block space-y-1.5 text-sm">
-                  <span className="font-medium text-foreground/80">إلى ساعة (اختياري)</span>
+                  <span className="font-medium text-foreground/80">ينتهي في ساعة</span>
                   <input
                     type="time"
                     value={endTime}
@@ -797,9 +806,19 @@ export function TemporaryBranchTransferModal({
                   />
                 </label>
               </div>
-              <p className="text-[11px] text-muted-foreground -mt-2">
-                لو سبت الساعات فاضي، هيُستخدم شيفت الوجهة أو مواعيد التعيين الحالية.
-              </p>
+              <div className="rounded-xl border border-border/80 bg-surface-muted/50 px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground -mt-1 space-y-1">
+                <p>
+                  <strong className="text-foreground/85">مهم للسلاسة:</strong> حط ساعة البداية
+                  = وقت ما هيبدأ يشتغل في الفرع الجديد. قبلها مش هيظهر هناك عند الكاشير.
+                </p>
+                <p>
+                  لو الساعات فاضية = النقل يتحسب لليوم كله من لحظة الحفظ (يظهر فوراً في الوجهة).
+                </p>
+                <p>
+                  الترتيب الصحيح: اشتغل في الفرع الأصلي → انصراف هناك → يبدأ الظهور/الحضور/الحجز
+                  في الوجهة من ساعة البداية.
+                </p>
+              </div>
 
               <label className="block space-y-1.5 text-sm">
                 <span className="font-medium text-foreground/80">سبب النقل *</span>
@@ -836,6 +855,15 @@ export function TemporaryBranchTransferModal({
                     {preview.resolvedDestinationWindow?.startTime ?? '—'} →{' '}
                     {preview.resolvedDestinationWindow?.endTime ?? '—'}
                     {preview.resolvedDestinationWindow?.overnight ? ' (+1)' : ''}
+                  </p>
+                  {preview.attendance?.hasOpen ? (
+                    <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-amber-200">
+                      عنده حضور مفتوح في الفرع السابق — لازم انصراف هناك قبل فتح الحضور في
+                      الوجهة.
+                    </p>
+                  ) : null}
+                  <p className="text-muted-foreground">
+                    قبل ساعة البداية: يظهر في الفرع الأصلي فقط. بعدها: يظهر في الوجهة.
                   </p>
                   {preview.warnings?.map((w) => (
                     <p key={w} className="text-amber-300">

@@ -34,7 +34,8 @@ export async function syncPagesRegistry(db: import('mssql').ConnectionPool): Pro
           ELSE
           BEGIN
             UPDATE dbo.TblSystemPages
-            SET PageName=@name, PagePath=@path, Section=@section, SortOrder=@sort
+            SET PageName=@name, PagePath=@path, Section=@section,
+                AccessMode=@access, SortOrder=@sort, IsActive=1
             WHERE PageKey=@key
           END
         `);

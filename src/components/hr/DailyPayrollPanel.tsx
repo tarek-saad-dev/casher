@@ -6,7 +6,7 @@ import {
   CheckCircle2, AlertCircle, Users, Banknote,
   X,
   AlertTriangle, ShieldCheck, ClipboardList, Timer, BookOpen, Target,
-  ChevronLeft, ChevronRight, Lock, Unlock, Wrench, CalendarClock,
+  ChevronLeft, ChevronRight, Lock, Unlock, Wrench, CalendarClock, Moon, ArrowLeftRight,
 } from 'lucide-react';
 import Link from 'next/link';
 import KpiCard from '@/components/shared/KpiCard';
@@ -28,6 +28,9 @@ import {
 import DailyTargetDetailsDialog from '@/components/hr/DailyTargetDetailsDialog';
 import DailyPayrollSmartFixModal from '@/components/hr/DailyPayrollSmartFixModal';
 import SmartAttendanceFixDialog from '@/components/hr/SmartAttendanceFixDialog';
+import MoveEmployeeDayBranchModal, {
+  type MoveEmployeeDayBranchTarget,
+} from '@/components/hr/MoveEmployeeDayBranchModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -304,6 +307,7 @@ export default function DailyPayrollPanel() {
   const [reopenReason, setReopenReason] = useState('');
   const [closingDay, setClosingDay] = useState(false);
   const [reopeningDay, setReopeningDay] = useState(false);
+  const [nightlyClosing, setNightlyClosing] = useState(false);
   const [smartFixOpen, setSmartFixOpen] = useState(false);
   const [generatingEmpId, setGeneratingEmpId] = useState<number | null>(null);
   const [generatingBranchId, setGeneratingBranchId] = useState<number | null>(null);
@@ -313,6 +317,7 @@ export default function DailyPayrollPanel() {
     branchId: number;
     workDate: string;
   } | null>(null);
+  const [moveDayTarget, setMoveDayTarget] = useState<MoveEmployeeDayBranchTarget | null>(null);
 
   /* Auto-generate log for today */
   interface AutoGenLog {
@@ -697,6 +702,61 @@ export default function DailyPayrollPanel() {
     }
   };
 
+  /** Same pipeline as the 02:40 Cairo cron — without WhatsApp. */
+  const handleAutoNightlyClose = async () => {
+    if (nightlyClosing) return;
+    const workDate = date;
+    if (
+      !window.confirm(
+        `قفل اليوم التلقائي\nيوم العمل: ${workDate}\n\n` +
+          'نفس سكربت الساعة 2:40: يكمل الحضور (Default) → يوميات → تارجت لكل الفروع النشطة.\n' +
+          'بدون إرسال واتساب للموظفين أو المدير.',
+      )
+    ) {
+      return;
+    }
+    setNightlyClosing(true);
+    setError('');
+    try {
+      const res = await fetch('/api/admin/hr/nightly-close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workDate,
+          dryRun: false,
+          skipWhatsApp: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) {
+        throw new Error(
+          data.error ||
+            (Array.isArray(data.errors) ? data.errors[0] : null) ||
+            'فشل قفل اليوم التلقائي',
+        );
+      }
+      const filled =
+        data.steps?.attendanceClose?.filled?.length ??
+        data.steps?.attendanceClose?.closed?.length ??
+        0;
+      const payrollStatus = data.steps?.payroll?.status ?? '—';
+      const targets = data.steps?.targets?.generated ?? 0;
+      flash(
+        `تم قفل اليوم التلقائي ${data.workDate ?? workDate}: DefaultFill=${filled} · يوميات ${payrollStatus} · تارجت ${targets} · بدون واتساب`,
+      );
+      if (selectedBranchId != null) {
+        await refreshAfterMutation(selectedBranchId, workDate);
+      } else {
+        await load(workDate);
+        void loadOpenDays();
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'فشل قفل اليوم التلقائي');
+    } finally {
+      setNightlyClosing(false);
+    }
+  };
+
   /* ── Step 1: Validate attendance ─────────────────────────────────────────── */
   const handleValidate = async () => {
     setValidating(true); setError(''); setValidationDone(false);
@@ -1026,6 +1086,7 @@ export default function DailyPayrollPanel() {
     switchingBranch ||
     closingDay ||
     reopeningDay ||
+    nightlyClosing ||
     generatingEmpId != null;
   const busy = workspaceBusy;
 
@@ -1313,6 +1374,22 @@ export default function DailyPayrollPanel() {
             >
               <Unlock className="w-4 h-4" />
               إعادة فتح اليوم
+            </Button>
+          )}
+          {canReopenPayrollDay && (
+            <Button
+              type="button"
+              onClick={() => void handleAutoNightlyClose()}
+              disabled={busy || nightlyClosing}
+              className="bg-violet-700 hover:bg-violet-600 text-white gap-2 h-10"
+              title="مثل سكربت الساعة 2:40 — حضور Default + يوميات + تارجت لكل الفروع، بدون واتساب"
+            >
+              {nightlyClosing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Moon className="w-4 h-4" />
+              )}
+              قفل اليوم التلقائي
             </Button>
           )}
         </div>
@@ -1910,6 +1987,35 @@ export default function DailyPayrollPanel() {
                             )}
                             يومية + تارجت
                           </Button>
+                          {canReopenPayrollDay && rowBranchId != null && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-[10px] border-violet-500/40 text-violet-200 gap-1"
+                              disabled={
+                                busy ||
+                                rowClosed ||
+                                row?.Status === 'PostedToCashMove'
+                              }
+                              title="نقل حضور/يومية/تارجت هذا اليوم لفرع آخر (تصحيح فرع غلط)"
+                              onClick={() =>
+                                setMoveDayTarget({
+                                  empId: merged.empId,
+                                  empName: merged.empName,
+                                  workDate: date,
+                                  fromBranchId: rowBranchId,
+                                  fromBranchName:
+                                    merged.branchName ??
+                                    row?.BranchName ??
+                                    undefined,
+                                })
+                              }
+                            >
+                              <ArrowLeftRight className="w-3 h-3" />
+                              نقل لفرع آخر
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1958,6 +2064,21 @@ export default function DailyPayrollPanel() {
         onClose={() => setDetailTarget(null)}
         workDate={date}
         target={detailTarget}
+      />
+
+      <MoveEmployeeDayBranchModal
+        open={moveDayTarget != null}
+        target={moveDayTarget}
+        onClose={() => setMoveDayTarget(null)}
+        onSuccess={(msg) => {
+          flash(msg);
+          if (selectedBranchId != null) {
+            void refreshAfterMutation(selectedBranchId, date);
+          } else {
+            void load(date);
+            void loadOpenDays();
+          }
+        }}
       />
 
       {/* ── Confirm Post Dialog ─────────────────────────────────────────────── */}

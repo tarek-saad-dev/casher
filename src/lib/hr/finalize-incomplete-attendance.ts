@@ -14,6 +14,7 @@ import {
 import type { PayrollValidationReason } from '@/lib/payroll/dailyPayrollHrRules';
 import {
   applyDefaultTimesToRow,
+  shouldDeferOvernightDefaultCheckoutFill,
   type AttendanceTimeFillRow,
 } from '@/lib/hr/attendance-default-fill';
 import { sqlTimeToHHmm } from '@/lib/timeUtils';
@@ -375,11 +376,21 @@ export async function finalizeIncompleteAttendanceWithDefaults(
       const schedEnd =
         att?.schedEnd ?? defs?.scheduleEnd ?? defs?.defaultOut ?? null;
 
+      const deferOvernightCheckout = shouldDeferOvernightDefaultCheckoutFill({
+        checkOutTime: beforeOut,
+        scheduledStart: schedStart,
+        scheduledEnd: schedEnd,
+        defaultCheckIn: defs?.defaultIn ?? null,
+        defaultCheckOut: defs?.defaultOut ?? null,
+        workDate,
+      });
+
       const baseRow: AttendanceTimeFillRow = {
         CheckInTime: beforeIn,
         CheckOutTime: beforeOut,
         DefaultCheckInTime: defs?.defaultIn ?? null,
-        DefaultCheckOutTime: defs?.defaultOut ?? null,
+        // Overnight OT grace: do not invent DefaultCheckOut while employee may still be working.
+        DefaultCheckOutTime: deferOvernightCheckout ? null : (defs?.defaultOut ?? null),
         ScheduledStartTime: schedStart,
         ScheduledEndTime: schedEnd,
         Status: att?.status ?? 'Pending',

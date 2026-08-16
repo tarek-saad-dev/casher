@@ -3,6 +3,7 @@ import { getPool } from '@/lib/db';
 import sql from 'mssql';
 import { isActiveBranchContext, requireActiveBranchContext } from '@/lib/branch';
 import { getEmployeeLedgerOutstandingTotals } from '@/lib/services/employeeLedgerService';
+import { appendTreasuryCashMoveFilters } from '@/lib/services/treasuryCashMoveFilters';
 
 function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -36,29 +37,13 @@ export async function GET(request: NextRequest) {
     const whereConditions: string[] = ['cm.BranchID = @branchId'];
     const params: Record<string, string | number> = {};
 
-    if (newDay !== null) {
-      whereConditions.push('sm.NewDay = @newDay');
-      params.newDay = newDay;
-    }
-    if (dateFrom && dateTo) {
-      whereConditions.push('cm.invDate >= @dateFrom AND cm.invDate <= @dateTo');
-      params.dateFrom = dateFrom;
-      params.dateTo = dateTo;
-    } else if (dateFrom) {
-      whereConditions.push('cm.invDate >= @dateFrom');
-      params.dateFrom = dateFrom;
-    } else if (dateTo) {
-      whereConditions.push('cm.invDate <= @dateTo');
-      params.dateTo = dateTo;
-    }
-    if (shiftMoveId !== null) {
-      whereConditions.push('sm.ID = @shiftMoveId');
-      params.shiftMoveId = shiftMoveId;
-    }
-    if (userId !== null) {
-      whereConditions.push('sm.UserID = @userId');
-      params.userId = userId;
-    }
+    appendTreasuryCashMoveFilters(whereConditions, params, {
+      newDay,
+      dateFrom,
+      dateTo,
+      shiftMoveId,
+      userId,
+    });
 
     const whereClause = whereConditions.join(' AND ');
 
@@ -91,7 +76,7 @@ export async function GET(request: NextRequest) {
         ? { startDate: effectiveStart, endDate: effectiveEnd }
         : undefined;
 
-    const outstanding = await getEmployeeLedgerOutstandingTotals(range);
+    const outstanding = await getEmployeeLedgerOutstandingTotals(range, branch.branchId);
     const employeeEntitlements = outstanding.totalOwedToEmployees;
     const netProfit = round2(treasuryTotal - employeeEntitlements);
 

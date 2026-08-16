@@ -101,6 +101,26 @@ describe('phase1rTemporaryTransferPreview', () => {
     expect(t).toContain('IsActive = 0');
     expect(t).not.toMatch(/DELETE FROM dbo\.TblEmpTemporaryBranchTransfer/);
   });
+
+  it('split-day transfer window is enforced in resolver, roster, and UI copy', () => {
+    const win = read('src/lib/hr/temporaryTransferWindow.ts');
+    expect(win).toContain('resolveTemporaryTransferPhase');
+    expect(win).toContain('isTransferDestinationActive');
+    expect(win).toContain('isTransferSourceInactive');
+
+    const resolver = read('src/lib/hr/employeeBranchScheduleResolver.ts');
+    expect(resolver).toContain('isTransferDestinationActive');
+    expect(resolver).toContain('transfer_phase:');
+
+    const att = read('src/lib/hr/attendance/branchAttendance.service.ts');
+    expect(att).toContain('TRANSFER_SOURCE_STILL_OPEN');
+    expect(att).toContain('EMPLOYEE_TRANSFERRED_AWAY');
+
+    const modal = read('src/components/operations/TemporaryBranchTransferModal.tsx');
+    expect(modal).toContain('يبدأ الظهور من ساعة');
+    expect(modal).toContain('تقفل حضور الفرع السابق');
+    expect(modal).toContain('لازم انصراف هناك قبل فتح الحضور');
+  });
 });
 
 describe('phase1rTemporaryTransferApplyCancel', () => {

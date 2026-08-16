@@ -140,10 +140,24 @@ export async function loadWorkingWindowsBatch(
             AND EmpID IN (${empIds.join(',')})
         `);
       for (const row of xfer.recordset) {
+        const start = fmtScheduleTime(row.StartTime);
+        const end = fmtScheduleTime(row.EndTime);
+        const { isTransferDestinationActive } = await import(
+          '@/lib/hr/temporaryTransferWindow'
+        );
+        if (
+          !isTransferDestinationActive({
+            workDate,
+            startTime: start,
+            endTime: end,
+          })
+        ) {
+          continue;
+        }
         map.set(row.EmpID as number, {
           isWorkingDay: true,
-          startTime: fmtScheduleTime(row.StartTime),
-          endTime: fmtScheduleTime(row.EndTime),
+          startTime: start,
+          endTime: end,
           source: 'TEMPORARY_TRANSFER',
         });
       }
@@ -152,11 +166,23 @@ export async function loadWorkingWindowsBatch(
         .input('branchId', sql.Int, opts.branchId)
         .input('day', sql.Date, workDate)
         .query(`
-          SELECT EmpID FROM dbo.TblEmpTemporaryBranchTransfer
+          SELECT EmpID, StartTime, EndTime FROM dbo.TblEmpTemporaryBranchTransfer
           WHERE FromBranchID = @branchId AND WorkDate = @day AND IsActive = 1
             AND EmpID IN (${empIds.join(',')})
         `);
       for (const row of away.recordset) {
+        const { isTransferSourceInactive } = await import(
+          '@/lib/hr/temporaryTransferWindow'
+        );
+        if (
+          !isTransferSourceInactive({
+            workDate,
+            startTime: fmtScheduleTime(row.StartTime),
+            endTime: fmtScheduleTime(row.EndTime),
+          })
+        ) {
+          continue;
+        }
         map.set(row.EmpID as number, {
           isWorkingDay: false,
           startTime: null,

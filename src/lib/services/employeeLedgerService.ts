@@ -790,6 +790,7 @@ export interface EmployeeLedgerOutstandingTotals {
  */
 export async function getEmployeeLedgerOutstandingTotals(
   range?: { startDate: string; endDate: string },
+  branchId?: number | null,
 ): Promise<EmployeeLedgerOutstandingTotals> {
   const db = await getPool();
   const req = db.request();
@@ -801,11 +802,17 @@ export async function getEmployeeLedgerOutstandingTotals(
     dateFilter = 'AND l.EntryDate >= @startDate AND l.EntryDate <= @endDate';
   }
 
+  let branchFilter = '';
+  if (branchId != null && branchId > 0) {
+    req.input('branchId', sql.Int, branchId);
+    branchFilter = 'AND l.BranchID = @branchId';
+  }
+
   const result = await req.query(`
     SELECT
       ISNULL(SUM(CASE WHEN l.EntryDirection = N'credit' THEN l.Amount ELSE -l.Amount END), 0) AS Balance
     FROM dbo.TblEmpLedgerEntry l
-    WHERE l.IsVoided = 0 ${dateFilter}
+    WHERE l.IsVoided = 0 ${dateFilter} ${branchFilter}
     GROUP BY l.EmpID
   `);
 

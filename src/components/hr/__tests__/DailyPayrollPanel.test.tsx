@@ -290,7 +290,14 @@ describe('DailyPayrollPanel HR labels', () => {
     expect(screen.getByText('الحالة')).toBeInTheDocument();
     expect(screen.queryByText('إقفال يوم الموظفين')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /حل المشاكل/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /قفل اليوم التلقائي/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'فتح اليوم' })).toBeInTheDocument();
+  });
+
+  it('shows per-row move-to-other-branch action for admins', async () => {
+    render(<DailyPayrollPanel />);
+    await waitFor(() => expect(screen.getAllByText('محمد').length).toBeGreaterThan(0));
+    expect(screen.getByRole('button', { name: /نقل لفرع آخر/ })).toBeInTheDocument();
   });
 
   it('فتح اليوم transfers open-day into workspace without auto-select on load', async () => {

@@ -48,7 +48,12 @@ export async function GET(request: NextRequest) {
     }));
 
     // ── 2. Build where clause for cash-move query ───────────────────────────
-    let whereConditions = ['cm.BranchID = @branchId', 'cm.invDate >= @dateFrom', 'cm.invDate <= @dateTo'];
+    let whereConditions = [
+      'cm.BranchID = @branchId',
+      'cm.invDate >= @dateFrom',
+      'cm.invDate <= @dateTo',
+      '(sm.ID IS NULL OR sm.BranchID = @branchId)',
+    ];
     const req2 = db.request()
       .input('branchId', sql.Int, branch.branchId)
       .input('dateFrom', sql.Date, dateFrom)
@@ -170,6 +175,7 @@ export async function GET(request: NextRequest) {
         'cm.BranchID = @mtdBranchId',
         'cm.invDate >= @mtdFrom',
         'cm.invDate <= @mtdTo',
+        '(sm.ID IS NULL OR sm.BranchID = @mtdBranchId)',
       ];
       const mtdReq = db.request()
         .input('mtdBranchId', sql.Int, branch.branchId)

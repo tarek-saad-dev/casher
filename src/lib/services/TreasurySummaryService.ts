@@ -15,6 +15,7 @@
 import { getPool } from '@/lib/db';
 import sql from 'mssql';
 import { EMPLOYEE_FUNDING_CATEGORY_NAME } from '@/lib/services/employeeLedgerFundingService';
+import { appendTreasuryCashMoveFilters } from '@/lib/services/treasuryCashMoveFilters';
 
 export interface FinancialSummaryParams {
   fromDate: string; // YYYY-MM-DD
@@ -56,33 +57,25 @@ export async function getFinancialSummary(params: FinancialSummaryParams): Promi
   const { fromDate, toDate, branchId, shiftMoveId, userId, newDay } = params;
   
   // Build WHERE clause dynamically
-  let whereConditions: string[] = ['1=1'];
-  const queryParams: any = {};
+  const whereConditions: string[] = ['1=1'];
+  const queryParams: Record<string, string | number> = {};
 
   if (branchId !== undefined) {
     whereConditions.push('cm.BranchID = @branchId');
     queryParams.branchId = branchId;
   }
 
-  if (newDay !== undefined) {
-    whereConditions.push('sm.NewDay = @newDay');
-    queryParams.newDay = newDay;
-  }
+  appendTreasuryCashMoveFilters(whereConditions, queryParams, {
+    newDay,
+    // Date range is applied below as the primary filter (always required here)
+    shiftMoveId,
+    userId,
+  }, { branchScoped: branchId !== undefined });
   
   // Date range filter (primary filter)
   whereConditions.push('cm.invDate >= @dateFrom AND cm.invDate <= @dateTo');
   queryParams.dateFrom = fromDate;
   queryParams.dateTo = toDate;
-  
-  if (shiftMoveId !== undefined) {
-    whereConditions.push('sm.ID = @shiftMoveId');
-    queryParams.shiftMoveId = shiftMoveId;
-  }
-  
-  if (userId !== undefined) {
-    whereConditions.push('sm.UserID = @userId');
-    queryParams.userId = userId;
-  }
   
   const whereClause = whereConditions.join(' AND ');
   

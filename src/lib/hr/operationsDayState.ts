@@ -8,6 +8,10 @@ import { getBranchById, listActiveBranches } from '@/lib/branch/repository';
 import { ensureEmpBranchWorkScheduleTable } from '@/lib/hr/empBranchWorkSchedule';
 import { getOperationsDayStateVersion } from '@/lib/hr/scheduleAvailabilityInvalidation';
 import { BARBER_JOBS_SQL_LIST } from '@/lib/availabilityEngine';
+import {
+  isTransferDestinationActive,
+  isTransferSourceInactive,
+} from '@/lib/hr/temporaryTransferWindow';
 
 export type DayStateSection =
   | 'present'
@@ -242,26 +246,45 @@ export async function listOperationalPresenceForBranch(
     if (leave.has(empId)) continue;
 
     const transfer = transferByEmp.get(empId);
-    if (transfer && transfer.from === branchId && transfer.to !== branchId) {
-      continue; // transferred away
+    if (
+      transfer &&
+      transfer.from === branchId &&
+      transfer.to !== branchId &&
+      isTransferSourceInactive({
+        workDate,
+        startTime: transfer.startTime,
+        endTime: transfer.endTime,
+      })
+    ) {
+      continue; // transferred away (window started)
     }
 
     if (transfer && transfer.to === branchId) {
-      const start = transfer.startTime ?? session.defaultOpenTime?.slice(0, 5) ?? null;
-      const end = transfer.endTime ?? session.defaultCloseTime?.slice(0, 5) ?? null;
-      present.push({
-        empId,
-        empName: transfer.empName || nameById.get(empId) || String(empId),
-        isTransferredIn: true,
-        transferReason: transfer.reason,
-        startTime: start,
-        endTime: end,
-        overnight: isOvernight(start, end),
-        source: 'temporary_transfer',
-      });
-      presentIds.add(empId);
-      transferredInIds.add(empId);
-      continue;
+      if (
+        !isTransferDestinationActive({
+          workDate,
+          startTime: transfer.startTime,
+          endTime: transfer.endTime,
+        })
+      ) {
+        // Split-day: not yet at destination — fall through to weekly if any
+      } else {
+        const start = transfer.startTime ?? session.defaultOpenTime?.slice(0, 5) ?? null;
+        const end = transfer.endTime ?? session.defaultCloseTime?.slice(0, 5) ?? null;
+        present.push({
+          empId,
+          empName: transfer.empName || nameById.get(empId) || String(empId),
+          isTransferredIn: true,
+          transferReason: transfer.reason,
+          startTime: start,
+          endTime: end,
+          overnight: isOvernight(start, end),
+          source: 'temporary_transfer',
+        });
+        presentIds.add(empId);
+        transferredInIds.add(empId);
+        continue;
+      }
     }
 
     // Must be assigned to session to appear via weekly schedule
@@ -564,10 +587,30 @@ export async function loadOperationsDayState(args: {
     const empId = Number(b.EmpID);
     const empName = String(b.EmpName);
     const transfer = transferMap.get(empId);
+    const transferStart = transfer ? fmtTime(transfer.StartTime) : null;
+    const transferEnd = transfer ? fmtTime(transfer.EndTime) : null;
+    const destActive =
+      Boolean(transfer) &&
+      isTransferDestinationActive({
+        workDate: args.workDate,
+        startTime: transferStart,
+        endTime: transferEnd,
+      });
+    const sourceInactive =
+      Boolean(transfer) &&
+      isTransferSourceInactive({
+        workDate: args.workDate,
+        startTime: transferStart,
+        endTime: transferEnd,
+      });
     const isTransferredHere =
-      Boolean(transfer) && Number(transfer?.ToBranchID) === args.sessionBranchId;
+      Boolean(transfer) &&
+      Number(transfer?.ToBranchID) === args.sessionBranchId &&
+      destActive;
     const isTransferredAway =
-      Boolean(transfer) && Number(transfer?.FromBranchID) === args.sessionBranchId;
+      Boolean(transfer) &&
+      Number(transfer?.FromBranchID) === args.sessionBranchId &&
+      sourceInactive;
 
     const att = attMap.get(empId);
     let attendance: OperationsDayEmployeeState['attendance'] = null;

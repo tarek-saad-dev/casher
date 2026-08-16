@@ -10,6 +10,10 @@ import {
 import type { AttendanceBreakInterval } from '@/lib/hr/attendance-breaks';
 import type { DayOffPolicy, EmploymentType } from '@/lib/hr/employee-hr-model';
 import { normalizeEmploymentType, normalizePayrollMethod, normalizeDayOffPolicy } from '@/lib/hr/employee-hr-model';
+import {
+  isTransferDestinationActive,
+  isTransferSourceInactive,
+} from '@/lib/hr/temporaryTransferWindow';
 
 export type AttendanceExclusionReason =
   | 'freelance_no_attendance'
@@ -58,6 +62,14 @@ export interface RawAttendanceDbRow {
   Breaks?: AttendanceBreakInterval[] | null;
   BreakTimeMinutesTotal?: number | null;
   BreakTimes?: AttendanceBreakInterval[] | null;
+  /** Temporary transfer into this branch (board query). */
+  XferIn?: number | null;
+  XferInStart?: string | null;
+  XferInEnd?: string | null;
+  /** Temporary transfer away from this branch (board query). */
+  XferOut?: number | null;
+  XferOutStart?: string | null;
+  XferOutEnd?: string | null;
 }
 
 export interface ResolvedScheduleDay {
@@ -436,11 +448,50 @@ export function filterAttendanceBoardRows(
   rows: RawAttendanceDbRow[],
   workDate: string,
   dayOfWeek: number,
-  options: { includeFreelance: boolean },
+  options: { includeFreelance: boolean; now?: Date },
 ): AttendanceBoardRow[] {
+  const now = options.now ?? new Date();
   const result: AttendanceBoardRow[] = [];
   for (const row of rows) {
-    const built = buildAttendanceBoardRow(row, workDate, dayOfWeek, options);
+    const hasAttendance = row.AttendanceID != null;
+    const xferOutActive =
+      row.XferOut != null &&
+      isTransferSourceInactive({
+        workDate,
+        startTime: row.XferOutStart,
+        endTime: row.XferOutEnd,
+        now,
+      });
+    if (xferOutActive && !hasAttendance) continue;
+
+    const xferInActive =
+      row.XferIn != null &&
+      isTransferDestinationActive({
+        workDate,
+        startTime: row.XferInStart,
+        endTime: row.XferInEnd,
+        now,
+      });
+    if (row.XferIn != null && !xferInActive && !hasAttendance) {
+      // Only on board via premature transfer-in → hide until window starts
+      const weeklyWorking = boolish(row.IsWorkingDay);
+      if (!weeklyWorking) continue;
+    }
+
+    const built = buildAttendanceBoardRow(
+      xferInActive
+        ? {
+            ...row,
+            IsWorkingDay: true,
+            ScheduleStartTime: row.XferInStart ?? row.ScheduleStartTime,
+            ScheduleEndTime: row.XferInEnd ?? row.ScheduleEndTime,
+            ScheduleDayOfWeek: row.ScheduleDayOfWeek ?? dayOfWeek,
+          }
+        : row,
+      workDate,
+      dayOfWeek,
+      options,
+    );
     if (built) result.push(built);
   }
   return result;

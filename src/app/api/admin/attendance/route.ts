@@ -192,7 +192,13 @@ export async function GET(req: NextRequest) {
           a.EarlyLeaveMinutes,
           a.Notes,
           ISNULL(a.BreakMinutesTotal, 0) AS BreakMinutesTotal,
-          ISNULL(a.BreakTimeMinutesTotal, 0) AS BreakTimeMinutesTotal
+          ISNULL(a.BreakTimeMinutesTotal, 0) AS BreakTimeMinutesTotal,
+          xferIn.X AS XferIn,
+          xferIn.StartTime AS XferInStart,
+          xferIn.EndTime AS XferInEnd,
+          xferOut.X AS XferOut,
+          xferOut.StartTime AS XferOutStart,
+          xferOut.EndTime AS XferOutEnd
         FROM dbo.TblEmp e
         LEFT JOIN dbo.TblEmpAttendance a
           ON a.EmpID = e.EmpID AND a.WorkDate = @workDate AND a.BranchID = @branchId
@@ -212,13 +218,27 @@ export async function GET(req: NextRequest) {
           ORDER BY s.EffectiveFrom DESC, s.ScheduleID DESC
         ) ws
         OUTER APPLY (
-          SELECT TOP 1 1 AS X
+          SELECT TOP 1
+            1 AS X,
+            CONVERT(VARCHAR(5), t.StartTime, 108) AS StartTime,
+            CONVERT(VARCHAR(5), t.EndTime, 108) AS EndTime
           FROM dbo.TblEmpTemporaryBranchTransfer t
           WHERE t.EmpID = e.EmpID
             AND t.WorkDate = @workDate
             AND t.IsActive = 1
             AND t.ToBranchID = @branchId
         ) xferIn
+        OUTER APPLY (
+          SELECT TOP 1
+            1 AS X,
+            CONVERT(VARCHAR(5), t.StartTime, 108) AS StartTime,
+            CONVERT(VARCHAR(5), t.EndTime, 108) AS EndTime
+          FROM dbo.TblEmpTemporaryBranchTransfer t
+          WHERE t.EmpID = e.EmpID
+            AND t.WorkDate = @workDate
+            AND t.IsActive = 1
+            AND t.FromBranchID = @branchId
+        ) xferOut
         WHERE ISNULL(e.isActive, 1) = 1
           ${payrollFilter}
           AND (
@@ -672,6 +692,27 @@ export async function PUT(req: NextRequest) {
       checkInTime: CheckInTime || null,
       checkOutTime: CheckOutTime || null,
     });
+
+    // Keep non-posted daily payroll hours in sync when punches change (overnight OT fixes).
+    if (CheckInTime && CheckOutTime) {
+      try {
+        const { syncNonPostedPayrollHoursFromAttendance } = await import(
+          '@/lib/payroll/syncPayrollHoursFromAttendance'
+        );
+        const sync = await syncNonPostedPayrollHoursFromAttendance({
+          empId: Number(EmpID),
+          workDate: WorkDate,
+          branchId: branch.branchId,
+        });
+        if (sync.updated) {
+          console.log(
+            `[api/admin/attendance] payroll hours synced emp=${EmpID} day=${WorkDate} hours=${sync.actualHours}`,
+          );
+        }
+      } catch (syncErr) {
+        console.warn('[api/admin/attendance] payroll hours sync failed', syncErr);
+      }
+    }
 
     return NextResponse.json({
       success: true,

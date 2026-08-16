@@ -6,6 +6,7 @@ import { EMPLOYEE_FUNDING_CATEGORY_NAME } from '@/lib/services/employeeLedgerFun
 import type { DailyTreasuryData, TreasurySummary, PaymentMethodBreakdown, TreasuryFilters } from '@/lib/types/treasury';
 import { isFinancialReportClassificationEnabled } from '@/lib/accounting/financialReportFlags';
 import { maybeBuildClassificationPayloadForDateRange } from '@/lib/accounting/financialReportClassificationService';
+import { appendTreasuryCashMoveFilters } from '@/lib/services/treasuryCashMoveFilters';
 
 /**
  * GET /api/treasury/daily-summary
@@ -36,35 +37,16 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId') ? parseInt(searchParams.get('userId')!) : null;
     
     // Build WHERE clause dynamically
-    let whereConditions: string[] = ['cm.BranchID = @branchId'];
-    const params: any = {};
-    
-    if (newDay !== null) {
-      whereConditions.push('sm.NewDay = @newDay');
-      params.newDay = newDay;
-    }
-    
-    if (dateFrom && dateTo) {
-      whereConditions.push('cm.invDate >= @dateFrom AND cm.invDate <= @dateTo');
-      params.dateFrom = dateFrom;
-      params.dateTo = dateTo;
-    } else if (dateFrom) {
-      whereConditions.push('cm.invDate >= @dateFrom');
-      params.dateFrom = dateFrom;
-    } else if (dateTo) {
-      whereConditions.push('cm.invDate <= @dateTo');
-      params.dateTo = dateTo;
-    }
-    
-    if (shiftMoveId !== null) {
-      whereConditions.push('sm.ID = @shiftMoveId');
-      params.shiftMoveId = shiftMoveId;
-    }
-    
-    if (userId !== null) {
-      whereConditions.push('sm.UserID = @userId');
-      params.userId = userId;
-    }
+    const whereConditions: string[] = ['cm.BranchID = @branchId'];
+    const params: Record<string, string | number> = {};
+
+    appendTreasuryCashMoveFilters(whereConditions, params, {
+      newDay,
+      dateFrom,
+      dateTo,
+      shiftMoveId,
+      userId,
+    });
     
     const whereClause = whereConditions.join(' AND ');
     
@@ -207,7 +189,7 @@ export async function GET(request: NextRequest) {
           SELECT s.ShiftName
           FROM [dbo].[TblShiftMove] sm
           LEFT JOIN [dbo].[TblShift] s ON sm.ShiftID = s.ShiftID
-          WHERE sm.ShiftMoveID = @shiftMoveId AND sm.BranchID = @branchId
+          WHERE sm.ID = @shiftMoveId AND sm.BranchID = @branchId
         `);
       
       if (shiftInfoResult.recordset.length > 0) {
@@ -247,6 +229,7 @@ export async function GET(request: NextRequest) {
     const classification = await maybeBuildClassificationPayloadForDateRange({
       startDate: treasuryStart,
       endDate: treasuryEnd,
+      branchId: branch.branchId,
       legacyTotals: {
         totalInflow,
         totalOutflow,

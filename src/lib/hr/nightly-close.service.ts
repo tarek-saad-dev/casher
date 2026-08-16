@@ -18,7 +18,7 @@ import {
 import { generateEmployeeDailyTargets } from '@/lib/payroll/employee-target/employee-daily-target-generation.service';
 import { finalizeIncompleteAttendanceWithDefaults } from '@/lib/hr/finalize-incomplete-attendance';
 import { getEmpBranchWorkDayCloseState } from '@/lib/hr/empBranchWorkDayClose.service';
-import { resolveNightlyCloseWorkDate } from '@/lib/hr/nightly-close-work-date';
+import { resolveNightlyCloseWorkDate, shiftYmd } from '@/lib/hr/nightly-close-work-date';
 import {
   buildEmployeeDailyWhatsAppPreview,
   sendEmployeeDailyWhatsAppReports,
@@ -262,15 +262,19 @@ export async function runNightlyClose(params?: {
 
       for (const branch of activeBranches) {
         try {
-          const branchResult = await finalizeIncompleteAttendanceWithDefaults(
-            workDate,
-            { branchId: branch.branchId },
-          );
-          mergedFilled.push(...branchResult.filled);
-          mergedSkipped.push(...branchResult.skippedNoDefault);
-          console.log(
-            `[nightly-close] attendance branch=${branch.branchCode}(${branch.branchId}) filled=${branchResult.filled.length}`,
-          );
+          // Look back one extra day so overnight OT past 02:40 can finish / fill after grace.
+          const attendanceDays = [workDate, shiftYmd(workDate, -1)];
+          for (const day of attendanceDays) {
+            const branchResult = await finalizeIncompleteAttendanceWithDefaults(
+              day,
+              { branchId: branch.branchId },
+            );
+            mergedFilled.push(...branchResult.filled);
+            mergedSkipped.push(...branchResult.skippedNoDefault);
+            console.log(
+              `[nightly-close] attendance branch=${branch.branchCode}(${branch.branchId}) day=${day} filled=${branchResult.filled.length}`,
+            );
+          }
         } catch (branchErr) {
           const msg =
             branchErr instanceof Error ? branchErr.message : String(branchErr);
@@ -328,37 +332,41 @@ export async function runNightlyClose(params?: {
     let ledgerDualWrite: unknown = undefined;
 
     for (const branch of payrollBranches) {
-      const closeView = await getEmpBranchWorkDayCloseState(branch.branchId, workDate);
+      const payrollDays = [workDate, shiftYmd(workDate, -1)];
+      for (const payDay of payrollDays) {
+      const closeView = await getEmpBranchWorkDayCloseState(branch.branchId, payDay);
       if (closeView.state === 'CLOSED') {
         console.log(
-          `[nightly-close] payroll skipped CLOSED branch=${branch.branchCode} workDate=${workDate}`,
+          `[nightly-close] payroll skipped CLOSED branch=${branch.branchCode} workDate=${payDay}`,
         );
         continue;
       }
 
       const postedCount = await countPostedDailyPayroll(
         db,
-        workDate,
+        payDay,
         branch.branchId,
       );
       if (postedCount > 0) {
         anyPosted = true;
         console.log(
-          `[nightly-close] payroll already_posted branch=${branch.branchCode}`,
+          `[nightly-close] payroll already_posted branch=${branch.branchCode} day=${payDay}`,
         );
         continue;
       }
 
-      const { missing } = await validateDailyPayrollAttendance(db, workDate, {
+      const { missing } = await validateDailyPayrollAttendance(db, payDay, {
         branchId: branch.branchId,
       });
       if (missing.length > 0) {
         anyIncomplete = true;
-        errors.push(
-          `payroll blocked ${branch.branchCode}: ${missing.length} attendance/rate issues`,
-        );
+        if (payDay === workDate) {
+          errors.push(
+            `payroll blocked ${branch.branchCode}: ${missing.length} attendance/rate issues`,
+          );
+        }
         console.error(
-          `[nightly-close] payroll incomplete branch=${branch.branchCode} missing=${missing.length}`,
+          `[nightly-close] payroll incomplete branch=${branch.branchCode} day=${payDay} missing=${missing.length}`,
         );
         continue;
       }
@@ -370,7 +378,7 @@ export async function runNightlyClose(params?: {
 
       try {
         const { result: gen, ledgerDualWrite: ld } =
-          await runDailyPayrollGenerateWithOptionalLedger(workDate, {
+          await runDailyPayrollGenerateWithOptionalLedger(payDay, {
             notesPrefix: `[NightlyClose][${branch.branchCode}] `,
             branchId: branch.branchId,
           });
@@ -380,18 +388,19 @@ export async function runNightlyClose(params?: {
         ledgerDualWrite = ld;
         anyGenerated = true;
         console.log(
-          `[nightly-close] payroll branch=${branch.branchCode} generated=${gen.generatedCount}`,
+          `[nightly-close] payroll branch=${branch.branchCode} day=${payDay} generated=${gen.generatedCount}`,
         );
       } catch (branchPayErr) {
         const msg =
           branchPayErr instanceof Error
             ? branchPayErr.message
             : String(branchPayErr);
-        errors.push(`payroll-branch ${branch.branchCode}: ${msg}`);
+        errors.push(`payroll-branch ${branch.branchCode} ${payDay}: ${msg}`);
         console.error(
-          `[nightly-close] payroll failed branch=${branch.branchCode}`,
+          `[nightly-close] payroll failed branch=${branch.branchCode} day=${payDay}`,
           msg,
         );
+      }
       }
     }
 

@@ -267,6 +267,106 @@ describe('computeAttendanceSummary', () => {
     expect(summary.absent).toBe(0);
     expect(summary.pending).toBe(0);
   });
+
+  it('hides transfer-in before destination window start', () => {
+    const today = '2026-08-15';
+    const dow = new Date(`${today}T12:00:00Z`).getDay();
+    // 14:00 Cairo = 11:00 UTC (EEST)
+    const now = new Date('2026-08-15T11:00:00.000Z');
+    const rows = filterAttendanceBoardRows(
+      [
+        baseRow({
+          EmpID: 12,
+          EmpName: 'زياد',
+          IsWorkingDay: 0,
+          ScheduleStartTime: null,
+          ScheduleEndTime: null,
+          XferIn: 1,
+          XferInStart: '17:00',
+          XferInEnd: '12:34',
+        }),
+      ],
+      today,
+      dow,
+      { includeFreelance: false, now },
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it('shows transfer-in after destination window start as working', () => {
+    const today = '2026-08-15';
+    const dow = new Date(`${today}T12:00:00Z`).getDay();
+    const now = new Date('2026-08-15T15:30:00.000Z'); // 18:30 Cairo
+    const rows = filterAttendanceBoardRows(
+      [
+        baseRow({
+          EmpID: 12,
+          EmpName: 'زياد',
+          IsWorkingDay: 0,
+          ScheduleDayOfWeek: null,
+          ScheduleStartTime: null,
+          ScheduleEndTime: null,
+          XferIn: 1,
+          XferInStart: '17:00',
+          XferInEnd: '12:34',
+        }),
+      ],
+      today,
+      dow,
+      { includeFreelance: false, now },
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].isScheduledWorkingDay).toBe(true);
+    expect(rows[0].ScheduledStartTime).toBe('17:00');
+  });
+
+  it('hides source-branch row after transfer window starts when no attendance', () => {
+    const today = '2026-08-15';
+    const dow = new Date(`${today}T12:00:00Z`).getDay();
+    const now = new Date('2026-08-15T15:30:00.000Z');
+    const rows = filterAttendanceBoardRows(
+      [
+        baseRow({
+          EmpID: 12,
+          EmpName: 'زياد',
+          IsWorkingDay: 1,
+          XferOut: 1,
+          XferOutStart: '17:00',
+          XferOutEnd: '12:34',
+        }),
+      ],
+      today,
+      dow,
+      { includeFreelance: false, now },
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it('keeps source-branch row after transfer start if attendance already recorded', () => {
+    const today = '2026-08-15';
+    const dow = new Date(`${today}T12:00:00Z`).getDay();
+    const now = new Date('2026-08-15T15:30:00.000Z');
+    const rows = filterAttendanceBoardRows(
+      [
+        baseRow({
+          EmpID: 12,
+          EmpName: 'زياد',
+          IsWorkingDay: 1,
+          AttendanceID: 99,
+          CheckInTime: '16:00',
+          Status: 'Late',
+          XferOut: 1,
+          XferOutStart: '17:00',
+          XferOutEnd: '12:34',
+        }),
+      ],
+      today,
+      dow,
+      { includeFreelance: false, now },
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].HasRecord).toBe(true);
+  });
 });
 
 describe('resolveAttendanceEligibility', () => {

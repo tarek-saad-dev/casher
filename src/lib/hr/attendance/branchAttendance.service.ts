@@ -138,25 +138,101 @@ export async function assertEmployeeEligibleForBranchAttendance(
     `);
   if (existingAtt.recordset[0]) return;
 
+  // Transferred away from this branch after window start → block new check-in here
+  // (must run before weekly-schedule bypass below)
+  const xferAway = await db
+    .request()
+    .input('empId', sql.Int, empId)
+    .input('branchId', sql.Int, branchId)
+    .input('workDate', sql.Date, workDate)
+    .query(`
+      SELECT TOP 1
+             CONVERT(VARCHAR(5), StartTime, 108) AS StartTime,
+             CONVERT(VARCHAR(5), EndTime, 108) AS EndTime
+      FROM dbo.TblEmpTemporaryBranchTransfer
+      WHERE EmpID = @empId
+        AND WorkDate = @workDate
+        AND IsActive = 1
+        AND FromBranchID = @branchId
+    `);
+  if (xferAway.recordset[0]) {
+    const { isTransferSourceInactive } = await import('@/lib/hr/temporaryTransferWindow');
+    if (
+      isTransferSourceInactive({
+        workDate,
+        startTime: xferAway.recordset[0].StartTime
+          ? String(xferAway.recordset[0].StartTime).slice(0, 5)
+          : null,
+        endTime: xferAway.recordset[0].EndTime
+          ? String(xferAway.recordset[0].EndTime).slice(0, 5)
+          : null,
+      })
+    ) {
+      throw new AttendanceDomainError(
+        'EMPLOYEE_TRANSFERRED_AWAY',
+        'الموظف منقول لفرع آخر في هذه الفترة — سجّل الحضور من الفرع المنقول إليه',
+        403,
+      );
+    }
+  }
+
   // Branch weekly schedule says working (even if resolver marked global leave)
   const scheduleRow = await getEffectiveBranchScheduleRow({ empId, branchId, workDate });
   if (scheduleRow?.isWorking) return;
 
-  // Temporary transfer into this branch today
+  // Temporary transfer into this branch — only after destination window starts
   const xfer = await db
     .request()
     .input('empId', sql.Int, empId)
     .input('branchId', sql.Int, branchId)
     .input('workDate', sql.Date, workDate)
     .query(`
-      SELECT TOP 1 TransferID
+      SELECT TOP 1 TransferID, FromBranchID,
+             CONVERT(VARCHAR(5), StartTime, 108) AS StartTime,
+             CONVERT(VARCHAR(5), EndTime, 108) AS EndTime
       FROM dbo.TblEmpTemporaryBranchTransfer
       WHERE EmpID = @empId
         AND WorkDate = @workDate
         AND IsActive = 1
         AND ToBranchID = @branchId
     `);
-  if (xfer.recordset[0]) return;
+  if (xfer.recordset[0]) {
+    const { isTransferDestinationActive } = await import('@/lib/hr/temporaryTransferWindow');
+    const active = isTransferDestinationActive({
+      workDate,
+      startTime: xfer.recordset[0].StartTime
+        ? String(xfer.recordset[0].StartTime).slice(0, 5)
+        : null,
+      endTime: xfer.recordset[0].EndTime
+        ? String(xfer.recordset[0].EndTime).slice(0, 5)
+        : null,
+    });
+    if (active) {
+      // Must close open attendance at the source branch before checking in here
+      const openSrc = await db
+        .request()
+        .input('empId', sql.Int, empId)
+        .input('fromBranchId', sql.Int, Number(xfer.recordset[0].FromBranchID))
+        .input('workDate', sql.Date, workDate)
+        .query(`
+          SELECT TOP 1 ID
+          FROM dbo.TblEmpAttendance
+          WHERE EmpID = @empId
+            AND BranchID = @fromBranchId
+            AND WorkDate = @workDate
+            AND CheckInTime IS NOT NULL
+            AND CheckOutTime IS NULL
+        `);
+      if (openSrc.recordset[0]) {
+        throw new AttendanceDomainError(
+          'TRANSFER_SOURCE_STILL_OPEN',
+          'اقفل حضور الفرع السابق (تسجيل انصراف) قبل فتح الحضور في الفرع المنقول إليه',
+          409,
+        );
+      }
+      return;
+    }
+  }
 
   const global = await resolveEmployeeGlobalSchedule({ empId, workDate, publicOnly: false });
   if (global.isGloballyWorking && global.branches[0]?.branchId !== branchId) {

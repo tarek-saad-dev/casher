@@ -42,6 +42,7 @@ const PAGES = [
   { key: 'reports.expenses',       name: 'تقرير المصروفات',        path: '/reports/expenses/monthly',        section: 'مراجعة المصروفات',  access: 'roles', sort: 40 },
   // Treasury
   { key: 'treasury.daily',         name: 'قفل اليوم',              path: '/treasury/daily',                  section: 'الخزنة',             access: 'roles', sort: 50 },
+  { key: 'treasury.group_daily',   name: 'خزنة كل الفروع',         path: '/treasury/group-daily',            section: 'الخزنة',             access: 'super_admin_only', sort: 505 },
   { key: 'treasury.period_summary',name: 'ملخص الخزنة الدوري',     path: '/treasury/period-summary',         section: 'الخزنة',             access: 'roles', sort: 51 },
   { key: 'treasury.movement',      name: 'حركة الخزنة',            path: '/treasury/movement',               section: 'الخزنة',             access: 'roles', sort: 52 },
   { key: 'treasury.summary',       name: 'ملخص حسب الدفع',         path: '/treasury/summary',                section: 'الخزنة',             access: 'roles', sort: 53 },

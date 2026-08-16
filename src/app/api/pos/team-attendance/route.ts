@@ -7,6 +7,10 @@ import {
   isActiveBranchContext,
   requireBranchOperationAccess,
 } from '@/lib/branch';
+import {
+  isTransferDestinationActive,
+  isTransferSourceInactive,
+} from '@/lib/hr/temporaryTransferWindow';
 
 async function ensureAttendanceTable(db: {
   request: () => { query: (q: string) => Promise<unknown> };
@@ -48,6 +52,59 @@ async function ensureAttendanceTable(db: {
         ON dbo.TblEmpAttendance (BranchID, WorkDate);
     END
   `);
+}
+
+type TeamAttendanceDbRow = {
+  EmpID: number;
+  EmpName: string;
+  Job: string | null;
+  DayOfWeek: number | null;
+  IsWorkingDay: boolean | null;
+  DefaultCheckInTime: string | null;
+  DefaultCheckOutTime: string | null;
+  AttendanceID: number | null;
+  CheckInTime: string | null;
+  CheckOutTime: string | null;
+  Status: string | null;
+  LateMinutes: number | null;
+  Notes: string | null;
+  XferIn: number | null;
+  XferInStart: string | null;
+  XferInEnd: string | null;
+  XferOut: number | null;
+  XferOutStart: string | null;
+  XferOutEnd: string | null;
+};
+
+function keepOnBranchRoster(row: TeamAttendanceDbRow, workDate: string, now: Date): boolean {
+  const hasAttendance = row.AttendanceID != null;
+  const xferInActive =
+    row.XferIn != null &&
+    isTransferDestinationActive({
+      workDate,
+      startTime: row.XferInStart,
+      endTime: row.XferInEnd,
+      now,
+    });
+  const xferOutActive =
+    row.XferOut != null &&
+    isTransferSourceInactive({
+      workDate,
+      startTime: row.XferOutStart,
+      endTime: row.XferOutEnd,
+      now,
+    });
+
+  // Transferred away from this branch (window started) → hide unless they already
+  // have an attendance row here (source half-day already recorded).
+  if (xferOutActive && !hasAttendance) return false;
+
+  // Transfer-in only appears after destination window starts.
+  if (row.XferIn != null && !xferInActive && !hasAttendance && !row.IsWorkingDay) {
+    return false;
+  }
+
+  return true;
 }
 
 // GET /api/pos/team-attendance?date=YYYY-MM-DD
@@ -98,7 +155,13 @@ export async function GET(req: NextRequest) {
           CONVERT(VARCHAR(5), a.CheckOutTime, 108) AS CheckOutTime,
           a.Status,
           a.LateMinutes,
-          a.Notes
+          a.Notes,
+          xferIn.X AS XferIn,
+          xferIn.StartTime AS XferInStart,
+          xferIn.EndTime AS XferInEnd,
+          xferOut.X AS XferOut,
+          xferOut.StartTime AS XferOutStart,
+          xferOut.EndTime AS XferOutEnd
         FROM dbo.TblEmp e
         LEFT JOIN dbo.TblEmpAttendance a
           ON a.EmpID = e.EmpID AND a.WorkDate = @workDate AND a.BranchID = @branchId
@@ -118,13 +181,27 @@ export async function GET(req: NextRequest) {
           ORDER BY s.EffectiveFrom DESC, s.ScheduleID DESC
         ) ws
         OUTER APPLY (
-          SELECT TOP 1 1 AS X
+          SELECT TOP 1
+            1 AS X,
+            CONVERT(VARCHAR(5), t.StartTime, 108) AS StartTime,
+            CONVERT(VARCHAR(5), t.EndTime, 108) AS EndTime
           FROM dbo.TblEmpTemporaryBranchTransfer t
           WHERE t.EmpID = e.EmpID
             AND t.WorkDate = @workDate
             AND t.IsActive = 1
             AND t.ToBranchID = @branchId
         ) xferIn
+        OUTER APPLY (
+          SELECT TOP 1
+            1 AS X,
+            CONVERT(VARCHAR(5), t.StartTime, 108) AS StartTime,
+            CONVERT(VARCHAR(5), t.EndTime, 108) AS EndTime
+          FROM dbo.TblEmpTemporaryBranchTransfer t
+          WHERE t.EmpID = e.EmpID
+            AND t.WorkDate = @workDate
+            AND t.IsActive = 1
+            AND t.FromBranchID = @branchId
+        ) xferOut
         WHERE ISNULL(e.isActive, 1) = 1
           AND ISNULL(e.IsPayrollEnabled, 1) = 1
           AND (
@@ -160,25 +237,26 @@ export async function GET(req: NextRequest) {
         ORDER BY e.EmpName
       `);
 
-    const team: TeamAttendanceMember[] = result.recordset.map(
-      (row: {
-        EmpID: number;
-        EmpName: string;
-        Job: string | null;
-        DayOfWeek: number | null;
-        IsWorkingDay: boolean | null;
-        DefaultCheckInTime: string | null;
-        DefaultCheckOutTime: string | null;
-        AttendanceID: number | null;
-        CheckInTime: string | null;
-        CheckOutTime: string | null;
-        Status: string | null;
-        LateMinutes: number | null;
-        Notes: string | null;
-      }) => {
+    const now = new Date();
+    const team: TeamAttendanceMember[] = (result.recordset as TeamAttendanceDbRow[])
+      .filter((row) => keepOnBranchRoster(row, dateStr, now))
+      .map((row) => {
         const hasAttendance = row.AttendanceID != null;
-        const isWorkingDay = !!row.IsWorkingDay;
-        const schedStart = row.DefaultCheckInTime || null;
+        const xferInActive =
+          row.XferIn != null &&
+          isTransferDestinationActive({
+            workDate: dateStr,
+            startTime: row.XferInStart,
+            endTime: row.XferInEnd,
+            now,
+          });
+        const isWorkingDay = !!row.IsWorkingDay || xferInActive;
+        const schedStart = xferInActive
+          ? row.XferInStart || row.DefaultCheckInTime || null
+          : row.DefaultCheckInTime || null;
+        const schedEnd = xferInActive
+          ? row.XferInEnd || row.DefaultCheckOutTime || null
+          : row.DefaultCheckOutTime || null;
         const checkIn = row.CheckInTime || null;
         const checkOut = row.CheckOutTime || null;
         const lateMin =
@@ -198,7 +276,7 @@ export async function GET(req: NextRequest) {
           employeeName: row.EmpName,
           jobTitle: row.Job || null,
           scheduledStartTime: schedStart,
-          scheduledEndTime: row.DefaultCheckOutTime || null,
+          scheduledEndTime: schedEnd,
           attendanceStatus: status,
           checkInTime: checkIn,
           checkOutTime: checkOut,
@@ -207,8 +285,7 @@ export async function GET(req: NextRequest) {
           lateMinutes: lateMin,
           notes: row.Notes || '',
         };
-      },
-    );
+      });
 
     return NextResponse.json({
       success: true,

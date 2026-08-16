@@ -36,6 +36,7 @@ export const SYSTEM_PAGES: PageDefinition[] = [
   { key: 'reports.expenses',        name: 'تقرير المصروفات',         path: '/reports/expenses/monthly',        section: 'مراجعة المصروفات', accessMode: 'roles', sort: 40,  defaultRoles: ['super_admin','admin','manager','accountant'] },
   // ── Treasury ─────────────────────────────────────────────────────────────────
   { key: 'treasury.daily',             name: 'قفل اليوم',               path: '/treasury/daily',                  section: 'الخزنة',            accessMode: 'roles', sort: 50,  defaultRoles: ['super_admin','admin','accountant'] },
+  { key: 'treasury.group_daily',       name: 'خزنة كل الفروع',          path: '/treasury/group-daily',            section: 'الخزنة',            accessMode: 'super_admin_only', sort: 505 },
   { key: 'cashier_treasury_daily',    name: 'خزنة الكاشير اليومية',      path: '/cashier/treasury/daily',          section: 'الكاشير',          accessMode: 'roles', sort: 56,  defaultRoles: ['super_admin','cashier','admin','manager'] },
   { key: 'treasury.period_summary', name: 'ملخص الخزنة الدوري',      path: '/treasury/period-summary',         section: 'الخزنة',            accessMode: 'roles', sort: 51,  defaultRoles: ['super_admin','admin','manager','accountant','viewer'] },
   { key: 'treasury.movement',       name: 'حركة الخزنة',             path: '/treasury/movement',               section: 'الخزنة',            accessMode: 'roles', sort: 52,  defaultRoles: ['super_admin','admin','accountant','viewer'] },

@@ -671,8 +671,16 @@ export async function getEmployeeMonthlyPayrollReport(
       payroll?.ActualHours != null && Number.isFinite(payroll.ActualHours)
         ? Number(payroll.ActualHours)
         : null;
-    if (actualHours == null && checkIn && checkOut) {
-      actualHours = computeNetWorkedHours(checkIn, checkOut, null, breakMinutes);
+    const liveHours =
+      checkIn && checkOut
+        ? computeNetWorkedHours(checkIn, checkOut, null, breakMinutes)
+        : null;
+    // Prefer live punches when they disagree with stale payroll (common after overnight OT fix).
+    if (
+      liveHours != null &&
+      (actualHours == null || Math.abs(actualHours - liveHours) >= 0.05)
+    ) {
+      actualHours = liveHours;
     }
 
     const hourlyRate =
@@ -684,6 +692,18 @@ export async function getEmployeeMonthlyPayrollReport(
       payroll?.DailyWage != null && Number.isFinite(payroll.DailyWage)
         ? roundMoney(Number(payroll.DailyWage))
         : null;
+
+    // If hours came from live punches (mismatch / missing payroll), recompute hourly wage.
+    if (
+      payrollMethod === 'hourly' &&
+      hourlyRate != null &&
+      actualHours != null &&
+      liveHours != null &&
+      (payroll?.ActualHours == null ||
+        Math.abs(Number(payroll.ActualHours) - liveHours) >= 0.05)
+    ) {
+      baseWage = roundMoney(hourlyRate * actualHours);
+    }
 
     let fullDayBase: number | null = null;
     if (payrollMethod === 'hourly' && hourlyRate != null && scheduledHours != null && scheduledHours > 0) {
