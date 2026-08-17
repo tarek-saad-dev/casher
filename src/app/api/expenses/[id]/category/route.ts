@@ -60,11 +60,28 @@ export async function DELETE(
       return financialNotFoundResponse();
     }
 
-    const ledgerDeletedCount = auditResult.data.ledgerDeletedCount;
+    const ledgerDeletedCount = Number(auditResult.data.ledgerDeletedCount ?? 0);
+    const settlementDeleted = Boolean(auditResult.data.settlementDeleted);
+    const settlementLedgerDeletedCount = Number(
+      auditResult.data.settlementLedgerDeletedCount ?? 0,
+    );
+    const totalLedgerDeleted = ledgerDeletedCount + settlementLedgerDeletedCount;
+
+    let message = cashMoveHardDeleteSuccessMessage(totalLedgerDeleted);
+    if (settlementDeleted) {
+      message =
+        totalLedgerDeleted > 0
+          ? 'تم حذف الخصم وإيراد المعادلة المقابل، وحذف تأثيرهما من دفتر الموظفين.'
+          : 'تم حذف الخصم وإيراد المعادلة المقابل بنجاح.';
+    }
+
     return NextResponse.json({
       success: true,
-      message: cashMoveHardDeleteSuccessMessage(ledgerDeletedCount),
-      ledgerDeletedCount,
+      message,
+      ledgerDeletedCount: totalLedgerDeleted,
+      settlementDeleted,
+      settlementCashMoveId: auditResult.data.settlementCashMoveId ?? null,
+      settlementLedgerDeletedCount,
       deletedId: expenseId,
       auditId: auditResult.auditId,
     });

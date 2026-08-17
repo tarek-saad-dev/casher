@@ -5,9 +5,19 @@
 export const EMPLOYEE_LEDGER_REFRESH_EVENT = 'employee-ledger:refresh';
 
 export function cashMoveDeleteToastMessage(
-  data: { message?: string; ledgerDeletedCount?: number } | null | undefined,
+  data: {
+    message?: string;
+    ledgerDeletedCount?: number;
+    settlementDeleted?: boolean;
+  } | null | undefined,
   fallback: string,
 ): string {
+  if (data?.settlementDeleted) {
+    if (typeof data.ledgerDeletedCount === 'number' && data.ledgerDeletedCount > 0) {
+      return 'تم حذف الخصم وإيراد المعادلة المقابل، وحذف تأثيرهما من دفتر الموظفين.';
+    }
+    return 'تم حذف الخصم وإيراد المعادلة المقابل بنجاح.';
+  }
   if (data && typeof data.ledgerDeletedCount === 'number' && data.ledgerDeletedCount > 0) {
     return 'تم حذف الحركة وحذف تأثيرها من دفتر الموظفين.';
   }

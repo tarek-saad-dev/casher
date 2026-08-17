@@ -68,13 +68,14 @@ export async function GET(req: NextRequest) {
         pm.PaymentMethod,
         u.UserName,
         emp.EmpID,
-        emp.EmpName
+        emp.EmpName,
+        cm.EditHistory
       FROM [dbo].[TblCashMove] cm
       LEFT JOIN [dbo].[TblExpINCat] cat ON cm.ExpINID = cat.ExpINID
       LEFT JOIN [dbo].[TblPaymentMethods] pm ON cm.PaymentMethodID = pm.PaymentID
       LEFT JOIN [dbo].[TblShiftMove] sm ON cm.ShiftMoveID = sm.ID
       LEFT JOIN [dbo].[TblUser] u ON sm.UserID = u.UserID
-      LEFT JOIN [dbo].[TblExpCatEmpMap map ON cm.ExpINID = map.ExpINID AND map.TxnKind = N\'advance\'
+      LEFT JOIN [dbo].[TblExpCatEmpMap] map ON cm.ExpINID = map.ExpINID AND map.TxnKind = N'advance'
       LEFT JOIN [dbo].[TblEmp] emp ON map.EmpID = emp.EmpID
       ${whereClause}
       ORDER BY cm.ID DESC

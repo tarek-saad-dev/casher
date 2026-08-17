@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import ShiftRequiredOverlay from '@/components/session/ShiftRequiredOverlay';
 import DeductionReceiptPopup from '@/components/deductions/DeductionReceiptPopup';
+import EditDeductionModal from '@/components/deductions/EditDeductionModal';
 import MonthlySummary from '@/components/deductions/MonthlySummary';
 import { useSession } from '@/hooks/useSession';
 import { cashMoveDeleteToastMessage, notifyEmployeeLedgerRefresh } from '@/lib/cashMoveDeleteClient';
@@ -50,6 +51,7 @@ interface DeductionRecord {
   UserName: string | null;
   EmpID: number;
   EmpName: string;
+  EditHistory?: unknown;
 }
 
 export default function DeductionsPage() {
@@ -94,6 +96,9 @@ export default function DeductionsPage() {
   const [showCustomRange, setShowCustomRange] = useState(false);
   const [sortByAmountDesc, setSortByAmountDesc] = useState(false);
   const [showMonthlySummary, setShowMonthlySummary] = useState(false);
+
+  // ──── Edit state ────
+  const [editingDeduction, setEditingDeduction] = useState<DeductionRecord | null>(null);
 
   // ──── Receipt state ────
   const [receiptDeduction, setReceiptDeduction] = useState<{
@@ -169,11 +174,22 @@ export default function DeductionsPage() {
       params.set('paymentMethodId', filterPaymentMethodId);
     }
     fetch(`/api/deductions?${params.toString()}`)
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setDeductions(d); })
-      .catch(() => { })
+      .then(async (r) => {
+        const d = await r.json();
+        if (!r.ok) {
+          addToast('error', d.error || 'فشل تحميل الخصومات');
+          setDeductions([]);
+          return;
+        }
+        if (Array.isArray(d)) setDeductions(d);
+        else setDeductions([]);
+      })
+      .catch(() => {
+        addToast('error', 'خطأ في الاتصال بالخادم أثناء تحميل الخصومات');
+        setDeductions([]);
+      })
       .finally(() => setLoadingHistory(false));
-  }, [dateFrom, dateTo, filterEmployeeId, filterPaymentMethodId, dateError]);
+  }, [dateFrom, dateTo, filterEmployeeId, filterPaymentMethodId, dateError, addToast]);
 
   useEffect(() => { loadDeductions(); }, [loadDeductions]);
 
@@ -307,7 +323,7 @@ export default function DeductionsPage() {
 
   // ──── Delete deduction ────
   const handleDelete = useCallback(async (id: number, invID: number) => {
-    if (!confirm(`هل أنت متأكد من حذف الخصم #${invID}؟`)) return;
+    if (!confirm(`هل أنت متأكد من حذف الخصم #${invID}؟\nسيتم حذف المصروف وإيراد المعادلة المقابل معه.`)) return;
     const reason = window.prompt('سبب حذف الخصم (مطلوب):');
     if (reason === null) return;
     if (!reason.trim()) {
@@ -325,6 +341,9 @@ export default function DeductionsPage() {
         addToast('error', data.error || 'فشل حذف الخصم');
       } else {
         addToast('success', cashMoveDeleteToastMessage(data, 'تم حذف الخصم بنجاح'));
+        if (!data.settlementDeleted) {
+          addToast('info', 'لم يُعثر على إيراد معادلة مقابل — راجع الإيرادات يدوياً إن لزم');
+        }
         if (data.ledgerDeletedCount > 0) notifyEmployeeLedgerRefresh();
         loadDeductions();
       }
@@ -624,6 +643,13 @@ export default function DeductionsPage() {
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0 mr-2">
                         <button
+                          onClick={() => setEditingDeduction(deduction)}
+                          className="p-1.5 hover:bg-accent rounded-lg transition-colors"
+                          title="تعديل"
+                        >
+                          <Edit2 className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
+                        </button>
+                        <button
                           onClick={() => handleDelete(deduction.ID, deduction.invID)}
                           className="p-1.5 hover:bg-red-100 rounded-lg transition-colors"
                           title="حذف"
@@ -773,6 +799,21 @@ export default function DeductionsPage() {
           <span>{toast.message}</span>
         </div>
       ))}
+
+      {/* Edit Modal */}
+      {editingDeduction && (
+        <EditDeductionModal
+          deduction={editingDeduction}
+          employees={employees}
+          paymentMethods={paymentMethods}
+          onClose={() => setEditingDeduction(null)}
+          onSaved={() => {
+            setEditingDeduction(null);
+            addToast('success', 'تم تحديث الخصم بنجاح');
+            loadDeductions();
+          }}
+        />
+      )}
 
       {/* Deduction Receipt Popup */}
       <DeductionReceiptPopup

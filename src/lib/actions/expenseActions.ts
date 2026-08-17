@@ -4,6 +4,10 @@
 
 import { sql } from '@/lib/db';
 import {
+  findPairedDeductionSettlementId,
+  syncPairedDeductionSettlement,
+} from '@/lib/actions/deductionSettlementPairing';
+import {
   deleteCashMoveWithLinkedLedgerEntries,
   type DeleteCashMoveWithLedgerResult,
 } from '@/lib/services/cashMoveHardDeleteService';
@@ -122,6 +126,25 @@ export async function updateExpense(
     },
   );
 
+  // Keep paired "معادلة" income in sync so cash books stay balanced.
+  // Match against the pre-update snapshot (amount/time/shift), then write new values.
+  const empNameRes = await new sql.Request(transaction)
+    .input('expINID', sql.Int, updated.ExpINID)
+    .query(`
+      SELECT TOP 1 e.EmpName
+      FROM dbo.TblExpCatEmpMap m
+      INNER JOIN dbo.TblEmp e ON e.EmpID = m.EmpID
+      WHERE m.ExpINID = @expINID AND m.TxnKind = N'advance'
+      ORDER BY m.ModifiedDate DESC, m.ID DESC
+    `);
+  const employeeName = (empNameRes.recordset[0]?.EmpName as string | undefined) ?? null;
+
+  await syncPairedDeductionSettlement(transaction, current, {
+    grandTotal: Number(updated.GrandTolal),
+    paymentMethodId: Number(updated.PaymentMethodID),
+    employeeName,
+  });
+
   return updated;
 }
 
@@ -175,11 +198,17 @@ export async function updateExpenseCategory(
   return updated;
 }
 
+export type DeleteExpenseResult = Extract<DeleteCashMoveWithLedgerResult, { deleted: true }> & {
+  settlementDeleted: boolean;
+  settlementCashMoveId: number | null;
+  settlementLedgerDeletedCount: number;
+};
+
 export async function deleteExpense(
   transaction: sql.Transaction,
   id: number,
   activeBranchId?: number,
-): Promise<Extract<DeleteCashMoveWithLedgerResult, { deleted: true }>> {
+): Promise<DeleteExpenseResult> {
   const existing = await getExpenseSnapshot(transaction, id);
   if (!existing) {
     throw new Error('المصروف غير موجود أو تم حذفه');
@@ -191,10 +220,32 @@ export async function deleteExpense(
     throw new Error('غير موجود');
   }
 
+  // Resolve paired settlement BEFORE deleting the expense (needs amount/shift/time).
+  const settlementCashMoveId = await findPairedDeductionSettlementId(transaction, existing);
+
   const result = await deleteCashMoveWithLinkedLedgerEntries(transaction, id);
   if (!result.deleted) {
     throw new Error('المصروف غير موجود أو تم حذفه');
   }
 
-  return result;
+  let settlementDeleted = false;
+  let settlementLedgerDeletedCount = 0;
+  if (settlementCashMoveId != null) {
+    const settlementResult = await deleteCashMoveWithLinkedLedgerEntries(
+      transaction,
+      settlementCashMoveId,
+    );
+    if (!settlementResult.deleted) {
+      throw new Error('تم العثور على إيراد المعادلة لكن فشل حذفه — تم التراجع عن العملية');
+    }
+    settlementDeleted = true;
+    settlementLedgerDeletedCount = settlementResult.ledgerDeletedCount;
+  }
+
+  return {
+    ...result,
+    settlementDeleted,
+    settlementCashMoveId,
+    settlementLedgerDeletedCount,
+  };
 }
