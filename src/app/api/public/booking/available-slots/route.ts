@@ -14,7 +14,12 @@ import {
   gatePublicBookingRoute,
   finalizePublicBookingError,
   finalizePublicBookingJson,
+  attachPublicBookingReadTelemetry,
 } from '@/lib/booking/publicBookingRouteGate';
+import {
+  runWithPublicBookingReadTelemetry,
+  setAvailabilityMs,
+} from '@/lib/booking/publicBookingReadTelemetry';
 
 export const runtime = 'nodejs';
 
@@ -127,13 +132,23 @@ export async function GET(req: NextRequest) {
       return finalizePublicBookingError(req, gate, 'BARBER_NOT_FOUND');
     }
 
-    const result = await getPublicAvailableSlots({
-      branchCode,
-      date,
-      serviceIds,
-      empId,
-      previewQueryParam: preview,
+    const { result, telemetry } = await runWithPublicBookingReadTelemetry(async () => {
+      const t0 = Date.now();
+      const { extractBookingV2CanaryKeyFromRequest } = await import(
+        '@/lib/booking/projection/bookingV2ReadCutover'
+      );
+      const out = await getPublicAvailableSlots({
+        branchCode,
+        date,
+        serviceIds,
+        empId,
+        previewQueryParam: preview,
+        canaryKey: extractBookingV2CanaryKeyFromRequest(req),
+      });
+      setAvailabilityMs(Date.now() - t0);
+      return out;
     });
+    attachPublicBookingReadTelemetry(gate, telemetry);
 
     return finalizePublicBookingJson(req, gate, result, {
       cacheControl: 'private, max-age=30, stale-while-revalidate=20',

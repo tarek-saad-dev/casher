@@ -408,6 +408,17 @@ export async function createOperationsQueueTicket(
 
     await transaction.commit();
 
+    void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+      .then((m) =>
+        m.notifyHotQueueChanged({
+          employeeId: empId,
+          businessDate: dateStr,
+          branchId,
+          reason: 'queue_ticket_created',
+        }),
+      )
+      .catch(() => undefined);
+
     const ticketNumberMatch = ticketCode.match(/-(\d+)$/);
     const ticketNumber = ticketNumberMatch ? parseInt(ticketNumberMatch[1], 10) : 0;
     const chairNumber = getChairNumber(empName);

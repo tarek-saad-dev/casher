@@ -1,0 +1,1728 @@
+{
+  "label": "AZURE",
+  "startedAt": "2026-08-21T00:39:25.686Z",
+  "finishedAt": "2026-08-21T00:47:02.783Z",
+  "baseUrl": "http://localhost:5500",
+  "dbExpected": {
+    "server": "newserverr.database.windows.net",
+    "database": "last132",
+    "user": "CloudSA942448b3",
+    "encrypt": "true",
+    "trustServerCertificate": "false"
+  },
+  "dbProbe": {
+    "dbName": "last132",
+    "serverName": "newserverr",
+    "probeMs": 1664
+  },
+  "page": {
+    "path": "/operations",
+    "warmHttpMs": [
+      799,
+      1433,
+      753,
+      696,
+      653,
+      696
+    ],
+    "stats": {
+      "n": 6,
+      "min": 653,
+      "avg": 838,
+      "p50": 696,
+      "p95": 1433,
+      "max": 1433
+    }
+  },
+  "endpoints": [
+    {
+      "name": "auth.session",
+      "method": "GET",
+      "url": "/api/auth/session",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 1920,
+          "status": 200,
+          "bytes": 3725
+        },
+        {
+          "httpMs": 2049,
+          "status": 200,
+          "bytes": 3725
+        },
+        {
+          "httpMs": 1826,
+          "status": 200,
+          "bytes": 3725
+        },
+        {
+          "httpMs": 2149,
+          "status": 200,
+          "bytes": 3725
+        },
+        {
+          "httpMs": 2461,
+          "status": 200,
+          "bytes": 3725
+        },
+        {
+          "httpMs": 1654,
+          "status": 200,
+          "bytes": 3725
+        },
+        {
+          "httpMs": 1636,
+          "status": 200,
+          "bytes": 3725
+        },
+        {
+          "httpMs": 1643,
+          "status": 200,
+          "bytes": 3725
+        },
+        {
+          "httpMs": 1624,
+          "status": 200,
+          "bytes": 3725
+        },
+        {
+          "httpMs": 1648,
+          "status": 200,
+          "bytes": 3725
+        },
+        {
+          "httpMs": 1639,
+          "status": 200,
+          "bytes": 3725
+        },
+        {
+          "httpMs": 1654,
+          "status": 200,
+          "bytes": 3725
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 1624,
+        "avg": 1825,
+        "p50": 1654,
+        "p95": 2461,
+        "max": 2461
+      },
+      "okRate": 1
+    },
+    {
+      "name": "permissions.my-access",
+      "method": "GET",
+      "url": "/api/permissions/my-access",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 568,
+          "status": 200,
+          "bytes": 3220
+        },
+        {
+          "httpMs": 552,
+          "status": 200,
+          "bytes": 3220
+        },
+        {
+          "httpMs": 580,
+          "status": 200,
+          "bytes": 3220
+        },
+        {
+          "httpMs": 556,
+          "status": 200,
+          "bytes": 3220
+        },
+        {
+          "httpMs": 556,
+          "status": 200,
+          "bytes": 3220
+        },
+        {
+          "httpMs": 575,
+          "status": 200,
+          "bytes": 3220
+        },
+        {
+          "httpMs": 567,
+          "status": 200,
+          "bytes": 3220
+        },
+        {
+          "httpMs": 569,
+          "status": 200,
+          "bytes": 3220
+        },
+        {
+          "httpMs": 580,
+          "status": 200,
+          "bytes": 3220
+        },
+        {
+          "httpMs": 555,
+          "status": 200,
+          "bytes": 3220
+        },
+        {
+          "httpMs": 549,
+          "status": 200,
+          "bytes": 3220
+        },
+        {
+          "httpMs": 553,
+          "status": 200,
+          "bytes": 3220
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 549,
+        "avg": 563,
+        "p50": 556,
+        "p95": 580,
+        "max": 580
+      },
+      "okRate": 1
+    },
+    {
+      "name": "auth.branches",
+      "method": "GET",
+      "url": "/api/auth/branches",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 934,
+          "status": 200,
+          "bytes": 395
+        },
+        {
+          "httpMs": 920,
+          "status": 200,
+          "bytes": 395
+        },
+        {
+          "httpMs": 918,
+          "status": 200,
+          "bytes": 395
+        },
+        {
+          "httpMs": 919,
+          "status": 200,
+          "bytes": 395
+        },
+        {
+          "httpMs": 927,
+          "status": 200,
+          "bytes": 395
+        },
+        {
+          "httpMs": 924,
+          "status": 200,
+          "bytes": 395
+        },
+        {
+          "httpMs": 959,
+          "status": 200,
+          "bytes": 395
+        },
+        {
+          "httpMs": 935,
+          "status": 200,
+          "bytes": 395
+        },
+        {
+          "httpMs": 922,
+          "status": 200,
+          "bytes": 395
+        },
+        {
+          "httpMs": 949,
+          "status": 200,
+          "bytes": 395
+        },
+        {
+          "httpMs": 943,
+          "status": 200,
+          "bytes": 395
+        },
+        {
+          "httpMs": 925,
+          "status": 200,
+          "bytes": 395
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 918,
+        "avg": 931,
+        "p50": 925,
+        "p95": 959,
+        "max": 959
+      },
+      "okRate": 1
+    },
+    {
+      "name": "branches.available",
+      "method": "GET",
+      "url": "/api/branches/available",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 922,
+          "status": 200,
+          "bytes": 409
+        },
+        {
+          "httpMs": 916,
+          "status": 200,
+          "bytes": 409
+        },
+        {
+          "httpMs": 916,
+          "status": 200,
+          "bytes": 409
+        },
+        {
+          "httpMs": 939,
+          "status": 200,
+          "bytes": 409
+        },
+        {
+          "httpMs": 910,
+          "status": 200,
+          "bytes": 409
+        },
+        {
+          "httpMs": 920,
+          "status": 200,
+          "bytes": 409
+        },
+        {
+          "httpMs": 908,
+          "status": 200,
+          "bytes": 409
+        },
+        {
+          "httpMs": 943,
+          "status": 200,
+          "bytes": 409
+        },
+        {
+          "httpMs": 909,
+          "status": 200,
+          "bytes": 409
+        },
+        {
+          "httpMs": 921,
+          "status": 200,
+          "bytes": 409
+        },
+        {
+          "httpMs": 918,
+          "status": 200,
+          "bytes": 409
+        },
+        {
+          "httpMs": 955,
+          "status": 200,
+          "bytes": 409
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 908,
+        "avg": 923,
+        "p50": 918,
+        "p95": 955,
+        "max": 955
+      },
+      "okRate": 1
+    },
+    {
+      "name": "barbers",
+      "method": "GET",
+      "url": "/api/barbers",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 791,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 767,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 790,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 773,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 772,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 843,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 794,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 835,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 761,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 764,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 751,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 751,
+          "status": 200,
+          "bytes": 889
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 751,
+        "avg": 783,
+        "p50": 772,
+        "p95": 843,
+        "max": 843
+      },
+      "okRate": 1
+    },
+    {
+      "name": "barbers.scope-barber",
+      "method": "GET",
+      "url": "/api/barbers?scope=barber",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 744,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 757,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 819,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 773,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 810,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 756,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 914,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 1401,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 1208,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 2079,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 1970,
+          "status": 200,
+          "bytes": 889
+        },
+        {
+          "httpMs": 2328,
+          "status": 200,
+          "bytes": 889
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 744,
+        "avg": 1213,
+        "p50": 819,
+        "p95": 2328,
+        "max": 2328
+      },
+      "okRate": 1
+    },
+    {
+      "name": "services",
+      "method": "GET",
+      "url": "/api/services",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 280,
+          "status": 200,
+          "bytes": 15846
+        },
+        {
+          "httpMs": 245,
+          "status": 200,
+          "bytes": 15846
+        },
+        {
+          "httpMs": 236,
+          "status": 200,
+          "bytes": 15846
+        },
+        {
+          "httpMs": 240,
+          "status": 200,
+          "bytes": 15846
+        },
+        {
+          "httpMs": 238,
+          "status": 200,
+          "bytes": 15846
+        },
+        {
+          "httpMs": 243,
+          "status": 200,
+          "bytes": 15846
+        },
+        {
+          "httpMs": 257,
+          "status": 200,
+          "bytes": 15846
+        },
+        {
+          "httpMs": 246,
+          "status": 200,
+          "bytes": 15846
+        },
+        {
+          "httpMs": 339,
+          "status": 200,
+          "bytes": 15846
+        },
+        {
+          "httpMs": 236,
+          "status": 200,
+          "bytes": 15846
+        },
+        {
+          "httpMs": 248,
+          "status": 200,
+          "bytes": 15846
+        },
+        {
+          "httpMs": 292,
+          "status": 200,
+          "bytes": 15846
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 236,
+        "avg": 258,
+        "p50": 245,
+        "p95": 339,
+        "max": 339
+      },
+      "okRate": 1
+    },
+    {
+      "name": "payment-methods",
+      "method": "GET",
+      "url": "/api/payment-methods",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 408,
+          "status": 200,
+          "bytes": 286
+        },
+        {
+          "httpMs": 365,
+          "status": 200,
+          "bytes": 286
+        },
+        {
+          "httpMs": 375,
+          "status": 200,
+          "bytes": 286
+        },
+        {
+          "httpMs": 370,
+          "status": 200,
+          "bytes": 286
+        },
+        {
+          "httpMs": 373,
+          "status": 200,
+          "bytes": 286
+        },
+        {
+          "httpMs": 370,
+          "status": 200,
+          "bytes": 286
+        },
+        {
+          "httpMs": 406,
+          "status": 200,
+          "bytes": 286
+        },
+        {
+          "httpMs": 368,
+          "status": 200,
+          "bytes": 286
+        },
+        {
+          "httpMs": 375,
+          "status": 200,
+          "bytes": 286
+        },
+        {
+          "httpMs": 373,
+          "status": 200,
+          "bytes": 286
+        },
+        {
+          "httpMs": 370,
+          "status": 200,
+          "bytes": 286
+        },
+        {
+          "httpMs": 393,
+          "status": 200,
+          "bytes": 286
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 365,
+        "avg": 379,
+        "p50": 373,
+        "p95": 408,
+        "max": 408
+      },
+      "okRate": 1
+    },
+    {
+      "name": "sales.recent-invoices",
+      "method": "GET",
+      "url": "/api/sales/recent-invoices?limit=20",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 1998,
+          "status": 200,
+          "bytes": 8521
+        },
+        {
+          "httpMs": 2876,
+          "status": 200,
+          "bytes": 8521
+        },
+        {
+          "httpMs": 2167,
+          "status": 200,
+          "bytes": 8521
+        },
+        {
+          "httpMs": 2181,
+          "status": 200,
+          "bytes": 8521
+        },
+        {
+          "httpMs": 2032,
+          "status": 200,
+          "bytes": 8521
+        },
+        {
+          "httpMs": 1811,
+          "status": 200,
+          "bytes": 8521
+        },
+        {
+          "httpMs": 2174,
+          "status": 200,
+          "bytes": 8521
+        },
+        {
+          "httpMs": 1937,
+          "status": 200,
+          "bytes": 8521
+        },
+        {
+          "httpMs": 2166,
+          "status": 200,
+          "bytes": 8521
+        },
+        {
+          "httpMs": 1995,
+          "status": 200,
+          "bytes": 8521
+        },
+        {
+          "httpMs": 2065,
+          "status": 200,
+          "bytes": 8521
+        },
+        {
+          "httpMs": 2016,
+          "status": 200,
+          "bytes": 8521
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 1811,
+        "avg": 2118,
+        "p50": 2032,
+        "p95": 2876,
+        "max": 2876
+      },
+      "okRate": 1
+    },
+    {
+      "name": "pos.team-attendance",
+      "method": "GET",
+      "url": "/api/pos/team-attendance?date=2026-08-21",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 946,
+          "status": 200,
+          "bytes": 2422
+        },
+        {
+          "httpMs": 943,
+          "status": 200,
+          "bytes": 2422
+        },
+        {
+          "httpMs": 966,
+          "status": 200,
+          "bytes": 2422
+        },
+        {
+          "httpMs": 950,
+          "status": 200,
+          "bytes": 2422
+        },
+        {
+          "httpMs": 940,
+          "status": 200,
+          "bytes": 2422
+        },
+        {
+          "httpMs": 977,
+          "status": 200,
+          "bytes": 2422
+        },
+        {
+          "httpMs": 990,
+          "status": 200,
+          "bytes": 2422
+        },
+        {
+          "httpMs": 969,
+          "status": 200,
+          "bytes": 2422
+        },
+        {
+          "httpMs": 949,
+          "status": 200,
+          "bytes": 2422
+        },
+        {
+          "httpMs": 965,
+          "status": 200,
+          "bytes": 2422
+        },
+        {
+          "httpMs": 1140,
+          "status": 200,
+          "bytes": 2422
+        },
+        {
+          "httpMs": 957,
+          "status": 200,
+          "bytes": 2422
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 940,
+        "avg": 974,
+        "p50": 957,
+        "p95": 1140,
+        "max": 1140
+      },
+      "okRate": 1
+    },
+    {
+      "name": "day.rollover-check",
+      "method": "GET",
+      "url": "/api/day/rollover-check",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 1099,
+          "status": 200,
+          "bytes": 455
+        },
+        {
+          "httpMs": 1086,
+          "status": 200,
+          "bytes": 455
+        },
+        {
+          "httpMs": 1117,
+          "status": 200,
+          "bytes": 455
+        },
+        {
+          "httpMs": 1104,
+          "status": 200,
+          "bytes": 455
+        },
+        {
+          "httpMs": 1089,
+          "status": 200,
+          "bytes": 455
+        },
+        {
+          "httpMs": 1128,
+          "status": 200,
+          "bytes": 455
+        },
+        {
+          "httpMs": 1111,
+          "status": 200,
+          "bytes": 455
+        },
+        {
+          "httpMs": 1095,
+          "status": 200,
+          "bytes": 455
+        },
+        {
+          "httpMs": 1114,
+          "status": 200,
+          "bytes": 455
+        },
+        {
+          "httpMs": 2895,
+          "status": 200,
+          "bytes": 455
+        },
+        {
+          "httpMs": 1551,
+          "status": 200,
+          "bytes": 455
+        },
+        {
+          "httpMs": 1133,
+          "status": 200,
+          "bytes": 455
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 1086,
+        "avg": 1294,
+        "p50": 1111,
+        "p95": 2895,
+        "max": 2895
+      },
+      "okRate": 1
+    },
+    {
+      "name": "ops.flow-board",
+      "method": "GET",
+      "url": "/api/operations/flow-board?date=2026-08-21&branchId=active&presence=present",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 2607,
+          "status": 200,
+          "serverTiming": {
+            "authMs": 0,
+            "dateParseMs": 0,
+            "poolMs": 187,
+            "employeesMs": 0,
+            "resolvedLocationMs": 0,
+            "total": 1868
+          },
+          "bytes": 3188
+        },
+        {
+          "httpMs": 2640,
+          "status": 200,
+          "serverTiming": {
+            "authMs": 0,
+            "dateParseMs": 0,
+            "poolMs": 180,
+            "employeesMs": 0,
+            "resolvedLocationMs": 0,
+            "total": 1871
+          },
+          "bytes": 3188
+        },
+        {
+          "httpMs": 2587,
+          "status": 200,
+          "serverTiming": {
+            "authMs": 0,
+            "dateParseMs": 0,
+            "poolMs": 179,
+            "employeesMs": 0,
+            "resolvedLocationMs": 0,
+            "total": 1846
+          },
+          "bytes": 3188
+        },
+        {
+          "httpMs": 2635,
+          "status": 200,
+          "serverTiming": {
+            "authMs": 0,
+            "dateParseMs": 0,
+            "poolMs": 185,
+            "employeesMs": 0,
+            "resolvedLocationMs": 0,
+            "total": 1889
+          },
+          "bytes": 3188
+        },
+        {
+          "httpMs": 2613,
+          "status": 200,
+          "serverTiming": {
+            "authMs": 0,
+            "dateParseMs": 0,
+            "poolMs": 181,
+            "employeesMs": 0,
+            "resolvedLocationMs": 0,
+            "total": 1857
+          },
+          "bytes": 3188
+        },
+        {
+          "httpMs": 2928,
+          "status": 200,
+          "serverTiming": {
+            "authMs": 0,
+            "dateParseMs": 0,
+            "poolMs": 179,
+            "employeesMs": 0,
+            "resolvedLocationMs": 0,
+            "total": 2184
+          },
+          "bytes": 3188
+        },
+        {
+          "httpMs": 3343,
+          "status": 200,
+          "serverTiming": {
+            "authMs": 0,
+            "dateParseMs": 0,
+            "poolMs": 178,
+            "employeesMs": 0,
+            "resolvedLocationMs": 0,
+            "total": 1848
+          },
+          "bytes": 3188
+        },
+        {
+          "httpMs": 2698,
+          "status": 200,
+          "serverTiming": {
+            "authMs": 0,
+            "dateParseMs": 0,
+            "poolMs": 180,
+            "employeesMs": 0,
+            "resolvedLocationMs": 0,
+            "total": 1951
+          },
+          "bytes": 3188
+        },
+        {
+          "httpMs": 2646,
+          "status": 200,
+          "serverTiming": {
+            "authMs": 0,
+            "dateParseMs": 1,
+            "poolMs": 185,
+            "employeesMs": 0,
+            "resolvedLocationMs": 0,
+            "total": 1898
+          },
+          "bytes": 3188
+        },
+        {
+          "httpMs": 2610,
+          "status": 200,
+          "serverTiming": {
+            "authMs": 0,
+            "dateParseMs": 0,
+            "poolMs": 188,
+            "employeesMs": 0,
+            "resolvedLocationMs": 0,
+            "total": 1863
+          },
+          "bytes": 3188
+        },
+        {
+          "httpMs": 2585,
+          "status": 200,
+          "serverTiming": {
+            "authMs": 0,
+            "dateParseMs": 0,
+            "poolMs": 181,
+            "employeesMs": 0,
+            "resolvedLocationMs": 0,
+            "total": 1854
+          },
+          "bytes": 3188
+        },
+        {
+          "httpMs": 2629,
+          "status": 200,
+          "serverTiming": {
+            "authMs": 0,
+            "dateParseMs": 0,
+            "poolMs": 180,
+            "employeesMs": 0,
+            "resolvedLocationMs": 0,
+            "total": 1877
+          },
+          "bytes": 3188
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 2585,
+        "avg": 2710,
+        "p50": 2629,
+        "p95": 3343,
+        "max": 3343
+      },
+      "serverTimingAvg": {
+        "authMs": 0,
+        "dateParseMs": 0,
+        "poolMs": 182,
+        "employeesMs": 0,
+        "resolvedLocationMs": 0,
+        "total": 1901
+      },
+      "okRate": 1
+    },
+    {
+      "name": "ops.due-announcements",
+      "method": "GET",
+      "url": "/api/operations/queue/due-announcements?date=2026-08-21",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 750,
+          "status": 200,
+          "bytes": 167
+        },
+        {
+          "httpMs": 767,
+          "status": 200,
+          "bytes": 167
+        },
+        {
+          "httpMs": 759,
+          "status": 200,
+          "bytes": 167
+        },
+        {
+          "httpMs": 745,
+          "status": 200,
+          "bytes": 167
+        },
+        {
+          "httpMs": 788,
+          "status": 200,
+          "bytes": 167
+        },
+        {
+          "httpMs": 822,
+          "status": 200,
+          "bytes": 167
+        },
+        {
+          "httpMs": 781,
+          "status": 200,
+          "bytes": 167
+        },
+        {
+          "httpMs": 777,
+          "status": 200,
+          "bytes": 167
+        },
+        {
+          "httpMs": 761,
+          "status": 200,
+          "bytes": 167
+        },
+        {
+          "httpMs": 743,
+          "status": 200,
+          "bytes": 167
+        },
+        {
+          "httpMs": 749,
+          "status": 200,
+          "bytes": 167
+        },
+        {
+          "httpMs": 750,
+          "status": 200,
+          "bytes": 167
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 743,
+        "avg": 766,
+        "p50": 759,
+        "p95": 822,
+        "max": 822
+      },
+      "okRate": 1
+    },
+    {
+      "name": "ops.schedule-control",
+      "method": "GET",
+      "url": "/api/operations/schedule-control?date=2026-08-21",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 2686,
+          "status": 200,
+          "bytes": 4840
+        },
+        {
+          "httpMs": 2743,
+          "status": 200,
+          "bytes": 4840
+        },
+        {
+          "httpMs": 2649,
+          "status": 200,
+          "bytes": 4840
+        },
+        {
+          "httpMs": 2690,
+          "status": 200,
+          "bytes": 4840
+        },
+        {
+          "httpMs": 2682,
+          "status": 200,
+          "bytes": 4840
+        },
+        {
+          "httpMs": 2849,
+          "status": 200,
+          "bytes": 4840
+        },
+        {
+          "httpMs": 2613,
+          "status": 200,
+          "bytes": 4840
+        },
+        {
+          "httpMs": 2827,
+          "status": 200,
+          "bytes": 4840
+        },
+        {
+          "httpMs": 3286,
+          "status": 200,
+          "bytes": 4840
+        },
+        {
+          "httpMs": 2649,
+          "status": 200,
+          "bytes": 4840
+        },
+        {
+          "httpMs": 2637,
+          "status": 200,
+          "bytes": 4840
+        },
+        {
+          "httpMs": 2863,
+          "status": 200,
+          "bytes": 4840
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 2613,
+        "avg": 2765,
+        "p50": 2686,
+        "p95": 3286,
+        "max": 3286
+      },
+      "okRate": 1
+    },
+    {
+      "name": "ops.employees.day-state",
+      "method": "GET",
+      "url": "/api/operations/employees/day-state?date=2026-08-21",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 1498,
+          "status": 200,
+          "bytes": 1998
+        },
+        {
+          "httpMs": 1492,
+          "status": 200,
+          "bytes": 1998
+        },
+        {
+          "httpMs": 1493,
+          "status": 200,
+          "bytes": 1998
+        },
+        {
+          "httpMs": 1571,
+          "status": 200,
+          "bytes": 1998
+        },
+        {
+          "httpMs": 1484,
+          "status": 200,
+          "bytes": 1998
+        },
+        {
+          "httpMs": 1559,
+          "status": 200,
+          "bytes": 1998
+        },
+        {
+          "httpMs": 1478,
+          "status": 200,
+          "bytes": 1998
+        },
+        {
+          "httpMs": 1492,
+          "status": 200,
+          "bytes": 1998
+        },
+        {
+          "httpMs": 1526,
+          "status": 200,
+          "bytes": 1998
+        },
+        {
+          "httpMs": 1751,
+          "status": 200,
+          "bytes": 1998
+        },
+        {
+          "httpMs": 1543,
+          "status": 200,
+          "bytes": 1998
+        },
+        {
+          "httpMs": 1516,
+          "status": 200,
+          "bytes": 1998
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 1478,
+        "avg": 1534,
+        "p50": 1498,
+        "p95": 1751,
+        "max": 1751
+      },
+      "okRate": 1
+    },
+    {
+      "name": "ops.status",
+      "method": "GET",
+      "url": "/api/operations/status",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 1648,
+          "status": 200,
+          "bytes": 1206
+        },
+        {
+          "httpMs": 1465,
+          "status": 200,
+          "bytes": 1206
+        },
+        {
+          "httpMs": 1681,
+          "status": 200,
+          "bytes": 1206
+        },
+        {
+          "httpMs": 1466,
+          "status": 200,
+          "bytes": 1206
+        },
+        {
+          "httpMs": 1456,
+          "status": 200,
+          "bytes": 1206
+        },
+        {
+          "httpMs": 1461,
+          "status": 200,
+          "bytes": 1206
+        },
+        {
+          "httpMs": 1504,
+          "status": 200,
+          "bytes": 1206
+        },
+        {
+          "httpMs": 1468,
+          "status": 200,
+          "bytes": 1206
+        },
+        {
+          "httpMs": 1487,
+          "status": 200,
+          "bytes": 1206
+        },
+        {
+          "httpMs": 1591,
+          "status": 200,
+          "bytes": 1206
+        },
+        {
+          "httpMs": 1618,
+          "status": 200,
+          "bytes": 1206
+        },
+        {
+          "httpMs": 1472,
+          "status": 200,
+          "bytes": 1206
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 1456,
+        "avg": 1526,
+        "p50": 1472,
+        "p95": 1681,
+        "max": 1681
+      },
+      "okRate": 1
+    },
+    {
+      "name": "ops.overview",
+      "method": "GET",
+      "url": "/api/operations/overview",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 6971,
+          "status": 200,
+          "bytes": 3682
+        },
+        {
+          "httpMs": 6806,
+          "status": 200,
+          "bytes": 3682
+        },
+        {
+          "httpMs": 6864,
+          "status": 200,
+          "bytes": 3682
+        },
+        {
+          "httpMs": 6855,
+          "status": 200,
+          "bytes": 3682
+        },
+        {
+          "httpMs": 6711,
+          "status": 200,
+          "bytes": 3682
+        },
+        {
+          "httpMs": 7359,
+          "status": 200,
+          "bytes": 3682
+        },
+        {
+          "httpMs": 6793,
+          "status": 200,
+          "bytes": 3682
+        },
+        {
+          "httpMs": 6697,
+          "status": 200,
+          "bytes": 3682
+        },
+        {
+          "httpMs": 6783,
+          "status": 200,
+          "bytes": 3682
+        },
+        {
+          "httpMs": 6780,
+          "status": 200,
+          "bytes": 3682
+        },
+        {
+          "httpMs": 7506,
+          "status": 200,
+          "bytes": 3682
+        },
+        {
+          "httpMs": 6797,
+          "status": 200,
+          "bytes": 3682
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 6697,
+        "avg": 6910,
+        "p50": 6797,
+        "p95": 7506,
+        "max": 7506
+      },
+      "okRate": 1
+    },
+    {
+      "name": "admin.booking-settings",
+      "method": "GET",
+      "url": "/api/admin/booking-settings",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 3092,
+          "status": 200,
+          "bytes": 298
+        },
+        {
+          "httpMs": 3071,
+          "status": 200,
+          "bytes": 298
+        },
+        {
+          "httpMs": 3111,
+          "status": 200,
+          "bytes": 298
+        },
+        {
+          "httpMs": 3107,
+          "status": 200,
+          "bytes": 298
+        },
+        {
+          "httpMs": 3187,
+          "status": 200,
+          "bytes": 298
+        },
+        {
+          "httpMs": 3071,
+          "status": 200,
+          "bytes": 298
+        },
+        {
+          "httpMs": 3175,
+          "status": 200,
+          "bytes": 298
+        },
+        {
+          "httpMs": 3127,
+          "status": 200,
+          "bytes": 298
+        },
+        {
+          "httpMs": 3138,
+          "status": 200,
+          "bytes": 298
+        },
+        {
+          "httpMs": 3148,
+          "status": 200,
+          "bytes": 298
+        },
+        {
+          "httpMs": 3080,
+          "status": 200,
+          "bytes": 298
+        },
+        {
+          "httpMs": 3190,
+          "status": 200,
+          "bytes": 298
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 3071,
+        "avg": 3125,
+        "p50": 3111,
+        "p95": 3190,
+        "max": 3190
+      },
+      "okRate": 1
+    },
+    {
+      "name": "public.booking.v2.bootstrap",
+      "method": "GET",
+      "url": "/api/public/booking/v2/bootstrap",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 12,
+          "status": 200,
+          "serverTiming": {
+            "bootstrap": 0
+          },
+          "bytes": 31429
+        },
+        {
+          "httpMs": 14,
+          "status": 200,
+          "serverTiming": {
+            "bootstrap": 0
+          },
+          "bytes": 31429
+        },
+        {
+          "httpMs": 13,
+          "status": 200,
+          "serverTiming": {
+            "bootstrap": 0
+          },
+          "bytes": 31429
+        },
+        {
+          "httpMs": 12,
+          "status": 200,
+          "serverTiming": {
+            "bootstrap": 0
+          },
+          "bytes": 31429
+        },
+        {
+          "httpMs": 21,
+          "status": 200,
+          "serverTiming": {
+            "bootstrap": 0
+          },
+          "bytes": 31429
+        },
+        {
+          "httpMs": 15,
+          "status": 200,
+          "serverTiming": {
+            "bootstrap": 0
+          },
+          "bytes": 31429
+        },
+        {
+          "httpMs": 26,
+          "status": 200,
+          "serverTiming": {
+            "bootstrap": 0
+          },
+          "bytes": 31429
+        },
+        {
+          "httpMs": 24,
+          "status": 200,
+          "serverTiming": {
+            "bootstrap": 0
+          },
+          "bytes": 31429
+        },
+        {
+          "httpMs": 54,
+          "status": 200,
+          "serverTiming": {
+            "bootstrap": 0
+          },
+          "bytes": 31429
+        },
+        {
+          "httpMs": 15,
+          "status": 200,
+          "serverTiming": {
+            "bootstrap": 0
+          },
+          "bytes": 31429
+        },
+        {
+          "httpMs": 15,
+          "status": 200,
+          "serverTiming": {
+            "bootstrap": 0
+          },
+          "bytes": 31429
+        },
+        {
+          "httpMs": 14,
+          "status": 200,
+          "serverTiming": {
+            "bootstrap": 0
+          },
+          "bytes": 31429
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 12,
+        "avg": 20,
+        "p50": 15,
+        "p95": 54,
+        "max": 54
+      },
+      "serverTimingAvg": {
+        "bootstrap": 0
+      },
+      "okRate": 1
+    },
+    {
+      "name": "health.db",
+      "method": "GET",
+      "url": "/api/health/db",
+      "warmDiscarded": 2,
+      "samples": [
+        {
+          "httpMs": 1040,
+          "status": 200,
+          "bytes": 348
+        },
+        {
+          "httpMs": 913,
+          "status": 200,
+          "bytes": 348
+        },
+        {
+          "httpMs": 972,
+          "status": 200,
+          "bytes": 348
+        },
+        {
+          "httpMs": 903,
+          "status": 200,
+          "bytes": 348
+        },
+        {
+          "httpMs": 902,
+          "status": 200,
+          "bytes": 348
+        },
+        {
+          "httpMs": 900,
+          "status": 200,
+          "bytes": 348
+        },
+        {
+          "httpMs": 939,
+          "status": 200,
+          "bytes": 348
+        },
+        {
+          "httpMs": 907,
+          "status": 200,
+          "bytes": 348
+        },
+        {
+          "httpMs": 915,
+          "status": 200,
+          "bytes": 348
+        },
+        {
+          "httpMs": 915,
+          "status": 200,
+          "bytes": 348
+        },
+        {
+          "httpMs": 925,
+          "status": 200,
+          "bytes": 348
+        },
+        {
+          "httpMs": 913,
+          "status": 200,
+          "bytes": 348
+        }
+      ],
+      "http": {
+        "n": 12,
+        "min": 900,
+        "avg": 929,
+        "p50": 913,
+        "p95": 1040,
+        "max": 1040
+      },
+      "okRate": 1
+    }
+  ],
+  "notes": [
+    "Warm requests discarded from stats (compile/cold excluded).",
+    "No production-like writes (invoices/bookings/clients/attendance/cash).",
+    "Login uses signed cookie only.",
+    "Secrets never written to this report."
+  ]
+}

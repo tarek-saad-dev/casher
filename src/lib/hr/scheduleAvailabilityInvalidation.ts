@@ -32,6 +32,32 @@ export function invalidateEmployeeScheduleCaches(scope: ScheduleInvalidationScop
     bump(`emp:${scope.empId}:${scope.workDate}`);
   }
   bump(`emp:${scope.empId}:global`);
+
+  // B8.6 — date-scoped hot availability via central notifier (best-effort).
+  if (scope.workDate) {
+    void import('@/lib/booking/AvailabilityMutationNotifier')
+      .then((m) => {
+        if (branches.length) {
+          return Promise.all(
+            branches.map((branchId) =>
+              m.AvailabilityMutationNotifier.employeeDayChanged({
+                employeeId: scope.empId,
+                branchId,
+                businessDate: scope.workDate!,
+                reason: 'schedule_invalidate',
+              }),
+            ),
+          );
+        }
+        return m.AvailabilityMutationNotifier.employeeDayChanged({
+          employeeId: scope.empId,
+          branchId: 0,
+          businessDate: scope.workDate!,
+          reason: 'schedule_invalidate',
+        });
+      })
+      .catch(() => undefined);
+  }
 }
 
 export function invalidateTemporaryTransferCaches(args: {

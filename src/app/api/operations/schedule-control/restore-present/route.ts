@@ -126,6 +126,17 @@ export async function POST(req: NextRequest) {
       branchId: branch.branchId,
     });
 
+    void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+      .then((m) =>
+        m.notifyHotEffectiveDay({
+          employeeId: empId,
+          businessDate: date,
+          branchId: branch.branchId,
+          reason: 'schedule_control_restore_present',
+        }),
+      )
+      .catch(() => undefined);
+
     return NextResponse.json({
       ok: true,
       message: isToday

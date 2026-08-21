@@ -16,6 +16,8 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),
+        // Vitest/node cannot load Next's server-only package; stub globally.
+        "server-only": path.resolve(__dirname, "./src/test/stubs/server-only.ts"),
       },
     },
   } as any;

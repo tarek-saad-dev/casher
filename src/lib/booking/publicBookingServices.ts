@@ -159,6 +159,9 @@ export function invalidatePublicBookingServicesCache(branchCode?: string): void 
     [stampRootKey]?: { expiresAt: number; value: string };
   };
   delete g[stampRootKey];
+  void import('@/lib/booking/v2Frontend/buildPublicBootstrap').then((m) => {
+    m.invalidatePublicBookingV2Bootstrap();
+  });
 }
 
 async function loadCatalogVersionStamp(): Promise<string> {

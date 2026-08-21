@@ -207,6 +207,15 @@ export async function syncAttendanceShiftToOverrides(
   const deactivated = await deactivateAttendanceShiftOverrides(db, empId, date);
 
   if (plan.action === 'clear') {
+    void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+      .then((m) =>
+        m.notifyHotEffectiveDay({
+          employeeId: empId,
+          businessDate: date,
+          reason: 'attendance_shift_clear',
+        }),
+      )
+      .catch(() => undefined);
     return { deactivated, inserted: 0, plan };
   }
 
@@ -215,6 +224,16 @@ export async function syncAttendanceShiftToOverrides(
     await insertShiftOverride(db, empId, date, row);
     inserted += 1;
   }
+
+  void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+    .then((m) =>
+      m.notifyHotEffectiveDay({
+        employeeId: empId,
+        businessDate: date,
+        reason: 'attendance_shift_sync',
+      }),
+    )
+    .catch(() => undefined);
 
   return { deactivated, inserted, plan };
 }
@@ -338,6 +357,17 @@ export async function syncAttendanceAbsenceToDayOffOverride(
   await ensureOverridesTable(db as Parameters<typeof ensureOverridesTable>[0]);
   const normalized = String(status ?? '').trim();
 
+  const notify = () =>
+    void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+      .then((m) =>
+        m.notifyHotEffectiveDay({
+          employeeId: empId,
+          businessDate: date,
+          reason: 'attendance_absence_day_off',
+        }),
+      )
+      .catch(() => undefined);
+
   if (normalized === 'Present' || normalized === 'Late' || normalized === 'EarlyLeave') {
     const res = await db
       .request()
@@ -351,7 +381,9 @@ export async function syncAttendanceAbsenceToDayOffOverride(
           AND IsActive = 1
           AND Type = N'day_off'
       `);
-    return { cleared: res.rowsAffected?.[0] ?? 0, ensured: false };
+    const cleared = res.rowsAffected?.[0] ?? 0;
+    if (cleared > 0) notify();
+    return { cleared, ensured: false };
   }
 
   if (normalized !== 'Absent') {
@@ -386,6 +418,7 @@ export async function syncAttendanceAbsenceToDayOffOverride(
       VALUES
         (@empId, @odate, N'day_off', NULL, NULL, @reason, 1, @createdBy)
     `);
+  notify();
   return { cleared: 0, ensured: true };
 }
 

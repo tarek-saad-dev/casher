@@ -573,7 +573,13 @@ export async function createPublicBooking(
     throw err;
   }
 
-  if (!precheck.available) {
+  const holdKey = typeof input.holdKey === 'string' ? input.holdKey.trim() : '';
+  const allowHeldSlotRetry =
+    !!holdKey &&
+    (precheck.availabilityCode === 'HOLD_CONFLICT' ||
+      precheck.availabilityCode === 'SLOT_UNAVAILABLE');
+
+  if (!precheck.available && !allowHeldSlotRetry) {
     const code = (precheck.availabilityCode ?? 'SLOT_UNAVAILABLE') as PublicBookingErrorCode;
     throw new PublicBookingCreateError(code, precheck.safeMetadata);
   }
@@ -633,7 +639,7 @@ export async function createPublicBooking(
         empId: holdEmpId,
         startAt: new Date(precheck.startDateTime),
         endAt: new Date(precheck.endDateTime),
-        excludeHoldKey: typeof input.holdKey === 'string' ? input.holdKey : null,
+        excludeHoldKey: holdKey || null,
       });
     }
   } catch (holdErr) {
@@ -782,7 +788,7 @@ export async function createPublicBooking(
             endAt: new Date(endMs),
             operationalDate: precheck.workDate,
             branchId: branchNow.branchId,
-            excludeHoldKey: typeof input.holdKey === 'string' ? input.holdKey : null,
+            excludeHoldKey: holdKey || null,
             transaction,
           });
           chosen = c;
@@ -929,7 +935,66 @@ export async function createPublicBooking(
       });
     }
 
+    // B6 dual-guard: UNIQUE EmpID+slot claims inside same SERIALIZABLE TX (enforce only).
+    try {
+      const {
+        claimTxFromBookingTransaction,
+        enforceClaimOrConvertBookingInTx,
+      } = await import('@/lib/booking/claims/slotClaimIntegration');
+      await enforceClaimOrConvertBookingInTx(
+        claimTxFromBookingTransaction(transaction),
+        {
+          empId: selectedEmpId,
+          branchId: branchNow.branchId,
+          startAt: new Date(startMs),
+          endAt: new Date(endMs),
+          bookingId,
+          holdToken: holdKey || null,
+        },
+      );
+    } catch (claimErr) {
+      const { isSlotClaimConflictError } = await import(
+        '@/lib/booking/claims/slotClaimIntegration'
+      );
+      if (isSlotClaimConflictError(claimErr)) {
+        throw new PublicBookingCreateError('SLOT_UNAVAILABLE');
+      }
+      throw claimErr;
+    }
+
     await transaction.commit();
+
+    // B6 shadow: post-commit best-effort (legacy locks remain authority).
+    try {
+      const { shadowClaimOrConvertBooking } = await import(
+        '@/lib/booking/claims/slotClaimIntegration'
+      );
+      await shadowClaimOrConvertBooking({
+        empId: selectedEmpId,
+        branchId: branchNow.branchId,
+        startAt: new Date(startMs),
+        endAt: new Date(endMs),
+        bookingId,
+        holdToken: typeof input.holdKey === 'string' ? input.holdKey : null,
+        businessDate: precheck.workDate,
+      });
+    } catch {
+      /* shadow-safe */
+    }
+
+    try {
+      const { invalidateOnBookingCreated } = await import(
+        '@/lib/booking/cache/HotAvailabilityInvalidation'
+      );
+      await invalidateOnBookingCreated({
+        employeeId: selectedEmpId,
+        branchId: branchNow.branchId,
+        businessDate: precheck.workDate,
+        reason: 'public_create',
+      });
+    } catch {
+      /* hot cache optional */
+    }
 
     invalidatePublicBookingAvailabilityCache();
     try {
@@ -973,10 +1038,10 @@ export async function createPublicBooking(
       whatsapp = { scheduled: false, skipped: true, reason: 'suppressed' };
     }
 
-    if (typeof input.holdKey === 'string' && input.holdKey.trim()) {
+    if (holdKey) {
       try {
         const { consumeBookingHold } = await import('@/lib/booking/bookingHold');
-        await consumeBookingHold(input.holdKey.trim());
+        await consumeBookingHold(holdKey);
       } catch {
         /* hold consume best-effort after commit */
       }
@@ -1045,6 +1110,17 @@ export async function createPublicBooking(
     if (err instanceof ScheduleConflictError) {
       await markIdempotencyFailed(idempotencyRequestId, 'SLOT_UNAVAILABLE');
       throw new PublicBookingCreateError('SLOT_UNAVAILABLE');
+    }
+    try {
+      const { isSlotClaimConflictError } = await import(
+        '@/lib/booking/claims/slotClaimIntegration'
+      );
+      if (isSlotClaimConflictError(err)) {
+        await markIdempotencyFailed(idempotencyRequestId, 'SLOT_UNAVAILABLE');
+        throw new PublicBookingCreateError('SLOT_UNAVAILABLE');
+      }
+    } catch (mapped) {
+      if (mapped instanceof PublicBookingCreateError) throw mapped;
     }
     if (err instanceof PublicBookingSelectionError) {
       await markIdempotencyFailed(idempotencyRequestId, err.code);

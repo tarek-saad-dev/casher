@@ -125,6 +125,17 @@ export async function unlockScheduleForWorkOnDayOff(params: {
          @reason, 1, @createdBy)
     `);
 
+  void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+    .then((m) =>
+      m.notifyHotEffectiveDay({
+        employeeId: empId,
+        businessDate: date,
+        branchId,
+        reason: 'work_on_day_off_unlock',
+      }),
+    )
+    .catch(() => undefined);
+
   return {
     dayOffOverridesCleared,
     dayOffRowsCleared,

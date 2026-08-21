@@ -99,6 +99,21 @@ export async function updateBranchSetupFields(
     `);
 
   invalidatePublicSettingsCache(input.branchId);
+
+  if (
+    input.defaultOpenTime !== undefined ||
+    input.defaultCloseTime !== undefined
+  ) {
+    void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+      .then((m) =>
+        m.notifyHotBranchHours({
+          branchId: input.branchId,
+          reason: 'branch_regular_hours',
+        }),
+      )
+      .catch(() => undefined);
+  }
+
   const after = await getBranchById(input.branchId);
   if (!after) {
     throw new BranchDomainError('BRANCH_NOT_FOUND', 'الفرع غير موجود بعد التحديث', 500);

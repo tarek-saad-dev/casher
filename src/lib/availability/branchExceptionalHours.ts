@@ -136,6 +136,16 @@ export async function upsertBranchExceptionalHours(input: {
       )
     `);
 
+  void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+    .then((m) =>
+      m.notifyHotBranchHours({
+        branchId: input.branchId,
+        businessDates: [input.businessDate],
+        reason: 'branch_exceptional_hours',
+      }),
+    )
+    .catch(() => undefined);
+
   return {
     exceptionId: Number(ins.recordset[0].ExceptionID),
     branchId: input.branchId,

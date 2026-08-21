@@ -15,6 +15,7 @@ import {
   type BookingMoveSession,
   type PasteCandidateSlot,
 } from '@/lib/bookingDragReschedule';
+import { notifyBookingV2RescheduleSuccess } from '@/lib/operations/bookingV2/mutationSync';
 import {
   getTimelineHeightPx,
   getTimelineTopPx,
@@ -183,6 +184,24 @@ export function useBookingCutPaste({
           return;
         }
 
+        if (
+          result.oldStartAt
+          && result.oldEndAt
+          && result.newStartAt
+          && result.newEndAt
+        ) {
+          notifyBookingV2RescheduleSuccess({
+            oldStartAt: result.oldStartAt,
+            oldEndAt: result.oldEndAt,
+            newStartAt: result.newStartAt,
+            newEndAt: result.newEndAt,
+            oldEmpId: result.oldEmpId ?? moveSession.originalEmpId,
+            newEmpId: result.newEmpId ?? slot.empId,
+            oldOperationalDate: operationalDate,
+            newOperationalDate: result.newStartAt.slice(0, 10),
+          });
+        }
+
         const undoPayload = {
           bookingId: moveSession.appointmentId,
           newStartAt: moveSession.originalStartAt,
@@ -212,6 +231,23 @@ export function useBookingCutPaste({
             source: 'operations_cut_paste_undo',
           }).then((undoResult) => {
             if (undoResult.ok) {
+              if (
+                undoResult.oldStartAt
+                && undoResult.oldEndAt
+                && undoResult.newStartAt
+                && undoResult.newEndAt
+              ) {
+                notifyBookingV2RescheduleSuccess({
+                  oldStartAt: undoResult.oldStartAt,
+                  oldEndAt: undoResult.oldEndAt,
+                  newStartAt: undoResult.newStartAt,
+                  newEndAt: undoResult.newEndAt,
+                  oldEmpId: undoResult.oldEmpId ?? undoPayload.targetEmpId,
+                  newEmpId: undoResult.newEmpId ?? moveSession.originalEmpId,
+                  oldOperationalDate: undoPayload.operationalDate,
+                  newOperationalDate: undoResult.newStartAt.slice(0, 10),
+                });
+              }
               onRefresh?.();
               onToast?.('تم التراجع عن النقل', true);
             } else {

@@ -27,6 +27,8 @@ import {
   recordPublicBookingHealthSample,
   type PublicBookingHealthOutcome,
 } from '@/lib/booking/publicBookingHealthMetrics';
+import { getPublicBookingReadTelemetry } from '@/lib/booking/publicBookingReadTelemetry';
+import type { PublicBookingReadTelemetryStore } from '@/lib/booking/publicBookingReadTelemetry';
 
 export type PublicBookingRouteGate = {
   requestId: string;
@@ -34,12 +36,22 @@ export type PublicBookingRouteGate = {
   routeKey: string;
   cors: { methods: PublicBookingCorsMethod[]; headers: readonly string[] };
   startedAtMs: number;
+  /** Optional B2.5 read timings — set by critical-read wrappers; log-only. */
+  readTelemetry?: PublicBookingReadTelemetryStore | null;
 };
 
 export type PublicBookingTelemetry = {
   outcome?: PublicBookingHealthOutcome;
   errorCode?: string | null;
 };
+
+/** Attach critical-read telemetry snapshot before finalize (ALS may already have exited). */
+export function attachPublicBookingReadTelemetry(
+  gate: PublicBookingRouteGate,
+  telemetry: PublicBookingReadTelemetryStore,
+): void {
+  gate.readTelemetry = telemetry;
+}
 
 function emitTelemetry(
   req: NextRequest,
@@ -51,6 +63,7 @@ function emitTelemetry(
   },
 ): void {
   const durationMs = Math.max(0, Date.now() - gate.startedAtMs);
+  const readTelemetry = gate.readTelemetry ?? getPublicBookingReadTelemetry();
   logPublicBookingRequest({
     requestId: gate.requestId,
     routeFamily: gate.routeKey,
@@ -58,6 +71,13 @@ function emitTelemetry(
     status: args.status,
     errorCode: args.errorCode ?? null,
     durationMs,
+    ...(readTelemetry
+      ? {
+          queryCount: readTelemetry.queryCount,
+          dbMs: readTelemetry.dbMs,
+          availabilityMs: readTelemetry.availabilityMs,
+        }
+      : {}),
   });
   void recordPublicBookingHealthSample({
     routeKey: gate.routeKey,

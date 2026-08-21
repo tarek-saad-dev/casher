@@ -196,6 +196,21 @@ export async function POST(req: NextRequest) {
       `);
 
     const isNew = result.recordset[0]?.UpdatedAt === null;
+
+    try {
+      const { AvailabilityMutationNotifier } = await import(
+        '@/lib/booking/AvailabilityMutationNotifier'
+      );
+      await AvailabilityMutationNotifier.employeeDayChanged({
+        employeeId: Number(empId),
+        businessDate: String(workDate).slice(0, 10),
+        branchId: branch.branchId,
+        reason: 'employees_attendance_upsert',
+      });
+    } catch {
+      /* best-effort — freelance unlock / present-on-day-off path */
+    }
+
     return NextResponse.json(result.recordset[0], { status: isNew ? 201 : 200 });
   } catch (err: unknown) {
     if (isEmpBranchWorkDayCloseError(err)) {

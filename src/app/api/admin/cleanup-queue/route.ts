@@ -143,6 +143,35 @@ export async function POST(req: NextRequest) {
     const afterRes = await afterRequest.query(afterQuery);
     const after = afterRes.recordset;
 
+    if (updatedCount > 0 && activeItems.length > 0) {
+      try {
+        const { AvailabilityMutationNotifier } = await import(
+          '@/lib/booking/AvailabilityMutationNotifier'
+        );
+        const seen = new Set<string>();
+        for (const item of activeItems as Array<{
+          EmpID: number | null;
+          QueueDate: Date | string;
+        }>) {
+          if (!item.EmpID) continue;
+          const ymd =
+            item.QueueDate instanceof Date
+              ? item.QueueDate.toISOString().slice(0, 10)
+              : String(item.QueueDate).slice(0, 10);
+          const key = `${item.EmpID}:${ymd}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          await AvailabilityMutationNotifier.queueOccupancyChanged({
+            employeeId: Number(item.EmpID),
+            businessDate: ymd,
+            reason: 'admin_cleanup_queue',
+          });
+        }
+      } catch {
+        /* best-effort */
+      }
+    }
+
     // Step 4: Check active blockers for empId (if provided)
     let activeBlockers: unknown[] = [];
     if (empId) {

@@ -1,0 +1,19 @@
+{
+  "tag": "VPS_TEST_MT29JOUZ",
+  "phone": "01995265435",
+  "report": {
+    "dbTarget": "187.77.75.79 / last132_migrated (@@SERVERNAME=srv1717420)",
+    "reads": "PASS (session:200/1224ms, barbers:200/566ms, services:200/159ms, payment-methods:200/281ms, recent-invoices:200/788ms, team-attendance:200/711ms, flow-board:200/2526ms, bootstrap:200/299ms, branches:200/728ms)",
+    "writes": "client+booking+invoice",
+    "clientCreate": "PASS id=13650 name=VPS_TEST_MT29JOUZ_CLIENT db+api ok",
+    "bookingCreate": "PASS id=2724 code=null status=pending db+api ok",
+    "invoiceCreate": "PASS invID=8475 notes contain VPS_TEST db+api ok",
+    "updatePaths": "client PATCH ok; booking confirm ok; booking cancel ok (cancelled); invoice DELETE ok",
+    "connectionPool": "singleton getPool() in src/lib/db.ts (max=10,min=2); no per-request connect in src",
+    "concurrent20": "ok=20/20 http500=0 timeout=0 conn=0 p50=1593ms p95=1734ms max=1738ms statuses={\"200\":20}",
+    "concurrent50": "ok=50/50 http500=0 timeout=0 conn=0 p50=824ms p95=1153ms max=1192ms statuses={\"200\":50}",
+    "hardcodedAzure": "NONE in src runtime (only db.ts creates ConnectionPool); no newserverr hardcode in src",
+    "errors": [],
+    "verdict": "PASS"
+  }
+}

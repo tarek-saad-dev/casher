@@ -8,26 +8,54 @@ import { isPubliclyDiscoverable } from '@/lib/branch/lifecycle';
 import { isEmployeeEligibleForBranchBookings } from '@/lib/branch/bookingQueueOwnership';
 
 export async function canBranchAppearInPublicBooking(branchId: number): Promise<boolean> {
-  const branch = await getBranchById(branchId);
-  if (!branch) return false;
-  if (
-    !isPubliclyDiscoverable({
-      lifecycleStatus: branch.lifecycleStatus,
-      publicBookingEnabled: branch.publicBookingEnabled,
-      isActive: branch.isActive,
-    })
-  ) {
-    return false;
+  const map = await canBranchesAppearInPublicBooking([branchId]);
+  return map.get(branchId) === true;
+}
+
+/** Batch visibility for many branches (1 QBS query + branch loads). */
+export async function canBranchesAppearInPublicBooking(
+  branchIds: number[],
+): Promise<Map<number, boolean>> {
+  const out = new Map<number, boolean>();
+  const ids = [...new Set(branchIds.filter((id) => Number.isInteger(id) && id > 0))];
+  if (!ids.length) return out;
+
+  const branches = await Promise.all(ids.map((id) => getBranchById(id)));
+  const candidates: number[] = [];
+  for (let i = 0; i < ids.length; i++) {
+    const branch = branches[i];
+    const id = ids[i]!;
+    if (
+      !branch ||
+      !isPubliclyDiscoverable({
+        lifecycleStatus: branch.lifecycleStatus,
+        publicBookingEnabled: branch.publicBookingEnabled,
+        isActive: branch.isActive,
+      })
+    ) {
+      out.set(id, false);
+      continue;
+    }
+    candidates.push(id);
   }
+  if (!candidates.length) return out;
+
   const db = await getPool();
-  const qbs = await db
-    .request()
-    .input('branchId', sql.Int, branchId)
-    .query(`
-      SELECT TOP 1 ISNULL(BookingEnabled, 0) AS BookingEnabled
-      FROM dbo.QueueBookingSettings WHERE BranchID = @branchId
-    `);
-  return Boolean(qbs.recordset[0]?.BookingEnabled);
+  const req = db.request();
+  candidates.forEach((id, i) => req.input(`b${i}`, sql.Int, id));
+  const qbs = await req.query(`
+    SELECT BranchID, ISNULL(BookingEnabled, 0) AS BookingEnabled
+    FROM dbo.QueueBookingSettings
+    WHERE BranchID IN (${candidates.map((_, i) => `@b${i}`).join(',')})
+  `);
+  const enabled = new Set<number>();
+  for (const row of qbs.recordset as Array<{ BranchID: number; BookingEnabled: unknown }>) {
+    if (row.BookingEnabled) enabled.add(Number(row.BranchID));
+  }
+  for (const id of candidates) {
+    out.set(id, enabled.has(id));
+  }
+  return out;
 }
 
 export async function canBranchAppearInAdminSchedule(branchId: number): Promise<boolean> {

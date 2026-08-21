@@ -557,27 +557,37 @@ async function buildBarberContexts(args: {
   }
 
   // Public reads must see active holds — write guard already does; mismatch → SLOT_UNAVAILABLE.
+  // Batch one SQL round-trip for all context empIds (EmpID is global across branches).
   if (source === 'public' && contexts.length > 0) {
     try {
-      const { listActiveBookingHoldsForEmployee } = await import('@/lib/booking/bookingHold');
-      await Promise.all(
-        contexts.map(async (ctx) => {
-          const holds = await listActiveBookingHoldsForEmployee({
-            empId: ctx.empId,
-            rangeStart: new Date(ctx.shiftStartMs),
-            rangeEnd: new Date(ctx.shiftEndMs),
+      const {
+        listActiveBookingHoldsForEmployees,
+        filterActiveHoldsForEmployeeRange,
+      } = await import('@/lib/booking/bookingHold');
+      const empIds = contexts.map((c) => c.empId);
+      const rangeStartMs = Math.min(...contexts.map((c) => c.shiftStartMs));
+      const rangeEndMs = Math.max(...contexts.map((c) => c.shiftEndMs));
+      const allHolds = await listActiveBookingHoldsForEmployees({
+        empIds,
+        rangeStart: new Date(rangeStartMs),
+        rangeEnd: new Date(rangeEndMs),
+      });
+      for (const ctx of contexts) {
+        const holds = filterActiveHoldsForEmployeeRange(allHolds, {
+          empId: ctx.empId,
+          rangeStart: new Date(ctx.shiftStartMs),
+          rangeEnd: new Date(ctx.shiftEndMs),
+        });
+        for (const h of holds) {
+          ctx.busy.push({
+            id: -(100_000 + h.holdId),
+            source: 'booking',
+            start: h.startAt,
+            end: h.endAt,
+            label: 'HOLD_CONFLICT',
           });
-          for (const h of holds) {
-            ctx.busy.push({
-              id: -(100_000 + h.holdId),
-              source: 'booking',
-              start: h.startAt,
-              end: h.endAt,
-              label: 'HOLD_CONFLICT',
-            });
-          }
-        }),
-      );
+        }
+      }
     } catch {
       /* hold table optional until ensured */
     }
@@ -1094,6 +1104,7 @@ export async function listAvailableBookingSlots(args: {
       isInternalSource,
       effectiveMinNotice,
       barberCount: contexts.length,
+      candidateEmpIds,
       slotsTotal: allPlans.length,
       slotsAvailable: returnedSlotCount,
       validSlotCountBeforeLimit,

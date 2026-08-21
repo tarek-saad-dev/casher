@@ -247,6 +247,17 @@ export async function POST(req: NextRequest) {
 
     console.log("[ops/schedule-control/apply] SAVED", { ...qaLog, overrideId: newId });
 
+    void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+      .then((m) =>
+        m.notifyHotEffectiveDay({
+          employeeId: empId,
+          businessDate: date,
+          branchId: branch.branchId,
+          reason: `schedule_control_${type}`,
+        }),
+      )
+      .catch(() => undefined);
+
     return NextResponse.json({
       ok: true,
       overrideId: newId,

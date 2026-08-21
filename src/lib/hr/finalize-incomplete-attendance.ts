@@ -481,6 +481,24 @@ export async function finalizeIncompleteAttendanceWithDefaults(
     throw err;
   }
 
+  if (filled.length) {
+    try {
+      const { AvailabilityMutationNotifier } = await import(
+        '@/lib/booking/AvailabilityMutationNotifier'
+      );
+      for (const row of filled) {
+        await AvailabilityMutationNotifier.employeeDayChanged({
+          employeeId: row.empId,
+          businessDate: workDate,
+          branchId,
+          reason: 'finalize_incomplete_attendance',
+        });
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
+
   const after = await validateDailyPayrollAttendance(db, workDate);
   return emptyResult(after.missing, filled, skippedNoDefault);
 }

@@ -1,0 +1,759 @@
+{
+  "source": {
+    "server": "newserverr.database.windows.net",
+    "database": "last132",
+    "mode": "READ_ONLY"
+  },
+  "tables": {
+    "TblShift": {
+      "exists": true,
+      "columns": [
+        {
+          "COLUMN_NAME": "ShiftID",
+          "DATA_TYPE": "int",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": 10,
+          "NUMERIC_SCALE": 0,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 1
+        },
+        {
+          "COLUMN_NAME": "ShiftName",
+          "DATA_TYPE": "nvarchar",
+          "CHARACTER_MAXIMUM_LENGTH": 50,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "YES",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        }
+      ],
+      "primaryKey": [
+        {
+          "COLUMN_NAME": "ShiftID",
+          "ORDINAL_POSITION": 1
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "name": "PK_TblShift",
+          "is_unique": true,
+          "is_primary_key": true,
+          "filter_definition": null,
+          "cols": "ShiftID"
+        }
+      ],
+      "checks": [],
+      "rowCount": 5
+    },
+    "TblUser": {
+      "exists": true,
+      "columns": [
+        {
+          "COLUMN_NAME": "UserID",
+          "DATA_TYPE": "int",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": 10,
+          "NUMERIC_SCALE": 0,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 1
+        },
+        {
+          "COLUMN_NAME": "UserName",
+          "DATA_TYPE": "nvarchar",
+          "CHARACTER_MAXIMUM_LENGTH": 50,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "YES",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "UserLevel",
+          "DATA_TYPE": "nvarchar",
+          "CHARACTER_MAXIMUM_LENGTH": 5,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "YES",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "loginName",
+          "DATA_TYPE": "nvarchar",
+          "CHARACTER_MAXIMUM_LENGTH": 50,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "YES",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "Password",
+          "DATA_TYPE": "nvarchar",
+          "CHARACTER_MAXIMUM_LENGTH": 50,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "YES",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "ShiftID",
+          "DATA_TYPE": "int",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": 10,
+          "NUMERIC_SCALE": 0,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "CardNO",
+          "DATA_TYPE": "nvarchar",
+          "CHARACTER_MAXIMUM_LENGTH": 30,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "YES",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "isDeleted",
+          "DATA_TYPE": "bit",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "YES",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        }
+      ],
+      "primaryKey": [
+        {
+          "COLUMN_NAME": "UserID",
+          "ORDINAL_POSITION": 1
+        }
+      ],
+      "foreignKeys": [
+        {
+          "FK_NAME": "FK_TblUser_TblShift",
+          "COL": "ShiftID",
+          "REF_TABLE": "TblShift",
+          "REF_COL": "ShiftID"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "PK_TblUser",
+          "is_unique": true,
+          "is_primary_key": true,
+          "filter_definition": null,
+          "cols": "UserID"
+        }
+      ],
+      "checks": [],
+      "rowCount": 12
+    },
+    "TblUserBranchAccess": {
+      "exists": true,
+      "columns": [
+        {
+          "COLUMN_NAME": "ID",
+          "DATA_TYPE": "bigint",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": 19,
+          "NUMERIC_SCALE": 0,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 1
+        },
+        {
+          "COLUMN_NAME": "UserID",
+          "DATA_TYPE": "int",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": 10,
+          "NUMERIC_SCALE": 0,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "BranchID",
+          "DATA_TYPE": "int",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": 10,
+          "NUMERIC_SCALE": 0,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "IsDefault",
+          "DATA_TYPE": "bit",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": "((0))",
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "CanOperate",
+          "DATA_TYPE": "bit",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": "((1))",
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "CanViewReports",
+          "DATA_TYPE": "bit",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": "((0))",
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "CanSwitch",
+          "DATA_TYPE": "bit",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": "((0))",
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "IsActive",
+          "DATA_TYPE": "bit",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": "((1))",
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "ValidFrom",
+          "DATA_TYPE": "datetime2",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "ValidTo",
+          "DATA_TYPE": "datetime2",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "YES",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "GrantedByUserID",
+          "DATA_TYPE": "int",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": 10,
+          "NUMERIC_SCALE": 0,
+          "IS_NULLABLE": "YES",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "GrantReason",
+          "DATA_TYPE": "nvarchar",
+          "CHARACTER_MAXIMUM_LENGTH": 250,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "YES",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "CreatedAt",
+          "DATA_TYPE": "datetime2",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": "(sysutcdatetime())",
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "UpdatedAt",
+          "DATA_TYPE": "datetime2",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "YES",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        }
+      ],
+      "primaryKey": [
+        {
+          "COLUMN_NAME": "ID",
+          "ORDINAL_POSITION": 1
+        }
+      ],
+      "foreignKeys": [
+        {
+          "FK_NAME": "FK_TblUserBranchAccess_BranchID",
+          "COL": "BranchID",
+          "REF_TABLE": "TblBranch",
+          "REF_COL": "BranchID"
+        },
+        {
+          "FK_NAME": "FK_TblUserBranchAccess_UserID",
+          "COL": "UserID",
+          "REF_TABLE": "TblUser",
+          "REF_COL": "UserID"
+        },
+        {
+          "FK_NAME": "FK_TblUserBranchAccess_GrantedByUserID",
+          "COL": "GrantedByUserID",
+          "REF_TABLE": "TblUser",
+          "REF_COL": "UserID"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "PK_TblUserBranchAccess",
+          "is_unique": true,
+          "is_primary_key": true,
+          "filter_definition": null,
+          "cols": "ID"
+        },
+        {
+          "name": "UQ_TblUserBranchAccess_User_Branch",
+          "is_unique": true,
+          "is_primary_key": false,
+          "filter_definition": null,
+          "cols": "UserID,BranchID"
+        },
+        {
+          "name": "UX_TblUserBranchAccess_OneActiveDefault",
+          "is_unique": true,
+          "is_primary_key": false,
+          "filter_definition": "([IsDefault]=(1) AND [IsActive]=(1))",
+          "cols": "UserID"
+        }
+      ],
+      "checks": [
+        {
+          "name": "CK_TblUserBranchAccess_ValidRange",
+          "definition": "([ValidTo] IS NULL OR [ValidTo]>[ValidFrom])"
+        }
+      ],
+      "rowCount": 23
+    },
+    "TblRoles": {
+      "exists": true,
+      "columns": [
+        {
+          "COLUMN_NAME": "RoleID",
+          "DATA_TYPE": "int",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": 10,
+          "NUMERIC_SCALE": 0,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 1
+        },
+        {
+          "COLUMN_NAME": "RoleKey",
+          "DATA_TYPE": "nvarchar",
+          "CHARACTER_MAXIMUM_LENGTH": 50,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "RoleName",
+          "DATA_TYPE": "nvarchar",
+          "CHARACTER_MAXIMUM_LENGTH": 100,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "Description",
+          "DATA_TYPE": "nvarchar",
+          "CHARACTER_MAXIMUM_LENGTH": 255,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "YES",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "IsActive",
+          "DATA_TYPE": "bit",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": "((1))",
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "CreatedAt",
+          "DATA_TYPE": "datetime2",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": "(getdate())",
+          "IsIdentity": 0
+        }
+      ],
+      "primaryKey": [
+        {
+          "COLUMN_NAME": "RoleID",
+          "ORDINAL_POSITION": 1
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "name": "PK__TblRoles__8AFACE3A7AAF02FC",
+          "is_unique": true,
+          "is_primary_key": true,
+          "filter_definition": null,
+          "cols": "RoleID"
+        },
+        {
+          "name": "UQ__TblRoles__D0EBA515C47E33C5",
+          "is_unique": true,
+          "is_primary_key": false,
+          "filter_definition": null,
+          "cols": "RoleKey"
+        }
+      ],
+      "checks": [],
+      "rowCount": 8
+    },
+    "TblUserRoles": {
+      "exists": true,
+      "columns": [
+        {
+          "COLUMN_NAME": "ID",
+          "DATA_TYPE": "int",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": 10,
+          "NUMERIC_SCALE": 0,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 1
+        },
+        {
+          "COLUMN_NAME": "UserID",
+          "DATA_TYPE": "int",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": 10,
+          "NUMERIC_SCALE": 0,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "RoleID",
+          "DATA_TYPE": "int",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": 10,
+          "NUMERIC_SCALE": 0,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "AssignedAt",
+          "DATA_TYPE": "datetime2",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": "(getdate())",
+          "IsIdentity": 0
+        }
+      ],
+      "primaryKey": [
+        {
+          "COLUMN_NAME": "ID",
+          "ORDINAL_POSITION": 1
+        }
+      ],
+      "foreignKeys": [
+        {
+          "FK_NAME": "FK__TblUserRo__UserI__6A50C1DA",
+          "COL": "UserID",
+          "REF_TABLE": "TblUser",
+          "REF_COL": "UserID"
+        },
+        {
+          "FK_NAME": "FK__TblUserRo__RoleI__6B44E613",
+          "COL": "RoleID",
+          "REF_TABLE": "TblRoles",
+          "REF_COL": "RoleID"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "PK__TblUserR__3214EC2755F78897",
+          "is_unique": true,
+          "is_primary_key": true,
+          "filter_definition": null,
+          "cols": "ID"
+        },
+        {
+          "name": "UQ_UserRoles",
+          "is_unique": true,
+          "is_primary_key": false,
+          "filter_definition": null,
+          "cols": "UserID,RoleID"
+        }
+      ],
+      "checks": [],
+      "rowCount": 15
+    },
+    "TblSystemPages": {
+      "exists": true,
+      "columns": [
+        {
+          "COLUMN_NAME": "PageID",
+          "DATA_TYPE": "int",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": 10,
+          "NUMERIC_SCALE": 0,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 1
+        },
+        {
+          "COLUMN_NAME": "PageKey",
+          "DATA_TYPE": "nvarchar",
+          "CHARACTER_MAXIMUM_LENGTH": 100,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "PageName",
+          "DATA_TYPE": "nvarchar",
+          "CHARACTER_MAXIMUM_LENGTH": 150,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "PagePath",
+          "DATA_TYPE": "nvarchar",
+          "CHARACTER_MAXIMUM_LENGTH": 255,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "Section",
+          "DATA_TYPE": "nvarchar",
+          "CHARACTER_MAXIMUM_LENGTH": 100,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "YES",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "AccessMode",
+          "DATA_TYPE": "nvarchar",
+          "CHARACTER_MAXIMUM_LENGTH": 30,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": "('roles')",
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "SortOrder",
+          "DATA_TYPE": "int",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": 10,
+          "NUMERIC_SCALE": 0,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": "((0))",
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "IsActive",
+          "DATA_TYPE": "bit",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": "((1))",
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "CreatedAt",
+          "DATA_TYPE": "datetime2",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": "(getdate())",
+          "IsIdentity": 0
+        }
+      ],
+      "primaryKey": [
+        {
+          "COLUMN_NAME": "PageID",
+          "ORDINAL_POSITION": 1
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": [
+        {
+          "name": "PK__TblSyste__C565B124DFFA9B30",
+          "is_unique": true,
+          "is_primary_key": true,
+          "filter_definition": null,
+          "cols": "PageID"
+        },
+        {
+          "name": "UQ__TblSyste__C92DA44ADADE4E22",
+          "is_unique": true,
+          "is_primary_key": false,
+          "filter_definition": null,
+          "cols": "PageKey"
+        }
+      ],
+      "checks": [],
+      "rowCount": 68
+    },
+    "TblPageRoleAccess": {
+      "exists": true,
+      "columns": [
+        {
+          "COLUMN_NAME": "ID",
+          "DATA_TYPE": "int",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": 10,
+          "NUMERIC_SCALE": 0,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 1
+        },
+        {
+          "COLUMN_NAME": "PageID",
+          "DATA_TYPE": "int",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": 10,
+          "NUMERIC_SCALE": 0,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "RoleID",
+          "DATA_TYPE": "int",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": 10,
+          "NUMERIC_SCALE": 0,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": null,
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "CanView",
+          "DATA_TYPE": "bit",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": "((1))",
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "CanEdit",
+          "DATA_TYPE": "bit",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": "((0))",
+          "IsIdentity": 0
+        },
+        {
+          "COLUMN_NAME": "CanDelete",
+          "DATA_TYPE": "bit",
+          "CHARACTER_MAXIMUM_LENGTH": null,
+          "NUMERIC_PRECISION": null,
+          "NUMERIC_SCALE": null,
+          "IS_NULLABLE": "NO",
+          "COLUMN_DEFAULT": "((0))",
+          "IsIdentity": 0
+        }
+      ],
+      "primaryKey": [
+        {
+          "COLUMN_NAME": "ID",
+          "ORDINAL_POSITION": 1
+        }
+      ],
+      "foreignKeys": [
+        {
+          "FK_NAME": "FK__TblPageRo__RoleI__77AABCF8",
+          "COL": "RoleID",
+          "REF_TABLE": "TblRoles",
+          "REF_COL": "RoleID"
+        },
+        {
+          "FK_NAME": "FK__TblPageRo__PageI__76B698BF",
+          "COL": "PageID",
+          "REF_TABLE": "TblSystemPages",
+          "REF_COL": "PageID"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "PK__TblPageR__3214EC27CA5CC3A2",
+          "is_unique": true,
+          "is_primary_key": true,
+          "filter_definition": null,
+          "cols": "ID"
+        },
+        {
+          "name": "UQ_PageRoleAccess",
+          "is_unique": true,
+          "is_primary_key": false,
+          "filter_definition": null,
+          "cols": "PageID,RoleID"
+        }
+      ],
+      "checks": [],
+      "rowCount": 199
+    }
+  }
+}

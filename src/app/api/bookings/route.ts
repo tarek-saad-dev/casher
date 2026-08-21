@@ -339,6 +339,22 @@ export async function POST(req: NextRequest) {
       canonicalCreateEligible,
     });
 
+    if (empId != null && bookingDate) {
+      try {
+        const { AvailabilityMutationNotifier } = await import(
+          '@/lib/booking/AvailabilityMutationNotifier'
+        );
+        await AvailabilityMutationNotifier.bookingOccupancyChanged({
+          employeeId: Number(empId),
+          businessDate: String(bookingDate).slice(0, 10),
+          branchId: branch.branchId,
+          reason: 'legacy_bookings_create',
+        });
+      } catch {
+        /* best-effort */
+      }
+    }
+
     return NextResponse.json({ bookingId }, { status: 201 });
   } catch (err) {
     console.error("[legacy-booking-create] POST failure", err);

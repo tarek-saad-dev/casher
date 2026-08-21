@@ -16,7 +16,12 @@ import {
   gatePublicBookingRoute,
   finalizePublicBookingError,
   finalizePublicBookingJson,
+  attachPublicBookingReadTelemetry,
 } from '@/lib/booking/publicBookingRouteGate';
+import {
+  runWithPublicBookingReadTelemetry,
+  setAvailabilityMs,
+} from '@/lib/booking/publicBookingReadTelemetry';
 
 export const runtime = 'nodejs';
 
@@ -54,17 +59,26 @@ export async function POST(req: NextRequest) {
     void searchParams.get('preview');
 
     const branchCode = extractPublicBranchCode(searchParams, body);
-    const evaluation = await evaluatePublicBookingSelection({
-      branchCode,
-      date: typeof body.date === 'string' ? body.date : null,
-      time: typeof body.time === 'string' ? body.time : null,
-      dayOffset: body.dayOffset,
-      serviceIds: body.serviceIds,
-      empId: body.empId,
-      mode: body.mode,
-      purpose: 'check_slot',
-      previewQueryParam: searchParams.get('preview') ?? (body.preview as string | undefined) ?? null,
-    });
+    const { result: evaluation, telemetry } = await runWithPublicBookingReadTelemetry(
+      async () => {
+        const t0 = Date.now();
+        const out = await evaluatePublicBookingSelection({
+          branchCode,
+          date: typeof body.date === 'string' ? body.date : null,
+          time: typeof body.time === 'string' ? body.time : null,
+          dayOffset: body.dayOffset,
+          serviceIds: body.serviceIds,
+          empId: body.empId,
+          mode: body.mode,
+          purpose: 'check_slot',
+          previewQueryParam:
+            searchParams.get('preview') ?? (body.preview as string | undefined) ?? null,
+        });
+        setAvailabilityMs(Date.now() - t0);
+        return out;
+      },
+    );
+    attachPublicBookingReadTelemetry(gate, telemetry);
 
     if (!evaluation.available) {
       const code = evaluation.availabilityCode ?? 'SLOT_UNAVAILABLE';

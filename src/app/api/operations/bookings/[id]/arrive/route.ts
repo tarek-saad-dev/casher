@@ -460,6 +460,28 @@ export async function POST(req: NextRequest, { params }: Ctx) {
       throw txErr;
     }
 
+    try {
+      const { AvailabilityMutationNotifier } = await import(
+        '@/lib/booking/AvailabilityMutationNotifier'
+      );
+      if (booking.AssignedEmpID && queueDate) {
+        await AvailabilityMutationNotifier.queueOccupancyChanged({
+          employeeId: Number(booking.AssignedEmpID),
+          businessDate: String(queueDate),
+          branchId: branch.branchId,
+          reason: 'booking_arrive_queue',
+        });
+        await AvailabilityMutationNotifier.bookingOccupancyChanged({
+          employeeId: Number(booking.AssignedEmpID),
+          businessDate: String(queueDate),
+          branchId: branch.branchId,
+          reason: 'booking_arrive_status',
+        });
+      }
+    } catch {
+      /* best-effort — after successful commit */
+    }
+
     // 7. Create history entry (outside transaction)
     await db
       .request()

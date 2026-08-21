@@ -8,6 +8,7 @@ import { BookingServiceSelect } from './BookingServiceSelect';
 import { PrintQueueTicketModal } from './PrintQueueTicketModal';
 import type { CreateQueueResponse, QueuePlanForBarberResult, QueuePlanAlternative } from '@/lib/operationsQueueTypes';
 import { BORDER, GOLD, GOLD_BDR, formatDateLabel } from './booking-workspace/types';
+import { notifyBookingV2QueueCreated } from '@/lib/operations/bookingV2/mutationSync';
 import { cn } from '@/lib/utils';
 
 interface Service {
@@ -283,6 +284,12 @@ export function BarberQueueWorkspaceModal({
       }
 
       setCreateResult(result as CreateQueueResponse);
+      notifyBookingV2QueueCreated({
+        employeeId: barber.empId,
+        businessDate: operationalDate,
+        startIso: selectedSlot.startAt,
+        endIso: selectedSlot.endAt,
+      });
       onCreated();
       setShowPrintModal(true);
     } catch {

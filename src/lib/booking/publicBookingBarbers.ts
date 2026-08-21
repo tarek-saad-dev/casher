@@ -73,6 +73,12 @@ function getCacheMap(): Map<string, CacheEntry> {
 
 export function invalidatePublicBookingBarbersCache(): void {
   getCacheMap().clear();
+  void import('@/lib/booking/v2Frontend/buildPublicBootstrap').then((m) => {
+    m.invalidatePublicBookingV2Bootstrap();
+  });
+  void import('@/lib/booking/cache/WarmMatrixContextCache').then((m) => {
+    m.bumpWarmMatrixContextRevision('barbers_catalog');
+  });
 }
 
 /** Also clear service cache when shared catalog versioning matters. */
@@ -441,18 +447,17 @@ export async function listPublicBookingBarbers(args: {
     }
   >();
 
-  const branchVisibility = new Map<number, boolean>();
-  const isBranchPublic = async (branchId: number) => {
-    const cached = branchVisibility.get(branchId);
-    if (cached != null) return cached;
-    const ok = await canBranchAppearInPublicBooking(branchId);
-    branchVisibility.set(branchId, ok);
-    return ok;
-  };
+  const uniqueBranchIds = [
+    ...new Set(candidates.map((r) => Number(r.BranchID)).filter((id) => id > 0)),
+  ];
+  const { canBranchesAppearInPublicBooking } = await import(
+    '@/lib/branch/publicBranchVisibility'
+  );
+  const branchVisibility = await canBranchesAppearInPublicBooking(uniqueBranchIds);
 
   for (const row of candidates) {
     const branchId = Number(row.BranchID);
-    if (!(await isBranchPublic(branchId))) continue;
+    if (!branchVisibility.get(branchId)) continue;
     if (branchCtx && branchId !== branchCtx.branchId) continue;
 
     const empId = Number(row.EmpID);

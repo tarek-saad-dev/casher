@@ -169,6 +169,34 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
           VALUES (@ticketId, @oldStatus, @newStatus, @action, @userID, @notes)
         `);
 
+      const oldEmpId = Number(cur.recordset[0].EmpID);
+      const ticketDateRes = await db.request()
+        .input("id", sql.Int, ticketId)
+        .query(`SELECT CONVERT(VARCHAR(10), QueueDate, 120) AS QueueDate, BranchID FROM [dbo].[QueueTickets] WHERE QueueTicketID = @id`)
+        .catch(() => ({ recordset: [] as Array<{ QueueDate?: string; BranchID?: number }> }));
+      const qd = String(ticketDateRes.recordset[0]?.QueueDate ?? '').slice(0, 10);
+      const bid = Number(ticketDateRes.recordset[0]?.BranchID ?? 0);
+      if (qd) {
+        void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+          .then(async (m) => {
+            if (oldEmpId > 0) {
+              await m.notifyHotQueueChanged({
+                employeeId: oldEmpId,
+                businessDate: qd,
+                branchId: bid || null,
+                reason: 'queue_transfer_from',
+              });
+            }
+            await m.notifyHotQueueChanged({
+              employeeId: transferEmpId,
+              businessDate: qd,
+              branchId: bid || null,
+              reason: 'queue_transfer_to',
+            });
+          })
+          .catch(() => undefined);
+      }
+
       return NextResponse.json({ ok: true });
     }
 
@@ -258,6 +286,32 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
               AND Status NOT IN ('completed','cancelled')
           `)
           .catch(e => console.error('[queue PATCH] booking sync failed:', e));
+      }
+    }
+
+    // Occupancy-affecting status changes (leave / finish / cancel)
+    if (newStatus === 'cancelled' || newStatus === 'done' || newStatus === 'in_service') {
+      const meta = await db.request()
+        .input("id", sql.Int, ticketId)
+        .query(`
+          SELECT EmpID, BranchID, CONVERT(VARCHAR(10), QueueDate, 120) AS QueueDate
+          FROM [dbo].[QueueTickets] WHERE QueueTicketID = @id
+        `)
+        .catch(() => ({ recordset: [] as Array<{ EmpID?: number; BranchID?: number; QueueDate?: string }> }));
+      const emp = Number(meta.recordset[0]?.EmpID ?? cur.recordset[0]?.EmpID ?? 0);
+      const qd = String(meta.recordset[0]?.QueueDate ?? '').slice(0, 10);
+      const bid = Number(meta.recordset[0]?.BranchID ?? 0);
+      if (emp > 0 && qd) {
+        void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+          .then((m) =>
+            m.notifyHotQueueChanged({
+              employeeId: emp,
+              businessDate: qd,
+              branchId: bid || null,
+              reason: `queue_status_${newStatus}`,
+            }),
+          )
+          .catch(() => undefined);
       }
     }
 

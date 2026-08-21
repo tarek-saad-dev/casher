@@ -77,6 +77,17 @@ function validatePayroll(p: AssignmentWizardPayrollInput): void {
 export async function commitEmployeeBranchAssignment(
   input: CommitEmployeeBranchAssignmentInput,
 ): Promise<CommitEmployeeBranchAssignmentResult> {
+  const { AvailabilityMutationNotifier } = await import(
+    '@/lib/booking/AvailabilityMutationNotifier'
+  );
+  return AvailabilityMutationNotifier.runWithPostCommit(() =>
+    commitEmployeeBranchAssignmentInner(input),
+  );
+}
+
+async function commitEmployeeBranchAssignmentInner(
+  input: CommitEmployeeBranchAssignmentInput,
+): Promise<CommitEmployeeBranchAssignmentResult> {
   if (!input.canOperate && !input.canReceiveBookings) {
     throw new BranchDomainError(
       'OPERATION_NOT_ALLOWED',
@@ -246,6 +257,16 @@ export async function commitEmployeeBranchAssignment(
       `);
 
     await tx.commit();
+
+    const { AvailabilityMutationNotifier } = await import(
+      '@/lib/booking/AvailabilityMutationNotifier'
+    );
+    await AvailabilityMutationNotifier.employeeBranchAssignmentChanged({
+      employeeId: input.empId,
+      branchId: input.branchId,
+      reason: 'assignment_commit',
+    });
+
     return {
       assignmentId: assignment.assignmentId,
       payrollPlanId,

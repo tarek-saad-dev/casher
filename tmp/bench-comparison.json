@@ -1,0 +1,214 @@
+{
+  "generatedAt": "2026-08-21T00:49:18.503Z",
+  "formula": "Improvement % = (Azure-VPS)/Azure*100 (positive => VPS faster)",
+  "vps": {
+    "dbName": "last132_migrated",
+    "serverName": "srv1717420",
+    "probeMs": 1242
+  },
+  "azure": {
+    "dbName": "last132",
+    "serverName": "newserverr",
+    "probeMs": 1664
+  },
+  "page": {
+    "vps": {
+      "n": 6,
+      "min": 489,
+      "avg": 525,
+      "p50": 500,
+      "p95": 617,
+      "max": 617
+    },
+    "azure": {
+      "n": 6,
+      "min": 653,
+      "avg": 838,
+      "p50": 696,
+      "p95": 1433,
+      "max": 1433
+    }
+  },
+  "rows": [
+    {
+      "endpoint": "auth.session",
+      "vps_p50": 1192,
+      "vps_p95": 1216,
+      "azure_p50": 1654,
+      "azure_p95": 2461,
+      "winner": "VPS",
+      "improvement_pct": 27.9
+    },
+    {
+      "endpoint": "permissions.my-access",
+      "vps_p50": 409,
+      "vps_p95": 418,
+      "azure_p50": 556,
+      "azure_p95": 580,
+      "winner": "VPS",
+      "improvement_pct": 26.4
+    },
+    {
+      "endpoint": "auth.branches",
+      "vps_p50": 673,
+      "vps_p95": 687,
+      "azure_p50": 925,
+      "azure_p95": 959,
+      "winner": "VPS",
+      "improvement_pct": 27.2
+    },
+    {
+      "endpoint": "branches.available",
+      "vps_p50": 672,
+      "vps_p95": 698,
+      "azure_p50": 918,
+      "azure_p95": 955,
+      "winner": "VPS",
+      "improvement_pct": 26.8
+    },
+    {
+      "endpoint": "barbers",
+      "vps_p50": 565,
+      "vps_p95": 864,
+      "azure_p50": 772,
+      "azure_p95": 843,
+      "winner": "VPS",
+      "improvement_pct": 26.8
+    },
+    {
+      "endpoint": "barbers.scope-barber",
+      "vps_p50": 552,
+      "vps_p95": 560,
+      "azure_p50": 819,
+      "azure_p95": 2328,
+      "winner": "VPS",
+      "improvement_pct": 32.6
+    },
+    {
+      "endpoint": "services",
+      "vps_p50": 153,
+      "vps_p95": 176,
+      "azure_p50": 245,
+      "azure_p95": 339,
+      "winner": "VPS",
+      "improvement_pct": 37.6
+    },
+    {
+      "endpoint": "payment-methods",
+      "vps_p50": 274,
+      "vps_p95": 285,
+      "azure_p50": 373,
+      "azure_p95": 408,
+      "winner": "VPS",
+      "improvement_pct": 26.5
+    },
+    {
+      "endpoint": "sales.recent-invoices",
+      "vps_p50": 798,
+      "vps_p95": 824,
+      "azure_p50": 2032,
+      "azure_p95": 2876,
+      "winner": "VPS",
+      "improvement_pct": 60.7
+    },
+    {
+      "endpoint": "pos.team-attendance",
+      "vps_p50": 694,
+      "vps_p95": 721,
+      "azure_p50": 957,
+      "azure_p95": 1140,
+      "winner": "VPS",
+      "improvement_pct": 27.5
+    },
+    {
+      "endpoint": "day.rollover-check",
+      "vps_p50": 800,
+      "vps_p95": 813,
+      "azure_p50": 1111,
+      "azure_p95": 2895,
+      "winner": "VPS",
+      "improvement_pct": 28
+    },
+    {
+      "endpoint": "ops.flow-board",
+      "vps_p50": 1989,
+      "vps_p95": 2089,
+      "azure_p50": 2629,
+      "azure_p95": 3343,
+      "winner": "VPS",
+      "improvement_pct": 24.3
+    },
+    {
+      "endpoint": "ops.due-announcements",
+      "vps_p50": 577,
+      "vps_p95": 594,
+      "azure_p50": 759,
+      "azure_p95": 822,
+      "winner": "VPS",
+      "improvement_pct": 24
+    },
+    {
+      "endpoint": "ops.schedule-control",
+      "vps_p50": 2023,
+      "vps_p95": 2126,
+      "azure_p50": 2686,
+      "azure_p95": 3286,
+      "winner": "VPS",
+      "improvement_pct": 24.7
+    },
+    {
+      "endpoint": "ops.employees.day-state",
+      "vps_p50": 1157,
+      "vps_p95": 1497,
+      "azure_p50": 1498,
+      "azure_p95": 1751,
+      "winner": "VPS",
+      "improvement_pct": 22.8
+    },
+    {
+      "endpoint": "ops.status",
+      "vps_p50": 1303,
+      "vps_p95": 1344,
+      "azure_p50": 1472,
+      "azure_p95": 1681,
+      "winner": "VPS",
+      "improvement_pct": 11.5
+    },
+    {
+      "endpoint": "ops.overview",
+      "vps_p50": 5310,
+      "vps_p95": 5521,
+      "azure_p50": 6797,
+      "azure_p95": 7506,
+      "winner": "VPS",
+      "improvement_pct": 21.9
+    },
+    {
+      "endpoint": "admin.booking-settings",
+      "vps_p50": 2416,
+      "vps_p95": 3685,
+      "azure_p50": 3111,
+      "azure_p95": 3190,
+      "winner": "VPS",
+      "improvement_pct": 22.3
+    },
+    {
+      "endpoint": "public.booking.v2.bootstrap",
+      "vps_p50": 18,
+      "vps_p95": 22,
+      "azure_p50": 15,
+      "azure_p95": 54,
+      "winner": "Azure",
+      "improvement_pct": -20
+    },
+    {
+      "endpoint": "health.db",
+      "vps_p50": 725,
+      "vps_p95": 730,
+      "azure_p50": 913,
+      "azure_p95": 1040,
+      "winner": "VPS",
+      "improvement_pct": 20.6
+    }
+  ]
+}

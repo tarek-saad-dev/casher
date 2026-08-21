@@ -358,6 +358,20 @@ export async function removeLaunchRosterAssignment(args: {
       SET IsActive = 0, UpdatedAt = SYSUTCDATETIME()
       WHERE EmpID = @empId AND BranchID = @branchId AND IsActive = 1
     `);
+
+  try {
+    const { AvailabilityMutationNotifier } = await import(
+      '@/lib/booking/AvailabilityMutationNotifier'
+    );
+    await AvailabilityMutationNotifier.employeeBranchAssignmentChanged({
+      employeeId: args.empId,
+      branchId: args.branchId,
+      reason: 'assignment_removed',
+    });
+  } catch {
+    /* best-effort */
+  }
+
   return { deactivated: true };
 }
 

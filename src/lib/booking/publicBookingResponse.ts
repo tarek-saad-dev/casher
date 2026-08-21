@@ -78,6 +78,10 @@ export function logPublicBookingRequest(args: {
   status: number;
   errorCode?: string | null;
   durationMs: number;
+  /** Optional B2.5 read telemetry — logs only, never required on response body. */
+  queryCount?: number;
+  dbMs?: number;
+  availabilityMs?: number;
 }): void {
   console.info(
     JSON.stringify({
@@ -88,6 +92,10 @@ export function logPublicBookingRequest(args: {
       status: args.status,
       errorCode: args.errorCode ?? null,
       durationMs: args.durationMs,
+      ...(args.queryCount != null ? { queryCount: args.queryCount } : {}),
+      ...(args.dbMs != null ? { dbMs: args.dbMs } : {}),
+      ...(args.availabilityMs != null ? { availabilityMs: args.availabilityMs } : {}),
+      ...(args.durationMs != null ? { totalMs: args.durationMs } : {}),
       environment: process.env.NODE_ENV ?? null,
       timestamp: new Date().toISOString(),
     }),

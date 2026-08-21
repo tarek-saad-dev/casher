@@ -27,6 +27,63 @@ import {
   releaseSubmitGuard,
   type BookingCreateSuccess,
 } from '@/lib/operations/bookingWorkspaceSubmit';
+import {
+  useBookingV2Store,
+  setBookingV2Selection,
+  prefetchBookingV2Availability,
+  getEmployeeBranchCodesFromStore,
+  hasCachedBranchInActiveMatrix,
+  markOpsBookingUx,
+  measureOpsBookingUx,
+  notifyBookingV2CreateSuccess,
+  notifyBookingV2SlotConflict,
+  BOOKING_V2_SLOT_STALE_NOTICE_AR,
+  type GeneratedStart,
+} from '@/lib/operations/bookingV2';
+import { traceLog, traceMatchesAvailableSlot } from '@/lib/operations/bookingV2/traceSlotDebug';
+import { useSession } from '@/hooks/useSession';
+
+export type SlotsViewState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
+
+function generatedStartToSlot(s: GeneratedStart): AvailableSlot {
+  return {
+    time: s.time,
+    endTime: s.endTime,
+    label: s.label,
+    empId: s.employeeId,
+    barberName: s.barberName,
+    durationMinutes: s.durationMinutes,
+    dayOffset: s.dayOffset,
+    startAt: s.startAt,
+    endAt: s.endAt,
+    available: true,
+    branchCode: s.branchCode,
+    businessDate: s.businessDate,
+  };
+}
+
+function mapBootstrapService(s: {
+  serviceId: number;
+  nameAr: string;
+  nameEn: string;
+  name: string;
+  price: number;
+  durationMinutes: number;
+  categoryNameAr: string;
+  categoryNameEn: string;
+}): BookingService {
+  return {
+    ProID: s.serviceId,
+    ProName: s.nameAr || s.name || s.nameEn,
+    SPrice: s.price,
+    DurationMinutes: s.durationMinutes,
+    CatName: s.categoryNameAr || s.categoryNameEn || null,
+  };
+}
+
+function slotKey(s: Pick<AvailableSlot, 'empId' | 'time' | 'dayOffset' | 'branchCode'>): string {
+  return `${s.empId}|${s.branchCode ?? ''}|${s.time}|${s.dayOffset ?? 0}`;
+}
 
 export interface UseBookingWorkspaceArgs {
   open: boolean;
@@ -57,34 +114,36 @@ export function useBookingWorkspace({
   onClose,
   onCreated,
 }: UseBookingWorkspaceArgs) {
+  const { user, activeBranch } = useSession();
+  const sessionBranchCode =
+    user?.ActiveBranchCode
+    ?? activeBranch?.branchCode
+    ?? null;
+  const v2 = useBookingV2Store();
+
   const [step, setStep] = useState<BookingStep>(1);
   const [mode, setMode] = useState<BookingMode>(initialEmpId ? 'specific' : 'nearest');
 
   const [services, setServices] = useState<BookingService[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
   const [selectedServices, setSelectedServices] = useState<BookingService[]>([]);
-  /** Per-barber effective durations from TblEmpServiceSettings (ProID → minutes). */
-  const [empDurationByProId, setEmpDurationByProId] = useState<Record<number, number>>({});
-  const [loadingEmpDurations, setLoadingEmpDurations] = useState(false);
 
   const [bookingDate, setBookingDate] = useState(() => sanitizeDate(initialDate));
   const [selectedBarberId, setSelectedBarberId] = useState<number | null>(initialEmpId || null);
+  /** Local branch filter within cached multi-branch matrix (instant). */
+  const [selectedBranchCode, setSelectedBranchCode] = useState<string | null>(sessionBranchCode);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  const [availableSlots, setAvailableSlots] = useState<AvailableSlot[]>([]);
-  const [loadingSlots, setLoadingSlots] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<AvailableSlot | null>(null);
   const [filterByTimeRange, setFilterByTimeRange] = useState(false);
-  const [gapNotice, setGapNotice] = useState<GapNotice | null>(null);
-  const [nextAvailable, setNextAvailable] = useState<AvailableSlot | null>(null);
-  const [alternativeBarbers, setAlternativeBarbers] = useState<BarberAlternative[]>([]);
-  const [slotsDebugReason, setSlotsDebugReason] = useState<string | null>(null);
+  const [gapNotice] = useState<GapNotice | null>(null);
+  const [alternativeBarbers] = useState<BarberAlternative[]>([]);
+  const [slotStaleNotice, setSlotStaleNotice] = useState<string | null>(null);
   const [slotsMeta, setSlotsMeta] = useState<{
     validSlotCountBeforeLimit?: number;
     returnedSlotCount?: number;
     limitApplied?: boolean;
   } | null>(null);
-  const [slotsFetchedForKey, setSlotsFetchedForKey] = useState<string | null>(null);
 
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -98,31 +157,46 @@ export function useBookingWorkspace({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const fetchAbortRef = useRef<AbortController | null>(null);
-  const fetchGenRef = useRef(0);
   const barberDayAbortRef = useRef<AbortController | null>(null);
   const [dateBarbers, setDateBarbers] = useState<BookingWorkspaceBarber[] | null>(null);
   const [loadingDateBarbers, setLoadingDateBarbers] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const submittingRef = useRef(false);
+  const servicesUsableMarkedRef = useRef(false);
+  const availabilityVisibleMarkedRef = useRef(false);
 
   const displayBarbers = dateBarbers ?? barbers;
+  const branchCode = selectedBranchCode ?? sessionBranchCode;
 
-  const applyEmpDuration = useCallback(
-    (svc: BookingService): BookingService => {
-      const override = empDurationByProId[svc.ProID];
-      if (override == null || !(override > 0)) return svc;
-      if (svc.DurationMinutes === override) return svc;
-      return { ...svc, DurationMinutes: override };
-    },
-    [empDurationByProId],
+  /** Slots from V2 matrix + local generateStartsFromFree — never from available-slots. */
+  const availableSlots = useMemo(
+    () => v2.generatedStarts.map(generatedStartToSlot),
+    [v2.generatedStarts],
   );
 
-  const displayServices = useMemo(
-    () => services.map(applyEmpDuration),
-    [services, applyEmpDuration],
-  );
+  const slotsViewState: SlotsViewState = useMemo(() => {
+    if (!open || selectedServices.length === 0) return 'idle';
+    if (v2.availabilityStatus === 'error') return 'error';
+    if (v2.availabilityStatus === 'loading' && availableSlots.length === 0) return 'loading';
+    if (v2.availabilityStatus === 'ready' || availableSlots.length > 0) {
+      return availableSlots.length === 0 ? 'empty' : 'ready';
+    }
+    if (v2.availabilityStatus === 'loading') return 'loading';
+    return 'idle';
+  }, [open, selectedServices.length, v2.availabilityStatus, availableSlots.length]);
+
+  const loadingSlots = slotsViewState === 'loading';
+  const slotsError =
+    slotsViewState === 'error'
+      ? (v2.availabilityError || 'تعذر تحميل المواعيد')
+      : null;
+  const availabilitySoftError =
+    v2.availabilityStatus === 'ready' && v2.availabilityError
+      ? v2.availabilityError
+      : null;
+
+  const displayServices = services;
 
   const totalDuration = useMemo(
     () => selectedServices.reduce((s, svc) => s + (svc.DurationMinutes ?? 30), 0),
@@ -133,7 +207,35 @@ export function useBookingWorkspace({
     [selectedServices],
   );
   const serviceIds = useMemo(() => selectedServices.map((s) => s.ProID), [selectedServices]);
-  const serviceIdsKey = serviceIds.join(',');
+
+  useEffect(() => {
+    if (!open) return;
+    traceLog('[trace-slot][useBookingWorkspace][availableSlots]', {
+      employeeId: mode === 'specific' ? selectedBarberId : null,
+      branchCode,
+      businessDate: bookingDate,
+      durationMinutes: totalDuration,
+      activeMatrixKey: v2.activeMatrixKey,
+      includes16_00: availableSlots.some(traceMatchesAvailableSlot),
+      slotCount: availableSlots.length,
+    });
+  }, [
+    open,
+    mode,
+    selectedBarberId,
+    branchCode,
+    bookingDate,
+    totalDuration,
+    v2.activeMatrixKey,
+    availableSlots,
+  ]);
+
+  const employeeBranchCodes = useMemo(() => {
+    if (mode !== 'specific' || !selectedBarberId) return [] as string[];
+    return getEmployeeBranchCodesFromStore(selectedBarberId);
+  }, [mode, selectedBarberId, v2.bootstrap?.revision]);
+
+  const nextAvailable = availableSlots[0] ?? null;
 
   const selectedBarberName = useMemo(() => {
     if (mode === 'specific' && selectedBarberId) {
@@ -235,18 +337,12 @@ export function useBookingWorkspace({
 
   const invalidateSlotSelection = useCallback(() => {
     setSelectedSlot(null);
-    setAvailableSlots([]);
-    setSlotsFetchedForKey(null);
-    setGapNotice(null);
-    setNextAvailable(null);
-    setAlternativeBarbers([]);
-    setSlotsDebugReason(null);
+    setSlotStaleNotice(null);
     setSlotsMeta(null);
   }, []);
 
   const beginSlotRefresh = useCallback(() => {
     invalidateSlotSelection();
-    setLoadingSlots(true);
   }, [invalidateSlotSelection]);
 
   const resetWorkspace = useCallback(() => {
@@ -259,27 +355,41 @@ export function useBookingWorkspace({
     setNotes('');
     setClientSearch('');
     setError(null);
-    setSlotsDebugReason(null);
+    setSlotStaleNotice(null);
     setSlotsMeta(null);
-    setSlotsFetchedForKey(null);
-    setGapNotice(null);
-    setNextAvailable(null);
-    setAlternativeBarbers([]);
     setStep(1);
     setSuccess(false);
     setMode(initialEmpId ? 'specific' : 'nearest');
     setSelectedBarberId(initialEmpId || null);
+    setSelectedBranchCode(sessionBranchCode);
     setBookingDate(sanitizeDate(initialDate));
     setShowDatePicker(false);
-    setAvailableSlots([]);
-  }, [initialDate, initialEmpId]);
+    servicesUsableMarkedRef.current = false;
+    availabilityVisibleMarkedRef.current = false;
+  }, [initialDate, initialEmpId, sessionBranchCode]);
 
+  // Catalog from prefetched V2 bootstrap only — never blocks modal open.
+  // Fallback /api/services only if bootstrap failed (not on every open).
   useEffect(() => {
+    if (v2.bootstrap && branchCode) {
+      const list = v2.bootstrap.servicesByBranch[branchCode] ?? [];
+      setServices(list.map(mapBootstrapService));
+      setLoadingServices(false);
+      return;
+    }
+    if (v2.bootstrapStatus === 'loading' || v2.bootstrapStatus === 'idle') {
+      // Shell stays interactive; services step shows skeleton.
+      setLoadingServices(true);
+      return;
+    }
+    if (v2.bootstrapStatus !== 'error') return;
+
+    let cancelled = false;
     setLoadingServices(true);
-    // bookable=true: salon services only (excludes products / CatType=pro / zero price)
     fetch('/api/services?active=true&bookable=true')
       .then((r) => r.json())
       .then((d) => {
+        if (cancelled) return;
         const raw: BookingService[] = d.services ?? (Array.isArray(d) ? d : []);
         setServices(
           raw
@@ -291,62 +401,105 @@ export function useBookingWorkspace({
         );
       })
       .catch(() => {})
-      .finally(() => setLoadingServices(false));
-  }, []);
-
-  // Resolve per-barber durations when a specific barber is selected
-  useEffect(() => {
-    if (!selectedBarberId || services.length === 0) {
-      setEmpDurationByProId({});
-      return;
-    }
-    let cancelled = false;
-    const ids = services.map((s) => s.ProID).join(',');
-    setLoadingEmpDurations(true);
-    fetch(`/api/services/resolve-durations?empId=${selectedBarberId}&serviceIds=${ids}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (cancelled) return;
-        if (d?.ok && d.byProId && typeof d.byProId === 'object') {
-          setEmpDurationByProId(d.byProId as Record<number, number>);
-        } else {
-          setEmpDurationByProId({});
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setEmpDurationByProId({});
-      })
       .finally(() => {
-        if (!cancelled) setLoadingEmpDurations(false);
+        if (!cancelled) setLoadingServices(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [selectedBarberId, services]);
+  }, [v2.bootstrap, v2.bootstrapStatus, branchCode]);
 
-  // Keep selected services' durations in sync with barber overrides
-  useEffect(() => {
-    setSelectedServices((prev) => {
-      if (!prev.length) return prev;
-      let changed = false;
-      const next = prev.map((svc) => {
-        const updated = applyEmpDuration(
-          services.find((s) => s.ProID === svc.ProID) ?? svc,
-        );
-        if (updated.DurationMinutes !== svc.DurationMinutes) changed = true;
-        return updated;
-      });
-      if (changed) invalidateSlotSelection();
-      return changed ? next : prev;
-    });
-  }, [empDurationByProId, services, applyEmpDuration, invalidateSlotSelection]);
-
+  // Duration comes from bootstrap catalog — no resolve-durations waterfall.
   useEffect(() => {
     if (!open) return;
     returnFocusRef.current = document.activeElement as HTMLElement | null;
     resetWorkspace();
+    markOpsBookingUx('modal_visible');
+    measureOpsBookingUx('click_to_modal', 'add_click', 'modal_visible');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  useEffect(() => {
+    if (!open || loadingServices || services.length === 0) return;
+    if (servicesUsableMarkedRef.current) return;
+    servicesUsableMarkedRef.current = true;
+    markOpsBookingUx('services_usable', { count: services.length });
+    measureOpsBookingUx('modal_to_services', 'modal_visible', 'services_usable');
+  }, [open, loadingServices, services.length]);
+
+  // Local selection sync — service/date/duration never trigger availability HTTP.
+  useEffect(() => {
+    if (!open) return;
+    setBookingV2Selection({
+      mode,
+      employeeId: mode === 'specific' ? selectedBarberId : null,
+      branchCode,
+      businessDate: bookingDate,
+      serviceIds,
+      durationMinutes: totalDuration,
+    });
+  }, [
+    open,
+    mode,
+    selectedBarberId,
+    branchCode,
+    bookingDate,
+    serviceIds,
+    totalDuration,
+  ]);
+
+  // Prefetch matrix only when scope changes (emp / nearest / branch roster identity).
+  useEffect(() => {
+    if (!open) return;
+    void prefetchBookingV2Availability({
+      mode,
+      employeeId: mode === 'specific' ? selectedBarberId : null,
+      branchCode: sessionBranchCode,
+    });
+  }, [
+    open,
+    mode,
+    selectedBarberId,
+    sessionBranchCode,
+    v2.bootstrap?.revision,
+  ]);
+
+  useEffect(() => {
+    if (!open || selectedServices.length === 0) return;
+    if (slotsViewState === 'ready' && !availabilityVisibleMarkedRef.current) {
+      availabilityVisibleMarkedRef.current = true;
+      markOpsBookingUx('availability_visible', { slots: availableSlots.length });
+      measureOpsBookingUx(
+        'barber_to_availability',
+        'modal_visible',
+        'availability_visible',
+      );
+    }
+    if (slotsViewState === 'ready' || slotsViewState === 'empty') {
+      setSlotsMeta({
+        validSlotCountBeforeLimit: availableSlots.length,
+        returnedSlotCount: availableSlots.length,
+        limitApplied: false,
+      });
+    }
+  }, [open, selectedServices.length, slotsViewState, availableSlots.length]);
+
+  // Stale revision / soft refresh: keep modal; clear only vanished selected slot.
+  useEffect(() => {
+    if (!open || !selectedSlot) return;
+    if (v2.availabilityStatus !== 'ready' && !v2.availabilityRevalidating) return;
+    const stillThere = availableSlots.some((s) => slotKey(s) === slotKey(selectedSlot));
+    if (!stillThere) {
+      setSelectedSlot(null);
+      setSlotStaleNotice(BOOKING_V2_SLOT_STALE_NOTICE_AR);
+    }
+  }, [
+    open,
+    selectedSlot,
+    availableSlots,
+    v2.availabilityStatus,
+    v2.availabilityRevalidating,
+  ]);
 
   useEffect(() => {
     if (!open) return;
@@ -382,101 +535,52 @@ export function useBookingWorkspace({
     return () => clearTimeout(t);
   }, [clientSearch]);
 
+  /** Targeted day refresh after write conflicts — no full 14-day reload. */
   const fetchSlots = useCallback(async () => {
-    if (!serviceIds.length || !bookingDate) return;
-    // Floor is the operational day (not Cairo calendar): overnight previous date stays fetchable.
-    if (isBeforeOperationalDate(bookingDate)) return;
-    if (mode === 'specific' && !selectedBarberId) return;
+    if (!selectedSlot && !selectedBarberId) return;
+    const empId = selectedSlot?.empId ?? selectedBarberId;
+    if (!empId) return;
+    notifyBookingV2SlotConflict({
+      employeeId: empId,
+      businessDate: selectedSlot?.businessDate ?? bookingDate,
+      branchCode: selectedSlot?.branchCode ?? branchCode ?? undefined,
+    });
+  }, [selectedSlot, selectedBarberId, bookingDate, branchCode]);
 
-    fetchAbortRef.current?.abort();
-    const controller = new AbortController();
-    fetchAbortRef.current = controller;
-    const gen = ++fetchGenRef.current;
-
-    setLoadingSlots(true);
-    invalidateSlotSelection();
-
-    const requestId = `r${gen}`;
-    const targetBranchId =
-      (selectedBarberId
-        ? barbers.find((b) => b.empId === selectedBarberId)?.branchId
-        : null) ??
-      initialBranchId ??
-      null;
-    const base = `/api/public/booking/available-slots?date=${bookingDate}&serviceIds=${serviceIdsKey}&source=operations&requestId=${requestId}${
-      targetBranchId != null ? `&branchId=${targetBranchId}` : ''
-    }`;
-    const url = mode === 'specific' && selectedBarberId
-      ? `${base}&mode=specific&empId=${selectedBarberId}`
-      : `${base}&mode=nearest`;
-
-    try {
-      const res = await fetch(url, { signal: controller.signal });
-      if (gen !== fetchGenRef.current) return;
-      const data = await res.json();
-      if (!res.ok) {
-        setSlotsDebugReason(data.message || data.error || 'تعذر تحميل المواعيد، حاول مرة أخرى.');
-        setAvailableSlots([]);
-        return;
-      }
-      const expectedDuration = Number(data.serviceDurationMinutes ?? totalDuration);
-      // Prefer availableSlots (engine already filtered). `slots` includes unavailable
-      // candidates (conflicts/breaks) — never force those to available:true.
-      const rawList = Array.isArray(data.availableSlots)
-        ? data.availableSlots
-        : Array.isArray(data.slots)
-          ? data.slots
-          : [];
-      const rawSlots: AvailableSlot[] = rawList
-        .filter((s: AvailableSlot) => s.available !== false)
-        .map((s: AvailableSlot) => ({
-          ...s,
-          available: true,
-        }));
-
-      // Specific mode: slots must match this barber's resolved duration.
-      // Nearest mode: each slot carries its own emp duration — do not force one total.
-      const slots = mode === 'specific'
-        ? rawSlots.filter((s) => Number(s.durationMinutes ?? 0) === expectedDuration)
-        : rawSlots.filter((s) => Number(s.durationMinutes ?? 0) > 0);
-
-      setAvailableSlots(slots);
-      setSlotsFetchedForKey(serviceIdsKey);
-      setSlotsMeta({
-        validSlotCountBeforeLimit: data.debug?.validSlotCountBeforeLimit ?? slots.length,
-        returnedSlotCount: data.debug?.slotsAvailable ?? slots.length,
-        limitApplied: data.debug?.limitApplied ?? false,
-      });
-      setGapNotice(data.gapNotice ?? null);
-      setNextAvailable(data.nextAvailable ?? null);
-      setAlternativeBarbers(data.alternativeBarbers ?? []);
-
-      if (slots.length === 0) {
-        setSlotsDebugReason(data.noSlotsReason ?? data.debug?.noSlotsReason ?? null);
-      }
-    } catch (e: unknown) {
-      if (e instanceof Error && e.name === 'AbortError') return;
-      if (gen === fetchGenRef.current) {
-        setAvailableSlots([]);
-        setSlotsDebugReason('تعذر تحميل المواعيد، حاول مرة أخرى.');
-      }
-    } finally {
-      if (gen === fetchGenRef.current) setLoadingSlots(false);
-    }
-  }, [bookingDate, serviceIdsKey, mode, selectedBarberId, invalidateSlotSelection, totalDuration, serviceIds.length, barbers, initialBranchId]);
-
-  useEffect(() => {
-    if (step === 3 && serviceIds.length > 0) fetchSlots();
-    return () => fetchAbortRef.current?.abort();
-  }, [step, bookingDate, serviceIdsKey, mode, selectedBarberId, fetchSlots, serviceIds.length]);
+  const retryAvailability = useCallback(() => {
+    void prefetchBookingV2Availability({
+      mode,
+      employeeId: mode === 'specific' ? selectedBarberId : null,
+      branchCode: sessionBranchCode,
+      force: true,
+    });
+  }, [mode, selectedBarberId, sessionBranchCode]);
 
   const handleDateChange = (newDate: string) => {
+    const t0 = performance.now();
     setBookingDate(sanitizeDate(newDate));
     invalidateSlotSelection();
     setFilterByTimeRange(false);
     setShowDatePicker(false);
     setError(null);
+    markOpsBookingUx('date_change_local', {
+      ms: Math.round(performance.now() - t0),
+    });
   };
+
+  const handleBranchChange = useCallback((code: string) => {
+    const t0 = performance.now();
+    const next = code.toUpperCase();
+    setSelectedBranchCode(next);
+    invalidateSlotSelection();
+    setError(null);
+    markOpsBookingUx('branch_change_local', {
+      branch: next,
+      cached: hasCachedBranchInActiveMatrix(next),
+      ms: Math.round(performance.now() - t0),
+    });
+    // Cached multi-branch matrix → setBookingV2Selection filters locally (no HTTP).
+  }, [invalidateSlotSelection]);
 
   const handleModeChange = (next: BookingMode) => {
     setMode(next);
@@ -505,19 +609,23 @@ export function useBookingWorkspace({
   }, [MAIN_SERVICE_NAMES]);
 
   const handleMainSelect = useCallback((proId: number) => {
+    const t0 = performance.now();
     const svc = displayServices.find((s) => s.ProID === proId);
     if (!svc) return;
     setSelectedServices((prev) => {
       const alreadyMain = prev.some((s) => s.ProID === proId && isMainService(s.ProName));
       const addons = prev.filter((s) => !isMainService(s.ProName));
-      // Clicking the active main again clears it → allow addons-only booking
       if (alreadyMain) return addons;
       return [svc, ...addons];
     });
     invalidateSlotSelection();
+    markOpsBookingUx('service_change_local', {
+      ms: Math.round(performance.now() - t0),
+    });
   }, [displayServices, isMainService, invalidateSlotSelection]);
 
   const handleToggleAddon = useCallback((proId: number) => {
+    const t0 = performance.now();
     setSelectedServices((prev) => {
       const exists = prev.some((s) => s.ProID === proId);
       if (exists) return prev.filter((s) => s.ProID !== proId);
@@ -525,6 +633,9 @@ export function useBookingWorkspace({
       return svc ? [...prev, svc] : prev;
     });
     invalidateSlotSelection();
+    markOpsBookingUx('service_change_local', {
+      ms: Math.round(performance.now() - t0),
+    });
   }, [displayServices, invalidateSlotSelection]);
 
   const removeService = useCallback((proId: number) => {
@@ -596,12 +707,17 @@ export function useBookingWorkspace({
         setError(
           extractBookingCreateErrorMessage(
             data,
-            'الوقت المختار لم يعد متاحًا، اختر موعدًا آخر.',
+            BOOKING_V2_SLOT_STALE_NOTICE_AR,
           ),
         );
-        invalidateSlotSelection();
+        notifyBookingV2SlotConflict({
+          employeeId: selectedSlot.empId,
+          businessDate: selectedSlot.businessDate ?? bookingDate,
+          branchCode: selectedSlot.branchCode ?? branchCode ?? undefined,
+        });
+        setSelectedSlot(null);
+        setSlotStaleNotice(BOOKING_V2_SLOT_STALE_NOTICE_AR);
         setStep(3);
-        void fetchSlots();
         return;
       }
       if (!res.ok || !data.ok) {
@@ -613,6 +729,17 @@ export function useBookingWorkspace({
         bookingId: data.booking?.id,
         code: data.booking?.code,
       };
+
+      notifyBookingV2CreateSuccess({
+        createResponse: data,
+        fallbackSlot: {
+          empId: selectedSlot.empId,
+          branchCode: selectedSlot.branchCode ?? branchCode,
+          businessDate: selectedSlot.businessDate ?? bookingDate,
+          startAt: selectedSlot.startAt,
+          endAt: selectedSlot.endAt,
+        },
+      });
 
       setSubmitting(false);
       releaseSubmitGuard(submittingRef);
@@ -655,14 +782,17 @@ export function useBookingWorkspace({
     }
   };
 
-  const slotsAreCurrent = slotsFetchedForKey === serviceIdsKey;
+  const slotsAreCurrent =
+    (slotsViewState === 'ready' || slotsViewState === 'empty')
+    && selectedServices.length > 0
+    && availableSlots.every((s) => s.durationMinutes === totalDuration);
 
   const canGoStep2 = !isDatePast && (mode === 'nearest' || !!selectedBarberId);
   const canGoStep3 = selectedServices.length > 0;
   const canGoStep4 =
     !!selectedSlot
     && slotsAreCurrent
-    && !loadingSlots
+    && slotsViewState === 'ready'
     && selectedSlot.durationMinutes === totalDuration;
   const canGoStep5 = !!(customerName.trim() || selectedClient);
   const canSubmit = canGoStep4 && canGoStep5;
@@ -674,12 +804,13 @@ export function useBookingWorkspace({
     }
     if (step === 2 && !canGoStep3) return 'اختر خدمة واحدة على الأقل';
     if (step === 3 && !canGoStep4) {
-      if (loadingSlots) return 'جارٍ حساب المواعيد...';
+      if (slotsViewState === 'loading') return 'جاري تحميل المواعيد...';
+      if (slotsViewState === 'error') return 'تعذر تحميل المواعيد';
       return 'اختر موعدًا متاحًا';
     }
     if (step === 4 && !canGoStep5) return 'أضف بيانات العميل';
     return null;
-  }, [step, canGoStep2, canGoStep3, canGoStep4, canGoStep5, isDatePast, mode, selectedBarberId, loadingSlots]);
+  }, [step, canGoStep2, canGoStep3, canGoStep4, canGoStep5, isDatePast, mode, selectedBarberId, slotsViewState]);
 
   const goNext = () => {
     if (step < 5) setStep((s) => (s + 1) as BookingStep);
@@ -705,23 +836,37 @@ export function useBookingWorkspace({
 
   const handleSelectBarber = useCallback((empId: number) => {
     setSelectedBarberId(empId);
+    // Prefer session branch if employee works there; else first mapped branch.
+    const codes = getEmployeeBranchCodesFromStore(empId);
+    if (codes.length) {
+      const preferred =
+        sessionBranchCode && codes.includes(sessionBranchCode.toUpperCase())
+          ? sessionBranchCode.toUpperCase()
+          : codes[0];
+      setSelectedBranchCode(preferred);
+    }
     invalidateSlotSelection();
-  }, [invalidateSlotSelection]);
+  }, [invalidateSlotSelection, sessionBranchCode]);
 
   return {
     modalRef,
     step,
     mode,
     services: displayServices,
-    loadingServices: loadingServices || loadingEmpDurations,
+    loadingServices,
     selectedServices,
     bookingDate,
     selectedBarberId,
+    selectedBranchCode: branchCode,
+    employeeBranchCodes,
     showDatePicker,
     setShowDatePicker,
     setSelectedBarberId,
     availableSlots,
     loadingSlots,
+    slotsViewState,
+    slotsError,
+    availabilitySoftError,
     selectedSlot,
     setSelectedSlot,
     filterByTimeRange,
@@ -729,7 +874,7 @@ export function useBookingWorkspace({
     gapNotice,
     nextAvailable,
     alternativeBarbers,
-    slotsDebugReason,
+    slotStaleNotice,
     slotsMeta,
     displaySlots,
     preferredRangeSlots,
@@ -772,6 +917,7 @@ export function useBookingWorkspace({
     canSubmit,
     stepHint,
     handleDateChange,
+    handleBranchChange,
     handleModeChange,
     handleSelectBarber,
     handleMainSelect,
@@ -783,6 +929,7 @@ export function useBookingWorkspace({
     goToStep,
     stepSummaries,
     fetchSlots,
+    retryAvailability,
     formatDateLabel,
     getOperationalToday,
     getOperationalTomorrow,

@@ -31,6 +31,10 @@ export interface AvailableSlot {
   startAt?: string;
   endAt?: string;
   available: boolean;
+  /** Branch context from V2 matrix (local filter / multi-branch). */
+  branchCode?: string;
+  /** Authoritative BusinessDate — overnight slots keep this date, not calendar+1. */
+  businessDate?: string;
 }
 
 export interface GapNotice {
@@ -212,12 +216,16 @@ export function isSlotInsideRange(
 }
 
 export function hourGroupLabel(slot: AvailableSlot): string {
-  const ref = slot.startAt ? new Date(slot.startAt) : null;
-  if (ref && !Number.isNaN(ref.getTime())) {
-    const hhmm = cairoHhMmFromInstant(ref.toISOString());
-    if (hhmm) return fmt(hhmm).replace(/:\d{2}.*/, '');
-  }
-  return fmt(slot.time).replace(/:\d{2}.*/, '');
+  const overnight = (slot.dayOffset ?? 0) === 1;
+  const base = (() => {
+    const ref = slot.startAt ? new Date(slot.startAt) : null;
+    if (ref && !Number.isNaN(ref.getTime())) {
+      const hhmm = cairoHhMmFromInstant(ref.toISOString());
+      if (hhmm) return fmt(hhmm).replace(/:\d{2}.*/, '');
+    }
+    return fmt(slot.time).replace(/:\d{2}.*/, '');
+  })();
+  return overnight ? `${base} · بعد منتصف الليل` : base;
 }
 
 export function groupSlotsByHour(slots: AvailableSlot[]): Array<{ label: string; slots: AvailableSlot[] }> {

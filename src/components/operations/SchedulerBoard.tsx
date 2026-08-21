@@ -23,8 +23,9 @@ import {
 import { OPS_LAYOUT } from './operationsLayout.constants';
 import type { Booking } from '@/lib/operationsTypes';
 import type { MobileBarberSelection } from './BarberMobileSelector';
-import { cn } from '@/lib/utils';
+import { notifyBookingV2CancelFromTimeline } from '@/lib/operations/bookingV2/mutationSync';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 interface Barber {
   empId: number;
@@ -214,6 +215,7 @@ export function SchedulerBoard({
 
   const handleDeleteBooking = useCallback(
     async (bookingId: number) => {
+      const item = selectedItem;
       const res = await fetch(`/api/bookings/${bookingId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -225,9 +227,22 @@ export function SchedulerBoard({
         throw new Error(data.error || 'فشل حذف الحجز');
       }
 
+      const data = (await res.json()) as {
+        assignedEmpId?: number;
+        bookingDate?: string;
+      };
+      const empId = data.assignedEmpId ?? item?.barberId;
+      const businessDate = data.bookingDate ?? currentDate;
+      if (empId && businessDate) {
+        await notifyBookingV2CancelFromTimeline({
+          employeeId: empId,
+          businessDate,
+        });
+      }
+
       onRefresh?.();
     },
-    [onRefresh],
+    [onRefresh, selectedItem, currentDate],
   );
 
   const handleCancelQueueTicket = useCallback(

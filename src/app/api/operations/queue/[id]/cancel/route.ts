@@ -132,8 +132,25 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     // Optionally cancel related booking
     let bookingCancelled = false;
+    let bookingDateYmd: string | null = null;
     if (cancelBooking && ticket.BookingID) {
       try {
+        const bk = await db.request()
+          .input("bookingId", sql.Int, ticket.BookingID)
+          .query(`
+            SELECT BookingDate, AssignedEmpID
+            FROM dbo.Bookings
+            WHERE BookingID = @bookingId
+          `);
+        const row = bk.recordset[0] as
+          | { BookingDate: Date | string; AssignedEmpID: number | null }
+          | undefined;
+        if (row?.BookingDate instanceof Date) {
+          bookingDateYmd = row.BookingDate.toISOString().slice(0, 10);
+        } else if (row?.BookingDate) {
+          bookingDateYmd = String(row.BookingDate).slice(0, 10);
+        }
+
         await db.request()
           .input("bookingId", sql.Int, ticket.BookingID)
           .input("reason", sql.NVarChar, reason ? `Queue cancelled: ${reason}` : "Queue ticket cancelled")
@@ -150,6 +167,32 @@ export async function POST(req: NextRequest, context: RouteContext) {
       } catch (bookingErr) {
         console.warn("[queue/cancel] Failed to cancel related booking:", bookingErr);
       }
+    }
+
+    try {
+      const { AvailabilityMutationNotifier } = await import(
+        '@/lib/booking/AvailabilityMutationNotifier'
+      );
+      const { getCairoBusinessDate } = await import('@/lib/businessDate');
+      const queueDate = getCairoBusinessDate();
+      if (ticket.EmpID) {
+        await AvailabilityMutationNotifier.queueOccupancyChanged({
+          employeeId: Number(ticket.EmpID),
+          businessDate: queueDate,
+          branchId: ticket.BranchID != null ? Number(ticket.BranchID) : branch.branchId,
+          reason: 'ops_queue_cancel',
+        });
+      }
+      if (bookingCancelled && ticket.EmpID && bookingDateYmd) {
+        await AvailabilityMutationNotifier.bookingOccupancyChanged({
+          employeeId: Number(ticket.EmpID),
+          businessDate: bookingDateYmd,
+          branchId: ticket.BranchID != null ? Number(ticket.BranchID) : branch.branchId,
+          reason: 'ops_queue_cancel_booking',
+        });
+      }
+    } catch {
+      /* best-effort */
     }
 
     return NextResponse.json({

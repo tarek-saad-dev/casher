@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { notifyBookingV2WorkforceChange } from '@/lib/operations/bookingV2/mutationSync';
 import {
   X, Clock, Calendar, ChevronDown, AlertTriangle, CheckCircle,
   Loader2, Trash2, UserX, Coffee, ArrowRight, Settings, UserCheck,
@@ -202,6 +203,7 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error ?? 'فشل تشغيل اليوم');
+      notifyBookingV2WorkforceChange({ employeeId: empId, businessDate: date });
       setSaveSuccess(
         data.message ??
           (isToday ? 'تم إلغاء الغياب وتسجيل الحضور' : 'تم تشغيل هذا اليوم للحجز'),
@@ -339,6 +341,10 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
       }
 
       if (!res.ok) throw new Error(data.error ?? 'فشل الحفظ');
+      notifyBookingV2WorkforceChange({
+        employeeId: activeEmpId,
+        businessDate: date,
+      });
       setSaveSuccess('تم تحديث مواعيد الصنايعي بنجاح');
       setActiveEmpId(null);
       setPreview(null);
@@ -360,6 +366,13 @@ export function ScheduleControlModal({ open, onClose, initialDate, onApplied }: 
       const res = await fetch(`/api/operations/schedule-control/override/${overrideId}`, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'فشل الحذف');
+
+      if (empId) {
+        notifyBookingV2WorkforceChange({
+          employeeId: empId,
+          businessDate: date,
+        });
+      }
 
       // If day_off was removed but Absent still lingers — finish with one-click restore
       if (type === 'day_off' && empId && isToday && (data.attendanceWarning || data.barberStatus?.isAbsent)) {

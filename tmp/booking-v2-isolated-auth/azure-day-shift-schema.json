@@ -1,0 +1,189 @@
+{
+  "TblNewDay": {
+    "columns": [
+      {
+        "COLUMN_NAME": "ID",
+        "DATA_TYPE": "int",
+        "CHARACTER_MAXIMUM_LENGTH": null,
+        "NUMERIC_PRECISION": 10,
+        "NUMERIC_SCALE": 0,
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "IsIdentity": 1
+      },
+      {
+        "COLUMN_NAME": "NewDay",
+        "DATA_TYPE": "date",
+        "CHARACTER_MAXIMUM_LENGTH": null,
+        "NUMERIC_PRECISION": null,
+        "NUMERIC_SCALE": null,
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "IsIdentity": 0
+      },
+      {
+        "COLUMN_NAME": "Status",
+        "DATA_TYPE": "bit",
+        "CHARACTER_MAXIMUM_LENGTH": null,
+        "NUMERIC_PRECISION": null,
+        "NUMERIC_SCALE": null,
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "IsIdentity": 0
+      },
+      {
+        "COLUMN_NAME": "BranchID",
+        "DATA_TYPE": "int",
+        "CHARACTER_MAXIMUM_LENGTH": null,
+        "NUMERIC_PRECISION": 10,
+        "NUMERIC_SCALE": 0,
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "IsIdentity": 0
+      }
+    ],
+    "foreignKeys": [
+      {
+        "FK_NAME": "FK_TblNewDay_BranchID",
+        "COL": "BranchID",
+        "REF_TABLE": "TblBranch"
+      }
+    ]
+  },
+  "TblShiftMove": {
+    "columns": [
+      {
+        "COLUMN_NAME": "ID",
+        "DATA_TYPE": "int",
+        "CHARACTER_MAXIMUM_LENGTH": null,
+        "NUMERIC_PRECISION": 10,
+        "NUMERIC_SCALE": 0,
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "IsIdentity": 1
+      },
+      {
+        "COLUMN_NAME": "NewDay",
+        "DATA_TYPE": "date",
+        "CHARACTER_MAXIMUM_LENGTH": null,
+        "NUMERIC_PRECISION": null,
+        "NUMERIC_SCALE": null,
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "IsIdentity": 0
+      },
+      {
+        "COLUMN_NAME": "UserID",
+        "DATA_TYPE": "int",
+        "CHARACTER_MAXIMUM_LENGTH": null,
+        "NUMERIC_PRECISION": 10,
+        "NUMERIC_SCALE": 0,
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "IsIdentity": 0
+      },
+      {
+        "COLUMN_NAME": "ShiftID",
+        "DATA_TYPE": "int",
+        "CHARACTER_MAXIMUM_LENGTH": null,
+        "NUMERIC_PRECISION": 10,
+        "NUMERIC_SCALE": 0,
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "IsIdentity": 0
+      },
+      {
+        "COLUMN_NAME": "StartDate",
+        "DATA_TYPE": "date",
+        "CHARACTER_MAXIMUM_LENGTH": null,
+        "NUMERIC_PRECISION": null,
+        "NUMERIC_SCALE": null,
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "IsIdentity": 0
+      },
+      {
+        "COLUMN_NAME": "StartTime",
+        "DATA_TYPE": "nchar",
+        "CHARACTER_MAXIMUM_LENGTH": 10,
+        "NUMERIC_PRECISION": null,
+        "NUMERIC_SCALE": null,
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "IsIdentity": 0
+      },
+      {
+        "COLUMN_NAME": "EndDate",
+        "DATA_TYPE": "date",
+        "CHARACTER_MAXIMUM_LENGTH": null,
+        "NUMERIC_PRECISION": null,
+        "NUMERIC_SCALE": null,
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "IsIdentity": 0
+      },
+      {
+        "COLUMN_NAME": "EndTime",
+        "DATA_TYPE": "nvarchar",
+        "CHARACTER_MAXIMUM_LENGTH": 50,
+        "NUMERIC_PRECISION": null,
+        "NUMERIC_SCALE": null,
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "IsIdentity": 0
+      },
+      {
+        "COLUMN_NAME": "Status",
+        "DATA_TYPE": "bit",
+        "CHARACTER_MAXIMUM_LENGTH": null,
+        "NUMERIC_PRECISION": null,
+        "NUMERIC_SCALE": null,
+        "IS_NULLABLE": "YES",
+        "COLUMN_DEFAULT": null,
+        "IsIdentity": 0
+      },
+      {
+        "COLUMN_NAME": "BranchID",
+        "DATA_TYPE": "int",
+        "CHARACTER_MAXIMUM_LENGTH": null,
+        "NUMERIC_PRECISION": 10,
+        "NUMERIC_SCALE": 0,
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "IsIdentity": 0
+      },
+      {
+        "COLUMN_NAME": "BusinessDayID",
+        "DATA_TYPE": "int",
+        "CHARACTER_MAXIMUM_LENGTH": null,
+        "NUMERIC_PRECISION": 10,
+        "NUMERIC_SCALE": 0,
+        "IS_NULLABLE": "NO",
+        "COLUMN_DEFAULT": null,
+        "IsIdentity": 0
+      }
+    ],
+    "foreignKeys": [
+      {
+        "FK_NAME": "FK_TblShiftMove_BusinessDayID",
+        "COL": "BusinessDayID",
+        "REF_TABLE": "TblNewDay"
+      },
+      {
+        "FK_NAME": "FK_TblShiftMove_BranchID",
+        "COL": "BranchID",
+        "REF_TABLE": "TblBranch"
+      },
+      {
+        "FK_NAME": "FK_TblShiftMove_TblShift",
+        "COL": "ShiftID",
+        "REF_TABLE": "TblShift"
+      },
+      {
+        "FK_NAME": "FK_TblShiftMove_TblUser",
+        "COL": "UserID",
+        "REF_TABLE": "TblUser"
+      }
+    ]
+  }
+}

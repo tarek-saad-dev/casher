@@ -319,6 +319,8 @@ export async function getPublicAvailableSlots(args: {
   serviceIds: string | number[];
   empId?: number | null;
   previewQueryParam?: string | null;
+  /** Stable canary key (client/session). Deterministic Legacy/V2 sticky assignment. */
+  canaryKey?: string | null;
 }): Promise<PublicAvailableSlotsResponse> {
   if (!isValidDate(args.date)) {
     throw new PublicBookingAvailabilityError('INVALID_DATE');
@@ -344,9 +346,18 @@ export async function getPublicAvailableSlots(args: {
       : null;
   const mode: PublicAvailabilityMode = empId ? 'specific_barber' : 'any_barber';
 
-  // Cache BEFORE any schedule / day classification (was paying 2× global schedule on every hit).
+  const {
+    resolveBookingV2ReadDecision,
+    recordBookingV2ReadMetric,
+    logBookingV2ReadFallback,
+    isBookingV2TechnicalFailure,
+  } = await import('@/lib/booking/projection/bookingV2ReadCutover');
+  const decision = resolveBookingV2ReadDecision({ canaryKey: args.canaryKey });
+
+  // Cache BEFORE schedule work — include engine so V2/legacy never collide.
   const cacheKey = [
     'slots',
+    decision.serveV2 ? 'v2' : 'legacy',
     branchCtx.branchCode,
     args.date,
     mode,
@@ -363,6 +374,124 @@ export async function getPublicAvailableSlots(args: {
     if (!name) throw new PublicBookingAvailabilityError('BARBER_NOT_FOUND');
   }
 
+  const settings = await getPublicSettings(branchCtx.branchId);
+
+  // --- B7B: staged V2 read (same public contract) ---
+  if (decision.serveV2) {
+    try {
+      const {
+        resolveV2PublicSlots,
+        buildSlotsResponseForBranch,
+      } = await import('@/lib/booking/projection/bookingV2PublicReadAdapter');
+      const v2 = await resolveV2PublicSlots({
+        branchCtx,
+        selected,
+        date: args.date,
+        empId,
+        minNoticeMinutes: settings.minNoticeMinutes,
+      });
+
+      if (!empId && v2.eligibleBarberCount === 0) {
+        throw new PublicBookingAvailabilityError('NO_ELIGIBLE_BARBER');
+      }
+
+      if (empId && v2.slots.length === 0) {
+        const dayStatus = await classifySpecificBarberDay({
+          empId,
+          branchCtx,
+          date: args.date,
+          horizonEnd: addDaysYmd(getCairoBusinessDate(), settings.maxBookingDaysAhead),
+        });
+        if (dayStatus === 'global_leave') {
+          throw new PublicBookingAvailabilityError('BARBER_DAY_OFF');
+        }
+        if (dayStatus === 'barber_at_different_branch') {
+          throw new PublicBookingAvailabilityError('BARBER_AVAILABLE_AT_DIFFERENT_BRANCH');
+        }
+        if (dayStatus === 'outside_booking_horizon') {
+          throw new PublicBookingAvailabilityError('BOOKING_HORIZON_EXCEEDED');
+        }
+      }
+
+      let response = buildSlotsResponseForBranch({
+        branchCtx,
+        selected,
+        date: args.date,
+        empId,
+        slots: v2.slots,
+        eligibleBarberCount: v2.eligibleBarberCount,
+      });
+
+      if (v2.slots.length === 0) {
+        const { logEmptySlotsMetric } = await import(
+          '@/lib/availability/bookingAvailabilityMetrics'
+        );
+        const { buildEmptySlotsUx } = await import('@/lib/availability/emptySlotsUx');
+        const ux = buildEmptySlotsUx('SLOT_UNAVAILABLE');
+        logEmptySlotsMetric({
+          reasonCode: 'SLOT_UNAVAILABLE',
+          branchCode: branchCtx.branchCode,
+          branchId: branchCtx.branchId,
+          empId: empId ?? null,
+          businessDate: args.date,
+          source: 'public_available_slots_v2',
+        });
+        response = {
+          ...response,
+          reasonCode: ux.reasonCode,
+          message: ux.messageAr,
+          messageAr: ux.messageAr,
+          recoverySuggestionAr: ux.recoverySuggestionAr,
+        };
+      }
+
+      cacheSet(
+        cacheKey,
+        response,
+        args.date > getCairoBusinessDate() ? DAYS_CACHE_TTL_MS : CACHE_TTL_MS,
+      );
+      recordBookingV2ReadMetric({
+        engine: 'v2',
+        ok: true,
+        totalMs: v2.totalMs,
+        dbMs: v2.dbMs,
+        queryCount: v2.queryCount,
+        composeMs: v2.composeMs,
+        slotCount: v2.slots.length,
+      });
+
+      if (decision.reverseShadow) {
+        schedulePublicReverseSlotsShadow({
+          branchId: branchCtx.branchId,
+          date: args.date,
+          empId,
+          durationMinutes: selected.totalDurationMinutes,
+          serviceIds: selected.serviceIds,
+          minNoticeMinutes: settings.minNoticeMinutes,
+          slots: response.slots,
+          v2Ms: v2.totalMs,
+        });
+      }
+      return response;
+    } catch (err) {
+      if (!isBookingV2TechnicalFailure(err)) throw err;
+      logBookingV2ReadFallback({
+        surface: 'available-slots',
+        error: err instanceof Error ? err.message : 'error',
+        branchId: branchCtx.branchId,
+        businessDate: args.date,
+        canaryKey: decision.canaryKey,
+      });
+      recordBookingV2ReadMetric({
+        engine: 'v2',
+        ok: false,
+        fallback: true,
+      });
+      // fall through to legacy
+    }
+  }
+
+  const legacyT0 = performance.now();
   const engine = await listAvailableBookingSlots({
     date: args.date,
     serviceIds: selected.serviceIds,
@@ -373,6 +502,7 @@ export async function getPublicAvailableSlots(args: {
     durationOverride: selected.totalDurationMinutes,
     collectAllCandidates: !empId,
   });
+  const legacyMs = performance.now() - legacyT0;
 
   const slots = mergeCandidateSlots(engine.availableSlots);
   const eligibleBarberCount = Number(engine.debug.barberCount ?? 0);
@@ -383,7 +513,6 @@ export async function getPublicAvailableSlots(args: {
 
   // Empty specific-barber result: classify location only then (happy path skips this).
   if (empId && slots.length === 0) {
-    const settings = await getPublicSettings(branchCtx.branchId);
     const dayStatus = await classifySpecificBarberDay({
       empId,
       branchCtx,
@@ -445,6 +574,37 @@ export async function getPublicAvailableSlots(args: {
       response,
       args.date > getCairoBusinessDate() ? DAYS_CACHE_TTL_MS : CACHE_TTL_MS,
     );
+    recordBookingV2ReadMetric({
+      engine: 'legacy',
+      ok: true,
+      totalMs: legacyMs,
+      slotCount: 0,
+    });
+    if (decision.forwardShadow) {
+      const shadowEmpIds =
+        empId != null
+          ? [empId]
+          : [
+              ...new Set(
+                (Array.isArray(engine.debug?.candidateEmpIds)
+                  ? (engine.debug.candidateEmpIds as number[])
+                  : []
+                ).concat(
+                  (engine.employeeReasons ?? []).map((r) => Number(r.empId)).filter((id) => id > 0),
+                ),
+              ),
+            ];
+      schedulePublicSlotsShadow({
+        branchId: branchCtx.branchId,
+        date: args.date,
+        empId,
+        durationMinutes: selected.totalDurationMinutes,
+        slots,
+        candidateEmpIds: shadowEmpIds,
+        minNoticeMinutes: settings.minNoticeMinutes,
+        legacyMs,
+      });
+    }
     return response;
   }
 
@@ -471,7 +631,121 @@ export async function getPublicAvailableSlots(args: {
     response,
     args.date > getCairoBusinessDate() ? DAYS_CACHE_TTL_MS : CACHE_TTL_MS,
   );
+  recordBookingV2ReadMetric({
+    engine: 'legacy',
+    ok: true,
+    totalMs: legacyMs,
+    slotCount: slots.length,
+  });
+  if (decision.forwardShadow) {
+    schedulePublicSlotsShadow({
+      branchId: branchCtx.branchId,
+      date: args.date,
+      empId,
+      durationMinutes: selected.totalDurationMinutes,
+      slots,
+      candidateEmpIds: [
+        ...new Set(
+          slots.flatMap((s) => s.barbers.map((b) => b.empId)).concat(empId ? [empId] : []),
+        ),
+      ],
+      minNoticeMinutes: settings.minNoticeMinutes,
+      legacyMs,
+    });
+  }
   return response;
+}
+
+function schedulePublicSlotsShadow(args: {
+  branchId: number;
+  date: string;
+  empId: number | null;
+  durationMinutes: number;
+  slots: PublicSlotWire[];
+  candidateEmpIds: number[];
+  minNoticeMinutes?: number;
+  legacyMs?: number;
+}): void {
+  void import('@/lib/booking/projection/scheduleAvailabilityShadow')
+    .then((m) => {
+      m.scheduleAvailabilityShadowParity({
+        branchId: args.branchId,
+        businessDate: args.date,
+        employeeId: args.empId,
+        employeeIds: args.candidateEmpIds,
+        durationMinutes: args.durationMinutes,
+        minNoticeMinutes: args.minNoticeMinutes,
+        legacyMs: args.legacyMs,
+        legacySlots: args.slots.map((s) => ({
+          time: s.time,
+          dayOffset: s.dayOffset,
+          candidates: s.barbers.map((b) => ({ empId: b.empId })),
+        })),
+        source: 'public',
+      });
+    })
+    .catch(() => {
+      /* shadow optional */
+    });
+}
+
+function schedulePublicReverseSlotsShadow(args: {
+  branchId: number;
+  date: string;
+  empId: number | null;
+  durationMinutes: number;
+  serviceIds: number[];
+  minNoticeMinutes?: number;
+  slots: PublicSlotWire[];
+  v2Ms?: number;
+}): void {
+  void import('@/lib/booking/projection/scheduleAvailabilityShadow')
+    .then((m) => {
+      m.scheduleReverseAvailabilityShadowParity({
+        branchId: args.branchId,
+        businessDate: args.date,
+        employeeId: args.empId,
+        durationMinutes: args.durationMinutes,
+        serviceIds: args.serviceIds,
+        minNoticeMinutes: args.minNoticeMinutes,
+        v2Ms: args.v2Ms,
+        v2Slots: args.slots.map((s) => ({
+          time: s.time,
+          dayOffset: s.dayOffset,
+          candidates: s.barbers.map((b) => ({ empId: b.empId })),
+        })),
+      });
+    })
+    .catch(() => {
+      /* shadow optional */
+    });
+}
+
+function schedulePublicAvailableDaysShadow(args: {
+  branchId: number;
+  empId: number | null;
+  employeeIds: number[];
+  durationMinutes: number;
+  minNoticeMinutes: number;
+  days: Array<{ date: string; isAvailable: boolean }>;
+  legacyMs?: number;
+}): void {
+  void import('@/lib/booking/projection/scheduleAvailabilityShadow')
+    .then((m) => {
+      m.scheduleAvailableDaysShadowParity({
+        branchId: args.branchId,
+        employeeId: args.empId,
+        employeeIds: args.employeeIds,
+        durationMinutes: args.durationMinutes,
+        minNoticeMinutes: args.minNoticeMinutes,
+        days: args.days,
+        legacyMs: args.legacyMs,
+        source: 'public',
+      });
+    })
+    .catch(() => {
+      /* shadow optional */
+    });
 }
 
 type PreloadedSlotsSnapshot = {
@@ -531,6 +805,28 @@ async function listSlotsForPreloadedContext(args: {
     ...(args.empId ? {} : { eligibleBarberCount }),
   };
   cacheSet(cacheKey, snapshot, summaryOnly ? DAYS_CACHE_TTL_MS : CACHE_TTL_MS);
+  // available-days summary uses maxAvailableSlots=1 — skip shadow there to avoid false extras.
+  if (!summaryOnly) {
+    const shadowEmpIds =
+      args.empId != null
+        ? [args.empId]
+        : [
+            ...new Set(
+              (Array.isArray(engine.debug?.candidateEmpIds)
+                ? (engine.debug.candidateEmpIds as number[])
+                : []
+              ).concat(slots.flatMap((s) => s.barbers.map((b) => b.empId))),
+            ),
+          ];
+    schedulePublicSlotsShadow({
+      branchId: args.branchCtx.branchId,
+      date: args.date,
+      empId: args.empId,
+      durationMinutes: args.selected.totalDurationMinutes,
+      slots,
+      candidateEmpIds: shadowEmpIds,
+    });
+  }
   return snapshot;
 }
 
@@ -649,6 +945,7 @@ export async function getPublicAvailableDays(args: {
   from?: string | null;
   to?: string | null;
   previewQueryParam?: string | null;
+  canaryKey?: string | null;
 }): Promise<PublicAvailableDaysResponse> {
   const branchCtx = await resolvePublicBranch(args.branchCode, args.previewQueryParam);
   const settings = await getPublicSettings(branchCtx.branchId);
@@ -693,8 +990,17 @@ export async function getPublicAvailableDays(args: {
   const mode: PublicAvailabilityMode = empId ? 'specific_barber' : 'any_barber';
   const horizonEnd = addDaysYmd(today, settings.maxBookingDaysAhead);
 
+  const {
+    resolveBookingV2ReadDecision,
+    recordBookingV2ReadMetric,
+    logBookingV2ReadFallback,
+    isBookingV2TechnicalFailure,
+  } = await import('@/lib/booking/projection/bookingV2ReadCutover');
+  const decision = resolveBookingV2ReadDecision({ canaryKey: args.canaryKey });
+
   const cacheKey = [
     'days',
+    decision.serveV2 ? 'v2' : 'legacy',
     branchCtx.branchCode,
     from,
     to,
@@ -707,9 +1013,56 @@ export async function getPublicAvailableDays(args: {
   const cached = cacheGet<PublicAvailableDaysResponse>(cacheKey);
   if (cached) return cached;
 
+  if (decision.serveV2) {
+    try {
+      const {
+        resolveV2PublicAvailableDays,
+        buildDaysResponseForBranch,
+      } = await import('@/lib/booking/projection/bookingV2PublicReadAdapter');
+      const v2 = await resolveV2PublicAvailableDays({
+        branchCtx,
+        selected,
+        empId,
+        from,
+        to,
+        horizonEnd,
+        minNoticeMinutes: settings.minNoticeMinutes,
+      });
+      const response = buildDaysResponseForBranch({
+        branchCtx,
+        selected,
+        empId,
+        days: v2.days,
+      });
+      cacheSet(cacheKey, response, DAYS_CACHE_TTL_MS);
+      recordBookingV2ReadMetric({
+        engine: 'v2',
+        ok: true,
+        totalMs: v2.totalMs,
+        dbMs: v2.dbMs,
+        queryCount: v2.queryCount,
+        composeMs: v2.composeMs,
+        slotCount: v2.days.filter((d) => d.isAvailable).length,
+      });
+      // Reverse monitoring for days is covered by reverse slots shadow samples.
+      return response;
+    } catch (err) {
+      if (!isBookingV2TechnicalFailure(err)) throw err;
+      logBookingV2ReadFallback({
+        surface: 'available-days',
+        error: err instanceof Error ? err.message : 'error',
+        branchId: branchCtx.branchId,
+        canaryKey: decision.canaryKey,
+      });
+      recordBookingV2ReadMetric({ engine: 'v2', ok: false, fallback: true });
+      // fall through
+    }
+  }
+
   const dateRange = eachDateInclusive(from, to);
   const probeDates = dateRange.filter((d) => !isOutsideBookingHorizon(d, horizonEnd));
 
+  const legacyT0 = performance.now();
   const probes = await summarizeAvailableDaysRange({
     dates: probeDates,
     branchId: branchCtx.branchId,
@@ -718,6 +1071,7 @@ export async function getPublicAvailableDays(args: {
     mode: empId ? 'specific' : 'nearest',
     empId,
   });
+  const legacyMs = performance.now() - legacyT0;
 
   const days: PublicAvailableDayWire[] = dateRange.map((date) => {
     if (isOutsideBookingHorizon(date, horizonEnd)) {
@@ -797,6 +1151,33 @@ export async function getPublicAvailableDays(args: {
     },
   };
   cacheSet(cacheKey, response, DAYS_CACHE_TTL_MS);
+
+  const {
+    recordBookingV2ReadMetric: recordLegacyDaysMetric,
+  } = await import('@/lib/booking/projection/bookingV2ReadCutover');
+  recordLegacyDaysMetric({
+    engine: 'legacy',
+    ok: true,
+    totalMs: legacyMs,
+    slotCount: days.filter((d) => d.isAvailable).length,
+  });
+
+  // Full per-day V2 shadow (not summary shortcut) — fire-and-forget.
+  if (decision.forwardShadow) {
+    const shadowDays = days
+      .filter((d) => d.status !== 'outside_booking_horizon')
+      .map((d) => ({ date: d.date, isAvailable: d.isAvailable }));
+    schedulePublicAvailableDaysShadow({
+      branchId: branchCtx.branchId,
+      empId,
+      employeeIds: empId ? [empId] : [],
+      durationMinutes: selected.totalDurationMinutes,
+      minNoticeMinutes: settings.minNoticeMinutes,
+      days: shadowDays,
+      legacyMs,
+    });
+  }
+
   return response;
 }
 

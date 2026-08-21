@@ -824,7 +824,47 @@ export async function cancelPublicBooking(
       });
     }
 
+    // B6 dual-guard: release BOOKING claims in same TX when enforce.
+    {
+      const {
+        claimTxFromBookingTransaction,
+        enforceReleaseBookingInTx,
+      } = await import('@/lib/booking/claims/slotClaimIntegration');
+      await enforceReleaseBookingInTx(
+        claimTxFromBookingTransaction(transaction),
+        row.BookingID,
+      );
+    }
+
     await transaction.commit();
+
+    try {
+      const { shadowReleaseBooking } = await import(
+        '@/lib/booking/claims/slotClaimIntegration'
+      );
+      await shadowReleaseBooking(row.BookingID);
+    } catch {
+      /* shadow-safe */
+    }
+
+    try {
+      const { invalidateOnBookingCancelled } = await import(
+        '@/lib/booking/cache/HotAvailabilityInvalidation'
+      );
+      const businessDate =
+        dates.workDate ||
+        (row.AbsoluteStartUtc
+          ? String(row.AbsoluteStartUtc).slice(0, 10)
+          : new Date().toISOString().slice(0, 10));
+      await invalidateOnBookingCancelled({
+        employeeId: Number(row.AssignedEmpID),
+        branchId: Number(row.BranchID ?? 0) || null,
+        businessDate,
+        reason: 'public_cancel',
+      });
+    } catch {
+      /* hot cache optional */
+    }
 
     // Post-commit WhatsApp cancel (idempotent; never blocks cancel success).
     try {
@@ -847,14 +887,23 @@ export async function cancelPublicBooking(
       /* optional */
     }
 
-    const slotRelease = await probeSlotRelease({
-      bookingId: row.BookingID,
-      empId: row.AssignedEmpID,
-      workDate: dates.workDate,
-      calendarDate: dates.calendarDate,
-      startMs,
-      endMs,
-    });
+    let slotRelease: CancelPublicBookingResult['body']['slotRelease'];
+    try {
+      slotRelease = await probeSlotRelease({
+        bookingId: row.BookingID,
+        empId: row.AssignedEmpID,
+        workDate: dates.workDate,
+        calendarDate: dates.calendarDate,
+        startMs,
+        endMs,
+      });
+    } catch {
+      slotRelease = {
+        bookingBlockRemoved: true,
+        currentlyAvailable: null,
+        availabilityReason: 'POST_COMMIT_PROBE_FAILED',
+      };
+    }
 
     const body = {
       ...bodyStub,

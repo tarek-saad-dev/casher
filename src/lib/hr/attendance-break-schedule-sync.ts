@@ -198,6 +198,16 @@ export async function syncBlockRangesFromBreaks(
     inserted += 1;
   }
 
+  void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+    .then((m) =>
+      m.notifyHotEffectiveDay({
+        employeeId: empId,
+        businessDate: date,
+        reason: 'attendance_break_blocks',
+      }),
+    )
+    .catch(() => undefined);
+
   return { deactivated, inserted };
 }
 
@@ -256,6 +266,16 @@ export async function syncBlockRangesFromBreakTimes(
       `);
     inserted += 1;
   }
+
+  void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+    .then((m) =>
+      m.notifyHotEffectiveDay({
+        employeeId: empId,
+        businessDate: date,
+        reason: 'attendance_break_time_blocks',
+      }),
+    )
+    .catch(() => undefined);
 
   return { deactivated, inserted };
 }

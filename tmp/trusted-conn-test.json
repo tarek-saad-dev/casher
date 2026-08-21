@@ -1,0 +1,10 @@
+[
+  {
+    "ok": true,
+    "cs": "Driver={ODBC Driver 17 for SQL Server};Server=Tarek\\SQLEXPRESS;Database=HawaiBookingV2Isolated;Trusted_Connection=Yes;TrustServerCertificate=Yes;",
+    "row": {
+      "db": "HawaiBookingV2Isolated",
+      "login": "TAREK\\saadf"
+    }
+  }
+]

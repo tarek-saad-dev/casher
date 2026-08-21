@@ -98,7 +98,8 @@ export async function PATCH(
     const res = await r.query(`
       UPDATE dbo.TblEmpScheduleOverrides
       SET ${updates.join(", ")}
-      OUTPUT INSERTED.OverrideID
+      OUTPUT INSERTED.OverrideID, INSERTED.EmpID,
+             CONVERT(VARCHAR(10), INSERTED.OverrideDate, 120) AS OverrideDate
       WHERE OverrideID = @oid
     `);
 
@@ -107,6 +108,20 @@ export async function PATCH(
         { error: "الاستثناء غير موجود" },
         { status: 404 },
       );
+    }
+
+    const empId = Number(res.recordset[0].EmpID);
+    const odate = String(res.recordset[0].OverrideDate ?? '').slice(0, 10);
+    if (empId > 0 && odate) {
+      void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+        .then((m) =>
+          m.notifyHotEffectiveDay({
+            employeeId: empId,
+            businessDate: odate,
+            reason: 'booking_control_patch',
+          }),
+        )
+        .catch(() => undefined);
     }
 
     console.log(`[booking-control/overrides] updated OverrideID=${overrideId}`);
@@ -148,7 +163,8 @@ export async function DELETE(
       .query(`
         UPDATE dbo.TblEmpScheduleOverrides
         SET IsActive = 0
-        OUTPUT INSERTED.OverrideID
+        OUTPUT INSERTED.OverrideID, INSERTED.EmpID,
+               CONVERT(VARCHAR(10), INSERTED.OverrideDate, 120) AS OverrideDate
         WHERE OverrideID = @oid
       `);
 
@@ -157,6 +173,20 @@ export async function DELETE(
         { error: "الاستثناء غير موجود" },
         { status: 404 },
       );
+    }
+
+    const empId = Number(res.recordset[0].EmpID);
+    const odate = String(res.recordset[0].OverrideDate ?? '').slice(0, 10);
+    if (empId > 0 && odate) {
+      void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+        .then((m) =>
+          m.notifyHotEffectiveDay({
+            employeeId: empId,
+            businessDate: odate,
+            reason: 'booking_control_delete',
+          }),
+        )
+        .catch(() => undefined);
     }
 
     console.log(

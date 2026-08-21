@@ -6,7 +6,6 @@ import 'server-only';
 import { getPool, sql } from '@/lib/db';
 import { getBranchByCode, listActiveBranches } from '@/lib/branch/repository';
 import { isPubliclyDiscoverable } from '@/lib/branch/lifecycle';
-import { canBranchAppearInPublicBooking } from '@/lib/branch/publicBranchVisibility';
 import type { BranchLifecycleStatus, BranchRecord } from '@/lib/branch/types';
 import {
   PUBLIC_BOOKING_ERROR_CATALOG,
@@ -219,9 +218,15 @@ export type PublicDiscoverableBranch = {
  */
 export async function listPublicDiscoverableBranches(): Promise<PublicDiscoverableBranch[]> {
   const active = await listActiveBranches();
+  const { canBranchesAppearInPublicBooking } = await import(
+    '@/lib/branch/publicBranchVisibility'
+  );
+  const visibility = await canBranchesAppearInPublicBooking(
+    active.map((b) => b.branchId),
+  );
   const out: PublicDiscoverableBranch[] = [];
   for (const b of active) {
-    if (!(await canBranchAppearInPublicBooking(b.branchId))) continue;
+    if (!visibility.get(b.branchId)) continue;
     out.push({
       branchId: b.branchId,
       branchCode: b.branchCode,

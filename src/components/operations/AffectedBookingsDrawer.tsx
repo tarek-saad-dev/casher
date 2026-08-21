@@ -5,6 +5,7 @@
  * Alternatives and moves are server-side only (AvailabilityEngine + reschedule).
  */
 import { useCallback, useEffect, useState } from 'react';
+import { notifyBookingV2CancelSuccess } from '@/lib/operations/bookingV2/mutationSync';
 import {
   X,
   Loader2,
@@ -238,23 +239,27 @@ export function AffectedBookingsDrawer({
     }
   };
 
-  const cancelExplicit = async (bookingId: number) => {
+  const cancelExplicit = async (row: AffectedRow) => {
     if (!window.confirm('إلغاء صريح لهذا الحجز؟ لن يتم الإلغاء بصمت — سيتم إشعار العميل إن أمكن.')) {
       return;
     }
-    setBusyId(bookingId);
+    setBusyId(row.bookingId);
     try {
       const res = await fetch('/api/operations/affected-bookings', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'cancel-booking', bookingId }),
+        body: JSON.stringify({ action: 'cancel-booking', bookingId: row.bookingId }),
       });
       const data = (await res.json()) as { ok?: boolean; error?: string };
       if (!res.ok || !data.ok) {
         setError(data.error || 'فشل الإلغاء');
         return;
       }
+      await notifyBookingV2CancelSuccess({
+        employeeId: row.empId,
+        businessDate: row.bookingDate,
+      });
       onMoved?.();
       await load();
     } finally {
@@ -569,7 +574,7 @@ export function AffectedBookingsDrawer({
                         type="button"
                         className="rounded-md border border-destructive/40 px-2 py-1 text-[11px] text-destructive hover:bg-destructive/10"
                         disabled={busyId === row.bookingId}
-                        onClick={() => void cancelExplicit(row.bookingId)}
+                        onClick={() => void cancelExplicit(row)}
                       >
                         إلغاء صريح
                       </button>

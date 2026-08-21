@@ -182,12 +182,18 @@ function getPublicSettingsCacheState(branchId: number): PublicSettingsCacheState
 export function invalidatePublicSettingsCache(branchId?: number): void {
   if (branchId == null) {
     getPublicSettingsCacheRoot().clear();
-    return;
+  } else {
+    const state = getPublicSettingsCacheState(branchId);
+    state.value = null;
+    state.expiresAt = 0;
+    state.inflight = null;
   }
-  const state = getPublicSettingsCacheState(branchId);
-  state.value = null;
-  state.expiresAt = 0;
-  state.inflight = null;
+  void import('@/lib/booking/v2Frontend/buildPublicBootstrap')
+    .then((m) => m.invalidatePublicBookingV2Bootstrap())
+    .catch(() => undefined);
+  void import('@/lib/booking/cache/WarmMatrixContextCache')
+    .then((m) => m.bumpWarmMatrixContextRevision('public_settings'))
+    .catch(() => undefined);
 }
 
 function bitEnabled(value: unknown, fallback = true): boolean {

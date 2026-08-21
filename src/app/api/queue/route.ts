@@ -645,6 +645,19 @@ export async function POST(req: NextRequest) {
       newId = insertRes.recordset[0].QueueTicketID;
       await transaction.commit();
 
+      if (empId != null && Number(empId) > 0) {
+        void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+          .then((m) =>
+            m.notifyHotQueueChanged({
+              employeeId: Number(empId),
+              businessDate: today,
+              branchId: branch.branchId,
+              reason: 'queue_route_created',
+            }),
+          )
+          .catch(() => undefined);
+      }
+
       console.log("[queue POST] inserted ticket", {
         queueTicketId: newId,
         ticketCode,

@@ -55,12 +55,16 @@ export async function GET(
       return finalizePublicBookingError(req, gate, 'SERVICE_NOT_AVAILABLE_AT_BRANCH');
     }
 
+    const { extractBookingV2CanaryKeyFromRequest } = await import(
+      '@/lib/booking/projection/bookingV2ReadCutover'
+    );
     const result = await getPublicAvailableSlots({
       branchCode,
       date,
       serviceIds,
       empId,
       previewQueryParam: preview,
+      canaryKey: extractBookingV2CanaryKeyFromRequest(req),
     });
 
     return finalizePublicBookingJson(

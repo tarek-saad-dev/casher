@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
         SET qt.Status = 'no_show',
             qt.AutoClosedAt = GETDATE(),
             qt.AutoCloseReason = N'settled_by_operator'
-        OUTPUT INSERTED.QueueTicketID
+        OUTPUT INSERTED.QueueTicketID, INSERTED.EmpID, INSERTED.QueueDate, INSERTED.BranchID
         FROM dbo.QueueTickets qt
         WHERE qt.QueueDate = @date
           AND LOWER(qt.Status) IN ('waiting', 'called')
@@ -65,6 +65,35 @@ export async function POST(req: NextRequest) {
               VALUES (@ticketId, 'expired', 'no_show', @userID, 'operator_settle', N'تسوية جماعية')
           `)
           .catch(() => {});
+      }
+
+      try {
+        const { AvailabilityMutationNotifier } = await import(
+          '@/lib/booking/AvailabilityMutationNotifier'
+        );
+        const seen = new Set<string>();
+        for (const row of result.recordset as Array<{
+          EmpID: number | null;
+          QueueDate: Date | string;
+          BranchID: number | null;
+        }>) {
+          if (!row.EmpID) continue;
+          const ymd =
+            row.QueueDate instanceof Date
+              ? row.QueueDate.toISOString().slice(0, 10)
+              : String(row.QueueDate).slice(0, 10);
+          const key = `${row.EmpID}:${ymd}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          await AvailabilityMutationNotifier.queueOccupancyChanged({
+            employeeId: Number(row.EmpID),
+            businessDate: ymd,
+            branchId: row.BranchID != null ? Number(row.BranchID) : null,
+            reason: 'queue_settle_expired',
+          });
+        }
+      } catch {
+        /* best-effort */
       }
     }
 

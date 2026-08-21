@@ -392,5 +392,17 @@ export async function saveEmployeeGlobalWeeklySchedule(args: {
     branchIds: [...branchIds],
   });
 
+  for (const branchId of branchIds) {
+    void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+      .then((m) =>
+        m.notifyHotWeeklyBaseline({
+          employeeId: args.empId,
+          branchId,
+          reason: 'employee_global_weekly_schedule',
+        }),
+      )
+      .catch(() => undefined);
+  }
+
   return { savedBranches: branchIds.size, preview };
 }

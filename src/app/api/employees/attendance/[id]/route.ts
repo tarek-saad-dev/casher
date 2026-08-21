@@ -97,6 +97,29 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
       return NextResponse.json({ error: 'غير موجود' }, { status: 404 });
     }
 
+    const updated = result.recordset[0] as {
+      EmpID: number;
+      WorkDate: Date | string;
+      BranchID: number;
+    };
+    try {
+      const { AvailabilityMutationNotifier } = await import(
+        '@/lib/booking/AvailabilityMutationNotifier'
+      );
+      const ymd =
+        updated.WorkDate instanceof Date
+          ? updated.WorkDate.toISOString().slice(0, 10)
+          : String(updated.WorkDate).slice(0, 10);
+      await AvailabilityMutationNotifier.employeeDayChanged({
+        employeeId: Number(updated.EmpID),
+        businessDate: ymd,
+        branchId: Number(updated.BranchID),
+        reason: 'employees_attendance_update',
+      });
+    } catch {
+      /* best-effort */
+    }
+
     return NextResponse.json(result.recordset[0]);
   } catch (err: unknown) {
     if (isEmpBranchWorkDayCloseError(err)) {

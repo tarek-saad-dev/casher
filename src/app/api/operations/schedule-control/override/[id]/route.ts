@@ -143,6 +143,16 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
       ` attendanceWarning=${!!attendanceWarning}`,
     );
 
+    void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+      .then((m) =>
+        m.notifyHotEffectiveDay({
+          employeeId: empId,
+          businessDate: date,
+          reason: 'schedule_control_override_delete',
+        }),
+      )
+      .catch(() => undefined);
+
     return NextResponse.json({
       ok: true,
       attendanceReverted,

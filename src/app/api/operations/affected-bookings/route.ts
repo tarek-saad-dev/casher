@@ -253,6 +253,23 @@ export async function POST(req: NextRequest) {
           { status: 409 },
         );
       }
+
+      if (contact.empId && contact.bookingDate) {
+        try {
+          const { AvailabilityMutationNotifier } = await import(
+            '@/lib/booking/AvailabilityMutationNotifier'
+          );
+          await AvailabilityMutationNotifier.bookingOccupancyChanged({
+            employeeId: contact.empId,
+            businessDate: contact.bookingDate,
+            branchId: contact.branchId,
+            reason: 'affected_bookings_cancel',
+          });
+        } catch {
+          /* best-effort */
+        }
+      }
+
       const { scheduleCancelWhatsAppAfterCommit } = await import(
         '@/lib/booking/bookingEventWhatsApp'
       );

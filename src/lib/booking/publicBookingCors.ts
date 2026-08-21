@@ -16,7 +16,11 @@ const DEV_DEFAULT_ORIGINS = [
   'http://127.0.0.1:3001',
 ] as const;
 
-const DEFAULT_ALLOWED_HEADERS = ['Content-Type'] as const;
+const DEFAULT_ALLOWED_HEADERS = [
+  'Content-Type',
+  'X-Booking-Canary-Key',
+  'X-Client-Id',
+] as const;
 const IDEMPOTENCY_HEADERS = ['Content-Type', 'Idempotency-Key'] as const;
 const LOOKUP_HEADERS = ['Content-Type', 'Authorization'] as const;
 
@@ -34,6 +38,9 @@ export const PUBLIC_BOOKING_EXPOSED_HEADERS = [
   'X-RateLimit-Reset',
   'Deprecation',
   'Warning',
+  'ETag',
+  'X-Bootstrap-Revision',
+  'X-Bootstrap-Cache',
 ] as const;
 
 /** @deprecated Use PUBLIC_BOOKING_EXPOSED_HEADERS — alias retained for Phase 8A1 tests. */
@@ -514,6 +521,11 @@ export const PUBLIC_BOOKING_ROUTE_CORS: Record<
   'available-days': { methods: ['GET', 'OPTIONS'], headers: PUBLIC_BOOKING_CORS_HEADER_PRESETS.read },
   'available-slots': {
     methods: ['GET', 'OPTIONS'],
+    headers: PUBLIC_BOOKING_CORS_HEADER_PRESETS.read,
+  },
+  'v2-bootstrap': { methods: ['GET', 'OPTIONS'], headers: PUBLIC_BOOKING_CORS_HEADER_PRESETS.read },
+  'v2-availability': {
+    methods: ['POST', 'OPTIONS'],
     headers: PUBLIC_BOOKING_CORS_HEADER_PRESETS.read,
   },
   'check-slot': { methods: ['POST', 'OPTIONS'], headers: PUBLIC_BOOKING_CORS_HEADER_PRESETS.read },

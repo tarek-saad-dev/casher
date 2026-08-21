@@ -131,11 +131,13 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
                 displaySlots={ws.displaySlots}
                 availableSlots={ws.availableSlots}
                 preferredRangeSlots={ws.preferredRangeSlots}
-                loadingSlots={ws.loadingSlots}
+                slotsViewState={ws.slotsViewState}
+                slotsError={ws.slotsError}
+                softAvailabilityError={ws.availabilitySoftError}
+                slotStaleNotice={ws.slotStaleNotice}
                 slotsAreCurrent={ws.slotsAreCurrent}
                 selectedSlot={ws.selectedSlot}
                 gapNotice={ws.gapNotice}
-                slotsDebugReason={ws.slotsDebugReason}
                 nextAvailable={ws.nextAvailable}
                 alternativeBarbers={ws.alternativeBarbers}
                 hasTimeRange={ws.hasTimeRange}
@@ -143,6 +145,8 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
                 initialTimeRangeStart={ws.initialTimeRangeStart}
                 initialTimeRangeEnd={ws.initialTimeRangeEnd}
                 lockedBarber={ws.lockedBarber}
+                employeeBranchCodes={ws.employeeBranchCodes}
+                selectedBranchCode={ws.selectedBranchCode}
                 onSelectSlot={ws.setSelectedSlot}
                 onToggleTimeRangeFilter={() => ws.setFilterByTimeRange((v) => !v)}
                 onChangeServices={() => ws.goToStep(2)}
@@ -153,6 +157,8 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
                   ws.setSelectedBarberId(empId);
                   ws.goToStep(1);
                 }}
+                onRetryAvailability={ws.retryAvailability}
+                onBranchChange={ws.handleBranchChange}
               />
             )}
             {ws.step === 4 && (

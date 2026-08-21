@@ -197,6 +197,16 @@ export async function POST(req: NextRequest) {
       `[booking-control/overrides] created OverrideID=${newId} empId=${empId} date=${date} type=${type}`,
     );
 
+    void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+      .then((m) =>
+        m.notifyHotEffectiveDay({
+          employeeId: empId,
+          businessDate: date,
+          reason: `booking_control_create_${type}`,
+        }),
+      )
+      .catch(() => undefined);
+
     return NextResponse.json({ ok: true, overrideId: newId }, { status: 201 });
   } catch (err) {
     console.error("[booking-control/overrides POST]", err);

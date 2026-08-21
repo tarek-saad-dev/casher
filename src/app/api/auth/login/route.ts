@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
-import { getPool, getUserFriendlyError, sql } from '@/lib/db';
+import { getPool, getUserFriendlyError } from '@/lib/db';
 import {
   assertSessionSecretConfigured,
   createSession,
@@ -112,10 +112,11 @@ export async function POST(req: NextRequest) {
     const db = await getPool();
 
     logStep(requestId, 'db:lookup-user', { loginName });
+    // Untyped inputs: msnodesqlv8 (isolated Windows auth) rejects tedious sql.NVarChar types.
     const result = await db
       .request()
-      .input('loginName', sql.NVarChar(50), loginName)
-      .input('password', sql.NVarChar(50), password)
+      .input('loginName', loginName)
+      .input('password', password)
       .query(`
         SELECT UserID, UserName, UserLevel, loginName, ShiftID
         FROM [dbo].[TblUser]

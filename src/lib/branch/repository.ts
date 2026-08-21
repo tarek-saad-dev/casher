@@ -92,7 +92,7 @@ export async function getBranchByCode(branchCode: string): Promise<BranchRecord 
   const normalized = branchCode.trim().toUpperCase();
   const result = await db
     .request()
-    .input('branchCode', sql.NVarChar(30), normalized)
+    .input('branchCode', normalized)
     .query(`
       SELECT ${BRANCH_SELECT}
       FROM dbo.TblBranch

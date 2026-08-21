@@ -1,4 +1,10 @@
-import sql from "mssql";
+import os from "node:os";
+import path from "node:path";
+import { createRequire } from "node:module";
+import tediousSql from "mssql";
+
+/** Live-bound driver. Swapped to msnodesqlv8 when using Windows auth so .input() types match the pool. */
+export let sql: typeof tediousSql = tediousSql;
 
 const RETRY_MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 3000;
@@ -6,8 +12,50 @@ const RETRY_DELAY_MS = 3000;
 // Database target type
 export type DbTarget = "local" | "cloud";
 
-// Current database target (default to cloud for Azure SQL)
-let currentDbTarget: DbTarget = "cloud";
+function envFlag(name: string): boolean {
+  const v = String(process.env[name] || "")
+    .trim()
+    .toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+function dbClassIsLocalLike(): boolean {
+  const c = String(process.env.HAWAI_DB_CLASS || process.env.BOOKING_V2_DB_CLASS || "")
+    .trim()
+    .toLowerCase();
+  return c === "local" || c === "isolated" || c === "test" || c === "dev";
+}
+
+/**
+ * Windows Auth via msnodesqlv8 (ODBC Driver 17).
+ * Used for isolated local SQL Express when SQL auth is unavailable.
+ */
+function useTrustedConnection(user: string, server: string): boolean {
+  if (envFlag("BOOKING_V2_USE_TRUSTED_CONNECTION")) return true;
+  if (envFlag("DB_TRUSTED_CONNECTION") || envFlag("LOCAL_DB_TRUSTED_CONNECTION")) return true;
+  // Empty SQL user + non-Azure host → prefer Windows auth for local Express.
+  if (!user && server && !/\.database\.windows\.net$/i.test(server)) {
+    return dbClassIsLocalLike() || envFlag("BOOKING_V2_WRITE_TEST_OK");
+  }
+  return false;
+}
+
+function normalizeNamedInstanceServer(server: string): string {
+  const s = String(server || "").trim();
+  if (!s) return s;
+  if (s.startsWith(".\\")) return `${os.hostname()}\\${s.slice(2)}`;
+  if (s === "." || s.toLowerCase() === "(local)") return os.hostname();
+  return s;
+}
+
+function buildTrustedConnectionString(server: string, database: string): string {
+  const host = normalizeNamedInstanceServer(server);
+  return `Driver={ODBC Driver 17 for SQL Server};Server=${host};Database=${database};Trusted_Connection=Yes;TrustServerCertificate=Yes;`;
+}
+
+// Current database target (default to cloud for Azure SQL; isolated write env forces local)
+let currentDbTarget: DbTarget =
+  dbClassIsLocalLike() || envFlag("BOOKING_V2_FORCE_LOCAL_DB") ? "local" : "cloud";
 
 // Local Database Config
 const localConfig: sql.config = {
@@ -78,8 +126,33 @@ async function connectWithRetry(
   attempt = 1
 ): Promise<sql.ConnectionPool> {
   try {
-    console.log(`[db:${target}] Connection attempt ${attempt}/${RETRY_MAX_ATTEMPTS}...`);
-    const newPool = await new sql.ConnectionPool(config).connect();
+    const user = String(config.user || "");
+    const server = String(config.server || "");
+    const database = String(config.database || "");
+    const trusted = useTrustedConnection(user, server);
+
+    console.log(
+      `[db:${target}] Connection attempt ${attempt}/${RETRY_MAX_ATTEMPTS}` +
+        ` server=${normalizeNamedInstanceServer(server)} db=${database}` +
+        ` auth=${trusted ? "trusted/windows" : "sql"}`,
+    );
+
+    let newPool: sql.ConnectionPool;
+    if (trusted) {
+      const nodeRequire = createRequire(path.join(process.cwd(), "package.json"));
+      const native = nodeRequire("mssql/msnodesqlv8") as typeof sql;
+      sql = native;
+      const connectionString = buildTrustedConnectionString(server, database);
+      newPool = await new native.ConnectionPool({
+        connectionString,
+        connectionTimeout: config.connectionTimeout ?? 60000,
+        requestTimeout: config.requestTimeout ?? 60000,
+        pool: config.pool,
+      } as sql.config).connect();
+    } else {
+      newPool = await new sql.ConnectionPool(config).connect();
+    }
+
     console.log(`[db:${target}] Connected to SQL Server successfully`);
     return newPool;
   } catch (err) {
@@ -346,5 +419,3 @@ export async function allocateInvID(
 
   return idResult.recordset[0].newInvID as number;
 }
-
-export { sql };

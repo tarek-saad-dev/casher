@@ -6,6 +6,12 @@
  *
  * This module does not change runtime behavior — it documents and re-exports
  * the stable contracts for tooling and tests.
+ *
+ * Booking V2 domain core (policy surface — gradual single source):
+ *   @/lib/booking/domain (BusinessDate, BookingInterval, BookingPolicy, BookingError)
+ *   @/lib/booking/services (EffectiveWorkPlanService, BookingCommandService)
+ * Legacy public/ops routes remain unchanged; they still call availability + publicBooking*
+ * until a later migration phase.
  */
 
 export type {
@@ -55,6 +61,12 @@ export type CanonicalDayPlanOutcome = {
  * - listAvailableBookingSlots / evaluateBookingSlotAt
  * - createPublicBooking (write path)
  * - getEmployeeEffectiveWindows / explainAvailabilityInterval / explainEmployeeDayPlanInterval
+ * - Booking V2 (new, evaluate-only): BookingPolicy / EffectiveWorkPlanService / BookingCommandService
+ * - Booking V2 B3 (projection, not wired to public routes): WeeklyBaselineProjection + AvailabilityBitmap
+ * - Booking V2 B4 (projection, not wired to public routes): EffectiveDayProjection
+ * - Booking V2 B5 (occupancy projection, not wired): BookingOccupancy / HoldOccupancy / AvailabilityComposer
+ * - Booking V2 B7A (shadow read path, legacy still served): resolveBookingAvailabilityV2 + shadow parity
+ * - Booking V2 B8 (hot cache, not public cutover): HotAvailabilityCache L1 + revision invalidation
  *
  * Adapter (Production, maps to BarberDayStatus UI contract):
  * - getBarberDayStatus / getBarbersDayStatus / checkBarberAvailableAt
@@ -86,4 +98,16 @@ export const CANONICAL_AVAILABILITY_EXPORTS = [
   'iterateWindowSlotStarts',
   'findEarliestFitInWindows',
   'getEffectiveWindowsOuterBounds',
+  'BookingPolicy',
+  'EffectiveWorkPlanService',
+  'BookingCommandService',
+  'AvailabilityBitmap',
+  'WeeklyBaselineProjection',
+  'EffectiveDayProjection',
+  'BookingOccupancyProjection',
+  'HoldOccupancyProjection',
+  'QueueOccupancyProjection',
+  'AvailabilityComposer',
+  'resolveBookingAvailabilityV2',
+  'HotAvailabilityCache',
 ] as const;

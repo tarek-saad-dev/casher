@@ -749,6 +749,38 @@ export async function rescheduleBookingMove(args: {
       transaction,
     });
 
+    // B6 dual-guard: secure NEW claims then release OLD-only (same TX) before row update.
+    {
+      const {
+        claimTxFromBookingTransaction,
+        enforceAtomicRescheduleInTx,
+        isSlotClaimConflictError,
+      } = await import('@/lib/booking/claims/slotClaimIntegration');
+      try {
+        await enforceAtomicRescheduleInTx(
+          claimTxFromBookingTransaction(transaction),
+          {
+            bookingId,
+            empId: effectiveEmpId,
+            branchId: booking.branchId ?? 0,
+            newStartAt: proposedStart,
+            newEndAt: proposedEnd,
+          },
+        );
+      } catch (claimErr) {
+        if (isSlotClaimConflictError(claimErr)) {
+          await transaction.rollback();
+          throw new ScheduleConflictError('الفترة غير متاحة', {
+            type: 'booking',
+            id: bookingId,
+            startAt: proposedStart.toISOString(),
+            endAt: proposedEnd.toISOString(),
+          });
+        }
+        throw claimErr;
+      }
+    }
+
     const settings = await getGlobalTimingDefaults();
     const timezone = settings.timezone || SALON_TZ;
     const startTimeStr = `${msToHhmm(proposedStart.getTime(), timezone)}:00`;
@@ -757,6 +789,23 @@ export async function rescheduleBookingMove(args: {
     const bookingDateForRow = sqlDateToYyyyMmDd(
       createCairoDateTime(operationalDate, msToHhmm(proposedStart.getTime(), timezone)),
     );
+
+    // Absolute SoT from BusinessDate model (not display-only fields).
+    let publicDayOffset: 0 | 1 = bookingDateForRow === operationalDate ? 0 : 1;
+    try {
+      const { createBookingInterval } = await import(
+        '@/lib/booking/domain/BookingInterval'
+      );
+      const absInterval = createBookingInterval({
+        businessDate: operationalDate,
+        startAtMs: proposedStart.getTime(),
+        endAtMs: proposedEnd.getTime(),
+        timeZone: timezone,
+      });
+      publicDayOffset = absInterval.legacyDayOffset;
+    } catch {
+      /* fallback above */
+    }
 
     const oldStartDisplay = formatTimeArabic(booking.startAt);
     const newStartDisplay = formatTimeArabic(proposedStart);
@@ -780,6 +829,10 @@ export async function rescheduleBookingMove(args: {
       .input('sTime', sql.VarChar, startTimeStr)
       .input('eTime', sql.VarChar, endTimeStr)
       .input('notes', sql.NVarChar, mergedNotes)
+      .input('absStart', sql.DateTime2, proposedStart)
+      .input('absEnd', sql.DateTime2, proposedEnd)
+      .input('workDate', sql.Date, operationalDate)
+      .input('dayOffset', sql.TinyInt, publicDayOffset)
       .query(`
         UPDATE [dbo].[Bookings]
         SET AssignedEmpID = @empId,
@@ -787,6 +840,10 @@ export async function rescheduleBookingMove(args: {
             StartTime = @sTime,
             EndTime = @eTime,
             Notes = @notes,
+            AbsoluteStartUtc = @absStart,
+            AbsoluteEndUtc = @absEnd,
+            PublicWorkDate = @workDate,
+            PublicDayOffset = @dayOffset,
             UpdatedAt = GETDATE()
         WHERE BookingID = @id
       `);
@@ -803,6 +860,40 @@ export async function rescheduleBookingMove(args: {
     }
 
     await transaction.commit();
+
+    try {
+      const { shadowAtomicReschedule } = await import(
+        '@/lib/booking/claims/slotClaimIntegration'
+      );
+      await shadowAtomicReschedule({
+        bookingId,
+        empId: effectiveEmpId,
+        branchId: booking.branchId ?? 0,
+        oldStartAt: booking.startAt,
+        oldEndAt: booking.endAt,
+        newStartAt: proposedStart,
+        newEndAt: proposedEnd,
+        businessDate: operationalDate,
+      });
+    } catch {
+      /* shadow-safe */
+    }
+
+    try {
+      const { invalidateOnBookingRescheduled } = await import(
+        '@/lib/booking/cache/HotAvailabilityInvalidation'
+      );
+      await invalidateOnBookingRescheduled({
+        employeeId: effectiveEmpId,
+        oldEmployeeId: booking.assignedEmpId,
+        oldBusinessDate: booking.bookingDate,
+        newBusinessDate: operationalDate,
+        oldBranchId: booking.branchId,
+        newBranchId: booking.branchId,
+      });
+    } catch {
+      /* hot cache optional */
+    }
 
     try {
       const { scheduleBookingEventWhatsApp } = await import(

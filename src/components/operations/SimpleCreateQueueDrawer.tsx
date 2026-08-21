@@ -5,6 +5,8 @@ import { X, User, Scissors, Loader2, CheckCircle2, Clock, Users, AlertCircle, Ar
 import type { Customer } from '@/lib/types';
 import type { CreateQueueResponse } from '@/lib/operationsQueueTypes';
 import { PrintQueueTicketModal } from './PrintQueueTicketModal';
+import { notifyBookingV2QueueCreated } from '@/lib/operations/bookingV2/mutationSync';
+import { useSession } from '@/hooks/useSession';
 
 interface Service {
   ProID: number;
@@ -324,6 +326,12 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
       }
 
       setCreateResult(result);
+      notifyBookingV2QueueCreated({
+        employeeId: selectedBarber.empId,
+        businessDate: simulateResult.suggestedStartTime.slice(0, 10),
+        startIso: simulateResult.suggestedStartTime,
+        endIso: simulateResult.suggestedEndTime,
+      });
       // Show print modal immediately after successful create
       setShowPrintModal(true);
     } catch {

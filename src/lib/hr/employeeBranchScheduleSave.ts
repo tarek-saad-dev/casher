@@ -346,6 +346,15 @@ export async function saveEmployeeBranchWeeklySchedule(args: {
         `);
     }
     await tx.commit();
+    void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+      .then((m) =>
+        m.notifyHotWeeklyBaseline({
+          employeeId: args.empId,
+          branchId: args.branchId,
+          reason: 'employee_branch_weekly_schedule',
+        }),
+      )
+      .catch(() => undefined);
     return { saved: args.cells.length };
   } catch (err) {
     try {

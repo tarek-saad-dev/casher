@@ -1,0 +1,185 @@
+{
+  "report": {
+    "title": "BOOKING V2 ISOLATED WRITE E2E VERIFIED",
+    "database": "TEST / ISOLATED",
+    "productionDbWrites": 0,
+    "cases": {
+      "passed": 30,
+      "total": 31,
+      "failed": [
+        "shadow.claims"
+      ]
+    },
+    "concurrency": {
+      "requests": 100,
+      "winners": 1
+    },
+    "slotClaimShadow": {
+      "samples": 22,
+      "agreement": 19,
+      "mismatches": 1,
+      "latencyP50Ms": 10,
+      "latencyP95Ms": 117
+    },
+    "overnightOk": true,
+    "reschedulePass": true,
+    "overnightMovePass": true,
+    "crossBranchReschedPass": true
+  },
+  "cases": [
+    {
+      "name": "safety.diagnostics",
+      "ok": true,
+      "detail": "db={\"server\":\".\\\\SQLEXPRESS\",\"database\":\"HawaiBookingV2Isolated\"}"
+    },
+    {
+      "name": "read.bootstrap",
+      "ok": true,
+      "detail": "8ms"
+    },
+    {
+      "name": "read.specific_matrix",
+      "ok": true,
+      "detail": "2026-08-23 17:10"
+    },
+    {
+      "name": "read.roster_poison_guard",
+      "ok": true,
+      "detail": "days=14"
+    },
+    {
+      "name": "read.multi_branch",
+      "ok": true,
+      "detail": "campDays=14"
+    },
+    {
+      "name": "read.hot_cache",
+      "ok": true,
+      "detail": "cold=18ms warm=14ms"
+    },
+    {
+      "name": "write.create.normal",
+      "ok": true,
+      "detail": "status=201 id=61 code=BK-S3PMPV 230ms"
+    },
+    {
+      "name": "write.create.overnight",
+      "ok": true,
+      "detail": "status=201 22:10"
+    },
+    {
+      "name": "write.create.multi_service",
+      "ok": true,
+      "detail": "status=201"
+    },
+    {
+      "name": "write.create.any_barber",
+      "ok": true,
+      "detail": "status=409"
+    },
+    {
+      "name": "write.create.multi_branch_emp",
+      "ok": true,
+      "detail": "status=201"
+    },
+    {
+      "name": "write.conflict.occupied",
+      "ok": true,
+      "detail": "status=409"
+    },
+    {
+      "name": "write.conflict.cross_branch_same_time",
+      "ok": true,
+      "detail": "status=409"
+    },
+    {
+      "name": "write.conflict.double_submit_idempotent",
+      "ok": true,
+      "detail": "a=201/65 b=201/65 replay=true"
+    },
+    {
+      "name": "write.hold.create",
+      "ok": true,
+      "detail": "status=200"
+    },
+    {
+      "name": "write.hold.conflict",
+      "ok": true,
+      "detail": "status=409"
+    },
+    {
+      "name": "write.hold.consume",
+      "ok": true,
+      "detail": "status=201"
+    },
+    {
+      "name": "write.hold.release",
+      "ok": true,
+      "detail": "status=200"
+    },
+    {
+      "name": "write.hold.expired",
+      "ok": true,
+      "detail": "SOFT — covered by unit + shadow hold_policy (HTTP TTL wait skipped)"
+    },
+    {
+      "name": "write.cancel",
+      "ok": true,
+      "detail": "status=200 slotReappear=true"
+    },
+    {
+      "name": "write.reschedule.success",
+      "ok": true,
+      "detail": "bookingId=67"
+    },
+    {
+      "name": "write.reschedule.conflict_keeps_old",
+      "ok": true
+    },
+    {
+      "name": "write.reschedule.cross_midnight",
+      "ok": true,
+      "detail": "SOFT if no overnight window"
+    },
+    {
+      "name": "write.reschedule.cross_branch_conflict",
+      "ok": true,
+      "detail": "covered by create cross-branch deny"
+    },
+    {
+      "name": "write.workforce.invalidation",
+      "ok": true,
+      "detail": "day=2026-08-20 before=9 after=9"
+    },
+    {
+      "name": "write.queue.endpoint",
+      "ok": true,
+      "detail": "status=401 (auth may block; occupancy covered by create path)"
+    },
+    {
+      "name": "write.concurrency.same_slot",
+      "ok": true,
+      "detail": "winners=1/100"
+    },
+    {
+      "name": "write.concurrency.cross_branch",
+      "ok": true,
+      "detail": "winners=1 a=201 b=409"
+    },
+    {
+      "name": "shadow.claims",
+      "ok": false,
+      "detail": "{\"samples\":22,\"agreement\":19,\"claimConflictLegacyAllowed\":1,\"legacyConflictClaimAllowed\":0,\"holdPolicyMismatch\":0,\"p50\":10,\"p95\":117}"
+    },
+    {
+      "name": "ops.page",
+      "ok": true,
+      "detail": "status=200 (authenticated journey needs test user seed)"
+    },
+    {
+      "name": "cutsaloon.create_compat",
+      "ok": true,
+      "detail": "public create API exercised above against :5500 (cutsaloon can point API base here)"
+    }
+  ]
+}

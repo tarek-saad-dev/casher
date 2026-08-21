@@ -60,6 +60,8 @@ export const PUBLIC_BOOKING_ROUTE_RATE_FAMILY: Record<string, PublicBookingRateL
   'barber-availability-slots': 'availability',
   'available-days': 'available-days',
   'available-slots': 'availability',
+  'v2-bootstrap': 'catalog',
+  'v2-availability': 'availability',
   'check-slot': 'validation',
   plan: 'plan',
   create: 'create',

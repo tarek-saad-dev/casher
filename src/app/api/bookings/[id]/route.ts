@@ -128,7 +128,11 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
     const cur = await db.request()
       .input("id", sql.Int, bookingId)
-      .query(`SELECT Status, BranchID FROM [dbo].[Bookings] WHERE BookingID = @id`);
+      .query(`
+        SELECT Status, BranchID, AssignedEmpID, BookingDate
+        FROM [dbo].[Bookings]
+        WHERE BookingID = @id
+      `);
     if (!cur.recordset.length)
       return NextResponse.json({ error: "حجز غير موجود" }, { status: 404 });
 
@@ -143,6 +147,17 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     }
 
     const currentStatus = cur.recordset[0].Status;
+    const priorEmpId =
+      cur.recordset[0].AssignedEmpID != null
+        ? Number(cur.recordset[0].AssignedEmpID)
+        : null;
+    const priorBookingDateRaw = cur.recordset[0].BookingDate;
+    const priorBusinessDate =
+      priorBookingDateRaw instanceof Date
+        ? priorBookingDateRaw.toISOString().slice(0, 10)
+        : priorBookingDateRaw
+          ? String(priorBookingDateRaw).slice(0, 10)
+          : null;
 
     switch (action) {
       case "confirm":
@@ -351,7 +366,56 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
         return NextResponse.json({ error: `إجراء غير معروف: ${action}` }, { status: 400 });
     }
 
-    return NextResponse.json({ ok: true, action, previousStatus: currentStatus });
+    try {
+      const { AvailabilityMutationNotifier } = await import(
+        '@/lib/booking/AvailabilityMutationNotifier'
+      );
+      const occupancyActions = new Set([
+        'cancel',
+        'complete',
+        'no_show',
+        'reschedule',
+        'restore',
+      ]);
+      if (occupancyActions.has(action) && priorEmpId && priorBusinessDate) {
+        if (action === 'reschedule' && rescheduleDate) {
+          await AvailabilityMutationNotifier.bookingOccupancyRescheduled({
+            employeeId: empId != null ? Number(empId) : priorEmpId,
+            oldEmployeeId: priorEmpId,
+            oldBusinessDate: priorBusinessDate,
+            newBusinessDate: String(rescheduleDate).slice(0, 10),
+            oldBranchId: branch.branchId,
+            newBranchId: branch.branchId,
+            reason: 'legacy_bookings_patch_reschedule',
+          });
+        } else if (action === 'cancel') {
+          await AvailabilityMutationNotifier.bookingOccupancyCancelled({
+            employeeId: priorEmpId,
+            businessDate: priorBusinessDate,
+            branchId: branch.branchId,
+            reason: 'legacy_bookings_patch_cancel',
+          });
+        } else {
+          await AvailabilityMutationNotifier.bookingOccupancyChanged({
+            employeeId: priorEmpId,
+            businessDate: priorBusinessDate,
+            branchId: branch.branchId,
+            reason: `legacy_bookings_patch_${action}`,
+          });
+        }
+      }
+    } catch {
+      /* best-effort */
+    }
+
+    return NextResponse.json({
+      ok: true,
+      action,
+      previousStatus: currentStatus,
+      assignedEmpId: priorEmpId,
+      bookingDate: priorBusinessDate,
+      branchId: branch.branchId,
+    });
   } catch (err) {
     console.error("[bookings PATCH id] Error:", err);
     // Log detailed error for debugging

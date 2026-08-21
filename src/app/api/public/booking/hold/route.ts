@@ -99,6 +99,37 @@ export async function POST(req: NextRequest) {
         { status: 409 },
       );
     }
+    if (
+      code === 'OUTSIDE_WORKING_WINDOW' ||
+      code === 'outside_working_hours' ||
+      code === 'insufficient_continuous_time' ||
+      code === 'booking_conflict' ||
+      code === 'queue_conflict' ||
+      code === 'break' ||
+      code === 'BLOCKED_BY_RANGE' ||
+      code === 'EMPLOYEE_ABSENT' ||
+      code === 'BRANCH_CLOSED' ||
+      code === 'SLOT_TOO_SOON' ||
+      code === 'SLOT_TOO_FAR' ||
+      code === 'SLOT_UNAVAILABLE' ||
+      code === 'NOT_ASSIGNED_TO_BRANCH' ||
+      code === 'EMPLOYEE_OFF_DAY' ||
+      code === 'DAY_CLOSED' ||
+      code === 'EMPLOYEE_INACTIVE' ||
+      code === 'SCHEDULE_NOT_CONFIGURED' ||
+      code === 'MIN_NOTICE_NOT_MET' ||
+      code === 'MAX_AHEAD'
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code,
+          messageAr: 'هذه الفترة غير متاحة للحجز حسب سياسة العمل',
+          recoverySuggestionAr: 'اختر وقتًا داخل ساعات العمل الفعلية للموظف',
+        },
+        { status: 409 },
+      );
+    }
     console.error('[public/booking/hold]', err);
     return NextResponse.json(
       { ok: false, code: 'HOLD_FAILED', messageAr: 'تعذر إنشاء الحجز المؤقت' },
