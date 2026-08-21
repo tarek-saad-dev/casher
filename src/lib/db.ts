@@ -140,7 +140,15 @@ async function connectWithRetry(
     let newPool: sql.ConnectionPool;
     if (trusted) {
       const nodeRequire = createRequire(path.join(process.cwd(), "package.json"));
-      const native = nodeRequire("mssql/msnodesqlv8") as typeof sql;
+      let native: typeof sql;
+      try {
+        native = nodeRequire("mssql/msnodesqlv8") as typeof sql;
+      } catch (loadErr) {
+        const msg = loadErr instanceof Error ? loadErr.message : String(loadErr);
+        throw new Error(
+          `Windows trusted connection requires msnodesqlv8 (optional, Windows/ODBC only). ${msg}`,
+        );
+      }
       sql = native;
       const connectionString = buildTrustedConnectionString(server, database);
       newPool = await new native.ConnectionPool({
