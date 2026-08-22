@@ -47,10 +47,11 @@ function shutdown(code = 0) {
 process.on('SIGINT', () => shutdown(0));
 process.on('SIGTERM', () => shutdown(0));
 
-console.log('[dev] starting Next.js on :5500 + nightly-close watcher (02:40 Cairo)');
+console.log('[dev] starting Next.js (webpack) on :5500 + nightly-close watcher (02:40 Cairo)');
 
 const nextBin = require.resolve('next/dist/bin/next');
-start(process.execPath, [nextBin, 'dev', '--port', '5500'], 'next');
+// Webpack dev — Turbopack mis-resolves /api/public/booking/* when [code] is a sibling route.
+start(process.execPath, [nextBin, 'dev', '--webpack', '--port', '5500'], 'next');
 
 let tsxCli;
 try {

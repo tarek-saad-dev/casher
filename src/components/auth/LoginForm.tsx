@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2, LogIn, Scissors } from 'lucide-react';
+import { Loader2, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -89,75 +89,95 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="w-full max-w-[340px] sm:max-w-sm px-4 sm:px-0 space-y-5 sm:space-y-6">
-      {/* Logo */}
-      <div className="flex flex-col items-center gap-2 sm:gap-3 mb-6 sm:mb-8">
-        <div className="flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-primary shadow-lg shadow-primary/25">
-          <Scissors className="w-7 h-7 sm:w-8 sm:h-8 text-primary-foreground" />
+    <div className="w-full max-w-[400px] mx-auto">
+      <div className="rounded-2xl sm:rounded-3xl bg-white/95 backdrop-blur-sm shadow-2xl shadow-black/20 border border-amber-200/40 overflow-hidden">
+        {/* Brand header */}
+        <div className="bg-gradient-to-br from-amber-900 via-amber-800 to-amber-950 px-5 pt-8 pb-7 sm:px-8 sm:pt-10 sm:pb-8 text-center">
+          <div className="mx-auto mb-4 flex h-[72px] w-[72px] sm:h-20 sm:w-20 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-amber-400/30 shadow-lg shadow-black/20">
+            <img
+              src="/cutsalon.png"
+              alt="Cut Salon"
+              className="h-14 w-14 sm:h-16 sm:w-16 object-contain drop-shadow-md"
+            />
+          </div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-wide text-amber-50">
+            Cut Salon System
+          </h1>
+          <p className="mt-1.5 text-sm text-amber-200/80">نظام إدارة الصالون</p>
         </div>
-        <div className="text-center">
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Hawai Salon</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-1">نظام نقطة البيع</p>
-        </div>
+
+        {/* Form */}
+        <form
+          onSubmit={handleSubmit}
+          className="px-5 py-6 sm:px-8 sm:py-8 space-y-5"
+        >
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="loginName" className="text-sm font-medium text-stone-700">
+                اسم المستخدم
+              </Label>
+              <Input
+                id="loginName"
+                type="text"
+                autoComplete="username"
+                autoFocus
+                value={loginName}
+                onChange={(e) => setLoginName(e.target.value)}
+                placeholder="أدخل اسم المستخدم"
+                className="h-12 text-base w-full bg-stone-50 border-stone-200 focus-visible:border-amber-500 focus-visible:ring-amber-500/30 rounded-xl"
+                dir="ltr"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="password" className="text-sm font-medium text-stone-700">
+                كلمة المرور
+              </Label>
+              <Input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="أدخل كلمة المرور"
+                className="h-12 text-base w-full bg-stone-50 border-stone-200 focus-visible:border-amber-500 focus-visible:ring-amber-500/30 rounded-xl"
+                dir="ltr"
+              />
+            </div>
+          </div>
+
+          {error && (
+            <div
+              role="alert"
+              className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 text-center leading-relaxed"
+            >
+              {error}
+            </div>
+          )}
+
+          <Button
+            type="submit"
+            className="w-full h-12 text-base font-bold rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white shadow-lg shadow-amber-900/20 active:scale-[0.98] transition-transform"
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <Loader2 className="w-5 h-5 ml-2 animate-spin" />
+                جاري الدخول...
+              </>
+            ) : (
+              <>
+                <LogIn className="w-5 h-5 ml-2" />
+                تسجيل الدخول
+              </>
+            )}
+          </Button>
+        </form>
       </div>
 
-      {/* Fields */}
-      <div className="space-y-3 sm:space-y-4">
-        <div className="space-y-1.5 sm:space-y-2">
-          <Label htmlFor="loginName" className="text-sm sm:text-base">اسم المستخدم</Label>
-          <Input
-            id="loginName"
-            type="text"
-            autoComplete="username"
-            autoFocus
-            value={loginName}
-            onChange={(e) => setLoginName(e.target.value)}
-            placeholder="أدخل اسم المستخدم"
-            className="h-12 sm:h-11 text-base w-full"
-            dir="ltr"
-          />
-        </div>
-
-        <div className="space-y-1.5 sm:space-y-2">
-          <Label htmlFor="password" className="text-sm sm:text-base">كلمة المرور</Label>
-          <Input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="أدخل كلمة المرور"
-            className="h-12 sm:h-11 text-base w-full"
-            dir="ltr"
-          />
-        </div>
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div className="text-xs sm:text-sm text-destructive bg-destructive/10 rounded-lg p-2.5 sm:p-3 text-center">
-          {error}
-        </div>
-      )}
-
-      {/* Submit */}
-      <Button
-        type="submit"
-        className="w-full h-12 sm:h-11 text-base font-bold mt-2"
-        disabled={loading}
-      >
-        {loading ? (
-          <>
-            <Loader2 className="w-5 h-5 ml-2 animate-spin" />
-            جاري الدخول...
-          </>
-        ) : (
-          <>
-            <LogIn className="w-5 h-5 ml-2" />
-            تسجيل الدخول
-          </>
-        )}
-      </Button>
-    </form>
+      <p className="mt-5 text-center text-xs text-amber-200/60 px-4">
+        Cut Salon &mdash; نظام نقاط البيع
+      </p>
+    </div>
   );
 }

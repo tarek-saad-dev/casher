@@ -12,8 +12,10 @@ export const PUBLIC_BOOKING_CORS_CONTRACT_VERSION = 'booking-cors-v1';
 const DEV_DEFAULT_ORIGINS = [
   'http://localhost:3000',
   'http://localhost:3001',
+  'http://localhost:3002',
   'http://127.0.0.1:3000',
   'http://127.0.0.1:3001',
+  'http://127.0.0.1:3002',
 ] as const;
 
 const DEFAULT_ALLOWED_HEADERS = [
