@@ -29,7 +29,9 @@ export async function sendWhatsAppPayload(
   const cfg = getConfig();
 
   if (!cfg.enabled) {
-    console.log('[whatsapp] Integration skipped outside development');
+    console.log(
+      '[whatsapp] Integration skipped: WHATSAPP_INTEGRATION_ENABLED is not true',
+    );
     return { sent: false, skipped: true, reason: 'development_only' };
   }
 

@@ -50,14 +50,22 @@ import {
 import type { WhatsAppSendResult, WhatsAppStatusResult, WhatsAppBotHealthResult } from './types';
 import { WhatsAppValidationError } from './errors';
 
+/** Master switch only — never gates on NODE_ENV. */
+function skipIfIntegrationDisabled(): WhatsAppSendResult | null {
+  if (getConfig().enabled) return null;
+  console.log(
+    '[whatsapp] Integration skipped: WHATSAPP_INTEGRATION_ENABLED is not true',
+  );
+  return { sent: false, skipped: true, reason: 'development_only' };
+}
+
 export async function sendSaleWhatsAppMessage(
   input: SalePayloadInput,
 ): Promise<WhatsAppSendResult> {
-  const cfg = getConfig();
+  const disabled = skipIfIntegrationDisabled();
+  if (disabled) return disabled;
 
-  if (!cfg.enabled) {
-    return { sent: false, skipped: true, reason: 'development_only' };
-  }
+  const cfg = getConfig();
 
   if (!cfg.saleEnabled) {
     console.log('[whatsapp] Sale message skipped: type disabled');
@@ -96,11 +104,10 @@ export async function sendSaleWhatsAppMessage(
 export async function sendBookingWhatsAppMessage(
   input: BookingPayloadInput,
 ): Promise<WhatsAppSendResult> {
-  const cfg = getConfig();
+  const disabled = skipIfIntegrationDisabled();
+  if (disabled) return disabled;
 
-  if (!cfg.enabled) {
-    return { sent: false, skipped: true, reason: 'development_only' };
-  }
+  const cfg = getConfig();
 
   if (!cfg.bookingEnabled) {
     console.log('[whatsapp] Booking message skipped: type disabled');
@@ -141,11 +148,10 @@ export async function sendBookingWhatsAppMessage(
 export async function sendFirstTimeWhatsAppMessage(
   input: FirstTimePayloadInput,
 ): Promise<WhatsAppSendResult> {
-  const cfg = getConfig();
+  const disabled = skipIfIntegrationDisabled();
+  if (disabled) return disabled;
 
-  if (!cfg.enabled) {
-    return { sent: false, skipped: true, reason: 'development_only' };
-  }
+  const cfg = getConfig();
 
   if (!cfg.firstTimeEnabled) {
     console.log('[whatsapp] First-time message skipped: type disabled');
@@ -184,11 +190,10 @@ export async function sendFirstTimeWhatsAppMessage(
 export async function sendEmployeeSaleWhatsAppMessage(
   input: EmployeeSalePayloadInput,
 ): Promise<WhatsAppSendResult> {
-  const cfg = getConfig();
+  const disabled = skipIfIntegrationDisabled();
+  if (disabled) return disabled;
 
-  if (!cfg.enabled) {
-    return { sent: false, skipped: true, reason: 'development_only' };
-  }
+  const cfg = getConfig();
 
   if (!cfg.employeeSaleEnabled) {
     console.log('[whatsapp] Employee sale message skipped: type disabled');
@@ -259,11 +264,10 @@ export async function sendEmployeeSaleWhatsAppMessage(
 export async function sendEmployeeAdvanceWhatsAppMessage(
   input: EmployeeAdvancePayloadInput,
 ): Promise<WhatsAppSendResult> {
-  const cfg = getConfig();
+  const disabled = skipIfIntegrationDisabled();
+  if (disabled) return disabled;
 
-  if (!cfg.enabled) {
-    return { sent: false, skipped: true, reason: 'development_only' };
-  }
+  const cfg = getConfig();
 
   if (!cfg.employeeAdvanceEnabled) {
     console.log('[whatsapp] Employee advance message skipped: type disabled');
@@ -321,11 +325,10 @@ export async function sendEmployeeAdvanceWhatsAppMessage(
 export async function sendEmployeeFundingWhatsAppMessage(
   input: EmployeeFundingPayloadInput,
 ): Promise<WhatsAppSendResult> {
-  const cfg = getConfig();
+  const disabled = skipIfIntegrationDisabled();
+  if (disabled) return disabled;
 
-  if (!cfg.enabled) {
-    return { sent: false, skipped: true, reason: 'development_only' };
-  }
+  const cfg = getConfig();
 
   if (!cfg.employeeFundingEnabled) {
     console.log('[whatsapp] Employee funding message skipped: type disabled');
@@ -383,11 +386,10 @@ export async function sendEmployeeFundingWhatsAppMessage(
 export async function sendQuickWhatsAppMessage(
   input: QuickMessagePayloadInput,
 ): Promise<WhatsAppSendResult> {
-  const cfg = getConfig();
+  const disabled = skipIfIntegrationDisabled();
+  if (disabled) return disabled;
 
-  if (!cfg.enabled) {
-    return { sent: false, skipped: true, reason: 'development_only' };
-  }
+  const cfg = getConfig();
 
   if (!cfg.quickMessageEnabled) {
     console.log('[whatsapp] Quick message skipped: type disabled');
@@ -423,11 +425,10 @@ export async function sendQuickWhatsAppMessage(
 export async function sendEmployeeDailyReportWhatsAppMessage(
   input: EmployeeDailyReportPayloadInput,
 ): Promise<WhatsAppSendResult> {
-  const cfg = getConfig();
+  const disabled = skipIfIntegrationDisabled();
+  if (disabled) return disabled;
 
-  if (!cfg.enabled) {
-    return { sent: false, skipped: true, reason: 'development_only' };
-  }
+  const cfg = getConfig();
 
   if (!cfg.employeeDailyReportEnabled) {
     console.log('[whatsapp] Employee daily report skipped: type disabled');
@@ -477,11 +478,10 @@ export async function sendEmployeeDailyReportWhatsAppMessage(
 export async function sendOtherWhatsAppMessage(
   input: OtherPayloadInput,
 ): Promise<WhatsAppSendResult> {
-  const cfg = getConfig();
+  const disabled = skipIfIntegrationDisabled();
+  if (disabled) return disabled;
 
-  if (!cfg.enabled) {
-    return { sent: false, skipped: true, reason: 'development_only' };
-  }
+  const cfg = getConfig();
 
   if (!cfg.otherEnabled) {
     console.log('[whatsapp] Other message skipped: type disabled');
@@ -525,9 +525,7 @@ export async function sendOtherWhatsAppMessage(
 }
 
 export async function checkWhatsAppStatus(): Promise<WhatsAppStatusResult> {
-  const cfg = getConfig();
-
-  if (!cfg.enabled) {
+  if (!getConfig().enabled) {
     return { available: false, reason: 'development_only' };
   }
 
@@ -536,9 +534,7 @@ export async function checkWhatsAppStatus(): Promise<WhatsAppStatusResult> {
 
 /** Server-side GET /api/health — does not run on invoice/POS send. */
 export async function checkWhatsAppBotHealth(): Promise<WhatsAppBotHealthResult> {
-  const cfg = getConfig();
-
-  if (!cfg.enabled) {
+  if (!getConfig().enabled) {
     return { ok: false, reason: 'development_only' };
   }
 

@@ -112,6 +112,12 @@ describe('1. Environment gate', () => {
     expect((result as { reason: string }).reason).toBe('development_only');
   });
 
+  it('treats quoted/spaced WHATSAPP_INTEGRATION_ENABLED=true as enabled', () => {
+    setEnv('production', false);
+    vi.stubEnv('WHATSAPP_INTEGRATION_ENABLED', ' "true" ');
+    expect(getConfig().enabled).toBe(true);
+  });
+
   it('defaults apiBaseUrl to http://127.0.0.1:3001', () => {
     vi.stubEnv('WHATSAPP_API_BASE_URL', '');
     expect(getConfig().apiBaseUrl).toBe('http://127.0.0.1:3001');
@@ -585,6 +591,84 @@ describe('10. Production send path', () => {
     });
     expect(result.sent).toBe(true);
     expect(urls).toEqual(['http://127.0.0.1:3001/api/whatsapp/send']);
+
+    vi.stubGlobal('fetch', async (_url: string, _opts?: unknown) => ({
+      ok: mockFetchResponse.ok,
+      status: mockFetchResponse.status,
+      text: async () => mockFetchResponse.text,
+    }));
+  });
+
+  it('employee_sale POSTs bot send in production (INV-8592 / empId=12 regression)', async () => {
+    setEnv('production', true);
+    vi.stubEnv('WHATSAPP_EMPLOYEE_SALE_ENABLED', 'true');
+    const urls: string[] = [];
+    const bodies: unknown[] = [];
+    vi.stubGlobal('fetch', async (url: string, opts?: RequestInit) => {
+      urls.push(String(url));
+      if (opts?.body) bodies.push(JSON.parse(String(opts.body)));
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            success: true,
+            status: 'sent',
+            messageId: 'wa-emp-8592',
+            type: 'employee_sale',
+          }),
+      };
+    });
+
+    const { sendEmployeeSaleWhatsAppMessage } = await import('../service');
+    const result = await sendEmployeeSaleWhatsAppMessage({
+      phone: '01039244023',
+      employeeName: 'زياد',
+      invID: 8592,
+      employeeId: 12,
+      services: ['Hair Cut'],
+      employeeTotal: 200,
+    });
+
+    expect(result.sent).toBe(true);
+    expect(result.skipped).toBe(false);
+    expect((result as { reason?: string }).reason).toBeUndefined();
+    expect((result as { messageId?: string }).messageId).toBe('wa-emp-8592');
+    expect(urls).toEqual(['http://127.0.0.1:3001/api/whatsapp/send']);
+    expect(bodies[0]).toMatchObject({
+      type: 'employee_sale',
+      phone: '01039244023',
+      employeeName: 'زياد',
+      invoiceNumber: 'INV-8592',
+      employeeId: 12,
+    });
+
+    vi.stubGlobal('fetch', async (_url: string, _opts?: unknown) => ({
+      ok: mockFetchResponse.ok,
+      status: mockFetchResponse.status,
+      text: async () => mockFetchResponse.text,
+    }));
+  });
+
+  it('employee_sale returns development_only when flag is off in production', async () => {
+    setEnv('production', false);
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const { sendEmployeeSaleWhatsAppMessage } = await import('../service');
+    const result = await sendEmployeeSaleWhatsAppMessage({
+      phone: '01039244023',
+      employeeName: 'زياد',
+      invID: 8592,
+      employeeId: 12,
+      services: ['Hair Cut'],
+      employeeTotal: 200,
+    });
+
+    expect(result.sent).toBe(false);
+    expect(result.skipped).toBe(true);
+    expect((result as { reason: string }).reason).toBe('development_only');
+    expect(fetchSpy).not.toHaveBeenCalled();
 
     vi.stubGlobal('fetch', async (_url: string, _opts?: unknown) => ({
       ok: mockFetchResponse.ok,
