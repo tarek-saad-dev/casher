@@ -6,12 +6,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   publicBookingOptionsResponse,
   PUBLIC_BOOKING_ROUTE_CORS,
+  withPublicBookingCors,
 } from '@/lib/booking/publicBookingCors';
 import {
   gatePublicBookingRoute,
   finalizePublicBookingError,
   finalizePublicBookingJson,
 } from '@/lib/booking/publicBookingRouteGate';
+import { applyPublicBookingResponseHeaders } from '@/lib/booking/publicBookingResponse';
 
 export const runtime = 'nodejs';
 
@@ -41,16 +43,26 @@ export async function GET(req: NextRequest) {
     });
 
     if (ifNoneMatch && ifNoneMatch === etag) {
-      const notModified = new NextResponse(null, { status: 304 });
+      let notModified = new NextResponse(null, { status: 304 });
       notModified.headers.set('ETag', etag);
-      notModified.headers.set(
-        'Cache-Control',
-        'public, max-age=300, stale-while-revalidate=3600',
-      );
       notModified.headers.set('X-Bootstrap-Cache', cacheHit ? 'HIT' : 'MISS');
       if (timings?.source) {
         notModified.headers.set('X-Bootstrap-Source', timings.source);
       }
+      // 304 must still carry CORS — browsers reject cross-origin 304 without ACAO.
+      notModified = withPublicBookingCors(notModified, req, {
+        allowedMethods: [...gate.cors.methods],
+        allowedHeaders: gate.cors.headers,
+        cacheControl: 'public, max-age=300, stale-while-revalidate=3600',
+      });
+      applyPublicBookingResponseHeaders(notModified, {
+        requestId: gate.requestId,
+        rateLimit: {
+          limit: gate.rateLimit.limit,
+          remaining: gate.rateLimit.remaining,
+          resetAt: gate.rateLimit.resetAt,
+        },
+      });
       return notModified;
     }
 

@@ -4,10 +4,52 @@ import {
   encodeSessionPayload,
   getSessionSecretForTests,
   assertSessionSecretConfigured,
+  resolveSessionCookieSecure,
   SessionConfigError,
   COOKIE_NAME,
 } from '@/lib/session';
 import { BRANCH_SESSION_VERSION, type SessionPayload } from '@/lib/session-types';
+
+describe('resolveSessionCookieSecure', () => {
+  it('defaults to secure in production when unset', () => {
+    expect(
+      resolveSessionCookieSecure({ NODE_ENV: 'production' } as NodeJS.ProcessEnv),
+    ).toBe(true);
+  });
+
+  it('defaults to insecure in development when unset', () => {
+    expect(
+      resolveSessionCookieSecure({ NODE_ENV: 'development' } as NodeJS.ProcessEnv),
+    ).toBe(false);
+  });
+
+  it('respects SESSION_COOKIE_SECURE=false in production (temporary HTTP)', () => {
+    expect(
+      resolveSessionCookieSecure({
+        NODE_ENV: 'production',
+        SESSION_COOKIE_SECURE: 'false',
+      } as NodeJS.ProcessEnv),
+    ).toBe(false);
+  });
+
+  it('respects SESSION_COOKIE_SECURE=true in development', () => {
+    expect(
+      resolveSessionCookieSecure({
+        NODE_ENV: 'development',
+        SESSION_COOKIE_SECURE: 'true',
+      } as NodeJS.ProcessEnv),
+    ).toBe(true);
+  });
+
+  it('ignores blank SESSION_COOKIE_SECURE and keeps NODE_ENV default', () => {
+    expect(
+      resolveSessionCookieSecure({
+        NODE_ENV: 'production',
+        SESSION_COOKIE_SECURE: '  ',
+      } as NodeJS.ProcessEnv),
+    ).toBe(true);
+  });
+});
 
 describe('Phase 1B session encode/decode', () => {
   const prevSecret = process.env.SESSION_SECRET;
@@ -237,6 +279,26 @@ describe('Session reads are mutation-free', () => {
     const { deleteSessionCookie } = await import('@/lib/session');
     await deleteSessionCookie();
     expect(cookieStore.delete).toHaveBeenCalledWith(COOKIE_NAME);
+  });
+
+  it('setSessionCookie uses resolveSessionCookieSecure for the Secure flag', async () => {
+    const prevSecure = process.env.SESSION_COOKIE_SECURE;
+    const prevNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    process.env.SESSION_COOKIE_SECURE = 'false';
+    try {
+      const { setSessionCookie } = await import('@/lib/session');
+      await setSessionCookie('token.value');
+      expect(cookieStore.set).toHaveBeenCalledWith(
+        COOKIE_NAME,
+        'token.value',
+        expect.objectContaining({ secure: false, httpOnly: true, sameSite: 'lax' }),
+      );
+    } finally {
+      if (prevSecure === undefined) delete process.env.SESSION_COOKIE_SECURE;
+      else process.env.SESSION_COOKIE_SECURE = prevSecure;
+      process.env.NODE_ENV = prevNodeEnv;
+    }
   });
 });
 

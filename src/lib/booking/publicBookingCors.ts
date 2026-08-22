@@ -20,6 +20,9 @@ const DEFAULT_ALLOWED_HEADERS = [
   'Content-Type',
   'X-Booking-Canary-Key',
   'X-Client-Id',
+  // Conditional requests (bootstrap / cached GETs expose ETag)
+  'If-None-Match',
+  'If-Modified-Since',
 ] as const;
 const IDEMPOTENCY_HEADERS = ['Content-Type', 'Idempotency-Key'] as const;
 const LOOKUP_HEADERS = ['Content-Type', 'Authorization'] as const;

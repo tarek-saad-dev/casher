@@ -45,6 +45,20 @@ export function getSessionSecretForTests(env: NodeJS.ProcessEnv = process.env): 
   return resolveSessionSecret(env);
 }
 
+/**
+ * Cookie Secure flag:
+ * - SESSION_COOKIE_SECURE=true|false overrides when explicitly set
+ * - otherwise: secure in production, not in development
+ */
+export function resolveSessionCookieSecure(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const raw = env.SESSION_COOKIE_SECURE?.trim().toLowerCase();
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return env.NODE_ENV === 'production';
+}
+
 function sign(payload: string, secret: string): string {
   return crypto.createHmac('sha256', secret).update(payload).digest('base64url');
 }
@@ -161,7 +175,7 @@ export async function setSessionCookie(token: string): Promise<void> {
   jar.set(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: resolveSessionCookieSecure(),
     path: '/',
     maxAge: MAX_AGE,
   });
