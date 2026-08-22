@@ -13,6 +13,9 @@ export const PUBLIC_EXACT_ROUTES = [
   '/api/permissions/my-access',
   // Public bilingual services catalog (CORS-enabled; used by external price pages).
   '/api/services/catalog',
+  // Public client website (cutsaloon.com via nginx) — narrow exact paths only.
+  '/api/client/lookup',
+  '/api/client/update',
 ] as const;
 
 /**
