@@ -1,22 +1,28 @@
 import { normalizePublicBookingPhone } from '@/lib/publicBookingHelpers';
 
-/** SQL expression — last 10 digits of normalized TblClient.Mobile (matches lookup suffix logic). */
+/** Strip spaces, dashes, and parentheses from TblClient.Mobile for matching. */
+export const TBL_CLIENT_MOBILE_STRIPPED_SQL = `
+  REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(Mobile, N''), N' ', N''), N'-', N''), N'(', N''), N')', N'')
+`;
+
+/**
+ * SQL expression — last 10 digits of normalized TblClient.Mobile.
+ * Mirrors JS getClientMobileLookupSuffix() for Egyptian prefix variants.
+ */
 export const TBL_CLIENT_MOBILE_SUFFIX_SQL = `
   RIGHT(
-    REPLACE(REPLACE(REPLACE(REPLACE(
+    REPLACE(
       CASE
-        WHEN REPLACE(REPLACE(ISNULL(Mobile, N''), N' ', N''), N'-', N'') LIKE N'0020%'
-          THEN N'0' + SUBSTRING(REPLACE(REPLACE(ISNULL(Mobile, N''), N' ', N''), N'-', N''), 5, 8000)
-        WHEN REPLACE(REPLACE(ISNULL(Mobile, N''), N' ', N''), N'-', N'') LIKE N'+20%'
-          THEN N'0' + SUBSTRING(REPLACE(REPLACE(ISNULL(Mobile, N''), N' ', N''), N'-', N''), 4, 8000)
-        WHEN REPLACE(REPLACE(ISNULL(Mobile, N''), N' ', N''), N'-', N'') LIKE N'20%'
-          AND LEN(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(Mobile, N''), N' ', N''), N'-', N''), N'(', N''), N')', N'')) > 10
-          THEN N'0' + SUBSTRING(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(Mobile, N''), N' ', N''), N'-', N''), N'(', N''), N')', N''), 3, 8000)
-        ELSE REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(Mobile, N''), N' ', N''), N'-', N''), N'(', N''), N')', N'')
+        WHEN ${TBL_CLIENT_MOBILE_STRIPPED_SQL} LIKE N'0020%'
+          THEN N'0' + SUBSTRING(${TBL_CLIENT_MOBILE_STRIPPED_SQL}, 5, 8000)
+        WHEN ${TBL_CLIENT_MOBILE_STRIPPED_SQL} LIKE N'+20%'
+          THEN N'0' + SUBSTRING(${TBL_CLIENT_MOBILE_STRIPPED_SQL}, 4, 8000)
+        WHEN ${TBL_CLIENT_MOBILE_STRIPPED_SQL} LIKE N'20%'
+          AND LEN(${TBL_CLIENT_MOBILE_STRIPPED_SQL}) > 10
+          THEN N'0' + SUBSTRING(${TBL_CLIENT_MOBILE_STRIPPED_SQL}, 3, 8000)
+        ELSE ${TBL_CLIENT_MOBILE_STRIPPED_SQL}
       END,
       N'+', N''),
-      N' ', N''),
-      N')', N''),
     10
   )
 `;
