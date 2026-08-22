@@ -213,6 +213,19 @@ export type WhatsAppStatusResult =
         | 'invalid_response';
     };
 
+/** Lightweight GET /api/health probe — not used on the POS send path. */
+export type WhatsAppBotHealthResult =
+  | { ok: true; httpStatus: number }
+  | {
+      ok: false;
+      reason:
+        | 'development_only'
+        | 'timeout'
+        | 'connection_failed'
+        | 'invalid_response';
+      httpStatus?: number;
+    };
+
 export interface WhatsAppApiStatusResponse {
   success: boolean;
   chromeConnected?: boolean;

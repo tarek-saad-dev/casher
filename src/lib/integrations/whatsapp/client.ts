@@ -1,8 +1,8 @@
 /**
  * WhatsApp Integration — HTTP Client
  *
- * Handles all communication with the separate local WhatsApp Node.js application.
- * Never calls the API in production mode.
+ * Handles all communication with the local WhatsApp bot (loopback only).
+ * Never calls the bot when WHATSAPP_INTEGRATION_ENABLED is not true.
  * Never throws unhandled exceptions.
  */
 
@@ -11,9 +11,12 @@ import type {
   WhatsAppPayload,
   WhatsAppSendResult,
   WhatsAppStatusResult,
+  WhatsAppBotHealthResult,
   WhatsAppApiSendResponse,
   WhatsAppApiStatusResponse,
 } from './types';
+
+const HEALTH_TIMEOUT_MS = 5000;
 
 function maskPhone(phone: string): string {
   if (phone.length <= 4) return '****';
@@ -142,57 +145,98 @@ export async function sendWhatsAppPayload(
     };
   }
 
-  // Success only when bot confirms actual send (or explicit queued).
-  // Do NOT treat bare response.ok / legacy "submitted" without messageId as sent.
-  if (response.ok && (body.ok === true || body.success === true)) {
-    if (body.status === 'queued') {
-      console.log(
-        `[whatsapp] ${payload.type} queued for ${maskPhone(payload.phone)}`,
-      );
-      return {
-        sent: false,
-        skipped: false,
-        reason: 'queued',
-        status: 'queued',
-      };
-    }
-
-    if (body.status === 'sent' && body.messageId) {
-      console.log(
-        `[whatsapp] ${payload.type} sent for ${maskPhone(payload.phone)} messageId=${body.messageId}`,
-      );
-      return {
-        sent: true,
-        skipped: false,
-        status: 'sent',
-        type: payload.type,
-        phone: body.phone,
-        messageId: body.messageId,
-        sentAt: body.sentAt,
-      };
-    }
-
-    // Legacy bots that still return status=submitted without messageId — not counted as sent.
+  // Real send only: success=true, status=sent, messageId present.
+  // Do NOT treat ok=true, queued, or legacy "submitted" as sent.
+  if (response.ok && body.success === true && body.status === 'sent' && body.messageId) {
     console.log(
-      `[whatsapp] ${payload.type} ambiguous success for ${maskPhone(payload.phone)} status=${body.status || 'n/a'} messageId=${body.messageId || 'missing'} — treating as failed`,
+      `[whatsapp] ${payload.type} sent for ${maskPhone(payload.phone)} messageId=${body.messageId}`,
+    );
+    return {
+      sent: true,
+      skipped: false,
+      status: 'sent',
+      type: payload.type,
+      phone: body.phone,
+      messageId: body.messageId,
+      sentAt: body.sentAt,
+    };
+  }
+
+  if (response.ok && body.success === true && body.status === 'queued') {
+    console.log(
+      `[whatsapp] ${payload.type} queued for ${maskPhone(payload.phone)}`,
     );
     return {
       sent: false,
       skipped: false,
-      reason: 'invalid_response',
-      httpStatus: response.status,
-      error: `Bot returned success without confirmed sent/messageId (status=${body.status || 'n/a'})`,
-      status: body.status,
+      reason: 'queued',
+      status: 'queued',
     };
   }
 
+  console.log(
+    `[whatsapp] ${payload.type} unconfirmed for ${maskPhone(payload.phone)} status=${body.status || 'n/a'} messageId=${body.messageId || 'missing'} — treating as failed`,
+  );
   return {
     sent: false,
     skipped: false,
-    reason: 'remote_error',
+    reason: 'invalid_response',
     httpStatus: response.status,
-    error: body.error,
+    error:
+      body.error ||
+      `Bot did not confirm sent/messageId (success=${String(body.success)} status=${body.status || 'n/a'})`,
     status: body.status,
+  };
+}
+
+/**
+ * GET /api/health on the bot. Used by status/nightly checks only — never by POS send.
+ */
+export async function fetchWhatsAppBotHealth(): Promise<WhatsAppBotHealthResult> {
+  const cfg = getConfig();
+
+  if (!cfg.enabled) {
+    return { ok: false, reason: 'development_only' };
+  }
+
+  const url = `${cfg.apiBaseUrl}/api/health`;
+
+  let response: Response;
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
+
+    try {
+      response = await fetch(url, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+
+    if (
+      msg.includes('abort') ||
+      msg.toLowerCase().includes('timeout') ||
+      (err instanceof Error && err.name === 'AbortError')
+    ) {
+      return { ok: false, reason: 'timeout' };
+    }
+
+    return { ok: false, reason: 'connection_failed' };
+  }
+
+  if (response.ok) {
+    return { ok: true, httpStatus: response.status };
+  }
+
+  return {
+    ok: false,
+    reason: 'invalid_response',
+    httpStatus: response.status,
   };
 }
 
@@ -201,6 +245,14 @@ export async function fetchWhatsAppStatus(): Promise<WhatsAppStatusResult> {
 
   if (!cfg.enabled) {
     return { available: false, reason: 'development_only' };
+  }
+
+  const health = await fetchWhatsAppBotHealth();
+  if (
+    !health.ok &&
+    (health.reason === 'connection_failed' || health.reason === 'timeout')
+  ) {
+    return { available: false, reason: health.reason };
   }
 
   const url = `${cfg.apiBaseUrl}/api/whatsapp/status`;

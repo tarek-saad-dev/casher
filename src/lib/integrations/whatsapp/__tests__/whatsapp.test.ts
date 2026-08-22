@@ -29,7 +29,7 @@ vi.stubGlobal('fetch', async (_url: string, _opts?: unknown) => ({
 function setEnv(env: 'development' | 'production', enabled = true) {
   vi.stubEnv('NODE_ENV', env);
   vi.stubEnv('WHATSAPP_INTEGRATION_ENABLED', enabled ? 'true' : 'false');
-  vi.stubEnv('WHATSAPP_API_BASE_URL', 'http://localhost:3000');
+  vi.stubEnv('WHATSAPP_API_BASE_URL', 'http://127.0.0.1:3001');
   vi.stubEnv('WHATSAPP_REQUEST_TIMEOUT_MS', '5000');
   vi.stubEnv('WHATSAPP_SALE_ENABLED', 'true');
   vi.stubEnv('WHATSAPP_BOOKING_ENABLED', 'true');
@@ -55,7 +55,9 @@ import {
   sendBookingWhatsAppMessage,
   sendFirstTimeWhatsAppMessage,
   checkWhatsAppStatus,
+  checkWhatsAppBotHealth,
 } from '../service';
+import { getConfig } from '../config';
 import { buildSalePayload, buildBookingPayload, buildFirstTimePayload, resolvePhone } from '../payload-builders';
 import { validateSalePayload, validateBookingPayload, validateFirstTimePayload } from '../schemas';
 import { WhatsAppValidationError } from '../errors';
@@ -72,7 +74,7 @@ afterEach(() => {
 });
 
 describe('1. Environment gate', () => {
-  it('returns development_only when NODE_ENV=production', async () => {
+  it('sends in production when WHATSAPP_INTEGRATION_ENABLED=true', async () => {
     setEnv('production', true);
     const result = await sendSaleWhatsAppMessage({
       phone: '01557994946',
@@ -80,9 +82,8 @@ describe('1. Environment gate', () => {
       invID: 1001,
       total: 100,
     });
-    expect(result.sent).toBe(false);
-    expect(result.skipped).toBe(true);
-    expect((result as { reason: string }).reason).toBe('development_only');
+    expect(result.sent).toBe(true);
+    expect((result as { messageId?: string }).messageId).toBe('wa-test-1');
   });
 
   it('returns development_only when flag is false in development', async () => {
@@ -96,6 +97,29 @@ describe('1. Environment gate', () => {
     expect(result.sent).toBe(false);
     expect(result.skipped).toBe(true);
     expect((result as { reason: string }).reason).toBe('development_only');
+  });
+
+  it('returns development_only when flag is false in production', async () => {
+    setEnv('production', false);
+    const result = await sendSaleWhatsAppMessage({
+      phone: '01557994946',
+      customerName: 'طارق',
+      invID: 1001,
+      total: 100,
+    });
+    expect(result.sent).toBe(false);
+    expect(result.skipped).toBe(true);
+    expect((result as { reason: string }).reason).toBe('development_only');
+  });
+
+  it('defaults apiBaseUrl to http://127.0.0.1:3001', () => {
+    vi.stubEnv('WHATSAPP_API_BASE_URL', '');
+    expect(getConfig().apiBaseUrl).toBe('http://127.0.0.1:3001');
+  });
+
+  it('strips a trailing slash from WHATSAPP_API_BASE_URL', () => {
+    vi.stubEnv('WHATSAPP_API_BASE_URL', 'http://127.0.0.1:3001/');
+    expect(getConfig().apiBaseUrl).toBe('http://127.0.0.1:3001');
   });
 });
 
@@ -113,11 +137,92 @@ describe('2. Status check', () => {
     expect(result.available).toBe(true);
   });
 
-  it('returns development_only in production', async () => {
-    setEnv('production');
+  it('returns development_only in production when the flag is off', async () => {
+    setEnv('production', false);
     const result = await checkWhatsAppStatus();
     expect(result.available).toBe(false);
     expect((result as { reason: string }).reason).toBe('development_only');
+  });
+
+  it('probes GET /api/health without blocking send', async () => {
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      urls.push(String(url));
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            success: true,
+            chromeConnected: true,
+            whatsappReady: true,
+            whatsappTabFound: true,
+          }),
+      };
+    });
+
+    const health = await checkWhatsAppBotHealth();
+    expect(health.ok).toBe(true);
+    expect(urls).toEqual(['http://127.0.0.1:3001/api/health']);
+
+    urls.length = 0;
+    setFetchResponse(200, {
+      success: true,
+      ok: true,
+      status: 'sent',
+      messageId: 'wa-test-1',
+      type: 'sale',
+      sentAt: '2026-06-23T01:00:00.000Z',
+    });
+    vi.stubGlobal('fetch', async (url: string, _opts?: unknown) => {
+      urls.push(String(url));
+      return {
+        ok: mockFetchResponse.ok,
+        status: mockFetchResponse.status,
+        text: async () => mockFetchResponse.text,
+      };
+    });
+    await sendSaleWhatsAppMessage({
+      phone: '01557994946',
+      customerName: 'طارق',
+      invID: 1,
+      total: 100,
+    });
+    expect(urls).toEqual(['http://127.0.0.1:3001/api/whatsapp/send']);
+
+    vi.stubGlobal('fetch', async (_url: string, _opts?: unknown) => ({
+      ok: mockFetchResponse.ok,
+      status: mockFetchResponse.status,
+      text: async () => mockFetchResponse.text,
+    }));
+  });
+
+  it('status fast-fails with connection_failed when /api/health is unreachable', async () => {
+    vi.stubGlobal('fetch', async (url: string) => {
+      if (String(url).includes('/api/health')) {
+        throw new Error('ECONNREFUSED');
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            success: true,
+            chromeConnected: true,
+            whatsappReady: true,
+            whatsappTabFound: true,
+          }),
+      };
+    });
+    const result = await checkWhatsAppStatus();
+    expect(result.available).toBe(false);
+    expect((result as { reason: string }).reason).toBe('connection_failed');
+
+    vi.stubGlobal('fetch', async (_url: string, _opts?: unknown) => ({
+      ok: mockFetchResponse.ok,
+      status: mockFetchResponse.status,
+      text: async () => mockFetchResponse.text,
+    }));
   });
 });
 
@@ -259,6 +364,30 @@ describe('6. HTTP response mapping', () => {
     expect(result.sent).toBe(true);
     expect((result as { status: string }).status).toBe('sent');
     expect((result as { messageId?: string }).messageId).toBe('wa-test-1');
+  });
+
+  it('does not treat ok=true without success=true as sent', async () => {
+    setFetchResponse(200, { ok: true, status: 'sent', messageId: 'wa-test-1', type: 'sale' });
+    const result = await sendSaleWhatsAppMessage({
+      phone: '01557994946',
+      customerName: 'طارق',
+      invID: 1,
+      total: 100,
+    });
+    expect(result.sent).toBe(false);
+    expect((result as { reason: string }).reason).toBe('invalid_response');
+  });
+
+  it('does not treat success=true status=sent without messageId as sent', async () => {
+    setFetchResponse(200, { success: true, status: 'sent', type: 'sale' });
+    const result = await sendSaleWhatsAppMessage({
+      phone: '01557994946',
+      customerName: 'طارق',
+      invID: 1,
+      total: 100,
+    });
+    expect(result.sent).toBe(false);
+    expect((result as { reason: string }).reason).toBe('invalid_response');
   });
 
   it('does not treat legacy submitted without messageId as sent', async () => {
@@ -411,9 +540,9 @@ describe('9. Validation', () => {
   });
 });
 
-describe('10. No fetch in production', () => {
-  it('never calls fetch when NODE_ENV=production', async () => {
-    setEnv('production', true);
+describe('10. Production send path', () => {
+  it('never calls fetch when the integration flag is off', async () => {
+    setEnv('production', false);
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
 
@@ -422,6 +551,40 @@ describe('10. No fetch in production', () => {
     await sendFirstTimeWhatsAppMessage({ phone: '01557994946', customerName: 'طارق' });
 
     expect(fetchSpy).not.toHaveBeenCalled();
+
+    vi.stubGlobal('fetch', async (_url: string, _opts?: unknown) => ({
+      ok: mockFetchResponse.ok,
+      status: mockFetchResponse.status,
+      text: async () => mockFetchResponse.text,
+    }));
+  });
+
+  it('POSTs /api/whatsapp/send on the configured bot base URL in production', async () => {
+    setEnv('production', true);
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      urls.push(String(url));
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            success: true,
+            status: 'sent',
+            messageId: 'wa-prod-1',
+            type: 'sale',
+          }),
+      };
+    });
+
+    const result = await sendSaleWhatsAppMessage({
+      phone: '01557994946',
+      customerName: 'طارق',
+      invID: 1,
+      total: 100,
+    });
+    expect(result.sent).toBe(true);
+    expect(urls).toEqual(['http://127.0.0.1:3001/api/whatsapp/send']);
 
     vi.stubGlobal('fetch', async (_url: string, _opts?: unknown) => ({
       ok: mockFetchResponse.ok,

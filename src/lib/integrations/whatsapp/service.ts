@@ -10,11 +10,10 @@
  * NOTE: First-time message duplicate protection relies on invoice count
  * in TblinvServHead. It is not guaranteed against every concurrency case
  * because there is no dedicated WhatsApp tracking table in this version.
- * Production delivery is intentionally deferred.
  */
 
 import { getConfig } from './config';
-import { sendWhatsAppPayload, fetchWhatsAppStatus } from './client';
+import { sendWhatsAppPayload, fetchWhatsAppStatus, fetchWhatsAppBotHealth } from './client';
 import {
   buildSalePayload,
   buildBookingPayload,
@@ -48,7 +47,7 @@ import {
   validateEmployeeDailyReportPayload,
   validateOtherPayload,
 } from './schemas';
-import type { WhatsAppSendResult, WhatsAppStatusResult } from './types';
+import type { WhatsAppSendResult, WhatsAppStatusResult, WhatsAppBotHealthResult } from './types';
 import { WhatsAppValidationError } from './errors';
 
 export async function sendSaleWhatsAppMessage(
@@ -533,4 +532,15 @@ export async function checkWhatsAppStatus(): Promise<WhatsAppStatusResult> {
   }
 
   return fetchWhatsAppStatus();
+}
+
+/** Server-side GET /api/health — does not run on invoice/POS send. */
+export async function checkWhatsAppBotHealth(): Promise<WhatsAppBotHealthResult> {
+  const cfg = getConfig();
+
+  if (!cfg.enabled) {
+    return { ok: false, reason: 'development_only' };
+  }
+
+  return fetchWhatsAppBotHealth();
 }

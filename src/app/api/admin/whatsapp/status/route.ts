@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { isAuthResult, requireDevelopmentAdmin } from '@/lib/api-auth';
-import { checkWhatsAppStatus, isWhatsAppEnabled, getWhatsAppConfig } from '@/lib/integrations/whatsapp';
+import {
+  checkWhatsAppStatus,
+  checkWhatsAppBotHealth,
+  isWhatsAppEnabled,
+  getWhatsAppConfig,
+} from '@/lib/integrations/whatsapp';
 
 export const runtime = 'nodejs';
 
@@ -14,7 +19,10 @@ export async function GET() {
   if (!isAuthResult(auth)) return auth;
 
   const cfg = getWhatsAppConfig();
-  const status = await checkWhatsAppStatus();
+  const [status, botHealth] = await Promise.all([
+    checkWhatsAppStatus(),
+    checkWhatsAppBotHealth(),
+  ]);
 
   return NextResponse.json({
     integrationEnabled: isWhatsAppEnabled(),
@@ -22,6 +30,7 @@ export async function GET() {
     saleEnabled: cfg.saleEnabled,
     bookingEnabled: cfg.bookingEnabled,
     firstTimeEnabled: cfg.firstTimeEnabled,
+    botHealth,
     status,
   });
 }

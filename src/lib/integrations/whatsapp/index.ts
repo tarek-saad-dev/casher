@@ -15,6 +15,7 @@ export {
   sendEmployeeDailyReportWhatsAppMessage,
   sendOtherWhatsAppMessage,
   checkWhatsAppStatus,
+  checkWhatsAppBotHealth,
 } from './service';
 
 export { isWhatsAppEnabled, getConfig as getWhatsAppConfig } from './config';
@@ -22,6 +23,7 @@ export { isWhatsAppEnabled, getConfig as getWhatsAppConfig } from './config';
 export type {
   WhatsAppSendResult,
   WhatsAppStatusResult,
+  WhatsAppBotHealthResult,
   WhatsAppMessageType,
   WhatsAppPayload,
   SaleWhatsAppPayload,

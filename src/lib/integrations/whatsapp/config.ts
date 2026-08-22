@@ -25,13 +25,17 @@ export interface WhatsAppConfig {
   defaultQuickMessage: string;
 }
 
+function resolveApiBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const raw = env.WHATSAPP_API_BASE_URL?.trim();
+  return (raw || 'http://127.0.0.1:3001').replace(/\/+$/, '');
+}
+
 function getWhatsAppConfig(): WhatsAppConfig {
-  const isDev = process.env.NODE_ENV === 'development';
   const flagEnabled = process.env.WHATSAPP_INTEGRATION_ENABLED === 'true';
 
   return {
-    enabled: isDev && flagEnabled,
-    apiBaseUrl: process.env.WHATSAPP_API_BASE_URL || 'http://localhost:3000',
+    enabled: flagEnabled,
+    apiBaseUrl: resolveApiBaseUrl(),
     timeoutMs: parseInt(process.env.WHATSAPP_REQUEST_TIMEOUT_MS || '90000', 10),
     saleEnabled: process.env.WHATSAPP_SALE_ENABLED !== 'false',
     bookingEnabled: process.env.WHATSAPP_BOOKING_ENABLED !== 'false',
