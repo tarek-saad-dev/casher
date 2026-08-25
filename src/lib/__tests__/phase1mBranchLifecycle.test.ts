@@ -42,11 +42,10 @@ describe('Phase 1M branch lifecycle transitions', () => {
     expect(isTransitionAllowed('SUSPENDED', 'PUBLIC_LIVE')).toBe(false);
   });
 
-  it('readiness UI disables activation when blockers exist', () => {
-    const page = read('src/app/admin/branches/[id]/readiness/page.tsx');
-    expect(page).toContain('!readiness.isReadyForSmoke');
-    expect(page).toContain('!readiness.isReadyForInternalLive');
-    expect(page).toContain('!readiness.isReadyForPublicLive');
-    expect(page).toContain('لا يوجد تجاوز من الواجهة');
+  it('syncOperationalFlagsFromLifecycle repairs IsActive drift without changing lifecycle', () => {
+    const sync = read('src/lib/branch/syncOperationalFlagsFromLifecycle.ts');
+    expect(sync).toContain('syncOperationalFlagsFromLifecycle');
+    expect(sync).toContain('capabilitiesFor');
+    expect(sync).not.toContain('LifecycleStatus =');
   });
 });

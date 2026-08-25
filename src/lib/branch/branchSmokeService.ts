@@ -307,29 +307,34 @@ export async function cleanupBranchSmokeRun(args: {
       WHERE SmokeRunID = @runId
     `);
 
-  // Return allowed smoke branch to safe SETUP (never activate)
-  await db
-    .request()
-    .input('branchId', sql.Int, args.branchId)
-    .input('code', sql.NVarChar(30), branch.branchCode)
-    .query(`
-      UPDATE dbo.TblBranch
-      SET LifecycleStatus = N'SETUP',
-          IsActive = 0,
-          PublicBookingEnabled = 0,
-          ExternalNotificationsEnabled = 0,
-          UpdatedAt = SYSUTCDATETIME()
-      WHERE BranchID = @branchId AND BranchCode = @code
-    `);
+  // Demote only SMOKE_TEST → SETUP after controlled smoke cleanup.
+  // INTERNAL_LIVE / PUBLIC_LIVE must never be deactivated by artifact cleanup
+  // (regression: admin cleanup after current-config smoke was resetting Camp Caesar).
+  const liveBranch = await getBranchById(args.branchId);
+  if (liveBranch?.lifecycleStatus === 'SMOKE_TEST') {
+    await db
+      .request()
+      .input('branchId', sql.Int, args.branchId)
+      .input('code', sql.NVarChar(30), branch.branchCode)
+      .query(`
+        UPDATE dbo.TblBranch
+        SET LifecycleStatus = N'SETUP',
+            IsActive = 0,
+            PublicBookingEnabled = 0,
+            ExternalNotificationsEnabled = 0,
+            UpdatedAt = SYSUTCDATETIME()
+        WHERE BranchID = @branchId AND BranchCode = @code
+      `);
 
-  await db
-    .request()
-    .input('branchId', sql.Int, args.branchId)
-    .query(`
-      UPDATE dbo.QueueBookingSettings
-      SET BookingEnabled = 0, UpdatedAt = GETDATE()
-      WHERE BranchID = @branchId
-    `);
+    await db
+      .request()
+      .input('branchId', sql.Int, args.branchId)
+      .query(`
+        UPDATE dbo.QueueBookingSettings
+        SET BookingEnabled = 0, UpdatedAt = GETDATE()
+        WHERE BranchID = @branchId
+      `);
+  }
 
   console.info(
     JSON.stringify({

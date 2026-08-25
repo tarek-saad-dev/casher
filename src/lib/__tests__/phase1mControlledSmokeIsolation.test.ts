@@ -25,6 +25,8 @@ describe('Phase 1M controlled smoke isolation', () => {
     expect(svc).toContain('branch.smoke.started');
     expect(svc).toContain('branch.smoke.cleanup.completed');
     expect(svc).toContain("LifecycleStatus = N'SETUP'");
+    expect(svc).toContain("liveBranch?.lifecycleStatus === 'SMOKE_TEST'");
+    expect(svc).toContain('INTERNAL_LIVE / PUBLIC_LIVE must never be deactivated');
   });
 
   it('cleanup script refuses GLEEM and requires SmokeRunID', () => {

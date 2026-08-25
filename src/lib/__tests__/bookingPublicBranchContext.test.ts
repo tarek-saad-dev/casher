@@ -17,6 +17,13 @@ vi.mock('@/lib/branch/repository', () => ({
 vi.mock('@/lib/branch/publicBranchVisibility', () => ({
   canBranchAppearInPublicBooking: (...args: unknown[]) =>
     canBranchAppearInPublicBooking(...args),
+  canBranchesAppearInPublicBooking: async (branchIds: number[]) => {
+    const out = new Map<number, boolean>();
+    for (const id of branchIds) {
+      out.set(id, await canBranchAppearInPublicBooking(id));
+    }
+    return out;
+  },
 }));
 
 vi.mock('@/lib/db', () => ({
