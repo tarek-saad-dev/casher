@@ -39,14 +39,15 @@ export async function PUT(
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
 
-    const { requireBranchOperationAccess, isActiveBranchContext } = await import(
-      '@/lib/branch/context'
-    );
-    const { financialNotFoundResponse } = await import(
+    const { loadAndAuthorizeFinancialMutation, financialNotFoundResponse } = await import(
       '@/lib/branch/financialOwnership'
     );
-    const branch = await requireBranchOperationAccess();
-    if (!isActiveBranchContext(branch)) return branch;
+    const loaded = await loadAndAuthorizeFinancialMutation(
+      user.UserID,
+      { kind: 'cash_move', id: expenseId },
+      body,
+    );
+    if (!loaded.ok) return loaded.response;
 
     const auditResult = await executeAuditedAction({
       actionType: 'edit_expense',
@@ -58,7 +59,7 @@ export async function PUT(
       reason: body.reason || notes || null,
       loadOldData: async (transaction) => {
         const snap = await getExpenseSnapshot(transaction, expenseId);
-        if (!snap || Number(snap.BranchID) !== Number(branch.branchId)) return null;
+        if (!snap || Number(snap.BranchID) !== Number(loaded.ownership.branchId)) return null;
         return snap as unknown as Record<string, unknown>;
       },
       execute: async (transaction) =>
@@ -73,7 +74,7 @@ export async function PUT(
             editedByUserId: user.UserID,
             editedByUserName: user.UserName,
           },
-          branch.branchId,
+          loaded.ownership.branchId,
         ),
       loadNewData: async (transaction) =>
         getExpenseSnapshot(transaction, expenseId) as unknown as Record<string, unknown> | null,
@@ -125,21 +126,18 @@ export async function DELETE(
     const user = await getSession();
     if (!user) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
 
-    const { requireBranchOperationAccess, isActiveBranchContext } = await import(
-      '@/lib/branch/context'
-    );
-    const { financialNotFoundResponse, loadCashMoveOwnership } = await import(
+    const { loadAndAuthorizeFinancialMutation, financialNotFoundResponse } = await import(
       '@/lib/branch/financialOwnership'
     );
-    const branch = await requireBranchOperationAccess();
-    if (!isActiveBranchContext(branch)) return branch;
-
-    const owned = await loadCashMoveOwnership(expenseId);
-    if (!owned || Number(owned.branchId) !== Number(branch.branchId)) {
-      return financialNotFoundResponse();
-    }
 
     const body = await req.json().catch(() => ({}));
+    const loaded = await loadAndAuthorizeFinancialMutation(
+      user.UserID,
+      { kind: 'cash_move', id: expenseId },
+      body,
+    );
+    if (!loaded.ok) return loaded.response;
+
     const reason = body.reason || null;
 
     const auditResult = await executeAuditedAction({
@@ -153,7 +151,7 @@ export async function DELETE(
       loadOldData: async (transaction) =>
         getExpenseSnapshot(transaction, expenseId) as unknown as Record<string, unknown> | null,
       execute: async (transaction) =>
-        deleteExpense(transaction, expenseId, branch.branchId),
+        deleteExpense(transaction, expenseId, loaded.ownership.branchId),
       loadNewData: async () => null,
     });
 

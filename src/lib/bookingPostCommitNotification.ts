@@ -1,7 +1,12 @@
 /**
  * Schedule booking WhatsApp after HTTP response (never before commit; never blocks 201).
  */
-import { sendBookingWhatsAppMessage } from '@/lib/integrations/whatsapp';
+import {
+  BOOKING_CONFIRMATION_TEMPLATE_KEY,
+  sendTemplateMessage,
+  type MessageSendResult,
+} from '@/modules/messaging';
+import { getWhatsAppConfig } from '@/lib/integrations/whatsapp';
 import {
   POST_RESPONSE_MECHANISM,
   schedulePostResponse,
@@ -18,6 +23,7 @@ export type BookingWhatsAppScheduleInput = {
   barberName?: string;
   services?: string[];
   branchName?: string;
+  branchId?: number;
 };
 
 export type BookingWhatsAppSendOutcome = {
@@ -26,11 +32,46 @@ export type BookingWhatsAppSendOutcome = {
   error?: string | null;
 };
 
+export type BookingWhatsAppSendFn = (
+  input: BookingWhatsAppScheduleInput,
+) => Promise<MessageSendResult | { sent: boolean; skipped?: boolean; reason?: string; messageId?: string }>;
+
 /** Mask phone for logs — never log full PII. */
 export function maskPhoneForLog(phone: string): string {
   const digits = phone.replace(/\D/g, '');
   if (digits.length <= 4) return '****';
   return `${digits.slice(0, 3)}****${digits.slice(-2)}`;
+}
+
+async function sendBookingConfirmationTemplate(
+  input: BookingWhatsAppScheduleInput,
+): Promise<MessageSendResult> {
+  const cfg = getWhatsAppConfig();
+  return sendTemplateMessage({
+    templateKey: BOOKING_CONFIRMATION_TEMPLATE_KEY,
+    recipient: { phone: input.phone },
+    variables: {
+      customerName: input.customerName,
+      bookingDate: input.bookingDate,
+      bookingTime: input.bookingTime,
+      date: input.bookingDate,
+      time: input.bookingTime,
+      services: input.services,
+      service: input.services,
+      barberName: input.barberName,
+      branchName: input.branchName ?? cfg.defaultBranchName,
+      bookingId: `BK-${input.bookingId}`,
+      bookingLink: cfg.defaultBookingLink,
+    },
+    metadata: {
+      bookingId: input.bookingId,
+      ...(typeof input.branchId === 'number' ? { branchId: input.branchId } : {}),
+    },
+    context: {
+      language: 'ar',
+      ...(typeof input.branchId === 'number' ? { branchId: input.branchId } : {}),
+    },
+  });
 }
 
 /**
@@ -42,12 +83,12 @@ export function scheduleBookingWhatsAppAfterCommit(
   input: BookingWhatsAppScheduleInput,
   deps?: {
     schedule?: typeof schedulePostResponse;
-    send?: typeof sendBookingWhatsAppMessage;
+    send?: BookingWhatsAppSendFn;
     onResult?: (result: BookingWhatsAppSendOutcome) => void | Promise<void>;
   },
 ): { scheduled: true; mechanism: typeof BOOKING_WHATSAPP_EXECUTION } {
   const schedule = deps?.schedule ?? schedulePostResponse;
-  const send = deps?.send ?? sendBookingWhatsAppMessage;
+  const send = deps?.send ?? sendBookingConfirmationTemplate;
   const onResult = deps?.onResult;
 
   schedule(async () => {
@@ -59,16 +100,7 @@ export function scheduleBookingWhatsAppAfterCommit(
     }
     const t0 = Date.now();
     try {
-      const result = await send({
-        phone: input.phone,
-        customerName: input.customerName,
-        bookingId: input.bookingId,
-        bookingDate: input.bookingDate,
-        bookingTime: input.bookingTime,
-        barberName: input.barberName,
-        services: input.services,
-        branchName: input.branchName,
-      });
+      const result = await send(input);
       if (process.env.NODE_ENV !== 'production') {
         console.log('[booking/create] WhatsApp completed', {
           bookingId: input.bookingId,
@@ -80,16 +112,13 @@ export function scheduleBookingWhatsAppAfterCommit(
         const providerMessageId =
           'messageId' in result && result.messageId != null
             ? String(result.messageId)
-            : 'providerMessageId' in result &&
-                (result as { providerMessageId?: string }).providerMessageId != null
-              ? String((result as { providerMessageId?: string }).providerMessageId)
-              : null;
+            : null;
         await onResult({
           ok: Boolean(result.sent),
           providerMessageId,
           error: result.sent
             ? null
-            : (result.reason ?? 'send_failed'),
+            : ('reason' in result ? result.reason : null) ?? 'send_failed',
         });
       }
     } catch (err) {

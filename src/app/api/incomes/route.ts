@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql, allocateInvID } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { isActiveBranchContext, requireActiveBranchContext } from '@/lib/branch';
+import { branchErrorResponse } from '@/lib/branch/operationalGates';
 import { isFinancialReportClassificationEnabled } from '@/lib/accounting/financialReportFlags';
 import {
   buildCashMoveReportClassification,
@@ -257,27 +258,36 @@ export async function POST(req: NextRequest) {
     if (!session) return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
 
     const body = await req.json();
-    const { invDate, amount, expInId, paymentMethodId, notes } = body;
+    const { amount, expInId, paymentMethodId, notes } = body;
 
     // ── Client-side validation ──
-    if (!invDate) return NextResponse.json({ error: 'التاريخ مطلوب' }, { status: 400 });
     if (!amount || Number(amount) <= 0) return NextResponse.json({ error: 'قيمة الإيراد يجب أن تكون أكبر من صفر' }, { status: 400 });
     if (!expInId) return NextResponse.json({ error: 'يجب اختيار تصنيف الإيراد' }, { status: 400 });
     if (!paymentMethodId) return NextResponse.json({ error: 'يجب اختيار طريقة الدفع' }, { status: 400 });
 
     // ──── Enforce active branch business day + user shift (Phase 1D) ────
     // Never trust browser branchId — ownership comes only from validated session context.
-    const { resolveBranchDayAndShiftForWrite } = await import('@/lib/branch/operationalGates');
+    const { resolveBranchDayAndShiftForWrite, lockOperationalWrite } = await import('@/lib/branch/operationalGates');
+    const { finalizeCurrentFinancialWrite } = await import('@/lib/branch/financialOwnershipPolicy');
     const gated = await resolveBranchDayAndShiftForWrite(session.UserID);
     if (!gated.ok) return gated.response;
-    const branchId = gated.branch.branchId;
-    const businessDayId = gated.day.id;
+    const owned = finalizeCurrentFinancialWrite('income.create', gated, body);
+    if (!owned.ok) return owned.response;
+    const branchId = owned.ownership.branchId;
+    const businessDayId = owned.ownership.businessDayId!;
+    const invDate = owned.ownership.businessDate!;
 
     const db = await getPool();
     const transaction = new sql.Transaction(db);
     await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
 
     try {
+      await lockOperationalWrite(transaction, {
+        branchId,
+        businessDayId,
+        shiftSessionId: gated.shift?.id ?? null,
+        requireShift: true,
+      });
       // Always use the gated open shift for this branch — never trust client shiftMoveId.
       const resolvedShiftMoveId: number | null = gated.shift?.id ?? null;
       if (!resolvedShiftMoveId) {
@@ -360,6 +370,8 @@ export async function POST(req: NextRequest) {
     if (err instanceof EmployeeLedgerDualWriteError) {
       return NextResponse.json({ error: err.message }, { status: 400 });
     }
+    const mapped = branchErrorResponse(err);
+    if (mapped) return mapped;
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/incomes] POST error:', message);
     return NextResponse.json({ error: message }, { status: 500 });

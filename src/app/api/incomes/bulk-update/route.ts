@@ -57,11 +57,19 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    const { requireBranchOperationAccess, isActiveBranchContext } = await import(
-      '@/lib/branch/context'
-    );
-    const branch = await requireBranchOperationAccess();
-    if (!isActiveBranchContext(branch)) return branch;
+    const { authorizeFinancialMutation, loadCashMoveOwnershipBatch, financialNotFoundResponse } =
+      await import('@/lib/branch/financialOwnership');
+
+    const ownershipById = await loadCashMoveOwnershipBatch(body.itemIds);
+    if (ownershipById.size !== body.itemIds.length) {
+      return financialNotFoundResponse();
+    }
+    for (const id of body.itemIds) {
+      const ownership = ownershipById.get(id);
+      if (!ownership) return financialNotFoundResponse();
+      const authz = await authorizeFinancialMutation(session.UserID, ownership, body);
+      if (!authz.ok) return financialNotFoundResponse();
+    }
 
     const db = await getPool();
     const transaction = new sql.Transaction(db);
@@ -86,13 +94,11 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
 
       const idsList = body.itemIds.join(',');
       const itemsCheck = await new sql.Request(transaction)
-        .input('branchId', sql.Int, branch.branchId)
         .query(`
         SELECT COUNT(*) as validCount
         FROM dbo.TblCashMove
         WHERE ID IN (${idsList})
           AND invType = N'ايرادات'
-          AND BranchID = @branchId
       `);
 
       const validCount = itemsCheck.recordset[0]?.validCount || 0;
@@ -106,13 +112,11 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
 
       const updateResult = await new sql.Request(transaction)
         .input('expInId', sql.Int, body.expInId)
-        .input('branchId', sql.Int, branch.branchId)
         .query(`
           UPDATE dbo.TblCashMove
           SET ExpINID = @expInId
           WHERE ID IN (${idsList})
             AND invType = N'ايرادات'
-            AND BranchID = @branchId
 
           SELECT @@ROWCOUNT as updatedCount
         `);

@@ -29,25 +29,30 @@ describe('absent blocks booking on any work date', () => {
   it('availabilityEngine treats Absent on any date as unavailable', () => {
     const src = read('src/lib/availabilityEngine.ts');
     expect(src).not.toMatch(/isToday &&\s*\n\s*attendance !== null &&\s*\n\s*attendance\.status === \"Absent\"/);
-    expect(src).toContain('attendance.status === "Absent"');
+    // Current contract: isAbsent flag (from attendance Status = Absent) blocks any date
+    expect(src).toContain('if (status.isAbsent)');
+    expect(src).toContain("TblEmpAttendance.Status = 'Absent'");
   });
 
   it('attendance save syncs Absent ↔ day_off override', () => {
     const sync = read('src/lib/hr/attendance-shift-schedule-sync.ts');
-    const put = read('src/app/api/admin/attendance/route.ts');
-    const bulk = read('src/app/api/admin/attendance/bulk/route.ts');
+    const command = read(
+      'src/modules/attendance/application/AttendanceCommandService.ts',
+    );
     expect(sync).toContain('syncAttendanceAbsenceToDayOffOverride');
     expect(sync).toContain("Type = N'day_off'");
     expect(sync).toContain('attendance-absent');
-    expect(put).toContain('syncAttendanceAbsenceToDayOffOverride');
-    expect(bulk).toContain('syncAttendanceAbsenceToDayOffOverride');
+    expect(command).toContain('syncAttendanceAbsenceToDayOffOverride');
+    expect(command).toContain('saveAdminAttendanceBulk');
   });
 
   it('schedule-control day_off always mirrors Absent attendance', () => {
     const src = read('src/app/api/operations/schedule-control/apply/route.ts');
+    const repo = read('src/modules/attendance/infra/AttendanceRepository.ts');
     expect(src).toContain('if (type === "day_off")');
     expect(src).not.toContain('if (type === "day_off" && isToday)');
-    expect(src).toContain("Status = 'Absent'");
+    expect(src).toContain('applyScheduleControlDayOffAttendance');
+    expect(repo).toContain("Status = 'Absent'");
   });
 
   it('Present/Late/EarlyLeave clear day_off; Absent ensures day_off', () => {

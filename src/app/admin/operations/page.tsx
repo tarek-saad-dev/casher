@@ -13,16 +13,33 @@ import ShiftControlCard from '@/components/operations/ShiftControlCard';
 import TreasurySnapshotCard from '@/components/operations/TreasurySnapshotCard';
 import AlertsCard from '@/components/operations/AlertsCard';
 import type { OperationsStatus } from '@/lib/types/operations';
+import { useSession } from '@/hooks/useSession';
+import { formatShiftElapsed } from '@/lib/operations/viewOperationalState';
+import { branchDisplayName } from '@/lib/operations/viewOperationalState';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('ar-EG', { minimumFractionDigits: 0 }).format(n);
 
 export default function OperationsCenterPage() {
+  const {
+    refresh: refreshSession,
+    stale,
+    needsRollover,
+    expectedBusinessDate,
+    reconciliationError,
+    viewBranch,
+  } = useSession();
   const [status, setStatus] = useState<OperationsStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -160,6 +177,49 @@ export default function OperationsCenterPage() {
         </div>
       )}
 
+      {/* ── Automatic rollover status (admin) ───────────────── */}
+      {isAdmin && (
+        <div
+          className={cn(
+            'rounded-xl border p-4',
+            stale
+              ? 'border-amber-500/40 bg-amber-950/20'
+              : 'border-zinc-800/50 bg-zinc-900/40',
+          )}
+        >
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-white">التشغيل التلقائي لليوم</p>
+              <p className="mt-1 text-xs text-zinc-400">
+                {stale
+                  ? '⚠ تعذر تجهيز يوم العمل الحالي'
+                  : needsRollover
+                    ? 'بانتظار التجهيز التلقائي'
+                    : '● يعمل'}
+              </p>
+            </div>
+            <div className="text-xs text-zinc-500 space-y-0.5 text-left sm:text-right" dir="ltr">
+              <p>الوقت: 08:00 صباحًا</p>
+              {expectedBusinessDate ? (
+                <p>
+                  المتوقع:{' '}
+                  {new Date(expectedBusinessDate).toLocaleDateString('ar-EG', {
+                    day: 'numeric',
+                    month: 'long',
+                  })}
+                </p>
+              ) : null}
+              {viewBranch ? (
+                <p className="text-zinc-600">عرض: {branchDisplayName(viewBranch)}</p>
+              ) : null}
+            </div>
+          </div>
+          {stale && reconciliationError ? (
+            <p className="mt-2 text-xs text-amber-400/90">أعد المحاولة من الشريط العلوي أو حدّث الصفحة.</p>
+          ) : null}
+        </div>
+      )}
+
       {/* ── Main 4-Card Grid ────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <DayControlCard
@@ -168,7 +228,10 @@ export default function OperationsCenterPage() {
           allOpenShifts={status?.allOpenShifts || []}
           canOpen={isAdmin}
           canClose={isAdmin}
-          onRefresh={() => load(true)}
+          onRefresh={() => {
+            void refreshSession();
+            void load(true);
+          }}
         />
         <ShiftControlCard
           day={status?.day || null}
@@ -177,7 +240,10 @@ export default function OperationsCenterPage() {
           userDefaultShift={status?.userDefaultShift || null}
           canOpen={true}
           canClose={true}
-          onRefresh={() => load(true)}
+          onRefresh={() => {
+            void refreshSession();
+            void load(true);
+          }}
         />
         <TreasurySnapshotCard
           shiftSummary={status?.shiftSummary || null}
@@ -190,37 +256,27 @@ export default function OperationsCenterPage() {
       {isAdmin && status?.allOpenShifts && status.allOpenShifts.length > 0 && (
         <section className="space-y-3">
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold text-zinc-300">الورديات المفتوحة الآن</h2>
+            <h2 className="text-base font-semibold text-zinc-300">الورديات المفتوحة</h2>
             <Badge className="bg-blue-500/15 text-blue-400 border border-blue-500/30 text-xs">
               {status.allOpenShifts.length}
             </Badge>
           </div>
-          <div className="rounded-xl border border-zinc-800/50 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-zinc-900/80 border-b border-zinc-800">
-                  <th className="px-4 py-3 text-right text-xs text-zinc-500 font-medium">المستخدم</th>
-                  <th className="px-4 py-3 text-right text-xs text-zinc-500 font-medium">الوردية</th>
-                  <th className="px-4 py-3 text-right text-xs text-zinc-500 font-medium">وقت البدء</th>
-                  <th className="px-4 py-3 text-center text-xs text-zinc-500 font-medium">الحالة</th>
-                </tr>
-              </thead>
-              <tbody>
-                {status.allOpenShifts.map(s => (
-                  <tr key={s.ID} className="border-t border-zinc-800/40 hover:bg-zinc-800/20 transition-colors">
-                    <td className="px-4 py-3 font-medium text-white">{s.UserName}</td>
-                    <td className="px-4 py-3 text-zinc-300">{s.ShiftName}</td>
-                    <td className="px-4 py-3 text-zinc-400 font-mono text-xs" dir="ltr">{s.StartTime}</td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/20">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                        نشطة
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="rounded-xl border border-zinc-800/50 divide-y divide-zinc-800/50 overflow-hidden">
+            {status.allOpenShifts.map((s) => {
+              const elapsed = formatShiftElapsed(s.StartDate, s.StartTime, now);
+              return (
+                <div
+                  key={s.ID}
+                  className="flex items-center justify-between gap-3 px-4 py-3 text-sm hover:bg-zinc-800/20"
+                >
+                  <span className="font-medium text-white truncate min-w-0">{s.UserName}</span>
+                  <span className="text-zinc-400 truncate">{s.ShiftName}</span>
+                  <span className="text-zinc-500 whitespace-nowrap tabular-nums">
+                    {elapsed || s.StartTime?.trim() || '—'}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}

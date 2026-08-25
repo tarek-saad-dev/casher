@@ -6,6 +6,7 @@ import { normalizeBookingTimes } from "@/lib/bookingDateTime";
 import { requireActiveBranchContext, isActiveBranchContext } from "@/lib/branch/context";
 import { bookingQueueNotFoundResponse } from "@/lib/branch/bookingQueueOwnership";
 import { userCanManageOpsBranchRecord } from "@/lib/branch/opsWriteBranch";
+import { resolveBookingOriginLabel } from "@/lib/booking/bookingOriginDisplay";
 
 export const runtime = "nodejs";
 
@@ -26,17 +27,20 @@ export async function GET(_req: NextRequest, context: RouteContext) {
         SELECT
           b.BookingID, b.BookingCode, b.ClientID, b.AssignedEmpID,
           b.BookingDate, b.StartTime, b.EndTime, b.Status, b.Source,
+          b.CreatedByUserID, u.UserName AS CreatedByUserName,
           b.Notes, b.QueueTicketID, b.CreatedAt, b.UpdatedAt, b.BranchID,
           c.[Name] AS ClientName, c.Mobile AS ClientMobile, e.EmpName,
           COALESCE(SUM(bs.DurationMinutes), 30) AS TotalDuration
         FROM [dbo].[Bookings] b
         LEFT JOIN [dbo].[TblClient] c ON c.ClientID = b.ClientID
         LEFT JOIN [dbo].[TblEmp]    e ON e.EmpID    = b.AssignedEmpID
+        LEFT JOIN [dbo].[TblUser]   u ON u.UserID   = b.CreatedByUserID
         LEFT JOIN [dbo].[BookingServices] bs ON bs.BookingID = b.BookingID
         WHERE b.BookingID = @id
         GROUP BY
           b.BookingID, b.BookingCode, b.ClientID, b.AssignedEmpID,
           b.BookingDate, b.StartTime, b.EndTime, b.Status, b.Source,
+          b.CreatedByUserID, u.UserName,
           b.Notes, b.QueueTicketID, b.CreatedAt, b.UpdatedAt, b.BranchID,
           c.[Name], c.Mobile, e.EmpName
       `);
@@ -82,9 +86,17 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       booking.BookingID
     );
 
+    const origin = resolveBookingOriginLabel({
+      source: booking.Source,
+      createdByUserId: booking.CreatedByUserID,
+      createdByUserName: booking.CreatedByUserName,
+    });
+
     // Build enriched booking object with normalized times
     const enrichedBooking = {
       ...booking,
+      originKind: origin.kind,
+      originLabel: origin.label,
       // Normalized Cairo datetime fields
       startDateTimeCairo: normalizedTimes.startDateTimeCairo,
       endDateTimeCairo: normalizedTimes.endDateTimeCairo,

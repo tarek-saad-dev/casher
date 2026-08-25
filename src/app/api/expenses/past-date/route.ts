@@ -90,8 +90,11 @@ export async function POST(req: NextRequest) {
       log('rejected', { reason: 'no business day for date', invDate, branchId: branch.branchId });
       return dayResolution.response;
     }
-    const branchId = branch.branchId;
-    const businessDayId = dayResolution.day.id;
+    const { finalizeHistoricalFinancialWrite } = await import('@/lib/branch/financialOwnershipPolicy');
+    const historical = finalizeHistoricalFinancialWrite(branch.branchId, dayResolution.day, body);
+    if (!historical.ok) return historical.response;
+    const branchId = historical.ownership.branchId;
+    const businessDayId = historical.ownership.businessDayId;
 
     const db = await getPool();
     log('db-connected');
@@ -186,7 +189,7 @@ export async function POST(req: NextRequest) {
         .input("amount", sql.Decimal(10, 2), finalAmount)
         .input("inOut", sql.NVarChar(10), "out")
         .input("notes", sql.NVarChar(sql.MAX), notesText)
-        .input("shiftMoveID", sql.Int, null)
+        .input("shiftMoveID", sql.Int, historical.ownership.shiftMoveId)
         .input("paymentMethodID", sql.Int, paymentMethodId)
         .input("branchID", sql.Int, branchId)
         .input("businessDayID", sql.Int, businessDayId);

@@ -88,23 +88,15 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
       typeof createdBy === "string" &&
       createdBy.startsWith(SC_DAY_OFF_SOURCE)
     ) {
-      // Only revert if the attendance Notes still carries our source tag
-      // (guards against manual attendance edits made after the override)
-      await db
-        .request()
-        .input("empId",    sql.Int,         empId)
-        .input("workDate", sql.Date,         date)
-        .input("sourceTag",sql.NVarChar(100), SC_DAY_OFF_SOURCE)
-        .query(`
-          UPDATE dbo.TblEmpAttendance
-          SET Status = NULL, Notes = NULL
-          WHERE EmpID = @empId
-            AND WorkDate = @workDate
-            AND Status = 'Absent'
-            AND Notes LIKE @sourceTag + '%'
-        `)
-        .then(r => { attendanceReverted = r.rowsAffected[0] > 0; })
-        .catch(() => {});
+      const { revertScheduleControlDayOffAttendance } = await import(
+        "@/modules/attendance"
+      );
+      const revert = await revertScheduleControlDayOffAttendance({
+        empId: Number(empId),
+        workDate: String(date),
+        sourceTag: SC_DAY_OFF_SOURCE,
+      });
+      attendanceReverted = revert.attendanceReverted;
     }
 
     // 3b. block_range synced ↔ وقت مستقطع / وقت البريك → remove matching interval

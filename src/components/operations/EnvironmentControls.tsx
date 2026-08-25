@@ -14,7 +14,7 @@ interface Props {
 }
 
 const iconBtnBase =
-  'relative inline-flex size-[42px] min-h-[42px] min-w-[42px] shrink-0 items-center justify-center rounded-lg border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 md:min-h-[44px] md:min-w-[44px] md:size-11';
+  'relative inline-flex size-6 min-h-0 min-w-0 shrink-0 items-center justify-center rounded-md border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 md:size-11 md:min-h-[44px] md:min-w-[44px] md:rounded-lg';
 
 export function EnvironmentControls({
   voiceEnabled,
@@ -33,7 +33,7 @@ export function EnvironmentControls({
   }, []);
 
   return (
-    <div className={cn('flex shrink-0 items-center gap-1.5', className)}>
+    <div className={cn('flex shrink-0 items-center gap-0.5 md:gap-1.5', className)}>
       <button
         type="button"
         onClick={onToggleVoice}
@@ -47,10 +47,10 @@ export function EnvironmentControls({
             : 'border-border/80 bg-surface-muted/40 text-muted-foreground hover:bg-surface-muted/70',
         )}
       >
-        {voiceEnabled ? <Volume2 className="size-[18px] md:size-4" /> : <VolumeX className="size-[18px] md:size-4" />}
+        {voiceEnabled ? <Volume2 className="size-3 md:size-4" /> : <VolumeX className="size-3 md:size-4" />}
         {voiceEnabled && (
           <span
-            className="absolute end-1 top-1 size-1.5 rounded-full bg-success ring-2 ring-card"
+            className="absolute end-0.5 top-0.5 size-1 rounded-full bg-success ring-1 ring-card md:end-1 md:top-1 md:size-1.5 md:ring-2"
             aria-hidden
           />
         )}
@@ -71,10 +71,10 @@ export function EnvironmentControls({
             : 'border-border/80 bg-surface-muted/40 text-muted-foreground hover:bg-surface-muted/70',
         )}
       >
-        <Music className="size-[18px] md:size-4" />
+        <Music className="size-3 md:size-4" />
         {isPlaying && (
           <span
-            className="absolute end-1 top-1 size-1.5 animate-pulse rounded-full bg-primary ring-2 ring-card"
+            className="absolute end-0.5 top-0.5 size-1 animate-pulse rounded-full bg-primary ring-1 ring-card md:end-1 md:top-1 md:size-1.5 md:ring-2"
             aria-hidden
           />
         )}

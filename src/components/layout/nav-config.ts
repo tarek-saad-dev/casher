@@ -9,6 +9,7 @@ import {
   UsersRound, FileBarChart, Calendar, Ticket, CalendarCheck, MonitorPlay,
   AlertTriangle, Crown, KeyRound, FileKey2, Banknote, ShieldCheck, Users,
   HeartHandshake, Layers, Beaker, Settings2, Sun, Building2, Package,
+  MessageCircle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -219,6 +220,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: '/admin/loyalty',                   label: 'إدارة النقاط',          icon: Star       },
       { href: '/admin/shift',                     label: 'الورديات',               icon: Clock      },
       { href: '/admin/settings',                  label: 'الإعدادات',              icon: Settings   },
+      { href: '/admin/whatsapp',                  label: 'واتساب',                 icon: MessageCircle },
       { href: '/admin/queue-booking-settings',    label: 'إعدادات الطابور',       icon: Ticket     },
       { href: '/admin/permissions/users',         label: 'صلاحيات المستخدمين',    icon: KeyRound     },
       { href: '/admin/permissions/pages',         label: 'صلاحيات الصفحات',       icon: FileKey2     },

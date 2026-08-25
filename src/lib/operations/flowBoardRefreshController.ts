@@ -13,6 +13,8 @@ export type FlowBoardPayload = {
 export type RefreshFlowBoardOptions = {
   reason?: string;
   force?: boolean;
+  /** Background refresh: keep the current board mounted (no loading flash). */
+  silent?: boolean;
 };
 
 export type FlowBoardRefreshController = {
@@ -64,7 +66,8 @@ export function createFlowBoardRefreshController(args: {
     let run!: Promise<void>;
     run = (async () => {
       const isSelected = () => args.getSelectedDate() === requestedDate;
-      if (isSelected()) {
+      const showLoading = isSelected() && !options.silent;
+      if (showLoading) {
         args.onLoading?.(true);
         args.onError?.(null);
       }
@@ -83,7 +86,7 @@ export function createFlowBoardRefreshController(args: {
       } finally {
         if (inFlight.get(key) === run) inFlight.delete(key);
         if (abortByDate.get(key) === ac) abortByDate.delete(key);
-        if (isSelected()) {
+        if (showLoading) {
           args.onLoading?.(false);
         }
       }

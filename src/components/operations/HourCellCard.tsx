@@ -1,9 +1,11 @@
 'use client';
 
+import { memo } from 'react';
 import { Scissors, Calendar, Ticket, GripVertical, Volume2 } from 'lucide-react';
 import { formatTimeRange, getItemTypeLabel, TimelineItem } from './schedulerUtils';
 import { formatServiceSummary } from '@/lib/servicePlanFormat';
 import { cn } from '@/lib/utils';
+import { BookingOriginBadge } from './BookingOriginBadge';
 
 interface BarberColor {
   bg: string;
@@ -50,7 +52,7 @@ function formatTimeLabel(start: string, end: string): string {
   return startTime;
 }
 
-export function HourCellCard({
+export const HourCellCard = memo(function HourCellCard({
   item,
   compact = false,
   onClick,
@@ -116,7 +118,7 @@ export function HourCellCard({
   const isCalled = item.status === 'called' || item.status === 'announced';
 
   // Tooltip with full details
-  const tooltipText = `${customerName} • ${bookingCode || ticketCode || label} • ${timeRange}${serviceName ? ` • ${serviceName}` : ''}`;
+  const tooltipText = `${customerName} • ${bookingCode || ticketCode || label} • ${timeRange}${serviceName ? ` • ${serviceName}` : ''}${item.originLabel ? ` • ${item.originLabel}` : ''}`;
 
   return (
     <div
@@ -154,7 +156,7 @@ export function HourCellCard({
             <button
               type="button"
               className={cn(
-                'flex size-11 shrink-0 items-center justify-center rounded-md border border-transparent text-muted-foreground/70 transition-colors',
+                'flex size-6 shrink-0 items-center justify-center rounded-md border border-transparent text-muted-foreground/70 transition-colors',
                 'hover:border-primary/40 hover:bg-primary/10 hover:text-primary',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
                 'md:size-8',
@@ -170,7 +172,7 @@ export function HourCellCard({
                 onCutClick();
               }}
             >
-              <Scissors className="size-4" aria-hidden />
+              <Scissors className="size-3 md:size-4" aria-hidden />
             </button>
           )}
           {draggable && (
@@ -223,8 +225,18 @@ export function HourCellCard({
         <div className="flex h-full flex-col justify-center gap-1 ps-1 pe-14 md:pe-12">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[13px] font-bold leading-tight text-foreground md:text-sm" title={customerName}>
-                {customerName}
+              <div className="flex min-w-0 items-center gap-1">
+                <div className="truncate text-[13px] font-bold leading-tight text-foreground md:text-sm" title={customerName}>
+                  {customerName}
+                </div>
+                {isCompact && item.originLabel && (
+                  <BookingOriginBadge
+                    kind={item.originKind}
+                    label={item.originLabel}
+                    compact
+                    className="shrink-0"
+                  />
+                )}
               </div>
               {!isCompact && serviceName && (
                 <div className="mt-0.5 truncate text-[11px] text-muted-foreground md:text-xs" title={serviceTooltip}>
@@ -246,7 +258,13 @@ export function HourCellCard({
           </div>
 
           <div className="flex items-center justify-between gap-2">
-            <span className="truncate text-[11px] text-muted-foreground">{label}</span>
+            {!isCompact && item.originLabel ? (
+              <BookingOriginBadge kind={item.originKind} label={item.originLabel} />
+            ) : !item.originLabel ? (
+              <span className="truncate text-[11px] text-muted-foreground">{label}</span>
+            ) : (
+              <span />
+            )}
             <div className="flex shrink-0 items-center gap-1">
               {bookingCode && (
                 <span className="rounded bg-background/30 px-1.5 py-0.5 text-[10px] font-medium text-foreground">
@@ -347,7 +365,7 @@ export function HourCellCard({
       )}
     </div>
   );
-}
+});
 
 function getIcon(type: string, isProtected?: boolean) {
   switch (type) {

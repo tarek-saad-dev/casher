@@ -163,15 +163,18 @@ export async function POST(req: NextRequest) {
 
     log('Validation passed', { parsedAmount: roundedAmount, fromPmId, toPmId, transferDate: transferDate ?? null });
 
-    // ──── Never trust browser branchId — resolve ownership from gated session context ────
+    // ──── Never trust browser ownership fields — resolve from FinancialOwnershipPolicy ────
     const { requireBranchOperationAccess } = await import('@/lib/branch/context');
+    const { finalizeCurrentFinancialWrite, finalizeHistoricalFinancialWrite } = await import(
+      '@/lib/branch/financialOwnershipPolicy'
+    );
     let branchId: number;
     let businessDayId: number | null;
     let shiftMoveId: number | null = null;
     let resolvedInvDate: string | undefined;
 
     if (transferDate) {
-      // Past-date transfer: branch comes from the session, day must already exist for that date.
+      // Historical: authorized selected branch + requested date. Never current OPEN shift.
       const { resolveBranchDayForDate } = await import('@/lib/branch/operationalGates');
       const branch = await requireBranchOperationAccess();
       if (branch instanceof NextResponse) return branch;
@@ -180,24 +183,29 @@ export async function POST(req: NextRequest) {
         log('Validation failed: no business day for transferDate', { transferDate, branchId: branch.branchId });
         return dayResolution.response;
       }
-      branchId = branch.branchId;
-      businessDayId = dayResolution.day.id;
+      const historical = finalizeHistoricalFinancialWrite(branch.branchId, dayResolution.day, body);
+      if (!historical.ok) return historical.response;
+      branchId = historical.ownership.branchId;
+      businessDayId = historical.ownership.businessDayId;
+      shiftMoveId = historical.ownership.shiftMoveId;
     } else {
       // Current-day transfer: branch, open day and open shift come from the gated write context.
       const { resolveBranchDayAndShiftForWrite } = await import('@/lib/branch/operationalGates');
       const gated = await resolveBranchDayAndShiftForWrite(session.UserID);
       if (!gated.ok) return gated.response;
-      if (!gated.shift) {
+      const owned = finalizeCurrentFinancialWrite('treasury.transfer.current', gated, body);
+      if (!owned.ok) return owned.response;
+      if (!gated.shift || owned.ownership.shiftMoveId == null) {
         log('Validation failed: no open shift for current-day transfer', { userId: session.UserID });
         return NextResponse.json(
           { error: 'لا يوجد وردية مفتوحة لهذا المستخدم — لا يمكن تنفيذ التحويل', requestId },
           { status: 400 },
         );
       }
-      branchId = gated.branch.branchId;
-      businessDayId = gated.day.id;
-      shiftMoveId = gated.shift.id;
-      resolvedInvDate = gated.day.newDay;
+      branchId = owned.ownership.branchId;
+      businessDayId = owned.ownership.businessDayId;
+      shiftMoveId = owned.ownership.shiftMoveId;
+      resolvedInvDate = owned.ownership.businessDate ?? undefined;
     }
 
     const result = await executeAuditedAction({

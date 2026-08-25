@@ -52,9 +52,7 @@ describe('Phase 1N Camp Caesar readiness hardening', () => {
     const svc = read('src/lib/branch/branchReadinessService.ts');
     expect(svc).toContain("key: 'public.frontend_multi_branch'");
     expect(svc).toContain("requiredFor: ['public_live']");
-    expect(svc).toMatch(
-      /publicBlockers[\s\S]{0,1200}?status:\s*'blocker'[\s\S]{0,200}?requiredFor:\s*\['public_live'\]/,
-    );
+    expect(svc).toContain("status: p.pass ? 'pass' : 'blocker'");
   });
 
   it('score cannot bypass blockers (readyFor uses blockers only)', () => {

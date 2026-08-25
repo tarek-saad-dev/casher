@@ -6,6 +6,7 @@
 
 import { sql, allocateInvID } from '@/lib/db';
 import { getCairoInvTimeDotStr } from '@/lib/businessDate';
+import { lockOperationalWrite } from '@/modules/operations/infra/businessDayLock';
 
 export interface TreasuryTransferInput {
   amount: number;
@@ -144,6 +145,18 @@ export async function executeTreasuryTransfer(
     transferDate: transferDate ?? 'current',
     userId,
   });
+
+  if (!transferDate) {
+    if (businessDayId == null) {
+      throwWithStatus('لا يوجد يوم عمل مفتوح لهذا الفرع — يجب فتح يوم أولاً', 400);
+    }
+    await lockOperationalWrite(connection, {
+      branchId,
+      businessDayId,
+      shiftSessionId: input.shiftMoveId,
+      requireShift: true,
+    });
+  }
 
   // Branch, business day and (for current-day transfers) the shift are resolved by the
   // caller from gated session context — never trust browser branchId here.

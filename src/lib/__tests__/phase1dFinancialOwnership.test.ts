@@ -87,6 +87,7 @@ describe('Phase 1D past-date day gate', () => {
     vi.doMock('@/lib/branch/businessDay', () => ({
       getBusinessDayByDate: vi.fn(async () => null),
       getOpenBusinessDay: vi.fn(),
+      getBusinessDayById: vi.fn(),
       getBranchBusinessDate: vi.fn(() => '2024-01-01'),
     }));
     vi.doMock('@/lib/branch/context', () => ({
@@ -127,6 +128,13 @@ describe('Phase 1D POS active-branch day write', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    vi.doMock('@/modules/operations/application/reconcileBusinessDay', () => ({
+      ensureBusinessDayCurrent: vi.fn(async () => ({
+        branchId: 3,
+        action: 'NO_OP',
+        stale: false,
+      })),
+    }));
   });
 
   it('resolveActiveBranchDayForPosWrite prefers open day on active branch', async () => {
@@ -138,6 +146,7 @@ describe('Phase 1D POS active-branch day write', () => {
         status: true,
       })),
       getBusinessDayByDate: vi.fn(async () => null),
+      getBusinessDayById: vi.fn(),
       getBranchBusinessDate: vi.fn(() => '2026-07-31'),
     }));
     vi.doMock('@/lib/branch/context', () => ({
@@ -167,6 +176,7 @@ describe('Phase 1D POS active-branch day write', () => {
           ? { id: 77, branchId: 3, newDay: '2026-07-30', status: false }
           : null,
       ),
+      getBusinessDayById: vi.fn(),
       getBranchBusinessDate: vi.fn(() => '2026-07-30'),
     }));
     vi.doMock('@/lib/branch/context', () => ({
@@ -219,5 +229,92 @@ describe('branch business date overnight cutoff', () => {
         morning,
       ),
     ).toBe('2026-07-31');
+  });
+});
+
+describe('Phase 4 financial writes follow OperationalBranch, not ViewBranch', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('viewing CAMP while operating GLEEM stamps GLEEM ownership', async () => {
+    const requireBranchOperationAccess = vi.fn(async () => ({
+      userId: 7,
+      branchId: 2,
+      branchCode: 'CAMP_CAESAR',
+    }));
+    vi.doMock('@/lib/branch/context', () => ({
+      isActiveBranchContext: () => true,
+      requireActiveBranchContext: vi.fn(),
+      requireBranchOperationAccess,
+    }));
+    vi.doMock('@/lib/branch/shiftSession', () => ({
+      getUserOpenShift: vi.fn(async () => ({
+        id: 100,
+        branchId: 1,
+        businessDayId: 10,
+        newDay: '2026-08-25',
+        userId: 7,
+        shiftId: 1,
+        status: true,
+      })),
+      getUserOpenShiftForBranch: vi.fn(),
+    }));
+    vi.doMock('@/modules/operations/application/OperationalContextService', () => ({
+      requireOperationalSnapshot: vi.fn(async () => ({
+        context: { userId: 7, branchId: 1, businessDayId: 10, businessDate: '2026-08-25', shiftSessionId: 100 },
+        day: { id: 10, branchId: 1, newDay: '2026-08-25', status: true },
+        shift: {
+          id: 100,
+          branchId: 1,
+          businessDayId: 10,
+          newDay: '2026-08-25',
+          userId: 7,
+          shiftId: 1,
+          status: true,
+        },
+      })),
+    }));
+    vi.doMock('@/lib/branch/repository', () => ({
+      getBranchById: vi.fn(async (id: number) =>
+        id === 1
+          ? {
+              branchId: 1,
+              branchCode: 'GLEEM',
+              branchName: 'جليم',
+              shortName: 'جليم',
+              isActive: true,
+              timeZone: 'Africa/Cairo',
+              businessDayCutoffTime: '04:00:00',
+            }
+          : null,
+      ),
+    }));
+    vi.doMock('@/lib/branch/access', () => ({
+      validateUserBranchAccess: vi.fn(async () => ({
+        canOperate: true,
+        canViewReports: true,
+        canSwitch: true,
+      })),
+    }));
+    vi.doMock('@/modules/operations/application/reconcileBusinessDay', () => ({
+      ensureBusinessDayCurrent: vi.fn(async () => ({ action: 'NO_OP', stale: false })),
+    }));
+    vi.doMock('@/modules/operations/requestScope', () => ({
+      withOperationalRequestScope: async (fn: () => Promise<unknown>) => fn(),
+    }));
+    vi.doMock('@/modules/operations/infra/businessDayLock', () => ({
+      lockOperationalWrite: vi.fn(),
+    }));
+
+    const { resolveBranchDayAndShiftForWrite } = await import('@/lib/branch/operationalGates');
+    const result = await resolveBranchDayAndShiftForWrite(7);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.branch.branchId).toBe(1);
+    expect(result.branch.branchCode).toBe('GLEEM');
+    expect(result.day.id).toBe(10);
+    expect(result.shift?.id).toBe(100);
+    expect(requireBranchOperationAccess).not.toHaveBeenCalled();
   });
 });

@@ -6,6 +6,7 @@ import {
 } from '@/lib/services/employeeLedgerPayoutService';
 import { requireBranchOperationAccess } from '@/lib/branch/context';
 import { resolveBranchDayForDate } from '@/lib/branch/operationalGates';
+import { finalizeHistoricalFinancialWrite } from '@/lib/branch/financialOwnershipPolicy';
 
 /**
  * POST /api/admin/hr/employee-ledger/payout
@@ -29,17 +30,19 @@ export async function POST(request: NextRequest) {
     if (branch instanceof NextResponse) return branch;
     const dayResolution = await resolveBranchDayForDate(branch.branchId, payoutDate);
     if (!dayResolution.ok) return dayResolution.response;
+    const historical = finalizeHistoricalFinancialWrite(branch.branchId, dayResolution.day, body);
+    if (!historical.ok) return historical.response;
 
     const result = await executeEmployeePayout({
       empId,
       amount,
       paymentMethodId,
-      payoutDate,
+      payoutDate: historical.ownership.businessDate,
       notes,
       allowOverpay,
       createdByUserId: auth.userId,
-      branchId: branch.branchId,
-      businessDayId: dayResolution.day.id,
+      branchId: historical.ownership.branchId,
+      businessDayId: historical.ownership.businessDayId,
     });
 
     return NextResponse.json(result, { status: 201 });

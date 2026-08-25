@@ -9,7 +9,7 @@ import {
 
 const REFRESH_MS = 60_000;
 
-export function useTeamAttendance() {
+export function useTeamAttendance(viewBranchId?: number | null) {
   const [team, setTeam] = useState<TeamAttendanceMember[]>([]);
   const [date, setDate] = useState(getAttendanceDateStr);
   const [loading, setLoading] = useState(true);
@@ -45,7 +45,7 @@ export function useTeamAttendance() {
 
   useEffect(() => {
     void fetchTeam();
-  }, [fetchTeam]);
+  }, [fetchTeam, viewBranchId]);
 
   useEffect(() => {
     const id = window.setInterval(() => void fetchTeam(true), REFRESH_MS);

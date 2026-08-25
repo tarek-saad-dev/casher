@@ -857,33 +857,26 @@ async function relocateAttendanceAndPayrollForTransfer(args: {
   fromBranchId: number;
   toBranchId: number;
 }): Promise<void> {
-  const db = await getPool();
+  const {
+    relocateClosedAttendanceFromBranch,
+    relocateClosedAttendanceTowardDestination,
+  } = await import('@/modules/attendance');
 
-  await db
-    .request()
-    .input('empId', sql.Int, args.empId)
-    .input('day', sql.Date, args.workDate)
-    .input('from', sql.Int, args.fromBranchId)
-    .input('to', sql.Int, args.toBranchId)
-    .query(`
-      UPDATE dbo.TblEmpAttendance
-      SET BranchID = @to
-      WHERE EmpID = @empId AND WorkDate = @day AND BranchID = @from
-        AND CheckInTime IS NOT NULL AND CheckOutTime IS NOT NULL
-    `);
+  await relocateClosedAttendanceFromBranch({
+    empId: args.empId,
+    workDate: args.workDate,
+    fromBranchId: args.fromBranchId,
+    toBranchId: args.toBranchId,
+  });
 
   // Also move attendance that landed on a third branch (ops mistake) toward destination
-  await db
-    .request()
-    .input('empId', sql.Int, args.empId)
-    .input('day', sql.Date, args.workDate)
-    .input('to', sql.Int, args.toBranchId)
-    .query(`
-      UPDATE dbo.TblEmpAttendance
-      SET BranchID = @to
-      WHERE EmpID = @empId AND WorkDate = @day AND BranchID <> @to
-        AND CheckInTime IS NOT NULL AND CheckOutTime IS NOT NULL
-    `);
+  await relocateClosedAttendanceTowardDestination({
+    empId: args.empId,
+    workDate: args.workDate,
+    toBranchId: args.toBranchId,
+  });
+
+  const db = await getPool();
 
   const payroll = await db
     .request()

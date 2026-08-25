@@ -64,6 +64,65 @@ vi.mock('@/lib/session', () => ({
   getSession: vi.fn(async () => ({ UserID: 1, UserName: 'Admin', UserLevel: 1 })),
 }));
 
+vi.mock('@/lib/branch/context', () => ({
+  requireBranchOperationAccess: vi.fn(async () => ({
+    userId: 1,
+    branchId: 1,
+    branchCode: 'GLEEM',
+    branchName: 'جليم',
+    shortName: 'جليم',
+    timeZone: 'Africa/Cairo',
+    businessDayCutoffTime: '04:00:00',
+    canOperate: true,
+    canViewReports: true,
+    canSwitch: true,
+  })),
+  isActiveBranchContext: vi.fn((value: unknown) => Boolean(value && typeof value === 'object' && 'branchId' in (value as object))),
+  requireActiveBranchContext: vi.fn(),
+}));
+
+vi.mock('@/lib/branch/operationalGates', () => ({
+  resolveBranchDayAndShiftForWrite: vi.fn(async () => ({
+    ok: true,
+    branch: {
+      userId: 1,
+      branchId: 1,
+      branchCode: 'GLEEM',
+      branchName: 'جليم',
+      shortName: 'جليم',
+      timeZone: 'Africa/Cairo',
+      businessDayCutoffTime: '04:00:00',
+      canOperate: true,
+      canViewReports: true,
+      canSwitch: true,
+    },
+    day: { id: 1, branchId: 1, newDay: '2025-01-15', status: true },
+    shift: {
+      id: 10,
+      branchId: 1,
+      businessDayId: 1,
+      newDay: '2025-01-15',
+      userId: 1,
+      shiftId: 1,
+      startDate: '2025-01-15',
+      startTime: '10:00 AM',
+      endDate: null,
+      endTime: null,
+      status: true,
+    },
+  })),
+  lockOperationalWrite: vi.fn(async () => ({
+    day: { id: 1, branchId: 1, newDay: '2025-01-15', status: true },
+    shift: { id: 10, branchId: 1, businessDayId: 1, status: true },
+  })),
+  resolveBranchDayForDate: vi.fn(async (_branchId: number, dateYmd: string) => ({
+    ok: true,
+    day: { id: 1, branchId: 1, newDay: dateYmd, status: false },
+  })),
+  branchErrorResponse: vi.fn(() => null),
+  requireAuthenticatedBranchContext: vi.fn(),
+}));
+
 vi.mock('crypto', () => ({
   randomUUID: vi.fn(() => 'test-request-id-123'),
 }));

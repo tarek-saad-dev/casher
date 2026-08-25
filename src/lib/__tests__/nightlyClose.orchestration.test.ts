@@ -221,7 +221,12 @@ describe('runNightlyClose orchestration', () => {
     expect(result.delivery.ok).toBe(true);
     expect(result.delivery.employeesSent).toBe(2);
     expect(result.delivery.ownerSent).toBe(true);
-    expect(result.steps.attendanceClose?.closed).toHaveLength(1);
+    // Production merges workDate + yesterday (overnight OT lookback) into closed[].
+    // Mock returns one filled row per finalize call → length 2.
+    expect(result.steps.attendanceClose?.closed).toHaveLength(2);
+    expect(finalizeIncompleteAttendanceAsDayOff).toHaveBeenCalledWith('2026-07-13', {
+      branchId: 1,
+    });
   });
 
   it('fails delivery verification when owner send fails', async () => {

@@ -7,6 +7,10 @@
     {
       "path": "/api/admin/attendance/auto-absence/run",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/internal/operations/business-day/reconcile",
+      "schedule": "0 * * * *"
     }
   ]
 }

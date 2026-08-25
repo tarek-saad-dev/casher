@@ -196,7 +196,7 @@ describe('executeEmployeePayout', () => {
       payoutDate: '2026-04-15',
       branchId: 1,
       businessDayId: 1,
-    })).rejects.toThrow('المبلغ أكبر من رصيد الموظف الحالي');
+    })).rejects.toThrow('المبلغ أكبر من رصيد الموظف في هذا الفرع');
     expect(fakeRollback).toHaveBeenCalled();
   });
 

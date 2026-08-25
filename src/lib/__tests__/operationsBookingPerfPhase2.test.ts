@@ -23,7 +23,7 @@ describe('booking WhatsApp post-commit scheduling', () => {
     const send = vi.fn(async () => {
       await new Promise((r) => setTimeout(r, 50));
       return { sent: true, skipped: false, status: 'submitted' as const };
-    }) as unknown as typeof import('@/lib/integrations/whatsapp').sendBookingWhatsAppMessage;
+    }) as unknown as import('@/lib/bookingPostCommitNotification').BookingWhatsAppSendFn;
     let scheduledTask: (() => Promise<void>) | null = null;
     const schedule = vi.fn((task: () => Promise<void>) => {
       scheduledTask = task;
@@ -195,5 +195,19 @@ describe('flow-board refresh controller', () => {
   it('booking on displayed date should refresh; other date should not', () => {
     expect(shouldRefreshBoardForBooking('2026-07-16', '2026-07-16')).toBe(true);
     expect(shouldRefreshBoardForBooking('2026-07-16', '2026-07-20')).toBe(false);
+  });
+
+  it('silent refresh does not toggle loading', async () => {
+    const fetchBoard = vi.fn(async () => ({ ok: true, date: '2026-07-16' }));
+    const onLoading = vi.fn();
+    const ctrl = createFlowBoardRefreshController({
+      getSelectedDate: () => '2026-07-16',
+      fetchBoard: fetchBoard as any,
+      onData: vi.fn(),
+      onLoading,
+    });
+    await ctrl.refreshFlowBoard('2026-07-16', { reason: 'poll', silent: true });
+    expect(onLoading).not.toHaveBeenCalled();
+    expect(fetchBoard).toHaveBeenCalledTimes(1);
   });
 });

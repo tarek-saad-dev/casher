@@ -67,12 +67,66 @@ vi.mock('crypto', () => ({
   randomUUID: vi.fn(() => 'advance-test-request-id'),
 }));
 
+vi.mock('@/lib/branch/bookingQueueOwnership', () => ({
+  isEmployeeEligibleForBranchBookings: vi.fn(async () => true),
+}));
+
 function resetTxMocks() {
   fakeCommit = vi.fn();
   fakeRollback = vi.fn();
   fakeTransactionBegin = vi.fn();
   txQueryResults = [];
   txQueryIdx = 0;
+}
+
+function mockWriteGate() {
+  vi.doMock('@/lib/branch/operationalGates', () => ({
+    lockOperationalWrite: vi.fn(async () => ({
+      day: { id: 1, branchId: 1, newDay: '2026-04-15', status: true },
+      shift: {
+        id: 10,
+        branchId: 1,
+        businessDayId: 1,
+        newDay: '2026-04-15',
+        userId: 1,
+        shiftId: 1,
+        status: true,
+      },
+    })),
+    resolveBranchDayAndShiftForWrite: vi.fn(async () => ({
+      ok: true,
+      branch: {
+        userId: 1,
+        branchId: 1,
+        branchCode: 'GLEEM',
+        branchName: 'جليم',
+        shortName: 'جليم',
+        timeZone: 'Africa/Cairo',
+        businessDayCutoffTime: '04:00:00',
+        canOperate: true,
+        canViewReports: true,
+        canSwitch: true,
+      },
+      day: { id: 1, branchId: 1, newDay: '2026-04-15', status: true },
+      shift: {
+        id: 10,
+        branchId: 1,
+        businessDayId: 1,
+        newDay: '2026-04-15',
+        userId: 1,
+        shiftId: 1,
+        startDate: '2026-04-15',
+        startTime: '10:00 AM',
+        endDate: null,
+        endTime: null,
+        status: true,
+      },
+    })),
+    branchErrorResponse: vi.fn(() => null),
+  }));
+  vi.doMock('@/lib/branch/bookingQueueOwnership', () => ({
+    isEmployeeEligibleForBranchBookings: vi.fn(async () => true),
+  }));
 }
 
 afterEach(() => {
@@ -98,7 +152,9 @@ describe('advance ledger dual-write helpers', () => {
         input: vi.fn().mockReturnThis(),
         query: vi.fn(async () => {
           const current = requestIndex++;
-          return { rowsAffected: [current === 0 ? 0 : 1] };
+          if (current === 0) return { rowsAffected: [0] };
+          if (current === 1) return { recordset: [{ BranchID: 1 }] };
+          return { rowsAffected: [1] };
         }),
       })),
     };
@@ -112,7 +168,7 @@ describe('advance ledger dual-write helpers', () => {
     });
 
     expect(outcome).toBe('inserted');
-    expect(pool.request).toHaveBeenCalledTimes(2);
+    expect(pool.request).toHaveBeenCalledTimes(3);
   });
 
   it('updates advance debit when active row exists', async () => {
@@ -207,6 +263,7 @@ describe('maybeSyncAdvanceLedgerForExpenseCashMove', () => {
     txQueryResults = [
       { recordset: [{ mapEmpId: 3, resolvedEmpId: 3, empName: 'أحمد' }] },
       { rowsAffected: [0] },
+      { recordset: [{ BranchID: 1 }] },
       { rowsAffected: [1] },
     ];
     const transaction = new sql.Transaction({} as never);
@@ -290,6 +347,7 @@ describe('syncAdvanceLedgerForDeductionCashMove', () => {
     const { sql } = await import('@/lib/db');
     txQueryResults = [
       { rowsAffected: [0] },
+      { recordset: [{ BranchID: 1 }] },
       { rowsAffected: [1] },
     ];
     const transaction = new sql.Transaction({} as never);
@@ -303,7 +361,7 @@ describe('syncAdvanceLedgerForDeductionCashMove', () => {
 
     expect(result.ledgerDualWrite).toBe(true);
     expect(result.outcome).toBe('inserted');
-    expect(txQueryIdx).toBe(2);
+    expect(txQueryIdx).toBe(3);
   });
 });
 
@@ -311,6 +369,7 @@ describe('POST /api/expenses advance dual-write', () => {
   beforeEach(async () => {
     resetTxMocks();
     vi.resetModules();
+    mockWriteGate();
     const { getPool } = await import('@/lib/db');
     (getPool as ReturnType<typeof vi.fn>).mockImplementation(async () => makeFakeDb([
       { recordset: [{ ID: 1, NewDay: '2026-04-15' }] },
@@ -351,6 +410,7 @@ describe('POST /api/expenses advance dual-write', () => {
       { recordset: [{ ID: 777 }] },
       { recordset: [{ mapEmpId: 3, resolvedEmpId: 3, empName: 'أحمد' }] },
       { rowsAffected: [0] },
+      { recordset: [{ BranchID: 1 }] },
       { rowsAffected: [1] },
     ];
 
@@ -399,10 +459,9 @@ describe('POST /api/deductions advance dual-write', () => {
   beforeEach(async () => {
     resetTxMocks();
     vi.resetModules();
+    mockWriteGate();
     const { getPool } = await import('@/lib/db');
     (getPool as ReturnType<typeof vi.fn>).mockImplementation(async () => makeFakeDb([
-      { recordset: [{ ID: 1, NewDay: '2026-04-15' }] },
-      { recordset: [{ ID: 10, UserID: 1, ShiftID: 1 }] },
       {
         recordset: [{
           EmpID: 3,
@@ -439,6 +498,7 @@ describe('POST /api/deductions advance dual-write', () => {
     txQueryResults = [
       { recordset: [{ ID: 301 }] },
       { rowsAffected: [0] },
+      { recordset: [{ BranchID: 1 }] },
       { rowsAffected: [1] },
       { rowsAffected: [1] },
     ];

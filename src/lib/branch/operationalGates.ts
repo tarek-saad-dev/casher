@@ -12,10 +12,38 @@ import {
   getOpenBusinessDay,
   type BusinessDayRecord,
 } from './businessDay';
-import {
-  getUserOpenShiftForBranch,
-  type ShiftMoveRecord,
-} from './shiftSession';
+import { getUserOpenShift, type ShiftMoveRecord } from './shiftSession';
+import { getBranchById } from './repository';
+import { validateUserBranchAccess } from './access';
+import { requireOperationalSnapshot } from '@/modules/operations/application/OperationalContextService';
+import { ensureBusinessDayCurrent } from '@/modules/operations/application/reconcileBusinessDay';
+import { withOperationalRequestScope } from '@/modules/operations/requestScope';
+import { lockOperationalWrite } from '@/modules/operations/infra/businessDayLock';
+
+export { lockOperationalWrite };
+
+async function toOperationalBranchContext(
+  userId: number,
+  branchId: number,
+): Promise<ActiveBranchContext> {
+  const branch = await getBranchById(branchId);
+  if (!branch || !branch.isActive) {
+    throw new BranchDomainError('BRANCH_NOT_FOUND', 'الفرع غير موجود', 403);
+  }
+  const access = await validateUserBranchAccess(userId, branchId);
+  return {
+    userId,
+    branchId: branch.branchId,
+    branchCode: branch.branchCode,
+    branchName: branch.branchName,
+    shortName: branch.shortName,
+    timeZone: branch.timeZone,
+    businessDayCutoffTime: branch.businessDayCutoffTime,
+    canOperate: access.canOperate,
+    canViewReports: access.canViewReports,
+    canSwitch: access.canSwitch,
+  };
+}
 
 export function branchErrorResponse(err: unknown): NextResponse | null {
   if (
@@ -45,9 +73,9 @@ export async function requireBranchOperatorContext(): Promise<
 
 /**
  * Resolve open business day + optional user open shift for financial writes.
- * Shared by sales, expenses, incomes, deductions, purchases, treasury transfer,
- * and booking convert — an open shift on another branch must never block these.
- * Callers must stamp BranchID + BusinessDayID on financial roots from this context.
+ * SHIFT-scope when the user has an OPEN ShiftSession: ownership is always the
+ * operational branch, never the ViewBranch cookie.
+ * DAY-scope fallback (view cookie) only when there is no OPEN shift.
  */
 export async function resolveBranchDayAndShiftForWrite(userId: number): Promise<
   | {
@@ -58,25 +86,53 @@ export async function resolveBranchDayAndShiftForWrite(userId: number): Promise<
     }
   | { ok: false; response: NextResponse }
 > {
-  const branch = await requireBranchOperationAccess();
-  if (!isActiveBranchContext(branch)) {
-    return { ok: false, response: branch };
-  }
+  return withOperationalRequestScope(async () => {
+    try {
+      const openShift = await getUserOpenShift(userId);
+      if (openShift?.status) {
+        const snapshot = await requireOperationalSnapshot({
+          userId,
+          scope: 'SHIFT',
+        });
+        if (!snapshot.day || !snapshot.shift) {
+          return {
+            ok: false,
+            response: NextResponse.json(
+              { error: 'لا توجد وردية مفتوحة لهذا المستخدم', code: 'NO_OPEN_SHIFT' },
+              { status: 400 },
+            ),
+          };
+        }
+        const branch = await toOperationalBranchContext(userId, snapshot.context.branchId);
+        return { ok: true, branch, day: snapshot.day, shift: snapshot.shift };
+      }
 
-  const day = await getOpenBusinessDay(branch.branchId);
-  if (!day) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: 'لا يوجد يوم عمل مفتوح لهذا الفرع — يجب فتح يوم أولاً', code: 'NO_OPEN_DAY' },
-        { status: 400 },
-      ),
-    };
-  }
+      const branch = await requireBranchOperationAccess();
+      if (!isActiveBranchContext(branch)) {
+        return { ok: false, response: branch };
+      }
 
-  // Active-branch shift only (one open shift per user per branch).
-  const shift = await getUserOpenShiftForBranch(userId, branch.branchId);
-  return { ok: true, branch, day, shift };
+      const snapshot = await requireOperationalSnapshot({
+        userId,
+        branchId: branch.branchId,
+        scope: 'DAY',
+      });
+      if (!snapshot.day) {
+        return {
+          ok: false,
+          response: NextResponse.json(
+            { error: 'لا يوجد يوم عمل مفتوح لهذا الفرع — يجب فتح يوم أولاً', code: 'NO_OPEN_DAY' },
+            { status: 400 },
+          ),
+        };
+      }
+      return { ok: true, branch, day: snapshot.day, shift: snapshot.shift };
+    } catch (err) {
+      const mapped = branchErrorResponse(err);
+      if (mapped) return { ok: false, response: mapped };
+      throw err;
+    }
+  });
 }
 
 export async function requireAuthenticatedBranchContext(): Promise<
@@ -126,6 +182,17 @@ export async function resolveActiveBranchDayForPosWrite(
   | { ok: true; day: BusinessDayRecord; dateYmd: string }
   | { ok: false; response: NextResponse }
 > {
+  try {
+    await ensureBusinessDayCurrent(branch.branchId, {
+      mode: 'STRICT',
+      trigger: 'STRICT_CATCH_UP',
+    });
+  } catch (err) {
+    const mapped = branchErrorResponse(err);
+    if (mapped) return { ok: false, response: mapped };
+    throw err;
+  }
+
   const open = await getOpenBusinessDay(branch.branchId);
   if (open) {
     return { ok: true, day: open, dateYmd: open.newDay };

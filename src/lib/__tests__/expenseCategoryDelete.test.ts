@@ -58,6 +58,21 @@ vi.mock('@/lib/session', () => ({
   getSession: vi.fn().mockResolvedValue(mockSessionUser),
 }));
 
+vi.mock('@/lib/branch/financialOwnership', () => ({
+  loadAndAuthorizeFinancialMutation: vi.fn(async () => ({
+    ok: true,
+    ownership: {
+      scope: 'SHIFT',
+      branchId: 1,
+      businessDayId: 1,
+      businessDate: '2026-01-01',
+      shiftMoveId: 9,
+    },
+  })),
+  financialNotFoundResponse: () =>
+    new Response(JSON.stringify({ error: 'غير موجود' }), { status: 404 }),
+}));
+
 // ── Mock @/lib/permissions-server ─────────────────────────────────────────
 vi.mock('@/lib/permissions-server', () => ({
   getUserAccess: vi.fn().mockResolvedValue({

@@ -7,8 +7,8 @@ export const dynamic = 'force-dynamic';
 /**
  * POST /api/auth/switch-branch
  * Body: { branchId: number }
- * Reissues the signed session cookie with the selected active branch.
- * Never updates IsDefault. Never trusts client permissions.
+ * Reissues the signed session cookie with the selected ViewBranch.
+ * Never updates IsDefault. Never mutates ShiftSession / TblShiftMove.
  */
 export async function POST(req: NextRequest) {
   try {

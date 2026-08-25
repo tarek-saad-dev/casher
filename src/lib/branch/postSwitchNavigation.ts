@@ -22,3 +22,11 @@ export function resolvePostSwitchNavigationPath(pathname: string | null | undefi
 
   return path.startsWith('/') ? path : '/';
 }
+
+/** Hard navigation is only required when the current URL is branch-entity owned. */
+export function needsHardNavigationAfterViewSwitch(
+  pathname: string | null | undefined,
+): boolean {
+  const current = (pathname ?? '/').split('?')[0] || '/';
+  return resolvePostSwitchNavigationPath(pathname) !== current;
+}

@@ -39,7 +39,7 @@ interface ShiftSummaryData {
 }
 
 export default function ShiftControlPage() {
-  const { shift, day, hasActiveDay, hasActiveShift, refresh, user } = useSession();
+  const { shift, hasActiveDay, hasOpenShift, operationalBranch, refresh, user } = useSession();
   const canOpen = usePermission('shift.open');
   const canClose = usePermission('shift.close');
 
@@ -138,19 +138,21 @@ export default function ShiftControlPage() {
       </h1>
 
       {/* Current Shift Status */}
-      <div className={`rounded-xl border p-5 ${hasActiveShift ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-border bg-muted/20'}`}>
+      <div className={`rounded-xl border p-5 ${hasOpenShift ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-border bg-muted/20'}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {hasActiveShift ? (
+            {hasOpenShift ? (
               <CheckCircle2 className="w-6 h-6 text-emerald-500" />
             ) : (
               <XCircle className="w-6 h-6 text-muted-foreground" />
             )}
             <div>
               <h2 className="text-lg font-semibold">
-                {hasActiveShift ? 'وردية مفتوحة' : 'لا يوجد وردية مفتوحة'}
+                {hasOpenShift
+                  ? `وردية مفتوحة${operationalBranch ? ` — ${operationalBranch.shortName || operationalBranch.branchName}` : ''}`
+                  : 'لا يوجد وردية مفتوحة'}
               </h2>
-              {hasActiveShift && shift && (
+              {hasOpenShift && shift && (
                 <p className="text-sm text-muted-foreground">
                   {shift.ShiftName || `وردية #${shift.ShiftID}`} — {shift.UserName || user?.UserName}
                   <span className="mr-2">من {shift.StartTime?.trim()}</span>
@@ -161,16 +163,16 @@ export default function ShiftControlPage() {
           </div>
 
           <div className="flex gap-2">
-            {!hasActiveShift && hasActiveDay && canOpen && (
+            {!hasOpenShift && hasActiveDay && canOpen && (
               <Button onClick={() => { setShowOpenDialog(true); setSelectedShiftID(definitions[0]?.ShiftID || null); }} disabled={actionLoading}>
                 <Plus className="w-4 h-4 ml-2" />
                 فتح وردية
               </Button>
             )}
-            {!hasActiveDay && (
+            {!hasActiveDay && !hasOpenShift && (
               <p className="text-sm text-muted-foreground">يجب فتح يوم عمل أولاً</p>
             )}
-            {hasActiveShift && canClose && (
+            {hasOpenShift && canClose && (
               <Button variant="destructive" onClick={handleRequestClose} disabled={actionLoading}>
                 {actionLoading ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <X className="w-4 h-4 ml-2" />}
                 إغلاق الوردية

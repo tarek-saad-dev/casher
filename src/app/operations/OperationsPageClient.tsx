@@ -36,6 +36,8 @@ import {
   prefetchBookingV2Bootstrap,
   markOpsBookingUx,
 } from '@/lib/operations/bookingV2';
+import { shouldPlayNewBookingAlert } from '@/lib/operations/opsBoardPulse';
+import { playNewBookingChime, unlockNewBookingChime } from '@/lib/operations/newBookingChime';
 
 const boardFallback = (
   <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
@@ -110,6 +112,8 @@ interface FlowBoardBarber {
     customerName?: string;
     durationMinutes?: number;
     ticketCode?: string;
+    originKind?: 'website' | 'user' | 'system';
+    originLabel?: string;
     effectiveStatus?: string;
     actualStatus?: string;
     needsOperatorAction?: boolean;
@@ -285,22 +289,22 @@ export default function OperationsPage() {
   );
 
   const refreshFlowBoard = useCallback(
-    (date: string, options?: { reason?: string; force?: boolean }) =>
+    (date: string, options?: { reason?: string; force?: boolean; silent?: boolean }) =>
       refreshControllerRef.current.refreshFlowBoard(date, options),
     [],
   );
 
   /** Convenience: refresh the currently selected board date. */
   const fetchFlowBoard = useCallback(
-    (options?: { reason?: string; force?: boolean }) =>
+    (options?: { reason?: string; force?: boolean; silent?: boolean }) =>
       refreshFlowBoard(selectedDateRef.current, options),
     [refreshFlowBoard],
   );
 
   useEffect(() => {
-    setVoiceEnabled(isVoiceEnabled());
-    const saved = readMobileBarberSelection();
-    if (saved !== null) setMobileBarberSelection(saved);
+    const unlock = () => unlockNewBookingChime();
+    window.addEventListener('pointerdown', unlock, { once: true });
+    return () => window.removeEventListener('pointerdown', unlock);
   }, []);
 
   useEffect(() => {
@@ -314,40 +318,55 @@ export default function OperationsPage() {
     });
   }, [selectedDate, fetchFlowBoard]);
 
-  // Poll availabilityVersion so ops picks up workforce mutations even without BroadcastChannel.
+  // Cheap pulse: refresh the heavy board only when bookings/queue/availability actually change.
   useEffect(() => {
     let cancelled = false;
-    let lastVersion = flowBoardData?.availabilityVersion ?? 0;
-    const id = window.setInterval(() => {
-      void (async () => {
-        try {
-          const scope = branchScopeRef.current;
-          const presence = presenceFilterRef.current;
-          const branchIdParam =
-            scope === 'all' || scope === 'active' ? scope : String(scope);
-          const qs = new URLSearchParams({
-            date: selectedDateRef.current,
-            branchId: branchIdParam,
-            presence,
-          });
-          const res = await fetch(`/api/operations/flow-board?${qs}`);
-          const data = (await res.json()) as FlowBoardResponse;
-          if (cancelled || !data.ok) return;
-          const next = data.availabilityVersion ?? 0;
-          if (next > lastVersion) {
-            lastVersion = next;
-            setFlowBoardData(data);
-          }
-        } catch {
-          /* ignore poll errors */
+    let fingerprint: string | null = null;
+    let maxBookingId: number | null = null;
+
+    const pulse = async () => {
+      try {
+        const scope = branchScopeRef.current;
+        const presence = presenceFilterRef.current;
+        const branchIdParam =
+          scope === 'all' || scope === 'active' ? scope : String(scope);
+        const qs = new URLSearchParams({
+          date: selectedDateRef.current,
+          branchId: branchIdParam,
+          presence,
+        });
+        const res = await fetch(`/api/operations/flow-board/pulse?${qs}`);
+        const data = (await res.json()) as {
+          ok?: boolean;
+          fingerprint?: string;
+          maxBookingId?: number;
+        };
+        if (cancelled || !data.ok || !data.fingerprint) return;
+
+        const nextMax = data.maxBookingId ?? 0;
+        if (shouldPlayNewBookingAlert(maxBookingId, nextMax)) {
+          playNewBookingChime();
+          showToast('حجز جديد وصل');
         }
-      })();
-    }, 15_000);
+        maxBookingId = nextMax;
+
+        if (fingerprint === data.fingerprint) return;
+        const isFirstSample = fingerprint === null;
+        fingerprint = data.fingerprint;
+        if (isFirstSample) return;
+        void fetchFlowBoard({ reason: 'pulse', silent: true });
+      } catch {
+        /* ignore pulse errors */
+      }
+    };
+
+    const id = window.setInterval(() => void pulse(), 5_000);
+    void pulse();
     return () => {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [flowBoardData?.availabilityVersion]);
+  }, [selectedDate, branchScope, presenceFilter, fetchFlowBoard, showToast]);
 
   useEffect(() => {
     let cancelled = false;
@@ -521,8 +540,8 @@ export default function OperationsPage() {
     void refreshFlowBoard(selectedDate, { reason: 'date-or-filters', force: true });
     if (refreshTimer.current) clearInterval(refreshTimer.current);
     refreshTimer.current = setInterval(() => {
-      void refreshFlowBoard(selectedDateRef.current, { reason: 'poll' });
-    }, 30000);
+      void refreshFlowBoard(selectedDateRef.current, { reason: 'poll', silent: true });
+    }, 60_000);
     return () => {
       if (refreshTimer.current) clearInterval(refreshTimer.current);
     };
@@ -696,7 +715,7 @@ export default function OperationsPage() {
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col bg-background" dir="rtl">
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-2 py-3 sm:gap-4 sm:px-4 sm:py-4 md:px-5 lg:px-6">
+      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden px-1 py-1 md:gap-4 md:px-4 md:py-4 lg:px-6">
         <OperationsControlPanel
           date={selectedDate}
           dateLabel={formatDateLabel(selectedDate)}
@@ -737,7 +756,7 @@ export default function OperationsPage() {
         />
 
         {quickQueueReprintTicket && (
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-sm">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-1 rounded-md border border-warning/30 bg-warning/10 px-1.5 py-1 text-[10px] md:gap-2 md:rounded-xl md:px-3 md:py-2 md:text-sm">
             <span className="font-medium text-foreground">
               تم إنشاء الدور {quickQueueReprintTicket.ticketCode}، لكن تعذرت الطباعة
             </span>
@@ -745,14 +764,14 @@ export default function OperationsPage() {
               <button
                 type="button"
                 onClick={handleQuickQueueReprint}
-                className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                className="rounded-md bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90 md:rounded-lg md:px-3 md:py-1.5 md:text-sm"
               >
                 إعادة الطباعة
               </button>
               <button
                 type="button"
                 onClick={() => setQuickQueueReprintTicket(null)}
-                className="rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-surface-muted"
+                className="rounded-md px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-surface-muted md:rounded-lg md:px-3 md:py-1.5 md:text-sm"
               >
                 إغلاق
               </button>
@@ -761,7 +780,7 @@ export default function OperationsPage() {
         )}
 
         {afterMidnight && selectedDate === getCairoBusinessDate() && (
-          <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-xs font-medium text-accent-foreground">
+          <div className="flex shrink-0 flex-wrap items-center justify-center gap-1 rounded-md border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[9px] font-medium text-accent-foreground md:gap-2 md:rounded-xl md:px-3 md:py-2 md:text-xs">
             <span>🌙</span>
             <span>وقت القاهرة بعد منتصف الليل — تعمل على يوم التشغيل السابق</span>
             <span className="opacity-60">|</span>
@@ -916,6 +935,7 @@ export default function OperationsPage() {
           })) || []}
           onCreated={(result?: BookingCreateSuccess) => {
             showToast('تم إنشاء الحجز بنجاح');
+            playNewBookingChime();
             const bookedDate = result?.actualDate;
             if (shouldRefreshBoardForBooking(selectedDateRef.current, bookedDate)) {
               void refreshFlowBoard(selectedDateRef.current, { reason: 'booking-created' }).catch(
@@ -968,7 +988,7 @@ export default function OperationsPage() {
       {jumpToBookingDate && (
         <button
           type="button"
-          className="fixed bottom-32 left-1/2 z-[60] -translate-x-1/2 rounded-xl border px-5 py-3 text-sm font-semibold shadow-2xl md:bottom-16"
+          className="fixed bottom-24 left-1/2 z-[60] -translate-x-1/2 rounded-lg border px-3 py-1.5 text-[11px] font-semibold shadow-2xl md:bottom-16 md:rounded-xl md:px-5 md:py-3 md:text-sm"
           style={{
             background: 'var(--card)',
             color: 'var(--foreground)',
@@ -986,7 +1006,7 @@ export default function OperationsPage() {
 
       {toast && (
         <div
-          className="fixed bottom-20 left-1/2 z-[60] -translate-x-1/2 rounded-xl border px-5 py-3 text-sm font-semibold shadow-2xl transition-all md:bottom-5"
+          className="fixed bottom-12 left-1/2 z-[60] -translate-x-1/2 rounded-lg border px-3 py-1.5 text-[11px] font-semibold shadow-2xl transition-all md:bottom-5 md:rounded-xl md:px-5 md:py-3 md:text-sm"
           style={{
             background: toast.ok ? 'var(--card)' : 'color-mix(in srgb, var(--destructive) 15%, transparent)',
             color: toast.ok ? 'var(--foreground)' : 'var(--destructive)',

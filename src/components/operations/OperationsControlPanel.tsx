@@ -68,10 +68,10 @@ interface Props {
 }
 
 const primaryBtnClass =
-  'h-11 min-h-[44px] gap-2 whitespace-nowrap rounded-xl px-4 text-sm font-semibold transition-all duration-150 focus-visible:ring-2 active:scale-[0.99] min-[768px]:h-[46px] md:h-[46px] [&_svg]:size-[18px]';
+  'h-6 min-h-0 gap-0.5 whitespace-nowrap rounded-md px-1.5 text-[10px] font-semibold transition-all duration-150 focus-visible:ring-2 active:scale-[0.99] [&_svg]:size-3 md:h-[46px] md:min-h-[46px] md:gap-2 md:rounded-xl md:px-4 md:text-sm md:[&_svg]:size-[18px]';
 
 const adminBtnClass =
-  'h-10 min-h-[42px] gap-1.5 rounded-lg px-3 text-[13px] font-medium whitespace-nowrap transition-all duration-150 min-[768px]:h-[42px] min-[768px]:text-sm [&_svg]:size-4';
+  'h-6 min-h-0 gap-0.5 rounded-md px-1.5 text-[10px] font-medium whitespace-nowrap transition-all duration-150 [&_svg]:size-3 md:h-[42px] md:min-h-[42px] md:gap-1.5 md:rounded-lg md:px-3 md:text-[13px] md:[&_svg]:size-4';
 
 const zoneDivider = 'hidden h-7 w-px shrink-0 bg-border/60 min-[1200px]:block';
 
@@ -90,11 +90,11 @@ function PrimaryActions({
 }) {
   const quickBtnClass = cn(
     primaryBtnClass,
-    'h-12 min-h-[48px] border-2 border-accent/50 bg-accent/15 text-[15px] font-bold text-accent-foreground shadow-sm hover:border-accent/65 hover:bg-accent/25 hover:shadow-md focus-visible:ring-accent/35 min-[390px]:col-span-2 md:col-span-1 min-[1200px]:col-auto min-[1200px]:min-w-[150px] md:h-[46px] md:min-h-[46px]',
+    'border-2 border-accent/50 bg-accent/15 font-bold text-accent-foreground shadow-sm hover:border-accent/65 hover:bg-accent/25 hover:shadow-md focus-visible:ring-accent/35 md:col-span-1 md:text-[15px] min-[1200px]:col-auto min-[1200px]:min-w-[150px]',
   );
 
   return (
-    <div className="grid grid-cols-1 gap-2 min-[390px]:grid-cols-2 md:grid-cols-2 min-[1200px]:flex min-[1200px]:flex-wrap min-[1200px]:items-center min-[1200px]:gap-2">
+    <div className="flex flex-wrap gap-1 md:grid md:grid-cols-2 md:gap-2 min-[1200px]:flex min-[1200px]:flex-wrap min-[1200px]:items-center min-[1200px]:gap-2">
       {onQuickQueue && (
         <Button
           type="button"
@@ -106,7 +106,7 @@ function PrimaryActions({
           className={quickBtnClass}
         >
           {quickQueueLoading ? (
-            <Loader2 className="size-[18px] shrink-0 animate-spin" />
+            <Loader2 className="size-3 shrink-0 animate-spin md:size-[18px]" />
           ) : (
             <TicketPlus className="shrink-0" />
           )}
@@ -119,7 +119,7 @@ function PrimaryActions({
         onClick={onCreateQueue}
         className={cn(
           primaryBtnClass,
-          'h-12 min-h-[48px] bg-primary text-[15px] font-bold text-primary-foreground shadow-sm hover:bg-primary/90 hover:shadow-md focus-visible:ring-primary/40 min-[390px]:col-span-1 md:h-[46px] md:min-h-[46px] min-[1200px]:col-auto',
+          'bg-primary font-bold text-primary-foreground shadow-sm hover:bg-primary/90 hover:shadow-md focus-visible:ring-primary/40 md:text-[15px] min-[1200px]:col-auto',
         )}
       >
         <Plus className="shrink-0" />
@@ -132,7 +132,7 @@ function PrimaryActions({
           onClick={onFindNearestQueue}
           className={cn(
             primaryBtnClass,
-            'h-12 min-h-[48px] border border-success/45 bg-success/20 text-[15px] font-bold text-success hover:bg-success/30 hover:border-success/55 focus-visible:ring-success/30 min-[390px]:col-span-1 md:h-[46px] md:min-h-[46px] min-[1200px]:col-auto',
+            'border border-success/45 bg-success/20 font-bold text-success hover:bg-success/30 hover:border-success/55 focus-visible:ring-success/30 md:text-[15px] min-[1200px]:col-auto',
           )}
         >
           <Zap className="shrink-0" />
@@ -145,7 +145,7 @@ function PrimaryActions({
         onClick={onCreateBooking}
         className={cn(
           primaryBtnClass,
-          'h-12 min-h-[48px] border-2 border-primary/40 bg-card text-[15px] font-bold text-foreground shadow-sm hover:border-primary/55 hover:bg-surface-muted hover:shadow-md focus-visible:ring-primary/30 min-[390px]:col-span-2 max-[389px]:col-span-1 md:col-span-1 md:h-[46px] md:min-h-[46px] min-[1200px]:col-auto',
+          'border-2 border-primary/40 bg-card font-bold text-foreground shadow-sm hover:border-primary/55 hover:bg-surface-muted hover:shadow-md focus-visible:ring-primary/30 md:col-span-1 md:text-[15px] min-[1200px]:col-auto',
         )}
       >
         <CalendarPlus className="shrink-0" />
@@ -187,10 +187,10 @@ function ManagementActions({
   onTogglePublicBooking: () => void;
 }) {
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1.5 md:gap-2 min-[1200px]:justify-center">
+    <div className="flex min-w-0 flex-nowrap items-center gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex-wrap md:gap-2 md:overflow-visible min-[1200px]:justify-center">
       <label
         className={cn(
-          'inline-flex h-10 min-h-[42px] items-center gap-2 rounded-lg border px-3 text-[13px] font-medium transition-colors min-[768px]:h-[42px] min-[768px]:text-sm',
+          'inline-flex h-6 min-h-0 items-center gap-1 rounded-md border px-1.5 text-[10px] font-medium transition-colors md:h-[42px] md:min-h-[42px] md:gap-2 md:rounded-lg md:px-3 md:text-sm',
           publicBookingEnabled
             ? 'border-success/35 bg-success/10 text-success'
             : 'border-destructive/30 bg-destructive/10 text-destructive',
@@ -202,7 +202,7 @@ function ManagementActions({
             : 'حجز الموقع متوقف — الموقع يخفي الحلاقين ويعرض رسالة الواتساب'
         }
       >
-        <Globe className="size-4 shrink-0" aria-hidden />
+        <Globe className="size-3 shrink-0 md:size-4" aria-hidden />
         <span className="whitespace-nowrap">
           {publicBookingEnabled ? 'حجز الموقع' : 'الحجز متوقف'}
         </span>
@@ -215,7 +215,7 @@ function ManagementActions({
               ? 'إيقاف الحجز من الموقع'
               : 'تفعيل الحجز من الموقع'
           }
-          className="h-5 w-9 data-[state=checked]:bg-success data-[state=unchecked]:bg-destructive/60"
+          className="h-3.5 w-6 [&>span]:h-3 [&>span]:w-3 [&>span]:data-[state=checked]:translate-x-2.5 md:h-5 md:w-9 md:[&>span]:h-4 md:[&>span]:w-4 md:[&>span]:data-[state=checked]:translate-x-4 data-[state=checked]:bg-success data-[state=unchecked]:bg-destructive/60"
         />
       </label>
       {onScheduleControl && (
@@ -261,7 +261,7 @@ function ManagementActions({
           <AlertTriangle />
           حجوزات تحتاج إجراء
           {typeof affectedBookingsCount === 'number' && affectedBookingsCount > 0 ? (
-            <span className="ms-1 rounded-full bg-orange-500/30 px-1.5 text-[11px] font-bold">
+            <span className="ms-0.5 rounded-full bg-orange-500/30 px-1 text-[9px] font-bold md:ms-1 md:px-1.5 md:text-[11px]">
               {affectedBookingsCount}
             </span>
           ) : null}
@@ -336,13 +336,13 @@ export function OperationsControlPanel({
     branchScope === 'all' ? 'all' : branchScope === 'active' ? 'active' : String(branchScope);
 
   const selectClass =
-    'h-10 min-h-[42px] rounded-lg border border-border/80 bg-surface-muted/40 px-2.5 text-[13px] font-medium text-foreground outline-none transition-colors hover:bg-surface-muted/70 focus-visible:ring-2 focus-visible:ring-primary/30 min-[768px]:h-[42px] min-[768px]:text-sm';
+    'h-6 min-h-0 rounded-md border border-border/80 bg-surface-muted/40 px-1.5 text-[10px] font-medium text-foreground outline-none transition-colors hover:bg-surface-muted/70 focus-visible:ring-2 focus-visible:ring-primary/30 md:h-[42px] md:min-h-[42px] md:rounded-lg md:px-2.5 md:text-sm';
 
   return (
-    <section className="flex shrink-0 flex-col gap-2 rounded-2xl border border-border/80 bg-card/80 px-3.5 py-2.5 shadow-sm backdrop-blur-sm md:px-4 md:py-3">
-      <div className="flex flex-wrap items-center gap-2 border-b border-border/50 pb-2">
-        <label className="inline-flex min-w-0 flex-1 items-center gap-1.5 sm:flex-none">
-          <Building2 className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+    <section className="flex shrink-0 flex-col gap-1 rounded-lg border border-border/80 bg-card/80 px-1.5 py-1 shadow-sm backdrop-blur-sm md:gap-2 md:rounded-2xl md:px-4 md:py-3">
+      <div className="flex flex-wrap items-center gap-1 border-b border-border/50 pb-1 md:gap-2 md:pb-2">
+        <label className="inline-flex min-w-0 flex-1 items-center gap-1 sm:flex-none md:gap-1.5">
+          <Building2 className="size-3 shrink-0 text-muted-foreground md:size-4" aria-hidden />
           <span className="sr-only">الفرع</span>
           <select
             className={cn(selectClass, 'min-w-0 flex-1 sm:min-w-[180px]')}
@@ -367,8 +367,8 @@ export function OperationsControlPanel({
           </select>
         </label>
 
-        <label className="inline-flex min-w-0 flex-1 items-center gap-1.5 sm:flex-none">
-          <Users className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        <label className="inline-flex min-w-0 flex-1 items-center gap-1 sm:flex-none md:gap-1.5">
+          <Users className="size-3 shrink-0 text-muted-foreground md:size-4" aria-hidden />
           <span className="sr-only">الصنايعية</span>
           <select
             className={cn(selectClass, 'min-w-0 flex-1 sm:min-w-[180px]')}
@@ -386,7 +386,7 @@ export function OperationsControlPanel({
 
       <div
         className={cn(
-          'grid grid-cols-1 gap-2',
+          'grid grid-cols-1 gap-1',
           'md:grid-cols-[minmax(0,1fr)_auto] md:grid-rows-[auto_auto] md:gap-x-3 md:gap-y-2.5',
           'min-[1200px]:grid-cols-[max-content_minmax(0,1fr)_max-content] min-[1200px]:grid-rows-1 min-[1200px]:items-center min-[1200px]:gap-4',
         )}
@@ -407,8 +407,8 @@ export function OperationsControlPanel({
           />
         </div>
 
-        <div className="order-2 flex flex-col gap-2 md:col-span-2 md:row-start-1 md:flex-row md:flex-wrap md:items-center md:gap-x-3 md:gap-y-2 min-[1200px]:contents">
-          <div className="flex shrink-0 items-center gap-3 min-[1200px]:col-start-1 min-[1200px]:row-start-1">
+        <div className="order-2 flex flex-col gap-1 md:col-span-2 md:row-start-1 md:flex-row md:flex-wrap md:items-center md:gap-x-3 md:gap-y-2 min-[1200px]:contents">
+          <div className="flex shrink-0 items-center gap-1 md:gap-3 min-[1200px]:col-start-1 min-[1200px]:row-start-1">
             <PrimaryActions
               onQuickQueue={onQuickQueue}
               quickQueueLoading={quickQueueLoading}

@@ -44,8 +44,11 @@ export async function POST(req: NextRequest) {
     if (branch instanceof NextResponse) return branch;
     const dayResolution = await resolveBranchDayForDate(branch.branchId, invDate);
     if (!dayResolution.ok) return dayResolution.response;
-    const branchId = branch.branchId;
-    const businessDayId = dayResolution.day.id;
+    const { finalizeHistoricalFinancialWrite } = await import('@/lib/branch/financialOwnershipPolicy');
+    const historical = finalizeHistoricalFinancialWrite(branch.branchId, dayResolution.day, body);
+    if (!historical.ok) return historical.response;
+    const branchId = historical.ownership.branchId;
+    const businessDayId = historical.ownership.businessDayId;
 
     const db = await getPool();
     const transaction = new sql.Transaction(db);
@@ -85,6 +88,7 @@ export async function POST(req: NextRequest) {
         .input('amount', sql.Decimal(10, 2), Number(amount))
         .input('notes', sql.NVarChar(sql.MAX), notesText || null)
         .input('paymentMethodId', sql.Int, paymentMethodId)
+        .input('shiftMoveId', sql.Int, historical.ownership.shiftMoveId)
         .input('branchId', sql.Int, branchId)
         .input('businessDayId', sql.Int, businessDayId);
 
@@ -96,7 +100,7 @@ export async function POST(req: NextRequest) {
           INSERTED.ExpINID, INSERTED.GrandTolal AS Amount, INSERTED.Notes,
           INSERTED.PaymentMethodID
         VALUES
-          (@invID, N'ايرادات', @invDate, @invTime, NULL, @expInId, @amount, N'in', @notes, NULL, @paymentMethodId, @branchId, @businessDayId)
+          (@invID, N'ايرادات', @invDate, @invTime, NULL, @expInId, @amount, N'in', @notes, @shiftMoveId, @paymentMethodId, @branchId, @businessDayId)
       `);
 
       const newRecord = insertRes.recordset[0];

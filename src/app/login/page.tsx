@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from '@/hooks/useSession';
-import { usePermissions } from '@/components/providers/PermissionsProvider';
 import LoginForm from '@/components/auth/LoginForm';
 import OpenShiftPrompt from '@/components/auth/OpenShiftPrompt';
 
@@ -16,33 +15,25 @@ interface LoginData {
   ShiftID?: number | null;
   redirectTo?: string;
   skipShiftPrompt?: boolean;
+  viewBranchLabel?: string | null;
 }
 
 export default function LoginPage() {
   const router = useRouter();
-  const { setUser, refresh, logout, openMyShift, user, isAuthenticated } = useSession();
-  const { reload: reloadPermissions } = usePermissions();
+  const { refresh, logout, openMyShift } = useSession();
   const [loginData, setLoginData] = useState<LoginData | null>(null);
   const [sessionState, setSessionState] = useState<{
     hasOpenDay: boolean;
     hasOpenShift: boolean;
   } | null>(null);
-  const [loading, setLoading] = useState(false);
 
-  // Set page title
   useEffect(() => {
     document.title = 'تسجيل الدخول | Cut Salon System';
   }, []);
 
   async function navigateAfterLogin(path: string) {
-    await reloadPermissions();
     if (AUTH_DEBUG) {
-      console.info('[login] session before redirect', {
-        isAuthenticated,
-        userId: user?.UserID,
-        userName: user?.UserName,
-        target: path,
-      });
+      console.info('[login] bootstrap complete, redirect', { target: path });
     }
     router.replace(path);
     router.refresh();
@@ -59,57 +50,45 @@ export default function LoginPage() {
     ActiveBranchCode?: string;
     BranchSessionVersion?: 1;
   }) {
-    setLoading(true);
-    try {
-      if (loginUser.ActiveBranchID == null || !loginUser.ActiveBranchCode) {
-        throw new Error('Login response missing active branch metadata');
-      }
-      setUser({
-        UserID: loginUser.UserID,
-        UserName: loginUser.UserName,
-        UserLevel: loginUser.UserLevel as 'admin' | 'user',
-        ActiveBranchID: loginUser.ActiveBranchID,
-        ActiveBranchCode: loginUser.ActiveBranchCode,
-        BranchSessionVersion: loginUser.BranchSessionVersion ?? 1,
-        defaultShiftId: loginUser.ShiftID ?? undefined,
-      });
-
-      await refresh();
-
-      if (AUTH_DEBUG) {
-        console.info('[login] session refreshed', { userId: loginUser.UserID });
-      }
-
-      if (loginUser.skipShiftPrompt) {
-        await navigateAfterLogin(loginUser.redirectTo ?? '/admin/reports/partners');
-        return;
-      }
-
-      const sessionRes = await fetch('/api/auth/session', { cache: 'no-store', credentials: 'same-origin' });
-      const sessionData = await sessionRes.json();
-
-      const hasOpenDay = !!sessionData.day;
-      const hasOpenShift = !!sessionData.shift;
-
-      if (hasOpenDay && hasOpenShift) {
-        await navigateAfterLogin(loginUser.redirectTo ?? '/');
-        return;
-      }
-
-      await reloadPermissions();
-
-      setSessionState({ hasOpenDay, hasOpenShift });
-      setLoginData({
-        UserID: loginUser.UserID,
-        UserName: loginUser.UserName,
-        UserLevel: loginUser.UserLevel as 'admin' | 'user',
-        ShiftID: loginUser.ShiftID,
-        redirectTo: loginUser.redirectTo,
-        skipShiftPrompt: loginUser.skipShiftPrompt,
-      });
-    } finally {
-      setLoading(false);
+    if (loginUser.ActiveBranchID == null || !loginUser.ActiveBranchCode) {
+      throw new Error('Login response missing active branch metadata');
     }
+
+    const bootstrap = await refresh();
+
+    if (AUTH_DEBUG) {
+      console.info('[login] bootstrap', { userId: loginUser.UserID, revision: bootstrap?.revision });
+    }
+
+    if (loginUser.skipShiftPrompt) {
+      await navigateAfterLogin(loginUser.redirectTo ?? '/admin/reports/partners');
+      return;
+    }
+
+    const hasOpenShift = !!bootstrap?.operational.shift;
+    if (hasOpenShift) {
+      await navigateAfterLogin(loginUser.redirectTo ?? '/');
+      return;
+    }
+
+    const viewDay = bootstrap?.view?.businessDay ?? bootstrap?.activeBranchState?.businessDay;
+    const hasOpenDay = !!viewDay;
+
+    setSessionState({ hasOpenDay, hasOpenShift });
+    setLoginData({
+      UserID: loginUser.UserID,
+      UserName: loginUser.UserName,
+      UserLevel: loginUser.UserLevel as 'admin' | 'user',
+      ShiftID: loginUser.ShiftID,
+      redirectTo: loginUser.redirectTo,
+      skipShiftPrompt: loginUser.skipShiftPrompt,
+      viewBranchLabel:
+        bootstrap?.view?.branch?.shortName ||
+        bootstrap?.view?.branch?.branchName ||
+        bootstrap?.view?.branch?.branchCode ||
+        bootstrap?.activeBranch?.branchCode ||
+        null,
+    });
   }
 
   async function handleOpenShift(shiftId: number) {
@@ -123,13 +102,11 @@ export default function LoginPage() {
       const data = await res.json();
       throw new Error(data.error || 'فشل فتح يوم العمل');
     }
-    // Refresh session state
-    await refresh();
-    const sessionRes = await fetch('/api/auth/session');
-    const sessionData = await sessionRes.json();
+    const bootstrap = await refresh();
+    const viewDay = bootstrap?.view?.businessDay ?? bootstrap?.activeBranchState?.businessDay;
     setSessionState({
-      hasOpenDay: !!sessionData.day,
-      hasOpenShift: !!sessionData.shift,
+      hasOpenDay: !!viewDay,
+      hasOpenShift: !!bootstrap?.operational.shift,
     });
   }
 
@@ -147,6 +124,7 @@ export default function LoginPage() {
             defaultShiftId={loginData.ShiftID ?? null}
             hasOpenDay={sessionState.hasOpenDay}
             isAdmin={loginData.UserLevel === 'admin'}
+            viewBranchLabel={loginData.viewBranchLabel}
             onOpenShift={handleOpenShift}
             onOpenDay={handleOpenDay}
             onLogout={logout}

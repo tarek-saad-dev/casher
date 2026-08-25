@@ -119,6 +119,8 @@ export async function executeEmployeeTip(params: {
   branchId: number;
   /** Nullable only for legacy records predating the business-day migration. */
   businessDayId: number | null;
+  /** OPEN ShiftSession id for current-day POS tips. */
+  shiftMoveId?: number | null;
 }): Promise<EmpLedgerTipResponse> {
   if (!isEmployeeLedgerDualWriteEnabled()) {
     throw new EmployeeTipError(
@@ -210,7 +212,7 @@ export async function executeEmployeeTip(params: {
       .input('GrandTolal', sql.Decimal(10, 2), tipAmount)
       .input('inOut', sql.NVarChar(5), 'in')
       .input('Notes', sql.NVarChar(sql.MAX), cashNotes)
-      .input('ShiftMoveID', sql.Int, null)
+      .input('ShiftMoveID', sql.Int, params.shiftMoveId ?? null)
       .input('PaymentMethodID', sql.Int, params.paymentMethodId)
       .input('EmpID', sql.Int, params.empId)
       .input('BranchID', sql.Int, params.branchId)

@@ -35,6 +35,8 @@ export interface FlowBoardBarber {
     customerName?: string;
     serviceNames?: string[];
     barberId?: number;
+    originKind?: 'website' | 'user' | 'system';
+    originLabel?: string;
     effectiveStatus?: string;
     actualStatus?: string;
     needsOperatorAction?: boolean;

@@ -60,6 +60,7 @@ let currentDbTarget: DbTarget =
 // Local Database Config
 const localConfig: sql.config = {
   server: process.env.LOCAL_DB_SERVER || process.env.DB_SERVER || "localhost",
+  port: parseInt(process.env.LOCAL_DB_PORT || process.env.DB_PORT || "1433", 10),
   database: process.env.LOCAL_DB_NAME || process.env.DB_DATABASE || process.env.DB_NAME || "HawaiDB",
   user: process.env.LOCAL_DB_USER || process.env.DB_USER || "",
   password: process.env.LOCAL_DB_PASSWORD || process.env.DB_PASSWORD || "",

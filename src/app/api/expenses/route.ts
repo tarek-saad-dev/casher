@@ -12,6 +12,10 @@ import {
   maybeScheduleAdvanceWhatsAppFromExpenseCategory,
 } from '@/lib/services/employeeAdvanceWhatsAppNotify';
 import { getCairoInvTimeDotStr } from '@/lib/businessDate';
+import {
+  branchErrorResponse,
+  lockOperationalWrite,
+} from '@/lib/branch/operationalGates';
 
 // GET /api/expenses — List expenses with optional filters
 export async function GET(req: NextRequest) {
@@ -148,13 +152,16 @@ export async function POST(req: NextRequest) {
     );
     const gated = await resolveBranchDayAndShiftForWrite(userID);
     if (!gated.ok) return gated.response;
-    if (!gated.shift) {
+    const { finalizeCurrentFinancialWrite } = await import('@/lib/branch/financialOwnershipPolicy');
+    const owned = finalizeCurrentFinancialWrite('expense.create', gated, body);
+    if (!owned.ok) return owned.response;
+    if (!gated.shift || owned.ownership.shiftMoveId == null) {
       log('rejected', { reason: 'no active shift for user', userID });
       return NextResponse.json({ error: 'لا يوجد وردية مفتوحة لهذا المستخدم — لا يمكن تسجيل مصروف' }, { status: 400 });
     }
-    const activeDay = { ID: gated.day.id, NewDay: gated.day.newDay };
-    const invDate = gated.day.newDay;
-    const shiftMoveID = gated.shift.id;
+    const activeDay = { ID: owned.ownership.businessDayId!, NewDay: owned.ownership.businessDate! };
+    const invDate = owned.ownership.businessDate!;
+    const shiftMoveID = owned.ownership.shiftMoveId;
     log('active-day-resolved', { dayId: activeDay.ID, invDate, branchId: gated.branch.branchId });
     log('active-shift-resolved', { shiftMoveID, userID: gated.shift.userId });
 
@@ -189,6 +196,13 @@ export async function POST(req: NextRequest) {
       await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
       transactionStarted = true;
       log('after-transaction-begin', { isolation: 'SERIALIZABLE' });
+
+      await lockOperationalWrite(transaction, {
+        branchId: owned.ownership.branchId,
+        businessDayId: owned.ownership.businessDayId!,
+        shiftSessionId: shiftMoveID,
+        requireShift: true,
+      });
 
       // ──── Idempotency: check for recent identical expense (within last 5 sec) ────
       log('before-idempotency-check');
@@ -251,8 +265,8 @@ export async function POST(req: NextRequest) {
         .input('Notes',           sql.NVarChar(sql.MAX), notesText)
         .input('ShiftMoveID',     sql.Int,              shiftMoveID)
         .input('PaymentMethodID', sql.Int,              body.paymentMethodId)
-        .input('BranchID',        sql.Int,              gated.branch.branchId)
-        .input('BusinessDayID',   sql.Int,              gated.day.id);
+        .input('BranchID',        sql.Int,              owned.ownership.branchId)
+        .input('BusinessDayID',   sql.Int,              owned.ownership.businessDayId);
 
       const insertResult = await cashReq.query(`
         INSERT INTO [dbo].[TblCashMove] (
@@ -334,9 +348,13 @@ export async function POST(req: NextRequest) {
           { status: 503 }
         );
       }
+      const mapped = branchErrorResponse(err);
+      if (mapped) return mapped;
       throw err;
     }
   } catch (err: unknown) {
+    const mapped = branchErrorResponse(err);
+    if (mapped) return mapped;
     const message = err instanceof Error ? err.message : 'Unknown error';
     log('unhandled-error', { error: message });
     console.error(`[expenses] ❌ POST /api/expenses FAILED: ${message}`);

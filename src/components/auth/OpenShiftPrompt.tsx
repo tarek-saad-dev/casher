@@ -28,6 +28,7 @@ interface OpenShiftPromptProps {
   defaultShiftId: number | null;
   hasOpenDay: boolean;
   isAdmin: boolean;
+  viewBranchLabel?: string | null;
   onOpenShift: (shiftId: number) => Promise<void>;
   onOpenDay: () => Promise<void>;
   onLogout: () => Promise<void>;
@@ -38,6 +39,7 @@ export default function OpenShiftPrompt({
   defaultShiftId,
   hasOpenDay,
   isAdmin,
+  viewBranchLabel,
   onOpenShift,
   onOpenDay,
   onLogout,
@@ -114,10 +116,10 @@ export default function OpenShiftPrompt({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive text-base sm:text-lg">
               <Store className="w-5 h-5" />
-              لا يوجد يوم عمل مفتوح
+              اليوم التشغيلي غير جاهز
             </DialogTitle>
             <DialogDescription className="text-sm sm:text-base">
-              مرحبًا {userName}، لا يوجد يوم عمل مفتوح حاليًا.
+              مرحبًا {userName}، اليوم التشغيلي غير جاهز حالياً{viewBranchLabel ? ` في «${viewBranchLabel}»` : ''}.
             </DialogDescription>
           </DialogHeader>
 
@@ -125,7 +127,7 @@ export default function OpenShiftPrompt({
             {isAdmin ? (
               <div className="bg-muted/50 rounded-lg p-3 sm:p-4">
                 <p className="text-sm mb-3 sm:mb-4">
-                  أنت المدير. هل تريد فتح يوم عمل جديد؟
+                  أنت المدير. هل تريد تجهيز اليوم التشغيلي؟
                 </p>
                 {error && (
                   <div className="text-xs sm:text-sm text-destructive bg-destructive/10 rounded-lg p-2.5 sm:p-3 mb-3 sm:mb-4">
@@ -141,12 +143,12 @@ export default function OpenShiftPrompt({
                     {openingDay ? (
                       <>
                         <Loader2 className="w-4 h-4 ml-2 animate-spin" />
-                        جاري الفتح...
+                        جاري التجهيز...
                       </>
                     ) : (
                       <>
                         <Store className="w-4 h-4 ml-2" />
-                        فتح يوم عمل جديد
+                        تجهيز اليوم في {viewBranchLabel || 'الفرع الحالي'}
                       </>
                     )}
                   </Button>
@@ -160,7 +162,7 @@ export default function OpenShiftPrompt({
               <div className="bg-destructive/10 rounded-lg p-3 sm:p-4 text-center">
                 <AlertCircle className="w-7 h-7 sm:w-8 sm:h-8 text-destructive mx-auto mb-2 sm:mb-3" />
                 <p className="text-sm mb-3 sm:mb-4">
-                  لا يوجد يوم عمل مفتوح. برجاء التواصل مع المدير لفتح يوم العمل.
+                  اليوم التشغيلي غير جاهز. برجاء التواصل مع المدير.
                 </p>
                 <Button variant="outline" onClick={onLogout} className="w-full h-11 sm:h-10">
                   <LogOut className="w-4 h-4 ml-2" />
@@ -184,7 +186,7 @@ export default function OpenShiftPrompt({
             لا توجد وردية مفتوحة
           </DialogTitle>
           <DialogDescription className="text-sm sm:text-base">
-            مرحبًا {userName}، لا توجد وردية مفتوحة حاليًا لحسابك.
+            مرحبًا {userName}، لا توجد وردية مفتوحة حالياً{viewBranchLabel ? ` في «${viewBranchLabel}»` : ''}.
           </DialogDescription>
         </DialogHeader>
 
@@ -247,7 +249,7 @@ export default function OpenShiftPrompt({
               ) : (
                 <>
                   <Clock className="w-4 h-4 ml-2" />
-                  فتح وردية
+                  بدء وردية{viewBranchLabel ? ` ${viewBranchLabel}` : ''}
                 </>
               )}
             </Button>

@@ -18,6 +18,7 @@ import {
   type AttendanceTimeFillRow,
 } from '@/lib/hr/attendance-default-fill';
 import { sqlTimeToHHmm } from '@/lib/timeUtils';
+import { persistNightlyDefaultFillAttendance } from '@/modules/attendance';
 
 /** Ops shorthand: D = Default fill (same as /admin/hr?tab=attendance). */
 export const NIGHTLY_INCOMPLETE_STATUS_CODE = 'D' as const;
@@ -102,17 +103,6 @@ export function deriveAttendanceStatusAfterFill(input: {
     lateMinutes: row.LateMinutes,
     earlyLeaveMinutes: row.EarlyLeaveMinutes,
   };
-}
-
-function timeToDate(timeStr: string | null | undefined): Date | null {
-  if (!timeStr || timeStr.trim() === '') return null;
-  const parts = timeStr.split(':').map(Number);
-  const h = parts[0] ?? 0;
-  const m = parts[1] ?? 0;
-  const s = parts[2] ?? 0;
-  const d = new Date(0);
-  d.setUTCHours(h, m, s, 0);
-  return d;
 }
 
 export interface FinalizeIncompleteAttendanceFilledRow {
@@ -410,57 +400,36 @@ export async function finalizeIncompleteAttendanceWithDefaults(
       }
 
       if (att) {
-        await new sql.Request(transaction)
-          .input('id', sql.Int, att.id)
-          .input('branchId', sql.Int, branchId)
-          .input('checkInTime', sql.Time, timeToDate(updated.CheckInTime))
-          .input('checkOutTime', sql.Time, timeToDate(updated.CheckOutTime))
-          .input('status', sql.NVarChar(50), updated.Status)
-          .input('lateMinutes', sql.Int, updated.LateMinutes)
-          .input('earlyLeaveMinutes', sql.Int, updated.EarlyLeaveMinutes)
-          .input('notes', sql.NVarChar(500), note)
-          .input('scheduledStart', sql.Time, timeToDate(schedStart))
-          .input('scheduledEnd', sql.Time, timeToDate(schedEnd))
-          .query(`
-            UPDATE dbo.TblEmpAttendance
-            SET
-              CheckInTime = @checkInTime,
-              CheckOutTime = @checkOutTime,
-              Status = @status,
-              LateMinutes = @lateMinutes,
-              EarlyLeaveMinutes = @earlyLeaveMinutes,
-              ScheduledStartTime = ISNULL(ScheduledStartTime, @scheduledStart),
-              ScheduledEndTime = ISNULL(ScheduledEndTime, @scheduledEnd),
-              Notes = CASE
-                WHEN Notes IS NULL OR LTRIM(RTRIM(Notes)) = N'' THEN @notes
-                ELSE Notes + N' | ' + @notes
-              END,
-              UpdatedAt = GETDATE()
-            WHERE ID = @id AND BranchID = @branchId
-          `);
+        await persistNightlyDefaultFillAttendance({
+          db: { request: () => new sql.Request(transaction) },
+          mode: 'update',
+          attendanceId: att.id,
+          branchId,
+          checkInTime: updated.CheckInTime,
+          checkOutTime: updated.CheckOutTime,
+          status: updated.Status,
+          lateMinutes: updated.LateMinutes,
+          earlyLeaveMinutes: updated.EarlyLeaveMinutes,
+          notes: note,
+          scheduledStart: schedStart,
+          scheduledEnd: schedEnd,
+        });
       } else {
-        await new sql.Request(transaction)
-          .input('branchId', sql.Int, branchId)
-          .input('empId', sql.Int, item.empId)
-          .input('workDate', sql.Date, workDate)
-          .input('checkInTime', sql.Time, timeToDate(updated.CheckInTime))
-          .input('checkOutTime', sql.Time, timeToDate(updated.CheckOutTime))
-          .input('status', sql.NVarChar(50), updated.Status)
-          .input('lateMinutes', sql.Int, updated.LateMinutes)
-          .input('earlyLeaveMinutes', sql.Int, updated.EarlyLeaveMinutes)
-          .input('notes', sql.NVarChar(500), note)
-          .input('scheduledStart', sql.Time, timeToDate(schedStart))
-          .input('scheduledEnd', sql.Time, timeToDate(schedEnd))
-          .query(`
-            INSERT INTO dbo.TblEmpAttendance
-              (BranchID, EmpID, WorkDate, CheckInTime, CheckOutTime, Status,
-               LateMinutes, EarlyLeaveMinutes, Notes,
-               ScheduledStartTime, ScheduledEndTime, CreatedAt)
-            VALUES
-              (@branchId, @empId, @workDate, @checkInTime, @checkOutTime, @status,
-               @lateMinutes, @earlyLeaveMinutes, @notes,
-               @scheduledStart, @scheduledEnd, GETDATE())
-          `);
+        await persistNightlyDefaultFillAttendance({
+          db: { request: () => new sql.Request(transaction) },
+          mode: 'insert',
+          branchId,
+          empId: item.empId,
+          workDate,
+          checkInTime: updated.CheckInTime,
+          checkOutTime: updated.CheckOutTime,
+          status: updated.Status,
+          lateMinutes: updated.LateMinutes,
+          earlyLeaveMinutes: updated.EarlyLeaveMinutes,
+          notes: note,
+          scheduledStart: schedStart,
+          scheduledEnd: schedEnd,
+        });
       }
 
       filled.push({

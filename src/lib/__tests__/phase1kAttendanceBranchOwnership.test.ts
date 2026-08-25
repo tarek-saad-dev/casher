@@ -30,17 +30,22 @@ describe('Phase 1K attendance branch ownership', () => {
   });
 
   it('branchAttendance service locks globally and validates assignment', () => {
-    const svc = read('src/lib/hr/attendance/branchAttendance.service.ts');
-    expect(svc).toContain('attendance-session:');
+    // Implementation owned by Attendance module; lib path is compatibility re-export.
+    const svc = read('src/modules/attendance/infra/legacyBranchAttendance.ts');
+    expect(svc).toContain('attendance-active-session:');
     expect(svc).toContain('sp_getapplock');
     expect(svc).toContain('assertEmployeeEligibleForBranchAttendance');
     expect(svc).toContain('ALREADY_OPEN');
     expect(svc).toContain('checkInEmployee');
     expect(svc).toContain('checkOutEmployee');
-    expect(svc).toContain('anyOpen.branchId === args.branch.branchId');
+    expect(svc).toContain('evaluateActiveOpenCreation');
+    expect(svc).toContain('conflict.branchId !== args.branch.branchId');
     // Wrong branch checkout is non-disclosing 404
-    expect(svc).toContain("code: string");
+    expect(svc).toContain('code: string');
     expect(svc).toMatch(/NOT_FOUND[\s\S]{0,40}404/);
+    const facade = read('src/lib/hr/attendance/branchAttendance.service.ts');
+    expect(facade).toContain('legacyBranchAttendance');
+    expect(facade).toContain('checkInEmployee');
   });
 
   it('attendance routes reject body BranchID and scope by session branch', () => {
@@ -48,22 +53,38 @@ describe('Phase 1K attendance branch ownership', () => {
     expect(admin).toContain('requireBranchOperationAccess');
     expect(admin).toContain('BranchID في الطلب غير مسموح');
     expect(admin).toContain('a.BranchID = @branchId');
-    expect(admin).toContain('assertEmployeeEligibleForBranchAttendance');
+    expect(admin).toContain('saveAdminAttendance');
     expect(admin).toContain('TblEmpBranchWorkSchedule');
     expect(admin).not.toMatch(/LEFT JOIN dbo\.TblEmpWorkSchedule/);
+
+    const adminPut = read(
+      'src/modules/attendance/application/AttendanceCommandService.ts',
+    );
+    expect(adminPut).toContain('assertEmployeeEligibleForBranchAttendance');
+    expect(adminPut).toContain('branchId');
 
     const bulk = read('src/app/api/admin/attendance/bulk/route.ts');
     expect(bulk).toContain('requireBranchOperationAccess');
     expect(bulk).toContain('BranchID في الطلب غير مسموح');
-    expect(bulk).toContain('AND BranchID = @branchId');
+    expect(bulk).toContain('saveAdminAttendanceBulk');
+    expect(read('src/modules/attendance/infra/AttendanceRepository.ts')).toContain(
+      'AND BranchID = @branchId',
+    );
 
     const emp = read('src/app/api/employees/attendance/route.ts');
     expect(emp).toContain('BranchID في الطلب غير مسموح');
     expect(emp).toContain('a.BranchID = @branchId');
+    expect(emp).toContain('saveLegacyEmployeeAttendance');
 
     const byId = read('src/app/api/employees/attendance/[id]/route.ts');
-    expect(byId).toContain('BranchID = @branchId');
-    expect(byId).toContain('غير موجود');
+    expect(byId).toContain('updateLegacyEmployeeAttendanceById');
+    expect(byId).toContain('BranchID في الطلب غير مسموح');
+    expect(read('src/modules/attendance/infra/AttendanceRepository.ts')).toContain(
+      'WHERE  ID = @id AND BranchID = @branchId',
+    );
+    expect(
+      read('src/modules/attendance/domain/legacyEmployeeAttendance.ts'),
+    ).toContain('غير موجود');
 
     const team = read('src/app/api/pos/team-attendance/route.ts');
     expect(team).toContain('requireBranchOperationAccess');
@@ -97,7 +118,11 @@ describe('Phase 1K attendance branch ownership', () => {
     const finalize = read('src/lib/hr/finalize-incomplete-attendance.ts');
     expect(finalize).toContain('options: { branchId: number }');
     expect(finalize).toContain('AND BranchID = @branchId');
-    expect(finalize).toContain('(BranchID, EmpID, WorkDate');
+    expect(finalize).toContain('persistNightlyDefaultFillAttendance');
+    const repo = read('src/modules/attendance/infra/AttendanceRepository.ts');
+    expect(repo).toContain('(BranchID, EmpID, WorkDate');
+    expect(repo).toContain('insertNightlyDefaultFillAttendance');
+    expect(repo).toContain('updateNightlyDefaultFillAttendance');
   });
 
   it('employee WhatsApp uses attendance branch names, not false default', () => {

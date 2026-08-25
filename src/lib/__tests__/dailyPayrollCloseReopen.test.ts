@@ -185,7 +185,6 @@ describe('Phase 4 CLOSED mutation guards', () => {
     const ledgerQ = read(
       'src/lib/payroll/employee-target/employee-daily-target-ledger-query.service.ts',
     );
-    const att = read('src/app/api/admin/attendance/route.ts');
     const bulk = read('src/app/api/admin/attendance/bulk/route.ts');
     const genRoute = read('src/app/api/payroll/daily/generate/route.ts');
     const tgtRoute = read('src/app/api/payroll/daily/targets/generate/route.ts');
@@ -194,14 +193,10 @@ describe('Phase 4 CLOSED mutation guards', () => {
     expect(tgt).toContain('assertEmpBranchWorkDayMutable');
     expect(ledgerQ).toContain('assertEmpBranchWorkDayMutable');
     expect(ledgerQ).toContain('if (!body.dryRun)');
-    expect(att).toContain('assertEmpBranchWorkDayMutable');
-    expect(bulk).toContain('assertEmpBranchWorkDayMutable');
-    expect(read('src/app/api/employees/attendance/route.ts')).toContain(
+    expect(read('src/modules/attendance/application/AttendanceCommandService.ts')).toContain(
       'assertEmpBranchWorkDayMutable',
     );
-    expect(read('src/app/api/employees/attendance/[id]/route.ts')).toContain(
-      'assertEmpBranchWorkDayMutable',
-    );
+    expect(bulk).toContain('saveAdminAttendanceBulk');
     expect(genRoute).toContain('isEmpBranchWorkDayCloseError');
     expect(tgtRoute).toContain('isEmpBranchWorkDayCloseError');
   });

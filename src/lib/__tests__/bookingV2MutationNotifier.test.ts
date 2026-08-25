@@ -147,12 +147,9 @@ describe('B8.6 weak-path wiring', () => {
   });
 
   it('freelance/attendance outside admin sync wired', () => {
-    expect(read('src/app/api/employees/attendance/route.ts')).toContain(
-      'employeeDayChanged',
-    );
-    expect(read('src/app/api/employees/attendance/[id]/route.ts')).toContain(
-      'employeeDayChanged',
-    );
+    expect(
+      read('src/modules/attendance/application/AttendanceCommandService.ts'),
+    ).toContain('employeeDayChanged');
     expect(read('src/lib/hr/finalize-incomplete-attendance.ts')).toContain(
       'employeeDayChanged',
     );

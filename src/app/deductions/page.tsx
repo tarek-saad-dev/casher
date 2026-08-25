@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import ShiftRequiredOverlay from '@/components/session/ShiftRequiredOverlay';
+import { useShiftOperationalGate } from '@/components/session/ShiftOperationalGateProvider';
 import DeductionReceiptPopup from '@/components/deductions/DeductionReceiptPopup';
 import EditDeductionModal from '@/components/deductions/EditDeductionModal';
 import MonthlySummary from '@/components/deductions/MonthlySummary';
@@ -55,7 +55,8 @@ interface DeductionRecord {
 }
 
 export default function DeductionsPage() {
-  const { shift, hasActiveShift } = useSession();
+  const { shift } = useSession();
+  const { ensureShiftWrite } = useShiftOperationalGate();
 
   // ──── Lookup data ────
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -259,6 +260,7 @@ export default function DeductionsPage() {
     const amountNum = parseFloat(amount);
     if (!amountNum || amountNum <= 0) { setSaveError('يجب إدخال مبلغ صحيح أكبر من صفر'); return; }
     if (!paymentMethodId) { setSaveError('يجب اختيار طريقة الدفع'); return; }
+    if (!(await ensureShiftWrite())) return;
 
     setSaving(true);
     try {
@@ -319,7 +321,7 @@ export default function DeductionsPage() {
     } finally {
       setSaving(false);
     }
-  }, [selectedEmployeeId, amount, paymentMethodId, notes, paymentMethods, resetForm, loadDeductions]);
+  }, [selectedEmployeeId, amount, paymentMethodId, notes, paymentMethods, resetForm, loadDeductions, ensureShiftWrite]);
 
   // ──── Delete deduction ────
   const handleDelete = useCallback(async (id: number, invID: number) => {
@@ -365,7 +367,6 @@ export default function DeductionsPage() {
 
   return (
     <div className="flex flex-col lg:flex-row h-screen overflow-hidden relative" dir="rtl">
-      <ShiftRequiredOverlay />
 
       {/* ═══════════ LEFT PANEL: History + Summary ═══════════ */}
       <div className="flex-1 flex flex-col overflow-hidden bg-background order-1 lg:order-1 min-h-0">

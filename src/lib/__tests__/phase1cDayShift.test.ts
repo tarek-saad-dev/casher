@@ -8,6 +8,9 @@ describe('Phase 1C business day service rules', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.doMock('server-only', () => ({}));
+    vi.doMock('@/modules/operations/application/reconcileBusinessDay', () => ({
+      ensureBusinessDayCurrent: vi.fn(async () => ({ branchId: 1, action: 'NO_OP', stale: false })),
+    }));
   });
 
   it('rejects opening a second active day in the same branch', async () => {
@@ -16,6 +19,9 @@ describe('Phase 1C business day service rules', () => {
         const api: any = {
           input: () => api,
           query: async (sqlText: string) => {
+            if (sqlText.includes('FROM dbo.TblBranch')) {
+              return { recordset: [{ BranchID: 1 }] };
+            }
             if (sqlText.includes('UPDLOCK') && sqlText.includes('Status = 1')) {
               return {
                 recordset: [
@@ -93,42 +99,60 @@ describe('Phase 1C shift service rules', () => {
   });
 
   it('rejects opening a second shift on the same branch', async () => {
-    vi.doMock('@/lib/branch/businessDay', () => ({
-      getOpenBusinessDay: vi.fn(async () => ({
-        id: 5,
-        branchId: 2,
-        newDay: '2026-07-22',
-        status: true,
-      })),
-      validateBusinessDayBelongsToBranch: vi.fn(),
-    }));
-    vi.doMock('@/lib/db', () => ({
-      getPool: vi.fn(async () => ({
-        request: () => {
-          const api: any = {
-            input: () => api,
-            query: async () => ({
-              recordset: [
-                {
-                  ID: 99,
-                  BranchID: 2,
-                  BusinessDayID: 5,
-                  NewDay: '2026-07-22',
-                  UserID: 7,
-                  ShiftID: 1,
-                  StartDate: '2026-07-22',
-                  StartTime: '10:00 AM',
-                  EndDate: null,
-                  EndTime: null,
-                  Status: true,
-                },
-              ],
-            }),
-          };
-          return api;
+    const openShiftRow = {
+      ID: 99,
+      BranchID: 2,
+      BusinessDayID: 5,
+      NewDay: '2026-07-22',
+      UserID: 7,
+      ShiftID: 1,
+      StartDate: '2026-07-22',
+      StartTime: '10:00 AM',
+      EndDate: null,
+      EndTime: null,
+      Status: true,
+    };
+    const requestFactory = () => {
+      const api: any = {
+        input: () => api,
+        query: async (sqlText: string) => {
+          if (sqlText.includes('FROM dbo.TblUser')) {
+            return { recordset: [{ UserID: 7 }] };
+          }
+          if (sqlText.includes('FROM dbo.TblBranch')) {
+            return { recordset: [{ BranchID: 2 }] };
+          }
+          if (sqlText.includes('sm.Status = 1') && sqlText.includes('TblShiftMove')) {
+            return { recordset: [openShiftRow] };
+          }
+          if (sqlText.includes('FROM dbo.TblNewDay')) {
+            return {
+              recordset: [{ ID: 5, BranchID: 2, NewDay: '2026-07-22', Status: true }],
+            };
+          }
+          return { recordset: [] };
         },
-      })),
-      sql: { Int: 'Int', Date: 'Date', NChar: () => 'NChar', NVarChar: () => 'NVarChar' },
+      };
+      return api;
+    };
+    vi.doMock('@/lib/db', () => ({
+      getPool: vi.fn(async () => ({})),
+      sql: {
+        Int: 'Int',
+        Date: 'Date',
+        NChar: () => 'NChar',
+        NVarChar: () => 'NVarChar',
+        Transaction: class {
+          begin = async () => undefined;
+          commit = async () => undefined;
+          rollback = async () => undefined;
+        },
+        Request: class {
+          constructor() {
+            return requestFactory();
+          }
+        },
+      },
     }));
 
     const { openShift } = await import('@/lib/branch/shiftSession');
@@ -156,87 +180,94 @@ describe('Phase 1C shift service rules', () => {
   });
 
   it('closes an other-branch open shift then opens on the active branch', async () => {
-    let call = 0;
-    vi.doMock('@/lib/branch/businessDay', () => ({
-      getOpenBusinessDay: vi.fn(async () => ({
-        id: 5,
-        branchId: 2,
-        newDay: '2026-07-22',
-        status: true,
-      })),
-      validateBusinessDayBelongsToBranch: vi.fn(),
-    }));
-    vi.doMock('@/lib/db', () => ({
-      getPool: vi.fn(async () => ({
-        request: () => {
-          const api: any = {
-            input: () => api,
-            query: async (sqlText: string) => {
-              call += 1;
-              // 1) getUserOpenShift → open on branch 1
-              if (call === 1) {
-                return {
-                  recordset: [
-                    {
-                      ID: 99,
-                      BranchID: 1,
-                      BusinessDayID: 1,
-                      NewDay: '2026-07-22',
-                      UserID: 7,
-                      ShiftID: 1,
-                      StartDate: '2026-07-22',
-                      StartTime: '09:00 AM',
-                      EndDate: null,
-                      EndTime: null,
-                      Status: true,
-                    },
-                  ],
-                };
-              }
-              // 2) finalizeCloseShift UPDATE + SELECT
-              if (call === 2 || String(sqlText).includes('UPDATE dbo.TblShiftMove')) {
-                return {
-                  recordset: [
-                    {
-                      ID: 99,
-                      BranchID: 1,
-                      BusinessDayID: 1,
-                      NewDay: '2026-07-22',
-                      UserID: 7,
-                      ShiftID: 1,
-                      StartDate: '2026-07-22',
-                      StartTime: '09:00 AM',
-                      EndDate: '2026-07-22',
-                      EndTime: '10:00:00 AM',
-                      Status: false,
-                    },
-                  ],
-                };
-              }
-              // 3) INSERT on active branch
-              return {
-                recordset: [
-                  {
-                    ID: 100,
-                    BranchID: 2,
-                    BusinessDayID: 5,
-                    NewDay: '2026-07-22',
-                    UserID: 7,
-                    ShiftID: 1,
-                    StartDate: '2026-07-22',
-                    StartTime: '10:00 AM',
-                    EndDate: null,
-                    EndTime: null,
-                    Status: true,
-                  },
-                ],
-              };
-            },
-          };
-          return api;
+    const sqlKinds: string[] = [];
+    const gleemOpen = {
+      ID: 99,
+      BranchID: 1,
+      BusinessDayID: 1,
+      NewDay: '2026-07-22',
+      UserID: 7,
+      ShiftID: 1,
+      StartDate: '2026-07-22',
+      StartTime: '09:00 AM',
+      EndDate: null,
+      EndTime: null,
+      Status: true,
+    };
+    const gleemClosed = { ...gleemOpen, EndDate: '2026-07-22', EndTime: '10:00:00 AM', Status: false };
+    const campOpened = {
+      ID: 100,
+      BranchID: 2,
+      BusinessDayID: 5,
+      NewDay: '2026-07-22',
+      UserID: 7,
+      ShiftID: 1,
+      StartDate: '2026-07-22',
+      StartTime: '10:00 AM',
+      EndDate: null,
+      EndTime: null,
+      Status: true,
+    };
+    const requestFactory = () => {
+      const api: any = {
+        input: () => api,
+        query: async (sqlText: string) => {
+          if (sqlText.includes('FROM dbo.TblUser')) {
+            sqlKinds.push('lockUser');
+            return { recordset: [{ UserID: 7 }] };
+          }
+          if (sqlText.includes('FROM dbo.TblBranch')) {
+            sqlKinds.push('lockTargetBranch');
+            return { recordset: [{ BranchID: 2 }] };
+          }
+          if (sqlText.includes('sm.Status = 1') && sqlText.includes('TblShiftMove')) {
+            sqlKinds.push('lockOpenShift');
+            return { recordset: [gleemOpen] };
+          }
+          if (sqlText.includes('FROM dbo.TblNewDay WITH (UPDLOCK')) {
+            sqlKinds.push('lockTargetDay');
+            return {
+              recordset: [{ ID: 5, BranchID: 2, NewDay: '2026-07-22', Status: true }],
+            };
+          }
+          if (sqlText.includes('FROM dbo.TblNewDay')) {
+            sqlKinds.push('getCurrentDay');
+            return {
+              recordset: [{ ID: 1, BranchID: 1, NewDay: '2026-07-22', Status: true }],
+            };
+          }
+          if (sqlText.includes('UPDATE dbo.TblShiftMove')) {
+            sqlKinds.push('closeOld');
+            return { recordset: [], rowsAffected: [1] };
+          }
+          if (sqlText.includes('INSERT INTO dbo.TblShiftMove')) {
+            sqlKinds.push('insertNew');
+            return { recordset: [campOpened] };
+          }
+          sqlKinds.push('selectClosed');
+          return { recordset: [gleemClosed] };
         },
-      })),
-      sql: { Int: 'Int', Date: 'Date', NChar: () => 'NChar', NVarChar: () => 'NVarChar' },
+      };
+      return api;
+    };
+    vi.doMock('@/lib/db', () => ({
+      getPool: vi.fn(async () => ({})),
+      sql: {
+        Int: 'Int',
+        Date: 'Date',
+        NChar: () => 'NChar',
+        NVarChar: () => 'NVarChar',
+        Transaction: class {
+          begin = async () => undefined;
+          commit = async () => undefined;
+          rollback = async () => undefined;
+        },
+        Request: class {
+          constructor() {
+            return requestFactory();
+          }
+        },
+      },
     }));
 
     const { openShift } = await import('@/lib/branch/shiftSession');
@@ -258,41 +289,54 @@ describe('Phase 1C shift service rules', () => {
     );
     expect(opened.id).toBe(100);
     expect(opened.branchId).toBe(2);
-    expect(call).toBeGreaterThanOrEqual(3);
+    expect(sqlKinds).toContain('closeOld');
+    expect(sqlKinds).toContain('insertNew');
+    expect(sqlKinds.indexOf('lockTargetDay')).toBeLessThan(sqlKinds.indexOf('closeOld'));
   });
 
   it('rejects closing a shift that belongs to another branch', async () => {
-    vi.doMock('@/lib/db', () => ({
-      getPool: vi.fn(async () => ({
-        request: () => {
-          const api: any = {
-            input: () => api,
-            query: async () => ({
-              recordset: [
-                {
-                  ID: 50,
-                  BranchID: 9,
-                  BusinessDayID: 3,
-                  NewDay: '2026-07-21',
-                  UserID: 1,
-                  ShiftID: 1,
-                  StartDate: '2026-07-21',
-                  StartTime: '10:00 AM',
-                  EndDate: null,
-                  EndTime: null,
-                  Status: true,
-                },
-              ],
-            }),
-          };
-          return api;
+    const otherBranchShift = {
+      ID: 50,
+      BranchID: 9,
+      BusinessDayID: 3,
+      NewDay: '2026-07-21',
+      UserID: 1,
+      ShiftID: 1,
+      StartDate: '2026-07-21',
+      StartTime: '10:00 AM',
+      EndDate: null,
+      EndTime: null,
+      Status: true,
+    };
+    const requestFactory = () => {
+      const api: any = {
+        input: () => api,
+        query: async (sqlText: string) => {
+          if (sqlText.includes('FROM dbo.TblUser')) {
+            return { recordset: [{ UserID: 1 }] };
+          }
+          return { recordset: [otherBranchShift] };
         },
-      })),
-      sql: { Int: 'Int', Date: 'Date', NVarChar: () => 'NVarChar' },
-    }));
-    vi.doMock('@/lib/branch/businessDay', () => ({
-      getOpenBusinessDay: vi.fn(),
-      validateBusinessDayBelongsToBranch: vi.fn(),
+      };
+      return api;
+    };
+    vi.doMock('@/lib/db', () => ({
+      getPool: vi.fn(async () => ({})),
+      sql: {
+        Int: 'Int',
+        Date: 'Date',
+        NVarChar: () => 'NVarChar',
+        Transaction: class {
+          begin = async () => undefined;
+          commit = async () => undefined;
+          rollback = async () => undefined;
+        },
+        Request: class {
+          constructor() {
+            return requestFactory();
+          }
+        },
+      },
     }));
 
     const { closeShift } = await import('@/lib/branch/shiftSession');
@@ -320,10 +364,13 @@ describe('resolveBranchDayAndShiftForWrite (shared financial gate)', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.doMock('server-only', () => ({}));
+    vi.doMock('@/modules/operations/application/reconcileBusinessDay', () => ({
+      ensureBusinessDayCurrent: vi.fn(async () => ({ branchId: 2, action: 'NO_OP' })),
+    }));
   });
 
-  it('does not block when user has an open shift only on another branch', async () => {
-    const branch = {
+  it('stamps financial writes to the OPEN shift branch even when ViewBranch differs', async () => {
+    const viewBranch = {
       userId: 7,
       branchId: 2,
       branchCode: 'CAMP_CAESAR',
@@ -335,11 +382,26 @@ describe('resolveBranchDayAndShiftForWrite (shared financial gate)', () => {
       canViewReports: true,
       canSwitch: true,
     };
+    const gleemShift = {
+      id: 99,
+      branchId: 1,
+      businessDayId: 10,
+      newDay: '2026-08-09',
+      userId: 7,
+      shiftId: 1,
+      status: true,
+    };
+    const gleemDay = {
+      id: 10,
+      branchId: 1,
+      newDay: '2026-08-09',
+      status: true,
+    };
 
     vi.doMock('@/lib/branch/context', () => ({
       isActiveBranchContext: () => true,
       requireActiveBranchContext: vi.fn(),
-      requireBranchOperationAccess: vi.fn(async () => branch),
+      requireBranchOperationAccess: vi.fn(async () => viewBranch),
     }));
     vi.doMock('@/lib/branch/businessDay', () => ({
       getOpenBusinessDay: vi.fn(async () => ({
@@ -349,32 +411,41 @@ describe('resolveBranchDayAndShiftForWrite (shared financial gate)', () => {
         status: true,
       })),
       getBusinessDayByDate: vi.fn(),
+      getBusinessDayById: vi.fn(async () => gleemDay),
       getBranchBusinessDate: vi.fn(() => '2026-08-09'),
     }));
     vi.doMock('@/lib/branch/shiftSession', () => ({
-      getUserOpenShift: vi.fn(async () => ({
-        id: 99,
-        branchId: 1,
-        businessDayId: 1,
-        newDay: '2026-08-09',
-        userId: 7,
-        shiftId: 1,
-        status: true,
-      })),
-      // Active branch has its own open shift
-      getUserOpenShiftForBranch: vi.fn(async (_userId: number, branchId: number) =>
-        branchId === 2
+      getUserOpenShift: vi.fn(async () => gleemShift),
+      getUserOpenShiftForBranch: vi.fn(async () => null),
+    }));
+    vi.doMock('@/lib/branch/repository', () => ({
+      getUserActiveStatus: vi.fn(async () => ({ exists: true, isDeleted: false })),
+      getBranchById: vi.fn(async (id: number) =>
+        id === 1
           ? {
-              id: 100,
-              branchId: 2,
-              businessDayId: 5,
-              newDay: '2026-08-09',
-              userId: 7,
-              shiftId: 1,
-              status: true,
+              branchId: 1,
+              branchCode: 'GLEEM',
+              branchName: 'جليم',
+              shortName: 'جليم',
+              timeZone: 'Africa/Cairo',
+              businessDayCutoffTime: '04:00:00',
+              isActive: true,
             }
-          : null,
+          : {
+              branchId: 2,
+              branchCode: 'CAMP_CAESAR',
+              isActive: true,
+            },
       ),
+      branchNow: () => new Date(),
+    }));
+    vi.doMock('@/lib/branch/access', () => ({
+      validateUserBranchAccess: vi.fn(async (_userId: number, branchId: number) => ({
+        canOperate: true,
+        canViewReports: true,
+        canSwitch: true,
+        branchId,
+      })),
     }));
 
     const { resolveBranchDayAndShiftForWrite } = await import(
@@ -383,13 +454,14 @@ describe('resolveBranchDayAndShiftForWrite (shared financial gate)', () => {
     const gated = await resolveBranchDayAndShiftForWrite(7);
     expect(gated.ok).toBe(true);
     if (gated.ok) {
-      expect(gated.shift?.id).toBe(100);
-      expect(gated.shift?.branchId).toBe(2);
-      expect(gated.branch.branchId).toBe(2);
+      expect(gated.shift?.id).toBe(99);
+      expect(gated.shift?.branchId).toBe(1);
+      expect(gated.branch.branchId).toBe(1);
+      expect(gated.day.id).toBe(10);
     }
   });
 
-  it('returns ok with null shift when active branch has no open shift', async () => {
+  it('falls back to the view-branch day when the user has no OPEN shift', async () => {
     const branch = {
       userId: 7,
       branchId: 2,
@@ -416,19 +488,27 @@ describe('resolveBranchDayAndShiftForWrite (shared financial gate)', () => {
         status: true,
       })),
       getBusinessDayByDate: vi.fn(),
+      getBusinessDayById: vi.fn(),
       getBranchBusinessDate: vi.fn(() => '2026-08-09'),
     }));
     vi.doMock('@/lib/branch/shiftSession', () => ({
-      getUserOpenShift: vi.fn(async () => ({
-        id: 99,
-        branchId: 1,
-        businessDayId: 1,
-        newDay: '2026-08-09',
-        userId: 7,
-        shiftId: 1,
-        status: true,
-      })),
+      getUserOpenShift: vi.fn(async () => null),
       getUserOpenShiftForBranch: vi.fn(async () => null),
+    }));
+    vi.doMock('@/lib/branch/repository', () => ({
+      getUserActiveStatus: vi.fn(async () => ({ exists: true, isDeleted: false })),
+      getBranchById: vi.fn(async () => ({
+        branchId: 2,
+        branchCode: 'CAMP_CAESAR',
+        isActive: true,
+      })),
+      branchNow: () => new Date(),
+    }));
+    vi.doMock('@/lib/branch/access', () => ({
+      validateUserBranchAccess: vi.fn(async () => ({
+        canOperate: true,
+        branchId: 2,
+      })),
     }));
 
     const { resolveBranchDayAndShiftForWrite } = await import(
@@ -438,6 +518,7 @@ describe('resolveBranchDayAndShiftForWrite (shared financial gate)', () => {
     expect(gated.ok).toBe(true);
     if (gated.ok) {
       expect(gated.shift).toBeNull();
+      expect(gated.branch.branchId).toBe(2);
     }
   });
 });

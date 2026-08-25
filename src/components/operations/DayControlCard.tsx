@@ -112,9 +112,9 @@ export default function DayControlCard({ day, daySummary, allOpenShifts, canOpen
               <CalendarDays className={cn('w-5 h-5', day ? 'text-success' : 'text-muted-foreground/70')} />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground/70 font-medium uppercase tracking-wider">يوم العمل</p>
+              <p className="text-xs text-muted-foreground/70 font-medium uppercase tracking-wider">اليوم التشغيلي</p>
               <h3 className="text-base font-bold text-foreground mt-0.5">
-                {day ? 'يوم مفتوح' : 'لا يوجد يوم مفتوح'}
+                {day ? fmtDate(day.NewDay) : 'لا يوجد يوم مفتوح'}
               </h3>
             </div>
           </div>
@@ -125,14 +125,14 @@ export default function DayControlCard({ day, daySummary, allOpenShifts, canOpen
               ? 'bg-success/15 text-success border border-success/30'
               : 'bg-surface-muted text-muted-foreground/70 border border-border'
           )}>
-            {day ? 'نشط' : 'مغلق'}
+            {day ? '● مفتوح' : 'مغلق'}
           </span>
         </div>
 
         {/* Day info */}
         {day ? (
           <div className="space-y-3">
-            <p className="text-sm text-foreground font-medium">{fmtDate(day.NewDay)}</p>
+            <p className="text-xs text-muted-foreground">التجهيز التلقائي — 08:00 صباحًا ✓</p>
             {daySummary && (
               <div className="grid grid-cols-2 gap-2">
                 <div className="bg-surface/60 rounded-lg p-3 border border-border/50">
@@ -287,7 +287,10 @@ export default function DayControlCard({ day, daySummary, allOpenShifts, canOpen
                   <div className="space-y-3">
                     <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 flex gap-2 text-xs text-destructive">
                       <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                      يوجد {allOpenShifts.length} وردية مفتوحة — يجب إغلاقها أولاً أو تفعيل الإغلاق التلقائي
+                      <div>
+                        <p className="font-semibold">لا يمكن إغلاق اليوم</p>
+                        <p className="mt-1">يوجد {allOpenShifts.length} ورديات مفتوحة:</p>
+                      </div>
                     </div>
                     <div className="space-y-2 max-h-40 overflow-y-auto">
                       {allOpenShifts.map(s => (
@@ -295,25 +298,30 @@ export default function DayControlCard({ day, daySummary, allOpenShifts, canOpen
                           <div className="flex items-center gap-2">
                             <Users className="w-3.5 h-3.5 text-muted-foreground/70" />
                             <span className="text-foreground">{s.UserName}</span>
-                            <span className="text-muted-foreground/60">—</span>
-                            <span className="text-muted-foreground">{s.ShiftName}</span>
                           </div>
-                          <span className="text-xs text-muted-foreground/70">{s.StartTime}</span>
+                          <span className="text-xs text-muted-foreground/70">{s.StartTime?.trim() || '—'}</span>
                         </div>
                       ))}
                     </div>
-                    <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg bg-surface-muted/40 border border-border hover:border-warning/40 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={forceClose}
-                        onChange={e => setForceClose(e.target.checked)}
-                        className="w-4 h-4 accent-warning"
-                      />
-                      <div>
-                        <p className="text-sm text-foreground font-medium">إغلاق الورديات تلقائياً</p>
-                        <p className="text-xs text-muted-foreground/70">سيتم قفل جميع الورديات المفتوحة بوقت الإغلاق الحالي</p>
-                      </div>
-                    </label>
+                    <details className="rounded-lg border border-border bg-surface-muted/30 p-3">
+                      <summary className="cursor-pointer text-sm font-medium text-muted-foreground">
+                        خيارات متقدمة
+                      </summary>
+                      <label className="mt-3 flex items-start gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={forceClose}
+                          onChange={e => setForceClose(e.target.checked)}
+                          className="mt-1 w-4 h-4 accent-warning"
+                        />
+                        <div>
+                          <p className="text-sm text-foreground font-medium">إغلاق اليوم بالقوة</p>
+                          <p className="text-xs text-muted-foreground/70">
+                            سيتم إنهاء الورديات المفتوحة تلقائيًا. استخدم فقط عند الضرورة.
+                          </p>
+                        </div>
+                      </label>
+                    </details>
                   </div>
                 ) : (
                   <div className="bg-success/10 border border-success/20 rounded-lg p-3 flex gap-2 text-sm text-success">

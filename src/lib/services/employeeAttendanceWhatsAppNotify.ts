@@ -1,13 +1,16 @@
 import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
-import { sendOtherWhatsAppMessage } from '@/lib/integrations/whatsapp';
+import {
+  ATTENDANCE_CHECK_IN_TEMPLATE_KEY,
+  ATTENDANCE_CHECK_OUT_TEMPLATE_KEY,
+  sendTemplateMessage,
+} from '@/modules/messaging';
 import { resolveEmployeeWhatsAppPhone } from '@/lib/integrations/whatsapp/payload-builders';
 import {
-  composeAttendanceCheckInWhatsAppMessage,
-  composeAttendanceCheckOutWhatsAppMessage,
   shouldNotifyAttendanceTimeChange,
 } from '@/lib/hr/attendance-whatsapp-message';
+import { formatTime12hAr } from '@/lib/reports/reportFormatters';
 import { sqlTimeToHHmm } from '@/lib/timeUtils';
 
 export type AttendanceWhatsAppEvent = 'check_in' | 'check_out';
@@ -17,6 +20,7 @@ export interface EmployeeAttendanceWhatsAppNotifyInput {
   employeeName?: string;
   event: AttendanceWhatsAppEvent;
   time: string;
+  branchId?: number;
 }
 
 /** Serialize employee WhatsApp sends — the bot handles one Chrome/WA request at a time. */
@@ -68,19 +72,32 @@ export async function notifyEmployeeAttendanceWhatsApp(
     }
 
     const employeeName = input.employeeName?.trim() || contact.employeeName;
-    const message =
+    const timeLabel = formatTime12hAr(input.time) ?? input.time.trim();
+    const templateKey =
       input.event === 'check_in'
-        ? composeAttendanceCheckInWhatsAppMessage(input.time)
-        : composeAttendanceCheckOutWhatsAppMessage(input.time);
+        ? ATTENDANCE_CHECK_IN_TEMPLATE_KEY
+        : ATTENDANCE_CHECK_OUT_TEMPLATE_KEY;
 
     console.log(
       `[pos-api]   📱 Attendance WhatsApp (${input.event}): ${employeeName} (${contact.phone}) ${input.time}`,
     );
 
-    const result = await sendOtherWhatsAppMessage({
-      phone: contact.phone,
-      customerName: employeeName,
-      message,
+    const result = await sendTemplateMessage({
+      templateKey,
+      recipient: { phone: contact.phone },
+      variables: {
+        time: timeLabel,
+        customerName: employeeName,
+      },
+      metadata: {
+        employeeId: input.empId,
+        attendanceEvent: input.event,
+        ...(typeof input.branchId === 'number' ? { branchId: input.branchId } : {}),
+      },
+      context: {
+        language: 'ar',
+        ...(typeof input.branchId === 'number' ? { branchId: input.branchId } : {}),
+      },
     });
 
     if (result.sent) {
@@ -142,6 +159,7 @@ export function scheduleAttendanceCheckInOutWhatsApp(input: {
   previousCheckOut?: unknown;
   checkInTime?: string | null;
   checkOutTime?: string | null;
+  branchId?: number;
 }): void {
   if (shouldNotifyAttendanceTimeChange(input.previousCheckIn, input.checkInTime)) {
     scheduleEmployeeAttendanceWhatsApp({
@@ -149,6 +167,7 @@ export function scheduleAttendanceCheckInOutWhatsApp(input: {
       employeeName: input.employeeName,
       event: 'check_in',
       time: sqlTimeToHHmm(input.checkInTime)!,
+      ...(typeof input.branchId === 'number' ? { branchId: input.branchId } : {}),
     });
   }
   if (shouldNotifyAttendanceTimeChange(input.previousCheckOut, input.checkOutTime)) {
@@ -157,6 +176,7 @@ export function scheduleAttendanceCheckInOutWhatsApp(input: {
       employeeName: input.employeeName,
       event: 'check_out',
       time: sqlTimeToHHmm(input.checkOutTime)!,
+      ...(typeof input.branchId === 'number' ? { branchId: input.branchId } : {}),
     });
   }
 }

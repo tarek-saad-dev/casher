@@ -21,12 +21,12 @@ export function BarberMobileSelector({ barbers, selected, onSelect, className }:
 
   return (
     <div className={cn('shrink-0', className)}>
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-luxury [-ms-overflow-style:none] [scrollbar-width:thin]">
+      <div className="flex gap-1 overflow-x-auto pb-0.5 scrollbar-luxury [-ms-overflow-style:none] [scrollbar-width:thin]">
         <button
           type="button"
           onClick={() => onSelect('all')}
           className={cn(
-            'shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition-colors',
+            'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors md:px-4 md:py-2 md:text-sm md:font-semibold',
             selected === 'all'
               ? 'border-primary bg-primary/15 text-primary'
               : 'border-border bg-surface-muted/50 text-muted-foreground hover:bg-surface-muted',
@@ -40,7 +40,7 @@ export function BarberMobileSelector({ barbers, selected, onSelect, className }:
             type="button"
             onClick={() => onSelect(barber.empId)}
             className={cn(
-              'shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition-colors',
+              'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors md:px-4 md:py-2 md:text-sm md:font-semibold',
               selected === barber.empId
                 ? 'border-primary bg-primary/15 text-primary'
                 : 'border-border bg-surface-muted/50 text-muted-foreground hover:bg-surface-muted',

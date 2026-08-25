@@ -167,51 +167,22 @@ export async function executeWorkOnDayOff(params: {
     sourceTag,
   });
 
-  const db = await getPool();
   const checkInTime = getCairoTimeStr() || cairoTimeStr(new Date());
   const reasonText =
     reason?.trim() ||
     'نزل يشتغل يوم إجازته — تسجيل حضور من متابعة الحضور';
   const notes = `${sourceTag}: ${reasonText}`.slice(0, 300);
 
-  await db
-    .request()
-    .input('empId', sql.Int, empId)
-    .input('workDate', sql.Date, date)
-    .input('branchId', sql.Int, branchId)
-    .input('checkIn', sql.VarChar(8), checkInTime.length === 5 ? `${checkInTime}:00` : checkInTime)
-    .input('status', sql.NVarChar(40), 'Present')
-    .input('notes', sql.NVarChar(300), notes)
-    .query(`
-      IF EXISTS (
-        SELECT 1 FROM dbo.TblEmpAttendance
-        WHERE EmpID = @empId AND WorkDate = @workDate AND BranchID = @branchId
-      )
-      BEGIN
-        UPDATE dbo.TblEmpAttendance
-        SET
-          Status = @status,
-          CheckInTime = CASE
-            WHEN CheckInTime IS NULL THEN TRY_CAST(@checkIn AS TIME)
-            WHEN Status IN (N'Absent', N'DayOff', N'Pending') THEN TRY_CAST(@checkIn AS TIME)
-            ELSE CheckInTime
-          END,
-          CheckOutTime = CASE
-            WHEN Status IN (N'Absent', N'DayOff') THEN NULL
-            ELSE CheckOutTime
-          END,
-          Notes = @notes,
-          UpdatedAt = SYSUTCDATETIME()
-        WHERE EmpID = @empId AND WorkDate = @workDate AND BranchID = @branchId
-      END
-      ELSE
-      BEGIN
-        INSERT INTO dbo.TblEmpAttendance
-          (BranchID, EmpID, WorkDate, CheckInTime, Status, Notes, CreatedAt)
-        VALUES
-          (@branchId, @empId, @workDate, TRY_CAST(@checkIn AS TIME), @status, @notes, GETDATE())
-      END
-    `);
+  const { persistWorkOnDayOffAttendance } = await import(
+    '@/modules/attendance/application/persistWorkOnDayOffAttendance'
+  );
+  await persistWorkOnDayOffAttendance({
+    empId,
+    workDate: date,
+    branchId,
+    checkInTime,
+    notes,
+  });
 
   return {
     ok: true,

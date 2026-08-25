@@ -41,6 +41,8 @@ export interface TimelineItem {
   serviceNames?: string[];
   ticketCode?: string;
   barberId?: number;
+  originKind?: 'website' | 'user' | 'system';
+  originLabel?: string;
   // Lifecycle fields (from queueLifecycleEngine)
   effectiveStatus?: string;
   actualStatus?: string;

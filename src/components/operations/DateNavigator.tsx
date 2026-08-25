@@ -19,10 +19,10 @@ interface Props {
 }
 
 const segmentBtn =
-  'inline-flex h-10 min-h-[42px] shrink-0 items-center justify-center border-0 bg-transparent px-2.5 text-sm font-medium transition-colors duration-150 hover:bg-surface-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-50 min-[768px]:h-[42px] md:px-3';
+  'inline-flex h-6 min-h-0 shrink-0 items-center justify-center border-0 bg-transparent px-1.5 text-[10px] font-medium transition-colors duration-150 hover:bg-surface-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-50 md:h-[42px] md:min-h-[42px] md:px-3 md:text-sm';
 
 const segmentIconBtn =
-  'inline-flex size-10 min-h-[42px] min-w-[42px] shrink-0 items-center justify-center border-0 bg-transparent transition-colors duration-150 hover:bg-surface-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset min-[768px]:size-[42px]';
+  'inline-flex size-6 min-h-0 min-w-0 shrink-0 items-center justify-center border-0 bg-transparent transition-colors duration-150 hover:bg-surface-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset md:size-[42px] md:min-h-[42px] md:min-w-[42px]';
 
 export function DateNavigator({
   date,
@@ -60,14 +60,14 @@ export function DateNavigator({
   return (
     <div
       className={cn(
-        'flex w-full shrink-0 items-center gap-2 md:w-auto',
+        'flex w-full shrink-0 items-center gap-1 md:w-auto md:gap-2',
         compact && 'md:w-auto',
         className,
       )}
     >
       <div
         className={cn(
-          'flex min-w-0 flex-1 items-center overflow-hidden rounded-xl border border-border/80 bg-surface-muted/30 md:flex-none',
+          'flex min-w-0 flex-1 items-center overflow-hidden rounded-md border border-border/80 bg-surface-muted/30 md:flex-none md:rounded-xl',
           compact && 'flex-1 md:flex-none',
         )}
         role="group"
@@ -88,7 +88,7 @@ export function DateNavigator({
           aria-label="اليوم السابق"
           title="اليوم السابق"
         >
-          <ChevronRight className="size-4 text-primary" />
+          <ChevronRight className="size-3 text-primary md:size-4" />
         </button>
 
         <div className="relative min-w-0 flex-1 border-s border-border/60" ref={calendarRef}>
@@ -97,12 +97,12 @@ export function DateNavigator({
             onClick={() => setShowCalendar(!showCalendar)}
             className={cn(
               segmentBtn,
-              'h-10 w-full min-w-0 gap-2 px-3 font-semibold text-foreground min-[768px]:h-[42px] md:min-w-[180px]',
+              'h-6 w-full min-w-0 gap-1 px-1.5 font-semibold text-foreground md:h-[42px] md:min-h-[42px] md:gap-2 md:px-3 md:min-w-[180px]',
             )}
             title="اختر تاريخ"
             aria-label="اختر تاريخ"
           >
-            <Calendar className="size-4 shrink-0 text-primary" />
+            <Calendar className="size-3 shrink-0 text-primary md:size-4" />
             <span className="truncate whitespace-nowrap">{dateLabel}</span>
           </button>
 
@@ -144,7 +144,7 @@ export function DateNavigator({
           aria-label="اليوم التالي"
           title="اليوم التالي"
         >
-          <ChevronLeft className="size-4 text-primary" />
+          <ChevronLeft className="size-3 text-primary md:size-4" />
         </button>
       </div>
 
@@ -154,11 +154,11 @@ export function DateNavigator({
         size="icon"
         onClick={onRefresh}
         disabled={loading}
-        className="size-10 min-h-[42px] min-w-[42px] shrink-0 rounded-xl border-border/80 bg-surface-muted/40 transition-all duration-150 hover:bg-surface-muted/70 focus-visible:ring-2 min-[768px]:size-[42px]"
+        className="size-6 min-h-0 min-w-0 shrink-0 rounded-md border-border/80 bg-surface-muted/40 transition-all duration-150 hover:bg-surface-muted/70 focus-visible:ring-2 md:size-[42px] md:min-h-[42px] md:min-w-[42px] md:rounded-xl"
         aria-label="تحديث لوحة التشغيل"
         title="تحديث"
       >
-        <RefreshCw className={cn('size-4', loading && 'animate-spin')} />
+        <RefreshCw className={cn('size-3 md:size-4', loading && 'animate-spin')} />
       </Button>
     </div>
   );

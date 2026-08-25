@@ -46,9 +46,12 @@ export default function WhatsAppDiagnosticsPage() {
   const [loading, setLoading] = useState(false);
   const [lastCheck, setLastCheck] = useState<string | null>(null);
 
-  const [testType, setTestType] = useState<'sale' | 'booking' | 'first_time'>('sale');
+  const [testType, setTestType] = useState<
+    'free_text' | 'sale' | 'booking' | 'first_time'
+  >('free_text');
   const [testPhone, setTestPhone] = useState('');
   const [testName, setTestName] = useState('');
+  const [testMessage, setTestMessage] = useState('أهلا بك في Cut Salon — اختبار');
   const [testLoading, setTestLoading] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
 
@@ -68,13 +71,19 @@ export default function WhatsAppDiagnosticsPage() {
 
   async function handleTestSend() {
     if (!testPhone.trim() || !testName.trim()) return;
+    if (testType === 'free_text' && !testMessage.trim()) return;
     setTestLoading(true);
     setTestResult(null);
     try {
       const res = await fetch('/api/admin/whatsapp/test-send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: testType, phone: testPhone.trim(), customerName: testName.trim() }),
+        body: JSON.stringify({
+          type: testType,
+          phone: testPhone.trim(),
+          customerName: testName.trim(),
+          ...(testType === 'free_text' ? { message: testMessage.trim() } : {}),
+        }),
       });
       const data = await res.json() as { result: TestResult };
       setTestResult(data.result ?? data);
@@ -165,11 +174,24 @@ export default function WhatsAppDiagnosticsPage() {
               onChange={(e) => setTestType(e.target.value as typeof testType)}
               className="w-full rounded-md border px-3 py-2 text-sm bg-background"
             >
-              <option value="sale">فاتورة بيع</option>
-              <option value="booking">تأكيد حجز</option>
-              <option value="first_time">عميل جديد (أول زيارة)</option>
+              <option value="free_text">نص حر (sendMessage)</option>
+              <option value="sale">فاتورة بيع (قالب)</option>
+              <option value="booking">تأكيد حجز (قالب)</option>
+              <option value="first_time">عميل جديد (قالب)</option>
             </select>
           </div>
+
+          {testType === 'free_text' && (
+            <div className="space-y-1">
+              <label className="text-sm font-medium">نص الرسالة</label>
+              <textarea
+                value={testMessage}
+                onChange={(e) => setTestMessage(e.target.value)}
+                className="w-full rounded-md border px-3 py-2 text-sm bg-background min-h-[80px]"
+                dir="rtl"
+              />
+            </div>
+          )}
 
           <div className="space-y-1">
             <label className="text-sm font-medium">رقم الهاتف</label>
@@ -197,7 +219,12 @@ export default function WhatsAppDiagnosticsPage() {
 
         <Button
           onClick={handleTestSend}
-          disabled={testLoading || !testPhone.trim() || !testName.trim()}
+          disabled={
+            testLoading
+            || !testPhone.trim()
+            || !testName.trim()
+            || (testType === 'free_text' && !testMessage.trim())
+          }
           className="gap-2 bg-green-600 hover:bg-green-700 text-white"
         >
           <Send className="w-4 h-4" />

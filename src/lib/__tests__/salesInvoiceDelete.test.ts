@@ -42,7 +42,11 @@ vi.mock('@/lib/branch', () => ({
   isActiveBranchContext: (v: unknown) => !!v && typeof v === 'object' && 'branchId' in (v as object),
   assertActiveBranchOwns: (activeBranchId: number, ownerBranchId: number) => activeBranchId === ownerBranchId,
   financialNotFoundResponse: () => new Response(JSON.stringify({ error: 'غير موجود' }), { status: 404 }),
-  loadInvoiceOwnership: vi.fn(async () => ({ branchId: 1, businessDayId: 1 })),
+  loadInvoiceOwnership: vi.fn(async () => ({ branchId: 1, businessDayId: 1, shiftMoveId: 9 })),
+  loadAndAuthorizeFinancialMutation: vi.fn(async () => ({
+    ok: true,
+    ownership: { branchId: 1, businessDayId: 1, shiftMoveId: 9, scope: 'SHIFT', businessDate: '2026-08-25' },
+  })),
 }));
 
 vi.mock('@/lib/branch/context', () => ({

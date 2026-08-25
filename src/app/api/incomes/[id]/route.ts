@@ -77,7 +77,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       );
 
     const body = await req.json();
-    const { invDate, amount, expInId, paymentMethodId, notes, shiftMoveId } =
+    const { invDate, amount, expInId, paymentMethodId, notes } =
       body;
 
     if (!invDate)
@@ -98,14 +98,15 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
         { status: 400 },
       );
 
-    const { requireBranchOperationAccess, isActiveBranchContext } = await import(
-      '@/lib/branch/context'
-    );
-    const { financialNotFoundResponse } = await import(
+    const { loadAndAuthorizeFinancialMutation, financialNotFoundResponse } = await import(
       '@/lib/branch/financialOwnership'
     );
-    const branch = await requireBranchOperationAccess();
-    if (!isActiveBranchContext(branch)) return branch;
+    const loaded = await loadAndAuthorizeFinancialMutation(
+      session.UserID,
+      { kind: 'cash_move', id: incomeId },
+      body,
+    );
+    if (!loaded.ok) return loaded.response;
 
     const auditResult = await executeAuditedAction({
       actionType: 'edit_income',
@@ -117,7 +118,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       reason: notes || null,
       loadOldData: async (transaction) => {
         const snap = await getIncomeSnapshot(transaction, incomeId);
-        if (!snap || Number(snap.BranchID) !== Number(branch.branchId)) return null;
+        if (!snap || Number(snap.BranchID) !== Number(loaded.ownership.branchId)) return null;
         return snap as unknown as Record<string, unknown>;
       },
       execute: async (transaction) =>
@@ -130,10 +131,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
             expInId,
             paymentMethodId,
             notes,
-            shiftMoveId,
             createdByUserId: session.UserID,
           },
-          branch.branchId,
+          loaded.ownership.branchId,
         ),
       loadNewData: async (transaction) =>
         getIncomeSnapshot(transaction, incomeId) as unknown as Record<string, unknown> | null,
@@ -179,14 +179,15 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
     const body = await req.json().catch(() => ({}));
     const reason = body.reason || null;
 
-    const { requireBranchOperationAccess, isActiveBranchContext } = await import(
-      '@/lib/branch/context'
-    );
-    const { financialNotFoundResponse } = await import(
+    const { loadAndAuthorizeFinancialMutation, financialNotFoundResponse } = await import(
       '@/lib/branch/financialOwnership'
     );
-    const branch = await requireBranchOperationAccess();
-    if (!isActiveBranchContext(branch)) return branch;
+    const loaded = await loadAndAuthorizeFinancialMutation(
+      session.UserID,
+      { kind: 'cash_move', id: incomeId },
+      body,
+    );
+    if (!loaded.ok) return loaded.response;
 
     const auditResult = await executeAuditedAction({
       actionType: 'delete_income',
@@ -198,11 +199,11 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
       reason,
       loadOldData: async (transaction) => {
         const snap = await getIncomeSnapshot(transaction, incomeId);
-        if (!snap || Number(snap.BranchID) !== Number(branch.branchId)) return null;
+        if (!snap || Number(snap.BranchID) !== Number(loaded.ownership.branchId)) return null;
         return snap as unknown as Record<string, unknown>;
       },
       execute: async (transaction) =>
-        deleteIncome(transaction, incomeId, branch.branchId),
+        deleteIncome(transaction, incomeId, loaded.ownership.branchId),
       loadNewData: async () => null,
     });
 

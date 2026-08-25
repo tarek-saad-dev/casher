@@ -217,9 +217,11 @@ describe('syncBreakFromBlockRange (Ops → HR)', () => {
   });
 
   it('creates attendance row + appends break when missing', async () => {
+    // Pass branchId so resolveAttendanceBranchId skips GLEEM/home lookups.
+    // Queue: SELECT existing attendance ID (empty) → INSERT Present placeholder.
     const db = makeRecordingDb([
       { recordset: [] }, // no attendance yet
-      { recordset: [{ ID: 101 }] }, // insert attendance
+      { recordset: [{ ID: 101 }] }, // insert attendance placeholder
     ]);
     loadBreaksByAttendanceIds.mockResolvedValueOnce(new Map([[101, []]]));
     replaceAttendanceBreaks.mockResolvedValueOnce(45);
@@ -231,6 +233,7 @@ describe('syncBreakFromBlockRange (Ops → HR)', () => {
       '14:00',
       '14:45',
       'كافي',
+      1, // branchId — required for deterministic fixture (legacy tests omitted this)
     );
 
     expect(ensureAttendanceBreakSchema).toHaveBeenCalledOnce();
@@ -260,7 +263,15 @@ describe('syncBreakFromBlockRange (Ops → HR)', () => {
       ]),
     );
 
-    const result = await syncBreakFromBlockRange(db, 5, '2026-07-15', '14:00', '15:00');
+    const result = await syncBreakFromBlockRange(
+      db,
+      5,
+      '2026-07-15',
+      '14:00',
+      '15:00',
+      null,
+      1,
+    );
     expect(result).toEqual({ attendanceId: 55, added: false });
     expect(replaceAttendanceBreaks).not.toHaveBeenCalled();
   });
@@ -283,7 +294,7 @@ describe('syncBreakFromBlockRange (Ops → HR)', () => {
       ]),
     );
 
-    await syncBreakFromBlockRange(db, 5, '2026-07-15', '16:00', '17:00');
+    await syncBreakFromBlockRange(db, 5, '2026-07-15', '16:00', '17:00', null, 1);
 
     expect(replaceAttendanceBreaks).toHaveBeenCalledWith(
       db,

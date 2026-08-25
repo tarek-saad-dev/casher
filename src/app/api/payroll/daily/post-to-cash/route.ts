@@ -8,6 +8,7 @@ import {
 } from '@/lib/payroll/legacyPostToCashFlags';
 import { requireBranchOperationAccess } from '@/lib/branch/context';
 import { resolveBranchDayForDate } from '@/lib/branch/operationalGates';
+import { finalizeHistoricalFinancialWrite } from '@/lib/branch/financialOwnershipPolicy';
 import { getCairoTimeStr } from '@/lib/businessDate';
 
 const DATE_RE   = /^\d{4}-\d{2}-\d{2}$/;
@@ -69,8 +70,10 @@ export async function POST(req: NextRequest) {
     if (branch instanceof NextResponse) return branch;
     const dayResolution = await resolveBranchDayForDate(branch.branchId, workDate);
     if (!dayResolution.ok) return dayResolution.response;
-    const branchId = branch.branchId;
-    const businessDayId = dayResolution.day.id;
+    const historical = finalizeHistoricalFinancialWrite(branch.branchId, dayResolution.day, body);
+    if (!historical.ok) return historical.response;
+    const branchId = historical.ownership.branchId;
+    const businessDayId = historical.ownership.businessDayId;
 
     const legacyWarning = getLegacyPostToCashWarning();
 

@@ -228,19 +228,13 @@ export async function relocateEmployeeDayBranch(args: {
   const moved = { attendance: 0, payroll: 0, targets: 0 };
 
   if (preview.willMove.attendance) {
-    const att = await db
-      .request()
-      .input('empId', sql.Int, args.empId)
-      .input('day', sql.Date, args.workDate)
-      .input('from', sql.Int, args.fromBranchId)
-      .input('to', sql.Int, args.toBranchId)
-      .query(`
-        UPDATE dbo.TblEmpAttendance
-        SET BranchID = @to
-        WHERE EmpID = @empId AND WorkDate = @day AND BranchID = @from
-          AND CheckInTime IS NOT NULL AND CheckOutTime IS NOT NULL
-      `);
-    moved.attendance = att.rowsAffected?.[0] ?? 0;
+    const { relocateClosedAttendanceFromBranch } = await import('@/modules/attendance');
+    moved.attendance = await relocateClosedAttendanceFromBranch({
+      empId: args.empId,
+      workDate: args.workDate,
+      fromBranchId: args.fromBranchId,
+      toBranchId: args.toBranchId,
+    });
   }
 
   if (preview.willMove.payrollIds.length > 0) {

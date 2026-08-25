@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool, sql } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import {
   isActiveBranchContext,
   requireBranchOperationAccess,
 } from '@/lib/branch';
-import { assertEmpBranchWorkDayMutable } from '@/lib/hr/empBranchWorkDayClose.service';
 import {
   empBranchWorkDayCloseErrorResponse,
   isEmpBranchWorkDayCloseError,
 } from '@/lib/hr/empBranchWorkDayClose.http';
+import {
+  updateLegacyEmployeeAttendanceById,
+  AttendanceCommandError,
+} from '@/modules/attendance';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -39,91 +41,27 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     }
     const { checkInTime, checkOutTime, status, notes } = body;
 
-    const db = await getPool();
+    const result = await updateLegacyEmployeeAttendanceById({
+      branchId: branch.branchId,
+      attendanceId: recordId,
+      checkInTime,
+      checkOutTime,
+      status,
+      notes,
+    });
 
-    const owned = await db
-      .request()
-      .input('id', sql.Int, recordId)
-      .query(`
-        SELECT ID, BranchID, WorkDate FROM dbo.TblEmpAttendance WHERE ID = @id
-      `);
-    if (!owned.recordset[0] || Number(owned.recordset[0].BranchID) !== branch.branchId) {
-      return NextResponse.json({ error: 'غير موجود' }, { status: 404 });
-    }
-
-    const workDateRaw = owned.recordset[0].WorkDate;
-    const workDate =
-      workDateRaw instanceof Date
-        ? `${workDateRaw.getFullYear()}-${String(workDateRaw.getMonth() + 1).padStart(2, '0')}-${String(workDateRaw.getDate()).padStart(2, '0')}`
-        : String(workDateRaw ?? '').slice(0, 10);
-    await assertEmpBranchWorkDayMutable(branch.branchId, workDate);
-
-    const setClauses: string[] = ['UpdatedAt = GETDATE()'];
-    const request = db.request();
-
-    if (checkInTime !== undefined) {
-      setClauses.push('CheckInTime  = @checkInTime');
-      request.input('checkInTime', sql.NVarChar(10), checkInTime);
-    }
-    if (checkOutTime !== undefined) {
-      setClauses.push('CheckOutTime = @checkOutTime');
-      request.input('checkOutTime', sql.NVarChar(10), checkOutTime);
-    }
-    if (status !== undefined) {
-      setClauses.push('Status       = @status');
-      request.input('status', sql.NVarChar(20), status);
-    }
-    if (notes !== undefined) {
-      setClauses.push('Notes        = @notes');
-      request.input('notes', sql.NVarChar(200), notes);
-    }
-
-    if (setClauses.length === 1) {
-      return NextResponse.json({ error: 'لا توجد بيانات للتعديل' }, { status: 400 });
-    }
-
-    request.input('id', sql.Int, recordId);
-    request.input('branchId', sql.Int, branch.branchId);
-    const result = await request.query(`
-      UPDATE dbo.TblEmpAttendance
-      SET    ${setClauses.join(', ')}
-      OUTPUT INSERTED.ID, INSERTED.BranchID, INSERTED.EmpID, INSERTED.WorkDate,
-             INSERTED.CheckInTime, INSERTED.CheckOutTime,
-             INSERTED.Status, INSERTED.Notes, INSERTED.UpdatedAt
-      WHERE  ID = @id AND BranchID = @branchId
-    `);
-
-    if (result.recordset.length === 0) {
-      return NextResponse.json({ error: 'غير موجود' }, { status: 404 });
-    }
-
-    const updated = result.recordset[0] as {
-      EmpID: number;
-      WorkDate: Date | string;
-      BranchID: number;
-    };
-    try {
-      const { AvailabilityMutationNotifier } = await import(
-        '@/lib/booking/AvailabilityMutationNotifier'
-      );
-      const ymd =
-        updated.WorkDate instanceof Date
-          ? updated.WorkDate.toISOString().slice(0, 10)
-          : String(updated.WorkDate).slice(0, 10);
-      await AvailabilityMutationNotifier.employeeDayChanged({
-        employeeId: Number(updated.EmpID),
-        businessDate: ymd,
-        branchId: Number(updated.BranchID),
-        reason: 'employees_attendance_update',
-      });
-    } catch {
-      /* best-effort */
-    }
-
-    return NextResponse.json(result.recordset[0]);
+    return NextResponse.json(result.row);
   } catch (err: unknown) {
     if (isEmpBranchWorkDayCloseError(err)) {
       return empBranchWorkDayCloseErrorResponse(err);
+    }
+    if (err instanceof AttendanceCommandError) {
+      return NextResponse.json(
+        err.code !== undefined
+          ? { error: err.message, code: err.code }
+          : { error: err.message },
+        { status: err.statusCode },
+      );
     }
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/employees/attendance/:id] PUT error:', message);

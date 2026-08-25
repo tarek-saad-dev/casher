@@ -346,7 +346,7 @@ export function SchedulerBoard({
   return (
     <section
       className={cn(
-        'relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/80 bg-card/30 shadow-sm',
+        'relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/80 bg-card/30 shadow-sm max-md:rounded-none max-md:border-x-0',
         className,
       )}
       dir="rtl"
@@ -371,16 +371,16 @@ export function SchedulerBoard({
       )}
 
       {showReturnToNow && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-3 z-40 flex justify-center px-3">
+        <div className="pointer-events-none absolute inset-x-0 bottom-10 z-40 flex justify-center px-3 md:bottom-3">
           <Button
             type="button"
             size="sm"
             onClick={() => scrollToCurrentTime('smooth')}
-            className="pointer-events-auto h-10 gap-1.5 rounded-full border border-success/30 bg-card/95 px-4 text-success shadow-lg backdrop-blur-sm hover:bg-success/10"
+            className="pointer-events-auto h-7 gap-1 rounded-full border border-success/30 bg-card/95 px-2.5 text-[11px] text-success shadow-lg backdrop-blur-sm hover:bg-success/10 md:h-10 md:gap-1.5 md:px-4 md:text-sm"
             aria-label="العودة للوقت الحالي"
             title="العودة للوقت الحالي"
           >
-            <LocateFixed className="size-4" />
+            <LocateFixed className="size-3 md:size-4" />
             العودة للوقت الحالي
           </Button>
         </div>
@@ -418,19 +418,20 @@ export function SchedulerBoard({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:hidden">
         <div
           ref={mobileScrollRef}
-          className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-20 scrollbar-luxury-v"
+          className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-11 scrollbar-luxury-v"
         >
           {mobileBarberSelection === 'all' ? (
-            <div className="space-y-4 p-2">
+            <div className="space-y-0">
               {displayBarbers.map((barber, index) => (
                 <div
                   key={`${barber.branchId ?? 'b'}-${barber.empId}`}
-                  className="overflow-hidden rounded-xl border border-border/70 bg-card/50"
+                  className="overflow-hidden border-b border-border/70 bg-card/50"
                 >
                   <BarberLane
                     barber={barber}
                     color={getBarberColor(barber.empId, index)}
                     fullWidth
+                    headerHeight={OPS_LAYOUT.HEADER_HEIGHT_MOBILE}
                     drag={dragHandlers}
                     cutPaste={getCutPasteForBarber(barber.empId)}
                     {...getQueueLaneProps(barber.empId)}
@@ -443,15 +444,19 @@ export function SchedulerBoard({
               <div
                 key={barber.empId}
                 className="flex w-full"
-                style={{ minHeight: totalHeight }}
+                style={{ minHeight: hours.length * HOUR_CELL_HEIGHT + OPS_LAYOUT.HEADER_HEIGHT_MOBILE }}
               >
-                <TimeAxis headerHeight={headerHeight} />
+                <TimeAxis
+                  headerHeight={OPS_LAYOUT.HEADER_HEIGHT_MOBILE}
+                  axisWidth={OPS_LAYOUT.TIME_AXIS_WIDTH_MOBILE}
+                />
                 <div className="relative min-w-0 flex-1">
-                  <CurrentTimeLine headerHeight={headerHeight} selectedDate={currentDate} />
+                  <CurrentTimeLine headerHeight={OPS_LAYOUT.HEADER_HEIGHT_MOBILE} selectedDate={currentDate} />
                   <BarberLane
                     barber={barber}
                     color={getBarberColor(barber.empId, index)}
                     fullWidth
+                    headerHeight={OPS_LAYOUT.HEADER_HEIGHT_MOBILE}
                     drag={dragHandlers}
                     cutPaste={getCutPasteForBarber(barber.empId)}
                     {...getQueueLaneProps(barber.empId)}

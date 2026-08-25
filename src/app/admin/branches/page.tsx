@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   Building2,
   Check,
@@ -22,6 +22,7 @@ import {
   type ClientSwitchableBranch,
 } from '@/lib/branch/postSwitchClient';
 import type { SerializedBranch } from '@/lib/branch/serializeBranch';
+import { useSession } from '@/hooks/useSession';
 
 const LIFECYCLE_LABEL: Record<string, string> = {
   SETUP: 'إعداد',
@@ -38,6 +39,8 @@ function timeShort(value: string | null | undefined): string {
 
 export default function AdminBranchesPage() {
   const pathname = usePathname();
+  const router = useRouter();
+  const session = useSession();
   const [branches, setBranches] = useState<SerializedBranch[]>([]);
   const [activeBranchId, setActiveBranchId] = useState<number | null>(null);
   const [switchable, setSwitchable] = useState<ClientSwitchableBranch[]>([]);
@@ -88,12 +91,21 @@ export default function AdminBranchesPage() {
     const result = await performBranchSwitch({
       branchId,
       currentPathname: pathname,
+      onSoftSwitch: async () => {
+        await session.refresh();
+        router.refresh();
+        await load();
+      },
     });
     if (!result.ok) {
       setSwitchingId(null);
       if (result.error !== 'CANCELLED') {
         setError(result.message);
       }
+      return;
+    }
+    if (result.navigation === 'soft') {
+      setSwitchingId(null);
     }
   }
 

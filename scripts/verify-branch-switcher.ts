@@ -140,21 +140,27 @@ function checkSourceContracts(failures: string[]) {
     failures.push('switchBranch.ts does not audit via writeSensitiveAuditEvent');
   }
 
-  // 3. BranchSwitcher uses performBranchSwitch; postSwitchClient hard-navigates via location.assign
+  // 3. BranchSwitcher uses performBranchSwitch; compatible routes soft-refresh, entity URLs hard-nav
   const switcherSrc = read('src/components/session/BranchSwitcher.tsx');
   if (!switcherSrc.includes('performBranchSwitch')) {
     failures.push('BranchSwitcher.tsx does not use performBranchSwitch()');
   }
-  if (/useRouter/.test(switcherSrc)) {
-    failures.push('BranchSwitcher.tsx imports useRouter — post-switch flow must not rely on client-router refresh');
+  if (!switcherSrc.includes('onSoftSwitch')) {
+    failures.push('BranchSwitcher.tsx does not pass onSoftSwitch for view-branch refresh');
   }
 
   const clientSrc = read('src/lib/branch/postSwitchClient.ts');
   if (!clientSrc.includes('window.location.assign')) {
-    failures.push('postSwitchClient.ts does not perform a hard navigation via window.location.assign');
+    failures.push('postSwitchClient.ts does not retain hard navigation for entity-owned routes');
+  }
+  if (!clientSrc.includes('onSoftSwitch')) {
+    failures.push('postSwitchClient.ts is missing the soft view-branch switch path');
   }
   if (/useRouter/.test(clientSrc)) {
-    failures.push('postSwitchClient.ts imports useRouter — must rely solely on window.location.assign');
+    failures.push('postSwitchClient.ts imports useRouter — navigation helper must stay framework-free');
+  }
+  if (clientSrc.includes('/api/shift') || /handoffShift/.test(clientSrc)) {
+    failures.push('postSwitchClient.ts must not mutate shifts');
   }
 
   // 4. Sensitive action registry
@@ -165,7 +171,7 @@ function checkSourceContracts(failures: string[]) {
 
   // 5. Barrel re-exports
   const indexSrc = read('src/lib/branch/index.ts');
-  for (const name of ['listSwitchableBranchesForUser', 'switchActiveBranch', 'resolvePostSwitchNavigationPath']) {
+  for (const name of ['listSwitchableBranchesForUser', 'switchActiveBranch', 'resolvePostSwitchNavigationPath', 'needsHardNavigationAfterViewSwitch']) {
     if (!indexSrc.includes(name)) failures.push(`src/lib/branch/index.ts does not re-export ${name}`);
   }
 }

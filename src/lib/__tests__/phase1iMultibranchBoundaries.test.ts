@@ -74,7 +74,7 @@ describe('Phase 1I multibranch boundaries', () => {
     expect(src).toContain('resolveOwnerReportBranchIds');
     expect(src).toContain('buildOwnerBranchMessages');
     expect(src).toContain('for (const branchMsg of preview.messages)');
-    expect(src).toContain('sendQuickWhatsAppMessage');
+    expect(src).toContain('sendTemplateMessage');
     expect(src).not.toContain("getBranchByCode('GLEEM')");
   });
 

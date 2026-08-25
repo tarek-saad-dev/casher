@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
-import { resolveBranchDayAndShiftForWrite } from "@/lib/branch/operationalGates";
+import { resolveBranchDayAndShiftForWrite, lockOperationalWrite, branchErrorResponse } from "@/lib/branch/operationalGates";
+import { finalizeCurrentFinancialWrite } from "@/lib/branch/financialOwnershipPolicy";
 import {
   assertBookingOwnedByActiveBranch,
   bookingQueueNotFoundResponse,
@@ -27,8 +28,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
     // caller's active branch; the source booking must belong to that branch too.
     const gated = await resolveBranchDayAndShiftForWrite(userID);
     if (!gated.ok) return gated.response;
-    const branchId = gated.branch.branchId;
-    const businessDayId = gated.day.id;
+    const owned = finalizeCurrentFinancialWrite("booking.convert", gated, body);
+    if (!owned.ok) return owned.response;
+    const branchId = owned.ownership.branchId;
+    const businessDayId = owned.ownership.businessDayId!;
 
     const db = await getPool();
 
@@ -62,10 +65,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "لا توجد خدمات لتحويلها" }, { status: 400 });
 
     // Business day + shift already enforced by resolveBranchDayAndShiftForWrite above.
-    const invDate = gated.day.newDay;
-    if (!gated.shift)
+    const invDate = owned.ownership.businessDate!;
+    if (!gated.shift || owned.ownership.shiftMoveId == null)
       return NextResponse.json({ error: "لا يوجد وردية مفتوحة" }, { status: 400 });
-    const shiftMoveID = gated.shift.id;
+    const shiftMoveID = owned.ownership.shiftMoveId;
 
     // Get next invID
     const invTypeConv = "خدمة";
@@ -82,9 +85,15 @@ export async function POST(req: NextRequest, context: RouteContext) {
     const total = services.reduce((sum: number, s: { Price: number; Qty: number }) => sum + (s.Price * s.Qty), 0);
 
     // --- Transaction ---
-    const transaction = new (await import("mssql")).Transaction(db as never);
+    const transaction = new sql.Transaction(db);
     await transaction.begin();
     try {
+      await lockOperationalWrite(transaction, {
+        branchId,
+        businessDayId,
+        shiftSessionId: shiftMoveID,
+        requireShift: true,
+      });
       const tr = transaction.request();
 
       const invTime = getCairoInvTimeDotStr();
@@ -173,6 +182,8 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ ok: true, invoiceId: newInvID, invoiceType: invTypeConv });
   } catch (err) {
+    const mapped = branchErrorResponse(err);
+    if (mapped) return mapped;
     console.error("[bookings convert POST]", err);
     return NextResponse.json({ error: "فشل تحويل الحجز إلى فاتورة" }, { status: 500 });
   }

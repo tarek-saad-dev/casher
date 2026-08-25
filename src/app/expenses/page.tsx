@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import ShiftRequiredOverlay from '@/components/session/ShiftRequiredOverlay';
+import { useShiftOperationalGate } from '@/components/session/ShiftOperationalGateProvider';
 import EditExpenseModal from '@/components/expenses/EditExpenseModal';
 import ExpenseReceiptPopup from '@/components/expenses/ExpenseReceiptPopup';
 import { useSession } from '@/hooks/useSession';
@@ -86,7 +86,8 @@ function getCatGroupKey(catName: string): string {
 }
 
 export default function ExpensesPage() {
-  const { shift, hasActiveShift } = useSession();
+  const { shift } = useSession();
+  const { ensureShiftWrite } = useShiftOperationalGate();
 
   // ──── Lookup data ────
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
@@ -281,6 +282,7 @@ export default function ExpensesPage() {
     const amountNum = parseFloat(amount);
     if (!amountNum || amountNum <= 0) { setSaveError('يجب إدخال مبلغ صحيح أكبر من صفر'); return; }
     if (!paymentMethodId) { setSaveError('يجب اختيار طريقة الدفع'); return; }
+    if (!(await ensureShiftWrite())) return;
 
     setSaving(true);
     try {
@@ -339,7 +341,7 @@ export default function ExpensesPage() {
     } finally {
       setSaving(false);
     }
-  }, [selectedCatId, amount, paymentMethodId, notes, paymentMethods, resetForm, loadExpenses]);
+  }, [selectedCatId, amount, paymentMethodId, notes, paymentMethods, resetForm, loadExpenses, ensureShiftWrite]);
 
   // ──── Delete expense ────
   const handleDelete = useCallback(async (id: number, invID: number) => {
@@ -405,7 +407,6 @@ export default function ExpensesPage() {
 
   return (
     <div className="flex flex-col lg:flex-row h-screen overflow-hidden relative" dir="rtl">
-      <ShiftRequiredOverlay />
 
       {/* ═══════════ LEFT PANEL: History + Summary ═══════════ */}
       <div className="flex-1 flex flex-col overflow-hidden bg-background order-1 lg:order-1 min-h-0">
@@ -892,7 +893,7 @@ export default function ExpensesPage() {
               size="lg"
               className="w-full text-base font-bold py-6"
               onClick={handleSave}
-              disabled={saving || !hasActiveShift}
+              disabled={saving}
             >
               {saving ? (
                 <>

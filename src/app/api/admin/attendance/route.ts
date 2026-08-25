@@ -2,30 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import {
-  calcLateMinutes as calcLate,
-  calcEarlyLeaveMinutes as calcEarlyLeave,
-} from "@/lib/timeUtils";
-import {
   computeAttendanceSummary,
   filterAttendanceBoardRows,
-  resolveScheduleForDay,
   type RawAttendanceDbRow,
 } from "@/lib/hr/attendance-eligibility";
-import { normalizeEmploymentType } from "@/lib/hr/employee-hr-model";
 import {
   ensureAttendanceBreakSchema,
   loadBreaksByAttendanceIds,
-  replaceAttendanceBreaks,
 } from "@/lib/hr/attendance-breaks-db";
 import {
   ensureAttendanceBreakTimeSchema,
   loadBreakTimesByAttendanceIds,
-  replaceAttendanceBreakTimes,
 } from "@/lib/hr/attendance-break-time-db";
-import { normalizeBreaksInput } from "@/lib/hr/attendance-breaks";
-import { syncBlockRangesFromBreaks, syncBlockRangesFromBreakTimes } from "@/lib/hr/attendance-break-schedule-sync";
-import { syncAttendanceShiftToOverrides, syncAttendanceAbsenceToDayOffOverride } from "@/lib/hr/attendance-shift-schedule-sync";
-import { scheduleAttendanceCheckInOutWhatsApp } from "@/lib/services/employeeAttendanceWhatsAppNotify";
 import {
   isActiveBranchContext,
   requireBranchOperationAccess,
@@ -34,13 +22,14 @@ import {
   isDailyPayrollViewScope,
   resolveDailyPayrollViewScope,
 } from "@/lib/payroll/dailyPayrollEmployeeScope";
-import { assertEmployeeEligibleForBranchAttendance } from "@/lib/hr/attendance/branchAttendance.service";
-import { unlockScheduleForWorkOnDayOff } from "@/lib/hr/attendance/workOnDayOff.service";
-import { assertEmpBranchWorkDayMutable } from "@/lib/hr/empBranchWorkDayClose.service";
 import {
   empBranchWorkDayCloseErrorResponse,
   isEmpBranchWorkDayCloseError,
 } from "@/lib/hr/empBranchWorkDayClose.http";
+import {
+  saveAdminAttendance,
+  AttendanceCommandError,
+} from "@/modules/attendance";
 
 async function ensureAttendanceTable(db: { request: () => sql.Request }) {
   await db.request().query(`
@@ -82,33 +71,6 @@ async function ensureAttendanceTable(db: { request: () => sql.Request }) {
   `);
   await ensureAttendanceBreakSchema(db);
   await ensureAttendanceBreakTimeSchema(db);
-}
-
-function timeToDate(timeStr: string | null | undefined): Date | null {
-  if (!timeStr || timeStr.trim() === "") return null;
-  // Parse "HH:mm" or "HH:mm:ss" into a Date anchored to 1970-01-01 UTC
-  // so mssql driver stores it correctly as a TIME value.
-  const parts = timeStr.split(":").map(Number);
-  const h = parts[0] ?? 0;
-  const m = parts[1] ?? 0;
-  const s = parts[2] ?? 0;
-  const d = new Date(0); // 1970-01-01T00:00:00.000Z
-  d.setUTCHours(h, m, s, 0);
-  return d;
-}
-
-function calcLateMinutes(
-  checkIn: string | null,
-  scheduledStart: string | null,
-): number {
-  return calcLate(checkIn, scheduledStart);
-}
-
-function calcEarlyLeaveMinutes(
-  checkOut: string | null,
-  scheduledEnd: string | null,
-): number {
-  return calcEarlyLeave(checkOut, scheduledEnd);
 }
 
 // GET /api/admin/attendance?date=YYYY-MM-DD&employeeScope=all|GLEEM|CAMP_CAESAR&onlyPayrollEnabled=true&includeFreelance=false
@@ -358,381 +320,35 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    await assertEmpBranchWorkDayMutable(branch.branchId, WorkDate);
-
-    const validStatuses = [
-      "Pending",
-      "Present",
-      "Late",
-      "Absent",
-      "DayOff",
-      "EarlyLeave",
-      "Excused",
-    ];
-    if (Status && !validStatuses.includes(Status)) {
-      return NextResponse.json({ error: "حالة غير صحيحة" }, { status: 400 });
-    }
-
-    const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/;
-    if (CheckInTime && !timeRegex.test(CheckInTime)) {
-      return NextResponse.json(
-        { error: "صيغة وقت الحضور غير صحيحة" },
-        { status: 400 },
-      );
-    }
-    if (CheckOutTime && !timeRegex.test(CheckOutTime)) {
-      return NextResponse.json(
-        { error: "صيغة وقت الانصراف غير صحيحة" },
-        { status: 400 },
-      );
-    }
-
-    const clearBreaks =
-      Status === "Absent" || Status === "DayOff" || (!CheckInTime && !CheckOutTime);
-    let parsedBreaks = { breaks: [] as ReturnType<typeof normalizeBreaksInput>["breaks"], breakMinutesTotal: 0, error: null as string | null };
-    if (Breaks !== undefined || clearBreaks) {
-      parsedBreaks = clearBreaks
-        ? { breaks: [], breakMinutesTotal: 0, error: null }
-        : normalizeBreaksInput(Breaks);
-      if (parsedBreaks.error) {
-        return NextResponse.json({ error: parsedBreaks.error }, { status: 400 });
-      }
-    }
-
-    let parsedBreakTimes = { breaks: [] as ReturnType<typeof normalizeBreaksInput>["breaks"], breakMinutesTotal: 0, error: null as string | null };
-    if (BreakTimes !== undefined || clearBreaks) {
-      parsedBreakTimes = clearBreaks
-        ? { breaks: [], breakMinutesTotal: 0, error: null }
-        : normalizeBreaksInput(BreakTimes);
-      if (parsedBreakTimes.error) {
-        return NextResponse.json(
-          { error: parsedBreakTimes.error.replace(/مستقطع/g, 'بريك') },
-          { status: 400 },
-        );
-      }
-    }
-
-    const db = await getPool();
-    await ensureAttendanceTable(db);
-
-    try {
-      await assertEmployeeEligibleForBranchAttendance(
-        Number(EmpID),
-        branch.branchId,
-        WorkDate,
-      );
-    } catch (eligErr) {
-      if (eligErr instanceof Error && 'statusCode' in eligErr) {
-        const e = eligErr as { message: string; statusCode: number; code?: string };
-        return NextResponse.json(
-          { error: e.message, code: e.code },
-          { status: e.statusCode },
-        );
-      }
-      throw eligErr;
-    }
-
-    // Reject open session in another branch when checking in
-    if (CheckInTime && !CheckOutTime) {
-      const openOther = await db
-        .request()
-        .input('empId', sql.Int, EmpID)
-        .input('branchId', sql.Int, branch.branchId)
-        .query(`
-          SELECT TOP 1 ID, BranchID, WorkDate
-          FROM dbo.TblEmpAttendance
-          WHERE EmpID = @empId
-            AND CheckInTime IS NOT NULL
-            AND CheckOutTime IS NULL
-            AND BranchID <> @branchId
-        `);
-      if (openOther.recordset[0]) {
-        return NextResponse.json(
-          {
-            error:
-              'الموظف لديه حضور مفتوح في فرع آخر — سجّل الانصراف أولاً',
-            code: 'ALREADY_OPEN',
-          },
-          { status: 409 },
-        );
-      }
-    }
-
-    const dayOfWeek = new Date(`${WorkDate}T12:00:00Z`).getDay();
-
-    const empResult = await db
-      .request()
-      .input("empId", sql.Int, EmpID)
-      .input("dayOfWeek", sql.TinyInt, dayOfWeek)
-      .input("workDate", sql.Date, WorkDate)
-      .input("branchId", sql.Int, branch.branchId)
-      .query(`
-        SELECT
-          e.EmpName,
-          e.EmploymentType,
-          CONVERT(VARCHAR(5), e.DefaultCheckInTime,  108) AS DefaultCheckInTime,
-          CONVERT(VARCHAR(5), e.DefaultCheckOutTime, 108) AS DefaultCheckOutTime,
-          ws.ScheduleDayOfWeek,
-          ws.IsWorkingDay,
-          ws.ScheduleStartTime,
-          ws.ScheduleEndTime
-        FROM dbo.TblEmp e
-        OUTER APPLY (
-          SELECT TOP 1
-            s.DayOfWeek AS ScheduleDayOfWeek,
-            CAST(s.IsWorking AS bit) AS IsWorkingDay,
-            CONVERT(VARCHAR(5), s.StartTime, 108) AS ScheduleStartTime,
-            CONVERT(VARCHAR(5), s.EndTime, 108) AS ScheduleEndTime
-          FROM dbo.TblEmpBranchWorkSchedule s
-          WHERE s.EmpID = e.EmpID
-            AND s.BranchID = @branchId
-            AND s.DayOfWeek = @dayOfWeek
-            AND s.IsActive = 1
-            AND s.EffectiveFrom <= @workDate
-            AND (s.EffectiveTo IS NULL OR s.EffectiveTo >= @workDate)
-          ORDER BY s.EffectiveFrom DESC, s.ScheduleID DESC
-        ) ws
-        WHERE e.EmpID = @empId
-      `);
-
-    let schedStart: string | null = null;
-    let schedEnd: string | null = null;
-    let employeeName: string | undefined;
-    if (empResult.recordset.length > 0) {
-      const emp = empResult.recordset[0];
-      employeeName = (emp.EmpName as string | null)?.trim() || undefined;
-      const employmentType = normalizeEmploymentType(emp.EmploymentType) ?? "full_time";
-      const schedule = resolveScheduleForDay(employmentType, {
-        hasScheduleRow: emp.ScheduleDayOfWeek != null,
-        isWorkingDayFromSchedule:
-          emp.ScheduleDayOfWeek != null ? !!emp.IsWorkingDay : null,
-        scheduleStart: emp.ScheduleStartTime || null,
-        scheduleEnd: emp.ScheduleEndTime || null,
-        defaultStart: emp.DefaultCheckInTime || null,
-        defaultEnd: emp.DefaultCheckOutTime || null,
-      });
-      schedStart = schedule.scheduledStart;
-      schedEnd = schedule.scheduledEnd;
-    }
-
-    // Calculate late/early
-    const lateMinutes = calcLateMinutes(CheckInTime || null, schedStart);
-    const earlyLeaveMinutes = calcEarlyLeaveMinutes(
-      CheckOutTime || null,
-      schedEnd,
-    );
-
-    // Auto-determine status if not manually overridden to Absent/DayOff/Excused
-    let finalStatus = Status || "Pending";
-    const manualStatuses = ["Absent", "DayOff", "Excused"];
-    if (!manualStatuses.includes(finalStatus)) {
-      if (CheckInTime) {
-        finalStatus = lateMinutes > 0 ? "Late" : "Present";
-      }
-      if (CheckOutTime && earlyLeaveMinutes > 0 && finalStatus === "Present") {
-        finalStatus = "EarlyLeave";
-      }
-    }
-
-    // Came to work on weekly day-off → unlock bookable hours for the day
-    const isWorkingDayFromSchedule =
-      empResult.recordset[0]?.ScheduleDayOfWeek != null
-        ? !!empResult.recordset[0]?.IsWorkingDay
-        : null;
-    if (
-      CheckInTime &&
-      !manualStatuses.includes(finalStatus) &&
-      isWorkingDayFromSchedule === false
-    ) {
-      await unlockScheduleForWorkOnDayOff({
-        empId: Number(EmpID),
-        date: WorkDate,
-        branchId: branch.branchId,
-        reason: "نزل يشتغل يوم إجازته — تسجيل حضور",
-        sourceTag: "work-on-day-off",
-      }).catch((err) => {
-        console.warn("[api/admin/attendance] day-off unlock failed", err);
-      });
-    }
-
-    // UPSERT scoped to active branch
-    const existing = await db
-      .request()
-      .input("empId", sql.Int, EmpID)
-      .input("workDate", sql.Date, WorkDate)
-      .input("branchId", sql.Int, branch.branchId)
-      .query(`
-        SELECT
-          ID,
-          CONVERT(VARCHAR(5), CheckInTime, 108) AS CheckInTime,
-          CONVERT(VARCHAR(5), CheckOutTime, 108) AS CheckOutTime
-        FROM dbo.TblEmpAttendance
-        WHERE EmpID = @empId AND WorkDate = @workDate AND BranchID = @branchId
-      `);
-
-    const previousCheckIn =
-      existing.recordset.length > 0
-        ? (existing.recordset[0].CheckInTime as string | null)
-        : null;
-    const previousCheckOut =
-      existing.recordset.length > 0
-        ? (existing.recordset[0].CheckOutTime as string | null)
-        : null;
-
-    let attendanceId: number;
-    if (existing.recordset.length > 0) {
-      attendanceId = existing.recordset[0].ID as number;
-      await db
-        .request()
-        .input("id", sql.Int, attendanceId)
-        .input("branchId", sql.Int, branch.branchId)
-        .input("checkInTime", sql.Time, timeToDate(CheckInTime))
-        .input("checkOutTime", sql.Time, timeToDate(CheckOutTime))
-        .input("status", sql.NVarChar(50), finalStatus)
-        .input("lateMinutes", sql.Int, lateMinutes)
-        .input("earlyLeaveMinutes", sql.Int, earlyLeaveMinutes)
-        .input("notes", sql.NVarChar(500), Notes || null)
-        .input("scheduledStart", sql.Time, timeToDate(schedStart))
-        .input("scheduledEnd", sql.Time, timeToDate(schedEnd))
-        .input("updatedBy", sql.Int, session.UserID || null).query(`
-          UPDATE dbo.TblEmpAttendance
-          SET CheckInTime = @checkInTime,
-              CheckOutTime = @checkOutTime,
-              Status = @status,
-              LateMinutes = @lateMinutes,
-              EarlyLeaveMinutes = @earlyLeaveMinutes,
-              Notes = @notes,
-              ScheduledStartTime = @scheduledStart,
-              ScheduledEndTime = @scheduledEnd,
-              UpdatedByUserID = @updatedBy,
-              UpdatedAt = GETDATE()
-          WHERE ID = @id AND BranchID = @branchId
-        `);
-    } else {
-      const insertResult = await db
-        .request()
-        .input("branchId", sql.Int, branch.branchId)
-        .input("empId", sql.Int, EmpID)
-        .input("workDate", sql.Date, WorkDate)
-        .input("checkInTime", sql.Time, timeToDate(CheckInTime))
-        .input("checkOutTime", sql.Time, timeToDate(CheckOutTime))
-        .input("status", sql.NVarChar(50), finalStatus)
-        .input("lateMinutes", sql.Int, lateMinutes)
-        .input("earlyLeaveMinutes", sql.Int, earlyLeaveMinutes)
-        .input("notes", sql.NVarChar(500), Notes || null)
-        .input("scheduledStart", sql.Time, timeToDate(schedStart))
-        .input("scheduledEnd", sql.Time, timeToDate(schedEnd))
-        .input("createdBy", sql.Int, session.UserID || null).query(`
-          INSERT INTO dbo.TblEmpAttendance
-            (BranchID, EmpID, WorkDate, CheckInTime, CheckOutTime, Status, LateMinutes, EarlyLeaveMinutes, Notes, ScheduledStartTime, ScheduledEndTime, CreatedByUserID, CreatedAt)
-          OUTPUT INSERTED.ID
-          VALUES
-            (@branchId, @empId, @workDate, @checkInTime, @checkOutTime, @status, @lateMinutes, @earlyLeaveMinutes, @notes, @scheduledStart, @scheduledEnd, @createdBy, GETDATE())
-        `);
-      attendanceId = insertResult.recordset[0].ID as number;
-    }
-
-    let breakMinutesTotal: number | undefined;
-    if (Breaks !== undefined || clearBreaks) {
-      breakMinutesTotal = await replaceAttendanceBreaks(
-        db,
-        attendanceId,
-        parsedBreaks.breaks,
-      );
-      // Mirror وقت مستقطع → إدارة مواعيد اليوم (block_range)
-      await syncBlockRangesFromBreaks(
-        db,
-        EmpID,
-        WorkDate,
-        parsedBreaks.breaks,
-      ).catch((err) => {
-        console.warn("[api/admin/attendance] block_range sync failed", err);
-      });
-    }
-
-    let breakTimeMinutesTotal: number | undefined;
-    if (BreakTimes !== undefined || clearBreaks) {
-      breakTimeMinutesTotal = await replaceAttendanceBreakTimes(
-        db,
-        attendanceId,
-        parsedBreakTimes.breaks,
-      );
-      // Mirror وقت البريك → إدارة مواعيد اليوم (block_range) — يمنع الحجز
-      await syncBlockRangesFromBreakTimes(
-        db,
-        EmpID,
-        WorkDate,
-        parsedBreakTimes.breaks,
-      ).catch((err) => {
-        console.warn("[api/admin/attendance] break-time block_range sync failed", err);
-      });
-    }
-
-    // Mirror حضور مبكر / انصراف متأخر → فتح مواعيد (available-slots + /operations)
-    await syncAttendanceShiftToOverrides(db, EmpID, WorkDate, {
-      checkInTime: CheckInTime || null,
-      checkOutTime: CheckOutTime || null,
-      scheduledStart: schedStart,
-      scheduledEnd: schedEnd,
-      status: finalStatus,
-    }).catch((err) => {
-      console.warn("[api/admin/attendance] shift override sync failed", err);
-    });
-
-    // Absent ↔ day_off: closing/opening booking must stay consistent with HR status
-    await syncAttendanceAbsenceToDayOffOverride(db, EmpID, WorkDate, finalStatus).catch((err) => {
-      console.warn("[api/admin/attendance] day_off sync failed", err);
-    });
-
-    scheduleAttendanceCheckInOutWhatsApp({
+    const data = await saveAdminAttendance({
+      branchId: branch.branchId,
+      userId: session.UserID || null,
       empId: EmpID,
-      employeeName,
-      previousCheckIn,
-      previousCheckOut,
-      checkInTime: CheckInTime || null,
-      checkOutTime: CheckOutTime || null,
+      workDate: WorkDate,
+      checkInTime: CheckInTime,
+      checkOutTime: CheckOutTime,
+      status: Status,
+      notes: Notes,
+      breaks: Breaks,
+      breakTimes: BreakTimes,
     });
-
-    // Keep non-posted daily payroll hours in sync when punches change (overnight OT fixes).
-    if (CheckInTime && CheckOutTime) {
-      try {
-        const { syncNonPostedPayrollHoursFromAttendance } = await import(
-          '@/lib/payroll/syncPayrollHoursFromAttendance'
-        );
-        const sync = await syncNonPostedPayrollHoursFromAttendance({
-          empId: Number(EmpID),
-          workDate: WorkDate,
-          branchId: branch.branchId,
-        });
-        if (sync.updated) {
-          console.log(
-            `[api/admin/attendance] payroll hours synced emp=${EmpID} day=${WorkDate} hours=${sync.actualHours}`,
-          );
-        }
-      } catch (syncErr) {
-        console.warn('[api/admin/attendance] payroll hours sync failed', syncErr);
-      }
-    }
 
     return NextResponse.json({
       success: true,
       message: "تم حفظ الحضور بنجاح",
-      data: {
-        EmpID,
-        WorkDate,
-        Status: finalStatus,
-        LateMinutes: lateMinutes,
-        EarlyLeaveMinutes: earlyLeaveMinutes,
-        BreakMinutesTotal: breakMinutesTotal,
-        Breaks: Breaks !== undefined || clearBreaks ? parsedBreaks.breaks : undefined,
-        BreakTimeMinutesTotal: breakTimeMinutesTotal,
-        BreakTimes:
-          BreakTimes !== undefined || clearBreaks ? parsedBreakTimes.breaks : undefined,
-      },
+      data,
     });
   } catch (err: unknown) {
     if (isEmpBranchWorkDayCloseError(err)) {
       return empBranchWorkDayCloseErrorResponse(err);
+    }
+    if (err instanceof AttendanceCommandError) {
+      return NextResponse.json(
+        err.code !== undefined
+          ? { error: err.message, code: err.code }
+          : { error: err.message },
+        { status: err.statusCode },
+      );
     }
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[api/admin/attendance] PUT error:", message);

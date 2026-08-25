@@ -111,7 +111,8 @@ export const DOMAIN_OWNERSHIP_REGISTRY: DomainOwnershipEntry[] = [
     branchRequiredOnWrite: true,
     consolidatedReadAllowed: true,
     goLiveBlocker: false,
-    notes: 'Phase 1J: purchase BranchID NOT NULL; details CHILD_INHERIT; stock on POST only',
+    notes:
+      'Phase 5: purchase BranchID + BusinessDayID; SHIFT if OPEN shift else DAY; details CHILD_INHERIT; stock on POST only',
   },
   {
     domain: 'business_day',
@@ -139,7 +140,7 @@ export const DOMAIN_OWNERSHIP_REGISTRY: DomainOwnershipEntry[] = [
     children: ['TblinvServDetail', 'TblinvServPayment'],
     branchRequiredOnWrite: true,
     consolidatedReadAllowed: true,
-    notes: 'Ownership immutable from session day/shift',
+    notes: 'Ownership immutable from session day/shift; mutations load Branch+Day+Shift',
   },
   {
     domain: 'cash_move',
@@ -278,6 +279,7 @@ export const DOMAIN_OWNERSHIP_REGISTRY: DomainOwnershipEntry[] = [
 
 export const BRANCH_OWNED_ROUTE_MARKERS = [
   { path: 'src/app/api/operations/status/route.ts', mustContain: 'requireActiveBranchContext' },
+  { path: 'src/app/api/operations/shift/handoff/route.ts', mustContain: 'handoffShift' },
   { path: 'src/app/api/day/rollover-check/route.ts', mustContain: 'requireActiveBranchContext' },
   { path: 'src/app/api/day/history/route.ts', mustContain: 'BranchID = @branchId' },
   { path: 'src/app/api/day/summary/route.ts', mustContain: 'validateBusinessDayBelongsToBranch' },
@@ -301,7 +303,10 @@ export const BRANCH_OWNED_ROUTE_MARKERS = [
   { path: 'src/app/api/purchases/route.ts', mustContain: 'resolveBranchDayAndShiftForWrite' },
   { path: 'src/app/api/treasury/transfer/route.ts', mustContain: 'resolveBranchDayAndShiftForWrite' },
   { path: 'src/app/api/bookings/[id]/convert/route.ts', mustContain: 'resolveBranchDayAndShiftForWrite' },
-  { path: 'src/lib/branch/operationalGates.ts', mustContain: 'getUserOpenShiftForBranch' },
+  { path: 'src/lib/branch/operationalGates.ts', mustContain: 'getUserOpenShift' },
+  { path: 'src/app/api/sales/[id]/route.ts', mustContain: 'loadAndAuthorizeFinancialMutation' },
+  { path: 'src/app/api/expenses/[id]/route.ts', mustContain: 'loadAndAuthorizeFinancialMutation' },
+  { path: 'src/app/api/incomes/[id]/route.ts', mustContain: 'loadAndAuthorizeFinancialMutation' },
 ] as const;
 
 export const GO_LIVE_BLOCKER_DOMAINS = DOMAIN_OWNERSHIP_REGISTRY.filter((d) => d.goLiveBlocker).map(

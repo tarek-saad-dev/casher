@@ -71,6 +71,53 @@ function resetTxMocks() {
   txQueryIdx = 0;
 }
 
+function mockWriteGate() {
+  vi.doMock('@/lib/branch/operationalGates', () => ({
+    lockOperationalWrite: vi.fn(async () => ({
+      day: { id: 1, branchId: 1, newDay: '2026-07-14', status: true },
+      shift: {
+        id: 9,
+        branchId: 1,
+        businessDayId: 1,
+        newDay: '2026-07-14',
+        userId: 1,
+        shiftId: 1,
+        status: true,
+      },
+    })),
+    resolveBranchDayAndShiftForWrite: vi.fn(async () => ({
+      ok: true,
+      branch: {
+        userId: 1,
+        branchId: 1,
+        branchCode: 'GLEEM',
+        branchName: 'جليم',
+        shortName: 'جليم',
+        timeZone: 'Africa/Cairo',
+        businessDayCutoffTime: '04:00:00',
+        canOperate: true,
+        canViewReports: true,
+        canSwitch: true,
+      },
+      day: { id: 1, branchId: 1, newDay: '2026-07-14', status: true },
+      shift: {
+        id: 9,
+        branchId: 1,
+        businessDayId: 1,
+        newDay: '2026-07-14',
+        userId: 1,
+        shiftId: 1,
+        startDate: '2026-07-14',
+        startTime: '10:00 AM',
+        endDate: null,
+        endTime: null,
+        status: true,
+      },
+    })),
+    branchErrorResponse: vi.fn(() => null),
+  }));
+}
+
 afterEach(() => {
   if (originalFlag === undefined) {
     delete process.env.EMP_LEDGER_DUAL_WRITE_ENABLED;
@@ -276,6 +323,7 @@ describe('POST /api/incomes funding dual-write', () => {
   beforeEach(async () => {
     resetTxMocks();
     vi.resetModules();
+    mockWriteGate();
     const { getPool } = await import('@/lib/db');
     (getPool as ReturnType<typeof vi.fn>).mockImplementation(async () => makeFakeDb([]));
   });
@@ -283,7 +331,6 @@ describe('POST /api/incomes funding dual-write', () => {
   it('returns ledgerDualWrite false for normal income when flag is disabled', async () => {
     process.env.EMP_LEDGER_DUAL_WRITE_ENABLED = 'false';
     txQueryResults = [
-      { recordset: [{ ShiftMoveID: 9 }] },
       { recordset: [{ '': 1 }] },
       { recordset: [{ '': 1 }] },
       { recordset: [{ ID: 501, invID: 1001, invDate: '2026-07-14', invTime: '12:00', ExpINID: 5, Amount: 100, Notes: null, ShiftMoveID: 9, PaymentMethodID: 1 }] },
@@ -310,7 +357,6 @@ describe('POST /api/incomes funding dual-write', () => {
   it('returns ledgerDualWrite true when income category is revenue-mapped', async () => {
     process.env.EMP_LEDGER_DUAL_WRITE_ENABLED = 'true';
     txQueryResults = [
-      { recordset: [{ ShiftMoveID: 9 }] },
       { recordset: [{ '': 1 }] },
       { recordset: [{ '': 1 }] },
       { recordset: [{ ID: 501, invID: 1001, invDate: '2026-07-14', invTime: '12:00', ExpINID: 5, Amount: 100, Notes: null, ShiftMoveID: 9, PaymentMethodID: 1 }] },

@@ -8,6 +8,7 @@ import {
   assertActiveBranchOwns,
   financialNotFoundResponse,
   isActiveBranchContext,
+  loadAndAuthorizeFinancialMutation,
   loadInvoiceOwnership,
   requireActiveBranchContext,
 } from '@/lib/branch';
@@ -115,16 +116,15 @@ export async function PUT(
     if (!sessionUser) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     const userID = sessionUser.UserID;
 
-    const branch = await requireActiveBranchContext();
-    if (!isActiveBranchContext(branch)) return branch;
-
-    // PHASE1D: never trust browser branchId — re-validate ownership server-side.
-    const ownership = await loadInvoiceOwnership(invID, 'مبيعات');
-    if (!ownership || !assertActiveBranchOwns(branch.branchId, ownership.branchId)) {
-      return financialNotFoundResponse();
-    }
-
     const body = await req.json();
+
+    const loaded = await loadAndAuthorizeFinancialMutation(
+      userID,
+      { kind: 'invoice', id: invID, invType: 'مبيعات' },
+      body,
+    );
+    if (!loaded.ok) return loaded.response;
+    const ownership = loaded.ownership;
 
     if (!body.items || body.items.length === 0)
       return NextResponse.json({ error: 'يجب إضافة خدمة واحدة على الأقل' }, { status: 400 });
@@ -133,7 +133,7 @@ export async function PUT(
       const { isEmployeeEligibleForBranchBookings } = await import(
         '@/lib/branch/bookingQueueOwnership'
       );
-      const operationalDate = new Date().toLocaleDateString('en-CA', {
+      const operationalDate = ownership.businessDate ?? new Date().toLocaleDateString('en-CA', {
         timeZone: 'Africa/Cairo',
       });
       const uniqueEmpIds = [
@@ -146,13 +146,13 @@ export async function PUT(
       for (const empId of uniqueEmpIds) {
         const ok = await isEmployeeEligibleForBranchBookings({
           empId,
-          branchId: branch.branchId,
+          branchId: ownership.branchId,
           operationalDate,
           requireCanReceiveBookings: false,
         });
         if (!ok) {
           return NextResponse.json(
-            { error: `الموظف #${empId} غير معيَّن على فرع ${branch.branchCode}` },
+            { error: `الموظف #${empId} غير معيَّن على فرع ${ownership.branchId}` },
             { status: 400 },
           );
         }
@@ -278,17 +278,6 @@ export async function DELETE(
     const invID = parseInt(id);
     if (isNaN(invID)) return NextResponse.json({ error: 'Invalid invID' }, { status: 400 });
 
-    // Never trust browser branchId — active branch always comes from gated session context.
-    const { requireBranchOperationAccess } = await import('@/lib/branch/context');
-    const branch = await requireBranchOperationAccess();
-    if (branch instanceof NextResponse) return branch;
-
-    // PHASE1D: never trust browser branchId — re-validate ownership server-side.
-    const ownership = await loadInvoiceOwnership(invID, 'مبيعات');
-    if (!ownership || !assertActiveBranchOwns(branch.branchId, ownership.branchId)) {
-      return financialNotFoundResponse();
-    }
-
     const body = await req.json().catch(() => ({}));
     const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
 
@@ -298,6 +287,13 @@ export async function DELETE(
         { status: 400 },
       );
     }
+
+    const loaded = await loadAndAuthorizeFinancialMutation(
+      session.UserID,
+      { kind: 'invoice', id: invID, invType: 'مبيعات' },
+      body,
+    );
+    if (!loaded.ok) return loaded.response;
 
     let targetRecalcScopes: import('@/lib/payroll/employee-target/employee-target-recalc-scope').TargetRecalcScope[] = [];
 
@@ -310,7 +306,7 @@ export async function DELETE(
       endpointPath: `/api/sales/${invID}`,
       reason,
       loadOldData: async (transaction) => getInvoiceSnapshot(transaction, invID) as unknown as Record<string, unknown> | null,
-      execute: async (transaction) => deleteInvoice(transaction, invID, branch.branchId),
+      execute: async (transaction) => deleteInvoice(transaction, invID, loaded.ownership.branchId),
       loadNewData: async () => null,
       beforeCommit: async ({ transaction, oldData }) => {
         const { enqueueTargetRecalcFromInvoiceSnapshots } = await import(

@@ -19,9 +19,18 @@ describe('scheduleControlRestorePresentFuture', () => {
   );
 
   it('allows future dates with schedule unlock and skips attendance when not today', () => {
-    expect(route).toContain('unlockScheduleForWorkOnDayOff');
-    expect(route).toContain('attendanceRecorded: isToday');
-    expect(route).toContain('تاريخ مستقبلي فقط');
+    const command = fs.readFileSync(
+      path.join(
+        process.cwd(),
+        'src/modules/attendance/application/AttendanceCommandService.ts',
+      ),
+      'utf8',
+    );
+    expect(command).toContain('unlockScheduleForWorkOnDayOff');
+    expect(command).toContain('restorePresent');
+    expect(command).toContain('attendanceRecorded: isToday');
+    expect(route).toContain('restorePresent');
+    expect(command).toContain('RESTORE_PRESENT_PAST_DATE_MESSAGE');
     expect(route).not.toMatch(/if \(date !== todayStr\)[\s\S]{0,120}تسجيل الحضور السريع متاح لليوم الحالي فقط/);
   });
 

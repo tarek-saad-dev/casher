@@ -9,6 +9,7 @@ import {
 } from '@/lib/services/employeeLedgerDualWrite';
 import { scheduleEmployeeAdvanceWhatsApp } from '@/lib/services/employeeAdvanceWhatsAppNotify';
 import { getCairoInvTimeDotStr } from '@/lib/businessDate';
+import { branchErrorResponse } from '@/lib/branch/operationalGates';
 
 // GET /api/deductions — List employee deductions with optional filters
 export async function GET(req: NextRequest) {
@@ -116,18 +117,21 @@ export async function POST(req: NextRequest) {
     console.log(`[deductions] ──── SAVE DEDUCTION START ──── UserID=${userID}, EmployeeID=${body.employeeId}`);
 
     // ──── Enforce active branch business day + user shift (Phase 1C) ────
-    const { resolveBranchDayAndShiftForWrite } = await import(
+    const { resolveBranchDayAndShiftForWrite, lockOperationalWrite } = await import(
       '@/lib/branch/operationalGates'
     );
     const gated = await resolveBranchDayAndShiftForWrite(userID);
     if (!gated.ok) return gated.response;
-    if (!gated.shift) {
+    const { finalizeCurrentFinancialWrite } = await import('@/lib/branch/financialOwnershipPolicy');
+    const owned = finalizeCurrentFinancialWrite('deduction.create', gated, body);
+    if (!owned.ok) return owned.response;
+    if (!gated.shift || owned.ownership.shiftMoveId == null) {
       console.error(`[deductions]   ❌ REJECTED: no active shift for UserID=${userID}`);
       return NextResponse.json({ error: 'لا يوجد وردية مفتوحة لهذا المستخدم — لا يمكن تسجيل خصم' }, { status: 400 });
     }
-    const activeDay = { ID: gated.day.id, NewDay: gated.day.newDay };
-    const invDate = gated.day.newDay;
-    const shiftMoveID = gated.shift.id;
+    const activeDay = { ID: owned.ownership.businessDayId!, NewDay: owned.ownership.businessDate! };
+    const invDate = owned.ownership.businessDate!;
+    const shiftMoveID = owned.ownership.shiftMoveId;
     console.log(`[deductions]   Active Day: ID=${activeDay.ID}, NewDay=${invDate}, Branch=${gated.branch.branchCode}`);
     console.log(`[deductions]   Active Shift: ID=${shiftMoveID}, UserID=${gated.shift.userId}`);
 
@@ -213,6 +217,12 @@ export async function POST(req: NextRequest) {
     console.log(`[deductions]   Transaction started (SERIALIZABLE)`);
 
     try {
+      await lockOperationalWrite(transaction, {
+        branchId: gated.branch.branchId,
+        businessDayId: gated.day.id,
+        shiftSessionId: shiftMoveID,
+        requireShift: true,
+      });
       // Allocate invID safely (no TABLOCKX)
       const deductionInvID = await allocateInvID(transaction, 'TblCashMove', 'مصروفات', 5000);
 
@@ -326,6 +336,8 @@ export async function POST(req: NextRequest) {
       throw err;
     }
   } catch (err: unknown) {
+    const mapped = branchErrorResponse(err);
+    if (mapped) return mapped;
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error(`[deductions] ❌ POST /api/deductions FAILED: ${message}`);
     return NextResponse.json({ error: message }, { status: 500 });

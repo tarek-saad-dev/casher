@@ -391,7 +391,11 @@ export async function executeAuditedAction<T>(options: AuditExecutionOptions<T>)
     console.error(`[executeAuditedAction] Raw error before sanitization: ${rawMessage}`, sqlDetails);
 
     const statusCode =
-      typeof (error as any)?.statusCode === 'number' ? (error as any).statusCode : 500;
+      typeof (error as { statusCode?: number }).statusCode === 'number'
+        ? (error as { statusCode: number }).statusCode
+        : typeof (error as { status?: number }).status === 'number'
+          ? (error as { status: number }).status
+          : 500;
 
     throw new AuditedActionError(
       sanitizePublicError(error),

@@ -9,6 +9,7 @@ export const PUBLIC_EXACT_ROUTES = [
   '/api/auth/login',
   // Session probe / logout — handler returns empty session or clears cookie; must reach node.
   '/api/auth/session',
+  '/api/operations/bootstrap',
   // Permissions probe from root layout — handler returns 401 when unauthenticated.
   '/api/permissions/my-access',
   // Public bilingual services catalog (CORS-enabled; used by external price pages).
@@ -34,6 +35,7 @@ export const CRON_BEARER_PREFIX_ROUTES = [
   '/api/cron/',
   '/api/admin/hr/nightly-close',
   '/api/payroll/daily/auto-generate',
+  '/api/internal/operations/business-day/reconcile',
 ] as const;
 
 export function isStaticOrNextAsset(pathname: string): boolean {

@@ -2,12 +2,13 @@ import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
 import {
-  sendEmployeeAdvanceWhatsAppMessage,
-  sendEmployeeFundingWhatsAppMessage,
-  sendOtherWhatsAppMessage,
-} from '@/lib/integrations/whatsapp';
+  EMPLOYEE_ADVANCE_TEMPLATE_KEY,
+  EMPLOYEE_FUNDING_TEMPLATE_KEY,
+  EMPLOYEE_TIP_TEMPLATE_KEY,
+  sendTemplateMessage,
+} from '@/modules/messaging';
+import { getWhatsAppConfig } from '@/lib/integrations/whatsapp';
 import { resolveEmployeeWhatsAppPhone } from '@/lib/integrations/whatsapp/payload-builders';
-import { composeEmployeeTipWhatsAppMessage } from '@/lib/hr/tip-whatsapp-message';
 import {
   resolveAdvanceEmployeeFromExpINID,
   resolveRevenueEmployeeFromExpINID,
@@ -20,6 +21,8 @@ export interface EmployeeAdvanceWhatsAppNotifyInput {
   amount: number;
   paymentMethodId?: number;
   notes?: string;
+  branchId?: number;
+  branchName?: string;
 }
 
 export type EmployeeFundingWhatsAppNotifyInput = EmployeeAdvanceWhatsAppNotifyInput;
@@ -89,17 +92,31 @@ export async function notifyEmployeeAdvanceWhatsApp(
     }
 
     const paymentMethod = await fetchPaymentMethodLabel(input.paymentMethodId);
+    const cfg = getWhatsAppConfig();
     console.log(
       `[pos-api]   📱 Employee advance WhatsApp: ${input.employeeName} (${phone}) ADV-${input.invID} amount=${input.amount}`,
     );
 
-    const result = await sendEmployeeAdvanceWhatsAppMessage({
-      phone,
-      employeeName: input.employeeName,
-      invID: input.invID,
-      amount: input.amount,
-      paymentMethod,
-      notes: input.notes,
+    const result = await sendTemplateMessage({
+      templateKey: EMPLOYEE_ADVANCE_TEMPLATE_KEY,
+      recipient: { phone },
+      variables: {
+        customerName: input.employeeName,
+        invoiceNumber: `ADV-${input.invID}`,
+        amount: input.amount,
+        paymentMethod,
+        branchName: input.branchName ?? cfg.defaultBranchName,
+        notes: input.notes?.trim() || undefined,
+      },
+      metadata: {
+        invoiceId: input.invID,
+        employeeId: input.empId,
+        ...(typeof input.branchId === 'number' ? { branchId: input.branchId } : {}),
+      },
+      context: {
+        language: 'ar',
+        ...(typeof input.branchId === 'number' ? { branchId: input.branchId } : {}),
+      },
     });
 
     if (result.sent) {
@@ -147,17 +164,31 @@ export async function notifyEmployeeFundingWhatsApp(
     }
 
     const paymentMethod = await fetchPaymentMethodLabel(input.paymentMethodId);
+    const cfg = getWhatsAppConfig();
     console.log(
       `[pos-api]   📱 Employee funding WhatsApp: ${input.employeeName} (${phone}) FUND-${input.invID} amount=${input.amount}`,
     );
 
-    const result = await sendEmployeeFundingWhatsAppMessage({
-      phone,
-      employeeName: input.employeeName,
-      invID: input.invID,
-      amount: input.amount,
-      paymentMethod,
-      notes: input.notes,
+    const result = await sendTemplateMessage({
+      templateKey: EMPLOYEE_FUNDING_TEMPLATE_KEY,
+      recipient: { phone },
+      variables: {
+        customerName: input.employeeName,
+        invoiceNumber: `FUND-${input.invID}`,
+        amount: input.amount,
+        paymentMethod,
+        branchName: input.branchName ?? cfg.defaultBranchName,
+        notes: input.notes?.trim() || undefined,
+      },
+      metadata: {
+        invoiceId: input.invID,
+        employeeId: input.empId,
+        ...(typeof input.branchId === 'number' ? { branchId: input.branchId } : {}),
+      },
+      context: {
+        language: 'ar',
+        ...(typeof input.branchId === 'number' ? { branchId: input.branchId } : {}),
+      },
     });
 
     if (result.sent) {
@@ -205,22 +236,26 @@ export async function notifyEmployeeTipWhatsApp(
     }
 
     const paymentMethod = await fetchPaymentMethodLabel(input.paymentMethodId);
-    const message = composeEmployeeTipWhatsAppMessage({
-      employeeName: input.employeeName,
-      tipAmount: input.tipAmount,
-      invoiceTotal: input.invoiceTotal,
-      amountPaid: input.amountPaid,
-      newBalance: input.newBalance,
-      paymentMethod,
-    });
     console.log(
       `[pos-api]   📱 Employee tip WhatsApp: ${input.employeeName} (${phone}) TIP-${input.invID} amount=${input.tipAmount}`,
     );
 
-    const result = await sendOtherWhatsAppMessage({
-      phone,
-      customerName: input.employeeName,
-      message,
+    const result = await sendTemplateMessage({
+      templateKey: EMPLOYEE_TIP_TEMPLATE_KEY,
+      recipient: { phone },
+      variables: {
+        customerName: input.employeeName,
+        tipAmount: input.tipAmount.toFixed(2),
+        newBalance: input.newBalance.toFixed(2),
+        invoiceTotal: input.invoiceTotal.toFixed(2),
+        amountPaid: input.amountPaid.toFixed(2),
+        paymentMethod: paymentMethod?.trim() || undefined,
+      },
+      metadata: {
+        invoiceId: input.invID,
+        employeeId: input.empId,
+      },
+      context: { language: 'ar' },
     });
 
     if (result.sent) {

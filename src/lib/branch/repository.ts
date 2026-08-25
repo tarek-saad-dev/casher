@@ -1,5 +1,6 @@
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
+import { now as businessClockNow } from '@/modules/operations/clock/BusinessClock';
 import type {
   BranchLifecycleStatus,
   BranchRecord,
@@ -10,7 +11,7 @@ import { isBranchLifecycleStatus } from './lifecycle';
 
 /** One consistent current-time source for branch validity checks. */
 export function branchNow(): Date {
-  return new Date();
+  return businessClockNow();
 }
 
 function formatTime(value: unknown): string {

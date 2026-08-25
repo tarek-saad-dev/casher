@@ -67,6 +67,10 @@ vi.mock('@/lib/hr/attendance/branchAttendance.service', () => ({
   assertEmployeeEligibleForBranchAttendance: vi.fn(async () => undefined),
 }));
 
+vi.mock('@/lib/hr/empBranchWorkDayClose.service', () => ({
+  assertEmpBranchWorkDayMutable: vi.fn(async () => undefined),
+}));
+
 const ensureOverridesTable = vi.fn(async () => undefined);
 vi.mock('@/lib/scheduleOverrides', () => ({
   ensureOverridesTable: (...args: unknown[]) => ensureOverridesTable(...args),
@@ -157,20 +161,64 @@ vi.mock('@/lib/services/employeeAttendanceWhatsAppNotify', () => ({
   scheduleAttendanceCheckInOutWhatsApp: vi.fn(),
 }));
 
+// schedule-control apply/DELETE fire-and-forget notifyHotEffectiveDay → MERGE
+// TblBookingAvailabilityRevision on the shared getPool mock. Without this mock,
+// that async work races into later tests and shifts the sequential query queue
+// (stale wiring failure: PUT 500 reading undefined ID / recordset[0]).
+vi.mock('@/lib/booking/cache/hotCacheInvalidateBestEffort', () => ({
+  notifyHotEffectiveDay: vi.fn(async () => undefined),
+  notifyHotWeeklyBaseline: vi.fn(async () => undefined),
+  notifyHotQueueChanged: vi.fn(async () => undefined),
+  notifyHotBranchHours: vi.fn(async () => undefined),
+  bookingHorizonDates: vi.fn(() => []),
+}));
+
 type QueryResult = { recordset?: unknown[]; rowsAffected?: number[] };
 
 let queryQueue: QueryResult[] = [];
 let queryIdx = 0;
 
+/** Optional SQL-aware stubs for admin PUT (ignore unrelated MERGE / noise). */
+let putSqlStubs: {
+  peek?: QueryResult;
+  schedule?: QueryResult;
+  write?: QueryResult;
+} | null = null;
+
+function resolveQuery(sqlText: string): QueryResult {
+  const sql = String(sqlText);
+  if (putSqlStubs) {
+    if (/TblBookingAvailabilityRevision/i.test(sql)) {
+      return { recordset: [], rowsAffected: [1] };
+    }
+    if (/IF NOT EXISTS[\s\S]*TblEmpAttendance/i.test(sql)) {
+      return { recordset: [] };
+    }
+    if (
+      /SELECT\s+ID[\s\S]*CheckInTime[\s\S]*FROM\s+dbo\.TblEmpAttendance/i.test(sql)
+    ) {
+      return putSqlStubs.peek ?? { recordset: [] };
+    }
+    if (/EmpName[\s\S]*EmploymentType[\s\S]*OUTER APPLY/i.test(sql)) {
+      return putSqlStubs.schedule ?? { recordset: [] };
+    }
+    if (/UPDATE\s+dbo\.TblEmpAttendance/i.test(sql)) {
+      return putSqlStubs.write ?? { rowsAffected: [1] };
+    }
+    if (/INSERT\s+INTO\s+dbo\.TblEmpAttendance/i.test(sql)) {
+      return putSqlStubs.write ?? { recordset: [{ ID: 88 }] };
+    }
+  }
+  const res = queryQueue[queryIdx] ?? { recordset: [], rowsAffected: [1] };
+  queryIdx += 1;
+  return res;
+}
+
 function makeFakeDb() {
   return {
     request: vi.fn(() => ({
       input: vi.fn().mockReturnThis(),
-      query: vi.fn(async () => {
-        const res = queryQueue[queryIdx] ?? { recordset: [], rowsAffected: [1] };
-        queryIdx += 1;
-        return res;
-      }),
+      query: vi.fn(async (sqlText: string) => resolveQuery(sqlText)),
     })),
   };
 }
@@ -199,6 +247,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   queryQueue = [];
   queryIdx = 0;
+  putSqlStubs = null;
   cairoDateStr.mockReturnValue('2026-07-15');
   getScheduleOverrides.mockResolvedValue([]);
   computePreview.mockResolvedValue({
@@ -347,12 +396,16 @@ describe('DELETE /api/operations/schedule-control/override/[id] wiring', () => {
 
 describe('PUT /api/admin/attendance wiring', () => {
   it('calls syncBlockRangesFromBreaks after saving breaks', async () => {
-    // ensureAttendanceTable IF NOT EXISTS + emp schedule + existing attendance + update
-    queryQueue = [
-      { recordset: [] }, // ensureAttendanceTable
-      {
+    // SQL-dispatch stubs (not a brittle sequential queue): schedule-control tests
+    // previously left fire-and-forget MERGE on the shared getPool mock, which
+    // shifted a fixed queue and made this look like a 500 / missing ID bug.
+    // Production path is correct when branch + closed punch + existing row.
+    putSqlStubs = {
+      peek: { recordset: [{ ID: 88, CheckInTime: '12:00', CheckOutTime: null }] },
+      schedule: {
         recordset: [
           {
+            EmpName: 'Test',
             EmploymentType: 'full_time',
             DefaultCheckInTime: '12:00',
             DefaultCheckOutTime: '00:00',
@@ -363,9 +416,8 @@ describe('PUT /api/admin/attendance wiring', () => {
           },
         ],
       },
-      { recordset: [{ ID: 88 }] }, // existing attendance
-      { rowsAffected: [1] }, // update attendance
-    ];
+      write: { rowsAffected: [1] },
+    };
 
     const { PUT } = await import('@/app/api/admin/attendance/route');
     const res = await PUT(

@@ -30,9 +30,8 @@ export function BarberHeaderQueueButton({
       aria-label={tooltip}
       className={cn(
         'relative flex shrink-0 items-center justify-center gap-1 rounded-lg border font-semibold transition-all',
-        'h-8 min-h-[32px] min-w-[32px] px-2 text-xs',
-        'md:h-8 md:min-h-[32px] md:px-2.5',
-        'max-md:min-h-[44px] max-md:min-w-[44px] max-md:px-3',
+        'h-6 min-h-0 min-w-6 px-1 text-[10px]',
+        'md:h-8 md:min-h-[32px] md:min-w-[32px] md:px-2.5 md:text-xs',
         enabled && !loading
           ? 'border-primary/50 bg-primary/10 text-primary hover:bg-primary/20 hover:border-primary active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
           : 'cursor-not-allowed border-border/60 bg-surface-muted/40 text-muted-foreground opacity-60',
@@ -40,11 +39,11 @@ export function BarberHeaderQueueButton({
       )}
     >
       {loading ? (
-        <Loader2 className="size-3.5 animate-spin md:size-4" />
+        <Loader2 className="size-3 animate-spin md:size-4" />
       ) : (
         <>
-          <TicketPlus className="size-3.5 md:size-4" />
-          <span className="hidden sm:inline">+ دور</span>
+          <TicketPlus className="size-3 md:size-4" />
+          <span className="hidden md:inline">+ دور</span>
         </>
       )}
     </button>

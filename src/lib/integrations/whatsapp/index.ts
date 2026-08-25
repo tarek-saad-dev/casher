@@ -1,19 +1,14 @@
 /**
- * WhatsApp Integration — Public API
+ * WhatsApp Integration — Public API (Phase 8 pure gateway boundary)
  *
- * Import from this file only.
+ * Production features must use @/modules/messaging
+ * (sendTemplateMessage / sendMessage / campaigns → outbox).
+ *
+ * This module only exposes Generic Gateway + status/health + config.
  */
 
 export {
-  sendSaleWhatsAppMessage,
-  sendBookingWhatsAppMessage,
-  sendFirstTimeWhatsAppMessage,
-  sendEmployeeSaleWhatsAppMessage,
-  sendEmployeeAdvanceWhatsAppMessage,
-  sendEmployeeFundingWhatsAppMessage,
-  sendQuickWhatsAppMessage,
-  sendEmployeeDailyReportWhatsAppMessage,
-  sendOtherWhatsAppMessage,
+  sendWhatsAppMessage,
   checkWhatsAppStatus,
   checkWhatsAppBotHealth,
 } from './service';
@@ -24,16 +19,6 @@ export type {
   WhatsAppSendResult,
   WhatsAppStatusResult,
   WhatsAppBotHealthResult,
-  WhatsAppMessageType,
-  WhatsAppPayload,
-  SaleWhatsAppPayload,
-  BookingWhatsAppPayload,
-  FirstTimeWhatsAppPayload,
-  EmployeeSaleWhatsAppPayload,
-  EmployeeAdvanceWhatsAppPayload,
-  EmployeeFundingWhatsAppPayload,
-  QuickMessageWhatsAppPayload,
-  EmployeeDailyReportWhatsAppPayload,
-  OtherWhatsAppPayload,
-  WhatsAppExtraVariables,
+  GenericWhatsAppMessageInput,
+  GenericWhatsAppSendResult,
 } from './types';

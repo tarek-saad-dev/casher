@@ -94,6 +94,7 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
   }, [pathname]);
   const currentPageLabel = activeNavItem?.label ?? activeDirectLink?.label ?? null;
   const currentSectionLabel = activeSectionTitle ?? activeDirectLink?.section ?? null;
+  const isOperationsRoute = isActive('/operations');
 
   // Lock body scroll when mobile menu is open
   useEffect(() => {
@@ -1110,14 +1111,18 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
       </nav>
 
       {/* ── Mobile Header ───────────────────────────────────────────────── */}
-      <div className={`lg:hidden flex items-center justify-between px-4 py-3 bg-sidebar-background border-b border-sidebar-border ${suppressMobileChrome ? 'max-md:hidden' : ''}`}>
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 flex items-center justify-center shrink-0">
+      <div className={cn(
+        'lg:hidden flex items-center justify-between bg-sidebar-background border-b border-sidebar-border',
+        isOperationsRoute ? 'px-2 py-1' : 'px-4 py-3',
+        suppressMobileChrome && 'max-md:hidden',
+      )}>
+        <div className={cn('flex items-center min-w-0', isOperationsRoute ? 'gap-1.5' : 'gap-3')}>
+          <div className={cn('flex items-center justify-center shrink-0', isOperationsRoute ? 'w-6 h-6' : 'w-9 h-9')}>
             <img src="/cutsalon.png" alt="Cut Salon Logo" className="w-full h-full object-contain" />
           </div>
           <div className="min-w-0">
-            <h2 className="text-base font-bold text-foreground leading-tight">CUT SALON</h2>
-            {currentPageLabel && (
+            <h2 className={cn('font-bold text-foreground leading-tight', isOperationsRoute ? 'text-xs' : 'text-base')}>CUT SALON</h2>
+            {currentPageLabel && !isOperationsRoute && (
               <p className="text-[11px] text-muted-foreground truncate leading-tight mt-0.5">
                 {currentSectionLabel && <span>{currentSectionLabel} · </span>}
                 {currentPageLabel}
@@ -1130,9 +1135,12 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
           onClick={() => toggleMobileMenu()}
           aria-label={mobileMenuOpen ? 'إغلاق القائمة' : 'فتح القائمة'}
           aria-expanded={mobileMenuOpen}
-          className="p-2.5 bg-surface-muted border border-sidebar-border rounded-xl text-muted-foreground hover:bg-sidebar-hover transition-colors shrink-0"
+          className={cn(
+            'bg-surface-muted border border-sidebar-border text-muted-foreground hover:bg-sidebar-hover transition-colors shrink-0',
+            isOperationsRoute ? 'p-1 rounded-md' : 'p-2.5 rounded-xl',
+          )}
         >
-          {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          {mobileMenuOpen ? <X className={isOperationsRoute ? 'w-4 h-4' : 'w-5 h-5'} /> : <Menu className={isOperationsRoute ? 'w-4 h-4' : 'w-5 h-5'} />}
         </button>
       </div>
 

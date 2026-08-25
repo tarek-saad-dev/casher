@@ -2,46 +2,28 @@ import 'server-only';
 import { getPool, sql } from '@/lib/db';
 import type { ActiveBranchContext } from './types';
 import { BranchDomainError } from './types';
-import { getOpenBusinessDay, validateBusinessDayBelongsToBranch } from './businessDay';
+import {
+  mapShiftMoveRow,
+  SHIFT_MOVE_SELECT,
+  type ShiftMoveRecord,
+} from '@/modules/operations/infra/shiftMoveRecord';
+import { openShiftSession } from '@/modules/operations/application/openShiftSession';
+import {
+  closeOwnOpenShiftSession,
+  closeShiftSession,
+} from '@/modules/operations/application/closeShiftSession';
+import { handoffShift } from '@/modules/operations/application/handoffShiftSession';
 
-export interface ShiftMoveRecord {
-  id: number;
-  branchId: number;
-  businessDayId: number;
-  newDay: string;
-  userId: number;
-  shiftId: number;
-  startDate: string | null;
-  startTime: string | null;
-  endDate: string | null;
-  endTime: string | null;
-  status: boolean;
-  userName?: string | null;
-  shiftName?: string | null;
-}
-
-function mapShift(row: Record<string, unknown>): ShiftMoveRecord {
-  const asDate = (v: unknown) => {
-    if (v == null) return null;
-    if (v instanceof Date) return v.toISOString().slice(0, 10);
-    return String(v).slice(0, 10);
-  };
-  return {
-    id: Number(row.ID),
-    branchId: Number(row.BranchID),
-    businessDayId: Number(row.BusinessDayID),
-    newDay: asDate(row.NewDay) || '',
-    userId: Number(row.UserID),
-    shiftId: Number(row.ShiftID),
-    startDate: asDate(row.StartDate),
-    startTime: row.StartTime == null ? null : String(row.StartTime).trim(),
-    endDate: asDate(row.EndDate),
-    endTime: row.EndTime == null ? null : String(row.EndTime).trim(),
-    status: Boolean(row.Status),
-    userName: row.UserName == null ? null : String(row.UserName),
-    shiftName: row.ShiftName == null ? null : String(row.ShiftName),
-  };
-}
+/**
+ * Shift instance (TblShiftMove).
+ *
+ * Intentional invariant: a user may have AT MOST ONE OPEN shift globally.
+ * Ownership of that instance is UserID + BranchID + BusinessDayID + ShiftID.
+ * Cross-branch transition is atomic handoff (never close-then-insert as two operations).
+ *
+ * See src/modules/operations/domain/invariants.ts
+ */
+export type { ShiftMoveRecord };
 
 export async function getUserOpenShift(userId: number): Promise<ShiftMoveRecord | null> {
   const db = await getPool();
@@ -50,9 +32,7 @@ export async function getUserOpenShift(userId: number): Promise<ShiftMoveRecord 
     .input('userId', sql.Int, userId)
     .query(`
       SELECT TOP 1
-        sm.ID, sm.BranchID, sm.BusinessDayID, sm.NewDay, sm.UserID, sm.ShiftID,
-        sm.StartDate, sm.StartTime, sm.EndDate, sm.EndTime, sm.Status,
-        u.UserName, s.ShiftName
+        ${SHIFT_MOVE_SELECT}
       FROM dbo.TblShiftMove sm
       LEFT JOIN dbo.TblUser u ON u.UserID = sm.UserID
       LEFT JOIN dbo.TblShift s ON s.ShiftID = sm.ShiftID
@@ -60,7 +40,7 @@ export async function getUserOpenShift(userId: number): Promise<ShiftMoveRecord 
       ORDER BY sm.ID DESC
     `);
   if (!result.recordset[0]) return null;
-  return mapShift(result.recordset[0]);
+  return mapShiftMoveRow(result.recordset[0]);
 }
 
 export async function getUserOpenShiftForBranch(
@@ -74,9 +54,7 @@ export async function getUserOpenShiftForBranch(
     .input('branchId', sql.Int, branchId)
     .query(`
       SELECT TOP 1
-        sm.ID, sm.BranchID, sm.BusinessDayID, sm.NewDay, sm.UserID, sm.ShiftID,
-        sm.StartDate, sm.StartTime, sm.EndDate, sm.EndTime, sm.Status,
-        u.UserName, s.ShiftName
+        ${SHIFT_MOVE_SELECT}
       FROM dbo.TblShiftMove sm
       LEFT JOIN dbo.TblUser u ON u.UserID = sm.UserID
       LEFT JOIN dbo.TblShift s ON s.ShiftID = sm.ShiftID
@@ -84,7 +62,7 @@ export async function getUserOpenShiftForBranch(
       ORDER BY sm.ID DESC
     `);
   if (!result.recordset[0]) return null;
-  return mapShift(result.recordset[0]);
+  return mapShiftMoveRow(result.recordset[0]);
 }
 
 export async function listOpenShiftsForBranch(branchId: number): Promise<ShiftMoveRecord[]> {
@@ -94,16 +72,14 @@ export async function listOpenShiftsForBranch(branchId: number): Promise<ShiftMo
     .input('branchId', sql.Int, branchId)
     .query(`
       SELECT
-        sm.ID, sm.BranchID, sm.BusinessDayID, sm.NewDay, sm.UserID, sm.ShiftID,
-        sm.StartDate, sm.StartTime, sm.EndDate, sm.EndTime, sm.Status,
-        u.UserName, s.ShiftName
+        ${SHIFT_MOVE_SELECT}
       FROM dbo.TblShiftMove sm
       LEFT JOIN dbo.TblUser u ON u.UserID = sm.UserID
       LEFT JOIN dbo.TblShift s ON s.ShiftID = sm.ShiftID
       WHERE sm.Status = 1 AND sm.BranchID = @branchId
       ORDER BY sm.ID
     `);
-  return result.recordset.map(mapShift);
+  return result.recordset.map(mapShiftMoveRow);
 }
 
 export async function validateShiftBelongsToBranch(
@@ -116,18 +92,16 @@ export async function validateShiftBelongsToBranch(
     .input('id', sql.Int, shiftMoveId)
     .query(`
       SELECT
-        sm.ID, sm.BranchID, sm.BusinessDayID, sm.NewDay, sm.UserID, sm.ShiftID,
-        sm.StartDate, sm.StartTime, sm.EndDate, sm.EndTime, sm.Status,
-        u.UserName, s.ShiftName
+        ${SHIFT_MOVE_SELECT}
       FROM dbo.TblShiftMove sm
       LEFT JOIN dbo.TblUser u ON u.UserID = sm.UserID
       LEFT JOIN dbo.TblShift s ON s.ShiftID = sm.ShiftID
       WHERE sm.ID = @id
     `);
   if (!result.recordset[0]) {
-    throw new BranchDomainError('BRANCH_NOT_FOUND', 'الوردية غير موجودة', 404);
+    throw new BranchDomainError('SHIFT_NOT_FOUND', 'الوردية غير موجودة', 404);
   }
-  const shift = mapShift(result.recordset[0]);
+  const shift = mapShiftMoveRow(result.recordset[0]);
   if (shift.branchId !== branchId) {
     throw new BranchDomainError(
       'BRANCH_ACCESS_MISMATCH',
@@ -138,165 +112,23 @@ export async function validateShiftBelongsToBranch(
   return shift;
 }
 
-function formatLegacyStartTime(now = new Date()): string {
-  const hours = now.getHours();
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-  const h12 = hours % 12 || 12;
-  return `${String(h12).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} ${ampm}`;
-}
-
-function formatLegacyEndTime(now = new Date()): string {
-  const hours = now.getHours();
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-  const h12 = hours % 12 || 12;
-  return `${String(h12).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')} ${ampm}`;
-}
-
-export async function openShift(
+export function openShift(
   branchContext: ActiveBranchContext,
   userId: number,
   shiftId: number,
 ): Promise<ShiftMoveRecord> {
-  if (!branchContext.canOperate) {
-    throw new BranchDomainError(
-      'OPERATION_NOT_ALLOWED',
-      'غير مصرح — لا تملك صلاحية تشغيل هذا الفرع',
-      403,
-    );
-  }
-
-  const day = await getOpenBusinessDay(branchContext.branchId);
-  if (!day || !day.status) {
-    throw new BranchDomainError(
-      'OPERATION_NOT_ALLOWED',
-      'لا يوجد يوم عمل مفتوح لهذا الفرع — يجب فتح يوم أولاً',
-      400,
-    );
-  }
-
-  // DB enforces UX_TblShiftMove_OneOpenPerUser (one open shift globally per user).
-  // If the open shift is on another branch, close it so the user can open here.
-  const anyOpen = await getUserOpenShift(userId);
-  if (anyOpen) {
-    if (anyOpen.branchId === branchContext.branchId) {
-      throw new BranchDomainError(
-        'OPERATION_NOT_ALLOWED',
-        'لديك وردية مفتوحة بالفعل — يجب إغلاقها أولاً',
-        400,
-      );
-    }
-    await finalizeCloseShift(anyOpen.id, anyOpen.branchId);
-  }
-
-  const db = await getPool();
-  const startTime = formatLegacyStartTime();
-  try {
-    const result = await db
-      .request()
-      .input('branchId', sql.Int, branchContext.branchId)
-      .input('businessDayId', sql.Int, day.id)
-      .input('newDay', sql.Date, day.newDay)
-      .input('userID', sql.Int, userId)
-      .input('shiftID', sql.Int, shiftId)
-      .input('startDate', sql.Date, day.newDay)
-      .input('startTime', sql.NChar(10), startTime)
-      .query(`
-        INSERT INTO dbo.TblShiftMove (
-          BranchID, BusinessDayID, NewDay, UserID, ShiftID, StartDate, StartTime, Status
-        )
-        OUTPUT INSERTED.ID, INSERTED.BranchID, INSERTED.BusinessDayID, INSERTED.NewDay,
-               INSERTED.UserID, INSERTED.ShiftID, INSERTED.StartDate, INSERTED.StartTime,
-               INSERTED.EndDate, INSERTED.EndTime, INSERTED.Status
-        VALUES (
-          @branchId, @businessDayId, @newDay, @userID, @shiftID, @startDate, @startTime, 1
-        )
-      `);
-
-    return mapShift(result.recordset[0]);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (
-      /UX_TblShiftMove_OneOpenPerUser/i.test(message) ||
-      /Cannot insert duplicate key/i.test(message)
-    ) {
-      throw new BranchDomainError(
-        'OPERATION_NOT_ALLOWED',
-        'لديك وردية مفتوحة بالفعل — أغلقها أولاً ثم افتح وردية في هذا الفرع',
-        400,
-      );
-    }
-    throw err;
-  }
+  return openShiftSession(branchContext, userId, shiftId);
 }
 
-async function finalizeCloseShift(
-  shiftMoveId: number,
-  branchId: number,
-): Promise<ShiftMoveRecord> {
-  const db = await getPool();
-  const now = new Date();
-  const result = await db
-    .request()
-    .input('id', sql.Int, shiftMoveId)
-    .input('branchId', sql.Int, branchId)
-    .input('endDate', sql.Date, now)
-    .input('endTime', sql.NVarChar(50), formatLegacyEndTime(now))
-    .query(`
-      UPDATE dbo.TblShiftMove
-      SET Status = 0, EndDate = @endDate, EndTime = @endTime
-      WHERE ID = @id AND BranchID = @branchId AND Status = 1;
-
-      SELECT
-        sm.ID, sm.BranchID, sm.BusinessDayID, sm.NewDay, sm.UserID, sm.ShiftID,
-        sm.StartDate, sm.StartTime, sm.EndDate, sm.EndTime, sm.Status,
-        u.UserName, s.ShiftName
-      FROM dbo.TblShiftMove sm
-      LEFT JOIN dbo.TblUser u ON u.UserID = sm.UserID
-      LEFT JOIN dbo.TblShift s ON s.ShiftID = sm.ShiftID
-      WHERE sm.ID = @id
-    `);
-
-  if (!result.recordset[0]) {
-    throw new BranchDomainError('OPERATION_NOT_ALLOWED', 'تعذر إغلاق الوردية', 400);
-  }
-  return mapShift(result.recordset[0]);
-}
-
-export async function closeShift(
+export function closeShift(
   branchContext: ActiveBranchContext,
   shiftMoveId: number,
 ): Promise<ShiftMoveRecord> {
-  if (!branchContext.canOperate) {
-    throw new BranchDomainError(
-      'OPERATION_NOT_ALLOWED',
-      'غير مصرح — لا تملك صلاحية تشغيل هذا الفرع',
-      403,
-    );
-  }
-
-  const shift = await validateShiftBelongsToBranch(shiftMoveId, branchContext.branchId);
-  if (!shift.status) {
-    throw new BranchDomainError('OPERATION_NOT_ALLOWED', 'هذه الوردية مغلقة بالفعل', 400);
-  }
-
-  await validateBusinessDayBelongsToBranch(shift.businessDayId, branchContext.branchId);
-
-  return finalizeCloseShift(shiftMoveId, branchContext.branchId);
+  return closeShiftSession(branchContext, shiftMoveId);
 }
 
-/**
- * Close the caller's own open shift even if it belongs to another branch.
- * Used after branch switch so the user can open a shift on the active branch.
- */
-export async function closeOwnOpenShift(userId: number): Promise<ShiftMoveRecord> {
-  const open = await getUserOpenShift(userId);
-  if (!open || !open.status) {
-    throw new BranchDomainError('OPERATION_NOT_ALLOWED', 'لا توجد وردية مفتوحة', 400);
-  }
-  if (open.userId !== userId) {
-    throw new BranchDomainError('OPERATION_NOT_ALLOWED', 'غير مصرح بإغلاق هذه الوردية', 403);
-  }
-  return finalizeCloseShift(open.id, open.branchId);
+export function closeOwnOpenShift(userId: number): Promise<ShiftMoveRecord> {
+  return closeOwnOpenShiftSession(userId);
 }
 
-export { forceCloseBranchShifts } from './businessDay';
+export { handoffShift };

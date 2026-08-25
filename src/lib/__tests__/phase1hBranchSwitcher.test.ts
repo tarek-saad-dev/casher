@@ -408,6 +408,10 @@ describe('Phase 1H — source contracts (no live DB)', () => {
     expect(src).not.toMatch(/getPool\(/);
     expect(src).not.toMatch(/\.query\(/);
     expect(src).not.toMatch(/SET\s+IsDefault/i);
+    expect(src).not.toContain('shiftSession');
+    expect(src).not.toContain('handoffShift');
+    expect(src).not.toContain('openShift');
+    expect(src).not.toContain('closeShift');
   });
 
   it('switchBranch.ts reissues the session via createSession and audits via writeSensitiveAuditEvent', () => {
@@ -417,23 +421,24 @@ describe('Phase 1H — source contracts (no live DB)', () => {
     expect(src).toContain('createSession(');
   });
 
-  it('BranchSwitcher wires performBranchSwitch, and postSwitchClient performs a hard navigation via window.location.assign', () => {
+  it('BranchSwitcher wires performBranchSwitch with a soft view refresh; hard navigation remains for entity URLs', () => {
     const switcherSrc = read('src/components/session/BranchSwitcher.tsx');
     expect(switcherSrc).toContain("from '@/lib/branch/postSwitchClient'");
     expect(switcherSrc).toContain('performBranchSwitch');
+    expect(switcherSrc).toContain('onSoftSwitch');
 
     const clientSrc = read('src/lib/branch/postSwitchClient.ts');
     expect(clientSrc).toContain('window.location.assign');
+    expect(clientSrc).toContain('needsHardNavigationAfterViewSwitch');
+    expect(clientSrc).not.toContain('/api/shift');
   });
 
-  it('no post-switch flow relies on router.refresh() alone (full document navigation is mandatory)', () => {
+  it('compatible view-branch switches refresh bootstrap instead of always reloading the document', () => {
     const switcherSrc = read('src/components/session/BranchSwitcher.tsx');
     const clientSrc = read('src/lib/branch/postSwitchClient.ts');
-    // Neither file imports Next's client router at all — the switch flow
-    // exclusively uses window.location.assign for a full document reload,
-    // so a soft router.refresh() call is structurally impossible here.
-    expect(switcherSrc).not.toMatch(/useRouter/);
+    expect(switcherSrc).toMatch(/useRouter/);
     expect(clientSrc).not.toMatch(/useRouter/);
+    expect(clientSrc).toContain('onSoftSwitch');
     expect(clientSrc).toContain('window.location.assign');
   });
 

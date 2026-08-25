@@ -10,10 +10,13 @@ import { getConfig } from './config';
 import type {
   WhatsAppPayload,
   WhatsAppSendResult,
+  WhatsAppSendFailure,
   WhatsAppStatusResult,
   WhatsAppBotHealthResult,
   WhatsAppApiSendResponse,
   WhatsAppApiStatusResponse,
+  GenericWhatsAppMessageInput,
+  GenericWhatsAppSendResult,
 } from './types';
 
 const HEALTH_TIMEOUT_MS = 5000;
@@ -23,18 +26,34 @@ function maskPhone(phone: string): string {
   return phone.slice(0, 3) + '****' + phone.slice(-2);
 }
 
-export async function sendWhatsAppPayload(
-  payload: WhatsAppPayload,
-): Promise<WhatsAppSendResult> {
+function isTimeoutError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    msg.includes('abort') ||
+    msg.toLowerCase().includes('timeout') ||
+    (err instanceof Error && err.name === 'AbortError')
+  );
+}
+
+type GatewaySendConfirmed = {
+  sent: true;
+  skipped: false;
+  status: 'sent';
+  phone?: string;
+  messageId: string;
+  sentAt?: string;
+};
+
+/**
+ * Shared POST /api/whatsapp/send + response mapping.
+ * Does not add a `type` field to the result — callers attach it if needed.
+ */
+async function postWhatsAppSend(
+  requestBody: unknown,
+  logLabel: string,
+  phone: string,
+): Promise<GatewaySendConfirmed | WhatsAppSendFailure> {
   const cfg = getConfig();
-
-  if (!cfg.enabled) {
-    console.log(
-      '[whatsapp] Integration skipped: WHATSAPP_INTEGRATION_ENABLED is not true',
-    );
-    return { sent: false, skipped: true, reason: 'development_only' };
-  }
-
   const url = `${cfg.apiBaseUrl}/api/whatsapp/send`;
 
   let response: Response;
@@ -48,7 +67,7 @@ export async function sendWhatsAppPayload(
       response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
     } finally {
@@ -57,12 +76,8 @@ export async function sendWhatsAppPayload(
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
 
-    if (
-      msg.includes('abort') ||
-      msg.toLowerCase().includes('timeout') ||
-      (err instanceof Error && err.name === 'AbortError')
-    ) {
-      console.log(`[whatsapp] Request timed out for ${payload.type}`);
+    if (isTimeoutError(err)) {
+      console.log(`[whatsapp] Request timed out for ${logLabel}`);
       return { sent: false, skipped: false, reason: 'timeout' };
     }
 
@@ -93,6 +108,9 @@ export async function sendWhatsAppPayload(
     };
   }
 
+  const gatewayCode =
+    typeof body.code === 'string' && body.code.trim().length > 0 ? body.code.trim() : undefined;
+
   if (response.status === 503) {
     console.log('[whatsapp] WhatsApp Web is not ready');
     return {
@@ -100,13 +118,29 @@ export async function sendWhatsAppPayload(
       skipped: false,
       reason: 'whatsapp_not_ready',
       httpStatus: 503,
+      error: body.error,
+      status: body.status,
+      ...(gatewayCode ? { code: gatewayCode } : {}),
+    };
+  }
+
+  if (response.status === 409) {
+    console.log(`[whatsapp] Gateway conflict/in-progress (${logLabel}): ${gatewayCode || 'n/a'}`);
+    return {
+      sent: false,
+      skipped: false,
+      reason: 'remote_error',
+      httpStatus: 409,
+      error: body.error,
+      status: body.status,
+      ...(gatewayCode ? { code: gatewayCode } : {}),
     };
   }
 
   if (response.status === 400) {
     const errorMsg = body.error || '';
     const remoteStatus = body.status;
-    console.log(`[whatsapp] Remote validation/error (${payload.type}): status=${remoteStatus || 'n/a'} ${errorMsg}`);
+    console.log(`[whatsapp] Remote validation/error (${logLabel}): status=${remoteStatus || 'n/a'} ${errorMsg}`);
     if (remoteStatus === 'not_registered') {
       return {
         sent: false,
@@ -115,6 +149,7 @@ export async function sendWhatsAppPayload(
         httpStatus: 400,
         error: errorMsg,
         status: 'not_registered',
+        ...(gatewayCode ? { code: gatewayCode } : {}),
       };
     }
     if (errorMsg.toLowerCase().includes('phone') || errorMsg.toLowerCase().includes('invalid')) {
@@ -124,6 +159,7 @@ export async function sendWhatsAppPayload(
         reason: 'invalid_phone',
         httpStatus: 400,
         error: errorMsg,
+        ...(gatewayCode ? { code: gatewayCode } : {}),
       };
     }
     return {
@@ -132,6 +168,7 @@ export async function sendWhatsAppPayload(
       reason: 'invalid_response',
       httpStatus: 400,
       error: errorMsg,
+      ...(gatewayCode ? { code: gatewayCode } : {}),
     };
   }
 
@@ -144,6 +181,7 @@ export async function sendWhatsAppPayload(
       httpStatus: response.status,
       error: body.error,
       status: body.status,
+      ...(gatewayCode ? { code: gatewayCode } : {}),
     };
   }
 
@@ -151,13 +189,12 @@ export async function sendWhatsAppPayload(
   // Do NOT treat ok=true, queued, or legacy "submitted" as sent.
   if (response.ok && body.success === true && body.status === 'sent' && body.messageId) {
     console.log(
-      `[whatsapp] ${payload.type} sent for ${maskPhone(payload.phone)} messageId=${body.messageId}`,
+      `[whatsapp] ${logLabel} sent for ${maskPhone(phone)} messageId=${body.messageId}`,
     );
     return {
       sent: true,
       skipped: false,
       status: 'sent',
-      type: payload.type,
       phone: body.phone,
       messageId: body.messageId,
       sentAt: body.sentAt,
@@ -166,7 +203,7 @@ export async function sendWhatsAppPayload(
 
   if (response.ok && body.success === true && body.status === 'queued') {
     console.log(
-      `[whatsapp] ${payload.type} queued for ${maskPhone(payload.phone)}`,
+      `[whatsapp] ${logLabel} queued for ${maskPhone(phone)}`,
     );
     return {
       sent: false,
@@ -177,7 +214,7 @@ export async function sendWhatsAppPayload(
   }
 
   console.log(
-    `[whatsapp] ${payload.type} unconfirmed for ${maskPhone(payload.phone)} status=${body.status || 'n/a'} messageId=${body.messageId || 'missing'} — treating as failed`,
+    `[whatsapp] ${logLabel} unconfirmed for ${maskPhone(phone)} status=${body.status || 'n/a'} messageId=${body.messageId || 'missing'} — treating as failed`,
   );
   return {
     sent: false,
@@ -188,7 +225,62 @@ export async function sendWhatsAppPayload(
       body.error ||
       `Bot did not confirm sent/messageId (success=${String(body.success)} status=${body.status || 'n/a'})`,
     status: body.status,
+    ...(gatewayCode ? { code: gatewayCode } : {}),
   };
+}
+
+function skipIfClientDisabled(): WhatsAppSendFailure | null {
+  if (getConfig().enabled) return null;
+  console.log(
+    '[whatsapp] Integration skipped: WHATSAPP_INTEGRATION_ENABLED is not true',
+  );
+  return { sent: false, skipped: true, reason: 'development_only' };
+}
+
+/**
+ * @deprecated Phase 8 — typed Gateway payloads removed. Prefer sendGenericWhatsAppPayload.
+ * Kept only so old unit helpers compile if imported; production must not call this.
+ */
+export async function sendWhatsAppPayload(
+  payload: WhatsAppPayload,
+): Promise<WhatsAppSendResult> {
+  const disabled = skipIfClientDisabled();
+  if (disabled) return disabled;
+
+  // Typed contract removed from bot — refuse rather than POST `type`.
+  console.log(
+    `[whatsapp] Typed payload rejected (Phase 8 gateway is generic-only): type=${payload.type}`,
+  );
+  return {
+    sent: false,
+    skipped: true,
+    reason: 'typed_send_removed',
+  };
+}
+
+/**
+ * Untyped Gateway send. Body is { phone, message, metadata? } — never includes `type`.
+ */
+export async function sendGenericWhatsAppPayload(
+  input: GenericWhatsAppMessageInput,
+): Promise<GenericWhatsAppSendResult> {
+  const disabled = skipIfClientDisabled();
+  if (disabled) return disabled;
+
+  const body: Record<string, unknown> = {
+    phone: input.phone,
+    message: input.message,
+  };
+  if (input.metadata !== undefined) {
+    body.metadata = input.metadata;
+  }
+  const idempotencyKey =
+    typeof input.idempotencyKey === 'string' ? input.idempotencyKey.trim() : '';
+  if (idempotencyKey) {
+    body.idempotencyKey = idempotencyKey;
+  }
+
+  return postWhatsAppSend(body, 'generic', input.phone);
 }
 
 /**

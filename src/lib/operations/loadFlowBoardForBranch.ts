@@ -18,6 +18,7 @@ import { getBarbersDayStatus } from '@/lib/availabilityEngine';
 import { getBranchById } from '@/lib/branch/repository';
 import { listOperationalPresenceForBranch } from '@/lib/hr/operationsDayState';
 import type { FlowBoardBarber } from '@/lib/operations/flowBoardTypes';
+import { resolveBookingOriginLabel } from '@/lib/booking/bookingOriginDisplay';
 
 export type FlowBoardPresenceMode = 'present' | 'all';
 
@@ -99,9 +100,11 @@ export async function loadFlowBoardForBranch(opts: {
         .query(`
           SELECT
             b.BookingID, b.AssignedEmpID, b.ClientID, b.BookingDate,
-            c.Name as ClientName, b.StartTime, b.EndTime, b.Status
+            c.Name as ClientName, b.StartTime, b.EndTime, b.Status,
+            b.Source, b.CreatedByUserID, u.UserName AS CreatedByUserName
           FROM [dbo].[Bookings] b
           LEFT JOIN [dbo].[TblClient] c ON b.ClientID = c.ClientID
+          LEFT JOIN [dbo].[TblUser] u ON u.UserID = b.CreatedByUserID
           WHERE b.BookingDate = @bdate
             AND b.BranchID = @branchId
             AND b.AssignedEmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
@@ -132,9 +135,11 @@ export async function loadFlowBoardForBranch(opts: {
         .query(`
           SELECT
             b.BookingID, b.AssignedEmpID, b.ClientID, b.BookingDate,
-            c.Name as ClientName, b.StartTime, b.EndTime, b.Status
+            c.Name as ClientName, b.StartTime, b.EndTime, b.Status,
+            b.Source, b.CreatedByUserID, u.UserName AS CreatedByUserName
           FROM [dbo].[Bookings] b
           LEFT JOIN [dbo].[TblClient] c ON b.ClientID = c.ClientID
+          LEFT JOIN [dbo].[TblUser] u ON u.UserID = b.CreatedByUserID
           WHERE b.BookingDate = @bdate
             AND b.BranchID = @branchId
             AND b.AssignedEmpID IN (SELECT EmpID FROM [dbo].[TblEmp] WHERE isActive = 1 AND Job = N'حلاق')
@@ -390,6 +395,11 @@ export async function loadFlowBoardForBranch(opts: {
       const end = new Date(normalized.endDateTimeCairo);
       if (!inShiftWindow(start, end)) continue;
 
+      const origin = resolveBookingOriginLabel({
+        source: b.Source,
+        createdByUserId: b.CreatedByUserID,
+        createdByUserName: b.CreatedByUserName,
+      });
       timeline.push({
         type: 'booking',
         sourceId: b.BookingID,
@@ -402,6 +412,8 @@ export async function loadFlowBoardForBranch(opts: {
         customerName: b.ClientName || undefined,
         serviceNames: svcInfo?.names,
         barberId: empId,
+        originKind: origin.kind,
+        originLabel: origin.label,
         startTimeDisplay: normalized.startTimeDisplay,
         endTimeDisplay: normalized.endTimeDisplay,
         dateDisplay: normalized.dateDisplay,

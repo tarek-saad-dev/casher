@@ -201,27 +201,15 @@ export async function POST(req: NextRequest) {
 
     // day_off → upsert attendance Absent for that WorkDate (any date, not only calendar-today)
     if (type === "day_off") {
-      const attendanceNote = `schedule-control day_off${reason ? `: ${reason}` : ""}`;
-      await db
-        .request()
-        .input("empId",    sql.Int,          empId)
-        .input("workDate", sql.Date,          date)
-        .input("branchId", sql.Int,           branch.branchId)
-        .input("notes",    sql.NVarChar(300), attendanceNote)
-        .query(`
-          IF EXISTS (
-            SELECT 1 FROM dbo.TblEmpAttendance
-            WHERE EmpID = @empId AND WorkDate = @workDate AND BranchID = @branchId
-          )
-            UPDATE dbo.TblEmpAttendance
-            SET Status = 'Absent', Notes = @notes,
-                CheckInTime = NULL, CheckOutTime = NULL
-            WHERE EmpID = @empId AND WorkDate = @workDate AND BranchID = @branchId
-          ELSE
-            INSERT INTO dbo.TblEmpAttendance (BranchID, EmpID, WorkDate, Status, Notes)
-            VALUES (@branchId, @empId, @workDate, 'Absent', @notes)
-        `)
-        .catch(() => {});
+      const { applyScheduleControlDayOffAttendance } = await import(
+        "@/modules/attendance"
+      );
+      await applyScheduleControlDayOffAttendance({
+        empId,
+        workDate: date,
+        branchId: branch.branchId,
+        reason: reason ?? null,
+      }).catch(() => {});
     }
 
     // block_range → mirror as وقت مستقطع on attendance (same date)

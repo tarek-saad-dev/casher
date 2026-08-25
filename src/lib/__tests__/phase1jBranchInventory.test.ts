@@ -73,6 +73,7 @@ describe('Phase 1J branch inventory', () => {
     const purchases = read('src/app/api/purchases/route.ts');
     expect(purchases).toContain('resolveBranchDayAndShiftForWrite');
     expect(purchases).toContain('BranchID في الطلب غير مسموح');
+    expect(purchases).toContain('BusinessDayID');
     expect(purchases).toContain('postPurchaseReceipt');
 
     const inv = read('src/app/api/inventory/branch/route.ts');

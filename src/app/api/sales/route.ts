@@ -5,21 +5,27 @@ import type { CreateSalePayload } from "@/lib/types";
 import { resolveSplitPaymentConfig } from "@/lib/clearingMethod";
 import { redistributeFromClearing } from "@/lib/splitPaymentService";
 import {
-  sendSaleWhatsAppMessage,
-  sendFirstTimeWhatsAppMessage,
-  sendEmployeeSaleWhatsAppMessage,
-} from "@/lib/integrations/whatsapp";
+  CUSTOMER_FIRST_TIME_TEMPLATE_KEY,
+  SALE_EMPLOYEE_NOTIFICATION_TEMPLATE_KEY,
+  sendSaleCustomerReceipt,
+  sendTemplateMessage,
+} from "@/modules/messaging";
 import { resolveEmployeeWhatsAppPhone } from "@/lib/integrations/whatsapp/payload-builders";
 import {
   computeInvoiceItemsTotals,
 } from "@/lib/sales/service-line-totals";
 import {
-  buildEmployeeSaleMessage,
   employeeSaleGroupTotal,
   groupEmployeeSaleDetails,
 } from "@/lib/sales/employee-sale-whatsapp";
 import { roundMoney } from "@/lib/reportMonthUtils";
 import { getCairoInvTimeDotStr, getCairoPayTimeStr } from "@/lib/businessDate";
+import {
+  branchErrorResponse,
+  lockOperationalWrite,
+  resolveBranchDayAndShiftForWrite,
+} from "@/lib/branch/operationalGates";
+import { finalizeCurrentFinancialWrite } from "@/lib/branch/financialOwnershipPolicy";
 
 export const runtime = "nodejs";
 
@@ -50,12 +56,11 @@ export async function POST(req: NextRequest) {
     );
 
     // ──── Enforce active branch business day + user shift; stamp financial ownership ────
-    const { resolveBranchDayAndShiftForWrite } = await import(
-      '@/lib/branch/operationalGates'
-    );
     const gated = await resolveBranchDayAndShiftForWrite(userID);
     if (!gated.ok) return gated.response;
-    if (!gated.shift) {
+    const owned = finalizeCurrentFinancialWrite("sale.create", gated, body);
+    if (!owned.ok) return owned.response;
+    if (!gated.shift || owned.ownership.shiftMoveId == null) {
       console.error(
         `[pos-api]   ❌ REJECTED: no active shift for UserID=${userID} branch=${gated.branch.branchCode}`,
       );
@@ -64,12 +69,13 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+    // Server-owned: OPEN ShiftSession → BranchID + BusinessDayID + ShiftMoveID.
     // Never trust browser branchId — ownership comes only from validated session context.
-    const branchId = gated.branch.branchId;
-    const businessDayId = gated.day.id;
-    const activeDay = { ID: gated.day.id, NewDay: gated.day.newDay };
-    const invDate = gated.day.newDay; // Use business day date, NOT JS Date
-    const shiftMoveID = gated.shift.id;
+    const branchId = owned.ownership.branchId;
+    const businessDayId = owned.ownership.businessDayId!;
+    const activeDay = { ID: businessDayId, NewDay: owned.ownership.businessDate! };
+    const invDate = owned.ownership.businessDate!;
+    const shiftMoveID = owned.ownership.shiftMoveId;
     console.log(
       `[pos-api]   Active Day: ID=${activeDay.ID}, NewDay=${invDate}, Branch=${gated.branch.branchCode}`,
     );
@@ -236,6 +242,12 @@ export async function POST(req: NextRequest) {
     console.log(`[pos-api]   Transaction started (SERIALIZABLE)`);
 
     try {
+      await lockOperationalWrite(transaction, {
+        branchId,
+        businessDayId,
+        shiftSessionId: shiftMoveID,
+        requireShift: true,
+      });
       // ──── 1. Allocate invID safely (no TABLOCKX) ────
       const newInvID = await allocateInvID(transaction, 'TblinvServHead', 'مبيعات', 5000);
       console.log(`[pos-api]   Generated invID=${newInvID} for invType=مبيعات`);
@@ -588,22 +600,31 @@ export async function POST(req: NextRequest) {
                   `);
                 const isFirstTime = (priorInvResult.recordset[0]?.cnt as number) === 0;
 
-                await sendSaleWhatsAppMessage({
+                await sendSaleCustomerReceipt({
                   phone,
                   customerName,
-                  invID: newInvID,
+                  invoiceId: newInvID,
                   total: grandTotal,
                   paymentMethod: paymentMethodLabel,
                   services: serviceNames,
                   employeeNames,
                   branchName: gated.branch.branchName,
+                  branchId,
                 });
 
                 if (isFirstTime) {
-                  await sendFirstTimeWhatsAppMessage({
-                    phone,
-                    customerName,
-                    branchName: gated.branch.branchName,
+                  await sendTemplateMessage({
+                    templateKey: CUSTOMER_FIRST_TIME_TEMPLATE_KEY,
+                    recipient: { phone },
+                    variables: {
+                      customerName,
+                      branchName: gated.branch.branchName,
+                    },
+                    metadata: {
+                      branchId,
+                      invoiceId: newInvID,
+                    },
+                    context: { branchId, language: 'ar' },
                   });
                 }
               }
@@ -626,18 +647,6 @@ export async function POST(req: NextRequest) {
           const whatsAppSelect = hasWhatsAppCol.recordset.length > 0
             ? 'e.WhatsApp'
             : 'NULL AS WhatsApp';
-
-          let customerNameForEmp = 'عميل';
-          if (body.clientId) {
-            const custNameRes = await empWaDb
-              .request()
-              .input('empWaClientId', sql.Int, body.clientId)
-              .query(`
-                SELECT [Name] FROM [dbo].[TblClient] WHERE ClientID = @empWaClientId
-              `);
-            const n = custNameRes.recordset[0]?.Name as string | undefined;
-            if (n?.trim()) customerNameForEmp = n.trim();
-          }
 
           const empDetailResult = await empWaDb
             .request()
@@ -695,29 +704,32 @@ export async function POST(req: NextRequest) {
             }
 
             const employeeTotal = employeeSaleGroupTotal(emp);
-            const message = buildEmployeeSaleMessage({
-              employeeName: emp.employeeName,
-              invID: newInvID,
-              services: emp.services,
-            });
+            const servicesLabel = emp.services
+              .map((s) => s.serviceName.trim())
+              .filter(Boolean)
+              .join(', ');
 
             console.log(
-              `[pos-api]   📱 Employee WhatsApp: empId=${emp.empId} ${emp.employeeName} (${emp.phone}) total=${employeeTotal} services=${emp.services.map((s) => s.serviceName).join(', ')}`,
+              `[pos-api]   📱 Employee WhatsApp: empId=${emp.empId} ${emp.employeeName} (${emp.phone}) total=${employeeTotal} services=${servicesLabel}`,
             );
 
             sendJobs.push(
-              sendEmployeeSaleWhatsAppMessage({
-                phone: emp.phone,
-                employeeName: emp.employeeName,
-                customerName: customerNameForEmp,
-                invID: newInvID,
-                employeeId: emp.empId,
-                services: emp.services.map((s) => s.serviceName),
-                serviceDetails: emp.services,
-                employeeTotal,
-                invoiceTotal: grandTotal,
-                message,
-                branchName: gated.branch.branchName,
+              sendTemplateMessage({
+                templateKey: SALE_EMPLOYEE_NOTIFICATION_TEMPLATE_KEY,
+                recipient: { phone: emp.phone },
+                variables: {
+                  customerName: emp.employeeName,
+                  employeeName: emp.employeeName,
+                  invoiceNumber: `INV-${newInvID}`,
+                  services: servicesLabel,
+                  branchName: gated.branch.branchName,
+                },
+                metadata: {
+                  branchId,
+                  invoiceId: newInvID,
+                  employeeId: emp.empId,
+                },
+                context: { branchId, language: 'ar' },
               }),
             );
           }
@@ -812,6 +824,8 @@ export async function POST(req: NextRequest) {
         { status: err.statusCode },
       );
     }
+    const mapped = branchErrorResponse(err);
+    if (mapped) return mapped;
     const message = err instanceof Error ? err.message : "Unknown error";
     const stack = err instanceof Error ? err.stack : "";
     console.error(`[pos-api] ❌ POST /api/sales FAILED: ${message}`);

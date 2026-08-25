@@ -5,13 +5,11 @@ import {
   readSessionCookie,
   verifySessionCookie,
 } from "@/lib/session";
-import { getPool, getUserFriendlyError, sql } from "@/lib/db";
-import { getPermissions } from "@/lib/permissions";
-import { getUserAccess } from "@/lib/permissions-server";
-import { getUserActiveStatus } from "@/lib/branch/repository";
-import { getActiveBranchContext } from "@/lib/branch/context";
-import { getOpenBusinessDay } from "@/lib/branch/businessDay";
-import { getUserOpenShift, getUserOpenShiftForBranch } from "@/lib/branch/shiftSession";
+import { getUserFriendlyError } from "@/lib/db";
+import {
+  loadOperationalBootstrap,
+  toLegacySessionPayload,
+} from "@/modules/operations/application/loadOperationalBootstrap";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,33 +28,11 @@ function emptySessionBody(extra: Record<string, unknown> = {}) {
   };
 }
 
-function buildAuthoritativePermissions(args: {
-  userLevel: string;
-  isSuperAdmin: boolean;
-  roles: string[];
-  isPartnerOnly: boolean;
-  allowedPageKeys: string[];
-}): string[] {
-  const isAuthAdmin =
-    args.isSuperAdmin ||
-    args.userLevel === "admin" ||
-    args.roles.includes("admin") ||
-    args.roles.includes("super_admin");
-
-  if (args.isPartnerOnly) {
-    return [...args.allowedPageKeys];
-  }
-
-  const legacy = getPermissions(isAuthAdmin ? "admin" : "user");
-  return [...new Set([...legacy, ...args.allowedPageKeys])];
-}
-
-// GET /api/auth/session — returns full operational session state
+// GET /api/auth/session — compatibility adapter over operational bootstrap
 export async function GET() {
   try {
     const verified = await verifySessionCookie();
     if (!verified.ok) {
-      // Stale/legacy/expired cookie may still be present — clear only in this Route Handler.
       if (verified.reason !== "missing" && (await readSessionCookie())) {
         await destroySession();
       }
@@ -79,136 +55,19 @@ export async function GET() {
 
     const user = await getSession();
     if (!user) {
-      // Defensive: verified ok but getSession null — clear cookie.
       await destroySession();
       return NextResponse.json(emptySessionBody());
     }
 
-    const status = await getUserActiveStatus(user.UserID);
-    if (!status.exists || status.isDeleted) {
-      await destroySession();
+    const result = await loadOperationalBootstrap({ user });
+    if (!result.ok) {
       return NextResponse.json(
-        emptySessionBody({
-          error: "تم تعطيل الحساب",
-          code: "USER_DELETED",
-        }),
-        { status: 401 },
+        emptySessionBody({ error: result.message, code: result.code }),
+        { status: result.status },
       );
     }
 
-    const branchContext = await getActiveBranchContext();
-    if (!branchContext) {
-      await destroySession();
-      return NextResponse.json(
-        emptySessionBody({
-          error: "يلزم إعادة تسجيل الدخول لتحديث جلسة الفرع",
-          code: "SESSION_UPGRADE_REQUIRED",
-        }),
-        { status: 401 },
-      );
-    }
-
-    // Get current open business day for the active branch (Phase 1C)
-    const day = await getOpenBusinessDay(branchContext.branchId);
-    const dayPayload = day
-      ? { ID: day.id, NewDay: day.newDay, Status: day.status, BranchID: day.branchId }
-      : null;
-
-    // Active-branch shift for POS; also detect any open shift elsewhere
-    // (DB unique index UX_TblShiftMove_OneOpenPerUser is still global per user).
-    const openShift = await getUserOpenShiftForBranch(
-      user.UserID,
-      branchContext.branchId,
-    );
-    const anyOpenShift = openShift
-      ? null
-      : await getUserOpenShift(user.UserID);
-    const shift = openShift
-      ? {
-          ID: openShift.id,
-          NewDay: openShift.newDay,
-          UserID: openShift.userId,
-          ShiftID: openShift.shiftId,
-          StartDate: openShift.startDate,
-          StartTime: openShift.startTime,
-          EndDate: openShift.endDate,
-          EndTime: openShift.endTime,
-          Status: openShift.status,
-          UserName: openShift.userName,
-          ShiftName: openShift.shiftName,
-          BranchID: openShift.branchId,
-          BusinessDayID: openShift.businessDayId,
-        }
-      : anyOpenShift
-        ? {
-            ID: anyOpenShift.id,
-            NewDay: anyOpenShift.newDay,
-            UserID: anyOpenShift.userId,
-            ShiftID: anyOpenShift.shiftId,
-            StartDate: anyOpenShift.startDate,
-            StartTime: anyOpenShift.startTime,
-            EndDate: anyOpenShift.endDate,
-            EndTime: anyOpenShift.endTime,
-            Status: anyOpenShift.status,
-            UserName: anyOpenShift.userName,
-            ShiftName: anyOpenShift.shiftName,
-            BranchID: anyOpenShift.branchId,
-            BusinessDayID: anyOpenShift.businessDayId,
-          }
-        : null;
-
-    const access = await getUserAccess(user.UserID, user.UserName, user.UserLevel);
-    const permissions = buildAuthoritativePermissions({
-      userLevel: user.UserLevel,
-      isSuperAdmin: access.isSuperAdmin,
-      roles: access.roles,
-      isPartnerOnly: access.isPartnerOnly,
-      allowedPageKeys: access.allowedPageKeys,
-    });
-
-    // User's preferred shift definition (TblUser.ShiftID) — used by open-shift UI after reload.
-    let defaultShiftId: number | null = null;
-    try {
-      const db = await getPool();
-      const shiftRes = await db
-        .request()
-        .input("userId", sql.Int, user.UserID)
-        .query(`SELECT TOP 1 ShiftID FROM dbo.TblUser WHERE UserID = @userId`);
-      const raw = shiftRes.recordset[0]?.ShiftID;
-      if (raw != null && Number.isFinite(Number(raw))) {
-        defaultShiftId = Number(raw);
-      }
-    } catch {
-      // Non-fatal — overlay can still pick from definitions list
-    }
-
-    return NextResponse.json({
-      user: {
-        UserID: user.UserID,
-        UserName: user.UserName,
-        UserLevel: user.UserLevel,
-        ActiveBranchID: user.ActiveBranchID,
-        ActiveBranchCode: user.ActiveBranchCode,
-        BranchSessionVersion: user.BranchSessionVersion,
-      },
-      day: dayPayload,
-      shift,
-      permissions,
-      roles: access.roles,
-      allowedPagePaths: access.allowedPagePaths,
-      defaultShiftId,
-      activeBranch: {
-        BranchID: branchContext.branchId,
-        BranchCode: branchContext.branchCode,
-        BranchName: branchContext.branchName,
-        ShortName: branchContext.shortName,
-        TimeZone: branchContext.timeZone,
-        BusinessDayCutoffTime: branchContext.businessDayCutoffTime,
-        CanOperate: branchContext.canOperate,
-        CanViewReports: branchContext.canViewReports,
-        CanSwitch: branchContext.canSwitch,
-      },
-    });
+    return NextResponse.json(toLegacySessionPayload(result.data));
   } catch (err: unknown) {
     const rawMessage = err instanceof Error ? err.message : "Unknown error";
     console.error("[auth/session] GET error:", rawMessage);

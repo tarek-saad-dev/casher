@@ -13,9 +13,10 @@ import {
   type EmployeeDailyReportPayloadInput,
 } from '@/lib/integrations/whatsapp/payload-builders';
 import {
-  sendEmployeeDailyReportWhatsAppMessage,
-  type WhatsAppSendResult,
-} from '@/lib/integrations/whatsapp';
+  EMPLOYEE_DAILY_REPORT_TEMPLATE_KEY,
+  sendTemplateMessage,
+  type MessageSendResult,
+} from '@/modules/messaging';
 import {
   composeEmployeeDailyWhatsAppMessage,
   shouldSkipEmptyDayOff,
@@ -561,13 +562,22 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
   };
 }
 
-function resultStatusLabel(result: WhatsAppSendResult): {
+function resultStatusLabel(result: MessageSendResult | {
+  sent: boolean;
+  skipped?: boolean;
+  reason?: string;
+  error?: string;
+  sentAt?: string;
+}): {
   status: 'sent' | 'skipped' | 'failed';
   reason?: string;
   sentAt?: string;
 } {
   if (result.sent) {
-    return { status: 'sent', sentAt: result.sentAt };
+    return {
+      status: 'sent',
+      ...('sentAt' in result && result.sentAt ? { sentAt: result.sentAt } : {}),
+    };
   }
   if (result.skipped) {
     return { status: 'skipped', reason: result.reason };
@@ -639,7 +649,24 @@ export async function sendEmployeeDailyWhatsAppReports(params: {
     console.log(
       `[employee-daily-whatsapp] sending emp=${row.empId} ${row.empName} phone=${row.phone}`,
     );
-    const sendResult = await sendEmployeeDailyReportWhatsAppMessage(row.payload);
+    const sendResult = await sendTemplateMessage({
+      templateKey: EMPLOYEE_DAILY_REPORT_TEMPLATE_KEY,
+      recipient: { phone: row.payload.phone },
+      variables: {
+        message: row.payload.message,
+        customerName: row.payload.employeeName,
+        employeeName: row.payload.employeeName,
+        workDate: row.payload.workDate,
+        branchName: row.payload.branchName,
+        ledgerBalance: row.payload.ledgerBalance,
+        payrollMonth: row.payload.payrollMonth,
+      },
+      metadata: {
+        employeeId: row.empId,
+        workDate: row.payload.workDate,
+      },
+      context: { language: 'ar' },
+    });
     const mapped = resultStatusLabel(sendResult);
     console.log(
       `[employee-daily-whatsapp] result emp=${row.empId} status=${mapped.status} reason=${mapped.reason ?? '-'}`,

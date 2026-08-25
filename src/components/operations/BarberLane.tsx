@@ -26,6 +26,8 @@ import { BarberHeaderQueueButton } from './BarberHeaderQueueButton';
 import { getBarberQueueButtonState } from '@/lib/barberQueueButton';
 import { cn } from '@/lib/utils';
 
+const OPERATIONAL_HOURS = generateOperationalHours();
+
 interface Barber {
   empId: number;
   empName: string;
@@ -129,7 +131,7 @@ export function BarberLane({
     dot: 'var(--primary)',
     label: 'primary',
   };
-  const hours = generateOperationalHours();
+  const hours = OPERATIONAL_HOURS;
   const laneHeight = hours.length * HOUR_CELL_HEIGHT;
 
   const scheduledItems = barber.timeline.filter((item) => SCHEDULED_TYPES.has(item.type));
@@ -183,25 +185,25 @@ export function BarberLane({
     >
       {showLaneHeader && (
         <div
-          className="sticky top-0 z-20 border-b p-3 backdrop-blur-sm"
+          className="sticky top-0 z-20 border-b p-1 backdrop-blur-sm md:p-3"
           style={{
             height: headerHeight,
             background: barberColor.bg,
             borderColor: barberColor.border,
           }}
         >
-          <div className="mb-2 flex items-center gap-2">
+          <div className="mb-0 flex items-center gap-1.5 md:mb-2 md:gap-2">
             <div
-              className="flex size-9 shrink-0 items-center justify-center rounded-full border"
+              className="flex size-5 shrink-0 items-center justify-center rounded-full border md:size-9"
               style={{ background: barberColor.bg, borderColor: barberColor.border }}
             >
-              <User className="size-4" style={{ color: barberColor.dot }} />
+              <User className="size-3 md:size-4" style={{ color: barberColor.dot }} />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="truncate text-sm font-bold text-foreground md:text-base">
+              <h3 className="truncate text-[11px] font-bold leading-tight text-foreground md:text-sm">
                 {barber.empName}
               </h3>
-              <div className="flex items-center gap-1.5 text-xs">
+              <div className="hidden items-center gap-1.5 text-xs md:flex">
                 <span
                   className="size-1.5 shrink-0 rounded-full"
                   style={{ background: getStatusColor() }}
@@ -211,7 +213,7 @@ export function BarberLane({
                 </span>
               </div>
               {(barber.branchShortName || barber.branchName) && (
-                <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                <p className="mt-0.5 hidden truncate text-[11px] text-muted-foreground md:block">
                   {barber.branchShortName || barber.branchName}
                   {barber.isEmergencyTransfer ? ' · نقل طارئ' : ''}
                 </p>
@@ -228,7 +230,7 @@ export function BarberLane({
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <div className="hidden flex-wrap items-center gap-1.5 text-xs md:flex">
             {barber.waitingCount > 0 && (
               <div className="flex items-center gap-1 rounded-md bg-surface-muted/60 px-1.5 py-0.5">
                 <Users className="size-3 text-muted-foreground" />

@@ -23,9 +23,9 @@ import MobileInvoiceBar from '@/components/pos/mobile/MobileInvoiceBar';
 import MobileInvoiceSheet from '@/components/pos/mobile/MobileInvoiceSheet';
 import PrintInvoiceModal from '@/components/pos/PrintInvoiceModal';
 import ClientVouchersModal from '@/components/pos/ClientVouchersModal';
-import ShiftRequiredOverlay from '@/components/session/ShiftRequiredOverlay';
 import DayRolloverModal from '@/components/session/DayRolloverModal';
 import CloseDayModal from '@/components/session/CloseDayModal';
+import { useShiftOperationalGate } from '@/components/session/ShiftOperationalGateProvider';
 import TeamAttendanceWidget from '@/components/pos/TeamAttendanceWidget';
 import { useTeamAttendance } from '@/hooks/useTeamAttendance';
 import { useSaleState } from '@/hooks/useSaleState';
@@ -75,7 +75,8 @@ export default function PosPage() {
   const dismissToast = useCallback((id: number) => setToasts(p => p.filter(t => t.id !== id)), []);
 
   // ───────────────── Session ─────────────────
-  const { shift, hasActiveShift, loading: sessionLoading, refresh: refreshSession } = useSession();
+  const { shift, viewBranch, revision, loading: sessionLoading, refresh: refreshSession } = useSession();
+  const { ensureShiftWrite } = useShiftOperationalGate();
 
   // Set page title
   useEffect(() => {
@@ -139,7 +140,7 @@ export default function PosPage() {
     error: attendanceError,
     attendanceMap,
     refresh: refreshAttendance,
-  } = useTeamAttendance();
+  } = useTeamAttendance(viewBranch?.branchId);
 
   // ───────────────── Wrap setCustomer ─────────────────
   const setCustomer = useCallback((c: Customer | null) => {
@@ -193,17 +194,48 @@ export default function PosPage() {
     setShift(shift?.ID ?? null);
   }, [shift, setShift]);
 
-  // ───────────────── Load lookup data on mount ─────────────────
+  // ───────────────── Load branch-scoped lookup data when ViewBranch changes ─────────────────
   useEffect(() => {
-    fetch('/api/barbers?scope=barber').then(r => r.json()).then(d => { if (Array.isArray(d)) setBarbers(d); });
+    if (sessionLoading || viewBranch?.branchId == null) return;
+
+    setBarbers([]);
+    setOtherEmployees([]);
+    setServices([]);
     setOtherEmployeesLoading(true);
+
+    fetch('/api/barbers?scope=barber')
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d)) setBarbers(d);
+      });
     fetch('/api/barbers?scope=other')
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setOtherEmployees(d); })
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d)) setOtherEmployees(d);
+      })
       .finally(() => setOtherEmployeesLoading(false));
-    fetch('/api/services').then(r => r.json()).then(d => { if (Array.isArray(d)) setServices(d); });
-    fetch('/api/payment-methods').then(r => r.json()).then(d => { if (Array.isArray(d)) setPaymentMethods(d); });
-  }, []);
+    fetch('/api/services')
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d)) setServices(d);
+      });
+    fetch('/api/payment-methods')
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d)) setPaymentMethods(d);
+      });
+  }, [sessionLoading, viewBranch?.branchId, revision]);
+
+  // ───────────────── Fresh invoice when ViewBranch changes ─────────────────
+  useEffect(() => {
+    if (sessionLoading || viewBranch?.branchId == null) return;
+    reset();
+    setEditingSaleId(null);
+    setSplitPaymentActive(false);
+    setSaveError('');
+    setVouchersOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewBranch?.branchId]);
 
   // ───────────────── Auto-select default payment method when methods load ─────────────────
   useEffect(() => {
@@ -252,6 +284,12 @@ export default function PosPage() {
     saveLockRef.current = true;
     setSaving(true);
     setSaveError('');
+
+    if (!(await ensureShiftWrite())) {
+      saveLockRef.current = false;
+      setSaving(false);
+      return;
+    }
 
     const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     console.log('[POS SAVE] START', { requestId, source });
@@ -390,7 +428,7 @@ export default function PosPage() {
       setSaving(false);
       console.log('[POS SAVE] END', { requestId });
     }
-  }, [state, totals, reset, addToast, paymentMethods, editingSaleId, saveLockRef]);
+  }, [state, totals, reset, addToast, paymentMethods, editingSaleId, saveLockRef, ensureShiftWrite]);
 
   // ───────────────── Keyboard shortcuts ─────────────────
   useEffect(() => {
@@ -569,7 +607,13 @@ export default function PosPage() {
     setPaymentAllocations(newAllocations);
   }, [paymentMethods, totals.grandTotal, setPaymentMethod, setPaymentAllocations]);
 
-  const handleQuickAction = useCallback((actionId: QuickActionId) => {
+  const handleQuickAction = useCallback(async (actionId: QuickActionId) => {
+    const needsShiftWrite = actionId === 'payment-transfer'
+      || actionId === 'quick-expense'
+      || actionId === 'quick-income'
+      || actionId === 'tips';
+    if (needsShiftWrite && !(await ensureShiftWrite())) return;
+
     switch (actionId) {
       case 'payment-transfer':
         setIsPaymentTransferOpen(true);
@@ -590,7 +634,7 @@ export default function PosPage() {
         setIsRecentInvoicesOpen(true);
         break;
     }
-  }, []);
+  }, [ensureShiftWrite]);
 
   const invoicePanelProps = {
     state,
@@ -628,7 +672,6 @@ export default function PosPage() {
 
       {/* ═══════ MOBILE LAYOUT (< md) ═══════ */}
       <div className="pos-mobile-workspace flex h-full min-h-0 flex-col md:hidden">
-        <ShiftRequiredOverlay />
         <MobilePosHeader
           invoiceLabel={invoiceLabel}
           shiftId={shift?.ID ?? null}
@@ -691,7 +734,6 @@ export default function PosPage() {
 
       {/* ═══════ DESKTOP / TABLET LAYOUT (≥ md) ═══════ */}
       <div className="relative hidden h-full flex-1 flex-col overflow-hidden md:flex lg:flex-row">
-        <ShiftRequiredOverlay />
         {/* ═══════ RIGHT PANEL: Customer + History ═══════ */}
         <aside className="order-1 flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-l border-border p-3 scrollbar-luxury-v lg:order-1 lg:w-80 lg:gap-4 lg:p-4">
           <CustomerSearch

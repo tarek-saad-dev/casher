@@ -13,6 +13,7 @@ describe('proxy public allowlist (Phase 1A)', () => {
     expect(isAnonymousPublicPath('/login')).toBe(true);
     expect(isAnonymousPublicPath('/api/auth/login')).toBe(true);
     expect(isAnonymousPublicPath('/api/auth/session')).toBe(true);
+    expect(isAnonymousPublicPath('/api/operations/bootstrap')).toBe(true);
     expect(isAnonymousPublicPath('/api/permissions/my-access')).toBe(true);
     expect(isAnonymousPublicPath('/api/public/booking/available-slots')).toBe(true);
     expect(isAnonymousPublicPath('/api/public/booking/create')).toBe(true);
@@ -25,8 +26,9 @@ describe('proxy public allowlist (Phase 1A)', () => {
     expect(isAnonymousPublicPath('/api/services/categories')).toBe(false);
   });
 
-  it('lets auth/session and my-access reach handlers without a cookie', () => {
+  it('lets auth/session, bootstrap, and my-access reach handlers without a cookie', () => {
     expect(classifyProxyAuth('/api/auth/session').kind).toBe('anonymous_public');
+    expect(classifyProxyAuth('/api/operations/bootstrap').kind).toBe('anonymous_public');
     expect(classifyProxyAuth('/api/permissions/my-access').kind).toBe('anonymous_public');
   });
 
@@ -45,6 +47,11 @@ describe('proxy public allowlist (Phase 1A)', () => {
   it('classifies scheduled jobs as cron_bearer (not anonymous)', () => {
     expect(isCronBearerPath('/api/admin/hr/nightly-close')).toBe(true);
     expect(isCronBearerPath('/api/payroll/daily/auto-generate')).toBe(true);
+    expect(isCronBearerPath('/api/internal/operations/business-day/reconcile')).toBe(true);
+    expect(classifyProxyAuth('/api/internal/operations/business-day/reconcile').kind).toBe(
+      'cron_bearer',
+    );
+    expect(isAnonymousPublicPath('/api/internal/operations/business-day/reconcile')).toBe(false);
     expect(classifyProxyAuth('/api/payroll/daily/auto-generate').kind).toBe('cron_bearer');
   });
 

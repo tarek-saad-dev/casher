@@ -6,10 +6,15 @@ import { cn } from '@/lib/utils';
 
 interface Props {
   headerHeight?: number;
+  axisWidth?: number;
   className?: string;
 }
 
-export function TimeAxis({ headerHeight = OPS_LAYOUT.HEADER_HEIGHT, className }: Props) {
+export function TimeAxis({
+  headerHeight = OPS_LAYOUT.HEADER_HEIGHT,
+  axisWidth = OPS_LAYOUT.TIME_AXIS_WIDTH,
+  className,
+}: Props) {
   const hours = generateOperationalHours();
 
   return (
@@ -19,7 +24,7 @@ export function TimeAxis({ headerHeight = OPS_LAYOUT.HEADER_HEIGHT, className }:
         className,
       )}
       style={{
-        width: OPS_LAYOUT.TIME_AXIS_WIDTH,
+        width: axisWidth,
         borderInlineStartWidth: 1,
       }}
     >
@@ -46,8 +51,8 @@ export function TimeAxis({ headerHeight = OPS_LAYOUT.HEADER_HEIGHT, className }:
 
             <div
               className={cn(
-                'flex items-start justify-center px-1 pt-2 text-center',
-                isMajorHour ? 'text-xs font-bold text-foreground' : 'text-[11px] text-muted-foreground',
+                'flex items-start justify-center px-0.5 pt-1 text-center md:px-1 md:pt-2',
+                isMajorHour ? 'text-[9px] font-bold text-foreground md:text-xs' : 'text-[8px] text-muted-foreground md:text-[11px]',
               )}
             >
               <span className={isNextDay ? 'text-primary' : undefined}>

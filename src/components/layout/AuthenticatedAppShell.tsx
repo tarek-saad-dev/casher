@@ -2,6 +2,10 @@
 
 import MainNav from '@/components/layout/MainNav';
 import ActiveSessionBar from '@/components/session/ActiveSessionBar';
+import OperationalStaleBanner from '@/components/session/OperationalStaleBanner';
+import ViewBranchSwitchIndicator from '@/components/session/ViewBranchSwitchIndicator';
+import ShiftOperationalGateProvider from '@/components/session/ShiftOperationalGateProvider';
+import { OperationalToastProvider } from '@/components/session/OperationalToast';
 import PartnerOnlyShell from '@/components/layout/PartnerOnlyShell';
 import { MobileNavProvider } from '@/components/layout/MobileNavContext';
 import { cn } from '@/lib/utils';
@@ -29,25 +33,31 @@ export default function AuthenticatedAppShell({
   }
 
   return (
-    <MobileNavProvider>
-      <div className={cn(isPosPage && 'max-md:hidden')}>
-        <ActiveSessionBar />
-      </div>
-      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
-        <MainNav suppressMobileChrome={isPosPage} />
-        <main
-          className={cn(
-            'flex-1 w-full min-h-0 min-w-0',
-            isOperationsPage
-              ? 'overflow-hidden'
-              : isPosPage
-                ? 'max-md:overflow-hidden overflow-y-auto'
-                : 'overflow-y-auto',
-          )}
-        >
-          {children}
-        </main>
-      </div>
-    </MobileNavProvider>
+    <OperationalToastProvider>
+      <ShiftOperationalGateProvider>
+        <MobileNavProvider>
+        <div className={cn((isPosPage || isOperationsPage) && 'max-md:hidden')}>
+          <ActiveSessionBar />
+        </div>
+        <OperationalStaleBanner />
+        <ViewBranchSwitchIndicator />
+        <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
+          <MainNav suppressMobileChrome={isPosPage} />
+          <main
+            className={cn(
+              'flex-1 w-full min-h-0 min-w-0',
+              isOperationsPage
+                ? 'overflow-hidden'
+                : isPosPage
+                  ? 'max-md:overflow-hidden overflow-y-auto'
+                  : 'overflow-y-auto',
+            )}
+          >
+            {children}
+          </main>
+        </div>
+        </MobileNavProvider>
+      </ShiftOperationalGateProvider>
+    </OperationalToastProvider>
   );
 }

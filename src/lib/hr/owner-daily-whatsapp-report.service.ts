@@ -2,11 +2,12 @@ import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
 import { getConfig } from '@/lib/integrations/whatsapp/config';
+import { isWhatsAppEnabled } from '@/lib/integrations/whatsapp';
 import {
-  sendQuickWhatsAppMessage,
-  isWhatsAppEnabled,
-  type WhatsAppSendResult,
-} from '@/lib/integrations/whatsapp';
+  OWNER_DAILY_REPORT_TEMPLATE_KEY,
+  sendTemplateMessage,
+  type MessageSendResult,
+} from '@/modules/messaging';
 import { resolveEmployeeWhatsAppPhone } from '@/lib/integrations/whatsapp/payload-builders';
 import { getFullDayReport } from '@/lib/reports/full-day-report';
 import { listActiveBranches } from '@/lib/branch';
@@ -28,7 +29,7 @@ export type OwnerBranchWhatsAppSendResult = OwnerBranchWhatsAppMessage & {
   status: 'sent' | 'skipped' | 'failed' | 'dry_run';
   reason?: string;
   reasonAr?: string;
-  result?: WhatsAppSendResult;
+  result?: MessageSendResult;
 };
 
 /**
@@ -387,10 +388,22 @@ export async function sendOwnerDailyWhatsApp(params: {
       `[owner-daily-whatsapp] sending workDate=${preview.workDate} branch=${branchMsg.branchCode} -> ${preview.ownerName} (${preview.phone})`,
     );
 
-    const result = await sendQuickWhatsAppMessage({
-      phone: preview.phone,
-      customerName: preview.ownerName,
-      message: branchMsg.message,
+    const result = await sendTemplateMessage({
+      templateKey: OWNER_DAILY_REPORT_TEMPLATE_KEY,
+      recipient: { phone: preview.phone },
+      variables: {
+        message: branchMsg.message,
+        customerName: preview.ownerName,
+        branchName: branchMsg.branchName,
+      },
+      metadata: {
+        branchId: branchMsg.branchId,
+        workDate: preview.workDate,
+      },
+      context: {
+        language: 'ar',
+        branchId: branchMsg.branchId,
+      },
     });
 
     if (result.sent) {

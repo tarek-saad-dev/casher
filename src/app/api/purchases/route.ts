@@ -4,7 +4,10 @@ import {
   isActiveBranchContext,
   requireBranchOperationAccess,
   resolveBranchDayAndShiftForWrite,
+  lockOperationalWrite,
+  branchErrorResponse,
 } from '@/lib/branch';
+import { finalizeCurrentFinancialWrite } from '@/lib/branch/financialOwnershipPolicy';
 import { getSession } from '@/lib/session';
 import {
   postPurchaseReceipt,
@@ -54,12 +57,17 @@ export async function POST(req: NextRequest) {
 
     const gated = await resolveBranchDayAndShiftForWrite(session.UserID);
     if (!gated.ok) return gated.response;
-    const branchId = gated.branch.branchId;
 
     const body = await req.json();
     if (body.branchId != null || body.BranchID != null) {
       return NextResponse.json({ error: 'BranchID في الطلب غير مسموح' }, { status: 400 });
     }
+    const owned = finalizeCurrentFinancialWrite('purchase.create', gated, body);
+    if (!owned.ok) return owned.response;
+    const branchId = owned.ownership.branchId;
+    const businessDayId = owned.ownership.businessDayId!;
+    const invDate = owned.ownership.businessDate!;
+    const shiftMoveId = owned.ownership.shiftMoveId;
 
     const lines = (body.lines || []) as PurchaseLineInput[];
     if (!Array.isArray(lines) || lines.length === 0) {
@@ -79,6 +87,11 @@ export async function POST(req: NextRequest) {
     const transaction = new sql.Transaction(db);
     await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
     try {
+      await lockOperationalWrite(transaction, {
+        branchId,
+        businessDayId,
+        shiftSessionId: shiftMoveId,
+      });
       const idRes = await new sql.Request(transaction)
         .input('invType', sql.NVarChar(20), invType)
         .query(`
@@ -89,7 +102,6 @@ export async function POST(req: NextRequest) {
       const purchaseInvId = Number(idRes.recordset[0].newInvID);
 
       const invTime = getCairoInvTimeDotStr();
-      const invDate = gated.day.newDay;
 
       await new sql.Request(transaction)
         .input('invID', sql.Int, purchaseInvId)
@@ -101,20 +113,21 @@ export async function POST(req: NextRequest) {
         .input('SubTotal', sql.Decimal(10, 2), subTotal)
         .input('GrandTotal', sql.Decimal(10, 2), subTotal)
         .input('Notes', sql.NVarChar(100), notes)
-        .input('ShiftMoveID', sql.Int, gated.shift?.id ?? null)
+        .input('ShiftMoveID', sql.Int, shiftMoveId)
         .input('BranchID', sql.Int, branchId)
+        .input('BusinessDayID', sql.Int, businessDayId)
         .input('PostStatus', sql.NVarChar(30), 'DRAFT')
         .query(`
           INSERT INTO dbo.TblinvPurchaseHead (
             invID, invType, invDate, invTime, ClientID, UserID,
             TotalQty, SubTotal, Dis, DisVal, GrandTotal,
             invNotes, ShiftMoveID, Notes, PaymentMethodID,
-            BranchID, PostStatus
+            BranchID, BusinessDayID, PostStatus
           ) VALUES (
             @invID, @invType, @invDate, @invTime, NULL, @UserID,
             @TotalQty, @SubTotal, 0, 0, @GrandTotal,
             @Notes, @ShiftMoveID, @Notes, NULL,
-            @BranchID, @PostStatus
+            @BranchID, @BusinessDayID, @PostStatus
           )
         `);
 
@@ -142,8 +155,8 @@ export async function POST(req: NextRequest) {
           purchaseInvId,
           purchaseInvType: invType,
           userId: session.UserID,
-          businessDayId: gated.day.id,
-          shiftMoveId: gated.shift?.id ?? null,
+          businessDayId,
+          shiftMoveId,
           lines,
         });
       }
@@ -154,6 +167,7 @@ export async function POST(req: NextRequest) {
           invID: purchaseInvId,
           invType,
           branchId,
+          businessDayId,
           postStatus: shouldPost ? 'POSTED' : 'DRAFT',
         },
         { status: 201 },
@@ -169,6 +183,8 @@ export async function POST(req: NextRequest) {
         { status: err.statusCode },
       );
     }
+    const mapped = branchErrorResponse(err);
+    if (mapped) return mapped;
     const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });
   }

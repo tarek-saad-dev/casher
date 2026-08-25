@@ -13,6 +13,7 @@
     "nightly-close": "tsx scripts/run-nightly-close.ts",
     "nightly-close:watch": "tsx scripts/run-nightly-close.ts --watch",
     "nightly-close:dry": "tsx scripts/run-nightly-close.ts --dry-run",
+    "business-day:reconcile": "tsx scripts/run-business-day-reconcile.ts",
     "recalc:mtd-targets": "tsx scripts/recalc-employee-mtd-targets-current-month.ts",
     "recalc:mtd-targets:dry": "tsx scripts/recalc-employee-mtd-targets-current-month.ts --dry-run",
     "sync:install": "cd sync-service && npm install && npm run build",
@@ -47,7 +48,11 @@
     "booking-v2:provision-isolated": "tsx scripts/provision-booking-v2-isolated-db-sqlcmd.ts",
     "booking-v2:start-isolated": "node scripts/start-booking-v2-isolated.mjs",
     "booking-v2:verify-isolated-write": "tsx scripts/verify-booking-v2-isolated-write-e2e.ts",
-    "verify:booking-v2-cancel-live": "tsx scripts/verify-booking-v2-cancel-live-restore.ts"
+    "verify:booking-v2-cancel-live": "tsx scripts/verify-booking-v2-cancel-live-restore.ts",
+    "messaging:worker": "tsx scripts/messaging-outbox-worker.ts",
+    "messaging:seed-templates-phase6": "tsx scripts/run-message-templates-phase6-seed.ts",
+    "messaging:migrate-campaigns": "tsx scripts/run-whatsapp-campaign-migration.ts",
+    "messaging:seed-templates-phase7": "tsx scripts/run-whatsapp-campaign-migration.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",

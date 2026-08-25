@@ -5,8 +5,8 @@ import {
   EmployeeTipError,
   executeEmployeeTip,
 } from '@/lib/services/employeeTipService';
-import { requireBranchOperationAccess } from '@/lib/branch/context';
-import { resolveActiveBranchDayForPosWrite } from '@/lib/branch/operationalGates';
+import { resolveBranchDayAndShiftForWrite } from '@/lib/branch/operationalGates';
+import { finalizeCurrentFinancialWrite } from '@/lib/branch/financialOwnershipPolicy';
 
 /**
  * POST /api/pos/tips
@@ -14,9 +14,8 @@ import { resolveActiveBranchDayForPosWrite } from '@/lib/branch/operationalGates
  *
  * Body: { empId, invoiceTotal, amountPaid, paymentMethodId }
  *
- * Date/branch ownership always come from the active-branch open day (or the
- * cutoff-aware business date). Browser calendar dates are ignored so midnight
- * before 04:00 still attaches to the same operational day.
+ * Date/branch ownership always come from the OPEN ShiftSession (operational
+ * branch), never ViewBranch or a browser calendar date.
  */
 export async function POST(request: NextRequest) {
   const auth = await requirePageAccess('/income/pos');
@@ -29,21 +28,28 @@ export async function POST(request: NextRequest) {
     const amountPaid = Number(body.amountPaid);
     const paymentMethodId = Number(body.paymentMethodId);
 
-    // Never trust browser branchId/date — resolve ownership from gated session context.
-    const branch = await requireBranchOperationAccess();
-    if (branch instanceof NextResponse) return branch;
-    const dayResolution = await resolveActiveBranchDayForPosWrite(branch);
-    if (!dayResolution.ok) return dayResolution.response;
+    // Ownership comes from OPEN ShiftSession (operational branch), not ViewBranch.
+    const gated = await resolveBranchDayAndShiftForWrite(auth.userId);
+    if (!gated.ok) return gated.response;
+    const owned = finalizeCurrentFinancialWrite('pos.tip', gated, body);
+    if (!owned.ok) return owned.response;
+    if (!gated.shift || owned.ownership.shiftMoveId == null) {
+      return NextResponse.json(
+        { error: 'لا يوجد وردية مفتوحة لهذا المستخدم — لا يمكن تسجيل بقشيش', code: 'NO_OPEN_SHIFT' },
+        { status: 400 },
+      );
+    }
 
     const result = await executeEmployeeTip({
       empId,
       invoiceTotal,
       amountPaid,
       paymentMethodId,
-      date: dayResolution.dateYmd,
+      date: owned.ownership.businessDate!,
       createdByUserId: auth.userId,
-      branchId: branch.branchId,
-      businessDayId: dayResolution.day.id,
+      branchId: owned.ownership.branchId,
+      businessDayId: owned.ownership.businessDayId,
+      shiftMoveId: owned.ownership.shiftMoveId,
     });
 
     scheduleEmployeeTipWhatsApp({

@@ -286,32 +286,15 @@ async function ensureAttendanceRow(
   date: string,
   branchId: number,
 ): Promise<number> {
-  const existing = await db
-    .request()
-    .input('empId', sql.Int, empId)
-    .input('workDate', sql.Date, date)
-    .input('branchId', sql.Int, branchId)
-    .query(`
-      SELECT ID FROM dbo.TblEmpAttendance
-      WHERE EmpID = @empId AND WorkDate = @workDate AND BranchID = @branchId
-    `);
-
-  if (existing.recordset.length > 0) {
-    return existing.recordset[0].ID as number;
-  }
-
-  const inserted = await db
-    .request()
-    .input('empId', sql.Int, empId)
-    .input('workDate', sql.Date, date)
-    .input('branchId', sql.Int, branchId)
-    .query(`
-      INSERT INTO dbo.TblEmpAttendance (BranchID, EmpID, WorkDate, Status, Notes, CreatedAt)
-      OUTPUT INSERTED.ID
-      VALUES (@branchId, @empId, @workDate, N'Present', NULL, GETDATE())
-    `);
-
-  return inserted.recordset[0].ID as number;
+  const { ensurePresentAttendancePlaceholder } = await import(
+    '@/modules/attendance/application/ensurePresentAttendancePlaceholder'
+  );
+  return ensurePresentAttendancePlaceholder({
+    db,
+    empId,
+    workDate: date,
+    branchId,
+  });
 }
 
 /**

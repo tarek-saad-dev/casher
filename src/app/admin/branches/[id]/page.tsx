@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams, usePathname } from 'next/navigation';
+import { useParams, usePathname, useRouter } from 'next/navigation';
 import { ArrowRight, Loader2, Save } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +15,7 @@ import {
   performBranchSwitch,
 } from '@/lib/branch/postSwitchClient';
 import type { SerializedBranch } from '@/lib/branch/serializeBranch';
+import { useSession } from '@/hooks/useSession';
 
 const LIFECYCLE_LABEL: Record<string, string> = {
   SETUP: 'إعداد',
@@ -32,6 +33,8 @@ function toInputTime(value: string | null | undefined): string {
 export default function AdminBranchDetailPage() {
   const params = useParams<{ id: string }>();
   const pathname = usePathname();
+  const router = useRouter();
+  const session = useSession();
   const branchId = Number(params.id);
 
   const [branch, setBranch] = useState<SerializedBranch | null>(null);
@@ -147,12 +150,21 @@ export default function AdminBranchDetailPage() {
     const result = await performBranchSwitch({
       branchId,
       currentPathname: pathname,
+      onSoftSwitch: async () => {
+        await session.refresh();
+        router.refresh();
+        await load();
+      },
     });
     if (!result.ok) {
       setSwitching(false);
       if (result.error !== 'CANCELLED') {
         setError(result.message);
       }
+      return;
+    }
+    if (result.navigation === 'soft') {
+      setSwitching(false);
     }
   }
 

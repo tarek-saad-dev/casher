@@ -1,38 +1,47 @@
 'use client';
 
-import { memo } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useSession } from '@/hooks/useSession';
-import { usePermission } from '@/hooks/usePermission';
 import { DbToggleButton } from '@/components/db/DbToggleButton';
 import LogoutConfirmModal from '@/components/auth/LogoutConfirmModal';
 import ShiftCloseReceipt from '@/components/operations/ShiftCloseReceipt';
-import { User, CalendarDays, Clock, LogOut, ShieldCheck, ShieldAlert, XCircle } from 'lucide-react';
+import CloseShiftConfirmDialog from '@/components/session/CloseShiftConfirmDialog';
+import OperationalHandoffControl from '@/components/session/OperationalHandoffControl';
+import OperationalMobileSheet from '@/components/session/OperationalMobileSheet';
+import { useOperationalToast } from '@/components/session/OperationalToast';
+import { User, LogOut, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useEffect, useState } from 'react';
 import TopNav from '@/components/layout/TopNav';
 import BranchSwitcher from '@/components/session/BranchSwitcher';
+import {
+  branchDisplayName,
+  formatShiftElapsed,
+  formatShiftStartTime,
+  mapOperationalError,
+} from '@/lib/operations/viewOperationalState';
 
-interface Props {
-  onCloseDayClick?: () => void;
-}
-
-function ActiveSessionBar({ onCloseDayClick }: Props) {
+function ActiveSessionBar() {
   const pathname = usePathname();
   const isPosPage = pathname === '/income/pos';
-  const { user, day, shift, hasActiveDay, hasActiveShift, activeBranch, logout, closeMyShift } = useSession();
-  const canCloseDay = usePermission('day.close');
-  const shiftOnOtherBranch =
-    !!user &&
-    !!shift &&
-    shift.Status === true &&
-    shift.UserID === user.UserID &&
-    !!activeBranch &&
-    shift.BranchID != null &&
-    shift.BranchID !== activeBranch.branchId;
+  const {
+    user,
+    shift,
+    hasOpenShift,
+    viewBranch,
+    operationalBranch,
+    viewMatchesOperational,
+    logout,
+    closeMyShift,
+  } = useSession();
+  const { showToast } = useOperationalToast();
   const [mounted, setMounted] = useState(false);
+  const [now, setNow] = useState(() => new Date());
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showPrintReceipt, setShowPrintReceipt] = useState(false);
+  const [closeShiftOpen, setCloseShiftOpen] = useState(false);
+  const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
+  const [busyClose, setBusyClose] = useState(false);
   const [printData, setPrintData] = useState<{
     shiftMoveID: number;
     userName: string;
@@ -49,9 +58,19 @@ function ActiveSessionBar({ onCloseDayClick }: Props) {
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    if (!hasOpenShift) return;
+    const id = window.setInterval(() => setNow(new Date()), 30_000);
+    return () => window.clearInterval(id);
+  }, [hasOpenShift]);
+
   if (!user) return null;
 
   const isAdmin = user.UserLevel === 'admin';
+  const viewLabel = branchDisplayName(viewBranch);
+  const opLabel = branchDisplayName(operationalBranch);
+  const startedAt = formatShiftStartTime(shift?.StartDate, shift?.StartTime);
+  const elapsed = formatShiftElapsed(shift?.StartDate, shift?.StartTime, now);
 
   async function handleCloseShiftAndLogout() {
     if (shift) {
@@ -62,32 +81,27 @@ function ActiveSessionBar({ onCloseDayClick }: Props) {
 
   async function handleCloseShiftPrintAndLogout() {
     if (!shift) return;
-    
+
     try {
-      // Get shift summary before closing
       const summaryRes = await fetch(`/api/shift/summary?id=${shift.ID}`);
       const summaryData = await summaryRes.json();
-      
+
       if (!summaryRes.ok) {
-        // If can't get summary, just close and logout
         await handleCloseShiftAndLogout();
         return;
       }
-      
-      // Close the shift
+
       const closeRes = await fetch('/api/shift/close', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ shiftMoveID: shift.ID }),
       });
-      
+
       if (!closeRes.ok) {
-        // If close failed, just logout
         await logout();
         return;
       }
-      
-      // Prepare print data
+
       setPrintData({
         shiftMoveID: shift.ID,
         userName: shift.UserName || user?.UserName || '—',
@@ -99,15 +113,10 @@ function ActiveSessionBar({ onCloseDayClick }: Props) {
         cashIn: summaryData.cashIn || 0,
         cashOut: summaryData.cashOut || 0,
       });
-      
-      // Close logout modal and show print receipt
+
       setShowLogoutModal(false);
       setShowPrintReceipt(true);
-      
-      // Refresh session
-      // Note: logout will happen after print is closed manually by user
     } catch {
-      // On error, just do normal close and logout
       await handleCloseShiftAndLogout();
     }
   }
@@ -115,14 +124,27 @@ function ActiveSessionBar({ onCloseDayClick }: Props) {
   function handlePrintClose() {
     setShowPrintReceipt(false);
     setPrintData(null);
-    // Now logout after print is done
-    logout();
+    void logout();
+  }
+
+  async function confirmCloseShift() {
+    if (!shift) return;
+    setBusyClose(true);
+    try {
+      await closeMyShift(shift.ID);
+      setCloseShiftOpen(false);
+      showToast(`تم إنهاء وردية ${opLabel}`);
+    } catch (err) {
+      showToast(mapOperationalError(err, 'فشل إنهاء الوردية'));
+    } finally {
+      setBusyClose(false);
+    }
   }
 
   return (
     <div className="flex items-center gap-3 px-3 py-1.5 bg-muted/50 border-b border-border text-xs overflow-hidden relative min-w-0">
-      {/* Session meta — fixed width so TopNav can scroll */}
-      <div className="hidden xl:flex items-center gap-3 shrink-0 max-w-[42%] min-w-0">
+      {/* Desktop operational status — compact, view lighter / operate stronger */}
+      <div className="hidden xl:flex items-center gap-2.5 shrink-0 max-w-[46%] min-w-0">
         <div className="flex items-center gap-1.5 shrink-0">
           <User className="w-3.5 h-3.5 text-muted-foreground" />
           <span className="font-medium truncate max-w-[7rem]">{user.UserName}</span>
@@ -135,58 +157,42 @@ function ActiveSessionBar({ onCloseDayClick }: Props) {
 
         <span className="text-muted-foreground/40">|</span>
 
-        <BranchSwitcher />
-
-        <span className="text-muted-foreground/40">|</span>
-
-        <div className="flex items-center gap-1.5 shrink-0">
-          <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
-          {hasActiveDay && day ? (
-            <>
-              <span className="text-success whitespace-nowrap">
-                يوم {mounted ? new Date(day.NewDay).toLocaleDateString('ar-EG') : new Date(day.NewDay).toISOString().split('T')[0]}
-              </span>
-              {canCloseDay && onCloseDayClick && (
-                <button
-                  onClick={onCloseDayClick}
-                  className="flex items-center gap-0.5 text-muted-foreground hover:text-destructive transition-colors mr-1 cursor-pointer"
-                  title="إغلاق اليوم"
-                >
-                  <XCircle className="w-3.5 h-3.5" />
-                  <span className="text-[10px]">إغلاق</span>
-                </button>
-              )}
-            </>
-          ) : (
-            <span className="text-destructive font-medium whitespace-nowrap">لا يوجد يوم مفتوح</span>
-          )}
-        </div>
-
-        <span className="text-muted-foreground/40">|</span>
-
         <div className="flex items-center gap-1.5 min-w-0">
-          <Clock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-          {hasActiveShift && shift ? (
-            shift.UserID !== user.UserID ? (
-              <span className="text-warning font-medium truncate">
-                ⚠ وردية مستخدم آخر ({shift.UserName})
-              </span>
-            ) : (
-              <span className="text-success truncate">
-                {shift.ShiftName || `وردية #${shift.ShiftID}`}
-                <span className="text-muted-foreground mr-1">
-                  (من {shift.StartTime?.trim()})
-                </span>
-              </span>
-            )
-          ) : shiftOnOtherBranch ? (
-            <span className="text-amber-600 dark:text-amber-400 font-medium whitespace-nowrap">
-              وردية بفرع آخر
-            </span>
-          ) : (
-            <span className="text-destructive font-medium whitespace-nowrap">لا يوجد وردية مفتوحة</span>
-          )}
+          <span className="text-muted-foreground whitespace-nowrap">عرض:</span>
+          <BranchSwitcher />
         </div>
+
+        <span className="text-muted-foreground/40">|</span>
+
+        {hasOpenShift && operationalBranch ? (
+          <div
+            className="flex items-center gap-1.5 min-w-0"
+            title={
+              viewMatchesOperational
+                ? `تعمل في ${opLabel}`
+                : `عرض ${viewLabel} — تعمل في ${opLabel}`
+            }
+          >
+            <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-success" />
+            <span className="font-semibold text-foreground whitespace-nowrap">
+              تعمل في {opLabel}
+            </span>
+            <span className="text-muted-foreground whitespace-nowrap">
+              وردية مفتوحة
+              {elapsed ? ` • ${elapsed}` : startedAt && mounted ? ` • منذ ${startedAt}` : ''}
+            </span>
+            <OperationalHandoffControl className="text-[10px] font-medium text-primary hover:underline underline-offset-2 whitespace-nowrap" />
+            <button
+              type="button"
+              onClick={() => setCloseShiftOpen(true)}
+              className="text-[10px] text-muted-foreground hover:text-destructive underline-offset-2 hover:underline mr-0.5"
+            >
+              إنهاء
+            </button>
+          </div>
+        ) : (
+          <span className="text-muted-foreground whitespace-nowrap">لا توجد وردية مفتوحة</span>
+        )}
 
         {!isPosPage && (
           <>
@@ -196,14 +202,31 @@ function ActiveSessionBar({ onCloseDayClick }: Props) {
         )}
       </div>
 
-      {/* Compact session chip on smaller desktops */}
+      {/* Compact chip (&lt; xl): tap opens operational sheet on mobile widths */}
       <div className="flex xl:hidden items-center gap-1.5 shrink-0">
         <User className="w-3.5 h-3.5 text-muted-foreground" />
         <span className="font-medium truncate max-w-[5.5rem]">{user.UserName}</span>
+        <button
+          type="button"
+          onClick={() => setMobileSheetOpen(true)}
+          className={`text-[10px] whitespace-nowrap rounded-md px-1.5 py-0.5 ${
+            hasOpenShift
+              ? viewMatchesOperational
+                ? 'text-success bg-success/10'
+                : 'text-amber-700 dark:text-amber-400 bg-amber-500/10'
+              : 'text-muted-foreground bg-muted'
+          }`}
+          aria-label="الحالة التشغيلية"
+        >
+          {hasOpenShift ? `● ${opLabel}` : 'لا توجد وردية'}
+        </button>
+        <OperationalHandoffControl
+          label="نقل التشغيل"
+          className="text-[10px] font-medium text-primary whitespace-nowrap rounded-md px-1.5 py-0.5 bg-primary/10"
+        />
         {!isPosPage && <DbToggleButton />}
       </div>
 
-      {/* TopNav — takes remaining width and scrolls horizontally */}
       <div className="flex-1 min-w-0 overflow-hidden">
         <TopNav />
       </div>
@@ -218,10 +241,9 @@ function ActiveSessionBar({ onCloseDayClick }: Props) {
         خروج
       </Button>
 
-      {/* Logout Confirmation Modal */}
       <LogoutConfirmModal
         isOpen={showLogoutModal}
-        hasOpenShift={hasActiveShift}
+        hasOpenShift={hasOpenShift}
         shiftName={shift?.ShiftName}
         onClose={() => setShowLogoutModal(false)}
         onCloseShiftAndLogout={handleCloseShiftAndLogout}
@@ -229,12 +251,19 @@ function ActiveSessionBar({ onCloseDayClick }: Props) {
         onLogoutOnly={logout}
       />
 
-      {/* Shift Close Receipt Print Modal */}
-      <ShiftCloseReceipt
-        open={showPrintReceipt}
-        data={printData}
-        onClose={handlePrintClose}
+      <ShiftCloseReceipt open={showPrintReceipt} data={printData} onClose={handlePrintClose} />
+
+      <CloseShiftConfirmDialog
+        open={closeShiftOpen}
+        branchLabel={opLabel}
+        startedAt={startedAt}
+        elapsed={elapsed}
+        busy={busyClose}
+        onCancel={() => setCloseShiftOpen(false)}
+        onConfirm={() => void confirmCloseShift()}
       />
+
+      <OperationalMobileSheet open={mobileSheetOpen} onClose={() => setMobileSheetOpen(false)} />
     </div>
   );
 }

@@ -155,16 +155,15 @@ export type WhatsAppPayload =
   | EmployeeDailyReportWhatsAppPayload
   | OtherWhatsAppPayload;
 
-export type WhatsAppSendResult =
-  | {
-      sent: true;
-      skipped: false;
-      status: 'sent' | 'queued';
-      type: WhatsAppMessageType;
-      phone?: string;
-      messageId?: string;
-      sentAt?: string;
-    }
+export interface GenericWhatsAppMessageInput {
+  phone: string;
+  message: string;
+  metadata?: Record<string, unknown>;
+  /** Optional Gateway delivery key. Omitted from the wire when unset. */
+  idempotencyKey?: string;
+}
+
+export type WhatsAppSendFailure =
   | {
       sent: false;
       skipped: true;
@@ -193,7 +192,33 @@ export type WhatsAppSendResult =
       error?: string;
       status?: string;
       messageId?: string;
+      /** Gateway error code when present (e.g. IDEMPOTENCY_IN_PROGRESS). */
+      code?: string;
     };
+
+export type WhatsAppSendResult =
+  | {
+      sent: true;
+      skipped: false;
+      status: 'sent' | 'queued';
+      type: WhatsAppMessageType;
+      phone?: string;
+      messageId?: string;
+      sentAt?: string;
+    }
+  | WhatsAppSendFailure;
+
+/** Gateway generic send — no `type` field. Success requires sent + messageId. */
+export type GenericWhatsAppSendResult =
+  | {
+      sent: true;
+      skipped: false;
+      status: 'sent';
+      phone?: string;
+      messageId: string;
+      sentAt?: string;
+    }
+  | WhatsAppSendFailure;
 
 export type WhatsAppStatusResult =
   | {
@@ -246,6 +271,7 @@ export interface WhatsAppApiSendResponse {
   message?: string;
   sentAt?: string;
   error?: string;
+  code?: string;
 }
 
 export { PROTECTED_FIELDS };

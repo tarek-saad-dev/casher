@@ -13,6 +13,7 @@ import { markBookingsActionRequired } from '@/lib/booking/affectedBookings';
 import { logBookingAvailabilityMetric } from '@/lib/availability/bookingAvailabilityMetrics';
 import { invalidateEmployeeScheduleCaches } from '@/lib/hr/scheduleAvailabilityInvalidation';
 import { resolveEmployeeDayPlan } from '@/lib/availability/resolveEmployeeDayPlan';
+import { markAutoAbsenceAttendance } from '@/modules/attendance';
 
 export const DEFAULT_AUTO_ABSENCE_MINUTES = 30;
 
@@ -179,7 +180,7 @@ async function executeAutoAbsenceScanBody(args: {
           )
           AND NOT EXISTS (
             SELECT 1 FROM dbo.TblEmpAttendance a
-            WHERE a.EmpID = e.EmpID AND a.WorkDate = @date
+            WHERE a.EmpID = e.EmpID AND a.WorkDate = @date AND a.BranchID = @branchId
               AND a.Status IN (N'Present', N'Late', N'EarlyLeave', N'Absent')
           )
       `);
@@ -224,31 +225,11 @@ async function executeAutoAbsenceScanBody(args: {
 
       const plannedHhmm = msToHhmmCairo(firstStartMs);
 
-      await db
-        .request()
-        .input('empId', sql.Int, empId)
-        .input('branchId', sql.Int, branchId)
-        .input('date', sql.Date, businessDate)
-        .query(`
-          IF NOT EXISTS (
-            SELECT 1 FROM dbo.TblEmpAttendance
-            WHERE EmpID = @empId AND WorkDate = @date
-          )
-            INSERT INTO dbo.TblEmpAttendance (
-              EmpID, BranchID, WorkDate, Status, Notes, CreatedAt
-            )
-            VALUES (
-              @empId, @branchId, @date, N'Absent',
-              N'AUTO_ABSENCE after scheduled start + threshold',
-              SYSUTCDATETIME()
-            );
-          ELSE
-            UPDATE dbo.TblEmpAttendance
-            SET Status = N'Absent',
-                Notes = LEFT(CONCAT(ISNULL(Notes,N''), N' | AUTO_ABSENCE'), 250)
-            WHERE EmpID = @empId AND WorkDate = @date
-              AND Status NOT IN (N'Present', N'Late', N'EarlyLeave');
-        `);
+      await markAutoAbsenceAttendance({
+        empId,
+        branchId,
+        workDate: businessDate,
+      });
 
       try {
         await db

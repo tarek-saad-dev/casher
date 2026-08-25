@@ -1,7 +1,8 @@
 /**
- * Phase 1H — secure active-branch session switching.
+ * Phase 1H — secure view-branch session switching.
  * Access rule: effective CanOperate on an active branch (no admin bypass).
  * Does not mutate IsDefault. Does not add CanSwitch gating.
+ * Does not open, close, or hand off a ShiftSession.
  */
 import 'server-only';
 import { getBranchById, getUserActiveStatus, listUserValidBranchAccess } from './repository';
@@ -323,4 +324,4 @@ export async function switchActiveBranch(args: {
   };
 }
 
-export { resolvePostSwitchNavigationPath } from './postSwitchNavigation';
+export { resolvePostSwitchNavigationPath, needsHardNavigationAfterViewSwitch } from './postSwitchNavigation';

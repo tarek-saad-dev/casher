@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import type { Booking } from '@/lib/operationsTypes';
 import { TimelineItem } from './schedulerUtils';
 import { printBookingTicket, BookingTicketData } from '@/lib/printBookingTicket';
+import { BookingOriginBadge } from './BookingOriginBadge';
 
 interface Barber {
   empId: number;
@@ -410,6 +411,20 @@ export function BookingDetailsModal({ item, onClose, onDelete, onEdit, onCancel,
                   <div className="text-sm font-medium text-foreground">{booking?.EmpName || '—'}</div>
                 </div>
               </div>
+              {(booking?.originLabel || item.originLabel) && (
+                <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: 'var(--surface)' }}>
+                  <div>
+                    <div className="text-[10px] text-muted-foreground/70">المصدر</div>
+                    <div className="mt-1">
+                      <BookingOriginBadge
+                        kind={booking?.originKind || item.originKind}
+                        label={booking?.originLabel || item.originLabel}
+                        size="md"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

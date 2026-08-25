@@ -19,7 +19,7 @@ export function BottomSummaryStrip({
   return (
     <div
       className={cn(
-        'shrink-0 rounded-2xl border border-border/80 bg-card/80 px-3 py-2.5 shadow-sm sm:px-4',
+        'shrink-0 rounded-2xl border border-border/80 bg-card/80 px-3 py-2.5 shadow-sm sm:px-4 max-md:hidden',
         className,
       )}
     >

@@ -1,11 +1,15 @@
 /**
- * Client helpers for Phase 1H branch session switching.
- * Full document navigation is mandatory after a successful switch.
+ * Client helpers for view-branch session switching.
+ * Cookie change only — never mutates ShiftSession / TblShiftMove.
  */
 'use client';
 
 import { invalidateRecentInvoicesCache } from '@/lib/recentInvoicesCache';
-import { resolvePostSwitchNavigationPath } from '@/lib/branch/postSwitchNavigation';
+import {
+  needsHardNavigationAfterViewSwitch,
+  resolvePostSwitchNavigationPath,
+} from '@/lib/branch/postSwitchNavigation';
+import { setViewBranchSwitchUi } from '@/lib/branch/viewBranchSwitchUi';
 
 export type ClientSwitchableBranch = {
   branchId: number;
@@ -22,7 +26,7 @@ export type ClientActiveBranch = {
   shortName: string | null;
 };
 
-/** Clear known in-memory branch-owned caches before hard navigation. */
+/** Clear known in-memory branch-owned caches before a view-branch switch. */
 export function clearClientBranchOwnedState(): void {
   try {
     invalidateRecentInvoicesCache();
@@ -66,23 +70,14 @@ export async function fetchSwitchableBranches(): Promise<{
   };
 }
 
-/**
- * Switch branch via Route Handler, then hard-navigate.
- * Never updates UI labels optimistically before server success.
- */
-export async function performBranchSwitch(args: {
-  branchId: number;
-  currentPathname?: string | null;
-}): Promise<{ ok: true; changed: boolean } | { ok: false; error: string; message: string }> {
-  if (!confirmDiscardUnsavedWorkIfNeeded()) {
-    return { ok: false, error: 'CANCELLED', message: 'تم الإلغاء' };
-  }
-
+export async function syncViewBranchCookie(
+  branchId: number,
+): Promise<{ ok: boolean; changed?: boolean; error?: string; message?: string }> {
   const res = await fetch('/api/auth/switch-branch', {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ branchId: args.branchId }),
+    body: JSON.stringify({ branchId }),
   });
 
   let data: Record<string, unknown> = {};
@@ -96,14 +91,73 @@ export async function performBranchSwitch(args: {
     return {
       ok: false,
       error: String(data.error || 'SWITCH_FAILED'),
-      message: String(data.message || 'فشل تبديل الفرع'),
+      message: String(data.message || 'فشل تبديل الفرع المعروض'),
     };
   }
 
   clearClientBranchOwnedState();
-
-  const target = resolvePostSwitchNavigationPath(args.currentPathname);
-  // Mandatory full document navigation — do not use router.refresh() alone.
-  window.location.assign(target);
   return { ok: true, changed: Boolean(data.changed) };
+}
+
+/**
+ * Soft-refreshes bootstrap/read context when the current route is compatible.
+ * Hard-navigates only for branch-owned entity URLs.
+ * Never opens, closes, or hands off a shift.
+ */
+export async function performBranchSwitch(args: {
+  branchId: number;
+  currentPathname?: string | null;
+  targetLabel?: string | null;
+  onSoftSwitch?: () => Promise<void>;
+}): Promise<
+  | { ok: true; changed: boolean; navigation: 'hard' | 'soft' }
+  | { ok: false; error: string; message: string }
+> {
+  if (!confirmDiscardUnsavedWorkIfNeeded()) {
+    return { ok: false, error: 'CANCELLED', message: 'تم الإلغاء' };
+  }
+
+  setViewBranchSwitchUi(true, args.targetLabel ?? null);
+  let keepLoadingVisible = false;
+  try {
+    const res = await fetch('/api/auth/switch-branch', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ branchId: args.branchId }),
+    });
+
+    let data: Record<string, unknown> = {};
+    try {
+      data = await res.json();
+    } catch {
+      data = {};
+    }
+
+    if (!res.ok || !data.ok) {
+      return {
+        ok: false,
+        error: String(data.error || 'SWITCH_FAILED'),
+        message: String(data.message || 'فشل تبديل الفرع'),
+      };
+    }
+
+    clearClientBranchOwnedState();
+
+    const target = resolvePostSwitchNavigationPath(args.currentPathname);
+    const needsHard = needsHardNavigationAfterViewSwitch(args.currentPathname);
+
+    if (needsHard || !args.onSoftSwitch) {
+      keepLoadingVisible = true;
+      window.location.assign(target);
+      return { ok: true, changed: Boolean(data.changed), navigation: 'hard' };
+    }
+
+    await args.onSoftSwitch();
+    return { ok: true, changed: Boolean(data.changed), navigation: 'soft' };
+  } finally {
+    if (!keepLoadingVisible) {
+      setViewBranchSwitchUi(false);
+    }
+  }
 }
