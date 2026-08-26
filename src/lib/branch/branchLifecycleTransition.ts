@@ -211,6 +211,22 @@ export async function transitionBranchLifecycle(
   }
 
   invalidatePublicSettingsCache(branch.branchId);
+  try {
+    const { invalidatePublicBookingBranchContextCache } = await import(
+      '@/lib/booking/publicBookingBranchContext'
+    );
+    invalidatePublicBookingBranchContextCache(branch.branchCode);
+  } catch {
+    /* best-effort — list path does not depend on this cache */
+  }
+  try {
+    const { invalidatePublicBookingV2Bootstrap } = await import(
+      '@/lib/booking/v2Frontend/buildPublicBootstrap'
+    );
+    invalidatePublicBookingV2Bootstrap();
+  } catch {
+    /* best-effort — public branch enable/disable must drop bootstrap snapshot */
+  }
   const updated = await getBranchById(branch.branchId);
   if (!updated) {
     throw new BranchDomainError('BRANCH_NOT_FOUND', 'الفرع غير موجود بعد التحويل', 500);

@@ -28,10 +28,14 @@ import {
 } from '@/lib/booking/v2Frontend/publicSafeDtos';
 
 const BOOTSTRAP_SCOPE = 'public:all';
-/** L1 soft TTL — SQL snapshot covers cold serverless. */
-const BOOTSTRAP_L1_TTL_MS = 120_000;
-/** SQL snapshot freshness before forced rebuild. */
-const BOOTSTRAP_SQL_TTL_MS = 15 * 60_000;
+/** L1 soft TTL — keep short so PUBLIC_LIVE enable/disable surfaces quickly. */
+const BOOTSTRAP_L1_TTL_MS = 30_000;
+/** SQL snapshot freshness before forced rebuild (branch discovery must not lag for minutes). */
+const BOOTSTRAP_SQL_TTL_MS = 60_000;
+
+/** Public HTTP cache for bootstrap — intentionally short; never year-long. */
+export const PUBLIC_BOOTSTRAP_CACHE_CONTROL =
+  'private, max-age=15, stale-while-revalidate=30';
 
 export type BootstrapBuildTimings = {
   connectionMs: number;

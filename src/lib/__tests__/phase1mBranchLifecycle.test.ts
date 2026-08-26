@@ -25,6 +25,9 @@ describe('Phase 1M branch lifecycle transitions', () => {
     expect(svc).toContain('SmokeRunID مطلوب');
     expect(svc).toContain('branch.lifecycle.transition.completed');
     expect(svc).toContain('branch.lifecycle.transition.blocked');
+    expect(svc).toContain('invalidatePublicSettingsCache');
+    expect(svc).toContain('invalidatePublicBookingV2Bootstrap');
+    expect(svc).toContain('invalidatePublicBookingBranchContextCache');
   });
 
   it('API rejects body BranchID mismatch and requires reason', () => {

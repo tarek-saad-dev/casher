@@ -35,9 +35,10 @@ export async function GET(req: NextRequest) {
     const preview = searchParams.get('preview');
     const ifNoneMatch = req.headers.get('if-none-match');
 
-    const { buildPublicBookingV2Bootstrap } = await import(
-      '@/lib/booking/v2Frontend/buildPublicBootstrap'
-    );
+    const {
+      buildPublicBookingV2Bootstrap,
+      PUBLIC_BOOTSTRAP_CACHE_CONTROL,
+    } = await import('@/lib/booking/v2Frontend/buildPublicBootstrap');
     const { body, etag, cacheHit, timings } = await buildPublicBookingV2Bootstrap({
       previewQueryParam: preview,
     });
@@ -53,7 +54,7 @@ export async function GET(req: NextRequest) {
       notModified = withPublicBookingCors(notModified, req, {
         allowedMethods: [...gate.cors.methods],
         allowedHeaders: gate.cors.headers,
-        cacheControl: 'public, max-age=300, stale-while-revalidate=3600',
+        cacheControl: PUBLIC_BOOTSTRAP_CACHE_CONTROL,
       });
       applyPublicBookingResponseHeaders(notModified, {
         requestId: gate.requestId,
@@ -67,7 +68,7 @@ export async function GET(req: NextRequest) {
     }
 
     const res = finalizePublicBookingJson(req, gate, body, {
-      cacheControl: 'public, max-age=300, stale-while-revalidate=3600',
+      cacheControl: PUBLIC_BOOTSTRAP_CACHE_CONTROL,
     });
     res.headers.set('ETag', etag);
     res.headers.set('X-Bootstrap-Revision', body.revision);

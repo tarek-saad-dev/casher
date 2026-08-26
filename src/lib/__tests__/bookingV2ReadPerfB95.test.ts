@@ -19,7 +19,7 @@ describe('B9.5 bootstrap cold-path hardening', () => {
     expect(src).not.toMatch(/listPublicBookingBarbers\(\{[\s\S]*date:\s*today/);
   });
 
-  it('bootstrap uses L1 + SQL snapshot + CDN Cache-Control', () => {
+  it('bootstrap uses L1 + SQL snapshot + short Cache-Control', () => {
     const boot = readFileSync(
       join(root, 'src/lib/booking/v2Frontend/buildPublicBootstrap.ts'),
       'utf8',
@@ -30,8 +30,12 @@ describe('B9.5 bootstrap cold-path hardening', () => {
     );
     expect(boot).toContain('getBootstrapSqlStore');
     expect(boot).toContain("source: 'sql'");
-    expect(route).toContain('max-age=300');
-    expect(route).toContain('stale-while-revalidate=3600');
+    expect(boot).toContain('private, max-age=15, stale-while-revalidate=30');
+    expect(boot).toContain('BOOTSTRAP_SQL_TTL_MS = 60_000');
+    expect(boot).toContain('BOOTSTRAP_L1_TTL_MS = 30_000');
+    expect(route).toContain('PUBLIC_BOOTSTRAP_CACHE_CONTROL');
+    expect(route).not.toContain('max-age=300');
+    expect(route).not.toContain('stale-while-revalidate=3600');
     expect(route).toContain('ETag');
   });
 
@@ -54,10 +58,10 @@ describe('B9.5 bootstrap cold-path hardening', () => {
   });
 
   it('discoverable branches use batched visibility', () => {
-    const src = readFileSync(
+    const domain = readFileSync(
       join(root, 'src/lib/booking/publicBookingBranchContext.ts'),
       'utf8',
     );
-    expect(src).toContain('canBranchesAppearInPublicBooking');
+    expect(domain).toContain('canBranchesAppearInPublicBooking');
   });
 });

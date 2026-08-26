@@ -196,6 +196,29 @@ describe('bookingPublicBranchContext', () => {
     expect(ctx.lifecycleStatus).toBe('INTERNAL_LIVE');
   });
 
+  it('listPublicDiscoverableBranches includes PUBLIC_LIVE CAMP_CAESAR with GLEEM', async () => {
+    listActiveBranches.mockResolvedValue([
+      gleemBranch(),
+      campCaesarBranch({
+        lifecycleStatus: 'PUBLIC_LIVE',
+        publicBookingEnabled: true,
+        isActive: true,
+      }),
+    ]);
+    canBranchAppearInPublicBooking.mockImplementation(async (id: number) => id === 1 || id === 3);
+    const mod = await import('@/lib/booking/publicBookingBranchContext');
+    const list = await mod.listPublicDiscoverableBranches();
+    expect(list.map((b) => b.branchCode).sort()).toEqual(['CAMP_CAESAR', 'GLEEM']);
+  });
+
+  it('listPublicDiscoverableBranches excludes INTERNAL_LIVE CAMP_CAESAR', async () => {
+    listActiveBranches.mockResolvedValue([gleemBranch(), campCaesarBranch()]);
+    canBranchAppearInPublicBooking.mockImplementation(async (id: number) => id === 1);
+    const mod = await import('@/lib/booking/publicBookingBranchContext');
+    const list = await mod.listPublicDiscoverableBranches();
+    expect(list.map((b) => b.branchCode)).toEqual(['GLEEM']);
+  });
+
   it('listPublicDiscoverableBranches uses canBranchAppearInPublicBooking', async () => {
     listActiveBranches.mockResolvedValue([gleemBranch(), campCaesarBranch()]);
     canBranchAppearInPublicBooking.mockImplementation(async (id: number) => id === 1);

@@ -88,7 +88,13 @@ async function main() {
   });
 
   console.log('Cleanup result:', result);
-  console.log(`${branch.branchCode} returned to SETUP; PublicBookingEnabled=0`);
+  const afterBranch = await getBranchById(branch.branchId);
+  console.log(
+    `${branch.branchCode} post-cleanup lifecycle=${afterBranch?.lifecycleStatus} publicBooking=${afterBranch?.publicBookingEnabled ? 1 : 0}`,
+  );
+  if (afterBranch?.lifecycleStatus === 'SMOKE_TEST') {
+    console.warn('Warning: branch still SMOKE_TEST after cleanup');
+  }
 }
 
 main().catch((err) => {

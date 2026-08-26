@@ -311,7 +311,21 @@ export async function cleanupBranchSmokeRun(args: {
   // INTERNAL_LIVE / PUBLIC_LIVE must never be deactivated by artifact cleanup
   // (regression: admin cleanup after current-config smoke was resetting Camp Caesar).
   const liveBranch = await getBranchById(args.branchId);
-  if (liveBranch?.lifecycleStatus === 'SMOKE_TEST') {
+  if (
+    liveBranch?.lifecycleStatus === 'PUBLIC_LIVE' ||
+    liveBranch?.publicBookingEnabled === true
+  ) {
+    console.warn(
+      JSON.stringify({
+        event: 'branch.smoke.cleanup.skip_demote_public_live',
+        branchId: args.branchId,
+        branchCode: liveBranch.branchCode,
+        lifecycleStatus: liveBranch.lifecycleStatus,
+        publicBookingEnabled: liveBranch.publicBookingEnabled,
+        smokeRunId: args.smokeRunId,
+      }),
+    );
+  } else if (liveBranch?.lifecycleStatus === 'SMOKE_TEST') {
     await db
       .request()
       .input('branchId', sql.Int, args.branchId)
@@ -323,7 +337,10 @@ export async function cleanupBranchSmokeRun(args: {
             PublicBookingEnabled = 0,
             ExternalNotificationsEnabled = 0,
             UpdatedAt = SYSUTCDATETIME()
-        WHERE BranchID = @branchId AND BranchCode = @code
+        WHERE BranchID = @branchId
+          AND BranchCode = @code
+          AND LifecycleStatus = N'SMOKE_TEST'
+          AND ISNULL(PublicBookingEnabled, 0) = 0
       `);
 
     await db
@@ -333,7 +350,23 @@ export async function cleanupBranchSmokeRun(args: {
         UPDATE dbo.QueueBookingSettings
         SET BookingEnabled = 0, UpdatedAt = GETDATE()
         WHERE BranchID = @branchId
+          AND EXISTS (
+            SELECT 1 FROM dbo.TblBranch b
+            WHERE b.BranchID = @branchId
+              AND b.LifecycleStatus = N'SMOKE_TEST'
+              AND ISNULL(b.PublicBookingEnabled, 0) = 0
+          )
       `);
+  } else if (liveBranch) {
+    console.info(
+      JSON.stringify({
+        event: 'branch.smoke.cleanup.skip_demote_non_smoke',
+        branchId: args.branchId,
+        branchCode: liveBranch.branchCode,
+        lifecycleStatus: liveBranch.lifecycleStatus,
+        smokeRunId: args.smokeRunId,
+      }),
+    );
   }
 
   console.info(
