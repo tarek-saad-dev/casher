@@ -10,6 +10,7 @@ export * from '@/lib/booking/domain/EmployeeIdentity';
 export * from '@/lib/booking/domain/AvailabilityBitmap';
 export * from '@/lib/booking/domain/WeeklyBaseline';
 export * from '@/lib/booking/domain/EffectiveDay';
+export * from '@/lib/booking/domain/minNoticeEligibility';
 export {
   BookingPolicy,
   BOOKING_POLICY_RULE_CATALOG,

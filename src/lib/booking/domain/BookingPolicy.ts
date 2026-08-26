@@ -37,6 +37,10 @@ import {
   shiftBusinessDate,
 } from '@/lib/booking/domain/BusinessDate';
 import {
+  isMinNoticeNotMet,
+  minNoticeThresholdMs,
+} from '@/lib/booking/domain/minNoticeEligibility';
+import {
   type BookingInterval,
   bookingIntervalFromBusinessClock,
 } from '@/lib/booking/domain/BookingInterval';
@@ -267,16 +271,20 @@ export const BookingPolicy = {
         },
       };
     }
-    if (args.minNoticeMinutes <= 0) return null;
-    const earliest = args.nowMs + args.minNoticeMinutes * 60_000;
-    if (args.interval.startAtMs < earliest) {
+    if (
+      isMinNoticeNotMet({
+        startAtMs: args.interval.startAtMs,
+        nowMs: args.nowMs,
+        minNoticeMinutes: args.minNoticeMinutes,
+      })
+    ) {
       return {
         ok: false,
         code: 'MIN_NOTICE_NOT_MET',
         meta: {
           minNoticeMinutes: args.minNoticeMinutes,
           startAtMs: args.interval.startAtMs,
-          earliestMs: earliest,
+          earliestMs: minNoticeThresholdMs(args.nowMs, args.minNoticeMinutes),
         },
       };
     }

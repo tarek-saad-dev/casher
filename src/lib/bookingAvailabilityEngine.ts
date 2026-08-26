@@ -29,6 +29,7 @@ import {
 } from '@/lib/scheduleOverrides';
 import { intervalsOverlap } from '@/lib/scheduleIntervals';
 import { getCairoBusinessDate } from '@/lib/businessDate';
+import { isMinNoticeNotMetMs } from '@/lib/booking/domain/minNoticeEligibility';
 import { createStageTimer } from '@/lib/devStageTiming';
 import { loadFreelanceBookingUnlocks } from '@/lib/hr/freelanceBookingUnlock';
 import { loadBookingOverridesForDate } from '@/lib/hr/attendance-shift-schedule-sync';
@@ -652,7 +653,14 @@ export function evaluateBookingSlotAt(
   if (nowMs != null && slotStartMs <= nowMs) {
     return { available: false, slotEndMs, reasonCode: 'past' };
   }
-  if (nowMs != null && slotStartMs < nowMs + minNoticeMs) {
+  if (
+    nowMs != null &&
+    isMinNoticeNotMetMs({
+      startAtMs: slotStartMs,
+      nowMs,
+      minNoticeMs,
+    })
+  ) {
     return { available: false, slotEndMs, reasonCode: 'minimum_notice' };
   }
 

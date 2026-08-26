@@ -8,6 +8,7 @@ import {
   type V2EmployeeDayAvailability,
 } from '@/lib/booking/projection/resolveBookingAvailabilityV2';
 import type { HotAvailabilityDayPayload } from '@/lib/booking/cache/HotAvailabilityTypes';
+import { filterStartMinsByMinNotice } from '@/lib/booking/v2Frontend/minNoticeSlotGrid';
 
 export function composeV2DayFromHotPayload(args: {
   employeeId: number;
@@ -30,14 +31,11 @@ export function composeV2DayFromHotPayload(args: {
     });
 
     if (args.nowMs != null) {
-      const minNotice = Math.max(0, args.minNoticeMinutes ?? 0);
-      const minNoticeMs = minNotice * 60_000;
-      const nowMs = args.nowMs;
-      starts = starts.filter((m) => {
-        const slot = startMinToV2Slot(m, args.businessDate);
-        if (slot.startAtMs <= nowMs) return false;
-        if (slot.startAtMs < nowMs + minNoticeMs) return false;
-        return true;
+      starts = filterStartMinsByMinNotice({
+        startMins: starts,
+        businessDate: args.businessDate,
+        nowMs: args.nowMs,
+        minNoticeMinutes: args.minNoticeMinutes ?? 0,
       });
     }
   }

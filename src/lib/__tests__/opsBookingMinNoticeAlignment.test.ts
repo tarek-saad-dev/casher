@@ -13,7 +13,8 @@ describe('ops booking create min-notice alignment', () => {
     );
     expect(src).toContain("purpose === 'internal_preview' ? 'operations' : 'public'");
     expect(src).toContain('effectiveMinNoticeMinutes');
-    expect(src).toContain('minNoticeMs > 0 && bounds.startMs < nowMs + minNoticeMs');
+    expect(src).toContain('isMinNoticeNotMet');
+    expect(src).toContain('minNoticeBlocked');
     // Must not hardcode public for create validation anymore
     expect(src).not.toMatch(/validateBookingSlot\(\{[\s\S]*?source:\s*'public'/);
   });

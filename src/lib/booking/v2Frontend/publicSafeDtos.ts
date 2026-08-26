@@ -119,6 +119,8 @@ export type V2PublicAvailabilityMatrixResponse = {
   ok: true;
   contract: typeof BOOKING_V2_FRONTEND_CONTRACT;
   generatedAt: string;
+  /** Epoch ms of generatedAt — preferred for MinNotice local filtering (exact, no parse drift). */
+  generatedAtMs?: number;
   timezone: string;
   slotIntervalMinutes: number;
   fromBusinessDate: string;

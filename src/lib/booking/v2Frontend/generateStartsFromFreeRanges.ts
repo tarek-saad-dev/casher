@@ -17,6 +17,7 @@ import {
   startMinToV2Slot,
   type V2SlotStart,
 } from '@/lib/booking/v2Frontend/v2SlotStart';
+import { filterStartMinsByMinNotice } from '@/lib/booking/v2Frontend/minNoticeSlotGrid';
 
 export type GenerateStartsFromFreeInput = {
   freeRanges?: AvailabilityFreeRange[];
@@ -60,14 +61,11 @@ export function generateStartsFromFree(
   });
 
   if (args.nowMs != null) {
-    const minNotice = Math.max(0, args.minNoticeMinutes ?? 0);
-    const minNoticeMs = minNotice * 60_000;
-    const nowMs = args.nowMs;
-    startMins = startMins.filter((m) => {
-      const slot = startMinToV2Slot(m, args.businessDate);
-      if (slot.startAtMs <= nowMs) return false;
-      if (slot.startAtMs < nowMs + minNoticeMs) return false;
-      return true;
+    startMins = filterStartMinsByMinNotice({
+      startMins,
+      businessDate: args.businessDate,
+      nowMs: args.nowMs,
+      minNoticeMinutes: args.minNoticeMinutes ?? 0,
     });
   }
 

@@ -264,11 +264,13 @@ export async function buildPublicAvailabilityMatrix(
   // Any-barber / branch roster: needRoster loads public bookable emp IDs only.
 
   if (!employeeIds.length) {
+    const generatedAtMs = Date.now();
     return {
       body: {
         ok: true,
         contract: BOOKING_V2_FRONTEND_CONTRACT,
-        generatedAt: new Date().toISOString(),
+        generatedAt: new Date(generatedAtMs).toISOString(),
+        generatedAtMs,
         timezone: settings.timezone || BOOKING_TZ,
         slotIntervalMinutes: settings.slotIntervalMinutes || 15,
         fromBusinessDate: from,
@@ -378,12 +380,14 @@ export async function buildPublicAvailabilityMatrix(
   const wallMs = performance.now() - wall0;
   // App compute = wall − revision SQL RTT (soft hit counts as near-zero SQL).
   const appComputeMs = Math.max(0, wallMs - (hot?.revisionSoftHit ? 0 : revisionMs));
+  const generatedAtMs = Date.now();
 
   return {
     body: {
       ok: true,
       contract: BOOKING_V2_FRONTEND_CONTRACT,
-      generatedAt: new Date().toISOString(),
+      generatedAt: new Date(generatedAtMs).toISOString(),
+      generatedAtMs,
       timezone: tz,
       slotIntervalMinutes: settings.slotIntervalMinutes || 15,
       fromBusinessDate: from,

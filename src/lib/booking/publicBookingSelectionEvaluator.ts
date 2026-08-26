@@ -27,6 +27,7 @@ import {
   validateBookingSlot,
   type BookingSlotReasonCode,
 } from '@/lib/bookingAvailabilityEngine';
+import { isMinNoticeNotMet } from '@/lib/booking/domain/minNoticeEligibility';
 import { resolveEmployeeBranchSchedule, resolveEmployeeGlobalSchedule } from '@/lib/hr/employeeBranchScheduleResolver';
 import { getPublicSettings, isValidDate, isValidTime, salonDateTimeToMs } from '@/lib/publicBookingHelpers';
 import { getCairoBusinessDate } from '@/lib/businessDate';
@@ -433,12 +434,15 @@ export async function evaluatePublicBookingSelection(args: {
     timezone,
   });
 
-  // Min notice on absolute start (today or any day before notice window)
+  // Min notice on absolute start (canonical: startAtMs >= nowMs + MinNotice, exact ms).
   const nowMs = Date.now();
-  const minNoticeMs = effectiveMinNoticeMinutes * 60_000;
-  if (bounds.startMs < nowMs + minNoticeMs) {
-    // Still evaluate for richer codes below, but mark — engine also enforces for "today"
-    // For past WorkDates outside today, horizon already covers far future; past dates fail here.
+  const minNoticeBlocked = isMinNoticeNotMet({
+    startAtMs: bounds.startMs,
+    nowMs,
+    minNoticeMinutes: effectiveMinNoticeMinutes,
+  });
+  if (minNoticeBlocked) {
+    // Still evaluate for richer codes below — absolute override after engine if needed.
   }
 
   let specificBarber: PublicCandidateBarber | null = null;
@@ -615,7 +619,7 @@ export async function evaluatePublicBookingSelection(args: {
 
   // Absolute min-notice override when start is too soon (public only;
   // internal ops/admin already waive min notice like available-slots).
-  if (available && minNoticeMs > 0 && bounds.startMs < nowMs + minNoticeMs) {
+  if (available && minNoticeBlocked) {
     available = false;
     availabilityCode = 'MIN_NOTICE_NOT_MET';
     availabilityMessage = PUBLIC_BOOKING_ERROR_CATALOG.MIN_NOTICE_NOT_MET.messageAr;

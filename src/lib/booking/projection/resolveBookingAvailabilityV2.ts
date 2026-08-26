@@ -27,6 +27,7 @@ import {
   startMinToV2Slot,
   type V2SlotStart,
 } from '@/lib/booking/v2Frontend/v2SlotStart';
+import { filterStartMinsByMinNotice } from '@/lib/booking/v2Frontend/minNoticeSlotGrid';
 
 export type { V2SlotStart };
 export { startMinToV2Slot };
@@ -140,18 +141,14 @@ export function composeEmployeeDayAvailabilityV2(args: {
       slotIntervalMinutes: args.slotIntervalMinutes,
     });
 
-    // Match bookingAvailabilityEngine evaluateBookingSlotAt:
-    // - past: startAtMs <= nowMs
-    // - minNotice: startAtMs < nowMs + minNoticeMs
+    // Canonical MinNotice: startAtMs > nowMs && startAtMs >= nowMs + notice
+    // (same rule as BookingPolicy / plan strong_fresh / evaluateBookingSlotAt).
     if (args.nowMs != null) {
-      const minNotice = Math.max(0, args.minNoticeMinutes ?? 0);
-      const minNoticeMs = minNotice * 60_000;
-      const nowMs = args.nowMs;
-      starts = starts.filter((m) => {
-        const slot = startMinToV2Slot(m, day.businessDate);
-        if (slot.startAtMs <= nowMs) return false;
-        if (slot.startAtMs < nowMs + minNoticeMs) return false;
-        return true;
+      starts = filterStartMinsByMinNotice({
+        startMins: starts,
+        businessDate: day.businessDate,
+        nowMs: args.nowMs,
+        minNoticeMinutes: args.minNoticeMinutes ?? 0,
       });
     }
   }

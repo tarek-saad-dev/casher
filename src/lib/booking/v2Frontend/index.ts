@@ -8,6 +8,10 @@ export {
   type GenerateStartsFromFreeResult,
 } from '@/lib/booking/v2Frontend/generateStartsFromFreeRanges';
 export {
+  filterStartMinsByMinNotice,
+  firstEligibleSlotOnGrid,
+} from '@/lib/booking/v2Frontend/minNoticeSlotGrid';
+export {
   BOOKING_V2_FRONTEND_CONTRACT,
   type V2PublicBootstrapResponse,
   type V2PublicAvailabilityMatrixResponse,
