@@ -43,6 +43,20 @@ jobs:
             "$VPS_USER@$VPS_HOST" \
             "sudo /usr/local/sbin/deploy-casher"
 
+      - name: Restart messaging worker
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh \
+            -i ~/.ssh/id_ed25519 \
+            -o BatchMode=yes \
+            "$VPS_USER@$VPS_HOST" \
+            'set -e
+             export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+             systemctl --user restart messaging-worker.service
+             systemctl --user is-active messaging-worker.service'
+
       - name: Verify Production
         run: |
           curl \

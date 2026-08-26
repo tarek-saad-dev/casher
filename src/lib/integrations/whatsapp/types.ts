@@ -220,19 +220,25 @@ export type GenericWhatsAppSendResult =
     }
   | WhatsAppSendFailure;
 
+/**
+ * Phase 8 Pure Gateway status.
+ * `available` = gateway reachable (health ok + status JSON parsed).
+ * Session readiness is the boolean flags — not collapsed into unavailable.
+ */
 export type WhatsAppStatusResult =
   | {
       available: true;
-      chromeConnected: true;
-      whatsappReady: true;
-      whatsappTabFound: true;
+      chromeConnected: boolean;
+      whatsappReady: boolean;
+      whatsappTabFound: boolean;
+      /** All session flags true — WhatsApp ready to send. */
+      connected: boolean;
     }
   | {
       available: false;
       reason:
         | 'development_only'
         | 'disabled'
-        | 'not_ready'
         | 'timeout'
         | 'connection_failed'
         | 'invalid_response';

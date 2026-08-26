@@ -20,6 +20,7 @@ type StatusPayload = {
   botHealth?: { ok: boolean; reason?: string; httpStatus?: number };
   status?: {
     available?: boolean;
+    connected?: boolean;
     chromeConnected?: boolean;
     whatsappReady?: boolean;
     whatsappTabFound?: boolean;
@@ -75,9 +76,25 @@ export default function AdminWhatsAppPage() {
     void loadStatus();
   }, [loadStatus]);
 
+  const gatewayAvailable = status?.status?.available === true;
   const whatsappReady = status?.status?.whatsappReady === true;
   const chromeConnected = status?.status?.chromeConnected === true;
+  const whatsappTabFound = status?.status?.whatsappTabFound === true;
   const serviceOk = status?.botHealth?.ok === true;
+  const fullyConnected =
+    status?.status?.connected === true ||
+    (gatewayAvailable &&
+      chromeConnected &&
+      whatsappReady &&
+      whatsappTabFound);
+
+  const statusHeadline = statusUnavailable
+    ? 'حالة واتساب غير متاحة حالياً'
+    : fullyConnected
+      ? 'واتساب متصل وجاهز'
+      : serviceOk || gatewayAvailable
+        ? 'الخدمة تعمل ولكن واتساب غير جاهز'
+        : 'حالة واتساب غير متاحة حالياً';
 
   return (
     <div className="max-w-7xl mx-auto" dir="rtl">
@@ -116,27 +133,40 @@ export default function AdminWhatsAppPage() {
             حالة واتساب غير متاحة حالياً. يمكنك متابعة إدارة الرسائل بشكل طبيعي.
           </p>
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatusTile
-              ok={whatsappReady}
-              label={whatsappReady ? 'متصل' : 'غير متصل'}
-              hint="الاتصال"
-            />
-            <StatusTile
-              ok={whatsappReady}
-              label={whatsappReady ? 'جاهز' : 'غير جاهز'}
-              hint="WhatsApp Ready"
-            />
-            <StatusTile
-              ok={chromeConnected}
-              label={chromeConnected ? 'متصل' : 'غير متصل'}
-              hint="Chrome Connected"
-            />
-            <StatusTile
-              ok={serviceOk}
-              label={serviceOk ? 'الخدمة تعمل' : 'الخدمة غير متاحة'}
-              hint="حالة الخدمة"
-            />
+          <div className="space-y-3">
+            <p
+              className={`text-sm font-medium ${
+                fullyConnected
+                  ? 'text-emerald-300'
+                  : serviceOk || gatewayAvailable
+                    ? 'text-amber-300'
+                    : 'text-zinc-400'
+              }`}
+            >
+              {statusHeadline}
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <StatusTile
+                ok={serviceOk}
+                label={serviceOk ? 'الخدمة متاحة' : 'الخدمة غير متاحة'}
+                hint="حالة الخدمة"
+              />
+              <StatusTile
+                ok={chromeConnected}
+                label={chromeConnected ? 'Chrome متصل' : 'Chrome غير متصل'}
+                hint="Chrome Connected"
+              />
+              <StatusTile
+                ok={whatsappReady}
+                label={whatsappReady ? 'جاهز' : 'غير جاهز'}
+                hint="WhatsApp Ready"
+              />
+              <StatusTile
+                ok={whatsappTabFound}
+                label={whatsappTabFound ? 'تاب واتساب موجود' : 'تاب واتساب غير موجود'}
+                hint="WhatsApp Tab"
+              />
+            </div>
           </div>
         )}
       </section>

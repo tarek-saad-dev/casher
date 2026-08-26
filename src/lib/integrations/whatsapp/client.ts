@@ -284,7 +284,8 @@ export async function sendGenericWhatsAppPayload(
 }
 
 /**
- * GET /api/health on the bot. Used by status/nightly checks only — never by POS send.
+ * GET /api/health on the Pure Gateway.
+ * Healthy only when HTTP succeeds and body has status === "ok".
  */
 export async function fetchWhatsAppBotHealth(): Promise<WhatsAppBotHealthResult> {
   const cfg = getConfig();
@@ -323,7 +324,26 @@ export async function fetchWhatsAppBotHealth(): Promise<WhatsAppBotHealthResult>
     return { ok: false, reason: 'connection_failed' };
   }
 
-  if (response.ok) {
+  if (!response.ok) {
+    return {
+      ok: false,
+      reason: 'invalid_response',
+      httpStatus: response.status,
+    };
+  }
+
+  let body: { status?: unknown };
+  try {
+    body = (await response.json()) as { status?: unknown };
+  } catch {
+    return {
+      ok: false,
+      reason: 'invalid_response',
+      httpStatus: response.status,
+    };
+  }
+
+  if (body?.status === 'ok') {
     return { ok: true, httpStatus: response.status };
   }
 
@@ -334,6 +354,11 @@ export async function fetchWhatsAppBotHealth(): Promise<WhatsAppBotHealthResult>
   };
 }
 
+/**
+ * GET /api/whatsapp/status — Phase 8 Pure Gateway contract.
+ * Gateway unavailable only on network/config/invalid response.
+ * Session not-ready returns available:true with connected:false.
+ */
 export async function fetchWhatsAppStatus(): Promise<WhatsAppStatusResult> {
   const cfg = getConfig();
 
@@ -342,11 +367,15 @@ export async function fetchWhatsAppStatus(): Promise<WhatsAppStatusResult> {
   }
 
   const health = await fetchWhatsAppBotHealth();
-  if (
-    !health.ok &&
-    (health.reason === 'connection_failed' || health.reason === 'timeout')
-  ) {
-    return { available: false, reason: health.reason };
+  if (!health.ok) {
+    if (health.reason === 'connection_failed' || health.reason === 'timeout') {
+      return { available: false, reason: health.reason };
+    }
+    // Health reachable but payload not status:"ok" — still try status endpoint;
+    // only hard-fail unavailable when status fetch itself cannot run.
+    if (health.reason === 'development_only') {
+      return { available: false, reason: 'development_only' };
+    }
   }
 
   const url = `${cfg.apiBaseUrl}/api/whatsapp/status`;
@@ -380,6 +409,10 @@ export async function fetchWhatsAppStatus(): Promise<WhatsAppStatusResult> {
     return { available: false, reason: 'connection_failed' };
   }
 
+  if (!response.ok) {
+    return { available: false, reason: 'invalid_response' };
+  }
+
   try {
     responseText = await response.text();
   } catch {
@@ -393,19 +426,21 @@ export async function fetchWhatsAppStatus(): Promise<WhatsAppStatusResult> {
     return { available: false, reason: 'invalid_response' };
   }
 
-  if (
-    body.success === true &&
-    body.chromeConnected === true &&
-    body.whatsappReady === true &&
-    body.whatsappTabFound === true
-  ) {
-    return {
-      available: true,
-      chromeConnected: true,
-      whatsappReady: true,
-      whatsappTabFound: true,
-    };
+  if (typeof body?.success !== 'boolean') {
+    return { available: false, reason: 'invalid_response' };
   }
 
-  return { available: false, reason: 'not_ready' };
+  const chromeConnected = body.chromeConnected === true;
+  const whatsappReady = body.whatsappReady === true;
+  const whatsappTabFound = body.whatsappTabFound === true;
+  const connected =
+    body.success === true && chromeConnected && whatsappReady && whatsappTabFound;
+
+  return {
+    available: true,
+    chromeConnected,
+    whatsappReady,
+    whatsappTabFound,
+    connected,
+  };
 }

@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
-import { isAuthResult, requireDevelopmentAdmin } from '@/lib/api-auth';
+import {
+  isWhatsAppTemplateAdmin,
+  requireWhatsAppTemplateAdmin,
+} from '@/app/api/admin/whatsapp/templates/access';
 import {
   checkWhatsAppStatus,
   checkWhatsAppBotHealth,
@@ -11,12 +14,12 @@ export const runtime = 'nodejs';
 
 /**
  * GET /api/admin/whatsapp/status
- * Development-only diagnostics endpoint.
- * Returns normalized WhatsApp status without exposing sensitive server details.
+ * Admin WhatsApp page connectivity probe (same ACL as templates).
+ * Maps Pure Gateway Phase 8 health + status — no typed-bot fields.
  */
 export async function GET() {
-  const auth = await requireDevelopmentAdmin();
-  if (!isAuthResult(auth)) return auth;
+  const auth = await requireWhatsAppTemplateAdmin();
+  if (!isWhatsAppTemplateAdmin(auth)) return auth;
 
   const cfg = getWhatsAppConfig();
   const [status, botHealth] = await Promise.all([

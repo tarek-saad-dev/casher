@@ -136,6 +136,7 @@ describe('AdminWhatsAppPage', () => {
           botHealth: { ok: true, httpStatus: 200 },
           status: {
             available: true,
+            connected: true,
             chromeConnected: true,
             whatsappReady: true,
             whatsappTabFound: true,
@@ -267,6 +268,46 @@ describe('AdminWhatsAppPage', () => {
     expect(await screen.findByText('رسالة فاتورة العميل')).toBeInTheDocument();
     expect(screen.getByText('حالة واتساب غير متاحة حالياً. يمكنك متابعة إدارة الرسائل بشكل طبيعي.')).toBeInTheDocument();
     expect(screen.getByRole('textbox')).toHaveValue('مرحبا {{customerName}}');
+  });
+
+  it('renders connected state for the exact Phase 8 production status payload', async () => {
+    render(<AdminWhatsAppPage />);
+
+    expect(await screen.findByText('واتساب متصل وجاهز')).toBeInTheDocument();
+    expect(screen.getByText('الخدمة متاحة')).toBeInTheDocument();
+    expect(screen.getByText('Chrome متصل')).toBeInTheDocument();
+    expect(screen.getByText('جاهز')).toBeInTheDocument();
+    expect(screen.getByText('تاب واتساب موجود')).toBeInTheDocument();
+  });
+
+  it('shows degraded headline when gateway is up but WhatsApp is not ready', async () => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      calls.push({ url, method });
+
+      if (url.includes('/api/admin/whatsapp/status')) {
+        return jsonResponse(200, {
+          integrationEnabled: true,
+          botHealth: { ok: true, httpStatus: 200 },
+          status: {
+            available: true,
+            connected: false,
+            chromeConnected: true,
+            whatsappReady: false,
+            whatsappTabFound: false,
+          },
+        });
+      }
+      if (url.endsWith('/api/admin/whatsapp/templates') || url.endsWith('/api/admin/whatsapp/templates/')) {
+        return jsonResponse(200, { ok: true, templates: [current] });
+      }
+      return jsonResponse(404, { error: 'not found' });
+    }) as unknown as typeof fetch;
+
+    render(<AdminWhatsAppPage />);
+    expect(await screen.findByText('الخدمة تعمل ولكن واتساب غير جاهز')).toBeInTheDocument();
+    expect(screen.queryByText('حالة واتساب غير متاحة حالياً. يمكنك متابعة إدارة الرسائل بشكل طبيعي.')).not.toBeInTheDocument();
   });
 
   it('shows unauthorized template errors using existing copy', async () => {

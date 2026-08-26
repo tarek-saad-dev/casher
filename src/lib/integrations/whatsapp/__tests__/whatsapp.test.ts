@@ -144,6 +144,7 @@ describe('status and health', () => {
           ok: true,
           status: 200,
           text: async () => JSON.stringify({ status: 'ok' }),
+          json: async () => ({ status: 'ok' }),
         };
       }
       return {
@@ -156,17 +157,34 @@ describe('status and health', () => {
             whatsappReady: true,
             whatsappTabFound: true,
           }),
+        json: async () => ({
+          success: true,
+          chromeConnected: true,
+          whatsappReady: true,
+          whatsappTabFound: true,
+        }),
       };
     });
 
     const status = await checkWhatsAppStatus();
     expect(status.available).toBe(true);
+    if (status.available) expect(status.connected).toBe(true);
     expect(lastFetchUrl).toBe('http://127.0.0.1:3001/api/whatsapp/status');
     expect(call).toBeGreaterThanOrEqual(2);
   });
 
   it('GET /api/health', async () => {
     setFetchResponse(200, { status: 'ok' });
+    // health now uses response.json()
+    vi.stubGlobal('fetch', async (url: string) => {
+      lastFetchUrl = String(url);
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ status: 'ok' }),
+        json: async () => ({ status: 'ok' }),
+      };
+    });
     const health = await checkWhatsAppBotHealth();
     expect(health.ok).toBe(true);
     expect(lastFetchUrl).toBe('http://127.0.0.1:3001/api/health');
