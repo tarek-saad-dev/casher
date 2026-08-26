@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Clock,
   FileSpreadsheet,
+  LayoutList,
   Loader2,
   MinusCircle,
   RefreshCw,
@@ -35,6 +36,7 @@ import {
 import type {
   EmployeeMonthlyPayrollReport,
 } from '@/lib/reports/employee-monthly-payroll.types';
+import type { EmployeeMonthlyQuickReviewRow } from '@/lib/reports/employeeMonthlyQuickReview.types';
 import {
   canEditAttendanceForWage,
   needsAttendanceWageReview,
@@ -159,6 +161,11 @@ export default function EmployeeMonthlyReportPanel() {
   const [fixBusy, setFixBusy] = useState(false);
   const [fixMsg, setFixMsg] = useState('');
 
+  const [quickLoading, setQuickLoading] = useState(false);
+  const [quickError, setQuickError] = useState<string | null>(null);
+  const [quickAsOfDate, setQuickAsOfDate] = useState<string | null>(null);
+  const [quickRows, setQuickRows] = useState<EmployeeMonthlyQuickReviewRow[] | null>(null);
+
   const yearOptions = useMemo(() => {
     const current = cairoNow.year;
     return Array.from({ length: 8 }, (_, i) => current - 5 + i);
@@ -201,6 +208,29 @@ export default function EmployeeMonthlyReportPanel() {
       setError(err instanceof Error ? err.message : 'خطأ غير معروف');
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const fetchQuickReview = useCallback(async (y: number, m: number) => {
+    setQuickLoading(true);
+    setQuickError(null);
+    try {
+      const params = new URLSearchParams({
+        year: String(y),
+        month: String(m),
+        employeeScope: 'all',
+      });
+      const res = await fetch(`/api/admin/hr/employee-monthly-quick-review?${params}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل تحميل المراجعة السريعة');
+      setQuickAsOfDate(data.asOfDate ?? data.workDate ?? null);
+      setQuickRows(Array.isArray(data.rows) ? data.rows : []);
+    } catch (err) {
+      setQuickRows(null);
+      setQuickAsOfDate(null);
+      setQuickError(err instanceof Error ? err.message : 'خطأ غير معروف');
+    } finally {
+      setQuickLoading(false);
     }
   }, []);
 
@@ -460,6 +490,128 @@ export default function EmployeeMonthlyReportPanel() {
 
         </div>
       </div>
+
+      {/* Quick team review — month summary for all employees */}
+      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4 sm:p-5 space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 text-zinc-300 text-xs font-medium mb-1">
+              <LayoutList className="h-3.5 w-3.5 text-[#D6A84F]" />
+              مراجعة سريعة للفريق
+            </div>
+            <h3 className="text-base font-semibold text-white">كل أيام الشهر لكل الموظفين</h3>
+            <p className="text-xs text-zinc-500 mt-1">
+              صف لكل يوم: حضور · انصراف · الفرع · اليومية · التارجت حتى اليوم
+            </p>
+          </div>
+          <Button
+            type="button"
+            onClick={() => void fetchQuickReview(year, month)}
+            disabled={quickLoading}
+            className="bg-[#D6A84F] hover:bg-[#c49640] text-black font-bold gap-2 shrink-0"
+          >
+            {quickLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <LayoutList className="h-4 w-4" />
+            )}
+            جلب أيام الشهر
+          </Button>
+        </div>
+
+        {quickError && (
+          <div className="flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-rose-300 text-sm">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            {quickError}
+          </div>
+        )}
+
+        {quickRows && (
+          <div className="space-y-2">
+            <p className="text-xs text-zinc-500">
+              من أول الشهر حتى{' '}
+              <span className="text-zinc-300 tabular-nums">{quickAsOfDate ?? '—'}</span>
+              {' · '}
+              {quickRows.length} صف
+              {' · '}
+              {new Set(quickRows.map((r) => r.employeeId)).size} موظف
+            </p>
+            {quickRows.length === 0 ? (
+              <p className="text-sm text-zinc-500 py-6 text-center">
+                لا توجد بيانات حضور أو يومية أو تارجت في هذا الشهر
+              </p>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-zinc-800 max-h-[70vh] overflow-y-auto">
+                <table className="w-full text-sm min-w-[860px]">
+                  <thead className="sticky top-0 z-10">
+                    <tr className="border-b border-zinc-800 bg-zinc-950 text-zinc-400">
+                      <th className="text-right p-2.5 font-medium">الموظف</th>
+                      <th className="text-right p-2.5 font-medium">اليوم</th>
+                      <th className="text-right p-2.5 font-medium">حضور</th>
+                      <th className="text-right p-2.5 font-medium">انصراف</th>
+                      <th className="text-right p-2.5 font-medium">الفرع</th>
+                      <th className="text-right p-2.5 font-medium">اليومية</th>
+                      <th className="text-right p-2.5 font-medium">التارجت حتى اليوم</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quickRows.map((row, idx) => {
+                      const prev = idx > 0 ? quickRows[idx - 1] : null;
+                      const showName = !prev || prev.employeeId !== row.employeeId;
+                      return (
+                        <tr
+                          key={`${row.employeeId}-${row.workDate}`}
+                          className={`border-b border-zinc-800/70 hover:bg-zinc-800/30 ${
+                            showName && idx > 0 ? 'border-t border-zinc-700/80' : ''
+                          }`}
+                        >
+                          <td className="p-2.5 text-white font-medium whitespace-nowrap">
+                            {showName ? (
+                              <span className="inline-flex items-center gap-1.5">
+                                {row.employeeName}
+                                {!row.isActive && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-700/80 text-zinc-400 font-normal">
+                                    موقوف
+                                  </span>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="text-zinc-700">·</span>
+                            )}
+                          </td>
+                          <td className="p-2.5 tabular-nums text-zinc-300 whitespace-nowrap">
+                            {row.workDate}
+                          </td>
+                          <td className="p-2.5 tabular-nums text-zinc-200">
+                            {formatTime12hAr(row.checkIn) ?? '—'}
+                          </td>
+                          <td className="p-2.5 tabular-nums text-zinc-200">
+                            {formatTime12hAr(row.checkOut) ?? '—'}
+                          </td>
+                          <td className="p-2.5 text-zinc-300 whitespace-nowrap">
+                            {row.branchCode || row.branchName
+                              ? shortBranchName({
+                                  branchCode: row.branchCode || '—',
+                                  branchName: row.branchName || row.branchCode || '—',
+                                })
+                              : '—'}
+                          </td>
+                          <td className="p-2.5 tabular-nums text-amber-300/90">
+                            {row.dailyWage == null ? '—' : formatCurrencyAr(row.dailyWage)}
+                          </td>
+                          <td className="p-2.5 tabular-nums text-emerald-300/90">
+                            {row.targetMtd == null ? '—' : formatCurrencyAr(row.targetMtd)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {!employeeId && !loading && (
         <div className="rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/40 p-12 text-center">

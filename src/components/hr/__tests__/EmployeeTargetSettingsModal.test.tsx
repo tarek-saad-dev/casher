@@ -62,14 +62,23 @@ describe('EmployeeTargetSettingsModal helpers', () => {
 describe('EmployeeTargetSettingsModal', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        employee: { empId: 1, empName: 'سارة' },
-        effectivePlan: null,
-        latestPlan: null,
-        history: [],
-      }),
+    global.fetch = vi.fn(async (url: RequestInfo | URL) => {
+      const u = String(url);
+      if (u.includes('/target-templates')) {
+        return { ok: true, json: async () => ({ templates: [] }) };
+      }
+      if (u.includes('/api/employees')) {
+        return { ok: true, json: async () => [] };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          employee: { empId: 1, empName: 'سارة' },
+          effectivePlan: null,
+          latestPlan: null,
+          history: [],
+        }),
+      };
     }) as unknown as typeof fetch;
   });
 
@@ -86,6 +95,8 @@ describe('EmployeeTargetSettingsModal', () => {
     expect(within(dialog).getByText(/الشهر الحالي بالكامل/)).toBeInTheDocument();
     expect(within(dialog).getByText(/إجمالي مبيعات الشهر حتى اليوم/)).toBeInTheDocument();
     expect(within(dialog).getByText('تشغيل التارجت')).toBeInTheDocument();
+    expect(within(dialog).getByText('قوالب التارجت')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /حفظ كقالب/ })).toBeInTheDocument();
   });
 
   it('loads and allows adding/removing tiers', async () => {
@@ -113,9 +124,16 @@ describe('EmployeeTargetSettingsModal', () => {
   });
 
   it('saves monthly plan with month-start effectiveFrom', async () => {
-    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const u = String(url);
       if (init?.method === 'PUT') {
         return { ok: true, json: async () => ({ plan: { id: 1, isEnabled: true } }) };
+      }
+      if (u.includes('/target-templates')) {
+        return { ok: true, json: async () => ({ templates: [] }) };
+      }
+      if (u.includes('/api/employees')) {
+        return { ok: true, json: async () => [] };
       }
       return {
         ok: true,

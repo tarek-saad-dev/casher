@@ -1,13 +1,32 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2, Plus, Target, Trash2, Eye } from 'lucide-react';
+import { Copy, Loader2, Plus, Save, Target, Trash2, Eye } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
+type TargetTemplateSummary = {
+  id: string;
+  name: string;
+  isEnabled: boolean;
+  tiers: Array<{ inputStartAmount: number; ratePercent: number }>;
+};
+
+type EmployeeOption = {
+  EmpID: number;
+  EmpName: string;
+};
 
 export type TargetInputBasis = 'monthly' | 'daily';
 
@@ -208,12 +227,21 @@ export default function EmployeeTargetSettingsModal({
   const [previewTotal, setPreviewTotal] = useState<number | null>(null);
   const [previewBreakdown, setPreviewBreakdown] = useState<PreviewBreakdownRow[]>([]);
 
+  const [templates, setTemplates] = useState<TargetTemplateSummary[]>([]);
+  const [templateName, setTemplateName] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [templateBusy, setTemplateBusy] = useState(false);
+
+  const [employees, setEmployees] = useState<EmployeeOption[]>([]);
+  const [copyToEmpId, setCopyToEmpId] = useState('');
+  const [copyBusy, setCopyBusy] = useState(false);
+
   const interpretation = useMemo(
     () => buildTierInterpretation(tiers, 'monthly', 26),
     [tiers],
   );
 
-  const busy = saving || loading;
+  const busy = saving || loading || templateBusy || copyBusy;
 
   const resetPreview = () => {
     setPreviewTotal(null);
@@ -251,9 +279,64 @@ export default function EmployeeTargetSettingsModal({
     }
   }, [empId]);
 
+  const loadTemplates = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/hr/target-templates');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل تحميل القوالب');
+      setTemplates(Array.isArray(data.templates) ? data.templates : []);
+    } catch {
+      // non-blocking — target settings still usable without templates
+    }
+  }, []);
+
+  const loadEmployees = useCallback(async () => {
+    try {
+      const res = await fetch('/api/employees');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل تحميل الموظفين');
+      const list = Array.isArray(data.employees)
+        ? data.employees
+        : Array.isArray(data)
+          ? data
+          : [];
+      setEmployees(
+        list
+          .map((e: { EmpID?: number; empId?: number; EmpName?: string; empName?: string }) => ({
+            EmpID: Number(e.EmpID ?? e.empId),
+            EmpName: String(e.EmpName ?? e.empName ?? 'غير محدد'),
+          }))
+          .filter((e: EmployeeOption) => Number.isFinite(e.EmpID) && e.EmpID > 0 && e.EmpID !== empId),
+      );
+    } catch {
+      setEmployees([]);
+    }
+  }, [empId]);
+
   useEffect(() => {
-    if (open) void loadSettings();
-  }, [open, loadSettings]);
+    if (!open) return;
+    void loadSettings();
+    void loadTemplates();
+    void loadEmployees();
+    setTemplateName('');
+    setSelectedTemplateId('');
+    setCopyToEmpId('');
+  }, [open, loadSettings, loadTemplates, loadEmployees]);
+
+  const buildSaveBody = () => {
+    const { effectiveFrom } = currentMonthCoverage();
+    return {
+      isEnabled,
+      inputBasis: 'monthly' as const,
+      conversionDays: 26,
+      effectiveFrom,
+      notes: null,
+      tiers: tiers.map((t) => ({
+        inputStartAmount: Number(t.inputStartAmount),
+        ratePercent: Number(t.ratePercent),
+      })),
+    };
+  };
 
   const save = async () => {
     if (busy) return;
@@ -266,25 +349,12 @@ export default function EmployeeTargetSettingsModal({
       return;
     }
 
-    // Always bind to current month start so mid-month setup covers day 1 → month end.
-    const { effectiveFrom } = currentMonthCoverage();
-
     setSaving(true);
     try {
       const res = await fetch(`/api/admin/employees/${empId}/target-settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          isEnabled,
-          inputBasis: 'monthly',
-          conversionDays: 26,
-          effectiveFrom,
-          notes: null,
-          tiers: tiers.map((t) => ({
-            inputStartAmount: Number(t.inputStartAmount),
-            ratePercent: Number(t.ratePercent),
-          })),
-        }),
+        body: JSON.stringify(buildSaveBody()),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'فشل الحفظ');
@@ -298,6 +368,119 @@ export default function EmployeeTargetSettingsModal({
       setError(e instanceof Error ? e.message : 'فشل الحفظ');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveAsTemplate = async () => {
+    if (busy) return;
+    setError('');
+    setSuccessMsg('');
+    const v = validateClientForm({ isEnabled, tiers });
+    if (v) {
+      setError(v);
+      return;
+    }
+    const name = templateName.trim() || `تارجت ${empName}`;
+    setTemplateBusy(true);
+    try {
+      const res = await fetch('/api/admin/hr/target-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          isEnabled,
+          conversionDays: 26,
+          tiers: tiers.map((t) => ({
+            inputStartAmount: Number(t.inputStartAmount),
+            ratePercent: Number(t.ratePercent),
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل حفظ القالب');
+      setTemplateName(name);
+      setSuccessMsg(`تم حفظ القالب «${name}» — تقدر تحمّله لأي موظف`);
+      await loadTemplates();
+      if (data.template?.id) setSelectedTemplateId(String(data.template.id));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'فشل حفظ القالب');
+    } finally {
+      setTemplateBusy(false);
+    }
+  };
+
+  const applySelectedTemplate = () => {
+    const tpl = templates.find((t) => t.id === selectedTemplateId);
+    if (!tpl) {
+      setError('اختر قالبًا أولًا');
+      return;
+    }
+    setIsEnabled(Boolean(tpl.isEnabled));
+    setTiers(
+      (tpl.tiers ?? []).map((t) => ({
+        key: newTierKey(),
+        inputStartAmount: String(t.inputStartAmount),
+        ratePercent: String(t.ratePercent),
+      })),
+    );
+    setTemplateName(tpl.name);
+    resetPreview();
+    setSuccessMsg(`تم تحميل القالب «${tpl.name}» — اضغط حفظ لتطبيقه على ${empName}`);
+    setError('');
+  };
+
+  const deleteSelectedTemplate = async () => {
+    if (!selectedTemplateId || busy) return;
+    setTemplateBusy(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/admin/hr/target-templates/${selectedTemplateId}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل حذف القالب');
+      setSelectedTemplateId('');
+      setSuccessMsg('تم حذف القالب');
+      await loadTemplates();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'فشل حذف القالب');
+    } finally {
+      setTemplateBusy(false);
+    }
+  };
+
+  const copyToOtherEmployee = async () => {
+    if (busy) return;
+    setError('');
+    setSuccessMsg('');
+    const targetId = Number(copyToEmpId);
+    if (!Number.isFinite(targetId) || targetId <= 0) {
+      setError('اختر الموظف اللي هتنسخله النظام');
+      return;
+    }
+    const v = validateClientForm({ isEnabled, tiers });
+    if (v) {
+      setError(v);
+      return;
+    }
+    const other = employees.find((e) => e.EmpID === targetId);
+    setCopyBusy(true);
+    try {
+      const res = await fetch(`/api/admin/employees/${targetId}/target-settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildSaveBody()),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل النسخ');
+      const name = other?.EmpName ?? String(targetId);
+      const msg = `تم تطبيق نفس نظام التارجت على ${name}`;
+      setSuccessMsg(msg);
+      onSuccess?.(msg);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'فشل النسخ لموظف آخر');
+    } finally {
+      setCopyBusy(false);
     }
   };
 
@@ -424,6 +607,112 @@ export default function EmployeeTargetSettingsModal({
                 {' '}(شرائح شهرية) — تحت أول شريحة = بدون تارجت.
               </p>
             </div>
+
+            <section className="rounded-xl border border-border p-4 space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold">قوالب التارجت</h3>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  احفظ النظام ده كقالب، أو حمّل قالب جاهز، أو انسخه مباشرة لموظف تاني.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-end">
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">اسم القالب</label>
+                  <Input
+                    className="h-9"
+                    placeholder={`مثال: تارجت ${empName}`}
+                    value={templateName}
+                    onChange={(e) => setTemplateName(e.target.value)}
+                    disabled={busy}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 gap-1"
+                  onClick={() => void saveAsTemplate()}
+                  disabled={busy || tiers.length === 0}
+                >
+                  {templateBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  حفظ كقالب
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2 items-end">
+                <div className="space-y-1 min-w-0">
+                  <label className="text-[11px] text-muted-foreground">تحميل قالب محفوظ</label>
+                  <Select
+                    value={selectedTemplateId || undefined}
+                    onValueChange={setSelectedTemplateId}
+                    disabled={busy || templates.length === 0}
+                  >
+                    <SelectTrigger className="h-9 text-right">
+                      <SelectValue placeholder={templates.length ? 'اختر قالبًا' : 'مفيش قوالب بعد'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templates.map((tpl) => (
+                        <SelectItem key={tpl.id} value={tpl.id}>
+                          {tpl.name} · {tpl.tiers.length} شريحة
+                          {tpl.isEnabled ? '' : ' (متوقف)'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9"
+                  onClick={applySelectedTemplate}
+                  disabled={busy || !selectedTemplateId}
+                >
+                  تحميل
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 w-9 p-0 border-destructive/30 text-destructive"
+                  onClick={() => void deleteSelectedTemplate()}
+                  disabled={busy || !selectedTemplateId}
+                  aria-label="حذف القالب"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+
+              <div className="border-t border-border/70 pt-3 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-end">
+                <div className="space-y-1 min-w-0">
+                  <label className="text-[11px] text-muted-foreground">نسخ النظام الحالي لموظف آخر</label>
+                  <Select
+                    value={copyToEmpId || undefined}
+                    onValueChange={setCopyToEmpId}
+                    disabled={busy || employees.length === 0}
+                  >
+                    <SelectTrigger className="h-9 text-right">
+                      <SelectValue placeholder="اختر الموظف" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {employees.map((e) => (
+                        <SelectItem key={e.EmpID} value={String(e.EmpID)}>
+                          {e.EmpName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 gap-1"
+                  onClick={() => void copyToOtherEmployee()}
+                  disabled={busy || !copyToEmpId || tiers.length === 0}
+                >
+                  {copyBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}
+                  تطبيق عليه
+                </Button>
+              </div>
+            </section>
 
             <section className="space-y-3">
               <div className="flex items-start justify-between gap-3">

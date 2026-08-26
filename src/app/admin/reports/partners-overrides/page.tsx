@@ -191,7 +191,7 @@ function PartnersOverridesPageContent() {
   }, []);
 
   useEffect(() => {
-    document.title = 'الطبقة المتوسطة | نظام نقاط البيع';
+    document.title = 'تعديل | نظام نقاط البيع';
   }, []);
 
   useEffect(() => {
@@ -326,7 +326,7 @@ function PartnersOverridesPageContent() {
   return (
     <div className="p-6 space-y-6 max-w-[1500px] mx-auto" dir="rtl">
       <PageHeader
-        title="الطبقة المتوسطة"
+        title="تعديل"
         description="طبقة وسط بين أرقام النظام وتقرير الشركاء — ثبّت الرقم أو خصم/أضف نسبة أو مبلغ، والحسابات هناك تتبع النتيجة"
       >
         <Link href={`/admin/reports/partners?year=${year}&month=${month}`}>
