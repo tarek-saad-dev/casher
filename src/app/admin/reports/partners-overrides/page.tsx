@@ -191,7 +191,7 @@ function PartnersOverridesPageContent() {
   }, []);
 
   useEffect(() => {
-    document.title = 'تعديل أرقام تقرير الشركاء | نظام نقاط البيع';
+    document.title = 'الطبقة المتوسطة | نظام نقاط البيع';
   }, []);
 
   useEffect(() => {
@@ -326,8 +326,8 @@ function PartnersOverridesPageContent() {
   return (
     <div className="p-6 space-y-6 max-w-[1500px] mx-auto" dir="rtl">
       <PageHeader
-        title="تعديل أرقام تقرير الشركاء"
-        description="لكل رقم: خليه من النظام، أو ثبّته، أو خصم/أضف نسبة أو مبلغ على الديناميك — الحسابات في تقرير الشركاء تتبع النتيجة"
+        title="الطبقة المتوسطة"
+        description="طبقة وسط بين أرقام النظام وتقرير الشركاء — ثبّت الرقم أو خصم/أضف نسبة أو مبلغ، والحسابات هناك تتبع النتيجة"
       >
         <Link href={`/admin/reports/partners?year=${year}&month=${month}`}>
           <Button variant="outline" className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 gap-2">

@@ -145,9 +145,8 @@ export const NAV_SECTIONS: NavSection[] = [
     title: 'تقارير شريك',
     icon: UsersRound,
     items: [
-      { href: '/admin/reports/partners',           label: 'تقرير الشركاء',          icon: UsersRound },
-      { href: '/admin/reports/partners-overrides', label: 'تعديل أرقام الشركاء', icon: FileKey2   },
-      { href: '/admin/partners',                   label: 'إدارة الشركاء',           icon: Building2  },
+      { href: '/admin/reports/partners', label: 'تقرير الشركاء', icon: UsersRound },
+      { href: '/admin/partners',         label: 'إدارة الشركاء',  icon: Building2  },
     ],
   },
   {
@@ -211,6 +210,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/admin/operations',                label: 'مركز التشغيل',          icon: Activity   },
       { href: '/admin/booking/operations',        label: 'تشغيل الحجز العام',     icon: CalendarCheck },
+      { href: '/admin/reports/partners-overrides', label: 'الطبقة المتوسطة',  icon: FileKey2   },
       { href: '/admin/branches',                  label: 'الفروع',                 icon: Building2  },
       { href: '/admin/users',                     label: 'المستخدمون',             icon: Shield     },
       { href: '/admin/services',                  label: 'الخدمات',                icon: Scissors   },

@@ -35,7 +35,7 @@ const PAGES = [
   { key: 'reports.full_day',       name: 'تقرير اليوم كامل',       path: '/admin/reports/full-day',          section: 'تقارير مدير',      access: 'roles', sort: 27 },
   { key: 'reports.monthly',        name: 'التقرير الشهري',         path: '/reports/monthly',                 section: 'تقارير مدير',      access: 'roles', sort: 28 },
   { key: 'reports.partners',       name: 'تقرير الشركاء',          path: '/admin/reports/partners',          section: 'تقارير شريك',      access: 'roles', sort: 29 },
-  { key: 'reports.partners_overrides', name: 'تعديل أرقام تقرير الشركاء', path: '/admin/reports/partners-overrides', section: 'تقارير شريك', access: 'roles', sort: 30 },
+  { key: 'reports.partners_overrides', name: 'الطبقة المتوسطة', path: '/admin/reports/partners-overrides', section: 'الإدارة', access: 'roles', sort: 1005 },
   { key: 'admin.partners',         name: 'إدارة الشركاء',           path: '/admin/partners',                  section: 'تقارير شريك',      access: 'roles', sort: 31 },
   // Expenses
   { key: 'expenses.new',           name: 'تسجيل مصروف',           path: '/expenses',                        section: 'المصروفات',          access: 'roles', sort: 30 },
