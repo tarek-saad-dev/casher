@@ -12,6 +12,23 @@ export function formatPartnersPercent(value: number): string {
   return safe.toFixed(1) + '%';
 }
 
+/** راتب+تارجت + سلف — نفس أرقام جدول الموظفين بعد أي تعديل يدوي */
+export function partnersEmployeePaidTotal(totals: {
+  totalPaidSalaryAndAdvances: number;
+  totalSalaryAndTarget?: number;
+  totalAdvanceExcess?: number;
+}): number {
+  if (totals.totalSalaryAndTarget != null || totals.totalAdvanceExcess != null) {
+    const paid =
+      (Number.isFinite(totals.totalSalaryAndTarget) ? totals.totalSalaryAndTarget! : 0) +
+      (Number.isFinite(totals.totalAdvanceExcess) ? totals.totalAdvanceExcess! : 0);
+    return Math.round(paid * 100) / 100;
+  }
+  return Number.isFinite(totals.totalPaidSalaryAndAdvances)
+    ? totals.totalPaidSalaryAndAdvances
+    : 0;
+}
+
 export const ARABIC_MONTHS = [
   'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
   'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',

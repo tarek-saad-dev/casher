@@ -1,14 +1,41 @@
 {
-  "2026-06": {
-    "12": {
-      "actualRevenue": 45465.57,
-      "paidSalaryOrAdvance": 17455.46,
-      "note": "حساب خاص مؤقت لزياد"
-    },
-    "22": {
-      "actualRevenue": 0,
-      "paidSalaryOrAdvance": 5986,
-      "note": "حساب خاص مؤقت لطارق"
+  "version": 2,
+  "branches": {
+    "1": {
+      "2026-08": {
+        "5": {
+          "actualRevenue": {
+            "mode": "subtract_pct",
+            "value": 4
+          }
+        },
+        "22": {
+          "actualRevenue": {
+            "mode": "static",
+            "value": 0
+          }
+        }
+      }
+    }
+  },
+  "legacy": {
+    "2026-06": {
+      "12": {
+        "actualRevenue": {
+          "mode": "static",
+          "value": 45465.57
+        },
+        "paidSalaryOrAdvance": 17455.46,
+        "note": "حساب خاص مؤقت لزياد"
+      },
+      "22": {
+        "actualRevenue": {
+          "mode": "static",
+          "value": 0
+        },
+        "paidSalaryOrAdvance": 5986,
+        "note": "حساب خاص مؤقت لطارق"
+      }
     }
   }
 }

@@ -160,6 +160,9 @@ function PartnersReportPageContent() {
 
   const currentPeriod = getPartnersReportCurrentMonth(now);
   const isCurrentMonth = year === currentPeriod.year && month === currentPeriod.month;
+  const hasManualEmployeeNumbers = Boolean(
+    report?.employeeSummary.some((row) => row.hasSpecialAccounting)
+  );
 
   const goToPreviousMonth = () => {
     if (isAtPartnersReportMinimum(year, month)) return;
@@ -333,7 +336,11 @@ function PartnersReportPageContent() {
               partners={report?.partners ?? []}
               filteredOperatingExpenses={report?.summary.operatingExpenses ?? 0}
               loading={loading}
-              classifiedOperatingNet={report?.classifiedPartnerSplit?.cleanNetProfit}
+              classifiedOperatingNet={
+                hasManualEmployeeNumbers
+                  ? undefined
+                  : report?.classifiedPartnerSplit?.cleanNetProfit
+              }
               legacyOperatingNet={report?.classifiedPartnerSplit?.legacyOperatingNet}
             />
           </>

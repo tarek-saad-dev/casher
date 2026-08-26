@@ -3,37 +3,82 @@
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { AlertCircle, Loader2, Plus, Save, Trash2, ExternalLink } from 'lucide-react';
+import { AlertCircle, Loader2, Plus, RotateCcw, Save, ExternalLink } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { ARABIC_MONTHS, REPORT_YEARS } from '@/components/reports/partners/partnersReportUtils';
+import { ARABIC_MONTHS, REPORT_YEARS, formatPartnersCurrency } from '@/components/reports/partners/partnersReportUtils';
+import {
+  applyFieldAdjust,
+  describeFieldAdjust,
+  normalizeFieldAdjust,
+  PARTNERS_FIELD_ADJUST_MODE_LABELS,
+  type PartnersFieldAdjust,
+  type PartnersFieldAdjustMode,
+} from '@/lib/reports/partnersEmployeeOverrides';
 
-interface OverrideEntry {
+interface ControlLive {
+  shopRevenue: number | null;
+  salaryAndTarget: number;
+  advanceExcess: number;
+  ledgerSalary: number;
+  ledgerTarget: number;
+}
+
+interface ControlOverride {
+  actualRevenue?: number | PartnersFieldAdjust;
+  salaryAndTarget?: number | PartnersFieldAdjust;
+  advanceExcess?: number | PartnersFieldAdjust;
+  note?: string;
+}
+
+interface ControlEmployee {
   employeeId: number;
   employeeName: string;
-  actualRevenue: string;
-  paidSalaryOrAdvance: string;
+  isServiceWorker: boolean;
+  live: ControlLive;
+  override: ControlOverride | null;
+}
+
+interface FieldFormState {
+  mode: PartnersFieldAdjustMode;
+  value: string;
+}
+
+interface FormRow {
+  employeeId: number;
+  employeeName: string;
+  shopRevenue: FieldFormState;
+  salaryAndTarget: FieldFormState;
+  advanceExcess: FieldFormState;
   note: string;
+  live: ControlLive;
 }
 
 interface OverridesResponse {
   year: number;
   month: number;
   monthKey: string;
-  entries: Array<{
-    employeeId: number;
-    employeeName: string;
-    actualRevenue?: number;
-    paidSalaryOrAdvance?: number;
-    note?: string;
-  }>;
+  branchId: number;
+  branchCode: string;
+  branchName: string;
+  employees: ControlEmployee[];
   presetEmployees: Array<{ employeeId: number; label: string }>;
-  employees: Array<{ employeeId: number; employeeName: string }>;
+  catalog: Array<{ employeeId: number; employeeName: string }>;
 }
+
+const MODE_OPTIONS: PartnersFieldAdjustMode[] = [
+  'live',
+  'static',
+  'subtract_pct',
+  'keep_pct',
+  'subtract_amt',
+  'add_amt',
+  'add_pct',
+];
 
 function parseMonthFromParams(value: string | null, fallback: number): number {
   const parsed = value ? parseInt(value, 10) : fallback;
@@ -46,15 +91,55 @@ function parseYearFromParams(value: string | null, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function entryToForm(entry: OverridesResponse['entries'][number]): OverrideEntry {
+function liveFieldState(): FieldFormState {
+  return { mode: 'live', value: '' };
+}
+
+function adjustToForm(raw: number | PartnersFieldAdjust | undefined): FieldFormState {
+  const rule = normalizeFieldAdjust(raw);
+  if (!rule) return liveFieldState();
+  return { mode: rule.mode, value: String(rule.value) };
+}
+
+function formToAdjust(state: FieldFormState): PartnersFieldAdjust | undefined {
+  if (state.mode === 'live') return undefined;
+  const trimmed = state.value.trim();
+  if (trimmed === '') return undefined;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n)) return undefined;
+  return { mode: state.mode, value: n };
+}
+
+function employeeToForm(emp: ControlEmployee): FormRow {
   return {
-    employeeId: entry.employeeId,
-    employeeName: entry.employeeName,
-    actualRevenue: entry.actualRevenue !== undefined ? String(entry.actualRevenue) : '',
-    paidSalaryOrAdvance:
-      entry.paidSalaryOrAdvance !== undefined ? String(entry.paidSalaryOrAdvance) : '',
-    note: entry.note ?? '',
+    employeeId: emp.employeeId,
+    employeeName: emp.employeeName,
+    shopRevenue: adjustToForm(emp.override?.actualRevenue),
+    salaryAndTarget: adjustToForm(emp.override?.salaryAndTarget),
+    advanceExcess: adjustToForm(emp.override?.advanceExcess),
+    note: emp.override?.note ?? '',
+    live: emp.live,
   };
+}
+
+function fieldIsActive(state: FieldFormState): boolean {
+  return formToAdjust(state) !== undefined;
+}
+
+function valuePlaceholder(mode: PartnersFieldAdjustMode): string {
+  switch (mode) {
+    case 'static':
+      return 'المبلغ الثابت';
+    case 'subtract_pct':
+    case 'keep_pct':
+    case 'add_pct':
+      return 'النسبة %';
+    case 'subtract_amt':
+    case 'add_amt':
+      return 'المبلغ';
+    default:
+      return '';
+  }
 }
 
 function PartnersOverridesPageContent() {
@@ -69,9 +154,10 @@ function PartnersOverridesPageContent() {
   const [month, setMonth] = useState(() =>
     parseMonthFromParams(searchParams.get('month'), now.getMonth() + 1)
   );
-  const [entries, setEntries] = useState<OverrideEntry[]>([]);
-  const [employees, setEmployees] = useState<OverridesResponse['employees']>([]);
+  const [rows, setRows] = useState<FormRow[]>([]);
+  const [catalog, setCatalog] = useState<OverridesResponse['catalog']>([]);
   const [presets, setPresets] = useState<OverridesResponse['presetEmployees']>([]);
+  const [branchName, setBranchName] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -93,9 +179,10 @@ function PartnersOverridesPageContent() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'فشل تحميل الإعدادات');
       const data = json as OverridesResponse;
-      setEntries(data.entries.map(entryToForm));
-      setEmployees(data.employees);
+      setRows(data.employees.map(employeeToForm));
+      setCatalog(data.catalog);
       setPresets(data.presetEmployees);
+      setBranchName(data.branchName);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'حدث خطأ غير متوقع');
     } finally {
@@ -104,7 +191,7 @@ function PartnersOverridesPageContent() {
   }, []);
 
   useEffect(() => {
-    document.title = 'الحسابات الخاصة للشركاء | نظام نقاط البيع';
+    document.title = 'تعديل أرقام تقرير الشركاء | نظام نقاط البيع';
   }, []);
 
   useEffect(() => {
@@ -123,27 +210,62 @@ function PartnersOverridesPageContent() {
     fetchData(newYear, newMonth);
   };
 
-  const updateEntry = (employeeId: number, patch: Partial<OverrideEntry>) => {
-    setEntries((rows) =>
-      rows.map((row) => (row.employeeId === employeeId ? { ...row, ...patch } : row))
+  const updateRow = (employeeId: number, patch: Partial<FormRow>) => {
+    setRows((current) =>
+      current.map((row) => (row.employeeId === employeeId ? { ...row, ...patch } : row))
     );
   };
 
-  const removeEntry = (employeeId: number) => {
-    setEntries((rows) => rows.filter((row) => row.employeeId !== employeeId));
+  const updateField = (
+    employeeId: number,
+    key: 'shopRevenue' | 'salaryAndTarget' | 'advanceExcess',
+    patch: Partial<FieldFormState>
+  ) => {
+    setRows((current) =>
+      current.map((row) => {
+        if (row.employeeId !== employeeId) return row;
+        const next = { ...row[key], ...patch };
+        if (patch.mode === 'live') next.value = '';
+        return { ...row, [key]: next };
+      })
+    );
   };
 
-  const addPreset = (employeeId: number) => {
-    if (entries.some((row) => row.employeeId === employeeId)) return;
-    const employee = employees.find((e) => e.employeeId === employeeId);
-    setEntries((rows) => [
-      ...rows,
+  const resetRow = (employeeId: number) => {
+    setRows((current) =>
+      current.map((row) =>
+        row.employeeId === employeeId
+          ? {
+              ...row,
+              shopRevenue: liveFieldState(),
+              salaryAndTarget: liveFieldState(),
+              advanceExcess: liveFieldState(),
+              note: '',
+            }
+          : row
+      )
+    );
+  };
+
+  const addEmployee = (employeeId: number) => {
+    if (rows.some((row) => row.employeeId === employeeId)) return;
+    const employee = catalog.find((e) => e.employeeId === employeeId);
+    setRows((current) => [
+      ...current,
       {
         employeeId,
         employeeName: employee?.employeeName ?? `موظف #${employeeId}`,
-        actualRevenue: '',
-        paidSalaryOrAdvance: '',
+        shopRevenue: liveFieldState(),
+        salaryAndTarget: liveFieldState(),
+        advanceExcess: liveFieldState(),
         note: '',
+        live: {
+          shopRevenue: null,
+          salaryAndTarget: 0,
+          advanceExcess: 0,
+          ledgerSalary: 0,
+          ledgerTarget: 0,
+        },
       },
     ]);
   };
@@ -151,7 +273,7 @@ function PartnersOverridesPageContent() {
   const addSelectedEmployee = () => {
     const employeeId = parseInt(addEmpId, 10);
     if (!employeeId) return;
-    addPreset(employeeId);
+    addEmployee(employeeId);
     setAddEmpId('');
   };
 
@@ -163,11 +285,11 @@ function PartnersOverridesPageContent() {
       const payload = {
         year,
         month,
-        entries: entries.map((row) => ({
+        entries: rows.map((row) => ({
           employeeId: row.employeeId,
-          actualRevenue: row.actualRevenue === '' ? undefined : Number(row.actualRevenue),
-          paidSalaryOrAdvance:
-            row.paidSalaryOrAdvance === '' ? undefined : Number(row.paidSalaryOrAdvance),
+          actualRevenue: formToAdjust(row.shopRevenue),
+          salaryAndTarget: formToAdjust(row.salaryAndTarget),
+          advanceExcess: formToAdjust(row.advanceExcess),
           note: row.note.trim() || undefined,
         })),
       };
@@ -180,8 +302,9 @@ function PartnersOverridesPageContent() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'فشل الحفظ');
 
-      setEntries((json.entries as OverridesResponse['entries']).map(entryToForm));
-      setSuccess('تم حفظ الحسابات الخاصة بنجاح');
+      const employees = (json.employees as ControlEmployee[] | undefined) ?? [];
+      setRows(employees.map(employeeToForm));
+      setSuccess('تم حفظ التعديلات — تقرير الشركاء هيتحسب بالقيم الجديدة');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'حدث خطأ أثناء الحفظ');
     } finally {
@@ -189,15 +312,22 @@ function PartnersOverridesPageContent() {
     }
   };
 
-  const availableEmployees = employees.filter(
-    (emp) => !entries.some((row) => row.employeeId === emp.employeeId)
+  const availableEmployees = catalog.filter(
+    (emp) => !rows.some((row) => row.employeeId === emp.employeeId)
   );
 
+  const overriddenCount = rows.filter((row) =>
+    fieldIsActive(row.shopRevenue) ||
+    fieldIsActive(row.salaryAndTarget) ||
+    fieldIsActive(row.advanceExcess) ||
+    row.note.trim() !== ''
+  ).length;
+
   return (
-    <div className="p-6 space-y-6 max-w-[1100px] mx-auto" dir="rtl">
+    <div className="p-6 space-y-6 max-w-[1500px] mx-auto" dir="rtl">
       <PageHeader
-        title="الحسابات الخاصة للشركاء"
-        description="إدخال الأرقام اليدوية التي تظهر في تقرير الشركاء فقط — لا تؤثر على باقي التقارير"
+        title="تعديل أرقام تقرير الشركاء"
+        description="لكل رقم: خليه من النظام، أو ثبّته، أو خصم/أضف نسبة أو مبلغ على الديناميك — الحسابات في تقرير الشركاء تتبع النتيجة"
       >
         <Link href={`/admin/reports/partners?year=${year}&month=${month}`}>
           <Button variant="outline" className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 gap-2">
@@ -207,8 +337,14 @@ function PartnersOverridesPageContent() {
         </Link>
       </PageHeader>
 
-      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-zinc-300">
-        هذه الصفحة للإدارة فقط. تقرير الشركاء يعرض النتائج النهائية للقراءة فقط ولا يمكن تعديلها من هناك.
+      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-zinc-300 space-y-1">
+        <p>
+          مثال: ديناميك 10,000 + خصم نسبة 10% = 9,000 · أو خصم مبلغ 3,000 = 7,000 · أو رقم ثابت 8,500.
+        </p>
+        <p className="text-zinc-500 text-xs">
+          التعديل يظهر في تقرير الشركاء فقط ولا يغيّر الخزنة أو دفتر الموظف.
+          {branchName ? ` · الفرع الحالي: ${branchName}` : ''}
+        </p>
       </div>
 
       <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-4 flex flex-wrap items-end gap-3">
@@ -250,8 +386,14 @@ function PartnersOverridesPageContent() {
           className="bg-[#D6A84F] hover:bg-[#c49640] text-black font-bold gap-2"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          حفظ الشهر
+          حفظ وتطبيق على التقرير
         </Button>
+
+        {!loading && (
+          <span className="text-xs text-zinc-500">
+            {overriddenCount > 0 ? `${overriddenCount} موظف بتعديل` : 'كل الأرقام من النظام'}
+          </span>
+        )}
       </div>
 
       {error && (
@@ -274,8 +416,8 @@ function PartnersOverridesPageContent() {
             type="button"
             variant="outline"
             size="sm"
-            disabled={entries.some((row) => row.employeeId === preset.employeeId)}
-            onClick={() => addPreset(preset.employeeId)}
+            disabled={rows.some((row) => row.employeeId === preset.employeeId)}
+            onClick={() => addEmployee(preset.employeeId)}
             className="border-zinc-700 text-zinc-300"
           >
             <Plus className="w-3.5 h-3.5 ml-1" />
@@ -291,75 +433,83 @@ function PartnersOverridesPageContent() {
       ) : (
         <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[720px]">
+            <table className="w-full text-sm min-w-[1100px]">
               <thead>
                 <tr className="border-b border-zinc-800 text-zinc-400">
                   <th className="text-right p-3 font-medium">الموظف</th>
-                  <th className="text-right p-3 font-medium">دخل للمحل (فعلي)</th>
-                  <th className="text-right p-3 font-medium">استلم راتب / سلف</th>
+                  <th className="text-right p-3 font-medium">دخل للمحل</th>
+                  <th className="text-right p-3 font-medium">استلم راتب (راتب + تارجت)</th>
+                  <th className="text-right p-3 font-medium">سلف</th>
                   <th className="text-right p-3 font-medium">ملاحظة داخلية</th>
-                  <th className="text-center p-3 font-medium w-16">حذف</th>
+                  <th className="text-center p-3 font-medium w-16">إعادة</th>
                 </tr>
               </thead>
               <tbody>
-                {entries.length === 0 ? (
+                {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="p-10 text-center text-zinc-500">
-                      لا توجد حسابات خاصة لهذا الشهر — أضف موظفاً للبدء
+                    <td colSpan={6} className="p-10 text-center text-zinc-500">
+                      لا يوجد موظفون في هذا الشهر — أضف موظفاً للبدء
                     </td>
                   </tr>
                 ) : (
-                  entries.map((row) => (
-                    <tr key={row.employeeId} className="border-b border-zinc-800/60">
-                      <td className="p-3 text-white font-medium whitespace-nowrap">
-                        {row.employeeName}
-                      </td>
-                      <td className="p-3">
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={row.actualRevenue}
-                          onChange={(e) =>
-                            updateEntry(row.employeeId, { actualRevenue: e.target.value })
-                          }
-                          placeholder="اتركه فارغاً لعدم التعديل"
-                          className="bg-zinc-800 border-zinc-700 text-white h-9"
+                  rows.map((row) => {
+                    const shopOver = fieldIsActive(row.shopRevenue);
+                    const salaryOver = fieldIsActive(row.salaryAndTarget);
+                    const advanceOver = fieldIsActive(row.advanceExcess);
+                    const isOver = shopOver || salaryOver || advanceOver || row.note.trim() !== '';
+                    return (
+                      <tr
+                        key={row.employeeId}
+                        className={`border-b border-zinc-800/60 ${isOver ? 'bg-amber-500/5' : ''}`}
+                      >
+                        <td className="p-3 text-white font-medium whitespace-nowrap align-top">
+                          <div className="flex items-center gap-2 pt-1">
+                            {row.employeeName}
+                            {isOver && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
+                                معدّل
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <FieldAdjustCell
+                          state={row.shopRevenue}
+                          live={row.live.shopRevenue}
+                          onChange={(patch) => updateField(row.employeeId, 'shopRevenue', patch)}
                         />
-                      </td>
-                      <td className="p-3">
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={row.paidSalaryOrAdvance}
-                          onChange={(e) =>
-                            updateEntry(row.employeeId, { paidSalaryOrAdvance: e.target.value })
-                          }
-                          placeholder="اتركه فارغاً لعدم التعديل"
-                          className="bg-zinc-800 border-zinc-700 text-white h-9"
+                        <FieldAdjustCell
+                          state={row.salaryAndTarget}
+                          live={row.live.salaryAndTarget}
+                          hint={`راتب ${formatPartnersCurrency(row.live.ledgerSalary)} + تارجت ${formatPartnersCurrency(row.live.ledgerTarget)}`}
+                          onChange={(patch) => updateField(row.employeeId, 'salaryAndTarget', patch)}
                         />
-                      </td>
-                      <td className="p-3">
-                        <Input
-                          value={row.note}
-                          onChange={(e) => updateEntry(row.employeeId, { note: e.target.value })}
-                          placeholder="اختياري — لا تظهر للشركاء"
-                          className="bg-zinc-800 border-zinc-700 text-white h-9"
+                        <FieldAdjustCell
+                          state={row.advanceExcess}
+                          live={row.live.advanceExcess}
+                          onChange={(patch) => updateField(row.employeeId, 'advanceExcess', patch)}
                         />
-                      </td>
-                      <td className="p-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => removeEntry(row.employeeId)}
-                          className="p-2 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10"
-                          title="حذف"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                        <td className="p-3 align-top">
+                          <Input
+                            value={row.note}
+                            onChange={(e) => updateRow(row.employeeId, { note: e.target.value })}
+                            placeholder="اختياري — لا تظهر للشركاء"
+                            className="bg-zinc-800 border-zinc-700 text-white h-9"
+                          />
+                        </td>
+                        <td className="p-3 text-center align-top">
+                          <button
+                            type="button"
+                            onClick={() => resetRow(row.employeeId)}
+                            disabled={!isOver}
+                            className="p-2 rounded-lg text-zinc-500 hover:text-amber-300 hover:bg-amber-500/10 disabled:opacity-30 disabled:hover:bg-transparent"
+                            title="إعادة لأرقام النظام"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -369,7 +519,7 @@ function PartnersOverridesPageContent() {
 
       <div className="flex flex-wrap items-end gap-3 bg-zinc-900/30 border border-zinc-800/50 rounded-xl p-4">
         <div className="flex flex-col gap-1.5 flex-1 min-w-[220px]">
-          <label className="text-xs text-zinc-400">إضافة موظف آخر</label>
+          <label className="text-xs text-zinc-400">إضافة موظف غير ظاهر في الشهر</label>
           <Select value={addEmpId} onValueChange={setAddEmpId}>
             <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
               <SelectValue placeholder="اختر موظفاً" />
@@ -395,6 +545,75 @@ function PartnersOverridesPageContent() {
         </Button>
       </div>
     </div>
+  );
+}
+
+function FieldAdjustCell({
+  state,
+  live,
+  hint,
+  onChange,
+}: {
+  state: FieldFormState;
+  live: number | null;
+  hint?: string;
+  onChange: (patch: Partial<FieldFormState>) => void;
+}) {
+  const active = fieldIsActive(state);
+  const preview = applyFieldAdjust(live, formToAdjust(state)).value;
+  const formula = describeFieldAdjust(live, formToAdjust(state));
+
+  return (
+    <td className="p-3 align-top min-w-[220px]">
+      <div className="space-y-2">
+        <Select
+          value={state.mode}
+          onValueChange={(v) => onChange({ mode: v as PartnersFieldAdjustMode })}
+        >
+          <SelectTrigger
+            className={`h-9 text-xs bg-zinc-800 border-zinc-700 text-white ${
+              active ? 'border-amber-500/40' : ''
+            }`}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="bg-zinc-900 border-zinc-700">
+            {MODE_OPTIONS.map((mode) => (
+              <SelectItem key={mode} value={mode} className="text-white text-xs">
+                {PARTNERS_FIELD_ADJUST_MODE_LABELS[mode]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {state.mode !== 'live' && (
+          <Input
+            type="number"
+            step="0.01"
+            min="0"
+            value={state.value}
+            onChange={(e) => onChange({ value: e.target.value })}
+            placeholder={valuePlaceholder(state.mode)}
+            className={`h-9 text-white ${
+              active
+                ? 'bg-amber-500/10 border-amber-500/40'
+                : 'bg-zinc-800 border-zinc-700'
+            }`}
+          />
+        )}
+
+        <p className="text-[11px] text-zinc-500 leading-relaxed">
+          من النظام: {live == null ? '—' : formatPartnersCurrency(live)}
+          {hint ? ` · ${hint}` : ''}
+        </p>
+        {active && state.value.trim() !== '' && (
+          <p className="text-[11px] text-amber-300/90 leading-relaxed">
+            النتيجة: {formatPartnersCurrency(preview)}
+            {formula ? ` · ${formula}` : ''}
+          </p>
+        )}
+      </div>
+    </td>
   );
 }
 

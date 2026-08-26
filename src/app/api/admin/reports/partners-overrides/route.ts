@@ -5,23 +5,18 @@ import { parseMonthYearParams, validateMonthYear } from '@/lib/reportMonthUtils'
 import { getPool } from '@/lib/db';
 import {
   getPartnersMonthKey,
+  moneyEquals,
+  normalizeEmployeeOverride,
+  normalizeFieldAdjust,
   PARTNERS_OVERRIDE_PRESET_EMPLOYEES,
+  type EmployeeMonthlyOverride,
+  type PartnersFieldAdjust,
 } from '@/lib/reports/partnersEmployeeOverrides';
-import {
-  getOverridesForMonth,
-  loadPartnersEmployeeOverrides,
-  savePartnersEmployeeOverridesForMonth,
-} from '@/lib/reports/partnersEmployeeOverridesStore';
+import { savePartnersEmployeeOverridesForMonth } from '@/lib/reports/partnersEmployeeOverridesStore';
+import { isActiveBranchContext, requireActiveBranchContext } from '@/lib/branch';
+import { buildPartnersEmployeeControlSheet } from '@/lib/services/partnersReportService';
 
 const OVERRIDES_PAGE_PATH = '/admin/reports/partners-overrides';
-
-export interface PartnersOverrideEntry {
-  employeeId: number;
-  employeeName: string;
-  actualRevenue?: number;
-  paidSalaryOrAdvance?: number;
-  note?: string;
-}
 
 async function requireOverridesAccess() {
   const session = await getSession();
@@ -44,10 +39,15 @@ async function requireOverridesAccess() {
     };
   }
 
-  return { session };
+  const branch = await requireActiveBranchContext();
+  if (!isActiveBranchContext(branch)) {
+    return { error: branch };
+  }
+
+  return { session, branch };
 }
 
-async function loadEmployeeNames(): Promise<Map<number, string>> {
+async function loadEmployeeCatalog(): Promise<Array<{ employeeId: number; employeeName: string }>> {
   const db = await getPool();
   const result = await db.request().query(`
     SELECT EmpID, ISNULL(EmpName, N'غير محدد') AS EmpName
@@ -55,26 +55,47 @@ async function loadEmployeeNames(): Promise<Map<number, string>> {
     ORDER BY EmpName
   `);
 
-  const map = new Map<number, string>();
-  for (const row of result.recordset as { EmpID: number; EmpName: string }[]) {
-    map.set(row.EmpID, row.EmpName);
-  }
-  return map;
+  return (result.recordset as { EmpID: number; EmpName: string }[]).map((row) => ({
+    employeeId: row.EmpID,
+    employeeName: row.EmpName,
+  }));
 }
 
-function buildEntries(
-  monthOverrides: Record<number, { actualRevenue?: number; paidSalaryOrAdvance?: number; note?: string }>,
-  employeeNames: Map<number, string>
-): PartnersOverrideEntry[] {
-  return Object.entries(monthOverrides)
-    .map(([empId, override]) => ({
-      employeeId: Number(empId),
-      employeeName: employeeNames.get(Number(empId)) ?? `موظف #${empId}`,
-      actualRevenue: override.actualRevenue,
-      paidSalaryOrAdvance: override.paidSalaryOrAdvance,
-      note: override.note,
-    }))
-    .sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'ar'));
+function adjustForSave(
+  raw: unknown,
+  live: number | null | undefined
+): PartnersFieldAdjust | undefined {
+  const rule = normalizeFieldAdjust(raw);
+  if (!rule) return undefined;
+  // Drop no-op static equals live so "من النظام" stays clean after round-trip.
+  if (rule.mode === 'static' && moneyEquals(rule.value, live ?? null)) return undefined;
+  return rule;
+}
+
+function overrideForSave(
+  entry: Record<string, unknown>,
+  live: { shopRevenue: number | null; salaryAndTarget: number; advanceExcess: number } | undefined
+): EmployeeMonthlyOverride | null {
+  const note =
+    entry.note !== undefined && entry.note !== null && String(entry.note).trim() !== ''
+      ? String(entry.note).trim()
+      : undefined;
+
+  const saved: EmployeeMonthlyOverride = {};
+  if (note) saved.note = note;
+
+  const shop = adjustForSave(entry.actualRevenue ?? entry.shopRevenue, live?.shopRevenue ?? null);
+  if (shop) saved.actualRevenue = shop;
+
+  const salary = adjustForSave(entry.salaryAndTarget, live?.salaryAndTarget);
+  if (salary) saved.salaryAndTarget = salary;
+
+  const advance = adjustForSave(entry.advanceExcess, live?.advanceExcess);
+  if (advance) saved.advanceExcess = advance;
+
+  // Accept full normalize path for legacy paidSalaryOrAdvance if somehow sent.
+  const normalized = normalizeEmployeeOverride({ ...saved, paidSalaryOrAdvance: entry.paidSalaryOrAdvance });
+  return normalized;
 }
 
 /**
@@ -97,23 +118,21 @@ export async function GET(req: NextRequest) {
     }
 
     const monthKey = getPartnersMonthKey(year, month);
-    const [overrides, employeeNames] = await Promise.all([
-      loadPartnersEmployeeOverrides(),
-      loadEmployeeNames(),
+    const [sheet, catalog] = await Promise.all([
+      buildPartnersEmployeeControlSheet(year, month, access.branch.branchId),
+      loadEmployeeCatalog(),
     ]);
-
-    const monthOverrides = getOverridesForMonth(overrides, monthKey);
 
     return NextResponse.json({
       year,
       month,
       monthKey,
-      entries: buildEntries(monthOverrides, employeeNames),
+      branchId: sheet.branchId,
+      branchCode: sheet.branchCode,
+      branchName: sheet.branchName,
+      employees: sheet.employees,
       presetEmployees: PARTNERS_OVERRIDE_PRESET_EMPLOYEES,
-      employees: [...employeeNames.entries()].map(([employeeId, employeeName]) => ({
-        employeeId,
-        employeeName,
-      })),
+      catalog,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -124,7 +143,8 @@ export async function GET(req: NextRequest) {
 
 /**
  * PUT /api/admin/reports/partners-overrides
- * Body: { year, month, entries: [{ employeeId, actualRevenue?, paidSalaryOrAdvance?, note? }] }
+ * Body: { year, month, entries: [{ employeeId, actualRevenue?, salaryAndTarget?, advanceExcess?, note? }] }
+ * Field values may be a number (legacy static) or { mode, value }.
  */
 export async function PUT(req: NextRequest) {
   try {
@@ -144,51 +164,36 @@ export async function PUT(req: NextRequest) {
     }
 
     const monthKey = getPartnersMonthKey(year, month);
-    const monthOverrides: Record<number, {
-      actualRevenue?: number;
-      paidSalaryOrAdvance?: number;
-      note?: string;
-    }> = {};
+    const sheet = await buildPartnersEmployeeControlSheet(year, month, access.branch.branchId);
+    const liveById = new Map(sheet.employees.map((row) => [row.employeeId, row.live]));
+
+    const monthOverrides: Record<number, EmployeeMonthlyOverride> = {};
 
     for (const entry of body.entries) {
       const employeeId = Number(entry.employeeId);
       if (!Number.isFinite(employeeId) || employeeId <= 0) continue;
-
-      const row: {
-        actualRevenue?: number;
-        paidSalaryOrAdvance?: number;
-        note?: string;
-      } = {};
-
-      if (entry.actualRevenue !== undefined && entry.actualRevenue !== null && entry.actualRevenue !== '') {
-        row.actualRevenue = Number(entry.actualRevenue);
-      }
-      if (
-        entry.paidSalaryOrAdvance !== undefined &&
-        entry.paidSalaryOrAdvance !== null &&
-        entry.paidSalaryOrAdvance !== ''
-      ) {
-        row.paidSalaryOrAdvance = Number(entry.paidSalaryOrAdvance);
-      }
-      if (entry.note !== undefined && entry.note !== null && String(entry.note).trim() !== '') {
-        row.note = String(entry.note).trim();
-      }
-
-      if (Object.keys(row).length > 0) {
-        monthOverrides[employeeId] = row;
-      }
+      const saved = overrideForSave(entry, liveById.get(employeeId));
+      if (saved) monthOverrides[employeeId] = saved;
     }
 
-    await savePartnersEmployeeOverridesForMonth(monthKey, monthOverrides);
+    await savePartnersEmployeeOverridesForMonth(
+      monthKey,
+      monthOverrides,
+      access.branch.branchId,
+      access.branch.branchCode
+    );
 
-    const employeeNames = await loadEmployeeNames();
+    const refreshed = await buildPartnersEmployeeControlSheet(year, month, access.branch.branchId);
 
     return NextResponse.json({
       success: true,
       year,
       month,
       monthKey,
-      entries: buildEntries(monthOverrides, employeeNames),
+      branchId: refreshed.branchId,
+      branchCode: refreshed.branchCode,
+      branchName: refreshed.branchName,
+      employees: refreshed.employees,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

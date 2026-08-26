@@ -129,8 +129,11 @@ export default function TreasuryPeriodSummaryPage() {
   const onActionSuccess = () => { closeModal(); load(dateFrom, dateTo, userId); };
 
   // ── Quick transfer-to-InstaPay ────────────────────────────────────────────
-  // key = `${date}:${pmId}` of the transfer currently running
-  const [instaBusy, setInstaBusy] = useState<string | null>(null);
+  // Multiple cells can transfer at once; keys are `${date}:${pmId}`.
+  const instaBusyRef = useRef<Set<string>>(new Set());
+  const instaInFlightRef = useRef(0);
+  const instaNeedsReloadRef = useRef(false);
+  const [instaBusy, setInstaBusy] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     document.title = 'ملخص الخزنة الدوري | نظام نقاط البيع';
@@ -197,13 +200,13 @@ export default function TreasuryPeriodSummaryPage() {
   ) => {
     if (!instaPay || amount <= 0) return;
     const key = `${day.date}:${pm.id}`;
-    const confirmed = window.confirm(
-      `تحويل ${fmt(amount)} من «${pm.name}» إلى «${instaPay.name}» في يوم ${fmtDate(day.date)}؟`,
-    );
-    if (!confirmed) return;
+    if (instaBusyRef.current.has(key)) return;
 
-    setInstaBusy(key);
+    instaBusyRef.current.add(key);
+    instaInFlightRef.current += 1;
+    setInstaBusy(new Set(instaBusyRef.current));
     setError(null);
+
     try {
       const res = await fetch('/api/treasury/transfer', {
         method: 'POST',
@@ -220,11 +223,17 @@ export default function TreasuryPeriodSummaryPage() {
       if (!res.ok || !result.success) {
         throw new Error(result.error || 'فشل التحويل');
       }
-      await load(dateFrom, dateTo, userId);
+      instaNeedsReloadRef.current = true;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'فشل التحويل إلى انستا باي');
     } finally {
-      setInstaBusy(null);
+      instaBusyRef.current.delete(key);
+      instaInFlightRef.current -= 1;
+      setInstaBusy(new Set(instaBusyRef.current));
+      if (instaInFlightRef.current === 0 && instaNeedsReloadRef.current) {
+        instaNeedsReloadRef.current = false;
+        await load(dateFrom, dateTo, userId);
+      }
     }
   };
 
@@ -542,11 +551,11 @@ export default function TreasuryPeriodSummaryPage() {
                                         <button
                                           type="button"
                                           onClick={() => transferToInstaPay(pm, day, v)}
-                                          disabled={instaBusy === `${day.date}:${pm.id}`}
+                                          disabled={instaBusy.has(`${day.date}:${pm.id}`)}
                                           title={`تحويل ${c.text} من ${pm.name} إلى ${instaPay.name} — ${fmtDate(day.date)}`}
                                           className="shrink-0 p-1 rounded-md border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/25 text-purple-300 hover:text-purple-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                          {instaBusy === `${day.date}:${pm.id}`
+                                          {instaBusy.has(`${day.date}:${pm.id}`)
                                             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                             : <Smartphone className="h-3.5 w-3.5" />}
                                         </button>

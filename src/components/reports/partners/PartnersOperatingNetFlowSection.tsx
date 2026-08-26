@@ -2,7 +2,7 @@
 
 import type { PartnersMonthlyReportResponse } from '@/lib/types/partners-report';
 import { calcRemainingAfterEmployees } from './PartnersEmployeeFlowSection';
-import { formatPartnersCurrency } from './partnersReportUtils';
+import { formatPartnersCurrency, partnersEmployeePaidTotal } from './partnersReportUtils';
 
 interface PartnersOperatingNetFlowSectionProps {
   totals: PartnersMonthlyReportResponse['employeeSummaryTotals'];
@@ -38,7 +38,7 @@ export default function PartnersOperatingNetFlowSection({
 }: PartnersOperatingNetFlowSectionProps) {
   const remainingAfterEmployees = calcRemainingAfterEmployees(
     totals.totalShopRevenue,
-    totals.totalPaidSalaryAndAdvances
+    partnersEmployeePaidTotal(totals)
   );
   const operatingNet = calcOperatingNet(remainingAfterEmployees, filteredOperatingExpenses);
   const isNegative = operatingNet < 0;

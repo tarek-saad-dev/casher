@@ -1,7 +1,7 @@
 'use client';
 
 import type { PartnersMonthlyReportResponse } from '@/lib/types/partners-report';
-import { formatPartnersCurrency } from './partnersReportUtils';
+import { formatPartnersCurrency, partnersEmployeePaidTotal } from './partnersReportUtils';
 
 interface PartnersEmployeeFlowSectionProps {
   totals: PartnersMonthlyReportResponse['employeeSummaryTotals'];
@@ -34,9 +34,7 @@ export default function PartnersEmployeeFlowSection({
   loading,
 }: PartnersEmployeeFlowSectionProps) {
   const totalEmployeeActualRevenue = totals.totalShopRevenue;
-  // «الرواتب والسلف المدفوعة» = إجمالي استلم راتب (راتب + تارجت) + إجمالي السلف من قسم الموظفين.
-  const totalPaidSalaryOrAdvance =
-    (totals.totalSalaryAndTarget ?? 0) + (totals.totalAdvanceExcess ?? 0);
+  const totalPaidSalaryOrAdvance = partnersEmployeePaidTotal(totals);
   const remaining = calcRemainingAfterEmployees(
     totalEmployeeActualRevenue,
     totalPaidSalaryOrAdvance

@@ -20,21 +20,31 @@ import {
   applyEmployeePartnerOverride,
   getEmployeePartnerOverrideFromMap,
   getOverrideEmployeeIdsFromMap,
+  type EmployeeMonthlyOverride,
   type PartnersOverridesMap,
 } from '@/lib/reports/partnersEmployeeOverrides';
-import { loadPartnersEmployeeOverrides } from '@/lib/reports/partnersEmployeeOverridesStore';
+import { loadPartnersEmployeeOverridesForBranch } from '@/lib/reports/partnersEmployeeOverridesStore';
 import { filterOperatingExpenseCategories } from '@/lib/reports/partnersExpenseCategories';
 import { isFinancialReportClassificationEnabled } from '@/lib/accounting/financialReportFlags';
 import { maybeBuildClassificationPayload } from '@/lib/accounting/financialReportClassificationService';
 import { getBranchById } from '@/lib/branch/repository';
 import { getEffectiveBranchPartnerShares, toPartnerPercentageList } from '@/lib/branch/partnerShares';
 
-/**
- * Legacy filesystem-based employee overrides (data/partners-employee-overrides.json)
- * were authored for the GLEEM branch only. Never apply them to other branches
- * until each branch gets its own override store.
- */
-const OVERRIDES_ONLY_BRANCH_CODE = 'GLEEM';
+export type PartnersEmployeeControlLive = {
+  shopRevenue: number | null;
+  salaryAndTarget: number;
+  advanceExcess: number;
+  ledgerSalary: number;
+  ledgerTarget: number;
+};
+
+export type PartnersEmployeeControlRow = {
+  employeeId: number;
+  employeeName: string;
+  isServiceWorker: boolean;
+  live: PartnersEmployeeControlLive;
+  override: EmployeeMonthlyOverride | null;
+};
 
 export async function buildPartnersMonthlyReport(
   year: number,
@@ -48,8 +58,6 @@ export async function buildPartnersMonthlyReport(
   if (!branch) {
     throw new Error('الفرع غير موجود');
   }
-  const applyLegacyOverrides = branch.branchCode === OVERRIDES_ONLY_BRANCH_CODE;
-
   const [
     totalRevenue,
     revenueByEmployee,
@@ -58,7 +66,7 @@ export async function buildPartnersMonthlyReport(
     employeeNames,
     expensesData,
     advanceRows,
-    partnerOverridesRaw,
+    partnerOverrides,
     ledgerSummary,
     partnerShares,
   ] = await Promise.all([
@@ -69,14 +77,10 @@ export async function buildPartnersMonthlyReport(
     getEmployeeNamesById(),
     getMonthlyExpensesByCategory(year, month, branchId),
     getMonthlyEmployeeAdvances(year, month, branchId),
-    loadPartnersEmployeeOverrides(),
+    loadPartnersEmployeeOverridesForBranch(branch.branchId, branch.branchCode),
     getEmployeeLedgerSummary(ledgerMonth, branchId),
     getEffectiveBranchPartnerShares(branchId, period.endDate),
   ]);
-
-  const partnerOverrides: PartnersOverridesMap = applyLegacyOverrides
-    ? partnerOverridesRaw
-    : {};
 
   const { totalExpenses, categories } = expensesData;
   const rawTotalEmployeeAdvances = roundMoney(
@@ -118,94 +122,16 @@ export async function buildPartnersMonthlyReport(
       : 0,
   }));
 
-  const actualRevenueById = new Map(
-    actualRevenueByEmployee.map((row) => [row.employeeId, row])
-  );
-  const advancesById = new Map(advanceRows.map((row) => [row.employeeId, row]));
-  const ledgerById = new Map(
-    ledgerSummary.employees.map((row) => [row.empId, row])
-  );
-  const ledgerActiveEmployeeIds = ledgerSummary.employees
-    .filter(
-      (row) =>
-        row.salaryCredits > 0 ||
-        row.targetCredits > 0 ||
-        row.advanceDebits > 0 ||
-        row.payoutDebits > 0
-    )
-    .map((row) => row.empId);
-  const employeeIds = new Set<number>([
-    ...actualRevenueByEmployee.map((row) => row.employeeId),
-    ...advanceRows.map((row) => row.employeeId),
-    ...getOverrideEmployeeIdsFromMap(partnerOverrides, year, month),
-    ...ledgerActiveEmployeeIds,
-  ]);
-
-  const employeeSummary = [...employeeIds]
-    .map((employeeId) => {
-      const actual = actualRevenueById.get(employeeId);
-      const advance = advancesById.get(employeeId);
-      const job = employeeJobs.get(employeeId) ?? '';
-      const calculatedActualRevenue = actual?.actualInvoiceRevenue ?? 0;
-      const calculatedPaid = roundMoney(advance?.totalAdvance ?? 0);
-      const isServiceWorker =
-        isBarberOrServiceWorker(job) || calculatedActualRevenue > 0;
-
-      const baseShopRevenue = isServiceWorker
-        ? roundMoney(calculatedActualRevenue)
-        : null;
-
-      const overridden = applyEmployeePartnerOverride({
-        override: getEmployeePartnerOverrideFromMap(
-          partnerOverrides,
-          employeeId,
-          year,
-          month
-        ),
-        actualRevenue: baseShopRevenue,
-        paidSalaryOrAdvance: calculatedPaid,
-        isServiceWorker,
-      });
-
-      const ledger = ledgerById.get(employeeId);
-      const ledgerSalary = roundMoney(ledger?.salaryCredits ?? 0);
-      const ledgerTarget = roundMoney(ledger?.targetCredits ?? 0);
-      const salaryAndTarget = roundMoney(ledgerSalary + ledgerTarget);
-      // سلفة الشركاء = نفس منطق الدفتر: ما زاد عن (راتب+تارجت+تمويل دفتر).
-      // إيراد الفواتير يظهر في عمود «إيراد للمحل» ولا يغطي السحب — الزيادة دين على الموظف
-      // (رد سلف أو ترحيل عند التقفيل).
-      const fundingCredits = roundMoney(ledger?.fundingCredits ?? 0);
-      const { moneyTaken, advanceExcess } = computeEmployeeWithdrawalBuckets({
-        advanceDebits: ledger?.advanceDebits ?? 0,
-        payoutDebits: ledger?.payoutDebits ?? 0,
-        salaryAndTarget,
-        revenue: fundingCredits,
-      });
-
-      return {
-        employeeId,
-        employeeName:
-          actual?.employeeName ??
-          advance?.employeeName ??
-          ledger?.empName ??
-          employeeNames.get(employeeId) ??
-          'غير محدد',
-        isServiceWorker,
-        shopRevenue: overridden.shopRevenue,
-        paidSalaryAndAdvances: overridden.paidSalaryAndAdvances,
-        hasSpecialAccounting: overridden.hasSpecialAccounting,
-        ledgerSalary,
-        ledgerTarget,
-        salaryAndTarget,
-        moneyTaken,
-        advanceExcess,
-      };
-    })
-    .sort((a, b) => {
-      const revenueDiff = (b.shopRevenue ?? -1) - (a.shopRevenue ?? -1);
-      if (revenueDiff !== 0) return revenueDiff;
-      return a.employeeName.localeCompare(b.employeeName, 'ar');
-    });
+  const { employeeSummary } = mapPartnersEmployeeRows({
+    year,
+    month,
+    actualRevenueByEmployee,
+    advanceRows,
+    employeeJobs,
+    employeeNames,
+    ledgerSummaryEmployees: ledgerSummary.employees,
+    partnerOverrides,
+  });
 
   const employeeSummaryTotals = {
     totalShopRevenue: roundMoney(
@@ -282,5 +208,199 @@ export async function buildPartnersMonthlyReport(
       explanation:
         'تم احتساب صافي الربح بعد استبعاد السلف وصرف المستحقات وحركات الموظفين غير الربحية، وإضافة تكلفة الرواتب من دفتر الموظفين.',
     },
+  };
+}
+
+export async function buildPartnersEmployeeControlSheet(
+  year: number,
+  month: number,
+  branchId: number,
+): Promise<{
+  branchId: number;
+  branchCode: string;
+  branchName: string;
+  employees: PartnersEmployeeControlRow[];
+}> {
+  const ledgerMonth = `${year}-${String(month).padStart(2, '0')}`;
+  const branch = await getBranchById(branchId);
+  if (!branch) {
+    throw new Error('الفرع غير موجود');
+  }
+
+  const [
+    actualRevenueByEmployee,
+    employeeJobs,
+    employeeNames,
+    advanceRows,
+    partnerOverrides,
+    ledgerSummary,
+  ] = await Promise.all([
+    getEmployeeActualInvoiceRevenueByEmployee(year, month, branchId),
+    getEmployeeJobById(),
+    getEmployeeNamesById(),
+    getMonthlyEmployeeAdvances(year, month, branchId),
+    loadPartnersEmployeeOverridesForBranch(branch.branchId, branch.branchCode),
+    getEmployeeLedgerSummary(ledgerMonth, branchId),
+  ]);
+
+  const { controlRows } = mapPartnersEmployeeRows({
+    year,
+    month,
+    actualRevenueByEmployee,
+    advanceRows,
+    employeeJobs,
+    employeeNames,
+    ledgerSummaryEmployees: ledgerSummary.employees,
+    partnerOverrides,
+  });
+
+  return {
+    branchId: branch.branchId,
+    branchCode: branch.branchCode,
+    branchName: branch.branchName,
+    employees: controlRows,
+  };
+}
+
+function mapPartnersEmployeeRows(input: {
+  year: number;
+  month: number;
+  actualRevenueByEmployee: Array<{
+    employeeId: number;
+    employeeName: string;
+    actualInvoiceRevenue: number;
+  }>;
+  advanceRows: Array<{ employeeId: number; employeeName: string; totalAdvance: number }>;
+  employeeJobs: Map<number, string>;
+  employeeNames: Map<number, string>;
+  ledgerSummaryEmployees: Array<{
+    empId: number;
+    empName: string;
+    salaryCredits: number;
+    targetCredits: number;
+    advanceDebits: number;
+    payoutDebits: number;
+    fundingCredits: number;
+  }>;
+  partnerOverrides: PartnersOverridesMap;
+}) {
+  const {
+    year,
+    month,
+    actualRevenueByEmployee,
+    advanceRows,
+    employeeJobs,
+    employeeNames,
+    ledgerSummaryEmployees,
+    partnerOverrides,
+  } = input;
+
+  const actualRevenueById = new Map(
+    actualRevenueByEmployee.map((row) => [row.employeeId, row])
+  );
+  const advancesById = new Map(advanceRows.map((row) => [row.employeeId, row]));
+  const ledgerById = new Map(ledgerSummaryEmployees.map((row) => [row.empId, row]));
+  const ledgerActiveEmployeeIds = ledgerSummaryEmployees
+    .filter(
+      (row) =>
+        row.salaryCredits > 0 ||
+        row.targetCredits > 0 ||
+        row.advanceDebits > 0 ||
+        row.payoutDebits > 0
+    )
+    .map((row) => row.empId);
+  const employeeIds = new Set<number>([
+    ...actualRevenueByEmployee.map((row) => row.employeeId),
+    ...advanceRows.map((row) => row.employeeId),
+    ...getOverrideEmployeeIdsFromMap(partnerOverrides, year, month),
+    ...ledgerActiveEmployeeIds,
+  ]);
+
+  const rows = [...employeeIds].map((employeeId) => {
+    const actual = actualRevenueById.get(employeeId);
+    const advance = advancesById.get(employeeId);
+    const job = employeeJobs.get(employeeId) ?? '';
+    const calculatedActualRevenue = actual?.actualInvoiceRevenue ?? 0;
+    const calculatedPaid = roundMoney(advance?.totalAdvance ?? 0);
+    const isServiceWorker =
+      isBarberOrServiceWorker(job) || calculatedActualRevenue > 0;
+
+    const baseShopRevenue = isServiceWorker
+      ? roundMoney(calculatedActualRevenue)
+      : null;
+
+    const ledger = ledgerById.get(employeeId);
+    const ledgerSalary = roundMoney(ledger?.salaryCredits ?? 0);
+    const ledgerTarget = roundMoney(ledger?.targetCredits ?? 0);
+    const liveSalaryAndTarget = roundMoney(ledgerSalary + ledgerTarget);
+    const fundingCredits = roundMoney(ledger?.fundingCredits ?? 0);
+    const { moneyTaken, advanceExcess: liveAdvanceExcess } = computeEmployeeWithdrawalBuckets({
+      advanceDebits: ledger?.advanceDebits ?? 0,
+      payoutDebits: ledger?.payoutDebits ?? 0,
+      salaryAndTarget: liveSalaryAndTarget,
+      revenue: fundingCredits,
+    });
+
+    const override = getEmployeePartnerOverrideFromMap(
+      partnerOverrides,
+      employeeId,
+      year,
+      month
+    );
+    const overridden = applyEmployeePartnerOverride({
+      override,
+      actualRevenue: baseShopRevenue,
+      paidSalaryOrAdvance: calculatedPaid,
+      salaryAndTarget: liveSalaryAndTarget,
+      advanceExcess: liveAdvanceExcess,
+      isServiceWorker,
+    });
+
+    const employeeName =
+      actual?.employeeName ??
+      advance?.employeeName ??
+      ledger?.empName ??
+      employeeNames.get(employeeId) ??
+      'غير محدد';
+
+    return {
+      summary: {
+        employeeId,
+        employeeName,
+        isServiceWorker,
+        shopRevenue: overridden.shopRevenue,
+        paidSalaryAndAdvances: overridden.paidSalaryAndAdvances,
+        hasSpecialAccounting: overridden.hasSpecialAccounting,
+        ledgerSalary,
+        ledgerTarget,
+        salaryAndTarget: overridden.salaryAndTarget,
+        moneyTaken,
+        advanceExcess: overridden.advanceExcess,
+      },
+      control: {
+        employeeId,
+        employeeName,
+        isServiceWorker,
+        live: {
+          shopRevenue: baseShopRevenue,
+          salaryAndTarget: liveSalaryAndTarget,
+          advanceExcess: liveAdvanceExcess,
+          ledgerSalary,
+          ledgerTarget,
+        },
+        override: override ?? null,
+      } satisfies PartnersEmployeeControlRow,
+    };
+  });
+
+  rows.sort((a, b) => {
+    const revenueDiff = (b.summary.shopRevenue ?? -1) - (a.summary.shopRevenue ?? -1);
+    if (revenueDiff !== 0) return revenueDiff;
+    return a.summary.employeeName.localeCompare(b.summary.employeeName, 'ar');
+  });
+
+  return {
+    employeeSummary: rows.map((row) => row.summary),
+    controlRows: rows.map((row) => row.control),
   };
 }

@@ -6,6 +6,7 @@ import { calculateMonthlyFinancialEquations } from '@/lib/reports/monthlyFinanci
 import type { PartnersMonthlyReportResponse } from '@/lib/types/partners-report';
 import { calcRemainingAfterEmployees } from './PartnersEmployeeFlowSection';
 import { calcOperatingNet } from './PartnersOperatingNetFlowSection';
+import { partnersEmployeePaidTotal } from './partnersReportUtils';
 
 interface PartnersFinalSettlementSectionProps {
   year: number;
@@ -30,7 +31,7 @@ export default function PartnersFinalSettlementSection({
 }: PartnersFinalSettlementSectionProps) {
   const remainingAfterEmployees = calcRemainingAfterEmployees(
     totals.totalShopRevenue,
-    totals.totalPaidSalaryAndAdvances
+    partnersEmployeePaidTotal(totals)
   );
   const operatingNet = calcOperatingNet(remainingAfterEmployees, filteredOperatingExpenses);
   const baseAmount = classifiedOperatingNet ?? operatingNet;

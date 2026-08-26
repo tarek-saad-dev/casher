@@ -29,7 +29,7 @@ export const SYSTEM_PAGES: PageDefinition[] = [
   { key: 'reports.full_day',        name: 'تقرير اليوم كامل',        path: '/admin/reports/full-day',          section: 'تقارير مدير',     accessMode: 'roles', sort: 27,  defaultRoles: ['super_admin','admin','manager','accountant'] },
   { key: 'reports.monthly',         name: 'التقرير الشهري',          path: '/reports/monthly',                 section: 'تقارير مدير',     accessMode: 'roles', sort: 28,  defaultRoles: ['super_admin','admin','manager','accountant','viewer'] },
   { key: 'reports.partners',        name: 'تقرير الشركاء',           path: '/admin/reports/partners',          section: 'تقارير شريك',     accessMode: 'roles', sort: 29,  defaultRoles: ['super_admin','admin','manager','accountant','partner'] },
-  { key: 'reports.partners_overrides', name: 'حسابات الشركاء الخاصة', path: '/admin/reports/partners-overrides', section: 'تقارير شريك', accessMode: 'roles', sort: 30,  defaultRoles: ['super_admin','admin'] },
+  { key: 'reports.partners_overrides', name: 'تعديل أرقام تقرير الشركاء', path: '/admin/reports/partners-overrides', section: 'تقارير شريك', accessMode: 'roles', sort: 30,  defaultRoles: ['super_admin','admin'] },
   { key: 'admin.partners',          name: 'إدارة الشركاء',           path: '/admin/partners',                  section: 'تقارير شريك',     accessMode: 'roles', sort: 31,  defaultRoles: ['super_admin','admin'] },
   // ── Expenses ─────────────────────────────────────────────────────────────────
   { key: 'expenses.new',            name: 'تسجيل مصروف',            path: '/expenses',                        section: 'المصروفات',         accessMode: 'roles', sort: 31,  defaultRoles: ['super_admin','admin','cashier','accountant'] },
