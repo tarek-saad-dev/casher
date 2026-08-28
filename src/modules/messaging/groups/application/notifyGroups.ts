@@ -1,5 +1,4 @@
-import { sendWhatsAppGroupMessage } from '@/lib/integrations/whatsapp';
-import { getWhatsAppConfig } from '@/lib/integrations/whatsapp/config';
+import { getWhatsAppConfig, sendWhatsAppGroupMessage } from '@/lib/integrations/whatsapp';
 import { schedulePostResponse } from '@/lib/schedulePostResponse';
 import { buildGroupMessageForEvent } from './buildGroupMessage';
 import { listActiveGroupsForEvent } from '../infra/whatsappGroupRepository';
