@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import { requireBranchOperationAccess, isActiveBranchContext } from '@/lib/branch/context';
 import { listUserValidBranchAccess, listActiveBranches } from '@/lib/branch/repository';
-import { getEmployeeLedgerEntries } from '@/lib/services/employeeLedgerService';
+import {
+  getEmployeeLedgerEntries,
+  getEmployeeLedgerTableBranches,
+  mergeEmployeeLedgerBranchScope,
+} from '@/lib/services/employeeLedgerService';
 
 function isMissingLedgerTableError(message: string): boolean {
   const lower = message.toLowerCase();
@@ -71,13 +75,19 @@ export async function GET(request: NextRequest) {
       filterBranchId = bid;
     }
 
+    const tableBranches = await getEmployeeLedgerTableBranches();
+    const ledgerBranchScope = mergeEmployeeLedgerBranchScope(
+      accessible,
+      tableBranches.map((b) => b.branchId),
+    );
+
     const result = await getEmployeeLedgerEntries({
       empId,
       dateFrom: searchParams.get('dateFrom'),
       dateTo: searchParams.get('dateTo'),
       month: searchParams.get('month'),
       branchId: filterBranchId,
-      branchIds: filterBranchId == null ? accessible : null,
+      branchIds: filterBranchId == null ? ledgerBranchScope : null,
     });
 
     return NextResponse.json(result);

@@ -47,7 +47,7 @@ export default function PartnersEmployeesSection({
     <section className="w-full min-w-0 bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-3 sm:p-4 md:p-6 print:break-inside-avoid">
       <h2 className="text-base sm:text-lg font-bold text-white mb-1 sm:mb-2">الموظفون</h2>
       <p className="text-xs text-zinc-500 mb-3 sm:mb-4">
-        عمود السلف = ما زاد عن الراتب والتارجت والتمويل المسجّل في الدفتر (نفس منطق دفتر الموظفين). إيراد الفواتير منفصل في «دخل للمحل».
+        عمود السلف = ما زاد عن (راتب + تارجت + تمويل) في الدفتر — أي السحب النقدي من الخزنة بعد خصم الاستحقاقات والتمويل. إيراد الفواتير منفصل في «دخل للمحل».
       </p>
 
       {loading && rows.length === 0 ? (

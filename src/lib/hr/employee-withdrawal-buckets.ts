@@ -47,3 +47,21 @@ export function computeEmployeeWithdrawalBuckets(params: {
 
   return { moneyTaken, payoutWithinDues, revenueWithdrawal, advanceExcess };
 }
+
+/**
+ * Partners-report «سلف»: cash the shop already paid out beyond
+ * accrued salary+target+funding. Using ledger advanceExcess as-is would
+ * double-count informal salary draws (recorded as سلفة) after daily payroll exists.
+ */
+export function computePartnersAdvanceExcess(params: {
+  advanceDebits: number;
+  payoutDebits: number;
+  salaryAndTarget: number;
+  fundingCredits: number;
+}): number {
+  const taken =
+    Math.max(0, params.advanceDebits) + Math.max(0, params.payoutDebits);
+  const covered =
+    Math.max(0, params.fundingCredits) + Math.max(0, params.salaryAndTarget);
+  return round2(Math.max(0, taken - covered));
+}

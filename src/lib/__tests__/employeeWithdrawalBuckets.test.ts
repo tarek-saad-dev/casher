@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { computeEmployeeWithdrawalBuckets } from '@/lib/hr/employee-withdrawal-buckets';
+import {
+  computeEmployeeWithdrawalBuckets,
+  computePartnersAdvanceExcess,
+} from '@/lib/hr/employee-withdrawal-buckets';
 
 describe('computeEmployeeWithdrawalBuckets', () => {
   it('keeps advances in سلفة even when salary dues cover them', () => {
@@ -72,5 +75,41 @@ describe('computeEmployeeWithdrawalBuckets', () => {
     expect(
       Math.round((b.revenueWithdrawal + b.payoutWithinDues + b.advanceExcess) * 100) / 100,
     ).toBe(b.moneyTaken);
+  });
+});
+
+describe('computePartnersAdvanceExcess', () => {
+  it('does not double-count informal salary draws after daily payroll exists', () => {
+    // زياد جليم أغسطس: سلف خزنة 14245 − تمويل 390 − راتب+تارجت 11735.47
+    expect(
+      computePartnersAdvanceExcess({
+        advanceDebits: 14245,
+        payoutDebits: 0,
+        salaryAndTarget: 11735.47,
+        fundingCredits: 390,
+      }),
+    ).toBe(2119.53);
+  });
+
+  it('keeps full cash as سلف when no salary/target accrued', () => {
+    expect(
+      computePartnersAdvanceExcess({
+        advanceDebits: 14245,
+        payoutDebits: 0,
+        salaryAndTarget: 0,
+        fundingCredits: 390,
+      }),
+    ).toBe(13855);
+  });
+
+  it('is zero when dues cover all cash taken', () => {
+    expect(
+      computePartnersAdvanceExcess({
+        advanceDebits: 800,
+        payoutDebits: 200,
+        salaryAndTarget: 900,
+        fundingCredits: 200,
+      }),
+    ).toBe(0);
   });
 });

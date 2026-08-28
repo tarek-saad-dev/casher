@@ -92,6 +92,40 @@ export function validateLedgerMonth(month: string): string | null {
   return null;
 }
 
+export interface EmployeeLedgerTableBranchMeta {
+  branchId: number;
+  branchCode: EmpLedgerTableBranchCode | string;
+  branchName: string;
+}
+
+/** GLEEM + CAMP_CAESAR — always shown as paired rows in the employee ledger UI. */
+export async function getEmployeeLedgerTableBranches(): Promise<EmployeeLedgerTableBranchMeta[]> {
+  const db = await getPool();
+  const result = await db.request().query(`
+    SELECT BranchID, BranchCode, BranchName
+    FROM dbo.TblBranch
+    WHERE BranchCode IN (N'${GLEEM_BRANCH_CODE}', N'${CAMP_CAESAR_BRANCH_CODE}')
+    ORDER BY CASE BranchCode WHEN N'${GLEEM_BRANCH_CODE}' THEN 0 ELSE 1 END
+  `);
+  return (result.recordset as Array<Record<string, unknown>>).map((row) => ({
+    branchId: Number(row.BranchID),
+    branchCode: String(row.BranchCode ?? ''),
+    branchName: String(row.BranchName ?? ''),
+  }));
+}
+
+/** Union accessible branches with ledger table branches so Camp Caesar entries are never hidden. */
+export function mergeEmployeeLedgerBranchScope(
+  accessibleBranchIds: number[],
+  tableBranchIds: number[],
+): number[] {
+  const merged = new Set<number>();
+  for (const id of [...accessibleBranchIds, ...tableBranchIds]) {
+    if (Number.isFinite(id) && id > 0) merged.add(id);
+  }
+  return [...merged].sort((a, b) => a - b);
+}
+
 export async function getEmployeeLedgerEntries(params: {
   empId?: number | null;
   dateFrom?: string | null;
@@ -545,21 +579,10 @@ export async function getEmployeeLedgerSummary(
   const db = await getPool();
 
   // Resolve GLEEM + CAMP_CAESAR ids (table always shows both).
-  const tableBranchResult = await db.request().query(`
-    SELECT BranchID, BranchCode, BranchName
-    FROM dbo.TblBranch
-    WHERE BranchCode IN (N'${GLEEM_BRANCH_CODE}', N'${CAMP_CAESAR_BRANCH_CODE}')
-    ORDER BY CASE BranchCode WHEN N'${GLEEM_BRANCH_CODE}' THEN 0 ELSE 1 END
-  `);
-  const tableBranchMeta = (tableBranchResult.recordset as Array<Record<string, unknown>>).map(
-    (r) => ({
-      branchId: Number(r.BranchID),
-      branchCode: String(r.BranchCode ?? '') as EmpLedgerTableBranchCode,
-      branchName: String(r.BranchName ?? ''),
-    }),
-  );
+  const tableBranchMeta = await getEmployeeLedgerTableBranches();
   const tableBranchIds = tableBranchMeta.map((b) => b.branchId);
   const metaByCode = new Map(tableBranchMeta.map((b) => [b.branchCode, b]));
+  const ledgerBranchScope = mergeEmployeeLedgerBranchScope(accessible, tableBranchIds);
 
   // One query: employee × table-branch buckets (entry BranchID). No N+1.
   const scopeIds =
@@ -695,15 +718,15 @@ export async function getEmployeeLedgerSummary(
   const branchScopeIds =
     singleBranch != null
       ? [singleBranch]
-      : accessible.length > 0
-        ? accessible
+      : ledgerBranchScope.length > 0
+        ? ledgerBranchScope
         : tableBranchIds;
 
   const branchFinancial =
     branchScopeIds.length > 0
       ? await getEmployeeLedgerBranchFinancialSummary({
           month,
-          branchIds: accessible.length > 0 ? accessible : branchScopeIds,
+          branchIds: branchScopeIds,
           filterBranchId: singleBranch,
         })
       : undefined;

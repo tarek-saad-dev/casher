@@ -15,7 +15,10 @@ import {
   getMonthlyExpensesByCategory,
 } from '@/lib/services/monthlyExpensesReportService';
 import { getEmployeeLedgerSummary } from '@/lib/services/employeeLedgerService';
-import { computeEmployeeWithdrawalBuckets } from '@/lib/hr/employee-withdrawal-buckets';
+import {
+  computeEmployeeWithdrawalBuckets,
+  computePartnersAdvanceExcess,
+} from '@/lib/hr/employee-withdrawal-buckets';
 import {
   applyEmployeePartnerOverride,
   getEmployeePartnerOverrideFromMap,
@@ -334,11 +337,17 @@ function mapPartnersEmployeeRows(input: {
     const ledgerTarget = roundMoney(ledger?.targetCredits ?? 0);
     const liveSalaryAndTarget = roundMoney(ledgerSalary + ledgerTarget);
     const fundingCredits = roundMoney(ledger?.fundingCredits ?? 0);
-    const { moneyTaken, advanceExcess: liveAdvanceExcess } = computeEmployeeWithdrawalBuckets({
+    const { moneyTaken } = computeEmployeeWithdrawalBuckets({
       advanceDebits: ledger?.advanceDebits ?? 0,
       payoutDebits: ledger?.payoutDebits ?? 0,
       salaryAndTarget: liveSalaryAndTarget,
       revenue: fundingCredits,
+    });
+    const liveAdvanceExcess = computePartnersAdvanceExcess({
+      advanceDebits: ledger?.advanceDebits ?? 0,
+      payoutDebits: ledger?.payoutDebits ?? 0,
+      salaryAndTarget: liveSalaryAndTarget,
+      fundingCredits,
     });
 
     const override = getEmployeePartnerOverrideFromMap(

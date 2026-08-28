@@ -93,4 +93,18 @@ describe('employee ledger multi-branch financial summary', () => {
     expect(types).toContain('accrued');
     expect(types).toContain('transfers');
   });
+
+  it('merges accessible branches with GLEEM/CAMP_CAESAR table scope', () => {
+    const svc = read('src/lib/services/employeeLedgerService.ts');
+    expect(svc).toContain('getEmployeeLedgerTableBranches');
+    expect(svc).toContain('mergeEmployeeLedgerBranchScope');
+    expect(svc).toContain('ledgerBranchScope');
+  });
+
+  it('list API includes Camp Caesar in default branch scope', () => {
+    const route = read('src/app/api/admin/hr/employee-ledger/route.ts');
+    expect(route).toContain('getEmployeeLedgerTableBranches');
+    expect(route).toContain('mergeEmployeeLedgerBranchScope');
+    expect(route).toContain('ledgerBranchScope');
+  });
 });

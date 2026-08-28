@@ -1,6 +1,6 @@
 #!/usr/bin/env npx tsx
 /**
- * Local nightly-close runner / watcher for Africa/Cairo 02:40 AM.
+ * Local nightly-close runner / watcher for Africa/Cairo 02:00 AM.
  *
  * Once (Cairo yesterday):
  *   npm run nightly-close
@@ -8,7 +8,7 @@
  *   npx tsx scripts/run-nightly-close.ts --date=2026-07-14
  *   npx tsx scripts/run-nightly-close.ts --skip-whatsapp
  *
- * Watch until 02:40 Cairo then fire:
+ * Watch until 02:00 Cairo then fire:
  *   npm run nightly-close:watch
  *
  * Env:

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Dev launcher: Next.js (port 5500) + nightly-close watcher (02:40 Africa/Cairo).
+ * Dev launcher: Next.js (port 5500) + nightly-close watcher (02:00 Africa/Cairo).
  * Exit either child → stop both.
  */
 const { spawn } = require('child_process');
@@ -47,7 +47,7 @@ function shutdown(code = 0) {
 process.on('SIGINT', () => shutdown(0));
 process.on('SIGTERM', () => shutdown(0));
 
-console.log('[dev] starting Next.js (webpack) on :5500 + nightly-close watcher (02:40 Cairo)');
+console.log('[dev] starting Next.js (webpack) on :5500 + nightly-close watcher (02:00 Cairo)');
 
 const nextBin = require.resolve('next/dist/bin/next');
 // Webpack dev — Turbopack mis-resolves /api/public/booking/* when [code] is a sibling route.

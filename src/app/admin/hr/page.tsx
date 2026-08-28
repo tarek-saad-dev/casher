@@ -7,7 +7,7 @@ import {
   Users, Plus, CheckCircle2, AlertCircle,
   Loader2, UserPlus, Link2, Scissors, X, Zap, Clock, UserX, UserCheck,
   Banknote, CalendarCheck, Wallet, UsersRound, BookOpen, Scale, MessageCircle, Pencil, Target,
-  FileSpreadsheet, CalendarRange, MoreHorizontal,
+  FileSpreadsheet, CalendarRange, MoreHorizontal, ClipboardList,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { parseTimeToMinutes } from '@/lib/timeUtils';
@@ -51,6 +51,10 @@ const EmployeeAdvancesSection = dynamic(() => import('@/components/reports/expen
 const EmployeeLedgerPanel     = dynamic(() => import('@/components/hr/EmployeeLedgerPanel'),                        { ssr: false, loading: () => <TabLoader /> });
 const EmployeeLedgerReconciliationPanel = dynamic(
   () => import('@/components/hr/EmployeeLedgerReconciliationPanel'),
+  { ssr: false, loading: () => <TabLoader /> },
+);
+const PayrollGapReviewPanel = dynamic(
+  () => import('@/components/hr/PayrollGapReviewPanel'),
   { ssr: false, loading: () => <TabLoader /> },
 );
 
@@ -106,6 +110,7 @@ const MAIN_TABS = [
   { id: 'employees',        label: 'الموظفون',          icon: UsersRound },
   { id: 'attendance',      label: 'متابعة الحضور',     icon: CalendarCheck },
   { id: 'daily-payroll',   label: 'يوميات الموظفين',   icon: Banknote },
+  { id: 'payroll-gap-review', label: 'مراجعة اليوميات', icon: ClipboardList },
   { id: 'monthly-report',  label: 'التقرير الشهري',    icon: FileSpreadsheet },
   { id: 'emp-advances',    label: 'سلف الموظفين',     icon: Wallet },
   { id: 'employee-ledger', label: 'دفتر الموظفين',    icon: BookOpen },
@@ -192,6 +197,7 @@ export default function HRPage() {
       {mainTab === 'employees'        && <EmployeesPanel />}
       {mainTab === 'attendance'         && <AttendancePanel />}
       {mainTab === 'daily-payroll'    && <DailyPayrollPanel />}
+      {mainTab === 'payroll-gap-review' && <PayrollGapReviewPanel />}
       {mainTab === 'monthly-report'   && <EmployeeMonthlyReportPanel />}
       {mainTab === 'emp-advances'     && <AdvancesReportPanel />}
       {mainTab === 'employee-ledger'  && <EmployeeLedgerPanel />}

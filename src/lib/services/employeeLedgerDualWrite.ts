@@ -531,6 +531,36 @@ export async function syncHourlyWageLedgerForWorkDate(
   return result;
 }
 
+/** Sync hourly_wage ledger credits for specific employees on a branch day (idempotent upsert). */
+export async function syncHourlyWageLedgerForEmployees(
+  pool: { request: () => sql.Request },
+  workDate: string,
+  branchId: number,
+  empIds: number[],
+): Promise<HourlyWageLedgerSyncResult> {
+  const empty: HourlyWageLedgerSyncResult = {
+    inserted: 0,
+    updated: 0,
+    voided: 0,
+    skipped: 0,
+  };
+  if (!empIds.length) return empty;
+  if (!Number.isFinite(branchId) || branchId <= 0) return empty;
+
+  await assertEmpBranchWorkDayMutable(branchId, workDate);
+
+  const rows = await fetchGeneratedPayrollRowsForLedger(pool, workDate, undefined, branchId);
+  const idSet = new Set(empIds);
+  const result: HourlyWageLedgerSyncResult = { ...empty };
+
+  for (const row of rows.filter((r) => idSet.has(r.empId))) {
+    const outcome = await upsertHourlyWageLedgerEntry(pool, row);
+    result[outcome]++;
+  }
+
+  return result;
+}
+
 export class EmployeeLedgerDualWriteError extends Error {
   statusCode: number;
 

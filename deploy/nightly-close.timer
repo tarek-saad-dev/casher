@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Casher nightly close daily at 02:00 Africa/Cairo
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Timezone=Africa/Cairo
+Persistent=true
+Unit=nightly-close.service
+
+[Install]
+WantedBy=timers.target
