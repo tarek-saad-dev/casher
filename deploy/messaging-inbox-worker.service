@@ -1,0 +1,24 @@
+[Unit]
+Description=Casher Messaging Inbox Conversation Worker (Phase 2)
+After=network-online.target mssql-server.service whatsapp-bot.service
+Wants=network-online.target
+Requires=mssql-server.service
+
+[Service]
+Type=simple
+User=casher
+Group=casher
+WorkingDirectory=/home/casher/app
+Environment=NODE_ENV=production
+Environment=HOME=/home/casher
+ExecStart=/usr/bin/npm run messaging:inbox-worker
+Restart=always
+RestartSec=5
+KillMode=control-group
+KillSignal=SIGTERM
+TimeoutStopSec=60
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

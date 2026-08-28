@@ -6,6 +6,8 @@ import {
   isAnonymousPublicPath,
   isCronBearerAuthorized,
   isCronBearerPath,
+  isWhatsAppInboxWebhookAuthorized,
+  isWhatsAppInboxWebhookPath,
 } from '@/lib/proxyPublicRoutes';
 
 describe('proxy public allowlist (Phase 1A)', () => {
@@ -48,11 +50,34 @@ describe('proxy public allowlist (Phase 1A)', () => {
     expect(isCronBearerPath('/api/admin/hr/nightly-close')).toBe(true);
     expect(isCronBearerPath('/api/payroll/daily/auto-generate')).toBe(true);
     expect(isCronBearerPath('/api/internal/operations/business-day/reconcile')).toBe(true);
+    expect(isCronBearerPath('/api/internal/messaging/inbox')).toBe(true);
+    expect(isCronBearerPath('/api/internal/messaging/conversations')).toBe(true);
+    expect(isCronBearerPath('/api/internal/messaging/inbox/whatsapp')).toBe(false);
     expect(classifyProxyAuth('/api/internal/operations/business-day/reconcile').kind).toBe(
       'cron_bearer',
     );
+    expect(classifyProxyAuth('/api/internal/messaging/inbox').kind).toBe('cron_bearer');
     expect(isAnonymousPublicPath('/api/internal/operations/business-day/reconcile')).toBe(false);
     expect(classifyProxyAuth('/api/payroll/daily/auto-generate').kind).toBe('cron_bearer');
+  });
+
+  it('classifies WhatsApp inbox webhook separately from cron bearer', () => {
+    expect(isWhatsAppInboxWebhookPath('/api/internal/messaging/inbox/whatsapp')).toBe(true);
+    expect(classifyProxyAuth('/api/internal/messaging/inbox/whatsapp').kind).toBe(
+      'whatsapp_inbox_webhook',
+    );
+    expect(
+      isWhatsAppInboxWebhookAuthorized('Bearer inbox-secret', {
+        NODE_ENV: 'production',
+        WHATSAPP_INBOX_WEBHOOK_TOKEN: 'inbox-secret',
+      }),
+    ).toBe(true);
+    expect(
+      isWhatsAppInboxWebhookAuthorized('Bearer wrong', {
+        NODE_ENV: 'production',
+        WHATSAPP_INBOX_WEBHOOK_TOKEN: 'inbox-secret',
+      }),
+    ).toBe(false);
   });
 
   it('rejects missing cron bearer in production when secret unset', () => {

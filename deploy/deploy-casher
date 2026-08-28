@@ -5,6 +5,8 @@ APP_DIR="/home/casher/app"
 BRANCH="main"
 WORKER_UNIT_SRC="$APP_DIR/deploy/messaging-worker.service"
 WORKER_UNIT_DST="/etc/systemd/system/messaging-worker.service"
+INBOX_WORKER_UNIT_SRC="$APP_DIR/deploy/messaging-inbox-worker.service"
+INBOX_WORKER_UNIT_DST="/etc/systemd/system/messaging-inbox-worker.service"
 NIGHTLY_SERVICE_SRC="$APP_DIR/deploy/nightly-close.service"
 NIGHTLY_SERVICE_DST="/etc/systemd/system/nightly-close.service"
 NIGHTLY_TIMER_SRC="$APP_DIR/deploy/nightly-close.timer"
@@ -64,6 +66,9 @@ echo "[7/8] Installing/updating systemd units..."
 if [[ -f "$WORKER_UNIT_SRC" ]]; then
   install -m 644 "$WORKER_UNIT_SRC" "$WORKER_UNIT_DST"
 fi
+if [[ -f "$INBOX_WORKER_UNIT_SRC" ]]; then
+  install -m 644 "$INBOX_WORKER_UNIT_SRC" "$INBOX_WORKER_UNIT_DST"
+fi
 if [[ -f "$NIGHTLY_SERVICE_SRC" && -f "$NIGHTLY_TIMER_SRC" ]]; then
   install -m 644 "$NIGHTLY_SERVICE_SRC" "$NIGHTLY_SERVICE_DST"
   install -m 644 "$NIGHTLY_TIMER_SRC" "$NIGHTLY_TIMER_DST"
@@ -71,6 +76,9 @@ fi
 systemctl daemon-reload
 if [[ -f "$WORKER_UNIT_DST" ]]; then
   systemctl enable messaging-worker.service
+fi
+if [[ -f "$INBOX_WORKER_UNIT_DST" ]]; then
+  systemctl enable messaging-inbox-worker.service
 fi
 if [[ -f "$NIGHTLY_TIMER_DST" ]]; then
   systemctl enable nightly-close.timer
@@ -86,10 +94,13 @@ if [[ -f "$NIGHTLY_USER_SERVICE_SRC" && -f "$NIGHTLY_USER_TIMER_SRC" ]]; then
 fi
 
 echo
-echo "[8/8] Restarting Casher + messaging worker..."
+echo "[8/8] Restarting Casher + messaging workers..."
 systemctl restart casher
 if [[ -f "$WORKER_UNIT_DST" ]]; then
   systemctl restart messaging-worker.service
+fi
+if [[ -f "$INBOX_WORKER_UNIT_DST" ]]; then
+  systemctl restart messaging-inbox-worker.service
 else
   CASHER_UID="$(id -u casher)"
   runuser -u casher -- env XDG_RUNTIME_DIR="/run/user/${CASHER_UID}" \

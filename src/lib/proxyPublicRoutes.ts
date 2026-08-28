@@ -36,6 +36,16 @@ export const CRON_BEARER_PREFIX_ROUTES = [
   '/api/admin/hr/nightly-close',
   '/api/payroll/daily/auto-generate',
   '/api/internal/operations/business-day/reconcile',
+  '/api/internal/messaging/inbox',
+  '/api/internal/messaging/conversations',
+] as const;
+
+/**
+ * Inbound WhatsApp webhook: allowed through the edge without a session cookie
+ * when WHATSAPP_INBOX_WEBHOOK_TOKEN bearer succeeds (see isWhatsAppInboxWebhookAuthorized).
+ */
+export const WHATSAPP_INBOX_WEBHOOK_PREFIX_ROUTES = [
+  '/api/internal/messaging/inbox/whatsapp',
 ] as const;
 
 export function isStaticOrNextAsset(pathname: string): boolean {
@@ -63,9 +73,32 @@ export function isAnonymousPublicPath(pathname: string): boolean {
 
 /** True when path may skip session cookie if Bearer cron auth succeeds. */
 export function isCronBearerPath(pathname: string): boolean {
+  if (isWhatsAppInboxWebhookPath(pathname)) return false;
   return (CRON_BEARER_PREFIX_ROUTES as readonly string[]).some((p) =>
     pathname.startsWith(p),
   );
+}
+
+export function isWhatsAppInboxWebhookPath(pathname: string): boolean {
+  return (WHATSAPP_INBOX_WEBHOOK_PREFIX_ROUTES as readonly string[]).some((p) =>
+    pathname.startsWith(p),
+  );
+}
+
+/**
+ * WhatsApp inbox webhook bearer check. Production requires WHATSAPP_INBOX_WEBHOOK_TOKEN.
+ * Development may accept literal "dev" only when the token is unset.
+ */
+export function isWhatsAppInboxWebhookAuthorized(
+  authorizationHeader: string | null,
+  env: { WHATSAPP_INBOX_WEBHOOK_TOKEN?: string; NODE_ENV?: string } = process.env,
+): boolean {
+  const token = extractBearerToken(authorizationHeader);
+  if (!token) return false;
+  const secret = String(env.WHATSAPP_INBOX_WEBHOOK_TOKEN ?? '').trim();
+  if (secret) return token === secret;
+  if (env.NODE_ENV === 'production') return false;
+  return token === 'dev';
 }
 
 /**
@@ -73,10 +106,11 @@ export function isCronBearerPath(pathname: string): boolean {
  * Cron paths require Bearer when there is no session cookie (checked by caller).
  */
 export function classifyProxyAuth(pathname: string): {
-  kind: 'static' | 'anonymous_public' | 'cron_bearer' | 'session_required';
+  kind: 'static' | 'anonymous_public' | 'cron_bearer' | 'whatsapp_inbox_webhook' | 'session_required';
 } {
   if (isStaticOrNextAsset(pathname)) return { kind: 'static' };
   if (isAnonymousPublicPath(pathname)) return { kind: 'anonymous_public' };
+  if (isWhatsAppInboxWebhookPath(pathname)) return { kind: 'whatsapp_inbox_webhook' };
   if (isCronBearerPath(pathname)) return { kind: 'cron_bearer' };
   return { kind: 'session_required' };
 }

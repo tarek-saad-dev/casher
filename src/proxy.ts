@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   classifyProxyAuth,
   isCronBearerAuthorized,
+  isWhatsAppInboxWebhookAuthorized,
 } from '@/lib/proxyPublicRoutes';
 
 const COOKIE_NAME = 'pos_session';
@@ -23,6 +24,17 @@ export function proxy(req: NextRequest) {
 
   if (classification.kind === 'anonymous_public') {
     return NextResponse.next();
+  }
+
+  if (classification.kind === 'whatsapp_inbox_webhook') {
+    const hasSession = Boolean(req.cookies.get(COOKIE_NAME)?.value);
+    if (hasSession || isWhatsAppInboxWebhookAuthorized(req.headers.get('authorization'))) {
+      return NextResponse.next();
+    }
+    return NextResponse.json(
+      { error: 'غير مصرح — WHATSAPP_INBOX_WEBHOOK_TOKEN مطلوب (Bearer)' },
+      { status: 401 },
+    );
   }
 
   if (classification.kind === 'cron_bearer') {
