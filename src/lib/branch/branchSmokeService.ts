@@ -31,7 +31,18 @@ export type SmokeRunRecord = {
   completedAt: Date | null;
 };
 
-export async function assertSmokeBranch(branchId: number): Promise<{
+export type SmokeBranchAssertOptions = {
+  /**
+   * Phase 6C booking proofs on CAMP_CAESAR while INTERNAL_LIVE/PUBLIC_LIVE.
+   * Must never mutate LifecycleStatus — cleanup skips demotion for live branches.
+   */
+  permitOperationalBranch?: boolean;
+};
+
+export async function assertSmokeBranch(
+  branchId: number,
+  opts?: SmokeBranchAssertOptions,
+): Promise<{
   branchId: number;
   branchCode: string;
 }> {
@@ -53,11 +64,27 @@ export async function assertSmokeBranch(branchId: number): Promise<{
       409,
     );
   }
-  if (branch.publicBookingEnabled || branch.lifecycleStatus === 'PUBLIC_LIVE') {
+  if (
+    !opts?.permitOperationalBranch &&
+    (branch.publicBookingEnabled || branch.lifecycleStatus === 'PUBLIC_LIVE')
+  ) {
     throw new BranchDomainError(
       'BRANCH_LIFECYCLE_FORBIDDEN',
       'فرع الـ smoke لا يجب أن يكون عاماً',
       409,
+    );
+  }
+  if (
+    opts?.permitOperationalBranch &&
+    (branch.lifecycleStatus === 'INTERNAL_LIVE' || branch.lifecycleStatus === 'PUBLIC_LIVE')
+  ) {
+    console.info(
+      JSON.stringify({
+        event: 'branch.smoke.permit_operational_branch',
+        branchId: branch.branchId,
+        branchCode: branch.branchCode,
+        lifecycleStatus: branch.lifecycleStatus,
+      }),
     );
   }
   return { branchId: branch.branchId, branchCode: branch.branchCode };
@@ -68,9 +95,12 @@ export async function startBranchSmokeRun(args: {
   actorUserId: number;
   purpose: string;
   beforeFingerprintJson?: string;
+  permitOperationalBranch?: boolean;
 }): Promise<SmokeRunRecord> {
   const started = Date.now();
-  const branch = await assertSmokeBranch(args.branchId);
+  const branch = await assertSmokeBranch(args.branchId, {
+    permitOperationalBranch: args.permitOperationalBranch,
+  });
   const purpose = (args.purpose ?? '').trim();
   if (purpose.length < 3) {
     throw new BranchDomainError('BRANCH_NOT_READY', 'Purpose مطلوب', 400);
@@ -144,8 +174,9 @@ export async function registerSmokeArtifact(args: {
 export async function getBranchSmokeRun(
   branchId: number,
   smokeRunId: number,
+  opts?: SmokeBranchAssertOptions,
 ): Promise<SmokeRunRecord & { artifacts: Array<{ entityType: string; entityId: string; cleanupStatus: string }> }> {
-  await assertSmokeBranch(branchId);
+  await assertSmokeBranch(branchId, opts);
   const db = await getPool();
   const run = await db
     .request()
@@ -200,8 +231,11 @@ export async function markBranchSmokeRunStatus(args: {
   status: 'PASSED' | 'FAILED' | 'ABORTED';
   resultJson?: unknown;
   afterFingerprintJson?: unknown;
+  permitOperationalBranch?: boolean;
 }): Promise<void> {
-  await assertSmokeBranch(args.branchId);
+  await assertSmokeBranch(args.branchId, {
+    permitOperationalBranch: args.permitOperationalBranch,
+  });
   const db = await getPool();
   await db
     .request()
@@ -239,9 +273,12 @@ export async function cleanupBranchSmokeRun(args: {
   smokeRunId: number;
   actorUserId: number;
   markArtifactsCleaned?: boolean;
+  permitOperationalBranch?: boolean;
 }): Promise<{ cleanupStatus: string; artifactCount: number }> {
   const started = Date.now();
-  const branch = await assertSmokeBranch(args.branchId);
+  const branch = await assertSmokeBranch(args.branchId, {
+    permitOperationalBranch: args.permitOperationalBranch,
+  });
   console.info(
     JSON.stringify({
       event: 'branch.smoke.cleanup.started',

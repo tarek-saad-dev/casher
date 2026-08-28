@@ -262,18 +262,13 @@ export async function initPhase6CSmokeContext(
   const serviceProIds = await findPublicServiceIds(gleemBranchId, 3);
   if (serviceProIds.length === 0) throw new Error('No public services found for GLEEM');
 
-  await db
-    .request()
-    .input('branchId', sql.Int, campBranchId)
-    .query(
-      `UPDATE dbo.TblBranch SET LifecycleStatus=N'SMOKE_TEST', IsActive=0, PublicBookingEnabled=0 WHERE BranchID=@branchId`,
-    );
-
   const resolvedActor = actorUserId ?? (await resolveSmokeActorUserId());
   const smokeRun = await startBranchSmokeRun({
     branchId: campBranchId,
     actorUserId: resolvedActor,
     purpose: P6C_PHASE,
+    // Never demote CAMP_CAESAR lifecycle — proofs run against the live branch as-is.
+    permitOperationalBranch: true,
   });
 
   const ctx: P6CContext = {
@@ -521,6 +516,7 @@ export async function completeSmokeRun(
     branchId: ctx.branchId,
     status,
     resultJson,
+    permitOperationalBranch: true,
   });
 }
 
@@ -623,5 +619,6 @@ export async function cleanupPhase6C(ctx: P6CContext): Promise<void> {
     smokeRunId: ctx.smokeRun.smokeRunId,
     actorUserId: 0,
     markArtifactsCleaned: true,
+    permitOperationalBranch: true,
   });
 }

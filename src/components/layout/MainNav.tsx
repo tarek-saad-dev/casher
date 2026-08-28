@@ -45,6 +45,7 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
   const [expandedMains, setExpandedMains] = useState<string[]>(['العمليات اليومية']);
   const [expandedMobileCategories, setExpandedMobileCategories] = useState<string[]>(['العمليات اليومية']);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isSidebarHovered, setIsSidebarHovered] = useState(false);
 
   const { canSeePage, access, loading: permLoading, isAuthenticated } = usePermissions();
 
@@ -104,10 +105,12 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
     return () => { document.body.style.overflow = prev; };
   }, [mobileMenuOpen]);
 
-  // The new MAIN/SUB layout needs room to be understandable.
+  // Auto-collapse the desktop sidebar after 5s unless the pointer is over it.
   useEffect(() => {
-    if (navMode === 'tree') setIsCollapsed(false);
-  }, [navMode]);
+    if (isCollapsed || isSidebarHovered) return;
+    const timer = window.setTimeout(() => setIsCollapsed(true), 5000);
+    return () => window.clearTimeout(timer);
+  }, [isCollapsed, isSidebarHovered]);
 
   // Auto-expand the active section when navigating
   useEffect(() => {
@@ -1024,6 +1027,9 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
       {/* ── Desktop Sidebar ─────────────────────────────────────────────── */}
       <nav
         className="hidden lg:flex flex-col shrink-0 transition-all duration-300"
+        onMouseEnter={() => setIsSidebarHovered(true)}
+        onMouseMove={() => setIsSidebarHovered(true)}
+        onMouseLeave={() => setIsSidebarHovered(false)}
         style={{
           width: isCollapsed ? 60 : 215,
           backgroundColor: 'var(--sidebar-background)',

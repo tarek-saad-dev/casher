@@ -210,4 +210,32 @@ describe('flow-board refresh controller', () => {
     expect(onLoading).not.toHaveBeenCalled();
     expect(fetchBoard).toHaveBeenCalledTimes(1);
   });
+
+  it('cancelOthers aborts in-flight requests for other dates', async () => {
+    const resolvers = new Map<string, (v: { ok: boolean; date: string }) => void>();
+    const fetchBoard = vi.fn(
+      (date: string) =>
+        new Promise<{ ok: boolean; date: string }>((resolve) => {
+          resolvers.set(date, resolve);
+        }),
+    );
+    const onData = vi.fn();
+    const ctrl = createFlowBoardRefreshController({
+      getSelectedDate: () => '2026-07-17',
+      fetchBoard: fetchBoard as any,
+      onData,
+    });
+
+    const p1 = ctrl.refreshFlowBoard('2026-07-16', { reason: 'old', force: true });
+    const p2 = ctrl.refreshFlowBoard('2026-07-17', { reason: 'new', force: true, cancelOthers: true });
+
+    resolvers.get('2026-07-16')!({ ok: true, date: '2026-07-16' });
+    await p1;
+    expect(onData).not.toHaveBeenCalled();
+
+    resolvers.get('2026-07-17')!({ ok: true, date: '2026-07-17' });
+    await p2;
+    expect(onData).toHaveBeenCalledTimes(1);
+    expect(onData).toHaveBeenCalledWith({ ok: true, date: '2026-07-17' });
+  });
 });

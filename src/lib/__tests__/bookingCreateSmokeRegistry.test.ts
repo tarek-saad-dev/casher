@@ -19,6 +19,10 @@ describe('bookingCreateSmokeRegistry', () => {
     expect(h).toContain('booking-phase-6c-final-create-proof');
     expect(h).toContain('completeSmokeRun');
     expect(h).toContain('cleanupPhase6C');
+    expect(h).toContain('permitOperationalBranch: true');
+    expect(h).not.toMatch(
+      /UPDATE dbo\.TblBranch SET LifecycleStatus=N'SMOKE_TEST'/,
+    );
   });
 
   it('keeps Phase 6C verifier idempotent and outside public routes', () => {

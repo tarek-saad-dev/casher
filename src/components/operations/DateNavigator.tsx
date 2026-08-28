@@ -16,6 +16,8 @@ interface Props {
   onRefresh: () => void;
   className?: string;
   compact?: boolean;
+  /** Ultra-compact single-row toolbar (operations top bar). */
+  toolbar?: boolean;
 }
 
 const segmentBtn =
@@ -35,6 +37,7 @@ export function DateNavigator({
   onRefresh,
   className,
   compact = false,
+  toolbar = false,
 }: Props) {
   const [showCalendar, setShowCalendar] = useState(false);
   const calendarRef = useRef<HTMLDivElement>(null);
@@ -57,11 +60,17 @@ export function DateNavigator({
     setShowCalendar(false);
   };
 
+  const toolbarBtn =
+    'inline-flex h-7 min-h-0 shrink-0 items-center justify-center border-0 bg-transparent px-2 text-xs font-medium transition-colors hover:bg-surface-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-50';
+  const toolbarIconBtn =
+    'inline-flex size-7 min-h-0 min-w-0 shrink-0 items-center justify-center border-0 bg-transparent transition-colors hover:bg-surface-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset';
+
   return (
     <div
       className={cn(
         'flex w-full shrink-0 items-center gap-1 md:w-auto md:gap-2',
         compact && 'md:w-auto',
+        toolbar && 'w-auto gap-1',
         className,
       )}
     >
@@ -69,6 +78,7 @@ export function DateNavigator({
         className={cn(
           'flex min-w-0 flex-1 items-center overflow-hidden rounded-md border border-border/80 bg-surface-muted/30 md:flex-none md:rounded-xl',
           compact && 'flex-1 md:flex-none',
+          toolbar && 'flex-none rounded-md',
         )}
         role="group"
         aria-label="التنقل بين التواريخ"
@@ -76,7 +86,10 @@ export function DateNavigator({
         <button
           type="button"
           onClick={onToday}
-          className={cn(segmentBtn, 'border-s border-border/60 font-semibold text-foreground')}
+          className={cn(
+            toolbar ? toolbarBtn : segmentBtn,
+            'border-s border-border/60 font-semibold text-foreground',
+          )}
         >
           اليوم
         </button>
@@ -84,11 +97,11 @@ export function DateNavigator({
         <button
           type="button"
           onClick={onPrevDay}
-          className={cn(segmentIconBtn, 'border-s border-border/60')}
+          className={cn(toolbar ? toolbarIconBtn : segmentIconBtn, 'border-s border-border/60')}
           aria-label="اليوم السابق"
           title="اليوم السابق"
         >
-          <ChevronRight className="size-3 text-primary md:size-4" />
+          <ChevronRight className={cn('size-3 text-primary', !toolbar && 'md:size-4')} />
         </button>
 
         <div className="relative min-w-0 flex-1 border-s border-border/60" ref={calendarRef}>
@@ -96,13 +109,15 @@ export function DateNavigator({
             type="button"
             onClick={() => setShowCalendar(!showCalendar)}
             className={cn(
-              segmentBtn,
-              'h-6 w-full min-w-0 gap-1 px-1.5 font-semibold text-foreground md:h-[42px] md:min-h-[42px] md:gap-2 md:px-3 md:min-w-[180px]',
+              toolbar ? toolbarBtn : segmentBtn,
+              toolbar
+                ? 'h-7 w-full gap-1 px-2 font-semibold text-foreground min-w-35'
+                : 'h-6 w-full min-w-0 gap-1 px-1.5 font-semibold text-foreground md:h-[42px] md:min-h-[42px] md:gap-2 md:px-3 md:min-w-[180px]',
             )}
             title="اختر تاريخ"
             aria-label="اختر تاريخ"
           >
-            <Calendar className="size-3 shrink-0 text-primary md:size-4" />
+            <Calendar className={cn('size-3 shrink-0 text-primary', !toolbar && 'md:size-4')} />
             <span className="truncate whitespace-nowrap">{dateLabel}</span>
           </button>
 
@@ -140,11 +155,11 @@ export function DateNavigator({
         <button
           type="button"
           onClick={onNextDay}
-          className={cn(segmentIconBtn, 'border-s border-border/60')}
+          className={cn(toolbar ? toolbarIconBtn : segmentIconBtn, 'border-s border-border/60')}
           aria-label="اليوم التالي"
           title="اليوم التالي"
         >
-          <ChevronLeft className="size-3 text-primary md:size-4" />
+          <ChevronLeft className={cn('size-3 text-primary', !toolbar && 'md:size-4')} />
         </button>
       </div>
 
@@ -154,11 +169,14 @@ export function DateNavigator({
         size="icon"
         onClick={onRefresh}
         disabled={loading}
-        className="size-6 min-h-0 min-w-0 shrink-0 rounded-md border-border/80 bg-surface-muted/40 transition-all duration-150 hover:bg-surface-muted/70 focus-visible:ring-2 md:size-[42px] md:min-h-[42px] md:min-w-[42px] md:rounded-xl"
+        className={cn(
+          'min-h-0 min-w-0 shrink-0 rounded-md border-border/80 bg-surface-muted/40 transition-all duration-150 hover:bg-surface-muted/70 focus-visible:ring-2',
+          toolbar ? 'size-7' : 'size-6 md:size-[42px] md:min-h-[42px] md:min-w-[42px] md:rounded-xl',
+        )}
         aria-label="تحديث لوحة التشغيل"
         title="تحديث"
       >
-        <RefreshCw className={cn('size-3 md:size-4', loading && 'animate-spin')} />
+        <RefreshCw className={cn('size-3', !toolbar && 'md:size-4', loading && 'animate-spin')} />
       </Button>
     </div>
   );

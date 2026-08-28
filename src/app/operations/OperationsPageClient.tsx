@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useDeferredValue } from 'react';
 import dynamic from 'next/dynamic';
 import { BottomSummaryStrip } from '@/components/operations/BottomSummaryStrip';
 import { OperationsControlPanel } from '@/components/operations/OperationsControlPanel';
@@ -22,6 +22,7 @@ import { BarberMobileSelector, type MobileBarberSelection } from '@/components/o
 import { MobileOperationsActions } from '@/components/operations/MobileOperationsActions';
 import { OPS_LAYOUT } from '@/components/operations/operationsLayout.constants';
 import { getCairoBusinessDate } from '@/components/operations/schedulerUtils';
+import { shiftCalendarDate } from '@/lib/businessDate';
 import { QUICK_QUEUE_UI_ENABLED } from '@/lib/quickQueueConfig';
 import { useAutoVoiceAnnounce, isVoiceEnabled, enableVoice, disableVoice } from '@/hooks/useAutoVoiceAnnounce';
 import {
@@ -29,6 +30,12 @@ import {
   shouldRefreshBoardForBooking,
   type FlowBoardPayload,
 } from '@/lib/operations/flowBoardRefreshController';
+import {
+  buildFlowBoardCacheKey,
+  getFlowBoardCacheEntry,
+  setFlowBoardCacheEntry,
+  type FlowBoardCacheEntry,
+} from '@/lib/operations/flowBoardDayCache';
 import type { BookingCreateSuccess } from '@/lib/operations/bookingWorkspaceSubmit';
 import { useSession } from '@/hooks/useSession';
 import {
@@ -137,16 +144,18 @@ interface FlowBoardResponse {
 }
 
 function formatDateLabel(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00');
+  const [year, month, day] = dateStr.split('-').map(Number);
+  if (!year || !month || !day) return dateStr;
+  const date = new Date(Date.UTC(year, month - 1, day));
   const days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
   const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 
-  const dayName = days[date.getDay()];
-  const dayNum = date.getDate();
-  const monthName = months[date.getMonth()];
-  const year = date.getFullYear();
+  const dayName = days[date.getUTCDay()];
+  const dayNum = date.getUTCDate();
+  const monthName = months[date.getUTCMonth()];
+  const yearNum = date.getUTCFullYear();
 
-  return `${dayName} ${dayNum} ${monthName} ${year}`;
+  return `${dayName} ${dayNum} ${monthName} ${yearNum}`;
 }
 
 function getCairoToday(): string {
@@ -164,12 +173,6 @@ function isAfterMidnightShift(): boolean {
   return cairoHour < BUSINESS_DAY_CUTOFF_HOUR;
 }
 
-function addDays(dateStr: string, days: number): string {
-  const date = new Date(dateStr + 'T00:00:00');
-  date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
 function readMobileBarberSelection(): MobileBarberSelection | null {
   if (typeof window === 'undefined') return null;
   const saved = sessionStorage.getItem(OPS_LAYOUT.MOBILE_BARBER_STORAGE_KEY);
@@ -184,10 +187,11 @@ export default function OperationsPage() {
   const activeBranchIdRef = useRef<number | undefined>(user?.ActiveBranchID);
   activeBranchIdRef.current = user?.ActiveBranchID;
   const [selectedDate, setSelectedDate] = useState<string>(getCairoBusinessDate());
+  const deferredFetchDate = useDeferredValue(selectedDate);
   const [flowBoardData, setFlowBoardData] = useState<FlowBoardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [branchScope, setBranchScope] = useState<OpsBranchScope>('active');
+  const [branchScope, setBranchScope] = useState<OpsBranchScope>('all');
   const [presenceFilter, setPresenceFilter] = useState<OpsPresenceFilter>('present');
   const [branchOptions, setBranchOptions] = useState<OpsBranchOption[]>([]);
   const branchScopeRef = useRef<OpsBranchScope>(branchScope);
@@ -229,7 +233,29 @@ export default function OperationsPage() {
   const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const quickQueuePendingRef = useRef(false);
   const selectedDateRef = useRef(selectedDate);
+  const filterKeyRef = useRef('');
+  const flowBoardCacheRef = useRef(new Map<string, FlowBoardCacheEntry>());
+  const pulseFingerprintRef = useRef<{ date: string; fingerprint: string | null }>({
+    date: '',
+    fingerprint: null,
+  });
+  const affectedAbortRef = useRef<AbortController | null>(null);
   selectedDateRef.current = selectedDate;
+
+  const writeFlowBoardCache = useCallback((data: FlowBoardPayload) => {
+    if (!data.ok || !data.date) return;
+    const key = buildFlowBoardCacheKey(
+      data.date,
+      branchScopeRef.current,
+      presenceFilterRef.current,
+    );
+    setFlowBoardCacheEntry(flowBoardCacheRef.current, key, {
+      ok: data.ok,
+      date: data.date,
+      generatedAt: data.generatedAt,
+      barbers: data.barbers ?? [],
+    });
+  }, []);
 
   const showToast = useCallback((msg: string, ok = true) => {
     setToast({ msg, ok });
@@ -281,7 +307,13 @@ export default function OperationsPage() {
         return data;
       },
       onData: (data) => {
-        setFlowBoardData(data as FlowBoardResponse);
+        writeFlowBoardCache(data);
+        if (data.date === selectedDateRef.current) {
+          setFlowBoardData(data as FlowBoardResponse);
+        }
+      },
+      onPrefetch: (data) => {
+        writeFlowBoardCache(data);
       },
       onLoading: setLoading,
       onError: setError,
@@ -289,8 +321,16 @@ export default function OperationsPage() {
   );
 
   const refreshFlowBoard = useCallback(
-    (date: string, options?: { reason?: string; force?: boolean; silent?: boolean }) =>
-      refreshControllerRef.current.refreshFlowBoard(date, options),
+    (
+      date: string,
+      options?: {
+        reason?: string;
+        force?: boolean;
+        silent?: boolean;
+        cancelOthers?: boolean;
+        prefetch?: boolean;
+      },
+    ) => refreshControllerRef.current.refreshFlowBoard(date, options),
     [],
   );
 
@@ -318,20 +358,34 @@ export default function OperationsPage() {
     });
   }, [selectedDate, fetchFlowBoard]);
 
+  // Instant display from client cache when the selected day changes.
+  useEffect(() => {
+    const key = buildFlowBoardCacheKey(selectedDate, branchScope, presenceFilter);
+    const cached = getFlowBoardCacheEntry(flowBoardCacheRef.current, key);
+    if (cached?.ok) {
+      setFlowBoardData(cached as FlowBoardResponse);
+      setError(null);
+    }
+  }, [selectedDate, branchScope, presenceFilter]);
+
   // Cheap pulse: refresh the heavy board only when bookings/queue/availability actually change.
   useEffect(() => {
     let cancelled = false;
-    let fingerprint: string | null = null;
     let maxBookingId: number | null = null;
 
     const pulse = async () => {
       try {
+        const date = selectedDateRef.current;
+        if (pulseFingerprintRef.current.date !== date) {
+          pulseFingerprintRef.current = { date, fingerprint: null };
+        }
+
         const scope = branchScopeRef.current;
         const presence = presenceFilterRef.current;
         const branchIdParam =
           scope === 'all' || scope === 'active' ? scope : String(scope);
         const qs = new URLSearchParams({
-          date: selectedDateRef.current,
+          date,
           branchId: branchIdParam,
           presence,
         });
@@ -350,9 +404,10 @@ export default function OperationsPage() {
         }
         maxBookingId = nextMax;
 
-        if (fingerprint === data.fingerprint) return;
-        const isFirstSample = fingerprint === null;
-        fingerprint = data.fingerprint;
+        const prevFp = pulseFingerprintRef.current.fingerprint;
+        if (prevFp === data.fingerprint) return;
+        const isFirstSample = prevFp === null;
+        pulseFingerprintRef.current.fingerprint = data.fingerprint;
         if (isFirstSample) return;
         void fetchFlowBoard({ reason: 'pulse', silent: true });
       } catch {
@@ -366,7 +421,7 @@ export default function OperationsPage() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [selectedDate, branchScope, presenceFilter, fetchFlowBoard, showToast]);
+  }, [branchScope, presenceFilter, fetchFlowBoard, showToast]);
 
   useEffect(() => {
     let cancelled = false;
@@ -537,7 +592,30 @@ export default function OperationsPage() {
   }, [fetchFlowBoard, showToast]);
 
   useEffect(() => {
-    void refreshFlowBoard(selectedDate, { reason: 'date-or-filters', force: true });
+    const filterKey = `${branchScope}:${presenceFilter}`;
+    const filtersChanged = filterKeyRef.current !== filterKey;
+    const isInitialLoad = filterKeyRef.current === '';
+    filterKeyRef.current = filterKey;
+
+    void refreshFlowBoard(deferredFetchDate, {
+      reason: filtersChanged ? 'date-or-filters' : 'date-change',
+      force: true,
+      cancelOthers: true,
+      silent: !isInitialLoad && !filtersChanged,
+    });
+
+    for (const offset of [-1, 1] as const) {
+      const neighbor = shiftCalendarDate(deferredFetchDate, offset);
+      const neighborKey = buildFlowBoardCacheKey(neighbor, branchScope, presenceFilter);
+      if (!flowBoardCacheRef.current.has(neighborKey)) {
+        void refreshFlowBoard(neighbor, {
+          reason: 'prefetch',
+          prefetch: true,
+          silent: true,
+        });
+      }
+    }
+
     if (refreshTimer.current) clearInterval(refreshTimer.current);
     refreshTimer.current = setInterval(() => {
       void refreshFlowBoard(selectedDateRef.current, { reason: 'poll', silent: true });
@@ -545,18 +623,23 @@ export default function OperationsPage() {
     return () => {
       if (refreshTimer.current) clearInterval(refreshTimer.current);
     };
-  }, [selectedDate, branchScope, presenceFilter, refreshFlowBoard]);
+  }, [deferredFetchDate, branchScope, presenceFilter, refreshFlowBoard]);
 
   useEffect(() => {
+    affectedAbortRef.current?.abort();
+    const ac = new AbortController();
+    affectedAbortRef.current = ac;
     let cancelled = false;
+
     const loadCount = async () => {
       try {
         const sp = new URLSearchParams({
-          date: selectedDate,
+          date: selectedDateRef.current,
           unresolved: '1',
         });
         const res = await fetch(`/api/operations/affected-bookings?${sp}`, {
           credentials: 'include',
+          signal: ac.signal,
         });
         const data = (await res.json()) as { ok?: boolean; bookings?: unknown[] };
         if (!cancelled && data.ok) {
@@ -570,30 +653,10 @@ export default function OperationsPage() {
     const t = setInterval(() => void loadCount(), 60000);
     return () => {
       cancelled = true;
+      ac.abort();
       clearInterval(t);
     };
-  }, [selectedDate, showAffectedBookings]);
-
-  useEffect(() => {
-    const barbers = flowBoardData?.barbers.filter((b) => b.status !== 'unknown') ?? [];
-    if (barbers.length === 0) return;
-
-    const saved = sessionStorage.getItem(OPS_LAYOUT.MOBILE_BARBER_STORAGE_KEY);
-    if (saved === null) {
-      setMobileBarberSelection(barbers[0].empId);
-      return;
-    }
-
-    setMobileBarberSelection((current) => {
-      if (saved === 'all') return 'all';
-      const parsed = Number(saved);
-      if (Number.isFinite(parsed) && barbers.some((b) => b.empId === parsed)) {
-        return parsed;
-      }
-      if (current !== 'all' && barbers.some((b) => b.empId === current)) return current;
-      return barbers[0].empId;
-    });
-  }, [flowBoardData]);
+  }, [deferredFetchDate, showAffectedBookings]);
 
   const handleMobileBarberSelect = useCallback((value: MobileBarberSelection) => {
     setMobileBarberSelection(value);
@@ -638,11 +701,11 @@ export default function OperationsPage() {
   }, [settlingExpired, selectedDate, fetchFlowBoard, showToast]);
 
   const handlePrevDay = useCallback(() => {
-    setSelectedDate((prev) => addDays(prev, -1));
+    setSelectedDate((prev) => shiftCalendarDate(prev, -1));
   }, []);
 
   const handleNextDay = useCallback(() => {
-    setSelectedDate((prev) => addDays(prev, 1));
+    setSelectedDate((prev) => shiftCalendarDate(prev, 1));
   }, []);
 
   const handleToday = useCallback(() => {
@@ -676,10 +739,23 @@ export default function OperationsPage() {
     [selectedDate, user?.ActiveBranchCode, activeBranch?.branchCode],
   );
 
-  const summaryStats = useCallback(() => {
-    if (!flowBoardData) return { nextAvailable: null, totalWaiting: 0, totalBookings: 0 };
+  const boardBarbers = useMemo((): FlowBoardBarber[] => {
+    if (flowBoardData?.date === selectedDate) {
+      return flowBoardData.barbers;
+    }
+    const key = buildFlowBoardCacheKey(selectedDate, branchScope, presenceFilter);
+    const cached = getFlowBoardCacheEntry(flowBoardCacheRef.current, key);
+    return (cached?.barbers as FlowBoardBarber[] | undefined) ?? [];
+  }, [flowBoardData, selectedDate, branchScope, presenceFilter]);
 
-    const workingBarbers = flowBoardData.barbers.filter((b) => b.status === 'working');
+  const summaryStats = useCallback(() => {
+    const source =
+      flowBoardData?.date === selectedDate
+        ? flowBoardData.barbers
+        : boardBarbers;
+    if (!source.length) return { nextAvailable: null, totalWaiting: 0, totalBookings: 0 };
+
+    const workingBarbers = source.filter((b) => b.status === 'working');
 
     let nextAvailable: { name: string; time: string } | null = null;
     for (const barber of workingBarbers) {
@@ -704,22 +780,49 @@ export default function OperationsPage() {
     const totalBookings = workingBarbers.reduce((sum, b) => sum + b.bookingsCount, 0);
 
     return { nextAvailable, totalWaiting, totalBookings };
-  }, [flowBoardData]);
+  }, [flowBoardData, selectedDate, boardBarbers]);
 
   const stats = summaryStats();
   const afterMidnight = isAfterMidnightShift();
+
+  const isBoardSynced = flowBoardData?.date === selectedDate;
+  const isDateFetchPending = selectedDate !== deferredFetchDate;
+  const boardSyncing = isDateFetchPending || (!isBoardSynced && !loading);
+  const showBoardLoading = (loading && boardBarbers.length === 0) || (boardSyncing && boardBarbers.length === 0);
+
   const visibleBarbers =
-    flowBoardData?.barbers
+    boardBarbers
       .filter((b) => b.status !== 'unknown')
       .map((b) => ({ empId: b.empId, empName: b.empName })) ?? [];
 
+  useEffect(() => {
+    const barbers = boardBarbers.filter((b) => b.status !== 'unknown');
+    if (barbers.length === 0) return;
+
+    const saved = sessionStorage.getItem(OPS_LAYOUT.MOBILE_BARBER_STORAGE_KEY);
+    if (saved === null) {
+      setMobileBarberSelection(barbers[0].empId);
+      return;
+    }
+
+    setMobileBarberSelection((current) => {
+      if (saved === 'all') return 'all';
+      const parsed = Number(saved);
+      if (Number.isFinite(parsed) && barbers.some((b) => b.empId === parsed)) {
+        return parsed;
+      }
+      if (current !== 'all' && barbers.some((b) => b.empId === current)) return current;
+      return barbers[0].empId;
+    });
+  }, [boardBarbers]);
+
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col bg-background" dir="rtl">
-      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden px-1 py-1 md:gap-4 md:px-4 md:py-4 lg:px-6">
+      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden px-1 py-0.5 md:gap-2 md:px-3 md:py-2 lg:px-4">
         <OperationsControlPanel
           date={selectedDate}
           dateLabel={formatDateLabel(selectedDate)}
-          loading={loading}
+          loading={boardSyncing}
           settlingExpired={settlingExpired}
           voiceEnabled={voiceEnabled}
           musicExpanded={musicPlayerExpanded}
@@ -803,8 +906,9 @@ export default function OperationsPage() {
 
         <SchedulerBoard
           className="min-h-0 flex-1"
-          barbers={flowBoardData?.barbers || []}
-          loading={loading}
+          barbers={boardBarbers}
+          loading={showBoardLoading}
+          syncing={boardSyncing && boardBarbers.length > 0}
           error={error}
           onRetry={fetchFlowBoard}
           onRefresh={fetchFlowBoard}
@@ -892,10 +996,10 @@ export default function OperationsPage() {
             void fetchFlowBoard({ reason: 'queue-created' });
             showToast('تم إنشاء الدور بنجاح');
           }}
-          barbers={flowBoardData?.barbers || []}
+          barbers={boardBarbers}
           debugInfo={{
             source: 'flow-board',
-            count: flowBoardData?.barbers?.length || 0,
+            count: boardBarbers.length || 0,
             timestamp: new Date().toISOString(),
           }}
         />
@@ -923,7 +1027,7 @@ export default function OperationsPage() {
           initialTimeRangeStart={bookingInitialData.timeRangeStart}
           initialTimeRangeEnd={bookingInitialData.timeRangeEnd}
           initialBranchId={bookingInitialData.branchId}
-          barbers={flowBoardData?.barbers.map((b) => ({
+          barbers={boardBarbers.map((b) => ({
             empId: b.empId,
             empName: b.empName,
             status: b.status,

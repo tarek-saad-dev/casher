@@ -48,6 +48,8 @@ interface Barber {
 interface Props {
   barbers: Barber[];
   loading?: boolean;
+  /** Background refresh — keep board visible with a light overlay. */
+  syncing?: boolean;
   error?: string | null;
   onRetry?: () => void;
   onRefresh?: () => void;
@@ -91,6 +93,7 @@ export function getBarberColor(empId: number | null | undefined, index?: number)
 export function SchedulerBoard({
   barbers,
   loading,
+  syncing = false,
   error,
   onRetry,
   onRefresh,
@@ -333,6 +336,16 @@ export function SchedulerBoard({
   }
 
   if (displayBarbers.length === 0) {
+    if (loading || syncing) {
+      return (
+        <div className={cn('flex flex-1 items-center justify-center rounded-2xl border border-border/60 bg-card/40', className)}>
+          <div className="flex flex-col items-center gap-4">
+            <div className="size-12 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <p className="text-sm text-muted-foreground">جاري تحميل لوحة التشغيل...</p>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className={cn('flex flex-1 items-center justify-center rounded-2xl border border-border/60 bg-card/40', className)}>
         <div className="text-center">
@@ -351,6 +364,17 @@ export function SchedulerBoard({
       )}
       dir="rtl"
     >
+      {syncing && (
+        <div
+          className="pointer-events-none absolute inset-0 z-50 flex items-start justify-center bg-background/25 pt-3 backdrop-blur-[1px]"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <span className="rounded-full border border-border/60 bg-card/90 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
+            جاري تحديث اليوم...
+          </span>
+        </div>
+      )}
       {cutPaste.moveSession && (
         <BookingMoveModeBar
           session={cutPaste.moveSession}

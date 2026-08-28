@@ -15,6 +15,10 @@ export type RefreshFlowBoardOptions = {
   force?: boolean;
   /** Background refresh: keep the current board mounted (no loading flash). */
   silent?: boolean;
+  /** Abort other in-flight board requests (e.g. when the selected day changes quickly). */
+  cancelOthers?: boolean;
+  /** Write to cache only — do not call onData (prefetch adjacent days). */
+  prefetch?: boolean;
 };
 
 export type FlowBoardRefreshController = {
@@ -37,6 +41,7 @@ export function createFlowBoardRefreshController(args: {
   getBranchId?: () => string | number;
   fetchBoard: (date: string, signal: AbortSignal) => Promise<FlowBoardPayload>;
   onData: (data: FlowBoardPayload) => void;
+  onPrefetch?: (data: FlowBoardPayload) => void;
   onLoading?: (loading: boolean) => void;
   onError?: (message: string | null) => void;
 }): FlowBoardRefreshController {
@@ -46,11 +51,24 @@ export function createFlowBoardRefreshController(args: {
   const cacheKey = (date: string): string =>
     `${args.getBranchId ? args.getBranchId() : '_'}:${date}`;
 
+  function abortAllExcept(keepKey?: string) {
+    for (const [key, ac] of abortByDate) {
+      if (key === keepKey) continue;
+      ac.abort();
+      abortByDate.delete(key);
+      inFlight.delete(key);
+    }
+  }
+
   async function refreshFlowBoard(
     date: string,
     options: RefreshFlowBoardOptions = {},
   ): Promise<void> {
     const key = cacheKey(date);
+
+    if (options.cancelOthers) {
+      abortAllExcept(key);
+    }
 
     if (!options.force) {
       const existing = inFlight.get(key);
@@ -78,7 +96,11 @@ export function createFlowBoardRefreshController(args: {
         if (!data.ok) {
           throw new Error(data.error || 'فشل تحميل البيانات');
         }
-        args.onData(data);
+        if (!options.prefetch) {
+          args.onData(data);
+        } else {
+          args.onPrefetch?.(data);
+        }
       } catch (err) {
         if (ac.signal.aborted) return;
         if (!isSelected()) return;

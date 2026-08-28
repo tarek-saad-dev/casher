@@ -28,6 +28,8 @@ describe('Phase 1M controlled smoke isolation', () => {
     expect(svc).toContain("liveBranch?.lifecycleStatus === 'SMOKE_TEST'");
     expect(svc).toContain('INTERNAL_LIVE / PUBLIC_LIVE must never be deactivated');
     expect(svc).toContain('branch.smoke.cleanup.skip_demote_public_live');
+    expect(svc).toContain('permitOperationalBranch');
+    expect(svc).toContain('branch.smoke.permit_operational_branch');
     expect(svc).toContain("AND LifecycleStatus = N'SMOKE_TEST'");
     expect(svc).toContain('ISNULL(PublicBookingEnabled, 0) = 0');
   });
