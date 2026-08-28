@@ -33,6 +33,10 @@ vi.mock('@/lib/bookingPostCommitNotification', () => ({
     scheduleAfterCommit(input, deps),
 }));
 
+vi.mock('@/lib/bookingGroupWhatsAppNotify', () => ({
+  scheduleBookingTeamGroupNotify: vi.fn(() => ({ scheduled: true })),
+}));
+
 vi.mock('@/lib/booking/bookingCustomerContact', () => ({
   loadBookingCustomerContact: vi.fn(async (bookingId: number) => ({
     bookingId,

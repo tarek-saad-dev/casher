@@ -14,9 +14,12 @@ import type {
   WhatsAppStatusResult,
   WhatsAppBotHealthResult,
   WhatsAppApiSendResponse,
+  WhatsAppApiGroupSendResponse,
   WhatsAppApiStatusResponse,
   GenericWhatsAppMessageInput,
+  GenericWhatsAppGroupMessageInput,
   GenericWhatsAppSendResult,
+  GenericWhatsAppGroupSendResult,
 } from './types';
 
 const HEALTH_TIMEOUT_MS = 5000;
@@ -24,6 +27,12 @@ const HEALTH_TIMEOUT_MS = 5000;
 function maskPhone(phone: string): string {
   if (phone.length <= 4) return '****';
   return phone.slice(0, 3) + '****' + phone.slice(-2);
+}
+
+function maskGroupLink(link: string): string {
+  const trimmed = link.trim();
+  if (trimmed.length <= 24) return '****';
+  return `${trimmed.slice(0, 20)}****`;
 }
 
 function isTimeoutError(err: unknown): boolean {
@@ -259,6 +268,167 @@ export async function sendWhatsAppPayload(
 }
 
 /**
+ * POST /api/whatsapp/send-group — group invite link + message.
+ */
+async function postWhatsAppGroupSend(
+  requestBody: unknown,
+  logLabel: string,
+  groupInviteLink: string,
+): Promise<GenericWhatsAppGroupSendResult> {
+  const cfg = getConfig();
+  const url = `${cfg.apiBaseUrl}/api/whatsapp/send-group`;
+
+  let response: Response;
+  let responseText: string;
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), cfg.timeoutMs);
+
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+
+    if (isTimeoutError(err)) {
+      console.log(`[whatsapp] Group request timed out for ${logLabel}`);
+      return { sent: false, skipped: false, reason: 'timeout' };
+    }
+
+    console.log(`[whatsapp] Group connection failed — is the WhatsApp app running? (${msg})`);
+    return { sent: false, skipped: false, reason: 'connection_failed' };
+  }
+
+  try {
+    responseText = await response.text();
+  } catch {
+    return {
+      sent: false,
+      skipped: false,
+      reason: 'invalid_response',
+      httpStatus: response.status,
+    };
+  }
+
+  let body: WhatsAppApiGroupSendResponse;
+  try {
+    body = JSON.parse(responseText) as WhatsAppApiGroupSendResponse;
+  } catch {
+    return {
+      sent: false,
+      skipped: false,
+      reason: 'invalid_response',
+      httpStatus: response.status,
+    };
+  }
+
+  const gatewayCode =
+    typeof body.code === 'string' && body.code.trim().length > 0 ? body.code.trim() : undefined;
+
+  if (response.status === 503) {
+    console.log('[whatsapp] WhatsApp Web is not ready (group send)');
+    return {
+      sent: false,
+      skipped: false,
+      reason: 'whatsapp_not_ready',
+      httpStatus: 503,
+      error: body.error,
+      status: body.status,
+      ...(gatewayCode ? { code: gatewayCode } : {}),
+    };
+  }
+
+  if (response.status === 404 || body.status === 'group_not_found') {
+    console.log(`[whatsapp] Group not found (${logLabel})`);
+    return {
+      sent: false,
+      skipped: false,
+      reason: 'remote_error',
+      httpStatus: response.status,
+      error: body.error ?? 'group_not_found',
+      status: body.status ?? 'group_not_found',
+      ...(gatewayCode ? { code: gatewayCode } : {}),
+    };
+  }
+
+  if (response.status === 400 && body.status === 'group_not_accessible') {
+    console.log(`[whatsapp] Group not accessible (${logLabel})`);
+    return {
+      sent: false,
+      skipped: false,
+      reason: 'remote_error',
+      httpStatus: 400,
+      error: body.error ?? 'group_not_accessible',
+      status: 'group_not_accessible',
+      ...(gatewayCode ? { code: gatewayCode } : {}),
+    };
+  }
+
+  if (response.status === 400) {
+    const errorMsg = body.error || '';
+    console.log(`[whatsapp] Group validation/error (${logLabel}): ${errorMsg}`);
+    return {
+      sent: false,
+      skipped: false,
+      reason: 'invalid_response',
+      httpStatus: 400,
+      error: errorMsg,
+      ...(gatewayCode ? { code: gatewayCode } : {}),
+    };
+  }
+
+  if (response.status >= 500) {
+    console.log(`[whatsapp] Group remote error HTTP ${response.status}`);
+    return {
+      sent: false,
+      skipped: false,
+      reason: body.status === 'failed' ? 'failed' : 'remote_error',
+      httpStatus: response.status,
+      error: body.error,
+      status: body.status,
+      ...(gatewayCode ? { code: gatewayCode } : {}),
+    };
+  }
+
+  if (response.ok && body.success === true && body.status === 'sent' && body.messageId) {
+    console.log(
+      `[whatsapp] ${logLabel} group sent for ${maskGroupLink(groupInviteLink)} messageId=${body.messageId}`,
+    );
+    return {
+      sent: true,
+      skipped: false,
+      status: 'sent',
+      messageId: body.messageId,
+      sentAt: body.sentAt,
+      target: body.target,
+    };
+  }
+
+  console.log(
+    `[whatsapp] ${logLabel} group unconfirmed for ${maskGroupLink(groupInviteLink)} status=${body.status || 'n/a'}`,
+  );
+  return {
+    sent: false,
+    skipped: false,
+    reason: 'invalid_response',
+    httpStatus: response.status,
+    error:
+      body.error ||
+      `Bot did not confirm group sent/messageId (success=${String(body.success)} status=${body.status || 'n/a'})`,
+    status: body.status,
+    ...(gatewayCode ? { code: gatewayCode } : {}),
+  };
+}
+
+/**
  * Untyped Gateway send. Body is { phone, message, metadata? } — never includes `type`.
  */
 export async function sendGenericWhatsAppPayload(
@@ -281,6 +451,23 @@ export async function sendGenericWhatsAppPayload(
   }
 
   return postWhatsAppSend(body, 'generic', input.phone);
+}
+
+/**
+ * Untyped Gateway group send. Body is { groupInviteLink, message }.
+ */
+export async function sendGenericWhatsAppGroupPayload(
+  input: GenericWhatsAppGroupMessageInput,
+): Promise<GenericWhatsAppGroupSendResult> {
+  const disabled = skipIfClientDisabled();
+  if (disabled) return disabled;
+
+  const body = {
+    groupInviteLink: input.groupInviteLink,
+    message: input.message,
+  };
+
+  return postWhatsAppGroupSend(body, 'group', input.groupInviteLink);
 }
 
 /**

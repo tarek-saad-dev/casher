@@ -8,6 +8,7 @@
 import { getConfig } from './config';
 import {
   sendGenericWhatsAppPayload,
+  sendGenericWhatsAppGroupPayload,
   fetchWhatsAppStatus,
   fetchWhatsAppBotHealth,
 } from './client';
@@ -16,7 +17,9 @@ import type {
   WhatsAppStatusResult,
   WhatsAppBotHealthResult,
   GenericWhatsAppMessageInput,
+  GenericWhatsAppGroupMessageInput,
   GenericWhatsAppSendResult,
+  GenericWhatsAppGroupSendResult,
 } from './types';
 
 /** Master switch only — never gates on NODE_ENV. */
@@ -59,6 +62,40 @@ export async function sendWhatsAppMessage(
   } catch (err) {
     console.log(
       `[whatsapp] Generic message error (non-critical): ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return { sent: false, skipped: false, reason: 'remote_error' };
+  }
+}
+
+/**
+ * Generic Gateway group send via invite link.
+ */
+export async function sendWhatsAppGroupMessage(
+  input: GenericWhatsAppGroupMessageInput,
+): Promise<GenericWhatsAppGroupSendResult> {
+  const disabled = skipIfIntegrationDisabled();
+  if (disabled) return disabled;
+
+  const inviteLink =
+    typeof input.groupInviteLink === 'string' ? input.groupInviteLink.trim() : '';
+  if (!inviteLink) {
+    console.log('[whatsapp] Group message skipped: missing invite link');
+    return { sent: false, skipped: true, reason: 'invalid_payload' };
+  }
+
+  if (typeof input.message !== 'string' || input.message.trim().length === 0) {
+    console.log('[whatsapp] Group message skipped: empty message');
+    return { sent: false, skipped: true, reason: 'invalid_payload' };
+  }
+
+  try {
+    return await sendGenericWhatsAppGroupPayload({
+      groupInviteLink: inviteLink,
+      message: input.message,
+    });
+  } catch (err) {
+    console.log(
+      `[whatsapp] Group message error (non-critical): ${err instanceof Error ? err.message : String(err)}`,
     );
     return { sent: false, skipped: false, reason: 'remote_error' };
   }

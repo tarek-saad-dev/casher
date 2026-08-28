@@ -58,6 +58,7 @@ import {
   upsertCustomer,
 } from '@/lib/publicBookingHelpers';
 import { scheduleBookingWhatsAppAfterCommit } from '@/lib/bookingPostCommitNotification';
+import { scheduleBookingTeamGroupNotify } from '@/lib/bookingGroupWhatsAppNotify';
 import { invalidatePublicBookingAvailabilityCache } from '@/lib/booking/publicBookingAvailability';
 import { ensureBookingPublicWorkDateColumns } from '@/lib/booking/ensureBookingPublicWorkDateColumns';
 
@@ -1037,6 +1038,18 @@ export async function createPublicBooking(
     } else if (input.suppressNotification) {
       whatsapp = { scheduled: false, skipped: true, reason: 'suppressed' };
     }
+
+    scheduleBookingTeamGroupNotify({
+      eventKey: 'booking.created',
+      bookingId,
+      customerName,
+      bookingDate: calendarDate,
+      bookingTime: precheck.requestedTime,
+      barberName: selectedNameAr,
+      services: servicesNow.services.map((s) => s.nameAr),
+      branchName: branchNow.branchName,
+      branchId: branchNow.branchId,
+    });
 
     if (holdKey) {
       try {

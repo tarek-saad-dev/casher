@@ -163,6 +163,25 @@ export interface GenericWhatsAppMessageInput {
   idempotencyKey?: string;
 }
 
+export interface GenericWhatsAppGroupMessageInput {
+  groupInviteLink: string;
+  message: string;
+}
+
+export interface WhatsAppApiGroupSendResponse {
+  ok?: boolean;
+  success?: boolean;
+  status?: 'sent' | 'failed' | 'group_not_accessible' | 'group_not_found' | string;
+  messageId?: string;
+  type?: string;
+  target?: string;
+  chatId?: string;
+  message?: string;
+  sentAt?: string;
+  error?: string;
+  code?: string;
+}
+
 export type WhatsAppSendFailure =
   | {
       sent: false;
@@ -217,6 +236,18 @@ export type GenericWhatsAppSendResult =
       phone?: string;
       messageId: string;
       sentAt?: string;
+    }
+  | WhatsAppSendFailure;
+
+/** Gateway group send — POST /api/whatsapp/send-group. */
+export type GenericWhatsAppGroupSendResult =
+  | {
+      sent: true;
+      skipped: false;
+      status: 'sent';
+      messageId: string;
+      sentAt?: string;
+      target?: string;
     }
   | WhatsAppSendFailure;
 

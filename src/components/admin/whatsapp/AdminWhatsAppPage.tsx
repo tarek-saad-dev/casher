@@ -13,6 +13,7 @@ import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import AdminWhatsAppTemplatesPanel from '@/components/admin/whatsapp/AdminWhatsAppTemplatesPanel';
 import AdminWhatsAppCampaignsPanel from '@/components/admin/whatsapp/AdminWhatsAppCampaignsPanel';
+import AdminWhatsAppGroupsPanel from '@/components/admin/whatsapp/AdminWhatsAppGroupsPanel';
 import { useSession } from '@/hooks/useSession';
 
 type StatusPayload = {
@@ -29,7 +30,7 @@ type StatusPayload = {
 };
 
 type Toast = { id: number; type: 'success' | 'error'; message: string };
-type Tab = 'templates' | 'campaigns';
+type Tab = 'templates' | 'campaigns' | 'groups';
 
 function jsonHeaders(res: Response): boolean {
   return (res.headers.get('content-type') || '').includes('application/json');
@@ -194,12 +195,25 @@ export default function AdminWhatsAppPage() {
         >
           الحملات
         </button>
+        <button
+          type="button"
+          onClick={() => setTab('groups')}
+          className={`rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
+            tab === 'groups'
+              ? 'bg-primary/15 text-primary border-b-2 border-primary'
+              : 'text-zinc-400 hover:text-foreground'
+          }`}
+        >
+          الجروبات
+        </button>
       </div>
 
       {tab === 'templates' ? (
         <AdminWhatsAppTemplatesPanel branchId={branchId} onToast={addToast} />
-      ) : (
+      ) : tab === 'campaigns' ? (
         <AdminWhatsAppCampaignsPanel branchId={branchId} onToast={addToast} />
+      ) : (
+        <AdminWhatsAppGroupsPanel onToast={addToast} />
       )}
 
       <div className="fixed bottom-4 left-4 z-[100] flex max-w-sm flex-col gap-2">

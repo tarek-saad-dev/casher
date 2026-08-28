@@ -6,6 +6,7 @@
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
 import { scheduleBookingWhatsAppAfterCommit } from '@/lib/bookingPostCommitNotification';
+import { scheduleBookingTeamGroupNotify } from '@/lib/bookingGroupWhatsAppNotify';
 import { logBookingAvailabilityMetric } from '@/lib/availability/bookingAvailabilityMetrics';
 import { loadBookingCustomerContact } from '@/lib/booking/bookingCustomerContact';
 import { isUsableCustomerPhone } from '@/lib/publicBookingHelpers';
@@ -113,6 +114,7 @@ export async function scheduleBookingEventWhatsApp(args: {
   bookingTime: string;
   barberName?: string | null;
   branchName?: string | null;
+  branchId?: number | null;
   servicesSummary?: string | null;
   cancelled?: boolean;
 }): Promise<{ scheduled: boolean; skippedReason?: string; idempotencyKey: string }> {
@@ -141,6 +143,29 @@ export async function scheduleBookingEventWhatsApp(args: {
     throw err;
   }
 
+  const name = args.customerName?.trim() || 'عميلنا';
+  const groupEventKey =
+    args.eventType === 'cancel'
+      ? 'booking.cancelled'
+      : args.eventType === 'move'
+        ? 'booking.moved'
+        : null;
+  if (groupEventKey) {
+    scheduleBookingTeamGroupNotify({
+      eventKey: groupEventKey,
+      bookingId: args.bookingId,
+      customerName: name,
+      bookingDate: args.bookingDate,
+      bookingTime: args.bookingTime,
+      barberName: args.barberName ?? undefined,
+      services: args.servicesSummary
+        ? args.servicesSummary.split(/[,،]/).map((s) => s.trim()).filter(Boolean)
+        : undefined,
+      branchName: args.branchName ?? undefined,
+      branchId: args.branchId ?? undefined,
+    });
+  }
+
   if (!phoneOk) {
     const errMsg = !args.phone?.trim()
       ? 'MISSING_CUSTOMER_PHONE'
@@ -160,7 +185,6 @@ export async function scheduleBookingEventWhatsApp(args: {
     return { scheduled: false, skippedReason: 'no_phone', idempotencyKey: key };
   }
 
-  const name = args.customerName?.trim() || 'عميلنا';
   const services =
     args.cancelled || args.eventType === 'cancel'
       ? buildCancelServicesMessage({

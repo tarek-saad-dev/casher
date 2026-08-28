@@ -52,6 +52,9 @@
     "messaging:worker": "tsx scripts/messaging-outbox-worker.ts",
     "messaging:seed-templates-phase6": "tsx scripts/run-message-templates-phase6-seed.ts",
     "messaging:migrate-campaigns": "tsx scripts/run-whatsapp-campaign-migration.ts",
+    "messaging:migrate-groups": "tsx scripts/run-whatsapp-group-migration.ts",
+    "messaging:seed-booking-group": "tsx scripts/seed-whatsapp-booking-group.ts",
+    "messaging:verify-groups": "tsx scripts/verify-whatsapp-groups.ts",
     "messaging:seed-templates-phase7": "tsx scripts/run-whatsapp-campaign-migration.ts"
   },
   "dependencies": {
