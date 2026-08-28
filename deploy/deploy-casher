@@ -38,6 +38,22 @@ runuser -u casher -- git fetch origin "$BRANCH"
 echo
 echo "[3/8] Updating code..."
 runuser -u casher -- git checkout "$BRANCH"
+
+echo
+echo "[3a/8] Removing untracked files that would block merge..."
+runuser -u casher -- bash -lc "
+cd '$APP_DIR'
+while IFS= read -r path; do
+  [ -n \"\$path\" ] || continue
+  if [ -e \"\$path\" ] && ! git ls-files --error-unmatch \"\$path\" >/dev/null 2>&1; then
+  if git cat-file -e \"origin/$BRANCH:\$path\" 2>/dev/null; then
+    echo \"Removing untracked merge blocker: \$path\"
+    rm -f \"\$path\"
+  fi
+  fi
+done < <(git diff --name-only HEAD \"origin/$BRANCH\")
+"
+
 runuser -u casher -- git pull --ff-only origin "$BRANCH"
 
 echo
