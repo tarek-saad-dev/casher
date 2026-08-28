@@ -7,6 +7,8 @@ WORKER_UNIT_SRC="$APP_DIR/deploy/messaging-worker.service"
 WORKER_UNIT_DST="/etc/systemd/system/messaging-worker.service"
 INBOX_WORKER_UNIT_SRC="$APP_DIR/deploy/messaging-inbox-worker.service"
 INBOX_WORKER_UNIT_DST="/etc/systemd/system/messaging-inbox-worker.service"
+AI_WORKER_UNIT_SRC="$APP_DIR/deploy/messaging-ai-worker.service"
+AI_WORKER_UNIT_DST="/etc/systemd/system/messaging-ai-worker.service"
 NIGHTLY_SERVICE_SRC="$APP_DIR/deploy/nightly-close.service"
 NIGHTLY_SERVICE_DST="/etc/systemd/system/nightly-close.service"
 NIGHTLY_TIMER_SRC="$APP_DIR/deploy/nightly-close.timer"
@@ -14,6 +16,18 @@ NIGHTLY_TIMER_DST="/etc/systemd/system/nightly-close.timer"
 NIGHTLY_USER_SERVICE_SRC="$APP_DIR/deploy/nightly-close.user.service"
 NIGHTLY_USER_TIMER_SRC="$APP_DIR/deploy/nightly-close.user.timer"
 NIGHTLY_USER_DIR="/home/casher/.config/systemd/user"
+
+gemini_api_key_configured() {
+  runuser -u casher -- bash -lc "
+    cd '$APP_DIR'
+    node -e \"
+      require('dotenv').config({ path: '.env' });
+      require('dotenv').config({ path: '.env.local', override: true });
+      const key = String(process.env.GEMINI_API_KEY || '').trim();
+      process.exit(key ? 0 : 1);
+    \"
+  "
+}
 
 echo "======================================"
 echo "  CASher Production Deploy"
@@ -78,12 +92,22 @@ node scripts/ensure-phase1b-secrets.cjs
 "
 
 echo
+echo "[7a/8] Phase 3 AI schema migration..."
+runuser -u casher -- bash -lc "
+cd '$APP_DIR'
+npm run messaging:migrate-ai
+"
+
+echo
 echo "[7/8] Installing/updating systemd units..."
 if [[ -f "$WORKER_UNIT_SRC" ]]; then
   install -m 644 "$WORKER_UNIT_SRC" "$WORKER_UNIT_DST"
 fi
 if [[ -f "$INBOX_WORKER_UNIT_SRC" ]]; then
   install -m 644 "$INBOX_WORKER_UNIT_SRC" "$INBOX_WORKER_UNIT_DST"
+fi
+if [[ -f "$AI_WORKER_UNIT_SRC" ]]; then
+  install -m 644 "$AI_WORKER_UNIT_SRC" "$AI_WORKER_UNIT_DST"
 fi
 if [[ -f "$NIGHTLY_SERVICE_SRC" && -f "$NIGHTLY_TIMER_SRC" ]]; then
   install -m 644 "$NIGHTLY_SERVICE_SRC" "$NIGHTLY_SERVICE_DST"
@@ -121,6 +145,16 @@ else
   CASHER_UID="$(id -u casher)"
   runuser -u casher -- env XDG_RUNTIME_DIR="/run/user/${CASHER_UID}" \
     systemctl --user restart messaging-worker.service || true
+fi
+if [[ -f "$AI_WORKER_UNIT_DST" ]]; then
+  if gemini_api_key_configured; then
+    systemctl enable messaging-ai-worker.service
+    systemctl restart messaging-ai-worker.service
+  else
+    echo "Skipping messaging-ai-worker start/restart: GEMINI_API_KEY is not configured"
+    systemctl stop messaging-ai-worker.service 2>/dev/null || true
+    systemctl disable messaging-ai-worker.service 2>/dev/null || true
+  fi
 fi
 
 sleep 3

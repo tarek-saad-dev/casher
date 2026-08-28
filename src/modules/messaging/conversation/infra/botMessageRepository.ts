@@ -182,3 +182,77 @@ export async function countMessagesByConversation(conversationId: number): Promi
     `);
   return Number(result.recordset[0]?.cnt ?? 0);
 }
+
+const AI_OUTBOUND_PROVIDER = 'casher-ai';
+
+export function aiTurnProviderMessageId(turnId: number): string {
+  return `turn:${turnId}`;
+}
+
+export async function getOutboundBotMessageByAiTurnId(
+  turnId: number,
+): Promise<BotMessageRow | null> {
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input('provider', sql.NVarChar(50), AI_OUTBOUND_PROVIDER)
+    .input('providerMessageId', sql.NVarChar(250), aiTurnProviderMessageId(turnId))
+    .query(`
+      SELECT ${MESSAGE_COLUMNS}
+      FROM [dbo].[TblBotMessage]
+      WHERE [Provider] = @provider AND [ProviderMessageID] = @providerMessageId
+    `);
+  const row = result.recordset[0] as RawMessageRow | undefined;
+  return row ? mapBotMessageRow(row) : null;
+}
+
+export async function insertOutboundBotMessage(input: {
+  conversationId: number;
+  turnId: number;
+  text: string;
+  occurredAt?: Date;
+}): Promise<BotMessageRow> {
+  const pool = await getPool();
+  try {
+    const result = await pool
+      .request()
+      .input('conversationId', sql.BigInt, input.conversationId)
+      .input('provider', sql.NVarChar(50), AI_OUTBOUND_PROVIDER)
+      .input('providerMessageId', sql.NVarChar(250), aiTurnProviderMessageId(input.turnId))
+      .input('messageType', sql.NVarChar(50), 'text')
+      .input('text', sql.NVarChar(sql.MAX), input.text)
+      .input('occurredAt', sql.DateTime2, input.occurredAt ?? new Date())
+      .query(`
+        INSERT INTO [dbo].[TblBotMessage] (
+          [ConversationID],
+          [InboxID],
+          [Direction],
+          [Provider],
+          [ProviderMessageID],
+          [MessageType],
+          [Text],
+          [OccurredAt],
+          [CreatedAt]
+        )
+        OUTPUT ${MESSAGE_OUTPUT_COLUMNS}
+        VALUES (
+          @conversationId,
+          NULL,
+          N'outbound',
+          @provider,
+          @providerMessageId,
+          @messageType,
+          @text,
+          @occurredAt,
+          SYSUTCDATETIME()
+        )
+      `);
+    const row = result.recordset[0] as RawMessageRow | undefined;
+    if (!row) throw new Error('Outbound bot message insert did not return a row');
+    return mapBotMessageRow(row);
+  } catch (err) {
+    const existing = await getOutboundBotMessageByAiTurnId(input.turnId);
+    if (existing) return existing;
+    throw err;
+  }
+}

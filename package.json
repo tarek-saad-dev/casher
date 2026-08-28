@@ -62,12 +62,16 @@
     "messaging:diagnose-db-topology": "tsx scripts/diagnose-db-topology.ts",
     "messaging:phase22-benchmarks": "tsx scripts/run-messaging-phase22-benchmarks.ts",
     "messaging:verify-conversation-perf": "tsx scripts/verify-conversation-perf.ts",
+    "messaging:migrate-ai": "tsx scripts/run-bot-ai-turn-migration.ts",
+    "messaging:ai-worker": "tsx scripts/messaging-ai-worker.ts",
+    "messaging:benchmark-ai": "tsx scripts/benchmark-ai.ts",
     "messaging:seed-booking-group": "tsx scripts/seed-whatsapp-booking-group.ts",
     "messaging:verify-groups": "tsx scripts/verify-whatsapp-groups.ts",
     "messaging:seed-templates-phase7": "tsx scripts/run-whatsapp-campaign-migration.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
+    "@google/generative-ai": "^0.24.1",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-select": "^2.2.6",

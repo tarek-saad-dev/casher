@@ -4,6 +4,7 @@ import {
   recoverStaleProcessing,
 } from '../../inbox/infra/messageInboxRepository';
 import { processInboxMessage } from './processInboxMessage';
+import { scheduleAiTurn } from '../../ai/application/scheduleAiTurn';
 import {
   computePersistedToReadyMs,
   InboxProcessorPerfTimer,
@@ -79,7 +80,29 @@ export async function processInboxTick(
       const readyAt = new Date();
 
       if (result.duplicate) summary.duplicates += 1;
-      else summary.processed += 1;
+      else {
+        summary.processed += 1;
+        if (result.conversationId != null && result.messageId != null) {
+          try {
+            await scheduleAiTurn({
+              conversationId: result.conversationId,
+              inboundMessageId: result.messageId,
+            });
+          } catch (scheduleErr) {
+            const scheduleMessage =
+              scheduleErr instanceof Error ? scheduleErr.message : String(scheduleErr);
+            console.error(
+              JSON.stringify({
+                type: 'messaging_ai_schedule_failed',
+                inboxId: row.id,
+                conversationId: result.conversationId,
+                messageId: result.messageId,
+                error: scheduleMessage,
+              }),
+            );
+          }
+        }
+      }
 
       logInboxProcessorPerf({
         event: 'inbox_message_processed',
