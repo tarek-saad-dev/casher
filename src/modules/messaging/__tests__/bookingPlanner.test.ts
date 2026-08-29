@@ -325,10 +325,10 @@ describe('Phase 3 booking planner pure helpers', () => {
     };
     const ready = buildReadyToConfirmReply(plan);
     const confirmed = buildConfirmedIntentReply(plan);
-    expect(ready).toMatch(/أأكدلك الحجز/);
+    expect(ready).toMatch(/أأكدلك/);
     expect(ready).not.toMatch(/تم الحجز/);
     expect(confirmed).not.toMatch(/تم الحجز/);
-    expect(confirmed).toMatch(/جاهز للتأكيد/);
+    expect(confirmed).toMatch(/جاهزين نأكد|جاهز/);
     expect(isAffirmative('أيوه')).toBe(true);
     expect(isAffirmative('أيوه أكد الحجز')).toBe(true);
     expect(isAffirmative('اه أكد')).toBe(true);
@@ -558,7 +558,7 @@ describe('Phase 3 booking planner turn matrix', () => {
     });
     expect(pick.plan?.stage).toBe('ready_to_confirm');
     expect(pick.plan?.selectedSlot?.time).toBe('19:00');
-    expect(pick.replyText).toMatch(/أأكدلك الحجز/);
+    expect(pick.replyText).toMatch(/أأكدلك/);
     expect(pick.replyText).not.toMatch(/تم الحجز/);
     expect(pick.trace.deterministicAction).toBe('select_slot');
   });

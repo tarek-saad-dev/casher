@@ -1,3 +1,5 @@
+import { isConversationIntelligenceV2Enabled } from './conversationIntelligence/featureFlag';
+
 export const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
 export const DEFAULT_AI_BURST_DEBOUNCE_MS = 250;
 export const DEFAULT_AI_CONTEXT_MAX_MESSAGES = 10;
@@ -23,6 +25,7 @@ export function getAiConfig(env: NodeJS.ProcessEnv = process.env) {
     contextMaxMessages: parsePositiveInt(env.AI_CONTEXT_MAX_MESSAGES, DEFAULT_AI_CONTEXT_MAX_MESSAGES),
     modelTimeoutMs: parsePositiveInt(env.AI_MODEL_TIMEOUT_MS, DEFAULT_AI_MODEL_TIMEOUT_MS),
     enabled: Boolean(String(env.GEMINI_API_KEY ?? '').trim()),
+    conversationIntelligenceV2: isConversationIntelligenceV2Enabled(env),
   };
 }
 

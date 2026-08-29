@@ -43,6 +43,10 @@ import {
   resolveEmployeeByText,
   resolveServicesByText,
 } from './resolveEntities';
+import {
+  buildServiceNotFoundReply,
+  buildEmployeeNotFoundReply,
+} from '../conversationIntelligence/responseComposer';
 
 const PLANNER_INTENTS = new Set<AiIntent>([
   'booking_request',
@@ -218,7 +222,7 @@ async function applyEntities(
           reply: `تقصد ${svc.ambiguous.map((s) => s.name).join(' ولا ')}؟`,
         };
       }
-      return { reply: 'مش لاقي الخدمة دي في الكتالوج. تقدر توضح اسم الخدمة؟' };
+      return { reply: buildServiceNotFoundReply(entities.serviceText) };
     }
     const nextIds = svc.services.map((s) => s.serviceId);
     const changed =
@@ -255,7 +259,7 @@ async function applyEntities(
           reply: `تقصد ${emp.ambiguous.map((e) => e.name).join(' ولا ')}؟`,
         };
       }
-      return { reply: `مش لاقي موظف باسم "${entities.employeeName}" على الفرع ده.` };
+      return { reply: buildEmployeeNotFoundReply(entities.employeeName || '') };
     }
     if (emp.employee) {
       if (plan.empId !== emp.employee.empId) {

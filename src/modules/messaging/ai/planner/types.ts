@@ -23,9 +23,21 @@ export const BOOKING_PLAN_ACTIVE_STAGES: BookingPlanStage[] = [
 ];
 
 export type BookingTimePreference = {
-  kind: 'earliest' | 'after' | 'before' | 'exact' | 'morning' | 'afternoon' | 'evening' | 'any';
-  /** HH:mm 24h when after/before/exact */
+  kind:
+    | 'earliest'
+    | 'after'
+    | 'before'
+    | 'exact'
+    | 'around'
+    | 'range'
+    | 'morning'
+    | 'afternoon'
+    | 'evening'
+    | 'any';
+  /** HH:mm 24h when after/before/exact/around */
   timeHm?: string | null;
+  /** HH:mm end for range */
+  timeHmEnd?: string | null;
 };
 
 export type BookingCandidateSlot = {

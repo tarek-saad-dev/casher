@@ -6,6 +6,12 @@ import type {
   BookingTimePreference,
 } from './types';
 import { formatSlotLabelAr } from './slotPreferences';
+import {
+  buildAskPrompt as ciAsk,
+  buildSlotChoicesReply as ciSlots,
+  buildReadyToConfirmReply as ciReady,
+  buildConfirmedIntentReply as ciConfirmed,
+} from '../conversationIntelligence/responseComposer';
 
 export type MutablePlan = {
   stage: BookingPlanStage;
@@ -93,11 +99,6 @@ export function computeMissingFields(plan: MutablePlan): BookingPlanMissingField
   const missing: BookingPlanMissingField[] = [];
   if (!plan.serviceIds.length) missing.push('service');
   if (!plan.requestedDate) missing.push('date');
-  // employee optional (any barber) — not required
-  // branch optional if employee implies it
-  if (plan.serviceIds.length && plan.requestedDate && !plan.candidateSlots.length && !plan.selectedSlot) {
-    // will search — no missing until search done
-  }
   if (plan.candidateSlots.length && !plan.selectedSlot && plan.stage === 'choosing_slot') {
     missing.push('slot_choice');
   }
@@ -108,65 +109,19 @@ export function computeMissingFields(plan: MutablePlan): BookingPlanMissingField
 }
 
 export function buildAskPrompt(missing: BookingPlanMissingField[]): string {
-  if (missing.includes('service')) {
-    return 'حاضر، تحب تحجز أنهي خدمة؟';
-  }
-  if (missing.includes('date')) {
-    return 'تمام، تحب الميعاد أنهي يوم؟';
-  }
-  if (missing.includes('employee')) {
-    return 'تحب مع حد معين ولا أي حد فاضي؟';
-  }
-  if (missing.includes('branch')) {
-    return 'تحب أنهي فرع؟';
-  }
-  if (missing.includes('slot_choice')) {
-    return 'أنهي ميعاد يناسبك من اللي فوق؟';
-  }
-  if (missing.includes('confirm')) {
-    return 'أأكدلك الحجز؟';
-  }
-  return 'محتاج تفاصيل أوضح عشان أكمّل الحجز.';
+  return ciAsk(missing);
 }
 
 export function buildSlotChoicesReply(plan: MutablePlan): string {
-  const lines = plan.candidateSlots.map((s, i) => `${i + 1}) ${s.label}`);
-  const who = plan.employeeName ? `مع ${plan.employeeName}` : '';
-  const when = plan.requestedDate ? 'بكرة/اليوم المحدد' : '';
-  // Prefer compact Arabic
-  const dateHint = plan.requestedDate ? ` يوم ${plan.requestedDate}` : '';
-  return [
-    `المواعيد المناسبة ${who}${dateHint}:`.replace(/\s+/g, ' ').trim(),
-    ...lines,
-    'أنهي واحد يناسبك؟',
-  ].join('\n');
+  return ciSlots(plan);
 }
 
 export function buildReadyToConfirmReply(plan: MutablePlan): string {
-  const slot = plan.selectedSlot;
-  const service = plan.serviceNames[0] || 'الخدمة';
-  const emp = plan.employeeName || 'أي فني متاح';
-  const branch = plan.branchName || plan.branchCode || '';
-  const date = plan.requestedDate || '';
-  const time = slot?.label || slot?.time || '';
-  return [
-    'تمام يا باشا:',
-    `${service} مع ${emp}`,
-    branch ? branch : null,
-    `${date} الساعة ${time}`,
-    '',
-    'أأكدلك الحجز؟',
-  ]
-    .filter((x) => x != null && String(x).length)
-    .join('\n');
+  return ciReady(plan);
 }
 
 export function buildConfirmedIntentReply(plan: MutablePlan): string {
-  const slot = plan.selectedSlot;
-  const service = plan.serviceNames[0] || 'الخدمة';
-  const emp = plan.employeeName || '';
-  const time = slot?.label || slot?.time || '';
-  return `تمام، اختيارك جاهز للتأكيد: ${service}${emp ? ` مع ${emp}` : ''} الساعة ${time}. التأكيد النهائي هيتم في خطوة الحجز الجاية (لسه مش مفعّلة من الشات).`;
+  return ciConfirmed(plan);
 }
 
 export function toCandidateFromAvailability(slot: {
