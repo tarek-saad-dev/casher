@@ -43,3 +43,15 @@ export {
 } from './dialoguePolicy';
 
 export { isConversationIntelligenceV2Enabled } from './featureFlag';
+
+export {
+  detectTurnIntent,
+  isNearDuplicateQuestion,
+  looksLikeAlternativeEmployeeQuery,
+  type TurnIntentClass,
+} from './turnIntent';
+
+export {
+  findAlternativeEmployeesSameTime,
+  buildAlternativeEmployeesReply,
+} from './alternativeSearch';

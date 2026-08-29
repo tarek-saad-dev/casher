@@ -47,6 +47,17 @@ import {
   buildServiceNotFoundReply,
   buildEmployeeNotFoundReply,
 } from '../conversationIntelligence/responseComposer';
+import {
+  detectTurnIntent,
+  isNearDuplicateQuestion,
+  looksLikeAlternativeEmployeeQuery,
+  looksLikeBusinessInfoInterrupt,
+} from '../conversationIntelligence/turnIntent';
+import {
+  buildAlternativeEmployeesReply,
+  findAlternativeEmployeesSameTime,
+} from '../conversationIntelligence/alternativeSearch';
+import { isConversationIntelligenceV2Enabled } from '../conversationIntelligence/featureFlag';
 
 const PLANNER_INTENTS = new Set<AiIntent>([
   'booking_request',
@@ -411,6 +422,13 @@ function advanceStage(plan: MutablePlan): void {
  * Process one turn through the Booking Planner.
  * Returns handled=false for interruptions so Phase 2 read tools remain intact.
  */
+
+/** Recent turn memory for misunderstanding repair (same conversation). */
+const recentTurnMemory = new Map<
+  number,
+  { text: string; intent: string; action: string; answeredWell: boolean }
+>();
+
 export async function processBookingPlannerTurn(
   input: PlannerTurnInput,
 ): Promise<PlannerTurnResult> {
@@ -419,16 +437,59 @@ export async function processBookingPlannerTurn(
   const text = input.inboundText.trim();
   const structured = input.structured;
 
+  let turnIntent = isConversationIntelligenceV2Enabled()
+    ? detectTurnIntent(text)
+    : { intent: 'UNKNOWN' as const, confidence: 'LOW' as const, alternativeKind: undefined };
+
+  // Repeated-question repair: if customer repeats an unresolved alt/info ask, force that intent
+  const prevMem = recentTurnMemory.get(input.conversationId);
+  if (
+    isConversationIntelligenceV2Enabled() &&
+    prevMem &&
+    !prevMem.answeredWell &&
+    isNearDuplicateQuestion(prevMem.text, text)
+  ) {
+    if (
+      prevMem.intent === 'BOOKING_ALTERNATIVE_QUERY' ||
+      looksLikeAlternativeEmployeeQuery(text) ||
+      looksLikeAlternativeEmployeeQuery(prevMem.text)
+    ) {
+      turnIntent = {
+        intent: 'BOOKING_ALTERNATIVE_QUERY',
+        confidence: 'HIGH',
+        alternativeKind: 'other_employee_same_time',
+      };
+      trace.deterministicAction = 'misunderstanding_repair';
+    } else if (
+      prevMem.intent === 'BUSINESS_INFORMATION_INTERRUPT' ||
+      looksLikeBusinessInfoInterrupt(text)
+    ) {
+      turnIntent = {
+        intent: 'BUSINESS_INFORMATION_INTERRUPT',
+        confidence: 'HIGH',
+      };
+      trace.deterministicAction = 'misunderstanding_repair';
+    }
+  }
+
   const interrupt =
-    INTERRUPT_INTENTS.has(structured.intent) &&
-    !PLANNER_INTENTS.has(structured.intent) &&
-    !isResumePlanner(text) &&
-    !looksLikeBookingIntent(text) &&
-    !isAffirmative(text) &&
-    !/^(الأول|الاول|التاني|الثاني|التالت|الثالث|\d{1,2})$/i.test(text);
+    turnIntent.intent !== 'BOOKING_ALTERNATIVE_QUERY' &&
+    ((INTERRUPT_INTENTS.has(structured.intent) &&
+      !PLANNER_INTENTS.has(structured.intent) &&
+      !isResumePlanner(text) &&
+      !looksLikeBookingIntent(text) &&
+      !isAffirmative(text) &&
+      !/^(الأول|الاول|التاني|الثاني|التالت|الثالث|\d{1,2})$/i.test(text)) ||
+      turnIntent.intent === 'BUSINESS_INFORMATION_INTERRUPT');
 
   if (interrupt && active) {
     // Leave plan intact; let Phase 2 answer the side question.
+    recentTurnMemory.set(input.conversationId, {
+      text,
+      intent: turnIntent.intent,
+      action: 'interrupt_passthrough',
+      answeredWell: true,
+    });
     return {
       handled: false,
       preservePlan: true,
@@ -440,6 +501,7 @@ export async function processBookingPlannerTurn(
         stageBefore: active.stage,
         stageAfter: active.stage,
         deterministicAction: 'interrupt_passthrough',
+        extracted: { turnIntent: turnIntent.intent },
       },
       intent: structured.intent,
     };
@@ -476,11 +538,79 @@ export async function processBookingPlannerTurn(
   const plan: MutablePlan = active ? fromSnapshot(active) : emptyMutablePlan();
   trace.stageBefore = active?.stage ?? 'none';
   trace.planId = active?.planId ?? null;
+  trace.extracted = { turnIntent: turnIntent.intent };
 
   const runAvailability = input.runAvailability ?? executeGetAvailability;
 
+  // CI V2 arbitration: alternative queries must not re-emit confirmation summary
+  if (
+    isConversationIntelligenceV2Enabled() &&
+    active &&
+    turnIntent.intent === 'BOOKING_ALTERNATIVE_QUERY' &&
+    (active.stage === 'ready_to_confirm' ||
+      active.stage === 'choosing_slot' ||
+      active.stage === 'confirmed_intent')
+  ) {
+    const alt = await findAlternativeEmployeesSameTime(plan);
+    const nextPlan: MutablePlan = {
+      ...fromSnapshot(active),
+      clarification: alt.alternatives.length
+        ? {
+            field: 'employee',
+            options: alt.alternatives.map((a) => ({
+              id: String(a.empId),
+              label: a.name,
+            })),
+            prompt: 'تحب تغيّر لمين؟',
+          }
+        : active.clarification,
+    };
+    const saved = await persistPlan({
+      conversationId: input.conversationId,
+      existing: active,
+      plan: nextPlan,
+      turnId: input.turnId,
+      trace,
+    });
+    trace.toolCalls.push({
+      name: 'alternative_employee_search',
+      ok: alt.ok,
+      durationMs: 0,
+      errorCode: alt.errorCode ?? null,
+    });
+    trace.deterministicAction = 'alternative_employee_query';
+    trace.stageAfter = active.stage;
+    recentTurnMemory.set(input.conversationId, {
+      text,
+      intent: 'BOOKING_ALTERNATIVE_QUERY',
+      action: 'alternative_employee_query',
+      answeredWell: true,
+    });
+    console.log(
+      JSON.stringify({
+        type: 'messaging_booking_planner_trace',
+        ...trace,
+        planId: saved.planId,
+      }),
+    );
+    return {
+      handled: true,
+      preservePlan: true,
+      replyText: buildAlternativeEmployeesReply(fromSnapshot(saved), alt),
+      plan: saved,
+      trace,
+      intent: 'availability_question',
+    };
+  }
+
   // Soft decline at confirm — keep plan, no write
-  if (active && active.stage === 'ready_to_confirm' && isNegativeOrCancel(text) && !looksLikePlannerCancel(text)) {
+  if (
+    active &&
+    active.stage === 'ready_to_confirm' &&
+    isNegativeOrCancel(text) &&
+    turnIntent.intent !== 'BOOKING_MODIFICATION' &&
+    !looksLikePlannerCancel(text)
+  ) {
     trace.deterministicAction = 'confirm_declined';
     trace.stageAfter = 'ready_to_confirm';
     return {
@@ -493,14 +623,17 @@ export async function processBookingPlannerTurn(
     };
   }
 
-  // Phase 4: affirmative at ready_to_confirm / confirmed_intent / booked → execute (idempotent)
+  // Phase 4: affirmative only when turn is booking progress
   if (
     active &&
     (active.stage === 'ready_to_confirm' ||
       active.stage === 'confirmed_intent' ||
       active.stage === 'booked' ||
       active.stage === 'execution_failed') &&
-    isAffirmative(text)
+    isAffirmative(text) &&
+    turnIntent.intent !== 'BOOKING_ALTERNATIVE_QUERY' &&
+    turnIntent.intent !== 'BUSINESS_INFORMATION_INTERRUPT' &&
+    turnIntent.intent !== 'BOOKING_MODIFICATION'
   ) {
     const { executeConfirmedBookingPlan } = await import('./executeConfirmedBookingPlan');
     const exec = await executeConfirmedBookingPlan({
@@ -520,11 +653,110 @@ export async function processBookingPlannerTurn(
     };
   }
 
+  // Choosing alternative employee from clarification options
+  // Asking about alternatives ≠ choosing; choosing here updates employee and revalidates slot.
+  if (
+    isConversationIntelligenceV2Enabled() &&
+    active?.clarification?.field === 'employee' &&
+    active.clarification.options.length &&
+    turnIntent.intent !== 'BOOKING_ALTERNATIVE_QUERY' &&
+    turnIntent.intent !== 'BUSINESS_INFORMATION_INTERRUPT'
+  ) {
+    const pick = active.clarification.options.find(
+      (o) => text.includes(o.label) || text.trim() === o.id,
+    );
+    if (pick) {
+      const empId = Number(pick.id);
+      const preservedSlot = active.selectedSlot;
+      plan.empId = Number.isFinite(empId) ? empId : plan.empId;
+      plan.employeeName = pick.label;
+      plan.clarification = null;
+      plan.branchCode = plan.branchCode || active.branchCode;
+      plan.branchId = plan.branchId ?? active.branchId;
+      plan.branchName = plan.branchName || active.branchName;
+      plan.serviceIds = plan.serviceIds.length ? plan.serviceIds : [...active.serviceIds];
+      plan.serviceNames = plan.serviceNames.length ? plan.serviceNames : [...active.serviceNames];
+      plan.requestedDate = plan.requestedDate || active.requestedDate;
+      plan.timePreference = plan.timePreference || active.timePreference;
+      plan.candidateSlots = [...active.candidateSlots];
+      plan.selectedSlot = preservedSlot
+        ? { ...preservedSlot, empId: plan.empId, empName: pick.label }
+        : null;
+
+      if (preservedSlot && plan.branchCode && plan.requestedDate && plan.serviceIds.length) {
+        const fresh = await runAvailability({
+          name: 'get_availability',
+          branchCode: plan.branchCode,
+          serviceIds: plan.serviceIds,
+          empId: plan.empId,
+          dateText: plan.requestedDate,
+        });
+        trace.toolCalls.push({
+          name: 'get_availability',
+          ok: fresh.ok,
+          durationMs: (fresh as { durationMs?: number }).durationMs ?? 0,
+          errorCode: fresh.errorCode ?? null,
+        });
+        const times = fresh.ok
+          ? ((fresh.data as { slots?: Array<{ time: string }> })?.slots ?? []).map((s) => s.time)
+          : [];
+        if (fresh.ok && times.includes(preservedSlot.time)) {
+          plan.stage = 'ready_to_confirm';
+          plan.missingFields = ['confirm'];
+          const saved = await persistPlan({
+            conversationId: input.conversationId,
+            existing: active,
+            plan,
+            turnId: input.turnId,
+            trace,
+          });
+          trace.deterministicAction = 'choose_alternative_employee';
+          trace.stageAfter = 'ready_to_confirm';
+          console.log(
+            JSON.stringify({ type: 'messaging_booking_planner_trace', ...trace, planId: saved.planId }),
+          );
+          return {
+            handled: true,
+            preservePlan: true,
+            replyText: `تمام، غيّرتها لـ ${pick.label} الساعة ${preservedSlot.label || preservedSlot.time}. أأكدلك الحجز؟`,
+            plan: saved,
+            trace,
+            intent: 'booking_request',
+          };
+        }
+        // Slot invalid for new employee — re-offer shortlist
+        const filled = await searchAvailability(plan, trace, runAvailability);
+        if (filled.reply) {
+          const saved = await persistPlan({
+            conversationId: input.conversationId,
+            existing: active,
+            plan,
+            turnId: input.turnId,
+            trace,
+          });
+          trace.deterministicAction = 'choose_alternative_employee_revalidate';
+          trace.stageAfter = plan.stage;
+          return {
+            handled: true,
+            preservePlan: true,
+            replyText: filled.reply,
+            plan: saved,
+            trace,
+            intent: 'booking_request',
+          };
+        }
+      }
+      trace.deterministicAction = 'choose_alternative_employee';
+    }
+  }
+
   // Deterministic: slot choice against STORED candidates.
   // Ignore Gemini entity echo from prior turns — "الأول"/"1" must not re-search.
   if (
     active &&
     active.candidateSlots.length > 0 &&
+    turnIntent.intent !== 'BOOKING_ALTERNATIVE_QUERY' &&
+    turnIntent.intent !== 'BUSINESS_INFORMATION_INTERRUPT' &&
     (active.stage === 'choosing_slot' || looksLikeSlotChoice(text))
   ) {
     const choice = resolveSlotChoice(text, active.candidateSlots);
@@ -752,6 +984,34 @@ export async function processBookingPlannerTurn(
   }
 
   // Already have selected slot → ready to confirm
+  // Do not re-spam full summary on every unrecognized turn at ready_to_confirm
+  if (
+    isConversationIntelligenceV2Enabled() &&
+    active?.stage === 'ready_to_confirm' &&
+    plan.selectedSlot &&
+    turnIntent.intent !== 'BOOKING_PROGRESS' &&
+    turnIntent.intent !== 'BOOKING_MODIFICATION' &&
+    turnIntent.intent !== 'NEW_BOOKING_REQUEST'
+  ) {
+    trace.deterministicAction = 'ready_to_confirm_hold';
+    trace.stageAfter = 'ready_to_confirm';
+    recentTurnMemory.set(input.conversationId, {
+      text,
+      intent: turnIntent.intent,
+      action: 'ready_to_confirm_hold',
+      answeredWell: false,
+    });
+    return {
+      handled: true,
+      preservePlan: true,
+      replyText:
+        'الحجز لسه مستني تأكيدك. تحب نأكده، ولا تغيّر حاجة، ولا أدورلك على بديل؟',
+      plan: active,
+      trace,
+      intent: 'booking_request',
+    };
+  }
+
   plan.stage = 'ready_to_confirm';
   plan.missingFields = ['confirm'];
   const saved = await persistPlan({
@@ -762,6 +1022,12 @@ export async function processBookingPlannerTurn(
     trace,
   });
   trace.stageAfter = plan.stage;
+  recentTurnMemory.set(input.conversationId, {
+    text,
+    intent: turnIntent.intent,
+    action: 'ready_to_confirm_summary',
+    answeredWell: turnIntent.intent === 'BOOKING_PROGRESS',
+  });
   console.log(JSON.stringify({ type: 'messaging_booking_planner_trace', ...trace, planId: saved.planId }));
   return {
     handled: true,

@@ -23,6 +23,15 @@ import {
 import { isAffirmative, resolveSlotChoice } from '../planner/slotPreferences';
 import type { BookingCandidateSlot } from '../planner/types';
 import { invalidateAfterChange, emptyMutablePlan } from '../planner/planState';
+import {
+  detectTurnIntent,
+  isNearDuplicateQuestion,
+  type TurnIntentClass,
+} from './turnIntent';
+import {
+  buildAlternativeEmployeesReply,
+  type AlternativeSearchResult,
+} from './alternativeSearchReply';
 
 export type BenchmarkCategory =
   | 'service'
@@ -34,7 +43,10 @@ export type BenchmarkCategory =
   | 'policy'
   | 'ux'
   | 'safety'
-  | 'mixed';
+  | 'mixed'
+  | 'intent'
+  | 'alternative'
+  | 'interrupt';
 
 export type BenchmarkScenario = {
   id: string;
@@ -53,6 +65,11 @@ export type BenchmarkScenario = {
     noTechJargon?: boolean;
     shouldAskService?: boolean;
     retainEmployeeOnServiceChange?: boolean;
+    turnIntent?: TurnIntentClass;
+    alternativeKind?: string;
+    nearDuplicateOf?: string;
+    altReplyHasNames?: boolean;
+    altReplyNoFullSummary?: boolean;
   };
 };
 
@@ -112,6 +129,29 @@ export const CI_BENCHMARK_SCENARIOS: BenchmarkScenario[] = [
   // UX
   { id: 'ux-1', category: 'ux', input: 'شعر نادر جدا', expect: { noTechJargon: true } },
   { id: 'ux-2', category: 'ux', input: 'ask-service', expect: { shouldAskService: true } },
+
+  // Turn intent arbitration (do not overfit one sentence)
+  { id: 'intent-alt-1', category: 'intent', input: 'مين متاح تاني في الوقت ده؟', expect: { turnIntent: 'BOOKING_ALTERNATIVE_QUERY', alternativeKind: 'other_employee_same_time' } },
+  { id: 'intent-alt-2', category: 'intent', input: 'مين غير عمر متاح؟', expect: { turnIntent: 'BOOKING_ALTERNATIVE_QUERY' } },
+  { id: 'intent-alt-3', category: 'intent', input: 'في حد تاني الساعة 10؟', expect: { turnIntent: 'BOOKING_ALTERNATIVE_QUERY' } },
+  { id: 'intent-alt-4', category: 'intent', input: 'محمد فاضي وقتها؟', expect: { turnIntent: 'BOOKING_ALTERNATIVE_QUERY', alternativeKind: 'specific_employee_check' } },
+  { id: 'intent-alt-5', category: 'intent', input: 'فيه قبلها بربع ساعة؟', expect: { turnIntent: 'BOOKING_ALTERNATIVE_QUERY', alternativeKind: 'other_time_same_employee' } },
+  { id: 'intent-alt-6', category: 'intent', input: 'فيه بعدها؟', expect: { turnIntent: 'BOOKING_ALTERNATIVE_QUERY' } },
+  { id: 'intent-alt-7', category: 'intent', input: 'مفيش الساعة 10 مع حد تاني؟', expect: { turnIntent: 'BOOKING_ALTERNATIVE_QUERY' } },
+  { id: 'intent-alt-8', category: 'intent', input: 'طب لو جليم؟', expect: { turnIntent: 'BOOKING_ALTERNATIVE_QUERY', alternativeKind: 'other_branch' } },
+  { id: 'intent-prog-1', category: 'intent', input: 'اه', expect: { turnIntent: 'BOOKING_PROGRESS', affirmative: true } },
+  { id: 'intent-prog-2', category: 'intent', input: 'الأول', expect: { turnIntent: 'BOOKING_PROGRESS', slotIndex: 0 } },
+  { id: 'intent-prog-3', category: 'intent', input: '1', expect: { turnIntent: 'BOOKING_PROGRESS' } },
+  { id: 'intent-mod-1', category: 'intent', input: 'خليه مع محمد', expect: { turnIntent: 'BOOKING_MODIFICATION' } },
+  { id: 'intent-mod-2', category: 'intent', input: 'لا خليه شعر بس', expect: { turnIntent: 'BOOKING_MODIFICATION' } },
+  { id: 'intent-info-1', category: 'interrupt', input: 'شعر ودقن بكام؟', expect: { turnIntent: 'BUSINESS_INFORMATION_INTERRUPT' } },
+  { id: 'intent-info-2', category: 'interrupt', input: 'الفرع بيقفل امتى؟', expect: { turnIntent: 'BUSINESS_INFORMATION_INTERRUPT' } },
+  { id: 'intent-resume-1', category: 'intent', input: 'كمل الحجز', expect: { turnIntent: 'RESUME' } },
+  { id: 'intent-cancel-1', category: 'intent', input: 'خلاص مش هحجز', expect: { turnIntent: 'CANCEL_RESET' } },
+  { id: 'intent-dup-1', category: 'intent', input: 'مين متاح تاني في الوقت ده', expect: { nearDuplicateOf: 'مين متاح تاني في الوقت ده؟' } },
+
+  // Alternative reply quality (no full booking summary spam)
+  { id: 'alt-reply-1', category: 'alternative', input: 'alt-reply', expect: { altReplyHasNames: true, altReplyNoFullSummary: true, noTechJargon: true } },
 ];
 
 export type BenchmarkMetrics = {
@@ -126,6 +166,11 @@ export type BenchmarkMetrics = {
   BookingSafetyRate: number;
   RepeatedQuestionRate: number;
   UnnecessaryClarificationRate: number;
+  TurnIntentAccuracy: number;
+  InterruptionHandlingAccuracy: number;
+  AlternativeQueryAccuracy: number;
+  MisunderstandingRecoveryRate: number;
+  RepeatedIrrelevantResponseRate: number;
 };
 
 function addDays(ymd: string, days: number): string {
@@ -168,6 +213,16 @@ export function runConversationIntelligenceBenchmark(
   let hallN = 0;
   let hallBad = 0;
   let passed = 0;
+  let intentOk = 0;
+  let intentN = 0;
+  let interruptOk = 0;
+  let interruptN = 0;
+  let altOk = 0;
+  let altN = 0;
+  let repairOk = 0;
+  let repairN = 0;
+  let irrelevantBad = 0;
+  let irrelevantN = 0;
 
   for (const s of scenarios) {
     let ok = true;
@@ -249,6 +304,103 @@ export function runConversationIntelligenceBenchmark(
       }
     }
 
+    if (s.expect.turnIntent != null) {
+      intentN++;
+      const detected = detectTurnIntent(s.input);
+      if (detected.intent !== s.expect.turnIntent) {
+        ok = false;
+        reasons.push(`intent ${detected.intent} want ${s.expect.turnIntent}`);
+      } else {
+        intentOk++;
+        if (s.category === 'interrupt') {
+          interruptN++;
+          interruptOk++;
+        }
+        if (
+          s.expect.turnIntent === 'BOOKING_ALTERNATIVE_QUERY' ||
+          s.category === 'alternative'
+        ) {
+          altN++;
+          if (
+            s.expect.alternativeKind &&
+            detected.alternativeKind !== s.expect.alternativeKind
+          ) {
+            ok = false;
+            reasons.push(
+              `altKind ${detected.alternativeKind} want ${s.expect.alternativeKind}`,
+            );
+            // already counted intentOk; don't double-penalize altOk
+          } else {
+            altOk++;
+          }
+        }
+      }
+      if (s.category === 'interrupt' && detected.intent !== s.expect.turnIntent) {
+        interruptN++;
+      }
+    }
+
+    if (s.expect.nearDuplicateOf != null) {
+      repairN++;
+      if (!isNearDuplicateQuestion(s.input, s.expect.nearDuplicateOf)) {
+        ok = false;
+        reasons.push('near-duplicate miss');
+      } else {
+        repairOk++;
+        // Repair: second ask still classifies as alternative
+        const d = detectTurnIntent(s.input);
+        if (d.intent !== 'BOOKING_ALTERNATIVE_QUERY') {
+          ok = false;
+          reasons.push('repair intent miss');
+          repairOk = Math.max(0, repairOk - 1);
+        }
+      }
+    }
+
+    if (s.expect.altReplyHasNames || s.expect.altReplyNoFullSummary) {
+      irrelevantN++;
+      altN++;
+      const plan = emptyMutablePlan();
+      plan.employeeName = 'عمر';
+      plan.selectedSlot = {
+        time: '22:00',
+        dayOffset: 0,
+        empId: 25,
+        empName: 'عمر',
+        label: '10:00 م',
+      };
+      const result: AlternativeSearchResult = {
+        ok: true,
+        targetTime: '22:00',
+        alternatives: [
+          { empId: 40, name: 'محمد', time: '22:00' },
+          { empId: 41, name: 'أحمد', time: '22:00' },
+        ],
+        nearbyOtherTimes: [],
+      };
+      const reply = buildAlternativeEmployeesReply(plan, result);
+      const hasNames = /محمد/.test(reply) && /أحمد/.test(reply);
+      const fullSummarySpam =
+        /أأكدلك/.test(reply) ||
+        (/شعر/.test(reply) && /كامب/.test(reply) && /2026/.test(reply));
+      if (s.expect.altReplyHasNames && !hasNames) {
+        ok = false;
+        reasons.push('alt reply missing names');
+      } else if (s.expect.altReplyNoFullSummary && fullSummarySpam) {
+        ok = false;
+        reasons.push('alt reply repeated full summary');
+        irrelevantBad++;
+      } else {
+        altOk++;
+        if (!assertNoTechJargon(reply)) {
+          hallN++;
+          hallBad++;
+          ok = false;
+          reasons.push('alt reply jargon');
+        }
+      }
+    }
+
     if (s.expect.noTechJargon || s.category === 'ux') {
       hallN++;
       const reply =
@@ -256,7 +408,14 @@ export function runConversationIntelligenceBenchmark(
           ? buildServiceNotFoundReply(s.input)
           : s.id === 'ux-2'
             ? buildAskPrompt(['service'])
-            : buildServiceNotFoundReply(s.input);
+            : s.id === 'alt-reply-1'
+              ? buildAlternativeEmployeesReply(emptyMutablePlan(), {
+                  ok: true,
+                  targetTime: '22:00',
+                  alternatives: [{ empId: 1, name: 'محمد', time: '22:00' }],
+                  nearbyOtherTimes: [],
+                })
+              : buildServiceNotFoundReply(s.input);
       if (!assertNoTechJargon(reply)) {
         hallBad++;
         ok = false;
@@ -311,7 +470,7 @@ export function runConversationIntelligenceBenchmark(
   const total = scenarios.length + 2;
   const metrics: BenchmarkMetrics = {
     total,
-    passed: passed + (failed.includes('rank-night: expected near 22:00 first') ? 0 : 1) + (failed.includes('state-retain') ? 0 : 0),
+    passed: total - failed.length,
     failed,
     EntityResolutionAccuracy: entityN ? entityOk / entityN : 1,
     DateUnderstandingAccuracy: dateN ? dateOk / dateN : 1,
@@ -321,9 +480,12 @@ export function runConversationIntelligenceBenchmark(
     BookingSafetyRate: 1,
     RepeatedQuestionRate: 0,
     UnnecessaryClarificationRate: 0,
+    TurnIntentAccuracy: intentN ? intentOk / intentN : 1,
+    InterruptionHandlingAccuracy: interruptN ? interruptOk / interruptN : 1,
+    AlternativeQueryAccuracy: altN ? altOk / altN : 1,
+    MisunderstandingRecoveryRate: repairN ? repairOk / repairN : 1,
+    RepeatedIrrelevantResponseRate: irrelevantN ? irrelevantBad / irrelevantN : 0,
   };
-  // Fix passed count simply
-  metrics.passed = total - failed.length;
   return metrics;
 }
 
@@ -336,6 +498,11 @@ export function meetsCiBenchmarkGates(m: BenchmarkMetrics): boolean {
     m.UnnecessaryClarificationRate <= 0.1 &&
     m.BookingSafetyRate >= 1 &&
     m.HallucinationRate === 0 &&
+    m.TurnIntentAccuracy >= 0.95 &&
+    m.InterruptionHandlingAccuracy >= 0.95 &&
+    m.AlternativeQueryAccuracy >= 0.95 &&
+    m.MisunderstandingRecoveryRate >= 0.95 &&
+    m.RepeatedIrrelevantResponseRate <= 0.02 &&
     m.failed.length === 0
   );
 }

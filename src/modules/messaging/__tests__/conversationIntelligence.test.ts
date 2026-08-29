@@ -20,6 +20,7 @@ import {
   runConversationIntelligenceBenchmark,
   meetsCiBenchmarkGates,
 } from '@/modules/messaging/ai/conversationIntelligence/benchmark';
+import { detectTurnIntent } from '@/modules/messaging/ai/conversationIntelligence/turnIntent';
 import { emptyMutablePlan, invalidateAfterChange } from '@/modules/messaging/ai/planner/planState';
 import { getCairoBusinessDate } from '@/lib/businessDate';
 import type { BookingCandidateSlot } from '@/modules/messaging/ai/planner/types';
@@ -175,7 +176,23 @@ describe('CI-0 benchmark gates', () => {
     expect(m.EntityResolutionAccuracy).toBeGreaterThanOrEqual(0.95);
     expect(m.DateUnderstandingAccuracy).toBeGreaterThanOrEqual(0.95);
     expect(m.TimeUnderstandingAccuracy).toBeGreaterThanOrEqual(0.95);
+    expect(m.TurnIntentAccuracy).toBeGreaterThanOrEqual(0.95);
+    expect(m.InterruptionHandlingAccuracy).toBeGreaterThanOrEqual(0.95);
+    expect(m.AlternativeQueryAccuracy).toBeGreaterThanOrEqual(0.95);
+    expect(m.MisunderstandingRecoveryRate).toBeGreaterThanOrEqual(0.95);
+    expect(m.RepeatedIrrelevantResponseRate).toBeLessThanOrEqual(0.02);
     expect(m.HallucinationRate).toBe(0);
     expect(meetsCiBenchmarkGates(m)).toBe(true);
+  });
+});
+
+describe('CI V2 turn intent arbitration', () => {
+  it('classifies alternative employee questions', () => {
+    expect(detectTurnIntent('مين متاح تاني في الوقت ده؟').intent).toBe(
+      'BOOKING_ALTERNATIVE_QUERY',
+    );
+    expect(detectTurnIntent('مين غير عمر متاح؟').intent).toBe('BOOKING_ALTERNATIVE_QUERY');
+    expect(detectTurnIntent('اه').intent).toBe('BOOKING_PROGRESS');
+    expect(detectTurnIntent('شعر ودقن بكام؟').intent).toBe('BUSINESS_INFORMATION_INTERRUPT');
   });
 });

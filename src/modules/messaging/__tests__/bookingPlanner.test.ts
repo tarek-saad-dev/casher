@@ -135,6 +135,34 @@ vi.mock('@/modules/messaging/ai/planner/executeConfirmedBookingPlan', () => ({
   }),
 }));
 
+vi.mock('@/lib/booking/publicBookingAvailability', () => ({
+  getPublicAvailableSlots: vi.fn(async () => ({
+    branch: { branchCode: 'CAMP_CAESAR', branchId: 3, branchName: 'كامب' },
+    date: '2026-08-29',
+    mode: 'any_barber',
+    services: [],
+    slots: [
+      {
+        time: '22:00',
+        dayOffset: 0,
+        barbers: [
+          { empId: 25, nameAr: 'عمر' },
+          { empId: 40, nameAr: 'محمد' },
+          { empId: 41, nameAr: 'أحمد' },
+        ],
+      },
+      {
+        time: '21:45',
+        dayOffset: 0,
+        barbers: [{ empId: 42, nameAr: 'كريم' }],
+      },
+    ],
+    reasonCode: null,
+    messageAr: null,
+    message: null,
+  })),
+}));
+
 vi.mock('@/modules/messaging/ai/planner/resolveEntities', async () => {
   const actual = await vi.importActual<typeof import('@/modules/messaging/ai/planner/resolveEntities')>(
     '@/modules/messaging/ai/planner/resolveEntities',
@@ -769,6 +797,168 @@ describe('Phase 3 booking planner turn matrix', () => {
     });
     expect(r.plan?.stage).toBe('choosing_slot');
     expect(r.plan?.candidateSlots.length).toBeLessThanOrEqual(3);
+  });
+
+  it('CI V2 ready_to_confirm + alternative query does NOT re-emit summary', async () => {
+    const selected = {
+      time: '22:00',
+      dayOffset: 0 as const,
+      empId: 25,
+      empName: 'عمر',
+      label: '10:00 م',
+    };
+    const snap: BookingPlanSnapshot = {
+      planId: nextPlanId++,
+      conversationId: 120,
+      stage: 'ready_to_confirm',
+      version: 3,
+      branchId: 3,
+      branchCode: 'CAMP_CAESAR',
+      branchName: 'كامب شيزار',
+      serviceIds: [20],
+      serviceNames: ['شعر ودقن'],
+      empId: 25,
+      employeeName: 'عمر',
+      requestedDate: '2026-08-29',
+      timePreference: { kind: 'around', timeHm: '22:00', label: 'حوالي 10 بليل' },
+      candidateSlots: [selected],
+      selectedSlot: selected,
+      clientId: null,
+      missingFields: ['confirm'],
+      clarification: null,
+      lastAvailabilityCheckedAt: new Date().toISOString(),
+      lastTurnId: 1,
+      bookingId: null,
+      bookingCode: null,
+      idempotencyKey: null,
+      executionErrorCode: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      completedAt: null,
+    };
+    store.set(snap.planId, snap);
+
+    const r = await processBookingPlannerTurn({
+      conversationId: 120,
+      turnId: 2,
+      phone: '201',
+      inboundText: 'مين متاح تاني في الوقت ده؟',
+      structured: structured({ intent: 'booking_request' }),
+      runAvailability: mockAvailability(),
+    });
+
+    expect(r.handled).toBe(true);
+    expect(r.trace.deterministicAction).toBe('alternative_employee_query');
+    expect(r.replyText).toMatch(/محمد|أحمد/);
+    expect(r.replyText).not.toMatch(/أأكدلك/);
+    expect(r.plan?.stage).toBe('ready_to_confirm');
+    expect(r.plan?.empId).toBe(25);
+    expect(r.plan?.employeeName).toBe('عمر');
+    expect(r.plan?.selectedSlot?.time).toBe('22:00');
+  });
+
+  it('CI V2 price interrupt preserves ready_to_confirm plan', async () => {
+    const selected = {
+      time: '22:00',
+      dayOffset: 0 as const,
+      empId: 25,
+      empName: 'عمر',
+      label: '10:00 م',
+    };
+    const snap: BookingPlanSnapshot = {
+      planId: nextPlanId++,
+      conversationId: 121,
+      stage: 'ready_to_confirm',
+      version: 2,
+      branchId: 3,
+      branchCode: 'CAMP_CAESAR',
+      branchName: 'كامب',
+      serviceIds: [20],
+      serviceNames: ['شعر ودقن'],
+      empId: 25,
+      employeeName: 'عمر',
+      requestedDate: '2026-08-29',
+      timePreference: null,
+      candidateSlots: [selected],
+      selectedSlot: selected,
+      clientId: null,
+      missingFields: ['confirm'],
+      clarification: null,
+      lastAvailabilityCheckedAt: null,
+      lastTurnId: 1,
+      bookingId: null,
+      bookingCode: null,
+      idempotencyKey: null,
+      executionErrorCode: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      completedAt: null,
+    };
+    store.set(snap.planId, snap);
+
+    const r = await processBookingPlannerTurn({
+      conversationId: 121,
+      turnId: 2,
+      phone: '201',
+      inboundText: 'شعر ودقن بكام؟',
+      structured: structured({ intent: 'price_question', needsBusinessTool: true }),
+      runAvailability: mockAvailability(),
+    });
+    expect(r.handled).toBe(false);
+    expect(r.preservePlan).toBe(true);
+    expect(r.trace.deterministicAction).toBe('interrupt_passthrough');
+    expect((await getActiveBookingPlan(121))?.stage).toBe('ready_to_confirm');
+  });
+
+  it('CI V2 اه still confirms after alternative interrupt path', async () => {
+    const selected = {
+      time: '22:00',
+      dayOffset: 0 as const,
+      empId: 25,
+      empName: 'عمر',
+      label: '10:00 م',
+    };
+    const snap: BookingPlanSnapshot = {
+      planId: nextPlanId++,
+      conversationId: 122,
+      stage: 'ready_to_confirm',
+      version: 2,
+      branchId: 3,
+      branchCode: 'CAMP_CAESAR',
+      branchName: 'كامب',
+      serviceIds: [20],
+      serviceNames: ['شعر ودقن'],
+      empId: 25,
+      employeeName: 'عمر',
+      requestedDate: '2026-08-29',
+      timePreference: null,
+      candidateSlots: [selected],
+      selectedSlot: selected,
+      clientId: null,
+      missingFields: ['confirm'],
+      clarification: null,
+      lastAvailabilityCheckedAt: null,
+      lastTurnId: 1,
+      bookingId: null,
+      bookingCode: null,
+      idempotencyKey: null,
+      executionErrorCode: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      completedAt: null,
+    };
+    store.set(snap.planId, snap);
+
+    const r = await processBookingPlannerTurn({
+      conversationId: 122,
+      turnId: 2,
+      phone: '201',
+      inboundText: 'اه',
+      structured: structured(),
+      runAvailability: mockAvailability(),
+    });
+    expect(r.plan?.stage).toBe('booked');
+    expect(r.replyText).toMatch(/تم الحجز|WA-TEST/);
   });
 });
 
