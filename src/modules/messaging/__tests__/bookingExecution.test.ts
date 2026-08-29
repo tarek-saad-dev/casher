@@ -209,6 +209,47 @@ describe('Phase 4 executeConfirmedBookingPlan', () => {
     expect(r.replyText).toMatch(/تم الحجز/);
   });
 
+  it('11b prior key recovers completed create before revalidation', async () => {
+    store.set(
+      1,
+      basePlan({
+        stage: 'ready_to_confirm',
+        version: 9,
+        idempotencyKey: 'bot-booking-plan:1:v7',
+        executionErrorCode: 'BOOKING_CREATE_FAILED',
+      }),
+    );
+    const create = vi.fn(async () => ({
+      httpStatus: 201 as const,
+      body: {
+        ok: true as const,
+        booking: { id: 3838, code: 'BK-XR6QRN', barber: { empId: 25 } },
+        meta: {
+          idempotentReplay: true,
+          planTokenStatus: 'absent_legacy' as const,
+          createdAt: '',
+          assignmentStrategy: 'fixed_barber',
+        },
+        message: 'ok',
+      },
+    }));
+    const evaluate = vi.fn();
+    const r = await executeConfirmedBookingPlan({
+      conversationId: 10,
+      planId: 1,
+      turnId: 3,
+      phone: '201557994946',
+      createBooking: create as never,
+      evaluateSelection: evaluate as never,
+    });
+    expect(r.ok).toBe(true);
+    expect(r.bookingId).toBe(3838);
+    expect(r.plan.stage).toBe('booked');
+    expect(evaluate).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(r.replyText).toMatch(/تم الحجز/);
+  });
+
   it('9 DB create error never produces booked state / تم الحجز', async () => {
     const create = vi.fn(async () => {
       const err = new Error('DB_TIMEOUT') as Error & { code: string };

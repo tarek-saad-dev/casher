@@ -153,7 +153,11 @@ export async function executeConfirmedBookingPlan(
     };
   }
 
-  if (plan.stage !== 'confirmed_intent' && plan.stage !== 'ready_to_confirm' && plan.stage !== 'execution_failed') {
+  if (
+    plan.stage !== 'confirmed_intent' &&
+    plan.stage !== 'ready_to_confirm' &&
+    plan.stage !== 'execution_failed'
+  ) {
     const trace = emptyTrace(plan.stage);
     return {
       ok: false,
@@ -188,10 +192,10 @@ export async function executeConfirmedBookingPlan(
     };
   }
 
+  const priorIdempotencyKey = plan.idempotencyKey;
   const idempotencyKey =
-    plan.idempotencyKey || buildPlanExecutionIdempotencyKey(plan.planId, plan.version);
+    priorIdempotencyKey || buildPlanExecutionIdempotencyKey(plan.planId, plan.version);
 
-  // Mark executing
   plan = await upsertBookingPlan({
     conversationId: plan.conversationId,
     planId: plan.planId,
@@ -225,7 +229,135 @@ export async function executeConfirmedBookingPlan(
   trace.deterministicAction = 'execute_booking';
   trace.execution = { idempotencyKey };
 
-  // Revalidate via selection evaluator (mints planToken when available)
+  const buildCreateInput = (planToken: string | null | undefined) => ({
+    branchCode: plan!.branchCode,
+    date: plan!.requestedDate,
+    time: plan!.selectedSlot!.time,
+    dayOffset: plan!.selectedSlot!.dayOffset ?? 0,
+    serviceIds: plan!.serviceIds,
+    empId: plan!.empId,
+    mode: (plan!.empId ? 'specific_barber' : 'any_barber') as
+      | 'specific_barber'
+      | 'any_barber',
+    planToken: planToken ?? undefined,
+    customer: {
+      name: customerDisplayName(input.customerName, input.phone),
+      phone: input.phone,
+    },
+    clientRequestId: idempotencyKey,
+    purpose: 'internal_preview' as const,
+    auth: { userId: actorUserId, canOperate: true },
+    bookingSource: 'operations' as const,
+    leadSource: 'whatsapp' as const,
+    suppressNotification: true,
+    notes: `whatsapp-bot-plan:${plan!.planId}`,
+  });
+
+  const finalizeBooked = async (
+    result: PublicBookingCreateResult,
+    createStarted: number,
+    idempotentReplay: boolean,
+  ): Promise<ExecuteConfirmedBookingPlanResult> => {
+    const booking = result.body.booking as {
+      id?: number;
+      bookingId?: number;
+      code?: string;
+    };
+    const bookingId = Number(booking.id ?? booking.bookingId);
+    const bookingCode = booking.code ? String(booking.code) : null;
+    trace.toolCalls.push({
+      name: 'createPublicBooking',
+      ok: true,
+      durationMs: Math.round(performance.now() - createStarted),
+      errorCode: null,
+    });
+    trace.execution = {
+      idempotencyKey,
+      bookingId,
+      bookingCode,
+      revalidationOk: true,
+    };
+
+    const booked = await upsertBookingPlan({
+      conversationId: plan!.conversationId,
+      planId: plan!.planId,
+      stage: 'booked',
+      version: plan!.version + 1,
+      branchId: plan!.branchId,
+      branchCode: plan!.branchCode,
+      branchName: plan!.branchName,
+      serviceIds: plan!.serviceIds,
+      serviceNames: plan!.serviceNames,
+      empId: plan!.empId,
+      employeeName: plan!.employeeName,
+      requestedDate: plan!.requestedDate,
+      timePreference: plan!.timePreference,
+      candidateSlots: plan!.candidateSlots,
+      selectedSlot: plan!.selectedSlot,
+      clientId: plan!.clientId,
+      missingFields: [],
+      clarification: null,
+      lastAvailabilityCheckedAt: plan!.lastAvailabilityCheckedAt,
+      lastTurnId: input.turnId,
+      bookingId,
+      bookingCode,
+      idempotencyKey,
+      executionErrorCode: null,
+      completedAt: new Date().toISOString(),
+      trace: { ...trace, stageAfter: 'booked' },
+    });
+    trace.stageAfter = 'booked';
+    console.log(
+      JSON.stringify({
+        type: 'messaging_booking_execution_trace',
+        planId: booked.planId,
+        bookingId,
+        bookingCode,
+        idempotencyKey,
+        idempotentReplay,
+        durationMs: Math.round(performance.now() - started),
+      }),
+    );
+    return {
+      ok: true,
+      plan: booked,
+      replyText: buildBookedReply(booked, bookingCode),
+      bookingId,
+      bookingCode,
+      errorCode: null,
+      idempotentReplay,
+      trace,
+    };
+  };
+
+  // Prior key may already have committed (e.g. post-commit after() threw). Recover first.
+  if (priorIdempotencyKey) {
+    try {
+      const createStarted = performance.now();
+      const result = await create(buildCreateInput(null));
+      if (result.body.ok && result.body.booking) {
+        return finalizeBooked(
+          result,
+          createStarted,
+          Boolean(result.body.meta?.idempotentReplay) || true,
+        );
+      }
+    } catch (err) {
+      const code =
+        err instanceof PublicBookingCreateError
+          ? err.code
+          : err instanceof Error && 'code' in err
+            ? String((err as { code?: string }).code)
+            : 'IDEMPOTENCY_RECOVERY_MISS';
+      trace.toolCalls.push({
+        name: 'createPublicBooking_recovery',
+        ok: false,
+        durationMs: 0,
+        errorCode: code,
+      });
+    }
+  }
+
   let planToken: string | null = null;
   try {
     const evalStarted = performance.now();
@@ -248,7 +380,6 @@ export async function executeConfirmedBookingPlan(
     });
     trace.execution!.revalidationOk = evaluation.available;
     if (!evaluation.available) {
-      // Refresh candidates and return to choosing_slot
       const avail = await runAvailability({
         name: 'get_availability',
         branchCode: plan.branchCode,
@@ -257,8 +388,14 @@ export async function executeConfirmedBookingPlan(
         dateText: plan.requestedDate,
       });
       const raw = (
-        (avail.data as { slots?: Array<{ time: string; dayOffset?: 0 | 1; empId?: number | null; empName?: string | null }> })
-          ?.slots ?? []
+        (avail.data as {
+          slots?: Array<{
+            time: string;
+            dayOffset?: 0 | 1;
+            empId?: number | null;
+            empName?: string | null;
+          }>;
+        })?.slots ?? []
       ).map(toCandidateFromAvailability);
       const shortlist = filterSlotsByPreference(raw, plan.timePreference, 3);
       const updated = await upsertBookingPlan({
@@ -349,7 +486,6 @@ export async function executeConfirmedBookingPlan(
       executionErrorCode: code,
       trace: { ...trace, stageAfter: 'execution_failed' },
     });
-    // Keep recoverable: move back to confirmed_intent-equivalent via ready_to_confirm
     const recoverable = await upsertBookingPlan({
       conversationId: failed.conversationId,
       planId: failed.planId,
@@ -391,101 +527,22 @@ export async function executeConfirmedBookingPlan(
     };
   }
 
-  // Create booking via existing domain path
   try {
     const createStarted = performance.now();
-    const result: PublicBookingCreateResult = await create({
-      branchCode: plan.branchCode,
-      date: plan.requestedDate,
-      time: plan.selectedSlot!.time,
-      dayOffset: plan.selectedSlot!.dayOffset ?? 0,
-      serviceIds: plan.serviceIds,
-      empId: plan.empId,
-      mode: plan.empId ? 'specific_barber' : 'any_barber',
-      planToken,
-      customer: {
-        name: customerDisplayName(input.customerName, input.phone),
-        phone: input.phone,
-      },
-      clientRequestId: idempotencyKey,
-      purpose: 'internal_preview',
-      auth: { userId: actorUserId, canOperate: true },
-      bookingSource: 'operations',
-      leadSource: 'whatsapp',
-      suppressNotification: true,
-      notes: `whatsapp-bot-plan:${plan.planId}`,
-    });
-    const booking = result.body.booking as {
-      id?: number;
-      bookingId?: number;
-      code?: string;
-    };
-    const bookingId = Number(booking.id ?? booking.bookingId);
-    const bookingCode = booking.code ? String(booking.code) : null;
-    trace.toolCalls.push({
-      name: 'createPublicBooking',
-      ok: true,
-      durationMs: Math.round(performance.now() - createStarted),
-      errorCode: null,
-    });
-    trace.execution = {
-      idempotencyKey,
-      bookingId,
-      bookingCode,
-      revalidationOk: true,
-    };
-
-    const booked = await upsertBookingPlan({
-      conversationId: plan.conversationId,
-      planId: plan.planId,
-      stage: 'booked',
-      version: plan.version + 1,
-      branchId: plan.branchId,
-      branchCode: plan.branchCode,
-      branchName: plan.branchName,
-      serviceIds: plan.serviceIds,
-      serviceNames: plan.serviceNames,
-      empId: plan.empId,
-      employeeName: plan.employeeName,
-      requestedDate: plan.requestedDate,
-      timePreference: plan.timePreference,
-      candidateSlots: plan.candidateSlots,
-      selectedSlot: plan.selectedSlot,
-      clientId: plan.clientId,
-      missingFields: [],
-      clarification: null,
-      lastAvailabilityCheckedAt: plan.lastAvailabilityCheckedAt,
-      lastTurnId: input.turnId,
-      bookingId,
-      bookingCode,
-      idempotencyKey,
-      executionErrorCode: null,
-      completedAt: new Date().toISOString(),
-      trace: { ...trace, stageAfter: 'booked' },
-    });
-    trace.stageAfter = 'booked';
-    console.log(
-      JSON.stringify({
-        type: 'messaging_booking_execution_trace',
-        planId: booked.planId,
-        bookingId,
-        bookingCode,
-        idempotencyKey,
-        idempotentReplay: result.body.meta.idempotentReplay,
-        durationMs: Math.round(performance.now() - started),
-      }),
-    );
-    return {
-      ok: true,
-      plan: booked,
-      replyText: buildBookedReply(booked, bookingCode),
-      bookingId,
-      bookingCode,
-      errorCode: null,
-      idempotentReplay: Boolean(result.body.meta.idempotentReplay),
-      trace,
-    };
+    const result: PublicBookingCreateResult = await create(buildCreateInput(planToken));
+    return finalizeBooked(result, createStarted, Boolean(result.body.meta?.idempotentReplay));
   } catch (err) {
+    // Commit may have succeeded while post-commit notify threw — recover via key.
+    try {
+      const recoverStarted = performance.now();
+      const recovered = await create(buildCreateInput(null));
+      if (recovered.body.ok && recovered.body.booking) {
+        return finalizeBooked(recovered, recoverStarted, true);
+      }
+    } catch {
+      /* continue failure path */
+    }
+
     const code =
       err instanceof PublicBookingCreateError
         ? err.code
@@ -509,8 +566,14 @@ export async function executeConfirmedBookingPlan(
         dateText: plan.requestedDate,
       });
       const raw = (
-        (avail.data as { slots?: Array<{ time: string; dayOffset?: 0 | 1; empId?: number | null; empName?: string | null }> })
-          ?.slots ?? []
+        (avail.data as {
+          slots?: Array<{
+            time: string;
+            dayOffset?: 0 | 1;
+            empId?: number | null;
+            empName?: string | null;
+          }>;
+        })?.slots ?? []
       ).map(toCandidateFromAvailability);
       const shortlist = filterSlotsByPreference(raw, plan.timePreference, 3);
       const updated = await upsertBookingPlan({
