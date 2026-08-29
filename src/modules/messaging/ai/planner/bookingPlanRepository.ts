@@ -25,6 +25,10 @@ export type UpsertBookingPlanInput = {
   clarification: unknown;
   lastAvailabilityCheckedAt: string | null;
   lastTurnId: number | null;
+  bookingId?: number | null;
+  bookingCode?: string | null;
+  idempotencyKey?: string | null;
+  executionErrorCode?: string | null;
   trace: unknown;
   completedAt?: string | null;
 };
@@ -33,6 +37,11 @@ function jsonOrNull(value: unknown): string | null {
   if (value == null) return null;
   return JSON.stringify(value);
 }
+
+const ACTIVE_STAGE_SQL = `
+  N'collecting', N'clarifying', N'choosing_slot',
+  N'ready_to_confirm', N'confirmed_intent', N'executing'
+`;
 
 export async function getActiveBookingPlan(
   conversationId: number,
@@ -45,10 +54,7 @@ export async function getActiveBookingPlan(
       SELECT TOP 1 *
       FROM dbo.TblBotBookingPlan
       WHERE ConversationID = @conversationId
-        AND Stage IN (
-          N'collecting', N'clarifying', N'choosing_slot',
-          N'ready_to_confirm', N'confirmed_intent'
-        )
+        AND Stage IN (${ACTIVE_STAGE_SQL})
       ORDER BY PlanID DESC
     `);
   const row = result.recordset[0] as Record<string, unknown> | undefined;
@@ -70,9 +76,9 @@ export async function upsertBookingPlan(
 ): Promise<BookingPlanSnapshot> {
   const pool = await getPool();
   const completed =
-    input.stage === 'abandoned' || input.stage === 'confirmed_intent'
+    input.stage === 'abandoned' || input.stage === 'booked'
       ? input.completedAt ?? new Date().toISOString()
-      : null;
+      : input.completedAt ?? null;
 
   const tracePayload = {
     ...(input.trace && typeof input.trace === 'object' ? (input.trace as object) : {}),
@@ -100,6 +106,10 @@ export async function upsertBookingPlan(
       .input('missingFieldsJson', sql.NVarChar(300), jsonOrNull(input.missingFields))
       .input('lastAvailabilityCheckedAt', sql.DateTime2, input.lastAvailabilityCheckedAt)
       .input('lastTurnId', sql.BigInt, input.lastTurnId)
+      .input('bookingId', sql.Int, input.bookingId ?? null)
+      .input('bookingCode', sql.NVarChar(40), input.bookingCode ?? null)
+      .input('idempotencyKey', sql.NVarChar(128), input.idempotencyKey ?? null)
+      .input('executionErrorCode', sql.NVarChar(80), input.executionErrorCode ?? null)
       .input('traceJson', sql.NVarChar(sql.MAX), jsonOrNull(tracePayload))
       .input('completedAt', sql.DateTime2, completed)
       .query(`
@@ -122,6 +132,10 @@ export async function upsertBookingPlan(
           MissingFieldsJson = @missingFieldsJson,
           LastAvailabilityCheckedAt = @lastAvailabilityCheckedAt,
           LastTurnID = @lastTurnId,
+          BookingID = @bookingId,
+          BookingCode = @bookingCode,
+          IdempotencyKey = @idempotencyKey,
+          ExecutionErrorCode = @executionErrorCode,
           TraceJson = @traceJson,
           UpdatedAt = SYSUTCDATETIME(),
           CompletedAt = @completedAt
@@ -132,7 +146,6 @@ export async function upsertBookingPlan(
     return updated;
   }
 
-  // Abandon any other active plans for this conversation first (safety).
   await pool
     .request()
     .input('conversationId', sql.BigInt, input.conversationId)
@@ -142,10 +155,7 @@ export async function upsertBookingPlan(
           UpdatedAt = SYSUTCDATETIME(),
           CompletedAt = SYSUTCDATETIME()
       WHERE ConversationID = @conversationId
-        AND Stage IN (
-          N'collecting', N'clarifying', N'choosing_slot',
-          N'ready_to_confirm', N'confirmed_intent'
-        )
+        AND Stage IN (${ACTIVE_STAGE_SQL})
     `);
 
   const insert = await pool
@@ -168,6 +178,10 @@ export async function upsertBookingPlan(
     .input('missingFieldsJson', sql.NVarChar(300), jsonOrNull(input.missingFields))
     .input('lastAvailabilityCheckedAt', sql.DateTime2, input.lastAvailabilityCheckedAt)
     .input('lastTurnId', sql.BigInt, input.lastTurnId)
+    .input('bookingId', sql.Int, input.bookingId ?? null)
+    .input('bookingCode', sql.NVarChar(40), input.bookingCode ?? null)
+    .input('idempotencyKey', sql.NVarChar(128), input.idempotencyKey ?? null)
+    .input('executionErrorCode', sql.NVarChar(80), input.executionErrorCode ?? null)
     .input('traceJson', sql.NVarChar(sql.MAX), jsonOrNull(tracePayload))
     .query(`
       INSERT INTO dbo.TblBotBookingPlan (
@@ -176,8 +190,9 @@ export async function upsertBookingPlan(
         ServiceIdsJson, ServiceNamesJson,
         EmpID, EmployeeName, RequestedDate, TimePreferenceJson,
         CandidateSlotsJson, SelectedSlotJson, ClientID,
-        MissingFieldsJson, LastAvailabilityCheckedAt, LastTurnID, TraceJson,
-        CreatedAt, UpdatedAt
+        MissingFieldsJson, LastAvailabilityCheckedAt, LastTurnID,
+        BookingID, BookingCode, IdempotencyKey, ExecutionErrorCode,
+        TraceJson, CreatedAt, UpdatedAt
       )
       OUTPUT INSERTED.PlanID
       VALUES (
@@ -186,8 +201,9 @@ export async function upsertBookingPlan(
         @serviceIdsJson, @serviceNamesJson,
         @empId, @employeeName, @requestedDate, @timePreferenceJson,
         @candidateSlotsJson, @selectedSlotJson, @clientId,
-        @missingFieldsJson, @lastAvailabilityCheckedAt, @lastTurnId, @traceJson,
-        SYSUTCDATETIME(), SYSUTCDATETIME()
+        @missingFieldsJson, @lastAvailabilityCheckedAt, @lastTurnId,
+        @bookingId, @bookingCode, @idempotencyKey, @executionErrorCode,
+        @traceJson, SYSUTCDATETIME(), SYSUTCDATETIME()
       )
     `);
 

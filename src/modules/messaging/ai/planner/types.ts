@@ -4,17 +4,22 @@ export const BOOKING_PLAN_STAGES = [
   'choosing_slot',
   'ready_to_confirm',
   'confirmed_intent',
+  'executing',
+  'booked',
+  'execution_failed',
   'abandoned',
 ] as const;
 
 export type BookingPlanStage = (typeof BOOKING_PLAN_STAGES)[number];
 
+/** Stages that keep the filtered unique "one active plan" index. */
 export const BOOKING_PLAN_ACTIVE_STAGES: BookingPlanStage[] = [
   'collecting',
   'clarifying',
   'choosing_slot',
   'ready_to_confirm',
   'confirmed_intent',
+  'executing',
 ];
 
 export type BookingTimePreference = {
@@ -67,6 +72,10 @@ export type BookingPlanSnapshot = {
   clarification: BookingPlanClarification | null;
   lastAvailabilityCheckedAt: string | null;
   lastTurnId: number | null;
+  bookingId: number | null;
+  bookingCode: string | null;
+  idempotencyKey: string | null;
+  executionErrorCode: string | null;
   createdAt: string;
   updatedAt: string | null;
   completedAt: string | null;
@@ -85,4 +94,15 @@ export type BookingPlannerTrace = {
   candidateSlotCount: number;
   selectedSlot: BookingCandidateSlot | null;
   deterministicAction: string | null;
+  execution?: {
+    idempotencyKey?: string | null;
+    bookingId?: number | null;
+    bookingCode?: string | null;
+    errorCode?: string | null;
+    revalidationOk?: boolean;
+  };
 };
+
+export function buildPlanExecutionIdempotencyKey(planId: number, version: number): string {
+  return `bot-booking-plan:${planId}:v${version}`.slice(0, 128);
+}

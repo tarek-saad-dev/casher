@@ -172,9 +172,19 @@ export function resolveSlotChoice(
 }
 
 export function isAffirmative(text: string): boolean {
-  return /^(أيوه|ايوه|أه|اه|نعم|تمام|أكد|اكد|أكدلي|اكدلي|yes|ok|okay|يلا)$/i.test(
-    text.trim(),
-  );
+  const t = text.trim();
+  // Exact short confirms
+  if (/^(أيوه|ايوه|أه|اه|نعم|تمام|أكد|اكد|أكدلي|اكدلي|yes|ok|okay|يلا)$/i.test(t)) {
+    return true;
+  }
+  // "أيوه أكد الحجز" / "اه أكد" — Gate 9 canary phrasing
+  if (/^(أيوه|ايوه|أه|اه|نعم)\s+(أكد|اكد|أكدلي|اكدلي)(\s+الحجز)?$/i.test(t)) {
+    return true;
+  }
+  if (/^(أكد|اكد)\s+الحجز$/i.test(t)) {
+    return true;
+  }
+  return false;
 }
 
 export function isNegativeOrCancel(text: string): boolean {

@@ -17,7 +17,6 @@ import type {
 } from './types';
 import {
   buildAskPrompt,
-  buildConfirmedIntentReply,
   buildReadyToConfirmReply,
   buildSlotChoicesReply,
   computeMissingFields,
@@ -490,32 +489,29 @@ export async function processBookingPlannerTurn(
     };
   }
 
-  // Deterministic: confirm intent (no write)
-  if (active && active.stage === 'ready_to_confirm' && isAffirmative(text)) {
-    plan.stage = 'confirmed_intent';
-    plan.missingFields = [];
-    plan.selectedSlot = active.selectedSlot;
-    plan.candidateSlots = active.candidateSlots;
-    trace.deterministicAction = 'confirm_intent';
-    trace.selectedSlot = plan.selectedSlot;
-    const saved = await persistPlan({
+  // Phase 4: affirmative at ready_to_confirm / confirmed_intent / booked → execute (idempotent)
+  if (
+    active &&
+    (active.stage === 'ready_to_confirm' ||
+      active.stage === 'confirmed_intent' ||
+      active.stage === 'booked' ||
+      active.stage === 'execution_failed') &&
+    isAffirmative(text)
+  ) {
+    const { executeConfirmedBookingPlan } = await import('./executeConfirmedBookingPlan');
+    const exec = await executeConfirmedBookingPlan({
       conversationId: input.conversationId,
-      existing: active,
-      plan,
+      planId: active.planId,
       turnId: input.turnId,
-      trace,
+      phone: input.phone,
+      runAvailability: input.runAvailability,
     });
-    // Immediately abandon active uniqueness by completing — keep confirmed_intent as terminal active?
-    // Spec: CONFIRMED_INTENT / READY_FOR_WRITE — keep as active stage until Phase 4.
-    trace.stageAfter = 'confirmed_intent';
-    const reply = buildConfirmedIntentReply(plan);
-    console.log(JSON.stringify({ type: 'messaging_booking_planner_trace', ...trace, planId: saved.planId }));
     return {
       handled: true,
-      preservePlan: true,
-      replyText: reply,
-      plan: saved,
-      trace,
+      preservePlan: exec.plan.stage !== 'booked' && exec.plan.stage !== 'abandoned',
+      replyText: exec.replyText,
+      plan: exec.plan,
+      trace: { ...exec.trace, deterministicAction: exec.trace.deterministicAction || 'execute_booking' },
       intent: 'booking_request',
     };
   }

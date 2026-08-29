@@ -76,6 +76,11 @@ export function mapPlanRow(row: Record<string, unknown>): BookingPlanSnapshot {
         ? null
         : new Date(String(row.LastAvailabilityCheckedAt)).toISOString(),
     lastTurnId: row.LastTurnID == null ? null : Number(row.LastTurnID),
+    bookingId: row.BookingID == null ? null : Number(row.BookingID),
+    bookingCode: row.BookingCode == null ? null : String(row.BookingCode),
+    idempotencyKey: row.IdempotencyKey == null ? null : String(row.IdempotencyKey),
+    executionErrorCode:
+      row.ExecutionErrorCode == null ? null : String(row.ExecutionErrorCode),
     createdAt: new Date(String(row.CreatedAt)).toISOString(),
     updatedAt: row.UpdatedAt == null ? null : new Date(String(row.UpdatedAt)).toISOString(),
     completedAt: row.CompletedAt == null ? null : new Date(String(row.CompletedAt)).toISOString(),

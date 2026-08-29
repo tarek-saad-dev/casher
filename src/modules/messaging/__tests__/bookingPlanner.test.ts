@@ -28,7 +28,7 @@ vi.mock('@/modules/messaging/ai/planner/bookingPlanRepository', () => ({
     for (const p of store.values()) {
       if (
         p.conversationId === conversationId &&
-        ['collecting', 'clarifying', 'choosing_slot', 'ready_to_confirm', 'confirmed_intent'].includes(
+        ['collecting', 'clarifying', 'choosing_slot', 'ready_to_confirm', 'confirmed_intent', 'executing'].includes(
           p.stage,
         )
       ) {
@@ -62,13 +62,22 @@ vi.mock('@/modules/messaging/ai/planner/bookingPlanRepository', () => ({
       clarification: (input.clarification as BookingPlanSnapshot['clarification']) ?? null,
       lastAvailabilityCheckedAt: (input.lastAvailabilityCheckedAt as string | null) ?? null,
       lastTurnId: (input.lastTurnId as number | null) ?? null,
+      bookingId: (input.bookingId as number | null) ?? null,
+      bookingCode: (input.bookingCode as string | null) ?? null,
+      idempotencyKey: (input.idempotencyKey as string | null) ?? null,
+      executionErrorCode: (input.executionErrorCode as string | null) ?? null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       completedAt: null,
     };
-    // abandon other active for conversation
     for (const [id, p] of store) {
-      if (p.conversationId === snap.conversationId && id !== planId && p.stage !== 'abandoned') {
+      if (
+        p.conversationId === snap.conversationId &&
+        id !== planId &&
+        ['collecting', 'clarifying', 'choosing_slot', 'ready_to_confirm', 'confirmed_intent', 'executing'].includes(
+          p.stage,
+        )
+      ) {
         store.set(id, { ...p, stage: 'abandoned' });
       }
     }
@@ -80,9 +89,50 @@ vi.mock('@/modules/messaging/ai/planner/bookingPlanRepository', () => ({
     if (p) store.set(planId, { ...p, stage: 'abandoned', completedAt: new Date().toISOString() });
   }),
   isActiveBookingPlanStage: (stage: string) =>
-    ['collecting', 'clarifying', 'choosing_slot', 'ready_to_confirm', 'confirmed_intent'].includes(
+    ['collecting', 'clarifying', 'choosing_slot', 'ready_to_confirm', 'confirmed_intent', 'executing'].includes(
       stage,
     ),
+}));
+
+vi.mock('@/modules/messaging/ai/planner/executeConfirmedBookingPlan', () => ({
+  executeConfirmedBookingPlan: vi.fn(async (input: { planId: number; conversationId: number }) => {
+    const plan = store.get(input.planId);
+    if (!plan) throw new Error('missing plan');
+    const booked: BookingPlanSnapshot = {
+      ...plan,
+      stage: 'booked',
+      version: plan.version + 1,
+      bookingId: 9001,
+      bookingCode: 'WA-TEST-1',
+      idempotencyKey: `bot-booking-plan:${plan.planId}:v${plan.version}`,
+      completedAt: new Date().toISOString(),
+    };
+    store.set(plan.planId, booked);
+    return {
+      ok: true,
+      plan: booked,
+      replyText: `تم الحجز يا باشا ✅\n${plan.serviceNames[0]} مع ${plan.employeeName}\nرقم الحجز: WA-TEST-1`,
+      bookingId: 9001,
+      bookingCode: 'WA-TEST-1',
+      errorCode: null,
+      idempotentReplay: false,
+      trace: {
+        conversationId: input.conversationId,
+        planId: plan.planId,
+        stageBefore: 'ready_to_confirm',
+        stageAfter: 'booked',
+        extracted: {},
+        validatedChanges: [],
+        invalidatedFields: [],
+        toolCalls: [{ name: 'createPublicBooking', ok: true, durationMs: 10, errorCode: null }],
+        missingFields: [],
+        candidateSlotCount: plan.candidateSlots.length,
+        selectedSlot: plan.selectedSlot,
+        deterministicAction: 'execute_booking',
+        execution: { bookingId: 9001, bookingCode: 'WA-TEST-1' },
+      },
+    };
+  }),
 }));
 
 vi.mock('@/modules/messaging/ai/planner/resolveEntities', async () => {
@@ -280,6 +330,8 @@ describe('Phase 3 booking planner pure helpers', () => {
     expect(confirmed).not.toMatch(/تم الحجز/);
     expect(confirmed).toMatch(/جاهز للتأكيد/);
     expect(isAffirmative('أيوه')).toBe(true);
+    expect(isAffirmative('أيوه أكد الحجز')).toBe(true);
+    expect(isAffirmative('اه أكد')).toBe(true);
   });
 });
 
@@ -511,7 +563,7 @@ describe('Phase 3 booking planner turn matrix', () => {
     expect(pick.trace.deterministicAction).toBe('select_slot');
   });
 
-  it('17-18 confirmation intent does NOT write; no تم الحجز', async () => {
+  it('17-18 confirmation intent executes booking via Phase 4 (mocked); may say تم الحجز only after exec', async () => {
     const avail = mockAvailability(['19:00']);
     await processBookingPlannerTurn({
       conversationId: 106,
@@ -545,9 +597,10 @@ describe('Phase 3 booking planner turn matrix', () => {
       structured: structured(),
       runAvailability: avail,
     });
-    expect(conf.plan?.stage).toBe('confirmed_intent');
-    expect(conf.replyText).not.toMatch(/تم الحجز/);
-    expect(conf.replyText).toMatch(/جاهز للتأكيد/);
+    expect(conf.plan?.stage).toBe('booked');
+    expect(conf.plan?.bookingId).toBe(9001);
+    expect(conf.replyText).toMatch(/تم الحجز/);
+    expect(conf.trace.deterministicAction).toBe('execute_booking');
   });
 
   it('19-20 interruption preserves plan; resume continues', async () => {
@@ -668,10 +721,11 @@ describe('Phase 3 booking planner turn matrix', () => {
 
   it('24-25 no booking write markers in planner sources; Phase 2 tools still exported', async () => {
     const root = path.join(process.cwd(), 'src/modules/messaging/ai/planner');
-    const files = fs.readdirSync(root).filter((f) => f.endsWith('.ts'));
+    const files = fs
+      .readdirSync(root)
+      .filter((f) => f.endsWith('.ts') && f !== 'executeConfirmedBookingPlan.ts');
     for (const f of files) {
       const text = fs.readFileSync(path.join(root, f), 'utf8');
-      // Forbid real imports/calls — allow the forbidden-marker constant list itself.
       expect(text).not.toMatch(
         /from ['"][^'"]*(createPublicBooking|holdPublic|cancelPublicBooking)/,
       );
@@ -682,6 +736,12 @@ describe('Phase 3 booking planner turn matrix', () => {
         /import\s*\{[^}]*(createPublicBooking|holdPublicBooking|cancelPublicBooking)/,
       );
     }
+    const execSrc = fs.readFileSync(
+      path.join(root, 'executeConfirmedBookingPlan.ts'),
+      'utf8',
+    );
+    expect(execSrc).toContain('createPublicBooking');
+    expect(execSrc).not.toContain('cancelPublicBooking');
     const toolsIndex = fs.readFileSync(
       path.join(process.cwd(), 'src/modules/messaging/ai/tools/index.ts'),
       'utf8',
@@ -748,6 +808,10 @@ describe('Phase 3 missing-field completeness', () => {
       clarification: null,
       lastAvailabilityCheckedAt: null,
       lastTurnId: 1,
+      bookingId: null,
+      bookingCode: null,
+      idempotencyKey: null,
+      executionErrorCode: null,
       createdAt: new Date().toISOString(),
       updatedAt: null,
       completedAt: null,

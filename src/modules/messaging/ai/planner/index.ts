@@ -9,8 +9,14 @@ export {
   type PlannerTurnResult,
 } from './processBookingPlannerTurn';
 export {
+  executeConfirmedBookingPlan,
+  type ExecuteConfirmedBookingPlanInput,
+  type ExecuteConfirmedBookingPlanResult,
+} from './executeConfirmedBookingPlan';
+export {
   getActiveBookingPlan,
   getBookingPlanById,
   upsertBookingPlan,
   abandonBookingPlan,
 } from './bookingPlanRepository';
+export { buildPlanExecutionIdempotencyKey } from './types';
