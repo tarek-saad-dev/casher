@@ -61,6 +61,17 @@ import { isConversationIntelligenceV2Enabled } from '../conversationIntelligence
 import { isConversationOrchestratorV3Enabled } from '../conversationOrchestrator/featureFlag';
 import { evaluateBookingConfirmationGate } from '../conversationOrchestrator/confirmationGate';
 import { buildTurnFrame } from '../conversationOrchestrator/turnFrame';
+import {
+  detectConstraintDelta,
+  looksLikeRepairSignal,
+  looksLikeTimeConstraint,
+} from '../conversationOrchestrator/constraintDelta';
+import {
+  clearPendingConfirmation,
+  noteClarificationAsked,
+  noteEvidenceAdded,
+  shouldBlockRepeatedClarification,
+} from '../conversationOrchestrator/sessionMemory';
 
 const PLANNER_INTENTS = new Set<AiIntent>([
   'booking_request',
@@ -299,20 +310,28 @@ async function applyEntities(
   }
 
   // Time preference — prefer inbound phrasing; ignore Gemini echoing bot shortlist times.
-  const inboundHasTimePref = /(بعد|قبل|أقرب|اقرب|الصبح|مساء|بالليل|بعد الظهر)/.test(inboundText);
+  const inboundHasTimePref =
+    /(بعد|قبل|أقرب|اقرب|الصبح|مساء|مساءا|بالليل|بليل|بعد الظهر|ساعة|ساعه|حوالي|خليها|خليه|عاوز|عايز)/.test(
+      inboundText,
+    ) || /\d{1,2}/.test(inboundText);
   const entityTime = entities.timeText?.trim() || null;
   const entityLooksLikeEchoedSlot =
     Boolean(entityTime) &&
     /^\d{1,2}(:\d{2})?\s*(ص|م|am|pm)?$/i.test(entityTime!) &&
-    !inboundHasTimePref;
+    !/(ساعة|ساعه|بليل|مساء|عاوز|خلي)/.test(inboundText);
+  const contextTimeHm =
+    plan.timePreference?.timeHm ||
+    plan.selectedSlot?.time ||
+    plan.candidateSlots[0]?.time ||
+    null;
   const timeSrc = inboundHasTimePref
     ? inboundText
     : entityTime && !entityLooksLikeEchoedSlot
       ? entityTime
       : null;
   if (timeSrc) {
-    const pref = parseTimePreferenceText(timeSrc);
-    if (pref) {
+    const pref = parseTimePreferenceText(timeSrc, { contextTimeHm });
+    if (pref && pref.kind !== 'any') {
       const prev = JSON.stringify(plan.timePreference);
       const next = JSON.stringify(pref);
       if (prev !== next) {
@@ -774,6 +793,162 @@ export async function processBookingPlannerTurn(
     }
   }
 
+  // V3.1 ConstraintDelta — selection vs new time/constraint vs repair
+  // BEFORE stale candidate shortlist ownership.
+  {
+    const contextTimeHm =
+      plan.timePreference?.timeHm ||
+      active?.timePreference?.timeHm ||
+      active?.selectedSlot?.time ||
+      active?.candidateSlots?.[0]?.time ||
+      null;
+    const delta = detectConstraintDelta({
+      text,
+      candidates: active?.candidateSlots ?? plan.candidateSlots,
+      contextTimeHm,
+      contextStage: active?.stage ?? plan.stage,
+    });
+    (trace as Record<string, unknown>).constraintDelta = {
+      temporalKind: delta.temporalKind,
+      newTimeNotInCandidates: delta.newTimeNotInCandidates,
+      isCandidateSelection: delta.isCandidateSelection,
+      repairSignal: delta.repairSignal,
+      mutatesPlan: delta.mutatesPlan,
+      reasons: delta.reasons,
+      timeHm: delta.timePreference?.timeHm ?? null,
+    };
+
+    if (delta.repairSignal || delta.newTimeNotInCandidates || delta.timePreference) {
+      noteEvidenceAdded(input.conversationId);
+    }
+
+    // Explicit new time not in candidates → invalidate shortlist + refresh
+    // Only when a shortlist / confirm stage already exists — otherwise fall through
+    // so date/service entities can still be applied on collecting turns.
+    const hasStaleShortlist =
+      Boolean(active?.candidateSlots?.length) ||
+      active?.stage === 'choosing_slot' ||
+      active?.stage === 'ready_to_confirm' ||
+      active?.stage === 'confirmed_intent';
+    if (
+      delta.mutatesPlan &&
+      delta.timePreference &&
+      delta.newTimeNotInCandidates &&
+      !delta.isCandidateSelection &&
+      hasStaleShortlist
+    ) {
+      clearPendingConfirmation(input.conversationId);
+      trace.invalidatedFields.push(...invalidateAfterChange(plan, ['timePreference']));
+      plan.timePreference = delta.timePreference;
+      if (active) {
+        plan.serviceIds = plan.serviceIds.length ? plan.serviceIds : active.serviceIds;
+        plan.serviceNames = plan.serviceNames.length ? plan.serviceNames : active.serviceNames;
+        plan.empId = plan.empId ?? active.empId;
+        plan.employeeName = plan.employeeName ?? active.employeeName;
+        plan.requestedDate = plan.requestedDate || active.requestedDate;
+        plan.branchCode = plan.branchCode || active.branchCode;
+        plan.branchId = plan.branchId ?? active.branchId;
+        plan.branchName = plan.branchName || active.branchName;
+      }
+      const repairPrefix = delta.repairSignal
+        ? 'تمام، فهمتك — إنت عايز وقت تاني مش واحد من المواعيد اللي فوق. '
+        : '';
+      const search = await searchAvailability(plan, trace, runAvailability);
+      const saved = await persistPlan({
+        conversationId: input.conversationId,
+        existing: active,
+        plan,
+        turnId: input.turnId,
+        trace,
+      });
+      trace.deterministicAction = delta.repairSignal
+        ? 'constraint_delta_repair_time_refresh'
+        : 'constraint_delta_time_refresh';
+      trace.stageAfter = plan.stage;
+      console.log(
+        JSON.stringify({ type: 'messaging_booking_planner_trace', ...trace, planId: saved.planId }),
+      );
+      return {
+        handled: true,
+        preservePlan: true,
+        replyText: `${repairPrefix}${search.reply || ''}`.trim(),
+        plan: saved,
+        trace,
+        intent: 'booking_request',
+      };
+    }
+
+    // Apply soft time preference into plan when not taking early refresh
+    // (collecting turns still need entities for date/service).
+    if (
+      delta.timePreference &&
+      !delta.isCandidateSelection &&
+      !hasStaleShortlist
+    ) {
+      const prev = JSON.stringify(plan.timePreference);
+      const next = JSON.stringify(delta.timePreference);
+      if (prev !== next) {
+        plan.timePreference = delta.timePreference;
+      }
+    }
+
+    // Exact time matches a candidate → select it
+    if (
+      delta.isCandidateSelection &&
+      delta.selectedCandidateTime &&
+      (active?.candidateSlots?.length || plan.candidateSlots.length)
+    ) {
+      const slots = active?.candidateSlots?.length ? active.candidateSlots : plan.candidateSlots;
+      const slot =
+        slots.find((c) => c.time === delta.selectedCandidateTime) ||
+        (delta.selectedCandidateIndex != null ? slots[delta.selectedCandidateIndex] : null);
+      if (slot) {
+        // Fall through to existing select_slot path via resolveSlotChoice semantics
+        plan.selectedSlot = slot;
+        plan.candidateSlots = slots;
+        plan.stage = 'ready_to_confirm';
+        plan.missingFields = ['confirm'];
+        if (delta.timePreference) plan.timePreference = delta.timePreference;
+        const saved = await persistPlan({
+          conversationId: input.conversationId,
+          existing: active,
+          plan,
+          turnId: input.turnId,
+          trace,
+        });
+        trace.deterministicAction = 'constraint_delta_select_candidate';
+        trace.selectedSlot = plan.selectedSlot;
+        trace.stageAfter = 'ready_to_confirm';
+        console.log(
+          JSON.stringify({ type: 'messaging_booking_planner_trace', ...trace, planId: saved.planId }),
+        );
+        return {
+          handled: true,
+          preservePlan: true,
+          replyText: buildReadyToConfirmReply(plan),
+          plan: saved,
+          trace,
+          intent: 'booking_request',
+        };
+      }
+    }
+
+    // Bare repair without new parseable constraint — do not re-ask same shortlist
+    if (delta.repairSignal && !delta.timePreference && active) {
+      noteClarificationAsked(input.conversationId, 'repair_ask_explicit_time');
+      trace.deterministicAction = 'repair_ask_explicit_time';
+      return {
+        handled: true,
+        preservePlan: true,
+        replyText:
+          'تمام فهمتك إن المواعيد دي مش مناسبة. قولي الساعة اللي تناسبك بالظبط (مثلاً 11 بليل أو 1 بالليل).',
+        plan: active,
+        trace: { ...trace, stageAfter: active.stage },
+        intent: 'booking_request',
+      };
+    }
+  }
+
   // Deterministic: slot choice against STORED candidates.
   // Ignore Gemini entity echo from prior turns — "الأول"/"1" must not re-search.
   if (
@@ -781,10 +956,31 @@ export async function processBookingPlannerTurn(
     active.candidateSlots.length > 0 &&
     turnIntent.intent !== 'BOOKING_ALTERNATIVE_QUERY' &&
     turnIntent.intent !== 'BUSINESS_INFORMATION_INTERRUPT' &&
-    (active.stage === 'choosing_slot' || looksLikeSlotChoice(text))
+    (active.stage === 'choosing_slot' || looksLikeSlotChoice(text)) &&
+    !looksLikeTimeConstraint(text)
   ) {
-    const choice = resolveSlotChoice(text, active.candidateSlots);
+    const choice = resolveSlotChoice(text, active.candidateSlots, {
+      contextTimeHm:
+        plan.timePreference?.timeHm ||
+        active.timePreference?.timeHm ||
+        active.candidateSlots[0]?.time ||
+        null,
+    });
     if (choice.ambiguous) {
+      const clarifyType = 'slot_ambiguous';
+      if (shouldBlockRepeatedClarification(input.conversationId, clarifyType)) {
+        noteEvidenceAdded(input.conversationId);
+        trace.deterministicAction = 'slot_ambiguous_blocked_repeat';
+        return {
+          handled: true,
+          preservePlan: true,
+          replyText: 'قولي الساعة بالظبط أو رقم واحد من اللي فوق.',
+          plan: active,
+          trace: { ...trace, stageAfter: active.stage },
+          intent: 'booking_request',
+        };
+      }
+      noteClarificationAsked(input.conversationId, clarifyType);
       trace.deterministicAction = 'slot_ambiguous';
       const reply = `في أكتر من ميعاد قريب من اللي قلته. اختار رقم:\n${buildSlotChoicesReply(fromSnapshot(active))}`;
       return {
@@ -960,8 +1156,25 @@ export async function processBookingPlannerTurn(
     if (
       plan.candidateSlots.length > 0 &&
       !trace.invalidatedFields.length &&
-      active?.stage === 'choosing_slot'
+      active?.stage === 'choosing_slot' &&
+      !looksLikeTimeConstraint(text) &&
+      !looksLikeRepairSignal(text)
     ) {
+      const clarifyType = 'slot_choice';
+      if (shouldBlockRepeatedClarification(input.conversationId, clarifyType)) {
+        noteEvidenceAdded(input.conversationId);
+        trace.deterministicAction = 'reprompt_slot_choice_blocked';
+        return {
+          handled: true,
+          preservePlan: true,
+          replyText:
+            'قولي الساعة اللي تريدها بالظبط وهدورلك عليها — مش لازم تختار من اللي فوق لو مش مناسبة.',
+          plan: active,
+          trace: { ...trace, stageAfter: active.stage },
+          intent: 'booking_request',
+        };
+      }
+      noteClarificationAsked(input.conversationId, clarifyType);
       plan.stage = 'choosing_slot';
       plan.missingFields = ['slot_choice'];
       const saved = await persistPlan({

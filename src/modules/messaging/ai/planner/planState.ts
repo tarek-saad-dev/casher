@@ -91,6 +91,11 @@ export function invalidateAfterChange(
     plan.selectedSlot = null;
     plan.lastAvailabilityCheckedAt = null;
     invalidated.push('candidateSlots', 'selectedSlot');
+    // Confirmation snapshot is dead — cannot affirm stale ready_to_confirm
+    if (plan.stage === 'ready_to_confirm' || plan.stage === 'confirmed_intent') {
+      plan.stage = 'collecting';
+      invalidated.push('stage');
+    }
   }
   return invalidated;
 }

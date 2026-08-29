@@ -18,24 +18,70 @@ export function minutesOf(hm: string): number {
   return (h || 0) * 60 + (m || 0);
 }
 
-function toHm24(hour: number, minute: number, context: string): string {
+/** 48h timeline minutes for overnight-aware distance (dayOffset 0|1). */
+export function timelineMinutes(hm: string, dayOffset: 0 | 1 = 0): number {
+  return dayOffset * 1440 + minutesOf(hm);
+}
+
+/**
+ * Resolve 12h clock → 24h using daypart markers + optional conversation context.
+ *
+ * Overnight salon semantics (بليل / بالليل / الفجر):
+ * - hours 1–4 → keep as 01–04 (after midnight on business day)
+ * - hour 12 → 00:00
+ * - hours 5–11 → +12 (evening)
+ *
+ * مساء without بليل: classic PM (+12 for 1–11).
+ * Bare hour: use contextTimeHm when present; else salon PM bias for 1–11.
+ */
+export function toHm24(
+  hour: number,
+  minute: number,
+  context: string,
+  contextTimeHm?: string | null,
+): string {
   let h = hour;
   const ctx = context.toLowerCase();
-  if (/بليل|بالليل|مساء|(?:^|[\s])ليل(?:$|[\s])|العشاء|(?:^|[\s])pm(?:$|[\s])|(?:^|[\s])م(?:$|[\s])/.test(ctx) && h < 12) {
+  const nightLate =
+    /بليل|بالليل|(?:^|[\s])ليل(?:$|[\s])|الفجر|بعد\s*نص\s*الليل|بعد نص الليل/.test(ctx);
+  const eveningPm =
+    /مساء|مساءا|العشاء|(?:^|[\s])pm(?:$|[\s])|(?:^|[\s])م(?:$|[\s])/.test(ctx) && !nightLate;
+  const morning =
+    /الصبح|صباحا|(?:^|[\s])صبح(?:$|[\s])|(?:^|[\s])am(?:$|[\s])|(?:^|[\s])ص(?:$|[\s])/.test(ctx);
+
+  if (nightLate) {
+    if (h === 12) h = 0;
+    else if (h >= 5 && h <= 11) h += 12;
+    // 1–4 stay AM overnight
+  } else if (eveningPm && h < 12) {
     h += 12;
-  }
-  if (/الصبح|صباحا|(?:^|[\s])صبح(?:$|[\s])|(?:^|[\s])am(?:$|[\s])|(?:^|[\s])ص(?:$|[\s])|الفجر/.test(ctx) && h === 12) {
+  } else if (morning && h === 12) {
     h = 0;
-  }
-  if (/الصبح|صباحا|(?:^|[\s])صبح(?:$|[\s])|(?:^|[\s])am(?:$|[\s])/.test(ctx) && h > 12) {
+  } else if (morning && h > 12) {
     h -= 12;
-  }
-  if (
-    !/بليل|بالليل|مساء|ليل|صبح|صباحا|العشاء|am|pm|(?:^|[\s])[صم](?:$|[\s])/.test(ctx) &&
-    h >= 1 &&
-    h <= 11
-  ) {
-    h += 12;
+  } else if (!nightLate && !eveningPm && !morning && h >= 1 && h <= 11) {
+    // Contextual bare hour
+    if (contextTimeHm) {
+      const ctxH = Number(String(contextTimeHm).slice(0, 2));
+      if (Number.isFinite(ctxH)) {
+        if (ctxH >= 15) {
+          // Evening/night conversation → prefer PM
+          h += 12;
+        }
+        // Morning context (ctxH < 12): keep as AM
+        // Midday 12–14: keep as AM for 1–11 only if hour > ctxH, else PM if hour < ctxH?
+        // Spec: ~10 AM + "11" → 11:00 AM (keep)
+        else if (ctxH >= 12 && ctxH < 15) {
+          // Early afternoon: still prefer PM for salon booking hours
+          h += 12;
+        }
+      } else {
+        h += 12;
+      }
+    } else {
+      // Default salon bias: bare 1–11 → PM
+      h += 12;
+    }
   }
   return `${String(h).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
@@ -80,13 +126,20 @@ function parseClockFragment(
   return null;
 }
 
+export type ParseTimePreferenceOptions = {
+  /** Current booking / conversation clock for bare-hour inference */
+  contextTimeHm?: string | null;
+};
+
 /** Parse Arabic/English time preference into structured preference. */
 export function parseTimePreferenceText(
   text: string | null | undefined,
+  options?: ParseTimePreferenceOptions,
 ): CiTimePreference | null {
   if (!text) return null;
   const raw = text.trim().toLowerCase();
   if (!raw) return null;
+  const contextTimeHm = options?.contextTimeHm ?? null;
 
   if (/أقرب|اقرب|earliest|asap|أول ميعاد|اول ميعاد|أي وقت|اى وقت|اي وقت/.test(raw)) {
     return { kind: 'earliest', confidence: 'HIGH' };
@@ -98,7 +151,7 @@ export function parseTimePreferenceText(
     if (clock) {
       return {
         kind: 'around',
-        timeHm: toHm24(clock.hour, clock.minute, raw),
+        timeHm: toHm24(clock.hour, clock.minute, raw, contextTimeHm),
         confidence: 'HIGH',
       };
     }
@@ -108,7 +161,7 @@ export function parseTimePreferenceText(
   if (after) {
     return {
       kind: 'after',
-      timeHm: toHm24(Number(after[1]), after[2] ? Number(after[2]) : 0, raw),
+      timeHm: toHm24(Number(after[1]), after[2] ? Number(after[2]) : 0, raw, contextTimeHm),
       confidence: 'HIGH',
     };
   }
@@ -116,40 +169,46 @@ export function parseTimePreferenceText(
   if (before) {
     return {
       kind: 'before',
-      timeHm: toHm24(Number(before[1]), before[2] ? Number(before[2]) : 0, raw),
+      timeHm: toHm24(Number(before[1]), before[2] ? Number(before[2]) : 0, raw, contextTimeHm),
       confidence: 'HIGH',
     };
   }
 
-  // Range: بين 8 و10
-  const range = raw.match(/بين\s*(\d{1,2})\s*و\s*(\d{1,2})/);
+  // Range: بين 8 و10 / من 9 لـ11
+  const range =
+    raw.match(/بين\s*(\d{1,2})\s*و\s*(\d{1,2})/) ||
+    raw.match(/من\s*(\d{1,2})\s*(?:ل|الى|إلى|لـ)\s*(\d{1,2})/);
   if (range) {
     return {
       kind: 'range',
-      timeHm: toHm24(Number(range[1]), 0, raw),
-      timeHmEnd: toHm24(Number(range[2]), 0, raw),
+      timeHm: toHm24(Number(range[1]), 0, raw, contextTimeHm),
+      timeHmEnd: toHm24(Number(range[2]), 0, raw, contextTimeHm),
       confidence: 'MEDIUM',
     };
   }
 
   // Explicit clock with night/morning markers — prefer exact/around over daypart
   const hasClock = /\d{1,2}|عشرة|عشره|تسعة|ثمانية|تمانية/.test(raw);
-  const nightMark = /بليل|بالليل|مساء|(?:^|[\s])ليل(?:$|[\s])|العشاء|(?:^|[\s])pm(?:$|[\s])/.test(
-    raw,
-  );
-  const morningMark = /الصبح|صباحا|(?:^|[\s])صبح(?:$|[\s])|(?:^|[\s])am(?:$|[\s])|الفجر/.test(raw);
+  const nightLateMark =
+    /بليل|بالليل|(?:^|[\s])ليل(?:$|[\s])|الفجر|بعد\s*نص\s*الليل/.test(raw);
+  const eveningMark =
+    /مساء|مساءا|العشاء|(?:^|[\s])pm(?:$|[\s])/.test(raw) && !nightLateMark;
+  const morningMark = /الصبح|صباحا|(?:^|[\s])صبح(?:$|[\s])|(?:^|[\s])am(?:$|[\s])/.test(raw);
 
   if (hasClock) {
     const clock = parseClockFragment(raw);
     if (clock) {
-      const ctx = nightMark ? `${raw} بليل` : morningMark ? `${raw} صبح` : raw;
-      // "على 10" / "الساعة 10" without around → exact
-      const kind: TimePreferenceKind = /حوالي|حوالى|حدود|تقريبا/.test(raw)
+      let ctx = raw;
+      if (nightLateMark) ctx = `${raw} بليل`;
+      else if (eveningMark) ctx = `${raw} مساء`;
+      else if (morningMark) ctx = `${raw} صبح`;
+      // UX: حوالي / عاوز / خلي → around; bare الساعة N → exact (still refreshes if not in candidates)
+      const kind: TimePreferenceKind = /حوالي|حوالى|حدود|تقريبا|عاوز|عايز|خلي/.test(raw)
         ? 'around'
         : 'exact';
       return {
         kind,
-        timeHm: toHm24(clock.hour, clock.minute, ctx),
+        timeHm: toHm24(clock.hour, clock.minute, ctx, contextTimeHm),
         confidence: 'HIGH',
       };
     }
@@ -220,12 +279,16 @@ export function filterSlotsByPreference(
     case 'around':
     case 'exact':
       if (timeHm) {
-        const target = minutesOf(timeHm);
-        // Prefer within ±90 minutes band first
-        const band = filtered.filter((s) => Math.abs(minutesOf(s.time) - target) <= 90);
-        filtered = (band.length ? band : filtered).sort(
-          (a, b) => Math.abs(minutesOf(a.time) - target) - Math.abs(minutesOf(b.time) - target),
-        );
+        const targetHour = Number(timeHm.slice(0, 2));
+        // Overnight early morning (00–04): prefer dayOffset=1 timeline
+        const target =
+          targetHour <= 4
+            ? timelineMinutes(timeHm, 1)
+            : timelineMinutes(timeHm, 0);
+        const dist = (s: BookingCandidateSlot) =>
+          Math.abs(timelineMinutes(s.time, s.dayOffset ?? 0) - target);
+        const band = filtered.filter((s) => dist(s) <= 90);
+        filtered = (band.length ? band : filtered).sort((a, b) => dist(a) - dist(b));
         return filtered.slice(0, max);
       }
       break;

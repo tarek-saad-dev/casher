@@ -17,6 +17,7 @@ import {
   getSessionMemory,
   pushCustomerTurn,
   recordBotAction,
+  noteClarificationAsked,
 } from './sessionMemory';
 import { buildTurnFrame, isEphemeralQueryIntent } from './turnFrame';
 import type { OrchestratorDecision } from './types';
@@ -254,4 +255,5 @@ export function notePlannerSlotAsk(args: {
     action: 'ask_slot_choice',
     answeredWell: true,
   });
+  noteClarificationAsked(args.conversationId, 'slot_choice');
 }

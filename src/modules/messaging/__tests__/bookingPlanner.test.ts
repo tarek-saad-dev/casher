@@ -588,7 +588,7 @@ describe('Phase 3 booking planner turn matrix', () => {
     expect(pick.plan?.selectedSlot?.time).toBe('19:00');
     expect(pick.replyText).toMatch(/أأكدلك/);
     expect(pick.replyText).not.toMatch(/تم الحجز/);
-    expect(pick.trace.deterministicAction).toBe('select_slot');
+    expect(pick.trace.deterministicAction).toMatch(/select_slot|constraint_delta_select_candidate/);
   });
 
   it('17-18 confirmation intent executes booking via Phase 4 (mocked); may say تم الحجز only after exec', async () => {

@@ -20,6 +20,9 @@ export function getSessionMemory(conversationId: number): SessionMemory {
       lastReferencedTime: null,
       lastUnresolvedCustomerText: null,
       repairAttempt: 0,
+      lastClarificationType: null,
+      lastClarificationAskedAt: null,
+      evidenceAddedSinceClarification: false,
     };
     sessions.set(conversationId, s);
   }
@@ -86,6 +89,35 @@ export function clearPendingConfirmation(conversationId: number): void {
   const s = getSessionMemory(conversationId);
   s.pendingConfirmPlanId = null;
   s.pendingConfirmVersion = null;
+}
+
+export function noteClarificationAsked(
+  conversationId: number,
+  clarificationType: string,
+): void {
+  const s = getSessionMemory(conversationId);
+  s.lastClarificationType = clarificationType;
+  s.lastClarificationAskedAt = Date.now();
+  s.evidenceAddedSinceClarification = false;
+}
+
+export function noteEvidenceAdded(conversationId: number): void {
+  const s = getSessionMemory(conversationId);
+  if (s.lastClarificationType) {
+    s.evidenceAddedSinceClarification = true;
+  }
+}
+
+/** True when the exact same clarification must not be repeated after new evidence. */
+export function shouldBlockRepeatedClarification(
+  conversationId: number,
+  clarificationType: string,
+): boolean {
+  const s = getSessionMemory(conversationId);
+  return (
+    s.lastClarificationType === clarificationType &&
+    s.evidenceAddedSinceClarification === true
+  );
 }
 
 /** Test helper */

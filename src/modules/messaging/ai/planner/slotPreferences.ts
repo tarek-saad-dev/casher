@@ -5,13 +5,19 @@ import {
   minutesOf as ciMinutes,
   formatSlotLabelAr as ciFormat,
   toPlannerTimePreference,
+  type ParseTimePreferenceOptions,
 } from '../conversationIntelligence/timePreference';
+import {
+  looksLikePureCandidateSelection,
+  looksLikeTimeConstraint,
+} from '../conversationOrchestrator/constraintDelta';
 
 /** Parse Arabic/English time preference phrases into structured preference. */
 export function parseTimePreferenceText(
   text: string | null | undefined,
+  options?: ParseTimePreferenceOptions,
 ): BookingTimePreference | null {
-  const ci = ciParseTime(text);
+  const ci = ciParseTime(text, options);
   if (!ci) return null;
   return toPlannerTimePreference(ci);
 }
@@ -27,21 +33,25 @@ export function filterSlotsByPreference(
   return ciFilter(slots, pref, max);
 }
 
-/** True when inbound is a short ordinal / index / clock pick against a shortlist. */
+/**
+ * True when inbound is a short ordinal / index pick against a shortlist.
+ * Explicit time constraints ("الساعة 11") are NOT slot choices unless they
+ * resolve to an existing candidate (handled by ConstraintDelta).
+ */
 export function looksLikeSlotChoice(text: string): boolean {
   const raw = text.trim();
   if (!raw) return false;
-  return (
-    /^(الأول|الاول|التاني|الثاني|التالت|الثالث|آخر واحد|اخر واحد|آخر|اخر)$/i.test(raw) ||
-    /^(رقم\s*)?[123]$/i.test(raw) ||
-    /^(الساعة\s*)?\d{1,2}(:\d{2})?\s*(ص|م|am|pm)?$/i.test(raw)
-  );
+  if (looksLikePureCandidateSelection(raw)) return true;
+  // Bare digit 1–3 only when NOT wrapped in time-constraint phrasing
+  if (/^(رقم\s*)?[123]$/i.test(raw) && !looksLikeTimeConstraint(raw)) return true;
+  return false;
 }
 
 /** Resolve customer slot choice against candidates. */
 export function resolveSlotChoice(
   text: string,
   candidates: BookingCandidateSlot[],
+  options?: { contextTimeHm?: string | null },
 ): { slot: BookingCandidateSlot | null; ambiguous: boolean } {
   if (!candidates.length) return { slot: null, ambiguous: false };
   const raw = text.trim().toLowerCase();
@@ -56,15 +66,14 @@ export function resolveSlotChoice(
     return { slot: candidates[Math.min(2, candidates.length - 1)] ?? null, ambiguous: false };
   }
 
-  const hmMatch = raw.match(/(\d{1,2})(?::(\d{2}))?/);
-  if (hmMatch) {
-    let h = Number(hmMatch[1]);
-    const m = hmMatch[2] ? Number(hmMatch[2]) : 0;
-    if (/م|مساء|pm|بليل|بالليل|ليل/.test(raw) && h < 12) h += 12;
-    if (!/[صم]|am|pm|مساء|صبح|ليل/.test(raw) && h >= 1 && h <= 11) h += 12;
-    const target = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  // Only match clock against candidates when phrasing is a pure short pick
+  // (e.g. "10:00" / "10") — ConstraintDelta owns "الساعة 11" refresh path.
+  const pref = ciParseTime(text, { contextTimeHm: options?.contextTimeHm ?? null });
+  if (pref?.timeHm) {
+    const target = pref.timeHm;
     const exact = candidates.filter((c) => c.time === target);
     if (exact.length === 1) return { slot: exact[0]!, ambiguous: false };
+    const h = Number(target.slice(0, 2));
     const hourMatches = candidates.filter((c) => Number(c.time.slice(0, 2)) === h);
     if (hourMatches.length === 1) return { slot: hourMatches[0]!, ambiguous: false };
     if (hourMatches.length > 1) return { slot: null, ambiguous: true };

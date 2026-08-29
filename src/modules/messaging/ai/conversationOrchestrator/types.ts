@@ -107,6 +107,10 @@ export type SessionMemory = {
   lastReferencedTime: string | null;
   lastUnresolvedCustomerText: string | null;
   repairAttempt: number;
+  /** V3.1 — repeated clarification guard */
+  lastClarificationType: string | null;
+  lastClarificationAskedAt: number | null;
+  evidenceAddedSinceClarification: boolean;
 };
 
 export type ResponsePlan = {
