@@ -3,8 +3,11 @@ import {
   getOutboundBotMessageByAiTurnId,
   insertOutboundBotMessage,
 } from '@/modules/messaging/conversation/infra/botMessageRepository';
-import { AI_SYSTEM_INSTRUCTIONS_V1 } from '../domain/systemInstructions';
-import type { AiTurnRow, ProcessAiTurnResult } from '../domain/types';
+import {
+  AI_SYSTEM_INSTRUCTIONS_GROUNDED_V1,
+  AI_SYSTEM_INSTRUCTIONS_V1,
+} from '../domain/systemInstructions';
+import type { AiStructuredResult, AiTurnRow, ProcessAiTurnResult } from '../domain/types';
 import type { AiModelClient } from '../model/aiModelClient';
 import {
   getAiTurnById,
@@ -21,9 +24,20 @@ import {
   computeMsBetween,
   logAiProcessorPerf,
 } from '../observability/aiProcessorPerf';
+import {
+  executeAiToolPlan,
+  intentRequiresBusinessTools,
+  looksLikeFakeSystemCheck,
+  planBusinessToolCalls,
+  SAFE_NO_WRITE_BOOKING_REPLY_AR,
+  SAFE_TOOL_FAILURE_REPLY_AR,
+  type AiToolTrace,
+} from '../tools';
 
 export type ProcessAiTurnDeps = {
   modelClient: AiModelClient;
+  /** Optional override for tests. */
+  runTools?: typeof executeAiToolPlan;
 };
 
 function errorMeta(err: unknown): { message: string; code: string; retryable: boolean } {
@@ -43,6 +57,70 @@ async function resumeCompletedTurn(turn: AiTurnRow): Promise<ProcessAiTurnResult
     outboundMessageId: turn.outboundMessageId,
     outboxId: turn.outboxId,
     skipped: turn.status === 'skipped',
+  };
+}
+
+function compactToolTrace(trace: AiToolTrace): unknown {
+  return {
+    truncated: trace.truncated,
+    tools: trace.executed.map((t) => ({
+      name: t.name,
+      ok: t.ok,
+      durationMs: t.durationMs,
+      input: t.input,
+      errorCode: t.errorCode ?? null,
+      data: t.data ?? null,
+    })),
+  };
+}
+
+function finalizeReplyAfterTools(args: {
+  structured: AiStructuredResult;
+  toolTrace: AiToolTrace;
+}): AiStructuredResult {
+  let replyText = args.structured.replyText.trim();
+  const anyOk = args.toolTrace.executed.some((t) => t.ok);
+  const anyFailed = args.toolTrace.executed.some((t) => !t.ok);
+
+  if (!replyText) {
+    replyText = anyOk
+      ? 'تمام، دي المعلومات المتاحة من السيستم.'
+      : SAFE_TOOL_FAILURE_REPLY_AR;
+  }
+
+  if (looksLikeFakeSystemCheck(replyText)) {
+    replyText = anyOk
+      ? replyText.replace(
+          /ثواني.*?(سيستم|أكد)[^.!؟\n]*/gi,
+          'حسب السيستم',
+        )
+      : SAFE_TOOL_FAILURE_REPLY_AR;
+    if (looksLikeFakeSystemCheck(replyText)) {
+      replyText = anyOk
+        ? 'دي نتيجة السيستم الحالية حسب البيانات المتاحة.'
+        : SAFE_TOOL_FAILURE_REPLY_AR;
+    }
+  }
+
+  if (!anyOk && anyFailed) {
+    if (!replyText || looksLikeFakeSystemCheck(replyText)) {
+      replyText = SAFE_TOOL_FAILURE_REPLY_AR;
+    }
+  }
+
+  if (args.structured.intent === 'booking_request') {
+    const triedAvailability = args.toolTrace.executed.some((t) => t.name === 'get_availability');
+    if (triedAvailability && !/الاستقبال|مش مفعّل|مش مفعل/.test(replyText)) {
+      replyText = `${replyText}\n${SAFE_NO_WRITE_BOOKING_REPLY_AR}`.trim();
+    }
+  }
+
+  return {
+    ...args.structured,
+    replyText,
+    needsBusinessTool: false,
+    toolCalls: [],
+    shouldReply: true,
   };
 }
 
@@ -106,6 +184,7 @@ export async function processAiTurn(
 
   const receivedAt = await getInboundMessageReceivedAt(turn.latestInboundMessageId);
   const aiStartAt = new Date();
+  const runTools = deps.runTools ?? executeAiToolPlan;
 
   try {
     const contextStarted = performance.now();
@@ -127,11 +206,66 @@ export async function processAiTurn(
       systemInstructions: AI_SYSTEM_INSTRUCTIONS_V1,
       conversation: context,
     });
-    timer.markGeminiDone(modelOutput.latencyMs ?? performance.now() - modelStarted);
+    let geminiMs = modelOutput.latencyMs ?? performance.now() - modelStarted;
 
     const validationStarted = performance.now();
-    const structured = modelOutput.result;
+    let structured = modelOutput.result;
     timer.markOutputValidationDone(performance.now() - validationStarted);
+
+    let toolTrace: AiToolTrace = { requested: [], executed: [], truncated: false };
+    let toolDecisionMs = 0;
+    let toolExecMs = 0;
+    let groundedMs = 0;
+
+    const wantsTools =
+      intentRequiresBusinessTools(structured.intent, structured.needsBusinessTool) ||
+      structured.toolCalls.length > 0 ||
+      looksLikeFakeSystemCheck(structured.replyText);
+
+    if (wantsTools) {
+      const planStarted = performance.now();
+      const plan = planBusinessToolCalls(structured);
+      toolDecisionMs = Math.max(0, Math.round(performance.now() - planStarted));
+
+      if (plan.length > 0) {
+        const execStarted = performance.now();
+        toolTrace = await runTools(plan, {
+          phone: context.phone,
+          conversationId: turn.conversationId,
+          turnId: turn.turnId,
+        });
+        toolExecMs = Math.max(0, Math.round(performance.now() - execStarted));
+
+        const groundedStarted = performance.now();
+        const grounded = await deps.modelClient.generateConversationTurn({
+          systemInstructions: AI_SYSTEM_INSTRUCTIONS_GROUNDED_V1,
+          conversation: context,
+          toolResultsJson: JSON.stringify(compactToolTrace(toolTrace)),
+        });
+        groundedMs = grounded.latencyMs ?? Math.max(0, Math.round(performance.now() - groundedStarted));
+        geminiMs += groundedMs;
+        structured = finalizeReplyAfterTools({
+          structured: grounded.result,
+          toolTrace,
+        });
+      } else if (looksLikeFakeSystemCheck(structured.replyText) || structured.needsBusinessTool) {
+        // Needs tools but insufficient entities — ask, don't fake-check.
+        structured = {
+          ...structured,
+          replyText:
+            structured.missingInformation.length > 0
+              ? `محتاج منك: ${structured.missingInformation.join('، ')}.`
+              : structured.intent === 'booking_request'
+                ? 'حاضر، قولي الفرع والخدمة واليوم (ومع مين لو حابب) عشان أشوفلك المواعيد المتاحة من السيستم.'
+                : 'محتاج تفاصيل أوضح عشان أقدر أجاوب من السيستم بدقة.',
+          needsBusinessTool: false,
+          toolCalls: [],
+          shouldReply: true,
+        };
+      }
+    }
+
+    timer.markGeminiDone(geminiMs);
 
     if (!structured.shouldReply || !structured.replyText.trim()) {
       await markAiTurnCompleted({
@@ -141,7 +275,11 @@ export async function processAiTurn(
         intent: structured.intent,
         confidence: structured.confidence,
         needsBusinessTool: structured.needsBusinessTool,
-        resultJson: JSON.stringify(structured),
+        resultJson: JSON.stringify({
+          ...structured,
+          toolTrace: compactToolTrace(toolTrace),
+          timing: { toolDecisionMs, toolExecMs, groundedMs },
+        }),
       });
       const finishedAt = new Date();
       logAiProcessorPerf({
@@ -200,6 +338,12 @@ export async function processAiTurn(
           outboundMessageId,
           intent: structured.intent,
           needsBusinessTool: structured.needsBusinessTool,
+          tools: toolTrace.executed.map((t) => ({
+            name: t.name,
+            ok: t.ok,
+            durationMs: t.durationMs,
+            errorCode: t.errorCode ?? null,
+          })),
         },
         context: {},
       });
@@ -213,8 +357,12 @@ export async function processAiTurn(
       outboxId,
       intent: structured.intent,
       confidence: structured.confidence,
-      needsBusinessTool: structured.needsBusinessTool,
-      resultJson: JSON.stringify(structured),
+      needsBusinessTool: Boolean(toolTrace.executed.length) || structured.needsBusinessTool,
+      resultJson: JSON.stringify({
+        ...structured,
+        toolTrace: compactToolTrace(toolTrace),
+        timing: { toolDecisionMs, toolExecMs, groundedMs },
+      }),
     });
 
     const finishedAt = new Date();
@@ -232,6 +380,23 @@ export async function processAiTurn(
       messageReceivedToAiStartMs: computeMsBetween(receivedAt, aiStartAt),
       messageReceivedToReplyEnqueuedMs: computeMsBetween(receivedAt, finishedAt),
     });
+    console.log(
+      JSON.stringify({
+        type: 'messaging_ai_tool_trace',
+        turnId: turn.turnId,
+        conversationId: turn.conversationId,
+        intent: structured.intent,
+        needsBusinessTool: Boolean(toolTrace.executed.length),
+        tools: toolTrace.executed.map((t) => ({
+          name: t.name,
+          ok: t.ok,
+          durationMs: t.durationMs,
+          errorCode: t.errorCode ?? null,
+        })),
+        truncated: toolTrace.truncated,
+        timing: { toolDecisionMs, toolExecMs, groundedMs },
+      }),
+    );
 
     return {
       turnId: turn.turnId,

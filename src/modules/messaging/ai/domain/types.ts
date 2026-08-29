@@ -63,6 +63,16 @@ export type AiEntities = {
   timeText: string | null;
   employeeName: string | null;
   serviceText: string | null;
+  branchText: string | null;
+};
+
+export type AiToolCallDraft = {
+  name: string;
+  branchCode: string | null;
+  serviceQuery: string | null;
+  employeeName: string | null;
+  dateText: string | null;
+  timePreference: string | null;
 };
 
 export type AiStructuredResult = {
@@ -73,11 +83,14 @@ export type AiStructuredResult = {
   missingInformation: string[];
   entities: AiEntities;
   shouldReply: boolean;
+  toolCalls: AiToolCallDraft[];
 };
 
 export type GenerateConversationTurnInput = {
   systemInstructions: string;
   conversation: AiConversationContext;
+  /** Prior tool results for grounded final reply generation. */
+  toolResultsJson?: string | null;
 };
 
 export type GenerateConversationTurnOutput = {

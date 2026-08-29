@@ -1,6 +1,9 @@
 import type { GenerateConversationTurnInput, GenerateConversationTurnOutput } from '../domain/types';
 import type { AiModelClient } from './aiModelClient';
-import { AI_SYSTEM_INSTRUCTIONS_V1 } from '../domain/systemInstructions';
+import {
+  AI_SYSTEM_INSTRUCTIONS_GROUNDED_V1,
+  AI_SYSTEM_INSTRUCTIONS_V1,
+} from '../domain/systemInstructions';
 import { AI_RESPONSE_JSON_SCHEMA, parseAiStructuredResult, validateAiStructuredResult } from '../domain/structuredOutput';
 import { getAiConfig } from '../config';
 
@@ -9,12 +12,22 @@ function buildUserPrompt(input: GenerateConversationTurnInput): string {
     const role = m.direction === 'inbound' ? 'customer' : 'assistant';
     return `[${role}] ${m.text}`;
   });
-  return [
+  const parts = [
     'Recent conversation (oldest first):',
     ...lines,
     '',
-    'Respond with JSON only matching the schema.',
-  ].join('\n');
+  ];
+  if (input.toolResultsJson) {
+    parts.push(
+      'Business tool results (authoritative; do not contradict):',
+      input.toolResultsJson,
+      '',
+      'Produce the FINAL customer reply JSON. toolCalls must be empty.',
+    );
+  } else {
+    parts.push('Respond with JSON only matching the schema.');
+  }
+  return parts.join('\n');
 }
 
 export function createGeminiModelClient(env: NodeJS.ProcessEnv = process.env): AiModelClient {
@@ -36,12 +49,15 @@ export function createGeminiModelClient(env: NodeJS.ProcessEnv = process.env): A
     ): Promise<GenerateConversationTurnOutput> {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const client = new GoogleGenerativeAI(config.geminiApiKey);
+      const systemInstructions =
+        input.systemInstructions ||
+        (input.toolResultsJson ? AI_SYSTEM_INSTRUCTIONS_GROUNDED_V1 : AI_SYSTEM_INSTRUCTIONS_V1);
       const model = client.getGenerativeModel({
         model: config.geminiModel,
-        systemInstruction: input.systemInstructions || AI_SYSTEM_INSTRUCTIONS_V1,
+        systemInstruction: systemInstructions,
         generationConfig: {
-          temperature: 0.4,
-          maxOutputTokens: 512,
+          temperature: input.toolResultsJson ? 0.2 : 0.4,
+          maxOutputTokens: 700,
           responseMimeType: 'application/json',
           responseSchema: AI_RESPONSE_JSON_SCHEMA as Record<string, unknown>,
         },

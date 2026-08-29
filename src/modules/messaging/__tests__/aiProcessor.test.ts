@@ -85,8 +85,10 @@ function structured(overrides: Partial<AiStructuredResult> = {}): AiStructuredRe
       timeText: null,
       employeeName: null,
       serviceText: null,
+      branchText: null,
     },
     shouldReply: true,
+    toolCalls: [],
     ...overrides,
   };
 }
@@ -308,14 +310,16 @@ describe('Phase 3 AI processor', () => {
           structured({
             intent: 'booking_request',
             needsBusinessTool: true,
-            replyText: 'تمام، هحتاج أتأكد من المواعيد المتاحة.',
+            replyText: 'ثواني هأكدلك الحجز من السيستم.',
           }),
         ),
       },
     );
     expect(enqueueMessage).toHaveBeenCalledTimes(1);
     expect(markAiTurnCompleted).toHaveBeenCalledWith(
-      expect.objectContaining({ needsBusinessTool: true, intent: 'booking_request' }),
+      expect.objectContaining({ intent: 'booking_request' }),
     );
+    const text = insertOutboundBotMessage.mock.calls[0][0].text as string;
+    expect(text).not.toMatch(/هأكدلك الحجز من السيستم/);
   });
 });
