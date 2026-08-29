@@ -61,6 +61,7 @@ export function looksLikeAlternativeTimeQuery(text: string): boolean {
 
 export function looksLikeAlternativeBranchQuery(text: string): boolean {
   const t = norm(text);
+  if (/خلي\s*الحجز|خليه|خليها|غير\s*الحجز/.test(t)) return false;
   return /فرع\s*تاني|لو\s*جليم|في\s*جليم|كامب|فرع\s*غير/.test(t) && /تاني|لو|في/.test(t);
 }
 
@@ -78,7 +79,7 @@ export function looksLikeBookingModification(text: string): boolean {
   const t = norm(text);
   // Explicit change markers — not mere "لا" alone at confirm
   return (
-    /خليه|خليها|بدل|غير|غيرها|غيرّ|مش\s+.+\s*،?\s*(خليه|عاوز)/.test(t) ||
+    /خليه|خليها|خلي\s*الحجز|بدل|غير|غيرها|غيرّ|مش\s+.+\s*،?\s*(خليه|عاوز)/.test(t) ||
     /لا\s+خليه|لا\s+خليها|طب\s+خليه|طيب\s+خليه/.test(t) ||
     /بدل\s*(النهارده|بكره|عمر|محمد)/.test(t)
   );

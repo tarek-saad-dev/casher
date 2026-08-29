@@ -44,6 +44,13 @@ import {
   orchestrateConversationTurn,
 } from '../conversationOrchestrator/orchestrateTurn';
 import type { OrchestratorDecision } from '../conversationOrchestrator/types';
+import { isCustomerLedConversationV4Enabled } from '../conversationKernel/featureFlag';
+import {
+  noteKernelConfirmAsk,
+  noteKernelSlotAsk,
+  processKernelTurn,
+} from '../conversationKernel/processKernelTurn';
+import type { KernelDecision } from '../conversationKernel/types';
 
 export type ProcessAiTurnDeps = {
   modelClient: AiModelClient;
@@ -234,9 +241,34 @@ export async function processAiTurn(
     let groundedMs = 0;
     let plannerResult: PlannerTurnResult | null = null;
     let orchestratorDecision: OrchestratorDecision | null = null;
+    let kernelDecision: KernelDecision | null = null;
 
-    // V3: current-message-first arbitration BEFORE planner can dominate
-    if (isConversationOrchestratorV3Enabled()) {
+    // V4: customer-led kernel (sovereign current message) — takes precedence over V3
+    if (isCustomerLedConversationV4Enabled()) {
+      try {
+        kernelDecision = await processKernelTurn({
+          conversationId: turn.conversationId,
+          inboundText: latestInbound,
+        });
+        console.log(
+          JSON.stringify({
+            type: 'messaging_kernel_v4_trace',
+            turnId: turn.turnId,
+            conversationId: turn.conversationId,
+            ...(kernelDecision?.trace ?? {}),
+          }),
+        );
+      } catch (kernErr) {
+        console.error(
+          JSON.stringify({
+            type: 'messaging_kernel_v4_error',
+            turnId: turn.turnId,
+            message: kernErr instanceof Error ? kernErr.message : String(kernErr),
+          }),
+        );
+        kernelDecision = null;
+      }
+    } else if (isConversationOrchestratorV3Enabled()) {
       try {
         orchestratorDecision = await orchestrateConversationTurn({
           conversationId: turn.conversationId,
@@ -262,18 +294,21 @@ export async function processAiTurn(
       }
     }
 
-    if (orchestratorDecision?.handled && orchestratorDecision.replyText) {
+    const activeDecision = kernelDecision ?? orchestratorDecision;
+
+    if (activeDecision?.handled && activeDecision.replyText) {
+      const frame = kernelDecision?.turnFrame ?? orchestratorDecision!.turnFrame;
       structured = {
         ...structured,
         intent:
-          orchestratorDecision.turnFrame.primaryIntent === 'PRICE_QUERY'
+          frame.primaryIntent === 'PRICE_QUERY'
             ? 'price_question'
-            : orchestratorDecision.turnFrame.primaryIntent === 'AVAILABILITY_QUERY' ||
-                orchestratorDecision.turnFrame.primaryIntent === 'BOOKING_ALTERNATIVE_QUERY' ||
-                orchestratorDecision.turnFrame.primaryIntent === 'BRANCH_QUERY'
+            : frame.primaryIntent === 'AVAILABILITY_QUERY' ||
+                frame.primaryIntent === 'BOOKING_ALTERNATIVE_QUERY' ||
+                frame.primaryIntent === 'BRANCH_QUERY'
               ? 'availability_question'
               : structured.intent,
-        replyText: orchestratorDecision.replyText,
+        replyText: activeDecision.replyText,
         needsBusinessTool: false,
         toolCalls: [],
         shouldReply: true,
@@ -285,7 +320,7 @@ export async function processAiTurn(
             name: 'get_availability',
             ok: true,
             durationMs: 0,
-            input: { orchestrator: true },
+            input: { orchestrator: true, v4: Boolean(kernelDecision) },
             errorCode: undefined,
           },
         ],
@@ -293,8 +328,8 @@ export async function processAiTurn(
       };
     } else {
     // Phase 3: Booking Planner owns booking_request / availability multi-turn state.
-    // Skip planner when V3 routes ephemeral queries to Phase 2.
-    const skipPlanner = Boolean(orchestratorDecision?.bypassPlanner && orchestratorDecision.passToPhase2);
+    // Skip planner when kernel/V3 routes ephemeral queries to Phase 2.
+    const skipPlanner = Boolean(activeDecision?.bypassPlanner && activeDecision.passToPhase2);
     const runPlanner = deps.runPlanner ?? processBookingPlannerTurn;
     const plannerStarted = performance.now();
     if (!skipPlanner) {
@@ -349,7 +384,7 @@ export async function processAiTurn(
           planId: null,
           stageBefore: 'none',
           stageAfter: 'none',
-          extracted: { orchestrator: 'pass_phase2' },
+          extracted: { orchestrator: kernelDecision ? 'v4_phase2' : 'v3_phase2' },
           validatedChanges: [],
           invalidatedFields: [],
           toolCalls: [],
@@ -383,7 +418,21 @@ export async function processAiTurn(
         truncated: false,
       };
       toolExecMs = plannerMs;
-      if (isConversationOrchestratorV3Enabled()) {
+      if (isCustomerLedConversationV4Enabled()) {
+        if (/أأكد|اكدلك|أأكدلك|أأكد الحجز|أكد الحجز/.test(plannerResult.replyText)) {
+          noteKernelConfirmAsk({
+            conversationId: turn.conversationId,
+            replyText: plannerResult.replyText,
+            planId: plannerResult.plan?.planId ?? null,
+            planVersion: plannerResult.plan?.version ?? null,
+          });
+        } else if (/اختار|الأول|مواعيد|1\)|٢\)|2\)/.test(plannerResult.replyText)) {
+          noteKernelSlotAsk({
+            conversationId: turn.conversationId,
+            replyText: plannerResult.replyText,
+          });
+        }
+      } else if (isConversationOrchestratorV3Enabled()) {
         if (/أأكد|اكدلك|أأكدلك|أأكد الحجز|أكد الحجز/.test(plannerResult.replyText)) {
           notePlannerConfirmAsk({
             conversationId: turn.conversationId,
@@ -403,7 +452,8 @@ export async function processAiTurn(
         intentRequiresBusinessTools(structured.intent, structured.needsBusinessTool) ||
         structured.toolCalls.length > 0 ||
         looksLikeFakeSystemCheck(structured.replyText) ||
-        Boolean(orchestratorDecision?.passToPhase2);
+        Boolean(orchestratorDecision?.passToPhase2) ||
+        Boolean(kernelDecision?.passToPhase2);
 
       if (wantsTools) {
         const planStarted = performance.now();

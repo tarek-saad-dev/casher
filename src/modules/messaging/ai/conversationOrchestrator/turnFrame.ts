@@ -60,7 +60,10 @@ function looksLikePrice(t: string): boolean {
 }
 
 function looksLikeHandoff(t: string): boolean {
-  return /كلم\s*حد|موظف|بشري|reception|انسان/.test(t);
+  return (
+    /كلم\s*حد|كلمني\s*حد|موظف|بشري|reception|انسان|بني\s*آدم|بني\s*ادم/.test(t) ||
+    /عاوز\s*اكلم|عايز\s*اكلم|ممكن\s*حد\s*يكلم|حدا?\s*يكلم/.test(t)
+  );
 }
 
 function mapCiIntent(ci: ReturnType<typeof detectTurnIntent>['intent']): OrchestratorIntent {
@@ -125,12 +128,16 @@ export function buildTurnFrame(args: {
     primaryIntent = 'KEEP_BOOKING_CONTEXT';
     scope = 'resume_booking';
     mutatesBookingPlan = false;
+  } else if (isModification || isCorrection) {
+    primaryIntent = isCorrection && !isModification ? 'CORRECTION' : 'BOOKING_MODIFICATION';
+    scope = 'active_booking';
+    mutatesBookingPlan = true;
   } else if (looksLikePrice(t) || looksLikeBusinessInfoInterrupt(t)) {
     primaryIntent = looksLikePrice(t) ? 'PRICE_QUERY' : 'BUSINESS_INFORMATION_QUERY';
     scope = 'ephemeral_business_query';
     requiresBusinessTool = true;
     mutatesBookingPlan = false;
-  } else if (looksLikeAvailabilityNow(t) || (/مين\s*(متاح|موجود)/.test(t) && branchHint)) {
+  } else if (looksLikeAvailabilityNow(t) || (/مين\s*(متاح|موجود)/.test(t) && (branchHint || /هناك|هنا/.test(t)))) {
     primaryIntent = 'AVAILABILITY_QUERY';
     scope = 'ephemeral_business_query';
     requiresBusinessTool = true;
@@ -151,10 +158,6 @@ export function buildTurnFrame(args: {
     requiresBusinessTool = true;
     mutatesBookingPlan = false;
     temporal = 'inherited';
-  } else if (isModification || isCorrection) {
-    primaryIntent = isCorrection && !isModification ? 'CORRECTION' : 'BOOKING_MODIFICATION';
-    scope = 'active_booking';
-    mutatesBookingPlan = true;
   } else if (isCancel) {
     primaryIntent = 'CANCEL_TASK';
     scope = 'cancel_booking';
@@ -171,8 +174,16 @@ export function buildTurnFrame(args: {
     primaryIntent = 'BOOKING_PROGRESS';
     scope = 'active_booking';
     mutatesBookingPlan = true;
-  } else if (ci.intent === 'NEW_BOOKING_REQUEST' || /عاوز\s*احجز|عايز\s*احجز/.test(t)) {
+  } else if (ci.intent === 'NEW_BOOKING_REQUEST' || /عاوز\s*احجز|عايز\s*احجز|ممكن\s*احجز|احجز\s*مع/.test(t)) {
     primaryIntent = 'NEW_BOOKING_REQUEST';
+    scope = 'active_booking';
+    mutatesBookingPlan = true;
+  } else if (/^(مع|ل)\s+[اأآإء-ي]{2,20}$/.test(t)) {
+    primaryIntent = 'BOOKING_PROGRESS';
+    scope = 'active_booking';
+    mutatesBookingPlan = true;
+  } else if (/^(بكره|بكرة|انهرده|النهارده|النهاردة|اليوم)$/.test(t)) {
+    primaryIntent = 'BOOKING_PROGRESS';
     scope = 'active_booking';
     mutatesBookingPlan = true;
   } else if (

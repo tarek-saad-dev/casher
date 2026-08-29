@@ -58,7 +58,7 @@ import {
   findAlternativeEmployeesSameTime,
 } from '../conversationIntelligence/alternativeSearch';
 import { isConversationIntelligenceV2Enabled } from '../conversationIntelligence/featureFlag';
-import { isConversationOrchestratorV3Enabled } from '../conversationOrchestrator/featureFlag';
+import { isConversationOrchestrationEnabled } from '../conversationKernel/featureFlag';
 import { evaluateBookingConfirmationGate } from '../conversationOrchestrator/confirmationGate';
 import { buildTurnFrame } from '../conversationOrchestrator/turnFrame';
 import {
@@ -658,7 +658,7 @@ export async function processBookingPlannerTurn(
     turnIntent.intent !== 'BUSINESS_INFORMATION_INTERRUPT' &&
     turnIntent.intent !== 'BOOKING_MODIFICATION'
   ) {
-    if (isConversationOrchestratorV3Enabled()) {
+    if (isConversationOrchestrationEnabled()) {
       const frame = buildTurnFrame({ text });
       const gate = evaluateBookingConfirmationGate({
         conversationId: input.conversationId,
