@@ -250,6 +250,8 @@ export async function recoverStaleAiProcessing(input: {
         t.[Status] = N'pending',
         t.[ProcessingStartedAt] = NULL,
         t.[UpdatedAt] = SYSUTCDATETIME(),
+        t.[RetryCount] = t.[RetryCount] + 1,
+        t.[LastError] = N'stale_processing_recovered',
         t.[NextAttemptAt] = DATEADD(SECOND, 5, SYSUTCDATETIME())
       FROM [dbo].[TblBotAiTurn] AS t
       WHERE t.[Status] = N'processing'
