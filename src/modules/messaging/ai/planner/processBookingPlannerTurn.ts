@@ -58,6 +58,9 @@ import {
   findAlternativeEmployeesSameTime,
 } from '../conversationIntelligence/alternativeSearch';
 import { isConversationIntelligenceV2Enabled } from '../conversationIntelligence/featureFlag';
+import { isConversationOrchestratorV3Enabled } from '../conversationOrchestrator/featureFlag';
+import { evaluateBookingConfirmationGate } from '../conversationOrchestrator/confirmationGate';
+import { buildTurnFrame } from '../conversationOrchestrator/turnFrame';
 
 const PLANNER_INTENTS = new Set<AiIntent>([
   'booking_request',
@@ -624,6 +627,7 @@ export async function processBookingPlannerTurn(
   }
 
   // Phase 4: affirmative only when turn is booking progress
+  // V3: also require confirmation gate (no stale اه after intervening query)
   if (
     active &&
     (active.stage === 'ready_to_confirm' ||
@@ -635,6 +639,26 @@ export async function processBookingPlannerTurn(
     turnIntent.intent !== 'BUSINESS_INFORMATION_INTERRUPT' &&
     turnIntent.intent !== 'BOOKING_MODIFICATION'
   ) {
+    if (isConversationOrchestratorV3Enabled()) {
+      const frame = buildTurnFrame({ text });
+      const gate = evaluateBookingConfirmationGate({
+        conversationId: input.conversationId,
+        turn: { ...frame, isConfirmation: true, primaryIntent: 'BOOKING_CONFIRMATION' },
+        plan: active,
+      });
+      if (!gate.allow) {
+        trace.deterministicAction = 'confirm_gate_blocked';
+        trace.stageAfter = active.stage;
+        return {
+          handled: true,
+          preservePlan: true,
+          replyText: `تقصد نكمّل حجز ${active.employeeName || 'الحالي'}${active.selectedSlot ? ` الساعة ${active.selectedSlot.label || active.selectedSlot.time}` : ''}، ولا حاجة تانية؟`,
+          plan: active,
+          trace,
+          intent: 'booking_request',
+        };
+      }
+    }
     const { executeConfirmedBookingPlan } = await import('./executeConfirmedBookingPlan');
     const exec = await executeConfirmedBookingPlan({
       conversationId: input.conversationId,

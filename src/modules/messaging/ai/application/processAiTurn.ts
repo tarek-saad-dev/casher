@@ -37,6 +37,13 @@ import {
   processBookingPlannerTurn,
   type PlannerTurnResult,
 } from '../planner/processBookingPlannerTurn';
+import { isConversationOrchestratorV3Enabled } from '../conversationOrchestrator/featureFlag';
+import {
+  notePlannerConfirmAsk,
+  notePlannerSlotAsk,
+  orchestrateConversationTurn,
+} from '../conversationOrchestrator/orchestrateTurn';
+import type { OrchestratorDecision } from '../conversationOrchestrator/types';
 
 export type ProcessAiTurnDeps = {
   modelClient: AiModelClient;
@@ -226,10 +233,71 @@ export async function processAiTurn(
     let toolExecMs = 0;
     let groundedMs = 0;
     let plannerResult: PlannerTurnResult | null = null;
+    let orchestratorDecision: OrchestratorDecision | null = null;
 
+    // V3: current-message-first arbitration BEFORE planner can dominate
+    if (isConversationOrchestratorV3Enabled()) {
+      try {
+        orchestratorDecision = await orchestrateConversationTurn({
+          conversationId: turn.conversationId,
+          inboundText: latestInbound,
+        });
+        console.log(
+          JSON.stringify({
+            type: 'messaging_orchestrator_v3_trace',
+            turnId: turn.turnId,
+            conversationId: turn.conversationId,
+            ...(orchestratorDecision?.trace ?? {}),
+          }),
+        );
+      } catch (orchErr) {
+        console.error(
+          JSON.stringify({
+            type: 'messaging_orchestrator_v3_error',
+            turnId: turn.turnId,
+            message: orchErr instanceof Error ? orchErr.message : String(orchErr),
+          }),
+        );
+        orchestratorDecision = null;
+      }
+    }
+
+    if (orchestratorDecision?.handled && orchestratorDecision.replyText) {
+      structured = {
+        ...structured,
+        intent:
+          orchestratorDecision.turnFrame.primaryIntent === 'PRICE_QUERY'
+            ? 'price_question'
+            : orchestratorDecision.turnFrame.primaryIntent === 'AVAILABILITY_QUERY' ||
+                orchestratorDecision.turnFrame.primaryIntent === 'BOOKING_ALTERNATIVE_QUERY' ||
+                orchestratorDecision.turnFrame.primaryIntent === 'BRANCH_QUERY'
+              ? 'availability_question'
+              : structured.intent,
+        replyText: orchestratorDecision.replyText,
+        needsBusinessTool: false,
+        toolCalls: [],
+        shouldReply: true,
+      };
+      toolTrace = {
+        requested: [],
+        executed: [
+          {
+            name: 'get_availability',
+            ok: true,
+            durationMs: 0,
+            input: { orchestrator: true },
+            errorCode: undefined,
+          },
+        ],
+        truncated: false,
+      };
+    } else {
     // Phase 3: Booking Planner owns booking_request / availability multi-turn state.
+    // Skip planner when V3 routes ephemeral queries to Phase 2.
+    const skipPlanner = Boolean(orchestratorDecision?.bypassPlanner && orchestratorDecision.passToPhase2);
     const runPlanner = deps.runPlanner ?? processBookingPlannerTurn;
     const plannerStarted = performance.now();
+    if (!skipPlanner) {
     try {
       plannerResult = await runPlanner({
         conversationId: turn.conversationId,
@@ -269,6 +337,29 @@ export async function processAiTurn(
         },
       };
     }
+    } else {
+      plannerResult = {
+        handled: false,
+        preservePlan: true,
+        replyText: null,
+        plan: null,
+        intent: structured.intent,
+        trace: {
+          conversationId: turn.conversationId,
+          planId: null,
+          stageBefore: 'none',
+          stageAfter: 'none',
+          extracted: { orchestrator: 'pass_phase2' },
+          validatedChanges: [],
+          invalidatedFields: [],
+          toolCalls: [],
+          missingFields: [],
+          candidateSlotCount: 0,
+          selectedSlot: null,
+          deterministicAction: 'orchestrator_v3_phase2',
+        },
+      };
+    }
     const plannerMs = Math.max(0, Math.round(performance.now() - plannerStarted));
 
     if (plannerResult.handled && plannerResult.replyText) {
@@ -292,11 +383,27 @@ export async function processAiTurn(
         truncated: false,
       };
       toolExecMs = plannerMs;
+      if (isConversationOrchestratorV3Enabled()) {
+        if (/أأكد|اكدلك|أأكدلك|أأكد الحجز|أكد الحجز/.test(plannerResult.replyText)) {
+          notePlannerConfirmAsk({
+            conversationId: turn.conversationId,
+            replyText: plannerResult.replyText,
+            planId: plannerResult.plan?.planId ?? null,
+            planVersion: plannerResult.plan?.version ?? null,
+          });
+        } else if (/اختار|الأول|مواعيد|1\)|٢\)|2\)/.test(plannerResult.replyText)) {
+          notePlannerSlotAsk({
+            conversationId: turn.conversationId,
+            replyText: plannerResult.replyText,
+          });
+        }
+      }
     } else {
       const wantsTools =
         intentRequiresBusinessTools(structured.intent, structured.needsBusinessTool) ||
         structured.toolCalls.length > 0 ||
-        looksLikeFakeSystemCheck(structured.replyText);
+        looksLikeFakeSystemCheck(structured.replyText) ||
+        Boolean(orchestratorDecision?.passToPhase2);
 
       if (wantsTools) {
         const planStarted = performance.now();
@@ -340,6 +447,7 @@ export async function processAiTurn(
         }
       }
     }
+    } // end else (!orchestrator handled)
 
     timer.markGeminiDone(geminiMs);
 
