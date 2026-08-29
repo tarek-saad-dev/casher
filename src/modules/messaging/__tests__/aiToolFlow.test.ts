@@ -36,6 +36,30 @@ vi.mock('@/modules/messaging/application/enqueueMessage', () => ({
   enqueueMessage: (...args: unknown[]) => enqueueMessage(...args),
 }));
 
+vi.mock('@/modules/messaging/ai/planner/processBookingPlannerTurn', () => ({
+  processBookingPlannerTurn: vi.fn(async () => ({
+    handled: false,
+    preservePlan: false,
+    replyText: null,
+    plan: null,
+    intent: 'unknown',
+    trace: {
+      conversationId: 10,
+      planId: null,
+      stageBefore: 'none',
+      stageAfter: 'none',
+      extracted: {},
+      validatedChanges: [],
+      invalidatedFields: [],
+      toolCalls: [],
+      missingFields: [],
+      candidateSlotCount: 0,
+      selectedSlot: null,
+      deterministicAction: null,
+    },
+  })),
+}));
+
 import { processAiTurn } from '@/modules/messaging/ai/application/processAiTurn';
 
 function turnRow(overrides: Partial<AiTurnRow> = {}): AiTurnRow {

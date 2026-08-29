@@ -33,11 +33,17 @@ import {
   SAFE_TOOL_FAILURE_REPLY_AR,
   type AiToolTrace,
 } from '../tools';
+import {
+  processBookingPlannerTurn,
+  type PlannerTurnResult,
+} from '../planner/processBookingPlannerTurn';
 
 export type ProcessAiTurnDeps = {
   modelClient: AiModelClient;
   /** Optional override for tests. */
   runTools?: typeof executeAiToolPlan;
+  /** Optional override for Phase 3 planner (tests). */
+  runPlanner?: typeof processBookingPlannerTurn;
 };
 
 function errorMeta(err: unknown): { message: string; code: string; retryable: boolean } {
@@ -201,6 +207,9 @@ export async function processAiTurn(
       timer.markBurstWaitDone(debounceUntilMs - nowMs);
     }
 
+    const latestInbound =
+      [...context.messages].reverse().find((m) => m.direction === 'inbound')?.text ?? '';
+
     const modelStarted = performance.now();
     const modelOutput = await deps.modelClient.generateConversationTurn({
       systemInstructions: AI_SYSTEM_INSTRUCTIONS_V1,
@@ -216,52 +225,119 @@ export async function processAiTurn(
     let toolDecisionMs = 0;
     let toolExecMs = 0;
     let groundedMs = 0;
+    let plannerResult: PlannerTurnResult | null = null;
 
-    const wantsTools =
-      intentRequiresBusinessTools(structured.intent, structured.needsBusinessTool) ||
-      structured.toolCalls.length > 0 ||
-      looksLikeFakeSystemCheck(structured.replyText);
-
-    if (wantsTools) {
-      const planStarted = performance.now();
-      const plan = planBusinessToolCalls(structured);
-      toolDecisionMs = Math.max(0, Math.round(performance.now() - planStarted));
-
-      if (plan.length > 0) {
-        const execStarted = performance.now();
-        toolTrace = await runTools(plan, {
-          phone: context.phone,
-          conversationId: turn.conversationId,
+    // Phase 3: Booking Planner owns booking_request / availability multi-turn state.
+    const runPlanner = deps.runPlanner ?? processBookingPlannerTurn;
+    const plannerStarted = performance.now();
+    try {
+      plannerResult = await runPlanner({
+        conversationId: turn.conversationId,
+        turnId: turn.turnId,
+        phone: context.phone,
+        inboundText: latestInbound,
+        structured,
+      });
+    } catch (plannerErr) {
+      console.error(
+        JSON.stringify({
+          type: 'messaging_booking_planner_error',
           turnId: turn.turnId,
-        });
-        toolExecMs = Math.max(0, Math.round(performance.now() - execStarted));
-
-        const groundedStarted = performance.now();
-        const grounded = await deps.modelClient.generateConversationTurn({
-          systemInstructions: AI_SYSTEM_INSTRUCTIONS_GROUNDED_V1,
-          conversation: context,
-          toolResultsJson: JSON.stringify(compactToolTrace(toolTrace)),
-        });
-        groundedMs = grounded.latencyMs ?? Math.max(0, Math.round(performance.now() - groundedStarted));
-        geminiMs += groundedMs;
-        structured = finalizeReplyAfterTools({
-          structured: grounded.result,
-          toolTrace,
-        });
-      } else if (looksLikeFakeSystemCheck(structured.replyText) || structured.needsBusinessTool) {
-        // Needs tools but insufficient entities — ask, don't fake-check.
-        structured = {
-          ...structured,
-          replyText:
-            structured.missingInformation.length > 0
-              ? `محتاج منك: ${structured.missingInformation.join('، ')}.`
-              : structured.intent === 'booking_request'
-                ? 'حاضر، قولي الفرع والخدمة واليوم (ومع مين لو حابب) عشان أشوفلك المواعيد المتاحة من السيستم.'
-                : 'محتاج تفاصيل أوضح عشان أقدر أجاوب من السيستم بدقة.',
-          needsBusinessTool: false,
+          conversationId: turn.conversationId,
+          message: plannerErr instanceof Error ? plannerErr.message : String(plannerErr),
+        }),
+      );
+      plannerResult = {
+        handled: false,
+        preservePlan: false,
+        replyText: null,
+        plan: null,
+        intent: structured.intent,
+        trace: {
+          conversationId: turn.conversationId,
+          planId: null,
+          stageBefore: 'none',
+          stageAfter: 'none',
+          extracted: {},
+          validatedChanges: [],
+          invalidatedFields: [],
           toolCalls: [],
-          shouldReply: true,
-        };
+          missingFields: [],
+          candidateSlotCount: 0,
+          selectedSlot: null,
+          deterministicAction: 'planner_error_fallback',
+        },
+      };
+    }
+    const plannerMs = Math.max(0, Math.round(performance.now() - plannerStarted));
+
+    if (plannerResult.handled && plannerResult.replyText) {
+      structured = {
+        ...structured,
+        intent: plannerResult.intent,
+        replyText: plannerResult.replyText,
+        needsBusinessTool: false,
+        toolCalls: [],
+        shouldReply: true,
+      };
+      toolTrace = {
+        requested: [],
+        executed: plannerResult.trace.toolCalls.map((t) => ({
+          name: t.name as 'get_availability',
+          ok: t.ok,
+          durationMs: t.durationMs,
+          input: {},
+          errorCode: t.errorCode ?? undefined,
+        })),
+        truncated: false,
+      };
+      toolExecMs = plannerMs;
+    } else {
+      const wantsTools =
+        intentRequiresBusinessTools(structured.intent, structured.needsBusinessTool) ||
+        structured.toolCalls.length > 0 ||
+        looksLikeFakeSystemCheck(structured.replyText);
+
+      if (wantsTools) {
+        const planStarted = performance.now();
+        const plan = planBusinessToolCalls(structured);
+        toolDecisionMs = Math.max(0, Math.round(performance.now() - planStarted));
+
+        if (plan.length > 0) {
+          const execStarted = performance.now();
+          toolTrace = await runTools(plan, {
+            phone: context.phone,
+            conversationId: turn.conversationId,
+            turnId: turn.turnId,
+          });
+          toolExecMs = Math.max(0, Math.round(performance.now() - execStarted));
+
+          const groundedStarted = performance.now();
+          const grounded = await deps.modelClient.generateConversationTurn({
+            systemInstructions: AI_SYSTEM_INSTRUCTIONS_GROUNDED_V1,
+            conversation: context,
+            toolResultsJson: JSON.stringify(compactToolTrace(toolTrace)),
+          });
+          groundedMs = grounded.latencyMs ?? Math.max(0, Math.round(performance.now() - groundedStarted));
+          geminiMs += groundedMs;
+          structured = finalizeReplyAfterTools({
+            structured: grounded.result,
+            toolTrace,
+          });
+        } else if (looksLikeFakeSystemCheck(structured.replyText) || structured.needsBusinessTool) {
+          structured = {
+            ...structured,
+            replyText:
+              structured.missingInformation.length > 0
+                ? `محتاج منك: ${structured.missingInformation.join('، ')}.`
+                : structured.intent === 'booking_request'
+                  ? 'حاضر، قولي الفرع والخدمة واليوم (ومع مين لو حابب) عشان أشوفلك المواعيد المتاحة من السيستم.'
+                  : 'محتاج تفاصيل أوضح عشان أقدر أجاوب من السيستم بدقة.',
+            needsBusinessTool: false,
+            toolCalls: [],
+            shouldReply: true,
+          };
+        }
       }
     }
 
@@ -361,7 +437,15 @@ export async function processAiTurn(
       resultJson: JSON.stringify({
         ...structured,
         toolTrace: compactToolTrace(toolTrace),
-        timing: { toolDecisionMs, toolExecMs, groundedMs },
+        bookingPlanner: plannerResult
+          ? {
+              handled: plannerResult.handled,
+              planId: plannerResult.plan?.planId ?? null,
+              stage: plannerResult.plan?.stage ?? null,
+              trace: plannerResult.trace,
+            }
+          : null,
+        timing: { toolDecisionMs, toolExecMs, groundedMs, plannerMs: plannerResult ? toolExecMs : 0 },
       }),
     });
 
@@ -387,6 +471,13 @@ export async function processAiTurn(
         conversationId: turn.conversationId,
         intent: structured.intent,
         needsBusinessTool: Boolean(toolTrace.executed.length),
+        bookingPlanner: plannerResult
+          ? {
+              handled: plannerResult.handled,
+              planId: plannerResult.plan?.planId ?? null,
+              stage: plannerResult.plan?.stage ?? plannerResult.trace.stageAfter,
+            }
+          : null,
         tools: toolTrace.executed.map((t) => ({
           name: t.name,
           ok: t.ok,
