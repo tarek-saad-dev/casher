@@ -14,7 +14,8 @@ export const AI_BUSINESS_TOOL_NAMES = [
 export type AiBusinessToolName = (typeof AI_BUSINESS_TOOL_NAMES)[number];
 
 export const MAX_AI_TOOL_CALLS_PER_TURN = 3;
-export const MAX_AVAILABILITY_SLOTS = 8;
+/** Cap raw availability rows before planner shortlists to 3. */
+export const MAX_AVAILABILITY_SLOTS = 32;
 export const MAX_SERVICES_RETURNED = 40;
 export const MAX_EMPLOYEES_RETURNED = 30;
 

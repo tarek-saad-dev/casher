@@ -233,7 +233,19 @@ describe('Phase 3 booking planner pure helpers', () => {
     expect(resolveSlotChoice('التاني', candidates).slot?.time).toBe('19:00');
     expect(resolveSlotChoice('7', candidates).slot?.time).toBe('19:00');
     expect(resolveSlotChoice('الساعة 7', candidates).slot?.time).toBe('19:00');
+    expect(resolveSlotChoice('1', candidates).slot?.time).toBe('18:15');
     expect(resolveSlotChoice('9', candidates).slot).toBeNull();
+  });
+
+  it('evening preference does not silently fall back to noon', () => {
+    const slots = ['12:00', '12:15', '12:30'].map((time) => ({
+      time,
+      dayOffset: 0 as const,
+      empId: 25,
+      empName: 'عمر',
+      label: formatSlotLabelAr(time),
+    }));
+    expect(filterSlotsByPreference(slots, { kind: 'evening' }, 3)).toHaveLength(0);
   });
 
   it('invalidates slots on employee/date/service change', () => {
@@ -437,7 +449,7 @@ describe('Phase 3 booking planner turn matrix', () => {
     expect(plan?.stage).toBe('choosing_slot');
   });
 
-  it('11-16 slot select → READY_TO_CONFIRM; invalid choice clarifies', async () => {
+  it('11-16 slot select → READY_TO_CONFIRM; invalid choice asks again; entities echo ignored', async () => {
     const avail = mockAvailability(['18:15', '19:00', '19:45']);
     await processBookingPlannerTurn({
       conversationId: 105,
@@ -473,7 +485,6 @@ describe('Phase 3 booking planner turn matrix', () => {
       }),
       runAvailability: avail,
     });
-    // "11" doesn't match candidates → falls through to re-search or ask
     expect(bad.plan?.selectedSlot).toBeNull();
 
     const pick = await processBookingPlannerTurn({
@@ -482,11 +493,12 @@ describe('Phase 3 booking planner turn matrix', () => {
       phone: '201',
       inboundText: 'التاني',
       structured: structured({
+        // Gemini often echoes prior entities — must still select from candidates
         entities: {
-          serviceText: null,
-          employeeName: null,
-          dateText: null,
-          timeText: null,
+          serviceText: 'شعر ودقن',
+          employeeName: 'عمر',
+          dateText: 'بكرة',
+          timeText: '12:00 م',
           branchText: null,
         },
       }),
@@ -496,6 +508,7 @@ describe('Phase 3 booking planner turn matrix', () => {
     expect(pick.plan?.selectedSlot?.time).toBe('19:00');
     expect(pick.replyText).toMatch(/أأكدلك الحجز/);
     expect(pick.replyText).not.toMatch(/تم الحجز/);
+    expect(pick.trace.deterministicAction).toBe('select_slot');
   });
 
   it('17-18 confirmation intent does NOT write; no تم الحجز', async () => {

@@ -32,6 +32,7 @@ import {
   isAffirmative,
   isNegativeOrCancel,
   isResumePlanner,
+  looksLikeSlotChoice,
   parseTimePreferenceText,
   resolveSlotChoice,
 } from './slotPreferences';
@@ -280,10 +281,18 @@ async function applyEntities(
     }
   }
 
-  // Time preference
-  const timeSrc = entities.timeText || (/(بعد|قبل|أقرب|اقرب|الصبح|مساء|بالليل)/.test(inboundText)
+  // Time preference — prefer inbound phrasing; ignore Gemini echoing bot shortlist times.
+  const inboundHasTimePref = /(بعد|قبل|أقرب|اقرب|الصبح|مساء|بالليل|بعد الظهر)/.test(inboundText);
+  const entityTime = entities.timeText?.trim() || null;
+  const entityLooksLikeEchoedSlot =
+    Boolean(entityTime) &&
+    /^\d{1,2}(:\d{2})?\s*(ص|م|am|pm)?$/i.test(entityTime!) &&
+    !inboundHasTimePref;
+  const timeSrc = inboundHasTimePref
     ? inboundText
-    : null);
+    : entityTime && !entityLooksLikeEchoedSlot
+      ? entityTime
+      : null;
   if (timeSrc) {
     const pref = parseTimePreferenceText(timeSrc);
     if (pref) {
@@ -511,13 +520,12 @@ export async function processBookingPlannerTurn(
     };
   }
 
-  // Deterministic: slot choice against candidates
+  // Deterministic: slot choice against STORED candidates.
+  // Ignore Gemini entity echo from prior turns — "الأول"/"1" must not re-search.
   if (
     active &&
-    (active.stage === 'choosing_slot' || active.candidateSlots.length > 0) &&
-    !structured.entities.serviceText &&
-    !structured.entities.employeeName &&
-    !structured.entities.dateText
+    active.candidateSlots.length > 0 &&
+    (active.stage === 'choosing_slot' || looksLikeSlotChoice(text))
   ) {
     const choice = resolveSlotChoice(text, active.candidateSlots);
     if (choice.ambiguous) {
@@ -546,7 +554,7 @@ export async function processBookingPlannerTurn(
       trace.toolCalls.push({
         name: 'get_availability',
         ok: fresh.ok,
-        durationMs: fresh.durationMs ?? 0,
+        durationMs: (fresh as { durationMs?: number }).durationMs ?? 0,
         errorCode: fresh.errorCode ?? null,
       });
       if (fresh.ok) {
@@ -556,9 +564,16 @@ export async function processBookingPlannerTurn(
         if (!slots.includes(choice.slot.time)) {
           plan.selectedSlot = null;
           plan.candidateSlots = filterSlotsByPreference(
-            ((fresh.data as { slots?: Array<{ time: string; dayOffset?: 0 | 1; empId?: number | null; empName?: string | null }> })?.slots ?? []).map(
-              toCandidateFromAvailability,
-            ),
+            (
+              (fresh.data as {
+                slots?: Array<{
+                  time: string;
+                  dayOffset?: 0 | 1;
+                  empId?: number | null;
+                  empName?: string | null;
+                }>;
+              })?.slots ?? []
+            ).map(toCandidateFromAvailability),
             plan.timePreference,
             3,
           );
@@ -573,7 +588,9 @@ export async function processBookingPlannerTurn(
           });
           trace.deterministicAction = 'slot_stale_refresh';
           trace.stageAfter = plan.stage;
-          console.log(JSON.stringify({ type: 'messaging_booking_planner_trace', ...trace, planId: saved.planId }));
+          console.log(
+            JSON.stringify({ type: 'messaging_booking_planner_trace', ...trace, planId: saved.planId }),
+          );
           return {
             handled: true,
             preservePlan: true,
@@ -596,7 +613,9 @@ export async function processBookingPlannerTurn(
         trace,
       });
       trace.stageAfter = 'ready_to_confirm';
-      console.log(JSON.stringify({ type: 'messaging_booking_planner_trace', ...trace, planId: saved.planId }));
+      console.log(
+        JSON.stringify({ type: 'messaging_booking_planner_trace', ...trace, planId: saved.planId }),
+      );
       return {
         handled: true,
         preservePlan: true,
@@ -606,6 +625,7 @@ export async function processBookingPlannerTurn(
         intent: 'booking_request',
       };
     }
+    // choosing_slot but inbound wasn't a recognizable pick — fall through
   }
 
   // Merge Gemini entities (and inbound heuristics) into plan
@@ -679,8 +699,36 @@ export async function processBookingPlannerTurn(
     };
   }
 
-  // Have service + date → search availability (unless already choosing with candidates and no change)
+  // Have service + date → search availability (unless shortlist still valid)
   if (!plan.selectedSlot) {
+    if (
+      plan.candidateSlots.length > 0 &&
+      !trace.invalidatedFields.length &&
+      active?.stage === 'choosing_slot'
+    ) {
+      plan.stage = 'choosing_slot';
+      plan.missingFields = ['slot_choice'];
+      const saved = await persistPlan({
+        conversationId: input.conversationId,
+        existing: active,
+        plan,
+        turnId: input.turnId,
+        trace,
+      });
+      trace.stageAfter = plan.stage;
+      trace.deterministicAction = 'reprompt_slot_choice';
+      console.log(
+        JSON.stringify({ type: 'messaging_booking_planner_trace', ...trace, planId: saved.planId }),
+      );
+      return {
+        handled: true,
+        preservePlan: true,
+        replyText: 'أنهي واحد من المواعيد اللي فوق؟ (الأول / التاني / التالت أو الساعة)',
+        plan: saved,
+        trace,
+        intent: 'booking_request',
+      };
+    }
     const search = await searchAvailability(plan, trace, runAvailability);
     const saved = await persistPlan({
       conversationId: input.conversationId,

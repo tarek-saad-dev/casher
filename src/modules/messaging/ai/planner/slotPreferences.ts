@@ -104,6 +104,14 @@ export function filterSlotsByPreference(
         break;
     }
   }
+  // Band preferences: do not silently fall back to the wrong part of day.
+  if (
+    !filtered.length &&
+    pref &&
+    (pref.kind === 'evening' || pref.kind === 'morning' || pref.kind === 'afternoon')
+  ) {
+    return [];
+  }
   if (!filtered.length) filtered = [...slots];
   return filtered.slice(0, max);
 }
@@ -116,6 +124,17 @@ export function formatSlotLabelAr(timeHm: string): string {
   return `${displayH}:${String(ms || 0).padStart(2, '0')} ${suffix}`;
 }
 
+/** True when inbound is a short ordinal / index / clock pick against a shortlist. */
+export function looksLikeSlotChoice(text: string): boolean {
+  const raw = text.trim();
+  if (!raw) return false;
+  return (
+    /^(الأول|الاول|التاني|الثاني|التالت|الثالث|آخر واحد|اخر واحد|آخر|اخر)$/i.test(raw) ||
+    /^(رقم\s*)?[123]$/i.test(raw) ||
+    /^(الساعة\s*)?\d{1,2}(:\d{2})?\s*(ص|م|am|pm)?$/i.test(raw)
+  );
+}
+
 /** Resolve customer slot choice against candidates. */
 export function resolveSlotChoice(
   text: string,
@@ -124,13 +143,13 @@ export function resolveSlotChoice(
   if (!candidates.length) return { slot: null, ambiguous: false };
   const raw = text.trim().toLowerCase();
 
-  if (/^(الأول|الاول|1|رقم ?1|أول واحد|اول واحد)$/i.test(raw) || raw === 'الأول' || raw === 'الاول') {
+  if (/^(الأول|الاول|رقم ?1|أول واحد|اول واحد)$/i.test(raw) || raw === '1') {
     return { slot: candidates[0]!, ambiguous: false };
   }
-  if (/^(التاني|الثاني|2|رقم ?2)$/i.test(raw)) {
+  if (/^(التاني|الثاني|رقم ?2)$/i.test(raw) || raw === '2') {
     return { slot: candidates[1] ?? null, ambiguous: false };
   }
-  if (/^(التالت|الثالث|3|رقم ?3|آخر|اخر)$/i.test(raw)) {
+  if (/^(التالت|الثالث|رقم ?3|آخر|اخر)$/i.test(raw) || raw === '3') {
     return { slot: candidates[Math.min(2, candidates.length - 1)] ?? null, ambiguous: false };
   }
 
