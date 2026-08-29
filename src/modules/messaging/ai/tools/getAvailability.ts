@@ -11,7 +11,7 @@ import {
   PublicBookingAvailabilityError,
 } from '@/lib/booking/publicBookingAvailability';
 import { MAX_AVAILABILITY_SLOTS, type AiToolCallRequest, type AiToolResult } from './types';
-import { resolveCustomerDateText, scoreServiceMatch } from './dateText';
+import { resolveCustomerDateText, scoreServiceMatch, textMatchesQuery } from './dateText';
 
 async function defaultBranchCode(branchCode?: string | null): Promise<string | null> {
   if (branchCode?.trim()) return branchCode.trim().toUpperCase();

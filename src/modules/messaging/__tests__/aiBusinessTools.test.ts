@@ -309,7 +309,7 @@ describe('Phase 2 AI business read tools', () => {
       ],
       { phone: '201557994946', conversationId: 1, turnId: 1 },
     );
-    expect(trace.executed[0]?.ok).toBe(true);
+    expect(trace.executed[0]).toMatchObject({ ok: true, name: 'get_availability' });
     const data = trace.executed[0]?.data as { slots: unknown[]; noSlots: boolean };
     expect(data.noSlots).toBe(false);
     expect(data.slots.length).toBeGreaterThan(0);
