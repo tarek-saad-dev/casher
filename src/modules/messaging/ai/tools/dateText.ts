@@ -71,5 +71,16 @@ export function textMatchesQuery(haystack: string, needle: string): boolean {
   const h = normalizeArabicSearch(haystack);
   const n = normalizeArabicSearch(needle);
   if (!n || !h) return false;
-  return h.includes(n) || n.includes(h);
+  return h === n || h.includes(n);
 }
+
+/** Ranked service match: exact > contains query; avoids reverse substring false positives. */
+export function scoreServiceMatch(serviceName: string, query: string): number {
+  const h = normalizeArabicSearch(serviceName);
+  const n = normalizeArabicSearch(query);
+  if (!n || !h) return 0;
+  if (h === n) return 100;
+  if (h.includes(n)) return 80 - Math.min(40, Math.abs(h.length - n.length));
+  return 0;
+}
+

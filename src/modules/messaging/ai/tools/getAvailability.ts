@@ -11,7 +11,7 @@ import {
   PublicBookingAvailabilityError,
 } from '@/lib/booking/publicBookingAvailability';
 import { MAX_AVAILABILITY_SLOTS, type AiToolCallRequest, type AiToolResult } from './types';
-import { resolveCustomerDateText, textMatchesQuery } from './dateText';
+import { resolveCustomerDateText, scoreServiceMatch } from './dateText';
 
 async function defaultBranchCode(branchCode?: string | null): Promise<string | null> {
   if (branchCode?.trim()) return branchCode.trim().toUpperCase();
@@ -36,18 +36,23 @@ async function resolveServiceIds(args: {
   });
   const catalog = await getPublicBookingServicesCatalog(ctx);
   const q = args.serviceQuery.trim();
-  const hits = catalog.services.filter(
-    (s) =>
-      textMatchesQuery(s.nameAr, q) ||
-      textMatchesQuery(s.nameEn || '', q) ||
-      textMatchesQuery(s.name, q),
-  );
-  if (!hits.length) return { serviceIds: [], matchedNames: [], errorCode: 'SERVICE_NOT_FOUND' };
-  // Prefer exact-ish single match; if many, take top matches that share similar names
-  const chosen = hits.slice(0, 3);
+  const ranked = catalog.services
+    .map((s) => ({
+      service: s,
+      score: Math.max(
+        scoreServiceMatch(s.nameAr, q),
+        scoreServiceMatch(s.nameEn || '', q),
+        scoreServiceMatch(s.name, q),
+      ),
+    }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score);
+  if (!ranked.length) return { serviceIds: [], matchedNames: [], errorCode: 'SERVICE_NOT_FOUND' };
+  const best = ranked[0]!.score;
+  const chosen = ranked.filter((x) => x.score === best).slice(0, 2);
   return {
-    serviceIds: chosen.map((s) => s.serviceId),
-    matchedNames: chosen.map((s) => s.nameAr || s.name),
+    serviceIds: chosen.map((x) => x.service.serviceId),
+    matchedNames: chosen.map((x) => x.service.nameAr || x.service.name),
   };
 }
 

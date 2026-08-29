@@ -6,7 +6,7 @@ import {
 } from '@/lib/booking/publicBookingBranchContext';
 import { getPublicBookingServicesCatalog } from '@/lib/booking/publicBookingServices';
 import { MAX_SERVICES_RETURNED, type AiToolCallRequest, type AiToolResult } from './types';
-import { textMatchesQuery } from './dateText';
+import { scoreServiceMatch } from './dateText';
 
 async function resolveBranchCode(branchCode?: string | null): Promise<string | null> {
   if (branchCode && branchCode.trim()) return branchCode.trim().toUpperCase();
@@ -52,13 +52,19 @@ export async function executeListServices(
 
     if (request.serviceQuery && request.serviceQuery.trim()) {
       const q = request.serviceQuery.trim();
-      services = services.filter(
-        (s) =>
-          textMatchesQuery(s.nameAr, q) ||
-          textMatchesQuery(s.nameEn || '', q) ||
-          textMatchesQuery(s.name, q) ||
-          textMatchesQuery(s.categoryNameAr, q),
-      );
+      const ranked = services
+        .map((s) => ({
+          s,
+          score: Math.max(
+            scoreServiceMatch(s.nameAr, q),
+            scoreServiceMatch(s.nameEn || '', q),
+            scoreServiceMatch(s.name, q),
+            scoreServiceMatch(s.categoryNameAr, q),
+          ),
+        }))
+        .filter((x) => x.score > 0)
+        .sort((a, b) => b.score - a.score);
+      services = ranked.map((x) => x.s);
     }
 
     const bounded = services.slice(0, MAX_SERVICES_RETURNED);
