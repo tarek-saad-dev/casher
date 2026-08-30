@@ -99,7 +99,13 @@ npm run messaging:migrate-ai
 "
 
 echo
-echo "[7/8] Installing/updating systemd units..."
+echo "[7b/8] Salon Concierge schema migration (idempotent)..."
+runuser -u casher -- bash -lc "
+cd '$APP_DIR'
+npm run messaging:migrate-salon-concierge
+npm run messaging:migrate-salon-concierge
+"
+
 if [[ -f "$WORKER_UNIT_SRC" ]]; then
   install -m 644 "$WORKER_UNIT_SRC" "$WORKER_UNIT_DST"
 fi

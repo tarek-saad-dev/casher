@@ -34,10 +34,21 @@ function arg(name: string): string | null {
   return process.argv[i + 1] ?? null;
 }
 
+const ALLOWED = new Set(['last132', 'last132_migrated']);
+
 async function main() {
-  const expected = arg('--expected-database');
+  const expected =
+    arg('--expected-database') ||
+    process.env.DB_DATABASE ||
+    process.env.LOCAL_DB_NAME ||
+    process.env.CLOUD_DB_NAME ||
+    process.env.DB_NAME ||
+    '';
   if (!expected) {
-    throw new Error('Pass --expected-database last132');
+    throw new Error('Pass --expected-database <name> or set DB_DATABASE');
+  }
+  if (!ALLOWED.has(expected.toLowerCase())) {
+    throw new Error(`Refuse unexpected database name: ${expected}`);
   }
   const { getPool, getDbConnectionInfo, getCurrentDbTarget, closePool } = await import(
     '../src/lib/db'
@@ -74,6 +85,67 @@ async function main() {
     ORDER BY name
   `);
   console.table(tables.recordset);
+  const required = [
+    'TblSalonKnowledge',
+    'TblSalonCapability',
+    'TblSalonExternalLink',
+    'TblSalonOffer',
+    'TblSalonBrandVoice',
+    'TblSalonKnowledgeGap',
+    'TblSalonBrandVoiceExample',
+    'TblSalonKnowledgeSource',
+  ];
+  const present = new Set((tables.recordset as Array<{ name: string }>).map((r) => r.name));
+  const missing = required.filter((n) => !present.has(n));
+  if (missing.length) throw new Error(`Missing tables: ${missing.join(', ')}`);
+
+  const voiceJson = JSON.stringify({
+    dialect: 'egyptian_arabic',
+    formality: 'polite_relaxed',
+    warmth: 'high',
+    humor: 'light_contextual',
+    emojiUsage: 'low',
+    messageLength: 'short',
+    salesIntensity: 'help_first',
+    greetingStyle: 'light',
+    closingStyle: 'optional',
+    preferredAddressTerms: ['يا فندم', 'حضرتك'],
+    bannedAddressTerms: ['يا باشا', 'يا معلم', 'يا كبير', 'يا نجم', 'يا ريس', 'يا حاج'],
+    preferredPhrases: ['تمام', 'حاضر'],
+    bannedPhrases: ['يا باشا', 'يا معلم', 'يا كبير', 'يا نجم', 'يا ريس', 'الكتالوج', 'السيستم مش لاقي', 'ثواني هراجع'],
+    behaviorRules: [
+      'answer_current_first',
+      'help_before_sell',
+      'never_invent_salon_facts',
+      'max_one_proactive_offer',
+      'no_booking_nag',
+      'honorific_situational',
+    ],
+  });
+  const { sql } = await import('../src/lib/db');
+  await pool
+    .request()
+    .input('json', sql.NVarChar(sql.MAX), voiceJson)
+    .query(`
+      IF NOT EXISTS (SELECT 1 FROM dbo.TblSalonBrandVoice WHERE ProfileKey = N'default')
+      BEGIN
+        INSERT INTO dbo.TblSalonBrandVoice (ProfileKey, ConfigJson, Status)
+        VALUES (N'default', @json, N'active');
+        PRINT N'Inserted default BrandVoice style profile';
+      END
+    `);
+
+  const counts = await pool.request().query(`
+    SELECT 'Knowledge' AS kind, COUNT(*) AS n FROM dbo.TblSalonKnowledge
+    UNION ALL SELECT 'Capability', COUNT(*) FROM dbo.TblSalonCapability
+    UNION ALL SELECT 'Link', COUNT(*) FROM dbo.TblSalonExternalLink
+    UNION ALL SELECT 'Offer', COUNT(*) FROM dbo.TblSalonOffer
+    UNION ALL SELECT 'BrandVoice', COUNT(*) FROM dbo.TblSalonBrandVoice
+    UNION ALL SELECT 'Gap', COUNT(*) FROM dbo.TblSalonKnowledgeGap
+    UNION ALL SELECT 'VoiceExample', COUNT(*) FROM dbo.TblSalonBrandVoiceExample
+    UNION ALL SELECT 'Source', COUNT(*) FROM dbo.TblSalonKnowledgeSource
+  `);
+  console.table(counts.recordset);
   await closePool();
   console.log('salon concierge schema migration OK');
 }
