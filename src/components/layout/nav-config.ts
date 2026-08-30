@@ -221,6 +221,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: '/admin/shift',                     label: 'الورديات',               icon: Clock      },
       { href: '/admin/settings',                  label: 'الإعدادات',              icon: Settings   },
       { href: '/admin/whatsapp',                  label: 'واتساب',                 icon: MessageCircle },
+      { href: '/admin/ai-concierge',              label: 'مساعد الصالون',          icon: MessageCircle },
       { href: '/admin/queue-booking-settings',    label: 'إعدادات الطابور',       icon: Ticket     },
       { href: '/admin/permissions/users',         label: 'صلاحيات المستخدمين',    icon: KeyRound     },
       { href: '/admin/permissions/pages',         label: 'صلاحيات الصفحات',       icon: FileKey2     },

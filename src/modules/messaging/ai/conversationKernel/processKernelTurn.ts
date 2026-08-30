@@ -27,6 +27,9 @@ import {
 } from './responsePlanner';
 import { resumeBookingTask, suspendBookingTask } from './taskStack';
 import type { KernelDecision } from './types';
+import { processConciergeTurn } from '../salonConcierge/processConciergeTurn';
+import { isSalonConciergeBrainEnabled } from '../salonConcierge/featureFlag';
+import { detectConciergeIntent } from '../salonConcierge/routing';
 
 export type KernelInput = {
   conversationId: number;
@@ -105,6 +108,89 @@ export async function processKernelTurn(
       lastBotAction: 'other',
       trace: { ...baseTrace, action: 'human_handoff' },
     };
+  }
+
+  // --- Salon Concierge Brain (ephemeral; never mutates booking) ---
+  const conciergeCandidate =
+    isSalonConciergeBrainEnabled() &&
+    (route.action === 'pass_phase2_tools' ||
+      route.action === 'answer_ephemeral_query' ||
+      turn.primaryIntent === 'BUSINESS_INFORMATION_QUERY' ||
+      turn.primaryIntent === 'PRICE_QUERY' ||
+      detectConciergeIntent(input.inboundText) !== 'NONE');
+
+  if (conciergeCandidate) {
+    try {
+      const concierge = await processConciergeTurn({ text: input.inboundText });
+      if (concierge?.handled && concierge.replyText) {
+        if (route.suspendActiveTask && plan) {
+          suspendBookingTask(input.conversationId, plan, 'concierge');
+        }
+        recordBotAction(input.conversationId, {
+          text: concierge.replyText,
+          action: 'answered_query',
+          answeredWell: !concierge.trace.knowledgeGap,
+          customerText: input.inboundText,
+        });
+        return {
+          handled: true,
+          bypassPlanner: true,
+          passToPhase2: false,
+          blockBookingConfirm: true,
+          allowBookingConfirm: false,
+          mutatesBookingPlan: false,
+          replyText: concierge.replyText,
+          responsePlan: planV4Response({ answer: concierge.replyText }),
+          turnFrame: turn,
+          route: {
+            ...route,
+            action: 'answer_ephemeral_query',
+            mutatesActiveTask: false,
+            blockBookingConfirm: true,
+            passToPhase2: false,
+          },
+          lastBotAction: 'answered_query',
+          trace: {
+            ...baseTrace,
+            action: 'salon_concierge',
+            concierge: concierge.trace,
+          },
+        };
+      }
+      if (concierge?.passToPhase2) {
+        recordBotAction(input.conversationId, {
+          text: '',
+          action: 'answered_price',
+          answeredWell: true,
+          customerText: input.inboundText,
+        });
+        return {
+          handled: false,
+          bypassPlanner: true,
+          passToPhase2: true,
+          blockBookingConfirm: true,
+          allowBookingConfirm: false,
+          mutatesBookingPlan: false,
+          replyText: null,
+          responsePlan: null,
+          turnFrame: turn,
+          route: { ...route, action: 'pass_phase2_tools', passToPhase2: true },
+          lastBotAction: 'answered_price',
+          trace: {
+            ...baseTrace,
+            action: 'concierge_pass_phase2',
+            concierge: concierge.trace,
+          },
+        };
+      }
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          type: 'messaging_salon_concierge_error',
+          message: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
   }
 
   // --- Phase 2 price / business info ---

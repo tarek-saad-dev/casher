@@ -1,6 +1,7 @@
 import { isConversationIntelligenceV2Enabled } from './conversationIntelligence/featureFlag';
 import { isConversationOrchestratorV3Enabled } from './conversationOrchestrator/featureFlag';
 import { isCustomerLedConversationV4Enabled } from './conversationKernel/featureFlag';
+import { isSalonConciergeBrainEnabled } from './salonConcierge/featureFlag';
 
 export const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
 export const DEFAULT_AI_BURST_DEBOUNCE_MS = 250;
@@ -30,6 +31,7 @@ export function getAiConfig(env: NodeJS.ProcessEnv = process.env) {
     conversationIntelligenceV2: isConversationIntelligenceV2Enabled(env),
     conversationOrchestratorV3: isConversationOrchestratorV3Enabled(env),
     customerLedConversationV4: isCustomerLedConversationV4Enabled(env),
+    salonConciergeBrainV1: isSalonConciergeBrainEnabled(env),
   };
 }
 

@@ -12,6 +12,7 @@ import {
 } from '../conversationIntelligence/turnIntent';
 import type { OrchestratorIntent, TemporalMode, TurnFrame, TurnScope } from './types';
 import type { SessionMemory } from './types';
+import { isSalonConciergeBrainEnabled } from '../salonConcierge/featureFlag';
 
 function norm(text: string): string {
   return text
@@ -57,6 +58,14 @@ function looksLikeKeepOmar(t: string): boolean {
 
 function looksLikePrice(t: string): boolean {
   return /بكام|السعر|الاسعار|كام\s*السعر|سعر/.test(t);
+}
+
+function looksLikeConciergeInfo(t: string): boolean {
+  return (
+    /فاتح|مفتوح|هتلحق|لوكيشن|انستجرام|انستا|instagram|فيسبوك|تيك\s*توك|لينك\s*الحجز|موقعكم|جوجل\s*ماب|عنوان|جراج|موقف|احجز\s*ازاي|الحجز\s*منين|شاطر|متخصص|عرض|عروض/.test(
+      t,
+    ) || /^فين\s+/.test(t)
+  );
 }
 
 function looksLikeHandoff(t: string): boolean {
@@ -132,7 +141,11 @@ export function buildTurnFrame(args: {
     primaryIntent = isCorrection && !isModification ? 'CORRECTION' : 'BOOKING_MODIFICATION';
     scope = 'active_booking';
     mutatesBookingPlan = true;
-  } else if (looksLikePrice(t) || looksLikeBusinessInfoInterrupt(t)) {
+  } else if (
+    looksLikePrice(t) ||
+    looksLikeBusinessInfoInterrupt(t) ||
+    (isSalonConciergeBrainEnabled() && looksLikeConciergeInfo(t))
+  ) {
     primaryIntent = looksLikePrice(t) ? 'PRICE_QUERY' : 'BUSINESS_INFORMATION_QUERY';
     scope = 'ephemeral_business_query';
     requiresBusinessTool = true;

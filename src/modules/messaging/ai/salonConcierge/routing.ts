@@ -1,0 +1,69 @@
+/** Concierge intent routing — live vs curated. */
+import { normalizeConciergeText } from './matching';
+import type { ConciergeIntent } from './types';
+
+export function detectConciergeIntent(text: string): ConciergeIntent {
+  const t = normalizeConciergeText(text);
+  if (!t) return 'NONE';
+
+  if (/فاتح|مفتوح|هتلحق|لسه فاتحين|فاتحين/.test(t)) return 'OPEN_NOW';
+
+  if (
+    /لوكيشن|الموقع على الخريطه|جوجل ماب|google\s*maps|ابعت.*(لوكيشن|الموقع)|فين\s*(جليم|كامب)/.test(
+      t,
+    ) ||
+    /عنوان/.test(t) ||
+    /ابعت\s*(ال)?لوكيشن/.test(t) ||
+    /ابعتلي\s*(جليم|كامب)/.test(t) ||
+    /^فين\s+/.test(t)
+  ) {
+    return 'DIRECTIONS_MAPS';
+  }
+
+  if (
+    /انستجرام|انستا|instagram|فيسبوك|facebook|تيك\s*توك|tiktok|لينك\s*الحجز|موقعكم|الويب\s*سايت|website/.test(
+      t,
+    )
+  ) {
+    return 'EXTERNAL_LINK';
+  }
+
+  if (/عرض|عروض|برومو|خصم|بروموشن/.test(t)) return 'OFFER_QUERY';
+
+  if (
+    /شاطر|متخصص|خبره|ينفع\s*يعمل|حد\s*(يعمل|يعمل)|كيرلي|فيد|تدريج|صبغ|لون|يدفر|دفر|يعملها/.test(t) &&
+    /(مين|حد|عندكم|عندكو|شاطر|متخصص)/.test(t)
+  ) {
+    return 'CAPABILITY_QUERY';
+  }
+
+  if (
+    /عايز\s*(لون|صبغ|رمادي)|شعري|ينفع\s*ا|محتاج\s*(لون|صبغ)|مش عارف انهي|شبه كذا|محتاج اشوف|التقييم|استشاره/.test(
+      t,
+    )
+  ) {
+    return 'CONSULTATIVE';
+  }
+
+  if (/بكام|السعر|كام\s*سعر/.test(t)) return 'SERVICE_PRICE_LIVE';
+
+  if (/مين\s*(متاح|موجود)|متاح\s*(دلوقتي|حاليا)/.test(t)) return 'AVAILABILITY_LIVE';
+
+  if (/ساعات\s*العمل|بتفتحو|بتقفل|مواعيد\s*(الفروع|جليم|كامب)/.test(t)) return 'HOURS_LIVE';
+
+  if (
+    /احجز\s*ازاي|ازاي\s*احجز|الحجز\s*منين|جراج|موقف|باركينج|faq/.test(t) ||
+    /بتقدموا|بتقدم|عندكم\s+\S+/.test(t)
+  ) {
+    return 'FAQ_KNOWLEDGE';
+  }
+
+  return 'NONE';
+}
+
+export function extractBranchHint(text: string): string | null {
+  const t = normalizeConciergeText(text);
+  if (/جليم|gleem/.test(t)) return 'GLEEM';
+  if (/كامب|شيزار|camp/.test(t)) return 'CAMP_CAESAR';
+  return null;
+}
