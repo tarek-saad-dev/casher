@@ -71,7 +71,8 @@ BEGIN
         + N'تم تأكيد حجزك في Cut Salon بنجاح ✅' + NCHAR(10) + NCHAR(10)
         + N'📅 الموعد: {{date}}' + NCHAR(10)
         + N'🕐 الساعة: {{time}}' + NCHAR(10)
-        + N'💇 الخدمة: {{service}}' + NCHAR(10) + NCHAR(10)
+        + N'💇 الخدمة: {{service}}' + NCHAR(10)
+        + N'✂️ الحلاق: {{barberName}}' + NCHAR(10) + NCHAR(10)
         + N'منتظرينك! 💈',
         1, 1
     );

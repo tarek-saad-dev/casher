@@ -88,15 +88,10 @@ function buildMoveServicesMessage(args: {
   return parts;
 }
 
-function buildCancelServicesMessage(args: {
-  bookingCode: string;
-  branchName?: string | null;
-}): string[] {
-  return [
-    `تم إلغاء حجزك ${args.bookingCode}.`,
-    args.branchName ? `الفرع: ${args.branchName}` : null,
-    'للاستفسار يرجى التواصل مع الفرع.',
-  ].filter(Boolean) as string[];
+function splitServicesSummary(summary?: string | null): string[] | undefined {
+  if (!summary?.trim()) return undefined;
+  const parts = summary.split(/[,،]/).map((s) => s.trim()).filter(Boolean);
+  return parts.length ? parts : undefined;
 }
 
 /**
@@ -185,22 +180,19 @@ export async function scheduleBookingEventWhatsApp(args: {
     return { scheduled: false, skippedReason: 'no_phone', idempotencyKey: key };
   }
 
-  const services =
-    args.cancelled || args.eventType === 'cancel'
-      ? buildCancelServicesMessage({
+  const isCancel = args.cancelled || args.eventType === 'cancel';
+  const services = isCancel
+    ? splitServicesSummary(args.servicesSummary)
+    : args.eventType === 'move'
+      ? buildMoveServicesMessage({
           bookingCode: args.bookingCode,
           branchName: args.branchName,
+          bookingDate: args.bookingDate,
+          bookingTime: args.bookingTime,
+          barberName: args.barberName,
+          servicesSummary: args.servicesSummary,
         })
-      : args.eventType === 'move'
-        ? buildMoveServicesMessage({
-            bookingCode: args.bookingCode,
-            branchName: args.branchName,
-            bookingDate: args.bookingDate,
-            bookingTime: args.bookingTime,
-            barberName: args.barberName,
-            servicesSummary: args.servicesSummary,
-          })
-        : undefined;
+      : undefined;
 
   await db
     .request()
@@ -223,6 +215,9 @@ export async function scheduleBookingEventWhatsApp(args: {
       bookingTime: args.bookingTime,
       barberName: args.barberName ?? undefined,
       branchName: args.branchName ?? undefined,
+      branchId: args.branchId ?? undefined,
+      bookingCode: args.bookingCode,
+      kind: isCancel ? 'cancellation' : 'confirmation',
       services,
     },
     {
@@ -387,6 +382,7 @@ export async function retryBookingEventWhatsApp(args: {
   }
 
   const isCancel = row.EventType === 'cancel';
+  const bookingCode = contact.bookingCode ?? `BK-${args.bookingId}`;
   scheduleBookingWhatsAppAfterCommit(
     {
       phone: contact.phone,
@@ -396,13 +392,13 @@ export async function retryBookingEventWhatsApp(args: {
       bookingTime: contact.startTime ?? '',
       barberName: contact.empName ?? undefined,
       branchName: contact.branchName ?? undefined,
+      branchId: contact.branchId ?? undefined,
+      bookingCode,
+      kind: isCancel ? 'cancellation' : 'confirmation',
       services: isCancel
-        ? buildCancelServicesMessage({
-            bookingCode: contact.bookingCode ?? `BK-${args.bookingId}`,
-            branchName: contact.branchName,
-          })
+        ? splitServicesSummary(contact.servicesSummary)
         : buildMoveServicesMessage({
-            bookingCode: contact.bookingCode ?? `BK-${args.bookingId}`,
+            bookingCode,
             branchName: contact.branchName,
             bookingDate: contact.bookingDate ?? '',
             bookingTime: contact.startTime ?? '',
@@ -454,6 +450,7 @@ export async function scheduleCancelWhatsAppAfterCommit(bookingId: number): Prom
       bookingTime: contact.startTime ?? '',
       barberName: contact.empName,
       branchName: contact.branchName,
+      branchId: contact.branchId,
       servicesSummary: contact.servicesSummary,
       cancelled: true,
     });

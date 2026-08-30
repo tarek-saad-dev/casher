@@ -2,6 +2,7 @@
  * Schedule booking WhatsApp after HTTP response (never before commit; never blocks 201).
  */
 import {
+  BOOKING_CANCELLATION_TEMPLATE_KEY,
   BOOKING_CONFIRMATION_TEMPLATE_KEY,
   sendTemplateMessage,
   type MessageSendResult,
@@ -24,6 +25,8 @@ export type BookingWhatsAppScheduleInput = {
   services?: string[];
   branchName?: string;
   branchId?: number;
+  bookingCode?: string;
+  kind?: 'confirmation' | 'cancellation';
 };
 
 export type BookingWhatsAppSendOutcome = {
@@ -43,12 +46,16 @@ export function maskPhoneForLog(phone: string): string {
   return `${digits.slice(0, 3)}****${digits.slice(-2)}`;
 }
 
-async function sendBookingConfirmationTemplate(
+async function sendBookingEventTemplate(
   input: BookingWhatsAppScheduleInput,
 ): Promise<MessageSendResult> {
   const cfg = getWhatsAppConfig();
+  const isCancel = input.kind === 'cancellation';
+  const bookingRef = input.bookingCode?.trim() || `BK-${input.bookingId}`;
   return sendTemplateMessage({
-    templateKey: BOOKING_CONFIRMATION_TEMPLATE_KEY,
+    templateKey: isCancel
+      ? BOOKING_CANCELLATION_TEMPLATE_KEY
+      : BOOKING_CONFIRMATION_TEMPLATE_KEY,
     recipient: { phone: input.phone },
     variables: {
       customerName: input.customerName,
@@ -60,11 +67,13 @@ async function sendBookingConfirmationTemplate(
       service: input.services,
       barberName: input.barberName,
       branchName: input.branchName ?? cfg.defaultBranchName,
-      bookingId: `BK-${input.bookingId}`,
+      bookingId: bookingRef,
       bookingLink: cfg.defaultBookingLink,
     },
     metadata: {
       bookingId: input.bookingId,
+      bookingCode: bookingRef,
+      kind: isCancel ? 'cancellation' : 'confirmation',
       ...(typeof input.branchId === 'number' ? { branchId: input.branchId } : {}),
     },
     context: {
@@ -88,7 +97,7 @@ export function scheduleBookingWhatsAppAfterCommit(
   },
 ): { scheduled: true; mechanism: typeof BOOKING_WHATSAPP_EXECUTION } {
   const schedule = deps?.schedule ?? schedulePostResponse;
-  const send = deps?.send ?? sendBookingConfirmationTemplate;
+  const send = deps?.send ?? sendBookingEventTemplate;
   const onResult = deps?.onResult;
 
   schedule(async () => {

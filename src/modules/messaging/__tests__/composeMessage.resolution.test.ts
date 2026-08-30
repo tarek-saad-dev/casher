@@ -153,6 +153,28 @@ describe('composeMessage template resolution', () => {
     expect(result.text).toContain('طارق');
   });
 
+  it('resolves booking.cancellation without confirmation copy', async () => {
+    const result = await composeMessage(
+      {
+        templateKey: 'booking.cancellation',
+        variables: {
+          customerName: 'صلاح محمد',
+          date: '2026-08-30',
+          time: '15:00',
+          service: 'حلاقة',
+          bookingId: 'BK-V2URQ6',
+          branchName: 'جليم – سابا باشا',
+        },
+      },
+      lookupReturning(null),
+    );
+    expect(result.source).toBe('code_default');
+    expect(result.text).toContain('تم إلغاء حجزك');
+    expect(result.text).toContain('BK-V2URQ6');
+    expect(result.text).not.toContain('تم تأكيد حجزك');
+    expect(result.text).not.toContain('منتظرينك');
+  });
+
   it('keeps current sale receipt rendering after seed-equivalent global content', async () => {
     const seeded = await composeMessage(
       {

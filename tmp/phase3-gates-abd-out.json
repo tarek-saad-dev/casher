@@ -1,0 +1,634 @@
+﻿[dotenv@17.3.1] injecting env (32) from .env.local -- tip: ≡ƒöÉ encrypt with Dotenvx: https://dotenvx.com
+[db:local] Connection attempt 1/3 server=127.0.0.1 db=last132 auth=sql
+[db:local] Connected to SQL Server successfully
+{
+  "gateA": {
+    "conversationId": 6,
+    "planId": 1,
+    "stage": "confirmed_intent",
+    "version": 6,
+    "serviceIds": [
+      20
+    ],
+    "empId": 25,
+    "branchId": 3,
+    "branchCode": "CAMP_CAESAR",
+    "requestedDate": "2026-08-30",
+    "timePreference": {
+      "kind": "exact",
+      "timeHm": "12:00"
+    },
+    "candidateSlots": [
+      {
+        "time": "12:00",
+        "dayOffset": 0,
+        "empId": 25,
+        "empName": "╪╣┘à╪▒",
+        "label": "12:00 ┘à"
+      },
+      {
+        "time": "12:15",
+        "dayOffset": 0,
+        "empId": 25,
+        "empName": "╪╣┘à╪▒",
+        "label": "12:15 ┘à"
+      },
+      {
+        "time": "12:30",
+        "dayOffset": 0,
+        "empId": 25,
+        "empName": "╪╣┘à╪▒",
+        "label": "12:30 ┘à"
+      }
+    ],
+    "selectedSlot": {
+      "time": "12:00",
+      "dayOffset": 0,
+      "empId": 25,
+      "empName": "╪╣┘à╪▒",
+      "label": "12:00 ┘à"
+    },
+    "missingFields": [],
+    "lastTurnId": 51,
+    "planTraceJson": {
+      "conversationId": 6,
+      "planId": 1,
+      "stageBefore": "ready_to_confirm",
+      "stageAfter": "none",
+      "extracted": {},
+      "validatedChanges": [],
+      "invalidatedFields": [],
+      "toolCalls": [],
+      "missingFields": [],
+      "candidateSlotCount": 0,
+      "selectedSlot": {
+        "time": "12:00",
+        "dayOffset": 0,
+        "empId": 25,
+        "empName": "╪╣┘à╪▒",
+        "label": "12:00 ┘à"
+      },
+      "deterministicAction": "confirm_intent",
+      "clarification": null
+    },
+    "firstPickTurn": {
+      "turnId": 42,
+      "status": "completed",
+      "intent": "booking_request",
+      "latestInboundMessageId": 154,
+      "outboundMessageId": 155,
+      "outboxId": 10042,
+      "createdAt": "2026-08-29T13:14:11.265Z",
+      "completedAt": "2026-08-29T13:14:13.330Z",
+      "replyHead": "╪º┘ä┘à┘ê╪º╪╣┘è╪» ╪º┘ä┘à┘å╪º╪│╪¿╪⌐ ┘à╪╣ ╪╣┘à╪▒ ┘è┘ê┘à 2026-08-30:\n1) 12:00 ┘à\n2) 12:15 ┘à\n3) 12:30 ┘à\n╪ú┘å┘ç┘è ┘ê╪º╪¡╪» ┘è┘å╪º╪│╪¿┘â╪ƒ",
+      "plannerHandled": true,
+      "planId": 1,
+      "stage": "choosing_slot",
+      "plannerTrace": {
+        "conversationId": 6,
+        "planId": 1,
+        "stageBefore": "choosing_slot",
+        "stageAfter": "choosing_slot",
+        "extracted": {
+          "dateText": "╪¿┘â╪▒╪⌐",
+          "timeText": "12:00 ┘à",
+          "employeeName": "╪╣┘à╪▒",
+          "serviceText": "╪┤╪╣╪▒ ┘ê╪»┘é┘å",
+          "branchText": null,
+          "inboundText": "╪º┘ä╪ú┘ê┘ä"
+        },
+        "validatedChanges": [
+          "timePreference:exact"
+        ],
+        "invalidatedFields": [
+          "candidateSlots",
+          "selectedSlot"
+        ],
+        "toolCalls": [
+          {
+            "name": "get_availability",
+            "ok": true,
+            "durationMs": 327,
+            "errorCode": null
+          }
+        ],
+        "missingFields": [
+          "slot_choice"
+        ],
+        "candidateSlotCount": 3,
+        "selectedSlot": null,
+        "deterministicAction": null
+      },
+      "timing": {
+        "toolDecisionMs": 0,
+        "toolExecMs": 385,
+        "groundedMs": 0,
+        "plannerMs": 385
+      },
+      "tools": [
+        {
+          "name": "get_availability",
+          "ok": true,
+          "durationMs": 327
+        }
+      ],
+      "hasTamElHagz": false
+    }
+  },
+  "gateB": {
+    "activePlanCount": 1,
+    "allPlanIds": [
+      {
+        "planId": 1,
+        "stage": "confirmed_intent",
+        "version": 6
+      }
+    ],
+    "duplicateTurnsByInbound": []
+  },
+  "gateC": {
+    "mutations": {
+      "holdsTotal": 0,
+      "claimsTotal": 1426,
+      "createsTotal": 667,
+      "bookingsTotal": 1567
+    },
+    "timeColumns": [
+      {
+        "tableName": "Bookings",
+        "columnName": "BookingDate"
+      },
+      {
+        "tableName": "Bookings",
+        "columnName": "CreatedAt"
+      },
+      {
+        "tableName": "TblBookingHold",
+        "columnName": "CreatedAt"
+      },
+      {
+        "tableName": "TblPublicBookingCreateRequest",
+        "columnName": "CreatedAt"
+      }
+    ],
+    "sinceWindow": {
+      "smokeStart": "2026-08-29T13:12:00.000Z",
+      "Bookings.CreatedAt": 7,
+      "TblBookingHold.CreatedAt": 0,
+      "TblPublicBookingCreateRequest.CreatedAt": 0
+    },
+    "correlated": {
+      "publicCreatesProbeError": "Invalid column name 'ID'."
+    },
+    "baselineNote": "pre-smoke baseline holds=0 claims=1426 creates=667 bookings=1567; correlate by since-window + phone"
+  },
+  "gateD": {
+    "sotOk": true,
+    "sotError": null,
+    "sotSlotCount": 32,
+    "sotHas1200": true,
+    "sotHas1215": true,
+    "sotHas1230": true,
+    "storedCandidates": [
+      "12:00",
+      "12:15",
+      "12:30"
+    ],
+    "selected": "12:00",
+    "selectedInStoredCandidates": true,
+    "selectedInSot": true
+  },
+  "messages": [
+    {
+      "MessageID": "150",
+      "Direction": "inbound",
+      "body": "╪╣╪º┘ê╪▓ ╪ú╪¡╪¼╪▓",
+      "OccurredAt": "2026-08-29T13:12:32.000Z",
+      "InboxID": "179"
+    },
+    {
+      "MessageID": "151",
+      "Direction": "outbound",
+      "body": "╪º┘ä┘à┘ê╪º╪╣┘è╪» ╪º┘ä┘à┘å╪º╪│╪¿╪⌐ ┘à╪╣ ╪╣┘à╪▒ ┘è┘ê┘à 2026-08-30:\n1) 12:00 ┘à\n2) 12:15 ┘à\n3) 12:30 ┘à\n╪ú┘å┘ç┘è ┘ê╪º╪¡╪» ┘è┘å╪º╪│╪¿┘â╪ƒ",
+      "OccurredAt": "2026-08-29T13:12:35.000Z",
+      "InboxID": null
+    },
+    {
+      "MessageID": "152",
+      "Direction": "inbound",
+      "body": "╪╣╪º┘ê╪▓ ╪º╪¡╪¼╪▓ ╪¿╪º┘ä┘è┘ä",
+      "OccurredAt": "2026-08-29T13:13:56.000Z",
+      "InboxID": "180"
+    },
+    {
+      "MessageID": "153",
+      "Direction": "outbound",
+      "body": "╪º┘ä┘à┘ê╪º╪╣┘è╪» ╪º┘ä┘à┘å╪º╪│╪¿╪⌐ ┘à╪╣ ╪╣┘à╪▒ ┘è┘ê┘à 2026-08-30:\n1) 12:00 ┘à\n2) 12:15 ┘à\n3) 12:30 ┘à\n╪ú┘å┘ç┘è ┘ê╪º╪¡╪» ┘è┘å╪º╪│╪¿┘â╪ƒ",
+      "OccurredAt": "2026-08-29T13:13:59.000Z",
+      "InboxID": null
+    },
+    {
+      "MessageID": "154",
+      "Direction": "inbound",
+      "body": "╪º┘ä╪ú┘ê┘ä",
+      "OccurredAt": "2026-08-29T13:14:10.000Z",
+      "InboxID": "181"
+    },
+    {
+      "MessageID": "155",
+      "Direction": "outbound",
+      "body": "╪º┘ä┘à┘ê╪º╪╣┘è╪» ╪º┘ä┘à┘å╪º╪│╪¿╪⌐ ┘à╪╣ ╪╣┘à╪▒ ┘è┘ê┘à 2026-08-30:\n1) 12:00 ┘à\n2) 12:15 ┘à\n3) 12:30 ┘à\n╪ú┘å┘ç┘è ┘ê╪º╪¡╪» ┘è┘å╪º╪│╪¿┘â╪ƒ",
+      "OccurredAt": "2026-08-29T13:14:13.000Z",
+      "InboxID": null
+    },
+    {
+      "MessageID": "156",
+      "Direction": "inbound",
+      "body": "1",
+      "OccurredAt": "2026-08-29T13:14:22.000Z",
+      "InboxID": "182"
+    },
+    {
+      "MessageID": "157",
+      "Direction": "outbound",
+      "body": "╪º┘ä┘à┘ê╪º╪╣┘è╪» ╪º┘ä┘à┘å╪º╪│╪¿╪⌐ ┘à╪╣ ╪╣┘à╪▒ ┘è┘ê┘à 2026-08-30:\n1) 12:00 ┘à\n2) 12:15 ┘à\n3) 12:30 ┘à\n╪ú┘å┘ç┘è ┘ê╪º╪¡╪» ┘è┘å╪º╪│╪¿┘â╪ƒ",
+      "OccurredAt": "2026-08-29T13:14:24.000Z",
+      "InboxID": null
+    },
+    {
+      "MessageID": "165",
+      "Direction": "inbound",
+      "body": "╪º┘ä╪ú┘ê┘ä",
+      "OccurredAt": "2026-08-29T13:31:38.000Z",
+      "InboxID": "187"
+    },
+    {
+      "MessageID": "167",
+      "Direction": "outbound",
+      "body": "╪¬┘à╪º┘à ┘è╪º ╪¿╪º╪┤╪º:\n╪┤╪╣╪▒ ┘ê╪»┘é┘å ┘à╪╣ ╪╣┘à╪▒\n┘â╪º┘à╪¿ ╪┤┘è╪▓╪º╪▒\n2026-08-30 ╪º┘ä╪│╪º╪╣╪⌐ 12:00 ┘à\n╪ú╪ú┘â╪»┘ä┘â ╪º┘ä╪¡╪¼╪▓╪ƒ",
+      "OccurredAt": "2026-08-29T13:31:41.000Z",
+      "InboxID": null
+    },
+    {
+      "MessageID": "172",
+      "Direction": "inbound",
+      "body": "╪º┘ç",
+      "OccurredAt": "2026-08-29T13:31:52.000Z",
+      "InboxID": "190"
+    },
+    {
+      "MessageID": "173",
+      "Direction": "outbound",
+      "body": "╪¬┘à╪º┘à╪î ╪º╪«╪¬┘è╪º╪▒┘â ╪¼╪º┘ç╪▓ ┘ä┘ä╪¬╪ú┘â┘è╪»: ╪┤╪╣╪▒ ┘ê╪»┘é┘å ┘à╪╣ ╪╣┘à╪▒ ╪º┘ä╪│╪º╪╣╪⌐ 12:00 ┘à. ╪º┘ä╪¬╪ú┘â┘è╪» ╪º┘ä┘å┘ç╪º╪ª┘è ┘ç┘è╪¬┘à ┘ü┘è ╪«╪╖┘ê╪⌐ ╪º┘ä╪¡╪¼╪▓ ╪º┘ä╪¼╪º┘è╪⌐ (┘ä╪│┘ç ┘à╪┤ ┘à┘ü╪╣┘æ┘ä╪⌐ ┘à┘å ╪º┘ä╪┤╪º╪¬).",
+      "OccurredAt": "2026-08-29T13:31:55.000Z",
+      "InboxID": null
+    }
+  ],
+  "turns": [
+    {
+      "turnId": 40,
+      "status": "completed",
+      "intent": "booking_request",
+      "latestInboundMessageId": 150,
+      "outboundMessageId": 151,
+      "outboxId": 10040,
+      "createdAt": "2026-08-29T13:12:33.001Z",
+      "completedAt": "2026-08-29T13:12:35.129Z",
+      "replyHead": "╪º┘ä┘à┘ê╪º╪╣┘è╪» ╪º┘ä┘à┘å╪º╪│╪¿╪⌐ ┘à╪╣ ╪╣┘à╪▒ ┘è┘ê┘à 2026-08-30:\n1) 12:00 ┘à\n2) 12:15 ┘à\n3) 12:30 ┘à\n╪ú┘å┘ç┘è ┘ê╪º╪¡╪» ┘è┘å╪º╪│╪¿┘â╪ƒ",
+      "plannerHandled": true,
+      "planId": 1,
+      "stage": "choosing_slot",
+      "plannerTrace": {
+        "conversationId": 6,
+        "planId": null,
+        "stageBefore": "none",
+        "stageAfter": "choosing_slot",
+        "extracted": {
+          "dateText": "╪¿┘â╪▒╪⌐",
+          "timeText": "╪ú┘é╪▒╪¿ ┘à┘è╪╣╪º╪»",
+          "employeeName": "╪╣┘à╪▒",
+          "serviceText": "╪┤╪╣╪▒ ┘ê╪»┘é┘å",
+          "branchText": null,
+          "inboundText": "╪╣╪º┘ê╪▓ ╪ú╪¡╪¼╪▓"
+        },
+        "validatedChanges": [
+          "service:20",
+          "employee:25",
+          "date:2026-08-30",
+          "timePreference:earliest"
+        ],
+        "invalidatedFields": [],
+        "toolCalls": [
+          {
+            "name": "get_availability",
+            "ok": true,
+            "durationMs": 354,
+            "errorCode": null
+          }
+        ],
+        "missingFields": [
+          "slot_choice"
+        ],
+        "candidateSlotCount": 3,
+        "selectedSlot": null,
+        "deterministicAction": null
+      },
+      "timing": {
+        "toolDecisionMs": 0,
+        "toolExecMs": 489,
+        "groundedMs": 0,
+        "plannerMs": 489
+      },
+      "tools": [
+        {
+          "name": "get_availability",
+          "ok": true,
+          "durationMs": 354
+        }
+      ],
+      "hasTamElHagz": false
+    },
+    {
+      "turnId": 41,
+      "status": "completed",
+      "intent": "booking_request",
+      "latestInboundMessageId": 152,
+      "outboundMessageId": 153,
+      "outboxId": 10041,
+      "createdAt": "2026-08-29T13:13:57.280Z",
+      "completedAt": "2026-08-29T13:13:58.904Z",
+      "replyHead": "╪º┘ä┘à┘ê╪º╪╣┘è╪» ╪º┘ä┘à┘å╪º╪│╪¿╪⌐ ┘à╪╣ ╪╣┘à╪▒ ┘è┘ê┘à 2026-08-30:\n1) 12:00 ┘à\n2) 12:15 ┘à\n3) 12:30 ┘à\n╪ú┘å┘ç┘è ┘ê╪º╪¡╪» ┘è┘å╪º╪│╪¿┘â╪ƒ",
+      "plannerHandled": true,
+      "planId": 1,
+      "stage": "choosing_slot",
+      "plannerTrace": {
+        "conversationId": 6,
+        "planId": 1,
+        "stageBefore": "choosing_slot",
+        "stageAfter": "choosing_slot",
+        "extracted": {
+          "dateText": "╪¿┘â╪▒╪⌐",
+          "timeText": "╪¿╪º┘ä┘ä┘è┘ä",
+          "employeeName": "╪╣┘à╪▒",
+          "serviceText": "╪┤╪╣╪▒ ┘ê╪»┘é┘å",
+          "branchText": null,
+          "inboundText": "╪╣╪º┘ê╪▓ ╪º╪¡╪¼╪▓ ╪¿╪º┘ä┘è┘ä"
+        },
+        "validatedChanges": [
+          "timePreference:evening"
+        ],
+        "invalidatedFields": [
+          "candidateSlots",
+          "selectedSlot"
+        ],
+        "toolCalls": [
+          {
+            "name": "get_availability",
+            "ok": true,
+            "durationMs": 5,
+            "errorCode": null
+          }
+        ],
+        "missingFields": [
+          "slot_choice"
+        ],
+        "candidateSlotCount": 3,
+        "selectedSlot": null,
+        "deterministicAction": null
+      },
+      "timing": {
+        "toolDecisionMs": 0,
+        "toolExecMs": 127,
+        "groundedMs": 0,
+        "plannerMs": 127
+      },
+      "tools": [
+        {
+          "name": "get_availability",
+          "ok": true,
+          "durationMs": 5
+        }
+      ],
+      "hasTamElHagz": false
+    },
+    {
+      "turnId": 42,
+      "status": "completed",
+      "intent": "booking_request",
+      "latestInboundMessageId": 154,
+      "outboundMessageId": 155,
+      "outboxId": 10042,
+      "createdAt": "2026-08-29T13:14:11.265Z",
+      "completedAt": "2026-08-29T13:14:13.330Z",
+      "replyHead": "╪º┘ä┘à┘ê╪º╪╣┘è╪» ╪º┘ä┘à┘å╪º╪│╪¿╪⌐ ┘à╪╣ ╪╣┘à╪▒ ┘è┘ê┘à 2026-08-30:\n1) 12:00 ┘à\n2) 12:15 ┘à\n3) 12:30 ┘à\n╪ú┘å┘ç┘è ┘ê╪º╪¡╪» ┘è┘å╪º╪│╪¿┘â╪ƒ",
+      "plannerHandled": true,
+      "planId": 1,
+      "stage": "choosing_slot",
+      "plannerTrace": {
+        "conversationId": 6,
+        "planId": 1,
+        "stageBefore": "choosing_slot",
+        "stageAfter": "choosing_slot",
+        "extracted": {
+          "dateText": "╪¿┘â╪▒╪⌐",
+          "timeText": "12:00 ┘à",
+          "employeeName": "╪╣┘à╪▒",
+          "serviceText": "╪┤╪╣╪▒ ┘ê╪»┘é┘å",
+          "branchText": null,
+          "inboundText": "╪º┘ä╪ú┘ê┘ä"
+        },
+        "validatedChanges": [
+          "timePreference:exact"
+        ],
+        "invalidatedFields": [
+          "candidateSlots",
+          "selectedSlot"
+        ],
+        "toolCalls": [
+          {
+            "name": "get_availability",
+            "ok": true,
+            "durationMs": 327,
+            "errorCode": null
+          }
+        ],
+        "missingFields": [
+          "slot_choice"
+        ],
+        "candidateSlotCount": 3,
+        "selectedSlot": null,
+        "deterministicAction": null
+      },
+      "timing": {
+        "toolDecisionMs": 0,
+        "toolExecMs": 385,
+        "groundedMs": 0,
+        "plannerMs": 385
+      },
+      "tools": [
+        {
+          "name": "get_availability",
+          "ok": true,
+          "durationMs": 327
+        }
+      ],
+      "hasTamElHagz": false
+    },
+    {
+      "turnId": 43,
+      "status": "completed",
+      "intent": "booking_request",
+      "latestInboundMessageId": 156,
+      "outboundMessageId": 157,
+      "outboxId": 10043,
+      "createdAt": "2026-08-29T13:14:22.590Z",
+      "completedAt": "2026-08-29T13:14:24.199Z",
+      "replyHead": "╪º┘ä┘à┘ê╪º╪╣┘è╪» ╪º┘ä┘à┘å╪º╪│╪¿╪⌐ ┘à╪╣ ╪╣┘à╪▒ ┘è┘ê┘à 2026-08-30:\n1) 12:00 ┘à\n2) 12:15 ┘à\n3) 12:30 ┘à\n╪ú┘å┘ç┘è ┘ê╪º╪¡╪» ┘è┘å╪º╪│╪¿┘â╪ƒ",
+      "plannerHandled": true,
+      "planId": 1,
+      "stage": "choosing_slot",
+      "plannerTrace": {
+        "conversationId": 6,
+        "planId": 1,
+        "stageBefore": "choosing_slot",
+        "stageAfter": "choosing_slot",
+        "extracted": {
+          "dateText": "2026-08-30",
+          "timeText": "12:00 ┘à",
+          "employeeName": "╪╣┘à╪▒",
+          "serviceText": "╪┤╪╣╪▒ ┘ê╪»┘é┘å",
+          "branchText": null,
+          "inboundText": "1"
+        },
+        "validatedChanges": [],
+        "invalidatedFields": [],
+        "toolCalls": [
+          {
+            "name": "get_availability",
+            "ok": true,
+            "durationMs": 2,
+            "errorCode": null
+          }
+        ],
+        "missingFields": [
+          "slot_choice"
+        ],
+        "candidateSlotCount": 3,
+        "selectedSlot": null,
+        "deterministicAction": null
+      },
+      "timing": {
+        "toolDecisionMs": 0,
+        "toolExecMs": 61,
+        "groundedMs": 0,
+        "plannerMs": 61
+      },
+      "tools": [
+        {
+          "name": "get_availability",
+          "ok": true,
+          "durationMs": 2
+        }
+      ],
+      "hasTamElHagz": false
+    },
+    {
+      "turnId": 48,
+      "status": "completed",
+      "intent": "booking_request",
+      "latestInboundMessageId": 165,
+      "outboundMessageId": 167,
+      "outboxId": 10048,
+      "createdAt": "2026-08-29T13:31:38.535Z",
+      "completedAt": "2026-08-29T13:31:41.225Z",
+      "replyHead": "╪¬┘à╪º┘à ┘è╪º ╪¿╪º╪┤╪º:\n╪┤╪╣╪▒ ┘ê╪»┘é┘å ┘à╪╣ ╪╣┘à╪▒\n┘â╪º┘à╪¿ ╪┤┘è╪▓╪º╪▒\n2026-08-30 ╪º┘ä╪│╪º╪╣╪⌐ 12:00 ┘à\n╪ú╪ú┘â╪»┘ä┘â ╪º┘ä╪¡╪¼╪▓╪ƒ",
+      "plannerHandled": true,
+      "planId": 1,
+      "stage": "ready_to_confirm",
+      "plannerTrace": {
+        "conversationId": 6,
+        "planId": 1,
+        "stageBefore": "choosing_slot",
+        "stageAfter": "ready_to_confirm",
+        "extracted": {},
+        "validatedChanges": [],
+        "invalidatedFields": [],
+        "toolCalls": [
+          {
+            "name": "get_availability",
+            "ok": true,
+            "durationMs": 0,
+            "errorCode": null
+          }
+        ],
+        "missingFields": [],
+        "candidateSlotCount": 0,
+        "selectedSlot": {
+          "time": "12:00",
+          "dayOffset": 0,
+          "empId": 25,
+          "empName": "╪╣┘à╪▒",
+          "label": "12:00 ┘à"
+        },
+        "deterministicAction": "select_slot"
+      },
+      "timing": {
+        "toolDecisionMs": 0,
+        "toolExecMs": 645,
+        "groundedMs": 0,
+        "plannerMs": 645
+      },
+      "tools": [
+        {
+          "name": "get_availability",
+          "ok": true,
+          "durationMs": 0
+        }
+      ],
+      "hasTamElHagz": false
+    },
+    {
+      "turnId": 51,
+      "status": "completed",
+      "intent": "booking_request",
+      "latestInboundMessageId": 172,
+      "outboundMessageId": 173,
+      "outboxId": 10051,
+      "createdAt": "2026-08-29T13:31:53.204Z",
+      "completedAt": "2026-08-29T13:31:54.705Z",
+      "replyHead": "╪¬┘à╪º┘à╪î ╪º╪«╪¬┘è╪º╪▒┘â ╪¼╪º┘ç╪▓ ┘ä┘ä╪¬╪ú┘â┘è╪»: ╪┤╪╣╪▒ ┘ê╪»┘é┘å ┘à╪╣ ╪╣┘à╪▒ ╪º┘ä╪│╪º╪╣╪⌐ 12:00 ┘à. ╪º┘ä╪¬╪ú┘â┘è╪» ╪º┘ä┘å┘ç╪º╪ª┘è ┘ç┘è╪¬┘à ┘ü┘è ╪«╪╖┘ê╪⌐ ╪º┘ä╪¡╪¼╪▓ ╪º┘ä╪¼╪º┘è╪⌐ (┘ä╪│┘ç ┘à╪┤ ┘à┘ü╪╣┘æ┘ä╪⌐ ┘à┘å ",
+      "plannerHandled": true,
+      "planId": 1,
+      "stage": "confirmed_intent",
+      "plannerTrace": {
+        "conversationId": 6,
+        "planId": 1,
+        "stageBefore": "ready_to_confirm",
+        "stageAfter": "confirmed_intent",
+        "extracted": {},
+        "validatedChanges": [],
+        "invalidatedFields": [],
+        "toolCalls": [],
+        "missingFields": [],
+        "candidateSlotCount": 0,
+        "selectedSlot": {
+          "time": "12:00",
+          "dayOffset": 0,
+          "empId": 25,
+          "empName": "╪╣┘à╪▒",
+          "label": "12:00 ┘à"
+        },
+        "deterministicAction": "confirm_intent"
+      },
+      "timing": {
+        "toolDecisionMs": 0,
+        "toolExecMs": 53,
+        "groundedMs": 0,
+        "plannerMs": 53
+      },
+      "tools": [],
+      "hasTamElHagz": false
+    }
+  ]
+}
+[db] All pools closed

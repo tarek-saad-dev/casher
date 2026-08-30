@@ -161,10 +161,25 @@ describe('bookingEventWhatsApp', () => {
       customerName: 'عميل',
       bookingDate: '2026-08-17',
       bookingTime: '15:00',
+      branchName: 'فرع',
+      servicesSummary: 'قص',
       cancelled: true,
     });
     expect(r.scheduled).toBe(true);
     expect(scheduleAfterCommit).toHaveBeenCalledTimes(1);
+    expect(scheduleAfterCommit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'cancellation',
+        bookingCode: 'BK-7',
+        bookingDate: '2026-08-17',
+        bookingTime: '15:00',
+        branchName: 'فرع',
+        services: ['قص'],
+      }),
+      expect.anything(),
+    );
+    const payload = scheduleAfterCommit.mock.calls[0][0] as { services?: string[] };
+    expect(JSON.stringify(payload.services ?? [])).not.toMatch(/تم إلغاء/);
   });
 
   it('missing phone records failed without scheduling send', async () => {

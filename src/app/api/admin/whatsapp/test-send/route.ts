@@ -106,6 +106,7 @@ export async function POST(req: NextRequest) {
           bookingDate: today,
           bookingTime: '12:00',
           services: ['اختبار'],
+          barberName: 'محمد',
         };
         break;
       case 'first_time':

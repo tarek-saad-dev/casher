@@ -237,13 +237,14 @@ describe('Admin WhatsApp template APIs', () => {
     const listed = await GET_LIST();
     const listedBody = await listed.json();
     expect(listed.status).toBe(200);
-    expect(listedBody.templates).toHaveLength(11);
+    expect(listedBody.templates).toHaveLength(12);
     expect(listedBody.templates.map((t: { templateKey: string }) => t.templateKey)).toEqual(
       expect.arrayContaining([
         'sale.customer_receipt',
         'customer.first_time',
         'sale.employee_notification',
         'booking.confirmation',
+        'booking.cancellation',
         'employee.advance',
         'employee.funding',
         'attendance.check_in',

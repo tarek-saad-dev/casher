@@ -8,6 +8,7 @@
 import {
   ATTENDANCE_CHECK_IN_TEMPLATE_KEY,
   ATTENDANCE_CHECK_OUT_TEMPLATE_KEY,
+  BOOKING_CANCELLATION_TEMPLATE_KEY,
   BOOKING_CONFIRMATION_TEMPLATE_KEY,
   CUSTOMER_FIRST_TIME_TEMPLATE_KEY,
   EMPLOYEE_ADVANCE_TEMPLATE_KEY,
@@ -162,6 +163,14 @@ export const WHATSAPP_TEMPLATE_DEFINITIONS: readonly WhatsAppTemplateDefinition[
     language: 'ar',
     label: 'تأكيد الحجز',
     description: 'تُرسل للعميل بعد إنشاء/تأكيد الحجز',
+    availableVariables: BOOKING_CONFIRMATION_VARIABLES,
+  },
+  {
+    templateKey: BOOKING_CANCELLATION_TEMPLATE_KEY,
+    channel: 'whatsapp',
+    language: 'ar',
+    label: 'إلغاء الحجز',
+    description: 'تُرسل للعميل بعد إلغاء الحجز',
     availableVariables: BOOKING_CONFIRMATION_VARIABLES,
   },
   {

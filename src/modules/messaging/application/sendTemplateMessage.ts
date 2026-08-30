@@ -7,6 +7,7 @@ import { sendMessage } from './sendMessage';
 import {
   ATTENDANCE_CHECK_IN_TEMPLATE_KEY,
   ATTENDANCE_CHECK_OUT_TEMPLATE_KEY,
+  BOOKING_CANCELLATION_TEMPLATE_KEY,
   BOOKING_CONFIRMATION_TEMPLATE_KEY,
   CUSTOMER_FIRST_TIME_TEMPLATE_KEY,
   EMPLOYEE_ADVANCE_TEMPLATE_KEY,
@@ -54,6 +55,7 @@ function isKnownTemplateEnabled(templateKey: string, cfg: WhatsAppConfig): boole
     case SALE_EMPLOYEE_NOTIFICATION_TEMPLATE_KEY:
       return cfg.employeeSaleEnabled;
     case BOOKING_CONFIRMATION_TEMPLATE_KEY:
+    case BOOKING_CANCELLATION_TEMPLATE_KEY:
       return cfg.bookingEnabled;
     case EMPLOYEE_ADVANCE_TEMPLATE_KEY:
       return cfg.employeeAdvanceEnabled;

@@ -19,6 +19,8 @@ vi.mock('@/modules/messaging/templates/repository/messageTemplateRepository', ()
 
 import { sendTemplateMessage } from '@/modules/messaging/application/sendTemplateMessage';
 import {
+  BOOKING_CANCELLATION_DEFAULT_TEMPLATE,
+  BOOKING_CANCELLATION_TEMPLATE_KEY,
   BOOKING_CONFIRMATION_DEFAULT_TEMPLATE,
   BOOKING_CONFIRMATION_TEMPLATE_KEY,
   CUSTOMER_FIRST_TIME_DEFAULT_TEMPLATE,
@@ -142,6 +144,7 @@ describe('sendTemplateMessage', () => {
         date: '2026-07-16',
         time: '14:00',
         service: 'حلاقة شعر',
+        barberName: 'محمد',
       }),
     ).toBe(
       `أهلاً طارق،
@@ -151,9 +154,36 @@ describe('sendTemplateMessage', () => {
 📅 الموعد: 2026-07-16
 🕐 الساعة: 14:00
 💇 الخدمة: حلاقة شعر
+✂️ الحلاق: محمد
 
 منتظرينك! 💈`,
     );
+
+    expect(
+      renderTemplate(BOOKING_CANCELLATION_DEFAULT_TEMPLATE, {
+        customerName: 'صلاح محمد',
+        date: '2026-08-30',
+        time: '15:00',
+        service: 'حلاقة شعر',
+        bookingId: 'BK-V2URQ6',
+        branchName: 'جليم – سابا باشا',
+      }),
+    ).toBe(
+      `أهلاً صلاح محمد،
+
+تم إلغاء حجزك في Cut Salon ❌
+
+📅 الموعد: 2026-08-30
+🕐 الساعة: 15:00
+💇 الخدمة: حلاقة شعر
+🔖 رقم الحجز: BK-V2URQ6
+🏢 الفرع: جليم – سابا باشا
+
+للاستفسار يرجى التواصل مع الفرع.`,
+    );
+    expect(BOOKING_CANCELLATION_DEFAULT_TEMPLATE).not.toContain('تم تأكيد حجزك');
+    expect(BOOKING_CANCELLATION_DEFAULT_TEMPLATE).not.toContain('منتظرينك');
+    expect(BOOKING_CANCELLATION_TEMPLATE_KEY).toBe('booking.cancellation');
 
     expect(
       renderTemplate(SALE_EMPLOYEE_NOTIFICATION_DEFAULT_TEMPLATE, {
@@ -181,6 +211,7 @@ describe('Phase 6 production callers + feature contract', () => {
     const booking = src('src/lib/bookingPostCommitNotification.ts');
     expect(booking).toContain('sendTemplateMessage');
     expect(booking).toContain('BOOKING_CONFIRMATION_TEMPLATE_KEY');
+    expect(booking).toContain('BOOKING_CANCELLATION_TEMPLATE_KEY');
     expect(booking).not.toContain('sendBookingWhatsAppMessage');
 
     const advance = src('src/lib/services/employeeAdvanceWhatsAppNotify.ts');
@@ -221,6 +252,7 @@ describe('Phase 6 production callers + feature contract', () => {
       'customer.first_time',
       'sale.employee_notification',
       'booking.confirmation',
+      'booking.cancellation',
       'employee.advance',
       'employee.funding',
       'attendance.check_in',

@@ -14,6 +14,7 @@ export { SALE_CUSTOMER_RECEIPT_TEMPLATE_KEY, SALE_CUSTOMER_RECEIPT_DEFAULT_TEMPL
 export const CUSTOMER_FIRST_TIME_TEMPLATE_KEY = 'customer.first_time' as const;
 export const SALE_EMPLOYEE_NOTIFICATION_TEMPLATE_KEY = 'sale.employee_notification' as const;
 export const BOOKING_CONFIRMATION_TEMPLATE_KEY = 'booking.confirmation' as const;
+export const BOOKING_CANCELLATION_TEMPLATE_KEY = 'booking.cancellation' as const;
 export const EMPLOYEE_ADVANCE_TEMPLATE_KEY = 'employee.advance' as const;
 export const EMPLOYEE_FUNDING_TEMPLATE_KEY = 'employee.funding' as const;
 export const ATTENDANCE_CHECK_IN_TEMPLATE_KEY = 'attendance.check_in' as const;
@@ -47,8 +48,21 @@ export const BOOKING_CONFIRMATION_DEFAULT_TEMPLATE = `أهلاً {{customerName}
 📅 الموعد: {{date}}
 🕐 الساعة: {{time}}
 💇 الخدمة: {{service}}
+✂️ الحلاق: {{barberName}}
 
 منتظرينك! 💈`;
+
+export const BOOKING_CANCELLATION_DEFAULT_TEMPLATE = `أهلاً {{customerName}}،
+
+تم إلغاء حجزك في Cut Salon ❌
+
+📅 الموعد: {{date}}
+🕐 الساعة: {{time}}
+💇 الخدمة: {{service}}
+🔖 رقم الحجز: {{bookingId}}
+🏢 الفرع: {{branchName}}
+
+للاستفسار يرجى التواصل مع الفرع.`;
 
 /** Copied from whatsapp-bot DEFAULT_TEMPLATES.employee_advance — do not restyle. */
 export const EMPLOYEE_ADVANCE_DEFAULT_TEMPLATE = `أهلاً {{customerName}} 👋
@@ -109,6 +123,7 @@ export const WHATSAPP_TEMPLATE_KEYS = [
   CUSTOMER_FIRST_TIME_TEMPLATE_KEY,
   SALE_EMPLOYEE_NOTIFICATION_TEMPLATE_KEY,
   BOOKING_CONFIRMATION_TEMPLATE_KEY,
+  BOOKING_CANCELLATION_TEMPLATE_KEY,
   EMPLOYEE_ADVANCE_TEMPLATE_KEY,
   EMPLOYEE_FUNDING_TEMPLATE_KEY,
   ATTENDANCE_CHECK_IN_TEMPLATE_KEY,
@@ -125,6 +140,7 @@ export const CODE_DEFAULT_TEMPLATES: Record<string, string> = {
   [CUSTOMER_FIRST_TIME_TEMPLATE_KEY]: CUSTOMER_FIRST_TIME_DEFAULT_TEMPLATE,
   [SALE_EMPLOYEE_NOTIFICATION_TEMPLATE_KEY]: SALE_EMPLOYEE_NOTIFICATION_DEFAULT_TEMPLATE,
   [BOOKING_CONFIRMATION_TEMPLATE_KEY]: BOOKING_CONFIRMATION_DEFAULT_TEMPLATE,
+  [BOOKING_CANCELLATION_TEMPLATE_KEY]: BOOKING_CANCELLATION_DEFAULT_TEMPLATE,
   [EMPLOYEE_ADVANCE_TEMPLATE_KEY]: EMPLOYEE_ADVANCE_DEFAULT_TEMPLATE,
   [EMPLOYEE_FUNDING_TEMPLATE_KEY]: EMPLOYEE_FUNDING_DEFAULT_TEMPLATE,
   [ATTENDANCE_CHECK_IN_TEMPLATE_KEY]: ATTENDANCE_CHECK_IN_DEFAULT_TEMPLATE,

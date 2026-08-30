@@ -1,0 +1,307 @@
+{
+  "gateA": {
+    "conversationId": 6,
+    "planId": 1,
+    "stage": "confirmed_intent",
+    "version": 6,
+    "serviceIds": [
+      20
+    ],
+    "empId": 25,
+    "branchId": 3,
+    "branchCode": "CAMP_CAESAR",
+    "requestedDate": "2026-08-30",
+    "timePreference": {
+      "kind": "exact",
+      "timeHm": "12:00"
+    },
+    "candidateSlots": [
+      "12:00",
+      "12:15",
+      "12:30"
+    ],
+    "selectedSlot": "12:00",
+    "lastTurnId": 51,
+    "selectTurnProof": {
+      "turnId": 48,
+      "inbound": "الأول",
+      "deterministicAction": "select_slot",
+      "stageBefore": "choosing_slot",
+      "stageAfter": "ready_to_confirm",
+      "selectedSlot": "12:00",
+      "note": "select_slot uses stored candidates; freshness re-read may call get_availability"
+    },
+    "confirmTurnProof": {
+      "turnId": 51,
+      "inbound": "اه",
+      "deterministicAction": "confirm_intent",
+      "stageAfter": "confirmed_intent",
+      "hasTamElHagz": false,
+      "tools": []
+    }
+  },
+  "gateB": {
+    "activePlanCount": 1,
+    "plans": [
+      {
+        "planId": 1,
+        "stage": "confirmed_intent",
+        "version": 6
+      }
+    ],
+    "duplicateTurnsByInbound": []
+  },
+  "gateC": {
+    "baseline": {
+      "holds": 0,
+      "claims": 1426,
+      "creates": 667,
+      "bookings": 1567
+    },
+    "currentTotals": {
+      "holds": 0,
+      "claims": 1426,
+      "creates": 667,
+      "bookings": 1567
+    },
+    "claimsUnchanged": true,
+    "holdsTotalUnchanged": true,
+    "createsTotalUnchanged": true,
+    "sinceWindow": {
+      "holds": 0,
+      "creates": 0,
+      "bookings": 7
+    },
+    "bookingsSampleSinceSmoke": [],
+    "note": "claims total still 1426; creates/holds since smoke = 0; bookings since may be unrelated POS traffic"
+  },
+  "gateD": {
+    "sotOk": true,
+    "sotCount": 32,
+    "sotContainsCandidates": true,
+    "storedCandidates": [
+      "12:00",
+      "12:15",
+      "12:30"
+    ],
+    "selected": "12:00",
+    "selectedInStored": true,
+    "selectedInSot": true
+  },
+  "gateH": {
+    "availabilityTurn": {
+      "turnId": 40,
+      "timing": {
+        "toolDecisionMs": 0,
+        "toolExecMs": 489,
+        "groundedMs": 0,
+        "plannerMs": 489
+      },
+      "tools": [
+        {
+          "name": "get_availability",
+          "ok": true,
+          "durationMs": 354
+        }
+      ]
+    },
+    "selectTurn": {
+      "turnId": 48,
+      "timing": {
+        "toolDecisionMs": 0,
+        "toolExecMs": 645,
+        "groundedMs": 0,
+        "plannerMs": 645
+      },
+      "tools": [
+        {
+          "name": "get_availability",
+          "ok": true,
+          "durationMs": 0
+        }
+      ],
+      "action": "select_slot"
+    },
+    "confirmTurn": {
+      "turnId": 51,
+      "timing": {
+        "toolDecisionMs": 0,
+        "toolExecMs": 53,
+        "groundedMs": 0,
+        "plannerMs": 53
+      },
+      "tools": [],
+      "action": "confirm_intent"
+    }
+  },
+  "turns": [
+    {
+      "turnId": 40,
+      "inbound": "عاوز أحجز",
+      "replyHead": "المواعيد المناسبة مع عمر يوم 2026-08-30:\n1) 12:00 م\n2) 12:15 م\n3) 12:30 م\nأنهي واحد يناسبك؟",
+      "stage": "choosing_slot",
+      "deterministicAction": null,
+      "selectedSlot": null,
+      "candidateSlotCount": 3,
+      "stageBefore": "none",
+      "stageAfter": "choosing_slot",
+      "tools": [
+        {
+          "name": "get_availability",
+          "ok": true,
+          "durationMs": 354
+        }
+      ],
+      "timing": {
+        "toolDecisionMs": 0,
+        "toolExecMs": 489,
+        "groundedMs": 0,
+        "plannerMs": 489
+      },
+      "hasTamElHagz": false,
+      "outboundMessageId": 151,
+      "outboxId": 10040,
+      "createdAt": "2026-08-29T13:12:33.001Z",
+      "completedAt": "2026-08-29T13:12:35.129Z"
+    },
+    {
+      "turnId": 41,
+      "inbound": "عاوز احجز باليل",
+      "replyHead": "المواعيد المناسبة مع عمر يوم 2026-08-30:\n1) 12:00 م\n2) 12:15 م\n3) 12:30 م\nأنهي واحد يناسبك؟",
+      "stage": "choosing_slot",
+      "deterministicAction": null,
+      "selectedSlot": null,
+      "candidateSlotCount": 3,
+      "stageBefore": "choosing_slot",
+      "stageAfter": "choosing_slot",
+      "tools": [
+        {
+          "name": "get_availability",
+          "ok": true,
+          "durationMs": 5
+        }
+      ],
+      "timing": {
+        "toolDecisionMs": 0,
+        "toolExecMs": 127,
+        "groundedMs": 0,
+        "plannerMs": 127
+      },
+      "hasTamElHagz": false,
+      "outboundMessageId": 153,
+      "outboxId": 10041,
+      "createdAt": "2026-08-29T13:13:57.280Z",
+      "completedAt": "2026-08-29T13:13:58.904Z"
+    },
+    {
+      "turnId": 42,
+      "inbound": "الأول",
+      "replyHead": "المواعيد المناسبة مع عمر يوم 2026-08-30:\n1) 12:00 م\n2) 12:15 م\n3) 12:30 م\nأنهي واحد يناسبك؟",
+      "stage": "choosing_slot",
+      "deterministicAction": null,
+      "selectedSlot": null,
+      "candidateSlotCount": 3,
+      "stageBefore": "choosing_slot",
+      "stageAfter": "choosing_slot",
+      "tools": [
+        {
+          "name": "get_availability",
+          "ok": true,
+          "durationMs": 327
+        }
+      ],
+      "timing": {
+        "toolDecisionMs": 0,
+        "toolExecMs": 385,
+        "groundedMs": 0,
+        "plannerMs": 385
+      },
+      "hasTamElHagz": false,
+      "outboundMessageId": 155,
+      "outboxId": 10042,
+      "createdAt": "2026-08-29T13:14:11.265Z",
+      "completedAt": "2026-08-29T13:14:13.330Z"
+    },
+    {
+      "turnId": 43,
+      "inbound": "1",
+      "replyHead": "المواعيد المناسبة مع عمر يوم 2026-08-30:\n1) 12:00 م\n2) 12:15 م\n3) 12:30 م\nأنهي واحد يناسبك؟",
+      "stage": "choosing_slot",
+      "deterministicAction": null,
+      "selectedSlot": null,
+      "candidateSlotCount": 3,
+      "stageBefore": "choosing_slot",
+      "stageAfter": "choosing_slot",
+      "tools": [
+        {
+          "name": "get_availability",
+          "ok": true,
+          "durationMs": 2
+        }
+      ],
+      "timing": {
+        "toolDecisionMs": 0,
+        "toolExecMs": 61,
+        "groundedMs": 0,
+        "plannerMs": 61
+      },
+      "hasTamElHagz": false,
+      "outboundMessageId": 157,
+      "outboxId": 10043,
+      "createdAt": "2026-08-29T13:14:22.590Z",
+      "completedAt": "2026-08-29T13:14:24.199Z"
+    },
+    {
+      "turnId": 48,
+      "inbound": "الأول",
+      "replyHead": "تمام يا باشا:\nشعر ودقن مع عمر\nكامب شيزار\n2026-08-30 الساعة 12:00 م\nأأكدلك الحجز؟",
+      "stage": "ready_to_confirm",
+      "deterministicAction": "select_slot",
+      "selectedSlot": "12:00",
+      "candidateSlotCount": 0,
+      "stageBefore": "choosing_slot",
+      "stageAfter": "ready_to_confirm",
+      "tools": [
+        {
+          "name": "get_availability",
+          "ok": true,
+          "durationMs": 0
+        }
+      ],
+      "timing": {
+        "toolDecisionMs": 0,
+        "toolExecMs": 645,
+        "groundedMs": 0,
+        "plannerMs": 645
+      },
+      "hasTamElHagz": false,
+      "outboundMessageId": 167,
+      "outboxId": 10048,
+      "createdAt": "2026-08-29T13:31:38.535Z",
+      "completedAt": "2026-08-29T13:31:41.225Z"
+    },
+    {
+      "turnId": 51,
+      "inbound": "اه",
+      "replyHead": "تمام، اختيارك جاهز للتأكيد: شعر ودقن مع عمر الساعة 12:00 م. التأكيد النهائي هيتم في خطوة الحجز الجاي",
+      "stage": "confirmed_intent",
+      "deterministicAction": "confirm_intent",
+      "selectedSlot": "12:00",
+      "candidateSlotCount": 0,
+      "stageBefore": "ready_to_confirm",
+      "stageAfter": "confirmed_intent",
+      "tools": [],
+      "timing": {
+        "toolDecisionMs": 0,
+        "toolExecMs": 53,
+        "groundedMs": 0,
+        "plannerMs": 53
+      },
+      "hasTamElHagz": false,
+      "outboundMessageId": 173,
+      "outboxId": 10051,
+      "createdAt": "2026-08-29T13:31:53.204Z",
+      "completedAt": "2026-08-29T13:31:54.705Z"
+    }
+  ]
+}
