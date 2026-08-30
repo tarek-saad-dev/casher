@@ -58,6 +58,8 @@ export type PublicBookingServiceLine = {
 };
 
 export type PublicBookingDto = {
+  /** Internal id for domain commands; not required on public HTTP responses. */
+  bookingId?: number | null;
   code: string;
   status: string;
   statusLabel: string;
@@ -382,6 +384,7 @@ function mapRowToDto(
   const totalDurationMinutes = services.reduce((s, x) => s + x.durationMinutes, 0);
 
   const base: PublicBookingDto = {
+    bookingId: Number(row.BookingID) || null,
     code: String(row.BookingCode ?? '').toUpperCase(),
     status: status.status,
     statusLabel: status.statusLabel,

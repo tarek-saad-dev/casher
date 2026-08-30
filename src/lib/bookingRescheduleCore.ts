@@ -435,8 +435,10 @@ export async function validateBookingMove(args: {
   newStartAt: string;
   operationalDate: string;
   targetEmpId?: number;
+  /** Optional destination branch (WhatsApp management / ops). */
+  targetBranchId?: number | null;
 }): Promise<BookingMoveValidationResult> {
-  const { bookingId, newStartAt, operationalDate, targetEmpId } = args;
+  const { bookingId, newStartAt, operationalDate, targetEmpId, targetBranchId } = args;
   const booking = await loadBookingForReschedule(bookingId);
 
   if (!booking) {
@@ -496,7 +498,10 @@ export async function validateBookingMove(args: {
     };
   }
 
-  const branchId = booking.branchId;
+  const branchId =
+    targetBranchId != null && Number.isFinite(Number(targetBranchId))
+      ? Number(targetBranchId)
+      : booking.branchId;
   const shift = await getBarberShiftBounds(
     effectiveEmpId,
     operationalDate,
@@ -647,6 +652,9 @@ export async function rescheduleBookingMove(args: {
   source: string;
   userId: number;
   targetEmpId?: number;
+  targetBranchId?: number | null;
+  /** Skip post-commit customer WhatsApp template (e.g. AI chat already confirms). */
+  skipCustomerWhatsApp?: boolean;
 }): Promise<{
   bookingId: number;
   oldStartAt: string;
@@ -660,13 +668,23 @@ export async function rescheduleBookingMove(args: {
   durationMinutes: number;
   customerName: string | null;
 }> {
-  const { bookingId, newStartAt, operationalDate, source, userId, targetEmpId } = args;
+  const {
+    bookingId,
+    newStartAt,
+    operationalDate,
+    source,
+    userId,
+    targetEmpId,
+    targetBranchId,
+    skipCustomerWhatsApp,
+  } = args;
 
   const preCheck = await validateBookingMove({
     bookingId,
     newStartAt,
     operationalDate,
     targetEmpId,
+    targetBranchId,
   });
   if (!preCheck.valid || !preCheck.newStartAt || !preCheck.newEndAt) {
     const err = new ScheduleConflictError(
@@ -710,6 +728,14 @@ export async function rescheduleBookingMove(args: {
     const proposedEnd = calculateEndTime(proposedStart, durationMinutes);
     const effectiveEmpId = targetEmpId ?? booking.assignedEmpId;
     const isCrossBarber = effectiveEmpId !== booking.assignedEmpId;
+    const effectiveBranchId =
+      targetBranchId != null && Number.isFinite(Number(targetBranchId))
+        ? Number(targetBranchId)
+        : booking.branchId;
+    const branchChanged =
+      effectiveBranchId != null &&
+      booking.branchId != null &&
+      effectiveBranchId !== booking.branchId;
 
     await acquireScheduleLocksSorted(
       transaction,
@@ -745,7 +771,7 @@ export async function rescheduleBookingMove(args: {
       endAt: proposedEnd,
       operationalDate,
       excludeBookingId: bookingId,
-      branchId: booking.branchId,
+      branchId: effectiveBranchId,
       transaction,
     });
 
@@ -762,7 +788,7 @@ export async function rescheduleBookingMove(args: {
           {
             bookingId,
             empId: effectiveEmpId,
-            branchId: booking.branchId ?? 0,
+            branchId: effectiveBranchId ?? 0,
             newStartAt: proposedStart,
             newEndAt: proposedEnd,
           },
@@ -817,9 +843,12 @@ export async function rescheduleBookingMove(args: {
       newEmpName = nameRes.recordset[0]?.EmpName ?? null;
     }
 
-    const auditNote = source === 'operations_cut_paste'
-      ? `قص/لصق: ${oldStartDisplay}→${newStartDisplay}${isCrossBarber ? ` (${booking.empName ?? booking.assignedEmpId}→${newEmpName ?? effectiveEmpId})` : ''} (م${userId})`
-      : `تعديل وقت بالسحب: ${oldStartDisplay}→${newStartDisplay} (م${userId})`;
+    const auditNote =
+      source === 'whatsapp_ai_management'
+        ? `تعديل واتساب AI: ${oldStartDisplay}→${newStartDisplay}${isCrossBarber ? ` (${booking.empName ?? booking.assignedEmpId}→${newEmpName ?? effectiveEmpId})` : ''}${branchChanged ? ' [فرع]' : ''}`
+        : source === 'operations_cut_paste'
+          ? `قص/لصق: ${oldStartDisplay}→${newStartDisplay}${isCrossBarber ? ` (${booking.empName ?? booking.assignedEmpId}→${newEmpName ?? effectiveEmpId})` : ''} (م${userId})`
+          : `تعديل وقت بالسحب: ${oldStartDisplay}→${newStartDisplay} (م${userId})`;
     const mergedNotes = mergeBookingNotes(booking.notes, auditNote);
 
     await transaction.request()
@@ -833,6 +862,7 @@ export async function rescheduleBookingMove(args: {
       .input('absEnd', sql.DateTime2, proposedEnd)
       .input('workDate', sql.Date, operationalDate)
       .input('dayOffset', sql.TinyInt, publicDayOffset)
+      .input('branchId', sql.Int, effectiveBranchId)
       .query(`
         UPDATE [dbo].[Bookings]
         SET AssignedEmpID = @empId,
@@ -844,6 +874,7 @@ export async function rescheduleBookingMove(args: {
             AbsoluteEndUtc = @absEnd,
             PublicWorkDate = @workDate,
             PublicDayOffset = @dayOffset,
+            BranchID = COALESCE(@branchId, BranchID),
             UpdatedAt = GETDATE()
         WHERE BookingID = @id
       `);
@@ -868,7 +899,7 @@ export async function rescheduleBookingMove(args: {
       await shadowAtomicReschedule({
         bookingId,
         empId: effectiveEmpId,
-        branchId: booking.branchId ?? 0,
+        branchId: effectiveBranchId ?? 0,
         oldStartAt: booking.startAt,
         oldEndAt: booking.endAt,
         newStartAt: proposedStart,
@@ -889,12 +920,13 @@ export async function rescheduleBookingMove(args: {
         oldBusinessDate: booking.bookingDate,
         newBusinessDate: operationalDate,
         oldBranchId: booking.branchId,
-        newBranchId: booking.branchId,
+        newBranchId: effectiveBranchId,
       });
     } catch {
       /* hot cache optional */
     }
 
+    if (!skipCustomerWhatsApp) {
     try {
       const { scheduleBookingEventWhatsApp } = await import(
         '@/lib/booking/bookingEventWhatsApp'
@@ -920,6 +952,7 @@ export async function rescheduleBookingMove(args: {
       });
     } catch {
       /* notify best-effort; move already committed */
+    }
     }
 
     return {

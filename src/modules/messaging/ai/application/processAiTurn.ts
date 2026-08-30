@@ -342,7 +342,61 @@ export async function processAiTurn(
 
     const activeDecision = kernelDecision ?? orchestratorDecision;
 
-    if (activeDecision?.handled && activeDecision.replyText) {
+    // Booking Management V1 (flag OFF by default) — lookup/cancel before create planner.
+    let managementHandled = false;
+    try {
+      const { isBookingManagementActiveForPhone } = await import(
+        '@/modules/messaging/ai/bookingManagement/featureFlag'
+      );
+      if (isBookingManagementActiveForPhone(context.phone)) {
+        const { processBookingManagementTurn } = await import(
+          '@/modules/messaging/ai/bookingManagement/processManagementTurn'
+        );
+        const mgmt = await processBookingManagementTurn({
+          conversationId: turn.conversationId,
+          turnId: turn.turnId,
+          phone: context.phone,
+          inboundText: latestInbound,
+          controlAllowsMutation: !handoffActive,
+        });
+        if (mgmt?.handled && mgmt.replyText) {
+          managementHandled = true;
+          structured = {
+            ...structured,
+            intent: 'booking_management',
+            replyText: mgmt.replyText,
+            needsBusinessTool: false,
+            toolCalls: [],
+            shouldReply: true,
+          };
+          toolTrace = {
+            requested: [],
+            executed: [
+              {
+                name: 'get_upcoming_bookings',
+                ok: true,
+                durationMs: 0,
+                input: { management: true, planId: mgmt.planId },
+                errorCode: undefined,
+              },
+            ],
+            truncated: false,
+          };
+        }
+      }
+    } catch (mgmtErr) {
+      console.error(
+        JSON.stringify({
+          type: 'messaging_booking_management_error',
+          turnId: turn.turnId,
+          message: mgmtErr instanceof Error ? mgmtErr.message : String(mgmtErr),
+        }),
+      );
+    }
+
+    if (managementHandled) {
+      // structured already set from Booking Management V1
+    } else if (activeDecision?.handled && activeDecision.replyText) {
       const frame = kernelDecision?.turnFrame ?? orchestratorDecision!.turnFrame;
       structured = {
         ...structured,

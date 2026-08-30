@@ -67,6 +67,7 @@
     "messaging:migrate-booking-plan-phase4": "tsx scripts/run-bot-booking-plan-phase4-migration.ts",
     "messaging:migrate-salon-concierge": "tsx scripts/run-salon-concierge-migration.ts",
     "messaging:migrate-handoff": "tsx scripts/run-bot-handoff-migration.ts",
+    "messaging:migrate-booking-management": "tsx scripts/run-bot-booking-management-migration.ts",
     "messaging:bootstrap-salon-concierge": "tsx scripts/bootstrap-salon-concierge-knowledge.ts",
     "messaging:ai-worker": "tsx scripts/messaging-ai-worker.ts",
     "messaging:benchmark-ai": "tsx scripts/benchmark-ai.ts",

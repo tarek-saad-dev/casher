@@ -9,6 +9,7 @@ export const AI_BUSINESS_TOOL_NAMES = [
   'get_business_hours',
   'get_availability',
   'get_customer_context',
+  'get_upcoming_bookings',
 ] as const;
 
 export type AiBusinessToolName = (typeof AI_BUSINESS_TOOL_NAMES)[number];

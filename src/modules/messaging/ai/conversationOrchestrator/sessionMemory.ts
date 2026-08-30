@@ -59,7 +59,7 @@ export function recordBotAction(
   });
   if (s.recentTurns.length > 12) s.recentTurns = s.recentTurns.slice(-12);
 
-  if (args.action === 'ask_booking_confirm') {
+  if (args.action === 'ask_booking_confirm' || args.action === 'ask_management_confirm') {
     s.pendingConfirmPlanId = args.planId ?? null;
     s.pendingConfirmVersion = args.planVersion ?? null;
   } else if (

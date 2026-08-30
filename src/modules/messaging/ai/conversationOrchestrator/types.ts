@@ -36,6 +36,7 @@ export type TemporalMode = 'now' | 'explicit' | 'inherited' | 'none';
 
 export type BotActionKind =
   | 'ask_booking_confirm'
+  | 'ask_management_confirm'
   | 'ask_slot_choice'
   | 'ask_missing_field'
   | 'answered_query'
@@ -111,6 +112,18 @@ export type SessionMemory = {
   lastClarificationType: string | null;
   lastClarificationAskedAt: number | null;
   evidenceAddedSinceClarification: boolean;
+  /** Booking Management V1 — soft references (in-process). */
+  lastRelevantBooking?: {
+    bookingId: number | null;
+    bookingCode: string;
+    snapshot: import('../bookingManagement/types').UpcomingBookingSummary;
+    lastReferencedAt: string;
+  } | null;
+  pendingBookingSelection?: {
+    expectedAnswerType: 'BOOKING_SELECTION';
+    candidateBookingCodes: string[];
+    askedAt: string;
+  } | null;
 };
 
 export type ResponsePlan = {

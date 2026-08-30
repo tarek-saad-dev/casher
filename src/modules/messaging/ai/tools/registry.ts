@@ -13,6 +13,7 @@ import { executeListEmployees } from './listEmployees';
 import { executeGetBusinessHours } from './getBusinessHours';
 import { executeGetAvailability } from './getAvailability';
 import { executeGetCustomerContext } from './getCustomerContext';
+import { executeGetUpcomingBookings } from './getUpcomingBookings';
 
 const NAME_SET = new Set<string>(AI_BUSINESS_TOOL_NAMES);
 
@@ -44,6 +45,9 @@ export async function executeAiBusinessTool(
       break;
     case 'get_customer_context':
       partial = await executeGetCustomerContext(request, ctx);
+      break;
+    case 'get_upcoming_bookings':
+      partial = await executeGetUpcomingBookings(request, ctx);
       break;
     default:
       partial = {

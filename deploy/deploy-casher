@@ -114,6 +114,14 @@ npm run messaging:migrate-handoff
 "
 
 echo
+echo "[7b3/8] Booking Management schema migration (idempotent, flag stays off)..."
+runuser -u casher -- bash -lc "
+cd '$APP_DIR'
+npm run messaging:migrate-booking-management
+npm run messaging:migrate-booking-management
+"
+
+echo
 echo "[7c/8] Salon Concierge trusted knowledge bootstrap (flag stays off)..."
 runuser -u casher -- bash -lc "
 cd '$APP_DIR'
