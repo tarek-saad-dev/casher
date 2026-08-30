@@ -241,6 +241,21 @@ export async function processConciergeTurn(
 
   // --- Maps / directions / external links ---
   if (intent === 'DIRECTIONS_MAPS' || intent === 'EXTERNAL_LINK') {
+    const maps = snapshot.links.filter(
+      (l) =>
+        l.status === 'active' &&
+        (l.linkType === 'GOOGLE_MAPS' || l.linkType === 'BRANCH_LOCATION'),
+    );
+    if (intent === 'DIRECTIONS_MAPS' && !branchHint && maps.length > 1) {
+      return finish({
+        text: input.text,
+        intent,
+        snapshot,
+        answer: 'تقصد فرع جليم ولا كامب شيزار؟',
+        trace: { ...emptyTrace(intent), answerSource: 'LINK' },
+        situation: 'clarify_branch',
+      });
+    }
     const link = findLink(input.text, snapshot, {
       branchCode: branchHint,
       preferType: intent === 'DIRECTIONS_MAPS' ? 'GOOGLE_MAPS' : undefined,
@@ -290,7 +305,7 @@ export async function processConciergeTurn(
       text: input.text,
       intent,
       snapshot,
-      answer: `${o.titleAr}: ${o.descriptionAr}`,
+      answer: `${o.titleAr}\n${o.descriptionAr}\nالأهلية بتتأكد حسب شروط العرض، ومش بقدر أطبّق الخصم تلقائي.`,
       trace,
     });
   }

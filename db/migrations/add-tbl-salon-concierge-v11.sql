@@ -164,5 +164,27 @@ BEGIN
 END
 GO
 
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE name = N'UQ_TblSalonBrandVoiceExample_ScenarioKey'
+      AND object_id = OBJECT_ID(N'dbo.TblSalonBrandVoiceExample')
+)
+BEGIN
+    CREATE UNIQUE NONCLUSTERED INDEX [UQ_TblSalonBrandVoiceExample_ScenarioKey]
+        ON [dbo].[TblSalonBrandVoiceExample] ([ScenarioKey]);
+END
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE name = N'UQ_TblSalonKnowledgeSource_Name'
+      AND object_id = OBJECT_ID(N'dbo.TblSalonKnowledgeSource')
+)
+BEGIN
+    CREATE UNIQUE NONCLUSTERED INDEX [UQ_TblSalonKnowledgeSource_Name]
+        ON [dbo].[TblSalonKnowledgeSource] ([SourceName]);
+END
+GO
+
 PRINT N'Salon Concierge Brain V1.1 additive schema ready';
 GO

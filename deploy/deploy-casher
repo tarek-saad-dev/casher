@@ -106,6 +106,13 @@ npm run messaging:migrate-salon-concierge
 npm run messaging:migrate-salon-concierge
 "
 
+echo
+echo "[7c/8] Salon Concierge trusted knowledge bootstrap (flag stays off)..."
+runuser -u casher -- bash -lc "
+cd '$APP_DIR'
+npm run messaging:bootstrap-salon-concierge
+"
+
 if [[ -f "$WORKER_UNIT_SRC" ]]; then
   install -m 644 "$WORKER_UNIT_SRC" "$WORKER_UNIT_DST"
 fi

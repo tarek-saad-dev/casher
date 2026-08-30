@@ -94,7 +94,7 @@ export function applyBrandVoice(args: {
 }
 
 export function unknownFactReply(): string {
-  return 'مش عايز أقولك معلومة مش مؤكدة. المعلومة دي مش متأكد منها بشكل كفاية، فمش حابب أقولك حاجة غلط. أقدر أسجلها عشان تتضاف للمعلومات، أو لاحقًا نخلي الاستقبال يأكدها.';
+  return 'مش حابب أقول لحضرتك معلومة مش مؤكدة. لو تحب أوضحلي المطلوب أكتر وأشوف أنسب حاجة نقدر نساعدك بيها.';
 }
 
 export function politeWithoutAddress(answer: string, voice?: BrandVoiceProfile): string {

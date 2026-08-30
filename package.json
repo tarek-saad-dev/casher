@@ -66,6 +66,7 @@
     "messaging:migrate-booking-plan": "tsx scripts/run-bot-booking-plan-migration.ts",
     "messaging:migrate-booking-plan-phase4": "tsx scripts/run-bot-booking-plan-phase4-migration.ts",
     "messaging:migrate-salon-concierge": "tsx scripts/run-salon-concierge-migration.ts",
+    "messaging:bootstrap-salon-concierge": "tsx scripts/bootstrap-salon-concierge-knowledge.ts",
     "messaging:ai-worker": "tsx scripts/messaging-ai-worker.ts",
     "messaging:benchmark-ai": "tsx scripts/benchmark-ai.ts",
     "messaging:seed-booking-group": "tsx scripts/seed-whatsapp-booking-group.ts",

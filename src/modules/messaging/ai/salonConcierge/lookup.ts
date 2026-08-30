@@ -103,18 +103,18 @@ export function findLink(
   if (/فيسبوك|facebook/.test(t)) return byType('FACEBOOK');
   if (/تيك|tiktok/.test(t)) return byType('TIKTOK');
   if (/واتساب|whatsapp/.test(t)) return byType('WHATSAPP');
-  if (/لينك\s*الحجز|احجز\s*اونلاين|booking/.test(t)) return byType('BOOKING');
+  if (/لينك\s*الحجز|احجز\s*اونلاين|احجز\s*منين|ازاي\s*احجز|موقع\s*الحجز|booking/.test(t)) {
+    return byType('BOOKING');
+  }
   if (/موقع|website|ويب/.test(t)) return byType('WEBSITE');
   if (/لوكيشن|maps|خريط|عنوان|فين|ابعتلي\s*(جليم|كامب)/.test(t)) {
-    return (
-      active.find(
-        (l) =>
-          (l.linkType === 'GOOGLE_MAPS' || l.linkType === 'BRANCH_LOCATION') &&
-          (!opts?.branchCode || l.branchCode === opts.branchCode),
-      ) ??
-      byType('GOOGLE_MAPS') ??
-      byType('BRANCH_LOCATION')
+    const maps = active.filter(
+      (l) => l.linkType === 'GOOGLE_MAPS' || l.linkType === 'BRANCH_LOCATION',
     );
+    if (opts?.branchCode) {
+      return maps.find((l) => l.branchCode === opts.branchCode) ?? null;
+    }
+    return maps.length === 1 ? maps[0]! : null;
   }
   if (opts?.preferType) return byType(opts.preferType);
   return null;

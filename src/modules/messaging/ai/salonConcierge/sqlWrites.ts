@@ -202,9 +202,15 @@ export async function sqlUpsertVoiceExample(ex: Partial<VoiceExample> & { scenar
       .input('pri', sql.Int, ex.priority ?? 100)
       .input('act', sql.Bit, ex.isActive === false ? 0 : 1)
       .query(`
-        INSERT INTO dbo.TblSalonBrandVoiceExample
+        MERGE dbo.TblSalonBrandVoiceExample AS t
+        USING (SELECT @sk AS ScenarioKey) AS s
+        ON t.ScenarioKey = s.ScenarioKey
+        WHEN MATCHED THEN UPDATE SET
+          Category=@cat, CustomerMessage=@cm, PreferredResponse=@pr,
+          Notes=@notes, Priority=@pri, IsActive=@act, UpdatedAt=SYSUTCDATETIME()
+        WHEN NOT MATCHED THEN INSERT
           (ScenarioKey, Category, CustomerMessage, PreferredResponse, Notes, Priority, IsActive)
-        VALUES (@sk, @cat, @cm, @pr, @notes, @pri, @act)
+        VALUES (@sk, @cat, @cm, @pr, @notes, @pri, @act);
       `);
   }
   invalidateConciergeCache();
