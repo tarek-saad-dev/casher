@@ -26,20 +26,21 @@ import {
   planV4Response,
 } from './responsePlanner';
 import { HANDOFF_ACK_AR } from '@/modules/messaging/handoff/domain/types';
-import { isHumanHandoffV1Enabled } from '@/modules/messaging/handoff/featureFlag';
+import { isHumanHandoffActiveForPhone } from '@/modules/messaging/handoff/featureFlag';
 import { resumeBookingTask, suspendBookingTask } from './taskStack';
 import type { KernelDecision } from './types';
 import { processConciergeTurn } from '../salonConcierge/processConciergeTurn';
 import { isSalonConciergeBrainEnabled } from '../salonConcierge/featureFlag';
 import { detectConciergeIntent } from '../salonConcierge/routing';
 
-function handoffCustomerReply(): string {
-  return isHumanHandoffV1Enabled() ? HANDOFF_ACK_AR : HUMAN_HANDOFF_REPLY_AR;
+function handoffCustomerReply(phone?: string | null): string {
+  return isHumanHandoffActiveForPhone(phone) ? HANDOFF_ACK_AR : HUMAN_HANDOFF_REPLY_AR;
 }
 export type KernelInput = {
   conversationId: number;
   inboundText: string;
   plan?: BookingPlanSnapshot | null;
+  phone?: string | null;
 };
 
 export async function processKernelTurn(
@@ -93,7 +94,7 @@ export async function processKernelTurn(
 
   // --- Human handoff ---
   if (route.action === 'human_handoff') {
-    const reply = handoffCustomerReply();
+    const reply = handoffCustomerReply(input.phone);
     recordBotAction(input.conversationId, {
       text: reply,
       action: 'other',

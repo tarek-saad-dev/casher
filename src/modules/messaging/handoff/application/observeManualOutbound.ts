@@ -12,7 +12,7 @@ import {
 } from '../infra/outboundCorrelationRepository';
 import {
   getHumanHandoffCorrelationWindowMs,
-  isHumanHandoffV1Enabled,
+  isHumanHandoffActiveForPhone,
 } from '../featureFlag';
 import { logHandoffEvent } from '../observability';
 import { applyWhatsAppManualControl, recordHumanActivity, type ControlCommandDeps } from './commands';
@@ -169,7 +169,7 @@ export async function observeManualOutbound(
   input: ObserveManualOutboundInput,
   deps?: ControlCommandDeps,
 ): Promise<ObserveManualOutboundResult> {
-  if (!isHumanHandoffV1Enabled()) {
+  if (!isHumanHandoffActiveForPhone(String(input.phone ?? ''))) {
     return {
       classified: 'AUTOMATED',
       conversationId: null,

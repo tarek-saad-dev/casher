@@ -6,12 +6,17 @@ import {
   type TimelineMessage,
 } from '../domain/classify';
 import { isMessageActorOrigin } from '../domain/types';
-import { isHumanHandoffV1Enabled } from '../featureFlag';
+import {
+  getHumanHandoffCanaryPhones,
+  isHumanHandoffActiveForPhone,
+  isHumanHandoffV1Enabled,
+} from '../featureFlag';
 import { logHandoffEvent } from '../observability';
 import {
   returnConversationToBot,
   type ControlCommandDeps,
 } from './commands';
+import { getConversationById } from '@/modules/messaging/conversation/infra/botConversationRepository';
 
 async function loadTimeline(conversationId: number): Promise<TimelineMessage[]> {
   const pool = await getPool();
@@ -115,6 +120,13 @@ export async function reconcileExpiredLeases(
   let resumed = 0;
   for (const row of expired) {
     try {
+      const canary = getHumanHandoffCanaryPhones();
+      if (canary.length > 0) {
+        const conv = await getConversationById(row.conversationId);
+        if (!isHumanHandoffActiveForPhone(conv?.phone ?? null)) {
+          continue;
+        }
+      }
       const result = await returnToBotAndMaybeResume(
         {
           conversationId: row.conversationId,

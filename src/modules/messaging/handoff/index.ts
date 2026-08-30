@@ -1,4 +1,9 @@
-export { isHumanHandoffV1Enabled, getHumanHandoffLeaseMinutes } from './featureFlag';
+export {
+  isHumanHandoffV1Enabled,
+  isHumanHandoffActiveForPhone,
+  getHumanHandoffCanaryPhones,
+  getHumanHandoffLeaseMinutes,
+} from './featureFlag';
 export {
   HANDOFF_ACK_AR,
   aiIsSuppressed,

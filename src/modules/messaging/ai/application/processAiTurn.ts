@@ -51,7 +51,7 @@ import {
   processKernelTurn,
 } from '../conversationKernel/processKernelTurn';
 import type { KernelDecision } from '../conversationKernel/types';
-import { isHumanHandoffV1Enabled } from '@/modules/messaging/handoff/featureFlag';
+import { isHumanHandoffActiveForPhone } from '@/modules/messaging/handoff/featureFlag';
 import {
   HANDOFF_ACK_AR,
   aiIsSuppressed,
@@ -214,38 +214,6 @@ export async function processAiTurn(
 
   let expectedControlVersionAtClaim: number | null = null;
 
-  if (isHumanHandoffV1Enabled()) {
-    const liveControl = await getConversationControl(turn.conversationId);
-    if (liveControl && aiIsSuppressed(liveControl.mode)) {
-      await markAiTurnSkipped({
-        turnId: turn.turnId,
-        errorCode: 'CONTROL_MODE_LIVE',
-        lastError: `Live ControlMode ${liveControl.mode} skips AI`,
-      });
-      logAiProcessorPerf({
-        event: 'ai_turn_skipped',
-        turnId: turn.turnId,
-        conversationId: turn.conversationId,
-        anchorInboundMessageId: turn.anchorInboundMessageId,
-        latestInboundMessageId: turn.latestInboundMessageId,
-        skipped: true,
-        ...timer.snapshot(),
-        messageReceivedToAiStartMs: null,
-        messageReceivedToReplyEnqueuedMs: null,
-        errorCode: 'CONTROL_MODE_LIVE',
-      });
-      return {
-        turnId: turn.turnId,
-        status: 'skipped',
-        duplicate: false,
-        outboundMessageId: null,
-        outboxId: null,
-        skipped: true,
-      };
-    }
-    expectedControlVersionAtClaim = liveControl?.controlVersion ?? null;
-  }
-
   const receivedAt = await getInboundMessageReceivedAt(turn.latestInboundMessageId);
   const aiStartAt = new Date();
   const runTools = deps.runTools ?? executeAiToolPlan;
@@ -258,6 +226,39 @@ export async function processAiTurn(
       latestInboundMessageId: turn.latestInboundMessageId,
     });
     timer.markContextLoadDone(performance.now() - contextStarted);
+
+    const handoffActive = isHumanHandoffActiveForPhone(context.phone);
+    if (handoffActive) {
+      const liveControl = await getConversationControl(turn.conversationId);
+      if (liveControl && aiIsSuppressed(liveControl.mode)) {
+        await markAiTurnSkipped({
+          turnId: turn.turnId,
+          errorCode: 'CONTROL_MODE_LIVE',
+          lastError: `Live ControlMode ${liveControl.mode} skips AI`,
+        });
+        logAiProcessorPerf({
+          event: 'ai_turn_skipped',
+          turnId: turn.turnId,
+          conversationId: turn.conversationId,
+          anchorInboundMessageId: turn.anchorInboundMessageId,
+          latestInboundMessageId: turn.latestInboundMessageId,
+          skipped: true,
+          ...timer.snapshot(),
+          messageReceivedToAiStartMs: null,
+          messageReceivedToReplyEnqueuedMs: null,
+          errorCode: 'CONTROL_MODE_LIVE',
+        });
+        return {
+          turnId: turn.turnId,
+          status: 'skipped',
+          duplicate: false,
+          outboundMessageId: null,
+          outboxId: null,
+          skipped: true,
+        };
+      }
+      expectedControlVersionAtClaim = liveControl?.controlVersion ?? null;
+    }
 
     const debounceUntilMs = new Date(turn.debounceUntil).getTime();
     const nowMs = Date.now();
@@ -293,6 +294,7 @@ export async function processAiTurn(
         kernelDecision = await processKernelTurn({
           conversationId: turn.conversationId,
           inboundText: latestInbound,
+          phone: context.phone,
         });
         console.log(
           JSON.stringify({
@@ -548,7 +550,7 @@ export async function processAiTurn(
     let outboundOrigin: MessageActorOrigin = 'BOT';
     let expectedControlVersion: number | null = expectedControlVersionAtClaim;
 
-    if (isHumanHandoffV1Enabled()) {
+    if (handoffActive) {
       if (kernelDecision?.route?.action === 'human_handoff') {
         const handoff = await requestCustomerHandoff({
           conversationId: turn.conversationId,
@@ -627,7 +629,7 @@ export async function processAiTurn(
       };
     }
 
-    if (isHumanHandoffV1Enabled()) {
+    if (handoffActive) {
       const liveBeforeSend = await getConversationControl(turn.conversationId);
       if (!liveBeforeSend) {
         await markAiTurnSkipped({

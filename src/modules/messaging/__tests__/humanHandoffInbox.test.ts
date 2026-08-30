@@ -161,6 +161,8 @@ describe('control commands with memory store', () => {
       now: () => now,
       leaseMinutes: () => 15,
       enabled: () => true,
+      enabledForPhone: () => true,
+      resolvePhone: async () => '201555000000',
       resolveUserName: async (id) => (id === 1 ? 'أحمد' : 'منى'),
     });
     const handoff = await requestCustomerHandoff(

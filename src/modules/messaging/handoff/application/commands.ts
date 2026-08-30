@@ -1,5 +1,7 @@
+import { getConversationById } from '@/modules/messaging/conversation/infra/botConversationRepository';
 import {
   getHumanHandoffLeaseMinutes,
+  isHumanHandoffActiveForPhone,
   isHumanHandoffV1Enabled,
 } from '../featureFlag';
 import {
@@ -21,8 +23,11 @@ export type ControlCommandDeps = {
   store: ConversationControlStore;
   now: () => Date;
   leaseMinutes: () => number;
+  /** Master flag only (ignore canary). Prefer enabledForPhone. */
   enabled: () => boolean;
+  enabledForPhone: (phone: string | null | undefined) => boolean;
   resolveUserName?: (userId: number) => Promise<string | null>;
+  resolvePhone?: (conversationId: number) => Promise<string | null>;
 };
 
 const defaultDeps: ControlCommandDeps = {
@@ -30,7 +35,23 @@ const defaultDeps: ControlCommandDeps = {
   now: () => new Date(),
   leaseMinutes: () => getHumanHandoffLeaseMinutes(),
   enabled: () => isHumanHandoffV1Enabled(),
+  enabledForPhone: (phone) => isHumanHandoffActiveForPhone(phone),
+  resolvePhone: async (conversationId) => {
+    const conv = await getConversationById(conversationId);
+    return conv?.phone ?? null;
+  },
 };
+
+async function isEnabledForConversation(
+  conversationId: number,
+  deps: ControlCommandDeps,
+): Promise<boolean> {
+  if (!deps.enabled()) return false;
+  const phone = deps.resolvePhone
+    ? await deps.resolvePhone(conversationId)
+    : null;
+  return deps.enabledForPhone(phone);
+}
 
 export function withControlDeps(over: Partial<ControlCommandDeps>): ControlCommandDeps {
   return { ...defaultDeps, ...over };
@@ -49,7 +70,7 @@ export async function requestCustomerHandoff(
   input: { conversationId: number; inboundMessageId: number | null },
   deps: ControlCommandDeps = defaultDeps,
 ): Promise<{ ack: boolean; state: ConversationControlState }> {
-  if (!deps.enabled()) {
+  if (!(await isEnabledForConversation(input.conversationId, deps))) {
     const state = await requireState(deps.store, input.conversationId);
     return { ack: false, state };
   }
@@ -92,7 +113,7 @@ export async function takeoverConversationErp(
   input: { conversationId: number; userId: number },
   deps: ControlCommandDeps = defaultDeps,
 ): Promise<ConversationControlState> {
-  if (!deps.enabled()) {
+  if (!(await isEnabledForConversation(input.conversationId, deps))) {
     throw new HandoffError('التحويل للموظف غير مفعّل', 'FEATURE_DISABLED', 403);
   }
   const live = await requireState(deps.store, input.conversationId);
@@ -159,7 +180,7 @@ export async function returnConversationToBot(
   input: { conversationId: number; actorUserId: number | null; reason: string },
   deps: ControlCommandDeps = defaultDeps,
 ): Promise<{ state: ConversationControlState; changed: boolean }> {
-  if (!deps.enabled()) {
+  if (!(await isEnabledForConversation(input.conversationId, deps))) {
     throw new HandoffError('التحويل للموظف غير مفعّل', 'FEATURE_DISABLED', 403);
   }
   const live = await requireState(deps.store, input.conversationId);
@@ -231,7 +252,7 @@ export async function applyWhatsAppManualControl(
   input: { conversationId: number; humanMessageId: number | null },
   deps: ControlCommandDeps = defaultDeps,
 ): Promise<{ changed: boolean; state: ConversationControlState }> {
-  if (!deps.enabled()) {
+  if (!(await isEnabledForConversation(input.conversationId, deps))) {
     const live = await requireState(deps.store, input.conversationId);
     return { changed: false, state: live };
   }

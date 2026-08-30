@@ -3,7 +3,7 @@ import { parseOutboxMetadataJson } from '@/modules/messaging/outbox/serializeMet
 import { automatedOutboundPermitted } from '../domain/classify';
 import type { MessageActorOrigin } from '../domain/types';
 import { isMessageActorOrigin } from '../domain/types';
-import { isHumanHandoffV1Enabled } from '../featureFlag';
+import { isHumanHandoffActiveForPhone, isHumanHandoffV1Enabled } from '../featureFlag';
 import { getConversationControl } from '../infra/conversationControlRepository';
 import {
   insertOutboundCorrelation,
@@ -29,7 +29,7 @@ function resolveOrigin(meta: Record<string, unknown> | null): MessageActorOrigin
 export async function evaluateOutboxSendGate(
   row: OutboxMessageRow,
 ): Promise<OutboxSendGateResult> {
-  if (!isHumanHandoffV1Enabled()) {
+  if (!isHumanHandoffActiveForPhone(row.recipient)) {
     return { allow: true, origin: null, correlationInserted: false };
   }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   getHumanHandoffLeaseMinutes,
+  isHumanHandoffActiveForPhone,
   isHumanHandoffV1Enabled,
 } from '@/modules/messaging/handoff/featureFlag';
 import {
@@ -49,6 +50,25 @@ describe('HUMAN_HANDOFF_V1 flag', () => {
     expect(isHumanHandoffV1Enabled({ HUMAN_HANDOFF_V1: 'false' })).toBe(false);
     expect(isHumanHandoffV1Enabled({ HUMAN_HANDOFF_V1: 'true' })).toBe(true);
     expect(getHumanHandoffLeaseMinutes({})).toBe(15);
+  });
+
+  it('canary phones gate when flag on', () => {
+    const env = {
+      HUMAN_HANDOFF_V1: 'true',
+      HUMAN_HANDOFF_CANARY_PHONES: '01557994946, 201111111111',
+    } as NodeJS.ProcessEnv;
+    expect(isHumanHandoffActiveForPhone('01557994946', env)).toBe(true);
+    expect(isHumanHandoffActiveForPhone('201557994946', env)).toBe(true);
+    expect(isHumanHandoffActiveForPhone('201555000000', env)).toBe(false);
+    expect(isHumanHandoffActiveForPhone('01557994946', { HUMAN_HANDOFF_V1: 'false' })).toBe(
+      false,
+    );
+    expect(
+      isHumanHandoffActiveForPhone('201555000000', {
+        HUMAN_HANDOFF_V1: 'true',
+        HUMAN_HANDOFF_CANARY_PHONES: '',
+      }),
+    ).toBe(true);
   });
 });
 

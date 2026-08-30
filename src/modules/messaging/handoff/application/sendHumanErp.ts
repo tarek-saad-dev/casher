@@ -6,7 +6,7 @@ import {
   takeoverConversationErp,
   type ControlCommandDeps,
 } from './commands';
-import { isHumanHandoffV1Enabled } from '../featureFlag';
+import { isHumanHandoffActiveForPhone } from '../featureFlag';
 
 async function insertHumanErpMessage(input: {
   conversationId: number;
@@ -50,14 +50,14 @@ export async function sendHumanErpMessage(
   },
   deps?: ControlCommandDeps,
 ): Promise<{ messageId: number; outboxId: number; controlVersion: number }> {
-  if (!isHumanHandoffV1Enabled()) {
-    throw new HandoffError('التحويل للموظف غير مفعّل', 'FEATURE_DISABLED', 403);
-  }
   const text = String(input.text ?? '').trim();
   if (!text) throw new HandoffError('الرسالة فارغة', 'EMPTY_CONTENT', 400);
 
   const conversation = await getConversationById(input.conversationId);
   if (!conversation) throw new HandoffError('المحادثة غير موجودة', 'NOT_FOUND', 404);
+  if (!isHumanHandoffActiveForPhone(conversation.phone)) {
+    throw new HandoffError('التحويل للموظف غير مفعّل', 'FEATURE_DISABLED', 403);
+  }
 
   const control = await takeoverConversationErp(
     { conversationId: input.conversationId, userId: input.userId },
