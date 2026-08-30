@@ -124,55 +124,22 @@ export async function loadEffectiveDayLayerInputs(args: {
     /* optional */
   }
 
-  // Daily adjustments (canonical)
+  // Daily adjustments (canonical window-table loader)
   try {
-    const adj = await db
-      .request()
-      .input('empId', sql.Int, args.employeeId)
-      .input('branchId', sql.Int, args.branchId)
-      .input('day', sql.Date, businessDate)
-      .query(`
-        SELECT AdjustmentID, AdjustmentType, WindowsJson
-        FROM dbo.TblEmpDailyAdjustment
-        WHERE EmpID = @empId AND BranchID = @branchId AND BusinessDate = @day
-          AND IsActive = 1
-        ORDER BY CreatedAt ASC, AdjustmentID ASC
-      `);
-    for (const row of adj.recordset as Array<{
-      AdjustmentType: string;
-      WindowsJson: string | null;
-    }>) {
-      const type = String(row.AdjustmentType);
-      let windows: Array<{ startHhmm: string; endHhmm: string; endDayOffset?: 0 | 1 }> =
-        [];
-      if (row.WindowsJson) {
-        try {
-          const parsed = JSON.parse(String(row.WindowsJson)) as Array<{
-            start?: string;
-            end?: string;
-            endDayOffset?: 0 | 1;
-          }>;
-          windows = parsed
-            .filter((w) => w.start && w.end)
-            .map((w) => ({
-              startHhmm: String(w.start).slice(0, 5),
-              endHhmm: String(w.end).slice(0, 5),
-              endDayOffset: w.endDayOffset,
-            }));
-        } catch {
-          windows = [];
-        }
-      }
-      layers.dailyAdjustments = layers.dailyAdjustments ?? [];
-      if (type === 'CLOSE_DAY') {
-        layers.dailyAdjustments.push({ type: 'CLOSE_DAY' });
-      } else if (type === 'REPLACE_WINDOWS') {
-        layers.dailyAdjustments.push({ type: 'REPLACE_WINDOWS', windows });
-      } else if (type === 'ADD_WINDOW') {
-        layers.dailyAdjustments.push({ type: 'ADD_WINDOW', windows });
-      } else if (type === 'BLOCK_WINDOW') {
-        layers.dailyAdjustments.push({ type: 'BLOCK_WINDOW', windows });
-      }
+    const { loadDailyAdjustmentsBatch } = await import(
+      '@/lib/availability/loadDailyAdjustmentsBatch'
+    );
+    const { mapEmployeeDailyAdjustmentsToEffectiveLayers } = await import(
+      '@/lib/booking/projection/mapDailyAdjustmentsToEffectiveLayers'
+    );
+    const adjMap = await loadDailyAdjustmentsBatch({
+      branchId: args.branchId,
+      empIds: [args.employeeId],
+      businessDate,
+    });
+    const adjustments = adjMap.get(args.employeeId) ?? [];
+    if (adjustments.length) {
+      layers.dailyAdjustments = mapEmployeeDailyAdjustmentsToEffectiveLayers(adjustments);
     }
   } catch {
     /* table may not exist yet */

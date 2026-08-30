@@ -625,7 +625,7 @@ describe('B8.5 artifacts + wiring', () => {
       ],
       [
         'src/lib/availability/dailyAdjustmentService.ts',
-        'invalidateEmployeeScheduleCaches',
+        'invalidateEmployeeScheduleCachesAsync',
       ],
       [
         'src/lib/availability/branchExceptionalHours.ts',

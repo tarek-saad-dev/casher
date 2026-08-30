@@ -5,8 +5,11 @@
 
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
+import { loadDailyAdjustmentsBatch } from '@/lib/availability/loadDailyAdjustmentsBatch';
 import type { EffectiveDayLayerInputs } from '@/lib/booking/domain/EffectiveDay';
 import { parseBusinessDate } from '@/lib/booking/domain/BusinessDate';
+import { shiftCalendarDate } from '@/lib/businessDate';
+import { mapEmployeeDailyAdjustmentsToEffectiveLayers } from '@/lib/booking/projection/mapDailyAdjustmentsToEffectiveLayers';
 
 function fmtTime(v: unknown): string | null {
   if (!v) return null;
@@ -129,49 +132,18 @@ export async function loadEffectiveDayLayerInputsBatch(args: {
     /* optional */
   }
 
-  // Daily adjustments
+  // Daily adjustments — canonical TblEmpDailyAdjustmentWindow loader
   try {
-    const req = bindEmps(
-      db.request().input('day', sql.Date, businessDate).input('branchId', sql.Int, args.branchId),
-    );
-    const res = await req.query(`
-      SELECT EmpID, AdjustmentType, WindowsJson
-      FROM dbo.TblEmpDailyAdjustment
-      WHERE EmpID IN (${empList()}) AND BranchID = @branchId AND BusinessDate = @day
-        AND IsActive = 1
-      ORDER BY CreatedAt ASC, AdjustmentID ASC
-    `);
-    queryCount += 1;
-    for (const row of res.recordset as Array<Record<string, unknown>>) {
-      const layers = byEmpId.get(Number(row.EmpID))!;
-      layers.dailyAdjustments = layers.dailyAdjustments ?? [];
-      const type = String(row.AdjustmentType);
-      let windows: Array<{ startHhmm: string; endHhmm: string; endDayOffset?: 0 | 1 }> = [];
-      if (row.WindowsJson) {
-        try {
-          const parsed = JSON.parse(String(row.WindowsJson)) as Array<{
-            start?: string;
-            end?: string;
-            endDayOffset?: 0 | 1;
-          }>;
-          windows = parsed
-            .filter((w) => w.start && w.end)
-            .map((w) => ({
-              startHhmm: String(w.start).slice(0, 5),
-              endHhmm: String(w.end).slice(0, 5),
-              endDayOffset: w.endDayOffset,
-            }));
-        } catch {
-          windows = [];
-        }
-      }
-      if (type === 'CLOSE_DAY') layers.dailyAdjustments.push({ type: 'CLOSE_DAY' });
-      else if (type === 'REPLACE_WINDOWS')
-        layers.dailyAdjustments.push({ type: 'REPLACE_WINDOWS', windows });
-      else if (type === 'ADD_WINDOW')
-        layers.dailyAdjustments.push({ type: 'ADD_WINDOW', windows });
-      else if (type === 'BLOCK_WINDOW')
-        layers.dailyAdjustments.push({ type: 'BLOCK_WINDOW', windows });
+    const adjMap = await loadDailyAdjustmentsBatch({
+      branchId: args.branchId,
+      empIds,
+      businessDate,
+    });
+    queryCount += 2;
+    for (const [empId, adjustments] of adjMap) {
+      if (!adjustments.length) continue;
+      const layers = byEmpId.get(empId)!;
+      layers.dailyAdjustments = mapEmployeeDailyAdjustmentsToEffectiveLayers(adjustments);
     }
   } catch {
     /* optional */
@@ -344,52 +316,22 @@ export async function loadEffectiveDayLayerInputsRangeBatch(args: {
     /* optional */
   }
 
+  // Daily adjustments — canonical TblEmpDailyAdjustmentWindow loader (per date in range)
   try {
-    const req = bindEmps(
-      db
-        .request()
-        .input('from', sql.Date, from)
-        .input('to', sql.Date, to)
-        .input('branchId', sql.Int, args.branchId),
-    );
-    const res = await req.query(`
-      SELECT EmpID, BusinessDate, AdjustmentType, WindowsJson
-      FROM dbo.TblEmpDailyAdjustment
-      WHERE EmpID IN (${empList()}) AND BranchID = @branchId
-        AND BusinessDate BETWEEN @from AND @to AND IsActive = 1
-      ORDER BY CreatedAt ASC, AdjustmentID ASC
-    `);
-    queryCount += 1;
-    for (const row of res.recordset as Array<Record<string, unknown>>) {
-      const layers = ensure(Number(row.EmpID), ymdFromSqlDate(row.BusinessDate));
-      layers.dailyAdjustments = layers.dailyAdjustments ?? [];
-      const type = String(row.AdjustmentType);
-      let windows: Array<{ startHhmm: string; endHhmm: string; endDayOffset?: 0 | 1 }> = [];
-      if (row.WindowsJson) {
-        try {
-          const parsed = JSON.parse(String(row.WindowsJson)) as Array<{
-            start?: string;
-            end?: string;
-            endDayOffset?: 0 | 1;
-          }>;
-          windows = parsed
-            .filter((w) => w.start && w.end)
-            .map((w) => ({
-              startHhmm: String(w.start).slice(0, 5),
-              endHhmm: String(w.end).slice(0, 5),
-              endDayOffset: w.endDayOffset,
-            }));
-        } catch {
-          windows = [];
-        }
+    let cur = from;
+    while (cur <= to) {
+      const adjMap = await loadDailyAdjustmentsBatch({
+        branchId: args.branchId,
+        empIds,
+        businessDate: cur,
+      });
+      queryCount += 2;
+      for (const [empId, adjustments] of adjMap) {
+        if (!adjustments.length) continue;
+        const layers = ensure(empId, cur);
+        layers.dailyAdjustments = mapEmployeeDailyAdjustmentsToEffectiveLayers(adjustments);
       }
-      if (type === 'CLOSE_DAY') layers.dailyAdjustments.push({ type: 'CLOSE_DAY' });
-      else if (type === 'REPLACE_WINDOWS')
-        layers.dailyAdjustments.push({ type: 'REPLACE_WINDOWS', windows });
-      else if (type === 'ADD_WINDOW')
-        layers.dailyAdjustments.push({ type: 'ADD_WINDOW', windows });
-      else if (type === 'BLOCK_WINDOW')
-        layers.dailyAdjustments.push({ type: 'BLOCK_WINDOW', windows });
+      cur = shiftCalendarDate(cur, 1);
     }
   } catch {
     /* optional */

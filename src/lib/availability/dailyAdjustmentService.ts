@@ -18,7 +18,7 @@ import {
 import { ensureDailyAdjustmentTables } from '@/lib/availability/ensureDailyAdjustmentTables';
 import { loadDailyAdjustmentsBatch } from '@/lib/availability/loadDailyAdjustmentsBatch';
 import { isEmployeeEligibleForBranchBookings } from '@/lib/branch/bookingQueueOwnership';
-import { invalidateEmployeeScheduleCaches } from '@/lib/hr/scheduleAvailabilityInvalidation';
+import { invalidateEmployeeScheduleCachesAsync } from '@/lib/hr/scheduleAvailabilityInvalidation';
 
 export class DailyAdjustmentServiceError extends Error {
   code: DailyAdjustmentErrorCode;
@@ -328,7 +328,7 @@ export async function createDailyAdjustment(
 
     await transaction.commit();
 
-    invalidateEmployeeScheduleCaches({
+    await invalidateEmployeeScheduleCachesAsync({
       empId: input.empId,
       workDate: input.businessDate,
       branchIds: [input.branchId],
@@ -412,7 +412,7 @@ export async function cancelDailyAdjustment(
     await transaction.commit();
 
     const workDate = String(row.BusinessDate).slice(0, 10);
-    invalidateEmployeeScheduleCaches({
+    await invalidateEmployeeScheduleCachesAsync({
       empId: Number(row.EmpID),
       workDate,
       branchIds: [input.branchId],

@@ -3,6 +3,7 @@
  * Prefer scoped keys; avoid production-wide flush.
  */
 import 'server-only';
+import { clearAvailabilityRevisionSoftMemo } from '@/lib/booking/cache/WarmMatrixContextCache';
 import { invalidatePublicSettingsCache } from '@/lib/publicBookingHelpers';
 
 export type ScheduleInvalidationScope = {
@@ -22,7 +23,7 @@ export function getOperationsDayStateVersion(branchId: number, workDate: string)
   return dayStateVersion.get(`${branchId}:${workDate}`) ?? 0;
 }
 
-export function invalidateEmployeeScheduleCaches(scope: ScheduleInvalidationScope): void {
+function bumpOpsScheduleCaches(scope: ScheduleInvalidationScope): void {
   const branches = scope.branchIds ?? [];
   for (const branchId of branches) {
     invalidatePublicSettingsCache(branchId);
@@ -32,31 +33,49 @@ export function invalidateEmployeeScheduleCaches(scope: ScheduleInvalidationScop
     bump(`emp:${scope.empId}:${scope.workDate}`);
   }
   bump(`emp:${scope.empId}:global`);
+}
 
-  // B8.6 — date-scoped hot availability via central notifier (best-effort).
-  if (scope.workDate) {
-    void import('@/lib/booking/AvailabilityMutationNotifier')
-      .then((m) => {
-        if (branches.length) {
-          return Promise.all(
-            branches.map((branchId) =>
-              m.AvailabilityMutationNotifier.employeeDayChanged({
-                employeeId: scope.empId,
-                branchId,
-                businessDate: scope.workDate!,
-                reason: 'schedule_invalidate',
-              }),
-            ),
-          );
-        }
-        return m.AvailabilityMutationNotifier.employeeDayChanged({
+/**
+ * Post-commit Booking V2 invalidation for workforce/schedule mutations.
+ * Clears revision soft memo synchronously, then awaits Emp×Date revision bump + L1 drop.
+ */
+export async function invalidateEmployeeScheduleCachesAsync(
+  scope: ScheduleInvalidationScope,
+): Promise<void> {
+  bumpOpsScheduleCaches(scope);
+  if (!scope.workDate) return;
+
+  clearAvailabilityRevisionSoftMemo();
+
+  const branches = scope.branchIds ?? [];
+  const { AvailabilityMutationNotifier } = await import(
+    '@/lib/booking/AvailabilityMutationNotifier'
+  );
+  if (branches.length) {
+    await Promise.all(
+      branches.map((branchId) =>
+        AvailabilityMutationNotifier.employeeDayChanged({
           employeeId: scope.empId,
-          branchId: 0,
+          branchId,
           businessDate: scope.workDate!,
           reason: 'schedule_invalidate',
-        });
-      })
-      .catch(() => undefined);
+        }),
+      ),
+    );
+    return;
+  }
+  await AvailabilityMutationNotifier.employeeDayChanged({
+    employeeId: scope.empId,
+    branchId: 0,
+    businessDate: scope.workDate,
+    reason: 'schedule_invalidate',
+  });
+}
+
+export function invalidateEmployeeScheduleCaches(scope: ScheduleInvalidationScope): void {
+  bumpOpsScheduleCaches(scope);
+  if (scope.workDate) {
+    void invalidateEmployeeScheduleCachesAsync(scope).catch(() => undefined);
   }
 }
 
