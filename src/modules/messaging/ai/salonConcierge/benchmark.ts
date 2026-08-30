@@ -77,12 +77,7 @@ export async function runConciergeBenchmark(): Promise<ConciergeBenchmarkMetrics
       run: async () => {
         const d = await processConciergeTurn({
           text: 'فاتحين دلوقتي؟',
-          openNowOverride: {
-            openTime: '12:00',
-            closeTime: '01:00',
-            nowMinutes: 14 * 60,
-            branchName: 'جليم',
-          },
+          openNowOverride: { nowMinutes: 15 * 60 },
         });
         return Boolean(d?.handled && /فاتح/.test(d.replyText || ''));
       },
@@ -92,12 +87,7 @@ export async function runConciergeBenchmark(): Promise<ConciergeBenchmarkMetrics
       run: async () => {
         const d = await processConciergeTurn({
           text: 'جليم مفتوح؟',
-          openNowOverride: {
-            openTime: '12:00',
-            closeTime: '01:00',
-            nowMinutes: 5 * 60,
-            branchName: 'جليم',
-          },
+          openNowOverride: { nowMinutes: 10 * 60 + 59 },
         });
         return Boolean(d?.handled && /مقفول/.test(d.replyText || ''));
       },

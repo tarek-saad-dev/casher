@@ -121,7 +121,10 @@ export async function processKernelTurn(
 
   if (conciergeCandidate) {
     try {
-      const concierge = await processConciergeTurn({ text: input.inboundText });
+      const concierge = await processConciergeTurn({
+        text: input.inboundText,
+        session: getSessionMemory(input.conversationId),
+      });
       if (concierge?.handled && concierge.replyText) {
         if (route.suspendActiveTask && plan) {
           suspendBookingTask(input.conversationId, plan, 'concierge');

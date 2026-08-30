@@ -99,25 +99,15 @@ describe('Salon Concierge Brain V1', () => {
     expect(listKnowledgeGaps().length).toBeGreaterThan(0);
   });
 
-  it('live open/closed via override', async () => {
+  it('live open/closed via fixed hours override', async () => {
     const open = await processConciergeTurn({
       text: 'فاتحين دلوقتي؟',
-      openNowOverride: {
-        openTime: '12:00:00',
-        closeTime: '01:00:00',
-        nowMinutes: 15 * 60,
-        branchName: 'جليم',
-      },
+      openNowOverride: { nowMinutes: 15 * 60 },
     });
     expect(open?.replyText).toMatch(/فاتح/);
     const closed = await processConciergeTurn({
       text: 'جليم مفتوح؟',
-      openNowOverride: {
-        openTime: '12:00',
-        closeTime: '01:00',
-        nowMinutes: 4 * 60,
-        branchName: 'جليم',
-      },
+      openNowOverride: { nowMinutes: 10 * 60 + 59 },
     });
     expect(closed?.replyText).toMatch(/مقفول/);
   });

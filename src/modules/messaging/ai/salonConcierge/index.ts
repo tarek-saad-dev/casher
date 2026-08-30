@@ -1,7 +1,15 @@
 export { isSalonConciergeBrainEnabled } from './featureFlag';
 export { processConciergeTurn } from './processConciergeTurn';
-export { detectConciergeIntent, extractBranchHint } from './routing';
+export { detectConciergeIntent, extractBranchHint, resolveConciergeIntent } from './routing';
 export { evaluateOpenNow } from './openNow';
+export {
+  cairoNowMinutes,
+  isConciergeBranchOpenAt,
+  CONCIERGE_FIXED_BRANCH_HOURS,
+  formatConciergeBranchSchedule,
+  formatConciergeOpenNowAll,
+} from './branchBusinessHours';
+export { buildFixedOpenNowReply, buildFixedHoursScheduleReply } from './branchHoursReplies';
 export { applyBrandVoice, unknownFactReply, containsBannedSlang, BANNED_SLANG_DEFAULT } from './brandVoice';
 export { buildUnavailableEmployeeAdvice, buildCapabilityAdvice, buildConsultativeAdvice } from './advisor';
 export {

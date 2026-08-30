@@ -1,7 +1,8 @@
 /**
  * Salon Concierge Brain — process turn (ephemeral; never mutates booking).
  */
-import { executeGetBusinessHours } from '../tools/getBusinessHours';
+import { buildFixedHoursScheduleReply, buildFixedOpenNowReply } from './branchHoursReplies';
+import { cairoNowMinutes } from './branchBusinessHours';
 import { buildCapabilityAdvice, buildConsultativeAdvice } from './advisor';
 import { applyBrandVoice, unknownFactReply } from './brandVoice';
 import { isSalonConciergeBrainEnabled } from './featureFlag';
@@ -9,8 +10,7 @@ import { attachFollowUp, optionalFollowUp } from './followUp';
 import { loadConciergeSnapshot } from './hub';
 import { captureKnowledgeGap } from './knowledgeGaps';
 import { findCapability, findKnowledge, findLink, listActiveOffers } from './lookup';
-import { evaluateOpenNow } from './openNow';
-import { detectConciergeIntent, extractBranchHint } from './routing';
+import { detectConciergeIntent, extractBranchHint, resolveConciergeIntent } from './routing';
 import type {
   ConciergeAnswerSource,
   ConciergeDecision,
@@ -41,6 +41,7 @@ function emptyTrace(intent: ConciergeIntent): ConciergeTrace {
 }
 
 function localNowMinutes(timeZone = 'Africa/Cairo'): number {
+  if (timeZone === 'Africa/Cairo') return cairoNowMinutes();
   try {
     const parts = new Intl.DateTimeFormat('en-GB', {
       timeZone,
@@ -67,14 +68,16 @@ function sourceFromAnswer(answerSource: ConciergeAnswerSource): KnowledgeSource 
 
 export type ConciergeInput = {
   text: string;
+  /** Test hook: freeze Cairo local minutes for open-now evaluation. */
   openNowOverride?: {
-    openTime: string;
-    closeTime: string;
     nowMinutes: number;
+    openTime?: string;
+    closeTime?: string;
     branchName?: string;
   } | null;
   skipGapCapture?: boolean;
   snapshotOverride?: ConciergeSnapshot | null;
+  session?: { recentTurns: Array<{ role: string; text?: string }> };
 };
 
 function finish(args: {
@@ -138,13 +141,12 @@ export async function processConciergeTurn(
 ): Promise<ConciergeDecision | null> {
   if (!isSalonConciergeBrainEnabled()) return null;
 
-  const intent = detectConciergeIntent(input.text);
+  const intent = resolveConciergeIntent(input.text, input.session);
   if (intent === 'NONE') return null;
 
   if (
     intent === 'SERVICE_PRICE_LIVE' ||
-    intent === 'AVAILABILITY_LIVE' ||
-    intent === 'HOURS_LIVE'
+    intent === 'AVAILABILITY_LIVE'
   ) {
     const trace = emptyTrace(intent);
     trace.answerSource = 'LIVE_TOOL';
@@ -173,61 +175,21 @@ export async function processConciergeTurn(
     await captureKnowledgeGap({ subject: input.text, categoryGuess });
   };
 
-  // --- Open now (LIVE hours) ---
+  // --- Open now (owner-approved fixed hours) ---
   if (intent === 'OPEN_NOW') {
     const trace = emptyTrace(intent);
-    trace.liveTools.push('get_business_hours');
-    trace.answerSource = 'LIVE_TOOL';
+    trace.answerSource = 'CURATED_KNOWLEDGE';
+    trace.source = 'curated';
+    trace.knowledgeKeys.push('hours.fixed.owner_approved');
     trace.voiceExampleIds = voiceExamples.map((e) => e.id);
 
-    let openTime: string | null = null;
-    let closeTime: string | null = null;
-    let branchName =
-      branchHint === 'GLEEM' ? 'جليم' : branchHint === 'CAMP_CAESAR' ? 'كامب' : 'الفرع';
-    let nowM = localNowMinutes();
-
-    if (input.openNowOverride) {
-      openTime = input.openNowOverride.openTime;
-      closeTime = input.openNowOverride.closeTime;
-      nowM = input.openNowOverride.nowMinutes;
-      if (input.openNowOverride.branchName) branchName = input.openNowOverride.branchName;
-    } else {
-      const hours = await executeGetBusinessHours({
-        name: 'get_business_hours',
-        branchCode: branchHint,
-      });
-      if (hours.ok && hours.data) {
-        const d = hours.data as {
-          openTime?: string | null;
-          closeTime?: string | null;
-          branchName?: string;
-        };
-        openTime = d.openTime ?? null;
-        closeTime = d.closeTime ?? null;
-        if (d.branchName) branchName = d.branchName;
-      }
-    }
-
-    const evalResult = evaluateOpenNow({
-      openTime,
-      closeTime,
+    const nowM = input.openNowOverride?.nowMinutes ?? localNowMinutes();
+    const answer = buildFixedOpenNowReply({
+      branchCode: branchHint,
       nowMinutes: nowM,
     });
-
-    if (evalResult.reason === 'hours_unknown') {
-      await maybeGap('OPENING_POLICY');
-      return finish({
-        text: input.text,
-        intent,
-        snapshot,
-        answer: `مقدرش أأكد حالة ${branchName} دلوقتي من مواعيد التشغيل.`,
-        trace: { ...trace, knowledgeGap: true },
-      });
-    }
-
-    const answer = evalResult.isOpen
-      ? `أيوه، ${branchName} فاتح دلوقتي. ${evalResult.nextHint ?? ''}`.trim()
-      : `${branchName} مقفول دلوقتي. ${evalResult.nextHint ?? ''}`.trim();
+    const anyOpen =
+      /فاتحين دلوقتي|فاتح دلوقتي/.test(answer) && !/^مقفلين/.test(answer);
 
     return finish({
       text: input.text,
@@ -235,7 +197,25 @@ export async function processConciergeTurn(
       snapshot,
       answer,
       trace,
-      situation: evalResult.isOpen ? 'open_yes' : 'none',
+      situation: anyOpen ? 'open_yes' : 'none',
+    });
+  }
+
+  // --- Fixed branch hours (curated; not ERP) ---
+  if (intent === 'HOURS_LIVE') {
+    const trace = emptyTrace(intent);
+    trace.answerSource = 'CURATED_KNOWLEDGE';
+    trace.source = 'curated';
+    trace.knowledgeKeys.push(
+      branchHint ? `hours.${branchHint.toLowerCase()}.fixed` : 'hours.branches.fixed',
+    );
+    const answer = buildFixedHoursScheduleReply({ branchCode: branchHint });
+    return finish({
+      text: input.text,
+      intent,
+      snapshot,
+      answer,
+      trace,
     });
   }
 

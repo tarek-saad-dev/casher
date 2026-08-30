@@ -1,4 +1,5 @@
 /** Concierge intent routing — live vs curated. */
+import type { ConciergeBranchCode } from './branchBusinessHours';
 import { normalizeConciergeText } from './matching';
 import type { ConciergeIntent } from './types';
 
@@ -49,7 +50,13 @@ export function detectConciergeIntent(text: string): ConciergeIntent {
 
   if (/مين\s*(متاح|موجود)|متاح\s*(دلوقتي|حاليا)/.test(t)) return 'AVAILABILITY_LIVE';
 
-  if (/ساعات\s*العمل|بتفتحو|بتقفل|مواعيد\s*(الفروع|جليم|كامب)/.test(t)) return 'HOURS_LIVE';
+  if (
+    /ساعات\s*العمل|بتفتحو|بتقفل|مواعيد|بيفتح\s*(امتي|امتى|ايمته)|امتي\s*تفتح|امتى\s*تفتح|امتى\s*بتفتح/.test(
+      t,
+    )
+  ) {
+    return 'HOURS_LIVE';
+  }
 
   if (
     /احجز\s*ازاي|ازاي\s*احجز|الحجز\s*منين|جراج|موقف|باركينج|faq/.test(t) ||
@@ -61,9 +68,37 @@ export function detectConciergeIntent(text: string): ConciergeIntent {
   return 'NONE';
 }
 
-export function extractBranchHint(text: string): string | null {
+export function extractBranchHint(text: string): ConciergeBranchCode | null {
   const t = normalizeConciergeText(text);
   if (/جليم|gleem/.test(t)) return 'GLEEM';
   if (/كامب|شيزار|camp/.test(t)) return 'CAMP_CAESAR';
   return null;
+}
+
+export type { ConciergeBranchCode } from './branchBusinessHours';
+
+const OPEN_NOW_FOLLOWUP_RE =
+  /فاتحين|فاتح دلوقتي|مقفلين حاليًا|الفرعين فاتحين|لحد \d بعد منتصف الليل/;
+
+/** Session-aware intent: branch follow-up after open-now stays OPEN_NOW. */
+export function resolveConciergeIntent(
+  text: string,
+  session?: { recentTurns: Array<{ role: string; text?: string }> },
+): ConciergeIntent {
+  const base = detectConciergeIntent(text);
+  if (base !== 'NONE') return base;
+  if (!session?.recentTurns?.length) return 'NONE';
+
+  const t = normalizeConciergeText(text);
+  const branchOnly =
+    ((/^طب\s/.test(t) || /^و(كامب|جليم)/.test(t)) && extractBranchHint(text) != null) ||
+    (/^(جليم|كامب)\s*\?*$/.test(t) && extractBranchHint(text) != null);
+
+  if (!branchOnly) return 'NONE';
+
+  const lastBot = [...session.recentTurns].reverse().find((r) => r.role === 'bot');
+  if (lastBot?.text && OPEN_NOW_FOLLOWUP_RE.test(lastBot.text)) {
+    return 'OPEN_NOW';
+  }
+  return 'NONE';
 }

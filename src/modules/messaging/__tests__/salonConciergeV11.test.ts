@@ -210,7 +210,7 @@ describe('Salon Concierge Brain V1.1 production hub', () => {
     expect(BANNED_SLANG_DEFAULT.length).toBeGreaterThan(3);
     const open = await processConciergeTurn({
       text: 'فاتحين؟',
-      openNowOverride: { openTime: '12:00', closeTime: '01:00', nowMinutes: 15 * 60, branchName: 'جليم' },
+      openNowOverride: { nowMinutes: 15 * 60 },
     });
     expect(open?.replyText).toMatch(/يا فندم/);
     const faq = await processConciergeTurn({ text: 'فيه جراج؟' });
@@ -376,7 +376,7 @@ describe('Salon Concierge Brain V1.1 production hub', () => {
       { text: 'عندكو حد يدفر الشعر؟', check: (d) => Boolean(d?.handled) },
       { text: 'لينك الحجز؟', check: (d) => Boolean(d?.replyText?.includes('book')) },
       { text: 'جليم مفتوح؟', check: (d) => Boolean(d?.handled) },
-      { text: 'مواعيد جليم إيه؟', check: (d) => Boolean(d && !d.handled && d.passToPhase2) },
+      { text: 'مواعيد جليم إيه؟', check: (d) => Boolean(d?.handled && d?.replyText?.match(/11 صباحًا/)) },
       { text: 'في عروض؟', check: (d) => Boolean(d?.handled) },
       { text: 'عندكم فيسبوك؟', check: (d) => Boolean(d?.handled) },
       { text: 'موقعكم إيه؟', check: (d) => Boolean(d?.replyText?.includes('example.test')) },
@@ -392,7 +392,7 @@ describe('Salon Concierge Brain V1.1 production hub', () => {
     for (const t of turns) {
       const d = await processConciergeTurn({
         text: t.text,
-        openNowOverride: { openTime: '12:00', closeTime: '01:00', nowMinutes: 15 * 60, branchName: 'جليم' },
+        openNowOverride: { nowMinutes: 15 * 60 },
       });
       if (d?.replyText) {
         for (const s of SLANG) expect(d.replyText).not.toContain(s);

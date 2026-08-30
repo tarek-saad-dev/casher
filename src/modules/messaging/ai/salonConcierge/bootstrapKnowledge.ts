@@ -20,6 +20,7 @@ import {
   VERIFIED_LANDLINE_DIGITS,
   type OfficialSiteFacts,
 } from './officialSite';
+import { conciergeHoursKnowledgeRows, CONCIERGE_FIXED_BRANCH_HOURS } from './branchBusinessHours';
 import { invalidateConciergeCache } from './cache';
 
 const WEBSITE_TEAM_HINTS = ['كريم', 'عمر', 'محمد', 'محمود', 'زياد'] as const;
@@ -136,7 +137,7 @@ const VOICE_EXAMPLES: Array<{
     category: 'OPEN_NOW',
     customerMessage: 'فاتحين دلوقتي؟',
     preferredResponse: 'أيوه يا فندم، فاتحين دلوقتي لحد [LIVE_CLOSING_TIME].',
-    notes: 'placeholder — live hours',
+    notes: 'placeholder — fixed owner-approved hours',
   },
   {
     scenarioKey: 'style.location.gleem',
@@ -349,6 +350,10 @@ export async function bootstrapSalonConciergeKnowledge(): Promise<BootstrapRepor
         ? site.gleemAddressWebsiteAr
         : site.campAddressWebsiteAr;
     const addrSource = b.address ? 'erp_mirror' : 'imported';
+    const hours =
+      b.branchCode === 'GLEEM'
+        ? CONCIERGE_FIXED_BRANCH_HOURS.GLEEM.scheduleLabelAr
+        : CONCIERGE_FIXED_BRANCH_HOURS.CAMP_CAESAR.scheduleLabelAr;
     await sqlUpsertKnowledge({
       key: `branch.${b.branchCode.toLowerCase()}.info`,
       category: 'BRANCH_INFO',
@@ -359,7 +364,7 @@ export async function bootstrapSalonConciergeKnowledge(): Promise<BootstrapRepor
       answerText: [
         `${b.branchName}${b.shortName ? ` (${b.shortName})` : ''}.`,
         addr ? `العنوان: ${addr}.` : '',
-        'مواعيد الفتح والقفل بتتأكد لحظيًا من الفرع، مش من نص ثابت.',
+        `مواعيد العمل للعملاء: ${hours}.`,
         `الحالة العامة: ${b.lifecycleStatus}${b.publicBookingEnabled ? ' — الحجز العام متاح حسب الإعداد الحالي' : ''}.`,
       ]
         .filter(Boolean)
@@ -372,6 +377,22 @@ export async function bootstrapSalonConciergeKnowledge(): Promise<BootstrapRepor
       source: addrSource === 'erp_mirror' ? 'erp_mirror' : 'imported',
       status: 'active',
       priority: 40,
+    });
+  }
+
+  for (const row of conciergeHoursKnowledgeRows()) {
+    await sqlUpsertKnowledge({
+      key: row.key,
+      category: 'OPENING_POLICY',
+      branchCode: row.branchCode,
+      title: row.title,
+      subject: row.subject,
+      answerText: row.answerText,
+      aliases: row.aliases,
+      tags: ['curated', 'fixed_hours', 'owner_approved'],
+      source: 'curated',
+      status: 'active',
+      priority: 25,
     });
   }
 
@@ -702,7 +723,8 @@ export async function bootstrapSalonConciergeKnowledge(): Promise<BootstrapRepor
     invalidOffers,
     brokenLinks,
     liveRemainLive: [
-      'OPEN_NOW → live hours',
+      'OPEN_NOW → fixed owner-approved hours (Cairo)',
+      'HOURS_LIVE → fixed owner-approved schedules',
       'SERVICE_PRICE_LIVE → live ERP catalog',
       'AVAILABILITY_LIVE → live employees',
       'regular service prices not stored as static FAQ',
