@@ -14,6 +14,10 @@ import {
   formatGatewayLastError,
   nextRetryDelayMs,
 } from '../outbox/workerPolicy';
+import {
+  evaluateOutboxSendGate,
+  stampOutboxCorrelationAfterSend,
+} from '@/modules/messaging/handoff/application/outboxSendGate';
 
 export type ProcessOutboxTickInput = {
   workerId: string;
@@ -29,6 +33,7 @@ export type ProcessOutboxTickResult = {
   sent: number;
   retried: number;
   failed: number;
+  suppressed: number;
 };
 
 async function deliverSnapshot(
@@ -52,6 +57,10 @@ async function settleRow(
   const decision = classifyOutboxGatewayResult(result);
   if (decision === 'sent' && result.sent) {
     await markSent({ id: row.id, providerMessageId: result.messageId });
+    await stampOutboxCorrelationAfterSend({
+      outboxId: row.id,
+      providerMessageId: result.messageId,
+    });
     return 'sent';
   }
 
@@ -98,10 +107,22 @@ export async function processOutboxTick(
     sent: 0,
     retried: 0,
     failed: 0,
+    suppressed: 0,
   };
 
   for (const row of claimed) {
     try {
+      const gate = await evaluateOutboxSendGate(row);
+      if (!gate.allow) {
+        await markFailed({
+          id: row.id,
+          lastError: `suppressed:${gate.reason}`,
+        });
+        summary.failed += 1;
+        summary.suppressed += 1;
+        continue;
+      }
+
       const result = await deliverSnapshot(row, send);
       const settled = await settleRow(row, result, now);
       summary[settled === 'retried' ? 'retried' : settled] += 1;

@@ -1,9 +1,11 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
+  Inbox,
   MessageCircle,
   RefreshCw,
   Wifi,
@@ -99,10 +101,19 @@ export default function AdminWhatsAppPage() {
 
   return (
     <div className="max-w-7xl mx-auto" dir="rtl">
-      <PageHeader
-        title="واتساب"
-        description="إدارة اتصال واتساب ورسائل النظام والحملات"
-      />
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <PageHeader
+          title="واتساب"
+          description="إدارة اتصال واتساب ورسائل النظام والحملات"
+        />
+        <Link
+          href="/admin/whatsapp/inbox"
+          className="inline-flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-sm text-primary hover:bg-primary/15"
+        >
+          <Inbox className="h-4 w-4" />
+          صندوق الوارد
+        </Link>
+      </div>
 
       <section className="rounded-2xl border border-border bg-surface p-5 mb-6">
         <div className="mb-4 flex items-center justify-between gap-3">

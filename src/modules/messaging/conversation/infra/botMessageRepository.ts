@@ -211,6 +211,7 @@ export async function insertOutboundBotMessage(input: {
   turnId: number;
   text: string;
   occurredAt?: Date;
+  origin?: 'BOT' | 'HANDOFF_ACK' | null;
 }): Promise<BotMessageRow> {
   const pool = await getPool();
   try {
@@ -222,6 +223,7 @@ export async function insertOutboundBotMessage(input: {
       .input('messageType', sql.NVarChar(50), 'text')
       .input('text', sql.NVarChar(sql.MAX), input.text)
       .input('occurredAt', sql.DateTime2, input.occurredAt ?? new Date())
+      .input('origin', sql.NVarChar(30), input.origin ?? 'BOT')
       .query(`
         INSERT INTO [dbo].[TblBotMessage] (
           [ConversationID],
@@ -232,7 +234,8 @@ export async function insertOutboundBotMessage(input: {
           [MessageType],
           [Text],
           [OccurredAt],
-          [CreatedAt]
+          [CreatedAt],
+          [Origin]
         )
         OUTPUT ${MESSAGE_OUTPUT_COLUMNS}
         VALUES (
@@ -244,7 +247,8 @@ export async function insertOutboundBotMessage(input: {
           @messageType,
           @text,
           @occurredAt,
-          SYSUTCDATETIME()
+          SYSUTCDATETIME(),
+          @origin
         )
       `);
     const row = result.recordset[0] as RawMessageRow | undefined;

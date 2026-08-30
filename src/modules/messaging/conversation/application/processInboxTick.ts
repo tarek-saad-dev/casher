@@ -10,6 +10,7 @@ import {
   InboxProcessorPerfTimer,
   logInboxProcessorPerf,
 } from '../observability/inboxProcessorPerf';
+import { isHumanHandoffV1Enabled } from '@/modules/messaging/handoff/featureFlag';
 
 export type ProcessInboxTickInput = {
   batchSize: number;
@@ -24,6 +25,8 @@ export type ProcessInboxTickResult = {
   duplicates: number;
   failed: number;
   skippedIgnored: number;
+  leasesExpired?: number;
+  resumesClaimed?: number;
 };
 
 export async function processInboxTick(
@@ -147,6 +150,24 @@ export async function processInboxTick(
         sqlRoundTrips: null,
         errorCode: 'PROCESS_FAILED',
       });
+    }
+  }
+
+  if (isHumanHandoffV1Enabled()) {
+    try {
+      const { reconcileExpiredLeases } = await import(
+        '@/modules/messaging/handoff/application/reconcileExpiredLeases'
+      );
+      const lease = await reconcileExpiredLeases();
+      summary.leasesExpired = lease.expired;
+      summary.resumesClaimed = lease.resumed;
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          type: 'human_lease_reconcile_tick_failed',
+          message: err instanceof Error ? err.message : String(err),
+        }),
+      );
     }
   }
 

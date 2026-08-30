@@ -24,7 +24,7 @@ export type AiTurnRow = {
   anchorInboundMessageId: number;
   latestInboundMessageId: number;
   status: AiTurnStatus;
-  controlModeSnapshot: 'BOT' | 'HUMAN' | 'PAUSED';
+  controlModeSnapshot: 'BOT' | 'HUMAN_REQUESTED' | 'HUMAN' | 'PAUSED';
   debounceUntil: string;
   outboundMessageId: number | null;
   outboxId: number | null;
@@ -53,7 +53,7 @@ export type AiConversationContextMessage = {
 export type AiConversationContext = {
   conversationId: number;
   phone: string;
-  controlMode: 'BOT' | 'HUMAN' | 'PAUSED';
+  controlMode: 'BOT' | 'HUMAN_REQUESTED' | 'HUMAN' | 'PAUSED';
   messages: AiConversationContextMessage[];
   burstInboundMessageIds: number[];
 };

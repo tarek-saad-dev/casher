@@ -51,6 +51,16 @@ import {
   processKernelTurn,
 } from '../conversationKernel/processKernelTurn';
 import type { KernelDecision } from '../conversationKernel/types';
+import { isHumanHandoffV1Enabled } from '@/modules/messaging/handoff/featureFlag';
+import {
+  HANDOFF_ACK_AR,
+  aiIsSuppressed,
+  type MessageActorOrigin,
+} from '@/modules/messaging/handoff/domain/types';
+import { requestCustomerHandoff } from '@/modules/messaging/handoff/application/commands';
+import { getConversationControl } from '@/modules/messaging/handoff/infra/conversationControlRepository';
+import { automatedOutboundPermitted } from '@/modules/messaging/handoff/domain/classify';
+import { logHandoffEvent } from '@/modules/messaging/handoff/observability';
 
 export type ProcessAiTurnDeps = {
   modelClient: AiModelClient;
@@ -200,6 +210,40 @@ export async function processAiTurn(
       outboxId: null,
       skipped: true,
     };
+  }
+
+  let expectedControlVersionAtClaim: number | null = null;
+
+  if (isHumanHandoffV1Enabled()) {
+    const liveControl = await getConversationControl(turn.conversationId);
+    if (liveControl && aiIsSuppressed(liveControl.mode)) {
+      await markAiTurnSkipped({
+        turnId: turn.turnId,
+        errorCode: 'CONTROL_MODE_LIVE',
+        lastError: `Live ControlMode ${liveControl.mode} skips AI`,
+      });
+      logAiProcessorPerf({
+        event: 'ai_turn_skipped',
+        turnId: turn.turnId,
+        conversationId: turn.conversationId,
+        anchorInboundMessageId: turn.anchorInboundMessageId,
+        latestInboundMessageId: turn.latestInboundMessageId,
+        skipped: true,
+        ...timer.snapshot(),
+        messageReceivedToAiStartMs: null,
+        messageReceivedToReplyEnqueuedMs: null,
+        errorCode: 'CONTROL_MODE_LIVE',
+      });
+      return {
+        turnId: turn.turnId,
+        status: 'skipped',
+        duplicate: false,
+        outboundMessageId: null,
+        outboxId: null,
+        skipped: true,
+      };
+    }
+    expectedControlVersionAtClaim = liveControl?.controlVersion ?? null;
   }
 
   const receivedAt = await getInboundMessageReceivedAt(turn.latestInboundMessageId);
@@ -501,6 +545,51 @@ export async function processAiTurn(
 
     timer.markGeminiDone(geminiMs);
 
+    let outboundOrigin: MessageActorOrigin = 'BOT';
+    let expectedControlVersion: number | null = expectedControlVersionAtClaim;
+
+    if (isHumanHandoffV1Enabled()) {
+      if (kernelDecision?.route?.action === 'human_handoff') {
+        const handoff = await requestCustomerHandoff({
+          conversationId: turn.conversationId,
+          inboundMessageId: turn.latestInboundMessageId,
+        });
+        if (!handoff.ack) {
+          await markAiTurnCompleted({
+            turnId: turn.turnId,
+            outboundMessageId: null,
+            outboxId: null,
+            intent: 'human_request',
+            confidence: structured.confidence,
+            needsBusinessTool: false,
+            resultJson: JSON.stringify({
+              ...structured,
+              skippedHandoffAck: true,
+              toolTrace: compactToolTrace(toolTrace),
+            }),
+          });
+          return {
+            turnId: turn.turnId,
+            status: 'completed',
+            duplicate: false,
+            outboundMessageId: null,
+            outboxId: null,
+            skipped: true,
+          };
+        }
+        structured = {
+          ...structured,
+          replyText: HANDOFF_ACK_AR,
+          intent: 'human_request',
+          shouldReply: true,
+          needsBusinessTool: false,
+          toolCalls: [],
+        };
+        outboundOrigin = 'HANDOFF_ACK';
+        expectedControlVersion = handoff.state.controlVersion;
+      }
+    }
+
     if (!structured.shouldReply || !structured.replyText.trim()) {
       await markAiTurnCompleted({
         turnId: turn.turnId,
@@ -538,6 +627,55 @@ export async function processAiTurn(
       };
     }
 
+    if (isHumanHandoffV1Enabled()) {
+      const liveBeforeSend = await getConversationControl(turn.conversationId);
+      if (!liveBeforeSend) {
+        await markAiTurnSkipped({
+          turnId: turn.turnId,
+          errorCode: 'CONTROL_MISSING',
+          lastError: 'Conversation control missing before enqueue',
+        });
+        return {
+          turnId: turn.turnId,
+          status: 'skipped',
+          duplicate: false,
+          outboundMessageId: null,
+          outboxId: null,
+          skipped: true,
+        };
+      }
+      const permitted = automatedOutboundPermitted({
+        origin: outboundOrigin,
+        liveMode: liveBeforeSend.mode,
+        expectedControlVersion,
+        liveControlVersion: liveBeforeSend.controlVersion,
+      });
+      if (!permitted.allowed) {
+        logHandoffEvent('bot_outbound_suppressed_control_version', {
+          turnId: turn.turnId,
+          conversationId: turn.conversationId,
+          origin: outboundOrigin,
+          reason: permitted.reason,
+          expectedControlVersion,
+          liveControlVersion: liveBeforeSend.controlVersion,
+          liveMode: liveBeforeSend.mode,
+        });
+        await markAiTurnSkipped({
+          turnId: turn.turnId,
+          errorCode: 'CONTROL_VERSION',
+          lastError: `suppressed:${permitted.reason}`,
+        });
+        return {
+          turnId: turn.turnId,
+          status: 'skipped',
+          duplicate: false,
+          outboundMessageId: null,
+          outboxId: null,
+          skipped: true,
+        };
+      }
+    }
+
     let outboundMessageId = turn.outboundMessageId;
     const persistStarted = performance.now();
     if (outboundMessageId == null) {
@@ -549,6 +687,7 @@ export async function processAiTurn(
           conversationId: turn.conversationId,
           turnId: turn.turnId,
           text: structured.replyText,
+          origin: outboundOrigin,
         });
         outboundMessageId = outbound.messageId;
       }
@@ -558,18 +697,24 @@ export async function processAiTurn(
     let outboxId = turn.outboxId;
     const enqueueStarted = performance.now();
     if (outboxId == null) {
+      const idempotencyKey =
+        outboundOrigin === 'HANDOFF_ACK'
+          ? `whatsapp-handoff-ack:${turn.conversationId}:${expectedControlVersion ?? 0}`
+          : `whatsapp-bot-ai-turn:${turn.turnId}`;
       const enqueueResult = await enqueueMessage({
         channel: 'whatsapp',
         recipient: { phone: context.phone },
         content: { text: structured.replyText },
-        idempotencyKey: `whatsapp-bot-ai-turn:${turn.turnId}`,
+        idempotencyKey,
         metadata: {
           source: 'ai-receptionist',
+          origin: outboundOrigin,
           turnId: turn.turnId,
           conversationId: turn.conversationId,
           anchorInboundMessageId: turn.anchorInboundMessageId,
           latestInboundMessageId: turn.latestInboundMessageId,
           outboundMessageId,
+          expectedControlVersion,
           intent: structured.intent,
           needsBusinessTool: structured.needsBusinessTool,
           tools: toolTrace.executed.map((t) => ({

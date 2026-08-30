@@ -175,7 +175,8 @@ export async function processInboxMessageAtomic(
           [MessageType],
           [Text],
           [OccurredAt],
-          [CreatedAt]
+          [CreatedAt],
+          [Origin]
         )
         VALUES (
           @ConversationId,
@@ -186,7 +187,8 @@ export async function processInboxMessageAtomic(
           @messageType,
           @text,
           @occurredAt,
-          SYSUTCDATETIME()
+          SYSUTCDATETIME(),
+          N'CUSTOMER'
         );
         SET @MessageId = SCOPE_IDENTITY();
       END TRY
@@ -207,6 +209,8 @@ export async function processInboxMessageAtomic(
         UPDATE [dbo].[TblBotConversation]
         SET
           [LastMessageAt] = @occurredAt,
+          [LastCustomerMessageID] = @MessageId,
+          [UnreadCount] = ISNULL([UnreadCount], 0) + 1,
           [UpdatedAt] = SYSUTCDATETIME()
         WHERE [ConversationID] = @ConversationId;
       END

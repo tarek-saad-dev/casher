@@ -1,4 +1,4 @@
-export const BOT_CONVERSATION_CONTROL_MODES = ['BOT', 'HUMAN', 'PAUSED'] as const;
+export const BOT_CONVERSATION_CONTROL_MODES = ['BOT', 'HUMAN_REQUESTED', 'HUMAN', 'PAUSED'] as const;
 export type BotConversationControlMode = (typeof BOT_CONVERSATION_CONTROL_MODES)[number];
 
 export const BOT_MESSAGE_DIRECTIONS = ['inbound', 'outbound'] as const;

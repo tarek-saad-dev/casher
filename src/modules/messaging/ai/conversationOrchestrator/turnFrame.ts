@@ -71,7 +71,10 @@ function looksLikeConciergeInfo(t: string): boolean {
 function looksLikeHandoff(t: string): boolean {
   return (
     /كلم\s*حد|كلمني\s*حد|موظف|بشري|reception|انسان|بني\s*آدم|بني\s*ادم/.test(t) ||
-    /عاوز\s*اكلم|عايز\s*اكلم|ممكن\s*حد\s*يكلم|حدا?\s*يكلم/.test(t)
+    /عاوز\s*اكلم|عايز\s*اكلم|ممكن\s*حد\s*يكلم|حدا?\s*يكلم/.test(t) ||
+    /خليني\s*اكلم|عاوز\s*شخص|عايز\s*شخص|الاستقبال\s*يرد|اكلم\s*البوت|مش\s*عا[وي]ز\s*(اكلم\s*)?البوت/.test(
+      t,
+    )
   );
 }
 

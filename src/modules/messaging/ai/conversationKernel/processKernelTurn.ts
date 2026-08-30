@@ -25,12 +25,17 @@ import {
   HUMAN_HANDOFF_REPLY_AR,
   planV4Response,
 } from './responsePlanner';
+import { HANDOFF_ACK_AR } from '@/modules/messaging/handoff/domain/types';
+import { isHumanHandoffV1Enabled } from '@/modules/messaging/handoff/featureFlag';
 import { resumeBookingTask, suspendBookingTask } from './taskStack';
 import type { KernelDecision } from './types';
 import { processConciergeTurn } from '../salonConcierge/processConciergeTurn';
 import { isSalonConciergeBrainEnabled } from '../salonConcierge/featureFlag';
 import { detectConciergeIntent } from '../salonConcierge/routing';
 
+function handoffCustomerReply(): string {
+  return isHumanHandoffV1Enabled() ? HANDOFF_ACK_AR : HUMAN_HANDOFF_REPLY_AR;
+}
 export type KernelInput = {
   conversationId: number;
   inboundText: string;
@@ -88,8 +93,9 @@ export async function processKernelTurn(
 
   // --- Human handoff ---
   if (route.action === 'human_handoff') {
+    const reply = handoffCustomerReply();
     recordBotAction(input.conversationId, {
-      text: HUMAN_HANDOFF_REPLY_AR,
+      text: reply,
       action: 'other',
       answeredWell: true,
       customerText: input.inboundText,
@@ -101,8 +107,8 @@ export async function processKernelTurn(
       blockBookingConfirm: true,
       allowBookingConfirm: false,
       mutatesBookingPlan: false,
-      replyText: HUMAN_HANDOFF_REPLY_AR,
-      responsePlan: planV4Response({ answer: HUMAN_HANDOFF_REPLY_AR }),
+      replyText: reply,
+      responsePlan: planV4Response({ answer: reply }),
       turnFrame: turn,
       route,
       lastBotAction: 'other',

@@ -107,6 +107,13 @@ npm run messaging:migrate-salon-concierge
 "
 
 echo
+echo "[7b2/8] Human Handoff schema migration (idempotent, flag stays off)..."
+runuser -u casher -- bash -lc "
+cd '$APP_DIR'
+npm run messaging:migrate-handoff
+"
+
+echo
 echo "[7c/8] Salon Concierge trusted knowledge bootstrap (flag stays off)..."
 runuser -u casher -- bash -lc "
 cd '$APP_DIR'
