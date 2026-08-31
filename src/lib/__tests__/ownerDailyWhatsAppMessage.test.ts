@@ -164,47 +164,115 @@ function sampleReport(): FullDayReport {
   };
 }
 
+function campChizarNegativeTreasuryReport(): FullDayReport {
+  const base = sampleReport();
+  return {
+    ...base,
+    workDate: '2026-08-30',
+    workDateLabelAr: 'الأحد · 30 أغسطس 2026',
+    ownerDay: {
+      sales: 140,
+      incomes: 0,
+      operatingExpenses: 0,
+      staffBase: 0,
+      staffTarget: 0,
+      staffCost: 0,
+      totalIn: 140,
+      totalOut: 0,
+      net: 140,
+    },
+    treasury: {
+      inflows: { sales: 140, incomes: 0, total: 140 },
+      outflows: {
+        operatingTotal: 0,
+        advancesTotal: 485,
+        total: 485,
+        operatingByCategory: [],
+        advancesByEmployee: [
+          { key: 'emp:1', label: 'احمد', amount: 250, count: 2 },
+          { key: 'emp:2', label: 'عمر', amount: 165, count: 4 },
+        ],
+      },
+      net: -345,
+    },
+    employeeAccounts: {
+      payrollMonth: '2026-08',
+      totalDayCost: 0,
+      totalAdvancesToday: 485,
+      totalLedgerBalance: 6556.71,
+      rows: [],
+    },
+    paymentMix: {
+      total: 140,
+      salesTotal: 140,
+      incomesTotal: 0,
+      rows: [
+        { method: 'كاش', salesTotal: 140, incomesTotal: 0, total: 140, count: 1, percent: 100 },
+      ],
+    },
+    monthToDate: {
+      month: '2026-08',
+      fromDate: '2026-08-01',
+      toDate: '2026-08-30',
+      sales: 0,
+      incomes: 0,
+      operatingExpenses: 0,
+      staffBase: 0,
+      staffTarget: 0,
+      advances: 485,
+      netProfit: 6867.51,
+      treasuryNet: 211,
+    },
+  };
+}
+
 describe('composeOwnerDailyWhatsAppMessage', () => {
   it('matches owner digest sections', () => {
     const msg = composeOwnerDailyWhatsAppMessage(sampleReport());
-    expect(msg).toContain('تقرير المالك اليومي');
-    expect(msg).toContain('نتيجة التشغيل');
-    expect(msg).toContain('توزيع الفلوس على طرق الدفع');
+    expect(msg).toContain('تقفيل اليوم');
+    expect(msg).toContain('الربحية (تشغيل)');
+    expect(msg).toContain('طرق الدفع');
     expect(msg).toContain('كاش');
     expect(msg).toContain('فيزا');
-    expect(msg).toContain('إجمالي الفلوس الداخلة');
-    expect(msg).toContain('حركة الخزنة الفعلية');
-    expect(msg).toContain('تفاصيل مصروفات التشغيل');
+    expect(msg).toContain('إجمالي الوارد');
+    expect(msg).toContain('الخزنة (فلوس فعلية)');
+    expect(msg).toContain('مصروفات التشغيل');
     expect(msg).toContain('حسب التصنيف');
     expect(msg).toContain('البنود بالتفصيل');
     expect(msg).toContain('فاتورة يوليو');
     expect(msg).toContain('شاي وسكر');
     expect(msg).toContain('سلف الموظفين');
-    expect(msg).toContain('حسابات الموظفين');
-    expect(msg).toContain('مواعيد الحضور والانصراف');
-    expect(msg).toContain('صافي ربح اليوم: 2,771.89 ج.م');
+    expect(msg).toContain('الموظفين');
+    expect(msg).toContain('الحضور');
+    expect(msg).toContain('صافي ربح التشغيل: *2,771.89 ج.م*');
     expect(msg).toContain('كهرباء');
     expect(msg).toContain('حركتان');
     expect(msg).toContain('زياد');
     expect(msg).toContain('حضور');
-    expect(msg).toContain('انصراف');
     expect(msg).toContain('بدون حضور');
     expect(msg).toContain('سلفتان');
-    expect(msg).toContain('ملخص اليوم');
-    expect(msg).toContain('من أول الشهر حتى اليوم');
-    expect(msg).toContain('صافي الربح الشهري حتى اليوم: 34,500.00 ج.م');
-    expect(msg).toContain('صافي السيولة بالخزنة حتى اليوم: 63,500.00 ج.م');
-    expect(msg).toContain('تارجت اليوم (فرق)');
-    expect(msg).toContain('تارجت الموظفين حتى الآن');
-    expect(msg).toContain('تارجت حتى الآن');
-    expect(msg).toContain('الحسبة حسب اتفاق التارجت');
+    expect(msg).toContain('ملخص سريع');
+    expect(msg).toContain('تراكمي الشهر');
+    expect(msg).toContain('ربح التشغيل حتى اليوم: *34,500.00 ج.م*');
+    expect(msg).toContain('سيولة الخزنة حتى اليوم: *63,500.00 ج.م*');
+    expect(msg).toContain('حساب التارجت');
+    expect(msg).not.toContain('تارجت الموظفين حتى الآن');
   });
 
   it('puts branch name in the title when provided', () => {
     const msg = composeOwnerDailyWhatsAppMessage(sampleReport(), {
       branchName: 'كامب شيزار',
     });
-    expect(msg).toContain('تقرير المالك اليومي — كامب شيزار');
+    expect(msg).toContain('تقفيل اليوم — كامب شيزار');
     expect(msg).toContain('الثلاثاء · 14 يوليو 2026');
+  });
+
+  it('shows negative treasury net when outflows exceed inflows', () => {
+    const msg = composeOwnerDailyWhatsAppMessage(campChizarNegativeTreasuryReport(), {
+      branchName: 'كامب شيزار',
+    });
+    expect(msg).toContain('صافي الخزنة اليوم: *−345.00 ج.م*');
+    expect(msg).toContain('صافي الخزنة: *−345.00 ج.م*');
+    expect(msg).not.toContain('صافي الخزنة اليوم: *345.00 ج.م*');
   });
 });

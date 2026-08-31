@@ -22,7 +22,7 @@ export function useMyAccess() {
     }
     return access.allowedPagePaths.some((p) => {
       const np = p.replace(/\/$/, '') || '/';
-      return clean === np;
+      return clean === np || clean.startsWith(np + '/');
     });
   }, [session.access]);
 

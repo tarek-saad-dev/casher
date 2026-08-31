@@ -10,6 +10,7 @@ import {
   AlertTriangle, Crown, KeyRound, FileKey2, Banknote, ShieldCheck, Users,
   HeartHandshake, Layers, Beaker, Settings2, Sun, Building2, Package,
   MessageCircle,
+  Inbox,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -64,6 +65,11 @@ export const NAV_CATEGORIES: NavCategory[] = [
     description: 'الموظفون، الإعدادات والتدقيق',
     sectionTitles: ['الموارد البشرية', 'الإدارة', 'التدقيق'],
   },
+  {
+    title: 'واتساب',
+    description: 'صندوق الوارد والمحادثات',
+    sectionTitles: ['واتساب'],
+  },
 ];
 
 // ── Themes ────────────────────────────────────────────────────────────────────
@@ -88,6 +94,7 @@ export const NAV_THEMES: Record<string, NavTheme> = {
   'CUT CLUB':          { rgb: '234,179,8',   emoji: '👑' },
   'التدقيق':           { rgb: '239,68,68',   emoji: '🔍' },
   'الكاشير':           { rgb: '16,185,129',  emoji: '💵' },
+  'واتساب':            { rgb: '37,211,102',  emoji: '💬' },
 };
 
 export function getTheme(title: string): NavTheme {
@@ -195,6 +202,14 @@ export const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
+    title: 'واتساب',
+    icon: MessageCircle,
+    items: [
+      { href: '/admin/whatsapp/inbox', label: 'صندوق الوارد', icon: Inbox },
+      { href: '/admin/whatsapp',       label: 'إعدادات واتساب', icon: Settings },
+    ],
+  },
+  {
     title: 'الموارد البشرية',
     icon: UsersRound,
     items: [
@@ -220,7 +235,6 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: '/admin/loyalty',                   label: 'إدارة النقاط',          icon: Star       },
       { href: '/admin/shift',                     label: 'الورديات',               icon: Clock      },
       { href: '/admin/settings',                  label: 'الإعدادات',              icon: Settings   },
-      { href: '/admin/whatsapp',                  label: 'واتساب',                 icon: MessageCircle },
       { href: '/admin/ai-concierge',              label: 'مساعد الصالون',          icon: MessageCircle },
       { href: '/admin/queue-booking-settings',    label: 'إعدادات الطابور',       icon: Ticket     },
       { href: '/admin/permissions/users',         label: 'صلاحيات المستخدمين',    icon: KeyRound     },
@@ -308,6 +322,7 @@ export const NAV_MAIN_META: Record<string, NavMainMeta> = {
   'التقارير':          { icon: BarChart3,     rgb: '139,92,246',  emoji: '📊' },
   'المالية':           { icon: Wallet,        rgb: '16,185,129',  emoji: '💰' },
   'الإدارة والموارد':  { icon: Settings,      rgb: '148,163,184', emoji: '⚙️' },
+  'واتساب':            { icon: MessageCircle, rgb: '37,211,102',  emoji: '💬' },
 };
 
 export function getMainMeta(title: string): NavMainMeta {

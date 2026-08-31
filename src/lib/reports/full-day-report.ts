@@ -766,10 +766,14 @@ export async function getFullDayReport(
     console.warn('[full-day-report] ledger summary unavailable', err);
   }
 
+  const ledgerEmpIdsWithBalance = [...ledgerByEmp.entries()]
+    .filter(([, v]) => Math.abs(v.balance) > 0.009)
+    .map(([id]) => id);
+
   const accountEmpIds = new Set<number>([
     ...employees.map((e) => e.empId),
-    ...ledgerByEmp.keys(),
     ...advancesTodayByEmp.keys(),
+    ...ledgerEmpIdsWithBalance,
   ]);
 
   const accountRows: FullDayEmployeeAccountRow[] = [...accountEmpIds].map((empId) => {
@@ -791,11 +795,7 @@ export async function getFullDayReport(
     };
   });
 
-  accountRows.sort((a, b) => {
-    const byBalance = Math.abs(b.ledgerBalance) - Math.abs(a.ledgerBalance);
-    if (byBalance !== 0) return byBalance;
-    return a.empName.localeCompare(b.empName, 'ar');
-  });
+  accountRows.sort((a, b) => a.empName.localeCompare(b.empName, 'ar'));
 
   // Keep employees with activity or non-zero balance
   const visibleAccounts = accountRows.filter(

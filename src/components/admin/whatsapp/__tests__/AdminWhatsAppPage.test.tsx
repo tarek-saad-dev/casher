@@ -356,8 +356,11 @@ describe('AdminWhatsAppPage', () => {
     expect(page).toContain('AdminWhatsAppPage');
     expect(layout).toContain('PageGuard');
     expect(layout).toContain('/admin/whatsapp');
-    expect(nav).toContain("label: 'واتساب'");
+    expect(nav).toContain("title: 'واتساب'");
+    expect(nav).toContain("href: '/admin/whatsapp/inbox'");
     expect(nav).toContain("href: '/admin/whatsapp'");
+    expect(registry).toContain("key: 'admin.whatsapp.inbox'");
+    expect(registry).toContain("path: '/admin/whatsapp/inbox'");
     expect(registry).toContain("key: 'admin.whatsapp'");
     expect(registry).toContain("path: '/admin/whatsapp'");
     expect(ui).not.toContain("@/lib/integrations/whatsapp");

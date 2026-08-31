@@ -71,7 +71,8 @@ export const SYSTEM_PAGES: PageDefinition[] = [
   { key: 'admin.loyalty',           name: 'إدارة النقاط',            path: '/admin/loyalty',                   section: 'الإدارة',           accessMode: 'roles', sort: 107, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.shift',             name: 'الورديات',                path: '/admin/shift',                     section: 'الإدارة',           accessMode: 'roles', sort: 108, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.settings',          name: 'الإعدادات',               path: '/admin/settings',                  section: 'الإدارة',           accessMode: 'roles', sort: 109, defaultRoles: ['super_admin','admin'] },
-  { key: 'admin.whatsapp',          name: 'واتساب',                  path: '/admin/whatsapp',                  section: 'الإدارة',           accessMode: 'roles', sort: 1095, defaultRoles: ['super_admin','admin'] },
+  { key: 'admin.whatsapp.inbox',    name: 'صندوق الوارد',            path: '/admin/whatsapp/inbox',          section: 'واتساب',            accessMode: 'roles', sort: 1090, defaultRoles: ['super_admin','admin'] },
+  { key: 'admin.whatsapp',          name: 'إعدادات واتساب',          path: '/admin/whatsapp',                  section: 'واتساب',            accessMode: 'roles', sort: 1095, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.queue_settings',    name: 'إعدادات الطابور',         path: '/admin/queue-booking-settings',    section: 'الإدارة',           accessMode: 'roles', sort: 110, defaultRoles: ['super_admin','admin'] },
   // ── Special ──────────────────────────────────────────────────────────────────
   { key: 'operations.main',         name: 'لوحة التشغيل',            path: '/operations',                      section: 'لوحة التشغيل',      accessMode: 'all',   sort: 5 },
