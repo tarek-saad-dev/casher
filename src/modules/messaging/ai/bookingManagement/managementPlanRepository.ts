@@ -160,13 +160,25 @@ export async function upsertManagementPlan(input: {
     .input('tcode', sql.NVarChar(40), input.targetBookingCode ?? null)
     .input('orig', sql.NVarChar(sql.MAX), JSON.stringify(input.originalSnapshot ?? null))
     .input('desired', sql.NVarChar(sql.MAX), JSON.stringify(input.desiredChanges ?? {}))
+    .input(
+      'validated',
+      sql.NVarChar(sql.MAX),
+      JSON.stringify(input.validatedDesiredState ?? null),
+    )
+    .input(
+      'alts',
+      sql.NVarChar(sql.MAX),
+      JSON.stringify(input.candidateAlternatives ?? []),
+    )
+    .input('idem', sql.NVarChar(200), input.idempotencyKey ?? null)
     .input('turnId', sql.BigInt, input.lastTurnId ?? null)
     .query(`
       INSERT INTO dbo.TblBotBookingManagementPlan
         (ConversationID, Operation, Stage, ConfirmationVersion, TargetBookingID, TargetBookingCode,
-         OriginalSnapshotJson, DesiredChangesJson, LastTurnID)
+         OriginalSnapshotJson, DesiredChangesJson, ValidatedDesiredStateJson,
+         CandidateAlternativesJson, IdempotencyKey, LastTurnID)
       OUTPUT INSERTED.*
-      VALUES (@cid, @op, @stage, @conf, @tid, @tcode, @orig, @desired, @turnId)
+      VALUES (@cid, @op, @stage, @conf, @tid, @tcode, @orig, @desired, @validated, @alts, @idem, @turnId)
     `);
   return mapRow(inserted.recordset[0] as Record<string, unknown>);
 }
