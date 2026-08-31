@@ -238,6 +238,30 @@ describe('Gemini Learning Interpreter', () => {
     expect(sanitizeModelEntityId('BRANCH', 'GLEEM', 12345)).toBeNull();
   });
 
+  it('normalizes Gemini payload aliases before validation', () => {
+    const raw = parseGeminiLearningInterpretation({
+      intentSummary: 'test',
+      inferredSourceType: 'MANUAL',
+      confidence: 0.9,
+      requiresHumanClarification: false,
+      ambiguities: [],
+      warnings: [],
+      proposedArtifacts: [
+        {
+          artifactType: 'BEHAVIOR_RULE',
+          domain: 'BRAND_VOICE',
+          topicKey: 'banned',
+          title: 'أسلوب',
+          summary: 'ممنوع يا باشا',
+          structuredPayload: { forbiddenPhrase: 'يا باشا' },
+        },
+      ],
+    });
+    const result = postProcessGeminiInterpretation('متقولش يا باشا', raw);
+    expect(result.proposedArtifacts).toHaveLength(1);
+    expect(result.proposedArtifacts[0]?.structuredPayload.instruction).toContain('يا باشا');
+  });
+
   it('rejects invalid schema from model', () => {
     expect(() => parseGeminiLearningInterpretation({ proposedArtifacts: [{ artifactType: 'NOPE' }] })).toThrow();
   });

@@ -5,6 +5,7 @@ import { inferNormalizedKey } from '../domain/normalizedKey';
 import type { InterpretationResult, ProposedArtifact } from '../domain/types';
 import { validateArtifactPayload } from '../domain/payloads';
 import type { RawGeminiInterpretation } from '../domain/learningInterpretationSchema';
+import { normalizeModelPayload } from './normalizeModelPayload';
 import {
   resolveEntity,
   resolveEntityByCode,
@@ -89,7 +90,12 @@ export function postProcessGeminiInterpretation(
     const artifactType = raw.artifactType as ArtifactType;
     let structuredPayload: Record<string, unknown>;
     try {
-      structuredPayload = validateArtifactPayload(artifactType, raw.structuredPayload);
+      const normalizedPayload = normalizeModelPayload(artifactType, raw.structuredPayload, {
+        summary: raw.summary,
+        title: raw.title,
+        rawInput,
+      });
+      structuredPayload = validateArtifactPayload(artifactType, normalizedPayload);
     } catch (err) {
       warnings.push(`تعذر التحقق من الحمولة: ${String(err)}`);
       requiresHumanClarification = true;

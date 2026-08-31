@@ -50,5 +50,13 @@ export function buildLearningInterpreterSystemPrompt(): string {
     'Return JSON only matching the schema.',
     'structuredPayload must match artifact type (instruction, FAQ Q/A, correction old/new, alias, etc.).',
     'Use Arabic titles/summaries when input is Arabic.',
+    '',
+    'Payload field requirements:',
+    '- BEHAVIOR_RULE / BRAND_VOICE_RULE: instruction (required), optional forbiddenBehavior, preferredBehavior',
+    '- WORKFLOW_RULE: workflow, instruction',
+    '- FAQ: canonicalQuestion, canonicalAnswer',
+    '- BAD_EXAMPLE: badResponse, reason',
+    '- ENTITY_ALIAS: alias, canonicalEntity (branch code e.g. CAMP_CAESAR)',
+    '- CORRECTION: correctedClaim, optional oldClaim',
   ].join('\n');
 }
