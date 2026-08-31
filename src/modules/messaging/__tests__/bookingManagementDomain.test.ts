@@ -186,10 +186,12 @@ describe('parseManagementDeltas', () => {
 });
 
 describe('modify preview copy', () => {
-  it('asks confirm without fake progress', async () => {
-    const { composeModifyPreviewReply, composeModifySuccessReply } = await import(
-      '@/modules/messaging/ai/bookingManagement/responseCopy'
-    );
+  it('asks confirm and post-action replies', async () => {
+    const {
+      composeModifyPreviewReply,
+      composeModifySuccessReply,
+      composePostActionReply,
+    } = await import('@/modules/messaging/ai/bookingManagement/responseCopy');
     const preview = composeModifyPreviewReply({
       original: booking(),
       desired: {
@@ -208,6 +210,7 @@ describe('modify preview copy', () => {
       branchName: 'جليم',
     });
     expect(ok).toMatch(/^تم تعديل/);
+    expect(composePostActionReply(booking(), 'مع مين؟')).toMatch(/كريم/);
   });
 });
 

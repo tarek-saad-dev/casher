@@ -27,6 +27,7 @@ import {
   composeModifySuccessReply,
   composeUnavailableModifyReply,
   composeUpcomingLookupReply,
+  composePostActionReply,
   summarizePublicBooking,
 } from './responseCopy';
 import {
@@ -102,7 +103,27 @@ export async function processBookingManagementTurn(input: {
     }
   }
 
-  if (speech.kind === 'none' && !active) return null;
+  if (speech.kind === 'none' && !active) {
+    const post = session.lastRelevantBooking?.snapshot
+      ? composePostActionReply(session.lastRelevantBooking.snapshot, input.inboundText)
+      : null;
+    if (post) {
+      recordBotAction(input.conversationId, {
+        text: post,
+        action: 'answered_query',
+        answeredWell: true,
+        customerText: input.inboundText,
+      });
+      return {
+        handled: true,
+        replyText: post,
+        preserveCreatePlan: true,
+        askConfirm: false,
+        planId: null,
+      };
+    }
+    return null;
+  }
 
   // Ephemeral interruption: bail so V4 can answer hours/price; clears confirm via sessionMemory
   if (speech.kind === 'none' && active) {

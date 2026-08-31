@@ -149,3 +149,33 @@ export function composeUnavailableModifyReply(args: {
   assertSafeCustomerCopy(text);
   return text;
 }
+
+/** Grounded follow-ups after lookup / cancel / reschedule (J20). */
+export function composePostActionReply(b: UpcomingBookingSummary, text: string): string | null {
+  const t = String(text ?? '').trim();
+  if (!t) return null;
+  if (/هو\s*اتلغى|اتلغى\s*\?|فيه\s*إلغاء/.test(t)) {
+    const msg =
+      b.status === 'cancelled'
+        ? 'أيوه، الحجز اتلغى.'
+        : 'الحجز لسه مؤكد حسب آخر تحديث.';
+    assertSafeCustomerCopy(msg);
+    return msg;
+  }
+  if (/مع\s*مين|مين\s*الحلاق/.test(t)) {
+    const msg = b.employeeName ? `حجز حضرتك مع ${b.employeeName}.` : 'لسه متحددش الحلاق.';
+    assertSafeCustomerCopy(msg);
+    return msg;
+  }
+  if (/فين|الفرع/.test(t)) {
+    const msg = b.branchName ? `الحجز في ${b.branchName}.` : 'لسه متحددش الفرع.';
+    assertSafeCustomerCopy(msg);
+    return msg;
+  }
+  if (/امتى|الميعاد|الساعة\s*كام/.test(t) && !/عندي\s*حجز|حجوزاتي/.test(t)) {
+    const msg = `حجز حضرتك ${formatWhen(b)}.`;
+    assertSafeCustomerCopy(msg);
+    return msg;
+  }
+  return null;
+}

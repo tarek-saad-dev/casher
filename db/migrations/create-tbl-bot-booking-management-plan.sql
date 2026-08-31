@@ -56,7 +56,14 @@ IF NOT EXISTS (
 BEGIN
     CREATE UNIQUE NONCLUSTERED INDEX [UX_TblBotBookingManagementPlan_ActiveConversation]
     ON [dbo].[TblBotBookingManagementPlan] ([ConversationID])
-    WHERE [Stage] NOT IN (N'COMPLETED', N'FAILED', N'ABANDONED')
+    WHERE [Stage] IN (
+        N'RESOLVING_BOOKING',
+        N'COLLECTING_CHANGE',
+        N'VALIDATING',
+        N'CHOOSING_ALTERNATIVE',
+        N'READY_TO_CONFIRM',
+        N'EXECUTING'
+    )
       AND [CompletedAt] IS NULL;
 END
 GO
