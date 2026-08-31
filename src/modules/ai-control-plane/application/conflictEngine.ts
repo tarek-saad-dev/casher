@@ -38,6 +38,21 @@ function findExistingByKey(
   );
 }
 
+function isPriceOverrideAttempt(rawInput: string, proposed: ProposedArtifact): boolean {
+  const norm = normalizeArabicText(rawInput);
+  if (!/سعر|جنيه|price/.test(norm)) return false;
+  if (proposed.domain === 'PRICES') return true;
+  const payloadText = normalizeArabicText(
+    String(
+      proposed.structuredPayload.value ??
+        proposed.structuredPayload.instruction ??
+        proposed.structuredPayload.correctedClaim ??
+        '',
+    ),
+  );
+  return /سعر|جنيه|\d+/.test(payloadText);
+}
+
 export function detectArtifactConflict(
   proposed: ProposedArtifact,
   index: number,
@@ -66,6 +81,14 @@ export function detectArtifactConflict(
         messageAr: getAuthorityExplanationAr('PRICES'),
       };
     }
+  }
+
+  if (isPriceOverrideAttempt(rawInput, proposed)) {
+    return {
+      artifactIndex: index,
+      conflictType: 'LOWER_AUTHORITY',
+      messageAr: getAuthorityExplanationAr('PRICES'),
+    };
   }
 
   const existing = findExistingByKey(ctx.approvedArtifacts, proposed.normalizedKey, proposed.entityCode);
