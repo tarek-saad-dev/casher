@@ -65,6 +65,15 @@ export async function evaluateOutboxSendGate(
       liveControlVersion: live.controlVersion,
     });
     if (!decision.allowed) {
+      logHandoffEvent('ai_outbound_suppressed_before_provider_send', {
+        outboxId: row.id,
+        conversationId,
+        origin,
+        reason: decision.reason,
+        expectedControlVersion,
+        liveControlVersion: live.controlVersion,
+        liveMode: live.mode,
+      });
       logHandoffEvent('bot_outbound_suppressed_control_version', {
         outboxId: row.id,
         conversationId,

@@ -292,6 +292,13 @@ export async function observeManualOutbound(
     takeover: result.changed,
     duplicate: inserted.duplicate,
   });
+  if (result.changed) {
+    logHandoffEvent('human_manual_whatsapp_detected', {
+      conversationId,
+      providerMessageId,
+      controlVersion: result.state.controlVersion,
+    });
+  }
   return {
     classified: 'WHATSAPP_MANUAL',
     conversationId,

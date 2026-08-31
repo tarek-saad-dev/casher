@@ -141,6 +141,11 @@ export async function reconcileExpiredLeases(
           conversationId: row.conversationId,
           previousMode: row.mode,
         });
+        logHandoffEvent('bot_control_restored', {
+          conversationId: row.conversationId,
+          previousMode: row.mode,
+          reason: 'lease_expired',
+        });
       }
       if (result.resumed) resumed += 1;
     } catch (err) {

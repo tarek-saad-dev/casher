@@ -166,6 +166,13 @@ export async function takeoverConversationErp(
     controlVersion: applied.state.controlVersion,
     previousMode: live.mode,
   });
+  logHandoffEvent('human_takeover_committed', {
+    conversationId: input.conversationId,
+    controlVersion: applied.state.controlVersion,
+    takeoverSource: 'ERP',
+    previousMode: live.mode,
+    userId: input.userId,
+  });
   logHandoffEvent('conversation_control_changed', {
     conversationId: input.conversationId,
     previousMode: live.mode,
@@ -200,6 +207,12 @@ export async function returnConversationToBot(
     throw new HandoffError('تعذر إرجاع المحادثة', saved.code === 'NOT_FOUND' ? 'NOT_FOUND' : 'VERSION_CONFLICT', saved.code === 'NOT_FOUND' ? 404 : 409);
   }
   logHandoffEvent('conversation_returned_to_bot', {
+    conversationId: input.conversationId,
+    previousMode: live.mode,
+    reason: input.reason,
+    controlVersion: applied.state.controlVersion,
+  });
+  logHandoffEvent('bot_control_restored', {
     conversationId: input.conversationId,
     previousMode: live.mode,
     reason: input.reason,
@@ -282,6 +295,13 @@ export async function applyWhatsAppManualControl(
   logHandoffEvent('human_takeover_whatsapp', {
     conversationId: input.conversationId,
     controlVersion: applied.state.controlVersion,
+    previousMode: live.mode,
+    takeoverSource: 'WHATSAPP_MANUAL',
+  });
+  logHandoffEvent('human_takeover_committed', {
+    conversationId: input.conversationId,
+    controlVersion: applied.state.controlVersion,
+    takeoverSource: 'WHATSAPP_MANUAL',
     previousMode: live.mode,
   });
   logHandoffEvent('conversation_control_changed', {

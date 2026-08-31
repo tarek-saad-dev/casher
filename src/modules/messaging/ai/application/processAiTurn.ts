@@ -228,8 +228,9 @@ export async function processAiTurn(
     timer.markContextLoadDone(performance.now() - contextStarted);
 
     const handoffActive = isHumanHandoffActiveForPhone(context.phone);
+    let liveControl: Awaited<ReturnType<typeof getConversationControl>> = null;
     if (handoffActive) {
-      const liveControl = await getConversationControl(turn.conversationId);
+      liveControl = await getConversationControl(turn.conversationId);
       if (liveControl && aiIsSuppressed(liveControl.mode)) {
         await markAiTurnSkipped({
           turnId: turn.turnId,
@@ -357,7 +358,7 @@ export async function processAiTurn(
           turnId: turn.turnId,
           phone: context.phone,
           inboundText: latestInbound,
-          controlAllowsMutation: !handoffActive,
+          controlAllowsMutation: !liveControl || !aiIsSuppressed(liveControl.mode),
         });
         if (mgmt?.handled && mgmt.replyText) {
           managementHandled = true;
@@ -707,6 +708,15 @@ export async function processAiTurn(
         liveControlVersion: liveBeforeSend.controlVersion,
       });
       if (!permitted.allowed) {
+        logHandoffEvent('ai_outbound_suppressed_before_enqueue', {
+          turnId: turn.turnId,
+          conversationId: turn.conversationId,
+          origin: outboundOrigin,
+          reason: permitted.reason,
+          expectedControlVersion,
+          liveControlVersion: liveBeforeSend.controlVersion,
+          liveMode: liveBeforeSend.mode,
+        });
         logHandoffEvent('bot_outbound_suppressed_control_version', {
           turnId: turn.turnId,
           conversationId: turn.conversationId,
