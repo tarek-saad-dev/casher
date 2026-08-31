@@ -401,10 +401,11 @@ export default function AdminWhatsAppInboxPage() {
         </div>
       ) : null}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-1 overflow-hidden lg:grid-cols-[380px_minmax(0,1fr)]">
-        {/* Conversation list */}
+      {/* Two independent columns (RTL: aside = right). Never let this row grow the page. */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* RIGHT — conversation sidebar */}
         <aside
-          className={`flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-white/5 bg-[#111b21] lg:border-e ${
+          className={`flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden border-white/5 bg-[#111b21] lg:w-[380px] lg:border-e ${
             chatOpen ? 'hidden lg:flex' : 'flex'
           }`}
         >
@@ -504,9 +505,9 @@ export default function AdminWhatsAppInboxPage() {
           </div>
         </aside>
 
-        {/* Chat panel */}
+        {/* LEFT / main — selected chat (independent scroll) */}
         <section
-          className={`flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[#0b141a] ${
+          className={`flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#0b141a] ${
             chatOpen ? 'flex' : 'hidden lg:flex'
           }`}
         >
@@ -586,6 +587,9 @@ export default function AdminWhatsAppInboxPage() {
                   onScroll={onMessagesScroll}
                   className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-8 scrollbar-luxury-v"
                   style={{
+                    minHeight: 0,
+                    overflowY: 'auto',
+                    overscrollBehavior: 'contain',
                     backgroundImage:
                       'radial-gradient(circle at 20% 20%, rgba(255,255,255,0.02) 0, transparent 40%), radial-gradient(circle at 80% 60%, rgba(255,255,255,0.015) 0, transparent 35%)',
                   }}

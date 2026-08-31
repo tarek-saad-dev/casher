@@ -32,6 +32,8 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
   const isLoginPage = pathname === '/login';
   const isPosPage = pathname === '/income/pos';
   const isOperationsPage = pathname === '/operations' || pathname.startsWith('/operations/');
+  const isWhatsAppInboxPage =
+    pathname === '/admin/whatsapp/inbox' || pathname.startsWith('/admin/whatsapp/inbox/');
 
   const authResolving = sessionLoading || (sessionAuth && permLoading);
 
@@ -68,6 +70,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
       access={access}
       isPosPage={isPosPage}
       isOperationsPage={isOperationsPage}
+      isWhatsAppInboxPage={isWhatsAppInboxPage}
     >
       {children}
     </AuthenticatedAppShell>

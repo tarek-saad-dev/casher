@@ -16,6 +16,8 @@ interface AuthenticatedAppShellProps {
   access: UserAccess;
   isPosPage: boolean;
   isOperationsPage: boolean;
+  /** WhatsApp Inbox owns its own pane scroll — lock `<main>` like Operations. */
+  isWhatsAppInboxPage?: boolean;
 }
 
 /**
@@ -27,10 +29,13 @@ export default function AuthenticatedAppShell({
   access,
   isPosPage,
   isOperationsPage,
+  isWhatsAppInboxPage = false,
 }: AuthenticatedAppShellProps) {
   if (access.isPartnerOnly) {
     return <PartnerOnlyShell>{children}</PartnerOnlyShell>;
   }
+
+  const lockMainToViewport = isOperationsPage || isWhatsAppInboxPage;
 
   return (
     <OperationalToastProvider>
@@ -46,8 +51,8 @@ export default function AuthenticatedAppShell({
           <main
             className={cn(
               'flex-1 w-full min-h-0 min-w-0',
-              isOperationsPage
-                ? 'overflow-hidden'
+              lockMainToViewport
+                ? 'flex flex-col overflow-hidden'
                 : isPosPage
                   ? 'max-md:overflow-hidden overflow-y-auto'
                   : 'overflow-y-auto',
