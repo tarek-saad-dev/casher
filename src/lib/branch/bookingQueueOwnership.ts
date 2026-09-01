@@ -376,12 +376,49 @@ export async function listBookableEmployeeIdsForBranch(
   const publicOnly = opts?.publicOnly === true;
   const smokeContext = getSmokeExecutionContext();
   const useExclusion = publicOnly && !smokeContext;
+  const baseSql = useExclusion ? EMP_BOOKABLE_AT_BRANCH_PUBLIC_SQL : EMP_BOOKABLE_AT_BRANCH_SQL;
   const result = await db
     .request()
     .input('branchId', sql.Int, branchId)
     .input('day', sql.Date, operationalDate)
-    .query(useExclusion ? EMP_BOOKABLE_AT_BRANCH_PUBLIC_SQL : EMP_BOOKABLE_AT_BRANCH_SQL);
-  return result.recordset.map((r: { EmpID: number }) => Number(r.EmpID));
+    .query(baseSql);
+  const ids = new Set<number>(
+    result.recordset.map((r: { EmpID: number }) => Number(r.EmpID)),
+  );
+
+  const testNameFilter = useExclusion
+    ? `AND (e.EmpName IS NULL OR (
+      e.EmpName NOT LIKE N'%[[]TEST]%'
+      AND e.EmpName NOT LIKE N'%[[]SMOKE%'
+    ))`
+    : '';
+
+  try {
+    const transferred = await db
+      .request()
+      .input('branchId', sql.Int, branchId)
+      .input('day', sql.Date, operationalDate)
+      .query(`
+        SELECT t.EmpID
+        FROM dbo.TblEmpTemporaryBranchTransfer t
+        INNER JOIN dbo.TblEmp e ON e.EmpID = t.EmpID
+        INNER JOIN dbo.TblBranch b ON b.BranchID = t.ToBranchID
+        WHERE t.ToBranchID = @branchId
+          AND t.WorkDate = @day
+          AND t.IsActive = 1
+          AND b.IsActive = 1
+          AND ISNULL(e.isActive, 1) = 1
+          AND e.Job IN (${BOOKING_SLOT_BARBER_JOBS_SQL_LIST})
+          ${testNameFilter}
+      `);
+    for (const r of transferred.recordset as Array<{ EmpID: number }>) {
+      ids.add(Number(r.EmpID));
+    }
+  } catch {
+    /* optional table */
+  }
+
+  return [...ids];
 }
 
 /**

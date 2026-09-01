@@ -41,6 +41,16 @@ const fullTimeRow = {
   EarlyLeaveMinutes: 0,
   Notes: '',
   HasRecord: false,
+  transfer: {
+    isTransferredToday: false,
+    transferDirection: 'none',
+    transferId: null,
+    transferReason: null,
+    transferStartTime: null,
+    transferEndTime: null,
+    operationalBranch: { branchId: 1, branchCode: 'GLEEM', branchName: 'جليم' },
+    baseBranch: { branchId: 1, branchCode: 'GLEEM', branchName: 'جليم' },
+  },
 };
 
 const freelancePresentRow = {

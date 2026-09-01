@@ -36,6 +36,10 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { shortBranchName } from '@/lib/hr/dailyPayrollClosingUi';
+import {
+  shortAttendanceBranchLabel,
+  type AttendanceTransferContext,
+} from '@/lib/hr/attendance-eligibility';
 
 interface AttendanceSummary {
   total: number;
@@ -81,6 +85,13 @@ interface AttendanceRow {
   Breaks?: AttendanceBreakInterval[];
   BreakTimeMinutesTotal?: number;
   BreakTimes?: AttendanceBreakInterval[];
+  transfer?: AttendanceTransferContext;
+}
+
+interface TransferSummary {
+  count: number;
+  transferredIn: number;
+  transferredOut: number;
 }
 
 interface FreelancerOption {
@@ -179,6 +190,12 @@ function sameAttendanceRow(
   return Number(row.BranchID) === Number(branchId);
 }
 
+function branchTone(code: string) {
+  if (code === 'GLEEM') return 'border-sky-500/25 bg-sky-500/10 text-sky-300/90';
+  if (code === 'CAMP_CAESAR') return 'border-amber-500/25 bg-amber-500/10 text-amber-300/90';
+  return 'border-zinc-600/40 bg-zinc-800/60 text-zinc-400';
+}
+
 function branchBadge(row: Pick<AttendanceRow, 'BranchCode' | 'BranchName'>) {
   if (!row.BranchCode && !row.BranchName) return null;
   const code = String(row.BranchCode ?? '');
@@ -186,15 +203,54 @@ function branchBadge(row: Pick<AttendanceRow, 'BranchCode' | 'BranchName'>) {
     branchCode: code || '—',
     branchName: row.BranchName || code || '—',
   });
-  const tone =
-    code === 'GLEEM'
-      ? 'border-sky-500/25 bg-sky-500/10 text-sky-300/90'
-      : code === 'CAMP_CAESAR'
-        ? 'border-amber-500/25 bg-amber-500/10 text-amber-300/90'
-        : 'border-zinc-600/40 bg-zinc-800/60 text-zinc-400';
   return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${tone}`}>
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${branchTone(code)}`}>
       {label}
+    </span>
+  );
+}
+
+function TodayBranchBadge({ transfer }: { transfer?: AttendanceTransferContext }) {
+  if (!transfer) return null;
+
+  if (!transfer.isTransferredToday) {
+    const label = shortAttendanceBranchLabel(transfer.operationalBranch);
+    return (
+      <span
+        className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${branchTone(transfer.operationalBranch.branchCode)}`}
+        title="فرع اليوم"
+        data-testid="attendance-today-branch-normal"
+      >
+        {label}
+      </span>
+    );
+  }
+
+  const baseLabel = shortAttendanceBranchLabel(transfer.baseBranch);
+  const opLabel = shortAttendanceBranchLabel(transfer.operationalBranch);
+  const windowLabel =
+    transfer.transferStartTime || transfer.transferEndTime
+      ? `${transfer.transferStartTime || '—'}–${transfer.transferEndTime || '—'}`
+      : null;
+
+  return (
+    <span className="inline-flex flex-wrap items-center gap-0.5" data-testid="attendance-today-branch-transferred">
+      <span
+        className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border line-through opacity-60 ${branchTone(transfer.baseBranch.branchCode)}`}
+        title="الفرع الأساسي"
+      >
+        {baseLabel}
+      </span>
+      <span className="text-[10px] text-amber-400/90">→</span>
+      <span
+        className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border border-amber-500/40 bg-amber-500/15 text-amber-200"
+        title="فرع اليوم"
+      >
+        {opLabel}
+      </span>
+      {windowLabel ? (
+        <span className="text-[9px] text-amber-300/70">{windowLabel}</span>
+      ) : null}
     </span>
   );
 }
@@ -231,6 +287,8 @@ export default function AttendancePanel() {
   const [breakTimesBranchId, setBreakTimesBranchId] = useState<number | null>(null);
   const [transferOpen, setTransferOpen]         = useState(false);
   const [transferEmpId, setTransferEmpId]       = useState<number | null>(null);
+  const [transferSummary, setTransferSummary]   = useState<TransferSummary | null>(null);
+  const [cancellingTransferKey, setCancellingTransferKey] = useState<string | null>(null);
 
   const [dayOffWorkOpen, setDayOffWorkOpen]         = useState(false);
   const [dayOffWorkQuery, setDayOffWorkQuery]       = useState('');
@@ -275,6 +333,7 @@ export default function AttendancePanel() {
       if (data.success) {
         setAttendance(data.attendance);
         setSummary(data.summary ?? null);
+        setTransferSummary(data.transferSummary ?? null);
         if (data.employeeScope === 'all') {
           setBranchLabel('كل الفروع');
         } else {
@@ -294,6 +353,34 @@ export default function AttendancePanel() {
   const handleEmployeeScopeChange = (scope: EmployeeScopeFilter) => {
     setEmployeeScope(scope);
     void fetchAttendance(date, scope);
+  };
+
+  const cancelTransfer = async (row: AttendanceRow) => {
+    const key = `${row.EmpID}-${row.BranchID ?? 0}`;
+    setCancellingTransferKey(key);
+    setError('');
+    try {
+      const res = await fetch('/api/admin/hr/branch-transfer', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          empId: row.EmpID,
+          workDate: date,
+          reason: 'إلغاء النقل من صفحة الحضور',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'تعذر إلغاء النقل');
+      }
+      setSuccessMsg(`تم إلغاء نقل ${row.EmpName}`);
+      await fetchAttendance(date);
+      setTimeout(() => setSuccessMsg(''), 3000);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'تعذر إلغاء النقل');
+    } finally {
+      setCancellingTransferKey(null);
+    }
   };
 
   const searchFreelancers = useCallback(async (query: string) => {
@@ -742,6 +829,32 @@ export default function AttendancePanel() {
         </div>
       </div>
 
+      {transferSummary && transferSummary.count > 0 ? (
+        <div
+          className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+          data-testid="attendance-transfer-banner"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <ArrowLeftRight className="w-4 h-4 text-amber-300 shrink-0" />
+            <span>
+              اليوم:{' '}
+              <strong className="text-white">{transferSummary.count}</strong>{' '}
+              موظف{transferSummary.count === 1 ? '' : 'ين'} منقول
+              {transferSummary.transferredIn > 0 ? (
+                <span className="text-amber-200/90">
+                  {' '}({transferSummary.transferredIn} وصل{transferSummary.transferredIn === 1 ? '' : 'وا'} لفرع آخر)
+                </span>
+              ) : null}
+              {transferSummary.transferredOut > 0 ? (
+                <span className="text-amber-200/90">
+                  {' '}({transferSummary.transferredOut} في فرع تاني)
+                </span>
+              ) : null}
+            </span>
+          </div>
+        </div>
+      ) : null}
+
       <div className="text-xs text-zinc-500 flex flex-wrap items-center gap-2">
         <span>
           {DAY_NAMES[new Date(date + 'T12:00:00Z').getDay()]} — {date}
@@ -849,9 +962,7 @@ export default function AttendancePanel() {
                 : null;
               const periodChk    = periodCheckFor(row);
               const periodWarned = periodChk.mismatch && !periodConfirmed.has(key);
-              const subLabel = row.displayReason
-                || (row.isScheduledWorkingDay ? 'يوم عمل' : 'إجازة')
-                || row.scheduleWarning;
+              const isCancellingTransfer = cancellingTransferKey === key;
               return (
                 <tr key={key}
                   className={`border-b border-zinc-800/50 hover:bg-zinc-800/20 transition-colors ${isDirty ? 'bg-amber-500/5' : ''}`}>
@@ -859,10 +970,11 @@ export default function AttendancePanel() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1">
                         <span className="font-semibold text-white text-sm truncate max-w-[9rem]">{row.EmpName}</span>
-                        {branchBadge(row)}
+                        {employeeScope === 'all' ? branchBadge(row) : null}
+                        <TodayBranchBadge transfer={row.transfer} />
                       </div>
-                      <div className={`text-[10px] mt-0.5 ${row.scheduleWarning ? 'text-amber-500' : 'text-zinc-500'}`}>
-                        {subLabel}
+                      <div className={`text-[10px] mt-0.5 ${row.scheduleWarning ? 'text-amber-500' : row.transfer?.isTransferredToday ? 'text-amber-400/90' : 'text-zinc-500'}`}>
+                        {row.displayReason || (row.isScheduledWorkingDay ? 'يوم عمل' : 'إجازة') || row.scheduleWarning}
                         {(row.ScheduledStartTime || row.ScheduledEndTime) ? (
                           <span className="text-zinc-600"> · {row.ScheduledStartTime || '--:--'}–{row.ScheduledEndTime || '--:--'}</span>
                         ) : null}
@@ -1022,6 +1134,23 @@ export default function AttendancePanel() {
                       >
                         <ArrowLeftRight className="w-3.5 h-3.5" />
                       </Button>
+                      {row.transfer?.isTransferredToday && row.transfer.transferId ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => void cancelTransfer(row)}
+                          disabled={isCancellingTransfer || switchingBranch}
+                          title="إلغاء النقل"
+                          data-testid={`attendance-cancel-transfer-${row.EmpID}`}
+                          className="h-7 w-7 p-0 text-rose-400/80 hover:bg-rose-500/20 hover:text-rose-300"
+                        >
+                          {isCancellingTransfer ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <UserX className="w-3.5 h-3.5" />
+                          )}
+                        </Button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>

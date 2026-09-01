@@ -64,12 +64,44 @@ export interface RawAttendanceDbRow {
   BreakTimes?: AttendanceBreakInterval[] | null;
   /** Temporary transfer into this branch (board query). */
   XferIn?: number | null;
+  XferInTransferId?: number | null;
+  XferInReason?: string | null;
   XferInStart?: string | null;
   XferInEnd?: string | null;
+  XferFromBranchId?: number | null;
+  XferFromBranchCode?: string | null;
+  XferFromBranchName?: string | null;
   /** Temporary transfer away from this branch (board query). */
   XferOut?: number | null;
+  XferOutTransferId?: number | null;
+  XferOutReason?: string | null;
   XferOutStart?: string | null;
   XferOutEnd?: string | null;
+  XferToBranchId?: number | null;
+  XferToBranchCode?: string | null;
+  XferToBranchName?: string | null;
+  Job?: string | null;
+}
+
+export type AttendanceTransferDirection = 'none' | 'in' | 'out';
+
+export interface AttendanceBranchRef {
+  branchId: number;
+  branchCode: string;
+  branchName: string;
+}
+
+export interface AttendanceTransferContext {
+  isTransferredToday: boolean;
+  transferDirection: AttendanceTransferDirection;
+  transferId: number | null;
+  transferReason: string | null;
+  transferStartTime: string | null;
+  transferEndTime: string | null;
+  /** فرع التشغيل الفعلي اليوم */
+  operationalBranch: AttendanceBranchRef;
+  /** الفرع الأساسي حسب الجدول (فرع الصف عند عدم النقل) */
+  baseBranch: AttendanceBranchRef;
 }
 
 export interface ResolvedScheduleDay {
@@ -127,6 +159,7 @@ export interface AttendanceBoardRow {
   employmentTypeLabel: string | null;
   payrollMethodLabel: string | null;
   dayOffPolicyLabel: string | null;
+  transfer: AttendanceTransferContext;
 }
 
 export interface AttendanceSummary {
@@ -347,11 +380,98 @@ const DAY_OFF_LABELS: Record<string, string> = {
   none: '—',
 };
 
+export function shortAttendanceBranchLabel(branch: Pick<AttendanceBranchRef, 'branchCode' | 'branchName'>): string {
+  if (branch.branchCode === 'GLEEM') return 'جليم';
+  if (branch.branchCode === 'CAMP_CAESAR') return 'كامب شيزار';
+  return branch.branchName || branch.branchCode;
+}
+
+export function resolveAttendanceTransferContext(input: {
+  row: RawAttendanceDbRow;
+  boardBranch: AttendanceBranchRef;
+  workDate: string;
+  xferInActive: boolean;
+  xferOutActive: boolean;
+  now?: Date;
+}): AttendanceTransferContext {
+  const { row, boardBranch, xferInActive, xferOutActive } = input;
+  const baseBranch: AttendanceBranchRef = {
+    branchId: boardBranch.branchId,
+    branchCode: boardBranch.branchCode,
+    branchName: boardBranch.branchName,
+  };
+
+  if (xferInActive && row.XferFromBranchId != null) {
+    const from: AttendanceBranchRef = {
+      branchId: Number(row.XferFromBranchId),
+      branchCode: String(row.XferFromBranchCode ?? ''),
+      branchName: String(row.XferFromBranchName ?? row.XferFromBranchCode ?? '—'),
+    };
+    return {
+      isTransferredToday: true,
+      transferDirection: 'in',
+      transferId: row.XferInTransferId != null ? Number(row.XferInTransferId) : null,
+      transferReason: row.XferInReason ?? null,
+      transferStartTime: row.XferInStart ?? null,
+      transferEndTime: row.XferInEnd ?? null,
+      operationalBranch: boardBranch,
+      baseBranch: from,
+    };
+  }
+
+  if (row.XferOut != null && xferOutActive && row.XferToBranchId != null) {
+    const to: AttendanceBranchRef = {
+      branchId: Number(row.XferToBranchId),
+      branchCode: String(row.XferToBranchCode ?? ''),
+      branchName: String(row.XferToBranchName ?? row.XferToBranchCode ?? '—'),
+    };
+    return {
+      isTransferredToday: true,
+      transferDirection: 'out',
+      transferId: row.XferOutTransferId != null ? Number(row.XferOutTransferId) : null,
+      transferReason: row.XferOutReason ?? null,
+      transferStartTime: row.XferOutStart ?? null,
+      transferEndTime: row.XferOutEnd ?? null,
+      operationalBranch: to,
+      baseBranch,
+    };
+  }
+
+  return {
+    isTransferredToday: false,
+    transferDirection: 'none',
+    transferId: null,
+    transferReason: null,
+    transferStartTime: null,
+    transferEndTime: null,
+    operationalBranch: boardBranch,
+    baseBranch,
+  };
+}
+
+export function formatAttendanceTransferDisplayReason(
+  transfer: AttendanceTransferContext,
+): string | null {
+  if (!transfer.isTransferredToday) return null;
+  const op = shortAttendanceBranchLabel(transfer.operationalBranch);
+  const base = shortAttendanceBranchLabel(transfer.baseBranch);
+  if (transfer.transferDirection === 'in') {
+    return `منقول من ${base} — اليوم في ${op}`;
+  }
+  return `مجدول في ${base} — اليوم في ${op}`;
+}
+
 export function buildAttendanceBoardRow(
   row: RawAttendanceDbRow,
   workDate: string,
   dayOfWeek: number,
-  options: { includeFreelance: boolean },
+  options: {
+    includeFreelance: boolean;
+    boardBranch?: AttendanceBranchRef;
+    transfer?: AttendanceTransferContext;
+    xferInActive?: boolean;
+    xferOutActive?: boolean;
+  },
 ): AttendanceBoardRow | null {
   const employmentType = normalizeEmploymentType(row.EmploymentType) ?? 'full_time';
   const payrollMethod = normalizePayrollMethod(row.PayrollMethod);
@@ -402,6 +522,23 @@ export function buildAttendanceBoardRow(
   const earlyMin =
     hasAttendanceRecord && checkOut ? calcEarlyLeaveMinutes(checkOut, schedEnd) : 0;
 
+  const defaultBoard: AttendanceBranchRef = options.boardBranch ?? {
+    branchId: 0,
+    branchCode: '',
+    branchName: '',
+  };
+  const transfer =
+    options.transfer ??
+    resolveAttendanceTransferContext({
+      row,
+      boardBranch: defaultBoard,
+      workDate,
+      xferInActive: options.xferInActive === true,
+      xferOutActive: options.xferOutActive === true,
+    });
+  const transferDisplayReason = formatAttendanceTransferDisplayReason(transfer);
+  const displayReason = transferDisplayReason ?? eligibility.displayReason;
+
   return {
     EmpID: row.EmpID,
     EmpName: row.EmpName,
@@ -418,7 +555,7 @@ export function buildAttendanceBoardRow(
     isAttendanceRequired: eligibility.isAttendanceRequired,
     expectedToday: eligibility.expectedToday,
     reason: eligibility.reason,
-    displayReason: eligibility.displayReason,
+    displayReason,
     scheduleWarning: schedule.scheduleWarning,
     ScheduledStartTime: schedStart,
     ScheduledEndTime: schedEnd,
@@ -441,6 +578,7 @@ export function buildAttendanceBoardRow(
       employmentType === 'full_time' && dayOffPolicy
         ? DAY_OFF_LABELS[dayOffPolicy] ?? null
         : null,
+    transfer,
   };
 }
 
@@ -448,7 +586,7 @@ export function filterAttendanceBoardRows(
   rows: RawAttendanceDbRow[],
   workDate: string,
   dayOfWeek: number,
-  options: { includeFreelance: boolean; now?: Date },
+  options: { includeFreelance: boolean; now?: Date; boardBranch?: AttendanceBranchRef },
 ): AttendanceBoardRow[] {
   const now = options.now ?? new Date();
   const result: AttendanceBoardRow[] = [];
@@ -478,6 +616,20 @@ export function filterAttendanceBoardRows(
       if (!weeklyWorking) continue;
     }
 
+    const boardBranch: AttendanceBranchRef = options.boardBranch ?? {
+      branchId: 0,
+      branchCode: '',
+      branchName: '',
+    };
+    const transfer = resolveAttendanceTransferContext({
+      row,
+      boardBranch,
+      workDate,
+      xferInActive,
+      xferOutActive,
+      now,
+    });
+
     const built = buildAttendanceBoardRow(
       xferInActive
         ? {
@@ -490,7 +642,13 @@ export function filterAttendanceBoardRows(
         : row,
       workDate,
       dayOfWeek,
-      options,
+      {
+        includeFreelance: options.includeFreelance,
+        boardBranch,
+        transfer,
+        xferInActive,
+        xferOutActive,
+      },
     );
     if (built) result.push(built);
   }

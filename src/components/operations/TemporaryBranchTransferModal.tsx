@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeftRight, Loader2, MapPin, X } from 'lucide-react';
+import { ArrowLeftRight, CheckCircle2, Loader2, MapPin, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -96,6 +96,40 @@ function isBarberJob(job: string | null | undefined): boolean {
   if (!job) return false;
   const j = job.trim().toLowerCase();
   return j === 'حلاق' || j === 'مساعد' || j === 'barber';
+}
+
+function transferOutcomeItems(input: {
+  preview: TransferPreview;
+  destinationLabel: string;
+  isBarber: boolean;
+}): Array<{ ok: boolean; text: string }> {
+  const dest = input.preview.destinationBranch?.branchName || input.destinationLabel || 'فرع الوجهة';
+  const items: Array<{ ok: boolean; text: string }> = [
+    { ok: input.preview.canTransfer || input.preview.canForceTransfer === true, text: `سيظهر في حضور ${dest}` },
+  ];
+  if (input.isBarber) {
+    items.push({
+      ok: input.preview.canTransfer || input.preview.canForceTransfer === true,
+      text: `سيُضاف لحجوزات ${dest} وطابور الحلاقين`,
+    });
+  }
+  items.push({
+    ok: input.preview.canTransfer || input.preview.canForceTransfer === true,
+    text: `اليوميات ستُولَّد في ${dest} حسب حضوره هناك`,
+  });
+  if ((input.preview.affectedBookings?.length ?? 0) > 0) {
+    items.push({
+      ok: false,
+      text: `${input.preview.affectedBookings!.length} حجز في فرع المصدر يحتاج إعادة تعيين`,
+    });
+  }
+  if (input.preview.attendance?.hasOpen) {
+    items.push({
+      ok: false,
+      text: 'حضور مفتوح في الفرع السابق — لازم انصراف قبل الوجهة',
+    });
+  }
+  return items;
 }
 
 type JobFilter = 'all' | 'barbers' | 'other';
@@ -842,8 +876,30 @@ export function TemporaryBranchTransferModal({
               )}
 
               {preview && (
-                <div className="space-y-1.5 rounded-xl border border-border bg-surface-muted/40 p-3 text-xs text-foreground/90">
-                  <p className="font-medium text-foreground mb-1">نتيجة المعاينة</p>
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+                    <p className="text-sm font-semibold text-emerald-100 mb-2">ماذا سيحدث بعد النقل؟</p>
+                    <ul className="space-y-1.5">
+                      {transferOutcomeItems({
+                        preview,
+                        destinationLabel: toBranchLabel || 'فرع الوجهة',
+                        isBarber: isBarberJob(selectedEmployee?.job),
+                      }).map((item) => (
+                        <li
+                          key={item.text}
+                          className={`flex items-start gap-2 text-xs ${item.ok ? 'text-emerald-100' : 'text-amber-200'}`}
+                        >
+                          <CheckCircle2
+                            className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${item.ok ? 'text-emerald-400' : 'text-amber-400'}`}
+                          />
+                          <span>{item.text}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="space-y-1.5 rounded-xl border border-border bg-surface-muted/40 p-3 text-xs text-foreground/90">
+                  <p className="font-medium text-foreground mb-1">تفاصيل المعاينة</p>
                   <p>
                     نقل من: <strong>{preview.sourceBranch?.branchName ?? fromBranchLabel}</strong>
                   </p>
@@ -912,6 +968,7 @@ export function TemporaryBranchTransferModal({
                       </span>
                     </label>
                   )}
+                </div>
                 </div>
               )}
             </>

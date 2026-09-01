@@ -3,7 +3,9 @@ import {
   buildAttendanceBoardRow,
   computeAttendanceSummary,
   filterAttendanceBoardRows,
+  formatAttendanceTransferDisplayReason,
   resolveAttendanceEligibility,
+  resolveAttendanceTransferContext,
   resolveIsFreelance,
   resolveScheduleForDay,
   type RawAttendanceDbRow,
@@ -356,16 +358,77 @@ describe('computeAttendanceSummary', () => {
           CheckInTime: '16:00',
           Status: 'Late',
           XferOut: 1,
+          XferOutTransferId: 7,
           XferOutStart: '17:00',
           XferOutEnd: '12:34',
+          XferToBranchId: 2,
+          XferToBranchCode: 'CAMP_CAESAR',
+          XferToBranchName: 'Camp Caesar',
         }),
       ],
       today,
       dow,
-      { includeFreelance: false, now },
+      {
+        includeFreelance: false,
+        now,
+        boardBranch: { branchId: 1, branchCode: 'GLEEM', branchName: 'Gleem' },
+      },
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].HasRecord).toBe(true);
+    expect(rows[0].transfer.isTransferredToday).toBe(true);
+    expect(rows[0].transfer.transferDirection).toBe('out');
+    expect(rows[0].displayReason).toContain('كامب');
+  });
+
+  it('marks transfer-in with display reason and operational branch', () => {
+    const today = '2026-08-15';
+    const dow = new Date(`${today}T12:00:00Z`).getDay();
+    const now = new Date('2026-08-15T15:30:00.000Z');
+    const rows = filterAttendanceBoardRows(
+      [
+        baseRow({
+          EmpID: 12,
+          EmpName: 'زياد',
+          IsWorkingDay: 0,
+          ScheduleDayOfWeek: null,
+          ScheduleStartTime: null,
+          ScheduleEndTime: null,
+          XferIn: 1,
+          XferInTransferId: 8,
+          XferInReason: 'تغطية',
+          XferInStart: '17:00',
+          XferInEnd: '12:34',
+          XferFromBranchId: 1,
+          XferFromBranchCode: 'GLEEM',
+          XferFromBranchName: 'Gleem',
+        }),
+      ],
+      today,
+      dow,
+      {
+        includeFreelance: false,
+        now,
+        boardBranch: { branchId: 2, branchCode: 'CAMP_CAESAR', branchName: 'Camp Caesar' },
+      },
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].transfer.transferDirection).toBe('in');
+    expect(rows[0].displayReason).toBe('منقول من جليم — اليوم في كامب شيزار');
+  });
+});
+
+describe('resolveAttendanceTransferContext', () => {
+  it('returns none when no transfer', () => {
+    const ctx = resolveAttendanceTransferContext({
+      row: baseRow(),
+      boardBranch: { branchId: 1, branchCode: 'GLEEM', branchName: 'Gleem' },
+      workDate: '2026-07-12',
+      xferInActive: false,
+      xferOutActive: false,
+    });
+    expect(ctx.isTransferredToday).toBe(false);
+    expect(formatAttendanceTransferDisplayReason(ctx)).toBeNull();
   });
 });
 

@@ -4,6 +4,7 @@ import { getSession } from "@/lib/session";
 import {
   computeAttendanceSummary,
   filterAttendanceBoardRows,
+  type AttendanceBoardRow,
   type RawAttendanceDbRow,
 } from "@/lib/hr/attendance-eligibility";
 import {
@@ -117,7 +118,7 @@ export async function GET(req: NextRequest) {
       : "";
 
     const allRows: Array<
-      ReturnType<typeof filterAttendanceBoardRows>[number] & {
+      AttendanceBoardRow & {
         BranchID: number;
         BranchCode: string;
         BranchName: string;
@@ -156,11 +157,22 @@ export async function GET(req: NextRequest) {
           ISNULL(a.BreakMinutesTotal, 0) AS BreakMinutesTotal,
           ISNULL(a.BreakTimeMinutesTotal, 0) AS BreakTimeMinutesTotal,
           xferIn.X AS XferIn,
+          xferIn.TransferID AS XferInTransferId,
+          xferIn.Reason AS XferInReason,
           xferIn.StartTime AS XferInStart,
           xferIn.EndTime AS XferInEnd,
+          xferIn.FromBranchID AS XferFromBranchId,
+          xferFrom.BranchCode AS XferFromBranchCode,
+          xferFrom.BranchName AS XferFromBranchName,
           xferOut.X AS XferOut,
+          xferOut.TransferID AS XferOutTransferId,
+          xferOut.Reason AS XferOutReason,
           xferOut.StartTime AS XferOutStart,
-          xferOut.EndTime AS XferOutEnd
+          xferOut.EndTime AS XferOutEnd,
+          xferOut.ToBranchID AS XferToBranchId,
+          xferTo.BranchCode AS XferToBranchCode,
+          xferTo.BranchName AS XferToBranchName,
+          e.Job
         FROM dbo.TblEmp e
         LEFT JOIN dbo.TblEmpAttendance a
           ON a.EmpID = e.EmpID AND a.WorkDate = @workDate AND a.BranchID = @branchId
@@ -182,6 +194,9 @@ export async function GET(req: NextRequest) {
         OUTER APPLY (
           SELECT TOP 1
             1 AS X,
+            t.TransferID,
+            t.Reason,
+            t.FromBranchID,
             CONVERT(VARCHAR(5), t.StartTime, 108) AS StartTime,
             CONVERT(VARCHAR(5), t.EndTime, 108) AS EndTime
           FROM dbo.TblEmpTemporaryBranchTransfer t
@@ -190,9 +205,13 @@ export async function GET(req: NextRequest) {
             AND t.IsActive = 1
             AND t.ToBranchID = @branchId
         ) xferIn
+        LEFT JOIN dbo.TblBranch xferFrom ON xferFrom.BranchID = xferIn.FromBranchID
         OUTER APPLY (
           SELECT TOP 1
             1 AS X,
+            t.TransferID,
+            t.Reason,
+            t.ToBranchID,
             CONVERT(VARCHAR(5), t.StartTime, 108) AS StartTime,
             CONVERT(VARCHAR(5), t.EndTime, 108) AS EndTime
           FROM dbo.TblEmpTemporaryBranchTransfer t
@@ -201,6 +220,7 @@ export async function GET(req: NextRequest) {
             AND t.IsActive = 1
             AND t.FromBranchID = @branchId
         ) xferOut
+        LEFT JOIN dbo.TblBranch xferTo ON xferTo.BranchID = xferOut.ToBranchID
         WHERE ISNULL(e.isActive, 1) = 1
           ${payrollFilter}
           AND (
@@ -251,6 +271,11 @@ export async function GET(req: NextRequest) {
 
       const rows = filterAttendanceBoardRows(rawRows, dateStr, dayOfWeek, {
         includeFreelance,
+        boardBranch: {
+          branchId: vb.branchId,
+          branchCode: vb.branchCode,
+          branchName: vb.branchName,
+        },
       }).map((r) => ({
         ...r,
         BranchID: vb.branchId,
@@ -267,6 +292,12 @@ export async function GET(req: NextRequest) {
     });
 
     const summary = computeAttendanceSummary(allRows);
+    const transferredToday = allRows.filter((r) => r.transfer.isTransferredToday);
+    const transferSummary = {
+      count: transferredToday.length,
+      transferredIn: transferredToday.filter((r) => r.transfer.transferDirection === 'in').length,
+      transferredOut: transferredToday.filter((r) => r.transfer.transferDirection === 'out').length,
+    };
 
     return NextResponse.json({
       success: true,
@@ -278,6 +309,7 @@ export async function GET(req: NextRequest) {
       branchCode: sessionBranch.branchCode,
       attendance: allRows,
       summary,
+      transferSummary,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
