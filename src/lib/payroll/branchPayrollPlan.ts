@@ -255,6 +255,46 @@ export async function loadBranchDayPayrollPlans(
   return map;
 }
 
+/** Monthly salary plans for a branch/workDate (map by EmpID). */
+export async function loadBranchDayMonthlyPlans(
+  branchId: number,
+  workDate: string,
+): Promise<Map<number, { monthlySalary: number }>> {
+  const db = await getPool();
+  const result = await db
+    .request()
+    .input('branchId', sql.Int, branchId)
+    .input('workDate', sql.Date, workDate)
+    .query(`
+      WITH ranked AS (
+        SELECT
+          EmpID,
+          MonthlySalary,
+          ROW_NUMBER() OVER (
+            PARTITION BY EmpID
+            ORDER BY EffectiveFrom DESC, PlanID DESC
+          ) AS rn
+        FROM dbo.TblEmpBranchPayrollPlan
+        WHERE BranchID = @branchId
+          AND IsActive = 1
+          AND PayType = N'monthly'
+          AND ISNULL(MonthlySalary, 0) > 0
+          AND EffectiveFrom <= @workDate
+          AND (EffectiveTo IS NULL OR EffectiveTo >= @workDate)
+      )
+      SELECT EmpID, MonthlySalary
+      FROM ranked
+      WHERE rn = 1
+    `);
+
+  const map = new Map<number, { monthlySalary: number }>();
+  for (const row of result.recordset as Array<{ EmpID: number; MonthlySalary: number }>) {
+    const amount = Math.round(Number(row.MonthlySalary ?? 0) * 100) / 100;
+    map.set(Number(row.EmpID), { monthlySalary: amount });
+  }
+  return map;
+}
+
 /**
  * Reject overlapping active periods for EmpID + BranchID.
  * Call before insert/update of a plan row.

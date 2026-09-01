@@ -11,7 +11,9 @@ import type { AttendanceBreakInterval } from '@/lib/hr/attendance-breaks';
 import type { DayOffPolicy, EmploymentType } from '@/lib/hr/employee-hr-model';
 import { normalizeEmploymentType, normalizePayrollMethod, normalizeDayOffPolicy } from '@/lib/hr/employee-hr-model';
 import {
-  isTransferDestinationActive,
+  isAttendanceBoardDestinationVisible,
+  isAttendanceBoardSourceHidden,
+  isFutureWorkDate,
   isTransferSourceInactive,
 } from '@/lib/hr/temporaryTransferWindow';
 
@@ -93,6 +95,8 @@ export interface AttendanceBranchRef {
 
 export interface AttendanceTransferContext {
   isTransferredToday: boolean;
+  /** نقل مجدول ليوم لاحق — يظهر فوراً في لوحة الحضور */
+  isScheduledTransfer: boolean;
   transferDirection: AttendanceTransferDirection;
   transferId: number | null;
   transferReason: string | null;
@@ -390,18 +394,19 @@ export function resolveAttendanceTransferContext(input: {
   row: RawAttendanceDbRow;
   boardBranch: AttendanceBranchRef;
   workDate: string;
-  xferInActive: boolean;
-  xferOutActive: boolean;
+  xferInVisible: boolean;
+  xferOutVisible: boolean;
   now?: Date;
 }): AttendanceTransferContext {
-  const { row, boardBranch, xferInActive, xferOutActive } = input;
+  const { row, boardBranch, xferInVisible, xferOutVisible, workDate, now } = input;
+  const scheduled = isFutureWorkDate(workDate, now);
   const baseBranch: AttendanceBranchRef = {
     branchId: boardBranch.branchId,
     branchCode: boardBranch.branchCode,
     branchName: boardBranch.branchName,
   };
 
-  if (xferInActive && row.XferFromBranchId != null) {
+  if (xferInVisible && row.XferFromBranchId != null) {
     const from: AttendanceBranchRef = {
       branchId: Number(row.XferFromBranchId),
       branchCode: String(row.XferFromBranchCode ?? ''),
@@ -409,6 +414,7 @@ export function resolveAttendanceTransferContext(input: {
     };
     return {
       isTransferredToday: true,
+      isScheduledTransfer: scheduled,
       transferDirection: 'in',
       transferId: row.XferInTransferId != null ? Number(row.XferInTransferId) : null,
       transferReason: row.XferInReason ?? null,
@@ -419,7 +425,7 @@ export function resolveAttendanceTransferContext(input: {
     };
   }
 
-  if (row.XferOut != null && xferOutActive && row.XferToBranchId != null) {
+  if (row.XferOut != null && xferOutVisible && row.XferToBranchId != null) {
     const to: AttendanceBranchRef = {
       branchId: Number(row.XferToBranchId),
       branchCode: String(row.XferToBranchCode ?? ''),
@@ -427,6 +433,7 @@ export function resolveAttendanceTransferContext(input: {
     };
     return {
       isTransferredToday: true,
+      isScheduledTransfer: scheduled,
       transferDirection: 'out',
       transferId: row.XferOutTransferId != null ? Number(row.XferOutTransferId) : null,
       transferReason: row.XferOutReason ?? null,
@@ -439,6 +446,7 @@ export function resolveAttendanceTransferContext(input: {
 
   return {
     isTransferredToday: false,
+    isScheduledTransfer: false,
     transferDirection: 'none',
     transferId: null,
     transferReason: null,
@@ -455,6 +463,12 @@ export function formatAttendanceTransferDisplayReason(
   if (!transfer.isTransferredToday) return null;
   const op = shortAttendanceBranchLabel(transfer.operationalBranch);
   const base = shortAttendanceBranchLabel(transfer.baseBranch);
+  if (transfer.isScheduledTransfer) {
+    if (transfer.transferDirection === 'in') {
+      return `مجدول من ${base} — سيعمل في ${op}`;
+    }
+    return `مجدول في ${base} — سيعمل في ${op}`;
+  }
   if (transfer.transferDirection === 'in') {
     return `منقول من ${base} — اليوم في ${op}`;
   }
@@ -469,8 +483,8 @@ export function buildAttendanceBoardRow(
     includeFreelance: boolean;
     boardBranch?: AttendanceBranchRef;
     transfer?: AttendanceTransferContext;
-    xferInActive?: boolean;
-    xferOutActive?: boolean;
+    xferInVisible?: boolean;
+    xferOutVisible?: boolean;
   },
 ): AttendanceBoardRow | null {
   const employmentType = normalizeEmploymentType(row.EmploymentType) ?? 'full_time';
@@ -533,8 +547,8 @@ export function buildAttendanceBoardRow(
       row,
       boardBranch: defaultBoard,
       workDate,
-      xferInActive: options.xferInActive === true,
-      xferOutActive: options.xferOutActive === true,
+      xferInVisible: options.xferInVisible === true,
+      xferOutVisible: options.xferOutVisible === true,
     });
   const transferDisplayReason = formatAttendanceTransferDisplayReason(transfer);
   const displayReason = transferDisplayReason ?? eligibility.displayReason;
@@ -592,25 +606,34 @@ export function filterAttendanceBoardRows(
   const result: AttendanceBoardRow[] = [];
   for (const row of rows) {
     const hasAttendance = row.AttendanceID != null;
-    const xferOutActive =
-      row.XferOut != null &&
-      isTransferSourceInactive({
-        workDate,
-        startTime: row.XferOutStart,
-        endTime: row.XferOutEnd,
-        now,
-      });
-    if (xferOutActive && !hasAttendance) continue;
+    const xferOutHidden = isAttendanceBoardSourceHidden({
+      workDate,
+      hasXferOut: row.XferOut != null,
+      hasAttendance,
+      startTime: row.XferOutStart,
+      endTime: row.XferOutEnd,
+      now,
+    });
+    if (xferOutHidden) continue;
 
-    const xferInActive =
-      row.XferIn != null &&
-      isTransferDestinationActive({
-        workDate,
-        startTime: row.XferInStart,
-        endTime: row.XferInEnd,
-        now,
-      });
-    if (row.XferIn != null && !xferInActive && !hasAttendance) {
+    const xferInVisible = isAttendanceBoardDestinationVisible({
+      workDate,
+      hasXferIn: row.XferIn != null,
+      startTime: row.XferInStart,
+      endTime: row.XferInEnd,
+      now,
+    });
+    const xferOutVisible =
+      row.XferOut != null &&
+      hasAttendance &&
+      (isFutureWorkDate(workDate, now) ||
+        isTransferSourceInactive({
+          workDate,
+          startTime: row.XferOutStart,
+          endTime: row.XferOutEnd,
+          now,
+        }));
+    if (row.XferIn != null && !xferInVisible && !hasAttendance) {
       // Only on board via premature transfer-in → hide until window starts
       const weeklyWorking = boolish(row.IsWorkingDay);
       if (!weeklyWorking) continue;
@@ -625,13 +648,13 @@ export function filterAttendanceBoardRows(
       row,
       boardBranch,
       workDate,
-      xferInActive,
-      xferOutActive,
+      xferInVisible,
+      xferOutVisible,
       now,
     });
 
     const built = buildAttendanceBoardRow(
-      xferInActive
+      xferInVisible
         ? {
             ...row,
             IsWorkingDay: true,
@@ -646,8 +669,8 @@ export function filterAttendanceBoardRows(
         includeFreelance: options.includeFreelance,
         boardBranch,
         transfer,
-        xferInActive,
-        xferOutActive,
+        xferInVisible,
+        xferOutVisible,
       },
     );
     if (built) result.push(built);

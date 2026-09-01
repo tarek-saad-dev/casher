@@ -50,15 +50,15 @@ export default function PartnerSharesSetupPage() {
       </Link>
       <PageHeader
         title="نسب الشركاء"
-        description="تفعيل المسودة المعتمدة 40/20/20/20 بتاريخ بدء التشغيل الداخلي"
+        description="تفعيل نسب الشركاء المعتمدة بتاريخ بدء التشغيل الداخلي"
       />
 
       <div className="mt-6 space-y-4 rounded-xl border border-border/70 bg-card/70 p-4">
         <ul className="space-y-1 text-sm text-muted-foreground">
-          <li>أ/ عايدة — 40%</li>
-          <li>أ/ طارق — 20%</li>
-          <li>أ/ زياد — 20%</li>
-          <li>أ/ عمر — 20%</li>
+          <li>أ/ طارق — 31.67%</li>
+          <li>أ/ ذياد — 31.67%</li>
+          <li>أ/ سعد — 28.33%</li>
+          <li>أ/ عمر — 8.33%</li>
         </ul>
         <div>
           <Label>تاريخ بدء التشغيل الداخلي</Label>

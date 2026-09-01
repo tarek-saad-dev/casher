@@ -43,6 +43,7 @@ const fullTimeRow = {
   HasRecord: false,
   transfer: {
     isTransferredToday: false,
+    isScheduledTransfer: false,
     transferDirection: 'none',
     transferId: null,
     transferReason: null,

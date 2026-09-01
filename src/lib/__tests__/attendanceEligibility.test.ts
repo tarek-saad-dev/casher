@@ -424,11 +424,75 @@ describe('resolveAttendanceTransferContext', () => {
       row: baseRow(),
       boardBranch: { branchId: 1, branchCode: 'GLEEM', branchName: 'Gleem' },
       workDate: '2026-07-12',
-      xferInActive: false,
-      xferOutActive: false,
+      xferInVisible: false,
+      xferOutVisible: false,
     });
     expect(ctx.isTransferredToday).toBe(false);
     expect(formatAttendanceTransferDisplayReason(ctx)).toBeNull();
+  });
+});
+
+describe('future-date transfer visibility', () => {
+  it('shows transfer-in on destination board immediately for a future work date', () => {
+    const tomorrow = '2026-08-16';
+    const dow = new Date(`${tomorrow}T12:00:00Z`).getDay();
+    const now = new Date('2026-08-15T12:00:00Z');
+    const rows = filterAttendanceBoardRows(
+      [
+        baseRow({
+          EmpID: 12,
+          EmpName: 'زياد',
+          IsWorkingDay: 0,
+          ScheduleDayOfWeek: null,
+          ScheduleStartTime: null,
+          ScheduleEndTime: null,
+          XferIn: 1,
+          XferInTransferId: 8,
+          XferInReason: 'تغطية',
+          XferFromBranchId: 1,
+          XferFromBranchCode: 'GLEEM',
+          XferFromBranchName: 'Gleem',
+        }),
+      ],
+      tomorrow,
+      dow,
+      {
+        includeFreelance: false,
+        now,
+        boardBranch: { branchId: 2, branchCode: 'CAMP_CAESAR', branchName: 'Camp Caesar' },
+      },
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].transfer.isScheduledTransfer).toBe(true);
+    expect(rows[0].displayReason).toBe('مجدول من جليم — سيعمل في كامب شيزار');
+  });
+
+  it('hides transfer-out from source board for a future work date', () => {
+    const tomorrow = '2026-08-16';
+    const dow = new Date(`${tomorrow}T12:00:00Z`).getDay();
+    const now = new Date('2026-08-15T12:00:00Z');
+    const rows = filterAttendanceBoardRows(
+      [
+        baseRow({
+          EmpID: 12,
+          EmpName: 'زياد',
+          IsWorkingDay: 1,
+          XferOut: 1,
+          XferOutTransferId: 7,
+          XferToBranchId: 2,
+          XferToBranchCode: 'CAMP_CAESAR',
+          XferToBranchName: 'Camp Caesar',
+        }),
+      ],
+      tomorrow,
+      dow,
+      {
+        includeFreelance: false,
+        now,
+        boardBranch: { branchId: 1, branchCode: 'GLEEM', branchName: 'Gleem' },
+      },
+    );
+    expect(rows).toHaveLength(0);
   });
 });
 

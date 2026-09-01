@@ -1,6 +1,6 @@
 /**
- * Phase 1O — Camp Caesar partner-share draft (40/20/20/20) without inventing EffectiveFrom.
- * Draft rows: IsActive=0 so they never enter report resolution until activated with a real opening date.
+ * Phase 1O — Camp Caesar partner-share draft.
+ * Production shares (activated 2026-07-27): طارق/ذياد/سعد/عمر — see replace-cc-partners ops.
  */
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
@@ -8,10 +8,10 @@ import { PartnerShareConfigError, PARTNER_SHARE_SUM_TOLERANCE } from './partnerS
 import { upsertBranchSetupPolicy } from './branchSetupPolicy';
 
 export const CAMP_CAESAR_PARTNER_DRAFT = [
-  { partnerCode: 'AAYIDA', partnerName: 'أ/ عايدة', sharePercent: 40, preferredUserNames: [/عايدة/i, /aida/i] },
-  { partnerCode: 'TAREK', partnerName: 'أ/ طارق', sharePercent: 20, preferredUserNames: [/^tarek$/i, /طارق/] },
-  { partnerCode: 'ZIYAD_CC', partnerName: 'أ/ ذياد', sharePercent: 20, preferredUserNames: [/^mr\.ziad$/i, /ذياد/, /زياد/] },
-  { partnerCode: 'OMAR_CC', partnerName: 'أ/ عمر', sharePercent: 20, preferredUserNames: [/^omar$/i, /عمر/] },
+  { partnerCode: 'TAREK_CC', partnerName: 'أ/ طارق', sharePercent: 31.67, preferredUserNames: [/^tarek$/i, /طارق/] },
+  { partnerCode: 'ZIYAD_CC', partnerName: 'أ/ ذياد', sharePercent: 31.67, preferredUserNames: [/^mr\.ziad$/i, /ذياد/, /زياد/] },
+  { partnerCode: 'SAAD_CC', partnerName: 'أ/ سعد', sharePercent: 28.33, preferredUserNames: [/^admin$/i, /سعد/, /saad/i] },
+  { partnerCode: 'OMAR_CC', partnerName: 'أ/ عمر', sharePercent: 8.33, preferredUserNames: [/^omar$/i, /عمر/] },
 ] as const;
 
 export type PartnerIdentityResolution = {

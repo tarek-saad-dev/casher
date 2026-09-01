@@ -1,0 +1,833 @@
+Connected 127.0.0.1:14330/last132
+
+================================================================================
+SCHEMA — TblCashMove columns
+================================================================================
+["ID","invID","invType","invDate","invTime","ClientID","ExpINID","GrandTolal","inOut","Notes","ShiftMoveID","PaymentMethodID","EditHistory","EmpID","IsPayrollDeduction","PayrollMonth","IsEmployeePayrollIncome","BranchID","BusinessDayID"]
+
+================================================================================
+PHASE 1 — TblCashMove full rows
+================================================================================
+[
+  {
+    "ID": 39399,
+    "invID": 508692,
+    "invType": "مصروفات",
+    "invDate": "2026-08-28T00:00:00.000Z",
+    "invTime": "22.01",
+    "ClientID": null,
+    "ExpINID": 1062,
+    "GrandTolal": 140,
+    "inOut": "out",
+    "Notes": "سلفه ( عمر )",
+    "ShiftMoveID": 12146,
+    "PaymentMethodID": 1,
+    "EditHistory": null,
+    "EmpID": null,
+    "IsPayrollDeduction": false,
+    "PayrollMonth": null,
+    "IsEmployeePayrollIncome": false,
+    "BranchID": 1,
+    "BusinessDayID": 5511,
+    "BranchCode": "GLEEM",
+    "BranchName": "جليم – سابا باشا",
+    "BusinessDate": "2026-08-28T00:00:00.000Z",
+    "ShiftUserID": 13,
+    "ShiftBranchID": 1,
+    "ShiftStatus": false,
+    "StartDate": "2026-08-28T00:00:00.000Z",
+    "StartTime": "09:59 PM  ",
+    "EndDate": "2026-08-28T00:00:00.000Z",
+    "EndTime": "11:58:09 PM",
+    "CatName": "سلفه ( عمر )",
+    "ShiftUserName": "Tarek"
+  },
+  {
+    "ID": 39406,
+    "invID": 508696,
+    "invType": "مصروفات",
+    "invDate": "2026-08-28T00:00:00.000Z",
+    "invTime": "22.53",
+    "ClientID": null,
+    "ExpINID": 1062,
+    "GrandTolal": 140,
+    "inOut": "out",
+    "Notes": "سلفه ( عمر )",
+    "ShiftMoveID": 12147,
+    "PaymentMethodID": 1,
+    "EditHistory": null,
+    "EmpID": null,
+    "IsPayrollDeduction": false,
+    "PayrollMonth": null,
+    "IsEmployeePayrollIncome": false,
+    "BranchID": 3,
+    "BusinessDayID": 5512,
+    "BranchCode": "CAMP_CAESAR",
+    "BranchName": "كامب شيزار",
+    "BusinessDate": "2026-08-28T00:00:00.000Z",
+    "ShiftUserID": 23,
+    "ShiftBranchID": 3,
+    "ShiftStatus": false,
+    "StartDate": "2026-08-28T00:00:00.000Z",
+    "StartTime": "10:03 PM  ",
+    "EndDate": "2026-08-29T00:00:00.000Z",
+    "EndTime": "11:26:51 AM",
+    "CatName": "سلفه ( عمر )",
+    "ShiftUserName": "abdo"
+  }
+]
+
+================================================================================
+PHASE 1 — Employee mapping
+================================================================================
+[
+  {
+    "CashMoveID": 39399,
+    "ExpINID": 1062,
+    "GrandTolal": 140,
+    "invDate": "2026-08-28T00:00:00.000Z",
+    "BranchID": 1,
+    "BranchCode": "GLEEM",
+    "EmpID": 25,
+    "TxnKind": "advance",
+    "IsActive": true,
+    "EmpName": "عمر",
+    "CatName": "سلفه ( عمر )"
+  },
+  {
+    "CashMoveID": 39406,
+    "ExpINID": 1062,
+    "GrandTolal": 140,
+    "invDate": "2026-08-28T00:00:00.000Z",
+    "BranchID": 3,
+    "BranchCode": "CAMP_CAESAR",
+    "EmpID": 25,
+    "TxnKind": "advance",
+    "IsActive": true,
+    "EmpName": "عمر",
+    "CatName": "سلفه ( عمر )"
+  }
+]
+
+================================================================================
+PHASE 1 — Ledger entries
+================================================================================
+[
+  {
+    "ID": 2463,
+    "EmpID": 25,
+    "EntryDate": "2026-08-28T00:00:00.000Z",
+    "EntryDirection": "debit",
+    "EntryReason": "advance",
+    "Amount": 140,
+    "PayrollMonth": "2026-08",
+    "RefType": "TblCashMove",
+    "RefID": 39399,
+    "CashMoveID": 39399,
+    "AttendanceID": null,
+    "Notes": "سلفة موظف من الخزنة",
+    "IsVoided": false,
+    "VoidReason": null,
+    "CreatedByUserID": 13,
+    "CreatedAt": "2026-08-28T22:01:33.000Z",
+    "UpdatedAt": null,
+    "BranchID": 1,
+    "EmpName": "عمر",
+    "BranchCode": "GLEEM",
+    "CreatedByName": "Tarek"
+  },
+  {
+    "ID": 2466,
+    "EmpID": 25,
+    "EntryDate": "2026-08-28T00:00:00.000Z",
+    "EntryDirection": "debit",
+    "EntryReason": "advance",
+    "Amount": 140,
+    "PayrollMonth": "2026-08",
+    "RefType": "TblCashMove",
+    "RefID": 39406,
+    "CashMoveID": 39406,
+    "AttendanceID": null,
+    "Notes": "سلفة موظف من الخزنة",
+    "IsVoided": false,
+    "VoidReason": null,
+    "CreatedByUserID": 23,
+    "CreatedAt": "2026-08-28T22:53:13.000Z",
+    "UpdatedAt": null,
+    "BranchID": 3,
+    "EmpName": "عمر",
+    "BranchCode": "CAMP_CAESAR",
+    "CreatedByName": "abdo"
+  }
+]
+
+================================================================================
+PHASE 1 — Omar branch assignments
+================================================================================
+[
+  {
+    "EmpID": 25,
+    "EmpName": "عمر",
+    "BranchID": 3,
+    "BranchCode": "CAMP_CAESAR",
+    "EffectiveFrom": "2026-08-02T00:00:00.000Z",
+    "EffectiveTo": null
+  },
+  {
+    "EmpID": 25,
+    "EmpName": "عمر",
+    "BranchID": 1,
+    "BranchCode": "GLEEM",
+    "EffectiveFrom": "2026-07-22T00:00:00.000Z",
+    "EffectiveTo": null
+  }
+]
+
+================================================================================
+PHASE 2 — One advance vs two
+================================================================================
+[
+  {
+    "CashMoveID": 39399,
+    "BranchID": 1,
+    "BranchCode": "GLEEM",
+    "EmpID": 25,
+    "EmpName": "عمر",
+    "LedgerID": 2463,
+    "RefID": 39399,
+    "LedgerCashMoveID": 39399,
+    "Amount": 140,
+    "CreatedAt": "2026-08-28T22:01:33.000Z"
+  },
+  {
+    "CashMoveID": 39406,
+    "BranchID": 3,
+    "BranchCode": "CAMP_CAESAR",
+    "EmpID": 25,
+    "EmpName": "عمر",
+    "LedgerID": 2466,
+    "RefID": 39406,
+    "LedgerCashMoveID": 39406,
+    "Amount": 140,
+    "CreatedAt": "2026-08-28T22:53:13.000Z"
+  }
+]
+
+================================================================================
+PHASE 2 — Paired settlement (معادلة) same day/shift
+================================================================================
+[
+  {
+    "ID": 39398,
+    "invType": "مبيعات",
+    "inOut": "in",
+    "GrandTolal": 250,
+    "BranchID": 1,
+    "BranchCode": "GLEEM",
+    "CatName": null,
+    "Notes": "مبيعات / جمال الحسيني",
+    "ShiftMoveID": 12146
+  },
+  {
+    "ID": 39399,
+    "invType": "مصروفات",
+    "inOut": "out",
+    "GrandTolal": 140,
+    "BranchID": 1,
+    "BranchCode": "GLEEM",
+    "CatName": "سلفه ( عمر )",
+    "Notes": "سلفه ( عمر )",
+    "ShiftMoveID": 12146
+  },
+  {
+    "ID": 39400,
+    "invType": "مصروفات",
+    "inOut": "out",
+    "GrandTolal": 115,
+    "BranchID": 1,
+    "BranchCode": "GLEEM",
+    "CatName": "سلفه ( يوسف محمد )",
+    "Notes": "سلفه ( يوسف محمد )",
+    "ShiftMoveID": 12146
+  },
+  {
+    "ID": 39401,
+    "invType": "مصروفات",
+    "inOut": "out",
+    "GrandTolal": 20,
+    "BranchID": 1,
+    "BranchCode": "GLEEM",
+    "CatName": "توصيل ",
+    "Notes": "توصيل ",
+    "ShiftMoveID": 12146
+  },
+  {
+    "ID": 39402,
+    "invType": "مبيعات",
+    "inOut": "in",
+    "GrandTolal": 100,
+    "BranchID": 1,
+    "BranchCode": "GLEEM",
+    "CatName": null,
+    "Notes": "مبيعات / احمد علي",
+    "ShiftMoveID": 12146
+  },
+  {
+    "ID": 39403,
+    "invType": "مصروفات",
+    "inOut": "out",
+    "GrandTolal": 50,
+    "BranchID": 1,
+    "BranchCode": "GLEEM",
+    "CatName": "سلفه ( خيري )",
+    "Notes": "سلفة خيري",
+    "ShiftMoveID": 12146
+  },
+  {
+    "ID": 39404,
+    "invType": "مبيعات",
+    "inOut": "in",
+    "GrandTolal": 250,
+    "BranchID": 1,
+    "BranchCode": "GLEEM",
+    "CatName": null,
+    "Notes": "مبيعات / محمد حسام الدين",
+    "ShiftMoveID": 12146
+  },
+  {
+    "ID": 39405,
+    "invType": "مبيعات",
+    "inOut": "in",
+    "GrandTolal": 250,
+    "BranchID": 1,
+    "BranchCode": "GLEEM",
+    "CatName": null,
+    "Notes": "مبيعات / Mazen Mohamed",
+    "ShiftMoveID": 12146
+  },
+  {
+    "ID": 39406,
+    "invType": "مصروفات",
+    "inOut": "out",
+    "GrandTolal": 140,
+    "BranchID": 3,
+    "BranchCode": "CAMP_CAESAR",
+    "CatName": "سلفه ( عمر )",
+    "Notes": "سلفه ( عمر )",
+    "ShiftMoveID": 12147
+  },
+  {
+    "ID": 39407,
+    "invType": "مصروفات",
+    "inOut": "out",
+    "GrandTolal": 115,
+    "BranchID": 3,
+    "BranchCode": "CAMP_CAESAR",
+    "CatName": "سلفه ( يوسف محمد )",
+    "Notes": "سلفه ( يوسف محمد )",
+    "ShiftMoveID": 12147
+  },
+  {
+    "ID": 39408,
+    "invType": "مصروفات",
+    "inOut": "out",
+    "GrandTolal": 20,
+    "BranchID": 3,
+    "BranchCode": "CAMP_CAESAR",
+    "CatName": "توصيل ",
+    "Notes": "توصيل ",
+    "ShiftMoveID": 12147
+  },
+  {
+    "ID": 39409,
+    "invType": "مصروفات",
+    "inOut": "out",
+    "GrandTolal": 9,
+    "BranchID": 3,
+    "BranchCode": "CAMP_CAESAR",
+    "CatName": "بوفيه",
+    "Notes": "بوفيه",
+    "ShiftMoveID": 12147
+  },
+  {
+    "ID": 39410,
+    "invType": "مبيعات",
+    "inOut": "in",
+    "GrandTolal": 400,
+    "BranchID": 1,
+    "BranchCode": "GLEEM",
+    "CatName": null,
+    "Notes": "مبيعات / محمد ابوالعينين",
+    "ShiftMoveID": 12146
+  },
+  {
+    "ID": 39411,
+    "invType": "مبيعات",
+    "inOut": "in",
+    "GrandTolal": 200,
+    "BranchID": 1,
+    "BranchCode": "GLEEM",
+    "CatName": null,
+    "Notes": "مبيعات / يحيى يعقوب",
+    "ShiftMoveID": 12146
+  },
+  {
+    "ID": 39418,
+    "invType": "مصروفات",
+    "inOut": "out",
+    "GrandTolal": 20,
+    "BranchID": 3,
+    "BranchCode": "CAMP_CAESAR",
+    "CatName": "سلفه ( عمر )",
+    "Notes": "سلفه ( عمر )",
+    "ShiftMoveID": 12147
+  },
+  {
+    "ID": 39439,
+    "invType": "مصروفات",
+    "inOut": "out",
+    "GrandTolal": 10,
+    "BranchID": 3,
+    "BranchCode": "CAMP_CAESAR",
+    "CatName": "سلفه ( عمر )",
+    "Notes": "سلفه ( عمر )",
+    "ShiftMoveID": 12147
+  }
+]
+
+================================================================================
+PHASE 3 — All Omar advances 2026-08-28
+================================================================================
+[
+  {
+    "ID": 39369,
+    "invID": 508686,
+    "invDate": "2026-08-28T00:00:00.000Z",
+    "invTime": "15.28",
+    "GrandTolal": 60,
+    "BranchID": 3,
+    "BranchCode": "CAMP_CAESAR",
+    "ExpINID": 1062,
+    "CatName": "سلفه ( عمر )",
+    "ShiftMoveID": 12142,
+    "BusinessDayID": 5512,
+    "PaymentMethodID": 1,
+    "Notes": "سلفه ( عمر )",
+    "EmpID": 25,
+    "EmpName": "عمر",
+    "ShiftUserID": 13,
+    "ShiftUserName": "Tarek",
+    "LedgerID": 2460,
+    "LedgerCreatedAt": "2026-08-28T15:28:30.000Z",
+    "CreatedByUserID": 13,
+    "LedgerCreatedByName": "Tarek"
+  },
+  {
+    "ID": 39399,
+    "invID": 508692,
+    "invDate": "2026-08-28T00:00:00.000Z",
+    "invTime": "22.01",
+    "GrandTolal": 140,
+    "BranchID": 1,
+    "BranchCode": "GLEEM",
+    "ExpINID": 1062,
+    "CatName": "سلفه ( عمر )",
+    "ShiftMoveID": 12146,
+    "BusinessDayID": 5511,
+    "PaymentMethodID": 1,
+    "Notes": "سلفه ( عمر )",
+    "EmpID": 25,
+    "EmpName": "عمر",
+    "ShiftUserID": 13,
+    "ShiftUserName": "Tarek",
+    "LedgerID": 2463,
+    "LedgerCreatedAt": "2026-08-28T22:01:33.000Z",
+    "CreatedByUserID": 13,
+    "LedgerCreatedByName": "Tarek"
+  },
+  {
+    "ID": 39406,
+    "invID": 508696,
+    "invDate": "2026-08-28T00:00:00.000Z",
+    "invTime": "22.53",
+    "GrandTolal": 140,
+    "BranchID": 3,
+    "BranchCode": "CAMP_CAESAR",
+    "ExpINID": 1062,
+    "CatName": "سلفه ( عمر )",
+    "ShiftMoveID": 12147,
+    "BusinessDayID": 5512,
+    "PaymentMethodID": 1,
+    "Notes": "سلفه ( عمر )",
+    "EmpID": 25,
+    "EmpName": "عمر",
+    "ShiftUserID": 23,
+    "ShiftUserName": "abdo",
+    "LedgerID": 2466,
+    "LedgerCreatedAt": "2026-08-28T22:53:13.000Z",
+    "CreatedByUserID": 23,
+    "LedgerCreatedByName": "abdo"
+  },
+  {
+    "ID": 39418,
+    "invID": 508703,
+    "invDate": "2026-08-28T00:00:00.000Z",
+    "invTime": "00.36",
+    "GrandTolal": 20,
+    "BranchID": 3,
+    "BranchCode": "CAMP_CAESAR",
+    "ExpINID": 1062,
+    "CatName": "سلفه ( عمر )",
+    "ShiftMoveID": 12147,
+    "BusinessDayID": 5512,
+    "PaymentMethodID": 1,
+    "Notes": "سلفه ( عمر )",
+    "EmpID": 25,
+    "EmpName": "عمر",
+    "ShiftUserID": 23,
+    "ShiftUserName": "abdo",
+    "LedgerID": 2469,
+    "LedgerCreatedAt": "2026-08-29T00:36:30.000Z",
+    "CreatedByUserID": 23,
+    "LedgerCreatedByName": "abdo"
+  },
+  {
+    "ID": 39439,
+    "invID": 508714,
+    "invDate": "2026-08-28T00:00:00.000Z",
+    "invTime": "03.21",
+    "GrandTolal": 10,
+    "BranchID": 3,
+    "BranchCode": "CAMP_CAESAR",
+    "ExpINID": 1062,
+    "CatName": "سلفه ( عمر )",
+    "ShiftMoveID": 12147,
+    "BusinessDayID": 5512,
+    "PaymentMethodID": 1,
+    "Notes": "سلفه ( عمر )",
+    "EmpID": 25,
+    "EmpName": "عمر",
+    "ShiftUserID": 23,
+    "ShiftUserName": "abdo",
+    "LedgerID": 2477,
+    "LedgerCreatedAt": "2026-08-29T03:21:15.000Z",
+    "CreatedByUserID": 23,
+    "LedgerCreatedByName": "abdo"
+  }
+]
+
+================================================================================
+PHASE 6 — Report JOIN fan-out test
+================================================================================
+Fan-out rows: 4
+[
+  {
+    "CashMoveID": 39399,
+    "CashMoveBranchID": 1,
+    "AssignmentBranchID": 1,
+    "BranchCode": "GLEEM",
+    "EmpID": 25,
+    "EmpName": "عمر"
+  },
+  {
+    "CashMoveID": 39399,
+    "CashMoveBranchID": 1,
+    "AssignmentBranchID": 3,
+    "BranchCode": "CAMP_CAESAR",
+    "EmpID": 25,
+    "EmpName": "عمر"
+  },
+  {
+    "CashMoveID": 39406,
+    "CashMoveBranchID": 3,
+    "AssignmentBranchID": 1,
+    "BranchCode": "GLEEM",
+    "EmpID": 25,
+    "EmpName": "عمر"
+  },
+  {
+    "CashMoveID": 39406,
+    "CashMoveBranchID": 3,
+    "AssignmentBranchID": 3,
+    "BranchCode": "CAMP_CAESAR",
+    "EmpID": 25,
+    "EmpName": "عمر"
+  }
+]
+
+================================================================================
+PHASE 7 — Aug 2026 cross-branch duplicate pairs
+================================================================================
+Pairs: 5
+[
+  {
+    "EmpID": 1030,
+    "EmpName": "خيري",
+    "invDate": "2026-08-13",
+    "Amount": 15,
+    "BranchA": "CAMP_CAESAR",
+    "BranchB": "GLEEM",
+    "CashMoveA": 37698,
+    "CashMoveB": 37760,
+    "LedgerA": 2179,
+    "LedgerB": 972,
+    "InvTimeA": "13.09",
+    "InvTimeB": "00.34",
+    "ShiftA": 10979,
+    "ShiftB": 10997,
+    "CreatedAtA": "2026-08-28T03:40:18.000Z",
+    "CreatedAtB": "2026-08-13T21:34:30.000Z"
+  },
+  {
+    "EmpID": 1030,
+    "EmpName": "خيري",
+    "invDate": "2026-08-21",
+    "Amount": 100,
+    "BranchA": "CAMP_CAESAR",
+    "BranchB": "GLEEM",
+    "CashMoveA": 38318,
+    "CashMoveB": 38349,
+    "LedgerA": 2239,
+    "LedgerB": 2247,
+    "InvTimeA": "21.33",
+    "InvTimeB": "13:13",
+    "ShiftA": 11131,
+    "ShiftB": null,
+    "CreatedAtA": "2026-08-28T03:40:18.000Z",
+    "CreatedAtB": "2026-08-28T03:40:18.000Z"
+  },
+  {
+    "EmpID": 18,
+    "EmpName": "احمد",
+    "invDate": "2026-08-27",
+    "Amount": 100,
+    "BranchA": "GLEEM",
+    "BranchB": "CAMP_CAESAR",
+    "CashMoveA": 38648,
+    "CashMoveB": 38678,
+    "LedgerA": 2298,
+    "LedgerB": 2303,
+    "InvTimeA": "17.01",
+    "InvTimeB": "23.53",
+    "ShiftA": 11203,
+    "ShiftB": 11202,
+    "CreatedAtA": "2026-08-28T03:40:18.000Z",
+    "CreatedAtB": "2026-08-28T03:40:18.000Z"
+  },
+  {
+    "EmpID": 25,
+    "EmpName": "عمر",
+    "invDate": "2026-08-28",
+    "Amount": 140,
+    "BranchA": "GLEEM",
+    "BranchB": "CAMP_CAESAR",
+    "CashMoveA": 39399,
+    "CashMoveB": 39406,
+    "LedgerA": 2463,
+    "LedgerB": 2466,
+    "InvTimeA": "22.01",
+    "InvTimeB": "22.53",
+    "ShiftA": 12146,
+    "ShiftB": 12147,
+    "CreatedAtA": "2026-08-28T22:01:33.000Z",
+    "CreatedAtB": "2026-08-28T22:53:13.000Z"
+  },
+  {
+    "EmpID": 1026,
+    "EmpName": "يوسف محمد",
+    "invDate": "2026-08-28",
+    "Amount": 115,
+    "BranchA": "GLEEM",
+    "BranchB": "CAMP_CAESAR",
+    "CashMoveA": 39400,
+    "CashMoveB": 39407,
+    "LedgerA": 2464,
+    "LedgerB": 2467,
+    "InvTimeA": "22.01",
+    "InvTimeB": "22.53",
+    "ShiftA": 12146,
+    "ShiftB": 12147,
+    "CreatedAtA": "2026-08-28T22:01:44.000Z",
+    "CreatedAtB": "2026-08-28T22:53:21.000Z"
+  }
+]
+
+================================================================================
+PHASE 8 — Historical cross-branch pairs (all time)
+================================================================================
+{
+  "totalAdvances": 1665,
+  "suspiciousCrossBranchPairs": 5,
+  "affectedEmployees": 4,
+  "earliestOccurrence": "2026-08-13",
+  "latestOccurrence": "2026-08-28"
+}
+All historical pairs: 5
+[
+  {
+    "EmpID": 25,
+    "EmpName": "عمر",
+    "invDate": "2026-08-28",
+    "Amount": 140,
+    "BranchA": "GLEEM",
+    "BranchB": "CAMP_CAESAR",
+    "CashMoveA": 39399,
+    "CashMoveB": 39406
+  },
+  {
+    "EmpID": 1026,
+    "EmpName": "يوسف محمد",
+    "invDate": "2026-08-28",
+    "Amount": 115,
+    "BranchA": "GLEEM",
+    "BranchB": "CAMP_CAESAR",
+    "CashMoveA": 39400,
+    "CashMoveB": 39407
+  },
+  {
+    "EmpID": 18,
+    "EmpName": "احمد",
+    "invDate": "2026-08-27",
+    "Amount": 100,
+    "BranchA": "GLEEM",
+    "BranchB": "CAMP_CAESAR",
+    "CashMoveA": 38648,
+    "CashMoveB": 38678
+  },
+  {
+    "EmpID": 1030,
+    "EmpName": "خيري",
+    "invDate": "2026-08-21",
+    "Amount": 100,
+    "BranchA": "CAMP_CAESAR",
+    "BranchB": "GLEEM",
+    "CashMoveA": 38318,
+    "CashMoveB": 38349
+  },
+  {
+    "EmpID": 1030,
+    "EmpName": "خيري",
+    "invDate": "2026-08-13",
+    "Amount": 15,
+    "BranchA": "CAMP_CAESAR",
+    "BranchB": "GLEEM",
+    "CashMoveA": 37698,
+    "CashMoveB": 37760
+  }
+]
+
+================================================================================
+PHASE 7b — Same-branch same-day duplicate advances
+================================================================================
+[
+  {
+    "EmpID": 1030,
+    "EmpName": "خيري",
+    "invDate": "2026-08-01",
+    "Amount": 5,
+    "BranchCode": "GLEEM",
+    "CashMoveA": 37099,
+    "CashMoveB": 37135,
+    "ShiftA": 10854,
+    "ShiftB": 10855
+  },
+  {
+    "EmpID": 1026,
+    "EmpName": "يوسف محمد",
+    "invDate": "2026-08-05",
+    "Amount": 100,
+    "BranchCode": "GLEEM",
+    "CashMoveA": 37292,
+    "CashMoveB": 37317,
+    "ShiftA": 10871,
+    "ShiftB": 10870
+  },
+  {
+    "EmpID": 7,
+    "EmpName": "محمد",
+    "invDate": "2026-08-10",
+    "Amount": 50,
+    "BranchCode": "GLEEM",
+    "CashMoveA": 37522,
+    "CashMoveB": 37540,
+    "ShiftA": 10911,
+    "ShiftB": 10915
+  },
+  {
+    "EmpID": 1028,
+    "EmpName": "محمد امين",
+    "invDate": "2026-08-10",
+    "Amount": 15,
+    "BranchCode": "CAMP_CAESAR",
+    "CashMoveA": 37512,
+    "CashMoveB": 37518,
+    "ShiftA": 10910,
+    "ShiftB": 10909
+  },
+  {
+    "EmpID": 1026,
+    "EmpName": "يوسف محمد",
+    "invDate": "2026-08-13",
+    "Amount": 50,
+    "BranchCode": "GLEEM",
+    "CashMoveA": 37701,
+    "CashMoveB": 37753,
+    "ShiftA": 10975,
+    "ShiftB": 10994
+  },
+  {
+    "EmpID": 1026,
+    "EmpName": "يوسف محمد",
+    "invDate": "2026-08-14",
+    "Amount": 100,
+    "BranchCode": "GLEEM",
+    "CashMoveA": 37799,
+    "CashMoveB": 37828,
+    "ShiftA": 11010,
+    "ShiftB": 11012
+  },
+  {
+    "EmpID": 25,
+    "EmpName": "عمر",
+    "invDate": "2026-08-20",
+    "Amount": 100,
+    "BranchCode": "CAMP_CAESAR",
+    "CashMoveA": 38213,
+    "CashMoveB": 38254,
+    "ShiftA": 11111,
+    "ShiftB": 11124
+  },
+  {
+    "EmpID": 1030,
+    "EmpName": "خيري",
+    "invDate": "2026-08-21",
+    "Amount": 50,
+    "BranchCode": "GLEEM",
+    "CashMoveA": 38271,
+    "CashMoveB": 38332,
+    "ShiftA": 11130,
+    "ShiftB": 11139
+  },
+  {
+    "EmpID": 7,
+    "EmpName": "محمد",
+    "invDate": "2026-08-22",
+    "Amount": 135,
+    "BranchCode": "GLEEM",
+    "CashMoveA": 38345,
+    "CashMoveB": 38347,
+    "ShiftA": 11140,
+    "ShiftB": 11140
+  },
+  {
+    "EmpID": 25,
+    "EmpName": "عمر",
+    "invDate": "2026-08-30",
+    "Amount": 20,
+    "BranchCode": "CAMP_CAESAR",
+    "CashMoveA": 39502,
+    "CashMoveB": 39509,
+    "ShiftA": 12172,
+    "ShiftB": 12175
+  }
+]

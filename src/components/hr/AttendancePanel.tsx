@@ -232,9 +232,13 @@ function TodayBranchBadge({ transfer }: { transfer?: AttendanceTransferContext }
     transfer.transferStartTime || transfer.transferEndTime
       ? `${transfer.transferStartTime || '—'}–${transfer.transferEndTime || '—'}`
       : null;
+  const scheduledTag = transfer.isScheduledTransfer ? (
+    <span className="text-[9px] text-violet-300/90 font-medium">مجدول</span>
+  ) : null;
 
   return (
     <span className="inline-flex flex-wrap items-center gap-0.5" data-testid="attendance-today-branch-transferred">
+      {scheduledTag}
       <span
         className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border line-through opacity-60 ${branchTone(transfer.baseBranch.branchCode)}`}
         title="الفرع الأساسي"
@@ -323,8 +327,14 @@ export default function AttendancePanel() {
   const fetchAttendance = useCallback(async (
     targetDate: string,
     scope: EmployeeScopeFilter = employeeScope,
+    opts?: { preserveFeedback?: boolean },
   ) => {
-    setLoading(true); setError(''); setSuccessMsg(''); setDirty(new Set());
+    setLoading(true);
+    if (!opts?.preserveFeedback) {
+      setError('');
+      setSuccessMsg('');
+    }
+    setDirty(new Set());
     try {
       const res  = await fetch(
         `/api/admin/attendance?date=${encodeURIComponent(targetDate)}&employeeScope=${encodeURIComponent(scope)}`,
@@ -373,8 +383,8 @@ export default function AttendancePanel() {
       if (!res.ok || !data.ok) {
         throw new Error(data.error || 'تعذر إلغاء النقل');
       }
-      setSuccessMsg(`تم إلغاء نقل ${row.EmpName}`);
-      await fetchAttendance(date);
+      await fetchAttendance(date, employeeScope, { preserveFeedback: true });
+      setSuccessMsg(`تم إلغاء نقل ${row.EmpName} — تم تحديث القائمة`);
       setTimeout(() => setSuccessMsg(''), 3000);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'تعذر إلغاء النقل');
@@ -1397,9 +1407,11 @@ export default function AttendancePanel() {
         }}
         workDate={date}
         initialEmpId={transferEmpId}
-        onTransferred={() => {
-          void fetchAttendance(date);
-          setSuccessMsg('تم نقل الموظف لفرع آخر لهذا اليوم');
+        onTransferred={async () => {
+          setTransferOpen(false);
+          setTransferEmpId(null);
+          await fetchAttendance(date, employeeScope, { preserveFeedback: true });
+          setSuccessMsg('تم النقل — تم تحديث فرع اليوم في القائمة');
           setTimeout(() => setSuccessMsg(''), 4000);
         }}
       />

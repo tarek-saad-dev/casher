@@ -88,3 +88,36 @@ export function isTransferSourceInactive(args: {
   const phase = resolveTemporaryTransferPhase(args);
   return phase === 'during' || phase === 'all_day' || phase === 'after';
 }
+
+export function isFutureWorkDate(workDate: string, now?: Date): boolean {
+  return workDate > getCairoCalendarDate(now ?? new Date());
+}
+
+/**
+ * HR attendance board: future transfers are visible immediately for planning.
+ */
+export function isAttendanceBoardDestinationVisible(args: {
+  workDate: string;
+  hasXferIn: boolean;
+  startTime?: string | null;
+  endTime?: string | null;
+  now?: Date;
+}): boolean {
+  if (!args.hasXferIn) return false;
+  if (isFutureWorkDate(args.workDate, args.now)) return true;
+  return isTransferDestinationActive(args);
+}
+
+/** Hide source-board row when transferred away (unless attendance already recorded). */
+export function isAttendanceBoardSourceHidden(args: {
+  workDate: string;
+  hasXferOut: boolean;
+  hasAttendance: boolean;
+  startTime?: string | null;
+  endTime?: string | null;
+  now?: Date;
+}): boolean {
+  if (!args.hasXferOut || args.hasAttendance) return false;
+  if (isFutureWorkDate(args.workDate, args.now)) return true;
+  return isTransferSourceInactive(args);
+}

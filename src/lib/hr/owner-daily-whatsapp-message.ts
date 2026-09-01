@@ -213,6 +213,15 @@ export function composeOwnerDailyWhatsAppMessage(
 
     lines.push(`• *${row.empName}*`);
 
+    if (row.payType === 'monthly' && row.monthlySalary != null && row.monthlySalary > 0) {
+      lines.push(`راتب شهري (الفرع): *${moneyPlain(row.monthlySalary)}*`);
+      if (row.monthlySalaryLedger != null && row.monthlySalaryLedger > 0) {
+        lines.push(`مسجّل في الدفتر (الشهر): *${moneyPlain(row.monthlySalaryLedger)}*`);
+      } else {
+        lines.push('مسجّل في الدفتر (الشهر): لم يُرحَّل بعد');
+      }
+    }
+
     if (row.dayBase > 0 || row.dayTarget > 0) {
       const parts: string[] = [];
       if (row.dayBase > 0) parts.push(`أساسي ${moneyPlain(row.dayBase)}`);
@@ -241,7 +250,9 @@ export function composeOwnerDailyWhatsAppMessage(
       row.advancesToday > 0
         ? `سلف: *${moneyPlain(row.advancesToday)}*`
         : 'بدون سلف';
-    lines.push(`استحقاق اليوم: *${moneyPlain(row.dayTotal)}* | ${advancePart}`);
+    const entitlementLabel =
+      row.payType === 'monthly' ? 'يومية اليوم' : 'استحقاق اليوم';
+    lines.push(`${entitlementLabel}: *${moneyPlain(row.dayTotal)}* | ${advancePart}`);
     lines.push(`رصيد الحساب: *${moneyPlainSigned(row.ledgerBalance)} ج.م*`);
     lines.push('');
   }

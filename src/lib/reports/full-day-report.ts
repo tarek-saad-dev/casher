@@ -5,6 +5,7 @@ import { roundMoney } from '@/lib/reportMonthUtils';
 import { getArabicDayName } from '@/lib/reports/reportFormatters';
 import { resolveEmployeeWhatsAppPhone } from '@/lib/integrations/whatsapp/payload-builders';
 import { getEmployeeLedgerSummary } from '@/lib/services/employeeLedgerService';
+import { loadBranchDayMonthlyPlans } from '@/lib/payroll/branchPayrollPlan';
 import type {
   FullDayEmployeeAccountRow,
   FullDayEmployeeRow,
@@ -417,6 +418,60 @@ export async function getFullDayReport(
     }
   }
 
+  const attendanceOnlyRows = await queryOrEmpty<{
+    EmpID: number;
+    EmpName: string;
+    CheckInTime: string | null;
+    CheckOutTime: string | null;
+    AttendanceStatus: string | null;
+    WhatsApp: string | null;
+    Mobile: string | null;
+  }>('attendance-no-payroll', () =>
+    db.request().input('d', sql.Date, workDate).input('branchId', sql.Int, branchId).query(`
+      SELECT
+        a.EmpID,
+        e.EmpName,
+        CASE WHEN a.CheckInTime IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), a.CheckInTime, 108), 5) ELSE NULL END AS CheckInTime,
+        CASE WHEN a.CheckOutTime IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), a.CheckOutTime, 108), 5) ELSE NULL END AS CheckOutTime,
+        a.Status AS AttendanceStatus,
+        e.WhatsApp,
+        e.Mobile
+      FROM dbo.TblEmpAttendance a
+      INNER JOIN dbo.TblEmp e ON e.EmpID = a.EmpID
+      WHERE a.WorkDate = @d
+        AND a.BranchID = @branchId
+        AND a.Status IN (N'Present', N'Late', N'EarlyLeave')
+        AND NOT EXISTS (
+          SELECT 1 FROM dbo.TblEmpDailyPayroll p
+          WHERE p.EmpID = a.EmpID AND p.BranchID = a.BranchID AND p.WorkDate = a.WorkDate
+        )
+    `),
+  );
+
+  for (const row of attendanceOnlyRows) {
+    const empId = Number(row.EmpID);
+    if (employees.some((e) => e.empId === empId)) continue;
+    const target = targetByEmp.get(empId);
+    const phone = resolveEmployeeWhatsAppPhone(row.WhatsApp, row.Mobile);
+    employees.push({
+      empId,
+      empName: String(row.EmpName ?? ''),
+      checkIn: row.CheckInTime ?? null,
+      checkOut: row.CheckOutTime ?? null,
+      actualHours: null,
+      attendanceStatus: row.AttendanceStatus ?? null,
+      baseWage: 0,
+      targetAmount: target?.amount ?? 0,
+      targetSales: target?.sales ?? null,
+      mtdSales: target?.mtdSales ?? null,
+      mtdTargetAmount: target?.mtdTargetAmount ?? null,
+      targetBreakdown: target?.breakdown ?? null,
+      dayTotal: roundMoney(target?.amount ?? 0),
+      payrollStatus: null,
+      hasPhone: !!phone,
+    });
+  }
+
   employees.sort((a, b) => a.empName.localeCompare(b.empName, 'ar'));
 
   const wageTotal = roundMoney(employees.reduce((s, e) => s + e.baseWage, 0));
@@ -746,6 +801,31 @@ export async function getFullDayReport(
   };
 
   const payrollMonth = workDate.slice(0, 7);
+  const monthlyPlans = await loadBranchDayMonthlyPlans(branchId, workDate);
+  let monthlyLedgerByEmp = new Map<number, number>();
+  try {
+    const monthlyLedgerRows = await db
+      .request()
+      .input('branchId', sql.Int, branchId)
+      .input('month', sql.NVarChar(7), payrollMonth)
+      .query(`
+        SELECT EmpID, ISNULL(Amount, 0) AS Amount
+        FROM dbo.TblEmpLedgerEntry
+        WHERE BranchID = @branchId
+          AND PayrollMonth = @month
+          AND EntryReason = N'monthly_salary'
+          AND IsVoided = 0
+      `);
+    monthlyLedgerByEmp = new Map(
+      (monthlyLedgerRows.recordset as Array<{ EmpID: number; Amount: number }>).map((r) => [
+        Number(r.EmpID),
+        roundMoney(Number(r.Amount ?? 0)),
+      ]),
+    );
+  } catch (err) {
+    console.warn('[full-day-report] monthly salary ledger unavailable', err);
+  }
+
   const advancesTodayByEmp = new Map(
     advancesByEmployee.map((r) => {
       const empId = Number(String(r.key).replace(/^emp:/, ''));
@@ -774,6 +854,7 @@ export async function getFullDayReport(
     ...employees.map((e) => e.empId),
     ...advancesTodayByEmp.keys(),
     ...ledgerEmpIdsWithBalance,
+    ...monthlyPlans.keys(),
   ]);
 
   const accountRows: FullDayEmployeeAccountRow[] = [...accountEmpIds].map((empId) => {
@@ -781,6 +862,13 @@ export async function getFullDayReport(
     const ledger = ledgerByEmp.get(empId);
     const dayBase = dayEmp?.baseWage ?? 0;
     const dayTarget = dayEmp?.targetAmount ?? 0;
+    const monthlyPlan = monthlyPlans.get(empId);
+    const monthlySalary = monthlyPlan?.monthlySalary ?? null;
+    const payType: FullDayEmployeeAccountRow['payType'] = monthlySalary != null
+      ? 'monthly'
+      : dayBase > 0 || dayTarget > 0
+        ? 'hourly'
+        : null;
     return {
       empId,
       empName: dayEmp?.empName || ledger?.empName || `موظف #${empId}`,
@@ -792,6 +880,9 @@ export async function getFullDayReport(
       dayTotal: roundMoney(dayBase + dayTarget),
       advancesToday: advancesTodayByEmp.get(empId) ?? 0,
       ledgerBalance: ledger?.balance ?? 0,
+      payType,
+      monthlySalary,
+      monthlySalaryLedger: monthlyLedgerByEmp.get(empId) ?? null,
     };
   });
 
@@ -803,6 +894,7 @@ export async function getFullDayReport(
       r.dayTotal > 0 ||
       r.advancesToday > 0 ||
       Math.abs(r.ledgerBalance) > 0.009 ||
+      (r.monthlySalary != null && r.monthlySalary > 0) ||
       employees.some((e) => e.empId === r.empId),
   );
 

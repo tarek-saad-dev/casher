@@ -124,6 +124,12 @@ export interface FullDayEmployeeAccountRow {
   advancesToday: number;
   /** رصيد حساب الموظف في الدفتر لهذا الشهر حتى الآن */
   ledgerBalance: number;
+  /** hourly | daily | monthly من خطة الفرع */
+  payType: 'hourly' | 'daily' | 'monthly' | null;
+  /** الراتب الشهري من خطة الفرع (للموظفين الشهريين) */
+  monthlySalary: number | null;
+  /** ما تم ترحيله في الدفتر كـ monthly_salary لهذا الشهر */
+  monthlySalaryLedger: number | null;
 }
 
 export interface FullDayEmployeeAccounts {

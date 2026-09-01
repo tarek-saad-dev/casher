@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeftRight, CheckCircle2, Loader2, MapPin, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { getOperationalDate } from '@/lib/businessDate';
 import { cn } from '@/lib/utils';
 
 type TransferDestination = {
@@ -74,7 +75,7 @@ interface Props {
   initialEmpId?: number | null;
   /** Rich assignment summary when opened from workforce availability. */
   assignmentContext?: TransferAssignmentContext | null;
-  onTransferred?: () => void;
+  onTransferred?: () => void | Promise<void>;
 }
 
 function sectionLabel(section?: TransferableEmployee['section']): string {
@@ -158,8 +159,11 @@ export function TemporaryBranchTransferModal({
   const [reason, setReason] = useState('');
   const [preview, setPreview] = useState<TransferPreview | null>(null);
   const [forceDespiteBlockers, setForceDespiteBlockers] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const isFutureDate = workDate > getOperationalDate();
 
   const selectedEmployee = useMemo(
     () => employees.find((b) => b.empId === empId) ?? null,
@@ -451,34 +455,56 @@ export function TemporaryBranchTransferModal({
     setError(null);
   }, [empId, toBranchId, startTime, endTime]);
 
+  const fetchPreview = useCallback(async (): Promise<TransferPreview | null> => {
+    if (!empId || !toBranchId) return null;
+    const res = await fetch(`/api/operations/employees/${empId}/temporary-transfer/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workDate,
+        toBranchId,
+        startTime: startTime || undefined,
+        endTime: endTime || undefined,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error ?? 'فشل معاينة النقل');
+    }
+    return data.preview as TransferPreview;
+  }, [empId, toBranchId, workDate, startTime, endTime]);
+
+  useEffect(() => {
+    if (!open || !empId || !toBranchId) return;
+    const timer = window.setTimeout(() => {
+      setPreviewing(true);
+      setError(null);
+      void fetchPreview()
+        .then((next) => setPreview(next))
+        .catch((e) => {
+          setPreview(null);
+          setError(e instanceof Error ? e.message : 'فشل معاينة النقل');
+        })
+        .finally(() => setPreviewing(false));
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [open, empId, toBranchId, startTime, endTime, fetchPreview]);
+
   const runPreview = async () => {
     if (!empId || !toBranchId) {
       setError('اختر الموظف وفرع الوجهة');
       return;
     }
-    setBusy(true);
+    setPreviewing(true);
     setError(null);
     try {
-      const res = await fetch(`/api/operations/employees/${empId}/temporary-transfer/preview`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workDate,
-          toBranchId,
-          startTime: startTime || undefined,
-          endTime: endTime || undefined,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error ?? 'فشل معاينة النقل');
-      }
-      setPreview(data.preview as TransferPreview);
+      const next = await fetchPreview();
+      setPreview(next);
     } catch (e) {
       setPreview(null);
       setError(e instanceof Error ? e.message : 'فشل معاينة النقل');
     } finally {
-      setBusy(false);
+      setPreviewing(false);
     }
   };
 
@@ -491,21 +517,27 @@ export function TemporaryBranchTransferModal({
       setError('سبب النقل مطلوب');
       return;
     }
-    const canApply =
-      preview?.canTransfer ||
-      (forceDespiteBlockers && preview?.canForceTransfer);
-    if (!canApply) {
-      setError(
-        preview?.canForceTransfer
-          ? 'فعّل «تطبيق رغم الموانع» ثم أعد المحاولة'
-          : 'نفّذ المعاينة أولاً وتأكد أن النقل مسموح',
-      );
-      return;
-    }
 
     setBusy(true);
     setError(null);
     try {
+      let currentPreview = preview;
+      if (!currentPreview) {
+        currentPreview = await fetchPreview();
+        setPreview(currentPreview);
+      }
+      const canApply =
+        currentPreview?.canTransfer ||
+        (forceDespiteBlockers && currentPreview?.canForceTransfer);
+      if (!canApply) {
+        setError(
+          currentPreview?.canForceTransfer
+            ? 'فعّل «تطبيق رغم الموانع» ثم أعد المحاولة'
+            : 'تعذر النقل — راجع المعاينة أو اختر فرعًا آخر',
+        );
+        return;
+      }
+
       const res = await fetch(`/api/operations/employees/${empId}/temporary-transfer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -516,14 +548,14 @@ export function TemporaryBranchTransferModal({
           endTime: endTime || undefined,
           reason: reason.trim(),
           forceDespiteBlockers:
-            forceDespiteBlockers && preview?.canForceTransfer === true,
+            forceDespiteBlockers && currentPreview?.canForceTransfer === true,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
         throw new Error(data.error ?? 'فشل النقل');
       }
-      onTransferred?.();
+      await onTransferred?.();
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'فشل النقل');
@@ -549,7 +581,7 @@ export function TemporaryBranchTransferModal({
       if (!res.ok || !data.ok) {
         throw new Error(data.error ?? 'فشل إلغاء النقل');
       }
-      onTransferred?.();
+      await onTransferred?.();
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'فشل إلغاء النقل');
@@ -579,10 +611,16 @@ export function TemporaryBranchTransferModal({
               <p className="text-xs text-muted-foreground">
                 نقل طارئ لتاريخ {workDate} فقط — لا يعدّل الجدول الأسبوعي
               </p>
-              <p className="mt-1 text-[11px] leading-relaxed text-amber-200/90">
-                قبل ساعة البداية يفضل يظهر في الفرع الأصلي فقط. من ساعة البداية يظهر في
-                الوجهة — بعد ما تقفل حضور الفرع السابق (انصراف).
-              </p>
+              {isFutureDate ? (
+                <p className="mt-1 text-[11px] leading-relaxed text-violet-200/90">
+                  أنت بتخطط ليوم لاحق — بعد الحفظ هيظهر فرع اليوم الجديد في قائمة الحضور فورًا.
+                </p>
+              ) : (
+                <p className="mt-1 text-[11px] leading-relaxed text-amber-200/90">
+                  قبل ساعة البداية يفضل يظهر في الفرع الأصلي فقط. من ساعة البداية يظهر في
+                  الوجهة — بعد ما تقفل حضور الفرع السابق (انصراف).
+                </p>
+              )}
             </div>
           </div>
           <button
@@ -875,6 +913,13 @@ export function TemporaryBranchTransferModal({
                 </div>
               )}
 
+              {previewing && !preview && (
+                <div className="flex items-center gap-2 rounded-lg border border-border/80 bg-surface-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  جاري معاينة النقل تلقائيًا…
+                </div>
+              )}
+
               {preview && (
                 <div className="space-y-3">
                   <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
@@ -998,6 +1043,7 @@ export function TemporaryBranchTransferModal({
             type="button"
             disabled={
               busy ||
+              previewing ||
               loadingMeta ||
               !empId ||
               !toBranchId ||
@@ -1010,7 +1056,7 @@ export function TemporaryBranchTransferModal({
             onClick={() => void applyTransfer()}
             className="flex-1 bg-primary text-primary-foreground"
           >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'تطبيق النقل'}
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'نقل الآن'}
           </Button>
         </div>
       </div>

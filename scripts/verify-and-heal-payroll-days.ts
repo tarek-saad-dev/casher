@@ -79,6 +79,13 @@ async function auditDate(
           WHERE p.EmpID = a.EmpID AND p.BranchID = a.BranchID AND p.WorkDate = a.WorkDate
             AND p.Status = N'Generated'
         )
+        AND NOT EXISTS (
+          SELECT 1 FROM dbo.TblEmpBranchPayrollPlan bp
+          WHERE bp.EmpID = a.EmpID AND bp.BranchID = a.BranchID
+            AND bp.IsActive = 1 AND bp.PayType = N'monthly'
+            AND bp.EffectiveFrom <= a.WorkDate
+            AND (bp.EffectiveTo IS NULL OR bp.EffectiveTo >= a.WorkDate)
+        )
       ORDER BY b.BranchName, e.EmpName
     `)
   ).recordset;
