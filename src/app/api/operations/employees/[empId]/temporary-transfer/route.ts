@@ -45,6 +45,8 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       toBranchId,
       startTime: body.startTime ?? null,
       endTime: body.endTime ?? null,
+      hintFromBranchId:
+        body.fromBranchId != null ? Number(body.fromBranchId) : auth.activeBranchId,
       allowSetupDestination: smokePreview,
       relocateAttendance,
     });

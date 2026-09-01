@@ -207,6 +207,17 @@ export function TemporaryBranchTransferModal({
     (direction === 'send' ? sessionBranchId : null) ??
     null;
 
+  const hintFromBranchId = useMemo(() => {
+    if (assignmentContext?.fromBranchId != null) return assignmentContext.fromBranchId;
+    if (direction === 'send') return sessionBranchId;
+    return selectedEmployee?.currentBranch?.branchId ?? null;
+  }, [
+    assignmentContext?.fromBranchId,
+    direction,
+    sessionBranchId,
+    selectedEmployee?.currentBranch?.branchId,
+  ]);
+
   const destinationOptions = useMemo(() => {
     if (direction === 'pull' && sessionBranchId != null) {
       return destinations.filter((d) => d.branchId === sessionBranchId);
@@ -463,6 +474,7 @@ export function TemporaryBranchTransferModal({
       body: JSON.stringify({
         workDate,
         toBranchId,
+        fromBranchId: hintFromBranchId ?? undefined,
         startTime: startTime || undefined,
         endTime: endTime || undefined,
       }),
@@ -472,7 +484,7 @@ export function TemporaryBranchTransferModal({
       throw new Error(data.error ?? 'فشل معاينة النقل');
     }
     return data.preview as TransferPreview;
-  }, [empId, toBranchId, workDate, startTime, endTime]);
+  }, [empId, toBranchId, workDate, startTime, endTime, hintFromBranchId]);
 
   useEffect(() => {
     if (!open || !empId || !toBranchId) return;
@@ -544,6 +556,7 @@ export function TemporaryBranchTransferModal({
         body: JSON.stringify({
           workDate,
           toBranchId,
+          fromBranchId: hintFromBranchId ?? undefined,
           startTime: startTime || undefined,
           endTime: endTime || undefined,
           reason: reason.trim(),

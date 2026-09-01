@@ -32,6 +32,8 @@ export async function POST(req: NextRequest) {
       toBranchId,
       startTime: body.startTime ?? null,
       endTime: body.endTime ?? null,
+      hintFromBranchId:
+        body.fromBranchId != null ? Number(body.fromBranchId) : auth.activeBranchId,
       relocateAttendance: body.relocateAttendance === true,
     });
     const flags = await resolveTransferAccessFlags(
@@ -45,6 +47,8 @@ export async function POST(req: NextRequest) {
       toBranchId,
       startTime: body.startTime ?? null,
       endTime: body.endTime ?? null,
+      hintFromBranchId:
+        body.fromBranchId != null ? Number(body.fromBranchId) : auth.activeBranchId,
       relocateAttendance: body.relocateAttendance === true,
       ...flags,
     });

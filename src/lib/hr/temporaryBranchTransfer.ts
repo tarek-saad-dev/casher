@@ -14,6 +14,7 @@ import { invalidateTemporaryTransferCaches } from '@/lib/hr/scheduleAvailability
 import { resolveBranchPayrollPlanForDate } from '@/lib/payroll/branchPayrollPlan';
 import { normalizeEmploymentType } from '@/lib/hr/employee-hr-model';
 import { ensureEmployeeBranchAssignment } from '@/lib/branch/assignmentIntegrity';
+import { isFutureWorkDate } from '@/lib/hr/temporaryTransferWindow';
 import {
   RELOCATABLE_TRANSFER_BLOCKER_CODES,
   splitTransferBlockers,
@@ -210,8 +211,100 @@ async function resolveFreelanceOperationalSource(args: {
   };
 }
 
-/** Ensure destination assignment + booking services stamp for freelance day transfer. */
-async function provisionFreelanceDestinationForTransfer(args: {
+async function hasActiveAssignmentOnDate(
+  empId: number,
+  branchId: number,
+  workDate: string,
+): Promise<boolean> {
+  const db = await getPool();
+  const r = await db
+    .request()
+    .input('empId', sql.Int, empId)
+    .input('branchId', sql.Int, branchId)
+    .input('day', sql.Date, workDate)
+    .query(`
+      SELECT TOP 1 1 AS X
+      FROM dbo.TblEmpBranchAssignment
+      WHERE EmpID = @empId AND BranchID = @branchId AND IsActive = 1
+        AND EffectiveFrom <= @day AND (EffectiveTo IS NULL OR EffectiveTo >= @day)
+    `);
+  return Boolean(r.recordset[0]);
+}
+
+async function loadAssignmentNotesForBranch(
+  empId: number,
+  branchId: number,
+  workDate: string,
+): Promise<string> {
+  const db = await getPool();
+  const r = await db
+    .request()
+    .input('empId', sql.Int, empId)
+    .input('branchId', sql.Int, branchId)
+    .input('day', sql.Date, workDate)
+    .query(`
+      SELECT TOP 1 Notes
+      FROM dbo.TblEmpBranchAssignment
+      WHERE EmpID = @empId AND BranchID = @branchId AND IsActive = 1
+        AND EffectiveFrom <= @day AND (EffectiveTo IS NULL OR EffectiveTo >= @day)
+      ORDER BY ID DESC
+    `);
+  return String(r.recordset[0]?.Notes ?? '');
+}
+
+function hasServicesStamp(notes: string): boolean {
+  return /services:\d/.test(notes);
+}
+
+async function resolveBranchAsOperationalSource(
+  empId: number,
+  branchId: number,
+  workDate: string,
+): Promise<OperationalSourceBranch | null> {
+  const branch = await getBranchById(branchId);
+  if (!branch) return null;
+  const sched = await resolveEmployeeBranchSchedule({ empId, branchId, workDate });
+  const startTime =
+    sched?.startTime ??
+    branch.defaultOpenTime?.slice(0, 5) ??
+    null;
+  const endTime =
+    sched?.endTime ??
+    branch.defaultCloseTime?.slice(0, 5) ??
+    null;
+  return {
+    branchId: branch.branchId,
+    branchCode: branch.branchCode,
+    branchName: branch.branchName,
+    startTime,
+    endTime,
+  };
+}
+
+/**
+ * When the weekly schedule has no working branch (common for future planning),
+ * infer source from UI hint, home assignment, or attendance/assignment fallback.
+ */
+async function resolvePlannedTransferSource(args: {
+  empId: number;
+  workDate: string;
+  toBranchId: number;
+  hintFromBranchId?: number | null;
+}): Promise<OperationalSourceBranch | null> {
+  if (
+    args.hintFromBranchId != null &&
+    args.hintFromBranchId > 0 &&
+    args.hintFromBranchId !== args.toBranchId &&
+    (await hasActiveAssignmentOnDate(args.empId, args.hintFromBranchId, args.workDate))
+  ) {
+    return resolveBranchAsOperationalSource(args.empId, args.hintFromBranchId, args.workDate);
+  }
+
+  return resolveFreelanceOperationalSource(args);
+}
+
+/** Ensure destination assignment + booking services stamp for day transfer. */
+async function provisionDestinationForTransfer(args: {
   empId: number;
   workDate: string;
   fromBranchId: number;
@@ -242,22 +335,14 @@ async function provisionFreelanceDestinationForTransfer(args: {
   if (!destRow) return;
 
   const destNotes = String(destRow.Notes ?? '');
-  if (/services:\d/.test(destNotes)) return;
+  if (hasServicesStamp(destNotes)) return;
 
-  const src = await db
-    .request()
-    .input('empId', sql.Int, args.empId)
-    .input('branchId', sql.Int, args.fromBranchId)
-    .input('day', sql.Date, args.workDate)
-    .query(`
-      SELECT TOP 1 Notes
-      FROM dbo.TblEmpBranchAssignment
-      WHERE EmpID = @empId AND BranchID = @branchId AND IsActive = 1
-        AND EffectiveFrom <= @day AND (EffectiveTo IS NULL OR EffectiveTo >= @day)
-      ORDER BY ID DESC
-    `);
-  const srcNotes = String(src.recordset[0]?.Notes ?? '');
-  if (!/services:\d/.test(srcNotes)) return;
+  const srcNotes = await loadAssignmentNotesForBranch(
+    args.empId,
+    args.fromBranchId,
+    args.workDate,
+  );
+  if (!hasServicesStamp(srcNotes)) return;
 
   await db
     .request()
@@ -270,6 +355,16 @@ async function provisionFreelanceDestinationForTransfer(args: {
     `);
 }
 
+/** @deprecated use provisionDestinationForTransfer */
+async function provisionFreelanceDestinationForTransfer(args: {
+  empId: number;
+  workDate: string;
+  fromBranchId: number;
+  toBranchId: number;
+}): Promise<void> {
+  await provisionDestinationForTransfer(args);
+}
+
 /**
  * Preview transfer. FromBranch is resolved from global schedule — never trusted from client.
  */
@@ -279,6 +374,8 @@ export async function previewTemporaryBranchTransfer(args: {
   toBranchId: number;
   startTime?: string | null;
   endTime?: string | null;
+  /** Session/UI hint for send-from-this-branch when weekly schedule is empty. */
+  hintFromBranchId?: number | null;
   /** When true, SETUP destinations may appear for authorized smoke/admin preview. */
   allowSetupDestination?: boolean;
   callerHasSourceAccess?: boolean;
@@ -301,6 +398,7 @@ export async function previewTemporaryBranchTransfer(args: {
 
   const employmentType = normalizeEmploymentType(await loadEmployeeEmploymentType(args.empId));
   const isFreelance = employmentType === 'freelance';
+  const plannedDay = isFutureWorkDate(args.workDate);
 
   let source: OperationalSourceBranch | null =
     global.branches.find((b) => b.isWorking) ?? null;
@@ -312,10 +410,11 @@ export async function previewTemporaryBranchTransfer(args: {
       message: 'لا يمكن النقل مع إجازة / غياب يومي عام — ألغِ الغياب أولاً',
     });
   } else if (!source && isFreelance) {
-    source = await resolveFreelanceOperationalSource({
+    source = await resolvePlannedTransferSource({
       empId: args.empId,
       workDate: args.workDate,
       toBranchId: args.toBranchId,
+      hintFromBranchId: args.hintFromBranchId,
     });
     if (source) {
       warnings.push(
@@ -328,10 +427,24 @@ export async function previewTemporaryBranchTransfer(args: {
       });
     }
   } else if (!source) {
-    blockers.push({
-      code: 'TRANSFER_NO_SOURCE_SCHEDULE',
-      message: 'لا يوجد فرع تشغيلي مجدول لهذا اليوم',
+    source = await resolvePlannedTransferSource({
+      empId: args.empId,
+      workDate: args.workDate,
+      toBranchId: args.toBranchId,
+      hintFromBranchId: args.hintFromBranchId,
     });
+    if (source) {
+      warnings.push(
+        plannedDay
+          ? 'نقل مخطّط ليوم لاحق — سيتم اعتماد فرع المصدر من التعيين/الفرع الحالي'
+          : 'الموظف غير مجدول للعمل اليوم — سيتم اعتماد فرع المصدر من التعيين',
+      );
+    } else {
+      blockers.push({
+        code: 'TRANSFER_NO_SOURCE_SCHEDULE',
+        message: 'لا يوجد فرع تشغيلي مجدول لهذا اليوم',
+      });
+    }
   }
 
   if (source && source.branchId === args.toBranchId) {
@@ -394,7 +507,9 @@ export async function previewTemporaryBranchTransfer(args: {
         AND EffectiveFrom <= @day AND (EffectiveTo IS NULL OR EffectiveTo >= @day)
     `);
   if (!assign.recordset[0]) {
-    if (isFreelance) {
+    if (source) {
+      warnings.push('سيتم تفعيل تعيين فرع الوجهة تلقائياً عند النقل');
+    } else if (isFreelance) {
       warnings.push(
         'فري لانس: تعيين الوجهة غير موجود حالياً — سيُفعَّل تلقائياً عند تطبيق النقل',
       );
@@ -424,18 +539,19 @@ export async function previewTemporaryBranchTransfer(args: {
   }
 
   // Services stamp (booking eligibility)
-  const notes = await db
-    .request()
-    .input('empId', sql.Int, args.empId)
-    .input('branchId', sql.Int, args.toBranchId)
-    .query(`
-      SELECT TOP 1 Notes FROM dbo.TblEmpBranchAssignment
-      WHERE EmpID=@empId AND BranchID=@branchId AND IsActive=1
-      ORDER BY ID DESC
-    `);
-  const n = String(notes.recordset[0]?.Notes ?? '');
-  if (!/services:\d/.test(n)) {
-    if (isFreelance) {
+  const destNotes = await loadAssignmentNotesForBranch(
+    args.empId,
+    args.toBranchId,
+    args.workDate,
+  );
+  const sourceNotes =
+    source != null
+      ? await loadAssignmentNotesForBranch(args.empId, source.branchId, args.workDate)
+      : '';
+  if (!hasServicesStamp(destNotes)) {
+    if (hasServicesStamp(sourceNotes)) {
+      warnings.push('سيتم نسخ أهلية الحجز من فرع المصدر تلقائياً عند النقل');
+    } else if (isFreelance) {
       warnings.push(
         'فري لانس: أهلية الخدمات ستُنسخ من فرع المصدر عند تطبيق النقل',
       );
@@ -768,15 +884,12 @@ export async function createTemporaryBranchTransfer(args: {
     );
   }
 
-  const employmentType = normalizeEmploymentType(await loadEmployeeEmploymentType(args.empId));
-  if (employmentType === 'freelance') {
-    await provisionFreelanceDestinationForTransfer({
-      empId: args.empId,
-      workDate: args.workDate,
-      fromBranchId,
-      toBranchId: args.toBranchId,
-    });
-  }
+  await provisionDestinationForTransfer({
+    empId: args.empId,
+    workDate: args.workDate,
+    fromBranchId,
+    toBranchId: args.toBranchId,
+  });
 
   const forced = force && !preview.canTransfer;
   const overrideCodes = [

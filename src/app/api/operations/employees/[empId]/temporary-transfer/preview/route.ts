@@ -41,6 +41,8 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       toBranchId: destId,
       startTime: body.startTime ?? null,
       endTime: body.endTime ?? null,
+      hintFromBranchId:
+        body.fromBranchId != null ? Number(body.fromBranchId) : auth.activeBranchId,
       allowSetupDestination: smokePreview,
       relocateAttendance,
     });
@@ -61,6 +63,8 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       toBranchId: destId,
       startTime: body.startTime ?? null,
       endTime: body.endTime ?? null,
+      hintFromBranchId:
+        body.fromBranchId != null ? Number(body.fromBranchId) : auth.activeBranchId,
       allowSetupDestination: smokePreview,
       relocateAttendance,
       ...flags,
