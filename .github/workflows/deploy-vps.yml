@@ -32,6 +32,24 @@ jobs:
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
+      - name: Prepare VPS repository
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh \
+            -i ~/.ssh/id_ed25519 \
+            -o BatchMode=yes \
+            "$VPS_USER@$VPS_HOST" \
+            "sudo -u casher bash -lc '
+              cd /home/casher/app
+              if ! git diff --quiet || ! git diff --cached --quiet; then
+                echo \"Pre-deploy: discarding local tracked changes\"
+                git status --short || true
+                git reset --hard HEAD
+              fi
+            '"
+
       - name: Deploy to VPS
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
@@ -41,7 +59,7 @@ jobs:
             -i ~/.ssh/id_ed25519 \
             -o BatchMode=yes \
             "$VPS_USER@$VPS_HOST" \
-            "sudo bash /home/casher/app/deploy/deploy-casher"
+            "sudo /usr/local/sbin/deploy-casher"
 
       - name: Restart messaging workers
         env:
