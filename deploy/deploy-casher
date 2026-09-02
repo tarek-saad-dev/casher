@@ -15,20 +15,6 @@ NIGHTLY_SERVICE_DST="/etc/systemd/system/nightly-close.service"
 NIGHTLY_TIMER_SRC="$APP_DIR/deploy/nightly-close.timer"
 NIGHTLY_TIMER_DST="/etc/systemd/system/nightly-close.timer"
 
-casher_user_systemctl() {
-  local casher_uid casher_runtime_dir
-  casher_uid="$(id -u casher)"
-  casher_runtime_dir="/run/user/${casher_uid}"
-  if [[ ! -d "$casher_runtime_dir" ]]; then
-    echo "Skipping systemctl --user ($*): ${casher_runtime_dir} not available"
-    return 0
-  fi
-  if ! runuser -u casher -- env XDG_RUNTIME_DIR="$casher_runtime_dir" systemctl --user "$@"; then
-    echo "Warning: systemctl --user $* failed (non-fatal)"
-    return 0
-  fi
-}
-
 load_github_deploy_token() {
   if [[ -n "${GITHUB_DEPLOY_TOKEN:-}" ]]; then
     return 0
@@ -104,8 +90,16 @@ echo "======================================"
 cd "$APP_DIR"
 
 REPO_DEPLOY_SCRIPT="$APP_DIR/deploy/deploy-casher"
-if [[ -f "$REPO_DEPLOY_SCRIPT" && "$0" != "$REPO_DEPLOY_SCRIPT" ]]; then
-  exec bash "$REPO_DEPLOY_SCRIPT" "$@"
+if [[ -f "$REPO_DEPLOY_SCRIPT" ]]; then
+  SELF_PATH="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || printf '%s' "$0")"
+  REPO_PATH="$(readlink -f "$REPO_DEPLOY_SCRIPT" 2>/dev/null || realpath "$REPO_DEPLOY_SCRIPT" 2>/dev/null || printf '%s' "$REPO_DEPLOY_SCRIPT")"
+  if [[ "$SELF_PATH" != "$REPO_PATH" ]]; then
+    exec bash "$REPO_DEPLOY_SCRIPT" "$@"
+  fi
+fi
+
+if [[ -f "$REPO_DEPLOY_SCRIPT" ]]; then
+  install -m 755 "$REPO_DEPLOY_SCRIPT" "/usr/local/sbin/deploy-casher"
 fi
 
 echo
@@ -147,10 +141,6 @@ else
       -e 'public/uploads/**' \
       -e 'uploads/**' || true
   fi
-fi
-
-if [[ -f "$APP_DIR/deploy/deploy-casher" ]]; then
-  install -m 755 "$APP_DIR/deploy/deploy-casher" "/usr/local/sbin/deploy-casher"
 fi
 
 echo
@@ -224,28 +214,26 @@ if [[ -f "$NIGHTLY_SERVICE_SRC" && -f "$NIGHTLY_TIMER_SRC" ]]; then
   install -m 644 "$NIGHTLY_SERVICE_SRC" "$NIGHTLY_SERVICE_DST"
   install -m 644 "$NIGHTLY_TIMER_SRC" "$NIGHTLY_TIMER_DST"
 fi
-systemctl daemon-reload
+systemctl daemon-reload || true
 if [[ -f "$WORKER_UNIT_DST" ]]; then
-  systemctl enable messaging-worker.service
+  systemctl enable messaging-worker.service || true
 fi
 if [[ -f "$INBOX_WORKER_UNIT_DST" ]]; then
-  systemctl enable messaging-inbox-worker.service
+  systemctl enable messaging-inbox-worker.service || true
 fi
 if [[ -f "$NIGHTLY_TIMER_DST" ]]; then
-  systemctl enable nightly-close.timer
-  systemctl start nightly-close.timer
+  systemctl enable nightly-close.timer || true
+  systemctl start nightly-close.timer || true
 fi
 
 echo
 echo "[8/8] Restarting Casher + messaging workers..."
 systemctl restart casher
 if [[ -f "$WORKER_UNIT_DST" ]]; then
-  systemctl restart messaging-worker.service
+  systemctl restart messaging-worker.service || true
 fi
 if [[ -f "$INBOX_WORKER_UNIT_DST" ]]; then
-  systemctl restart messaging-inbox-worker.service
-else
-  casher_user_systemctl restart messaging-worker.service
+  systemctl restart messaging-inbox-worker.service || true
 fi
 if [[ -f "$AI_WORKER_UNIT_DST" ]]; then
   if gemini_api_key_configured; then

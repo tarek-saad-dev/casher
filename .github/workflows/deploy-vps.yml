@@ -84,6 +84,17 @@ jobs:
                  'https://x-access-token:${GITHUB_DEPLOY_TOKEN}@github.com/tarek-saad-dev/casher.git' || true
              fi"
 
+      - name: Upload deploy script
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          scp \
+            -i ~/.ssh/id_ed25519 \
+            -o BatchMode=yes \
+            deploy/deploy-casher \
+            "$VPS_USER@$VPS_HOST:/home/casher/app/deploy/deploy-casher"
+
       - name: Deploy to VPS
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
@@ -105,10 +116,7 @@ jobs:
             -o BatchMode=yes \
             "$VPS_USER@$VPS_HOST" \
             'sudo systemctl restart messaging-worker.service || true
-             sudo systemctl restart messaging-inbox-worker.service || true
-             export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-             systemctl --user restart messaging-worker.service || true
-             systemctl --user is-active messaging-worker.service || true'
+             sudo systemctl restart messaging-inbox-worker.service || true'
 
       - name: Verify Production
         run: |
