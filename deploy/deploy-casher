@@ -13,9 +13,20 @@ NIGHTLY_SERVICE_SRC="$APP_DIR/deploy/nightly-close.service"
 NIGHTLY_SERVICE_DST="/etc/systemd/system/nightly-close.service"
 NIGHTLY_TIMER_SRC="$APP_DIR/deploy/nightly-close.timer"
 NIGHTLY_TIMER_DST="/etc/systemd/system/nightly-close.timer"
-NIGHTLY_USER_SERVICE_SRC="$APP_DIR/deploy/nightly-close.user.service"
-NIGHTLY_USER_TIMER_SRC="$APP_DIR/deploy/nightly-close.user.timer"
-NIGHTLY_USER_DIR="/home/casher/.config/systemd/user"
+
+casher_user_systemctl() {
+  local casher_uid casher_runtime_dir
+  casher_uid="$(id -u casher)"
+  casher_runtime_dir="/run/user/${casher_uid}"
+  if [[ ! -d "$casher_runtime_dir" ]]; then
+    echo "Skipping systemctl --user ($*): ${casher_runtime_dir} not available"
+    return 0
+  fi
+  if ! runuser -u casher -- env XDG_RUNTIME_DIR="$casher_runtime_dir" systemctl --user "$@"; then
+    echo "Warning: systemctl --user $* failed (non-fatal)"
+    return 0
+  fi
+}
 
 gemini_api_key_configured() {
   runuser -u casher -- bash -lc "
@@ -161,23 +172,6 @@ if [[ -f "$NIGHTLY_TIMER_DST" ]]; then
   systemctl enable nightly-close.timer
   systemctl start nightly-close.timer
 fi
-if [[ -f "$NIGHTLY_USER_SERVICE_SRC" && -f "$NIGHTLY_USER_TIMER_SRC" ]]; then
-  mkdir -p "$NIGHTLY_USER_DIR"
-  install -m 644 -o casher -g casher "$NIGHTLY_USER_SERVICE_SRC" "$NIGHTLY_USER_DIR/nightly-close.service"
-  install -m 644 -o casher -g casher "$NIGHTLY_USER_TIMER_SRC" "$NIGHTLY_USER_DIR/nightly-close.timer"
-  CASHER_UID="$(id -u casher)"
-  CASHER_USER_RUNTIME_DIR="/run/user/${CASHER_UID}"
-  if [[ -d "$CASHER_USER_RUNTIME_DIR" ]]; then
-    runuser -u casher -- env XDG_RUNTIME_DIR="$CASHER_USER_RUNTIME_DIR" \
-      systemctl --user daemon-reload
-    runuser -u casher -- env XDG_RUNTIME_DIR="$CASHER_USER_RUNTIME_DIR" \
-      systemctl --user enable nightly-close.timer
-    runuser -u casher -- env XDG_RUNTIME_DIR="$CASHER_USER_RUNTIME_DIR" \
-      systemctl --user start nightly-close.timer
-  else
-    echo "Skipping casher user nightly-close.timer: ${CASHER_USER_RUNTIME_DIR} not available"
-  fi
-fi
 
 echo
 echo "[8/8] Restarting Casher + messaging workers..."
@@ -188,9 +182,7 @@ fi
 if [[ -f "$INBOX_WORKER_UNIT_DST" ]]; then
   systemctl restart messaging-inbox-worker.service
 else
-  CASHER_UID="$(id -u casher)"
-  runuser -u casher -- env XDG_RUNTIME_DIR="/run/user/${CASHER_UID}" \
-    systemctl --user restart messaging-worker.service || true
+  casher_user_systemctl restart messaging-worker.service
 fi
 if [[ -f "$AI_WORKER_UNIT_DST" ]]; then
   if gemini_api_key_configured; then
