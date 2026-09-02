@@ -90,4 +90,15 @@ export function invalidateTemporaryTransferCaches(args: {
     workDate: args.workDate,
     branchIds: [args.fromBranchId, args.toBranchId],
   });
+  // Public roster / slot caches must drop immediately — transfer-in/out changes
+  // bookable EmpIDs for both source and destination on the WorkDate.
+  void import('@/lib/booking/publicBookingBarbers').then((m) => {
+    m.invalidatePublicBookingBarbersCache();
+  });
+  void import('@/lib/booking/publicBookingAvailability').then((m) => {
+    m.invalidatePublicBookingAvailabilityCache();
+  });
+  void import('@/lib/booking/publicBookingCrossBranchAvailability').then((m) => {
+    m.invalidatePublicBookingCrossBranchAvailabilityCache();
+  });
 }

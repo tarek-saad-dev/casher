@@ -131,6 +131,7 @@ export {
   assertBookingOwnedByActiveBranch,
   bookingQueueNotFoundResponse,
   extractPublicBranchCode,
+  isEmployeeBookableAtBranch,
   isEmployeeEligibleForBranchBookings,
   listBookableEmployeeIdsForBranch,
   listQueueEligibleEmployeeIdsForBranch,

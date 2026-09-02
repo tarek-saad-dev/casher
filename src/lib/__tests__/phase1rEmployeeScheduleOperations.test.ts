@@ -112,7 +112,7 @@ describe('phase1rTemporaryTransferPreview', () => {
     expect(resolver).toContain('isTransferDestinationActive');
     expect(resolver).toContain('transfer_phase:');
 
-    const att = read('src/lib/hr/attendance/branchAttendance.service.ts');
+    const att = read('src/modules/attendance/infra/legacyBranchAttendance.ts');
     expect(att).toContain('TRANSFER_SOURCE_STILL_OPEN');
     expect(att).toContain('EMPLOYEE_TRANSFERRED_AWAY');
 
@@ -172,7 +172,7 @@ describe('phase1rBookingAttendancePayrollIntegration', () => {
     const evalr = read('src/lib/booking/publicBookingSelectionEvaluator.ts');
     expect(create).toContain('createPublicBooking');
     expect(evalr).toContain('BARBER_AVAILABLE_AT_DIFFERENT_BRANCH');
-    const att = read('src/lib/hr/attendance/branchAttendance.service.ts');
+    const att = read('src/modules/attendance/infra/legacyBranchAttendance.ts');
     expect(att).toContain('EMPLOYEE_NOT_SCHEDULED_IN_THIS_BRANCH');
     expect(att).toContain('resolveEmployeeBranchSchedule');
   });

@@ -77,7 +77,7 @@ describe('phase1qCrossBranchBookingGuard', () => {
 
 describe('phase1qEmployeeAttendanceBranchGuard', () => {
   it('check-in requires branch schedule and blocks other-branch open session', () => {
-    const a = read('src/lib/hr/attendance/branchAttendance.service.ts');
+    const a = read('src/modules/attendance/infra/legacyBranchAttendance.ts');
     expect(a).toContain('EMPLOYEE_NOT_SCHEDULED_IN_THIS_BRANCH');
     expect(a).toContain('EMPLOYEE_ALREADY_CHECKED_IN_OTHER_BRANCH');
     expect(a).toContain('resolveEmployeeBranchSchedule');

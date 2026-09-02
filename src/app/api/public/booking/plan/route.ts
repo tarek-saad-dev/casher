@@ -63,6 +63,8 @@ export async function POST(req: NextRequest) {
 
     if (!evaluation.available) {
       const code = evaluation.availabilityCode ?? 'BOOKING_PLAN_UNAVAILABLE';
+      // Preserve barber/branch business codes so clients get useful Arabic messages.
+      // Only collapse opaque slot unavailability into BOOKING_PLAN_UNAVAILABLE.
       const planCode =
         code === 'SLOT_UNAVAILABLE' || code === 'CHECK_SLOT_UNAVAILABLE'
           ? 'BOOKING_PLAN_UNAVAILABLE'

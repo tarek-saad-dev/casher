@@ -499,6 +499,27 @@ export async function evaluatePublicBookingSelection(args: {
         available = true;
         availabilityCode = null;
         availabilityMessage = null;
+      } else if (!validation.plan && !validation.reasonCode) {
+        // Specific emp failed branch eligibility (empty engine contexts) —
+        // surface a clear business code instead of a generic slot failure.
+        const { isEmployeeBookableAtBranch } = await import(
+          '@/lib/branch/bookingQueueOwnership'
+        );
+        const bookable = await isEmployeeBookableAtBranch(
+          empId,
+          branchContext.branchId,
+          workDate,
+          { publicOnly: engineSource === 'public' },
+        );
+        available = false;
+        if (!bookable) {
+          availabilityCode = 'BARBER_NOT_BOOKABLE';
+          availabilityMessage = PUBLIC_BOOKING_ERROR_CATALOG.BARBER_NOT_BOOKABLE.messageAr;
+          safeMetadata.eligibility = 'not_bookable_at_branch';
+        } else {
+          availabilityCode = 'SLOT_UNAVAILABLE';
+          availabilityMessage = PUBLIC_BOOKING_ERROR_CATALOG.SLOT_UNAVAILABLE.messageAr;
+        }
       } else {
         available = false;
         if (

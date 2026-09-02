@@ -94,5 +94,6 @@ export async function canEmployeeReceivePublicBookings(args: {
     empId: args.empId,
     branchId: args.branchId,
     operationalDate: args.workDate,
+    includeTemporaryTransfer: true,
   });
 }

@@ -91,8 +91,15 @@ async function loadTemporaryTransfer(
     `);
   if (!r.recordset[0]) return null;
   const row = r.recordset[0];
-  const fmt = (v: unknown) =>
-    v == null ? null : typeof v === 'string' ? v.slice(0, 5) : String(v).slice(0, 5);
+  const fmt = (v: unknown): string | null => {
+    if (v == null) return null;
+    if (typeof v === 'string') return v.slice(0, 5);
+    if (v instanceof Date) {
+      // mssql returns TIME as Date on epoch day — use UTC hours/minutes.
+      return `${String(v.getUTCHours()).padStart(2, '0')}:${String(v.getUTCMinutes()).padStart(2, '0')}`;
+    }
+    return String(v).slice(0, 5);
+  };
   return {
     fromBranchId: Number(row.FromBranchID),
     toBranchId: Number(row.ToBranchID),
@@ -259,8 +266,9 @@ export async function resolveEmployeeBranchSchedule(args: {
         // Split-day: before destination window starts, do not appear here —
         // fall through to weekly schedule (usually day-off at destination).
       } else {
-        const assigned = await hasActiveAssignment(args.empId, args.branchId, args.workDate);
-        if (!assigned) return null;
+        // Transfer destination is authoritative for the WorkDate window —
+        // do not require a permanent TblEmpBranchAssignment at the destination
+        // (create path may provision one, but roster/plan must not depend on it).
         const overnight = isOvernight(transfer.startTime, transfer.endTime);
         const branch = await getBranchById(args.branchId);
         if (!branch) return null;

@@ -279,7 +279,7 @@ export const PUBLIC_BOOKING_ERROR_CATALOG: Record<PublicBookingErrorCode, Public
   BOOKING_PLAN_UNAVAILABLE: {
     code: 'BOOKING_PLAN_UNAVAILABLE',
     httpStatus: 409,
-    messageAr: 'لا يمكن إنشاء خطة لهذا الموعد',
+    messageAr: 'لا يمكن إنشاء خطة لهذا الموعد — حدّث المواعيد المتاحة أو اختر وقتاً آخر',
     messageEn: 'Booking plan unavailable for this selection',
   },
   BOOKING_PLAN_GENERATION_FAILED: {
@@ -501,8 +501,8 @@ export const PUBLIC_BOOKING_ERROR_CATALOG: Record<PublicBookingErrorCode, Public
   BARBER_NOT_BOOKABLE: {
     code: 'BARBER_NOT_BOOKABLE',
     httpStatus: 409,
-    messageAr: 'هذا الحلاق غير متاح للحجز حالياً',
-    messageEn: 'Barber is not bookable for public booking',
+    messageAr: 'هذا الحلاق غير متاح للحجز في هذا الفرع اليوم',
+    messageEn: 'Barber is not bookable at this branch for the selected date',
   },
   INVALID_SERVICE_IDS: {
     code: 'INVALID_SERVICE_IDS',
