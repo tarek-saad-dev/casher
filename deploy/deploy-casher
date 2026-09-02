@@ -3,6 +3,7 @@ set -euo pipefail
 
 APP_DIR="/home/casher/app"
 BRANCH="main"
+GITHUB_REPO_SLUG="tarek-saad-dev/casher"
 WORKER_UNIT_SRC="$APP_DIR/deploy/messaging-worker.service"
 WORKER_UNIT_DST="/etc/systemd/system/messaging-worker.service"
 INBOX_WORKER_UNIT_SRC="$APP_DIR/deploy/messaging-inbox-worker.service"
@@ -26,6 +27,62 @@ casher_user_systemctl() {
     echo "Warning: systemctl --user $* failed (non-fatal)"
     return 0
   fi
+}
+
+load_github_deploy_token() {
+  if [[ -n "${GITHUB_DEPLOY_TOKEN:-}" ]]; then
+    return 0
+  fi
+  if [[ -f "$APP_DIR/.deploy/github-token" ]]; then
+    GITHUB_DEPLOY_TOKEN="$(tr -d '\n\r' < "$APP_DIR/.deploy/github-token")"
+  elif [[ -f "/home/casher/.config/casher/github-deploy-token" ]]; then
+    GITHUB_DEPLOY_TOKEN="$(tr -d '\n\r' < "/home/casher/.config/casher/github-deploy-token")"
+  fi
+}
+
+ensure_casher_git_origin() {
+  load_github_deploy_token
+  local origin_url
+  origin_url="$(runuser -u casher -- git -C "$APP_DIR" config --get remote.origin.url 2>/dev/null || true)"
+
+  if [[ -n "${GITHUB_DEPLOY_TOKEN:-}" ]]; then
+    runuser -u casher -- git -C "$APP_DIR" remote set-url origin \
+      "https://x-access-token:${GITHUB_DEPLOY_TOKEN}@github.com/${GITHUB_REPO_SLUG}.git"
+    return 0
+  fi
+
+  case "$origin_url" in
+    git@github.com:*|ssh://git@github.com/*)
+      return 0
+      ;;
+    https://github.com/*)
+      local slug="${origin_url#https://github.com/}"
+      slug="${slug%.git}"
+      local ssh_dir="/home/casher/.ssh"
+      mkdir -p "$ssh_dir"
+      chown casher:casher "$ssh_dir"
+      chmod 700 "$ssh_dir"
+      if [[ -f "$ssh_dir/id_ed25519" || -f "$ssh_dir/id_rsa" ]]; then
+        if ! grep -q '^github.com ' "$ssh_dir/known_hosts" 2>/dev/null; then
+          ssh-keyscan -H github.com >> "$ssh_dir/known_hosts" 2>/dev/null || true
+          chown casher:casher "$ssh_dir/known_hosts" 2>/dev/null || true
+          chmod 644 "$ssh_dir/known_hosts" 2>/dev/null || true
+        fi
+        runuser -u casher -- git -C "$APP_DIR" remote set-url origin "git@github.com:${slug}.git"
+        return 0
+      fi
+      echo "ERROR: GitHub HTTPS origin but no deploy token or SSH key for casher."
+      exit 1
+      ;;
+    *)
+      echo "ERROR: Missing or unsupported git origin: ${origin_url:-<empty>}"
+      exit 1
+      ;;
+  esac
+}
+
+should_skip_git_sync() {
+  [[ -f "$APP_DIR/.deploy/ci-sync-sha" ]]
 }
 
 gemini_api_key_configured() {
@@ -52,38 +109,44 @@ if [[ -f "$REPO_DEPLOY_SCRIPT" && "$0" != "$REPO_DEPLOY_SCRIPT" ]]; then
 fi
 
 echo
-echo "[1/8] Syncing repository with origin/$BRANCH..."
-runuser -u casher -- git fetch origin "$BRANCH"
-runuser -u casher -- git checkout "$BRANCH"
+if should_skip_git_sync; then
+  CI_SHA="$(tr -d '\n\r' < "$APP_DIR/.deploy/ci-sync-sha")"
+  echo "[1/8] CI pre-synced checkout detected (${CI_SHA}); skipping git fetch."
+else
+  echo "[1/8] Syncing repository with origin/$BRANCH..."
+  ensure_casher_git_origin
+  runuser -u casher -- git -C "$APP_DIR" -c credential.helper= fetch origin "$BRANCH"
+  runuser -u casher -- git -C "$APP_DIR" checkout "$BRANCH"
 
-echo
-echo "[1a/8] Removing untracked files that would block sync..."
-runuser -u casher -- bash -lc "
-cd '$APP_DIR'
-while IFS= read -r path; do
-  [ -n \"\$path\" ] || continue
-  if [ -e \"\$path\" ] && ! git ls-files --error-unmatch \"\$path\" >/dev/null 2>&1; then
-  if git cat-file -e \"origin/$BRANCH:\$path\" 2>/dev/null; then
-    echo \"Removing untracked merge blocker: \$path\"
-    rm -f \"\$path\"
-  fi
-  fi
-done < <(git diff --name-only HEAD \"origin/$BRANCH\")
-"
+  echo
+  echo "[1a/8] Removing untracked files that would block sync..."
+  runuser -u casher -- bash -lc "
+  cd '$APP_DIR'
+  while IFS= read -r path; do
+    [ -n \"\$path\" ] || continue
+    if [ -e \"\$path\" ] && ! git ls-files --error-unmatch \"\$path\" >/dev/null 2>&1; then
+    if git cat-file -e \"origin/$BRANCH:\$path\" 2>/dev/null; then
+      echo \"Removing untracked merge blocker: \$path\"
+      rm -f \"\$path\"
+    fi
+    fi
+  done < <(git diff --name-only HEAD \"origin/$BRANCH\")
+  "
 
-if ! runuser -u casher -- git diff --quiet ||
-   ! runuser -u casher -- git diff --cached --quiet ||
-   [[ "$(runuser -u casher -- git rev-parse HEAD)" != "$(runuser -u casher -- git rev-parse "origin/$BRANCH")" ]]; then
-  echo "Syncing VPS checkout to origin/$BRANCH (discarding local drift if any):"
-  runuser -u casher -- git status --short || true
-  runuser -u casher -- git reset --hard "origin/$BRANCH"
-  runuser -u casher -- git clean -fd \
-    -e .env \
-    -e .env.local \
-    -e .env.production \
-    -e .env.production.local \
-    -e 'public/uploads/**' \
-    -e 'uploads/**' || true
+  if ! runuser -u casher -- git diff --quiet ||
+     ! runuser -u casher -- git diff --cached --quiet ||
+     [[ "$(runuser -u casher -- git rev-parse HEAD)" != "$(runuser -u casher -- git rev-parse "origin/$BRANCH")" ]]; then
+    echo "Syncing VPS checkout to origin/$BRANCH (discarding local drift if any):"
+    runuser -u casher -- git status --short || true
+    runuser -u casher -- git reset --hard "origin/$BRANCH"
+    runuser -u casher -- git clean -fd \
+      -e .env \
+      -e .env.local \
+      -e .env.production \
+      -e .env.production.local \
+      -e 'public/uploads/**' \
+      -e 'uploads/**' || true
+  fi
 fi
 
 if [[ -f "$APP_DIR/deploy/deploy-casher" ]]; then

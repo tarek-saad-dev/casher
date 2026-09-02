@@ -11,6 +11,9 @@ concurrency:
   group: casher-production
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     name: Deploy Production
@@ -18,6 +21,9 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Configure SSH
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
@@ -31,6 +37,52 @@ jobs:
 
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
+
+      - name: Sync application to VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          GITHUB_DEPLOY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p .deploy
+          printf '%s' "$GITHUB_DEPLOY_TOKEN" > .deploy/github-token
+
+          if rsync -az \
+            --exclude '.env' \
+            --exclude '.env.local' \
+            --exclude '.env.production' \
+            --exclude '.env.production.local' \
+            --exclude 'node_modules' \
+            --exclude '.next' \
+            --exclude 'public/uploads' \
+            --exclude 'uploads' \
+            --exclude '.git' \
+            -e "ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes" \
+            ./ "$VPS_USER@$VPS_HOST:/home/casher/app/"; then
+            ssh \
+              -i ~/.ssh/id_ed25519 \
+              -o BatchMode=yes \
+              "$VPS_USER@$VPS_HOST" \
+              "mkdir -p /home/casher/app/.deploy && printf '%s' '${{ github.sha }}' > /home/casher/app/.deploy/ci-sync-sha"
+          else
+            echo "WARNING: rsync failed — deploy will fall back to git fetch on VPS"
+            ssh \
+              -i ~/.ssh/id_ed25519 \
+              -o BatchMode=yes \
+              "$VPS_USER@$VPS_HOST" \
+              "rm -f /home/casher/app/.deploy/ci-sync-sha" || true
+          fi
+
+          ssh \
+            -i ~/.ssh/id_ed25519 \
+            -o BatchMode=yes \
+            "$VPS_USER@$VPS_HOST" \
+            "if [ -d /home/casher/app/.git ]; then
+               git -C /home/casher/app remote set-url origin \
+                 'https://x-access-token:${GITHUB_DEPLOY_TOKEN}@github.com/tarek-saad-dev/casher.git' || true
+             fi"
 
       - name: Deploy to VPS
         env:
