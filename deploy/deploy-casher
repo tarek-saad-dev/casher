@@ -176,7 +176,6 @@ echo "[7b/8] Salon Concierge schema migration (idempotent)..."
 runuser -u casher -- bash -lc "
 cd '$APP_DIR'
 npm run messaging:migrate-salon-concierge
-npm run messaging:migrate-salon-concierge
 "
 
 echo
@@ -190,7 +189,6 @@ echo
 echo "[7b3/8] Booking Management schema migration (idempotent, flag stays off)..."
 runuser -u casher -- bash -lc "
 cd '$APP_DIR'
-npm run messaging:migrate-booking-management
 npm run messaging:migrate-booking-management
 "
 
