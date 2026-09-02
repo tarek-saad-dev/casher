@@ -165,9 +165,18 @@ if [[ -f "$NIGHTLY_USER_SERVICE_SRC" && -f "$NIGHTLY_USER_TIMER_SRC" ]]; then
   mkdir -p "$NIGHTLY_USER_DIR"
   install -m 644 -o casher -g casher "$NIGHTLY_USER_SERVICE_SRC" "$NIGHTLY_USER_DIR/nightly-close.service"
   install -m 644 -o casher -g casher "$NIGHTLY_USER_TIMER_SRC" "$NIGHTLY_USER_DIR/nightly-close.timer"
-  runuser -u casher -- systemctl --user daemon-reload
-  runuser -u casher -- systemctl --user enable nightly-close.timer
-  runuser -u casher -- systemctl --user start nightly-close.timer
+  CASHER_UID="$(id -u casher)"
+  CASHER_USER_RUNTIME_DIR="/run/user/${CASHER_UID}"
+  if [[ -d "$CASHER_USER_RUNTIME_DIR" ]]; then
+    runuser -u casher -- env XDG_RUNTIME_DIR="$CASHER_USER_RUNTIME_DIR" \
+      systemctl --user daemon-reload
+    runuser -u casher -- env XDG_RUNTIME_DIR="$CASHER_USER_RUNTIME_DIR" \
+      systemctl --user enable nightly-close.timer
+    runuser -u casher -- env XDG_RUNTIME_DIR="$CASHER_USER_RUNTIME_DIR" \
+      systemctl --user start nightly-close.timer
+  else
+    echo "Skipping casher user nightly-close.timer: ${CASHER_USER_RUNTIME_DIR} not available"
+  fi
 fi
 
 echo
