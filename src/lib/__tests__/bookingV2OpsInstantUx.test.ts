@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { AvailabilityBitmap } from '@/lib/booking/domain/AvailabilityBitmap';
+import { getOperationalDate, shiftCalendarDate } from '@/lib/businessDate';
 import {
   BOOKING_V2_OPS_DATA_LAYER,
   filterDaysForSelection,
@@ -23,6 +24,9 @@ import { clearAvailabilityInflight } from '@/lib/operations/bookingV2/availabili
 import type { V2PublicAvailabilityDayDto } from '@/lib/booking/v2Frontend/publicSafeDtos';
 
 const root = process.cwd();
+const OPS_TODAY = getOperationalDate();
+const OPS_TOMORROW = shiftCalendarDate(OPS_TODAY, 1);
+const OPS_WINDOW_END = shiftCalendarDate(OPS_TODAY, 13);
 
 function dayCell(partial: Partial<V2PublicAvailabilityDayDto> & {
   employeeId: number;
@@ -134,18 +138,29 @@ const matrix = {
   generatedAt: new Date().toISOString(),
   timezone: 'Africa/Cairo',
   slotIntervalMinutes: 15,
-  fromBusinessDate: '2026-08-17',
-  toBusinessDate: '2026-08-30',
+  fromBusinessDate: OPS_TODAY,
+  toBusinessDate: OPS_WINDOW_END,
   durationMinutes: null,
   days: [
-    dayCell({ employeeId: 12, branchCode: 'GLEEM', businessDate: '2026-08-17' }),
+    dayCell({
+      employeeId: 12,
+      branchCode: 'GLEEM',
+      businessDate: OPS_TODAY,
+      freeRanges: [{ startMin: 0, endMin: 26 * 60 }],
+    }),
     dayCell({
       employeeId: 12,
       branchCode: 'CAMP_CAESAR',
-      businessDate: '2026-08-17',
+      businessDate: OPS_TODAY,
       branchId: 2,
+      freeRanges: [{ startMin: 0, endMin: 26 * 60 }],
     }),
-    dayCell({ employeeId: 12, branchCode: 'GLEEM', businessDate: '2026-08-18' }),
+    dayCell({
+      employeeId: 12,
+      branchCode: 'GLEEM',
+      businessDate: OPS_TOMORROW,
+      freeRanges: [{ startMin: 0, endMin: 26 * 60 }],
+    }),
   ],
 };
 
@@ -192,7 +207,7 @@ describe('OPERATIONS INSTANT BOOKING UX VERIFIED', () => {
   }
 
   it('MODAL OPENS IMMEDIATELY — open path does not await reads', () => {
-    const page = readFileSync(join(root, 'src/app/operations/page.tsx'), 'utf8');
+    const page = readFileSync(join(root, 'src/app/operations/OperationsPageClient.tsx'), 'utf8');
     expect(page).toContain("setShowBookingDrawer(true)");
     expect(page).toContain('markOpsBookingUx(\'add_click\'');
     expect(page).toContain('void openBookingV2Flow');
@@ -222,7 +237,7 @@ describe('OPERATIONS INSTANT BOOKING UX VERIFIED', () => {
       mode: 'specific',
       employeeId: 12,
       branchCode: 'GLEEM',
-      businessDate: '2026-08-17',
+      businessDate: OPS_TODAY,
       serviceIds: [1],
       durationMinutes: 30,
     });
@@ -235,9 +250,9 @@ describe('OPERATIONS INSTANT BOOKING UX VERIFIED', () => {
     const afterPrefetch = fetchMock.mock.calls.length;
 
     setBookingV2Selection({ durationMinutes: 45, serviceIds: [1, 2] });
-    setBookingV2Selection({ businessDate: '2026-08-18' });
+    setBookingV2Selection({ businessDate: OPS_TOMORROW });
     expect(hasCachedBranchInActiveMatrix('CAMP_CAESAR')).toBe(true);
-    setBookingV2Selection({ branchCode: 'CAMP_CAESAR', businessDate: '2026-08-17' });
+    setBookingV2Selection({ branchCode: 'CAMP_CAESAR', businessDate: OPS_TODAY });
 
     const snap = getBookingV2StoreSnapshot();
     expect(snap.generatedStarts.every((s) => s.branchCode === 'CAMP_CAESAR')).toBe(true);
@@ -251,29 +266,29 @@ describe('OPERATIONS INSTANT BOOKING UX VERIFIED', () => {
       kind: 'employee',
       employeeId: 12,
       branchCodes: ['GLEEM', 'CAMP_CAESAR'],
-      fromBusinessDate: '2026-08-17',
-      toBusinessDate: '2026-08-30',
+      fromBusinessDate: OPS_TODAY,
+      toBusinessDate: OPS_WINDOW_END,
     });
     expect(req.branchCodes).toEqual(['GLEEM', 'CAMP_CAESAR']);
     const key = matrixScopeKey({
       kind: 'employee',
       employeeId: 12,
       branchCodes: ['GLEEM', 'CAMP_CAESAR'],
-      fromBusinessDate: '2026-08-17',
-      toBusinessDate: '2026-08-30',
+      fromBusinessDate: OPS_TODAY,
+      toBusinessDate: OPS_WINDOW_END,
     });
     expect(key).toContain('CAMP_CAESAR');
     expect(key).toContain('GLEEM');
 
     const gleem = filterDaysForSelection({
       days: matrix.days,
-      businessDate: '2026-08-17',
+      businessDate: OPS_TODAY,
       employeeId: 12,
       branchCode: 'GLEEM',
     });
     const camp = filterDaysForSelection({
       days: matrix.days,
-      businessDate: '2026-08-17',
+      businessDate: OPS_TODAY,
       employeeId: 12,
       branchCode: 'CAMP_CAESAR',
     });
@@ -298,7 +313,7 @@ describe('OPERATIONS INSTANT BOOKING UX VERIFIED', () => {
     const day = dayCell({
       employeeId: 12,
       branchCode: 'GLEEM',
-      businessDate: '2026-08-17',
+      businessDate: OPS_TODAY,
       freeRanges: [{ startMin: 16 * 60, endMin: 26 * 60 }],
     });
     const starts = generateStartsForDay({
@@ -310,7 +325,7 @@ describe('OPERATIONS INSTANT BOOKING UX VERIFIED', () => {
     });
     const overnight = starts.filter((s) => s.dayOffset === 1);
     expect(overnight.length).toBeGreaterThan(0);
-    expect(overnight.every((s) => s.businessDate === '2026-08-17')).toBe(true);
+    expect(overnight.every((s) => s.businessDate === OPS_TODAY)).toBe(true);
     const types = readFileSync(
       join(root, 'src/components/operations/booking-workspace/types.ts'),
       'utf8',
@@ -333,7 +348,7 @@ describe('OPERATIONS INSTANT BOOKING UX VERIFIED', () => {
       mode: 'specific',
       employeeId: 12,
       branchCode: 'GLEEM',
-      businessDate: '2026-08-17',
+      businessDate: OPS_TODAY,
       serviceIds: [1],
       durationMinutes: 30,
     });

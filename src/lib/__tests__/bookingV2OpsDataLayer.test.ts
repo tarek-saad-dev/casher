@@ -7,6 +7,7 @@ import { join } from 'node:path';
 
 import { AvailabilityBitmap } from '@/lib/booking/domain/AvailabilityBitmap';
 import { generateStartsFromFree } from '@/lib/booking/v2Frontend';
+import { getOperationalDate, shiftCalendarDate } from '@/lib/businessDate';
 import {
   BOOKING_V2_OPS_DATA_LAYER,
   MATRIX_WINDOW_DAYS,
@@ -24,6 +25,9 @@ import { clearAvailabilityInflight } from '@/lib/operations/bookingV2/availabili
 import type { V2PublicAvailabilityDayDto } from '@/lib/booking/v2Frontend/publicSafeDtos';
 
 const root = process.cwd();
+const OPS_TODAY = getOperationalDate();
+const OPS_TOMORROW = shiftCalendarDate(OPS_TODAY, 1);
+const OPS_WINDOW_END = shiftCalendarDate(OPS_TODAY, 13);
 
 function dayCell(partial: Partial<V2PublicAvailabilityDayDto> & {
   employeeId: number;
@@ -76,7 +80,7 @@ describe('OPERATIONS BOOKING V2 DATA LAYER VERIFIED', () => {
   });
 
   it('BOOTSTRAP PREFETCHED on /operations entry', () => {
-    const page = readFileSync(join(root, 'src/app/operations/page.tsx'), 'utf8');
+    const page = readFileSync(join(root, 'src/app/operations/OperationsPageClient.tsx'), 'utf8');
     expect(page).toContain('prefetchBookingV2Bootstrap');
     expect(page).toMatch(/useEffect\(\(\)\s*=>\s*\{\s*void prefetchBookingV2Bootstrap\(\)/);
     const bootClient = readFileSync(
@@ -89,7 +93,7 @@ describe('OPERATIONS BOOKING V2 DATA LAYER VERIFIED', () => {
   });
 
   it('AVAILABILITY MATRIX PREFETCHED when booking flow opens', () => {
-    const page = readFileSync(join(root, 'src/app/operations/page.tsx'), 'utf8');
+    const page = readFileSync(join(root, 'src/app/operations/OperationsPageClient.tsx'), 'utf8');
     expect(page).toContain('openBookingV2Flow');
     expect(MATRIX_WINDOW_DAYS).toBe(14);
     const ws = readFileSync(
@@ -107,19 +111,21 @@ describe('OPERATIONS BOOKING V2 DATA LAYER VERIFIED', () => {
       generatedAt: new Date().toISOString(),
       timezone: 'Africa/Cairo',
       slotIntervalMinutes: 15,
-      fromBusinessDate: '2026-08-17',
-      toBusinessDate: '2026-08-30',
+      fromBusinessDate: OPS_TODAY,
+      toBusinessDate: OPS_WINDOW_END,
       durationMinutes: null,
       days: [
         dayCell({
           employeeId: 12,
           branchCode: 'GLEEM',
-          businessDate: '2026-08-17',
+          businessDate: OPS_TODAY,
+          freeRanges: [{ startMin: 0, endMin: 26 * 60 }],
         }),
         dayCell({
           employeeId: 12,
           branchCode: 'GLEEM',
-          businessDate: '2026-08-18',
+          businessDate: OPS_TOMORROW,
+          freeRanges: [{ startMin: 0, endMin: 26 * 60 }],
         }),
       ],
     };
@@ -198,7 +204,7 @@ describe('OPERATIONS BOOKING V2 DATA LAYER VERIFIED', () => {
       mode: 'specific',
       employeeId: 12,
       branchCode: 'GLEEM',
-      businessDate: '2026-08-17',
+      businessDate: OPS_TODAY,
       serviceIds: [1],
       durationMinutes: 30,
     });
@@ -223,10 +229,10 @@ describe('OPERATIONS BOOKING V2 DATA LAYER VERIFIED', () => {
       true,
     );
 
-    setBookingV2Selection({ businessDate: '2026-08-18' });
+    setBookingV2Selection({ businessDate: OPS_TOMORROW });
     const afterDate = getBookingV2StoreSnapshot();
-    expect(afterDate.selectedBusinessDate).toBe('2026-08-18');
-    expect(afterDate.generatedStarts.every((s) => s.businessDate === '2026-08-18')).toBe(
+    expect(afterDate.selectedBusinessDate).toBe(OPS_TOMORROW);
+    expect(afterDate.generatedStarts.every((s) => s.businessDate === OPS_TOMORROW)).toBe(
       true,
     );
 

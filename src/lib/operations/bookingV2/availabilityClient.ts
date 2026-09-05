@@ -40,13 +40,22 @@ export async function fetchAvailabilityMatrix(args: {
   key: string;
   signal?: AbortSignal;
 }): Promise<V2PublicAvailabilityMatrixResponse> {
-  const existing = inflightByKey.get(args.key);
-  if (existing) {
-    traceLog('[trace-slot][availabilityClient][inflight-hit]', {
-      key: args.key,
-      scope: traceScopeLabel(args.scope),
-    });
-    return existing;
+  /**
+   * Abortable callers must NOT share inflight promises.
+   * Sharing caused: A aborted → B awaited A's rejected promise → both exit as AbortError
+   * while the store stayed on `availabilityStatus: 'loading'`.
+   */
+  if (!args.signal) {
+    const existing = inflightByKey.get(args.key);
+    if (existing) {
+      traceLog('[trace-slot][availabilityClient][inflight-hit]', {
+        key: args.key,
+        scope: traceScopeLabel(args.scope),
+      });
+      return existing;
+    }
+  } else {
+    inflightByKey.delete(args.key);
   }
 
   const body = scopeToRequest(args.scope);
@@ -54,6 +63,7 @@ export async function fetchAvailabilityMatrix(args: {
     key: args.key,
     scope: traceScopeLabel(args.scope),
     body,
+    abortable: !!args.signal,
   });
   const run = (async () => {
     const res = await fetch(AVAILABILITY_URL, {
@@ -89,11 +99,15 @@ export async function fetchAvailabilityMatrix(args: {
     return json;
   })();
 
-  inflightByKey.set(args.key, run);
+  if (!args.signal) {
+    inflightByKey.set(args.key, run);
+  }
   try {
     return await run;
   } finally {
-    if (inflightByKey.get(args.key) === run) inflightByKey.delete(args.key);
+    if (!args.signal && inflightByKey.get(args.key) === run) {
+      inflightByKey.delete(args.key);
+    }
   }
 }
 

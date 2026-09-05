@@ -62,6 +62,48 @@ let state: BookingV2StoreSnapshot = emptySnapshot();
 const listeners = new Set<Listener>();
 const matrixAbortByKey = new Map<string, AbortController>();
 
+/**
+ * Monotonic generation for availability fetches.
+ * Only the latest generation may mutate availabilityStatus / matrix / starts.
+ * Prevents aborted or late responses from leaving eternal `loading` or overwriting newer results.
+ */
+let availabilityFetchGeneration = 0;
+
+/** Conservative hung-request recovery — cooperates with AbortController + generation. */
+export const AVAILABILITY_FETCH_TIMEOUT_MS = 45_000;
+export const AVAILABILITY_FETCH_TIMEOUT_MESSAGE_AR = 'انتهت مهلة تحميل المواعيد';
+
+function isAbortLikeError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return err.name === 'AbortError' || err.name === 'TimeoutError';
+}
+
+function isTimeoutAbort(controller: AbortController, err: unknown): boolean {
+  if (err instanceof Error && err.name === 'TimeoutError') return true;
+  const reason = controller.signal.reason;
+  if (reason instanceof Error) {
+    return (
+      reason.name === 'TimeoutError'
+      || reason.message === AVAILABILITY_FETCH_TIMEOUT_MESSAGE_AR
+    );
+  }
+  if (typeof reason === 'string') {
+    return reason === AVAILABILITY_FETCH_TIMEOUT_MESSAGE_AR;
+  }
+  return false;
+}
+
+function isAuthoritativeAvailabilityFetch(
+  generation: number,
+  key: string,
+  controller: AbortController,
+): boolean {
+  return (
+    generation === availabilityFetchGeneration
+    && matrixAbortByKey.get(key) === controller
+  );
+}
+
 function emit() {
   for (const l of listeners) l();
 }
@@ -165,6 +207,8 @@ export function subscribeBookingV2Store(listener: Listener): () => void {
 
 /** Test / hot-reload helper. */
 export function resetBookingV2StoreForTests(): void {
+  // Invalidate any in-flight prefetch before aborting so catches cannot write after reset.
+  availabilityFetchGeneration += 1;
   state = emptySnapshot();
   effectiveDurationMinutes = 0;
   for (const c of matrixAbortByKey.values()) c.abort();
@@ -409,6 +453,12 @@ function applyMatrixEntry(entry: MatrixCacheEntry, opts?: { soft?: boolean }): v
  * Prefetch the matrix for the open booking flow.
  * Specific emp → 14-day scoped (all branches in one request for multi-branch).
  * Nearest / any-barber → branch roster in one request.
+ *
+ * Request lifecycle:
+ * - Each call bumps `availabilityFetchGeneration`.
+ * - Only the latest generation may write availabilityStatus / matrix / starts.
+ * - Same-key supersede aborts the prior AbortController; that abort must NOT clear B's loading.
+ * - Hung requests abort via timeout → recoverable `error` + Retry (force).
  */
 export async function prefetchBookingV2Availability(args?: {
   mode?: BookingV2Mode;
@@ -434,9 +484,14 @@ export async function prefetchBookingV2Availability(args?: {
     branchCode,
   });
   if (!scope) {
+    // Still authoritative for UI — bump generation so older in-flight cannot overwrite.
+    availabilityFetchGeneration += 1;
     setState({
       availabilityStatus: 'error',
       availabilityError: 'تعذر تحديد نطاق التوفر',
+      availabilityLoadingKey: null,
+      availabilityRevalidating: false,
+      generatedStarts: [],
     });
     return;
   }
@@ -452,6 +507,10 @@ export async function prefetchBookingV2Availability(args?: {
     cachedTraceDay: traceSummaryForDay(traceDayFromMatrixEntry(cached)),
   });
   if (cached && !args?.force) {
+    availabilityFetchGeneration += 1;
+    // Abort any in-flight fetch for this key — cache hit is authoritative now.
+    matrixAbortByKey.get(key)?.abort();
+    matrixAbortByKey.delete(key);
     const next = {
       ...state,
       activeMatrixKey: key,
@@ -462,6 +521,7 @@ export async function prefetchBookingV2Availability(args?: {
       activeMatrixKey: key,
       availabilityStatus: 'ready',
       availabilityError: null,
+      availabilityLoadingKey: null,
       availabilityRevalidating: false,
       generatedStarts: recomputeGeneratedStarts(next),
     });
@@ -474,10 +534,24 @@ export async function prefetchBookingV2Availability(args?: {
   }
 
   const softRefresh = !!(cached && args?.force);
+  const generation = ++availabilityFetchGeneration;
 
-  matrixAbortByKey.get(key)?.abort();
+  // Abort every in-flight matrix fetch — only the latest generation is UI-authoritative
+  // (including when the new scope key differs from the previous one).
+  for (const [pendingKey, pendingController] of matrixAbortByKey) {
+    pendingController.abort();
+    matrixAbortByKey.delete(pendingKey);
+  }
   const controller = new AbortController();
   matrixAbortByKey.set(key, controller);
+
+  const timeoutId = setTimeout(() => {
+    if (!controller.signal.aborted) {
+      const timeoutErr = new Error(AVAILABILITY_FETCH_TIMEOUT_MESSAGE_AR);
+      timeoutErr.name = 'TimeoutError';
+      controller.abort(timeoutErr);
+    }
+  }, AVAILABILITY_FETCH_TIMEOUT_MS);
 
   if (softRefresh) {
     // Keep modal starts/selection; refresh affected days only when response arrives.
@@ -486,13 +560,16 @@ export async function prefetchBookingV2Availability(args?: {
       availabilityError: null,
       activeMatrixKey: key,
       availabilityStatus: 'ready',
+      availabilityLoadingKey: null,
     });
   } else {
+    // Clear selectable starts so stale slots from another scope cannot look ready mid-load.
     setState({
       availabilityStatus: 'loading',
       availabilityError: null,
       availabilityLoadingKey: key,
       availabilityRevalidating: false,
+      generatedStarts: [],
     });
   }
 
@@ -502,7 +579,32 @@ export async function prefetchBookingV2Availability(args?: {
       key,
       signal: controller.signal,
     });
-    if (controller.signal.aborted) return;
+    if (!isAuthoritativeAvailabilityFetch(generation, key, controller)) {
+      return;
+    }
+    if (controller.signal.aborted) {
+      // Authoritative but aborted (e.g. timeout raced with response) → recoverable error.
+      if (isTimeoutAbort(controller, controller.signal.reason)) {
+        if (softRefresh && cached) {
+          setState({
+            availabilityStatus: 'ready',
+            availabilityError: AVAILABILITY_FETCH_TIMEOUT_MESSAGE_AR,
+            availabilityRevalidating: false,
+            availabilityLoadingKey: null,
+            activeMatrixKey: key,
+          });
+        } else {
+          setState({
+            availabilityStatus: 'error',
+            availabilityError: AVAILABILITY_FETCH_TIMEOUT_MESSAGE_AR,
+            availabilityLoadingKey: null,
+            availabilityRevalidating: false,
+            generatedStarts: [],
+          });
+        }
+      }
+      return;
+    }
     const entry: MatrixCacheEntry = {
       key,
       scope,
@@ -512,9 +614,33 @@ export async function prefetchBookingV2Availability(args?: {
     };
     applyMatrixEntry(entry, { soft: softRefresh });
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') return;
-    const message =
-      err instanceof Error ? err.message : 'تعذر تحميل التوفر';
+    if (!isAuthoritativeAvailabilityFetch(generation, key, controller)) {
+      // Superseded — do not touch B's loading/ready/error.
+      return;
+    }
+
+    if (isAbortLikeError(err) && !isTimeoutAbort(controller, err)) {
+      // Pure supersede abort should already fail the authoritative check above.
+      // If we are still authoritative with a non-timeout abort and no replacement,
+      // surface a recoverable error instead of eternal loading.
+      setState({
+        availabilityStatus: softRefresh && cached ? 'ready' : 'error',
+        availabilityError: 'تم إلغاء تحميل المواعيد — أعد المحاولة',
+        availabilityLoadingKey: null,
+        availabilityRevalidating: false,
+        ...(softRefresh && cached
+          ? { activeMatrixKey: key }
+          : { generatedStarts: [] }),
+      });
+      return;
+    }
+
+    const message = isTimeoutAbort(controller, err)
+      ? AVAILABILITY_FETCH_TIMEOUT_MESSAGE_AR
+      : err instanceof Error
+        ? err.message
+        : 'تعذر تحميل التوفر';
+
     if (softRefresh && cached) {
       // Preserve previous matrix + starts; surface retryable error without empty-state.
       setState({
@@ -534,6 +660,7 @@ export async function prefetchBookingV2Availability(args?: {
       generatedStarts: [],
     });
   } finally {
+    clearTimeout(timeoutId);
     if (matrixAbortByKey.get(key) === controller) {
       matrixAbortByKey.delete(key);
     }
