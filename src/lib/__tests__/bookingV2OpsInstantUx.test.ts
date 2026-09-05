@@ -161,6 +161,13 @@ const matrix = {
       businessDate: OPS_TOMORROW,
       freeRanges: [{ startMin: 0, endMin: 26 * 60 }],
     }),
+    dayCell({
+      employeeId: 12,
+      branchCode: 'CAMP_CAESAR',
+      businessDate: OPS_TOMORROW,
+      branchId: 2,
+      freeRanges: [{ startMin: 0, endMin: 26 * 60 }],
+    }),
   ],
 };
 
@@ -237,7 +244,7 @@ describe('OPERATIONS INSTANT BOOKING UX VERIFIED', () => {
       mode: 'specific',
       employeeId: 12,
       branchCode: 'GLEEM',
-      businessDate: OPS_TODAY,
+      businessDate: OPS_TOMORROW,
       serviceIds: [1],
       durationMinutes: 30,
     });
@@ -250,11 +257,13 @@ describe('OPERATIONS INSTANT BOOKING UX VERIFIED', () => {
     const afterPrefetch = fetchMock.mock.calls.length;
 
     setBookingV2Selection({ durationMinutes: 45, serviceIds: [1, 2] });
-    setBookingV2Selection({ businessDate: OPS_TOMORROW });
+    expect(getBookingV2StoreSnapshot().generatedStarts.length).toBeGreaterThan(0);
+    setBookingV2Selection({ businessDate: OPS_TODAY });
     expect(hasCachedBranchInActiveMatrix('CAMP_CAESAR')).toBe(true);
-    setBookingV2Selection({ branchCode: 'CAMP_CAESAR', businessDate: OPS_TODAY });
+    setBookingV2Selection({ branchCode: 'CAMP_CAESAR', businessDate: OPS_TOMORROW });
 
     const snap = getBookingV2StoreSnapshot();
+    expect(snap.generatedStarts.length).toBeGreaterThan(0);
     expect(snap.generatedStarts.every((s) => s.branchCode === 'CAMP_CAESAR')).toBe(true);
     expect(snap.generatedStarts.every((s) => s.durationMinutes === 45)).toBe(true);
     expect(fetchMock.mock.calls.length).toBe(afterPrefetch);
@@ -348,7 +357,7 @@ describe('OPERATIONS INSTANT BOOKING UX VERIFIED', () => {
       mode: 'specific',
       employeeId: 12,
       branchCode: 'GLEEM',
-      businessDate: OPS_TODAY,
+      businessDate: OPS_TOMORROW,
       serviceIds: [1],
       durationMinutes: 30,
     });

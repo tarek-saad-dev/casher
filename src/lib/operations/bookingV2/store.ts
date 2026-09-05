@@ -538,6 +538,11 @@ export async function prefetchBookingV2Availability(args?: {
 
   // Abort every in-flight matrix fetch — only the latest generation is UI-authoritative
   // (including when the new scope key differs from the previous one).
+  //
+  // Why abort ALL keys (not only the new scope key):
+  // Booking V2 ops store is a single active workspace authority. Prefetch is only driven by
+  // openBookingV2Flow / useBookingWorkspace / retry. Cached matrices remain in `matricesByKey`
+  // (warm reuse); we only cancel obsolete HTTP. Generation still blocks stale writes.
   for (const [pendingKey, pendingController] of matrixAbortByKey) {
     pendingController.abort();
     matrixAbortByKey.delete(pendingKey);

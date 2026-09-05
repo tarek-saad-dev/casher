@@ -7,10 +7,12 @@ import {
 export interface BookingService {
   ProID: number;
   ProName: string;
+  ProNameEn?: string | null;
   SPrice: number;
   SPrice1?: number;
   DurationMinutes: number | null;
   CatName?: string | null;
+  CatID?: string | number | null;
   isDeleted?: number | boolean;
 }
 

@@ -42,6 +42,7 @@ import {
 } from '@/lib/operations/bookingV2';
 import { traceLog, traceMatchesAvailableSlot } from '@/lib/operations/bookingV2/traceSlotDebug';
 import { useSession } from '@/hooks/useSession';
+import { isOpsMainServiceName } from '@/lib/operations/opsPopularServices';
 
 export type SlotsViewState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
@@ -69,15 +70,18 @@ function mapBootstrapService(s: {
   name: string;
   price: number;
   durationMinutes: number;
+  categoryId: string;
   categoryNameAr: string;
   categoryNameEn: string;
 }): BookingService {
   return {
     ProID: s.serviceId,
     ProName: s.nameAr || s.name || s.nameEn,
+    ProNameEn: s.nameEn || null,
     SPrice: s.price,
     DurationMinutes: s.durationMinutes,
     CatName: s.categoryNameAr || s.categoryNameEn || null,
+    CatID: s.categoryId || null,
   };
 }
 
@@ -590,23 +594,7 @@ export function useBookingWorkspace({
     invalidateSlotSelection();
   };
 
-  const MAIN_SERVICE_NAMES = useMemo(
-    () => [
-      'Hair Cut', 'Haircut', 'Basic Cut', 'Detailed Cut', 'Detail Cut', 'DetailedCut',
-      'Beard Styling & Fade', 'Beard Styling', 'Beard',
-      'Haircut & Beard', 'Hair & Beard', 'Hair cut & Beard', 'Hair cut + Beard', 'Hair and Beard',
-      'Advanced Cut', 'Fade Cut',
-    ],
-    [],
-  );
-
-  const isMainService = useCallback((name: string) => {
-    const norm = name.trim().toLowerCase().replace(/[\s_-]+/g, ' ').replace(/[&+]/g, ' and ');
-    return MAIN_SERVICE_NAMES.some((mn) => {
-      const nmn = mn.toLowerCase().replace(/[\s_-]+/g, ' ').replace(/[&+]/g, ' and ');
-      return norm === nmn || norm.includes(nmn) || nmn.includes(norm);
-    });
-  }, [MAIN_SERVICE_NAMES]);
+  const isMainService = useCallback((name: string) => isOpsMainServiceName(name), []);
 
   const handleMainSelect = useCallback((proId: number) => {
     const t0 = performance.now();

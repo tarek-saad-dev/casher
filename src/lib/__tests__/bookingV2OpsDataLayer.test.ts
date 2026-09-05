@@ -204,7 +204,7 @@ describe('OPERATIONS BOOKING V2 DATA LAYER VERIFIED', () => {
       mode: 'specific',
       employeeId: 12,
       branchCode: 'GLEEM',
-      businessDate: OPS_TODAY,
+      businessDate: OPS_TOMORROW,
       serviceIds: [1],
       durationMinutes: 30,
     });

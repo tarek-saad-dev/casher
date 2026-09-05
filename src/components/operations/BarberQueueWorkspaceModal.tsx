@@ -9,6 +9,7 @@ import { PrintQueueTicketModal } from './PrintQueueTicketModal';
 import type { CreateQueueResponse, QueuePlanForBarberResult, QueuePlanAlternative } from '@/lib/operationsQueueTypes';
 import { BORDER, GOLD, GOLD_BDR, formatDateLabel } from './booking-workspace/types';
 import { notifyBookingV2QueueCreated } from '@/lib/operations/bookingV2/mutationSync';
+import { isOpsMainServiceName } from '@/lib/operations/opsPopularServices';
 import { cn } from '@/lib/utils';
 
 interface Service {
@@ -44,13 +45,6 @@ const STEPS: Array<{ id: Step; label: string }> = [
   { id: 3, label: 'تأكيد وطباعة' },
 ];
 
-const MAIN_SERVICE_NAMES = [
-  'Hair Cut', 'Haircut', 'Basic Cut', 'Detailed Cut', 'Detail Cut', 'DetailedCut',
-  'Beard Styling & Fade', 'Beard Styling', 'Beard',
-  'Haircut & Beard', 'Hair & Beard', 'Hair cut & Beard', 'Hair cut + Beard', 'Hair and Beard',
-  'Advanced Cut', 'Fade Cut',
-];
-
 function formatTimeIso(iso: string): string {
   return new Date(iso).toLocaleTimeString('ar-EG', {
     hour: 'numeric',
@@ -65,11 +59,7 @@ function slotLabel(startAt: string, endAt: string): string {
 }
 
 function isMainService(name: string): boolean {
-  const norm = name.trim().toLowerCase().replace(/[\s_-]+/g, ' ').replace(/[&+]/g, ' and ');
-  return MAIN_SERVICE_NAMES.some((mn) => {
-    const nmn = mn.toLowerCase().replace(/[\s_-]+/g, ' ').replace(/[&+]/g, ' and ');
-    return norm === nmn || norm.includes(nmn) || nmn.includes(norm);
-  });
+  return isOpsMainServiceName(name);
 }
 
 export function BarberQueueWorkspaceModal({
