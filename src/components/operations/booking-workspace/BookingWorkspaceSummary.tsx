@@ -63,7 +63,7 @@ export function BookingWorkspaceSummary({
       <div>
         <p className="text-xs font-bold text-muted-foreground mb-2">الحالة الحالية</p>
         <p className="text-sm font-semibold text-foreground">
-          الخطوة {step} من 5
+          الخطوة {step} من 3
         </p>
       </div>
 

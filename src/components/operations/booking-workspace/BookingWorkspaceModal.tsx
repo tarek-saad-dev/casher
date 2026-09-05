@@ -3,11 +3,9 @@
 import { CheckCircle2 } from 'lucide-react';
 import { BookingWorkspaceFooter } from './BookingWorkspaceFooter';
 import { BookingWorkspaceHeader } from './BookingWorkspaceHeader';
-import { BookingStepAppointment } from './BookingStepAppointment';
-import { BookingStepBarber } from './BookingStepBarber';
-import { BookingStepCustomer } from './BookingStepCustomer';
-import { BookingStepReview } from './BookingStepReview';
+import { BookingStepConfirm } from './BookingStepConfirm';
 import { BookingStepServices } from './BookingStepServices';
+import { BookingStepTime } from './BookingStepTime';
 import { BookingWorkspaceStepper } from './BookingWorkspaceStepper';
 import { BookingWorkspaceSummary, BookingWorkspaceSummaryMobile } from './BookingWorkspaceSummary';
 import { useBookingWorkspace, type UseBookingWorkspaceArgs } from './useBookingWorkspace';
@@ -25,15 +23,13 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
     switch (ws.step) {
       case 1: return ws.canGoStep2;
       case 2: return ws.canGoStep3;
-      case 3: return ws.canGoStep4;
-      case 4: return ws.canGoStep5;
-      case 5: return ws.canSubmit;
+      case 3: return ws.canSubmit;
       default: return false;
     }
   };
 
   const handlePrimary = () => {
-    if (ws.step === 5) {
+    if (ws.step === 3) {
       void ws.handleSubmit();
       return;
     }
@@ -97,18 +93,6 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
 
           <main className="flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 sm:py-6">
             {ws.step === 1 && (
-              <BookingStepBarber
-                mode={ws.mode}
-                barbers={ws.barbers}
-                selectedBarberId={ws.selectedBarberId}
-                lockedBarber={ws.lockedBarber}
-                initialBarberName={ws.initialBarberName}
-                loadingBarbers={ws.loadingDateBarbers}
-                onModeChange={ws.handleModeChange}
-                onSelectBarber={ws.handleSelectBarber}
-              />
-            )}
-            {ws.step === 2 && (
               <BookingStepServices
                 services={ws.services}
                 selectedServices={ws.selectedServices}
@@ -121,8 +105,8 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
                 onRemoveService={ws.removeService}
               />
             )}
-            {ws.step === 3 && (
-              <BookingStepAppointment
+            {ws.step === 2 && (
+              <BookingStepTime
                 mode={ws.mode}
                 bookingDate={ws.bookingDate}
                 selectedBarberName={ws.selectedBarberName}
@@ -145,42 +129,29 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
                 initialTimeRangeStart={ws.initialTimeRangeStart}
                 initialTimeRangeEnd={ws.initialTimeRangeEnd}
                 lockedBarber={ws.lockedBarber}
+                initialBarberName={ws.initialBarberName}
+                barbers={ws.barbers}
+                selectedBarberId={ws.selectedBarberId}
+                loadingBarbers={ws.loadingDateBarbers}
                 employeeBranchCodes={ws.employeeBranchCodes}
                 selectedBranchCode={ws.selectedBranchCode}
                 onSelectSlot={ws.setSelectedSlot}
                 onToggleTimeRangeFilter={() => ws.setFilterByTimeRange((v) => !v)}
-                onChangeServices={() => ws.goToStep(2)}
+                onChangeServices={() => ws.goToStep(1)}
                 onChangeDate={() => ws.setShowDatePicker(true)}
-                onSwitchNearest={() => { ws.handleModeChange('nearest'); ws.goToStep(1); }}
+                onModeChange={ws.handleModeChange}
+                onSelectBarber={ws.handleSelectBarber}
+                onSwitchNearest={() => { ws.handleModeChange('nearest'); }}
                 onSelectAlternativeBarber={(empId) => {
                   ws.handleModeChange('specific');
-                  ws.setSelectedBarberId(empId);
-                  ws.goToStep(1);
+                  ws.handleSelectBarber(empId);
                 }}
                 onRetryAvailability={ws.retryAvailability}
                 onBranchChange={ws.handleBranchChange}
               />
             )}
-            {ws.step === 4 && (
-              <BookingStepCustomer
-                customerName={ws.customerName}
-                customerPhone={ws.customerPhone}
-                notes={ws.notes}
-                clientSearch={ws.clientSearch}
-                clients={ws.clients}
-                selectedClient={ws.selectedClient}
-                showClients={ws.showClients}
-                onCustomerNameChange={ws.setCustomerName}
-                onCustomerPhoneChange={ws.setCustomerPhone}
-                onNotesChange={ws.setNotes}
-                onClientSearchChange={ws.setClientSearch}
-                onSelectClient={(c) => { ws.setSelectedClient(c); ws.setClientSearch(''); ws.setShowClients(false); }}
-                onClearClient={() => ws.setSelectedClient(null)}
-                onShowClients={ws.setShowClients}
-              />
-            )}
-            {ws.step === 5 && (
-              <BookingStepReview
+            {ws.step === 3 && (
+              <BookingStepConfirm
                 mode={ws.mode}
                 bookingDate={ws.bookingDate}
                 selectedBarberName={ws.selectedBarberName}
@@ -190,9 +161,22 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
                 selectedSlot={ws.selectedSlot}
                 customerName={ws.customerName}
                 customerPhone={ws.customerPhone}
-                selectedClientName={ws.selectedClient?.Name}
                 notes={ws.notes}
+                clientSearch={ws.clientSearch}
+                clients={ws.clients}
+                selectedClient={ws.selectedClient}
+                showClients={ws.showClients}
+                selectedBranchCode={ws.selectedBranchCode}
                 error={ws.error}
+                onCustomerNameChange={ws.setCustomerName}
+                onCustomerPhoneChange={ws.setCustomerPhone}
+                onNotesChange={ws.setNotes}
+                onClientSearchChange={ws.setClientSearch}
+                onSelectClient={ws.handleSelectClient}
+                onClearClient={ws.handleClearClient}
+                onShowClients={ws.setShowClients}
+                onEditServices={() => ws.goToStep(1)}
+                onEditTime={() => ws.goToStep(2)}
               />
             )}
           </main>
@@ -211,7 +195,7 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
             stepHint={ws.stepHint}
             error={ws.error}
             canProceed={canProceedForStep()}
-            isFinalStep={ws.step === 5}
+            isFinalStep={ws.step === 3}
             submitting={ws.submitting}
             onPrimary={handlePrimary}
           />
@@ -228,7 +212,7 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
           step={ws.step}
           canGoBack={ws.step > 1}
           canProceed={canProceedForStep()}
-          isFinalStep={ws.step === 5}
+          isFinalStep={ws.step === 3}
           submitting={ws.submitting}
           stepHint={ws.stepHint}
           onBack={ws.goBack}

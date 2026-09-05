@@ -20,6 +20,8 @@ interface Props {
   lockedBarber: boolean;
   initialBarberName?: string;
   loadingBarbers?: boolean;
+  /** Dense layout when embedded in Time step. */
+  compact?: boolean;
   onModeChange: (mode: BookingMode) => void;
   onSelectBarber: (empId: number) => void;
 }
@@ -31,22 +33,28 @@ export function BookingStepBarber({
   lockedBarber,
   initialBarberName,
   loadingBarbers = false,
+  compact = false,
   onModeChange,
   onSelectBarber,
 }: Props) {
   return (
-    <div className="space-y-6 max-w-3xl">
-      <div>
-        <h3 className="text-base font-bold text-foreground mb-1">طريقة اختيار الحلاق</h3>
-        <p className="text-xs text-muted-foreground">حدد كيف سيتم تعيين الحلاق لهذا الحجز</p>
-      </div>
+    <div className={compact ? 'space-y-3 max-w-3xl' : 'space-y-6 max-w-3xl'}>
+      {!compact && (
+        <div>
+          <h3 className="text-base font-bold text-foreground mb-1">طريقة اختيار الحلاق</h3>
+          <p className="text-xs text-muted-foreground">حدد كيف سيتم تعيين الحلاق لهذا الحجز</p>
+        </div>
+      )}
+      {compact && (
+        <p className="text-xs font-semibold text-muted-foreground">اختيار الحلاق</p>
+      )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${compact ? 'gap-2' : 'gap-4'}`}>
         {[
           {
             value: 'nearest' as const,
             label: 'أقرب حلاق متاح',
-            desc: 'النظام يختار أول وقت متاح',
+            desc: 'النظام يعرض أقرب الأوقات المتاحة',
             icon: Sparkles,
             disabled: lockedBarber,
           },
@@ -66,7 +74,9 @@ export function BookingStepBarber({
               type="button"
               onClick={() => !m.disabled && onModeChange(m.value)}
               disabled={m.disabled}
-              className="relative flex flex-col items-start gap-3 p-5 min-h-[120px] rounded-2xl border-2 transition-all text-right"
+              className={`relative flex flex-col items-start gap-2 rounded-2xl border-2 transition-all text-right ${
+                compact ? 'p-3 min-h-[72px]' : 'p-5 min-h-[120px] gap-3'
+              }`}
               style={{
                 borderColor: active ? GOLD : BORDER,
                 background: active ? GOLD_BG : 'var(--surface)',
@@ -76,8 +86,11 @@ export function BookingStepBarber({
               {active && (
                 <span className="absolute top-3 left-3 w-2.5 h-2.5 rounded-full" style={{ background: GOLD }} aria-hidden />
               )}
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: active ? GOLD : 'var(--surface-muted)' }}>
-                <Icon size={22} style={{ color: active ? 'var(--primary-foreground)' : 'var(--muted-foreground)' }} />
+              <div
+                className={`rounded-xl flex items-center justify-center ${compact ? 'w-9 h-9' : 'w-12 h-12'}`}
+                style={{ background: active ? GOLD : 'var(--surface-muted)' }}
+              >
+                <Icon size={compact ? 18 : 22} style={{ color: active ? 'var(--primary-foreground)' : 'var(--muted-foreground)' }} />
               </div>
               <div>
                 <p className="text-base font-bold" style={{ color: active ? GOLD : 'var(--foreground)' }}>{m.label}</p>

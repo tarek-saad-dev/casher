@@ -289,7 +289,9 @@ export function BookingStepAppointment({
 
           {nearest && (
             <div className="space-y-2">
-              <p className="text-sm font-bold text-muted-foreground">أقرب موعد</p>
+              <p className="text-sm font-bold text-muted-foreground">
+                أقرب موعد <span className="font-normal">(موصى به — اضغط للاختيار)</span>
+              </p>
               <button
                 type="button"
                 onClick={() => onSelectSlot(nearest)}

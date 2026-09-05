@@ -41,9 +41,9 @@ export function BookingWorkspaceHeader({
   getCairoTomorrow,
 }: Props) {
   const subtitle =
-    step === 1 ? 'اختر الحلاق والخدمات والموعد'
-      : step < 5 ? 'أكمل بيانات الحجز'
-        : 'راجع الحجز قبل التأكيد';
+    step === 1 ? 'اختر الخدمات المطلوبة'
+      : step === 2 ? 'إمتى ومين متاح؟'
+        : 'بيانات العميل وتأكيد الحجز';
 
   return (
     <header className="shrink-0 border-b px-4 py-3 sm:px-5 sm:py-4" style={{ borderColor: BORDER }}>
