@@ -1,20 +1,24 @@
 'use client';
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Scissors, Clock, Banknote, Check, Sparkles, Droplets, Plus, Paintbrush, HandHelping,
-  type LucideIcon,
-} from 'lucide-react';
+import { Scissors, Clock, Banknote, Check, Search } from 'lucide-react';
 import type { Service } from '@/lib/types';
 import { searchServices } from '@/lib/serviceSearch';
 import ServiceSearchInput from '@/components/pos/ServiceSearchInput';
+import {
+  isOpsMainService,
+  resolveOpsPopularServices,
+  type OpsCatalogService,
+} from '@/lib/operations/opsPopularServices';
 
 export interface BookingSelectService {
   ProID: number;
   ProName: string;
+  ProNameEn?: string | null;
   SPrice: number;
   DurationMinutes: number | null;
   CatName?: string | null;
+  CatID?: string | number | null;
 }
 
 interface Props {
@@ -29,241 +33,50 @@ const GOLD = 'var(--primary)';
 const GOLD_BG = 'color-mix(in srgb, var(--primary) 10%, transparent)';
 const GOLD_BDR = 'color-mix(in srgb, var(--primary) 35%, transparent)';
 const BORDER = 'var(--border)';
-
-function normalizeName(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[\s_-]+/g, ' ')
-    .replace(/[&+]/g, ' and ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function flexMatch(serviceName: string, targetNames: string[]): boolean {
-  const norm = normalizeName(serviceName);
-  return targetNames.some((t) => {
-    const nt = normalizeName(t);
-    return norm === nt || norm.includes(nt) || nt.includes(norm);
-  });
-}
+const SURFACE = 'var(--surface)';
 
 function isServiceVisible(s: BookingSelectService): boolean {
   return Boolean(s.ProName?.trim()) && (s.SPrice ?? 0) > 0;
 }
 
-const PRIMARY_SLOTS: { names: string[] }[] = [
-  { names: ['Hair Cut', 'Haircut', 'Basic Cut', 'Detailed Cut', 'Detail Cut', 'DetailedCut'] },
-  { names: ['Beard Styling & Fade', 'Beard Styling', 'Beard'] },
-  { names: ['Haircut & Beard', 'Hair & Beard', 'Hair cut & Beard', 'Hair cut + Beard', 'Hair and Beard'] },
-];
-const SECONDARY_NAMES = ['Advanced Cut', 'Fade Cut'];
-const ALL_MAIN_VARIATIONS = PRIMARY_SLOTS.flatMap((s) => s.names).concat(SECONDARY_NAMES);
-
-type AddonCatKey = 'skincare' | 'masks' | 'hair' | 'beard_face' | 'comfort' | 'other';
-
-interface AddonCat {
-  key: AddonCatKey;
-  label: string;
-  icon: LucideIcon;
-  serviceNames: string[];
+function categoryKey(s: BookingSelectService): string {
+  if (s.CatID != null && String(s.CatID).trim() !== '') return `id:${s.CatID}`;
+  const name = (s.CatName ?? '').trim();
+  return name ? `name:${name}` : 'none';
 }
 
-const ADDON_CATEGORIES: AddonCat[] = [
-  {
-    key: 'skincare',
-    label: 'عناية البشرة',
-    icon: Droplets,
-    serviceNames: ['Basic Skin Care', 'Deep SkinCare', 'Medical Skin Care'],
-  },
-  {
-    key: 'masks',
-    label: 'ماسكات',
-    icon: Sparkles,
-    serviceNames: ['Face Mask', 'Gold Mask', 'Coffee Mask', 'peel-off Mask', 'Hair Mask'],
-  },
-  {
-    key: 'hair',
-    label: 'شعر',
-    icon: Paintbrush,
-    serviceNames: [
-      'Basic Hair Color', 'Dry-Hair', 'Hair & Beard Color', 'Hair Botox', 'Hair Design',
-      'Hair Oil Treatment', 'Hair Straightening', 'Hair Styling', 'Long Hair Protein',
-      'Short Hair Protein', 'Silver Highlights', 'Smoothing Cream', 'Toppik Hair Spray',
-      'Wavy Styling', 'بلوب كيرلي', 'معالج الشعر', 'حمام كريم',
-    ],
-  },
-  {
-    key: 'beard_face',
-    label: 'دقن ووجه',
-    icon: Scissors,
-    serviceNames: [
-      'Zero Beard Shave', 'Beard Bleaching', 'Face Threading', 'Threading',
-      'Full Wax', 'Partial Wax',
-    ],
-  },
-  {
-    key: 'comfort',
-    label: 'راحة ولمسة نهائية',
-    icon: HandHelping,
-    serviceNames: [
-      'Hot / Cold Towel', 'Hot Towel', 'Cold Towel',
-      'باديكير قدم', 'باديكير يد', 'برفيوم SF',
-    ],
-  },
-];
-
-function PrimaryCard({
-  service,
-  isSelected,
-  onSelect,
-  badge,
-}: {
-  service: BookingSelectService;
-  isSelected: boolean;
-  onSelect: () => void;
-  badge?: string;
-}) {
-  const duration = service.DurationMinutes ?? 30;
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className="w-full rounded-2xl border text-right transition-all overflow-hidden"
-      style={{
-        borderColor: isSelected ? GOLD : BORDER,
-        background: isSelected ? GOLD_BG : 'transparent',
-        boxShadow: isSelected ? '0 0 20px color-mix(in srgb, var(--primary) 12%, transparent)' : undefined,
-      }}
-    >
-      <div
-        className="h-1 w-full"
-        style={{
-          background: isSelected
-            ? GOLD
-            : 'linear-gradient(to left, color-mix(in srgb, var(--primary) 15%, transparent), transparent)',
-        }}
-      />
-      <div className="p-4">
-        {badge && (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold mb-2"
-            style={{ background: GOLD_BG, color: GOLD, border: `1px solid ${GOLD_BDR}` }}
-          >
-            <Sparkles className="w-2.5 h-2.5" />
-            {badge}
-          </span>
-        )}
-        <div className="flex items-start gap-3">
-          <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: isSelected ? GOLD : 'var(--surface-muted)' }}
-          >
-            <Scissors className="w-5 h-5" style={{ color: isSelected ? 'var(--primary-foreground)' : 'var(--muted-foreground)' }} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-2">
-              <h4 className="font-bold text-sm text-foreground leading-tight">{service.ProName}</h4>
-              <div
-                className="w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0"
-                style={{
-                  borderColor: isSelected ? GOLD : BORDER,
-                  background: isSelected ? GOLD : 'transparent',
-                }}
-              >
-                {isSelected && <Check className="w-3.5 h-3.5" style={{ color: 'var(--primary-foreground)' }} />}
-              </div>
-            </div>
-            <div className="flex items-center gap-3 mt-2 text-xs">
-              <span className="inline-flex items-center gap-1 font-bold" style={{ color: GOLD }}>
-                <Banknote className="w-3.5 h-3.5" />
-                {service.SPrice} ج.م
-              </span>
-              <span className="text-muted-foreground">·</span>
-              <span className="inline-flex items-center gap-1 text-muted-foreground">
-                <Clock className="w-3.5 h-3.5" />
-                {duration} دقيقة
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </button>
-  );
+function categoryLabel(s: BookingSelectService): string {
+  return (s.CatName ?? '').trim() || 'أخرى';
 }
 
-function SecondaryCard({
-  service,
-  isSelected,
-  onSelect,
-}: {
-  service: BookingSelectService;
-  isSelected: boolean;
-  onSelect: () => void;
-}) {
-  const duration = service.DurationMinutes ?? 30;
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className="w-full rounded-xl border p-3 text-right transition-all"
-      style={{
-        borderColor: isSelected ? GOLD : BORDER,
-        background: isSelected ? GOLD_BG : 'transparent',
-      }}
-    >
-      <div className="flex items-center gap-3">
-        <div
-          className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ background: isSelected ? GOLD : 'var(--surface-muted)' }}
-        >
-          <Scissors className="w-4 h-4" style={{ color: isSelected ? 'var(--primary-foreground)' : 'var(--muted-foreground)' }} />
-        </div>
-        <div className="flex-1 min-w-0 text-right">
-          <p className="font-bold text-sm text-foreground">{service.ProName}</p>
-          <p className="text-xs text-muted-foreground mt-1 flex items-center gap-2 justify-end">
-            <span className="font-bold" style={{ color: GOLD }}>{service.SPrice} ج.م</span>
-            <span>·</span>
-            <span>{duration} د</span>
-          </p>
-        </div>
-        <div
-          className="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0"
-          style={{
-            borderColor: isSelected ? GOLD : BORDER,
-            background: isSelected ? GOLD : 'transparent',
-          }}
-        >
-          {isSelected && <Check className="w-3 h-3" style={{ color: 'var(--primary-foreground)' }} />}
-        </div>
-      </div>
-    </button>
-  );
-}
-
-function UpsellCard({
+function DenseServiceRow({
   service,
   isSelected,
   onToggle,
+  mode,
 }: {
   service: BookingSelectService;
   isSelected: boolean;
   onToggle: () => void;
+  mode: 'main' | 'addon';
 }) {
   const duration = service.DurationMinutes ?? 30;
   return (
     <button
       type="button"
       onClick={onToggle}
-      className="w-full rounded-xl border p-3 text-right transition-all"
+      className="w-full min-h-[52px] rounded-xl border px-3 py-2.5 text-right transition-colors min-w-0"
       style={{
         borderColor: isSelected ? GOLD : BORDER,
-        background: isSelected ? GOLD_BG : 'var(--surface-muted)',
+        background: isSelected ? GOLD_BG : 'transparent',
       }}
+      aria-pressed={isSelected}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 min-w-0">
         <div
-          className="w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0"
+          className={`shrink-0 flex items-center justify-center border-2 ${
+            mode === 'addon' ? 'w-5 h-5 rounded-md' : 'w-5 h-5 rounded-full'
+          }`}
           style={{
             borderColor: isSelected ? GOLD : BORDER,
             background: isSelected ? GOLD : 'transparent',
@@ -272,25 +85,68 @@ function UpsellCard({
           {isSelected && <Check className="w-3 h-3" style={{ color: 'var(--primary-foreground)' }} />}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-bold text-sm text-foreground">{service.ProName}</p>
-          {service.CatName && (
-            <p className="text-[10px] text-muted-foreground mt-0.5">{service.CatName}</p>
-          )}
-        </div>
-        <div className="text-left flex-shrink-0">
-          <p className="font-bold text-xs" style={{ color: GOLD }}>+{service.SPrice} ج</p>
-          <p className="text-[10px] text-muted-foreground">{duration} د</p>
+          <p className="font-semibold text-sm text-foreground truncate">{service.ProName}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className="inline-flex items-center gap-1 font-bold" style={{ color: GOLD }}>
+              <Banknote className="w-3 h-3" />
+              {service.SPrice} ج.م
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {duration} د
+            </span>
+          </p>
         </div>
       </div>
     </button>
   );
 }
 
-const PRIMARY_BADGES: Record<string, string> = {
-  'Hair Cut': 'الأكثر طلبًا',
-  'Haircut & Beard': 'باكدج مميز',
-  'Hair & Beard': 'باكدج مميز',
-};
+function PopularCard({
+  labelAr,
+  service,
+  isSelected,
+  onSelect,
+}: {
+  labelAr: string;
+  service: BookingSelectService;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  const duration = service.DurationMinutes ?? 30;
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="w-full min-h-[72px] rounded-xl border p-3 text-right transition-colors min-w-0"
+      style={{
+        borderColor: isSelected ? GOLD : GOLD_BDR,
+        background: isSelected ? GOLD_BG : SURFACE,
+      }}
+      aria-pressed={isSelected}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-bold text-muted-foreground mb-0.5">{labelAr}</p>
+          <p className="font-bold text-sm text-foreground truncate">{service.ProName}</p>
+          <p className="text-[11px] mt-1 flex items-center gap-2">
+            <span className="font-bold" style={{ color: GOLD }}>{service.SPrice} ج.م</span>
+            <span className="text-muted-foreground">{duration} د</span>
+          </p>
+        </div>
+        <div
+          className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0"
+          style={{
+            borderColor: isSelected ? GOLD : BORDER,
+            background: isSelected ? GOLD : 'transparent',
+          }}
+        >
+          {isSelected && <Check className="w-3 h-3" style={{ color: 'var(--primary-foreground)' }} />}
+        </div>
+      </div>
+    </button>
+  );
+}
 
 export function BookingServiceSelect({
   services,
@@ -299,7 +155,7 @@ export function BookingServiceSelect({
   onToggleAddon,
   isLoading = false,
 }: Props) {
-  const [activeAddonTab, setActiveAddonTab] = useState<AddonCatKey>('skincare');
+  const [activeCategory, setActiveCategory] = useState<string>('all');
   const [serviceSearchQuery, setServiceSearchQuery] = useState('');
   const deferredSearchQuery = useDeferredValue(serviceSearchQuery);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -314,10 +170,10 @@ export function BookingServiceSelect({
       const target = event.target as HTMLElement | null;
       const tag = target?.tagName?.toLowerCase();
       const isEditable =
-        tag === 'input' ||
-        tag === 'textarea' ||
-        tag === 'select' ||
-        target?.isContentEditable;
+        tag === 'input'
+        || tag === 'textarea'
+        || tag === 'select'
+        || target?.isContentEditable;
       if (isEditable) return;
       event.preventDefault();
       searchInputRef.current?.focus();
@@ -326,118 +182,50 @@ export function BookingServiceSelect({
     return () => window.removeEventListener('keydown', handleShortcut);
   }, []);
 
-  const findByNames = (names: string[]): BookingSelectService | null => {
-    for (const n of names) {
-      const s = services.find((sv) => sv.ProName.trim() === n && isServiceVisible(sv));
-      if (s) return s;
-    }
-    for (const n of names) {
-      const s = services.find((sv) => flexMatch(sv.ProName, [n]) && isServiceVisible(sv));
-      if (s) return s;
-    }
-    return null;
-  };
-
-  const mainPrimary = useMemo(() => {
-    const result: BookingSelectService[] = [];
-    for (const slot of PRIMARY_SLOTS) {
-      const s = findByNames(slot.names);
-      if (s) result.push(s);
-    }
-    return result;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [services]);
-
-  const mainSecondary = useMemo(() => {
-    return SECONDARY_NAMES
-      .map((n) => {
-        const exact = services.find((s) => s.ProName.trim() === n && isServiceVisible(s));
-        if (exact) return exact;
-        return services.find((s) => flexMatch(s.ProName, [n]) && isServiceVisible(s)) ?? null;
-      })
-      .filter((s): s is BookingSelectService => s != null);
-  }, [services]);
-
-  const allMainIds = useMemo(() => {
-    const ids = new Set<number>();
-    services.forEach((s) => {
-      if (flexMatch(s.ProName, ALL_MAIN_VARIATIONS)) ids.add(s.ProID);
-    });
-    mainPrimary.forEach((s) => ids.add(s.ProID));
-    mainSecondary.forEach((s) => ids.add(s.ProID));
-    return ids;
-  }, [services, mainPrimary, mainSecondary]);
-
-  const addonServices = useMemo(
-    () => services.filter((s) => isServiceVisible(s) && !allMainIds.has(s.ProID)),
-    [services, allMainIds],
-  );
-
-  const addonGrouped = useMemo(() => {
-    const map: Record<AddonCatKey, BookingSelectService[]> = {
-      skincare: [], masks: [], hair: [], beard_face: [], comfort: [], other: [],
-    };
-    const placed = new Set<number>();
-
-    for (const cat of ADDON_CATEGORIES) {
-      for (const s of addonServices) {
-        if (placed.has(s.ProID)) continue;
-        if (flexMatch(s.ProName, cat.serviceNames)) {
-          map[cat.key].push(s);
-          placed.add(s.ProID);
-        }
-      }
-    }
-
-    for (const s of addonServices) {
-      if (placed.has(s.ProID)) continue;
-      const lower = s.ProName.toLowerCase();
-      if (lower.includes('mask') || lower.includes('ماسك')) map.masks.push(s);
-      else if (lower.includes('skin') || lower.includes('بشرة')) map.skincare.push(s);
-      else if (lower.includes('beard') || lower.includes('دقن') || lower.includes('wax') || lower.includes('thread') || lower.includes('فتلة')) map.beard_face.push(s);
-      else if (lower.includes('towel') || lower.includes('فوطة') || lower.includes('باديكير')) map.comfort.push(s);
-      else map.other.push(s);
-    }
-
-    return map;
-  }, [addonServices]);
-
-  const visibleTabs = useMemo(() => {
-    const tabs = ADDON_CATEGORIES.filter((c) => addonGrouped[c.key].length > 0);
-    if (addonGrouped.other.length > 0) {
-      tabs.push({ key: 'other', label: 'إضافات أخرى', icon: Plus, serviceNames: [] });
-    }
-    return tabs;
-  }, [addonGrouped]);
-
-  const selectedMainId = useMemo(
-    () => selectedIds.find((id) => allMainIds.has(id)) ?? null,
-    [selectedIds, allMainIds],
-  );
-
-  const hasMainSelection = selectedMainId !== null;
-  const effectiveTab = visibleTabs.find((t) => t.key === activeAddonTab)?.key ?? visibleTabs[0]?.key ?? 'skincare';
-
   const visibleServices = useMemo(
     () => services.filter(isServiceVisible),
     [services],
   );
-  const showFallbackList = mainPrimary.length + mainSecondary.length === 0 && visibleServices.length > 0;
 
-  const selectedAddonCount = useMemo(
-    () => selectedIds.filter((id) => !allMainIds.has(id)).length,
-    [selectedIds, allMainIds],
+  const popular = useMemo(
+    () => resolveOpsPopularServices(visibleServices as OpsCatalogService[]),
+    [visibleServices],
   );
-  const addonsOnly = !hasMainSelection && selectedAddonCount > 0;
+
+  const popularIds = useMemo(
+    () => new Set(popular.map((p) => p.service.ProID)),
+    [popular],
+  );
+
+  const categories = useMemo(() => {
+    const map = new Map<string, { key: string; label: string; count: number }>();
+    for (const s of visibleServices) {
+      const key = categoryKey(s);
+      const label = categoryLabel(s);
+      const prev = map.get(key);
+      if (prev) prev.count += 1;
+      else map.set(key, { key, label, count: 1 });
+    }
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, 'ar'));
+  }, [visibleServices]);
+
+  useEffect(() => {
+    if (activeCategory === 'all') return;
+    if (!categories.some((c) => c.key === activeCategory)) {
+      setActiveCategory('all');
+    }
+  }, [activeCategory, categories]);
+
+  const isSearchActive = serviceSearchQuery.trim().length > 0;
 
   const searchablePool = useMemo((): Service[] => {
     return visibleServices.map((s) => ({
       ProID: s.ProID,
       ProName: s.ProName,
-      ProNameAr: null,
+      ProNameAr: s.ProName,
       SPrice1: s.SPrice,
       Bonus: 0,
-      CatID: null,
+      CatID: typeof s.CatID === 'number' ? s.CatID : null,
       CatName: s.CatName ?? null,
       SalesCount: 0,
       ImageUrl: null,
@@ -452,30 +240,36 @@ export function BookingServiceSelect({
       .filter((s): s is BookingSelectService => s != null);
   }, [searchablePool, deferredSearchQuery, visibleServices]);
 
-  const isSearchActive = serviceSearchQuery.trim().length > 0;
+  const categoryFiltered = useMemo(() => {
+    if (activeCategory === 'all') return visibleServices;
+    return visibleServices.filter((s) => categoryKey(s) === activeCategory);
+  }, [visibleServices, activeCategory]);
 
-  const handleSearchResultSelect = useCallback(
+  const listServices = isSearchActive ? searchMatchedServices : categoryFiltered;
+
+  const handleSelect = useCallback(
     (service: BookingSelectService) => {
-      if (allMainIds.has(service.ProID)) {
-        onSelectMain(service.ProID);
-      } else {
-        onToggleAddon(service.ProID);
-      }
+      if (isOpsMainService(service)) onSelectMain(service.ProID);
+      else onToggleAddon(service.ProID);
     },
-    [allMainIds, onSelectMain, onToggleAddon],
+    [onSelectMain, onToggleAddon],
   );
 
   if (isLoading) {
     return (
-      <div className="space-y-3 py-2">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-24 rounded-2xl border animate-pulse" style={{ borderColor: BORDER, background: 'var(--surface-muted)' }} />
+      <div className="space-y-2 py-2 min-w-0">
+        {[1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className="h-14 rounded-xl border animate-pulse"
+            style={{ borderColor: BORDER, background: 'var(--surface-muted)' }}
+          />
         ))}
       </div>
     );
   }
 
-  if (services.length === 0) {
+  if (services.length === 0 || visibleServices.length === 0) {
     return (
       <div className="py-8 text-center">
         <Scissors className="w-8 h-8 mx-auto text-muted-foreground/50 mb-2" />
@@ -485,25 +279,7 @@ export function BookingServiceSelect({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h3 className="text-sm font-bold text-foreground">اختر الخدمات</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            خدمة أساسية و/أو إضافات — أو إضافات فقط بدون خدمة رئيسية
-          </p>
-        </div>
-        {addonsOnly && (
-          <span
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold"
-            style={{ background: GOLD_BG, color: GOLD, border: `1px solid ${GOLD_BDR}` }}
-          >
-            <Plus className="w-3 h-3" />
-            حجز إضافات فقط
-          </span>
-        )}
-      </div>
-
+    <div className="space-y-4 min-w-0">
       <ServiceSearchInput
         ref={searchInputRef}
         value={serviceSearchQuery}
@@ -513,12 +289,76 @@ export function BookingServiceSelect({
         className="w-full"
       />
 
-      {isSearchActive ? (
+      {!isSearchActive && popular.length > 0 && (
+        <section className="space-y-2" aria-label="الأكثر طلبًا">
+          <h4 className="text-xs font-bold text-muted-foreground">الأكثر طلبًا</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-w-0">
+            {popular.map((p) => {
+              const svc = p.service as BookingSelectService;
+              return (
+                <PopularCard
+                  key={p.key}
+                  labelAr={p.labelAr}
+                  service={svc}
+                  isSelected={selectedIds.includes(svc.ProID)}
+                  onSelect={() => handleSelect(svc)}
+                />
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {!isSearchActive && categories.length > 0 && (
         <div className="space-y-2">
-          {searchMatchedServices.length === 0 ? (
-            <div className="py-8 text-center rounded-xl border" style={{ borderColor: BORDER }}>
-              <Scissors className="w-8 h-8 mx-auto text-muted-foreground/50 mb-2" />
-              <p className="text-sm text-muted-foreground">لا توجد خدمات مطابقة للبحث</p>
+          <p className="text-xs font-bold text-muted-foreground">التصنيفات</p>
+          <div className="flex gap-1.5 overflow-x-auto pb-1 min-w-0">
+            <button
+              type="button"
+              onClick={() => setActiveCategory('all')}
+              className="flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap"
+              style={{
+                background: activeCategory === 'all' ? GOLD : 'var(--surface-muted)',
+                color: activeCategory === 'all' ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
+              }}
+            >
+              الكل ({visibleServices.length})
+            </button>
+            {categories.map((cat) => {
+              const active = activeCategory === cat.key;
+              return (
+                <button
+                  key={cat.key}
+                  type="button"
+                  onClick={() => setActiveCategory(cat.key)}
+                  className="flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap"
+                  style={{
+                    background: active ? GOLD : 'var(--surface-muted)',
+                    color: active ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
+                  }}
+                >
+                  {cat.label} ({cat.count})
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <section className="space-y-2" aria-label="قائمة الخدمات">
+        {!isSearchActive && (
+          <h4 className="text-xs font-bold text-muted-foreground">
+            {activeCategory === 'all' ? 'كل الخدمات' : 'خدمات التصنيف'}
+          </h4>
+        )}
+
+        {listServices.length === 0 ? (
+          <div className="py-8 text-center rounded-xl border" style={{ borderColor: BORDER }}>
+            <Search className="w-7 h-7 mx-auto text-muted-foreground/50 mb-2" />
+            <p className="text-sm text-muted-foreground">
+              {isSearchActive ? 'لا توجد خدمات مطابقة للبحث' : 'لا توجد خدمات في هذا التصنيف'}
+            </p>
+            {isSearchActive && (
               <button
                 type="button"
                 onClick={clearSearch}
@@ -527,139 +367,33 @@ export function BookingServiceSelect({
               >
                 مسح البحث
               </button>
-            </div>
-          ) : (
-            searchMatchedServices.map((s) => {
-              const isMain = allMainIds.has(s.ProID);
+            )}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {listServices.map((s) => {
+              const isMain = isOpsMainService(s);
+              // Same underlying selection whether the service also appears under Popular.
               const isSelected = selectedIds.includes(s.ProID);
-              if (isMain) {
-                return (
-                  <SecondaryCard
-                    key={s.ProID}
-                    service={s}
-                    isSelected={isSelected}
-                    onSelect={() => handleSearchResultSelect(s)}
-                  />
-                );
-              }
+              // In "all" list, still show popular services (shared selection state) — denser ops list.
               return (
-                <UpsellCard
+                <DenseServiceRow
                   key={s.ProID}
                   service={s}
                   isSelected={isSelected}
-                  onToggle={() => handleSearchResultSelect(s)}
+                  mode={isMain ? 'main' : 'addon'}
+                  onToggle={() => handleSelect(s)}
                 />
               );
-            })
-          )}
-        </div>
-      ) : (
-        <>
-          {showFallbackList && (
-            <div className="space-y-2">
-              {visibleServices.map((s) => (
-                <PrimaryCard
-                  key={s.ProID}
-                  service={s}
-                  isSelected={selectedIds.includes(s.ProID)}
-                  onSelect={() => onSelectMain(s.ProID)}
-                />
-              ))}
-            </div>
-          )}
+            })}
+          </div>
+        )}
+      </section>
 
-          {!showFallbackList && (
-            <div>
-              <h4 className="text-xs font-bold text-muted-foreground mb-2">الخدمة الأساسية (اختياري)</h4>
-              {mainPrimary.length > 0 && (
-                <div className="space-y-2">
-                  {mainPrimary.map((s) => (
-                    <PrimaryCard
-                      key={s.ProID}
-                      service={s}
-                      isSelected={selectedIds.includes(s.ProID)}
-                      onSelect={() => onSelectMain(s.ProID)}
-                      badge={PRIMARY_BADGES[s.ProName] ?? (flexMatch(s.ProName, ['Hair Cut', 'Haircut']) ? 'الأكثر طلبًا' : flexMatch(s.ProName, ['Haircut & Beard', 'Hair & Beard']) ? 'باكدج مميز' : undefined)}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {mainSecondary.length > 0 && (
-                <div className={mainPrimary.length > 0 ? 'mt-3' : undefined}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="h-px flex-1" style={{ background: BORDER }} />
-                    <span className="text-[10px] font-bold text-muted-foreground whitespace-nowrap">اختيارات أخرى</span>
-                    <div className="h-px flex-1" style={{ background: BORDER }} />
-                  </div>
-                  <div className="space-y-2">
-                    {mainSecondary.map((s) => (
-                      <SecondaryCard
-                        key={s.ProID}
-                        service={s}
-                        isSelected={selectedIds.includes(s.ProID)}
-                        onSelect={() => onSelectMain(s.ProID)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {visibleTabs.length > 0 && (
-            <div className="pt-4 border-t" style={{ borderColor: BORDER }}>
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: GOLD_BG }}>
-                  <Plus className="w-3 h-3" style={{ color: GOLD }} />
-                </div>
-                <h4 className="font-bold text-sm text-foreground">خدمات إضافية</h4>
-              </div>
-              <p className="text-[11px] text-muted-foreground mb-3 mr-8">
-                يمكن الحجز بها وحدها بدون خدمة أساسية
-              </p>
-
-              <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1">
-                {visibleTabs.map((tab) => {
-                  const isActive = effectiveTab === tab.key;
-                  const TabIcon = tab.icon;
-                  const count = addonGrouped[tab.key].length;
-                  return (
-                    <button
-                      key={tab.key}
-                      type="button"
-                      onClick={() => setActiveAddonTab(tab.key)}
-                      className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap"
-                      style={{
-                        background: isActive ? GOLD : 'var(--surface-muted)',
-                        color: isActive ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
-                      }}
-                    >
-                      <TabIcon className="w-3 h-3" />
-                      {tab.label}
-                      {!isActive && (
-                        <span className="w-4 h-4 rounded-full text-[9px] leading-4 text-center inline-block bg-muted text-muted-foreground">
-                          {count}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="space-y-2">
-                {(addonGrouped[effectiveTab] ?? []).map((s) => (
-                  <UpsellCard
-                    key={s.ProID}
-                    service={s}
-                    isSelected={selectedIds.includes(s.ProID)}
-                    onToggle={() => onToggleAddon(s.ProID)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </>
+      {popularIds.size > 0 && !isSearchActive && activeCategory === 'all' && (
+        <p className="text-[10px] text-muted-foreground">
+          الخدمات الشائعة تظهر أعلاه وفي القائمة — الاختيار واحد لنفس الخدمة.
+        </p>
       )}
     </div>
   );
