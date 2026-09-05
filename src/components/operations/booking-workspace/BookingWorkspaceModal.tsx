@@ -66,7 +66,7 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="booking-workspace-title"
-        className="flex flex-col w-full h-[100dvh] sm:h-[min(90vh,900px)] sm:w-[min(90vw,1280px)] sm:max-w-[1280px] sm:rounded-2xl border shadow-2xl overflow-hidden"
+        className="flex flex-col w-full h-[100dvh] sm:h-[min(90vh,900px)] sm:max-h-[min(90vh,900px)] sm:w-[min(90vw,1280px)] sm:max-w-[1280px] sm:rounded-2xl border shadow-2xl overflow-hidden min-h-0"
         style={{
           background: 'var(--surface-elevated)',
           borderColor: BORDER,
@@ -88,14 +88,14 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
           getCairoTomorrow={ws.getCairoTomorrow}
         />
 
-        <div className="flex flex-1 min-h-0 overflow-hidden">
+        <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
           <BookingWorkspaceStepper
             step={ws.step}
             summaries={ws.stepSummaries}
             onGoToStep={ws.goToStep}
           />
 
-          <main className="flex-1 min-w-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 sm:py-6">
+          <main className="flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 sm:py-6">
             {ws.step === 1 && (
               <BookingStepBarber
                 mode={ws.mode}
@@ -222,10 +222,6 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
           totalPrice={ws.totalPrice}
           selectedServicesCount={ws.selectedServices.length}
           stepHint={ws.stepHint}
-          canProceed={canProceedForStep()}
-          isFinalStep={ws.step === 5}
-          submitting={ws.submitting}
-          onPrimary={handlePrimary}
         />
 
         <BookingWorkspaceFooter

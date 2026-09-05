@@ -11,7 +11,7 @@ interface Props {
 
 export function BookingWorkspaceStepper({ step, summaries, onGoToStep }: Props) {
   return (
-    <nav className="hidden xl:flex flex-col w-56 shrink-0 border-l p-4 gap-1 overflow-y-auto" style={{ borderColor: BORDER }} aria-label="خطوات الحجز">
+    <nav className="hidden xl:flex flex-col w-56 shrink-0 min-h-0 min-w-0 border-l p-4 gap-1 overflow-y-auto" style={{ borderColor: BORDER }} aria-label="خطوات الحجز">
       {BOOKING_STEPS.map((s) => {
         const done = step > s.id;
         const active = step === s.id;

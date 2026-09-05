@@ -56,7 +56,7 @@ export function BookingWorkspaceSummary({
 
   return (
     <aside
-      className="hidden lg:flex flex-col w-72 xl:w-80 shrink-0 border-r p-4 gap-4 overflow-y-auto"
+      className="hidden xl:flex flex-col w-72 xl:w-80 shrink-0 min-h-0 min-w-0 border-r p-4 gap-4 overflow-hidden"
       style={{ borderColor: BORDER, background: 'color-mix(in srgb, var(--surface) 60%, transparent)' }}
       aria-label="ملخص الحجز"
     >
@@ -151,33 +151,20 @@ function SummaryRow({ label, value, highlight }: { label: string; value: string;
   );
 }
 
-/** Mobile/tablet sticky summary strip */
+/** Mobile/tablet sticky summary strip — info only; primary CTA lives in Footer (<xl). */
 export function BookingWorkspaceSummaryMobile({
   totalDuration,
   totalPrice,
   selectedServicesCount,
   stepHint,
-  canProceed,
-  isFinalStep,
-  submitting,
-  onPrimary,
-}: Pick<Props, 'totalDuration' | 'totalPrice' | 'stepHint' | 'canProceed' | 'isFinalStep' | 'submitting' | 'onPrimary'> & { selectedServicesCount: number }) {
+}: Pick<Props, 'totalDuration' | 'totalPrice' | 'stepHint'> & { selectedServicesCount: number }) {
   if (selectedServicesCount === 0 && !stepHint) return null;
   return (
-    <div className="lg:hidden shrink-0 border-t px-4 py-2" style={{ borderColor: BORDER, background: SURFACE }}>
-      <div className="flex items-center justify-between gap-2 text-xs mb-2">
+    <div className="xl:hidden shrink-0 border-t px-4 py-2" style={{ borderColor: BORDER, background: SURFACE }}>
+      <div className="flex items-center justify-between gap-2 text-xs">
         <span className="font-bold" style={{ color: GOLD }}>{totalDuration} د · {totalPrice} ج.م</span>
         {stepHint && <span className="text-warning truncate">{stepHint}</span>}
       </div>
-      <button
-        type="button"
-        onClick={onPrimary}
-        disabled={!canProceed || submitting}
-        className="w-full min-h-[44px] rounded-xl text-sm font-bold disabled:opacity-40"
-        style={{ background: `linear-gradient(135deg, ${GOLD}, var(--primary-active))`, color: 'var(--primary-foreground)' }}
-      >
-        {submitting ? 'جاري الحجز...' : isFinalStep ? 'تأكيد الحجز' : 'التالي'}
-      </button>
     </div>
   );
 }

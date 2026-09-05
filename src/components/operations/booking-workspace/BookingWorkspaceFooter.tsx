@@ -40,7 +40,7 @@ export function BookingWorkspaceFooter({
         رجوع
       </button>
 
-      <div className="flex-1 text-center hidden sm:block lg:hidden">
+      <div className="flex-1 text-center hidden sm:block xl:hidden">
         {stepHint && !canProceed && (
           <p className="text-xs text-muted-foreground">{stepHint}</p>
         )}
@@ -50,7 +50,7 @@ export function BookingWorkspaceFooter({
         type="button"
         onClick={onPrimary}
         disabled={!canProceed || submitting}
-        className="flex lg:hidden items-center gap-2 px-6 min-h-[48px] min-w-[140px] rounded-xl text-sm font-bold disabled:opacity-40 transition-opacity justify-center"
+        className="flex xl:hidden items-center gap-2 px-6 min-h-[48px] min-w-[140px] rounded-xl text-sm font-bold disabled:opacity-40 transition-opacity justify-center"
         style={{
           background: isFinalStep
             ? 'linear-gradient(135deg, var(--success), var(--success-active))'

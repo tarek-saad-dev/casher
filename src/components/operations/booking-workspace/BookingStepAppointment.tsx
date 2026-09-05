@@ -112,7 +112,7 @@ export function BookingStepAppointment({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 min-w-0">
       <div className="p-4 rounded-xl space-y-2" style={{ background: SURFACE, border: `1px solid ${BORDER}` }}>
         <p className="text-sm font-bold" style={{ color: GOLD }}>
           {mode === 'specific' && selectedBarberName ? selectedBarberName : 'أقرب حلاق متاح'}
@@ -184,16 +184,16 @@ export function BookingStepAppointment({
       )}
 
       {loadingSlots && (
-        <div className="space-y-3">
+        <div className="space-y-3 min-w-0">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 size={18} className="animate-spin" style={{ color: GOLD }} />
             <span>جاري تحميل المواعيد</span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {Array.from({ length: 9 }).map((_, i) => (
-              <div key={i} className="p-4 min-h-[88px] rounded-xl border animate-pulse" style={{ borderColor: BORDER, background: SURFACE }}>
-                <div className="h-4 w-1/2 rounded mb-2" style={{ background: BORDER }} />
-                <div className="h-3 w-3/4 rounded" style={{ background: BORDER }} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="p-4 min-h-[88px] min-w-0 rounded-xl border animate-pulse" style={{ borderColor: BORDER, background: SURFACE }}>
+                <div className="h-4 w-1/2 max-w-[8rem] rounded mb-2" style={{ background: BORDER }} />
+                <div className="h-3 w-3/4 max-w-[12rem] rounded" style={{ background: BORDER }} />
               </div>
             ))}
           </div>
@@ -268,7 +268,7 @@ export function BookingStepAppointment({
       )}
 
       {isReady && displaySlots.length > 0 && (
-        <div className="space-y-4">
+        <div className="space-y-4 min-w-0">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-semibold text-muted-foreground">
               {displaySlots.length} موعد متاح · كل موعد {totalDuration} دقيقة
@@ -345,7 +345,7 @@ export function BookingStepAppointment({
                 return (
                   <div key={group.label} className="space-y-2">
                     <p className="text-sm font-bold text-muted-foreground">{group.label}</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
                       {groupRest.map((slot) => {
                         const isSelected = selectedSlot?.time === slot.time
                           && selectedSlot?.empId === slot.empId
@@ -356,7 +356,7 @@ export function BookingStepAppointment({
                             key={`${slot.empId}-${slot.branchCode ?? ''}-${slot.time}-${slot.dayOffset ?? 0}`}
                             type="button"
                             onClick={() => onSelectSlot(slot)}
-                            className="text-right p-4 min-h-[96px] rounded-xl border-2 transition-all"
+                            className="text-right p-4 min-h-[96px] min-w-0 rounded-xl border-2 transition-all"
                             style={{
                               borderColor: isSelected ? GOLD : BORDER,
                               background: isSelected ? GOLD_BG : SURFACE,
