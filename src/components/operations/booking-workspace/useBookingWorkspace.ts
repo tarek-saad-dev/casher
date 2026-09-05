@@ -43,6 +43,15 @@ import {
 import { traceLog, traceMatchesAvailableSlot } from '@/lib/operations/bookingV2/traceSlotDebug';
 import { useSession } from '@/hooks/useSession';
 import { isOpsMainServiceName } from '@/lib/operations/opsPopularServices';
+import {
+  hydrateCustomerFieldsFromClient,
+  OPS_BOOKING_CONFLICT_RECOVERY_STEP,
+  OPS_BOOKING_FLOW_STEP_COUNT,
+  opsBookingCanLeaveServices,
+  opsBookingCanLeaveTime,
+  opsBookingCanSubmit,
+  opsBookingHasCustomer,
+} from '@/lib/operations/bookingWorkspaceFlow';
 
 export type SlotsViewState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
@@ -638,7 +647,7 @@ export function useBookingWorkspace({
       releaseSubmitGuard(submittingRef);
       setError(`الموعد المختار لا يطابق المدة المطلوبة (${totalDuration} دقيقة)`);
       beginSlotRefresh();
-      setStep(3);
+      setStep(OPS_BOOKING_CONFLICT_RECOVERY_STEP);
       return;
     }
     setError(null);
@@ -705,7 +714,7 @@ export function useBookingWorkspace({
         });
         setSelectedSlot(null);
         setSlotStaleNotice(BOOKING_V2_SLOT_STALE_NOTICE_AR);
-        setStep(3);
+        setStep(OPS_BOOKING_CONFLICT_RECOVERY_STEP);
         return;
       }
       if (!res.ok || !data.ok) {
@@ -775,33 +784,40 @@ export function useBookingWorkspace({
     && selectedServices.length > 0
     && availableSlots.every((s) => s.durationMinutes === totalDuration);
 
-  const canGoStep2 = !isDatePast && (mode === 'nearest' || !!selectedBarberId);
-  const canGoStep3 = selectedServices.length > 0;
-  const canGoStep4 =
-    !!selectedSlot
-    && slotsAreCurrent
-    && slotsViewState === 'ready'
-    && selectedSlot.durationMinutes === totalDuration;
-  const canGoStep5 = !!(customerName.trim() || selectedClient);
-  const canSubmit = canGoStep4 && canGoStep5;
+  /** Step 1 → 2: services selected (barber is contextual on Time). */
+  const canGoStep2 = opsBookingCanLeaveServices({
+    isDatePast,
+    selectedServicesCount: selectedServices.length,
+  });
+  /** Step 2 → 3: valid selected slot (+ specific barber when required). */
+  const canGoStep3 = opsBookingCanLeaveTime({
+    selectedSlot,
+    slotsAreCurrent,
+    slotsViewState,
+    totalDuration,
+    mode,
+    selectedBarberId,
+  });
+  const hasCustomer = opsBookingHasCustomer({ customerName, selectedClient });
+  const canSubmit = opsBookingCanSubmit({ canLeaveTime: canGoStep3, hasCustomer });
 
   const stepHint = useMemo(() => {
     if (step === 1 && !canGoStep2) {
       if (isDatePast) return 'التاريخ المحدد في الماضي';
-      if (mode === 'specific' && !selectedBarberId) return 'اختر الحلاق للمتابعة';
+      return 'اختر خدمة واحدة على الأقل';
     }
-    if (step === 2 && !canGoStep3) return 'اختر خدمة واحدة على الأقل';
-    if (step === 3 && !canGoStep4) {
+    if (step === 2 && !canGoStep3) {
+      if (mode === 'specific' && !selectedBarberId) return 'اختر الحلاق للمتابعة';
       if (slotsViewState === 'loading') return 'جاري تحميل المواعيد...';
       if (slotsViewState === 'error') return 'تعذر تحميل المواعيد';
       return 'اختر موعدًا متاحًا';
     }
-    if (step === 4 && !canGoStep5) return 'أضف بيانات العميل';
+    if (step === 3 && !hasCustomer) return 'أضف بيانات العميل';
     return null;
-  }, [step, canGoStep2, canGoStep3, canGoStep4, canGoStep5, isDatePast, mode, selectedBarberId, slotsViewState]);
+  }, [step, canGoStep2, canGoStep3, hasCustomer, isDatePast, mode, selectedBarberId, slotsViewState]);
 
   const goNext = () => {
-    if (step < 5) setStep((s) => (s + 1) as BookingStep);
+    if (step < OPS_BOOKING_FLOW_STEP_COUNT) setStep((s) => (s + 1) as BookingStep);
   };
 
   const goBack = () => {
@@ -812,14 +828,39 @@ export function useBookingWorkspace({
     if (target < step) setStep(target);
   };
 
+  const handleSelectClient = useCallback((client: BookingClient) => {
+    const fields = hydrateCustomerFieldsFromClient(client);
+    setSelectedClient(client);
+    setCustomerName(fields.customerName);
+    setCustomerPhone(fields.customerPhone);
+    setClientSearch('');
+    setShowClients(false);
+  }, []);
+
+  const handleClearClient = useCallback(() => {
+    setSelectedClient(null);
+  }, []);
+
+  const handleCustomerNameChange = useCallback((value: string) => {
+    setCustomerName(value);
+    setSelectedClient(null);
+  }, []);
+
+  const handleCustomerPhoneChange = useCallback((value: string) => {
+    setCustomerPhone(value);
+    setSelectedClient(null);
+  }, []);
+
   const stepSummaries = useMemo(() => ({
-    1: mode === 'nearest' ? 'أقرب حلاق' : (selectedBarberName || 'حلاق معين'),
-    2: selectedServices.length
+    1: selectedServices.length
       ? `${selectedServices.length} خدمة • ${totalDuration} دقيقة`
       : undefined,
-    3: selectedSlot ? slotDisplayLabel(selectedSlot) : undefined,
-    4: selectedClient?.Name || customerName.trim() || undefined,
-    5: undefined,
+    2: selectedSlot
+      ? `${slotDisplayLabel(selectedSlot)}${mode === 'nearest' ? ' · أقرب' : selectedBarberName ? ` · ${selectedBarberName}` : ''}`
+      : mode === 'nearest'
+        ? 'أقرب حلاق'
+        : (selectedBarberName || undefined),
+    3: selectedClient?.Name || customerName.trim() || undefined,
   }), [mode, selectedBarberName, selectedServices.length, totalDuration, selectedSlot, selectedClient, customerName]);
 
   const handleSelectBarber = useCallback((empId: number) => {
@@ -867,9 +908,9 @@ export function useBookingWorkspace({
     displaySlots,
     preferredRangeSlots,
     customerName,
-    setCustomerName,
+    setCustomerName: handleCustomerNameChange,
     customerPhone,
-    setCustomerPhone,
+    setCustomerPhone: handleCustomerPhoneChange,
     notes,
     setNotes,
     clientSearch,
@@ -877,6 +918,8 @@ export function useBookingWorkspace({
     clients,
     selectedClient,
     setSelectedClient,
+    handleSelectClient,
+    handleClearClient,
     showClients,
     setShowClients,
     submitting,
@@ -900,8 +943,6 @@ export function useBookingWorkspace({
     slotsAreCurrent,
     canGoStep2,
     canGoStep3,
-    canGoStep4,
-    canGoStep5,
     canSubmit,
     stepHint,
     handleDateChange,

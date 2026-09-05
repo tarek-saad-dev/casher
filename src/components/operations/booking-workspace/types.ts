@@ -67,15 +67,24 @@ export interface BookingWorkspaceBarber {
 }
 
 export type BookingMode = 'nearest' | 'specific';
-export type BookingStep = 1 | 2 | 3 | 4 | 5;
+
+/** Phase C — compact operational flow (was 5 steps). */
+export type BookingStep = 1 | 2 | 3;
 
 export const BOOKING_STEPS: Array<{ id: BookingStep; label: string }> = [
-  { id: 1, label: 'الحلاق' },
-  { id: 2, label: 'الخدمات' },
-  { id: 3, label: 'الموعد' },
-  { id: 4, label: 'العميل' },
-  { id: 5, label: 'المراجعة' },
+  { id: 1, label: 'الخدمات' },
+  { id: 2, label: 'الموعد' },
+  { id: 3, label: 'العميل والتأكيد' },
 ];
+
+/**
+ * Step dependency model (presentation only — domain rules unchanged):
+ * - services / duration → invalidate slot (local regen)
+ * - mode / employee / branch scope → may refetch matrix; invalidate slot
+ * - date → local filter within matrix window; invalidate slot
+ * - customer → never invalidates availability/slot
+ * - Back → preserve all still-valid selections
+ */
 
 export const GOLD = 'var(--primary)';
 export const GOLD_BG = 'color-mix(in srgb, var(--primary) 10%, transparent)';

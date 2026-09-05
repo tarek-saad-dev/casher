@@ -97,8 +97,10 @@ describe('false-unavailable recurrence guards', () => {
 
   it('ops workspace prefers availableSlots and rejects unavailable candidates', () => {
     const src = read('src/components/operations/booking-workspace/useBookingWorkspace.ts');
-    expect(src).toContain('data.availableSlots');
-    expect(src).toContain('s.available !== false');
+    // Booking V2: slots come from generatedStarts (all bookable), not legacy available-slots JSON.
+    expect(src).toContain('v2.generatedStarts.map(generatedStartToSlot)');
+    expect(src).toContain('available: true');
+    expect(src).not.toContain('/api/public/booking/available-slots');
     expect(src).not.toMatch(/\(data\.slots\s*\?\?\s*data\.availableSlots/);
   });
 
