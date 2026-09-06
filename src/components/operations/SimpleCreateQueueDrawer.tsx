@@ -1,18 +1,29 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { X, User, Scissors, Loader2, CheckCircle2, Clock, Users, AlertCircle, ArrowRight, ArrowLeft, Search, Phone, UserPlus, CheckCircle } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import {
+  X, User, Loader2, CheckCircle2, Clock, Users, AlertCircle, ArrowRight, ArrowLeft,
+  Search, UserPlus, CheckCircle,
+} from 'lucide-react';
 import type { Customer } from '@/lib/types';
 import type { CreateQueueResponse } from '@/lib/operationsQueueTypes';
 import { PrintQueueTicketModal } from './PrintQueueTicketModal';
+import { OpsServicePicker } from './OpsServicePicker';
 import { notifyBookingV2QueueCreated } from '@/lib/operations/bookingV2/mutationSync';
+import { useOpsQueueCatalog } from '@/lib/operations/useOpsQueueCatalog';
+import { isOpsMainServiceName } from '@/lib/operations/opsPopularServices';
 import { useSession } from '@/hooks/useSession';
+import { BORDER, GOLD, GOLD_BDR } from './booking-workspace/types';
+import { cn } from '@/lib/utils';
 
 interface Service {
   ProID: number;
   ProName: string;
   DurationMinutes: number | null;
   SPrice?: number;
+  CatName?: string | null;
+  CatID?: string | number | null;
+  ProNameEn?: string | null;
 }
 
 interface Barber {
@@ -60,6 +71,14 @@ interface Props {
   debugInfo?: { source: string; count: number; timestamp: string };
 }
 
+type Step = 1 | 2 | 3;
+
+const STEPS: Array<{ id: Step; label: string }> = [
+  { id: 1, label: 'الخدمات' },
+  { id: 2, label: 'الحلاق' },
+  { id: 3, label: 'التأكيد' },
+];
+
 function formatTime(iso: string): string {
   const d = new Date(iso);
   const h = d.getHours();
@@ -69,20 +88,28 @@ function formatTime(iso: string): string {
   return `${h12}:${m} ${ampm}`;
 }
 
-export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, debugInfo }: Props) {
-  // All operable barbers from flow-board (any branch) — create stamps the barber's branch.
-  const sessionBarbers = barbers;
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+/**
+ * Phase D general queue: Services → Barber (+ plan) → Confirm.
+ * Domain endpoints unchanged: simulate + create.
+ */
+export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers }: Props) {
+  const { user, activeBranch } = useSession();
+  const branchCode =
+    user?.ActiveBranchCode
+    ?? activeBranch?.branchCode
+    ?? null;
+  const { services, loading: loadingServices } = useOpsQueueCatalog(branchCode);
+
+  const [step, setStep] = useState<Step>(1);
   const [selectedBarber, setSelectedBarber] = useState<Barber | null>(null);
-  const [services, setServices] = useState<Service[]>([]);
   const [selectedServices, setSelectedServices] = useState<Service[]>([]);
   const [simulateResult, setSimulateResult] = useState<SimulateResult | null>(null);
   const [createResult, setCreateResult] = useState<CreateResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
+  const [showCustomerFields, setShowCustomerFields] = useState(false);
 
-  // Customer info - optional
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerId, setCustomerId] = useState<number | null>(null);
@@ -91,75 +118,42 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
   const [customerFound, setCustomerFound] = useState<boolean | null>(null);
 
   const customerDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const createPendingRef = useRef(false);
+
+  const workingBarbers = useMemo(
+    () => barbers.filter((b) => b.status === 'working'),
+    [barbers],
+  );
 
   const totalDuration = selectedServices.reduce(
     (s, svc) => s + (svc.DurationMinutes ?? 30),
     0,
   );
   const totalPrice = selectedServices.reduce((s, svc) => s + (svc.SPrice ?? 0), 0);
+  const serviceIds = useMemo(() => selectedServices.map((s) => s.ProID), [selectedServices]);
 
-  const toggleService = (svc: Service) => {
-    setSelectedServices((prev) =>
-      prev.some((s) => s.ProID === svc.ProID)
-        ? prev.filter((s) => s.ProID !== svc.ProID)
-        : [...prev, svc],
-    );
+  const handleMainSelect = (proId: number) => {
+    const svc = services.find((s) => s.ProID === proId);
+    if (!svc) return;
+    setSelectedServices((prev) => {
+      const alreadyMain = prev.some((s) => s.ProID === proId && isOpsMainServiceName(s.ProName));
+      const addons = prev.filter((s) => !isOpsMainServiceName(s.ProName));
+      if (alreadyMain) return addons;
+      return [svc, ...addons];
+    });
     setSimulateResult(null);
   };
 
-  useEffect(() => {
-    if (!isOpen) return;
-    fetch('/api/services?active=true&bookable=true')
-      .then((r) => r.json())
-      .then((d) => setServices(d.services ?? d ?? []))
-      .catch(() => {});
-  }, [isOpen]);
+  const handleToggleAddon = (proId: number) => {
+    setSelectedServices((prev) => {
+      const exists = prev.some((s) => s.ProID === proId);
+      if (exists) return prev.filter((s) => s.ProID !== proId);
+      const svc = services.find((s) => s.ProID === proId);
+      return svc ? [...prev, svc] : prev;
+    });
+    setSimulateResult(null);
+  };
 
-  // Debug logging - show all barbers and filtering
-  useEffect(() => {
-    if (!isOpen) return;
-
-    console.log('[create queue] DEBUG INFO:', debugInfo);
-    console.log('[create queue] all barbers received:', barbers.map(b => ({
-      empId: b.empId,
-      name: b.empName,
-      status: b.status,
-      workStart: b.workStart,
-      workEnd: b.workEnd,
-      isOvernightShift: b.isOvernightShift,
-      nextAvailableAt: b.nextAvailableAt,
-      waitingCount: b.waitingCount,
-    })));
-
-    // Specifically check for Omar (empId=25)
-    const omar = barbers.find(b => b.empId === 25);
-    if (omar) {
-      console.log('[create queue] FOUND Omar (empId=25):', {
-        empId: omar.empId,
-        name: omar.empName,
-        status: omar.status,
-        workStart: omar.workStart,
-        workEnd: omar.workEnd,
-        isOvernightShift: omar.isOvernightShift,
-        nextAvailableAt: omar.nextAvailableAt,
-        waitingCount: omar.waitingCount,
-      });
-    } else {
-      console.log('[create queue] Omar (empId=25) NOT FOUND in barbers list');
-    }
-
-    // Show filtered barbers (working only, not off/day_off)
-    const workingBarbers = barbers.filter(b => b.status === 'working');
-    console.log('[create queue] filtered working barbers:', workingBarbers.map(b => ({
-      empId: b.empId,
-      name: b.empName,
-      status: b.status,
-      nextAvailableAt: b.nextAvailableAt,
-      waitingCount: b.waitingCount,
-    })));
-  }, [isOpen, barbers, debugInfo]);
-
-  // Reset state when closed
   useEffect(() => {
     if (!isOpen) {
       setStep(1);
@@ -173,29 +167,27 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
       setCustomerId(null);
       setCustomerFound(null);
       setCustomerSearchError(null);
+      setShowCustomerFields(false);
+      createPendingRef.current = false;
     }
   }, [isOpen]);
 
-  const runSimulate = useCallback(async () => {
-    if (!selectedBarber || !selectedServices.length) return;
+  const runSimulate = useCallback(async (barber: Barber, servicesForPlan: Service[]) => {
+    if (!servicesForPlan.length) return;
 
     setLoading(true);
     setError(null);
     setSimulateResult(null);
 
     const browserNow = new Date();
-    const serviceIds = selectedServices.map((s) => s.ProID);
+    const ids = servicesForPlan.map((s) => s.ProID);
+    const duration = servicesForPlan.reduce((s, svc) => s + (svc.DurationMinutes ?? 30), 0);
     const simulatePayload = {
-      empId: selectedBarber.empId,
-      serviceIds,
+      empId: barber.empId,
+      serviceIds: ids,
       requestedAt: browserNow.toISOString(),
-      ...(selectedBarber.branchId != null ? { branchId: selectedBarber.branchId } : {}),
+      ...(barber.branchId != null ? { branchId: barber.branchId } : {}),
     };
-    console.log('[simulate payload]', {
-      ...simulatePayload,
-      barberName: selectedBarber.empName,
-      totalDuration,
-    });
 
     try {
       const res = await fetch('/api/operations/queue/simulate', {
@@ -204,12 +196,11 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
         body: JSON.stringify(simulatePayload),
       });
       const result: SimulateResult = await res.json();
-      console.log('=== SIMULATE RESPONSE ===', result);
       setSimulateResult(result);
       if (result.decision === 'outside_hours') {
         setError('الصنايعي خارج مواعيد العمل');
       } else if (result.decision === 'no_gap_found') {
-        setError(`لا توجد فترة متصلة مدتها ${totalDuration} دقيقة مع ${selectedBarber.empName}`);
+        setError(`لا توجد فترة متصلة مدتها ${duration} دقيقة مع ${barber.empName}`);
       } else {
         setStep(3);
       }
@@ -218,9 +209,8 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
     } finally {
       setLoading(false);
     }
-  }, [selectedBarber, selectedServices, totalDuration]);
+  }, []);
 
-  // Customer search function with debounce
   const searchCustomerByPhone = useCallback(async (phone: string) => {
     if (!phone || phone.length < 7) {
       setCustomerFound(null);
@@ -232,17 +222,12 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
     setCustomerSearchError(null);
 
     try {
-      // Use existing POS customer search endpoint
       const res = await fetch(`/api/customers?q=${encodeURIComponent(phone)}`);
       if (!res.ok) throw new Error('فشل البحث');
-
       const data: Customer[] = await res.json();
-
-      // Find exact match by phone
       const matched = data.find((c) =>
-        c.Mobile === phone || c.Mobile?.includes(phone)
+        c.Mobile === phone || c.Mobile?.includes(phone),
       );
-
       if (matched) {
         setCustomerId(matched.ClientID);
         setCustomerName(matched.Name);
@@ -259,24 +244,15 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
     }
   }, []);
 
-  // Debounced phone search
   const handlePhoneChange = (value: string) => {
     setCustomerPhone(value);
-
-    // Clear previous debounce
-    if (customerDebounceRef.current) {
-      clearTimeout(customerDebounceRef.current);
-    }
-
-    // Reset states when clearing
+    if (customerDebounceRef.current) clearTimeout(customerDebounceRef.current);
     if (!value.trim()) {
       setCustomerId(null);
       setCustomerFound(null);
       setCustomerSearchError(null);
       return;
     }
-
-    // Debounce search
     customerDebounceRef.current = setTimeout(() => {
       searchCustomerByPhone(value.trim());
     }, 500);
@@ -284,7 +260,8 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
 
   const handleCreate = async () => {
     if (!simulateResult || !selectedBarber || !selectedServices.length) return;
-    console.log('=== CREATE START ===');
+    if (createPendingRef.current) return;
+    createPendingRef.current = true;
 
     setLoading(true);
     setError(null);
@@ -303,7 +280,6 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
         source: 'walk_in',
         ...(selectedBarber.branchId != null ? { branchId: selectedBarber.branchId } : {}),
       };
-      console.log('=== CREATE PAYLOAD ===', createPayload);
 
       const res = await fetch('/api/operations/queue/create', {
         method: 'POST',
@@ -312,8 +288,6 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
       });
 
       const result: CreateResult = await res.json();
-      console.log('=== CREATE RESPONSE ===', result);
-      console.log('Status:', res.status, 'OK:', result.ok, 'TicketCode:', result.ticketCode);
 
       if (!result.ok) {
         if (res.status === 409 && result.newSuggestion) {
@@ -332,391 +306,379 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers, d
         startIso: simulateResult.suggestedStartTime,
         endIso: simulateResult.suggestedEndTime,
       });
-      // Show print modal immediately after successful create
       setShowPrintModal(true);
     } catch {
       setError('فشل في إنشاء الدور');
     } finally {
+      createPendingRef.current = false;
       setLoading(false);
     }
   };
 
   const handleBack = () => {
+    setError(null);
     if (step === 3) {
       setStep(2);
       setSimulateResult(null);
     } else if (step === 2) {
       setStep(1);
-      setSelectedServices([]);
+      setSelectedBarber(null);
     }
+  };
+
+  const pickBarber = (barber: Barber) => {
+    setSelectedBarber(barber);
+    void runSimulate(barber, selectedServices);
   };
 
   if (!isOpen) return null;
 
   return (
     <>
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="relative w-full max-w-lg mx-4 bg-white rounded-xl shadow-2xl max-h-[90vh] overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b">
-          <h2 className="text-xl font-bold text-gray-900">
-            {step === 1 && 'اختيار الصنايعي'}
-            {step === 2 && 'اختيار الخدمة'}
-            {step === 3 && 'تأكيد الدور'}
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg flex items-center gap-2">
-              <AlertCircle className="w-5 h-5" />
-              <span>{error}</span>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-sm p-0 sm:p-4"
+        dir="rtl"
+        onClick={onClose}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="flex flex-col w-full border shadow-2xl overflow-hidden min-h-0 h-[100dvh] sm:h-[min(90vh,820px)] sm:w-[min(92vw,720px)] sm:max-w-[720px] sm:rounded-2xl"
+          style={{ background: 'var(--surface-elevated)', borderColor: BORDER }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="shrink-0 border-b px-4 py-3 sm:px-5" style={{ borderColor: BORDER }}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-foreground">إنشاء دور</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  خدمة ← حلاق ← تأكيد · العميل اختياري (عميل مباشر)
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-2 min-h-[44px] min-w-[44px] rounded-lg text-muted-foreground hover:bg-surface-muted"
+                aria-label="إغلاق"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-          )}
+            <div className="mt-3 flex gap-2">
+              {STEPS.map((s) => (
+                <div
+                  key={s.id}
+                  className={cn(
+                    'flex-1 rounded-lg border px-2 py-1.5 text-center text-xs font-semibold',
+                    step === s.id
+                      ? 'border-primary/50 bg-primary/10 text-primary'
+                      : step > s.id
+                        ? 'border-success/30 bg-success/10 text-success'
+                        : 'border-border text-muted-foreground',
+                  )}
+                >
+                  {s.label}
+                </div>
+              ))}
+            </div>
+          </div>
 
-          {/* Step 1: Select Barber */}
-          {step === 1 && (
-            <div className="space-y-3">
-              {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-5">
+            {error && (
+              <div className="mb-4 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+                <AlertCircle className="w-5 h-5 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {step === 1 && (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-end justify-between gap-2">
+                  <div>
+                    <h3 className="text-base font-bold">اختر الخدمات</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">الأكثر طلبًا أولاً</p>
+                  </div>
+                  {selectedServices.length > 0 && (
+                    <p className="text-sm font-bold" style={{ color: GOLD }}>
+                      {totalDuration} د · {totalPrice} ج.م
+                    </p>
+                  )}
                 </div>
-              ) : sessionBarbers.filter(b => b.status === 'working').length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
-                  لا يوجد صنايعية متاحين للعمل على الفرع النشط
+                <OpsServicePicker
+                  services={services}
+                  selectedIds={serviceIds}
+                  onSelectMain={handleMainSelect}
+                  onToggleAddon={handleToggleAddon}
+                  isLoading={loadingServices}
+                />
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="space-y-3">
+                <div
+                  className="rounded-xl border p-3 text-sm"
+                  style={{ borderColor: GOLD_BDR, background: 'color-mix(in srgb, var(--primary) 6%, transparent)' }}
+                >
+                  <p className="font-semibold">{selectedServices.map((s) => s.ProName).join(' + ')}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{totalDuration} دقيقة · {totalPrice} ج.م</p>
                 </div>
-              ) : (
-                sessionBarbers.filter(b => b.status === 'working').map(barber => (
-                  <button
-                    key={barber.empId}
-                    onClick={() => {
-                      setSelectedBarber(barber);
-                      setStep(2);
-                    }}
-                    className="w-full p-4 border rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all text-right"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                          <User className="w-6 h-6 text-blue-600" />
+                <h3 className="text-base font-bold">اختر الحلاق</h3>
+                {loading ? (
+                  <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    <span>جاري حساب الوقت المتوقع...</span>
+                  </div>
+                ) : workingBarbers.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground text-sm">
+                    لا يوجد صنايعية متاحين للعمل
+                  </div>
+                ) : (
+                  workingBarbers.map((barber) => (
+                    <button
+                      key={barber.empId}
+                      type="button"
+                      onClick={() => pickBarber(barber)}
+                      className="w-full p-4 rounded-xl border text-right transition-colors hover:bg-surface-muted min-h-[64px]"
+                      style={{
+                        borderColor: selectedBarber?.empId === barber.empId ? GOLD : BORDER,
+                        background: selectedBarber?.empId === barber.empId
+                          ? 'color-mix(in srgb, var(--primary) 8%, transparent)'
+                          : 'var(--surface)',
+                      }}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div
+                            className="w-11 h-11 rounded-full flex items-center justify-center shrink-0"
+                            style={{ background: 'color-mix(in srgb, var(--primary) 12%, transparent)' }}
+                          >
+                            <User className="w-5 h-5" style={{ color: GOLD }} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-semibold truncate">{barber.empName}</div>
+                            {barber.waitingCount > 0 && (
+                              <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                                <Users className="w-3.5 h-3.5" />
+                                {barber.waitingCount} في الانتظار
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {barber.nextAvailableAt && (
+                          <div className="text-xs font-semibold shrink-0 flex items-center gap-1" style={{ color: GOLD }}>
+                            <Clock className="w-3.5 h-3.5" />
+                            {formatTime(barber.nextAvailableAt)}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+
+            {step === 3 && simulateResult && selectedBarber && selectedServices.length > 0 && (
+              <div className="space-y-4">
+                {createResult ? (
+                  <div className="p-4 rounded-xl border text-center" style={{ borderColor: 'color-mix(in srgb, var(--success) 35%, transparent)', background: 'color-mix(in srgb, var(--success) 8%, transparent)' }}>
+                    <CheckCircle2 className="w-12 h-12 text-success mx-auto mb-3" />
+                    <div className="text-lg font-bold mb-1">تم إنشاء الدور بنجاح</div>
+                    <div className="text-2xl font-bold mb-2" style={{ color: GOLD }}>{createResult.ticketCode}</div>
+                    <div className="text-sm text-muted-foreground">
+                      وقت الدخول: {formatTime(createResult.estimatedStartTime)}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div
+                      className="p-4 rounded-xl border space-y-3"
+                      style={{ borderColor: GOLD_BDR, background: 'color-mix(in srgb, var(--primary) 6%, transparent)' }}
+                    >
+                      <div className="text-base font-bold">
+                        الدور المتوقع مع {selectedBarber.empName}
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <div className="text-xs text-muted-foreground">وقت الدخول</div>
+                          <div className="text-lg font-bold" style={{ color: GOLD }}>
+                            {formatTime(simulateResult.suggestedStartTime)}
+                          </div>
                         </div>
                         <div>
-                          <div className="font-semibold text-gray-900">{barber.empName}</div>
-                          {barber.waitingCount !== undefined && barber.waitingCount > 0 && (
-                            <div className="text-sm text-gray-500 flex items-center gap-1">
-                              <Users className="w-4 h-4" />
-                              {barber.waitingCount} في الانتظار
-                            </div>
-                          )}
+                          <div className="text-xs text-muted-foreground">وقت الانتهاء</div>
+                          <div className="text-lg font-bold">
+                            {formatTime(simulateResult.suggestedEndTime)}
+                          </div>
                         </div>
                       </div>
-                      {barber.nextAvailableAt && (
-                        <div className="text-sm text-green-600 flex items-center gap-1">
-                          <Clock className="w-4 h-4" />
-                          متاح {formatTime(barber.nextAvailableAt)}
+                      <p className="text-sm">{selectedServices.map((s) => s.ProName).join(' + ')}</p>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Users className="w-4 h-4" />
+                        <span>
+                          {simulateResult.peopleBefore === 0
+                            ? 'يمكنه الدخول الآن'
+                            : simulateResult.peopleBefore === 1
+                              ? 'الدور الثاني · شخص واحد قبله'
+                              : `الدور رقم ${simulateResult.peopleBefore + 1} · ${simulateResult.peopleBefore} قبله`}
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {simulateResult.decision === 'start_now' && 'متاح فورًا'}
+                        {simulateResult.decision === 'after_queue' && 'بعد الأدوار الحالية'}
+                        {simulateResult.decision === 'after_booking' && 'بعد الحجز القادم للحفاظ على الموعد'}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border p-4" style={{ borderColor: BORDER }}>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2">
+                          <User className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-sm font-semibold">العميل</span>
+                          <span className="text-xs text-muted-foreground">— عميل مباشر افتراضيًا</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowCustomerFields((v) => !v)}
+                          className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border min-h-[36px]"
+                          style={{ borderColor: BORDER, color: GOLD }}
+                        >
+                          {showCustomerFields ? 'إخفاء' : 'إضافة بيانات العميل'}
+                        </button>
+                      </div>
+
+                      {!showCustomerFields && (
+                        <p className="text-xs text-muted-foreground">سيتم إنشاء الدور كعميل مباشر</p>
+                      )}
+
+                      {showCustomerFields && (
+                        <div className="space-y-3 mt-3">
+                          <div className="relative">
+                            <label className="block text-xs font-medium text-muted-foreground mb-1.5">رقم الهاتف</label>
+                            <div className="relative">
+                              <input
+                                type="tel"
+                                placeholder="01xxxxxxxxx"
+                                value={customerPhone}
+                                onChange={(e) => handlePhoneChange(e.target.value)}
+                                className="w-full min-h-[44px] p-3 border rounded-lg text-right bg-transparent"
+                                style={{ borderColor: BORDER }}
+                                dir="ltr"
+                              />
+                              <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                                {isSearchingCustomer ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" style={{ color: GOLD }} />
+                                ) : customerFound === true ? (
+                                  <CheckCircle className="w-4 h-4 text-success" />
+                                ) : (
+                                  <Search className="w-4 h-4 text-muted-foreground" />
+                                )}
+                              </div>
+                            </div>
+                            {customerFound === true && (
+                              <p className="text-xs text-success mt-1.5 flex items-center gap-1">
+                                <CheckCircle className="w-3.5 h-3.5" /> عميل موجود
+                              </p>
+                            )}
+                            {customerFound === false && customerPhone.length >= 7 && (
+                              <p className="text-xs text-warning mt-1.5 flex items-center gap-1">
+                                <UserPlus className="w-3.5 h-3.5" /> عميل جديد
+                              </p>
+                            )}
+                            {customerSearchError && (
+                              <p className="text-xs text-destructive mt-1.5">{customerSearchError}</p>
+                            )}
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-1.5">اسم العميل</label>
+                            <input
+                              type="text"
+                              placeholder="اسم العميل"
+                              value={customerName}
+                              onChange={(e) => setCustomerName(e.target.value)}
+                              className="w-full min-h-[44px] p-3 border rounded-lg text-right bg-transparent"
+                              style={{ borderColor: BORDER }}
+                            />
+                          </div>
                         </div>
                       )}
                     </div>
-                  </button>
-                ))
-              )}
-            </div>
-          )}
 
-          {/* Step 2: Select Services */}
-          {step === 2 && selectedBarber && (
-            <div className="space-y-3">
-              <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-                <div className="text-sm text-blue-600 mb-1">الصنايعي المختار:</div>
-                <div className="font-semibold text-blue-900">{selectedBarber.empName}</div>
-              </div>
-
-              {selectedServices.length > 0 && (
-                <div className="p-3 bg-green-50 rounded-lg text-sm text-green-900">
-                  {selectedServices.length} خدمة — {totalDuration} دقيقة
-                  {totalPrice > 0 ? ` — ${totalPrice} ج.م` : ''}
-                </div>
-              )}
-
-              {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-                  <span className="mr-3 text-gray-600">جاري حساب الوقت...</span>
-                </div>
-              ) : (
-                <>
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {services.map((service) => {
-                      const sel = selectedServices.some((s) => s.ProID === service.ProID);
-                      return (
-                        <button
-                          key={service.ProID}
-                          onClick={() => toggleService(service)}
-                          className={`w-full p-4 border rounded-xl transition-all text-right ${
-                            sel ? 'border-blue-500 bg-blue-50' : 'hover:border-blue-500 hover:bg-blue-50'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              {sel ? (
-                                <CheckCircle2 className="w-5 h-5 text-blue-600" />
-                              ) : (
-                                <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
-                                  <Scissors className="w-5 h-5 text-gray-600" />
-                                </div>
-                              )}
-                              <div className="font-medium text-gray-900">{service.ProName}</div>
-                            </div>
-                            <div className="text-sm text-gray-500">{service.DurationMinutes ?? 30} دقيقة</div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {selectedServices.length > 0 && (
                     <button
-                      onClick={runSimulate}
-                      className="w-full py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                      type="button"
+                      onClick={() => void handleCreate()}
+                      disabled={loading}
+                      className="w-full py-3.5 rounded-xl font-bold text-primary-foreground min-h-[48px] disabled:opacity-50 flex items-center justify-center gap-2"
+                      style={{ background: `linear-gradient(135deg, ${GOLD}, var(--primary-active))` }}
                     >
-                      التالي: حساب الوقت ({totalDuration} دقيقة)
+                      {loading ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          جاري الإنشاء...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-5 h-5" />
+                          إضافة للدور
+                        </>
+                      )}
                     </button>
-                  )}
-                </>
-              )}
-            </div>
-          )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
 
-          {/* Step 3: Confirm */}
-          {step === 3 && simulateResult && selectedBarber && selectedServices.length > 0 && (
-            <div className="space-y-4">
-              {/* Success Message */}
-              {createResult ? (
-                <div className="p-4 bg-green-50 border border-green-200 rounded-xl text-center">
-                  <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-3" />
-                  <div className="text-lg font-bold text-green-900 mb-1">
-                    تم إنشاء الدور بنجاح
-                  </div>
-                  <div className="text-2xl font-bold text-green-700 mb-2">
-                    {createResult.ticketCode}
-                  </div>
-                  <div className="text-sm text-green-600">
-                    وقت الدخول: {formatTime(createResult.estimatedStartTime)}
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {/* Summary Card */}
-                  <div className="p-4 bg-blue-50 rounded-xl">
-                    <div className="text-lg font-bold text-blue-900 mb-3">
-                      الدور المتوقع مع {selectedBarber.empName}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div>
-                        <div className="text-sm text-blue-600">وقت الدخول</div>
-                        <div className="text-xl font-bold text-blue-900">
-                          {formatTime(simulateResult.suggestedStartTime)}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-sm text-blue-600">وقت الانتهاء</div>
-                        <div className="text-xl font-bold text-blue-900">
-                          {formatTime(simulateResult.suggestedEndTime)}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Customer Info Section - Improved UI */}
-                    <div className="bg-white rounded-xl border border-slate-200 p-4 mt-4 shadow-sm">
-                      <div className="flex items-center gap-2 mb-4">
-                        <User className="w-4 h-4 text-slate-500" />
-                        <span className="text-sm font-semibold text-slate-800">بيانات العميل</span>
-                        <span className="text-xs text-slate-400">— اختياري</span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {/* Phone Input with Search */}
-                        <div className="relative">
-                          <label className="block text-xs font-medium text-slate-600 mb-1.5">رقم الهاتف</label>
-                          <div className="relative">
-                            <input
-                              type="tel"
-                              placeholder="01xxxxxxxxx"
-                              value={customerPhone}
-                              onChange={(e) => handlePhoneChange(e.target.value)}
-                              className="w-full p-3 pr-10 border border-slate-300 rounded-lg text-right text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                            />
-                            <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                              {isSearchingCustomer ? (
-                                <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-                              ) : customerFound === true ? (
-                                <CheckCircle className="w-4 h-4 text-emerald-500" />
-                              ) : (
-                                <Search className="w-4 h-4 text-slate-400" />
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Search Status Messages */}
-                          {customerFound === true && (
-                            <div className="flex items-center gap-1.5 mt-2 text-xs text-emerald-600">
-                              <CheckCircle className="w-3.5 h-3.5" />
-                              <span>عميل موجود — تم ملء الاسم تلقائياً</span>
-                            </div>
-                          )}
-                          {customerFound === false && customerPhone.length >= 7 && (
-                            <div className="flex items-center gap-1.5 mt-2 text-xs text-amber-600">
-                              <UserPlus className="w-3.5 h-3.5" />
-                              <span>عميل جديد — سيتم تسجيله عند إنشاء الدور</span>
-                            </div>
-                          )}
-                          {customerSearchError && (
-                            <div className="flex items-center gap-1.5 mt-2 text-xs text-red-500">
-                              <AlertCircle className="w-3.5 h-3.5" />
-                              <span>{customerSearchError}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Name Input */}
-                        <div>
-                          <label className="block text-xs font-medium text-slate-600 mb-1.5">اسم العميل</label>
-                          <input
-                            type="text"
-                            placeholder="اسم العميل"
-                            value={customerName}
-                            onChange={(e) => setCustomerName(e.target.value)}
-                            className="w-full p-3 border border-slate-300 rounded-lg text-right text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                          />
-                        </div>
-
-                        {/* Customer Summary Card */}
-                        {customerFound === true && customerId && (
-                          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mt-2">
-                            <div className="flex items-center gap-2 text-emerald-700">
-                              <CheckCircle className="w-4 h-4" />
-                              <span className="text-xs font-medium">سيتم ربط الدور بالعميل رقم #{customerId}</span>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Empty State Hint */}
-                        {!customerPhone && !customerName && (
-                          <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-1">
-                            <span>يمكنك إنشاء الدور بدون بيانات العميل أو إدخال رقم الهاتف للبحث</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 text-blue-700 mb-2">
-                      <Users className="w-5 h-5" />
-                      <span>قدامه: {simulateResult.peopleBefore} أشخاص</span>
-                    </div>
-
-                    <div className="text-sm text-blue-600">
-                      {simulateResult.decision === 'start_now' && 'يمكنه الدخول الآن'}
-                      {simulateResult.decision === 'after_queue' && 'سيدخل بعد الأدوار الحالية'}
-                      {simulateResult.decision === 'after_booking' && 'تم وضعه بعد الحجز القادم للحفاظ على موعد الحجز'}
-                    </div>
-                  </div>
-
-                  {/* Timeline */}
-                  {simulateResult.timeline.length > 0 && (
-                    <div className="border rounded-xl p-4">
-                      <div className="text-sm font-semibold text-gray-700 mb-3">الجدول المتوقع:</div>
-                      <div className="space-y-2">
-                        {simulateResult.timeline
-                          .filter(item => item.type !== 'gap')
-                          .slice(0, 5)
-                          .map((item, idx) => (
-                            <div
-                              key={idx}
-                              className={`flex items-center justify-between p-2 rounded text-sm ${
-                                item.type === 'queue'
-                                  ? 'bg-orange-50 text-orange-700'
-                                  : item.type === 'booking'
-                                  ? 'bg-red-50 text-red-700'
-                                  : 'bg-gray-50 text-gray-700'
-                              }`}
-                            >
-                              <span className="font-medium">{item.label}</span>
-                              <span>
-                                {formatTime(item.startTime)} - {formatTime(item.endTime)}
-                              </span>
-                            </div>
-                          ))}
-                        <div className="flex items-center justify-between p-2 rounded text-sm bg-blue-100 text-blue-800 font-medium">
-                          <span>الدور الجديد</span>
-                          <span>
-                            {formatTime(simulateResult.suggestedStartTime)} - {formatTime(simulateResult.suggestedEndTime)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Confirm Button */}
-                  <button
-                    onClick={handleCreate}
-                    disabled={loading}
-                    className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold text-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        جاري الإنشاء...
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="w-5 h-5" />
-                        تأكيد وإنشاء الدور
-                      </>
-                    )}
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Footer with Back Button */}
-        {step > 1 && !createResult && (
-          <div className="px-6 py-4 border-t bg-gray-50">
+          <div
+            className="shrink-0 border-t px-4 py-3 sm:px-5 flex items-center justify-between gap-2"
+            style={{ borderColor: BORDER }}
+          >
             <button
-              onClick={handleBack}
+              type="button"
+              onClick={step > 1 && !createResult ? handleBack : onClose}
               disabled={loading}
-              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 disabled:opacity-50"
+              className="flex items-center gap-1 px-4 min-h-[44px] rounded-xl border text-sm font-semibold disabled:opacity-40"
+              style={{ borderColor: BORDER }}
             >
               <ArrowRight className="w-4 h-4" />
-              رجوع
+              {step > 1 && !createResult ? 'رجوع' : 'إلغاء'}
             </button>
-          </div>
-        )}
-      </div>
-    </div>
 
-    {/* Print Ticket Modal */}
-    <PrintQueueTicketModal
-      isOpen={showPrintModal}
-      ticket={createResult}
-      onClose={() => {
-        setShowPrintModal(false);
-        onCreated();
-        onClose();
-      }}
-      onPrintComplete={() => {
-        // Refresh scheduler after print
-        onCreated();
-      }}
-    />
+            {step === 1 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!selectedServices.length) {
+                    setError('اختر خدمة واحدة على الأقل');
+                    return;
+                  }
+                  setError(null);
+                  setStep(2);
+                }}
+                disabled={!selectedServices.length}
+                className="flex items-center gap-1 px-5 min-h-[44px] rounded-xl text-sm font-bold text-primary-foreground disabled:opacity-40"
+                style={{ background: `linear-gradient(135deg, ${GOLD}, var(--primary-active))` }}
+              >
+                التالي
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <PrintQueueTicketModal
+        isOpen={showPrintModal}
+        ticket={createResult}
+        onClose={() => {
+          setShowPrintModal(false);
+          onCreated();
+          onClose();
+        }}
+        onPrintComplete={() => {
+          onCreated();
+        }}
+      />
     </>
   );
 }

@@ -4,12 +4,14 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   X, ArrowRight, ArrowLeft, Loader2, Clock, Users, User, AlertCircle, CheckCircle2,
 } from 'lucide-react';
-import { BookingServiceSelect } from './BookingServiceSelect';
+import { OpsServicePicker } from './OpsServicePicker';
 import { PrintQueueTicketModal } from './PrintQueueTicketModal';
 import type { CreateQueueResponse, QueuePlanForBarberResult, QueuePlanAlternative } from '@/lib/operationsQueueTypes';
 import { BORDER, GOLD, GOLD_BDR, formatDateLabel } from './booking-workspace/types';
 import { notifyBookingV2QueueCreated } from '@/lib/operations/bookingV2/mutationSync';
 import { isOpsMainServiceName } from '@/lib/operations/opsPopularServices';
+import { useOpsQueueCatalog } from '@/lib/operations/useOpsQueueCatalog';
+import { useSession } from '@/hooks/useSession';
 import { cn } from '@/lib/utils';
 
 interface Service {
@@ -18,6 +20,8 @@ interface Service {
   SPrice: number;
   DurationMinutes: number | null;
   CatName?: string | null;
+  CatID?: string | number | null;
+  ProNameEn?: string | null;
 }
 
 export interface BarberQueueWorkspaceBarber {
@@ -37,12 +41,12 @@ interface Props {
   onLoadingChange?: (empId: number | null) => void;
 }
 
-type Step = 1 | 2 | 3;
+/** Phase D — locked barber: Service → Plan+Confirm (no redundant Review). */
+type Step = 1 | 2;
 
 const STEPS: Array<{ id: Step; label: string }> = [
   { id: 1, label: 'الخدمات' },
-  { id: 2, label: 'الموعد' },
-  { id: 3, label: 'تأكيد وطباعة' },
+  { id: 2, label: 'التأكيد' },
 ];
 
 function formatTimeIso(iso: string): string {
@@ -71,9 +75,14 @@ export function BarberQueueWorkspaceModal({
   requestedFrom,
   onLoadingChange,
 }: Props) {
+  const { user, activeBranch } = useSession();
+  const branchCode =
+    user?.ActiveBranchCode
+    ?? activeBranch?.branchCode
+    ?? null;
+  const { services, loading: loadingServices } = useOpsQueueCatalog(branchCode);
+
   const [step, setStep] = useState<Step>(1);
-  const [services, setServices] = useState<Service[]>([]);
-  const [loadingServices, setLoadingServices] = useState(false);
   const [selectedServices, setSelectedServices] = useState<Service[]>([]);
   const [plan, setPlan] = useState<QueuePlanForBarberResult | null>(null);
   const [selectedSlotIndex, setSelectedSlotIndex] = useState(0);
@@ -83,6 +92,7 @@ export function BarberQueueWorkspaceModal({
   const [createResult, setCreateResult] = useState<CreateQueueResponse | null>(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const planDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const createPendingRef = useRef(false);
 
   const serviceIds = useMemo(() => selectedServices.map((s) => s.ProID), [selectedServices]);
   const totalDuration = useMemo(
@@ -114,19 +124,13 @@ export function BarberQueueWorkspaceModal({
     setError(null);
     setCreateResult(null);
     setShowPrintModal(false);
+    createPendingRef.current = false;
   }, []);
 
   useEffect(() => {
     if (!open) {
       reset();
-      return;
     }
-    setLoadingServices(true);
-    fetch('/api/services?active=true&bookable=true')
-      .then((r) => r.json())
-      .then((d) => setServices(d.services ?? d ?? []))
-      .catch(() => setError('تعذر تحميل الخدمات'))
-      .finally(() => setLoadingServices(false));
   }, [open, reset]);
 
   const fetchPlan = useCallback(async () => {
@@ -171,8 +175,9 @@ export function BarberQueueWorkspaceModal({
     }
   }, [barber.empId, barber.branchId, serviceIds, operationalDate, requestedFrom, onLoadingChange]);
 
+  // Prefetch plan while selecting services so Confirm feels instant.
   useEffect(() => {
-    if (!open || step < 2 || !serviceIds.length) return;
+    if (!open || !serviceIds.length) return;
     if (planDebounceRef.current) clearTimeout(planDebounceRef.current);
     planDebounceRef.current = setTimeout(() => {
       void fetchPlan();
@@ -180,7 +185,7 @@ export function BarberQueueWorkspaceModal({
     return () => {
       if (planDebounceRef.current) clearTimeout(planDebounceRef.current);
     };
-  }, [open, step, serviceIds.join(','), fetchPlan]);
+  }, [open, serviceIds.join(','), fetchPlan]);
 
   const handleMainSelect = (proId: number) => {
     const svc = services.find((s) => s.ProID === proId);
@@ -212,34 +217,25 @@ export function BarberQueueWorkspaceModal({
     setSelectedSlotIndex(0);
   };
 
-  const goNext = async () => {
-    if (step === 1) {
-      if (!selectedServices.length) {
-        setError('اختر خدمة واحدة على الأقل');
-        return;
-      }
-      setError(null);
-      setStep(2);
+  const goNext = () => {
+    if (step !== 1) return;
+    if (!selectedServices.length) {
+      setError('اختر خدمة واحدة على الأقل');
       return;
     }
-    if (step === 2) {
-      if (!plan?.available || !selectedSlot) {
-        setError(plan?.message ?? 'لا يوجد موعد متاح');
-        return;
-      }
-      setError(null);
-      setStep(3);
-    }
+    setError(null);
+    setStep(2);
   };
 
   const goBack = () => {
     setError(null);
-    if (step === 3) setStep(2);
-    else if (step === 2) setStep(1);
+    if (step === 2) setStep(1);
   };
 
   const handleCreate = async () => {
     if (!selectedSlot || !serviceIds.length) return;
+    if (createPendingRef.current) return;
+    createPendingRef.current = true;
 
     setCreateLoading(true);
     setError(null);
@@ -285,6 +281,7 @@ export function BarberQueueWorkspaceModal({
     } catch {
       setError('تعذر إنشاء الدور، حاول مرة أخرى');
     } finally {
+      createPendingRef.current = false;
       setCreateLoading(false);
       onLoadingChange?.(null);
     }
@@ -308,14 +305,13 @@ export function BarberQueueWorkspaceModal({
           role="dialog"
           aria-modal="true"
           className={cn(
-            'flex flex-col w-full border shadow-2xl overflow-hidden',
+            'flex flex-col w-full border shadow-2xl overflow-hidden min-h-0',
             'h-[100dvh] sm:h-[min(90vh,820px)] sm:w-[min(92vw,960px)] sm:max-w-[960px] sm:rounded-2xl',
           )}
           style={{ background: 'var(--surface-elevated)', borderColor: BORDER }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Header */}
-          <div className="shrink-0 border-b px-4 py-4 sm:px-6" style={{ borderColor: BORDER }}>
+          <div className="shrink-0 border-b px-4 py-3 sm:px-6" style={{ borderColor: BORDER }}>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-medium text-muted-foreground mb-1">
@@ -325,7 +321,7 @@ export function BarberQueueWorkspaceModal({
                   إنشاء دور مع {barber.empName}
                 </h2>
                 <p className="text-xs text-muted-foreground mt-1">
-                  اختر الخدمات وسيتم تحديد أقرب وقت متاح تلقائيًا
+                  اختر الخدمة — الحلاق ثابت · عميل مباشر
                 </p>
               </div>
               <button
@@ -338,7 +334,7 @@ export function BarberQueueWorkspaceModal({
               </button>
             </div>
 
-            <div className="mt-4 flex gap-2">
+            <div className="mt-3 flex gap-2">
               {STEPS.map((s) => (
                 <div
                   key={s.id}
@@ -357,8 +353,7 @@ export function BarberQueueWorkspaceModal({
             </div>
           </div>
 
-          {/* Body */}
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
             {error && (
               <div className="mb-4 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
                 <AlertCircle className="size-4 shrink-0 mt-0.5" />
@@ -372,7 +367,7 @@ export function BarberQueueWorkspaceModal({
                   <div>
                     <h3 className="text-base font-bold">اختر الخدمات</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      المدة الإجمالية تحدد أقرب موعد متاح
+                      الأكثر طلبًا أولاً — المدة تحدد أقرب وقت متاح
                     </p>
                   </div>
                   {selectedServices.length > 0 && (
@@ -408,14 +403,10 @@ export function BarberQueueWorkspaceModal({
                         </li>
                       ))}
                     </ul>
-                    <div className="pt-2 border-t flex justify-between text-sm font-bold" style={{ borderColor: BORDER }}>
-                      <span style={{ color: GOLD }}>الإجمالي: {totalDuration} دقيقة</span>
-                      <span style={{ color: GOLD }}>{totalPrice} ج.م</span>
-                    </div>
                   </div>
                 )}
 
-                <BookingServiceSelect
+                <OpsServicePicker
                   services={services}
                   selectedIds={serviceIds}
                   onSelectMain={handleMainSelect}
@@ -434,17 +425,25 @@ export function BarberQueueWorkspaceModal({
                   <div className="flex items-center gap-2">
                     <User className="size-4 text-primary" />
                     <span className="font-bold">{barber.empName}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded border" style={{ borderColor: GOLD_BDR, color: GOLD }}>
+                      ثابت
+                    </span>
                   </div>
                   <p className="text-sm text-muted-foreground">{formatDateLabel(operationalDate)}</p>
                   <p className="text-sm">
-                    الوقت المطلوب: <strong style={{ color: GOLD }}>{totalDuration} دقيقة</strong>
+                    {selectedServices.map((s) => s.ProName).join(' + ')}
                   </p>
+                  <p className="text-sm">
+                    الوقت المطلوب: <strong style={{ color: GOLD }}>{totalDuration} دقيقة</strong>
+                    <span className="text-muted-foreground"> · {totalPrice} ج.م</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">العميل: عميل مباشر</p>
                 </div>
 
-                {planLoading ? (
+                {planLoading && !selectedSlot ? (
                   <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
                     <Loader2 className="size-5 animate-spin" />
-                    <span>جاري حساب أقرب موعد...</span>
+                    <span>جاري حساب أقرب وقت...</span>
                   </div>
                 ) : plan?.available && allSlots.length > 0 ? (
                   <div className="space-y-3">
@@ -475,8 +474,17 @@ export function BarberQueueWorkspaceModal({
                     {typeof plan.waitingCountAtCreation === 'number' && plan.waitingCountAtCreation > 0 && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Users className="size-4" />
-                        <span>{plan.waitingCountAtCreation} عميل قبله</span>
+                        <span>
+                          {plan.waitingCountAtCreation === 1
+                            ? 'الدور الثاني'
+                            : `الدور رقم ${plan.waitingCountAtCreation + 1} · ${plan.waitingCountAtCreation} قبله`}
+                        </span>
                       </div>
+                    )}
+                    {planLoading && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Loader2 className="size-3 animate-spin" /> جاري تحديث الخطة...
+                      </p>
                     )}
                   </div>
                 ) : (
@@ -484,60 +492,18 @@ export function BarberQueueWorkspaceModal({
                     {plan?.message ?? error ?? 'لا يوجد موعد متاح'}
                   </p>
                 )}
-              </div>
-            )}
 
-            {step === 3 && selectedSlot && (
-              <div className="space-y-4">
-                <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: BORDER }}>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="size-5 text-success" />
-                    <span className="font-bold">مراجعة الدور</span>
+                <div className="rounded-xl border p-3 text-xs text-muted-foreground" style={{ borderColor: BORDER }}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <CheckCircle2 className="size-4 text-success" />
+                    <span className="font-semibold text-foreground">جاهز للإضافة للدور</span>
                   </div>
-                  <div className="grid gap-2 text-sm">
-                    <div className="flex justify-between gap-2">
-                      <span className="text-muted-foreground">الحلاق</span>
-                      <span className="font-semibold">{barber.empName}</span>
-                    </div>
-                    <div className="flex justify-between gap-2">
-                      <span className="text-muted-foreground">التاريخ</span>
-                      <span>{formatDateLabel(operationalDate)}</span>
-                    </div>
-                    <div className="flex justify-between gap-2">
-                      <span className="text-muted-foreground">الموعد</span>
-                      <span className="font-semibold" style={{ color: GOLD }}>
-                        {slotLabel(selectedSlot.startAt, selectedSlot.endAt)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between gap-2">
-                      <span className="text-muted-foreground">المدة</span>
-                      <span>{totalDuration} دقيقة</span>
-                    </div>
-                    <div className="flex justify-between gap-2">
-                      <span className="text-muted-foreground">السعر</span>
-                      <span>{totalPrice} ج.م</span>
-                    </div>
-                    {typeof plan?.waitingCountAtCreation === 'number' && (
-                      <div className="flex justify-between gap-2">
-                        <span className="text-muted-foreground">عملاء قبله</span>
-                        <span>{plan.waitingCountAtCreation}</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="border-t pt-3 space-y-1" style={{ borderColor: BORDER }}>
-                    <p className="text-xs font-bold text-muted-foreground">الخدمات</p>
-                    {selectedServices.map((s) => (
-                      <p key={s.ProID} className="text-sm">
-                        {s.ProName} — {s.DurationMinutes ?? 30} دقيقة
-                      </p>
-                    ))}
-                  </div>
+                  اضغط «إضافة للدور» لإنشاء التذكرة والطباعة.
                 </div>
               </div>
             )}
           </div>
 
-          {/* Footer */}
           <div
             className="shrink-0 border-t px-4 py-3 sm:px-6 flex flex-wrap items-center justify-between gap-2"
             style={{ borderColor: BORDER }}
@@ -565,11 +531,11 @@ export function BarberQueueWorkspaceModal({
               </button>
             </div>
 
-            {step < 3 ? (
+            {step === 1 ? (
               <button
                 type="button"
-                onClick={() => void goNext()}
-                disabled={step === 1 && !selectedServices.length}
+                onClick={goNext}
+                disabled={!selectedServices.length}
                 className="flex items-center gap-1 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground min-h-[44px] hover:bg-primary/90 disabled:opacity-50"
               >
                 التالي
@@ -579,11 +545,11 @@ export function BarberQueueWorkspaceModal({
               <button
                 type="button"
                 onClick={() => void handleCreate()}
-                disabled={createLoading || !selectedSlot}
+                disabled={createLoading || !selectedSlot || planLoading}
                 className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground min-h-[44px] hover:bg-primary/90 disabled:opacity-50"
               >
                 {createLoading && <Loader2 className="size-4 animate-spin" />}
-                إنشاء وطباعة الدور
+                إضافة للدور
               </button>
             )}
           </div>

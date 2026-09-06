@@ -1,12 +1,16 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { X, Search, User, Scissors, Loader2, CheckCircle2, Zap, Clock, Users, AlertCircle, RefreshCw, ChevronLeft, Ticket } from 'lucide-react';
 import { QueueTicketCreatedModal } from '@/components/queue/QueueTicketCreatedModal';
 import type { QueueTicketPrintData } from '@/components/queue/QueueTicketPrint';
 import { normalizeCustomersAhead } from '@/lib/queueCustomersAhead';
+import { OpsServicePicker } from './OpsServicePicker';
+import { useOpsQueueCatalog } from '@/lib/operations/useOpsQueueCatalog';
+import { isOpsMainServiceName } from '@/lib/operations/opsPopularServices';
+import { useSession } from '@/hooks/useSession';
 
-interface Service { ProID: number; ProName: string; SPrice: number; DurationMinutes: number | null; }
+interface Service { ProID: number; ProName: string; SPrice: number; DurationMinutes: number | null; CatName?: string | null; CatID?: string | number | null; ProNameEn?: string | null; }
 interface Client { ClientID: number; Name: string; Mobile?: string; }
 
 interface EstimateOption {
@@ -69,6 +73,13 @@ function normalizeCreatedTime(v: unknown): string {
 }
 
 export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
+  const { user, activeBranch } = useSession();
+  const branchCode =
+    user?.ActiveBranchCode
+    ?? activeBranch?.branchCode
+    ?? null;
+  const { services, loading: loadingServices } = useOpsQueueCatalog(branchCode);
+
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [clientSearch, setClientSearch] = useState('');
   const [clients, setClients] = useState<Client[]>([]);
@@ -77,7 +88,6 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
   const [showClients, setShowClients] = useState(false);
   const [quickCreating, setQuickCreating] = useState(false);
 
-  const [services, setServices] = useState<Service[]>([]);
   const [selectedServices, setSelectedServices] = useState<Service[]>([]);
 
   const totalDuration = selectedServices.reduce(
@@ -85,13 +95,28 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
     0,
   );
   const totalPrice = selectedServices.reduce((s, svc) => s + (svc.SPrice ?? 0), 0);
+  const serviceIds = useMemo(() => selectedServices.map((s) => s.ProID), [selectedServices]);
 
-  const toggleService = (svc: Service) => {
-    setSelectedServices((prev) =>
-      prev.some((s) => s.ProID === svc.ProID)
-        ? prev.filter((s) => s.ProID !== svc.ProID)
-        : [...prev, svc],
-    );
+  const handleMainSelect = (proId: number) => {
+    const svc = services.find((s) => s.ProID === proId);
+    if (!svc) return;
+    setSelectedServices((prev) => {
+      const alreadyMain = prev.some((s) => s.ProID === proId && isOpsMainServiceName(s.ProName));
+      const addons = prev.filter((s) => !isOpsMainServiceName(s.ProName));
+      if (alreadyMain) return addons;
+      return [svc, ...addons];
+    });
+    setEstimate(null);
+    setSelectedOption(null);
+  };
+
+  const handleToggleAddon = (proId: number) => {
+    setSelectedServices((prev) => {
+      const exists = prev.some((s) => s.ProID === proId);
+      if (exists) return prev.filter((s) => s.ProID !== proId);
+      const svc = services.find((s) => s.ProID === proId);
+      return svc ? [...prev, svc] : prev;
+    });
     setEstimate(null);
     setSelectedOption(null);
   };
@@ -103,15 +128,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdData, setCreatedData] = useState<(QueueTicketPrintData & { ticketId: number }) | null>(null);
-
-  // Load services on mount
-  useEffect(() => {
-    if (!isOpen) return;
-    fetch('/api/services?active=true&bookable=true')
-      .then(r => r.json())
-      .then(d => setServices(d.services ?? d ?? []))
-      .catch(() => { });
-  }, [isOpen]);
+  const createPendingRef = useRef(false);
 
   // Client search
   useEffect(() => {
@@ -143,6 +160,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
       setClients([]);
       setShowClients(false);
       setCreatedData(null);
+      createPendingRef.current = false;
     }
   }, [isOpen]);
 
@@ -158,18 +176,12 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
 
     try {
       const browserNow = new Date();
-      const serviceIds = selectedServices.map((s) => s.ProID);
+      const ids = selectedServices.map((s) => s.ProID);
       const estimatePayload = {
         mode: 'nearest',
-        serviceIds,
+        serviceIds: ids,
         requestedAt: browserNow.toISOString(),
       };
-      console.log('[estimate payload]', {
-        ...estimatePayload,
-        browserNowLocal: browserNow.toLocaleString('ar-EG', { timeZone: 'Africa/Cairo' }),
-        browserTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        serviceDuration: totalDuration,
-      });
 
       const res = await fetch('/api/queue/estimate', {
         method: 'POST',
@@ -177,7 +189,6 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
         body: JSON.stringify(estimatePayload),
       });
       const data: EstimateResponse = await res.json();
-      console.log('[estimate response]', data);
       setEstimate(data);
 
       // Auto-select best option if available
@@ -186,11 +197,12 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
       }
     } catch { /* non-fatal */ }
     finally { setEstimating(false); }
-  }, [selectedServices, totalDuration]);
+  }, [selectedServices]);
 
+  // Estimate when entering Time/barber step (domain: /api/queue/estimate — unchanged).
   useEffect(() => {
     if (step === 2 && selectedServices.length > 0) {
-      fetchEstimate();
+      void fetchEstimate();
     }
   }, [step, selectedServices, fetchEstimate]);
 
@@ -235,6 +247,8 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
       setError('اختر حلاقاً من القائمة');
       return;
     }
+    if (createPendingRef.current) return;
+    createPendingRef.current = true;
 
     const empId = selectedOption.empId;
     // Client is optional - use selected client or default to "عميل مباشر"
@@ -330,6 +344,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'فشل إصدار الدور');
     } finally {
+      createPendingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -367,7 +382,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
               step === 2 ? 'bg-surface-muted text-foreground' : step > 2 ? 'text-muted-foreground' : 'text-muted-foreground/70'
             }`}>
               <User className="w-4 h-4" />
-              <span>الحلاق</span>
+              <span>أقرب حلاق</span>
             </div>
             <ChevronLeft className="w-4 h-4 text-muted-foreground/50" />
             <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${
@@ -404,45 +419,29 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                           {selectedServices.map((s) => s.ProName).join(' + ')}
                         </p>
                       </div>
-                      <button onClick={() => { setSelectedServices([]); setEstimate(null); }}
+                      <button type="button" onClick={() => { setSelectedServices([]); setEstimate(null); }}
                         className="text-xs px-2 py-1 rounded bg-surface-muted hover:bg-surface-muted/80 transition-colors text-foreground shrink-0">
                         مسح
                       </button>
                     </div>
                   )}
-                  <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto">
-                    {services.map((svc) => {
-                      const sel = selectedServices.some((s) => s.ProID === svc.ProID);
-                      return (
-                        <button
-                          key={svc.ProID}
-                          onClick={() => toggleService(svc)}
-                          className={`p-3 rounded-lg border text-right transition-all flex items-center justify-between ${
-                            sel ? 'border-primary/60' : 'hover:border-primary/50'
-                          }`}
-                          style={{ background: sel ? 'color-mix(in srgb, var(--primary) 8%, var(--surface-muted))' : 'var(--surface-muted)', borderColor: sel ? undefined : 'color-mix(in srgb, var(--primary) 15%, transparent)' }}
-                        >
-                          <div className="flex items-center gap-2">
-                            {sel ? <CheckCircle2 className="w-4 h-4 text-primary" /> : <Scissors className="w-4 h-4 text-muted-foreground/70" />}
-                            <span className="text-sm text-foreground">{svc.ProName}</span>
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {svc.DurationMinutes ? `${svc.DurationMinutes} دقيقة` : ''}
-                            {svc.SPrice ? ` — ${svc.SPrice} ج.م` : ''}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <OpsServicePicker
+                    services={services}
+                    selectedIds={serviceIds}
+                    onSelectMain={handleMainSelect}
+                    onToggleAddon={handleToggleAddon}
+                    isLoading={loadingServices}
+                  />
                 </div>
 
                 {selectedServices.length > 0 && (
                   <button
+                    type="button"
                     onClick={() => setStep(2)}
                     className="w-full py-3 rounded-xl font-bold text-base transition-all"
                     style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
                   >
-                    التالي: اختيار الحلاق
+                    التالي: أقرب حلاق
                   </button>
                 )}
               </div>
