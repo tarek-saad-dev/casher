@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertTriangle } from 'lucide-react';
+import { OpsFlowErrorBanner } from '../OpsFlowErrorBanner';
 import { BookingStepCustomer } from './BookingStepCustomer';
 import {
   BORDER,
@@ -145,12 +145,7 @@ export function BookingStepConfirm({
         onShowClients={onShowClients}
       />
 
-      {error && (
-        <div className="flex gap-2 p-4 rounded-xl border border-destructive/30 bg-destructive/5">
-          <AlertTriangle size={18} className="text-destructive shrink-0" />
-          <p className="text-sm text-destructive">{error}</p>
-        </div>
-      )}
+      {error && <OpsFlowErrorBanner message={error} />}
 
       <p className="text-xs text-muted-foreground">
         سيتم التحقق من توفر الموعد مرة أخرى عند التأكيد.

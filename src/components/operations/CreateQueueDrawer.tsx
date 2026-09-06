@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * LEGACY / ORPHAN — not wired from `/operations` (see OperationsPageClient).
+ * Active flows use SimpleCreateQueueDrawer + FindNearestQueueDrawer + BarberQueueWorkspaceModal.
+ * Retained intentionally until product confirms no external/deep-link usage.
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import { X, Search, User, Scissors, Loader2, CheckCircle2, Zap, Clock, Users, AlertCircle, RefreshCw } from 'lucide-react';
 import type { BarberStatus, EstimateResponse } from '@/lib/operationsTypes';

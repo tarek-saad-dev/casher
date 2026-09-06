@@ -8,7 +8,9 @@ This will:
 1. Check if Node.js is installed
 2. Install dependencies (first time only)
 3. Start the development server
-4. Open browser automatically at http://localhost:3000
+4. Open browser automatically at http://localhost:5500
+
+> **Port note:** App scripts use **5500** (`npm run dev` / `dev:app`). References to port 3000 below are outdated.
 
 ---
 

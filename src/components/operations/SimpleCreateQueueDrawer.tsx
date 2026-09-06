@@ -2,19 +2,22 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
-  X, User, Loader2, CheckCircle2, Clock, Users, AlertCircle, ArrowRight, ArrowLeft,
+  X, User, Loader2, CheckCircle2, Clock, Users, ArrowRight, ArrowLeft,
   Search, UserPlus, CheckCircle,
 } from 'lucide-react';
 import type { Customer } from '@/lib/types';
 import type { CreateQueueResponse } from '@/lib/operationsQueueTypes';
 import { PrintQueueTicketModal } from './PrintQueueTicketModal';
 import { OpsServicePicker } from './OpsServicePicker';
+import { OpsFlowErrorBanner } from './OpsFlowErrorBanner';
+import { OpsFlowStepTabs } from './OpsFlowStepTabs';
+import { OpsSelectedContextCard, OpsWalkInHint } from './OpsSelectedContextCard';
+import { useOpsModalChrome } from './useOpsModalChrome';
 import { notifyBookingV2QueueCreated } from '@/lib/operations/bookingV2/mutationSync';
 import { useOpsQueueCatalog } from '@/lib/operations/useOpsQueueCatalog';
 import { isOpsMainServiceName } from '@/lib/operations/opsPopularServices';
 import { useSession } from '@/hooks/useSession';
 import { BORDER, GOLD, GOLD_BDR } from './booking-workspace/types';
-import { cn } from '@/lib/utils';
 
 interface Service {
   ProID: number;
@@ -119,6 +122,11 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers }:
 
   const customerDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const createPendingRef = useRef(false);
+  const { dialogRef } = useOpsModalChrome({
+    open: isOpen,
+    onClose,
+    allowEscape: !loading,
+  });
 
   const workingBarbers = useMemo(
     () => barbers.filter((b) => b.status === 'working'),
@@ -341,16 +349,19 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers }:
         onClick={onClose}
       >
         <div
+          ref={dialogRef}
           role="dialog"
           aria-modal="true"
-          className="flex flex-col w-full border shadow-2xl overflow-hidden min-h-0 h-[100dvh] sm:h-[min(90vh,820px)] sm:w-[min(92vw,720px)] sm:max-w-[720px] sm:rounded-2xl"
+          aria-labelledby="simple-queue-title"
+          tabIndex={-1}
+          className="flex flex-col w-full border shadow-2xl overflow-hidden min-h-0 outline-none h-[100dvh] sm:h-[min(90vh,820px)] sm:w-[min(92vw,720px)] sm:max-w-[720px] sm:rounded-2xl"
           style={{ background: 'var(--surface-elevated)', borderColor: BORDER }}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="shrink-0 border-b px-4 py-3 sm:px-5" style={{ borderColor: BORDER }}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-bold text-foreground">إنشاء دور</h2>
+                <h2 id="simple-queue-title" className="text-lg font-bold text-foreground">إنشاء دور</h2>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   خدمة ← حلاق ← تأكيد · العميل اختياري (عميل مباشر)
                 </p>
@@ -364,32 +375,11 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers }:
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="mt-3 flex gap-2">
-              {STEPS.map((s) => (
-                <div
-                  key={s.id}
-                  className={cn(
-                    'flex-1 rounded-lg border px-2 py-1.5 text-center text-xs font-semibold',
-                    step === s.id
-                      ? 'border-primary/50 bg-primary/10 text-primary'
-                      : step > s.id
-                        ? 'border-success/30 bg-success/10 text-success'
-                        : 'border-border text-muted-foreground',
-                  )}
-                >
-                  {s.label}
-                </div>
-              ))}
-            </div>
+            <OpsFlowStepTabs steps={STEPS} step={step} />
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-5">
-            {error && (
-              <div className="mb-4 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
-                <AlertCircle className="w-5 h-5 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
+            {error && <OpsFlowErrorBanner message={error} />}
 
             {step === 1 && (
               <div className="space-y-4">
@@ -491,44 +481,25 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers }:
                   </div>
                 ) : (
                   <>
-                    <div
-                      className="p-4 rounded-xl border space-y-3"
-                      style={{ borderColor: GOLD_BDR, background: 'color-mix(in srgb, var(--primary) 6%, transparent)' }}
-                    >
-                      <div className="text-base font-bold">
-                        الدور المتوقع مع {selectedBarber.empName}
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <div className="text-xs text-muted-foreground">وقت الدخول</div>
-                          <div className="text-lg font-bold" style={{ color: GOLD }}>
-                            {formatTime(simulateResult.suggestedStartTime)}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-muted-foreground">وقت الانتهاء</div>
-                          <div className="text-lg font-bold">
-                            {formatTime(simulateResult.suggestedEndTime)}
-                          </div>
-                        </div>
-                      </div>
-                      <p className="text-sm">{selectedServices.map((s) => s.ProName).join(' + ')}</p>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Users className="w-4 h-4" />
-                        <span>
-                          {simulateResult.peopleBefore === 0
-                            ? 'يمكنه الدخول الآن'
-                            : simulateResult.peopleBefore === 1
-                              ? 'الدور الثاني · شخص واحد قبله'
-                              : `الدور رقم ${simulateResult.peopleBefore + 1} · ${simulateResult.peopleBefore} قبله`}
-                        </span>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {simulateResult.decision === 'start_now' && 'متاح فورًا'}
-                        {simulateResult.decision === 'after_queue' && 'بعد الأدوار الحالية'}
-                        {simulateResult.decision === 'after_booking' && 'بعد الحجز القادم للحفاظ على الموعد'}
-                      </div>
-                    </div>
+                    <OpsSelectedContextCard
+                      title={`الدور المتوقع مع ${selectedBarber.empName}`}
+                      lines={[
+                        `دخول ${formatTime(simulateResult.suggestedStartTime)} · انتهاء ${formatTime(simulateResult.suggestedEndTime)}`,
+                        selectedServices.map((s) => s.ProName).join(' + '),
+                        simulateResult.peopleBefore === 0
+                          ? 'يمكنه الدخول الآن'
+                          : simulateResult.peopleBefore === 1
+                            ? 'الدور الثاني · شخص واحد قبله'
+                            : `الدور رقم ${simulateResult.peopleBefore + 1} · ${simulateResult.peopleBefore} قبله`,
+                        simulateResult.decision === 'start_now'
+                          ? 'متاح فورًا'
+                          : simulateResult.decision === 'after_queue'
+                            ? 'بعد الأدوار الحالية'
+                            : simulateResult.decision === 'after_booking'
+                              ? 'بعد الحجز القادم للحفاظ على الموعد'
+                              : null,
+                      ]}
+                    />
 
                     <div className="rounded-xl border p-4" style={{ borderColor: BORDER }}>
                       <div className="flex items-center justify-between gap-2 mb-2">
@@ -547,9 +518,8 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers }:
                         </button>
                       </div>
 
-                      {!showCustomerFields && (
-                        <p className="text-xs text-muted-foreground">سيتم إنشاء الدور كعميل مباشر</p>
-                      )}
+                      {!showCustomerFields && <OpsWalkInHint />}
+                      {showCustomerFields && <OpsWalkInHint expanded />}
 
                       {showCustomerFields && (
                         <div className="space-y-3 mt-3">
@@ -564,6 +534,7 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers }:
                                 className="w-full min-h-[44px] p-3 border rounded-lg text-right bg-transparent"
                                 style={{ borderColor: BORDER }}
                                 dir="ltr"
+                                autoFocus
                               />
                               <div className="absolute left-3 top-1/2 -translate-y-1/2">
                                 {isSearchingCustomer ? (
@@ -603,26 +574,6 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers }:
                         </div>
                       )}
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={() => void handleCreate()}
-                      disabled={loading}
-                      className="w-full py-3.5 rounded-xl font-bold text-primary-foreground min-h-[48px] disabled:opacity-50 flex items-center justify-center gap-2"
-                      style={{ background: `linear-gradient(135deg, ${GOLD}, var(--primary-active))` }}
-                    >
-                      {loading ? (
-                        <>
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                          جاري الإنشاء...
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle2 className="w-5 h-5" />
-                          إضافة للدور
-                        </>
-                      )}
-                    </button>
                   </>
                 )}
               </div>
@@ -637,32 +588,53 @@ export function SimpleCreateQueueDrawer({ isOpen, onClose, onCreated, barbers }:
               type="button"
               onClick={step > 1 && !createResult ? handleBack : onClose}
               disabled={loading}
-              className="flex items-center gap-1 px-4 min-h-[44px] rounded-xl border text-sm font-semibold disabled:opacity-40"
+              className="flex items-center gap-1 px-4 min-h-[48px] rounded-xl border text-sm font-semibold disabled:opacity-40"
               style={{ borderColor: BORDER }}
             >
               <ArrowRight className="w-4 h-4" />
               {step > 1 && !createResult ? 'رجوع' : 'إلغاء'}
             </button>
 
-            {step === 1 && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (!selectedServices.length) {
-                    setError('اختر خدمة واحدة على الأقل');
-                    return;
-                  }
-                  setError(null);
-                  setStep(2);
-                }}
-                disabled={!selectedServices.length}
-                className="flex items-center gap-1 px-5 min-h-[44px] rounded-xl text-sm font-bold text-primary-foreground disabled:opacity-40"
-                style={{ background: `linear-gradient(135deg, ${GOLD}, var(--primary-active))` }}
-              >
-                التالي
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-            )}
+            <div className="flex flex-col items-end gap-1">
+              {step === 1 && !selectedServices.length && (
+                <p className="text-xs text-muted-foreground">اختر خدمة واحدة على الأقل</p>
+              )}
+              {step === 2 && !loading && (
+                <p className="text-xs text-muted-foreground">اختر حلاقًا لحساب الوقت</p>
+              )}
+              {step === 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!selectedServices.length) {
+                      setError('اختر خدمة واحدة على الأقل');
+                      return;
+                    }
+                    setError(null);
+                    setStep(2);
+                  }}
+                  disabled={!selectedServices.length}
+                  className="flex items-center gap-1 px-5 min-h-[48px] rounded-xl text-sm font-bold text-primary-foreground disabled:opacity-40"
+                  style={{ background: `linear-gradient(135deg, ${GOLD}, var(--primary-active))` }}
+                >
+                  التالي
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+              )}
+              {step === 3 && !createResult && (
+                <button
+                  type="button"
+                  onClick={() => void handleCreate()}
+                  disabled={loading || !simulateResult}
+                  aria-busy={loading}
+                  className="flex items-center gap-2 px-5 min-h-[48px] rounded-xl text-sm font-bold text-primary-foreground disabled:opacity-40"
+                  style={{ background: `linear-gradient(135deg, ${GOLD}, var(--primary-active))` }}
+                >
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  إضافة للدور
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>

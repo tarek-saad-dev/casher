@@ -6,6 +6,9 @@ import { QueueTicketCreatedModal } from '@/components/queue/QueueTicketCreatedMo
 import type { QueueTicketPrintData } from '@/components/queue/QueueTicketPrint';
 import { normalizeCustomersAhead } from '@/lib/queueCustomersAhead';
 import { OpsServicePicker } from './OpsServicePicker';
+import { OpsFlowErrorBanner } from './OpsFlowErrorBanner';
+import { OpsWalkInHint } from './OpsSelectedContextCard';
+import { useOpsModalChrome } from './useOpsModalChrome';
 import { useOpsQueueCatalog } from '@/lib/operations/useOpsQueueCatalog';
 import { isOpsMainServiceName } from '@/lib/operations/opsPopularServices';
 import { useSession } from '@/hooks/useSession';
@@ -129,6 +132,11 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [createdData, setCreatedData] = useState<(QueueTicketPrintData & { ticketId: number }) | null>(null);
   const createPendingRef = useRef(false);
+  const { dialogRef } = useOpsModalChrome({
+    open: isOpen,
+    onClose,
+    allowEscape: !submitting,
+  });
 
   // Client search
   useEffect(() => {
@@ -353,18 +361,26 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
-        <div className="w-full max-w-lg rounded-2xl border overflow-hidden flex flex-col max-h-[90vh]"
-          style={{ background: 'var(--surface)', borderColor: 'color-mix(in srgb, var(--primary) 20%, transparent)' }}>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} dir="rtl" onClick={onClose}>
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="find-nearest-title"
+          tabIndex={-1}
+          className="w-full max-w-lg rounded-2xl border overflow-hidden flex flex-col max-h-[90vh] outline-none"
+          style={{ background: 'var(--surface)', borderColor: 'color-mix(in srgb, var(--primary) 20%, transparent)' }}
+          onClick={(e) => e.stopPropagation()}
+        >
 
           {/* Header */}
           <div className="px-5 py-4 border-b flex items-center justify-between"
             style={{ borderColor: 'color-mix(in srgb, var(--primary) 15%, transparent)', background: 'color-mix(in srgb, var(--primary) 5%, transparent)' }}>
             <div className="flex items-center gap-2">
               <Zap className="w-5 h-5" style={{ color: 'var(--success)' }} />
-              <h2 className="text-lg font-bold text-foreground">إيجاد أقرب دور</h2>
+              <h2 id="find-nearest-title" className="text-lg font-bold text-foreground">إيجاد أقرب دور</h2>
             </div>
-            <button onClick={onClose} className="p-2 rounded-lg hover:bg-surface-muted transition-colors">
+            <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-surface-muted transition-colors" aria-label="إغلاق">
               <X className="w-5 h-5 text-muted-foreground" />
             </button>
           </div>
@@ -395,13 +411,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-5">
-            {error && (
-              <div className="mb-4 p-3 rounded-lg border flex items-center gap-2"
-                style={{ background: 'color-mix(in srgb, var(--destructive) 10%, transparent)', borderColor: 'color-mix(in srgb, var(--destructive) 30%, transparent)', color: 'var(--destructive)' }}>
-                <AlertCircle className="w-5 h-5 shrink-0" />
-                <p className="text-sm">{error}</p>
-              </div>
-            )}
+            {error && <OpsFlowErrorBanner message={error} />}
 
             {/* Step 1: Select Services */}
             {step === 1 && (
@@ -608,7 +618,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                           className="flex-[2] py-3 rounded-xl font-bold text-base transition-all"
                           style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
                         >
-                          التالي: التأكيد والعميل
+                          التالي: التأكيد
                         </button>
                       )}
                     </div>
@@ -655,6 +665,7 @@ export function FindNearestQueueDrawer({ isOpen, onClose, onCreated }: Props) {
                 {/* Client Info Section */}
                 <div className="space-y-3">
                   <label className="block text-sm font-medium text-foreground">بيانات العميل <span className="text-muted-foreground/70 text-xs">(اختياري)</span></label>
+                  {!selectedClient && <OpsWalkInHint expanded />}
 
                   {/* Selected Client Display */}
                   {selectedClient ? (

@@ -2,9 +2,13 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
-  X, ArrowRight, ArrowLeft, Loader2, Clock, Users, User, AlertCircle, CheckCircle2,
+  X, ArrowRight, ArrowLeft, Loader2, Clock, Users, CheckCircle2,
 } from 'lucide-react';
 import { OpsServicePicker } from './OpsServicePicker';
+import { OpsFlowErrorBanner } from './OpsFlowErrorBanner';
+import { OpsFlowStepTabs } from './OpsFlowStepTabs';
+import { OpsSelectedContextCard, OpsWalkInHint } from './OpsSelectedContextCard';
+import { useOpsModalChrome } from './useOpsModalChrome';
 import { PrintQueueTicketModal } from './PrintQueueTicketModal';
 import type { CreateQueueResponse, QueuePlanForBarberResult, QueuePlanAlternative } from '@/lib/operationsQueueTypes';
 import { BORDER, GOLD, GOLD_BDR, formatDateLabel } from './booking-workspace/types';
@@ -93,6 +97,11 @@ export function BarberQueueWorkspaceModal({
   const [showPrintModal, setShowPrintModal] = useState(false);
   const planDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const createPendingRef = useRef(false);
+  const { dialogRef } = useOpsModalChrome({
+    open,
+    onClose,
+    allowEscape: !createLoading,
+  });
 
   const serviceIds = useMemo(() => selectedServices.map((s) => s.ProID), [selectedServices]);
   const totalDuration = useMemo(
@@ -302,10 +311,13 @@ export function BarberQueueWorkspaceModal({
         onClick={onClose}
       >
         <div
+          ref={dialogRef}
           role="dialog"
           aria-modal="true"
+          aria-labelledby="barber-queue-title"
+          tabIndex={-1}
           className={cn(
-            'flex flex-col w-full border shadow-2xl overflow-hidden min-h-0',
+            'flex flex-col w-full border shadow-2xl overflow-hidden min-h-0 outline-none',
             'h-[100dvh] sm:h-[min(90vh,820px)] sm:w-[min(92vw,960px)] sm:max-w-[960px] sm:rounded-2xl',
           )}
           style={{ background: 'var(--surface-elevated)', borderColor: BORDER }}
@@ -317,7 +329,7 @@ export function BarberQueueWorkspaceModal({
                 <p className="text-xs font-medium text-muted-foreground mb-1">
                   من عمود {barber.empName}
                 </p>
-                <h2 className="text-lg font-bold text-foreground sm:text-xl">
+                <h2 id="barber-queue-title" className="text-lg font-bold text-foreground sm:text-xl">
                   إنشاء دور مع {barber.empName}
                 </h2>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -334,32 +346,11 @@ export function BarberQueueWorkspaceModal({
               </button>
             </div>
 
-            <div className="mt-3 flex gap-2">
-              {STEPS.map((s) => (
-                <div
-                  key={s.id}
-                  className={cn(
-                    'flex-1 rounded-lg border px-2 py-1.5 text-center text-xs font-semibold',
-                    step === s.id
-                      ? 'border-primary/50 bg-primary/10 text-primary'
-                      : step > s.id
-                        ? 'border-success/30 bg-success/10 text-success'
-                        : 'border-border text-muted-foreground',
-                  )}
-                >
-                  {s.label}
-                </div>
-              ))}
-            </div>
+            <OpsFlowStepTabs steps={STEPS} step={step} />
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
-            {error && (
-              <div className="mb-4 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
-                <AlertCircle className="size-4 shrink-0 mt-0.5" />
-                <span>{error}</span>
-              </div>
-            )}
+            {error && <OpsFlowErrorBanner message={error} />}
 
             {step === 1 && (
               <div className="space-y-5">
@@ -418,27 +409,15 @@ export function BarberQueueWorkspaceModal({
 
             {step === 2 && (
               <div className="space-y-5">
-                <div
-                  className="rounded-xl border p-4 space-y-2"
-                  style={{ borderColor: GOLD_BDR, background: 'color-mix(in srgb, var(--primary) 6%, transparent)' }}
-                >
-                  <div className="flex items-center gap-2">
-                    <User className="size-4 text-primary" />
-                    <span className="font-bold">{barber.empName}</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded border" style={{ borderColor: GOLD_BDR, color: GOLD }}>
-                      ثابت
-                    </span>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{formatDateLabel(operationalDate)}</p>
-                  <p className="text-sm">
-                    {selectedServices.map((s) => s.ProName).join(' + ')}
-                  </p>
-                  <p className="text-sm">
-                    الوقت المطلوب: <strong style={{ color: GOLD }}>{totalDuration} دقيقة</strong>
-                    <span className="text-muted-foreground"> · {totalPrice} ج.م</span>
-                  </p>
-                  <p className="text-xs text-muted-foreground">العميل: عميل مباشر</p>
-                </div>
+                <OpsSelectedContextCard
+                  title={barber.empName}
+                  lines={[
+                    formatDateLabel(operationalDate),
+                    selectedServices.map((s) => s.ProName).join(' + '),
+                    `الوقت المطلوب: ${totalDuration} دقيقة · ${totalPrice} ج.م`,
+                  ]}
+                  footer={<OpsWalkInHint />}
+                />
 
                 {planLoading && !selectedSlot ? (
                   <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
@@ -514,7 +493,7 @@ export function BarberQueueWorkspaceModal({
                   type="button"
                   onClick={goBack}
                   disabled={createLoading}
-                  className="flex items-center gap-1 rounded-xl border px-4 py-2.5 text-sm font-medium min-h-[44px] hover:bg-surface-muted"
+                  className="flex items-center gap-1 rounded-xl border px-4 py-2.5 text-sm font-semibold min-h-[48px] hover:bg-surface-muted"
                   style={{ borderColor: BORDER }}
                 >
                   <ArrowRight className="size-4" />
@@ -525,33 +504,42 @@ export function BarberQueueWorkspaceModal({
                 type="button"
                 onClick={onClose}
                 disabled={createLoading}
-                className="rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground min-h-[44px] hover:bg-surface-muted"
+                className="rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground min-h-[48px] hover:bg-surface-muted"
               >
                 إلغاء
               </button>
             </div>
 
-            {step === 1 ? (
-              <button
-                type="button"
-                onClick={goNext}
-                disabled={!selectedServices.length}
-                className="flex items-center gap-1 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground min-h-[44px] hover:bg-primary/90 disabled:opacity-50"
-              >
-                التالي
-                <ArrowLeft className="size-4" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => void handleCreate()}
-                disabled={createLoading || !selectedSlot || planLoading}
-                className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground min-h-[44px] hover:bg-primary/90 disabled:opacity-50"
-              >
-                {createLoading && <Loader2 className="size-4 animate-spin" />}
-                إضافة للدور
-              </button>
-            )}
+            <div className="flex flex-col items-end gap-1">
+              {step === 1 && !selectedServices.length && (
+                <p className="text-xs text-muted-foreground">اختر خدمة واحدة على الأقل</p>
+              )}
+              {step === 2 && !selectedSlot && !planLoading && (
+                <p className="text-xs text-muted-foreground">اختر وقتًا متاحًا</p>
+              )}
+              {step === 1 ? (
+                <button
+                  type="button"
+                  onClick={goNext}
+                  disabled={!selectedServices.length}
+                  className="flex items-center gap-1 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground min-h-[48px] hover:bg-primary/90 disabled:opacity-50"
+                >
+                  التالي
+                  <ArrowLeft className="size-4" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void handleCreate()}
+                  disabled={createLoading || !selectedSlot || planLoading}
+                  aria-busy={createLoading}
+                  className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground min-h-[48px] hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {createLoading && <Loader2 className="size-4 animate-spin" />}
+                  إضافة للدور
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
