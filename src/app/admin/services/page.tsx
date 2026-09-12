@@ -5,7 +5,7 @@ import {
   Scissors, Plus, Edit2, Trash2, Loader2, FolderOpen,
   FolderPlus, Settings, Search, Clock, MoreVertical, Users,
   ImageIcon, X, ChevronUp, ChevronDown, RotateCcw, CheckCircle2, AlertTriangle,
-  Eye, EyeOff,
+  Eye, EyeOff, ListOrdered,
 } from 'lucide-react';
 import { SERVICE_IMAGE_PRESETS } from '@/lib/serviceImages';
 import {
@@ -117,6 +117,26 @@ interface ServiceFormData {
   ImageUrl: string;
 }
 
+interface ExecutionStepDraft {
+  key: string;
+  TitleAr: string;
+  TitleEn: string;
+  DetailAr: string;
+  DetailEn: string;
+  DurationMinutes: string;
+}
+
+function emptyExecutionStep(): ExecutionStepDraft {
+  return {
+    key: `step-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    TitleAr: '',
+    TitleEn: '',
+    DetailAr: '',
+    DetailEn: '',
+    DurationMinutes: '',
+  };
+}
+
 interface CategoryFormData {
   CatName: string;
   Description?: string;
@@ -153,6 +173,9 @@ export default function ServicesManagementPage() {
     isActive: true,
     ImageUrl: '',
   });
+  const [executionSteps, setExecutionSteps] = useState<ExecutionStepDraft[]>([]);
+  const [stepsLoading, setStepsLoading] = useState(false);
+  const [stepsPreviewOpen, setStepsPreviewOpen] = useState(false);
 
   // Duration state per service (inline edit)
   const [durationEdits, setDurationEdits] = useState<Record<number, string>>({});
@@ -300,8 +323,43 @@ export default function ServicesManagementPage() {
   const deletedCount = services.filter(isServiceSoftDeleted).length;
 
   // Service CRUD operations
+  const loadExecutionSteps = useCallback(async (proId: number) => {
+    setStepsLoading(true);
+    try {
+      const res = await fetch(`/api/services/${proId}/steps`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل تحميل خطوات التنفيذ');
+      const rows = Array.isArray(data.steps) ? data.steps : [];
+      setExecutionSteps(
+        rows.map((s: {
+          TitleAr?: string | null;
+          TitleEn?: string | null;
+          DetailAr?: string | null;
+          DetailEn?: string | null;
+          DurationMinutes?: number | null;
+        }, i: number) => ({
+          key: `loaded-${proId}-${i}`,
+          TitleAr: s.TitleAr ?? '',
+          TitleEn: s.TitleEn ?? '',
+          DetailAr: s.DetailAr ?? '',
+          DetailEn: s.DetailEn ?? '',
+          DurationMinutes:
+            s.DurationMinutes != null && Number.isFinite(Number(s.DurationMinutes))
+              ? String(s.DurationMinutes)
+              : '',
+        })),
+      );
+    } catch (e: unknown) {
+      setExecutionSteps([]);
+      setError(e instanceof Error ? e.message : 'فشل تحميل خطوات التنفيذ');
+    } finally {
+      setStepsLoading(false);
+    }
+  }, []);
+
   const openServiceModal = (service?: Service) => {
     setServiceImageUploadError('');
+    setStepsPreviewOpen(false);
     if (service) {
       setEditingService(service);
       setServiceFormData({
@@ -316,6 +374,9 @@ export default function ServicesManagementPage() {
       if (service.DurationMinutes !== null && service.DurationMinutes !== undefined) {
         setDurationEdits(prev => ({ ...prev, [service.ProID]: String(service.DurationMinutes) }));
       }
+      setExecutionSteps([]);
+      setServiceModalOpen(true);
+      void loadExecutionSteps(service.ProID);
     } else {
       setEditingService(null);
       setServiceFormData({
@@ -327,8 +388,32 @@ export default function ServicesManagementPage() {
         isActive: true,
         ImageUrl: '',
       });
+      setExecutionSteps([]);
+      setStepsLoading(false);
+      setServiceModalOpen(true);
     }
-    setServiceModalOpen(true);
+  };
+
+  const updateExecutionStep = (key: string, patch: Partial<ExecutionStepDraft>) => {
+    setExecutionSteps((prev) =>
+      prev.map((s) => (s.key === key ? { ...s, ...patch } : s)),
+    );
+  };
+
+  const moveExecutionStep = (index: number, direction: -1 | 1) => {
+    setExecutionSteps((prev) => {
+      const next = [...prev];
+      const target = index + direction;
+      if (target < 0 || target >= next.length) return prev;
+      const tmp = next[index];
+      next[index] = next[target];
+      next[target] = tmp;
+      return next;
+    });
+  };
+
+  const removeExecutionStep = (key: string) => {
+    setExecutionSteps((prev) => prev.filter((s) => s.key !== key));
   };
 
   const handleServiceImageUpload = useCallback(
@@ -384,8 +469,35 @@ export default function ServicesManagementPage() {
         throw new Error(data.error || 'فشل حفظ الخدمة');
       }
 
+      const proId = editingService?.ProID ?? Number(data.ProID);
+      if (!Number.isFinite(proId) || proId <= 0) {
+        throw new Error('تعذر تحديد معرف الخدمة بعد الحفظ');
+      }
+
+      const stepsPayload = executionSteps.map((s, i) => ({
+        TitleAr: s.TitleAr.trim() || null,
+        TitleEn: s.TitleEn.trim() || null,
+        DetailAr: s.DetailAr.trim() || null,
+        DetailEn: s.DetailEn.trim() || null,
+        DurationMinutes: s.DurationMinutes.trim() === ''
+          ? null
+          : parseInt(s.DurationMinutes, 10),
+        SortOrder: (i + 1) * 10,
+      }));
+
+      const stepsRes = await fetch(`/api/services/${proId}/steps`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ steps: stepsPayload }),
+      });
+      const stepsData = await stepsRes.json();
+      if (!stepsRes.ok) {
+        throw new Error(stepsData.error || 'تم حفظ الخدمة لكن فشل حفظ خطوات التنفيذ');
+      }
+
       await loadData();
       setServiceModalOpen(false);
+      addToast('success', editingService ? 'تم تحديث الخدمة وخطواتها' : 'تم إضافة الخدمة وخطواتها');
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -1114,7 +1226,7 @@ export default function ServicesManagementPage() {
 
       {/* Service Modal */}
       <Dialog open={serviceModalOpen} onOpenChange={setServiceModalOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl">
               {editingService ? 'تعديل الخدمة' : 'خدمة جديدة'}
@@ -1315,6 +1427,166 @@ export default function ServicesManagementPage() {
                 </div>
               </div>
             </div>
+
+            {/* Execution steps */}
+            <div className="space-y-3 border-t border-zinc-800 pt-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <ListOrdered className="w-4 h-4 text-amber-400" />
+                  <Label className="text-base">خطوات التنفيذ</Label>
+                  <Badge variant="outline" className="text-[10px] border-zinc-600 text-zinc-300">
+                    {executionSteps.length} مرحلة
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={executionSteps.length === 0 || stepsLoading}
+                    onClick={() => setStepsPreviewOpen(true)}
+                    className="h-8 px-2 text-xs text-zinc-300 hover:text-white hover:bg-zinc-800"
+                  >
+                    <Eye className="w-3.5 h-3.5 ml-1" />
+                    استعراض
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={stepsLoading || serviceSaving}
+                    onClick={() => setExecutionSteps((prev) => [...prev, emptyExecutionStep()])}
+                    className="h-8 border-zinc-700 text-xs hover:bg-zinc-800"
+                  >
+                    <Plus className="w-3.5 h-3.5 ml-1" />
+                    إضافة مرحلة
+                  </Button>
+                </div>
+              </div>
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                عرّف مراحل تنفيذ الخدمة بالتفصيل (عنوان + وصف) لاستعراضها داخلياً من الأدمن.
+              </p>
+
+              {stepsLoading ? (
+                <div className="flex items-center gap-2 text-sm text-zinc-400 py-4 justify-center">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  جاري تحميل الخطوات...
+                </div>
+              ) : executionSteps.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-zinc-700 bg-zinc-800/30 px-4 py-6 text-center text-xs text-zinc-500">
+                  لا توجد مراحل بعد — أضف مرحلة لبدء توثيق خطوات التنفيذ
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {executionSteps.map((step, index) => (
+                    <div
+                      key={step.key}
+                      className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 space-y-3"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-amber-400/90">
+                          المرحلة {index + 1}
+                        </span>
+                        <div className="flex items-center gap-0.5">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={index === 0}
+                            onClick={() => moveExecutionStep(index, -1)}
+                            className="h-7 w-7 p-0 text-zinc-400 hover:text-white"
+                            title="تحريك لأعلى"
+                          >
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={index === executionSteps.length - 1}
+                            onClick={() => moveExecutionStep(index, 1)}
+                            className="h-7 w-7 p-0 text-zinc-400 hover:text-white"
+                            title="تحريك لأسفل"
+                          >
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeExecutionStep(step.key)}
+                            className="h-7 w-7 p-0 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                            title="حذف المرحلة"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-[11px] text-zinc-400">العنوان (عربي)</Label>
+                          <Input
+                            value={step.TitleAr}
+                            onChange={(e) => updateExecutionStep(step.key, { TitleAr: e.target.value })}
+                            className="bg-zinc-800 border-zinc-700 text-white h-8 text-sm"
+                            placeholder="مثال: غسيل الشعر"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-[11px] text-zinc-400">Title (EN)</Label>
+                          <Input
+                            value={step.TitleEn}
+                            onChange={(e) => updateExecutionStep(step.key, { TitleEn: e.target.value })}
+                            className="bg-zinc-800 border-zinc-700 text-white h-8 text-sm"
+                            placeholder="e.g. Hair wash"
+                            dir="ltr"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-[11px] text-zinc-400">التفصيل (عربي)</Label>
+                          <Textarea
+                            value={step.DetailAr}
+                            onChange={(e) => updateExecutionStep(step.key, { DetailAr: e.target.value })}
+                            className="bg-zinc-800 border-zinc-700 text-white text-sm min-h-18"
+                            placeholder="وصف تفصيلي لكيفية تنفيذ هذه المرحلة..."
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-[11px] text-zinc-400">Detail (EN)</Label>
+                          <Textarea
+                            value={step.DetailEn}
+                            onChange={(e) => updateExecutionStep(step.key, { DetailEn: e.target.value })}
+                            className="bg-zinc-800 border-zinc-700 text-white text-sm min-h-18"
+                            placeholder="Detailed description of this stage..."
+                            dir="ltr"
+                          />
+                        </div>
+                      </div>
+                      <div className="max-w-40">
+                        <Label className="text-[11px] text-zinc-400 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          مدة تقديرية (د)
+                        </Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={1440}
+                          value={step.DurationMinutes}
+                          onChange={(e) =>
+                            updateExecutionStep(step.key, { DurationMinutes: e.target.value })
+                          }
+                          className="bg-zinc-800 border-zinc-700 text-white h-8 text-sm"
+                          placeholder="اختياري"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="flex items-center gap-2">
               <Switch
                 id="active"
@@ -1334,7 +1606,7 @@ export default function ServicesManagementPage() {
             </Button>
             <Button
               onClick={saveService}
-              disabled={serviceSaving}
+              disabled={serviceSaving || stepsLoading}
               className="bg-amber-600 hover:bg-amber-700"
             >
               {serviceSaving ? (
@@ -1345,6 +1617,68 @@ export default function ServicesManagementPage() {
               ) : (
                 editingService ? 'تحديث' : 'إضافة'
               )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Execution steps preview */}
+      <Dialog open={stepsPreviewOpen} onOpenChange={setStepsPreviewOpen}>
+        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl flex items-center gap-2">
+              <ListOrdered className="w-5 h-5 text-amber-400" />
+              استعراض خطوات التنفيذ
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-zinc-400">
+            {serviceFormData.ProNameAr?.trim() || serviceFormData.ProName || 'الخدمة'}
+            <span className="text-zinc-600 mx-1.5">·</span>
+            {executionSteps.length} مرحلة
+          </p>
+          {executionSteps.length === 0 ? (
+            <p className="text-sm text-zinc-500 py-6 text-center">لا توجد مراحل للعرض</p>
+          ) : (
+            <ol className="relative space-y-0 border-r border-zinc-700 mr-3 pr-5">
+              {executionSteps.map((step, index) => {
+                const title = step.TitleAr.trim() || step.TitleEn.trim() || `المرحلة ${index + 1}`;
+                const detail = step.DetailAr.trim() || step.DetailEn.trim();
+                return (
+                  <li key={step.key} className="relative pb-6 last:pb-0">
+                    <span className="absolute -right-[1.4rem] top-0 flex h-6 w-6 items-center justify-center rounded-full bg-amber-600 text-[11px] font-bold text-white ring-4 ring-zinc-900">
+                      {index + 1}
+                    </span>
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="font-semibold text-white text-sm">{title}</h4>
+                        {step.DurationMinutes.trim() && (
+                          <Badge variant="outline" className="text-[10px] border-zinc-600 text-zinc-400">
+                            <Clock className="w-3 h-3 ml-1" />
+                            {step.DurationMinutes} د
+                          </Badge>
+                        )}
+                      </div>
+                      {step.TitleEn.trim() && step.TitleAr.trim() && (
+                        <p className="text-xs text-zinc-500" dir="ltr">{step.TitleEn}</p>
+                      )}
+                      {detail ? (
+                        <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">{detail}</p>
+                      ) : (
+                        <p className="text-xs text-zinc-600">بدون تفصيل</p>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+          <div className="flex justify-end mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setStepsPreviewOpen(false)}
+              className="border-zinc-700 hover:bg-zinc-800"
+            >
+              إغلاق
             </Button>
           </div>
         </DialogContent>
