@@ -26,6 +26,10 @@ export interface ServiceCatalogItem {
   isActive: boolean;
   salesCount: number;
   categoryId: number | null;
+  /** True when TblProExecutionStep has ≥1 row for this service */
+  hasSteps: boolean;
+  /** Number of execution stages (0 when none) */
+  stepsCount: number;
 }
 
 export interface ServiceCatalogCategory {

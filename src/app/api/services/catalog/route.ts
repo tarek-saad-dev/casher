@@ -28,6 +28,8 @@ export async function OPTIONS() {
  *
  * Nested catalog: categories → services (nameEn + nameAr).
  * Anonymous + CORS — safe read-only price list for external frontends.
+ * Each service includes hasSteps / stepsCount for client “stages” UI.
+ * Full stages: GET /api/public/services/{id}/steps
  *
  * Query params:
  *   active=true|false     default true (exclude soft-deleted)

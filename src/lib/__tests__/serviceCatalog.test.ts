@@ -75,6 +75,8 @@ describe('serviceCatalog', () => {
       nameEn: 'Basic Cut',
       nameAr: 'حلاقة عادية',
       salesCount: 50,
+      hasSteps: false,
+      stepsCount: 0,
     });
     expect(categories[1].services[0].nameEn).toBe('Basic Skin Care');
   });
@@ -151,5 +153,18 @@ describe('serviceCatalog', () => {
     expect(meta.serviceCount).toBe(2);
     expect(meta.filters.type).toBe('serv');
     expect(meta.generatedAt).toMatch(/^\d{4}-/);
+  });
+
+  it('attaches hasSteps / stepsCount from stepCounts map', () => {
+    const categories = groupServicesByCategory(
+      [row({ ProID: 11, ProName: 'Fresh Skin Care', CatID: 9, CatName: 'Skincare' })],
+      {},
+      new Map([[11, 8]]),
+    );
+    expect(categories[0].services[0]).toMatchObject({
+      id: 11,
+      hasSteps: true,
+      stepsCount: 8,
+    });
   });
 });

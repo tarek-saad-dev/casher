@@ -1,0 +1,288 @@
+{
+  "version": 1,
+  "entity": "TblProExecutionStep",
+  "notes": [
+    "Match services by serviceNameAliases unless a ServiceID mapping is supplied.",
+    "Optional per-package proId (or serviceId) forces an exact TblPro.ProID match.",
+    "Replace existing execution steps for matched skincare services inside one transaction.",
+    "Durations are optional suggested minutes and may be adjusted later from admin."
+  ],
+  "services": [
+    {
+      "key": "fresh_skin",
+      "displayName": "Fresh Skin",
+      "serviceNameAliases": [
+        "Fresh Skin",
+        "Fresh Skin Care",
+        "تنظيف بشرة فريش",
+        "تنظيف بشرة سريع"
+      ],
+      "suggestedTotalDurationMin": 25,
+      "steps": [
+        {
+          "order": 1,
+          "name": "تنظيف البشرة بالغسول المناسب",
+          "durationMin": 3
+        },
+        {
+          "order": 2,
+          "name": "إزالة الغسول وتنظيف البشرة",
+          "durationMin": 1
+        },
+        {
+          "order": 3,
+          "name": "وضع جل الصبار للتهدئة والترطيب",
+          "durationMin": 2
+        },
+        {
+          "order": 4,
+          "name": "Cold Mist / بخار بارد مع جل الصبار",
+          "durationMin": 4
+        },
+        {
+          "order": 5,
+          "name": "إزالة الزيادة من جل الصبار",
+          "durationMin": 1
+        },
+        {
+          "order": 6,
+          "name": "ماسك ترطيب",
+          "durationMin": 10
+        },
+        {
+          "order": 7,
+          "name": "إزالة ماسك الترطيب",
+          "durationMin": 2
+        },
+        {
+          "order": 8,
+          "name": "Vitamin C وإنهاء الخدمة",
+          "durationMin": 2
+        }
+      ]
+    },
+    {
+      "key": "deep_skin_care",
+      "displayName": "Deep Skin Care",
+      "serviceNameAliases": [
+        "Deep Skin Care",
+        "Deep Skincare",
+        "Deep SkinCare",
+        "تنظيف بشرة عميق",
+        "ديب سكين كير"
+      ],
+      "suggestedTotalDurationMin": 55,
+      "steps": [
+        {
+          "order": 1,
+          "name": "تهيئة البشرة بالبخار الدافئ",
+          "durationMin": 3
+        },
+        {
+          "order": 2,
+          "name": "تنظيف البشرة بالغسول المناسب",
+          "durationMin": 3
+        },
+        {
+          "order": 3,
+          "name": "إزالة الغسول وتنظيف البشرة",
+          "durationMin": 1
+        },
+        {
+          "order": 4,
+          "name": "المرحلة الأولى من السكراب",
+          "durationMin": 2
+        },
+        {
+          "order": 5,
+          "name": "Rotary Tool بحركات دائرية خفيفة",
+          "durationMin": 4
+        },
+        {
+          "order": 6,
+          "name": "بخار دافئ بعد التقشير الأول",
+          "durationMin": 4
+        },
+        {
+          "order": 7,
+          "name": "إزالة السكراب الأول",
+          "durationMin": 2
+        },
+        {
+          "order": 8,
+          "name": "المرحلة الثانية من السكراب / التقشير",
+          "durationMin": 2
+        },
+        {
+          "order": 9,
+          "name": "Massage Tool / Hand Massage Tool",
+          "durationMin": 4
+        },
+        {
+          "order": 10,
+          "name": "آخر مرحلة بخار دافئ",
+          "durationMin": 3
+        },
+        {
+          "order": 11,
+          "name": "تنظيف البشرة وإزالة بقايا المنتج",
+          "durationMin": 2
+        },
+        {
+          "order": 12,
+          "name": "جل الصبار للتهدئة والترطيب",
+          "durationMin": 2
+        },
+        {
+          "order": 13,
+          "name": "Cold Mist / بخار بارد",
+          "durationMin": 4
+        },
+        {
+          "order": 14,
+          "name": "إزالة الزيادة من جل الصبار",
+          "durationMin": 1
+        },
+        {
+          "order": 15,
+          "name": "ماسك ترطيب",
+          "durationMin": 8
+        },
+        {
+          "order": 16,
+          "name": "إزالة ماسك الترطيب",
+          "durationMin": 2
+        },
+        {
+          "order": 17,
+          "name": "ماسك نهائي: Peel-Off أو Brightening حسب البشرة",
+          "durationMin": 6
+        },
+        {
+          "order": 18,
+          "name": "Vitamin C وإنهاء الخدمة",
+          "durationMin": 2
+        }
+      ]
+    },
+    {
+      "key": "royal_skin_care",
+      "displayName": "Royal Skin Care",
+      "serviceNameAliases": [
+        "Royal Skin Care",
+        "Royal Skincare",
+        "رويال سكين كير",
+        "تنظيف بشرة رويال",
+        "Premium Skin Care"
+      ],
+      "suggestedTotalDurationMin": 70,
+      "steps": [
+        {
+          "order": 1,
+          "name": "Skin Check وتحديد المنتجات المناسبة",
+          "durationMin": 3
+        },
+        {
+          "order": 2,
+          "name": "تهيئة البشرة بالبخار الدافئ",
+          "durationMin": 3
+        },
+        {
+          "order": 3,
+          "name": "Premium Cleanser مع Massage خفيف",
+          "durationMin": 4
+        },
+        {
+          "order": 4,
+          "name": "إزالة الغسول وتنظيف البشرة",
+          "durationMin": 1
+        },
+        {
+          "order": 5,
+          "name": "Premium Scrub - المرحلة الأولى",
+          "durationMin": 3
+        },
+        {
+          "order": 6,
+          "name": "Rotary Tool بحركات دائرية خفيفة",
+          "durationMin": 4
+        },
+        {
+          "order": 7,
+          "name": "بخار دافئ بعد التقشير الأول",
+          "durationMin": 4
+        },
+        {
+          "order": 8,
+          "name": "إزالة السكراب الأول",
+          "durationMin": 2
+        },
+        {
+          "order": 9,
+          "name": "Second Treatment / تقشير خفيف ثانٍ حسب البشرة",
+          "durationMin": 3
+        },
+        {
+          "order": 10,
+          "name": "Massage Tool / Hand Massage Tool",
+          "durationMin": 4
+        },
+        {
+          "order": 11,
+          "name": "آخر مرحلة بخار دافئ",
+          "durationMin": 3
+        },
+        {
+          "order": 12,
+          "name": "تنظيف البشرة بالكامل",
+          "durationMin": 2
+        },
+        {
+          "order": 13,
+          "name": "Aloe Vera Treatment",
+          "durationMin": 2
+        },
+        {
+          "order": 14,
+          "name": "Cold Mist / بخار بارد",
+          "durationMin": 4
+        },
+        {
+          "order": 15,
+          "name": "إزالة الزيادة من جل الصبار",
+          "durationMin": 1
+        },
+        {
+          "order": 16,
+          "name": "Premium Hydration Mask",
+          "durationMin": 9
+        },
+        {
+          "order": 17,
+          "name": "إزالة ماسك الترطيب",
+          "durationMin": 2
+        },
+        {
+          "order": 18,
+          "name": "Relaxation Face Massage",
+          "durationMin": 5
+        },
+        {
+          "order": 19,
+          "name": "Premium Finishing Mask - Hydration / Brightening / Peel-Off / Soothing",
+          "durationMin": 7
+        },
+        {
+          "order": 20,
+          "name": "Vitamin C",
+          "durationMin": 2
+        },
+        {
+          "order": 21,
+          "name": "Final Moisturizing Finish",
+          "durationMin": 2
+        }
+      ]
+    }
+  ]
+}

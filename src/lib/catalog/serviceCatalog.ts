@@ -42,7 +42,11 @@ export function normalizeCatalogQuery(
   };
 }
 
-function toServiceItem(row: ServiceCatalogRow): ServiceCatalogItem {
+function toServiceItem(
+  row: ServiceCatalogRow,
+  stepCount = 0,
+): ServiceCatalogItem {
+  const count = Number(stepCount) || 0;
   return {
     id: Number(row.ProID),
     nameEn: String(row.ProName ?? '').trim(),
@@ -57,6 +61,8 @@ function toServiceItem(row: ServiceCatalogRow): ServiceCatalogItem {
     isActive: !(row.isDeleted === true || row.isDeleted === 1),
     salesCount: Number(row.SalesCount) || 0,
     categoryId: row.CatID == null ? null : Number(row.CatID),
+    hasSteps: count > 0,
+    stepsCount: count,
   };
 }
 
@@ -75,6 +81,7 @@ function matchesSearch(item: ServiceCatalogItem, search: string): boolean {
 export function groupServicesByCategory(
   rows: ServiceCatalogRow[],
   query: ServiceCatalogQuery = {},
+  stepCounts?: Map<number, number>,
 ): ServiceCatalogCategory[] {
   const opts = normalizeCatalogQuery(query);
   const map = new Map<string, ServiceCatalogCategory>();
@@ -96,7 +103,7 @@ export function groupServicesByCategory(
       if (rowCat !== opts.categoryId) continue;
     }
 
-    const item = toServiceItem(row);
+    const item = toServiceItem(row, stepCounts?.get(Number(row.ProID)) ?? 0);
     if (opts.search && !matchesSearch(item, opts.search)) continue;
 
     const catId = row.CatID == null ? null : Number(row.CatID);
@@ -197,10 +204,28 @@ export async function fetchServiceCatalog(
     ORDER BY ${orderBySort}, c.CatName, ISNULL(pop.SalesCount, 0) DESC, p.ProName
   `);
 
-  const categories = groupServicesByCategory(
-    result.recordset as ServiceCatalogRow[],
-    opts,
-  );
+  const rows = result.recordset as ServiceCatalogRow[];
+
+  let stepCounts = new Map<number, number>();
+  try {
+    const { ensureProExecutionStepsTable } = await import(
+      '@/lib/migrations/ensureProExecutionSteps'
+    );
+    const { countStepsByProIds } = await import(
+      '@/lib/catalog/serviceExecutionSteps'
+    );
+    const ready = await ensureProExecutionStepsTable(db);
+    if (ready) {
+      stepCounts = await countStepsByProIds(
+        db,
+        rows.map((r) => Number(r.ProID)),
+      );
+    }
+  } catch (err) {
+    console.warn('[fetchServiceCatalog] step counts unavailable:', err);
+  }
+
+  const categories = groupServicesByCategory(rows, opts, stepCounts);
 
   return {
     ok: true,

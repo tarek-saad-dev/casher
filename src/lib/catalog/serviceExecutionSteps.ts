@@ -3,6 +3,7 @@ import { sql } from '@/lib/db';
 import type {
   ExecutionStepInput,
   ExecutionStepRow,
+  PublicExecutionStepWire,
 } from '@/lib/catalog/serviceExecutionSteps.types';
 
 const STEP_SELECT = `
@@ -162,4 +163,65 @@ export async function proExists(db: ConnectionPool, proId: number): Promise<bool
     .input('ProID', sql.Int, proId)
     .query(`SELECT TOP 1 ProID FROM dbo.TblPro WHERE ProID = @ProID`);
   return Boolean(result.recordset[0]);
+}
+
+/** Active (non soft-deleted) service only — for public reads. */
+export async function activeProExists(db: ConnectionPool, proId: number): Promise<boolean> {
+  const result = await db
+    .request()
+    .input('ProID', sql.Int, proId)
+    .query(`
+      SELECT TOP 1 ProID
+      FROM dbo.TblPro
+      WHERE ProID = @ProID AND ISNULL(isDeleted, 0) = 0
+    `);
+  return Boolean(result.recordset[0]);
+}
+
+export function toPublicExecutionStepWire(
+  rows: ExecutionStepRow[],
+): PublicExecutionStepWire[] {
+  return rows.map((row, index) => ({
+    stepId: row.StepID,
+    sortOrder: row.SortOrder,
+    order: index + 1,
+    titleAr: row.TitleAr,
+    titleEn: row.TitleEn,
+    detailAr: row.DetailAr,
+    detailEn: row.DetailEn,
+    durationMinutes: row.DurationMinutes,
+  }));
+}
+
+/** Map of ProID → step count for catalog badges. Empty map if table missing. */
+export async function countStepsByProIds(
+  db: ConnectionPool,
+  proIds: number[],
+): Promise<Map<number, number>> {
+  const map = new Map<number, number>();
+  const unique = [...new Set(proIds.filter((id) => Number.isFinite(id) && id > 0))];
+  if (unique.length === 0) return map;
+
+  // Chunk to stay under SQL Server parameter limits for large catalogs
+  const CHUNK = 200;
+  for (let i = 0; i < unique.length; i += CHUNK) {
+    const chunk = unique.slice(i, i + CHUNK);
+    const request = db.request();
+    const placeholders = chunk
+      .map((id, idx) => {
+        request.input(`p${idx}`, sql.Int, id);
+        return `@p${idx}`;
+      })
+      .join(', ');
+    const result = await request.query(`
+      SELECT ProID, COUNT(*) AS StepCount
+      FROM dbo.TblProExecutionStep
+      WHERE ProID IN (${placeholders})
+      GROUP BY ProID
+    `);
+    for (const row of result.recordset as Array<{ ProID: number; StepCount: number }>) {
+      map.set(Number(row.ProID), Number(row.StepCount) || 0);
+    }
+  }
+  return map;
 }

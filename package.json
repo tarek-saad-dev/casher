@@ -37,6 +37,8 @@
     "sync:live": "cd sync-service && npm run live",
     "sync:status": "cd sync-service && npm run status",
     "seed:permissions": "tsx scripts/seed-permissions.ts",
+    "seed:skincare-steps": "tsx scripts/seed-skincare-execution-steps.ts --dry-run",
+    "seed:skincare-steps:apply": "tsx scripts/seed-skincare-execution-steps.ts --apply",
     "upload:service-images": "tsx scripts/upload-service-images-to-cloudinary.ts",
     "upload:service-images:dry": "tsx scripts/upload-service-images-to-cloudinary.ts --dry-run",
     "verify:availability-permissions": "tsx scripts/verify-availability-permissions.ts",

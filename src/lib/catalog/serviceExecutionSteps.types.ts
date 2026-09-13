@@ -19,3 +19,16 @@ export interface ExecutionStepRow {
   CreatedAt: string | null;
   UpdatedAt: string | null;
 }
+
+/** Public website wire for one execution stage */
+export interface PublicExecutionStepWire {
+  stepId: number;
+  sortOrder: number;
+  /** 1-based display order derived from SortOrder rank */
+  order: number;
+  titleAr: string | null;
+  titleEn: string | null;
+  detailAr: string | null;
+  detailEn: string | null;
+  durationMinutes: number | null;
+}
