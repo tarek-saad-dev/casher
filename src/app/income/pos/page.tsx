@@ -33,7 +33,8 @@ import { useSession } from '@/hooks/useSession';
 import { useDayRollover } from '@/hooks/useDayRollover';
 import { printReceiptWithFallback, type PrintReceiptData } from '@/lib/printService';
 import { isCustomerIncomplete } from '@/lib/customerSource';
-import type { Barber, Service, PaymentMethod, Customer } from '@/lib/types';
+import type { Barber, Service, PaymentMethod, Customer, CartItem } from '@/lib/types';
+import { isGroomHomeVisitCategory } from '@/lib/catalog/groomOptionalAddons';
 
 // ─── Toast Types ─────────────────────────────────────────────────────────
 interface Toast { id: number; type: 'success' | 'error' | 'info'; message: string }
@@ -106,6 +107,15 @@ export default function PosPage() {
     setPaymentAllocations,
     setNotes, setShift, clearItems, reset,
   } = useSaleState();
+
+  const homeVisitProIds = services
+    .filter((s) => isGroomHomeVisitCategory(s.CatName))
+    .map((s) => s.ProID);
+
+  const addItemWithHomeVisitExclusivity = useCallback(
+    (item: CartItem) => addItem(item, homeVisitProIds),
+    [addItem, homeVisitProIds],
+  );
 
   // ───────────────── UI state ─────────────────
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -715,7 +725,7 @@ export default function PosPage() {
           <ServiceCatalog
             services={services}
             selectedBarber={state.barber}
-            onAddItem={addItem}
+            onAddItem={addItemWithHomeVisitExclusivity}
           />
         </div>
 
@@ -789,7 +799,7 @@ export default function PosPage() {
           <ServiceCatalog
             services={services}
             selectedBarber={state.barber}
-            onAddItem={addItem}
+            onAddItem={addItemWithHomeVisitExclusivity}
           />
         </main>
 

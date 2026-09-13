@@ -42,6 +42,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Home-visit tiers are mutually exclusive on one invoice.
+    {
+      const { listHomeVisitProIds } = await import('@/lib/catalog/publicPackagesCatalog');
+      const { hasConflictingHomeVisitProIds } = await import(
+        '@/lib/catalog/groomOptionalAddons'
+      );
+      const homeVisitProIds = await listHomeVisitProIds();
+      const lineProIds = body.items.map((i) => Number(i.ProID));
+      if (hasConflictingHomeVisitProIds(lineProIds, homeVisitProIds)) {
+        return NextResponse.json(
+          {
+            error:
+              'لا يمكن اختيار أكثر من مستوى واحد لزيارة تجهيز العريس في نفس الفاتورة',
+            code: 'HOME_VISIT_EXCLUSIVE',
+          },
+          { status: 400 },
+        );
+      }
+    }
+
     // ──── Session enforcement ────
     const sessionUser = await getSession();
     const userID = sessionUser?.UserID ?? 0;

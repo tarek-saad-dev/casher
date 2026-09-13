@@ -6,13 +6,14 @@ import {
   computeInvoiceItemsTotals,
   computeServiceLineTotals,
 } from '@/lib/sales/service-line-totals';
+import { applyHomeVisitExclusivity } from '@/lib/catalog/groomOptionalAddons';
 
 // ───────────────────────── Actions ─────────────────────────
 
 type Action =
   | { type: 'SET_CUSTOMER'; customer: Customer | null }
   | { type: 'SET_BARBER'; barber: Barber | null }
-  | { type: 'ADD_ITEM'; item: CartItem }
+  | { type: 'ADD_ITEM'; item: CartItem; homeVisitProIds?: number[] }
   | { type: 'REMOVE_ITEM'; id: string }
   | { type: 'UPDATE_ITEM'; id: string; patch: Partial<CartItem> }
   | { type: 'SET_DISCOUNT_PERCENT'; value: number }
@@ -97,8 +98,18 @@ function reducer(state: SaleState, action: Action): SaleState {
       return { ...state, customer: action.customer };
     case 'SET_BARBER':
       return { ...state, barber: action.barber };
-    case 'ADD_ITEM':
+    case 'ADD_ITEM': {
+      // Home-visit tiers are mutually exclusive — adding one replaces any other tier.
+      if (action.homeVisitProIds?.length) {
+        const cleared = applyHomeVisitExclusivity(
+          state.items,
+          action.item.ProID,
+          action.homeVisitProIds,
+        );
+        return { ...state, items: [...cleared, normalizeCartItem(action.item)] };
+      }
       return { ...state, items: [...state.items, normalizeCartItem(action.item)] };
+    }
     case 'REMOVE_ITEM':
       return { ...state, items: state.items.filter((i) => i.id !== action.id) };
     case 'UPDATE_ITEM':
@@ -176,7 +187,11 @@ export function useSaleState() {
 
   const setCustomer = useCallback((c: Customer | null) => dispatch({ type: 'SET_CUSTOMER', customer: c }), []);
   const setBarber = useCallback((b: Barber | null) => dispatch({ type: 'SET_BARBER', barber: b }), []);
-  const addItem = useCallback((item: CartItem) => dispatch({ type: 'ADD_ITEM', item }), []);
+  const addItem = useCallback(
+    (item: CartItem, homeVisitProIds?: number[]) =>
+      dispatch({ type: 'ADD_ITEM', item, homeVisitProIds }),
+    [],
+  );
   const removeItem = useCallback((id: string) => dispatch({ type: 'REMOVE_ITEM', id }), []);
   const updateItem = useCallback(
     (id: string, patch: Partial<CartItem>) => dispatch({ type: 'UPDATE_ITEM', id, patch }),

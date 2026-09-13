@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 2,
+  "source": "CUT Salon Groom Packages",
+  "targetAdminPage": "/admin/packages",
+  "currency": "EGP",
+  "pricingPolicy": "Curated groom experiences with fixed PackagePrice. Package price may exceed the sum of individual service prices. Do not present these as discount bundles or show 'saving' as a selling point.",
+  "notes": [
+    "Resolve package items by confirmed ProID. Validate existence, active (not soft-deleted), ProType=serv or legacy null, not retail product before apply.",
+    "Do not create placeholder services when a referenced ProID cannot be validated.",
+    "Package prices are fixed final selling prices; service-level prices remain unchanged.",
+    "Wedding Day On-Location Styling is a separate location-priced add-on (500–1500 EGP), not a fixed package item.",
+    "Document on-location styling in package NotesAr (schema has NotesAr only; no NotesEn / variable-price add-on fields)."
+  ],
+  "onLocationStylingNote": {
+    "key": "WEDDING_DAY_ON_LOCATION",
+    "nameEn": "Wedding Day On-Location Styling",
+    "nameAr": "خدمة الخروج للتسريح يوم الفرح",
+    "noteEn": "Wedding Day On-Location Styling available separately from 500 to 1500 EGP depending on location.",
+    "noteAr": "خدمة الخروج للتسريح يوم الفرح متاحة بشكل منفصل بسعر من 500 إلى 1500 جنيه حسب المكان والمسافة.",
+    "minPrice": 500,
+    "maxPrice": 1500,
+    "storeIn": "NotesAr"
+  },
+  "packages": [
+    {
+      "key": "GROOM_ESSENTIAL",
+      "slug": "essential-groom",
+      "nameEn": "Essential Groom",
+      "nameAr": "باكدج العريس الأساسية",
+      "price": 1300,
+      "expectedIndividualTotal": 1200,
+      "displayOrder": 10,
+      "recommended": false,
+      "active": true,
+      "descriptionEn": "Complete groom essentials with fresh skin preparation and professional finishing.",
+      "descriptionAr": "تجهيز أساسي متكامل للعريس يشمل الشعر والدقن والعناية بالبشرة واللمسات النهائية.",
+      "includedServices": [
+        { "key": "ADVANCED_CUT", "proId": 1049, "preferredName": "Advanced Cut", "expectedPrice": 250 },
+        { "key": "BEARD_STYLING_FADE", "proId": 10, "preferredName": "Beard Styling & Fade", "expectedPrice": 100 },
+        { "key": "HAIR_OIL_TREATMENT", "proId": 22, "preferredName": "Hair Oil Treatment", "expectedPrice": 120 },
+        { "key": "FULL_WAX", "proId": 32, "preferredName": "Full Wax", "expectedPrice": 100 },
+        { "key": "NOSE_EAR_WAX", "proId": 1080, "preferredName": "Nose & Ear Wax", "expectedPrice": 80 },
+        { "key": "GROOM_FINAL_STYLING", "proId": 1081, "preferredName": "Groom Final Styling", "expectedPrice": 200 },
+        { "key": "FINAL_TOUCH", "proId": 1082, "preferredName": "Final Touch", "expectedPrice": 150 },
+        { "key": "FRESH_SKIN_CARE", "proId": 11, "preferredName": "Fresh Skin Care", "expectedPrice": 200 }
+      ]
+    },
+    {
+      "key": "GROOM_SIGNATURE",
+      "slug": "signature-groom",
+      "nameEn": "Signature Groom",
+      "nameAr": "باكدج العريس سيجنتشر",
+      "price": 1500,
+      "expectedIndividualTotal": 1400,
+      "displayOrder": 20,
+      "recommended": true,
+      "badgeEn": "Most Popular",
+      "badgeAr": "الأكثر اختيارًا",
+      "active": true,
+      "descriptionEn": "The balanced groom experience with deeper skincare and complete premium finishing.",
+      "descriptionAr": "تجهيز متكامل للعريس مع عناية أعمق بالبشرة وتسريح ولمسات نهائية احترافية.",
+      "includedServices": [
+        { "key": "ADVANCED_CUT", "proId": 1049, "preferredName": "Advanced Cut", "expectedPrice": 250 },
+        { "key": "BEARD_STYLING_FADE", "proId": 10, "preferredName": "Beard Styling & Fade", "expectedPrice": 100 },
+        { "key": "HAIR_OIL_TREATMENT", "proId": 22, "preferredName": "Hair Oil Treatment", "expectedPrice": 120 },
+        { "key": "FULL_WAX", "proId": 32, "preferredName": "Full Wax", "expectedPrice": 100 },
+        { "key": "NOSE_EAR_WAX", "proId": 1080, "preferredName": "Nose & Ear Wax", "expectedPrice": 80 },
+        { "key": "GROOM_FINAL_STYLING", "proId": 1081, "preferredName": "Groom Final Styling", "expectedPrice": 200 },
+        { "key": "FINAL_TOUCH", "proId": 1082, "preferredName": "Final Touch", "expectedPrice": 150 },
+        { "key": "DEEP_SKIN_CARE", "proId": 12, "preferredName": "Deep Skin Care", "expectedPrice": 400 }
+      ]
+    },
+    {
+      "key": "GROOM_COMPLETE",
+      "slug": "complete-groom",
+      "nameEn": "Complete Groom",
+      "nameAr": "باكدج العريس الكاملة",
+      "price": 3000,
+      "expectedIndividualTotal": 2900,
+      "displayOrder": 30,
+      "recommended": false,
+      "active": true,
+      "descriptionEn": "The full groom transformation with royal skincare, protein treatment, pedicure and premium finishing.",
+      "descriptionAr": "التجربة الكاملة للعريس مع رويال سكين كير وبروتين وباديكير والتجهيز النهائي الكامل.",
+      "includedServices": [
+        { "key": "ADVANCED_CUT", "proId": 1049, "preferredName": "Advanced Cut", "expectedPrice": 250 },
+        { "key": "BEARD_STYLING_FADE", "proId": 10, "preferredName": "Beard Styling & Fade", "expectedPrice": 100 },
+        { "key": "HAIR_OIL_TREATMENT", "proId": 22, "preferredName": "Hair Oil Treatment", "expectedPrice": 120 },
+        { "key": "FULL_WAX", "proId": 32, "preferredName": "Full Wax", "expectedPrice": 100 },
+        { "key": "NOSE_EAR_WAX", "proId": 1080, "preferredName": "Nose & Ear Wax", "expectedPrice": 80 },
+        { "key": "GROOM_FINAL_STYLING", "proId": 1081, "preferredName": "Groom Final Styling", "expectedPrice": 200 },
+        { "key": "FINAL_TOUCH", "proId": 1082, "preferredName": "Final Touch", "expectedPrice": 150 },
+        { "key": "ROYAL_SKIN_CARE", "proId": 1079, "preferredName": "Royal Skin Care", "expectedPrice": 500 },
+        { "key": "MEDIUM_HAIR_PROTEIN", "proId": 1077, "preferredName": "Medium Hair Protein", "expectedPrice": 1000 },
+        { "key": "FOOT_PEDICURE", "proId": 14, "preferredName": "Foot pedicure", "expectedPrice": 400 }
+      ]
+    }
+  ],
+  "addons": [
+    {
+      "key": "WEDDING_DAY_ON_LOCATION",
+      "slug": "wedding-day-on-location-styling",
+      "nameEn": "Wedding Day On-Location Styling",
+      "nameAr": "خدمة الخروج للتسريح يوم الفرح",
+      "type": "location_priced_addon",
+      "active": true,
+      "status": "superseded_by_fixed_home_visit_services",
+      "availableForPackageKeys": [
+        "GROOM_ESSENTIAL",
+        "GROOM_SIGNATURE",
+        "GROOM_COMPLETE"
+      ],
+      "minPrice": 500,
+      "maxPrice": 1500,
+      "pricingRule": "Legacy variable range. Prefer fixed Groom Home Visit services (300 / 500 / 1000) created by ensure-groom-addons.",
+      "descriptionEn": "On-location wedding-day hair restyling, beard review and final photo-ready touches.",
+      "descriptionAr": "خروج للعريس يوم الفرح لإعادة تصفيف الشعر ومراجعة الدقن واللمسات النهائية قبل التصوير أو القاعة.",
+      "noteEn": "Wedding Day On-Location Styling available separately from 500 to 1500 EGP depending on location.",
+      "noteAr": "خدمة الخروج للتسريح يوم الفرح متاحة بشكل منفصل بسعر من 500 إلى 1500 جنيه حسب المكان والمسافة.",
+      "implementationNotes": [
+        "Fixed-price home visit services are now real TblPro rows managed by scripts/ensure-groom-addons.ts.",
+        "Do not invent distance zones beyond Near / Within City / Extended Zone."
+      ]
+    }
+  ],
+  "optionalExtras": {
+    "sourceScript": "scripts/ensure-groom-addons.ts",
+    "groups": {
+      "groom_addons": {
+        "services": [
+          { "key": "HAIR_DETAIL_COLOR", "nameEn": "Hair Detail Color", "nameAr": "تفاصيل لون للشعر", "price": 150 },
+          { "key": "RELAX_SESSION", "nameEn": "Relax Session", "nameAr": "جلسة استرخاء", "price": 200 },
+          { "key": "FOOT_PEDICURE", "proId": 14, "nameEn": "Foot pedicure", "price": 400 },
+          { "key": "MEDIUM_HAIR_PROTEIN", "proId": 1077, "nameEn": "Medium Hair Protein", "price": 1000 }
+        ],
+        "availableOn": ["GROOM_ESSENTIAL", "GROOM_SIGNATURE"],
+        "completeNote": "Complete already includes Foot pedicure + Medium Hair Protein as required items — not offered as optional."
+      },
+      "home_visit": {
+        "mutuallyExclusive": true,
+        "services": [
+          { "key": "HOME_VISIT_NEAR", "nameEn": "Groom Home Visit — Near the Salon", "nameAr": "زيارة تجهيز العريس — قريب من الفرع", "price": 300 },
+          { "key": "HOME_VISIT_CITY", "nameEn": "Groom Home Visit — Within the City", "nameAr": "زيارة تجهيز العريس — داخل المدينة", "price": 500 },
+          { "key": "HOME_VISIT_EXTENDED", "nameEn": "Groom Home Visit — Extended Zone", "nameAr": "زيارة تجهيز العريس — نطاق ممتد", "price": 1000 }
+        ],
+        "availableOn": ["GROOM_ESSENTIAL", "GROOM_SIGNATURE", "GROOM_COMPLETE"]
+      }
+    }
+  }
+}
