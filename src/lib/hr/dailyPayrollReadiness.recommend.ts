@@ -19,6 +19,7 @@ export const READINESS_BLOCKER_LABELS: Record<DailyPayrollReadinessBlockerCode, 
   missing_check_out: 'ناقص انصراف',
   open_attendance_session: 'جلسة حضور مفتوحة',
   invalid_work_hours: 'ساعات عمل غير صالحة',
+  attendance_disposition_missing: 'بدون حضور أو إجازة/غائب',
   payroll_not_generated: 'اليوميات غير مولّدة',
   target_not_generated: 'التارجت غير مولّد',
   payroll_ledger_missing: 'قيد دفتر الأجر اليومي ناقص',
@@ -74,6 +75,11 @@ export interface ReadinessEmployeeFacts {
   hasOpenSession: boolean;
   hasAnyCheckIn: boolean;
   netMinutes: number;
+  /**
+   * Assigned + expected on this branch with no attendance row anywhere
+   * (must register Present/… or leave/absent disposition).
+   */
+  attendanceDispositionMissing: boolean;
   /** Closed payable attendance ready for payroll generate. */
   expectsPayroll: boolean;
   payrollGenerated: boolean;
@@ -108,6 +114,10 @@ export function classifyEmployeeReadiness(
     } else if (mapped) {
       blockers.push(mapped);
     }
+  }
+
+  if (facts.attendanceDispositionMissing && !facts.hasAttendance && !facts.hasOpenSession) {
+    blockers.push('attendance_disposition_missing');
   }
 
   // Anomaly: closed session with check-in flag but negative/impossible minutes before clamp.
@@ -253,7 +263,9 @@ export function buildReadinessFromFacts(args: {
   const readyEmployeeCount = activeEmployees.filter((e) => e.ready && e.blockers.length === 0).length;
   const hasActivity =
     args.payrollRowCount > 0 ||
-    args.facts.some((f) => f.hasAttendance || f.expectsPayroll);
+    args.facts.some(
+      (f) => f.hasAttendance || f.expectsPayroll || f.attendanceDispositionMissing,
+    );
 
   const allRequiredComplete =
     hasActivity &&

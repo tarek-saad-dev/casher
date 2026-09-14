@@ -17,6 +17,7 @@ export const EMPLOYEE_STATUS_LABELS = {
   missing_check_in: 'ناقص حضور',
   missing_check_out: 'ناقص انصراف',
   open_attendance_session: 'جلسة مفتوحة',
+  attendance_disposition_missing: 'بدون حضور/إجازة',
   payroll_not_generated: 'اليومية غير مولدة',
   target_not_generated: 'التارجت غير مولد',
   payroll_ledger_missing: 'مشكلة ledger',
@@ -42,6 +43,11 @@ export function employeeStatusFromReadiness(
       return { key: 'missing_check_out', label: EMPLOYEE_STATUS_LABELS.missing_check_out };
     case 'open_attendance_session':
       return { key: 'open_attendance_session', label: EMPLOYEE_STATUS_LABELS.open_attendance_session };
+    case 'attendance_disposition_missing':
+      return {
+        key: 'attendance_disposition_missing',
+        label: EMPLOYEE_STATUS_LABELS.attendance_disposition_missing,
+      };
     case 'payroll_not_generated':
       return { key: 'payroll_not_generated', label: EMPLOYEE_STATUS_LABELS.payroll_not_generated };
     case 'target_not_generated':
@@ -176,7 +182,8 @@ export function workflowSteps(readiness: DailyPayrollReadinessResult | null): Ar
     !codes.has('missing_check_in') &&
     !codes.has('missing_check_out') &&
     !codes.has('open_attendance_session') &&
-    !codes.has('invalid_work_hours');
+    !codes.has('invalid_work_hours') &&
+    !codes.has('attendance_disposition_missing');
   const payOk = !codes.has('payroll_not_generated') && !codes.has('payroll_ledger_missing');
   const tgtOk =
     !codes.has('target_not_generated') &&

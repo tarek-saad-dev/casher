@@ -83,6 +83,49 @@ function closingCenterMocks(url: string) {
       }),
     };
   }
+  if (url.includes('/api/admin/hr/daily-payroll/readiness-by-date')) {
+    return {
+      ok: true,
+      json: async () => ({
+        workDate: '2026-07-12',
+        branches: [
+          {
+            branchId: 1,
+            branchCode: 'GLEEM',
+            branchName: 'جليم',
+            workDate: '2026-07-12',
+            persistedState: 'OPEN',
+            recommendedState: 'NEEDS_REVIEW',
+            readyToClose: false,
+            blockerCount: 1,
+            readyEmployeeCount: 0,
+            employeeCount: 1,
+            shortBlockerSummary: 'جلسة حضور مفتوحة×1',
+            totalWage: 0,
+            totalHours: 0,
+            payrollRowCount: 0,
+          },
+          {
+            branchId: 3,
+            branchCode: 'CAMP_CAESAR',
+            branchName: 'كامب شيزار',
+            workDate: '2026-07-12',
+            persistedState: 'OPEN',
+            recommendedState: 'READY_TO_CLOSE',
+            readyToClose: true,
+            blockerCount: 0,
+            readyEmployeeCount: 2,
+            employeeCount: 2,
+            shortBlockerSummary: 'جاهز للإقفال',
+            totalWage: 500,
+            totalHours: 8,
+            payrollRowCount: 2,
+          },
+        ],
+        elapsedMs: 8,
+      }),
+    };
+  }
   if (url.includes('/api/admin/hr/daily-payroll/readiness')) {
     return {
       ok: true,
@@ -263,8 +306,8 @@ describe('DailyPayrollPanel HR labels', () => {
 
   it('shows monthly excluded in validation excluded list', async () => {
     render(<DailyPayrollPanel />);
-    await waitFor(() => expect(screen.getByText('فحص الحضور')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('فحص الحضور'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^فحص الحضور$/ })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /^فحص الحضور$/ }));
     await waitFor(() => {
       expect(screen.getByText('مستثنون من اليوميات (ليس خطأ)')).toBeInTheDocument();
       expect(screen.getByText('شهري — لا يدخل في اليوميات')).toBeInTheDocument();
@@ -282,10 +325,14 @@ describe('DailyPayrollPanel HR labels', () => {
   it('renders closing center strip and blockers from readiness API', async () => {
     render(<DailyPayrollPanel />);
     await waitFor(() => expect(screen.getByText('أيام تحتاج إقفال')).toBeInTheDocument());
+    expect(screen.getByText(/مركز تقفيل اليوميات/)).toBeInTheDocument();
     expect(screen.getByText('الأيام المفتوحة')).toBeInTheDocument();
-    expect(screen.getByText('إدارة يوم محدد')).toBeInTheDocument();
+    expect(screen.getByText('إدارة فرع محدد')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /فحص الحضور لكل الفروع/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /توليد اليوميات \+ الترحيل للدفتر/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /إقفال الجاهز/ })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/موانع الإقفال/)).toBeInTheDocument());
-    expect(screen.getByText(/جلسة حضور مفتوحة/)).toBeInTheDocument();
+    expect(screen.getAllByText(/جلسة حضور مفتوحة/).length).toBeGreaterThan(0);
     expect(screen.getByText(/تنبيهات \(ليست موانع إقفال\)/)).toBeInTheDocument();
     expect(screen.getByText('الحالة')).toBeInTheDocument();
     expect(screen.queryByText('إقفال يوم الموظفين')).not.toBeInTheDocument();
@@ -304,11 +351,12 @@ describe('DailyPayrollPanel HR labels', () => {
     render(<DailyPayrollPanel />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'فتح اليوم' })).toBeInTheDocument());
     // Workspace boots on business date, not oldest open day
-    const dateInput = screen.getByDisplayValue(/^\d{4}-\d{2}-\d{2}$/) as HTMLInputElement;
-    expect(dateInput.value).not.toBe('2026-07-12');
+    const dateInputs = screen.getAllByDisplayValue(/^\d{4}-\d{2}-\d{2}$/) as HTMLInputElement[];
+    expect(dateInputs.length).toBeGreaterThan(0);
+    expect(dateInputs[0].value).not.toBe('2026-07-12');
     fireEvent.click(screen.getByRole('button', { name: 'فتح اليوم' }));
     await waitFor(() => {
-      expect(screen.getByDisplayValue('2026-07-12')).toBeInTheDocument();
+      expect(screen.getAllByDisplayValue('2026-07-12').length).toBeGreaterThan(0);
     });
   });
 
@@ -354,9 +402,9 @@ describe('DailyPayrollPanel HR labels', () => {
 
     render(<DailyPayrollPanel />);
     await waitFor(() => expect(screen.getByText(/open-days down|فشل تحميل الأيام المفتوحة/)).toBeInTheDocument());
-    const validateBtn = screen.getByRole('button', { name: /فحص الحضور/ });
+    const validateBtn = screen.getByRole('button', { name: /^فحص الحضور$/ });
     expect(validateBtn).not.toBeDisabled();
-    expect(screen.getByRole('button', { name: /توليد اليوميات والتارجت/ })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /^توليد اليوميات والتارجت$/ })).not.toBeDisabled();
   });
 
   it('loads table with employeeScope=all by default without switch-branch', async () => {

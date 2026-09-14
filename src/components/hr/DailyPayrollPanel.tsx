@@ -41,6 +41,7 @@ import { cn } from '@/lib/utils';
 import { usePermissions } from '@/components/providers/PermissionsProvider';
 import { useSession } from '@/hooks/useSession';
 import type {
+  DailyPayrollDateBranchSummary,
   DailyPayrollOpenDayItem,
   DailyPayrollReadinessResult,
   SmartFixActionResult,
@@ -275,6 +276,11 @@ export default function DailyPayrollPanel() {
   const [openDaysLoading, setOpenDaysLoading] = useState(false);
   const [openDaysError, setOpenDaysError] = useState('');
 
+  /* Date-hub: readiness cards for all branches on workspaceDate */
+  const [dateBranchCards, setDateBranchCards] = useState<DailyPayrollDateBranchSummary[]>([]);
+  const [dateBranchesLoading, setDateBranchesLoading] = useState(false);
+  const [bulkRunning, setBulkRunning] = useState(false);
+
   const [readiness, setReadiness] = useState<DailyPayrollReadinessResult | null>(null);
   const [loadingReadiness, setLoadingReadiness] = useState(false);
   const [switchingBranch, setSwitchingBranch] = useState(false);
@@ -406,6 +412,28 @@ export default function DailyPayrollPanel() {
     }
   }, []);
 
+  const loadDateBranchCards = useCallback(async (workDate: string) => {
+    setDateBranchesLoading(true);
+    try {
+      const res = await fetch(
+        `/api/admin/hr/daily-payroll/readiness-by-date?workDate=${encodeURIComponent(workDate)}`,
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل تحميل جاهزية الفروع');
+      const branches = (
+        Array.isArray(data.branches) ? data.branches : []
+      ) as DailyPayrollDateBranchSummary[];
+      setDateBranchCards(branches);
+      return branches;
+    } catch (e: unknown) {
+      console.warn('[DailyPayrollPanel] readiness-by-date:', e);
+      setDateBranchCards([]);
+      return [] as DailyPayrollDateBranchSummary[];
+    } finally {
+      setDateBranchesLoading(false);
+    }
+  }, []);
+
   const ensureSessionBranch = useCallback(async (branchId: number) => {
     if (sessionBranchId === branchId) return true;
     setSwitchingBranch(true);
@@ -514,10 +542,11 @@ export default function DailyPayrollPanel() {
       const [, nextReadiness] = await Promise.all([
         load(workDate),
         loadReadiness(branchId, workDate),
+        loadDateBranchCards(workDate),
       ]);
       return nextReadiness;
     },
-    [load, loadReadiness],
+    [load, loadReadiness, loadDateBranchCards],
   );
 
   /** After successful mutations: refresh workspace, then optionally refresh monitor in background. */
@@ -593,9 +622,13 @@ export default function DailyPayrollPanel() {
         if (!cancelled) {
           setWorkspaceDate(d);
           if (branchForWorkspace != null) {
-            await Promise.all([load(d), loadReadiness(branchForWorkspace, d)]);
+            await Promise.all([
+              load(d),
+              loadReadiness(branchForWorkspace, d),
+              loadDateBranchCards(d),
+            ]);
           } else {
-            await load(d);
+            await Promise.all([load(d), loadDateBranchCards(d)]);
           }
         }
 
@@ -1060,6 +1093,9 @@ export default function DailyPayrollPanel() {
     if (branchId != null) {
       setWorkspaceBranchId(branchId);
       void refreshWorkspace(branchId, val);
+    } else {
+      void load(val);
+      void loadDateBranchCards(val);
     }
   };
 
@@ -1072,6 +1108,171 @@ export default function DailyPayrollPanel() {
     if (!ok) return;
     setWorkspaceBranchId(branchId);
     await refreshWorkspace(branchId, workspaceDate);
+  };
+
+  const dateHubSummary = useMemo(() => {
+    let readyCount = 0;
+    let reviewCount = 0;
+    let closedCount = 0;
+    for (const b of dateBranchCards) {
+      if (b.persistedState === 'CLOSED') closedCount += 1;
+      else if (b.readyToClose || b.recommendedState === 'READY_TO_CLOSE') readyCount += 1;
+      else if (b.blockerCount > 0 || b.recommendedState === 'NEEDS_REVIEW') reviewCount += 1;
+    }
+    return { readyCount, reviewCount, closedCount, total: dateBranchCards.length };
+  }, [dateBranchCards]);
+
+  /** Bulk: validate attendance for every open branch on this date (session hop). */
+  const handleBulkValidateAllBranches = async () => {
+    if (bulkRunning) return;
+    const targets = dateBranchCards.filter((b) => b.persistedState !== 'CLOSED');
+    if (targets.length === 0) {
+      flash('لا توجد فروع مفتوحة للفحص في هذا اليوم');
+      return;
+    }
+    setBulkRunning(true);
+    setError('');
+    const notes: string[] = [];
+    try {
+      for (const branch of targets) {
+        const ok = await ensureSessionBranch(branch.branchId);
+        if (!ok) {
+          notes.push(`${shortBranchName(branch)}: تعذر تبديل الفرع`);
+          continue;
+        }
+        setWorkspaceBranchId(branch.branchId);
+        const res = await fetch('/api/payroll/daily/validate-attendance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workDate: workspaceDate }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          notes.push(`${shortBranchName(branch)}: ${data.error || 'فشل الفحص'}`);
+          continue;
+        }
+        const missingCount = Array.isArray(data.missing) ? data.missing.length : 0;
+        notes.push(
+          missingCount === 0
+            ? `${shortBranchName(branch)}: جاهز`
+            : `${shortBranchName(branch)}: ${missingCount} نواقص`,
+        );
+      }
+      flash(`فحص الحضور لكل الفروع — ${notes.join(' · ')}`);
+      if (workspaceBranchId != null) await refreshAfterMutation(workspaceBranchId, workspaceDate);
+      else await loadDateBranchCards(workspaceDate);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'فشل الفحص المجمّع');
+    } finally {
+      setBulkRunning(false);
+    }
+  };
+
+  /** Bulk: generate payroll+targets (+ ledger dual-write) for every non-closed branch. */
+  const handleBulkGenerateAllBranches = async () => {
+    if (bulkRunning) return;
+    const targets = dateBranchCards.filter((b) => b.persistedState !== 'CLOSED');
+    if (targets.length === 0) {
+      flash('لا توجد فروع مفتوحة للتوليد في هذا اليوم');
+      return;
+    }
+    setBulkRunning(true);
+    setError('');
+    const notes: string[] = [];
+    try {
+      for (const branch of targets) {
+        const ok = await ensureSessionBranch(branch.branchId);
+        if (!ok) {
+          notes.push(`${shortBranchName(branch)}: تعذر تبديل الفرع`);
+          continue;
+        }
+        setWorkspaceBranchId(branch.branchId);
+        const payRes = await fetch('/api/payroll/daily/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workDate: workspaceDate }),
+        });
+        const payData = await payRes.json();
+        if (!payRes.ok) {
+          notes.push(`${shortBranchName(branch)}: ${payData.error || 'فشل التوليد'}`);
+          continue;
+        }
+        const ledgerNote = payData.ledgerDualWrite ? '+دفتر' : '';
+        notes.push(
+          `${shortBranchName(branch)}: ${payData.generatedCount ?? 0} يومية${ledgerNote}`,
+        );
+        // Best-effort targets for the same branch/day (same path as single-branch generate)
+        await fetch('/api/payroll/daily/targets/recalc-requests', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workDate: workspaceDate,
+            processNow: true,
+            reason: 'manual_recalc_day',
+          }),
+        }).catch(() => null);
+      }
+      flash(`توليد اليوميات لكل الفروع — ${notes.join(' · ')}`);
+      if (workspaceBranchId != null) await refreshAfterMutation(workspaceBranchId, workspaceDate);
+      else await loadDateBranchCards(workspaceDate);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'فشل التوليد المجمّع');
+    } finally {
+      setBulkRunning(false);
+    }
+  };
+
+  /** Bulk: close every branch that is readyToClose on this date. */
+  const handleBulkCloseReadyBranches = async () => {
+    if (bulkRunning) return;
+    const targets = dateBranchCards.filter(
+      (b) => b.readyToClose && b.persistedState !== 'CLOSED',
+    );
+    if (targets.length === 0) {
+      flash('لا يوجد فرع جاهز للإقفال في هذا اليوم');
+      return;
+    }
+    if (
+      !window.confirm(
+        `إقفال ${targets.length} فرع جاهز ليوم ${formatWorkDateAr(workspaceDate)}؟`,
+      )
+    ) {
+      return;
+    }
+    setBulkRunning(true);
+    setError('');
+    const notes: string[] = [];
+    try {
+      for (const branch of targets) {
+        const ok = await ensureSessionBranch(branch.branchId);
+        if (!ok) {
+          notes.push(`${shortBranchName(branch)}: تعذر تبديل الفرع`);
+          continue;
+        }
+        setWorkspaceBranchId(branch.branchId);
+        const res = await fetch('/api/admin/hr/daily-payroll/close', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ branchId: branch.branchId, workDate: workspaceDate }),
+        });
+        const data = await res.json();
+        notes.push(
+          res.ok
+            ? `${shortBranchName(branch)}: أُقفل`
+            : `${shortBranchName(branch)}: ${data.error || 'تعذر الإقفال'}`,
+        );
+      }
+      flash(`إقفال الجاهز — ${notes.join(' · ')}`);
+      if (workspaceBranchId != null) await refreshAfterMutation(workspaceBranchId, workspaceDate);
+      else {
+        await loadDateBranchCards(workspaceDate);
+        void loadOpenDays();
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'فشل الإقفال المجمّع');
+    } finally {
+      setBulkRunning(false);
+    }
   };
 
   const generatedCount = summary?.generatedCount ?? rows.filter(r => ['Generated','Earned'].includes(r.Status)).length;
@@ -1087,13 +1288,176 @@ export default function DailyPayrollPanel() {
     closingDay ||
     reopeningDay ||
     nightlyClosing ||
+    bulkRunning ||
     generatingEmpId != null;
   const busy = workspaceBusy;
 
   return (
     <div className="space-y-5" dir="rtl">
 
-      {/* ── [A] Open days monitor (read-only, independent) ─────────────────── */}
+      {/* ── Date hub: all branches for one work date ───────────────────────── */}
+      <div className="rounded-xl border border-zinc-700/70 bg-zinc-950/50 p-4 space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <p className="text-xs text-zinc-500">مركز تقفيل اليوميات · كل الفروع</p>
+            <h2 className="text-lg font-bold text-white">{formatWorkDateAr(workspaceDate)}</h2>
+            <p className="text-[11px] text-zinc-500">
+              {dateHubSummary.total} فروع
+              {dateHubSummary.readyCount > 0 ? ` · ${dateHubSummary.readyCount} جاهز` : ''}
+              {dateHubSummary.reviewCount > 0 ? ` · ${dateHubSummary.reviewCount} يحتاج مراجعة` : ''}
+              {dateHubSummary.closedCount > 0 ? ` · ${dateHubSummary.closedCount} مقفل` : ''}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleDateChange(shiftCalendarDate(workspaceDate, -1))}
+              disabled={workspaceBusy}
+              className="h-9 w-9 p-0 border-zinc-600 bg-black/20"
+              aria-label="اليوم السابق"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+            <Input
+              type="date"
+              value={workspaceDate}
+              onChange={(e) => handleDateChange(e.target.value)}
+              className="bg-black/30 border-zinc-600 text-white w-40 h-9 text-sm"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleDateChange(shiftCalendarDate(workspaceDate, 1))}
+              disabled={workspaceBusy}
+              className="h-9 w-9 p-0 border-zinc-600 bg-black/20"
+              aria-label="اليوم التالي"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 border-zinc-700 text-zinc-300"
+              disabled={dateBranchesLoading || workspaceBusy}
+              onClick={() => void loadDateBranchCards(workspaceDate)}
+            >
+              {dateBranchesLoading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5" />
+              )}
+              تحديث
+            </Button>
+          </div>
+        </div>
+
+        {dateBranchesLoading && dateBranchCards.length === 0 ? (
+          <div className="flex items-center gap-2 text-sm text-zinc-500 py-2">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            جاري تحميل جاهزية الفروع…
+          </div>
+        ) : dateBranchCards.length === 0 ? (
+          <p className="text-sm text-zinc-500">لا توجد فروع متاحة لهذا اليوم</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {dateBranchCards.map((card) => {
+              const selected = card.branchId === workspaceBranchId;
+              return (
+                <div
+                  key={card.branchId}
+                  className={cn(
+                    'rounded-lg border p-3 space-y-2 text-right',
+                    selected
+                      ? 'border-sky-500/50 bg-sky-500/10 ring-1 ring-sky-500/30'
+                      : recommendedStateTone(card.recommendedState),
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-semibold text-white">{shortBranchName(card)}</p>
+                      <p className="text-[11px] opacity-80 mt-0.5">
+                        {recommendedStateLabelAr(
+                          card.persistedState === 'CLOSED'
+                            ? 'CLOSED'
+                            : card.recommendedState,
+                        )}
+                        {card.blockerCount > 0 ? ` · ${card.blockerCount} مشاكل` : ''}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={selected ? 'default' : 'outline'}
+                      className="h-8 text-[11px]"
+                      disabled={workspaceBusy}
+                      onClick={() => void handleWorkspaceBranchChange(card.branchId)}
+                    >
+                      {selected ? 'الفرع الحالي' : 'إدارة'}
+                    </Button>
+                  </div>
+                  {card.shortBlockerSummary ? (
+                    <p className="text-[10px] opacity-80">{card.shortBlockerSummary}</p>
+                  ) : null}
+                  <div className="flex flex-wrap gap-3 text-[11px] tabular-nums opacity-90">
+                    <span>{card.employeeCount} موظف</span>
+                    <span>{fmt(card.totalWage)} ج.م</span>
+                    <span>{Number(card.totalHours).toFixed(1)} س</span>
+                    <span>{card.payrollRowCount} يومية</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2 pt-1 border-t border-zinc-800/80">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void handleBulkValidateAllBranches()}
+            disabled={busy || bulkRunning || validating}
+            className="border-sky-600/40 text-sky-400 hover:bg-sky-500/10 gap-2 h-10"
+          >
+            {bulkRunning || validating ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <ClipboardList className="w-4 h-4" />
+            )}
+            فحص الحضور لكل الفروع
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void handleBulkGenerateAllBranches()}
+            disabled={busy || bulkRunning || generating}
+            className="bg-amber-600 hover:bg-amber-700 gap-2 h-10"
+          >
+            {bulkRunning || generating ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Zap className="w-4 h-4" />
+            )}
+            توليد اليوميات + الترحيل للدفتر
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void handleBulkCloseReadyBranches()}
+            disabled={busy || bulkRunning || dateHubSummary.readyCount === 0}
+            className="bg-emerald-700 hover:bg-emerald-600 gap-2 h-10"
+          >
+            {bulkRunning ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Lock className="w-4 h-4" />
+            )}
+            إقفال الجاهز
+            {dateHubSummary.readyCount > 0 ? ` (${dateHubSummary.readyCount})` : ''}
+          </Button>
+        </div>
+      </div>
+
+      {/* ── Open days monitor (quick jump) ─────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/50 px-4 py-3">
           <p className="text-[11px] text-zinc-500 mb-1">الأيام المفتوحة</p>
@@ -1129,7 +1493,7 @@ export default function DailyPayrollPanel() {
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-baseline gap-2">
             <h3 className="text-sm font-bold text-zinc-200">أيام تحتاج إقفال</h3>
-            <span className="text-[11px] text-zinc-500">مراقبة فقط · الشهر الحالي</span>
+            <span className="text-[11px] text-zinc-500">دخول سريع · الشهر الحالي</span>
           </div>
           <Button
             type="button"
@@ -1186,7 +1550,7 @@ export default function DailyPayrollPanel() {
         )}
       </div>
 
-      {/* ── [B] Daily payroll workspace (manual branch + date) ─────────────── */}
+      {/* ── [B] Focused branch workspace ───────────────────────────────────── */}
       <div
         className={cn(
           'rounded-xl border p-4 space-y-3',
@@ -1197,7 +1561,7 @@ export default function DailyPayrollPanel() {
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
-            <p className="text-xs opacity-80">إدارة يوم محدد</p>
+            <p className="text-xs opacity-80">إدارة فرع محدد</p>
             <h2 className="text-lg font-bold text-white">
               {formatWorkDateAr(workspaceDate)}
               {workspaceBranchMeta
@@ -1239,32 +1603,6 @@ export default function DailyPayrollPanel() {
                 )}
               </select>
             </label>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleDateChange(shiftCalendarDate(workspaceDate, -1))}
-              disabled={workspaceBusy}
-              className="h-9 w-9 p-0 border-white/15 bg-black/20"
-              aria-label="اليوم السابق"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-            <Input
-              type="date"
-              value={workspaceDate}
-              onChange={(e) => handleDateChange(e.target.value)}
-              className="bg-black/30 border-white/15 text-white w-40 h-9 text-sm"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleDateChange(shiftCalendarDate(workspaceDate, 1))}
-              disabled={workspaceBusy}
-              className="h-9 w-9 p-0 border-white/15 bg-black/20"
-              aria-label="اليوم التالي"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
           </div>
         </div>
 
@@ -1494,7 +1832,7 @@ export default function DailyPayrollPanel() {
           className="bg-amber-600 hover:bg-amber-700 gap-2 h-11 px-6">
           {generating
             ? <><Loader2 className="w-4 h-4 animate-spin" />جاري التوليد...</>
-            : <><Zap className="w-4 h-4" />توليد اليوميات والتارجت</>}
+            : <><Zap className="w-4 h-4" />{dualWriteEnabled ? 'توليد اليوميات + الترحيل للدفتر' : 'توليد اليوميات والتارجت'}</>}
         </Button>
 
         <Button
@@ -1816,6 +2154,11 @@ export default function DailyPayrollPanel() {
                               <div className="flex flex-wrap gap-1 mt-0.5">
                                 {employmentBadge(row.EmploymentType)}
                                 {payrollMethodBadge(row.PayrollMethod)}
+                                {row.PayrollMethod === 'monthly' ? (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800/80 text-zinc-400 border border-zinc-700/60">
+                                    شهري — لا يُغلق على اليوميات
+                                  </span>
+                                ) : null}
                               </div>
                             )}
                           </div>

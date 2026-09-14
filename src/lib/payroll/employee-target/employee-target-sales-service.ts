@@ -163,6 +163,128 @@ export async function getEmployeesNetServiceSalesByDate(
   return getEmployeesNetServiceSalesByDateRange(workDate, workDate, branchId, empIds);
 }
 
+export interface EmployeeDailyNetServiceSalesRow {
+  date: string;
+  empId: number;
+  netSalesAfterDiscount: number;
+}
+
+/**
+ * Per-calendar-day allocated sales for one employee (same allocation as daily targets).
+ * One invoice query for the range — no per-day N+1.
+ */
+export async function getEmployeeDailyNetServiceSalesMap(
+  fromDate: string,
+  toDate: string,
+  branchId: number,
+  empId: number,
+): Promise<Map<string, number>> {
+  assertValidWorkDate(fromDate);
+  assertValidWorkDate(toDate);
+  if (fromDate > toDate) {
+    throw new Error('fromDate يجب أن يكون قبل أو يساوي toDate');
+  }
+  if (!Number.isInteger(branchId) || branchId <= 0) {
+    throw new Error('branchId مطلوب لمبيعات التارجت (Phase 1L)');
+  }
+  if (!Number.isInteger(empId) || empId <= 0) {
+    throw new Error('empId غير صالح');
+  }
+
+  const db = await getPool();
+
+  const headersResult = await db.request()
+    .input('fromDate', sql.Date, fromDate)
+    .input('toDate', sql.Date, toDate)
+    .input('branchId', sql.Int, branchId)
+    .query(`
+      SELECT
+        h.invID,
+        h.invType,
+        h.SubTotal,
+        h.GrandTotal,
+        h.DisVal,
+        CONVERT(varchar(10), CAST(h.invDate AS date), 23) AS WorkDate
+      FROM dbo.TblinvServHead h
+      WHERE CAST(h.invDate AS date) >= @fromDate
+        AND CAST(h.invDate AS date) <= @toDate
+        AND h.invType = N'مبيعات'
+        AND h.BranchID = @branchId
+    `);
+
+  const invDateByKey = new Map<string, string>();
+  const headers: InvoiceHeaderInput[] = headersResult.recordset.map((row: Record<string, unknown>) => {
+    const invID = Number(row.invID);
+    const invType = String(row.invType);
+    invDateByKey.set(`${invType}-${invID}`, String(row.WorkDate));
+    return {
+      invID,
+      invType,
+      subTotal: row.SubTotal != null ? Number(row.SubTotal) : null,
+      grandTotal: row.GrandTotal != null ? Number(row.GrandTotal) : null,
+      disVal: row.DisVal != null ? Number(row.DisVal) : null,
+    };
+  });
+
+  const byDate = new Map<string, number>();
+  if (headers.length === 0) return byDate;
+
+  const detailsResult = await db.request()
+    .input('fromDate', sql.Date, fromDate)
+    .input('toDate', sql.Date, toDate)
+    .input('branchId', sql.Int, branchId)
+    .query(`
+      SELECT
+        d.ID AS detailId,
+        d.invID,
+        d.invType,
+        d.EmpID AS empId,
+        ISNULL(e.EmpName, N'') AS empName,
+        d.ProID AS proId,
+        d.Qty AS qty,
+        d.SPrice AS unitPrice,
+        d.DisVal AS discountValue,
+        d.SValue AS sValue,
+        (${EMPLOYEE_TARGET_LINE_TOTAL_SQL}) AS lineTotal
+      FROM dbo.TblinvServDetail d
+      INNER JOIN dbo.TblinvServHead h
+        ON h.invID = d.invID
+       AND h.invType = d.invType
+      LEFT JOIN dbo.TblEmp e ON e.EmpID = d.EmpID
+      WHERE CAST(h.invDate AS date) >= @fromDate
+        AND CAST(h.invDate AS date) <= @toDate
+        AND h.invType = N'مبيعات'
+        AND h.BranchID = @branchId
+        AND d.EmpID IS NOT NULL
+        AND d.ProID IS NOT NULL
+    `);
+
+  const detailLines: DetailLineForAllocation[] = detailsResult.recordset.map((row: Record<string, unknown>) => ({
+    detailId: Number(row.detailId),
+    invID: Number(row.invID),
+    invType: String(row.invType),
+    empId: Number(row.empId),
+    empName: String(row.empName ?? ''),
+    proId: Number(row.proId),
+    qty: row.qty != null ? Number(row.qty) : null,
+    unitPrice: row.unitPrice != null ? Number(row.unitPrice) : null,
+    discountValue: row.discountValue != null ? Number(row.discountValue) : null,
+    sValue: row.sValue != null ? Number(row.sValue) : null,
+    lineTotal: row.lineTotal != null ? Number(row.lineTotal) : null,
+  }));
+
+  const allocation = allocateEmployeeInvoiceRevenue(headers, detailLines);
+  for (const line of allocation.allocatedLines) {
+    if (line.empId !== empId) continue;
+    const date = invDateByKey.get(`${line.invType}-${line.invID}`);
+    if (!date) continue;
+    const prev = byDate.get(date) ?? 0;
+    byDate.set(date, roundMoney(prev + line.actualInvoiceRevenue));
+  }
+
+  return byDate;
+}
+
 export async function getEmployeeNetServiceSalesByDate(
   empId: number,
   workDate: string,

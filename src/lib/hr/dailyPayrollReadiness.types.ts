@@ -10,6 +10,8 @@ export const DAILY_PAYROLL_READINESS_BLOCKER_CODES = [
   'missing_check_out',
   'open_attendance_session',
   'invalid_work_hours',
+  /** Assigned + scheduled on branch with no attendance / leave / absent row anywhere. */
+  'attendance_disposition_missing',
   'payroll_not_generated',
   'target_not_generated',
   'payroll_ledger_missing',
@@ -150,5 +152,29 @@ export interface DailyPayrollOpenDaysResult {
   fromWorkDate: string | null;
   /** Inclusive upper bound actually applied (YYYY-MM-DD), if any. */
   toWorkDate: string | null;
+  elapsedMs: number;
+}
+
+/** One branch card for date-hub readiness (all branches, one WorkDate). */
+export interface DailyPayrollDateBranchSummary {
+  branchId: number;
+  branchCode: string;
+  branchName: string;
+  workDate: string;
+  persistedState: EmpBranchWorkDayCloseState;
+  recommendedState: EmpBranchWorkDayCloseState;
+  readyToClose: boolean;
+  blockerCount: number;
+  readyEmployeeCount: number;
+  employeeCount: number;
+  shortBlockerSummary: string;
+  totalWage: number;
+  totalHours: number;
+  payrollRowCount: number;
+}
+
+export interface DailyPayrollReadinessByDateResult {
+  workDate: string;
+  branches: DailyPayrollDateBranchSummary[];
   elapsedMs: number;
 }

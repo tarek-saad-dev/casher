@@ -167,6 +167,7 @@ export function nextAutoContinueBlocker(
   if (blockers.length === 0) return null;
 
   const priority: DailyPayrollReadinessBlockerCode[] = [
+    'attendance_disposition_missing',
     'missing_check_in',
     'missing_check_out',
     'open_attendance_session',

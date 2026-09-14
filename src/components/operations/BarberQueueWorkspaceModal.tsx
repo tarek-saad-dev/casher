@@ -472,13 +472,15 @@ export function BarberQueueWorkspaceModal({
                   </p>
                 )}
 
-                <div className="rounded-xl border p-3 text-xs text-muted-foreground" style={{ borderColor: BORDER }}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <CheckCircle2 className="size-4 text-success" />
-                    <span className="font-semibold text-foreground">جاهز للإضافة للدور</span>
+                {selectedSlot && (
+                  <div className="rounded-xl border p-3 text-xs text-muted-foreground" style={{ borderColor: BORDER }}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <CheckCircle2 className="size-4 text-success" />
+                      <span className="font-semibold text-foreground">جاهز للإضافة للدور</span>
+                    </div>
+                    اضغط «إضافة للدور» لإنشاء التذكرة والطباعة.
                   </div>
-                  اضغط «إضافة للدور» لإنشاء التذكرة والطباعة.
-                </div>
+                )}
               </div>
             )}
           </div>

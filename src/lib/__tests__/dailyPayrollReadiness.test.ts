@@ -27,6 +27,7 @@ function baseFacts(over: Partial<ReadinessEmployeeFacts> = {}): ReadinessEmploye
     hasOpenSession: false,
     hasAnyCheckIn: true,
     netMinutes: 480,
+    attendanceDispositionMissing: false,
     expectsPayroll: true,
     payrollGenerated: true,
     payrollId: 10,
@@ -249,6 +250,58 @@ describe('dailyPayrollReadiness recommend', () => {
     expect(warnings.some((w) => w.code === 'not_scheduled_working_day')).toBe(true);
   });
 
+  it('monthly Present does not expect payroll_not_generated when expectsPayroll=false', () => {
+    const { blockers, warnings } = classifyEmployeeReadiness(
+      baseFacts({
+        expectsPayroll: false,
+        payrollGenerated: false,
+        expectsTarget: false,
+        hasAttendance: true,
+        hasAnyCheckIn: true,
+        payrollLedgerPresent: null,
+        targetSyncStatus: 'none',
+        validationReason: 'monthly_excluded',
+        validationIsHardMissing: false,
+      }),
+    );
+    expect(blockers).not.toContain('payroll_not_generated');
+    expect(blockers).not.toContain('target_not_generated');
+    expect(warnings.some((w) => w.code === 'monthly_excluded')).toBe(true);
+  });
+
+  it('attendance_disposition_missing blocks close; leave/absent path has no disposition gap', () => {
+    expect(
+      classifyEmployeeReadiness(
+        baseFacts({
+          hasAttendance: false,
+          hasAnyCheckIn: false,
+          attendanceDispositionMissing: true,
+          expectsPayroll: false,
+          payrollGenerated: false,
+          expectsTarget: false,
+          payrollLedgerPresent: null,
+          targetSyncStatus: 'none',
+        }),
+      ).blockers,
+    ).toContain('attendance_disposition_missing');
+
+    expect(
+      classifyEmployeeReadiness(
+        baseFacts({
+          hasAttendance: true,
+          hasAnyCheckIn: false,
+          attendanceDispositionMissing: false,
+          expectsPayroll: false,
+          payrollGenerated: false,
+          expectsTarget: false,
+          payrollLedgerPresent: null,
+          targetSyncStatus: 'none',
+          validationReason: null,
+        }),
+      ).blockers,
+    ).not.toContain('attendance_disposition_missing');
+  });
+
   it('short blocker summary is Arabic', () => {
     const summary = shortBlockerSummary([
       {
@@ -279,17 +332,24 @@ describe('dailyPayrollReadiness service contract', () => {
     expect(svc).toContain('WorkDate');
   });
 
-  it('APIs are GET-only readiness/open-days', () => {
+  it('APIs are GET-only readiness/open-days/readiness-by-date', () => {
     const openDays = read('src/app/api/admin/hr/daily-payroll/open-days/route.ts');
     const readiness = read('src/app/api/admin/hr/daily-payroll/readiness/route.ts');
+    const byDate = read('src/app/api/admin/hr/daily-payroll/readiness-by-date/route.ts');
     const svc = read('src/lib/hr/dailyPayrollReadiness.service.ts');
     expect(openDays).toContain('export async function GET');
     expect(openDays).not.toContain('export async function POST');
     expect(openDays).toContain('scope=current-month');
     expect(readiness).toContain('export async function GET');
     expect(readiness).not.toContain('export async function POST');
+    expect(byDate).toContain('export async function GET');
+    expect(byDate).not.toContain('export async function POST');
+    expect(byDate).toContain('evaluateDailyPayrollReadinessByDate');
+    expect(svc).toContain('evaluateDailyPayrollReadinessByDate');
     expect(svc).toContain("state !== 'CLOSED'");
     expect(svc).toContain('fromWorkDate');
+    expect(svc).toContain('monthly_excluded');
+    expect(svc).toContain('loadAttendanceDispositionGaps');
   });
 
   it('overnight uses stored WorkDate (no new cutoff invented)', () => {

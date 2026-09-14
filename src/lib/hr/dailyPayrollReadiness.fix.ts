@@ -48,6 +48,7 @@ export function fixTypeForBlockerCode(
     case 'missing_check_out':
     case 'open_attendance_session':
     case 'invalid_work_hours':
+    case 'attendance_disposition_missing':
       return 'attendance_modal';
     case 'salary_config_missing':
       return 'payroll_settings';

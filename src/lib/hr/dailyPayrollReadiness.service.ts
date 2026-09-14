@@ -14,8 +14,10 @@ import {
   type ReadinessEmployeeFacts,
 } from '@/lib/hr/dailyPayrollReadiness.recommend';
 import type {
+  DailyPayrollDateBranchSummary,
   DailyPayrollOpenDayItem,
   DailyPayrollOpenDaysResult,
+  DailyPayrollReadinessByDateResult,
   DailyPayrollReadinessResult,
 } from '@/lib/hr/dailyPayrollReadiness.types';
 import {
@@ -67,6 +69,50 @@ async function loadBranchMeta(branchId: number): Promise<{
 }
 
 /**
+ * Assigned to branch + scheduled working day + no attendance row anywhere for WorkDate.
+ * These must record Present/… or leave/absent before close.
+ */
+async function loadAttendanceDispositionGaps(
+  branchId: number,
+  workDate: string,
+): Promise<Array<{ empId: number; empName: string }>> {
+  const db = await getPool();
+  const dayOfWeek = new Date(`${workDate}T12:00:00Z`).getDay();
+  const result = await db
+    .request()
+    .input('branchId', sql.Int, branchId)
+    .input('workDate', sql.Date, workDate)
+    .input('dayOfWeek', sql.TinyInt, dayOfWeek)
+    .query(`
+      SELECT e.EmpID, e.EmpName
+      FROM dbo.TblEmp e
+      INNER JOIN dbo.TblEmpBranchAssignment ba
+        ON ba.EmpID = e.EmpID
+       AND ba.BranchID = @branchId
+       AND ISNULL(ba.IsActive, 1) = 1
+       AND ba.EffectiveFrom <= @workDate
+       AND (ba.EffectiveTo IS NULL OR ba.EffectiveTo >= @workDate)
+      INNER JOIN dbo.TblEmpWorkSchedule ws
+        ON ws.EmpID = e.EmpID
+       AND ws.DayOfWeek = @dayOfWeek
+       AND ws.IsWorkingDay = 1
+      WHERE e.isActive = 1
+        AND e.IsPayrollEnabled = 1
+        AND NOT EXISTS (
+          SELECT 1
+          FROM dbo.TblEmpAttendance a
+          WHERE a.EmpID = e.EmpID
+            AND a.WorkDate = @workDate
+        )
+      ORDER BY e.EmpName
+    `);
+  return (result.recordset as Array<Record<string, unknown>>).map((r) => ({
+    empId: Number(r.EmpID),
+    empName: String(r.EmpName ?? ''),
+  }));
+}
+
+/**
  * Evaluate readiness for one BranchID + WorkDate.
  * Batched queries — no per-employee round trips.
  * Never mutates TblEmpBranchWorkDayClose.
@@ -87,11 +133,12 @@ export async function evaluateDailyPayrollReadiness(args: {
   const db = await getPool();
   const dualWrite = isEmployeeLedgerDualWriteEnabled();
 
-  const [branch, closeView, validation, aggregates] = await Promise.all([
+  const [branch, closeView, validation, aggregates, dispositionGaps] = await Promise.all([
     loadBranchMeta(args.branchId),
     getEmpBranchWorkDayCloseState(args.branchId, args.workDate),
     validateDailyPayrollAttendance(db, args.workDate, { branchId: args.branchId }),
     loadEmpBranchDayAttendanceAggregates(db, args.workDate, args.branchId),
+    loadAttendanceDispositionGaps(args.branchId, args.workDate),
   ]);
 
   // Batch: payroll + targets + plans + recalc (parallel — no N+1)
@@ -209,12 +256,16 @@ export async function evaluateDailyPayrollReadiness(args: {
   const excludedByEmp = new Map(
     validation.excluded.map((m) => [m.empId, m] as const),
   );
+  const dispositionMissingByEmp = new Map(
+    dispositionGaps.map((g) => [g.empId, g] as const),
+  );
 
   const empIds = new Set<number>();
   for (const id of aggregates.keys()) empIds.add(id);
   for (const id of payrollByEmp.keys()) empIds.add(id);
   for (const id of targetByEmp.keys()) empIds.add(id);
   for (const id of missingByEmp.keys()) empIds.add(id);
+  for (const id of dispositionMissingByEmp.keys()) empIds.add(id);
   for (const id of planEmpIds) {
     // Only include plan holders who have branch activity (attendance or payroll)
     if (aggregates.has(id) || payrollByEmp.has(id)) empIds.add(id);
@@ -228,6 +279,7 @@ export async function evaluateDailyPayrollReadiness(args: {
   }
   for (const m of validation.missing) nameByEmp.set(m.empId, m.empName);
   for (const m of validation.excluded) nameByEmp.set(m.empId, m.empName);
+  for (const g of dispositionGaps) nameByEmp.set(g.empId, g.empName);
 
   const missingNames = [...empIds].filter((id) => !nameByEmp.has(id));
   if (missingNames.length > 0) {
@@ -251,6 +303,7 @@ export async function evaluateDailyPayrollReadiness(args: {
     const target = targetByEmp.get(empId);
     const missing = missingByEmp.get(empId);
     const excluded = excludedByEmp.get(empId);
+    const dispositionGap = dispositionMissingByEmp.get(empId);
 
     const hasAttendance = agg != null;
     const hasOpenSession = Boolean(agg?.hasOpenSession);
@@ -261,10 +314,14 @@ export async function evaluateDailyPayrollReadiness(args: {
       agg.primaryStatus != null &&
       isPayableAttendanceStatus(agg.primaryStatus);
 
+    // Monthly staff never drive daily payroll / target close requirements.
+    const isMonthlyExcluded = excluded?.reason === 'monthly_excluded';
+
     const expectsPayroll =
-      (payable && !hasOpenSession) ||
-      Boolean(payroll) ||
-      Boolean(missing); // hard validation missing implies they were expected
+      !isMonthlyExcluded &&
+      ((payable && !hasOpenSession) ||
+        Boolean(payroll) ||
+        Boolean(missing)); // hard validation missing implies they were expected
 
     const payrollGenerated = Boolean(
       payroll &&
@@ -273,7 +330,8 @@ export async function evaluateDailyPayrollReadiness(args: {
         ),
     );
 
-    const expectsTarget = planEmpIds.has(empId) && expectsPayroll && !hasOpenSession;
+    const expectsTarget =
+      !isMonthlyExcluded && planEmpIds.has(empId) && expectsPayroll && !hasOpenSession;
     const targetGenerated = Boolean(target);
 
     let payrollLedgerPresent: boolean | null = null;
@@ -295,6 +353,7 @@ export async function evaluateDailyPayrollReadiness(args: {
       hasOpenSession,
       hasAnyCheckIn,
       netMinutes,
+      attendanceDispositionMissing: Boolean(dispositionGap) && !hasAttendance,
       expectsPayroll,
       payrollGenerated,
       payrollId: payroll?.payrollId ?? null,
@@ -523,6 +582,68 @@ export async function listDailyPayrollOpenDays(args?: {
     lookbackDays,
     fromWorkDate,
     toWorkDate,
+    elapsedMs: Date.now() - started,
+  };
+}
+
+/**
+ * Evaluate readiness for every smoke branch (optionally ACL-filtered) on one WorkDate.
+ * Read-only — never mutates close table.
+ */
+export async function evaluateDailyPayrollReadinessByDate(args: {
+  workDate: string;
+  branchIds?: number[];
+}): Promise<DailyPayrollReadinessByDateResult> {
+  const started = Date.now();
+  const dateErr = validateWorkDateYmd(args.workDate);
+  if (dateErr) {
+    throw new EmpBranchWorkDayCloseError('INVALID_WORK_DATE', dateErr);
+  }
+
+  const db = await getPool();
+  const branchesResult = await db.request().query(`
+    SELECT BranchID, BranchCode, BranchName
+    FROM dbo.TblBranch
+    WHERE BranchCode IN (N'${GLEEM_BRANCH_CODE}', N'${CAMP_CAESAR_BRANCH_CODE}')
+      AND IsActive = 1
+    ORDER BY CASE BranchCode WHEN N'${GLEEM_BRANCH_CODE}' THEN 0 ELSE 1 END
+  `);
+  let branches = (branchesResult.recordset as Array<Record<string, unknown>>).map((r) => ({
+    branchId: Number(r.BranchID),
+    branchCode: String(r.BranchCode ?? ''),
+    branchName: String(r.BranchName ?? ''),
+  }));
+  if (args.branchIds?.length) {
+    const allow = new Set(args.branchIds);
+    branches = branches.filter((b) => allow.has(b.branchId));
+  }
+
+  const results = await Promise.all(
+    branches.map((b) =>
+      evaluateDailyPayrollReadiness({ branchId: b.branchId, workDate: args.workDate }),
+    ),
+  );
+
+  const branchSummaries: DailyPayrollDateBranchSummary[] = results.map((r) => ({
+    branchId: r.branchId,
+    branchCode: r.branchCode,
+    branchName: r.branchName,
+    workDate: r.workDate,
+    persistedState: r.persistedState,
+    recommendedState: r.recommendedState,
+    readyToClose: r.readyToClose,
+    blockerCount: r.summary.blockerCount,
+    readyEmployeeCount: r.summary.readyEmployeeCount,
+    employeeCount: r.summary.employeeCount,
+    shortBlockerSummary: shortBlockerSummary(r.blockers),
+    totalWage: r.summary.totalWage,
+    totalHours: r.summary.totalHours,
+    payrollRowCount: r.summary.payrollRowCount,
+  }));
+
+  return {
+    workDate: args.workDate,
+    branches: branchSummaries,
     elapsedMs: Date.now() - started,
   };
 }

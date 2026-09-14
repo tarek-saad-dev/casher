@@ -211,6 +211,11 @@ describe('Phase D — queue UX orchestration (source)', () => {
     expect(simple).toContain('setShowPrintModal(true)');
   });
 
+  it('ready-to-add banner only when a slot is selected', () => {
+    const lane = read('src/components/operations/BarberQueueWorkspaceModal.tsx');
+    expect(lane).toMatch(/\{selectedSlot && \([\s\S]*جاهز للإضافة للدور[\s\S]*\)\}/);
+  });
+
   it('active ops page still wires all four queue surfaces', () => {
     const page = read('src/app/operations/OperationsPageClient.tsx');
     expect(page).toContain('BarberQueueWorkspaceModal');

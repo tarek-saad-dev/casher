@@ -28,8 +28,10 @@ export {
   getEmployeeNetServiceSalesByDate,
   getEmployeesNetServiceSalesByDate,
   getEmployeesNetServiceSalesByDateRange,
+  getEmployeeDailyNetServiceSalesMap,
   getEmployeesServiceCountsByDate,
   type EmployeeDayServiceCounts,
+  type EmployeeDailyNetServiceSalesRow,
   type EmployeeNetServiceSalesRow,
 } from './employee-target-sales-service';
 

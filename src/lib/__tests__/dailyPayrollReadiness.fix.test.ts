@@ -22,6 +22,7 @@ function baseFacts(over: Partial<ReadinessEmployeeFacts> = {}): ReadinessEmploye
     hasOpenSession: false,
     hasAnyCheckIn: true,
     netMinutes: 480,
+    attendanceDispositionMissing: false,
     expectsPayroll: true,
     payrollGenerated: true,
     payrollId: 10,
@@ -58,6 +59,18 @@ describe('dailyPayrollReadiness.fix', () => {
     expect(fix.employeeId).toBe(99);
     expect(fix.targetUrl).toContain('tab=attendance');
     expect(fix.targetUrl).toContain('branchId=3');
+  });
+
+  it('attendance_disposition_missing → attendance_modal', () => {
+    const fix = buildBlockerFix({
+      code: 'attendance_disposition_missing',
+      branchId: 3,
+      workDate: '2026-08-11',
+      empId: 42,
+    });
+    expect(fix.type).toBe('attendance_modal');
+    expect(fix.employeeId).toBe(42);
+    expect(fix.targetUrl).toContain('tab=attendance');
   });
 
   it('salary_config_missing → payroll_settings branch-schedule URL', () => {

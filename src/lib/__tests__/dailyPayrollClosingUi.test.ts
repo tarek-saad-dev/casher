@@ -37,6 +37,21 @@ describe('dailyPayrollClosingUi', () => {
         targetSyncStatus: 'none',
       }).label,
     ).toBe('ناقص انصراف');
+
+    expect(
+      employeeStatusFromReadiness({
+        empId: 2,
+        empName: 'ب',
+        ready: false,
+        blockers: ['attendance_disposition_missing'],
+        hasAttendance: false,
+        hasOpenSession: false,
+        payrollGenerated: false,
+        targetGenerated: false,
+        payrollLedgerOk: null,
+        targetSyncStatus: 'none',
+      }).label,
+    ).toBe('بدون حضور/إجازة');
   });
 
   it('formats open-day chips and summary without inventing readiness', () => {
