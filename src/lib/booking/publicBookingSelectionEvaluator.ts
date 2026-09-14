@@ -18,6 +18,11 @@ import {
   type ResolvedBookingServiceLine,
 } from '@/lib/booking/bookingServiceDuration';
 import {
+  GroomPackageBookingError,
+  resolveGroomPackageBooking,
+  type ResolvedGroomPackageBooking,
+} from '@/lib/booking/groomPackageBooking';
+import {
   PUBLIC_BOOKING_ERROR_CATALOG,
   type PublicBookingErrorCode,
 } from '@/lib/booking/publicBookingErrorCatalog';
@@ -102,6 +107,8 @@ export type PublicSelectionEvaluation = {
   contractVersion: string;
   /** Fresh evaluation — never served from Phase-4 slot cache. */
   evaluationMode: 'strong_fresh';
+  /** Present when booking via groom packageId */
+  packageBooking: ResolvedGroomPackageBooking | null;
 };
 
 function addDaysYmd(ymd: string, days: number): string {
@@ -117,6 +124,10 @@ function nextDate(ymd: string): string {
 function mapDurationError(err: BookingServiceDurationError): PublicBookingErrorCode {
   if (err.code === 'SERVICES_NOT_CONFIGURED') return 'SERVICES_NOT_CONFIGURED';
   return 'SERVICE_NOT_AVAILABLE_AT_BRANCH';
+}
+
+function mapPackageError(err: GroomPackageBookingError): PublicBookingErrorCode {
+  return err.code as PublicBookingErrorCode;
 }
 
 function mapEngineReason(code: BookingSlotReasonCode | undefined): PublicBookingErrorCode {
@@ -341,6 +352,9 @@ export async function evaluatePublicBookingSelection(args: {
   time?: string | null;
   dayOffset?: unknown;
   serviceIds?: unknown;
+  /** Groom package booking — when set, uses package-aware validation (not generic catalog). */
+  packageId?: unknown;
+  addonProIds?: unknown;
   empId?: unknown;
   mode?: unknown;
   purpose: PublicSelectionPurpose;
@@ -399,13 +413,42 @@ export async function evaluatePublicBookingSelection(args: {
   const empId = parseEmpId(args.empId);
   const mode = normalizeMode(args.mode, empId);
 
-  let selected;
+  const hasPackage =
+    args.packageId != null &&
+    String(args.packageId).trim() !== '' &&
+    Number(args.packageId) > 0;
+
+  let selected: {
+    services: ResolvedBookingServiceLine[];
+    serviceIds: number[];
+    totalDurationMinutes: number;
+    totalPrice: number;
+  };
+  let packageBooking: ResolvedGroomPackageBooking | null = null;
+
   try {
-    selected = await resolveSelectedBookingServices({
-      branchContext,
-      serviceIds: args.serviceIds as string | number[] | null,
-    });
+    if (hasPackage) {
+      packageBooking = await resolveGroomPackageBooking({
+        packageId: args.packageId,
+        addonProIds: args.addonProIds,
+        clientServiceIds: args.serviceIds,
+      });
+      selected = {
+        services: packageBooking.services,
+        serviceIds: packageBooking.serviceIds,
+        totalDurationMinutes: packageBooking.totalDurationMinutes,
+        totalPrice: packageBooking.totalPrice,
+      };
+    } else {
+      selected = await resolveSelectedBookingServices({
+        branchContext,
+        serviceIds: args.serviceIds as string | number[] | null,
+      });
+    }
   } catch (err) {
+    if (err instanceof GroomPackageBookingError) {
+      throw new PublicBookingSelectionError(mapPackageError(err), err.metadata);
+    }
     if (err instanceof BookingServiceDurationError) {
       throw new PublicBookingSelectionError(mapDurationError(err));
     }
@@ -666,6 +709,8 @@ export async function evaluatePublicBookingSelection(args: {
         dayOffset: requestedDayOffset,
         totalDurationMinutes: selected.totalDurationMinutes,
         subtotal: selected.totalPrice,
+        packageId: packageBooking?.packageId ?? null,
+        addonProIds: packageBooking?.addonProIds ?? [],
       },
       evaluatedAt,
     );
@@ -700,6 +745,7 @@ export async function evaluatePublicBookingSelection(args: {
     planExpiresAt,
     contractVersion: BOOKING_PLAN_CONTRACT_VERSION,
     evaluationMode: 'strong_fresh',
+    packageBooking,
   };
 }
 
@@ -734,6 +780,13 @@ export function assertCheckSlotPlanParity(
   const planIds = plan.selectedServices.map((s) => s.serviceId).join(',');
   if (checkIds !== planIds) {
     throw new PublicBookingSelectionError('PLAN_CHECK_SLOT_MISMATCH', { field: 'serviceIds' });
+  }
+  if (
+    (check.packageBooking?.packageId ?? null) !== (plan.packageBooking?.packageId ?? null) ||
+    (check.packageBooking?.addonProIds ?? []).join(',') !==
+      (plan.packageBooking?.addonProIds ?? []).join(',')
+  ) {
+    throw new PublicBookingSelectionError('PLAN_CHECK_SLOT_MISMATCH', { field: 'packageBooking' });
   }
   if (check.mode === 'specific_barber') {
     if (check.specificBarber?.empId !== plan.specificBarber?.empId) {

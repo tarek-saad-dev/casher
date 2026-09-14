@@ -16,6 +16,7 @@ interface MobileInvoiceSheetProps {
   saveError: string;
   saving: boolean;
   onRemove: (id: string) => void;
+  onRemoveMany?: (ids: string[]) => void;
   onUpdateItem: (id: string, patch: Partial<CartItem>) => void;
   onDiscountPercentChange: (v: number) => void;
   onDiscountValueChange: (v: number) => void;

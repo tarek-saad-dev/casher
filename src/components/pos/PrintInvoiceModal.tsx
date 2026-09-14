@@ -9,8 +9,52 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  buildPackageAwarePrintLines,
+  extractGroomPackageNoteFromText,
+} from '@/lib/pos/groomPackageCart';
+
+/** Client-safe parse of [groomPackage] note (mirrors booking parser). */
+function parsePackageNote(notes: string | null | undefined): {
+  packageId: number;
+  packagePrice: number;
+  addonProIds: number[];
+  requiredServiceIds: number[];
+  totalPrice: number;
+} | null {
+  const frag = extractGroomPackageNoteFromText(notes);
+  if (!frag) return null;
+  const body = frag.replace(/^\[groomPackage\]\s*/, '');
+  const get = (key: string) => {
+    const hit = body.match(new RegExp(`(?:^|;)${key}=([^;]+)`));
+    return hit?.[1]?.trim() ?? '';
+  };
+  const packageId = Number(get('packageId'));
+  if (!Number.isInteger(packageId) || packageId <= 0) return null;
+  const packagePrice = Number(get('packagePrice'));
+  const totalPrice = Number(String(get('total')).replace(/[^\d.]/g, ''));
+  const addonsRaw = get('addons');
+  const requiredRaw = get('required');
+  return {
+    packageId,
+    packagePrice: Number.isFinite(packagePrice) ? packagePrice : 0,
+    totalPrice: Number.isFinite(totalPrice) ? totalPrice : 0,
+    addonProIds:
+      !addonsRaw || addonsRaw === '-'
+        ? []
+        : addonsRaw
+            .split(',')
+            .map(Number)
+            .filter((n) => Number.isInteger(n) && n > 0),
+    requiredServiceIds: requiredRaw
+      .split(',')
+      .map(Number)
+      .filter((n) => Number.isInteger(n) && n > 0),
+  };
+}
 
 interface PrintItem {
+  ProID?: number;
   ProName: string;
   EmpName: string;
   SPrice: number;
@@ -41,6 +85,8 @@ interface PrintData {
   PayVisa: number;
   PaymentMethodID: number | null;
   TotalBonus: number;
+  Notes?: string | null;
+  Notes2?: string | null;
   items: PrintItem[];
   paymentAllocations?: PaymentAllocationRow[];
   isSplitPayment?: boolean;
@@ -418,35 +464,57 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
 
     const money = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
 
-    const itemRows = (data.items || []).map((item: PrintItem, i: number) => {
-      const qty = Number(item.Qty) > 0 ? Number(item.Qty) : 1;
-      const gross =
-        item.SValue != null && Number(item.SValue) > 0
-          ? Number(item.SValue)
-          : Number(item.SPrice || 0) * qty;
-      const disVal = Math.max(0, Number(item.DisVal || 0));
-      const net =
-        item.SPriceAfterDis != null && Number.isFinite(Number(item.SPriceAfterDis))
-          ? Number(item.SPriceAfterDis)
-          : Math.max(0, gross - disVal);
+    const pkgMeta = parsePackageNote(
+      [data.Notes, data.Notes2].filter(Boolean).join(' '),
+    );
+    const packageName =
+      pkgMeta != null
+        ? (data.items || []).find(
+            (it) =>
+              Number(it.SPriceAfterDis ?? it.SPrice) > 0 &&
+              pkgMeta.requiredServiceIds.includes(Number(it.ProID)),
+          )?.ProName
+        : undefined;
 
-      const serviceName = `<div class="service-name">${item.ProName || ''}</div>`;
-      const barberName = item.EmpName ? `<div class="barber-name">${item.EmpName}</div>` : '';
-      const priceCell =
-        disVal > 0
-          ? `<div class="line-price-block">
-              <div class="line-price-gross">${money(gross)} ج.م</div>
-              <div class="line-price-disc">خصم: -${money(disVal)}</div>
-              <div class="line-price-net">${money(net)} ج.م</div>
-            </div>`
-          : `<div class="line-price-net">${money(net > 0 ? net : gross)} ج.م</div>`;
+    const printLines = buildPackageAwarePrintLines(
+      (data.items || []).map((item) => ({
+        ProID: Number(item.ProID) || 0,
+        ProName: item.ProName,
+        SPrice: Number(item.SPrice) || 0,
+        SPriceAfterDis: item.SPriceAfterDis,
+        SValue: item.SValue,
+        Qty: item.Qty,
+        DisVal: item.DisVal,
+        EmpName: item.EmpName,
+      })),
+      pkgMeta
+        ? {
+            packageId: pkgMeta.packageId,
+            packagePrice: pkgMeta.packagePrice,
+            requiredServiceIds: pkgMeta.requiredServiceIds,
+            addonProIds: pkgMeta.addonProIds,
+            packageName: packageName || undefined,
+          }
+        : null,
+    );
 
-      return `<tr>
+    const itemRows = printLines
+      .map((line, i) => {
+        const serviceName = `<div class="service-name">${line.label || ''}</div>`;
+        const includes =
+          line.sublabel
+            ? `<div class="barber-name">${line.sublabel}</div>`
+            : '';
+        const barberName =
+          line.empName ? `<div class="barber-name">${line.empName}</div>` : '';
+        const priceCell = `<div class="line-price-net">${money(line.amount)} ج.م</div>`;
+        return `<tr>
         <td>${i + 1}</td>
-        <td>${serviceName}${barberName}</td>
+        <td>${serviceName}${includes}${barberName}</td>
         <td>${priceCell}</td>
       </tr>`;
-    }).join('');
+      })
+      .join('');
 
     const lineDiscountTotal = (data.items || []).reduce(
       (sum, item) => sum + Math.max(0, Number(item.DisVal || 0)),
@@ -763,38 +831,56 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
                   </tr>
                 </thead>
                 <tbody>
-                  {data.items?.map((item: PrintItem, i: number) => {
-                    const qty = Number(item.Qty) > 0 ? Number(item.Qty) : 1;
-                    const gross =
-                      item.SValue != null && Number(item.SValue) > 0
-                        ? Number(item.SValue)
-                        : Number(item.SPrice || 0) * qty;
-                    const disVal = Math.max(0, Number(item.DisVal || 0));
-                    const net =
-                      item.SPriceAfterDis != null && Number.isFinite(Number(item.SPriceAfterDis))
-                        ? Number(item.SPriceAfterDis)
-                        : Math.max(0, gross - disVal);
-                    return (
+                  {(() => {
+                    const pkgMeta = parsePackageNote(
+      [data.Notes, data.Notes2].filter(Boolean).join(' '),
+    );
+                    const packageName = pkgMeta
+                      ? data.items?.find(
+                          (it) =>
+                            Number(it.SPriceAfterDis ?? it.SPrice) > 0 &&
+                            pkgMeta.requiredServiceIds.includes(Number(it.ProID)),
+                        )?.ProName
+                      : undefined;
+                    const lines = buildPackageAwarePrintLines(
+                      (data.items || []).map((item) => ({
+                        ProID: Number(item.ProID) || 0,
+                        ProName: item.ProName,
+                        SPrice: Number(item.SPrice) || 0,
+                        SPriceAfterDis: item.SPriceAfterDis,
+                        SValue: item.SValue,
+                        Qty: item.Qty,
+                        DisVal: item.DisVal,
+                        EmpName: item.EmpName,
+                      })),
+                      pkgMeta
+                        ? {
+                            packageId: pkgMeta.packageId,
+                            packagePrice: pkgMeta.packagePrice,
+                            requiredServiceIds: pkgMeta.requiredServiceIds,
+                            addonProIds: pkgMeta.addonProIds,
+                            packageName,
+                          }
+                        : null,
+                    );
+                    return lines.map((line, i) => (
                       <tr key={i} className="border-b border-black">
                         <td className="p-1 text-center font-bold">{i + 1}</td>
                         <td className="p-1 break-words">
-                          <div className="font-bold">{item.ProName}</div>
-                          {item.EmpName && <div className="text-[9px] font-semibold">{item.EmpName}</div>}
-                        </td>
-                        <td className="p-1 text-left font-bold">
-                          {disVal > 0 ? (
-                            <div className="leading-tight">
-                              <div className="text-[8px] line-through opacity-70">{gross.toFixed(2)} ج.م</div>
-                              <div className="text-[8px] text-red-600">خصم: -{disVal.toFixed(2)}</div>
-                              <div className="text-[10px] font-black">{net.toFixed(2)} ج.م</div>
-                            </div>
-                          ) : (
-                            <span>{(net > 0 ? net : gross).toFixed(2)} ج.م</span>
+                          <div className="font-bold">{line.label}</div>
+                          {line.sublabel && (
+                            <div className="text-[9px] font-semibold">{line.sublabel}</div>
+                          )}
+                          {line.empName && (
+                            <div className="text-[9px] font-semibold">{line.empName}</div>
                           )}
                         </td>
+                        <td className="p-1 text-left font-bold">
+                          <span>{line.amount.toFixed(2)} ج.م</span>
+                        </td>
                       </tr>
-                    );
-                  })}
+                    ));
+                  })()}
                 </tbody>
               </table>
               

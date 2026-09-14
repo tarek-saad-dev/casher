@@ -47,6 +47,8 @@ export type CreateRequestFingerprintInput = {
   mode: 'specific_barber' | 'any_barber';
   empId: number | null;
   customerPhone: string;
+  packageId?: number | null;
+  addonProIds?: number[];
 };
 
 export function buildCreateRequestFingerprint(input: CreateRequestFingerprintInput): string {
@@ -60,6 +62,8 @@ export function buildCreateRequestFingerprint(input: CreateRequestFingerprintInp
     mode: input.mode,
     empId: input.empId,
     phone: input.customerPhone,
+    packageId: input.packageId ?? null,
+    addonProIds: [...(input.addonProIds ?? [])],
   });
   return crypto.createHash('sha256').update(canonical).digest('hex');
 }

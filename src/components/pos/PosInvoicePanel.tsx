@@ -19,6 +19,7 @@ interface PosInvoicePanelProps {
   saveError: string;
   saving: boolean;
   onRemove: (id: string) => void;
+  onRemoveMany?: (ids: string[]) => void;
   onUpdateItem: (id: string, patch: Partial<CartItem>) => void;
   onDiscountPercentChange: (v: number) => void;
   onDiscountValueChange: (v: number) => void;
@@ -38,6 +39,7 @@ export default function PosInvoicePanel({
   saveError,
   saving: _saving,
   onRemove,
+  onRemoveMany,
   onUpdateItem,
   onDiscountPercentChange,
   onDiscountValueChange,
@@ -56,6 +58,7 @@ export default function PosInvoicePanel({
         items={state.items}
         barbers={barbers}
         onRemove={onRemove}
+        onRemoveMany={onRemoveMany}
         onUpdateItem={onUpdateItem}
       />
       <Separator />

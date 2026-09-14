@@ -23,6 +23,9 @@ export type PlanFingerprintInput = {
   dayOffset: 0 | 1;
   totalDurationMinutes: number;
   subtotal: number;
+  /** Groom package booking — optional; null/omit for normal booking */
+  packageId?: number | null;
+  addonProIds?: number[];
 };
 
 function canonicalPayload(input: PlanFingerprintInput): string {
@@ -37,6 +40,8 @@ function canonicalPayload(input: PlanFingerprintInput): string {
     dayOffset: input.dayOffset,
     totalDurationMinutes: input.totalDurationMinutes,
     subtotal: input.subtotal,
+    packageId: input.packageId ?? null,
+    addonProIds: [...(input.addonProIds ?? [])],
   });
 }
 
@@ -90,6 +95,8 @@ export function mintPlanFingerprint(
     dayOffset: input.dayOffset,
     totalDurationMinutes: input.totalDurationMinutes,
     subtotal: input.subtotal,
+    packageId: input.packageId ?? null,
+    addonProIds: [...(input.addonProIds ?? [])],
     evaluatedAt,
     exp,
   };

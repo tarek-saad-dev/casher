@@ -293,7 +293,11 @@ export async function POST(req: NextRequest) {
         .input("ShiftMoveID", sql.Int, shiftMoveID)
         .input("Notes", sql.NVarChar(100), notesText.substring(0, 100))
         .input("isActive", sql.NVarChar(5), "no")
-        .input("Notes2", sql.NVarChar(sql.MAX), "")
+        .input(
+          "Notes2",
+          sql.NVarChar(sql.MAX),
+          String(body.notes2 || "").substring(0, 4000),
+        )
         .input("Payment", sql.Decimal(10, 2), grandTotal)
         .input("PayDue", sql.Decimal(10, 2), 0)
         .input("PayCash", sql.Decimal(10, 2), payCash)

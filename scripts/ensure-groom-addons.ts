@@ -41,6 +41,8 @@ interface RequestedService {
   aliases: string[];
   /** Allow UPDATE of name/price when this is our owned SKU. */
   ownedSku: boolean;
+  /** When set, keep/apply DurationMinutes on owned SKUs (home visits). */
+  durationMinutes?: number;
 }
 
 interface CatalogRow {
@@ -140,6 +142,7 @@ const REQUESTED: RequestedService[] = [
     nameEn: 'Groom Home Visit — Near the Salon',
     nameAr: 'زيارة تجهيز العريس — قريب من الفرع',
     price: 300,
+    durationMinutes: 60,
     categoryPreferences: ['Groom Home Visit'],
     useGroupCategory: true,
     ownedSku: true,
@@ -155,6 +158,7 @@ const REQUESTED: RequestedService[] = [
     nameEn: 'Groom Home Visit — Within the City',
     nameAr: 'زيارة تجهيز العريس — داخل المدينة',
     price: 500,
+    durationMinutes: 90,
     categoryPreferences: ['Groom Home Visit'],
     useGroupCategory: true,
     ownedSku: true,
@@ -170,6 +174,7 @@ const REQUESTED: RequestedService[] = [
     nameEn: 'Groom Home Visit — Extended Zone',
     nameAr: 'زيارة تجهيز العريس — نطاق ممتد',
     price: 1000,
+    durationMinutes: 120,
     categoryPreferences: ['Groom Home Visit'],
     useGroupCategory: true,
     ownedSku: true,
@@ -181,7 +186,10 @@ const REQUESTED: RequestedService[] = [
   },
 ];
 
-/** Package keys → which optional groups attach; Complete excludes protein + pedicure. */
+/**
+ * Package keys → optional links (source of truth for POS + booking).
+ * Complete already requires Pedicure + Protein — those are omitted as optionals there.
+ */
 const PACKAGE_OPTIONAL_RULES: Array<{
   matchNameEn: string;
   seedKey: string;
@@ -216,7 +224,6 @@ const PACKAGE_OPTIONAL_RULES: Array<{
   {
     matchNameEn: 'Complete Groom',
     seedKey: 'GROOM_COMPLETE',
-    // Protein + pedicure already included — do not offer as optional.
     addonKeys: [
       'HAIR_DETAIL_COLOR',
       'RELAX_SESSION',
@@ -789,6 +796,10 @@ async function main(): Promise<void> {
           .input('SPrice1', r.ownedSku ? r.price : m.SPrice1)
           .input('CatID', catId)
           .input('ProType', 'serv')
+          .input(
+            'DurationMinutes',
+            r.ownedSku && r.durationMinutes != null ? r.durationMinutes : null,
+          )
           .query(`
             UPDATE dbo.TblPro
             SET isDeleted = 0,
@@ -796,6 +807,7 @@ async function main(): Promise<void> {
                 ProNameAr = @ProNameAr,
                 SPrice1 = @SPrice1,
                 CatID = COALESCE(@CatID, CatID),
+                DurationMinutes = COALESCE(@DurationMinutes, DurationMinutes),
                 ProType = CASE
                   WHEN ProType IS NULL OR LTRIM(RTRIM(ProType)) = N'' THEN @ProType
                   ELSE ProType
@@ -834,9 +846,10 @@ async function main(): Promise<void> {
           .input('CatID', plan.category.CatID)
           .input('ProType', 'serv')
           .input('isDeleted', 0)
+          .input('DurationMinutes', r.durationMinutes ?? null)
           .query(`
-            INSERT INTO dbo.TblPro (ProName, ProNameAr, SPrice1, Bonus, CatID, ProType, isDeleted)
-            VALUES (@ProName, @ProNameAr, @SPrice1, @Bonus, @CatID, @ProType, @isDeleted);
+            INSERT INTO dbo.TblPro (ProName, ProNameAr, SPrice1, Bonus, CatID, ProType, isDeleted, DurationMinutes)
+            VALUES (@ProName, @ProNameAr, @SPrice1, @Bonus, @CatID, @ProType, @isDeleted, @DurationMinutes);
             SELECT CAST(SCOPE_IDENTITY() AS INT) AS ProID;
           `);
         const proId = Number(inserted.recordset[0].ProID);

@@ -17,6 +17,7 @@ import QuickCustomerModal from '@/components/pos/QuickCustomerModal';
 import CompleteCustomerModal from '@/components/pos/CompleteCustomerModal';
 import BarberCarousel from '@/components/pos/luxury/BarberCarousel';
 import ServiceCatalog from '@/components/pos/luxury/ServiceCatalog';
+import GroomPackagesSection from '@/components/pos/luxury/PackagesSection';
 import PosInvoicePanel, { PosInvoiceSaveActions } from '@/components/pos/PosInvoicePanel';
 import MobilePosHeader from '@/components/pos/mobile/MobilePosHeader';
 import MobileInvoiceBar from '@/components/pos/mobile/MobileInvoiceBar';
@@ -100,7 +101,7 @@ export default function PosPage() {
   // ───────────────── Sale state ─────────────────
   const {
     state, totals,
-    setCustomer: setCustomerBase, setBarber, addItem, removeItem, updateItem,
+    setCustomer: setCustomerBase, setBarber, addItem, addItems, removeItem, removeItems, updateItem,
     setDiscountPercent, setDiscountValue,
     applyDiscountToLargestLine,
     setPaymentMethod,
@@ -116,6 +117,21 @@ export default function PosPage() {
     (item: CartItem) => addItem(item, homeVisitProIds),
     [addItem, homeVisitProIds],
   );
+
+  const addPackageItems = useCallback(
+    (items: CartItem[], opts?: { removeIds?: string[] }) => {
+      addItems(items, {
+        homeVisitProIds,
+        removeIds: opts?.removeIds,
+      });
+    },
+    [addItems, homeVisitProIds],
+  );
+
+  // Booking → POS package hydration (?bookingId=)
+  const [hydratePackageId, setHydratePackageId] = useState<number | null>(null);
+  const [hydrateAddonProIds, setHydrateAddonProIds] = useState<number[]>([]);
+  const bookingHydrateDoneRef = useRef(false);
 
   // ───────────────── UI state ─────────────────
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -203,6 +219,51 @@ export default function PosPage() {
   useEffect(() => {
     setShift(shift?.ID ?? null);
   }, [shift, setShift]);
+
+  // ───────────────── Hydrate groom package from booking (?bookingId=) ─────────────────
+  useEffect(() => {
+    if (bookingHydrateDoneRef.current) return;
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const bookingIdRaw = params.get('bookingId');
+    if (!bookingIdRaw) return;
+    const bookingId = Number(bookingIdRaw);
+    if (!Number.isInteger(bookingId) || bookingId <= 0) return;
+
+    bookingHydrateDoneRef.current = true;
+    (async () => {
+      try {
+        const res = await fetch(`/api/pos/groom-packages/from-booking/${bookingId}`);
+        const data = await res.json();
+        if (!res.ok) {
+          addToast('error', data.error || 'تعذر تحميل باقة الحجز');
+          return;
+        }
+        if (!data.hasPackage) {
+          addToast('info', 'هذا الحجز لا يحتوي على باقة عريس');
+          return;
+        }
+        setHydratePackageId(Number(data.packageId));
+        setHydrateAddonProIds(
+          Array.isArray(data.addonProIds) ? data.addonProIds.map(Number) : [],
+        );
+        if (data.metadataNote) {
+          setNotes(String(data.metadataNote));
+        }
+        // Prefer assigned barber from booking when available in carousel
+        if (data.assignedEmpId && barbers.length) {
+          const match = barbers.find((b) => b.EmpID === Number(data.assignedEmpId));
+          if (match) setBarber(match);
+        }
+        addToast(
+          'info',
+          `تم تحميل باقة الحجز: ${data.nameAr || data.nameEn || data.packageId}`,
+        );
+      } catch {
+        addToast('error', 'تعذر تحميل باقة الحجز');
+      }
+    })();
+  }, [addToast, barbers, setBarber, setNotes]);
 
   // ───────────────── Load branch-scoped lookup data when ViewBranch changes ─────────────────
   useEffect(() => {
@@ -337,6 +398,16 @@ export default function PosPage() {
         return (method?.Name?.toLowerCase().includes('فيزا') || method?.Name?.toLowerCase().includes('كارت')) && pa.amount > 0;
       })?.amount || 0;
 
+      const packageNotes = [
+        ...new Set(
+          state.items
+            .filter((i) => i.packageMeta?.role === 'anchor' && i.packageMeta.metadataNote)
+            .map((i) => i.packageMeta!.metadataNote!),
+        ),
+      ].join(' ');
+      const baseNotes = state.customer
+        ? `مبيعات / ${state.customer.Name}`
+        : 'مبيعات';
       const payload = {
         clientId: state.customer?.ClientID || null,
         items: state.items.map(i => ({
@@ -360,7 +431,9 @@ export default function PosPage() {
         paymentAllocations: activeAllocations,
         payCash,
         payVisa,
-        notes: state.customer ? `مبيعات / ${state.customer.Name}` : 'مبيعات',
+        notes: baseNotes.slice(0, 100),
+        // Full [groomPackage] metadata (Notes is NVARCHAR(100) — too short)
+        notes2: packageNotes,
       };
 
       // Use PUT for editing, POST for new sale
@@ -412,16 +485,75 @@ export default function PosPage() {
           PayCash: payCash,
           PayVisa: payVisa,
           PaymentMethodID: mainPayment.paymentMethodId,
-          items: state.items.map(i => ({
-            ProName: i.ProName,
-            EmpName: i.EmpName,
-            SPrice: i.SPrice,
-            Qty: i.Qty,
-            SPriceAfterDis: i.SPriceAfterDis,
-            Dis: i.Dis,
-            DisVal: i.DisVal,
-            SValue: i.SPrice * i.Qty,
-          })),
+          items: (() => {
+            const anchors = state.items.filter((i) => i.packageMeta?.role === 'anchor');
+            if (!anchors.length) {
+              return state.items.map((i) => ({
+                ProName: i.ProName,
+                EmpName: i.EmpName,
+                SPrice: i.SPrice,
+                Qty: i.Qty,
+                SPriceAfterDis: i.SPriceAfterDis,
+                Dis: i.Dis,
+                DisVal: i.DisVal,
+                SValue: i.SPrice * i.Qty,
+              }));
+            }
+            const printRows: Array<{
+              ProName: string;
+              EmpName: string;
+              SPrice: number;
+              Qty: number;
+              SPriceAfterDis: number;
+              Dis: number;
+              DisVal: number;
+              SValue: number;
+            }> = [];
+            const seen = new Set<string>();
+            for (const item of state.items) {
+              const meta = item.packageMeta;
+              if (!meta) {
+                printRows.push({
+                  ProName: item.ProName,
+                  EmpName: item.EmpName,
+                  SPrice: item.SPrice,
+                  Qty: item.Qty,
+                  SPriceAfterDis: item.SPriceAfterDis,
+                  Dis: item.Dis,
+                  DisVal: item.DisVal,
+                  SValue: item.SPrice * item.Qty,
+                });
+                continue;
+              }
+              if (meta.role === 'included') continue;
+              if (meta.role === 'anchor') {
+                if (seen.has(meta.groupKey)) continue;
+                seen.add(meta.groupKey);
+                printRows.push({
+                  ProName: `${meta.packageNameAr || meta.packageName} (${meta.includedCount} خدمات)`,
+                  EmpName: item.EmpName,
+                  SPrice: item.SPrice,
+                  Qty: item.Qty,
+                  SPriceAfterDis: item.SPriceAfterDis,
+                  Dis: item.Dis,
+                  DisVal: item.DisVal,
+                  SValue: item.SPrice * item.Qty,
+                });
+                continue;
+              }
+              printRows.push({
+                ProName: item.ProName,
+                EmpName: item.EmpName,
+                SPrice: item.SPrice,
+                Qty: item.Qty,
+                SPriceAfterDis: item.SPriceAfterDis,
+                Dis: item.Dis,
+                DisVal: item.DisVal,
+                SValue: item.SPrice * item.Qty,
+              });
+            }
+            return printRows;
+          })(),
         };
         await printReceiptWithFallback(
           printData,
@@ -656,6 +788,7 @@ export default function PosPage() {
     saveError,
     saving,
     onRemove: removeItem,
+    onRemoveMany: removeItems,
     onUpdateItem: updateItem,
     onDiscountPercentChange: setDiscountPercent,
     onDiscountValueChange: setDiscountValue,
@@ -726,6 +859,14 @@ export default function PosPage() {
             services={services}
             selectedBarber={state.barber}
             onAddItem={addItemWithHomeVisitExclusivity}
+          />
+          <GroomPackagesSection
+            selectedBarber={state.barber}
+            cartItems={state.items}
+            onAddPackageItems={addPackageItems}
+            onToast={addToast}
+            hydratePackageId={hydratePackageId}
+            hydrateAddonProIds={hydrateAddonProIds}
           />
         </div>
 
@@ -800,6 +941,14 @@ export default function PosPage() {
             services={services}
             selectedBarber={state.barber}
             onAddItem={addItemWithHomeVisitExclusivity}
+          />
+          <GroomPackagesSection
+            selectedBarber={state.barber}
+            cartItems={state.items}
+            onAddPackageItems={addPackageItems}
+            onToast={addToast}
+            hydratePackageId={hydratePackageId}
+            hydrateAddonProIds={hydrateAddonProIds}
           />
         </main>
 

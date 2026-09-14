@@ -46,6 +46,23 @@ export interface Shift {
 
 // ───────────────────────── POS Sale State ─────────────────────────
 
+/** Marks a cart line as part of a groom package commercial unit (POS UX). */
+export type GroomPackageCartRole = 'anchor' | 'included' | 'addon';
+
+export interface GroomPackageCartMeta {
+  packageId: number;
+  packageName: string;
+  packageNameAr?: string;
+  role: GroomPackageCartRole;
+  /** Unique per “Add package” action so multiple packages can coexist. */
+  groupKey: string;
+  includedCount: number;
+  packageDurationMinutes: number;
+  totalDurationMinutes?: number;
+  /** Machine-parseable note fragment for invoice Notes / receipt. */
+  metadataNote?: string;
+}
+
 export interface CartItem {
   id: string;           // unique key for React (uuid-like)
   ProID: number;
@@ -58,6 +75,8 @@ export interface CartItem {
   Dis: number;          // line discount %
   DisVal: number;       // line discount value
   SPriceAfterDis: number;
+  /** Present when this line belongs to a groom package sale. */
+  packageMeta?: GroomPackageCartMeta;
 }
 
 export interface PaymentAllocation {
@@ -362,6 +381,8 @@ export interface CreateSalePayload {
   payCash: number;
   payVisa: number;
   notes: string;
+  /** Optional long notes (e.g. [groomPackage] metadata) stored in Notes2 */
+  notes2?: string;
 }
 
 export interface CreateSaleResult {

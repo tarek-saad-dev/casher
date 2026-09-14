@@ -245,30 +245,8 @@ function buildGroomOptionalExtras(
     });
   }
 
-  // Surface required protein/pedicure as alreadyIncluded so Complete clients can hide them
-  for (const item of items.filter((i) => !i.IsOptional)) {
-    const meta = serviceMeta.get(item.ProID);
-    const group = resolveGroomOptionalGroup({
-      proId: item.ProID,
-      catName: meta?.CatName ?? null,
-    });
-    if (group !== 'groom_addons') continue;
-    if (extrasById.has(item.ProID)) continue;
-    const names = meta ? serviceDisplayNames(meta) : itemDisplayNames(item);
-    extrasById.set(item.ProID, {
-      serviceId: item.ProID,
-      nameAr: names.nameAr,
-      nameEn: names.nameEn,
-      name: names.name,
-      price: meta?.SPrice1 ?? item.SPrice1 ?? 0,
-      group,
-      active: meta ? !meta.isDeleted : true,
-      alreadyIncluded: true,
-      availableAsOptional: false,
-      mutuallyExclusiveGroup: null,
-      durationMinutes: meta?.DurationMinutes ?? item.DurationMinutes,
-    });
-  }
+  // Surface only linked optional items (no auto-inject of required includes).
+  // Client can still see package contents via includes[]; optionalExtras is selectable extras only.
 
   const optionalExtras = [...extrasById.values()].sort(
     (a, b) => a.group.localeCompare(b.group) || a.serviceId - b.serviceId,

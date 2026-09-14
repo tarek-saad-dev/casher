@@ -128,13 +128,10 @@
     "groups": {
       "groom_addons": {
         "services": [
-          { "key": "HAIR_DETAIL_COLOR", "nameEn": "Hair Detail Color", "nameAr": "تفاصيل لون للشعر", "price": 150 },
-          { "key": "RELAX_SESSION", "nameEn": "Relax Session", "nameAr": "جلسة استرخاء", "price": 200 },
-          { "key": "FOOT_PEDICURE", "proId": 14, "nameEn": "Foot pedicure", "price": 400 },
-          { "key": "MEDIUM_HAIR_PROTEIN", "proId": 1077, "nameEn": "Medium Hair Protein", "price": 1000 }
+          { "key": "RELAX_SESSION", "nameEn": "Relax Session", "nameAr": "جلسة استرخاء", "price": 200, "proId": 1084 }
         ],
-        "availableOn": ["GROOM_ESSENTIAL", "GROOM_SIGNATURE"],
-        "completeNote": "Complete already includes Foot pedicure + Medium Hair Protein as required items — not offered as optional."
+        "availableOn": ["GROOM_ESSENTIAL", "GROOM_SIGNATURE", "GROOM_COMPLETE"],
+        "note": "Only Relax Session is offered as a selectable groom add-on. Hair Detail Color remains a catalog service but is not package-optional. Pedicure/Protein stay package includes on Complete only."
       },
       "home_visit": {
         "mutuallyExclusive": true,

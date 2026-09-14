@@ -44,7 +44,7 @@ export async function GET(
           h.ClientID, h.SubTotal, h.Dis, h.DisVal,
           h.Tax, h.TaxVal, h.GrandTotal, h.TotalBonus,
           h.PayCash, h.PayVisa, h.PaymentMethodID,
-          h.invNotes, h.Notes,
+          h.invNotes, h.Notes, h.Notes2,
           c.[Name] AS customerName,
           c.Mobile AS customerPhone
         FROM [dbo].[TblinvServHead] h

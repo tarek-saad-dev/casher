@@ -130,6 +130,8 @@ export type PublicBookingCreateInput = {
   time?: string | null;
   dayOffset?: unknown;
   serviceIds?: unknown;
+  packageId?: unknown;
+  addonProIds?: unknown;
   empId?: unknown;
   mode?: unknown;
   planToken?: string | null;
@@ -253,6 +255,8 @@ function validatePlanTokenAgainstRequest(
     empId: number | null;
     totalDurationMinutes: number;
     subtotal: number;
+    packageId?: number | null;
+    addonProIds?: number[];
   },
 ): PlanTokenStatus {
   const verified = verifyPlanToken(token);
@@ -274,7 +278,13 @@ function validatePlanTokenAgainstRequest(
     dayOffset: args.dayOffset,
     totalDurationMinutes: args.totalDurationMinutes,
     subtotal: args.subtotal,
+    packageId: args.packageId ?? null,
+    addonProIds: args.addonProIds ?? [],
   });
+  const tokenPackageId = p.packageId == null ? null : Number(p.packageId);
+  const tokenAddons = Array.isArray(p.addonProIds)
+    ? (p.addonProIds as unknown[]).map(Number)
+    : [];
   const same =
     String(p.contractVersion) === BOOKING_PLAN_CONTRACT_VERSION &&
     String(p.branchCode) === args.branchCode &&
@@ -286,6 +296,8 @@ function validatePlanTokenAgainstRequest(
     Number(p.subtotal) === args.subtotal &&
     String(p.fingerprint) === expectedFp &&
     JSON.stringify(p.serviceIds) === JSON.stringify(args.serviceIds) &&
+    (tokenPackageId ?? null) === (args.packageId ?? null) &&
+    JSON.stringify(tokenAddons) === JSON.stringify(args.addonProIds ?? []) &&
     (args.mode === 'specific_barber'
       ? Number(p.empId) === args.empId
       : p.empId == null || p.empId === null);
@@ -356,6 +368,18 @@ function buildPublicResponse(args: {
       total: e.subtotal,
       currency: 'EGP',
       pricingScope: e.pricingScope,
+      package: e.packageBooking
+        ? {
+            packageId: e.packageBooking.packageId,
+            nameEn: e.packageBooking.nameEn,
+            nameAr: e.packageBooking.nameAr,
+            packagePrice: e.packageBooking.packagePrice,
+            requiredServiceIds: e.packageBooking.requiredServiceIds,
+            addonProIds: e.packageBooking.addonProIds,
+            addonTotal: e.packageBooking.addonTotal,
+            total: e.packageBooking.totalPrice,
+          }
+        : null,
       ...(args.bookingAccessToken
         ? { bookingAccessToken: args.bookingAccessToken }
         : {}),
@@ -461,16 +485,49 @@ export async function createPublicBooking(
   if (dayOffsetEarly == null) {
     throw new PublicBookingCreateError('INVALID_DAY_OFFSET');
   }
-  const parsedServices =
-    typeof input.serviceIds === 'string'
-      ? parsePublicServiceIdsParam(input.serviceIds)
-      : parsePublicServiceIdsParam(
-          (Array.isArray(input.serviceIds) ? input.serviceIds : [])
-            .map(String)
-            .join(','),
-        );
-  if (!parsedServices.ok || parsedServices.ids.length === 0) {
-    throw new PublicBookingCreateError('SERVICE_NOT_AVAILABLE_AT_BRANCH');
+  const hasPackage =
+    input.packageId != null &&
+    String(input.packageId).trim() !== '' &&
+    Number(input.packageId) > 0;
+
+  let earlyServiceIds: number[] = [];
+  let earlyAddonIds: number[] = [];
+  if (hasPackage) {
+    if (input.serviceIds != null && String(input.serviceIds).trim() !== '') {
+      const parsedServices =
+        typeof input.serviceIds === 'string'
+          ? parsePublicServiceIdsParam(input.serviceIds)
+          : parsePublicServiceIdsParam(
+              (Array.isArray(input.serviceIds) ? input.serviceIds : [])
+                .map(String)
+                .join(','),
+            );
+      if (parsedServices.ok) earlyServiceIds = parsedServices.ids;
+    }
+    if (input.addonProIds != null && String(input.addonProIds).trim() !== '') {
+      const parsedAddons =
+        typeof input.addonProIds === 'string'
+          ? parsePublicServiceIdsParam(input.addonProIds)
+          : parsePublicServiceIdsParam(
+              (Array.isArray(input.addonProIds) ? input.addonProIds : [])
+                .map(String)
+                .join(','),
+            );
+      if (parsedAddons.ok) earlyAddonIds = parsedAddons.ids;
+    }
+  } else {
+    const parsedServices =
+      typeof input.serviceIds === 'string'
+        ? parsePublicServiceIdsParam(input.serviceIds)
+        : parsePublicServiceIdsParam(
+            (Array.isArray(input.serviceIds) ? input.serviceIds : [])
+              .map(String)
+              .join(','),
+          );
+    if (!parsedServices.ok || parsedServices.ids.length === 0) {
+      throw new PublicBookingCreateError('SERVICE_NOT_AVAILABLE_AT_BRANCH');
+    }
+    earlyServiceIds = parsedServices.ids;
   }
   if (!input.branchCode || !String(input.branchCode).trim()) {
     throw new PublicBookingCreateError('BRANCH_REQUIRED');
@@ -483,10 +540,12 @@ export async function createPublicBooking(
     workDate: workDateEarly,
     time: timeEarly,
     dayOffset: dayOffsetEarly,
-    serviceIds: parsedServices.ids,
+    serviceIds: earlyServiceIds,
     mode: modeHint,
     empId: modeHint === 'specific_barber' ? empIdRaw : null,
     customerPhone,
+    packageId: hasPackage ? Number(input.packageId) : null,
+    addonProIds: earlyAddonIds,
   });
 
   // Early idempotency — before availability precheck
@@ -561,6 +620,8 @@ export async function createPublicBooking(
       time: input.time,
       dayOffset: input.dayOffset,
       serviceIds: input.serviceIds,
+      packageId: input.packageId,
+      addonProIds: input.addonProIds,
       empId: empIdRaw,
       mode: modeHint,
       purpose: evalPurpose,
@@ -601,6 +662,8 @@ export async function createPublicBooking(
       empId: precheck.specificBarber?.empId ?? null,
       totalDurationMinutes: precheck.totalDurationMinutes,
       subtotal: precheck.subtotal,
+      packageId: precheck.packageBooking?.packageId ?? null,
+      addonProIds: precheck.packageBooking?.addonProIds ?? [],
     });
   }
 
@@ -655,10 +718,53 @@ export async function createPublicBooking(
     throw holdErr;
   }
 
-  const servicesNow = await resolveSelectedBookingServices({
-    branchContext: branchNow,
-    serviceIds: precheck.selectedServices.map((s) => s.serviceId),
-  });
+  let servicesNow: {
+    services: PublicSelectionEvaluation['selectedServices'];
+    totalDurationMinutes: number;
+    totalPrice: number;
+  };
+
+  if (precheck.packageBooking) {
+    const { resolveGroomPackageBooking } = await import('@/lib/booking/groomPackageBooking');
+    try {
+      const pkgNow = await resolveGroomPackageBooking({
+        packageId: precheck.packageBooking.packageId,
+        addonProIds: precheck.packageBooking.addonProIds,
+        clientServiceIds: precheck.packageBooking.serviceIds,
+      });
+      servicesNow = {
+        services: pkgNow.services,
+        totalDurationMinutes: pkgNow.totalDurationMinutes,
+        totalPrice: pkgNow.totalPrice,
+      };
+      // Refresh metadata note from fresh resolve
+      precheck = {
+        ...precheck,
+        packageBooking: pkgNow,
+        selectedServices: pkgNow.services,
+        totalDurationMinutes: pkgNow.totalDurationMinutes,
+        subtotal: pkgNow.totalPrice,
+      };
+    } catch (err) {
+      if (err && typeof err === 'object' && 'code' in err) {
+        throw new PublicBookingCreateError(
+          (err as { code: PublicBookingErrorCode }).code,
+          (err as { metadata?: Record<string, unknown> }).metadata ?? {},
+        );
+      }
+      throw err;
+    }
+  } else {
+    const servicesResolved = await resolveSelectedBookingServices({
+      branchContext: branchNow,
+      serviceIds: precheck.selectedServices.map((s) => s.serviceId),
+    });
+    servicesNow = {
+      services: servicesResolved.services,
+      totalDurationMinutes: servicesResolved.totalDurationMinutes,
+      totalPrice: servicesResolved.totalPrice,
+    };
+  }
   if (
     servicesNow.totalDurationMinutes !== precheck.totalDurationMinutes ||
     servicesNow.totalPrice !== precheck.subtotal
@@ -812,6 +918,7 @@ export async function createPublicBooking(
     const notesPersist = [
       notes,
       `[p6] workDate=${precheck.workDate};dayOffset=${precheck.requestedDayOffset}`,
+      precheck.packageBooking?.metadataNote ?? null,
     ]
       .filter(Boolean)
       .join(' ')

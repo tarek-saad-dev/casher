@@ -80,7 +80,19 @@ export type PublicBookingErrorCode =
   | 'INVALID_SERVICE_IDS'
   | 'INVALID_AVAILABILITY_SCOPE'
   | 'NO_PUBLIC_BRANCHES_FOR_BARBER'
-  | 'BRANCH_AVAILABILITY_UNAVAILABLE';
+  | 'BRANCH_AVAILABILITY_UNAVAILABLE'
+  | 'PACKAGE_NOT_FOUND'
+  | 'PACKAGE_NOT_ACTIVE'
+  | 'PACKAGE_NOT_GROOM'
+  | 'PACKAGE_EMPTY'
+  | 'PACKAGE_SERVICE_INVALID'
+  | 'PACKAGE_ADDON_INVALID'
+  | 'PACKAGE_ADDON_NOT_OPTIONAL'
+  | 'PACKAGE_ADDON_ALREADY_INCLUDED'
+  | 'HOME_VISIT_EXCLUSIVE'
+  | 'INVALID_PACKAGE_ID'
+  | 'INVALID_ADDON_IDS'
+  | 'PACKAGE_DURATION_MISSING';
 
 export type PublicBookingErrorDef = {
   code: PublicBookingErrorCode;
@@ -527,6 +539,78 @@ export const PUBLIC_BOOKING_ERROR_CATALOG: Record<PublicBookingErrorCode, Public
     httpStatus: 503,
     messageAr: 'تعذر تحميل مواعيد هذا الفرع',
     messageEn: 'Branch availability temporarily unavailable',
+  },
+  PACKAGE_NOT_FOUND: {
+    code: 'PACKAGE_NOT_FOUND',
+    httpStatus: 404,
+    messageAr: 'الباكدج غير موجود',
+    messageEn: 'Package not found',
+  },
+  PACKAGE_NOT_ACTIVE: {
+    code: 'PACKAGE_NOT_ACTIVE',
+    httpStatus: 409,
+    messageAr: 'الباكدج غير نشط',
+    messageEn: 'Package is not active',
+  },
+  PACKAGE_NOT_GROOM: {
+    code: 'PACKAGE_NOT_GROOM',
+    httpStatus: 400,
+    messageAr: 'الباكدج ليس باكدج عريس',
+    messageEn: 'Package is not a groom package',
+  },
+  PACKAGE_EMPTY: {
+    code: 'PACKAGE_EMPTY',
+    httpStatus: 409,
+    messageAr: 'الباكدج لا يحتوي على خدمات',
+    messageEn: 'Package has no services',
+  },
+  PACKAGE_SERVICE_INVALID: {
+    code: 'PACKAGE_SERVICE_INVALID',
+    httpStatus: 409,
+    messageAr: 'خدمة ضمن الباكدج غير صالحة',
+    messageEn: 'A required package service is invalid',
+  },
+  PACKAGE_ADDON_INVALID: {
+    code: 'PACKAGE_ADDON_INVALID',
+    httpStatus: 409,
+    messageAr: 'الإضافة غير صالحة',
+    messageEn: 'Package add-on is invalid',
+  },
+  PACKAGE_ADDON_NOT_OPTIONAL: {
+    code: 'PACKAGE_ADDON_NOT_OPTIONAL',
+    httpStatus: 409,
+    messageAr: 'هذه الخدمة ليست إضافة اختيارية لهذا الباكدج',
+    messageEn: 'Service is not an optional add-on for this package',
+  },
+  PACKAGE_ADDON_ALREADY_INCLUDED: {
+    code: 'PACKAGE_ADDON_ALREADY_INCLUDED',
+    httpStatus: 409,
+    messageAr: 'هذه الخدمة مضمّنة بالفعل في الباكدج',
+    messageEn: 'Service is already included in the package',
+  },
+  HOME_VISIT_EXCLUSIVE: {
+    code: 'HOME_VISIT_EXCLUSIVE',
+    httpStatus: 400,
+    messageAr: 'لا يمكن اختيار أكثر من مستوى واحد لزيارة تجهيز العريس',
+    messageEn: 'At most one home-visit tier may be selected',
+  },
+  INVALID_PACKAGE_ID: {
+    code: 'INVALID_PACKAGE_ID',
+    httpStatus: 400,
+    messageAr: 'معرف الباكدج غير صالح',
+    messageEn: 'Invalid packageId',
+  },
+  INVALID_ADDON_IDS: {
+    code: 'INVALID_ADDON_IDS',
+    httpStatus: 400,
+    messageAr: 'معرفات الإضافات غير صالحة',
+    messageEn: 'Invalid addonProIds',
+  },
+  PACKAGE_DURATION_MISSING: {
+    code: 'PACKAGE_DURATION_MISSING',
+    httpStatus: 409,
+    messageAr: 'مدة الباكدج غير محددة',
+    messageEn: 'Package duration is missing or invalid',
   },
 };
 

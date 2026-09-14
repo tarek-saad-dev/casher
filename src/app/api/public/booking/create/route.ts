@@ -120,6 +120,8 @@ export async function POST(req: NextRequest) {
       time: typeof body.time === 'string' ? body.time : null,
       dayOffset: body.dayOffset,
       serviceIds: body.serviceIds,
+      packageId: body.packageId,
+      addonProIds: body.addonProIds ?? body.addons,
       empId: body.empId,
       mode: body.mode,
       planToken: typeof body.planToken === 'string' ? body.planToken : null,

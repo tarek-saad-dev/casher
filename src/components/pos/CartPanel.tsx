@@ -7,19 +7,29 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { CartItem, Barber } from '@/lib/types';
 import { computeServiceLineTotals } from '@/lib/sales/service-line-totals';
+import { groupCartForDisplay } from '@/lib/pos/groomPackageCart';
 
 interface CartPanelProps {
   items: CartItem[];
   barbers: Barber[];
   onRemove: (id: string) => void;
+  onRemoveMany?: (ids: string[]) => void;
   onUpdateItem: (id: string, patch: Partial<CartItem>) => void;
 }
 
-export default function CartPanel({ items, barbers, onRemove, onUpdateItem }: CartPanelProps) {
+export default function CartPanel({
+  items,
+  barbers,
+  onRemove,
+  onRemoveMany,
+  onUpdateItem,
+}: CartPanelProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pickedBarber, setPickedBarber] = useState<Barber | null>(null);
   const [discountMode, setDiscountMode] = useState<'value' | 'percent'>('value');
   const [discountDraft, setDiscountDraft] = useState('');
+
+  const displayRows = groupCartForDisplay(items);
 
   function openEdit(item: CartItem) {
     setEditingId(item.id);
@@ -48,7 +58,15 @@ export default function CartPanel({ items, barbers, onRemove, onUpdateItem }: Ca
   function confirmEdit(item: CartItem) {
     applyLineDiscount(item);
     if (pickedBarber) {
-      onUpdateItem(item.id, { EmpID: pickedBarber.EmpID, EmpName: pickedBarber.EmpName });
+      const patch = { EmpID: pickedBarber.EmpID, EmpName: pickedBarber.EmpName };
+      onUpdateItem(item.id, patch);
+      // Propagate barber to the whole package group when editing the package unit
+      if (item.packageMeta?.groupKey) {
+        const groupKey = item.packageMeta.groupKey;
+        items
+          .filter((i) => i.packageMeta?.groupKey === groupKey && i.id !== item.id)
+          .forEach((i) => onUpdateItem(i.id, patch));
+      }
     }
     setEditingId(null);
     setPickedBarber(null);
@@ -61,6 +79,11 @@ export default function CartPanel({ items, barbers, onRemove, onUpdateItem }: Ca
     setDiscountDraft('');
   }
 
+  function removePackageGroup(ids: string[]) {
+    if (onRemoveMany) onRemoveMany(ids);
+    else ids.forEach((id) => onRemove(id));
+  }
+
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
@@ -71,25 +94,225 @@ export default function CartPanel({ items, barbers, onRemove, onUpdateItem }: Ca
     );
   }
 
+  let visualIndex = 0;
+
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-sm font-semibold text-muted-foreground">
-          الخدمات المختارة ({items.length})
+          الخدمات المختارة ({displayRows.length})
         </h3>
       </div>
       <ScrollArea className="max-h-[320px]">
         <div className="space-y-1.5">
-          {items.map((item, idx) => {
+          {displayRows.map((row) => {
+            if (row.kind === 'package') {
+              visualIndex += 1;
+              const idx = visualIndex;
+              const isEditing = editingId === row.anchor.id;
+              const draftRaw = isEditing ? parseFloat(discountDraft) || 0 : null;
+              const line = computeServiceLineTotals({
+                sPrice: row.anchor.SPrice,
+                qty: row.anchor.Qty,
+                discountPercent:
+                  isEditing && discountMode === 'percent' ? draftRaw! : row.anchor.Dis,
+                discountValue:
+                  isEditing && discountMode === 'value'
+                    ? draftRaw!
+                    : isEditing
+                      ? undefined
+                      : row.anchor.DisVal,
+              });
+              const addonTotal = row.addons.reduce(
+                (sum, a) =>
+                  sum +
+                  computeServiceLineTotals({
+                    sPrice: a.SPrice,
+                    qty: a.Qty,
+                    discountPercent: a.Dis,
+                    discountValue: a.DisVal,
+                  }).netAmount,
+                0,
+              );
+
+              return (
+                <div key={row.groupKey} className="space-y-1.5">
+                  <div className="rounded-lg border border-primary/30 bg-card overflow-hidden">
+                    <div className="flex items-center justify-between p-2.5 group">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/15 text-xs font-bold shrink-0 text-primary">
+                          {idx}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {row.packageNameAr || row.packageName}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {row.includedCount} خدمات مشمولة · {row.anchor.EmpName}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5" dir="ltr">
+                            {line.netAmount.toFixed(2)} ج.م
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-bold whitespace-nowrap">
+                          {line.netAmount.toFixed(2)} ج.م
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+                          onClick={() =>
+                            editingId === row.anchor.id ? cancelEdit() : openEdit(row.anchor)
+                          }
+                          title="تعديل الحلاق / الخصم"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive transition-opacity"
+                          onClick={() => removePackageGroup(row.allIds)}
+                          title="حذف الباقة"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {isEditing && (
+                      <div className="border-t border-border bg-muted/30 p-2.5 space-y-2">
+                        <p className="text-xs text-muted-foreground font-medium">اختر الحلاق:</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {barbers.map((b) => (
+                            <button
+                              key={b.EmpID}
+                              onClick={() => setPickedBarber(b)}
+                              className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-all ${
+                                pickedBarber?.EmpID === b.EmpID
+                                  ? 'bg-primary text-primary-foreground border-primary'
+                                  : 'border-border hover:bg-accent'
+                              }`}
+                            >
+                              {b.EmpName}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground font-medium pt-1">خصم الباقة:</p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setDiscountMode('value')}
+                            className={`px-2 py-1 rounded text-[11px] border ${
+                              discountMode === 'value'
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'border-border'
+                            }`}
+                          >
+                            قيمة
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDiscountMode('percent')}
+                            className={`px-2 py-1 rounded text-[11px] border ${
+                              discountMode === 'percent'
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'border-border'
+                            }`}
+                          >
+                            نسبة %
+                          </button>
+                          <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={discountDraft}
+                            onChange={(e) => setDiscountDraft(e.target.value)}
+                            className="h-7 text-xs w-24 text-center"
+                            dir="ltr"
+                            placeholder={discountMode === 'percent' ? '%' : 'ج.م'}
+                          />
+                        </div>
+                        <div className="flex gap-2 justify-end pt-1">
+                          <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={cancelEdit}>
+                            <X className="w-3 h-3" /> إلغاء
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="h-7 text-xs gap-1"
+                            onClick={() => confirmEdit(row.anchor)}
+                            disabled={!pickedBarber}
+                          >
+                            <Check className="w-3 h-3" /> تأكيد
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {row.addons.map((addon) => {
+                    visualIndex += 1;
+                    const aLine = computeServiceLineTotals({
+                      sPrice: addon.SPrice,
+                      qty: addon.Qty,
+                      discountPercent: addon.Dis,
+                      discountValue: addon.DisVal,
+                    });
+                    return (
+                      <div
+                        key={addon.id}
+                        className="rounded-lg border border-border bg-card/80 ms-4 overflow-hidden"
+                      >
+                        <div className="flex items-center justify-between p-2.5 group">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-muted text-xs font-bold shrink-0">
+                              {visualIndex}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">{addon.ProName}</p>
+                              <p className="text-xs text-muted-foreground truncate">{addon.EmpName}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-bold whitespace-nowrap">
+                              {aLine.netAmount.toFixed(2)} ج.م
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive transition-opacity"
+                              onClick={() => onRemove(addon.id)}
+                              title="حذف الإضافة"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {addonTotal > 0 && (
+                    <p className="text-[10px] text-muted-foreground ms-4" dir="ltr">
+                      Package + extras = {(line.netAmount + addonTotal).toFixed(2)} EGP
+                    </p>
+                  )}
+                </div>
+              );
+            }
+
+            const item = row.item;
+            visualIndex += 1;
+            const idx = visualIndex;
             const isEditing = editingId === item.id;
             const draftRaw = isEditing ? parseFloat(discountDraft) || 0 : null;
             const line = computeServiceLineTotals({
               sPrice: item.SPrice,
               qty: item.Qty,
               discountPercent:
-                isEditing && discountMode === 'percent'
-                  ? draftRaw!
-                  : item.Dis,
+                isEditing && discountMode === 'percent' ? draftRaw! : item.Dis,
               discountValue:
                 isEditing && discountMode === 'value'
                   ? draftRaw!
@@ -102,7 +325,7 @@ export default function CartPanel({ items, barbers, onRemove, onUpdateItem }: Ca
                 <div className="flex items-center justify-between p-2.5 group">
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="flex items-center justify-center w-6 h-6 rounded-full bg-muted text-xs font-bold shrink-0">
-                      {idx + 1}
+                      {idx}
                     </span>
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{item.ProName}</p>

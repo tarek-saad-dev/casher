@@ -14,7 +14,14 @@ type Action =
   | { type: 'SET_CUSTOMER'; customer: Customer | null }
   | { type: 'SET_BARBER'; barber: Barber | null }
   | { type: 'ADD_ITEM'; item: CartItem; homeVisitProIds?: number[] }
+  | {
+      type: 'ADD_ITEMS';
+      items: CartItem[];
+      homeVisitProIds?: number[];
+      removeIds?: string[];
+    }
   | { type: 'REMOVE_ITEM'; id: string }
+  | { type: 'REMOVE_ITEMS'; ids: string[] }
   | { type: 'UPDATE_ITEM'; id: string; patch: Partial<CartItem> }
   | { type: 'SET_DISCOUNT_PERCENT'; value: number }
   | { type: 'SET_DISCOUNT_VALUE'; value: number }
@@ -110,8 +117,24 @@ function reducer(state: SaleState, action: Action): SaleState {
       }
       return { ...state, items: [...state.items, normalizeCartItem(action.item)] };
     }
+    case 'ADD_ITEMS': {
+      const removeSet = new Set(action.removeIds ?? []);
+      let next = state.items.filter((i) => !removeSet.has(i.id));
+      for (const raw of action.items) {
+        const item = normalizeCartItem(raw);
+        if (action.homeVisitProIds?.length) {
+          next = applyHomeVisitExclusivity(next, item.ProID, action.homeVisitProIds);
+        }
+        next = [...next, item];
+      }
+      return { ...state, items: next };
+    }
     case 'REMOVE_ITEM':
       return { ...state, items: state.items.filter((i) => i.id !== action.id) };
+    case 'REMOVE_ITEMS': {
+      const ids = new Set(action.ids);
+      return { ...state, items: state.items.filter((i) => !ids.has(i.id)) };
+    }
     case 'UPDATE_ITEM':
       return {
         ...state,
@@ -192,7 +215,21 @@ export function useSaleState() {
       dispatch({ type: 'ADD_ITEM', item, homeVisitProIds }),
     [],
   );
+  const addItems = useCallback(
+    (items: CartItem[], opts?: { homeVisitProIds?: number[]; removeIds?: string[] }) =>
+      dispatch({
+        type: 'ADD_ITEMS',
+        items,
+        homeVisitProIds: opts?.homeVisitProIds,
+        removeIds: opts?.removeIds,
+      }),
+    [],
+  );
   const removeItem = useCallback((id: string) => dispatch({ type: 'REMOVE_ITEM', id }), []);
+  const removeItems = useCallback(
+    (ids: string[]) => dispatch({ type: 'REMOVE_ITEMS', ids }),
+    [],
+  );
   const updateItem = useCallback(
     (id: string, patch: Partial<CartItem>) => dispatch({ type: 'UPDATE_ITEM', id, patch }),
     [],
@@ -271,7 +308,9 @@ export function useSaleState() {
     setCustomer,
     setBarber,
     addItem,
+    addItems,
     removeItem,
+    removeItems,
     updateItem,
     setDiscountPercent,
     setDiscountValue,
