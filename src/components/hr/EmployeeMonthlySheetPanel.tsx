@@ -11,7 +11,6 @@ import {
   RefreshCw,
   User,
 } from 'lucide-react';
-import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -136,13 +135,15 @@ export default function EmployeeMonthlySheetPanel() {
 
   const syncUrl = useCallback(
     (empId: string, y: number, m: number) => {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('tab', 'employee-monthly-sheet');
       if (empId) params.set('employeeId', empId);
+      else params.delete('employeeId');
       params.set('year', String(y));
       params.set('month', String(m));
-      router.replace(`/admin/hr/employee-monthly-sheet?${params.toString()}`, { scroll: false });
+      router.replace(`/admin/hr?${params.toString()}`, { scroll: false });
     },
-    [router],
+    [router, searchParams],
   );
 
   const fetchSheet = useCallback(async (empId: string, y: number, m: number) => {
@@ -422,12 +423,13 @@ export default function EmployeeMonthlySheetPanel() {
 
   return (
     <div className="space-y-5" dir="rtl">
-      <PageHeader
-        title="تقرير الموظف الشهري"
-        description="كشف شهري يومًا بيوم — حضور · إيرادات · مصاريف · يوميات"
-      />
-
       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4 sm:p-5 space-y-4">
+        <div className="mb-1">
+          <h2 className="text-base font-semibold text-white">تقرير الموظف الشهري</h2>
+          <p className="text-xs text-zinc-500 mt-0.5">
+            كشف شهري يومًا بيوم — حضور · إيرادات · مصاريف · يوميات
+          </p>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <div className="space-y-1.5 lg:col-span-2">
             <label className="text-xs text-zinc-400">الموظف</label>

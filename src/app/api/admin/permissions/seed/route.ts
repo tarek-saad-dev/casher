@@ -60,7 +60,7 @@ const PAGES = [
   // HR
   { key: 'hr.employees',           name: 'الموظفون',               path: '/admin/hr',                        section: 'الموارد البشرية',    access: 'roles', sort: 90 },
   { key: 'hr.attendance',          name: 'متابعة الحضور',          path: '/admin/hr?tab=attendance',         section: 'الموارد البشرية',    access: 'roles', sort: 91 },
-  { key: 'hr.employee_monthly_sheet', name: 'تقرير الموظف الشهري', path: '/admin/hr/employee-monthly-sheet', section: 'الموارد البشرية',    access: 'roles', sort: 916 },
+  { key: 'hr.employee_monthly_sheet', name: 'تقرير الموظف الشهري', path: '/admin/hr?tab=employee-monthly-sheet', section: 'الموارد البشرية',    access: 'roles', sort: 916 },
   { key: 'hr.payroll',             name: 'يوميات الموظفين',        path: '/admin/hr?tab=daily-payroll',      section: 'الموارد البشرية',    access: 'roles', sort: 92 },
   { key: 'hr.workforce_availability', name: 'توافر الموظفين',     path: '/admin/workforce/availability',    section: 'الموارد البشرية',    access: 'all',   sort: 93 },
   { key: 'hr.advances',            name: 'سلف الموظفين',           path: '/expenses-review/advances',        section: 'الموارد البشرية',    access: 'roles', sort: 93 },

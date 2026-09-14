@@ -47,6 +47,7 @@ function TabLoader() {
 const AttendancePanel        = dynamic(() => import('@/components/hr/AttendancePanel'),                              { ssr: false, loading: () => <TabLoader /> });
 const DailyPayrollPanel      = dynamic(() => import('@/components/hr/DailyPayrollPanel'),                            { ssr: false, loading: () => <TabLoader /> });
 const EmployeeMonthlyReportPanel = dynamic(() => import('@/components/hr/EmployeeMonthlyReportPanel'),               { ssr: false, loading: () => <TabLoader /> });
+const EmployeeMonthlySheetPanel = dynamic(() => import('@/components/hr/EmployeeMonthlySheetPanel'),                 { ssr: false, loading: () => <TabLoader /> });
 const EmployeeAdvancesSection = dynamic(() => import('@/components/reports/expenses/EmployeeAdvancesSection'),       { ssr: false, loading: () => <TabLoader /> });
 const EmployeeLedgerPanel     = dynamic(() => import('@/components/hr/EmployeeLedgerPanel'),                        { ssr: false, loading: () => <TabLoader /> });
 const EmployeeLedgerReconciliationPanel = dynamic(
@@ -112,6 +113,7 @@ const MAIN_TABS = [
   { id: 'daily-payroll',   label: 'يوميات الموظفين',   icon: Banknote },
   { id: 'payroll-gap-review', label: 'مراجعة اليوميات', icon: ClipboardList },
   { id: 'monthly-report',  label: 'التقرير الشهري',    icon: FileSpreadsheet },
+  { id: 'employee-monthly-sheet', label: 'تقرير الموظف الشهري', icon: CalendarRange },
   { id: 'emp-advances',    label: 'سلف الموظفين',     icon: Wallet },
   { id: 'employee-ledger', label: 'دفتر الموظفين',    icon: BookOpen },
   { id: 'employee-ledger-reconciliation', label: 'مراجعة الدفتر', icon: Scale },
@@ -199,6 +201,7 @@ export default function HRPage() {
       {mainTab === 'daily-payroll'    && <DailyPayrollPanel />}
       {mainTab === 'payroll-gap-review' && <PayrollGapReviewPanel />}
       {mainTab === 'monthly-report'   && <EmployeeMonthlyReportPanel />}
+      {mainTab === 'employee-monthly-sheet' && <EmployeeMonthlySheetPanel />}
       {mainTab === 'emp-advances'     && <AdvancesReportPanel />}
       {mainTab === 'employee-ledger'  && <EmployeeLedgerPanel />}
       {mainTab === 'employee-ledger-reconciliation' && <EmployeeLedgerReconciliationPanel />}
