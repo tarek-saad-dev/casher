@@ -36,6 +36,14 @@ import {
 import SmartAttendanceFixDialog from '@/components/hr/SmartAttendanceFixDialog';
 import type { EmployeeMonthlySheetReport } from '@/lib/reports/employee-monthly-sheet.types';
 import {
+  autoCompleteDisabledReason,
+  displayedDayRevenue,
+  editAttendanceDisabledReason,
+  generateDisabledReason,
+  patchSheetWithDay,
+  resolveSheetDayBranchId,
+} from '@/lib/reports/employee-monthly-sheet.mappers';
+import {
   formatCurrencyAr,
   formatTime12hAr,
 } from '@/lib/reports/reportFormatters';
@@ -93,6 +101,7 @@ function dayLabelAr(dayNumber: number, month: number): string {
 
 type CompletePreview = {
   workDate: string;
+  branchId: number;
   message: string;
   proposedCheckIn: string | null;
   proposedCheckOut: string | null;
@@ -100,6 +109,37 @@ type CompletePreview = {
   willFillCheckIn: boolean;
   willFillCheckOut: boolean;
 };
+
+function dayBranchBadge(
+  att: {
+    attendanceBranchId: number | null;
+    attendanceBranchCode: string | null;
+    attendanceBranchName: string | null;
+  },
+  sessionBranchId: number | null,
+) {
+  if (att.attendanceBranchId == null) return null;
+  if (sessionBranchId != null && att.attendanceBranchId === sessionBranchId) return null;
+  const code = String(att.attendanceBranchCode ?? '');
+  const label = shortBranchName({
+    branchCode: code || '—',
+    branchName: att.attendanceBranchName || code || '—',
+  });
+  const tone =
+    code === 'GLEEM'
+      ? 'border-sky-500/25 bg-sky-500/10 text-sky-300/90'
+      : code === 'CAMP_CAESAR'
+        ? 'border-amber-500/25 bg-amber-500/10 text-amber-300/90'
+        : 'border-zinc-600/40 bg-zinc-800/60 text-zinc-400';
+  return (
+    <span
+      className={`inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium border ${tone}`}
+      title={`حضور من فرع ${label}`}
+    >
+      {label}
+    </span>
+  );
+}
 
 const actionPillClass =
   'w-full rounded-full bg-amber-400 hover:bg-amber-300 text-black text-[12px] font-semibold leading-snug px-3 py-2.5 disabled:opacity-50 disabled:pointer-events-none';
@@ -171,6 +211,21 @@ export default function EmployeeMonthlySheetPanel() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  /** Smooth row update after generate/fix — no full-table loading blank. */
+  const patchDay = useCallback(async (empId: string, workDate: string) => {
+    const params = new URLSearchParams({
+      employeeId: empId,
+      date: workDate,
+    });
+    const res = await fetch(`/api/admin/hr/employee-monthly-sheet/day?${params}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'تعذر تحديث صف اليوم');
+    setSheet((prev) => {
+      if (!prev) return prev;
+      return patchSheetWithDay(prev, data.day, Number(data.totals?.employeeNet ?? prev.totals.employeeNet));
+    });
   }, []);
 
   useEffect(() => {
@@ -325,6 +380,7 @@ export default function EmployeeMonthlySheetPanel() {
       }
       setCompletePreview({
         workDate,
+        branchId,
         message: data.message,
         proposedCheckIn: data.proposedCheckIn,
         proposedCheckOut: data.proposedCheckOut,
@@ -343,6 +399,10 @@ export default function EmployeeMonthlySheetPanel() {
     if (!completePreview || !employeeId) return;
     setCompleteConfirming(true);
     try {
+      const switched = await ensureSessionBranch(completePreview.branchId);
+      if (!switched) {
+        throw new Error('تعذر تبديل الفرع لتأكيد إكمال الحضور');
+      }
       const res = await fetch('/api/admin/hr/employee-monthly-sheet/complete-attendance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -354,9 +414,30 @@ export default function EmployeeMonthlySheetPanel() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'تعذر إكمال الحضور');
+
+      const genRes = await fetch('/api/payroll/daily/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workDate: completePreview.workDate,
+          empIds: [Number(employeeId)],
+        }),
+      });
+      const genData = await genRes.json().catch(() => ({}));
+
       setCompletePreview(null);
-      flash(data.message || 'تم إكمال الحضور');
-      await fetchSheet(employeeId, year, month);
+      if (!genRes.ok) {
+        flash(
+          `${data.message || 'تم إكمال الحضور'} — تعذر إعادة توليد اليومية: ${
+            genData.error || 'خطأ'
+          }`,
+        );
+      } else {
+        flash(
+          `${data.message || 'تم إكمال الحضور'} — وتم تحديث اليومية (${genData.generatedCount ?? 0} سجل)`,
+        );
+      }
+      await patchDay(employeeId, completePreview.workDate);
     } catch (e: unknown) {
       flash(e instanceof Error ? e.message : 'تعذر إكمال الحضور');
     } finally {
@@ -389,7 +470,7 @@ export default function EmployeeMonthlySheetPanel() {
           ? `تمت إعادة توليد اليومية (${data.generatedCount ?? 0} سجل)`
           : `تم توليد اليومية (${data.generatedCount ?? 0} سجل)`,
       );
-      await fetchSheet(employeeId, year, month);
+      await patchDay(employeeId, workDate);
     } catch (e: unknown) {
       flash(e instanceof Error ? e.message : 'تعذر توليد اليومية');
     } finally {
@@ -402,21 +483,41 @@ export default function EmployeeMonthlySheetPanel() {
     setActionBusyDate(workDate);
     try {
       const switched = await ensureSessionBranch(branchId);
-      if (switched) {
-        await fetch('/api/payroll/daily/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            workDate,
-            empIds: [Number(employeeId)],
-          }),
-        });
+      if (!switched) {
+        flash('تم حفظ الحضور — تعذر تبديل الفرع لإعادة احتساب اليومية');
+        await patchDay(employeeId, workDate);
+        return;
       }
-      flash('تم تحديث الحضور');
-      await fetchSheet(employeeId, year, month);
+      const genRes = await fetch('/api/payroll/daily/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workDate,
+          empIds: [Number(employeeId)],
+        }),
+      });
+      const genData = await genRes.json().catch(() => ({}));
+      if (!genRes.ok) {
+        flash(
+          genData.error ||
+            'تم حفظ الحضور — تعذر إعادة توليد اليومية تلقائيًا',
+        );
+      } else {
+        flash('تم تحديث الحضور وإعادة احتساب يومية اليوم');
+      }
+      await patchDay(employeeId, workDate);
     } finally {
       setActionBusyDate(null);
     }
+  };
+
+  const openManualAttendanceFix = async (workDate: string, branchId: number) => {
+    const switched = await ensureSessionBranch(branchId);
+    if (!switched) {
+      flash('تعذر تبديل الفرع لتعديل الحضور');
+      return;
+    }
+    setAttendanceFix({ workDate, branchId });
   };
 
   const activeBranchId = sheet?.branch.branchId ?? sessionBranchId;
@@ -586,9 +687,15 @@ export default function EmployeeMonthlySheetPanel() {
               </thead>
               <tbody>
                 {sheet.days.map((day) => {
-                  const branchForDay =
-                    day.attendance.attendanceBranchId || activeBranchId || sessionBranchId;
+                  const branchForDay = resolveSheetDayBranchId(
+                    day.attendance.attendanceBranchId,
+                    sheet.branch?.branchId ?? activeBranchId,
+                    sessionBranchId,
+                  );
                   const busy = actionBusyDate === day.date;
+                  const autoDisabledReason = autoCompleteDisabledReason(day, branchForDay);
+                  const genDisabledReason = generateDisabledReason(day, branchForDay);
+                  const editDisabledReason = editAttendanceDisabledReason(day, branchForDay);
                   const checkInDisplay =
                     day.attendance.statusCode === 'absent'
                       ? 'غياب'
@@ -599,7 +706,9 @@ export default function EmployeeMonthlySheetPanel() {
                     day.attendance.statusCode === 'absent' ||
                     (day.attendance.statusCode === 'day_off' && !day.attendance.checkIn)
                       ? '—'
-                      : formatTime12hAr(day.attendance.checkOut) ?? '—';
+                      : day.attendance.checkOutLabelAr ||
+                        formatTime12hAr(day.attendance.checkOut) ||
+                        '—';
 
                   const rowClass = [
                     'border-b border-zinc-800/80 h-[118px]',
@@ -621,24 +730,32 @@ export default function EmployeeMonthlySheetPanel() {
                         {day.isToday && (
                           <div className="text-[10px] text-amber-300 mt-1">اليوم</div>
                         )}
+                        {dayBranchBadge(day.attendance, sessionBranchId)}
                       </td>
                       <td className="px-3 py-3 align-middle text-center tabular-nums text-zinc-100">
                         {checkInDisplay}
                       </td>
                       <td className="px-3 py-3 align-middle text-center tabular-nums text-zinc-100">
-                        {checkOutDisplay}
+                        <span
+                          className={
+                            day.attendance.statusCode === 'incomplete_checkout'
+                              ? 'text-amber-300'
+                              : undefined
+                          }
+                        >
+                          {checkOutDisplay}
+                        </span>
                       </td>
                       <td className="px-3 py-2.5 align-middle">
                         <div className="flex flex-col items-stretch gap-2 max-w-[300px] mx-auto">
                           <button
                             type="button"
                             className={actionPillClass}
-                            disabled={
-                              busy || day.isFutureDate || !day.canAutoCompleteAttendance || !branchForDay
-                            }
+                            title={autoDisabledReason ?? undefined}
+                            disabled={busy || Boolean(autoDisabledReason)}
                             onClick={() =>
-                              branchForDay &&
-                              void previewCompleteAttendance(day.date, Number(branchForDay))
+                              branchForDay != null &&
+                              void previewCompleteAttendance(day.date, branchForDay)
                             }
                           >
                             {busy ? (
@@ -650,12 +767,13 @@ export default function EmployeeMonthlySheetPanel() {
                           <button
                             type="button"
                             className={actionPillClass}
-                            disabled={busy || !day.canGeneratePayroll || !branchForDay}
+                            title={genDisabledReason ?? undefined}
+                            disabled={busy || Boolean(genDisabledReason)}
                             onClick={() =>
-                              branchForDay &&
+                              branchForDay != null &&
                               void generateDailyPayroll(
                                 day.date,
-                                Number(branchForDay),
+                                branchForDay,
                                 day.dailyPayroll.exists,
                               )
                             }
@@ -669,8 +787,9 @@ export default function EmployeeMonthlySheetPanel() {
                               <DropdownMenuTrigger asChild>
                                 <button
                                   type="button"
-                                  className="h-8 min-w-[2.5rem] rounded-full border border-zinc-600 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 text-sm font-bold tracking-widest"
-                                  disabled={!day.canEditAttendance || !branchForDay}
+                                  className="h-8 min-w-[2.5rem] rounded-full border border-zinc-600 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 text-sm font-bold tracking-widest disabled:opacity-50"
+                                  title={editDisabledReason ?? 'إجراءات إضافية'}
+                                  disabled={Boolean(editDisabledReason)}
                                   aria-label="إجراءات إضافية"
                                 >
                                   ..
@@ -678,13 +797,10 @@ export default function EmployeeMonthlySheetPanel() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="center" className="min-w-[180px]">
                                 <DropdownMenuItem
-                                  disabled={!day.canEditAttendance || !branchForDay}
+                                  disabled={Boolean(editDisabledReason)}
                                   onClick={() =>
-                                    branchForDay &&
-                                    setAttendanceFix({
-                                      workDate: day.date,
-                                      branchId: Number(branchForDay),
-                                    })
+                                    branchForDay != null &&
+                                    void openManualAttendanceFix(day.date, branchForDay)
                                   }
                                 >
                                   تعديل الحضور يدوياً
@@ -695,7 +811,14 @@ export default function EmployeeMonthlySheetPanel() {
                         </div>
                       </td>
                       <td className="px-3 py-3 align-middle text-left tabular-nums text-emerald-300/90 font-medium">
-                        {moneyOrDash(day.dailyRevenue)}
+                        {moneyOrDash(displayedDayRevenue(day))}
+                        {day.dailyPayroll.exists &&
+                          day.dailyRevenue != null &&
+                          day.dailyRevenue > 0 && (
+                            <div className="text-[10px] text-zinc-500 font-normal mt-0.5">
+                              مبيعات {formatCurrencyAr(day.dailyRevenue)}
+                            </div>
+                          )}
                       </td>
                       <td className="px-3 py-3 align-middle text-left tabular-nums text-rose-300/90 font-medium">
                         {moneyOrDash(day.dailyExpenses)}
@@ -737,9 +860,9 @@ export default function EmployeeMonthlySheetPanel() {
             </table>
           </div>
           <p className="px-4 py-3 text-[11px] text-zinc-500 border-t border-zinc-800 leading-relaxed">
-            إيرادات اليوم = المبيعات المخصّصة بعد خصم الفاتورة · مصاريف اليوم = سلف وخصومات دفتر
-            الموظف لنفس التاريخ · صافي الموظف = أساسي + تارجت − سلف − خصومات (من كشف الرواتب) — وليس
-            إيراد ناقص مصروف.
+            إيرادات اليوم = صافي اليوم بعد توليد اليومية (أساسي + تارجت − سلف − خصومات)، وقبل التوليد =
+            المبيعات المخصّصة. مصاريف اليوم = سلف وخصومات الدفتر. صافي الموظف = monthNet من كشف
+            الرواتب — وليس إيراد ناقص مصروف.
           </p>
         </div>
       )}

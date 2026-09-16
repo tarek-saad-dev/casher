@@ -53,7 +53,7 @@ export interface TargetLikeRow {
 export interface MergedDailyRow {
   empId: number;
   empName: string;
-  /** Working BranchID — never employee home branch. */
+  /** Operational working BranchID for the day (attendance / payroll). */
   branchId: number | null;
   branchCode: string | null;
   branchName: string | null;
@@ -64,97 +64,177 @@ export interface MergedDailyRow {
   targetAmount: string | null;
   hasTargetPlan: boolean;
   targetSyncStatus: 'up_to_date' | 'pending' | 'processing' | 'failed' | null;
-  /** True when this EmpID also has another BranchID row on the same merge set. */
+  /**
+   * True when this EmpID also had payroll/target on another BranchID the same day.
+   * Display still collapses to a single operational row.
+   */
   sameDayMultiBranch?: boolean;
 }
 
-function mergeKey(empId: number, branchId: number | null | undefined): string {
-  if (branchId != null && Number.isFinite(Number(branchId)) && Number(branchId) > 0) {
-    return `${empId}|${Number(branchId)}`;
+function normalizeBranchId(raw: number | null | undefined): number | null {
+  if (raw != null && Number.isFinite(Number(raw)) && Number(raw) > 0) {
+    return Number(raw);
   }
-  // Legacy single-branch payloads without BranchID — EmpID only (pre-multi view).
-  return `${empId}|`;
+  return null;
+}
+
+function attendanceRank(status: string | null | undefined): number {
+  const s = String(status ?? '').toLowerCase();
+  if (s === 'present' || s === 'late') return 3;
+  if (s === 'halfday' || s === 'half_day') return 2;
+  if (s === 'absent' || s === 'dayoff' || s === 'day_off' || s === 'leave') return 1;
+  return 0;
 }
 
 /**
- * Union merge by EmpID+BranchID when branch is present.
- * Never collapses two working-branch financial rows into one.
- * Pure helper for UI / tests — no CombinedPay field.
+ * Prefer the operational payroll row for the day: real attendance hours first,
+ * then attendance status, then BranchID for stability.
+ */
+export function pickOperationalPayrollRow(rows: PayrollLikeRow[]): PayrollLikeRow {
+  if (rows.length === 1) return rows[0]!;
+  return [...rows].sort((a, b) => {
+    const hoursA = Number(a.ActualHours ?? 0);
+    const hoursB = Number(b.ActualHours ?? 0);
+    if (hoursA !== hoursB) return hoursB - hoursA;
+    const rankA = attendanceRank(a.AttendanceStatus);
+    const rankB = attendanceRank(b.AttendanceStatus);
+    if (rankA !== rankB) return rankB - rankA;
+    const wageA = Number(a.DailyWage ?? 0);
+    const wageB = Number(b.DailyWage ?? 0);
+    if (wageA !== wageB) return wageB - wageA;
+    return (normalizeBranchId(a.BranchID) ?? 0) - (normalizeBranchId(b.BranchID) ?? 0);
+  })[0]!;
+}
+
+function targetPersistenceRank(status: TargetLikeRow['persistenceStatus']): number {
+  if (status === 'recalculated') return 3;
+  if (status === 'generated') return 2;
+  return 1;
+}
+
+/** When no payroll exists, pick one target plan row for display (never multiple). */
+export function pickOperationalTargetRow(rows: TargetLikeRow[]): TargetLikeRow {
+  if (rows.length === 1) return rows[0]!;
+  return [...rows].sort((a, b) => {
+    const pr = targetPersistenceRank(b.persistenceStatus) - targetPersistenceRank(a.persistenceStatus);
+    if (pr !== 0) return pr;
+    const salesA = Number(a.currentNetSalesAfterDiscount ?? 0);
+    const salesB = Number(b.currentNetSalesAfterDiscount ?? 0);
+    if (salesA !== salesB) return salesB - salesA;
+    return (normalizeBranchId(a.branchId) ?? 0) - (normalizeBranchId(b.branchId) ?? 0);
+  })[0]!;
+}
+
+function applyTargetFields(row: MergedDailyRow, t: TargetLikeRow): void {
+  const targetSales = t.currentNetSalesAfterDiscount;
+  const targetAmount =
+    t.persistenceStatus === 'not_generated' ? null : t.storedTargetAmount;
+  row.target = t;
+  row.hasTargetPlan = true;
+  row.targetSales = targetSales;
+  row.targetAmount = targetAmount;
+  row.targetSyncStatus = t.syncStatus ?? 'up_to_date';
+  if (!row.empName) row.empName = t.empName;
+  if (row.branchId == null) {
+    row.branchId = normalizeBranchId(t.branchId);
+    if (t.branchCode) row.branchCode = String(t.branchCode);
+    if (t.branchName) row.branchName = String(t.branchName);
+  }
+}
+
+/**
+ * One row per EmpID for the selected work day.
+ * Branch badge = operational attendance/payroll branch when present;
+ * otherwise the chosen target plan branch.
+ * Extra branch target/payroll rows are not rendered as duplicates.
  */
 export function mergeDailyPayrollAndTargetRows(
   payrollRows: PayrollLikeRow[],
   targetRows: TargetLikeRow[],
 ): MergedDailyRow[] {
-  const byKey = new Map<string, MergedDailyRow>();
-
+  const payrollByEmp = new Map<number, PayrollLikeRow[]>();
   for (const p of payrollRows) {
-    const branchId =
-      p.BranchID != null && Number(p.BranchID) > 0 ? Number(p.BranchID) : null;
-    const key = mergeKey(p.EmpID, branchId);
-    byKey.set(key, {
-      empId: p.EmpID,
-      empName: p.EmpName,
-      branchId,
-      branchCode: p.BranchCode != null ? String(p.BranchCode) : null,
-      branchName: p.BranchName != null ? String(p.BranchName) : null,
-      payroll: p,
+    const list = payrollByEmp.get(p.EmpID) ?? [];
+    list.push(p);
+    payrollByEmp.set(p.EmpID, list);
+  }
+
+  const targetsByEmp = new Map<number, TargetLikeRow[]>();
+  for (const t of targetRows) {
+    const list = targetsByEmp.get(t.empId) ?? [];
+    list.push(t);
+    targetsByEmp.set(t.empId, list);
+  }
+
+  const empIds = new Set<number>([...payrollByEmp.keys(), ...targetsByEmp.keys()]);
+  const merged: MergedDailyRow[] = [];
+
+  for (const empId of empIds) {
+    const payList = payrollByEmp.get(empId) ?? [];
+    const targetList = targetsByEmp.get(empId) ?? [];
+    const distinctBranchIds = new Set<number>();
+    for (const p of payList) {
+      const id = normalizeBranchId(p.BranchID);
+      if (id != null) distinctBranchIds.add(id);
+    }
+    for (const t of targetList) {
+      const id = normalizeBranchId(t.branchId);
+      if (id != null) distinctBranchIds.add(id);
+    }
+    const sameDayMultiBranch = distinctBranchIds.size > 1;
+
+    if (payList.length > 0) {
+      const payroll = pickOperationalPayrollRow(payList);
+      const branchId = normalizeBranchId(payroll.BranchID);
+      const matchingTarget =
+        branchId != null
+          ? targetList.find((t) => normalizeBranchId(t.branchId) === branchId) ?? null
+          : targetList.length === 1
+            ? targetList[0]!
+            : null;
+
+      const row: MergedDailyRow = {
+        empId,
+        empName: payroll.EmpName,
+        branchId,
+        branchCode: payroll.BranchCode != null ? String(payroll.BranchCode) : null,
+        branchName: payroll.BranchName != null ? String(payroll.BranchName) : null,
+        payroll,
+        target: null,
+        dailyPay: payroll.DailyWage != null ? Number(payroll.DailyWage) : null,
+        targetSales: null,
+        targetAmount: null,
+        hasTargetPlan: false,
+        targetSyncStatus: null,
+        sameDayMultiBranch: sameDayMultiBranch || undefined,
+      };
+      if (matchingTarget) applyTargetFields(row, matchingTarget);
+      merged.push(row);
+      continue;
+    }
+
+    // Target-only (no payroll / attendance for the day yet)
+    const target = pickOperationalTargetRow(targetList);
+    const row: MergedDailyRow = {
+      empId,
+      empName: target.empName,
+      branchId: normalizeBranchId(target.branchId),
+      branchCode: target.branchCode != null ? String(target.branchCode) : null,
+      branchName: target.branchName != null ? String(target.branchName) : null,
+      payroll: null,
       target: null,
-      dailyPay: p.DailyWage != null ? Number(p.DailyWage) : null,
+      dailyPay: null,
       targetSales: null,
       targetAmount: null,
       hasTargetPlan: false,
       targetSyncStatus: null,
-    });
+      sameDayMultiBranch: sameDayMultiBranch || undefined,
+    };
+    applyTargetFields(row, target);
+    merged.push(row);
   }
 
-  for (const t of targetRows) {
-    const branchId =
-      t.branchId != null && Number(t.branchId) > 0 ? Number(t.branchId) : null;
-    const key = mergeKey(t.empId, branchId);
-    const existing = byKey.get(key);
-    const targetSales = t.currentNetSalesAfterDiscount;
-    const targetAmount =
-      t.persistenceStatus === 'not_generated' ? null : t.storedTargetAmount;
-    const syncStatus = t.syncStatus ?? 'up_to_date';
-
-    if (existing) {
-      existing.target = t;
-      existing.hasTargetPlan = true;
-      existing.targetSales = targetSales;
-      existing.targetAmount = targetAmount;
-      existing.targetSyncStatus = syncStatus;
-      if (!existing.empName) existing.empName = t.empName;
-      if (existing.branchId == null && branchId != null) existing.branchId = branchId;
-      if (!existing.branchCode && t.branchCode) existing.branchCode = String(t.branchCode);
-      if (!existing.branchName && t.branchName) existing.branchName = String(t.branchName);
-    } else {
-      byKey.set(key, {
-        empId: t.empId,
-        empName: t.empName,
-        branchId,
-        branchCode: t.branchCode != null ? String(t.branchCode) : null,
-        branchName: t.branchName != null ? String(t.branchName) : null,
-        payroll: null,
-        target: t,
-        dailyPay: null,
-        targetSales,
-        targetAmount,
-        hasTargetPlan: true,
-        targetSyncStatus: syncStatus,
-      });
-    }
-  }
-
-  const rows = [...byKey.values()];
-  const empBranchCounts = new Map<number, number>();
-  for (const r of rows) {
-    empBranchCounts.set(r.empId, (empBranchCounts.get(r.empId) ?? 0) + 1);
-  }
-  for (const r of rows) {
-    if ((empBranchCounts.get(r.empId) ?? 0) > 1) r.sameDayMultiBranch = true;
-  }
-
-  return rows.sort((a, b) => {
+  return merged.sort((a, b) => {
     const bc = String(a.branchCode ?? '').localeCompare(String(b.branchCode ?? ''));
     if (bc !== 0) return bc;
     return a.empName.localeCompare(b.empName, 'ar');

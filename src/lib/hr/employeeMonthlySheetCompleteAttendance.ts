@@ -233,6 +233,66 @@ export async function completeEmployeeMonthlySheetAttendance(params: {
       throw new Error('التاريخ خارج نطاق الشهر');
     }
 
+    const anyAttRes = await db
+      .request()
+      .input('empId', sql.Int, empId)
+      .input('workDate', sql.Date, workDate)
+      .query(`
+        SELECT TOP 1 BranchID FROM dbo.TblEmpAttendance
+        WHERE EmpID = @empId AND WorkDate = @workDate
+      `);
+    const otherBranch = anyAttRes.recordset[0] as { BranchID: number } | undefined;
+    if (otherBranch && Number(otherBranch.BranchID) !== branchId) {
+      return {
+        mode: 'insert',
+        workDate,
+        empId,
+        branchId,
+        currentCheckIn: null,
+        currentCheckOut: null,
+        proposedCheckIn: null,
+        proposedCheckOut: null,
+        willFillCheckIn: false,
+        willFillCheckOut: false,
+        status: null,
+        message: `الموظف لديه حضور في فرع آخر (${otherBranch.BranchID}) لهذا اليوم`,
+        canApply: false,
+        applied: false,
+      };
+    }
+
+    const assignRes = await db
+      .request()
+      .input('empId', sql.Int, empId)
+      .input('branchId', sql.Int, branchId)
+      .input('workDate', sql.Date, workDate)
+      .query(`
+        SELECT TOP 1 EmpID
+        FROM dbo.TblEmpBranchAssignment
+        WHERE EmpID = @empId
+          AND BranchID = @branchId
+          AND EffectiveFrom <= @workDate
+          AND (EffectiveTo IS NULL OR EffectiveTo >= @workDate)
+      `);
+    if (assignRes.recordset.length === 0) {
+      return {
+        mode: 'insert',
+        workDate,
+        empId,
+        branchId,
+        currentCheckIn: null,
+        currentCheckOut: null,
+        proposedCheckIn: null,
+        proposedCheckOut: null,
+        willFillCheckIn: false,
+        willFillCheckOut: false,
+        status: null,
+        message: 'الموظف غير مُعيَّن لهذا الفرع في هذا التاريخ',
+        canApply: false,
+        applied: false,
+      };
+    }
+
     const defaults = await loadDefaults({ empId, branchId, workDate });
     const filled = applyDefaultTimesToRow({
       CheckInTime: null,

@@ -45,7 +45,7 @@ describe('mergeDailyPayrollAndTargetRows multi-branch', () => {
     syncStatus: 'up_to_date' as const,
   };
 
-  it('keeps separate rows per BranchID for same EmpID', () => {
+  it('collapses to one row per EmpID using operational payroll branch', () => {
     const merged = mergeDailyPayrollAndTargetRows(
       [
         {
@@ -55,6 +55,8 @@ describe('mergeDailyPayrollAndTargetRows multi-branch', () => {
           BranchCode: 'CAMP_CAESAR',
           BranchName: 'كامب شيزار',
           DailyWage: 200,
+          ActualHours: 8,
+          AttendanceStatus: 'Present',
         },
         {
           EmpID: 7,
@@ -63,21 +65,71 @@ describe('mergeDailyPayrollAndTargetRows multi-branch', () => {
           BranchCode: 'GLEEM',
           BranchName: 'جليم',
           DailyWage: 300,
+          ActualHours: 2,
+          AttendanceStatus: 'Present',
         },
       ],
       [
-        { ...targetBase, empId: 7, empName: 'أحمد', branchId: 3, branchCode: 'CAMP_CAESAR' },
-        { ...targetBase, empId: 7, empName: 'أحمد', branchId: 1, branchCode: 'GLEEM', storedTargetAmount: '20.00' },
+        { ...targetBase, empId: 7, empName: 'أحمد', branchId: 3, branchCode: 'CAMP_CAESAR', branchName: 'كامب شيزار' },
+        {
+          ...targetBase,
+          empId: 7,
+          empName: 'أحمد',
+          branchId: 1,
+          branchCode: 'GLEEM',
+          branchName: 'جليم',
+          storedTargetAmount: '20.00',
+        },
       ],
     );
-    expect(merged).toHaveLength(2);
-    expect(merged.every((m) => m.sameDayMultiBranch)).toBe(true);
-    const camp = merged.find((m) => m.branchCode === 'CAMP_CAESAR')!;
-    const gleem = merged.find((m) => m.branchCode === 'GLEEM')!;
-    expect(camp.dailyPay).toBe(200);
-    expect(camp.targetAmount).toBe('10.00');
-    expect(gleem.dailyPay).toBe(300);
-    expect(gleem.targetAmount).toBe('20.00');
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.branchCode).toBe('CAMP_CAESAR');
+    expect(merged[0]!.dailyPay).toBe(200);
+    expect(merged[0]!.targetAmount).toBe('10.00');
+    expect(merged[0]!.sameDayMultiBranch).toBe(true);
+  });
+
+  it('ignores orphan target on another branch when payroll exists on operational branch', () => {
+    const merged = mergeDailyPayrollAndTargetRows(
+      [
+        {
+          EmpID: 5,
+          EmpName: 'كريم',
+          BranchID: 1,
+          BranchCode: 'GLEEM',
+          BranchName: 'جليم',
+          DailyWage: 400,
+          ActualHours: 8,
+          AttendanceStatus: 'Present',
+        },
+      ],
+      [
+        {
+          ...targetBase,
+          empId: 5,
+          empName: 'كريم',
+          branchId: 3,
+          branchCode: 'CAMP_CAESAR',
+          branchName: 'كامب شيزار',
+          targetPlanId: 168,
+        },
+        {
+          ...targetBase,
+          empId: 5,
+          empName: 'كريم',
+          branchId: 1,
+          branchCode: 'GLEEM',
+          branchName: 'جليم',
+          storedTargetAmount: '55.00',
+          targetPlanId: 6,
+        },
+      ],
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.branchCode).toBe('GLEEM');
+    expect(merged[0]!.targetAmount).toBe('55.00');
+    expect(merged[0]!.target?.targetPlanId).toBe(6);
+    expect(merged[0]!.sameDayMultiBranch).toBe(true);
   });
 
   it('detectSameDayMultiBranchEmployees flags EmpID across branches', () => {

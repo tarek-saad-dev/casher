@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   CalendarDays, Loader2, Zap, Send, RefreshCw,
   CheckCircle2, AlertCircle, Users, Banknote,
@@ -314,6 +314,56 @@ export default function DailyPayrollPanel() {
   const [closingDay, setClosingDay] = useState(false);
   const [reopeningDay, setReopeningDay] = useState(false);
   const [nightlyClosing, setNightlyClosing] = useState(false);
+  const [bulkRangeClosing, setBulkRangeClosing] = useState(false);
+  const [bulkRangeFrom, setBulkRangeFrom] = useState(() => getBusinessDateStr());
+  const [bulkRangeTo, setBulkRangeTo] = useState(() => getBusinessDateStr());
+  const [bulkRangeConfirmOpen, setBulkRangeConfirmOpen] = useState(false);
+  const [bulkRangeResult, setBulkRangeResult] = useState<{
+    ok: boolean;
+    summary: {
+      daysProcessed: number;
+      branchesProcessed: number;
+      closed: number;
+      alreadyClosed: number;
+      notReady: number;
+      failed: number;
+    };
+    days: Array<{
+      workDate: string;
+      nightlyOk: boolean;
+      nightlyError: string | null;
+      branches: Array<{
+        branchCode: string;
+        outcome: string;
+        reason: string | null;
+      }>;
+    }>;
+    error?: string;
+  } | null>(null);
+  const [bulkRangeProgress, setBulkRangeProgress] = useState<{
+    totalDays: number;
+    dayIndex: number;
+    currentDate: string | null;
+    phase: string;
+    closed: number;
+    alreadyClosed: number;
+    notReady: number;
+    failed: number;
+  } | null>(null);
+  const [bulkRangeLogs, setBulkRangeLogs] = useState<
+    Array<{ id: number; level: 'info' | 'ok' | 'warn' | 'error'; message: string }>
+  >([]);
+  const [bulkRangeErrors, setBulkRangeErrors] = useState<
+    Array<{
+      id: number;
+      workDate: string;
+      kind: 'pipeline' | 'notReady' | 'failed';
+      branchCode: string | null;
+      message: string;
+    }>
+  >([]);
+  const bulkRangeLogSeq = useRef(0);
+  const bulkRangeLogEndRef = useRef<HTMLDivElement | null>(null);
   const [smartFixOpen, setSmartFixOpen] = useState(false);
   const [generatingEmpId, setGeneratingEmpId] = useState<number | null>(null);
   const [generatingBranchId, setGeneratingBranchId] = useState<number | null>(null);
@@ -361,6 +411,11 @@ export default function DailyPayrollPanel() {
     setSuccessMsg(msg);
     setTimeout(() => setSuccessMsg(''), 8000);
   };
+
+  useEffect(() => {
+    if (bulkRangeLogs.length === 0) return;
+    bulkRangeLogEndRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [bulkRangeLogs]);
 
   const fetchAutoGenLog = useCallback(async (d: string) => {
     try {
@@ -787,6 +842,272 @@ export default function DailyPayrollPanel() {
       setError(e instanceof Error ? e.message : 'فشل قفل اليوم التلقائي');
     } finally {
       setNightlyClosing(false);
+    }
+  };
+
+  const handleBulkCloseRange = async () => {
+    if (bulkRangeClosing) return;
+    setBulkRangeConfirmOpen(false);
+    setBulkRangeClosing(true);
+    setError('');
+    setBulkRangeResult(null);
+    setBulkRangeProgress(null);
+    setBulkRangeLogs([]);
+    setBulkRangeErrors([]);
+    bulkRangeLogSeq.current = 0;
+
+    const pushLog = (level: 'info' | 'ok' | 'warn' | 'error', message: string) => {
+      bulkRangeLogSeq.current += 1;
+      const id = bulkRangeLogSeq.current;
+      setBulkRangeLogs((prev) => [...prev, { id, level, message }]);
+    };
+    const pushError = (row: {
+      workDate: string;
+      kind: 'pipeline' | 'notReady' | 'failed';
+      branchCode: string | null;
+      message: string;
+    }) => {
+      bulkRangeLogSeq.current += 1;
+      const id = bulkRangeLogSeq.current;
+      setBulkRangeErrors((prev) => [...prev, { id, ...row }]);
+    };
+
+    try {
+      const res = await fetch('/api/admin/hr/daily-payroll/bulk-close-range', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' },
+        body: JSON.stringify({
+          fromDate: bulkRangeFrom,
+          toDate: bulkRangeTo,
+          stream: true,
+        }),
+      });
+
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok && !contentType.includes('ndjson')) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(
+          (data as { error?: string }).error || 'تعذر بدء قفل الرينج',
+        );
+      }
+
+      if (!res.body) {
+        throw new Error('لا يوجد بث تقدم من الخادم');
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalResult: typeof bulkRangeResult = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const raw of lines) {
+          const line = raw.trim();
+          if (!line) continue;
+          let event: Record<string, unknown>;
+          try {
+            event = JSON.parse(line) as Record<string, unknown>;
+          } catch {
+            continue;
+          }
+          const type = String(event.type ?? '');
+
+          if (type === 'error') {
+            throw new Error(String(event.error || 'فشل قفل رينج الأيام'));
+          }
+
+          if (type === 'start') {
+            const totalDays = Number(event.totalDays) || 0;
+            const branchCount = Number(event.branchCount) || 0;
+            setBulkRangeProgress({
+              totalDays,
+              dayIndex: 0,
+              currentDate: null,
+              phase: 'بدء التشغيل',
+              closed: 0,
+              alreadyClosed: 0,
+              notReady: 0,
+              failed: 0,
+            });
+            pushLog(
+              'info',
+              `بدء الرينج ${String(event.fromDate)} → ${String(event.toDate)} · ${totalDays} يوم · ${branchCount} فرع`,
+            );
+          } else if (type === 'day_start') {
+            const workDate = String(event.workDate);
+            const dayIndex = Number(event.dayIndex) || 0;
+            const totalDays = Number(event.totalDays) || 0;
+            setBulkRangeProgress((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    dayIndex,
+                    totalDays,
+                    currentDate: workDate,
+                    phase: `بايبلاين ${workDate}`,
+                  }
+                : prev,
+            );
+            pushLog('info', `[${dayIndex}/${totalDays}] بدء يوم ${workDate}`);
+          } else if (type === 'nightly') {
+            const workDate = String(event.workDate);
+            const ok = event.ok === true;
+            const errMsg = event.error ? String(event.error) : null;
+            if (ok) {
+              pushLog('ok', `${workDate} · البايبلاين اكتمل`);
+              setBulkRangeProgress((prev) =>
+                prev ? { ...prev, phase: `إقفال فروع ${workDate}` } : prev,
+              );
+            } else {
+              pushLog('error', `${workDate} · بايبلاين فشل: ${errMsg || 'خطأ'}`);
+              pushError({
+                workDate,
+                kind: 'pipeline',
+                branchCode: null,
+                message: errMsg || 'فشل قفل اليوم التلقائي',
+              });
+              setBulkRangeProgress((prev) =>
+                prev ? { ...prev, phase: `إقفال فروع ${workDate} (بعد فشل البايبلاين)` } : prev,
+              );
+            }
+          } else if (type === 'branch') {
+            const workDate = String(event.workDate);
+            const branchCode = String(event.branchCode);
+            const outcome = String(event.outcome);
+            const reason = event.reason ? String(event.reason) : null;
+            const level =
+              outcome === 'closed'
+                ? 'ok'
+                : outcome === 'alreadyClosed'
+                  ? 'info'
+                  : outcome === 'notReady'
+                    ? 'warn'
+                    : 'error';
+            pushLog(
+              level,
+              `${workDate} · ${branchCode}: ${outcome}${reason ? ` — ${reason}` : ''}`,
+            );
+            setBulkRangeProgress((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                closed: prev.closed + (outcome === 'closed' ? 1 : 0),
+                alreadyClosed: prev.alreadyClosed + (outcome === 'alreadyClosed' ? 1 : 0),
+                notReady: prev.notReady + (outcome === 'notReady' ? 1 : 0),
+                failed: prev.failed + (outcome === 'failed' ? 1 : 0),
+              };
+            });
+            if (outcome === 'notReady') {
+              pushError({
+                workDate,
+                kind: 'notReady',
+                branchCode,
+                message: reason || 'غير جاهز للإقفال',
+              });
+            } else if (outcome === 'failed') {
+              pushError({
+                workDate,
+                kind: 'failed',
+                branchCode,
+                message: reason || 'فشل الإقفال',
+              });
+            }
+          } else if (type === 'day_done') {
+            const workDate = String(event.workDate);
+            const dayIndex = Number(event.dayIndex) || 0;
+            const totalDays = Number(event.totalDays) || 0;
+            pushLog('info', `[${dayIndex}/${totalDays}] انتهى يوم ${workDate}`);
+            setBulkRangeProgress((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    dayIndex,
+                    totalDays,
+                    currentDate: workDate,
+                    phase:
+                      dayIndex >= totalDays ? 'اكتمل الرينج' : `انتظر اليوم التالي…`,
+                  }
+                : prev,
+            );
+          } else if (type === 'done') {
+            const result = event.result as NonNullable<typeof bulkRangeResult>;
+            finalResult = result;
+            setBulkRangeResult(result);
+            setBulkRangeProgress((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    dayIndex: result.summary.daysProcessed,
+                    totalDays: Math.max(prev.totalDays, result.summary.daysProcessed),
+                    phase: 'اكتمل',
+                    closed: result.summary.closed,
+                    alreadyClosed: result.summary.alreadyClosed,
+                    notReady: result.summary.notReady,
+                    failed: result.summary.failed,
+                  }
+                : prev,
+            );
+            pushLog(
+              result.ok ? 'ok' : 'warn',
+              `النتيجة النهائية — أيام ${result.summary.daysProcessed} · مقفول ${result.summary.closed} · مسبقاً ${result.summary.alreadyClosed} · غير جاهز ${result.summary.notReady} · فشل ${result.summary.failed}`,
+            );
+          }
+        }
+      }
+
+      if (buffer.trim()) {
+        try {
+          const event = JSON.parse(buffer.trim()) as Record<string, unknown>;
+          if (event.type === 'error') {
+            throw new Error(String(event.error || 'فشل قفل رينج الأيام'));
+          }
+          if (event.type === 'done' && event.result) {
+            finalResult = event.result as NonNullable<typeof bulkRangeResult>;
+            setBulkRangeResult(finalResult);
+          }
+        } catch (e) {
+          if (e instanceof Error && e.message !== 'Unexpected end of JSON input') {
+            /* ignore trailing partial */
+          }
+        }
+      }
+
+      if (!finalResult?.summary) {
+        throw new Error('انتهى البث بدون نتيجة نهائية');
+      }
+
+      const s = finalResult.summary;
+      flash(
+        `قفل الرينج ${bulkRangeFrom} → ${bulkRangeTo}: أيام ${s.daysProcessed} · مقفول ${s.closed} · مقفول مسبقاً ${s.alreadyClosed} · غير جاهز ${s.notReady} · فشل ${s.failed}`,
+      );
+      if (selectedBranchId != null) {
+        await refreshAfterMutation(selectedBranchId, date);
+      } else {
+        await load(date);
+        void loadOpenDays();
+      }
+      if (finalResult.error && s.daysProcessed === 0) {
+        setError(finalResult.error);
+      } else if (
+        s.failed > 0 ||
+        finalResult.days?.some((d) => !d.nightlyOk) ||
+        s.notReady > 0
+      ) {
+        setError(
+          'اكتمل الرينج مع ملاحظات — راجع السجل والأخطاء بالأسفل (لم يُفرض إقفال على الأيام غير الجاهزة)',
+        );
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'فشل قفل رينج الأيام');
+      pushLog('error', e instanceof Error ? e.message : 'فشل قفل رينج الأيام');
+    } finally {
+      setBulkRangeClosing(false);
     }
   };
 
@@ -1288,6 +1609,7 @@ export default function DailyPayrollPanel() {
     closingDay ||
     reopeningDay ||
     nightlyClosing ||
+    bulkRangeClosing ||
     bulkRunning ||
     generatingEmpId != null;
   const busy = workspaceBusy;
@@ -1718,7 +2040,7 @@ export default function DailyPayrollPanel() {
             <Button
               type="button"
               onClick={() => void handleAutoNightlyClose()}
-              disabled={busy || nightlyClosing}
+              disabled={busy || nightlyClosing || bulkRangeClosing}
               className="bg-violet-700 hover:bg-violet-600 text-white gap-2 h-10"
               title="مثل سكربت الساعة 2:40 — حضور Default + يوميات + تارجت لكل الفروع، بدون واتساب"
             >
@@ -1732,6 +2054,194 @@ export default function DailyPayrollPanel() {
           )}
         </div>
       </div>
+
+      {canReopenPayrollDay && (
+        <div className="rounded-xl border border-violet-500/25 bg-violet-500/5 p-4 space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-violet-100">قفل رينج أيام تلقائياً</p>
+              <p className="text-[11px] text-zinc-500 mt-1 leading-relaxed">
+                لكل يوم بالترتيب: إكمال حضور ناقص → توليد يوميات + تارجت + ترحيل الدفتر (كل الفروع
+                النشطة) → محاولة إقفال الفروع الجاهزة فقط. الحد الأقصى 31 يومًا · بدون واتساب · بدون
+                إجبار إقفال.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <label className="text-[11px] text-zinc-500">من تاريخ</label>
+              <Input
+                type="date"
+                value={bulkRangeFrom}
+                onChange={(e) => setBulkRangeFrom(e.target.value)}
+                disabled={busy || bulkRangeClosing}
+                className="bg-zinc-950 border-zinc-700 h-10 w-[160px]"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] text-zinc-500">إلى تاريخ</label>
+              <Input
+                type="date"
+                value={bulkRangeTo}
+                onChange={(e) => setBulkRangeTo(e.target.value)}
+                disabled={busy || bulkRangeClosing}
+                className="bg-zinc-950 border-zinc-700 h-10 w-[160px]"
+              />
+            </div>
+            <Button
+              type="button"
+              onClick={() => setBulkRangeConfirmOpen(true)}
+              disabled={
+                busy ||
+                bulkRangeClosing ||
+                !bulkRangeFrom ||
+                !bulkRangeTo ||
+                bulkRangeFrom > bulkRangeTo
+              }
+              className="bg-amber-500 hover:bg-amber-400 text-black font-semibold gap-2 h-10"
+            >
+              {bulkRangeClosing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <CalendarDays className="w-4 h-4" />
+              )}
+              قفل رينج أيام تلقائياً
+            </Button>
+          </div>
+          {bulkRangeProgress && (
+            <div className="rounded-lg border border-violet-500/30 bg-zinc-950/70 p-3 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <p className="text-zinc-200 font-medium">
+                  {bulkRangeClosing ? 'جاري التنفيذ…' : 'التقدم'}
+                  {bulkRangeProgress.currentDate
+                    ? ` · ${bulkRangeProgress.currentDate}`
+                    : ''}
+                  <span className="text-zinc-500 font-normal mr-2">
+                    — {bulkRangeProgress.phase}
+                  </span>
+                </p>
+                <p className="tabular-nums text-zinc-400">
+                  {bulkRangeProgress.dayIndex}/{bulkRangeProgress.totalDays || '—'} يوم
+                  {' · '}
+                  <span className="text-emerald-300">{bulkRangeProgress.closed} مقفول</span>
+                  {' · '}
+                  <span className="text-zinc-400">{bulkRangeProgress.alreadyClosed} مسبقاً</span>
+                  {' · '}
+                  <span className="text-amber-300">{bulkRangeProgress.notReady} غير جاهز</span>
+                  {' · '}
+                  <span className="text-rose-300">{bulkRangeProgress.failed} فشل</span>
+                </p>
+              </div>
+              <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
+                <div
+                  className={cn(
+                    'h-full rounded-full transition-[width] duration-300',
+                    bulkRangeClosing ? 'bg-amber-400' : 'bg-emerald-500',
+                  )}
+                  style={{
+                    width: `${
+                      bulkRangeProgress.totalDays > 0
+                        ? Math.min(
+                            100,
+                            Math.round(
+                              (bulkRangeProgress.dayIndex / bulkRangeProgress.totalDays) * 100,
+                            ),
+                          )
+                        : bulkRangeClosing
+                          ? 4
+                          : 0
+                    }%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {(bulkRangeLogs.length > 0 || bulkRangeClosing) && (
+            <div className="rounded-lg border border-zinc-700 bg-black/40 p-3 space-y-2">
+              <p className="text-[11px] font-semibold text-zinc-300">سجل التنفيذ (Logs)</p>
+              <div className="max-h-48 overflow-y-auto space-y-1 text-[11px] font-mono leading-relaxed">
+                {bulkRangeLogs.length === 0 ? (
+                  <p className="text-zinc-500">في انتظار أول حدث…</p>
+                ) : (
+                  bulkRangeLogs.map((log) => (
+                    <div
+                      key={log.id}
+                      className={cn(
+                        'border-b border-zinc-900/80 pb-1 last:border-0',
+                        log.level === 'ok' && 'text-emerald-300',
+                        log.level === 'warn' && 'text-amber-300',
+                        log.level === 'error' && 'text-rose-300',
+                        log.level === 'info' && 'text-zinc-400',
+                      )}
+                    >
+                      {log.message}
+                    </div>
+                  ))
+                )}
+                <div ref={bulkRangeLogEndRef} />
+              </div>
+            </div>
+          )}
+
+          {bulkRangeErrors.length > 0 && (
+            <div className="rounded-lg border border-rose-500/35 bg-rose-500/5 p-3 space-y-2">
+              <p className="text-[11px] font-semibold text-rose-200">
+                الأخطاء والملاحظات ({bulkRangeErrors.length})
+              </p>
+              <div className="max-h-44 overflow-y-auto space-y-2 text-xs">
+                {Object.entries(
+                  bulkRangeErrors.reduce<
+                    Record<string, typeof bulkRangeErrors>
+                  >((acc, row) => {
+                    (acc[row.workDate] ??= []).push(row);
+                    return acc;
+                  }, {}),
+                ).map(([workDate, rows]) => (
+                  <div key={workDate} className="border-t border-rose-500/20 pt-2 first:border-0 first:pt-0">
+                    <p className="tabular-nums text-rose-100 font-medium mb-1">{workDate}</p>
+                    <ul className="space-y-1 text-zinc-300">
+                      {rows.map((row) => (
+                        <li key={row.id} className="flex flex-wrap gap-x-2 gap-y-0.5">
+                          <span
+                            className={cn(
+                              'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold',
+                              row.kind === 'pipeline' && 'bg-rose-500/20 text-rose-200',
+                              row.kind === 'notReady' && 'bg-amber-500/20 text-amber-200',
+                              row.kind === 'failed' && 'bg-rose-600/30 text-rose-100',
+                            )}
+                          >
+                            {row.kind === 'pipeline'
+                              ? 'بايبلاين'
+                              : row.kind === 'notReady'
+                                ? 'غير جاهز'
+                                : 'فشل'}
+                          </span>
+                          {row.branchCode ? (
+                            <span className="text-zinc-200 font-medium">{row.branchCode}</span>
+                          ) : null}
+                          <span className="text-zinc-400">{row.message}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {bulkRangeResult && !bulkRangeClosing && (
+            <div className="rounded-lg border border-zinc-700 bg-zinc-950/60 p-3 text-xs space-y-2 max-h-40 overflow-y-auto">
+              <p className="text-zinc-300 font-medium">
+                ملخص نهائي — أيام {bulkRangeResult.summary.daysProcessed} · فروع{' '}
+                {bulkRangeResult.summary.branchesProcessed} · مقفول {bulkRangeResult.summary.closed}{' '}
+                · مسبقاً {bulkRangeResult.summary.alreadyClosed} · غير جاهز{' '}
+                {bulkRangeResult.summary.notReady} · فشل {bulkRangeResult.summary.failed}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Messages ────────────────────────────────────────────────────────── */}
       {error && (
@@ -2016,9 +2526,9 @@ export default function DailyPayrollPanel() {
         <div className="flex items-start gap-3 p-4 bg-violet-500/10 border border-violet-500/30 rounded-xl text-violet-200 text-sm">
           <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
           <div>
-            <p className="font-semibold mb-1">تنبيه: موظفون بنفس اليوم على أكثر من فرع</p>
+            <p className="font-semibold mb-1">تنبيه: بيانات على أكثر من فرع لنفس اليوم</p>
             <p className="text-xs text-violet-200/80 mb-2">
-              لم يتم دمج صفوف الفروع — كل BranchID يظهر مستقلًا. تقسيم اليوم داخل الفرع مؤجّل.
+              الجدول يعرض صفًا واحدًا لكل موظف حسب فرع الحضور/اليومية الفعلي لذلك اليوم.
             </p>
             <div className="flex flex-wrap gap-1.5">
               {sameDayMultiBranchEmployees.map((e) => (
@@ -2516,6 +3026,59 @@ export default function DailyPayrollPanel() {
               className="bg-emerald-700 hover:bg-emerald-600 gap-2">
               {closingDay ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
               تأكيد الإقفال
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={bulkRangeConfirmOpen}
+        onOpenChange={(open) => {
+          if (!bulkRangeClosing) setBulkRangeConfirmOpen(open);
+        }}
+      >
+        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-white">
+              <CalendarDays className="w-5 h-5 text-amber-400" />
+              تأكيد قفل رينج أيام
+            </DialogTitle>
+            <DialogDescription className="text-zinc-400 text-sm leading-relaxed">
+              العملية قد تقفل أيامًا نهائيًا لكل الفروع النشطة. لا يُفرض إقفال على يوم/فرع غير جاهز،
+              ويمكن إعادة التشغيل لنفس الرينج بأمان (idempotent).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="text-sm text-zinc-300 space-y-2 py-2">
+            <p>
+              من <span className="tabular-nums font-medium text-white">{bulkRangeFrom}</span> إلى{' '}
+              <span className="tabular-nums font-medium text-white">{bulkRangeTo}</span>
+            </p>
+            <ul className="text-xs text-zinc-500 list-disc pr-4 space-y-1">
+              <li>لكل يوم: بايبلاين قفل اليوم التلقائي (بدون واتساب) ثم محاولة إقفال الفروع</li>
+              <li>الحد الأقصى 31 يومًا · بدون تواريخ مستقبلية</li>
+              <li>فشل يوم/فرع لا يوقف باقي الرينج</li>
+            </ul>
+          </div>
+          <DialogFooter className="gap-2 flex-row-reverse sm:flex-row-reverse" dir="rtl">
+            <Button
+              variant="outline"
+              onClick={() => setBulkRangeConfirmOpen(false)}
+              disabled={bulkRangeClosing}
+              className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+            >
+              إلغاء
+            </Button>
+            <Button
+              onClick={() => void handleBulkCloseRange()}
+              disabled={bulkRangeClosing}
+              className="bg-amber-500 hover:bg-amber-400 text-black font-semibold gap-2"
+            >
+              {bulkRangeClosing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <CalendarDays className="w-4 h-4" />
+              )}
+              تأكيد وتشغيل الرينج
             </Button>
           </DialogFooter>
         </DialogContent>

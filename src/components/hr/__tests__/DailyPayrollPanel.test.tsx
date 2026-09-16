@@ -338,7 +338,22 @@ describe('DailyPayrollPanel HR labels', () => {
     expect(screen.queryByText('إقفال يوم الموظفين')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /حل المشاكل/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /قفل اليوم التلقائي/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /قفل رينج أيام تلقائياً/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'فتح اليوم' })).toBeInTheDocument();
+  });
+
+  it('opens bulk-range confirm dialog before posting', async () => {
+    render(<DailyPayrollPanel />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /قفل رينج أيام تلقائياً/ })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /قفل رينج أيام تلقائياً/ }));
+    await waitFor(() => expect(screen.getByText('تأكيد قفل رينج أيام')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /تأكيد وتشغيل الرينج/ })).toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining('/api/admin/hr/daily-payroll/bulk-close-range'),
+      expect.anything(),
+    );
   });
 
   it('shows per-row move-to-other-branch action for admins', async () => {
