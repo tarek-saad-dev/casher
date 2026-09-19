@@ -82,6 +82,14 @@ export const SENSITIVE_ACTIONS: Record<string, SensitiveActionMetadata> = {
     requiresReason: true,
     sensitiveFields: ['password', 'token', 'secret', 'cookie'],
   },
+  close_shift_recon: {
+    actionType: 'close_shift_recon',
+    label: 'تقفيل الوردية',
+    entityType: 'TblShiftMove',
+    riskLevel: 'high',
+    requiresReason: false,
+    sensitiveFields: ['password', 'token', 'secret', 'cookie'],
+  },
   update_user_roles: {
     actionType: 'update_user_roles',
     label: 'تعديل صلاحيات مستخدم',

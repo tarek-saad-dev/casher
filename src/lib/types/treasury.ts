@@ -98,6 +98,12 @@ export interface ReconciliationRequest {
   reconciliations: ReconciliationInput[];
 }
 
+export interface ShiftReconciliationRequest {
+  shiftMoveId: number;
+  reconciliations: ReconciliationInput[];
+  reason?: string;
+}
+
 export type VarianceStatus = 'acceptable' | 'warning' | 'critical';
 
 export interface ReconciliationVariance {

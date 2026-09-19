@@ -7,6 +7,8 @@
 import { sql, allocateInvID } from '@/lib/db';
 import { getCairoInvTimeDotStr } from '@/lib/businessDate';
 import { lockOperationalWrite } from '@/modules/operations/infra/businessDayLock';
+import { now as businessClockNow } from '@/modules/operations/clock/BusinessClock';
+import { formatLegacyEndTime } from '@/modules/operations/infra/shiftMoveRecord';
 
 export interface TreasuryTransferInput {
   amount: number;
@@ -69,6 +71,26 @@ export interface CloseDayReconRow {
 
 export interface CloseDayResult {
   newDay: string;
+  reconciliationIds: number[];
+  variances: CloseDayReconRow[];
+  closedByUserId: number;
+}
+
+export interface CloseShiftInput {
+  shiftMoveId: number;
+  branchId: number;
+  closedByUserId: number;
+  reconciliations: Array<{
+    paymentMethodId: number;
+    systemAmount: number;
+    countedAmount: number;
+    notes?: string;
+  }>;
+}
+
+export interface CloseShiftResult {
+  shiftMoveId: number;
+  businessDayId: number;
   reconciliationIds: number[];
   variances: CloseDayReconRow[];
   closedByUserId: number;
@@ -374,7 +396,7 @@ export async function closeTreasuryDay(
   connection: sql.Transaction,
   input: CloseDayInput,
 ): Promise<CloseDayResult> {
-  const { newDay, branchId, shiftMoveId, reconciliations, closedByUserId } = input;
+  const { newDay, branchId, reconciliations, closedByUserId } = input;
 
   // Resolve the business day ID from its date within the active branch
   const dayLookup = await new sql.Request(connection)
@@ -389,11 +411,15 @@ export async function closeTreasuryDay(
     throw new Error('لا يوجد يوم عمل مطابق للتاريخ المحدد في الفرع النشط');
   }
 
-  // Idempotency guard: prevent duplicate reconciliation rows for the same day
+  // Idempotency guard: day-level recon only (ShiftMoveID IS NULL).
+  // Shift-level rows must not block end-of-day close.
   // TblTreasuryCloseRecon.NewDay stores the day ID (int), not the date.
   const existingRecon = await new sql.Request(connection)
     .input('dayId', sql.Int, dayId)
-    .query(`SELECT TOP 1 ID FROM dbo.TblTreasuryCloseRecon WHERE NewDay = @dayId`);
+    .query(`
+      SELECT TOP 1 ID FROM dbo.TblTreasuryCloseRecon
+      WHERE NewDay = @dayId AND ShiftMoveID IS NULL
+    `);
   if (existingRecon.recordset.length > 0) {
     throw new Error('تم تقفيل هذا اليوم مسبقاً — لا يمكن إنشاء تسويات جديدة');
   }
@@ -417,7 +443,7 @@ export async function closeTreasuryDay(
 
     const insertResult = await new sql.Request(connection)
       .input('dayId', sql.Int, dayId)
-      .input('shiftMoveId', sql.Int, shiftMoveId || null)
+      .input('shiftMoveId', sql.Int, null) // day-level recon never stores ShiftMoveID
       .input('paymentMethodId', sql.Int, recon.paymentMethodId)
       .input('systemAmount', sql.Decimal(18, 2), recon.systemAmount)
       .input('countedAmount', sql.Decimal(18, 2), recon.countedAmount)
@@ -459,6 +485,146 @@ export async function closeTreasuryDay(
 
   return {
     newDay,
+    reconciliationIds,
+    variances,
+    closedByUserId,
+  };
+}
+
+/**
+ * Cashier shift treasury close: save per-method recon for the shift and close
+ * TblShiftMove. Does NOT close TblNewDay.
+ */
+export async function closeTreasuryShift(
+  connection: sql.Transaction,
+  input: CloseShiftInput,
+): Promise<CloseShiftResult> {
+  const { shiftMoveId, branchId, closedByUserId, reconciliations } = input;
+
+  const shiftRes = await new sql.Request(connection)
+    .input('shiftMoveId', sql.Int, shiftMoveId)
+    .query(`
+      SELECT TOP 1
+        sm.ID,
+        sm.UserID,
+        sm.BranchID,
+        sm.BusinessDayID,
+        sm.Status
+      FROM dbo.TblShiftMove sm
+      INNER JOIN dbo.TblNewDay d ON d.ID = sm.BusinessDayID
+      WHERE sm.ID = @shiftMoveId
+    `);
+
+  const shift = shiftRes.recordset[0] as
+    | {
+        ID: number;
+        UserID: number;
+        BranchID: number;
+        BusinessDayID: number;
+        Status: boolean | number;
+      }
+    | undefined;
+
+  if (!shift) {
+    throw new Error('الوردية غير موجودة');
+  }
+  if (Number(shift.BranchID) !== branchId) {
+    throw new Error('الوردية لا تنتمي للفرع النشط');
+  }
+  if (Number(shift.UserID) !== closedByUserId) {
+    throw new Error('غير مصرح — يمكن تقفيل ورديتك فقط');
+  }
+  const shiftOpen = shift.Status === true || shift.Status === 1;
+  if (!shiftOpen) {
+    throw new Error('هذه الوردية مغلقة بالفعل');
+  }
+
+  const existingRecon = await new sql.Request(connection)
+    .input('shiftMoveId', sql.Int, shiftMoveId)
+    .query(`
+      SELECT TOP 1 ID FROM dbo.TblTreasuryCloseRecon
+      WHERE ShiftMoveID = @shiftMoveId
+    `);
+  if (existingRecon.recordset.length > 0) {
+    throw new Error('تم تقفيل هذه الوردية مسبقاً — لا يمكن إنشاء تسويات جديدة');
+  }
+
+  const dayId = Number(shift.BusinessDayID);
+  const reconciliationIds: number[] = [];
+  const variances: CloseDayReconRow[] = [];
+
+  for (const recon of reconciliations) {
+    if (recon.paymentMethodId == null) {
+      throw new Error('طريقة الدفع مطلوبة لكل تسوية');
+    }
+    const variance = recon.countedAmount - recon.systemAmount;
+    const status = getVarianceStatus(variance, recon.systemAmount);
+
+    const insertResult = await new sql.Request(connection)
+      .input('dayId', sql.Int, dayId)
+      .input('shiftMoveId', sql.Int, shiftMoveId)
+      .input('paymentMethodId', sql.Int, recon.paymentMethodId)
+      .input('systemAmount', sql.Decimal(18, 2), recon.systemAmount)
+      .input('countedAmount', sql.Decimal(18, 2), recon.countedAmount)
+      .input('notes', sql.NVarChar, recon.notes || null)
+      .input('closedByUserId', sql.Int, closedByUserId)
+      .input('branchId', sql.Int, branchId)
+      .query(`
+        INSERT INTO [dbo].[TblTreasuryCloseRecon]
+          ([NewDay], [ShiftMoveID], [PaymentMethodID], [SystemAmount], [CountedAmount], [Notes], [ClosedByUserID], [BranchID])
+        VALUES
+          (@dayId, @shiftMoveId, @paymentMethodId, @systemAmount, @countedAmount, @notes, @closedByUserId, @branchId);
+        SELECT SCOPE_IDENTITY() AS ID;
+      `);
+
+    const reconId = insertResult.recordset[0].ID;
+    reconciliationIds.push(reconId);
+
+    const pmResult = await new sql.Request(connection)
+      .input('paymentMethodId', sql.Int, recon.paymentMethodId)
+      .query(`SELECT PaymentMethod FROM [dbo].[TblPaymentMethods] WHERE PaymentID = @paymentMethodId`);
+
+    const paymentMethodName = pmResult.recordset[0]?.PaymentMethod || '';
+    const variancePercentage = recon.systemAmount !== 0
+      ? (variance / Math.abs(recon.systemAmount)) * 100
+      : 0;
+
+    variances.push({
+      id: reconId,
+      paymentMethodId: recon.paymentMethodId,
+      systemAmount: recon.systemAmount,
+      countedAmount: recon.countedAmount,
+      variance,
+      variancePercentage,
+      status,
+      paymentMethodName,
+      notes: recon.notes || null,
+    });
+  }
+
+  const at = businessClockNow();
+
+  const closeResult = await new sql.Request(connection)
+    .input('id', sql.Int, shiftMoveId)
+    .input('branchId', sql.Int, branchId)
+    .input('endDate', sql.Date, at)
+    .input('endTime', sql.NVarChar(50), formatLegacyEndTime(at))
+    .query(`
+      UPDATE dbo.TblShiftMove
+      SET Status = 0, EndDate = @endDate, EndTime = @endTime
+      WHERE ID = @id AND BranchID = @branchId AND Status = 1
+    `);
+
+  const rowsAffected = Array.isArray(closeResult.rowsAffected)
+    ? closeResult.rowsAffected.reduce((sum, n) => sum + Number(n || 0), 0)
+    : Number(closeResult.rowsAffected || 0);
+  if (rowsAffected < 1) {
+    throw new Error('تعذر إغلاق الوردية');
+  }
+
+  return {
+    shiftMoveId,
+    businessDayId: dayId,
     reconciliationIds,
     variances,
     closedByUserId,

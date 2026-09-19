@@ -15,7 +15,9 @@ import TreasuryHoldBreakdown from '@/components/treasury/TreasuryHoldBreakdown';
 import PaymentMethodBreakdownTable from '@/components/treasury/PaymentMethodBreakdownTable';
 import TreasuryMovementsTable from '@/components/treasury/TreasuryMovementsTable';
 import TreasuryClosePanel from '@/components/treasury/TreasuryClosePanel';
+import ShiftCloseReconPanel from '@/components/treasury/ShiftCloseReconPanel';
 import FinancialClassificationPanel from '@/components/reports/FinancialClassificationPanel';
+import { useSession } from '@/hooks/useSession';
 import PaymentMethodDetailsModal from '@/components/treasury/PaymentMethodDetailsModal';
 import PaymentTransferModal from '@/components/treasury/PaymentTransferModal';
 import PastDateTransferModal from '@/components/treasury/PastDateTransferModal';
@@ -31,25 +33,34 @@ import type {
 
 export interface TreasuryDailyViewProps {
   canCloseDay?: boolean;
+  /** Cashier shift treasury close (does not close the business day). */
+  canCloseShift?: boolean;
+  /** When closing shift, prefer this shiftMoveId (usually the cashier's open shift). */
+  defaultShiftMoveId?: number | null;
   canTransfer?: boolean;
   canAddPastRevenue?: boolean;
   canAddPastExpense?: boolean;
   canDeleteMove?: boolean;
   pageTitle?: string;
   pageSubtitle?: string;
+  onShiftClosed?: () => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function TreasuryDailyView({
   canCloseDay       = true,
+  canCloseShift     = false,
+  defaultShiftMoveId = null,
   canTransfer       = true,
   canAddPastRevenue = true,
   canAddPastExpense = true,
   canDeleteMove     = true,
   pageTitle         = 'قفل اليوم / الخزنة اليومية',
   pageSubtitle      = 'متابعة الحركات المالية وقفل اليوم',
+  onShiftClosed,
 }: TreasuryDailyViewProps) {
+  const { shift, refresh } = useSession();
   const [treasuryData,    setTreasuryData]    = useState<DailyTreasuryData | null>(null);
   const [movementsData,   setMovementsData]   = useState<TreasuryMovementsResponse | null>(null);
   const [currentDayShift, setCurrentDayShift] = useState<CurrentDayShift | null>(null);
@@ -58,6 +69,7 @@ export default function TreasuryDailyView({
   const [error,           setError]           = useState<string | null>(null);
 
   const [showClosePanel,      setShowClosePanel]      = useState(false);
+  const [showShiftClosePanel, setShowShiftClosePanel] = useState(false);
   const [showTransferModal,   setShowTransferModal]   = useState(false);
   const [showPastIncomeModal, setShowPastIncomeModal] = useState(false);
   const [showPastExpenseModal,setShowPastExpenseModal]= useState(false);
@@ -85,9 +97,18 @@ export default function TreasuryDailyView({
       if (res.ok) {
         const data: CurrentDayShift = await res.json();
         setCurrentDayShift(data);
-        if (data.currentDay) {
-          setFilters(prev => ({ ...prev, newDay: data.currentDay!.newDay }));
-        }
+        const preferredShiftId =
+          defaultShiftMoveId ??
+          shift?.ID ??
+          data.currentShift?.shiftMoveId ??
+          null;
+        setFilters((prev) => ({
+          ...prev,
+          newDay: data.currentDay?.newDay ?? prev.newDay,
+          ...(canCloseShift && preferredShiftId != null
+            ? { shiftMoveId: preferredShiftId }
+            : {}),
+        }));
       }
     } catch (err) {
       console.error('Failed to load current day/shift:', err);
@@ -172,6 +193,22 @@ export default function TreasuryDailyView({
     treasuryData &&
     treasuryData.paymentMethods.length > 0;
 
+  const activeShiftMoveId = canCloseShift
+    ? (shift?.ID ?? defaultShiftMoveId ?? null)
+    : (filters.shiftMoveId ??
+      defaultShiftMoveId ??
+      shift?.ID ??
+      currentDayShift?.currentShift?.shiftMoveId ??
+      null);
+
+  const canShowShiftClose = canCloseShift && activeShiftMoveId != null;
+
+  const handleShiftClosed = async () => {
+    await refresh();
+    handleReload();
+    onShiftClosed?.();
+  };
+
   const fmt = (n: number) =>
     new Intl.NumberFormat('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
@@ -188,8 +225,7 @@ export default function TreasuryDailyView({
             <p className="text-zinc-400 text-sm sm:text-base">{pageSubtitle}</p>
           </div>
 
-          {/* Admin-only action buttons */}
-          {hasAdminActions && (
+          {(hasAdminActions || canShowShiftClose) && (
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               {canAddPastRevenue && (
                 <button
@@ -229,6 +265,16 @@ export default function TreasuryDailyView({
                   <Lock className="h-3.5 sm:h-4 w-3.5 sm:w-4" />
                   <span className="hidden sm:inline">قفل اليوم</span>
                   <span className="sm:hidden">قفل</span>
+                </button>
+              )}
+              {canShowShiftClose && (
+                <button
+                  onClick={() => setShowShiftClosePanel(true)}
+                  className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-xs sm:text-sm font-medium hover:bg-amber-500/30 transition-colors"
+                >
+                  <Lock className="h-3.5 sm:h-4 w-3.5 sm:w-4" />
+                  <span className="hidden sm:inline">تقفيل الوردية</span>
+                  <span className="sm:hidden">تقفيل</span>
                 </button>
               )}
             </div>
@@ -396,6 +442,15 @@ export default function TreasuryDailyView({
           shiftMoveId={filters.shiftMoveId || undefined}
           onClose={() => setShowClosePanel(false)}
           onSaved={handleReload}
+        />
+      )}
+
+      {canCloseShift && showShiftClosePanel && activeShiftMoveId != null && (
+        <ShiftCloseReconPanel
+          shiftMoveId={activeShiftMoveId}
+          shiftName={shift?.ShiftName || currentDayShift?.currentShift?.shiftName}
+          onClose={() => setShowShiftClosePanel(false)}
+          onClosed={() => void handleShiftClosed()}
         />
       )}
     </div>

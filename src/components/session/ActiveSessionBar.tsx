@@ -7,6 +7,7 @@ import { DbToggleButton } from '@/components/db/DbToggleButton';
 import LogoutConfirmModal from '@/components/auth/LogoutConfirmModal';
 import ShiftCloseReceipt from '@/components/operations/ShiftCloseReceipt';
 import CloseShiftConfirmDialog from '@/components/session/CloseShiftConfirmDialog';
+import ShiftCloseReconPanel from '@/components/treasury/ShiftCloseReconPanel';
 import OperationalHandoffControl from '@/components/session/OperationalHandoffControl';
 import OperationalMobileSheet from '@/components/session/OperationalMobileSheet';
 import { useOperationalToast } from '@/components/session/OperationalToast';
@@ -21,6 +22,8 @@ import {
   mapOperationalError,
 } from '@/lib/operations/viewOperationalState';
 
+type ShiftReconIntent = 'logout' | 'close-only' | null;
+
 function ActiveSessionBar() {
   const pathname = usePathname();
   const isPosPage = pathname === '/income/pos';
@@ -31,8 +34,10 @@ function ActiveSessionBar() {
     viewBranch,
     operationalBranch,
     viewMatchesOperational,
+    access,
     logout,
     closeMyShift,
+    refresh,
   } = useSession();
   const { showToast } = useOperationalToast();
   const [mounted, setMounted] = useState(false);
@@ -42,6 +47,7 @@ function ActiveSessionBar() {
   const [closeShiftOpen, setCloseShiftOpen] = useState(false);
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
   const [busyClose, setBusyClose] = useState(false);
+  const [shiftReconIntent, setShiftReconIntent] = useState<ShiftReconIntent>(null);
   const [printData, setPrintData] = useState<{
     shiftMoveID: number;
     userName: string;
@@ -53,6 +59,9 @@ function ActiveSessionBar() {
     cashIn: number;
     cashOut: number;
   } | null>(null);
+
+  const isCashier = Boolean(access?.roles?.includes('cashier'));
+  const requireShiftRecon = isCashier && hasOpenShift && Boolean(shift?.ID);
 
   useEffect(() => {
     setMounted(true);
@@ -71,6 +80,22 @@ function ActiveSessionBar() {
   const opLabel = branchDisplayName(operationalBranch);
   const startedAt = formatShiftStartTime(shift?.StartDate, shift?.StartTime);
   const elapsed = formatShiftElapsed(shift?.StartDate, shift?.StartTime, now);
+
+  function requestLogout() {
+    if (requireShiftRecon) {
+      setShiftReconIntent('logout');
+      return;
+    }
+    setShowLogoutModal(true);
+  }
+
+  function requestEndShift() {
+    if (requireShiftRecon) {
+      setShiftReconIntent('close-only');
+      return;
+    }
+    setCloseShiftOpen(true);
+  }
 
   async function handleCloseShiftAndLogout() {
     if (shift) {
@@ -141,9 +166,49 @@ function ActiveSessionBar() {
     }
   }
 
+  async function handleShiftReconClosed() {
+    const intent = shiftReconIntent;
+    setShiftReconIntent(null);
+    const closedShiftId = shift?.ID;
+    const closedShift = shift;
+
+    try {
+      await refresh();
+    } catch {
+      // session refresh best-effort
+    }
+
+    if (intent === 'logout' && closedShiftId && closedShift) {
+      try {
+        const summaryRes = await fetch(`/api/shift/summary?id=${closedShiftId}`);
+        if (summaryRes.ok) {
+          const summaryData = await summaryRes.json();
+          setPrintData({
+            shiftMoveID: closedShiftId,
+            userName: closedShift.UserName || user?.UserName || '—',
+            shiftName: closedShift.ShiftName || '—',
+            startTime: closedShift.StartTime?.trim() || '—',
+            salesCount: summaryData.salesCount || 0,
+            totalRevenue: summaryData.totalRevenue || 0,
+            paymentBreakdown: summaryData.paymentBreakdown || [],
+            cashIn: summaryData.cashIn || 0,
+            cashOut: summaryData.cashOut || 0,
+          });
+          setShowPrintReceipt(true);
+          return;
+        }
+      } catch {
+        // fall through to logout
+      }
+      await logout();
+      return;
+    }
+
+    showToast(`تم تقفيل وردية ${opLabel}`);
+  }
+
   return (
     <div className="flex items-center gap-3 px-3 py-1.5 bg-muted/50 border-b border-border text-xs overflow-hidden relative min-w-0">
-      {/* Desktop operational status — compact, view lighter / operate stronger */}
       <div className="hidden xl:flex items-center gap-2.5 shrink-0 max-w-[46%] min-w-0">
         <div className="flex items-center gap-1.5 shrink-0">
           <User className="w-3.5 h-3.5 text-muted-foreground" />
@@ -184,7 +249,7 @@ function ActiveSessionBar() {
             <OperationalHandoffControl className="text-[10px] font-medium text-primary hover:underline underline-offset-2 whitespace-nowrap" />
             <button
               type="button"
-              onClick={() => setCloseShiftOpen(true)}
+              onClick={requestEndShift}
               className="text-[10px] text-muted-foreground hover:text-destructive underline-offset-2 hover:underline mr-0.5"
             >
               إنهاء
@@ -202,7 +267,6 @@ function ActiveSessionBar() {
         )}
       </div>
 
-      {/* Compact chip (&lt; xl): tap opens operational sheet on mobile widths */}
       <div className="flex xl:hidden items-center gap-1.5 shrink-0">
         <User className="w-3.5 h-3.5 text-muted-foreground" />
         <span className="font-medium truncate max-w-[5.5rem]">{user.UserName}</span>
@@ -235,7 +299,7 @@ function ActiveSessionBar() {
         variant="ghost"
         size="sm"
         className="h-6 text-xs px-2 shrink-0"
-        onClick={() => setShowLogoutModal(true)}
+        onClick={requestLogout}
       >
         <LogOut className="w-3.5 h-3.5 ml-1" />
         خروج
@@ -250,6 +314,15 @@ function ActiveSessionBar() {
         onCloseShiftPrintAndLogout={handleCloseShiftPrintAndLogout}
         onLogoutOnly={logout}
       />
+
+      {shiftReconIntent && shift?.ID ? (
+        <ShiftCloseReconPanel
+          shiftMoveId={shift.ID}
+          shiftName={shift.ShiftName}
+          onClose={() => setShiftReconIntent(null)}
+          onClosed={() => void handleShiftReconClosed()}
+        />
+      ) : null}
 
       <ShiftCloseReceipt open={showPrintReceipt} data={printData} onClose={handlePrintClose} />
 

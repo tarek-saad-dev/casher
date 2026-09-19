@@ -14,6 +14,7 @@ import {
   mapOperationalError,
 } from '@/lib/operations/viewOperationalState';
 import CloseShiftConfirmDialog from '@/components/session/CloseShiftConfirmDialog';
+import ShiftCloseReconPanel from '@/components/treasury/ShiftCloseReconPanel';
 import OperationalHandoffControl from '@/components/session/OperationalHandoffControl';
 import { useOperationalToast } from '@/components/session/OperationalToast';
 
@@ -32,6 +33,7 @@ export default function OperationalMobileSheet({ open, onClose }: OperationalMob
     day,
     hasOpenShift,
     viewMatchesOperational,
+    access,
     closeMyShift,
     refresh,
   } = useSession();
@@ -40,6 +42,10 @@ export default function OperationalMobileSheet({ open, onClose }: OperationalMob
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [closeOpen, setCloseOpen] = useState(false);
+  const [showShiftRecon, setShowShiftRecon] = useState(false);
+
+  const isCashier = Boolean(access?.roles?.includes('cashier'));
+  const requireShiftRecon = isCashier && hasOpenShift && Boolean(shift?.ID);
 
   useEffect(() => {
     if (!open || !hasOpenShift) return;
@@ -73,6 +79,25 @@ export default function OperationalMobileSheet({ open, onClose }: OperationalMob
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleShiftReconClosed() {
+    setShowShiftRecon(false);
+    try {
+      await refresh();
+    } catch {
+      // best-effort
+    }
+    onClose();
+    showToast(`تم تقفيل وردية ${opLabel}`);
+  }
+
+  function requestCloseShift() {
+    if (requireShiftRecon) {
+      setShowShiftRecon(true);
+      return;
+    }
+    setCloseOpen(true);
   }
 
   async function returnToOperational() {
@@ -154,7 +179,7 @@ export default function OperationalMobileSheet({ open, onClose }: OperationalMob
                 variant="destructive"
                 className="h-11 w-full"
                 disabled={busy}
-                onClick={() => setCloseOpen(true)}
+                onClick={requestCloseShift}
               >
                 إغلاق الوردية
               </Button>
@@ -162,6 +187,15 @@ export default function OperationalMobileSheet({ open, onClose }: OperationalMob
           </div>
         </div>
       </MobileBottomSheet>
+
+      {showShiftRecon && shift?.ID ? (
+        <ShiftCloseReconPanel
+          shiftMoveId={shift.ID}
+          shiftName={shift.ShiftName}
+          onClose={() => setShowShiftRecon(false)}
+          onClosed={() => void handleShiftReconClosed()}
+        />
+      ) : null}
 
       <CloseShiftConfirmDialog
         open={closeOpen}

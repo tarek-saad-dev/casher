@@ -254,10 +254,13 @@ describe('treasuryActions integration', () => {
         })
       ).rejects.toThrow('تم تقفيل هذا اليوم مسبقاً');
 
-      // Verify only one reconciliation row exists (TblTreasuryCloseRecon.NewDay is the day ID)
+      // Verify only one day-level reconciliation row exists
       const reconCount = await new sql.Request(transaction)
         .input('dayId', sql.Int, dayId)
-        .query(`SELECT COUNT(*) AS cnt FROM dbo.TblTreasuryCloseRecon WHERE NewDay = @dayId`);
+        .query(`
+          SELECT COUNT(*) AS cnt FROM dbo.TblTreasuryCloseRecon
+          WHERE NewDay = @dayId AND ShiftMoveID IS NULL
+        `);
       expect(reconCount.recordset[0].cnt).toBe(1);
     } finally {
       await transaction.rollback();
