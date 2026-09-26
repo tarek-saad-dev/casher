@@ -571,7 +571,7 @@ describe('B8.5 artifacts + wiring', () => {
     // Read-through body: revision batch then miss rebuild (not full DB then warm).
     const rtStart = src.indexOf('async function resolveBookingAvailabilityV2ReadThrough');
     const rt = src.slice(rtStart);
-    const revIdx = rt.indexOf('await revStore.loadBatch');
+    const revIdx = rt.indexOf('loadAvailabilityRevisionBatchSoft');
     const rebuildIdx = rt.indexOf('await rebuildHotPayloadsForMissKeys');
     expect(revIdx).toBeGreaterThan(-1);
     expect(rebuildIdx).toBeGreaterThan(-1);
