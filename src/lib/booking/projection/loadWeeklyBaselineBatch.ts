@@ -107,7 +107,7 @@ export async function loadWeeklyBaselineSourceInputsBatch(
     empIds.forEach((id, i) => req.input(`e${i}`, sql.Int, id));
     branchIds.forEach((id, i) => req.input(`b${i}`, sql.Int, id));
     const res = await req.query(`
-      SELECT AssignmentID, EmpID, BranchID, EffectiveFrom, EffectiveTo
+      SELECT ID, EmpID, BranchID, EffectiveFrom, EffectiveTo
       FROM dbo.TblEmpBranchAssignment
       WHERE EmpID IN (${empIds.map((_, i) => `@e${i}`).join(',')})
         AND BranchID IN (${branchIds.map((_, i) => `@b${i}`).join(',')})
@@ -124,7 +124,7 @@ export async function loadWeeklyBaselineSourceInputsBatch(
         branchId: Number(row.BranchID),
         effectiveFrom,
         effectiveTo: ymdFromSqlDate(row.EffectiveTo),
-        id: Number(row.AssignmentID) || 0,
+        id: Number(row.ID) || 0,
       });
     }
   }

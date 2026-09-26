@@ -74,12 +74,12 @@ export async function loadWeeklyBaselineSourceInputs(
     .input('branchId', sql.Int, args.branchId)
     .input('day', sql.Date, args.asOfDate)
     .query(`
-      SELECT TOP 1 AssignmentID
+      SELECT TOP 1 ID
       FROM dbo.TblEmpBranchAssignment
       WHERE EmpID = @empId AND BranchID = @branchId AND IsActive = 1
         AND EffectiveFrom <= @day
         AND (EffectiveTo IS NULL OR EffectiveTo >= @day)
-      ORDER BY EffectiveFrom DESC, AssignmentID DESC
+      ORDER BY EffectiveFrom DESC, ID DESC
     `);
   const assigned = !!assignRes.recordset[0];
 
