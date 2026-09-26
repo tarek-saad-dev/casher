@@ -21,6 +21,7 @@ import {
   loadWeeklyBaselineSourceInputsBatch,
   weeklyBaselineBatchKeyString,
 } from '@/lib/booking/projection/loadWeeklyBaselineBatch';
+import { buildWeeklyBaselineKeysForBusinessDates } from '@/lib/booking/projection/weeklyBaselineAsOf';
 import { loadEffectiveDayLayerInputsRangeBatch } from '@/lib/booking/projection/loadEffectiveDayLayersBatch';
 import {
   loadBookingOccupancyIntervalsRangeBatch,
@@ -393,32 +394,17 @@ async function resolveBookingAvailabilityV2FullDb(
   const source = args.source ?? 'public';
   const today = getCairoBusinessDate(args.nowMs != null ? new Date(args.nowMs) : undefined);
   const nowMs = args.nowMs ?? Date.now();
-  const asOfDate = args.businessDateRange.to;
 
   if (!empIds.length || !branchIds.length || !dates.length) {
     return { days: [], queryCount: 0, composeMs: 0, totalMs: 0, dbMs: 0 };
   }
 
-  const weeklyUnique = new Map<
-    string,
-    { employeeId: number; branchId: number; dayOfWeek: number; asOfDate: string }
-  >();
-  for (const branchId of branchIds) {
-    for (const empId of empIds) {
-      for (const date of dates) {
-        const dow = parseDayOfWeek(dayOfWeekFromYmd(date));
-        const key = `${empId}:${branchId}:${dow}:${asOfDate}`;
-        if (!weeklyUnique.has(key)) {
-          weeklyUnique.set(key, {
-            employeeId: empId,
-            branchId,
-            dayOfWeek: dow,
-            asOfDate,
-          });
-        }
-      }
-    }
-  }
+  // Per-business-date asOf — never collapse to range.to (false FreeMask slots).
+  const weeklyKeys = buildWeeklyBaselineKeysForBusinessDates({
+    employeeIds: empIds,
+    branchIds,
+    businessDates: dates,
+  });
 
   const queueDates = [
     ...new Set(
@@ -429,7 +415,7 @@ async function resolveBookingAvailabilityV2FullDb(
   ];
 
   const [weeklyBatch, bookingsRange, holdsRange, ...layerPacks] = await Promise.all([
-    markDb(loadWeeklyBaselineSourceInputsBatch([...weeklyUnique.values()])),
+    markDb(loadWeeklyBaselineSourceInputsBatch(weeklyKeys)),
     markDb(
       loadBookingOccupancyIntervalsRangeBatch({
         employeeIds: empIds,
@@ -516,7 +502,7 @@ async function resolveBookingAvailabilityV2FullDb(
           employeeId: empId,
           branchId,
           dayOfWeek: dow,
-          asOfDate,
+          asOfDate: date,
         });
         const weekly = weeklyBatch.byKey.get(wkKey);
         if (!weekly) continue;

@@ -13,6 +13,7 @@ import {
   loadWeeklyBaselineSourceInputsBatch,
   weeklyBaselineBatchKeyString,
 } from '@/lib/booking/projection/loadWeeklyBaselineBatch';
+import { buildWeeklyBaselineKeysForBusinessDates } from '@/lib/booking/projection/weeklyBaselineAsOf';
 import { loadEffectiveDayLayerInputsRangeBatch } from '@/lib/booking/projection/loadEffectiveDayLayersBatch';
 import {
   loadBookingOccupancyIntervalsRangeBatch,
@@ -64,27 +65,16 @@ export async function rebuildHotPayloadsForMissKeys(args: {
   const dates = [...new Set(args.keys.map((k) => k.businessDate))].sort();
   const from = dates[0]!;
   const to = dates[dates.length - 1]!;
-  const asOfDate = to;
   const source = args.source ?? 'public';
   const nowMs = args.nowMs ?? Date.now();
   const today = getCairoBusinessDate(new Date(nowMs));
 
-  const weeklyUnique = new Map<
-    string,
-    { employeeId: number; branchId: number; dayOfWeek: number; asOfDate: string }
-  >();
-  for (const k of args.keys) {
-    const dow = parseDayOfWeek(dayOfWeekFromYmd(k.businessDate));
-    const key = `${k.employeeId}:${k.branchId}:${dow}:${asOfDate}`;
-    if (!weeklyUnique.has(key)) {
-      weeklyUnique.set(key, {
-        employeeId: k.employeeId,
-        branchId: k.branchId,
-        dayOfWeek: dow,
-        asOfDate,
-      });
-    }
-  }
+  // Per-business-date asOf — never collapse miss-set max date onto earlier days.
+  const weeklyKeys = buildWeeklyBaselineKeysForBusinessDates({
+    employeeIds: empIds,
+    branchIds,
+    businessDates: dates,
+  });
 
   const queueDates = [
     ...new Set(
@@ -95,7 +85,7 @@ export async function rebuildHotPayloadsForMissKeys(args: {
   ];
 
   const [weeklyBatch, bookingsRange, holdsRange, ...layerPacks] = await Promise.all([
-    markDb(loadWeeklyBaselineSourceInputsBatch([...weeklyUnique.values()])),
+    markDb(loadWeeklyBaselineSourceInputsBatch(weeklyKeys)),
     markDb(
       loadBookingOccupancyIntervalsRangeBatch({
         employeeIds: empIds,
@@ -166,7 +156,7 @@ export async function rebuildHotPayloadsForMissKeys(args: {
       employeeId: k.employeeId,
       branchId: k.branchId,
       dayOfWeek: dow,
-      asOfDate,
+      asOfDate: k.businessDate,
     });
     const weekly = weeklyBatch.byKey.get(wkKey);
     if (!weekly) continue;
