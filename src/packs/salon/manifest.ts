@@ -1,7 +1,7 @@
 import {
   APP_REGISTRY_CODES,
   OPERATIONS_SURFACE_CODE,
-} from '@/platform/public';
+} from '@/platform/registry/constants';
 
 /**
  * Salon Pack manifest — recipe, not a fork (DRVO-002).

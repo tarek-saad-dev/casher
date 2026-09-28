@@ -9,8 +9,9 @@ export type BoundaryViolation = {
   rule: string;
 };
 
-const IMPORT_RE =
-  /(?:import\s+(?:type\s+)?(?:[\w*{}\s,]+)\s+from\s+|export\s+.*\s+from\s+)['"]([^'"]+)['"]/g;
+const FROM_RE = /\bfrom\s+['"]([^'"]+)['"]/g;
+const DYNAMIC_RE = /\b(?:import|require)\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+const SIDE_EFFECT_RE = /^\s*import\s+['"]([^'"]+)['"]/gm;
 
 function listTsFiles(dir: string, acc: string[] = []): string[] {
   if (!fs.existsSync(dir)) return acc;
@@ -39,21 +40,51 @@ function moduleRootForFile(filePath: string): string | null {
   return m[1];
 }
 
+function extractSpecifiers(content: string): string[] {
+  const specs: string[] = [];
+  for (const re of [FROM_RE, DYNAMIC_RE, SIDE_EFFECT_RE]) {
+    re.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(content))) {
+      specs.push(match[1]);
+    }
+  }
+  return specs;
+}
+
+/**
+ * Resolve `@/` and relative specifiers to a path under `src/`.
+ * Bare package imports are ignored. Missing files still return the
+ * intended path so a forbidden specifier is reported before the file exists.
+ */
 function resolveImport(fromFile: string, spec: string): string | null {
-  if (!spec.startsWith('@/')) return null;
-  const target = spec.slice(2);
-  const abs = path.join(ROOT, target);
+  let abs: string;
+  if (spec.startsWith('@/')) {
+    abs = path.join(ROOT, spec.slice(2));
+  } else if (spec.startsWith('./') || spec.startsWith('../')) {
+    abs = path.resolve(path.dirname(fromFile), spec);
+  } else {
+    return null;
+  }
+
   const candidates = [
     abs,
     `${abs}.ts`,
     `${abs}.tsx`,
     path.join(abs, 'index.ts'),
+    path.join(abs, 'index.tsx'),
     path.join(abs, 'public', 'index.ts'),
   ];
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return toPosix(path.relative(ROOT, c));
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return toPosix(path.relative(ROOT, candidate));
+    }
   }
-  return toPosix(target);
+  return toPosix(path.relative(ROOT, abs));
+}
+
+function isAppInternalPath(resolved: string): boolean {
+  return /^apps\/[^/]+\/internal(?:\/|\.|$)/.test(resolved);
 }
 
 export function checkImportBoundaries(files?: string[]): BoundaryViolation[] {
@@ -73,14 +104,11 @@ export function checkImportBoundaries(files?: string[]): BoundaryViolation[] {
     const fromRoot = moduleRootForFile(file);
     if (!fromRoot) continue;
 
-    let match: RegExpExecArray | null;
-    IMPORT_RE.lastIndex = 0;
-    while ((match = IMPORT_RE.exec(content))) {
-      const spec = match[1];
+    const relFile = toPosix(path.relative(ROOT, file));
+
+    for (const spec of extractSpecifiers(content)) {
       const resolved = resolveImport(file, spec);
       if (!resolved) continue;
-
-      const relFile = toPosix(path.relative(ROOT, file));
 
       if (fromRoot === 'platform') {
         if (
@@ -99,18 +127,11 @@ export function checkImportBoundaries(files?: string[]): BoundaryViolation[] {
       if (fromRoot.startsWith('apps/')) {
         const fromApp = fromRoot.split('/')[1];
         const targetApp = /^apps\/([^/]+)/.exec(resolved)?.[1];
-        if (targetApp && targetApp !== fromApp && !resolved.includes('/public/')) {
+        if (targetApp && targetApp !== fromApp) {
           violations.push({
             file: relFile,
             importPath: spec,
             rule: 'apps must not import another app directly',
-          });
-        }
-        if (targetApp && targetApp !== fromApp && resolved.includes('/internal/')) {
-          violations.push({
-            file: relFile,
-            importPath: spec,
-            rule: 'apps must not import another app internal path',
           });
         }
       }
@@ -128,7 +149,7 @@ export function checkImportBoundaries(files?: string[]): BoundaryViolation[] {
       }
 
       if (fromRoot.startsWith('packs/')) {
-        if (resolved.includes('/apps/') && resolved.includes('/internal/')) {
+        if (isAppInternalPath(resolved)) {
           violations.push({
             file: relFile,
             importPath: spec,

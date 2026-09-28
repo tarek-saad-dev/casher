@@ -88,7 +88,6 @@ async function main() {
       const branches = await new sql.Request(tx).query(`
         SELECT BranchID, BranchCode, ISNULL(TimeZone, N'Africa/Cairo') AS TimeZone
         FROM dbo.TblBranch WITH (NOLOCK)
-        WHERE ISNULL(IsActive, 1) = 1
         ORDER BY BranchID;
       `);
 
@@ -116,6 +115,22 @@ async function main() {
             INSERT INTO dbo.LegacyIdMap (TenantId, EntityName, LegacyKey, DrvoId)
             VALUES (@tenantId, N'branch', @legacyKey, @drvoId);
           `);
+      }
+
+      const branchCountResult = await new sql.Request(tx).query(
+        `SELECT COUNT(*) AS cnt FROM dbo.TblBranch;`,
+      );
+      const locationCountResult = await new sql.Request(tx)
+        .input('tenantId', sql.UniqueIdentifier, tenantId)
+        .query(
+          `SELECT COUNT(*) AS cnt FROM dbo.Location WHERE TenantId = @tenantId;`,
+        );
+      const branchCount = Number(branchCountResult.recordset[0].cnt);
+      const locationCount = Number(locationCountResult.recordset[0].cnt);
+      if (locationCount !== branchCount) {
+        throw new Error(
+          `Location count ${locationCount} does not equal TblBranch count ${branchCount}`,
+        );
       }
 
       const users = await new sql.Request(tx).query(`

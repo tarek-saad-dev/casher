@@ -1,30 +1,31 @@
 import 'server-only';
-import type { Transaction } from 'mssql';
 import { sql } from '@/lib/db';
-import type { ActorContext } from '@/platform/public';
 import type { CustomerSnapshot, CustomersPort } from '../public/ports';
 
-/** Anti-corruption adapter over legacy TblClient. */
+/**
+ * Anti-corruption adapter over legacy TblClient.
+ * Live rows use [Name] and Mobile. Do not filter or write a deletion flag.
+ */
 export function createLegacyCustomersAdapter(): CustomersPort {
   return {
     async upsertByPhone(tx, _actor, input) {
-      const req = new sql.Request(tx)
-        .input('phone', sql.NVarChar(32), input.phone)
-        .input('name', sql.NVarChar(200), input.displayName ?? null);
-      const existing = await req.query(`
-        SELECT TOP 1 ClientID FROM dbo.TblClient WITH (UPDLOCK, HOLDLOCK)
-        WHERE Phone = @phone AND ISNULL(isDeleted, 0) = 0;
-      `);
+      const existing = await new sql.Request(tx)
+        .input('phone', sql.NVarChar(200), input.phone)
+        .query(`
+          SELECT TOP 1 ClientID
+          FROM dbo.TblClient WITH (UPDLOCK, HOLDLOCK)
+          WHERE Mobile = @phone;
+        `);
       if (existing.recordset.length) {
         return Number(existing.recordset[0].ClientID);
       }
       const insert = await new sql.Request(tx)
-        .input('phone', sql.NVarChar(32), input.phone)
+        .input('phone', sql.NVarChar(200), input.phone)
         .input('name', sql.NVarChar(200), input.displayName ?? input.phone)
         .query(`
-          INSERT INTO dbo.TblClient (Phone, ClientName)
+          INSERT INTO dbo.TblClient ([Name], Mobile, RegisterDate)
           OUTPUT INSERTED.ClientID AS id
-          VALUES (@phone, @name);
+          VALUES (@name, @phone, GETDATE());
         `);
       return Number(insert.recordset[0].id);
     },
@@ -36,20 +37,20 @@ export function createLegacyCustomersAdapter(): CustomersPort {
         .request()
         .input('id', sql.Int, customerId)
         .query(`
-          SELECT ClientID, Phone, ClientName
+          SELECT ClientID, [Name], Mobile
           FROM dbo.TblClient WITH (NOLOCK)
-          WHERE ClientID = @id AND ISNULL(isDeleted, 0) = 0;
+          WHERE ClientID = @id;
         `);
       if (!result.recordset.length) return null;
       const row = result.recordset[0] as {
         ClientID: number;
-        Phone: string | null;
-        ClientName: string | null;
+        Name: string | null;
+        Mobile: string | null;
       };
       return {
         customerId: row.ClientID,
-        phone: row.Phone,
-        displayName: row.ClientName,
+        phone: row.Mobile,
+        displayName: row.Name,
       };
     },
 
@@ -58,22 +59,22 @@ export function createLegacyCustomersAdapter(): CustomersPort {
       const db = await getPool();
       const result = await db
         .request()
-        .input('phone', sql.NVarChar(32), phone)
+        .input('phone', sql.NVarChar(200), phone)
         .query(`
-          SELECT TOP 1 ClientID, Phone, ClientName
+          SELECT TOP 1 ClientID, [Name], Mobile
           FROM dbo.TblClient WITH (NOLOCK)
-          WHERE Phone = @phone AND ISNULL(isDeleted, 0) = 0;
+          WHERE Mobile = @phone;
         `);
       if (!result.recordset.length) return null;
       const row = result.recordset[0] as {
         ClientID: number;
-        Phone: string | null;
-        ClientName: string | null;
+        Name: string | null;
+        Mobile: string | null;
       };
       return {
         customerId: row.ClientID,
-        phone: row.Phone,
-        displayName: row.ClientName,
+        phone: row.Mobile,
+        displayName: row.Name,
       };
     },
   };

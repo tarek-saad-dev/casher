@@ -10,7 +10,7 @@
 - Module skeleton under `src/platform`, `src/shared/*`, `src/apps/*`, `src/packs/salon`, `src/legacy`
 - Import-boundary checker with a forbidden fixture under `src/platform/__tests__/fixtures/`
 - Staging-only migration: `db/migrations/add-drvo-003-platform-core.sql` (runner refuses `last132`)
-- Bootstrap seed: `scripts/seed-drvo-003-bootstrap-tenant.ts` (refuses a second `Tenant` row)
+- Bootstrap seed: `scripts/seed-drvo-003-bootstrap-tenant.ts` (one Location per `TblBranch` row, including inactive branches; refuses a second `Tenant` row). The salon manifest imports platform constants directly so `tsx` does not load `server-only`.
 - Staff session resolves `tenantId` + `membershipId` via `resolveStaffTenantContext`
 - `tenantLockResource` / `tenantCacheKey` helpers in Platform Core
 - `PlatformOutbox` + transaction-aware publisher
