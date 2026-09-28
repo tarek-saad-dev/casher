@@ -15,6 +15,7 @@
 - Import-boundary tests ban cross-app POS imports and forbidden table references inside booking package.
 - Workforce occupancy `assertFree` calls `assertEmployeeIntervalAvailable` with `startAt`/`endAt`, the requested business date, branch, hold exclusion, and `booking:{id}` exclusion. Conflict reads stay employee-global, so another location on the same employee fails closed.
 - Scheduling applocks are taken only inside the Workforce adapter. Each employee interval takes both `booking:emp:{empId}:{start}:{end}` and the tenant lock `t:{tenantId}:emp:…`, so the flag-off path and the port path serialize the same interval. `BOOKING_SCHEDULING_PORT=false` still uses the legacy lock helper directly.
+- Port-path reschedule takes that interval lock before `operations-schedule:{emp}:{date}`, the same order as public create. Flag-off reschedule still takes only the schedule lock.
 - `POST /api/public/booking/[code]/cancel` and operations affected-bookings reschedule use the extracted port when the flag is on (PlatformOutbox, no legacy customer WhatsApp).
 - Conversion loads service lines from the real `BookingServices` columns (`ProID`, `EmpID`, `Price`, `Qty`). Reservation date comes from `Bookings.BookingDate`, formatted `YYYY-MM-DD`.
 

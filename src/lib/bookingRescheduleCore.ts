@@ -42,6 +42,7 @@ import {
 } from '@/lib/employeeServiceEligibility';
 import type { SchedulingPortHooks } from '@/apps/booking/internal/schedulingPortAdapter';
 import {
+  bridgeAcquireEmpIntervalLock,
   bridgeAssertEmployeeFree,
   bridgePublishRescheduledEvent,
 } from '@/lib/booking/schedulingPortLegacyBridge';
@@ -745,6 +746,20 @@ export async function rescheduleBookingMove(args: {
       effectiveBranchId != null &&
       booking.branchId != null &&
       effectiveBranchId !== booking.branchId;
+
+    // Public create takes booking:emp (then the tenant lock) before
+    // operations-schedule. On the port path, take that interval lock first so
+    // a concurrent create and this move queue instead of deadlocking.
+    // Flag-off reschedule still takes only the schedule lock, matching main.
+    if (schedulingPortHooks) {
+      await bridgeAcquireEmpIntervalLock(
+        { schedulingPortHooks },
+        transaction,
+        effectiveEmpId,
+        proposedStart.getTime(),
+        proposedEnd.getTime(),
+      );
+    }
 
     await acquireScheduleLocksSorted(
       transaction,
