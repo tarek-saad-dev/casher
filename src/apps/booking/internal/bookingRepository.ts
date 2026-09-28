@@ -22,7 +22,7 @@ export type BookingServiceLine = {
   reservationDate: string;
 };
 
-function sqlDateToYmd(value: unknown): string {
+export function sqlDateToYmd(value: unknown): string {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     const year = value.getUTCFullYear();
     const month = String(value.getUTCMonth() + 1).padStart(2, '0');

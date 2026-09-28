@@ -1,6 +1,9 @@
+import fs from 'fs';
+import path from 'path';
 import { describe, expect, it, vi } from 'vitest';
 import type { Transaction } from 'mssql';
 import { convertBooking } from '../application/convertBooking';
+import { sqlDateToYmd } from '../internal/bookingRepository';
 import type { BookingSchedulingPorts } from '../public/ports';
 
 type Row = Record<string, unknown>;
@@ -60,8 +63,11 @@ function makeTx(state: {
   };
 }
 
-vi.mock('../internal/bookingRepository', () => ({
-  loadBookingForConversion: vi.fn(async (_tx, bookingId: number) => {
+vi.mock('../internal/bookingRepository', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../internal/bookingRepository')>();
+  return {
+    ...actual,
+    loadBookingForConversion: vi.fn(async (_tx, bookingId: number) => {
     const ctx = (globalThis as { __convertTest?: ReturnType<typeof makeTx> }).__convertTest;
     if (!ctx?.state.booking) return null;
     if (ctx.state.converted) {
@@ -76,11 +82,12 @@ vi.mock('../internal/bookingRepository', () => ({
     }
     return { booking: ctx.state.booking, services: ctx.state.services };
   }),
-  markBookingConverted: vi.fn(async () => {
-    const ctx = (globalThis as { __convertTest?: ReturnType<typeof makeTx> }).__convertTest;
-    if (ctx) ctx.state.converted = true;
-  }),
-}));
+    markBookingConverted: vi.fn(async () => {
+      const ctx = (globalThis as { __convertTest?: ReturnType<typeof makeTx> }).__convertTest;
+      if (ctx) ctx.state.converted = true;
+    }),
+  };
+});
 
 vi.mock('@/platform/public', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/platform/public')>();
@@ -93,6 +100,25 @@ vi.mock('@/platform/public', async (importOriginal) => {
 });
 
 describe('convertBooking characterization', () => {
+  it('formats booking dates from Date objects as YYYY-MM-DD', () => {
+    expect(sqlDateToYmd(new Date('2026-10-20T00:00:00.000Z'))).toBe('2026-10-20');
+    expect(sqlDateToYmd('2026-10-20T00:00:00.000Z')).toBe('2026-10-20');
+  });
+
+  it('loads service lines from BookingServices columns that exist', () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, '../internal/bookingRepository.ts'),
+      'utf8',
+    );
+    const servicesSql = src.slice(
+      src.indexOf('SELECT ProID, EmpID, Price, Qty'),
+      src.indexOf('FROM [dbo].[BookingServices]') + 'FROM [dbo].[BookingServices]'.length,
+    );
+    expect(servicesSql).toContain('SELECT ProID, EmpID, Price, Qty');
+    expect(servicesSql).not.toContain('BookingDate');
+    expect(src).toContain('reservationDate: sqlDateToYmd(row.BookingDate)');
+  });
+
   it('returns existing invoice when linkage already exists (idempotent)', async () => {
     const ctx = makeTx({
       booking: {
