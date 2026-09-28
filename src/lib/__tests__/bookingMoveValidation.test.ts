@@ -10,6 +10,10 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const { lockOrder } = vi.hoisted(() => ({
+  lockOrder: [] as string[],
+}));
+
 // ── Mutable fixture state ─────────────────────────────────────────────────────
 interface State {
   emp: { EmpID: number; EmpName: string; isActive: number; Job: string } | null;
@@ -23,11 +27,13 @@ interface State {
   updateCalls: number;
   committed: boolean;
   rolledBack: boolean;
+  applockResult: number;
 }
 
 let state: State;
 
 function resetState(): void {
+  lockOrder.length = 0;
   state = {
     emp: { EmpID: 5, EmpName: 'كريم', isActive: 1, Job: 'حلاق' },
     activeServiceIds: new Set([1047]),
@@ -39,6 +45,7 @@ function resetState(): void {
     updateCalls: 0,
     committed: false,
     rolledBack: false,
+    applockResult: 0,
   };
 }
 
@@ -104,6 +111,12 @@ function runQuery(q: string, inputs: Record<string, unknown>) {
   if (/UPDATE \[dbo\]\.\[BookingServices\]/.test(q)) {
     return { recordset: [], rowsAffected: [1] };
   }
+  if (/sp_getapplock/i.test(q)) {
+    lockOrder.push(String(inputs.resource ?? ''));
+    return {
+      recordset: [{ lockResult: state.applockResult, LockResult: state.applockResult }],
+    };
+  }
   return { recordset: [] };
 }
 
@@ -127,7 +140,7 @@ vi.mock('@/lib/db', () => ({
   sql: {
     Int: { type: 'int' },
     VarChar: { type: 'varchar' },
-    NVarChar: { type: 'nvarchar' },
+    NVarChar: (n?: number) => ({ type: 'nvarchar', n }),
     Date: { type: 'date' },
     Request: class FakeReq {
       inputs: Record<string, unknown> = {};
@@ -276,7 +289,9 @@ vi.mock('@/lib/scheduleIntegrity', async () => {
   );
   return {
     ScheduleConflictError: actual.ScheduleConflictError,
-    acquireScheduleLocksSorted: vi.fn(async () => {}),
+    acquireScheduleLocksSorted: vi.fn(async () => {
+      lockOrder.push('operations-schedule');
+    }),
     assertEmployeeIntervalAvailable: vi.fn(async () => {}),
     getEmployeeBusyIntervals: vi.fn(async () => []),
   };
@@ -291,6 +306,7 @@ import {
   validateBookingMove,
   rescheduleBookingMove,
 } from '@/lib/bookingRescheduleCore';
+import { BookingCreateLockError } from '@/lib/booking/publicBookingCreateLocks';
 
 beforeEach(() => {
   resetState();
@@ -363,5 +379,104 @@ describe('rescheduleBookingMove — final transactional guard', () => {
     expect((err as { code?: string }).code).toBe('EMPLOYEE_SERVICE_UNSUPPORTED');
     expect(state.updateCalls).toBe(0);
     expect(state.rolledBack).toBe(true);
+  });
+
+  it('port path takes booking:emp before operations-schedule', async () => {
+    const { createSchedulingPortHooks } = await import(
+      '@/apps/booking/internal/schedulingPortAdapter'
+    );
+    const { createLegacyWorkforceOccupancyAdapter } = await import(
+      '@/shared/workforce/public'
+    );
+    const tenantId = '11111111-1111-4111-8111-111111111111';
+    const hooks = createSchedulingPortHooks({
+      tenantId,
+      actor: {
+        actorType: 'staff',
+        actorId: '1',
+        tenantId,
+        membershipId: 'm1',
+        viewLocationId: null,
+      },
+      customers: {} as never,
+      catalog: {} as never,
+      occupancy: createLegacyWorkforceOccupancyAdapter(tenantId),
+      calendar: {} as never,
+      conversion: {} as never,
+      publishOutbox: async () => 1,
+    });
+
+    await rescheduleBookingMove({
+      ...baseArgs,
+      source: 'operations_cut_paste',
+      userId: 1,
+      targetEmpId: 5,
+      schedulingPortHooks: hooks,
+      useExtractedEventDelivery: true,
+      skipCustomerWhatsApp: true,
+    });
+
+    const intervalAt = lockOrder.findIndex((resource) => resource.startsWith('booking:emp:5:'));
+    const tenantAt = lockOrder.findIndex((resource) => resource.startsWith(`t:${tenantId}:emp:5:`));
+    const scheduleAt = lockOrder.indexOf('operations-schedule');
+    expect(intervalAt).toBeGreaterThanOrEqual(0);
+    expect(tenantAt).toBeGreaterThan(intervalAt);
+    expect(scheduleAt).toBeGreaterThan(tenantAt);
+    expect(state.committed).toBe(true);
+  });
+
+  it('port path maps a workforce lock timeout to BOOKING_LOCK_TIMEOUT and rolls back', async () => {
+    state.applockResult = -1;
+    const { createSchedulingPortHooks } = await import(
+      '@/apps/booking/internal/schedulingPortAdapter'
+    );
+    const { createLegacyWorkforceOccupancyAdapter } = await import(
+      '@/shared/workforce/public'
+    );
+    const tenantId = '11111111-1111-4111-8111-111111111111';
+    const hooks = createSchedulingPortHooks({
+      tenantId,
+      actor: {
+        actorType: 'staff',
+        actorId: '1',
+        tenantId,
+        membershipId: 'm1',
+        viewLocationId: null,
+      },
+      customers: {} as never,
+      catalog: {} as never,
+      occupancy: createLegacyWorkforceOccupancyAdapter(tenantId),
+      calendar: {} as never,
+      conversion: {} as never,
+      publishOutbox: async () => 1,
+    });
+
+    const err = await rescheduleBookingMove({
+      ...baseArgs,
+      source: 'operations_cut_paste',
+      userId: 1,
+      targetEmpId: 5,
+      schedulingPortHooks: hooks,
+      useExtractedEventDelivery: true,
+      skipCustomerWhatsApp: true,
+    }).catch((e) => e);
+
+    expect(err).toBeInstanceOf(BookingCreateLockError);
+    expect((err as BookingCreateLockError).code).toBe('BOOKING_LOCK_TIMEOUT');
+    expect(state.rolledBack).toBe(true);
+    expect(state.committed).toBe(false);
+    expect(state.updateCalls).toBe(0);
+    expect(lockOrder).not.toContain('operations-schedule');
+  });
+
+  it('flag-off reschedule does not take booking:emp', async () => {
+    await rescheduleBookingMove({
+      ...baseArgs,
+      source: 'operations_cut_paste',
+      userId: 1,
+      targetEmpId: 5,
+    });
+    expect(lockOrder).toEqual(['operations-schedule']);
+    expect(state.committed).toBe(true);
   });
 });

@@ -12,6 +12,12 @@ import {
   cancelPublicBooking,
   PublicBookingCancelError,
 } from '@/lib/booking/publicBookingCancellation';
+import { cancelBooking, isBookingSchedulingPortEnabled } from '@/apps/booking/public';
+import {
+  buildCustomerActorContext,
+  buildSchedulingPortHooksForActor,
+  resolveBootstrapTenantId,
+} from '@/lib/bookingSchedulingComposition';
 import { resolvePublicBookingClientIp } from '@/lib/booking/publicBookingClientIp';
 import { digestPublicBookingRateSubject } from '@/lib/booking/publicBookingRateLimitPolicy';
 import {
@@ -57,7 +63,7 @@ export async function POST(req: NextRequest) {
       req.headers.get('idempotency-key') ||
       null;
 
-    const result = await cancelPublicBooking({
+    const cancelInput = {
       code: String(body.code ?? ''),
       phone: body.phone != null ? String(body.phone) : null,
       accessToken:
@@ -74,7 +80,16 @@ export async function POST(req: NextRequest) {
         ip: clientIp,
         userAgent: req.headers.get('user-agent') || undefined,
       },
-    });
+    };
+
+    const result = isBookingSchedulingPortEnabled()
+      ? await (async () => {
+          const tenantId = await resolveBootstrapTenantId();
+          const actor = await buildCustomerActorContext(tenantId);
+          const schedulingPortHooks = await buildSchedulingPortHooksForActor(actor);
+          return cancelBooking({ ...cancelInput, schedulingPortHooks });
+        })()
+      : await cancelPublicBooking(cancelInput);
 
     const replay =
       (result.body as { cancellation?: { idempotentReplay?: boolean } } | null)

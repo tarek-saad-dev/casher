@@ -12,6 +12,12 @@ import {
   PublicBookingCreateError,
   createPublicBooking,
 } from '@/lib/booking/publicBookingCreate';
+import { createBooking, isBookingSchedulingPortEnabled } from '@/apps/booking/public';
+import {
+  buildCustomerActorContext,
+  buildSchedulingPortHooksForActor,
+  resolveBootstrapTenantId,
+} from '@/lib/bookingSchedulingComposition';
 import { PublicBookingSelectionError } from '@/lib/booking/publicBookingSelectionEvaluator';
 import {
   gatePublicBookingRoute,
@@ -114,7 +120,7 @@ export async function POST(req: NextRequest) {
         ? (leadRaw as 'phone' | 'whatsapp' | 'website' | 'admin' | 'walk_in')
         : null;
 
-    const result = await createPublicBooking({
+    const createInput = {
       branchCode,
       date: typeof body.date === 'string' ? body.date : null,
       time: typeof body.time === 'string' ? body.time : null,
@@ -143,7 +149,20 @@ export async function POST(req: NextRequest) {
       auth,
       bookingSource,
       leadSource,
-    });
+    };
+
+    const result = isBookingSchedulingPortEnabled()
+      ? await (async () => {
+          const tenantId = await resolveBootstrapTenantId();
+          const actor = await buildCustomerActorContext(tenantId);
+          const schedulingPortHooks = await buildSchedulingPortHooksForActor(actor);
+          return createBooking({
+            ...createInput,
+            tenantId,
+            schedulingPortHooks,
+          });
+        })()
+      : await createPublicBooking(createInput);
 
     const replay = result.body?.meta?.idempotentReplay === true;
     return finalizePublicBookingJson(req, gate, result.body, {

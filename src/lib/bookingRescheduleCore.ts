@@ -40,6 +40,12 @@ import {
   buildUnsupportedServicesMessage,
   type UnsupportedService,
 } from '@/lib/employeeServiceEligibility';
+import type { SchedulingPortHooks } from '@/apps/booking/internal/schedulingPortAdapter';
+import {
+  bridgeAcquireEmpIntervalLock,
+  bridgeAssertEmployeeFree,
+  bridgePublishRescheduledEvent,
+} from '@/lib/booking/schedulingPortLegacyBridge';
 
 /** dbo.Bookings.Notes column limit (see db/migrations/queue-booking-system.sql) */
 export const BOOKING_NOTES_MAX_LENGTH = 500;
@@ -655,6 +661,8 @@ export async function rescheduleBookingMove(args: {
   targetBranchId?: number | null;
   /** Skip post-commit customer WhatsApp template (e.g. AI chat already confirms). */
   skipCustomerWhatsApp?: boolean;
+  schedulingPortHooks?: SchedulingPortHooks;
+  useExtractedEventDelivery?: boolean;
 }): Promise<{
   bookingId: number;
   oldStartAt: string;
@@ -677,6 +685,8 @@ export async function rescheduleBookingMove(args: {
     targetEmpId,
     targetBranchId,
     skipCustomerWhatsApp,
+    schedulingPortHooks,
+    useExtractedEventDelivery,
   } = args;
 
   const preCheck = await validateBookingMove({
@@ -737,6 +747,20 @@ export async function rescheduleBookingMove(args: {
       booking.branchId != null &&
       effectiveBranchId !== booking.branchId;
 
+    // Public create takes booking:emp (then the tenant lock) before
+    // operations-schedule. On the port path, take that interval lock first so
+    // a concurrent create and this move queue instead of deadlocking.
+    // Flag-off reschedule still takes only the schedule lock, matching main.
+    if (schedulingPortHooks) {
+      await bridgeAcquireEmpIntervalLock(
+        { schedulingPortHooks },
+        transaction,
+        effectiveEmpId,
+        proposedStart.getTime(),
+        proposedEnd.getTime(),
+      );
+    }
+
     await acquireScheduleLocksSorted(
       transaction,
       [booking.assignedEmpId, effectiveEmpId],
@@ -765,15 +789,18 @@ export async function rescheduleBookingMove(args: {
       throw err;
     }
 
-    await assertEmployeeIntervalAvailable({
-      empId: effectiveEmpId,
-      startAt: proposedStart,
-      endAt: proposedEnd,
-      operationalDate,
-      excludeBookingId: bookingId,
-      branchId: effectiveBranchId,
+    await bridgeAssertEmployeeFree(
+      { schedulingPortHooks },
       transaction,
-    });
+      {
+        employeeId: effectiveEmpId,
+        startMs: proposedStart.getTime(),
+        endMs: proposedEnd.getTime(),
+        operationalDate,
+        excludeBookingId: bookingId,
+        branchId: effectiveBranchId ?? undefined,
+      },
+    );
 
     // B6 dual-guard: secure NEW claims then release OLD-only (same TX) before row update.
     {
@@ -888,6 +915,18 @@ export async function rescheduleBookingMove(args: {
           SET EmpID = @empId
           WHERE BookingID = @id
         `);
+    }
+
+    if (useExtractedEventDelivery) {
+      await bridgePublishRescheduledEvent(
+        { schedulingPortHooks },
+        transaction,
+        {
+          bookingId,
+          bookingCode: booking.bookingCode,
+          idempotencyKey: `booking.rescheduled:${bookingId}:${proposedStart.toISOString()}`,
+        },
+      );
     }
 
     await transaction.commit();

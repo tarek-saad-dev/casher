@@ -62,6 +62,8 @@ export type ReschedulePublicBookingInput = {
   idempotencyKey: string;
   /** When true, skip post-commit customer WhatsApp template (chat reply owns UX). */
   suppressCustomerWhatsApp?: boolean;
+  schedulingPortHooks?: import('@/apps/booking/internal/schedulingPortAdapter').SchedulingPortHooks;
+  useExtractedEventDelivery?: boolean;
 };
 
 export type ReschedulePublicBookingResult = {
@@ -297,6 +299,8 @@ export async function reschedulePublicBooking(
       userId: 0,
       targetEmpId: input.desired.empId,
       targetBranchId: branchChanged ? branch.branchId : undefined,
+      schedulingPortHooks: input.schedulingPortHooks,
+      useExtractedEventDelivery: input.useExtractedEventDelivery,
       skipCustomerWhatsApp: input.suppressCustomerWhatsApp !== false,
     });
 

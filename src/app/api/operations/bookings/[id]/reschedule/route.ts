@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { rescheduleBookingMove } from '@/lib/bookingRescheduleCore';
 import { ScheduleConflictError } from '@/lib/scheduleIntegrity';
+import { isBookingSchedulingPortEnabled, rescheduleOpsBooking } from '@/apps/booking/public';
+import {
+  buildSchedulingPortHooksForActor,
+  buildStaffActorContext,
+} from '@/lib/bookingSchedulingComposition';
+import { BookingCreateLockError } from '@/lib/booking/publicBookingCreateLocks';
+import { PUBLIC_BOOKING_ERROR_CATALOG } from '@/lib/booking/publicBookingErrorCatalog';
 
 export const runtime = 'nodejs';
 
@@ -30,14 +37,22 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       );
     }
 
-    const result = await rescheduleBookingMove({
+    const moveInput = {
       bookingId,
       newStartAt,
       operationalDate,
       source,
       userId: session.UserID,
       targetEmpId: targetEmpId != null ? parseInt(String(targetEmpId), 10) : undefined,
-    });
+    };
+
+    const result = isBookingSchedulingPortEnabled()
+      ? await (async () => {
+          const actor = await buildStaffActorContext(session.UserID);
+          const schedulingPortHooks = await buildSchedulingPortHooksForActor(actor);
+          return rescheduleOpsBooking({ ...moveInput, schedulingPortHooks });
+        })()
+      : await rescheduleBookingMove(moveInput);
 
     return NextResponse.json({
       ok: true,
@@ -56,6 +71,18 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
           conflict: err.conflict,
         },
         { status: 409 },
+      );
+    }
+
+    if (err instanceof BookingCreateLockError) {
+      const def = PUBLIC_BOOKING_ERROR_CATALOG[err.code];
+      return NextResponse.json(
+        {
+          ok: false,
+          code: def.code,
+          message: def.messageAr,
+        },
+        { status: def.httpStatus },
       );
     }
 

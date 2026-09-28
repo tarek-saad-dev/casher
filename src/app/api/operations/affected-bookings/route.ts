@@ -17,6 +17,11 @@ import {
 } from '@/lib/booking/affectedBookings';
 import { suggestAffectedBookingAlternatives } from '@/lib/booking/affectedBookingAlternatives';
 import { rescheduleBookingMove } from '@/lib/bookingRescheduleCore';
+import { isBookingSchedulingPortEnabled, rescheduleOpsBooking } from '@/apps/booking/public';
+import {
+  buildSchedulingPortHooksForActor,
+  buildStaffActorContext,
+} from '@/lib/bookingSchedulingComposition';
 import { loadBookingCustomerContact } from '@/lib/booking/bookingCustomerContact';
 import {
   retryBookingEventWhatsApp,
@@ -125,6 +130,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, alternatives });
   }
 
+  let portHooks: Awaited<ReturnType<typeof buildSchedulingPortHooksForActor>> | null = null;
+  const moveBooking = async (input: {
+    bookingId: number;
+    newStartAt: string;
+    operationalDate: string;
+    source: string;
+    userId: number;
+    targetEmpId?: number;
+  }) => {
+    if (!isBookingSchedulingPortEnabled()) {
+      return rescheduleBookingMove(input);
+    }
+    if (!portHooks) {
+      const actor = await buildStaffActorContext(input.userId);
+      portHooks = await buildSchedulingPortHooksForActor(actor);
+    }
+    return rescheduleOpsBooking({ ...input, schedulingPortHooks: portHooks });
+  };
+
   if (action === 'move') {
     const bookingId = Number(body.bookingId);
     const newStartAt = String(body.newStartAt ?? '');
@@ -134,7 +158,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, code: 'INVALID_INPUT' }, { status: 400 });
     }
     try {
-      const moved = await rescheduleBookingMove({
+      const moved = await moveBooking({
         bookingId,
         newStartAt,
         operationalDate,
@@ -180,7 +204,7 @@ export async function POST(req: NextRequest) {
         continue;
       }
       try {
-        const moved = await rescheduleBookingMove({
+        const moved = await moveBooking({
           bookingId,
           newStartAt,
           operationalDate,

@@ -61,6 +61,15 @@ import { scheduleBookingWhatsAppAfterCommit } from '@/lib/bookingPostCommitNotif
 import { scheduleBookingTeamGroupNotify } from '@/lib/bookingGroupWhatsAppNotify';
 import { invalidatePublicBookingAvailabilityCache } from '@/lib/booking/publicBookingAvailability';
 import { ensureBookingPublicWorkDateColumns } from '@/lib/booking/ensureBookingPublicWorkDateColumns';
+import type { SchedulingPortHooks } from '@/apps/booking/internal/schedulingPortAdapter';
+import {
+  bridgeAcquireAnyBarberLock,
+  bridgeAcquireEmpIntervalLock,
+  bridgeAssertEmployeeFree,
+  bridgeCommitOccupancy,
+  bridgePublishCreatedEvent,
+  bridgeUpsertCustomer,
+} from '@/lib/booking/schedulingPortLegacyBridge';
 
 const MAX_NOTES = 500;
 const MAX_SERVICES = 20;
@@ -156,6 +165,10 @@ export type PublicBookingCreateInput = {
   leadSource?: 'phone' | 'whatsapp' | 'website' | 'admin' | 'walk_in' | null;
   /** Optional 5-minute slot hold key to consume on success (Phase G). */
   holdKey?: string | null;
+  /** DRVO-004 extracted scheduling port hooks (composition root). */
+  schedulingPortHooks?: SchedulingPortHooks;
+  /** When true, emit PlatformOutbox only — no legacy WhatsApp notify row. */
+  useExtractedEventDelivery?: boolean;
 };
 
 export type PublicBookingCreateResult = {
@@ -856,25 +869,25 @@ export async function createPublicBooking(
       selectedEmpId = precheck.specificBarber!.empId;
       selectedNameAr = precheck.specificBarber!.nameAr;
       assignmentStrategy = 'fixed_barber';
-      await acquireBookingAppLock(
-        transaction,
-        empIntervalLockResource(selectedEmpId, startMs, endMs),
-      );
-      await assertEmployeeIntervalAvailable({
-        empId: selectedEmpId,
-        startAt: new Date(startMs),
-        endAt: new Date(endMs),
+      await bridgeAcquireEmpIntervalLock(input, transaction, selectedEmpId, startMs, endMs);
+      await bridgeAssertEmployeeFree(input, transaction, {
+        employeeId: selectedEmpId,
+        startMs,
+        endMs,
         operationalDate: precheck.workDate,
         branchId: branchNow.branchId,
         excludeHoldKey: typeof input.holdKey === 'string' ? input.holdKey : null,
-        transaction,
       });
     } else {
       assignmentStrategy = 'server_selected';
       const svcHash = hashServiceSet(precheck.selectedServices.map((s) => s.serviceId));
-      await acquireBookingAppLock(
+      await bridgeAcquireAnyBarberLock(
+        input,
         transaction,
-        anyBarberAssignmentLockResource(branchNow.branchId, startMs, endMs, svcHash),
+        branchNow.branchId,
+        startMs,
+        endMs,
+        svcHash,
       );
 
       const candidates = [...precheck.candidateBarbers].sort((a, b) => a.empId - b.empId);
@@ -885,18 +898,14 @@ export async function createPublicBooking(
       let chosen: { empId: number; nameAr: string } | null = null;
       for (const c of candidates) {
         try {
-          await acquireBookingAppLock(
-            transaction,
-            empIntervalLockResource(c.empId, startMs, endMs),
-          );
-          await assertEmployeeIntervalAvailable({
-            empId: c.empId,
-            startAt: new Date(startMs),
-            endAt: new Date(endMs),
+          await bridgeAcquireEmpIntervalLock(input, transaction, c.empId, startMs, endMs);
+          await bridgeAssertEmployeeFree(input, transaction, {
+            employeeId: c.empId,
+            startMs,
+            endMs,
             operationalDate: precheck.workDate,
             branchId: branchNow.branchId,
             excludeHoldKey: holdKey || null,
-            transaction,
           });
           chosen = c;
           break;
@@ -913,7 +922,12 @@ export async function createPublicBooking(
       selectedNameAr = chosen.nameAr;
     }
 
-    const clientId = await upsertCustomer(customerName, customerPhone, transaction);
+    const clientId = await bridgeUpsertCustomer(
+      input,
+      transaction,
+      customerName,
+      customerPhone,
+    );
 
     const notesPersist = [
       notes,
@@ -1070,6 +1084,21 @@ export async function createPublicBooking(
       throw claimErr;
     }
 
+    if (input.useExtractedEventDelivery) {
+      await bridgeCommitOccupancy(input, transaction, {
+        employeeId: selectedEmpId,
+        startMs,
+        endMs,
+        bookingId,
+        locationId: branchNow.branchId,
+      });
+      await bridgePublishCreatedEvent(input, transaction, {
+        bookingId,
+        bookingCode,
+        idempotencyKey: input.idempotencyKeyHeader,
+      });
+    }
+
     await transaction.commit();
 
     // B6 shadow: post-commit best-effort (legacy locks remain authority).
@@ -1125,7 +1154,7 @@ export async function createPublicBooking(
       !notificationAlreadySent &&
       isUsableCustomerPhone(customerPhone);
 
-    if (shouldNotify) {
+    if (shouldNotify && !input.useExtractedEventDelivery) {
       scheduleBookingWhatsAppAfterCommit({
         phone: customerPhone,
         customerName,
