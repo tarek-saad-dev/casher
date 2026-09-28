@@ -4,11 +4,16 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  createBookingHold,
   releaseBookingHold,
   HOLD_CONFLICT,
   BOOKING_HOLD_TTL_MS,
 } from '@/lib/booking/bookingHold';
+import {
+  holdBooking,
+  releaseHoldBooking,
+  isBookingSchedulingPortEnabled,
+} from '@/apps/booking/public';
+import { resolveBootstrapTenantId } from '@/lib/bookingSchedulingComposition';
 import { resolvePublicBookingBranchContext } from '@/lib/booking/publicBookingBranchContext';
 import { logBookingAvailabilityMetric } from '@/lib/availability/bookingAvailabilityMetrics';
 
@@ -59,18 +64,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const hold = await createBookingHold({
-      branchId: ctx.branchId,
-      empId,
-      businessDate,
-      startAt,
-      endAt,
-      holdKey,
-      sessionKey,
-      clientRequestId:
-        typeof body.clientRequestId === 'string' ? body.clientRequestId : null,
-      ttlMs: BOOKING_HOLD_TTL_MS,
-    });
+    const hold = isBookingSchedulingPortEnabled()
+      ? await holdBooking({
+          tenantId: await resolveBootstrapTenantId(),
+          branchId: ctx.branchId,
+          empId,
+          businessDate,
+          startAt,
+          endAt,
+          holdKey,
+          sessionKey,
+          clientRequestId:
+            typeof body.clientRequestId === 'string' ? body.clientRequestId : null,
+          ttlMs: BOOKING_HOLD_TTL_MS,
+        })
+      : await (async () => {
+          const { createBookingHold } = await import('@/lib/booking/bookingHold');
+          return createBookingHold({
+            branchId: ctx.branchId,
+            empId,
+            businessDate,
+            startAt,
+            endAt,
+            holdKey,
+            sessionKey,
+            clientRequestId:
+              typeof body.clientRequestId === 'string' ? body.clientRequestId : null,
+            ttlMs: BOOKING_HOLD_TTL_MS,
+          });
+        })();
 
     return NextResponse.json({
       ok: true,
@@ -145,7 +167,12 @@ export async function DELETE(req: NextRequest) {
     if (!holdKey) {
       return NextResponse.json({ ok: false, code: 'INVALID_INPUT' }, { status: 400 });
     }
-    const released = await releaseBookingHold(holdKey);
+    const released = isBookingSchedulingPortEnabled()
+      ? await (async () => {
+          await releaseHoldBooking(await resolveBootstrapTenantId(), holdKey);
+          return true;
+        })()
+      : await releaseBookingHold(holdKey);
     return NextResponse.json({ ok: true, released });
   } catch (err) {
     console.error('[public/booking/hold DELETE]', err);

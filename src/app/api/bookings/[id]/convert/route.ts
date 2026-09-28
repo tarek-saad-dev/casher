@@ -8,6 +8,11 @@ import {
   bookingQueueNotFoundResponse,
 } from "@/lib/branch/bookingQueueOwnership";
 import { getCairoInvTimeDotStr } from "@/lib/businessDate";
+import { convertBooking, isBookingSchedulingPortEnabled } from "@/apps/booking/public";
+import {
+  buildBookingSchedulingPorts,
+  buildStaffActorContext,
+} from "@/lib/bookingSchedulingComposition";
 
 export const runtime = "nodejs";
 
@@ -32,6 +37,28 @@ export async function POST(req: NextRequest, context: RouteContext) {
     if (!owned.ok) return owned.response;
     const branchId = owned.ownership.branchId;
     const businessDayId = owned.ownership.businessDayId!;
+
+    if (isBookingSchedulingPortEnabled()) {
+      const actor = await buildStaffActorContext(userID);
+      const deps = await buildBookingSchedulingPorts(actor);
+      const converted = await convertBooking(deps, {
+        bookingId,
+        locationId: branchId,
+        userId: userID,
+        paymentMethodId: paymentMethodId ?? null,
+        notes: invNotes ?? null,
+        idempotencyKey: req.headers.get('Idempotency-Key') ?? undefined,
+      });
+      if (!converted.ok) {
+        return NextResponse.json({ error: converted.error }, { status: converted.status });
+      }
+      return NextResponse.json({
+        ok: true,
+        invoiceId: converted.invoiceId,
+        invoiceType: converted.invoiceType,
+        idempotentReplay: converted.idempotentReplay,
+      });
+    }
 
     const db = await getPool();
 

@@ -7,3 +7,4 @@ export { createLegacyCatalogAdapter } from '@/shared/catalog/public';
 export { createLegacyWorkforceOccupancyAdapter } from '@/shared/workforce/public';
 export { createLegacyOperationalCalendarAdapter } from '@/shared/operational-calendar/public';
 export { createLegacyMoneyMovementAdapter } from '@/apps/treasury/public';
+export { createLegacyBookingConversionAdapter } from '@/apps/pos/internal/legacyBookingConversionAdapter';

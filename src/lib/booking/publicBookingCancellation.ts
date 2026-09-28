@@ -46,6 +46,11 @@ import { invalidatePublicBookingAvailabilityCache } from '@/lib/booking/publicBo
 import type { PublicBookingErrorCode } from '@/lib/booking/publicBookingErrorCatalog';
 import { isTestOrSmokeEmployeeName } from '@/lib/hr/testEmployeePolicy';
 import { buildBookingIntervals } from '@/lib/queueEstimateEngine';
+import type { SchedulingPortHooks } from '@/apps/booking/internal/schedulingPortAdapter';
+import {
+  bridgeAcquireEmpIntervalLock,
+  bridgePublishCancelledEvent,
+} from '@/lib/booking/schedulingPortLegacyBridge';
 
 const MAX_REASON_TEXT = 250;
 const INTERNAL_SOURCES = new Set([
@@ -77,6 +82,8 @@ export type CancelPublicBookingInput = {
   /** Allow absent key only for documented legacy smoke; production routes require key. */
   allowMissingIdempotencyKey?: boolean;
   requestContext?: { ip?: string; userAgent?: string };
+  schedulingPortHooks?: SchedulingPortHooks;
+  useExtractedEventDelivery?: boolean;
 };
 
 export type CancelPublicBookingResult = {
@@ -698,9 +705,12 @@ export async function cancelPublicBooking(
     const startMs = row.AbsoluteStartUtc ? new Date(row.AbsoluteStartUtc).getTime() : null;
     const endMs = row.AbsoluteEndUtc ? new Date(row.AbsoluteEndUtc).getTime() : null;
     if (row.AssignedEmpID != null && startMs != null && endMs != null) {
-      await acquireBookingAppLock(
+      await bridgeAcquireEmpIntervalLock(
+        input,
         transaction,
-        empIntervalLockResource(row.AssignedEmpID, startMs, endMs),
+        row.AssignedEmpID,
+        startMs,
+        endMs,
       );
     }
 
@@ -836,6 +846,14 @@ export async function cancelPublicBooking(
       );
     }
 
+    if (input.useExtractedEventDelivery) {
+      await bridgePublishCancelledEvent(input, transaction, {
+        bookingId: row.BookingID,
+        bookingCode: code,
+        idempotencyKey: input.idempotencyKey,
+      });
+    }
+
     await transaction.commit();
 
     try {
@@ -867,13 +885,15 @@ export async function cancelPublicBooking(
     }
 
     // Post-commit WhatsApp cancel (idempotent; never blocks cancel success).
-    try {
-      const { scheduleCancelWhatsAppAfterCommit } = await import(
-        '@/lib/booking/bookingEventWhatsApp'
-      );
-      await scheduleCancelWhatsAppAfterCommit(row.BookingID);
-    } catch {
-      /* best-effort */
+    if (!input.useExtractedEventDelivery) {
+      try {
+        const { scheduleCancelWhatsAppAfterCommit } = await import(
+          '@/lib/booking/bookingEventWhatsApp'
+        );
+        await scheduleCancelWhatsAppAfterCommit(row.BookingID);
+      } catch {
+        /* best-effort */
+      }
     }
 
     // Post-commit: cache + slot probe (never inside TX).

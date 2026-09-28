@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { rescheduleBookingMove } from '@/lib/bookingRescheduleCore';
 import { ScheduleConflictError } from '@/lib/scheduleIntegrity';
+import { isBookingSchedulingPortEnabled, rescheduleOpsBooking } from '@/apps/booking/public';
+import {
+  buildSchedulingPortHooksForActor,
+  buildStaffActorContext,
+} from '@/lib/bookingSchedulingComposition';
 
 export const runtime = 'nodejs';
 
@@ -30,14 +35,22 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       );
     }
 
-    const result = await rescheduleBookingMove({
+    const moveInput = {
       bookingId,
       newStartAt,
       operationalDate,
       source,
       userId: session.UserID,
       targetEmpId: targetEmpId != null ? parseInt(String(targetEmpId), 10) : undefined,
-    });
+    };
+
+    const result = isBookingSchedulingPortEnabled()
+      ? await (async () => {
+          const actor = await buildStaffActorContext(session.UserID);
+          const schedulingPortHooks = await buildSchedulingPortHooksForActor(actor);
+          return rescheduleOpsBooking({ ...moveInput, schedulingPortHooks });
+        })()
+      : await rescheduleBookingMove(moveInput);
 
     return NextResponse.json({
       ok: true,
