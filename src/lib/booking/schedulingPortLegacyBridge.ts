@@ -32,6 +32,13 @@ export async function bridgeUpsertCustomer(
   return upsertCustomer(customerName, customerPhone, tx);
 }
 
+function rethrowWorkforceLockTimeout(err: unknown): never {
+  if (err instanceof Error && err.message === 'WORKFORCE_OCCUPANCY_LOCK_TIMEOUT') {
+    throw new BookingCreateLockError('applock_timeout');
+  }
+  throw err;
+}
+
 export async function bridgeAcquireEmpIntervalLock(
   ctx: SchedulingPortBridgeContext,
   tx: Transaction,
@@ -40,7 +47,11 @@ export async function bridgeAcquireEmpIntervalLock(
   endMs: number,
 ): Promise<void> {
   if (ctx.schedulingPortHooks) {
-    await ctx.schedulingPortHooks.acquireEmpIntervalLock(tx, employeeId, startMs, endMs);
+    try {
+      await ctx.schedulingPortHooks.acquireEmpIntervalLock(tx, employeeId, startMs, endMs);
+    } catch (err) {
+      rethrowWorkforceLockTimeout(err);
+    }
     return;
   }
   await acquireBookingAppLock(tx, empIntervalLockResource(employeeId, startMs, endMs));
@@ -55,7 +66,11 @@ export async function bridgeAcquireAnyBarberLock(
   slotKey: string,
 ): Promise<void> {
   if (ctx.schedulingPortHooks) {
-    await ctx.schedulingPortHooks.acquireAnyBarberLock(tx, locationId, startMs, endMs, slotKey);
+    try {
+      await ctx.schedulingPortHooks.acquireAnyBarberLock(tx, locationId, startMs, endMs, slotKey);
+    } catch (err) {
+      rethrowWorkforceLockTimeout(err);
+    }
     return;
   }
   await acquireBookingAppLock(
@@ -87,13 +102,13 @@ export async function bridgeAssertEmployeeFree(
         employeeId: input.employeeId,
         startMs: input.startMs,
         endMs: input.endMs,
+        operationalDate: input.operationalDate,
+        branchId: input.branchId,
         excludeRefs,
+        excludeHoldKey: input.excludeHoldKey ?? null,
       });
     } catch (err) {
-      if (err instanceof Error && err.message === 'WORKFORCE_OCCUPANCY_LOCK_TIMEOUT') {
-        throw new BookingCreateLockError('applock_timeout');
-      }
-      throw err;
+      rethrowWorkforceLockTimeout(err);
     }
     return;
   }

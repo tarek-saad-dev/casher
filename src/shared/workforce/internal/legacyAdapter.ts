@@ -28,6 +28,15 @@ async function acquireTransactionApplock(
   }
 }
 
+function excludeBookingIdFromRefs(refs: string[] | undefined): number | undefined {
+  if (!refs) return undefined;
+  for (const ref of refs) {
+    const match = /^booking:(\d+)$/.exec(ref);
+    if (match) return Number(match[1]);
+  }
+  return undefined;
+}
+
 /**
  * Workforce occupancy port — delegates to legacy applocks and busy-interval reads.
  * Booking/Queue must not SQL-read occupancy tables directly once DRVO-004 lands.
@@ -38,13 +47,17 @@ export function createLegacyWorkforceOccupancyAdapter(
   return {
     async lock(tx, _actor, input) {
       for (const interval of input.intervals) {
-        const resource = tenantLockResource(tenantId, [
+        // Same string as empIntervalLockResource. Flag-off booking and any caller
+        // that still takes the legacy applock must serialize with this port.
+        const legacyResource = `booking:emp:${input.employeeId}:${interval.startMs}:${interval.endMs}`;
+        const tenantResource = tenantLockResource(tenantId, [
           'emp',
           String(input.employeeId),
           String(interval.startMs),
           String(interval.endMs),
         ]);
-        await acquireTransactionApplock(tx, resource);
+        await acquireTransactionApplock(tx, legacyResource);
+        await acquireTransactionApplock(tx, tenantResource);
       }
     },
 
@@ -52,10 +65,26 @@ export function createLegacyWorkforceOccupancyAdapter(
       const { assertEmployeeIntervalAvailable } = await import('@/lib/scheduleIntegrity');
       await assertEmployeeIntervalAvailable({
         empId: input.employeeId,
-        startMs: input.interval.startMs,
-        endMs: input.interval.endMs,
+        startAt: new Date(input.interval.startMs),
+        endAt: new Date(input.interval.endMs),
+        operationalDate: input.operationalDate,
+        branchId: input.branchId,
+        excludeBookingId: excludeBookingIdFromRefs(input.excludeRefs),
+        excludeHoldKey: input.excludeHoldKey ?? null,
         transaction: tx,
       });
+    },
+
+    async lockAnyBarber(tx, _actor, input) {
+      const legacyResource = `booking:any:${input.locationId}:${input.startMs}:${input.endMs}:${input.slotKey}`;
+      const tenantResource = tenantLockResource(tenantId, [
+        'loc',
+        String(input.locationId),
+        'any-barber',
+        input.slotKey,
+      ]);
+      await acquireTransactionApplock(tx, legacyResource);
+      await acquireTransactionApplock(tx, tenantResource);
     },
 
     async commit(_tx, _actor, _input) {

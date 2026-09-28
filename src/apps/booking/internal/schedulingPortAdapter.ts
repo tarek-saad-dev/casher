@@ -1,35 +1,10 @@
 import 'server-only';
 import type { Transaction } from 'mssql';
 import type { BookingSchedulingPorts } from '../public/ports';
-import { tenantLockResource } from '@/platform/public';
-import { sql } from '@/lib/db';
-
-async function acquireTransactionApplock(
-  transaction: Transaction,
-  resource: string,
-  timeoutMs = 5000,
-): Promise<void> {
-  const result = await new sql.Request(transaction)
-    .input('resource', sql.NVarChar(255), resource)
-    .input('timeout', sql.Int, timeoutMs)
-    .query(`
-      DECLARE @r INT;
-      EXEC @r = sp_getapplock
-        @Resource = @resource,
-        @LockMode = 'Exclusive',
-        @LockOwner = 'Transaction',
-        @LockTimeout = @timeout;
-      SELECT @r AS lockResult;
-    `);
-  const lockResult = Number(result.recordset[0].lockResult);
-  if (lockResult < 0) {
-    throw new Error('BOOKING_SCHEDULING_LOCK_TIMEOUT');
-  }
-}
 
 /**
  * Occupancy + customer helpers invoked from legacy scheduling flows when the
- * extracted port path is active.
+ * extracted port path is active. Scheduling applocks stay inside Workforce (D6).
  */
 export function createSchedulingPortHooks(deps: BookingSchedulingPorts) {
   return {
@@ -49,7 +24,10 @@ export function createSchedulingPortHooks(deps: BookingSchedulingPorts) {
         employeeId: number;
         startMs: number;
         endMs: number;
+        operationalDate?: string;
+        branchId?: number;
         excludeRefs?: string[];
+        excludeHoldKey?: string | null;
       },
     ): Promise<void> {
       await deps.occupancy.lock(tx, deps.actor, {
@@ -60,6 +38,9 @@ export function createSchedulingPortHooks(deps: BookingSchedulingPorts) {
         employeeId: input.employeeId,
         interval: { startMs: input.startMs, endMs: input.endMs },
         excludeRefs: input.excludeRefs,
+        operationalDate: input.operationalDate,
+        branchId: input.branchId,
+        excludeHoldKey: input.excludeHoldKey ?? null,
       });
     },
 
@@ -69,13 +50,10 @@ export function createSchedulingPortHooks(deps: BookingSchedulingPorts) {
       startMs: number,
       endMs: number,
     ): Promise<void> {
-      const resource = tenantLockResource(deps.tenantId, [
-        'emp',
-        String(employeeId),
-        String(startMs),
-        String(endMs),
-      ]);
-      await acquireTransactionApplock(tx, resource);
+      await deps.occupancy.lock(tx, deps.actor, {
+        employeeId,
+        intervals: [{ startMs, endMs }],
+      });
     },
 
     async acquireAnyBarberLock(
@@ -85,13 +63,12 @@ export function createSchedulingPortHooks(deps: BookingSchedulingPorts) {
       endMs: number,
       slotKey: string,
     ): Promise<void> {
-      const resource = tenantLockResource(deps.tenantId, [
-        'loc',
-        String(locationId),
-        'any-barber',
+      await deps.occupancy.lockAnyBarber(tx, deps.actor, {
+        locationId,
+        startMs,
+        endMs,
         slotKey,
-      ]);
-      await acquireTransactionApplock(tx, resource);
+      });
     },
 
     async commitOccupancy(

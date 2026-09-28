@@ -21,6 +21,26 @@ export interface OccupancyPort {
       employeeId: number;
       interval: TimeInterval;
       excludeRefs?: string[];
+      /** Business date of the requested interval. Occupancy is not "today" by default. */
+      operationalDate?: string;
+      /** Requested location. Conflict scope stays tenant-global for the employee. */
+      branchId?: number | null;
+      /** Customer's own hold must not block create. */
+      excludeHoldKey?: string | null;
+    },
+  ): Promise<void>;
+  /**
+   * Any-barber assignment lock. Lives on the occupancy port so Booking does not
+   * take its own applock (DRVO-002 D6).
+   */
+  lockAnyBarber(
+    tx: Transaction,
+    actor: ActorContext,
+    input: {
+      locationId: number;
+      startMs: number;
+      endMs: number;
+      slotKey: string;
     },
   ): Promise<void>;
   commit(

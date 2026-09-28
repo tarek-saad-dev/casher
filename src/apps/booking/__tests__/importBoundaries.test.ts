@@ -40,6 +40,13 @@ describe('DRVO-004 booking import boundaries', () => {
     expect(violations).toEqual([]);
   });
 
+  it('booking package does not take sp_getapplock', () => {
+    for (const file of listBookingSourceFiles()) {
+      const content = fs.readFileSync(file, 'utf8');
+      expect(content.includes('sp_getapplock'), `${file} must not take applocks`).toBe(false);
+    }
+  });
+
   it('extracted booking code does not reference forbidden POS/Treasury/Queue tables', () => {
     const forbidden = ['TblinvServHead', 'TblCashMove', 'QueueTickets'];
     for (const file of listBookingSourceFiles()) {
