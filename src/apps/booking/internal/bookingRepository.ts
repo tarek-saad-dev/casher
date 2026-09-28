@@ -22,6 +22,17 @@ export type BookingServiceLine = {
   reservationDate: string;
 };
 
+function sqlDateToYmd(value: unknown): string {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const year = value.getUTCFullYear();
+    const month = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(value.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(String(value));
+  return match ? match[1] : String(value).slice(0, 10);
+}
+
 export async function loadBookingForConversion(
   tx: Transaction,
   bookingId: number,
@@ -41,7 +52,7 @@ export async function loadBookingForConversion(
   const svcRes = await new sql.Request(tx)
     .input('id', sql.Int, bookingId)
     .query(`
-      SELECT ProID, EmpID, Price, Qty, BookingDate
+      SELECT ProID, EmpID, Price, Qty
       FROM [dbo].[BookingServices]
       WHERE BookingID = @id
     `);
@@ -53,7 +64,7 @@ export async function loadBookingForConversion(
       clientId: row.ClientID != null ? Number(row.ClientID) : null,
       assignedEmpId: row.AssignedEmpID != null ? Number(row.AssignedEmpID) : null,
       branchId: Number(row.BranchID),
-      bookingDate: String(row.BookingDate).slice(0, 10),
+      bookingDate: sqlDateToYmd(row.BookingDate),
       status: String(row.Status),
       convertedInvId: row.ConvertedInvID != null ? Number(row.ConvertedInvID) : null,
       convertedInvType: row.ConvertedInvType != null ? String(row.ConvertedInvType) : null,
@@ -63,7 +74,7 @@ export async function loadBookingForConversion(
       empId: svc.EmpID != null ? Number(svc.EmpID) : null,
       price: Number(svc.Price ?? 0),
       qty: Number(svc.Qty ?? 1),
-      reservationDate: String(svc.BookingDate ?? row.BookingDate).slice(0, 10),
+      reservationDate: sqlDateToYmd(row.BookingDate),
     })),
   };
 }
