@@ -2,29 +2,23 @@
  * POST /api/operations/queue/[id]/cancel
  *
  * Cancels a queue ticket (soft cancel - updates status to 'cancelled')
- *
- * Request:
- * {
- *   reason?: string,
- *   cancelBooking?: boolean  // if true, also cancel related booking
- * }
- *
- * Response:
- * {
- *   ok: true,
- *   queueTicketId: number,
- *   status: "cancelled"
- * }
  */
 
-import { NextRequest, NextResponse } from "next/server";
-import { getPool, sql } from "@/lib/db";
-import { getSession } from "@/lib/session";
-import { requireBranchOperationAccess, isActiveBranchContext } from "@/lib/branch/context";
-import { bookingQueueNotFoundResponse } from "@/lib/branch/bookingQueueOwnership";
-import { userCanManageOpsBranchRecord } from "@/lib/branch/opsWriteBranch";
+import { NextRequest, NextResponse } from 'next/server';
+import { getSession } from '@/lib/session';
+import { requireBranchOperationAccess, isActiveBranchContext } from '@/lib/branch/context';
+import { bookingQueueNotFoundResponse } from '@/lib/branch/bookingQueueOwnership';
+import { userCanManageOpsBranchRecord } from '@/lib/branch/opsWriteBranch';
+import { getPool, sql } from '@/lib/db';
+import { cancelQueueTicket } from '@/apps/queue/public';
+import { isQueueSchedulingPortEnabled } from '@/apps/queue/internal/queuePortFlag';
+import {
+  cancelQueueTicketCore,
+  CancelQueueTicketError,
+} from '@/lib/queueCancelCore';
+import { buildQueuePortHooksForActor, buildStaffActorContext } from '@/lib/queueSchedulingComposition';
 
-export const runtime = "nodejs";
+export const runtime = 'nodejs';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -37,177 +31,73 @@ export async function POST(req: NextRequest, context: RouteContext) {
     const ticketId = parseInt(id);
 
     if (isNaN(ticketId)) {
-      return NextResponse.json(
-        { error: "معرف الدور غير صالح" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'معرف الدور غير صالح' }, { status: 400 });
     }
 
     const body = await req.json().catch(() => ({}));
     const { reason, cancelBooking = false } = body;
 
-    // Get user session for audit
     let userId = 0;
     try {
       const session = await getSession();
       userId = session?.UserID ?? 0;
     } catch {
-      // Session not required
+      /* session optional */
     }
 
     const db = await getPool();
-
-    // Check ticket exists and is not already cancelled/done
     const checkRes = await db
       .request()
-      .input("ticketId", sql.Int, ticketId)
-      .query(`
-        SELECT
-          QueueTicketID,
-          TicketCode,
-          Status,
-          BookingID,
-          EmpID,
-          ClientID,
-          BranchID
-        FROM dbo.QueueTickets
-        WHERE QueueTicketID = @ticketId
-      `);
+      .input('ticketId', sql.Int, ticketId)
+      .query(`SELECT BranchID FROM dbo.QueueTickets WHERE QueueTicketID = @ticketId`);
 
     if (checkRes.recordset.length === 0) {
-      return NextResponse.json(
-        { error: "الدور غير موجود" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: 'الدور غير موجود' }, { status: 404 });
     }
-
-    const ticket = checkRes.recordset[0];
 
     if (
       !(await userCanManageOpsBranchRecord({
         userId: branch.userId,
         sessionBranchId: branch.branchId,
-        recordBranchId: ticket.BranchID,
+        recordBranchId: checkRes.recordset[0].BranchID,
       }))
     ) {
       return bookingQueueNotFoundResponse();
     }
 
-    // Check if already in final state
-    const finalStatuses = ['cancelled', 'done', 'completed', 'skipped', 'no_show'];
-    if (finalStatuses.includes(ticket.Status?.toLowerCase())) {
-      return NextResponse.json({
-        ok: true,
-        message: "الدور في حالة نهائية بالفعل",
-        queueTicketId: ticketId,
-        ticketCode: ticket.TicketCode,
-        status: ticket.Status,
-      });
-    }
-
-    // Don't allow cancelling in_service tickets without explicit override
-    if (ticket.Status?.toLowerCase() === 'in_service') {
-      return NextResponse.json(
-        { error: "لا يمكن إلغاء دور قيد الخدمة - انهِ الخدمة أولاً" },
-        { status: 409 },
-      );
-    }
-
-    // Cancel the queue ticket
-    await db.request()
-      .input("ticketId", sql.Int, ticketId)
-      .query(`
-        UPDATE dbo.QueueTickets
-        SET Status = 'cancelled',
-            CancelledAt = GETDATE()
-        WHERE QueueTicketID = @ticketId
-      `);
-
-    console.log("[queue/cancel] Ticket cancelled:", {
+    const cancelInput = {
       ticketId,
-      ticketCode: ticket.TicketCode,
       reason,
+      cancelBooking,
       userId,
-    });
+      sessionBranchId: branch.branchId,
+    };
 
-    // Optionally cancel related booking
-    let bookingCancelled = false;
-    let bookingDateYmd: string | null = null;
-    if (cancelBooking && ticket.BookingID) {
-      try {
-        const bk = await db.request()
-          .input("bookingId", sql.Int, ticket.BookingID)
-          .query(`
-            SELECT BookingDate, AssignedEmpID
-            FROM dbo.Bookings
-            WHERE BookingID = @bookingId
-          `);
-        const row = bk.recordset[0] as
-          | { BookingDate: Date | string; AssignedEmpID: number | null }
-          | undefined;
-        if (row?.BookingDate instanceof Date) {
-          bookingDateYmd = row.BookingDate.toISOString().slice(0, 10);
-        } else if (row?.BookingDate) {
-          bookingDateYmd = String(row.BookingDate).slice(0, 10);
-        }
-
-        await db.request()
-          .input("bookingId", sql.Int, ticket.BookingID)
-          .input("reason", sql.NVarChar, reason ? `Queue cancelled: ${reason}` : "Queue ticket cancelled")
-          .query(`
-            UPDATE dbo.Bookings
-            SET Status = 'cancelled',
-                CancelledAt = GETDATE(),
-                CancelReason = @reason
-            WHERE BookingID = @bookingId
-              AND Status NOT IN ('completed', 'cancelled', 'no_show')
-          `);
-        bookingCancelled = true;
-        console.log("[queue/cancel] Related booking cancelled:", ticket.BookingID);
-      } catch (bookingErr) {
-        console.warn("[queue/cancel] Failed to cancel related booking:", bookingErr);
-      }
-    }
-
-    try {
-      const { AvailabilityMutationNotifier } = await import(
-        '@/lib/booking/AvailabilityMutationNotifier'
-      );
-      const { getCairoBusinessDate } = await import('@/lib/businessDate');
-      const queueDate = getCairoBusinessDate();
-      if (ticket.EmpID) {
-        await AvailabilityMutationNotifier.queueOccupancyChanged({
-          employeeId: Number(ticket.EmpID),
-          businessDate: queueDate,
-          branchId: ticket.BranchID != null ? Number(ticket.BranchID) : branch.branchId,
-          reason: 'ops_queue_cancel',
-        });
-      }
-      if (bookingCancelled && ticket.EmpID && bookingDateYmd) {
-        await AvailabilityMutationNotifier.bookingOccupancyChanged({
-          employeeId: Number(ticket.EmpID),
-          businessDate: bookingDateYmd,
-          branchId: ticket.BranchID != null ? Number(ticket.BranchID) : branch.branchId,
-          reason: 'ops_queue_cancel_booking',
-        });
-      }
-    } catch {
-      /* best-effort */
+    let result;
+    if (isQueueSchedulingPortEnabled()) {
+      const actor = await buildStaffActorContext(branch.userId);
+      const queuePortHooks = await buildQueuePortHooksForActor(actor);
+      result = await cancelQueueTicket({
+        ...cancelInput,
+        tenantId: actor.tenantId!,
+        queuePortHooks,
+      });
+    } else {
+      result = await cancelQueueTicketCore(cancelInput);
     }
 
     return NextResponse.json({
-      ok: true,
-      message: "تم إلغاء الدور بنجاح",
-      queueTicketId: ticketId,
-      ticketCode: ticket.TicketCode,
-      status: "cancelled",
-      bookingCancelled,
+      ...result,
+      message: result.message ?? 'تم إلغاء الدور بنجاح',
     });
   } catch (err) {
-    console.error("[queue/cancel] error:", err);
-    return NextResponse.json(
-      { error: "فشل إلغاء الدور" },
-      { status: 500 },
-    );
+    if (err instanceof CancelQueueTicketError) {
+      return NextResponse.json(
+        { error: err.message, ...err.payload },
+        { status: err.status },
+      );
+    }
+    console.error('[queue/cancel] error:', err);
+    return NextResponse.json({ error: 'فشل إلغاء الدور' }, { status: 500 });
   }
 }

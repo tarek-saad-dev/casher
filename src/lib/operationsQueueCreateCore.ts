@@ -9,10 +9,15 @@ import {
 import { getCairoBusinessDate } from '@/lib/businessDate';
 import { normalizeCustomersAhead } from '@/lib/queueCustomersAhead';
 import { intervalsOverlap } from '@/lib/scheduleIntervals';
+import { ScheduleConflictError } from '@/lib/scheduleIntegrity';
+import type { QueuePortHooks } from '@/apps/queue/internal/queuePortAdapter';
 import {
-  assertEmployeeIntervalAvailable,
-  ScheduleConflictError,
-} from '@/lib/scheduleIntegrity';
+  bridgeQueueAssertEmployeeFree,
+  bridgeQueueCommitOccupancy,
+  bridgeQueuePublishCreatedEvent,
+  bridgeQueueAcquireAnyBarberLock,
+  type QueuePortBridgeContext,
+} from '@/lib/queue/queuePortLegacyBridge';
 import { getBarberAvailabilityReason } from '@/lib/barberAvailability';
 import { generateTicketCode } from '@/lib/queueTicketCode';
 import { detectQueueTicketsSchema, buildInsertColumns } from '@/lib/queueSchema';
@@ -43,6 +48,8 @@ export interface CreateOperationsQueueInput {
   useClientPlannedTimes?: boolean;
   /** Branch owning this ticket — stamped on write, scopes ticket numbering. */
   branchId: number;
+  queuePortHooks?: QueuePortHooks;
+  useExtractedEventDelivery?: boolean;
 }
 
 export class CreateOperationsQueueError extends Error {
@@ -80,7 +87,11 @@ export async function createOperationsQueueTicket(
     trustExpectedStart = false,
     useClientPlannedTimes = false,
     branchId,
+    queuePortHooks,
+    useExtractedEventDelivery,
   } = input;
+
+  const portCtx: QueuePortBridgeContext = { queuePortHooks };
 
   if (!empId || typeof empId !== 'number') {
     throw new CreateOperationsQueueError(400, 'empId مطلوب');
@@ -266,14 +277,12 @@ export async function createOperationsQueueTicket(
   await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
 
   try {
-    await assertEmployeeIntervalAvailable({
-      empId,
-      startAt: finalStartDate,
-      endAt: finalEndDate,
-      now,
+    await bridgeQueueAssertEmployeeFree(portCtx, transaction, {
+      employeeId: empId,
+      startMs: finalStartDate.getTime(),
+      endMs: finalEndDate.getTime(),
       operationalDate: dateStr,
       branchId,
-      transaction,
     });
 
     let clientId: number | null = null;
@@ -406,6 +415,22 @@ export async function createOperationsQueueTicket(
       }
     }
 
+    if (useExtractedEventDelivery) {
+      await bridgeQueueCommitOccupancy(portCtx, transaction, {
+        employeeId: empId,
+        startMs: finalStartDate.getTime(),
+        endMs: finalEndDate.getTime(),
+        queueTicketId,
+        locationId: branchId,
+      });
+      await bridgeQueuePublishCreatedEvent(portCtx, transaction, {
+        queueTicketId,
+        ticketCode,
+        branchId,
+        empId,
+      });
+    }
+
     await transaction.commit();
 
     void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
@@ -505,6 +530,7 @@ function formatCairoTimeLabel(iso: string): string {
 
 export async function executeQuickQueueOperation(
   branchId: number,
+  options?: { queuePortHooks?: QueuePortHooks; useExtractedEventDelivery?: boolean },
 ): Promise<
   CreateQueueResponse | { ok: false; error: string; reason?: string; nextAvailableTime?: string }
 > {
@@ -569,6 +595,30 @@ export async function executeQuickQueueOperation(
     new Date(simulation.suggestedStartTime).getTime() + serviceDur * 60000,
   ).toISOString();
 
+  const startMs = new Date(simulation.suggestedStartTime).getTime();
+  const endMs = new Date(expectedEndTime).getTime();
+  const svcHash = serviceIds.slice().sort((a, b) => a - b).join(',');
+
+  if (options?.queuePortHooks) {
+    const db = await getPool();
+    const tx = new sql.Transaction(db);
+    await tx.begin();
+    try {
+      await bridgeQueueAcquireAnyBarberLock(
+        { queuePortHooks: options.queuePortHooks },
+        tx,
+        branchId,
+        startMs,
+        endMs,
+        `quick-queue:${svcHash}`,
+      );
+      await tx.commit();
+    } catch (lockErr) {
+      await tx.rollback();
+      throw lockErr;
+    }
+  }
+
   try {
     const ticket = await createOperationsQueueTicket({
       empId: nearest.best.empId,
@@ -579,6 +629,8 @@ export async function executeQuickQueueOperation(
       source: 'walk_in',
       trustExpectedStart: true,
       branchId,
+      queuePortHooks: options?.queuePortHooks,
+      useExtractedEventDelivery: options?.useExtractedEventDelivery,
     });
 
     return ticket;

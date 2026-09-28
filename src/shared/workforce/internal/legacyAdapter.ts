@@ -37,6 +37,15 @@ function excludeBookingIdFromRefs(refs: string[] | undefined): number | undefine
   return undefined;
 }
 
+function excludeQueueTicketIdFromRefs(refs: string[] | undefined): number | undefined {
+  if (!refs) return undefined;
+  for (const ref of refs) {
+    const match = /^queue:(\d+)$/.exec(ref);
+    if (match) return Number(match[1]);
+  }
+  return undefined;
+}
+
 /**
  * Workforce occupancy port — delegates to legacy applocks and busy-interval reads.
  * Booking/Queue must not SQL-read occupancy tables directly once DRVO-004 lands.
@@ -70,6 +79,7 @@ export function createLegacyWorkforceOccupancyAdapter(
         operationalDate: input.operationalDate,
         branchId: input.branchId,
         excludeBookingId: excludeBookingIdFromRefs(input.excludeRefs),
+        excludeQueueTicketId: excludeQueueTicketIdFromRefs(input.excludeRefs),
         excludeHoldKey: input.excludeHoldKey ?? null,
         transaction: tx,
       });
