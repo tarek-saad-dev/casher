@@ -34,7 +34,7 @@ export async function bridgeUpsertCustomer(
 
 function rethrowWorkforceLockTimeout(err: unknown): never {
   if (err instanceof Error && err.message === 'WORKFORCE_OCCUPANCY_LOCK_TIMEOUT') {
-    throw new BookingCreateLockError('applock_timeout');
+    throw new BookingCreateLockError('BOOKING_LOCK_TIMEOUT');
   }
   throw err;
 }

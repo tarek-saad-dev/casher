@@ -27,6 +27,7 @@ interface State {
   updateCalls: number;
   committed: boolean;
   rolledBack: boolean;
+  applockResult: number;
 }
 
 let state: State;
@@ -44,6 +45,7 @@ function resetState(): void {
     updateCalls: 0,
     committed: false,
     rolledBack: false,
+    applockResult: 0,
   };
 }
 
@@ -111,7 +113,9 @@ function runQuery(q: string, inputs: Record<string, unknown>) {
   }
   if (/sp_getapplock/i.test(q)) {
     lockOrder.push(String(inputs.resource ?? ''));
-    return { recordset: [{ lockResult: 0, LockResult: 0 }] };
+    return {
+      recordset: [{ lockResult: state.applockResult, LockResult: state.applockResult }],
+    };
   }
   return { recordset: [] };
 }
@@ -302,6 +306,7 @@ import {
   validateBookingMove,
   rescheduleBookingMove,
 } from '@/lib/bookingRescheduleCore';
+import { BookingCreateLockError } from '@/lib/booking/publicBookingCreateLocks';
 
 beforeEach(() => {
   resetState();
@@ -418,6 +423,50 @@ describe('rescheduleBookingMove — final transactional guard', () => {
     expect(tenantAt).toBeGreaterThan(intervalAt);
     expect(scheduleAt).toBeGreaterThan(tenantAt);
     expect(state.committed).toBe(true);
+  });
+
+  it('port path maps a workforce lock timeout to BOOKING_LOCK_TIMEOUT and rolls back', async () => {
+    state.applockResult = -1;
+    const { createSchedulingPortHooks } = await import(
+      '@/apps/booking/internal/schedulingPortAdapter'
+    );
+    const { createLegacyWorkforceOccupancyAdapter } = await import(
+      '@/shared/workforce/public'
+    );
+    const tenantId = '11111111-1111-4111-8111-111111111111';
+    const hooks = createSchedulingPortHooks({
+      tenantId,
+      actor: {
+        actorType: 'staff',
+        actorId: '1',
+        tenantId,
+        membershipId: 'm1',
+        viewLocationId: null,
+      },
+      customers: {} as never,
+      catalog: {} as never,
+      occupancy: createLegacyWorkforceOccupancyAdapter(tenantId),
+      calendar: {} as never,
+      conversion: {} as never,
+      publishOutbox: async () => 1,
+    });
+
+    const err = await rescheduleBookingMove({
+      ...baseArgs,
+      source: 'operations_cut_paste',
+      userId: 1,
+      targetEmpId: 5,
+      schedulingPortHooks: hooks,
+      useExtractedEventDelivery: true,
+      skipCustomerWhatsApp: true,
+    }).catch((e) => e);
+
+    expect(err).toBeInstanceOf(BookingCreateLockError);
+    expect((err as BookingCreateLockError).code).toBe('BOOKING_LOCK_TIMEOUT');
+    expect(state.rolledBack).toBe(true);
+    expect(state.committed).toBe(false);
+    expect(state.updateCalls).toBe(0);
+    expect(lockOrder).not.toContain('operations-schedule');
   });
 
   it('flag-off reschedule does not take booking:emp', async () => {
