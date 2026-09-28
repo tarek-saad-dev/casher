@@ -43,6 +43,10 @@ export interface SessionUser {
   ActiveBranchID: number;
   ActiveBranchCode: string;
   BranchSessionVersion: 1;
+  /** DRVO-003 bootstrap tenant (optional on legacy cookies — resolved at auth time). */
+  TenantId?: string;
+  /** DRVO-003 staff membership in bootstrap tenant. */
+  MembershipId?: string;
 }
 
 export interface BusinessDay {
@@ -125,6 +129,8 @@ export interface SessionPayload {
   ActiveBranchCode: string;
   BranchSessionVersion: typeof BRANCH_SESSION_VERSION;
   iat: number; // issued at (epoch seconds)
+  TenantId?: string;
+  MembershipId?: string;
 }
 
 /** Legacy cookie shape (pre-Phase 1B). Must force re-login. */

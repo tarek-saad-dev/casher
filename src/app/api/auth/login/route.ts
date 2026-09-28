@@ -157,6 +157,19 @@ export async function POST(req: NextRequest) {
       branchCode: defaultAccess.branchCode,
     });
 
+    let tenantId: string | undefined;
+    let membershipId: string | undefined;
+    try {
+      const { resolveStaffTenantContext } = await import(
+        '@/platform/session/staffTenantContext'
+      );
+      const tenantCtx = await resolveStaffTenantContext({ UserID: user.UserID });
+      tenantId = tenantCtx?.tenantId;
+      membershipId = tenantCtx?.membershipId;
+    } catch {
+      /* DRVO-003 tables may be absent until staging migration runs */
+    }
+
     await createSession({
       UserID: user.UserID,
       UserName: user.UserName,
@@ -164,6 +177,8 @@ export async function POST(req: NextRequest) {
       ActiveBranchID: defaultAccess.branchId,
       ActiveBranchCode: defaultAccess.branchCode,
       BranchSessionVersion: BRANCH_SESSION_VERSION,
+      ...(tenantId ? { TenantId: tenantId } : {}),
+      ...(membershipId ? { MembershipId: membershipId } : {}),
     });
 
     let redirectTo = '/income/pos';
