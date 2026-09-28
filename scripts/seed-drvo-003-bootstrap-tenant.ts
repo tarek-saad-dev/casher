@@ -44,6 +44,20 @@ function buildConfig(): sql.config {
   };
 }
 
+async function assertLiveDatabase(pool: sql.ConnectionPool, expectedDatabase: string) {
+  const result = await pool.request().query(`SELECT DB_NAME() AS DB;`);
+  const live = String(result.recordset[0].DB);
+  if (live === PRODUCTION_DB) {
+    throw new Error(`Refusing: live database is production ${PRODUCTION_DB}.`);
+  }
+  if (live !== expectedDatabase) {
+    throw new Error(
+      `Refusing: live database "${live}" does not match expected "${expectedDatabase}".`,
+    );
+  }
+  console.log(`  live database: ${live}`);
+}
+
 async function main() {
   const { expectedDatabase } = parseArgs(process.argv.slice(2));
   const config = buildConfig();
@@ -65,6 +79,7 @@ async function main() {
 
   const pool = await sql.connect(config);
   try {
+    await assertLiveDatabase(pool, expectedDatabase);
     const existing = await pool.request().query(`SELECT COUNT(*) AS cnt FROM dbo.Tenant;`);
     const tenantCount = Number(existing.recordset[0].cnt);
     if (tenantCount > 0) {

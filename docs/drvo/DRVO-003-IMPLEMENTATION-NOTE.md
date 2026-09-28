@@ -32,10 +32,25 @@
 
 ## How to apply on staging
 
+Both runners connect, then refuse unless `DB_NAME()` is `last132_agent`. They also refuse the production name `last132` before connecting.
+
 ```bash
 npx tsx scripts/run-drvo-003-platform-core-migration.ts --expected-database=last132_agent
 npx tsx scripts/seed-drvo-003-bootstrap-tenant.ts --expected-database=last132_agent
 ```
+
+## Staging evidence
+
+Applied on `last132_agent` (login `drvo_agent`) on 2026-09-28:
+
+- `DB_NAME()` = `last132_agent` before migration and seed
+- exactly one `Tenant` row, code `CASHER_BOOT` (not `GLEEM`)
+- `Location` count 3 = `TblBranch` count 3
+- 11 `TenantMembership` rows for 11 active `TblUser` rows
+- `resolveStaffTenantContext` returned `tenantId` and `membershipId` for a staff user
+- live PlatformOutbox rollback passed and left tenant count at 1 and outbox count at 0
+- a second seed run refused because a `Tenant` row already existed
+- production database `last132` was not contacted
 
 ## Identity note
 
