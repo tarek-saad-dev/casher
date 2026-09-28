@@ -20,6 +20,9 @@ export interface AuthResult {
   isSuperAdmin: boolean;
   activeBranchId: number;
   activeBranchCode: string;
+  /** DRVO-003 bootstrap tenant context (null when platform tables are not seeded). */
+  tenantId: string | null;
+  membershipId: string | null;
 }
 
 export type AuthFailure = NextResponse;
@@ -63,6 +66,22 @@ export async function authenticate(): Promise<AuthResult | NextResponse> {
   }
 
   const access = await getUserAccess(session.UserID, session.UserName, session.UserLevel);
+
+  let tenantId = session.TenantId ?? null;
+  let membershipId = session.MembershipId ?? null;
+  if (!tenantId || !membershipId) {
+    try {
+      const { resolveStaffTenantContext } = await import(
+        '@/platform/session/staffTenantContext'
+      );
+      const tenantCtx = await resolveStaffTenantContext(session);
+      tenantId = tenantCtx?.tenantId ?? null;
+      membershipId = tenantCtx?.membershipId ?? null;
+    } catch {
+      /* platform tables may be absent in dev without migration */
+    }
+  }
+
   return {
     ok: true,
     userId: session.UserID,
@@ -72,6 +91,8 @@ export async function authenticate(): Promise<AuthResult | NextResponse> {
     isSuperAdmin: access.isSuperAdmin,
     activeBranchId: session.ActiveBranchID,
     activeBranchCode: session.ActiveBranchCode,
+    tenantId,
+    membershipId,
   };
 }
 
@@ -191,6 +212,8 @@ export async function requireSystemJobAuth(
       isSuperAdmin: true,
       activeBranchId: 0,
       activeBranchCode: 'SYSTEM',
+      tenantId: null,
+      membershipId: null,
       via: 'cron_bearer',
     };
   }

@@ -121,6 +121,10 @@ export function decodeSessionToken(
       ActiveBranchCode: String(raw.ActiveBranchCode),
       BranchSessionVersion: BRANCH_SESSION_VERSION,
       iat: raw.iat as number,
+      ...(typeof raw.TenantId === 'string' ? { TenantId: raw.TenantId } : {}),
+      ...(typeof raw.MembershipId === 'string'
+        ? { MembershipId: raw.MembershipId }
+        : {}),
     },
   };
 }
@@ -161,6 +165,8 @@ export async function createSession(user: SessionUser): Promise<void> {
     ActiveBranchCode: user.ActiveBranchCode,
     BranchSessionVersion: BRANCH_SESSION_VERSION,
     iat: Math.floor(Date.now() / 1000),
+    ...(user.TenantId ? { TenantId: user.TenantId } : {}),
+    ...(user.MembershipId ? { MembershipId: user.MembershipId } : {}),
   };
   const token = encodeSessionPayload(payload);
   await setSessionCookie(token);
@@ -211,6 +217,8 @@ export async function getSession(): Promise<SessionUser | null> {
     ActiveBranchID: payload.ActiveBranchID,
     ActiveBranchCode: payload.ActiveBranchCode,
     BranchSessionVersion: payload.BranchSessionVersion,
+    ...(payload.TenantId ? { TenantId: payload.TenantId } : {}),
+    ...(payload.MembershipId ? { MembershipId: payload.MembershipId } : {}),
   };
 }
 
