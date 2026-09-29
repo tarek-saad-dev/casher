@@ -8,6 +8,13 @@ export const bookingPrerequisitesMigration: DrvoMigrationDefinition = {
   name: 'DRVO-004 Booking scheduling prerequisites',
   dependencies: ['platform-bootstrap'],
   checksum: sha256Hex('booking-prerequisites-v1'),
+  control: {
+    kind: 'verification',
+    risk: 'LOW',
+    requiresBackup: false,
+    lockProfile: 'none',
+    rollbackStrategy: 'No schema/data mutation; no rollback required.',
+  },
   async apply(ctx) {
     const report = await verifyPlatformBootstrap(ctx.pool);
     if (!report.ok) {
