@@ -74,6 +74,13 @@ export const treasuryMovementRegistryMigration: DrvoMigrationDefinition = {
   name: 'DRVO-007 Treasury movement registry',
   dependencies: ['platform-bootstrap'],
   checksum: checksumFile(SCHEMA),
+  control: {
+    kind: 'mixed',
+    risk: 'HIGH',
+    requiresBackup: true,
+    lockProfile: 'potentially-blocking',
+    rollbackStrategy: 'Restore the approved backup; manual down migration is intentionally not automated for TblCashMove changes.',
+  },
   async apply(ctx) {
     await executeSqlFile(ctx.pool, SCHEMA);
   },
