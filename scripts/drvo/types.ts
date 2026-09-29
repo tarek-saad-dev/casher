@@ -3,6 +3,18 @@ import type { ConnectionPool } from 'mssql';
 export const PRODUCTION_DB = 'last132';
 export const STAGING_DB = 'last132_agent';
 
+export type DrvoMigrationKind = 'schema' | 'data' | 'mixed' | 'verification';
+export type DrvoMigrationRisk = 'LOW' | 'MEDIUM' | 'HIGH';
+export type DrvoMigrationLockProfile = 'none' | 'short' | 'potentially-blocking';
+
+export type DrvoMigrationControlMetadata = {
+  kind: DrvoMigrationKind;
+  risk: DrvoMigrationRisk;
+  requiresBackup: boolean;
+  lockProfile: DrvoMigrationLockProfile;
+  rollbackStrategy: string;
+};
+
 export type DrvoMigrationContext = {
   pool: ConnectionPool;
   database: string;
@@ -21,6 +33,11 @@ export type DrvoMigrationDefinition = {
   dependencies: string[];
   /** SHA-256 hex of migration artifacts (computed at load time). */
   checksum: string;
+  /**
+   * Source-controlled production-control metadata. This is reviewed with the
+   * migration and bound into the production manifest digest.
+   */
+  control: DrvoMigrationControlMetadata;
   /** Apply migration body. Must be idempotent. */
   apply: (ctx: DrvoMigrationContext) => Promise<void>;
   /** Read-only verification after apply/baseline. */
@@ -40,6 +57,8 @@ export type AppliedDrvoMigrationRow = {
   AppliedAtUtc: Date;
   AppCommitSha: string | null;
   ExecutionMs: number;
+  ApprovalRef?: string | null;
+  BackupRef?: string | null;
 };
 
 export type DrvoMigrationRunReport = {
