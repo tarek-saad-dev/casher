@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, ArrowRightLeft, Loader2, Wallet } from 'lucide-react';
 
 interface PaymentMethod {
@@ -24,6 +24,7 @@ export default function PaymentTransferModal({ isOpen, onClose, onSuccess }: Pay
   const [fetchingMethods, setFetchingMethods] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const idempotencyRef = useRef<{ payload: string; key: string } | null>(null);
 
   // Load payment methods when modal opens
   useEffect(() => {
@@ -36,6 +37,7 @@ export default function PaymentTransferModal({ isOpen, onClose, onSuccess }: Pay
       setNotes('');
       setError(null);
       setSuccess(null);
+      idempotencyRef.current = null;
     }
   }, [isOpen]);
 
@@ -79,6 +81,12 @@ export default function PaymentTransferModal({ isOpen, onClose, onSuccess }: Pay
 
     setLoading(true);
 
+    const payload = `${fromMethodId}:${toMethodId}:${amount}:${notes.trim()}`;
+    if (!idempotencyRef.current || idempotencyRef.current.payload !== payload) {
+      idempotencyRef.current = { payload, key: crypto.randomUUID() };
+    }
+    const idempotencyKey = idempotencyRef.current.key;
+
     try {
       const response = await fetch('/api/treasury/transfer', {
         method: 'POST',
@@ -87,7 +95,8 @@ export default function PaymentTransferModal({ isOpen, onClose, onSuccess }: Pay
           amount: Number(amount),
           fromPaymentMethodId: fromMethodId,
           toPaymentMethodId: toMethodId,
-          notes: notes.trim() || undefined
+          notes: notes.trim() || undefined,
+          idempotencyKey,
         })
       });
 
@@ -99,6 +108,7 @@ export default function PaymentTransferModal({ isOpen, onClose, onSuccess }: Pay
         return;
       }
 
+      idempotencyRef.current = null;
       setSuccess('تم التحويل بنجاح');
       resetForm();
       setTimeout(() => { onSuccess?.(); }, 1200);

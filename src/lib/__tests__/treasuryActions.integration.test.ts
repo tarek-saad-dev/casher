@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { getPool, sql } from '@/lib/db';
 import { executeTreasuryTransfer, closeTreasuryDay } from '@/lib/actions/treasuryActions';
+import { buildStaffActorContext } from '@/lib/bookingSchedulingComposition';
+import { buildTreasuryWritePorts } from '@/lib/treasuryComposition';
 
 let dbAvailable = false;
 let dbReason = '';
@@ -57,6 +59,9 @@ describe('treasuryActions integration', () => {
     await transaction.begin(sql.ISOLATION_LEVEL.READ_COMMITTED);
 
     try {
+      const actor = await buildStaffActorContext(1);
+      const treasuryPorts = await buildTreasuryWritePorts(actor);
+      const transferGroupKey = `test.transfer:${Date.now()}`;
       const transferResult = await executeTreasuryTransfer(transaction, {
         amount,
         fromPaymentMethodId: fromPm.PaymentID,
@@ -66,6 +71,8 @@ describe('treasuryActions integration', () => {
         userId: 1,
         branchId: seedBranchId ?? 1,
         businessDayId: null,
+        transferGroupKey,
+        treasuryPorts,
       });
 
       expect(transferResult.expenseId).toBeGreaterThan(0);

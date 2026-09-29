@@ -4,9 +4,11 @@
  * All operations run inside a transaction passed from the audit wrapper.
  */
 
-import { sql, allocateInvID } from '@/lib/db';
+import { sql } from '@/lib/db';
 import { getCairoInvTimeDotStr } from '@/lib/businessDate';
 import { lockOperationalWrite } from '@/modules/operations/infra/businessDayLock';
+import { postTransferPair } from '@/apps/treasury/internal/postTransferPair';
+import type { TreasuryWritePorts } from '@/lib/treasuryComposition';
 import { now as businessClockNow } from '@/modules/operations/clock/BusinessClock';
 import { formatLegacyEndTime } from '@/modules/operations/infra/shiftMoveRecord';
 
@@ -27,6 +29,9 @@ export interface TreasuryTransferInput {
   branchId: number;
   /** Nullable only for legacy — new writes should always resolve a real business day. */
   businessDayId: number | null;
+  /** Stable idempotency scope for the transfer pair. */
+  transferGroupKey: string;
+  treasuryPorts: TreasuryWritePorts;
 }
 
 export interface TreasuryTransferResult {
@@ -151,6 +156,8 @@ export async function executeTreasuryTransfer(
     requestId = 'unknown',
     branchId,
     businessDayId,
+    transferGroupKey,
+    treasuryPorts,
   } = input;
 
   const log = (msg: string, data?: unknown) => {
@@ -295,86 +302,48 @@ export async function executeTreasuryTransfer(
   const transferNotes =
     notes?.trim() || `تحويل من ${fromPm.PaymentMethod} إلى ${toPm.PaymentMethod}`;
 
-  // Allocate invIDs safely using application locks (no TABLOCKX)
-  log('invID allocation:start', { step: 'invID-allocation:expense:start' });
-  const expenseInvID = await allocateInvID(connection as sql.Transaction, 'TblCashMove', 'مصروفات', 5000);
-  log('invID allocation:complete', { step: 'invID-allocation:expense:complete', expenseInvID });
+  const invDateStr =
+    typeof invDate === 'string' ? invDate : invDate.toISOString().slice(0, 10);
 
-  log('invID allocation:start', { step: 'invID-allocation:income:start' });
-  const incomeInvID = await allocateInvID(connection as sql.Transaction, 'TblCashMove', 'ايرادات', 5000);
-  log('invID allocation:complete', { step: 'invID-allocation:income:complete', incomeInvID });
-
-  // Create expense record
-  const expenseReq = new sql.Request(connection)
-    .input('invID', sql.Int, expenseInvID)
-    .input('invType', sql.NVarChar(20), 'مصروفات')
-    .input('invDate', sql.Date, invDate)
-    .input('invTime', sql.NVarChar(50), invTime)
-    .input('ClientID', sql.Int, null)
-    .input('expINID', sql.Int, transferExpenseCategory)
-    .input('amount', sql.Decimal(10, 2), transferAmount)
-    .input('inOut', sql.NVarChar(5), 'out')
-    .input('notes', sql.NVarChar(sql.MAX), transferDate
+  const pair = await postTransferPair(connection, input.treasuryPorts.actor, {
+    tenantId: input.treasuryPorts.tenantId,
+    locationId: branchId,
+    businessDayId: businessDayId!,
+    businessDate: invDateStr,
+    shiftInstanceId: shiftMoveID,
+    amount: transferAmount,
+    sourceRef: input.transferGroupKey,
+    transferGroupKey: input.transferGroupKey,
+    fromPaymentMethodId,
+    toPaymentMethodId,
+    expenseCategoryId: transferExpenseCategory,
+    incomeCategoryId: transferIncomeCategory,
+    expenseNotes: transferDate
       ? `تحويل إلى ${toPm.PaymentMethod}: ${transferNotes}`
-      : `${transferNotes} (تحويل إلى ${toPm.PaymentMethod})`)
-    .input('shiftMoveID', sql.Int, shiftMoveID)
-    .input('paymentMethodID', sql.Int, fromPaymentMethodId)
-    .input('branchID', sql.Int, branchId)
-    .input('businessDayID', sql.Int, businessDayId);
-
-  let expenseId: number;
-  try {
-    log('insert-outgoing:start', { step: 'insert-outgoing:start', expenseInvID });
-    const expInsert = await expenseReq.query(`
-      INSERT INTO [dbo].[TblCashMove]
-        (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID)
-      OUTPUT INSERTED.ID
-      VALUES
-        (@invID, @invType, @invDate, @invTime, @ClientID, @expINID, @amount, @inOut, @notes, @shiftMoveID, @paymentMethodID, @branchID, @businessDayID)
-    `);
-    expenseId = expInsert.recordset[0].ID;
-    log('insert-outgoing:complete', { step: 'insert-outgoing:complete', expenseId, expenseInvID });
-  } catch (err) {
-    logError('Failed to insert expense record', err);
-    throw new Error('فشل إنشاء سجل المصروف');
-  }
-
-  // Create income record
-  const incomeReq = new sql.Request(connection)
-    .input('invID', sql.Int, incomeInvID)
-    .input('invType', sql.NVarChar(20), 'ايرادات')
-    .input('invDate', sql.Date, invDate)
-    .input('invTime', sql.NVarChar(50), invTime)
-    .input('ClientID', sql.Int, null)
-    .input('expINID', sql.Int, transferIncomeCategory)
-    .input('amount', sql.Decimal(10, 2), transferAmount)
-    .input('inOut', sql.NVarChar(5), 'in')
-    .input('notes', sql.NVarChar(sql.MAX), transferDate
+      : `${transferNotes} (تحويل إلى ${toPm.PaymentMethod})`,
+    incomeNotes: transferDate
       ? `تحويل من ${fromPm.PaymentMethod}: ${transferNotes}`
-      : `${transferNotes} (تحويل من ${fromPm.PaymentMethod})`)
-    .input('shiftMoveID', sql.Int, shiftMoveID)
-    .input('paymentMethodID', sql.Int, toPaymentMethodId)
-    .input('branchID', sql.Int, branchId)
-    .input('businessDayID', sql.Int, businessDayId);
+      : `${transferNotes} (تحويل من ${fromPm.PaymentMethod})`,
+    invTime,
+  });
 
-  let incomeId: number;
-  try {
-    log('insert-incoming:start', { step: 'insert-incoming:start', incomeInvID });
-    const incInsert = await incomeReq.query(`
-      INSERT INTO [dbo].[TblCashMove]
-        (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID)
-      OUTPUT INSERTED.ID
-      VALUES
-        (@invID, @invType, @invDate, @invTime, @ClientID, @expINID, @amount, @inOut, @notes, @shiftMoveID, @paymentMethodID, @branchID, @businessDayID)
+  const expenseId = pair.expenseCashMoveId;
+  const incomeId = pair.incomeCashMoveId;
+
+  const invLookup = await new sql.Request(connection)
+    .input('expenseId', sql.Int, expenseId)
+    .input('incomeId', sql.Int, incomeId)
+    .query(`
+      SELECT ID, invID FROM dbo.TblCashMove WHERE ID IN (@expenseId, @incomeId)
     `);
-    incomeId = incInsert.recordset[0].ID;
-    log('insert-incoming:complete', { step: 'insert-incoming:complete', incomeId, incomeInvID });
-  } catch (err) {
-    logError('Failed to insert income record', err);
-    throw new Error('فشل إنشاء سجل الإيراد');
-  }
+  const expenseInvID = Number(
+    invLookup.recordset.find((r: { ID: number }) => r.ID === expenseId)?.invID ?? 0,
+  );
+  const incomeInvID = Number(
+    invLookup.recordset.find((r: { ID: number }) => r.ID === incomeId)?.invID ?? 0,
+  );
 
-  log('Transfer completed successfully', { expenseId, incomeId });
+  log('Transfer completed successfully', { expenseId, incomeId, idempotentReplay: pair.idempotentReplay });
 
   return {
     expenseId,

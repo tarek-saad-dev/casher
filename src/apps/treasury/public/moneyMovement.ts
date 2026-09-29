@@ -7,6 +7,8 @@ export interface PostCommand {
   tenantId: string;
   locationId: number;
   businessDayId: number;
+  /** Calendar date for invDate; defaults to TblNewDay.NewDay for businessDayId. */
+  businessDate?: string | null;
   shiftInstanceId: number | null;
   amount: number;
   direction: MoneyDirection;
@@ -14,6 +16,15 @@ export interface PostCommand {
   sourceRef: string;
   paymentMethodId: number | null;
   idempotencyKey: string;
+  /** Legacy ExpINID category — required for income/expense, optional for transfer legs. */
+  categoryId?: number | null;
+  notes?: string | null;
+  clientId?: number | null;
+  invTime?: string | null;
+  /** Links atomic transfer out/in pair under one stable scope. */
+  transferGroupKey?: string | null;
+  /** Explicit legacy invType when reason alone is ambiguous. */
+  invType?: 'income' | 'expense';
 }
 
 export interface ReverseCommand {

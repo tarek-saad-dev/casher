@@ -7,7 +7,11 @@ import {
   deleteCashMoveWithLinkedLedgerEntries,
   type DeleteCashMoveWithLedgerResult,
 } from '@/lib/services/cashMoveHardDeleteService';
+import { reverseTreasuryOwnedMovement } from '@/apps/treasury/application/reverseTreasuryMovement';
+import { buildStaffActorContext, resolveBootstrapTenantId } from '@/lib/bookingSchedulingComposition';
+import { buildTreasuryWritePorts } from '@/lib/treasuryComposition';
 import { syncEmployeeFundingFromCashMove } from '@/lib/services/employeeLedgerFundingSyncService';
+import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 import type { EmployeeFundingSyncResult } from '@/lib/services/employeeLedgerFundingSyncService';
 
 export interface IncomeSnapshot {
@@ -48,6 +52,7 @@ export async function getIncomeSnapshot(
         ISNULL(IsEmployeePayrollIncome, 0) AS IsEmployeePayrollIncome
       FROM dbo.TblCashMove
       WHERE ID = @id AND invType = N'ايرادات'
+        AND ${liveCashMovePredicate()}
     `);
   return result.recordset[0] || null;
 }
@@ -105,6 +110,7 @@ export async function updateIncome(
         PaymentMethodID = @paymentMethodId,
         ShiftMoveID = COALESCE(@shiftMoveId, ShiftMoveID)
       WHERE ID = @id AND invType = N'ايرادات'
+        AND ${liveCashMovePredicate()}
     `);
 
   const updated = await getIncomeSnapshot(transaction, id);
@@ -122,6 +128,7 @@ export async function deleteIncome(
   transaction: sql.Transaction,
   id: number,
   activeBranchId?: number,
+  options?: { userId?: number; idempotencyKey?: string },
 ): Promise<Extract<DeleteCashMoveWithLedgerResult, { deleted: true }>> {
   const existing = await getIncomeSnapshot(transaction, id);
   if (!existing) {
@@ -132,6 +139,36 @@ export async function deleteIncome(
     Number(existing.BranchID) !== Number(activeBranchId)
   ) {
     throw new Error('غير موجود');
+  }
+
+  const tenantId = options?.userId
+    ? (await buildStaffActorContext(options.userId)).tenantId ?? (await resolveBootstrapTenantId())
+    : await resolveBootstrapTenantId();
+  const owned = await new sql.Request(transaction)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('cashMoveId', sql.Int, id)
+    .query(`
+      SELECT TOP 1 IdempotencyKey FROM dbo.TreasuryMovementRegistry
+      WHERE TenantId = @tenantId AND CashMoveId = @cashMoveId AND Kind <> 'reverse'
+    `);
+
+  if (owned.recordset.length > 0) {
+    const actor = options?.userId
+      ? await buildStaffActorContext(options.userId)
+      : {
+          actorType: 'staff' as const,
+          actorId: '0',
+          tenantId,
+          membershipId: null,
+          viewLocationId: null,
+        };
+    const ports = await buildTreasuryWritePorts(actor);
+    const reversed = await reverseTreasuryOwnedMovement(transaction, ports, {
+      cashMoveId: id,
+      idempotencyKey: options?.idempotencyKey ?? `income.reverse:${id}`,
+      reason: 'delete',
+    });
+    return { deleted: true, ledgerDeletedCount: reversed.ledgerVoidedCount };
   }
 
   const result = await deleteCashMoveWithLinkedLedgerEntries(transaction, id);

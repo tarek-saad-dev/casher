@@ -20,6 +20,7 @@ describe('appendTreasuryCashMoveFilters', () => {
     appendTreasuryCashMoveFilters(where, params, {});
 
     expect(where).toContain('(sm.ID IS NULL OR sm.BranchID = @branchId)');
+    expect(where.some((clause) => clause.includes('IsReversed') && clause.includes('ReversalOfCashMoveId'))).toBe(true);
   });
 
   it('allows unscoped legacy mode when branchScoped is false', () => {

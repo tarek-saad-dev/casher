@@ -15,6 +15,7 @@ import {
   formatLedgerEntryDate,
   maybeSyncAdvanceLedgerForExpenseCashMove,
 } from '@/lib/services/employeeLedgerDualWrite';
+import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 
 export interface ExpenseSnapshot {
   ID: number;
@@ -53,6 +54,7 @@ export async function getExpenseSnapshot(
         Notes, ShiftMoveID, BranchID, BusinessDayID, EditHistory
       FROM dbo.TblCashMove
       WHERE ID = @id AND invType = N'مصروفات'
+        AND ${liveCashMovePredicate()}
     `);
   return result.recordset[0] || null;
 }
@@ -109,6 +111,7 @@ export async function updateExpense(
           Notes = @notes,
           EditHistory = @editHistory
       WHERE ID = @id AND invType = N'مصروفات'
+        AND ${liveCashMovePredicate()}
     `);
 
   const updated = await getExpenseSnapshot(transaction, id);
@@ -178,7 +181,8 @@ export async function updateExpenseCategory(
   await new sql.Request(transaction)
     .input('id', sql.Int, id)
     .input('expinid', sql.Int, expINID)
-    .query(`UPDATE dbo.TblCashMove SET ExpINID = @expinid WHERE ID = @id AND invType = N'مصروفات'`);
+    .query(`UPDATE dbo.TblCashMove SET ExpINID = @expinid WHERE ID = @id AND invType = N'مصروفات'
+        AND ${liveCashMovePredicate()}`);
 
   const updated = await getExpenseSnapshot(transaction, id);
   if (!updated) throw new Error('فشل تحديث تصنيف المصروف');
@@ -208,6 +212,7 @@ export async function deleteExpense(
   transaction: sql.Transaction,
   id: number,
   activeBranchId?: number,
+  options?: { userId?: number; idempotencyKey?: string },
 ): Promise<DeleteExpenseResult> {
   const existing = await getExpenseSnapshot(transaction, id);
   if (!existing) {
@@ -218,6 +223,50 @@ export async function deleteExpense(
     Number(existing.BranchID) !== Number(activeBranchId)
   ) {
     throw new Error('غير موجود');
+  }
+
+  const { buildStaffActorContext, resolveBootstrapTenantId } = await import(
+    '@/lib/bookingSchedulingComposition'
+  );
+  const { buildTreasuryWritePorts } = await import('@/lib/treasuryComposition');
+  const { reverseTreasuryOwnedMovement } = await import(
+    '@/apps/treasury/application/reverseTreasuryMovement'
+  );
+
+  const tenantId = options?.userId
+    ? (await buildStaffActorContext(options.userId)).tenantId ?? (await resolveBootstrapTenantId())
+    : await resolveBootstrapTenantId();
+  const owned = await new sql.Request(transaction)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('cashMoveId', sql.Int, id)
+    .query(`
+      SELECT TOP 1 IdempotencyKey FROM dbo.TreasuryMovementRegistry
+      WHERE TenantId = @tenantId AND CashMoveId = @cashMoveId AND Kind <> 'reverse'
+    `);
+
+  if (owned.recordset.length > 0) {
+    const actor = options?.userId
+      ? await buildStaffActorContext(options.userId)
+      : {
+          actorType: 'staff' as const,
+          actorId: '0',
+          tenantId,
+          membershipId: null,
+          viewLocationId: null,
+        };
+    const ports = await buildTreasuryWritePorts(actor);
+    const reversed = await reverseTreasuryOwnedMovement(transaction, ports, {
+      cashMoveId: id,
+      idempotencyKey: options?.idempotencyKey ?? `expense.reverse:${id}`,
+      reason: 'delete',
+    });
+    return {
+      deleted: true,
+      ledgerDeletedCount: reversed.ledgerVoidedCount,
+      settlementDeleted: false,
+      settlementCashMoveId: null,
+      settlementLedgerDeletedCount: 0,
+    };
   }
 
   // Resolve paired settlement BEFORE deleting the expense (needs amount/shift/time).

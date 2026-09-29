@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool, sql, allocateInvID } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
+import { withUnitOfWork } from '@/platform/public';
+import { buildStaffActorContext } from '@/lib/bookingSchedulingComposition';
+import { buildTreasuryWritePorts } from '@/lib/treasuryComposition';
+import { createExpenseThroughTreasury } from '@/apps/treasury/application/createExpense';
 import { getSession } from '@/lib/session';
 import type { CreateExpensePayload } from '@/lib/types';
 import { randomUUID } from 'crypto';
@@ -12,10 +16,8 @@ import {
   maybeScheduleAdvanceWhatsAppFromExpenseCategory,
 } from '@/lib/services/employeeAdvanceWhatsAppNotify';
 import { getCairoInvTimeDotStr } from '@/lib/businessDate';
-import {
-  branchErrorResponse,
-  lockOperationalWrite,
-} from '@/lib/branch/operationalGates';
+import { branchErrorResponse } from '@/lib/branch/operationalGates';
+import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 
 // GET /api/expenses — List expenses with optional filters
 export async function GET(req: NextRequest) {
@@ -37,7 +39,7 @@ export async function GET(req: NextRequest) {
     const paymentMethodId = url.searchParams.get('paymentMethodId');
 
     // PHASE1D: never trust browser branchId — always filter by the session's active branch
-    let whereClause = "WHERE cm.invType = N'مصروفات' AND cm.inOut = N'out' AND cm.BranchID = @branchId";
+    let whereClause = `WHERE cm.invType = N'مصروفات' AND cm.inOut = N'out' AND cm.BranchID = @branchId AND ${liveCashMovePredicate('cm')}`;
     const request = db.request();
     request.input('branchId', sql.Int, branch.branchId);
 
@@ -186,138 +188,66 @@ export async function POST(req: NextRequest) {
     const invTime = getCairoInvTimeDotStr();
     const notesText = body.notes || catName;
 
-    // ──── Transaction (minimal: only invID allocation + insert) ────
-    let transactionStarted = false;
-    let transactionCompleted = false;
-    const transaction = new sql.Transaction(db);
+    const actor = await buildStaffActorContext(userID);
+    const treasuryPorts = await buildTreasuryWritePorts(actor);
+    const idempotencyKey =
+      typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim()
+        ? body.idempotencyKey.trim()
+        : `expense:${owned.ownership.branchId}:${requestId}`;
 
     try {
-      log('before-transaction-begin');
-      await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
-      transactionStarted = true;
-      log('after-transaction-begin', { isolation: 'SERIALIZABLE' });
+      const created = await withUnitOfWork(async ({ transaction }) => {
+        const result = await createExpenseThroughTreasury(transaction, treasuryPorts, {
+          locationId: owned.ownership.branchId,
+          amount,
+          categoryId: body.expINID,
+          paymentMethodId: body.paymentMethodId,
+          notes: notesText,
+          idempotencyKey,
+          invTime,
+        });
 
-      await lockOperationalWrite(transaction, {
-        branchId: owned.ownership.branchId,
-        businessDayId: owned.ownership.businessDayId!,
-        shiftSessionId: shiftMoveID,
-        requireShift: true,
-      });
-
-      // ──── Idempotency: check for recent identical expense (within last 5 sec) ────
-      log('before-idempotency-check');
-      const dupCheck = await new sql.Request(transaction)
-        .input('invDate', sql.Date, invDate)
-        .input('expINID', sql.Int, body.expINID)
-        .input('amount', sql.Decimal(10, 2), amount)
-        .input('shiftMoveID', sql.Int, shiftMoveID)
-        .query(`
-          SELECT TOP 1 ID, invID, invDate, GrandTolal, ExpINID, ShiftMoveID
-          FROM [dbo].[TblCashMove]
-          WHERE invType = N'مصروفات'
-            AND invDate = @invDate
-            AND ExpINID = @expINID
-            AND GrandTolal = @amount
-            AND ShiftMoveID = @shiftMoveID
-          ORDER BY ID DESC
-        `);
-      log('after-idempotency-check');
-      if (dupCheck.recordset.length > 0) {
-        const dup = dupCheck.recordset[0];
-        log('idempotency-detected', { existingId: dup.ID, existingInvID: dup.invID });
         const ledgerResult = await maybeSyncAdvanceLedgerForExpenseCashMove(db, transaction, {
-          cashMoveId: dup.ID,
+          cashMoveId: result.cashMoveId,
           expINID: body.expINID,
           entryDate: formatLedgerEntryDate(invDate),
           amount,
           createdByUserId: userID,
         });
-        await transaction.commit();
-        transactionCompleted = true;
-        log('committed-duplicate', { invID: dup.invID });
-        return NextResponse.json({
-          invID: dup.invID,
-          catName,
-          amount,
-          duplicate: true,
-          ledgerDualWrite: ledgerResult.ledgerDualWrite,
-          ledgerSync: ledgerResult.outcome ?? null,
-        }, { status: 200 });
-      }
 
-      // ──── Allocate invID safely (no TABLOCKX) ────
-      log('before-invID-allocation');
-      const newInvID = await allocateInvID(transaction, 'TblCashMove', 'مصروفات', 5000);
-      log('after-invID-allocation', { newInvID });
+        const invRes = await new sql.Request(transaction)
+          .input('id', sql.Int, result.cashMoveId)
+          .query(`SELECT invID FROM dbo.TblCashMove WHERE ID = @id`);
 
-      // ──── Insert into TblCashMove ────
-      log('before-cash-move-insert');
-      const cashReq = new sql.Request(transaction);
-      cashReq
-        .input('invID',           sql.Int,              newInvID)
-        .input('invType',         sql.NVarChar(20),     N('مصروفات'))
-        .input('invDate',         sql.Date,             invDate)
-        .input('invTime',         sql.NVarChar(50),     invTime)
-        .input('ClientID',        sql.Int,              null)
-        .input('ExpINID',         sql.Int,              body.expINID)
-        .input('GrandTolal',      sql.Decimal(10, 2),   amount)
-        .input('inOut',           sql.NVarChar(5),      N('out'))
-        .input('Notes',           sql.NVarChar(sql.MAX), notesText)
-        .input('ShiftMoveID',     sql.Int,              shiftMoveID)
-        .input('PaymentMethodID', sql.Int,              body.paymentMethodId)
-        .input('BranchID',        sql.Int,              owned.ownership.branchId)
-        .input('BusinessDayID',   sql.Int,              owned.ownership.businessDayId);
-
-      const insertResult = await cashReq.query(`
-        INSERT INTO [dbo].[TblCashMove] (
-          invID, invType, invDate, invTime, ClientID,
-          ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID
-        )
-        OUTPUT INSERTED.ID
-        VALUES (
-          @invID, @invType, @invDate, @invTime, @ClientID,
-          @ExpINID, @GrandTolal, @inOut, @Notes, @ShiftMoveID, @PaymentMethodID, @BranchID, @BusinessDayID
-        )
-      `);
-      const cashMoveId = insertResult.recordset[0].ID as number;
-      log('after-cash-move-insert', { invID: newInvID, cashMoveId, expINID: body.expINID, amount, shiftMoveID });
-
-      const ledgerResult = await maybeSyncAdvanceLedgerForExpenseCashMove(db, transaction, {
-        cashMoveId,
-        expINID: body.expINID,
-        entryDate: formatLedgerEntryDate(invDate),
-        amount,
-        createdByUserId: userID,
+        return {
+          cashMoveId: result.cashMoveId,
+          invID: invRes.recordset[0]?.invID as number,
+          ledgerResult,
+          idempotentReplay: result.idempotentReplay,
+        };
       });
-
-      log('before-commit');
-      await transaction.commit();
-      transactionCompleted = true;
-      log('after-commit', { invID: newInvID, cashMoveId });
 
       const advanceWa = await maybeScheduleAdvanceWhatsAppFromExpenseCategory({
         expINID: body.expINID,
-        invID: newInvID,
+        invID: created.invID,
         amount,
         paymentMethodId: body.paymentMethodId,
         notes: notesText,
       });
 
       return NextResponse.json({
-        invID: newInvID,
-        cashMoveId,
+        invID: created.invID,
+        cashMoveId: created.cashMoveId,
         catName,
         amount,
-        ledgerDualWrite: ledgerResult.ledgerDualWrite,
-        ledgerSync: ledgerResult.outcome ?? null,
+        duplicate: created.idempotentReplay,
+        ledgerDualWrite: created.ledgerResult.ledgerDualWrite,
+        ledgerSync: created.ledgerResult.outcome ?? null,
         advanceWhatsApp: advanceWa.scheduled,
-      }, { status: 201 });
+      }, { status: created.idempotentReplay ? 200 : 201 });
     } catch (err) {
       if (err instanceof EmployeeLedgerDualWriteError) {
         log('ledger-dual-write-error', { error: err.message });
-        if (transactionStarted && !transactionCompleted) {
-          try { await transaction.rollback(); } catch { /* ignore */ }
-        }
         return NextResponse.json({ error: err.message, requestId }, { status: 503 });
       }
       log('transaction-error', {
@@ -325,14 +255,7 @@ export async function POST(req: NextRequest) {
         code: (err as any)?.code,
         number: (err as any)?.number,
       });
-      if (transactionStarted && !transactionCompleted) {
-        log('before-rollback');
-        try { await transaction.rollback(); log('after-rollback'); } catch (rbErr) {
-          log('rollback-failed', { error: rbErr instanceof Error ? rbErr.message : String(rbErr) });
-        }
-      }
 
-      // Distinguish lock/busy errors
       const errCode = (err as any)?.code;
       const errStatus = (err as any)?.statusCode;
       const errNumber = (err as any)?.number;

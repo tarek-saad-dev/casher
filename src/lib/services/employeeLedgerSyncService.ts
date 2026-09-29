@@ -342,6 +342,8 @@ async function fetchAdvanceRows(
     INNER JOIN dbo.TblEmp e ON e.EmpID = m.EmpID
     WHERE cm.invType = N'مصروفات'
       AND cm.inOut = N'out'
+      AND ISNULL(cm.IsReversed, 0) = 0
+      AND cm.ReversalOfCashMoveId IS NULL
       AND cm.invDate >= @monthStart
       AND cm.invDate <= @monthEnd
       AND cm.GrandTolal > 0

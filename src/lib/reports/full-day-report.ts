@@ -6,6 +6,7 @@ import { getArabicDayName } from '@/lib/reports/reportFormatters';
 import { resolveEmployeeWhatsAppPhone } from '@/lib/integrations/whatsapp/payload-builders';
 import { getEmployeeLedgerSummary } from '@/lib/services/employeeLedgerService';
 import { loadBranchDayMonthlyPlans } from '@/lib/payroll/branchPayrollPlan';
+import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 import type {
   FullDayEmployeeAccountRow,
   FullDayEmployeeRow,
@@ -20,6 +21,8 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** حساب التسوية الداخلي للدفع المتعدد — نستبعده من عرض طرق الدفع */
 const SPLIT_CLEARING_METHOD = 'دفع متعدد - حساب تسوية';
+const LIVE_CM = liveCashMovePredicate('cm');
+const LIVE = liveCashMovePredicate();
 
 function normalizeSqlDate(val: unknown): string {
   if (!val) return '';
@@ -143,6 +146,7 @@ export async function getFullDayReport(
         LEFT JOIN dbo.TblPaymentMethods pm ON pm.PaymentID = cm.PaymentMethodID
         WHERE CAST(cm.invDate AS DATE) = @d
           AND cm.invType = N'ايرادات'
+          AND ${LIVE_CM}
           AND cm.BranchID = @branchId
         ORDER BY cm.ID DESC
       `),
@@ -167,6 +171,7 @@ export async function getFullDayReport(
         LEFT JOIN dbo.TblPaymentMethods pm ON pm.PaymentID = cm.PaymentMethodID
         WHERE CAST(cm.invDate AS DATE) = @d
           AND cm.invType = N'مصروفات'
+          AND ${LIVE_CM}
           AND cm.inOut = N'out'
           AND cm.BranchID = @branchId
           AND NOT EXISTS (
@@ -254,6 +259,7 @@ export async function getFullDayReport(
       FROM dbo.TblCashMove
       WHERE CAST(invDate AS DATE) = @d
         AND invType = N'ايرادات'
+         AND ${LIVE}
         AND BranchID = @branchId
     `);
     incomesTotalFull = roundMoney(Number(sumRes.recordset[0]?.Total ?? incomesTotalFull));
@@ -276,6 +282,7 @@ export async function getFullDayReport(
       FROM dbo.TblCashMove cm
       WHERE CAST(cm.invDate AS DATE) = @d
         AND cm.invType = N'مصروفات'
+          AND ${LIVE_CM}
         AND cm.inOut = N'out'
         AND cm.BranchID = @branchId
         AND NOT EXISTS (
@@ -503,6 +510,7 @@ export async function getFullDayReport(
         LEFT JOIN dbo.TblExpINCat cat ON cat.ExpINID = cm.ExpINID
         WHERE CAST(cm.invDate AS DATE) = @d
           AND cm.invType = N'مصروفات'
+          AND ${LIVE_CM}
           AND cm.inOut = N'out'
           AND cm.BranchID = @branchId
           AND NOT EXISTS (
@@ -541,6 +549,7 @@ export async function getFullDayReport(
         INNER JOIN dbo.TblEmp e ON e.EmpID = mapped.EmpID
         WHERE CAST(cm.invDate AS DATE) = @d
           AND cm.invType = N'مصروفات'
+          AND ${LIVE_CM}
           AND cm.inOut = N'out'
           AND cm.BranchID = @branchId
         GROUP BY mapped.EmpID, e.EmpName
@@ -607,6 +616,7 @@ export async function getFullDayReport(
           LEFT JOIN dbo.TblPaymentMethods pm ON pm.PaymentID = cm.PaymentMethodID
           WHERE CAST(cm.invDate AS DATE) = @d
             AND cm.invType = N'ايرادات'
+          AND ${LIVE_CM}
             AND cm.BranchID = @branchId
             AND ISNULL(pm.PaymentMethod, N'') <> @clearing
           GROUP BY pm.PaymentMethod
@@ -740,6 +750,7 @@ export async function getFullDayReport(
        FROM dbo.TblCashMove
        WHERE CAST(invDate AS DATE) BETWEEN @from AND @to
          AND invType = N'ايرادات'
+         AND ${LIVE}
          AND BranchID = @branchId`,
     ),
     sumOne(
@@ -748,6 +759,7 @@ export async function getFullDayReport(
        FROM dbo.TblCashMove cm
        WHERE CAST(cm.invDate AS DATE) BETWEEN @from AND @to
          AND cm.invType = N'مصروفات'
+          AND ${LIVE_CM}
          AND cm.inOut = N'out'
          AND cm.BranchID = @branchId
          AND NOT EXISTS (
@@ -761,6 +773,7 @@ export async function getFullDayReport(
        FROM dbo.TblCashMove cm
        WHERE CAST(cm.invDate AS DATE) BETWEEN @from AND @to
          AND cm.invType = N'مصروفات'
+          AND ${LIVE_CM}
          AND cm.inOut = N'out'
          AND cm.BranchID = @branchId
          AND EXISTS (

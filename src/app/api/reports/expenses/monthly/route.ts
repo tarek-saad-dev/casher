@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 import type {
   MonthlyExpensesReport,
   CategoryBreakdown,
@@ -88,6 +89,7 @@ export async function GET(req: NextRequest) {
         FROM [dbo].[TblCashMove]
         WHERE invType = N'مصروفات' 
           AND inOut = N'out'
+          AND ${liveCashMovePredicate()}
           AND YEAR(invDate) = @year
           AND MONTH(invDate) = @month
           AND ${summaryQ.branchFilter}
@@ -110,6 +112,7 @@ export async function GET(req: NextRequest) {
         LEFT JOIN [dbo].[TblExpINCat] cat ON cm.ExpINID = cat.ExpINID
         WHERE cm.invType = N'مصروفات' 
           AND cm.inOut = N'out'
+          AND ${liveCashMovePredicate('cm')}
           AND YEAR(cm.invDate) = @year
           AND MONTH(cm.invDate) = @month
           AND ${uncategorizedQ.branchFilter}
@@ -136,6 +139,7 @@ export async function GET(req: NextRequest) {
         LEFT JOIN [dbo].[TblExpINCat] cat ON cm.ExpINID = cat.ExpINID
         WHERE cm.invType = N'مصروفات' 
           AND cm.inOut = N'out'
+          AND ${liveCashMovePredicate('cm')}
           AND YEAR(cm.invDate) = @year
           AND MONTH(cm.invDate) = @month
           AND ${topCategoryQ.branchFilter}
@@ -162,6 +166,7 @@ export async function GET(req: NextRequest) {
         FROM [dbo].[TblCashMove]
         WHERE invType = N'مصروفات' 
           AND inOut = N'out'
+          AND ${liveCashMovePredicate()}
           AND YEAR(invDate) = @year
           AND MONTH(invDate) = @month
           AND ${highestDayQ.branchFilter}
@@ -189,6 +194,7 @@ export async function GET(req: NextRequest) {
         LEFT JOIN [dbo].[TblPaymentMethods] pm ON cm.PaymentMethodID = pm.PaymentID
         WHERE cm.invType = N'مصروفات' 
           AND cm.inOut = N'out'
+          AND ${liveCashMovePredicate('cm')}
           AND YEAR(cm.invDate) = @year
           AND MONTH(cm.invDate) = @month
           AND ${topPaymentQ.branchFilter}
@@ -218,6 +224,7 @@ export async function GET(req: NextRequest) {
         LEFT JOIN [dbo].[TblExpINCat] cat ON cm.ExpINID = cat.ExpINID
         WHERE cm.invType = N'مصروفات' 
           AND cm.inOut = N'out'
+          AND ${liveCashMovePredicate('cm')}
           AND YEAR(cm.invDate) = @year
           AND MONTH(cm.invDate) = @month
           AND ${categoryQ.branchFilter}
@@ -244,6 +251,7 @@ export async function GET(req: NextRequest) {
         FROM [dbo].[TblCashMove]
         WHERE invType = N'مصروفات' 
           AND inOut = N'out'
+          AND ${liveCashMovePredicate()}
           AND YEAR(invDate) = @year
           AND MONTH(invDate) = @month
           AND ${dailyQ.branchFilter}
@@ -304,6 +312,7 @@ export async function GET(req: NextRequest) {
         ) map
         WHERE cm.invType = N'مصروفات' 
           AND cm.inOut = N'out'
+          AND ${liveCashMovePredicate('cm')}
           AND YEAR(cm.invDate) = @year
           AND MONTH(cm.invDate) = @month
           AND ${transactionsQ.branchFilter}

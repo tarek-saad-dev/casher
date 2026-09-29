@@ -6,6 +6,8 @@
  * also include cm.BranchID = @branchId.
  */
 
+import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
+
 export type TreasuryCashMoveFilterParams = {
   newDay?: string | null;
   dateFrom?: string | null;
@@ -25,6 +27,8 @@ export function appendTreasuryCashMoveFilters(
   filters: TreasuryCashMoveFilterParams,
   options?: { branchScoped?: boolean },
 ): void {
+  whereConditions.push(liveCashMovePredicate('cm'));
+
   const branchScoped = options?.branchScoped !== false;
 
   if (branchScoped) {

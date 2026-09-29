@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool, sql, allocateInvID } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { withUnitOfWork } from '@/platform/public';
+import { buildStaffActorContext } from '@/lib/bookingSchedulingComposition';
+import { buildTreasuryWritePorts } from '@/lib/treasuryComposition';
+import { createIncomeThroughTreasury } from '@/apps/treasury/application/createIncome';
+import { randomUUID } from 'crypto';
 import { requireRole, isAuthResult } from '@/lib/api-auth';
 import {
   EmployeeLedgerDualWriteError,
@@ -50,96 +55,74 @@ export async function POST(req: NextRequest) {
     const branchId = historical.ownership.branchId;
     const businessDayId = historical.ownership.businessDayId;
 
-    const db = await getPool();
-    const transaction = new sql.Transaction(db);
-    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    const actor = await buildStaffActorContext(session.UserID);
+    const treasuryPorts = await buildTreasuryWritePorts(actor);
+    const idempotencyKey =
+      typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim()
+        ? body.idempotencyKey.trim()
+        : `income.past:${branchId}:${randomUUID()}`;
+    const notesText = typeof notes === 'string' ? notes.trim() : '';
 
-    try {
-      // 1. Validate category exists and is income type
-      const catRes = await new sql.Request(transaction)
-        .input('expInId', sql.Int, expInId)
-        .query(`SELECT 1 FROM dbo.TblExpINCat WHERE ExpINID = @expInId AND ExpINType = N'ايرادات'`);
-      
-      if (catRes.recordset.length === 0) {
-        await transaction.rollback();
-        return NextResponse.json({ error: 'تصنيف الإيراد غير موجود' }, { status: 400 });
-      }
+    const created = await withUnitOfWork(async ({ transaction }) => {
+      const result = await createIncomeThroughTreasury(transaction, treasuryPorts, {
+        locationId: branchId,
+        amount: Number(amount),
+        categoryId: Number(expInId),
+        paymentMethodId: Number(paymentMethodId),
+        notes: notesText || null,
+        idempotencyKey,
+        invTime: invTime || '12:00',
+        historical: {
+          businessDayId,
+          businessDate: String(invDate).slice(0, 10),
+          shiftInstanceId: historical.ownership.shiftMoveId,
+        },
+      });
 
-      // 2. Validate payment method exists
-      const pmRes = await new sql.Request(transaction)
-        .input('pmId', sql.Int, paymentMethodId)
-        .query(`SELECT 1 FROM dbo.TblPaymentMethods WHERE PaymentID = @pmId`);
-      
-      if (pmRes.recordset.length === 0) {
-        await transaction.rollback();
-        return NextResponse.json({ error: 'طريقة الدفع غير موجودة' }, { status: 400 });
-      }
-
-      // 3. Allocate next invID safely (no UPDLOCK/HOLDLOCK)
-      const nextInvID = await allocateInvID(transaction, 'TblCashMove', 'ايرادات', 5000);
-
-      // 4. Insert the income record for past date
-      const notesText = typeof notes === 'string' ? notes.trim() : '';
-      const insertReq = new sql.Request(transaction)
-        .input('invID', sql.Int, nextInvID)
-        .input('invDate', sql.Date, invDate)
-        .input('invTime', sql.NVarChar(10), invTime || '12:00')
-        .input('expInId', sql.Int, expInId)
-        .input('amount', sql.Decimal(10, 2), Number(amount))
-        .input('notes', sql.NVarChar(sql.MAX), notesText || null)
-        .input('paymentMethodId', sql.Int, paymentMethodId)
-        .input('shiftMoveId', sql.Int, historical.ownership.shiftMoveId)
-        .input('branchId', sql.Int, branchId)
-        .input('businessDayId', sql.Int, businessDayId);
-
-      const insertRes = await insertReq.query(`
-        INSERT INTO dbo.TblCashMove
-          (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID)
-        OUTPUT
-          INSERTED.ID, INSERTED.invID, INSERTED.invDate, INSERTED.invTime,
-          INSERTED.ExpINID, INSERTED.GrandTolal AS Amount, INSERTED.Notes,
-          INSERTED.PaymentMethodID
-        VALUES
-          (@invID, N'ايرادات', @invDate, @invTime, NULL, @expInId, @amount, N'in', @notes, @shiftMoveId, @paymentMethodId, @branchId, @businessDayId)
-      `);
-
-      const newRecord = insertRes.recordset[0];
-      const fundingSync = await syncEmployeeFundingFromCashMove(transaction, Number(newRecord.ID), {
+      const fundingSync = await syncEmployeeFundingFromCashMove(transaction, result.cashMoveId, {
         createdByUserId: session.UserID,
       });
 
-      await transaction.commit();
+      const rowRes = await new sql.Request(transaction)
+        .input('id', sql.Int, result.cashMoveId)
+        .query(`
+          SELECT
+            ID, invID, invDate, invTime, ExpINID, GrandTolal AS Amount, Notes, PaymentMethodID
+          FROM dbo.TblCashMove WHERE ID = @id
+        `);
 
-      const fundingWa = await maybeScheduleFundingWhatsAppFromIncomeCategory({
-        expINID: Number(expInId),
-        invID: Number(newRecord.invID),
-        amount: Number(amount),
-        paymentMethodId: Number(paymentMethodId),
-        notes: notesText || undefined,
-      });
-      
-      return NextResponse.json({
-        success: true,
-        message: 'تم إضافة الإيراد للتاريخ المحدد بنجاح',
-        ledgerDualWrite: fundingSync.ledgerDualWrite,
-        ledgerSync: fundingSync.outcome,
-        advanceWhatsApp: fundingWa.scheduled,
-        data: {
-          ID: newRecord.ID,
-          invID: newRecord.invID,
-          invDate: newRecord.invDate,
-          invTime: newRecord.invTime,
-          ExpINID: newRecord.ExpINID,
-          Amount: newRecord.Amount,
-          Notes: newRecord.Notes,
-          PaymentMethodID: newRecord.PaymentMethodID,
-        }
-      });
+      return { newRecord: rowRes.recordset[0], fundingSync, idempotentReplay: result.idempotentReplay };
+    });
 
-    } catch (error) {
-      await transaction.rollback();
-      throw error;
-    }
+    const newRecord = created.newRecord;
+    const fundingSync = created.fundingSync;
+
+    const fundingWa = await maybeScheduleFundingWhatsAppFromIncomeCategory({
+      expINID: Number(expInId),
+      invID: Number(newRecord.invID),
+      amount: Number(amount),
+      paymentMethodId: Number(paymentMethodId),
+      notes: notesText || undefined,
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'تم إضافة الإيراد للتاريخ المحدد بنجاح',
+      ledgerDualWrite: fundingSync.ledgerDualWrite,
+      ledgerSync: fundingSync.outcome,
+      advanceWhatsApp: fundingWa.scheduled,
+      idempotentReplay: created.idempotentReplay,
+      data: {
+        ID: newRecord.ID,
+        invID: newRecord.invID,
+        invDate: newRecord.invDate,
+        invTime: newRecord.invTime,
+        ExpINID: newRecord.ExpINID,
+        Amount: newRecord.Amount,
+        Notes: newRecord.Notes,
+        PaymentMethodID: newRecord.PaymentMethodID,
+      },
+    }, { status: created.idempotentReplay ? 200 : 201 });
 
   } catch (err: unknown) {
     if (err instanceof EmployeeLedgerDualWriteError) {

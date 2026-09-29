@@ -193,6 +193,13 @@ npm run messaging:migrate-booking-management
 "
 
 echo
+echo "[7d/8] DRVO-007 treasury movement registry (idempotent)..."
+runuser -u casher -- bash -lc "
+cd '$APP_DIR'
+npm run treasury:migrate-drvo-007 -- --allow-production
+"
+
+echo
 echo "[7c/8] Salon Concierge trusted knowledge bootstrap (flag stays off)..."
 runuser -u casher -- bash -lc "
 cd '$APP_DIR'

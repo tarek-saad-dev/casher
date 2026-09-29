@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool, sql, allocateInvID } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { withUnitOfWork } from '@/platform/public';
+import { buildStaffActorContext } from '@/lib/bookingSchedulingComposition';
+import { buildTreasuryWritePorts } from '@/lib/treasuryComposition';
+import { createIncomeThroughTreasury } from '@/apps/treasury/application/createIncome';
+import { randomUUID } from 'crypto';
 import { isActiveBranchContext, requireActiveBranchContext } from '@/lib/branch';
 import { branchErrorResponse } from '@/lib/branch/operationalGates';
+import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 import { isFinancialReportClassificationEnabled } from '@/lib/accounting/financialReportFlags';
 import {
   buildCashMoveReportClassification,
@@ -89,6 +95,7 @@ export async function GET(req: NextRequest) {
         ORDER BY m.ID DESC
       ) map
       WHERE CM.invType = N'ايرادات'
+        AND ${liveCashMovePredicate('CM')}
         AND CM.BranchID = @branchId
         AND CM.invDate >= @fromDate
         AND CM.invDate <= @toDate
@@ -118,6 +125,7 @@ export async function GET(req: NextRequest) {
         MAX(invDate)                AS LastIncomeDate
       FROM dbo.TblCashMove
       WHERE invType = N'ايرادات'
+        AND ${liveCashMovePredicate()}
         AND BranchID = @branchId
         AND invDate >= @fromDate
         AND invDate <= @toDate
@@ -137,6 +145,7 @@ export async function GET(req: NextRequest) {
       FROM dbo.TblCashMove CM
       LEFT JOIN dbo.TblPaymentMethods PM ON CM.PaymentMethodID = PM.PaymentID
       WHERE CM.invType = N'ايرادات'
+        AND ${liveCashMovePredicate('CM')}
         AND CM.BranchID = @branchId
         AND CM.invDate >= @fromDate
         AND CM.invDate <= @toDate
@@ -158,6 +167,7 @@ export async function GET(req: NextRequest) {
       FROM dbo.TblCashMove CM
       LEFT JOIN dbo.TblExpINCat CAT ON CM.ExpINID = CAT.ExpINID
       WHERE CM.invType = N'ايرادات'
+        AND ${liveCashMovePredicate('CM')}
         AND CM.BranchID = @branchId
         AND CM.invDate >= @fromDate
         AND CM.invDate <= @toDate
@@ -183,6 +193,7 @@ export async function GET(req: NextRequest) {
       LEFT JOIN dbo.TblShift S      ON SM.ShiftID     = S.ShiftID
       LEFT JOIN dbo.TblUser U       ON SM.UserID      = U.UserID
       WHERE CM.invType = N'ايرادات'
+        AND ${liveCashMovePredicate('CM')}
         AND CM.BranchID = @branchId
         AND CM.invDate >= @fromDate
         AND CM.invDate <= @toDate
@@ -265,107 +276,67 @@ export async function POST(req: NextRequest) {
     if (!expInId) return NextResponse.json({ error: 'يجب اختيار تصنيف الإيراد' }, { status: 400 });
     if (!paymentMethodId) return NextResponse.json({ error: 'يجب اختيار طريقة الدفع' }, { status: 400 });
 
-    // ──── Enforce active branch business day + user shift (Phase 1D) ────
-    // Never trust browser branchId — ownership comes only from validated session context.
-    const { resolveBranchDayAndShiftForWrite, lockOperationalWrite } = await import('@/lib/branch/operationalGates');
+    const { resolveBranchDayAndShiftForWrite } = await import('@/lib/branch/operationalGates');
     const { finalizeCurrentFinancialWrite } = await import('@/lib/branch/financialOwnershipPolicy');
     const gated = await resolveBranchDayAndShiftForWrite(session.UserID);
     if (!gated.ok) return gated.response;
     const owned = finalizeCurrentFinancialWrite('income.create', gated, body);
     if (!owned.ok) return owned.response;
     const branchId = owned.ownership.branchId;
-    const businessDayId = owned.ownership.businessDayId!;
-    const invDate = owned.ownership.businessDate!;
 
-    const db = await getPool();
-    const transaction = new sql.Transaction(db);
-    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    const actor = await buildStaffActorContext(session.UserID);
+    const treasuryPorts = await buildTreasuryWritePorts(actor);
+    const idempotencyKey =
+      typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim()
+        ? body.idempotencyKey.trim()
+        : `income:${branchId}:${randomUUID()}`;
 
-    try {
-      await lockOperationalWrite(transaction, {
-        branchId,
-        businessDayId,
-        shiftSessionId: gated.shift?.id ?? null,
-        requireShift: true,
+    const created = await withUnitOfWork(async ({ transaction }) => {
+      const result = await createIncomeThroughTreasury(transaction, treasuryPorts, {
+        locationId: branchId,
+        amount: Number(amount),
+        categoryId: Number(expInId),
+        paymentMethodId: Number(paymentMethodId),
+        notes: notes?.trim() || null,
+        idempotencyKey,
       });
-      // Always use the gated open shift for this branch — never trust client shiftMoveId.
-      const resolvedShiftMoveId: number | null = gated.shift?.id ?? null;
-      if (!resolvedShiftMoveId) {
-        await transaction.rollback();
-        return NextResponse.json({ error: 'لا توجد وردية مفتوحة. يجب فتح وردية قبل تسجيل الإيراد.' }, { status: 400 });
-      }
 
-      // 2. Validate category
-      const catRes = await new sql.Request(transaction)
-        .input('expInId', sql.Int, expInId)
-        .query(`SELECT 1 FROM dbo.TblExpINCat WHERE ExpINID = @expInId`);
-      if (catRes.recordset.length === 0) {
-        await transaction.rollback();
-        return NextResponse.json({ error: 'تصنيف الإيراد غير موجود' }, { status: 400 });
-      }
-
-      // 3. Validate payment method
-      const pmRes = await new sql.Request(transaction)
-        .input('pmId', sql.Int, paymentMethodId)
-        .query(`SELECT 1 FROM dbo.TblPaymentMethods WHERE PaymentID = @pmId`);
-      if (pmRes.recordset.length === 0) {
-        await transaction.rollback();
-        return NextResponse.json({ error: 'طريقة الدفع غير موجودة' }, { status: 400 });
-      }
-
-      // 4. Allocate next invID safely (no UPDLOCK/HOLDLOCK)
-      const nextInvID = await allocateInvID(transaction, 'TblCashMove', 'ايرادات', 5000);
-
-      // 5. Insert
-      const insertReq = new sql.Request(transaction)
-        .input('invID',           sql.Int,              nextInvID)
-        .input('invDate',         sql.Date,             invDate)
-        .input('expInId',         sql.Int,              expInId)
-        .input('amount',          sql.Decimal(10, 2),   Number(amount))
-        .input('notes',           sql.NVarChar(sql.MAX), notes?.trim() || null)
-        .input('shiftMoveId',     sql.Int,              resolvedShiftMoveId)
-        .input('paymentMethodId', sql.Int,              paymentMethodId)
-        .input('branchId',        sql.Int,              branchId)
-        .input('businessDayId',   sql.Int,              businessDayId);
-
-      const insertRes = await insertReq.query(`
-        INSERT INTO dbo.TblCashMove
-          (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID)
-        OUTPUT
-          INSERTED.ID, INSERTED.invID, INSERTED.invDate, INSERTED.invTime,
-          INSERTED.ExpINID, INSERTED.GrandTolal AS Amount, INSERTED.Notes,
-          INSERTED.ShiftMoveID, INSERTED.PaymentMethodID
-        VALUES
-          (@invID, N'ايرادات', @invDate, CONVERT(nvarchar(8), GETDATE(), 108),
-           NULL, @expInId, @amount, N'in', @notes, @shiftMoveId, @paymentMethodId, @branchId, @businessDayId)
-      `);
-
-      const inserted = insertRes.recordset[0];
-      const fundingSync = await syncEmployeeFundingFromCashMove(transaction, Number(inserted.ID), {
+      const fundingSync = await syncEmployeeFundingFromCashMove(transaction, result.cashMoveId, {
         createdByUserId: session.UserID,
       });
 
-      await transaction.commit();
+      const rowRes = await new sql.Request(transaction)
+        .input('id', sql.Int, result.cashMoveId)
+        .query(`
+          SELECT
+            ID, invID, invDate, invTime, ExpINID, GrandTolal AS Amount, Notes,
+            ShiftMoveID, PaymentMethodID
+          FROM dbo.TblCashMove WHERE ID = @id
+        `);
 
-      const notesText = typeof notes === 'string' ? notes.trim() : '';
-      const fundingWa = await maybeScheduleFundingWhatsAppFromIncomeCategory({
-        expINID: Number(expInId),
-        invID: Number(inserted.invID),
-        amount: Number(amount),
-        paymentMethodId: Number(paymentMethodId),
-        notes: notesText || undefined,
-      });
+      return {
+        inserted: rowRes.recordset[0],
+        fundingSync,
+        idempotentReplay: result.idempotentReplay,
+      };
+    });
 
-      return NextResponse.json({
-        ...inserted,
-        ledgerDualWrite: fundingSync.ledgerDualWrite,
-        ledgerSync: fundingSync.outcome,
-        advanceWhatsApp: fundingWa.scheduled,
-      }, { status: 201 });
-    } catch (innerErr) {
-      try { await transaction.rollback(); } catch {}
-      throw innerErr;
-    }
+    const notesText = typeof notes === 'string' ? notes.trim() : '';
+    const fundingWa = await maybeScheduleFundingWhatsAppFromIncomeCategory({
+      expINID: Number(expInId),
+      invID: Number(created.inserted.invID),
+      amount: Number(amount),
+      paymentMethodId: Number(paymentMethodId),
+      notes: notesText || undefined,
+    });
+
+    return NextResponse.json({
+      ...created.inserted,
+      ledgerDualWrite: created.fundingSync.ledgerDualWrite,
+      ledgerSync: created.fundingSync.outcome,
+      advanceWhatsApp: fundingWa.scheduled,
+      idempotentReplay: created.idempotentReplay,
+    }, { status: created.idempotentReplay ? 200 : 201 });
   } catch (err: unknown) {
     if (err instanceof EmployeeLedgerDualWriteError) {
       return NextResponse.json({ error: err.message }, { status: 400 });
