@@ -31,6 +31,15 @@ export function assertDrvoMigrationManifestValid(): void {
     }
     ids.add(m.migrationId);
     keys.add(m.migrationKey);
+    if (!m.control) {
+      throw new Error(`Migration ${m.migrationKey} must declare production control metadata`);
+    }
+    if (!['LOW', 'MEDIUM', 'HIGH'].includes(m.control.risk)) {
+      throw new Error(`Migration ${m.migrationKey} has invalid risk ${m.control.risk}`);
+    }
+    if (!m.control.rollbackStrategy.trim()) {
+      throw new Error(`Migration ${m.migrationKey} must declare a rollback strategy`);
+    }
     for (const dep of m.dependencies) {
       const depDef = DRVO_MIGRATIONS.find((x) => x.migrationKey === dep);
       if (!depDef) {
