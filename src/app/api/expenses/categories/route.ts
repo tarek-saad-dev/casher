@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
+import { liveCashMoveAndClause } from '@/lib/treasury/liveCashMoveSql';
 
 // Smart category grouping based on common patterns
 function getCategoryGroup(catName: string): string {
@@ -78,6 +79,8 @@ function getCategoryGroup(catName: string): string {
 export async function GET() {
   try {
     const db = await getPool();
+    // Reversal columns exist only after DRVO-007 treasury migration; skip filter until then.
+    const liveClause = await liveCashMoveAndClause(db);
     const result = await db.request().query(`
       SELECT 
         cat.ExpINID, 
@@ -89,7 +92,7 @@ export async function GET() {
         SELECT ExpINID, COUNT(*) AS UsageCount
         FROM [dbo].[TblCashMove]
         WHERE invType = N'مصروفات' AND inOut = N'out'
-          AND ISNULL(IsReversed, 0) = 0 AND ReversalOfCashMoveId IS NULL
+          ${liveClause}
           AND invDate >= DATEADD(MONTH, -3, GETDATE())
         GROUP BY ExpINID
       ) usage ON cat.ExpINID = usage.ExpINID
@@ -97,7 +100,7 @@ export async function GET() {
         SELECT ExpINID, COUNT(*) AS DailyUsageCount
         FROM [dbo].[TblCashMove]
         WHERE invType = N'مصروفات' AND inOut = N'out'
-          AND ISNULL(IsReversed, 0) = 0 AND ReversalOfCashMoveId IS NULL
+          ${liveClause}
           AND invDate = CAST(GETDATE() AS DATE)
         GROUP BY ExpINID
       ) daily ON cat.ExpINID = daily.ExpINID
