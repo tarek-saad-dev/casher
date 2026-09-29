@@ -16,7 +16,7 @@ import {
 } from '@/modules/operations/infra/shiftMutationTx';
 import type { ShiftMoveRecord } from '@/modules/operations/infra/shiftMoveRecord';
 import type { BusinessDayRecord } from '@/lib/branch/businessDay';
-import { publishCalendarOutboxEvent } from './calendarOutbox';
+import { nextCalendarDayIdempotencyKey, publishCalendarOutboxEvent } from './calendarOutbox';
 
 function assertStaffActor(actor: ActorContext): number {
   if (actor.actorType !== 'staff') {
@@ -87,7 +87,13 @@ export async function openDayInTransaction(
       businessDate: day.newDay,
       openedByUserId: userId,
     },
-    `calendar.day.opened:${input.locationId}:${day.id}`,
+    await nextCalendarDayIdempotencyKey(
+      tx,
+      tenantId,
+      'calendar.day.opened',
+      input.locationId,
+      day.id,
+    ),
   );
 
   return day;
@@ -121,7 +127,13 @@ export async function closeDayInTransaction(
       closedShifts: result.closedShifts,
       closedByUserId: userId,
     },
-    `calendar.day.closed:${input.locationId}:${result.day.id}`,
+    await nextCalendarDayIdempotencyKey(
+      tx,
+      tenantId,
+      'calendar.day.closed',
+      input.locationId,
+      result.day.id,
+    ),
   );
 
   return result;

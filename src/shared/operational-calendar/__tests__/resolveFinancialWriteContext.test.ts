@@ -63,18 +63,29 @@ describe('resolveFinancialWriteContextInTransaction', () => {
   });
 
   it('SHIFT scope uses operational branch and locks on caller transaction', async () => {
-    getUserOpenShiftInTransaction.mockResolvedValueOnce({
-      id: 99,
-      branchId: 2,
-      businessDayId: 10,
-      newDay: '2026-09-28',
-      status: true,
-      userId: 7,
-      shiftId: 1,
-      startDate: null,
-      startTime: null,
-      endDate: null,
-      endTime: null,
+    const order: string[] = [];
+    getUserOpenShiftInTransaction.mockImplementationOnce(async () => {
+      order.push('peek-shift');
+      return {
+        id: 99,
+        branchId: 2,
+        businessDayId: 10,
+        newDay: '2026-09-28',
+        status: true,
+        userId: 7,
+        shiftId: 1,
+        startDate: null,
+        startTime: null,
+        endDate: null,
+        endTime: null,
+      };
+    });
+    lockOperationalWrite.mockImplementationOnce(async () => {
+      order.push('lock-day-then-shift');
+      return {
+        day: { id: 10, branchId: 2, newDay: '2026-09-28', status: true },
+        shift: { id: 99, branchId: 2, businessDayId: 10, status: true },
+      };
     });
     const { resolveFinancialWriteContextInTransaction } = await import(
       '../internal/resolveFinancialWriteContext'
@@ -83,6 +94,7 @@ describe('resolveFinancialWriteContextInTransaction', () => {
     const ctx = await resolveFinancialWriteContextInTransaction(tx, TENANT, staffActor, {
       locationId: 1,
     });
+    expect(order).toEqual(['peek-shift', 'lock-day-then-shift']);
     expect(getUserOpenShiftInTransaction).toHaveBeenCalledWith(tx, 7);
     expect(lockOperationalWrite).toHaveBeenCalledWith(
       tx,

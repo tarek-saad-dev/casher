@@ -42,7 +42,8 @@ function assertTenant(actor: ActorContext, tenantId: string): void {
 
 /**
  * Transactionally resolve financial write scope for a staff actor.
- * Locks day (and shift when applicable) on the supplied transaction.
+ * Discovers an open shift without locking it, then locks TblNewDay before
+ * TblShiftMove on the supplied transaction.
  */
 export async function resolveFinancialWriteContextInTransaction(
   tx: sql.Transaction,
