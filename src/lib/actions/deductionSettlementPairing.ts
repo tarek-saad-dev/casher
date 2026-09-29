@@ -4,6 +4,7 @@
  */
 
 import { sql } from '@/lib/db';
+import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 
 export interface DeductionExpenseForPairing {
   ID: number;
@@ -69,8 +70,7 @@ export async function findPairedDeductionSettlementId(
       INNER JOIN dbo.TblExpINCat cat ON cat.ExpINID = cm.ExpINID
       WHERE cm.invType = N'ايرادات'
         AND cm.inOut = N'in'
-        AND ISNULL(cm.IsReversed, 0) = 0
-        AND cm.ReversalOfCashMoveId IS NULL
+        AND ${liveCashMovePredicate('cm')}
         AND cat.CatName = N'معادلة'
         AND cm.BranchID = @branchId
         AND cm.invDate = @invDate
@@ -130,7 +130,7 @@ export async function syncPairedDeductionSettlement(
           PaymentMethodID = @paymentMethodId,
           Notes = @notes
       WHERE ID = @id AND invType = N'ايرادات'
-        AND ISNULL(IsReversed, 0) = 0 AND ReversalOfCashMoveId IS NULL
+        AND ${liveCashMovePredicate()}
     `);
   } else {
     await req.query(`
@@ -138,7 +138,7 @@ export async function syncPairedDeductionSettlement(
       SET GrandTolal = @grandTotal,
           PaymentMethodID = @paymentMethodId
       WHERE ID = @id AND invType = N'ايرادات'
-        AND ISNULL(IsReversed, 0) = 0 AND ReversalOfCashMoveId IS NULL
+        AND ${liveCashMovePredicate()}
     `);
   }
 

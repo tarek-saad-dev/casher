@@ -1,8 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { buildReversalPosting, signedPaymentEffect } from '../internal/reversalPosting';
-import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
+import {
+  liveCashMovePredicate,
+  resetCashMoveReversalColumnsCache,
+  setCashMoveReversalColumnsCacheForTests,
+} from '@/lib/treasury/liveCashMoveSql';
 
 describe('treasury reversal posting', () => {
+  afterEach(() => {
+    resetCashMoveReversalColumnsCache();
+  });
+
   it('nets an income on the same invType and inOut', () => {
     const posting = buildReversalPosting({ inOut: 'in', invType: 'ايرادات', amount: 100 });
     expect(posting.direction).toBe('in');
@@ -25,9 +33,14 @@ describe('treasury reversal posting', () => {
     ).toBe(0);
   });
 
-  it('hides reversed originals and reversal rows from live reads', () => {
-    const sql = liveCashMovePredicate('cm');
-    expect(sql).toContain('cm.IsReversed');
-    expect(sql).toContain('cm.ReversalOfCashMoveId IS NULL');
+  it('hides reversed originals and reversal rows from live reads when schema ready', () => {
+    setCashMoveReversalColumnsCacheForTests(true);
+    const sqlText = liveCashMovePredicate('cm');
+    expect(sqlText).toContain('cm.IsReversed');
+    expect(sqlText).toContain('cm.ReversalOfCashMoveId IS NULL');
+  });
+
+  it('keeps live reads safe when reversal columns are absent', () => {
+    expect(liveCashMovePredicate('cm')).toBe('1=1');
   });
 });

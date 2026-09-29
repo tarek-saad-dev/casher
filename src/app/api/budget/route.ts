@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 import { getPool, sql } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import type { CreateBudgetMonthPayload } from '@/lib/types';
@@ -48,7 +49,7 @@ export async function GET() {
           SELECT ISNULL(SUM(GrandTolal), 0) AS Total
           FROM [dbo].[TblCashMove]
           WHERE invType = N'مصروفات' AND inOut = N'out'
-            AND ISNULL(IsReversed, 0) = 0 AND ReversalOfCashMoveId IS NULL
+            AND ${liveCashMovePredicate()}
             AND YEAR(invDate) = @yr AND MONTH(invDate) = @mo
         `);
       m.TotalActualExpenses = expResult.recordset[0]?.Total || 0;
@@ -71,7 +72,7 @@ export async function GET() {
           SELECT ISNULL(SUM(GrandTolal), 0) AS Total
           FROM [dbo].[TblCashMove]
           WHERE invType = N'ايرادات' AND inOut = N'in'
-            AND ISNULL(IsReversed, 0) = 0 AND ReversalOfCashMoveId IS NULL
+            AND ${liveCashMovePredicate()}
             AND YEAR(invDate) = @yr AND MONTH(invDate) = @mo
         `);
       m.ActualOtherIncome = incResult.recordset[0]?.Total || 0;

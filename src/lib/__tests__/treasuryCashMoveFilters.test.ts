@@ -1,7 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { appendTreasuryCashMoveFilters } from '@/lib/services/treasuryCashMoveFilters';
+import {
+  resetCashMoveReversalColumnsCache,
+  setCashMoveReversalColumnsCacheForTests,
+} from '@/lib/treasury/liveCashMoveSql';
 
 describe('appendTreasuryCashMoveFilters', () => {
+  afterEach(() => {
+    resetCashMoveReversalColumnsCache();
+  });
+
   it('scopes day filter to active-branch business day / shift', () => {
     const where: string[] = ['cm.BranchID = @branchId'];
     const params: Record<string, string | number> = {};
@@ -14,13 +22,26 @@ describe('appendTreasuryCashMoveFilters', () => {
   });
 
   it('rejects matching via other-branch shifts even without newDay', () => {
+    setCashMoveReversalColumnsCacheForTests(true);
     const where: string[] = ['cm.BranchID = @branchId'];
     const params: Record<string, string | number> = {};
 
     appendTreasuryCashMoveFilters(where, params, {});
 
     expect(where).toContain('(sm.ID IS NULL OR sm.BranchID = @branchId)');
-    expect(where.some((clause) => clause.includes('IsReversed') && clause.includes('ReversalOfCashMoveId'))).toBe(true);
+    expect(
+      where.some(
+        (clause) => clause.includes('IsReversed') && clause.includes('ReversalOfCashMoveId'),
+      ),
+    ).toBe(true);
+  });
+
+  it('uses safe live predicate before reversal columns exist', () => {
+    const where: string[] = ['cm.BranchID = @branchId'];
+    const params: Record<string, string | number> = {};
+    appendTreasuryCashMoveFilters(where, params, {});
+    expect(where).toContain('1=1');
+    expect(where.join(' ')).not.toContain('ReversalOfCashMoveId');
   });
 
   it('allows unscoped legacy mode when branchScoped is false', () => {

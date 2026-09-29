@@ -1,3 +1,4 @@
+import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 
@@ -37,7 +38,7 @@ export async function POST(
           SUM(GrandTolal) AS monthly_total
         FROM [dbo].[TblCashMove]
         WHERE invType = N'مصروفات' AND inOut = N'out'
-          AND ISNULL(IsReversed, 0) = 0 AND ReversalOfCashMoveId IS NULL
+          AND ${liveCashMovePredicate()}
           AND invDate >= DATEADD(month, -6, GETDATE())
           AND invDate < CAST(GETDATE() AS DATE)
           AND ExpINID IS NOT NULL
