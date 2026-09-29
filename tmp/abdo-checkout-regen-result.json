@@ -1,0 +1,385 @@
+{
+  "checkoutUpdated": [
+    "2026-09-02: 02:06 → 02:00",
+    "2026-09-03: 01:00 → 02:00",
+    "2026-09-04: 00:08 → 02:00",
+    "2026-09-13: 01:00 → 02:00"
+  ],
+  "checkoutAlreadyOk": [
+    "2026-09-01",
+    "2026-09-08",
+    "2026-09-12",
+    "2026-09-14",
+    "2026-09-15",
+    "2026-09-16"
+  ],
+  "skippedDayOff": [
+    "2026-09-05:DayOff",
+    "2026-09-06:DayOff",
+    "2026-09-07:DayOff",
+    "2026-09-09:DayOff",
+    "2026-09-10:DayOff",
+    "2026-09-11:DayOff"
+  ],
+  "payroll": [
+    {
+      "workDate": "2026-09-01",
+      "generatedCount": 1,
+      "totalHours": 7,
+      "totalWage": 165.2,
+      "ledgerSync": {
+        "inserted": 0,
+        "updated": 3,
+        "voided": 0,
+        "skipped": 0
+      },
+      "heal": {
+        "inserted": 0,
+        "updated": 1,
+        "voided": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "workDate": "2026-09-02",
+      "generatedCount": 1,
+      "totalHours": 7,
+      "totalWage": 165.2,
+      "ledgerSync": {
+        "inserted": 0,
+        "updated": 4,
+        "voided": 0,
+        "skipped": 0
+      },
+      "heal": {
+        "inserted": 0,
+        "updated": 1,
+        "voided": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "workDate": "2026-09-03",
+      "generatedCount": 1,
+      "totalHours": 6.92,
+      "totalWage": 163.23,
+      "ledgerSync": {
+        "inserted": 0,
+        "updated": 4,
+        "voided": 0,
+        "skipped": 0
+      },
+      "heal": {
+        "inserted": 0,
+        "updated": 1,
+        "voided": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "workDate": "2026-09-04",
+      "generatedCount": 1,
+      "totalHours": 7.17,
+      "totalWage": 169.13,
+      "ledgerSync": {
+        "inserted": 0,
+        "updated": 2,
+        "voided": 0,
+        "skipped": 0
+      },
+      "heal": {
+        "inserted": 0,
+        "updated": 1,
+        "voided": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "workDate": "2026-09-08",
+      "generatedCount": 1,
+      "totalHours": 5.28,
+      "totalWage": 124.69,
+      "ledgerSync": {
+        "inserted": 0,
+        "updated": 6,
+        "voided": 0,
+        "skipped": 0
+      },
+      "heal": {
+        "inserted": 0,
+        "updated": 1,
+        "voided": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "workDate": "2026-09-12",
+      "generatedCount": 1,
+      "totalHours": 7,
+      "totalWage": 165.2,
+      "ledgerSync": {
+        "inserted": 0,
+        "updated": 7,
+        "voided": 0,
+        "skipped": 0
+      },
+      "heal": {
+        "inserted": 0,
+        "updated": 1,
+        "voided": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "workDate": "2026-09-13",
+      "generatedCount": 1,
+      "totalHours": 5.25,
+      "totalWage": 123.9,
+      "ledgerSync": {
+        "inserted": 0,
+        "updated": 5,
+        "voided": 0,
+        "skipped": 0
+      },
+      "heal": {
+        "inserted": 0,
+        "updated": 1,
+        "voided": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "workDate": "2026-09-14",
+      "generatedCount": 1,
+      "totalHours": 5.58,
+      "totalWage": 131.77,
+      "ledgerSync": {
+        "inserted": 0,
+        "updated": 3,
+        "voided": 0,
+        "skipped": 0
+      },
+      "heal": {
+        "inserted": 0,
+        "updated": 1,
+        "voided": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "workDate": "2026-09-15",
+      "generatedCount": 1,
+      "totalHours": 7,
+      "totalWage": 165.2,
+      "ledgerSync": {
+        "inserted": 0,
+        "updated": 4,
+        "voided": 0,
+        "skipped": 0
+      },
+      "heal": {
+        "inserted": 0,
+        "updated": 1,
+        "voided": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "workDate": "2026-09-16",
+      "generatedCount": 1,
+      "totalHours": 8.5,
+      "totalWage": 200.6,
+      "ledgerSync": {
+        "inserted": 0,
+        "updated": 1,
+        "voided": 0,
+        "skipped": 0
+      },
+      "heal": {
+        "inserted": 0,
+        "updated": 1,
+        "voided": 0,
+        "skipped": 0
+      }
+    }
+  ],
+  "ledger": [
+    {
+      "workDate": "2026-09-01",
+      "attStatus": "Present",
+      "checkIn": "19:00",
+      "checkOut": "02:00",
+      "payStatus": "Generated",
+      "dailyWage": 165.2,
+      "hours": 7,
+      "hasActiveLedger": 1,
+      "ledgerAmount": 165.2
+    },
+    {
+      "workDate": "2026-09-02",
+      "attStatus": "Present",
+      "checkIn": "19:00",
+      "checkOut": "02:00",
+      "payStatus": "Generated",
+      "dailyWage": 165.2,
+      "hours": 7,
+      "hasActiveLedger": 1,
+      "ledgerAmount": 165.2
+    },
+    {
+      "workDate": "2026-09-03",
+      "attStatus": "Present",
+      "checkIn": "19:05",
+      "checkOut": "02:00",
+      "payStatus": "Generated",
+      "dailyWage": 163.23,
+      "hours": 6.92,
+      "hasActiveLedger": 1,
+      "ledgerAmount": 163.23
+    },
+    {
+      "workDate": "2026-09-04",
+      "attStatus": "Present",
+      "checkIn": "18:50",
+      "checkOut": "02:00",
+      "payStatus": "Generated",
+      "dailyWage": 169.13,
+      "hours": 7.17,
+      "hasActiveLedger": 1,
+      "ledgerAmount": 169.13
+    },
+    {
+      "workDate": "2026-09-05",
+      "attStatus": "DayOff",
+      "checkIn": null,
+      "checkOut": null,
+      "payStatus": null,
+      "dailyWage": null,
+      "hours": null,
+      "hasActiveLedger": 0,
+      "ledgerAmount": null
+    },
+    {
+      "workDate": "2026-09-06",
+      "attStatus": "DayOff",
+      "checkIn": null,
+      "checkOut": null,
+      "payStatus": "Generated",
+      "dailyWage": 0,
+      "hours": 0,
+      "hasActiveLedger": 0,
+      "ledgerAmount": null
+    },
+    {
+      "workDate": "2026-09-07",
+      "attStatus": "DayOff",
+      "checkIn": null,
+      "checkOut": null,
+      "payStatus": "Generated",
+      "dailyWage": 0,
+      "hours": 0,
+      "hasActiveLedger": 0,
+      "ledgerAmount": null
+    },
+    {
+      "workDate": "2026-09-08",
+      "attStatus": "Late",
+      "checkIn": "20:43",
+      "checkOut": "02:00",
+      "payStatus": "Generated",
+      "dailyWage": 124.69,
+      "hours": 5.28,
+      "hasActiveLedger": 1,
+      "ledgerAmount": 124.69
+    },
+    {
+      "workDate": "2026-09-09",
+      "attStatus": "DayOff",
+      "checkIn": null,
+      "checkOut": null,
+      "payStatus": "Generated",
+      "dailyWage": 0,
+      "hours": 0,
+      "hasActiveLedger": 0,
+      "ledgerAmount": null
+    },
+    {
+      "workDate": "2026-09-10",
+      "attStatus": "DayOff",
+      "checkIn": null,
+      "checkOut": null,
+      "payStatus": "Generated",
+      "dailyWage": 0,
+      "hours": 0,
+      "hasActiveLedger": 0,
+      "ledgerAmount": null
+    },
+    {
+      "workDate": "2026-09-11",
+      "attStatus": "DayOff",
+      "checkIn": null,
+      "checkOut": null,
+      "payStatus": "Generated",
+      "dailyWage": 0,
+      "hours": 0,
+      "hasActiveLedger": 0,
+      "ledgerAmount": null
+    },
+    {
+      "workDate": "2026-09-12",
+      "attStatus": "Present",
+      "checkIn": "19:00",
+      "checkOut": "02:00",
+      "payStatus": "Generated",
+      "dailyWage": 165.2,
+      "hours": 7,
+      "hasActiveLedger": 1,
+      "ledgerAmount": 165.2
+    },
+    {
+      "workDate": "2026-09-13",
+      "attStatus": "Late",
+      "checkIn": "20:45",
+      "checkOut": "02:00",
+      "payStatus": "Generated",
+      "dailyWage": 123.9,
+      "hours": 5.25,
+      "hasActiveLedger": 1,
+      "ledgerAmount": 123.9
+    },
+    {
+      "workDate": "2026-09-14",
+      "attStatus": "Late",
+      "checkIn": "20:25",
+      "checkOut": "02:00",
+      "payStatus": "Generated",
+      "dailyWage": 131.77,
+      "hours": 5.58,
+      "hasActiveLedger": 1,
+      "ledgerAmount": 131.77
+    },
+    {
+      "workDate": "2026-09-15",
+      "attStatus": "Present",
+      "checkIn": "19:00",
+      "checkOut": "02:00",
+      "payStatus": "Generated",
+      "dailyWage": 165.2,
+      "hours": 7,
+      "hasActiveLedger": 1,
+      "ledgerAmount": 165.2
+    },
+    {
+      "workDate": "2026-09-16",
+      "attStatus": "Present",
+      "checkIn": "17:30",
+      "checkOut": "02:00",
+      "payStatus": "Generated",
+      "dailyWage": 200.6,
+      "hours": 8.5,
+      "hasActiveLedger": 1,
+      "ledgerAmount": 200.6
+    }
+  ],
+  "failures": []
+}

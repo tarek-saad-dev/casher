@@ -6,6 +6,7 @@ import 'server-only';
 
 import { evaluateDailyPayrollReadiness } from '@/lib/hr/dailyPayrollReadiness.service';
 import type { DailyPayrollReadinessResult } from '@/lib/hr/dailyPayrollReadiness.types';
+import { isEmpBranchWorkDayCloseEnforced } from '@/lib/hr/empBranchWorkDayClose.flags';
 import {
   persistEmpBranchWorkDayClosed,
   reopenEmpBranchWorkDay as reopenEmpBranchWorkDayRow,
@@ -27,6 +28,13 @@ export async function closeEmpBranchWorkDay(args: {
   workDate: string;
   actorUserId: number;
 }): Promise<CloseEmpBranchWorkDayResult> {
+  if (!isEmpBranchWorkDayCloseEnforced()) {
+    throw new EmpBranchWorkDayCloseError(
+      'CLOSE_DISABLED',
+      'إقفال يوم الموظفين معطّل حاليًا — الأيام مفتوحة وقابلة للتعديل',
+    );
+  }
+
   const readiness = await evaluateDailyPayrollReadiness({
     branchId: args.branchId,
     workDate: args.workDate,

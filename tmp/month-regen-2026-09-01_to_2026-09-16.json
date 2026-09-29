@@ -1,0 +1,689 @@
+{
+  "ok": false,
+  "fromDate": "2026-09-01",
+  "toDate": "2026-09-16",
+  "activeBranches": [
+    {
+      "branchId": 3,
+      "branchCode": "CAMP_CAESAR",
+      "branchName": "كامب شيزار"
+    },
+    {
+      "branchId": 1,
+      "branchCode": "GLEEM",
+      "branchName": "جليم – سابا باشا"
+    }
+  ],
+  "summary": {
+    "datesProcessed": 16,
+    "employeeDayPayrollTouches": 152,
+    "attendanceRowsCompleted": 0,
+    "attendanceSkippedNoDefault": 3,
+    "payrollRowsCreatedOrUpdated": 152,
+    "targetsCreated": 0,
+    "targetsUpdated": 84,
+    "targetEligibleTouches": 84,
+    "ledgerEntriesCreated": 0,
+    "ledgerEntriesUpdated": 0,
+    "ledgerEntriesSkippedUnchanged": 0,
+    "daysAlreadyPostedOrNoEligible": 0,
+    "daysWithPartialErrors": 15
+  },
+  "days": [
+    {
+      "workDate": "2026-09-01",
+      "ok": false,
+      "attendanceFilled": 0,
+      "attendanceSkippedNoDefault": 0,
+      "payrollStatus": "generated",
+      "payrollEmployees": 18,
+      "targetsGenerated": 0,
+      "targetsRecalculated": 6,
+      "targetsEligible": 6,
+      "ledgerInserted": 0,
+      "ledgerUpdated": 0,
+      "ledgerSkipped": 0,
+      "errors": [
+        "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+      ]
+    },
+    {
+      "workDate": "2026-09-02",
+      "ok": false,
+      "attendanceFilled": 0,
+      "attendanceSkippedNoDefault": 0,
+      "payrollStatus": "generated",
+      "payrollEmployees": 15,
+      "targetsGenerated": 0,
+      "targetsRecalculated": 6,
+      "targetsEligible": 6,
+      "ledgerInserted": 0,
+      "ledgerUpdated": 0,
+      "ledgerSkipped": 0,
+      "errors": [
+        "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+      ]
+    },
+    {
+      "workDate": "2026-09-03",
+      "ok": false,
+      "attendanceFilled": 0,
+      "attendanceSkippedNoDefault": 0,
+      "payrollStatus": "generated",
+      "payrollEmployees": 7,
+      "targetsGenerated": 0,
+      "targetsRecalculated": 0,
+      "targetsEligible": 0,
+      "ledgerInserted": 0,
+      "ledgerUpdated": 0,
+      "ledgerSkipped": 0,
+      "errors": [
+        "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل",
+        "ledger-heal GLEEM: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+      ]
+    },
+    {
+      "workDate": "2026-09-04",
+      "ok": false,
+      "attendanceFilled": 0,
+      "attendanceSkippedNoDefault": 0,
+      "payrollStatus": "generated",
+      "payrollEmployees": 8,
+      "targetsGenerated": 0,
+      "targetsRecalculated": 6,
+      "targetsEligible": 6,
+      "ledgerInserted": 0,
+      "ledgerUpdated": 0,
+      "ledgerSkipped": 0,
+      "errors": [
+        "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+      ]
+    },
+    {
+      "workDate": "2026-09-05",
+      "ok": false,
+      "attendanceFilled": 0,
+      "attendanceSkippedNoDefault": 0,
+      "payrollStatus": "generated",
+      "payrollEmployees": 8,
+      "targetsGenerated": 0,
+      "targetsRecalculated": 0,
+      "targetsEligible": 0,
+      "ledgerInserted": 0,
+      "ledgerUpdated": 0,
+      "ledgerSkipped": 0,
+      "errors": [
+        "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل",
+        "ledger-heal GLEEM: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+      ]
+    },
+    {
+      "workDate": "2026-09-06",
+      "ok": false,
+      "attendanceFilled": 0,
+      "attendanceSkippedNoDefault": 0,
+      "payrollStatus": "generated",
+      "payrollEmployees": 5,
+      "targetsGenerated": 0,
+      "targetsRecalculated": 6,
+      "targetsEligible": 6,
+      "ledgerInserted": 0,
+      "ledgerUpdated": 0,
+      "ledgerSkipped": 0,
+      "errors": [
+        "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+      ]
+    },
+    {
+      "workDate": "2026-09-07",
+      "ok": true,
+      "attendanceFilled": 0,
+      "attendanceSkippedNoDefault": 0,
+      "payrollStatus": "generated",
+      "payrollEmployees": 13,
+      "targetsGenerated": 0,
+      "targetsRecalculated": 6,
+      "targetsEligible": 6,
+      "ledgerInserted": 0,
+      "ledgerUpdated": 0,
+      "ledgerSkipped": 0,
+      "errors": []
+    },
+    {
+      "workDate": "2026-09-08",
+      "ok": false,
+      "attendanceFilled": 0,
+      "attendanceSkippedNoDefault": 0,
+      "payrollStatus": "generated",
+      "payrollEmployees": 8,
+      "targetsGenerated": 0,
+      "targetsRecalculated": 6,
+      "targetsEligible": 6,
+      "ledgerInserted": 0,
+      "ledgerUpdated": 0,
+      "ledgerSkipped": 0,
+      "errors": [
+        "payroll blocked GLEEM: 1 attendance/rate issues",
+        "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+      ]
+    },
+    {
+      "workDate": "2026-09-09",
+      "ok": false,
+      "attendanceFilled": 0,
+      "attendanceSkippedNoDefault": 0,
+      "payrollStatus": "generated",
+      "payrollEmployees": 6,
+      "targetsGenerated": 0,
+      "targetsRecalculated": 6,
+      "targetsEligible": 6,
+      "ledgerInserted": 0,
+      "ledgerUpdated": 0,
+      "ledgerSkipped": 0,
+      "errors": [
+        "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+      ]
+    },
+    {
+      "workDate": "2026-09-10",
+      "ok": false,
+      "attendanceFilled": 0,
+      "attendanceSkippedNoDefault": 0,
+      "payrollStatus": "generated",
+      "payrollEmployees": 11,
+      "targetsGenerated": 0,
+      "targetsRecalculated": 6,
+      "targetsEligible": 6,
+      "ledgerInserted": 0,
+      "ledgerUpdated": 0,
+      "ledgerSkipped": 0,
+      "errors": [
+        "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+      ]
+    },
+    {
+      "workDate": "2026-09-11",
+      "ok": false,
+      "attendanceFilled": 0,
+      "attendanceSkippedNoDefault": 0,
+      "payrollStatus": "generated",
+      "payrollEmployees": 12,
+      "targetsGenerated": 0,
+      "targetsRecalculated": 6,
+      "targetsEligible": 6,
+      "ledgerInserted": 0,
+      "ledgerUpdated": 0,
+      "ledgerSkipped": 0,
+      "errors": [
+        "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+      ]
+    },
+    {
+      "workDate": "2026-09-12",
+      "ok": false,
+      "attendanceFilled": 0,
+      "attendanceSkippedNoDefault": 0,
+      "payrollStatus": "generated",
+      "payrollEmployees": 12,
+      "targetsGenerated": 0,
+      "targetsRecalculated": 6,
+      "targetsEligible": 6,
+      "ledgerInserted": 0,
+      "ledgerUpdated": 0,
+      "ledgerSkipped": 0,
+      "errors": [
+        "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+      ]
+    },
+    {
+      "workDate": "2026-09-13",
+      "ok": false,
+      "attendanceFilled": 0,
+      "attendanceSkippedNoDefault": 0,
+      "payrollStatus": "generated",
+      "payrollEmployees": 10,
+      "targetsGenerated": 0,
+      "targetsRecalculated": 6,
+      "targetsEligible": 6,
+      "ledgerInserted": 0,
+      "ledgerUpdated": 0,
+      "ledgerSkipped": 0,
+      "errors": [
+        "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+      ]
+    },
+    {
+      "workDate": "2026-09-14",
+      "ok": false,
+      "attendanceFilled": 0,
+      "attendanceSkippedNoDefault": 0,
+      "payrollStatus": "generated",
+      "payrollEmployees": 5,
+      "targetsGenerated": 0,
+      "targetsRecalculated": 6,
+      "targetsEligible": 6,
+      "ledgerInserted": 0,
+      "ledgerUpdated": 0,
+      "ledgerSkipped": 0,
+      "errors": [
+        "payroll blocked GLEEM: 1 attendance/rate issues",
+        "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+      ]
+    },
+    {
+      "workDate": "2026-09-15",
+      "ok": false,
+      "attendanceFilled": 0,
+      "attendanceSkippedNoDefault": 0,
+      "payrollStatus": "generated",
+      "payrollEmployees": 7,
+      "targetsGenerated": 0,
+      "targetsRecalculated": 6,
+      "targetsEligible": 6,
+      "ledgerInserted": 0,
+      "ledgerUpdated": 0,
+      "ledgerSkipped": 0,
+      "errors": [
+        "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+      ]
+    },
+    {
+      "workDate": "2026-09-16",
+      "ok": false,
+      "attendanceFilled": 0,
+      "attendanceSkippedNoDefault": 3,
+      "payrollStatus": "generated",
+      "payrollEmployees": 7,
+      "targetsGenerated": 0,
+      "targetsRecalculated": 6,
+      "targetsEligible": 6,
+      "ledgerInserted": 0,
+      "ledgerUpdated": 0,
+      "ledgerSkipped": 0,
+      "errors": [
+        "payroll blocked CAMP_CAESAR: 2 attendance/rate issues",
+        "payroll blocked GLEEM: 1 attendance/rate issues"
+      ]
+    }
+  ],
+  "failures": [
+    {
+      "workDate": "2026-09-01",
+      "branchCode": "CAMP_CAESAR",
+      "empId": null,
+      "empName": null,
+      "reason": "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+    },
+    {
+      "workDate": "2026-09-01",
+      "branchCode": null,
+      "empId": 1030,
+      "empName": "خيري",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-01",
+      "branchCode": null,
+      "empId": 1189,
+      "empName": "عبدالرحمن عماد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-02",
+      "branchCode": "CAMP_CAESAR",
+      "empId": null,
+      "empName": null,
+      "reason": "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+    },
+    {
+      "workDate": "2026-09-02",
+      "branchCode": null,
+      "empId": 7,
+      "empName": "محمد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-02",
+      "branchCode": null,
+      "empId": 1189,
+      "empName": "عبدالرحمن عماد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-03",
+      "branchCode": "CAMP_CAESAR",
+      "empId": null,
+      "empName": null,
+      "reason": "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+    },
+    {
+      "workDate": "2026-09-03",
+      "branchCode": "GLEEM",
+      "empId": null,
+      "empName": null,
+      "reason": "ledger-heal GLEEM: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+    },
+    {
+      "workDate": "2026-09-03",
+      "branchCode": null,
+      "empId": 7,
+      "empName": "محمد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-04",
+      "branchCode": "CAMP_CAESAR",
+      "empId": null,
+      "empName": null,
+      "reason": "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+    },
+    {
+      "workDate": "2026-09-04",
+      "branchCode": null,
+      "empId": 7,
+      "empName": "محمد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-04",
+      "branchCode": null,
+      "empId": 1189,
+      "empName": "عبدالرحمن عماد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-05",
+      "branchCode": "CAMP_CAESAR",
+      "empId": null,
+      "empName": null,
+      "reason": "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+    },
+    {
+      "workDate": "2026-09-05",
+      "branchCode": "GLEEM",
+      "empId": null,
+      "empName": null,
+      "reason": "ledger-heal GLEEM: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+    },
+    {
+      "workDate": "2026-09-05",
+      "branchCode": null,
+      "empId": 7,
+      "empName": "محمد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-05",
+      "branchCode": null,
+      "empId": 1189,
+      "empName": "عبدالرحمن عماد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-05",
+      "branchCode": null,
+      "empId": 1192,
+      "empName": "عبدو",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-06",
+      "branchCode": "CAMP_CAESAR",
+      "empId": null,
+      "empName": null,
+      "reason": "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+    },
+    {
+      "workDate": "2026-09-06",
+      "branchCode": null,
+      "empId": 21,
+      "empName": "هدى",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-06",
+      "branchCode": null,
+      "empId": 1189,
+      "empName": "عبدالرحمن عماد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-07",
+      "branchCode": null,
+      "empId": 1188,
+      "empName": "محمود",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-07",
+      "branchCode": null,
+      "empId": 1189,
+      "empName": "عبدالرحمن عماد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-07",
+      "branchCode": null,
+      "empId": 1191,
+      "empName": "يوسف سامح",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-08",
+      "branchCode": "GLEEM",
+      "empId": null,
+      "empName": null,
+      "reason": "payroll blocked GLEEM: 1 attendance/rate issues"
+    },
+    {
+      "workDate": "2026-09-08",
+      "branchCode": "CAMP_CAESAR",
+      "empId": null,
+      "empName": null,
+      "reason": "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+    },
+    {
+      "workDate": "2026-09-08",
+      "branchCode": null,
+      "empId": 1189,
+      "empName": "عبدالرحمن عماد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-09",
+      "branchCode": "CAMP_CAESAR",
+      "empId": null,
+      "empName": null,
+      "reason": "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+    },
+    {
+      "workDate": "2026-09-09",
+      "branchCode": null,
+      "empId": 1189,
+      "empName": "عبدالرحمن عماد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-09",
+      "branchCode": null,
+      "empId": 2213,
+      "empName": "مؤمن",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-10",
+      "branchCode": "CAMP_CAESAR",
+      "empId": null,
+      "empName": null,
+      "reason": "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+    },
+    {
+      "workDate": "2026-09-10",
+      "branchCode": null,
+      "empId": 12,
+      "empName": "زياد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-10",
+      "branchCode": null,
+      "empId": 1191,
+      "empName": "يوسف سامح",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-11",
+      "branchCode": "CAMP_CAESAR",
+      "empId": null,
+      "empName": null,
+      "reason": "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+    },
+    {
+      "workDate": "2026-09-11",
+      "branchCode": null,
+      "empId": 1189,
+      "empName": "عبدالرحمن عماد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-12",
+      "branchCode": "CAMP_CAESAR",
+      "empId": null,
+      "empName": null,
+      "reason": "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+    },
+    {
+      "workDate": "2026-09-12",
+      "branchCode": null,
+      "empId": 1189,
+      "empName": "عبدالرحمن عماد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-13",
+      "branchCode": "CAMP_CAESAR",
+      "empId": null,
+      "empName": null,
+      "reason": "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+    },
+    {
+      "workDate": "2026-09-13",
+      "branchCode": null,
+      "empId": 1189,
+      "empName": "عبدالرحمن عماد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-14",
+      "branchCode": "GLEEM",
+      "empId": null,
+      "empName": null,
+      "reason": "payroll blocked GLEEM: 1 attendance/rate issues"
+    },
+    {
+      "workDate": "2026-09-14",
+      "branchCode": "CAMP_CAESAR",
+      "empId": null,
+      "empName": null,
+      "reason": "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+    },
+    {
+      "workDate": "2026-09-14",
+      "branchCode": null,
+      "empId": 12,
+      "empName": "زياد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-14",
+      "branchCode": null,
+      "empId": 1189,
+      "empName": "عبدالرحمن عماد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-15",
+      "branchCode": "CAMP_CAESAR",
+      "empId": null,
+      "empName": null,
+      "reason": "ledger-heal CAMP_CAESAR: يوم الموظفين مقفل لهذا الفرع والتاريخ — أعد فتح اليوم قبل التعديل"
+    },
+    {
+      "workDate": "2026-09-15",
+      "branchCode": null,
+      "empId": 1189,
+      "empName": "عبدالرحمن عماد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-16",
+      "branchCode": "CAMP_CAESAR",
+      "empId": null,
+      "empName": null,
+      "reason": "payroll blocked CAMP_CAESAR: 2 attendance/rate issues"
+    },
+    {
+      "workDate": "2026-09-16",
+      "branchCode": "GLEEM",
+      "empId": null,
+      "empName": null,
+      "reason": "payroll blocked GLEEM: 1 attendance/rate issues"
+    },
+    {
+      "workDate": "2026-09-16",
+      "branchCode": null,
+      "empId": 5,
+      "empName": "كريم",
+      "reason": "attendance remaining: missing_checkout"
+    },
+    {
+      "workDate": "2026-09-16",
+      "branchCode": null,
+      "empId": 12,
+      "empName": "زياد",
+      "reason": "attendance remaining: missing_checkout"
+    },
+    {
+      "workDate": "2026-09-16",
+      "branchCode": null,
+      "empId": 25,
+      "empName": "عمر",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-16",
+      "branchCode": null,
+      "empId": 1189,
+      "empName": "عبدالرحمن عماد",
+      "reason": "attendance remaining: no_attendance"
+    },
+    {
+      "workDate": "2026-09-16",
+      "branchCode": null,
+      "empId": 1192,
+      "empName": "عبدو",
+      "reason": "attendance remaining: missing_checkout"
+    },
+    {
+      "workDate": "2026-09-16",
+      "branchCode": null,
+      "empId": 12,
+      "empName": "زياد",
+      "reason": "attendance skipped (no default schedule): missing_checkout"
+    },
+    {
+      "workDate": "2026-09-16",
+      "branchCode": null,
+      "empId": 1192,
+      "empName": "عبدو",
+      "reason": "attendance skipped (no default schedule): missing_checkout"
+    },
+    {
+      "workDate": "2026-09-16",
+      "branchCode": null,
+      "empId": 5,
+      "empName": "كريم",
+      "reason": "attendance skipped (no default schedule): missing_checkout"
+    }
+  ]
+}

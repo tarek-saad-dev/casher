@@ -1,0 +1,61 @@
+{
+  "workDate": "2026-09-17",
+  "ok": true,
+  "errors": [],
+  "attendanceFilled": 3,
+  "attendanceSkippedNoDefault": 0,
+  "remainingMissing": [
+    {
+      "empId": 12,
+      "empName": "زياد",
+      "reason": "no_attendance"
+    }
+  ],
+  "payroll": {
+    "status": "generated",
+    "employeesCount": 20,
+    "totalHours": 209.42000000000002,
+    "totalWages": 4641.07,
+    "ledgerDualWrite": true
+  },
+  "targets": {
+    "generated": 0,
+    "recalculated": 6,
+    "totalTargetAmount": "986.00",
+    "eligibleEmployees": 6
+  },
+  "heal": [
+    {
+      "branch": "CAMP_CAESAR",
+      "branchId": 3,
+      "inserted": 0,
+      "updated": 3,
+      "voided": 0,
+      "skipped": 0
+    },
+    {
+      "branch": "GLEEM",
+      "branchId": 1,
+      "inserted": 0,
+      "updated": 7,
+      "voided": 0,
+      "skipped": 0
+    }
+  ],
+  "payrollByBranch": [
+    {
+      "branchCode": "CAMP_CAESAR",
+      "payrollRows": 3,
+      "withWage": 3,
+      "totalWage": 568.25
+    },
+    {
+      "branchCode": "GLEEM",
+      "payrollRows": 7,
+      "withWage": 7,
+      "totalWage": 1743.9199999999998
+    }
+  ],
+  "missingLedgerAfter": [],
+  "missingLedgerCount": 0
+}

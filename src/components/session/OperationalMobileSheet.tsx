@@ -13,7 +13,6 @@ import {
   formatShiftStartTime,
   mapOperationalError,
 } from '@/lib/operations/viewOperationalState';
-import CloseShiftConfirmDialog from '@/components/session/CloseShiftConfirmDialog';
 import ShiftCloseReconPanel from '@/components/treasury/ShiftCloseReconPanel';
 import OperationalHandoffControl from '@/components/session/OperationalHandoffControl';
 import { useOperationalToast } from '@/components/session/OperationalToast';
@@ -33,19 +32,13 @@ export default function OperationalMobileSheet({ open, onClose }: OperationalMob
     day,
     hasOpenShift,
     viewMatchesOperational,
-    access,
-    closeMyShift,
     refresh,
   } = useSession();
   const { showToast } = useOperationalToast();
   const [now, setNow] = useState(() => new Date());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [closeOpen, setCloseOpen] = useState(false);
   const [showShiftRecon, setShowShiftRecon] = useState(false);
-
-  const isCashier = Boolean(access?.roles?.includes('cashier'));
-  const requireShiftRecon = isCashier && hasOpenShift && Boolean(shift?.ID);
 
   useEffect(() => {
     if (!open || !hasOpenShift) return;
@@ -65,22 +58,6 @@ export default function OperationalMobileSheet({ open, onClose }: OperationalMob
       })
     : '—';
 
-  async function confirmClose() {
-    if (!shift) return;
-    setBusy(true);
-    setError('');
-    try {
-      await closeMyShift(shift.ID);
-      setCloseOpen(false);
-      onClose();
-      showToast(`تم إنهاء وردية ${opLabel}`);
-    } catch (err) {
-      setError(mapOperationalError(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function handleShiftReconClosed() {
     setShowShiftRecon(false);
     try {
@@ -93,11 +70,8 @@ export default function OperationalMobileSheet({ open, onClose }: OperationalMob
   }
 
   function requestCloseShift() {
-    if (requireShiftRecon) {
-      setShowShiftRecon(true);
-      return;
-    }
-    setCloseOpen(true);
+    if (!shift?.ID) return;
+    setShowShiftRecon(true);
   }
 
   async function returnToOperational() {
@@ -196,16 +170,6 @@ export default function OperationalMobileSheet({ open, onClose }: OperationalMob
           onClosed={() => void handleShiftReconClosed()}
         />
       ) : null}
-
-      <CloseShiftConfirmDialog
-        open={closeOpen}
-        branchLabel={opLabel}
-        startedAt={startedAt}
-        elapsed={elapsed}
-        busy={busy}
-        onCancel={() => setCloseOpen(false)}
-        onConfirm={() => void confirmClose()}
-      />
     </>
   );
 }

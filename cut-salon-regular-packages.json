@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "source": "CUT Salon Regular Customer Packages",
+  "targetAdminPage": "/admin/packages",
+  "currency": "EGP",
+  "pricingPolicy": "Discount bundles. PackagePrice is the selling price. OriginalPrice is the real standalone sum of included services at seed time.",
+  "notes": [
+    "Resolve package items by confirmed ProID for existing services.",
+    "New services (Head Massage, Extended Head Massage, Advanced Hair Oil Treatment) resolve by exact NameEn after ensure-regular-package-services.",
+    "Do not modify groom packages or existing service prices outside owned new SKUs.",
+    "PackageKind must be regular."
+  ],
+  "packages": [
+    {
+      "key": "REGULAR_CUT_FRESH",
+      "nameEn": "CUT Fresh",
+      "nameAr": "باكدج كت فريش",
+      "price": 350,
+      "originalPrice": 700,
+      "expectedIndividualTotal": 700,
+      "displayOrder": 10,
+      "recommended": false,
+      "active": true,
+      "descriptionEn": "Fresh grooming essentials: haircut, beard, fresh skincare, hair mask, head massage and styling.",
+      "descriptionAr": "باقة عناية أساسية: حلاقة شعر ودقن وتنظيف بشرة عادي وماسك شعر وتدليك رأس وتصفيف.",
+      "includedServices": [
+        { "key": "HAIR_CUT", "proId": 9, "preferredName": "Hair Cut", "expectedPrice": 200 },
+        { "key": "BEARD", "proId": 10, "preferredName": "Beard Styling & Fade", "expectedPrice": 100 },
+        { "key": "FRESH_SKIN_CARE", "proId": 11, "preferredName": "Fresh Skin Care", "expectedPrice": 200 },
+        { "key": "HAIR_MASK", "proId": 44, "preferredName": "Hair Mask", "expectedPrice": 50 },
+        { "key": "HEAD_MASSAGE", "proId": null, "preferredName": "Head Massage", "expectedPrice": 100, "resolveByExactName": true },
+        { "key": "HAIR_STYLING", "proId": 47, "preferredName": "Hair Styling", "expectedPrice": 50 }
+      ]
+    },
+    {
+      "key": "REGULAR_CUT_CARE",
+      "nameEn": "CUT Care",
+      "nameAr": "باكدج كت كير",
+      "price": 555,
+      "originalPrice": 870,
+      "expectedIndividualTotal": 870,
+      "displayOrder": 20,
+      "recommended": true,
+      "active": true,
+      "descriptionEn": "Most popular care package with hair oil treatment, classic skincare, head massage and styling.",
+      "descriptionAr": "الباقة الأكثر اختيارًا: حلاقة وحمام زيت وتنظيف بشرة كلاسيكي وتدليك رأس وتصفيف.",
+      "includedServices": [
+        { "key": "HAIR_CUT", "proId": 9, "preferredName": "Hair Cut", "expectedPrice": 200 },
+        { "key": "BEARD", "proId": 10, "preferredName": "Beard Styling & Fade", "expectedPrice": 100 },
+        { "key": "HAIR_OIL_TREATMENT", "proId": 22, "preferredName": "Hair Oil Treatment", "expectedPrice": 120 },
+        { "key": "CLASSIC_SKIN_CARE", "proId": 29, "preferredName": "Classic Skin Care", "expectedPrice": 300 },
+        { "key": "HEAD_MASSAGE", "proId": null, "preferredName": "Head Massage", "expectedPrice": 100, "resolveByExactName": true },
+        { "key": "HAIR_STYLING", "proId": 47, "preferredName": "Hair Styling", "expectedPrice": 50 }
+      ]
+    },
+    {
+      "key": "REGULAR_CUT_PREMIUM",
+      "nameEn": "CUT Premium",
+      "nameAr": "باكدج كت بريميوم",
+      "price": 750,
+      "originalPrice": 1200,
+      "expectedIndividualTotal": 1200,
+      "displayOrder": 30,
+      "recommended": false,
+      "active": true,
+      "descriptionEn": "Premium grooming with advanced oil treatment, deep skincare, face wax, extended head massage and styling.",
+      "descriptionAr": "باقة بريميوم: حلاقة وحمام زيت متقدم وتنظيف بشرة عميق وواكس وجه وتدليك رأس ممتد وتصفيف.",
+      "includedServices": [
+        { "key": "HAIR_CUT", "proId": 9, "preferredName": "Hair Cut", "expectedPrice": 200 },
+        { "key": "BEARD", "proId": 10, "preferredName": "Beard Styling & Fade", "expectedPrice": 100 },
+        { "key": "ADVANCED_HAIR_OIL_TREATMENT", "proId": null, "preferredName": "Advanced Hair Oil Treatment", "expectedPrice": 200, "resolveByExactName": true },
+        { "key": "DEEP_SKIN_CARE", "proId": 12, "preferredName": "Deep Skin Care", "expectedPrice": 400 },
+        { "key": "FACE_WAX", "proId": 32, "preferredName": "Face Wax", "expectedPrice": 100 },
+        { "key": "EXTENDED_HEAD_MASSAGE", "proId": null, "preferredName": "Extended Head Massage", "expectedPrice": 150, "resolveByExactName": true },
+        { "key": "HAIR_STYLING", "proId": 47, "preferredName": "Hair Styling", "expectedPrice": 50 }
+      ]
+    }
+  ]
+}

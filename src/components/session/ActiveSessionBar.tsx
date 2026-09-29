@@ -6,7 +6,6 @@ import { useSession } from '@/hooks/useSession';
 import { DbToggleButton } from '@/components/db/DbToggleButton';
 import LogoutConfirmModal from '@/components/auth/LogoutConfirmModal';
 import ShiftCloseReceipt from '@/components/operations/ShiftCloseReceipt';
-import CloseShiftConfirmDialog from '@/components/session/CloseShiftConfirmDialog';
 import ShiftCloseReconPanel from '@/components/treasury/ShiftCloseReconPanel';
 import OperationalHandoffControl from '@/components/session/OperationalHandoffControl';
 import OperationalMobileSheet from '@/components/session/OperationalMobileSheet';
@@ -19,7 +18,6 @@ import {
   branchDisplayName,
   formatShiftElapsed,
   formatShiftStartTime,
-  mapOperationalError,
 } from '@/lib/operations/viewOperationalState';
 
 type ShiftReconIntent = 'logout' | 'close-only' | null;
@@ -34,9 +32,7 @@ function ActiveSessionBar() {
     viewBranch,
     operationalBranch,
     viewMatchesOperational,
-    access,
     logout,
-    closeMyShift,
     refresh,
   } = useSession();
   const { showToast } = useOperationalToast();
@@ -44,9 +40,7 @@ function ActiveSessionBar() {
   const [now, setNow] = useState(() => new Date());
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showPrintReceipt, setShowPrintReceipt] = useState(false);
-  const [closeShiftOpen, setCloseShiftOpen] = useState(false);
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
-  const [busyClose, setBusyClose] = useState(false);
   const [shiftReconIntent, setShiftReconIntent] = useState<ShiftReconIntent>(null);
   const [printData, setPrintData] = useState<{
     shiftMoveID: number;
@@ -59,9 +53,6 @@ function ActiveSessionBar() {
     cashIn: number;
     cashOut: number;
   } | null>(null);
-
-  const isCashier = Boolean(access?.roles?.includes('cashier'));
-  const requireShiftRecon = isCashier && hasOpenShift && Boolean(shift?.ID);
 
   useEffect(() => {
     setMounted(true);
@@ -82,88 +73,23 @@ function ActiveSessionBar() {
   const elapsed = formatShiftElapsed(shift?.StartDate, shift?.StartTime, now);
 
   function requestLogout() {
-    if (requireShiftRecon) {
-      setShiftReconIntent('logout');
-      return;
-    }
     setShowLogoutModal(true);
   }
 
+  function openShiftCloseForLogout() {
+    if (!shift?.ID) return;
+    setShiftReconIntent('logout');
+  }
+
   function requestEndShift() {
-    if (requireShiftRecon) {
-      setShiftReconIntent('close-only');
-      return;
-    }
-    setCloseShiftOpen(true);
-  }
-
-  async function handleCloseShiftAndLogout() {
-    if (shift) {
-      await closeMyShift(shift.ID);
-    }
-    await logout();
-  }
-
-  async function handleCloseShiftPrintAndLogout() {
-    if (!shift) return;
-
-    try {
-      const summaryRes = await fetch(`/api/shift/summary?id=${shift.ID}`);
-      const summaryData = await summaryRes.json();
-
-      if (!summaryRes.ok) {
-        await handleCloseShiftAndLogout();
-        return;
-      }
-
-      const closeRes = await fetch('/api/shift/close', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shiftMoveID: shift.ID }),
-      });
-
-      if (!closeRes.ok) {
-        await logout();
-        return;
-      }
-
-      setPrintData({
-        shiftMoveID: shift.ID,
-        userName: shift.UserName || user?.UserName || '—',
-        shiftName: shift.ShiftName || '—',
-        startTime: shift.StartTime?.trim() || '—',
-        salesCount: summaryData.salesCount || 0,
-        totalRevenue: summaryData.totalRevenue || 0,
-        paymentBreakdown: summaryData.paymentBreakdown || [],
-        cashIn: summaryData.cashIn || 0,
-        cashOut: summaryData.cashOut || 0,
-      });
-
-      setShowLogoutModal(false);
-      setShowPrintReceipt(true);
-    } catch {
-      await handleCloseShiftAndLogout();
-    }
+    if (!shift?.ID) return;
+    setShiftReconIntent('close-only');
   }
 
   function handlePrintClose() {
     setShowPrintReceipt(false);
     setPrintData(null);
     void logout();
-  }
-
-  async function confirmCloseShift() {
-    if (!shift) return;
-    setBusyClose(true);
-    try {
-      await closeMyShift(shift.ID);
-      setCloseShiftOpen(false);
-      showToast(`تم إنهاء وردية ${opLabel}`);
-    } catch (err) {
-      showToast(mapOperationalError(err, 'فشل إنهاء الوردية'));
-    } finally {
-      setBusyClose(false);
-    }
   }
 
   async function handleShiftReconClosed() {
@@ -310,8 +236,7 @@ function ActiveSessionBar() {
         hasOpenShift={hasOpenShift}
         shiftName={shift?.ShiftName}
         onClose={() => setShowLogoutModal(false)}
-        onCloseShiftAndLogout={handleCloseShiftAndLogout}
-        onCloseShiftPrintAndLogout={handleCloseShiftPrintAndLogout}
+        onCloseShift={openShiftCloseForLogout}
         onLogoutOnly={logout}
       />
 
@@ -325,16 +250,6 @@ function ActiveSessionBar() {
       ) : null}
 
       <ShiftCloseReceipt open={showPrintReceipt} data={printData} onClose={handlePrintClose} />
-
-      <CloseShiftConfirmDialog
-        open={closeShiftOpen}
-        branchLabel={opLabel}
-        startedAt={startedAt}
-        elapsed={elapsed}
-        busy={busyClose}
-        onCancel={() => setCloseShiftOpen(false)}
-        onConfirm={() => void confirmCloseShift()}
-      />
 
       <OperationalMobileSheet open={mobileSheetOpen} onClose={() => setMobileSheetOpen(false)} />
     </div>

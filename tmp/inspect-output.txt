@@ -1,0 +1,16 @@
+﻿node.exe : TypeError: Cannot read properties of undefined (reading 'call')
+At line:1 char:1
++ & "C:\nvm4w\nodejs/node.exe" "C:\nvm4w\nodejs/node_modules/npm/bin/np ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (TypeError: Cann...reading 'call'):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    at Function.mod._load (D:\Under work 
+now\2025\Programming\Projects\projects\casher\tmp\inspect-regular-packages-v2.ts:11:30)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    at loadCJSModuleWithModuleLoad (node:internal/modules/esm/translators:335:3)
+    at ModuleWrap.<anonymous> (node:internal/modules/esm/translators:235:7)
+    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
+    at async main (D:\Under work 
+now\2025\Programming\Projects\projects\casher\tmp\inspect-regular-packages-v2.ts:36:36)

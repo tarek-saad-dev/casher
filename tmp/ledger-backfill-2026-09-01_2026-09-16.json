@@ -1,0 +1,373 @@
+{
+  "fromDate": "2026-09-01",
+  "toDate": "2026-09-16",
+  "missingBefore": 48,
+  "affectedEmployees": [
+    5,
+    12,
+    18,
+    21,
+    25,
+    1026,
+    1030,
+    1188,
+    1191,
+    1192,
+    2213
+  ],
+  "dayBranchKeysProcessed": 11,
+  "syncTotals": {
+    "inserted": 48,
+    "updated": 3,
+    "voided": 0,
+    "skipped": 0
+  },
+  "stillMissing": 0,
+  "safelyBackfilledEstimate": 48,
+  "emp1192After": [
+    {
+      "workDate": "2026-09-01",
+      "dailyWage": 165.2,
+      "hasLedger": 1
+    },
+    {
+      "workDate": "2026-09-02",
+      "dailyWage": 167.56,
+      "hasLedger": 1
+    },
+    {
+      "workDate": "2026-09-03",
+      "dailyWage": 139.63,
+      "hasLedger": 1
+    },
+    {
+      "workDate": "2026-09-04",
+      "dailyWage": 125.08,
+      "hasLedger": 1
+    },
+    {
+      "workDate": "2026-09-08",
+      "dailyWage": 124.69,
+      "hasLedger": 1
+    },
+    {
+      "workDate": "2026-09-12",
+      "dailyWage": 165.2,
+      "hasLedger": 1
+    },
+    {
+      "workDate": "2026-09-13",
+      "dailyWage": 100.3,
+      "hasLedger": 1
+    },
+    {
+      "workDate": "2026-09-14",
+      "dailyWage": 131.77,
+      "hasLedger": 1
+    },
+    {
+      "workDate": "2026-09-15",
+      "dailyWage": 165.2,
+      "hasLedger": 1
+    },
+    {
+      "workDate": "2026-09-16",
+      "dailyWage": 200.6,
+      "hasLedger": 1
+    }
+  ],
+  "dayResults": [
+    {
+      "workDate": "2026-09-02",
+      "branchId": 3,
+      "branchCode": "CAMP_CAESAR",
+      "ok": true,
+      "inserted": 3,
+      "updated": 1,
+      "voided": 0,
+      "skipped": 0
+    },
+    {
+      "workDate": "2026-09-03",
+      "branchId": 1,
+      "branchCode": "GLEEM",
+      "ok": true,
+      "inserted": 7,
+      "updated": 0,
+      "voided": 0,
+      "skipped": 0
+    },
+    {
+      "workDate": "2026-09-03",
+      "branchId": 3,
+      "branchCode": "CAMP_CAESAR",
+      "ok": true,
+      "inserted": 3,
+      "updated": 1,
+      "voided": 0,
+      "skipped": 0
+    },
+    {
+      "workDate": "2026-09-04",
+      "branchId": 3,
+      "branchCode": "CAMP_CAESAR",
+      "ok": true,
+      "inserted": 1,
+      "updated": 1,
+      "voided": 0,
+      "skipped": 0
+    },
+    {
+      "workDate": "2026-09-05",
+      "branchId": 1,
+      "branchCode": "GLEEM",
+      "ok": true,
+      "inserted": 6,
+      "updated": 0,
+      "voided": 0,
+      "skipped": 0
+    },
+    {
+      "workDate": "2026-09-05",
+      "branchId": 3,
+      "branchCode": "CAMP_CAESAR",
+      "ok": true,
+      "inserted": 3,
+      "updated": 0,
+      "voided": 0,
+      "skipped": 0
+    },
+    {
+      "workDate": "2026-09-08",
+      "branchId": 3,
+      "branchCode": "CAMP_CAESAR",
+      "ok": true,
+      "inserted": 6,
+      "updated": 0,
+      "voided": 0,
+      "skipped": 0
+    },
+    {
+      "workDate": "2026-09-12",
+      "branchId": 3,
+      "branchCode": "CAMP_CAESAR",
+      "ok": true,
+      "inserted": 7,
+      "updated": 0,
+      "voided": 0,
+      "skipped": 0
+    },
+    {
+      "workDate": "2026-09-13",
+      "branchId": 3,
+      "branchCode": "CAMP_CAESAR",
+      "ok": true,
+      "inserted": 5,
+      "updated": 0,
+      "voided": 0,
+      "skipped": 0
+    },
+    {
+      "workDate": "2026-09-14",
+      "branchId": 3,
+      "branchCode": "CAMP_CAESAR",
+      "ok": true,
+      "inserted": 3,
+      "updated": 0,
+      "voided": 0,
+      "skipped": 0
+    },
+    {
+      "workDate": "2026-09-15",
+      "branchId": 3,
+      "branchCode": "CAMP_CAESAR",
+      "ok": true,
+      "inserted": 4,
+      "updated": 0,
+      "voided": 0,
+      "skipped": 0
+    }
+  ],
+  "missingSampleBefore": [
+    {
+      "workDate": "2026-09-02",
+      "empId": 12,
+      "empName": "زياد",
+      "branchId": 3,
+      "branchCode": "CAMP_CAESAR",
+      "payrollId": 3029,
+      "dailyWage": 300
+    },
+    {
+      "workDate": "2026-09-02",
+      "empId": 18,
+      "empName": "احمد",
+      "branchId": 3,
+      "branchCode": "CAMP_CAESAR",
+      "payrollId": 3028,
+      "dailyWage": 300
+    },
+    {
+      "workDate": "2026-09-02",
+      "empId": 25,
+      "empName": "عمر",
+      "branchId": 3,
+      "branchCode": "CAMP_CAESAR",
+      "payrollId": 3027,
+      "dailyWage": 269.39
+    },
+    {
+      "workDate": "2026-09-03",
+      "empId": 5,
+      "empName": "كريم",
+      "branchId": 1,
+      "branchCode": "GLEEM",
+      "payrollId": 3033,
+      "dailyWage": 245.83
+    },
+    {
+      "workDate": "2026-09-03",
+      "empId": 12,
+      "empName": "زياد",
+      "branchId": 1,
+      "branchCode": "GLEEM",
+      "payrollId": 3034,
+      "dailyWage": 340.91
+    },
+    {
+      "workDate": "2026-09-03",
+      "empId": 1026,
+      "empName": "يوسف محمد",
+      "branchId": 1,
+      "branchCode": "GLEEM",
+      "payrollId": 3037,
+      "dailyWage": 176.33
+    },
+    {
+      "workDate": "2026-09-03",
+      "empId": 1030,
+      "empName": "خيري",
+      "branchId": 1,
+      "branchCode": "GLEEM",
+      "payrollId": 3036,
+      "dailyWage": 172.5
+    },
+    {
+      "workDate": "2026-09-03",
+      "empId": 1188,
+      "empName": "محمود",
+      "branchId": 1,
+      "branchCode": "GLEEM",
+      "payrollId": 3035,
+      "dailyWage": 269.5
+    },
+    {
+      "workDate": "2026-09-03",
+      "empId": 1191,
+      "empName": "يوسف سامح",
+      "branchId": 1,
+      "branchCode": "GLEEM",
+      "payrollId": 3038,
+      "dailyWage": 144
+    },
+    {
+      "workDate": "2026-09-03",
+      "empId": 2213,
+      "empName": "مؤمن",
+      "branchId": 1,
+      "branchCode": "GLEEM",
+      "payrollId": 3039,
+      "dailyWage": 230
+    },
+    {
+      "workDate": "2026-09-03",
+      "empId": 18,
+      "empName": "احمد",
+      "branchId": 3,
+      "branchCode": "CAMP_CAESAR",
+      "payrollId": 3031,
+      "dailyWage": 300
+    },
+    {
+      "workDate": "2026-09-03",
+      "empId": 21,
+      "empName": "هدى",
+      "branchId": 3,
+      "branchCode": "CAMP_CAESAR",
+      "payrollId": 3030,
+      "dailyWage": 145.31
+    },
+    {
+      "workDate": "2026-09-03",
+      "empId": 25,
+      "empName": "عمر",
+      "branchId": 3,
+      "branchCode": "CAMP_CAESAR",
+      "payrollId": 3032,
+      "dailyWage": 330.62
+    },
+    {
+      "workDate": "2026-09-04",
+      "empId": 25,
+      "empName": "عمر",
+      "branchId": 3,
+      "branchCode": "CAMP_CAESAR",
+      "payrollId": 3040,
+      "dailyWage": 292.66
+    },
+    {
+      "workDate": "2026-09-05",
+      "empId": 5,
+      "empName": "كريم",
+      "branchId": 1,
+      "branchCode": "GLEEM",
+      "payrollId": 3057,
+      "dailyWage": 532.5
+    },
+    {
+      "workDate": "2026-09-05",
+      "empId": 12,
+      "empName": "زياد",
+      "branchId": 1,
+      "branchCode": "GLEEM",
+      "payrollId": 3055,
+      "dailyWage": 337.27
+    },
+    {
+      "workDate": "2026-09-05",
+      "empId": 1026,
+      "empName": "يوسف محمد",
+      "branchId": 1,
+      "branchCode": "GLEEM",
+      "payrollId": 3056,
+      "dailyWage": 223.67
+    },
+    {
+      "workDate": "2026-09-05",
+      "empId": 1188,
+      "empName": "محمود",
+      "branchId": 1,
+      "branchCode": "GLEEM",
+      "payrollId": 3052,
+      "dailyWage": 334.83
+    },
+    {
+      "workDate": "2026-09-05",
+      "empId": 1191,
+      "empName": "يوسف سامح",
+      "branchId": 1,
+      "branchCode": "GLEEM",
+      "payrollId": 3054,
+      "dailyWage": 116
+    },
+    {
+      "workDate": "2026-09-05",
+      "empId": 2213,
+      "empName": "مؤمن",
+      "branchId": 1,
+      "branchCode": "GLEEM",
+      "payrollId": 3053,
+      "dailyWage": 119
+    }
+  ]
+}

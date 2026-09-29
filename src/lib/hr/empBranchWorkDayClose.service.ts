@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
+import { isEmpBranchWorkDayCloseEnforced } from '@/lib/hr/empBranchWorkDayClose.flags';
 import {
   isEmpBranchWorkDayCloseState,
   PAYROLL_DAY_CLOSED_CODE,
@@ -265,11 +266,13 @@ export async function setEmpBranchWorkDayCloseState(
 /**
  * Block mutations that change earned payroll/target results for a CLOSED branch/day.
  * Does not block later payout/advance ledger cash operations.
+ * Soft-off when close enforcement is disabled (all days editable).
  */
 export async function assertEmpBranchWorkDayMutable(
   branchId: number,
   workDate: string,
 ): Promise<void> {
+  if (!isEmpBranchWorkDayCloseEnforced()) return;
   const view = await getEmpBranchWorkDayCloseState(branchId, workDate);
   if (view.state === 'CLOSED') {
     throw new EmpBranchWorkDayCloseError(
@@ -288,6 +291,12 @@ export async function persistEmpBranchWorkDayClosed(args: {
   workDate: string;
   actorUserId: number;
 }): Promise<EmpBranchWorkDayCloseView> {
+  if (!isEmpBranchWorkDayCloseEnforced()) {
+    throw new EmpBranchWorkDayCloseError(
+      'CLOSE_DISABLED',
+      'إقفال يوم الموظفين معطّل حاليًا — الأيام مفتوحة وقابلة للتعديل',
+    );
+  }
   assertBranchId(args.branchId);
   assertWorkDate(args.workDate);
 

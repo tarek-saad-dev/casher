@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { LogOut, X, Loader2, Printer } from 'lucide-react';
+import { LogOut, X, Loader2, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -16,8 +16,8 @@ interface LogoutConfirmModalProps {
   hasOpenShift: boolean;
   shiftName?: string;
   onClose: () => void;
-  onCloseShiftAndLogout: () => Promise<void>;
-  onCloseShiftPrintAndLogout: () => Promise<void>;
+  /** Opens shift-close / recon panel, then logout after success. */
+  onCloseShift: () => void;
   onLogoutOnly: () => Promise<void>;
 }
 
@@ -26,35 +26,10 @@ export default function LogoutConfirmModal({
   hasOpenShift,
   shiftName,
   onClose,
-  onCloseShiftAndLogout,
-  onCloseShiftPrintAndLogout,
+  onCloseShift,
   onLogoutOnly,
 }: LogoutConfirmModalProps) {
-  const [closingShift, setClosingShift] = useState(false);
-  const [closingAndPrinting, setClosingAndPrinting] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-
-  async function handleCloseShiftAndLogout() {
-    setClosingShift(true);
-    try {
-      await onCloseShiftAndLogout();
-    } catch {
-      // Error handled in parent
-    } finally {
-      setClosingShift(false);
-    }
-  }
-
-  async function handleCloseShiftPrintAndLogout() {
-    setClosingAndPrinting(true);
-    try {
-      await onCloseShiftPrintAndLogout();
-    } catch {
-      // Error handled in parent
-    } finally {
-      setClosingAndPrinting(false);
-    }
-  }
 
   async function handleLogoutOnly() {
     setLoggingOut(true);
@@ -82,7 +57,7 @@ export default function LogoutConfirmModal({
                 {shiftName && (
                   <span className="font-semibold"> ({shiftName})</span>
                 )}
-                . هل تريد إغلاق ورديتك قبل الخروج؟
+                . أغلق الوردية أولاً ثم يتم تسجيل الخروج.
               </>
             ) : (
               'هل تريد تسجيل الخروج؟'
@@ -94,63 +69,21 @@ export default function LogoutConfirmModal({
           {hasOpenShift ? (
             <>
               <Button
-                onClick={handleCloseShiftPrintAndLogout}
-                disabled={closingShift || closingAndPrinting || loggingOut}
+                onClick={() => {
+                  onClose();
+                  onCloseShift();
+                }}
+                disabled={loggingOut}
                 variant="default"
-                className="bg-success hover:bg-success/90"
+                className="bg-amber-600 hover:bg-amber-700"
               >
-                {closingAndPrinting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 ml-2 animate-spin" />
-                    جاري إغلاق الوردية...
-                  </>
-                ) : (
-                  <>
-                    <Printer className="w-4 h-4 ml-2" />
-                    إغلاق الوردية + طباعة الملخص
-                  </>
-                )}
-              </Button>
-
-              <Button
-                onClick={handleCloseShiftAndLogout}
-                disabled={closingShift || closingAndPrinting || loggingOut}
-                variant="outline"
-              >
-                {closingShift ? (
-                  <>
-                    <Loader2 className="w-4 h-4 ml-2 animate-spin" />
-                    جاري إغلاق الوردية...
-                  </>
-                ) : (
-                  <>
-                    <LogOut className="w-4 h-4 ml-2" />
-                    إغلاق الوردية بدون طباعة
-                  </>
-                )}
-              </Button>
-
-              <Button
-                onClick={handleLogoutOnly}
-                disabled={closingShift || closingAndPrinting || loggingOut}
-                variant="outline"
-              >
-                {loggingOut ? (
-                  <>
-                    <Loader2 className="w-4 h-4 ml-2 animate-spin" />
-                    جاري الخروج...
-                  </>
-                ) : (
-                  <>
-                    <LogOut className="w-4 h-4 ml-2" />
-                    تسجيل الخروج بدون إغلاق الوردية
-                  </>
-                )}
+                <Lock className="w-4 h-4 ml-2" />
+                إغلاق الوردية
               </Button>
 
               <Button
                 onClick={onClose}
-                disabled={closingShift || closingAndPrinting || loggingOut}
+                disabled={loggingOut}
                 variant="ghost"
               >
                 <X className="w-4 h-4 ml-2" />

@@ -18,6 +18,7 @@ import {
 import { generateEmployeeDailyTargets } from '@/lib/payroll/employee-target/employee-daily-target-generation.service';
 import { finalizeIncompleteAttendanceWithDefaults } from '@/lib/hr/finalize-incomplete-attendance';
 import { getEmpBranchWorkDayCloseState } from '@/lib/hr/empBranchWorkDayClose.service';
+import { isEmpBranchWorkDayCloseEnforced } from '@/lib/hr/empBranchWorkDayClose.flags';
 import { resolveNightlyCloseWorkDate, shiftYmd } from '@/lib/hr/nightly-close-work-date';
 import {
   buildEmployeeDailyWhatsAppPreview,
@@ -335,7 +336,7 @@ export async function runNightlyClose(params?: {
       const payrollDays = [workDate, shiftYmd(workDate, -1)];
       for (const payDay of payrollDays) {
       const closeView = await getEmpBranchWorkDayCloseState(branch.branchId, payDay);
-      if (closeView.state === 'CLOSED') {
+      if (isEmpBranchWorkDayCloseEnforced() && closeView.state === 'CLOSED') {
         console.log(
           `[nightly-close] payroll skipped CLOSED branch=${branch.branchCode} workDate=${payDay}`,
         );
@@ -501,7 +502,7 @@ export async function runNightlyClose(params?: {
       for (const branch of targetBranches) {
         try {
           const closeView = await getEmpBranchWorkDayCloseState(branch.branchId, workDate);
-          if (closeView.state === 'CLOSED') {
+          if (isEmpBranchWorkDayCloseEnforced() && closeView.state === 'CLOSED') {
             console.log(
               `[nightly-close] targets skipped CLOSED branch=${branch.branchCode} workDate=${workDate}`,
             );
