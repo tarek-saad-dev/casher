@@ -8,7 +8,16 @@ function src(relative: string): string {
 
 describe('Phase 5A/5C1 does not change current send paths', () => {
   it('leaves POST /api/sales on sendSaleCustomerReceipt (not enqueueMessage)', () => {
-    const text = src('src/app/api/sales/route.ts');
+    const route = src('src/app/api/sales/route.ts');
+    const extracted = src('src/apps/pos/application/createSale.ts');
+    const legacy = src('src/lib/sales/legacyRouteSaleCreate.ts');
+    const text = src('src/apps/pos/internal/salePostCommitEffects.ts');
+
+    expect(route).toContain('createSale(');
+    expect(route).toContain('createSaleLegacyFromRoute');
+    expect(extracted).toContain('runSalePostCommitEffects');
+    expect(legacy).toContain('runSalePostCommitEffects');
+
     expect(text).toContain('sendSaleCustomerReceipt');
     expect(text).toContain("@/modules/messaging");
     expect(text).not.toContain('enqueueMessage');
@@ -16,6 +25,14 @@ describe('Phase 5A/5C1 does not change current send paths', () => {
     expect(text).not.toContain('listMessageHistory');
     expect(text).not.toContain('processOutboxTick');
     expect(text).not.toContain('messaging-outbox-worker');
+
+    for (const caller of [route, extracted, legacy]) {
+      expect(caller).not.toContain('enqueueMessage');
+      expect(caller).not.toContain('TblMessageOutbox');
+      expect(caller).not.toContain('listMessageHistory');
+      expect(caller).not.toContain('processOutboxTick');
+      expect(caller).not.toContain('messaging-outbox-worker');
+    }
   });
 
   it('leaves Quick Message on sendMessage (not enqueueMessage)', () => {
