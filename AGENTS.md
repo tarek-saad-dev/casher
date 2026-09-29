@@ -60,3 +60,27 @@ A task stays out of `READY_FOR_TAREK` until:
 Top-level issue or PR comments may use `DRVO_ACTION: EXECUTE`, `DRVO_ACTION: REVIEW`, `DRVO_ACTION: FIX_FINDINGS`, or `DRVO_ACTION: STATUS`. Ignore every other comment. States, handoff text, and which automation handles each command are defined in `docs/drvo/CONTROL-PLANE.md`.
 
 To reuse this model on another repo, see `docs/agent-control-plane/INSTALL.md`.
+
+
+## Production migration control
+
+Agents may author and verify migrations against staging `last132_agent`, but they
+must never connect to or mutate production `last132`.
+
+Production migrations use the separate control plane documented in
+`docs/drvo/MIGRATION-CONTROL-PLANE.md`.
+
+Required rules:
+
+- migration code must use the central DRVO migration manifest and immutable checksums;
+- every migration declares risk, kind, lock profile, backup requirement and rollback strategy;
+- a read-only production PLAN is required before APPLY;
+- APPLY is bound to the exact open PR head SHA, exact manifest digest and exact pending migration list;
+- backup-required migrations must have a backup reference;
+- only the trusted migration executor may access production DB credentials;
+- migration approval does not authorize PR merge;
+- agents never merge and never deploy production.
+
+Migration-aware lifecycle:
+
+`PLANNED -> BUILDING -> REVIEW -> MIGRATION_PLAN -> READY_FOR_MIGRATION_APPROVAL -> MIGRATION_APPLIED -> READY_FOR_TAREK -> MERGED`
