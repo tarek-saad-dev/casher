@@ -9,10 +9,19 @@ import {
 import { getCairoBusinessDate } from '@/lib/businessDate';
 import { normalizeCustomersAhead } from '@/lib/queueCustomersAhead';
 import { intervalsOverlap } from '@/lib/scheduleIntervals';
+import { ScheduleConflictError } from '@/lib/scheduleIntegrity';
+import type { QueuePortHooks } from '@/apps/queue/internal/queuePortAdapter';
 import {
-  assertEmployeeIntervalAvailable,
-  ScheduleConflictError,
-} from '@/lib/scheduleIntegrity';
+  bridgeQueueAssertEmployeeFree,
+  bridgeQueueCommitOccupancy,
+  bridgeQueuePublishCreatedEvent,
+  bridgeQueueAcquireAnyBarberLock,
+  bridgeQueueUpsertCustomer,
+  BookingCreateLockError,
+  type QueuePortBridgeContext,
+} from '@/lib/queue/queuePortLegacyBridge';
+import { hashServiceSet } from '@/lib/booking/publicBookingCreateLocks';
+import { PUBLIC_BOOKING_ERROR_CATALOG } from '@/lib/booking/publicBookingErrorCatalog';
 import { getBarberAvailabilityReason } from '@/lib/barberAvailability';
 import { generateTicketCode } from '@/lib/queueTicketCode';
 import { detectQueueTicketsSchema, buildInsertColumns } from '@/lib/queueSchema';
@@ -43,6 +52,13 @@ export interface CreateOperationsQueueInput {
   useClientPlannedTimes?: boolean;
   /** Branch owning this ticket — stamped on write, scopes ticket numbering. */
   branchId: number;
+  queuePortHooks?: QueuePortHooks;
+  useExtractedEventDelivery?: boolean;
+  /**
+   * Already-begun transaction. Used so any-barber applock and ticket insert
+   * commit together. This function does not begin, commit, or roll it back.
+   */
+  joinTransaction?: sql.Transaction;
 }
 
 export class CreateOperationsQueueError extends Error {
@@ -65,11 +81,51 @@ export function persistQueueTicketSource(
   return s.length <= 20 ? s : s.slice(0, 20);
 }
 
+function notifyQueueTicketCreated(input: {
+  employeeId: number;
+  businessDate: string;
+  branchId: number;
+}): void {
+  void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
+    .then((m) =>
+      m.notifyHotQueueChanged({
+        employeeId: input.employeeId,
+        businessDate: input.businessDate,
+        branchId: input.branchId,
+        reason: 'queue_ticket_created',
+      }),
+    )
+    .catch(() => undefined);
+}
+
+/** Port path: customer identity goes through Customers.upsertByPhone. */
+export async function assignQueueCustomerThroughPort(
+  portCtx: QueuePortBridgeContext,
+  transaction: sql.Transaction,
+  customer: { name?: string; phone: string },
+): Promise<{ clientId: number; name: string | null; phone: string }> {
+  if (!portCtx.queuePortHooks) {
+    throw new Error('QUEUE_CUSTOMER_PORT_REQUIRED');
+  }
+  const phone = customer.phone.trim();
+  const displayName = customer.name?.trim() || phone;
+  const clientId = await bridgeQueueUpsertCustomer(
+    portCtx,
+    transaction,
+    displayName,
+    phone,
+  );
+  return {
+    clientId,
+    name: customer.name?.trim() || displayName,
+    phone,
+  };
+}
+
 export async function createOperationsQueueTicket(
   input: CreateOperationsQueueInput,
 ): Promise<CreateQueueResponse> {
   const db = await getPool();
-  const transaction = new sql.Transaction(db);
   const {
     empId,
     serviceIds,
@@ -80,7 +136,14 @@ export async function createOperationsQueueTicket(
     trustExpectedStart = false,
     useClientPlannedTimes = false,
     branchId,
+    queuePortHooks,
+    useExtractedEventDelivery,
+    joinTransaction,
   } = input;
+  const ownsTransaction = !joinTransaction;
+  const transaction = joinTransaction ?? new sql.Transaction(db);
+
+  const portCtx: QueuePortBridgeContext = { queuePortHooks };
 
   if (!empId || typeof empId !== 'number') {
     throw new CreateOperationsQueueError(400, 'empId مطلوب');
@@ -263,17 +326,17 @@ export async function createOperationsQueueTicket(
   const estimatedWaitMinutes = Math.max(0, Math.round((startMs - nowMs) / 60000));
   const { columns, paramNames } = buildInsertColumns(schema, branchId);
 
-  await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+  if (ownsTransaction) {
+    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+  }
 
   try {
-    await assertEmployeeIntervalAvailable({
-      empId,
-      startAt: finalStartDate,
-      endAt: finalEndDate,
-      now,
+    await bridgeQueueAssertEmployeeFree(portCtx, transaction, {
+      employeeId: empId,
+      startMs: finalStartDate.getTime(),
+      endMs: finalEndDate.getTime(),
       operationalDate: dateStr,
       branchId,
-      transaction,
     });
 
     let clientId: number | null = null;
@@ -282,6 +345,14 @@ export async function createOperationsQueueTicket(
 
     if (customer?.clientId && schema.hasClientID) {
       clientId = customer.clientId;
+    } else if (customer?.phone?.trim() && portCtx.queuePortHooks) {
+      const assigned = await assignQueueCustomerThroughPort(portCtx, transaction, {
+        name: customer.name,
+        phone: customer.phone,
+      });
+      clientId = assigned.clientId;
+      resolvedCustomerName = assigned.name;
+      resolvedCustomerPhone = assigned.phone;
     } else if (customer?.phone) {
       try {
         const findClient = await transaction
@@ -406,18 +477,30 @@ export async function createOperationsQueueTicket(
       }
     }
 
-    await transaction.commit();
+    if (useExtractedEventDelivery) {
+      await bridgeQueueCommitOccupancy(portCtx, transaction, {
+        employeeId: empId,
+        startMs: finalStartDate.getTime(),
+        endMs: finalEndDate.getTime(),
+        queueTicketId,
+        locationId: branchId,
+      });
+      await bridgeQueuePublishCreatedEvent(portCtx, transaction, {
+        queueTicketId,
+        ticketCode,
+        branchId,
+        empId,
+      });
+    }
 
-    void import('@/lib/booking/cache/hotCacheInvalidateBestEffort')
-      .then((m) =>
-        m.notifyHotQueueChanged({
-          employeeId: empId,
-          businessDate: dateStr,
-          branchId,
-          reason: 'queue_ticket_created',
-        }),
-      )
-      .catch(() => undefined);
+    if (ownsTransaction) {
+      await transaction.commit();
+      notifyQueueTicketCreated({
+        employeeId: empId,
+        businessDate: dateStr,
+        branchId,
+      });
+    }
 
     const ticketNumberMatch = ticketCode.match(/-(\d+)$/);
     const ticketNumber = ticketNumberMatch ? parseInt(ticketNumberMatch[1], 10) : 0;
@@ -454,7 +537,9 @@ export async function createOperationsQueueTicket(
       createdAt: new Date().toISOString(),
     };
   } catch (txErr) {
-    await transaction.rollback();
+    if (ownsTransaction) {
+      await transaction.rollback();
+    }
     if (txErr instanceof ScheduleConflictError) {
       throw new CreateOperationsQueueError(409, txErr.message, {
         code: txErr.code,
@@ -503,11 +588,96 @@ function formatCairoTimeLabel(iso: string): string {
   });
 }
 
+type QuickQueueFailure = {
+  ok: false;
+  error: string;
+  reason?: string;
+  nextAvailableTime?: string;
+};
+
+type QuickQueuePlan = {
+  ok: true;
+  empId: number;
+  expectedStartTime: string;
+  expectedEndTime: string;
+  startMs: number;
+  endMs: number;
+  nextAvailableTime?: string;
+};
+
+function lockTimeoutFailure(): QuickQueueFailure {
+  return {
+    ok: false,
+    error: PUBLIC_BOOKING_ERROR_CATALOG.BOOKING_LOCK_TIMEOUT.messageAr,
+    reason: 'lock_timeout',
+  };
+}
+
+async function planQuickQueueAssignment(
+  branchId: number,
+  serviceIds: number[],
+  requestedAt: string,
+  serviceDurMinutes: number,
+): Promise<QuickQueuePlan | QuickQueueFailure> {
+  const nearest = await findNearestBarberForServices(serviceIds, requestedAt, branchId);
+  if (!nearest.ok || !nearest.best) {
+    let error = 'لا يوجد حلاق متاح لخدمة مدتها 30 دقيقة حاليًا';
+    if (nearest.nextAvailableTime) {
+      error += ` — أقرب موعد متاح الساعة ${formatCairoTimeLabel(nearest.nextAvailableTime)}`;
+    }
+    return {
+      ok: false,
+      error,
+      reason: 'no_available_barber',
+      nextAvailableTime: nearest.nextAvailableTime ?? undefined,
+    };
+  }
+
+  const simulation = await simulateQueueInsertion({
+    empId: nearest.best.empId,
+    serviceIds,
+    requestedAt,
+    branchId,
+  });
+  if (!simulation.ok) {
+    return {
+      ok: false,
+      error: simulation.message,
+      reason: 'simulation_failed',
+    };
+  }
+
+  const expectedStartTime = simulation.suggestedStartTime;
+  const expectedEndTime = new Date(
+    new Date(expectedStartTime).getTime() + serviceDurMinutes * 60000,
+  ).toISOString();
+  return {
+    ok: true,
+    empId: nearest.best.empId,
+    expectedStartTime,
+    expectedEndTime,
+    startMs: new Date(expectedStartTime).getTime(),
+    endMs: new Date(expectedEndTime).getTime(),
+    nextAvailableTime: nearest.nextAvailableTime ?? undefined,
+  };
+}
+
+function quickQueueCreateFailure(
+  err: CreateOperationsQueueError,
+  nextAvailableTime?: string,
+): QuickQueueFailure {
+  return {
+    ok: false,
+    error: err.message,
+    reason: String(err.payload.reason ?? 'create_failed'),
+    nextAvailableTime,
+  };
+}
+
 export async function executeQuickQueueOperation(
   branchId: number,
-): Promise<
-  CreateQueueResponse | { ok: false; error: string; reason?: string; nextAvailableTime?: string }
-> {
+  options?: { queuePortHooks?: QueuePortHooks; useExtractedEventDelivery?: boolean },
+): Promise<CreateQueueResponse | QuickQueueFailure> {
   if (!QUICK_QUEUE_ENABLED) {
     return {
       ok: false,
@@ -532,65 +702,111 @@ export async function executeQuickQueueOperation(
 
   const serviceIds = [service.ProID];
   const requestedAt = new Date().toISOString();
-  const nearest = await findNearestBarberForServices(serviceIds, requestedAt, branchId);
 
-  if (!nearest.ok || !nearest.best) {
-    let error = 'لا يوجد حلاق متاح لخدمة مدتها 30 دقيقة حاليًا';
-    if (nearest.nextAvailableTime) {
-      error += ` — أقرب موعد متاح الساعة ${formatCairoTimeLabel(nearest.nextAvailableTime)}`;
+  if (!options?.queuePortHooks) {
+    const serviceDur = service.DurationMinutes ?? (await getDefaultDuration(db));
+    const plan = await planQuickQueueAssignment(branchId, serviceIds, requestedAt, serviceDur);
+    if (!plan.ok) return plan;
+    try {
+      return await createOperationsQueueTicket({
+        empId: plan.empId,
+        serviceIds,
+        customer: { name: QUICK_QUEUE_WALK_IN_NAME },
+        expectedStartTime: plan.expectedStartTime,
+        expectedEndTime: plan.expectedEndTime,
+        source: 'walk_in',
+        trustExpectedStart: true,
+        branchId,
+      });
+    } catch (err) {
+      if (err instanceof CreateOperationsQueueError) {
+        return quickQueueCreateFailure(err, plan.nextAvailableTime);
+      }
+      throw err;
     }
-    return {
-      ok: false,
-      error,
-      reason: 'no_available_barber',
-      nextAvailableTime: nearest.nextAvailableTime ?? undefined,
-    };
   }
 
-  const simulation = await simulateQueueInsertion({
-    empId: nearest.best.empId,
-    serviceIds,
-    requestedAt,
-    branchId,
-  });
-
-  if (!simulation.ok) {
-    return {
-      ok: false,
-      error: simulation.message,
-      reason: 'simulation_failed',
-    };
-  }
-
-  const serviceDur =
-    service.DurationMinutes ??
-    (await getDefaultDuration(db));
-  const expectedEndTime = new Date(
-    new Date(simulation.suggestedStartTime).getTime() + serviceDur * 60000,
-  ).toISOString();
-
+  let serviceDur: number;
   try {
-    const ticket = await createOperationsQueueTicket({
-      empId: nearest.best.empId,
-      serviceIds,
-      customer: { name: QUICK_QUEUE_WALK_IN_NAME },
-      expectedStartTime: simulation.suggestedStartTime,
-      expectedEndTime,
-      source: 'walk_in',
-      trustExpectedStart: true,
-      branchId,
-    });
-
-    return ticket;
-  } catch (err) {
-    if (err instanceof CreateOperationsQueueError) {
-      return {
-        ok: false,
-        error: err.message,
-        reason: String(err.payload.reason ?? 'create_failed'),
-        nextAvailableTime: nearest.nextAvailableTime ?? undefined,
-      };
-    }
-    throw err;
+    const servicePlan = await calculateServicePlanDuration(serviceIds);
+    serviceDur = servicePlan.totalDurationMinutes;
+  } catch (planErr) {
+    return {
+      ok: false,
+      error: planErr instanceof Error ? planErr.message : 'خطأ في الخدمات المختارة',
+      reason: 'service_unavailable',
+    };
   }
+  let plan = await planQuickQueueAssignment(branchId, serviceIds, requestedAt, serviceDur);
+  if (!plan.ok) return plan;
+
+  // Same slot key Booking uses (hashServiceSet), so the tenant any-barber applock matches.
+  // Discover the interval, lock it, then select again while the lock is held.
+  // If the interval moves, roll back before taking a different any-barber lock.
+  const slotKey = hashServiceSet(serviceIds);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const tx = new sql.Transaction(db);
+    await tx.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    try {
+      await bridgeQueueAcquireAnyBarberLock(
+        { queuePortHooks: options.queuePortHooks },
+        tx,
+        branchId,
+        plan.startMs,
+        plan.endMs,
+        slotKey,
+      );
+      const locked = await planQuickQueueAssignment(
+        branchId,
+        serviceIds,
+        requestedAt,
+        serviceDur,
+      );
+      if (!locked.ok) {
+        await tx.rollback();
+        return locked;
+      }
+      if (locked.startMs !== plan.startMs || locked.endMs !== plan.endMs) {
+        await tx.rollback();
+        plan = locked;
+        continue;
+      }
+      const ticket = await createOperationsQueueTicket({
+        empId: locked.empId,
+        serviceIds,
+        customer: { name: QUICK_QUEUE_WALK_IN_NAME },
+        expectedStartTime: locked.expectedStartTime,
+        expectedEndTime: locked.expectedEndTime,
+        source: 'walk_in',
+        trustExpectedStart: true,
+        useClientPlannedTimes: true,
+        branchId,
+        queuePortHooks: options.queuePortHooks,
+        useExtractedEventDelivery: options.useExtractedEventDelivery,
+        joinTransaction: tx,
+      });
+      await tx.commit();
+      notifyQueueTicketCreated({
+        employeeId: locked.empId,
+        businessDate: getCairoBusinessDate(),
+        branchId,
+      });
+      return ticket;
+    } catch (err) {
+      try {
+        await tx.rollback();
+      } catch {
+        /* transaction already closed */
+      }
+      if (err instanceof CreateOperationsQueueError) {
+        return quickQueueCreateFailure(err, plan.nextAvailableTime);
+      }
+      if (err instanceof BookingCreateLockError) {
+        return lockTimeoutFailure();
+      }
+      throw err;
+    }
+  }
+
+  return lockTimeoutFailure();
 }

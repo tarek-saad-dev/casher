@@ -14,6 +14,9 @@ import {
   CreateOperationsQueueError,
   type CreateOperationsQueueInput,
 } from '@/lib/operationsQueueCreateCore';
+import { createQueueTicket } from '@/apps/queue/public';
+import { isQueueSchedulingPortEnabled } from '@/apps/queue/internal/queuePortFlag';
+import { buildQueuePortHooksForActor, buildStaffActorContext } from '@/lib/queueSchedulingComposition';
 import type { CreateQueueRequest } from '@/lib/operationsQueueTypes';
 import { requireBranchOperationAccess, isActiveBranchContext } from '@/lib/branch/context';
 import {
@@ -60,7 +63,18 @@ export async function POST(req: NextRequest) {
       branchId: target.branchId,
     };
 
-    const response = await createOperationsQueueTicket(input);
+    let response;
+    if (isQueueSchedulingPortEnabled()) {
+      const actor = await buildStaffActorContext(sessionBranch.userId);
+      const queuePortHooks = await buildQueuePortHooksForActor(actor);
+      response = await createQueueTicket({
+        ...input,
+        tenantId: actor.tenantId!,
+        queuePortHooks,
+      });
+    } else {
+      response = await createOperationsQueueTicket(input);
+    }
     return NextResponse.json(response);
   } catch (err) {
     const branchErr = opsWriteBranchErrorResponse(err);
