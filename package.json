@@ -90,7 +90,8 @@
     "messaging:benchmark-ai": "tsx scripts/benchmark-ai.ts",
     "messaging:seed-booking-group": "tsx scripts/seed-whatsapp-booking-group.ts",
     "messaging:verify-groups": "tsx scripts/verify-whatsapp-groups.ts",
-    "messaging:seed-templates-phase7": "tsx scripts/run-whatsapp-campaign-migration.ts"
+    "messaging:seed-templates-phase7": "tsx scripts/run-whatsapp-campaign-migration.ts",
+    "drvo:migration-control": "tsx scripts/drvo/production-migration-control.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
