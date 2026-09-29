@@ -60,13 +60,15 @@ describe('Phase 1J branch inventory', () => {
     expect(svc).not.toMatch(/UPDATE\s+dbo\.TblPro/i);
     expect(svc).not.toMatch(/TblPro\.Qty/i);
 
-    const sales = read('src/app/api/sales/route.ts');
-    expect(sales).toContain('applySaleStockDecrements');
-    expect(sales).not.toMatch(/UPDATE\s+.*TblPro[\s\S]{0,80}Qty/i);
+    const salesCreate = read('src/apps/pos/internal/legacySaleCreateAdapter.ts');
+    expect(salesCreate).toContain('applySaleStockDecrements');
 
-    const invActions = read('src/lib/actions/invoiceActions.ts');
-    expect(invActions).toContain('reverseSaleStockMovements');
-    expect(invActions).toContain('applySaleStockDecrements');
+    const salesRoute = read('src/app/api/sales/route.ts');
+    expect(salesRoute).not.toMatch(/UPDATE\s+.*TblPro[\s\S]{0,80}Qty/i);
+
+    const invRepo = read('src/apps/pos/internal/legacySaleRepository.ts');
+    expect(invRepo).toContain('reverseSaleStockMovements');
+    expect(invRepo).toContain('applySaleStockDecrements');
   });
 
   it('purchase and inventory routes reject body BranchID and use session branch', () => {
