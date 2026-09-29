@@ -1,0 +1,244 @@
+name: DRVO Production Migration Control
+
+on:
+  push:
+    branches:
+      - migration-control
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  authorize:
+    name: Authorize migration command
+    runs-on: ubuntu-latest
+    outputs:
+      action: ${{ steps.auth.outputs.action }}
+      pr_number: ${{ steps.auth.outputs.pr_number }}
+      target_sha: ${{ steps.auth.outputs.target_sha }}
+      manifest_digest: ${{ steps.auth.outputs.manifest_digest }}
+      migrations: ${{ steps.auth.outputs.migrations }}
+      backup_reference: ${{ steps.auth.outputs.backup_reference }}
+      approval_ref: ${{ steps.auth.outputs.approval_ref }}
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Validate command and exact PR head
+        id: auth
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          CONTROL_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$ACTOR" != "tarek-saad-dev" ]]; then
+            echo "Only tarek-saad-dev may trigger production migration control." >&2
+            exit 1
+          fi
+
+          gh api "repos/$REPO/contents/.github/drvo-migration-command.json?ref=$CONTROL_SHA"             --jq '.content' | tr -d '\n' | base64 -d > /tmp/migration-command.json
+
+          action="$(jq -r '.action // ""' /tmp/migration-command.json)"
+          requested_by="$(jq -r '.requested_by // ""' /tmp/migration-command.json)"
+          pr_number="$(jq -r '.pr_number // ""' /tmp/migration-command.json)"
+          target_sha="$(jq -r '.target_sha // ""' /tmp/migration-command.json | tr '[:upper:]' '[:lower:]')"
+          manifest_digest="$(jq -r '.manifest_digest // ""' /tmp/migration-command.json | tr '[:upper:]' '[:lower:]')"
+          migrations="$(jq -r '(.migrations // []) | join(",")' /tmp/migration-command.json)"
+          backup_reference="$(jq -r '.backup_reference // ""' /tmp/migration-command.json)"
+          approval="$(jq -r '.approval // ""' /tmp/migration-command.json)"
+
+          [[ "$requested_by" == "tarek-saad-dev" ]] || { echo "Invalid requested_by" >&2; exit 1; }
+          [[ "$action" == "PLAN" || "$action" == "APPLY" ]] || { echo "Invalid action" >&2; exit 1; }
+          [[ "$pr_number" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid PR number" >&2; exit 1; }
+          [[ "$target_sha" =~ ^[a-f0-9]{40}$ ]] || { echo "Invalid target SHA" >&2; exit 1; }
+          [[ "$migrations" =~ ^$|^[a-z0-9-]+(,[a-z0-9-]+)*$ ]] || { echo "Invalid migrations list" >&2; exit 1; }
+          [[ "$backup_reference" =~ ^$|^[A-Za-z0-9._:/-]{1,200}$ ]] || { echo "Invalid backup reference" >&2; exit 1; }
+
+          gh api "repos/$REPO/pulls/$pr_number" > /tmp/pr.json
+          head_repo="$(jq -r '.head.repo.full_name' /tmp/pr.json)"
+          head_sha="$(jq -r '.head.sha' /tmp/pr.json | tr '[:upper:]' '[:lower:]')"
+          base_ref="$(jq -r '.base.ref' /tmp/pr.json)"
+          state="$(jq -r '.state' /tmp/pr.json)"
+
+          [[ "$head_repo" == "$REPO" ]] || { echo "PR must be same-repository" >&2; exit 1; }
+          [[ "$base_ref" == "main" ]] || { echo "PR base must be main" >&2; exit 1; }
+          [[ "$state" == "open" ]] || { echo "PR must be open" >&2; exit 1; }
+          [[ "$head_sha" == "$target_sha" ]] || { echo "PR head changed after command creation" >&2; exit 1; }
+
+          if [[ "$action" == "APPLY" ]]; then
+            [[ "$approval" == "TAREK_APPROVED_PRODUCTION_MIGRATION" ]] || {
+              echo "Missing explicit production migration approval marker" >&2
+              exit 1
+            }
+            [[ "$manifest_digest" =~ ^[a-f0-9]{64}$ ]] || {
+              echo "APPLY requires the exact approved manifest digest" >&2
+              exit 1
+            }
+            [[ -n "$migrations" ]] || {
+              echo "APPLY requires the exact approved migration list" >&2
+              exit 1
+            }
+          fi
+
+          approval_ref="github-pr-$pr_number:$target_sha"
+
+          {
+            echo "action=$action"
+            echo "pr_number=$pr_number"
+            echo "target_sha=$target_sha"
+            echo "manifest_digest=$manifest_digest"
+            echo "migrations=$migrations"
+            echo "backup_reference=$backup_reference"
+            echo "approval_ref=$approval_ref"
+          } >> "$GITHUB_OUTPUT"
+
+  migrate:
+    name: Production migration ${{ needs.authorize.outputs.action }}
+    needs: authorize
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact approved PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.authorize.outputs.target_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Stage exact approved source on VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          RUN_KEY: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          remote_dir="/home/casher/migration-runs/$RUN_KEY"
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes "$VPS_USER@$VPS_HOST"             "rm -rf '$remote_dir' && mkdir -p '$remote_dir'"
+          rsync -az             --exclude '.git'             --exclude '.env'             --exclude '.env.local'             --exclude '.env.production'             --exclude '.env.production.local'             --exclude 'node_modules'             --exclude '.next'             -e "ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes"             ./ "$VPS_USER@$VPS_HOST:$remote_dir/"
+
+      - name: Execute trusted production migration gate
+        id: execute
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          RUN_KEY: ${{ github.run_id }}-${{ github.run_attempt }}
+          ACTION: ${{ needs.authorize.outputs.action }}
+          TARGET_SHA: ${{ needs.authorize.outputs.target_sha }}
+          MANIFEST_DIGEST: ${{ needs.authorize.outputs.manifest_digest }}
+          MIGRATIONS: ${{ needs.authorize.outputs.migrations }}
+          BACKUP_REFERENCE: ${{ needs.authorize.outputs.backup_reference }}
+          APPROVAL_REF: ${{ needs.authorize.outputs.approval_ref }}
+        run: |
+          set +e
+          remote_dir="/home/casher/migration-runs/$RUN_KEY"
+
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes "$VPS_USER@$VPS_HOST"             "ACTION='$ACTION' TARGET_SHA='$TARGET_SHA' MANIFEST_DIGEST='$MANIFEST_DIGEST' MIGRATIONS='$MIGRATIONS' BACKUP_REFERENCE='$BACKUP_REFERENCE' APPROVAL_REF='$APPROVAL_REF' REMOTE_DIR='$remote_dir' bash -s"             > migration-report.txt 2>&1 <<'REMOTE'
+          set -euo pipefail
+          trap 'rm -rf "$REMOTE_DIR"' EXIT
+          cd "$REMOTE_DIR"
+
+          if [[ -f /home/casher/app/.env ]]; then
+            cp /home/casher/app/.env .env
+            chmod 600 .env
+          fi
+          if [[ -f /home/casher/app/.env.local ]]; then
+            cp /home/casher/app/.env.local .env.local
+            chmod 600 .env.local
+          fi
+
+          if ! npm ci --no-audit --no-fund > .migration-npm-install.log 2>&1; then
+            echo "Dependency installation failed for the isolated migration workspace." >&2
+            exit 20
+          fi
+
+          mode="$(printf '%s' "$ACTION" | tr '[:upper:]' '[:lower:]')"
+          args=(
+            "--mode=$mode"
+            "--approved-sha=$TARGET_SHA"
+          )
+
+          if [[ "$ACTION" == "APPLY" ]]; then
+            args+=(
+              "--approved-manifest-digest=$MANIFEST_DIGEST"
+              "--approved-migrations=$MIGRATIONS"
+              "--approval-ref=$APPROVAL_REF"
+            )
+            if [[ -n "$BACKUP_REFERENCE" ]]; then
+              args+=("--backup-reference=$BACKUP_REFERENCE")
+            fi
+          fi
+
+          SOURCE_COMMIT_SHA="$TARGET_SHA"             npx tsx scripts/drvo/production-migration-control.ts "${args[@]}"
+          REMOTE
+
+          status=$?
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Publish migration result to PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ needs.authorize.outputs.pr_number }}
+          ACTION: ${{ needs.authorize.outputs.action }}
+          TARGET_SHA: ${{ needs.authorize.outputs.target_sha }}
+          STATUS: ${{ steps.execute.outputs.status }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$STATUS" == "0" ]]; then
+            {
+              echo "DRVO_MIGRATION_CONTROL"
+              echo
+              echo "ACTION: $ACTION"
+              echo "TARGET_SHA: $TARGET_SHA"
+              echo "STATUS: PASS"
+              echo
+              echo "~~~json"
+              cat migration-report.txt
+              echo "~~~"
+            } > migration-comment.md
+          else
+            {
+              echo "DRVO_MIGRATION_CONTROL"
+              echo
+              echo "ACTION: $ACTION"
+              echo "TARGET_SHA: $TARGET_SHA"
+              echo "STATUS: FAILED"
+              echo
+              echo "No application merge or deploy was performed by this workflow."
+              echo "Inspect the Actions run for the executor failure."
+            } > migration-comment.md
+          fi
+
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file migration-comment.md
+
+      - name: Enforce migration result
+        env:
+          STATUS: ${{ steps.execute.outputs.status }}
+        run: |
+          if [[ "$STATUS" != "0" ]]; then
+            echo "Production migration control failed." >&2
+            exit "$STATUS"
+          fi
