@@ -7,6 +7,9 @@ export const CASH_MOVE_WRITER_ALLOWLIST = [
   'src/apps/treasury/internal/cashMoveInsert.ts',
   // POS sale trigger path — InsCashMoveSales; app may redistribute split payments
   'src/lib/splitPaymentService.ts',
+  // Legacy sale update/delete still writes CashMove while rollout stays legacy.
+  'src/lib/actions/invoiceActions.ts',
+  // Extracted POS update/delete CashMove seam. Create still uses InsCashMoveSales.
   'src/apps/pos/internal/legacySaleRepository.ts',
   // Deferred non-sale writers (DRVO-007 follow-ups)
   'src/app/api/payroll/daily/post-to-cash/route.ts',

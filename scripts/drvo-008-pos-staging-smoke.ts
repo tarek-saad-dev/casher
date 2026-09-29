@@ -34,6 +34,10 @@ function forceStagingEnv(password: string) {
     DB_PASSWORD: password,
     DB_ENCRYPT: 'false',
     DB_TRUST_SERVER_CERTIFICATE: 'true',
+    WHATSAPP_INTEGRATION_ENABLED: 'false',
+    WHATSAPP_SALE_ENABLED: 'false',
+    WHATSAPP_EMPLOYEE_SALE_ENABLED: 'false',
+    WHATSAPP_FIRST_TIME_ENABLED: 'false',
   };
   for (const [key, value] of Object.entries(values)) process.env[key] = value;
 }
@@ -65,6 +69,7 @@ async function main() {
   const pool = await getPool();
   let createdInvId: number | null = null;
   let createdBranchId: number | null = null;
+  let smokeClientId: number | null = null;
   try {
     const guard = await pool.request().query(`SELECT DB_NAME() AS db, SUSER_SNAME() AS login`);
     const db = String(guard.recordset[0]?.db ?? '');
@@ -170,12 +175,13 @@ async function main() {
     if (!paymentMethodId) fail('no payment method');
 
     const client = await pool.request().query(`
-      SELECT TOP 1 ClientID AS clientId
-      FROM dbo.TblClient
-      ORDER BY ClientID
+      INSERT INTO dbo.TblClient (Name, Notes, RegisterDate)
+      OUTPUT INSERTED.ClientID AS clientId
+      VALUES (N'DRVO008-SMOKE', N'DRVO008-SMOKE', CAST(GETDATE() AS date))
     `);
     const clientId = Number(client.recordset[0]?.clientId ?? 0);
-    if (!clientId) fail('no client for required ClientID');
+    if (!clientId) fail('could not create smoke client');
+    smokeClientId = clientId;
 
     const beforeRecalc = await pool
       .request()
@@ -562,6 +568,23 @@ async function main() {
         console.log('CLEANUP: deleted smoke invoice', createdInvId);
       } catch (cleanupErr) {
         console.error('CLEANUP failed', cleanupErr);
+      }
+    }
+    if (smokeClientId != null) {
+      try {
+        const leftover = await pool.request().input('id', sql.Int, smokeClientId).query(`
+          SELECT COUNT(*) AS cnt FROM dbo.TblinvServHead WHERE ClientID = @id
+        `);
+        if (Number(leftover.recordset[0]?.cnt ?? 0) === 0) {
+          await pool.request().input('id', sql.Int, smokeClientId).query(`
+            DELETE FROM dbo.TblClientLoyalty WHERE ClientID = @id;
+            DELETE FROM dbo.TblLoyaltyPointLedger WHERE ClientID = @id;
+            DELETE FROM dbo.TblClient WHERE ClientID = @id AND Name = N'DRVO008-SMOKE';
+          `);
+          console.log('CLEANUP: removed smoke client', smokeClientId);
+        }
+      } catch (cleanupErr) {
+        console.error('CLEANUP client failed', cleanupErr);
       }
     }
     await closePool();
