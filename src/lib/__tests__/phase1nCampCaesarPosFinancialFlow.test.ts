@@ -19,9 +19,12 @@ describe('Phase 1N Camp Caesar POS financial flow', () => {
     expect(runner).toContain('Full POS invoice path did not create BranchID=3 CashMove');
   });
 
-  it('sales API uses trigger CashMove path', () => {
+  it('sales create path uses trigger CashMove seam via POS adapter', () => {
     const sales = read('src/app/api/sales/route.ts');
-    expect(sales).toContain('InsCashMoveSales');
-    expect(sales).toContain('Do NOT manually insert here');
+    expect(sales).toContain('createSale');
+    expect(sales).toContain('isPosPortEnabled');
+    const adapter = read('src/apps/pos/internal/legacySaleCreateAdapter.ts');
+    expect(adapter).toContain('InsCashMoveSales');
+    expect(adapter).not.toMatch(/INSERT\s+INTO\s+(\[dbo\]\.)?\[?TblCashMove\]?/i);
   });
 });

@@ -2,8 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
-import { getInvoiceSnapshot, updateInvoice, deleteInvoice } from '@/lib/actions/invoiceActions';
 import type { InvoiceItemInput } from '@/lib/actions/invoiceActions';
+import {
+  deleteSale,
+  getSaleSnapshot,
+  isPosPortEnabled,
+  updateSale,
+} from '@/apps/pos/public';
+import {
+  deleteInvoice,
+  getInvoiceSnapshot,
+  updateInvoice,
+} from '@/lib/actions/invoiceActions';
 import {
   assertActiveBranchOwns,
   financialNotFoundResponse,
@@ -176,8 +186,14 @@ export async function PUT(
       actionMethod: 'PUT',
       endpointPath: `/api/sales/${invID}`,
       reason: body.reason || body.notes || null,
-      loadOldData: async (transaction) => getInvoiceSnapshot(transaction, invID) as unknown as Record<string, unknown> | null,
-      execute: async (transaction) => updateInvoice(transaction, invID, {
+      loadOldData: async (transaction) => {
+        const snapshot = isPosPortEnabled()
+          ? await getSaleSnapshot(transaction, invID)
+          : await getInvoiceSnapshot(transaction, invID);
+        return snapshot as unknown as Record<string, unknown> | null;
+      },
+      execute: async (transaction) => {
+        const updateInput = {
         clientId: body.clientId,
         subTotal: body.subTotal,
         dis: body.dis,
@@ -203,8 +219,18 @@ export async function PUT(
           notes: item.notes,
         })),
         paymentAllocations: body.paymentAllocations,
-      }, userID),
-      loadNewData: async (transaction) => getInvoiceSnapshot(transaction, invID) as unknown as Record<string, unknown> | null,
+        };
+        if (isPosPortEnabled()) {
+          return updateSale(transaction, invID, updateInput, userID);
+        }
+        return updateInvoice(transaction, invID, updateInput, userID);
+      },
+      loadNewData: async (transaction) => {
+        const snapshot = isPosPortEnabled()
+          ? await getSaleSnapshot(transaction, invID)
+          : await getInvoiceSnapshot(transaction, invID);
+        return snapshot as unknown as Record<string, unknown> | null;
+      },
       beforeCommit: async ({ transaction, oldData, newData }) => {
         const { enqueueTargetRecalcFromInvoiceSnapshots } = await import(
           '@/lib/payroll/employee-target/employee-target-invoice-sync'
@@ -305,8 +331,16 @@ export async function DELETE(
       actionMethod: 'DELETE',
       endpointPath: `/api/sales/${invID}`,
       reason,
-      loadOldData: async (transaction) => getInvoiceSnapshot(transaction, invID) as unknown as Record<string, unknown> | null,
-      execute: async (transaction) => deleteInvoice(transaction, invID, loaded.ownership.branchId),
+      loadOldData: async (transaction) => {
+        const snapshot = isPosPortEnabled()
+          ? await getSaleSnapshot(transaction, invID)
+          : await getInvoiceSnapshot(transaction, invID);
+        return snapshot as unknown as Record<string, unknown> | null;
+      },
+      execute: async (transaction) =>
+        isPosPortEnabled()
+          ? deleteSale(transaction, invID, loaded.ownership.branchId)
+          : deleteInvoice(transaction, invID, loaded.ownership.branchId),
       loadNewData: async () => null,
       beforeCommit: async ({ transaction, oldData }) => {
         const { enqueueTargetRecalcFromInvoiceSnapshots } = await import(
