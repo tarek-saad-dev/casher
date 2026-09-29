@@ -17,7 +17,7 @@
 | DRVO | Module | Source `rollout` | Classification | Why | Behavior change this PR |
 |------|--------|------------------|---------------|-----|-------------------------|
 | DRVO-004 | booking | `extracted` | `extracted` | Platform Core + booking prerequisites are deployed and production readiness is verified. | Source-controlled cutover to extracted Booking; rollback remains `legacy` |
-| DRVO-005 | queue | `legacy` | `legacy` | Same strangler pattern; not independently proven production-safe | Path still legacy |
+| DRVO-005 | queue | `extracted` | `extracted` | Platform Core + queue prerequisites are deployed and production readiness is verified; extracted create/cancel/quick paths passed staging smoke and review fixes | Source-controlled cutover to extracted Queue; rollback remains `legacy` |
 | DRVO-006 | operational-calendar | `extracted` | `always_on_infrastructure` | Composition always uses extracted port adapter; no flag; already serving production | None |
 | DRVO-007 | treasury | `extracted` | `always_on_infrastructure` | Non-sale money movement always via MoneyMovement port; sale trigger remains separate | None |
 

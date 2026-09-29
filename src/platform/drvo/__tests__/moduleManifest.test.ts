@@ -22,13 +22,13 @@ describe('DRVO module rollout manifest', () => {
     delete process.env.DRVO_FORCE_QUEUE_PATH;
   });
 
-  it('uses extracted booking and legacy queue for this rollout', () => {
+  it('uses extracted booking and queue for this rollout', () => {
     const booking = getDrvoModuleRolloutSpec('booking');
     const queue = getDrvoModuleRolloutSpec('queue');
     expect(booking.rollout).toBe('extracted');
-    expect(queue.rollout).toBe('legacy');
+    expect(queue.rollout).toBe('extracted');
     expect(booking.classification).toBe('extracted');
-    expect(queue.classification).toBe('legacy');
+    expect(queue.classification).toBe('extracted');
     expect(booking.compatEnvFlag).toBe('BOOKING_SCHEDULING_PORT');
     expect(queue.compatEnvFlag).toBe('QUEUE_SCHEDULING_PORT');
     expect(booking.forcePathEnv).toBe('DRVO_FORCE_BOOKING_PATH');

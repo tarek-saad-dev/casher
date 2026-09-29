@@ -121,10 +121,10 @@ export const DRVO_MODULE_ROLLOUT: DrvoModuleRolloutSpec[] = [
   {
     module: 'queue',
     drvoId: 'DRVO-005',
-    rollout: 'legacy',
-    classification: 'legacy',
+    rollout: 'extracted',
+    classification: 'extracted',
     classificationRationale:
-      'Extracted queue path is still strict opt-in / not independently proven production-safe on the live strangler. Keep source-controlled rollout=legacy alongside booking until a dedicated activation PR.',
+      'DRVO-005 prerequisites are deployed and verified on production. Queue create/cancel/quick extracted paths were independently smoke-tested on staging; cutover is source-controlled and rollback remains rollout=legacy.',
     requiredMigrationKeys: [
       'platform-core',
       'platform-bootstrap',
