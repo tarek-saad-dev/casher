@@ -1,11 +1,13 @@
 import 'server-only';
-import { isStrictOptInEnvFlag } from '@/platform/drvo/featureFlags';
+import { isDrvoModuleExtractedPathEnabled } from '@/platform/drvo/featureFlags';
 
 /**
- * DRVO-004 rollout gate (strict opt-in).
- * Extracted path runs only when BOOKING_SCHEDULING_PORT=true (exact literal).
- * Unset / false / malformed keeps legacy src/lib/booking paths.
+ * DRVO-004 booking scheduling path gate.
+ *
+ * Normal authority: source-controlled `rollout` in moduleManifest.ts (currently legacy).
+ * Env BOOKING_SCHEDULING_PORT is break-glass / compat only — see featureFlags.ts precedence.
+ * DRVO_FORCE_BOOKING_PATH=legacy|extracted is the emergency override.
  */
 export function isBookingSchedulingPortEnabled(): boolean {
-  return isStrictOptInEnvFlag(process.env.BOOKING_SCHEDULING_PORT);
+  return isDrvoModuleExtractedPathEnabled('booking');
 }

@@ -4,7 +4,7 @@
 |-------|-------|
 | Issue | https://github.com/tarek-saad-dev/casher/issues/11 |
 | Staging database | `last132_agent` only |
-| Rollback flag | `BOOKING_SCHEDULING_PORT` is **opt-in** (`true` required). Unset/false uses legacy `src/lib/booking` paths |
+| Rollback | Source-controlled: set `moduleManifest` booking `rollout` back to `legacy` and deploy. Emergency: `DRVO_FORCE_BOOKING_PATH=legacy`. Compat `BOOKING_SCHEDULING_PORT=false` is ignored (leftover incident pin). |
 
 ## Delivered
 
@@ -14,7 +14,7 @@
 - Extracted events publish to `PlatformOutbox`; legacy WhatsApp notify skipped when port path is active.
 - Import-boundary tests ban cross-app POS imports and forbidden table references inside booking package.
 - Workforce occupancy `assertFree` calls `assertEmployeeIntervalAvailable` with `startAt`/`endAt`, the requested business date, branch, hold exclusion, and `booking:{id}` exclusion. Conflict reads stay employee-global, so another location on the same employee fails closed.
-- Scheduling applocks are taken only inside the Workforce adapter. Each employee interval takes both `booking:emp:{empId}:{start}:{end}` and the tenant lock `t:{tenantId}:emp:…`, so the flag-off path and the port path serialize the same interval. `BOOKING_SCHEDULING_PORT=false` still uses the legacy lock helper directly.
+- Scheduling applocks are taken only inside the Workforce adapter. Each employee interval takes both `booking:emp:{empId}:{start}:{end}` and the tenant lock `t:{tenantId}:emp:…`, so the flag-off path and the port path serialize the same interval. Manifest `rollout: 'legacy'` (and emergency force-legacy) still uses the legacy lock helper directly.
 - Port-path reschedule takes that interval lock before `operations-schedule:{emp}:{date}`, the same order as public create. Flag-off reschedule still takes only the schedule lock.
 - `POST /api/public/booking/[code]/cancel` and operations affected-bookings reschedule use the extracted port when the flag is on (PlatformOutbox, no legacy customer WhatsApp).
 - Conversion loads service lines from the real `BookingServices` columns (`ProID`, `EmpID`, `Price`, `Qty`). Reservation date comes from `Bookings.BookingDate`, formatted `YYYY-MM-DD`.

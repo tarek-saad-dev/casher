@@ -13,6 +13,8 @@ if (!args.includes('--allow-production') && process.argv.includes('--production'
 }
 const result = spawnSync(process.execPath, args, { stdio: 'inherit', env: process.env });
 if (result.status === 0) {
-  console.log('DRVO-004 smoke: platform readiness OK. Keep BOOKING_SCHEDULING_PORT=false until intentional rollout.');
+  console.log(
+    'DRVO-004 smoke: platform readiness OK. Booking path follows source-controlled moduleManifest.rollout (legacy until a dedicated activation PR).',
+  );
 }
 process.exit(result.status ?? 1);

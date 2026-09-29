@@ -194,6 +194,7 @@ npm run messaging:migrate-booking-management
 
 echo
 echo "[7c0/8] DRVO central migrations (idempotent, production last132)..."
+echo "        Business-path rollout is source-controlled (moduleManifest); deploy does not mutate env flags."
 runuser -u casher -- bash -lc "
 cd '$APP_DIR'
 export DEPLOY_COMMIT_SHA='$(runuser -u casher -- git -C \"$APP_DIR\" rev-parse HEAD 2>/dev/null || true)'

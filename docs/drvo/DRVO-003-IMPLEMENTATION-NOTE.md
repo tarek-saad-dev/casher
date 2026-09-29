@@ -26,7 +26,7 @@
 | Production database | `last132` — staging scripts refuse it; use production runner below |
 | Entitlement enforcement | **OFF** — no routes blocked |
 | `InsCashMoveSales` trigger | **Still live** — sale create must not double-post cash |
-| Booking extraction | Scheduling may use extracted path only when `BOOKING_SCHEDULING_PORT=true` |
+| Booking extraction | Scheduling follows source-controlled `moduleManifest.rollout` (currently `legacy`). Env flags are break-glass only — see [DRVO-ROLLOUT.md](./DRVO-ROLLOUT.md) |
 | Runtime split | **None** — modular monolith, shared DB/schema |
 | Legacy `super_admin` | Tenant owner role — **not** platform admin |
 
@@ -57,7 +57,8 @@ npm run drvo:verify -- --allow-production
 
 `deploy/deploy-casher` runs the **central DRVO migration runner** on each deploy (idempotent), then `drvo:verify`. Legacy `drvo-003:*-production` scripts delegate to the same runner.
 
-Keep `BOOKING_SCHEDULING_PORT` unset/false until verify passes, then set `BOOKING_SCHEDULING_PORT=true` and restart Casher manually.
+Booking/queue business path is **source-controlled** via `src/platform/drvo/moduleManifest.ts` (`rollout: 'legacy'` on this branch). No manual `.env` edit or restart is part of the normal lifecycle. See [DRVO-MIGRATION-GUIDE.md](./DRVO-MIGRATION-GUIDE.md) and [DRVO-ROLLOUT.md](./DRVO-ROLLOUT.md).
+
 ## Staging evidence
 
 Applied on `last132_agent` (login `drvo_agent`) on 2026-09-28:

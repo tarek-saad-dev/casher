@@ -62,4 +62,8 @@ export type DrvoModuleReadinessReport = {
   ok: boolean;
   checks: DrvoReadinessCheck[];
   requiredMigrationKeys: string[];
+  /** Source-controlled rollout from moduleManifest (schema readiness ≠ path). */
+  rollout?: 'legacy' | 'extracted';
+  /** When rollout=extracted, readiness failure refuses activation. */
+  activationRequired?: boolean;
 };

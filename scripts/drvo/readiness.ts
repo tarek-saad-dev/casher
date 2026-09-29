@@ -53,6 +53,24 @@ function migrationKeysApplied(
   }));
 }
 
+async function loadRolloutMeta(module: string): Promise<{
+  rollout: 'legacy' | 'extracted';
+  activationRequired: boolean;
+}> {
+  try {
+    const { getDrvoModuleRolloutSpec } = await import(
+      '../../src/platform/drvo/moduleManifest'
+    );
+    const spec = getDrvoModuleRolloutSpec(module);
+    return {
+      rollout: spec.rollout,
+      activationRequired: spec.rollout === 'extracted',
+    };
+  } catch {
+    return { rollout: 'legacy', activationRequired: false };
+  }
+}
+
 export async function verifyDrvoReadiness(
   pool: ConnectionPool,
   module?: string,
@@ -86,11 +104,14 @@ export async function verifyDrvoReadiness(
   }
 
   const ok = checks.every((c) => c.ok);
+  const meta = module ? await loadRolloutMeta(module) : { rollout: 'legacy' as const, activationRequired: false };
   return {
-    module,
+    module: module ?? '',
     ok,
     checks,
     requiredMigrationKeys: required,
+    rollout: meta.rollout,
+    activationRequired: meta.activationRequired,
   };
 }
 
@@ -132,9 +153,14 @@ export async function verifyDrvoSystem(pool: ConnectionPool): Promise<DrvoVerify
   }
   for (const mod of modules) {
     if (!mod.ok) {
-      failures.push(
-        `${mod.module}: ${mod.checks.filter((c) => !c.ok).map((c) => c.id).join(', ')}`,
-      );
+      const failedChecks = mod.checks.filter((c) => !c.ok).map((c) => c.id).join(', ');
+      if (mod.activationRequired) {
+        failures.push(
+          `REFUSING extracted activation for ${mod.module}: readiness failed (${failedChecks})`,
+        );
+      } else {
+        failures.push(`${mod.module}: ${failedChecks}`);
+      }
     }
   }
 

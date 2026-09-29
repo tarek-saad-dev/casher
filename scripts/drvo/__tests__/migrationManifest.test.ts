@@ -8,11 +8,20 @@ import {
 } from '../migrations/index';
 import { checksumFile } from '../checksum';
 import { readSqlBatches } from '../sqlBatch';
+import {
+  assertAllDrvoRolloutContracts,
+  drvoModuleRequiredMigrationsFromManifest,
+} from '../../../src/platform/drvo/moduleManifest';
 
 describe('DRVO migration manifest', () => {
   it('has valid ordering, unique ids/keys, and resolvable dependencies', () => {
     expect(() => assertDrvoMigrationManifestValid()).not.toThrow();
     expect(DRVO_MIGRATIONS.map((m) => m.migrationId)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it('enforces extracted rollout contracts and aligns module migration keys', () => {
+    expect(() => assertAllDrvoRolloutContracts()).not.toThrow();
+    expect(drvoModuleRequiredMigrationsFromManifest()).toEqual(DRVO_MODULE_REQUIRED_MIGRATIONS);
   });
 
   it('uses stable checksums for SQL-backed migrations', () => {

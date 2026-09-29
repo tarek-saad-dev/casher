@@ -81,6 +81,6 @@ If state is **partial or ambiguous** (e.g. two tenants, branch ID mismatch) → 
 sync → npm ci → build → drvo:migrate-production → drvo:verify → restart → health
 ```
 
-Feature flags remain **separate** from schema migration. `BOOKING_SCHEDULING_PORT` stays `false` until human opt-in after verify passes.
+Feature flags / env overrides remain **separate** from schema migration and are **not** required for normal deploy. Business path is source-controlled via `moduleManifest.rollout` (booking/queue stay `legacy` on this branch). See [DRVO-ROLLOUT.md](./DRVO-ROLLOUT.md). Leftover `BOOKING_SCHEDULING_PORT=false` on production is ignored so a later activation PR needs no SSH env cleanup.
 
 Staging scripts (`drvo-003:migrate`, `drvo-003:seed`) **unchanged** — still refuse production `last132`.

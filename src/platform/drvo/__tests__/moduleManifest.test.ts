@@ -1,20 +1,66 @@
 import fs from 'fs';
 import path from 'path';
-import { describe, expect, it } from 'vitest';
-import { isStrictOptInEnvFlag } from '../featureFlags';
-import { DRVO_MODULE_ROLLOUT } from '../moduleManifest';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  isDrvoModuleExtractedPathEnabled,
+  isStrictOptInEnvFlag,
+  resolveDrvoModuleRollout,
+} from '../featureFlags';
+import {
+  assertAllDrvoRolloutContracts,
+  assertExtractedRolloutContract,
+  DRVO_MODULE_ROLLOUT,
+  getDrvoModuleRolloutSpec,
+  type DrvoModuleRolloutSpec,
+} from '../moduleManifest';
 
 describe('DRVO module rollout manifest', () => {
-  it('booking and queue require strict opt-in flags', () => {
-    const booking = DRVO_MODULE_ROLLOUT.find((m) => m.module === 'booking')!;
-    const queue = DRVO_MODULE_ROLLOUT.find((m) => m.module === 'queue')!;
-    expect(booking.strictOptIn).toBe(true);
-    expect(booking.rolloutFlagEnv).toBe('BOOKING_SCHEDULING_PORT');
-    expect(queue.strictOptIn).toBe(true);
-    expect(queue.rolloutFlagEnv).toBe('QUEUE_SCHEDULING_PORT');
+  afterEach(() => {
+    delete process.env.BOOKING_SCHEDULING_PORT;
+    delete process.env.QUEUE_SCHEDULING_PORT;
+    delete process.env.DRVO_FORCE_BOOKING_PATH;
+    delete process.env.DRVO_FORCE_QUEUE_PATH;
   });
 
-  it('strict opt-in only accepts literal true', () => {
+  it('keeps booking and queue source-controlled as legacy on this branch', () => {
+    const booking = getDrvoModuleRolloutSpec('booking');
+    const queue = getDrvoModuleRolloutSpec('queue');
+    expect(booking.rollout).toBe('legacy');
+    expect(queue.rollout).toBe('legacy');
+    expect(booking.classification).toBe('legacy');
+    expect(queue.classification).toBe('legacy');
+    expect(booking.compatEnvFlag).toBe('BOOKING_SCHEDULING_PORT');
+    expect(queue.compatEnvFlag).toBe('QUEUE_SCHEDULING_PORT');
+    expect(booking.forcePathEnv).toBe('DRVO_FORCE_BOOKING_PATH');
+    expect(queue.forcePathEnv).toBe('DRVO_FORCE_QUEUE_PATH');
+  });
+
+  it('classifies already-proven calendar/treasury as always-on extracted', () => {
+    const calendar = getDrvoModuleRolloutSpec('operational-calendar');
+    const treasury = getDrvoModuleRolloutSpec('treasury');
+    expect(calendar.rollout).toBe('extracted');
+    expect(treasury.rollout).toBe('extracted');
+    expect(calendar.classification).toBe('always_on_infrastructure');
+    expect(treasury.classification).toBe('always_on_infrastructure');
+  });
+
+  it('rejects incomplete extracted rollout contracts (future DRVO-008+ gate)', () => {
+    expect(() => assertAllDrvoRolloutContracts()).not.toThrow();
+    const incomplete: DrvoModuleRolloutSpec = {
+      module: 'future-app',
+      drvoId: 'DRVO-008',
+      rollout: 'extracted',
+      classification: 'extracted',
+      classificationRationale: 'test',
+      requiredMigrationKeys: [],
+      dependencies: [],
+      readinessCheckIds: [],
+      rollbackRollout: 'legacy',
+    };
+    expect(() => assertExtractedRolloutContract(incomplete)).toThrow(/incomplete contract/);
+  });
+
+  it('strict opt-in helper only accepts literal true', () => {
     expect(isStrictOptInEnvFlag(undefined)).toBe(false);
     expect(isStrictOptInEnvFlag('')).toBe(false);
     expect(isStrictOptInEnvFlag('false')).toBe(false);
@@ -22,7 +68,7 @@ describe('DRVO module rollout manifest', () => {
     expect(isStrictOptInEnvFlag('true')).toBe(true);
   });
 
-  it('deploy uses central drvo migrate and verify before restart', () => {
+  it('deploy uses central drvo migrate and verify before restart (no env flag mutation)', () => {
     const deploy = fs.readFileSync(path.join(process.cwd(), 'deploy/deploy-casher'), 'utf8');
     const migrate = deploy.indexOf('npm run drvo:migrate-production');
     const verify = deploy.indexOf('npm run drvo:verify');
@@ -31,14 +77,89 @@ describe('DRVO module rollout manifest', () => {
     expect(verify).toBeGreaterThan(migrate);
     expect(restart).toBeGreaterThan(verify);
     expect(deploy).not.toContain('treasury:migrate-drvo-007');
+    expect(deploy).not.toContain('BOOKING_SCHEDULING_PORT=true');
+    expect(deploy).not.toContain('QUEUE_SCHEDULING_PORT=true');
   });
 
-  it('booking port flag uses strict opt-in helper', () => {
+  it('booking port uses source-controlled resolver (not env-only)', () => {
     const flag = fs.readFileSync(
       path.join(process.cwd(), 'src/apps/booking/internal/schedulingPortFlag.ts'),
       'utf8',
     );
-    expect(flag).toContain('isStrictOptInEnvFlag');
+    expect(flag).toContain('isDrvoModuleExtractedPathEnabled');
     expect(flag).not.toContain("!== 'false'");
+  });
+});
+
+describe('DRVO rollout resolver precedence', () => {
+  const booking = () => getDrvoModuleRolloutSpec('booking');
+
+  it('manifest legacy + unset env → legacy (first-merge safe)', () => {
+    const env = {};
+    expect(resolveDrvoModuleRollout(booking(), env)).toEqual({
+      effective: 'legacy',
+      source: 'manifest',
+      module: 'booking',
+    });
+    expect(isDrvoModuleExtractedPathEnabled('booking', env)).toBe(false);
+  });
+
+  it('ignores leftover BOOKING_SCHEDULING_PORT=false so future extracted PR needs no SSH', () => {
+    const env = { BOOKING_SCHEDULING_PORT: 'false' };
+    expect(resolveDrvoModuleRollout(booking(), env).effective).toBe('legacy');
+    expect(resolveDrvoModuleRollout(booking(), env).source).toBe('manifest');
+
+    const extractedSpec = { ...booking(), rollout: 'extracted' as const };
+    expect(resolveDrvoModuleRollout(extractedSpec, env)).toEqual({
+      effective: 'extracted',
+      source: 'manifest',
+      module: 'booking',
+    });
+  });
+
+  it('compat env true forces extracted for testing even when manifest is legacy', () => {
+    const env = { BOOKING_SCHEDULING_PORT: 'true' };
+    expect(resolveDrvoModuleRollout(booking(), env)).toEqual({
+      effective: 'extracted',
+      source: 'compat-env-true',
+      module: 'booking',
+    });
+  });
+
+  it('DRVO_FORCE_BOOKING_PATH wins over compat env and manifest', () => {
+    const env = {
+      BOOKING_SCHEDULING_PORT: 'true',
+      DRVO_FORCE_BOOKING_PATH: 'legacy',
+    };
+    expect(resolveDrvoModuleRollout(booking(), env)).toEqual({
+      effective: 'legacy',
+      source: 'force-env',
+      module: 'booking',
+    });
+
+    const extractedSpec = { ...booking(), rollout: 'extracted' as const };
+    expect(
+      resolveDrvoModuleRollout(extractedSpec, {
+        BOOKING_SCHEDULING_PORT: 'false',
+        DRVO_FORCE_BOOKING_PATH: 'legacy',
+      }).effective,
+    ).toBe('legacy');
+  });
+
+  it('malformed compat values defer to manifest', () => {
+    for (const value of ['TRUE', '1', ' yes', 'true ', 'False']) {
+      expect(
+        resolveDrvoModuleRollout(booking(), { BOOKING_SCHEDULING_PORT: value }).source,
+      ).toBe('manifest');
+    }
+  });
+
+  it('declares all four extracted DRVO modules in the rollout table', () => {
+    expect(DRVO_MODULE_ROLLOUT.map((m) => m.module).sort()).toEqual([
+      'booking',
+      'operational-calendar',
+      'queue',
+      'treasury',
+    ]);
   });
 });

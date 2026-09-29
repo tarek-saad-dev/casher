@@ -15,28 +15,35 @@ function read(rel: string): string {
 describe('DRVO-004 booking path regression', () => {
   afterEach(() => {
     delete process.env.BOOKING_SCHEDULING_PORT;
+    delete process.env.DRVO_FORCE_BOOKING_PATH;
   });
 
-  it('flag OFF (unset) keeps legacy path — safe production default', () => {
+  it('source-controlled rollout=legacy when env unset — safe first-merge default', () => {
     delete process.env.BOOKING_SCHEDULING_PORT;
     expect(isBookingSchedulingPortEnabled()).toBe(false);
   });
 
-  it('flag OFF (false) keeps legacy path', () => {
+  it('leftover BOOKING_SCHEDULING_PORT=false stays legacy via manifest (no SSH cleanup)', () => {
     process.env.BOOKING_SCHEDULING_PORT = 'false';
     expect(isBookingSchedulingPortEnabled()).toBe(false);
   });
 
-  it('flag ON only when explicitly true', () => {
+  it('compat env true is break-glass extracted override only', () => {
     process.env.BOOKING_SCHEDULING_PORT = 'true';
     expect(isBookingSchedulingPortEnabled()).toBe(true);
   });
 
-  it('malformed flag values use legacy path', () => {
+  it('malformed compat values defer to source-controlled legacy', () => {
     for (const value of ['TRUE', '1', ' yes', 'true ']) {
       process.env.BOOKING_SCHEDULING_PORT = value;
       expect(isBookingSchedulingPortEnabled()).toBe(false);
     }
+  });
+
+  it('DRVO_FORCE_BOOKING_PATH=legacy beats compat true', () => {
+    process.env.BOOKING_SCHEDULING_PORT = 'true';
+    process.env.DRVO_FORCE_BOOKING_PATH = 'legacy';
+    expect(isBookingSchedulingPortEnabled()).toBe(false);
   });
 
   it('hold key namespacing is idempotent (hold -> create)', () => {
