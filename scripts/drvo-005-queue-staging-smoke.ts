@@ -74,20 +74,48 @@ async function main() {
     const branchId = Number(branchRes.recordset[0]?.BranchID ?? 0);
     if (!branchId) throw new Error('No active branch');
 
-    const empRes = await pool.request().query(`
-      SELECT TOP 1 e.EmpID, e.EmpName
+    const cairoDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+    const cairoTime = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Africa/Cairo',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(new Date());
+    const cairoDay = new Date(`${cairoDate}T12:00:00Z`).getDay();
+    const [cairoHour, cairoMinute] = cairoTime.split(':').map(Number);
+    const cairoMinutes = cairoHour * 60 + cairoMinute;
+    const scheduleRes = await pool.request().input('day', sql.Int, cairoDay).query(`
+      SELECT e.EmpID,
+             CONVERT(varchar(8), s.StartTime, 108) AS StartTime,
+             CONVERT(varchar(8), s.EndTime, 108) AS EndTime
       FROM dbo.TblEmp e
-      WHERE e.isActive = 1
+      JOIN dbo.TblEmpWorkSchedule s ON s.EmpID = e.EmpID
+      WHERE e.isActive = 1 AND s.IsWorkingDay = 1 AND s.DayOfWeek = @day
       ORDER BY e.EmpID;
     `);
-    const empId = Number(empRes.recordset[0]?.EmpID ?? 0);
-    if (!empId) throw new Error('No active employee');
+    const toMinutes = (value: string) => {
+      const [h, m] = value.split(':').map(Number);
+      return h * 60 + m;
+    };
+    const onShift = scheduleRes.recordset.find((row: { StartTime: string; EndTime: string }) => {
+      const startMin = toMinutes(row.StartTime);
+      const endMin = toMinutes(row.EndTime);
+      if (startMin <= endMin) return cairoMinutes >= startMin && cairoMinutes < endMin;
+      return cairoMinutes >= startMin || cairoMinutes < endMin;
+    }) as { EmpID: number; StartTime: string; EndTime: string } | undefined;
+    const empId = Number(onShift?.EmpID ?? 0);
+    if (!empId || !onShift) throw new Error('No employee is inside working hours right now');
+    console.log('On-shift employee:', { empId, cairoDate, cairoTime, cairoDay });
 
     const svcRes = await pool.request().query(`
-      SELECT TOP 1 ProID FROM dbo.TblPro WHERE isDeleted = 0 AND DurationMinutes > 0 ORDER BY ProID;
+      SELECT TOP 1 ProID, DurationMinutes
+      FROM dbo.TblPro
+      WHERE isDeleted = 0 AND DurationMinutes > 0
+      ORDER BY ProID;
     `);
     const serviceId = Number(svcRes.recordset[0]?.ProID ?? 0);
-    if (!serviceId) throw new Error('No service');
+    const serviceMinutes = Number(svcRes.recordset[0]?.DurationMinutes ?? 0);
+    if (!serviceId || !serviceMinutes) throw new Error('No service');
 
     const { buildQueuePortHooksForActor } = await import('@/lib/queueSchedulingComposition');
     const { createQueueTicket, cancelQueueTicket } = await import('@/apps/queue/public');
@@ -101,14 +129,56 @@ async function main() {
     };
     const queuePortHooks = await buildQueuePortHooksForActor(actor);
 
-    const start = new Date(Date.now() + 2 * 60 * 60 * 1000);
-    start.setMinutes(Math.ceil(start.getMinutes() / 15) * 15, 0, 0);
-    const end = new Date(start.getTime() + 30 * 60 * 1000);
+    const shiftStartMin = toMinutes(onShift.StartTime);
+    const shiftEndMin = toMinutes(onShift.EndTime);
+    const overnight = shiftStartMin > shiftEndMin;
+    const inMorningTail = overnight && cairoMinutes < shiftEndMin;
+    let slotMinutes = shiftStartMin + 30;
+    if (!inMorningTail && cairoMinutes >= shiftStartMin && cairoMinutes + 20 > slotMinutes) {
+      slotMinutes = cairoMinutes + 20;
+    }
+    const slotClock = new Date(Date.UTC(2000, 0, 1, 0, slotMinutes, 0));
+    const slotDate = new Date(`${cairoDate}T00:00:00Z`);
+    slotDate.setUTCDate(slotDate.getUTCDate() + (slotClock.getUTCDate() - 1));
+    const slotDay = slotDate.toISOString().slice(0, 10);
+    const slotHhmm = `${String(slotClock.getUTCHours()).padStart(2, '0')}:${String(slotClock.getUTCMinutes()).padStart(2, '0')}`;
+    const { salonDateTimeToMs } = await import('@/lib/publicBookingHelpers');
+    const start = new Date(salonDateTimeToMs(slotDay, slotHhmm, 'Africa/Cairo'));
+    const end = new Date(start.getTime() + serviceMinutes * 60 * 1000);
+    console.log('Planned slot:', { slotDay, slotHhmm, serviceMinutes });
+
+    const { hashServiceSet } = await import('@/lib/booking/publicBookingCreateLocks');
+    const { bridgeQueueAcquireAnyBarberLock } = await import('@/lib/queue/queuePortLegacyBridge');
+    const { getPool, sql: appSql } = await import('@/lib/db');
+    const appDb = await getPool();
+    const lockTx = new appSql.Transaction(appDb);
+    await lockTx.begin();
+    try {
+      await bridgeQueueAcquireAnyBarberLock(
+        { queuePortHooks },
+        lockTx,
+        branchId,
+        start.getTime(),
+        end.getTime(),
+        hashServiceSet([serviceId]),
+      );
+      await lockTx.rollback();
+      console.log('Any-barber lock acquired with booking slot key and rolled back');
+    } catch (lockErr) {
+      try {
+        await lockTx.rollback();
+      } catch {
+        /* transaction already closed */
+      }
+      throw lockErr;
+    }
+
+    const smokePhone = `019${String(Date.now()).slice(-8)}`;
 
     const ticket = await createQueueTicket({
       empId,
       serviceIds: [serviceId],
-      customer: { name: 'DRVO-005 Smoke' },
+      customer: { name: 'DRVO-005 Smoke', phone: smokePhone },
       expectedStartTime: start.toISOString(),
       expectedEndTime: end.toISOString(),
       source: 'walk_in',
@@ -122,7 +192,24 @@ async function main() {
     console.log('Created queue ticket:', {
       queueTicketId: ticket.queueTicketId,
       ticketCode: ticket.ticketCode,
+      clientId: ticket.customer?.clientId ?? null,
     });
+    if (!ticket.customer?.clientId) {
+      throw new Error('Expected Customers port to assign a client id');
+    }
+
+    const clientRes = await pool
+      .request()
+      .input('id', sql.Int, ticket.customer.clientId)
+      .input('phone', sql.NVarChar, smokePhone)
+      .query(`
+        SELECT ClientID
+        FROM dbo.TblClient
+        WHERE ClientID = @id AND Mobile = @phone;
+      `);
+    if (clientRes.recordset.length !== 1) {
+      throw new Error('Customers port did not persist the queue phone on TblClient');
+    }
 
     const outboxRes = await pool
       .request()
@@ -159,6 +246,36 @@ async function main() {
       throw new Error('Expected exactly one queue.cancelled outbox row');
     }
 
+    const { executeQuickQueueOperation } = await import('@/lib/operationsQueueCreateCore');
+    const quick = await executeQuickQueueOperation(branchId, {
+      queuePortHooks,
+      useExtractedEventDelivery: true,
+    });
+    if ('ticketCode' in quick && quick.queueTicketId) {
+      console.log('Quick queue ticket:', {
+        queueTicketId: quick.queueTicketId,
+        ticketCode: quick.ticketCode,
+      });
+      const quickCancel = await cancelQueueTicket({
+        ticketId: quick.queueTicketId,
+        sessionBranchId: branchId,
+        tenantId,
+        queuePortHooks,
+      });
+      console.log('Quick queue cancelled:', quickCancel.status);
+    } else {
+      const reason = 'reason' in quick ? quick.reason : 'unknown';
+      console.log('Quick queue did not create a ticket:', reason);
+      const benign = new Set([
+        'no_available_barber',
+        'quick_queue_disabled',
+        'service_unavailable',
+      ]);
+      if (!benign.has(String(reason))) {
+        throw new Error(`Quick queue failed: ${String(reason)}`);
+      }
+    }
+
     const cashCheck = await pool.request().query(`
       SELECT COUNT(*) AS cnt FROM dbo.TblCashMove WHERE MoveDate > DATEADD(minute, -5, GETDATE());
     `).catch(() => ({ recordset: [{ cnt: 0 }] }));
@@ -170,7 +287,9 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('SMOKE_FAILED', err);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error('SMOKE_FAILED', err);
+    process.exit(1);
+  });

@@ -3,6 +3,8 @@ import { executeQuickQueueOperation } from '@/lib/operationsQueueCreateCore';
 import { requireBranchOperationAccess, isActiveBranchContext } from '@/lib/branch/context';
 import { isQueueSchedulingPortEnabled } from '@/apps/queue/internal/queuePortFlag';
 import { buildQueuePortHooksForActor, buildStaffActorContext } from '@/lib/queueSchedulingComposition';
+import { BookingCreateLockError } from '@/lib/booking/publicBookingCreateLocks';
+import { PUBLIC_BOOKING_ERROR_CATALOG } from '@/lib/booking/publicBookingErrorCatalog';
 
 export const runtime = 'nodejs';
 
@@ -28,7 +30,8 @@ export async function POST() {
           : result.reason === 'no_available_barber' ||
               result.reason === 'barber_unavailable' ||
               result.reason === 'simulation_failed' ||
-              result.reason === 'schedule_conflict'
+              result.reason === 'schedule_conflict' ||
+              result.reason === 'lock_timeout'
             ? 409
             : 400;
 
@@ -45,6 +48,17 @@ export async function POST() {
 
     return NextResponse.json(result);
   } catch (err) {
+    if (err instanceof BookingCreateLockError) {
+      const def = PUBLIC_BOOKING_ERROR_CATALOG[err.code];
+      return NextResponse.json(
+        {
+          ok: false,
+          error: def.messageAr,
+          reason: 'lock_timeout',
+        },
+        { status: def.httpStatus },
+      );
+    }
     console.error('[operations/queue/quick]', err);
     return NextResponse.json(
       {
