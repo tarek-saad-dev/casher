@@ -17,8 +17,9 @@ import { assertDrvoDeployManifestConsistent } from '../readiness';
 describe('DRVO migration manifest', () => {
   it('has valid ordering, unique ids/keys, and resolvable dependencies', () => {
     expect(() => assertDrvoMigrationManifestValid()).not.toThrow();
-    expect(DRVO_MIGRATIONS.map((m) => m.migrationId)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(DRVO_MIGRATIONS.map((m) => m.migrationId)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     expect(DRVO_MIGRATIONS.map((m) => m.migrationKey)).toContain('booking-hold-key');
+    expect(DRVO_MIGRATIONS.map((m) => m.migrationKey)).toContain('pos-prerequisites');
   });
 
   it('enforces extracted rollout contracts and aligns module migration keys', () => {

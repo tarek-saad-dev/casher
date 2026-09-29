@@ -6,6 +6,7 @@ import { queuePrerequisitesMigration } from './004-queue-prerequisites';
 import { operationalCalendarPrerequisitesMigration } from './005-operational-calendar-prerequisites';
 import { treasuryMovementRegistryMigration } from './006-treasury-movement-registry';
 import { bookingHoldKeyMigration } from './007-booking-hold-key';
+import { posPrerequisitesMigration } from './008-pos-prerequisites';
 import { drvoModuleRequiredMigrationsFromManifest } from '../../../src/platform/drvo/moduleManifest';
 
 /** Ordered DRVO migration manifest — single source of truth for migration order. */
@@ -17,6 +18,7 @@ export const DRVO_MIGRATIONS: DrvoMigrationDefinition[] = [
   operationalCalendarPrerequisitesMigration,
   treasuryMovementRegistryMigration,
   bookingHoldKeyMigration,
+  posPrerequisitesMigration,
 ];
 
 export function assertDrvoMigrationManifestValid(): void {
