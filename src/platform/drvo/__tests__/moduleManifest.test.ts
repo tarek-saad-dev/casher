@@ -22,12 +22,12 @@ describe('DRVO module rollout manifest', () => {
     delete process.env.DRVO_FORCE_QUEUE_PATH;
   });
 
-  it('keeps booking and queue source-controlled as legacy on this branch', () => {
+  it('uses extracted booking and legacy queue for this rollout', () => {
     const booking = getDrvoModuleRolloutSpec('booking');
     const queue = getDrvoModuleRolloutSpec('queue');
-    expect(booking.rollout).toBe('legacy');
+    expect(booking.rollout).toBe('extracted');
     expect(queue.rollout).toBe('legacy');
-    expect(booking.classification).toBe('legacy');
+    expect(booking.classification).toBe('extracted');
     expect(queue.classification).toBe('legacy');
     expect(booking.compatEnvFlag).toBe('BOOKING_SCHEDULING_PORT');
     expect(queue.compatEnvFlag).toBe('QUEUE_SCHEDULING_PORT');
@@ -94,19 +94,19 @@ describe('DRVO module rollout manifest', () => {
 describe('DRVO rollout resolver precedence', () => {
   const booking = () => getDrvoModuleRolloutSpec('booking');
 
-  it('manifest legacy + unset env → legacy (first-merge safe)', () => {
+  it('unset env follows manifest booking rollout', () => {
     const env = {};
     expect(resolveDrvoModuleRollout(booking(), env)).toEqual({
-      effective: 'legacy',
+      effective: booking().rollout,
       source: 'manifest',
       module: 'booking',
     });
-    expect(isDrvoModuleExtractedPathEnabled('booking', env)).toBe(false);
+    expect(isDrvoModuleExtractedPathEnabled('booking', env)).toBe(booking().rollout === 'extracted');
   });
 
-  it('ignores leftover BOOKING_SCHEDULING_PORT=false so future extracted PR needs no SSH', () => {
+  it('ignores leftover BOOKING_SCHEDULING_PORT=false and follows manifest', () => {
     const env = { BOOKING_SCHEDULING_PORT: 'false' };
-    expect(resolveDrvoModuleRollout(booking(), env).effective).toBe('legacy');
+    expect(resolveDrvoModuleRollout(booking(), env).effective).toBe(booking().rollout);
     expect(resolveDrvoModuleRollout(booking(), env).source).toBe('manifest');
 
     const extractedSpec = { ...booking(), rollout: 'extracted' as const };

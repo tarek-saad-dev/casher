@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { isBookingSchedulingPortEnabled } from '@/apps/booking/internal/schedulingPortFlag';
+import { getDrvoModuleRolloutSpec } from '@/platform/drvo/moduleManifest';
 import { namespacedHoldKey } from '@/apps/booking/application/holdBooking';
 import {
   describePlatformBootstrapFailure,
@@ -18,14 +19,18 @@ describe('DRVO-004 booking path regression', () => {
     delete process.env.DRVO_FORCE_BOOKING_PATH;
   });
 
-  it('source-controlled rollout=legacy when env unset — safe first-merge default', () => {
+  it('follows source-controlled booking rollout when env is unset', () => {
     delete process.env.BOOKING_SCHEDULING_PORT;
-    expect(isBookingSchedulingPortEnabled()).toBe(false);
+    expect(isBookingSchedulingPortEnabled()).toBe(
+      getDrvoModuleRolloutSpec('booking').rollout === 'extracted',
+    );
   });
 
-  it('leftover BOOKING_SCHEDULING_PORT=false stays legacy via manifest (no SSH cleanup)', () => {
+  it('leftover BOOKING_SCHEDULING_PORT=false is ignored and defers to manifest', () => {
     process.env.BOOKING_SCHEDULING_PORT = 'false';
-    expect(isBookingSchedulingPortEnabled()).toBe(false);
+    expect(isBookingSchedulingPortEnabled()).toBe(
+      getDrvoModuleRolloutSpec('booking').rollout === 'extracted',
+    );
   });
 
   it('compat env true is break-glass extracted override only', () => {
@@ -33,10 +38,11 @@ describe('DRVO-004 booking path regression', () => {
     expect(isBookingSchedulingPortEnabled()).toBe(true);
   });
 
-  it('malformed compat values defer to source-controlled legacy', () => {
+  it('malformed compat values defer to source-controlled manifest', () => {
+    const expected = getDrvoModuleRolloutSpec('booking').rollout === 'extracted';
     for (const value of ['TRUE', '1', ' yes', 'true ']) {
       process.env.BOOKING_SCHEDULING_PORT = value;
-      expect(isBookingSchedulingPortEnabled()).toBe(false);
+      expect(isBookingSchedulingPortEnabled()).toBe(expected);
     }
   });
 

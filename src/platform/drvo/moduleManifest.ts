@@ -95,10 +95,10 @@ export const DRVO_MODULE_ROLLOUT: DrvoModuleRolloutSpec[] = [
   {
     module: 'booking',
     drvoId: 'DRVO-004',
-    rollout: 'legacy',
-    classification: 'legacy',
+    rollout: 'extracted',
+    classification: 'extracted',
     classificationRationale:
-      'Strangler port exists behind isBookingSchedulingPortEnabled(); production incident forced legacy. First merge of this branch keeps source-controlled rollout=legacy. Extracted path is staging-proven but not yet production-activated.',
+      'DRVO-004 prerequisites are deployed and verified on production. Booking cutover is source-controlled; rollback remains rollout=legacy.',
     requiredMigrationKeys: [
       'platform-core',
       'platform-bootstrap',
