@@ -17,7 +17,7 @@ import {
 } from '@/lib/services/employeeAdvanceWhatsAppNotify';
 import { getCairoInvTimeDotStr } from '@/lib/businessDate';
 import { branchErrorResponse } from '@/lib/branch/operationalGates';
-import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
+import { liveCashMoveAndClause } from '@/lib/treasury/liveCashMoveSql';
 
 // GET /api/expenses — List expenses with optional filters
 export async function GET(req: NextRequest) {
@@ -39,7 +39,8 @@ export async function GET(req: NextRequest) {
     const paymentMethodId = url.searchParams.get('paymentMethodId');
 
     // PHASE1D: never trust browser branchId — always filter by the session's active branch
-    let whereClause = `WHERE cm.invType = N'مصروفات' AND cm.inOut = N'out' AND cm.BranchID = @branchId AND ${liveCashMovePredicate('cm')}`;
+    const liveClause = await liveCashMoveAndClause(db, 'cm');
+    let whereClause = `WHERE cm.invType = N'مصروفات' AND cm.inOut = N'out' AND cm.BranchID = @branchId${liveClause}`;
     const request = db.request();
     request.input('branchId', sql.Int, branch.branchId);
 
