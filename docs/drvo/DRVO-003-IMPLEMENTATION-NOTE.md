@@ -22,11 +22,11 @@
 
 | Topic | DRVO-003 state |
 |-------|----------------|
-| Staging database | `last132_agent` only for migration/seed |
-| Production database | `last132` — no access, no migration |
+| Staging database | `last132_agent` only for staging migration/seed scripts |
+| Production database | `last132` — staging scripts refuse it; use production runner below |
 | Entitlement enforcement | **OFF** — no routes blocked |
 | `InsCashMoveSales` trigger | **Still live** — sale create must not double-post cash |
-| Booking extraction | **Not started** — scheduling remains in `src/lib/booking` |
+| Booking extraction | Scheduling follows source-controlled `moduleManifest.rollout` (currently `legacy`). Env flags are break-glass only — see [DRVO-ROLLOUT.md](./DRVO-ROLLOUT.md) |
 | Runtime split | **None** — modular monolith, shared DB/schema |
 | Legacy `super_admin` | Tenant owner role — **not** platform admin |
 
@@ -38,6 +38,26 @@ Both runners connect, then refuse unless `DB_NAME()` is `last132_agent`. They al
 npx tsx scripts/run-drvo-003-platform-core-migration.ts --expected-database=last132_agent
 npx tsx scripts/seed-drvo-003-bootstrap-tenant.ts --expected-database=last132_agent
 ```
+
+## How to apply on production (`last132`)
+
+Staging protections are **not** removed. Production uses a separate opt-in runner that:
+
+- requires `--allow-production`
+- verifies `DB_NAME() = last132`
+- applies the same idempotent schema migration
+- seeds/repairs bootstrap data without creating a second tenant
+- aborts on inconsistent tenant state
+- verifies every `TblBranch` has a `Location` map
+
+```bash
+npm run drvo:migrate-production -- --allow-production
+npm run drvo:verify -- --allow-production
+```
+
+`deploy/deploy-casher` runs the **central DRVO migration runner** on each deploy (idempotent), then `drvo:verify`. Legacy `drvo-003:*-production` scripts delegate to the same runner.
+
+Booking/queue business path is **source-controlled** via `src/platform/drvo/moduleManifest.ts` (`rollout: 'legacy'` on this branch). No manual `.env` edit or restart is part of the normal lifecycle. See [DRVO-MIGRATION-GUIDE.md](./DRVO-MIGRATION-GUIDE.md) and [DRVO-ROLLOUT.md](./DRVO-ROLLOUT.md).
 
 ## Staging evidence
 

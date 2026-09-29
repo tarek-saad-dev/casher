@@ -1,9 +1,13 @@
 import 'server-only';
+import { isDrvoModuleExtractedPathEnabled } from '@/platform/drvo/featureFlags';
 
 /**
- * DRVO-004 rollout gate. Default on after extraction; set BOOKING_SCHEDULING_PORT=false
- * to route handlers back to legacy src/lib/booking paths.
+ * DRVO-004 booking scheduling path gate.
+ *
+ * Normal authority: source-controlled `rollout` in moduleManifest.ts (currently legacy).
+ * Env BOOKING_SCHEDULING_PORT is break-glass / compat only — see featureFlags.ts precedence.
+ * DRVO_FORCE_BOOKING_PATH=legacy|extracted is the emergency override.
  */
 export function isBookingSchedulingPortEnabled(): boolean {
-  return process.env.BOOKING_SCHEDULING_PORT !== 'false';
+  return isDrvoModuleExtractedPathEnabled('booking');
 }

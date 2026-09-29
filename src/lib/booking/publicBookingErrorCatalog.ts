@@ -51,6 +51,7 @@ export type PublicBookingErrorCode =
   | 'BOOKING_LOCK_TIMEOUT'
   | 'BOOKING_CODE_GENERATION_FAILED'
   | 'BOOKING_CREATE_FAILED'
+  | 'PLATFORM_BOOTSTRAP_REQUIRED'
   | 'INVALID_CUSTOMER'
   | 'INVALID_NOTES'
   | 'INVALID_BOOKING_CODE'
@@ -359,6 +360,12 @@ export const PUBLIC_BOOKING_ERROR_CATALOG: Record<PublicBookingErrorCode, Public
     httpStatus: 500,
     messageAr: 'فشل إنشاء الحجز',
     messageEn: 'Booking create failed',
+  },
+  PLATFORM_BOOTSTRAP_REQUIRED: {
+    code: 'PLATFORM_BOOTSTRAP_REQUIRED',
+    httpStatus: 503,
+    messageAr: 'نظام الحجز غير جاهز مؤقتًا — حاول مرة أخرى بعد قليل',
+    messageEn: 'Booking is temporarily unavailable while platform setup completes.',
   },
   INVALID_CUSTOMER: {
     code: 'INVALID_CUSTOMER',

@@ -9,7 +9,11 @@ type SqlBatchRunner = {
 };
 
 export function readDrvo007MigrationBatches(): string[] {
-  const file = path.join(__dirname, '..', 'db/migrations/add-drvo-007-treasury-movement-registry.sql');
+  const file = path.join(
+    __dirname,
+    '..',
+    'db/drvo-migrations/006-treasury-movement-registry/schema.sql',
+  );
   const text = fs.readFileSync(file, 'utf8');
   return text.split(/^\s*GO\s*$/gim).map((batch) => batch.trim()).filter(Boolean);
 }

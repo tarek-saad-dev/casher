@@ -17,6 +17,10 @@ import {
   buildSchedulingPortHooksForActor,
   resolveBootstrapTenantId,
 } from '@/lib/bookingSchedulingComposition';
+import {
+  describePlatformBootstrapFailure,
+  isPlatformBootstrapFailure,
+} from '@/lib/booking/platformBootstrapErrors';
 import { resolvePublicBookingClientIp } from '@/lib/booking/publicBookingClientIp';
 import { digestPublicBookingRateSubject } from '@/lib/booking/publicBookingRateLimitPolicy';
 import {
@@ -100,6 +104,14 @@ export async function POST(req: NextRequest, context: RouteContext) {
   } catch (err) {
     if (err instanceof PublicBookingCancelError) {
       return finalizePublicBookingError(req, gate, err.code, err.metadata);
+    }
+    if (isPlatformBootstrapFailure(err)) {
+      console.error(
+        '[public/booking/:code/cancel] PLATFORM_BOOTSTRAP_REQUIRED',
+        describePlatformBootstrapFailure(err),
+        err,
+      );
+      return finalizePublicBookingError(req, gate, 'PLATFORM_BOOTSTRAP_REQUIRED');
     }
     console.error('[public/booking/:code/cancel]', err);
     return finalizePublicBookingError(req, gate, 'BOOKING_CANCELLATION_FAILED', undefined, {

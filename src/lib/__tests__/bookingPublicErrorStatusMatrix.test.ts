@@ -18,6 +18,7 @@ const STATUS_EXPECTATIONS: Record<string, number> = {
   BOOKING_ALREADY_CANCELLED: 200,
   SLOT_UNAVAILABLE: 409,
   BOOKING_CREATE_FAILED: 500,
+  PLATFORM_BOOTSTRAP_REQUIRED: 503,
 };
 
 describe('bookingPublicErrorStatusMatrix', () => {

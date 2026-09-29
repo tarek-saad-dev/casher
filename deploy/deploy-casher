@@ -193,10 +193,19 @@ npm run messaging:migrate-booking-management
 "
 
 echo
-echo "[7d/8] DRVO-007 treasury movement registry (idempotent)..."
+echo "[7c0/8] DRVO central migrations (idempotent, production last132)..."
+echo "        Business-path rollout is source-controlled (moduleManifest); deploy does not mutate env flags."
 runuser -u casher -- bash -lc "
 cd '$APP_DIR'
-npm run treasury:migrate-drvo-007 -- --allow-production
+export DEPLOY_COMMIT_SHA='$(runuser -u casher -- git -C \"$APP_DIR\" rev-parse HEAD 2>/dev/null || true)'
+npm run drvo:migrate-production -- --allow-production
+"
+
+echo
+echo "[7c1/8] DRVO readiness verification (read-only)..."
+runuser -u casher -- bash -lc "
+cd '$APP_DIR'
+npm run drvo:verify -- --allow-production
 "
 
 echo
