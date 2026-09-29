@@ -87,7 +87,13 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(err instanceof Error ? err.message : err);
+main().catch(async (err) => {
+  const { formatSqlErrorContext } = await import('./drvo007Migration');
+  const message = err instanceof Error
+    ? (err.message.includes('DRVO-007 migration failed at step')
+      ? err.message
+      : formatSqlErrorContext('runner', err))
+    : String(err);
+  console.error(message);
   process.exit(1);
 });

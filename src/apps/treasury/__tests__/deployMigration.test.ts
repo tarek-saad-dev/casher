@@ -12,11 +12,13 @@ describe('DRVO-007 production migration hook', () => {
     expect(restart).toBeGreaterThan(migrate);
   });
 
-  it('keeps the SQL migration idempotent', () => {
+  it('keeps the SQL migration idempotent with granular index and FK steps', () => {
     const batches = readDrvo007MigrationBatches().join('\n');
     expect(batches).toContain('TreasuryMovementRegistry');
     expect(batches).toContain('COL_LENGTH');
     expect(batches).toContain('ReversalOfCashMoveId');
     expect(batches).toContain('IsReversed');
+    expect(batches).toContain('FK_TreasuryMovementRegistry_Tenant');
+    expect(batches).toContain('sys.indexes');
   });
 });
