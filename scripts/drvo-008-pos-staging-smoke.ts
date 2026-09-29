@@ -48,12 +48,14 @@ async function main() {
   forceStagingEnv(password);
 
   const { getPool, closePool, sql } = await import('../src/lib/db');
-  const { posPrerequisitesMigration } = await import('./drvo/migrations/008-pos-prerequisites');
   const { getDrvoModuleRolloutSpec } = await import('../src/platform/drvo/moduleManifest');
   const { isPosPortEnabled } = await import('../src/apps/pos/internal/posPortFlag');
   const { createSale, updateSale, deleteSale, getSaleSnapshot } = await import(
     '../src/apps/pos/public'
   );
+  const legacyInvoice = await import('../src/lib/actions/invoiceActions');
+  const posRepository = await import('../src/apps/pos/internal/legacySaleRepository');
+  const { createSaleLegacyFromRoute } = await import('../src/lib/sales/legacyRouteSaleCreate');
   const { computeInvoiceItemsTotals } = await import('../src/lib/sales/service-line-totals');
   const { resolveSplitPaymentConfig } = await import('../src/lib/clearingMethod');
   const { createLegacyBookingConversionAdapter } = await import(
@@ -79,6 +81,9 @@ async function main() {
     if (posSpec.rollout !== 'legacy') fail('expected POS rollout legacy for DRVO-008');
     if (posSpec.forcePathEnv !== 'DRVO_FORCE_POS_PATH') fail('POS force-path env missing');
     if (posSpec.compatEnvFlag !== 'POS_SCHEDULING_PORT') fail('POS compat env missing');
+    if (posSpec.requiredMigrationKeys.includes('pos-prerequisites')) {
+      fail('pos-prerequisites must not be a POS required migration');
+    }
     if (isPosPortEnabled()) fail('default POS path must stay legacy');
     process.env.POS_SCHEDULING_PORT = 'true';
     if (!isPosPortEnabled()) fail('compat true must enable extracted path');
@@ -98,13 +103,14 @@ async function main() {
     if (!triggerDef.includes('مبيعات')) fail('InsCashMoveSales definition does not mention sale invType');
     console.log('PASS: InsCashMoveSales live');
 
-    const verify = await posPrerequisitesMigration.verify!({
-      pool,
-      databaseName: STAGING_DB,
-      appCommitSha: 'drvo-008-smoke',
-    });
-    if (!verify.ok) fail(`pos-prerequisites verify failed: ${verify.failures?.join('; ')}`);
-    console.log('PASS: pos-prerequisites verification');
+    if (
+      legacyInvoice.updateInvoice === posRepository.updateInvoice ||
+      legacyInvoice.deleteInvoice === posRepository.deleteInvoice ||
+      legacyInvoice.getInvoiceSnapshot === posRepository.getInvoiceSnapshot
+    ) {
+      fail('legacy invoice actions still alias the POS sale repository');
+    }
+    console.log('PASS: legacy update/delete/snapshot are distinct from the POS repository');
 
     const shift = await pool.request().query(`
       SELECT TOP 1
@@ -362,6 +368,127 @@ async function main() {
       DELETE FROM dbo.TblLoyaltyPointLedger WHERE SourceInvID = @invID
     `);
     console.log('PASS: extracted deleteSale cleaned header, detail, and CashMove');
+
+    const legacyCreated = await createSaleLegacyFromRoute({
+      items: [
+        {
+          proId,
+          empId,
+          sPrice: price,
+          bonus: 0,
+          qty: 1,
+          dis: 0,
+          disVal: 0,
+          notes: 'DRVO-008 legacy smoke',
+        },
+      ],
+      clientId,
+      notes: 'DRVO-008 legacy smoke',
+      notes2: 'drvo-008-legacy-staging-smoke',
+      payCash: computed.grandTotal,
+      payVisa: 0,
+      paymentAllocations: [],
+      computed,
+      branchId,
+      businessDayId,
+      shiftMoveID: shiftMoveId,
+      invDate: businessDate,
+      userID: userId,
+      splitCfg,
+      activeAllocations: [{ paymentMethodId, amount: computed.grandTotal }],
+      isSplitPayment: false,
+      headerPaymentMethodId: paymentMethodId,
+      branchName,
+    });
+    createdInvId = legacyCreated.invID;
+    console.log('PASS: legacy createSaleLegacyFromRoute', legacyCreated);
+
+    const legacyUpdateTx = new sql.Transaction(pool);
+    await legacyUpdateTx.begin();
+    try {
+      await legacyInvoice.updateInvoice(
+        legacyUpdateTx,
+        legacyCreated.invID,
+        {
+          clientId,
+          notes: 'DRVO-008 legacy smoke updated',
+          payCash: computed.grandTotal,
+          payVisa: 0,
+          paymentMethodId,
+          items: [
+            {
+              proId,
+              empId,
+              sPrice: price,
+              qty: 1,
+              dis: 0,
+              disVal: 0,
+              bonus: 0,
+              notes: 'DRVO-008 legacy smoke updated',
+            },
+          ],
+          paymentAllocations: [{ paymentMethodId, amount: computed.grandTotal }],
+        },
+        userId,
+      );
+      const legacySnap = await legacyInvoice.getInvoiceSnapshot(legacyUpdateTx, legacyCreated.invID);
+      if (!legacySnap) fail('legacy snapshot missing after update');
+      if (!String(legacySnap.header.Notes ?? '').includes('legacy smoke updated')) {
+        fail(`legacy update notes not stored: ${legacySnap.header.Notes}`);
+      }
+      await legacyUpdateTx.commit();
+    } catch (err) {
+      try {
+        await legacyUpdateTx.rollback();
+      } catch {
+        /* already closed */
+      }
+      throw err;
+    }
+    const legacyCash = await pool.request().input('invID', sql.Int, legacyCreated.invID).query(`
+      SELECT COUNT(*) AS cnt
+      FROM dbo.TblCashMove
+      WHERE invID = @invID AND invType = N'مبيعات'
+    `);
+    if (Number(legacyCash.recordset[0]?.cnt ?? 0) !== 1) {
+      fail('legacy update duplicated sale CashMove');
+    }
+    console.log('PASS: legacy updateInvoice');
+
+    const legacyDeleteTx = new sql.Transaction(pool);
+    await legacyDeleteTx.begin();
+    try {
+      await legacyInvoice.deleteInvoice(legacyDeleteTx, legacyCreated.invID, branchId);
+      await legacyDeleteTx.commit();
+    } catch (err) {
+      try {
+        await legacyDeleteTx.rollback();
+      } catch {
+        /* already closed */
+      }
+      throw err;
+    }
+    const legacyGone = await pool.request().input('invID', sql.Int, legacyCreated.invID).query(`
+      SELECT
+        (SELECT COUNT(*) FROM dbo.TblinvServHead WHERE invID = @invID) AS heads,
+        (SELECT COUNT(*) FROM dbo.TblinvServDetail WHERE invID = @invID) AS details,
+        (SELECT COUNT(*) FROM dbo.TblCashMove WHERE invID = @invID) AS cash
+    `);
+    const legacyLeft = legacyGone.recordset[0];
+    if (
+      Number(legacyLeft.heads) !== 0 ||
+      Number(legacyLeft.details) !== 0 ||
+      Number(legacyLeft.cash) !== 0
+    ) {
+      fail(`legacy delete left rows ${JSON.stringify(legacyLeft)}`);
+    }
+    const legacyInvId = legacyCreated.invID;
+    createdInvId = null;
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await pool.request().input('invID', sql.Int, legacyInvId).query(`
+      DELETE FROM dbo.TblLoyaltyPointLedger WHERE SourceInvID = @invID
+    `);
+    console.log('PASS: legacy deleteInvoice cleaned header, detail, and CashMove');
 
     const convTx = new sql.Transaction(pool);
     await convTx.begin();

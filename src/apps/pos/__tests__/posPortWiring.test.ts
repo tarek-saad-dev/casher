@@ -21,11 +21,21 @@ describe('DRVO-008 POS port wiring', () => {
     expect(legacy).not.toContain("from '@/apps/pos/application/createSale'");
   });
 
-  it('PATCH/DELETE /api/sales/[id] use extracted POS mutations when flag is on', () => {
+  it('PUT/DELETE /api/sales/[id] keep an independent legacy invoice implementation', () => {
     const route = read('src/app/api/sales/[id]/route.ts');
+    const legacy = read('src/lib/actions/invoiceActions.ts');
     expect(route).toContain('isPosPortEnabled');
     expect(route).toContain('updateSale');
     expect(route).toContain('deleteSale');
     expect(route).toContain('getSaleSnapshot');
+    expect(route).toContain("from '@/lib/actions/invoiceActions'");
+    expect(route).toContain('updateInvoice');
+    expect(route).toContain('deleteInvoice');
+    expect(route).toContain('getInvoiceSnapshot');
+    expect(legacy).toContain('export async function updateInvoice');
+    expect(legacy).toContain('export async function deleteInvoice');
+    expect(legacy).toContain('export async function getInvoiceSnapshot');
+    expect(legacy).not.toContain('@/apps/pos');
+    expect(legacy).not.toContain('legacySaleRepository');
   });
 });

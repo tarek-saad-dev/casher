@@ -18,6 +18,7 @@ describe('DRVO-008 sale mutation characterization', () => {
   const extracted = read('src/apps/pos/internal/legacySaleCreateAdapter.ts');
   const legacy = read('src/lib/sales/legacyRouteSaleCreate.ts');
   const repo = read('src/apps/pos/internal/legacySaleRepository.ts');
+  const legacyInvoice = read('src/lib/actions/invoiceActions.ts');
 
   it('legacy and extracted create use the same header, detail, and payment SQL', () => {
     for (const marker of [
@@ -62,5 +63,18 @@ describe('DRVO-008 sale mutation characterization', () => {
     expect(repo).toContain('DELETE FROM dbo.TblinvServDetail');
     expect(repo).toContain('DELETE FROM dbo.TblinvServHead');
     expect(read('src/apps/pos/application/deleteSale.ts')).toContain('deleteInvoice');
+  });
+
+  it('flag-off update and delete keep their own copy of the pre-extraction SQL', () => {
+    expect(legacyInvoice).not.toContain('@/apps/pos');
+    for (const marker of [
+      'UPDATE dbo.TblinvServHead SET',
+      'DELETE FROM dbo.TblinvServDetail',
+      'INSERT INTO dbo.TblCashMove',
+      'DELETE FROM dbo.TblCashMove WHERE InvID = @id',
+      'DELETE FROM dbo.TblLoyaltyPointLedger WHERE SourceInvID = @id',
+    ]) {
+      expect(sqlBlock(legacyInvoice, marker)).toBe(sqlBlock(repo, marker));
+    }
   });
 });

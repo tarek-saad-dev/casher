@@ -8,8 +8,8 @@ Audit of sale behavior on this branch before the rollback split. Ownership chang
 | --- | --- | --- |
 | `POST /api/sales` | Route validates, then `isPosPortEnabled()` | Flag on: `createSale`. Flag off: `createSaleLegacyFromRoute` (in-route SERIALIZABLE copy). |
 | `GET /api/sales/[id]` | Route | Print/read shape stays in the route. Branch ownership is non-disclosing 404. |
-| `PUT /api/sales/[id]` | Route + audited action | Flag on: `updateSale` / `getSaleSnapshot`. Flag off: `updateInvoice` / `getInvoiceSnapshot`. Both names call `legacySaleRepository`. |
-| `DELETE /api/sales/[id]` | Route + audited action | Same flag split. Reason is required. |
+| `PUT /api/sales/[id]` | Route + audited action | Flag on: `updateSale` / `getSaleSnapshot` (`legacySaleRepository`). Flag off: `updateInvoice` / `getInvoiceSnapshot` in `src/lib/actions/invoiceActions.ts`, the pre-extraction copy. |
+| `DELETE /api/sales/[id]` | Route + audited action | Same flag split. Flag off calls `deleteInvoice` in `invoiceActions.ts`. Reason is required. |
 | `GET /api/sales/recent`, `recent-invoices`, `today`, `more` | Route | Read queries. Not moved. |
 | `POST /api/bookings/[id]/convert` | Booking public `convertBooking` | Service invoice is still `legacyBookingConversionAdapter` (`invType = خدمة`). |
 

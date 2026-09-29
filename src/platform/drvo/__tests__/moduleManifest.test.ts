@@ -172,5 +172,7 @@ describe('DRVO rollout resolver precedence', () => {
     expect(pos.rollout).toBe('legacy');
     expect(pos.forcePathEnv).toBe('DRVO_FORCE_POS_PATH');
     expect(pos.compatEnvFlag).toBe('POS_SCHEDULING_PORT');
+    expect(pos.requiredMigrationKeys).not.toContain('pos-prerequisites');
+    expect(pos.readinessCheckIds).not.toContain('migration.pos-prerequisites');
   });
 });

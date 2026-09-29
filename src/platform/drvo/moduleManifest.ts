@@ -199,7 +199,6 @@ export const DRVO_MODULE_ROLLOUT: DrvoModuleRolloutSpec[] = [
       'platform-bootstrap',
       'operational-calendar-prerequisites',
       'treasury-movement-registry',
-      'pos-prerequisites',
     ],
     dependencies: ['platform-core', 'operational-calendar', 'treasury'],
     readinessCheckIds: [
@@ -207,7 +206,6 @@ export const DRVO_MODULE_ROLLOUT: DrvoModuleRolloutSpec[] = [
       'migration.platform-bootstrap',
       'migration.operational-calendar-prerequisites',
       'migration.treasury-movement-registry',
-      'migration.pos-prerequisites',
       'platform.bootstrap',
       'platform.core.structure',
     ],
