@@ -20,6 +20,8 @@ export type RunDrvoMigrationsOptions = {
   allowProduction: boolean;
   expectedDatabase?: string;
   appCommitSha?: string | null;
+  approvalRef?: string | null;
+  backupRef?: string | null;
 };
 
 export type DrvoRegistryPort = {
@@ -32,6 +34,8 @@ export type DrvoRegistryPort = {
     checksum: string;
     appCommitSha: string | null;
     executionMs: number;
+    approvalRef?: string | null;
+    backupRef?: string | null;
   }) => Promise<void>;
 };
 
@@ -158,6 +162,8 @@ export async function runDrvoMigrationsCore(args: {
       checksum: migration.checksum,
       appCommitSha: ctx.appCommitSha,
       executionMs,
+      approvalRef: opts.approvalRef ?? null,
+      backupRef: opts.backupRef ?? null,
     });
 
     appliedByKey.set(migration.migrationKey, {
