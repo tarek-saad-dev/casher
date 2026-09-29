@@ -9,9 +9,16 @@ function read(rel: string): string {
 describe('DRVO-008 POS port wiring', () => {
   it('POST /api/sales uses extracted POS path when flag is on', () => {
     const route = read('src/app/api/sales/route.ts');
+    const legacy = read('src/lib/sales/legacyRouteSaleCreate.ts');
     expect(route).toContain('isPosPortEnabled');
     expect(route).toContain('createSale');
     expect(route).toContain('createSaleLegacyFromRoute');
+    expect(route).toContain("@/lib/sales/legacyRouteSaleCreate");
+    expect(route).not.toContain('@/apps/pos/internal/');
+    expect(legacy).toContain('ISOLATION_LEVEL.SERIALIZABLE');
+    expect(legacy).not.toMatch(/return createSale\s*\(/);
+    expect(legacy).not.toContain("from '../application/createSale'");
+    expect(legacy).not.toContain("from '@/apps/pos/application/createSale'");
   });
 
   it('PATCH/DELETE /api/sales/[id] use extracted POS mutations when flag is on', () => {

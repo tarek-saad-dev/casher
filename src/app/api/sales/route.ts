@@ -15,7 +15,7 @@ import {
   createSale,
   isPosPortEnabled,
 } from '@/apps/pos/public';
-import { createSaleLegacyFromRoute } from '@/apps/pos/internal/legacySaleRouteHandler';
+import { createSaleLegacyFromRoute } from '@/lib/sales/legacyRouteSaleCreate';
 
 export const runtime = "nodejs";
 
