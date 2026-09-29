@@ -250,7 +250,7 @@ async function createBookingHoldEnforced(input: {
       .input('empId', sql.Int, input.empId)
       .input('startAt', sql.DateTime2, input.startAt)
       .input('endAt', sql.DateTime2, input.endAt)
-      .input('holdKey', sql.NVarChar(80), input.holdKey)
+      .input('holdKey', sql.NVarChar(200), input.holdKey)
       .query(`
         SELECT TOP 1 HoldID
         FROM dbo.TblBookingHold
@@ -272,7 +272,7 @@ async function createBookingHoldEnforced(input: {
       .input('startAt', sql.DateTime2, input.startAt)
       .input('endAt', sql.DateTime2, input.endAt)
       .input('expiresAt', sql.DateTime2, expiresAt)
-      .input('holdKey', sql.NVarChar(80), input.holdKey)
+      .input('holdKey', sql.NVarChar(200), input.holdKey)
       .input('sessionKey', sql.NVarChar(120), input.sessionKey ?? null)
       .input('clientRequestId', sql.NVarChar(80), input.clientRequestId ?? null)
       .query(`
@@ -335,7 +335,7 @@ async function createBookingHoldEnforced(input: {
     if (/UQ_TblBookingHold_HoldKey|duplicate/i.test(msg)) {
       const existing = await db
         .request()
-        .input('holdKey', sql.NVarChar(80), input.holdKey)
+        .input('holdKey', sql.NVarChar(200), input.holdKey)
         .query(`
           SELECT TOP 1 * FROM dbo.TblBookingHold
           WHERE HoldKey = @holdKey AND Status = N'active' AND ExpiresAt > SYSUTCDATETIME()
@@ -369,7 +369,7 @@ async function createBookingHoldLegacy(input: {
     .input('empId', sql.Int, input.empId)
     .input('startAt', sql.DateTime2, input.startAt)
     .input('endAt', sql.DateTime2, input.endAt)
-    .input('holdKey', sql.NVarChar(80), input.holdKey)
+    .input('holdKey', sql.NVarChar(200), input.holdKey)
     .query(`
       SELECT TOP 1 HoldID
       FROM dbo.TblBookingHold
@@ -400,7 +400,7 @@ async function createBookingHoldLegacy(input: {
       .input('startAt', sql.DateTime2, input.startAt)
       .input('endAt', sql.DateTime2, input.endAt)
       .input('expiresAt', sql.DateTime2, expiresAt)
-      .input('holdKey', sql.NVarChar(80), input.holdKey)
+      .input('holdKey', sql.NVarChar(200), input.holdKey)
       .input('sessionKey', sql.NVarChar(120), input.sessionKey ?? null)
       .input('clientRequestId', sql.NVarChar(80), input.clientRequestId ?? null)
       .query(`
@@ -428,7 +428,7 @@ async function createBookingHoldLegacy(input: {
     if (/UQ_TblBookingHold_HoldKey|duplicate/i.test(msg)) {
       const existing = await db
         .request()
-        .input('holdKey', sql.NVarChar(80), input.holdKey)
+        .input('holdKey', sql.NVarChar(200), input.holdKey)
         .query(`
           SELECT TOP 1 * FROM dbo.TblBookingHold
           WHERE HoldKey = @holdKey AND Status = N'active' AND ExpiresAt > SYSUTCDATETIME()
@@ -446,7 +446,7 @@ export async function consumeBookingHold(holdKey: string): Promise<boolean> {
   const db = await getPool();
   const r = await db
     .request()
-    .input('holdKey', sql.NVarChar(80), holdKey)
+    .input('holdKey', sql.NVarChar(200), holdKey)
     .query(`
       UPDATE dbo.TblBookingHold
       SET Status = N'consumed', ConsumedAt = SYSUTCDATETIME()
@@ -464,7 +464,7 @@ export async function releaseBookingHold(holdKey: string): Promise<boolean> {
   const db = await getPool();
   const existing = await db
     .request()
-    .input('holdKey', sql.NVarChar(80), holdKey)
+    .input('holdKey', sql.NVarChar(200), holdKey)
     .query(`
       SELECT TOP 1 EmpID, BranchID, BusinessDate
       FROM dbo.TblBookingHold
@@ -476,7 +476,7 @@ export async function releaseBookingHold(holdKey: string): Promise<boolean> {
 
   const r = await db
     .request()
-    .input('holdKey', sql.NVarChar(80), holdKey)
+    .input('holdKey', sql.NVarChar(200), holdKey)
     .query(`
       UPDATE dbo.TblBookingHold
       SET Status = N'released', ReleasedAt = SYSUTCDATETIME()
@@ -560,7 +560,7 @@ export async function listActiveBookingHoldsForEmployees(args: {
     .request()
     .input('rangeStart', sql.DateTime2, args.rangeStart)
     .input('rangeEnd', sql.DateTime2, args.rangeEnd)
-    .input('excludeHoldKey', sql.NVarChar(80), args.excludeHoldKey ?? null);
+    .input('excludeHoldKey', sql.NVarChar(200), args.excludeHoldKey ?? null);
   empIds.forEach((id, i) => req.input(`e${i}`, sql.Int, id));
   const r = await req.query(`
     SELECT HoldID, BranchID, EmpID, StartAt, EndAt

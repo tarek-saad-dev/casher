@@ -14,6 +14,10 @@ import {
   isBookingSchedulingPortEnabled,
 } from '@/apps/booking/public';
 import { resolveBootstrapTenantId } from '@/lib/bookingSchedulingComposition';
+import {
+  describePlatformBootstrapFailure,
+  isPlatformBootstrapFailure,
+} from '@/lib/booking/platformBootstrapErrors';
 import { resolvePublicBookingBranchContext } from '@/lib/booking/publicBookingBranchContext';
 import { logBookingAvailabilityMetric } from '@/lib/availability/bookingAvailabilityMetrics';
 
@@ -104,6 +108,22 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
+    if (isPlatformBootstrapFailure(err)) {
+      console.error(
+        '[public/booking/hold] PLATFORM_BOOTSTRAP_REQUIRED',
+        describePlatformBootstrapFailure(err),
+        err,
+      );
+      return NextResponse.json(
+        {
+          ok: false,
+          code: 'PLATFORM_BOOTSTRAP_REQUIRED',
+          messageAr: 'نظام الحجز غير جاهز — إعداد المنصة ناقص',
+          cause: describePlatformBootstrapFailure(err),
+        },
+        { status: 503 },
+      );
+    }
     const code =
       err && typeof err === 'object' && 'code' in err
         ? String((err as { code: string }).code)

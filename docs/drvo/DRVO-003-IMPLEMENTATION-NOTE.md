@@ -22,11 +22,11 @@
 
 | Topic | DRVO-003 state |
 |-------|----------------|
-| Staging database | `last132_agent` only for migration/seed |
-| Production database | `last132` — no access, no migration |
+| Staging database | `last132_agent` only for staging migration/seed scripts |
+| Production database | `last132` — staging scripts refuse it; use production runner below |
 | Entitlement enforcement | **OFF** — no routes blocked |
 | `InsCashMoveSales` trigger | **Still live** — sale create must not double-post cash |
-| Booking extraction | **Not started** — scheduling remains in `src/lib/booking` |
+| Booking extraction | Scheduling may use extracted path only when `BOOKING_SCHEDULING_PORT=true` |
 | Runtime split | **None** — modular monolith, shared DB/schema |
 | Legacy `super_admin` | Tenant owner role — **not** platform admin |
 
@@ -39,6 +39,25 @@ npx tsx scripts/run-drvo-003-platform-core-migration.ts --expected-database=last
 npx tsx scripts/seed-drvo-003-bootstrap-tenant.ts --expected-database=last132_agent
 ```
 
+## How to apply on production (`last132`)
+
+Staging protections are **not** removed. Production uses a separate opt-in runner that:
+
+- requires `--allow-production`
+- verifies `DB_NAME() = last132`
+- applies the same idempotent schema migration
+- seeds/repairs bootstrap data without creating a second tenant
+- aborts on inconsistent tenant state
+- verifies every `TblBranch` has a `Location` map
+
+```bash
+npm run drvo:migrate-production -- --allow-production
+npm run drvo:verify -- --allow-production
+```
+
+`deploy/deploy-casher` runs the **central DRVO migration runner** on each deploy (idempotent), then `drvo:verify`. Legacy `drvo-003:*-production` scripts delegate to the same runner.
+
+Keep `BOOKING_SCHEDULING_PORT` unset/false until verify passes, then set `BOOKING_SCHEDULING_PORT=true` and restart Casher manually.
 ## Staging evidence
 
 Applied on `last132_agent` (login `drvo_agent`) on 2026-09-28:

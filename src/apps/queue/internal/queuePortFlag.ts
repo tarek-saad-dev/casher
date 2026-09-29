@@ -1,7 +1,9 @@
+import { isStrictOptInEnvFlag } from '@/platform/drvo/featureFlags';
+
 /**
- * DRVO-005 rollout gate. Default on after extraction; set QUEUE_SCHEDULING_PORT=false
- * to roll back to legacy direct scheduleIntegrity calls.
+ * DRVO-005 rollout gate (strict opt-in).
+ * Extracted path runs only when QUEUE_SCHEDULING_PORT=true (exact literal).
  */
 export function isQueueSchedulingPortEnabled(): boolean {
-  return process.env.QUEUE_SCHEDULING_PORT !== 'false';
+  return isStrictOptInEnvFlag(process.env.QUEUE_SCHEDULING_PORT);
 }

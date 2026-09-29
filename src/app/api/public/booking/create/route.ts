@@ -15,6 +15,7 @@ import {
 import { createBooking, isBookingSchedulingPortEnabled } from '@/apps/booking/public';
 import {
   buildCustomerActorContext,
+  buildStaffActorContext,
   buildSchedulingPortHooksForActor,
   resolveBootstrapTenantId,
 } from '@/lib/bookingSchedulingComposition';
@@ -24,6 +25,10 @@ import {
   finalizePublicBookingError,
   finalizePublicBookingJson,
 } from '@/lib/booking/publicBookingRouteGate';
+import {
+  describePlatformBootstrapFailure,
+  isPlatformBootstrapFailure,
+} from '@/lib/booking/platformBootstrapErrors';
 
 export const runtime = 'nodejs';
 
@@ -154,11 +159,16 @@ export async function POST(req: NextRequest) {
     const result = isBookingSchedulingPortEnabled()
       ? await (async () => {
           const tenantId = await resolveBootstrapTenantId();
-          const actor = await buildCustomerActorContext(tenantId);
+          // Operations/admin must carry staff tenant membership semantics.
+          // Public website remains a customer actor on the bootstrap tenant.
+          const actor =
+            isInternalOps && auth?.userId
+              ? await buildStaffActorContext(auth.userId)
+              : await buildCustomerActorContext(tenantId);
           const schedulingPortHooks = await buildSchedulingPortHooksForActor(actor);
           return createBooking({
             ...createInput,
-            tenantId,
+            tenantId: actor.tenantId ?? tenantId,
             schedulingPortHooks,
           });
         })()
@@ -181,6 +191,16 @@ export async function POST(req: NextRequest) {
     }
     if (err instanceof PublicBookingSelectionError) {
       return finalizePublicBookingError(req, gate, err.code, err.metadata);
+    }
+    if (isPlatformBootstrapFailure(err)) {
+      console.error(
+        '[public/booking/create] PLATFORM_BOOTSTRAP_REQUIRED',
+        describePlatformBootstrapFailure(err),
+        err,
+      );
+      return finalizePublicBookingError(req, gate, 'PLATFORM_BOOTSTRAP_REQUIRED', {
+        cause: describePlatformBootstrapFailure(err),
+      });
     }
     console.error('[public/booking/create]', err);
     return finalizePublicBookingError(req, gate, 'BOOKING_CREATE_FAILED', undefined, {
