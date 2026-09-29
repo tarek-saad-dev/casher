@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drvo-validation:
+    name: DRVO / booking / queue validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: DRVO migration + rollout + runner tests
+        run: >
+          npx vitest run
+          scripts/drvo/__tests__
+          src/platform/drvo/__tests__
+          src/apps/booking/__tests__/bookingPathRegression.test.ts
+          src/apps/booking/__tests__/holdKeyPersistence.test.ts
+          src/apps/booking/__tests__/publicBootstrapErrorLeak.test.ts
+          src/apps/booking/__tests__/schedulingPortWiring.test.ts
+          src/apps/queue/__tests__/queuePortFlag.test.ts
+          src/apps/queue/__tests__/queuePortWiring.test.ts
+          src/apps/treasury/__tests__/deployMigration.test.ts
+          --reporter=default
+
+      - name: Production build
+        run: npm run build
+
+      - name: Note known global typecheck debt
+        run: |
+          echo "Full-repo tsc --noEmit is known-failing on legacy unrelated modules."
+          echo "This workflow scopes deterministic DRVO/booking/queue/build checks instead."

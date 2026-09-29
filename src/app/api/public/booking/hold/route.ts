@@ -14,6 +14,12 @@ import {
   isBookingSchedulingPortEnabled,
 } from '@/apps/booking/public';
 import { resolveBootstrapTenantId } from '@/lib/bookingSchedulingComposition';
+import {
+  describePlatformBootstrapFailure,
+  isPlatformBootstrapFailure,
+  PUBLIC_PLATFORM_BOOTSTRAP_MESSAGE,
+} from '@/lib/booking/platformBootstrapErrors';
+import { PUBLIC_BOOKING_ERROR_CATALOG } from '@/lib/booking/publicBookingErrorCatalog';
 import { resolvePublicBookingBranchContext } from '@/lib/booking/publicBookingBranchContext';
 import { logBookingAvailabilityMetric } from '@/lib/availability/bookingAvailabilityMetrics';
 
@@ -104,6 +110,23 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
+    if (isPlatformBootstrapFailure(err)) {
+      console.error(
+        '[public/booking/hold] PLATFORM_BOOTSTRAP_REQUIRED',
+        describePlatformBootstrapFailure(err),
+        err,
+      );
+      const def = PUBLIC_BOOKING_ERROR_CATALOG.PLATFORM_BOOTSTRAP_REQUIRED;
+      return NextResponse.json(
+        {
+          ok: false,
+          code: def.code,
+          messageAr: def.messageAr,
+          messageEn: PUBLIC_PLATFORM_BOOTSTRAP_MESSAGE,
+        },
+        { status: def.httpStatus },
+      );
+    }
     const code =
       err && typeof err === 'object' && 'code' in err
         ? String((err as { code: string }).code)
@@ -175,6 +198,23 @@ export async function DELETE(req: NextRequest) {
       : await releaseBookingHold(holdKey);
     return NextResponse.json({ ok: true, released });
   } catch (err) {
+    if (isPlatformBootstrapFailure(err)) {
+      console.error(
+        '[public/booking/hold DELETE] PLATFORM_BOOTSTRAP_REQUIRED',
+        describePlatformBootstrapFailure(err),
+        err,
+      );
+      const def = PUBLIC_BOOKING_ERROR_CATALOG.PLATFORM_BOOTSTRAP_REQUIRED;
+      return NextResponse.json(
+        {
+          ok: false,
+          code: def.code,
+          messageAr: def.messageAr,
+          messageEn: PUBLIC_PLATFORM_BOOTSTRAP_MESSAGE,
+        },
+        { status: def.httpStatus },
+      );
+    }
     console.error('[public/booking/hold DELETE]', err);
     return NextResponse.json({ ok: false, code: 'HOLD_RELEASE_FAILED' }, { status: 500 });
   }

@@ -3,16 +3,18 @@ import path from 'path';
 import { describe, expect, it } from 'vitest';
 import { readDrvo007MigrationBatches } from '../../../../scripts/drvo007Migration';
 
-describe('DRVO-007 production migration hook', () => {
-  it('applies the idempotent registry script before casher restart', () => {
+describe('DRVO production migration hook', () => {
+  it('runs central DRVO migrate and verify before casher restart', () => {
     const deploy = fs.readFileSync(path.join(process.cwd(), 'deploy/deploy-casher'), 'utf8');
-    const migrate = deploy.indexOf('npm run treasury:migrate-drvo-007 -- --allow-production');
+    const migrate = deploy.indexOf('npm run drvo:migrate-production');
+    const verify = deploy.indexOf('npm run drvo:verify');
     const restart = deploy.indexOf('systemctl restart casher');
     expect(migrate).toBeGreaterThan(-1);
-    expect(restart).toBeGreaterThan(migrate);
+    expect(verify).toBeGreaterThan(migrate);
+    expect(restart).toBeGreaterThan(verify);
   });
 
-  it('keeps the SQL migration idempotent', () => {
+  it('keeps treasury SQL migration idempotent in drvo-migrations path', () => {
     const batches = readDrvo007MigrationBatches().join('\n');
     expect(batches).toContain('TreasuryMovementRegistry');
     expect(batches).toContain('COL_LENGTH');
