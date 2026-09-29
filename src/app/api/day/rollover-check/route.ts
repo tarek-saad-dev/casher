@@ -6,11 +6,10 @@ import {
   requireActiveBranchContext,
 } from '@/lib/branch';
 import { branchErrorResponse } from '@/lib/branch/operationalGates';
-import {
-  isPastRolloverWindow,
-  resolveBusinessDate,
-} from '@/modules/operations/clock/BusinessClock';
+import { isPastRolloverWindow } from '@/modules/operations/clock/BusinessClock';
 import { ensureBusinessDayCurrent } from '@/modules/operations/application/reconcileBusinessDay';
+import { buildStaffActorContext } from '@/lib/bookingSchedulingComposition';
+import { buildOperationalCalendarPort } from '@/lib/operationalCalendarComposition';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -26,8 +25,13 @@ export async function GET() {
       trigger: 'BEST_EFFORT_CATCH_UP',
     });
 
+    const actor = await buildStaffActorContext(branch.userId);
+    const calendar = await buildOperationalCalendarPort(actor);
     const openDay = await getOpenBusinessDay(branch.branchId);
-    const expectedDate = resolveBusinessDate(branch);
+    const expectedDate = await calendar.getBusinessDate(actor, {
+      locationId: branch.branchId,
+      instant: new Date(),
+    });
     const pastRolloverWindow = isPastRolloverWindow(branch);
 
     if (!openDay) {
