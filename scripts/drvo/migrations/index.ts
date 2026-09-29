@@ -5,8 +5,10 @@ import { bookingPrerequisitesMigration } from './003-booking-prerequisites';
 import { queuePrerequisitesMigration } from './004-queue-prerequisites';
 import { operationalCalendarPrerequisitesMigration } from './005-operational-calendar-prerequisites';
 import { treasuryMovementRegistryMigration } from './006-treasury-movement-registry';
+import { bookingHoldKeyMigration } from './007-booking-hold-key';
+import { drvoModuleRequiredMigrationsFromManifest } from '../../../src/platform/drvo/moduleManifest';
 
-/** Ordered DRVO migration manifest — single source of truth. */
+/** Ordered DRVO migration manifest — single source of truth for migration order. */
 export const DRVO_MIGRATIONS: DrvoMigrationDefinition[] = [
   platformCoreMigration,
   platformBootstrapMigration,
@@ -14,6 +16,7 @@ export const DRVO_MIGRATIONS: DrvoMigrationDefinition[] = [
   queuePrerequisitesMigration,
   operationalCalendarPrerequisitesMigration,
   treasuryMovementRegistryMigration,
+  bookingHoldKeyMigration,
 ];
 
 export function assertDrvoMigrationManifestValid(): void {
@@ -47,14 +50,10 @@ export function assertDrvoMigrationManifestValid(): void {
   }
 }
 
-export const DRVO_MODULE_REQUIRED_MIGRATIONS: Record<string, string[]> = {
-  'platform-core': ['platform-core', 'platform-bootstrap'],
-  booking: ['platform-core', 'platform-bootstrap', 'booking-prerequisites'],
-  queue: ['platform-core', 'platform-bootstrap', 'queue-prerequisites'],
-  'operational-calendar': [
-    'platform-core',
-    'platform-bootstrap',
-    'operational-calendar-prerequisites',
-  ],
-  treasury: ['platform-core', 'platform-bootstrap', 'treasury-movement-registry'],
-};
+/**
+ * Module → required migration keys.
+ * Derived from source-controlled moduleManifest (not a second hand-maintained map).
+ */
+export function getDrvoModuleRequiredMigrations(): Record<string, string[]> {
+  return drvoModuleRequiredMigrationsFromManifest();
+}

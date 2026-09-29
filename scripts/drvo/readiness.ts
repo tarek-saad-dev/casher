@@ -1,12 +1,20 @@
 import type { ConnectionPool } from 'mssql';
 import {
-  DRVO_MODULE_REQUIRED_MIGRATIONS,
+  getDrvoModuleRequiredMigrations,
   DRVO_MIGRATIONS,
   assertDrvoMigrationManifestValid,
 } from './migrations/index';
 import { verifyPlatformBootstrap } from './platformBootstrap';
+import { verifyPlatformCoreStructure } from './platformCoreSchema';
+import { verifyTreasuryMovementSchema } from './migrations/006-treasury-movement-registry';
 import { listAppliedDrvoMigrations } from './registry';
 import type { DrvoModuleReadinessReport, DrvoReadinessCheck } from './types';
+import {
+  assertAllDrvoRolloutContracts,
+  DRVO_MODULE_ROLLOUT,
+  getDrvoModuleRolloutSpec,
+  type DrvoModuleRolloutSpec,
+} from '../../src/platform/drvo/moduleManifest';
 
 export type DrvoVerifyReport = {
   database: string;
@@ -22,26 +30,6 @@ export type DrvoVerifyReport = {
   failures: string[];
 };
 
-async function treasuryReady(pool: ConnectionPool): Promise<DrvoReadinessCheck> {
-  const check = await pool.request().query(`
-    SELECT
-      CASE WHEN OBJECT_ID(N'dbo.TreasuryMovementRegistry', N'U') IS NULL THEN 0 ELSE 1 END AS registry,
-      CASE WHEN COL_LENGTH(N'dbo.TblCashMove', N'ReversalOfCashMoveId') IS NULL THEN 0 ELSE 1 END AS reversalOf,
-      CASE WHEN COL_LENGTH(N'dbo.TblCashMove', N'IsReversed') IS NULL THEN 0 ELSE 1 END AS isReversed;
-  `);
-  const row = check.recordset[0];
-  const ok =
-    !!row &&
-    Number(row.registry) === 1 &&
-    Number(row.reversalOf) === 1 &&
-    Number(row.isReversed) === 1;
-  return {
-    id: 'treasury.schema',
-    ok,
-    detail: ok ? 'TreasuryMovementRegistry ready' : 'Treasury schema incomplete',
-  };
-}
-
 function migrationKeysApplied(
   appliedKeys: Set<string>,
   required: string[],
@@ -53,38 +41,83 @@ function migrationKeysApplied(
   }));
 }
 
-async function loadRolloutMeta(module: string): Promise<{
-  rollout: 'legacy' | 'extracted';
-  activationRequired: boolean;
-}> {
-  try {
-    const { getDrvoModuleRolloutSpec } = await import(
-      '../../src/platform/drvo/moduleManifest'
-    );
-    const spec = getDrvoModuleRolloutSpec(module);
-    return {
-      rollout: spec.rollout,
-      activationRequired: spec.rollout === 'extracted',
-    };
-  } catch {
-    return { rollout: 'legacy', activationRequired: false };
+/**
+ * Fail-closed validation of moduleManifest against migration keys.
+ * Throws on any inconsistency — never silently downgrades to legacy.
+ */
+export function assertDrvoDeployManifestConsistent(): void {
+  assertDrvoMigrationManifestValid();
+  assertAllDrvoRolloutContracts();
+
+  const migrationKeys = new Set(DRVO_MIGRATIONS.map((m) => m.migrationKey));
+  const moduleKeys = new Set(DRVO_MODULE_ROLLOUT.map((m) => m.module));
+  moduleKeys.add('platform-core');
+
+  const requiredMap = getDrvoModuleRequiredMigrations();
+  for (const [mod, keys] of Object.entries(requiredMap)) {
+    if (!moduleKeys.has(mod) && mod !== 'platform-core') {
+      throw new Error(`Required-migrations map has unknown module "${mod}"`);
+    }
+    for (const key of keys) {
+      if (!migrationKeys.has(key)) {
+        throw new Error(`Module "${mod}" requires unknown migration key "${key}"`);
+      }
+    }
+  }
+
+  for (const spec of DRVO_MODULE_ROLLOUT) {
+    for (const dep of spec.dependencies) {
+      if (dep !== 'platform-core' && !moduleKeys.has(dep)) {
+        throw new Error(
+          `Module "${spec.module}" depends on unknown module "${dep}"`,
+        );
+      }
+    }
+    for (const key of spec.requiredMigrationKeys) {
+      if (!migrationKeys.has(key)) {
+        throw new Error(
+          `Module "${spec.module}" requiredMigrationKeys includes unknown "${key}"`,
+        );
+      }
+    }
+    if (!spec.readinessCheckIds.length) {
+      throw new Error(`Module "${spec.module}" must declare readinessCheckIds`);
+    }
   }
 }
 
 export async function verifyDrvoReadiness(
   pool: ConnectionPool,
-  module?: string,
+  module: string,
 ): Promise<DrvoModuleReadinessReport> {
-  assertDrvoMigrationManifestValid();
-  const required = DRVO_MODULE_REQUIRED_MIGRATIONS[module ?? ''];
+  assertDrvoDeployManifestConsistent();
+  const requiredMap = getDrvoModuleRequiredMigrations();
+  const required = requiredMap[module];
   if (!required) {
     throw new Error(`Unknown DRVO module: ${module}`);
   }
+
+  const spec: DrvoModuleRolloutSpec | null =
+    module === 'platform-core' ? null : getDrvoModuleRolloutSpec(module);
+
   const applied = await listAppliedDrvoMigrations(pool);
   const appliedKeys = new Set(applied.map((r) => r.MigrationKey));
   const checks: DrvoReadinessCheck[] = migrationKeysApplied(appliedKeys, required);
 
-  if (module === 'booking' || module === 'queue' || module === 'operational-calendar') {
+  const structure = await verifyPlatformCoreStructure(pool);
+  checks.push({
+    id: 'platform.core.structure',
+    ok: structure.ok,
+    detail: structure.ok ? 'Platform Core structure OK' : structure.failures.join('; '),
+  });
+
+  if (
+    module === 'booking' ||
+    module === 'queue' ||
+    module === 'operational-calendar' ||
+    module === 'treasury' ||
+    module === 'platform-core'
+  ) {
     const bootstrap = await verifyPlatformBootstrap(pool);
     checks.push({
       id: 'platform.bootstrap',
@@ -94,29 +127,45 @@ export async function verifyDrvoReadiness(
   }
 
   if (module === 'treasury') {
-    checks.push(await treasuryReady(pool));
-    const bootstrap = await verifyPlatformBootstrap(pool);
+    const treasury = await verifyTreasuryMovementSchema(pool);
     checks.push({
-      id: 'platform.bootstrap',
-      ok: bootstrap.ok,
-      detail: bootstrap.ok ? 'CASHER_BOOT ready' : bootstrap.failures.join('; '),
+      id: 'treasury.schema',
+      ok: treasury.ok,
+      detail: treasury.ok ? 'TreasuryMovementRegistry ready' : treasury.failures.join('; '),
     });
   }
 
+  if (spec) {
+    const produced = new Set(checks.map((c) => c.id));
+    for (const expected of spec.readinessCheckIds) {
+      if (!produced.has(expected)) {
+        checks.push({
+          id: expected,
+          ok: false,
+          detail: `Declared readinessCheckId "${expected}" was not produced by verify`,
+        });
+      }
+    }
+  }
+
   const ok = checks.every((c) => c.ok);
-  const meta = module ? await loadRolloutMeta(module) : { rollout: 'legacy' as const, activationRequired: false };
+  const rollout = spec?.rollout ?? 'extracted';
+  const activationRequired = rollout === 'extracted';
+
   return {
-    module: module ?? '',
+    module,
     ok,
     checks,
     requiredMigrationKeys: required,
-    rollout: meta.rollout,
-    activationRequired: meta.activationRequired,
+    rollout,
+    activationRequired,
   };
 }
 
 export async function verifyDrvoSystem(pool: ConnectionPool): Promise<DrvoVerifyReport> {
-  assertDrvoMigrationManifestValid();
+  // Fail closed on invalid DRVO metadata before any DB work is trusted.
+  assertDrvoDeployManifestConsistent();
+
   const dbResult = await pool.request().query(`SELECT DB_NAME() AS db;`);
   const database = String(dbResult.recordset[0]?.db ?? '');
 
@@ -133,12 +182,9 @@ export async function verifyDrvoSystem(pool: ConnectionPool): Promise<DrvoVerify
   const pending = DRVO_MIGRATIONS.map((m) => m.migrationKey).filter((k) => !appliedKeys.has(k));
   const platformCore = await verifyPlatformBootstrap(pool);
 
-  const moduleNames = Object.keys(DRVO_MODULE_REQUIRED_MIGRATIONS).filter(
-    (m) => m !== 'platform-core',
-  );
   const modules: DrvoModuleReadinessReport[] = [];
-  for (const name of moduleNames) {
-    modules.push(await verifyDrvoReadiness(pool, name));
+  for (const spec of DRVO_MODULE_ROLLOUT) {
+    modules.push(await verifyDrvoReadiness(pool, spec.module));
   }
 
   const failures: string[] = [];
@@ -160,6 +206,15 @@ export async function verifyDrvoSystem(pool: ConnectionPool): Promise<DrvoVerify
         );
       } else {
         failures.push(`${mod.module}: ${failedChecks}`);
+      }
+    } else if (mod.activationRequired) {
+      const missingDeclared = (getDrvoModuleRolloutSpec(mod.module).readinessCheckIds || []).filter(
+        (id) => !mod.checks.some((c) => c.id === id && c.ok),
+      );
+      if (missingDeclared.length) {
+        failures.push(
+          `REFUSING extracted activation for ${mod.module}: missing readiness (${missingDeclared.join(', ')})`,
+        );
       }
     }
   }

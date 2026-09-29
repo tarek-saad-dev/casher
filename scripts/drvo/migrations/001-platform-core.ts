@@ -1,7 +1,7 @@
 import path from 'path';
 import { checksumFile } from '../checksum';
 import { executeSqlFile } from '../sqlBatch';
-import { allPlatformCoreTablesExist } from '../platformBootstrap';
+import { verifyPlatformCoreStructure } from '../platformCoreSchema';
 import type { DrvoMigrationDefinition } from '../types';
 
 const SCHEMA = path.join(
@@ -25,13 +25,14 @@ export const platformCoreMigration: DrvoMigrationDefinition = {
     await executeSqlFile(ctx.pool, SCHEMA);
   },
   async verify(ctx) {
-    const ok = await allPlatformCoreTablesExist(ctx.pool);
+    const report = await verifyPlatformCoreStructure(ctx.pool);
     return {
-      ok,
-      failures: ok ? [] : ['Platform Core tables missing after migration'],
+      ok: report.ok,
+      failures: report.failures,
     };
   },
   async reconcileBaseline(ctx) {
-    return allPlatformCoreTablesExist(ctx.pool);
+    const report = await verifyPlatformCoreStructure(ctx.pool);
+    return report.ok;
   },
 };

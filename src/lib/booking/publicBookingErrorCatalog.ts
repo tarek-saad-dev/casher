@@ -364,8 +364,8 @@ export const PUBLIC_BOOKING_ERROR_CATALOG: Record<PublicBookingErrorCode, Public
   PLATFORM_BOOTSTRAP_REQUIRED: {
     code: 'PLATFORM_BOOTSTRAP_REQUIRED',
     httpStatus: 503,
-    messageAr: 'نظام الحجز غير جاهز — إعداد المنصة ناقص',
-    messageEn: 'Booking platform bootstrap missing (DRVO-003 Tenant/Outbox)',
+    messageAr: 'نظام الحجز غير جاهز مؤقتًا — حاول مرة أخرى بعد قليل',
+    messageEn: 'Booking is temporarily unavailable while platform setup completes.',
   },
   INVALID_CUSTOMER: {
     code: 'INVALID_CUSTOMER',

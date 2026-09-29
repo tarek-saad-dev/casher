@@ -103,13 +103,16 @@ export const DRVO_MODULE_ROLLOUT: DrvoModuleRolloutSpec[] = [
       'platform-core',
       'platform-bootstrap',
       'booking-prerequisites',
+      'booking-hold-key',
     ],
     dependencies: ['platform-core'],
     readinessCheckIds: [
       'migration.platform-core',
       'migration.platform-bootstrap',
       'migration.booking-prerequisites',
+      'migration.booking-hold-key',
       'platform.bootstrap',
+      'platform.core.structure',
     ],
     rollbackRollout: 'legacy',
     compatEnvFlag: 'BOOKING_SCHEDULING_PORT',
@@ -133,6 +136,7 @@ export const DRVO_MODULE_ROLLOUT: DrvoModuleRolloutSpec[] = [
       'migration.platform-bootstrap',
       'migration.queue-prerequisites',
       'platform.bootstrap',
+      'platform.core.structure',
     ],
     rollbackRollout: 'legacy',
     compatEnvFlag: 'QUEUE_SCHEDULING_PORT',
@@ -156,6 +160,7 @@ export const DRVO_MODULE_ROLLOUT: DrvoModuleRolloutSpec[] = [
       'migration.platform-bootstrap',
       'migration.operational-calendar-prerequisites',
       'platform.bootstrap',
+      'platform.core.structure',
     ],
     rollbackRollout: 'extracted',
   },
@@ -178,6 +183,7 @@ export const DRVO_MODULE_ROLLOUT: DrvoModuleRolloutSpec[] = [
       'migration.treasury-movement-registry',
       'treasury.schema',
       'platform.bootstrap',
+      'platform.core.structure',
     ],
     rollbackRollout: 'extracted',
   },
@@ -191,7 +197,7 @@ export function getDrvoModuleRolloutSpec(module: string): DrvoModuleRolloutSpec 
   return spec;
 }
 
-/** Map used by scripts/drvo readiness — keep keys aligned with DRVO_MODULE_REQUIRED_MIGRATIONS. */
+/** Map used by scripts/drvo readiness — derived from this manifest only. */
 export function drvoModuleRequiredMigrationsFromManifest(): Record<string, string[]> {
   const out: Record<string, string[]> = {
     'platform-core': ['platform-core', 'platform-bootstrap'],

@@ -83,4 +83,8 @@ sync → npm ci → build → drvo:migrate-production → drvo:verify → restar
 
 Feature flags / env overrides remain **separate** from schema migration and are **not** required for normal deploy. Business path is source-controlled via `moduleManifest.rollout` (booking/queue stay `legacy` on this branch). See [DRVO-ROLLOUT.md](./DRVO-ROLLOUT.md). Leftover `BOOKING_SCHEDULING_PORT=false` on production is ignored so a later activation PR needs no SSH env cleanup.
 
+SalonPackConfig bootstrap is **insert-only** — existing ManifestJson is never overwritten by platform-bootstrap.
+
+`TblBookingHold.HoldKey` is widened to NVARCHAR(200) via migration `booking-hold-key` (central DRVO lifecycle).
+
 Staging scripts (`drvo-003:migrate`, `drvo-003:seed`) **unchanged** — still refuse production `last132`.

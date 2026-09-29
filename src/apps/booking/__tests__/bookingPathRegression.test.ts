@@ -55,7 +55,7 @@ describe('DRVO-004 booking path regression', () => {
     expect(twice).toBe(once);
   });
 
-  it('maps bootstrap / missing schema failures clearly', () => {
+  it('maps bootstrap / missing schema failures clearly (log detail only)', () => {
     expect(isPlatformBootstrapFailure(new Error('BOOTSTRAP_TENANT_NOT_FOUND'))).toBe(
       true,
     );
@@ -168,7 +168,9 @@ describe('DRVO-004 booking path regression', () => {
 
   it('branch Location map verification covers all TblBranch rows', () => {
     const helper = read('scripts/drvo/platformBootstrap.ts');
-    expect(helper).toContain('Missing Location for BranchIDs');
+    expect(helper).toContain('Missing Location for BranchID');
+    expect(helper).toContain('Missing LegacyIdMap branch for BranchID');
+    expect(helper).toContain('Location.BranchCode mismatch');
     expect(helper).toContain('branchCodes');
     expect(helper).toContain('locationCount !== branchCount');
     expect(helper).toContain('second tenant forbidden');

@@ -39,7 +39,7 @@ export async function ensureBookingHoldTable(): Promise<void> {
         EndAt DATETIME2 NOT NULL,
         ExpiresAt DATETIME2 NOT NULL,
         Status NVARCHAR(20) NOT NULL CONSTRAINT DF_TblBookingHold_Status DEFAULT (N'active'),
-        HoldKey NVARCHAR(80) NOT NULL,
+        HoldKey NVARCHAR(200) NOT NULL,
         SessionKey NVARCHAR(120) NULL,
         ClientRequestId NVARCHAR(80) NULL,
         CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_TblBookingHold_Created DEFAULT (SYSUTCDATETIME()),
@@ -51,6 +51,34 @@ export async function ensureBookingHoldTable(): Promise<void> {
         ON dbo.TblBookingHold (EmpID, StartAt, EndAt, Status, ExpiresAt);
       CREATE INDEX IX_TblBookingHold_Branch_Date
         ON dbo.TblBookingHold (BranchID, BusinessDate, Status);
+    END
+
+    -- Idempotent widen for environments that created the table before DRVO hold-key migration.
+    IF COL_LENGTH(N'dbo.TblBookingHold', N'HoldKey') IS NOT NULL
+       AND (
+         SELECT CHARACTER_MAXIMUM_LENGTH
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = N'dbo' AND TABLE_NAME = N'TblBookingHold' AND COLUMN_NAME = N'HoldKey'
+       ) < 200
+    BEGIN
+      DECLARE @uq SYSNAME = (
+        SELECT TOP 1 kc.name
+        FROM sys.key_constraints kc
+        INNER JOIN sys.index_columns ic
+          ON ic.object_id = kc.parent_object_id AND ic.index_id = kc.unique_index_id
+        INNER JOIN sys.columns c
+          ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+        WHERE kc.parent_object_id = OBJECT_ID(N'dbo.TblBookingHold')
+          AND kc.type = N'UQ' AND c.name = N'HoldKey'
+      );
+      IF @uq IS NOT NULL
+        EXEC(N'ALTER TABLE dbo.TblBookingHold DROP CONSTRAINT [' + @uq + N']');
+      ALTER TABLE dbo.TblBookingHold ALTER COLUMN HoldKey NVARCHAR(200) NOT NULL;
+      IF NOT EXISTS (
+        SELECT 1 FROM sys.key_constraints
+        WHERE parent_object_id = OBJECT_ID(N'dbo.TblBookingHold') AND name = N'UQ_TblBookingHold_HoldKey'
+      )
+        ALTER TABLE dbo.TblBookingHold ADD CONSTRAINT UQ_TblBookingHold_HoldKey UNIQUE (HoldKey);
     END
   `);
   ensured = true;

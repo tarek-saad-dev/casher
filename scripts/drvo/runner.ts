@@ -8,13 +8,31 @@ import {
   listAppliedDrvoMigrations,
   recordDrvoMigration,
 } from './registry';
-import type { DrvoMigrationContext, DrvoMigrationRunReport } from './types';
+import type {
+  AppliedDrvoMigrationRow,
+  DrvoMigrationContext,
+  DrvoMigrationDefinition,
+  DrvoMigrationRunReport,
+} from './types';
 import { PRODUCTION_DB, STAGING_DB } from './types';
 
 export type RunDrvoMigrationsOptions = {
   allowProduction: boolean;
   expectedDatabase?: string;
   appCommitSha?: string | null;
+};
+
+export type DrvoRegistryPort = {
+  ensure: () => Promise<void>;
+  list: () => Promise<AppliedDrvoMigrationRow[]>;
+  record: (input: {
+    migrationId: number;
+    migrationKey: string;
+    name: string;
+    checksum: string;
+    appCommitSha: string | null;
+    executionMs: number;
+  }) => Promise<void>;
 };
 
 export async function assertDatabaseAllowed(
@@ -39,22 +57,32 @@ export async function assertDatabaseAllowed(
     );
   }
 
-  if (opts.allowProduction && live !== PRODUCTION_DB) {
-    // allowProduction on staging is fine when expectedDatabase is set
-  }
-
   return live;
 }
 
-export async function runDrvoMigrations(
-  pool: ConnectionPool,
-  opts: RunDrvoMigrationsOptions,
-): Promise<DrvoMigrationRunReport> {
-  assertDrvoMigrationManifestValid();
-  const database = await assertDatabaseAllowed(pool, opts);
-  await ensureDrvoMigrationRegistryTable(pool);
+function sqlRegistryPort(pool: ConnectionPool): DrvoRegistryPort {
+  return {
+    ensure: () => ensureDrvoMigrationRegistryTable(pool),
+    list: () => listAppliedDrvoMigrations(pool),
+    record: (input) => recordDrvoMigration(pool, input),
+  };
+}
 
-  const appliedRows = await listAppliedDrvoMigrations(pool);
+/**
+ * Core migration runner — injectable registry + migration list for unit tests.
+ */
+export async function runDrvoMigrationsCore(args: {
+  pool: ConnectionPool;
+  migrations: DrvoMigrationDefinition[];
+  registry: DrvoRegistryPort;
+  opts: RunDrvoMigrationsOptions;
+  databaseName?: string;
+}): Promise<DrvoMigrationRunReport> {
+  const { pool, migrations, registry, opts } = args;
+  const database = args.databaseName ?? (await assertDatabaseAllowed(pool, opts));
+  await registry.ensure();
+
+  const appliedRows = await registry.list();
   const appliedByKey = new Map(appliedRows.map((r) => [r.MigrationKey, r]));
 
   const report: DrvoMigrationRunReport = {
@@ -72,7 +100,7 @@ export async function runDrvoMigrations(
     appCommitSha: opts.appCommitSha ?? null,
   };
 
-  for (const migration of DRVO_MIGRATIONS) {
+  for (const migration of migrations) {
     const existing = appliedByKey.get(migration.migrationKey);
     if (existing) {
       if (existing.Checksum !== migration.checksum) {
@@ -123,7 +151,7 @@ export async function runDrvoMigrations(
     }
 
     const executionMs = Date.now() - started;
-    await recordDrvoMigration(pool, {
+    await registry.record({
       migrationId: migration.migrationId,
       migrationKey: migration.migrationKey,
       name: migration.name,
@@ -147,6 +175,19 @@ export async function runDrvoMigrations(
   }
 
   return report;
+}
+
+export async function runDrvoMigrations(
+  pool: ConnectionPool,
+  opts: RunDrvoMigrationsOptions,
+): Promise<DrvoMigrationRunReport> {
+  assertDrvoMigrationManifestValid();
+  return runDrvoMigrationsCore({
+    pool,
+    migrations: DRVO_MIGRATIONS,
+    registry: sqlRegistryPort(pool),
+    opts,
+  });
 }
 
 export { PRODUCTION_DB, STAGING_DB };

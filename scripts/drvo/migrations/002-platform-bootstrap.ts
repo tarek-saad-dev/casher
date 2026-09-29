@@ -10,7 +10,7 @@ export const platformBootstrapMigration: DrvoMigrationDefinition = {
   migrationKey: 'platform-bootstrap',
   name: 'DRVO-003 Platform bootstrap tenant and mappings',
   dependencies: ['platform-core'],
-  checksum: sha256Hex('platform-bootstrap-v1'),
+  checksum: sha256Hex('platform-bootstrap-v2'),
   async apply(ctx) {
     await ensurePlatformBootstrapData(ctx.pool);
   },

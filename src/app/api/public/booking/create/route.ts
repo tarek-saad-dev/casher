@@ -198,9 +198,7 @@ export async function POST(req: NextRequest) {
         describePlatformBootstrapFailure(err),
         err,
       );
-      return finalizePublicBookingError(req, gate, 'PLATFORM_BOOTSTRAP_REQUIRED', {
-        cause: describePlatformBootstrapFailure(err),
-      });
+      return finalizePublicBookingError(req, gate, 'PLATFORM_BOOTSTRAP_REQUIRED');
     }
     console.error('[public/booking/create]', err);
     return finalizePublicBookingError(req, gate, 'BOOKING_CREATE_FAILED', undefined, {
