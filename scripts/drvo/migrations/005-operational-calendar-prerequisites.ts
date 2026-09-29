@@ -8,6 +8,13 @@ export const operationalCalendarPrerequisitesMigration: DrvoMigrationDefinition 
   name: 'DRVO-006 Operational calendar prerequisites',
   dependencies: ['platform-bootstrap'],
   checksum: sha256Hex('operational-calendar-prerequisites-v1'),
+  control: {
+    kind: 'verification',
+    risk: 'LOW',
+    requiresBackup: false,
+    lockProfile: 'none',
+    rollbackStrategy: 'No schema/data mutation; no rollback required.',
+  },
   async apply(ctx) {
     const report = await verifyPlatformBootstrap(ctx.pool);
     if (!report.ok) {

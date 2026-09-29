@@ -73,6 +73,13 @@ export const bookingHoldKeyMigration: DrvoMigrationDefinition = {
   name: 'DRVO-004 Booking HoldKey NVARCHAR(200)',
   dependencies: ['booking-prerequisites'],
   checksum: checksumFile(SCHEMA),
+  control: {
+    kind: 'schema',
+    risk: 'HIGH',
+    requiresBackup: true,
+    lockProfile: 'potentially-blocking',
+    rollbackStrategy: 'Restore the approved backup; shrinking HoldKey automatically is not supported.',
+  },
   async apply(ctx) {
     await executeSqlFile(ctx.pool, SCHEMA);
   },

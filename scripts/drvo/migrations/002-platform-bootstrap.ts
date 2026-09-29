@@ -11,6 +11,13 @@ export const platformBootstrapMigration: DrvoMigrationDefinition = {
   name: 'DRVO-003 Platform bootstrap tenant and mappings',
   dependencies: ['platform-core'],
   checksum: sha256Hex('platform-bootstrap-v2'),
+  control: {
+    kind: 'data',
+    risk: 'MEDIUM',
+    requiresBackup: true,
+    lockProfile: 'short',
+    rollbackStrategy: 'Restore the approved pre-migration backup or reverse only the bootstrap tenant/mapping rows after reconciliation.',
+  },
   async apply(ctx) {
     await ensurePlatformBootstrapData(ctx.pool);
   },

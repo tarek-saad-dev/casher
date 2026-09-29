@@ -21,3 +21,14 @@ BEGIN
   CREATE INDEX IX_DrvoSchemaMigration_AppliedAtUtc
     ON dbo.DrvoSchemaMigration (AppliedAtUtc);
 END;
+
+
+IF COL_LENGTH(N'dbo.DrvoSchemaMigration', N'ApprovalRef') IS NULL
+BEGIN
+  ALTER TABLE dbo.DrvoSchemaMigration ADD ApprovalRef NVARCHAR(256) NULL;
+END;
+
+IF COL_LENGTH(N'dbo.DrvoSchemaMigration', N'BackupRef') IS NULL
+BEGIN
+  ALTER TABLE dbo.DrvoSchemaMigration ADD BackupRef NVARCHAR(256) NULL;
+END;

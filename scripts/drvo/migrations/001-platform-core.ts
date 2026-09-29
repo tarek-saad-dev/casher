@@ -21,6 +21,13 @@ export const platformCoreMigration: DrvoMigrationDefinition = {
   name: 'DRVO-003 Platform Core schema',
   dependencies: [],
   checksum: checksumFile(SCHEMA),
+  control: {
+    kind: 'schema',
+    risk: 'MEDIUM',
+    requiresBackup: false,
+    lockProfile: 'short',
+    rollbackStrategy: 'Drop only newly created DRVO platform tables after confirming they are empty and unused.',
+  },
   async apply(ctx) {
     await executeSqlFile(ctx.pool, SCHEMA);
   },
