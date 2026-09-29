@@ -151,7 +151,8 @@ vi.mock('@/lib/treasuryComposition', () => ({
   })),
 }));
 
-import { POST } from '@/app/api/treasury/transfer/route';
+import { POST, transferGroupKeyFor } from '@/app/api/treasury/transfer/route';
+import { randomUUID } from 'crypto';
 import { getSession } from '@/lib/session';
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
 import { executeTreasuryTransfer, getPaymentMethodBalance } from '@/lib/actions/treasuryActions';
@@ -437,5 +438,40 @@ describe('POST /api/treasury/transfer', () => {
       'execute:start',
       'execute:end',
     ]);
+  });
+
+  it('reuses a client idempotency key so a retry does not mint a second transfer group', async () => {
+    vi.mocked(randomUUID).mockReturnValueOnce('req-a').mockReturnValueOnce('req-b');
+    const body = {
+      amount: 100,
+      fromPaymentMethodId: 1,
+      toPaymentMethodId: 2,
+      transferDate: '2025-01-15',
+      idempotencyKey: 'client-transfer-1',
+    };
+    const first = await POST(makeReq(body));
+    const second = await POST(makeReq(body));
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    const calls = vi.mocked(executeTreasuryTransfer).mock.calls;
+    expect(calls[0][1].transferGroupKey).toBe(transferGroupKeyFor(7, 'client-transfer-1'));
+    expect(calls[1][1].transferGroupKey).toBe(calls[0][1].transferGroupKey);
+    expect(calls[0][1].requestId).toBe('req-a');
+    expect(calls[1][1].requestId).toBe('req-b');
+  });
+
+  it('uses a new request id as the transfer scope only when the client sends no key', async () => {
+    vi.mocked(randomUUID).mockReturnValueOnce('req-a').mockReturnValueOnce('req-b');
+    const body = {
+      amount: 100,
+      fromPaymentMethodId: 1,
+      toPaymentMethodId: 2,
+      transferDate: '2025-01-15',
+    };
+    await POST(makeReq(body));
+    await POST(makeReq(body));
+    const calls = vi.mocked(executeTreasuryTransfer).mock.calls;
+    expect(calls[0][1].transferGroupKey).toBe(transferGroupKeyFor(7, 'req-a'));
+    expect(calls[1][1].transferGroupKey).toBe(transferGroupKeyFor(7, 'req-b'));
   });
 });

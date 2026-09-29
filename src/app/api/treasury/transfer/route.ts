@@ -9,6 +9,22 @@ import { randomUUID } from 'crypto';
 
 const YYYY_MM_DD_REGEX = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
+/** Stable scope for one transfer attempt. A retry must reuse it. */
+export function resolveTransferIdempotencyScope(
+  headerKey: string | null | undefined,
+  bodyKey: unknown,
+  requestId: string,
+): string {
+  const header = headerKey?.trim();
+  if (header) return header.slice(0, 200);
+  if (typeof bodyKey === 'string' && bodyKey.trim()) return bodyKey.trim().slice(0, 200);
+  return requestId;
+}
+
+export function transferGroupKeyFor(branchId: number, scope: string): string {
+  return `treasury.transfer:${branchId}:${scope}`;
+}
+
 function isMssqlError(err: unknown): err is { number?: number; state?: number; class?: number; lineNumber?: number; procName?: string; message: string } {
   return err instanceof Error && typeof (err as any).number === 'number';
 }
@@ -212,7 +228,12 @@ export async function POST(req: NextRequest) {
 
     const actor = await buildStaffActorContext(session.UserID);
     const treasuryPorts = await buildTreasuryWritePorts(actor);
-    const transferGroupKey = `treasury.transfer:${branchId}:${requestId}`;
+    const transferScope = resolveTransferIdempotencyScope(
+      req.headers.get('idempotency-key') ?? req.headers.get('x-idempotency-key'),
+      body.idempotencyKey,
+      requestId,
+    );
+    const transferGroupKey = transferGroupKeyFor(branchId, transferScope);
 
     const result = await executeAuditedAction({
       actionType: 'treasury_transfer',

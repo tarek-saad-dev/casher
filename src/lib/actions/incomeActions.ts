@@ -11,6 +11,7 @@ import { reverseTreasuryOwnedMovement } from '@/apps/treasury/application/revers
 import { buildStaffActorContext, resolveBootstrapTenantId } from '@/lib/bookingSchedulingComposition';
 import { buildTreasuryWritePorts } from '@/lib/treasuryComposition';
 import { syncEmployeeFundingFromCashMove } from '@/lib/services/employeeLedgerFundingSyncService';
+import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 import type { EmployeeFundingSyncResult } from '@/lib/services/employeeLedgerFundingSyncService';
 
 export interface IncomeSnapshot {
@@ -51,6 +52,7 @@ export async function getIncomeSnapshot(
         ISNULL(IsEmployeePayrollIncome, 0) AS IsEmployeePayrollIncome
       FROM dbo.TblCashMove
       WHERE ID = @id AND invType = N'ايرادات'
+        AND ${liveCashMovePredicate()}
     `);
   return result.recordset[0] || null;
 }
@@ -108,6 +110,7 @@ export async function updateIncome(
         PaymentMethodID = @paymentMethodId,
         ShiftMoveID = COALESCE(@shiftMoveId, ShiftMoveID)
       WHERE ID = @id AND invType = N'ايرادات'
+        AND ${liveCashMovePredicate()}
     `);
 
   const updated = await getIncomeSnapshot(transaction, id);
@@ -160,12 +163,12 @@ export async function deleteIncome(
           viewLocationId: null,
         };
     const ports = await buildTreasuryWritePorts(actor);
-    await reverseTreasuryOwnedMovement(transaction, ports, {
+    const reversed = await reverseTreasuryOwnedMovement(transaction, ports, {
       cashMoveId: id,
       idempotencyKey: options?.idempotencyKey ?? `income.reverse:${id}`,
       reason: 'delete',
     });
-    return { deleted: true, ledgerDeletedCount: 0 };
+    return { deleted: true, ledgerDeletedCount: reversed.ledgerVoidedCount };
   }
 
   const result = await deleteCashMoveWithLinkedLedgerEntries(transaction, id);

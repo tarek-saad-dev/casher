@@ -11,6 +11,8 @@ import {
 
 export type CashMoveInsertInput = PostCommand & {
   reversalOfCashMoveId?: number | null;
+  /** Accounting reversal persists the negated amount on the same inOut. */
+  negateAmount?: boolean;
 };
 
 /**
@@ -22,6 +24,9 @@ export async function insertCashMoveRow(
 ): Promise<number> {
   const invType: LegacyInvType = resolveLegacyInvType(command);
   const inOut = resolveLegacyInOut(command.direction);
+  const storedAmount = command.negateAmount
+    ? -Math.abs(Number(command.amount))
+    : Number(command.amount);
   const invTime = command.invTime ?? new Date().toTimeString().slice(0, 8);
   const nextInvID = await allocateInvID(tx, 'TblCashMove', allocateInvTypeSeed(invType), 5000);
 
@@ -42,7 +47,7 @@ export async function insertCashMoveRow(
     .input('invTime', sql.NVarChar(50), invTime)
     .input('clientId', sql.Int, command.clientId ?? null)
     .input('expInId', sql.Int, command.categoryId ?? null)
-    .input('amount', sql.Decimal(10, 2), command.amount)
+    .input('amount', sql.Decimal(10, 2), storedAmount)
     .input('inOut', sql.NVarChar(5), inOut)
     .input('notes', sql.NVarChar(sql.MAX), command.notes?.trim() || null)
     .input('shiftMoveId', sql.Int, command.shiftInstanceId)

@@ -5,6 +5,7 @@ import 'server-only';
 import { getPool, sql } from '@/lib/db';
 import { listActiveBranches } from '@/lib/branch/repository';
 import { EMPLOYEE_FUNDING_CATEGORY_NAME } from '@/lib/services/employeeLedgerFundingService';
+import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 import type {
   GroupDailyBranchSummary,
   GroupDailyDayStatus,
@@ -76,7 +77,8 @@ export async function loadGroupDailyTreasury(day: string): Promise<GroupDailyTre
       LEFT JOIN dbo.TblExpINCat cat ON cat.ExpINID = cm.ExpINID
       LEFT JOIN dbo.TblShiftMove sm ON sm.ID = cm.ShiftMoveID
       LEFT JOIN dbo.TblUser u ON u.UserID = sm.UserID
-      WHERE (sm.ID IS NULL OR sm.BranchID = cm.BranchID)
+      WHERE ${liveCashMovePredicate('cm')}
+        AND (sm.ID IS NULL OR sm.BranchID = cm.BranchID)
         AND (
           EXISTS (
             SELECT 1 FROM dbo.TblNewDay d

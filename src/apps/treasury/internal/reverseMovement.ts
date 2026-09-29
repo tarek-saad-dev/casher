@@ -11,7 +11,7 @@ import {
   isRegistryUniqueViolation,
   TreasuryIdempotencyConflictError,
 } from './idempotencyStore';
-import { oppositeDirection } from './movementMapping';
+import { buildReversalPosting } from './reversalPosting';
 import { publishTreasuryOutboxEvent } from './treasuryOutbox';
 
 type OriginalMovement = {
@@ -93,22 +93,27 @@ export async function reverseMoneyMovement(
     throw new Error('Original movement already reversed but reversal row missing');
   }
 
-  const originalDirection = movement.inOut === 'in' ? 'in' : 'out';
+  const posting = buildReversalPosting({
+    inOut: movement.inOut,
+    invType: movement.invType,
+    amount: Number(movement.GrandTolal),
+  });
   const reversalCashMoveId = await insertCashMoveRow(tx, {
     tenantId: command.tenantId,
     locationId: Number(movement.BranchID),
     businessDayId: Number(movement.BusinessDayID),
     shiftInstanceId: movement.ShiftMoveID != null ? Number(movement.ShiftMoveID) : null,
-    amount: Number(movement.GrandTolal),
-    direction: oppositeDirection(originalDirection),
+    amount: Math.abs(posting.storedAmount),
+    direction: posting.direction,
     reason: command.reason || 'reversal',
     sourceRef: registry.SourceRef ?? command.originalIdempotencyKey,
     paymentMethodId: movement.PaymentMethodID != null ? Number(movement.PaymentMethodID) : null,
     idempotencyKey: command.idempotencyKey,
     categoryId: movement.ExpINID,
     notes: movement.Notes ? `[reversal] ${movement.Notes}` : '[reversal]',
-    invType: movement.invType === 'ايرادات' ? 'income' : 'expense',
+    invType: posting.invType,
     reversalOfCashMoveId: movement.ID,
+    negateAmount: true,
   });
 
   await new sql.Request(tx)

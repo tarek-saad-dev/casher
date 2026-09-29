@@ -15,6 +15,7 @@ import {
   formatLedgerEntryDate,
   maybeSyncAdvanceLedgerForExpenseCashMove,
 } from '@/lib/services/employeeLedgerDualWrite';
+import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 
 export interface ExpenseSnapshot {
   ID: number;
@@ -53,6 +54,7 @@ export async function getExpenseSnapshot(
         Notes, ShiftMoveID, BranchID, BusinessDayID, EditHistory
       FROM dbo.TblCashMove
       WHERE ID = @id AND invType = N'مصروفات'
+        AND ${liveCashMovePredicate()}
     `);
   return result.recordset[0] || null;
 }
@@ -109,6 +111,7 @@ export async function updateExpense(
           Notes = @notes,
           EditHistory = @editHistory
       WHERE ID = @id AND invType = N'مصروفات'
+        AND ${liveCashMovePredicate()}
     `);
 
   const updated = await getExpenseSnapshot(transaction, id);
@@ -178,7 +181,8 @@ export async function updateExpenseCategory(
   await new sql.Request(transaction)
     .input('id', sql.Int, id)
     .input('expinid', sql.Int, expINID)
-    .query(`UPDATE dbo.TblCashMove SET ExpINID = @expinid WHERE ID = @id AND invType = N'مصروفات'`);
+    .query(`UPDATE dbo.TblCashMove SET ExpINID = @expinid WHERE ID = @id AND invType = N'مصروفات'
+        AND ${liveCashMovePredicate()}`);
 
   const updated = await getExpenseSnapshot(transaction, id);
   if (!updated) throw new Error('فشل تحديث تصنيف المصروف');
@@ -251,14 +255,14 @@ export async function deleteExpense(
           viewLocationId: null,
         };
     const ports = await buildTreasuryWritePorts(actor);
-    await reverseTreasuryOwnedMovement(transaction, ports, {
+    const reversed = await reverseTreasuryOwnedMovement(transaction, ports, {
       cashMoveId: id,
       idempotencyKey: options?.idempotencyKey ?? `expense.reverse:${id}`,
       reason: 'delete',
     });
     return {
       deleted: true,
-      ledgerDeletedCount: 0,
+      ledgerDeletedCount: reversed.ledgerVoidedCount,
       settlementDeleted: false,
       settlementCashMoveId: null,
       settlementLedgerDeletedCount: 0,

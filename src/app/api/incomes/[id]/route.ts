@@ -3,6 +3,7 @@ import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
 import { getIncomeSnapshot, updateIncome, deleteIncome } from '@/lib/actions/incomeActions';
+import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 import { cashMoveHardDeleteSuccessMessage } from '@/lib/services/cashMoveHardDeleteService';
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -46,6 +47,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
         LEFT JOIN dbo.TblShift S            ON SM.ShiftID        = S.ShiftID
         LEFT JOIN dbo.TblPaymentMethods PM  ON CM.PaymentMethodID = PM.PaymentID
         WHERE CM.ID = @id AND CM.invType = N'ايرادات' AND CM.BranchID = @branchId
+          AND ${liveCashMovePredicate('CM')}
       `);
 
     if (result.recordset.length === 0) return financialNotFoundResponse();

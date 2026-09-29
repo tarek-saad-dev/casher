@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     const today = url.searchParams.get('today'); // "1" = today only
     const paymentMethodId = url.searchParams.get('paymentMethodId');
 
-    let whereClause = "WHERE cm.invType = N'مصروفات' AND cm.inOut = N'out' AND cat.CatName LIKE N'%سلف%' AND cm.BranchID = @branchId";
+    let whereClause = "WHERE cm.invType = N'مصروفات' AND cm.inOut = N'out' AND ISNULL(cm.IsReversed, 0) = 0 AND cm.ReversalOfCashMoveId IS NULL AND cat.CatName LIKE N'%سلف%' AND cm.BranchID = @branchId";
     const request = db.request();
     request.input('branchId', sql.Int, branch.branchId);
 

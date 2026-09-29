@@ -38,7 +38,9 @@ export async function GET(req: NextRequest) {
     const branchPlaceholders = branchIds.map((_, i) => `@branchId${i}`).join(',');
     let whereClause = `
       WHERE cm.invType = N'مصروفات' 
-        AND cm.inOut = N'out' 
+        AND cm.inOut = N'out'
+        AND ISNULL(cm.IsReversed, 0) = 0
+        AND cm.ReversalOfCashMoveId IS NULL 
         AND cat.CatName LIKE N'%سلف%'
         AND FORMAT(cm.invDate, 'yyyy-MM') = @targetMonth
         AND cm.BranchID IN (${branchPlaceholders})
@@ -90,7 +92,9 @@ export async function GET(req: NextRequest) {
         LEFT JOIN [dbo].[TblExpCatEmpMap] map ON cm.ExpINID = map.ExpINID AND map.TxnKind = N'advance'
         LEFT JOIN [dbo].[TblEmp] emp ON map.EmpID = emp.EmpID
         WHERE cm.invType = N'مصروفات' 
-          AND cm.inOut = N'out' 
+          AND cm.inOut = N'out'
+        AND ISNULL(cm.IsReversed, 0) = 0
+        AND cm.ReversalOfCashMoveId IS NULL 
           AND cat.CatName LIKE N'%سلف%'
           AND FORMAT(cm.invDate, 'yyyy-MM') = @targetMonth
           AND cm.BranchID IN (${branchPlaceholders})

@@ -89,6 +89,7 @@ export async function GET() {
         SELECT ExpINID, COUNT(*) AS UsageCount
         FROM [dbo].[TblCashMove]
         WHERE invType = N'مصروفات' AND inOut = N'out'
+          AND ISNULL(IsReversed, 0) = 0 AND ReversalOfCashMoveId IS NULL
           AND invDate >= DATEADD(MONTH, -3, GETDATE())
         GROUP BY ExpINID
       ) usage ON cat.ExpINID = usage.ExpINID
@@ -96,6 +97,7 @@ export async function GET() {
         SELECT ExpINID, COUNT(*) AS DailyUsageCount
         FROM [dbo].[TblCashMove]
         WHERE invType = N'مصروفات' AND inOut = N'out'
+          AND ISNULL(IsReversed, 0) = 0 AND ReversalOfCashMoveId IS NULL
           AND invDate = CAST(GETDATE() AS DATE)
         GROUP BY ExpINID
       ) daily ON cat.ExpINID = daily.ExpINID

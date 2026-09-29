@@ -170,4 +170,55 @@ describe('MoneyMovement port characterization', () => {
       }),
     ).rejects.toBeInstanceOf(TreasuryIdempotencyConflictError);
   });
+
+  it('replays a transfer group as the original pair', async () => {
+    const { findRegistryRowsByTransferGroup } = await import('../internal/idempotencyStore');
+    const { insertCashMoveRow } = await import('../internal/cashMoveInsert');
+    const { postTransferPair } = await import('../internal/postTransferPair');
+    vi.mocked(findRegistryRowsByTransferGroup).mockResolvedValueOnce([
+      {
+        Id: 1,
+        TenantId: actor.tenantId!,
+        IdempotencyKey: 'g:out',
+        Fingerprint: 'a',
+        Kind: 'transfer_out',
+        CashMoveId: 11,
+        TransferGroupKey: 'g',
+        OriginalIdempotencyKey: null,
+        SourceRef: 'g',
+      },
+      {
+        Id: 2,
+        TenantId: actor.tenantId!,
+        IdempotencyKey: 'g:in',
+        Fingerprint: 'b',
+        Kind: 'transfer_in',
+        CashMoveId: 12,
+        TransferGroupKey: 'g',
+        OriginalIdempotencyKey: null,
+        SourceRef: 'g',
+      },
+    ]);
+    const pair = await postTransferPair(tx, actor, {
+      tenantId: actor.tenantId!,
+      locationId: 1,
+      businessDayId: 10,
+      shiftInstanceId: 5,
+      amount: 25,
+      sourceRef: 'g',
+      transferGroupKey: 'g',
+      fromPaymentMethodId: 1,
+      toPaymentMethodId: 2,
+      expenseCategoryId: 3,
+      incomeCategoryId: 4,
+      expenseNotes: 'out',
+      incomeNotes: 'in',
+    });
+    expect(pair).toEqual({
+      expenseCashMoveId: 11,
+      incomeCashMoveId: 12,
+      idempotentReplay: true,
+    });
+    expect(insertCashMoveRow).not.toHaveBeenCalled();
+  });
 });

@@ -75,6 +75,8 @@ export async function getPartnersExpenseCategoryTransactions(
     LEFT JOIN [dbo].[TblPaymentMethods] pm ON cm.PaymentMethodID = pm.PaymentID
     WHERE cm.invType = N'مصروفات'
       AND cm.inOut = N'out'
+      AND ISNULL(cm.IsReversed, 0) = 0
+      AND cm.ReversalOfCashMoveId IS NULL
       AND YEAR(cm.invDate) = @year
       AND MONTH(cm.invDate) = @month
       AND cm.BranchID = @branchId

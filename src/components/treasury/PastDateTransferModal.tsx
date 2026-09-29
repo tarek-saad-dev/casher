@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   X, ArrowRightLeft, Loader2, ArrowDownLeft, ArrowUpRight, Repeat2,
 } from 'lucide-react';
@@ -54,6 +54,7 @@ export default function PastDateTransferModal({
   const [notes, setNotes] = useState('');
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(false);
+  const idempotencyRef = useRef<{ payload: string; key: string } | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -137,6 +138,12 @@ export default function PastDateTransferModal({
     setLoading(true);
     setError('');
 
+    const payload = `${attachToOpenDay ? 'open' : transferDate}:${fromPaymentMethod}:${toPaymentMethod}:${transferAmount}:${notes}`;
+    if (!idempotencyRef.current || idempotencyRef.current.payload !== payload) {
+      idempotencyRef.current = { payload, key: crypto.randomUUID() };
+    }
+    const idempotencyKey = idempotencyRef.current.key;
+
     const resetForm = () => {
       setTransferDate('');
       setAmount('');
@@ -157,6 +164,7 @@ export default function PastDateTransferModal({
           fromPaymentMethodId: parseInt(fromPaymentMethod),
           toPaymentMethodId: parseInt(toPaymentMethod),
           notes: notes || 'تحويل بين طرق الدفع',
+          idempotencyKey,
         }),
       });
 
@@ -166,6 +174,7 @@ export default function PastDateTransferModal({
         throw new Error(result.error || 'فشل التحويل');
       }
 
+      idempotencyRef.current = null;
       onTransferComplete();
       onClose();
       resetForm();

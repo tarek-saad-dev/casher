@@ -3,6 +3,7 @@ import { getPool, sql } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
 import { getExpenseSnapshot, updateExpense, deleteExpense } from '@/lib/actions/expenseActions';
+import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 import { cashMoveHardDeleteSuccessMessage } from '@/lib/services/cashMoveHardDeleteService';
 import { EmployeeLedgerDualWriteError } from '@/lib/services/employeeLedgerDualWrite';
 
@@ -243,6 +244,7 @@ export async function GET(
         WHERE cm.ID = @id
           AND cm.invType = N'مصروفات'
           AND cm.BranchID = @branchId
+          AND ${liveCashMovePredicate('cm')}
       `);
 
     if (result.recordset.length === 0) {

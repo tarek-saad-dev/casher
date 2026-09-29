@@ -77,6 +77,7 @@ export async function GET() {
           SUM(GrandTolal) AS monthly_total
         FROM [dbo].[TblCashMove]
         WHERE invType = N'مصروفات' AND inOut = N'out'
+          AND ISNULL(IsReversed, 0) = 0 AND ReversalOfCashMoveId IS NULL
           AND invDate >= DATEADD(month, -6, GETDATE())
           AND invDate < CAST(GETDATE() AS DATE)
         GROUP BY YEAR(invDate) * 100 + MONTH(invDate)
@@ -93,6 +94,7 @@ export async function GET() {
           SUM(GrandTolal) AS monthly_total
         FROM [dbo].[TblCashMove]
         WHERE invType = N'ايرادات' AND inOut = N'in'
+          AND ISNULL(IsReversed, 0) = 0 AND ReversalOfCashMoveId IS NULL
           AND invDate >= DATEADD(month, -6, GETDATE())
           AND invDate < CAST(GETDATE() AS DATE)
         GROUP BY YEAR(invDate) * 100 + MONTH(invDate)
@@ -113,6 +115,7 @@ export async function GET() {
           SUM(GrandTolal) AS monthly_total
         FROM [dbo].[TblCashMove]
         WHERE invType = N'مصروفات' AND inOut = N'out'
+          AND ISNULL(IsReversed, 0) = 0 AND ReversalOfCashMoveId IS NULL
           AND invDate >= DATEADD(month, -6, GETDATE())
           AND invDate < CAST(GETDATE() AS DATE)
           AND ExpINID IS NOT NULL

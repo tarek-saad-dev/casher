@@ -8,6 +8,7 @@ import { createIncomeThroughTreasury } from '@/apps/treasury/application/createI
 import { randomUUID } from 'crypto';
 import { isActiveBranchContext, requireActiveBranchContext } from '@/lib/branch';
 import { branchErrorResponse } from '@/lib/branch/operationalGates';
+import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 import { isFinancialReportClassificationEnabled } from '@/lib/accounting/financialReportFlags';
 import {
   buildCashMoveReportClassification,
@@ -94,6 +95,7 @@ export async function GET(req: NextRequest) {
         ORDER BY m.ID DESC
       ) map
       WHERE CM.invType = N'ايرادات'
+        AND ${liveCashMovePredicate('CM')}
         AND CM.BranchID = @branchId
         AND CM.invDate >= @fromDate
         AND CM.invDate <= @toDate
@@ -123,6 +125,7 @@ export async function GET(req: NextRequest) {
         MAX(invDate)                AS LastIncomeDate
       FROM dbo.TblCashMove
       WHERE invType = N'ايرادات'
+        AND ${liveCashMovePredicate()}
         AND BranchID = @branchId
         AND invDate >= @fromDate
         AND invDate <= @toDate
@@ -142,6 +145,7 @@ export async function GET(req: NextRequest) {
       FROM dbo.TblCashMove CM
       LEFT JOIN dbo.TblPaymentMethods PM ON CM.PaymentMethodID = PM.PaymentID
       WHERE CM.invType = N'ايرادات'
+        AND ${liveCashMovePredicate('CM')}
         AND CM.BranchID = @branchId
         AND CM.invDate >= @fromDate
         AND CM.invDate <= @toDate
@@ -163,6 +167,7 @@ export async function GET(req: NextRequest) {
       FROM dbo.TblCashMove CM
       LEFT JOIN dbo.TblExpINCat CAT ON CM.ExpINID = CAT.ExpINID
       WHERE CM.invType = N'ايرادات'
+        AND ${liveCashMovePredicate('CM')}
         AND CM.BranchID = @branchId
         AND CM.invDate >= @fromDate
         AND CM.invDate <= @toDate
@@ -188,6 +193,7 @@ export async function GET(req: NextRequest) {
       LEFT JOIN dbo.TblShift S      ON SM.ShiftID     = S.ShiftID
       LEFT JOIN dbo.TblUser U       ON SM.UserID      = U.UserID
       WHERE CM.invType = N'ايرادات'
+        AND ${liveCashMovePredicate('CM')}
         AND CM.BranchID = @branchId
         AND CM.invDate >= @fromDate
         AND CM.invDate <= @toDate

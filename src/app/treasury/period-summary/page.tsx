@@ -131,6 +131,7 @@ export default function TreasuryPeriodSummaryPage() {
   // ── Quick transfer-to-InstaPay ────────────────────────────────────────────
   // Multiple cells can transfer at once; keys are `${date}:${pmId}`.
   const instaBusyRef = useRef<Set<string>>(new Set());
+  const transferIdempotencyRef = useRef<Map<string, string>>(new Map());
   const instaInFlightRef = useRef(0);
   const instaNeedsReloadRef = useRef(false);
   const [instaBusy, setInstaBusy] = useState<Set<string>>(() => new Set());
@@ -207,6 +208,13 @@ export default function TreasuryPeriodSummaryPage() {
     setInstaBusy(new Set(instaBusyRef.current));
     setError(null);
 
+    const idempotencyScope = `${day.date}:${pm.id}:${instaPay.id}:${amount}`;
+    let idempotencyKey = transferIdempotencyRef.current.get(idempotencyScope);
+    if (!idempotencyKey) {
+      idempotencyKey = crypto.randomUUID();
+      transferIdempotencyRef.current.set(idempotencyScope, idempotencyKey);
+    }
+
     try {
       const res = await fetch('/api/treasury/transfer', {
         method: 'POST',
@@ -217,12 +225,14 @@ export default function TreasuryPeriodSummaryPage() {
           fromPaymentMethodId: pm.id,
           toPaymentMethodId: instaPay.id,
           notes: `تحويل تلقائي من ${pm.name} إلى ${instaPay.name}`,
+          idempotencyKey,
         }),
       });
       const result = await res.json();
       if (!res.ok || !result.success) {
         throw new Error(result.error || 'فشل التحويل');
       }
+      transferIdempotencyRef.current.delete(idempotencyScope);
       instaNeedsReloadRef.current = true;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'فشل التحويل إلى انستا باي');

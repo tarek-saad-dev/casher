@@ -3,11 +3,13 @@ import 'server-only';
 import { getPool, sql } from '@/lib/db';
 import { roundMoney } from '@/lib/reportMonthUtils';
 import type { CategoryBreakdown } from '@/lib/types';
+import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 
 // Phase 1E: branch-scoped — every query below filters cm.BranchID = @branchId.
 const EXPENSE_BASE_WHERE = `
   invType = N'مصروفات'
   AND inOut = N'out'
+  AND ${liveCashMovePredicate()}
   AND YEAR(invDate) = @year
   AND MONTH(invDate) = @month
   AND BranchID = @branchId
