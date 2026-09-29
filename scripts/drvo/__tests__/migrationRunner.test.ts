@@ -47,6 +47,13 @@ function def(partial: Partial<DrvoMigrationDefinition> & Pick<DrvoMigrationDefin
     name: partial.name ?? partial.migrationKey,
     dependencies: partial.dependencies ?? [],
     checksum: partial.checksum ?? `sum-${partial.migrationKey}`,
+    control: partial.control ?? {
+      kind: 'verification',
+      risk: 'LOW',
+      requiresBackup: false,
+      lockProfile: 'none',
+      rollbackStrategy: 'test migration',
+    },
     apply: partial.apply ?? (async () => {}),
     verify: partial.verify ?? (async () => ({ ok: true, failures: [] })),
     reconcileBaseline: partial.reconcileBaseline,
