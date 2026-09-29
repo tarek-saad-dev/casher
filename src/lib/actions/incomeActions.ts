@@ -7,6 +7,9 @@ import {
   deleteCashMoveWithLinkedLedgerEntries,
   type DeleteCashMoveWithLedgerResult,
 } from '@/lib/services/cashMoveHardDeleteService';
+import { reverseTreasuryOwnedMovement } from '@/apps/treasury/application/reverseTreasuryMovement';
+import { buildStaffActorContext, resolveBootstrapTenantId } from '@/lib/bookingSchedulingComposition';
+import { buildTreasuryWritePorts } from '@/lib/treasuryComposition';
 import { syncEmployeeFundingFromCashMove } from '@/lib/services/employeeLedgerFundingSyncService';
 import type { EmployeeFundingSyncResult } from '@/lib/services/employeeLedgerFundingSyncService';
 
@@ -122,6 +125,7 @@ export async function deleteIncome(
   transaction: sql.Transaction,
   id: number,
   activeBranchId?: number,
+  options?: { userId?: number; idempotencyKey?: string },
 ): Promise<Extract<DeleteCashMoveWithLedgerResult, { deleted: true }>> {
   const existing = await getIncomeSnapshot(transaction, id);
   if (!existing) {
@@ -132,6 +136,36 @@ export async function deleteIncome(
     Number(existing.BranchID) !== Number(activeBranchId)
   ) {
     throw new Error('غير موجود');
+  }
+
+  const tenantId = options?.userId
+    ? (await buildStaffActorContext(options.userId)).tenantId ?? (await resolveBootstrapTenantId())
+    : await resolveBootstrapTenantId();
+  const owned = await new sql.Request(transaction)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('cashMoveId', sql.Int, id)
+    .query(`
+      SELECT TOP 1 IdempotencyKey FROM dbo.TreasuryMovementRegistry
+      WHERE TenantId = @tenantId AND CashMoveId = @cashMoveId AND Kind <> 'reverse'
+    `);
+
+  if (owned.recordset.length > 0) {
+    const actor = options?.userId
+      ? await buildStaffActorContext(options.userId)
+      : {
+          actorType: 'staff' as const,
+          actorId: '0',
+          tenantId,
+          membershipId: null,
+          viewLocationId: null,
+        };
+    const ports = await buildTreasuryWritePorts(actor);
+    await reverseTreasuryOwnedMovement(transaction, ports, {
+      cashMoveId: id,
+      idempotencyKey: options?.idempotencyKey ?? `income.reverse:${id}`,
+      reason: 'delete',
+    });
+    return { deleted: true, ledgerDeletedCount: 0 };
   }
 
   const result = await deleteCashMoveWithLinkedLedgerEntries(transaction, id);

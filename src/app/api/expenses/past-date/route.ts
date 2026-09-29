@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool, sql, allocateInvID } from "@/lib/db";
+import { getPool, sql } from "@/lib/db";
+import { withUnitOfWork } from '@/platform/public';
+import { buildStaffActorContext } from '@/lib/bookingSchedulingComposition';
+import { buildTreasuryWritePorts } from '@/lib/treasuryComposition';
+import { createExpenseThroughTreasury } from '@/apps/treasury/application/createExpense';
 import { getSession } from "@/lib/session";
 import { requireRole, isAuthResult } from '@/lib/api-auth';
 import { randomUUID } from 'crypto';
@@ -114,109 +118,57 @@ export async function POST(req: NextRequest) {
     }
     const catName = catResult.recordset[0].CatName;
 
-    // ──── Transaction (minimal: only invID allocation + insert) ────
-    let transactionStarted = false;
-    let transactionCompleted = false;
-    const transaction = new sql.Transaction(db);
+    const finalAmount = Math.max(0, Number(amount));
+    const finalInvTime = invTime || '12:00';
+    const notesText = notes?.trim() || catName;
+    const actor = await buildStaffActorContext(session.UserID);
+    const treasuryPorts = await buildTreasuryWritePorts(actor);
+    const idempotencyKey =
+      typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim()
+        ? body.idempotencyKey.trim()
+        : `expense.past:${branchId}:${requestId}`;
 
     try {
-      log('before-transaction-begin');
-      await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
-      transactionStarted = true;
-      log('after-transaction-begin');
+      const created = await withUnitOfWork(async ({ transaction }) => {
+        const result = await createExpenseThroughTreasury(transaction, treasuryPorts, {
+          locationId: branchId,
+          amount: finalAmount,
+          categoryId: expINID,
+          paymentMethodId,
+          notes: notesText,
+          idempotencyKey,
+          invTime: finalInvTime,
+          historical: {
+            businessDayId,
+            businessDate: String(invDate).slice(0, 10),
+            shiftInstanceId: historical.ownership.shiftMoveId,
+          },
+        });
 
-      // Idempotency: check for identical past-date expense
-      log('before-idempotency-check');
-      const dupCheck = await new sql.Request(transaction)
-        .input('invDate', sql.Date, invDate)
-        .input('expINID', sql.Int, expINID)
-        .input('amount', sql.Decimal(10, 2), Number(amount))
-        .input('paymentMethodId', sql.Int, paymentMethodId)
-        .query(`
-          SELECT TOP 1 ID, invID
-          FROM [dbo].[TblCashMove]
-          WHERE invType = N'مصروفات'
-            AND invDate = @invDate
-            AND ExpINID = @expINID
-            AND GrandTolal = @amount
-            AND PaymentMethodID = @paymentMethodId
-            AND ShiftMoveID IS NULL
-          ORDER BY ID DESC
-        `);
-      log('after-idempotency-check');
-      if (dupCheck.recordset.length > 0) {
-        const dup = dupCheck.recordset[0];
-        log('idempotency-detected', { existingId: dup.ID, existingInvID: dup.invID });
         const ledgerResult = await maybeSyncAdvanceLedgerForExpenseCashMove(db, transaction, {
-          cashMoveId: dup.ID,
+          cashMoveId: result.cashMoveId,
           expINID,
           entryDate: formatLedgerEntryDate(invDate),
-          amount: Number(amount),
+          amount: finalAmount,
           createdByUserId: session.UserID,
         });
-        await transaction.commit();
-        transactionCompleted = true;
-        log('committed-duplicate');
-        return NextResponse.json({
-          success: true,
-          message: "تم إضافة المصروف للتاريخ المحدد بنجاح",
-          ledgerDualWrite: ledgerResult.ledgerDualWrite,
-          ledgerSync: ledgerResult.outcome ?? null,
-          data: { ID: dup.ID, invID: dup.invID, CategoryName: catName, duplicate: true },
-        });
-      }
 
-      // Allocate invID safely (no TABLOCKX)
-      log('before-invID-allocation');
-      const newInvID = await allocateInvID(transaction, 'TblCashMove', 'مصروفات', 5000);
-      log('after-invID-allocation', { newInvID });
+        const rowRes = await new sql.Request(transaction)
+          .input('id', sql.Int, result.cashMoveId)
+          .query(`
+            SELECT ID, invID, invDate, invTime, ExpINID, GrandTolal AS Amount, Notes
+            FROM dbo.TblCashMove WHERE ID = @id
+          `);
 
-      // Prepare values
-      const finalAmount = Math.max(0, Number(amount));
-      const finalInvTime = invTime || "12:00";
-      const notesText = notes?.trim() || catName;
-
-      // Insert into TblCashMove for past date
-      log('before-cash-move-insert');
-      const cashReq = new sql.Request(transaction);
-      cashReq
-        .input("invID", sql.Int, newInvID)
-        .input("invType", sql.NVarChar(20), "مصروفات")
-        .input("invDate", sql.Date, invDate)
-        .input("invTime", sql.NVarChar(50), finalInvTime)
-        .input("ClientID", sql.Int, null)
-        .input("expINID", sql.Int, expINID)
-        .input("amount", sql.Decimal(10, 2), finalAmount)
-        .input("inOut", sql.NVarChar(10), "out")
-        .input("notes", sql.NVarChar(sql.MAX), notesText)
-        .input("shiftMoveID", sql.Int, historical.ownership.shiftMoveId)
-        .input("paymentMethodID", sql.Int, paymentMethodId)
-        .input("branchID", sql.Int, branchId)
-        .input("businessDayID", sql.Int, businessDayId);
-
-      const insertResult = await cashReq.query(`
-        INSERT INTO [dbo].[TblCashMove]
-          (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID)
-        OUTPUT
-          INSERTED.ID, INSERTED.invID, INSERTED.invDate, INSERTED.invTime,
-          INSERTED.ExpINID, INSERTED.GrandTolal AS Amount, INSERTED.Notes
-        VALUES
-          (@invID, @invType, @invDate, @invTime, @ClientID, @expINID, @amount, @inOut, @notes, @shiftMoveID, @paymentMethodID, @branchID, @businessDayID)
-      `);
-      log('after-cash-move-insert');
-
-      const newRecord = insertResult.recordset[0];
-      const ledgerResult = await maybeSyncAdvanceLedgerForExpenseCashMove(db, transaction, {
-        cashMoveId: newRecord.ID,
-        expINID,
-        entryDate: formatLedgerEntryDate(invDate),
-        amount: finalAmount,
-        createdByUserId: session.UserID,
+        return {
+          newRecord: rowRes.recordset[0],
+          ledgerResult,
+          idempotentReplay: result.idempotentReplay,
+        };
       });
 
-      log('before-commit');
-      await transaction.commit();
-      transactionCompleted = true;
+      const newRecord = created.newRecord;
+      const ledgerResult = created.ledgerResult;
       log('after-commit');
 
       const advanceWa = await maybeScheduleAdvanceWhatsAppFromExpenseCategory({
@@ -233,6 +185,7 @@ export async function POST(req: NextRequest) {
         ledgerDualWrite: ledgerResult.ledgerDualWrite,
         ledgerSync: ledgerResult.outcome ?? null,
         advanceWhatsApp: advanceWa.scheduled,
+        idempotentReplay: created.idempotentReplay,
         data: {
           ID: newRecord.ID,
           invID: newRecord.invID,
@@ -242,14 +195,12 @@ export async function POST(req: NextRequest) {
           Amount: newRecord.Amount,
           Notes: newRecord.Notes,
           CategoryName: catName,
+          duplicate: created.idempotentReplay,
         },
-      });
+      }, { status: created.idempotentReplay ? 200 : 201 });
     } catch (error) {
       if (error instanceof EmployeeLedgerDualWriteError) {
         log('ledger-dual-write-error', { error: error.message });
-        if (transactionStarted && !transactionCompleted) {
-          try { await transaction.rollback(); } catch { /* ignore */ }
-        }
         return NextResponse.json(
           { error: error.message, requestId },
           { status: 503 },
@@ -260,12 +211,6 @@ export async function POST(req: NextRequest) {
         code: (error as any)?.code,
         number: (error as any)?.number,
       });
-      if (transactionStarted && !transactionCompleted) {
-        log('before-rollback');
-        try { await transaction.rollback(); log('after-rollback'); } catch (rbErr) {
-          log('rollback-failed', { error: rbErr instanceof Error ? rbErr.message : String(rbErr) });
-        }
-      }
 
       const errCode = (error as any)?.code;
       const errStatus = (error as any)?.statusCode;

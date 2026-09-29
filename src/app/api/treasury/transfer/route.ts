@@ -3,6 +3,8 @@ import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
 import { executeTreasuryTransfer, getPaymentMethodBalance } from '@/lib/actions/treasuryActions';
+import { buildStaffActorContext } from '@/lib/bookingSchedulingComposition';
+import { buildTreasuryWritePorts } from '@/lib/treasuryComposition';
 import { randomUUID } from 'crypto';
 
 const YYYY_MM_DD_REGEX = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
@@ -208,6 +210,10 @@ export async function POST(req: NextRequest) {
       resolvedInvDate = owned.ownership.businessDate ?? undefined;
     }
 
+    const actor = await buildStaffActorContext(session.UserID);
+    const treasuryPorts = await buildTreasuryWritePorts(actor);
+    const transferGroupKey = `treasury.transfer:${branchId}:${requestId}`;
+
     const result = await executeAuditedAction({
       actionType: 'treasury_transfer',
       user: session,
@@ -245,6 +251,8 @@ export async function POST(req: NextRequest) {
         requestId,
         branchId,
         businessDayId,
+        transferGroupKey,
+        treasuryPorts,
       }),
       loadNewData: async (transaction, result) => {
         const balanceOpts = transferDate ? { asOfDate: transferDate } : undefined;

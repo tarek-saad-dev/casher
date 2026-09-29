@@ -208,6 +208,7 @@ export async function deleteExpense(
   transaction: sql.Transaction,
   id: number,
   activeBranchId?: number,
+  options?: { userId?: number; idempotencyKey?: string },
 ): Promise<DeleteExpenseResult> {
   const existing = await getExpenseSnapshot(transaction, id);
   if (!existing) {
@@ -218,6 +219,50 @@ export async function deleteExpense(
     Number(existing.BranchID) !== Number(activeBranchId)
   ) {
     throw new Error('غير موجود');
+  }
+
+  const { buildStaffActorContext, resolveBootstrapTenantId } = await import(
+    '@/lib/bookingSchedulingComposition'
+  );
+  const { buildTreasuryWritePorts } = await import('@/lib/treasuryComposition');
+  const { reverseTreasuryOwnedMovement } = await import(
+    '@/apps/treasury/application/reverseTreasuryMovement'
+  );
+
+  const tenantId = options?.userId
+    ? (await buildStaffActorContext(options.userId)).tenantId ?? (await resolveBootstrapTenantId())
+    : await resolveBootstrapTenantId();
+  const owned = await new sql.Request(transaction)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('cashMoveId', sql.Int, id)
+    .query(`
+      SELECT TOP 1 IdempotencyKey FROM dbo.TreasuryMovementRegistry
+      WHERE TenantId = @tenantId AND CashMoveId = @cashMoveId AND Kind <> 'reverse'
+    `);
+
+  if (owned.recordset.length > 0) {
+    const actor = options?.userId
+      ? await buildStaffActorContext(options.userId)
+      : {
+          actorType: 'staff' as const,
+          actorId: '0',
+          tenantId,
+          membershipId: null,
+          viewLocationId: null,
+        };
+    const ports = await buildTreasuryWritePorts(actor);
+    await reverseTreasuryOwnedMovement(transaction, ports, {
+      cashMoveId: id,
+      idempotencyKey: options?.idempotencyKey ?? `expense.reverse:${id}`,
+      reason: 'delete',
+    });
+    return {
+      deleted: true,
+      ledgerDeletedCount: 0,
+      settlementDeleted: false,
+      settlementCashMoveId: null,
+      settlementLedgerDeletedCount: 0,
+    };
   }
 
   // Resolve paired settlement BEFORE deleting the expense (needs amount/shift/time).

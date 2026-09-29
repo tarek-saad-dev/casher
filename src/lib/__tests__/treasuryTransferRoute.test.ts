@@ -125,6 +125,32 @@ vi.mock('crypto', () => ({
   randomUUID: vi.fn(() => 'test-request-id-123'),
 }));
 
+vi.mock('@/lib/bookingSchedulingComposition', () => ({
+  buildStaffActorContext: vi.fn(async () => ({
+    actorType: 'staff',
+    actorId: '1',
+    tenantId: '11111111-1111-1111-1111-111111111111',
+    membershipId: null,
+    viewLocationId: null,
+  })),
+  resolveBootstrapTenantId: vi.fn(async () => '11111111-1111-1111-1111-111111111111'),
+}));
+
+vi.mock('@/lib/treasuryComposition', () => ({
+  buildTreasuryWritePorts: vi.fn(async () => ({
+    tenantId: '11111111-1111-1111-1111-111111111111',
+    actor: {
+      actorType: 'staff',
+      actorId: '1',
+      tenantId: '11111111-1111-1111-1111-111111111111',
+      membershipId: null,
+      viewLocationId: null,
+    },
+    calendar: {},
+    moneyMovement: {},
+  })),
+}));
+
 import { POST } from '@/app/api/treasury/transfer/route';
 import { getSession } from '@/lib/session';
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
