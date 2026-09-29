@@ -1,4 +1,5 @@
 import 'server-only';
+import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 
 import { getPool, sql } from '@/lib/db';
 import {
@@ -342,8 +343,7 @@ async function fetchAdvanceRows(
     INNER JOIN dbo.TblEmp e ON e.EmpID = m.EmpID
     WHERE cm.invType = N'مصروفات'
       AND cm.inOut = N'out'
-      AND ISNULL(cm.IsReversed, 0) = 0
-      AND cm.ReversalOfCashMoveId IS NULL
+      AND ${liveCashMovePredicate('cm')}
       AND cm.invDate >= @monthStart
       AND cm.invDate <= @monthEnd
       AND cm.GrandTolal > 0

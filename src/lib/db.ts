@@ -241,7 +241,16 @@ export async function getCloudPool(): Promise<sql.ConnectionPool> {
 
 // Get current target pool (legacy compatibility)
 export async function getPool(): Promise<sql.ConnectionPool> {
-  return currentDbTarget === "local" ? getLocalPool() : getCloudPool();
+  const p = currentDbTarget === "local" ? await getLocalPool() : await getCloudPool();
+  try {
+    const { primeCashMoveReversalColumnsCache } = await import(
+      "@/lib/treasury/liveCashMoveSql"
+    );
+    await primeCashMoveReversalColumnsCache(p);
+  } catch {
+    /* non-fatal: keep sync predicates on safe 1=1 default */
+  }
+  return p;
 }
 
 /**

@@ -1,22 +1,27 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   cashMoveHasReversalColumns,
   liveCashMoveAndClause,
   liveCashMovePredicate,
   resetCashMoveReversalColumnsCache,
+  setCashMoveReversalColumnsCacheForTests,
 } from '@/lib/treasury/liveCashMoveSql';
 
 describe('liveCashMoveSql', () => {
   afterEach(() => {
     resetCashMoveReversalColumnsCache();
-    vi.restoreAllMocks();
   });
 
-  it('builds aliased reversal predicate', () => {
+  it('defaults to safe 1=1 until columns are proven present', () => {
+    expect(liveCashMovePredicate('cm')).toBe('1=1');
+    expect(liveCashMovePredicate()).toBe('1=1');
+  });
+
+  it('emits reversal filter only after cache confirms columns exist', () => {
+    setCashMoveReversalColumnsCacheForTests(true);
     expect(liveCashMovePredicate('cm')).toBe(
       'ISNULL(cm.IsReversed, 0) = 0 AND cm.ReversalOfCashMoveId IS NULL',
     );
-    expect(liveCashMovePredicate()).toContain('ReversalOfCashMoveId IS NULL');
   });
 
   it('liveCashMoveAndClause is empty when columns are missing (pre-migration)', async () => {
@@ -29,7 +34,7 @@ describe('liveCashMoveSql', () => {
     } as never;
     expect(await cashMoveHasReversalColumns(pool)).toBe(false);
     expect(await liveCashMoveAndClause(pool)).toBe('');
-    expect(await liveCashMoveAndClause(pool, 'cm')).toBe('');
+    expect(liveCashMovePredicate('cm')).toBe('1=1');
   });
 
   it('liveCashMoveAndClause includes predicate when columns exist', async () => {
@@ -41,7 +46,8 @@ describe('liveCashMoveSql', () => {
       }),
     } as never;
     expect(await liveCashMoveAndClause(pool, 'cm')).toBe(
-      ` AND ${liveCashMovePredicate('cm')}`,
+      ' AND ISNULL(cm.IsReversed, 0) = 0 AND cm.ReversalOfCashMoveId IS NULL',
     );
+    expect(liveCashMovePredicate('cm')).toContain('ReversalOfCashMoveId');
   });
 });

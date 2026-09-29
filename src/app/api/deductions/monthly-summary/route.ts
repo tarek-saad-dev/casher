@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 import { getPool, sql } from '@/lib/db';
 import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import {
@@ -39,8 +40,7 @@ export async function GET(req: NextRequest) {
     let whereClause = `
       WHERE cm.invType = N'مصروفات' 
         AND cm.inOut = N'out'
-        AND ISNULL(cm.IsReversed, 0) = 0
-        AND cm.ReversalOfCashMoveId IS NULL 
+        AND ${liveCashMovePredicate('cm')} 
         AND cat.CatName LIKE N'%سلف%'
         AND FORMAT(cm.invDate, 'yyyy-MM') = @targetMonth
         AND cm.BranchID IN (${branchPlaceholders})
@@ -93,8 +93,7 @@ export async function GET(req: NextRequest) {
         LEFT JOIN [dbo].[TblEmp] emp ON map.EmpID = emp.EmpID
         WHERE cm.invType = N'مصروفات' 
           AND cm.inOut = N'out'
-        AND ISNULL(cm.IsReversed, 0) = 0
-        AND cm.ReversalOfCashMoveId IS NULL 
+        AND ${liveCashMovePredicate('cm')} 
           AND cat.CatName LIKE N'%سلف%'
           AND FORMAT(cm.invDate, 'yyyy-MM') = @targetMonth
           AND cm.BranchID IN (${branchPlaceholders})
