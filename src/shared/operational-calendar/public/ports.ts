@@ -12,6 +12,34 @@ export interface FinancialWriteContext {
   scope: FinancialWriteScope;
 }
 
+export interface OpenDayResult {
+  businessDayId: number;
+  locationId: number;
+  businessDate: string;
+}
+
+export interface CloseDayResult {
+  businessDayId: number;
+  locationId: number;
+  businessDate: string;
+  closedShifts: number;
+}
+
+export interface OpenShiftResult {
+  shiftInstanceId: number;
+  locationId: number;
+  businessDayId: number;
+  businessDate: string;
+  shiftDefinitionId: number;
+}
+
+export interface CloseShiftResult {
+  shiftInstanceId: number;
+  locationId: number;
+  businessDayId: number;
+  businessDate: string;
+}
+
 export interface OperationalCalendarPort {
   resolveFinancialWriteContext(
     tx: Transaction,
@@ -26,4 +54,24 @@ export interface OperationalCalendarPort {
     actor: ActorContext,
     input: { locationId: number; businessDate: string },
   ): Promise<boolean>;
+  openDay(
+    tx: Transaction,
+    actor: ActorContext,
+    input: { locationId: number; businessDate?: string },
+  ): Promise<OpenDayResult>;
+  closeDay(
+    tx: Transaction,
+    actor: ActorContext,
+    input: { locationId: number; forceCloseShifts?: boolean },
+  ): Promise<CloseDayResult>;
+  openShift(
+    tx: Transaction,
+    actor: ActorContext,
+    input: { locationId: number; shiftDefinitionId: number },
+  ): Promise<OpenShiftResult>;
+  closeShift(
+    tx: Transaction,
+    actor: ActorContext,
+    input: { shiftInstanceId: number; locationId: number },
+  ): Promise<CloseShiftResult>;
 }

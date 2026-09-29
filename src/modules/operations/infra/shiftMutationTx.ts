@@ -34,7 +34,7 @@ export async function executeOpenOrHandoffShift(args: {
   const tx = new sql.Transaction(db);
   await tx.begin();
   try {
-    const opened = await openOrHandoffInTransaction(tx, args);
+    const opened = await openOrHandoffShiftInTransaction(tx, args);
     await tx.commit();
     return opened;
   } catch (err) {
@@ -58,7 +58,7 @@ export async function executeOpenOrHandoffShift(args: {
   }
 }
 
-async function openOrHandoffInTransaction(
+export async function openOrHandoffShiftInTransaction(
   tx: sql.Transaction,
   args: {
     userId: number;
@@ -185,7 +185,7 @@ export async function executeCloseShiftById(args: {
   }
 }
 
-async function closeShiftInTransaction(
+export async function closeShiftInTransaction(
   tx: sql.Transaction,
   args: {
     shiftMoveId: number;
