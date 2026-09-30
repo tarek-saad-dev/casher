@@ -4,6 +4,8 @@
  * Proves the InsCashMoveSales coexistence guard inside rolled-back transactions:
  * trigger-only directions, Treasury pre-post skip, same-amount invoices,
  * split redistribution, and post-rollback absence.
+ * Also commits a sale-post idempotency conflict and checks the committed
+ * state is one CashMove and one registry row, then deletes that marker.
  */
 import path from 'path';
 import Module from 'module';
@@ -46,8 +48,9 @@ function forceStagingEnv(password: string) {
 }
 
 function fail(message: string): never {
-  console.error(`FAIL: ${message}`);
-  process.exit(1);
+  const error = new Error(`FAIL: ${message}`);
+  console.error(error.message);
+  throw error;
 }
 
 type SaleInvType = 'مبيعات' | 'مبيعات بالكارت' | 'م.مبيعات' | 'م.مبيعات بالكارت';
@@ -69,7 +72,12 @@ async function main() {
   const { getPool, closePool, allocateInvID } = await import('../src/lib/db');
   const { runDrvoMigrations } = await import('./drvo/runner');
   const { resolveBootstrapTenantId } = await import('../src/lib/bookingSchedulingComposition');
-  const { postSaleCashMove } = await import('../src/apps/treasury/internal/postSaleCashMove');
+  const { insertSaleCashMoveResolvingConflict, postSaleCashMove } = await import(
+    '../src/apps/treasury/internal/postSaleCashMove'
+  );
+  const { TreasuryIdempotencyConflictError } = await import(
+    '../src/apps/treasury/internal/idempotencyStore'
+  );
   const { defaultSaleIdempotencyKey } = await import('../src/apps/treasury/internal/saleCommandFingerprint');
   const { verifyInsCashMoveSalesGuard } = await import('./drvo/migrations/008-ins-cash-move-sales-guard');
   const { resolveSplitPaymentConfig } = await import('../src/lib/clearingMethod');
@@ -531,6 +539,221 @@ async function main() {
       fail('InsCashMoveSales disabled after smoke');
     }
     console.log('PASS: InsCashMoveSales still enabled after rollback');
+
+    async function proveCommittedRegistryConflict() {
+      const alloc = new sql.Transaction(pool);
+      await alloc.begin();
+      let invId = 0;
+      try {
+        await assertIdentity(alloc);
+        invId = await allocateInvID(alloc, 'TblinvServHead', 'مبيعات', 5000);
+        await alloc.commit();
+      } catch (err) {
+        try {
+          await alloc.rollback();
+        } catch {
+          /* allocation transaction already closed */
+        }
+        throw err;
+      }
+
+      const idempotencyKey = `drvo009-race:${invId}`;
+      const notes = `${MARKER}-RACE`;
+      const command = {
+        tenantId,
+        saleInvId: invId,
+        invType: 'مبيعات' as const,
+        invDate,
+        invTime: '14.40',
+        clientId: 1,
+        amount: 21,
+        inOut: 'in' as const,
+        notes,
+        shiftMoveId: shiftId,
+        paymentMethodId: pmId,
+        branchId,
+        businessDayId,
+        sourceRef: idempotencyKey,
+        idempotencyKey,
+      };
+
+      async function committedCounts() {
+        const counts = await pool
+          .request()
+          .input('invID', sql.Int, invId)
+          .input('invType', sql.NVarChar(20), command.invType)
+          .input('key', sql.NVarChar(256), idempotencyKey)
+          .query(`
+            SELECT
+              (SELECT COUNT(*) FROM dbo.TblCashMove WHERE invID = @invID AND invType = @invType) AS cashMoves,
+              (SELECT COUNT(*) FROM dbo.TreasuryMovementRegistry WHERE IdempotencyKey = @key AND Kind = N'sale') AS registry
+          `);
+        return {
+          cashMoves: Number(counts.recordset[0].cashMoves),
+          registry: Number(counts.recordset[0].registry),
+        };
+      }
+
+      let proofError: unknown = null;
+      try {
+        async function postCommitted() {
+          const local = new sql.Transaction(pool);
+          await local.begin();
+          try {
+            await assertIdentity(local);
+            const id = await postSaleCashMove(local, actor, command);
+            await local.commit();
+            return id;
+          } catch (err) {
+            try {
+              await local.rollback();
+            } catch {
+              /* transaction already closed */
+            }
+            throw err;
+          }
+        }
+
+        const [firstId, secondId] = await Promise.all([postCommitted(), postCommitted()]);
+        if (firstId !== secondId) {
+          fail(`concurrent sale post returned two CashMove ids ${firstId} and ${secondId}`);
+        }
+        let counts = await committedCounts();
+        if (counts.cashMoves !== 1 || counts.registry !== 1) {
+          fail(
+            `concurrent sale post committed cashMoves=${counts.cashMoves} registry=${counts.registry}`,
+          );
+        }
+        console.log('PASS: concurrent same-key sale post committed one CashMove and one registry row');
+
+        const conflictTx = new sql.Transaction(pool);
+        await conflictTx.begin();
+        try {
+          await assertIdentity(conflictTx);
+          const replayed = await insertSaleCashMoveResolvingConflict(conflictTx, command);
+          if (replayed !== firstId) {
+            fail(`unique-conflict replay returned ${replayed}, expected ${firstId}`);
+          }
+          expectOneDirection(
+            await saleCashMoves(conflictTx, invId, command.invType),
+            'in',
+            'in-transaction unique conflict',
+          );
+          await conflictTx.commit();
+        } catch (err) {
+          try {
+            await conflictTx.rollback();
+          } catch {
+            /* conflict transaction already closed */
+          }
+          throw err;
+        }
+        counts = await committedCounts();
+        if (counts.cashMoves !== 1 || counts.registry !== 1) {
+          fail(
+            `unique-conflict commit left cashMoves=${counts.cashMoves} registry=${counts.registry}`,
+          );
+        }
+        console.log('PASS: registry unique conflict rolled the extra CashMove back before commit');
+
+        const mismatchTx = new sql.Transaction(pool);
+        await mismatchTx.begin();
+        try {
+          await assertIdentity(mismatchTx);
+          let sawConflict = false;
+          try {
+            await insertSaleCashMoveResolvingConflict(mismatchTx, {
+              ...command,
+              amount: command.amount + 4,
+            });
+          } catch (err) {
+            if (!(err instanceof TreasuryIdempotencyConflictError)) throw err;
+            sawConflict = true;
+          }
+          if (!sawConflict) fail('mismatched sale fingerprint was accepted');
+          const stillOne = await saleCashMoves(mismatchTx, invId, command.invType);
+          expectOneDirection(stillOne, 'in', 'after mismatched fingerprint');
+          if (Number(stillOne[0].ID) !== firstId) {
+            fail('mismatched fingerprint replaced the original CashMove');
+          }
+          await mismatchTx.commit();
+        } catch (err) {
+          try {
+            await mismatchTx.rollback();
+          } catch {
+            /* mismatch transaction already closed */
+          }
+          throw err;
+        }
+        counts = await committedCounts();
+        if (counts.cashMoves !== 1 || counts.registry !== 1) {
+          fail(
+            `mismatched fingerprint commit left cashMoves=${counts.cashMoves} registry=${counts.registry}`,
+          );
+        }
+        console.log('PASS: mismatched fingerprint failed without an orphan CashMove');
+
+        const replayTx = new sql.Transaction(pool);
+        await replayTx.begin();
+        try {
+          await assertIdentity(replayTx);
+          const replayed = await postSaleCashMove(replayTx, actor, command);
+          if (replayed !== firstId) fail(`same-command replay returned ${replayed}, expected ${firstId}`);
+          await replayTx.rollback();
+        } catch (err) {
+          try {
+            await replayTx.rollback();
+          } catch {
+            /* replay transaction already closed */
+          }
+          throw err;
+        }
+        console.log('PASS: same-command replay returned the existing CashMoveId');
+      } catch (err) {
+        proofError = err;
+      } finally {
+        try {
+          const cleanup = new sql.Transaction(pool);
+          await cleanup.begin();
+          try {
+            await assertIdentity(cleanup);
+            await new sql.Request(cleanup)
+              .input('tenantId', sql.UniqueIdentifier, tenantId)
+              .input('key', sql.NVarChar(256), idempotencyKey)
+              .input('outboxKey', sql.NVarChar(256), `treasury.sale.posted:${idempotencyKey}`)
+              .input('invID', sql.Int, invId)
+              .input('invType', sql.NVarChar(20), command.invType)
+              .query(`
+                DELETE FROM dbo.PlatformOutbox
+                WHERE TenantId = @tenantId AND IdempotencyKey = @outboxKey;
+                DELETE FROM dbo.TreasuryMovementRegistry
+                WHERE TenantId = @tenantId AND IdempotencyKey = @key;
+                DELETE FROM dbo.TblCashMove
+                WHERE invID = @invID AND invType = @invType;
+              `);
+            await cleanup.commit();
+          } catch (err) {
+            try {
+              await cleanup.rollback();
+            } catch {
+              /* cleanup transaction already closed */
+            }
+            throw err;
+          }
+          const left = await committedCounts();
+          if (left.cashMoves !== 0 || left.registry !== 0) {
+            fail(`race marker cleanup left cashMoves=${left.cashMoves} registry=${left.registry}`);
+          }
+          console.log('PASS: committed race marker removed from staging');
+        } catch (cleanupErr) {
+          if (!proofError) proofError = cleanupErr;
+          else console.error(cleanupErr instanceof Error ? cleanupErr.message : cleanupErr);
+        }
+      }
+      if (proofError) throw proofError;
+    }
+
+    await proveCommittedRegistryConflict();
   } finally {
     await closePool();
   }

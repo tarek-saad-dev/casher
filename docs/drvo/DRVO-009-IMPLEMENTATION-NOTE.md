@@ -10,7 +10,7 @@ Production: apply via Migration Control Plane PLAN/APPLY **before** activating a
 
 ### Stage 2 — application cutover (separate activation PR)
 
-Set `pos-sale-treasury.rollout = extracted` in `moduleManifest.ts` after Stage 1 is live and verified.
+Set `pos-sale-treasury.rollout = extracted` in `moduleManifest.ts` after Stage 1 is live and verified. Activation also requires staging proof that Treasury pre-post plus split redistribution still yields one initial sale CashMove and the expected transfer rows.
 
 Until then, default `rollout: legacy` keeps trigger-only sale CashMove.
 
@@ -18,7 +18,7 @@ Until then, default `rollout: legacy` keeps trigger-only sale CashMove.
 
 | Component | Role |
 | --- | --- |
-| `postSaleCashMove` | Treasury-owned sale insert using sale invID + registry Kind=sale |
+| `postSaleCashMove` | Treasury-owned sale insert using sale invID + registry Kind=sale. CashMove and registry insert share savepoint `drvo_sale_post`; a registry unique violation rolls the new CashMove back before returning the existing id |
 | `legacySaleCreateAdapter` | When flag on: post Treasury CashMove after allocateInvID, before head insert |
 | `InsCashMoveSales` guard | Skips when registry sale row exists for invID+invType |
 
