@@ -75,11 +75,21 @@ Rules:
 
 If state is **partial or ambiguous** (e.g. two tenants, branch ID mismatch) → abort with explicit error. Never guess.
 
-## 6. Deployment order (after)
+## 6. Production migration + deployment order (after)
+
+Migration-bearing PR lifecycle:
 
 ```
-sync → npm ci → build → drvo:migrate-production → drvo:verify → restart → health
+open PR → PLAN exact head → human approval → APPLY via migration-control workflow → verify → merge
 ```
+
+Regular application deploy after merge:
+
+```
+sync → npm ci → build → drvo:verify (read-only) → restart → health
+```
+
+The application deploy must never auto-run `drvo:migrate-production`. Pending or checksum-mismatched DRVO migrations fail closed before restart.
 
 Feature flags / env overrides remain **separate** from schema migration and are **not** required for normal deploy. Business path is source-controlled via `moduleManifest.rollout` (booking/queue stay `legacy` on this branch). See [DRVO-ROLLOUT.md](./DRVO-ROLLOUT.md). Leftover `BOOKING_SCHEDULING_PORT=false` on production is ignored so a later activation PR needs no SSH env cleanup.
 
