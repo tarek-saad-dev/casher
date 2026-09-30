@@ -550,7 +550,19 @@ describe('resolution helper and runtime isolation', () => {
       path.join(process.cwd(), 'src/modules/messaging/application/sendTemplateMessage.ts'),
       'utf8',
     );
-    const salesRoute = readFileSync(path.join(process.cwd(), 'src/app/api/sales/route.ts'), 'utf8');
+    const salesRoute = readFileSync(
+      path.join(process.cwd(), 'src/apps/pos/internal/salePostCommitEffects.ts'),
+      'utf8',
+    );
+    const httpRoute = readFileSync(path.join(process.cwd(), 'src/app/api/sales/route.ts'), 'utf8');
+    const extracted = readFileSync(
+      path.join(process.cwd(), 'src/apps/pos/application/createSale.ts'),
+      'utf8',
+    );
+    const legacy = readFileSync(
+      path.join(process.cwd(), 'src/lib/sales/legacyRouteSaleCreate.ts'),
+      'utf8',
+    );
     expect(composeSrc).toContain("source: 'code_default'");
     expect(composeSrc).toContain('lookupActiveTemplate');
     expect(saleSrc).toContain('sendTemplateMessage');
@@ -558,6 +570,13 @@ describe('resolution helper and runtime isolation', () => {
     expect(tplSrc).toContain('composeMessage');
     expect(salesRoute).toContain('sendSaleCustomerReceipt');
     expect(salesRoute).not.toContain('upsertBranchMessageTemplateOverride');
+    expect(httpRoute).toContain('createSale(');
+    expect(httpRoute).toContain('createSaleLegacyFromRoute');
+    expect(httpRoute).not.toContain('upsertBranchMessageTemplateOverride');
+    expect(extracted).toContain('runSalePostCommitEffects');
+    expect(extracted).not.toContain('upsertBranchMessageTemplateOverride');
+    expect(legacy).toContain('runSalePostCommitEffects');
+    expect(legacy).not.toContain('upsertBranchMessageTemplateOverride');
   });
 
   it('does not change Quick Message', () => {

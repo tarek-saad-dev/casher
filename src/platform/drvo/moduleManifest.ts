@@ -187,6 +187,32 @@ export const DRVO_MODULE_ROLLOUT: DrvoModuleRolloutSpec[] = [
     ],
     rollbackRollout: 'extracted',
   },
+  {
+    module: 'pos',
+    drvoId: 'DRVO-008',
+    rollout: 'legacy',
+    classification: 'legacy',
+    classificationRationale:
+      'DRVO-008 POS application boundary is implemented behind the strangler flag. Sale create still relies on InsCashMoveSales; Treasury MoneyMovement.post is not used for sale create in this release.',
+    requiredMigrationKeys: [
+      'platform-core',
+      'platform-bootstrap',
+      'operational-calendar-prerequisites',
+      'treasury-movement-registry',
+    ],
+    dependencies: ['platform-core', 'operational-calendar', 'treasury'],
+    readinessCheckIds: [
+      'migration.platform-core',
+      'migration.platform-bootstrap',
+      'migration.operational-calendar-prerequisites',
+      'migration.treasury-movement-registry',
+      'platform.bootstrap',
+      'platform.core.structure',
+    ],
+    rollbackRollout: 'legacy',
+    compatEnvFlag: 'POS_SCHEDULING_PORT',
+    forcePathEnv: 'DRVO_FORCE_POS_PATH',
+  },
 ];
 
 export function getDrvoModuleRolloutSpec(module: string): DrvoModuleRolloutSpec {

@@ -36,6 +36,12 @@ jobs:
           src/apps/queue/__tests__/queuePortFlag.test.ts
           src/apps/queue/__tests__/queuePortWiring.test.ts
           src/apps/treasury/__tests__/deployMigration.test.ts
+          src/apps/treasury/__tests__/importBoundaries.test.ts
+          src/apps/pos/__tests__
+          src/modules/messaging/__tests__/saleCustomerReceiptSend.test.ts
+          src/modules/messaging/__tests__/phase5aCallersUnchanged.test.ts
+          src/modules/messaging/__tests__/phase6SendTemplateMessage.test.ts
+          src/modules/messaging/__tests__/adminWhatsAppTemplates.test.ts
           --reporter=default
 
       - name: Production build

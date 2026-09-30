@@ -1,31 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool, getUserFriendlyError, sql, allocateInvID } from "@/lib/db";
+import { getPool } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import type { CreateSalePayload } from "@/lib/types";
 import { resolveSplitPaymentConfig } from "@/lib/clearingMethod";
-import { redistributeFromClearing } from "@/lib/splitPaymentService";
-import {
-  CUSTOMER_FIRST_TIME_TEMPLATE_KEY,
-  SALE_EMPLOYEE_NOTIFICATION_TEMPLATE_KEY,
-  sendSaleCustomerReceipt,
-  sendTemplateMessage,
-} from "@/modules/messaging";
-import { resolveEmployeeWhatsAppPhone } from "@/lib/integrations/whatsapp/payload-builders";
 import {
   computeInvoiceItemsTotals,
 } from "@/lib/sales/service-line-totals";
-import {
-  employeeSaleGroupTotal,
-  groupEmployeeSaleDetails,
-} from "@/lib/sales/employee-sale-whatsapp";
 import { roundMoney } from "@/lib/reportMonthUtils";
-import { getCairoInvTimeDotStr, getCairoPayTimeStr } from "@/lib/businessDate";
 import {
-  branchErrorResponse,
-  lockOperationalWrite,
   resolveBranchDayAndShiftForWrite,
 } from "@/lib/branch/operationalGates";
 import { finalizeCurrentFinancialWrite } from "@/lib/branch/financialOwnershipPolicy";
+import {
+  createSale,
+  isPosPortEnabled,
+} from '@/apps/pos/public';
+import { createSaleLegacyFromRoute } from '@/lib/sales/legacyRouteSaleCreate';
 
 export const runtime = "nodejs";
 
@@ -49,7 +39,7 @@ export async function POST(req: NextRequest) {
         '@/lib/catalog/groomOptionalAddons'
       );
       const homeVisitProIds = await listHomeVisitProIds();
-      const lineProIds = body.items.map((i) => Number(i.ProID));
+      const lineProIds = body.items.map((i) => Number(i.proId));
       if (hasConflictingHomeVisitProIds(lineProIds, homeVisitProIds)) {
         return NextResponse.json(
           {
@@ -149,8 +139,6 @@ export async function POST(req: NextRequest) {
     const disPercent = computed.headerDiscountPercent;
     const disVal = computed.headerDiscountValue;
     const grandTotal = computed.grandTotal;
-    const totalBonus = computed.totalBonus;
-    const totalQty = computed.totalQty;
 
     // Soft-check client totals (log only — server values win)
     if (
@@ -247,597 +235,41 @@ export async function POST(req: NextRequest) {
       `[pos-api]   Payment: headerMethodId=${headerPaymentMethodId}, isSplit=${isSplitPayment}, allocations=${activeAllocations.length}`,
     );
 
-    // Format invTime as "HH.mm" in Africa/Cairo (not server-local TZ)
-    const now = new Date();
-    const invTime = getCairoInvTimeDotStr(now);
-    const invType = "مبيعات";
-    const notesText = body.notes || "مبيعات";
+    const saleInput = {
+      items: body.items.map((item) => ({
+        proId: item.proId,
+        empId: item.empId,
+        sPrice: item.sPrice,
+        bonus: item.bonus,
+        qty: item.qty,
+        dis: item.dis,
+        disVal: item.disVal,
+        notes: item.notes,
+      })),
+      clientId: body.clientId,
+      notes: body.notes,
+      notes2: body.notes2,
+      payCash,
+      payVisa,
+      paymentAllocations: body.paymentAllocations,
+      computed,
+      branchId,
+      businessDayId,
+      shiftMoveID,
+      invDate,
+      userID,
+      splitCfg,
+      activeAllocations,
+      isSplitPayment,
+      headerPaymentMethodId,
+      branchName: gated.branch.branchName,
+    };
 
-    // Build PayTime string matching existing format: "YYYY-MM-DD HH:MM:SS AM/PM" (Cairo)
-    const payTimeStr = getCairoPayTimeStr(now);
+    const result = isPosPortEnabled()
+      ? await createSale(saleInput)
+      : await createSaleLegacyFromRoute(saleInput);
 
-    // Begin serializable transaction
-    const transaction = new sql.Transaction(db);
-    await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
-    console.log(`[pos-api]   Transaction started (SERIALIZABLE)`);
-
-    try {
-      await lockOperationalWrite(transaction, {
-        branchId,
-        businessDayId,
-        shiftSessionId: shiftMoveID,
-        requireShift: true,
-      });
-      // ──── 1. Allocate invID safely (no TABLOCKX) ────
-      const newInvID = await allocateInvID(transaction, 'TblinvServHead', 'مبيعات', 5000);
-      console.log(`[pos-api]   Generated invID=${newInvID} for invType=مبيعات`);
-
-      // ──── 2. Insert TblinvServHead ────
-      const headReq = new sql.Request(transaction);
-      headReq
-        .input("invID", sql.Int, newInvID)
-        .input("invType", sql.NVarChar(20), invType)
-        .input("invDate", sql.Date, invDate)
-        .input("invTime", sql.NVarChar(50), invTime)
-        .input("ClientID", sql.Int, body.clientId || null)
-        .input("UserID", sql.Int, userID)
-        .input("TotalQty", sql.Decimal(10, 2), totalQty)
-        .input("SubTotal", sql.Decimal(10, 2), subTotal)
-        .input("Dis", sql.Decimal(6, 2), disPercent)
-        .input("DisVal", sql.Decimal(10, 2), disVal)
-        .input("Tax", sql.Decimal(6, 2), 0)
-        .input("TaxVal", sql.Decimal(10, 2), 0)
-        .input("GrandTotal", sql.Decimal(10, 2), grandTotal)
-        .input("invNotes", sql.NVarChar(50), notesText.substring(0, 50))
-        .input("TotalBonus", sql.Decimal(10, 2), totalBonus)
-        .input("ShiftMoveID", sql.Int, shiftMoveID)
-        .input("Notes", sql.NVarChar(100), notesText.substring(0, 100))
-        .input("isActive", sql.NVarChar(5), "no")
-        .input(
-          "Notes2",
-          sql.NVarChar(sql.MAX),
-          String(body.notes2 || "").substring(0, 4000),
-        )
-        .input("Payment", sql.Decimal(10, 2), grandTotal)
-        .input("PayDue", sql.Decimal(10, 2), 0)
-        .input("PayCash", sql.Decimal(10, 2), payCash)
-        .input("PayVisa", sql.Decimal(10, 2), payVisa)
-        .input("PaymentMethodID", sql.Int, headerPaymentMethodId)
-        .input("BranchID", sql.Int, branchId)
-        .input("BusinessDayID", sql.Int, businessDayId);
-
-      await headReq.query(`
-        INSERT INTO [dbo].[TblinvServHead] (
-          invID, invType, invDate, invTime, ClientID, UserID,
-          TotalQty, SubTotal, Dis, DisVal, Tax, TaxVal, GrandTotal,
-          invNotes, TotalBonus, ShiftMoveID,
-          ReservDate, ReservTime, Notes,
-          PayCash, PayVisa, isActive, Notes2, Payment, PayDue, PaymentMethodID,
-          BranchID, BusinessDayID
-        ) VALUES (
-          @invID, @invType, @invDate, @invTime, @ClientID, @UserID,
-          @TotalQty, @SubTotal, @Dis, @DisVal, @Tax, @TaxVal, @GrandTotal,
-          @invNotes, @TotalBonus, @ShiftMoveID,
-          NULL, NULL, @Notes,
-          @PayCash, @PayVisa, @isActive, @Notes2, @Payment, @PayDue, @PaymentMethodID,
-          @BranchID, @BusinessDayID
-        )
-      `);
-      console.log(
-        `[pos-api]   ✅ TblinvServHead inserted: invID=${newInvID}, ClientID=${body.clientId || "NULL"}, GrandTotal=${grandTotal}, PaymentMethodID=${headerPaymentMethodId} (${isSplitPayment ? 'CLEARING' : 'DIRECT'}), UserID=${userID}`,
-      );
-
-      // ──── 3. Insert TblinvServDetail rows ────
-      let detailCount = 0;
-      for (let i = 0; i < body.items.length; i++) {
-        const item = body.items[i];
-        const line = computed.lines[i]!;
-        const detReq = new sql.Request(transaction);
-        detReq
-          .input("invID", sql.Int, newInvID)
-          .input("invType", sql.NVarChar(20), invType)
-          .input("EmpID", sql.Int, item.empId)
-          .input("ProID", sql.Int, item.proId)
-          .input("Dis", sql.Decimal(8, 2), line.discountPercent)
-          .input("DisVal", sql.Decimal(8, 2), line.discountValue)
-          .input("SPrice", sql.Decimal(10, 2), item.sPrice)
-          .input("SValue", sql.Decimal(10, 2), line.grossAmount)
-          .input("SPriceAfterDis", sql.Decimal(10, 2), line.netAmount)
-          .input("PPrice", sql.Decimal(10, 2), 0)
-          .input("PValue", sql.Decimal(10, 2), 0)
-          .input("Qty", sql.Decimal(8, 2), item.qty > 0 ? item.qty : 1)
-          .input("Notes", sql.NVarChar(50), (item.notes || "").substring(0, 50))
-          .input("Bonus", sql.Decimal(8, 2), item.bonus)
-          .input("ReservDate", sql.Date, null);
-
-        await detReq.query(`
-          INSERT INTO [dbo].[TblinvServDetail] (
-            invID, invType, EmpID, ProID,
-            Dis, DisVal, SPrice, SValue, SPriceAfterDis,
-            PPrice, PValue, Qty, ProType, Notes, Bonus, ReservDate
-          ) VALUES (
-            @invID, @invType, @EmpID, @ProID,
-            @Dis, @DisVal, @SPrice, @SValue, @SPriceAfterDis,
-            @PPrice, @PValue, @Qty, NULL, @Notes, @Bonus, @ReservDate
-          )
-        `);
-        detailCount++;
-      }
-      console.log(
-        `[pos-api]   ✅ TblinvServDetail inserted: ${detailCount} row(s)`,
-      );
-
-      // ──── 3b. Phase 1J — branch stock decrements for tracked products ────
-      {
-        const { applySaleStockDecrements, InventoryDomainError } = await import(
-          '@/lib/inventory/inventoryMutation.service'
-        );
-        try {
-          await applySaleStockDecrements(transaction, {
-            branchId,
-            invId: newInvID,
-            invType,
-            businessDayId,
-            shiftMoveId: shiftMoveID,
-            userId: userID,
-            lines: body.items.map((item, idx) => ({
-              proId: item.proId,
-              qty: item.qty > 0 ? item.qty : 1,
-              lineKey: `${idx}:${item.proId}`,
-            })),
-          });
-        } catch (stockErr) {
-          if (stockErr instanceof InventoryDomainError) {
-            throw stockErr;
-          }
-          throw stockErr;
-        }
-      }
-
-      // ──── 4. Insert TblinvServPayment (one row per real payment method) ────
-      // Single payment: one row for the real method.
-      // Mixed payment: one row per real allocation — do NOT insert the clearing method here.
-      // Idempotency guard: skip if rows already exist for this invoice.
-      const existingPayRows = await new sql.Request(transaction)
-        .input("chkInvID", sql.Int, newInvID)
-        .input("chkInvType", sql.NVarChar(20), invType)
-        .query(`
-          SELECT COUNT(*) AS cnt FROM [dbo].[TblinvServPayment]
-          WHERE invID = @chkInvID AND invType = @chkInvType
-        `);
-      if (existingPayRows.recordset[0].cnt === 0) {
-        for (const alloc of activeAllocations) {
-          const payReq = new sql.Request(transaction);
-          payReq
-            .input("invID", sql.Int, newInvID)
-            .input("invType", sql.NVarChar(20), invType)
-            .input("PayDate", sql.Date, invDate)
-            .input("PayTime", sql.NVarChar(50), payTimeStr)
-            .input("PayValue", sql.Decimal(10, 2), Number(alloc.amount))
-            .input("Notes", sql.NVarChar(4000), notesText.substring(0, 4000))
-            .input("PaymentMethodID", sql.Int, alloc.paymentMethodId)
-            .input("ShiftMoveID", sql.Int, shiftMoveID);
-
-          await payReq.query(`
-            INSERT INTO [dbo].[TblinvServPayment] (
-              invID, invType, PayDate, PayTime, PayValue, Notes, PaymentMethodID, ShiftMoveID
-            ) VALUES (
-              @invID, @invType, @PayDate, @PayTime, @PayValue, @Notes, @PaymentMethodID, @ShiftMoveID
-            )
-          `);
-          console.log(
-            `[pos-api]   ✅ TblinvServPayment inserted: PayValue=${alloc.amount}, PaymentMethodID=${alloc.paymentMethodId}`,
-          );
-        }
-      } else {
-        console.log(`[pos-api]   ⚠️  TblinvServPayment rows already exist for invID=${newInvID} — skipping (idempotency)`);
-      }
-
-      // ──── 5. TblCashMove initial entry: handled by trigger [InsCashMoveSales] ────
-      // For single payment: trigger creates one 'in' row for the actual payment method.
-      // For mixed payment: trigger creates one 'in' row for the clearing account.
-      // Do NOT manually insert here — the trigger is the single code path.
-      console.log(
-        `[pos-api]   ℹ️  TblCashMove initial entry created by trigger InsCashMoveSales (paymentMethodId=${headerPaymentMethodId})`,
-      );
-
-      // ──── 5b. Mixed payment redistribution: clearing → each real method ────
-      if (isSplitPayment) {
-        console.log(`[pos-api]   � Redistributing clearing account to real payment methods...`);
-
-        // Idempotency guard: skip if split transfer rows already exist
-        const existingSplitTransfers = await new sql.Request(transaction)
-          .input("chkInvID2", sql.Int, newInvID)
-          .input("chkCatId", sql.Int, splitCfg.expenseCatId)
-          .query(`
-            SELECT COUNT(*) AS cnt FROM [dbo].[TblCashMove]
-            WHERE ExpINID = @chkCatId
-              AND Notes LIKE N'%فاتورة ' + CAST(@chkInvID2 AS NVARCHAR) + N'%'
-          `);
-        if (existingSplitTransfers.recordset[0].cnt === 0) {
-          await redistributeFromClearing({
-            transaction,
-            branchId,
-            businessDayId,
-            clearingMethodId: splitCfg.clearingMethodId,
-            allocations: activeAllocations.map((a) => ({
-              paymentMethodId: a.paymentMethodId,
-              amount: Number(a.amount),
-            })),
-            invDate,
-            invTime,
-            clientId: body.clientId || null,
-            shiftMoveId: shiftMoveID,
-            invoiceId: newInvID,
-            expenseCatId: splitCfg.expenseCatId,
-            incomeCatId: splitCfg.incomeCatId,
-          });
-          console.log(`[pos-api]   ✅ Split payment redistribution complete`);
-        } else {
-          console.log(`[pos-api]   ⚠️  Split transfers already exist for invID=${newInvID} — skipping (idempotency)`);
-        }
-      }
-
-      // ──── 5b. Durable target recalc enqueue (same TX as invoice) ────
-      let targetRecalcScopes: import('@/lib/payroll/employee-target/employee-target-recalc-scope').TargetRecalcScope[] = [];
-      try {
-        const { enqueueTargetRecalcFromInvoiceSnapshots } = await import(
-          '@/lib/payroll/employee-target/employee-target-invoice-sync'
-        );
-        const workDateStr = String(invDate).slice(0, 10);
-        targetRecalcScopes = await enqueueTargetRecalcFromInvoiceSnapshots({
-          transaction,
-          beforeSnapshot: null,
-          afterSnapshot: {
-            header: { invDate: workDateStr },
-            details: body.items.map((it) => ({ empId: it.empId })),
-          },
-          reason: 'invoice_create',
-          sourceType: 'TblinvServHead',
-          sourceRef: String(newInvID),
-        });
-      } catch (enqueueErr) {
-        console.error(
-          '[pos-api] target recalc enqueue failed — rolling back sale:',
-          enqueueErr instanceof Error ? enqueueErr.message : enqueueErr,
-        );
-        throw enqueueErr;
-      }
-
-      // ──── 6. Commit ────
-      await transaction.commit();
-      console.log(
-        `[pos-api]   ✅ COMMITTED — invID=${newInvID}, invType=${invType}`,
-      );
-      console.log(`[pos-api] ──── SAVE SALE COMPLETE ────`);
-
-      if (targetRecalcScopes.length > 0) {
-        const { tryProcessAfterInvoiceCommit } = await import(
-          '@/lib/payroll/employee-target/employee-target-invoice-sync'
-        );
-        void tryProcessAfterInvoiceCommit({
-          scopes: targetRecalcScopes,
-          actorUserId: userID || null,
-        });
-      }
-
-      // ──── 7 & 8. Loyalty + WhatsApp — fully async, do NOT block the response ────
-      void (async () => {
-        // ── 7. Loyalty Points Earning (CUT CLUB) ──
-        if (body.clientId) {
-          try {
-            const loyaltyDb = await getPool();
-            await loyaltyDb.request()
-              .input('invID', sql.Int, newInvID)
-              .input('invType', sql.NVarChar(20), invType)
-              .input('UserID', sql.Int, userID)
-              .query(`
-                EXEC [dbo].[sp_Loyalty_EarnPointsFromSale]
-                  @invID = @invID,
-                  @invType = @invType,
-                  @UserID = @UserID
-              `);
-            console.log(
-              `[pos-api]   👑 Loyalty points awarded for ClientID=${body.clientId}, Invoice=${newInvID}`,
-            );
-          } catch (loyaltyErr) {
-            console.error(
-              `[pos-api]   ⚠️ Loyalty points error (non-critical): ${loyaltyErr instanceof Error ? loyaltyErr.message : loyaltyErr}`,
-            );
-          }
-        }
-
-        // ── 8. Send WhatsApp messages ──
-        if (body.clientId) {
-          try {
-            const waDb = await getPool();
-
-            const customerResult = await waDb
-              .request()
-              .input('waClientId', sql.Int, body.clientId)
-              .query(`
-                SELECT [Name], Mobile, Phone
-                FROM [dbo].[TblClient]
-                WHERE ClientID = @waClientId
-              `);
-
-            if (customerResult.recordset.length > 0) {
-              const cust = customerResult.recordset[0];
-              const phone: string | null = cust.Mobile?.trim() || cust.Phone?.trim() || null;
-              const customerName: string = cust.Name?.trim() || 'عميل';
-
-              if (phone) {
-                const detailResult = await waDb
-                  .request()
-                  .input('waInvID', sql.Int, newInvID)
-                  .query(`
-                    SELECT p.ProName AS ServiceName, e.EmpName AS EmpName
-                    FROM [dbo].[TblinvServDetail] d
-                    LEFT JOIN [dbo].[TblPro] p ON d.ProID = p.ProID
-                    LEFT JOIN [dbo].[TblEmp] e ON d.EmpID = e.EmpID
-                    WHERE d.invID = @waInvID AND d.invType = N'مبيعات'
-                  `);
-
-                const serviceNames: string[] = detailResult.recordset
-                  .map((r: Record<string, unknown>) => r.ServiceName as string)
-                  .filter(Boolean);
-                const employeeNames: string[] = detailResult.recordset
-                  .map((r: Record<string, unknown>) => r.EmpName as string)
-                  .filter(Boolean);
-
-                let paymentMethodLabel: string | undefined;
-                if (!isSplitPayment) {
-                  const pmResult = await waDb
-                    .request()
-                    .input('waPmId', sql.Int, headerPaymentMethodId)
-                    .query(`
-                      SELECT PaymentMethod FROM [dbo].[TblPaymentMethods]
-                      WHERE PaymentID = @waPmId
-                    `);
-                  paymentMethodLabel = pmResult.recordset[0]?.PaymentMethod as string | undefined;
-                } else {
-                  const pmIds = activeAllocations.map((a) => a.paymentMethodId).join(',');
-                  if (pmIds.length > 0) {
-                    const pmResult = await waDb
-                      .request()
-                      .query(`
-                        SELECT PaymentMethod FROM [dbo].[TblPaymentMethods]
-                        WHERE PaymentID IN (${pmIds})
-                      `);
-                    const names = pmResult.recordset.map(
-                      (r: Record<string, unknown>) => r.PaymentMethod as string,
-                    );
-                    paymentMethodLabel = names.join(' + ');
-                  }
-                }
-
-                const priorInvResult = await waDb
-                  .request()
-                  .input('waFirstClientId', sql.Int, body.clientId)
-                  .input('waCurrentInvID', sql.Int, newInvID)
-                  .query(`
-                    SELECT COUNT(*) AS cnt
-                    FROM [dbo].[TblinvServHead]
-                    WHERE ClientID = @waFirstClientId
-                      AND invType = N'مبيعات'
-                      AND invID <> @waCurrentInvID
-                  `);
-                const isFirstTime = (priorInvResult.recordset[0]?.cnt as number) === 0;
-
-                await sendSaleCustomerReceipt({
-                  phone,
-                  customerName,
-                  invoiceId: newInvID,
-                  total: grandTotal,
-                  paymentMethod: paymentMethodLabel,
-                  services: serviceNames,
-                  employeeNames,
-                  branchName: gated.branch.branchName,
-                  branchId,
-                });
-
-                if (isFirstTime) {
-                  await sendTemplateMessage({
-                    templateKey: CUSTOMER_FIRST_TIME_TEMPLATE_KEY,
-                    recipient: { phone },
-                    variables: {
-                      customerName,
-                      branchName: gated.branch.branchName,
-                    },
-                    metadata: {
-                      branchId,
-                      invoiceId: newInvID,
-                    },
-                    context: { branchId, language: 'ar' },
-                  });
-                }
-              }
-            }
-          } catch (whatsappErr) {
-            console.log(
-              `[pos-api]   ⚠️ WhatsApp error (non-critical): ${whatsappErr instanceof Error ? whatsappErr.message : whatsappErr}`,
-            );
-          }
-        }
-
-        // ── 9. Notify assigned employees via WhatsApp (one message per EmpID) ──
-        try {
-          const empWaDb = await getPool();
-          const hasWhatsAppCol = await empWaDb.request().query(`
-            SELECT 1 AS ok
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'WhatsApp'
-          `);
-          const whatsAppSelect = hasWhatsAppCol.recordset.length > 0
-            ? 'e.WhatsApp'
-            : 'NULL AS WhatsApp';
-
-          const empDetailResult = await empWaDb
-            .request()
-            .input('empWaInvID', sql.Int, newInvID)
-            .query(`
-              SELECT
-                d.ID AS detailId,
-                d.EmpID,
-                e.EmpName,
-                e.Mobile,
-                ${whatsAppSelect},
-                d.ProID,
-                p.ProName AS ServiceName,
-                d.SPrice,
-                d.Qty,
-                d.DisVal,
-                d.SValue,
-                d.SPriceAfterDis
-              FROM [dbo].[TblinvServDetail] d
-              INNER JOIN [dbo].[TblEmp] e ON d.EmpID = e.EmpID
-              LEFT JOIN [dbo].[TblPro] p ON d.ProID = p.ProID
-              WHERE d.invID = @empWaInvID
-                AND d.invType = N'مبيعات'
-                AND d.EmpID IS NOT NULL
-            `);
-
-          const byEmployee = groupEmployeeSaleDetails(
-            (empDetailResult.recordset as Array<Record<string, unknown>>).map((row) => ({
-              EmpID: Number(row.EmpID),
-              EmpName: row.EmpName as string | null,
-              WhatsApp: row.WhatsApp as string | null,
-              Mobile: row.Mobile as string | null,
-              ProID: row.ProID != null ? Number(row.ProID) : null,
-              ServiceName: row.ServiceName as string | null,
-              detailId: row.detailId != null ? Number(row.detailId) : null,
-              SPrice: row.SPrice != null ? Number(row.SPrice) : null,
-              Qty: row.Qty != null ? Number(row.Qty) : null,
-              DisVal: row.DisVal != null ? Number(row.DisVal) : null,
-              SValue: row.SValue != null ? Number(row.SValue) : null,
-              SPriceAfterDis: row.SPriceAfterDis != null ? Number(row.SPriceAfterDis) : null,
-            })),
-            resolveEmployeeWhatsAppPhone,
-          );
-
-          const sendJobs: Promise<unknown>[] = [];
-
-          for (const emp of byEmployee.values()) {
-            if (emp.services.length === 0) continue;
-
-            if (!emp.phone) {
-              console.warn(
-                `[pos-api]   ⚠️ Employee WhatsApp skipped: missing phone invoiceId=${newInvID} empId=${emp.empId} name=${emp.employeeName}`,
-              );
-              continue;
-            }
-
-            const employeeTotal = employeeSaleGroupTotal(emp);
-            const servicesLabel = emp.services
-              .map((s) => s.serviceName.trim())
-              .filter(Boolean)
-              .join(', ');
-
-            console.log(
-              `[pos-api]   📱 Employee WhatsApp: empId=${emp.empId} ${emp.employeeName} (${emp.phone}) total=${employeeTotal} services=${servicesLabel}`,
-            );
-
-            sendJobs.push(
-              sendTemplateMessage({
-                templateKey: SALE_EMPLOYEE_NOTIFICATION_TEMPLATE_KEY,
-                recipient: { phone: emp.phone },
-                variables: {
-                  customerName: emp.employeeName,
-                  employeeName: emp.employeeName,
-                  invoiceNumber: `INV-${newInvID}`,
-                  services: servicesLabel,
-                  branchName: gated.branch.branchName,
-                },
-                metadata: {
-                  branchId,
-                  invoiceId: newInvID,
-                  employeeId: emp.empId,
-                },
-                context: { branchId, language: 'ar' },
-              }),
-            );
-          }
-
-          if (sendJobs.length > 0) {
-            const settled = await Promise.allSettled(sendJobs);
-            let sent = 0;
-            let failed = 0;
-            let notRegistered = 0;
-            let queued = 0;
-
-            settled.forEach((result, idx) => {
-              if (result.status === 'rejected') {
-                failed += 1;
-                console.log(
-                  `[pos-api]   ⚠️ Employee WhatsApp promise rejected #${idx}: ${
-                    result.reason instanceof Error ? result.reason.message : String(result.reason)
-                  }`,
-                );
-                return;
-              }
-
-              const empWaResult = result.value as {
-                sent?: boolean;
-                status?: string;
-                reason?: string;
-                error?: string;
-                messageId?: string;
-              };
-
-              if (empWaResult?.sent && empWaResult.status === 'sent') {
-                sent += 1;
-                console.log(
-                  `[pos-api]   ✅ Employee WhatsApp sent #${idx} messageId=${empWaResult.messageId ?? 'n/a'}`,
-                );
-                return;
-              }
-
-              const reason = empWaResult?.reason ?? empWaResult?.status ?? 'unknown';
-              if (reason === 'not_registered') {
-                notRegistered += 1;
-              } else if (reason === 'queued') {
-                queued += 1;
-              } else {
-                failed += 1;
-              }
-              console.log(
-                `[pos-api]   ⚠️ Employee WhatsApp ${reason} #${idx}${
-                  empWaResult?.error ? ` — ${empWaResult.error}` : ''
-                }`,
-              );
-            });
-
-            console.log(
-              `[pos-api]   📊 Employee WhatsApp summary invoice=INV-${newInvID} employees=${sendJobs.length} sent=${sent} failed=${failed} notRegistered=${notRegistered} queued=${queued}`,
-            );
-          } else if (byEmployee.size === 0) {
-            console.log(
-              `[pos-api]   ℹ️ Employee WhatsApp skipped: no employees on invoice ${newInvID}`,
-            );
-          }
-        } catch (employeeWhatsappErr) {
-          console.log(
-            `[pos-api]   ⚠️ Employee WhatsApp error (non-critical): ${
-              employeeWhatsappErr instanceof Error ? employeeWhatsappErr.message : employeeWhatsappErr
-            }`,
-          );
-        }
-      })();
-
-      return NextResponse.json({ invID: newInvID, invType }, { status: 201 });
-    } catch (err) {
-      const rollbackReason = err instanceof Error ? err.message : String(err);
-      console.error(`[pos-api]   ❌ ROLLING BACK — reason: ${rollbackReason}`);
-      try {
-        await transaction.rollback();
-        console.log(`[pos-api]   Rollback successful`);
-      } catch (rbErr) {
-        console.error(
-          `[pos-api]   Rollback also failed: ${rbErr instanceof Error ? rbErr.message : rbErr}`,
-        );
-      }
-      throw err;
-    }
+    return NextResponse.json({ invID: result.invID, invType: result.invType }, { status: 201 });
   } catch (err: unknown) {
     const { InventoryDomainError } = await import(
       '@/lib/inventory/inventoryMutation.service'
@@ -848,6 +280,7 @@ export async function POST(req: NextRequest) {
         { status: err.statusCode },
       );
     }
+    const { branchErrorResponse } = await import('@/lib/branch/operationalGates');
     const mapped = branchErrorResponse(err);
     if (mapped) return mapped;
     const message = err instanceof Error ? err.message : "Unknown error";

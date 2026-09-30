@@ -18,8 +18,10 @@ describe('DRVO module rollout manifest', () => {
   afterEach(() => {
     delete process.env.BOOKING_SCHEDULING_PORT;
     delete process.env.QUEUE_SCHEDULING_PORT;
+    delete process.env.POS_SCHEDULING_PORT;
     delete process.env.DRVO_FORCE_BOOKING_PATH;
     delete process.env.DRVO_FORCE_QUEUE_PATH;
+    delete process.env.DRVO_FORCE_POS_PATH;
   });
 
   it('uses extracted booking and queue for this rollout', () => {
@@ -154,12 +156,23 @@ describe('DRVO rollout resolver precedence', () => {
     }
   });
 
-  it('declares all four extracted DRVO modules in the rollout table', () => {
+  it('declares all DRVO modules in the rollout table', () => {
     expect(DRVO_MODULE_ROLLOUT.map((m) => m.module).sort()).toEqual([
       'booking',
       'operational-calendar',
+      'pos',
       'queue',
       'treasury',
     ]);
+  });
+
+  it('keeps POS on legacy rollout until human activation PR', () => {
+    const pos = getDrvoModuleRolloutSpec('pos');
+    expect(pos.drvoId).toBe('DRVO-008');
+    expect(pos.rollout).toBe('legacy');
+    expect(pos.forcePathEnv).toBe('DRVO_FORCE_POS_PATH');
+    expect(pos.compatEnvFlag).toBe('POS_SCHEDULING_PORT');
+    expect(pos.requiredMigrationKeys).not.toContain('pos-prerequisites');
+    expect(pos.readinessCheckIds).not.toContain('migration.pos-prerequisites');
   });
 });

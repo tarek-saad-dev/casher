@@ -116,6 +116,7 @@ export async function verifyDrvoReadiness(
     module === 'queue' ||
     module === 'operational-calendar' ||
     module === 'treasury' ||
+    module === 'pos' ||
     module === 'platform-core'
   ) {
     const bootstrap = await verifyPlatformBootstrap(pool);

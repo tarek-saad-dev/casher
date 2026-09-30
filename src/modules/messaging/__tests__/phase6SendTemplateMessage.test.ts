@@ -203,10 +203,22 @@ describe('sendTemplateMessage', () => {
 
 describe('Phase 6 production callers + feature contract', () => {
   it('migrates listed production callers to sendTemplateMessage', () => {
-    const sales = src('src/app/api/sales/route.ts');
+    const sales = src('src/apps/pos/internal/salePostCommitEffects.ts');
     expect(sales).toContain('sendTemplateMessage');
     expect(sales).not.toContain('sendFirstTimeWhatsAppMessage');
     expect(sales).not.toContain('sendEmployeeSaleWhatsAppMessage');
+
+    const route = src('src/app/api/sales/route.ts');
+    const extracted = src('src/apps/pos/application/createSale.ts');
+    const legacy = src('src/lib/sales/legacyRouteSaleCreate.ts');
+    expect(route).toContain('createSale(');
+    expect(route).toContain('createSaleLegacyFromRoute');
+    expect(extracted).toContain('runSalePostCommitEffects');
+    expect(legacy).toContain('runSalePostCommitEffects');
+    for (const caller of [route, extracted, legacy]) {
+      expect(caller).not.toContain('sendFirstTimeWhatsAppMessage');
+      expect(caller).not.toContain('sendEmployeeSaleWhatsAppMessage');
+    }
 
     const booking = src('src/lib/bookingPostCommitNotification.ts');
     expect(booking).toContain('sendTemplateMessage');

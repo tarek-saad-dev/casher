@@ -124,7 +124,10 @@ describe('sendSaleCustomerReceipt', () => {
 
 describe('POST /api/sales customer WhatsApp wiring', () => {
   it('sends the customer receipt through Messaging Module and migrates other sale WhatsApp to sendTemplateMessage', () => {
-    const src = readFileSync(path.join(process.cwd(), 'src/app/api/sales/route.ts'), 'utf8');
+    const src = readFileSync(
+      path.join(process.cwd(), 'src/apps/pos/internal/salePostCommitEffects.ts'),
+      'utf8',
+    );
     expect(src).toContain("@/modules/messaging");
     expect(src).toContain('sendSaleCustomerReceipt');
     expect(src).toContain('sendTemplateMessage');
@@ -133,8 +136,25 @@ describe('POST /api/sales customer WhatsApp wiring', () => {
     expect(src).not.toContain('sendSaleWhatsAppMessage');
     expect(src).not.toContain('sendFirstTimeWhatsAppMessage');
     expect(src).not.toContain('sendEmployeeSaleWhatsAppMessage');
-    expect(src).toContain('branchName: gated.branch.branchName');
+    expect(src).toContain('branchName');
     expect(src).toContain('void (async () => {');
     expect(src).toContain('WhatsApp error (non-critical)');
+
+    const route = readFileSync(path.join(process.cwd(), 'src/app/api/sales/route.ts'), 'utf8');
+    const extracted = readFileSync(
+      path.join(process.cwd(), 'src/apps/pos/application/createSale.ts'),
+      'utf8',
+    );
+    const legacy = readFileSync(
+      path.join(process.cwd(), 'src/lib/sales/legacyRouteSaleCreate.ts'),
+      'utf8',
+    );
+    expect(route).toContain('branchName: gated.branch.branchName');
+    expect(route).toContain('createSale(');
+    expect(route).toContain('createSaleLegacyFromRoute');
+    expect(extracted).toContain('runSalePostCommitEffects');
+    expect(extracted).toContain('branchName');
+    expect(legacy).toContain('runSalePostCommitEffects');
+    expect(legacy).toContain('branchName');
   });
 });
