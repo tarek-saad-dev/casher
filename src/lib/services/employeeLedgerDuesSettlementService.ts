@@ -72,23 +72,30 @@ async function findExistingSettlementByIdempotencyKey(
     idempotencyKey: string;
   },
 ): Promise<{ cashMoveId: number; ledgerEntryId: number } | null> {
+  // The marker lives only on TblCashMove.Notes. Compare it literally:
+  // T-SQL LIKE treats [settle-id:…] as a character class, so a different UUID
+  // would match the payroll-month digits in the ledger note and skip a real cash-out.
   const marker = `${DUES_SETTLEMENT_IDEMPOTENCY_PREFIX}${params.idempotencyKey}]`;
   const result = await bindMonthBalanceInputs(new sql.Request(transaction), params.payrollMonth)
     .input('empId', sql.Int, params.empId)
     .input('branchId', sql.Int, params.branchId)
-    .input('marker', sql.NVarChar(200), `%${marker}%`)
+    .input('marker', sql.NVarChar(200), marker)
     .input('entryReason', sql.NVarChar(40), EMP_LEDGER_REASON_ADVANCE)
     .query(`
       SELECT TOP 1
         l.ID AS LedgerEntryID,
-        l.CashMoveID AS CashMoveID
-      FROM dbo.TblEmpLedgerEntry l
-      WHERE l.EmpID = @empId
-        AND l.BranchID = @branchId
+        c.ID AS CashMoveID
+      FROM dbo.TblCashMove c
+      INNER JOIN dbo.TblEmpLedgerEntry l
+        ON l.CashMoveID = c.ID
+       AND l.EmpID = c.EmpID
+       AND l.BranchID = c.BranchID
+      WHERE c.EmpID = @empId
+        AND c.BranchID = @branchId
         AND l.PayrollMonth = @month
         AND l.EntryReason = @entryReason
         AND l.IsVoided = 0
-        AND l.Notes LIKE @marker
+        AND CHARINDEX(@marker, c.Notes) > 0
       ORDER BY l.ID DESC
     `);
 

@@ -10,6 +10,7 @@ let fakeRollback = vi.fn();
 let txQueryResults: Array<{ recordset?: unknown[]; rowsAffected?: number[] }> = [];
 let txQueryIdx = 0;
 let fakeAllocateInvID = vi.fn();
+let capturedTxQueries: Array<{ sql: string; inputs: Record<string, unknown> }> = [];
 
 function makeFakeDb(results: { recordset: unknown[] }[]) {
   let idx = 0;
@@ -35,10 +36,15 @@ vi.mock('@/lib/db', () => ({
     NVarChar: (n: unknown) => ({ type: 'nvarchar', length: n }),
     MAX: -1,
     Request: class FakeRequest {
-      input() {
+      inputs: Record<string, unknown> = {};
+      input(name: string, _type: unknown, value?: unknown) {
+        if (arguments.length >= 3) this.inputs[name] = value;
         return this;
       }
-      async query() {
+      async query(statement?: string) {
+        if (statement) {
+          capturedTxQueries.push({ sql: statement, inputs: { ...this.inputs } });
+        }
         const res = txQueryResults[txQueryIdx] ?? { recordset: [], rowsAffected: [0] };
         txQueryIdx++;
         return res;
@@ -101,6 +107,7 @@ function resetMocks() {
   fakeAllocateInvID = vi.fn(async () => 9001);
   txQueryResults = [];
   txQueryIdx = 0;
+  capturedTxQueries = [];
 }
 
 afterEach(() => {
@@ -133,6 +140,20 @@ describe('employeeLedgerDuesSettlementService helpers', () => {
     expect(buildDuesSettlementCashMoveNotes('أحمد', '2026-04', 'abc-12345')).toContain(
       '[settle-id:abc-12345]',
     );
+  });
+
+  it('keeps each idempotency key literal and off the ledger note', async () => {
+    const { buildDuesSettlementLedgerNote, buildDuesSettlementCashMoveNotes } =
+      await import('@/lib/services/employeeLedgerDuesSettlementService');
+    const keyA = '11111111-2222-4333-8444-555555555555';
+    const keyB = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    const ledger = buildDuesSettlementLedgerNote('2099-01');
+    const cash = buildDuesSettlementCashMoveNotes('أحمد', '2099-01', keyA);
+
+    expect(ledger).toBe('سلفة أخيرة للشهر 2099-01 — صرف مستحقات');
+    expect(ledger).not.toContain('[settle-id:');
+    expect(cash.endsWith(`[settle-id:${keyA}]`)).toBe(true);
+    expect(cash.includes(`[settle-id:${keyB}]`)).toBe(false);
   });
 });
 
@@ -270,6 +291,53 @@ describe('executeEmployeeDuesSettlement', () => {
     expect(result.ledgerEntryId).toBe(901);
     expect(fakeCommit).toHaveBeenCalled();
     expect(fakeAllocateInvID).not.toHaveBeenCalled();
+
+    const lookup = capturedTxQueries[0];
+    expect(lookup.sql).toMatch(/FROM dbo\.TblCashMove c/i);
+    expect(lookup.sql).toMatch(/CHARINDEX\(\s*@marker\s*,\s*c\.Notes\s*\)\s*>\s*0/i);
+    expect(lookup.sql).not.toMatch(/\bLIKE\b/i);
+    expect(lookup.sql).not.toMatch(/l\.Notes/i);
+    expect(lookup.inputs.marker).toBe('[settle-id:test-settle-key-001]');
+  });
+
+  it('creates a new cash-out for a different key when the month is still positive', async () => {
+    process.env.EMP_LEDGER_DUAL_WRITE_ENABLED = 'true';
+    const keyB = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    txQueryResults = [
+      { recordset: [] },
+      { recordset: [{ Balance: 200 }] },
+      { recordset: [{ ID: 402 }] },
+      { recordset: [{ ID: 902 }] },
+    ];
+    const { executeEmployeeDuesSettlement } =
+      await import('@/lib/services/employeeLedgerDuesSettlementService');
+
+    const result = await executeEmployeeDuesSettlement({
+      empId: 3,
+      amount: 200,
+      expectedBalance: 200,
+      payrollMonth: '2099-01',
+      paymentMethodId: 2,
+      payoutDate: '2099-01-15',
+      idempotencyKey: keyB,
+      branchId: 1,
+      businessDayId: 1,
+    });
+
+    expect(result.idempotentReplay).toBeUndefined();
+    expect(result.success).toBe(true);
+    expect(result.cashMoveId).toBe(402);
+    expect(result.ledgerEntryId).toBe(902);
+    expect(result.newMonthlyBalance).toBe(0);
+    expect(fakeAllocateInvID).toHaveBeenCalled();
+    expect(fakeCommit).toHaveBeenCalled();
+
+    const lookup = capturedTxQueries[0];
+    expect(lookup.sql).toMatch(/CHARINDEX\(\s*@marker\s*,\s*c\.Notes\s*\)\s*>\s*0/i);
+    expect(lookup.sql).toMatch(/TblCashMove/i);
+    expect(lookup.sql).not.toMatch(/\bLIKE\b/i);
+    expect(lookup.inputs.marker).toBe(`[settle-id:${keyB}]`);
+    expect(String(lookup.inputs.marker)).not.toContain('%');
   });
 
   it('rolls back when cash move insert fails', async () => {
