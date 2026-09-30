@@ -161,11 +161,10 @@ describe('DRVO-004 booking path regression', () => {
 
   it('deploy never auto-applies DRVO production migrations and verifies before restart', () => {
     const deploy = read('deploy/deploy-casher');
-    expect(deploy).not.toContain('drvo:migrate-production');
-    expect(deploy).toContain('drvo:verify');
-    const verify = deploy.indexOf('drvo:verify');
+    const verify = deploy.indexOf('npm run drvo:verify -- --allow-production');
     const restart = deploy.indexOf('systemctl restart casher');
-    expect(verify).toBeGreaterThan(0);
+    expect(deploy).not.toContain('drvo:migrate-production');
+    expect(verify).toBeGreaterThan(-1);
     expect(restart).toBeGreaterThan(verify);
   });
 
