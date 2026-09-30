@@ -41,21 +41,24 @@ npx tsx scripts/seed-drvo-003-bootstrap-tenant.ts --expected-database=last132_ag
 
 ## How to apply on production (`last132`)
 
-Staging protections are **not** removed. Production uses a separate opt-in runner that:
+Staging protections are **not** removed. Production DRVO DDL is applied only through the migration-control workflow while the migration PR is still open.
 
-- requires `--allow-production`
-- verifies `DB_NAME() = last132`
-- applies the same idempotent schema migration
-- seeds/repairs bootstrap data without creating a second tenant
-- aborts on inconsistent tenant state
-- verifies every `TblBranch` has a `Location` map
+The control path:
+- verifies the exact open PR head;
+- PLANs the exact migration list and manifest digest;
+- requires explicit human approval for APPLY;
+- verifies `DB_NAME() = last132`;
+- runs the approved migration set;
+- records approval / backup metadata where required;
+- verifies the resulting DRVO state.
+
+`deploy/deploy-casher` does **not** apply DRVO production migrations. After merge it runs read-only:
 
 ```bash
-npm run drvo:migrate-production -- --allow-production
 npm run drvo:verify -- --allow-production
 ```
 
-`deploy/deploy-casher` runs the **central DRVO migration runner** on each deploy (idempotent), then `drvo:verify`. Legacy `drvo-003:*-production` scripts delegate to the same runner.
+Pending migrations or checksum mismatches fail the deploy before application restart. Legacy `drvo-003:*-production` scripts are not the normal production control path.
 
 Booking/queue business path is **source-controlled** via `src/platform/drvo/moduleManifest.ts` (`rollout: 'legacy'` on this branch). No manual `.env` edit or restart is part of the normal lifecycle. See [DRVO-MIGRATION-GUIDE.md](./DRVO-MIGRATION-GUIDE.md) and [DRVO-ROLLOUT.md](./DRVO-ROLLOUT.md).
 
