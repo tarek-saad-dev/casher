@@ -19,9 +19,11 @@ describe('DRVO module rollout manifest', () => {
     delete process.env.BOOKING_SCHEDULING_PORT;
     delete process.env.QUEUE_SCHEDULING_PORT;
     delete process.env.POS_SCHEDULING_PORT;
+    delete process.env.POS_SALE_TREASURY_PORT;
     delete process.env.DRVO_FORCE_BOOKING_PATH;
     delete process.env.DRVO_FORCE_QUEUE_PATH;
     delete process.env.DRVO_FORCE_POS_PATH;
+    delete process.env.DRVO_FORCE_POS_SALE_TREASURY_PATH;
   });
 
   it('uses extracted booking and queue for this rollout', () => {
@@ -161,9 +163,17 @@ describe('DRVO rollout resolver precedence', () => {
       'booking',
       'operational-calendar',
       'pos',
+      'pos-sale-treasury',
       'queue',
       'treasury',
     ]);
+  });
+
+  it('keeps pos-sale-treasury on legacy until migration + activation', () => {
+    const saleTreasury = getDrvoModuleRolloutSpec('pos-sale-treasury');
+    expect(saleTreasury.drvoId).toBe('DRVO-009');
+    expect(saleTreasury.rollout).toBe('legacy');
+    expect(saleTreasury.requiredMigrationKeys).toContain('ins-cash-move-sales-guard');
   });
 
   it('uses extracted POS rollout after human activation PR', () => {

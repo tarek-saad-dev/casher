@@ -2,9 +2,14 @@ import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
 import {
+  buildPosPortsForStaffUser,
+} from '@/lib/posComposition';
+import { buildSaleCashMovePoster } from '@/lib/posSaleTreasuryComposition';
+import {
   executeLegacySaleCreateTransaction,
   type LegacySaleCreateTransactionInput,
 } from '../internal/legacySaleCreateAdapter';
+import { isPosSaleTreasuryPostingEnabled } from '../internal/posSaleTreasuryFlag';
 import { runSalePostCommitEffects } from '../internal/salePostCommitEffects';
 
 export type CreateSaleInput = LegacySaleCreateTransactionInput & {
@@ -23,11 +28,16 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
   console.log(`[pos-api]   Transaction started (SERIALIZABLE)`);
 
   const { branchName, ...txInput } = input;
+  let postSaleCashMove = null;
+  if (isPosSaleTreasuryPostingEnabled()) {
+    const ports = await buildPosPortsForStaffUser(input.userID);
+    postSaleCashMove = buildSaleCashMovePoster(ports.tenantId, ports.actor);
+  }
 
   try {
     const { invID, invType, targetRecalcScopes } = await executeLegacySaleCreateTransaction(
       transaction,
-      txInput,
+      { ...txInput, postSaleCashMove },
     );
 
     await transaction.commit();

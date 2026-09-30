@@ -7,6 +7,7 @@ import {
 import { verifyPlatformBootstrap } from './platformBootstrap';
 import { verifyPlatformCoreStructure } from './platformCoreSchema';
 import { verifyTreasuryMovementSchema } from './migrations/006-treasury-movement-registry';
+import { verifyInsCashMoveSalesGuard } from './migrations/008-ins-cash-move-sales-guard';
 import { listAppliedDrvoMigrations } from './registry';
 import type { DrvoModuleReadinessReport, DrvoReadinessCheck } from './types';
 import {
@@ -117,6 +118,7 @@ export async function verifyDrvoReadiness(
     module === 'operational-calendar' ||
     module === 'treasury' ||
     module === 'pos' ||
+    module === 'pos-sale-treasury' ||
     module === 'platform-core'
   ) {
     const bootstrap = await verifyPlatformBootstrap(pool);
@@ -127,12 +129,21 @@ export async function verifyDrvoReadiness(
     });
   }
 
-  if (module === 'treasury') {
+  if (module === 'treasury' || module === 'pos-sale-treasury') {
     const treasury = await verifyTreasuryMovementSchema(pool);
     checks.push({
       id: 'treasury.schema',
       ok: treasury.ok,
       detail: treasury.ok ? 'TreasuryMovementRegistry ready' : treasury.failures.join('; '),
+    });
+  }
+
+  if (module === 'pos-sale-treasury') {
+    const guard = await verifyInsCashMoveSalesGuard(pool);
+    checks.push({
+      id: 'treasury.sale-trigger-guard',
+      ok: guard.ok,
+      detail: guard.ok ? 'InsCashMoveSales coexistence guard ready' : guard.failures.join('; '),
     });
   }
 

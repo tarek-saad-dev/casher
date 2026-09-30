@@ -5,7 +5,8 @@ import { publishPlatformOutboxEvent } from '@/platform/public';
 export type TreasuryOutboxEventType =
   | 'treasury.movement.posted'
   | 'treasury.movement.reversed'
-  | 'treasury.transfer.posted';
+  | 'treasury.transfer.posted'
+  | 'treasury.sale.posted';
 
 export async function publishTreasuryOutboxEvent(
   tx: Transaction,
