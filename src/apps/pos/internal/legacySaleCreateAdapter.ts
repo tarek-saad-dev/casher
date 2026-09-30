@@ -8,6 +8,7 @@ import type { InvoiceItemsTotals } from '@/lib/sales/service-line-totals';
 import { getCairoInvTimeDotStr, getCairoPayTimeStr } from '@/lib/businessDate';
 import { lockOperationalWrite } from '@/lib/branch/operationalGates';
 import type { TargetRecalcScope } from '@/lib/payroll/employee-target/employee-target-recalc-scope';
+import type { SaleCashMovePoster } from '../public/saleCashMovePoster';
 import type { InvoicePaymentAllocationInput } from './legacySaleRepository';
 
 export type LegacySaleCreateItemInput = {
@@ -39,6 +40,8 @@ export type LegacySaleCreateTransactionInput = {
   activeAllocations: InvoicePaymentAllocationInput[];
   isSplitPayment: boolean;
   headerPaymentMethodId: number;
+  /** When set, Treasury posts the initial sale CashMove before head insert (DRVO-009). */
+  postSaleCashMove?: SaleCashMovePoster | null;
 };
 
 export type LegacySaleCreateTransactionResult = {
@@ -92,6 +95,25 @@ export async function executeLegacySaleCreateTransaction(
   const invType = 'مبيعات';
   const notesText = notes || 'مبيعات';
   const payTimeStr = getCairoPayTimeStr(now);
+
+  if (input.postSaleCashMove) {
+    await input.postSaleCashMove(transaction, {
+      saleInvId: newInvID,
+      invType,
+      invDate,
+      invTime,
+      clientId: clientId || null,
+      amount: grandTotal,
+      shiftMoveId: shiftMoveID,
+      paymentMethodId: headerPaymentMethodId,
+      branchId,
+      businessDayId,
+      notes: notesText.substring(0, 50),
+    });
+    console.log(
+      `[pos-api]   ✅ Treasury sale CashMove posted: invID=${newInvID}, PaymentMethodID=${headerPaymentMethodId}`,
+    );
+  }
 
   const headReq = new sql.Request(transaction);
   headReq
@@ -247,9 +269,15 @@ export async function executeLegacySaleCreateTransaction(
     console.log(`[pos-api]   ⚠️  TblinvServPayment rows already exist for invID=${newInvID} — skipping (idempotency)`);
   }
 
-  console.log(
-    `[pos-api]   ℹ️  TblCashMove initial entry created by trigger InsCashMoveSales (paymentMethodId=${headerPaymentMethodId})`,
-  );
+  if (!input.postSaleCashMove) {
+    console.log(
+      `[pos-api]   ℹ️  TblCashMove initial entry created by trigger InsCashMoveSales (paymentMethodId=${headerPaymentMethodId})`,
+    );
+  } else {
+    console.log(
+      `[pos-api]   ℹ️  TblCashMove initial entry Treasury-owned; InsCashMoveSales guard will skip (paymentMethodId=${headerPaymentMethodId})`,
+    );
+  }
 
   if (isSplitPayment) {
     console.log(`[pos-api]   � Redistributing clearing account to real payment methods...`);
