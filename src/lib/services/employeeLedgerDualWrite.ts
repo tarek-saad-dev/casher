@@ -66,6 +66,13 @@ export function buildAdvanceLedgerNote(): string {
   return 'سلفة موظف من الخزنة';
 }
 
+/** Ledger note prefix for صرف مستحقات recorded as a final monthly advance. */
+export const FINAL_ADVANCE_SETTLEMENT_NOTE_PREFIX = 'سلفة أخيرة للشهر';
+
+export function isFinalAdvanceSettlementLedgerNote(notes: string | null | undefined): boolean {
+  return String(notes ?? '').trimStart().startsWith(FINAL_ADVANCE_SETTLEMENT_NOTE_PREFIX);
+}
+
 export async function resolveAdvanceEmployeeFromExpINID(
   pool: { request: () => sql.Request },
   expINID: number,
@@ -160,6 +167,10 @@ export async function upsertAdvanceLedgerEntry(
 
   const payrollMonth = payrollMonthFromWorkDate(params.entryDate);
   const notes = buildAdvanceLedgerNote();
+  // Ordinary expense edits re-sync this cash move. A صرف مستحقات row must keep
+  // the selected payroll month and «سلفة أخيرة للشهر …» note; rewriting them
+  // from the cash date reopens that month and allows a second cash-out.
+  const settlementNoteLike = `${FINAL_ADVANCE_SETTLEMENT_NOTE_PREFIX}%`;
 
   const updateResult = await ledgerRequest(pool, transaction)
     .input('EmpID', sql.Int, params.empId)
@@ -172,15 +183,22 @@ export async function upsertAdvanceLedgerEntry(
     .input('RefType', sql.NVarChar(80), EMP_LEDGER_REF_TYPE_CASH_MOVE)
     .input('RefID', sql.Int, params.cashMoveId)
     .input('EntryReason', sql.NVarChar(40), EMP_LEDGER_REASON_ADVANCE)
+    .input('SettlementNoteLike', sql.NVarChar(80), settlementNoteLike)
     .query(`
       UPDATE dbo.TblEmpLedgerEntry
       SET
         EmpID           = @EmpID,
         EntryDate       = @EntryDate,
         Amount          = @Amount,
-        PayrollMonth    = @PayrollMonth,
+        PayrollMonth    = CASE
+                            WHEN LTRIM(ISNULL(Notes, N'')) LIKE @SettlementNoteLike THEN PayrollMonth
+                            ELSE @PayrollMonth
+                          END,
         CashMoveID      = @CashMoveID,
-        Notes           = @Notes,
+        Notes           = CASE
+                            WHEN LTRIM(ISNULL(Notes, N'')) LIKE @SettlementNoteLike THEN Notes
+                            ELSE @Notes
+                          END,
         CreatedByUserID = COALESCE(@CreatedByUserID, CreatedByUserID),
         UpdatedAt       = SYSDATETIME()
       WHERE RefType = @RefType

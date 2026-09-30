@@ -793,6 +793,46 @@ export async function getEmployeeBranchBalance(
   return roundMoney(Number(result.recordset[0]?.Balance ?? 0));
 }
 
+/** Payroll-month scoped balance for one employee at one branch (matches ledger summary filters). */
+export async function getEmployeeMonthlyBranchBalance(
+  empId: number,
+  branchId: number,
+  month: string,
+  transaction?: sql.Transaction,
+): Promise<number> {
+  const monthError = validateLedgerMonth(month);
+  if (monthError) {
+    throw new Error(monthError);
+  }
+
+  const [yearStr, monthStr] = month.split('-');
+  const { startDate, endDate } = getMonthDateRange(
+    parseInt(yearStr, 10),
+    parseInt(monthStr, 10),
+  );
+
+  const db = await getPool();
+  const req = transaction ? new sql.Request(transaction) : db.request();
+  const result = await req
+    .input('empId', sql.Int, empId)
+    .input('branchId', sql.Int, branchId)
+    .input('month', sql.NVarChar(7), month)
+    .input('monthStart', sql.Date, startDate)
+    .input('monthEnd', sql.Date, endDate)
+    .query(`
+      SELECT
+        ISNULL(SUM(CASE WHEN l.EntryDirection = N'credit' THEN l.Amount ELSE 0 END), 0)
+        - ISNULL(SUM(CASE WHEN l.EntryDirection = N'debit'  THEN l.Amount ELSE 0 END), 0) AS Balance
+      FROM dbo.TblEmpLedgerEntry l WITH (UPDLOCK, HOLDLOCK)
+      WHERE l.EmpID = @empId
+        AND l.BranchID = @branchId
+        AND l.IsVoided = 0
+        AND ${buildMonthEntryFilter('l')}
+    `);
+
+  return roundMoney(Number(result.recordset[0]?.Balance ?? 0));
+}
+
 export interface EmployeeLedgerOutstandingTotals {
   /** إجمالي ما يستحقه الموظفون على المحل (مجموع الأرصدة الموجبة) — المبلغ المحتجز. */
   totalOwedToEmployees: number;

@@ -314,6 +314,7 @@ describe('POST /api/admin/hr/employee-ledger/payout', () => {
       body: JSON.stringify({
         empId: 3,
         amount: 100,
+        confirmedLedgerBranchId: 1,
         paymentMethodId: 2,
         payoutDate: '2026-04-15',
       }),

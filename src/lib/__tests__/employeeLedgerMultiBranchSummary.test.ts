@@ -61,6 +61,7 @@ describe('employee ledger multi-branch financial summary', () => {
     expect(route).toContain("branchParam !== 'all'");
     expect(route).toContain('accessibleBranches');
     expect(route).toContain('accessibleBranchIds');
+    expect(route).toContain('operatingBranch');
   });
 
   it('list API scopes entries by branch filter and returns branch columns', () => {

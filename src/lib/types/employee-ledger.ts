@@ -212,6 +212,19 @@ export interface EmpLedgerPayoutResponse {
   ledgerDualWrite: true;
 }
 
+export interface EmpLedgerDuesSettlementResponse {
+  success: true;
+  cashMoveId: number;
+  ledgerEntryId: number;
+  payrollMonth: string;
+  branchId: number;
+  previousMonthlyBalance: number;
+  settlementAmount: number;
+  newMonthlyBalance: number;
+  ledgerDualWrite: true;
+  idempotentReplay?: boolean;
+}
+
 export interface EmpLedgerFundingResponse {
   success: true;
   cashMoveId: number;

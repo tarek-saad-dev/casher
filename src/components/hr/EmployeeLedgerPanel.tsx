@@ -148,6 +148,7 @@ export default function EmployeeLedgerPanel() {
   const [branchFilter, setBranchFilter] = useState<string>('all');
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [accessibleBranches, setAccessibleBranches] = useState<AccessibleBranch[]>([]);
+  const [operatingBranch, setOperatingBranch] = useState<AccessibleBranch | null>(null);
 
   const [summary, setSummary] = useState<EmpLedgerSummaryResponse | null>(null);
   const [ledger, setLedger] = useState<EmpLedgerListResponse | null>(null);
@@ -189,6 +190,7 @@ export default function EmployeeLedgerPanel() {
       const data: EmpLedgerSummaryResponse & {
         error?: string;
         accessibleBranches?: AccessibleBranch[];
+        operatingBranch?: AccessibleBranch | null;
       } = await res.json();
       if (!res.ok && res.status !== 503) {
         throw new Error(data.error || 'خطأ في تحميل الملخص');
@@ -197,6 +199,11 @@ export default function EmployeeLedgerPanel() {
       setDualWriteEnabled(Boolean(data.ledgerDualWriteEnabled));
       if (Array.isArray(data.accessibleBranches)) {
         setAccessibleBranches(data.accessibleBranches);
+      }
+      if (data.operatingBranch && data.operatingBranch.branchId > 0) {
+        setOperatingBranch(data.operatingBranch);
+      } else {
+        setOperatingBranch(null);
       }
       if (data.error) setError(data.error);
     } catch (e: unknown) {
@@ -305,12 +312,26 @@ export default function EmployeeLedgerPanel() {
     ];
   }, [branchFinancial, branchFilter]);
 
-  const openPayout = (row: EmpLedgerEmployeeSummaryRow) => {
+  const operatingBranchLabel = operatingBranch ? shortBranchLabel(operatingBranch) : null;
+  const branchViewMatchesOperating =
+    operatingBranch != null
+    && branchFilter !== 'all'
+    && Number(branchFilter) === operatingBranch.branchId;
+
+  const openPayout = (
+    row: EmpLedgerEmployeeSummaryRow,
+    branchBreakdown: EmpLedgerEmployeeBranchBreakdown,
+  ) => {
+    if (!operatingBranch || !branchViewMatchesOperating) return;
+    if (branchBreakdown.branchId !== operatingBranch.branchId) return;
+    if (branchBreakdown.balance <= 0) return;
     setPayoutTarget({
       empId: row.empId,
       empName: row.empName,
-      // Filter-scoped balance (session payout still validates branch account server-side).
-      monthBalance: row.balance,
+      payrollMonth: month,
+      branchId: operatingBranch.branchId,
+      branchLabel: operatingBranchLabel ?? shortBranchLabel(operatingBranch),
+      monthBalance: branchBreakdown.balance,
     });
     setPayoutOpen(true);
   };
@@ -588,31 +609,44 @@ export default function EmployeeLedgerPanel() {
                           {fmt(overall)}
                         </td>
                       )}
-                      {idx === 0 && (
-                        <td rowSpan={2} className="px-4 py-3 align-middle">
-                          <div className="flex flex-wrap gap-1">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-8 gap-1 border-border text-xs"
-                              disabled={!dualWriteEnabled || row.balance <= 0}
-                              title={
-                                !dualWriteEnabled
-                                  ? 'يتطلب تفعيل EMP_LEDGER_DUAL_WRITE_ENABLED'
-                                  : undefined
-                              }
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openPayout(row);
-                              }}
-                            >
-                              <Wallet className="w-3.5 h-3.5" />
-                              صرف مستحقات
-                            </Button>
-                          </div>
-                        </td>
-                      )}
+                      <td className="px-4 py-3 align-middle">
+                        <div className="flex flex-wrap gap-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 gap-1 border-border text-xs"
+                            disabled={
+                              !dualWriteEnabled
+                              || !branchViewMatchesOperating
+                              || br.branchId !== operatingBranch?.branchId
+                              || br.balance <= 0
+                            }
+                            title={
+                              !dualWriteEnabled
+                                ? 'يتطلب تفعيل EMP_LEDGER_DUAL_WRITE_ENABLED'
+                                : !operatingBranch
+                                  ? 'تعذر تحديد الفرع التشغيلي النشط'
+                                  : branchFilter === 'all'
+                                    ? `اختر الفرع التشغيلي النشط (${operatingBranchLabel}) وحدّث رصيد الشهر — لا يُستخدم الرصيد المجمّع`
+                                    : !branchViewMatchesOperating
+                                      ? `هذا الفلتر ليس الفرع التشغيلي النشط (${operatingBranchLabel}). اختره ثم حدّث رصيد الشهر قبل التأكيد`
+                                      : br.branchId !== operatingBranch.branchId
+                                        ? 'صرف هذا الصف متاح فقط لصف الفرع التشغيلي النشط'
+                                        : br.balance <= 0
+                                          ? 'لا يوجد مستحقات موجبة في هذا الفرع'
+                                          : undefined
+                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openPayout(row, br);
+                            }}
+                          >
+                            <Wallet className="w-3.5 h-3.5" />
+                            صرف مستحقات
+                          </Button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 });
@@ -764,8 +798,13 @@ export default function EmployeeLedgerPanel() {
         </p>
       )}
 
+      <p className="text-xs text-amber-200/90 px-1" data-testid="dues-settlement-branch-rule">
+        {branchViewMatchesOperating
+          ? `صرف المستحقات يُسوّي رصيد شهر ${month} للفرع التشغيلي النشط فقط (${operatingBranchLabel}) بعد تحديث هذا العرض. لا يُستخدم رصيد فرع آخر ولا الرصيد المجمّع.`
+          : `صرف المستحقات متوقف حتى تختار الفرع التشغيلي النشط${operatingBranchLabel ? ` (${operatingBranchLabel})` : ''} ويُحدَّث رصيد شهره. عرض «الكل» أو فرع غير فرع الجلسة لا يُسوّي الرصيد المعروض.`}
+      </p>
       <p className="text-xs text-zinc-600 px-1">
-        الرصيد المعروض حسب شهر الرواتب وفلتر الفرع. الصرف يتحقق من رصيد فرع الجلسة النشط. الإجمالي العام = مجموع أرصدة الفروع بدون تكرار.
+        الرصيد المعروض حسب شهر الرواتب وفلتر الفرع. الإجمالي العام = مجموع أرصدة الفروع بدون تكرار.
       </p>
     </div>
   );

@@ -317,6 +317,58 @@ describe('maybeSyncAdvanceLedgerForExpenseCashMove', () => {
     expect(result.ledgerDualWrite).toBe(true);
     expect(result.outcome).toBe('updated');
   });
+
+  it('keeps payroll month and final-advance note on expense re-sync', async () => {
+    process.env.EMP_LEDGER_DUAL_WRITE_ENABLED = 'true';
+    const { sql } = await import('@/lib/db');
+    const originalRequest = sql.Request;
+    const queries: string[] = [];
+    const bound: Record<string, unknown> = {};
+    sql.Request = class {
+      input(name: string, _type: unknown, value: unknown) {
+        bound[name] = value;
+        return this;
+      }
+      async query(statement: string) {
+        queries.push(statement);
+        if (queries.length === 1) {
+          return { recordset: [{ mapEmpId: 3, resolvedEmpId: 3, empName: 'أحمد' }] };
+        }
+        return { rowsAffected: [1] };
+      }
+    } as unknown as typeof sql.Request;
+
+    try {
+      const { maybeSyncAdvanceLedgerForExpenseCashMove, isFinalAdvanceSettlementLedgerNote } =
+        await import('@/lib/services/employeeLedgerDualWrite');
+      const transaction = new sql.Transaction({} as never);
+      const settlementNote = 'سلفة أخيرة للشهر 2026-04 — صرف مستحقات';
+
+      const result = await maybeSyncAdvanceLedgerForExpenseCashMove({ request: vi.fn() }, transaction, {
+        cashMoveId: 88,
+        expINID: 42,
+        entryDate: '2026-05-02',
+        amount: 500,
+      });
+
+      expect(result).toEqual({ ledgerDualWrite: true, outcome: 'updated' });
+      expect(isFinalAdvanceSettlementLedgerNote(settlementNote)).toBe(true);
+      expect(isFinalAdvanceSettlementLedgerNote('سلفة موظف من الخزنة')).toBe(false);
+      const updateSql = queries[1] ?? '';
+      expect(updateSql).toMatch(/PayrollMonth\s*=\s*CASE/i);
+      expect(updateSql).toMatch(/Notes\s*=\s*CASE/i);
+      expect(updateSql).toContain('LIKE @SettlementNoteLike THEN PayrollMonth');
+      expect(updateSql).toContain('LIKE @SettlementNoteLike THEN Notes');
+      expect(updateSql).toContain('ELSE @PayrollMonth');
+      expect(updateSql).toContain('ELSE @Notes');
+      expect(bound.SettlementNoteLike).toBe('سلفة أخيرة للشهر%');
+      expect(bound.PayrollMonth).toBe('2026-05');
+      expect(bound.Notes).toBe('سلفة موظف من الخزنة');
+      expect(queries).toHaveLength(2);
+    } finally {
+      sql.Request = originalRequest;
+    }
+  });
 });
 
 describe('syncAdvanceLedgerForDeductionCashMove', () => {
