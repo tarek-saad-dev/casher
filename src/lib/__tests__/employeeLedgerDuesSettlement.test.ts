@@ -337,6 +337,7 @@ describe('POST /api/admin/hr/employee-ledger/payout (dues settlement)', () => {
         amount: 500,
         expectedBalance: 500,
         payrollMonth: '2026-04',
+        confirmedLedgerBranchId: 1,
         paymentMethodId: 2,
         payoutDate: '2026-04-15',
       }),
@@ -345,6 +346,30 @@ describe('POST /api/admin/hr/employee-ledger/payout (dues settlement)', () => {
 
     expect(res.status).toBe(503);
     expect(data.error).toContain('EMP_LEDGER_DUAL_WRITE_ENABLED');
+  });
+
+  it('rejects a ledger filter branch that is not the session operating branch', async () => {
+    process.env.EMP_LEDGER_DUAL_WRITE_ENABLED = 'true';
+    const { allocateInvID } = await import('@/lib/db');
+    allocateInvID.mockClear();
+    const { POST } = await import('@/app/api/admin/hr/employee-ledger/payout/route');
+    const res = await POST(new NextRequest('http://localhost/api/admin/hr/employee-ledger/payout', {
+      method: 'POST',
+      body: JSON.stringify({
+        empId: 3,
+        amount: 500,
+        expectedBalance: 500,
+        payrollMonth: '2026-04',
+        confirmedLedgerBranchId: 3,
+        paymentMethodId: 2,
+        payoutDate: '2026-04-15',
+      }),
+    }));
+    const data = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(String(data.error)).toMatch(/التشغيلي/);
+    expect(allocateInvID).not.toHaveBeenCalled();
   });
 });
 

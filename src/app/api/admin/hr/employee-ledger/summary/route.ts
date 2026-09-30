@@ -83,6 +83,12 @@ export async function GET(request: NextRequest) {
     const legacyConfig = getLegacyPostToCashConfig();
     return NextResponse.json({
       ...result,
+      operatingBranch: {
+        branchId: branch.branchId,
+        branchCode: branch.branchCode,
+        branchName: branch.branchName,
+        shortName: branch.shortName,
+      },
       accessibleBranches: (await listActiveBranches())
         .filter((b) => accessible.includes(b.branchId))
         .map((b) => ({

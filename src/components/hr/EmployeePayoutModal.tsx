@@ -119,6 +119,7 @@ export default function EmployeePayoutModal({
           amount: settlementAmount,
           expectedBalance: settlementAmount,
           payrollMonth: employee.payrollMonth,
+          confirmedLedgerBranchId: employee.branchId,
           paymentMethodId: Number(paymentMethodId),
           payoutDate,
           idempotencyKey: idempotencyKeyRef.current,
@@ -171,7 +172,7 @@ export default function EmployeePayoutModal({
                 <span className="font-mono">{employee.payrollMonth}</span>
               </div>
               <div className="flex items-center justify-between gap-2">
-                <span className="text-muted-foreground">الفرع</span>
+                <span className="text-muted-foreground">الفرع التشغيلي النشط</span>
                 <span className="font-semibold">{employee.branchLabel}</span>
               </div>
               <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/60">
@@ -183,9 +184,10 @@ export default function EmployeePayoutModal({
             </div>
 
             <div className="rounded-lg border border-sky-500/25 bg-sky-500/5 p-3 text-xs text-sky-200/90 leading-relaxed">
-              سيتم تسجيل المبلغ كسلفة أخيرة للشهر {employee.payrollMonth} — صرف مستحقات،
+              سيتم تسجيل المبلغ كسلفة أخيرة للشهر {employee.payrollMonth} — صرف مستحقات
+              على الفرع التشغيلي النشط ({employee.branchLabel}) فقط،
               مع خصم واحد من الخزنة وقيد مدين واحد في دفتر الموظف (سبب: سلفة).
-              لا يُنشأ قيد «صرف» منفصل.
+              لا يُنشأ قيد «صرف» منفصل. عرض كل الفروع أو فرع غير فرع الجلسة لا يفتح هذه التسوية.
             </div>
 
             {!hasPositiveBalance && (

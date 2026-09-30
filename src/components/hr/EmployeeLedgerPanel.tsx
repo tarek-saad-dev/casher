@@ -148,6 +148,7 @@ export default function EmployeeLedgerPanel() {
   const [branchFilter, setBranchFilter] = useState<string>('all');
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [accessibleBranches, setAccessibleBranches] = useState<AccessibleBranch[]>([]);
+  const [operatingBranch, setOperatingBranch] = useState<AccessibleBranch | null>(null);
 
   const [summary, setSummary] = useState<EmpLedgerSummaryResponse | null>(null);
   const [ledger, setLedger] = useState<EmpLedgerListResponse | null>(null);
@@ -189,6 +190,7 @@ export default function EmployeeLedgerPanel() {
       const data: EmpLedgerSummaryResponse & {
         error?: string;
         accessibleBranches?: AccessibleBranch[];
+        operatingBranch?: AccessibleBranch | null;
       } = await res.json();
       if (!res.ok && res.status !== 503) {
         throw new Error(data.error || 'خطأ في تحميل الملخص');
@@ -197,6 +199,11 @@ export default function EmployeeLedgerPanel() {
       setDualWriteEnabled(Boolean(data.ledgerDualWriteEnabled));
       if (Array.isArray(data.accessibleBranches)) {
         setAccessibleBranches(data.accessibleBranches);
+      }
+      if (data.operatingBranch && data.operatingBranch.branchId > 0) {
+        setOperatingBranch(data.operatingBranch);
+      } else {
+        setOperatingBranch(null);
       }
       if (data.error) setError(data.error);
     } catch (e: unknown) {
@@ -305,28 +312,25 @@ export default function EmployeeLedgerPanel() {
     ];
   }, [branchFinancial, branchFilter]);
 
-  const selectedBranchMeta = useMemo(() => {
-    if (branchFilter === 'all') return null;
-    const branchId = parseInt(branchFilter, 10);
-    const meta = accessibleBranches.find((b) => b.branchId === branchId);
-    if (!meta) return null;
-    return {
-      branchId,
-      branchLabel: shortBranchLabel(meta),
-    };
-  }, [branchFilter, accessibleBranches]);
+  const operatingBranchLabel = operatingBranch ? shortBranchLabel(operatingBranch) : null;
+  const branchViewMatchesOperating =
+    operatingBranch != null
+    && branchFilter !== 'all'
+    && Number(branchFilter) === operatingBranch.branchId;
 
   const openPayout = (
     row: EmpLedgerEmployeeSummaryRow,
     branchBreakdown: EmpLedgerEmployeeBranchBreakdown,
   ) => {
-    if (!selectedBranchMeta) return;
+    if (!operatingBranch || !branchViewMatchesOperating) return;
+    if (branchBreakdown.branchId !== operatingBranch.branchId) return;
+    if (branchBreakdown.balance <= 0) return;
     setPayoutTarget({
       empId: row.empId,
       empName: row.empName,
       payrollMonth: month,
-      branchId: selectedBranchMeta.branchId,
-      branchLabel: selectedBranchMeta.branchLabel,
+      branchId: operatingBranch.branchId,
+      branchLabel: operatingBranchLabel ?? shortBranchLabel(operatingBranch),
       monthBalance: branchBreakdown.balance,
     });
     setPayoutOpen(true);
@@ -614,20 +618,24 @@ export default function EmployeeLedgerPanel() {
                             className="h-8 gap-1 border-border text-xs"
                             disabled={
                               !dualWriteEnabled
-                              || branchFilter === 'all'
+                              || !branchViewMatchesOperating
+                              || br.branchId !== operatingBranch?.branchId
                               || br.balance <= 0
-                              || selectedBranchMeta?.branchId !== br.branchId
                             }
                             title={
                               !dualWriteEnabled
                                 ? 'يتطلب تفعيل EMP_LEDGER_DUAL_WRITE_ENABLED'
-                                : branchFilter === 'all'
-                                  ? 'اختر فرعاً محدداً لصرف مستحقات هذا الشهر — لا يُستخدم الرصيد المجمّع'
-                                  : selectedBranchMeta?.branchId !== br.branchId
-                                    ? 'الزر متاح لفرع الفلتر المحدد فقط'
-                                    : br.balance <= 0
-                                      ? 'لا يوجد مستحقات موجبة في هذا الفرع'
-                                      : undefined
+                                : !operatingBranch
+                                  ? 'تعذر تحديد الفرع التشغيلي النشط'
+                                  : branchFilter === 'all'
+                                    ? `اختر الفرع التشغيلي النشط (${operatingBranchLabel}) وحدّث رصيد الشهر — لا يُستخدم الرصيد المجمّع`
+                                    : !branchViewMatchesOperating
+                                      ? `هذا الفلتر ليس الفرع التشغيلي النشط (${operatingBranchLabel}). اختره ثم حدّث رصيد الشهر قبل التأكيد`
+                                      : br.branchId !== operatingBranch.branchId
+                                        ? 'صرف هذا الصف متاح فقط لصف الفرع التشغيلي النشط'
+                                        : br.balance <= 0
+                                          ? 'لا يوجد مستحقات موجبة في هذا الفرع'
+                                          : undefined
                             }
                             onClick={(e) => {
                               e.stopPropagation();
@@ -790,8 +798,13 @@ export default function EmployeeLedgerPanel() {
         </p>
       )}
 
+      <p className="text-xs text-amber-200/90 px-1" data-testid="dues-settlement-branch-rule">
+        {branchViewMatchesOperating
+          ? `صرف المستحقات يُسوّي رصيد شهر ${month} للفرع التشغيلي النشط فقط (${operatingBranchLabel}) بعد تحديث هذا العرض. لا يُستخدم رصيد فرع آخر ولا الرصيد المجمّع.`
+          : `صرف المستحقات متوقف حتى تختار الفرع التشغيلي النشط${operatingBranchLabel ? ` (${operatingBranchLabel})` : ''} ويُحدَّث رصيد شهره. عرض «الكل» أو فرع غير فرع الجلسة لا يُسوّي الرصيد المعروض.`}
+      </p>
       <p className="text-xs text-zinc-600 px-1">
-        الرصيد المعروض حسب شهر الرواتب وفلتر الفرع. صرف المستحقات يُسوّي الرصيد الشهري الموجب للفرع المحدد كسلفة أخيرة — اختر فرعاً قبل التأكيد. الإجمالي العام = مجموع أرصدة الفروع بدون تكرار.
+        الرصيد المعروض حسب شهر الرواتب وفلتر الفرع. الإجمالي العام = مجموع أرصدة الفروع بدون تكرار.
       </p>
     </div>
   );

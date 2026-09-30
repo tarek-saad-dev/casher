@@ -8,6 +8,7 @@ import {
   EmployeeLedgerDualWriteError,
   EMP_LEDGER_REF_TYPE_CASH_MOVE,
   EMP_LEDGER_REASON_ADVANCE,
+  FINAL_ADVANCE_SETTLEMENT_NOTE_PREFIX,
   isMissingLedgerTableError,
 } from '@/lib/services/employeeLedgerDualWrite';
 import {
@@ -20,7 +21,7 @@ import { getCairoInvTimeDotStr } from '@/lib/businessDate';
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const IDEMPOTENCY_KEY_RE = /^[a-zA-Z0-9-]{8,128}$/;
 
-export const DUES_SETTLEMENT_NOTE_PREFIX = 'سلفة أخيرة للشهر';
+export const DUES_SETTLEMENT_NOTE_PREFIX = FINAL_ADVANCE_SETTLEMENT_NOTE_PREFIX;
 export const DUES_SETTLEMENT_IDEMPOTENCY_PREFIX = '[settle-id:';
 
 export class EmployeeLedgerDuesSettlementError extends Error {

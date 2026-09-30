@@ -26,10 +26,21 @@ export async function POST(request: NextRequest) {
     const payoutDate = String(body.payoutDate ?? '').trim();
     const idempotencyKey = body.idempotencyKey != null ? String(body.idempotencyKey) : undefined;
     const notes = body.notes != null ? String(body.notes) : undefined;
+    // Ledger-scope confirmation only. Do not send BranchID — create-path ownership
+    // rejects client BranchID / BusinessDayID / ShiftMoveID.
+    const confirmedLedgerBranchId = Number(body.confirmedLedgerBranchId);
 
-    // Never trust browser branchId — resolve ownership from gated session context.
     const branch = await requireBranchOperationAccess();
     if (branch instanceof NextResponse) return branch;
+    if (!Number.isInteger(confirmedLedgerBranchId) || confirmedLedgerBranchId !== branch.branchId) {
+      return NextResponse.json(
+        {
+          error:
+            'صرف المستحقات متاح فقط للفرع التشغيلي النشط. اختر ذلك الفرع، حدّث رصيد الشهر، ثم أعد المحاولة.',
+        },
+        { status: 400 },
+      );
+    }
     const dayResolution = await resolveBranchDayForDate(branch.branchId, payoutDate);
     if (!dayResolution.ok) return dayResolution.response;
     const historical = finalizeHistoricalFinancialWrite(branch.branchId, dayResolution.day, body);
