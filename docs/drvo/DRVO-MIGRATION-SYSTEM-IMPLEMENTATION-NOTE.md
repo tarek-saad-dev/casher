@@ -80,7 +80,7 @@ If state is **partial or ambiguous** (e.g. two tenants, branch ID mismatch) → 
 Migration-bearing PR lifecycle:
 
 ```
-open PR → PLAN exact head → human approval → APPLY via migration-control workflow → verify → merge
+open PR → PLAN exact head → human approval → APPLY via .github/workflows/drvo-production-migration.yml → verify → merge
 ```
 
 Regular application deploy after merge:

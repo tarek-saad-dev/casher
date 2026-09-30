@@ -41,7 +41,7 @@ npx tsx scripts/seed-drvo-003-bootstrap-tenant.ts --expected-database=last132_ag
 
 ## How to apply on production (`last132`)
 
-Staging protections are **not** removed. Production DRVO DDL is applied only through the migration-control workflow while the migration PR is still open.
+Staging protections are **not** removed. Production DRVO DDL is applied only through `.github/workflows/drvo-production-migration.yml` while the migration PR is still open: PLAN the exact head, then explicit human APPLY.
 
 The control path:
 - verifies the exact open PR head;
