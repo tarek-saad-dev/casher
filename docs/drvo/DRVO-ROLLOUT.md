@@ -20,6 +20,7 @@
 | DRVO-005 | queue | `extracted` | `extracted` | Platform Core + queue prerequisites are deployed and production readiness is verified; extracted create/cancel/quick paths passed staging smoke and review fixes | Source-controlled cutover to extracted Queue; rollback remains `legacy` |
 | DRVO-006 | operational-calendar | `extracted` | `always_on_infrastructure` | Composition always uses extracted port adapter; no flag; already serving production | None |
 | DRVO-007 | treasury | `extracted` | `always_on_infrastructure` | Non-sale money movement always via MoneyMovement port; sale trigger remains separate | None |
+| DRVO-008 | pos | `extracted` | `extracted` | POS create/update/delete extraction passed staging smoke and review gates; create still uses the existing InsCashMoveSales seam and does not call Treasury MoneyMovement | Source-controlled cutover to extracted POS; rollback remains `legacy` |
 
 ## Future (DRVO-008+)
 

@@ -190,10 +190,10 @@ export const DRVO_MODULE_ROLLOUT: DrvoModuleRolloutSpec[] = [
   {
     module: 'pos',
     drvoId: 'DRVO-008',
-    rollout: 'legacy',
-    classification: 'legacy',
+    rollout: 'extracted',
+    classification: 'extracted',
     classificationRationale:
-      'DRVO-008 POS application boundary is implemented behind the strangler flag. Sale create still relies on InsCashMoveSales; Treasury MoneyMovement.post is not used for sale create in this release.',
+      'DRVO-008 POS create/update/delete extracted paths passed staging smoke and review gates. Sale create still relies on InsCashMoveSales; Treasury MoneyMovement.post is not used for sale create in this release. Rollback remains rollout=legacy.',
     requiredMigrationKeys: [
       'platform-core',
       'platform-bootstrap',
