@@ -72,13 +72,12 @@ describe('DRVO module rollout manifest', () => {
     expect(isStrictOptInEnvFlag('true')).toBe(true);
   });
 
-  it('deploy uses central drvo migrate and verify before restart (no env flag mutation)', () => {
+  it('deploy verifies DRVO state but never auto-applies production migrations', () => {
     const deploy = fs.readFileSync(path.join(process.cwd(), 'deploy/deploy-casher'), 'utf8');
-    const migrate = deploy.indexOf('npm run drvo:migrate-production');
-    const verify = deploy.indexOf('npm run drvo:verify');
+    const verify = deploy.indexOf('npm run drvo:verify -- --allow-production');
     const restart = deploy.indexOf('systemctl restart casher');
-    expect(migrate).toBeGreaterThan(-1);
-    expect(verify).toBeGreaterThan(migrate);
+    expect(deploy).not.toContain('drvo:migrate-production');
+    expect(verify).toBeGreaterThan(-1);
     expect(restart).toBeGreaterThan(verify);
     expect(deploy).not.toContain('treasury:migrate-drvo-007');
     expect(deploy).not.toContain('BOOKING_SCHEDULING_PORT=true');

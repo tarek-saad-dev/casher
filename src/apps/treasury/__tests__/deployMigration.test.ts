@@ -4,13 +4,12 @@ import { describe, expect, it } from 'vitest';
 import { readDrvo007MigrationBatches } from '../../../../scripts/drvo007Migration';
 
 describe('DRVO production migration hook', () => {
-  it('runs central DRVO migrate and verify before casher restart', () => {
+  it('keeps application deploy read-only for DRVO migrations and verifies before restart', () => {
     const deploy = fs.readFileSync(path.join(process.cwd(), 'deploy/deploy-casher'), 'utf8');
-    const migrate = deploy.indexOf('npm run drvo:migrate-production');
-    const verify = deploy.indexOf('npm run drvo:verify');
+    const verify = deploy.indexOf('npm run drvo:verify -- --allow-production');
     const restart = deploy.indexOf('systemctl restart casher');
-    expect(migrate).toBeGreaterThan(-1);
-    expect(verify).toBeGreaterThan(migrate);
+    expect(deploy).not.toContain('drvo:migrate-production');
+    expect(verify).toBeGreaterThan(-1);
     expect(restart).toBeGreaterThan(verify);
   });
 

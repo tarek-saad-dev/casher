@@ -6,8 +6,12 @@
 feature implementation
   → separate DB tests on staging
   → PR (code + db/drvo-migrations entry + moduleManifest contract)
+  → while PR is OPEN: production migration PLAN against exact head
+  → explicit human approval
+  → production migration APPLY through the migration-control workflow
+  → verify migration succeeded
   → merge main
-  → automated deploy (drvo:migrate-production + drvo:verify + restart + health)
+  → automated app deploy (read-only drvo:verify + restart + health)
   → schema ready, business path still follows moduleManifest.rollout
   → later: tiny source-controlled rollout PR (legacy → extracted)
   → merge → deploy verifies readiness → refuses activation if not ready → restart
@@ -80,16 +84,26 @@ npm run drvo-004:smoke-read
 
 Staging-only legacy scripts (`drvo-003:migrate`, `drvo-003:seed`) still refuse `last132`.
 
-## Production deploy (automatic)
+## Production migration + deploy
 
-`deploy/deploy-casher` runs:
+Production DDL is **not** applied by `deploy/deploy-casher`.
+
+While the migration PR is still open, use `.github/workflows/drvo-production-migration.yml`:
+
+1. PLAN against the exact PR head.
+2. Review the migration list and manifest digest.
+3. Explicitly approve APPLY.
+4. APPLY through the migration-control workflow.
+5. Verify the migration result.
+6. Merge the PR.
+
+After merge, `deploy/deploy-casher` runs only:
 
 ```bash
-npm run drvo:migrate-production -- --allow-production
 npm run drvo:verify -- --allow-production
 ```
 
-Then restart + health check. Failure aborts before restart. No operator SQL or env step.
+Then restart + health check. Pending or mismatched DRVO migrations fail closed before restart. No ad-hoc production SQL or env step.
 
 If a module has `rollout: 'extracted'` and readiness fails, verify reports  
 `REFUSING extracted activation for <module>: …` and exits non-zero.
