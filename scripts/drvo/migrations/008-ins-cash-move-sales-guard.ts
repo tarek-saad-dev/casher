@@ -1,6 +1,7 @@
 import path from 'path';
 import type { ConnectionPool } from 'mssql';
 import { checksumFile } from '../checksum';
+import { collectInsCashMoveSalesDirectionFailures } from '../insCashMoveSalesDirections';
 import { executeSqlFile } from '../sqlBatch';
 import type { DrvoMigrationDefinition } from '../types';
 
@@ -37,9 +38,16 @@ export async function verifyInsCashMoveSalesGuard(
   if (!definition.includes("r.Kind = N'sale'")) {
     failures.push('InsCashMoveSales guard must match TreasuryMovementRegistry Kind sale');
   }
-  if (!definition.includes('@treasurySaleExists')) {
-    failures.push('InsCashMoveSales missing @treasurySaleExists guard variable');
+  if (!/NOT\s+EXISTS/i.test(definition) || !/c\.invID\s*=\s*i\.invID/i.test(definition)) {
+    failures.push('InsCashMoveSales guard must skip per inserted invID when a Treasury sale row exists');
   }
+  if (!/c\.invType\s*=\s*i\.invType/i.test(definition)) {
+    failures.push('InsCashMoveSales guard must match the inserted invType');
+  }
+  if (!definition.includes('i.BranchID') || !/BranchID\s+IS\s+NOT\s+NULL/i.test(definition)) {
+    failures.push('InsCashMoveSales must keep BranchID inheritance from the sale head');
+  }
+  failures.push(...collectInsCashMoveSalesDirectionFailures(definition));
 
   return { ok: failures.length === 0, failures };
 }

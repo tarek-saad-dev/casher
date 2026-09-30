@@ -1,6 +1,6 @@
 # DRVO-009 Phase A audit
 
-Audit before POS sale Treasury posting cutover. Staging trigger body matches `scripts/audit-branches/_insCashMoveSales.sql` unless migration 008 has been applied.
+Audit before POS sale Treasury posting cutover. Cash directions match `scripts/audit-branches/_insCashMoveSales.sql`. The live trigger shape is the later set-based body in `db/migrations/add-financial-branch-ownership.sql`, which copies `BranchID` and `BusinessDayID`. Migration 008 keeps that shape and adds the Treasury skip.
 
 ## 1. Trigger definition(s)
 
@@ -24,8 +24,10 @@ Guard (migration 008): each INSERT branch skips when a Treasury-owned sale CashM
 | Notes | inserted head invNotes |
 | ShiftMoveID | inserted head ShiftMoveID |
 | PaymentMethodID | inserted head PaymentMethodID |
+| BranchID | inserted head BranchID |
+| BusinessDayID | inserted head BusinessDayID |
 
-Trigger does **not** set BranchID or BusinessDayID. Treasury sale posting sets them for branch ownership parity.
+`TblCashMove.BranchID` is NOT NULL. The trigger skips a head with NULL `BranchID` and otherwise copies branch and business day from the sale head. Treasury sale posting sets the same fields.
 
 ## 3. Treasury insert shape (non-sale vs sale)
 

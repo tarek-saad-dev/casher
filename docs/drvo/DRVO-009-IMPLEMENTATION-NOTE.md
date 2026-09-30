@@ -4,7 +4,7 @@
 
 ### Stage 1 — compatibility-first DB migration (this PR)
 
-Migration `ins-cash-move-sales-guard` replaces `InsCashMoveSales` with a coexistence guard. Legacy behavior is unchanged until Treasury pre-posts a sale CashMove.
+Migration `ins-cash-move-sales-guard` replaces `InsCashMoveSales` with the branch-ownership set-based body plus a coexistence guard. Directions stay `مبيعات` in, `مبيعات بالكارت` out, `م.مبيعات` out, `م.مبيعات بالكارت` in. Legacy behavior is unchanged until Treasury pre-posts a sale CashMove.
 
 Production: apply via Migration Control Plane PLAN/APPLY **before** activating app Treasury posting.
 
