@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, Wallet } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -23,7 +23,10 @@ interface PaymentMethodOption {
 export interface EmployeePayoutTarget {
   empId: number;
   empName: string;
-  monthBalance?: number;
+  payrollMonth: string;
+  branchId: number;
+  branchLabel: string;
+  monthBalance: number;
 }
 
 interface EmployeePayoutModalProps {
@@ -39,6 +42,13 @@ function todayDateStr(): string {
   return getCairoMonthCloseAwareDate();
 }
 
+function createIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `settle-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export default function EmployeePayoutModal({
   open,
   onClose,
@@ -47,24 +57,21 @@ export default function EmployeePayoutModal({
   defaultPayoutDate,
   onSuccess,
 }: EmployeePayoutModalProps) {
-  const [amount, setAmount] = useState('');
   const [payoutDate, setPayoutDate] = useState(defaultPayoutDate ?? todayDateStr());
   const [paymentMethodId, setPaymentMethodId] = useState('');
   const [notes, setNotes] = useState('');
-  const [allTimeBalance, setAllTimeBalance] = useState<number | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
-  const [loadingBalance, setLoadingBalance] = useState(false);
   const [loadingMethods, setLoadingMethods] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const idempotencyKeyRef = useRef<string>('');
 
   const resetForm = useCallback(() => {
-    setAmount('');
     setNotes('');
     setError('');
     setPayoutDate(defaultPayoutDate ?? todayDateStr());
     setPaymentMethodId('');
-    setAllTimeBalance(null);
+    idempotencyKeyRef.current = createIdempotencyKey();
   }, [defaultPayoutDate]);
 
   const loadPaymentMethods = useCallback(async () => {
@@ -81,51 +88,24 @@ export default function EmployeePayoutModal({
     }
   }, []);
 
-  const loadAllTimeBalance = useCallback(async (empId: number) => {
-    setLoadingBalance(true);
-    try {
-      const res = await fetch(`/api/admin/hr/employee-ledger?empId=${empId}`);
-      const data = await res.json();
-      if (!res.ok && res.status !== 503) {
-        throw new Error(data.error || 'فشل تحميل رصيد الموظف');
-      }
-      setAllTimeBalance(Number(data.balance ?? 0));
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'فشل تحميل رصيد الموظف');
-      setAllTimeBalance(null);
-    } finally {
-      setLoadingBalance(false);
-    }
-  }, []);
-
   useEffect(() => {
     if (!open) return;
     resetForm();
     void loadPaymentMethods();
-    if (employee?.empId) {
-      void loadAllTimeBalance(employee.empId);
-    }
-  }, [open, employee?.empId, resetForm, loadPaymentMethods, loadAllTimeBalance]);
+  }, [open, employee?.empId, resetForm, loadPaymentMethods]);
 
-  const parsedAmount = amount.trim() === '' ? null : Number(amount);
-  const balanceForValidation = allTimeBalance ?? 0;
-  const amountValid = parsedAmount != null && parsedAmount > 0 && parsedAmount <= balanceForValidation;
+  const settlementAmount = employee?.monthBalance ?? 0;
+  const hasPositiveBalance = settlementAmount > 0;
   const canSubmit = dualWriteEnabled
     && !!employee
-    && amountValid
+    && hasPositiveBalance
     && !!paymentMethodId
     && !!payoutDate
     && !submitting
-    && !loadingBalance;
-
-  const handleFullBalance = () => {
-    if (allTimeBalance != null && allTimeBalance > 0) {
-      setAmount(String(allTimeBalance));
-    }
-  };
+    && !loadingMethods;
 
   const handleSubmit = async () => {
-    if (!employee || !canSubmit || parsedAmount == null) return;
+    if (!employee || !canSubmit) return;
 
     setSubmitting(true);
     setError('');
@@ -136,9 +116,12 @@ export default function EmployeePayoutModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           empId: employee.empId,
-          amount: parsedAmount,
+          amount: settlementAmount,
+          expectedBalance: settlementAmount,
+          payrollMonth: employee.payrollMonth,
           paymentMethodId: Number(paymentMethodId),
           payoutDate,
+          idempotencyKey: idempotencyKeyRef.current,
           notes: notes.trim() || undefined,
         }),
       });
@@ -147,7 +130,11 @@ export default function EmployeePayoutModal({
         throw new Error(data.error || 'فشل صرف المستحقات');
       }
 
-      onSuccess('تم صرف مستحقات الموظف وتسجيلها في دفتر الموظفين');
+      onSuccess(
+        data.idempotentReplay
+          ? 'تمت تسوية مستحقات الموظف مسبقاً — لا حركة مكررة'
+          : 'تم صرف مستحقات الموظف كسلفة أخيرة للشهر وتسجيلها في الدفتر والخزنة',
+      );
       onClose();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'فشل صرف المستحقات');
@@ -162,7 +149,7 @@ export default function EmployeePayoutModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg">
             <Wallet className="w-5 h-5 text-primary" />
-            صرف مستحقات
+            صرف مستحقات — سلفة أخيرة للشهر
           </DialogTitle>
         </DialogHeader>
 
@@ -174,60 +161,45 @@ export default function EmployeePayoutModal({
 
         {employee ? (
           <div className="space-y-4">
-            <div className="rounded-lg border border-border bg-surface-muted/40 p-3 space-y-1">
-              <p className="text-sm text-muted-foreground">الموظف</p>
-              <p className="font-semibold">{employee.empName}</p>
-              <div className="flex items-center justify-between text-sm pt-1">
-                <span className="text-muted-foreground">الرصيد الحالي (إجمالي)</span>
-                {loadingBalance ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                ) : (
-                  <span className="font-mono font-bold text-amber-400">
-                    {fmt(allTimeBalance ?? 0)} ج.م
-                  </span>
-                )}
+            <div className="rounded-lg border border-border bg-surface-muted/40 p-3 space-y-2 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">الموظف</span>
+                <span className="font-semibold">{employee.empName}</span>
               </div>
-              {employee.monthBalance != null && (
-                <p className="text-xs text-muted-foreground">
-                  رصيد الشهر المعروض: {fmt(employee.monthBalance)} ج.م
-                </p>
-              )}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">شهر الرواتب</span>
+                <span className="font-mono">{employee.payrollMonth}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">الفرع</span>
+                <span className="font-semibold">{employee.branchLabel}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/60">
+                <span className="text-muted-foreground">مبلغ التسوية (رصيد الشهر)</span>
+                <span className={`font-mono font-bold ${hasPositiveBalance ? 'text-amber-400' : 'text-zinc-400'}`}>
+                  {fmt(settlementAmount)} ج.م
+                </span>
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">المبلغ</label>
-              <div className="flex gap-2">
-                <Input
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0.00"
-                  className="bg-surface-muted border-border"
-                  disabled={!dualWriteEnabled || submitting}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="shrink-0 border-border"
-                  onClick={handleFullBalance}
-                  disabled={!dualWriteEnabled || loadingBalance || (allTimeBalance ?? 0) <= 0}
-                >
-                  صرف كامل الرصيد
-                </Button>
-              </div>
-              {parsedAmount != null && parsedAmount > balanceForValidation && (
-                <p className="text-xs text-destructive mt-1">المبلغ أكبر من رصيد الموظف الحالي</p>
-              )}
+            <div className="rounded-lg border border-sky-500/25 bg-sky-500/5 p-3 text-xs text-sky-200/90 leading-relaxed">
+              سيتم تسجيل المبلغ كسلفة أخيرة للشهر {employee.payrollMonth} — صرف مستحقات،
+              مع خصم واحد من الخزنة وقيد مدين واحد في دفتر الموظف (سبب: سلفة).
+              لا يُنشأ قيد «صرف» منفصل.
             </div>
+
+            {!hasPositiveBalance && (
+              <div className="p-3 rounded-lg border border-amber-500/30 bg-amber-500/5 text-amber-300 text-sm">
+                لا يوجد مستحقات موجبة لهذا الموظف في هذا الشهر والفرع — لا يمكن تنفيذ صرف مستحقات.
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium mb-2">طريقة الدفع</label>
               <Select
                 value={paymentMethodId}
                 onValueChange={setPaymentMethodId}
-                disabled={!dualWriteEnabled || submitting || loadingMethods}
+                disabled={!dualWriteEnabled || submitting || loadingMethods || !hasPositiveBalance}
               >
                 <SelectTrigger className="bg-surface-muted border-border">
                   <SelectValue placeholder={loadingMethods ? 'جاري التحميل...' : 'اختر طريقة الدفع'} />
@@ -249,7 +221,7 @@ export default function EmployeePayoutModal({
                 value={payoutDate}
                 onChange={(e) => setPayoutDate(e.target.value)}
                 className="bg-surface-muted border-border"
-                disabled={!dualWriteEnabled || submitting}
+                disabled={!dualWriteEnabled || submitting || !hasPositiveBalance}
               />
             </div>
 
@@ -260,7 +232,7 @@ export default function EmployeePayoutModal({
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="ملاحظات إضافية"
                 className="bg-surface-muted border-border"
-                disabled={!dualWriteEnabled || submitting}
+                disabled={!dualWriteEnabled || submitting || !hasPositiveBalance}
               />
             </div>
 
@@ -292,7 +264,7 @@ export default function EmployeePayoutModal({
                     جاري الصرف...
                   </>
                 ) : (
-                  'تأكيد الصرف'
+                  'تأكيد صرف المستحقات'
                 )}
               </Button>
             </div>

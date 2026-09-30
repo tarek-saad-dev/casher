@@ -305,12 +305,29 @@ export default function EmployeeLedgerPanel() {
     ];
   }, [branchFinancial, branchFilter]);
 
-  const openPayout = (row: EmpLedgerEmployeeSummaryRow) => {
+  const selectedBranchMeta = useMemo(() => {
+    if (branchFilter === 'all') return null;
+    const branchId = parseInt(branchFilter, 10);
+    const meta = accessibleBranches.find((b) => b.branchId === branchId);
+    if (!meta) return null;
+    return {
+      branchId,
+      branchLabel: shortBranchLabel(meta),
+    };
+  }, [branchFilter, accessibleBranches]);
+
+  const openPayout = (
+    row: EmpLedgerEmployeeSummaryRow,
+    branchBreakdown: EmpLedgerEmployeeBranchBreakdown,
+  ) => {
+    if (!selectedBranchMeta) return;
     setPayoutTarget({
       empId: row.empId,
       empName: row.empName,
-      // Filter-scoped balance (session payout still validates branch account server-side).
-      monthBalance: row.balance,
+      payrollMonth: month,
+      branchId: selectedBranchMeta.branchId,
+      branchLabel: selectedBranchMeta.branchLabel,
+      monthBalance: branchBreakdown.balance,
     });
     setPayoutOpen(true);
   };
@@ -588,31 +605,40 @@ export default function EmployeeLedgerPanel() {
                           {fmt(overall)}
                         </td>
                       )}
-                      {idx === 0 && (
-                        <td rowSpan={2} className="px-4 py-3 align-middle">
-                          <div className="flex flex-wrap gap-1">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-8 gap-1 border-border text-xs"
-                              disabled={!dualWriteEnabled || row.balance <= 0}
-                              title={
-                                !dualWriteEnabled
-                                  ? 'يتطلب تفعيل EMP_LEDGER_DUAL_WRITE_ENABLED'
-                                  : undefined
-                              }
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openPayout(row);
-                              }}
-                            >
-                              <Wallet className="w-3.5 h-3.5" />
-                              صرف مستحقات
-                            </Button>
-                          </div>
-                        </td>
-                      )}
+                      <td className="px-4 py-3 align-middle">
+                        <div className="flex flex-wrap gap-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 gap-1 border-border text-xs"
+                            disabled={
+                              !dualWriteEnabled
+                              || branchFilter === 'all'
+                              || br.balance <= 0
+                              || selectedBranchMeta?.branchId !== br.branchId
+                            }
+                            title={
+                              !dualWriteEnabled
+                                ? 'يتطلب تفعيل EMP_LEDGER_DUAL_WRITE_ENABLED'
+                                : branchFilter === 'all'
+                                  ? 'اختر فرعاً محدداً لصرف مستحقات هذا الشهر — لا يُستخدم الرصيد المجمّع'
+                                  : selectedBranchMeta?.branchId !== br.branchId
+                                    ? 'الزر متاح لفرع الفلتر المحدد فقط'
+                                    : br.balance <= 0
+                                      ? 'لا يوجد مستحقات موجبة في هذا الفرع'
+                                      : undefined
+                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openPayout(row, br);
+                            }}
+                          >
+                            <Wallet className="w-3.5 h-3.5" />
+                            صرف مستحقات
+                          </Button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 });
@@ -765,7 +791,7 @@ export default function EmployeeLedgerPanel() {
       )}
 
       <p className="text-xs text-zinc-600 px-1">
-        الرصيد المعروض حسب شهر الرواتب وفلتر الفرع. الصرف يتحقق من رصيد فرع الجلسة النشط. الإجمالي العام = مجموع أرصدة الفروع بدون تكرار.
+        الرصيد المعروض حسب شهر الرواتب وفلتر الفرع. صرف المستحقات يُسوّي الرصيد الشهري الموجب للفرع المحدد كسلفة أخيرة — اختر فرعاً قبل التأكيد. الإجمالي العام = مجموع أرصدة الفروع بدون تكرار.
       </p>
     </div>
   );
