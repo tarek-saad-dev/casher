@@ -166,10 +166,10 @@ describe('DRVO rollout resolver precedence', () => {
     ]);
   });
 
-  it('keeps POS on legacy rollout until human activation PR', () => {
+  it('uses extracted POS rollout after human activation PR', () => {
     const pos = getDrvoModuleRolloutSpec('pos');
     expect(pos.drvoId).toBe('DRVO-008');
-    expect(pos.rollout).toBe('legacy');
+    expect(pos.rollout).toBe('extracted');
     expect(pos.forcePathEnv).toBe('DRVO_FORCE_POS_PATH');
     expect(pos.compatEnvFlag).toBe('POS_SCHEDULING_PORT');
     expect(pos.requiredMigrationKeys).not.toContain('pos-prerequisites');
