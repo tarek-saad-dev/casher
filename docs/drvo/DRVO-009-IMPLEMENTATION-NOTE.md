@@ -8,11 +8,9 @@ Migration `ins-cash-move-sales-guard` replaces `InsCashMoveSales` with the branc
 
 Production: apply via Migration Control Plane PLAN/APPLY **before** activating app Treasury posting.
 
-### Stage 2 — application cutover (separate activation PR)
+### Stage 2 — application cutover (activation PR #38)
 
-Set `pos-sale-treasury.rollout = extracted` in `moduleManifest.ts` after Stage 1 is live and verified. Activation also requires staging proof that Treasury pre-post plus split redistribution still yields one initial sale CashMove and the expected transfer rows.
-
-Until then, default `rollout: legacy` keeps trigger-only sale CashMove.
+`pos-sale-treasury.rollout = extracted` in `moduleManifest.ts` after Stage 1 is live and staging smoke passes. Staging proof includes Treasury pre-post on clearing plus split redistribution: one initial sale CashMove, one registry row, two transfer pairs, and InsCashMoveSales still enabled.
 
 ## App changes
 
