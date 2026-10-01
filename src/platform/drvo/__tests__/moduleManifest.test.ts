@@ -168,11 +168,13 @@ describe('DRVO rollout resolver precedence', () => {
     ]);
   });
 
-  it('keeps pos-sale-treasury on legacy until migration + activation', () => {
+  it('activates pos-sale-treasury after staging proof (DRVO-009 Stage 2)', () => {
     const saleTreasury = getDrvoModuleRolloutSpec('pos-sale-treasury');
     expect(saleTreasury.drvoId).toBe('DRVO-009');
-    expect(saleTreasury.rollout).toBe('legacy');
+    expect(saleTreasury.rollout).toBe('extracted');
+    expect(saleTreasury.classification).toBe('extracted');
     expect(saleTreasury.requiredMigrationKeys).toContain('ins-cash-move-sales-guard');
+    expect(saleTreasury.rollbackRollout).toBe('legacy');
   });
 
   it('uses extracted POS rollout after human activation PR', () => {
