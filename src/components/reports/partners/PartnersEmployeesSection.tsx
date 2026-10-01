@@ -47,7 +47,7 @@ export default function PartnersEmployeesSection({
     <section className="w-full min-w-0 bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-3 sm:p-4 md:p-6 print:break-inside-avoid">
       <h2 className="text-base sm:text-lg font-bold text-white mb-1 sm:mb-2">الموظفون</h2>
       <p className="text-xs text-zinc-500 mb-3 sm:mb-4">
-        عمود السلف = ما زاد عن (راتب + تارجت + تمويل) في الدفتر — أي السحب النقدي من الخزنة بعد خصم الاستحقاقات والتمويل. إيراد الفواتير منفصل في «دخل للمحل».
+        عمود السلف = ما زاد عن (راتب + تارجت + تمويل) في الدفتر — أي السحب النقدي من الخزنة بعد خصم الاستحقاقات والتمويل.
       </p>
 
       {loading && rows.length === 0 ? (
@@ -68,16 +68,6 @@ export default function PartnersEmployeesSection({
                 <h3 className="text-base font-bold text-white break-words border-b border-zinc-800/60 pb-2">
                   {row.employeeName}
                 </h3>
-                <MobileValueRow
-                  label="دخل للمحل"
-                  value={
-                    row.shopRevenue == null ? (
-                      <span className="text-zinc-500">—</span>
-                    ) : (
-                      formatPartnersCurrency(row.shopRevenue)
-                    )
-                  }
-                />
                 <MobileValueRow
                   label="استلم راتب (راتب + تارجت)"
                   value={
@@ -108,11 +98,6 @@ export default function PartnersEmployeesSection({
             <article className="w-full min-w-0 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 sm:p-4 space-y-3">
               <h3 className="text-base font-bold text-white">الإجمالي</h3>
               <MobileValueRow
-                label="إجمالي الإيراد الفعلي للصنايعية"
-                value={formatPartnersCurrency(totals.totalShopRevenue)}
-                valueClassName="text-emerald-400"
-              />
-              <MobileValueRow
                 label="إجمالي استلم راتب (راتب + تارجت)"
                 value={formatPartnersCurrency(totals.totalSalaryAndTarget ?? 0)}
                 valueClassName="text-amber-400"
@@ -131,7 +116,6 @@ export default function PartnersEmployeesSection({
               <thead>
                 <tr className="border-b border-zinc-800 text-zinc-400 print:border-zinc-300 print:text-zinc-600">
                   <th className="text-right py-3 px-2 font-medium">الموظف</th>
-                  <th className="text-right py-3 px-2 font-medium">دخل للمحل</th>
                   <th className="text-right py-3 px-2 font-medium">استلم راتب (راتب + تارجت)</th>
                   <th
                     className="text-right py-3 px-2 font-medium"
@@ -149,15 +133,6 @@ export default function PartnersEmployeesSection({
                   >
                     <td className="py-3 px-2 text-white font-medium break-words">
                       {row.employeeName}
-                    </td>
-                    <td className="py-3 px-2 tabular-nums">
-                      {row.shopRevenue == null ? (
-                        <span className="text-zinc-500">—</span>
-                      ) : (
-                        <span className="text-white font-medium">
-                          {formatPartnersCurrency(row.shopRevenue)}
-                        </span>
-                      )}
                     </td>
                     <td className="py-3 px-2 tabular-nums">
                       <span className="block text-amber-400 font-medium">
@@ -181,14 +156,6 @@ export default function PartnersEmployeesSection({
                 ))}
                 <tr className="bg-zinc-800/40 font-bold print:break-inside-avoid print:bg-zinc-100">
                   <td className="py-3 px-2 text-white print:text-black">الإجمالي</td>
-                  <td className="py-3 px-2 tabular-nums">
-                    <span className="block text-[10px] text-zinc-500 font-normal print:text-zinc-600 mb-0.5">
-                      إجمالي الإيراد الفعلي للصنايعية
-                    </span>
-                    <span className="text-emerald-400 print:text-emerald-700">
-                      {formatPartnersCurrency(totals.totalShopRevenue)}
-                    </span>
-                  </td>
                   <td className="py-3 px-2 tabular-nums">
                     <span className="block text-[10px] text-zinc-500 font-normal print:text-zinc-600 mb-0.5">
                       إجمالي استلم راتب (راتب + تارجت)
