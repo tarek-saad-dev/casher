@@ -385,6 +385,104 @@ async function main() {
       touched.push({ invId: cardInv, invType: 'مبيعات بالكارت', sourceRef: cardSource });
       console.log('PASS: Treasury card pre-post kept inOut=out and trigger did not add a row');
 
+      const comboInv = await allocateInvID(tx, 'TblinvServHead', 'مبيعات', 5000);
+      const comboAmount = 15;
+      const comboSource = `pos-sale:${comboInv}`;
+      await postSaleCashMove(tx, actor, {
+        tenantId,
+        saleInvId: comboInv,
+        invType: 'مبيعات',
+        invDate,
+        invTime: '13.15',
+        clientId: 1,
+        amount: comboAmount,
+        inOut: 'in',
+        notes: `${MARKER}-COMBO-SPLIT`,
+        shiftMoveId: shiftId,
+        paymentMethodId: splitCfg.clearingMethodId,
+        branchId,
+        businessDayId,
+        sourceRef: comboSource,
+        idempotencyKey: defaultSaleIdempotencyKey(comboInv, 'مبيعات'),
+      });
+      await insertHead(tx, {
+        invId: comboInv,
+        invType: 'مبيعات',
+        invDate,
+        invTime: '13.15',
+        clientId: 1,
+        userId,
+        shiftId,
+        paymentMethodId: splitCfg.clearingMethodId,
+        branchId,
+        businessDayId,
+        amount: comboAmount,
+        notes: `${MARKER}-COMBO-SPLIT`,
+      });
+      const comboAfterHead = await saleCashMoves(tx, comboInv, 'مبيعات');
+      expectOneDirection(comboAfterHead, 'in', 'combo treasury+split after head insert');
+      if (Number(comboAfterHead[0].PaymentMethodID) !== splitCfg.clearingMethodId) {
+        fail('combo initial CashMove was not posted on the clearing method');
+      }
+      const comboRegistry = await new sql.Request(tx)
+        .input('sourceRef', sql.NVarChar(200), comboSource)
+        .query(`
+          SELECT COUNT(*) AS cnt
+          FROM dbo.TreasuryMovementRegistry
+          WHERE Kind = N'sale' AND SourceRef = @sourceRef
+        `);
+      if (Number(comboRegistry.recordset[0].cnt) !== 1) {
+        fail('combo treasury+split missing registry sale row');
+      }
+      await redistributeFromClearing({
+        transaction: tx,
+        branchId,
+        businessDayId,
+        clearingMethodId: splitCfg.clearingMethodId,
+        allocations: [
+          { paymentMethodId: paymentMethodIds[0], amount: 9 },
+          { paymentMethodId: paymentMethodIds[1], amount: 6 },
+        ],
+        invDate,
+        invTime: '13.15',
+        clientId: 1,
+        shiftMoveId: shiftId,
+        invoiceId: comboInv,
+        expenseCatId: splitCfg.expenseCatId,
+        incomeCatId: splitCfg.incomeCatId,
+      });
+      const comboFinalSale = await saleCashMoves(tx, comboInv, 'مبيعات');
+      expectOneDirection(comboFinalSale, 'in', 'combo treasury+split after redistribution');
+      if (Number(comboFinalSale[0].PaymentMethodID) !== splitCfg.clearingMethodId) {
+        fail('combo initial sale CashMove moved off clearing method');
+      }
+      const comboTransfers = await new sql.Request(tx)
+        .input('needle', sql.NVarChar(80), `فاتورة ${comboInv}`)
+        .query(`
+          SELECT invType, inOut, COUNT(*) AS cnt
+          FROM dbo.TblCashMove
+          WHERE Notes LIKE N'%' + @needle + N'%'
+          GROUP BY invType, inOut
+        `);
+      const comboTransferMap = new Map(
+        comboTransfers.recordset.map((row) => [
+          `${row.invType}|${String(row.inOut).trim().toLowerCase()}`,
+          Number(row.cnt),
+        ]),
+      );
+      if (
+        comboTransferMap.get('مصروفات|out') !== 2 ||
+        comboTransferMap.get('ايرادات|in') !== 2
+      ) {
+        fail(
+          `combo treasury+split expected 2 out + 2 in transfer rows, got ${JSON.stringify([...comboTransferMap])}`,
+        );
+      }
+      touched.push({ invId: comboInv, invType: 'مبيعات', sourceRef: comboSource });
+      console.log(
+        'PASS: Treasury pre-post on clearing + head insert + split redistribution → one initial sale CashMove, one registry row, two transfer pairs',
+      );
+
       const splitInv = await allocateInvID(tx, 'TblinvServHead', 'مبيعات', 5000);
       const splitAmount = 10;
       await insertHead(tx, {
