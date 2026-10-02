@@ -1,12 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { isPosSaleTreasuryMutationEnabled } from '../internal/posSaleTreasuryMutationFlag';
 
 function read(rel: string): string {
   return fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
 }
 
 describe('DRVO-010 POS sale Treasury mutation wiring', () => {
+  afterEach(() => {
+    delete process.env.POS_SALE_TREASURY_MUTATION_PORT;
+    delete process.env.DRVO_FORCE_POS_SALE_TREASURY_MUTATION_PATH;
+  });
   it('updateSale wires Treasury replacer when mutation flag is enabled', () => {
     const src = read('src/apps/pos/application/updateSale.ts');
     expect(src).toContain('isPosSaleTreasuryMutationEnabled');
@@ -64,9 +69,15 @@ describe('DRVO-010 POS sale Treasury mutation wiring', () => {
     }
   });
 
-  it('pos-sale-treasury-mutation defaults to legacy rollout', () => {
+  it('pos-sale-treasury-mutation defaults to extracted after Stage 2 activation', () => {
     const manifest = read('src/platform/drvo/moduleManifest.ts');
     expect(manifest).toContain("module: 'pos-sale-treasury-mutation'");
-    expect(manifest).toMatch(/pos-sale-treasury-mutation[\s\S]*?rollout:\s*'legacy'/);
+    expect(manifest).toMatch(/pos-sale-treasury-mutation[\s\S]*?rollout:\s*'extracted'/);
+    expect(isPosSaleTreasuryMutationEnabled()).toBe(true);
+  });
+
+  it('force-path legacy remains the emergency rollback', () => {
+    process.env.DRVO_FORCE_POS_SALE_TREASURY_MUTATION_PATH = 'legacy';
+    expect(isPosSaleTreasuryMutationEnabled()).toBe(false);
   });
 });
