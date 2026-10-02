@@ -88,7 +88,6 @@ export async function GET(request: NextRequest) {
             FROM dbo.TblNewDay nd
             LEFT JOIN dbo.TblTreasuryCloseRecon r
               ON r.NewDay = nd.ID
-             AND ISNULL(r.IsActive, 1) = 1
             WHERE nd.BranchID = @branchId
               AND nd.NewDay = @workDate
           `),
