@@ -62,8 +62,7 @@ export async function GET(request: NextRequest) {
     const branchResult = await db.request().query(`
       SELECT BranchID, BranchCode, BranchName
       FROM dbo.TblBranch
-      WHERE IsActive = 1
-        AND BranchCode IN (N'GLEEM', N'CAMP_CAESAR')
+      WHERE BranchCode IN (N'GLEEM', N'CAMP_CAESAR')
       ORDER BY CASE BranchCode WHEN N'GLEEM' THEN 0 WHEN N'CAMP_CAESAR' THEN 1 ELSE 9 END
     `);
 
