@@ -7,7 +7,7 @@ import {
   Users, Plus, CheckCircle2, AlertCircle,
   Loader2, UserPlus, Link2, Scissors, X, Zap, Clock, UserX, UserCheck,
   Banknote, CalendarCheck, Wallet, UsersRound, BookOpen, Scale, MessageCircle, Pencil, Target,
-  FileSpreadsheet, CalendarRange, MoreHorizontal, ClipboardList,
+  FileSpreadsheet, CalendarRange, MoreHorizontal, ClipboardList, Trash2,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { parseTimeToMinutes } from '@/lib/timeUtils';
@@ -251,6 +251,8 @@ function EmployeesPanel() {
   const [loadingInactive, setLoadingInactive] = useState(false);
   const [activatingId, setActivatingId] = useState<number | null>(null);
   const [deactivatingId, setDeactivatingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deleteError, setDeleteError] = useState('');
   const [statusTab, setStatusTab] = useState<'inactive' | 'active'>('inactive');
   const [savingWhatsAppId, setSavingWhatsAppId] = useState<number | null>(null);
   const [whatsappDrafts, setWhatsappDrafts] = useState<Record<number, string>>({});
@@ -387,7 +389,11 @@ function EmployeesPanel() {
     finally { setLoadingInactive(false); }
   };
 
-  const openInactiveModal = async () => { setInactiveModalOpen(true); await loadInactiveEmployees(); };
+  const openInactiveModal = async () => {
+    setDeleteError('');
+    setInactiveModalOpen(true);
+    await loadInactiveEmployees();
+  };
 
   const activateEmployee = async (empId: number) => {
     setActivatingId(empId);
@@ -409,6 +415,27 @@ function EmployeesPanel() {
       await load(); await loadInactiveEmployees();
     } catch (e: any) { console.error('Failed to deactivate employee:', e.message); }
     finally { setDeactivatingId(null); }
+  };
+
+  const hardDeleteEmployee = async (employee: Employee) => {
+    const confirmed = window.confirm(
+      `حذف "${employee.EmpName}" نهائيًا؟\n\nهذه العملية لا يمكن التراجع عنها، ولن تتم إذا كان للموظف أي بيانات تشغيلية أو مالية مرتبطة به.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingId(employee.EmpID);
+    setDeleteError('');
+    try {
+      const res = await fetch(`/api/employees/${employee.EmpID}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'تعذر حذف الموظف نهائيًا');
+      setInactiveEmployees((prev) => prev.filter((emp) => emp.EmpID !== employee.EmpID));
+      await load();
+    } catch (e: any) {
+      setDeleteError(e.message || 'تعذر حذف الموظف نهائيًا');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const handleWorkHoursSave = async () => {
@@ -1059,6 +1086,12 @@ function EmployeesPanel() {
           </div>
 
           <div className="flex-1 min-h-0 overflow-auto overscroll-contain px-4 py-3">
+            {deleteError && (
+              <div className="mb-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{deleteError}</span>
+              </div>
+            )}
             {loadingInactive ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground/70" />
@@ -1102,24 +1135,45 @@ function EmployeesPanel() {
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            <Button
-                              size="sm"
-                              onClick={() => activateEmployee(emp.EmpID)}
-                              disabled={activatingId === emp.EmpID}
-                              className="gap-1.5 bg-success hover:bg-success/90 text-xs"
-                            >
-                              {activatingId === emp.EmpID ? (
-                                <>
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                  جاري...
-                                </>
-                              ) : (
-                                <>
-                                  <UserCheck className="w-3 h-3" />
-                                  تفعيل
-                                </>
-                              )}
-                            </Button>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => activateEmployee(emp.EmpID)}
+                                disabled={activatingId === emp.EmpID || deletingId === emp.EmpID}
+                                className="gap-1.5 bg-success hover:bg-success/90 text-xs"
+                              >
+                                {activatingId === emp.EmpID ? (
+                                  <>
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    جاري...
+                                  </>
+                                ) : (
+                                  <>
+                                    <UserCheck className="w-3 h-3" />
+                                    تفعيل
+                                  </>
+                                )}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => hardDeleteEmployee(emp)}
+                                disabled={deletingId === emp.EmpID || activatingId === emp.EmpID}
+                                className="gap-1.5 border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive text-xs"
+                              >
+                                {deletingId === emp.EmpID ? (
+                                  <>
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    جاري الحذف...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Trash2 className="w-3 h-3" />
+                                    حذف نهائي
+                                  </>
+                                )}
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       ))}
