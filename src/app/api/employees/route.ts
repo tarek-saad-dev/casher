@@ -23,6 +23,7 @@ import {
 import { ensureEmployeeAdvanceMapping } from '@/lib/hr/employee-hr-advance';
 import { getEmployeesTargetSummaryBatch } from '@/lib/payroll/employee-target';
 import { ensureTblEmpImageUrlColumn } from '@/lib/migrations/ensureEmployeeImageUrl';
+import { ensureTblEmpArchivedColumn } from '@/lib/migrations/ensureEmployeeArchived';
 import { ensureTblEmpNameEnColumn, normalizeEmpNameEn } from '@/lib/migrations/ensureEmployeeNameEn';
 import {
   ensureTblEmpDisplaySortOrderColumn,
@@ -45,6 +46,10 @@ export async function GET(req: NextRequest) {
     const showInactive = searchParams.get('inactive') === 'true';
 
     const db = await getPool();
+    const hasArchived = await ensureTblEmpArchivedColumn(db);
+    if (!hasArchived) {
+      return NextResponse.json({ error: 'تعذر تجهيز أرشفة الموظفين' }, { status: 500 });
+    }
     const hasSort = await ensureTblEmpDisplaySortOrderColumn(db);
     const orderBy = hasSort
       ? 'ISNULL(e.DisplaySortOrder, 999), e.EmpName'
@@ -52,6 +57,7 @@ export async function GET(req: NextRequest) {
     const result = await db.request().query(`
       ${EMPLOYEE_LIST_SELECT}
       WHERE ISNULL(e.isActive, 1) = ${showInactive ? '0' : '1'}
+        AND ISNULL(e.IsArchived, 0) = 0
       ORDER BY ${orderBy}
     `);
 

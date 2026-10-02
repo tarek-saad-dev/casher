@@ -19,6 +19,7 @@ import {
   upsertEmployeeSchedule,
 } from '@/lib/hr/employee-hr-db';
 import { ensureTblEmpImageUrlColumn } from '@/lib/migrations/ensureEmployeeImageUrl';
+import { ensureTblEmpArchivedColumn } from '@/lib/migrations/ensureEmployeeArchived';
 import { ensureTblEmpNameEnColumn, normalizeEmpNameEn } from '@/lib/migrations/ensureEmployeeNameEn';
 import {
   ensureTblEmpDisplaySortOrderColumn,
@@ -450,6 +451,97 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/employees/:id] PATCH error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+
+// DELETE /api/employees/:id
+// Hard delete is intentionally restricted to inactive employees. SQL Server remains
+// the final integrity guard: if any operational/financial row references the employee,
+// the FK constraint blocks the delete and we return a safe conflict response.
+export async function DELETE(_req: NextRequest, { params }: Ctx) {
+  try {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+
+    const { id } = await params;
+    const empID = parseInt(id);
+    if (isNaN(empID)) {
+      return NextResponse.json({ error: 'معرف الموظف غير صالح' }, { status: 400 });
+    }
+
+    const pool = await getPool();
+    const hasArchived = await ensureTblEmpArchivedColumn(pool);
+    if (!hasArchived) {
+      return NextResponse.json({ error: 'تعذر تجهيز أرشفة الموظفين' }, { status: 500 });
+    }
+
+    const current = await pool.request().input('empID', sql.Int, empID).query(`
+      SELECT EmpID, EmpName, isActive, IsArchived
+      FROM dbo.TblEmp
+      WHERE EmpID = @empID
+    `);
+
+    if (current.recordset.length === 0) {
+      return NextResponse.json({ error: 'الموظف غير موجود' }, { status: 404 });
+    }
+
+    const employee = current.recordset[0];
+    if (Boolean(employee.isActive)) {
+      return NextResponse.json(
+        { error: 'يجب إيقاف الموظف أولاً قبل الحذف النهائي' },
+        { status: 409 },
+      );
+    }
+
+    try {
+      const result = await pool.request().input('empID', sql.Int, empID).query(`
+        DELETE FROM dbo.TblEmp
+        WHERE EmpID = @empID AND ISNULL(isActive, 0) = 0;
+
+        SELECT @@ROWCOUNT AS deletedCount;
+      `);
+
+      const deletedCount = Number(result.recordset?.[0]?.deletedCount ?? 0);
+      if (deletedCount !== 1) {
+        return NextResponse.json(
+          { error: 'تعذر حذف الموظف؛ أعد تحميل الصفحة وحاول مرة أخرى' },
+          { status: 409 },
+        );
+      }
+    } catch (deleteErr: unknown) {
+      const err = deleteErr as { number?: number; message?: string };
+      if (err?.number === 547 || String(err?.message || '').includes('REFERENCE constraint')) {
+        await pool.request().input('empID', sql.Int, empID).query(`
+          UPDATE dbo.TblEmp
+          SET IsArchived = 1, isActive = 0
+          WHERE EmpID = @empID
+        `);
+
+        invalidatePublicBookingBarbersCache();
+        return NextResponse.json({
+          success: true,
+          archived: true,
+          deleted: false,
+          message: 'تم إخفاء الموظف نهائيًا من الإدارة مع الاحتفاظ بسجلاته التاريخية.',
+          deletedEmployee: { EmpID: empID, EmpName: employee.EmpName ?? null },
+        });
+      }
+      throw deleteErr;
+    }
+
+    invalidatePublicBookingBarbersCache();
+    return NextResponse.json({
+      success: true,
+      archived: false,
+      deleted: true,
+      message: 'تم حذف الموظف نهائيًا.',
+      deletedEmployee: { EmpID: empID, EmpName: employee.EmpName ?? null },
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[api/employees/:id] DELETE error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
