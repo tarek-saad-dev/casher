@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   CalendarDays, Loader2, Zap, Send, RefreshCw,
   CheckCircle2, AlertCircle, Users, Banknote,
@@ -251,6 +252,14 @@ function targetPersistenceBadge(status: TargetLikeRow['persistenceStatus'] | und
 }
 
 export default function DailyPayrollPanel() {
+  const searchParams = useSearchParams();
+  const requestedManagerDate = searchParams.get('managerClosing') === '1'
+    ? searchParams.get('date')
+    : null;
+  const managerClosingDate =
+    requestedManagerDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedManagerDate)
+      ? requestedManagerDate
+      : null;
   const { user } = useSession();
   const { access, hasRole } = usePermissions();
   const canReopenPayrollDay =
@@ -259,7 +268,7 @@ export default function DailyPayrollPanel() {
     hasRole('super_admin') ||
     user?.UserLevel === 'admin';
 
-  const [workspaceDate, setWorkspaceDate] = useState(getBusinessDateStr());
+  const [workspaceDate, setWorkspaceDate] = useState(() => managerClosingDate ?? getBusinessDateStr());
   const [workspaceBranchId, setWorkspaceBranchId] = useState<number | null>(null);
   const [workspaceBranches, setWorkspaceBranches] = useState<
     Array<{ branchId: number; branchCode: string; branchName: string }>
@@ -671,7 +680,7 @@ export default function DailyPayrollPanel() {
           }
         }
 
-        const d = getBusinessDateStr();
+        const d = managerClosingDate ?? getBusinessDateStr();
         const branchForWorkspace =
           activeId ?? (branches[0] ? branches[0].branchId : null);
         if (!cancelled) {

@@ -168,6 +168,7 @@ export const NAV_SECTIONS: NavSection[] = [
     title: 'الخزنة',
     icon: Wallet,
     items: [
+      { href: '/manager/closing',         label: 'تقفيل المدير',        icon: ShieldCheck   },
       { href: '/treasury/daily',          label: 'قفل اليوم',           icon: Lock          },
       { href: '/treasury/group-daily',    label: 'خزنة كل الفروع',      icon: Building2     },
       { href: '/treasury/period-summary', label: 'ملخص الخزنة الدوري',  icon: Calendar      },

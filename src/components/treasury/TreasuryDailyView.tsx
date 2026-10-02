@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Loader2, Lock, Calculator, ArrowRightLeft, TrendingUp, TrendingDown } from 'lucide-react';
 import TreasuryFiltersBar from '@/components/treasury/TreasuryFiltersBar';
 import TreasuryKpiCards from '@/components/treasury/TreasuryKpiCards';
@@ -60,6 +61,12 @@ export default function TreasuryDailyView({
   pageSubtitle      = 'متابعة الحركات المالية وقفل اليوم',
   onShiftClosed,
 }: TreasuryDailyViewProps) {
+  const searchParams = useSearchParams();
+  const managerClosingDate =
+    searchParams.get('managerClosing') === '1' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(searchParams.get('date') || '')
+      ? searchParams.get('date')
+      : null;
   const { shift, refresh } = useSession();
   const [treasuryData,    setTreasuryData]    = useState<DailyTreasuryData | null>(null);
   const [movementsData,   setMovementsData]   = useState<TreasuryMovementsResponse | null>(null);
@@ -104,7 +111,7 @@ export default function TreasuryDailyView({
           null;
         setFilters((prev) => ({
           ...prev,
-          newDay: data.currentDay?.newDay ?? prev.newDay,
+          newDay: managerClosingDate ?? data.currentDay?.newDay ?? prev.newDay,
           ...(canCloseShift && preferredShiftId != null
             ? { shiftMoveId: preferredShiftId }
             : {}),
