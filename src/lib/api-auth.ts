@@ -120,6 +120,31 @@ export async function requireRole(
   return auth;
 }
 
+/**
+ * Platform operator gate for tenant onboarding/control-plane routes.
+ * Temporary boundary: super_admin (or legacy super admin flag) until a dedicated
+ * platform-admin role exists. Normal branch admins must not provision tenants.
+ */
+export async function requirePlatformOperator(): Promise<AuthResult | NextResponse> {
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
+  if (auth.isSuperAdmin || auth.roles.includes('super_admin')) {
+    return auth;
+  }
+
+  logSecurityEvent('platform_operator_denied', {
+    userId: auth.userId,
+    userName: auth.userName,
+    roles: auth.roles,
+  });
+
+  return NextResponse.json(
+    { error: 'غير مصرح — هذه العملية تتطلب صلاحية مشغل المنصة (super_admin)' },
+    { status: 403 },
+  );
+}
+
 /** Require admin or super_admin role (or legacy UserLevel admin). */
 export async function requireAdmin(): Promise<AuthResult | NextResponse> {
   const auth = await authenticate();

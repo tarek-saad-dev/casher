@@ -39,6 +39,7 @@
     "drvo:migrate": "tsx scripts/drvo/run-migrations.ts",
     "drvo:migrate-production": "tsx scripts/drvo/run-migrations.ts --allow-production",
     "drvo:verify": "tsx scripts/drvo/verify-cli.ts",
+    "drvo-011:smoke": "tsx scripts/drvo/drvo-011-tenant-onboarding-smoke.ts",
     "drvo-003:migrate": "tsx scripts/run-drvo-003-platform-core-migration.ts --expected-database=last132_agent",
     "drvo-003:seed": "tsx scripts/seed-drvo-003-bootstrap-tenant.ts --expected-database=last132_agent",
     "drvo-003:migrate-production": "tsx scripts/run-drvo-003-platform-core-production.ts",

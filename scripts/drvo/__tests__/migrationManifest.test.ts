@@ -78,11 +78,18 @@ describe('DRVO migration manifest', () => {
   });
 
   it('SalonPackConfig ensure is insert-only (no overwrite)', () => {
-    const src = fs.readFileSync(
+    const bootstrap = fs.readFileSync(
       path.join(process.cwd(), 'scripts/drvo/platformBootstrap.ts'),
       'utf8',
     );
-    expect(src).toContain('IF NOT EXISTS (SELECT 1 FROM dbo.SalonPackConfig WHERE TenantId = @tenantId)');
-    expect(src).not.toMatch(/UPDATE dbo\.SalonPackConfig\s+SET ManifestJson/);
+    const registrySeed = fs.readFileSync(
+      path.join(process.cwd(), 'src/platform/registry/seedTenantRegistry.ts'),
+      'utf8',
+    );
+    expect(bootstrap).toContain('seedTenantRegistry');
+    expect(registrySeed).toContain(
+      'IF NOT EXISTS (SELECT 1 FROM dbo.SalonPackConfig WHERE TenantId = @tenantId)',
+    );
+    expect(registrySeed).not.toMatch(/UPDATE dbo\.SalonPackConfig\s+SET ManifestJson/);
   });
 });
