@@ -119,6 +119,7 @@ export async function verifyDrvoReadiness(
     module === 'treasury' ||
     module === 'pos' ||
     module === 'pos-sale-treasury' ||
+    module === 'pos-sale-treasury-mutation' ||
     module === 'platform-core'
   ) {
     const bootstrap = await verifyPlatformBootstrap(pool);
@@ -129,7 +130,11 @@ export async function verifyDrvoReadiness(
     });
   }
 
-  if (module === 'treasury' || module === 'pos-sale-treasury') {
+  if (
+    module === 'treasury' ||
+    module === 'pos-sale-treasury' ||
+    module === 'pos-sale-treasury-mutation'
+  ) {
     const treasury = await verifyTreasuryMovementSchema(pool);
     checks.push({
       id: 'treasury.schema',
@@ -138,7 +143,7 @@ export async function verifyDrvoReadiness(
     });
   }
 
-  if (module === 'pos-sale-treasury') {
+  if (module === 'pos-sale-treasury' || module === 'pos-sale-treasury-mutation') {
     const guard = await verifyInsCashMoveSalesGuard(pool);
     checks.push({
       id: 'treasury.sale-trigger-guard',
