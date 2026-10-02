@@ -84,12 +84,10 @@ export async function GET(request: NextRequest) {
           .input('workDate', sql.Date, workDate)
           .query(`
             SELECT
-              COUNT(r.ID) AS ReconCount,
-              MAX(r.ClosedAt) AS ClosedAt
+              COUNT(r.ID) AS ReconCount
             FROM dbo.TblNewDay nd
             LEFT JOIN dbo.TblTreasuryCloseRecon r
               ON r.NewDay = nd.ID
-             AND r.BranchID = nd.BranchID
              AND ISNULL(r.IsActive, 1) = 1
             WHERE nd.BranchID = @branchId
               AND nd.NewDay = @workDate
@@ -118,7 +116,7 @@ export async function GET(request: NextRequest) {
         treasury: {
           closed: Number(treasuryRow.ReconCount ?? 0) > 0,
           reconciliationCount: Number(treasuryRow.ReconCount ?? 0),
-          closedAt: treasuryRow.ClosedAt ?? null,
+          closedAt: null,
         },
         paymentReview: {
           completed: Boolean(reviewRow),
