@@ -163,6 +163,7 @@ describe('DRVO rollout resolver precedence', () => {
       'operational-calendar',
       'pos',
       'pos-sale-treasury',
+      'pos-sale-treasury-mutation',
       'queue',
       'treasury',
     ]);
@@ -175,6 +176,15 @@ describe('DRVO rollout resolver precedence', () => {
     expect(saleTreasury.classification).toBe('extracted');
     expect(saleTreasury.requiredMigrationKeys).toContain('ins-cash-move-sales-guard');
     expect(saleTreasury.rollbackRollout).toBe('legacy');
+  });
+
+  it('keeps pos-sale-treasury-mutation legacy until DRVO-010 Stage 2 activation', () => {
+    const mutation = getDrvoModuleRolloutSpec('pos-sale-treasury-mutation');
+    expect(mutation.drvoId).toBe('DRVO-010');
+    expect(mutation.rollout).toBe('legacy');
+    expect(mutation.classification).toBe('legacy');
+    expect(mutation.forcePathEnv).toBe('DRVO_FORCE_POS_SALE_TREASURY_MUTATION_PATH');
+    expect(mutation.compatEnvFlag).toBe('POS_SALE_TREASURY_MUTATION_PORT');
   });
 
   it('uses extracted POS rollout after human activation PR', () => {
