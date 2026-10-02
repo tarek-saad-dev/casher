@@ -27,10 +27,11 @@ Rationale:
 - Extracted delete after that replace sees no registry. It **preserves the reversal pair** and deletes only live invoice cash rows (`ISNULL(IsReversed, 0) = 0 AND ReversalOfCashMoveId IS NULL`). Deleting the reversed original would fail the FK. Deleting only that original would also leave the offset in the payment-method balance, because balance sums every row by `inOut` and does not apply the live-cash filter. The flag-off delete is unchanged.
 - `classification` is `legacy` because Stage 1 production update/delete still uses the legacy SQL path. `rollout` stays `legacy` until Stage 2.
 
-### Stage 2 — activation PR (after staging evidence)
+### Stage 2 — activation PR
 
-- Set `pos-sale-treasury-mutation.rollout = extracted` in `moduleManifest.ts`.
-- Human merge required; no automatic production DB mutation.
+- `pos-sale-treasury-mutation.rollout = extracted` in `moduleManifest.ts` after Stage 1 staging smoke, independent review, and production `drvo:verify` passed with rollout still legacy.
+- Activation changes only the source-controlled business path. No production DB migration is applied by application deploy.
+- Emergency rollback remains `DRVO_FORCE_POS_SALE_TREASURY_MUTATION_PATH=legacy` or a source-controlled rollback PR to `rollout=legacy`.
 
 ## App changes
 
