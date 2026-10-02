@@ -252,6 +252,8 @@ function EmployeesPanel() {
   const [activatingId, setActivatingId] = useState<number | null>(null);
   const [deactivatingId, setDeactivatingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [selectedInactiveIds, setSelectedInactiveIds] = useState<number[]>([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [statusTab, setStatusTab] = useState<'inactive' | 'active'>('inactive');
   const [savingWhatsAppId, setSavingWhatsAppId] = useState<number | null>(null);
@@ -391,6 +393,7 @@ function EmployeesPanel() {
 
   const openInactiveModal = async () => {
     setDeleteError('');
+    setSelectedInactiveIds([]);
     setInactiveModalOpen(true);
     await loadInactiveEmployees();
   };
@@ -435,6 +438,58 @@ function EmployeesPanel() {
       setDeleteError(e.message || 'تعذر حذف الموظف نهائيًا');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const toggleInactiveSelection = (empId: number) => {
+    setSelectedInactiveIds((prev) =>
+      prev.includes(empId) ? prev.filter((id) => id !== empId) : [...prev, empId],
+    );
+  };
+
+  const toggleSelectAllInactive = () => {
+    setSelectedInactiveIds((prev) =>
+      prev.length === inactiveEmployees.length ? [] : inactiveEmployees.map((emp) => emp.EmpID),
+    );
+  };
+
+  const bulkDeleteInactiveEmployees = async () => {
+    if (selectedInactiveIds.length === 0) return;
+
+    const confirmed = window.confirm(
+      `إزالة ${selectedInactiveIds.length} موظف/موظفين من الإدارة؟\n\nمن يمكن حذفه سيتم حذفه نهائيًا، ومن لديه سجلات تاريخية سيتم أرشفته وإخفاؤه مع الاحتفاظ بتاريخه.`,
+    );
+    if (!confirmed) return;
+
+    setBulkDeleting(true);
+    setDeleteError('');
+    const succeeded: number[] = [];
+    const failed: string[] = [];
+
+    try {
+      for (const empId of selectedInactiveIds) {
+        const employee = inactiveEmployees.find((emp) => emp.EmpID === empId);
+        try {
+          const res = await fetch(`/api/employees/${empId}`, { method: 'DELETE' });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'تعذر الحذف');
+          succeeded.push(empId);
+        } catch (err: any) {
+          failed.push(`${employee?.EmpName || `#${empId}`}: ${err.message || 'تعذر الحذف'}`);
+        }
+      }
+
+      if (succeeded.length > 0) {
+        setInactiveEmployees((prev) => prev.filter((emp) => !succeeded.includes(emp.EmpID)));
+        setSelectedInactiveIds((prev) => prev.filter((id) => !succeeded.includes(id)));
+        await load();
+      }
+
+      if (failed.length > 0) {
+        setDeleteError(`تمت إزالة ${succeeded.length}، وتعذر إزالة ${failed.length}: ${failed.join(' • ')}`);
+      }
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -1103,10 +1158,56 @@ function EmployeesPanel() {
                   <p className="text-sm text-muted-foreground/70">جميع الموظفين نشطون</p>
                 </div>
               ) : (
-                <div className="rounded-lg border border-border">
-                  <table className="w-full min-w-[32rem] text-sm">
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface/40 px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={toggleSelectAllInactive}
+                      disabled={bulkDeleting}
+                      className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground disabled:opacity-50"
+                    >
+                      <input
+                        type="checkbox"
+                        readOnly
+                        checked={inactiveEmployees.length > 0 && selectedInactiveIds.length === inactiveEmployees.length}
+                        className="h-4 w-4 accent-current"
+                      />
+                      تحديد الكل
+                    </button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={bulkDeleteInactiveEmployees}
+                      disabled={selectedInactiveIds.length === 0 || bulkDeleting || deletingId !== null}
+                      className="gap-1.5 border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive text-xs"
+                    >
+                      {bulkDeleting ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          جاري حذف المحددين...
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="w-3.5 h-3.5" />
+                          حذف المحددين{selectedInactiveIds.length > 0 ? ` (${selectedInactiveIds.length})` : ''}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <div className="rounded-lg border border-border overflow-hidden">
+                  <table className="w-full min-w-[36rem] text-sm">
                     <thead className="sticky top-0 z-10 bg-surface/95 backdrop-blur-sm">
                       <tr className="border-b border-border text-muted-foreground/70 text-xs tracking-wider">
+                        <th className="w-10 px-3 py-3 text-center font-medium">
+                          <input
+                            type="checkbox"
+                            aria-label="تحديد كل الموظفين غير النشطين"
+                            checked={inactiveEmployees.length > 0 && selectedInactiveIds.length === inactiveEmployees.length}
+                            onChange={toggleSelectAllInactive}
+                            disabled={bulkDeleting}
+                            className="h-4 w-4 accent-current"
+                          />
+                        </th>
                         <th className="px-4 py-3 text-right font-medium">#</th>
                         <th className="px-4 py-3 text-right font-medium">الموظف</th>
                         <th className="px-4 py-3 text-right font-medium">الوظيفة</th>
@@ -1115,7 +1216,17 @@ function EmployeesPanel() {
                     </thead>
                     <tbody className="divide-y divide-border/60">
                       {inactiveEmployees.map((emp) => (
-                        <tr key={emp.EmpID} className="hover:bg-surface-muted/30 transition-colors">
+                        <tr key={emp.EmpID} className={`transition-colors ${selectedInactiveIds.includes(emp.EmpID) ? 'bg-destructive/5' : 'hover:bg-surface-muted/30'}`}>
+                          <td className="px-3 py-3 text-center">
+                            <input
+                              type="checkbox"
+                              aria-label={`تحديد ${emp.EmpName}`}
+                              checked={selectedInactiveIds.includes(emp.EmpID)}
+                              onChange={() => toggleInactiveSelection(emp.EmpID)}
+                              disabled={bulkDeleting || deletingId === emp.EmpID}
+                              className="h-4 w-4 accent-current"
+                            />
+                          </td>
                           <td className="px-4 py-3 text-muted-foreground/70 font-mono text-xs">
                             {emp.EmpID}
                           </td>
@@ -1139,7 +1250,7 @@ function EmployeesPanel() {
                               <Button
                                 size="sm"
                                 onClick={() => activateEmployee(emp.EmpID)}
-                                disabled={activatingId === emp.EmpID || deletingId === emp.EmpID}
+                                disabled={activatingId === emp.EmpID || deletingId === emp.EmpID || bulkDeleting}
                                 className="gap-1.5 bg-success hover:bg-success/90 text-xs"
                               >
                                 {activatingId === emp.EmpID ? (
@@ -1158,7 +1269,7 @@ function EmployeesPanel() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => hardDeleteEmployee(emp)}
-                                disabled={deletingId === emp.EmpID || activatingId === emp.EmpID}
+                                disabled={deletingId === emp.EmpID || activatingId === emp.EmpID || bulkDeleting}
                                 className="gap-1.5 border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive text-xs"
                               >
                                 {deletingId === emp.EmpID ? (
@@ -1179,6 +1290,7 @@ function EmployeesPanel() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               )
             ) : employees.length === 0 ? (
