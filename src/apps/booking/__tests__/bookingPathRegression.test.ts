@@ -168,14 +168,14 @@ describe('DRVO-004 booking path regression', () => {
     expect(restart).toBeGreaterThan(verify);
   });
 
-  it('branch Location map verification covers all TblBranch rows', () => {
+  it('branch Location map verification covers CASHER_BOOT and unmapped legacy branches', () => {
     const helper = read('scripts/drvo/platformBootstrap.ts');
-    expect(helper).toContain('Missing Location for BranchID');
+    expect(helper).toContain('Missing legacy branch for CASHER_BOOT Location BranchID');
     expect(helper).toContain('Missing LegacyIdMap branch for BranchID');
     expect(helper).toContain('Location.BranchCode mismatch');
     expect(helper).toContain('branchCodes');
-    expect(helper).toContain('locationCount !== branchCount');
-    expect(helper).toContain('second tenant forbidden');
+    expect(helper).toContain('Unmapped legacy branch');
+    expect(helper).toContain('findBootstrapTenantId');
   });
 });
 

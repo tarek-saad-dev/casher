@@ -93,8 +93,7 @@ export async function provisionBranch(
       shortName: input.shortName,
     });
 
-    const sourceCode =
-      input.template?.sourceBranchCode?.trim().toUpperCase() || 'GLEEM';
+    const sourceCode = input.template?.sourceBranchCode?.trim().toUpperCase();
 
     const branch = await createBranchRecord({
       branchCode: input.branchCode,
@@ -113,7 +112,7 @@ export async function provisionBranch(
 
     const seedOpts: SeedQueueSettingsInput = {
       bookingEnabled: false,
-      ...(input.template?.queueBookingSettings
+      ...(input.template?.queueBookingSettings && sourceCode
         ? { copyFromBranchCode: sourceCode, bookingEnabled: false }
         : {}),
     };
@@ -125,6 +124,13 @@ export async function provisionBranch(
 
     let partnerSharesSeeded = 0;
     if (input.template?.partnerShares) {
+      if (!sourceCode) {
+        throw new BranchDomainError(
+          'BRANCH_LIFECYCLE_FORBIDDEN',
+          'template.sourceBranchCode is required when partnerShares is enabled',
+          400,
+        );
+      }
       partnerSharesSeeded = await seedPartnerSharesFromSourceBranch({
         targetBranchId: branch.branchId,
         sourceBranchCode: sourceCode,

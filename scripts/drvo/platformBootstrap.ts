@@ -1,11 +1,11 @@
 /**
  * DRVO-003 platform bootstrap — shared by central migrations and staging tools.
- * Idempotent data reconciliation; never creates a second tenant.
+ * Idempotent data reconciliation for CASHER_BOOT; additional tenants are allowed.
  * Never replaces existing Location/Membership IDs to satisfy verification.
  */
 import type { ConnectionPool, Transaction } from 'mssql';
 import sql from 'mssql';
-import { getSalonPackManifest } from '../../src/packs/salon/manifest';
+import { seedTenantRegistry } from '../../src/platform/registry/seedTenantRegistry';
 import { decideLegacyIdMapAction } from './legacyIdMap';
 import { verifyPlatformCoreStructure } from './platformCoreSchema';
 
@@ -46,6 +46,17 @@ export async function allPlatformCoreTablesExist(pool: ConnectionPool): Promise<
     if (!(await tableExists(pool, name))) return false;
   }
   return true;
+}
+
+async function findBootstrapTenantId(pool: ConnectionPool): Promise<string | null> {
+  const result = await pool
+    .request()
+    .input('code', sql.NVarChar(64), BOOTSTRAP_TENANT_CODE)
+    .query(`
+      SELECT TenantId FROM dbo.Tenant WITH (NOLOCK) WHERE Code = @code;
+    `);
+  if (!result.recordset.length) return null;
+  return String((result.recordset[0] as { TenantId: string }).TenantId);
 }
 
 async function ensureLegacyIdMap(
@@ -124,23 +135,23 @@ export async function verifyPlatformBootstrap(
       SELECT TenantId, Code, Status FROM dbo.Tenant WITH (NOLOCK) ORDER BY CreatedAt;
     `);
     tenantCount = tenants.recordset.length;
-    if (tenantCount === 0) failures.push('No Tenant row (CASHER_BOOT required)');
-    else if (tenantCount > 1) failures.push(`Expected one Tenant row, found ${tenantCount}`);
-    else {
-      const row = tenants.recordset[0] as { TenantId: string; Code: string; Status: string };
-      tenantId = String(row.TenantId);
-      if (row.Code !== BOOTSTRAP_TENANT_CODE || row.Status !== 'active') {
-        failures.push(`Bootstrap tenant invalid (code=${row.Code}, status=${row.Status})`);
+    tenantId = await findBootstrapTenantId(pool);
+
+    if (!tenantId) {
+      failures.push(`No ${BOOTSTRAP_TENANT_CODE} tenant row`);
+    } else {
+      const bootRow = (tenants.recordset as Array<{ TenantId: string; Code: string; Status: string }>).find(
+        (row) => String(row.TenantId).toLowerCase() === tenantId!.toLowerCase(),
+      );
+      if (!bootRow || bootRow.Status !== 'active') {
+        failures.push(
+          `Bootstrap tenant invalid (code=${bootRow?.Code ?? 'missing'}, status=${bootRow?.Status ?? 'missing'})`,
+        );
       }
     }
   }
 
   if (tenantId && failures.length === 0) {
-    const branches = await pool.request().query(`
-      SELECT BranchID, BranchCode FROM dbo.TblBranch WITH (NOLOCK) ORDER BY BranchID;
-    `);
-    branchCount = branches.recordset.length;
-
     const locRows = await pool
       .request()
       .input('tenantId', sql.UniqueIdentifier, tenantId)
@@ -156,30 +167,27 @@ export async function verifyPlatformBootstrap(
 
     type LocRow = { LocationId: string; LegacyBranchId: number; BranchCode: string };
     const locs = locRows.recordset as LocRow[];
-    const locByBranch = new Map<number, LocRow[]>();
-    for (const loc of locs) {
-      const id = Number(loc.LegacyBranchId);
-      const list = locByBranch.get(id) ?? [];
-      list.push(loc);
-      locByBranch.set(id, list);
-    }
 
-    for (const branch of branches.recordset as Array<{ BranchID: number; BranchCode: string }>) {
-      const branchId = Number(branch.BranchID);
-      const matches = locByBranch.get(branchId) ?? [];
-      if (matches.length === 0) {
-        failures.push(`Missing Location for BranchID ${branchId}`);
+    for (const loc of locs) {
+      const branchId = Number(loc.LegacyBranchId);
+      const branch = await pool
+        .request()
+        .input('branchId', sql.Int, branchId)
+        .query(`
+          SELECT BranchID, BranchCode FROM dbo.TblBranch WITH (NOLOCK)
+          WHERE BranchID = @branchId;
+        `);
+
+      if (!branch.recordset.length) {
+        failures.push(`Missing legacy branch for CASHER_BOOT Location BranchID ${branchId}`);
         continue;
       }
-      if (matches.length > 1) {
-        failures.push(`Duplicate Location rows for BranchID ${branchId}`);
-        continue;
-      }
-      const loc = matches[0]!;
-      if (String(loc.BranchCode) !== String(branch.BranchCode)) {
+
+      const branchRow = branch.recordset[0] as { BranchID: number; BranchCode: string };
+      if (String(loc.BranchCode) !== String(branchRow.BranchCode)) {
         failures.push(
           `Location.BranchCode mismatch for BranchID ${branchId}: ` +
-            `location=${loc.BranchCode} branch=${branch.BranchCode}`,
+            `location=${loc.BranchCode} branch=${branchRow.BranchCode}`,
         );
       }
 
@@ -207,13 +215,26 @@ export async function verifyPlatformBootstrap(
       }
     }
 
-    if (locationCount !== branchCount) {
-      failures.push(`Location count ${locationCount} != TblBranch count ${branchCount}`);
+    const mappedBranchIds = new Set(locs.map((loc) => Number(loc.LegacyBranchId)));
+    const unmappedBranches = await pool.request().query(`
+      SELECT BranchID FROM dbo.TblBranch WITH (NOLOCK) ORDER BY BranchID;
+    `);
+    branchCount = unmappedBranches.recordset.length;
+
+    for (const row of unmappedBranches.recordset as Array<{ BranchID: number }>) {
+      const branchId = Number(row.BranchID);
+      const mappedAnywhere = await pool
+        .request()
+        .input('legacyBranchId', sql.Int, branchId)
+        .query(`
+          SELECT TOP 1 TenantId FROM dbo.Location WITH (NOLOCK)
+          WHERE LegacyBranchId = @legacyBranchId;
+        `);
+      if (!mappedAnywhere.recordset.length) {
+        failures.push(`Unmapped legacy branch ${branchId} (no Location row in any tenant)`);
+      }
     }
 
-    const users = await pool.request().query(`
-      SELECT UserID FROM dbo.TblUser WITH (NOLOCK) WHERE ISNULL(isDeleted, 0) = 0;
-    `);
     const mem = await pool
       .request()
       .input('tenantId', sql.UniqueIdentifier, tenantId)
@@ -222,26 +243,21 @@ export async function verifyPlatformBootstrap(
         WHERE TenantId = @tenantId;
       `);
     type MemRow = { MembershipId: string; LegacyUserId: number };
-    const memByUser = new Map<number, MemRow[]>();
-    for (const row of mem.recordset as MemRow[]) {
-      const uid = Number(row.LegacyUserId);
-      const list = memByUser.get(uid) ?? [];
-      list.push(row);
-      memByUser.set(uid, list);
-    }
+    const memberships = mem.recordset as MemRow[];
 
-    for (const user of users.recordset as Array<{ UserID: number }>) {
-      const userId = Number(user.UserID);
-      const matches = memByUser.get(userId) ?? [];
-      if (matches.length === 0) {
-        failures.push(`Missing TenantMembership for UserID ${userId}`);
+    for (const membership of memberships) {
+      const userId = Number(membership.LegacyUserId);
+      const user = await pool
+        .request()
+        .input('userId', sql.Int, userId)
+        .query(`
+          SELECT UserID FROM dbo.TblUser WITH (NOLOCK)
+          WHERE UserID = @userId AND ISNULL(isDeleted, 0) = 0;
+        `);
+      if (!user.recordset.length) {
+        failures.push(`Missing legacy user for CASHER_BOOT membership UserID ${userId}`);
         continue;
       }
-      if (matches.length > 1) {
-        failures.push(`Duplicate TenantMembership for UserID ${userId}`);
-        continue;
-      }
-      const membership = matches[0]!;
 
       const mapRows = await pool
         .request()
@@ -267,11 +283,47 @@ export async function verifyPlatformBootstrap(
       }
     }
 
-    // Registry / pack completeness (do not require ManifestJson byte-equality)
-    const apps = [
-      ...getSalonPackManifest().enabledApps,
-      'operations',
-    ];
+    const users = await pool.request().query(`
+      SELECT UserID FROM dbo.TblUser WITH (NOLOCK) WHERE ISNULL(isDeleted, 0) = 0;
+    `);
+    const memByUser = new Map<number, MemRow[]>();
+    for (const row of memberships) {
+      const uid = Number(row.LegacyUserId);
+      const list = memByUser.get(uid) ?? [];
+      list.push(row);
+      memByUser.set(uid, list);
+    }
+
+    for (const user of users.recordset as Array<{ UserID: number }>) {
+      const userId = Number(user.UserID);
+      const tenantMemberships = await pool
+        .request()
+        .input('legacyUserId', sql.Int, userId)
+        .query(`
+          SELECT TenantId FROM dbo.TenantMembership WITH (NOLOCK)
+          WHERE LegacyUserId = @legacyUserId;
+        `);
+      if (!tenantMemberships.recordset.length) {
+        failures.push(`Missing TenantMembership for UserID ${userId}`);
+        continue;
+      }
+      const bootstrapMatches = (tenantMemberships.recordset as Array<{ TenantId: string }>).filter(
+        (row) => String(row.TenantId).toLowerCase() === tenantId!.toLowerCase(),
+      );
+      if (bootstrapMatches.length > 1) {
+        failures.push(`Duplicate CASHER_BOOT TenantMembership for UserID ${userId}`);
+      }
+      if (
+        tenantMemberships.recordset.length === 1 &&
+        bootstrapMatches.length === 0
+      ) {
+        // User belongs exclusively to another tenant — valid after DRVO-011.
+        continue;
+      }
+    }
+
+    const { getSalonPackManifest } = await import('../../src/packs/salon/manifest');
+    const apps = [...getSalonPackManifest().enabledApps, 'operations'];
     for (const code of apps) {
       const reg = await pool
         .request()
@@ -335,24 +387,24 @@ export async function verifyPlatformBootstrap(
 }
 
 async function ensureTenant(tx: Transaction): Promise<string> {
-  const existing = await new sql.Request(tx).query(`
-    SELECT TenantId, Code, Status FROM dbo.Tenant WITH (UPDLOCK, HOLDLOCK);
-  `);
-  if (existing.recordset.length > 1) {
-    throw new Error(
-      `Abort: ${existing.recordset.length} Tenant rows (second tenant forbidden).`,
-    );
+  const bootstrap = await new sql.Request(tx)
+    .input('code', sql.NVarChar(64), BOOTSTRAP_TENANT_CODE)
+    .query(`
+      SELECT TenantId, Code, Status FROM dbo.Tenant WITH (UPDLOCK, HOLDLOCK)
+      WHERE Code = @code;
+    `);
+
+  if (bootstrap.recordset.length > 1) {
+    throw new Error(`Abort: duplicate ${BOOTSTRAP_TENANT_CODE} tenant rows.`);
   }
-  if (existing.recordset.length === 1) {
-    const row = existing.recordset[0] as { TenantId: string; Code: string; Status: string };
-    if (row.Code !== BOOTSTRAP_TENANT_CODE) {
-      throw new Error(`Abort: tenant code "${row.Code}" is not ${BOOTSTRAP_TENANT_CODE}.`);
-    }
+  if (bootstrap.recordset.length === 1) {
+    const row = bootstrap.recordset[0] as { TenantId: string; Code: string; Status: string };
     if (row.Status !== 'active') {
       throw new Error(`Abort: bootstrap tenant status "${row.Status}" is not active.`);
     }
     return String(row.TenantId);
   }
+
   const inserted = await new sql.Request(tx)
     .input('code', sql.NVarChar(64), BOOTSTRAP_TENANT_CODE)
     .input('name', sql.NVarChar(256), BOOTSTRAP_TENANT_NAME)
@@ -375,19 +427,28 @@ async function ensureLocations(tx: Transaction, tenantId: string): Promise<numbe
     BranchCode: string;
     TimeZone: string;
   }>) {
-    const existing = await new sql.Request(tx)
-      .input('tenantId', sql.UniqueIdentifier, tenantId)
+    const mappedAnywhere = await new sql.Request(tx)
       .input('legacyBranchId', sql.Int, row.BranchID)
       .query(`
-        SELECT LocationId, BranchCode FROM dbo.Location WITH (UPDLOCK, HOLDLOCK)
-        WHERE TenantId = @tenantId AND LegacyBranchId = @legacyBranchId;
+        SELECT TenantId, LocationId, BranchCode FROM dbo.Location WITH (UPDLOCK, HOLDLOCK)
+        WHERE LegacyBranchId = @legacyBranchId;
       `);
-    let locationId: string;
-    if (existing.recordset.length > 1) {
+
+    if (mappedAnywhere.recordset.length > 1) {
       throw new Error(`Abort: duplicate Location for BranchID ${row.BranchID}`);
     }
-    if (existing.recordset.length === 1) {
-      const mapped = existing.recordset[0] as { LocationId: string; BranchCode: string };
+
+    let locationId: string;
+    if (mappedAnywhere.recordset.length === 1) {
+      const mapped = mappedAnywhere.recordset[0] as {
+        TenantId: string;
+        LocationId: string;
+        BranchCode: string;
+      };
+      if (String(mapped.TenantId).toLowerCase() !== tenantId.toLowerCase()) {
+        // Branch belongs to another tenant — never attach to CASHER_BOOT.
+        continue;
+      }
       if (String(mapped.BranchCode) !== String(row.BranchCode)) {
         throw new Error(
           `Abort: BranchID ${row.BranchID} mapped to ${mapped.BranchCode}, expected ${row.BranchCode}.`,
@@ -416,19 +477,30 @@ async function ensureLocations(tx: Transaction, tenantId: string): Promise<numbe
       authoritativeDrvoId: locationId,
     });
   }
-  const branchCount = Number(
-    (await new sql.Request(tx).query(`SELECT COUNT(*) AS cnt FROM dbo.TblBranch;`)).recordset[0]
-      .cnt,
-  );
-  const locationCount = Number(
+
+  const bootstrapLocationCount = Number(
     (
       await new sql.Request(tx)
         .input('tenantId', sql.UniqueIdentifier, tenantId)
         .query(`SELECT COUNT(*) AS cnt FROM dbo.Location WHERE TenantId = @tenantId;`)
     ).recordset[0].cnt,
   );
-  if (locationCount !== branchCount) {
-    throw new Error(`Abort: Location count ${locationCount} != TblBranch count ${branchCount}`);
+  const unmappedCount = Number(
+    (
+      await new sql.Request(tx).query(`
+        SELECT COUNT(*) AS cnt
+        FROM dbo.TblBranch b
+        WHERE NOT EXISTS (
+          SELECT 1 FROM dbo.Location l WHERE l.LegacyBranchId = b.BranchID
+        );
+      `)
+    ).recordset[0].cnt,
+  );
+  if (unmappedCount > 0) {
+    throw new Error(`Abort: ${unmappedCount} legacy branch(es) have no Location mapping`);
+  }
+  if (bootstrapLocationCount === 0) {
+    throw new Error('Abort: CASHER_BOOT has no Location rows after reconcile');
   }
   return added;
 }
@@ -439,19 +511,24 @@ async function ensureMemberships(tx: Transaction, tenantId: string): Promise<num
   `);
   let added = 0;
   for (const user of users.recordset as Array<{ UserID: number }>) {
-    const existing = await new sql.Request(tx)
-      .input('tenantId', sql.UniqueIdentifier, tenantId)
+    const existingAny = await new sql.Request(tx)
       .input('legacyUserId', sql.Int, user.UserID)
       .query(`
-        SELECT MembershipId FROM dbo.TenantMembership WITH (UPDLOCK, HOLDLOCK)
-        WHERE TenantId = @tenantId AND LegacyUserId = @legacyUserId;
+        SELECT TenantId, MembershipId FROM dbo.TenantMembership WITH (UPDLOCK, HOLDLOCK)
+        WHERE LegacyUserId = @legacyUserId;
       `);
-    let membershipId: string;
-    if (existing.recordset.length > 1) {
+
+    if (existingAny.recordset.length > 1) {
       throw new Error(`Abort: duplicate TenantMembership for UserID ${user.UserID}`);
     }
-    if (existing.recordset.length === 1) {
-      membershipId = String((existing.recordset[0] as { MembershipId: string }).MembershipId);
+
+    let membershipId: string;
+    if (existingAny.recordset.length === 1) {
+      const mapped = existingAny.recordset[0] as { TenantId: string; MembershipId: string };
+      if (String(mapped.TenantId).toLowerCase() !== tenantId.toLowerCase()) {
+        continue;
+      }
+      membershipId = String(mapped.MembershipId);
     } else {
       const mem = await new sql.Request(tx)
         .input('tenantId', sql.UniqueIdentifier, tenantId)
@@ -476,46 +553,7 @@ async function ensureMemberships(tx: Transaction, tenantId: string): Promise<num
 }
 
 async function ensureRegistry(tx: Transaction, tenantId: string): Promise<void> {
-  const registryApps = [
-    ...getSalonPackManifest().enabledApps.map((code) => ({
-      code,
-      name: code,
-      entitled: 1,
-    })),
-    { code: 'operations', name: 'Operations', entitled: 0 },
-  ];
-  for (const app of registryApps) {
-    await new sql.Request(tx)
-      .input('code', sql.NVarChar(64), app.code)
-      .input('name', sql.NVarChar(256), app.name)
-      .input('entitled', sql.Bit, app.entitled)
-      .query(`
-        IF NOT EXISTS (SELECT 1 FROM dbo.AppRegistry WHERE AppCode = @code)
-          INSERT INTO dbo.AppRegistry (AppCode, DisplayName, EntitledSeparately)
-          VALUES (@code, @name, @entitled);
-      `);
-    await new sql.Request(tx)
-      .input('tenantId', sql.UniqueIdentifier, tenantId)
-      .input('code', sql.NVarChar(64), app.code)
-      .query(`
-        IF NOT EXISTS (
-          SELECT 1 FROM dbo.TenantAppEntitlement
-          WHERE TenantId = @tenantId AND AppCode = @code
-        )
-          INSERT INTO dbo.TenantAppEntitlement (TenantId, AppCode, Enabled)
-          VALUES (@tenantId, @code, 1);
-      `);
-  }
-  const manifestJson = JSON.stringify(getSalonPackManifest());
-  // Insert-only: never overwrite existing production SalonPackConfig.ManifestJson.
-  await new sql.Request(tx)
-    .input('tenantId', sql.UniqueIdentifier, tenantId)
-    .input('manifest', sql.NVarChar(sql.MAX), manifestJson)
-    .query(`
-      IF NOT EXISTS (SELECT 1 FROM dbo.SalonPackConfig WHERE TenantId = @tenantId)
-        INSERT INTO dbo.SalonPackConfig (TenantId, PackCode, ManifestJson)
-        VALUES (@tenantId, N'salon', @manifest);
-    `);
+  await seedTenantRegistry(tx, tenantId, 'salon');
 }
 
 export async function ensurePlatformBootstrapData(
