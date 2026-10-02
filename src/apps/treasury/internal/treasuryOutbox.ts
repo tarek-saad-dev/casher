@@ -6,7 +6,9 @@ export type TreasuryOutboxEventType =
   | 'treasury.movement.posted'
   | 'treasury.movement.reversed'
   | 'treasury.transfer.posted'
-  | 'treasury.sale.posted';
+  | 'treasury.sale.posted'
+  | 'treasury.sale.replaced'
+  | 'treasury.sale.removed';
 
 export async function publishTreasuryOutboxEvent(
   tx: Transaction,

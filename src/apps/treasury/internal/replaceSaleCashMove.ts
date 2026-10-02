@@ -13,6 +13,8 @@ import { postSaleCashMove } from './postSaleCashMove';
 import { reverseMoneyMovement } from './reverseMovement';
 import {
   fingerprintSalePost,
+  saleReplacedOutboxIdempotencyKey,
+  saleReplacePostOutboxKeyPrefix,
   saleReplaceReverseIdempotencyKey,
 } from './saleCommandFingerprint';
 import { publishTreasuryOutboxEvent } from './treasuryOutbox';
@@ -39,7 +41,11 @@ export async function replaceSaleCashMove(
     await reverseMoneyMovement(tx, actor, {
       tenantId: command.tenantId,
       originalIdempotencyKey: command.idempotencyKey,
-      idempotencyKey: saleReplaceReverseIdempotencyKey(command.saleInvId, command.invType),
+      idempotencyKey: saleReplaceReverseIdempotencyKey(
+        command.saleInvId,
+        command.invType,
+        existing.CashMoveId,
+      ),
       reason: 'sale_replace_zero',
     });
     await deleteRegistryByKey(tx, command.tenantId, command.idempotencyKey);
@@ -54,7 +60,11 @@ export async function replaceSaleCashMove(
     await reverseMoneyMovement(tx, actor, {
       tenantId: command.tenantId,
       originalIdempotencyKey: command.idempotencyKey,
-      idempotencyKey: saleReplaceReverseIdempotencyKey(command.saleInvId, command.invType),
+      idempotencyKey: saleReplaceReverseIdempotencyKey(
+        command.saleInvId,
+        command.invType,
+        existing.CashMoveId,
+      ),
       reason: 'sale_replace',
     });
 
@@ -79,14 +89,16 @@ export async function replaceSaleCashMove(
         amount: command.amount,
         sourceRef: command.sourceRef,
       },
-      `treasury.sale.replaced:${command.idempotencyKey}`,
+      saleReplacedOutboxIdempotencyKey(command.idempotencyKey, existing.CashMoveId),
     );
 
     return cashMoveId;
   }
 
   try {
-    return await postSaleCashMove(tx, actor, command);
+    return await postSaleCashMove(tx, actor, command, {
+      outboxKeyPrefix: saleReplacePostOutboxKeyPrefix(command.idempotencyKey),
+    });
   } catch (err) {
     if (err instanceof TreasuryIdempotencyConflictError) throw err;
     throw err;

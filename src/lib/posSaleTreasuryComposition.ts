@@ -3,6 +3,7 @@ import 'server-only';
 import type { Transaction } from 'mssql';
 import type { ActorContext } from '@/platform/public';
 import {
+  isTreasuryOwnedSaleCashMove,
   postSaleCashMove,
   removeSaleCashMove,
   replaceSaleCashMove,
@@ -12,6 +13,7 @@ import type { SaleCashMovePoster } from '@/apps/pos/public/saleCashMovePoster';
 import type {
   SaleCashMoveRemover,
   SaleCashMoveReplacer,
+  SaleTreasuryOwnershipProbe,
 } from '@/apps/pos/public/saleCashMoveMutation';
 
 export function buildSaleCashMovePoster(
@@ -62,6 +64,17 @@ export function buildSaleCashMoveReplacer(
       businessDayId: input.businessDayId,
       sourceRef: `pos-sale:${input.saleInvId}`,
       idempotencyKey: defaultSaleIdempotencyKey(input.saleInvId, input.invType),
+    });
+}
+
+export function buildSaleTreasuryOwnershipProbe(
+  tenantId: string,
+): SaleTreasuryOwnershipProbe {
+  return async (tx, input) =>
+    isTreasuryOwnedSaleCashMove(tx, {
+      tenantId,
+      saleInvId: input.saleInvId,
+      invType: input.invType,
     });
 }
 

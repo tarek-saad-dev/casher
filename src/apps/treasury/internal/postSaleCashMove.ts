@@ -12,6 +12,15 @@ import { publishTreasuryOutboxEvent } from './treasuryOutbox';
 
 const SALE_POST_SAVEPOINT = 'drvo_sale_post';
 
+export type PostSaleCashMoveOptions = {
+  /**
+   * When set, the outbox idempotency key is `${outboxKeyPrefix}:${cashMoveId}`.
+   * Create keeps the stable `treasury.sale.posted:{saleKey}` key.
+   * Replace passes a prefix so a later re-post cannot collide with that event.
+   */
+  outboxKeyPrefix?: string;
+};
+
 /**
  * Treasury-owned POS sale CashMove insert.
  * Uses the sale invoice invID (not allocateInvID) to preserve legacy trigger semantics.
@@ -20,6 +29,7 @@ export async function postSaleCashMove(
   tx: Transaction,
   _actor: ActorContext,
   command: PostSaleCommand,
+  options?: PostSaleCashMoveOptions,
 ): Promise<number> {
   if (!command.tenantId) {
     throw new Error('Treasury sale post requires tenantId');
@@ -46,7 +56,7 @@ export async function postSaleCashMove(
     return existing.CashMoveId;
   }
 
-  return insertSaleCashMoveResolvingConflict(tx, command);
+  return insertSaleCashMoveResolvingConflict(tx, command, options);
 }
 
 /**
@@ -58,6 +68,7 @@ export async function postSaleCashMove(
 export async function insertSaleCashMoveResolvingConflict(
   tx: Transaction,
   command: PostSaleCommand,
+  options?: PostSaleCashMoveOptions,
 ): Promise<number> {
   const fingerprint = fingerprintSalePost(command);
   const invDate =
@@ -165,6 +176,10 @@ export async function insertSaleCashMoveResolvingConflict(
     throw new Error(`Treasury sale post returned unexpected outcome ${outcome || '(empty)'}`);
   }
 
+  const outboxKey = options?.outboxKeyPrefix
+    ? `${options.outboxKeyPrefix}:${cashMoveId}`
+    : `treasury.sale.posted:${command.idempotencyKey}`;
+
   await publishTreasuryOutboxEvent(
     tx,
     command.tenantId,
@@ -181,7 +196,7 @@ export async function insertSaleCashMoveResolvingConflict(
       direction: command.inOut,
       sourceRef: command.sourceRef,
     },
-    `treasury.sale.posted:${command.idempotencyKey}`,
+    outboxKey,
   );
 
   return cashMoveId;

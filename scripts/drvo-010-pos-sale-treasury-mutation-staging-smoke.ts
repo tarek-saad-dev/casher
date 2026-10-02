@@ -1,7 +1,9 @@
 #!/usr/bin/env npx tsx
 /**
  * DRVO-010 staging smoke — last132_agent / drvo_agent only.
- * Proves Treasury replace/remove sale mutation seams inside rolled-back transactions.
+ * Proves Treasury replace/remove sale mutation seams on last132_agent only.
+ * Covers single/split transitions, a second update, replay, zero-total,
+ * create/update delete, non-registry fallback, and the flag-off split INSERT.
  */
 import path from 'path';
 import Module from 'module';
@@ -57,9 +59,13 @@ async function main() {
   const sql = mssql.default;
   const { getPool, closePool } = await import('../src/lib/db');
   const { createSale, updateSale, deleteSale } = await import('../src/apps/pos/public');
-  const { defaultSaleIdempotencyKey } = await import(
-    '../src/apps/treasury/internal/saleCommandFingerprint'
-  );
+  const { replaceSaleCashMove } = await import('../src/apps/treasury/internal/replaceSaleCashMove');
+  const { buildPosPortsForStaffUser } = await import('../src/lib/posComposition');
+  const {
+    defaultSaleIdempotencyKey,
+    saleReplacedOutboxIdempotencyKey,
+    saleReplaceReverseIdempotencyKey,
+  } = await import('../src/apps/treasury/internal/saleCommandFingerprint');
   const { computeInvoiceItemsTotals } = await import('../src/lib/sales/service-line-totals');
   const { resolveSplitPaymentConfig } = await import('../src/lib/clearingMethod');
 
@@ -169,13 +175,14 @@ async function main() {
     .request()
     .input('clearing', sql.Int, splitCfg.clearingMethodId)
     .query(`
-      SELECT TOP 1 PaymentID AS paymentMethodId
+      SELECT TOP 2 PaymentID AS paymentMethodId
       FROM dbo.TblPaymentMethods
       WHERE PaymentID <> @clearing
       ORDER BY PaymentID
     `);
-  const paymentMethodId = Number(payMethod.recordset[0]?.paymentMethodId ?? 0);
-  if (!paymentMethodId) fail('no payment method');
+  const paymentMethodIds = payMethod.recordset.map((row) => Number(row.paymentMethodId));
+  if (paymentMethodIds.length < 2) fail('need two non-clearing payment methods');
+  const paymentMethodId = paymentMethodIds[0]!;
 
   const client = await pool.request().query(`
     INSERT INTO dbo.TblClient (Name, Notes, RegisterDate)
@@ -197,9 +204,20 @@ async function main() {
     notes: MARKER,
   };
 
-  async function createSmokeSale(amount: number) {
+  function allocationsFor(amount: number, split: boolean) {
+    if (!split) return [{ paymentMethodId, amount }];
+    const first = Math.round(amount * 60) / 100;
+    const second = Math.round((amount - first) * 100) / 100;
+    return [
+      { paymentMethodId: paymentMethodIds[0]!, amount: first },
+      { paymentMethodId: paymentMethodIds[1]!, amount: second },
+    ];
+  }
+
+  async function createSmokeSale(amount: number, split = false) {
     const item = { ...baseItem, sPrice: amount };
     const computed = computeInvoiceItemsTotals([item], {});
+    const allocations = allocationsFor(computed.grandTotal, split);
     return createSale({
       items: [item],
       clientId,
@@ -207,7 +225,7 @@ async function main() {
       notes2: MARKER,
       payCash: computed.grandTotal,
       payVisa: 0,
-      paymentAllocations: [],
+      paymentAllocations: allocations,
       computed,
       branchId,
       businessDayId,
@@ -215,11 +233,21 @@ async function main() {
       invDate: businessDate,
       userID: userId,
       splitCfg,
-      activeAllocations: [{ paymentMethodId, amount: computed.grandTotal }],
-      isSplitPayment: false,
-      headerPaymentMethodId: paymentMethodId,
+      activeAllocations: allocations,
+      isSplitPayment: split,
+      headerPaymentMethodId: split ? splitCfg.clearingMethodId : paymentMethodId,
       branchName,
     });
+  }
+
+  function updateInput(amount: number, split: boolean, note: string) {
+    return {
+      clientId,
+      items: [{ ...baseItem, sPrice: amount }],
+      paymentMethodId,
+      paymentAllocations: amount > 0 ? allocationsFor(amount, split) : [],
+      notes: note,
+    };
   }
 
   async function purgeTreasurySaleArtifacts(invId: number) {
@@ -238,13 +266,16 @@ async function main() {
              )
            )
            OR IdempotencyKey = @saleKey
-           OR IdempotencyKey LIKE N'pos-sale:%:' + CAST(@invID AS nvarchar(20));
+           OR IdempotencyKey LIKE N'pos-sale:%:' + CAST(@invID AS nvarchar(20))
+           OR IdempotencyKey LIKE N'pos-sale:%:' + CAST(@invID AS nvarchar(20)) + N':%';
         DELETE FROM dbo.PlatformOutbox
         WHERE IdempotencyKey = @outboxKey
            OR IdempotencyKey LIKE N'treasury.sale.%:pos-sale:%:' + CAST(@invID AS nvarchar(20))
+           OR IdempotencyKey LIKE N'treasury.sale.%:pos-sale:%:' + CAST(@invID AS nvarchar(20)) + N':%'
            OR IdempotencyKey LIKE N'treasury.movement.reversed:pos-sale:%:' + CAST(@invID AS nvarchar(20))
-           OR IdempotencyKey LIKE N'treasury.movement.reversed:pos-sale:delete-reverse:%:' + CAST(@invID AS nvarchar(20))
-           OR IdempotencyKey LIKE N'treasury.movement.reversed:pos-sale:replace-reverse:%:' + CAST(@invID AS nvarchar(20));
+           OR IdempotencyKey LIKE N'treasury.movement.reversed:pos-sale:%:' + CAST(@invID AS nvarchar(20)) + N':%';
+        DELETE FROM dbo.TblCashMove
+        WHERE Notes LIKE N'%فاتورة ' + CAST(@invID AS nvarchar(20)) + N' -%';
         DELETE FROM dbo.TblCashMove
         WHERE ReversalOfCashMoveId IN (
           SELECT ID FROM dbo.TblCashMove WHERE invID = @invID AND invType = N'مبيعات'
@@ -276,123 +307,406 @@ async function main() {
   }
 
   async function cleanupInvoice(invId: number, branch = branchId) {
+    const head = await pool.request().input('id', sql.Int, invId).query(`
+      SELECT COUNT(*) AS cnt FROM dbo.TblinvServHead WHERE invID = @id
+    `);
+    if (Number(head.recordset[0]?.cnt ?? 0) > 0) {
+      const cleanup = new sql.Transaction(pool);
+      await cleanup.begin();
+      try {
+        await deleteSale(cleanup, invId, branch, userId);
+        await cleanup.commit();
+      } catch (err) {
+        try {
+          await cleanup.rollback();
+        } catch {
+          /* ignore */
+        }
+        await pool.request().input('id', sql.Int, invId).query(`
+          DELETE FROM dbo.TblinvServDetail WHERE invID = @id AND invType = N'مبيعات';
+          DELETE FROM dbo.TblinvServPayment WHERE invID = @id AND invType = N'مبيعات';
+          DELETE FROM dbo.TblLoyaltyPointLedger WHERE SourceInvID = @id;
+          DELETE FROM dbo.TblinvServHead WHERE invID = @id;
+        `);
+        console.warn('WARN: fallback cleanup for invID', invId, err instanceof Error ? err.message : err);
+      }
+    }
+    // After delete, purge reversal rows and split-transfer notes that delete inserted.
     await purgeTreasurySaleArtifacts(invId);
-    const cleanup = new sql.Transaction(pool);
-    await cleanup.begin();
+  }
+
+  async function assertTriggerEnabled(label: string) {
+    const res = await pool.request().query(`
+      SELECT is_disabled AS disabled
+      FROM sys.triggers
+      WHERE name = N'InsCashMoveSales'
+    `);
+    if (!res.recordset[0] || Number(res.recordset[0].disabled) !== 0) {
+      fail(`InsCashMoveSales missing or disabled (${label})`);
+    }
+  }
+
+  async function liveSaleMoves(queryable: Tx | sql.ConnectionPool, invId: number) {
+    const res = await new sql.Request(queryable).input('invID', sql.Int, invId).query(`
+      SELECT ID, PaymentMethodID, GrandTolal, BranchID, BusinessDayID
+      FROM dbo.TblCashMove
+      WHERE invID = @invID AND invType = N'مبيعات'
+        AND ISNULL(IsReversed, 0) = 0 AND inOut = N'in'
+    `);
+    return res.recordset as Array<{
+      ID: number;
+      PaymentMethodID: number;
+      GrandTolal: number;
+      BranchID: number | null;
+      BusinessDayID: number | null;
+    }>;
+  }
+
+  async function saleMoveCount(queryable: Tx | sql.ConnectionPool, invId: number) {
+    const res = await new sql.Request(queryable).input('invID', sql.Int, invId).query(`
+      SELECT COUNT(*) AS cnt
+      FROM dbo.TblCashMove
+      WHERE invID = @invID AND invType = N'مبيعات'
+    `);
+    return Number(res.recordset[0]?.cnt ?? 0);
+  }
+
+  async function assertNoResidue(invId: number, label: string) {
+    const moves = await saleMoveCount(pool, invId);
+    const head = await pool.request().input('id', sql.Int, invId).query(`
+      SELECT COUNT(*) AS cnt FROM dbo.TblinvServHead WHERE invID = @id AND invType = N'مبيعات'
+    `);
+    const key = defaultSaleIdempotencyKey(invId, 'مبيعات');
+    const leftover = await pool.request()
+      .input('invID', sql.Int, invId)
+      .input('key', sql.NVarChar(256), key)
+      .query(`
+        SELECT
+          (SELECT COUNT(*) FROM dbo.TreasuryMovementRegistry
+            WHERE IdempotencyKey = @key
+               OR IdempotencyKey LIKE N'pos-sale:%:' + CAST(@invID AS nvarchar(20))
+               OR IdempotencyKey LIKE N'pos-sale:%:' + CAST(@invID AS nvarchar(20)) + N':%') AS registryRows,
+          (SELECT COUNT(*) FROM dbo.PlatformOutbox
+            WHERE IdempotencyKey = N'treasury.sale.posted:' + @key
+               OR IdempotencyKey LIKE N'treasury.sale.%:' + @key + N'%'
+               OR IdempotencyKey LIKE N'treasury.movement.reversed:pos-sale:%:' + CAST(@invID AS nvarchar(20)) + N'%') AS outboxRows,
+          (SELECT COUNT(*) FROM dbo.TblCashMove
+            WHERE Notes LIKE N'%فاتورة ' + CAST(@invID AS nvarchar(20)) + N' -%') AS transferRows
+      `);
+    const registryRows = Number(leftover.recordset[0]?.registryRows ?? 0);
+    const outboxRows = Number(leftover.recordset[0]?.outboxRows ?? 0);
+    const transferRows = Number(leftover.recordset[0]?.transferRows ?? 0);
+    const headRows = Number(head.recordset[0]?.cnt ?? 0);
+    if (moves || headRows || registryRows || outboxRows || transferRows) {
+      fail(
+        `residue after ${label}: moves=${moves} head=${headRows} registry=${registryRows} outbox=${outboxRows} transfers=${transferRows}`,
+      );
+    }
+  }
+
+  function useExtractedMutation() {
+    process.env.DRVO_FORCE_POS_SALE_TREASURY_MUTATION_PATH = 'extracted';
+  }
+
+  async function commitTx(fn: (tx: Tx) => Promise<void>) {
+    const tx = new sql.Transaction(pool);
+    await tx.begin();
     try {
-      await deleteSale(cleanup, invId, branch, userId);
-      await cleanup.commit();
+      await assertIdentity(tx);
+      await fn(tx);
+      await tx.commit();
     } catch (err) {
       try {
-        await cleanup.rollback();
+        await tx.rollback();
       } catch {
-        /* ignore */
+        /* already closed */
       }
-      await purgeTreasurySaleArtifacts(invId);
-      await pool.request().input('id', sql.Int, invId).query(`
-        DELETE FROM dbo.TblinvServDetail WHERE invID = @id AND invType = N'مبيعات';
-        DELETE FROM dbo.TblinvServPayment WHERE invID = @id AND invType = N'مبيعات';
-        DELETE FROM dbo.TblLoyaltyPointLedger WHERE SourceInvID = @id;
-        DELETE FROM dbo.TblinvServHead WHERE invID = @id;
-      `);
-      console.warn('WARN: fallback cleanup for invID', invId, err instanceof Error ? err.message : err);
+      throw err;
+    }
+  }
+
+  async function expectOneLive(
+    queryable: Tx | sql.ConnectionPool,
+    invId: number,
+    label: string,
+    expectedPaymentMethodId: number,
+  ) {
+    const rows = await liveSaleMoves(queryable, invId);
+    if (rows.length !== 1) {
+      fail(`${label}: expected 1 active sale CashMove, got ${rows.length}`);
+    }
+    const row = rows[0]!;
+    if (Number(row.PaymentMethodID) !== expectedPaymentMethodId) {
+      fail(`${label}: payment method ${row.PaymentMethodID} !== ${expectedPaymentMethodId}`);
+    }
+    if (Number(row.BranchID) !== branchId) {
+      fail(`${label}: BranchID ${row.BranchID} !== ${branchId}`);
+    }
+    const reg = await registryForSale(queryable, invId);
+    if (!reg?.liveId || Number(reg.IsReversed) !== 0) {
+      fail(`${label}: registry must point at the live sale movement`);
+    }
+    if (Number(reg.CashMoveId) !== Number(row.ID)) {
+      fail(`${label}: registry CashMoveId does not match the live row`);
+    }
+  }
+
+  async function scenario(
+    name: string,
+    splitCreate: boolean,
+    amount: number,
+    run: (invId: number) => Promise<void>,
+  ) {
+    useExtractedMutation();
+    const created = await createSmokeSale(amount, splitCreate);
+    try {
+      await run(created.invID);
+      console.log(`PASS: ${name}`);
+    } finally {
+      useExtractedMutation();
+      await cleanupInvoice(created.invID);
+      await assertNoResidue(created.invID, name);
     }
   }
 
   await cleanupMarkerInvoices();
+  await assertTriggerEnabled('before');
 
-  // Scenario 1: create → update single payment (update rolled back)
-  {
-    const created = await createSmokeSale(100);
-    try {
-      await withTx(pool, async (tx) => {
-        await updateSale(
-          tx,
-          created.invID,
-          {
-            clientId,
-            items: [{ ...baseItem, sPrice: 150 }],
-            paymentMethodId,
-            paymentAllocations: [{ paymentMethodId, amount: 150 }],
-            notes: `${MARKER}-update-single`,
-          },
-          userId,
+  await scenario('single → single', false, 100, async (invId) => {
+    await commitTx(async (tx) => {
+      await updateSale(tx, invId, updateInput(150, false, `${MARKER}-single-single`), userId);
+      await expectOneLive(tx, invId, 'single → single', paymentMethodId);
+    });
+    await expectOneLive(pool, invId, 'single → single committed', paymentMethodId);
+  });
+
+  await scenario('single → single rollback', false, 100, async (invId) => {
+    await withTx(pool, async (tx) => {
+      await updateSale(tx, invId, updateInput(150, false, `${MARKER}-single-rollback`), userId);
+      await expectOneLive(tx, invId, 'single → single in tx', paymentMethodId);
+    });
+    const grand = await pool.request().input('id', sql.Int, invId).query(`
+      SELECT GrandTotal FROM dbo.TblinvServHead WHERE invID = @id
+    `);
+    if (Number(grand.recordset[0]?.GrandTotal) !== 100) {
+      fail('rolled-back single update must not persist the header change');
+    }
+    await expectOneLive(pool, invId, 'single → single after rollback', paymentMethodId);
+  });
+
+  await scenario('single → split', false, 100, async (invId) => {
+    await commitTx(async (tx) => {
+      await updateSale(tx, invId, updateInput(150, true, `${MARKER}-single-split`), userId);
+      await expectOneLive(tx, invId, 'single → split', splitCfg.clearingMethodId);
+    });
+    await expectOneLive(pool, invId, 'single → split committed', splitCfg.clearingMethodId);
+  });
+
+  await scenario('split → single', true, 100, async (invId) => {
+    await commitTx(async (tx) => {
+      await updateSale(tx, invId, updateInput(130, false, `${MARKER}-split-single`), userId);
+      await expectOneLive(tx, invId, 'split → single', paymentMethodId);
+    });
+    await expectOneLive(pool, invId, 'split → single committed', paymentMethodId);
+  });
+
+  await scenario('split → split', true, 100, async (invId) => {
+    await commitTx(async (tx) => {
+      await updateSale(tx, invId, updateInput(140, true, `${MARKER}-split-split`), userId);
+      await expectOneLive(tx, invId, 'split → split', splitCfg.clearingMethodId);
+    });
+    await expectOneLive(pool, invId, 'split → split committed', splitCfg.clearingMethodId);
+  });
+
+  await scenario('repeated second update', false, 100, async (invId) => {
+    await commitTx(async (tx) => {
+      await updateSale(tx, invId, updateInput(150, false, `${MARKER}-edit-1`), userId);
+    });
+    await commitTx(async (tx) => {
+      await updateSale(tx, invId, updateInput(180, false, `${MARKER}-edit-2`), userId);
+      await expectOneLive(tx, invId, 'second update', paymentMethodId);
+    });
+    await expectOneLive(pool, invId, 'second update committed', paymentMethodId);
+    const keys = await pool.request().input('invID', sql.Int, invId).query(`
+      SELECT
+        (SELECT COUNT(DISTINCT IdempotencyKey) FROM dbo.TreasuryMovementRegistry
+          WHERE Kind = N'reverse'
+            AND IdempotencyKey LIKE N'pos-sale:replace-reverse:%:' + CAST(@invID AS nvarchar(20)) + N':%') AS reverses,
+        (SELECT COUNT(DISTINCT IdempotencyKey) FROM dbo.PlatformOutbox
+          WHERE IdempotencyKey LIKE N'treasury.sale.replaced:pos-sale:%:' + CAST(@invID AS nvarchar(20)) + N':%') AS replaced
+    `);
+    if (Number(keys.recordset[0]?.reverses) !== 2) {
+      fail(`second update expected 2 reversal keys, got ${keys.recordset[0]?.reverses}`);
+    }
+    if (Number(keys.recordset[0]?.replaced) !== 2) {
+      fail(`second update expected 2 replacement outbox keys, got ${keys.recordset[0]?.replaced}`);
+    }
+  });
+
+  await scenario('replay idempotency', false, 100, async (invId) => {
+    const before = await registryForSale(pool, invId);
+    if (!before?.CashMoveId) fail('replay setup missing registry');
+    const priorId = Number(before.CashMoveId);
+    const ports = await buildPosPortsForStaffUser(userId);
+    const saleKey = defaultSaleIdempotencyKey(invId, 'مبيعات');
+    const command = {
+      tenantId: ports.tenantId,
+      saleInvId: invId,
+      invType: 'مبيعات' as const,
+      invDate: businessDate,
+      invTime: '15.45',
+      clientId,
+      amount: 160,
+      inOut: 'in' as const,
+      notes: `${MARKER}-replay`,
+      shiftMoveId: null,
+      paymentMethodId,
+      branchId,
+      businessDayId,
+      sourceRef: `pos-sale:${invId}`,
+      idempotencyKey: saleKey,
+    };
+    await commitTx(async (tx) => {
+      const first = await replaceSaleCashMove(tx, ports.actor, command);
+      const second = await replaceSaleCashMove(tx, ports.actor, command);
+      if (first == null || first !== second) fail('replay returned a different CashMove');
+      await expectOneLive(tx, invId, 'replay', paymentMethodId);
+      const revKey = saleReplaceReverseIdempotencyKey(invId, 'مبيعات', priorId);
+      const outboxKey = saleReplacedOutboxIdempotencyKey(saleKey, priorId);
+      const counts = await new sql.Request(tx)
+        .input('revKey', sql.NVarChar(256), revKey)
+        .input('outboxKey', sql.NVarChar(256), outboxKey)
+        .query(`
+          SELECT
+            (SELECT COUNT(*) FROM dbo.TreasuryMovementRegistry WHERE IdempotencyKey = @revKey) AS reverses,
+            (SELECT COUNT(*) FROM dbo.PlatformOutbox WHERE IdempotencyKey = @outboxKey) AS outbox
+        `);
+      if (Number(counts.recordset[0]?.reverses) !== 1 || Number(counts.recordset[0]?.outbox) !== 1) {
+        fail(
+          `replay duplicated keys reverses=${counts.recordset[0]?.reverses} outbox=${counts.recordset[0]?.outbox}`,
         );
-        if (await activeSaleCashMoveCount(tx, created.invID) !== 1) {
-          fail('update single payment should leave exactly one active sale CashMove in tx');
-        }
-      });
-      const grand = await pool.request().input('id', sql.Int, created.invID).query(`
-        SELECT GrandTotal FROM dbo.TblinvServHead WHERE invID = @id
-      `);
-      if (Number(grand.recordset[0]?.GrandTotal) !== 100) {
-        fail('rolled-back update must not persist header change');
       }
-      console.log('PASS: create → update single payment (rollback)');
-    } finally {
-      await cleanupInvoice(created.invID);
-    }
-  }
+    });
+  });
 
-  // Scenario 2: create → delete (delete rolled back — invoice remains)
-  {
-    const created = await createSmokeSale(80);
+  await scenario('zero-total then positive', false, 100, async (invId) => {
+    await commitTx(async (tx) => {
+      await updateSale(tx, invId, updateInput(0, false, `${MARKER}-zero`), userId);
+      if (await activeSaleCashMoveCount(tx, invId) !== 0) {
+        fail('zero-total must leave no active sale CashMove');
+      }
+      if (await registryForSale(tx, invId)) fail('zero-total must remove the sale registry row');
+    });
+    await commitTx(async (tx) => {
+      await updateSale(tx, invId, updateInput(120, false, `${MARKER}-after-zero`), userId);
+      await expectOneLive(tx, invId, 'positive after zero', paymentMethodId);
+    });
+    await expectOneLive(pool, invId, 'positive after zero committed', paymentMethodId);
+  });
+
+  await scenario('create → delete single', false, 80, async (invId) => {
+    await commitTx(async (tx) => {
+      await deleteSale(tx, invId, branchId, userId);
+    });
+    if (await registryForSale(pool, invId)) fail('delete single left a sale registry row');
+    if (await activeSaleCashMoveCount(pool, invId) !== 0) fail('delete single left an active sale CashMove');
+  });
+
+  await scenario('create → delete split', true, 80, async (invId) => {
+    await commitTx(async (tx) => {
+      await deleteSale(tx, invId, branchId, userId);
+    });
+    if (await registryForSale(pool, invId)) fail('delete split left a sale registry row');
+    if (await activeSaleCashMoveCount(pool, invId) !== 0) fail('delete split left an active sale CashMove');
+  });
+
+  await scenario('update → delete', false, 90, async (invId) => {
+    await commitTx(async (tx) => {
+      await updateSale(tx, invId, updateInput(110, false, `${MARKER}-before-delete`), userId);
+      await expectOneLive(tx, invId, 'update before delete', paymentMethodId);
+    });
+    await commitTx(async (tx) => {
+      await deleteSale(tx, invId, branchId, userId);
+    });
+    if (await registryForSale(pool, invId)) fail('update → delete left a sale registry row');
+    if (await activeSaleCashMoveCount(pool, invId) !== 0) {
+      fail('update → delete left an active sale CashMove');
+    }
+  });
+
+  await scenario('non-registry legacy update', false, 100, async (invId) => {
+    const before = await registryForSale(pool, invId);
+    const oldId = Number(before?.CashMoveId ?? 0);
+    if (!oldId) fail('non-registry setup missing cash move');
+    await withTx(pool, async (tx) => {
+      const saleKey = defaultSaleIdempotencyKey(invId, 'مبيعات');
+      await new sql.Request(tx).input('key', sql.NVarChar(256), saleKey).query(`
+        DELETE FROM dbo.TreasuryMovementRegistry
+        WHERE IdempotencyKey = @key AND Kind = N'sale'
+      `);
+      await updateSale(tx, invId, updateInput(140, false, `${MARKER}-legacy-positive`), userId);
+      const still = await new sql.Request(tx).input('id', sql.Int, oldId).query(`
+        SELECT COUNT(*) AS cnt FROM dbo.TblCashMove WHERE ID = @id
+      `);
+      if (Number(still.recordset[0]?.cnt ?? 0) !== 0) {
+        fail('non-registry update left the legacy sale CashMove in place');
+      }
+      await expectOneLive(tx, invId, 'non-registry positive', paymentMethodId);
+    });
+    await withTx(pool, async (tx) => {
+      const saleKey = defaultSaleIdempotencyKey(invId, 'مبيعات');
+      await new sql.Request(tx).input('key', sql.NVarChar(256), saleKey).query(`
+        DELETE FROM dbo.TreasuryMovementRegistry
+        WHERE IdempotencyKey = @key AND Kind = N'sale'
+      `);
+      await updateSale(tx, invId, updateInput(0, false, `${MARKER}-legacy-zero`), userId);
+      if (await saleMoveCount(tx, invId) !== 0) {
+        fail('non-registry zero-total left a sale CashMove');
+      }
+      if (await registryForSale(tx, invId)) fail('non-registry zero-total created a registry row');
+    });
+  });
+
+  await scenario('flag-off split update SQL', false, 100, async (invId) => {
+    process.env.DRVO_FORCE_POS_SALE_TREASURY_MUTATION_PATH = 'legacy';
     try {
       await withTx(pool, async (tx) => {
-        await deleteSale(tx, created.invID, branchId, userId);
-        const head = await new sql.Request(tx)
-          .input('id', sql.Int, created.invID)
-          .query(`SELECT COUNT(*) AS cnt FROM dbo.TblinvServHead WHERE invID = @id`);
-        if (Number(head.recordset[0]?.cnt ?? 0) !== 0) {
-          fail('delete in tx should remove invoice head before rollback');
+        const saleKey = defaultSaleIdempotencyKey(invId, 'مبيعات');
+        // The legacy rewrite hard-deletes TblCashMove. Drop the registry row in this
+        // rolled-back transaction first so the treasury FK does not block the INSERT.
+        await new sql.Request(tx).input('key', sql.NVarChar(256), saleKey).query(`
+          DELETE FROM dbo.TreasuryMovementRegistry
+          WHERE IdempotencyKey = @key AND Kind = N'sale'
+        `);
+        await updateSale(tx, invId, updateInput(150, true, `${MARKER}-flag-off-split`), userId);
+        const rows = await liveSaleMoves(tx, invId);
+        if (rows.length !== 1) fail(`flag-off split insert produced ${rows.length} active sale rows`);
+        const row = rows[0]!;
+        if (Number(row.BranchID) !== branchId) fail('flag-off split insert did not store BranchID');
+        if (Number(row.BusinessDayID) !== businessDayId) {
+          fail('flag-off split insert did not store BusinessDayID');
+        }
+        if (Number(row.PaymentMethodID) !== splitCfg.clearingMethodId) {
+          fail('flag-off split insert was not posted on the clearing method');
         }
       });
-      const still = await pool.request().input('id', sql.Int, created.invID).query(`
-        SELECT COUNT(*) AS cnt FROM dbo.TblinvServHead WHERE invID = @id
-      `);
-      if (Number(still.recordset[0]?.cnt ?? 0) !== 1) {
-        fail('rolled-back delete must leave invoice in place');
-      }
-      console.log('PASS: create → delete (rollback)');
     } finally {
-      await cleanupInvoice(created.invID);
+      useExtractedMutation();
     }
-  }
+  });
 
-  // Scenario 3: committed update → delete (registry consistency)
-  {
-    const created = await createSmokeSale(90);
-    const updateTx = new sql.Transaction(pool);
-    await updateTx.begin();
-    await updateSale(
-      updateTx,
-      created.invID,
-      {
-        clientId,
-        items: [{ ...baseItem, sPrice: 110 }],
-        paymentMethodId,
-        paymentAllocations: [{ paymentMethodId, amount: 110 }],
-        notes: `${MARKER}-committed-update`,
-      },
-      userId,
+  const markerLeft = await pool.request().query(`
+    SELECT
+      (SELECT COUNT(*) FROM dbo.TblCashMove WHERE Notes LIKE N'%${MARKER}%') AS cashMoves,
+      (SELECT COUNT(*) FROM dbo.TblinvServHead WHERE Notes LIKE N'%${MARKER}%' OR Notes2 = N'${MARKER}') AS heads
+  `);
+  if (Number(markerLeft.recordset[0]?.cashMoves) || Number(markerLeft.recordset[0]?.heads)) {
+    fail(
+      `marker residue cashMoves=${markerLeft.recordset[0]?.cashMoves} heads=${markerLeft.recordset[0]?.heads}`,
     );
-    await updateTx.commit();
-
-    const reg = await registryForSale(pool, created.invID);
-    if (!reg?.liveId || reg.IsReversed) {
-      fail('registry must point to live CashMove after committed update');
-    }
-
-    const deleteTx = new sql.Transaction(pool);
-    await deleteTx.begin();
-    await deleteSale(deleteTx, created.invID, branchId, userId);
-    await deleteTx.commit();
-
-    const regAfter = await registryForSale(pool, created.invID);
-    if (regAfter) fail('registry must be removed after committed treasury delete');
-    console.log('PASS: update → delete registry consistency');
   }
 
+  await assertTriggerEnabled('after');
   console.log('DRVO-010 sale mutation staging smoke complete');
   await closePool();
 }

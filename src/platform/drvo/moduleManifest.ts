@@ -245,9 +245,9 @@ export const DRVO_MODULE_ROLLOUT: DrvoModuleRolloutSpec[] = [
     module: 'pos-sale-treasury-mutation',
     drvoId: 'DRVO-010',
     rollout: 'legacy',
-    classification: 'extracted',
+    classification: 'legacy',
     classificationRationale:
-      'Stage 1 Treasury replace/remove sale mutation seams with tests and staging smoke. Production update/delete accounting stays legacy until Stage 2 activation PR after evidence.',
+      'Stage 1 production update/delete still uses the legacy CashMove SQL path. Classification records that current behavior. rollout stays legacy until the Stage 2 activation PR.',
     requiredMigrationKeys: [
       'platform-core',
       'platform-bootstrap',

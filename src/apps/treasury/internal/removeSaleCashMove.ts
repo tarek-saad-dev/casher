@@ -24,6 +24,17 @@ export type RemoveSaleCashMoveResult = {
   reversedCashMoveId: number | null;
 };
 
+/** True when the sale idempotency key already has a registry row. */
+export async function isTreasuryOwnedSaleCashMove(
+  tx: Transaction,
+  input: RemoveSaleCashMoveInput,
+): Promise<boolean> {
+  if (!input.tenantId) throw new Error('Treasury sale ownership check requires tenantId');
+  const idempotencyKey = defaultSaleIdempotencyKey(input.saleInvId, input.invType);
+  const existing = await findRegistryByKey(tx, input.tenantId, idempotencyKey);
+  return existing != null;
+}
+
 /**
  * Treasury-owned sale CashMove removal for invoice delete.
  * Reverses the sale movement and removes the Kind=sale registry row.

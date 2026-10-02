@@ -18,7 +18,12 @@ Rationale:
 
 - `replaceSaleCashMove` / `removeSaleCashMove` Treasury seams + tests + staging smoke.
 - `pos-sale-treasury-mutation.rollout = legacy` — production update/delete behavior unchanged.
-- POS repository skips direct `TblCashMove` DELETE/INSERT when mutation flag is extracted.
+- POS repository keeps legacy CashMove SQL when the mutation flag is off.
+- Extracted update reverses and replaces a treasury-owned sale movement. A sale with no `Kind=sale` registry row is treated like the delete fallback: split transfers are reversed, then legacy sale `TblCashMove` rows are hard-deleted in the same transaction before the replacement post.
+- Each replace reversal is keyed by the current live CashMove id (`pos-sale:replace-reverse:{invType}:{saleInvId}:{priorCashMoveId}`).
+- Each replacement outbox event is `treasury.sale.replaced:{saleKey}:{priorCashMoveId}`.
+- A replace that must insert because no registry row exists publishes `treasury.sale.posted:{saleKey}:{cashMoveId}` so it does not collide with the original create event.
+- `classification` is `legacy` because Stage 1 production update/delete still uses the legacy SQL path. `rollout` stays `legacy` until Stage 2.
 
 ### Stage 2 — activation PR (after staging evidence)
 
@@ -31,7 +36,7 @@ Rationale:
 | --- | --- |
 | `replaceSaleCashMove` | Reverse prior sale movement when fingerprint changes; insert replacement; update registry |
 | `removeSaleCashMove` | Reverse sale movement; delete `Kind=sale` registry row |
-| `legacySaleRepository` | Treasury path: split reverse before payment delete; no hard sale CashMove DELETE |
+| `legacySaleRepository` | Treasury-owned update skips hard sale CashMove DELETE. Non-registry update hard-deletes legacy sale CashMove rows after split reversal |
 | `updateSale` / `deleteSale` | Wire replacer/remover when `isPosSaleTreasuryMutationEnabled()` |
 
 ## Staging smoke

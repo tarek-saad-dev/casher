@@ -11,6 +11,8 @@ describe('DRVO-010 POS sale Treasury mutation wiring', () => {
     const src = read('src/apps/pos/application/updateSale.ts');
     expect(src).toContain('isPosSaleTreasuryMutationEnabled');
     expect(src).toContain('buildSaleCashMoveReplacer');
+    expect(src).toContain('buildSaleTreasuryOwnershipProbe');
+    expect(src).toContain('saleIsTreasuryOwned');
     expect(src).toContain('treasuryMutation');
   });
 
@@ -21,11 +23,14 @@ describe('DRVO-010 POS sale Treasury mutation wiring', () => {
     expect(src).toContain('treasuryMutation');
   });
 
-  it('legacy repository skips direct sale CashMove delete on treasury replace path', () => {
+  it('extracted update hard-deletes legacy CashMove only when the sale is not treasury-owned', () => {
     const repo = read('src/apps/pos/internal/legacySaleRepository.ts');
     expect(repo).toContain('treasuryReplace');
+    expect(repo).toContain('saleIsTreasuryOwned');
     expect(repo).toContain('reverseSplitPaymentTransfers');
-    expect(repo).toContain('if (!treasuryReplace)');
+    expect(repo).toContain('if (!treasuryOwned)');
+    expect(repo).toContain('DELETE FROM dbo.TblCashMove WHERE invID = @invID');
+    expect(repo).toContain('ISNULL(IsReversed, 0) = 0');
   });
 
   it('legacy repository uses treasury remove before legacy CashMove delete fallback', () => {

@@ -25,9 +25,34 @@ export function defaultSaleIdempotencyKey(saleInvId: number, invType: SaleInvTyp
   return `pos-sale:${invType}:${saleInvId}`;
 }
 
-/** Stable reverse key when replacing a sale CashMove (Option A mutable registry). */
-export function saleReplaceReverseIdempotencyKey(saleInvId: number, invType: SaleInvType): string {
-  return `pos-sale:replace-reverse:${invType}:${saleInvId}`;
+/**
+ * Reverse key for one live sale movement.
+ * A later edit of the same invoice uses the new CashMove id, so it does not
+ * replay the previous reversal.
+ */
+export function saleReplaceReverseIdempotencyKey(
+  saleInvId: number,
+  invType: SaleInvType,
+  priorCashMoveId: number,
+): string {
+  return `pos-sale:replace-reverse:${invType}:${saleInvId}:${priorCashMoveId}`;
+}
+
+/** One replacement event per prior live sale movement. */
+export function saleReplacedOutboxIdempotencyKey(
+  saleIdempotencyKey: string,
+  priorCashMoveId: number,
+): string {
+  return `treasury.sale.replaced:${saleIdempotencyKey}:${priorCashMoveId}`;
+}
+
+/**
+ * Re-post outbox key used when replace inserts a sale that has no registry row.
+ * Scoped to the new CashMove so it does not collide with an earlier
+ * `treasury.sale.posted:{saleKey}` from create or a previous generation.
+ */
+export function saleReplacePostOutboxKeyPrefix(saleIdempotencyKey: string): string {
+  return `treasury.sale.posted:${saleIdempotencyKey}`;
 }
 
 /** Stable reverse key when deleting a treasury-owned sale CashMove. */

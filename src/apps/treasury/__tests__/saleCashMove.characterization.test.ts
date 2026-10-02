@@ -109,6 +109,27 @@ describe('Treasury sale CashMove posting', () => {
       key: baseCommand.idempotencyKey,
     });
     expect(publishTreasuryOutboxEvent).toHaveBeenCalledOnce();
+    expect(publishTreasuryOutboxEvent).toHaveBeenCalledWith(
+      tx,
+      baseCommand.tenantId,
+      'treasury.sale.posted',
+      expect.any(Object),
+      `treasury.sale.posted:${baseCommand.idempotencyKey}`,
+    );
+  });
+
+  it('scopes a replace re-post outbox key to the new CashMove id', async () => {
+    const { publishTreasuryOutboxEvent } = await import('../internal/treasuryOutbox');
+    await postSaleCashMove(tx, actor, baseCommand, {
+      outboxKeyPrefix: `treasury.sale.posted:${baseCommand.idempotencyKey}`,
+    });
+    expect(publishTreasuryOutboxEvent).toHaveBeenCalledWith(
+      tx,
+      baseCommand.tenantId,
+      'treasury.sale.posted',
+      expect.any(Object),
+      `treasury.sale.posted:${baseCommand.idempotencyKey}:501`,
+    );
   });
 
   it('replays same idempotency key without second insert', async () => {

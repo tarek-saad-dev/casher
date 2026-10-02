@@ -11,9 +11,15 @@ export type ReplaceSaleCashMoveInput = {
   shiftMoveId: number | null;
   paymentMethodId: number;
   branchId: number;
-  businessDayId: number;
+  /** Nullable when the invoice head has no business day. */
+  businessDayId: number | null;
   notes: string;
 };
+
+export type SaleTreasuryOwnershipProbe = (
+  tx: Transaction,
+  input: { saleInvId: number; invType: 'مبيعات' },
+) => Promise<boolean>;
 
 export type SaleCashMoveReplacer = (
   tx: Transaction,

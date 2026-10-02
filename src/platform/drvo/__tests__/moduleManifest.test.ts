@@ -182,6 +182,7 @@ describe('DRVO rollout resolver precedence', () => {
     const mutation = getDrvoModuleRolloutSpec('pos-sale-treasury-mutation');
     expect(mutation.drvoId).toBe('DRVO-010');
     expect(mutation.rollout).toBe('legacy');
+    expect(mutation.classification).toBe('legacy');
     expect(mutation.forcePathEnv).toBe('DRVO_FORCE_POS_SALE_TREASURY_MUTATION_PATH');
     expect(mutation.compatEnvFlag).toBe('POS_SALE_TREASURY_MUTATION_PORT');
   });

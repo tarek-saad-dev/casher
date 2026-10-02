@@ -5,6 +5,7 @@ import {
 } from '@/lib/posComposition';
 import {
   buildSaleCashMoveReplacer,
+  buildSaleTreasuryOwnershipProbe,
 } from '@/lib/posSaleTreasuryComposition';
 import {
   updateInvoice,
@@ -26,6 +27,7 @@ export async function updateSale(
     const ports = await buildPosPortsForStaffUser(userID);
     treasuryMutation = {
       replaceSaleCashMove: buildSaleCashMoveReplacer(ports.tenantId, ports.actor),
+      saleIsTreasuryOwned: buildSaleTreasuryOwnershipProbe(ports.tenantId),
     };
   }
 

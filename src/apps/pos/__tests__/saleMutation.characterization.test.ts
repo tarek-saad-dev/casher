@@ -7,11 +7,23 @@ function read(rel: string): string {
 }
 
 function sqlBlock(src: string, marker: string): string {
-  const start = src.indexOf(marker);
-  expect(start, marker).toBeGreaterThan(-1);
-  const end = src.indexOf('`);', start);
-  expect(end, marker).toBeGreaterThan(start);
-  return src.slice(start, end).replace(/\s+/g, ' ').trim();
+  const blocks = sqlBlocks(src, marker);
+  expect(blocks.length, marker).toBeGreaterThan(0);
+  return blocks[0]!;
+}
+
+function sqlBlocks(src: string, marker: string): string[] {
+  const blocks: string[] = [];
+  let from = 0;
+  while (from < src.length) {
+    const start = src.indexOf(marker, from);
+    if (start < 0) break;
+    const end = src.indexOf('`);', start);
+    expect(end, marker).toBeGreaterThan(start);
+    blocks.push(src.slice(start, end).replace(/\s+/g, ' ').trim());
+    from = end + 3;
+  }
+  return blocks;
 }
 
 describe('DRVO-008 sale mutation characterization', () => {
@@ -76,5 +88,15 @@ describe('DRVO-008 sale mutation characterization', () => {
     ]) {
       expect(sqlBlock(legacyInvoice, marker)).toBe(sqlBlock(repo, marker));
     }
+  });
+
+  it('flag-off split update insert lists BranchID and BusinessDayID for every value', () => {
+    const repoInserts = sqlBlocks(repo, 'INSERT INTO dbo.TblCashMove');
+    const legacyInserts = sqlBlocks(legacyInvoice, 'INSERT INTO dbo.TblCashMove');
+    expect(repoInserts).toHaveLength(2);
+    expect(legacyInserts).toHaveLength(2);
+    expect(repoInserts[1]).toBe(legacyInserts[1]);
+    expect(repoInserts[1]).toContain('ShiftMoveID, BranchID, BusinessDayID');
+    expect(repoInserts[1]).toContain('@ShiftMoveID, @BranchID, @BusinessDayID');
   });
 });

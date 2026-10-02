@@ -16,6 +16,7 @@ import { getCairoInvTimeDotStr, getCairoPayTimeStr } from '@/lib/businessDate';
 import type {
   SaleCashMoveRemover,
   SaleCashMoveReplacer,
+  SaleTreasuryOwnershipProbe,
 } from '../public/saleCashMoveMutation';
 
 export interface InvoiceItemInput {
@@ -122,6 +123,7 @@ export interface UpdateInvoiceResult {
 export type SaleTreasuryMutationSeams = {
   replaceSaleCashMove?: SaleCashMoveReplacer | null;
   removeSaleCashMove?: SaleCashMoveRemover | null;
+  saleIsTreasuryOwned?: SaleTreasuryOwnershipProbe | null;
 };
 
 export async function getInvoiceSnapshot(
@@ -380,10 +382,29 @@ export async function updateInvoice(
   await new sql.Request(transaction)
     .input('invID', sql.Int, invID)
     .query(`DELETE FROM dbo.TblLoyaltyPointLedger WHERE SourceInvID = @invID`);
-  if (!treasuryReplace) {
-    await new sql.Request(transaction)
-      .input('invID', sql.Int, invID)
-      .query(`DELETE FROM dbo.TblCashMove WHERE invID = @invID`);
+  let treasuryOwned = false;
+  if (treasuryReplace) {
+    const probe = treasuryMutation?.saleIsTreasuryOwned;
+    if (!probe) {
+      throw new Error('Treasury sale replace requires saleIsTreasuryOwned');
+    }
+    treasuryOwned = await probe(transaction, { saleInvId: invID, invType: 'مبيعات' });
+  }
+  if (!treasuryOwned) {
+    if (treasuryReplace) {
+      // Drop only the live legacy sale row. A prior treasury reversal stays so its
+      // counter-entry is not left without the movement it reversed.
+      await new sql.Request(transaction)
+        .input('invID', sql.Int, invID)
+        .query(`
+          DELETE FROM dbo.TblCashMove
+          WHERE invID = @invID AND invType = N'مبيعات' AND ISNULL(IsReversed, 0) = 0
+        `);
+    } else {
+      await new sql.Request(transaction)
+        .input('invID', sql.Int, invID)
+        .query(`DELETE FROM dbo.TblCashMove WHERE invID = @invID`);
+    }
   }
 
   // 2. Update header
@@ -567,7 +588,7 @@ export async function updateInvoice(
         .input('BranchID', sql.Int, headBranchId)
         .input('BusinessDayID', sql.Int, headBusinessDayId)
         .query(`
-          INSERT INTO dbo.TblCashMove (invID, invType, invDate, invTime, GrandTolal, PaymentMethodID, inOut, Notes, ShiftMoveID, BusinessDayID)
+          INSERT INTO dbo.TblCashMove (invID, invType, invDate, invTime, GrandTolal, PaymentMethodID, inOut, Notes, ShiftMoveID, BranchID, BusinessDayID)
           VALUES (@invID, @invType, CONVERT(date, GETDATE()), CONVERT(varchar(5), GETDATE(), 8),
                   @GrandTotal, @PaymentMethodID, N'in', @Notes, @ShiftMoveID, @BranchID, @BusinessDayID)
         `);
