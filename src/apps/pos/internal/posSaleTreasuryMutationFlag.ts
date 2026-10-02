@@ -7,7 +7,7 @@ import { isDrvoModuleExtractedPathEnabled } from '@/platform/drvo/featureFlags';
  * Env POS_SALE_TREASURY_MUTATION_PORT is break-glass / compat only.
  * DRVO_FORCE_POS_SALE_TREASURY_MUTATION_PATH=legacy|extracted is the emergency override.
  *
- * Default rollout is legacy — direct POS CashMove rewrite until Stage 2 activation PR.
+ * Default rollout is extracted after DRVO-010 Stage 2 activation. Emergency rollback remains force-path legacy.
  */
 export function isPosSaleTreasuryMutationEnabled(): boolean {
   return isDrvoModuleExtractedPathEnabled('pos-sale-treasury-mutation');
