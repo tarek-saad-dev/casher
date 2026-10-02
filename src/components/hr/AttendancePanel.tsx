@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Users, Clock, CheckCircle2, AlertCircle,
   Loader2, RefreshCw, Save, CalendarDays, UserCheck,
@@ -260,7 +261,14 @@ function TodayBranchBadge({ transfer }: { transfer?: AttendanceTransferContext }
 }
 
 export default function AttendancePanel() {
-  const [date, setDate]               = useState(getOperationalDate());
+  const searchParams = useSearchParams();
+  const managerClosingMode = searchParams.get('managerClosing') === '1';
+  const requestedDate = searchParams.get('date');
+  const initialDate =
+    requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)
+      ? requestedDate
+      : getOperationalDate();
+  const [date, setDate]               = useState(initialDate);
   const [employeeScope, setEmployeeScope] = useState<EmployeeScopeFilter>('all');
   const [attendance, setAttendance]   = useState<AttendanceRow[]>([]);
   const [summary, setSummary]         = useState<AttendanceSummary | null>(null);
@@ -300,6 +308,17 @@ export default function AttendancePanel() {
   const [dayOffWorkLoading, setDayOffWorkLoading]   = useState(false);
   const [selectedDayOffEmp, setSelectedDayOffEmp]   = useState<DayOffEmployeeOption | null>(null);
   const [dayOffWorkSaving, setDayOffWorkSaving]     = useState(false);
+
+  const managerClosingAttendance = managerClosingMode
+    ? attendance.filter((row) => {
+        const terminal = ['Absent', 'DayOff', 'Excused', 'NotRequired'].includes(row.Status);
+        if (terminal) return false;
+        if (row.Status === 'Pending') return true;
+        if (row.isAttendanceRequired && !row.CheckInTime) return true;
+        if (row.CheckInTime && !row.CheckOutTime) return true;
+        return false;
+      })
+    : attendance;
 
   const ensureSessionBranch = useCallback(async (branchId: number) => {
     if (sessionBranchId === branchId) return true;
@@ -953,9 +972,11 @@ export default function AttendancePanel() {
                 <Loader2 className="w-8 h-8 animate-spin mx-auto text-zinc-500" />
                 <p className="mt-2 text-zinc-500 text-sm">جاري تحميل البيانات...</p>
               </td></tr>
-            ) : attendance.length === 0 ? (
-              <tr><td colSpan={7} className="text-center p-12 text-zinc-500">لا يوجد موظفون متوقع حضورهم اليوم</td></tr>
-            ) : attendance.map((row) => {
+            ) : managerClosingAttendance.length === 0 ? (
+              <tr><td colSpan={7} className="text-center p-12 text-zinc-500">
+                {managerClosingMode ? 'تم تقفيل كل حالات الحضور لهذا اليوم ✓' : 'لا يوجد موظفون متوقع حضورهم اليوم'}
+              </td></tr>
+            ) : managerClosingAttendance.map((row) => {
               const rowBranchId = row.BranchID ?? null;
               const key = attendanceRowKey(row.EmpID, rowBranchId);
               const statusCfg = getStatusConfig(row.Status);
