@@ -453,3 +453,79 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+
+// DELETE /api/employees/:id
+// Hard delete is intentionally restricted to inactive employees. SQL Server remains
+// the final integrity guard: if any operational/financial row references the employee,
+// the FK constraint blocks the delete and we return a safe conflict response.
+export async function DELETE(_req: NextRequest, { params }: Ctx) {
+  try {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+
+    const { id } = await params;
+    const empID = parseInt(id);
+    if (isNaN(empID)) {
+      return NextResponse.json({ error: 'معرف الموظف غير صالح' }, { status: 400 });
+    }
+
+    const pool = await getPool();
+    const current = await pool.request().input('empID', sql.Int, empID).query(`
+      SELECT EmpID, EmpName, isActive
+      FROM dbo.TblEmp
+      WHERE EmpID = @empID
+    `);
+
+    if (current.recordset.length === 0) {
+      return NextResponse.json({ error: 'الموظف غير موجود' }, { status: 404 });
+    }
+
+    const employee = current.recordset[0];
+    if (Boolean(employee.isActive)) {
+      return NextResponse.json(
+        { error: 'يجب إيقاف الموظف أولاً قبل الحذف النهائي' },
+        { status: 409 },
+      );
+    }
+
+    try {
+      const result = await pool.request().input('empID', sql.Int, empID).query(`
+        DELETE FROM dbo.TblEmp
+        WHERE EmpID = @empID AND ISNULL(isActive, 0) = 0;
+
+        SELECT @@ROWCOUNT AS deletedCount;
+      `);
+
+      const deletedCount = Number(result.recordset?.[0]?.deletedCount ?? 0);
+      if (deletedCount !== 1) {
+        return NextResponse.json(
+          { error: 'تعذر حذف الموظف؛ أعد تحميل الصفحة وحاول مرة أخرى' },
+          { status: 409 },
+        );
+      }
+    } catch (deleteErr: unknown) {
+      const err = deleteErr as { number?: number; message?: string };
+      if (err?.number === 547 || String(err?.message || '').includes('REFERENCE constraint')) {
+        return NextResponse.json(
+          {
+            error:
+              'لا يمكن حذف هذا الموظف نهائيًا لأن له بيانات مرتبطة (مثل فواتير أو حضور أو رواتب أو سجلات تشغيل). اتركه غير نشط للحفاظ على التاريخ.',
+          },
+          { status: 409 },
+        );
+      }
+      throw deleteErr;
+    }
+
+    invalidatePublicBookingBarbersCache();
+    return NextResponse.json({
+      success: true,
+      deletedEmployee: { EmpID: empID, EmpName: employee.EmpName ?? null },
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[api/employees/:id] DELETE error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
