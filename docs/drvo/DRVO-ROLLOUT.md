@@ -21,7 +21,7 @@
 | DRVO-006 | operational-calendar | `extracted` | `always_on_infrastructure` | Composition always uses extracted port adapter; no flag; already serving production | None |
 | DRVO-007 | treasury | `extracted` | `always_on_infrastructure` | Non-sale money movement always via MoneyMovement port; sale trigger remains separate | None |
 | DRVO-008 | pos | `extracted` | `extracted` | POS create/update/delete extraction passed staging smoke and review gates; create still uses the existing InsCashMoveSales seam and does not call Treasury MoneyMovement | Source-controlled cutover to extracted POS; rollback remains `legacy` |
-| DRVO-009 | pos-sale-treasury | `legacy` | `legacy` | Stage 1 trigger guard migration + Treasury sale posting implemented; default rollout keeps trigger-only path until migration applied and activation PR | Source-controlled cutover to Treasury-owned sale CashMove; rollback remains `legacy` |
+| DRVO-009 | pos-sale-treasury | `extracted` | `extracted` | Stage 1 trigger guard migration applied in production; staging smoke proves Treasury pre-post + split redistribution with InsCashMoveSales coexistence guard | Source-controlled cutover to Treasury-owned sale CashMove; rollback remains `legacy` |
 
 ## Future (DRVO-008+)
 

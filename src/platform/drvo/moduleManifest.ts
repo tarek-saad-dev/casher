@@ -216,10 +216,10 @@ export const DRVO_MODULE_ROLLOUT: DrvoModuleRolloutSpec[] = [
   {
     module: 'pos-sale-treasury',
     drvoId: 'DRVO-009',
-    rollout: 'legacy',
-    classification: 'legacy',
+    rollout: 'extracted',
+    classification: 'extracted',
     classificationRationale:
-      'Stage 1 trigger guard migration must be applied and verified before activating Treasury sale posting. Default rollout legacy keeps InsCashMoveSales as the sole sale CashMove path until a separate activation PR sets rollout=extracted.',
+      'Stage 1 ins-cash-move-sales-guard migration is applied in production. Staging smoke proves Treasury pre-post plus split redistribution yields one initial sale CashMove on clearing, one registry row, and expected transfer pairs with InsCashMoveSales still enabled. Rollback remains rollout=legacy.',
     requiredMigrationKeys: [
       'platform-core',
       'platform-bootstrap',
