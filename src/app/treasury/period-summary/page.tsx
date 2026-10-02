@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Loader2, RefreshCw, Download, TrendingUp, TrendingDown,
   Wallet, Activity, CalendarDays, Users, ChevronUp, ChevronDown,
@@ -99,12 +100,18 @@ function KpiCard({ label, value, icon, colorClass, bgClass, borderClass, isCount
 type SortKey = 'date' | 'totalIncome' | 'totalExpense' | 'netTotal' | 'transactionsCount' | string;
 
 export default function TreasuryPeriodSummaryPage() {
+  const searchParams = useSearchParams();
+  const closingDate =
+    searchParams.get('managerClosing') === '1' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(searchParams.get('date') || '')
+      ? searchParams.get('date')!
+      : null;
   const [data, setData]       = useState<TreasuryPeriodSummaryResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
 
-  const [dateFrom, setDateFrom]   = useState(monthStartISO());
-  const [dateTo, setDateTo]       = useState(todayISO());
+  const [dateFrom, setDateFrom]   = useState(() => closingDate ?? monthStartISO());
+  const [dateTo, setDateTo]       = useState(() => closingDate ?? todayISO());
   const [userId, setUserId]       = useState<string>('all');
 
   const [sortKey, setSortKey]     = useState<SortKey>('date');
