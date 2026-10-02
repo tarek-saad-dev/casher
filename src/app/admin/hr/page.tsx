@@ -419,7 +419,7 @@ function EmployeesPanel() {
 
   const hardDeleteEmployee = async (employee: Employee) => {
     const confirmed = window.confirm(
-      `حذف "${employee.EmpName}" نهائيًا؟\n\nهذه العملية لا يمكن التراجع عنها، ولن تتم إذا كان للموظف أي بيانات تشغيلية أو مالية مرتبطة به.`,
+      `إزالة "${employee.EmpName}" نهائيًا من الإدارة؟\n\nإذا لم يكن له تاريخ مرتبط سيتم حذفه فعليًا. وإذا كان له فواتير أو حضور أو رواتب فسيتم أرشفته وإخفاؤه من واجهات إدارة الموظفين مع الاحتفاظ بالسجلات القديمة.`,
     );
     if (!confirmed) return;
 
