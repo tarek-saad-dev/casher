@@ -3,7 +3,8 @@
  * DRVO-010 staging smoke — last132_agent / drvo_agent only.
  * Proves Treasury replace/remove sale mutation seams on last132_agent only.
  * Covers single/split transitions, a second update, replay, zero-total,
- * create/update delete, non-registry fallback, and the flag-off split INSERT.
+ * zero-total replace then delete, create/update delete, non-registry fallback,
+ * and the flag-off split INSERT.
  */
 import path from 'path';
 import Module from 'module';
@@ -184,6 +185,28 @@ async function main() {
   if (paymentMethodIds.length < 2) fail('need two non-clearing payment methods');
   const paymentMethodId = paymentMethodIds[0]!;
 
+  async function deleteSmokeClients() {
+    const owned = await pool.request().query(`
+      SELECT ClientID FROM dbo.TblClient WHERE Name = N'${MARKER}'
+    `);
+    for (const row of owned.recordset) {
+      const id = Number(row.ClientID);
+      const heads = await pool.request().input('id', sql.Int, id).query(`
+        SELECT COUNT(*) AS cnt FROM dbo.TblinvServHead WHERE ClientID = @id
+      `);
+      if (Number(heads.recordset[0]?.cnt ?? 0) !== 0) continue;
+      await pool.request().input('id', sql.Int, id).query(`
+        UPDATE dbo.TblCashMove SET ClientID = NULL WHERE ClientID = @id;
+        IF OBJECT_ID(N'dbo.TblClientLoyalty', N'U') IS NOT NULL
+          DELETE FROM dbo.TblClientLoyalty WHERE ClientID = @id;
+        DELETE FROM dbo.TblLoyaltyPointLedger WHERE ClientID = @id;
+        DELETE FROM dbo.TblClient WHERE ClientID = @id AND Name = N'${MARKER}';
+      `);
+    }
+  }
+
+  await deleteSmokeClients();
+
   const client = await pool.request().query(`
     INSERT INTO dbo.TblClient (Name, Notes, RegisterDate)
     OUTPUT INSERTED.ClientID AS clientId
@@ -335,6 +358,25 @@ async function main() {
     await purgeTreasurySaleArtifacts(invId);
   }
 
+  async function paymentBalance(
+    queryable: Tx | sql.ConnectionPool,
+    methodId: number,
+    shiftId?: number,
+  ) {
+    const req = new sql.Request(queryable).input('pm', sql.Int, methodId);
+    let shiftSql = '';
+    if (shiftId != null) {
+      req.input('shift', sql.Int, shiftId);
+      shiftSql = ' AND ShiftMoveID = @shift';
+    }
+    const res = await req.query(`
+      SELECT COALESCE(SUM(CASE WHEN inOut = N'in' THEN GrandTolal ELSE -GrandTolal END), 0) AS balance
+      FROM dbo.TblCashMove
+      WHERE PaymentMethodID = @pm${shiftSql}
+    `);
+    return Number(res.recordset[0]?.balance ?? 0);
+  }
+
   async function assertTriggerEnabled(label: string) {
     const res = await pool.request().query(`
       SELECT is_disabled AS disabled
@@ -469,6 +511,7 @@ async function main() {
     }
   }
 
+  try {
   await cleanupMarkerInvoices();
   await assertTriggerEnabled('before');
 
@@ -589,6 +632,77 @@ async function main() {
     });
   });
 
+  await (async () => {
+    const name = 'zero-total replace then delete';
+    useExtractedMutation();
+    const beforeMethod = await paymentBalance(pool, paymentMethodId);
+    const beforeShift = await paymentBalance(pool, paymentMethodId, shiftMoveId);
+    const created = await createSmokeSale(100, false);
+    const invId = created.invID;
+    try {
+      await commitTx(async (tx) => {
+        await updateSale(tx, invId, updateInput(0, false, `${MARKER}-zero-then-delete`), userId);
+        if ((await activeSaleCashMoveCount(tx, invId)) !== 0) {
+          fail('zero-total before delete left an active sale CashMove');
+        }
+        if (await registryForSale(tx, invId)) fail('zero-total before delete left a sale registry row');
+      });
+      await commitTx(async (tx) => {
+        await deleteSale(tx, invId, branchId, userId);
+      });
+      const head = await pool.request().input('id', sql.Int, invId).query(`
+        SELECT COUNT(*) AS cnt FROM dbo.TblinvServHead WHERE invID = @id
+      `);
+      if (Number(head.recordset[0]?.cnt ?? 0) !== 0) fail('zero-total delete left the invoice');
+      const pair = await pool.request().input('invID', sql.Int, invId).query(`
+        SELECT
+          o.ID AS originalId,
+          ISNULL(o.IsReversed, 0) AS isReversed,
+          o.GrandTolal AS originalAmount,
+          o.inOut AS originalInOut,
+          o.PaymentMethodID AS paymentMethodId,
+          c.ID AS childId,
+          c.GrandTolal AS childAmount,
+          c.inOut AS childInOut,
+          c.ReversalOfCashMoveId AS reversalOf
+        FROM dbo.TblCashMove o
+        JOIN dbo.TblCashMove c ON c.ReversalOfCashMoveId = o.ID
+        WHERE o.invID = @invID AND o.invType = N'مبيعات'
+      `);
+      if (pair.recordset.length !== 1) {
+        fail(`zero-total delete must keep one reversal pair, got ${pair.recordset.length}`);
+      }
+      const row = pair.recordset[0]!;
+      if (Number(row.isReversed) !== 1) fail('preserved original must stay marked reversed');
+      if (Number(row.reversalOf) !== Number(row.originalId)) {
+        fail('reversal child does not point at the preserved original');
+      }
+      if (Number(row.paymentMethodId) !== paymentMethodId) {
+        fail('preserved pair is on a different payment method');
+      }
+      const originalSigned =
+        String(row.originalInOut) === 'in' ? Number(row.originalAmount) : -Number(row.originalAmount);
+      const childSigned =
+        String(row.childInOut) === 'in' ? Number(row.childAmount) : -Number(row.childAmount);
+      if (Math.abs(originalSigned + childSigned) > 0.001) {
+        fail(`reversal pair is not balanced (${originalSigned} + ${childSigned})`);
+      }
+      const afterMethod = await paymentBalance(pool, paymentMethodId);
+      const afterShift = await paymentBalance(pool, paymentMethodId, shiftMoveId);
+      if (afterMethod !== beforeMethod) {
+        fail(`payment-method balance changed ${beforeMethod} -> ${afterMethod}`);
+      }
+      if (afterShift !== beforeShift) {
+        fail(`payment-method shift balance changed ${beforeShift} -> ${afterShift}`);
+      }
+      console.log(`PASS: ${name}`);
+    } finally {
+      useExtractedMutation();
+      await cleanupInvoice(invId);
+      await assertNoResidue(invId, name);
+    }
+  })();
+
   await scenario('zero-total then positive', false, 100, async (invId) => {
     await commitTx(async (tx) => {
       await updateSale(tx, invId, updateInput(0, false, `${MARKER}-zero`), userId);
@@ -695,20 +809,33 @@ async function main() {
     }
   });
 
+  await deleteSmokeClients();
   const markerLeft = await pool.request().query(`
     SELECT
       (SELECT COUNT(*) FROM dbo.TblCashMove WHERE Notes LIKE N'%${MARKER}%') AS cashMoves,
-      (SELECT COUNT(*) FROM dbo.TblinvServHead WHERE Notes LIKE N'%${MARKER}%' OR Notes2 = N'${MARKER}') AS heads
+      (SELECT COUNT(*) FROM dbo.TblinvServHead WHERE Notes LIKE N'%${MARKER}%' OR Notes2 = N'${MARKER}') AS heads,
+      (SELECT COUNT(*) FROM dbo.TblClient WHERE Name = N'${MARKER}') AS clients
   `);
-  if (Number(markerLeft.recordset[0]?.cashMoves) || Number(markerLeft.recordset[0]?.heads)) {
+  if (
+    Number(markerLeft.recordset[0]?.cashMoves) ||
+    Number(markerLeft.recordset[0]?.heads) ||
+    Number(markerLeft.recordset[0]?.clients)
+  ) {
     fail(
-      `marker residue cashMoves=${markerLeft.recordset[0]?.cashMoves} heads=${markerLeft.recordset[0]?.heads}`,
+      `marker residue cashMoves=${markerLeft.recordset[0]?.cashMoves} heads=${markerLeft.recordset[0]?.heads} clients=${markerLeft.recordset[0]?.clients}`,
     );
   }
 
   await assertTriggerEnabled('after');
   console.log('DRVO-010 sale mutation staging smoke complete');
-  await closePool();
+  } finally {
+    try {
+      await deleteSmokeClients();
+    } catch (cleanupErr) {
+      console.error('CLEANUP client failed', cleanupErr);
+    }
+    await closePool();
+  }
 }
 
 main().catch((err) => {

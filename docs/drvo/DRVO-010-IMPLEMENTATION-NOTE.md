@@ -23,6 +23,8 @@ Rationale:
 - Each replace reversal is keyed by the current live CashMove id (`pos-sale:replace-reverse:{invType}:{saleInvId}:{priorCashMoveId}`).
 - Each replacement outbox event is `treasury.sale.replaced:{saleKey}:{priorCashMoveId}`.
 - A replace that must insert because no registry row exists publishes `treasury.sale.posted:{saleKey}:{cashMoveId}` so it does not collide with the original create event.
+- A zero-total replace reverses the live sale movement and deletes the `Kind=sale` registry row. The reversal child is a new `TblCashMove` on a different `invID` with `ReversalOfCashMoveId` pointing at the original. `FK_TblCashMove_ReversalOf` is `NO ACTION`.
+- Extracted delete after that replace sees no registry. It **preserves the reversal pair** and deletes only live invoice cash rows (`ISNULL(IsReversed, 0) = 0 AND ReversalOfCashMoveId IS NULL`). Deleting the reversed original would fail the FK. Deleting only that original would also leave the offset in the payment-method balance, because balance sums every row by `inOut` and does not apply the live-cash filter. The flag-off delete is unchanged.
 - `classification` is `legacy` because Stage 1 production update/delete still uses the legacy SQL path. `rollout` stays `legacy` until Stage 2.
 
 ### Stage 2 — activation PR (after staging evidence)
@@ -36,7 +38,7 @@ Rationale:
 | --- | --- |
 | `replaceSaleCashMove` | Reverse prior sale movement when fingerprint changes; insert replacement; update registry |
 | `removeSaleCashMove` | Reverse sale movement; delete `Kind=sale` registry row |
-| `legacySaleRepository` | Treasury-owned update skips hard sale CashMove DELETE. Non-registry update hard-deletes legacy sale CashMove rows after split reversal |
+| `legacySaleRepository` | Treasury-owned update skips hard sale CashMove DELETE. Non-registry update hard-deletes unreversed legacy sale CashMove rows after split reversal. Extracted delete of a non-owned sale keeps a prior reversal pair and deletes only live invoice cash rows |
 | `updateSale` / `deleteSale` | Wire replacer/remover when `isPosSaleTreasuryMutationEnabled()` |
 
 ## Staging smoke

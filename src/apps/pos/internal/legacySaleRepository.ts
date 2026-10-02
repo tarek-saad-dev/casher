@@ -253,9 +253,19 @@ export async function deleteInvoice(
 
     const removed = await treasuryRemove(transaction, { saleInvId: invID, invType: 'مبيعات' });
     if (!removed.treasuryOwned) {
+      // A zero-total replace already reversed the sale row and deleted the Kind=sale
+      // registry, so this delete is not treasury-owned. Keep that reversal pair:
+      // FK_TblCashMove_ReversalOf is NO ACTION, and dropping only the original would
+      // leave its offset in the payment-method balance. Live rows (IsReversed = 0 and
+      // not themselves a reversal child) are still removed.
       await new sql.Request(transaction)
         .input('id', sql.Int, invID)
-        .query(`DELETE FROM dbo.TblCashMove WHERE InvID = @id`);
+        .query(`
+          DELETE FROM dbo.TblCashMove
+          WHERE InvID = @id
+            AND ISNULL(IsReversed, 0) = 0
+            AND ReversalOfCashMoveId IS NULL
+        `);
     }
   } else {
     await new sql.Request(transaction)

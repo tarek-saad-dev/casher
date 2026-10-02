@@ -39,6 +39,20 @@ describe('DRVO-010 POS sale Treasury mutation wiring', () => {
     expect(repo).toContain('removed.treasuryOwned');
   });
 
+  it('extracted delete after zero-total replace preserves the reversal pair', () => {
+    const repo = read('src/apps/pos/internal/legacySaleRepository.ts');
+    const start = repo.indexOf('if (!removed.treasuryOwned)');
+    const end = repo.indexOf('} else {', start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const extractedFallback = repo.slice(start, end);
+    expect(extractedFallback).toContain('ISNULL(IsReversed, 0) = 0');
+    expect(extractedFallback).toContain('ReversalOfCashMoveId IS NULL');
+    expect(extractedFallback).not.toContain('DELETE FROM dbo.TblCashMove WHERE InvID = @id');
+    const flagOff = repo.slice(end);
+    expect(flagOff).toContain('DELETE FROM dbo.TblCashMove WHERE InvID = @id');
+  });
+
   it('extracted update/delete application layers do not SQL-write TblCashMove', () => {
     for (const file of [
       'src/apps/pos/application/updateSale.ts',

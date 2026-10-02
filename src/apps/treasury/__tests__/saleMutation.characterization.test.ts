@@ -179,6 +179,31 @@ describe('DRVO-010 sale mutation characterization', () => {
     expect(mocks.insertSaleCashMoveRow).toHaveBeenCalledOnce();
   });
 
+  it('zero-total replace then remove does not reverse again once the registry is gone', async () => {
+    const { saleReplaceReverseIdempotencyKey } = await import('../internal/saleCommandFingerprint');
+    mocks.findRegistryByKey.mockResolvedValueOnce({
+      CashMoveId: 600,
+      Fingerprint: 'old',
+    });
+    await replaceSaleCashMove(tx, actor, { ...baseCommand, amount: 0 });
+
+    mocks.findRegistryByKey.mockResolvedValueOnce(null);
+    const removed = await removeSaleCashMove(tx, actor, {
+      tenantId: baseCommand.tenantId,
+      saleInvId: baseCommand.saleInvId,
+      invType: 'مبيعات',
+    });
+
+    expect(removed.treasuryOwned).toBe(false);
+    expect(removed.reversedCashMoveId).toBeNull();
+    expect(mocks.reverseMoneyMovement).toHaveBeenCalledOnce();
+    expect(mocks.reverseMoneyMovement.mock.calls[0]?.[2]).toMatchObject({
+      idempotencyKey: saleReplaceReverseIdempotencyKey(baseCommand.saleInvId, 'مبيعات', 600),
+      reason: 'sale_replace_zero',
+    });
+    expect(mocks.deleteRegistryByKey).toHaveBeenCalledOnce();
+  });
+
   it('replace zero-total reverses the current movement and deletes registry', async () => {
     const { saleReplaceReverseIdempotencyKey } = await import('../internal/saleCommandFingerprint');
     mocks.findRegistryByKey.mockResolvedValue({
