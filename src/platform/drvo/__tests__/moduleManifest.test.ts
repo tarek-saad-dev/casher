@@ -24,6 +24,8 @@ describe('DRVO module rollout manifest', () => {
     delete process.env.DRVO_FORCE_QUEUE_PATH;
     delete process.env.DRVO_FORCE_POS_PATH;
     delete process.env.DRVO_FORCE_POS_SALE_TREASURY_PATH;
+    delete process.env.POS_SALE_TREASURY_MUTATION_PORT;
+    delete process.env.DRVO_FORCE_POS_SALE_TREASURY_MUTATION_PATH;
   });
 
   it('uses extracted booking and queue for this rollout', () => {
@@ -90,7 +92,7 @@ describe('DRVO module rollout manifest', () => {
       'utf8',
     );
     const mutation = getDrvoModuleRolloutSpec('pos-sale-treasury-mutation');
-    expect(mutation.rollout).toBe('legacy');
+    expect(mutation.rollout).toBe('extracted');
     for (const id of ['platform.bootstrap', 'treasury.schema', 'treasury.sale-trigger-guard']) {
       expect(mutation.readinessCheckIds).toContain(id);
     }
@@ -191,11 +193,11 @@ describe('DRVO rollout resolver precedence', () => {
     expect(saleTreasury.rollbackRollout).toBe('legacy');
   });
 
-  it('keeps pos-sale-treasury-mutation legacy until DRVO-010 Stage 2 activation', () => {
+  it('activates pos-sale-treasury-mutation after DRVO-010 Stage 2 approval', () => {
     const mutation = getDrvoModuleRolloutSpec('pos-sale-treasury-mutation');
     expect(mutation.drvoId).toBe('DRVO-010');
-    expect(mutation.rollout).toBe('legacy');
-    expect(mutation.classification).toBe('legacy');
+    expect(mutation.rollout).toBe('extracted');
+    expect(mutation.classification).toBe('extracted');
     expect(mutation.forcePathEnv).toBe('DRVO_FORCE_POS_SALE_TREASURY_MUTATION_PATH');
     expect(mutation.compatEnvFlag).toBe('POS_SALE_TREASURY_MUTATION_PORT');
   });
