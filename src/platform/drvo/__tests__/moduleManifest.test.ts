@@ -84,6 +84,19 @@ describe('DRVO module rollout manifest', () => {
     expect(deploy).not.toContain('QUEUE_SCHEDULING_PORT=true');
   });
 
+  it('wires DRVO-010 declared readiness checks into the verifier', () => {
+    const readiness = fs.readFileSync(
+      path.join(process.cwd(), 'scripts/drvo/readiness.ts'),
+      'utf8',
+    );
+    const mutation = getDrvoModuleRolloutSpec('pos-sale-treasury-mutation');
+    expect(mutation.rollout).toBe('legacy');
+    for (const id of ['platform.bootstrap', 'treasury.schema', 'treasury.sale-trigger-guard']) {
+      expect(mutation.readinessCheckIds).toContain(id);
+    }
+    expect(readiness).toContain("module === 'pos-sale-treasury-mutation'");
+  });
+
   it('booking port uses source-controlled resolver (not env-only)', () => {
     const flag = fs.readFileSync(
       path.join(process.cwd(), 'src/apps/booking/internal/schedulingPortFlag.ts'),
