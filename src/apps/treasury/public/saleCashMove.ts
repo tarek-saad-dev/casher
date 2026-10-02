@@ -15,10 +15,10 @@ export interface PostSaleCommand {
   amount: number;
   inOut: 'in' | 'out';
   notes: string;
-  shiftMoveId: number;
+  shiftMoveId: number | null;
   paymentMethodId: number;
   branchId: number;
-  businessDayId: number;
+  businessDayId: number | null;
   sourceRef: string;
   idempotencyKey: string;
 }

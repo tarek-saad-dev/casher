@@ -7,6 +7,9 @@ export const CASH_MOVE_WRITER_ALLOWLIST = [
   'src/apps/treasury/internal/cashMoveInsert.ts',
   // DRVO-009 Treasury-owned POS sale initial CashMove
   'src/apps/treasury/internal/postSaleCashMove.ts',
+  // DRVO-010 Treasury-owned POS sale replace/remove
+  'src/apps/treasury/internal/insertSaleCashMoveRow.ts',
+  'src/apps/treasury/internal/replaceSaleCashMove.ts',
   // POS sale trigger path — InsCashMoveSales; app may redistribute split payments
   'src/lib/splitPaymentService.ts',
   // Legacy sale update/delete still writes CashMove while rollout stays legacy.

@@ -13,6 +13,10 @@ import {
 } from '@/lib/sales/service-line-totals';
 import { roundMoney } from '@/lib/reportMonthUtils';
 import { getCairoInvTimeDotStr, getCairoPayTimeStr } from '@/lib/businessDate';
+import type {
+  SaleCashMoveRemover,
+  SaleCashMoveReplacer,
+} from '../public/saleCashMoveMutation';
 
 export interface InvoiceItemInput {
   proId: number;
@@ -115,6 +119,11 @@ export interface UpdateInvoiceResult {
   isSplitPayment: boolean;
 }
 
+export type SaleTreasuryMutationSeams = {
+  replaceSaleCashMove?: SaleCashMoveReplacer | null;
+  removeSaleCashMove?: SaleCashMoveRemover | null;
+};
+
 export async function getInvoiceSnapshot(
   transaction: sql.Transaction,
   invID: number,
@@ -180,11 +189,18 @@ export async function deleteInvoice(
   transaction: sql.Transaction,
   invID: number,
   activeBranchId: number,
+  treasuryMutation?: SaleTreasuryMutationSeams | null,
 ): Promise<void> {
   const head = await new sql.Request(transaction)
     .input('invID', sql.Int, invID)
-    .query(`SELECT BranchID FROM dbo.TblinvServHead WHERE invID = @invID AND invType = N'مبيعات'`);
-  const headRow = head.recordset[0];
+    .query(`
+      SELECT BranchID, BusinessDayID, ClientID
+      FROM dbo.TblinvServHead
+      WHERE invID = @invID AND invType = N'مبيعات'
+    `);
+  const headRow = head.recordset[0] as
+    | { BranchID: number; BusinessDayID: number | null; ClientID: number | null }
+    | undefined;
   if (!headRow) {
     throw new Error('الفاتورة غير موجودة');
   }
@@ -201,9 +217,49 @@ export async function deleteInvoice(
     invType: 'مبيعات',
   });
 
-  await new sql.Request(transaction)
-    .input('id', sql.Int, invID)
-    .query(`DELETE FROM dbo.TblCashMove WHERE InvID = @id`);
+  const treasuryRemove = treasuryMutation?.removeSaleCashMove ?? null;
+  if (treasuryRemove) {
+    const splitCfg = await resolveSplitPaymentConfig(transaction);
+    const oldPayments = await new sql.Request(transaction)
+      .input('invID', sql.Int, invID)
+      .query(`
+        SELECT PaymentMethodID, ISNULL(PayValue, 0) AS PayValue
+        FROM dbo.TblinvServPayment
+        WHERE invID = @invID AND invType = N'مبيعات' AND ISNULL(PayValue, 0) > 0
+      `);
+    const realAllocations = oldPayments.recordset.filter(
+      (row: { PaymentMethodID: number }) => row.PaymentMethodID !== splitCfg.clearingMethodId,
+    );
+    if (realAllocations.length > 1) {
+      const now = new Date();
+      const { reverseSplitPaymentTransfers } = await import('@/lib/splitPaymentService');
+      await reverseSplitPaymentTransfers({
+        transaction,
+        branchId: activeBranchId,
+        businessDayId: headRow.BusinessDayID == null ? null : Number(headRow.BusinessDayID),
+        invoiceId: invID,
+        invoiceType: 'مبيعات',
+        clearingMethodId: splitCfg.clearingMethodId,
+        invDate: now,
+        invTime: getCairoInvTimeDotStr(now),
+        clientId: headRow.ClientID ?? null,
+        shiftMoveId: null,
+        expenseCatId: splitCfg.expenseCatId,
+        incomeCatId: splitCfg.incomeCatId,
+      });
+    }
+
+    const removed = await treasuryRemove(transaction, { saleInvId: invID, invType: 'مبيعات' });
+    if (!removed.treasuryOwned) {
+      await new sql.Request(transaction)
+        .input('id', sql.Int, invID)
+        .query(`DELETE FROM dbo.TblCashMove WHERE InvID = @id`);
+    }
+  } else {
+    await new sql.Request(transaction)
+      .input('id', sql.Int, invID)
+      .query(`DELETE FROM dbo.TblCashMove WHERE InvID = @id`);
+  }
   await new sql.Request(transaction)
     .input('id', sql.Int, invID)
     .query(`DELETE FROM dbo.TblLoyaltyPointLedger WHERE SourceInvID = @id`);
@@ -223,6 +279,7 @@ export async function updateInvoice(
   invID: number,
   input: UpdateInvoiceInput,
   userID: number,
+  treasuryMutation?: SaleTreasuryMutationSeams | null,
 ): Promise<UpdateInvoiceResult> {
   const existing = await new sql.Request(transaction)
     .input('invID', sql.Int, invID)
@@ -279,6 +336,40 @@ export async function updateInvoice(
     userId: userID,
   });
 
+  const treasuryReplace = treasuryMutation?.replaceSaleCashMove ?? null;
+  const splitCfg = await resolveSplitPaymentConfig(transaction);
+
+  if (treasuryReplace) {
+    const oldPayments = await new sql.Request(transaction)
+      .input('invID', sql.Int, invID)
+      .query(`
+        SELECT PaymentMethodID, ISNULL(PayValue, 0) AS PayValue
+        FROM dbo.TblinvServPayment
+        WHERE invID = @invID AND invType = N'مبيعات' AND ISNULL(PayValue, 0) > 0
+      `);
+    const realAllocations = oldPayments.recordset.filter(
+      (row: { PaymentMethodID: number }) => row.PaymentMethodID !== splitCfg.clearingMethodId,
+    );
+    if (realAllocations.length > 1) {
+      const now = new Date();
+      const { reverseSplitPaymentTransfers } = await import('@/lib/splitPaymentService');
+      await reverseSplitPaymentTransfers({
+        transaction,
+        branchId: headBranchId,
+        businessDayId: headBusinessDayId,
+        invoiceId: invID,
+        invoiceType: 'مبيعات',
+        clearingMethodId: splitCfg.clearingMethodId,
+        invDate: now,
+        invTime: getCairoInvTimeDotStr(now),
+        clientId: input.clientId ?? null,
+        shiftMoveId: null,
+        expenseCatId: splitCfg.expenseCatId,
+        incomeCatId: splitCfg.incomeCatId,
+      });
+    }
+  }
+
   // 1. Delete old children
   await new sql.Request(transaction)
     .input('invID', sql.Int, invID)
@@ -289,9 +380,11 @@ export async function updateInvoice(
   await new sql.Request(transaction)
     .input('invID', sql.Int, invID)
     .query(`DELETE FROM dbo.TblLoyaltyPointLedger WHERE SourceInvID = @invID`);
-  await new sql.Request(transaction)
-    .input('invID', sql.Int, invID)
-    .query(`DELETE FROM dbo.TblCashMove WHERE invID = @invID`);
+  if (!treasuryReplace) {
+    await new sql.Request(transaction)
+      .input('invID', sql.Int, invID)
+      .query(`DELETE FROM dbo.TblCashMove WHERE invID = @invID`);
+  }
 
   // 2. Update header
   await new sql.Request(transaction)
@@ -370,10 +463,6 @@ export async function updateInvoice(
     })),
   });
 
-  // 4. Resolve split payment config
-  const db = transaction;
-  const splitCfg = await resolveSplitPaymentConfig(db);
-
   const rawAllocations = input.paymentAllocations || [];
   const activeAllocations = rawAllocations.filter(
     (pa: InvoicePaymentAllocationInput) => {
@@ -415,7 +504,41 @@ export async function updateInvoice(
   }
 
   // 7. Re-insert cash movement — ownership always stamped from the invoice head
-  if (!isSplitPayment) {
+  if (treasuryReplace) {
+    await treasuryReplace(transaction, {
+        saleInvId: invID,
+        invType: 'مبيعات',
+        invDate: editInvDate,
+        invTime: editInvTime,
+        clientId: input.clientId ?? null,
+        amount: grandTotal,
+        shiftMoveId: null,
+        paymentMethodId: headerPaymentMethodId,
+        branchId: headBranchId,
+        businessDayId: headBusinessDayId,
+        notes: input.notes || 'مبيعات',
+      });
+
+    if (isSplitPayment && grandTotal > 0) {
+      await redistributeFromClearing({
+        transaction,
+        branchId: headBranchId,
+        businessDayId: headBusinessDayId,
+        clearingMethodId: splitCfg.clearingMethodId,
+        allocations: activeAllocations.map((a) => ({
+          paymentMethodId: a.paymentMethodId,
+          amount: Number(a.amount),
+        })),
+        invDate: editInvDate,
+        invTime: editInvTime,
+        clientId: input.clientId || null,
+        shiftMoveId: null,
+        invoiceId: invID,
+        expenseCatId: splitCfg.expenseCatId,
+        incomeCatId: splitCfg.incomeCatId,
+      });
+    }
+  } else if (!isSplitPayment) {
     if (grandTotal > 0) {
       await new sql.Request(transaction)
         .input('invID', sql.Int, invID)
@@ -444,7 +567,7 @@ export async function updateInvoice(
         .input('BranchID', sql.Int, headBranchId)
         .input('BusinessDayID', sql.Int, headBusinessDayId)
         .query(`
-          INSERT INTO dbo.TblCashMove (invID, invType, invDate, invTime, GrandTolal, PaymentMethodID, inOut, Notes, ShiftMoveID, BranchID, BusinessDayID)
+          INSERT INTO dbo.TblCashMove (invID, invType, invDate, invTime, GrandTolal, PaymentMethodID, inOut, Notes, ShiftMoveID, BusinessDayID)
           VALUES (@invID, @invType, CONVERT(date, GETDATE()), CONVERT(varchar(5), GETDATE(), 8),
                   @GrandTotal, @PaymentMethodID, N'in', @Notes, @ShiftMoveID, @BranchID, @BusinessDayID)
         `);

@@ -58,6 +58,42 @@ export async function findRegistryRowsByTransferGroup(
   return result.recordset as RegistryRow[];
 }
 
+export async function updateRegistryRow(
+  tx: Transaction,
+  row: {
+    tenantId: string;
+    idempotencyKey: string;
+    fingerprint: string;
+    cashMoveId: number;
+  },
+): Promise<void> {
+  await new sql.Request(tx)
+    .input('tenantId', sql.UniqueIdentifier, row.tenantId)
+    .input('key', sql.NVarChar(256), row.idempotencyKey)
+    .input('fingerprint', sql.NVarChar(128), row.fingerprint)
+    .input('cashMoveId', sql.Int, row.cashMoveId)
+    .query(`
+      UPDATE dbo.TreasuryMovementRegistry
+      SET Fingerprint = @fingerprint, CashMoveId = @cashMoveId
+      WHERE TenantId = @tenantId AND IdempotencyKey = @key AND Kind = N'sale'
+    `);
+}
+
+export async function deleteRegistryByKey(
+  tx: Transaction,
+  tenantId: string,
+  idempotencyKey: string,
+): Promise<boolean> {
+  const result = await new sql.Request(tx)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('key', sql.NVarChar(256), idempotencyKey)
+    .query(`
+      DELETE FROM dbo.TreasuryMovementRegistry
+      WHERE TenantId = @tenantId AND IdempotencyKey = @key AND Kind = N'sale'
+    `);
+  return (result.rowsAffected[0] ?? 0) > 0;
+}
+
 export async function insertRegistryRow(
   tx: Transaction,
   row: {

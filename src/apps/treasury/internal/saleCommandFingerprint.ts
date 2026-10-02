@@ -24,3 +24,13 @@ export function fingerprintSalePost(command: PostSaleCommand): string {
 export function defaultSaleIdempotencyKey(saleInvId: number, invType: SaleInvType): string {
   return `pos-sale:${invType}:${saleInvId}`;
 }
+
+/** Stable reverse key when replacing a sale CashMove (Option A mutable registry). */
+export function saleReplaceReverseIdempotencyKey(saleInvId: number, invType: SaleInvType): string {
+  return `pos-sale:replace-reverse:${invType}:${saleInvId}`;
+}
+
+/** Stable reverse key when deleting a treasury-owned sale CashMove. */
+export function saleDeleteReverseIdempotencyKey(saleInvId: number, invType: SaleInvType): string {
+  return `pos-sale:delete-reverse:${invType}:${saleInvId}`;
+}

@@ -241,6 +241,34 @@ export const DRVO_MODULE_ROLLOUT: DrvoModuleRolloutSpec[] = [
     compatEnvFlag: 'POS_SALE_TREASURY_PORT',
     forcePathEnv: 'DRVO_FORCE_POS_SALE_TREASURY_PATH',
   },
+  {
+    module: 'pos-sale-treasury-mutation',
+    drvoId: 'DRVO-010',
+    rollout: 'legacy',
+    classification: 'extracted',
+    classificationRationale:
+      'Stage 1 Treasury replace/remove sale mutation seams with tests and staging smoke. Production update/delete accounting stays legacy until Stage 2 activation PR after evidence.',
+    requiredMigrationKeys: [
+      'platform-core',
+      'platform-bootstrap',
+      'treasury-movement-registry',
+      'ins-cash-move-sales-guard',
+    ],
+    dependencies: ['platform-core', 'treasury', 'pos', 'pos-sale-treasury'],
+    readinessCheckIds: [
+      'migration.platform-core',
+      'migration.platform-bootstrap',
+      'migration.treasury-movement-registry',
+      'migration.ins-cash-move-sales-guard',
+      'treasury.schema',
+      'treasury.sale-trigger-guard',
+      'platform.bootstrap',
+      'platform.core.structure',
+    ],
+    rollbackRollout: 'legacy',
+    compatEnvFlag: 'POS_SALE_TREASURY_MUTATION_PORT',
+    forcePathEnv: 'DRVO_FORCE_POS_SALE_TREASURY_MUTATION_PATH',
+  },
 ];
 
 export function getDrvoModuleRolloutSpec(module: string): DrvoModuleRolloutSpec {

@@ -339,7 +339,7 @@ export async function DELETE(
       },
       execute: async (transaction) =>
         isPosPortEnabled()
-          ? deleteSale(transaction, invID, loaded.ownership.branchId)
+          ? deleteSale(transaction, invID, loaded.ownership.branchId, session.UserID)
           : deleteInvoice(transaction, invID, loaded.ownership.branchId),
       loadNewData: async () => null,
       beforeCommit: async ({ transaction, oldData }) => {

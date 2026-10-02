@@ -348,7 +348,7 @@ async function main() {
     const deleteTx = new sql.Transaction(pool);
     await deleteTx.begin();
     try {
-      await deleteSale(deleteTx, created.invID, branchId);
+      await deleteSale(deleteTx, created.invID, branchId, userId);
       await deleteTx.commit();
     } catch (err) {
       try {
@@ -563,7 +563,7 @@ async function main() {
       try {
         const cleanup = new sql.Transaction(pool);
         await cleanup.begin();
-        await deleteSale(cleanup, createdInvId, createdBranchId);
+        await deleteSale(cleanup, createdInvId, createdBranchId, userId);
         await cleanup.commit();
         console.log('CLEANUP: deleted smoke invoice', createdInvId);
       } catch (cleanupErr) {
