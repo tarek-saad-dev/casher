@@ -19,6 +19,7 @@ import {
   upsertEmployeeSchedule,
 } from '@/lib/hr/employee-hr-db';
 import { ensureTblEmpImageUrlColumn } from '@/lib/migrations/ensureEmployeeImageUrl';
+import { ensureTblEmpArchivedColumn } from '@/lib/migrations/ensureEmployeeArchived';
 import { ensureTblEmpNameEnColumn, normalizeEmpNameEn } from '@/lib/migrations/ensureEmployeeNameEn';
 import {
   ensureTblEmpDisplaySortOrderColumn,
@@ -471,8 +472,13 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
     }
 
     const pool = await getPool();
+    const hasArchived = await ensureTblEmpArchivedColumn(pool);
+    if (!hasArchived) {
+      return NextResponse.json({ error: 'تعذر تجهيز أرشفة الموظفين' }, { status: 500 });
+    }
+
     const current = await pool.request().input('empID', sql.Int, empID).query(`
-      SELECT EmpID, EmpName, isActive
+      SELECT EmpID, EmpName, isActive, IsArchived
       FROM dbo.TblEmp
       WHERE EmpID = @empID
     `);
@@ -507,13 +513,20 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
     } catch (deleteErr: unknown) {
       const err = deleteErr as { number?: number; message?: string };
       if (err?.number === 547 || String(err?.message || '').includes('REFERENCE constraint')) {
-        return NextResponse.json(
-          {
-            error:
-              'لا يمكن حذف هذا الموظف نهائيًا لأن له بيانات مرتبطة (مثل فواتير أو حضور أو رواتب أو سجلات تشغيل). اتركه غير نشط للحفاظ على التاريخ.',
-          },
-          { status: 409 },
-        );
+        await pool.request().input('empID', sql.Int, empID).query(`
+          UPDATE dbo.TblEmp
+          SET IsArchived = 1, isActive = 0
+          WHERE EmpID = @empID
+        `);
+
+        invalidatePublicBookingBarbersCache();
+        return NextResponse.json({
+          success: true,
+          archived: true,
+          deleted: false,
+          message: 'تم إخفاء الموظف نهائيًا من الإدارة مع الاحتفاظ بسجلاته التاريخية.',
+          deletedEmployee: { EmpID: empID, EmpName: employee.EmpName ?? null },
+        });
       }
       throw deleteErr;
     }
@@ -521,6 +534,9 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
     invalidatePublicBookingBarbersCache();
     return NextResponse.json({
       success: true,
+      archived: false,
+      deleted: true,
+      message: 'تم حذف الموظف نهائيًا.',
       deletedEmployee: { EmpID: empID, EmpName: employee.EmpName ?? null },
     });
   } catch (err: unknown) {
