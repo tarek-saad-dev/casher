@@ -1,0 +1,15 @@
+{
+  "name": "Casher / DRVO staging",
+  "install": "npm ci",
+  "ports": [5500],
+  "terminals": [
+    {
+      "name": "staging-sql-tunnel",
+      "command": "bash -lc 'set -euo pipefail; umask 077; mkdir -p \"$HOME/.ssh\"; chmod 700 \"$HOME/.ssh\"; python3 - <<\"PY\"\\nimport os, pathlib\\nkey=os.environ.get(\"DRVO_STAGING_SSH_KEY\")\\nhost=os.environ.get(\"DRVO_STAGING_SSH_HOST\")\\nif not key: raise SystemExit(\"DRVO_STAGING_SSH_KEY is not set\")\\nif not host: raise SystemExit(\"DRVO_STAGING_SSH_HOST is not set\")\\np=pathlib.Path.home()/\".ssh\"/\"drvo_agent\"\\np.write_text(key if key.endswith(\"\\\\n\") else key+\"\\\\n\")\\nPY\\nchmod 600 \"$HOME/.ssh/drvo_agent\"; KNOWN_HOSTS=\"$HOME/.ssh/known_hosts_drvo_staging\"; : > \"$KNOWN_HOSTS\"; chmod 600 \"$KNOWN_HOSTS\"; exec ssh -N -L 127.0.0.1:14330:127.0.0.1:1433 -i \"$HOME/.ssh/drvo_agent\" \"drvo-tunnel@${DRVO_STAGING_SSH_HOST}\" -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=\"$KNOWN_HOSTS\"'"
+    },
+    {
+      "name": "dev-app",
+      "command": "bash -lc 'npm run dev:app'"
+    }
+  ]
+}
