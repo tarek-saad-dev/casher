@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "source": "CUT Salon October Celebration Package",
+  "targetAdminPage": "/admin/packages",
+  "currency": "EGP",
+  "pricingPolicy": "Seasonal promo bundle. PackagePrice is the selling price. OriginalPrice is the real standalone sum of included services at seed time.",
+  "notes": [
+    "Seed with: npx tsx scripts/seed-regular-packages.ts --seed cut-salon-october-package.json --dry-run|--apply --cloud",
+    "Kept separate from cut-salon-regular-packages.json so applying it never rewrites the CUT Fresh/Care/Premium rows.",
+    "PackageKind must be regular."
+  ],
+  "packages": [
+    {
+      "key": "REGULAR_OCTOBER_2026",
+      "nameEn": "October Package",
+      "nameAr": "باكدج أكتوبر",
+      "price": 333,
+      "originalPrice": 720,
+      "expectedIndividualTotal": 720,
+      "displayOrder": 5,
+      "recommended": false,
+      "active": true,
+      "descriptionEn": "CUT October celebration package: haircut, beard styling & fade, hair oil treatment and classic skin care.",
+      "descriptionAr": "باكدج احتفال أكتوبر من CUT يشمل قص الشعر، تهذيب وتحديد الذقن، حمام الزيت، وتنظيف البشرة الكلاسيكي.",
+      "includedServices": [
+        { "key": "HAIR_CUT", "proId": 9, "preferredName": "Hair Cut", "expectedPrice": 200 },
+        { "key": "BEARD", "proId": 10, "preferredName": "Beard Styling & Fade", "expectedPrice": 100 },
+        { "key": "HAIR_OIL_TREATMENT", "proId": 22, "preferredName": "Hair Oil Treatment", "expectedPrice": 120 },
+        { "key": "CLASSIC_SKIN_CARE", "proId": 29, "preferredName": "Classic Skin Care", "expectedPrice": 300 }
+      ]
+    }
+  ]
+}

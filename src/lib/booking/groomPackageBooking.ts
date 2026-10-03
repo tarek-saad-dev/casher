@@ -13,6 +13,7 @@ import {
 } from '@/lib/catalog/groomOptionalAddons';
 import { isRetailProductClassification } from '@/lib/booking/publicBookingServicePolicy';
 import { parsePublicServiceIdsParam } from '@/lib/booking/publicBookingBarberPolicy';
+import type { PackageKind } from '@/lib/migrations/ensureServicePackages';
 
 export type GroomPackageBookingErrorCode =
   | 'PACKAGE_NOT_FOUND'
@@ -41,6 +42,7 @@ export class GroomPackageBookingError extends Error {
 
 export type ResolvedGroomPackageBooking = {
   packageId: number;
+  packageKind: PackageKind;
   nameEn: string;
   nameAr: string;
   packagePrice: number;
@@ -240,15 +242,20 @@ async function loadProRows(proIds: number[]): Promise<Map<number, ProRow>> {
 }
 
 /**
- * Resolve a groom package booking from server truth.
+ * Resolve a package from server truth (TblServicePackage / TblServicePackageItem).
  * Does NOT use Phase-2 public catalog membership.
+ * Public booking is groom-only (default); POS passes every sellable kind.
  */
 export async function resolveGroomPackageBooking(args: {
   packageId: unknown;
   addonProIds?: unknown;
   /** Optional client serviceIds — consistency check only */
   clientServiceIds?: unknown;
+  allowedKinds?: readonly PackageKind[];
 }): Promise<ResolvedGroomPackageBooking> {
+  const allowedKinds: readonly PackageKind[] = args.allowedKinds?.length
+    ? args.allowedKinds
+    : ['groom'];
   const packageId = parsePackageId(args.packageId);
   const addonProIds = parseIdList(args.addonProIds);
   const clientServiceIds =
@@ -271,8 +278,9 @@ export async function resolveGroomPackageBooking(args: {
   if (Number(pkg.isDeleted) === 1) {
     throw new GroomPackageBookingError('PACKAGE_NOT_ACTIVE', { packageId });
   }
-  if (String(pkg.PackageKind ?? '') !== 'groom') {
-    throw new GroomPackageBookingError('PACKAGE_NOT_GROOM', { packageId });
+  const packageKind = String(pkg.PackageKind ?? '') as PackageKind;
+  if (!allowedKinds.includes(packageKind)) {
+    throw new GroomPackageBookingError('PACKAGE_NOT_GROOM', { packageId, packageKind });
   }
 
   const packagePrice = Number(pkg.PackagePrice);
@@ -441,6 +449,7 @@ export async function resolveGroomPackageBooking(args: {
 
   return {
     packageId,
+    packageKind,
     nameEn,
     nameAr,
     packagePrice,

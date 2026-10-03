@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, Clock, Crown, Loader2, Plus, X } from 'lucide-react';
+import { Check, Clock, Crown, Gift, Loader2, Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Barber, CartItem } from '@/lib/types';
 import {
@@ -9,6 +9,14 @@ import {
   findOverlappingRequiredCartItems,
   findReusableAddonProIds,
 } from '@/lib/pos/groomPackageCart';
+
+type PackageKind = 'regular' | 'groom';
+type KindFilter = 'all' | PackageKind;
+
+const KIND_LABELS: Record<PackageKind, { ar: string; en: string }> = {
+  regular: { ar: 'باقات العروض', en: 'Offers' },
+  groom: { ar: 'باقات العريس', en: 'Groom' },
+};
 
 type OptionalItem = {
   serviceId: number;
@@ -23,10 +31,13 @@ type OptionalItem = {
 
 type PackageCard = {
   packageId: number;
+  kind: PackageKind;
   nameAr: string;
   nameEn: string;
   name: string;
+  descriptionAr: string | null;
   price: number;
+  originalPrice: number | null;
   durationMinutes: number | null;
   popular: boolean;
   includes: Array<{
@@ -35,6 +46,7 @@ type PackageCard = {
     nameEn: string;
     name: string;
     optional: boolean;
+    listPrice: number | null;
   }>;
   optionalExtras: OptionalItem[];
   optionalGroups: Array<{
@@ -54,10 +66,14 @@ function mapApiPackage(raw: Record<string, unknown>): PackageCard {
   } | null;
   return {
     packageId: Number(raw.packageId),
+    kind: raw.kind === 'groom' ? 'groom' : 'regular',
     nameAr: String(raw.nameAr ?? ''),
     nameEn: String(raw.nameEn ?? ''),
     name: String(raw.name ?? raw.nameEn ?? ''),
+    descriptionAr: raw.descriptionAr ? String(raw.descriptionAr) : null,
     price: Number(raw.price) || 0,
+    originalPrice:
+      raw.originalPrice == null ? null : Number(raw.originalPrice) || null,
     durationMinutes:
       raw.durationMinutes == null ? null : Number(raw.durationMinutes),
     popular: Boolean(raw.popular),
@@ -69,8 +85,11 @@ function mapApiPackage(raw: Record<string, unknown>): PackageCard {
   };
 }
 
-interface GroomPackagesSectionProps {
+interface PackagesSectionProps {
   selectedBarber: Barber | null;
+  /** Lets the cashier pick the employee from inside the package panel. */
+  barbers?: Barber[];
+  onSelectBarber?: (barber: Barber) => void;
   cartItems: CartItem[];
   onAddPackageItems: (
     items: CartItem[],
@@ -86,17 +105,20 @@ function money(n: number) {
   return n.toLocaleString('en-EG');
 }
 
-export default function GroomPackagesSection({
+export default function PackagesSection({
   selectedBarber,
+  barbers = [],
+  onSelectBarber,
   cartItems,
   onAddPackageItems,
   onToast,
   hydratePackageId,
   hydrateAddonProIds,
-}: GroomPackagesSectionProps) {
+}: PackagesSectionProps) {
   const [packages, setPackages] = useState<PackageCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [kindFilter, setKindFilter] = useState<KindFilter>('all');
   const [active, setActive] = useState<PackageCard | null>(null);
   const [selectedAddonIds, setSelectedAddonIds] = useState<number[]>([]);
   const [homeVisitId, setHomeVisitId] = useState<number | null>(null);
@@ -113,7 +135,7 @@ export default function GroomPackagesSection({
       setLoading(true);
       setLoadError('');
       try {
-        const res = await fetch('/api/pos/groom-packages');
+        const res = await fetch('/api/pos/packages');
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'فشل تحميل الباقات');
         if (!cancelled) {
@@ -234,7 +256,7 @@ export default function GroomPackagesSection({
         ...selectedAddonIds,
         ...(homeVisitId != null ? [homeVisitId] : []),
       ];
-      const res = await fetch('/api/pos/groom-packages/resolve', {
+      const res = await fetch('/api/pos/packages/resolve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -308,18 +330,45 @@ export default function GroomPackagesSection({
     await commitResolved([]);
   };
 
-  const isDisabled = !selectedBarber;
+  const availableKinds = useMemo(
+    () => (['regular', 'groom'] as const).filter((k) => packages.some((p) => p.kind === k)),
+    [packages],
+  );
+
+  const visiblePackages = useMemo(
+    () => (kindFilter === 'all' ? packages : packages.filter((p) => p.kind === kindFilter)),
+    [packages, kindFilter],
+  );
 
   return (
-    <div className="w-full mt-4" dir="rtl">
-      <div className="flex items-center justify-between mb-3">
+    <div className="w-full" dir="rtl">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
-          <Crown className="w-5 h-5 text-primary" />
+          <Gift className="w-5 h-5 text-primary" />
           <div>
-            <h3 className="text-base font-bold text-foreground">باقات العريس</h3>
-            <p className="text-xs text-muted-foreground">Groom Packages</p>
+            <h3 className="text-base font-bold text-foreground">الباقات</h3>
+            <p className="text-xs text-muted-foreground">Packages</p>
           </div>
         </div>
+        {availableKinds.length > 1 && (
+          <div className="flex items-center gap-1 rounded-xl border border-border bg-muted/30 p-1 text-xs">
+            {(['all', ...availableKinds] as KindFilter[]).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setKindFilter(k)}
+                className={cn(
+                  'rounded-lg px-3 py-1.5 font-medium transition-colors',
+                  kindFilter === k
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {k === 'all' ? 'الكل' : KIND_LABELS[k].ar}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {loading && (
@@ -336,69 +385,93 @@ export default function GroomPackagesSection({
       )}
 
       {!loading && !loadError && packages.length === 0 && (
-        <p className="text-sm text-muted-foreground py-4 text-center">لا توجد باقات عريس نشطة</p>
+        <p className="text-sm text-muted-foreground py-4 text-center">لا توجد باقات نشطة</p>
       )}
 
-      {!loading && packages.length > 0 && (
+      {!loading && visiblePackages.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-          {packages.map((pkg) => {
-            const includedCount = (pkg.includes ?? []).filter((i) => !i.optional).length;
+          {visiblePackages.map((pkg) => {
+            const required = (pkg.includes ?? []).filter((i) => !i.optional);
+            const showOriginal = pkg.originalPrice != null && pkg.originalPrice > pkg.price;
             return (
               <div
                 key={pkg.packageId}
+                data-testid={`pos-package-card-${pkg.packageId}`}
                 className={cn(
-                  'relative rounded-2xl border bg-surface p-4 transition-all',
+                  'relative flex flex-col rounded-2xl border bg-surface p-4 transition-all',
                   pkg.popular
                     ? 'border-primary/50 shadow-md shadow-primary/10'
                     : 'border-border hover:border-border/80',
                 )}
               >
-                {pkg.popular && (
-                  <span className="absolute top-3 left-3 inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
-                    <Crown className="w-3 h-3" />
-                    الأكثر طلباً
+                <div className="flex items-center gap-1.5 mb-2">
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold',
+                      pkg.kind === 'groom'
+                        ? 'bg-warning/15 text-warning'
+                        : 'bg-primary/10 text-primary',
+                    )}
+                  >
+                    {pkg.kind === 'groom' ? <Crown className="w-3 h-3" /> : <Gift className="w-3 h-3" />}
+                    {KIND_LABELS[pkg.kind].ar}
                   </span>
-                )}
-                <h4 className="text-base font-bold text-foreground mb-1 pe-16">
+                  {pkg.popular && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
+                      الأكثر طلباً
+                    </span>
+                  )}
+                </div>
+                <h4 className="text-base font-bold text-foreground mb-0.5">
                   {pkg.nameAr || pkg.nameEn}
                 </h4>
                 {pkg.nameAr && pkg.nameEn && pkg.nameAr !== pkg.nameEn && (
                   <p className="text-xs text-muted-foreground mb-2">{pkg.nameEn}</p>
                 )}
-                <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground mb-3">
-                  <span>{includedCount} خدمات</span>
-                  {pkg.durationMinutes != null && pkg.durationMinutes > 0 && (
-                    <span className="inline-flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {pkg.durationMinutes} دقيقة
-                    </span>
-                  )}
+                {pkg.descriptionAr && (
+                  <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{pkg.descriptionAr}</p>
+                )}
+                <ul className="mb-3 flex flex-wrap gap-1">
+                  {required.map((inc) => (
+                    <li
+                      key={inc.serviceId}
+                      className="rounded-md bg-muted/60 px-1.5 py-0.5 text-[11px] text-foreground"
+                    >
+                      {inc.nameAr || inc.nameEn}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-auto">
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground mb-1">
+                    <span>{required.length} خدمات</span>
+                    {pkg.durationMinutes != null && pkg.durationMinutes > 0 && (
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {pkg.durationMinutes} دقيقة
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-baseline gap-2 mb-3">
+                    <span className="text-xl font-bold text-primary">{money(pkg.price)} ج.م</span>
+                    {showOriginal && (
+                      <span className="text-xs text-muted-foreground line-through">
+                        {money(pkg.originalPrice!)}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openPackage(pkg)}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all bg-primary/10 text-primary border border-primary/30 hover:bg-primary hover:text-primary-foreground active:scale-[0.98]"
+                  >
+                    <Plus className="w-4 h-4" />
+                    اختيار الباقة
+                  </button>
                 </div>
-                <div className="text-xl font-bold text-primary mb-3">
-                  {money(pkg.price)} ج.م
-                </div>
-                <button
-                  type="button"
-                  disabled={isDisabled}
-                  onClick={() => openPackage(pkg)}
-                  className={cn(
-                    'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all',
-                    isDisabled
-                      ? 'bg-muted text-muted-foreground/40 cursor-not-allowed'
-                      : 'bg-primary/10 text-primary border border-primary/30 hover:bg-primary hover:text-primary-foreground active:scale-[0.98]',
-                  )}
-                >
-                  <Plus className="w-4 h-4" />
-                  إضافة الباقة
-                </button>
               </div>
             );
           })}
         </div>
-      )}
-
-      {isDisabled && packages.length > 0 && (
-        <p className="mt-2 text-xs text-muted-foreground">اختر الحلاق أولاً لإضافة باقة</p>
       )}
 
       {/* Compact selection panel */}
@@ -426,6 +499,9 @@ export default function GroomPackagesSection({
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-5">
+              {active.descriptionAr && (
+                <p className="text-sm text-muted-foreground">{active.descriptionAr}</p>
+              )}
               <section>
                 <h4 className="text-sm font-semibold mb-2">الخدمات المشمولة · Included</h4>
                 <ul className="space-y-1.5">
@@ -435,7 +511,12 @@ export default function GroomPackagesSection({
                       className="flex items-center gap-2 text-sm text-foreground"
                     >
                       <Check className="w-3.5 h-3.5 text-success shrink-0" />
-                      <span>{inc.nameAr || inc.nameEn}</span>
+                      <span className="flex-1">{inc.nameAr || inc.nameEn}</span>
+                      {inc.listPrice != null && (
+                        <span className="text-xs text-muted-foreground line-through" dir="ltr">
+                          {money(inc.listPrice)}
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -528,11 +609,31 @@ export default function GroomPackagesSection({
 
               <section className="rounded-xl border border-border bg-muted/30 p-3">
                 <h4 className="text-sm font-semibold mb-2">الحلاق</h4>
-                <p className="text-sm">
-                  {selectedBarber
-                    ? selectedBarber.EmpName
-                    : 'اختر حلاقاً من الشريط أعلاه'}
-                </p>
+                {onSelectBarber && barbers.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {barbers.map((b) => (
+                      <button
+                        key={b.EmpID}
+                        type="button"
+                        onClick={() => onSelectBarber(b)}
+                        className={cn(
+                          'rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors',
+                          selectedBarber?.EmpID === b.EmpID
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-border bg-background hover:bg-muted',
+                        )}
+                      >
+                        {b.EmpName}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm">
+                    {selectedBarber
+                      ? selectedBarber.EmpName
+                      : 'اختر حلاقاً من الشريط أعلاه'}
+                  </p>
+                )}
                 <p className="text-[11px] text-muted-foreground mt-1">
                   يُنسب الحلاق لكل خدمات الباقة والإضافات تلقائياً.
                 </p>
@@ -623,6 +724,8 @@ export default function GroomPackagesSection({
                     <Loader2 className="w-4 h-4 animate-spin" />
                     جاري الإضافة…
                   </span>
+                ) : !selectedBarber ? (
+                  'اختر الحلاق أولاً'
                 ) : (
                   'إضافة للفاتورة'
                 )}

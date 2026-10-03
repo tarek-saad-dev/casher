@@ -9,6 +9,7 @@ import {
   findReusableAddonProIds,
   groupCartForDisplay,
 } from '@/lib/pos/groomPackageCart';
+import { computeInvoiceItemsTotals } from '@/lib/sales/service-line-totals';
 import type { CartItem } from '@/lib/types';
 
 const barber = { EmpID: 7, EmpName: 'Test Barber' } as const;
@@ -46,6 +47,55 @@ function resolvedSignature(addons: number[] = []) {
       `required=${required.join(',')};total=${1500 + (addons.includes(1086) ? 500 : 0) + (addons.includes(1083) ? 150 : 0)}`,
   };
 }
+
+describe('regular package (October) in POS cart', () => {
+  const resolvedOctober = {
+    packageId: 7,
+    nameEn: 'October Package',
+    nameAr: 'باكدج أكتوبر',
+    packagePrice: 333,
+    packageDurationMinutes: 85,
+    totalDurationMinutes: 85,
+    requiredServiceIds: [9, 10, 22, 29],
+    addonProIds: [],
+    services: [9, 10, 22, 29].map((id, idx) => ({
+      serviceId: id,
+      nameEn: `Svc ${id}`,
+      nameAr: `خدمة ${id}`,
+      price: idx === 0 ? 333 : 0,
+      durationMinutes: 10,
+    })),
+    metadataNote: '[groomPackage] packageId=7;packagePrice=333;addons=-;required=9,10,22,29;total=333',
+  };
+
+  it('invoice grand total is the package price with one line per included service', () => {
+    const items = buildPackageCartItems({ resolved: resolvedOctober, barber: barber as never });
+    expect(items.map((i) => i.ProID)).toEqual([9, 10, 22, 29]);
+    expect(items.map((i) => i.SPrice)).toEqual([333, 0, 0, 0]);
+    expect(items.every((i) => i.Bonus === 0 && i.EmpID === barber.EmpID)).toBe(true);
+    const totals = computeInvoiceItemsTotals(
+      items.map((i) => ({ sPrice: i.SPrice, qty: i.Qty, discountValue: i.DisVal, bonus: i.Bonus })),
+    );
+    expect(totals.grandTotal).toBe(333);
+    expect(totals.totalBonus).toBe(0);
+  });
+
+  it('cart and receipt show the package once at 333', () => {
+    const items = buildPackageCartItems({ resolved: resolvedOctober, barber: barber as never });
+    const rows = groupCartForDisplay(items);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: 'package', price: 333, includedCount: 4 });
+    const lines = buildPackageAwarePrintLines(items, {
+      packageId: 7,
+      packagePrice: 333,
+      requiredServiceIds: [9, 10, 22, 29],
+      addonProIds: [],
+      packageName: 'باكدج أكتوبر',
+    });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ label: 'باكدج أكتوبر', amount: 333 });
+  });
+});
 
 describe('groomPackageCart', () => {
   it('builds package lines with commercial price on anchor only', () => {
