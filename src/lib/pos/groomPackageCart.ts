@@ -266,7 +266,7 @@ export function buildPackageAwarePrintLines<T extends {
 
   if (!packageShown) {
     lines.unshift({
-      label: packageMeta.packageName || 'Groom Package',
+      label: packageMeta.packageName || 'Package',
       sublabel: `Includes ${packageMeta.requiredServiceIds.length} services`,
       amount: packageMeta.packagePrice,
     });

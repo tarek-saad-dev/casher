@@ -17,7 +17,8 @@ import QuickCustomerModal from '@/components/pos/QuickCustomerModal';
 import CompleteCustomerModal from '@/components/pos/CompleteCustomerModal';
 import BarberCarousel from '@/components/pos/luxury/BarberCarousel';
 import ServiceCatalog from '@/components/pos/luxury/ServiceCatalog';
-import GroomPackagesSection from '@/components/pos/luxury/PackagesSection';
+import PackagesSection from '@/components/pos/luxury/PackagesSection';
+import { cn } from '@/lib/utils';
 import PosInvoicePanel, { PosInvoiceSaveActions } from '@/components/pos/PosInvoicePanel';
 import MobilePosHeader from '@/components/pos/mobile/MobilePosHeader';
 import MobileInvoiceBar from '@/components/pos/mobile/MobileInvoiceBar';
@@ -132,6 +133,11 @@ export default function PosPage() {
   const [hydratePackageId, setHydratePackageId] = useState<number | null>(null);
   const [hydrateAddonProIds, setHydrateAddonProIds] = useState<number[]>([]);
   const bookingHydrateDoneRef = useRef(false);
+  const [catalogTab, setCatalogTab] = useState<'services' | 'packages'>('services');
+
+  useEffect(() => {
+    if (hydratePackageId) setCatalogTab('packages');
+  }, [hydratePackageId]);
 
   // ───────────────── UI state ─────────────────
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -803,6 +809,52 @@ export default function PosPage() {
       ? `مسودة — ${state.items.length} خدمات`
       : 'فاتورة جديدة';
 
+  const catalogArea = (
+    <>
+      <div className="flex items-center gap-1 rounded-xl border border-border bg-muted/30 p-1" dir="rtl">
+        {([
+          { key: 'services', label: 'الخدمات', sub: 'Services' },
+          { key: 'packages', label: 'الباقات', sub: 'Packages' },
+        ] as const).map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            data-testid={`pos-catalog-tab-${tab.key}`}
+            onClick={() => setCatalogTab(tab.key)}
+            className={cn(
+              'flex-1 min-h-10 rounded-lg px-3 py-2 text-sm font-bold transition-colors',
+              catalogTab === tab.key
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+            )}
+          >
+            {tab.label}
+            <span className="ms-1.5 text-[11px] font-medium opacity-75">{tab.sub}</span>
+          </button>
+        ))}
+      </div>
+      <div className={cn(catalogTab !== 'services' && 'hidden')}>
+        <ServiceCatalog
+          services={services}
+          selectedBarber={state.barber}
+          onAddItem={addItemWithHomeVisitExclusivity}
+        />
+      </div>
+      <div className={cn(catalogTab !== 'packages' && 'hidden')}>
+        <PackagesSection
+          selectedBarber={state.barber}
+          barbers={barbers}
+          onSelectBarber={setBarber}
+          cartItems={state.items}
+          onAddPackageItems={addPackageItems}
+          onToast={addToast}
+          hydratePackageId={hydratePackageId}
+          hydrateAddonProIds={hydrateAddonProIds}
+        />
+      </div>
+    </>
+  );
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <TeamAttendanceWidget
@@ -855,19 +907,7 @@ export default function PosPage() {
             attendanceByEmpId={attendanceMap}
           />
           <Separator className="bg-border" />
-          <ServiceCatalog
-            services={services}
-            selectedBarber={state.barber}
-            onAddItem={addItemWithHomeVisitExclusivity}
-          />
-          <GroomPackagesSection
-            selectedBarber={state.barber}
-            cartItems={state.items}
-            onAddPackageItems={addPackageItems}
-            onToast={addToast}
-            hydratePackageId={hydratePackageId}
-            hydrateAddonProIds={hydrateAddonProIds}
-          />
+          {catalogArea}
         </div>
 
         <MobileInvoiceBar
@@ -937,19 +977,7 @@ export default function PosPage() {
             attendanceByEmpId={attendanceMap}
           />
           <Separator className="bg-border" />
-          <ServiceCatalog
-            services={services}
-            selectedBarber={state.barber}
-            onAddItem={addItemWithHomeVisitExclusivity}
-          />
-          <GroomPackagesSection
-            selectedBarber={state.barber}
-            cartItems={state.items}
-            onAddPackageItems={addPackageItems}
-            onToast={addToast}
-            hydratePackageId={hydratePackageId}
-            hydrateAddonProIds={hydrateAddonProIds}
-          />
+          {catalogArea}
         </main>
 
         {/* ═══════ LEFT PANEL: Cart + Summary + Payment + Save ═══════ */}

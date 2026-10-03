@@ -212,6 +212,65 @@ describe('resolveGroomPackageBooking', () => {
     warn.mockRestore();
   });
 
+  function mockOctoberPackage() {
+    const required = [9, 10, 22, 29];
+    const prices: Record<number, number> = { 9: 200, 10: 100, 22: 120, 29: 300 };
+    queryMock.mockImplementation(async (sqlText: string) => {
+      const sql = String(sqlText);
+      if (sql.includes('TblServicePackageItem')) {
+        return {
+          recordset: required.map((ProID, i) => ({
+            ProID,
+            IsOptional: 0,
+            SortOrder: (i + 1) * 10,
+          })),
+        };
+      }
+      if (sql.includes('TblServicePackage')) {
+        return {
+          recordset: [
+            {
+              PackageID: 7,
+              NameEn: 'October Package',
+              NameAr: 'باكدج أكتوبر',
+              PackageKind: 'regular',
+              PackagePrice: 333,
+              DurationMinutes: 85,
+              isDeleted: 0,
+            },
+          ],
+        };
+      }
+      return {
+        recordset: required.map((ProID) =>
+          proRow({ ProID, ProName: `Service ${ProID}`, SPrice1: prices[ProID] }),
+        ),
+      };
+    });
+  }
+
+  it('booking path stays groom-only by default (regular rejected)', async () => {
+    mockOctoberPackage();
+    await expect(resolveGroomPackageBooking({ packageId: 7 })).rejects.toMatchObject({
+      code: 'PACKAGE_NOT_GROOM',
+    });
+  });
+
+  it('POS path resolves a regular package at PackagePrice, not the sum of services', async () => {
+    mockOctoberPackage();
+    const r = await resolveGroomPackageBooking({
+      packageId: 7,
+      allowedKinds: ['regular', 'groom'],
+    });
+    expect(r.packageKind).toBe('regular');
+    expect(r.packagePrice).toBe(333);
+    expect(r.totalPrice).toBe(333);
+    expect(r.requiredServiceIds).toEqual([9, 10, 22, 29]);
+    expect(r.services.map((s) => s.price)).toEqual([333, 0, 0, 0]);
+    expect(r.services.reduce((sum, s) => sum + s.price, 0)).toBe(333);
+    expect(r.metadataNote).toContain('packageId=7;packagePrice=333;');
+  });
+
   it('rejects inactive package', async () => {
     queryMock.mockResolvedValueOnce({
       recordset: [
