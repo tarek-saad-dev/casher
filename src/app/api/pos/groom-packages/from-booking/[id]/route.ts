@@ -63,6 +63,7 @@ export async function GET(_req: NextRequest, { params }: RouteCtx) {
     const resolved = await resolveGroomPackageBooking({
       packageId: parsed.packageId,
       addonProIds: parsed.addonProIds,
+      allowedKinds: ['groom', 'regular'],
     });
 
     const servicesRes = await db
