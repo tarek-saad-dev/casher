@@ -33,8 +33,10 @@ describe('bookingCreateCanonicalContract', () => {
   it('uses createPublicBooking + Phase-5 precheck; no legacy branch fallback', () => {
     expect(route).toContain('createPublicBooking');
     expect(route).not.toContain('resolvePublicBranchCode');
-    expect(route).toContain('requireBranchOperationAccess');
-    expect(route).toContain("sourceRaw === 'operations'");
+    expect(route).toContain('resolveInternalOpsBookingRequest');
+    const internalOps = read('src/lib/booking/internalOpsBookingRequest.ts');
+    expect(internalOps).toContain('requireBranchOperationAccess');
+    expect(internalOps).toContain("raw === 'operations'");
     expect(svc).toContain('create_precheck');
     expect(svc).toContain('purpose: evalPurpose');
     expect(svc).toContain('assertEmployeeIntervalAvailable');

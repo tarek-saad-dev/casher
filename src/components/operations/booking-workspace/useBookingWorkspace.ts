@@ -5,6 +5,7 @@ import {
   type AvailableSlot,
   type BarberAlternative,
   type BookingClient,
+  type BookingKind,
   type BookingMode,
   type BookingService,
   type BookingStep,
@@ -52,6 +53,13 @@ import {
   opsBookingCanSubmit,
   opsBookingHasCustomer,
 } from '@/lib/operations/bookingWorkspaceFlow';
+import type { OpsBookablePackage } from '@/lib/operations/opsBookablePackagesTypes';
+import {
+  checkOpsPackageSlot,
+  fetchOpsBookablePackages,
+  planOpsPackageBooking,
+  type OpsPackageSelection,
+} from '@/lib/operations/opsPackageBookingClient';
 
 export type SlotsViewState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
@@ -137,9 +145,28 @@ export function useBookingWorkspace({
   const [step, setStep] = useState<BookingStep>(1);
   const [mode, setMode] = useState<BookingMode>(initialEmpId ? 'specific' : 'nearest');
 
+  const [bookingKind, setBookingKind] = useState<BookingKind | null>(null);
+  const isPackageBooking = bookingKind === 'package';
+
   const [services, setServices] = useState<BookingService[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
-  const [selectedServices, setSelectedServices] = useState<BookingService[]>([]);
+  const [serviceSelection, setServiceSelection] = useState<BookingService[]>([]);
+
+  const [packages, setPackages] = useState<OpsBookablePackage[]>([]);
+  const [loadingPackages, setLoadingPackages] = useState(false);
+  const [packagesError, setPackagesError] = useState<string | null>(null);
+  const [selectedPackage, setSelectedPackage] = useState<OpsBookablePackage | null>(null);
+  const [verifyingSlot, setVerifyingSlot] = useState(false);
+
+  const packageServices = useMemo((): BookingService[] =>
+    (selectedPackage?.services ?? []).map((s) => ({
+      ProID: s.serviceId,
+      ProName: s.nameAr,
+      SPrice: s.price,
+      DurationMinutes: s.durationMinutes,
+    })),
+  [selectedPackage]);
+  const selectedServices = isPackageBooking ? packageServices : serviceSelection;
 
   const [bookingDate, setBookingDate] = useState(() => sanitizeDate(initialDate));
   const [selectedBarberId, setSelectedBarberId] = useState<number | null>(initialEmpId || null);
@@ -212,14 +239,23 @@ export function useBookingWorkspace({
   const displayServices = services;
 
   const totalDuration = useMemo(
-    () => selectedServices.reduce((s, svc) => s + (svc.DurationMinutes ?? 30), 0),
-    [selectedServices],
+    () => isPackageBooking
+      ? (selectedPackage?.durationMinutes ?? 0)
+      : selectedServices.reduce((s, svc) => s + (svc.DurationMinutes ?? 30), 0),
+    [isPackageBooking, selectedPackage, selectedServices],
   );
   const totalPrice = useMemo(
-    () => selectedServices.reduce((s, svc) => s + (svc.SPrice ?? 0), 0),
-    [selectedServices],
+    () => isPackageBooking
+      ? (selectedPackage?.price ?? 0)
+      : selectedServices.reduce((s, svc) => s + (svc.SPrice ?? 0), 0),
+    [isPackageBooking, selectedPackage, selectedServices],
   );
-  const serviceIds = useMemo(() => selectedServices.map((s) => s.ProID), [selectedServices]);
+  const serviceIds = useMemo(
+    () => isPackageBooking
+      ? (selectedPackage?.serviceIds ?? [])
+      : selectedServices.map((s) => s.ProID),
+    [isPackageBooking, selectedPackage, selectedServices],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -361,7 +397,11 @@ export function useBookingWorkspace({
   const resetWorkspace = useCallback(() => {
     setFilterByTimeRange(false);
     setSelectedSlot(null);
-    setSelectedServices([]);
+    setBookingKind(null);
+    setServiceSelection([]);
+    setSelectedPackage(null);
+    setPackagesError(null);
+    setVerifyingSlot(false);
     setSelectedClient(null);
     setCustomerName('');
     setCustomerPhone('');
@@ -609,7 +649,7 @@ export function useBookingWorkspace({
     const t0 = performance.now();
     const svc = displayServices.find((s) => s.ProID === proId);
     if (!svc) return;
-    setSelectedServices((prev) => {
+    setServiceSelection((prev) => {
       const alreadyMain = prev.some((s) => s.ProID === proId && isMainService(s.ProName));
       const addons = prev.filter((s) => !isMainService(s.ProName));
       if (alreadyMain) return addons;
@@ -623,7 +663,7 @@ export function useBookingWorkspace({
 
   const handleToggleAddon = useCallback((proId: number) => {
     const t0 = performance.now();
-    setSelectedServices((prev) => {
+    setServiceSelection((prev) => {
       const exists = prev.some((s) => s.ProID === proId);
       if (exists) return prev.filter((s) => s.ProID !== proId);
       const svc = displayServices.find((s) => s.ProID === proId);
@@ -636,9 +676,92 @@ export function useBookingWorkspace({
   }, [displayServices, invalidateSlotSelection]);
 
   const removeService = useCallback((proId: number) => {
-    setSelectedServices((prev) => prev.filter((s) => s.ProID !== proId));
+    setServiceSelection((prev) => prev.filter((s) => s.ProID !== proId));
     invalidateSlotSelection();
   }, [invalidateSlotSelection]);
+
+  const chooseBookingKind = useCallback((kind: BookingKind) => {
+    setBookingKind(kind);
+    setStep(1);
+    setError(null);
+    invalidateSlotSelection();
+  }, [invalidateSlotSelection]);
+
+  /** Back to the services / packages chooser — drops the kind-specific selection. */
+  const resetBookingKind = useCallback(() => {
+    setBookingKind(null);
+    setServiceSelection([]);
+    setSelectedPackage(null);
+    setStep(1);
+    setError(null);
+    invalidateSlotSelection();
+  }, [invalidateSlotSelection]);
+
+  const handleSelectPackage = useCallback((packageId: number) => {
+    const pkg = packages.find((p) => p.packageId === packageId);
+    if (!pkg || !pkg.available) return;
+    setSelectedPackage((prev) => (prev?.packageId === packageId ? null : pkg));
+    setError(null);
+    invalidateSlotSelection();
+  }, [packages, invalidateSlotSelection]);
+
+  // Package list is resolved per branch by the server (same resolver as plan/create).
+  useEffect(() => {
+    if (!open || !isPackageBooking) return;
+    const controller = new AbortController();
+    setLoadingPackages(true);
+    setPackagesError(null);
+    fetchOpsBookablePackages(branchCode, controller.signal)
+      .then((list) => {
+        if (controller.signal.aborted) return;
+        setPackages(list);
+        setSelectedPackage((prev) => {
+          if (!prev) return prev;
+          // Branch switched mid-flow: keep the choice; check-slot/plan reject it clearly if needed.
+          const fresh = list.find((p) => p.packageId === prev.packageId);
+          return fresh?.available ? fresh : prev;
+        });
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
+        setPackages([]);
+        setPackagesError(err instanceof Error ? err.message : 'تعذر تحميل الباكدجات');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingPackages(false);
+      });
+    return () => controller.abort();
+  }, [open, isPackageBooking, branchCode]);
+
+  const recoverFromSlotConflict = (slot: AvailableSlot) => {
+    notifyBookingV2SlotConflict({
+      employeeId: slot.empId,
+      businessDate: slot.businessDate ?? bookingDate,
+      branchCode: slot.branchCode ?? branchCode ?? undefined,
+    });
+    setSelectedSlot(null);
+    setSlotStaleNotice(BOOKING_V2_SLOT_STALE_NOTICE_AR);
+    setStep(OPS_BOOKING_CONFLICT_RECOVERY_STEP);
+  };
+
+  const resolveTargetBranchId = (slot: AvailableSlot): number | null =>
+    (slot.empId ? barbers.find((b) => b.empId === slot.empId)?.branchId : null)
+    ?? initialBranchId
+    ?? null;
+
+  const packageSelectionFor = (
+    pkg: OpsBookablePackage,
+    slot: AvailableSlot,
+    targetBranchId: number | null,
+  ): OpsPackageSelection => ({
+    packageId: pkg.packageId,
+    date: bookingDate,
+    time: slot.time,
+    dayOffset: slot.dayOffset ?? 0,
+    mode,
+    empId: slot.empId,
+    branchId: targetBranchId,
+  });
 
   const handleSubmit = async () => {
     if (!selectedSlot || !selectedServices.length) return;
@@ -657,18 +780,29 @@ export function useBookingWorkspace({
     }
     setSubmitting(true);
     try {
-      const targetBranchId =
-        (selectedSlot.empId
-          ? barbers.find((b) => b.empId === selectedSlot.empId)?.branchId
-          : null) ??
-        initialBranchId ??
-        null;
+      const targetBranchId = resolveTargetBranchId(selectedSlot);
+      let packageFields: { packageId: number; planToken?: string } | null = null;
+      if (isPackageBooking) {
+        if (!selectedPackage) throw new Error('اختر الباكدج أولًا');
+        const plan = await planOpsPackageBooking(
+          packageSelectionFor(selectedPackage, selectedSlot, targetBranchId),
+        );
+        if (!plan.ok) {
+          setError(plan.message);
+          if (plan.slotConflict) recoverFromSlotConflict(selectedSlot);
+          return;
+        }
+        packageFields = {
+          packageId: selectedPackage.packageId,
+          ...(plan.planToken ? { planToken: plan.planToken } : {}),
+        };
+      }
       const payload = {
         customer: {
           name: selectedClient?.Name || customerName,
           phone: selectedClient?.Mobile || customerPhone.trim() || '',
         },
-        serviceIds,
+        ...(packageFields ?? { serviceIds }),
         date: bookingDate,
         time: selectedSlot.time,
         dayOffset: selectedSlot.dayOffset ?? 0,
@@ -707,14 +841,7 @@ export function useBookingWorkspace({
             BOOKING_V2_SLOT_STALE_NOTICE_AR,
           ),
         );
-        notifyBookingV2SlotConflict({
-          employeeId: selectedSlot.empId,
-          businessDate: selectedSlot.businessDate ?? bookingDate,
-          branchCode: selectedSlot.branchCode ?? branchCode ?? undefined,
-        });
-        setSelectedSlot(null);
-        setSlotStaleNotice(BOOKING_V2_SLOT_STALE_NOTICE_AR);
-        setStep(OPS_BOOKING_CONFLICT_RECOVERY_STEP);
+        recoverFromSlotConflict(selectedSlot);
         return;
       }
       if (!res.ok || !data.ok) {
@@ -804,8 +931,9 @@ export function useBookingWorkspace({
   const stepHint = useMemo(() => {
     if (step === 1 && !canGoStep2) {
       if (isDatePast) return 'التاريخ المحدد في الماضي';
-      return 'اختر خدمة واحدة على الأقل';
+      return isPackageBooking ? 'اختر باكدج' : 'اختر خدمة واحدة على الأقل';
     }
+    if (step === 2 && verifyingSlot) return 'جاري التحقق من الموعد...';
     if (step === 2 && !canGoStep3) {
       if (mode === 'specific' && !selectedBarberId) return 'اختر الحلاق للمتابعة';
       if (slotsViewState === 'loading') return 'جاري تحميل المواعيد...';
@@ -814,14 +942,41 @@ export function useBookingWorkspace({
     }
     if (step === 3 && !hasCustomer) return 'أضف بيانات العميل';
     return null;
-  }, [step, canGoStep2, canGoStep3, hasCustomer, isDatePast, mode, selectedBarberId, slotsViewState]);
+  }, [step, canGoStep2, canGoStep3, hasCustomer, isDatePast, isPackageBooking, verifyingSlot, mode, selectedBarberId, slotsViewState]);
 
   const goNext = () => {
+    if (step === 2 && isPackageBooking) {
+      void verifyPackageSlotThenContinue();
+      return;
+    }
     if (step < OPS_BOOKING_FLOW_STEP_COUNT) setStep((s) => (s + 1) as BookingStep);
+  };
+
+  /** Package Time → Customer: strong check-slot with packageId before collecting customer. */
+  const verifyPackageSlotThenContinue = async () => {
+    if (!selectedPackage || !selectedSlot || verifyingSlot) return;
+    setVerifyingSlot(true);
+    setError(null);
+    try {
+      const check = await checkOpsPackageSlot(
+        packageSelectionFor(selectedPackage, selectedSlot, resolveTargetBranchId(selectedSlot)),
+      );
+      if (!check.ok) {
+        setError(check.message);
+        if (check.slotConflict) recoverFromSlotConflict(selectedSlot);
+        return;
+      }
+      setStep(3);
+    } catch {
+      setError('تعذر التحقق من الموعد، حاول مرة أخرى');
+    } finally {
+      setVerifyingSlot(false);
+    }
   };
 
   const goBack = () => {
     if (step > 1) setStep((s) => (s - 1) as BookingStep);
+    else if (bookingKind) resetBookingKind();
   };
 
   const goToStep = (target: BookingStep) => {
@@ -852,16 +1007,18 @@ export function useBookingWorkspace({
   }, []);
 
   const stepSummaries = useMemo(() => ({
-    1: selectedServices.length
-      ? `${selectedServices.length} خدمة • ${totalDuration} دقيقة`
-      : undefined,
+    1: isPackageBooking
+      ? (selectedPackage ? `${selectedPackage.nameAr} • ${totalDuration} دقيقة` : undefined)
+      : selectedServices.length
+        ? `${selectedServices.length} خدمة • ${totalDuration} دقيقة`
+        : undefined,
     2: selectedSlot
       ? `${slotDisplayLabel(selectedSlot)}${mode === 'nearest' ? ' · أقرب' : selectedBarberName ? ` · ${selectedBarberName}` : ''}`
       : mode === 'nearest'
         ? 'أقرب حلاق'
         : (selectedBarberName || undefined),
     3: selectedClient?.Name || customerName.trim() || undefined,
-  }), [mode, selectedBarberName, selectedServices.length, totalDuration, selectedSlot, selectedClient, customerName]);
+  }), [isPackageBooking, selectedPackage, mode, selectedBarberName, selectedServices.length, totalDuration, selectedSlot, selectedClient, customerName]);
 
   const handleSelectBarber = useCallback((empId: number) => {
     setSelectedBarberId(empId);
@@ -881,6 +1038,16 @@ export function useBookingWorkspace({
     modalRef,
     step,
     mode,
+    bookingKind,
+    isPackageBooking,
+    chooseBookingKind,
+    resetBookingKind,
+    packages,
+    loadingPackages,
+    packagesError,
+    selectedPackage,
+    handleSelectPackage,
+    verifyingSlot,
     services: displayServices,
     loadingServices,
     selectedServices,

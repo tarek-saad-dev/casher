@@ -24,6 +24,10 @@ interface Props {
   onReset?: () => void;
   getCairoToday: () => string;
   getCairoTomorrow: () => string;
+  steps?: Array<{ id: BookingStep; label: string }>;
+  /** Services / packages chooser is showing — no step context yet. */
+  choosingKind?: boolean;
+  isPackageBooking?: boolean;
 }
 
 export function BookingWorkspaceHeader({
@@ -39,11 +43,15 @@ export function BookingWorkspaceHeader({
   onReset,
   getCairoToday,
   getCairoTomorrow,
+  steps = BOOKING_STEPS,
+  choosingKind = false,
+  isPackageBooking = false,
 }: Props) {
   const subtitle =
-    step === 1 ? 'اختر الخدمات المطلوبة'
-      : step === 2 ? 'إمتى ومين متاح؟'
-        : 'بيانات العميل وتأكيد الحجز';
+    choosingKind ? 'حجز خدمات أو حجز باكدجات'
+      : step === 1 ? (isPackageBooking ? 'اختر الباكدج' : 'اختر الخدمات المطلوبة')
+        : step === 2 ? 'إمتى ومين متاح؟'
+          : 'بيانات العميل وتأكيد الحجز';
 
   return (
     <header className="shrink-0 border-b px-4 py-3 sm:px-5 sm:py-4" style={{ borderColor: BORDER }}>
@@ -113,8 +121,9 @@ export function BookingWorkspaceHeader({
           />
         </div>
       )}
+      {!choosingKind && (
       <div className="xl:hidden flex gap-1 mt-3 overflow-x-auto pb-1">
-        {BOOKING_STEPS.map((s) => (
+        {steps.map((s) => (
           <span
             key={s.id}
             className="shrink-0 px-2 py-1 rounded-md text-[10px] font-semibold"
@@ -127,6 +136,7 @@ export function BookingWorkspaceHeader({
           </span>
         ))}
       </div>
+      )}
     </header>
   );
 }

@@ -7,12 +7,13 @@ interface Props {
   step: BookingStep;
   summaries: Partial<Record<BookingStep, string | undefined>>;
   onGoToStep: (step: BookingStep) => void;
+  steps?: Array<{ id: BookingStep; label: string }>;
 }
 
-export function BookingWorkspaceStepper({ step, summaries, onGoToStep }: Props) {
+export function BookingWorkspaceStepper({ step, summaries, onGoToStep, steps = BOOKING_STEPS }: Props) {
   return (
     <nav className="hidden xl:flex flex-col w-56 shrink-0 min-h-0 min-w-0 border-l p-4 gap-1 overflow-y-auto" style={{ borderColor: BORDER }} aria-label="خطوات الحجز">
-      {BOOKING_STEPS.map((s) => {
+      {steps.map((s) => {
         const done = step > s.id;
         const active = step === s.id;
         const summary = summaries[s.id];

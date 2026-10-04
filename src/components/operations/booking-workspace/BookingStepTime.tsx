@@ -55,6 +55,7 @@ interface Props {
   onSelectAlternativeBarber: (empId: number) => void;
   onRetryAvailability?: () => void;
   onBranchChange?: (branchCode: string) => void;
+  packageName?: string | null;
 }
 
 /**
@@ -109,6 +110,7 @@ export function BookingStepTime(props: Props) {
       )}
 
       <BookingStepAppointment
+        packageName={appointmentProps.packageName}
         mode={mode}
         bookingDate={appointmentProps.bookingDate}
         selectedBarberName={selectedBarberName}
