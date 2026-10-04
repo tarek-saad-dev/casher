@@ -19,9 +19,9 @@ import {
 } from '@/lib/booking/bookingServiceDuration';
 import {
   GroomPackageBookingError,
-  resolveGroomPackageBooking,
   type ResolvedGroomPackageBooking,
 } from '@/lib/booking/groomPackageBooking';
+import { resolvePublicPackageBooking } from '@/lib/booking/packageBooking';
 import {
   PUBLIC_BOOKING_ERROR_CATALOG,
   type PublicBookingErrorCode,
@@ -107,7 +107,7 @@ export type PublicSelectionEvaluation = {
   contractVersion: string;
   /** Fresh evaluation — never served from Phase-4 slot cache. */
   evaluationMode: 'strong_fresh';
-  /** Present when booking via groom packageId */
+  /** Present when booking via packageId (groom or regular) */
   packageBooking: ResolvedGroomPackageBooking | null;
 };
 
@@ -352,7 +352,7 @@ export async function evaluatePublicBookingSelection(args: {
   time?: string | null;
   dayOffset?: unknown;
   serviceIds?: unknown;
-  /** Groom package booking — when set, uses package-aware validation (not generic catalog). */
+  /** Package booking (groom or regular) — when set, uses package-aware validation and pricing. */
   packageId?: unknown;
   addonProIds?: unknown;
   empId?: unknown;
@@ -428,10 +428,11 @@ export async function evaluatePublicBookingSelection(args: {
 
   try {
     if (hasPackage) {
-      packageBooking = await resolveGroomPackageBooking({
+      packageBooking = await resolvePublicPackageBooking({
         packageId: args.packageId,
         addonProIds: args.addonProIds,
         clientServiceIds: args.serviceIds,
+        branchContext,
       });
       selected = {
         services: packageBooking.services,

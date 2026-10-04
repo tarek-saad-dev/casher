@@ -738,12 +738,13 @@ export async function createPublicBooking(
   };
 
   if (precheck.packageBooking) {
-    const { resolveGroomPackageBooking } = await import('@/lib/booking/groomPackageBooking');
+    const { resolvePublicPackageBooking } = await import('@/lib/booking/packageBooking');
     try {
-      const pkgNow = await resolveGroomPackageBooking({
+      const pkgNow = await resolvePublicPackageBooking({
         packageId: precheck.packageBooking.packageId,
         addonProIds: precheck.packageBooking.addonProIds,
         clientServiceIds: precheck.packageBooking.serviceIds,
+        branchContext: branchNow,
       });
       servicesNow = {
         services: pkgNow.services,
