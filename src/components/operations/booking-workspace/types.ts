@@ -71,11 +71,24 @@ export type BookingMode = 'nearest' | 'specific';
 /** Phase C — compact operational flow (was 5 steps). */
 export type BookingStep = 1 | 2 | 3;
 
+/** First modal screen: book individual services or a package. */
+export type BookingKind = 'services' | 'package';
+
 export const BOOKING_STEPS: Array<{ id: BookingStep; label: string }> = [
   { id: 1, label: 'الخدمات' },
   { id: 2, label: 'الموعد' },
   { id: 3, label: 'العميل والتأكيد' },
 ];
+
+export const PACKAGE_BOOKING_STEPS: Array<{ id: BookingStep; label: string }> = [
+  { id: 1, label: 'الباكدج' },
+  { id: 2, label: 'الموعد' },
+  { id: 3, label: 'العميل والتأكيد' },
+];
+
+export function bookingStepsFor(kind: BookingKind | null) {
+  return kind === 'package' ? PACKAGE_BOOKING_STEPS : BOOKING_STEPS;
+}
 
 /**
  * Step dependency model (presentation only — domain rules unchanged):

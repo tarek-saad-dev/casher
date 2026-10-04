@@ -129,6 +129,7 @@ export function useBookingCutPaste({
         originalEndAt: item.endTime,
         durationMinutes: item.durationMinutes ?? 30,
         serviceNames: item.serviceNames,
+        packageName: item.packageName,
       });
       setPendingPaste(null);
       setMobileConfirmOpen(false);

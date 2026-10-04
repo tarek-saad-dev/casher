@@ -40,6 +40,7 @@ interface Props {
   onShowClients: (v: boolean) => void;
   onEditServices: () => void;
   onEditTime: () => void;
+  packageName?: string | null;
 }
 
 /**
@@ -71,6 +72,7 @@ export function BookingStepConfirm({
   onShowClients,
   onEditServices,
   onEditTime,
+  packageName,
 }: Props) {
   const customerDisplay = selectedClient?.Name || customerName.trim();
   const barberDisplay =
@@ -92,8 +94,13 @@ export function BookingStepConfirm({
           <div className="min-w-0">
             <p className="text-[11px] font-bold text-muted-foreground">ملخص الحجز</p>
             <p className="text-sm font-semibold mt-1 truncate">
-              {selectedServices.map((s) => s.ProName).join(' + ') || '—'}
+              {packageName || selectedServices.map((s) => s.ProName).join(' + ') || '—'}
             </p>
+            {packageName && (
+              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                {selectedServices.map((s) => s.ProName).join(' + ')}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground mt-1">
               {formatDateLabel(bookingDate)}
               {selectedSlot ? ` · ${slotDisplayLabel(selectedSlot)}` : ''}
@@ -114,7 +121,7 @@ export function BookingStepConfirm({
               className="px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold min-h-[36px]"
               style={{ borderColor: BORDER }}
             >
-              تعديل الخدمات
+              {packageName ? 'تغيير الباكدج' : 'تعديل الخدمات'}
             </button>
             <button
               type="button"

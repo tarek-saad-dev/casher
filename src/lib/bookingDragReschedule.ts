@@ -211,6 +211,7 @@ export interface BookingMoveSession {
   originalEndAt: string;
   durationMinutes: number;
   serviceNames?: string[];
+  packageName?: string;
 }
 
 export interface PasteCandidateSlot {

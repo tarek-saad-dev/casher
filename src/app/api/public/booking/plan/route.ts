@@ -1,5 +1,9 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { extractPublicBranchCode } from '@/lib/branch/bookingQueueOwnership';
+import {
+  readInternalOpsBookingSource,
+  resolveInternalOpsBookingRequest,
+} from '@/lib/booking/internalOpsBookingRequest';
 import { publicBookingErrorResponse } from '@/lib/booking/publicBookingErrorCatalog';
 import {
   publicBookingOptionsResponse,
@@ -30,6 +34,8 @@ export async function OPTIONS(req: NextRequest) {
  * POST /api/public/booking/plan
  * Phase-5 read-only booking plan. Does NOT create bookings or holds.
  * Create remains POST /create (Booking Phase 6).
+ * Internal ops/admin (`source=operations|admin`): same branch resolution as create,
+ * evaluated as internal_preview (no public toggle / min-notice gate).
  */
 export async function POST(req: NextRequest) {
   const { gate, blocked } = gatePublicBookingRoute(req, 'plan');
@@ -48,7 +54,16 @@ export async function POST(req: NextRequest) {
     void body.customer; // ignored — plan is selection-only
     void searchParams.get('preview');
 
-    const branchCode = extractPublicBranchCode(searchParams, body);
+    let branchCode = extractPublicBranchCode(searchParams, body);
+    const internalSource = readInternalOpsBookingSource(body);
+    let internalAuth: { userId: number; canOperate?: boolean } | null = null;
+    if (internalSource) {
+      const internal = await resolveInternalOpsBookingRequest(body, internalSource);
+      if (internal instanceof NextResponse) return internal;
+      branchCode = internal.branchCode;
+      internalAuth = internal.auth;
+    }
+
     const evaluation = await evaluatePublicBookingSelection({
       branchCode,
       date: typeof body.date === 'string' ? body.date : null,
@@ -59,7 +74,8 @@ export async function POST(req: NextRequest) {
       addonProIds: body.addonProIds ?? body.addons,
       empId: body.empId,
       mode: body.mode,
-      purpose: 'plan',
+      purpose: internalAuth ? 'internal_preview' : 'plan',
+      auth: internalAuth,
       previewQueryParam: searchParams.get('preview') ?? (body.preview as string | undefined) ?? null,
     });
 
@@ -152,6 +168,9 @@ export async function POST(req: NextRequest) {
       }
     );
   } catch (err) {
+    const { opsWriteBranchErrorResponse } = await import('@/lib/branch/opsWriteBranch');
+    const branchErr = opsWriteBranchErrorResponse(err);
+    if (branchErr) return branchErr;
     if (err instanceof PublicBookingSelectionError) {
       return finalizePublicBookingError(req, gate, err.code, err.metadata);
     }

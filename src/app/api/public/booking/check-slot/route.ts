@@ -1,5 +1,9 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { extractPublicBranchCode } from '@/lib/branch/bookingQueueOwnership';
+import {
+  readInternalOpsBookingSource,
+  resolveInternalOpsBookingRequest,
+} from '@/lib/booking/internalOpsBookingRequest';
 import {
   publicBookingErrorResponse,
   PUBLIC_BOOKING_ERROR_CATALOG,
@@ -40,6 +44,7 @@ export async function OPTIONS(req: NextRequest) {
  *
  * Business unavailability → HTTP 200 { ok:true, available:false, reason }
  * (compatibility with prior check-slot clients).
+ * Internal ops/admin (`source=operations|admin`): same branch resolution as create.
  */
 export async function POST(req: NextRequest) {
   const { gate, blocked } = gatePublicBookingRoute(req, 'check-slot');
@@ -58,7 +63,16 @@ export async function POST(req: NextRequest) {
     void body.includeBusy;
     void searchParams.get('preview');
 
-    const branchCode = extractPublicBranchCode(searchParams, body);
+    let branchCode = extractPublicBranchCode(searchParams, body);
+    const internalSource = readInternalOpsBookingSource(body);
+    let internalAuth: { userId: number; canOperate?: boolean } | null = null;
+    if (internalSource) {
+      const internal = await resolveInternalOpsBookingRequest(body, internalSource);
+      if (internal instanceof NextResponse) return internal;
+      branchCode = internal.branchCode;
+      internalAuth = internal.auth;
+    }
+
     const { result: evaluation, telemetry } = await runWithPublicBookingReadTelemetry(
       async () => {
         const t0 = Date.now();
@@ -72,7 +86,8 @@ export async function POST(req: NextRequest) {
           addonProIds: body.addonProIds ?? body.addons,
           empId: body.empId,
           mode: body.mode,
-          purpose: 'check_slot',
+          purpose: internalAuth ? 'internal_preview' : 'check_slot',
+          auth: internalAuth,
           previewQueryParam:
             searchParams.get('preview') ?? (body.preview as string | undefined) ?? null,
         });
@@ -174,6 +189,9 @@ export async function POST(req: NextRequest) {
       }
     );
   } catch (err) {
+    const { opsWriteBranchErrorResponse } = await import('@/lib/branch/opsWriteBranch');
+    const branchErr = opsWriteBranchErrorResponse(err);
+    if (branchErr) return branchErr;
     if (err instanceof PublicBookingSelectionError) {
       return finalizePublicBookingError(req, gate, err.code, err.metadata);
     }

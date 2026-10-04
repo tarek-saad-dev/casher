@@ -52,9 +52,11 @@ interface Props {
   onSelectAlternativeBarber: (empId: number) => void;
   onRetryAvailability?: () => void;
   onBranchChange?: (branchCode: string) => void;
+  packageName?: string | null;
 }
 
 export function BookingStepAppointment({
+  packageName,
   mode,
   bookingDate,
   selectedBarberName,
@@ -122,7 +124,8 @@ export function BookingStepAppointment({
             (BusinessDate {bookingDate})
           </span>
         </p>
-        <p className="text-sm text-foreground">
+        {packageName && <p className="text-sm font-bold text-foreground">{packageName}</p>}
+        <p className={packageName ? 'text-xs text-muted-foreground' : 'text-sm text-foreground'}>
           {selectedServices.map((s) => s.ProName).join(' + ')}
         </p>
         <p className="text-base font-bold" style={{ color: GOLD }}>الوقت المطلوب: {totalDuration} دقيقة</p>
@@ -261,7 +264,7 @@ export function BookingStepAppointment({
             {mode === 'specific' && !lockedBarber && (
               <button type="button" onClick={onSwitchNearest} className="px-4 py-2 min-h-[44px] rounded-lg border text-xs font-semibold" style={{ borderColor: GOLD, color: GOLD }}>أقرب حلاق</button>
             )}
-            <button type="button" onClick={onChangeServices} className="px-4 py-2 min-h-[44px] rounded-lg border text-xs" style={{ borderColor: BORDER }}>تغيير الخدمات</button>
+            <button type="button" onClick={onChangeServices} className="px-4 py-2 min-h-[44px] rounded-lg border text-xs" style={{ borderColor: BORDER }}>{packageName ? 'تغيير الباكدج' : 'تغيير الخدمات'}</button>
             <button type="button" onClick={onChangeDate} className="px-4 py-2 min-h-[44px] rounded-lg border text-xs" style={{ borderColor: BORDER }}>تغيير التاريخ</button>
           </div>
         </div>

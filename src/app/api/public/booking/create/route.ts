@@ -1,9 +1,9 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { extractPublicBranchCode } from '@/lib/branch/bookingQueueOwnership';
 import {
-  isActiveBranchContext,
-  requireBranchOperationAccess,
-} from '@/lib/branch/context';
+  readInternalOpsBookingSource,
+  resolveInternalOpsBookingRequest,
+} from '@/lib/booking/internalOpsBookingRequest';
 import {
   publicBookingOptionsResponse,
   PUBLIC_BOOKING_ROUTE_CORS,
@@ -67,47 +67,21 @@ export async function POST(req: NextRequest) {
     void body.endTime;
     void body.timezone;
 
-    const sourceRaw = typeof body.source === 'string' ? body.source.trim().toLowerCase() : '';
-    const isInternalOps = sourceRaw === 'operations' || sourceRaw === 'admin';
+    const internalSource = readInternalOpsBookingSource(body);
+    const isInternalOps = internalSource != null;
 
     let branchCode = extractPublicBranchCode(searchParams, body);
     let purpose: 'public_booking' | 'internal_preview' | undefined;
     let auth: { userId: number; canOperate?: boolean } | null = null;
     let bookingSource: 'online' | 'operations' | 'admin' = 'online';
 
-    if (isInternalOps) {
-      const branch = await requireBranchOperationAccess();
-      if (!isActiveBranchContext(branch)) return branch;
-
-      const empIdNum =
-        typeof body.empId === 'number'
-          ? body.empId
-          : body.empId != null
-            ? Number(body.empId)
-            : NaN;
-      const workDate =
-        typeof body.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.date)
-          ? body.date
-          : undefined;
-
-      if (Number.isFinite(empIdNum) && empIdNum > 0) {
-        const { resolveOpsWriteBranch } = await import('@/lib/branch/opsWriteBranch');
-        const target = await resolveOpsWriteBranch({
-          userId: branch.userId,
-          sessionBranchId: branch.branchId,
-          empId: empIdNum,
-          workDate,
-          requestedBranchId: body.branchId ?? body.BranchID,
-        });
-        branchCode = target.branchCode;
-      } else {
-        // Nearest / no emp yet — stay on session branch (legacy).
-        branchCode = branch.branchCode;
-      }
-
+    if (internalSource) {
+      const internal = await resolveInternalOpsBookingRequest(body, internalSource);
+      if (internal instanceof NextResponse) return internal;
+      branchCode = internal.branchCode;
       purpose = 'internal_preview';
-      auth = { userId: branch.userId, canOperate: branch.canOperate };
-      bookingSource = sourceRaw === 'admin' ? 'admin' : 'operations';
+      auth = internal.auth;
+      bookingSource = internal.bookingSource;
     }
 
     const customer = (body.customer ?? {}) as { name?: string; phone?: string | null };

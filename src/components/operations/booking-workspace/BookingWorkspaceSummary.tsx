@@ -32,9 +32,11 @@ interface Props {
   isFinalStep: boolean;
   submitting: boolean;
   onPrimary: () => void;
+  packageName?: string | null;
 }
 
 export function BookingWorkspaceSummary({
+  packageName,
   step,
   mode,
   bookingDate,
@@ -73,6 +75,7 @@ export function BookingWorkspaceSummary({
           label="الحلاق / الوضع"
           value={mode === 'nearest' ? 'أقرب حلاق متاح' : (selectedBarberName || '—')}
         />
+        {packageName && <SummaryRow label="الباكدج" value={packageName} highlight />}
         <div>
           <p className="text-xs text-muted-foreground mb-1">الخدمات</p>
           {selectedServices.length === 0 ? (

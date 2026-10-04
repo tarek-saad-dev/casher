@@ -284,6 +284,13 @@ export function MoreTimelineItemsModal({ open, onClose, items, barberName, hourL
                   </span>
                 </div>
 
+                {isBooking && item.packageName && (
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Tag className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="text-xs font-semibold text-gray-200">{item.packageName}</span>
+                  </div>
+                )}
+
                 {/* Services */}
                 {((isBooking ? booking?.services?.length : queue?.serviceNames?.length) || 0) > 0 && (
                   <div className="flex items-start gap-2 mb-2">

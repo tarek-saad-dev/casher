@@ -1,15 +1,17 @@
 'use client';
 
 import { CheckCircle2 } from 'lucide-react';
+import { BookingKindChooser } from './BookingKindChooser';
 import { BookingWorkspaceFooter } from './BookingWorkspaceFooter';
 import { BookingWorkspaceHeader } from './BookingWorkspaceHeader';
 import { BookingStepConfirm } from './BookingStepConfirm';
+import { BookingStepPackages } from './BookingStepPackages';
 import { BookingStepServices } from './BookingStepServices';
 import { BookingStepTime } from './BookingStepTime';
 import { BookingWorkspaceStepper } from './BookingWorkspaceStepper';
 import { BookingWorkspaceSummary, BookingWorkspaceSummaryMobile } from './BookingWorkspaceSummary';
 import { useBookingWorkspace, type UseBookingWorkspaceArgs } from './useBookingWorkspace';
-import { BORDER } from './types';
+import { BORDER, bookingStepsFor } from './types';
 
 export type BookingWorkspaceModalProps = UseBookingWorkspaceArgs;
 
@@ -19,10 +21,14 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
 
   if (!open) return null;
 
+  const choosingKind = ws.bookingKind === null;
+  const steps = bookingStepsFor(ws.bookingKind);
+  const packageName = ws.isPackageBooking ? ws.selectedPackage?.nameAr ?? null : null;
+
   const canProceedForStep = (): boolean => {
     switch (ws.step) {
       case 1: return ws.canGoStep2;
-      case 2: return ws.canGoStep3;
+      case 2: return ws.canGoStep3 && !ws.verifyingSlot;
       case 3: return ws.canSubmit;
       default: return false;
     }
@@ -82,17 +88,37 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
           onClose={onClose}
           getCairoToday={ws.getCairoToday}
           getCairoTomorrow={ws.getCairoTomorrow}
+          steps={steps}
+          choosingKind={choosingKind}
+          isPackageBooking={ws.isPackageBooking}
         />
 
+        {choosingKind ? (
+          <main className="flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 sm:py-6">
+            <BookingKindChooser onChoose={ws.chooseBookingKind} />
+          </main>
+        ) : (
+        <>
         <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
           <BookingWorkspaceStepper
             step={ws.step}
             summaries={ws.stepSummaries}
             onGoToStep={ws.goToStep}
+            steps={steps}
           />
 
           <main className="flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 sm:py-6">
-            {ws.step === 1 && (
+            {ws.step === 1 && ws.isPackageBooking && (
+              <BookingStepPackages
+                packages={ws.packages}
+                loading={ws.loadingPackages}
+                error={ws.packagesError}
+                selectedPackage={ws.selectedPackage}
+                branchCode={ws.selectedBranchCode}
+                onSelect={ws.handleSelectPackage}
+              />
+            )}
+            {ws.step === 1 && !ws.isPackageBooking && (
               <BookingStepServices
                 services={ws.services}
                 selectedServices={ws.selectedServices}
@@ -148,6 +174,7 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
                 }}
                 onRetryAvailability={ws.retryAvailability}
                 onBranchChange={ws.handleBranchChange}
+                packageName={packageName}
               />
             )}
             {ws.step === 3 && (
@@ -177,11 +204,13 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
                 onShowClients={ws.setShowClients}
                 onEditServices={() => ws.goToStep(1)}
                 onEditTime={() => ws.goToStep(2)}
+                packageName={packageName}
               />
             )}
           </main>
 
           <BookingWorkspaceSummary
+            packageName={packageName}
             step={ws.step}
             mode={ws.mode}
             bookingDate={ws.bookingDate}
@@ -210,7 +239,7 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
 
         <BookingWorkspaceFooter
           step={ws.step}
-          canGoBack={ws.step > 1}
+          canGoBack
           canProceed={canProceedForStep()}
           isFinalStep={ws.step === 3}
           submitting={ws.submitting}
@@ -218,6 +247,8 @@ export function BookingWorkspaceModal(props: BookingWorkspaceModalProps) {
           onBack={ws.goBack}
           onPrimary={handlePrimary}
         />
+        </>
+        )}
       </div>
     </div>
   );

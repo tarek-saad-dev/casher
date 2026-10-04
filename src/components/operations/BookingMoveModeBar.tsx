@@ -13,7 +13,7 @@ interface Props {
 
 export function BookingMoveModeBar({ session, onCancel, onReturnToOriginal }: Props) {
   const timeRange = formatTimeRange(session.originalStartAt, session.originalEndAt);
-  const serviceLabel = session.serviceNames?.[0] ?? session.originalEmpName;
+  const serviceLabel = session.packageName ?? session.serviceNames?.[0] ?? session.originalEmpName;
 
   return (
     <div

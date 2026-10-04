@@ -76,7 +76,7 @@ describe('bookingCheckSlot', () => {
 
   it('uses canonical evaluator; no legacy branch fallback', () => {
     expect(route).toContain('evaluatePublicBookingSelection');
-    expect(route).toContain("purpose: 'check_slot'");
+    expect(route).toContain("purpose: internalAuth ? 'internal_preview' : 'check_slot'");
     expect(route).not.toContain('resolvePublicBranchCode');
     expect(route).not.toContain('validateBookingSlot');
     expect(route).toMatch(/OPTIONS/);
@@ -102,7 +102,7 @@ describe('bookingPlan', () => {
 
   it('is read-only plan — no INSERT / customer upsert / write-guard', () => {
     expect(route).toContain('evaluatePublicBookingSelection');
-    expect(route).toContain("purpose: 'plan'");
+    expect(route).toContain("purpose: internalAuth ? 'internal_preview' : 'plan'");
     expect(route).not.toMatch(/INSERT\s+INTO/i);
     expect(route).not.toContain('upsertCustomer');
     expect(route).not.toContain('assertEmployeeIntervalAvailable');
