@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { Printer, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -10,8 +10,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  buildPackageAwarePrintLines,
+  buildPackageReceipt,
   extractGroomPackageNoteFromText,
+  type PackagePrintLine,
+  type PackageReceiptDisplay,
 } from '@/lib/pos/groomPackageCart';
 
 /** Client-safe parse of [groomPackage] note (mirrors booking parser). */
@@ -90,6 +92,50 @@ interface PrintData {
   items: PrintItem[];
   paymentAllocations?: PaymentAllocationRow[];
   isSplitPayment?: boolean;
+  packageDisplay?: PackageReceiptDisplay | null;
+}
+
+function buildReceiptModel(data: PrintData) {
+  const pkgMeta = parsePackageNote([data.Notes, data.Notes2].filter(Boolean).join(' '));
+  const packageName = pkgMeta
+    ? (data.items || []).find(
+        (it) =>
+          Number(it.SPriceAfterDis ?? it.SPrice) > 0 &&
+          pkgMeta.requiredServiceIds.includes(Number(it.ProID)),
+      )?.ProName
+    : undefined;
+  return buildPackageReceipt(
+    (data.items || []).map((item) => ({
+      ProID: Number(item.ProID) || 0,
+      ProName: item.ProName,
+      SPrice: Number(item.SPrice) || 0,
+      SPriceAfterDis: item.SPriceAfterDis,
+      SValue: item.SValue,
+      Qty: item.Qty,
+      DisVal: item.DisVal,
+      EmpName: item.EmpName,
+    })),
+    pkgMeta
+      ? {
+          packageId: pkgMeta.packageId,
+          packagePrice: pkgMeta.packagePrice,
+          requiredServiceIds: pkgMeta.requiredServiceIds,
+          addonProIds: pkgMeta.addonProIds,
+          packageName: packageName || undefined,
+          display: data.packageDisplay ?? null,
+        }
+      : null,
+  );
+}
+
+function printedAmount(line: PackagePrintLine): number | null {
+  return line.shownAmount === undefined ? line.amount : line.shownAmount;
+}
+
+/** Row numbers for the receipt table; package item rows are not numbered. */
+function rowNumbers(lines: PackagePrintLine[]): Array<number | null> {
+  let n = 0;
+  return lines.map((l) => (l.variant === 'package_item' ? null : ++n));
 }
 
 interface PrintInvoiceModalProps {
@@ -320,6 +366,9 @@ const THERMAL_CSS = `
   .line-price-gross { font-size: 8px; text-decoration: line-through; opacity: 0.75; }
   .line-price-disc { font-size: 8px; font-weight: 700; }
   .line-price-net { font-size: 10px; font-weight: 900; }
+  tr.pkg-item td { padding: 1mm 1.5mm; border-top-style: dotted; }
+  .pkg-item-name { font-size: 9px; font-weight: 600; padding-inline-start: 2mm; }
+  .pkg-item-price { font-size: 9px; font-weight: 600; }
   
   /* Totals Section */
   .receipt-totals {
@@ -442,6 +491,7 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
   const [loading, setLoading] = useState(false);
   const [printing, setPrinting] = useState(false);
   const printWindowRef = useRef<Window | null>(null);
+  const receiptModel = useMemo(() => (data ? buildReceiptModel(data) : null), [data]);
 
   // Fetch invoice data when modal opens
   useEffect(() => {
@@ -464,42 +514,19 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
 
     const money = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
 
-    const pkgMeta = parsePackageNote(
-      [data.Notes, data.Notes2].filter(Boolean).join(' '),
-    );
-    const packageName =
-      pkgMeta != null
-        ? (data.items || []).find(
-            (it) =>
-              Number(it.SPriceAfterDis ?? it.SPrice) > 0 &&
-              pkgMeta.requiredServiceIds.includes(Number(it.ProID)),
-          )?.ProName
-        : undefined;
-
-    const printLines = buildPackageAwarePrintLines(
-      (data.items || []).map((item) => ({
-        ProID: Number(item.ProID) || 0,
-        ProName: item.ProName,
-        SPrice: Number(item.SPrice) || 0,
-        SPriceAfterDis: item.SPriceAfterDis,
-        SValue: item.SValue,
-        Qty: item.Qty,
-        DisVal: item.DisVal,
-        EmpName: item.EmpName,
-      })),
-      pkgMeta
-        ? {
-            packageId: pkgMeta.packageId,
-            packagePrice: pkgMeta.packagePrice,
-            requiredServiceIds: pkgMeta.requiredServiceIds,
-            addonProIds: pkgMeta.addonProIds,
-            packageName: packageName || undefined,
-          }
-        : null,
-    );
+    const { lines: printLines, packageDiscount } = buildReceiptModel(data);
+    const numbers = rowNumbers(printLines);
 
     const itemRows = printLines
       .map((line, i) => {
+        const shown = printedAmount(line);
+        if (line.variant === 'package_item') {
+          return `<tr class="pkg-item">
+        <td></td>
+        <td><div class="pkg-item-name">${line.label || ''}</div></td>
+        <td>${shown != null ? `<div class="pkg-item-price">${money(shown)}</div>` : ''}</td>
+      </tr>`;
+        }
         const serviceName = `<div class="service-name">${line.label || ''}</div>`;
         const includes =
           line.sublabel
@@ -507,14 +534,19 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
             : '';
         const barberName =
           line.empName ? `<div class="barber-name">${line.empName}</div>` : '';
-        const priceCell = `<div class="line-price-net">${money(line.amount)} ج.م</div>`;
+        const priceCell = shown != null ? `<div class="line-price-net">${money(shown)} ج.م</div>` : '';
         return `<tr>
-        <td>${i + 1}</td>
+        <td>${numbers[i] ?? ''}</td>
         <td>${serviceName}${includes}${barberName}</td>
         <td>${priceCell}</td>
       </tr>`;
       })
       .join('');
+    const subtotalRow =
+      packageDiscount > 0
+        ? `<div class="total-row subtotal"><span>المجموع قبل الخصم:</span><span class="total-amount">${money(Number(data.SubTotal) + packageDiscount)} ج.م</span></div>
+      <div class="total-row discount"><span>خصم الباكدج:</span><span>- ${money(packageDiscount)} ج.م</span></div>`
+        : `<div class="total-row subtotal"><span>المجموع الفرعي:</span><span class="total-amount">${data.SubTotal} ج.م</span></div>`;
 
     const lineDiscountTotal = (data.items || []).reduce(
       (sum, item) => sum + Math.max(0, Number(item.DisVal || 0)),
@@ -632,10 +664,7 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
     
     <!-- Totals -->
     <div class="receipt-totals">
-      <div class="total-row subtotal">
-        <span>المجموع الفرعي:</span>
-        <span class="total-amount">${data.SubTotal} ج.م</span>
-      </div>
+      ${subtotalRow}
       ${discountRow}
       <div class="total-row grand">
         <span>الإجمالي:</span>
@@ -832,54 +861,39 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
                 </thead>
                 <tbody>
                   {(() => {
-                    const pkgMeta = parsePackageNote(
-      [data.Notes, data.Notes2].filter(Boolean).join(' '),
-    );
-                    const packageName = pkgMeta
-                      ? data.items?.find(
-                          (it) =>
-                            Number(it.SPriceAfterDis ?? it.SPrice) > 0 &&
-                            pkgMeta.requiredServiceIds.includes(Number(it.ProID)),
-                        )?.ProName
-                      : undefined;
-                    const lines = buildPackageAwarePrintLines(
-                      (data.items || []).map((item) => ({
-                        ProID: Number(item.ProID) || 0,
-                        ProName: item.ProName,
-                        SPrice: Number(item.SPrice) || 0,
-                        SPriceAfterDis: item.SPriceAfterDis,
-                        SValue: item.SValue,
-                        Qty: item.Qty,
-                        DisVal: item.DisVal,
-                        EmpName: item.EmpName,
-                      })),
-                      pkgMeta
-                        ? {
-                            packageId: pkgMeta.packageId,
-                            packagePrice: pkgMeta.packagePrice,
-                            requiredServiceIds: pkgMeta.requiredServiceIds,
-                            addonProIds: pkgMeta.addonProIds,
-                            packageName,
-                          }
-                        : null,
-                    );
-                    return lines.map((line, i) => (
-                      <tr key={i} className="border-b border-black">
-                        <td className="p-1 text-center font-bold">{i + 1}</td>
-                        <td className="p-1 break-words">
-                          <div className="font-bold">{line.label}</div>
-                          {line.sublabel && (
-                            <div className="text-[9px] font-semibold">{line.sublabel}</div>
-                          )}
-                          {line.empName && (
-                            <div className="text-[9px] font-semibold">{line.empName}</div>
-                          )}
-                        </td>
-                        <td className="p-1 text-left font-bold">
-                          <span>{line.amount.toFixed(2)} ج.م</span>
-                        </td>
-                      </tr>
-                    ));
+                    const lines = receiptModel?.lines ?? [];
+                    const numbers = rowNumbers(lines);
+                    return lines.map((line, i) => {
+                      const shown = printedAmount(line);
+                      if (line.variant === 'package_item') {
+                        return (
+                          <tr key={i} className="border-b border-dotted border-black">
+                            <td className="p-0.5" />
+                            <td className="p-0.5 ps-3 text-[9px] font-semibold break-words">{line.label}</td>
+                            <td className="p-0.5 text-left text-[9px] font-semibold">
+                              {shown != null ? shown.toFixed(2) : ''}
+                            </td>
+                          </tr>
+                        );
+                      }
+                      return (
+                        <tr key={i} className="border-b border-black">
+                          <td className="p-1 text-center font-bold">{numbers[i]}</td>
+                          <td className="p-1 break-words">
+                            <div className="font-bold">{line.label}</div>
+                            {line.sublabel && (
+                              <div className="text-[9px] font-semibold">{line.sublabel}</div>
+                            )}
+                            {line.empName && (
+                              <div className="text-[9px] font-semibold">{line.empName}</div>
+                            )}
+                          </td>
+                          <td className="p-1 text-left font-bold">
+                            {shown != null && <span>{shown.toFixed(2)} ج.م</span>}
+                          </td>
+                        </tr>
+                      );
+                    });
                   })()}
                 </tbody>
               </table>
@@ -893,10 +907,25 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
               
               {/* Totals Box */}
               <div className="border-2 border-black rounded p-2 mb-2 text-[11px]">
-                <div className="flex justify-between font-semibold mb-1">
-                  <span>المجموع الفرعي:</span>
-                  <span className="font-mono">{data.SubTotal} ج.م</span>
-                </div>
+                {receiptModel && receiptModel.packageDiscount > 0 ? (
+                  <>
+                    <div className="flex justify-between font-semibold mb-1">
+                      <span>المجموع قبل الخصم:</span>
+                      <span className="font-mono">
+                        {(Number(data.SubTotal) + receiptModel.packageDiscount).toFixed(2)} ج.م
+                      </span>
+                    </div>
+                    <div className="flex justify-between font-bold text-red-600 mb-1">
+                      <span>خصم الباكدج:</span>
+                      <span className="font-mono">- {receiptModel.packageDiscount.toFixed(2)} ج.م</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-between font-semibold mb-1">
+                    <span>المجموع الفرعي:</span>
+                    <span className="font-mono">{data.SubTotal} ج.م</span>
+                  </div>
+                )}
                 {(() => {
                   const lineDiscountTotal = (data.items || []).reduce(
                     (sum, item) => sum + Math.max(0, Number(item.DisVal || 0)),

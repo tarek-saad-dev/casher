@@ -34,6 +34,9 @@ export interface FlowBoardBarber {
     durationMinutes?: number;
     customerName?: string;
     serviceNames?: string[];
+    /** Set for package bookings ([groomPackage] metadata in Bookings.Notes). */
+    packageId?: number;
+    packageName?: string;
     barberId?: number;
     originKind?: 'website' | 'user' | 'system';
     originLabel?: string;

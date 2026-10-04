@@ -85,9 +85,19 @@ export const HourCellCard = memo(function HourCellCard({
   const timeRange = formatTimeRange(item.startTime, item.endTime);
   const timeLabel = formatTimeLabel(item.startTime, item.endTime);
   const customerName = item.customerName || item.label || '—';
-  const serviceName = item.serviceNames?.length
-    ? formatServiceSummary(item.serviceNames)
-    : (item.serviceNames?.[0] || '');
+  const serviceName = item.packageName
+    ? item.packageName
+    : item.serviceNames?.length
+      ? formatServiceSummary(item.serviceNames)
+      : (item.serviceNames?.[0] || '');
+  const packageDetail = item.packageName
+    ? [
+        item.serviceNames?.length ? `${item.serviceNames.length} خدمات` : null,
+        item.durationMinutes ? `${item.durationMinutes} دقيقة` : null,
+      ]
+        .filter(Boolean)
+        .join(' • ')
+    : '';
   const serviceTooltip = item.serviceNames?.length
     ? item.serviceNames.map((n, i) => `${i + 1}. ${n}`).join('\n')
     : serviceName;
@@ -238,7 +248,17 @@ export const HourCellCard = memo(function HourCellCard({
                   />
                 )}
               </div>
-              {!isCompact && serviceName && (
+              {!isCompact && serviceName && item.packageName && (
+                <div className="mt-0.5 min-w-0" title={serviceTooltip}>
+                  <div className="truncate text-[11px] font-semibold text-primary md:text-xs">
+                    {serviceName}
+                  </div>
+                  {packageDetail && (
+                    <div className="truncate text-[10px] text-muted-foreground">{packageDetail}</div>
+                  )}
+                </div>
+              )}
+              {!isCompact && serviceName && !item.packageName && (
                 <div className="mt-0.5 truncate text-[11px] text-muted-foreground md:text-xs" title={serviceTooltip}>
                   {serviceName}
                   {(item.serviceNames?.length ?? 0) > 1 && (

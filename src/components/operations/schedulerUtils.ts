@@ -39,6 +39,8 @@ export interface TimelineItem {
   durationMinutes?: number;
   customerName?: string;
   serviceNames?: string[];
+  packageId?: number;
+  packageName?: string;
   ticketCode?: string;
   barberId?: number;
   originKind?: 'website' | 'user' | 'system';
