@@ -166,6 +166,57 @@ describe('closeTreasuryShift', () => {
     ).rejects.toThrow('يمكن تقفيل ورديتك فقط');
   });
 
+  it('locks the shift row and rejects an already-closed shift with 409', async () => {
+    const queries: string[] = [];
+    const { requestFactory } = createMockTx((sqlText) => {
+      queries.push(sqlText);
+      if (sqlText.includes('FROM dbo.TblShiftMove sm')) {
+        return {
+          recordset: [{ ID: 42, UserID: 7, BranchID: 3, BusinessDayID: 99, Status: false }],
+        };
+      }
+      if (sqlText.includes('UPDATE dbo.TblShiftMove')) {
+        throw new Error('must not update a closed shift');
+      }
+      return { recordset: [] };
+    });
+
+    vi.doMock('@/lib/db', () => ({
+      sql: {
+        Int: 'Int',
+        Date: 'Date',
+        Decimal: () => 'Decimal',
+        NVarChar: () => 'NVarChar',
+        Request: class {
+          constructor() {
+            return requestFactory();
+          }
+        },
+      },
+      allocateInvID: vi.fn(),
+    }));
+    vi.doMock('@/modules/operations/clock/BusinessClock', () => ({
+      now: () => new Date(),
+    }));
+    vi.doMock('@/modules/operations/infra/shiftMoveRecord', () => ({
+      formatLegacyEndTime: () => '8:00 PM',
+    }));
+    vi.doMock('@/modules/operations/infra/businessDayLock', () => ({
+      lockOperationalWrite: vi.fn(),
+    }));
+
+    const { closeTreasuryShift } = await import('@/lib/actions/treasuryActions');
+    await expect(
+      closeTreasuryShift({} as never, {
+        shiftMoveId: 42,
+        branchId: 3,
+        closedByUserId: 7,
+        reconciliations: [],
+      }),
+    ).rejects.toMatchObject({ message: 'هذه الوردية مغلقة بالفعل', statusCode: 409 });
+    expect(queries[0]).toContain('WITH (UPDLOCK, HOLDLOCK, ROWLOCK)');
+  });
+
   it('rejects duplicate shift reconciliation', async () => {
     const { requestFactory } = createMockTx((sqlText) => {
       if (sqlText.includes('FROM dbo.TblShiftMove sm')) {

@@ -55,7 +55,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'الوردية غير موجودة' }, { status: 404 });
     }
 
-    const auditResult = await executeAuditedAction({
+    const alreadyClosedResponse = (row: { UserID: number; BusinessDayID: number }) =>
+      NextResponse.json({
+        success: true,
+        alreadyClosed: true,
+        reconciliationIds: [],
+        variances: [],
+        message: 'الوردية مقفولة بالفعل',
+        shiftMoveId,
+        businessDayId: Number(row.BusinessDayID),
+      });
+
+    const isShiftOpen = (status: unknown) => status === true || status === 1;
+
+    if (!isShiftOpen(shiftRow.Status)) {
+      if (Number(shiftRow.UserID) === session.UserID) {
+        return alreadyClosedResponse(shiftRow);
+      }
+      return NextResponse.json({ error: 'هذه الوردية مغلقة بالفعل' }, { status: 409 });
+    }
+
+    const runClose = () => executeAuditedAction({
       actionType: 'close_shift_recon',
       user: session,
       entityId: shiftMoveId,
@@ -86,7 +106,8 @@ export async function POST(request: NextRequest) {
         const newRecon = await new sql.Request(transaction)
           .input('shiftMoveId', sql.Int, shiftMoveId)
           .query(`
-            SELECT r.ID, r.PaymentMethodID, pm.PaymentMethod, r.SystemAmount, r.CountedAmount, r.VarianceAmount, r.Notes
+            SELECT r.ID, r.PaymentMethodID, pm.PaymentMethod, r.SystemAmount, r.CountedAmount,
+                   (r.CountedAmount - r.SystemAmount) AS VarianceAmount, r.Notes
             FROM dbo.TblTreasuryCloseRecon r
             JOIN dbo.TblPaymentMethods pm ON r.PaymentMethodID = pm.PaymentID
             WHERE r.ShiftMoveID = @shiftMoveId
@@ -101,6 +122,26 @@ export async function POST(request: NextRequest) {
         };
       },
     });
+
+    let auditResult: Awaited<ReturnType<typeof runClose>>;
+    try {
+      auditResult = await runClose();
+    } catch (error) {
+      if (isAuditedActionError(error) && error.statusCode === 409) {
+        const recheck = await db.request()
+          .input('shiftMoveId', sql.Int, shiftMoveId)
+          .query(`
+            SELECT TOP 1 UserID, BusinessDayID, Status
+            FROM dbo.TblShiftMove
+            WHERE ID = @shiftMoveId
+          `);
+        const latest = recheck.recordset[0];
+        if (latest && !isShiftOpen(latest.Status) && Number(latest.UserID) === session.UserID) {
+          return alreadyClosedResponse(latest);
+        }
+      }
+      throw error;
+    }
 
     const response: ReconciliationResponse = {
       success: true,
@@ -121,7 +162,7 @@ export async function POST(request: NextRequest) {
     if (isAuditedActionError(error)) {
       return NextResponse.json(
         { error: error.message, auditId: error.failedAuditId },
-        { status: 500 },
+        { status: error.statusCode >= 400 && error.statusCode < 600 ? error.statusCode : 500 },
       );
     }
     const message = error instanceof Error ? error.message : 'فشل تقفيل الوردية';

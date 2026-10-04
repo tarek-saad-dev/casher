@@ -99,7 +99,12 @@ function ActiveSessionBar() {
 
   async function handleCloseShiftAndLogout() {
     if (shift) {
-      await closeMyShift(shift.ID);
+      try {
+        await closeMyShift(shift.ID);
+      } catch (err) {
+        showToast(mapOperationalError(err, 'فشل إغلاق الوردية — لم يتم تسجيل الخروج'));
+        return;
+      }
     }
     await logout();
   }
@@ -123,7 +128,11 @@ function ActiveSessionBar() {
       });
 
       if (!closeRes.ok) {
-        await logout();
+        const data = await closeRes.json().catch(() => ({}));
+        showToast(mapOperationalError(
+          new Error(data.error || 'فشل إغلاق الوردية'),
+          'فشل إغلاق الوردية — لم يتم تسجيل الخروج',
+        ));
         return;
       }
 

@@ -460,6 +460,10 @@ export async function closeTreasuryDay(
   };
 }
 
+function shiftCloseError(message: string, statusCode: number): Error {
+  return Object.assign(new Error(message), { statusCode });
+}
+
 /**
  * Cashier shift treasury close: save per-method recon for the shift and close
  * TblShiftMove. Does NOT close TblNewDay.
@@ -479,7 +483,7 @@ export async function closeTreasuryShift(
         sm.BranchID,
         sm.BusinessDayID,
         sm.Status
-      FROM dbo.TblShiftMove sm
+      FROM dbo.TblShiftMove sm WITH (UPDLOCK, HOLDLOCK, ROWLOCK)
       INNER JOIN dbo.TblNewDay d ON d.ID = sm.BusinessDayID
       WHERE sm.ID = @shiftMoveId
     `);
@@ -495,17 +499,17 @@ export async function closeTreasuryShift(
     | undefined;
 
   if (!shift) {
-    throw new Error('الوردية غير موجودة');
+    throw shiftCloseError('الوردية غير موجودة', 404);
   }
   if (Number(shift.BranchID) !== branchId) {
-    throw new Error('الوردية لا تنتمي للفرع النشط');
+    throw shiftCloseError('الوردية لا تنتمي للفرع النشط', 403);
   }
   if (Number(shift.UserID) !== closedByUserId) {
-    throw new Error('غير مصرح — يمكن تقفيل ورديتك فقط');
+    throw shiftCloseError('غير مصرح — يمكن تقفيل ورديتك فقط', 403);
   }
   const shiftOpen = shift.Status === true || shift.Status === 1;
   if (!shiftOpen) {
-    throw new Error('هذه الوردية مغلقة بالفعل');
+    throw shiftCloseError('هذه الوردية مغلقة بالفعل', 409);
   }
 
   const existingRecon = await new sql.Request(connection)
@@ -515,7 +519,7 @@ export async function closeTreasuryShift(
       WHERE ShiftMoveID = @shiftMoveId
     `);
   if (existingRecon.recordset.length > 0) {
-    throw new Error('تم تقفيل هذه الوردية مسبقاً — لا يمكن إنشاء تسويات جديدة');
+    throw shiftCloseError('تم تقفيل هذه الوردية مسبقاً — لا يمكن إنشاء تسويات جديدة', 409);
   }
 
   const dayId = Number(shift.BusinessDayID);

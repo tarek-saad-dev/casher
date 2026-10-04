@@ -83,7 +83,8 @@ export async function POST(request: NextRequest) {
       loadOldData: async () => {
         if (!dayRow) return null;
         const previousRecon = await db!.request().input('dayId', sql.Int, dayRow.ID).query(`
-          SELECT r.ID, r.PaymentMethodID, pm.PaymentMethod, r.SystemAmount, r.CountedAmount, r.VarianceAmount, r.Notes
+          SELECT r.ID, r.PaymentMethodID, pm.PaymentMethod, r.SystemAmount, r.CountedAmount,
+                 (r.CountedAmount - r.SystemAmount) AS VarianceAmount, r.Notes
           FROM dbo.TblTreasuryCloseRecon r
           JOIN dbo.TblPaymentMethods pm ON r.PaymentMethodID = pm.PaymentID
           WHERE r.NewDay = @dayId
@@ -105,7 +106,8 @@ export async function POST(request: NextRequest) {
         const newRecon = await new sql.Request(transaction)
           .input('dayId', sql.Int, dayRow.ID)
           .query(`
-            SELECT r.ID, r.PaymentMethodID, pm.PaymentMethod, r.SystemAmount, r.CountedAmount, r.VarianceAmount, r.Notes
+            SELECT r.ID, r.PaymentMethodID, pm.PaymentMethod, r.SystemAmount, r.CountedAmount,
+                   (r.CountedAmount - r.SystemAmount) AS VarianceAmount, r.Notes
             FROM dbo.TblTreasuryCloseRecon r
             JOIN dbo.TblPaymentMethods pm ON r.PaymentMethodID = pm.PaymentID
             WHERE r.NewDay = @dayId
