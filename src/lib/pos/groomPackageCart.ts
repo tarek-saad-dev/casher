@@ -189,8 +189,27 @@ export function groupCartForDisplay(items: CartItem[]): CartDisplayRow[] {
   return rows;
 }
 
-/** Receipt / print rows: package once + addons; hide zero-price included lines. */
-export function buildPackageAwarePrintLines<T extends {
+/** Package catalog data used only to present a package on receipts. */
+export type PackageReceiptDisplay = {
+  nameAr: string;
+  originalPrice: number | null;
+  /** Required (non-optional) items in package order with current list prices. */
+  items: Array<{ proId: number; label: string; listPrice: number }>;
+};
+
+export type PackagePrintLine = {
+  label: string;
+  sublabel?: string;
+  /** Net invoice amount (sums to the invoice total). */
+  amount: number;
+  /** Amount to print when it differs from `amount`; null prints no price. */
+  shownAmount?: number | null;
+  variant?: 'package_header' | 'package_item';
+  empName?: string | null;
+  hide?: boolean;
+};
+
+type PrintableInvoiceItem = {
   ProID: number;
   ProName: string;
   SPrice: number;
@@ -199,22 +218,117 @@ export function buildPackageAwarePrintLines<T extends {
   Qty?: number;
   DisVal?: number;
   EmpName?: string | null;
-}>(
+};
+
+type PrintPackageMeta = {
+  packageId: number;
+  packagePrice: number;
+  requiredServiceIds: number[];
+  addonProIds: number[];
+  packageName?: string;
+  display?: PackageReceiptDisplay | null;
+};
+
+/**
+ * Itemized package pricing for receipts: list prices per included service,
+ * total before discount = OriginalPrice, discount = OriginalPrice - PackagePrice.
+ * Only when OriginalPrice > PackagePrice and the list prices add up to it, so the
+ * printed math always matches; otherwise the package prints as one priced line.
+ */
+export function resolvePackageReceiptPricing(
+  display: PackageReceiptDisplay | null | undefined,
+  packagePrice: number,
+  requiredServiceIds: number[],
+): { items: PackageReceiptDisplay['items']; originalTotal: number; discount: number } | null {
+  if (!display || display.originalPrice == null || !(packagePrice > 0)) return null;
+  const originalTotal = Number(display.originalPrice);
+  if (!(originalTotal > packagePrice)) return null;
+  const required = new Set(requiredServiceIds);
+  const items = display.items.filter((it) => required.has(it.proId));
+  if (items.length !== required.size) return null;
+  const listSum = items.reduce((s, it) => s + it.listPrice, 0);
+  if (Math.abs(listSum - originalTotal) > 0.005) return null;
+  return { items, originalTotal, discount: originalTotal - packagePrice };
+}
+
+/** Receipt / print rows: package once + addons; hide zero-price included lines. */
+export function buildPackageAwarePrintLines<T extends PrintableInvoiceItem>(
   items: T[],
-  packageMeta: {
-    packageId: number;
-    packagePrice: number;
-    requiredServiceIds: number[];
-    addonProIds: number[];
-    packageName?: string;
-  } | null,
-): Array<{
-  label: string;
-  sublabel?: string;
-  amount: number;
-  empName?: string | null;
-  hide?: boolean;
-}> {
+  packageMeta: PrintPackageMeta | null,
+): PackagePrintLine[] {
+  return buildPackageReceipt(items, packageMeta).lines;
+}
+
+/** Receipt rows plus the package discount to print in the totals box. */
+export function buildPackageReceipt<T extends PrintableInvoiceItem>(
+  items: T[],
+  packageMeta: PrintPackageMeta | null,
+): { lines: PackagePrintLine[]; packageDiscount: number } {
+  if (!packageMeta || !packageMeta.requiredServiceIds.length) {
+    return { lines: buildPlainPrintLines(items, packageMeta), packageDiscount: 0 };
+  }
+  const display = packageMeta.display;
+  if (!display) {
+    return { lines: buildPlainPrintLines(items, packageMeta), packageDiscount: 0 };
+  }
+
+  const pricing = resolvePackageReceiptPricing(
+    display,
+    packageMeta.packagePrice,
+    packageMeta.requiredServiceIds,
+  );
+  const required = new Set(packageMeta.requiredServiceIds);
+  const addons = new Set(packageMeta.addonProIds);
+  const netOf = (item: T) =>
+    item.SPriceAfterDis != null && Number.isFinite(Number(item.SPriceAfterDis))
+      ? Number(item.SPriceAfterDis)
+      : Number(item.SPrice) * (Number(item.Qty) > 0 ? Number(item.Qty) : 1);
+
+  const anchor = items.find((it) => required.has(it.ProID) && netOf(it) > 0);
+  const includedRows: PackagePrintLine[] = pricing
+    ? pricing.items.map((it) => ({
+        label: it.label,
+        amount: 0,
+        shownAmount: it.listPrice,
+        variant: 'package_item' as const,
+      }))
+    : packageMeta.requiredServiceIds.map((id) => {
+        const fromCatalog = display.items.find((it) => it.proId === id);
+        const fromInvoice = items.find((it) => it.ProID === id);
+        return {
+          label: fromCatalog?.label ?? fromInvoice?.ProName ?? `#${id}`,
+          amount: 0,
+          shownAmount: null,
+          variant: 'package_item' as const,
+        };
+      });
+
+  const lines: PackagePrintLine[] = [
+    {
+      label: display.nameAr || packageMeta.packageName || 'Package',
+      amount: packageMeta.packagePrice > 0 ? packageMeta.packagePrice : anchor ? netOf(anchor) : 0,
+      shownAmount: pricing ? null : undefined,
+      variant: 'package_header',
+      empName: anchor?.EmpName,
+    },
+    ...includedRows,
+  ];
+
+  for (const item of items) {
+    if (required.has(item.ProID)) continue;
+    const net = netOf(item);
+    if (addons.has(item.ProID) || net > 0) {
+      lines.push({ label: item.ProName, amount: net, empName: item.EmpName });
+    }
+  }
+
+  return { lines, packageDiscount: pricing?.discount ?? 0 };
+}
+
+function buildPlainPrintLines<T extends PrintableInvoiceItem>(
+  items: T[],
+  packageMeta: PrintPackageMeta | null,
+): PackagePrintLine[] {
   if (!packageMeta || !packageMeta.requiredServiceIds.length) {
     return items.map((item) => ({
       label: item.ProName,

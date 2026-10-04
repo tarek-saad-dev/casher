@@ -3,6 +3,9 @@ import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
 import type { InvoiceItemInput } from '@/lib/actions/invoiceActions';
+import { parseGroomPackageMetadataNote } from '@/lib/booking/groomPackageBooking';
+import { loadPackageDisplayInfo } from '@/lib/catalog/packageDisplayInfo';
+import type { PackageReceiptDisplay } from '@/lib/pos/groomPackageCart';
 import {
   deleteSale,
   getSaleSnapshot,
@@ -99,11 +102,27 @@ export async function GET(
 
     const isSplitPayment = payAllocations.recordset.length > 1;
 
+    let packageDisplay: PackageReceiptDisplay | null = null;
+    const pkgNote = parseGroomPackageMetadataNote(
+      [header.Notes, header.Notes2].filter(Boolean).join(' '),
+    );
+    if (pkgNote) {
+      try {
+        const info = (await loadPackageDisplayInfo([pkgNote.packageId])).get(pkgNote.packageId);
+        if (info) {
+          packageDisplay = { nameAr: info.nameAr, originalPrice: info.originalPrice, items: info.items };
+        }
+      } catch (pkgErr) {
+        console.warn('[api/sales/id] package display lookup failed:', pkgErr);
+      }
+    }
+
     return NextResponse.json({
       ...header,
       items: details.recordset,
       paymentAllocations: payAllocations.recordset,
       isSplitPayment,
+      packageDisplay,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";

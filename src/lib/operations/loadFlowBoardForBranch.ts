@@ -19,6 +19,8 @@ import { getBranchById } from '@/lib/branch/repository';
 import { listOperationalPresenceForBranch } from '@/lib/hr/operationsDayState';
 import type { FlowBoardBarber } from '@/lib/operations/flowBoardTypes';
 import { resolveBookingOriginLabel } from '@/lib/booking/bookingOriginDisplay';
+import { parseGroomPackageMetadataNote } from '@/lib/booking/groomPackageBooking';
+import { loadPackageDisplayInfo } from '@/lib/catalog/packageDisplayInfo';
 
 export type FlowBoardPresenceMode = 'present' | 'all';
 
@@ -101,7 +103,8 @@ export async function loadFlowBoardForBranch(opts: {
           SELECT
             b.BookingID, b.AssignedEmpID, b.ClientID, b.BookingDate,
             c.Name as ClientName, b.StartTime, b.EndTime, b.Status,
-            b.Source, b.CreatedByUserID, u.UserName AS CreatedByUserName
+            b.Source, b.CreatedByUserID, u.UserName AS CreatedByUserName,
+            CASE WHEN b.Notes LIKE N'%[[]groomPackage]%' THEN b.Notes END AS PackageNotes
           FROM [dbo].[Bookings] b
           LEFT JOIN [dbo].[TblClient] c ON b.ClientID = c.ClientID
           LEFT JOIN [dbo].[TblUser] u ON u.UserID = b.CreatedByUserID
@@ -136,7 +139,8 @@ export async function loadFlowBoardForBranch(opts: {
           SELECT
             b.BookingID, b.AssignedEmpID, b.ClientID, b.BookingDate,
             c.Name as ClientName, b.StartTime, b.EndTime, b.Status,
-            b.Source, b.CreatedByUserID, u.UserName AS CreatedByUserName
+            b.Source, b.CreatedByUserID, u.UserName AS CreatedByUserName,
+            CASE WHEN b.Notes LIKE N'%[[]groomPackage]%' THEN b.Notes END AS PackageNotes
           FROM [dbo].[Bookings] b
           LEFT JOIN [dbo].[TblClient] c ON b.ClientID = c.ClientID
           LEFT JOIN [dbo].[TblUser] u ON u.UserID = b.CreatedByUserID
@@ -205,6 +209,26 @@ export async function loadFlowBoardForBranch(opts: {
       }
     } catch {
       /* optional */
+    }
+  }
+
+  const bookingPackageMap = new Map<number, { packageId: number; packageName: string }>();
+  {
+    const notesByBooking = new Map<number, number>();
+    for (const b of [...bookingsRes.recordset, ...bookingsNextRes.recordset]) {
+      const meta = b.PackageNotes ? parseGroomPackageMetadataNote(String(b.PackageNotes)) : null;
+      if (meta) notesByBooking.set(Number(b.BookingID), meta.packageId);
+    }
+    if (notesByBooking.size > 0) {
+      try {
+        const infos = await loadPackageDisplayInfo([...notesByBooking.values()]);
+        for (const [bookingId, packageId] of notesByBooking) {
+          const info = infos.get(packageId);
+          if (info) bookingPackageMap.set(bookingId, { packageId, packageName: info.nameAr });
+        }
+      } catch {
+        /* optional — cards fall back to service names */
+      }
     }
   }
 
@@ -411,6 +435,8 @@ export async function loadFlowBoardForBranch(opts: {
         durationMinutes: normalized.durationMinutes,
         customerName: b.ClientName || undefined,
         serviceNames: svcInfo?.names,
+        packageId: bookingPackageMap.get(b.BookingID)?.packageId,
+        packageName: bookingPackageMap.get(b.BookingID)?.packageName,
         barberId: empId,
         originKind: origin.kind,
         originLabel: origin.label,

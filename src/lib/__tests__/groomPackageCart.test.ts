@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildPackageCartItems,
   buildPackageAwarePrintLines,
+  buildPackageReceipt,
   findOverlappingRequiredCartItems,
   findReusableAddonProIds,
   groupCartForDisplay,
@@ -94,6 +95,70 @@ describe('regular package (October) in POS cart', () => {
     });
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatchObject({ label: 'باكدج أكتوبر', amount: 333 });
+  });
+
+  const octoberDisplay = {
+    nameAr: 'باكدج أكتوبر',
+    originalPrice: 720,
+    items: [
+      { proId: 9, label: 'Hair Cut', listPrice: 200 },
+      { proId: 10, label: 'Beard Styling & Fade', listPrice: 100 },
+      { proId: 22, label: 'Hair Oil Treatment', listPrice: 120 },
+      { proId: 29, label: 'Classic Skin Care', listPrice: 300 },
+    ],
+  };
+  const octoberMeta = {
+    packageId: 7,
+    packagePrice: 333,
+    requiredServiceIds: [9, 10, 22, 29],
+    addonProIds: [],
+  };
+
+  it('receipt itemizes list prices and prints discount = OriginalPrice - PackagePrice', () => {
+    const items = buildPackageCartItems({ resolved: resolvedOctober, barber: barber as never });
+    const { lines, packageDiscount } = buildPackageReceipt(items, {
+      ...octoberMeta,
+      display: octoberDisplay,
+    });
+    expect(packageDiscount).toBe(387);
+    expect(lines.map((l) => [l.label, l.variant, l.shownAmount])).toEqual([
+      ['باكدج أكتوبر', 'package_header', null],
+      ['Hair Cut', 'package_item', 200],
+      ['Beard Styling & Fade', 'package_item', 100],
+      ['Hair Oil Treatment', 'package_item', 120],
+      ['Classic Skin Care', 'package_item', 300],
+    ]);
+    expect(lines.reduce((s, l) => s + l.amount, 0)).toBe(333);
+    expect(lines[0].empName).toBe(barber.EmpName);
+  });
+
+  it('receipt keeps extra non-package lines priced and in the total', () => {
+    const items = [
+      ...buildPackageCartItems({ resolved: resolvedOctober, barber: barber as never }),
+      { ProID: 50, ProName: 'Extra', SPrice: 80, SPriceAfterDis: 80, EmpName: 'B' },
+    ];
+    const { lines, packageDiscount } = buildPackageReceipt(items, {
+      ...octoberMeta,
+      display: octoberDisplay,
+    });
+    expect(packageDiscount).toBe(387);
+    expect(lines.at(-1)).toMatchObject({ label: 'Extra', amount: 80 });
+    expect(lines.reduce((s, l) => s + l.amount, 0)).toBe(413);
+  });
+
+  it('no discount row when list prices do not add up to OriginalPrice', () => {
+    const items = buildPackageCartItems({ resolved: resolvedOctober, barber: barber as never });
+    const { lines, packageDiscount } = buildPackageReceipt(items, {
+      ...octoberMeta,
+      display: {
+        ...octoberDisplay,
+        items: octoberDisplay.items.map((it) => (it.proId === 9 ? { ...it, listPrice: 250 } : it)),
+      },
+    });
+    expect(packageDiscount).toBe(0);
+    expect(lines[0]).toMatchObject({ label: 'باكدج أكتوبر', amount: 333 });
+    expect(lines[0].shownAmount).toBeUndefined();
+    expect(lines.slice(1).every((l) => l.variant === 'package_item' && l.shownAmount === null)).toBe(true);
   });
 });
 
@@ -190,6 +255,32 @@ describe('groomPackageCart', () => {
       'Signature Groom',
       'إضافة 1086',
     ]);
+    expect(lines.reduce((s, l) => s + l.amount, 0)).toBe(2000);
+  });
+
+  it('groom package without OriginalPrice prints one priced line and lists included services', () => {
+    const items = buildPackageCartItems({
+      resolved: resolvedSignature([1086]),
+      barber: barber as never,
+    });
+    const required = [1049, 10, 22, 32, 1080, 1081, 1082, 12];
+    const { lines, packageDiscount } = buildPackageReceipt(items, {
+      packageId: 2,
+      packagePrice: 1500,
+      requiredServiceIds: required,
+      addonProIds: [1086],
+      display: {
+        nameAr: 'باكدج العريس سيجنتشر',
+        originalPrice: null,
+        items: required.map((id) => ({ proId: id, label: `Svc ${id}`, listPrice: 100 })),
+      },
+    });
+    expect(packageDiscount).toBe(0);
+    expect(lines[0]).toMatchObject({ label: 'باكدج العريس سيجنتشر', amount: 1500, variant: 'package_header' });
+    expect(lines[0].shownAmount).toBeUndefined();
+    expect(lines.filter((l) => l.variant === 'package_item')).toHaveLength(8);
+    expect(lines.filter((l) => l.variant === 'package_item').every((l) => l.shownAmount === null)).toBe(true);
+    expect(lines.at(-1)).toMatchObject({ label: 'إضافة 1086', amount: 500 });
     expect(lines.reduce((s, l) => s + l.amount, 0)).toBe(2000);
   });
 });
