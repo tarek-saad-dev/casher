@@ -429,7 +429,25 @@ export async function allocateInvID(
 
   const idReq = new sql.Request(transaction)
     .input('invType', sql.NVarChar(20), invType);
-  const idResult = await idReq.query(`
+  // Treasury sale deletion removes the header but retains the original cash
+  // movement (marked reversed) and its outbox history. Reusing that invoice id
+  // collides with the historical sale idempotency key. Include ALL sale cash
+  // movements, including reversed ones, under the same transaction-owned lock.
+  // Preserve the allocator's existing non-locking reads: delete/update paths
+  // acquire cash/header locks in a different order from create.
+  // Other invoice namespaces keep their existing allocation behavior.
+  const idResult = await idReq.query(tableName === 'TblinvServHead' && invType === 'مبيعات' ? `
+    SELECT ISNULL(MAX(invID), 0) + 1 AS newInvID
+    FROM (
+      SELECT MAX(invID) AS invID
+      FROM dbo.TblinvServHead WITH (NOLOCK)
+      WHERE invType = @invType
+      UNION ALL
+      SELECT MAX(invID) AS invID
+      FROM dbo.TblCashMove WITH (NOLOCK)
+      WHERE invType = @invType
+    ) AS SaleInvoiceHistory;
+  ` : `
     SELECT ISNULL(MAX(invID), 0) + 1 AS newInvID
     FROM [dbo].[${tableName}] WITH (NOLOCK)
     WHERE invType = @invType;
