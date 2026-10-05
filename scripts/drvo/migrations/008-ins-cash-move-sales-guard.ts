@@ -1,6 +1,6 @@
 import path from 'path';
 import type { ConnectionPool } from 'mssql';
-import { checksumFile } from '../checksum';
+import { checksumFile, legacyCrlfChecksumFile } from '../checksum';
 import { collectInsCashMoveSalesDirectionFailures } from '../insCashMoveSalesDirections';
 import { executeSqlFile } from '../sqlBatch';
 import type { DrvoMigrationDefinition } from '../types';
@@ -58,6 +58,7 @@ export const insCashMoveSalesGuardMigration: DrvoMigrationDefinition = {
   name: 'DRVO-009 InsCashMoveSales Treasury coexistence guard',
   dependencies: ['treasury-movement-registry'],
   checksum: checksumFile(SCHEMA),
+  legacyChecksums: [legacyCrlfChecksumFile(SCHEMA)],
   control: {
     kind: 'mixed',
     risk: 'HIGH',

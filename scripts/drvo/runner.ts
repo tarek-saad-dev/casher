@@ -15,6 +15,7 @@ import type {
   DrvoMigrationRunReport,
 } from './types';
 import { PRODUCTION_DB, STAGING_DB } from './types';
+import { isAcceptedChecksum } from './checksum';
 
 export type RunDrvoMigrationsOptions = {
   allowProduction: boolean;
@@ -107,7 +108,7 @@ export async function runDrvoMigrationsCore(args: {
   for (const migration of migrations) {
     const existing = appliedByKey.get(migration.migrationKey);
     if (existing) {
-      if (existing.Checksum !== migration.checksum) {
+      if (!isAcceptedChecksum(migration, existing.Checksum)) {
         throw new Error(
           `DRVO migration checksum mismatch for ${migration.migrationKey}: ` +
             `applied=${existing.Checksum} current=${migration.checksum}. ` +

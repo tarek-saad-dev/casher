@@ -34,6 +34,12 @@ export type DrvoMigrationDefinition = {
   /** SHA-256 hex of migration artifacts (computed at load time). */
   checksum: string;
   /**
+   * Ledger checksums also accepted for an already-applied row: the CRLF encoding of the same
+   * canonical content, for migrations released before line-ending canonicalization.
+   * New migrations must not set this.
+   */
+  legacyChecksums?: readonly string[];
+  /**
    * Source-controlled production-control metadata. This is reviewed with the
    * migration and bound into the production manifest digest.
    */

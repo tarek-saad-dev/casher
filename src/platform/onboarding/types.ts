@@ -1,3 +1,5 @@
+import type { AppCustomizations, IndustryPackDefinition } from '@/platform/packs/types';
+
 export type ProvisionTenantInput = {
   tenantCode: string;
   tenantDisplayName: string;
@@ -12,7 +14,14 @@ export type ProvisionTenantInput = {
   branchPhone?: string | null;
   branchDefaultOpenTime?: string | null;
   branchDefaultCloseTime?: string | null;
-  packCode?: string;
+  /** Resolved Industry Pack definition (injected by the caller; platform does not import packs). */
+  industryPack: IndustryPackDefinition;
+  /** Customizations applied on top of the pack default app set. */
+  appCustomizations?: AppCustomizations;
+  /** Commercial plan; defaults to starter. */
+  planCode?: string;
+  /** Defaults to trial. */
+  subscriptionStatus?: 'trial' | 'active';
 };
 
 export type ProvisionTenantActor = {
@@ -29,6 +38,11 @@ export type ProvisionTenantResult = {
   legacyUserId: number;
   branchCode: string;
   ownerLoginName: string;
+  industryPackCode: string;
+  apps: string[];
+  planCode: string;
+  subscriptionStatus: string;
+  trialEndsAt: string | null;
   readiness: TenantReadinessReport;
 };
 

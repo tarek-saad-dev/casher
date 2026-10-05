@@ -29,6 +29,26 @@ export {
   getOperationsSurfaceEntry,
   isAppEnabledForTenant,
 } from '../registry/AppRegistry';
+export {
+  getInstallableAppCatalog,
+  getAppInstallDependencies,
+  isInstallableAppCode,
+  type InstallableAppDefinition,
+} from '../apps/appCatalog';
+export type { IndustryPackDefinition, AppCustomizations } from '../packs/types';
+export {
+  evaluateSubscription,
+  SUBSCRIPTION_TRANSITIONS,
+} from '../commercial/subscriptionLifecycle';
+export {
+  SUBSCRIPTION_STATUSES,
+  DEFAULT_ONBOARDING_PLAN_CODE,
+  type SubscriptionStatus,
+  type SubscriptionEvaluation,
+  type SaaSPlanRecord,
+  type TenantSubscriptionRecord,
+  type CommercialAccessReport,
+} from '../commercial/types';
 export { resolveStaffTenantContext } from '../session/staffTenantContext';
 export type { StaffTenantContext } from '../session/staffTenantContext';
 export type { ActorContext, StaffActorContext, ActorType } from '../auth/actorContext';

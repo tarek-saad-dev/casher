@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { isAuthResult, requirePlatformOperator } from '@/lib/api-auth';
 import { sql, getPool } from '@/lib/db';
+import { findIndustryPack } from '@/packs';
 import { evaluateTenantReadiness } from '@/platform/onboarding/tenantReadiness';
+import { invalidTenantIdResponse } from '../../../_shared/platformErrors';
 
 export const runtime = 'nodejs';
 
@@ -13,6 +15,8 @@ export async function GET(_req: Request, { params }: RouteParams) {
   if (!isAuthResult(auth)) return auth;
 
   const { tenantId } = await params;
+  const invalid = invalidTenantIdResponse(tenantId);
+  if (invalid) return invalid;
   const pool = await getPool();
   const exists = await pool
     .request()
@@ -23,6 +27,6 @@ export async function GET(_req: Request, { params }: RouteParams) {
     return NextResponse.json({ error: 'Tenant not found', code: 'TENANT_NOT_FOUND' }, { status: 404 });
   }
 
-  const report = await evaluateTenantReadiness(tenantId, pool);
+  const report = await evaluateTenantReadiness(tenantId, pool, { resolvePack: findIndustryPack });
   return NextResponse.json(report);
 }

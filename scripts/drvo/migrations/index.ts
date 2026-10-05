@@ -7,6 +7,7 @@ import { operationalCalendarPrerequisitesMigration } from './005-operational-cal
 import { treasuryMovementRegistryMigration } from './006-treasury-movement-registry';
 import { bookingHoldKeyMigration } from './007-booking-hold-key';
 import { insCashMoveSalesGuardMigration } from './008-ins-cash-move-sales-guard';
+import { commercialSubscriptionTenantAppsMigration } from './009-commercial-subscription-tenant-apps';
 import { drvoModuleRequiredMigrationsFromManifest } from '../../../src/platform/drvo/moduleManifest';
 
 /** Ordered DRVO migration manifest — single source of truth for migration order. */
@@ -19,6 +20,7 @@ export const DRVO_MIGRATIONS: DrvoMigrationDefinition[] = [
   treasuryMovementRegistryMigration,
   bookingHoldKeyMigration,
   insCashMoveSalesGuardMigration,
+  commercialSubscriptionTenantAppsMigration,
 ];
 
 export function assertDrvoMigrationManifestValid(): void {

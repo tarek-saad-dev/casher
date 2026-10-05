@@ -59,7 +59,8 @@ describe('DRVO-011 tenant provisioning service', () => {
       path.join(process.cwd(), 'src/platform/onboarding/provisionTenant.ts'),
       'utf8',
     );
-    expect(provision).toContain('seedTenantRegistry');
+    expect(provision).toContain('applyCompositionInTransaction');
+    expect(provision).not.toContain('seedTenantRegistry');
     expect(provision).not.toMatch(/copyFromBranchCode|seedPartnerShares|CAMP_CAESAR/);
     expect(provision).not.toMatch(/['"]GLEEM['"]/);
     expect(provision).toContain("eventType: 'tenant.provisioned'");
