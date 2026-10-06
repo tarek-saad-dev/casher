@@ -6,7 +6,7 @@
 | Issue | https://github.com/tarek-saad-dev/casher/issues/15 |
 | Repo | `tarek-saad-dev/casher` |
 | Base branch | `main` |
-| Environment | Existing Cursor Managed Cloud Environment for this repo |
+| Environment | GitHub Actions staging gate; Cursor automations are optional and may be paused |
 | Staging database | `last132_agent` only |
 | Production database | `last132` — no access, no mutation |
 | Reuse guide | [../agent-control-plane/INSTALL.md](../agent-control-plane/INSTALL.md) |
@@ -25,8 +25,8 @@ GitHub is the source of truth. Agents do not keep a second status system. The or
 ## Operating flow
 
 1. A task is created or updated as a GitHub issue.
-2. A Cloud Agent executes that issue in the managed staging environment.
-3. The agent runs targeted tests and, when the change affects the running app, runtime or browser smoke.
+2. Implementation may be performed locally or by an agent, but GitHub remains the source of truth.
+3. Required DRVO database staging verification runs through the guarded GitHub Actions staging gate when Cursor/Cloud automations are unavailable.
 4. The agent opens or updates one pull request against `main`.
 5. Review automation reviews new commits. It does not approve and it does not merge.
 6. When a failure is caused by the PR, the agent investigates and fixes it on the same branch.
@@ -84,11 +84,25 @@ SELECT DB_NAME() AS db, SUSER_SNAME() AS login;
 -- login must be drvo_agent
 ```
 
-Never contact production `last132` from Cloud Agents.
+Current staging executor: `.github/workflows/drvo-staging-gate.yml`.
+
+The workflow:
+- runs only against the staging contract above;
+- may reuse `VPS_HOST` only as the server address;
+- requires the dedicated `DRVO_STAGING_SSH_KEY` for SSH user `drvo-tunnel`;
+- requires `DRVO_STAGING_DB_PASSWORD` for SQL login `drvo_agent`;
+- refuses repository/local production env files;
+- proves database/login identity before mutation;
+- runs migration, verify, DRVO smoke, cleanup proof and final verify;
+- never uses production deploy SSH credentials or production DB credentials as staging substitutes.
+
+Never contact production `last132` from staging executors.
 
 ## Agent model
 
-Keep exactly three automations. Do not add more in this control plane.
+Cursor automations are currently optional and may be paused. Do not make DRVO staging verification depend on them. GitHub Actions owns the database staging gate; human merge remains the only production deployment approval.
+
+When Cursor automations are enabled again, keep the command convention below and do not grant them merge or production-deploy authority.
 
 | Role | Trigger | Current handling |
 |------|---------|------------------|
