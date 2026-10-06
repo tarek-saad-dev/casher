@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 45
 
     env:
-      DRVO_STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST }}
+      DRVO_STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST || secrets.VPS_HOST }}
       DRVO_STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
       DRVO_STAGING_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
       DRVO_STAGING_DB_SERVER: 127.0.0.1
