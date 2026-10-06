@@ -86,7 +86,8 @@ describe('DRVO-004 booking path regression', () => {
     expect(route).toContain('isBookingSchedulingPortEnabled');
     expect(route).toContain('createPublicBooking');
     expect(route).toContain('createBooking');
-    expect(route).toContain('resolveBootstrapTenantId');
+    expect(route).toContain('resolvePublicTenantForBranchCode');
+    expect(route).not.toContain('resolveBootstrapTenantId');
     expect(route).toContain('buildSchedulingPortHooksForActor');
     expect(route).toContain('PLATFORM_BOOTSTRAP_REQUIRED');
   });
@@ -119,9 +120,12 @@ describe('DRVO-004 booking path regression', () => {
     }
   });
 
-  it('composition root exports bootstrap + actor builders used by routes', () => {
+  it('composition root exports tenant-authoritative actor builders used by routes (no bootstrap default)', () => {
     const composition = read('src/lib/bookingSchedulingComposition.ts');
-    expect(composition).toContain('export async function resolveBootstrapTenantId');
+    expect(composition).not.toContain('resolveBootstrapTenantId');
+    expect(composition).not.toContain('BOOTSTRAP_TENANT_CODE');
+    expect(composition).toContain('resolveUserTenantMembership');
+    expect(composition).toContain("assertTenantAppInstalled(tenantId, 'booking')");
     expect(composition).toContain('export async function buildStaffActorContext');
     expect(composition).toContain('export async function buildCustomerActorContext');
     expect(composition).toContain('export async function buildBookingSchedulingPorts');

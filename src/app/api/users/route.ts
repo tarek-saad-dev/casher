@@ -6,6 +6,12 @@ import { grantStaffAccessToAllActiveBranches } from "@/lib/branch/userLoginBranc
 import { validateUserBranchAccess } from "@/lib/branch/access";
 import { BranchDomainError } from "@/lib/branch/types";
 import { branchErrorResponse } from "@/lib/branch/operationalGates";
+import { createTenantStaffUser } from "@/lib/tenant/tenantStaffUsers";
+import { CommercialError } from "@/platform/commercial/errors";
+import {
+  assertLegacyBranchInTenant,
+  isTenantContextError,
+} from "@/platform/tenant/tenantContext";
 
 export const runtime = "nodejs";
 
@@ -13,18 +19,23 @@ export const runtime = "nodejs";
 export async function GET() {
   try {
     const user = await getSession();
-    if (!user || !hasPermission(user.UserLevel, "users.view")) {
+    if (!user || !user.TenantId || !hasPermission(user.UserLevel, "users.view")) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
     }
 
     const db = await getPool();
-    const result = await db.request().query(`
+    const result = await db
+      .request()
+      .input("tenantId", sql.UniqueIdentifier, user.TenantId)
+      .query(`
       SELECT u.UserID, u.UserName, u.UserLevel, u.loginName, u.ShiftID, u.CardNO,
              s.ShiftName,
              def.BranchID AS DefaultBranchID,
              b.BranchCode AS DefaultBranchCode,
              b.BranchName AS DefaultBranchName
       FROM [dbo].[TblUser] u
+      INNER JOIN [dbo].[TenantMembership] m
+        ON m.LegacyUserId = u.UserID AND m.TenantId = @tenantId
       LEFT JOIN [dbo].[TblShift] s ON u.ShiftID = s.ShiftID
       LEFT JOIN [dbo].[TblUserBranchAccess] def
         ON def.UserID = u.UserID AND def.IsDefault = 1 AND def.IsActive = 1
@@ -47,9 +58,14 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const sessionUser = await getSession();
-    if (!sessionUser || !hasPermission(sessionUser.UserLevel, "users.create")) {
+    if (
+      !sessionUser ||
+      !sessionUser.TenantId ||
+      !hasPermission(sessionUser.UserLevel, "users.create")
+    ) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
     }
+    const tenantId = sessionUser.TenantId;
 
     const body = await req.json();
     const { UserName, loginName, Password, UserLevel, ShiftID, BranchID } = body;
@@ -69,41 +85,44 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Creator must themselves have access to the starting branch they assign.
+    // Creator must themselves have access to the starting branch they assign,
+    // and the branch must be a Location of the creator's tenant (non-disclosing).
     await validateUserBranchAccess(sessionUser.UserID, branchId);
+    try {
+      await assertLegacyBranchInTenant(tenantId, branchId);
+    } catch (err) {
+      if (isTenantContextError(err)) {
+        return NextResponse.json({ error: "الفرع غير موجود" }, { status: 404 });
+      }
+      throw err;
+    }
 
-    const db = await getPool();
-
-    // Check duplicate loginName
-    const dup = await db
-      .request()
-      .input("loginName", sql.NVarChar(50), loginName)
-      .query(
-        `SELECT UserID FROM [dbo].[TblUser] WHERE loginName = @loginName AND isDeleted = 0`,
-      );
-    if (dup.recordset.length > 0) {
+    const createdResult = await createTenantStaffUser({
+      tenantId,
+      userName: UserName,
+      loginName,
+      password: Password,
+      userLevel: UserLevel || "user",
+      shiftId: ShiftID || 1,
+    });
+    if (!createdResult.ok) {
       return NextResponse.json(
         { error: "اسم الدخول مستخدم بالفعل" },
         { status: 400 },
       );
     }
-
-    const result = await db
-      .request()
-      .input("UserName", sql.NVarChar(50), UserName)
-      .input("loginName", sql.NVarChar(50), loginName)
-      .input("Password", sql.NVarChar(50), Password)
-      .input("UserLevel", sql.NVarChar(20), UserLevel || "user")
-      .input("ShiftID", sql.Int, ShiftID || 1)
-      .input("CardNO", sql.NVarChar(50), "").query(`
-        INSERT INTO [dbo].[TblUser] (UserName, loginName, Password, UserLevel, ShiftID, CardNO, isDeleted)
-        OUTPUT INSERTED.UserID, INSERTED.UserName, INSERTED.loginName, INSERTED.UserLevel, INSERTED.ShiftID
-        VALUES (@UserName, @loginName, @Password, @UserLevel, @ShiftID, @CardNO, 0)
-      `);
-
-    const created = result.recordset[0];
-    // Grant operate access on all active branches so staff can switch freely.
+    const { UserID, UserName: createdName, loginName: createdLogin, UserLevel: createdLevel, ShiftID: createdShift } =
+      createdResult.user;
+    const created = {
+      UserID,
+      UserName: createdName,
+      loginName: createdLogin,
+      UserLevel: createdLevel,
+      ShiftID: createdShift,
+    };
+    // Grant operate access on all active tenant branches so staff can switch freely.
     const loginBranch = await grantStaffAccessToAllActiveBranches({
+      tenantId,
       userId: Number(created.UserID),
       actorUserId: sessionUser.UserID,
       preferredBranchId: branchId,
@@ -124,6 +143,12 @@ export async function POST(req: NextRequest) {
       { status: 201 },
     );
   } catch (err: unknown) {
+    if (err instanceof CommercialError) {
+      return NextResponse.json(
+        { error: err.message, code: err.code },
+        { status: err.status },
+      );
+    }
     const mapped = branchErrorResponse(err);
     if (mapped) return mapped;
     if (err instanceof BranchDomainError) {

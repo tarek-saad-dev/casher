@@ -170,8 +170,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 export async function DELETE(req: NextRequest, { params }: Ctx) {
   try {
     const session = await getSession();
-    if (!session)
+    if (!session || !session.TenantId)
       return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
+    const sessionTenantId = session.TenantId;
 
     const { id } = await params;
     const incomeId = parseInt(id);
@@ -205,7 +206,10 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
         return snap as unknown as Record<string, unknown>;
       },
       execute: async (transaction) =>
-        deleteIncome(transaction, incomeId, loaded.ownership.branchId),
+        deleteIncome(transaction, incomeId, loaded.ownership.branchId, {
+          tenantId: sessionTenantId,
+          userId: session.UserID,
+        }),
       loadNewData: async () => null,
     });
 

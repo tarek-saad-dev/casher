@@ -59,6 +59,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     const schema = await detectQueueTicketsSchema();
     if (schema.hasBranchID) {
       const canManage = await userCanManageOpsBranchRecord({
+        tenantId: branch.tenantId,
         userId: branch.userId,
         sessionBranchId: branch.branchId,
         recordBranchId: result.recordset[0].BranchID,
@@ -113,6 +114,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       }
       if (
         !(await userCanManageOpsBranchRecord({
+          tenantId: branch.tenantId,
           userId: branch.userId,
           sessionBranchId: branch.branchId,
           recordBranchId: ownerCheck.recordset[0].BranchID,

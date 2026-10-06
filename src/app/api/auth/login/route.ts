@@ -9,6 +9,11 @@ import {
 import { getUserAccess } from '@/lib/permissions-server';
 import { BranchDomainError, BRANCH_SESSION_VERSION } from '@/lib/branch/types';
 import { resolveLoginDefaultBranch } from '@/lib/branch/access';
+import {
+  isTenantContextError,
+  resolveStaffTenantContextForRequest,
+  type StaffTenantContext,
+} from '@/platform/tenant/tenantContext';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -157,17 +162,22 @@ export async function POST(req: NextRequest) {
       branchCode: defaultAccess.branchCode,
     });
 
-    let tenantId: string | undefined;
-    let membershipId: string | undefined;
+    let tenant: StaffTenantContext;
     try {
-      const { resolveStaffTenantContext } = await import(
-        '@/platform/session/staffTenantContext'
-      );
-      const tenantCtx = await resolveStaffTenantContext({ UserID: user.UserID });
-      tenantId = tenantCtx?.tenantId;
-      membershipId = tenantCtx?.membershipId;
-    } catch {
-      /* DRVO-003 tables may be absent until staging migration runs */
+      tenant = await resolveStaffTenantContextForRequest({
+        userId: user.UserID,
+        activeBranchId: defaultAccess.branchId,
+        preferredTenantId: null,
+      });
+    } catch (err: unknown) {
+      if (isTenantContextError(err)) {
+        logStep(requestId, 'reject:tenant-context', { code: err.code, userId: user.UserID });
+        return NextResponse.json(
+          { error: 'تعذر تحديد حساب المنشأة لهذا المستخدم', code: 'TENANT_CONTEXT_REQUIRED' },
+          { status: 403 },
+        );
+      }
+      throw err;
     }
 
     await createSession({
@@ -177,8 +187,8 @@ export async function POST(req: NextRequest) {
       ActiveBranchID: defaultAccess.branchId,
       ActiveBranchCode: defaultAccess.branchCode,
       BranchSessionVersion: BRANCH_SESSION_VERSION,
-      ...(tenantId ? { TenantId: tenantId } : {}),
-      ...(membershipId ? { MembershipId: membershipId } : {}),
+      TenantId: tenant.tenantId,
+      MembershipId: tenant.membershipId,
     });
 
     let redirectTo = '/income/pos';

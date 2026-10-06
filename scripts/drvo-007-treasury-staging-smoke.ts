@@ -85,7 +85,8 @@ async function main() {
   const sql = mssql.default;
   const { getPool, closePool } = await import('../src/lib/db');
   const { applyDrvo007TreasuryMigration } = await import('./drvo007Migration');
-  const { resolveBootstrapTenantId } = await import('../src/lib/bookingSchedulingComposition');
+  const { resolveLegacyBootstrapTenantId } = await import('../src/platform/tenant/legacyBootstrapSeam');
+  const resolveBootstrapTenantId = () => resolveLegacyBootstrapTenantId('casher-boot-staging-smoke');
   const { buildTreasuryWritePorts } = await import('../src/lib/treasuryComposition');
   const { createIncomeThroughTreasury } = await import('../src/apps/treasury/application/createIncome');
   const { createExpenseThroughTreasury } = await import('../src/apps/treasury/application/createExpense');

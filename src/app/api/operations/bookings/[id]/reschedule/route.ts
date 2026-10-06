@@ -48,7 +48,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
     const result = isBookingSchedulingPortEnabled()
       ? await (async () => {
-          const actor = await buildStaffActorContext(session.UserID);
+          const actor = await buildStaffActorContext(session.UserID, session.TenantId);
           const schedulingPortHooks = await buildSchedulingPortHooksForActor(actor);
           return rescheduleOpsBooking({ ...moveInput, schedulingPortHooks });
         })()

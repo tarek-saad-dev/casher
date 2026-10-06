@@ -3,6 +3,7 @@ import { getPool, sql } from '@/lib/db';
 import { grantUserBranchAccess } from './bootstrap';
 import { getBranchById, listActiveBranches } from './repository';
 import { BranchDomainError } from './types';
+import { listTenantLegacyBranchIds } from '@/platform/tenant/tenantContext';
 
 export type AssignUserLoginBranchResult = {
   userId: number;
@@ -87,16 +88,22 @@ export async function assignUserLoginBranch(input: {
 }
 
 /**
- * Grant CanOperate on every active branch so staff can switch freely,
- * then set preferredBranchId (or the first active branch) as session start.
+ * Grant CanOperate on every active branch OF THE TENANT so staff can switch freely,
+ * then set preferredBranchId (or the first tenant branch) as session start.
+ * Branches of other tenants are never granted (DRVO-013).
  */
 export async function grantStaffAccessToAllActiveBranches(input: {
+  tenantId: string;
   userId: number;
   actorUserId: number;
   preferredBranchId?: number | null;
   grantReason?: string;
 }): Promise<AssignUserLoginBranchResult> {
-  const branches = await listActiveBranches();
+  const [allActive, tenantBranchIds] = await Promise.all([
+    listActiveBranches(),
+    listTenantLegacyBranchIds(input.tenantId),
+  ]);
+  const branches = allActive.filter((b) => tenantBranchIds.has(b.branchId));
   if (branches.length === 0) {
     throw new BranchDomainError(
       'BRANCH_NOT_FOUND',

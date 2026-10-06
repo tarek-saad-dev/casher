@@ -8,7 +8,12 @@ import {
   type DeleteCashMoveWithLedgerResult,
 } from '@/lib/services/cashMoveHardDeleteService';
 import { reverseTreasuryOwnedMovement } from '@/apps/treasury/application/reverseTreasuryMovement';
-import { buildStaffActorContext, resolveBootstrapTenantId } from '@/lib/bookingSchedulingComposition';
+import { buildStaffActorContext } from '@/lib/bookingSchedulingComposition';
+import {
+  assertLegacyBranchInTenant,
+  isTenantContextError,
+  requireActorTenantId,
+} from '@/platform/tenant/tenantContext';
 import { buildTreasuryWritePorts } from '@/lib/treasuryComposition';
 import { syncEmployeeFundingFromCashMove } from '@/lib/services/employeeLedgerFundingSyncService';
 import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
@@ -127,8 +132,8 @@ export async function updateIncome(
 export async function deleteIncome(
   transaction: sql.Transaction,
   id: number,
-  activeBranchId?: number,
-  options?: { userId?: number; idempotencyKey?: string },
+  activeBranchId: number | undefined,
+  options: { tenantId: string; userId: number; idempotencyKey?: string },
 ): Promise<Extract<DeleteCashMoveWithLedgerResult, { deleted: true }>> {
   const existing = await getIncomeSnapshot(transaction, id);
   if (!existing) {
@@ -141,9 +146,14 @@ export async function deleteIncome(
     throw new Error('غير موجود');
   }
 
-  const tenantId = options?.userId
-    ? (await buildStaffActorContext(options.userId)).tenantId ?? (await resolveBootstrapTenantId())
-    : await resolveBootstrapTenantId();
+  const actor = await buildStaffActorContext(options.userId, options.tenantId);
+  const tenantId = requireActorTenantId(actor, 'deleteIncome');
+  try {
+    await assertLegacyBranchInTenant(tenantId, Number(existing.BranchID), { executor: transaction });
+  } catch (err) {
+    if (isTenantContextError(err)) throw new Error('غير موجود');
+    throw err;
+  }
   const owned = await new sql.Request(transaction)
     .input('tenantId', sql.UniqueIdentifier, tenantId)
     .input('cashMoveId', sql.Int, id)
@@ -153,19 +163,10 @@ export async function deleteIncome(
     `);
 
   if (owned.recordset.length > 0) {
-    const actor = options?.userId
-      ? await buildStaffActorContext(options.userId)
-      : {
-          actorType: 'staff' as const,
-          actorId: '0',
-          tenantId,
-          membershipId: null,
-          viewLocationId: null,
-        };
     const ports = await buildTreasuryWritePorts(actor);
     const reversed = await reverseTreasuryOwnedMovement(transaction, ports, {
       cashMoveId: id,
-      idempotencyKey: options?.idempotencyKey ?? `income.reverse:${id}`,
+      idempotencyKey: options.idempotencyKey ?? `income.reverse:${id}`,
       reason: 'delete',
     });
     return { deleted: true, ledgerDeletedCount: reversed.ledgerVoidedCount };

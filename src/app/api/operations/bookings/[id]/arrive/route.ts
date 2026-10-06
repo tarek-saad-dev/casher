@@ -165,6 +165,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 
     if (
       !(await userCanManageOpsBranchRecord({
+        tenantId: branch.tenantId,
         userId: branch.userId,
         sessionBranchId: branch.branchId,
         recordBranchId: booking.BranchID,

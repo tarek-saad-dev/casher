@@ -74,6 +74,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     if (
       !(await userCanManageOpsBranchRecord({
+        tenantId: branch.tenantId,
         userId: branch.userId,
         sessionBranchId: branch.branchId,
         recordBranchId: ticket.BranchID,

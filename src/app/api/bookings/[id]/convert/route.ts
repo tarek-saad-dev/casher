@@ -39,7 +39,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     const businessDayId = owned.ownership.businessDayId!;
 
     if (isBookingSchedulingPortEnabled()) {
-      const actor = await buildStaffActorContext(userID);
+      const actor = await buildStaffActorContext(userID, session?.TenantId);
       const deps = await buildBookingSchedulingPorts(actor);
       const converted = await convertBooking(deps, {
         bookingId,

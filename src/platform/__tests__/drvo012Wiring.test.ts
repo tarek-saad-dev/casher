@@ -154,17 +154,25 @@ describe('DRVO-012 onboarding', () => {
   });
 });
 
-describe('DRVO-012 limit enforcement scope (DRVO-013 deferral)', () => {
-  it('does not wire limits into legacy staff branch/user creation routes', () => {
-    for (const rel of [
-      'src/app/api/admin/branches/provision/route.ts',
-      'src/app/api/users/route.ts',
-      'src/lib/branch/branchProvisioningService.ts',
-      'src/lib/branch/bootstrap.ts',
-    ]) {
-      const src = read(rel);
-      expect(src, rel).not.toMatch(/assertCanAdd(Branch|User)|canCreate(Branch|User)/);
+describe('DRVO-012 limit enforcement scope (wired by DRVO-013 on the authoritative tenant)', () => {
+  it('staff branch/user creation enforces limits for the resolved tenant, never a default tenant', () => {
+    const provisioning = read('src/lib/branch/branchProvisioningService.ts');
+    expect(provisioning).toMatch(/assertCanAddBranch\(tx, tenantId\)/);
+    expect(read('src/app/api/admin/branches/provision/route.ts')).toContain('tenantId: admin.tenantId');
+
+    const staffUsers = read('src/lib/tenant/tenantStaffUsers.ts');
+    expect(staffUsers).toMatch(/assertCanAddUser\(tx, input\.tenantId\)/);
+    const usersRoute = read('src/app/api/users/route.ts');
+    expect(usersRoute).toContain('createTenantStaffUser');
+    expect(usersRoute).not.toMatch(/assertCanAdd(Branch|User)/);
+
+    for (const src of [provisioning, staffUsers, usersRoute]) {
+      expect(src).not.toMatch(/resolveBootstrapTenantId|BOOTSTRAP_TENANT_CODE|resolveLegacyBootstrapTenantId/);
     }
+  });
+
+  it('legacy branch bootstrap stays outside commercial limits', () => {
+    expect(read('src/lib/branch/bootstrap.ts')).not.toMatch(/assertCanAdd(Branch|User)|canCreate(Branch|User)/);
   });
 
   it('has no broad fail-open for missing SaaS tables', () => {

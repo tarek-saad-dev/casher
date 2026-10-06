@@ -25,7 +25,7 @@ export async function GET() {
       trigger: 'BEST_EFFORT_CATCH_UP',
     });
 
-    const actor = await buildStaffActorContext(branch.userId);
+    const actor = await buildStaffActorContext(branch.userId, branch.tenantId);
     const calendar = await buildOperationalCalendarPort(actor);
     const openDay = await getOpenBusinessDay(branch.branchId);
     const expectedDate = await calendar.getBusinessDate(actor, {

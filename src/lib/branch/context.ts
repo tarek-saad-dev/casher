@@ -9,6 +9,15 @@ import {
 } from './repository';
 import { validateUserBranchAccess } from './access';
 import {
+  assertLegacyBranchInTenant,
+  isTenantContextError,
+  resolveStaffTenantContextForRequest,
+} from '@/platform/tenant/tenantContext';
+import {
+  assertTenantSubscriptionActive,
+  TenantAccessDeniedError,
+} from '@/platform/commercial/tenantAccessGate';
+import {
   BRANCH_SESSION_VERSION,
   BranchDomainError,
   type ActiveBranchContext,
@@ -137,7 +146,46 @@ async function resolveActiveBranchContext(at: Date): Promise<ActiveBranchContext
     throw new BranchDomainError('BRANCH_ACCESS_MISMATCH', 'عدم تطابق صلاحية الفرع', 403);
   }
 
-  return toContext(payload.UserID, branch, access);
+  const tenantId = await verifySessionTenantBinding(payload);
+  return { ...toContext(payload.UserID, branch, access), tenantId };
+}
+
+/**
+ * DRVO-013: the signed session carries the tenant resolved at login/switch; re-verify that the
+ * membership and tenant are still active, that the active branch is still a Location of that
+ * tenant, and that the tenant's DRVO-012 subscription allows access.
+ */
+async function verifySessionTenantBinding(payload: {
+  UserID: number;
+  ActiveBranchID: number;
+  TenantId?: string;
+}): Promise<string> {
+  if (!payload.TenantId) {
+    throw new BranchDomainError('SESSION_UPGRADE_REQUIRED', 'يلزم إعادة تسجيل الدخول', 401);
+  }
+  let tenantId: string;
+  try {
+    const tenant = await resolveStaffTenantContextForRequest({
+      userId: payload.UserID,
+      activeBranchId: payload.ActiveBranchID,
+      preferredTenantId: payload.TenantId,
+    });
+    tenantId = tenant.tenantId;
+  } catch (err) {
+    if (isTenantContextError(err)) {
+      throw new BranchDomainError('BRANCH_ACCESS_MISMATCH', 'يلزم إعادة تسجيل الدخول', 401);
+    }
+    throw err;
+  }
+  try {
+    await assertTenantSubscriptionActive(tenantId);
+  } catch (err) {
+    if (err instanceof TenantAccessDeniedError) {
+      throw new BranchDomainError('SUBSCRIPTION_INACTIVE', err.message, err.status);
+    }
+    throw err;
+  }
+  return tenantId;
 }
 
 export async function requireActiveBranchContext(
@@ -197,13 +245,35 @@ export async function requireBranchReportAccess(
  * when an operating branch is needed; provisioning itself uses admin only.
  */
 export async function requireBranchAdminAccess(): Promise<
-  | { userId: number; role: 'admin' }
+  | { userId: number; role: 'admin'; tenantId: string }
   | NextResponse
 > {
   const { requireAdmin, isAuthResult } = await import('@/lib/api-auth');
   const auth = await requireAdmin();
   if (!isAuthResult(auth)) return auth;
-  return { userId: auth.userId, role: 'admin' };
+  return { userId: auth.userId, role: 'admin', tenantId: auth.tenantId };
+}
+
+/**
+ * DRVO-013: branch administration by id is limited to Locations of the admin's tenant.
+ * Returns a non-disclosing 404 for branches of other tenants (same as an unknown id).
+ */
+export async function branchAdminTenantScopeResponse(
+  admin: { tenantId: string },
+  branchId: number,
+): Promise<NextResponse | null> {
+  try {
+    await assertLegacyBranchInTenant(admin.tenantId, branchId);
+    return null;
+  } catch (err) {
+    if (isTenantContextError(err)) {
+      return NextResponse.json(
+        { ok: false, error: 'الفرع غير موجود', code: 'BRANCH_NOT_FOUND' },
+        { status: 404 },
+      );
+    }
+    throw err;
+  }
 }
 
 export async function validateSessionBranch(

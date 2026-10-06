@@ -2,6 +2,7 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import type { Transaction } from 'mssql';
 import { getPool, sql } from '@/lib/db';
+import { invalidateTenantAccessGate } from '@/platform/commercial/accessGateMemo';
 import { assertNotBootstrapTenant } from '@/platform/commercial/bootstrapGuard';
 import type { SqlExecutor } from '@/platform/commercial/planRepository';
 import { publishPlatformOutboxEvent } from '@/platform/outbox/publisher';
@@ -306,6 +307,7 @@ async function withTenantAppsTx<T>(
     await acquireTenantApplock(tx, tenantId, TENANT_COMMERCIAL_LOCK_PARTS);
     const out = await fn(tx);
     await tx.commit();
+    invalidateTenantAccessGate(tenantId);
     return out;
   } catch (err) {
     try {

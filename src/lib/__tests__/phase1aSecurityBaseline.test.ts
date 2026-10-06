@@ -127,8 +127,30 @@ describe('requireDevelopmentAdmin / db toggle auth', () => {
         ActiveBranchID: 1,
         ActiveBranchCode: 'GLEEM',
         BranchSessionVersion: 1,
+        TenantId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        MembershipId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       })),
       destroySession: vi.fn(async () => undefined),
+    }));
+    vi.doMock('@/platform/tenant/tenantContext', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('@/platform/tenant/tenantContext')>()),
+      resolveStaffTenantContextForRequest: vi.fn(async () => ({
+        kind: 'staff',
+        tenantId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        tenantCode: 'TENANT_A',
+        membershipId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        userId: user.UserID,
+        activeLocation: {
+          locationId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+          legacyBranchId: 1,
+          branchCode: 'GLEEM',
+          timezone: 'Africa/Cairo',
+        },
+      })),
+    }));
+    vi.doMock('@/platform/commercial/tenantAccessGate', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('@/platform/commercial/tenantAccessGate')>()),
+      assertTenantSubscriptionActive: vi.fn(async () => undefined),
     }));
     vi.doMock('@/lib/branch/repository', () => ({
       getUserActiveStatus: vi.fn(async () => ({

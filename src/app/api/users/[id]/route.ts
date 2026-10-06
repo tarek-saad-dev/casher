@@ -6,6 +6,25 @@ import { grantStaffAccessToAllActiveBranches } from '@/lib/branch/userLoginBranc
 import { validateUserBranchAccess } from '@/lib/branch/access';
 import { BranchDomainError } from '@/lib/branch/types';
 import { branchErrorResponse } from '@/lib/branch/operationalGates';
+import {
+  assertLegacyBranchInTenant,
+  assertLegacyUserInTenant,
+  isTenantContextError,
+} from '@/platform/tenant/tenantContext';
+
+const USER_NOT_FOUND = { error: 'المستخدم غير موجود' } as const;
+
+/** Cross-tenant users are indistinguishable from missing users. */
+async function isUserInTenant(tenantId: string, userId: number): Promise<boolean> {
+  if (!Number.isInteger(userId) || userId <= 0) return false;
+  try {
+    await assertLegacyUserInTenant(tenantId, userId);
+    return true;
+  } catch (err) {
+    if (isTenantContextError(err)) return false;
+    throw err;
+  }
+}
 
 // GET /api/users/[id]
 export async function GET(
@@ -14,15 +33,19 @@ export async function GET(
 ) {
   try {
     const sessionUser = await getSession();
-    if (!sessionUser || !hasPermission(sessionUser.UserLevel, 'users.view')) {
+    if (!sessionUser || !sessionUser.TenantId || !hasPermission(sessionUser.UserLevel, 'users.view')) {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
 
     const { id } = await params;
+    const userId = parseInt(id, 10);
+    if (!(await isUserInTenant(sessionUser.TenantId, userId))) {
+      return NextResponse.json(USER_NOT_FOUND, { status: 404 });
+    }
     const db = await getPool();
     const result = await db
       .request()
-      .input('id', sql.Int, parseInt(id, 10))
+      .input('id', sql.Int, userId)
       .query(`
         SELECT u.UserID, u.UserName, u.UserLevel, u.loginName, u.ShiftID, u.CardNO,
                s.ShiftName,
@@ -37,7 +60,7 @@ export async function GET(
         WHERE u.UserID = @id AND u.isDeleted = 0
       `);
     if (result.recordset.length === 0) {
-      return NextResponse.json({ error: 'المستخدم غير موجود' }, { status: 404 });
+      return NextResponse.json(USER_NOT_FOUND, { status: 404 });
     }
     return NextResponse.json(result.recordset[0]);
   } catch (err: unknown) {
@@ -53,12 +76,16 @@ export async function PUT(
 ) {
   try {
     const sessionUser = await getSession();
-    if (!sessionUser || !hasPermission(sessionUser.UserLevel, 'users.edit')) {
+    if (!sessionUser || !sessionUser.TenantId || !hasPermission(sessionUser.UserLevel, 'users.edit')) {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
+    const tenantId = sessionUser.TenantId;
 
     const { id } = await params;
     const userId = parseInt(id, 10);
+    if (!(await isUserInTenant(tenantId, userId))) {
+      return NextResponse.json(USER_NOT_FOUND, { status: 404 });
+    }
     const body = await req.json();
     const { UserName, loginName, Password, UserLevel, ShiftID, BranchID } = body;
 
@@ -91,19 +118,32 @@ export async function PUT(
       return NextResponse.json({ error: 'لا توجد بيانات للتحديث' }, { status: 400 });
     }
 
+    let branchId: number | null = null;
+    if (BranchID != null && BranchID !== '') {
+      branchId = Number(BranchID);
+      if (!Number.isFinite(branchId) || branchId <= 0) {
+        return NextResponse.json({ error: 'فرع غير صالح' }, { status: 400 });
+      }
+      try {
+        await assertLegacyBranchInTenant(tenantId, branchId);
+      } catch (err) {
+        if (isTenantContextError(err)) {
+          return NextResponse.json({ error: 'الفرع غير موجود' }, { status: 404 });
+        }
+        throw err;
+      }
+      await validateUserBranchAccess(sessionUser.UserID, branchId);
+    }
+
     if (sets.length > 0) {
       await r.query(`UPDATE [dbo].[TblUser] SET ${sets.join(', ')} WHERE UserID = @id`);
     }
 
     let loginBranch: Awaited<ReturnType<typeof grantStaffAccessToAllActiveBranches>> | null = null;
-    if (BranchID != null && BranchID !== '') {
-      const branchId = Number(BranchID);
-      if (!Number.isFinite(branchId) || branchId <= 0) {
-        return NextResponse.json({ error: 'فرع غير صالح' }, { status: 400 });
-      }
-      await validateUserBranchAccess(sessionUser.UserID, branchId);
-      // Heal missing access + enable free switching across all active branches.
+    if (branchId != null) {
+      // Heal missing access + enable free switching across all active tenant branches.
       loginBranch = await grantStaffAccessToAllActiveBranches({
+        tenantId,
         userId,
         actorUserId: sessionUser.UserID,
         preferredBranchId: branchId,
@@ -144,7 +184,7 @@ export async function DELETE(
 ) {
   try {
     const sessionUser = await getSession();
-    if (!sessionUser || !hasPermission(sessionUser.UserLevel, 'users.delete')) {
+    if (!sessionUser || !sessionUser.TenantId || !hasPermission(sessionUser.UserLevel, 'users.delete')) {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
 
@@ -153,6 +193,9 @@ export async function DELETE(
 
     if (sessionUser.UserID === userID) {
       return NextResponse.json({ error: 'لا يمكنك حذف حسابك الحالي' }, { status: 400 });
+    }
+    if (!(await isUserInTenant(sessionUser.TenantId, userID))) {
+      return NextResponse.json(USER_NOT_FOUND, { status: 404 });
     }
 
     const db = await getPool();

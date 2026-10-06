@@ -3,6 +3,7 @@ import { getActiveBranchContext, requireBranchAdminAccess } from '@/lib/branch/c
 import { listAllBranches } from '@/lib/branch/repository';
 import { serializeBranch } from '@/lib/branch/serializeBranch';
 import { BranchDomainError } from '@/lib/branch/types';
+import { listTenantLegacyBranchIds } from '@/platform/tenant/tenantContext';
 
 export const runtime = 'nodejs';
 
@@ -15,11 +16,15 @@ export async function GET() {
   if (admin instanceof NextResponse) return admin;
 
   try {
-    const [branches, active] = await Promise.all([listAllBranches(), getActiveBranchContext()]);
+    const [branches, active, tenantBranchIds] = await Promise.all([
+      listAllBranches(),
+      getActiveBranchContext(),
+      listTenantLegacyBranchIds(admin.tenantId),
+    ]);
     return NextResponse.json({
       ok: true,
       activeBranchId: active?.branchId ?? null,
-      branches: branches.map(serializeBranch),
+      branches: branches.filter((b) => tenantBranchIds.has(b.branchId)).map(serializeBranch),
     });
   } catch (err) {
     if (err instanceof BranchDomainError) {

@@ -116,17 +116,19 @@ async function main() {
     const appPool = await dbModule.getPool();
     await assertIdentity(appPool);
 
+    // DRVO-013: target CASHER_BOOT by name (casher-boot-staging-smoke seam), never "first tenant".
     const tenantRes = await pool.request().query(`
-      SELECT TOP 1 TenantId FROM dbo.Tenant WHERE Status = N'active';
+      SELECT TenantId FROM dbo.Tenant WHERE Code = N'CASHER_BOOT' AND Status = N'active';
     `);
     const tenantId = String(tenantRes.recordset[0]?.TenantId ?? '');
-    if (!tenantId) throw new Error('No active tenant');
+    if (!tenantId) throw new Error('CASHER_BOOT tenant is not active');
 
-    const branches = await pool.request().query(`
-      SELECT BranchID, timeZone, businessDayCutoffTime
-      FROM dbo.TblBranch
-      WHERE isActive = 1
-      ORDER BY BranchID;
+    const branches = await pool.request().input('tenantId', sql.UniqueIdentifier, tenantId).query(`
+      SELECT b.BranchID, b.timeZone, b.businessDayCutoffTime
+      FROM dbo.TblBranch b
+      INNER JOIN dbo.Location l ON l.LegacyBranchId = b.BranchID
+      WHERE b.isActive = 1 AND l.TenantId = @tenantId AND l.Status = N'active'
+      ORDER BY b.BranchID;
     `);
     if (branches.recordset.length < 1) throw new Error('No active branches');
 

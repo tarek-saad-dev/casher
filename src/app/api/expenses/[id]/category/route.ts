@@ -18,7 +18,8 @@ export async function DELETE(
     }
 
     const user = await getSession();
-    if (!user) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    if (!user || !user.TenantId) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    const sessionTenantId = user.TenantId;
 
     const { loadAndAuthorizeFinancialMutation, financialNotFoundResponse } = await import(
       '@/lib/branch/financialOwnership'
@@ -54,7 +55,11 @@ export async function DELETE(
         if (!snap || Number(snap.BranchID) !== Number(loaded.ownership.branchId)) return null;
         return snap as unknown as Record<string, unknown>;
       },
-      execute: async (transaction) => deleteExpense(transaction, expenseId, loaded.ownership.branchId),
+      execute: async (transaction) =>
+        deleteExpense(transaction, expenseId, loaded.ownership.branchId, {
+          tenantId: sessionTenantId,
+          userId: user.UserID,
+        }),
       loadNewData: async () => null,
     });
 

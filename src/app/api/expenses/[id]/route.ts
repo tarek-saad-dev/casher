@@ -125,7 +125,8 @@ export async function DELETE(
     }
 
     const user = await getSession();
-    if (!user) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    if (!user || !user.TenantId) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    const sessionTenantId = user.TenantId;
 
     const { loadAndAuthorizeFinancialMutation, financialNotFoundResponse } = await import(
       '@/lib/branch/financialOwnership'
@@ -152,7 +153,10 @@ export async function DELETE(
       loadOldData: async (transaction) =>
         getExpenseSnapshot(transaction, expenseId) as unknown as Record<string, unknown> | null,
       execute: async (transaction) =>
-        deleteExpense(transaction, expenseId, loaded.ownership.branchId),
+        deleteExpense(transaction, expenseId, loaded.ownership.branchId, {
+          tenantId: sessionTenantId,
+          userId: user.UserID,
+        }),
       loadNewData: async () => null,
     });
 
