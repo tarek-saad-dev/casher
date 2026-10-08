@@ -7,7 +7,7 @@ export const runtime = 'nodejs';
 
 export async function GET(request: Request) {
   try {
-    requireDrvowaIntegrationAuth(request);
+    await requireDrvowaIntegrationAuth(request);
     return Response.json({
       contractVersion: 'drvowa-erp-v1',
       provider: 'DRVOERP',
