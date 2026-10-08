@@ -5,7 +5,13 @@
  * Business features use @/modules/messaging (sendTemplateMessage / sendMessage).
  */
 
+import { randomUUID } from 'node:crypto';
+
 import { getConfig } from './config';
+import {
+  isDrvowaEventMessagingActive,
+  sendDrvowaEventMessage,
+} from '@/lib/integrations/drvowaClient';
 import {
   sendGenericWhatsAppPayload,
   sendGenericWhatsAppGroupPayload,
@@ -37,9 +43,6 @@ function skipIfIntegrationDisabled(): WhatsAppSendFailure | null {
 export async function sendWhatsAppMessage(
   input: GenericWhatsAppMessageInput,
 ): Promise<GenericWhatsAppSendResult> {
-  const disabled = skipIfIntegrationDisabled();
-  if (disabled) return disabled;
-
   if (typeof input.phone !== 'string' || input.phone.trim().length === 0) {
     console.log('[whatsapp] Generic message skipped: missing phone');
     return { sent: false, skipped: true, reason: 'missing_phone' };
@@ -49,6 +52,64 @@ export async function sendWhatsAppMessage(
     console.log('[whatsapp] Generic message skipped: empty message');
     return { sent: false, skipped: true, reason: 'invalid_payload' };
   }
+
+  const drvowaActive = await isDrvowaEventMessagingActive();
+  if (drvowaActive) {
+    const metadata = input.metadata ?? {};
+    const sourceRaw =
+      typeof metadata.source === 'string'
+        ? metadata.source
+        : typeof metadata.templateKey === 'string'
+          ? metadata.templateKey
+          : 'erp.message';
+    const event = sourceRaw.trim().slice(0, 128) || 'erp.message';
+    const eventId =
+      typeof input.idempotencyKey === 'string' && input.idempotencyKey.trim()
+        ? input.idempotencyKey.trim()
+        : `erp-message:${randomUUID()}`;
+
+    try {
+      const result = await sendDrvowaEventMessage({
+        eventId,
+        event,
+        recipient: input.phone,
+        message: input.message,
+        metadata: {
+          ...metadata,
+          deliveryProvider: 'DRVOWA',
+        },
+      });
+
+      if (result.ok && result.status === 'SENT' && result.providerMessageId) {
+        return {
+          sent: true,
+          skipped: false,
+          status: 'sent',
+          phone: input.phone,
+          messageId: result.providerMessageId,
+        };
+      }
+
+      return {
+        sent: false,
+        skipped: false,
+        reason: 'remote_error',
+        error: `DRVOWA_${result.status || 'SEND_FAILED'}`,
+      };
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      console.log(`[whatsapp] DRVOWA send failed: ${error}`);
+      return {
+        sent: false,
+        skipped: false,
+        reason: 'remote_error',
+        error,
+      };
+    }
+  }
+
+  const disabled = skipIfIntegrationDisabled();
+  if (disabled) return disabled;
 
   try {
     return await sendGenericWhatsAppPayload({
