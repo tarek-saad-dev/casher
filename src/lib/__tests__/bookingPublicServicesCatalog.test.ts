@@ -38,14 +38,14 @@ describe('bookingPublicServicesCatalog', () => {
 
   it('requires branchCode via central resolver (BRANCH_REQUIRED path)', () => {
     expect(routeSrc).toContain('extractPublicBranchCode');
-    expect(routeSrc).toContain('publicBookingErrorResponse');
+    expect(routeSrc).toMatch(/publicBookingErrorResponse|finalizePublicBookingError/);
     expect(routeSrc).toContain('PublicBookingBranchContextError');
   });
 
   it('OPTIONS returns CORS via publicBookingCors', () => {
     expect(routeSrc).toMatch(/export async function OPTIONS/);
-    expect(routeSrc).toContain('publicBookingOptionsResponse');
-    expect(routeSrc).toContain('PUBLIC_BOOKING_ROUTE_CORS');
+    expect(routeSrc).toMatch(/publicBooking(Tenant)?OptionsResponse/);
+    expect(routeSrc).toMatch(/PUBLIC_BOOKING_ROUTE_CORS|publicBookingTenantOptionsResponse\(req, '/);
   });
 
   it('GLEEM-shaped catalog keeps numeric prices and positive durations', () => {

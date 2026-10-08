@@ -23,6 +23,10 @@ import {
 const executeAiToolPlan: typeof executeAiToolPlanUnscoped = (requests, ctx) =>
   inTenant(TENANT_A, () => executeAiToolPlanUnscoped(requests, ctx));
 
+vi.mock('@/modules/messaging/ai/tools/messagingBookingTenant', () => ({
+  resolveMessagingBookingTenantId: async () => '11111111-1111-4111-8111-111111111111',
+}));
+
 vi.mock('@/lib/booking/publicBookingBranchContext', () => ({
   listPublicDiscoverableBranches: vi.fn(async () => [
     {

@@ -169,6 +169,8 @@ export type PublicBookingCreateInput = {
   schedulingPortHooks?: SchedulingPortHooks;
   /** When true, emit PlatformOutbox only — no legacy WhatsApp notify row. */
   useExtractedEventDelivery?: boolean;
+  /** DRVO-019: tenant resolved by the route; branch, services and barber must belong to it. */
+  expectedTenantId?: string | null;
 };
 
 export type PublicBookingCreateResult = {
@@ -640,6 +642,7 @@ export async function createPublicBooking(
       purpose: evalPurpose,
       previewQueryParam: input.previewQueryParam,
       auth: input.auth,
+      expectedTenantId: input.expectedTenantId,
     });
   } catch (err) {
     if (err instanceof PublicBookingSelectionError) {
@@ -698,6 +701,7 @@ export async function createPublicBooking(
     branchCode: precheck.branchContext.branchCode,
     purpose: createPurpose,
     auth: input.auth,
+    expectedTenantId: input.expectedTenantId,
   });
   if (
     !branchNow.bookingEnabled ||

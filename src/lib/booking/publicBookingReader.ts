@@ -24,6 +24,9 @@ import {
 import type { PublicBookingErrorCode } from '@/lib/booking/publicBookingErrorCatalog';
 import { resolveBarberPublicImageUrl } from '@/lib/booking/publicBookingBarberPolicy';
 import { getBarberNameEnByArabicName } from '@/lib/barberImages';
+import { lookupClientIdByPhone } from '@/lib/client/clientPhoneLookup';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
+import { tenantLocationBranchSql } from '@/lib/booking/publicBookingTenancy';
 
 const DEFAULT_UPCOMING_LIMIT = 10;
 const MAX_UPCOMING_LIMIT = 25;
@@ -311,20 +314,24 @@ function computeCanCancel(args: {
   return cutoff.windowOpen;
 }
 
-async function loadServiceLines(bookingId: number): Promise<PublicBookingServiceLine[]> {
-  const map = await loadServiceLinesBatch([bookingId]);
+async function loadServiceLines(
+  bookingId: number,
+  tenantId: string,
+): Promise<PublicBookingServiceLine[]> {
+  const map = await loadServiceLinesBatch([bookingId], tenantId);
   return map.get(bookingId) ?? [];
 }
 
 async function loadServiceLinesBatch(
   bookingIds: number[],
+  tenantId: string,
 ): Promise<Map<number, PublicBookingServiceLine[]>> {
   const out = new Map<number, PublicBookingServiceLine[]>();
   const ids = [...new Set(bookingIds.filter((id) => Number.isFinite(id) && id > 0))];
   if (!ids.length) return out;
 
   const db = await getPool();
-  const req = db.request();
+  const req = db.request().input('tenantId', sql.UniqueIdentifier, tenantId);
   const placeholders: string[] = [];
   ids.forEach((id, i) => {
     const key = `bid${i}`;
@@ -341,7 +348,7 @@ async function loadServiceLinesBatch(
       p.ProName,
       p.ProNameAr
     FROM dbo.BookingServices bs
-    LEFT JOIN dbo.TblPro p ON p.ProID = bs.ProID
+    LEFT JOIN dbo.TblPro p ON p.ProID = bs.ProID AND p.TenantId = @tenantId
     WHERE bs.BookingID IN (${placeholders.join(',')})
     ORDER BY bs.BookingID, bs.ProID
   `);
@@ -466,15 +473,20 @@ const HEAD_SELECT = `
   b.CancelledAt
 `;
 
-async function fetchHeadByCode(code: string): Promise<BookingHeadRow | null> {
+async function fetchHeadByCode(code: string, tenantId: string): Promise<BookingHeadRow | null> {
   const db = await getPool();
-  const r = await db.request().input('code', sql.NVarChar(32), code).query(`
+  const r = await db
+    .request()
+    .input('code', sql.NVarChar(32), code)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .query(`
     SELECT TOP 1 ${HEAD_SELECT}
     FROM dbo.Bookings b
     LEFT JOIN dbo.TblBranch br ON br.BranchID = b.BranchID
-    LEFT JOIN dbo.TblClient c ON c.ClientID = b.ClientID
-    LEFT JOIN dbo.TblEmp e ON e.EmpID = b.AssignedEmpID
+    LEFT JOIN dbo.TblClient c ON c.ClientID = b.ClientID AND c.TenantId = @tenantId
+    LEFT JOIN dbo.TblEmp e ON e.EmpID = b.AssignedEmpID AND e.TenantId = @tenantId
     WHERE b.BookingCode = @code
+      AND ${tenantLocationBranchSql('b.BranchID')}
   `);
   return (r.recordset[0] as BookingHeadRow) ?? null;
 }
@@ -520,6 +532,8 @@ function assertOwnership(args: {
 }
 
 export async function getPublicBookingByCode(args: {
+  /** DRVO-019: tenant that owns the booking's branch (resolved from the code by the route). */
+  tenantId: string;
   code: unknown;
   phone?: unknown;
   accessToken?: unknown;
@@ -543,7 +557,7 @@ export async function getPublicBookingByCode(args: {
 
   let row: BookingHeadRow | null;
   try {
-    row = await fetchHeadByCode(code);
+    row = await fetchHeadByCode(code, args.tenantId);
   } catch {
     throw new PublicBookingReadError('BOOKING_LOOKUP_UNAVAILABLE');
   }
@@ -563,7 +577,7 @@ export async function getPublicBookingByCode(args: {
     throw new PublicBookingReadError('BOOKING_NOT_FOUND_OR_UNAUTHORIZED');
   }
 
-  const services = await loadServiceLines(Number(row.BookingID));
+  const services = await loadServiceLines(Number(row.BookingID), args.tenantId);
 
   if (ownership === 'none') {
     return {
@@ -586,10 +600,13 @@ export async function getPublicBookingByCode(args: {
 }
 
 export async function listPublicUpcomingBookings(args: {
+  /** DRVO-019: only this tenant's customers and branches are searched. */
+  tenantId: string;
   phone: unknown;
   fromDate?: unknown;
   limit?: unknown;
 }): Promise<{ bookings: PublicBookingDto[]; meta: { count: number; hasMore: boolean } }> {
+  const tenantId = requireMasterDataTenantId(args.tenantId, 'public upcoming bookings');
   const normalizedPhone = normalizePublicBookingPhone(String(args.phone ?? ''));
   if (!normalizedPhone || !isValidPhone(normalizedPhone)) {
     throw new PublicBookingReadError('INVALID_CUSTOMER_PHONE');
@@ -611,9 +628,16 @@ export async function listPublicUpcomingBookings(args: {
   const db = await getPool();
   const now = new Date();
   try {
+    // No customer of this tenant has the phone → nothing to list (never another tenant's rows).
+    const owner = await lookupClientIdByPhone(tenantId, normalizedPhone);
+    if (owner.matchCount === 0) {
+      return { bookings: [], meta: { count: 0, hasMore: false } };
+    }
+
     const req = db
       .request()
       .input('phone', sql.NVarChar(30), normalizedPhone)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
       .input('now', sql.DateTime2, now)
       .input('take', sql.Int, limit + 1);
     if (fromDate) req.input('fromDate', sql.Date, fromDate);
@@ -623,8 +647,10 @@ export async function listPublicUpcomingBookings(args: {
       FROM dbo.Bookings b
       INNER JOIN dbo.TblClient c ON c.ClientID = b.ClientID
       LEFT JOIN dbo.TblBranch br ON br.BranchID = b.BranchID
-      LEFT JOIN dbo.TblEmp e ON e.EmpID = b.AssignedEmpID
+      LEFT JOIN dbo.TblEmp e ON e.EmpID = b.AssignedEmpID AND e.TenantId = @tenantId
       WHERE c.Mobile = @phone
+        AND c.TenantId = @tenantId
+        AND ${tenantLocationBranchSql('b.BranchID')}
         AND b.CancelledAt IS NULL
         AND (
           (b.AbsoluteEndUtc IS NOT NULL AND b.AbsoluteEndUtc > @now)
@@ -653,6 +679,7 @@ export async function listPublicUpcomingBookings(args: {
 
     const serviceMap = await loadServiceLinesBatch(
       eligibleRows.map((row) => Number(row.BookingID)),
+      tenantId,
     );
     const out: PublicBookingDto[] = eligibleRows.map((row) =>
       mapRowToDto(row, serviceMap.get(Number(row.BookingID)) ?? [], 'summary'),

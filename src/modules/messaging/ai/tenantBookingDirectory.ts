@@ -5,6 +5,7 @@ import {
 } from '@/lib/booking/publicBookingBranchContext';
 import { listPublicUpcomingBookings } from '@/lib/booking/publicBookingReader';
 import { filterToCurrentTenantBranches } from '@/modules/messaging/tenancy/tenantBusinessScope';
+import { requireMessagingTenantId } from '@/modules/messaging/tenancy/messagingTenantScope';
 
 /**
  * Booking readers seen through the current messaging tenant. The public booking readers span
@@ -20,9 +21,12 @@ export async function listTenantDiscoverableBranches(): Promise<PublicDiscoverab
 }
 
 export async function listTenantUpcomingBookings(
-  args: Parameters<typeof listPublicUpcomingBookings>[0],
+  args: Omit<Parameters<typeof listPublicUpcomingBookings>[0], 'tenantId'>,
 ): Promise<Awaited<ReturnType<typeof listPublicUpcomingBookings>>> {
-  const result = await listPublicUpcomingBookings(args);
+  const result = await listPublicUpcomingBookings({
+    ...args,
+    tenantId: requireMessagingTenantId('listTenantUpcomingBookings'),
+  });
   const bookings = await filterToCurrentTenantBranches(result.bookings, (b) => ({
     branchCode: b.branch?.branchCode ?? null,
   }));

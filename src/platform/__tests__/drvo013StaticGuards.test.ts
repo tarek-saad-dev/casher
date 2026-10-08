@@ -53,6 +53,8 @@ describe('DRVO-013 no default / first tenant', { timeout: 120_000 }, () => {
         'src/app/api/payroll/daily/auto-generate/route.ts',
         // platform-operator-tenant + legacy-global-data
         'src/lib/api-auth.ts',
+        // public-booking-cut-compat: CUT widget requests that carry no branchCode
+        'src/lib/booking/publicBookingTenancy.ts',
         'src/platform/tenant/legacyBootstrapSeam.ts',
       ].sort(),
     );
@@ -66,6 +68,7 @@ describe('DRVO-013 no default / first tenant', { timeout: 120_000 }, () => {
       'legacy-payroll-job-log',
       'casher-boot-staging-smoke',
       'casher-boot-operator-script',
+      'public-booking-cut-compat',
     ]) {
       expect(src).toContain(`'${seam}':`);
     }

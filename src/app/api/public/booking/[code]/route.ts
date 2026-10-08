@@ -1,9 +1,4 @@
-import { NextRequest } from 'next/server';
-import { publicBookingErrorResponse } from '@/lib/booking/publicBookingErrorCatalog';
-import {
-  publicBookingOptionsResponse,
-  PUBLIC_BOOKING_ROUTE_CORS,
-} from '@/lib/booking/publicBookingCors';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   PublicBookingReadError,
   getPublicBookingByCode,
@@ -15,6 +10,8 @@ import {
   gatePublicBookingRoute,
   finalizePublicBookingError,
   finalizePublicBookingJson,
+  publicBookingTenantOptionsResponse,
+  requirePublicBookingCodeTenancy,
 } from '@/lib/booking/publicBookingRouteGate';
 
 export const runtime = 'nodejs';
@@ -22,12 +19,7 @@ export const runtime = 'nodejs';
 type RouteContext = { params: Promise<{ code: string }> };
 
 export async function OPTIONS(req: NextRequest) {
-  const cors = PUBLIC_BOOKING_ROUTE_CORS['lookup'];
-  return publicBookingOptionsResponse({
-    request: req,
-    allowedMethods: [...cors.methods],
-    allowedHeaders: cors.headers,
-  });
+  return publicBookingTenantOptionsResponse(req, 'lookup');
 }
 
 /**
@@ -35,6 +27,7 @@ export async function OPTIONS(req: NextRequest) {
  * Phase 7A — canonical lookup via publicBookingReader.
  * Ownership: ?phone=… and/or ?accessToken=… (or Authorization: Bearer).
  * Code-only returns temporary minimal summary (no customer PII).
+ * DRVO-019: scoped to the tenant that owns the booking's branch.
  */
 export async function GET(req: NextRequest, context: RouteContext) {
   const { code } = await context.params;
@@ -51,7 +44,14 @@ export async function GET(req: NextRequest, context: RouteContext) {
       auth && /^Bearer\s+/i.test(auth) ? auth.replace(/^Bearer\s+/i, '').trim() : null;
     const accessToken = tokenParam || bearer;
 
+    const tenancy = await requirePublicBookingCodeTenancy(req, gate, code, {
+      invalid: 'INVALID_BOOKING_CODE',
+      notFound: phone || accessToken ? 'BOOKING_NOT_FOUND_OR_UNAUTHORIZED' : 'BOOKING_NOT_FOUND',
+    });
+    if (tenancy instanceof NextResponse) return tenancy;
+
     const result = await getPublicBookingByCode({
+      tenantId: tenancy.tenantId,
       code,
       phone,
       accessToken,

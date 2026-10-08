@@ -1,10 +1,12 @@
 import 'server-only';
 import { listTenantDiscoverableBranches } from '@/modules/messaging/ai/tenantBookingDirectory';
-import {  resolvePublicBookingBranchContext,
+import {
+  resolvePublicBookingBranchContext,
   PublicBookingBranchContextError,
 } from '@/lib/booking/publicBookingBranchContext';
 import { getPublicBookingServicesCatalog } from '@/lib/booking/publicBookingServices';
 import { listPublicBookingBarbers } from '@/lib/booking/publicBookingBarbers';
+import { resolveMessagingBookingTenantId } from './messagingBookingTenant';
 import {
   getPublicAvailableSlots,
   PublicBookingAvailabilityError,
@@ -68,6 +70,7 @@ async function resolveEmpId(args: {
     return { empId: null, ambiguous: false, matches: [] };
   }
   const list = await listPublicBookingBarbers({
+    tenantId: await resolveMessagingBookingTenantId(),
     mode: 'branch',
     branchCode: args.branchCode,
     date: args.date ?? null,

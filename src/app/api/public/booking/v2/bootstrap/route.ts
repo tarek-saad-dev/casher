@@ -3,27 +3,20 @@
  * Cached catalog for Hawai /operations + cutsaloon.com (no live availability).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  publicBookingOptionsResponse,
-  PUBLIC_BOOKING_ROUTE_CORS,
-  withPublicBookingCors,
-} from '@/lib/booking/publicBookingCors';
+import { withPublicBookingCors } from '@/lib/booking/publicBookingCors';
 import {
   gatePublicBookingRoute,
   finalizePublicBookingError,
   finalizePublicBookingJson,
+  publicBookingTenantOptionsResponse,
+  requirePublicBookingRouteTenancy,
 } from '@/lib/booking/publicBookingRouteGate';
 import { applyPublicBookingResponseHeaders } from '@/lib/booking/publicBookingResponse';
 
 export const runtime = 'nodejs';
 
 export async function OPTIONS(req: NextRequest) {
-  const cors = PUBLIC_BOOKING_ROUTE_CORS['v2-bootstrap'];
-  return publicBookingOptionsResponse({
-    request: req,
-    allowedMethods: [...cors.methods],
-    allowedHeaders: cors.headers,
-  });
+  return publicBookingTenantOptionsResponse(req, 'v2-bootstrap');
 }
 
 export async function GET(req: NextRequest) {
@@ -35,11 +28,18 @@ export async function GET(req: NextRequest) {
     const preview = searchParams.get('preview');
     const ifNoneMatch = req.headers.get('if-none-match');
 
+    const tenancy = await requirePublicBookingRouteTenancy(req, gate, {
+      branchCode: searchParams.get('branchCode'),
+      allowCutCompat: true,
+    });
+    if (tenancy instanceof NextResponse) return tenancy;
+
     const {
       buildPublicBookingV2Bootstrap,
       PUBLIC_BOOTSTRAP_CACHE_CONTROL,
     } = await import('@/lib/booking/v2Frontend/buildPublicBootstrap');
     const { body, etag, cacheHit, timings } = await buildPublicBookingV2Bootstrap({
+      tenantId: tenancy.tenantId,
       previewQueryParam: preview,
     });
 
@@ -55,6 +55,7 @@ export async function GET(req: NextRequest) {
         allowedMethods: [...gate.cors.methods],
         allowedHeaders: gate.cors.headers,
         cacheControl: PUBLIC_BOOTSTRAP_CACHE_CONTROL,
+        allowedOrigins: gate.tenantOrigins ?? null,
       });
       applyPublicBookingResponseHeaders(notModified, {
         requestId: gate.requestId,

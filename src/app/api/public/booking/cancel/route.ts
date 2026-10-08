@@ -3,11 +3,7 @@
  * Phase 7B — generic compatibility cancel (code in body).
  * Rejects numeric BookingID. Requires ownership + idempotency key.
  */
-import { NextRequest } from 'next/server';
-import {
-  publicBookingOptionsResponse,
-  PUBLIC_BOOKING_ROUTE_CORS,
-} from '@/lib/booking/publicBookingCors';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   cancelPublicBooking,
   PublicBookingCancelError,
@@ -17,7 +13,6 @@ import {
   buildCustomerActorContext,
   buildSchedulingPortHooksForActor,
 } from '@/lib/bookingSchedulingComposition';
-import { resolvePublicTenantForBookingCode } from '@/lib/booking/publicBookingTenant';
 import {
   describePlatformBootstrapFailure,
   isPlatformBootstrapFailure,
@@ -28,17 +23,14 @@ import {
   gatePublicBookingRoute,
   finalizePublicBookingError,
   finalizePublicBookingJson,
+  publicBookingTenantOptionsResponse,
+  requirePublicBookingCodeTenancy,
 } from '@/lib/booking/publicBookingRouteGate';
 
 export const runtime = 'nodejs';
 
 export async function OPTIONS(req: NextRequest) {
-  const cors = PUBLIC_BOOKING_ROUTE_CORS['cancel'];
-  return publicBookingOptionsResponse({
-    request: req,
-    allowedMethods: [...cors.methods],
-    allowedHeaders: cors.headers,
-  });
+  return publicBookingTenantOptionsResponse(req, 'cancel');
 }
 
 export async function POST(req: NextRequest) {
@@ -67,8 +59,16 @@ export async function POST(req: NextRequest) {
       req.headers.get('idempotency-key') ||
       null;
 
+    const code = String(body.code ?? '');
+    const tenancy = await requirePublicBookingCodeTenancy(req, gate, code, {
+      invalid: 'INVALID_BOOKING_CODE',
+      notFound: 'BOOKING_NOT_FOUND_OR_UNAUTHORIZED',
+    });
+    if (tenancy instanceof NextResponse) return tenancy;
+
     const cancelInput = {
-      code: String(body.code ?? ''),
+      tenantId: tenancy.tenantId,
+      code,
       phone: body.phone != null ? String(body.phone) : null,
       accessToken:
         body.bookingAccessToken != null
@@ -88,17 +88,10 @@ export async function POST(req: NextRequest) {
 
     const result = isBookingSchedulingPortEnabled()
       ? await (async () => {
-          const owner = await resolvePublicTenantForBookingCode(cancelInput.code, 'public/booking/cancel');
-          if (!owner.ok) {
-            throw new PublicBookingCancelError(
-              owner.reason === 'invalid_code' ? 'INVALID_BOOKING_CODE' : 'BOOKING_NOT_FOUND_OR_UNAUTHORIZED',
-            );
-          }
-          const actor = await buildCustomerActorContext(owner.tenant.tenantId);
+          const actor = await buildCustomerActorContext(tenancy.tenantId);
           const schedulingPortHooks = await buildSchedulingPortHooksForActor(actor);
           return cancelBooking({
             ...cancelInput,
-            tenantId: owner.tenant.tenantId,
             schedulingPortHooks,
           });
         })()

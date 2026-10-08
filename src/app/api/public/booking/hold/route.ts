@@ -23,7 +23,14 @@ import {
   PUBLIC_PLATFORM_BOOTSTRAP_MESSAGE,
 } from '@/lib/booking/platformBootstrapErrors';
 import { PUBLIC_BOOKING_ERROR_CATALOG } from '@/lib/booking/publicBookingErrorCatalog';
-import { resolvePublicBookingBranchContext } from '@/lib/booking/publicBookingBranchContext';
+import {
+  PublicBookingBranchContextError,
+  resolvePublicBookingBranchContext,
+} from '@/lib/booking/publicBookingBranchContext';
+import {
+  isPublicBookingAvailableForTenant,
+  isPublicBookingTenantEmployee,
+} from '@/lib/booking/publicBookingTenancy';
 import { logBookingAvailabilityMetric } from '@/lib/availability/bookingAvailabilityMetrics';
 
 export const runtime = 'nodejs';
@@ -53,10 +60,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const ctx = await resolvePublicBookingBranchContext({
-      branchCode,
-      purpose: 'public_booking',
-    });
+    let ctx;
+    try {
+      ctx = await resolvePublicBookingBranchContext({
+        branchCode,
+        purpose: 'public_booking',
+      });
+    } catch (err) {
+      if (err instanceof PublicBookingBranchContextError) {
+        const def = PUBLIC_BOOKING_ERROR_CATALOG[err.code];
+        return NextResponse.json(
+          { ok: false, code: def.code, messageAr: def.messageAr },
+          { status: def.httpStatus },
+        );
+      }
+      throw err;
+    }
+    if (!(await isPublicBookingTenantEmployee(ctx.tenantId, empId))) {
+      const def = PUBLIC_BOOKING_ERROR_CATALOG.BARBER_NOT_FOUND;
+      return NextResponse.json(
+        { ok: false, code: def.code, messageAr: def.messageAr },
+        { status: def.httpStatus },
+      );
+    }
     if (!ctx.bookingEnabled || !ctx.publicBookingEnabled) {
       logBookingAvailabilityMetric({
         event: 'public_booking_gate_failure',
@@ -207,7 +233,9 @@ export async function DELETE(req: NextRequest) {
     const released = isBookingSchedulingPortEnabled()
       ? await (async () => {
           const holdTenant = await resolvePublicTenantForHoldKey(holdKey, 'public/booking/hold:delete');
-          if (!holdTenant) return false;
+          if (!holdTenant || !(await isPublicBookingAvailableForTenant(holdTenant.tenantId))) {
+            return false;
+          }
           await releaseHoldBooking(holdTenant.tenantId, holdKey);
           return true;
         })()

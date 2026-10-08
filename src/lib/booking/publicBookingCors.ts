@@ -195,6 +195,8 @@ export function resetPublicBookingCorsCacheForTests(): void {
 export function resolvePublicBookingCorsPolicy(args: {
   requestOrigin: string | null | undefined;
   environment?: EnvLike;
+  /** DRVO-019: tenant-resolved allowlist; replaces the env (CUT legacy) list when present. */
+  allowedOrigins?: readonly string[] | null;
 }): ResolvedPublicBookingCorsPolicy {
   const env = args.environment ?? process.env;
   const raw = args.requestOrigin;
@@ -218,7 +220,7 @@ export function resolvePublicBookingCorsPolicy(args: {
     };
   }
 
-  const { origins } = getPublicBookingAllowedOrigins(env);
+  const origins = args.allowedOrigins ?? getPublicBookingAllowedOrigins(env).origins;
   if (origins.includes(normalized)) {
     return { kind: 'allowed', origin: normalized };
   }
@@ -255,6 +257,7 @@ export type BuildCorsHeadersArgs = {
   environment?: EnvLike;
   pathname?: string;
   method?: string;
+  allowedOrigins?: readonly string[] | null;
 };
 
 /**
@@ -267,6 +270,7 @@ export function buildPublicBookingCorsHeaders(
   const policy = resolvePublicBookingCorsPolicy({
     requestOrigin: args.requestOrigin,
     environment: args.environment,
+    allowedOrigins: args.allowedOrigins,
   });
 
   const methods = [...new Set([...args.allowedMethods, 'OPTIONS' as const])]
@@ -349,6 +353,7 @@ export function withPublicBookingCors(
     allowedHeaders?: readonly string[];
     cacheControl?: string | null;
     environment?: EnvLike;
+    allowedOrigins?: readonly string[] | null;
   },
 ): NextResponse {
   const cors = buildPublicBookingCorsHeaders({
@@ -357,6 +362,7 @@ export function withPublicBookingCors(
     allowedHeaders: options.allowedHeaders,
     forPreflight: false,
     environment: options.environment,
+    allowedOrigins: options.allowedOrigins,
     pathname: (() => {
       try {
         return new URL(request.url).pathname;
@@ -384,11 +390,13 @@ export function publicBookingOptionsResponse(args: {
   allowedMethods: PublicBookingCorsMethod[];
   allowedHeaders?: readonly string[];
   environment?: EnvLike;
+  allowedOrigins?: readonly string[] | null;
 }): NextResponse {
   const origin = args.request.headers.get('origin');
   const policy = resolvePublicBookingCorsPolicy({
     requestOrigin: origin,
     environment: args.environment,
+    allowedOrigins: args.allowedOrigins,
   });
 
   let pathname: string | undefined;
@@ -431,6 +439,7 @@ export function publicBookingOptionsResponse(args: {
     environment: args.environment,
     pathname,
     method: 'OPTIONS',
+    allowedOrigins: args.allowedOrigins,
   });
 
   return new NextResponse(null, {

@@ -2,6 +2,7 @@ import { resolvePublicBookingBranchContext } from '@/lib/booking/publicBookingBr
 import { listTenantDiscoverableBranches } from '@/modules/messaging/ai/tenantBookingDirectory';
 import { getPublicBookingServicesCatalog } from '@/lib/booking/publicBookingServices';
 import { listPublicBookingBarbers } from '@/lib/booking/publicBookingBarbers';
+import { resolveMessagingBookingTenantId } from '../tools/messagingBookingTenant';
 import { resolveCustomerDateText, scoreServiceMatch, textMatchesQuery } from '../tools/dateText';
 
 export type ResolvedService = {
@@ -130,6 +131,7 @@ export async function resolveEmployeeByText(args: {
   date?: string | null;
 }): Promise<ResolveEmployeeResult> {
   const list = await listPublicBookingBarbers({
+    tenantId: await resolveMessagingBookingTenantId(),
     mode: 'branch',
     branchCode: args.branchCode,
     date: args.date ?? null,

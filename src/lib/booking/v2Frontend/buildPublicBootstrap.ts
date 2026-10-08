@@ -7,10 +7,10 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
 import {
-  listPublicDiscoverableBranches,
   resolvePublicBookingBranchContext,
   toPublicBranchSafeWire,
 } from '@/lib/booking/publicBookingBranchContext';
+import { listPublicDiscoverableBranchesForTenant } from '@/lib/booking/publicBookingTenancy';
 import { getPublicBookingServicesCatalog } from '@/lib/booking/publicBookingServices';
 import { listPublicBookingBarbers } from '@/lib/booking/publicBookingBarbers';
 import { getPublicSettings } from '@/lib/publicBookingHelpers';
@@ -27,7 +27,12 @@ import {
   type V2PublicBookingSettingsDto,
 } from '@/lib/booking/v2Frontend/publicSafeDtos';
 
-const BOOTSTRAP_SCOPE = 'public:all';
+/** DRVO-019: one snapshot per tenant — never a cross-tenant catalogue. */
+function bootstrapScope(tenantId: string): string {
+  return `public:tenant:${tenantId.toLowerCase()}`;
+}
+
+const knownBootstrapScopes = new Set<string>();
 /** L1 soft TTL — keep short so PUBLIC_LIVE enable/disable surfaces quickly. */
 const BOOTSTRAP_L1_TTL_MS = 30_000;
 /** SQL snapshot freshness before forced rebuild (branch discovery must not lag for minutes). */
@@ -112,14 +117,15 @@ function toBarberDto(b: {
   };
 }
 
-async function rebuildBootstrap(opts?: {
+async function rebuildBootstrap(opts: {
+  tenantId: string;
   previewQueryParam?: string | null;
 }): Promise<{
   body: V2PublicBootstrapResponse;
   timings: Omit<BootstrapBuildTimings, 'totalMs' | 'source' | 'sqlStoreMs' | 'connectionMs'>;
 }> {
   const t0 = performance.now();
-  const discoverable = await listPublicDiscoverableBranches();
+  const discoverable = await listPublicDiscoverableBranchesForTenant(opts.tenantId);
   const discoverMs = performance.now() - t0;
 
   const tPar0 = performance.now();
@@ -128,14 +134,16 @@ async function rebuildBootstrap(opts?: {
   // per employee (~10s+/branch on cloud) and caused the historical ~21s cold path.
   const [barbersGlobal, ...branchPacks] = await Promise.all([
     listPublicBookingBarbers({
+      tenantId: opts.tenantId,
       mode: 'global',
-      previewQueryParam: opts?.previewQueryParam,
+      previewQueryParam: opts.previewQueryParam,
     }),
     ...discoverable.map(async (b) => {
       const ctx = await resolvePublicBookingBranchContext({
         branchCode: b.branchCode,
         purpose: 'public_booking',
-        previewQueryParam: opts?.previewQueryParam,
+        previewQueryParam: opts.previewQueryParam,
+        expectedTenantId: opts.tenantId,
       });
       const [catalog, settings] = await Promise.all([
         getPublicBookingServicesCatalog(ctx),
@@ -277,7 +285,8 @@ async function rebuildBootstrap(opts?: {
  * Build (or reuse cached) public bootstrap payload.
  * Does NOT include live availability.
  */
-export async function buildPublicBookingV2Bootstrap(opts?: {
+export async function buildPublicBookingV2Bootstrap(opts: {
+  tenantId: string;
   previewQueryParam?: string | null;
   forceRefresh?: boolean;
 }): Promise<{
@@ -288,8 +297,10 @@ export async function buildPublicBookingV2Bootstrap(opts?: {
 }> {
   const tAll0 = performance.now();
   const cache = getStaticBootstrapCache();
+  const BOOTSTRAP_SCOPE = bootstrapScope(opts.tenantId);
+  knownBootstrapScopes.add(BOOTSTRAP_SCOPE);
 
-  if (!opts?.forceRefresh) {
+  if (!opts.forceRefresh) {
     const hit = cache.get<V2PublicBootstrapResponse>('branches', BOOTSTRAP_SCOPE);
     if (hit && Date.now() - hit.builtAtMs < BOOTSTRAP_L1_TTL_MS) {
       return {
@@ -397,8 +408,9 @@ export async function buildPublicBookingV2Bootstrap(opts?: {
 
 /** Invalidate bootstrap when admin catalog changes (call from catalog invalidators). */
 export function invalidatePublicBookingV2Bootstrap(): void {
-  getStaticBootstrapCache().invalidate('branches', BOOTSTRAP_SCOPE);
+  getStaticBootstrapCache().invalidate('branches');
+  const scopes = [...knownBootstrapScopes];
   void import('@/lib/booking/cache/BootstrapSqlStore')
-    .then((m) => m.getBootstrapSqlStore().invalidate(BOOTSTRAP_SCOPE))
+    .then((m) => Promise.all(scopes.map((s) => m.getBootstrapSqlStore().invalidate(s))))
     .catch(() => undefined);
 }

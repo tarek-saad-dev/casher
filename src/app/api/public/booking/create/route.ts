@@ -5,10 +5,6 @@ import {
   resolveInternalOpsBookingRequest,
 } from '@/lib/booking/internalOpsBookingRequest';
 import {
-  publicBookingOptionsResponse,
-  PUBLIC_BOOKING_ROUTE_CORS,
-} from '@/lib/booking/publicBookingCors';
-import {
   PublicBookingCreateError,
   createPublicBooking,
 } from '@/lib/booking/publicBookingCreate';
@@ -24,6 +20,8 @@ import {
   gatePublicBookingRoute,
   finalizePublicBookingError,
   finalizePublicBookingJson,
+  publicBookingTenantOptionsResponse,
+  requirePublicBookingRouteTenancy,
 } from '@/lib/booking/publicBookingRouteGate';
 import {
   describePlatformBootstrapFailure,
@@ -33,12 +31,7 @@ import {
 export const runtime = 'nodejs';
 
 export async function OPTIONS(req: NextRequest) {
-  const cors = PUBLIC_BOOKING_ROUTE_CORS['create'];
-  return publicBookingOptionsResponse({
-    request: req,
-    allowedMethods: [...cors.methods],
-    allowedHeaders: cors.headers,
-  });
+  return publicBookingTenantOptionsResponse(req, 'create');
 }
 
 /**
@@ -82,6 +75,17 @@ export async function POST(req: NextRequest) {
       purpose = 'internal_preview';
       auth = internal.auth;
       bookingSource = internal.bookingSource;
+    }
+
+    const tenancy = await requirePublicBookingRouteTenancy(req, gate, { branchCode });
+    if (tenancy instanceof NextResponse) return tenancy;
+    // Staff may only book into their own tenant's branches.
+    if (
+      isInternalOps &&
+      auth?.tenantId &&
+      auth.tenantId.toLowerCase() !== tenancy.tenantId.toLowerCase()
+    ) {
+      return finalizePublicBookingError(req, gate, 'BRANCH_NOT_FOUND');
     }
 
     const customer = (body.customer ?? {}) as { name?: string; phone?: string | null };
@@ -128,6 +132,7 @@ export async function POST(req: NextRequest) {
       auth,
       bookingSource,
       leadSource,
+      expectedTenantId: tenancy.tenantId,
     };
 
     if (isBookingSchedulingPortEnabled() && !branchCode) {

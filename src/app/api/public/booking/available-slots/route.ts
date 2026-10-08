@@ -1,10 +1,5 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { extractPublicBranchCode } from '@/lib/branch/bookingQueueOwnership';
-import { publicBookingErrorResponse } from '@/lib/booking/publicBookingErrorCatalog';
-import {
-  publicBookingOptionsResponse,
-  PUBLIC_BOOKING_ROUTE_CORS,
-} from '@/lib/booking/publicBookingCors';
 import {
   PublicBookingAvailabilityError,
   getPublicAvailableSlots,
@@ -15,6 +10,8 @@ import {
   finalizePublicBookingError,
   finalizePublicBookingJson,
   attachPublicBookingReadTelemetry,
+  publicBookingTenantOptionsResponse,
+  requirePublicBookingRouteTenancy,
 } from '@/lib/booking/publicBookingRouteGate';
 import {
   runWithPublicBookingReadTelemetry,
@@ -24,12 +21,7 @@ import {
 export const runtime = 'nodejs';
 
 export async function OPTIONS(req: NextRequest) {
-  const cors = PUBLIC_BOOKING_ROUTE_CORS['available-slots'];
-  return publicBookingOptionsResponse({
-    request: req,
-    allowedMethods: [...cors.methods],
-    allowedHeaders: cors.headers,
-  });
+  return publicBookingTenantOptionsResponse(req, 'available-slots');
 }
 
 /**
@@ -132,6 +124,8 @@ export async function GET(req: NextRequest) {
     if (empIdRaw && (!Number.isFinite(empId) || (empId ?? 0) <= 0)) {
       return finalizePublicBookingError(req, gate, 'BARBER_NOT_FOUND');
     }
+    const tenancy = await requirePublicBookingRouteTenancy(req, gate, { branchCode });
+    if (tenancy instanceof NextResponse) return tenancy;
 
     const { result, telemetry } = await runWithPublicBookingReadTelemetry(async () => {
       const t0 = Date.now();
@@ -145,6 +139,7 @@ export async function GET(req: NextRequest) {
         empId,
         previewQueryParam: preview,
         canaryKey: extractBookingV2CanaryKeyFromRequest(req),
+        expectedTenantId: tenancy.tenantId,
       });
       setAvailabilityMs(Date.now() - t0);
       return out;

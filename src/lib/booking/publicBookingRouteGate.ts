@@ -6,10 +6,19 @@ import 'server-only';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import {
+  getPublicBookingAllowedOrigins,
+  publicBookingOptionsResponse,
   PUBLIC_BOOKING_ROUTE_CORS,
   withPublicBookingCors,
   type PublicBookingCorsMethod,
 } from '@/lib/booking/publicBookingCors';
+import {
+  loadAnyTenantPublicBookingOrigins,
+  loadPublicBookingTenantOrigins,
+  resolvePublicBookingTenancy,
+  resolvePublicBookingTenancyForCode,
+  type PublicBookingTenancy,
+} from '@/lib/booking/publicBookingTenancy';
 import {
   PUBLIC_BOOKING_ROUTE_RATE_FAMILY,
   resolveRateLimitFromRequest,
@@ -38,6 +47,11 @@ export type PublicBookingRouteGate = {
   startedAtMs: number;
   /** Optional B2.5 read timings — set by critical-read wrappers; log-only. */
   readTelemetry?: PublicBookingReadTelemetryStore | null;
+  /**
+   * DRVO-019: browser origins of the resolved tenant. Unset until the route binds a tenant;
+   * unbound responses keep the legacy env allowlist.
+   */
+  tenantOrigins?: string[] | null;
 };
 
 export type PublicBookingTelemetry = {
@@ -159,6 +173,7 @@ export function finalizePublicBookingJson(
     allowedMethods: [...gate.cors.methods],
     allowedHeaders: gate.cors.headers,
     cacheControl: options?.cacheControl === undefined ? 'no-store' : options.cacheControl,
+    allowedOrigins: gate.tenantOrigins ?? null,
   });
   applyPublicBookingResponseHeaders(res, {
     requestId: gate.requestId,
@@ -196,6 +211,7 @@ export function finalizePublicBookingError(
     allowedMethods: [...gate.cors.methods],
     allowedHeaders: gate.cors.headers,
     cacheControl: 'no-store',
+    allowedOrigins: gate.tenantOrigins ?? null,
   });
   applyPublicBookingResponseHeaders(res, {
     requestId: gate.requestId,
@@ -211,4 +227,73 @@ export function finalizePublicBookingError(
     outcome: telemetry?.outcome ?? 'failure',
   });
   return res;
+}
+
+/** Bind a resolved tenant to the gate so every later response uses that tenant's origins. */
+export async function bindPublicBookingTenant(gate: PublicBookingRouteGate, tenantId: string): Promise<void> {
+  gate.tenantOrigins = await loadPublicBookingTenantOrigins(tenantId);
+}
+
+/**
+ * DRVO-019 route entry: resolve the request tenant (branchCode, or the CUT compatibility fallback
+ * where `allowCutCompat`), bind its CORS origins, or answer the non-disclosing error response
+ * (unknown branch / booking app not installed → 404 BRANCH_NOT_FOUND).
+ */
+export async function requirePublicBookingRouteTenancy(
+  req: NextRequest,
+  gate: PublicBookingRouteGate,
+  args: { branchCode: string | null | undefined; allowCutCompat?: boolean },
+): Promise<PublicBookingTenancy | NextResponse> {
+  const result = await resolvePublicBookingTenancy(req, {
+    branchCode: args.branchCode,
+    route: `public/booking/${gate.routeKey}`,
+    allowCutCompat: args.allowCutCompat,
+  });
+  if (!result.ok) return finalizePublicBookingError(req, gate, result.code);
+  await bindPublicBookingTenant(gate, result.tenancy.tenantId);
+  return result.tenancy;
+}
+
+/**
+ * Code-addressed routes (lookup / cancel): the tenant is the one owning the booking's branch.
+ * Unknown codes and bookings of tenants without the booking app answer `notFoundCode`.
+ */
+export async function requirePublicBookingCodeTenancy(
+  req: NextRequest,
+  gate: PublicBookingRouteGate,
+  code: string,
+  codes: {
+    invalid: keyof typeof PUBLIC_BOOKING_ERROR_CATALOG;
+    notFound: keyof typeof PUBLIC_BOOKING_ERROR_CATALOG;
+  },
+): Promise<{ tenantId: string } | NextResponse> {
+  const result = await resolvePublicBookingTenancyForCode(code, `public/booking/${gate.routeKey}`);
+  if (!result.ok) {
+    return finalizePublicBookingError(
+      req,
+      gate,
+      result.reason === 'invalid_code' ? codes.invalid : codes.notFound,
+    );
+  }
+  await bindPublicBookingTenant(gate, result.tenantId);
+  return { tenantId: result.tenantId };
+}
+
+/**
+ * Tenant-aware preflight. Preflight carries no tenant data, so it admits CUT's legacy origins and
+ * any active tenant's configured origins; the actual response is gated by its own tenant.
+ */
+export async function publicBookingTenantOptionsResponse(
+  req: NextRequest,
+  routeKey: string,
+): Promise<NextResponse> {
+  const cors = PUBLIC_BOOKING_ROUTE_CORS[routeKey] ?? PUBLIC_BOOKING_ROUTE_CORS.branches;
+  const origins = new Set<string>(getPublicBookingAllowedOrigins().origins);
+  for (const o of await loadAnyTenantPublicBookingOrigins()) origins.add(o);
+  return publicBookingOptionsResponse({
+    request: req,
+    allowedMethods: [...cors.methods],
+    allowedHeaders: cors.headers,
+    allowedOrigins: [...origins],
+  });
 }

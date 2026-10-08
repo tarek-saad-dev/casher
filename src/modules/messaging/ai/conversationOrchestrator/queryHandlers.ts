@@ -4,6 +4,7 @@
 import 'server-only';
 import { getPublicAvailableSlots } from '@/lib/booking/publicBookingAvailability';
 import { listPublicBookingBarbers } from '@/lib/booking/publicBookingBarbers';
+import { resolveMessagingBookingTenantId } from '../tools/messagingBookingTenant';
 import { getCairoBusinessDate } from '@/lib/businessDate';
 import {
   findAlternativeEmployeesSameTime,
@@ -42,6 +43,7 @@ export async function handleAvailabilityOrEmployeesQuery(args: {
   if (turn.temporal === 'now' || turn.primaryIntent === 'AVAILABILITY_QUERY') {
     try {
       const list = await listPublicBookingBarbers({
+        tenantId: await resolveMessagingBookingTenantId(),
         mode: 'branch',
         branchCode,
         date,

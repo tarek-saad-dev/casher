@@ -36,6 +36,8 @@ import { validateEmployeeSupportsServices } from '@/lib/employeeServiceEligibili
 import { PUBLIC_BOOKING_CURRENCY } from '@/lib/booking/publicBookingServicePolicy';
 import type { PublicBookingErrorCode } from '@/lib/booking/publicBookingErrorCatalog';
 import { createStageTimer } from '@/lib/devStageTiming';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
+import { tenantLocationBranchSql } from '@/lib/booking/publicBookingTenancy';
 import {
   BRANCH_EVAL_CONCURRENCY,
   MAX_BARBER_AVAILABILITY_DAYS,
@@ -311,7 +313,7 @@ function buildSlotId(args: {
   return buildBarberAvailabilitySlotId(args);
 }
 
-async function loadPublicBarber(empId: number): Promise<PublicBarberWireLite> {
+async function loadPublicBarber(empId: number, tenantId: string): Promise<PublicBarberWireLite> {
   if (!Number.isFinite(empId) || empId <= 0) {
     throw new PublicBarberMultiBranchAvailabilityError('BARBER_NOT_FOUND');
   }
@@ -323,10 +325,11 @@ async function loadPublicBarber(empId: number): Promise<PublicBarberWireLite> {
   const r = await db
     .request()
     .input('empId', sql.Int, empId)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`
       SELECT EmpName, ISNULL(isActive, 1) AS isActive, Job, ${nameEnSelect}
       FROM dbo.TblEmp
-      WHERE EmpID = @empId
+      WHERE EmpID = @empId AND TenantId = @tenantId
     `);
   const row = r.recordset[0];
   if (!row) {
@@ -353,11 +356,13 @@ async function loadBookableAssignmentsInWindow(
   empId: number,
   dateFrom: string,
   dateTo: string,
+  tenantId: string,
 ): Promise<AssignmentRow[]> {
   const db = await getPool();
   const r = await db
     .request()
     .input('empId', sql.Int, empId)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .input('dateFrom', sql.Date, dateFrom)
     .input('dateTo', sql.Date, dateTo)
     .query(`
@@ -369,9 +374,10 @@ async function loadBookableAssignmentsInWindow(
         ea.EffectiveTo
       FROM dbo.TblEmpBranchAssignment ea
       INNER JOIN dbo.TblBranch b ON b.BranchID = ea.BranchID
-      INNER JOIN dbo.TblEmp e ON e.EmpID = ea.EmpID
+      INNER JOIN dbo.TblEmp e ON e.EmpID = ea.EmpID AND e.TenantId = @tenantId
       INNER JOIN dbo.QueueBookingSettings qbs ON qbs.BranchID = b.BranchID
       WHERE ea.EmpID = @empId
+        AND ${tenantLocationBranchSql('b.BranchID')}
         AND ea.IsActive = 1
         AND ea.CanReceiveBookings = 1
         AND b.IsActive = 1
@@ -408,6 +414,7 @@ async function toResolvedBranch(row: AssignmentRow): Promise<ResolvedBranch> {
 }
 
 async function resolveTargetBranches(args: {
+  tenantId: string;
   empId: number;
   scope: BarberAvailabilityScope;
   branchCodeRaw: unknown;
@@ -418,6 +425,7 @@ async function resolveTargetBranches(args: {
     args.empId,
     args.dateFrom,
     args.dateTo,
+    args.tenantId,
   );
 
   const unique = new Map<number, AssignmentRow>();
@@ -450,6 +458,7 @@ async function resolveTargetBranches(args: {
         const ctx = await resolvePublicBookingBranchContext({
           branchCode: normalized,
           purpose: 'public_booking',
+          expectedTenantId: args.tenantId,
         });
         if (!ctx.bookingEnabled || !ctx.publicBookingEnabled) {
           throw new PublicBarberMultiBranchAvailabilityError('BRANCH_NOT_PUBLIC');
@@ -511,6 +520,7 @@ async function assertServicesAllowed(
 }
 
 async function evaluateBranchAvailability(args: {
+  tenantId: string;
   branch: ResolvedBranch;
   assignments: AssignmentRow[];
   dates: string[];
@@ -524,6 +534,7 @@ async function evaluateBranchAvailability(args: {
       branchCtx = await resolvePublicBookingBranchContext({
         branchCode: args.branch.branchCode,
         purpose: 'public_booking',
+        expectedTenantId: args.tenantId,
       });
     } catch (err) {
       if (err instanceof PublicBookingBranchContextError) {
@@ -740,9 +751,11 @@ type ResolvedCommon = {
   branches: ResolvedBranch[];
   assignments: AssignmentRow[];
   dates: string[];
+  tenantId: string;
 };
 
 async function resolveCommon(args: {
+  tenantId: string;
   empId: number;
   serviceIds: unknown;
   scope: unknown;
@@ -757,10 +770,11 @@ async function resolveCommon(args: {
     throw new PublicBarberMultiBranchAvailabilityError('INVALID_SERVICE_IDS');
   }
 
-  const barber = await loadPublicBarber(args.empId);
+  const barber = await loadPublicBarber(args.empId, args.tenantId);
   await assertServicesAllowed(args.empId, serviceIds);
 
   const { branches, assignments } = await resolveTargetBranches({
+    tenantId: args.tenantId,
     empId: args.empId,
     scope,
     branchCodeRaw: args.branchCode,
@@ -775,6 +789,7 @@ async function resolveCommon(args: {
     branches,
     assignments,
     dates: args.dates,
+    tenantId: args.tenantId,
   };
 }
 
@@ -784,6 +799,7 @@ async function runBranchEvals(
   const failHard = common.scope === 'specific_branch';
   const outcomes = await mapPool(common.branches, BRANCH_EVAL_CONCURRENCY, (branch) =>
     evaluateBranchAvailability({
+      tenantId: common.tenantId,
       branch,
       assignments: common.assignments,
       dates: common.dates,
@@ -818,6 +834,7 @@ async function runBranchEvals(
  * POST …/barbers/:empId/availability/days
  */
 export async function getBarberAvailabilityDays(args: {
+  tenantId: string;
   empId: number;
   serviceIds: unknown;
   dateFrom: unknown;
@@ -825,6 +842,7 @@ export async function getBarberAvailabilityDays(args: {
   scope: unknown;
   branchCode?: unknown;
 }): Promise<BarberAvailabilityDaysResponse> {
+  const tenantId = requireMasterDataTenantId(args.tenantId, 'barber availability days');
   const dateFrom =
     typeof args.dateFrom === 'string' && isValidDate(args.dateFrom) ? args.dateFrom : null;
   if (!dateFrom) throw new PublicBarberMultiBranchAvailabilityError('INVALID_DATE');
@@ -841,6 +859,7 @@ export async function getBarberAvailabilityDays(args: {
       : 'ALL';
   const cacheKey = [
     'days',
+    tenantId,
     args.empId,
     dateFrom,
     daysCount,
@@ -855,6 +874,7 @@ export async function getBarberAvailabilityDays(args: {
 
   const timer = createStageTimer(true);
   const common = await resolveCommon({
+    tenantId,
     empId: args.empId,
     serviceIds: args.serviceIds,
     scope: args.scope,
@@ -913,12 +933,14 @@ export async function getBarberAvailabilityDays(args: {
  * POST …/barbers/:empId/availability/slots
  */
 export async function getBarberAvailabilitySlots(args: {
+  tenantId: string;
   empId: number;
   serviceIds: unknown;
   date: unknown;
   scope: unknown;
   branchCode?: unknown;
 }): Promise<BarberAvailabilitySlotsResponse> {
+  const tenantId = requireMasterDataTenantId(args.tenantId, 'barber availability slots');
   const date = typeof args.date === 'string' && isValidDate(args.date) ? args.date : null;
   if (!date) throw new PublicBarberMultiBranchAvailabilityError('INVALID_DATE');
 
@@ -930,6 +952,7 @@ export async function getBarberAvailabilitySlots(args: {
       : 'ALL';
   const cacheKey = [
     'slots',
+    tenantId,
     args.empId,
     date,
     servicePreview.join(','),
@@ -943,6 +966,7 @@ export async function getBarberAvailabilitySlots(args: {
 
   const timer = createStageTimer(true);
   const common = await resolveCommon({
+    tenantId,
     empId: args.empId,
     serviceIds: args.serviceIds,
     scope: args.scope,
@@ -992,6 +1016,7 @@ export async function getBarberAvailabilitySlots(args: {
 
 /** Alias for orchestration entry used by docs / callers. */
 export async function getBarberAvailabilityAcrossBranches(args: {
+  tenantId: string;
   empId: number;
   serviceIds: unknown;
   scope: unknown;
@@ -1003,6 +1028,7 @@ export async function getBarberAvailabilityAcrossBranches(args: {
 }): Promise<BarberAvailabilityDaysResponse | BarberAvailabilitySlotsResponse> {
   if (args.mode === 'days') {
     return getBarberAvailabilityDays({
+      tenantId: args.tenantId,
       empId: args.empId,
       serviceIds: args.serviceIds,
       dateFrom: args.dateFrom,
@@ -1012,6 +1038,7 @@ export async function getBarberAvailabilityAcrossBranches(args: {
     });
   }
   return getBarberAvailabilitySlots({
+    tenantId: args.tenantId,
     empId: args.empId,
     serviceIds: args.serviceIds,
     date: args.date,
