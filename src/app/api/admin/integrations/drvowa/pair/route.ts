@@ -42,17 +42,22 @@ export async function POST(request: Request) {
       manifestRefreshed: result.manifestRefreshed,
     });
   } catch (error) {
-    const code = error instanceof Error ? error.message : 'DRVOWA_PAIR_FAILED';
+    const typed = error as Error & { code?: string };
+    const code =
+      typed?.code
+      || (error instanceof Error ? error.message : 'DRVOWA_PAIR_FAILED');
+    const isPairingCodeError =
+      code === 'PAIRING_CODE_INVALID_OR_EXPIRED'
+      || code === 'DRVOWA_HTTP_403';
     return NextResponse.json(
       {
         ok: false,
         code,
-        error:
-          code.includes('403') || code.includes('PAIR')
-            ? 'كود الربط غير صالح أو انتهت صلاحيته'
-            : 'تعذر إكمال الربط مع DRVOWA',
+        error: isPairingCodeError
+          ? 'كود الربط غير صالح أو انتهت صلاحيته'
+          : 'تعذر إكمال الربط مع DRVOWA. جرّب مرة أخرى، ولو استمرت المشكلة راجع حالة الاتصال.',
       },
-      { status: 400 },
+      { status: isPairingCodeError ? 400 : 502 },
     );
   }
 }
