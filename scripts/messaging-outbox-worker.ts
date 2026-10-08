@@ -32,6 +32,10 @@ async function main() {
     '../src/modules/messaging/application/processOutboxTick'
   );
   const { getOutboxWorkerConfig } = await import('../src/modules/messaging/outbox/workerPolicy');
+  const {
+    processPlatformOutboxTick,
+    recoverPlatformOutboxDelivering,
+  } = await import('../src/platform/outbox/processor');
   const { closePool } = await import('../src/lib/db');
 
   const once = process.argv.includes('--once');
@@ -49,12 +53,14 @@ async function main() {
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
 
+  const recoveredPlatform = await recoverPlatformOutboxDelivering();
   console.log('[messaging-outbox-worker] started', {
     worker: id,
     pollMs: config.pollMs,
     batchSize: config.batchSize,
     lockTtlMs: config.lockTtlMs,
     once,
+    recoveredPlatform,
   });
 
   while (!stopping) {
@@ -65,8 +71,18 @@ async function main() {
         batchSize: config.batchSize,
         lockTtlMs: config.lockTtlMs,
       });
-      if (summary.claimed > 0 || summary.recovered > 0) {
-        console.log('[messaging-outbox-worker] tick', summary);
+      const platformSummary = await processPlatformOutboxTick({
+        batchSize: config.batchSize,
+      });
+      if (
+        summary.claimed > 0
+        || summary.recovered > 0
+        || platformSummary.claimed > 0
+      ) {
+        console.log('[messaging-outbox-worker] tick', {
+          messaging: summary,
+          platform: platformSummary,
+        });
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
