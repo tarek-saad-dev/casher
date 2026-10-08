@@ -5,6 +5,32 @@ import { pairWithDrvowa } from '@/lib/integrations/drvowaPairing';
 
 export const runtime = 'nodejs';
 
+function resolveErpPublicBaseUrl(request: Request): string {
+  const explicit = process.env.APP_PUBLIC_URL?.trim();
+  if (explicit) return explicit.replace(/\/$/, '');
+
+  const forwardedHost = request.headers
+    .get('x-forwarded-host')
+    ?.split(',')[0]
+    ?.trim();
+  const host = forwardedHost || request.headers.get('host')?.trim();
+  if (!host) {
+    throw new Error('ERP_PUBLIC_URL_UNRESOLVED');
+  }
+
+  const forwardedProto = request.headers
+    .get('x-forwarded-proto')
+    ?.split(',')[0]
+    ?.trim()
+    ?.toLowerCase();
+  const proto =
+    forwardedProto === 'http' || forwardedProto === 'https'
+      ? forwardedProto
+      : 'https';
+
+  return `${proto}://${host}`.replace(/\/$/, '');
+}
+
 export async function POST(request: Request) {
   const auth = await requireAdmin();
   if (!isAuthResult(auth)) return auth;
@@ -24,10 +50,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const erpBaseUrl = (
-      process.env.APP_PUBLIC_URL?.trim()
-      || new URL(request.url).origin
-    ).replace(/\/$/, '');
+    const erpBaseUrl = resolveErpPublicBaseUrl(request);
 
     const result = await pairWithDrvowa({
       pairingCode,
