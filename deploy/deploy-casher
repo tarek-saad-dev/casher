@@ -198,7 +198,14 @@ echo "        Use the DRVO Production Migration Control workflow (PLAN/APPLY) wh
 echo "        Business-path rollout remains source-controlled by moduleManifest."
 
 echo
-echo "[7c1/8] DRVO readiness verification (read-only)..."
+echo "[7c1/8] DRVO platform bootstrap reconciliation (idempotent)..."
+runuser -u casher -- bash -lc "
+cd '$APP_DIR'
+npm run drvo:reconcile-bootstrap -- --allow-production
+"
+
+echo
+echo "[7c2/8] DRVO readiness verification (read-only)..."
 runuser -u casher -- bash -lc "
 cd '$APP_DIR'
 npm run drvo:verify -- --allow-production
