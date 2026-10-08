@@ -113,7 +113,8 @@ export type BranchDomainErrorCode =
   | 'BRANCH_LIFECYCLE_FORBIDDEN'
   | 'BRANCH_NOT_READY'
   | 'BRANCH_ADMIN_REQUIRED'
-  | 'SUBSCRIPTION_INACTIVE';
+  | 'SUBSCRIPTION_INACTIVE'
+  | 'APP_NOT_INSTALLED';
 
 export class BranchDomainError extends Error {
   readonly code: BranchDomainErrorCode;

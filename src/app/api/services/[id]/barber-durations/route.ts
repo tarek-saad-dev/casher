@@ -2,6 +2,7 @@ import { NextResponse, NextRequest } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { getActiveBranchContext } from '@/lib/branch/context';
 import { getGlobalTimingDefaults, getPublicSettings } from '@/lib/publicBookingHelpers';
+import { requireTenantSession } from '@/lib/api-auth';
 
 /**
  * GET /api/services/:proId/barber-durations
@@ -126,6 +127,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { id } = await params;
     const proId = parseInt(id);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import { requireTenantSession } from '@/lib/api-auth';
 
 // PATCH /api/finance/categories/[id]/status
 // Body: { isActive: boolean }
@@ -8,6 +9,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { id: rawId } = await params;
     const id = parseInt(rawId, 10);

@@ -14,6 +14,7 @@ import {
   resolveStaffTenantContextForRequest,
 } from '@/platform/tenant/tenantContext';
 import {
+  assertRouteAppEntitlement,
   assertTenantSubscriptionActive,
   TenantAccessDeniedError,
 } from '@/platform/commercial/tenantAccessGate';
@@ -179,9 +180,10 @@ async function verifySessionTenantBinding(payload: {
   }
   try {
     await assertTenantSubscriptionActive(tenantId);
+    await assertRouteAppEntitlement(tenantId);
   } catch (err) {
     if (err instanceof TenantAccessDeniedError) {
-      throw new BranchDomainError('SUBSCRIPTION_INACTIVE', err.message, err.status);
+      throw new BranchDomainError(err.code, err.message, err.status);
     }
     throw err;
   }

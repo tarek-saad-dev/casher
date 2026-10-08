@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, getUserFriendlyError, sql } from "@/lib/db";
-import { getSession } from "@/lib/session";
+import { requireTenantSession } from "@/lib/api-auth";
 import { hasPermission } from "@/lib/permissions";
 import { grantStaffAccessToAllActiveBranches } from "@/lib/branch/userLoginBranch";
 import { validateUserBranchAccess } from "@/lib/branch/access";
@@ -18,8 +18,9 @@ export const runtime = "nodejs";
 // GET /api/users — Get all active users
 export async function GET() {
   try {
-    const user = await getSession();
-    if (!user || !user.TenantId || !hasPermission(user.UserLevel, "users.view")) {
+    const user = await requireTenantSession();
+    if (user instanceof NextResponse) return user;
+    if (!hasPermission(user.UserLevel, "users.view")) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
     }
 
@@ -57,12 +58,9 @@ export async function GET() {
 // POST /api/users — Create a new user + default branch login link
 export async function POST(req: NextRequest) {
   try {
-    const sessionUser = await getSession();
-    if (
-      !sessionUser ||
-      !sessionUser.TenantId ||
-      !hasPermission(sessionUser.UserLevel, "users.create")
-    ) {
+    const sessionUser = await requireTenantSession();
+    if (sessionUser instanceof NextResponse) return sessionUser;
+    if (!hasPermission(sessionUser.UserLevel, "users.create")) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
     }
     const tenantId = sessionUser.TenantId;

@@ -305,6 +305,40 @@ async function main() {
       'APP_NOT_INSTALLED',
       'supermarket tenant B is denied booking',
     );
+    check(
+      (await gate.assertRouteAppEntitlement(A, '/api/bookings/estimate')) === 'booking',
+      'booking route family passes for tenant A',
+    );
+    await expectError(
+      () => gate.assertRouteAppEntitlement(B, '/api/operations/bookings/1/arrive'),
+      'APP_NOT_INSTALLED',
+      'booking route family denied for tenant B',
+    );
+    check((await gate.assertRouteAppEntitlement(B, '/api/day')) === null, 'core routes are not app-gated');
+    check(
+      !(await gate.isAppInstalledForBranchTenant(a.legacyBranchId, 'loyalty')),
+      'Loyalty stays off for a generic tenant (POS earn fail-closed)',
+    );
+
+    console.log('Scenario 5b — system jobs fan out tenant by tenant');
+    const { listTenantJobTargets } = await import('../../src/platform/tenant/tenantJobFanout');
+    const fanout = await listTenantJobTargets({ scope: { kind: 'all_tenants' }, app: 'booking' });
+    const targetA = fanout.targets.find((t) => t.tenantId.toLowerCase() === A);
+    check(
+      targetA && targetA.branchIds.includes(a.legacyBranchId) && !targetA.branchIds.includes(b.legacyBranchId),
+      'cron fan-out gives tenant A only its own branches',
+    );
+    check(
+      fanout.skipped.some((s) => s.tenantId.toLowerCase() === B && s.reason === 'APP_NOT_INSTALLED'),
+      'cron fan-out skips tenant B for an app it lacks',
+    );
+    const sessionScope = await listTenantJobTargets({ scope: { kind: 'single_tenant', tenantId: B } });
+    check(
+      sessionScope.targets.length === 1 &&
+        sessionScope.targets[0].tenantId.toLowerCase() === B &&
+        sessionScope.targets[0].branchIds.every((id) => id === b.legacyBranchId),
+      'session-triggered job is limited to the caller tenant',
+    );
 
     console.log('Scenario 6 — tenant-scoped applocks');
     const txA = new sql.Transaction(pool);

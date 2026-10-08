@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { validateCustomerSource } from '@/lib/customerSource';
 import { getUserFriendlyError } from '@/lib/db';
+import { requireTenantSession } from '@/lib/api-auth';
 
 type Ctx = { params: Promise<{ id: string }> };
 
 // PATCH /api/customers/[id] — update only provided fields (partial update)
 export async function PATCH(req: NextRequest, { params }: Ctx) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { id } = await params;
     const clientID = parseInt(id);

@@ -3,15 +3,16 @@
  * Idempotent: sets CanViewReports=1 for all partner-role users on their active branch links.
  */
 import { NextResponse } from 'next/server';
-import { requireAdmin, isAuthResult } from '@/lib/api-auth';
+import { requirePlatformOperator } from '@/lib/api-auth';
 import { ensurePartnerUsersCanViewReports } from '@/lib/branch';
 
 export const runtime = 'nodejs';
 
+/** Platform operator only: the update spans partner users of every tenant. */
 export async function POST() {
   try {
-    const auth = await requireAdmin();
-    if (!isAuthResult(auth)) return auth;
+    const operator = await requirePlatformOperator();
+    if (operator instanceof NextResponse) return operator;
 
     const result = await ensurePartnerUsersCanViewReports();
     return NextResponse.json({

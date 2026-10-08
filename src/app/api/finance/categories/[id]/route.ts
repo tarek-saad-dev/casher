@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
+import { requireTenantSession } from '@/lib/api-auth';
 
 // PUT /api/finance/categories/[id] — update CatName (and optionally ExpINType)
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { id: rawId } = await params;
     const id = parseInt(rawId, 10);
@@ -64,6 +67,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { id: rawId } = await params;
     const id = parseInt(rawId, 10);

@@ -5,7 +5,7 @@
 
 import 'server-only';
 
-import { listActiveBranches } from '@/lib/branch';
+import { listActiveBranchesIn } from '@/lib/branch';
 import { closeEmpBranchWorkDay } from '@/lib/hr/dailyPayrollClose.service';
 import { getEmpBranchWorkDayCloseState } from '@/lib/hr/empBranchWorkDayClose.service';
 import { EmpBranchWorkDayCloseError } from '@/lib/hr/empBranchWorkDayClose.types';
@@ -128,6 +128,9 @@ export async function runDailyPayrollBulkCloseRange(params: {
   fromDate: string;
   toDate: string;
   actorUserId: number;
+  /** Authoritative tenant of the actor; only its active Location branches are closed. */
+  tenantId: string;
+  branchIds: readonly number[];
   onProgress?: BulkCloseProgressListener;
 }): Promise<BulkCloseRangeResult> {
   const emit = params.onProgress ?? (() => undefined);
@@ -145,7 +148,7 @@ export async function runDailyPayrollBulkCloseRange(params: {
   }
 
   const { fromDate, toDate, dates } = validated;
-  const lockKey = bulkCloseRangeLockKey(fromDate, toDate);
+  const lockKey = bulkCloseRangeLockKey(params.tenantId, fromDate, toDate);
   if (!tryAcquireBulkCloseRangeLock(lockKey)) {
     return emptyFailureResult(
       fromDate,
@@ -158,7 +161,7 @@ export async function runDailyPayrollBulkCloseRange(params: {
   const allBranchOutcomes: Array<{ outcome: BulkCloseBranchOutcome }> = [];
 
   try {
-    const activeBranches = await listActiveBranches();
+    const activeBranches = await listActiveBranchesIn(params.branchIds);
 
     emit({
       type: 'start',
@@ -194,6 +197,7 @@ export async function runDailyPayrollBulkCloseRange(params: {
           workDate,
           dryRun: false,
           skipWhatsApp: true,
+          branchIds: params.branchIds,
         });
         dayResult.nightlyOk = nightly.ok !== false;
         if (!dayResult.nightlyOk) {

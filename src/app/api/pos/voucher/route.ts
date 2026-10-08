@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { StoreErrorResponse } from "@/lib/store/store.types";
 import { getPool, sql } from "@/lib/db";
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = "nodejs";
 
@@ -49,6 +50,8 @@ interface VoucherLookupResponse {
 export async function GET(
   req: NextRequest,
 ): Promise<NextResponse<VoucherLookupResponse | StoreErrorResponse>> {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession as NextResponse<StoreErrorResponse>;
   try {
     const { searchParams } = new URL(req.url);
     const code = searchParams.get("code")?.trim().toUpperCase();

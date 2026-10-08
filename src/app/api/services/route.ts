@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { ensureTblProImageUrlColumn, tblProImageUrlSelect } from '@/lib/migrations/ensureServiceImageUrl';
 import { invalidatePublicBookingServicesCache } from '@/lib/booking/publicBookingServices';
+import { requireTenantSession } from '@/lib/api-auth';
 
 /** Product retail categories (CatType may be wrong/missing — name is the safety net). */
 const PRODUCT_CATEGORY_NAME_PATTERNS = [
@@ -94,6 +95,8 @@ function toOpsService(row: ServiceRow) {
 // GET /api/services — flat list (legacy). Prefer GET /api/services/catalog for nested bilingual catalog.
 // Query: active=true (exclude deleted), bookable=true (salon services only, ops booking/queue).
 export async function GET(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { searchParams } = new URL(req.url);
     const activeOnly = searchParams.get('active') === 'true';
@@ -153,6 +156,8 @@ export async function GET(req: NextRequest) {
 
 // POST /api/services — create a new service
 export async function POST(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const body = await req.json();
     const { ProName, ProNameAr, SPrice1, Bonus, CatID, isActive, ImageUrl } = body;

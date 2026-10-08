@@ -6,7 +6,15 @@ import fs from 'fs';
 import path from 'path';
 
 const root = process.cwd();
-const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
+const contents = new Map<string, string>();
+const read = (rel: string) => {
+  let text = contents.get(rel);
+  if (text === undefined) {
+    text = fs.readFileSync(path.join(root, rel), 'utf8');
+    contents.set(rel, text);
+  }
+  return text;
+};
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
@@ -27,7 +35,7 @@ function filesMatching(re: RegExp): string[] {
   return SOURCES.filter((f) => re.test(read(f))).sort();
 }
 
-describe('DRVO-013 no default / first tenant', () => {
+describe('DRVO-013 no default / first tenant', { timeout: 120_000 }, () => {
   it('the bootstrap tenant is only resolved through named CASHER_BOOT seams', () => {
     expect(filesMatching(/resolveLegacyBootstrapTenantId\(/)).toEqual(
       [
@@ -36,10 +44,30 @@ describe('DRVO-013 no default / first tenant', () => {
         'scripts/drvo/drvo-013-tenant-isolation-smoke.ts',
         'scripts/messaging-outbox-worker.ts',
         'scripts/provision-camp-caesar-setup.ts',
+        'scripts/verify-and-heal-payroll-days.ts',
+        // legacy-messaging-worker + legacy-payroll-job-log: CASHER_BOOT-only legacy tables
+        'src/app/api/admin/hr/nightly-close/route.ts',
+        // legacy-payroll-job-log: TblAutoGenLog has no TenantId
+        'src/app/api/payroll/daily/auto-generate/route.ts',
+        // platform-operator-tenant + legacy-global-data
         'src/lib/api-auth.ts',
         'src/platform/tenant/legacyBootstrapSeam.ts',
       ].sort(),
     );
+  });
+
+  it('every named seam is documented with the reason its data has no TenantId', async () => {
+    const src = read('src/platform/tenant/legacyBootstrapSeam.ts');
+    for (const seam of [
+      'platform-operator-tenant',
+      'legacy-messaging-worker',
+      'legacy-global-data',
+      'legacy-payroll-job-log',
+      'casher-boot-staging-smoke',
+      'casher-boot-operator-script',
+    ]) {
+      expect(src).toContain(`'${seam}':`);
+    }
   });
 
   it('request code never defines or calls a bootstrap-tenant default', () => {

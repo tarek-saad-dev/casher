@@ -56,6 +56,9 @@ const mockSessionUser = {
   MembershipId: '22222222-2222-4222-8222-222222222222',
 };
 
+vi.mock('@/lib/api-auth', async (importOriginal) =>
+  (await import('@/lib/__tests__/helpers/tenantSessionAuthMock')).tenantSessionAuthMock(await importOriginal()),
+);
 vi.mock('@/lib/session', () => ({
   getSession: vi.fn().mockResolvedValue(mockSessionUser),
 }));

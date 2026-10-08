@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
-import { getSession } from "@/lib/session";
 import { ensureOverridesTable, OverrideType } from "@/lib/scheduleOverrides";
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = "nodejs";
 
@@ -27,7 +27,8 @@ function isValidTime(t: string): boolean {
  */
 export async function GET(req: NextRequest) {
   try {
-    const session = await getSession();
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
     if (!session?.UserID) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
     }
@@ -92,7 +93,8 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
-    const session = await getSession();
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
     if (!session?.UserID) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
     }

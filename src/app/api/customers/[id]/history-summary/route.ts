@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import { requireTenantSession } from '@/lib/api-auth';
 
 interface SaleDetail {
   serviceName: string;
@@ -39,6 +40,8 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { id } = await params;
     const clientID = parseInt(id);

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/session';
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
 import { getExpenseSnapshot, deleteExpense, updateExpenseCategory } from '@/lib/actions/expenseActions';
 import { cashMoveHardDeleteSuccessMessage } from '@/lib/services/cashMoveHardDeleteService';
 import { EmployeeLedgerDualWriteError } from '@/lib/services/employeeLedgerDualWrite';
+import { requireTenantSession } from '@/lib/api-auth';
 
 // DELETE /api/expenses/[id]/category — Delete expense transaction
 export async function DELETE(
@@ -17,8 +17,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'معرف المصروف غير صالح' }, { status: 400 });
     }
 
-    const user = await getSession();
-    if (!user || !user.TenantId) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    const user = await requireTenantSession();
+    if (user instanceof NextResponse) return user;
+    if (!user.TenantId) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     const sessionTenantId = user.TenantId;
 
     const { loadAndAuthorizeFinancialMutation, financialNotFoundResponse } = await import(
@@ -118,8 +119,8 @@ export async function PUT(
       return NextResponse.json({ error: 'معرف المصروف غير صالح' }, { status: 400 });
     }
 
-    const user = await getSession();
-    if (!user) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    const user = await requireTenantSession();
+    if (user instanceof NextResponse) return user;
 
     const { loadAndAuthorizeFinancialMutation, financialNotFoundResponse } = await import(
       '@/lib/branch/financialOwnership'

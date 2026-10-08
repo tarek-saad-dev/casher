@@ -39,6 +39,7 @@ describe('Phase 1B branch context', () => {
           if (!subscriptionActive[tenantId]) throw new TenantAccessDeniedError('اشتراك المنشأة غير نشط');
           return { allowed: true };
         }),
+        assertRouteAppEntitlement: vi.fn(async () => null),
       };
     });
   });

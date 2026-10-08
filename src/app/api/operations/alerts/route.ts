@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { getAvailableBarbers } from '@/lib/barberAvailability';
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -20,6 +21,8 @@ export interface OperationAlert {
  * Returns smart operational alerts.
  */
 export async function GET() {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const db    = await getPool();
     const now   = new Date();

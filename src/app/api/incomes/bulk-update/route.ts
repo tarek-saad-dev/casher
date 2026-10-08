@@ -5,11 +5,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
-import { getSession } from '@/lib/session';
 import {
   EmployeeLedgerDualWriteError,
 } from '@/lib/services/employeeLedgerDualWrite';
 import { syncEmployeeFundingFromCashMove } from '@/lib/services/employeeLedgerFundingSyncService';
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -27,10 +27,8 @@ interface BulkUpdatePayload {
  */
 export async function PATCH(req: NextRequest): Promise<NextResponse> {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
-    }
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
 
     const body: BulkUpdatePayload = await req.json();
 

@@ -4,6 +4,7 @@ import {
   findInstalledDependents,
   findMissingDependencies,
   isInstallableAppCode,
+  isLegacyOnlyAppCode,
 } from './appCatalog';
 import { TenantAppError } from './errors';
 
@@ -28,6 +29,8 @@ export function validatePackDefinition(pack: IndustryPackDefinition): PackValida
     for (const code of codes) {
       if (!isInstallableAppCode(code)) {
         failures.push(`pack ${pack.packCode} ${list} references non-installable app "${code}"`);
+      } else if (isLegacyOnlyAppCode(code)) {
+        failures.push(`pack ${pack.packCode} ${list} references legacy-only app "${code}"`);
       }
       const prior = seen.get(code);
       if (prior) {
@@ -86,6 +89,16 @@ export function resolveTenantComposition(
     throw new TenantAppError('UNKNOWN_APP', `Unknown or non-installable app(s): ${unknown.join(', ')}`, 400, {
       apps: unknown,
     });
+  }
+
+  const legacyOnly = add.filter(isLegacyOnlyAppCode);
+  if (legacyOnly.length) {
+    throw new TenantAppError(
+      'APP_NOT_AVAILABLE',
+      `App(s) not available for new tenants in V1: ${legacyOnly.join(', ')}`,
+      400,
+      { apps: legacyOnly },
+    );
   }
 
   const conflict = add.filter((c) => remove.includes(c));
@@ -149,6 +162,11 @@ export function assertCanInstall(installed: Iterable<string>, code: string): App
   if (!isInstallableAppCode(normalized)) {
     throw new TenantAppError('UNKNOWN_APP', `Unknown or non-installable app: ${code}`, 400, {
       apps: [code],
+    });
+  }
+  if (isLegacyOnlyAppCode(normalized)) {
+    throw new TenantAppError('APP_NOT_AVAILABLE', `App not available for new tenants in V1: ${normalized}`, 400, {
+      apps: [normalized],
     });
   }
   const set = new Set(installed);

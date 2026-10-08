@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { getAvailableBarbers } from '@/lib/barberAvailability';
+import { requireTenantSession } from '@/lib/api-auth';
 
 // ── Inline idempotent migration for estimate columns ─────────────────────────
 async function ensureEstimateColumns(db: Awaited<ReturnType<typeof getPool>>): Promise<void> {
@@ -49,6 +50,8 @@ export const runtime = 'nodejs';
  * Returns full operations board snapshot: KPIs, barbers, queue, bookings.
  */
 export async function GET() {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const db   = await getPool();
     const now  = new Date();

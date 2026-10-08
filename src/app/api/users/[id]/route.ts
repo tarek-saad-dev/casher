@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
-import { getSession } from '@/lib/session';
+import { requireTenantSession } from '@/lib/api-auth';
 import { hasPermission } from '@/lib/permissions';
 import { grantStaffAccessToAllActiveBranches } from '@/lib/branch/userLoginBranch';
 import { validateUserBranchAccess } from '@/lib/branch/access';
@@ -32,8 +32,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const sessionUser = await getSession();
-    if (!sessionUser || !sessionUser.TenantId || !hasPermission(sessionUser.UserLevel, 'users.view')) {
+    const sessionUser = await requireTenantSession();
+    if (sessionUser instanceof NextResponse) return sessionUser;
+    if (!hasPermission(sessionUser.UserLevel, 'users.view')) {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
 
@@ -75,8 +76,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const sessionUser = await getSession();
-    if (!sessionUser || !sessionUser.TenantId || !hasPermission(sessionUser.UserLevel, 'users.edit')) {
+    const sessionUser = await requireTenantSession();
+    if (sessionUser instanceof NextResponse) return sessionUser;
+    if (!hasPermission(sessionUser.UserLevel, 'users.edit')) {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
     const tenantId = sessionUser.TenantId;
@@ -183,8 +185,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const sessionUser = await getSession();
-    if (!sessionUser || !sessionUser.TenantId || !hasPermission(sessionUser.UserLevel, 'users.delete')) {
+    const sessionUser = await requireTenantSession();
+    if (sessionUser instanceof NextResponse) return sessionUser;
+    if (!hasPermission(sessionUser.UserLevel, 'users.delete')) {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
 

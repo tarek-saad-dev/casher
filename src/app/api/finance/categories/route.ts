@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
+import { requireTenantSession } from '@/lib/api-auth';
 
 // GET /api/finance/categories?type=ايرادات|مصروفات&activeOnly=true
 export async function GET(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { searchParams } = new URL(req.url);
     const type       = searchParams.get('type');
@@ -46,6 +49,8 @@ export async function GET(req: NextRequest) {
 // Body: { CatName: string, ExpINType?: string }
 // ExpINType defaults to N'مصروفات' (expense). Use N'ايرادات' for income.
 export async function POST(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const body = await req.json();
     const { CatName, ExpINType } = body;

@@ -9,7 +9,7 @@ export const SUPERMARKET_PACK: IndustryPackDefinition = {
   displayName: 'Supermarket',
   required: ['pos'],
   recommended: ['inventory', 'purchasing', 'treasury', 'reports'],
-  optional: ['attendance', 'payroll', 'loyalty', 'messaging'],
+  optional: ['attendance', 'payroll', 'messaging'],
   configDefaults: {
     compositionSurfaces: [],
   },

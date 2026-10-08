@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { validateCustomerSource } from '@/lib/customerSource';
+import { requireTenantSession } from '@/lib/api-auth';
 
 // GET /api/customers?q=search_term
 export async function GET(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   const q = req.nextUrl.searchParams.get('q') || '';
   if (q.length < 1) {
     return NextResponse.json([]);
@@ -31,6 +34,8 @@ export async function GET(req: NextRequest) {
 
 // POST /api/customers  { name, mobile, birthDate, address, notes, cameFrom, cameFromDetails, referralCode }
 export async function POST(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const body = await req.json();
     const { name, mobile, birthDate, address, notes, cameFrom, cameFromDetails, referralCode } = body;

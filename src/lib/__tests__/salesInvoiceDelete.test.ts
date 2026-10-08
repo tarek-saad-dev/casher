@@ -97,6 +97,9 @@ const superAdminSession = {
 
 const mockGetSession = vi.fn().mockResolvedValue(superAdminSession);
 
+vi.mock('@/lib/api-auth', async (importOriginal) =>
+  (await import('@/lib/__tests__/helpers/tenantSessionAuthMock')).tenantSessionAuthMock(await importOriginal()),
+);
 vi.mock('@/lib/session', () => ({
   getSession: () => mockGetSession(),
 }));

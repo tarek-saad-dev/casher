@@ -14,6 +14,10 @@ export const LEGACY_BOOTSTRAP_SEAMS = {
   'platform-operator-tenant': 'CASHER_BOOT owns the DRVOERP control plane',
   /** Legacy messaging outbox tables (TblMessaging*) have no TenantId and hold CASHER_BOOT data only. */
   'legacy-messaging-worker': 'legacy messaging tables are CASHER_BOOT-only',
+  /** Staff features over global legacy tables with neither TenantId nor BranchID (e.g. TblBudgetMonth). */
+  'legacy-global-data': 'global legacy tables are CASHER_BOOT-only until tenant-owned',
+  /** TblAutoGenLog (payroll auto-generate / nightly-close log) has no TenantId and holds CASHER_BOOT runs only. */
+  'legacy-payroll-job-log': 'TblAutoGenLog is a CASHER_BOOT-only legacy table',
   /** Staging smoke scripts that explicitly exercise the CASHER_BOOT tenant (never request paths). */
   'casher-boot-staging-smoke': 'staging smoke scripts target CASHER_BOOT by name',
   /** Operator CLI scripts that provision CASHER_BOOT branches by name (never request paths). */

@@ -13,7 +13,7 @@ Issue: #61 · Branch: `drvo-013-authoritative-tenant-context` (stacked on DRVO-0
 Staging proof command (staging only; never reads `.env.local`):
 
 ```bash
-DRVO_STAGING_DB_PASSWORD=... npx tsx scripts/drvo/drvo-013-tenant-isolation-smoke.ts
+DRVO_STAGING_DB_PASSWORD=... npm run drvo-013:smoke
 ```
 
 The script hard-stops unless `DB_NAME() = last132_agent` and `SUSER_SNAME() = drvo_agent`, and removes its
@@ -45,7 +45,59 @@ failures (`LOCATION_NOT_IN_TENANT`, `USER_NOT_IN_TENANT`) map to the same public
   active Location) and then the DRVO-012 subscription gate (`SUBSCRIPTION_INACTIVE` → 403).
 - `TenantContextError.message` is always the non-disclosing public text; internal detail lives in `.detail` (logs only),
   so legacy catch blocks that echo `err.message` cannot leak tenant / user / branch identifiers.
-- Legacy routes that only call `getSession()` rely on the signed tenant binding; they gain no per-request DB cost.
+- No staff route handler authorizes with `getSession()` alone; see "Route authorization".
+
+## Route authorization
+
+Every exported handler under `src/app/api/**/route.ts` is classified by `drvo013RouteAuthGuards.test.ts` (TypeScript
+AST, follows local helpers):
+
+- **Public** (proxy `PUBLIC_ROUTES` / public prefixes) — out of scope here (public booking is DRVO-019).
+- **Tenant-checked** — reaches `authenticate()` through `requireSession` / `requireRole` / `requireAdmin` /
+  `requirePageAccess` / `requireTenantApp` / `requireTenantSession` / branch-context helpers, or an approved wrapper
+  (`resolveReportBranchScope`, `resolveInternalOpsBookingRequest`, ...). `requireTenantSession()` is the drop-in
+  replacement for `getSession()`: membership, active Location, subscription and route app gate all pass first.
+- **Special gates** — `requirePlatformOperator` (all `migrate-*` / `seed-*` and platform routes),
+  `requireSystemJobAuth` (cron), `requireWhatsAppInboxWebhookAuth` (webhooks), `switchActiveBranch` (re-resolves the
+  tenant itself).
+- **Legacy global data** — `budget/*` reads tables with neither TenantId nor BranchID; `requireLegacyGlobalDataSession`
+  limits it to CASHER_BOOT (other tenants get 404).
+
+The guard fails on any new bare handler, any `getSession()`-only handler, and any handler re-export.
+
+## App gates (route families)
+
+`src/platform/commercial/routeAppFamilies.ts` maps `/api/...` prefixes (segment-aware, longest prefix wins) to
+installable apps: booking, queue, pos, inventory, purchasing, attendance, payroll, reports, loyalty, messaging,
+ai-receptionist. `assertRouteAppEntitlement(tenantId)` runs inside `authenticate()` and the branch-context
+re-verification, using the proxy-stamped `x-pathname` (the proxy always overwrites the client value). Explicit gates:
+`requireTenantApp(app)`, `withTenantApp(app, auth)` and the booking / queue / pos composition roots. Control-plane
+diagnostics in a family use `requirePlatformOperator` instead.
+
+## System jobs (cron)
+
+`requireSystemJobAuth` accepts the cron bearer or an admin session. Jobs never act on "all branches" any more:
+`runTenantJobFanout` (`src/platform/tenant/tenantJobFanout.ts`) lists active tenants with their active Location
+branches, skips tenants whose subscription is inactive or that lack the job's app, and runs each tenant separately
+(one tenant's failure does not stop the others). The cron bearer fans out over all tenants; a session caller is limited
+to its own tenant (`tenantJobScopeFor`). Wired: business-day reconcile, HR nightly close (payroll), payroll
+auto-generate (payroll), attendance auto-absence (attendance). Services take explicit `branchIds`
+(`listActiveBranchesIn`). Legacy global side effects stay CASHER_BOOT-only: nightly-close WhatsApp
+(`legacy-messaging-worker`) and the `TblAutoGenLog` / nightly job log (`legacy-payroll-job-log`). The bulk-close
+range lock is per tenant (`t:{tenant}:{from}:{to}`).
+
+## Proxy
+
+- Cron-bearer and webhook prefixes match on path segments (`/api/foo` does not cover `/api/foobar`).
+- `/api/**` is never treated as a static asset, so a dotted path cannot skip authentication.
+- `x-pathname` is stamped on every forwarded request (anonymous, webhook, cron and session).
+
+## Loyalty (V1)
+
+Loyalty is legacy-only: `isLegacyOnlyAppCode('loyalty')`; the composition resolver rejects installing it
+(`APP_NOT_AVAILABLE`). Loyalty routes are in the `loyalty` family, so tenants without it get `APP_NOT_INSTALLED`. The POS
+post-commit loyalty earn runs only if the sale branch's tenant has Loyalty installed (CASHER_BOOT); everything else
+fails closed.
 
 ## Isolation changes
 
@@ -102,8 +154,9 @@ is not a platform operator. All `/api/admin/platform/**` routes use it exclusive
 ## CASHER_BOOT seams
 
 `resolveLegacyBootstrapTenantId(seam)` is the only bootstrap-by-code lookup, restricted to named seams:
-`platform-operator-tenant`, `legacy-messaging-worker` (TblMessaging* has no TenantId), `casher-boot-staging-smoke`,
-`casher-boot-operator-script`. The DRVO-005/006 staging smokes no longer pick "the first active tenant/branch"; they
+`platform-operator-tenant`, `legacy-messaging-worker` (TblMessaging* has no TenantId), `legacy-global-data` (budget
+tables), `legacy-payroll-job-log` (global job logs), `casher-boot-staging-smoke`, `casher-boot-operator-script`.
+`drvo013StaticGuards.test.ts` pins every file allowed to call it. The DRVO-005/006 staging smokes no longer pick "the first active tenant/branch"; they
 target CASHER_BOOT by code and its Locations.
 
 ## Rollout preflight (mandatory before deploy)
@@ -128,6 +181,11 @@ hard preflight before any mutation.
    cleanup.
 7. Operational route catch blocks still answer tenant-context failures with their generic status (often 500); the body
    is non-disclosing, but the status is not normalized to 403/404 outside `authenticate()` / branch context.
+8. The route-family app gate relies on the proxy-stamped `x-pathname`; outside a proxied request (scripts, tests) it
+   is a no-op, and explicit `requireTenantApp` / composition-root gates still apply.
+9. Messaging internal routes (outbox tick, inbox workers) stay on the `legacy-messaging-worker` seam (DRVO-018).
+10. Unauthenticated responses from converted routes use the standard `SESSION_REQUIRED` 401 body (status unchanged);
+    `pos/whatsapp/quick-send` keeps its historical `{ error: 'غير مصرح' }` body.
 
 ## Tests
 
@@ -138,6 +196,13 @@ hard preflight before any mutation.
 - `src/platform/__tests__/drvo013StaticGuards.test.ts` — no bootstrap default outside seams, no first-tenant query,
   applock inventory, platform routes, gated composition roots, session binding, tenant scope in every
   `admin/branches/[id]/**` handler.
+- `src/platform/__tests__/drvo013RouteAuthGuards.test.ts` — every non-public handler reaches an approved gate, no
+  `getSession()`-only handlers, migrate/seed are platform-operator only, family map coverage, proxy stamping, system
+  jobs fan out.
+- `src/platform/__tests__/drvo013TenantJobsAndGates.test.ts` — fan-out across tenants (subscription / app skips,
+  single-tenant session scope, failure isolation), route app gate, `withTenantApp`, Loyalty fail-closed, auto-absence
+  cross-tenant branch denial.
 - `src/lib/__tests__/drvo013CrossTenantRoutes.test.ts` — `/api/users/[id]` cross-tenant read/write denial.
+- Route tests that model auth via a mocked `getSession()` use `src/lib/__tests__/helpers/tenantSessionAuthMock.ts`.
 - Updated: session, branch context, branch switcher, security baseline, expense delete, booking path regression,
   DRVO-012 wiring (limits now wired on the authoritative tenant).

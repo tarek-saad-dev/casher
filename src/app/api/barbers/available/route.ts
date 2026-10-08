@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAvailableBarbers } from '@/lib/barberAvailability';
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -9,6 +10,8 @@ export const runtime = 'nodejs';
  * Falls back to current time if not supplied.
  */
 export async function GET(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { searchParams } = new URL(req.url);
     const dateParam = searchParams.get('date');

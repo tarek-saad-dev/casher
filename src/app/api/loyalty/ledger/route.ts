@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import type { LoyaltyLedgerWithClient } from '@/lib/types';
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -13,6 +14,8 @@ export const runtime = 'nodejs';
 //   - page: page number (default 1)
 //   - limit: items per page (default 20)
 export async function GET(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search') || '';

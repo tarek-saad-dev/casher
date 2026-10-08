@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import type { SaveBudgetLinePayload } from '@/lib/types';
+import { requireLegacyGlobalDataSession } from '@/lib/api-auth';
 
 // POST /api/budget/[id]/lines — Add a new budget line
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const tenantSession = await requireLegacyGlobalDataSession('budget');
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { id } = await params;
     const budgetMonthID = parseInt(id);

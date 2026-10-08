@@ -12,6 +12,7 @@ import { resolveEmployeeDayPlan } from "@/lib/availability/resolveEmployeeDayPla
 import { iterateEffectiveWindows } from "@/lib/availability/effectiveWindows";
 import { isValidDate, isValidTime } from "@/lib/publicBookingHelpers";
 import type { BookingBarberResult } from "@/lib/operationsTypes";
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = "nodejs";
 const isDev = process.env.NODE_ENV !== "production";
@@ -30,6 +31,8 @@ const isDev = process.env.NODE_ENV !== "production";
  * or single barber result for mode='specific'.
  */
 export async function POST(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const body = await req.json();
     const {

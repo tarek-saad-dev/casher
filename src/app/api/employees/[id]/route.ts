@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
-import { getSession } from '@/lib/session';
 import {
   validateEmployeeHrPayload,
   mapNormalizedToDbColumns,
@@ -34,6 +33,7 @@ import {
   syncHrRatesToActiveBranchPlans,
   type BranchPayrollPayType,
 } from '@/lib/payroll/branchPayrollPlan';
+import { requireTenantSession } from '@/lib/api-auth';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -70,8 +70,8 @@ function patchTouchesHrModel(body: EmployeeHrPayload): boolean {
 // PATCH /api/employees/:id
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   try {
-    const session = await getSession();
-    if (!session) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
 
     const { id } = await params;
     const empID = parseInt(id);
@@ -462,8 +462,8 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 // the FK constraint blocks the delete and we return a safe conflict response.
 export async function DELETE(_req: NextRequest, { params }: Ctx) {
   try {
-    const session = await getSession();
-    if (!session) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
 
     const { id } = await params;
     const empID = parseInt(id);

@@ -74,3 +74,4 @@ export type {
   PlatformOutboxTickSummary,
 } from '../outbox/consumer';
 export type { ActorContext, StaffActorContext, ActorType } from '../auth/actorContext';
+export { isAppInstalledForBranchTenant } from '../commercial/tenantAccessGate';

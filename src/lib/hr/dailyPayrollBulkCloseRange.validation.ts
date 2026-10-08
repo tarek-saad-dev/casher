@@ -73,28 +73,39 @@ export function validateBulkCloseRangeParams(input: {
   return { ok: true, fromDate, toDate, dates };
 }
 
-/** Process-level lock: only one bulk-close-range at a time in this Node process. */
-let bulkCloseRangeInFlightKey: string | null = null;
+/** Process-level lock: one bulk-close-range at a time per tenant in this Node process. */
+const bulkCloseRangeInFlight = new Map<string, string>();
 
-export function bulkCloseRangeLockKey(fromDate: string, toDate: string): string {
-  return `${fromDate}:${toDate}`;
+export interface BulkCloseRangeLockKey {
+  tenantId: string;
+  key: string;
 }
 
-export function tryAcquireBulkCloseRangeLock(key: string): boolean {
-  if (bulkCloseRangeInFlightKey != null) return false;
-  bulkCloseRangeInFlightKey = key;
+export function bulkCloseRangeLockKey(
+  tenantId: string,
+  fromDate: string,
+  toDate: string,
+): BulkCloseRangeLockKey {
+  const tenant = String(tenantId ?? '').trim().toLowerCase();
+  if (!tenant) throw new Error('bulkCloseRangeLockKey requires a tenant');
+  return { tenantId: tenant, key: `t:${tenant}:${fromDate}:${toDate}` };
+}
+
+export function tryAcquireBulkCloseRangeLock(lock: BulkCloseRangeLockKey): boolean {
+  if (bulkCloseRangeInFlight.has(lock.tenantId)) return false;
+  bulkCloseRangeInFlight.set(lock.tenantId, lock.key);
   return true;
 }
 
-export function releaseBulkCloseRangeLock(key: string): void {
-  if (bulkCloseRangeInFlightKey === key) {
-    bulkCloseRangeInFlightKey = null;
+export function releaseBulkCloseRangeLock(lock: BulkCloseRangeLockKey): void {
+  if (bulkCloseRangeInFlight.get(lock.tenantId) === lock.key) {
+    bulkCloseRangeInFlight.delete(lock.tenantId);
   }
 }
 
 /** Test-only reset. */
 export function __resetBulkCloseRangeLockForTests(): void {
-  bulkCloseRangeInFlightKey = null;
+  bulkCloseRangeInFlight.clear();
 }
 
 export function summarizeBulkCloseBranchOutcomes(

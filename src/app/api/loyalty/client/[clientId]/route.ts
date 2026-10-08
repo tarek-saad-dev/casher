@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import type { LoyaltyClientDetailResponse } from '@/lib/types';
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -9,6 +10,8 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ clientId: string }> }
 ) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { clientId: clientIdStr } = await params;
     const clientId = parseInt(clientIdStr, 10);

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
-import { getSession } from '@/lib/session';
+import { requireTenantSession } from '@/lib/api-auth';
 
 // GET /api/expenses/distribute - Get staff distribution settings
 export async function GET(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const db = await getPool();
     const url = new URL(req.url);
@@ -65,10 +67,8 @@ export async function GET(req: NextRequest) {
 // POST /api/expenses/distribute - Create or update staff distribution
 export async function POST(req: NextRequest) {
   try {
-    const sessionUser = await getSession();
-    if (!sessionUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const sessionUser = await requireTenantSession();
+    if (sessionUser instanceof NextResponse) return sessionUser;
 
     const body = await req.json();
     const { expenseCategoryId, staffMemberId, distributionPercentage } = body;
@@ -144,10 +144,8 @@ export async function POST(req: NextRequest) {
 // PUT /api/expenses/distribute - Update multiple distributions at once
 export async function PUT(req: NextRequest) {
   try {
-    const sessionUser = await getSession();
-    if (!sessionUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const sessionUser = await requireTenantSession();
+    if (sessionUser instanceof NextResponse) return sessionUser;
 
     const body = await req.json();
     const { distributions } = body; // Array of {expenseCategoryId, staffMemberId, distributionPercentage}
@@ -237,10 +235,8 @@ export async function PUT(req: NextRequest) {
 // DELETE /api/expenses/distribute - Remove a distribution
 export async function DELETE(req: NextRequest) {
   try {
-    const sessionUser = await getSession();
-    if (!sessionUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const sessionUser = await requireTenantSession();
+    if (sessionUser instanceof NextResponse) return sessionUser;
 
     const url = new URL(req.url);
     const expenseCategoryId = url.searchParams.get('expenseCategoryId');

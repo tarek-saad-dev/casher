@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
-import { getSession } from "@/lib/session";
 import { OverrideType } from "@/lib/scheduleOverrides";
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = "nodejs";
 
@@ -27,7 +27,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const session = await getSession();
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
     if (!session?.UserID) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
     }
@@ -144,7 +145,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const session = await getSession();
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
     if (!session?.UserID) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
     }

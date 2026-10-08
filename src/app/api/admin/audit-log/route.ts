@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
-import { getSession } from '@/lib/session';
 import { getUserAccess } from '@/lib/permissions-server';
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
 
     const access = await getUserAccess(session.UserID, session.UserName, session.UserLevel);
     if (!access.isSuperAdmin) {

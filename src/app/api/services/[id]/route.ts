@@ -2,12 +2,15 @@ import { NextResponse, NextRequest } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { ensureTblProImageUrlColumn, tblProImageUrlSelect } from '@/lib/migrations/ensureServiceImageUrl';
 import { invalidatePublicBookingServicesCache } from '@/lib/booking/publicBookingServices';
+import { requireTenantSession } from '@/lib/api-auth';
 
 // PUT /api/services/[id] — update a service
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { id } = await params;
     const serviceId = parseInt(id);
@@ -97,6 +100,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { id } = await params;
     const serviceId = parseInt(id);
@@ -167,6 +172,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { id } = await params;
     const serviceId = parseInt(id);

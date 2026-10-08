@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { liveCashMoveAndClause } from '@/lib/treasury/liveCashMoveSql';
+import { requireTenantSession } from '@/lib/api-auth';
 
 // Smart category grouping based on common patterns
 function getCategoryGroup(catName: string): string {
@@ -77,6 +78,8 @@ function getCategoryGroup(catName: string): string {
 
 // GET /api/expenses/categories — Expense categories sorted by usage frequency with grouping
 export async function GET() {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const db = await getPool();
     // Reversal columns exist only after DRVO-007 treasury migration; skip filter until then.

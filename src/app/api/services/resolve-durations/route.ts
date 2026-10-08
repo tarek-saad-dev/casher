@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveEmpServiceDurationPlan } from '@/lib/empServiceDuration';
+import { requireTenantSession } from '@/lib/api-auth';
 
 /**
  * GET /api/services/resolve-durations?empId=12&serviceIds=1,2,3
@@ -8,6 +9,8 @@ import { resolveEmpServiceDurationPlan } from '@/lib/empServiceDuration';
  * (override → service default → system default).
  */
 export async function GET(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { searchParams } = new URL(req.url);
     const empIdRaw = searchParams.get('empId');

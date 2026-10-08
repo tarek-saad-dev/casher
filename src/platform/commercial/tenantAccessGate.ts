@@ -7,6 +7,9 @@ import {
 } from './accessGateMemo';
 import { getPlan, getTenantSubscription } from './planRepository';
 import { evaluateSubscription } from './subscriptionLifecycle';
+import { resolveRouteAppCode } from './routeAppFamilies';
+import { currentRequestPathname } from '@/platform/tenant/requestPathname';
+import { resolvePublicTenantContext } from '@/platform/tenant/tenantContext';
 import type { SubscriptionEvaluation } from './types';
 
 export { invalidateTenantAccessGate, resetTenantAccessGate } from './accessGateMemo';
@@ -65,4 +68,33 @@ export async function assertTenantAppInstalled(tenantId: string, appCode: string
   if (!installed.includes(appCode)) {
     throw new TenantAccessDeniedError('APP_NOT_INSTALLED', 'هذا التطبيق غير مفعّل لهذه المنشأة', appCode);
   }
+}
+
+/**
+ * Side effects keyed by a legacy branch (e.g. POS post-commit Loyalty earn): true only when the
+ * branch is an active Location of exactly one active tenant AND that tenant has the app installed.
+ * Any resolution failure answers false (fail closed).
+ */
+export async function isAppInstalledForBranchTenant(legacyBranchId: number, appCode: string): Promise<boolean> {
+  try {
+    const { tenantId } = await resolvePublicTenantContext({ legacyBranchId });
+    return (await getTenantInstalledAppsForGate(tenantId)).includes(appCode);
+  } catch (err) {
+    console.warn(`[tenant-access-gate] ${appCode} skipped for branch ${legacyBranchId}: ${err instanceof Error ? err.message : err}`);
+    return false;
+  }
+}
+
+/**
+ * Route-family app gate (ROUTE_APP_FAMILIES) for the AUTHORITATIVE tenant of the current request.
+ * `pathname` defaults to the proxy-stamped request path; core/shared routes resolve to no app.
+ */
+export async function assertRouteAppEntitlement(
+  tenantId: string,
+  pathname?: string | null,
+): Promise<string | null> {
+  const path = pathname === undefined ? await currentRequestPathname() : pathname;
+  const app = resolveRouteAppCode(path);
+  if (app) await assertTenantAppInstalled(tenantId, app);
+  return app;
 }

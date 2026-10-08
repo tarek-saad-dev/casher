@@ -92,6 +92,14 @@ describe('DRVO-012 industry packs', () => {
       optional: ['operations'],
     };
     expect(codeOf(() => resolveTenantComposition(withOperations))).toBe('PACK_INVALID');
+
+    const withLoyalty: IndustryPackDefinition = {
+      ...SALON_PACK,
+      packCode: 'loyal',
+      optional: ['loyalty'],
+    };
+    expect(validatePackDefinition(withLoyalty).ok).toBe(false);
+    expect(codeOf(() => resolveTenantComposition(withLoyalty))).toBe('PACK_INVALID');
   });
 
   it('rejects packs whose default set violates dependencies', () => {

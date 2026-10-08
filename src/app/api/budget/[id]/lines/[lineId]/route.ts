@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import type { SaveBudgetLinePayload } from '@/lib/types';
+import { requireLegacyGlobalDataSession } from '@/lib/api-auth';
 
 // PUT /api/budget/[id]/lines/[lineId] — Update a budget line
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; lineId: string }> }
 ) {
+  const tenantSession = await requireLegacyGlobalDataSession('budget');
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { id, lineId } = await params;
     const budgetMonthID = parseInt(id);
@@ -68,6 +71,8 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string; lineId: string }> }
 ) {
+  const tenantSession = await requireLegacyGlobalDataSession('budget');
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { id, lineId } = await params;
     const budgetMonthID = parseInt(id);

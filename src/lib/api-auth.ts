@@ -19,10 +19,12 @@ import {
 } from '@/platform/tenant/tenantContext';
 import { resolveLegacyBootstrapTenantId } from '@/platform/tenant/legacyBootstrapSeam';
 import {
+  assertRouteAppEntitlement,
   assertTenantAppInstalled,
   assertTenantSubscriptionActive,
   TenantAccessDeniedError,
 } from '@/platform/commercial/tenantAccessGate';
+import type { AppRegistryCode } from '@/platform/registry/constants';
 
 export interface AuthResult {
   ok: true;
@@ -145,6 +147,7 @@ export async function authenticate(): Promise<AuthResult | NextResponse> {
       preferredTenantId: session.TenantId ?? null,
     });
     await assertTenantSubscriptionActive(tenant.tenantId);
+    await assertRouteAppEntitlement(tenant.tenantId);
   } catch (err) {
     const denied = await tenantDenialResponse(err, {
       userId: session.UserID,
@@ -173,13 +176,31 @@ export async function authenticate(): Promise<AuthResult | NextResponse> {
  * Tenant-owned product routes for an installable app: authoritative tenant first, then the
  * DRVO-012 installed-app check for THAT tenant.
  */
-export async function requireTenantApp(appCode: string): Promise<AuthResult | NextResponse> {
-  const auth = await authenticate();
-  if (!isAuthResult(auth)) return auth;
+export async function requireTenantApp(appCode: AppRegistryCode): Promise<AuthResult | NextResponse> {
+  return withTenantApp(appCode, authenticate());
+}
+
+/**
+ * App entitlement for any tenant-checked auth result (AuthResult, ActiveBranchContext, ...):
+ * `await withTenantApp('payroll', requireRole([...]))`. A result without an authoritative
+ * tenant (cron bearer) is denied — system jobs fan out per tenant instead.
+ */
+export async function withTenantApp<T extends { tenantId: string | null }>(
+  appCode: AppRegistryCode,
+  pending: Promise<T | NextResponse>,
+): Promise<T | NextResponse> {
+  const auth = await pending;
+  if (auth instanceof NextResponse) return auth;
+  if (!auth.tenantId) {
+    return NextResponse.json(
+      { error: 'تعذر تحديد المنشأة لهذا الطلب', code: 'TENANT_CONTEXT_REQUIRED' },
+      { status: 403 },
+    );
+  }
   try {
     await assertTenantAppInstalled(auth.tenantId, appCode);
   } catch (err) {
-    const denied = await tenantDenialResponse(err, { userId: auth.userId, tenantId: auth.tenantId, appCode });
+    const denied = await tenantDenialResponse(err, { tenantId: auth.tenantId, appCode });
     if (denied) return denied;
     throw err;
   }
@@ -189,6 +210,53 @@ export async function requireTenantApp(appCode: string): Promise<AuthResult | Ne
 /** Alias: any authenticated POS session. */
 export async function requireSession(): Promise<AuthResult | NextResponse> {
   return authenticate();
+}
+
+/** Session shape whose tenant binding has been re-verified by `authenticate()`. */
+export type TenantSessionUser = SessionUser & { TenantId: string; MembershipId: string };
+
+function toTenantSessionUser(auth: AuthResult): TenantSessionUser {
+  return {
+    UserID: auth.userId,
+    UserName: auth.userName,
+    UserLevel: auth.userLevel === 'admin' ? 'admin' : 'user',
+    ActiveBranchID: auth.activeBranchId,
+    ActiveBranchCode: auth.activeBranchCode,
+    BranchSessionVersion: 1,
+    TenantId: auth.tenantId,
+    MembershipId: auth.membershipId,
+  };
+}
+
+/**
+ * Tenant-checked replacement for `getSession()` in staff handlers: membership, tenant, active
+ * location, subscription and route-family app gates all pass before the session is returned.
+ * `app` additionally requires that installable app for the session tenant.
+ */
+export async function requireTenantSession(
+  opts: { app?: AppRegistryCode } = {},
+): Promise<TenantSessionUser | NextResponse> {
+  const auth = opts.app ? await requireTenantApp(opts.app) : await authenticate();
+  if (!isAuthResult(auth)) return auth;
+  return toTenantSessionUser(auth);
+}
+
+/**
+ * Features backed by global legacy tables that have neither TenantId nor BranchID stay limited to
+ * the CASHER_BOOT tenant (named seam) until their data is tenant-owned. Other tenants get a
+ * non-disclosing 404.
+ */
+export async function requireLegacyGlobalDataSession(
+  feature: string,
+): Promise<TenantSessionUser | NextResponse> {
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+  const legacyTenantId = await resolveLegacyBootstrapTenantId('legacy-global-data');
+  if (auth.tenantId !== legacyTenantId) {
+    logSecurityEvent('legacy_global_data_denied', { userId: auth.userId, tenantId: auth.tenantId, feature });
+    return NextResponse.json({ error: 'غير موجود', code: 'NOT_FOUND' }, { status: 404 });
+  }
+  return toTenantSessionUser(auth);
 }
 
 /** Require the caller to have at least one of the given roles. */

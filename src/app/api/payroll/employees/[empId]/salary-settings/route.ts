@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
-import { getSession } from '@/lib/session';
+import { requireTenantSession } from '@/lib/api-auth';
 
 type Ctx = { params: Promise<{ empId: string }> };
 
@@ -43,8 +43,8 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
   let wage  = 0;
 
   try {
-    const session = await getSession();
-    if (!session) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
 
     const { empId } = await params;
     empID = parseInt(empId);

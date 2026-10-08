@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import { requireTenantSession } from '@/lib/api-auth';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // GET /api/payroll/monthly?from=YYYY-MM-DD&to=YYYY-MM-DD
 export async function GET(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { searchParams } = new URL(req.url);
     const from = searchParams.get('from');

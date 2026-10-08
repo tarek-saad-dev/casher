@@ -34,6 +34,7 @@ export const PUBLIC_PREFIX_ROUTES = [
 export const CRON_BEARER_PREFIX_ROUTES = [
   '/api/cron/',
   '/api/admin/hr/nightly-close',
+  '/api/admin/attendance/auto-absence/run',
   '/api/payroll/daily/auto-generate',
   '/api/internal/operations/business-day/reconcile',
   '/api/internal/messaging/inbox',
@@ -49,6 +50,8 @@ export const WHATSAPP_INBOX_WEBHOOK_PREFIX_ROUTES = [
 ] as const;
 
 export function isStaticOrNextAsset(pathname: string): boolean {
+  // API routes are never assets, even when a dynamic segment contains a dot.
+  if (pathname === '/api' || pathname.startsWith('/api/')) return false;
   return (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon') ||
@@ -71,17 +74,23 @@ export function isAnonymousPublicPath(pathname: string): boolean {
   return isPublicExactRoute(pathname) || isPublicPrefixRoute(pathname);
 }
 
+/** Segment-aware prefix: `/a/b` matches `/a/b` and `/a/b/...`, never `/a/bc`. */
+function matchesRoutePrefix(pathname: string, prefix: string): boolean {
+  if (prefix.endsWith('/')) return pathname.startsWith(prefix);
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
+
 /** True when path may skip session cookie if Bearer cron auth succeeds. */
 export function isCronBearerPath(pathname: string): boolean {
   if (isWhatsAppInboxWebhookPath(pathname)) return false;
   return (CRON_BEARER_PREFIX_ROUTES as readonly string[]).some((p) =>
-    pathname.startsWith(p),
+    matchesRoutePrefix(pathname, p),
   );
 }
 
 export function isWhatsAppInboxWebhookPath(pathname: string): boolean {
   return (WHATSAPP_INBOX_WEBHOOK_PREFIX_ROUTES as readonly string[]).some((p) =>
-    pathname.startsWith(p),
+    matchesRoutePrefix(pathname, p),
   );
 }
 

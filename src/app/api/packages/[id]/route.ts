@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
-import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
+import { isAuthResult, requirePageAccess, requireTenantSession } from '@/lib/api-auth';
 import {
   getServicePackageById,
   softDeleteServicePackage,
@@ -13,6 +13,8 @@ type RouteCtx = { params: Promise<{ id: string }> };
 
 // GET /api/packages/[id]
 export async function GET(_req: NextRequest, { params }: RouteCtx) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { id } = await params;
     const packageId = parseInt(id, 10);

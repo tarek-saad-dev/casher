@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 import { getPool } from '@/lib/db';
+import { requireLegacyGlobalDataSession } from '@/lib/api-auth';
 
 // Category name → suggested LineType + Group mapping
 const CATEGORY_CLASSIFICATION: Record<string, { lineType: string; group: string }> = {
@@ -46,6 +47,8 @@ function classifyCategory(catName: string): { lineType: string; group: string } 
 
 // GET /api/budget/historical — Historical baseline averages from last 6 months
 export async function GET() {
+  const tenantSession = await requireLegacyGlobalDataSession('budget');
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const db = await getPool();
 

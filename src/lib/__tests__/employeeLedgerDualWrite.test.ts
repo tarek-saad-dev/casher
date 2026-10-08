@@ -581,6 +581,25 @@ describe('POST /api/payroll/daily/auto-generate', () => {
       })),
     }));
 
+    vi.doMock('@/lib/branch', () => ({
+      listActiveBranchesIn: vi.fn(async () => [
+        { branchId: 1, branchCode: 'GLEEM', branchName: 'Gleem', isActive: true },
+      ]),
+    }));
+    vi.doMock('@/platform/tenant/legacyBootstrapSeam', () => ({
+      resolveLegacyBootstrapTenantId: vi.fn(async () => 'tenant-boot'),
+    }));
+    vi.doMock('@/platform/tenant/tenantJobFanout', () => ({
+      tenantJobScopeFor: () => ({ kind: 'all_tenants' }),
+      runTenantJobFanout: vi.fn(async (_opts: unknown, run: (t: unknown) => Promise<unknown>) => {
+        const target = { tenantId: 'tenant-boot', tenantCode: 'CASHER_BOOT', branchIds: [1] };
+        return {
+          outcomes: [{ tenantId: target.tenantId, tenantCode: target.tenantCode, ok: true, result: await run(target) }],
+          skipped: [],
+        };
+      }),
+    }));
+
     const { POST } = await import('@/app/api/payroll/daily/auto-generate/route');
     const res = await POST(new NextRequest('http://localhost/api/payroll/daily/auto-generate', {
       method: 'POST',
@@ -589,7 +608,8 @@ describe('POST /api/payroll/daily/auto-generate', () => {
     const data = await res.json();
 
     expect(res.status).toBe(200);
-    expect(data.ledgerDualWrite).toBe(true);
-    expect(data.ledgerSync.inserted).toBe(2);
+    expect(data.tenants).toHaveLength(1);
+    expect(data.tenants[0].result.ledgerDualWrite).toBe(true);
+    expect(data.tenants[0].result.ledgerSync.inserted).toBe(2);
   });
 });

@@ -4,11 +4,14 @@ import {
   ensureTblCatSortOrderColumn,
   tblCatSortOrderSelect,
 } from '@/lib/migrations/ensureCategorySortOrder';
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
 // GET /api/services/categories — returns all categories with service counts + sortOrder
 export async function GET() {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const db = await getPool();
     const hasSortOrder = await ensureTblCatSortOrderColumn(db);
@@ -50,6 +53,8 @@ export async function GET() {
 
 // POST /api/services/categories — create a new category
 export async function POST(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const body = await req.json();
     const { CatName, SortOrder } = body;

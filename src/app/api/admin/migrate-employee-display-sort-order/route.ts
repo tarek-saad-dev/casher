@@ -4,20 +4,15 @@
  */
 import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
-import { getSession } from '@/lib/session';
+import { requirePlatformOperator } from '@/lib/api-auth';
 import { ensureTblEmpDisplaySortOrderColumn } from '@/lib/migrations/ensureEmployeeDisplaySortOrder';
 
 export const runtime = 'nodejs';
 
 export async function POST() {
   try {
-    const session = await getSession();
-    if (!session || session.UserLevel !== 'admin') {
-      return NextResponse.json(
-        { ok: false, error: 'غير مصرح - يتطلب صلاحيات المدير' },
-        { status: 403 },
-      );
-    }
+    const operator = await requirePlatformOperator();
+    if (operator instanceof NextResponse) return operator;
 
     const db = await getPool();
     const ready = await ensureTblEmpDisplaySortOrderColumn(db);

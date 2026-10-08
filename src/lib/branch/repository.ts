@@ -114,6 +114,16 @@ export async function listActiveBranches(): Promise<BranchRecord[]> {
   return result.recordset.map(mapBranch);
 }
 
+/**
+ * Active branches limited to an explicit set — system jobs pass one tenant's Location branch ids.
+ * An empty set yields no branches (never "all").
+ */
+export async function listActiveBranchesIn(branchIds: readonly number[]): Promise<BranchRecord[]> {
+  if (branchIds.length === 0) return [];
+  const allowed = new Set(branchIds);
+  return (await listActiveBranches()).filter((b) => allowed.has(b.branchId));
+}
+
 /** Admin hub — all branches including SETUP / inactive. */
 export async function listAllBranches(): Promise<BranchRecord[]> {
   const db = await getPool();
