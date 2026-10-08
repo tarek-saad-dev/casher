@@ -53,6 +53,7 @@ const CORE_TENANT_HELPERS = [
   'requireTenantApp',
   'withTenantApp',
   'requireTenantSession',
+  'authenticateTenantShell', // DRVO-017 read-only shell: authoritative tenant, subscription reported not enforced
   'requireLegacyGlobalDataSession',
   'requireWorkforceAvailabilityAccess',
   'requireTemporaryTransferAccess',

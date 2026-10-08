@@ -11,6 +11,9 @@ import {
 import { getPlan, getTenantSubscription } from '@/platform/commercial/planRepository';
 import type { ReadinessCheck, TenantReadinessReport } from './types';
 
+/** Lifecycle stages in which staff may log in and operate (IsActive=1). */
+const USABLE_LIFECYCLES = new Set(['INTERNAL_LIVE', 'PUBLIC_LIVE']);
+
 async function loadTenant(
   pool: ConnectionPool,
   tenantId: string,
@@ -77,6 +80,7 @@ export async function evaluateTenantReadiness(
         : 'No Location rows for tenant',
   });
 
+  const usableBranchIds: number[] = [];
   for (const loc of locations.recordset as Array<{
     LocationId: string;
     LegacyBranchId: number;
@@ -118,32 +122,13 @@ export async function evaluateTenantReadiness(
           : `BranchCode mismatch location=${loc.BranchCode} branch=${row.BranchCode}`,
       });
 
-      const setup = String(row.LifecycleStatus) === 'SETUP';
-      checks.push({
-        id: `branch_lifecycle_setup_${branchId}`,
-        pass: setup,
-        detail: setup
-          ? `Branch ${branchId} lifecycle is SETUP`
-          : `Branch ${branchId} lifecycle is ${row.LifecycleStatus}`,
-      });
-
-      const bookingOff = !Boolean(row.PublicBookingEnabled);
-      checks.push({
-        id: `public_booking_disabled_${branchId}`,
-        pass: bookingOff,
-        detail: bookingOff
-          ? `Public booking disabled for branch ${branchId}`
-          : `Public booking must remain disabled during onboarding`,
-      });
-
-      const inactive = !Boolean(row.IsActive);
-      checks.push({
-        id: `branch_inactive_${branchId}`,
-        pass: inactive,
-        detail: inactive
-          ? `Branch ${branchId} is inactive (SETUP onboarding)`
-          : `Branch ${branchId} must remain inactive during onboarding`,
-      });
+      if (
+        String(loc.Status) === 'active' &&
+        Boolean(row.IsActive) &&
+        USABLE_LIFECYCLES.has(String(row.LifecycleStatus))
+      ) {
+        usableBranchIds.push(branchId);
+      }
 
       const mapRows = await db
         .request()
@@ -166,6 +151,14 @@ export async function evaluateTenantReadiness(
       });
     }
   }
+
+  checks.push({
+    id: 'has_usable_branch',
+    pass: usableBranchIds.length >= 1,
+    detail: usableBranchIds.length
+      ? `Usable branch(es): ${usableBranchIds.join(', ')}`
+      : 'No active branch in INTERNAL_LIVE / PUBLIC_LIVE — staff cannot log in',
+  });
 
   const memberships = await db
     .request()
@@ -226,6 +219,62 @@ export async function evaluateTenantReadiness(
         : `LegacyIdMap staff_user missing or mismatched for ${userId}`,
     });
   }
+
+  const owners = await db
+    .request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .query(`
+      SELECT DISTINCT m.LegacyUserId, uba.BranchID
+      FROM dbo.TenantMembership m WITH (NOLOCK)
+      INNER JOIN dbo.TblUser u WITH (NOLOCK)
+        ON u.UserID = m.LegacyUserId AND ISNULL(u.isDeleted, 0) = 0
+      INNER JOIN dbo.TblUserRoles ur WITH (NOLOCK) ON ur.UserID = m.LegacyUserId
+      INNER JOIN dbo.TblRoles r WITH (NOLOCK)
+        ON r.RoleID = ur.RoleID AND ISNULL(r.IsActive, 1) = 1 AND r.RoleKey IN (N'admin', N'super_admin')
+      LEFT JOIN dbo.TblUserBranchAccess uba WITH (NOLOCK)
+        ON uba.UserID = m.LegacyUserId AND uba.IsActive = 1
+       AND uba.ValidFrom <= SYSUTCDATETIME()
+       AND (uba.ValidTo IS NULL OR uba.ValidTo > SYSUTCDATETIME())
+      WHERE m.TenantId = @tenantId;
+    `);
+  const ownerRows = owners.recordset as Array<{ LegacyUserId: number; BranchID: number | null }>;
+  checks.push({
+    id: 'owner_admin_role',
+    pass: ownerRows.length > 0,
+    detail: ownerRows.length
+      ? `Admin member(s): ${[...new Set(ownerRows.map((r) => r.LegacyUserId))].join(', ')}`
+      : 'No tenant member holds the admin role — the owner would see no pages',
+  });
+  const loginReady = ownerRows.some(
+    (r) => r.BranchID != null && usableBranchIds.includes(Number(r.BranchID)),
+  );
+  checks.push({
+    id: 'owner_can_login',
+    pass: loginReady,
+    detail: loginReady
+      ? 'An admin member has valid access to a usable branch'
+      : 'No admin member has valid branch access to a usable branch (login would fail NO_BRANCH_ACCESS)',
+  });
+
+  const brand = await db
+    .request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .query(`
+      SELECT CASE WHEN OBJECT_ID(N'dbo.TenantBrandProfile', N'U') IS NULL THEN NULL
+             ELSE (SELECT COUNT(*) FROM dbo.TenantBrandProfile WITH (NOLOCK) WHERE TenantId = @tenantId)
+             END AS cnt;
+    `);
+  const brandCount = brand.recordset[0]?.cnt;
+  checks.push({
+    id: 'brand_profile',
+    pass: Number(brandCount) === 1,
+    detail:
+      brandCount == null
+        ? 'TenantBrandProfile table missing (apply DRVO migration 11)'
+        : Number(brandCount) === 1
+          ? 'Brand profile present'
+          : 'Missing TenantBrandProfile row',
+  });
 
   const sub = await getTenantSubscription(db, tenantId);
   checks.push({

@@ -22,9 +22,11 @@ import {
   assertRouteAppEntitlement,
   assertTenantAppInstalled,
   assertTenantSubscriptionActive,
+  evaluateTenantSubscriptionGate,
   TenantAccessDeniedError,
 } from '@/platform/commercial/tenantAccessGate';
 import type { AppRegistryCode } from '@/platform/registry/constants';
+import type { SubscriptionEvaluation } from '@/platform/commercial/types';
 
 export interface AuthResult {
   ok: true;
@@ -278,6 +280,69 @@ export async function requireRole(
   return auth;
 }
 
+async function isPlatformOwnerMember(userId: number): Promise<boolean> {
+  try {
+    const platformTenantId = await resolveLegacyBootstrapTenantId('platform-operator-tenant');
+    await assertLegacyUserInTenant(platformTenantId, userId);
+    return true;
+  } catch (err) {
+    if (isTenantContextError(err)) return false;
+    throw err;
+  }
+}
+
+/** Same rule as requirePlatformOperator, as a boolean for UI shells (never a substitute for the gate). */
+export async function isPlatformOperatorUser(userId: number, roles: readonly string[]): Promise<boolean> {
+  if (!roles.includes('super_admin')) return false;
+  return isPlatformOwnerMember(userId);
+}
+
+export type TenantShellAuthResult = AuthResult & { subscription: SubscriptionEvaluation };
+
+/**
+ * Tenant shell read: authoritative tenant (membership + active location) WITHOUT the subscription
+ * gate, so a blocked tenant can still be told why it is blocked. Only for read-only shell
+ * endpoints; every product route keeps using authenticate().
+ */
+export async function authenticateTenantShell(): Promise<TenantShellAuthResult | NextResponse> {
+  const identity = await authenticateIdentity();
+  if (identity instanceof NextResponse) return identity;
+  const { session } = identity;
+
+  let tenant: StaffTenantContext;
+  let subscription: SubscriptionEvaluation;
+  try {
+    tenant = await resolveStaffTenantContextForRequest({
+      userId: session.UserID,
+      activeBranchId: session.ActiveBranchID,
+      preferredTenantId: session.TenantId ?? null,
+    });
+    subscription = await evaluateTenantSubscriptionGate(tenant.tenantId);
+  } catch (err) {
+    const denied = await tenantDenialResponse(err, {
+      userId: session.UserID,
+      activeBranchId: session.ActiveBranchID,
+    });
+    if (denied) return denied;
+    throw err;
+  }
+
+  return {
+    ok: true,
+    userId: session.UserID,
+    userName: session.UserName,
+    userLevel: session.UserLevel,
+    roles: identity.roles,
+    isSuperAdmin: identity.isSuperAdmin,
+    activeBranchId: session.ActiveBranchID,
+    activeBranchCode: session.ActiveBranchCode,
+    tenantId: tenant.tenantId,
+    membershipId: tenant.membershipId,
+    tenant,
+    subscription,
+  };
+}
+
 /**
  * Platform operator gate for control-plane routes. Separate from tenant staff semantics:
  * requires super_admin AND membership in the platform-owner tenant (CASHER_BOOT seam), so a
@@ -305,12 +370,8 @@ export async function requirePlatformOperator(): Promise<PlatformOperatorAuth | 
   if (!(identity.isSuperAdmin || identity.roles.includes('super_admin'))) {
     return deny('not_super_admin');
   }
-  try {
-    const platformTenantId = await resolveLegacyBootstrapTenantId('platform-operator-tenant');
-    await assertLegacyUserInTenant(platformTenantId, session.UserID);
-  } catch (err) {
-    if (isTenantContextError(err)) return deny('not_platform_owner_member');
-    throw err;
+  if (!(await isPlatformOwnerMember(session.UserID))) {
+    return deny('not_platform_owner_member');
   }
 
   return {

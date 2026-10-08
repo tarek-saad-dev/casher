@@ -9,6 +9,7 @@ import { bookingHoldKeyMigration } from './007-booking-hold-key';
 import { insCashMoveSalesGuardMigration } from './008-ins-cash-move-sales-guard';
 import { commercialSubscriptionTenantAppsMigration } from './009-commercial-subscription-tenant-apps';
 import { masterDataTenancyMigration } from './010-master-data-tenancy';
+import { tenantBrandProfileMigration } from './011-tenant-brand-profile';
 import { drvoModuleRequiredMigrationsFromManifest } from '../../../src/platform/drvo/moduleManifest';
 
 /** Ordered DRVO migration manifest — single source of truth for migration order. */
@@ -23,6 +24,7 @@ export const DRVO_MIGRATIONS: DrvoMigrationDefinition[] = [
   insCashMoveSalesGuardMigration,
   commercialSubscriptionTenantAppsMigration,
   masterDataTenancyMigration,
+  tenantBrandProfileMigration,
 ];
 
 export function assertDrvoMigrationManifestValid(): void {
@@ -58,10 +60,12 @@ export function assertDrvoMigrationManifestValid(): void {
       }
     }
   }
+  let expected = 1;
   for (let i = 0; i < DRVO_MIGRATIONS.length; i++) {
-    if (DRVO_MIGRATIONS[i]!.migrationId !== i + 1) {
+    if (DRVO_MIGRATIONS[i]!.migrationId !== expected) {
       throw new Error(`DRVO migration ids must be contiguous starting at 1 (gap at index ${i})`);
     }
+    expected++;
   }
 }
 

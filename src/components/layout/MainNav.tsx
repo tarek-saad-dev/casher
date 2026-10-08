@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect, CSSProperties, useMemo } from 'react';
+import { useState, useEffect, CSSProperties, useMemo, useCallback } from 'react';
 import { usePermissions } from '@/components/providers/PermissionsProvider';
+import { useTenantShell } from '@/components/tenant/TenantShellProvider';
+import { brandPrintTitle, brandWordmark } from '@/platform/branding/brandProfile';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ChevronDown, Menu, X, PanelLeftClose, PanelLeftOpen, MonitorPlay, Crown, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, Menu, X, PanelLeftClose, PanelLeftOpen, MonitorPlay, Crown, SlidersHorizontal, ServerCog } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
   NAV_SECTIONS, NAV_CATEGORIES, getTheme,
@@ -47,9 +49,20 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
 
-  const { canSeePage, access, loading: permLoading, isAuthenticated } = usePermissions();
+  const { canSeePage: canSeePageByRole, access, loading: permLoading, isAuthenticated } = usePermissions();
+  const { snapshot: tenantShell, isAppRouteAvailable } = useTenantShell();
+  const canSeePage = useCallback(
+    (href: string) => canSeePageByRole(href) && isAppRouteAvailable(href),
+    [canSeePageByRole, isAppRouteAvailable],
+  );
+  const brandName = tenantShell?.brand.displayName ?? '';
+  const brandTitle = brandPrintTitle(brandName);
+  const brandLogo = tenantShell?.brand.logoUrl ?? null;
+  const clubLabel = brandName ? `${brandWordmark(brandName)} CLUB` : 'CLUB';
+  const showSalonCard = tenantShell?.tenant.industryPackCode === 'salon';
+  const isPlatformOperator = tenantShell?.isPlatformOperator === true;
 
-  // Filter nav sections based on user permissions
+  // Filter nav sections based on user permissions and the tenant's installed apps
   // 3 states: loading → skeleton | not-authenticated → empty | authenticated → filtered
   const visibleSections = useMemo(() => {
     if (permLoading) return [];          // still fetching — show skeleton
@@ -90,9 +103,24 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
   const activeMainTitle = getActiveMainTitle(pathname);
   const activeDirectLink = useMemo(() => {
     if (isActive('/operations')) return { label: 'لوحة التشغيل', section: 'اختصار' };
-    if (isActive('/admin/cut-club')) return { label: 'CUT CLUB', section: 'اختصار' };
+    if (isActive('/admin/cut-club')) return { label: clubLabel, section: 'اختصار' };
+    if (isActive('/platform')) return { label: 'لوحة المنصة', section: 'اختصار' };
     return null;
-  }, [pathname]);
+  }, [pathname, clubLabel]);
+
+  const BrandMark = ({ className, style }: { className?: string; style?: CSSProperties }) =>
+    brandLogo ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={brandLogo} alt={brandName} className={className} style={{ objectFit: 'contain', ...style }} />
+    ) : (
+      <div
+        className={cn('flex items-center justify-center rounded-lg font-bold text-white', className)}
+        style={{ background: tenantShell?.brand.primaryColor ?? 'var(--primary)', ...style }}
+        aria-label={brandName}
+      >
+        {brandName.trim().charAt(0)}
+      </div>
+    );
   const currentPageLabel = activeNavItem?.label ?? activeDirectLink?.label ?? null;
   const currentSectionLabel = activeSectionTitle ?? activeDirectLink?.section ?? null;
   const isOperationsRoute = isActive('/operations');
@@ -865,7 +893,8 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
   const MobileNavContent = () => {
     const directLinks = [
       canSeePage('/operations') && { href: '/operations', label: 'لوحة التشغيل', Icon: MonitorPlay, rgb: '20,184,166' },
-      canSeePage('/admin/cut-club') && { href: '/admin/cut-club', label: 'CUT CLUB', Icon: Crown, rgb: '234,179,8' },
+      canSeePage('/admin/cut-club') && { href: '/admin/cut-club', label: clubLabel, Icon: Crown, rgb: '234,179,8' },
+      isPlatformOperator && { href: '/platform', label: 'لوحة المنصة', Icon: ServerCog, rgb: '99,102,241' },
     ].filter(Boolean) as { href: string; label: string; Icon: LucideIcon; rgb: string }[];
 
     return (
@@ -1009,7 +1038,8 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
       ) : isAuthenticated && access ? (
         <>
           {canSeePage('/operations') && renderDirectLink('/operations', 'لوحة التشغيل', MonitorPlay, '20,184,166')}
-          {canSeePage('/admin/cut-club') && renderDirectLink('/admin/cut-club', 'CUT CLUB', Crown, '234,179,8')}
+          {canSeePage('/admin/cut-club') && renderDirectLink('/admin/cut-club', clubLabel, Crown, '234,179,8')}
+          {isPlatformOperator && renderDirectLink('/platform', 'لوحة المنصة', ServerCog, '99,102,241')}
           {navMode === 'tree' && !isCollapsed
             ? groupedMains.map(group => renderMainGroup(group))
             : visibleSections.map(section => (
@@ -1047,7 +1077,7 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             transition: 'all 0.3s',
           }}>
-            <img src="/cutsalon.png" alt="Cut Salon Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            {tenantShell && <BrandMark style={{ width: '100%', height: '100%', fontSize: isCollapsed ? 16 : 22 }} />}
           </div>
           {!isCollapsed && (
             <button
@@ -1071,8 +1101,8 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
 
         <SidebarContent />
 
-        {/* Barber Chair Image */}
-        {!isCollapsed && (
+        {/* Barber Chair Image — salon pack only */}
+        {!isCollapsed && showSalonCard && (
           <div style={{ padding: '4px 10px 8px' }}>
             <div className="relative rounded-xl overflow-hidden" style={{ height: 200 }}>
               <img src="/chair.png" alt="Barber Chair" className="w-full h-full object-cover" />
@@ -1083,7 +1113,7 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,var(--sidebar-background)_100%)]" />
               <div className="absolute bottom-3 left-3 right-3">
                 <div className="bg-background/60 backdrop-blur-sm rounded-lg p-2.5 text-center">
-                  <p className="text-primary font-bold text-xs">Cut Salon</p>
+                  <p className="text-primary font-bold text-xs">{brandName}</p>
                   <p className="text-foreground/70 text-[10px]">صالون حلاقة راقي</p>
                 </div>
               </div>
@@ -1124,10 +1154,10 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
       )}>
         <div className={cn('flex items-center min-w-0', isOperationsRoute ? 'gap-1.5' : 'gap-3')}>
           <div className={cn('flex items-center justify-center shrink-0', isOperationsRoute ? 'w-6 h-6' : 'w-9 h-9')}>
-            <img src="/cutsalon.png" alt="Cut Salon Logo" className="w-full h-full object-contain" />
+            {tenantShell && <BrandMark className="w-full h-full" />}
           </div>
           <div className="min-w-0">
-            <h2 className={cn('font-bold text-foreground leading-tight', isOperationsRoute ? 'text-xs' : 'text-base')}>CUT SALON</h2>
+            <h2 className={cn('font-bold text-foreground leading-tight', isOperationsRoute ? 'text-xs' : 'text-base')}>{brandTitle}</h2>
             {currentPageLabel && !isOperationsRoute && (
               <p className="text-[11px] text-muted-foreground truncate leading-tight mt-0.5">
                 {currentSectionLabel && <span>{currentSectionLabel} · </span>}
@@ -1173,10 +1203,10 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
               <div className="min-w-0">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 flex items-center justify-center shrink-0">
-                    <img src="/cutsalon.png" alt="Cut Salon Logo" className="w-full h-full object-contain" />
+                    {tenantShell && <BrandMark className="w-full h-full" />}
                   </div>
                   <div className="min-w-0">
-                    <h2 className="text-base font-bold text-foreground">CUT SALON</h2>
+                    <h2 className="text-base font-bold text-foreground">{brandTitle}</h2>
                     <p className="text-[11px] text-muted-foreground">تصفح الصفحات حسب القسم</p>
                   </div>
                 </div>

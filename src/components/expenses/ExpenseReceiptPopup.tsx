@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Printer, X, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { getPrintBrandHtml, usePrintBrand } from '@/lib/tenant/tenantBrandClient';
 import {
   createPrintRequestId,
   openBrowserPrintFallback,
@@ -157,6 +158,7 @@ const RECEIPT_CSS = `
 `;
 
 export default function ExpenseReceiptPopup({ open, expense, onClose }: ExpenseReceiptPopupProps) {
+  const printBrand = usePrintBrand();
   const [printing, setPrinting] = useState(false);
   const [visible, setVisible] = useState(false);
   const [progress, setProgress] = useState(100);
@@ -196,7 +198,7 @@ export default function ExpenseReceiptPopup({ open, expense, onClose }: ExpenseR
 </head>
 <body>
   <div class="receipt-header">
-    <div class="salon-name">CUT SALON</div>
+    <div class="salon-name">${getPrintBrandHtml().title}</div>
     <div class="receipt-type">إيصال مصروف</div>
   </div>
   
@@ -394,7 +396,7 @@ export default function ExpenseReceiptPopup({ open, expense, onClose }: ExpenseR
         {/* Receipt Mini Preview */}
         <div className="bg-white border border-black rounded p-2 mb-3 text-black" dir="rtl">
           <div className="text-center border-b border-dashed border-black pb-1 mb-1">
-            <p className="font-black text-[10px] tracking-wider">CUT SALON</p>
+            <p className="font-black text-[10px] tracking-wider">{printBrand.title}</p>
           </div>
           
           <div className="text-[9px] space-y-0.5 mb-1">
