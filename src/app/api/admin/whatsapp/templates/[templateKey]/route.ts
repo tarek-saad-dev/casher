@@ -10,6 +10,7 @@ import {
   isWhatsAppTemplateAdmin,
   requireWhatsAppTemplateAdmin,
 } from '../access';
+import { runWithStaffMessagingTenant } from '@/modules/messaging/tenancy/staffScope';
 
 export const runtime = 'nodejs';
 
@@ -38,14 +39,15 @@ function jsonError(err: unknown): NextResponse {
 export async function GET(_req: NextRequest, { params }: Ctx) {
   const admin = await requireWhatsAppTemplateAdmin();
   if (!isWhatsAppTemplateAdmin(admin)) return admin;
-
-  try {
-    const { templateKey: raw } = await params;
-    const template = await getAdminWhatsAppTemplate(admin.branchId, decodeTemplateKey(raw));
-    return NextResponse.json({ ok: true, template });
-  } catch (err) {
-    return jsonError(err);
-  }
+  return runWithStaffMessagingTenant(admin, 'admin/whatsapp/templates/[templateKey]:GET', async () => {
+    try {
+      const { templateKey: raw } = await params;
+      const template = await getAdminWhatsAppTemplate(admin.branchId, decodeTemplateKey(raw));
+      return NextResponse.json({ ok: true, template });
+    } catch (err) {
+      return jsonError(err);
+    }
+  });
 }
 
 /**
@@ -55,21 +57,22 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 export async function PUT(req: NextRequest, { params }: Ctx) {
   const admin = await requireWhatsAppTemplateAdmin();
   if (!isWhatsAppTemplateAdmin(admin)) return admin;
-
-  try {
-    const { templateKey: raw } = await params;
-    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-    const template = await upsertAdminWhatsAppBranchOverride({
-      branchId: admin.branchId,
-      userId: admin.userId,
-      templateKey: decodeTemplateKey(raw),
-      language: typeof body.language === 'string' ? body.language : undefined,
-      content: body.content,
-    });
-    return NextResponse.json({ ok: true, template });
-  } catch (err) {
-    return jsonError(err);
-  }
+  return runWithStaffMessagingTenant(admin, 'admin/whatsapp/templates/[templateKey]:PUT', async () => {
+    try {
+      const { templateKey: raw } = await params;
+      const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+      const template = await upsertAdminWhatsAppBranchOverride({
+        branchId: admin.branchId,
+        userId: admin.userId,
+        templateKey: decodeTemplateKey(raw),
+        language: typeof body.language === 'string' ? body.language : undefined,
+        content: body.content,
+      });
+      return NextResponse.json({ ok: true, template });
+    } catch (err) {
+      return jsonError(err);
+    }
+  });
 }
 
 /**
@@ -79,16 +82,17 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
 export async function DELETE(_req: NextRequest, { params }: Ctx) {
   const admin = await requireWhatsAppTemplateAdmin();
   if (!isWhatsAppTemplateAdmin(admin)) return admin;
-
-  try {
-    const { templateKey: raw } = await params;
-    const template = await deactivateAdminWhatsAppBranchOverride({
-      branchId: admin.branchId,
-      userId: admin.userId,
-      templateKey: decodeTemplateKey(raw),
-    });
-    return NextResponse.json({ ok: true, template });
-  } catch (err) {
-    return jsonError(err);
-  }
+  return runWithStaffMessagingTenant(admin, 'admin/whatsapp/templates/[templateKey]:DELETE', async () => {
+    try {
+      const { templateKey: raw } = await params;
+      const template = await deactivateAdminWhatsAppBranchOverride({
+        branchId: admin.branchId,
+        userId: admin.userId,
+        templateKey: decodeTemplateKey(raw),
+      });
+      return NextResponse.json({ ok: true, template });
+    } catch (err) {
+      return jsonError(err);
+    }
+  });
 }

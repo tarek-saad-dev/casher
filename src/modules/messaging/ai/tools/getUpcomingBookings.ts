@@ -1,5 +1,5 @@
 import 'server-only';
-import { listPublicUpcomingBookings } from '@/lib/booking/publicBookingReader';
+import { listTenantUpcomingBookings } from '@/modules/messaging/ai/tenantBookingDirectory';
 import { isBookingManagementActiveForPhone } from '../bookingManagement/featureFlag';
 import { summarizePublicBooking } from '../bookingManagement/responseCopy';
 import type { AiToolCallRequest, AiToolExecutionContext, AiToolResult } from './types';
@@ -31,7 +31,7 @@ export async function executeGetUpcomingBookings(
   }
 
   try {
-    const result = await listPublicUpcomingBookings({ phone, limit: 10 });
+    const result = await listTenantUpcomingBookings({ phone, limit: 10 });
     const bookings = result.bookings.map((dto) => summarizePublicBooking(dto, null));
     return {
       name: 'get_upcoming_bookings',

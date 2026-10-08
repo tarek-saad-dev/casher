@@ -2,8 +2,8 @@
  * Booking Management turn processor — lookup / cancel / modify preview+confirm.
  * Flag-gated. Writes only via cancelPublicBooking / reschedulePublicBooking after confirmation.
  */
+import { listTenantUpcomingBookings } from '@/modules/messaging/ai/tenantBookingDirectory';
 import 'server-only';
-import { listPublicUpcomingBookings } from '@/lib/booking/publicBookingReader';
 import { cancelPublicBooking } from '@/lib/booking/publicBookingCancellation';
 import {
   previewPublicBookingReschedule,
@@ -55,7 +55,7 @@ export type ManagementTurnResult = {
 };
 
 async function loadUpcoming(phone: string): Promise<UpcomingBookingSummary[]> {
-  const result = await listPublicUpcomingBookings({ phone, limit: 10 });
+  const result = await listTenantUpcomingBookings({ phone, limit: 10 });
   return result.bookings.map((dto) => summarizePublicBooking(dto, null));
 }
 

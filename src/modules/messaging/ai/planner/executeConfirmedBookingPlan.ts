@@ -22,6 +22,10 @@ import {
 } from './types';
 import { filterSlotsByPreference } from './slotPreferences';
 import {
+  isBranchInCurrentTenant,
+  resolveCurrentTenantBookingActor,
+} from '@/modules/messaging/tenancy/tenantBusinessScope';
+import {
   fromSnapshot,
   toCandidateFromAvailability,
   buildSlotChoicesReply,
@@ -37,7 +41,7 @@ export type ExecuteConfirmedBookingPlanInput = {
   createBooking?: typeof createPublicBooking;
   evaluateSelection?: typeof evaluatePublicBookingSelection;
   runAvailability?: typeof executeGetAvailability;
-  /** System actor for internal_preview create path. */
+  /** Override of the tenant-configured booking actor (TenantAiConfig.BookingActorUserId). */
   actorUserId?: number;
 };
 
@@ -95,7 +99,6 @@ export async function executeConfirmedBookingPlan(
   const create = input.createBooking ?? createPublicBooking;
   const evaluate = input.evaluateSelection ?? evaluatePublicBookingSelection;
   const runAvailability = input.runAvailability ?? executeGetAvailability;
-  const actorUserId = input.actorUserId ?? Number(process.env.AI_BOOKING_ACTOR_USER_ID || 1);
 
   let plan =
     (await getBookingPlanById(input.planId)) ??
@@ -187,6 +190,35 @@ export async function executeConfirmedBookingPlan(
       bookingId: null,
       bookingCode: null,
       errorCode: 'PLAN_INCOMPLETE',
+      idempotentReplay: false,
+      trace,
+    };
+  }
+
+  if (!(await isBranchInCurrentTenant({ branchId: plan.branchId, branchCode: plan.branchCode }))) {
+    const trace = emptyTrace(plan.stage);
+    return {
+      ok: false,
+      plan,
+      replyText: 'الفرع ده مش متاح للحجز من هنا. ممكن تختار فرع تاني؟',
+      bookingId: null,
+      bookingCode: null,
+      errorCode: 'BRANCH_NOT_IN_TENANT',
+      idempotentReplay: false,
+      trace,
+    };
+  }
+
+  const actorUserId = input.actorUserId ?? (await resolveCurrentTenantBookingActor());
+  if (actorUserId == null) {
+    const trace = emptyTrace(plan.stage);
+    return {
+      ok: false,
+      plan,
+      replyText: 'مقدرش أسجّل الحجز من هنا دلوقتي. هحوّلك للاستقبال يكمّلوا معاك.',
+      bookingId: null,
+      bookingCode: null,
+      errorCode: 'BOOKING_ACTOR_NOT_CONFIGURED',
       idempotentReplay: false,
       trace,
     };

@@ -3,6 +3,8 @@
  * Empty snapshot if tables missing — NEVER falls back to fixtures.
  */
 import { getPool, sql } from '@/lib/db';
+import { requireMessagingTenantId } from '@/modules/messaging/tenancy/messagingTenantScope';
+import { bindMessagingTenant } from '@/modules/messaging/tenancy/tenantSql';
 import { getCachedSnapshot, invalidateConciergeCache } from './cache';
 import { DEFAULT_BRAND_VOICE, emptyConciergeSnapshot } from './defaults';
 import { isoOrNull, parseNumberArray, parseStringArray } from './sqlMappers';
@@ -138,13 +140,17 @@ function mapGap(row: Record<string, unknown>): KnowledgeGap {
 }
 
 async function loadSnapshotUncached(includeInactive: boolean): Promise<ConciergeSnapshot> {
+  // Resolved outside the try so a missing tenant scope fails closed instead of yielding an empty snapshot.
+  requireMessagingTenantId('salonConcierge.loadSnapshot');
   try {
     const pool = await getPool();
-    const knWhere = includeInactive ? '' : ` WHERE Status = N'active'`;
-    const capWhere = includeInactive ? '' : ` WHERE Status = N'active'`;
-    const linkWhere = includeInactive ? '' : ` WHERE Status = N'active'`;
-    const offerWhere = includeInactive ? '' : ` WHERE Status = N'active'`;
-    const exWhere = includeInactive ? '' : ` WHERE IsActive = 1`;
+    const tenantWhere = ` WHERE TenantId = @tenantId`;
+    const knWhere = includeInactive ? tenantWhere : `${tenantWhere} AND Status = N'active'`;
+    const capWhere = includeInactive ? tenantWhere : `${tenantWhere} AND Status = N'active'`;
+    const linkWhere = includeInactive ? tenantWhere : `${tenantWhere} AND Status = N'active'`;
+    const offerWhere = includeInactive ? tenantWhere : `${tenantWhere} AND Status = N'active'`;
+    const exWhere = includeInactive ? tenantWhere : `${tenantWhere} AND IsActive = 1`;
+    const req = (fn: string) => bindMessagingTenant(pool.request(), `salonConcierge.loadSnapshot.${fn}`);
     const [
       knowledge,
       capabilities,
@@ -155,24 +161,26 @@ async function loadSnapshotUncached(includeInactive: boolean): Promise<Concierge
       sources,
       gaps,
     ] = await Promise.all([
-      pool.request().query(`SELECT * FROM dbo.TblSalonKnowledge${knWhere}`),
-      pool.request().query(`SELECT * FROM dbo.TblSalonCapability${capWhere}`),
-      pool.request().query(`SELECT * FROM dbo.TblSalonExternalLink${linkWhere}`),
-      pool.request().query(`SELECT * FROM dbo.TblSalonOffer${offerWhere}`),
-      pool.request().query(`SELECT TOP 1 * FROM dbo.TblSalonBrandVoice WHERE Status = N'active' ORDER BY VoiceID DESC`),
-      pool.request().query(`SELECT * FROM dbo.TblSalonBrandVoiceExample${exWhere}`),
-      pool.request().query(`SELECT * FROM dbo.TblSalonKnowledgeSource`),
-      pool.request().query(`SELECT * FROM dbo.TblSalonKnowledgeGap`),
+      req('knowledge').query(`SELECT * FROM dbo.TblSalonKnowledge${knWhere}`),
+      req('capabilities').query(`SELECT * FROM dbo.TblSalonCapability${capWhere}`),
+      req('links').query(`SELECT * FROM dbo.TblSalonExternalLink${linkWhere}`),
+      req('offers').query(`SELECT * FROM dbo.TblSalonOffer${offerWhere}`),
+      req('voice').query(
+        `SELECT TOP 1 * FROM dbo.TblSalonBrandVoice${tenantWhere} AND Status = N'active' ORDER BY VoiceID DESC`,
+      ),
+      req('examples').query(`SELECT * FROM dbo.TblSalonBrandVoiceExample${exWhere}`),
+      req('sources').query(`SELECT * FROM dbo.TblSalonKnowledgeSource${tenantWhere}`),
+      req('gaps').query(`SELECT * FROM dbo.TblSalonKnowledgeGap${tenantWhere}`),
     ]);
     return {
-      knowledge: knowledge.recordset.map((r) => mapKnowledge(r as Record<string, unknown>)),
-      capabilities: capabilities.recordset.map((r) => mapCapability(r as Record<string, unknown>)),
-      links: links.recordset.map((r) => mapLink(r as Record<string, unknown>)),
-      offers: offers.recordset.map((r) => mapOffer(r as Record<string, unknown>)),
+      knowledge: knowledge.recordset.map((r: Record<string, unknown>) => mapKnowledge(r as Record<string, unknown>)),
+      capabilities: capabilities.recordset.map((r: Record<string, unknown>) => mapCapability(r as Record<string, unknown>)),
+      links: links.recordset.map((r: Record<string, unknown>) => mapLink(r as Record<string, unknown>)),
+      offers: offers.recordset.map((r: Record<string, unknown>) => mapOffer(r as Record<string, unknown>)),
       brandVoice: mapVoice(voice.recordset[0] as Record<string, unknown> | undefined),
-      examples: examples.recordset.map((r) => mapExample(r as Record<string, unknown>)),
-      sources: sources.recordset.map((r) => mapSource(r as Record<string, unknown>)),
-      gaps: gaps.recordset.map((r) => mapGap(r as Record<string, unknown>)),
+      examples: examples.recordset.map((r: Record<string, unknown>) => mapExample(r as Record<string, unknown>)),
+      sources: sources.recordset.map((r: Record<string, unknown>) => mapSource(r as Record<string, unknown>)),
+      gaps: gaps.recordset.map((r: Record<string, unknown>) => mapGap(r as Record<string, unknown>)),
     };
   } catch {
     return emptyConciergeSnapshot();
@@ -187,8 +195,18 @@ export async function loadProductionSnapshot(opts?: {
   if (opts?.skipCache || includeInactive) {
     return loadSnapshotUncached(includeInactive);
   }
-  return getCachedSnapshot(() => loadSnapshotUncached(false));
+  const tenantId = requireMessagingTenantId('salonConcierge.loadProductionSnapshot');
+  // The shared cache entry holds a per-tenant map so invalidateConciergeCache() still clears every tenant.
+  const byTenant = await getCachedSnapshot<TenantSnapshotMap>(async () => new Map());
+  let snapshot = byTenant.get(tenantId);
+  if (!snapshot) {
+    snapshot = loadSnapshotUncached(false);
+    byTenant.set(tenantId, snapshot);
+  }
+  return snapshot;
 }
+
+type TenantSnapshotMap = Map<string, Promise<ConciergeSnapshot>>;
 
 export async function probeConciergeTables(): Promise<{
   ready: boolean;
@@ -224,22 +242,23 @@ export async function upsertKnowledgeGapSql(gap: {
   normalizedSubject: string;
   categoryGuess?: string | null;
 }): Promise<void> {
+  // Outside the try: a missing tenant scope must not be swallowed as "tables may not exist".
+  requireMessagingTenantId('salonConcierge.upsertKnowledgeGap');
   try {
     const pool = await getPool();
-    await pool
-      .request()
+    await bindMessagingTenant(pool.request(), 'salonConcierge.upsertKnowledgeGap')
       .input('subj', sql.NVarChar(300), gap.normalizedSubject)
       .input('cat', sql.NVarChar(60), gap.categoryGuess ?? null)
       .query(`
         MERGE dbo.TblSalonKnowledgeGap AS t
         USING (SELECT @subj AS NormalizedSubject) AS s
-        ON t.NormalizedSubject = s.NormalizedSubject
+        ON t.TenantId = @tenantId AND t.NormalizedSubject = s.NormalizedSubject
         WHEN MATCHED THEN
           UPDATE SET HitCount = t.HitCount + 1, LastSeenAt = SYSUTCDATETIME(),
             CategoryGuess = COALESCE(t.CategoryGuess, @cat), UpdatedAt = SYSUTCDATETIME()
         WHEN NOT MATCHED THEN
-          INSERT (NormalizedSubject, CategoryGuess, HitCount, FirstSeenAt, LastSeenAt, Status)
-          VALUES (@subj, @cat, 1, SYSUTCDATETIME(), SYSUTCDATETIME(), N'open');
+          INSERT (TenantId, NormalizedSubject, CategoryGuess, HitCount, FirstSeenAt, LastSeenAt, Status)
+          VALUES (@tenantId, @subj, @cat, 1, SYSUTCDATETIME(), SYSUTCDATETIME(), N'open');
       `);
     invalidateConciergeCache();
   } catch {
@@ -252,14 +271,13 @@ export async function setGapStatusSql(
   status: KnowledgeGap['status'],
 ): Promise<void> {
   const pool = await getPool();
-  await pool
-    .request()
+  await bindMessagingTenant(pool.request(), 'salonConcierge.setGapStatus')
     .input('subj', sql.NVarChar(300), normalizedSubject)
     .input('st', sql.NVarChar(20), status)
     .query(`
       UPDATE dbo.TblSalonKnowledgeGap
       SET Status = @st, UpdatedAt = SYSUTCDATETIME()
-      WHERE NormalizedSubject = @subj
+      WHERE NormalizedSubject = @subj AND TenantId = @tenantId
     `);
   invalidateConciergeCache();
 }

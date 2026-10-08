@@ -5,6 +5,7 @@ import {
   getControlPlaneStore,
   isAiControlPlanePhase1Enabled,
 } from '@/modules/ai-control-plane';
+import { runWithStaffMessagingTenant } from '@/modules/messaging/tenancy/staffScope';
 
 export const runtime = 'nodejs';
 
@@ -14,19 +15,20 @@ export async function POST(req: Request) {
   }
   const auth = await requireAdmin();
   if (!isAuthResult(auth)) return auth;
-
-  const body = (await req.json().catch(() => ({}))) as { rawInput?: string; contextJson?: unknown };
-  const store = await getControlPlaneStore();
-  try {
-    const submission = await createLearningSubmission(store, {
-      rawInput: body.rawInput ?? '',
-      submittedByUserId: auth.userId,
-      contextJson: body.contextJson,
-    });
-    return NextResponse.json({ ok: true, submission });
-  } catch (err) {
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 400 });
-  }
+  return runWithStaffMessagingTenant(auth, 'admin/ai-concierge/learning/submissions:POST', async () => {
+    const body = (await req.json().catch(() => ({}))) as { rawInput?: string; contextJson?: unknown };
+    const store = await getControlPlaneStore();
+    try {
+      const submission = await createLearningSubmission(store, {
+        rawInput: body.rawInput ?? '',
+        submittedByUserId: auth.userId,
+        contextJson: body.contextJson,
+      });
+      return NextResponse.json({ ok: true, submission });
+    } catch (err) {
+      return NextResponse.json({ ok: false, error: String(err) }, { status: 400 });
+    }
+  });
 }
 
 export async function GET() {
@@ -35,7 +37,9 @@ export async function GET() {
   }
   const auth = await requireAdmin();
   if (!isAuthResult(auth)) return auth;
-  const store = await getControlPlaneStore();
-  const submissions = await store.listSubmissions(50);
-  return NextResponse.json({ ok: true, submissions });
+  return runWithStaffMessagingTenant(auth, 'admin/ai-concierge/learning/submissions:GET', async () => {
+    const store = await getControlPlaneStore();
+    const submissions = await store.listSubmissions(50);
+    return NextResponse.json({ ok: true, submissions });
+  });
 }

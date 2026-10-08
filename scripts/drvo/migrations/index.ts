@@ -10,6 +10,7 @@ import { insCashMoveSalesGuardMigration } from './008-ins-cash-move-sales-guard'
 import { commercialSubscriptionTenantAppsMigration } from './009-commercial-subscription-tenant-apps';
 import { masterDataTenancyMigration } from './010-master-data-tenancy';
 import { tenantBrandProfileMigration } from './011-tenant-brand-profile';
+import { messagingTenancyMigration } from './012-messaging-tenancy';
 import { drvoModuleRequiredMigrationsFromManifest } from '../../../src/platform/drvo/moduleManifest';
 
 /** Ordered DRVO migration manifest — single source of truth for migration order. */
@@ -25,6 +26,7 @@ export const DRVO_MIGRATIONS: DrvoMigrationDefinition[] = [
   commercialSubscriptionTenantAppsMigration,
   masterDataTenancyMigration,
   tenantBrandProfileMigration,
+  messagingTenancyMigration,
 ];
 
 export function assertDrvoMigrationManifestValid(): void {

@@ -1,4 +1,5 @@
 import { getPool, sql } from '@/lib/db';
+import { bindMessagingTenant } from '@/modules/messaging/tenancy/tenantSql';
 import {
   matchesInboxFilter,
   matchesInboxSearch,
@@ -41,7 +42,7 @@ export async function listWhatsAppInbox(input: {
 }): Promise<{ items: InboxListItem[] }> {
   const limit = Math.max(1, Math.min(200, Math.floor(input.limit ?? 80)));
   const pool = await getPool();
-  const result = await pool.request().input('limit', sql.Int, limit).query(`
+  const result = await bindMessagingTenant(pool.request(), 'handoff.listWhatsAppInbox').input('limit', sql.Int, limit).query(`
     SELECT TOP (@limit)
       c.ConversationID,
       c.Phone,
@@ -57,12 +58,15 @@ export async function listWhatsAppInbox(input: {
         SELECT TOP 1 m.Text
         FROM dbo.TblBotMessage m
         WHERE m.ConversationID = c.ConversationID
+          AND m.TenantId = c.TenantId
+          AND m.TenantId = @tenantId
         ORDER BY m.OccurredAt DESC, m.MessageID DESC
       ) AS LastMessagePreview
     FROM dbo.TblBotConversation c
-    LEFT JOIN dbo.TblClient cl ON cl.ClientID = c.ClientID
+    LEFT JOIN dbo.TblClient cl ON cl.ClientID = c.ClientID AND cl.TenantId = c.TenantId
     LEFT JOIN dbo.TblUser u ON u.UserID = c.TakenOverByUserID
     WHERE c.Channel = N'whatsapp'
+      AND c.TenantId = @tenantId
     ORDER BY c.LastMessageAt DESC, c.ConversationID DESC
   `);
 
@@ -102,8 +106,7 @@ export async function getWhatsAppInboxConversation(input: {
   limit?: number;
 }): Promise<InboxConversationDetail | null> {
   const pool = await getPool();
-  const head = await pool
-    .request()
+  const head = await bindMessagingTenant(pool.request(), 'handoff.getWhatsAppInboxConversation.head')
     .input('id', sql.BigInt, input.conversationId)
     .query(`
       SELECT
@@ -120,9 +123,9 @@ export async function getWhatsAppInboxConversation(input: {
         c.HumanLeaseUntil,
         CAST(NULL AS NVARCHAR(MAX)) AS LastMessagePreview
       FROM dbo.TblBotConversation c
-      LEFT JOIN dbo.TblClient cl ON cl.ClientID = c.ClientID
+      LEFT JOIN dbo.TblClient cl ON cl.ClientID = c.ClientID AND cl.TenantId = c.TenantId
       LEFT JOIN dbo.TblUser u ON u.UserID = c.TakenOverByUserID
-      WHERE c.ConversationID = @id
+      WHERE c.ConversationID = @id AND c.TenantId = @tenantId
     `);
   const row = head.recordset[0] as Record<string, unknown> | undefined;
   if (!row) return null;
@@ -149,8 +152,7 @@ export async function getWhatsAppInboxConversation(input: {
 
   const limit = Math.max(1, Math.min(300, Math.floor(input.limit ?? 120)));
   const after = input.afterMessageId != null ? Number(input.afterMessageId) : 0;
-  const msgs = await pool
-    .request()
+  const msgs = await bindMessagingTenant(pool.request(), 'handoff.getWhatsAppInboxConversation.messages')
     .input('id', sql.BigInt, input.conversationId)
     .input('after', sql.BigInt, after)
     .input('limit', sql.Int, limit)
@@ -164,13 +166,16 @@ export async function getWhatsAppInboxConversation(input: {
         o.Status AS DeliveryStatus
       FROM dbo.TblBotMessage m
       LEFT JOIN dbo.TblMessageOutbox o
-        ON o.IdempotencyKey = CONCAT(
+        ON o.TenantId = m.TenantId
+        AND o.TenantId = @tenantId
+        AND o.IdempotencyKey = CONCAT(
           N'whatsapp-human-erp:',
           CAST(m.ConversationID AS NVARCHAR(30)),
           N':',
           CAST(m.MessageID AS NVARCHAR(30))
         )
       WHERE m.ConversationID = @id
+        AND m.TenantId = @tenantId
         AND (@after = 0 OR m.MessageID > @after)
       ORDER BY m.OccurredAt ASC, m.MessageID ASC
     `);

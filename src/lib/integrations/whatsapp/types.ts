@@ -155,6 +155,14 @@ export type WhatsAppPayload =
   | EmployeeDailyReportWhatsAppPayload
   | OtherWhatsAppPayload;
 
+/**
+ * Bridge endpoint of the sending tenant's channel (TenantMessagingChannel.EndpointUrl).
+ * Always explicit: the integration never falls back to a process-wide bridge.
+ */
+export interface WhatsAppEndpoint {
+  apiBaseUrl: string;
+}
+
 export interface GenericWhatsAppMessageInput {
   phone: string;
   message: string;
@@ -192,7 +200,9 @@ export type WhatsAppSendFailure =
         | 'message_type_disabled'
         | 'missing_phone'
         | 'missing_customer_name'
-        | 'invalid_payload';
+        | 'invalid_payload'
+        | 'channel_not_configured'
+        | 'tenant_unresolved';
     }
   | {
       sent: false;
@@ -272,7 +282,8 @@ export type WhatsAppStatusResult =
         | 'disabled'
         | 'timeout'
         | 'connection_failed'
-        | 'invalid_response';
+        | 'invalid_response'
+        | 'channel_not_configured';
     };
 
 /** Lightweight GET /api/health probe — not used on the POS send path. */
@@ -284,7 +295,8 @@ export type WhatsAppBotHealthResult =
         | 'development_only'
         | 'timeout'
         | 'connection_failed'
-        | 'invalid_response';
+        | 'invalid_response'
+        | 'channel_not_configured';
       httpStatus?: number;
     };
 

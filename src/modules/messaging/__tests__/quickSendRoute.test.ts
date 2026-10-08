@@ -1,27 +1,35 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
-const getSession = vi.fn();
+const authenticate = vi.fn();
 const sendWhatsAppMessage = vi.fn();
 const sendQuickWhatsAppMessage = vi.fn();
 const getWhatsAppConfig = vi.fn();
 
-vi.mock('@/lib/api-auth', async (importOriginal) =>
-  (await import('@/lib/__tests__/helpers/tenantSessionAuthMock')).tenantSessionAuthMock(await importOriginal()),
-);
-vi.mock('@/lib/session', () => ({
-  getSession: (...args: unknown[]) => getSession(...args),
+vi.mock('@/lib/api-auth', () => ({
+  authenticate: (...args: unknown[]) => authenticate(...args),
+  isAuthResult: (v: unknown) => !(v instanceof NextResponse) && (v as { ok?: boolean }).ok === true,
 }));
 
 vi.mock('@/lib/integrations/whatsapp', () => ({
   sendWhatsAppMessage: (...args: unknown[]) => sendWhatsAppMessage(...args),
   sendQuickWhatsAppMessage: (...args: unknown[]) => sendQuickWhatsAppMessage(...args),
   getWhatsAppConfig: (...args: unknown[]) => getWhatsAppConfig(...args),
+  sendWhatsAppGroupMessage: vi.fn(),
+  checkWhatsAppStatus: vi.fn(),
+  checkWhatsAppBotHealth: vi.fn(),
 }));
 
 import { POST } from '@/app/api/pos/whatsapp/quick-send/route';
+import {
+  DEFAULT_TEST_ENDPOINT,
+  TENANT_A,
+  TENANT_B,
+  installMessagingTenantTestKit,
+  resetMessagingTenantTestKit,
+} from './support/messagingTenantTestKit';
 
 const ROUTE_FILE = path.join(
   process.cwd(),
@@ -36,9 +44,32 @@ function makeRequest(body: unknown): NextRequest {
   });
 }
 
+function staffAuth(tenantId: string = TENANT_A) {
+  return {
+    ok: true,
+    userId: 12,
+    userName: 'cashier',
+    userLevel: 'user',
+    roles: [],
+    isSuperAdmin: false,
+    activeBranchId: 3,
+    activeBranchCode: 'GLEEM',
+    tenantId,
+    membershipId: 'membership-1',
+  };
+}
+
+let usage: ReturnType<typeof installMessagingTenantTestKit>['usage'];
+
 describe('POST /api/pos/whatsapp/quick-send', () => {
   beforeEach(() => {
-    getSession.mockReset();
+    ({ usage } = installMessagingTenantTestKit({
+      channels: {
+        [TENANT_A]: { endpointUrl: DEFAULT_TEST_ENDPOINT },
+        [TENANT_B]: { endpointUrl: 'http://bridge-b.test' },
+      },
+    }));
+    authenticate.mockReset();
     sendWhatsAppMessage.mockReset();
     sendQuickWhatsAppMessage.mockReset();
     getWhatsAppConfig.mockReset();
@@ -46,14 +77,11 @@ describe('POST /api/pos/whatsapp/quick-send', () => {
       defaultQuickMessage: 'أهلا بك في Cut Salon',
       quickMessageEnabled: true,
     });
-    getSession.mockResolvedValue({
-      UserID: 12,
-      UserName: 'cashier',
-      UserLevel: 'user',
-      ActiveBranchID: 3,
-      ActiveBranchCode: 'GLEEM',
-      BranchSessionVersion: 1,
-    });
+    authenticate.mockResolvedValue(staffAuth());
+  });
+
+  afterEach(() => {
+    resetMessagingTenantTestKit();
   });
 
   it('is wired through the Messaging Module, not the legacy typed sender', () => {
@@ -63,7 +91,14 @@ describe('POST /api/pos/whatsapp/quick-send', () => {
     expect(src).not.toContain('sendQuickWhatsAppMessage');
   });
 
-  it('sends generic Gateway payload without type', async () => {
+  it('authenticates with tenant identity and runs in staff messaging scope', () => {
+    const src = readFileSync(ROUTE_FILE, 'utf8');
+    expect(src).toContain('authenticate()');
+    expect(src).toContain('runWithStaffMessagingTenant');
+    expect(src).not.toContain('getSession');
+  });
+
+  it('sends generic Gateway payload without type through the tenant channel', async () => {
     sendWhatsAppMessage.mockResolvedValue({
       sent: true,
       skipped: false,
@@ -92,34 +127,57 @@ describe('POST /api/pos/whatsapp/quick-send', () => {
     });
     expect(sendQuickWhatsAppMessage).not.toHaveBeenCalled();
     expect(sendWhatsAppMessage).toHaveBeenCalledTimes(1);
-    expect(sendWhatsAppMessage).toHaveBeenCalledWith({
-      phone: '01557994946',
-      message: 'أهلا بك في Cut Salon',
-      metadata: {
-        source: 'pos.quick_message',
-        branchId: 3,
-        userId: 12,
+    expect(sendWhatsAppMessage).toHaveBeenCalledWith(
+      {
+        phone: '01557994946',
+        message: 'أهلا بك في Cut Salon',
+        metadata: {
+          source: 'pos.quick_message',
+          branchId: 3,
+          userId: 12,
+        },
       },
-    });
+      { apiBaseUrl: DEFAULT_TEST_ENDPOINT },
+    );
     const gatewayBody = sendWhatsAppMessage.mock.calls[0][0] as Record<string, unknown>;
     expect(gatewayBody).not.toHaveProperty('type');
     expect(Object.keys(gatewayBody).sort()).toEqual(['message', 'metadata', 'phone']);
+    expect(usage).toEqual([{ tenantId: TENANT_A, metric: 'outbound_sent', count: 1 }]);
+  });
+
+  it("sends through the signed-in tenant's own channel only", async () => {
+    authenticate.mockResolvedValue(staffAuth(TENANT_B));
+    sendWhatsAppMessage.mockResolvedValue({ sent: true, skipped: false, status: 'sent', messageId: 'b-1' });
+
+    const res = await POST(makeRequest({ phone: '01557994946', message: 'hi' }));
+    expect(res.status).toBe(200);
+    expect(sendWhatsAppMessage).toHaveBeenCalledTimes(1);
+    expect(sendWhatsAppMessage.mock.calls[0][1]).toEqual({ apiBaseUrl: 'http://bridge-b.test' });
+    expect(usage).toEqual([{ tenantId: TENANT_B, metric: 'outbound_sent', count: 1 }]);
+  });
+
+  it('tenant without a channel is skipped with channel_not_configured (no fallback bridge)', async () => {
+    resetMessagingTenantTestKit();
+    installMessagingTenantTestKit({ channels: { [TENANT_A]: { endpointUrl: DEFAULT_TEST_ENDPOINT } } });
+    authenticate.mockResolvedValue(staffAuth(TENANT_B));
+
+    const res = await POST(makeRequest({ phone: '01557994946', message: 'hi' }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      ok: false,
+      error: 'لم يتم ربط قناة واتساب لهذا النشاط بعد',
+      result: { sent: false, skipped: true, reason: 'channel_not_configured' },
+    });
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled();
   });
 
   it('keeps the current unauthenticated and validation response contract', async () => {
-    getSession.mockResolvedValue(null);
+    authenticate.mockResolvedValue(NextResponse.json({ error: 'غير مصرح' }, { status: 401 }));
     let res = await POST(makeRequest({ phone: '01557994946', message: 'hi' }));
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: 'غير مصرح' });
 
-    getSession.mockResolvedValue({
-      UserID: 12,
-      UserName: 'cashier',
-      UserLevel: 'user',
-      ActiveBranchID: 3,
-      ActiveBranchCode: 'GLEEM',
-      BranchSessionVersion: 1,
-    });
+    authenticate.mockResolvedValue(staffAuth());
 
     res = await POST(makeRequest({ phone: '12', message: 'hi' }));
     expect(res.status).toBe(400);
@@ -162,5 +220,6 @@ describe('POST /api/pos/whatsapp/quick-send', () => {
       error: 'انتهت مهلة الاتصال بسكربت الواتساب',
       result: { sent: false, skipped: false, reason: 'timeout' },
     });
+    expect(usage).toEqual([{ tenantId: TENANT_A, metric: 'outbound_failed', count: 1 }]);
   });
 });

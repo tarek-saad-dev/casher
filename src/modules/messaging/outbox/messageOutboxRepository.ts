@@ -1,6 +1,8 @@
 /**
  * Access to dbo.TblMessageOutbox.
- * Idempotency is enforced by UQ_TblMessageOutbox_IdempotencyKey, not SELECT-then-INSERT.
+ * Idempotency is enforced by UX_TblMessageOutbox_Tenant_IdempotencyKey (TenantId, IdempotencyKey),
+ * not SELECT-then-INSERT. Every statement is tenant-filtered; only the worker claim / stale
+ * recovery span tenants, and they never touch rows without a TenantId.
  */
 import { getPool, sql } from '@/lib/db';
 import {
@@ -9,6 +11,7 @@ import {
   type OutboxMessageRow,
   type OutboxMessageStatus,
 } from '../domain/outboxTypes';
+import { bindMessagingTenant } from '../tenancy/tenantSql';
 
 export type OutboxEnqueueRecord = {
   channel: 'whatsapp';
@@ -32,6 +35,7 @@ export type OutboxListFilters = {
 
 type RawOutboxRow = {
   ID: number | string;
+  TenantId: string | null;
   Channel: string;
   Recipient: string;
   TemplateKey: string | null;
@@ -56,6 +60,7 @@ type RawOutboxRow = {
 
 const OUTBOX_ROW_COLUMNS = `
   [ID],
+  [TenantId],
   [Channel],
   [Recipient],
   [TemplateKey],
@@ -95,7 +100,7 @@ function isUniqueConstraintError(err: unknown): boolean {
   };
   const number = e?.number ?? e?.originalError?.info?.number;
   if (number === 2627 || number === 2601) return true;
-  return /UQ_TblMessageOutbox_IdempotencyKey|UNIQUE KEY|duplicate key/i.test(
+  return /IdempotencyKey|UNIQUE KEY|duplicate key/i.test(
     String(e?.message ?? e?.originalError?.message ?? ''),
   );
 }
@@ -104,6 +109,7 @@ export function mapOutboxRow(row: RawOutboxRow): OutboxMessageRow {
   const status = isOutboxMessageStatus(row.Status) ? row.Status : 'pending';
   return {
     id: Number(row.ID),
+    tenantId: row.TenantId ? String(row.TenantId).toLowerCase() : null,
     channel: String(row.Channel),
     recipient: String(row.Recipient),
     templateKey: row.TemplateKey != null && String(row.TemplateKey) !== '' ? String(row.TemplateKey) : null,
@@ -130,13 +136,12 @@ export function mapOutboxRow(row: RawOutboxRow): OutboxMessageRow {
 export async function getById(id: number): Promise<OutboxMessageRow | null> {
   if (!Number.isFinite(id) || id <= 0) return null;
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'outbox.getById')
     .input('id', sql.BigInt, id)
     .query(`
       SELECT ${OUTBOX_ROW_COLUMNS}
       FROM [dbo].[TblMessageOutbox]
-      WHERE [ID] = @id
+      WHERE [ID] = @id AND [TenantId] = @tenantId
     `);
   const row = result.recordset[0] as RawOutboxRow | undefined;
   return row ? mapOutboxRow(row) : null;
@@ -146,13 +151,12 @@ export async function getByIdempotencyKey(idempotencyKey: string): Promise<Outbo
   const key = String(idempotencyKey ?? '').trim();
   if (!key) return null;
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'outbox.getByIdempotencyKey')
     .input('idempotencyKey', sql.NVarChar(200), key)
     .query(`
       SELECT ${OUTBOX_ROW_COLUMNS}
       FROM [dbo].[TblMessageOutbox]
-      WHERE [IdempotencyKey] = @idempotencyKey
+      WHERE [IdempotencyKey] = @idempotencyKey AND [TenantId] = @tenantId
     `);
   const row = result.recordset[0] as RawOutboxRow | undefined;
   return row ? mapOutboxRow(row) : null;
@@ -164,8 +168,7 @@ export async function enqueue(record: OutboxEnqueueRecord): Promise<{
 }> {
   const pool = await getPool();
   try {
-    const result = await pool
-      .request()
+    const result = await bindMessagingTenant(pool.request(), 'outbox.enqueue')
       .input('channel', sql.NVarChar(30), record.channel)
       .input('recipient', sql.NVarChar(100), record.recipient)
       .input('templateKey', sql.NVarChar(150), record.templateKey)
@@ -177,6 +180,7 @@ export async function enqueue(record: OutboxEnqueueRecord): Promise<{
       .input('createdByUserId', sql.Int, record.createdByUserId)
       .query(`
         INSERT INTO [dbo].[TblMessageOutbox] (
+          [TenantId],
           [Channel],
           [Recipient],
           [TemplateKey],
@@ -193,6 +197,7 @@ export async function enqueue(record: OutboxEnqueueRecord): Promise<{
         )
         OUTPUT ${OUTBOX_OUTPUT_COLUMNS}
         VALUES (
+          @tenantId,
           @channel,
           @recipient,
           @templateKey,
@@ -221,6 +226,10 @@ export async function enqueue(record: OutboxEnqueueRecord): Promise<{
   }
 }
 
+/**
+ * Worker claim across tenants. Rows without a TenantId are never claimed; the caller runs each
+ * returned row inside that row's tenant scope.
+ */
 export async function claimPendingBatch(input: {
   batchSize: number;
   lockedBy: string;
@@ -241,9 +250,10 @@ export async function claimPendingBatch(input: {
       .query(`
         ;WITH claim AS (
           SELECT TOP (@batchSize)
-            [ID]
+            [ID], [TenantId]
           FROM [dbo].[TblMessageOutbox] WITH (UPDLOCK, READPAST, ROWLOCK)
           WHERE [Status] = N'pending'
+            AND [TenantId] IS NOT NULL
             AND ([NextAttemptAt] IS NULL OR [NextAttemptAt] <= SYSUTCDATETIME())
             AND [AttemptCount] < [MaxAttempts]
           ORDER BY [CreatedAt] ASC, [ID] ASC
@@ -258,7 +268,7 @@ export async function claimPendingBatch(input: {
           o.[NextAttemptAt] = NULL
         OUTPUT ${OUTBOX_OUTPUT_COLUMNS}
         FROM [dbo].[TblMessageOutbox] AS o
-        INNER JOIN claim AS c ON c.[ID] = o.[ID]
+        INNER JOIN claim AS c ON c.[ID] = o.[ID] AND c.[TenantId] = o.[TenantId]
       `);
     await transaction.commit();
     return (result.recordset as RawOutboxRow[]).map(mapOutboxRow);
@@ -279,8 +289,7 @@ export async function markSent(input: {
   const providerMessageId = String(input.providerMessageId ?? '').trim();
   if (!Number.isFinite(input.id) || input.id <= 0 || !providerMessageId) return null;
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'outbox.markSent')
     .input('id', sql.BigInt, input.id)
     .input('providerMessageId', sql.NVarChar(250), providerMessageId)
     .query(`
@@ -296,6 +305,7 @@ export async function markSent(input: {
         [NextAttemptAt] = NULL
       OUTPUT ${OUTBOX_OUTPUT_COLUMNS}
       WHERE [ID] = @id
+        AND [TenantId] = @tenantId
         AND [Status] = N'sending'
     `);
   const row = result.recordset[0] as RawOutboxRow | undefined;
@@ -309,8 +319,7 @@ export async function scheduleRetry(input: {
 }): Promise<OutboxMessageRow | null> {
   if (!Number.isFinite(input.id) || input.id <= 0) return null;
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'outbox.scheduleRetry')
     .input('id', sql.BigInt, input.id)
     .input('nextAttemptAt', sql.DateTime2, input.nextAttemptAt)
     .input('lastError', sql.NVarChar(sql.MAX), String(input.lastError ?? '').slice(0, 4000))
@@ -325,6 +334,7 @@ export async function scheduleRetry(input: {
         [LastError] = @lastError
       OUTPUT ${OUTBOX_OUTPUT_COLUMNS}
       WHERE [ID] = @id
+        AND [TenantId] = @tenantId
         AND [Status] = N'sending'
     `);
   const row = result.recordset[0] as RawOutboxRow | undefined;
@@ -337,8 +347,7 @@ export async function markFailed(input: {
 }): Promise<OutboxMessageRow | null> {
   if (!Number.isFinite(input.id) || input.id <= 0) return null;
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'outbox.markFailed')
     .input('id', sql.BigInt, input.id)
     .input('lastError', sql.NVarChar(sql.MAX), String(input.lastError ?? '').slice(0, 4000))
     .query(`
@@ -353,12 +362,14 @@ export async function markFailed(input: {
         [NextAttemptAt] = NULL
       OUTPUT ${OUTBOX_OUTPUT_COLUMNS}
       WHERE [ID] = @id
+        AND [TenantId] = @tenantId
         AND [Status] IN (N'sending', N'pending')
     `);
   const row = result.recordset[0] as RawOutboxRow | undefined;
   return row ? mapOutboxRow(row) : null;
 }
 
+/** Worker maintenance across tenants: only resets the lock, never moves a row between tenants. */
 export async function recoverStaleSending(input: {
   lockTtlMs: number;
 }): Promise<OutboxMessageRow[]> {
@@ -378,6 +389,7 @@ export async function recoverStaleSending(input: {
         [LastError] = N'stale_lock_recovered'
       OUTPUT ${OUTBOX_OUTPUT_COLUMNS}
       WHERE [Status] = N'sending'
+        AND [TenantId] IS NOT NULL
         AND [LockedAt] IS NOT NULL
         AND [LockedAt] < DATEADD(MILLISECOND, -@lockTtlMs, SYSUTCDATETIME())
     `);
@@ -387,8 +399,7 @@ export async function recoverStaleSending(input: {
 export async function list(filters: OutboxListFilters): Promise<OutboxMessageRow[]> {
   const fetchLimit = Math.max(1, Math.floor(filters.fetchLimit));
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'outbox.list')
     .input('branchId', sql.Int, filters.branchId ?? null)
     .input('status', sql.NVarChar(20), filters.status ?? null)
     .input('channel', sql.NVarChar(30), filters.channel ?? null)
@@ -399,7 +410,8 @@ export async function list(filters: OutboxListFilters): Promise<OutboxMessageRow
       SELECT TOP (@fetchLimit)
         ${OUTBOX_ROW_COLUMNS}
       FROM [dbo].[TblMessageOutbox]
-      WHERE (@branchId IS NULL OR [BranchID] = @branchId)
+      WHERE [TenantId] = @tenantId
+        AND (@branchId IS NULL OR [BranchID] = @branchId)
         AND (@status IS NULL OR [Status] = @status)
         AND (@channel IS NULL OR [Channel] = @channel)
         AND (

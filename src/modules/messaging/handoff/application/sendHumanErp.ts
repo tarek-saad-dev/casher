@@ -1,6 +1,7 @@
 import { enqueueMessage } from '@/modules/messaging/application/enqueueMessage';
 import { getConversationById } from '@/modules/messaging/conversation/infra/botConversationRepository';
 import { getPool, sql } from '@/lib/db';
+import { bindMessagingTenant } from '@/modules/messaging/tenancy/tenantSql';
 import { HandoffError } from './errors';
 import {
   takeoverConversationErp,
@@ -15,23 +16,22 @@ async function insertHumanErpMessage(input: {
 }): Promise<number> {
   const pool = await getPool();
   const providerMessageId = `erp:${input.conversationId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'handoff.insertHumanErpMessage')
     .input('cid', sql.BigInt, input.conversationId)
     .input('pmid', sql.NVarChar(250), providerMessageId)
     .input('text', sql.NVarChar(sql.MAX), input.text)
     .query(`
       DECLARE @MessageId BIGINT;
       INSERT INTO dbo.TblBotMessage
-        (ConversationID, InboxID, Direction, Provider, ProviderMessageID, MessageType, Text, OccurredAt, CreatedAt, Origin)
-      VALUES (@cid, NULL, N'outbound', N'casher-erp', @pmid, N'text', @text, SYSUTCDATETIME(), SYSUTCDATETIME(), N'HUMAN_ERP');
+        (TenantId, ConversationID, InboxID, Direction, Provider, ProviderMessageID, MessageType, Text, OccurredAt, CreatedAt, Origin)
+      VALUES (@tenantId, @cid, NULL, N'outbound', N'casher-erp', @pmid, N'text', @text, SYSUTCDATETIME(), SYSUTCDATETIME(), N'HUMAN_ERP');
       SET @MessageId = SCOPE_IDENTITY();
 
       UPDATE dbo.TblBotConversation
       SET LastMessageAt = SYSUTCDATETIME(),
           LastHumanMessageID = @MessageId,
           UpdatedAt = SYSUTCDATETIME()
-      WHERE ConversationID = @cid;
+      WHERE ConversationID = @cid AND TenantId = @tenantId;
 
       SELECT @MessageId AS MessageID;
     `);

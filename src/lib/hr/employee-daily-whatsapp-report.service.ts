@@ -24,6 +24,7 @@ import {
 } from '@/lib/hr/employee-daily-whatsapp-message';
 import { dailyWaReasonAr } from '@/lib/hr/employee-daily-whatsapp-reasons';
 import { isWhatsAppEnabled } from '@/lib/integrations/whatsapp';
+import { runWithMessagingTenant } from '@/modules/messaging/tenancy/messagingTenantScope';
 import { getEmployeesNetServiceSalesByDate, getEmployeesServiceCountsByDate } from '@/lib/payroll/employee-target/employee-target-sales-service';
 import { loadBreaksByEmpIdsOnWorkDate } from '@/lib/hr/attendance-breaks-db';
 import type { AttendanceBreakInterval } from '@/lib/hr/attendance-breaks';
@@ -592,8 +593,15 @@ export async function sendEmployeeDailyWhatsAppReports(params: {
   workDate: string;
   employeeIds?: number[] | null;
   dryRun?: boolean;
+  /** Messaging tenant that sends the digests (session tenant, or the branches' single tenant). */
+  messagingTenantId: string;
 }): Promise<EmployeeDailyWhatsAppSendResponse> {
   const dryRun = Boolean(params.dryRun);
+  const sendInTenant = <T,>(fn: () => Promise<T>) =>
+    runWithMessagingTenant(
+      { tenantId: params.messagingTenantId, source: 'job', detail: 'hr.employee-daily-whatsapp' },
+      fn,
+    );
 
   if (!dryRun && !isWhatsAppEnabled()) {
     return {
@@ -649,24 +657,25 @@ export async function sendEmployeeDailyWhatsAppReports(params: {
     console.log(
       `[employee-daily-whatsapp] sending emp=${row.empId} ${row.empName} phone=${row.phone}`,
     );
-    const sendResult = await sendTemplateMessage({
+    const payload = row.payload;
+    const sendResult = await sendInTenant(() => sendTemplateMessage({
       templateKey: EMPLOYEE_DAILY_REPORT_TEMPLATE_KEY,
-      recipient: { phone: row.payload.phone },
+      recipient: { phone: payload.phone },
       variables: {
-        message: row.payload.message,
-        customerName: row.payload.employeeName,
-        employeeName: row.payload.employeeName,
-        workDate: row.payload.workDate,
-        branchName: row.payload.branchName,
-        ledgerBalance: row.payload.ledgerBalance,
-        payrollMonth: row.payload.payrollMonth,
+        message: payload.message,
+        customerName: payload.employeeName,
+        employeeName: payload.employeeName,
+        workDate: payload.workDate,
+        branchName: payload.branchName,
+        ledgerBalance: payload.ledgerBalance,
+        payrollMonth: payload.payrollMonth,
       },
       metadata: {
         employeeId: row.empId,
-        workDate: row.payload.workDate,
+        workDate: payload.workDate,
       },
       context: { language: 'ar' },
-    });
+    }));
     const mapped = resultStatusLabel(sendResult);
     console.log(
       `[employee-daily-whatsapp] result emp=${row.empId} status=${mapped.status} reason=${mapped.reason ?? '-'}`,

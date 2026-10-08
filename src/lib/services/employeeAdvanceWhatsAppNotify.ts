@@ -36,6 +36,8 @@ export interface EmployeeTipWhatsAppNotifyInput {
   amountPaid: number;
   newBalance: number;
   paymentMethodId?: number;
+  /** Branch that owns the tip; its tenant sends the message. */
+  branchId?: number;
 }
 
 /** Serialize employee WhatsApp sends — the bot handles one Chrome/WA request at a time. */
@@ -254,8 +256,12 @@ export async function notifyEmployeeTipWhatsApp(
       metadata: {
         invoiceId: input.invID,
         employeeId: input.empId,
+        ...(typeof input.branchId === 'number' ? { branchId: input.branchId } : {}),
       },
-      context: { language: 'ar' },
+      context: {
+        language: 'ar',
+        ...(typeof input.branchId === 'number' ? { branchId: input.branchId } : {}),
+      },
     });
 
     if (result.sent) {

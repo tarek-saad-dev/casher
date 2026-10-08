@@ -21,8 +21,9 @@ async function runForTenants(
   jobAuth: SystemJobAuthResult,
   opts: { workDate: string; dryRun: boolean; skipWhatsApp: boolean },
 ) {
-  // Daily WhatsApp reports read legacy messaging tables that only hold CASHER_BOOT data.
-  const legacyMessagingTenantId = await resolveLegacyBootstrapTenantId('legacy-messaging-worker');
+  // Daily HR WhatsApp reports aggregate employees across every legacy branch (TblEmp has no TenantId
+  // until DRVO-015), so only CASHER_BOOT may send them; messaging itself is tenant-scoped (DRVO-018).
+  const hrReportTenantId = await resolveLegacyBootstrapTenantId('legacy-global-data');
   const legacyLogTenantId = await resolveLegacyBootstrapTenantId('legacy-payroll-job-log');
   return runTenantJobFanout(
     { scope: tenantJobScopeFor(jobAuth), app: 'payroll', job: 'nightly-close' },
@@ -30,7 +31,7 @@ async function runForTenants(
       runNightlyClose({
         workDate: opts.workDate,
         dryRun: opts.dryRun,
-        skipWhatsApp: opts.skipWhatsApp || target.tenantId !== legacyMessagingTenantId,
+        skipWhatsApp: opts.skipWhatsApp || target.tenantId !== hrReportTenantId,
         branchIds: target.branchIds,
         legacyJobLog: target.tenantId === legacyLogTenantId,
       }),

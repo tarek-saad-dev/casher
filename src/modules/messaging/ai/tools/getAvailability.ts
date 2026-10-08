@@ -1,7 +1,6 @@
 import 'server-only';
-import {
-  listPublicDiscoverableBranches,
-  resolvePublicBookingBranchContext,
+import { listTenantDiscoverableBranches } from '@/modules/messaging/ai/tenantBookingDirectory';
+import {  resolvePublicBookingBranchContext,
   PublicBookingBranchContextError,
 } from '@/lib/booking/publicBookingBranchContext';
 import { getPublicBookingServicesCatalog } from '@/lib/booking/publicBookingServices';
@@ -15,7 +14,7 @@ import { resolveCustomerDateText, scoreServiceMatch, textMatchesQuery } from './
 
 async function defaultBranchCode(branchCode?: string | null): Promise<string | null> {
   if (branchCode?.trim()) return branchCode.trim().toUpperCase();
-  const pubs = await listPublicDiscoverableBranches();
+  const pubs = await listTenantDiscoverableBranches();
   return pubs[0]?.branchCode ?? null;
 }
 

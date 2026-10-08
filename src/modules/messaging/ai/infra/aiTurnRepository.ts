@@ -1,8 +1,12 @@
 import { getPool, sql } from '@/lib/db';
+import { bindMessagingTenant } from '@/modules/messaging/tenancy/tenantSql';
 import type { AiTurnRow, AiTurnStatus } from '../domain/types';
+
+export type AiTurnRowWithTenant = AiTurnRow & { tenantId: string | null };
 
 type RawTurnRow = {
   TurnID: number | string;
+  TenantId: string | null;
   ConversationID: number | string;
   AnchorInboundMessageID: number | string;
   LatestInboundMessageID: number | string;
@@ -32,9 +36,10 @@ function toIso(value: Date | string | null | undefined): string | null {
   return String(value);
 }
 
-function mapTurnRow(row: RawTurnRow): AiTurnRow {
+function mapTurnRow(row: RawTurnRow): AiTurnRowWithTenant {
   return {
     turnId: Number(row.TurnID),
+    tenantId: row.TenantId ? String(row.TenantId).toLowerCase() : null,
     conversationId: Number(row.ConversationID),
     anchorInboundMessageId: Number(row.AnchorInboundMessageID),
     latestInboundMessageId: Number(row.LatestInboundMessageID),
@@ -62,6 +67,7 @@ function mapTurnRow(row: RawTurnRow): AiTurnRow {
 
 const TURN_COLUMNS = `
   t.[TurnID],
+  t.[TenantId],
   t.[ConversationID],
   t.[AnchorInboundMessageID],
   t.[LatestInboundMessageID],
@@ -92,8 +98,7 @@ export async function scheduleAiTurnAfterInbound(input: {
   maxRetries: number;
 }): Promise<{ scheduled: boolean; turnId: number | null; skipped: boolean }> {
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'ai.scheduleAiTurnAfterInbound')
     .input('conversationId', sql.BigInt, input.conversationId)
     .input('inboundMessageId', sql.BigInt, input.inboundMessageId)
     .input('debounceMs', sql.Int, input.debounceMs)
@@ -108,7 +113,8 @@ export async function scheduleAiTurnAfterInbound(input: {
 
       SELECT @ControlMode = c.[ControlMode]
       FROM [dbo].[TblBotConversation] AS c WITH (UPDLOCK, HOLDLOCK)
-      WHERE c.[ConversationID] = @conversationId;
+      WHERE c.[ConversationID] = @conversationId
+        AND c.[TenantId] = @tenantId;
 
       IF @ControlMode IS NULL
         THROW 51000, 'Conversation not found', 1;
@@ -116,11 +122,11 @@ export async function scheduleAiTurnAfterInbound(input: {
       IF @ControlMode <> N'BOT'
       BEGIN
         INSERT INTO [dbo].[TblBotAiTurn] (
-          [ConversationID], [AnchorInboundMessageID], [LatestInboundMessageID],
+          [TenantId], [ConversationID], [AnchorInboundMessageID], [LatestInboundMessageID],
           [Status], [ControlModeSnapshot], [DebounceUntil], [MaxRetries], [CompletedAt]
         )
         VALUES (
-          @conversationId, @inboundMessageId, @inboundMessageId,
+          @tenantId, @conversationId, @inboundMessageId, @inboundMessageId,
           N'skipped', @ControlMode, SYSUTCDATETIME(), @maxRetries, SYSUTCDATETIME()
         );
         SET @TurnId = SCOPE_IDENTITY();
@@ -133,6 +139,7 @@ export async function scheduleAiTurnAfterInbound(input: {
       SELECT TOP 1 @ExistingTurnId = t.[TurnID]
       FROM [dbo].[TblBotAiTurn] AS t WITH (UPDLOCK, HOLDLOCK)
       WHERE t.[ConversationID] = @conversationId
+        AND t.[TenantId] = @tenantId
         AND t.[Status] = N'pending';
 
       IF @ExistingTurnId IS NOT NULL
@@ -142,18 +149,18 @@ export async function scheduleAiTurnAfterInbound(input: {
           [LatestInboundMessageID] = @inboundMessageId,
           [DebounceUntil] = DATEADD(MILLISECOND, @debounceMs, SYSUTCDATETIME()),
           [UpdatedAt] = SYSUTCDATETIME()
-        WHERE [TurnID] = @ExistingTurnId;
+        WHERE [TurnID] = @ExistingTurnId AND [TenantId] = @tenantId;
         SET @TurnId = @ExistingTurnId;
       END
       ELSE
       BEGIN
         BEGIN TRY
           INSERT INTO [dbo].[TblBotAiTurn] (
-            [ConversationID], [AnchorInboundMessageID], [LatestInboundMessageID],
+            [TenantId], [ConversationID], [AnchorInboundMessageID], [LatestInboundMessageID],
             [Status], [ControlModeSnapshot], [DebounceUntil], [MaxRetries]
           )
           VALUES (
-            @conversationId, @inboundMessageId, @inboundMessageId,
+            @tenantId, @conversationId, @inboundMessageId, @inboundMessageId,
             N'pending', @ControlMode, DATEADD(MILLISECOND, @debounceMs, SYSUTCDATETIME()), @maxRetries
           );
           SET @TurnId = SCOPE_IDENTITY();
@@ -163,6 +170,7 @@ export async function scheduleAiTurnAfterInbound(input: {
           SELECT TOP 1 @ExistingTurnId = t.[TurnID]
           FROM [dbo].[TblBotAiTurn] AS t
           WHERE t.[ConversationID] = @conversationId
+            AND t.[TenantId] = @tenantId
             AND t.[Status] = N'pending';
           IF @ExistingTurnId IS NOT NULL
           BEGIN
@@ -171,7 +179,7 @@ export async function scheduleAiTurnAfterInbound(input: {
               [LatestInboundMessageID] = @inboundMessageId,
               [DebounceUntil] = DATEADD(MILLISECOND, @debounceMs, SYSUTCDATETIME()),
               [UpdatedAt] = SYSUTCDATETIME()
-            WHERE [TurnID] = @ExistingTurnId;
+            WHERE [TurnID] = @ExistingTurnId AND [TenantId] = @tenantId;
             SET @TurnId = @ExistingTurnId;
           END
           ELSE THROW;
@@ -189,11 +197,15 @@ export async function scheduleAiTurnAfterInbound(input: {
   };
 }
 
+/**
+ * Worker claim across tenants. Rows without a TenantId are never claimed; the caller runs each
+ * returned row inside that row's tenant scope.
+ */
 export async function claimPendingAiTurnBatch(input: {
   batchSize: number;
   workerId: string;
   staleMs: number;
-}): Promise<AiTurnRow[]> {
+}): Promise<AiTurnRowWithTenant[]> {
   const batchSize = Math.max(1, Math.min(20, Math.floor(input.batchSize)));
   const pool = await getPool();
   const transaction = new sql.Transaction(pool);
@@ -205,9 +217,10 @@ export async function claimPendingAiTurnBatch(input: {
       .input('staleMs', sql.Int, input.staleMs)
       .query(`
         ;WITH claim AS (
-          SELECT TOP (@batchSize) t.[TurnID]
+          SELECT TOP (@batchSize) t.[TurnID], t.[TenantId]
           FROM [dbo].[TblBotAiTurn] AS t WITH (UPDLOCK, READPAST, ROWLOCK)
           WHERE t.[Status] = N'pending'
+            AND t.[TenantId] IS NOT NULL
             AND t.[DebounceUntil] <= SYSUTCDATETIME()
             AND (t.[NextAttemptAt] IS NULL OR t.[NextAttemptAt] <= SYSUTCDATETIME())
           ORDER BY t.[DebounceUntil] ASC, t.[TurnID] ASC
@@ -219,7 +232,7 @@ export async function claimPendingAiTurnBatch(input: {
           t.[UpdatedAt] = SYSUTCDATETIME()
         OUTPUT ${TURN_COLUMNS.replace(/t\./g, 'inserted.')}
         FROM [dbo].[TblBotAiTurn] AS t
-        INNER JOIN claim AS c ON c.[TurnID] = t.[TurnID];
+        INNER JOIN claim AS c ON c.[TurnID] = t.[TurnID] AND c.[TenantId] = t.[TenantId];
       `);
     await transaction.commit();
     return (result.recordset as RawTurnRow[]).map(mapTurnRow);
@@ -233,6 +246,7 @@ export async function claimPendingAiTurnBatch(input: {
   }
 }
 
+/** Worker maintenance across tenants: only resets/fails stale turns, never touches rows without a TenantId. */
 export async function recoverStaleAiProcessing(input: {
   staleMs: number;
 }): Promise<{ requeued: number; failed: number }> {
@@ -255,6 +269,7 @@ export async function recoverStaleAiProcessing(input: {
         t.[NextAttemptAt] = DATEADD(SECOND, 5, SYSUTCDATETIME())
       FROM [dbo].[TblBotAiTurn] AS t
       WHERE t.[Status] = N'processing'
+        AND t.[TenantId] IS NOT NULL
         AND t.[ProcessingStartedAt] IS NOT NULL
         AND t.[ProcessingStartedAt] < DATEADD(MILLISECOND, -@staleMs, SYSUTCDATETIME())
         AND t.[OutboundMessageID] IS NULL
@@ -270,6 +285,7 @@ export async function recoverStaleAiProcessing(input: {
         t.[UpdatedAt] = SYSUTCDATETIME()
       FROM [dbo].[TblBotAiTurn] AS t
       WHERE t.[Status] = N'processing'
+        AND t.[TenantId] IS NOT NULL
         AND t.[ProcessingStartedAt] IS NOT NULL
         AND t.[ProcessingStartedAt] < DATEADD(MILLISECOND, -@staleMs, SYSUTCDATETIME())
         AND t.[OutboundMessageID] IS NULL
@@ -282,15 +298,14 @@ export async function recoverStaleAiProcessing(input: {
   return { requeued: Number(row?.requeued ?? 0), failed: Number(row?.failed ?? 0) };
 }
 
-export async function getAiTurnById(turnId: number): Promise<AiTurnRow | null> {
+export async function getAiTurnById(turnId: number): Promise<AiTurnRowWithTenant | null> {
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'ai.getAiTurnById')
     .input('turnId', sql.BigInt, turnId)
     .query(`
       SELECT ${TURN_COLUMNS}
       FROM [dbo].[TblBotAiTurn] AS t
-      WHERE t.[TurnID] = @turnId
+      WHERE t.[TurnID] = @turnId AND t.[TenantId] = @tenantId
     `);
   const row = result.recordset[0] as RawTurnRow | undefined;
   return row ? mapTurnRow(row) : null;
@@ -306,8 +321,7 @@ export async function markAiTurnCompleted(input: {
   resultJson: string;
 }): Promise<void> {
   const pool = await getPool();
-  await pool
-    .request()
+  await bindMessagingTenant(pool.request(), 'ai.markAiTurnCompleted')
     .input('turnId', sql.BigInt, input.turnId)
     .input('outboundMessageId', sql.BigInt, input.outboundMessageId)
     .input('outboxId', sql.BigInt, input.outboxId)
@@ -329,7 +343,7 @@ export async function markAiTurnCompleted(input: {
         [UpdatedAt] = SYSUTCDATETIME(),
         [LastError] = NULL,
         [ErrorCode] = NULL
-      WHERE [TurnID] = @turnId
+      WHERE [TurnID] = @turnId AND [TenantId] = @tenantId
     `);
 }
 
@@ -341,8 +355,7 @@ export async function markAiTurnFailed(input: {
   retryDelayMs?: number;
 }): Promise<void> {
   const pool = await getPool();
-  await pool
-    .request()
+  await bindMessagingTenant(pool.request(), 'ai.markAiTurnFailed')
     .input('turnId', sql.BigInt, input.turnId)
     .input('errorCode', sql.NVarChar(50), input.errorCode.slice(0, 50))
     .input('lastError', sql.NVarChar(500), input.lastError.slice(0, 500))
@@ -350,7 +363,8 @@ export async function markAiTurnFailed(input: {
     .query(`
       IF EXISTS (
         SELECT 1 FROM [dbo].[TblBotAiTurn]
-        WHERE [TurnID] = @turnId AND [RetryCount] + 1 < [MaxRetries] AND @retryable = 1
+        WHERE [TurnID] = @turnId AND [TenantId] = @tenantId
+          AND [RetryCount] + 1 < [MaxRetries] AND @retryable = 1
       )
       BEGIN
         UPDATE [dbo].[TblBotAiTurn]
@@ -362,7 +376,7 @@ export async function markAiTurnFailed(input: {
           [ErrorCode] = @errorCode,
           [LastError] = @lastError,
           [UpdatedAt] = SYSUTCDATETIME()
-        WHERE [TurnID] = @turnId;
+        WHERE [TurnID] = @turnId AND [TenantId] = @tenantId;
       END
       ELSE
       BEGIN
@@ -374,7 +388,7 @@ export async function markAiTurnFailed(input: {
           [LastError] = @lastError,
           [CompletedAt] = SYSUTCDATETIME(),
           [UpdatedAt] = SYSUTCDATETIME()
-        WHERE [TurnID] = @turnId;
+        WHERE [TurnID] = @turnId AND [TenantId] = @tenantId;
       END
     `);
 }
@@ -385,8 +399,7 @@ export async function markAiTurnSkipped(input: {
   lastError: string;
 }): Promise<void> {
   const pool = await getPool();
-  await pool
-    .request()
+  await bindMessagingTenant(pool.request(), 'ai.markAiTurnSkipped')
     .input('turnId', sql.BigInt, input.turnId)
     .input('errorCode', sql.NVarChar(50), input.errorCode.slice(0, 50))
     .input('lastError', sql.NVarChar(500), input.lastError.slice(0, 500))
@@ -398,6 +411,6 @@ export async function markAiTurnSkipped(input: {
         [LastError] = @lastError,
         [CompletedAt] = SYSUTCDATETIME(),
         [UpdatedAt] = SYSUTCDATETIME()
-      WHERE [TurnID] = @turnId
+      WHERE [TurnID] = @turnId AND [TenantId] = @tenantId
     `);
 }

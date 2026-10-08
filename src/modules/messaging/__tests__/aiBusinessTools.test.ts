@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { AiStructuredResult } from '@/modules/messaging/ai/domain/types';
 import {
   intentRequiresBusinessTools,
@@ -6,8 +6,22 @@ import {
   planBusinessToolCalls,
   MAX_AI_TOOL_CALLS_PER_TURN,
 } from '@/modules/messaging/ai/tools';
-import { executeAiToolPlan } from '@/modules/messaging/ai/tools/registry';
+import {
+  executeAiBusinessTool,
+  executeAiToolPlan as executeAiToolPlanUnscoped,
+} from '@/modules/messaging/ai/tools/registry';
 import { resolveCustomerDateText, textMatchesQuery } from '@/modules/messaging/ai/tools/dateText';
+import { getPublicAvailableSlots } from '@/lib/booking/publicBookingAvailability';
+import {
+  TENANT_A,
+  TENANT_B,
+  inTenant,
+  installMessagingTenantTestKit,
+  resetMessagingTenantTestKit,
+} from './support/messagingTenantTestKit';
+
+const executeAiToolPlan: typeof executeAiToolPlanUnscoped = (requests, ctx) =>
+  inTenant(TENANT_A, () => executeAiToolPlanUnscoped(requests, ctx));
 
 vi.mock('@/lib/booking/publicBookingBranchContext', () => ({
   listPublicDiscoverableBranches: vi.fn(async () => [
@@ -18,6 +32,15 @@ vi.mock('@/lib/booking/publicBookingBranchContext', () => ({
       shortName: 'جليم',
       address: 'Alex',
       phone: '01',
+      timeZone: 'Africa/Cairo',
+    },
+    {
+      branchId: 3,
+      branchCode: 'SMOUHA',
+      branchName: 'سموحة',
+      shortName: 'سموحة',
+      address: 'Alex',
+      phone: '03',
       timeZone: 'Africa/Cairo',
     },
   ]),
@@ -198,6 +221,16 @@ function baseStructured(over: Partial<AiStructuredResult> = {}): AiStructuredRes
 describe('Phase 2 AI business read tools', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    installMessagingTenantTestKit({
+      locations: {
+        [TENANT_A]: [{ legacyBranchId: 1, branchCode: 'GLEEM' }],
+        [TENANT_B]: [{ legacyBranchId: 3, branchCode: 'SMOUHA' }],
+      },
+    });
+  });
+
+  afterEach(() => {
+    resetMessagingTenantTestKit();
   });
 
   it('date resolver handles بكرة', () => {
@@ -349,5 +382,54 @@ describe('Phase 2 AI business read tools', () => {
       { phone: '201557994946', conversationId: 1, turnId: 1 },
     );
     expect(trace.executed[0]?.name).toBe('get_availability');
+  });
+
+  it('list_branches only returns the current tenant branches', async () => {
+    const traceA = await executeAiToolPlan([{ name: 'list_branches' }], {
+      phone: '201557994946',
+      conversationId: 1,
+      turnId: 1,
+    });
+    const dataA = traceA.executed[0]?.data as { branches: Array<{ branchCode: string }> };
+    expect(dataA.branches.map((b) => b.branchCode)).toEqual(['GLEEM']);
+
+    const traceB = await inTenant(TENANT_B, () =>
+      executeAiToolPlanUnscoped([{ name: 'list_branches' }], {
+        phone: '201557994946',
+        conversationId: 2,
+        turnId: 2,
+      }),
+    );
+    const dataB = traceB.executed[0]?.data as { branches: Array<{ branchCode: string }> };
+    expect(dataB.branches.map((b) => b.branchCode)).toEqual(['SMOUHA']);
+  });
+
+  it('branch code of another tenant → BRANCH_NOT_IN_TENANT without reading business data', async () => {
+    const result = await inTenant(TENANT_A, () =>
+      executeAiBusinessTool(
+        {
+          name: 'get_availability',
+          branchCode: 'SMOUHA',
+          serviceQuery: 'شعر ودقن',
+          employeeName: 'عمر',
+          dateText: 'بكرة',
+        },
+        { phone: '201557994946', conversationId: 1, turnId: 1 },
+      ),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.errorCode).toBe('BRANCH_NOT_IN_TENANT');
+    expect(result.data).toBeUndefined();
+    expect(getPublicAvailableSlots).not.toHaveBeenCalled();
+  });
+
+  it('tool execution without a tenant scope fails closed', async () => {
+    await expect(
+      executeAiToolPlanUnscoped([{ name: 'list_branches' }], {
+        phone: '201557994946',
+        conversationId: 1,
+        turnId: 1,
+      }),
+    ).rejects.toMatchObject({ name: 'TenantContextError' });
   });
 });

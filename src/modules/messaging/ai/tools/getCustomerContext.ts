@@ -1,9 +1,9 @@
 import 'server-only';
-import { lookupClientIdByPhone } from '@/lib/client/clientPhoneLookup';
+import { listTenantUpcomingBookings } from '@/modules/messaging/ai/tenantBookingDirectory';
+import { lookupTenantClientIdByPhone } from '@/modules/messaging/contacts/tenantClientDirectory';
 import { getPool, sql } from '@/lib/db';
-import { listPublicUpcomingBookings } from '@/lib/booking/publicBookingReader';
 import type { AiToolCallRequest, AiToolExecutionContext, AiToolResult } from './types';
-import { resolveLegacyBootstrapTenantId } from '@/platform/tenant/legacyBootstrapSeam';
+import { requireMessagingTenantId } from '@/modules/messaging/tenancy/messagingTenantScope';
 
 export async function executeGetCustomerContext(
   _request: AiToolCallRequest,
@@ -23,8 +23,8 @@ export async function executeGetCustomerContext(
   }
 
   try {
-    const tenantId = await resolveLegacyBootstrapTenantId('legacy-messaging-worker');
-    const lookup = await lookupClientIdByPhone(tenantId, phone);
+    const tenantId = requireMessagingTenantId('get_customer_context');
+    const lookup = await lookupTenantClientIdByPhone(phone);
     if (lookup.ambiguous) {
       return {
         name: 'get_customer_context',
@@ -72,7 +72,7 @@ export async function executeGetCustomerContext(
       status: string | null;
     }> = [];
     try {
-      const upcomingResp = await listPublicUpcomingBookings({ phone, limit: 3 });
+      const upcomingResp = await listTenantUpcomingBookings({ phone, limit: 3 });
       upcoming = upcomingResp.bookings.map((b) => ({
         bookingCode: b.code ?? null,
         date: b.workDate ?? b.calendarDate ?? null,

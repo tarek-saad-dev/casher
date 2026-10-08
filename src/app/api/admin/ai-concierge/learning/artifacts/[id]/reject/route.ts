@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin, isAuthResult } from '@/lib/api-auth';
 import { getControlPlaneStore, isAiControlPlanePhase1Enabled, rejectArtifact } from '@/modules/ai-control-plane';
+import { runWithStaffMessagingTenant } from '@/modules/messaging/tenancy/staffScope';
 
 export const runtime = 'nodejs';
 
@@ -12,10 +13,11 @@ export async function POST(req: Request, { params }: Params) {
   }
   const auth = await requireAdmin();
   if (!isAuthResult(auth)) return auth;
-
-  const body = (await req.json().catch(() => ({}))) as { reason?: string };
-  const { id } = await params;
-  const store = await getControlPlaneStore();
-  const artifact = await rejectArtifact(store, Number(id), auth.userId, body.reason);
-  return NextResponse.json({ ok: true, artifact });
+  return runWithStaffMessagingTenant(auth, 'admin/ai-concierge/learning/artifacts/[id]/reject:POST', async () => {
+    const body = (await req.json().catch(() => ({}))) as { reason?: string };
+    const { id } = await params;
+    const store = await getControlPlaneStore();
+    const artifact = await rejectArtifact(store, Number(id), auth.userId, body.reason);
+    return NextResponse.json({ ok: true, artifact });
+  });
 }

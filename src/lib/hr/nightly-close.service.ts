@@ -25,11 +25,11 @@ import {
   type EmployeeDailyWhatsAppSendResponse,
 } from '@/lib/hr/employee-daily-whatsapp-report.service';
 import { sendOwnerDailyWhatsApp } from '@/lib/hr/owner-daily-whatsapp-report.service';
-import {
-  checkWhatsAppStatus,
-  isWhatsAppEnabled,
-} from '@/lib/integrations/whatsapp';
+import { isWhatsAppEnabled } from '@/lib/integrations/whatsapp';
 import { listActiveBranchesIn } from '@/lib/branch';
+import { runWithMessagingTenant } from '@/modules/messaging/tenancy/messagingTenantScope';
+import { resolveSingleTenantForLegacyBranches } from '@/modules/messaging/tenancy/branchTenantScope';
+import { tenantChannelStatus } from '@/modules/messaging/tenancy/transport';
 import { postMonthlySalaryEntitlements } from '@/lib/services/employeeLedgerMonthlySalaryService';
 import { isEmployeeLedgerDualWriteEnabled } from '@/lib/employeeLedgerConfig';
 
@@ -655,7 +655,15 @@ export async function runNightlyClose(params: {
       if (!isWhatsAppEnabled() && !dryRun) {
         errors.push('WhatsApp integration disabled (development_only)');
       } else {
-        const status = await checkWhatsAppStatus();
+        const branchIds = (await listActiveBranchesIn(params.branchIds)).map((b) => b.branchId);
+        const messagingTenantId = await resolveSingleTenantForLegacyBranches(branchIds);
+        if (!messagingTenantId) {
+          throw new Error('messaging tenant unresolved: active branches do not belong to exactly one tenant');
+        }
+        const status = await runWithMessagingTenant(
+          { tenantId: messagingTenantId, source: 'job', detail: 'hr.nightly-close' },
+          () => tenantChannelStatus(),
+        );
         whatsappReady =
           dryRun ||
           ('whatsappReady' in status && status.whatsappReady === true);
@@ -666,6 +674,7 @@ export async function runNightlyClose(params: {
         const empSend = await sendEmployeeDailyWhatsAppReports({
           workDate,
           dryRun,
+          messagingTenantId,
         });
         result.steps.employeesWhatsApp = empSend;
         employeesSent = empSend.summary.sent;

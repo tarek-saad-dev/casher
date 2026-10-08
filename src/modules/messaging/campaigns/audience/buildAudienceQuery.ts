@@ -1,5 +1,6 @@
 import { getPool, sql } from '@/lib/db';
 import type { AudienceCriteria, AudienceMember } from '../domain/types';
+import { bindMessagingTenant } from '../../tenancy/tenantSql';
 
 const VALID_INVOICE = `h.invType = N'مبيعات' AND ISNULL(h.isActive, 'no') = 'no'`;
 
@@ -132,7 +133,7 @@ export function buildAudienceQuerySql(criteria: AudienceCriteria): string {
   addBranchFilter(criteria, parts);
 
   const whereClause =
-    parts.whereParts.length > 0 ? `WHERE ${parts.whereParts.join(' AND ')}` : '';
+    parts.whereParts.length > 0 ? `AND ${parts.whereParts.join(' AND ')}` : '';
   const havingClause =
     parts.havingParts.length > 0 ? `HAVING ${parts.havingParts.join(' AND ')}` : '';
 
@@ -154,6 +155,7 @@ export function buildAudienceQuerySql(criteria: AudienceCriteria): string {
       ON c.ClientID = h.ClientID
       AND ${VALID_INVOICE}
       ${branchJoin}
+    WHERE c.TenantId = @tenantId
     ${whereClause}
     GROUP BY
       c.ClientID,
@@ -170,6 +172,7 @@ export function buildAudienceQuerySql(criteria: AudienceCriteria): string {
 }
 
 function bindAudienceParams(req: sql.Request, criteria: AudienceCriteria): void {
+  bindMessagingTenant(req, 'campaigns.audience');
   req.input('branchId', sql.Int, criteria.branchId ?? null);
 
   const today = new Date();

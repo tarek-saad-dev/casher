@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { OutboxMessageRow } from '@/modules/messaging/domain/outboxTypes';
 import type { GenericWhatsAppSendResult } from '@/lib/integrations/whatsapp';
 
@@ -116,9 +116,18 @@ vi.mock('@/modules/messaging/outbox/messageOutboxRepository', () => ({
 }));
 
 import { processOutboxTick } from '@/modules/messaging/application/processOutboxTick';
+import { currentMessagingTenantScope } from '@/modules/messaging/tenancy/messagingTenantScope';
+import {
+  TENANT_A,
+  TENANT_B,
+  installMessagingTenantTestKit,
+  recordingTransport,
+  resetMessagingTenantTestKit,
+} from './support/messagingTenantTestKit';
 
 function row(partial: Partial<OutboxMessageRow> & Pick<OutboxMessageRow, 'id' | 'idempotencyKey'>): OutboxMessageRow {
   return {
+    tenantId: TENANT_A,
     channel: 'whatsapp',
     recipient: '01557994946',
     templateKey: 'sale.customer_receipt',
@@ -143,9 +152,90 @@ function row(partial: Partial<OutboxMessageRow> & Pick<OutboxMessageRow, 'id' | 
 }
 
 describe('processOutboxTick', () => {
+  let transport: ReturnType<typeof recordingTransport>;
+  let usage: ReturnType<typeof installMessagingTenantTestKit>['usage'];
+
   beforeEach(() => {
     repo.reset([row({ id: 1, idempotencyKey: 'outbox:phase5c1:unit' })]);
     vi.clearAllMocks();
+    transport = recordingTransport();
+    ({ usage } = installMessagingTenantTestKit({
+      channels: {
+        [TENANT_A]: { endpointUrl: 'http://bridge-a.test' },
+        [TENANT_B]: { endpointUrl: 'http://bridge-b.test' },
+      },
+      transport,
+    }));
+  });
+
+  afterEach(() => {
+    resetMessagingTenantTestKit();
+  });
+
+  it('runs each row inside its own tenant scope', async () => {
+    const scopes: Array<string | undefined> = [];
+    const send = vi.fn(async (): Promise<GenericWhatsAppSendResult> => {
+      scopes.push(currentMessagingTenantScope()?.tenantId);
+      return { sent: true, skipped: false, status: 'sent', messageId: 'wa-scope' };
+    });
+    repo.reset([
+      row({ id: 1, idempotencyKey: 'a' }),
+      row({ id: 2, idempotencyKey: 'b', tenantId: TENANT_B }),
+    ]);
+
+    await processOutboxTick({ workerId: 'host:1', batchSize: 10, lockTtlMs: 300_000, send });
+
+    expect(scopes).toEqual([TENANT_A, TENANT_B]);
+    expect(currentMessagingTenantScope()).toBeNull();
+  });
+
+  it('skips a claimed row without tenantId and never sends it', async () => {
+    const send = vi.fn(async (): Promise<GenericWhatsAppSendResult> => ({
+      sent: true,
+      skipped: false,
+      status: 'sent',
+      messageId: 'wa-never',
+    }));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    repo.reset([row({ id: 7, idempotencyKey: 'orphan', tenantId: null })]);
+
+    const summary = await processOutboxTick({ workerId: 'host:1', batchSize: 10, lockTtlMs: 300_000, send });
+
+    expect(summary).toMatchObject({ claimed: 1, sent: 0, retried: 0, failed: 0 });
+    expect(send).not.toHaveBeenCalled();
+    expect(transport.sends).toHaveLength(0);
+    expect(repo.markSent).not.toHaveBeenCalled();
+    expect(repo.markFailed).not.toHaveBeenCalled();
+    expect(repo.scheduleRetry).not.toHaveBeenCalled();
+    expect(repo.rows[0]?.status).toBe('sending');
+    errorSpy.mockRestore();
+  });
+
+  it('sends a TENANT_B row through TENANT_B channel by default', async () => {
+    repo.reset([row({ id: 8, idempotencyKey: 'tenant-b', tenantId: TENANT_B })]);
+
+    const summary = await processOutboxTick({ workerId: 'host:1', batchSize: 10, lockTtlMs: 300_000 });
+
+    expect(summary).toMatchObject({ claimed: 1, sent: 1 });
+    expect(transport.sends).toHaveLength(1);
+    expect(transport.sends[0]).toMatchObject({
+      tenantId: TENANT_B,
+      endpointUrl: 'http://bridge-b.test',
+      input: { phone: '01557994946', message: '[OUTBOX-WORKER-5C1]', idempotencyKey: 'tenant-b' },
+    });
+    expect(repo.rows[0]?.status).toBe('sent');
+    expect(repo.rows[0]?.providerMessageId).toBe('wa-b-1');
+    expect(usage).toEqual([{ tenantId: TENANT_B, metric: 'outbound_sent', count: 1 }]);
+  });
+
+  it('fails without sending when the row tenant has no channel', async () => {
+    installMessagingTenantTestKit({ channels: { [TENANT_A]: { endpointUrl: 'http://bridge-a.test' } }, transport });
+    repo.reset([row({ id: 10, idempotencyKey: 'no-channel', tenantId: TENANT_B })]);
+
+    await processOutboxTick({ workerId: 'host:1', batchSize: 10, lockTtlMs: 300_000 });
+
+    expect(transport.sends).toHaveLength(0);
+    expect(repo.rows[0]?.status).not.toBe('sent');
   });
 
   it('sends the stored snapshot with idempotencyKey and no type, then marks sent', async () => {
