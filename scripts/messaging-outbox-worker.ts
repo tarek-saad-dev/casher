@@ -33,16 +33,12 @@ async function main() {
   );
   const { getOutboxWorkerConfig } = await import('../src/modules/messaging/outbox/workerPolicy');
   const { closePool } = await import('../src/lib/db');
-  const { resolveLegacyBootstrapTenantId } = await import(
-    '../src/platform/tenant/legacyBootstrapSeam'
-  );
 
   const once = process.argv.includes('--once');
   const config = getOutboxWorkerConfig();
   const id = workerId();
-  // DRVO-013: TblMessageOutbox has no TenantId and holds CASHER_BOOT data only. The worker is
-  // bound to that tenant through the named seam and refuses to start without it.
-  const tenantId = await resolveLegacyBootstrapTenantId('legacy-messaging-worker');
+  // DRVO-018: rows carry TenantId; each claimed row is delivered inside its own tenant scope
+  // through that tenant's channel. The worker has no tenant of its own.
   let stopping = false;
   let inTick = false;
 
@@ -57,7 +53,6 @@ async function main() {
 
   console.log('[messaging-outbox-worker] started', {
     worker: id,
-    tenantId,
     pollMs: config.pollMs,
     batchSize: config.batchSize,
     lockTtlMs: config.lockTtlMs,

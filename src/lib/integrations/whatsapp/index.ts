@@ -24,4 +24,5 @@ export type {
   GenericWhatsAppGroupMessageInput,
   GenericWhatsAppSendResult,
   GenericWhatsAppGroupSendResult,
+  WhatsAppEndpoint,
 } from './types';

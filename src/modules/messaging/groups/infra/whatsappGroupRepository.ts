@@ -12,6 +12,7 @@ import type {
   WhatsAppGroupInput,
   WhatsAppGroupRow,
 } from '../domain/types';
+import { bindMessagingTenant } from '../../tenancy/tenantSql';
 
 export class WhatsAppGroupError extends Error {
   constructor(
@@ -38,6 +39,7 @@ export async function ensureWhatsAppGroupTable(): Promise<void> {
     await pool.request().query(`
       CREATE TABLE [dbo].[TblWhatsAppGroup] (
         [ID]                INT            IDENTITY(1,1) NOT NULL,
+        [TenantId]          UNIQUEIDENTIFIER NULL,
         [Name]              NVARCHAR(200)  NOT NULL,
         [InviteLink]        NVARCHAR(500)  NOT NULL,
         [SubscribedEvents]  NVARCHAR(MAX)  NOT NULL
@@ -136,10 +138,11 @@ function validateInput(input: WhatsAppGroupInput): {
 export async function listWhatsAppGroups(): Promise<WhatsAppGroupRow[]> {
   await ensureWhatsAppGroupTable();
   const pool = await getPool();
-  const result = await pool.request().query(`
+  const result = await bindMessagingTenant(pool.request(), 'groups.listWhatsAppGroups').query(`
     SELECT
       ID, Name, InviteLink, SubscribedEvents, BranchID, IsActive, CreatedAt, UpdatedAt
     FROM dbo.TblWhatsAppGroup
+    WHERE TenantId = @tenantId
     ORDER BY Name ASC, ID ASC
   `);
   return (result.recordset as Record<string, unknown>[]).map(mapRow);
@@ -150,14 +153,13 @@ export async function getWhatsAppGroupById(
 ): Promise<WhatsAppGroupRow | null> {
   await ensureWhatsAppGroupTable();
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'groups.getWhatsAppGroupById')
     .input('id', sql.Int, id)
     .query(`
       SELECT TOP 1
         ID, Name, InviteLink, SubscribedEvents, BranchID, IsActive, CreatedAt, UpdatedAt
       FROM dbo.TblWhatsAppGroup
-      WHERE ID = @id
+      WHERE ID = @id AND TenantId = @tenantId
     `);
   const row = result.recordset[0] as Record<string, unknown> | undefined;
   return row ? mapRow(row) : null;
@@ -169,18 +171,17 @@ export async function createWhatsAppGroup(
   const validated = validateInput(input);
   await ensureWhatsAppGroupTable();
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'groups.createWhatsAppGroup')
     .input('name', sql.NVarChar(200), validated.name)
     .input('inviteLink', sql.NVarChar(500), validated.inviteLink)
     .input('subscribedEvents', sql.NVarChar(sql.MAX), JSON.stringify(validated.subscribedEvents))
     .input('branchId', sql.Int, validated.branchId)
     .input('isActive', sql.Bit, validated.isActive ? 1 : 0)
     .query(`
-      INSERT INTO dbo.TblWhatsAppGroup (Name, InviteLink, SubscribedEvents, BranchID, IsActive)
+      INSERT INTO dbo.TblWhatsAppGroup (TenantId, Name, InviteLink, SubscribedEvents, BranchID, IsActive)
       OUTPUT INSERTED.ID, INSERTED.Name, INSERTED.InviteLink, INSERTED.SubscribedEvents,
              INSERTED.BranchID, INSERTED.IsActive, INSERTED.CreatedAt, INSERTED.UpdatedAt
-      VALUES (@name, @inviteLink, @subscribedEvents, @branchId, @isActive)
+      VALUES (@tenantId, @name, @inviteLink, @subscribedEvents, @branchId, @isActive)
     `);
   return mapRow(result.recordset[0] as Record<string, unknown>);
 }
@@ -195,8 +196,7 @@ export async function updateWhatsAppGroup(
   }
   const validated = validateInput(input);
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'groups.updateWhatsAppGroup')
     .input('id', sql.Int, id)
     .input('name', sql.NVarChar(200), validated.name)
     .input('inviteLink', sql.NVarChar(500), validated.inviteLink)
@@ -214,7 +214,7 @@ export async function updateWhatsAppGroup(
         UpdatedAt = SYSUTCDATETIME()
       OUTPUT INSERTED.ID, INSERTED.Name, INSERTED.InviteLink, INSERTED.SubscribedEvents,
              INSERTED.BranchID, INSERTED.IsActive, INSERTED.CreatedAt, INSERTED.UpdatedAt
-      WHERE ID = @id
+      WHERE ID = @id AND TenantId = @tenantId
     `);
   return mapRow(result.recordset[0] as Record<string, unknown>);
 }
@@ -222,16 +222,15 @@ export async function updateWhatsAppGroup(
 export async function deleteWhatsAppGroup(id: number): Promise<void> {
   await ensureWhatsAppGroupTable();
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'groups.deleteWhatsAppGroup')
     .input('id', sql.Int, id)
-    .query(`DELETE FROM dbo.TblWhatsAppGroup WHERE ID = @id`);
+    .query(`DELETE FROM dbo.TblWhatsAppGroup WHERE ID = @id AND TenantId = @tenantId`);
   if (result.rowsAffected[0] === 0) {
     throw new WhatsAppGroupError('الجروب غير موجود', 'NOT_FOUND', 404);
   }
 }
 
-/** Active groups subscribed to an event, optionally scoped to a branch. */
+/** Active groups of the current tenant subscribed to an event, optionally scoped to a branch. */
 export async function listActiveGroupsForEvent(
   eventKey: WhatsAppGroupEventKey,
   branchId?: number | null,

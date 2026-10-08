@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -18,6 +18,13 @@ vi.mock('@/modules/messaging/templates/repository/messageTemplateRepository', ()
 }));
 
 import { sendSaleCustomerReceipt } from '@/modules/messaging';
+import {
+  DEFAULT_TEST_ENDPOINT,
+  TENANT_A,
+  inTenant,
+  installMessagingTenantTestKit,
+  resetMessagingTenantTestKit,
+} from './support/messagingTenantTestKit';
 
 function config(overrides: Record<string, unknown> = {}) {
   return {
@@ -29,7 +36,14 @@ function config(overrides: Record<string, unknown> = {}) {
 }
 
 describe('sendSaleCustomerReceipt', () => {
+  afterEach(() => {
+    resetMessagingTenantTestKit();
+  });
+
   beforeEach(() => {
+    installMessagingTenantTestKit({
+      locations: { [TENANT_A]: [{ legacyBranchId: 3, branchCode: 'GLEEM' }] },
+    });
     sendWhatsAppMessage.mockReset();
     getWhatsAppConfig.mockReset();
     lookupActiveMessageTemplate.mockReset();
@@ -62,17 +76,20 @@ describe('sendSaleCustomerReceipt', () => {
       messageId: 'wa-sale-1',
     });
     expect(sendWhatsAppMessage).toHaveBeenCalledTimes(1);
-    expect(sendWhatsAppMessage).toHaveBeenCalledWith({
-      phone: '01557994946',
-      message: `أستاذ طارق
+    expect(sendWhatsAppMessage).toHaveBeenCalledWith(
+      {
+        phone: '01557994946',
+        message: `أستاذ طارق
 نورت Cut Salon ودايمًا منورنا 🙏✨`,
-      metadata: {
-        source: 'sale.customer_receipt',
-        templateKey: 'sale.customer_receipt',
-        branchId: 3,
-        invoiceId: 10025,
+        metadata: {
+          source: 'sale.customer_receipt',
+          templateKey: 'sale.customer_receipt',
+          branchId: 3,
+          invoiceId: 10025,
+        },
       },
-    });
+      { apiBaseUrl: DEFAULT_TEST_ENDPOINT },
+    );
     const body = sendWhatsAppMessage.mock.calls[0][0] as Record<string, unknown>;
     expect(body).not.toHaveProperty('type');
     expect(Object.keys(body).sort()).toEqual(['message', 'metadata', 'phone']);
@@ -96,14 +113,32 @@ describe('sendSaleCustomerReceipt', () => {
       skipped: false,
       reason: 'timeout',
     });
-    const timedOut = await sendSaleCustomerReceipt({
+    const timedOut = await inTenant(TENANT_A, () =>
+      sendSaleCustomerReceipt({
+        phone: '01557994946',
+        customerName: 'طارق',
+        invoiceId: 1,
+        total: 100,
+      }),
+    );
+    expect(timedOut.sent).toBe(false);
+    if (!timedOut.sent) expect(timedOut.reason).toBe('timeout');
+  });
+
+  it('skips with tenant_unresolved when there is no scope and no branch', async () => {
+    const result = await sendSaleCustomerReceipt({
       phone: '01557994946',
       customerName: 'طارق',
       invoiceId: 1,
       total: 100,
     });
-    expect(timedOut.sent).toBe(false);
-    if (!timedOut.sent) expect(timedOut.reason).toBe('timeout');
+    expect(result).toEqual({
+      sent: false,
+      channel: 'whatsapp',
+      reason: 'tenant_unresolved',
+      skipped: true,
+    });
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled();
   });
 
   it('skips missing customer name without calling WhatsApp', async () => {

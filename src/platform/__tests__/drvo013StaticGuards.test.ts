@@ -43,18 +43,16 @@ describe('DRVO-013 no default / first tenant', { timeout: 120_000 }, () => {
         'scripts/drvo-009-pos-sale-treasury-staging-smoke.ts',
         'scripts/drvo/drvo-013-tenant-isolation-smoke.ts',
         'scripts/drvo/drvo-015-master-data-smoke.ts',
-        'scripts/messaging-outbox-worker.ts',
         'scripts/provision-camp-caesar-setup.ts',
         'scripts/verify-and-heal-payroll-days.ts',
         // platform-operator-tenant: operator maintenance over CASHER_BOOT's catalog
         'src/app/api/admin/seed-service-image-paths/route.ts',
-        // legacy-messaging-worker + legacy-payroll-job-log: CASHER_BOOT-only legacy tables
+        // legacy-global-data + legacy-payroll-job-log: CASHER_BOOT-only legacy tables
         'src/app/api/admin/hr/nightly-close/route.ts',
         // legacy-payroll-job-log: TblAutoGenLog has no TenantId
         'src/app/api/payroll/daily/auto-generate/route.ts',
         // platform-operator-tenant + legacy-global-data
         'src/lib/api-auth.ts',
-        'src/modules/messaging/ai/tools/getCustomerContext.ts',
         'src/platform/tenant/legacyBootstrapSeam.ts',
       ].sort(),
     );
@@ -64,7 +62,6 @@ describe('DRVO-013 no default / first tenant', { timeout: 120_000 }, () => {
     const src = read('src/platform/tenant/legacyBootstrapSeam.ts');
     for (const seam of [
       'platform-operator-tenant',
-      'legacy-messaging-worker',
       'legacy-global-data',
       'legacy-payroll-job-log',
       'casher-boot-staging-smoke',

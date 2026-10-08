@@ -1,5 +1,6 @@
 import { getConversationById } from '@/modules/messaging/conversation/infra/botConversationRepository';
 import { getPool, sql } from '@/lib/db';
+import { bindMessagingTenant } from '@/modules/messaging/tenancy/tenantSql';
 import type { AiConversationContext, AiConversationContextMessage } from '../domain/types';
 import { getAiConfig } from '../config';
 
@@ -35,8 +36,7 @@ export async function loadConversationContext(input: {
   }
 
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'ai.loadConversationContext')
     .input('conversationId', sql.BigInt, input.conversationId)
     .input('anchorId', sql.BigInt, input.anchorInboundMessageId)
     .input('latestId', sql.BigInt, input.latestInboundMessageId)
@@ -49,6 +49,7 @@ export async function loadConversationContext(input: {
         m.[OccurredAt]
       FROM [dbo].[TblBotMessage] AS m
       WHERE m.[ConversationID] = @conversationId
+        AND m.[TenantId] = @tenantId
       ORDER BY m.[OccurredAt] DESC, m.[MessageID] DESC
     `);
 
@@ -58,8 +59,7 @@ export async function loadConversationContext(input: {
 
   const recent = timeline.slice(-config.contextMaxMessages);
 
-  const burstResult = await pool
-    .request()
+  const burstResult = await bindMessagingTenant(pool.request(), 'ai.loadConversationContext.burst')
     .input('conversationId', sql.BigInt, input.conversationId)
     .input('anchorId', sql.BigInt, input.anchorInboundMessageId)
     .input('latestId', sql.BigInt, input.latestInboundMessageId)
@@ -67,6 +67,7 @@ export async function loadConversationContext(input: {
       SELECT m.[MessageID]
       FROM [dbo].[TblBotMessage] AS m
       WHERE m.[ConversationID] = @conversationId
+        AND m.[TenantId] = @tenantId
         AND m.[Direction] = N'inbound'
         AND m.[MessageID] >= @anchorId
         AND m.[MessageID] <= @latestId
@@ -88,14 +89,17 @@ export async function loadConversationContext(input: {
 
 export async function getInboundMessageReceivedAt(messageId: number): Promise<string | null> {
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'ai.getInboundMessageReceivedAt')
     .input('messageId', sql.BigInt, messageId)
     .query(`
       SELECT m.[OccurredAt], i.[ReceivedAt]
       FROM [dbo].[TblBotMessage] AS m
-      LEFT JOIN [dbo].[TblMessageInbox] AS i ON i.[ID] = m.[InboxID]
+      LEFT JOIN [dbo].[TblMessageInbox] AS i
+        ON i.[ID] = m.[InboxID]
+        AND i.[TenantId] = m.[TenantId]
+        AND i.[TenantId] = @tenantId
       WHERE m.[MessageID] = @messageId
+        AND m.[TenantId] = @tenantId
     `);
   const row = result.recordset[0] as
     | { OccurredAt: Date | string; ReceivedAt: Date | string | null }

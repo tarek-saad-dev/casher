@@ -11,10 +11,20 @@ dotenv.config({ path: path.join(__dirname, '..', '.env.local'), override: true }
 const GROUP_LINK = 'https://chat.whatsapp.com/GyeYhwaMnTjLV7TbO3o7ie';
 
 async function main() {
+  const tenantArg = process.argv.find((a) => a.startsWith('--tenant-id='));
+  const tenantId = tenantArg?.slice('--tenant-id='.length).trim();
+  if (!tenantId) throw new Error('Missing --tenant-id=<uuid> (messaging is tenant-scoped).');
+  const { runWithMessagingTenant } = await import('../src/modules/messaging/tenancy/messagingTenantScope');
+  await runWithMessagingTenant({ tenantId, source: 'job', detail: 'verify-whatsapp-groups' }, verify);
+  const { closePool } = await import('../src/lib/db');
+  await closePool();
+}
+
+async function verify() {
   const { listWhatsAppGroups, listActiveGroupsForEvent, sendTestGroupMessage } =
     await import('../src/modules/messaging/groups');
-  const { checkWhatsAppStatus, checkWhatsAppBotHealth } = await import(
-    '../src/lib/integrations/whatsapp'
+  const { tenantChannelStatus, tenantChannelHealth, resolveCurrentTenantChannel } = await import(
+    '../src/modules/messaging/tenancy/transport'
   );
   const { getConfig } = await import('../src/lib/integrations/whatsapp/config');
 
@@ -22,7 +32,7 @@ async function main() {
   console.log('=== WhatsApp config ===');
   console.log({
     enabled: cfg.enabled,
-    apiBaseUrl: cfg.apiBaseUrl,
+    channelEndpoint: (await resolveCurrentTenantChannel('verify-whatsapp-groups'))?.endpointUrl ?? null,
     bookingEnabled: cfg.bookingEnabled,
   });
 
@@ -46,8 +56,8 @@ async function main() {
   console.log(`active booking.created subscribers: ${bookingGroups.length}`);
 
   console.log('\n=== Gateway health ===');
-  const health = await checkWhatsAppBotHealth();
-  const status = await checkWhatsAppStatus();
+  const health = await tenantChannelHealth();
+  const status = await tenantChannelStatus();
   console.log({ health, status });
 
   if (!cfg.enabled) {
@@ -72,9 +82,6 @@ async function main() {
     console.warn('\nSKIP test send: WhatsApp gateway not ready');
     console.warn('Ensure Chrome + WhatsApp Web are running on the bot server.');
   }
-
-  const { closePool } = await import('../src/lib/db');
-  await closePool();
 }
 
 main().catch((e) => {

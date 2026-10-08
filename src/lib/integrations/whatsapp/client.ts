@@ -20,9 +20,16 @@ import type {
   GenericWhatsAppGroupMessageInput,
   GenericWhatsAppSendResult,
   GenericWhatsAppGroupSendResult,
+  WhatsAppEndpoint,
 } from './types';
 
 const HEALTH_TIMEOUT_MS = 5000;
+
+function endpointBaseUrl(endpoint: WhatsAppEndpoint): string {
+  const base = String(endpoint?.apiBaseUrl ?? '').trim().replace(/\/+$/, '');
+  if (!base) throw new Error('WhatsApp endpoint is required (tenant channel EndpointUrl)');
+  return base;
+}
 
 function maskPhone(phone: string): string {
   if (phone.length <= 4) return '****';
@@ -61,9 +68,10 @@ async function postWhatsAppSend(
   requestBody: unknown,
   logLabel: string,
   phone: string,
+  endpoint: WhatsAppEndpoint,
 ): Promise<GatewaySendConfirmed | WhatsAppSendFailure> {
   const cfg = getConfig();
-  const url = `${cfg.apiBaseUrl}/api/whatsapp/send`;
+  const url = `${endpointBaseUrl(endpoint)}/api/whatsapp/send`;
 
   let response: Response;
   let responseText: string;
@@ -274,9 +282,10 @@ async function postWhatsAppGroupSend(
   requestBody: unknown,
   logLabel: string,
   groupInviteLink: string,
+  endpoint: WhatsAppEndpoint,
 ): Promise<GenericWhatsAppGroupSendResult> {
   const cfg = getConfig();
-  const url = `${cfg.apiBaseUrl}/api/whatsapp/send-group`;
+  const url = `${endpointBaseUrl(endpoint)}/api/whatsapp/send-group`;
 
   let response: Response;
   let responseText: string;
@@ -433,6 +442,7 @@ async function postWhatsAppGroupSend(
  */
 export async function sendGenericWhatsAppPayload(
   input: GenericWhatsAppMessageInput,
+  endpoint: WhatsAppEndpoint,
 ): Promise<GenericWhatsAppSendResult> {
   const disabled = skipIfClientDisabled();
   if (disabled) return disabled;
@@ -450,7 +460,7 @@ export async function sendGenericWhatsAppPayload(
     body.idempotencyKey = idempotencyKey;
   }
 
-  return postWhatsAppSend(body, 'generic', input.phone);
+  return postWhatsAppSend(body, 'generic', input.phone, endpoint);
 }
 
 /**
@@ -458,6 +468,7 @@ export async function sendGenericWhatsAppPayload(
  */
 export async function sendGenericWhatsAppGroupPayload(
   input: GenericWhatsAppGroupMessageInput,
+  endpoint: WhatsAppEndpoint,
 ): Promise<GenericWhatsAppGroupSendResult> {
   const disabled = skipIfClientDisabled();
   if (disabled) return disabled;
@@ -467,21 +478,23 @@ export async function sendGenericWhatsAppGroupPayload(
     message: input.message,
   };
 
-  return postWhatsAppGroupSend(body, 'group', input.groupInviteLink);
+  return postWhatsAppGroupSend(body, 'group', input.groupInviteLink, endpoint);
 }
 
 /**
  * GET /api/health on the Pure Gateway.
  * Healthy only when HTTP succeeds and body has status === "ok".
  */
-export async function fetchWhatsAppBotHealth(): Promise<WhatsAppBotHealthResult> {
+export async function fetchWhatsAppBotHealth(
+  endpoint: WhatsAppEndpoint,
+): Promise<WhatsAppBotHealthResult> {
   const cfg = getConfig();
 
   if (!cfg.enabled) {
     return { ok: false, reason: 'development_only' };
   }
 
-  const url = `${cfg.apiBaseUrl}/api/health`;
+  const url = `${endpointBaseUrl(endpoint)}/api/health`;
 
   let response: Response;
 
@@ -546,14 +559,16 @@ export async function fetchWhatsAppBotHealth(): Promise<WhatsAppBotHealthResult>
  * Gateway unavailable only on network/config/invalid response.
  * Session not-ready returns available:true with connected:false.
  */
-export async function fetchWhatsAppStatus(): Promise<WhatsAppStatusResult> {
+export async function fetchWhatsAppStatus(
+  endpoint: WhatsAppEndpoint,
+): Promise<WhatsAppStatusResult> {
   const cfg = getConfig();
 
   if (!cfg.enabled) {
     return { available: false, reason: 'development_only' };
   }
 
-  const health = await fetchWhatsAppBotHealth();
+  const health = await fetchWhatsAppBotHealth(endpoint);
   if (!health.ok) {
     if (health.reason === 'connection_failed' || health.reason === 'timeout') {
       return { available: false, reason: health.reason };
@@ -565,7 +580,7 @@ export async function fetchWhatsAppStatus(): Promise<WhatsAppStatusResult> {
     }
   }
 
-  const url = `${cfg.apiBaseUrl}/api/whatsapp/status`;
+  const url = `${endpointBaseUrl(endpoint)}/api/whatsapp/status`;
 
   let response: Response;
   let responseText: string;

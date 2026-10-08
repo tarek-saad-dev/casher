@@ -1,4 +1,5 @@
 import { getPool, sql } from '@/lib/db';
+import { bindMessagingTenant } from '@/modules/messaging/tenancy/tenantSql';
 import type {
   CampaignMessageMode,
   CampaignRecipientRow,
@@ -61,8 +62,7 @@ export async function insertCampaign(input: CreateCampaignInput): Promise<Campai
   const pool = await getPool();
   const audienceJson = serializeAudienceCriteria(input.audience);
 
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'campaigns.insertCampaign')
     .input('name', sql.NVarChar(200), input.name.trim())
     .input('messageMode', sql.NVarChar(20), input.messageMode)
     .input('templateKey', sql.NVarChar(100), input.templateKey ?? null)
@@ -73,12 +73,12 @@ export async function insertCampaign(input: CreateCampaignInput): Promise<Campai
     .input('scheduledAt', sql.DateTime2, input.scheduledAt ?? null)
     .query(`
       INSERT INTO dbo.TblWhatsAppCampaign (
-        Name, Status, MessageMode, TemplateKey, CustomMessage, AudienceJson,
+        TenantId, Name, Status, MessageMode, TemplateKey, CustomMessage, AudienceJson,
         BranchID, CreatedByUserID, ScheduledAt
       )
       OUTPUT INSERTED.*
       VALUES (
-        @name, N'draft', @messageMode, @templateKey, @customMessage, @audienceJson,
+        @tenantId, @name, N'draft', @messageMode, @templateKey, @customMessage, @audienceJson,
         @branchId, @createdByUserId, @scheduledAt
       )
     `);
@@ -89,18 +89,19 @@ export async function insertCampaign(input: CreateCampaignInput): Promise<Campai
 export async function listCampaigns(limit = 100): Promise<CampaignRow[]> {
   const pool = await getPool();
   const safeLimit = Math.min(Math.max(1, limit), 500);
-  const result = await pool.request().input('limit', sql.Int, safeLimit).query(`
+  const result = await bindMessagingTenant(pool.request(), 'campaigns.listCampaigns').input('limit', sql.Int, safeLimit).query(`
     SELECT TOP (@limit) *
     FROM dbo.TblWhatsAppCampaign
+    WHERE TenantId = @tenantId
     ORDER BY CreatedAt DESC, ID DESC
   `);
-  return (result.recordset ?? []).map((row) => mapCampaignRow(row as Record<string, unknown>));
+  return (result.recordset ?? []).map((row: Record<string, unknown>) => mapCampaignRow(row as Record<string, unknown>));
 }
 
 export async function getCampaignById(id: number): Promise<CampaignRow | null> {
   const pool = await getPool();
-  const result = await pool.request().input('id', sql.Int, id).query(`
-    SELECT * FROM dbo.TblWhatsAppCampaign WHERE ID = @id
+  const result = await bindMessagingTenant(pool.request(), 'campaigns.getCampaignById').input('id', sql.Int, id).query(`
+    SELECT * FROM dbo.TblWhatsAppCampaign WHERE ID = @id AND TenantId = @tenantId
   `);
   const row = result.recordset?.[0];
   return row ? mapCampaignRow(row as Record<string, unknown>) : null;
@@ -122,7 +123,7 @@ export async function updateCampaignStatus(
 ): Promise<CampaignRow | null> {
   const sets: string[] = [];
   const pool = await getPool();
-  const req = pool.request().input('id', sql.Int, id);
+  const req = bindMessagingTenant(pool.request(), 'campaigns.updateCampaignStatus').input('id', sql.Int, id);
 
   if (patch.status != null) {
     sets.push('Status = @status');
@@ -167,7 +168,7 @@ export async function updateCampaignStatus(
     UPDATE dbo.TblWhatsAppCampaign
     SET ${sets.join(', ')}
     OUTPUT INSERTED.*
-    WHERE ID = @id
+    WHERE ID = @id AND TenantId = @tenantId
   `);
   const row = result.recordset?.[0];
   return row ? mapCampaignRow(row as Record<string, unknown>) : null;
@@ -186,8 +187,7 @@ export async function insertCampaignRecipient(
   input: InsertRecipientInput,
 ): Promise<CampaignRecipientRow> {
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'campaigns.insertCampaignRecipient')
     .input('campaignId', sql.Int, input.campaignId)
     .input('customerId', sql.Int, input.customerId)
     .input('customerName', sql.NVarChar(200), input.customerName)
@@ -196,11 +196,11 @@ export async function insertCampaignRecipient(
     .input('idempotencyKey', sql.NVarChar(200), input.idempotencyKey)
     .query(`
       INSERT INTO dbo.TblWhatsAppCampaignRecipient (
-        CampaignID, CustomerID, CustomerName, Phone, MessageContent, IdempotencyKey, Status
+        TenantId, CampaignID, CustomerID, CustomerName, Phone, MessageContent, IdempotencyKey, Status
       )
       OUTPUT INSERTED.*
       VALUES (
-        @campaignId, @customerId, @customerName, @phone, @messageContent, @idempotencyKey, N'pending'
+        @tenantId, @campaignId, @customerId, @customerName, @phone, @messageContent, @idempotencyKey, N'pending'
       )
     `);
   return mapRecipientRow(result.recordset[0] as Record<string, unknown>);
@@ -210,12 +210,12 @@ export async function listRecipientsByCampaign(
   campaignId: number,
 ): Promise<CampaignRecipientRow[]> {
   const pool = await getPool();
-  const result = await pool.request().input('campaignId', sql.Int, campaignId).query(`
+  const result = await bindMessagingTenant(pool.request(), 'campaigns.listRecipientsByCampaign').input('campaignId', sql.Int, campaignId).query(`
     SELECT * FROM dbo.TblWhatsAppCampaignRecipient
-    WHERE CampaignID = @campaignId
+    WHERE CampaignID = @campaignId AND TenantId = @tenantId
     ORDER BY ID ASC
   `);
-  return (result.recordset ?? []).map((row) => mapRecipientRow(row as Record<string, unknown>));
+  return (result.recordset ?? []).map((row: Record<string, unknown>) => mapRecipientRow(row as Record<string, unknown>));
 }
 
 export async function updateRecipient(
@@ -229,7 +229,7 @@ export async function updateRecipient(
 ): Promise<void> {
   const sets: string[] = [];
   const pool = await getPool();
-  const req = pool.request().input('id', sql.BigInt, id);
+  const req = bindMessagingTenant(pool.request(), 'campaigns.updateRecipient').input('id', sql.BigInt, id);
 
   if (patch.status != null) {
     sets.push('Status = @status');
@@ -253,17 +253,17 @@ export async function updateRecipient(
   await req.query(`
     UPDATE dbo.TblWhatsAppCampaignRecipient
     SET ${sets.join(', ')}
-    WHERE ID = @id
+    WHERE ID = @id AND TenantId = @tenantId
   `);
 }
 
 export async function cancelPendingRecipients(campaignId: number): Promise<number> {
   const pool = await getPool();
-  const result = await pool.request().input('campaignId', sql.Int, campaignId).query(`
+  const result = await bindMessagingTenant(pool.request(), 'campaigns.cancelPendingRecipients').input('campaignId', sql.Int, campaignId).query(`
     UPDATE dbo.TblWhatsAppCampaignRecipient
     SET Status = N'cancelled'
     OUTPUT INSERTED.ID
-    WHERE CampaignID = @campaignId AND Status = N'pending'
+    WHERE CampaignID = @campaignId AND TenantId = @tenantId AND Status = N'pending'
   `);
   return result.recordset?.length ?? 0;
 }
@@ -272,10 +272,10 @@ export async function countRecipientsByStatus(
   campaignId: number,
 ): Promise<Record<CampaignRecipientStatus, number>> {
   const pool = await getPool();
-  const result = await pool.request().input('campaignId', sql.Int, campaignId).query(`
+  const result = await bindMessagingTenant(pool.request(), 'campaigns.countRecipientsByStatus').input('campaignId', sql.Int, campaignId).query(`
     SELECT Status, COUNT(*) AS cnt
     FROM dbo.TblWhatsAppCampaignRecipient
-    WHERE CampaignID = @campaignId
+    WHERE CampaignID = @campaignId AND TenantId = @tenantId
     GROUP BY Status
   `);
 
@@ -301,12 +301,11 @@ export async function getRecipientByIdempotencyKey(
   idempotencyKey: string,
 ): Promise<CampaignRecipientRow | null> {
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'campaigns.getRecipientByIdempotencyKey')
     .input('idempotencyKey', sql.NVarChar(200), idempotencyKey)
     .query(`
       SELECT TOP 1 * FROM dbo.TblWhatsAppCampaignRecipient
-      WHERE IdempotencyKey = @idempotencyKey
+      WHERE IdempotencyKey = @idempotencyKey AND TenantId = @tenantId
     `);
   const row = result.recordset?.[0];
   return row ? mapRecipientRow(row as Record<string, unknown>) : null;

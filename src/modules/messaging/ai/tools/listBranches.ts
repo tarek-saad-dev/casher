@@ -1,5 +1,5 @@
 import 'server-only';
-import { listPublicDiscoverableBranches } from '@/lib/booking/publicBookingBranchContext';
+import { listTenantDiscoverableBranches } from '@/modules/messaging/ai/tenantBookingDirectory';
 import { getBranchById } from '@/lib/branch/repository';
 import type { AiToolCallRequest, AiToolResult } from './types';
 
@@ -9,7 +9,7 @@ export async function executeListBranches(
   const input = {
     branchCode: request.branchCode ?? null,
   };
-  const branches = await listPublicDiscoverableBranches();
+  const branches = await listTenantDiscoverableBranches();
   let filtered = branches;
   if (request.branchCode) {
     const code = request.branchCode.trim().toUpperCase();

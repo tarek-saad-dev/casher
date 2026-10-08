@@ -1,9 +1,14 @@
+/**
+ * Access to dbo.TblBotMessage. Every statement is tenant-filtered; outbound AI idempotency relies on
+ * UX_TblBotMessage_TenantProviderMessage (TenantId, Provider, ProviderMessageID).
+ */
 import { getPool, sql } from '@/lib/db';
 import {
   isBotMessageDirection,
   type BotMessageListItem,
   type BotMessageRow,
 } from '../domain/types';
+import { bindMessagingTenant } from '../../tenancy/tenantSql';
 
 type RawMessageRow = {
   MessageID: number | string;
@@ -88,11 +93,13 @@ export async function getBotMessageByInboxId(
   transaction?: sql.Transaction,
 ): Promise<BotMessageRow | null> {
   const exec = async (req: sql.Request) => {
-    const result = await req.input('inboxId', sql.BigInt, inboxId).query(`
-      SELECT ${MESSAGE_COLUMNS}
-      FROM [dbo].[TblBotMessage]
-      WHERE [InboxID] = @inboxId
-    `);
+    const result = await bindMessagingTenant(req, 'botMessage.getBotMessageByInboxId')
+      .input('inboxId', sql.BigInt, inboxId)
+      .query(`
+        SELECT ${MESSAGE_COLUMNS}
+        FROM [dbo].[TblBotMessage]
+        WHERE [InboxID] = @inboxId AND [TenantId] = @tenantId
+      `);
     const row = result.recordset[0] as RawMessageRow | undefined;
     return row ? mapBotMessageRow(row) : null;
   };
@@ -113,7 +120,7 @@ export async function insertInboundBotMessage(
   },
   transaction: sql.Transaction,
 ): Promise<BotMessageRow> {
-  const result = await new sql.Request(transaction)
+  const result = await bindMessagingTenant(new sql.Request(transaction), 'botMessage.insertInboundBotMessage')
     .input('conversationId', sql.BigInt, input.conversationId)
     .input('inboxId', sql.BigInt, input.inboxId)
     .input('provider', sql.NVarChar(50), input.provider)
@@ -123,6 +130,7 @@ export async function insertInboundBotMessage(
     .input('occurredAt', sql.DateTime2, input.occurredAt)
     .query(`
       INSERT INTO [dbo].[TblBotMessage] (
+        [TenantId],
         [ConversationID],
         [InboxID],
         [Direction],
@@ -135,6 +143,7 @@ export async function insertInboundBotMessage(
       )
       OUTPUT ${MESSAGE_OUTPUT_COLUMNS}
       VALUES (
+        @tenantId,
         @conversationId,
         @inboxId,
         N'inbound',
@@ -157,14 +166,13 @@ export async function listMessagesByConversation(input: {
 }): Promise<BotMessageListItem[]> {
   const fetchLimit = Math.max(1, Math.min(200, Math.floor(input.fetchLimit)));
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'botMessage.listMessagesByConversation')
     .input('conversationId', sql.BigInt, input.conversationId)
     .input('fetchLimit', sql.Int, fetchLimit)
     .query(`
       SELECT TOP (@fetchLimit) ${MESSAGE_COLUMNS}
       FROM [dbo].[TblBotMessage]
-      WHERE [ConversationID] = @conversationId
+      WHERE [ConversationID] = @conversationId AND [TenantId] = @tenantId
       ORDER BY [OccurredAt] DESC, [MessageID] DESC
     `);
   return (result.recordset as RawMessageRow[]).map(mapBotMessageListItem);
@@ -172,13 +180,12 @@ export async function listMessagesByConversation(input: {
 
 export async function countMessagesByConversation(conversationId: number): Promise<number> {
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'botMessage.countMessagesByConversation')
     .input('conversationId', sql.BigInt, conversationId)
     .query(`
       SELECT COUNT(*) AS cnt
       FROM [dbo].[TblBotMessage]
-      WHERE [ConversationID] = @conversationId
+      WHERE [ConversationID] = @conversationId AND [TenantId] = @tenantId
     `);
   return Number(result.recordset[0]?.cnt ?? 0);
 }
@@ -193,14 +200,15 @@ export async function getOutboundBotMessageByAiTurnId(
   turnId: number,
 ): Promise<BotMessageRow | null> {
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'botMessage.getOutboundBotMessageByAiTurnId')
     .input('provider', sql.NVarChar(50), AI_OUTBOUND_PROVIDER)
     .input('providerMessageId', sql.NVarChar(250), aiTurnProviderMessageId(turnId))
     .query(`
       SELECT ${MESSAGE_COLUMNS}
       FROM [dbo].[TblBotMessage]
-      WHERE [Provider] = @provider AND [ProviderMessageID] = @providerMessageId
+      WHERE [Provider] = @provider
+        AND [ProviderMessageID] = @providerMessageId
+        AND [TenantId] = @tenantId
     `);
   const row = result.recordset[0] as RawMessageRow | undefined;
   return row ? mapBotMessageRow(row) : null;
@@ -215,8 +223,7 @@ export async function insertOutboundBotMessage(input: {
 }): Promise<BotMessageRow> {
   const pool = await getPool();
   try {
-    const result = await pool
-      .request()
+    const result = await bindMessagingTenant(pool.request(), 'botMessage.insertOutboundBotMessage')
       .input('conversationId', sql.BigInt, input.conversationId)
       .input('provider', sql.NVarChar(50), AI_OUTBOUND_PROVIDER)
       .input('providerMessageId', sql.NVarChar(250), aiTurnProviderMessageId(input.turnId))
@@ -226,6 +233,7 @@ export async function insertOutboundBotMessage(input: {
       .input('origin', sql.NVarChar(30), input.origin ?? 'BOT')
       .query(`
         INSERT INTO [dbo].[TblBotMessage] (
+          [TenantId],
           [ConversationID],
           [InboxID],
           [Direction],
@@ -239,6 +247,7 @@ export async function insertOutboundBotMessage(input: {
         )
         OUTPUT ${MESSAGE_OUTPUT_COLUMNS}
         VALUES (
+          @tenantId,
           @conversationId,
           NULL,
           N'outbound',

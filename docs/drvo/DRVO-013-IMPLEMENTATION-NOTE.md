@@ -154,9 +154,11 @@ is not a platform operator. All `/api/admin/platform/**` routes use it exclusive
 ## CASHER_BOOT seams
 
 `resolveLegacyBootstrapTenantId(seam)` is the only bootstrap-by-code lookup, restricted to named seams:
-`platform-operator-tenant`, `legacy-messaging-worker` (TblMessaging* has no TenantId), `legacy-global-data` (budget
-tables), `legacy-payroll-job-log` (global job logs), `casher-boot-staging-smoke`, `casher-boot-operator-script`.
-`drvo013StaticGuards.test.ts` pins every file allowed to call it. The DRVO-005/006 staging smokes no longer pick "the first active tenant/branch"; they
+`platform-operator-tenant`, `legacy-client-directory` (TblClient has no TenantId until DRVO-015; replaced the
+former `legacy-messaging-worker` seam when DRVO-018 tenant-scoped messaging), `legacy-global-data` (budget tables,
+cross-branch daily HR WhatsApp report), `legacy-payroll-job-log` (global job logs), `casher-boot-staging-smoke`,
+`casher-boot-operator-script`. `drvo013StaticGuards.test.ts` pins every file allowed to call it. The DRVO-005/006
+staging smokes no longer pick "the first active tenant/branch"; they
 target CASHER_BOOT by code and its Locations.
 
 ## Rollout preflight (mandatory before deploy)
@@ -174,7 +176,8 @@ hard preflight before any mutation.
 2. `PlatformOutbox` has no lease columns; rows stuck in `delivering` after a crash need manual requeue.
 3. The legacy (flag-off) booking path keeps its global keys; it only serves CASHER_BOOT.
 4. The public single-branch fallback when `branchCode` is omitted remains (unambiguous by construction).
-5. Legacy messaging tables stay CASHER_BOOT-only behind the `legacy-messaging-worker` seam.
+5. Legacy messaging tables stayed CASHER_BOOT-only behind the `legacy-messaging-worker` seam; DRVO-018 removes that
+   seam and tenant-scopes messaging (see `DRVO-018-IMPLEMENTATION-NOTE.md`).
 6. `createBranchForTenant` inserts the legacy `TblBranch` row through the legacy branch service on its own connection,
    not inside the tenant transaction. If the Location transaction fails, a compensating delete removes the SETUP branch;
    if that delete also fails, the orphan has no Location, so it is unreachable (fail closed) and is logged for manual

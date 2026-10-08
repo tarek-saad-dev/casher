@@ -48,6 +48,8 @@ import {
 import { getConfig } from '../config';
 import { resolvePhone } from '../payload-builders';
 
+const ENDPOINT = { apiBaseUrl: 'http://bridge-a.test' };
+
 beforeEach(() => {
   setEnv(true);
   lastFetchUrl = '';
@@ -72,11 +74,11 @@ describe('Generic Gateway send', () => {
       phone: '01557994946',
       message: 'أهلا بك في Cut Salon',
       metadata: { source: 'test' },
-    });
+    }, ENDPOINT);
 
     expect(result.sent).toBe(true);
     if (result.sent) expect(result.messageId).toBe('wa-generic-1');
-    expect(lastFetchUrl).toBe('http://127.0.0.1:3001/api/whatsapp/send');
+    expect(lastFetchUrl).toBe('http://bridge-a.test/api/whatsapp/send');
     expect(lastFetchBody).toEqual({
       phone: '01557994946',
       message: 'أهلا بك في Cut Salon',
@@ -90,7 +92,7 @@ describe('Generic Gateway send', () => {
       phone: '01557994946',
       message: 'hello',
       idempotencyKey: 'campaign:1:recipient:9',
-    });
+    }, ENDPOINT);
     expect(lastFetchBody).toMatchObject({
       phone: '01557994946',
       message: 'hello',
@@ -104,7 +106,7 @@ describe('Generic Gateway send', () => {
     const result = await sendWhatsAppMessage({
       phone: '01557994946',
       message: 'hello',
-    });
+    }, ENDPOINT);
     expect(result).toMatchObject({
       sent: false,
       skipped: true,
@@ -113,11 +115,22 @@ describe('Generic Gateway send', () => {
     expect(lastFetchUrl).toBe('');
   });
 
+  it('skips with channel_not_configured when no tenant endpoint (never falls back to env URL)', async () => {
+    for (const endpoint of [undefined, null, { apiBaseUrl: '' }, { apiBaseUrl: '   ' }]) {
+      const result = await sendWhatsAppMessage(
+        { phone: '01557994946', message: 'hello' },
+        endpoint as unknown as typeof ENDPOINT,
+      );
+      expect(result).toMatchObject({ sent: false, skipped: true, reason: 'channel_not_configured' });
+    }
+    expect(lastFetchUrl).toBe('');
+  });
+
   it('skips empty phone/message', async () => {
-    const missingPhone = await sendWhatsAppMessage({ phone: '  ', message: 'x' });
+    const missingPhone = await sendWhatsAppMessage({ phone: '  ', message: 'x' }, ENDPOINT);
     expect(missingPhone).toMatchObject({ sent: false, reason: 'missing_phone' });
 
-    const emptyMsg = await sendWhatsAppMessage({ phone: '01557994946', message: '' });
+    const emptyMsg = await sendWhatsAppMessage({ phone: '01557994946', message: '' }, ENDPOINT);
     expect(emptyMsg).toMatchObject({ sent: false, reason: 'invalid_payload' });
     expect(lastFetchUrl).toBe('');
   });
@@ -127,7 +140,7 @@ describe('Generic Gateway send', () => {
     const result = await sendWhatsAppMessage({
       phone: '01557994946',
       message: 'hello',
-    });
+    }, ENDPOINT);
     expect(result.sent).toBe(false);
   });
 });
@@ -166,10 +179,10 @@ describe('status and health', () => {
       };
     });
 
-    const status = await checkWhatsAppStatus();
+    const status = await checkWhatsAppStatus(ENDPOINT);
     expect(status.available).toBe(true);
     if (status.available) expect(status.connected).toBe(true);
-    expect(lastFetchUrl).toBe('http://127.0.0.1:3001/api/whatsapp/status');
+    expect(lastFetchUrl).toBe('http://bridge-a.test/api/whatsapp/status');
     expect(call).toBeGreaterThanOrEqual(2);
   });
 
@@ -185,9 +198,17 @@ describe('status and health', () => {
         json: async () => ({ status: 'ok' }),
       };
     });
-    const health = await checkWhatsAppBotHealth();
+    const health = await checkWhatsAppBotHealth(ENDPOINT);
     expect(health.ok).toBe(true);
-    expect(lastFetchUrl).toBe('http://127.0.0.1:3001/api/health');
+    expect(lastFetchUrl).toBe('http://bridge-a.test/api/health');
+  });
+
+  it('status/health without a tenant endpoint report channel_not_configured', async () => {
+    lastFetchUrl = '';
+    const none = undefined as unknown as typeof ENDPOINT;
+    expect(await checkWhatsAppStatus(none)).toEqual({ available: false, reason: 'channel_not_configured' });
+    expect(await checkWhatsAppBotHealth(none)).toEqual({ ok: false, reason: 'channel_not_configured' });
+    expect(lastFetchUrl).toBe('');
   });
 
   it('reads config without exposing secrets', () => {

@@ -1,9 +1,5 @@
 import type { GenerateConversationTurnInput, GenerateConversationTurnOutput } from '../domain/types';
 import type { AiModelClient } from './aiModelClient';
-import {
-  AI_SYSTEM_INSTRUCTIONS_GROUNDED_V1,
-  AI_SYSTEM_INSTRUCTIONS_V1,
-} from '../domain/systemInstructions';
 import { AI_RESPONSE_JSON_SCHEMA, parseAiStructuredResult, validateAiStructuredResult } from '../domain/structuredOutput';
 import { getAiConfig } from '../config';
 
@@ -49,12 +45,9 @@ export function createGeminiModelClient(env: NodeJS.ProcessEnv = process.env): A
     ): Promise<GenerateConversationTurnOutput> {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const client = new GoogleGenerativeAI(config.geminiApiKey);
-      const systemInstructions =
-        input.systemInstructions ||
-        (input.toolResultsJson ? AI_SYSTEM_INSTRUCTIONS_GROUNDED_V1 : AI_SYSTEM_INSTRUCTIONS_V1);
       const model = client.getGenerativeModel({
         model: config.geminiModel,
-        systemInstruction: systemInstructions,
+        systemInstruction: input.systemInstructions,
         generationConfig: {
           temperature: input.toolResultsJson ? 0.2 : 0.4,
           maxOutputTokens: 700,

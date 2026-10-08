@@ -1,13 +1,15 @@
-import { sendWhatsAppMessage } from '@/lib/integrations/whatsapp';
+import { isTenantContextError } from '@/platform/tenant/tenantContext';
 import type { MessageContent, MessageRecipient, MessageSendResult } from '../domain/types';
+import { sendViaTenantChannel } from '../tenancy/transport';
 
+/** Direct send through the current messaging tenant's channel (requires a tenant scope). */
 export async function sendWhatsAppChannelMessage(input: {
   recipient: MessageRecipient;
   content: MessageContent;
   metadata?: Record<string, unknown>;
 }): Promise<MessageSendResult> {
   try {
-    const result = await sendWhatsAppMessage({
+    const result = await sendViaTenantChannel({
       phone: input.recipient.phone,
       message: input.content.text,
       ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
@@ -29,6 +31,9 @@ export async function sendWhatsAppChannelMessage(input: {
       ...('error' in result && result.error ? { error: result.error } : {}),
     };
   } catch (err) {
+    if (isTenantContextError(err)) {
+      return { sent: false, channel: 'whatsapp', reason: 'tenant_unresolved', skipped: true };
+    }
     return {
       sent: false,
       channel: 'whatsapp',

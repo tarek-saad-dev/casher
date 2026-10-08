@@ -13,7 +13,8 @@ export type ConversationControlStore = {
   }): Promise<PersistControlResult>;
   persistFields(next: ConversationControlState): Promise<void>;
   markRead(conversationId: number): Promise<void>;
-  listExpired(now: Date): Promise<ConversationControlState[]>;
+  /** Cross-tenant sweep; each row carries its TenantId so the caller can scope the follow-up work. */
+  listExpired(now: Date): Promise<Array<ConversationControlState & { tenantId: string | null }>>;
   tryResumeClaim(input: {
     conversationId: number;
     latestCustomerMessageId: number;

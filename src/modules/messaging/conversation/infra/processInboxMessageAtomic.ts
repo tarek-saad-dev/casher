@@ -1,8 +1,10 @@
 /**
  * Single-transaction inbox → conversation/message processor.
  * One SQL round trip for the hot path (existing + new conversation).
+ * Inbox, conversation and message rows are all read and written within the ambient tenant.
  */
 import { getPool, sql } from '@/lib/db';
+import { bindMessagingTenant } from '../../tenancy/tenantSql';
 import { TBL_CLIENT_MOBILE_SUFFIX_SQL } from '@/lib/client/publicClientWebsite.helpers';
 import { getClientMobileLookupSuffix } from '@/lib/client/publicClientWebsite.helpers';
 import type { MessageInboxRow } from '../../inbox/domain/types';
@@ -39,8 +41,7 @@ export async function processInboxMessageAtomic(
   const clientSuffix = getClientMobileLookupSuffix(inbox.phone);
 
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'conversation.processInboxMessageAtomic')
     .input('inboxId', sql.BigInt, inbox.id)
     .input('channel', sql.NVarChar(30), channel)
     .input('provider', sql.NVarChar(50), provider)
@@ -72,7 +73,8 @@ export async function processInboxMessageAtomic(
         @ExistingMessageId = m.[MessageID],
         @ExistingConversationId = m.[ConversationID]
       FROM [dbo].[TblBotMessage] AS m WITH (UPDLOCK, HOLDLOCK)
-      WHERE m.[InboxID] = @inboxId;
+      WHERE m.[InboxID] = @inboxId
+        AND m.[TenantId] = @tenantId;
 
       IF @ExistingMessageId IS NOT NULL
       BEGIN
@@ -83,6 +85,7 @@ export async function processInboxMessageAtomic(
           [UpdatedAt] = SYSUTCDATETIME(),
           [LastError] = NULL
         WHERE [ID] = @inboxId
+          AND [TenantId] = @tenantId
           AND [Status] IN (N'processing', N'pending');
 
         SELECT
@@ -102,7 +105,8 @@ export async function processInboxMessageAtomic(
         @ConversationId = c.[ConversationID],
         @ClientLinked = CASE WHEN c.[ClientID] IS NOT NULL THEN 1 ELSE 0 END
       FROM [dbo].[TblBotConversation] AS c WITH (UPDLOCK, HOLDLOCK)
-      WHERE c.[Channel] = @channel
+      WHERE c.[TenantId] = @tenantId
+        AND c.[Channel] = @channel
         AND c.[Provider] = @provider
         AND c.[ExternalContactKey] = @externalContactKey;
 
@@ -114,7 +118,8 @@ export async function processInboxMessageAtomic(
           INSERT INTO @ClientMatches ([ClientID])
           SELECT TOP 2 c.[ClientID]
           FROM [dbo].[TblClient] AS c
-          WHERE ${TBL_CLIENT_MOBILE_SUFFIX_SQL} = @clientSuffix;
+          WHERE c.[TenantId] = @tenantId
+            AND ${TBL_CLIENT_MOBILE_SUFFIX_SQL} = @clientSuffix;
 
           SELECT @MatchCount = COUNT(*) FROM @ClientMatches;
           IF @MatchCount = 1
@@ -125,6 +130,7 @@ export async function processInboxMessageAtomic(
 
         BEGIN TRY
           INSERT INTO [dbo].[TblBotConversation] (
+            [TenantId],
             [Channel],
             [Provider],
             [ExternalContactKey],
@@ -137,6 +143,7 @@ export async function processInboxMessageAtomic(
             [CreatedAt]
           )
           VALUES (
+            @tenantId,
             @channel,
             @provider,
             @externalContactKey,
@@ -158,7 +165,8 @@ export async function processInboxMessageAtomic(
             @ConversationId = c.[ConversationID],
             @ClientLinked = CASE WHEN c.[ClientID] IS NOT NULL THEN 1 ELSE 0 END
           FROM [dbo].[TblBotConversation] AS c
-          WHERE c.[Channel] = @channel
+          WHERE c.[TenantId] = @tenantId
+            AND c.[Channel] = @channel
             AND c.[Provider] = @provider
             AND c.[ExternalContactKey] = @externalContactKey;
           IF @ConversationId IS NULL THROW;
@@ -167,6 +175,7 @@ export async function processInboxMessageAtomic(
 
       BEGIN TRY
         INSERT INTO [dbo].[TblBotMessage] (
+          [TenantId],
           [ConversationID],
           [InboxID],
           [Direction],
@@ -179,6 +188,7 @@ export async function processInboxMessageAtomic(
           [Origin]
         )
         VALUES (
+          @tenantId,
           @ConversationId,
           @inboxId,
           N'inbound',
@@ -198,7 +208,8 @@ export async function processInboxMessageAtomic(
           @MessageId = m.[MessageID],
           @ExistingConversationId = m.[ConversationID]
         FROM [dbo].[TblBotMessage] AS m
-        WHERE m.[InboxID] = @inboxId;
+        WHERE m.[InboxID] = @inboxId
+          AND m.[TenantId] = @tenantId;
         IF @MessageId IS NULL THROW;
         SET @Duplicate = 1;
         SET @ConversationId = @ExistingConversationId;
@@ -212,7 +223,8 @@ export async function processInboxMessageAtomic(
           [LastCustomerMessageID] = @MessageId,
           [UnreadCount] = ISNULL([UnreadCount], 0) + 1,
           [UpdatedAt] = SYSUTCDATETIME()
-        WHERE [ConversationID] = @ConversationId;
+        WHERE [ConversationID] = @ConversationId
+          AND [TenantId] = @tenantId;
       END
 
       UPDATE [dbo].[TblMessageInbox]
@@ -222,6 +234,7 @@ export async function processInboxMessageAtomic(
         [UpdatedAt] = SYSUTCDATETIME(),
         [LastError] = NULL
       WHERE [ID] = @inboxId
+        AND [TenantId] = @tenantId
         AND [Status] IN (N'processing', N'pending');
 
       SELECT

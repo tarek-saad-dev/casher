@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { AiTurnRow, AiStructuredResult } from '@/modules/messaging/ai/domain/types';
 import type { AiModelClient } from '@/modules/messaging/ai/model/aiModelClient';
 
@@ -63,11 +63,24 @@ vi.mock('@/modules/messaging/ai/planner/processBookingPlannerTurn', () => ({
 }));
 
 import { scheduleAiTurn } from '@/modules/messaging/ai/application/scheduleAiTurn';
-import { processAiTurn } from '@/modules/messaging/ai/application/processAiTurn';
+import { processAiTurn as processAiTurnUnscoped } from '@/modules/messaging/ai/application/processAiTurn';
 import {
   parseAiStructuredResult,
   validateAiStructuredResult,
 } from '@/modules/messaging/ai/domain/structuredOutput';
+import {
+  TENANT_A,
+  TENANT_B,
+  inTenant,
+  installMessagingTenantTestKit,
+  resetMessagingTenantTestKit,
+  type UsageEvent,
+} from './support/messagingTenantTestKit';
+
+const processAiTurn: typeof processAiTurnUnscoped = (turn, deps) =>
+  inTenant(TENANT_A, () => processAiTurnUnscoped(turn, deps));
+
+let usage: UsageEvent[] = [];
 
 function turnRow(overrides: Partial<AiTurnRow> = {}): AiTurnRow {
   return {
@@ -156,6 +169,11 @@ describe('Phase 3 AI processor', () => {
     markAiTurnFailed.mockResolvedValue(undefined);
     markAiTurnSkipped.mockResolvedValue(undefined);
     scheduleAiTurnAfterInbound.mockResolvedValue({ scheduled: true, turnId: 1, skipped: false });
+    usage = installMessagingTenantTestKit().usage;
+  });
+
+  afterEach(() => {
+    resetMessagingTenantTestKit();
   });
 
   it('A — schedules AI work once per inbound message', async () => {
@@ -309,6 +327,36 @@ describe('Phase 3 AI processor', () => {
     expect(enqueueMessage).toHaveBeenCalledWith(
       expect.objectContaining({ content: { text: arabic } }),
     );
+    expect(usage).toEqual([{ tenantId: TENANT_A, metric: 'ai_turn', count: 1 }]);
+  });
+
+  it('Q — tenant with no AI config skips the turn (AI_NOT_CONFIGURED) without calling the model', async () => {
+    const generateConversationTurn = vi.fn();
+    const result = await inTenant(TENANT_B, () =>
+      processAiTurnUnscoped(turnRow(), { modelClient: { generateConversationTurn } }),
+    );
+    expect(result.skipped).toBe(true);
+    expect(result.status).toBe('skipped');
+    expect(markAiTurnSkipped).toHaveBeenCalledWith(
+      expect.objectContaining({ errorCode: 'AI_NOT_CONFIGURED' }),
+    );
+    expect(generateConversationTurn).not.toHaveBeenCalled();
+    expect(insertOutboundBotMessage).not.toHaveBeenCalled();
+    expect(enqueueMessage).not.toHaveBeenCalled();
+    expect(usage).toEqual([]);
+  });
+
+  it('Q2 — disabled AI config also skips with AI_NOT_CONFIGURED', async () => {
+    resetMessagingTenantTestKit();
+    usage = installMessagingTenantTestKit({ aiConfigs: { [TENANT_A]: { enabled: false } } }).usage;
+    const generateConversationTurn = vi.fn();
+    const result = await processAiTurn(turnRow(), { modelClient: { generateConversationTurn } });
+    expect(result.skipped).toBe(true);
+    expect(markAiTurnSkipped).toHaveBeenCalledWith(
+      expect.objectContaining({ errorCode: 'AI_NOT_CONFIGURED' }),
+    );
+    expect(generateConversationTurn).not.toHaveBeenCalled();
+    expect(enqueueMessage).not.toHaveBeenCalled();
   });
 
   it('N — identical incoming text messages remain separate canonical messages', async () => {

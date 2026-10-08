@@ -51,6 +51,17 @@ import {
   checkWhatsAppStatus,
   checkWhatsAppBotHealth,
 } from '../service';
+import { tenantChannelHealth, tenantChannelStatus } from '@/modules/messaging/tenancy/transport';
+import { TenantContextError } from '@/platform/tenant/tenantContext';
+import {
+  TENANT_A,
+  TENANT_B,
+  inTenant,
+  installMessagingTenantTestKit,
+  resetMessagingTenantTestKit,
+} from '@/modules/messaging/__tests__/support/messagingTenantTestKit';
+
+const ENDPOINT = { apiBaseUrl: 'http://bridge-a.test' };
 
 beforeEach(() => {
   setEnv(true);
@@ -65,14 +76,14 @@ afterEach(() => {
 describe('Phase 8 health contract', () => {
   it('treats health {status:"ok"} as healthy', async () => {
     fetchHandler = async () => jsonResponse(200, { status: 'ok', timestamp: '2026-08-26T00:00:00.000Z' });
-    const health = await checkWhatsAppBotHealth();
+    const health = await checkWhatsAppBotHealth(ENDPOINT);
     expect(health).toEqual({ ok: true, httpStatus: 200 });
-    expect(lastFetchUrl).toBe('http://127.0.0.1:3001/api/health');
+    expect(lastFetchUrl).toBe('http://bridge-a.test/api/health');
   });
 
   it('rejects HTTP 200 without status:"ok"', async () => {
     fetchHandler = async () => jsonResponse(200, { ok: true });
-    const health = await checkWhatsAppBotHealth();
+    const health = await checkWhatsAppBotHealth(ENDPOINT);
     expect(health.ok).toBe(false);
     if (!health.ok) expect(health.reason).toBe('invalid_response');
   });
@@ -81,7 +92,7 @@ describe('Phase 8 health contract', () => {
     fetchHandler = async () => {
       throw new Error('ECONNREFUSED');
     };
-    const health = await checkWhatsAppBotHealth();
+    const health = await checkWhatsAppBotHealth(ENDPOINT);
     expect(health).toEqual({ ok: false, reason: 'connection_failed' });
   });
 });
@@ -97,7 +108,7 @@ describe('Phase 8 status contract', () => {
 
   it('maps production Phase 8 payload as connected', async () => {
     mockHealthAndStatus(PHASE8_READY_STATUS);
-    const status = await checkWhatsAppStatus();
+    const status = await checkWhatsAppStatus(ENDPOINT);
     expect(status).toEqual({
       available: true,
       chromeConnected: true,
@@ -114,7 +125,7 @@ describe('Phase 8 status contract', () => {
       whatsappReady: true,
       whatsappTabFound: true,
     });
-    const status = await checkWhatsAppStatus();
+    const status = await checkWhatsAppStatus(ENDPOINT);
     expect(status.available).toBe(true);
     if (status.available) {
       expect(status.whatsappTabFound).toBe(true);
@@ -129,7 +140,7 @@ describe('Phase 8 status contract', () => {
       whatsappReady: false,
       whatsappTabFound: false,
     });
-    const status = await checkWhatsAppStatus();
+    const status = await checkWhatsAppStatus(ENDPOINT);
     expect(status.available).toBe(true);
     if (status.available) {
       expect(status.connected).toBe(false);
@@ -143,8 +154,54 @@ describe('Phase 8 status contract', () => {
     fetchHandler = async () => {
       throw new Error('fetch failed');
     };
-    const status = await checkWhatsAppStatus();
+    const status = await checkWhatsAppStatus(ENDPOINT);
     expect(status).toEqual({ available: false, reason: 'connection_failed' });
+  });
+});
+
+describe('tenant channel status/health', () => {
+  beforeEach(() => {
+    installMessagingTenantTestKit({
+      channels: { [TENANT_A]: { endpointUrl: 'http://bridge-a.test' }, [TENANT_B]: null },
+    });
+  });
+  afterEach(() => {
+    resetMessagingTenantTestKit();
+  });
+
+  it('probes only the scoped tenant channel endpoint', async () => {
+    const urls: string[] = [];
+    fetchHandler = async (url) => {
+      urls.push(url);
+      if (url.endsWith('/api/health')) return jsonResponse(200, { status: 'ok' });
+      return jsonResponse(200, PHASE8_READY_STATUS);
+    };
+    const status = await inTenant(TENANT_A, () => tenantChannelStatus());
+    const health = await inTenant(TENANT_A, () => tenantChannelHealth());
+    expect(status.available).toBe(true);
+    expect(health).toEqual({ ok: true, httpStatus: 200 });
+    expect(urls.length).toBeGreaterThan(0);
+    expect(urls.every((u) => u.startsWith('http://bridge-a.test/'))).toBe(true);
+  });
+
+  it('tenant without a channel is channel_not_configured and never fetches', async () => {
+    fetchHandler = async (url) => {
+      throw new Error(`unexpected fetch ${url}`);
+    };
+    expect(await inTenant(TENANT_B, () => tenantChannelStatus())).toEqual({
+      available: false,
+      reason: 'channel_not_configured',
+    });
+    expect(await inTenant(TENANT_B, () => tenantChannelHealth())).toEqual({
+      ok: false,
+      reason: 'channel_not_configured',
+    });
+    expect(lastFetchUrl).toBe('');
+  });
+
+  it('requires an ambient tenant scope', async () => {
+    await expect(tenantChannelStatus()).rejects.toBeInstanceOf(TenantContextError);
+    await expect(tenantChannelHealth()).rejects.toBeInstanceOf(TenantContextError);
   });
 });
 
@@ -156,5 +213,17 @@ describe('admin status route auth', () => {
     );
     expect(src).toContain('requireWhatsAppTemplateAdmin');
     expect(src).not.toContain('requireDevelopmentAdmin');
+  });
+
+  it('probes the signed-in tenant channel inside staff scope, not the env bridge URL', () => {
+    const src = readFileSync(
+      path.join(process.cwd(), 'src/app/api/admin/whatsapp/status/route.ts'),
+      'utf8',
+    );
+    expect(src).toContain('runWithStaffMessagingTenant');
+    expect(src).toContain('resolveCurrentTenantChannel');
+    expect(src).toContain('tenantChannelStatus');
+    expect(src).toContain('tenantChannelHealth');
+    expect(src).not.toContain('cfg.apiBaseUrl');
   });
 });

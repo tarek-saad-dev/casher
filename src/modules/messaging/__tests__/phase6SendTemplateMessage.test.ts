@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -29,6 +29,14 @@ import {
 } from '@/modules/messaging/templates/catalog';
 import { listWhatsAppTemplateDefinitions } from '@/modules/messaging/templates/definitions';
 import { renderTemplate } from '@/modules/messaging/templates/renderTemplate';
+import {
+  DEFAULT_TEST_ENDPOINT,
+  TENANT_A,
+  TENANT_B,
+  inTenant,
+  installMessagingTenantTestKit,
+  resetMessagingTenantTestKit,
+} from './support/messagingTenantTestKit';
 
 function config(overrides: Record<string, unknown> = {}) {
   return {
@@ -54,7 +62,21 @@ function src(relative: string): string {
 }
 
 describe('sendTemplateMessage', () => {
+  afterEach(() => {
+    resetMessagingTenantTestKit();
+  });
+
   beforeEach(() => {
+    installMessagingTenantTestKit({
+      channels: {
+        [TENANT_A]: { endpointUrl: DEFAULT_TEST_ENDPOINT },
+        [TENANT_B]: { endpointUrl: 'http://bridge-b.test' },
+      },
+      locations: {
+        [TENANT_A]: [{ legacyBranchId: 3, branchCode: 'GLEEM' }],
+        [TENANT_B]: [{ legacyBranchId: 7, branchCode: 'B_MAIN' }],
+      },
+    });
     sendWhatsAppMessage.mockReset();
     getWhatsAppConfig.mockReset();
     lookupActiveMessageTemplate.mockReset();
@@ -82,17 +104,20 @@ describe('sendTemplateMessage', () => {
       channel: 'whatsapp',
       messageId: 'wa-tpl-1',
     });
-    expect(sendWhatsAppMessage).toHaveBeenCalledWith({
-      phone: '01557994946',
-      message: renderTemplate(CUSTOMER_FIRST_TIME_DEFAULT_TEMPLATE, {
-        customerName: 'طارق',
-      }),
-      metadata: {
-        invoiceId: 100,
-        templateKey: CUSTOMER_FIRST_TIME_TEMPLATE_KEY,
-        source: CUSTOMER_FIRST_TIME_TEMPLATE_KEY,
+    expect(sendWhatsAppMessage).toHaveBeenCalledWith(
+      {
+        phone: '01557994946',
+        message: renderTemplate(CUSTOMER_FIRST_TIME_DEFAULT_TEMPLATE, {
+          customerName: 'طارق',
+        }),
+        metadata: {
+          invoiceId: 100,
+          templateKey: CUSTOMER_FIRST_TIME_TEMPLATE_KEY,
+          source: CUSTOMER_FIRST_TIME_TEMPLATE_KEY,
+        },
       },
-    });
+      { apiBaseUrl: DEFAULT_TEST_ENDPOINT },
+    );
     const body = sendWhatsAppMessage.mock.calls[0][0] as Record<string, unknown>;
     expect(body).not.toHaveProperty('type');
     expect(Object.keys(body).sort()).toEqual(['message', 'metadata', 'phone']);
@@ -123,6 +148,68 @@ describe('sendTemplateMessage', () => {
       branchId: 3,
     });
     expect(sendWhatsAppMessage.mock.calls[0][0].message).toBe('فرع خاص طارق');
+  });
+
+  it('derives the tenant from the branch outside a scope and sends on that tenant channel', async () => {
+    const result = await sendTemplateMessage({
+      templateKey: CUSTOMER_FIRST_TIME_TEMPLATE_KEY,
+      recipient: { phone: '01557994946' },
+      variables: { customerName: 'طارق' },
+      context: { branchId: 7 },
+    });
+
+    expect(result.sent).toBe(true);
+    expect(sendWhatsAppMessage).toHaveBeenCalledTimes(1);
+    expect(sendWhatsAppMessage.mock.calls[0][1]).toEqual({ apiBaseUrl: 'http://bridge-b.test' });
+  });
+
+  it('derives the tenant from metadata.branchId when context has no branch', async () => {
+    await sendTemplateMessage({
+      templateKey: CUSTOMER_FIRST_TIME_TEMPLATE_KEY,
+      recipient: { phone: '01557994946' },
+      variables: { customerName: 'طارق' },
+      metadata: { branchId: 7 },
+    });
+
+    expect(sendWhatsAppMessage.mock.calls[0][1]).toEqual({ apiBaseUrl: 'http://bridge-b.test' });
+  });
+
+  it('skips tenant_unresolved without scope and without branch', async () => {
+    const result = await sendTemplateMessage({
+      templateKey: CUSTOMER_FIRST_TIME_TEMPLATE_KEY,
+      recipient: { phone: '01557994946' },
+      variables: { customerName: 'طارق' },
+    });
+
+    expect(result).toEqual({ sent: false, channel: 'whatsapp', reason: 'tenant_unresolved', skipped: true });
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled();
+    expect(lookupActiveMessageTemplate).not.toHaveBeenCalled();
+  });
+
+  it('skips tenant_unresolved when the branch belongs to another tenant than the scope', async () => {
+    const result = await inTenant(TENANT_A, () =>
+      sendTemplateMessage({
+        templateKey: CUSTOMER_FIRST_TIME_TEMPLATE_KEY,
+        recipient: { phone: '01557994946' },
+        variables: { customerName: 'طارق' },
+        context: { branchId: 7 },
+      }),
+    );
+
+    expect(result).toEqual({ sent: false, channel: 'whatsapp', reason: 'tenant_unresolved', skipped: true });
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled();
+  });
+
+  it('skips tenant_unresolved for an unmapped branch', async () => {
+    const result = await sendTemplateMessage({
+      templateKey: CUSTOMER_FIRST_TIME_TEMPLATE_KEY,
+      recipient: { phone: '01557994946' },
+      variables: { customerName: 'طارق' },
+      context: { branchId: 99 },
+    });
+
+    expect(result).toEqual({ sent: false, channel: 'whatsapp', reason: 'tenant_unresolved', skipped: true });
+    expect(sendWhatsAppMessage).not.toHaveBeenCalled();
   });
 
   it('matches legacy first_time / booking / employee_sale production text', () => {
@@ -286,7 +373,12 @@ describe('Phase 6 production callers + feature contract', () => {
     expect(sendTpl).toContain('mergeMetadata');
 
     const adapter = src('src/modules/messaging/infra/whatsappAdapter.ts');
-    expect(adapter).toContain('sendWhatsAppMessage');
+    expect(adapter).toContain('sendViaTenantChannel');
+    expect(adapter).not.toContain('@/lib/integrations/whatsapp');
     expect(adapter).not.toContain('type:');
+
+    const transport = src('src/modules/messaging/tenancy/transport.ts');
+    expect(transport).toContain('sendWhatsAppMessage');
+    expect(transport).not.toContain('type:');
   });
 });

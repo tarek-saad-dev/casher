@@ -80,6 +80,8 @@ export type ListMessageHistoryResult = {
 
 export type OutboxMessageRow = {
   id: number;
+  /** Owning tenant (lowercase UUID). Workers run each row inside this tenant's scope. */
+  tenantId: string | null;
   channel: string;
   recipient: string;
   templateKey: string | null;

@@ -1,4 +1,4 @@
-import { getWhatsAppConfig, sendWhatsAppGroupMessage } from '@/lib/integrations/whatsapp';
+import { getWhatsAppConfig } from '@/lib/integrations/whatsapp';
 import { schedulePostResponse } from '@/lib/schedulePostResponse';
 import { buildGroupMessageForEvent } from './buildGroupMessage';
 import { listActiveGroupsForEvent } from '../infra/whatsappGroupRepository';
@@ -10,6 +10,8 @@ import type {
   BookingGroupMessageInput,
   SaleGroupMessageInput,
 } from './buildGroupMessage';
+import { runWithMessagingTenantForBranch } from '../../tenancy/branchTenantScope';
+import { sendGroupViaTenantChannel } from '../../tenancy/transport';
 
 export type GroupNotifyVariables = BookingGroupMessageInput | SaleGroupMessageInput;
 
@@ -19,6 +21,7 @@ export type ScheduleGroupNotifyInput = {
   variables: GroupNotifyVariables;
 };
 
+/** Groups of the event's tenant only (tenant = ambient scope, else owner of `branchId`). */
 async function sendToSubscribedGroups(
   input: ScheduleGroupNotifyInput,
 ): Promise<WhatsAppGroupSendResult[]> {
@@ -27,30 +30,32 @@ async function sendToSubscribedGroups(
     return [];
   }
 
-  const groups = await listActiveGroupsForEvent(input.eventKey, input.branchId);
-  if (groups.length === 0) return [];
+  return runWithMessagingTenantForBranch(input.branchId, `groups:${input.eventKey}`, async () => {
+    const groups = await listActiveGroupsForEvent(input.eventKey, input.branchId);
+    if (groups.length === 0) return [];
 
-  const message = buildGroupMessageForEvent(input.eventKey, input.variables);
-  if (!message.trim()) return [];
+    const message = buildGroupMessageForEvent(input.eventKey, input.variables);
+    if (!message.trim()) return [];
 
-  const results: WhatsAppGroupSendResult[] = [];
+    const results: WhatsAppGroupSendResult[] = [];
 
-  for (const group of groups) {
-    const result = await sendWhatsAppGroupMessage({
-      groupInviteLink: group.inviteLink,
-      message,
-    });
-    results.push({
-      groupId: group.id,
-      groupName: group.name,
-      sent: result.sent === true,
-      skipped: result.skipped === true,
-      reason: 'reason' in result ? result.reason : undefined,
-      messageId: result.sent ? result.messageId : undefined,
-    });
-  }
+    for (const group of groups) {
+      const result = await sendGroupViaTenantChannel({
+        groupInviteLink: group.inviteLink,
+        message,
+      });
+      results.push({
+        groupId: group.id,
+        groupName: group.name,
+        sent: result.sent === true,
+        skipped: result.skipped === true,
+        reason: 'reason' in result ? result.reason : undefined,
+        messageId: result.sent ? result.messageId : undefined,
+      });
+    }
 
-  return results;
+    return results;
+  });
 }
 
 /**
@@ -88,7 +93,7 @@ export function scheduleWhatsAppGroupNotifications(
   return { scheduled: true };
 }
 
-/** Immediate send — used by admin test button. */
+/** Immediate send — used by admin test button (inside the admin's tenant scope). */
 export async function sendTestGroupMessage(
   groupId: number,
   message: string,
@@ -104,7 +109,7 @@ export async function sendTestGroupMessage(
     };
   }
 
-  const result = await sendWhatsAppGroupMessage({
+  const result = await sendGroupViaTenantChannel({
     groupInviteLink: group.inviteLink,
     message,
   });

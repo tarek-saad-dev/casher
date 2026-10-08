@@ -98,6 +98,7 @@ export async function POST(req: NextRequest) {
       workDate,
       employeeIds,
       dryRun: Boolean(body.dryRun),
+      messagingTenantId: auth.tenantId,
     });
 
     if (!result.ok && result.error && result.summary.sent === 0 && result.summary.dryRun === 0) {

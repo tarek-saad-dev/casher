@@ -42,11 +42,13 @@ export const CRON_BEARER_PREFIX_ROUTES = [
 ] as const;
 
 /**
- * Inbound WhatsApp webhook: allowed through the edge without a session cookie
- * when WHATSAPP_INBOX_WEBHOOK_TOKEN bearer succeeds (see isWhatsAppInboxWebhookAuthorized).
+ * Tenant channel webhooks: allowed through the edge without a session cookie when a Bearer
+ * token is present. The route handler is authoritative: it resolves the token hash to exactly
+ * one active TenantMessagingChannel and rejects anything else.
  */
 export const WHATSAPP_INBOX_WEBHOOK_PREFIX_ROUTES = [
   '/api/internal/messaging/inbox/whatsapp',
+  '/api/internal/messaging/outbound-observed/whatsapp',
 ] as const;
 
 export function isStaticOrNextAsset(pathname: string): boolean {
@@ -94,9 +96,14 @@ export function isWhatsAppInboxWebhookPath(pathname: string): boolean {
   );
 }
 
+/** Edge pre-gate for tenant channel webhooks: a non-empty Bearer token must be presented. */
+export function hasWebhookBearerToken(authorizationHeader: string | null): boolean {
+  return extractBearerToken(authorizationHeader) !== null;
+}
+
 /**
- * WhatsApp inbox webhook bearer check. Production requires WHATSAPP_INBOX_WEBHOOK_TOKEN.
- * Development may accept literal "dev" only when the token is unset.
+ * Pre-DRVO-018 single-token check (WHATSAPP_INBOX_WEBHOOK_TOKEN). Request paths no longer use it;
+ * tenant channels authenticate by token hash. Kept for the channel-binding operator preflight.
  */
 export function isWhatsAppInboxWebhookAuthorized(
   authorizationHeader: string | null,

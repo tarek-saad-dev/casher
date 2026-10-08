@@ -1,4 +1,5 @@
 import { getPool, sql } from '@/lib/db';
+import { bindMessagingTenant } from '@/modules/messaging/tenancy/tenantSql';
 import type { ArtifactStatus, SubmissionStatus } from '../domain/enums';
 import type { LearningArtifact, LearningAuditEvent, LearningSubmission, ProposedArtifact } from '../domain/types';
 import type { ControlPlaneStore } from './memoryStore';
@@ -71,24 +72,23 @@ export class SqlControlPlaneStore implements ControlPlaneStore {
     contextJson: Record<string, unknown> | null;
   }): Promise<LearningSubmission> {
     const pool = await getPool();
-    const r = await pool
-      .request()
+    const r = await bindMessagingTenant(pool.request(), 'aiControlPlane.createSubmission')
       .input('raw', sql.NVarChar(4000), input.rawInput)
       .input('source', sql.NVarChar(40), input.sourceType)
       .input('userId', sql.Int, input.submittedByUserId)
       .input('ctx', sql.NVarChar(sql.MAX), input.contextJson ? JSON.stringify(input.contextJson) : null)
       .query(`
-        INSERT INTO dbo.TblAiLearningSubmission (RawInput, SourceType, SubmittedByUserID, ContextJson, Status)
+        INSERT INTO dbo.TblAiLearningSubmission (TenantId, RawInput, SourceType, SubmittedByUserID, ContextJson, Status)
         OUTPUT INSERTED.*
-        VALUES (@raw, @source, @userId, @ctx, N'RECEIVED')
+        VALUES (@tenantId, @raw, @source, @userId, @ctx, N'RECEIVED')
       `);
     return mapSubmission(r.recordset[0] as Record<string, unknown>);
   }
 
   async getSubmission(submissionId: number): Promise<LearningSubmission | null> {
     const pool = await getPool();
-    const r = await pool.request().input('id', sql.BigInt, submissionId)
-      .query('SELECT * FROM dbo.TblAiLearningSubmission WHERE SubmissionID = @id');
+    const r = await bindMessagingTenant(pool.request(), 'aiControlPlane.getSubmission').input('id', sql.BigInt, submissionId)
+      .query('SELECT * FROM dbo.TblAiLearningSubmission WHERE SubmissionID = @id AND TenantId = @tenantId');
     const row = r.recordset[0];
     return row ? mapSubmission(row as Record<string, unknown>) : null;
   }
@@ -99,19 +99,19 @@ export class SqlControlPlaneStore implements ControlPlaneStore {
   ): Promise<LearningSubmission> {
     const pool = await getPool();
     const sets: string[] = ['UpdatedAt = SYSUTCDATETIME()'];
-    const req = pool.request().input('id', sql.BigInt, submissionId);
+    const req = bindMessagingTenant(pool.request(), 'aiControlPlane.updateSubmission').input('id', sql.BigInt, submissionId);
     if (patch.status) { sets.push('Status = @status'); req.input('status', sql.NVarChar(30), patch.status); }
     if (patch.interpreterVersion !== undefined) { sets.push('InterpreterVersion = @iv'); req.input('iv', sql.NVarChar(60), patch.interpreterVersion); }
     if (patch.modelName !== undefined) { sets.push('ModelName = @mn'); req.input('mn', sql.NVarChar(120), patch.modelName); }
     if (patch.sourceType) { sets.push('SourceType = @st'); req.input('st', sql.NVarChar(40), patch.sourceType); }
-    const r = await req.query(`UPDATE dbo.TblAiLearningSubmission SET ${sets.join(', ')} OUTPUT INSERTED.* WHERE SubmissionID = @id`);
+    const r = await req.query(`UPDATE dbo.TblAiLearningSubmission SET ${sets.join(', ')} OUTPUT INSERTED.* WHERE SubmissionID = @id AND TenantId = @tenantId`);
     return mapSubmission(r.recordset[0] as Record<string, unknown>);
   }
 
   async listSubmissions(limit = 50): Promise<LearningSubmission[]> {
     const pool = await getPool();
-    const r = await pool.request().input('lim', sql.Int, limit)
-      .query('SELECT TOP (@lim) * FROM dbo.TblAiLearningSubmission ORDER BY CreatedAt DESC');
+    const r = await bindMessagingTenant(pool.request(), 'aiControlPlane.listSubmissions').input('lim', sql.Int, limit)
+      .query('SELECT TOP (@lim) * FROM dbo.TblAiLearningSubmission WHERE TenantId = @tenantId ORDER BY CreatedAt DESC');
     return r.recordset.map((row: Record<string, unknown>) => mapSubmission(row));
   }
 
@@ -119,8 +119,7 @@ export class SqlControlPlaneStore implements ControlPlaneStore {
     const pool = await getPool();
     const created: LearningArtifact[] = [];
     for (const p of proposals) {
-      const r = await pool
-        .request()
+      const r = await bindMessagingTenant(pool.request(), 'aiControlPlane.createArtifacts')
         .input('sid', sql.BigInt, submissionId)
         .input('atype', sql.NVarChar(40), p.artifactType)
         .input('domain', sql.NVarChar(40), p.domain)
@@ -143,14 +142,14 @@ export class SqlControlPlaneStore implements ControlPlaneStore {
         .input('effUntil', sql.DateTime2, p.effectiveUntil ? new Date(p.effectiveUntil) : null)
         .query(`
           INSERT INTO dbo.TblAiLearningArtifact (
-            SubmissionID, ArtifactType, Domain, ScopeType, ScopeKey, TargetLayer,
+            TenantId, SubmissionID, ArtifactType, Domain, ScopeType, ScopeKey, TargetLayer,
             EntityType, EntityID, EntityCode, TopicKey, NormalizedKey, Title, Summary,
             StructuredPayloadJson, AuthorityClass, Priority, Confidence, Status, CreatedByUserID,
             EffectiveFrom, EffectiveUntil
           )
           OUTPUT INSERTED.*
           VALUES (
-            @sid, @atype, @domain, @scopeType, @scopeKey, @targetLayer,
+            @tenantId, @sid, @atype, @domain, @scopeType, @scopeKey, @targetLayer,
             @entityType, @entityId, @entityCode, @topicKey, @normKey, @title, @summary,
             @payload, @auth, @priority, @conf, N'NEEDS_REVIEW', @userId,
             @effFrom, @effUntil
@@ -163,16 +162,16 @@ export class SqlControlPlaneStore implements ControlPlaneStore {
 
   async getArtifact(artifactId: number): Promise<LearningArtifact | null> {
     const pool = await getPool();
-    const r = await pool.request().input('id', sql.BigInt, artifactId)
-      .query('SELECT * FROM dbo.TblAiLearningArtifact WHERE ArtifactID = @id');
+    const r = await bindMessagingTenant(pool.request(), 'aiControlPlane.getArtifact').input('id', sql.BigInt, artifactId)
+      .query('SELECT * FROM dbo.TblAiLearningArtifact WHERE ArtifactID = @id AND TenantId = @tenantId');
     const row = r.recordset[0];
     return row ? mapArtifact(row as Record<string, unknown>) : null;
   }
 
   async listArtifacts(filter?: { submissionId?: number; status?: ArtifactStatus; normalizedKey?: string }): Promise<LearningArtifact[]> {
     const pool = await getPool();
-    const clauses: string[] = ['1=1'];
-    const req = pool.request();
+    const clauses: string[] = ['TenantId = @tenantId'];
+    const req = bindMessagingTenant(pool.request(), 'aiControlPlane.listArtifacts');
     if (filter?.submissionId != null) { clauses.push('SubmissionID = @sid'); req.input('sid', sql.BigInt, filter.submissionId); }
     if (filter?.status) { clauses.push('Status = @st'); req.input('st', sql.NVarChar(30), filter.status); }
     if (filter?.normalizedKey) { clauses.push('NormalizedKey = @nk'); req.input('nk', sql.NVarChar(300), filter.normalizedKey); }
@@ -190,20 +189,19 @@ export class SqlControlPlaneStore implements ControlPlaneStore {
   ): Promise<LearningArtifact> {
     const pool = await getPool();
     const sets: string[] = ['UpdatedAt = SYSUTCDATETIME()'];
-    const req = pool.request().input('id', sql.BigInt, artifactId);
+    const req = bindMessagingTenant(pool.request(), 'aiControlPlane.updateArtifact').input('id', sql.BigInt, artifactId);
     if (patch.status) { sets.push('Status = @status'); req.input('status', sql.NVarChar(30), patch.status); }
     if (patch.approvedByUserId !== undefined) { sets.push('ApprovedByUserID = @abu'); req.input('abu', sql.Int, patch.approvedByUserId); }
     if (patch.approvedAt !== undefined) { sets.push('ApprovedAt = @aa'); req.input('aa', sql.DateTime2, patch.approvedAt); }
     if (patch.supersedesArtifactId !== undefined) { sets.push('SupersedesArtifactID = @sup'); req.input('sup', sql.BigInt, patch.supersedesArtifactId); }
     if (patch.version !== undefined) { sets.push('Version = @ver'); req.input('ver', sql.Int, patch.version); }
-    const r = await req.query(`UPDATE dbo.TblAiLearningArtifact SET ${sets.join(', ')} OUTPUT INSERTED.* WHERE ArtifactID = @id`);
+    const r = await req.query(`UPDATE dbo.TblAiLearningArtifact SET ${sets.join(', ')} OUTPUT INSERTED.* WHERE ArtifactID = @id AND TenantId = @tenantId`);
     return mapArtifact(r.recordset[0] as Record<string, unknown>);
   }
 
   async appendAudit(event: Omit<LearningAuditEvent, 'eventId' | 'createdAt'>): Promise<LearningAuditEvent> {
     const pool = await getPool();
-    const r = await pool
-      .request()
+    const r = await bindMessagingTenant(pool.request(), 'aiControlPlane.appendAudit')
       .input('sid', sql.BigInt, event.submissionId)
       .input('aid', sql.BigInt, event.artifactId)
       .input('etype', sql.NVarChar(60), event.eventType)
@@ -211,9 +209,9 @@ export class SqlControlPlaneStore implements ControlPlaneStore {
       .input('model', sql.NVarChar(120), event.modelName)
       .input('details', sql.NVarChar(sql.MAX), JSON.stringify(event.detailsJson))
       .query(`
-        INSERT INTO dbo.TblAiLearningAuditEvent (SubmissionID, ArtifactID, EventType, ActorUserID, ModelName, DetailsJson)
+        INSERT INTO dbo.TblAiLearningAuditEvent (TenantId, SubmissionID, ArtifactID, EventType, ActorUserID, ModelName, DetailsJson)
         OUTPUT INSERTED.*
-        VALUES (@sid, @aid, @etype, @actor, @model, @details)
+        VALUES (@tenantId, @sid, @aid, @etype, @actor, @model, @details)
       `);
     const row = r.recordset[0] as Record<string, unknown>;
     return {
@@ -230,8 +228,8 @@ export class SqlControlPlaneStore implements ControlPlaneStore {
 
   async listAudit(filter?: { submissionId?: number; artifactId?: number }): Promise<LearningAuditEvent[]> {
     const pool = await getPool();
-    const clauses: string[] = ['1=1'];
-    const req = pool.request();
+    const clauses: string[] = ['TenantId = @tenantId'];
+    const req = bindMessagingTenant(pool.request(), 'aiControlPlane.listAudit');
     if (filter?.submissionId != null) { clauses.push('SubmissionID = @sid'); req.input('sid', sql.BigInt, filter.submissionId); }
     if (filter?.artifactId != null) { clauses.push('ArtifactID = @aid'); req.input('aid', sql.BigInt, filter.artifactId); }
     const r = await req.query(`SELECT * FROM dbo.TblAiLearningAuditEvent WHERE ${clauses.join(' AND ')} ORDER BY CreatedAt DESC`);

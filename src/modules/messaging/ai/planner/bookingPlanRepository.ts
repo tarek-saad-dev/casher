@@ -1,5 +1,6 @@
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
+import { bindMessagingTenant } from '@/modules/messaging/tenancy/tenantSql';
 import type { BookingPlanSnapshot, BookingPlanStage } from './types';
 import { BOOKING_PLAN_ACTIVE_STAGES } from './types';
 import { mapPlanRow } from './planMappers';
@@ -47,13 +48,13 @@ export async function getActiveBookingPlan(
   conversationId: number,
 ): Promise<BookingPlanSnapshot | null> {
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'planner.getActiveBookingPlan')
     .input('conversationId', sql.BigInt, conversationId)
     .query(`
       SELECT TOP 1 *
       FROM dbo.TblBotBookingPlan
       WHERE ConversationID = @conversationId
+        AND TenantId = @tenantId
         AND Stage IN (${ACTIVE_STAGE_SQL})
       ORDER BY PlanID DESC
     `);
@@ -63,10 +64,9 @@ export async function getActiveBookingPlan(
 
 export async function getBookingPlanById(planId: number): Promise<BookingPlanSnapshot | null> {
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'planner.getBookingPlanById')
     .input('planId', sql.BigInt, planId)
-    .query(`SELECT TOP 1 * FROM dbo.TblBotBookingPlan WHERE PlanID = @planId`);
+    .query(`SELECT TOP 1 * FROM dbo.TblBotBookingPlan WHERE PlanID = @planId AND TenantId = @tenantId`);
   const row = result.recordset[0] as Record<string, unknown> | undefined;
   return row ? mapPlanRow(row) : null;
 }
@@ -86,8 +86,7 @@ export async function upsertBookingPlan(
   };
 
   if (input.planId != null && input.planId > 0) {
-    await pool
-      .request()
+    await bindMessagingTenant(pool.request(), 'planner.upsertBookingPlan.update')
       .input('planId', sql.BigInt, input.planId)
       .input('stage', sql.NVarChar(40), input.stage)
       .input('version', sql.Int, input.version)
@@ -139,15 +138,14 @@ export async function upsertBookingPlan(
           TraceJson = @traceJson,
           UpdatedAt = SYSUTCDATETIME(),
           CompletedAt = @completedAt
-        WHERE PlanID = @planId
+        WHERE PlanID = @planId AND TenantId = @tenantId
       `);
     const updated = await getBookingPlanById(input.planId);
     if (!updated) throw new Error(`Booking plan ${input.planId} missing after update`);
     return updated;
   }
 
-  await pool
-    .request()
+  await bindMessagingTenant(pool.request(), 'planner.upsertBookingPlan.abandonActive')
     .input('conversationId', sql.BigInt, input.conversationId)
     .query(`
       UPDATE dbo.TblBotBookingPlan
@@ -155,11 +153,11 @@ export async function upsertBookingPlan(
           UpdatedAt = SYSUTCDATETIME(),
           CompletedAt = SYSUTCDATETIME()
       WHERE ConversationID = @conversationId
+        AND TenantId = @tenantId
         AND Stage IN (${ACTIVE_STAGE_SQL})
     `);
 
-  const insert = await pool
-    .request()
+  const insert = await bindMessagingTenant(pool.request(), 'planner.upsertBookingPlan.insert')
     .input('conversationId', sql.BigInt, input.conversationId)
     .input('stage', sql.NVarChar(40), input.stage)
     .input('version', sql.Int, input.version)
@@ -185,7 +183,7 @@ export async function upsertBookingPlan(
     .input('traceJson', sql.NVarChar(sql.MAX), jsonOrNull(tracePayload))
     .query(`
       INSERT INTO dbo.TblBotBookingPlan (
-        ConversationID, Stage, Version,
+        TenantId, ConversationID, Stage, Version,
         BranchID, BranchCode, BranchName,
         ServiceIdsJson, ServiceNamesJson,
         EmpID, EmployeeName, RequestedDate, TimePreferenceJson,
@@ -196,7 +194,7 @@ export async function upsertBookingPlan(
       )
       OUTPUT INSERTED.PlanID
       VALUES (
-        @conversationId, @stage, @version,
+        @tenantId, @conversationId, @stage, @version,
         @branchId, @branchCode, @branchName,
         @serviceIdsJson, @serviceNamesJson,
         @empId, @employeeName, @requestedDate, @timePreferenceJson,
@@ -215,8 +213,7 @@ export async function upsertBookingPlan(
 
 export async function abandonBookingPlan(planId: number): Promise<void> {
   const pool = await getPool();
-  await pool
-    .request()
+  await bindMessagingTenant(pool.request(), 'planner.abandonBookingPlan')
     .input('planId', sql.BigInt, planId)
     .query(`
       UPDATE dbo.TblBotBookingPlan
@@ -224,6 +221,7 @@ export async function abandonBookingPlan(planId: number): Promise<void> {
           UpdatedAt = SYSUTCDATETIME(),
           CompletedAt = SYSUTCDATETIME()
       WHERE PlanID = @planId
+        AND TenantId = @tenantId
         AND Stage <> N'abandoned'
     `);
 }

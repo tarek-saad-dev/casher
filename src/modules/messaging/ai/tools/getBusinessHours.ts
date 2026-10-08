@@ -1,7 +1,6 @@
 import 'server-only';
-import {
-  listPublicDiscoverableBranches,
-  resolvePublicBookingBranchContext,
+import { listTenantDiscoverableBranches } from '@/modules/messaging/ai/tenantBookingDirectory';
+import {  resolvePublicBookingBranchContext,
   PublicBookingBranchContextError,
 } from '@/lib/booking/publicBookingBranchContext';
 import { getBranchById } from '@/lib/branch/repository';
@@ -12,7 +11,7 @@ export async function executeGetBusinessHours(
 ): Promise<Omit<AiToolResult, 'durationMs'>> {
   let branchCode = request.branchCode?.trim() || null;
   if (!branchCode) {
-    const pubs = await listPublicDiscoverableBranches();
+    const pubs = await listTenantDiscoverableBranches();
     if (pubs.length === 1) branchCode = pubs[0]!.branchCode;
   }
   const input = { branchCode };

@@ -63,7 +63,16 @@ vi.mock('@/modules/messaging/ai/bookingManagement/featureFlag', () => ({
   isBookingManagementActiveForPhone: () => false,
 }));
 
-import { processAiTurn } from '@/modules/messaging/ai/application/processAiTurn';
+import { processAiTurn as processAiTurnUnscoped } from '@/modules/messaging/ai/application/processAiTurn';
+import {
+  TENANT_A,
+  inTenant,
+  installMessagingTenantTestKit,
+  resetMessagingTenantTestKit,
+} from './support/messagingTenantTestKit';
+
+const processAiTurn: typeof processAiTurnUnscoped = (turn, deps) =>
+  inTenant(TENANT_A, () => processAiTurnUnscoped(turn, deps));
 
 function turnRow(overrides: Partial<AiTurnRow> = {}): AiTurnRow {
   return {
@@ -143,9 +152,11 @@ describe('AI race suppression with human takeover', () => {
     enqueueMessage.mockResolvedValue({ messageId: 600 });
     process.env.MESSAGING_CUSTOMER_LED_V4 = 'false';
     process.env.MESSAGING_CONVERSATION_ORCHESTRATOR_V3 = 'false';
+    installMessagingTenantTestKit();
   });
 
   afterEach(() => {
+    resetMessagingTenantTestKit();
     if (originalHandoff === undefined) delete process.env.HUMAN_HANDOFF_V1;
     else process.env.HUMAN_HANDOFF_V1 = originalHandoff;
   });

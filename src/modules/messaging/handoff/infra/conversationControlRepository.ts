@@ -1,4 +1,5 @@
 import { getPool, sql } from '@/lib/db';
+import { bindMessagingTenant } from '@/modules/messaging/tenancy/tenantSql';
 import {
   isConversationControlMode,
   isHandoffTakeoverSource,
@@ -68,10 +69,13 @@ export async function getConversationControl(
   conversationId: number,
 ): Promise<ConversationControlState | null> {
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'handoff.getConversationControl')
     .input('id', sql.BigInt, conversationId)
-    .query(`SELECT ${CONTROL_SELECT} FROM dbo.TblBotConversation WHERE ConversationID = @id`);
+    .query(`
+      SELECT ${CONTROL_SELECT}
+      FROM dbo.TblBotConversation
+      WHERE ConversationID = @id AND TenantId = @tenantId
+    `);
   const row = result.recordset[0] as Raw | undefined;
   return row ? mapControlState(row) : null;
 }
@@ -85,12 +89,12 @@ export async function persistControlState(input: {
   const tx = pool.transaction();
   await tx.begin();
   try {
-    const locked = await new sql.Request(tx)
+    const locked = await bindMessagingTenant(new sql.Request(tx), 'handoff.persistControlState.lock')
       .input('id', sql.BigInt, input.next.conversationId)
       .query(`
         SELECT ${CONTROL_SELECT}
         FROM dbo.TblBotConversation WITH (UPDLOCK, HOLDLOCK)
-        WHERE ConversationID = @id
+        WHERE ConversationID = @id AND TenantId = @tenantId
       `);
     const live = locked.recordset[0] as Raw | undefined;
     if (!live) {
@@ -103,7 +107,7 @@ export async function persistControlState(input: {
       return { ok: false, code: 'VERSION_CONFLICT' };
     }
 
-    await new sql.Request(tx)
+    await bindMessagingTenant(new sql.Request(tx), 'handoff.persistControlState.update')
       .input('id', sql.BigInt, input.next.conversationId)
       .input('mode', sql.NVarChar(20), input.next.mode)
       .input('ver', sql.Int, input.next.controlVersion)
@@ -132,11 +136,11 @@ export async function persistControlState(input: {
             LastCustomerMessageID = @lastCust,
             UnreadCount = @unread,
             UpdatedAt = SYSUTCDATETIME()
-        WHERE ConversationID = @id
+        WHERE ConversationID = @id AND TenantId = @tenantId
       `);
 
     if (input.event) {
-      await new sql.Request(tx)
+      await bindMessagingTenant(new sql.Request(tx), 'handoff.persistControlState.event')
         .input('cid', sql.BigInt, input.next.conversationId)
         .input('prev', sql.NVarChar(20), input.event.previousMode)
         .input('neu', sql.NVarChar(20), input.event.newMode)
@@ -147,8 +151,8 @@ export async function persistControlState(input: {
         .input('ver', sql.Int, input.event.controlVersion)
         .query(`
           INSERT INTO dbo.TblBotConversationControlEvent
-            (ConversationID, PreviousMode, NewMode, Source, Reason, ActorUserID, RelatedMessageID, ControlVersion)
-          VALUES (@cid, @prev, @neu, @src, @reason, @actor, @msg, @ver)
+            (TenantId, ConversationID, PreviousMode, NewMode, Source, Reason, ActorUserID, RelatedMessageID, ControlVersion)
+          VALUES (@tenantId, @cid, @prev, @neu, @src, @reason, @actor, @msg, @ver)
         `);
     }
 
@@ -162,8 +166,7 @@ export async function persistControlState(input: {
 
 export async function persistControlFieldsNoVersion(next: ConversationControlState): Promise<void> {
   const pool = await getPool();
-  await pool
-    .request()
+  await bindMessagingTenant(pool.request(), 'handoff.persistControlFieldsNoVersion')
     .input('id', sql.BigInt, next.conversationId)
     .input('lease', sql.DateTime2, next.humanLeaseUntil ? new Date(next.humanLeaseUntil) : null)
     .input('lastAct', sql.DateTime2, next.humanLastActivityAt ? new Date(next.humanLastActivityAt) : null)
@@ -180,34 +183,43 @@ export async function persistControlFieldsNoVersion(next: ConversationControlSta
           LastCustomerMessageID = @lastCust,
           UnreadCount = @unread,
           UpdatedAt = SYSUTCDATETIME()
-      WHERE ConversationID = @id
+      WHERE ConversationID = @id AND TenantId = @tenantId
     `);
 }
 
 export async function markConversationRead(conversationId: number): Promise<void> {
   const pool = await getPool();
-  await pool
-    .request()
+  await bindMessagingTenant(pool.request(), 'handoff.markConversationRead')
     .input('id', sql.BigInt, conversationId)
     .query(`
       UPDATE dbo.TblBotConversation
       SET UnreadCount = 0, LastReadAt = SYSUTCDATETIME(), UpdatedAt = SYSUTCDATETIME()
-      WHERE ConversationID = @id
+      WHERE ConversationID = @id AND TenantId = @tenantId
     `);
 }
 
-export async function listExpiredHandoffConversations(now: Date): Promise<ConversationControlState[]> {
+export type ExpiredHandoffConversation = ConversationControlState & { tenantId: string | null };
+
+/**
+ * Lease sweep across tenants. Rows without a TenantId are never returned; the caller handles
+ * each row inside that row's tenant scope.
+ */
+export async function listExpiredHandoffConversations(now: Date): Promise<ExpiredHandoffConversation[]> {
   const pool = await getPool();
   const result = await pool
     .request()
     .input('now', sql.DateTime2, now)
     .query(`
-      SELECT ${CONTROL_SELECT}
+      SELECT ${CONTROL_SELECT}, [TenantId]
       FROM dbo.TblBotConversation
       WHERE ControlMode IN (N'HUMAN', N'HUMAN_REQUESTED')
+        AND TenantId IS NOT NULL
         AND (HumanLeaseUntil IS NULL OR HumanLeaseUntil <= @now)
     `);
-  return (result.recordset as Raw[]).map(mapControlState);
+  return (result.recordset as Array<Raw & { TenantId: string | null }>).map((row) => ({
+    ...mapControlState(row),
+    tenantId: row.TenantId ? String(row.TenantId).toLowerCase() : null,
+  }));
 }
 
 export async function tryInsertResumeClaim(input: {
@@ -217,15 +229,14 @@ export async function tryInsertResumeClaim(input: {
 }): Promise<{ claimed: boolean }> {
   const pool = await getPool();
   try {
-    await pool
-      .request()
+    await bindMessagingTenant(pool.request(), 'handoff.tryInsertResumeClaim')
       .input('cid', sql.BigInt, input.conversationId)
       .input('mid', sql.BigInt, input.latestCustomerMessageId)
       .input('key', sql.NVarChar(80), input.claimKey)
       .query(`
         INSERT INTO dbo.TblBotConversationResumeClaim
-          (ConversationID, LatestCustomerMessageID, ClaimKey)
-        VALUES (@cid, @mid, @key)
+          (TenantId, ConversationID, LatestCustomerMessageID, ClaimKey)
+        VALUES (@tenantId, @cid, @mid, @key)
       `);
     return { claimed: true };
   } catch (err) {

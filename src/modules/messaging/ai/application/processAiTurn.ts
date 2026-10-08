@@ -4,9 +4,16 @@ import {
   insertOutboundBotMessage,
 } from '@/modules/messaging/conversation/infra/botMessageRepository';
 import {
-  AI_SYSTEM_INSTRUCTIONS_GROUNDED_V1,
-  AI_SYSTEM_INSTRUCTIONS_V1,
+  buildAiGroundedSystemInstructions,
+  buildAiSystemInstructions,
+  SALON_PACK_INSTRUCTION_HINTS,
+  type AiInstructionProfile,
 } from '../domain/systemInstructions';
+import {
+  getCurrentTenantAiConfig,
+  usesSalonConciergePack,
+} from '@/modules/messaging/tenancy/tenantAiConfig';
+import { recordMessagingUsage } from '@/modules/messaging/tenancy/usage';
 import type { AiStructuredResult, AiTurnRow, ProcessAiTurnResult } from '../domain/types';
 import type { AiModelClient } from '../model/aiModelClient';
 import {
@@ -212,6 +219,30 @@ export async function processAiTurn(
     };
   }
 
+  const aiConfig = await getCurrentTenantAiConfig();
+  if (!aiConfig?.enabled) {
+    await markAiTurnSkipped({
+      turnId: turn.turnId,
+      errorCode: 'AI_NOT_CONFIGURED',
+      lastError: 'AI receptionist is not configured or disabled for this tenant',
+    });
+    return {
+      turnId: turn.turnId,
+      status: 'skipped',
+      duplicate: false,
+      outboundMessageId: null,
+      outboxId: null,
+      skipped: true,
+    };
+  }
+  // Industry pack (CUT salon concierge flows) runs only for tenants that opted in.
+  const salonPack = usesSalonConciergePack(aiConfig);
+  const instructionProfile: AiInstructionProfile = {
+    assistantPersona: aiConfig.assistantPersona,
+    policies: aiConfig.policies,
+    packHints: salonPack ? SALON_PACK_INSTRUCTION_HINTS : [],
+  };
+
   let expectedControlVersionAtClaim: number | null = null;
 
   const receivedAt = await getInboundMessageReceivedAt(turn.latestInboundMessageId);
@@ -272,9 +303,10 @@ export async function processAiTurn(
 
     const modelStarted = performance.now();
     const modelOutput = await deps.modelClient.generateConversationTurn({
-      systemInstructions: AI_SYSTEM_INSTRUCTIONS_V1,
+      systemInstructions: buildAiSystemInstructions(instructionProfile),
       conversation: context,
     });
+    await recordMessagingUsage('ai_turn');
     let geminiMs = modelOutput.latencyMs ?? performance.now() - modelStarted;
 
     const validationStarted = performance.now();
@@ -290,7 +322,7 @@ export async function processAiTurn(
     let kernelDecision: KernelDecision | null = null;
 
     // V4: customer-led kernel (sovereign current message) — takes precedence over V3
-    if (isCustomerLedConversationV4Enabled()) {
+    if (salonPack && isCustomerLedConversationV4Enabled()) {
       try {
         kernelDecision = await processKernelTurn({
           conversationId: turn.conversationId,
@@ -315,7 +347,7 @@ export async function processAiTurn(
         );
         kernelDecision = null;
       }
-    } else if (isConversationOrchestratorV3Enabled()) {
+    } else if (salonPack && isConversationOrchestratorV3Enabled()) {
       try {
         orchestratorDecision = await orchestrateConversationTurn({
           conversationId: turn.conversationId,
@@ -349,7 +381,7 @@ export async function processAiTurn(
       const { isBookingManagementActiveForPhone } = await import(
         '@/modules/messaging/ai/bookingManagement/featureFlag'
       );
-      if (isBookingManagementActiveForPhone(context.phone)) {
+      if (salonPack && isBookingManagementActiveForPhone(context.phone)) {
         const { processBookingManagementTurn } = await import(
           '@/modules/messaging/ai/bookingManagement/processManagementTurn'
         );
@@ -519,7 +551,7 @@ export async function processAiTurn(
         truncated: false,
       };
       toolExecMs = plannerMs;
-      if (isCustomerLedConversationV4Enabled()) {
+      if (salonPack && isCustomerLedConversationV4Enabled()) {
         if (/أأكد|اكدلك|أأكدلك|أأكد الحجز|أكد الحجز/.test(plannerResult.replyText)) {
           noteKernelConfirmAsk({
             conversationId: turn.conversationId,
@@ -533,7 +565,7 @@ export async function processAiTurn(
             replyText: plannerResult.replyText,
           });
         }
-      } else if (isConversationOrchestratorV3Enabled()) {
+      } else if (salonPack && isConversationOrchestratorV3Enabled()) {
         if (/أأكد|اكدلك|أأكدلك|أأكد الحجز|أكد الحجز/.test(plannerResult.replyText)) {
           notePlannerConfirmAsk({
             conversationId: turn.conversationId,
@@ -572,7 +604,7 @@ export async function processAiTurn(
 
           const groundedStarted = performance.now();
           const grounded = await deps.modelClient.generateConversationTurn({
-            systemInstructions: AI_SYSTEM_INSTRUCTIONS_GROUNDED_V1,
+            systemInstructions: buildAiGroundedSystemInstructions(instructionProfile),
             conversation: context,
             toolResultsJson: JSON.stringify(compactToolTrace(toolTrace)),
           });

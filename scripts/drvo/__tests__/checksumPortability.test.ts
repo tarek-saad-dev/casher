@@ -71,6 +71,7 @@ describe('DRVO migration checksum portability', () => {
       9: 'db/drvo-migrations/009-commercial-subscription-tenant-apps/schema.sql',
       10: 'db/drvo-migrations/010-master-data-tenancy/schema.sql',
       11: 'db/drvo-migrations/011-tenant-brand-profile/schema.sql',
+      12: 'db/drvo-migrations/012-messaging-tenancy/schema.sql',
     };
     for (const [id, rel] of Object.entries(fileBacked)) {
       let blob: string;

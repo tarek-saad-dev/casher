@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { authenticate, isAuthResult, type AuthResult } from '@/lib/api-auth';
 import { getWhatsAppConfig } from '@/lib/integrations/whatsapp';
 import { sendMessage } from '@/modules/messaging';
-import { requireTenantSession } from '@/lib/api-auth';
+import { runWithStaffMessagingTenant } from '@/modules/messaging/tenancy/staffScope';
 
 export const runtime = 'nodejs';
 
@@ -12,6 +13,8 @@ const SKIPPED_MESSAGES: Record<string, string> = {
   missing_phone: 'أدخل رقم واتساب صحيح',
   missing_customer_name: 'اسم العميل مطلوب',
   invalid_payload: 'بيانات الرسالة غير صالحة',
+  channel_not_configured: 'لم يتم ربط قناة واتساب لهذا النشاط بعد',
+  tenant_unresolved: 'تعذر تحديد النشاط التجاري للإرسال',
 };
 
 const FAIL_MESSAGES: Record<string, string> = {
@@ -28,14 +31,13 @@ const FAIL_MESSAGES: Record<string, string> = {
  * Body: { phone: string, customerName?: string, message?: string }
  */
 export async function POST(req: NextRequest) {
-  try {
-    const session = await requireTenantSession();
-    if (session instanceof NextResponse) {
-      return session.status === 401
-        ? NextResponse.json({ error: 'غير مصرح' }, { status: 401 })
-        : session;
-    }
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+  return runWithStaffMessagingTenant(auth, 'pos/whatsapp/quick-send:POST', () => quickSend(req, auth));
+}
 
+async function quickSend(req: NextRequest, auth: AuthResult) {
+  try {
     const body = (await req.json()) as {
       phone?: string;
       customerName?: string;
@@ -67,11 +69,11 @@ export async function POST(req: NextRequest) {
     const metadata: Record<string, unknown> = {
       source: 'pos.quick_message',
     };
-    if (typeof session.ActiveBranchID === 'number') {
-      metadata.branchId = session.ActiveBranchID;
+    if (typeof auth.activeBranchId === 'number') {
+      metadata.branchId = auth.activeBranchId;
     }
-    if (typeof session.UserID === 'number') {
-      metadata.userId = session.UserID;
+    if (typeof auth.userId === 'number') {
+      metadata.userId = auth.userId;
     }
 
     const result = await sendMessage({
