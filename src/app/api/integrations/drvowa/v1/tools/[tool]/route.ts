@@ -63,7 +63,7 @@ function fail(tool: string, error: unknown, status = 400): Response {
 export async function POST(request: Request, context: Context) {
   let tool = '';
   try {
-    requireDrvowaIntegrationAuth(request);
+    await requireDrvowaIntegrationAuth(request);
     tool = (await context.params).tool;
     const body = record(await request.json().catch(() => ({})));
     const input = record(body.input);
