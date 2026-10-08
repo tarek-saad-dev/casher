@@ -1,4 +1,5 @@
 import { getWhatsAppConfig } from '@/lib/integrations/whatsapp';
+import { isDrvowaEventMessagingActive } from '@/lib/integrations/drvowaClient';
 import type { WhatsAppConfig } from '@/lib/integrations/whatsapp/config';
 import type { MessageSendResult } from '../domain/types';
 import { MessageTemplateError } from '../domain/templateTypes';
@@ -102,9 +103,9 @@ export async function sendTemplateMessage(
   const templateKey = String(input.templateKey ?? '').trim();
   const cfg = getWhatsAppConfig();
 
-  if (!cfg.enabled) {
+  if (!cfg.enabled && !(await isDrvowaEventMessagingActive())) {
     console.log(
-      '[whatsapp] Integration skipped: WHATSAPP_INTEGRATION_ENABLED is not true',
+      '[whatsapp] Integration skipped: neither legacy WhatsApp nor DRVOWA is active',
     );
     return { sent: false, channel: 'whatsapp', reason: 'development_only', skipped: true };
   }
