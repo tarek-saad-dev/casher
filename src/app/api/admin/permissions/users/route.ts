@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
-import { requireTenantSession } from '@/lib/api-auth';
 import { getUserAccess } from '@/lib/permissions-server';
+import { isPlatformOperatorUser, requireTenantSession } from '@/lib/api-auth';
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
 import { getUserRolesSnapshot, updateUserRoles } from '@/lib/actions/permissionActions';
 import { assertLegacyUserInTenant, isTenantContextError } from '@/platform/tenant/tenantContext';
 
 export const runtime = 'nodejs';
 
+/** Global (cross-tenant) user/role catalog: super_admin who is also a platform-tenant member. */
 async function requireSuperAdmin() {
   const session = await requireTenantSession();
   if (session instanceof NextResponse) return null;
   const access = await getUserAccess(session.UserID, session.UserName, session.UserLevel);
   if (!access.isSuperAdmin) return null;
+  if (!(await isPlatformOperatorUser(session.UserID, access.roles))) return null;
   return session;
 }
 
@@ -64,18 +66,12 @@ export async function GET() {
 // Body: { userID: number, roles: string[] }  — full replacement of roles
 export async function POST(req: NextRequest) {
   try {
-    const session = await requireTenantSession();
-    if (session instanceof NextResponse) return session;
-
-    const access = await getUserAccess(session.UserID, session.UserName, session.UserLevel);
+    const session = await requireSuperAdmin();
+    if (!session) return NextResponse.json({ error: 'غير مصرح — super_admin فقط' }, { status: 403 });
 
     const { userID, roles, reason }: { userID: number; roles: string[]; reason?: string } = await req.json();
     if (!userID || !Array.isArray(roles)) {
       return NextResponse.json({ error: 'بيانات غير صحيحة' }, { status: 400 });
-    }
-
-    if (!access.isSuperAdmin) {
-      return NextResponse.json({ error: 'غير مصرح — super_admin فقط' }, { status: 403 });
     }
 
     try {

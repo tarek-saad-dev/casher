@@ -5,6 +5,7 @@ import type { CreateQueueResponse } from '@/lib/operationsQueueTypes';
 import { printQueueTicket } from '@/lib/printQueueTicket';
 import { createQueueResponseToPrintData } from '@/lib/quickQueueClient';
 import { normalizeCustomersAhead } from '@/lib/queueCustomersAhead';
+import { usePrintBrand } from '@/lib/tenant/tenantBrandClient';
 
 interface PrintQueueTicketModalProps {
   isOpen: boolean;
@@ -21,6 +22,7 @@ export function PrintQueueTicketModal({
 }: PrintQueueTicketModalProps) {
   const [isPrinting, setIsPrinting] = useState(false);
   const [printError, setPrintError] = useState<string | null>(null);
+  const brand = usePrintBrand();
 
   if (!isOpen || !ticket) return null;
 
@@ -101,7 +103,7 @@ export function PrintQueueTicketModal({
           >
             {/* Logo / Header */}
             <div className="text-center border-b-2 border-dashed border-gray-400 pb-3 mb-3">
-              <h1 className="text-xl font-bold text-gray-900">CUT SALON</h1>
+              <h1 className="text-xl font-bold text-gray-900">{brand.title}</h1>
               <p className="text-sm text-gray-600 mt-1">تذكرة دور</p>
             </div>
 
@@ -186,9 +188,7 @@ export function PrintQueueTicketModal({
               <p className="text-xs text-gray-600 leading-relaxed">
                 يرجى التواجد بالقرب من منطقة الانتظار عند اقتراب موعدك
               </p>
-              <p className="text-xs text-gray-500 mt-2">
-                شكراً لاختياركم Cut Salon
-              </p>
+              {brand.footer && <p className="text-xs text-gray-500 mt-2">{brand.footer}</p>}
             </div>
           </div>
         </div>

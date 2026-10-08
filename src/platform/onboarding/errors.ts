@@ -6,6 +6,8 @@ export type TenantOnboardingErrorCode =
   | 'OWNER_USERNAME_CONFLICT'
   | 'OWNER_FIELDS_INVALID'
   | 'FORBIDDEN_SYSTEM_FIELD'
+  | 'OWNER_ROLE_MISSING'
+  | 'BRAND_PROFILE_INVALID'
   | 'READINESS_FAILED';
 
 export class TenantOnboardingError extends Error {

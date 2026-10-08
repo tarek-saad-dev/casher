@@ -23,7 +23,7 @@ describe('DRVO-015 migration 10 manifest entry', () => {
 
   it('is the next contiguous id with one canonical checksum and control metadata', () => {
     expect(m.migrationId).toBe(10);
-    expect(DRVO_MIGRATIONS.at(-1)).toBe(m);
+    expect(DRVO_MIGRATIONS[DRVO_MIGRATIONS.indexOf(m) - 1]?.migrationId).toBe(9);
     expect(m.checksum).toBe(checksumFile(SQL_PATH));
     expect(m.checksum).toMatch(/^[0-9a-f]{64}$/);
     expect(m.legacyChecksums).toBeUndefined();

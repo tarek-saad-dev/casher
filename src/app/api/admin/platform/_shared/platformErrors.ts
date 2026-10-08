@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { TenantAppError } from '@/platform/apps/errors';
+import { BrandProfileValidationError } from '@/platform/branding/brandProfile';
+import { BrandProfileError } from '@/platform/branding/brandRepository';
 import { BootstrapTenantProtectedError } from '@/platform/commercial/bootstrapGuard';
 import { CommercialError } from '@/platform/commercial/errors';
 import { TenantOnboardingError } from '@/platform/onboarding/errors';
@@ -17,6 +19,9 @@ export function platformErrorResponse(err: unknown): NextResponse | null {
       { error: err.message, code: err.code, ...(details ? { details } : {}) },
       { status: err.status },
     );
+  }
+  if (err instanceof BrandProfileValidationError || err instanceof BrandProfileError) {
+    return NextResponse.json({ error: err.message, code: err.code }, { status: err.status });
   }
   if (err instanceof PlatformRequestError) {
     return NextResponse.json({ error: err.message, code: err.code }, { status: err.status });

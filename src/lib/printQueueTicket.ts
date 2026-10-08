@@ -1,5 +1,6 @@
 import type { QueueTicketPrintData } from '@/components/queue/QueueTicketPrint';
 import { normalizeCustomersAhead } from '@/lib/queueCustomersAhead';
+import { getPrintBrandHtml } from '@/lib/tenant/tenantBrandClient';
 
 // ─────────────────────────────────────────────────────────────
 // Queue Ticket Receipt CSS — 80mm thermal, mirrors ExpenseReceiptPopup
@@ -171,6 +172,7 @@ function buildReceiptHtml(data: QueueTicketPrintData): string {
     </div>`;
 
   const customersAhead = normalizeCustomersAhead(waitingBefore);
+  const brand = getPrintBrandHtml();
 
   const rows = [
     clientName                      ? row('العميل',            clientName)                                  : '',
@@ -195,9 +197,9 @@ function buildReceiptHtml(data: QueueTicketPrintData): string {
 </head>
 <body>
   <div class="receipt-header">
-    <img class="logo-img" src="/cutsalon.png" alt="" onerror="this.style.display='none'" />
-    <div class="salon-name">CUT SALON</div>
-    <div class="salon-sub">صالون كَت للحلاقة</div>
+    ${brand.logoUrl ? `<img class="logo-img" src="${brand.logoUrl}" alt="" onerror="this.style.display='none'" />` : ''}
+    <div class="salon-name">${brand.title}</div>
+    ${brand.address ? `<div class="salon-sub">${brand.address}</div>` : ''}
     <div class="ticket-type">تذكرة انتظار</div>
   </div>
 
@@ -213,7 +215,7 @@ function buildReceiptHtml(data: QueueTicketPrintData): string {
   <div class="receipt-footer">
     <div class="footer-text">برجاء الاحتفاظ برقم الدور</div>
     <div>سيتم النداء عليك عند اقتراب موعدك</div>
-    <div class="brand-line">شكراً لاختياركم Cut Salon ✂</div>
+    ${brand.footer ? `<div class="brand-line">${brand.footer} ✂</div>` : ''}
   </div>
 </body>
 </html>`;

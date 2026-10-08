@@ -17,8 +17,8 @@ const cairo = Cairo({
 });
 
 export const metadata: Metadata = {
-  title: "نقطة البيع — Cut Salon",
-  description: "نظام إدارة صالون Cut",
+  title: "نقطة البيع",
+  description: "DRVOERP — نظام إدارة المنشآت",
 };
 
 export default async function RootLayout({

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
-import { isAuthResult, requireAdmin } from '@/lib/api-auth';
+import { isAuthResult, requirePlatformOperator } from '@/lib/api-auth';
 import { ensureWorkforceAvailabilityGrants } from '@/lib/permissions/workforceAvailabilityPermissions';
 
 export const runtime = 'nodejs';
@@ -77,6 +77,7 @@ const PAGES = [
   { key: 'admin.shift',            name: 'الورديات',               path: '/admin/shift',                     section: 'الإدارة',            access: 'roles', sort: 106 },
   { key: 'admin.settings',         name: 'الإعدادات',              path: '/admin/settings',                  section: 'الإدارة',            access: 'roles', sort: 107 },
   { key: 'admin.queue_settings',   name: 'إعدادات الطابور',        path: '/admin/queue-booking-settings',    section: 'الإدارة',            access: 'roles', sort: 108 },
+  { key: 'admin.tenant',           name: 'هوية المنشأة',           path: '/admin/tenant',                    section: 'الإدارة',            access: 'roles', sort: 109 },
   // Operations
   { key: 'operations.main',        name: 'لوحة التشغيل',           path: '/operations',                      section: 'لوحة التشغيل',       access: 'all',   sort: 5 },
   { key: 'cut_club.main',          name: 'CUT CLUB',               path: '/admin/cut-club',                  section: 'CUT CLUB',           access: 'roles', sort: 6 },
@@ -115,7 +116,7 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
       'bookings.list','bookings.new','bookings.calendar',
       'hr.employees','hr.attendance','hr.payroll','hr.workforce_availability','hr.advances','hr.salaries',
       'admin.operations','admin.booking_operations','admin.branches','admin.users','admin.services','admin.packages','admin.payment_methods',
-      'admin.categories','admin.loyalty','admin.shift','admin.settings','admin.queue_settings',
+      'admin.categories','admin.loyalty','admin.shift','admin.settings','admin.queue_settings','admin.tenant',
       'operations.main','cut_club.main',
       'audit.payment_methods',
       'audit.cash_move_classification',
@@ -190,8 +191,9 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
   },
 ];
 
+/** Mutates the global role/page catalog and every user's roles — platform operator only. */
 export async function POST() {
-  const auth = await requireAdmin();
+  const auth = await requirePlatformOperator();
   if (!isAuthResult(auth)) return auth;
 
   try {

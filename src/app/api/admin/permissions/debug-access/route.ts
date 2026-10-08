@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { getUserAccess } from '@/lib/permissions-server';
-import { requireTenantSession } from '@/lib/api-auth';
+import { isPlatformOperatorUser, requireTenantSession } from '@/lib/api-auth';
 import { assertLegacyUserInTenant, isTenantContextError } from '@/platform/tenant/tenantContext';
 
 export const runtime = 'nodejs';
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   if (session instanceof NextResponse) return session;
 
   const access = await getUserAccess(session.UserID, session.UserName, session.UserLevel);
-  if (!access.isSuperAdmin) {
+  if (!access.isSuperAdmin || !(await isPlatformOperatorUser(session.UserID, access.roles))) {
     return NextResponse.json({ error: 'super_admin فقط' }, { status: 403 });
   }
 

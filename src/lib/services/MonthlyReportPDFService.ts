@@ -15,6 +15,7 @@ import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas-pro';
 import type { MonthlyBusinessReport, Partner } from '@/lib/types/monthly-report';
 import { calculatePartnerProfitShares } from '@/lib/reports/monthlyFinancialEquations';
+import { getPrintBrandHtml } from '@/lib/tenant/tenantBrandClient';
 
 const PDF_CONFIG = {
   pageWidth: 210,
@@ -58,6 +59,14 @@ export async function generateMonthlyReportPDF(data: PDFReportData): Promise<Blo
   }
   const partnerShares = calculatePartnerProfitShares(report.netProfit, partners);
   const totalDistributed = partnerShares.reduce((sum, p) => sum + p.profitShare, 0);
+  const brand = getPrintBrandHtml();
+  const brandInitials = brand.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w.charAt(0).toUpperCase())
+    .join('');
+  const systemName = brand.name ? `${brand.name} System` : 'System';
 
   // Generate 5-page HTML - each item on separate page
   const htmlContent = `
@@ -326,8 +335,8 @@ export async function generateMonthlyReportPDF(data: PDFReportData): Promise<Blo
 <body>
   <!-- Page 1: Cover -->
   <div class="page cover">
-    <div class="logo">CS</div>
-    <div class="system-name">Cut Salon System</div>
+    <div class="logo">${brandInitials}</div>
+    <div class="system-name">${systemName}</div>
     <div class="report-title">Monthly Profit Report</div>
     <div class="month-year">${monthName} ${year}</div>
     <div class="generated-info">
@@ -340,7 +349,7 @@ export async function generateMonthlyReportPDF(data: PDFReportData): Promise<Blo
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <div class="header-brand">Cut Salon System</div>
+        <div class="header-brand">${systemName}</div>
         <div class="header-title">إجمالي الوارد</div>
       </div>
       <div class="header-right">
@@ -364,7 +373,7 @@ export async function generateMonthlyReportPDF(data: PDFReportData): Promise<Blo
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <div class="header-brand">Cut Salon System</div>
+        <div class="header-brand">${systemName}</div>
         <div class="header-title">إجمالي المصروف</div>
       </div>
       <div class="header-right">
@@ -388,7 +397,7 @@ export async function generateMonthlyReportPDF(data: PDFReportData): Promise<Blo
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <div class="header-brand">Cut Salon System</div>
+        <div class="header-brand">${systemName}</div>
         <div class="header-title">صافي الربح</div>
       </div>
       <div class="header-right">
@@ -412,7 +421,7 @@ export async function generateMonthlyReportPDF(data: PDFReportData): Promise<Blo
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <div class="header-brand">Cut Salon System</div>
+        <div class="header-brand">${systemName}</div>
         <div class="header-title">توزيع أرباح الشركاء</div>
       </div>
       <div class="header-right">

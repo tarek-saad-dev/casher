@@ -20,12 +20,53 @@ import type {
   ProvisionTenantActor,
   ProvisionTenantInput,
   ProvisionTenantResult,
+  TenantSummary,
 } from './types';
 import {
   assertValidTenantCode,
   normalizeBranchCode,
   normalizeTenantCode,
 } from './validation';
+import {
+  BrandProfileValidationError,
+  validateBrandProfileInput,
+  type TenantBrandProfileInput,
+} from '@/platform/branding/brandProfile';
+import { insertTenantBrandProfileInTransaction } from '@/platform/branding/brandRepository';
+
+/**
+ * The first branch is usable for internal operations immediately (IsActive=1), so the owner can
+ * log in and operate. Public booking and external notifications stay off: public booking and
+ * messaging tenancy are not part of onboarding.
+ */
+export const FIRST_BRANCH_LIFECYCLE = 'INTERNAL_LIVE' as const;
+export const OWNER_ROLE_KEY = 'admin' as const;
+const OWNER_USER_LEVEL = 'admin';
+
+/** Apps whose runtime reads QueueBookingSettings for the branch. */
+const BOOKING_SETTINGS_APPS = new Set(['booking', 'queue']);
+
+function resolveBrandInput(input: ProvisionTenantInput, timezone: string): TenantBrandProfileInput {
+  const brand = input.brand ?? {};
+  try {
+    return validateBrandProfileInput({
+      displayName: input.tenantDisplayName,
+      timezone,
+      logoUrl: brand.logoUrl,
+      phone: brand.phone ?? input.branchPhone,
+      address: brand.address ?? input.branchAddress,
+      primaryColor: brand.primaryColor,
+      accentColor: brand.accentColor,
+      receiptFooter: brand.receiptFooter,
+      publicBookingOrigins: brand.publicBookingOrigins,
+    });
+  } catch (err) {
+    if (err instanceof BrandProfileValidationError) {
+      throw new TenantOnboardingError('BRAND_PROFILE_INVALID', err.message);
+    }
+    throw err;
+  }
+}
 
 function toSqlTime(value: string | null | undefined): string | null {
   if (value == null || !String(value).trim()) return null;
@@ -109,12 +150,56 @@ async function createBranchInTransaction(
         @tz, CAST(N'04:00:00' AS time(0)),
         CASE WHEN @openT IS NULL THEN NULL ELSE CAST(@openT AS time(0)) END,
         CASE WHEN @closeT IS NULL THEN NULL ELSE CAST(@closeT AS time(0)) END,
-        0, N'SETUP', 0, 0, @createdBy
+        1, N'${FIRST_BRANCH_LIFECYCLE}', 0, 0, @createdBy
       )
     `);
 
   const row = result.recordset[0] as { BranchID: number; BranchCode: string };
-  return { branchId: Number(row.BranchID), branchCode: String(row.BranchCode) };
+  const branchId = Number(row.BranchID);
+
+  await new sql.Request(tx)
+    .input('branchId', sql.Int, branchId)
+    .input('actor', sql.Int, input.createdByUserId > 0 ? input.createdByUserId : null)
+    .input('readiness', sql.NVarChar(sql.MAX), JSON.stringify({ source: 'tenant-onboarding' }))
+    .query(`
+      INSERT INTO dbo.TblBranchLifecycleAudit (
+        BranchID, FromStatus, ToStatus, Reason, ActorUserID, ReadinessJson
+      )
+      VALUES (
+        @branchId, N'SETUP', N'${FIRST_BRANCH_LIFECYCLE}',
+        N'tenant-onboarding: first branch usable for internal operations', @actor, @readiness
+      )
+    `);
+
+  return { branchId, branchCode: String(row.BranchCode) };
+}
+
+/**
+ * The owner gets the tenant-level `admin` role, never `super_admin`: page roles are global, and
+ * super_admin is reserved for platform staff (requirePlatformOperator also requires CASHER_BOOT
+ * membership). A missing role catalog fails onboarding instead of creating an owner who cannot
+ * see any page.
+ */
+async function assignOwnerRoleInTransaction(tx: Transaction, userId: number): Promise<string> {
+  const role = await new sql.Request(tx)
+    .input('roleKey', sql.NVarChar(50), OWNER_ROLE_KEY)
+    .query(`
+      SELECT RoleID FROM dbo.TblRoles
+      WHERE RoleKey = @roleKey AND ISNULL(IsActive, 1) = 1;
+    `);
+  const roleId = (role.recordset[0] as { RoleID: number } | undefined)?.RoleID;
+  if (roleId == null) {
+    throw new TenantOnboardingError(
+      'OWNER_ROLE_MISSING',
+      `Role "${OWNER_ROLE_KEY}" is not seeded; run the permissions seed before onboarding tenants.`,
+      409,
+    );
+  }
+  await new sql.Request(tx)
+    .input('userId', sql.Int, userId)
+    .input('roleId', sql.Int, Number(roleId))
+    .query(`INSERT INTO dbo.TblUserRoles (UserID, RoleID) VALUES (@userId, @roleId);`);
+  return OWNER_ROLE_KEY;
 }
 
 async function createOwnerUserInTransaction(
@@ -208,7 +293,6 @@ export async function provisionTenant(
   const ownerLoginName = input.ownerLoginName.trim();
   const ownerUserName = input.ownerUserName.trim();
   const ownerPassword = input.ownerPassword;
-  const ownerUserLevel = input.ownerUserLevel?.trim() || 'admin';
   const defaultTimezone = input.defaultTimezone.trim() || 'Africa/Cairo';
 
   if (!ownerLoginName || !ownerUserName || !ownerPassword) {
@@ -223,6 +307,7 @@ export async function provisionTenant(
   if (!branchCode || !input.firstBranchName.trim()) {
     throw new TenantOnboardingError('OWNER_FIELDS_INVALID', 'First branch code and name are required.');
   }
+  const brandInput = resolveBrandInput(input, defaultTimezone);
 
   await assertBranchIdentityAvailable({
     branchCode,
@@ -287,12 +372,14 @@ export async function provisionTenant(
       createdByUserId: actor.actorUserId,
     });
 
-    await seedQueueSettingsInTransaction(
-      tx,
-      branch.branchId,
-      input.firstBranchName.trim(),
-      defaultTimezone,
-    );
+    if (composition.apps.some((code) => BOOKING_SETTINGS_APPS.has(code))) {
+      await seedQueueSettingsInTransaction(
+        tx,
+        branch.branchId,
+        input.firstBranchName.trim(),
+        defaultTimezone,
+      );
+    }
 
     const locationInsert = await new sql.Request(tx)
       .input('tenantId', sql.UniqueIdentifier, tenantId)
@@ -320,10 +407,11 @@ export async function provisionTenant(
       userName: ownerUserName,
       loginName: ownerLoginName,
       password: ownerPassword,
-      userLevel: ownerUserLevel,
+      userLevel: OWNER_USER_LEVEL,
       branchId: branch.branchId,
       actorUserId: actor.actorUserId,
     });
+    const ownerRole = await assignOwnerRoleInTransaction(tx, ownerUserId);
 
     const membershipInsert = await new sql.Request(tx)
       .input('tenantId', sql.UniqueIdentifier, tenantId)
@@ -354,6 +442,7 @@ export async function provisionTenant(
     });
 
     await seedTenantMasterData(tx, tenantId);
+    await insertTenantBrandProfileInTransaction(tx, tenantId, brandInput, actor.actorUserId);
 
     await publishPlatformOutboxEvent(tx, {
       tenantId,
@@ -366,6 +455,8 @@ export async function provisionTenant(
         legacyBranchId: branch.branchId,
         ownerUserId,
         ownerLoginName,
+        ownerRole,
+        branchLifecycle: FIRST_BRANCH_LIFECYCLE,
         industryPackCode: pack.packCode,
         apps: composition.apps,
         planCode: plan.planCode,
@@ -391,6 +482,7 @@ export async function provisionTenant(
       legacyUserId: ownerUserId,
       branchCode: branch.branchCode,
       ownerLoginName,
+      ownerRole,
       industryPackCode: pack.packCode,
       apps: composition.apps,
       planCode: plan.planCode,
@@ -408,17 +500,7 @@ export async function provisionTenant(
   }
 }
 
-export async function listTenants(): Promise<
-  Array<{
-    tenantId: string;
-    code: string;
-    name: string;
-    status: string;
-    defaultTimezone: string;
-    locationCount: number;
-    createdAt: string;
-  }>
-> {
+export async function listTenants(): Promise<TenantSummary[]> {
   const pool = await getPool();
   const result = await pool.request().query(`
     SELECT
@@ -428,18 +510,30 @@ export async function listTenants(): Promise<
       t.Status,
       t.DefaultTimezone,
       t.CreatedAt,
-      (SELECT COUNT(*) FROM dbo.Location l WHERE l.TenantId = t.TenantId) AS LocationCount
+      s.PlanCode,
+      s.Status AS SubscriptionStatus,
+      p.PackCode,
+      (SELECT COUNT(*) FROM dbo.Location l WHERE l.TenantId = t.TenantId) AS LocationCount,
+      (SELECT COUNT(*) FROM dbo.TenantMembership m
+         INNER JOIN dbo.TblUser u ON u.UserID = m.LegacyUserId AND ISNULL(u.isDeleted, 0) = 0
+       WHERE m.TenantId = t.TenantId) AS UserCount
     FROM dbo.Tenant t WITH (NOLOCK)
+    LEFT JOIN dbo.TenantSubscription s WITH (NOLOCK) ON s.TenantId = t.TenantId
+    LEFT JOIN dbo.TenantIndustryPack p WITH (NOLOCK) ON p.TenantId = t.TenantId
     ORDER BY t.CreatedAt;
   `);
 
   return (result.recordset as Array<Record<string, unknown>>).map((row) => ({
-    tenantId: String(row.TenantId),
+    tenantId: String(row.TenantId).toLowerCase(),
     code: String(row.Code),
     name: String(row.Name),
     status: String(row.Status),
     defaultTimezone: String(row.DefaultTimezone),
     locationCount: Number(row.LocationCount),
+    userCount: Number(row.UserCount ?? 0),
+    planCode: row.PlanCode != null ? String(row.PlanCode) : null,
+    subscriptionStatus: row.SubscriptionStatus != null ? String(row.SubscriptionStatus) : null,
+    industryPackCode: row.PackCode != null ? String(row.PackCode) : null,
     createdAt:
       row.CreatedAt instanceof Date
         ? row.CreatedAt.toISOString()
