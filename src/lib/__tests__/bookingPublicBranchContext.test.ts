@@ -26,6 +26,11 @@ vi.mock('@/lib/branch/publicBranchVisibility', () => ({
   },
 }));
 
+vi.mock('@/lib/booking/publicBookingTenancy', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/booking/publicBookingTenancy')>()),
+  resolvePublicBookingTenantIdForBranch: async () => '11111111-1111-4111-8111-111111111111',
+}));
+
 vi.mock('@/lib/db', () => ({
   getPool: async () => ({
     request: () => ({

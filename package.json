@@ -47,6 +47,7 @@
     "drvo-016:smoke": "tsx scripts/drvo/drvo-016-hr-payroll-smoke.ts",
     "drvo-015:verify": "tsx scripts/drvo/drvo-015-verify.ts",
     "drvo-018:bind-channel": "tsx scripts/drvo/drvo-018-bind-channel.ts",
+    "drvo-019:smoke": "tsx scripts/drvo/drvo-019-public-booking-smoke.ts",
     "drvo-003:migrate": "tsx scripts/run-drvo-003-platform-core-migration.ts --expected-database=last132_agent",
     "drvo-003:seed": "tsx scripts/seed-drvo-003-bootstrap-tenant.ts --expected-database=last132_agent",
     "drvo-003:migrate-production": "tsx scripts/run-drvo-003-platform-core-production.ts",

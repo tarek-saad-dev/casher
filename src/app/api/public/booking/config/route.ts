@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   getPublicSettings,
   PUBLIC_BOOKING_PAUSED_MESSAGE,
@@ -9,27 +9,19 @@ import {
   resolvePublicBookingBranchContext,
   toPublicBranchSafeWire,
 } from '@/lib/booking/publicBookingBranchContext';
-import { publicBookingErrorResponse } from '@/lib/booking/publicBookingErrorCatalog';
-import {
-  publicBookingOptionsResponse,
-  PUBLIC_BOOKING_ROUTE_CORS,
-} from '@/lib/booking/publicBookingCors';
 import { extractPublicBranchCode } from '@/lib/branch/bookingQueueOwnership';
 import {
   gatePublicBookingRoute,
   finalizePublicBookingError,
   finalizePublicBookingJson,
+  publicBookingTenantOptionsResponse,
+  requirePublicBookingRouteTenancy,
 } from '@/lib/booking/publicBookingRouteGate';
 
 export const runtime = 'nodejs';
 
 export async function OPTIONS(req: NextRequest) {
-  const cors = PUBLIC_BOOKING_ROUTE_CORS['config'];
-  return publicBookingOptionsResponse({
-    request: req,
-    allowedMethods: [...cors.methods],
-    allowedHeaders: cors.headers,
-  });
+  return publicBookingTenantOptionsResponse(req, 'config');
 }
 
 /**
@@ -45,6 +37,8 @@ export async function GET(req: NextRequest) {
     const branchCode = extractPublicBranchCode(searchParams);
     // preview=true must never escalate to internal_preview
     const preview = searchParams.get('preview');
+    const tenancy = await requirePublicBookingRouteTenancy(req, gate, { branchCode });
+    if (tenancy instanceof NextResponse) return tenancy;
 
     let ctx;
     try {
@@ -52,6 +46,7 @@ export async function GET(req: NextRequest) {
         branchCode,
         purpose: 'public_booking',
         previewQueryParam: preview,
+        expectedTenantId: tenancy.tenantId,
       });
     } catch (err) {
       if (err instanceof PublicBookingBranchContextError) {

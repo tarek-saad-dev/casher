@@ -1,13 +1,8 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   isValidDate,
 } from '@/lib/publicBookingHelpers';
 import { extractPublicBranchCode } from '@/lib/branch/bookingQueueOwnership';
-import { publicBookingErrorResponse } from '@/lib/booking/publicBookingErrorCatalog';
-import {
-  publicBookingOptionsResponse,
-  PUBLIC_BOOKING_ROUTE_CORS,
-} from '@/lib/booking/publicBookingCors';
 import {
   PublicBookingBarberError,
   listPublicBookingBarbers,
@@ -17,17 +12,14 @@ import {
   gatePublicBookingRoute,
   finalizePublicBookingError,
   finalizePublicBookingJson,
+  publicBookingTenantOptionsResponse,
+  requirePublicBookingRouteTenancy,
 } from '@/lib/booking/publicBookingRouteGate';
 
 export const runtime = 'nodejs';
 
 export async function OPTIONS(req: NextRequest) {
-  const cors = PUBLIC_BOOKING_ROUTE_CORS['barbers'];
-  return publicBookingOptionsResponse({
-    request: req,
-    allowedMethods: [...cors.methods],
-    allowedHeaders: cors.headers,
-  });
+  return publicBookingTenantOptionsResponse(req, 'barbers');
 }
 
 /**
@@ -63,7 +55,15 @@ export async function GET(req: NextRequest) {
       return finalizePublicBookingError(req, gate, 'SERVICE_NOT_AVAILABLE_AT_BRANCH');
     }
 
+    // Global mode keeps the CUT widget's branch-less contract; other tenants name a branch.
+    const tenancy = await requirePublicBookingRouteTenancy(req, gate, {
+      branchCode,
+      allowCutCompat: true,
+    });
+    if (tenancy instanceof NextResponse) return tenancy;
+
     const result = await listPublicBookingBarbers({
+      tenantId: tenancy.tenantId,
       mode,
       branchCode,
       date: dateParam,

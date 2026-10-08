@@ -23,6 +23,12 @@ export const LEGACY_BOOTSTRAP_SEAMS = {
   'casher-boot-staging-smoke': 'staging smoke scripts target CASHER_BOOT by name',
   /** Operator CLI scripts that provision CASHER_BOOT branches by name (never request paths). */
   'casher-boot-operator-script': 'operator scripts provision CASHER_BOOT branches by name',
+  /**
+   * cutsaloon.com public booking widget calls that historically carried no branch code (global
+   * barbers, upcoming-by-phone). Only reachable when branchCode is absent AND the request Origin is
+   * absent or on CUT's legacy allowlist; every other tenant must name its branch.
+   */
+  'public-booking-cut-compat': 'CUT public booking widget predates branch-scoped tenancy',
 } as const;
 
 export type LegacyBootstrapSeam = keyof typeof LEGACY_BOOTSTRAP_SEAMS;

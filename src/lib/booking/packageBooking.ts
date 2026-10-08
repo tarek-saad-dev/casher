@@ -16,6 +16,7 @@ import {
   type ResolvedGroomPackageBooking,
 } from '@/lib/booking/groomPackageBooking';
 import type { PackageKind } from '@/lib/migrations/ensureServicePackages';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 
 export const PUBLIC_BOOKABLE_PACKAGE_KINDS: readonly PackageKind[] = ['groom', 'regular'];
 
@@ -30,6 +31,7 @@ export async function resolvePublicPackageBooking(args: {
     addonProIds: args.addonProIds,
     clientServiceIds: args.clientServiceIds,
     allowedKinds: PUBLIC_BOOKABLE_PACKAGE_KINDS,
+    tenantId: requireMasterDataTenantId(args.branchContext.tenantId, 'public package booking'),
   });
   if (pkg.packageKind !== 'regular') return pkg;
 

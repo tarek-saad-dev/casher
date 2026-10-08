@@ -1,32 +1,26 @@
-import { NextRequest } from 'next/server';
-import {
-  publicBookingOptionsResponse,
-  PUBLIC_BOOKING_ROUTE_CORS,
-} from '@/lib/booking/publicBookingCors';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   PublicCrossBranchAvailabilityError,
   getPublicCrossBranchBarberAvailability,
 } from '@/lib/booking/publicBookingCrossBranchAvailability';
+import { extractPublicBranchCode } from '@/lib/branch/bookingQueueOwnership';
 import {
   gatePublicBookingRoute,
   finalizePublicBookingError,
   finalizePublicBookingJson,
+  publicBookingTenantOptionsResponse,
+  requirePublicBookingRouteTenancy,
 } from '@/lib/booking/publicBookingRouteGate';
 
 export const runtime = 'nodejs';
 
 export async function OPTIONS(req: NextRequest) {
-  const cors = PUBLIC_BOOKING_ROUTE_CORS['cross-branch-availability'];
-  return publicBookingOptionsResponse({
-    request: req,
-    allowedMethods: [...cors.methods],
-    allowedHeaders: cors.headers,
-  });
+  return publicBookingTenantOptionsResponse(req, 'cross-branch-availability');
 }
 
 /**
  * POST /api/public/booking/barbers/[empId]/cross-branch-availability
- * Phase 10C — barber availability across all public bookable branches.
+ * Phase 10C — barber availability across all public bookable branches of the request tenant.
  */
 export async function POST(
   req: NextRequest,
@@ -44,7 +38,14 @@ export async function POST(
     void body.BranchID;
     void body.branchId;
 
+    const tenancy = await requirePublicBookingRouteTenancy(req, gate, {
+      branchCode: extractPublicBranchCode(new URL(req.url).searchParams, body),
+      allowCutCompat: true,
+    });
+    if (tenancy instanceof NextResponse) return tenancy;
+
     const result = await getPublicCrossBranchBarberAvailability({
+      tenantId: tenancy.tenantId,
       empId,
       serviceIds: body.serviceIds,
       dateFrom: body.dateFrom,

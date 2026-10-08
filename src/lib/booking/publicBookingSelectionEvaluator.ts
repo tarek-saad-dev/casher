@@ -188,6 +188,7 @@ function parseDayOffset(raw: unknown): 0 | 1 {
 
 async function loadEmpPublicIdentity(
   empId: number,
+  tenantId: string,
 ): Promise<{ nameAr: string; nameEn: string | null; imageUrl: string | null } | null> {
   const db = await getPool();
   const hasImageUrl = await ensureTblEmpImageUrlColumn(db);
@@ -201,9 +202,10 @@ async function loadEmpPublicIdentity(
   const r = await db
     .request()
     .input('empId', sql.Int, empId)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`
       SELECT EmpName, ISNULL(isActive,1) AS isActive, ${imageSelect}, ${nameEnSelect}
-      FROM dbo.TblEmp WHERE EmpID=@empId
+      FROM dbo.TblEmp WHERE EmpID=@empId AND TenantId = @tenantId
     `);
   const row = r.recordset[0];
   if (!row || !row.isActive) return null;
@@ -218,6 +220,7 @@ async function loadEmpPublicIdentity(
 
 async function loadEmpDisplaySortOrders(
   empIds: number[],
+  tenantId: string,
 ): Promise<Map<number, number>> {
   const map = new Map<number, number>();
   const unique = [...new Set(empIds.filter((id) => Number.isInteger(id) && id > 0))];
@@ -228,7 +231,7 @@ async function loadEmpDisplaySortOrders(
   const hasCol = await ensureTblEmpDisplaySortOrderColumn(db);
   if (!hasCol) return map;
 
-  const req = db.request();
+  const req = db.request().input('tenantId', sql.UniqueIdentifier, tenantId);
   const placeholders = unique
     .map((id, i) => {
       req.input(`e${i}`, sql.Int, id);
@@ -238,7 +241,7 @@ async function loadEmpDisplaySortOrders(
   const res = await req.query(`
     SELECT EmpID, DisplaySortOrder
     FROM dbo.TblEmp
-    WHERE EmpID IN (${placeholders})
+    WHERE EmpID IN (${placeholders}) AND TenantId = @tenantId
   `);
   for (const row of res.recordset) {
     map.set(Number(row.EmpID), coerceDisplaySortOrder(row.DisplaySortOrder));
@@ -362,6 +365,8 @@ export async function evaluatePublicBookingSelection(args: {
   previewQueryParam?: string | null;
   /** Internal smoke access only — public routes must never pass this. */
   auth?: InternalPreviewAuth | null;
+  /** DRVO-019: tenant resolved by the route; a branch of another tenant is BRANCH_NOT_FOUND. */
+  expectedTenantId?: string | null;
 }): Promise<PublicSelectionEvaluation> {
   const evaluatedAt = new Date().toISOString();
   const purpose = args.purpose;
@@ -386,6 +391,7 @@ export async function evaluatePublicBookingSelection(args: {
       branchCode: args.branchCode,
       purpose: branchPurpose,
       auth: args.auth ?? undefined,
+      expectedTenantId: args.expectedTenantId,
     });
   } catch (err) {
     if (err instanceof PublicBookingBranchContextError) {
@@ -501,7 +507,7 @@ export async function evaluatePublicBookingSelection(args: {
 
   if (mode === 'specific_barber') {
     if (!empId) throw new PublicBookingSelectionError('BARBER_NOT_FOUND');
-    const identity = await loadEmpPublicIdentity(empId);
+    const identity = await loadEmpPublicIdentity(empId, branchContext.tenantId);
     if (!identity) throw new PublicBookingSelectionError('BARBER_NOT_FOUND');
     specificBarber = {
       empId,
@@ -635,7 +641,7 @@ export async function evaluatePublicBookingSelection(args: {
         });
       }
     }
-    const sortOrders = await loadEmpDisplaySortOrders([...byEmp.keys()]);
+    const sortOrders = await loadEmpDisplaySortOrders([...byEmp.keys()], branchContext.tenantId);
     for (const [empId, row] of byEmp) {
       byEmp.set(empId, {
         ...row,

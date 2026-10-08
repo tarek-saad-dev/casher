@@ -25,6 +25,8 @@ export const PUBLIC_EXACT_ROUTES = [
  */
 export const PUBLIC_PREFIX_ROUTES = [
   '/api/public/',
+  // DRVO-019 hosted tenant booking page (/book/[branchCode]); page 404s unless the tenant has `booking`.
+  '/book/',
 ] as const;
 
 /**

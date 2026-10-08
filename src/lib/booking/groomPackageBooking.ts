@@ -199,14 +199,14 @@ export function parseGroomPackageMetadataNote(
   };
 }
 
-async function loadProRows(proIds: number[]): Promise<Map<number, ProRow>> {
+async function loadProRows(proIds: number[], tenantId: string | null): Promise<Map<number, ProRow>> {
   const map = new Map<number, ProRow>();
   const unique = [...new Set(proIds.filter((id) => Number.isInteger(id) && id > 0))];
   if (!unique.length) return map;
   const db = await getPool();
 
   // Bound IN list — package catalogs are small (typically < 20 ids).
-  const req = db.request();
+  const req = db.request().input('tenantId', sql.UniqueIdentifier, tenantId);
   const placeholders: string[] = [];
   unique.forEach((id, i) => {
     const key = `p${i}`;
@@ -220,8 +220,9 @@ async function loadProRows(proIds: number[]): Promise<Map<number, ProRow>> {
       ISNULL(p.isDeleted, 0) AS isDeleted,
       c.CatName, c.CatType
     FROM dbo.TblPro p
-    LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID
+    LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID AND c.TenantId = p.TenantId
     WHERE p.ProID IN (${placeholders.join(',')})
+      AND (@tenantId IS NULL OR p.TenantId = @tenantId)
   `);
 
   for (const row of result.recordset as Record<string, unknown>[]) {
@@ -252,10 +253,13 @@ export async function resolveGroomPackageBooking(args: {
   /** Optional client serviceIds — consistency check only */
   clientServiceIds?: unknown;
   allowedKinds?: readonly PackageKind[];
+  /** DRVO-019: public booking always scopes the package and its services to the branch tenant. */
+  tenantId?: string | null;
 }): Promise<ResolvedGroomPackageBooking> {
   const allowedKinds: readonly PackageKind[] = args.allowedKinds?.length
     ? args.allowedKinds
     : ['groom'];
+  const tenantId = args.tenantId ?? null;
   const packageId = parsePackageId(args.packageId);
   const addonProIds = parseIdList(args.addonProIds);
   const clientServiceIds =
@@ -267,11 +271,12 @@ export async function resolveGroomPackageBooking(args: {
   const pkgRes = await db
     .request()
     .input('PackageID', sql.Int, packageId)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`
       SELECT PackageID, NameEn, NameAr, PackageKind, PackagePrice, DurationMinutes,
              ISNULL(isDeleted, 0) AS isDeleted
       FROM dbo.TblServicePackage
-      WHERE PackageID = @PackageID
+      WHERE PackageID = @PackageID AND (@tenantId IS NULL OR TenantId = @tenantId)
     `);
   const pkg = pkgRes.recordset[0] as Record<string, unknown> | undefined;
   if (!pkg) throw new GroomPackageBookingError('PACKAGE_NOT_FOUND', { packageId });
@@ -305,10 +310,11 @@ export async function resolveGroomPackageBooking(args: {
   const itemsRes = await db
     .request()
     .input('PackageID', sql.Int, packageId)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`
       SELECT ProID, IsOptional, SortOrder
       FROM dbo.TblServicePackageItem
-      WHERE PackageID = @PackageID
+      WHERE PackageID = @PackageID AND (@tenantId IS NULL OR TenantId = @tenantId)
       ORDER BY SortOrder, PackageItemID
     `);
   const items = itemsRes.recordset as Array<{
@@ -331,7 +337,7 @@ export async function resolveGroomPackageBooking(args: {
 
   // Home visit exclusivity among addons
   const allProMetaNeeded = [...requiredIds, ...addonProIds, ...optionalIds];
-  const proMap = await loadProRows(allProMetaNeeded);
+  const proMap = await loadProRows(allProMetaNeeded, tenantId);
 
   const homeVisitProIds: number[] = [];
   for (const [id, row] of proMap) {

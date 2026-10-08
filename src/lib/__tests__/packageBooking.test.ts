@@ -17,7 +17,8 @@ vi.mock('@/lib/booking/bookingServiceDuration', () => ({
 
 import { resolvePublicPackageBooking } from '@/lib/booking/packageBooking';
 
-const branchContext = { branchCode: 'GLEEM', branchId: 1 } as never;
+const TENANT_ID = '11111111-1111-1111-1111-111111111111';
+const branchContext = { branchCode: 'GLEEM', branchId: 1, tenantId: TENANT_ID } as never;
 
 function line(serviceId: number, price: number, durationMinutes: number) {
   return { serviceId, nameAr: `خ${serviceId}`, nameEn: `S${serviceId}`, price, durationMinutes };
@@ -57,6 +58,14 @@ describe('resolvePublicPackageBooking', () => {
     resolveGroomPackageBooking.mockResolvedValue(resolvedPackage('groom'));
     await resolvePublicPackageBooking({ packageId: 1, branchContext });
     expect(resolveGroomPackageBooking.mock.calls[0][0].allowedKinds).toEqual(['groom', 'regular']);
+    expect(resolveGroomPackageBooking.mock.calls[0][0].tenantId).toBe(TENANT_ID);
+  });
+
+  it('refuses to resolve a package without the branch tenant', async () => {
+    await expect(
+      resolvePublicPackageBooking({ packageId: 1, branchContext: { branchCode: 'X', branchId: 9 } as never }),
+    ).rejects.toMatchObject({ name: 'TenantContextError' });
+    expect(resolveGroomPackageBooking).not.toHaveBeenCalled();
   });
 
   it('groom packages are returned unchanged (no branch catalog lookup)', async () => {
