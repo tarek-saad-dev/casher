@@ -31,6 +31,9 @@ export type ProcessPlatformOutboxResult = {
 };
 
 const MAX_ATTEMPTS = 5;
+// Delivery was activated after the DRVOWA connector rollout. Never replay
+// historical booking events that accumulated before this dispatcher existed.
+const DELIVERY_ACTIVATION_UTC = new Date('2026-10-08T23:15:00.000Z');
 
 async function claimBatch(batchSize: number): Promise<PlatformOutboxRow[]> {
   const pool = await getPool();
@@ -39,11 +42,13 @@ async function claimBatch(batchSize: number): Promise<PlatformOutboxRow[]> {
   try {
     const result = await new sql.Request(tx)
       .input('batchSize', sql.Int, Math.max(1, Math.min(50, Math.floor(batchSize))))
+      .input('activationUtc', sql.DateTime2, DELIVERY_ACTIVATION_UTC)
       .query<PlatformOutboxRow>(`
         ;WITH claim AS (
           SELECT TOP (@batchSize) Id
           FROM dbo.PlatformOutbox WITH (UPDLOCK, READPAST, ROWLOCK)
           WHERE Status = N'pending'
+            AND OccurredAt >= @activationUtc
             AND Attempts < 5
             AND EventType IN (
               N'booking.created',
@@ -111,10 +116,14 @@ async function markRetryOrDead(row: PlatformOutboxRow): Promise<'retried' | 'dea
 
 export async function recoverPlatformOutboxDelivering(): Promise<number> {
   const pool = await getPool();
-  const result = await pool.request().query(`
+  const result = await pool
+    .request()
+    .input('activationUtc', sql.DateTime2, DELIVERY_ACTIVATION_UTC)
+    .query(`
     UPDATE dbo.PlatformOutbox
     SET Status = N'pending'
     WHERE Status = N'delivering'
+      AND OccurredAt >= @activationUtc
       AND EventType IN (
         N'booking.created',
         N'booking.cancelled',
