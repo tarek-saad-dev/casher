@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
 import { ensureTblProImageUrlColumn, tblProImageUrlSelect } from '@/lib/migrations/ensureServiceImageUrl';
 import { invalidatePublicBookingServicesCache } from '@/lib/booking/publicBookingServices';
-import { requireTenantSession } from '@/lib/api-auth';
+import { authenticate, isAuthResult } from '@/lib/api-auth';
+import { isTenantCategory } from '@/lib/catalog/tenantCatalogGuards';
 
 /** Product retail categories (CatType may be wrong/missing — name is the safety net). */
 const PRODUCT_CATEGORY_NAME_PATTERNS = [
@@ -95,8 +96,9 @@ function toOpsService(row: ServiceRow) {
 // GET /api/services — flat list (legacy). Prefer GET /api/services/catalog for nested bilingual catalog.
 // Query: active=true (exclude deleted), bookable=true (salon services only, ops booking/queue).
 export async function GET(req: NextRequest) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const { searchParams } = new URL(req.url);
     const activeOnly = searchParams.get('active') === 'true';
@@ -105,7 +107,7 @@ export async function GET(req: NextRequest) {
     const db = await getPool();
     const hasImageUrl = await ensureTblProImageUrlColumn(db);
     const imageUrlCol = tblProImageUrlSelect(hasImageUrl);
-    const result = await db.request().query(`
+    const result = await db.request().input('tenantId', sql.UniqueIdentifier, auth.tenantId).query(`
       SELECT
         p.ProID, p.ProName, p.ProNameAr, p.SPrice1, p.Bonus,
         p.CatID, c.CatName, c.CatType,
@@ -115,12 +117,13 @@ export async function GET(req: NextRequest) {
         p.DurationMinutes,
         ${imageUrlCol}
       FROM [dbo].[TblPro] p
-      LEFT JOIN [dbo].[TblCat] c ON p.CatID = c.CatID
+      LEFT JOIN [dbo].[TblCat] c ON p.CatID = c.CatID AND c.TenantId = p.TenantId
       LEFT JOIN (
         SELECT ProID, COUNT(*) AS SalesCount
         FROM [dbo].[TblinvServDetail]
         GROUP BY ProID
       ) pop ON p.ProID = pop.ProID
+      WHERE p.TenantId = @tenantId
       ORDER BY p.CatID, ISNULL(pop.SalesCount, 0) DESC, p.ProName
     `);
 
@@ -156,8 +159,9 @@ export async function GET(req: NextRequest) {
 
 // POST /api/services — create a new service
 export async function POST(req: NextRequest) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const body = await req.json();
     const { ProName, ProNameAr, SPrice1, Bonus, CatID, isActive, ImageUrl } = body;
@@ -181,8 +185,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (CatID && !(await isTenantCategory(db, auth.tenantId, Number(CatID)))) {
+      return NextResponse.json({ error: 'التصنيف غير موجود' }, { status: 404 });
+    }
+
     const dbReq = db
       .request()
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
       .input('ProName', ProName.trim())
       .input('ProNameAr', ProNameAr?.trim() || null)
       .input('SPrice1', SPrice1)
@@ -195,11 +204,11 @@ export async function POST(req: NextRequest) {
     }
 
     const insertCols = hasImageUrl
-      ? '(ProName, ProNameAr, SPrice1, Bonus, CatID, isDeleted, ImageUrl)'
-      : '(ProName, ProNameAr, SPrice1, Bonus, CatID, isDeleted)';
+      ? '(TenantId, ProName, ProNameAr, SPrice1, Bonus, CatID, isDeleted, ImageUrl)'
+      : '(TenantId, ProName, ProNameAr, SPrice1, Bonus, CatID, isDeleted)';
     const insertVals = hasImageUrl
-      ? '(@ProName, @ProNameAr, @SPrice1, @Bonus, @CatID, @isDeleted, @ImageUrl)'
-      : '(@ProName, @ProNameAr, @SPrice1, @Bonus, @CatID, @isDeleted)';
+      ? '(@tenantId, @ProName, @ProNameAr, @SPrice1, @Bonus, @CatID, @isDeleted, @ImageUrl)'
+      : '(@tenantId, @ProName, @ProNameAr, @SPrice1, @Bonus, @CatID, @isDeleted)';
 
     const result = await dbReq.query(`
         INSERT INTO [dbo].[TblPro] ${insertCols}
@@ -211,8 +220,8 @@ export async function POST(req: NextRequest) {
           0 AS SalesCount,
           ${imageUrlCol}
         FROM [dbo].[TblPro] p
-        LEFT JOIN [dbo].[TblCat] c ON p.CatID = c.CatID
-        WHERE p.ProID = SCOPE_IDENTITY();
+        LEFT JOIN [dbo].[TblCat] c ON p.CatID = c.CatID AND c.TenantId = p.TenantId
+        WHERE p.ProID = SCOPE_IDENTITY() AND p.TenantId = @tenantId;
       `);
 
     const newService = result.recordset[0];

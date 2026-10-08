@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { lookupClientByMobile } from '@/lib/client/publicClientWebsite.service';
+import { resolvePublicCatalogTenantId } from '@/lib/catalog/publicCatalogTenant';
 import { isPublicClientWebsiteLookupRateLimited } from '@/lib/client/publicClientWebsiteRateLimit';
 
 export const runtime = 'nodejs';
@@ -26,7 +27,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const client = await lookupClientByMobile(mobile);
+    const tenantId = await resolvePublicCatalogTenantId(req.nextUrl.searchParams, 'GET /api/client/lookup');
+    const client = tenantId ? await lookupClientByMobile(tenantId, mobile) : null;
 
     if (!client) {
       return NextResponse.json({

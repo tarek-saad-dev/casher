@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { isAuthResult, requireDevelopmentAdmin } from '@/lib/api-auth';
-import { getPool } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
 
 export async function POST() {
   const __auth = await requireDevelopmentAdmin();
@@ -65,20 +65,20 @@ export async function POST() {
     
     for (const [englishName, arabicName] of updates) {
       await db.request()
-        .input('englishName', englishName)
+        .input('tenantId', sql.UniqueIdentifier, __auth.tenantId).input('englishName', englishName)
         .input('arabicName', arabicName)
         .query(`
           UPDATE [dbo].[TblPro] 
           SET [ProNameAr] = @arabicName 
-          WHERE [ProName] = @englishName AND [ProNameAr] IS NULL
+          WHERE [ProName] = @englishName AND [ProNameAr] IS NULL AND TenantId = @tenantId
         `);
     }
     
     // For any remaining services without Arabic names, use English as fallback
-    await db.request().query(`
+    await db.request().input('tenantId', sql.UniqueIdentifier, __auth.tenantId).query(`
       UPDATE [dbo].[TblPro] 
       SET [ProNameAr] = [ProName] 
-      WHERE [ProNameAr] IS NULL
+      WHERE [ProNameAr] IS NULL AND TenantId = @tenantId
     `);
     
     return NextResponse.json({ 

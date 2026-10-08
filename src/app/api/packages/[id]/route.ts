@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
-import { isAuthResult, requirePageAccess, requireTenantSession } from '@/lib/api-auth';
+import { authenticate, isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import {
+  PackageItemServiceNotFoundError,
   getServicePackageById,
   softDeleteServicePackage,
   updateServicePackage,
@@ -13,8 +14,9 @@ type RouteCtx = { params: Promise<{ id: string }> };
 
 // GET /api/packages/[id]
 export async function GET(_req: NextRequest, { params }: RouteCtx) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const { id } = await params;
     const packageId = parseInt(id, 10);
@@ -31,7 +33,7 @@ export async function GET(_req: NextRequest, { params }: RouteCtx) {
       );
     }
 
-    const pkg = await getServicePackageById(db, packageId);
+    const pkg = await getServicePackageById(db, auth.tenantId, packageId);
     if (!pkg) {
       return NextResponse.json({ error: 'الباكدج غير موجود' }, { status: 404 });
     }
@@ -70,12 +72,15 @@ export async function PUT(req: NextRequest, { params }: RouteCtx) {
       );
     }
 
-    const updated = await updateServicePackage(db, packageId, validated.data);
+    const updated = await updateServicePackage(db, auth.tenantId, packageId, validated.data);
     if (!updated) {
       return NextResponse.json({ error: 'الباكدج غير موجود' }, { status: 404 });
     }
     return NextResponse.json(updated);
   } catch (err: unknown) {
+    if (err instanceof PackageItemServiceNotFoundError) {
+      return NextResponse.json({ error: err.message }, { status: 404 });
+    }
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/packages/[id]] PUT error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
@@ -103,7 +108,7 @@ export async function DELETE(_req: NextRequest, { params }: RouteCtx) {
       );
     }
 
-    const ok = await softDeleteServicePackage(db, packageId);
+    const ok = await softDeleteServicePackage(db, auth.tenantId, packageId);
     if (!ok) {
       return NextResponse.json({ error: 'الباكدج غير موجود' }, { status: 404 });
     }

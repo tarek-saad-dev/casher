@@ -20,6 +20,7 @@ import {
   upsertEmployeeSchedule,
 } from '@/lib/hr/employee-hr-db';
 import { ensureEmployeeAdvanceMapping } from '@/lib/hr/employee-hr-advance';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 import { getEmployeesTargetSummaryBatch } from '@/lib/payroll/employee-target';
 import { ensureTblEmpImageUrlColumn } from '@/lib/migrations/ensureEmployeeImageUrl';
 import { ensureTblEmpArchivedColumn } from '@/lib/migrations/ensureEmployeeArchived';
@@ -161,6 +162,7 @@ export async function POST(req: NextRequest) {
 
     const name = String(body.empName).trim();
     const isActive = body.isActive !== false;
+    const tenantId = requireMasterDataTenantId(session.TenantId, 'POST /api/employees');
 
     const db = await getPool();
     const transaction = new sql.Transaction(db);
@@ -171,7 +173,7 @@ export async function POST(req: NextRequest) {
 
       if (isHrPayload && validation.normalized) {
         const dbCols = mapNormalizedToDbColumns(validation.normalized);
-        const { sql: insertSql, bind } = buildHrInsertQuery(name, isActive, dbCols);
+        const { sql: insertSql, bind } = buildHrInsertQuery(tenantId, name, isActive, dbCols);
         const insertReq = new sql.Request(transaction);
         bind(insertReq);
         const empRes = await insertReq.query(insertSql);
@@ -190,11 +192,12 @@ export async function POST(req: NextRequest) {
         }
       } else {
         const empRes = await new sql.Request(transaction)
+          .input('tenantId', sql.UniqueIdentifier, tenantId)
           .input('empName', sql.NVarChar(200), name)
           .input('isActive', sql.Bit, isActive ? 1 : 0)
           .query(`
-            INSERT INTO dbo.TblEmp (EmpName, isActive)
-            VALUES (@empName, @isActive);
+            INSERT INTO dbo.TblEmp (TenantId, EmpName, isActive)
+            VALUES (@tenantId, @empName, @isActive);
 
             SELECT EmpID, EmpName, isActive
             FROM dbo.TblEmp
@@ -245,6 +248,7 @@ export async function POST(req: NextRequest) {
 
       const { expINID, catName } = await ensureEmployeeAdvanceMapping(
         transaction,
+        tenantId,
         newEmpID,
         name,
       );

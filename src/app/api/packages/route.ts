@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
-import { isAuthResult, requirePageAccess, requireTenantSession } from '@/lib/api-auth';
+import { authenticate, isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import {
+  PackageItemServiceNotFoundError,
   createServicePackage,
   listServicePackages,
   validatePackageBody,
@@ -10,8 +11,9 @@ import { ensureServicePackagesTables } from '@/lib/migrations/ensureServicePacka
 
 // GET /api/packages?kind=regular|groom&active=true
 export async function GET(req: NextRequest) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const { searchParams } = new URL(req.url);
     const kind = searchParams.get('kind') ?? undefined;
@@ -21,12 +23,12 @@ export async function GET(req: NextRequest) {
     const ready = await ensureServicePackagesTables(db);
     if (!ready) {
       return NextResponse.json(
-        { error: 'جداول الباكدجات غير متوفرة — شغّل db/migrations/create-service-packages.sql' },
+        { error: 'جداول الباكدجات غير متوفرة — شغّل ترحيل DRVO رقم 10' },
         { status: 503 },
       );
     }
 
-    const packages = await listServicePackages(db, { kind, activeOnly });
+    const packages = await listServicePackages(db, auth.tenantId, { kind, activeOnly });
     return NextResponse.json(packages);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -51,14 +53,17 @@ export async function POST(req: NextRequest) {
     const ready = await ensureServicePackagesTables(db);
     if (!ready) {
       return NextResponse.json(
-        { error: 'جداول الباكدجات غير متوفرة — شغّل db/migrations/create-service-packages.sql' },
+        { error: 'جداول الباكدجات غير متوفرة — شغّل ترحيل DRVO رقم 10' },
         { status: 503 },
       );
     }
 
-    const created = await createServicePackage(db, validated.data);
+    const created = await createServicePackage(db, auth.tenantId, validated.data);
     return NextResponse.json(created, { status: 201 });
   } catch (err: unknown) {
+    if (err instanceof PackageItemServiceNotFoundError) {
+      return NextResponse.json({ error: err.message }, { status: 404 });
+    }
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/packages] POST error:', message);
     return NextResponse.json({ error: message }, { status: 500 });

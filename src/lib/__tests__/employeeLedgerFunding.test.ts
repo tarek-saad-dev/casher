@@ -26,10 +26,16 @@ function makeFakeDb(results: { recordset: unknown[] }[]) {
   };
 }
 
+vi.mock('@/platform/masterData/tenantScope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/masterData/tenantScope')>()),
+  resolveLegacyBranchTenantId: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+  tenantIdForBranchContext: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+}));
 vi.mock('@/lib/db', () => ({
   getPool: vi.fn(async () => makeFakeDb([])),
   allocateInvID: vi.fn(async (...args: unknown[]) => fakeAllocateInvID(...args)),
   sql: {
+    UniqueIdentifier: () => ({ type: 'uniqueidentifier' }),
     Int: () => ({ type: 'int' }),
     Date: () => ({ type: 'date' }),
     Decimal: () => ({ type: 'decimal' }),

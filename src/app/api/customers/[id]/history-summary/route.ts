@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
-import { requireTenantSession } from '@/lib/api-auth';
+import { authenticate, isAuthResult } from '@/lib/api-auth';
 
 interface SaleDetail {
   serviceName: string;
@@ -40,8 +40,9 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const { id } = await params;
     const clientID = parseInt(id);
@@ -54,10 +55,11 @@ export async function GET(
     // ═══════ 1. Customer basic info ═══════
     const customerResult = await db.request()
       .input('clientID', sql.Int, clientID)
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
       .query(`
         SELECT ClientID, Name, Phone, Mobile
         FROM [dbo].[TblClient]
-        WHERE ClientID = @clientID
+        WHERE ClientID = @clientID AND TenantId = @tenantId
       `);
 
     if (customerResult.recordset.length === 0) {

@@ -10,6 +10,7 @@ import {
   resolveOnboardingPlan,
 } from '@/platform/commercial/subscriptionService';
 import { DEFAULT_ONBOARDING_PLAN_CODE } from '@/platform/commercial/types';
+import { seedTenantMasterData } from '@/platform/masterData/seedTenantMasterData';
 import { publishPlatformOutboxEvent } from '@/platform/outbox/publisher';
 import { tenantLockResource } from '@/platform/tenant/tenantLockResource';
 import { TenantOnboardingError } from './errors';
@@ -351,6 +352,8 @@ export async function provisionTenant(
       actor: { actorUserId: actor.actorUserId },
       reason: 'onboarding',
     });
+
+    await seedTenantMasterData(tx, tenantId);
 
     await publishPlatformOutboxEvent(tx, {
       tenantId,

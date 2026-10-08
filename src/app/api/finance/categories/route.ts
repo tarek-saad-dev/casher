@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
-import { requireTenantSession } from '@/lib/api-auth';
+import { authenticate, isAuthResult } from "@/lib/api-auth";
 
 // GET /api/finance/categories?type=ايرادات|مصروفات&activeOnly=true
 export async function GET(req: NextRequest) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const { searchParams } = new URL(req.url);
     const type       = searchParams.get('type');
@@ -21,8 +22,8 @@ export async function GET(req: NextRequest) {
       FROM dbo.TblExpINCat
     `;
 
-    const conditions: string[] = [];
-    const request = db.request();
+    const conditions: string[] = ['TenantId = @tenantId'];
+    const request = db.request().input('tenantId', sql.UniqueIdentifier, auth.tenantId);
 
     if (type) {
       conditions.push('ExpINType = @type');
@@ -31,9 +32,7 @@ export async function GET(req: NextRequest) {
     if (activeOnly) {
       conditions.push('IsActive = 1');
     }
-    if (conditions.length > 0) {
-      query += ' WHERE ' + conditions.join(' AND ');
-    }
+    query += ' WHERE ' + conditions.join(' AND ');
     query += ' ORDER BY ExpINType, CatName';
 
     const result = await request.query(query);
@@ -49,8 +48,9 @@ export async function GET(req: NextRequest) {
 // Body: { CatName: string, ExpINType?: string }
 // ExpINType defaults to N'مصروفات' (expense). Use N'ايرادات' for income.
 export async function POST(req: NextRequest) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const body = await req.json();
     const { CatName, ExpINType } = body;
@@ -65,12 +65,13 @@ export async function POST(req: NextRequest) {
 
     const db = await getPool();
     const result = await db.request()
+      .input('tenantId',  sql.UniqueIdentifier, auth.tenantId)
       .input('CatName',   sql.NVarChar(200), String(CatName).trim())
       .input('ExpINType', sql.NVarChar(50),  catType)
       .query(`
-        INSERT INTO dbo.TblExpINCat (CatName, ExpINType)
+        INSERT INTO dbo.TblExpINCat (TenantId, CatName, ExpINType)
         OUTPUT INSERTED.ExpINID, INSERTED.CatName, INSERTED.ExpINType, INSERTED.IsActive
-        VALUES (@CatName, @ExpINType);
+        VALUES (@tenantId, @CatName, @ExpINType);
       `);
 
     return NextResponse.json(result.recordset[0], { status: 201 });

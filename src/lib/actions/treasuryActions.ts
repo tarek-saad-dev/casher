@@ -11,6 +11,7 @@ import { postTransferPair } from '@/apps/treasury/internal/postTransferPair';
 import type { TreasuryWritePorts } from '@/lib/treasuryComposition';
 import { now as businessClockNow } from '@/modules/operations/clock/BusinessClock';
 import { formatLegacyEndTime } from '@/modules/operations/infra/shiftMoveRecord';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 
 export interface TreasuryTransferInput {
   amount: number;
@@ -218,12 +219,14 @@ export async function executeTreasuryTransfer(
 
   // Validate payment methods exist
   log('Payment method lookup:start', { step: 'payment-method-lookup:start' });
+  const masterTenantId = requireMasterDataTenantId(input.treasuryPorts.tenantId, 'treasury.transfer');
   const pmCheck = await new sql.Request(connection)
     .input('fromPmId', sql.Int, fromPaymentMethodId)
     .input('toPmId', sql.Int, toPaymentMethodId)
+    .input('tenantId', sql.UniqueIdentifier, masterTenantId)
     .query(`
       SELECT PaymentID, PaymentMethod FROM dbo.TblPaymentMethods
-      WHERE PaymentID IN (@fromPmId, @toPmId)
+      WHERE PaymentID IN (@fromPmId, @toPmId) AND TenantId = @tenantId
     `);
   log('Payment method lookup:complete', { step: 'payment-method-lookup:complete' });
   if (pmCheck.recordset.length !== 2) {
@@ -259,18 +262,22 @@ export async function executeTreasuryTransfer(
   let transferExpenseCategory: number;
 
   log('Category lookup:start', { step: 'category-lookup:expense:start' });
-  const expCatResult = await new sql.Request(connection).query(`
-    SELECT TOP 1 ExpINID FROM [dbo].[TblExpINCat]
-    WHERE ExpINType = N'مصروفات' AND CatName LIKE N'%تحويل%'
-    ORDER BY ExpINID
-  `);
+  const expCatResult = await new sql.Request(connection)
+    .input('tenantId', sql.UniqueIdentifier, masterTenantId)
+    .query(`
+      SELECT TOP 1 ExpINID FROM [dbo].[TblExpINCat]
+      WHERE TenantId = @tenantId AND ExpINType = N'مصروفات' AND CatName LIKE N'%تحويل%'
+      ORDER BY ExpINID
+    `);
   if (expCatResult.recordset.length === 0) {
     log('Category lookup:create-expense', { step: 'category-lookup:expense:create' });
-    const insertCat = await new sql.Request(connection).query(`
-      INSERT INTO [dbo].[TblExpINCat] (CatName, ExpINType)
-      OUTPUT INSERTED.ExpINID
-      VALUES (N'تحويل بين طرق الدفع', N'مصروفات')
-    `);
+    const insertCat = await new sql.Request(connection)
+      .input('tenantId', sql.UniqueIdentifier, masterTenantId)
+      .query(`
+        INSERT INTO [dbo].[TblExpINCat] (TenantId, CatName, ExpINType)
+        OUTPUT INSERTED.ExpINID
+        VALUES (@tenantId, N'تحويل بين طرق الدفع', N'مصروفات')
+      `);
     transferExpenseCategory = insertCat.recordset[0].ExpINID;
     log('Created expense transfer category', { transferExpenseCategory });
   } else {
@@ -279,18 +286,22 @@ export async function executeTreasuryTransfer(
   log('Category lookup:complete', { step: 'category-lookup:expense:complete', transferExpenseCategory });
 
   log('Category lookup:start', { step: 'category-lookup:income:start' });
-  const incCatResult = await new sql.Request(connection).query(`
-    SELECT TOP 1 ExpINID FROM [dbo].[TblExpINCat]
-    WHERE ExpINType = N'ايرادات' AND CatName LIKE N'%تحويل%'
-    ORDER BY ExpINID
-  `);
+  const incCatResult = await new sql.Request(connection)
+    .input('tenantId', sql.UniqueIdentifier, masterTenantId)
+    .query(`
+      SELECT TOP 1 ExpINID FROM [dbo].[TblExpINCat]
+      WHERE TenantId = @tenantId AND ExpINType = N'ايرادات' AND CatName LIKE N'%تحويل%'
+      ORDER BY ExpINID
+    `);
   if (incCatResult.recordset.length === 0) {
     log('Category lookup:create-income', { step: 'category-lookup:income:create' });
-    const insertCat = await new sql.Request(connection).query(`
-      INSERT INTO [dbo].[TblExpINCat] (CatName, ExpINType)
-      OUTPUT INSERTED.ExpINID
-      VALUES (N'تحويل بين طرق الدفع', N'ايرادات')
-    `);
+    const insertCat = await new sql.Request(connection)
+      .input('tenantId', sql.UniqueIdentifier, masterTenantId)
+      .query(`
+        INSERT INTO [dbo].[TblExpINCat] (TenantId, CatName, ExpINType)
+        OUTPUT INSERTED.ExpINID
+        VALUES (@tenantId, N'تحويل بين طرق الدفع', N'ايرادات')
+      `);
     transferIncomeCategory = insertCat.recordset[0].ExpINID;
     log('Created income transfer category', { transferIncomeCategory });
   } else {

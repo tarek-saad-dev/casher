@@ -25,11 +25,17 @@ function makePoolRequest() {
   };
 }
 
+vi.mock('@/platform/masterData/tenantScope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/masterData/tenantScope')>()),
+  resolveLegacyBranchTenantId: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+  tenantIdForBranchContext: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+}));
 vi.mock('@/lib/db', () => ({
   getPool: vi.fn(async () => ({
     request: vi.fn(() => makePoolRequest()),
   })),
   sql: {
+    UniqueIdentifier: () => ({ type: 'uniqueidentifier' }),
     Int: () => ({ type: 'int' }),
     TinyInt: () => ({ type: 'tinyint' }),
     Bit: () => ({ type: 'bit' }),
@@ -61,7 +67,7 @@ vi.mock('@/lib/api-auth', async (importOriginal) =>
   (await import('@/lib/__tests__/helpers/tenantSessionAuthMock')).tenantSessionAuthMock(await importOriginal()),
 );
 vi.mock('@/lib/session', () => ({
-  getSession: vi.fn(async () => ({ UserID: 1, UserName: 'Admin', UserLevel: 1 })),
+  getSession: vi.fn(async () => ({ UserID: 1, UserName: 'Admin', UserLevel: 1, TenantId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' })),
 }));
 
 vi.mock('@/lib/payroll/branchPayrollPlan', () => ({
@@ -144,7 +150,7 @@ describe('POST /api/employees HR model', () => {
     const body = await res.json();
     expect(body.EmpID).toBe(99);
     expect(body.AdvanceExpINID).toBe(501);
-    expect(executedSql.some((s) => s.includes('INSERT INTO dbo.TblEmp (EmpName, isActive)'))).toBe(
+    expect(executedSql.some((s) => s.includes('INSERT INTO dbo.TblEmp (TenantId, EmpName, isActive)'))).toBe(
       true,
     );
     expect(executedSql.some((s) => s.includes('TblExpCatEmpMap'))).toBe(true);

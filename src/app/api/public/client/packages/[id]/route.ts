@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPublicPackageById } from '@/lib/catalog/publicPackagesCatalog';
+import { resolvePublicCatalogTenantId } from '@/lib/catalog/publicCatalogTenant';
 
 export const runtime = 'nodejs';
 
@@ -26,7 +27,7 @@ export async function OPTIONS(): Promise<NextResponse> {
 /**
  * GET /api/public/client/packages/:id
  */
-export async function GET(_req: NextRequest, { params }: RouteCtx) {
+export async function GET(req: NextRequest, { params }: RouteCtx) {
   try {
     const { id } = await params;
     const packageId = parseInt(id, 10);
@@ -37,7 +38,11 @@ export async function GET(_req: NextRequest, { params }: RouteCtx) {
       );
     }
 
-    const pkg = await getPublicPackageById(packageId);
+    const tenantId = await resolvePublicCatalogTenantId(
+      new URL(req.url).searchParams,
+      '/api/public/client/packages/[id]',
+    );
+    const pkg = tenantId ? await getPublicPackageById(tenantId, packageId) : null;
     if (!pkg) {
       return NextResponse.json(
         { ok: false, error: 'Package not found', code: 'NOT_FOUND' },

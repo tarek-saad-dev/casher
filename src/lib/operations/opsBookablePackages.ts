@@ -35,6 +35,7 @@ function unavailableReasonFor(err: unknown): string | null {
 
 export async function listOpsBookablePackages(args: {
   branchCode: string;
+  tenantId: string;
   auth: InternalPreviewAuth;
 }): Promise<{ branchCode: string; packages: OpsBookablePackage[] }> {
   const branchContext = await resolvePublicBookingBranchContext({
@@ -42,7 +43,7 @@ export async function listOpsBookablePackages(args: {
     purpose: 'internal_preview',
     auth: args.auth,
   });
-  const catalog = await getPublicPackagesCatalog();
+  const catalog = await getPublicPackagesCatalog({ tenantId: args.tenantId });
 
   const packages = await Promise.all(
     catalog.packages.map(async (pkg): Promise<OpsBookablePackage> => {

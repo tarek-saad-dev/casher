@@ -2,6 +2,7 @@ import 'server-only';
 import type { Transaction } from 'mssql';
 import type { SchedulingPortHooks } from '@/apps/booking/internal/schedulingPortAdapter';
 import { upsertCustomer } from '@/lib/publicBookingHelpers';
+import { resolveLegacyBranchTenantId } from '@/platform/masterData/tenantScope';
 import {
   assertEmployeeIntervalAvailable,
   ScheduleConflictError,
@@ -22,6 +23,7 @@ export async function bridgeUpsertCustomer(
   tx: Transaction,
   customerName: string,
   customerPhone: string,
+  branchId: number,
 ): Promise<number> {
   if (ctx.schedulingPortHooks) {
     return ctx.schedulingPortHooks.upsertCustomer(tx, {
@@ -29,7 +31,8 @@ export async function bridgeUpsertCustomer(
       displayName: customerName,
     });
   }
-  return upsertCustomer(customerName, customerPhone, tx);
+  const tenantId = await resolveLegacyBranchTenantId(branchId, tx);
+  return upsertCustomer(customerName, customerPhone, tx, tenantId);
 }
 
 function rethrowWorkforceLockTimeout(err: unknown): never {

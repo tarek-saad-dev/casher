@@ -177,6 +177,7 @@ describe('DRVO rollout resolver precedence', () => {
       'booking',
       'operational-calendar',
       'platform-commercial',
+      'platform-master-data',
       'pos',
       'pos-sale-treasury',
       'pos-sale-treasury-mutation',

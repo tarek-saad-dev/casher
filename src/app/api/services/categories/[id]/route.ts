@@ -1,7 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { getPool } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
 import { ensureTblCatSortOrderColumn } from '@/lib/migrations/ensureCategorySortOrder';
-import { requireTenantSession } from '@/lib/api-auth';
+import { authenticate, isAuthResult } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -10,8 +10,9 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const { id } = await params;
     const categoryId = parseInt(id);
@@ -31,7 +32,9 @@ export async function PUT(
     const hasSortOrder = await ensureTblCatSortOrderColumn(db);
 
     const sets: string[] = [];
-    const request = db.request().input('CatID', categoryId);
+    const request = db.request()
+      .input('CatID', categoryId)
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId);
 
     if (CatName !== undefined) {
       sets.push('CatName = @CatName');
@@ -58,7 +61,7 @@ export async function PUT(
       UPDATE [dbo].[TblCat]
       SET ${sets.join(', ')}
       OUTPUT ${outputCols}
-      WHERE CatID = @CatID;
+      WHERE CatID = @CatID AND TenantId = @tenantId;
     `);
 
     if (result.recordset.length === 0) {
@@ -70,10 +73,11 @@ export async function PUT(
     const serviceCountResult = await db
       .request()
       .input('CatID', categoryId)
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
       .query(`
         SELECT COUNT(*) AS ServiceCount
         FROM [dbo].[TblPro]
-        WHERE CatID = @CatID AND isDeleted = 0
+        WHERE CatID = @CatID AND TenantId = @tenantId AND isDeleted = 0
       `);
 
     return NextResponse.json({
@@ -94,8 +98,9 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const { id } = await params;
     const categoryId = parseInt(id);
@@ -109,25 +114,31 @@ export async function DELETE(
     const categoryResult = await db
       .request()
       .input('CatID', categoryId)
-      .query(`SELECT CatID FROM [dbo].[TblCat] WHERE CatID = @CatID`);
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
+      .query(`SELECT CatID FROM [dbo].[TblCat] WHERE CatID = @CatID AND TenantId = @tenantId`);
 
     if (categoryResult.recordset.length === 0) {
       return NextResponse.json({ error: 'الفئة غير موجودة' }, { status: 404 });
     }
 
-    await db
-      .request()
-      .input('CatID', categoryId)
-      .query(`
-        UPDATE [dbo].[TblPro]
-        SET CatID = NULL
-        WHERE CatID = @CatID
-      `);
+    const transaction = new sql.Transaction(db);
+    await transaction.begin();
+    try {
+      await new sql.Request(transaction)
+        .input('CatID', sql.Int, categoryId)
+        .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
+        .query(`
+          UPDATE [dbo].[TblPro]
+          SET CatID = NULL
+          WHERE CatID = @CatID AND TenantId = @tenantId;
 
-    await db
-      .request()
-      .input('CatID', categoryId)
-      .query(`DELETE FROM [dbo].[TblCat] WHERE CatID = @CatID`);
+          DELETE FROM [dbo].[TblCat] WHERE CatID = @CatID AND TenantId = @tenantId;
+        `);
+      await transaction.commit();
+    } catch (err) {
+      await transaction.rollback();
+      throw err;
+    }
 
     return NextResponse.json({ success: true });
   } catch (err: unknown) {

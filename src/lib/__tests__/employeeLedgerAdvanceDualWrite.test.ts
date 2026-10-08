@@ -25,10 +25,16 @@ function makeFakeDb(results: { recordset: unknown[] }[]) {
   };
 }
 
+vi.mock('@/platform/masterData/tenantScope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/masterData/tenantScope')>()),
+  resolveLegacyBranchTenantId: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+  tenantIdForBranchContext: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+}));
 vi.mock('@/lib/db', () => ({
   getPool: vi.fn(async () => makeFakeDb([])),
   allocateInvID: vi.fn(async () => 1001),
   sql: {
+    UniqueIdentifier: () => ({ type: 'uniqueidentifier' }),
     Int: () => ({ type: 'int' }),
     Date: () => ({ type: 'date' }),
     Decimal: () => ({ type: 'decimal' }),
@@ -60,7 +66,7 @@ vi.mock('@/lib/db', () => ({
 }));
 
 vi.mock('@/lib/session', () => ({
-  getSession: vi.fn(async () => ({ UserID: 1, UserName: 'Admin', UserLevel: 1 })),
+  getSession: vi.fn(async () => ({ UserID: 1, UserName: 'Admin', UserLevel: 1, TenantId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' })),
 }));
 
 vi.mock('crypto', () => ({

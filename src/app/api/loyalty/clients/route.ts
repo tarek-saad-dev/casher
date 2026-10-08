@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import { authenticate, isAuthResult } from '@/lib/api-auth';
 import type { LoyaltyClientListItem } from '@/lib/types';
 import { requireTenantSession } from '@/lib/api-auth';
 
@@ -13,8 +14,9 @@ export const runtime = 'nodejs';
 //   - page: page number (default 1)
 //   - limit: items per page (default 20)
 export async function GET(req: NextRequest) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search') || '';
@@ -27,9 +29,10 @@ export async function GET(req: NextRequest) {
     const db = await getPool();
 
     // Build WHERE clause
-    const whereConditions: string[] = [];
-    
+    const whereConditions: string[] = ['c.TenantId = @tenantId'];
+
     const bind = (r: ReturnType<typeof db.request>) => {
+      r.input('tenantId', sql.UniqueIdentifier, auth.tenantId);
       if (search.trim()) {
         r.input('searchLike', sql.NVarChar(200), `%${search.trim()}%`);
         const searchNum = parseInt(search, 10);
@@ -56,9 +59,7 @@ export async function GET(req: NextRequest) {
       whereConditions.push(`cl.ClientLoyaltyID IS NOT NULL`);
     }
 
-    const whereClause = whereConditions.length > 0 
-      ? `WHERE ${whereConditions.join(' AND ')}` 
-      : '';
+    const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
 
     // Get total count
     const countQuery = `

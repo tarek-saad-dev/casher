@@ -27,6 +27,7 @@ describe('queue customer port', () => {
       { queuePortHooks: hooks as never },
       tx,
       { name: '  Nour  ', phone: ' 01012345678 ' },
+      4,
     );
 
     expect(result).toEqual({
@@ -40,6 +41,7 @@ describe('queue customer port', () => {
       tx,
       'Nour',
       '01012345678',
+      4,
     );
   });
 

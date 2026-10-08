@@ -11,6 +11,8 @@ import {
 import { scheduleEmployeeAdvanceWhatsApp } from '@/lib/services/employeeAdvanceWhatsAppNotify';
 import { getCairoInvTimeDotStr } from '@/lib/businessDate';
 import { branchErrorResponse } from '@/lib/branch/operationalGates';
+import { ensureTenantFinanceCategory } from '@/platform/masterData/financeCategories';
+import { tenantIdForBranchContext } from '@/platform/masterData/tenantScope';
 
 // GET /api/deductions — List employee deductions with optional filters
 export async function GET(req: NextRequest) {
@@ -155,8 +157,10 @@ export async function POST(req: NextRequest) {
     }
 
     // ──── Get employee info and advance category ────
+    const tenantId = await tenantIdForBranchContext(gated.branch);
     const empResult = await db.request()
       .input('employeeId', sql.Int, body.employeeId)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
       .query(`
         SELECT e.EmpID, e.EmpName, 
                adv.ExpINID AS AdvanceExpINID, adv.CatName AS AdvanceCatName
@@ -164,12 +168,12 @@ export async function POST(req: NextRequest) {
         OUTER APPLY (
           SELECT TOP 1 m.ExpINID, cat.CatName
           FROM dbo.TblExpCatEmpMap m
-          JOIN dbo.TblExpINCat cat ON cat.ExpINID = m.ExpINID
+          JOIN dbo.TblExpINCat cat ON cat.ExpINID = m.ExpINID AND cat.TenantId = e.TenantId
           WHERE m.EmpID = e.EmpID AND m.TxnKind = N\'advance\' AND m.IsActive = 1
             AND cat.ExpINType = N'مصروفات'
           ORDER BY m.ModifiedDate DESC, m.ID DESC
         ) adv
-        WHERE e.EmpID = @employeeId AND ISNULL(e.isActive, 1) = 1
+        WHERE e.EmpID = @employeeId AND e.TenantId = @tenantId AND ISNULL(e.isActive, 1) = 1
       `);
 
     if (empResult.recordset.length === 0) {
@@ -182,30 +186,13 @@ export async function POST(req: NextRequest) {
     }
 
     // ──── Get or create "معادلة" income category ────
-    let settlementExpINID: number = 0;
     const settlementCatName = 'معادلة';
-    
-    const existSettlementCat = await db.request()
-      .input('catName', sql.NVarChar(200), settlementCatName)
-      .input('expType', sql.NVarChar(50), 'ايرادات')
-      .query(`
-        SELECT ExpINID FROM dbo.TblExpINCat
-        WHERE CatName = @catName AND ExpINType = @expType
-      `);
-
-    if (existSettlementCat.recordset.length > 0) {
-      settlementExpINID = existSettlementCat.recordset[0].ExpINID;
-    } else {
-      const catRes = await db.request()
-        .input('catName', sql.NVarChar(200), settlementCatName)
-        .input('expType', sql.NVarChar(50), 'ايرادات')
-        .query(`
-          INSERT INTO dbo.TblExpINCat (CatName, ExpINType)
-          OUTPUT INSERTED.ExpINID
-          VALUES (@catName, @expType)
-        `);
-      settlementExpINID = catRes.recordset[0].ExpINID;
-    }
+    const settlementExpINID = await ensureTenantFinanceCategory(
+      db,
+      tenantId,
+      settlementCatName,
+      'ايرادات',
+    );
 
     // ──── Prepare values ────
     const amount = Math.max(0, body.amount);

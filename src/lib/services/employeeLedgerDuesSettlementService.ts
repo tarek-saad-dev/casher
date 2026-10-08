@@ -4,6 +4,7 @@ import { getPool, sql, allocateInvID } from '@/lib/db';
 import { isEmployeeLedgerDualWriteEnabled } from '@/lib/employeeLedgerConfig';
 import { getMonthDateRange, roundMoney } from '@/lib/reportMonthUtils';
 import { ensureEmployeeAdvanceMapping } from '@/lib/hr/employee-hr-advance';
+import { resolveLegacyBranchTenantId } from '@/platform/masterData/tenantScope';
 import {
   EmployeeLedgerDualWriteError,
   EMP_LEDGER_REF_TYPE_CASH_MOVE,
@@ -209,13 +210,15 @@ export async function executeEmployeeDuesSettlement(params: {
   }
 
   const db = await getPool();
+  const tenantId = await resolveLegacyBranchTenantId(params.branchId);
 
   const empResult = await db.request()
     .input('empId', sql.Int, params.empId)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`
       SELECT EmpID, EmpName
       FROM dbo.TblEmp
-      WHERE EmpID = @empId AND ISNULL(isActive, 1) = 1
+      WHERE EmpID = @empId AND TenantId = @tenantId AND ISNULL(isActive, 1) = 1
     `);
   if (empResult.recordset.length === 0) {
     throw new EmployeeLedgerDuesSettlementError('الموظف غير موجود أو غير نشط');
@@ -225,10 +228,11 @@ export async function executeEmployeeDuesSettlement(params: {
 
   const pmResult = await db.request()
     .input('paymentMethodId', sql.Int, params.paymentMethodId)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`
       SELECT PaymentID
       FROM dbo.TblPaymentMethods
-      WHERE PaymentID = @paymentMethodId
+      WHERE PaymentID = @paymentMethodId AND TenantId = @tenantId
     `);
   if (pmResult.recordset.length === 0) {
     throw new EmployeeLedgerDuesSettlementError('طريقة الدفع غير موجودة');
@@ -292,6 +296,7 @@ export async function executeEmployeeDuesSettlement(params: {
 
     const { expINID } = await ensureEmployeeAdvanceMapping(
       transaction,
+      tenantId,
       params.empId,
       employeeName,
     );

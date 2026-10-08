@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { Transaction } from 'mssql';
 import { getPool, sql } from '@/lib/db';
 import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import {
@@ -27,19 +28,22 @@ function toSessionUser(auth: {
   };
 }
 
-async function loadServiceRow(proId: number, connection?: sql.Transaction) {
+async function loadServiceRow(tenantId: string, proId: number, connection?: Transaction) {
   const pool = await getPool();
   const req = connection ? new sql.Request(connection) : pool.request();
 
-  const result = await req.input('ProID', sql.Int, proId).query(`
+  const result = await req
+    .input('ProID', sql.Int, proId)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .query(`
     SELECT
       p.ProID, p.ProName, p.ProNameAr, p.SPrice1, p.Bonus,
       p.CatID, c.CatName, c.CatType,
       ISNULL(p.ProType, '') AS ProType,
       p.isDeleted, p.DurationMinutes
     FROM dbo.TblPro p
-    LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID
-    WHERE p.ProID = @ProID
+    LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID AND c.TenantId = p.TenantId
+    WHERE p.ProID = @ProID AND p.TenantId = @tenantId
   `);
   return (result.recordset[0] as Record<string, unknown> | undefined) ?? null;
 }
@@ -63,7 +67,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'معرف الخدمة غير صالح' }, { status: 400 });
     }
 
-    const existing = await loadServiceRow(serviceId);
+    const existing = await loadServiceRow(auth.tenantId, serviceId);
     if (!existing) {
       return NextResponse.json({ error: 'الخدمة غير موجودة' }, { status: 404 });
     }
@@ -105,24 +109,25 @@ export async function PATCH(
       request: req,
       actionMethod: 'PATCH',
       endpointPath: `/api/services/${serviceId}/restore`,
-      loadOldData: async (tx) => loadServiceRow(serviceId, tx),
+      loadOldData: async (tx) => loadServiceRow(auth.tenantId, serviceId, tx),
       execute: async (tx) => {
         const update = await new sql.Request(tx)
           .input('ProID', sql.Int, serviceId)
+          .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
           .query(`
             UPDATE dbo.TblPro
             SET isDeleted = 0
-            WHERE ProID = @ProID AND isDeleted = 1;
+            WHERE ProID = @ProID AND TenantId = @tenantId AND isDeleted = 1;
 
             SELECT @@ROWCOUNT AS Affected;
           `);
         const affected = Number(update.recordset?.[0]?.Affected ?? 0);
         return { affected };
       },
-      loadNewData: async (tx) => loadServiceRow(serviceId, tx),
+      loadNewData: async (tx) => loadServiceRow(auth.tenantId, serviceId, tx),
     });
 
-    const restored = await loadServiceRow(serviceId);
+    const restored = await loadServiceRow(auth.tenantId, serviceId);
     invalidatePublicBookingServicesCache();
 
     const eligibility = restored

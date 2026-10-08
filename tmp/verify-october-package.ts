@@ -45,7 +45,7 @@ async function main() {
   };
 
   // What GET /api/pos/packages returns
-  const cat = await getPublicPackagesCatalog();
+  const cat = await getPublicPackagesCatalog({ tenantId: await (await import('../src/platform/tenant/legacyBootstrapSeam')).resolveLegacyBootstrapTenantId('casher-boot-operator-script') });
   const oct = cat.packages.find((p) => p.nameEn === 'October Package');
   check(!!oct, 'POS catalog contains October Package');
   check(oct?.price === 333, `October price=333 (got ${oct?.price})`);

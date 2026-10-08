@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
-import { requireTenantSession } from '@/lib/api-auth';
+import { authenticate, isAuthResult } from '@/lib/api-auth';
 
 // GET /api/payment-methods
 export async function GET() {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const db = await getPool();
 
@@ -19,26 +20,20 @@ export async function GET() {
     } catch { /* settings table may not exist yet */ }
 
     // Exclude the internal clearing account by ID (0 never matches a real ID)
-    try {
-      const result = await db.request()
-        .input('clearingId', sql.Int, clearingId)
-        .query(`
-          SELECT PaymentID, PaymentMethod
-          FROM [dbo].[TblPaymentMethods]
-          WHERE PaymentID <> @clearingId
-          ORDER BY PaymentID
-        `);
-      const rows = result.recordset.map((r: { PaymentID: number; PaymentMethod: string }) => ({
-        ID: r.PaymentID,
-        Name: r.PaymentMethod,
-      }));
-      return NextResponse.json(rows);
-    } catch {
-      return NextResponse.json([
-        { ID: 1, Name: 'كاش' },
-        { ID: 2, Name: 'فيزا' },
-      ]);
-    }
+    const result = await db.request()
+      .input('clearingId', sql.Int, clearingId)
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
+      .query(`
+        SELECT PaymentID, PaymentMethod
+        FROM [dbo].[TblPaymentMethods]
+        WHERE TenantId = @tenantId AND PaymentID <> @clearingId
+        ORDER BY PaymentID
+      `);
+    const rows = result.recordset.map((r: { PaymentID: number; PaymentMethod: string }) => ({
+      ID: r.PaymentID,
+      Name: r.PaymentMethod,
+    }));
+    return NextResponse.json(rows);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/payment-methods] GET error:', message);

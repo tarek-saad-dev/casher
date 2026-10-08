@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { validateCustomerSource } from '@/lib/customerSource';
 import { getUserFriendlyError } from '@/lib/db';
-import { requireTenantSession } from '@/lib/api-auth';
+import { authenticate, isAuthResult } from '@/lib/api-auth';
 
 type Ctx = { params: Promise<{ id: string }> };
 
 // PATCH /api/customers/[id] — update only provided fields (partial update)
 export async function PATCH(req: NextRequest, { params }: Ctx) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const { id } = await params;
     const clientID = parseInt(id);
@@ -57,7 +58,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 
     // Build dynamic SET clause — only update fields that were sent
     const setClauses: string[] = [];
-    const request = db.request().input('clientID', sql.Int, clientID);
+    const request = db.request()
+      .input('clientID', sql.Int, clientID)
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId);
 
     if (rawName !== undefined) {
       setClauses.push('[Name] = @name');
@@ -95,7 +98,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     const updateResult = await request.query(`
       UPDATE [dbo].[TblClient]
       SET ${setClauses.join(', ')}
-      WHERE ClientID = @clientID
+      WHERE ClientID = @clientID AND TenantId = @tenantId
     `);
 
     const rowsAffected = updateResult.rowsAffected?.[0] ?? 0;
@@ -108,11 +111,12 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     // Fetch the updated customer to return the actual DB state
     const selectResult = await db.request()
       .input('clientID2', sql.Int, clientID)
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
       .query(`
         SELECT ClientID, [Name], Mobile, Phone, BirthDate, Address, Notes,
                RegisterDate, CameFrom, CameFromDetails, ReferralCode
         FROM [dbo].[TblClient]
-        WHERE ClientID = @clientID2
+        WHERE ClientID = @clientID2 AND TenantId = @tenantId
       `);
 
     const updatedCustomer = selectResult.recordset[0] ?? null;

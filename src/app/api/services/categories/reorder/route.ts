@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { ensureTblCatSortOrderColumn } from '@/lib/migrations/ensureCategorySortOrder';
 import { invalidatePublicBookingServicesCache } from '@/lib/booking/publicBookingServices';
-import { requireTenantSession } from '@/lib/api-auth';
+import { authenticate, isAuthResult } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -12,8 +12,9 @@ export const runtime = 'nodejs';
  * Assigns SortOrder = 10, 20, 30, ...
  */
 export async function PUT(req: NextRequest) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const body = await req.json();
     const categoryIds = body?.categoryIds;
@@ -53,7 +54,9 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    const existing = await db.request().query(`SELECT CatID FROM [dbo].[TblCat]`);
+    const existing = await db.request()
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
+      .query(`SELECT CatID FROM [dbo].[TblCat] WHERE TenantId = @tenantId`);
     const existingIds = new Set(
       existing.recordset.map((r: { CatID: number }) => Number(r.CatID)),
     );
@@ -75,10 +78,11 @@ export async function PUT(req: NextRequest) {
         await new sql.Request(transaction)
           .input('CatID', sql.Int, ids[i])
           .input('SortOrder', sql.Int, sortOrder)
+          .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
           .query(`
             UPDATE [dbo].[TblCat]
             SET SortOrder = @SortOrder
-            WHERE CatID = @CatID
+            WHERE CatID = @CatID AND TenantId = @tenantId
           `);
       }
       await transaction.commit();
@@ -87,7 +91,7 @@ export async function PUT(req: NextRequest) {
       throw err;
     }
 
-    const result = await db.request().query(`
+    const result = await db.request().input('tenantId', sql.UniqueIdentifier, auth.tenantId).query(`
       SELECT
         c.CatID,
         c.CatName,
@@ -97,9 +101,10 @@ export async function PUT(req: NextRequest) {
       LEFT JOIN (
         SELECT CatID, COUNT(*) AS ServiceCount
         FROM [dbo].[TblPro]
-        WHERE isDeleted = 0
+        WHERE isDeleted = 0 AND TenantId = @tenantId
         GROUP BY CatID
       ) p ON c.CatID = p.CatID
+      WHERE c.TenantId = @tenantId
       ORDER BY c.SortOrder, c.CatName
     `);
 

@@ -12,6 +12,7 @@
 import { getPool, sql } from "@/lib/db";
 import { NextRequest } from "next/server";
 import type { Transaction } from "mssql";
+import { requireMasterDataTenantId } from "@/platform/masterData/tenantScope";
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 
@@ -400,8 +401,10 @@ export async function getGlobalTimingDefaults(opts?: {
 export async function upsertCustomer(
   name: string,
   phone: string | null | undefined,
-  transaction?: import('mssql').Transaction,
+  transaction: import('mssql').Transaction | undefined,
+  tenantId: string,
 ): Promise<number> {
+  const tid = requireMasterDataTenantId(tenantId, 'upsertCustomer');
   const db = (transaction ?? (await getPool())) as
     | Awaited<ReturnType<typeof getPool>>
     | import('mssql').Transaction;
@@ -409,13 +412,14 @@ export async function upsertCustomer(
   const usablePhone = isUsableCustomerPhone(cleanedPhone) ? cleanedPhone : '';
 
   const req = () =>
-    transaction ? new sql.Request(transaction) : (db as Awaited<ReturnType<typeof getPool>>).request();
+    (transaction ? new sql.Request(transaction) : (db as Awaited<ReturnType<typeof getPool>>).request())
+      .input('tenantId', sql.UniqueIdentifier, tid);
 
   if (usablePhone) {
     const existing = await req()
       .input('mobile', sql.NVarChar, usablePhone)
       .query(
-        `SELECT TOP 1 ClientID FROM [dbo].[TblClient] WHERE Mobile = @mobile`,
+        `SELECT TOP 1 ClientID FROM [dbo].[TblClient] WHERE TenantId = @tenantId AND Mobile = @mobile`,
       );
 
     if (existing.recordset.length > 0) {
@@ -427,9 +431,9 @@ export async function upsertCustomer(
     const inserted = await req()
       .input('name', sql.NVarChar, name.trim())
       .input('mobile', sql.NVarChar, usablePhone || null).query(`
-      INSERT INTO [dbo].[TblClient] ([Name], Mobile, RegisterDate)
+      INSERT INTO [dbo].[TblClient] (TenantId, [Name], Mobile, RegisterDate)
       OUTPUT INSERTED.ClientID
-      VALUES (@name, @mobile, GETDATE())
+      VALUES (@tenantId, @name, @mobile, GETDATE())
     `);
     return inserted.recordset[0].ClientID as number;
   } catch (err: unknown) {
@@ -437,7 +441,7 @@ export async function upsertCustomer(
     if (usablePhone) {
       const again = await req()
         .input('mobile', sql.NVarChar, usablePhone)
-        .query(`SELECT TOP 1 ClientID FROM [dbo].[TblClient] WHERE Mobile = @mobile`);
+        .query(`SELECT TOP 1 ClientID FROM [dbo].[TblClient] WHERE TenantId = @tenantId AND Mobile = @mobile`);
       if (again.recordset[0]?.ClientID) return again.recordset[0].ClientID as number;
     }
     throw err;

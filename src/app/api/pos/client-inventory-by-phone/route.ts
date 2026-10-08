@@ -10,7 +10,7 @@ import type {
 } from "@/lib/store/store.types";
 import { getClientInventory } from "@/lib/store/inventory.service";
 import { getPool, sql } from "@/lib/db";
-import { requireTenantSession } from '@/lib/api-auth';
+import { authenticate, isAuthResult } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 
@@ -42,8 +42,9 @@ function normalizePhone(phone: string): string {
 export async function GET(
   req: NextRequest,
 ): Promise<NextResponse<POSClientInventoryResponse | StoreErrorResponse>> {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession as NextResponse<StoreErrorResponse>;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth as NextResponse<StoreErrorResponse>;
+
   try {
     const { searchParams } = new URL(req.url);
     const phoneParam = searchParams.get("phone");
@@ -69,10 +70,11 @@ export async function GET(
     const clientResult = await db
       .request()
       .input("phone", sql.NVarChar(20), phone)
+      .input("tenantId", sql.UniqueIdentifier, auth.tenantId)
       .query(`
         SELECT ClientID, Name
         FROM [dbo].[TblClient]
-        WHERE Mobile = @phone
+        WHERE TenantId = @tenantId AND Mobile = @phone
       `);
 
     if (clientResult.recordset.length === 0) {

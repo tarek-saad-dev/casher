@@ -13,6 +13,7 @@ import { getBranchByCode } from '@/lib/branch/repository';
 import { PublicBookingBranchContextError } from '@/lib/booking/publicBookingBranchContext';
 import { listOpsBookablePackages } from '@/lib/operations/opsBookablePackages';
 import type { OpsBookablePackagesResponse } from '@/lib/operations/opsBookablePackagesTypes';
+import { tenantIdForBranchContext } from '@/platform/masterData/tenantScope';
 
 export const runtime = 'nodejs';
 
@@ -38,6 +39,7 @@ export async function GET(req: NextRequest) {
 
     const result = await listOpsBookablePackages({
       branchCode,
+      tenantId: await tenantIdForBranchContext(branch),
       auth: { userId: branch.userId, canOperate: branch.canOperate },
     });
     const body: OpsBookablePackagesResponse = { ok: true, ...result };
