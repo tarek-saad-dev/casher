@@ -7,7 +7,7 @@ import {
   randomBytes,
 } from 'node:crypto';
 
-import { getPool, sql } from '@/lib/db';
+import { getLocalPool, sql } from '@/lib/db';
 
 export type DrvowaIntegrationConfig = {
   drvowaBaseUrl: string;
@@ -79,7 +79,7 @@ function decrypt(value: string): string {
 }
 
 export async function getDrvowaIntegrationConfig(): Promise<DrvowaIntegrationConfig | null> {
-  const pool = await getPool();
+  const pool = await getLocalPool();
   const result = await pool.request().query<ConfigRow>(`
     IF OBJECT_ID(N'dbo.TblDrvowaIntegrationConfig', N'U') IS NULL
       SELECT TOP 0
@@ -122,7 +122,7 @@ export async function saveDrvowaIntegrationConfig(params: {
   drvowaIntegrationId?: string | null;
   status?: string;
 }): Promise<void> {
-  const pool = await getPool();
+  const pool = await getLocalPool();
   await pool
     .request()
     .input('drvowaBaseUrl', sql.NVarChar(500), params.drvowaBaseUrl)
@@ -157,7 +157,7 @@ export async function saveDrvowaIntegrationConfig(params: {
 }
 
 export async function getDrvowaOutboundTokenHash(): Promise<string | null> {
-  const pool = await getPool();
+  const pool = await getLocalPool();
   const result = await pool.request().query<{ OutboundTokenHash: string }>(`
     IF OBJECT_ID(N'dbo.TblDrvowaIntegrationConfig', N'U') IS NULL
       SELECT TOP 0 CAST(NULL AS NVARCHAR(128)) AS OutboundTokenHash;
