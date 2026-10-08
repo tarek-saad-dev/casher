@@ -63,11 +63,23 @@ export async function pairWithDrvowa(params: {
       | null;
 
     if (!response.ok || !payload || !('inboundApiKey' in payload)) {
+      const rec =
+        payload && typeof payload === 'object'
+          ? payload as Record<string, unknown>
+          : {};
       const code =
-        payload && 'code' in payload && typeof payload.code === 'string'
-          ? payload.code
-          : `DRVOWA_PAIR_HTTP_${response.status}`;
-      throw new Error(code);
+        typeof rec.code === 'string'
+          ? rec.code
+          : response.status === 403
+            ? 'PAIRING_CODE_INVALID_OR_EXPIRED'
+            : `DRVOWA_HTTP_${response.status}`;
+      const message =
+        typeof rec.error === 'string'
+          ? rec.error
+          : code;
+      const error = new Error(message);
+      (error as Error & { code?: string }).code = code;
+      throw error;
     }
 
     paired = payload as PairResponse;
