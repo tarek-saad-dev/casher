@@ -6,21 +6,21 @@ This is the order of operations for the final GA gate. It is a plan only: nothin
 
 - The stack is linear and green. Bottom to top:
 
-  | PR | Ticket |
-  |---|---|
-  | #63 | DRVO-012 |
-  | #66 | DRVO-013 |
-  | #68 | DRVO-015 |
-  | #65 | DRVO-017 |
-  | #67 | DRVO-018 |
-  | | DRVO-016 |
-  | | DRVO-019 |
-  | #72 | DRVO-020 phase 1 |
+  | PR | Ticket | Base |
+  |---|---|---|
+  | #63 | DRVO-012 | `main` |
+  | #66 | DRVO-013 | DRVO-012 |
+  | #68 | DRVO-015 | DRVO-013 |
+  | #65 | DRVO-017 | DRVO-015 |
+  | #67 | DRVO-018 | DRVO-017 |
+  | #74 | DRVO-016 | DRVO-018 |
+  | #73 | DRVO-019 | DRVO-016 |
+  | #72 | DRVO-020 | DRVO-019 |
 
-  Every PR is draft and conflict-free.
-- The top of the stack (`drvo-020-ga-hardening`) passes `npm run build` and the full vitest suite once (`--maxWorkers=2`). Failures are compared against the recorded pre-existing list; no new failures are allowed.
+  Every PR is draft and conflict-free. #64 (DRVO-014, docs-only) is outside the stack.
+- Code proof at the top of the stack (`drvo-020-ga-hardening`) is `CODE_PROVEN`: `npm run build` passes, and the targeted suite has no failures beyond the 74 that fail identically on DRVO-019 (see `DRVO-GA-EVIDENCE.md`).
 - Migration checksums match the table in `DRVO-GA-EVIDENCE.md`. If any checksum differs, **stop**.
-- Staging credentials are available: `DRVO_STAGING_DB_PASSWORD` (smokes never load `.env.local`) and staging VPS access. Production credentials are never used for steps 1–5.
+- Staging credentials are available: the repository secrets `DRVO_STAGING_SSH_HOST`, `DRVO_STAGING_SSH_KEY` and `DRVO_STAGING_DB_PASSWORD`. Until then the `drvo-staging-gate` check fails with exit code 11 and every staging row stays `STAGING_PENDING`. Smokes never load `.env.local`. Production credentials are never used for steps 1–5.
 
 ## 1. Deploy the stack to staging
 
@@ -41,7 +41,7 @@ npm run drvo-016:smoke   # row 10
 npm run drvo-019:smoke   # row 12
 ```
 
-Each smoke refuses `last132` and cleans up its synthetic tenants. Save the full output of each run.
+Each smoke refuses `last132` and cleans up its synthetic tenants. Save the full output of each run. After the last smoke, confirm no synthetic tenants, users, branches, employees, channels or bookings remain (row 21).
 
 ## 3. Manual proofs (staging)
 
@@ -74,7 +74,7 @@ Push a `migration-control` command with action `PLAN` for the merged migration P
 
 ## 7. GA decision
 
-Every evidence row is `PASS` (row 20 only needs PLAN), and engineering and operator sign-offs are recorded. Then merge the stack bottom-up (#63 → … → #72). Merging is an operator decision and is not part of this gate.
+Every `STAGING_PENDING` evidence row has an artifact showing it passed (row 20, `PRODUCTION_PENDING`, only needs the PLAN), and engineering and operator sign-offs are recorded. Then merge the stack bottom-up (#63 → … → #72). Merging is an operator decision and is not part of this gate.
 
 ## 8. Production cutover (after GA approval, operator only)
 
