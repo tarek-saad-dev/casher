@@ -1,13 +1,13 @@
 #!/usr/bin/env npx tsx
 import path from 'path';
 import dotenv from 'dotenv';
-import { getPool, closePool } from '../src/lib/db';
+import { getLocalPool, closePool } from '../src/lib/db';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: true });
 
 async function main() {
-  const pool = await getPool();
+  const pool = await getLocalPool();
   await pool.request().batch(`
     IF OBJECT_ID(N'dbo.TblDrvowaIntegrationConfig', N'U') IS NULL
     BEGIN
