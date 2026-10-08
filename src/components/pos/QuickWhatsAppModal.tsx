@@ -87,7 +87,7 @@ export default function QuickWhatsAppModal({
             إرسال رسالة واتساب سريعة
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            تُرسل عبر سكربت الواتساب المستخدم في البيع والحجز
+            تُرسل عبر DRVOWA عند ربطه، مع الرجوع للتكامل القديم فقط لو DRVOWA غير مفعّل
           </DialogDescription>
         </DialogHeader>
 
