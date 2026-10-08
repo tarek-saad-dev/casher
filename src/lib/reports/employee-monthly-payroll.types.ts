@@ -119,4 +119,6 @@ export interface GetEmployeeMonthlyPayrollParams {
   month: number;
   /** When set, attendance/payroll/targets/ledger are filtered to this branch. */
   branchId?: number | null;
+  /** Tenant of the caller; the employee must belong to it. */
+  tenantId?: string | null;
 }

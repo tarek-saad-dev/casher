@@ -19,7 +19,7 @@ async function main() {
     '@/lib/services/employeeLedgerSyncService'
   );
 
-  const applied = await runEmployeeLedgerHistoricalSync({
+  const applied = await runEmployeeLedgerHistoricalSync({ tenantId: String(process.env.HR_TENANT_ID ?? ''),
     month: '2026-08',
     empId: null,
     dryRun: false,

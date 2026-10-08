@@ -28,21 +28,19 @@ import {
   replaceAttendanceBreakTimes,
 } from '@/lib/hr/attendance-break-time-db';
 import { ensureOverridesTable } from '@/lib/scheduleOverrides';
+import { fallbackBranchIdForEmployee } from '@/lib/hr/hrTenantScope';
 
 type DbLike = { request: () => sql.Request };
 
-async function resolveGleemBranchId(db: DbLike): Promise<number> {
-  const result = await db.request().query(`
-    SELECT TOP 1 BranchID FROM dbo.TblBranch WHERE BranchCode = N'GLEEM'
-  `);
-  const id = Number(result.recordset[0]?.BranchID);
-  if (!Number.isFinite(id) || id <= 0) {
-    throw new Error('GLEEM branch required for attendance row create');
+async function resolveFallbackBranchId(db: DbLike, empId: number): Promise<number> {
+  const id = await fallbackBranchIdForEmployee(db, empId);
+  if (id == null) {
+    throw new Error('employee branch required for attendance row create');
   }
   return id;
 }
 
-/** Prefer explicit branch, else existing emp/date row, else home assignment, else GLEEM. */
+/** Prefer explicit branch, else existing emp/date row, else home assignment, else the tenant fallback branch. */
 async function resolveAttendanceBranchId(
   db: DbLike,
   empId: number,
@@ -84,7 +82,7 @@ async function resolveAttendanceBranchId(
     return Number(home.recordset[0].BranchID);
   }
 
-  return resolveGleemBranchId(db);
+  return resolveFallbackBranchId(db, empId);
 }
 
 export const SC_BLOCK_RANGE_SOURCE = 'schedule-control block_range';

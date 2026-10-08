@@ -194,6 +194,7 @@ export async function runDailyPayrollBulkCloseRange(params: {
 
       try {
         const nightly = await runNightlyClose({
+          tenantId: params.tenantId,
           workDate,
           dryRun: false,
           skipWhatsApp: true,

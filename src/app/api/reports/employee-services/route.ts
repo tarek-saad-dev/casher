@@ -5,6 +5,7 @@ import {
   calculateServiceLineTotal,
   classifyServiceLines,
 } from '@/lib/services/employeeServiceBreakdown';
+import { resolveTenantServiceCatalog } from '@/lib/services/tenantServiceCatalog.server';
 import {
   allocateEmployeeInvoiceRevenue,
   type AllocatedDetailLine,
@@ -455,7 +456,8 @@ export async function GET(req: NextRequest) {
       lineTotal: r.LineTotal,
     }));
 
-    const serviceBreakdown = aggregateEmployeeServiceBreakdown(breakdownLines).map((row) => {
+    const serviceCatalog = await resolveTenantServiceCatalog(auth.tenantId);
+    const serviceBreakdown = aggregateEmployeeServiceBreakdown(breakdownLines, serviceCatalog).map((row) => {
       const revenue = revenueByEmployee.get(row.employeeId);
       return {
         ...row,
@@ -466,7 +468,7 @@ export async function GET(req: NextRequest) {
         serviceCount: revenue?.serviceCount ?? 0,
       };
     });
-    const classifiedLines = classifyServiceLines(breakdownLines);
+    const classifiedLines = classifyServiceLines(breakdownLines, serviceCatalog);
 
     const details = rows.map((r, index) => {
       const classified = classifiedLines[index];

@@ -87,7 +87,7 @@ function mapAliasRow(r: Record<string, unknown>): EmployeeAlias {
   };
 }
 
-export async function loadClassificationSettings(): Promise<ClassificationSettingsBundle> {
+export async function loadClassificationSettings(tenantId?: string | null): Promise<ClassificationSettingsBundle> {
   const status = await getAccountingSettingsMigrationStatus();
   if (status.migrationRequired) {
     return {
@@ -112,15 +112,15 @@ export async function loadClassificationSettings(): Promise<ClassificationSettin
       WHERE IsActive = 1
       ORDER BY Priority ASC, ID ASC
     `),
-    db.request().query(`
+    db.request().input('tenantId', sql.UniqueIdentifier, tenantId || null).query(`
       SELECT a.*, e.EmpName
       FROM dbo.TblAccountingEmployeeAlias a
-      INNER JOIN dbo.TblEmp e ON e.EmpID = a.EmpID
+      INNER JOIN dbo.TblEmp e ON e.EmpID = a.EmpID AND (@tenantId IS NULL OR e.TenantId = @tenantId)
       WHERE a.IsActive = 1
       ORDER BY LEN(a.AliasText) DESC, a.ID ASC
     `),
-    db.request().query(`
-      SELECT EmpID, EmpName FROM dbo.TblEmp WHERE isActive = 1
+    db.request().input('tenantId', sql.UniqueIdentifier, tenantId || null).query(`
+      SELECT EmpID, EmpName FROM dbo.TblEmp WHERE isActive = 1 AND (@tenantId IS NULL OR TenantId = @tenantId)
     `),
   ]);
 
@@ -316,14 +316,14 @@ export async function deleteKeywordRule(id: number, userId?: number) {
     `);
 }
 
-export async function listEmployeeAliases() {
+export async function listEmployeeAliases(tenantId: string) {
   const status = await getAccountingSettingsMigrationStatus();
   if (status.migrationRequired) return [];
 
   const db = await getPool();
-  const result = await db.request().query(`
+  const result = await db.request().input('tenantId', sql.UniqueIdentifier, tenantId).query(`
     SELECT a.*, e.EmpName FROM dbo.TblAccountingEmployeeAlias a
-    INNER JOIN dbo.TblEmp e ON e.EmpID = a.EmpID
+    INNER JOIN dbo.TblEmp e ON e.EmpID = a.EmpID AND e.TenantId = @tenantId
     ORDER BY a.AliasText
   `);
   return result.recordset.map(mapAliasRow);
@@ -362,10 +362,10 @@ export async function updateEmployeeAlias(id: number, input: { empId?: number; a
     `);
 }
 
-export async function listEmployees() {
+export async function listEmployees(tenantId: string) {
   const db = await getPool();
-  const result = await db.request().query(`
-    SELECT EmpID, EmpName FROM dbo.TblEmp WHERE isActive = 1 ORDER BY EmpName
+  const result = await db.request().input('tenantId', sql.UniqueIdentifier, tenantId).query(`
+    SELECT EmpID, EmpName FROM dbo.TblEmp WHERE isActive = 1 AND TenantId = @tenantId ORDER BY EmpName
   `);
   return result.recordset.map((r: { EmpID: number; EmpName: string }) => ({
     empId: r.EmpID,

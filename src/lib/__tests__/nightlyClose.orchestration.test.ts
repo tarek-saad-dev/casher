@@ -214,7 +214,7 @@ describe('runNightlyClose orchestration', () => {
 
   it('runs D → payroll → targets → employee WA → owner WA and verifies', async () => {
     const { runNightlyClose } = await import('@/lib/hr/nightly-close.service');
-    const result = await runNightlyClose({ workDate: '2026-07-14', branchIds: [1] });
+    const result = await runNightlyClose({ tenantId: '11111111-1111-4111-8111-111111111111', workDate: '2026-07-14', branchIds: [1] });
 
     expect(finalizeIncompleteAttendanceAsDayOff).toHaveBeenCalledWith('2026-07-14', {
       branchId: 1,
@@ -227,11 +227,13 @@ describe('runNightlyClose orchestration', () => {
     });
     expect(checkWhatsAppStatus).toHaveBeenCalledWith({ apiBaseUrl: kit.DEFAULT_TEST_ENDPOINT });
     expect(sendEmployeeDailyWhatsAppReports).toHaveBeenCalledWith({
+      tenantId: '11111111-1111-4111-8111-111111111111',
       workDate: '2026-07-14',
       dryRun: false,
       messagingTenantId: kit.TENANT_A,
     });
     expect(sendOwnerDailyWhatsApp).toHaveBeenCalledWith({
+      tenantId: '11111111-1111-4111-8111-111111111111',
       workDate: '2026-07-14',
       dryRun: false,
     });
@@ -260,7 +262,7 @@ describe('runNightlyClose orchestration', () => {
     });
 
     const { runNightlyClose } = await import('@/lib/hr/nightly-close.service');
-    const result = await runNightlyClose({ workDate: '2026-07-14', branchIds: [1] });
+    const result = await runNightlyClose({ tenantId: '11111111-1111-4111-8111-111111111111', workDate: '2026-07-14', branchIds: [1] });
     expect(result.ok).toBe(false);
     expect(result.delivery.ok).toBe(false);
     expect(result.delivery.error).toMatch(/المدير/);

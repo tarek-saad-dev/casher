@@ -279,9 +279,16 @@ function buildBaseWageNote(params: {
   return { isPartialDay: false, noteAr: null };
 }
 
-async function loadEmployee(employeeId: number): Promise<EmployeeRow | null> {
+async function loadEmployee(
+  employeeId: number,
+  scope: { tenantId?: string | null; branchId?: number | null },
+): Promise<EmployeeRow | null> {
   const db = await getPool();
-  const result = await db.request().input('empId', sql.Int, employeeId).query(`
+  const result = await db.request()
+    .input('empId', sql.Int, employeeId)
+    .input('tenantId', sql.UniqueIdentifier, scope.tenantId || null)
+    .input('hrBranchId', sql.Int, scope.branchId != null && scope.branchId > 0 ? scope.branchId : null)
+    .query(`
     SELECT
       e.EmpID,
       e.EmpName,
@@ -300,6 +307,8 @@ async function loadEmployee(employeeId: number): Promise<EmployeeRow | null> {
       CASE WHEN e.DefaultCheckOutTime IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), e.DefaultCheckOutTime, 108), 5) ELSE NULL END AS DefaultCheckOutTime
     FROM dbo.TblEmp e
     WHERE e.EmpID = @empId
+      AND (@tenantId IS NULL OR e.TenantId = @tenantId)
+      AND (@hrBranchId IS NULL OR e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @hrBranchId))
   `);
 
   const row = result.recordset[0];
@@ -331,7 +340,7 @@ export async function getEmployeeMonthlyPayrollReport(
   const { startDate, endDateExclusive, endDate, calendarDays } = getMonthDateRange(year, month);
   const todayStr = getCairoTodayStr();
 
-  const employee = await loadEmployee(employeeId);
+  const employee = await loadEmployee(employeeId, { tenantId: params.tenantId, branchId });
   if (!employee) return null;
 
   const db = await getPool();

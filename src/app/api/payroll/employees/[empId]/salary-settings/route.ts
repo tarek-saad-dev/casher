@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { requireTenantSession } from '@/lib/api-auth';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 
 type Ctx = { params: Promise<{ empId: string }> };
 
@@ -76,13 +77,15 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
 
     console.log(`[salary-settings] empID=${empID} wage=${wage} payrollEnabled=${isPayrollEnabled} checkIn=${checkIn} checkOut=${checkOut}`);
 
+    const tenantId = requireMasterDataTenantId(session.TenantId, 'PUT /api/payroll/employees/[empId]/salary-settings');
     const db = await getPool();
 
     // ── Pre-check: employee exists (outside transaction) ──────────────────────
     step = 'emp-exists-check';
     const empCheck = await db.request()
       .input('EmpID', sql.Int, empID)
-      .query(`SELECT EmpID, EmpName FROM dbo.TblEmp WHERE EmpID = @EmpID`);
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .query(`SELECT EmpID, EmpName FROM dbo.TblEmp WHERE EmpID = @EmpID AND TenantId = @tenantId`);
     if (empCheck.recordset.length === 0) {
       return NextResponse.json({ error: 'الموظف غير موجود' }, { status: 404 });
     }
@@ -121,6 +124,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
       empReq.input('CheckIn',          sql.VarChar(8),    checkIn);
       empReq.input('CheckOut',         sql.VarChar(8),    checkOut);
       empReq.input('ScheduleNotes',    sql.NVarChar(250), workScheduleNotes ?? null);
+      empReq.input('tenantId',         sql.UniqueIdentifier, tenantId);
 
       await empReq.query(`
         UPDATE dbo.TblEmp
@@ -132,13 +136,14 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
           DefaultCheckInTime  = CASE WHEN @CheckIn  IS NULL THEN NULL ELSE CONVERT(time, @CheckIn)  END,
           DefaultCheckOutTime = CASE WHEN @CheckOut IS NULL THEN NULL ELSE CONVERT(time, @CheckOut) END,
           WorkScheduleNotes   = @ScheduleNotes
-        WHERE EmpID = @EmpID
+        WHERE EmpID = @EmpID AND TenantId = @tenantId
       `);
 
       // SELECT after UPDATE — avoids OUTPUT INSERTED conflict with trigger
       const selReq = new sql.Request(transaction);
       const selResult = await selReq
         .input('EmpID', sql.Int, empID)
+        .input('tenantId', sql.UniqueIdentifier, tenantId)
         .query(`
           SELECT
             EmpID,
@@ -152,7 +157,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
             WorkScheduleNotes,
             HourlyRate
           FROM dbo.TblEmp
-          WHERE EmpID = @EmpID
+          WHERE EmpID = @EmpID AND TenantId = @tenantId
         `);
 
       const updatedEmp = selResult.recordset[0];

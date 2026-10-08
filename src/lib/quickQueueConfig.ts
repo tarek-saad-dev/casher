@@ -1,9 +1,11 @@
+import { CASHER_BOOT_SERVICE_CATALOG } from '@/lib/services/tenantServiceCatalogConfig';
+
 /**
  * Central configuration for the one-click "عمل دور سريع" workflow.
  * Override via environment variables when deploying to a different catalog.
  */
 export const QUICK_QUEUE_SERVICE_ID = Number(
-  process.env.QUICK_QUEUE_SERVICE_ID ?? 9,
+  process.env.QUICK_QUEUE_SERVICE_ID ?? CASHER_BOOT_SERVICE_CATALOG.quickQueueServiceId,
 );
 
 /** Fallback when TblPro.DurationMinutes is missing for the configured service. */

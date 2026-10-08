@@ -183,7 +183,7 @@ async function validateAttendanceForBranches(
 ): Promise<Awaited<ReturnType<typeof validateDailyPayrollAttendance>>['missing']> {
   const missing: Awaited<ReturnType<typeof validateDailyPayrollAttendance>>['missing'] = [];
   for (const branchId of branchIds) {
-    missing.push(...(await validateDailyPayrollAttendance(db, workDate, { branchId })).missing);
+    missing.push(...(await validateDailyPayrollAttendance(db, workDate, { empScope: { branchId }, branchId })).missing);
   }
   return missing;
 }
@@ -193,14 +193,22 @@ export async function runNightlyClose(params: {
   dryRun?: boolean;
   skipWhatsApp?: boolean;
   now?: Date;
+  /** The tenant this run belongs to (DRVO-016); only its employees are touched. */
+  tenantId: string;
   /** One tenant's active Location branch ids (DRVO-013); the job never touches other branches. */
   branchIds: readonly number[];
+  /** Tenant HR time zone for the default work date (DRVO-016); Africa/Cairo when omitted. */
+  timeZone?: string;
   /** TblAutoGenLog has no TenantId; only the CASHER_BOOT run may write it. */
   legacyJobLog?: boolean;
 }): Promise<NightlyCloseResult> {
   const dryRun = Boolean(params?.dryRun);
   const skipWhatsApp = Boolean(params?.skipWhatsApp);
-  const workDate = resolveNightlyCloseWorkDate(params?.workDate, params?.now ?? new Date());
+  const workDate = resolveNightlyCloseWorkDate(
+    params?.workDate,
+    params?.now ?? new Date(),
+    params.timeZone,
+  );
   const errors: string[] = [];
 
   const result: NightlyCloseResult = {
@@ -373,6 +381,7 @@ export async function runNightlyClose(params: {
       }
 
       const { missing } = await validateDailyPayrollAttendance(db, payDay, {
+        empScope: { branchId: branch.branchId },
         branchId: branch.branchId,
       });
       if (missing.length > 0) {
@@ -668,10 +677,11 @@ export async function runNightlyClose(params: {
           dryRun ||
           ('whatsappReady' in status && status.whatsappReady === true);
 
-        const preview = await buildEmployeeDailyWhatsAppPreview({ workDate });
+        const preview = await buildEmployeeDailyWhatsAppPreview({ tenantId: params.tenantId, workDate });
         employeesReady = preview.summary.readyToSend;
 
         const empSend = await sendEmployeeDailyWhatsAppReports({
+          tenantId: params.tenantId,
           workDate,
           dryRun,
           messagingTenantId,
@@ -683,7 +693,7 @@ export async function runNightlyClose(params: {
           employeesSent = empSend.summary.dryRun;
         }
 
-        const owner = await sendOwnerDailyWhatsApp({ workDate, dryRun });
+        const owner = await sendOwnerDailyWhatsApp({ tenantId: params.tenantId, workDate, dryRun });
         result.steps.ownerWhatsApp = {
           status: owner.status,
           ownerName: owner.ownerName,

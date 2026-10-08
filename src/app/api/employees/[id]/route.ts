@@ -34,6 +34,7 @@ import {
   type BranchPayrollPayType,
 } from '@/lib/payroll/branchPayrollPlan';
 import { requireTenantSession } from '@/lib/api-auth';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -101,12 +102,17 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     } = body;
 
     const pool = await getPool();
+    const tenantId = requireMasterDataTenantId(session.TenantId, 'PATCH /api/employees/:id');
 
-    const currentRes = await pool.request().input('empID', sql.Int, empID).query(`
+    const currentRes = await pool
+      .request()
+      .input('empID', sql.Int, empID)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .query(`
       SELECT
         EmploymentType, PayrollMethod, DayOffPolicy, IsPayrollEnabled,
         ManualHourlyRate, DailyRate, BaseSalary
-      FROM dbo.TblEmp WHERE EmpID = @empID
+      FROM dbo.TblEmp WHERE EmpID = @empID AND TenantId = @tenantId
     `);
 
     if (currentRes.recordset.length === 0) {
@@ -395,10 +401,11 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
         const updateReq = new sql.Request(transaction);
         for (const bind of bindInputs) bind(updateReq);
         updateReq.input('empID', sql.Int, empID);
+        updateReq.input('tenantId', sql.UniqueIdentifier, tenantId);
         await updateReq.query(`
           UPDATE dbo.TblEmp
           SET ${setClauses.join(', ')}
-          WHERE EmpID = @empID
+          WHERE EmpID = @empID AND TenantId = @tenantId
         `);
       }
 
@@ -425,7 +432,11 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       });
     }
 
-    const sel = await pool.request().input('empID', sql.Int, empID).query(EMPLOYEE_SELECT_BY_ID);
+    const sel = await pool
+      .request()
+      .input('empID', sql.Int, empID)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .query(EMPLOYEE_SELECT_BY_ID);
 
     if (sel.recordset.length === 0) {
       return NextResponse.json({ error: 'الموظف غير موجود' }, { status: 404 });
@@ -477,10 +488,15 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
       return NextResponse.json({ error: 'تعذر تجهيز أرشفة الموظفين' }, { status: 500 });
     }
 
-    const current = await pool.request().input('empID', sql.Int, empID).query(`
+    const tenantId = requireMasterDataTenantId(session.TenantId, 'DELETE /api/employees/:id');
+    const current = await pool
+      .request()
+      .input('empID', sql.Int, empID)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .query(`
       SELECT EmpID, EmpName, isActive, IsArchived
       FROM dbo.TblEmp
-      WHERE EmpID = @empID
+      WHERE EmpID = @empID AND TenantId = @tenantId
     `);
 
     if (current.recordset.length === 0) {
@@ -496,9 +512,13 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
     }
 
     try {
-      const result = await pool.request().input('empID', sql.Int, empID).query(`
+      const result = await pool
+        .request()
+        .input('empID', sql.Int, empID)
+        .input('tenantId', sql.UniqueIdentifier, tenantId)
+        .query(`
         DELETE FROM dbo.TblEmp
-        WHERE EmpID = @empID AND ISNULL(isActive, 0) = 0;
+        WHERE EmpID = @empID AND TenantId = @tenantId AND ISNULL(isActive, 0) = 0;
 
         SELECT @@ROWCOUNT AS deletedCount;
       `);
@@ -513,10 +533,14 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
     } catch (deleteErr: unknown) {
       const err = deleteErr as { number?: number; message?: string };
       if (err?.number === 547 || String(err?.message || '').includes('REFERENCE constraint')) {
-        await pool.request().input('empID', sql.Int, empID).query(`
+        await pool
+          .request()
+          .input('empID', sql.Int, empID)
+          .input('tenantId', sql.UniqueIdentifier, tenantId)
+          .query(`
           UPDATE dbo.TblEmp
           SET IsArchived = 1, isActive = 0
-          WHERE EmpID = @empID
+          WHERE EmpID = @empID AND TenantId = @tenantId
         `);
 
         invalidatePublicBookingBarbersCache();

@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
+import { requireHrTenantId } from '@/lib/hr/hrTenantScope';
 import {
   EMP_LEDGER_REASON_PAYOUT,
   PAYOUT_EXPENSE_CATEGORY_NAME,
@@ -76,20 +77,24 @@ function bindMonthAndEmp(
   month: string,
   startDate: string,
   endDate: string,
-  empId?: number | null,
-  branchId?: number | null,
+  empId: number | null | undefined,
+  branchScope: LedgerBranchScope,
 ) {
   req.input('month', sql.NVarChar(7), month);
   req.input('monthStart', sql.Date, startDate);
   req.input('monthEnd', sql.Date, endDate);
+  req.input('tenantId', sql.UniqueIdentifier, branchScope.tenantId);
   if (empId != null && empId > 0) {
     req.input('empId', sql.Int, empId);
   }
-  if (branchId != null && branchId > 0) {
-    req.input('branchId', sql.Int, branchId);
+  if (branchScope.branchId != null && branchScope.branchId > 0) {
+    req.input('branchId', sql.Int, branchScope.branchId);
   }
   return req;
 }
+
+/** Rows of the tenant's branches only, optionally narrowed to one branch. */
+type LedgerBranchScope = { tenantId: string; branchId?: number | null };
 
 function empFilter(column: string, empId?: number | null): string {
   if (empId != null && empId > 0) {
@@ -98,11 +103,12 @@ function empFilter(column: string, empId?: number | null): string {
   return '';
 }
 
-function branchFilter(column: string, branchId?: number | null): string {
-  if (branchId != null && branchId > 0) {
-    return `AND ${column} = @branchId`;
+function branchFilter(column: string, branchScope: LedgerBranchScope): string {
+  const tenantBranches = `AND ${column} IN (SELECT tloc.LegacyBranchId FROM dbo.Location tloc WHERE tloc.TenantId = @tenantId)`;
+  if (branchScope.branchId != null && branchScope.branchId > 0) {
+    return `${tenantBranches} AND ${column} = @branchId`;
   }
-  return '';
+  return tenantBranches;
 }
 
 export async function cashMoveHasLegacyPayrollColumns(
@@ -161,6 +167,7 @@ export function buildReconciliationIssueCount(data: {
 async function enrichUnresolvedCashAdvances(
   db: { request: () => sql.Request },
   rows: UnresolvedCashAdvanceRow[],
+  tenantId: string,
 ): Promise<UnresolvedCashAdvanceRow[]> {
   const suggestionCache = new Map<string, UnresolvedCashAdvanceRow['suggestedEmployeeMatches']>();
   const enriched: UnresolvedCashAdvanceRow[] = [];
@@ -170,7 +177,7 @@ async function enrichUnresolvedCashAdvances(
     if (!suggestionCache.has(cacheKey)) {
       suggestionCache.set(
         cacheKey,
-        await suggestEmployeesByCategoryName(db, row.categoryName),
+        await suggestEmployeesByCategoryName(db, row.categoryName, tenantId),
       );
     }
     enriched.push({
@@ -335,8 +342,9 @@ export function analyzeAdvanceReconciliation(
 
 export async function getEmployeeLedgerReconciliation(
   month: string,
-  empId?: number | null,
-  branchId?: number | null,
+  empId: number | null | undefined,
+  branchId: number | null | undefined,
+  tenantId: string,
 ): Promise<EmployeeLedgerReconciliationResponse> {
   const monthError = validateLedgerMonth(month);
   if (monthError) {
@@ -349,16 +357,20 @@ export async function getEmployeeLedgerReconciliation(
     parseInt(monthStr, 10),
   );
 
+  const branchScope: LedgerBranchScope = {
+    tenantId: requireHrTenantId(tenantId, 'getEmployeeLedgerReconciliation'),
+    branchId,
+  };
   const db = await getPool();
   const legacyColumnsAvailable = await cashMoveHasLegacyPayrollColumns(db);
   const empClausePayroll = empFilter('p.EmpID', empId);
   const empClauseLedger = empFilter('l.EmpID', empId);
   const empClauseCash = empFilter('cm.EmpID', empId);
-  const branchClausePayroll = branchFilter('p.BranchID', branchId);
-  const branchClauseLedger = branchFilter('l.BranchID', branchId);
-  const branchClauseCash = branchFilter('cm.BranchID', branchId);
+  const branchClausePayroll = branchFilter('p.BranchID', branchScope);
+  const branchClauseLedger = branchFilter('l.BranchID', branchScope);
+  const branchClauseCash = branchFilter('cm.BranchID', branchScope);
 
-  const payrollTotals = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchId)
+  const payrollTotals = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchScope)
     .query(`
       SELECT ISNULL(SUM(p.DailyWage), 0) AS TotalAmount
       FROM dbo.TblEmpDailyPayroll p
@@ -369,7 +381,7 @@ export async function getEmployeeLedgerReconciliation(
         ${branchClausePayroll}
     `);
 
-  const ledgerSalaryTotals = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchId)
+  const ledgerSalaryTotals = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchScope)
     .query(`
       SELECT ISNULL(SUM(l.Amount), 0) AS TotalAmount
       FROM dbo.TblEmpLedgerEntry l
@@ -382,10 +394,10 @@ export async function getEmployeeLedgerReconciliation(
     `);
 
   const advanceCashRows = await fetchAdvanceCashMoveDetails(
-    db, month, startDate, endDate, empId, branchId,
+    db, month, startDate, endDate, empId, branchScope,
   );
   const ledgerAdvanceDebitsTotal = roundMoney(Number(
-    (await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchId)
+    (await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchScope)
       .query(`
         SELECT ISNULL(SUM(l.Amount), 0) AS TotalAmount
         FROM dbo.TblEmpLedgerEntry l
@@ -398,7 +410,7 @@ export async function getEmployeeLedgerReconciliation(
       `)).recordset[0]?.TotalAmount ?? 0,
   ));
   const orphanAdvanceLedgerRows = await fetchOrphanAdvanceLedgerDebits(
-    db, month, startDate, endDate, empId, advanceCashRows.map((row) => row.cashMoveId), branchId,
+    db, month, startDate, endDate, empId, advanceCashRows.map((row) => row.cashMoveId), branchScope,
   );
   const advanceAnalysis = analyzeAdvanceReconciliation(
     advanceCashRows,
@@ -408,10 +420,11 @@ export async function getEmployeeLedgerReconciliation(
   const unresolvedCashAdvances = await enrichUnresolvedCashAdvances(
     db,
     advanceAnalysis.unresolvedCashAdvances,
+    branchScope.tenantId,
   );
   const advanceDiagnosticRows = advanceAnalysis.advanceDiagnosticRows;
 
-  const payoutCashTotals = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchId)
+  const payoutCashTotals = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchScope)
     .input('payoutCatName', sql.NVarChar(200), PAYOUT_EXPENSE_CATEGORY_NAME)
     .query(`
       SELECT ISNULL(SUM(cm.GrandTolal), 0) AS TotalAmount
@@ -428,7 +441,7 @@ export async function getEmployeeLedgerReconciliation(
         ${branchClauseCash}
     `);
 
-  const ledgerPayoutTotals = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchId)
+  const ledgerPayoutTotals = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchScope)
     .query(`
       SELECT ISNULL(SUM(l.Amount), 0) AS TotalAmount
       FROM dbo.TblEmpLedgerEntry l
@@ -443,7 +456,7 @@ export async function getEmployeeLedgerReconciliation(
   let legacyIncomeTotal = 0;
   let legacyExpenseTotal = 0;
   if (legacyColumnsAvailable) {
-    const legacyTotals = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchId)
+    const legacyTotals = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchScope)
       .query(`
         SELECT
           ISNULL(SUM(CASE WHEN ISNULL(cm.IsEmployeePayrollIncome, 0) = 1 THEN cm.GrandTolal ELSE 0 END), 0) AS IncomeTotal,
@@ -468,22 +481,22 @@ export async function getEmployeeLedgerReconciliation(
   const ledgerPayoutDebitsTotal = roundMoney(Number(ledgerPayoutTotals.recordset[0]?.TotalAmount ?? 0));
 
   const missingPayrollCredits = await fetchMissingPayrollCredits(
-    db, month, startDate, endDate, empId, branchId,
+    db, month, startDate, endDate, empId, branchScope,
   );
   const orphanLedgerCredits = await fetchOrphanLedgerCredits(
-    db, month, startDate, endDate, empId, branchId,
+    db, month, startDate, endDate, empId, branchScope,
   );
   const missingPayoutDebits = await fetchMissingPayoutDebits(
-    db, month, startDate, endDate, empId, branchId,
+    db, month, startDate, endDate, empId, branchScope,
   );
   const legacyMirrorRows = legacyColumnsAvailable
-    ? await fetchLegacyMirrorRows(db, month, startDate, endDate, empId, branchId)
+    ? await fetchLegacyMirrorRows(db, month, startDate, endDate, empId, branchScope)
     : [];
   const missingMonthlySalaryCredits = await fetchMissingMonthlySalaryCredits(
-    db, month, empId, branchId,
+    db, month, empId, branchScope,
   );
   const orphanMonthlySalaryCredits = await fetchOrphanMonthlySalaryCredits(
-    db, month, startDate, endDate, empId, branchId,
+    db, month, startDate, endDate, empId, branchScope,
   );
 
   const payrollLedgerCreditDiff = roundMoney(payrollGeneratedTotal - ledgerSalaryCreditsTotal);
@@ -542,13 +555,13 @@ export async function getEmployeeLedgerReconciliation(
 async function fetchMissingMonthlySalaryCredits(
   db: { request: () => sql.Request },
   month: string,
-  empId?: number | null,
-  branchId?: number | null,
+  empId: number | null | undefined,
+  branchScope: LedgerBranchScope,
 ): Promise<MissingMonthlySalaryCreditRow[]> {
   const [yearStr, monthStr] = month.split('-');
   const { startDate, endDate } = getMonthDateRange(parseInt(yearStr, 10), parseInt(monthStr, 10));
   const refType = buildMonthlySalaryRefType(month);
-  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchId)
+  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchScope)
     .input('refType', sql.NVarChar(80), refType)
     .input('entryReason', sql.NVarChar(40), EMP_LEDGER_REASON_MONTHLY_SALARY)
     .query(`
@@ -557,7 +570,7 @@ async function fetchMissingMonthlySalaryCredits(
         e.EmpName AS empName,
         CAST(pl.MonthlySalary AS DECIMAL(12,2)) AS baseSalary
       FROM dbo.TblEmpBranchPayrollPlan pl
-      INNER JOIN dbo.TblEmp e ON e.EmpID = pl.EmpID
+      INNER JOIN dbo.TblEmp e ON e.EmpID = pl.EmpID AND e.TenantId = @tenantId
       LEFT JOIN dbo.TblEmpLedgerEntry l
         ON l.RefType = @refType
        AND l.RefID = e.EmpID
@@ -574,7 +587,7 @@ async function fetchMissingMonthlySalaryCredits(
         AND ISNULL(e.EmploymentType, N'full_time') <> N'freelance'
         AND l.ID IS NULL
         ${empFilter('e.EmpID', empId)}
-        ${branchFilter('pl.BranchID', branchId)}
+        ${branchFilter('pl.BranchID', branchScope)}
       ORDER BY e.EmpName
     `);
 
@@ -590,11 +603,11 @@ async function fetchOrphanMonthlySalaryCredits(
   month: string,
   startDate: string,
   endDate: string,
-  empId?: number | null,
-  branchId?: number | null,
+  empId: number | null | undefined,
+  branchScope: LedgerBranchScope,
 ): Promise<OrphanMonthlySalaryCreditRow[]> {
   const refType = buildMonthlySalaryRefType(month);
-  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchId)
+  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchScope)
     .input('refType', sql.NVarChar(80), refType)
     .input('entryReason', sql.NVarChar(40), EMP_LEDGER_REASON_MONTHLY_SALARY)
     .query(`
@@ -606,7 +619,7 @@ async function fetchOrphanMonthlySalaryCredits(
         l.Amount AS amount,
         l.RefType AS refType
       FROM dbo.TblEmpLedgerEntry l
-      INNER JOIN dbo.TblEmp e ON e.EmpID = l.EmpID
+      INNER JOIN dbo.TblEmp e ON e.EmpID = l.EmpID AND e.TenantId = @tenantId
       WHERE l.IsVoided = 0
         AND l.RefType = @refType
         AND l.EntryReason = @entryReason
@@ -622,7 +635,7 @@ async function fetchOrphanMonthlySalaryCredits(
           OR ISNULL(e.EmploymentType, N'full_time') = N'freelance'
         )
         ${empFilter('l.EmpID', empId)}
-        ${branchFilter('l.BranchID', branchId)}
+        ${branchFilter('l.BranchID', branchScope)}
       ORDER BY l.EntryDate DESC, l.ID DESC
     `);
 
@@ -641,10 +654,10 @@ async function fetchMissingPayrollCredits(
   month: string,
   startDate: string,
   endDate: string,
-  empId?: number | null,
-  branchId?: number | null,
+  empId: number | null | undefined,
+  branchScope: LedgerBranchScope,
 ): Promise<MissingPayrollCreditRow[]> {
-  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchId)
+  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchScope)
     .input('refType', sql.NVarChar(80), EMP_LEDGER_REF_TYPE_DAILY_PAYROLL)
     .input('entryReason', sql.NVarChar(40), EMP_LEDGER_REASON_HOURLY_WAGE)
     .query(`
@@ -655,7 +668,7 @@ async function fetchMissingPayrollCredits(
         p.WorkDate AS workDate,
         p.DailyWage AS dailyWage
       FROM dbo.TblEmpDailyPayroll p
-      INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
+      INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID AND e.TenantId = @tenantId
       LEFT JOIN dbo.TblEmpLedgerEntry l
         ON l.RefType = @refType
        AND l.RefID = p.ID
@@ -666,7 +679,7 @@ async function fetchMissingPayrollCredits(
         AND p.Status IN (N'Generated', N'Earned', N'PostedToCashMove')
         AND l.ID IS NULL
         ${empFilter('p.EmpID', empId)}
-        ${branchFilter('p.BranchID', branchId)}
+        ${branchFilter('p.BranchID', branchScope)}
       ORDER BY p.WorkDate DESC, p.ID DESC
     `);
 
@@ -684,10 +697,10 @@ async function fetchOrphanLedgerCredits(
   month: string,
   startDate: string,
   endDate: string,
-  empId?: number | null,
-  branchId?: number | null,
+  empId: number | null | undefined,
+  branchScope: LedgerBranchScope,
 ): Promise<OrphanLedgerCreditRow[]> {
-  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchId)
+  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchScope)
     .input('refType', sql.NVarChar(80), EMP_LEDGER_REF_TYPE_DAILY_PAYROLL)
     .input('entryReason', sql.NVarChar(40), EMP_LEDGER_REASON_HOURLY_WAGE)
     .query(`
@@ -699,7 +712,7 @@ async function fetchOrphanLedgerCredits(
         l.Amount AS amount,
         l.RefID AS refId
       FROM dbo.TblEmpLedgerEntry l
-      INNER JOIN dbo.TblEmp e ON e.EmpID = l.EmpID
+      INNER JOIN dbo.TblEmp e ON e.EmpID = l.EmpID AND e.TenantId = @tenantId
       LEFT JOIN dbo.TblEmpDailyPayroll p ON p.ID = l.RefID
       WHERE l.IsVoided = 0
         AND l.RefType = @refType
@@ -708,7 +721,7 @@ async function fetchOrphanLedgerCredits(
         AND ${buildMonthEntryFilter('l')}
         AND (p.ID IS NULL OR p.BranchID <> l.BranchID)
         ${empFilter('l.EmpID', empId)}
-        ${branchFilter('l.BranchID', branchId)}
+        ${branchFilter('l.BranchID', branchScope)}
       ORDER BY l.EntryDate DESC, l.ID DESC
     `);
 
@@ -727,12 +740,12 @@ async function fetchAdvanceCashMoveDetails(
   month: string,
   startDate: string,
   endDate: string,
-  empId?: number | null,
-  branchId?: number | null,
+  empId: number | null | undefined,
+  branchScope: LedgerBranchScope,
 ): Promise<AdvanceCashMoveDetailRow[]> {
   const empClause = empFilter('resolved.mapEmpId', empId);
 
-  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchId)
+  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchScope)
     .input('refType', sql.NVarChar(80), EMP_LEDGER_REF_TYPE_CASH_MOVE)
     .input('entryReason', sql.NVarChar(40), EMP_LEDGER_REASON_ADVANCE)
     .query(`
@@ -768,7 +781,7 @@ async function fetchAdvanceCashMoveDetails(
               AND m2.IsActive = 1
           ) AS activeMapCount
         FROM dbo.TblExpCatEmpMap m
-        LEFT JOIN dbo.TblEmp e ON e.EmpID = m.EmpID
+        LEFT JOIN dbo.TblEmp e ON e.EmpID = m.EmpID AND e.TenantId = @tenantId
         WHERE m.ExpINID = cm.ExpINID
           AND m.TxnKind = N'advance'
           AND m.IsActive = 1
@@ -790,7 +803,7 @@ async function fetchAdvanceCashMoveDetails(
         AND cm.invDate >= @monthStart
         AND cm.invDate <= @monthEnd
         ${empClause}
-        ${branchFilter('cm.BranchID', branchId)}
+        ${branchFilter('cm.BranchID', branchScope)}
       ORDER BY cm.invDate DESC, cm.ID DESC
     `);
 
@@ -817,10 +830,10 @@ async function fetchOrphanAdvanceLedgerDebits(
   endDate: string,
   empId: number | null | undefined,
   cashMoveIds: number[],
-  branchId?: number | null,
+  branchScope: LedgerBranchScope,
 ): Promise<OrphanAdvanceLedgerRow[]> {
   const cashMoveIdList = cashMoveIds.length > 0 ? cashMoveIds.join(',') : '0';
-  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchId)
+  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchScope)
     .input('refType', sql.NVarChar(80), EMP_LEDGER_REF_TYPE_CASH_MOVE)
     .input('entryReason', sql.NVarChar(40), EMP_LEDGER_REASON_ADVANCE)
     .query(`
@@ -833,7 +846,7 @@ async function fetchOrphanAdvanceLedgerDebits(
         l.RefID AS refId,
         l.CashMoveID AS cashMoveId
       FROM dbo.TblEmpLedgerEntry l
-      INNER JOIN dbo.TblEmp e ON e.EmpID = l.EmpID
+      INNER JOIN dbo.TblEmp e ON e.EmpID = l.EmpID AND e.TenantId = @tenantId
       WHERE l.IsVoided = 0
         AND l.EntryDirection = N'debit'
         AND l.EntryReason = @entryReason
@@ -843,7 +856,7 @@ async function fetchOrphanAdvanceLedgerDebits(
           OR l.RefID NOT IN (${cashMoveIdList})
         )
         ${empFilter('l.EmpID', empId)}
-        ${branchFilter('l.BranchID', branchId)}
+        ${branchFilter('l.BranchID', branchScope)}
       ORDER BY l.EntryDate DESC, l.ID DESC
     `);
 
@@ -863,10 +876,10 @@ async function fetchMissingPayoutDebits(
   month: string,
   startDate: string,
   endDate: string,
-  empId?: number | null,
-  branchId?: number | null,
+  empId: number | null | undefined,
+  branchScope: LedgerBranchScope,
 ): Promise<MissingPayoutDebitRow[]> {
-  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchId)
+  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchScope)
     .input('refType', sql.NVarChar(80), EMP_LEDGER_REF_TYPE_CASH_MOVE)
     .input('entryReason', sql.NVarChar(40), EMP_LEDGER_REASON_PAYOUT)
     .input('payoutCatName', sql.NVarChar(200), PAYOUT_EXPENSE_CATEGORY_NAME)
@@ -882,7 +895,7 @@ async function fetchMissingPayoutDebits(
         ON cat.ExpINID = cm.ExpINID
        AND cat.CatName = @payoutCatName
        AND cat.ExpINType = N'مصروفات'
-      LEFT JOIN dbo.TblEmp e ON e.EmpID = cm.EmpID
+      LEFT JOIN dbo.TblEmp e ON e.EmpID = cm.EmpID AND e.TenantId = @tenantId
       LEFT JOIN dbo.TblEmpLedgerEntry l
         ON l.RefType = @refType
        AND l.RefID = cm.ID
@@ -894,7 +907,7 @@ async function fetchMissingPayoutDebits(
         AND cm.invDate <= @monthEnd
         AND l.ID IS NULL
         ${empFilter('cm.EmpID', empId)}
-        ${branchFilter('cm.BranchID', branchId)}
+        ${branchFilter('cm.BranchID', branchScope)}
       ORDER BY cm.invDate DESC, cm.ID DESC
     `);
 
@@ -912,10 +925,10 @@ async function fetchLegacyMirrorRows(
   month: string,
   startDate: string,
   endDate: string,
-  empId?: number | null,
-  branchId?: number | null,
+  empId: number | null | undefined,
+  branchScope: LedgerBranchScope,
 ): Promise<LegacyMirrorGroupRow[]> {
-  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchId)
+  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchScope)
     .query(`
       SELECT
         cm.invDate AS invDate,
@@ -925,7 +938,7 @@ async function fetchLegacyMirrorRows(
         ISNULL(SUM(CASE WHEN ISNULL(cm.IsPayrollDeduction, 0) = 1 THEN cm.GrandTolal ELSE 0 END), 0) AS expenseMirrorTotal,
         COUNT(*) AS totalRows
       FROM dbo.TblCashMove cm
-      LEFT JOIN dbo.TblEmp e ON e.EmpID = cm.EmpID
+      LEFT JOIN dbo.TblEmp e ON e.EmpID = cm.EmpID AND e.TenantId = @tenantId
       WHERE cm.invDate >= @monthStart
         AND cm.invDate <= @monthEnd
         AND (
@@ -933,7 +946,7 @@ async function fetchLegacyMirrorRows(
           OR ISNULL(cm.IsPayrollDeduction, 0) = 1
         )
         ${empFilter('cm.EmpID', empId)}
-        ${branchFilter('cm.BranchID', branchId)}
+        ${branchFilter('cm.BranchID', branchScope)}
       GROUP BY cm.invDate, cm.EmpID, e.EmpName
       ORDER BY cm.invDate DESC, e.EmpName
     `);

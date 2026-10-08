@@ -21,6 +21,7 @@ import {
   sumEmployeeServiceBreakdown,
   type EmployeeServiceBreakdown,
 } from '@/lib/services/employeeServiceBreakdown';
+import { EMPTY_SERVICE_CATALOG } from '@/lib/services/tenantServiceCatalogConfig';
 import { isBarberServiceCategory, type ServiceCategory } from '@/lib/services/classifyService';
 
 type DetailCategoryFilter = 'all' | 'barber' | 'other';
@@ -406,7 +407,9 @@ export default function EmployeeServicesReportPage() {
           serviceName: d.serviceName,
           serviceNameAr: d.serviceNameAr,
           lineTotal: d.lineTotal,
-        }))
+          serviceCategory: d.serviceCategory,
+        })),
+        EMPTY_SERVICE_CATALOG,
       ) as ServiceBreakdownRow[];
     }
 

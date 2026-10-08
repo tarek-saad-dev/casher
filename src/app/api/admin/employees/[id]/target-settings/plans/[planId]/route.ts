@@ -21,7 +21,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'معرف غير صالح' }, { status: 400 });
     }
 
-    const result = await deleteEmployeeTargetPlan(empId, planId, session.UserID ?? null);
+    const result = await deleteEmployeeTargetPlan(empId, planId, session.UserID ?? null, session.TenantId);
     return NextResponse.json({ success: true, ...result });
   } catch (err: unknown) {
     if (err instanceof EmployeeTargetConflictError) {

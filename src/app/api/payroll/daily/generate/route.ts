@@ -80,6 +80,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { missing } = await validateDailyPayrollAttendance(db, workDate, {
+      empScope: { branchId },
       branchId,
       empIds,
     });

@@ -61,6 +61,7 @@ async function generateForTenantBranches(
     allPosted = false;
 
     const { missing } = await validateDailyPayrollAttendance(db, workDate, {
+      empScope: { branchId: branch.branchId },
       branchId: branch.branchId,
     });
     if (missing.length > 0) {

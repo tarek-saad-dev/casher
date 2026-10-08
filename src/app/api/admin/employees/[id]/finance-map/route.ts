@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { requireTenantSession } from '@/lib/api-auth';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 
 // PATCH /api/admin/employees/:id/finance-map
 // Body: { advanceExpINID?, revenueExpINID? }
@@ -20,6 +21,7 @@ export async function PATCH(
 
     const body = await req.json();
     const { advanceExpINID, revenueExpINID } = body;
+    const tenantId = requireMasterDataTenantId(session.TenantId, 'PATCH /api/admin/employees/[id]/finance-map');
 
     const db = await getPool();
     const transaction = new sql.Transaction(db);
@@ -29,10 +31,11 @@ export async function PATCH(
       // Verify employee exists
       const empCheck = await new sql.Request(transaction)
         .input("empId", sql.Int, empId)
+        .input("tenantId", sql.UniqueIdentifier, tenantId)
         .query(`
           SELECT EmpID, EmpName, isActive 
           FROM dbo.TblEmp 
-          WHERE EmpID = @empId
+          WHERE EmpID = @empId AND TenantId = @tenantId
         `);
 
       if (empCheck.recordset.length === 0) {
@@ -161,6 +164,7 @@ export async function PATCH(
       // Return updated employee data
       const updatedResult = await db.request()
         .input("empId", sql.Int, empId)
+        .input("tenantId", sql.UniqueIdentifier, tenantId)
         .query(`
           SELECT
             e.EmpID,
@@ -198,7 +202,7 @@ export async function PATCH(
           LEFT JOIN dbo.TblExpINCat revCat
               ON revCat.ExpINID = rev.ExpINID
               
-          WHERE e.EmpID = @empId
+          WHERE e.EmpID = @empId AND e.TenantId = @tenantId
         `);
 
       return NextResponse.json({
@@ -250,10 +254,12 @@ export async function DELETE(
     const result = await db.request()
       .input("empId", sql.Int, empId)
       .input("txnKind", sql.NVarChar(20), type)
+      .input("tenantId", sql.UniqueIdentifier, requireMasterDataTenantId(session.TenantId, 'DELETE /api/admin/employees/[id]/finance-map'))
       .query(`
         UPDATE dbo.TblExpCatEmpMap 
         SET IsActive = 0, ModifiedDate = GETDATE()
         WHERE EmpID = @empId AND TxnKind = @txnKind
+          AND EmpID IN (SELECT EmpID FROM dbo.TblEmp WHERE TenantId = @tenantId)
         
         SELECT @@ROWCOUNT AS AffectedRows
       `);

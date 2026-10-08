@@ -75,13 +75,14 @@ export async function GET(request: NextRequest) {
       filterBranchId = bid;
     }
 
-    const tableBranches = await getEmployeeLedgerTableBranches();
+    const tableBranches = await getEmployeeLedgerTableBranches(auth.tenantId);
     const ledgerBranchScope = mergeEmployeeLedgerBranchScope(
       accessible,
       tableBranches.map((b) => b.branchId),
     );
 
     const result = await getEmployeeLedgerEntries({
+      tenantId: auth.tenantId,
       empId,
       dateFrom: searchParams.get('dateFrom'),
       dateTo: searchParams.get('dateTo'),

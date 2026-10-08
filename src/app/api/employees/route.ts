@@ -57,9 +57,10 @@ export async function GET(req: NextRequest) {
     const orderBy = hasSort
       ? 'ISNULL(e.DisplaySortOrder, 999), e.EmpName'
       : 'e.EmpName';
-    const result = await db.request().query(`
+    const tenantId = requireMasterDataTenantId(tenantSession.TenantId, 'GET /api/employees');
+    const result = await db.request().input('tenantId', sql.UniqueIdentifier, tenantId).query(`
       ${EMPLOYEE_LIST_SELECT}
-      WHERE ISNULL(e.isActive, 1) = ${showInactive ? '0' : '1'}
+        AND ISNULL(e.isActive, 1) = ${showInactive ? '0' : '1'}
         AND ISNULL(e.IsArchived, 0) = 0
       ORDER BY ${orderBy}
     `);
@@ -76,7 +77,7 @@ export async function GET(req: NextRequest) {
       }
     >();
     try {
-      targetSummary = await getEmployeesTargetSummaryBatch(getCairoBusinessDate());
+      targetSummary = await getEmployeesTargetSummaryBatch(getCairoBusinessDate(), tenantId);
     } catch (summaryErr: unknown) {
       console.warn(
         '[api/employees] target summary skipped:',
@@ -217,7 +218,8 @@ export async function POST(req: NextRequest) {
         await new sql.Request(transaction)
           .input('empId', sql.Int, newEmpID)
           .input('imageUrl', sql.NVarChar(1000), imageUrlValue)
-          .query(`UPDATE dbo.TblEmp SET ImageUrl = @imageUrl WHERE EmpID = @empId`);
+          .input('tenantId', sql.UniqueIdentifier, tenantId)
+          .query(`UPDATE dbo.TblEmp SET ImageUrl = @imageUrl WHERE EmpID = @empId AND TenantId = @tenantId`);
       }
 
       if (empNameEnValue !== undefined) {
@@ -228,7 +230,8 @@ export async function POST(req: NextRequest) {
         await new sql.Request(transaction)
           .input('empId', sql.Int, newEmpID)
           .input('empNameEn', sql.NVarChar(200), empNameEnValue)
-          .query(`UPDATE dbo.TblEmp SET EmpNameEn = @empNameEn WHERE EmpID = @empId`);
+          .input('tenantId', sql.UniqueIdentifier, tenantId)
+          .query(`UPDATE dbo.TblEmp SET EmpNameEn = @empNameEn WHERE EmpID = @empId AND TenantId = @tenantId`);
       }
 
       if (displaySortOrderValue !== undefined) {
@@ -241,8 +244,9 @@ export async function POST(req: NextRequest) {
         await new sql.Request(transaction)
           .input('empId', sql.Int, newEmpID)
           .input('displaySortOrder', sql.Int, displaySortOrderValue)
+          .input('tenantId', sql.UniqueIdentifier, tenantId)
           .query(
-            `UPDATE dbo.TblEmp SET DisplaySortOrder = @displaySortOrder WHERE EmpID = @empId`,
+            `UPDATE dbo.TblEmp SET DisplaySortOrder = @displaySortOrder WHERE EmpID = @empId AND TenantId = @tenantId`,
           );
       }
 

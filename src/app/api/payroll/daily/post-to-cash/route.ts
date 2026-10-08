@@ -90,10 +90,11 @@ export async function POST(req: NextRequest) {
     // ── 2. Find fully-unposted Earned rows (Status=Earned, CashMoveID IS NULL, EmployeeIncomeCashMoveID IS NULL) ──
     const pendingResult = await db.request()
       .input('WorkDate', sql.Date, workDate)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
       .query(`
         SELECT p.ID, p.EmpID, e.EmpName, p.DailyWage, p.Notes
         FROM dbo.TblEmpDailyPayroll p
-        INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
+        INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID AND e.TenantId = @tenantId
         WHERE p.WorkDate = @WorkDate
           AND p.Status   IN (N'Generated', N'Earned')
           AND p.CashMoveID IS NULL
@@ -104,10 +105,11 @@ export async function POST(req: NextRequest) {
     // ── 3. Find repair rows (PostedToCashMove, CashMoveID set, EmployeeIncomeCashMoveID NULL) ──
     const repairResult = await db.request()
       .input('WorkDate', sql.Date, workDate)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
       .query(`
         SELECT p.ID, p.EmpID, e.EmpName, p.CashMoveID, p.DailyWage
         FROM dbo.TblEmpDailyPayroll p
-        INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
+        INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID AND e.TenantId = @tenantId
         WHERE p.WorkDate   = @WorkDate
           AND p.Status     = N'PostedToCashMove'
           AND p.CashMoveID IS NOT NULL
@@ -135,10 +137,11 @@ export async function POST(req: NextRequest) {
     ];
 
     const mappingResult = await db.request()
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
       .query(`
         SELECT m.EmpID, e.EmpName, m.ExpINID AS RevenueExpINID, c.CatName AS RevenueCatName
         FROM dbo.TblExpCatEmpMap m
-        INNER JOIN dbo.TblEmp e        ON e.EmpID    = m.EmpID
+        INNER JOIN dbo.TblEmp e        ON e.EmpID    = m.EmpID AND e.TenantId = @tenantId
         INNER JOIN dbo.TblExpINCat c   ON c.ExpINID  = m.ExpINID
         WHERE m.EmpID    IN (${allEmpIDs.join(',')})
           AND m.TxnKind  = N'revenue'

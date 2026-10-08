@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runNightlyClose, type NightlyCloseResult } from '@/lib/hr/nightly-close.service';
 import { resolveNightlyCloseWorkDate } from '@/lib/hr/nightly-close-work-date';
+import { resolveHrTimeZoneForBranches } from '@/lib/hr/hrTenantScope';
 import {
   isSystemJobAuthResult,
   requireSystemJobAuth,
@@ -19,22 +20,27 @@ export const maxDuration = 300;
 
 async function runForTenants(
   jobAuth: SystemJobAuthResult,
-  opts: { workDate: string; dryRun: boolean; skipWhatsApp: boolean },
+  opts: { workDateOverride: string | null; dryRun: boolean; skipWhatsApp: boolean },
 ) {
-  // Daily HR WhatsApp reports aggregate employees across every legacy branch (TblEmp has no TenantId
-  // until DRVO-015), so only CASHER_BOOT may send them; messaging itself is tenant-scoped (DRVO-018).
+  // The daily HR WhatsApp reports are only proven for CASHER_BOOT (recipients and wording are CUT's),
+  // so other tenants close payroll without them; the send itself goes through the tenant channel.
   const hrReportTenantId = await resolveLegacyBootstrapTenantId('legacy-global-data');
   const legacyLogTenantId = await resolveLegacyBootstrapTenantId('legacy-payroll-job-log');
   return runTenantJobFanout(
     { scope: tenantJobScopeFor(jobAuth), app: 'payroll', job: 'nightly-close' },
-    (target) =>
-      runNightlyClose({
-        workDate: opts.workDate,
+    async (target) => {
+      // Each tenant closes "yesterday" in its own HR time zone (Africa/Cairo by default).
+      const timeZone = await resolveHrTimeZoneForBranches(target.branchIds);
+      return runNightlyClose({
+        tenantId: target.tenantId,
+        workDate: resolveNightlyCloseWorkDate(opts.workDateOverride, new Date(), timeZone),
+        timeZone,
         dryRun: opts.dryRun,
         skipWhatsApp: opts.skipWhatsApp || target.tenantId !== hrReportTenantId,
         branchIds: target.branchIds,
         legacyJobLog: target.tenantId === legacyLogTenantId,
-      }),
+      });
+    },
   );
 }
 
@@ -85,7 +91,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}));
     const fanout = await runForTenants(jobAuth, {
-      workDate: resolveNightlyCloseWorkDate(body?.workDate),
+      workDateOverride: typeof body?.workDate === 'string' ? body.workDate : null,
       dryRun: Boolean(body?.dryRun),
       skipWhatsApp: Boolean(body?.skipWhatsApp),
     });
@@ -104,7 +110,7 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const fanout = await runForTenants(jobAuth, {
-      workDate: resolveNightlyCloseWorkDate(searchParams.get('workDate')),
+      workDateOverride: searchParams.get('workDate'),
       dryRun: true,
       skipWhatsApp: false,
     });

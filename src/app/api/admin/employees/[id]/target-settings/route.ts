@@ -8,6 +8,7 @@ import {
   parseTargetSaveBody,
   saveEmployeeTargetPlan,
 } from '@/lib/payroll/employee-target';
+import { hrTenantIdForBranch } from '@/lib/hr/hrTenantScope';
 
 function statusFromError(err: unknown): number {
   if (err && typeof err === 'object' && 'status' in err && typeof (err as { status: unknown }).status === 'number') {
@@ -48,6 +49,7 @@ export async function GET(
       empId,
       effectiveDate,
       branch.branchId,
+      await hrTenantIdForBranch(branch),
     );
 
     return NextResponse.json(data);
@@ -108,6 +110,7 @@ export async function PUT(
       parsed,
       session.UserID ?? null,
       branch.branchId,
+      await hrTenantIdForBranch(branch),
     );
     return NextResponse.json({ plan: saved });
   } catch (err: unknown) {

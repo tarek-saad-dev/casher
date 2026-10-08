@@ -11,7 +11,7 @@ import {
 } from '@/lib/payroll/employee-target';
 import Decimal from 'decimal.js';
 
-// GET /api/payroll/daily/targets?workDate=YYYY-MM-DD&employeeScope=all|GLEEM|CAMP_CAESAR
+// GET /api/payroll/daily/targets?workDate=YYYY-MM-DD&employeeScope=all|<tenant branch code>
 // employeeScope is read-only visibility — does not switch session branch.
 export async function GET(req: NextRequest) {
   try {
@@ -98,6 +98,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       workDate,
       employeeScope: viewScope.employeeScope,
+      scopeOptions: viewScope.scopeOptions,
       branchIds: viewScope.branchIds,
       branches: viewScope.branches,
       branchId: viewScope.branchIds[0],

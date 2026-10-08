@@ -63,6 +63,7 @@ export async function GET(req: NextRequest) {
         a.UpdatedAt
       FROM      dbo.TblEmpAttendance a
       JOIN      dbo.TblEmp           e ON e.EmpID = a.EmpID
+                AND e.TenantId IN (SELECT l.TenantId FROM dbo.Location l WHERE l.LegacyBranchId = @branchId)
       ${where}
       ORDER BY  a.WorkDate DESC, e.EmpName
     `);

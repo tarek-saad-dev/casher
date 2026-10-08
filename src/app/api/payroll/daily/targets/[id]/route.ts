@@ -20,7 +20,7 @@ export async function GET(
       return NextResponse.json({ error: 'معرّف التارجت غير صالح' }, { status: 400 });
     }
 
-    const details = await getDailyTargetLedgerDetails(id);
+    const details = await getDailyTargetLedgerDetails(id, auth.tenantId);
     if (!details) {
       return NextResponse.json({ error: 'سجل التارجت غير موجود' }, { status: 404 });
     }

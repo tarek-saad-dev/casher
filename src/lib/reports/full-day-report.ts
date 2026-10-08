@@ -5,6 +5,7 @@ import { roundMoney } from '@/lib/reportMonthUtils';
 import { getArabicDayName } from '@/lib/reports/reportFormatters';
 import { resolveEmployeeWhatsAppPhone } from '@/lib/integrations/whatsapp/payload-builders';
 import { getEmployeeLedgerSummary } from '@/lib/services/employeeLedgerService';
+import { resolveLegacyBranchTenantId } from '@/platform/masterData/tenantScope';
 import { loadBranchDayMonthlyPlans } from '@/lib/payroll/branchPayrollPlan';
 import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 import type {
@@ -853,7 +854,9 @@ export async function getFullDayReport(
 
   let ledgerByEmp = new Map<number, { empName: string; balance: number }>();
   try {
-    const ledgerSummary = await getEmployeeLedgerSummary(payrollMonth, branchId);
+    const ledgerSummary = await getEmployeeLedgerSummary(payrollMonth, branchId, {
+      tenantId: await resolveLegacyBranchTenantId(branchId),
+    });
     ledgerByEmp = new Map(
       ledgerSummary.employees.map((e) => [
         e.empId,

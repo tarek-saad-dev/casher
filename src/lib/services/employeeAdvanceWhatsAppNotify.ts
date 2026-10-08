@@ -45,9 +45,9 @@ let employeeWhatsAppChain: Promise<void> = Promise.resolve();
 
 const QUEUE_GAP_MS = 2000;
 
-async function fetchEmployeeWhatsAppPhone(empId: number): Promise<string | null> {
+async function fetchEmployeeWhatsAppPhone(empId: number, branchId?: number): Promise<string | null> {
   const db = await getPool();
-  const result = await db.request().input('empId', sql.Int, empId).query(`
+  const result = await db.request().input('empId', sql.Int, empId).input('hrBranchId', sql.Int, branchId ?? null).query(`
     SELECT
       CASE
         WHEN EXISTS (
@@ -60,6 +60,7 @@ async function fetchEmployeeWhatsAppPhone(empId: number): Promise<string | null>
       e.EmpName
     FROM dbo.TblEmp e
     WHERE e.EmpID = @empId
+      AND (@hrBranchId IS NULL OR e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @hrBranchId))
   `);
 
   if (result.recordset.length === 0) return null;
@@ -85,7 +86,7 @@ export async function notifyEmployeeAdvanceWhatsApp(
   input: EmployeeAdvanceWhatsAppNotifyInput,
 ): Promise<void> {
   try {
-    const phone = await fetchEmployeeWhatsAppPhone(input.empId);
+    const phone = await fetchEmployeeWhatsAppPhone(input.empId, input.branchId);
     if (!phone) {
       console.log(
         `[pos-api]   ℹ️ Employee advance WhatsApp skipped: no phone for EmpID=${input.empId}`,
@@ -157,7 +158,7 @@ export async function notifyEmployeeFundingWhatsApp(
   input: EmployeeFundingWhatsAppNotifyInput,
 ): Promise<void> {
   try {
-    const phone = await fetchEmployeeWhatsAppPhone(input.empId);
+    const phone = await fetchEmployeeWhatsAppPhone(input.empId, input.branchId);
     if (!phone) {
       console.log(
         `[pos-api]   ℹ️ Employee funding WhatsApp skipped: no phone for EmpID=${input.empId}`,
@@ -229,7 +230,7 @@ export async function notifyEmployeeTipWhatsApp(
   input: EmployeeTipWhatsAppNotifyInput,
 ): Promise<void> {
   try {
-    const phone = await fetchEmployeeWhatsAppPhone(input.empId);
+    const phone = await fetchEmployeeWhatsAppPhone(input.empId, input.branchId);
     if (!phone) {
       console.log(
         `[pos-api]   ℹ️ Employee tip WhatsApp skipped: no phone for EmpID=${input.empId}`,

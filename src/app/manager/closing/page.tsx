@@ -9,6 +9,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { getOperationalDate } from '@/lib/businessDate';
+import { hrBranchLabel } from '@/lib/hr/legacyHrBranchPolicy';
 
 type BranchStatus = {
   branchId: number;
@@ -59,9 +60,7 @@ type ClosingStatus = {
 };
 
 function branchLabel(code: string, name: string) {
-  if (code === 'GLEEM') return 'جليم';
-  if (code === 'CAMP_CAESAR') return 'كامب شيزار';
-  return name || code;
+  return hrBranchLabel({ branchCode: code, branchName: name });
 }
 
 export default function ManagerClosingPage() {
@@ -262,7 +261,11 @@ export default function ManagerClosingPage() {
             <section className="space-y-3">
               <div>
                 <h2 className="text-lg font-bold">1. تقفيل الخزنة</h2>
-                <p className="text-sm text-muted-foreground">ابدأ بجليم ثم كامب شيزار.</p>
+                {data.branches.length > 1 && (
+                  <p className="text-sm text-muted-foreground">
+                    {`ابدأ ب${data.branches.map((b) => branchLabel(b.branchCode, b.branchName)).join(' ثم ')}.`}
+                  </p>
+                )}
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 {data.branches.map((branch, index) => (

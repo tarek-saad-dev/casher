@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
         SUM(cm.GrandTolal) OVER (PARTITION BY cat.ExpINID) AS CategoryTotal,
         SUM(cm.GrandTolal) OVER () AS GrandTotal
       FROM [dbo].[TblEmp] e
-      INNER JOIN [dbo].[TblStaffExpenseDistributionDetail] ded ON e.EmpID = ded.StaffMemberID
+      INNER JOIN [dbo].[TblStaffExpenseDistributionDetail] ded ON e.EmpID = ded.StaffMemberID AND e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @branchId)
       INNER JOIN [dbo].[TblCashMove] cm ON ded.OriginalExpenseID = cm.ID
       INNER JOIN [dbo].[TblExpINCat] cat ON cm.ExpINID = cat.ExpINID
       ${whereClause}
@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
         MIN(cm.invDate) AS PeriodStart,
         MAX(cm.invDate) AS PeriodEnd
       FROM [dbo].[TblEmp] e
-      INNER JOIN [dbo].[TblStaffExpenseDistributionDetail] ded ON e.EmpID = ded.StaffMemberID
+      INNER JOIN [dbo].[TblStaffExpenseDistributionDetail] ded ON e.EmpID = ded.StaffMemberID AND e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @branchId)
       INNER JOIN [dbo].[TblCashMove] cm ON ded.OriginalExpenseID = cm.ID
       INNER JOIN [dbo].[TblExpINCat] cat ON cm.ExpINID = cat.ExpINID
       ${whereClause}

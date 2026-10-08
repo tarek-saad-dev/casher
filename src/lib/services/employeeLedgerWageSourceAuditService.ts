@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
+import { requireHrTenantId } from '@/lib/hr/hrTenantScope';
 import { getMonthDateRange, roundMoney } from '@/lib/reportMonthUtils';
 import { validateLedgerMonth } from '@/lib/services/employeeLedgerService';
 import { cashMoveHasLegacyPayrollColumns } from '@/lib/services/employeeLedgerReconciliationService';
@@ -19,38 +20,45 @@ const WAGE_CATEGORY_KEYWORDS = [
   'يومية', 'يوميات', 'راتب', 'مرتب', 'اجرة', 'أجر', 'wage', 'salary',
 ] as const;
 
+/** Rows of one tenant (its employees / its branches), optionally one employee. */
+type AuditScope = { tenantId: string; empId?: number | null };
+
 function bindMonthAndEmp(
   req: sql.Request,
   month: string,
   startDate: string,
   endDate: string,
-  empId?: number | null,
+  scope: AuditScope,
 ) {
   req.input('month', sql.NVarChar(7), month);
   req.input('monthStart', sql.Date, startDate);
   req.input('monthEnd', sql.Date, endDate);
+  req.input('tenantId', sql.UniqueIdentifier, scope.tenantId);
+  const empId = scope.empId;
   if (empId != null && empId > 0) {
     req.input('empId', sql.Int, empId);
   }
   return req;
 }
 
-function empFilter(column: string, empId?: number | null): string {
-  if (empId != null && empId > 0) {
-    return `AND ${column} = @empId`;
+function empFilter(column: string, scope: AuditScope): string {
+  const tenantEmp = `AND ${column} IN (SELECT te.EmpID FROM dbo.TblEmp te WHERE te.TenantId = @tenantId)`;
+  if (scope.empId != null && scope.empId > 0) {
+    return `${tenantEmp} AND ${column} = @empId`;
   }
-  return '';
+  return tenantEmp;
 }
 
 function empFilterCashMove(
   cmAlias: string,
   mapAlias: string,
-  empId?: number | null,
+  scope: AuditScope,
 ): string {
-  if (empId != null && empId > 0) {
-    return `AND (${cmAlias}.EmpID = @empId OR ${mapAlias}.EmpID = @empId)`;
+  const tenantBranches = `AND ${cmAlias}.BranchID IN (SELECT tloc.LegacyBranchId FROM dbo.Location tloc WHERE tloc.TenantId = @tenantId)`;
+  if (scope.empId != null && scope.empId > 0) {
+    return `${tenantBranches} AND (${cmAlias}.EmpID = @empId OR ${mapAlias}.EmpID = @empId)`;
   }
-  return '';
+  return tenantBranches;
 }
 
 function buildMonthEntryFilter(alias: string): string {
@@ -100,8 +108,10 @@ export function resolveWageSourceSuggestion(data: {
 
 export async function getEmployeeLedgerWageSourceAudit(
   month: string,
-  empId?: number | null,
+  empId: number | null | undefined,
+  tenantId: string,
 ): Promise<EmployeeLedgerWageSourceAuditResponse> {
+  const scope: AuditScope = { tenantId: requireHrTenantId(tenantId, 'getEmployeeLedgerWageSourceAudit'), empId };
   const monthError = validateLedgerMonth(month);
   if (monthError) {
     throw new Error(monthError);
@@ -116,14 +126,14 @@ export async function getEmployeeLedgerWageSourceAudit(
   const db = await getPool();
   const legacyColumnsAvailable = await cashMoveHasLegacyPayrollColumns(db);
 
-  const dailyPayroll = await fetchDailyPayrollAudit(db, month, startDate, endDate, empId);
+  const dailyPayroll = await fetchDailyPayrollAudit(db, month, startDate, endDate, scope);
   const cashWageExpenses = await fetchCashWageExpenseRows(
-    db, month, startDate, endDate, empId, legacyColumnsAvailable,
+    db, month, startDate, endDate, scope, legacyColumnsAvailable,
   );
   const incomeMirrors = await fetchIncomeMirrorRows(
-    db, month, startDate, endDate, empId, legacyColumnsAvailable, cashWageExpenses,
+    db, month, startDate, endDate, scope, legacyColumnsAvailable, cashWageExpenses,
   );
-  const ledgerSalaryCredits = await fetchLedgerSalaryCredits(db, month, startDate, endDate, empId);
+  const ledgerSalaryCredits = await fetchLedgerSalaryCredits(db, month, startDate, endDate, scope);
 
   const dailyPayrollGeneratedTotal = dailyPayroll.generatedStatusTotal;
   const cashWageExpenseTotal = roundMoney(
@@ -158,11 +168,11 @@ async function fetchDailyPayrollAudit(
   month: string,
   startDate: string,
   endDate: string,
-  empId?: number | null,
+  scope: AuditScope,
 ): Promise<DailyPayrollAuditSection> {
-  const empClause = empFilter('p.EmpID', empId);
+  const empClause = empFilter('p.EmpID', scope);
 
-  const byStatusResult = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId)
+  const byStatusResult = await bindMonthAndEmp(db.request(), month, startDate, endDate, scope)
     .query(`
       SELECT
         p.Status AS payrollStatus,
@@ -176,7 +186,7 @@ async function fetchDailyPayrollAudit(
       ORDER BY p.Status
     `);
 
-  const byEmployeeResult = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId)
+  const byEmployeeResult = await bindMonthAndEmp(db.request(), month, startDate, endDate, scope)
     .query(`
       SELECT
         p.EmpID AS empId,
@@ -184,7 +194,7 @@ async function fetchDailyPayrollAudit(
         COUNT(*) AS totalRows,
         ISNULL(SUM(p.DailyWage), 0) AS dailyWageTotal
       FROM dbo.TblEmpDailyPayroll p
-      INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
+      INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID AND e.TenantId = @tenantId
       WHERE p.WorkDate >= @monthStart
         AND p.WorkDate <= @monthEnd
         ${empClause}
@@ -192,7 +202,7 @@ async function fetchDailyPayrollAudit(
       ORDER BY dailyWageTotal DESC, e.EmpName
     `);
 
-  const generatedResult = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId)
+  const generatedResult = await bindMonthAndEmp(db.request(), month, startDate, endDate, scope)
     .query(`
       SELECT
         COUNT(*) AS totalRows,
@@ -239,16 +249,16 @@ async function fetchCashWageExpenseRows(
   month: string,
   startDate: string,
   endDate: string,
-  empId: number | null | undefined,
+  scope: AuditScope,
   legacyColumnsAvailable: boolean,
 ): Promise<CashWageExpenseRow[]> {
-  const empClause = empFilterCashMove('cm', 'm', empId);
+  const empClause = empFilterCashMove('cm', 'm', scope);
   const legacyFlagClause = legacyColumnsAvailable
     ? 'OR ISNULL(cm.IsPayrollDeduction, 0) = 1'
     : '';
 
   const result = await bindWageCategoryKeywords(
-    bindMonthAndEmp(db.request(), month, startDate, endDate, empId),
+    bindMonthAndEmp(db.request(), month, startDate, endDate, scope),
   ).query(`
     SELECT
       cm.ID AS cashMoveId,
@@ -278,7 +288,7 @@ async function fetchCashWageExpenseRows(
       ON m.ExpINID = cm.ExpINID
      AND m.IsActive = 1
      AND m.TxnKind = N'deduction'
-    LEFT JOIN dbo.TblEmp e ON e.EmpID = COALESCE(cm.EmpID, m.EmpID)
+    LEFT JOIN dbo.TblEmp e ON e.EmpID = COALESCE(cm.EmpID, m.EmpID) AND e.TenantId = @tenantId
     WHERE cm.invType = N'مصروفات'
       AND cm.inOut = N'out'
       AND cm.invDate >= @monthStart
@@ -317,16 +327,16 @@ async function fetchIncomeMirrorRows(
   month: string,
   startDate: string,
   endDate: string,
-  empId: number | null | undefined,
+  scope: AuditScope,
   legacyColumnsAvailable: boolean,
   cashWageExpenses: CashWageExpenseRow[],
 ): Promise<IncomeMirrorRow[]> {
-  const empClause = empFilterCashMove('cm', 'm', empId);
+  const empClause = empFilterCashMove('cm', 'm', scope);
   const legacyIncomeClause = legacyColumnsAvailable
     ? 'ISNULL(cm.IsEmployeePayrollIncome, 0) = 1 OR'
     : '';
 
-  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId)
+  const result = await bindMonthAndEmp(db.request(), month, startDate, endDate, scope)
     .query(`
       SELECT
         cm.ID AS cashMoveId,
@@ -351,7 +361,7 @@ async function fetchIncomeMirrorRows(
       LEFT JOIN dbo.TblExpCatEmpMap m
         ON m.ExpINID = cm.ExpINID
        AND m.IsActive = 1
-      LEFT JOIN dbo.TblEmp e ON e.EmpID = COALESCE(cm.EmpID, m.EmpID)
+      LEFT JOIN dbo.TblEmp e ON e.EmpID = COALESCE(cm.EmpID, m.EmpID) AND e.TenantId = @tenantId
       WHERE cm.invType = N'ايرادات'
         AND cm.inOut = N'in'
         AND cm.invDate >= @monthStart
@@ -408,11 +418,11 @@ async function fetchLedgerSalaryCredits(
   month: string,
   startDate: string,
   endDate: string,
-  empId?: number | null,
+  scope: AuditScope,
 ): Promise<LedgerSalaryCreditSection> {
-  const empClause = empFilter('l.EmpID', empId);
+  const empClause = empFilter('l.EmpID', scope);
 
-  const byEmployeeResult = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId)
+  const byEmployeeResult = await bindMonthAndEmp(db.request(), month, startDate, endDate, scope)
     .query(`
       SELECT
         l.EmpID AS empId,
@@ -422,7 +432,7 @@ async function fetchLedgerSalaryCredits(
         ISNULL(SUM(l.Amount), 0) AS totalAmount,
         COUNT(*) AS totalRows
       FROM dbo.TblEmpLedgerEntry l
-      INNER JOIN dbo.TblEmp e ON e.EmpID = l.EmpID
+      INNER JOIN dbo.TblEmp e ON e.EmpID = l.EmpID AND e.TenantId = @tenantId
       WHERE l.IsVoided = 0
         AND l.EntryDirection = N'credit'
         AND l.EntryReason IN (N'hourly_wage', N'monthly_salary')

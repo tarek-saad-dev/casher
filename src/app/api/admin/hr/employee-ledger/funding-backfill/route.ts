@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'empId غير صالح' }, { status: 400 });
     }
 
-    const reconciliation = await buildEmployeeFundingReconciliation(month, empId);
+    const reconciliation = await buildEmployeeFundingReconciliation(month, empId, auth.tenantId);
     const linkedTotal = reconciliation.reduce((s, r) => s + r.linkedRevenueTotal, 0);
     const fundingTotal = reconciliation.reduce((s, r) => s + r.ledgerFundingTotal, 0);
 
@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await runEmployeeFundingBackfill({
+      tenantId: auth.tenantId,
       month,
       empId,
       dryRun,

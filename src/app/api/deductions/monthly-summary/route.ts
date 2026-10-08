@@ -48,6 +48,7 @@ export async function GET(req: NextRequest) {
     
     const request = db.request();
     request.input('targetMonth', sql.NVarChar(7), targetMonth);
+    request.input('tenantId', sql.UniqueIdentifier, auth.tenantId);
     branchIds.forEach((id, i) => request.input(`branchId${i}`, sql.Int, id));
 
     if (employeeId) {
@@ -71,7 +72,7 @@ export async function GET(req: NextRequest) {
       FROM [dbo].[TblCashMove] cm
       LEFT JOIN [dbo].[TblExpINCat] cat ON cm.ExpINID = cat.ExpINID
       LEFT JOIN [dbo].[TblExpCatEmpMap] map ON cm.ExpINID = map.ExpINID AND map.TxnKind = N'advance'
-      LEFT JOIN [dbo].[TblEmp] emp ON map.EmpID = emp.EmpID
+      LEFT JOIN [dbo].[TblEmp] emp ON map.EmpID = emp.EmpID AND emp.TenantId = @tenantId
       ${whereClause}
       GROUP BY emp.EmpID, emp.EmpName, emp.Job
       HAVING COUNT(cm.ID) > 0
@@ -81,6 +82,7 @@ export async function GET(req: NextRequest) {
     // Get overall summary
     const summaryRequest = db.request();
     summaryRequest.input('targetMonth', sql.NVarChar(7), targetMonth);
+    summaryRequest.input('tenantId', sql.UniqueIdentifier, auth.tenantId);
     branchIds.forEach((id, i) => summaryRequest.input(`branchId${i}`, sql.Int, id));
     const summaryResult = await summaryRequest.query(`
         SELECT 
@@ -90,7 +92,7 @@ export async function GET(req: NextRequest) {
         FROM [dbo].[TblCashMove] cm
         LEFT JOIN [dbo].[TblExpINCat] cat ON cm.ExpINID = cat.ExpINID
         LEFT JOIN [dbo].[TblExpCatEmpMap] map ON cm.ExpINID = map.ExpINID AND map.TxnKind = N'advance'
-        LEFT JOIN [dbo].[TblEmp] emp ON map.EmpID = emp.EmpID
+        LEFT JOIN [dbo].[TblEmp] emp ON map.EmpID = emp.EmpID AND emp.TenantId = @tenantId
         WHERE cm.invType = N'مصروفات' 
           AND cm.inOut = N'out'
         AND ${liveCashMovePredicate('cm')} 

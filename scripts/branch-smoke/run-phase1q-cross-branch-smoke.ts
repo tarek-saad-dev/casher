@@ -188,7 +188,10 @@ async function main() {
 
   // Public calendar must hide Camp Caesar while SETUP
   expect((await canBranchAppearInPublicBooking(CC)) === false, 'CC not public');
+  const { resolveLegacyBranchTenantId } = await import('@/platform/masterData/tenantScope');
+  const calendarTenantId = await resolveLegacyBranchTenantId(GLEEM);
   const publicCal = await buildBarberCalendar({
+    tenantId: calendarTenantId,
     empId,
     from: sat,
     to: fri,
@@ -242,6 +245,7 @@ async function main() {
   const afterXfer = await mapDate(sat);
   expect(afterXfer.codes[0] === 'CAMP_CAESAR', 'transfer moves Sat to CC internally');
   const publicAfterXfer = await buildBarberCalendar({
+    tenantId: calendarTenantId,
     empId,
     from: sat,
     to: sat,

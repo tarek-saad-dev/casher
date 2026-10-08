@@ -1,3 +1,5 @@
+import type { TenantServiceCatalogConfig } from '@/lib/services/tenantServiceCatalogConfig';
+
 export type ServiceCategory = 'hair' | 'hair_beard' | 'beard' | 'other';
 
 export type BarberServiceCategory = 'hair' | 'hair_beard' | 'beard';
@@ -11,24 +13,6 @@ export interface ClassifiableService {
   serviceName?: string | null;
   serviceNameAr?: string | null;
 }
-
-/**
- * Stable ProID mapping from TblPro audit (SimpleCreateQueueDrawer + barber seed).
- * Prefer ProID; use normalized names only as fallback for unknown IDs.
- */
-const HAIR_ONLY_PRO_IDS = new Set<number>([
-  1, // Hair Cut
-  4, // Fade Cut
-  5, // Advanced Cut
-]);
-
-const HAIR_BEARD_PRO_IDS = new Set<number>([
-  3, // Haircut & Beard
-]);
-
-const BEARD_ONLY_PRO_IDS = new Set<number>([
-  2, // Beard Styling & Fade
-]);
 
 /** English ProName values for haircut-only services */
 const HAIR_ONLY_NAMES = new Set<string>([
@@ -85,13 +69,20 @@ function normalizeArabicName(value: string | null | undefined): string {
   return value.trim().replace(/\s+/g, ' ');
 }
 
-export function classifyService(service: ClassifiableService): ServiceCategory {
+/**
+ * Prefer the tenant's ProID mapping (`catalog`); use normalized names as fallback for unknown IDs
+ * and for tenants without configured IDs.
+ */
+export function classifyService(
+  service: ClassifiableService,
+  catalog: TenantServiceCatalogConfig,
+): ServiceCategory {
   const proId = service.proId ?? null;
 
   if (proId != null) {
-    if (HAIR_ONLY_PRO_IDS.has(proId)) return 'hair';
-    if (HAIR_BEARD_PRO_IDS.has(proId)) return 'hair_beard';
-    if (BEARD_ONLY_PRO_IDS.has(proId)) return 'beard';
+    if (catalog.barberProIds.hair.includes(proId)) return 'hair';
+    if (catalog.barberProIds.hairBeard.includes(proId)) return 'hair_beard';
+    if (catalog.barberProIds.beard.includes(proId)) return 'beard';
   }
 
   const english = normalizeServiceName(service.serviceName);

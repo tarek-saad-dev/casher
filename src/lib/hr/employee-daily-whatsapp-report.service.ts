@@ -236,10 +236,12 @@ function payrollMonthFromWorkDate(workDate: string): string {
 }
 
 async function loadActiveEmployeesWithPhone(
+  tenantId: string,
   employeeIds?: number[] | null,
 ): Promise<ActiveEmployeePhoneRow[]> {
   const db = await getPool();
   const request = db.request();
+  request.input('tenantId', sql.UniqueIdentifier, tenantId);
   const filters = ['ISNULL(e.isActive, 1) = 1'];
 
   if (employeeIds != null && employeeIds.length > 0) {
@@ -259,7 +261,7 @@ async function loadActiveEmployeesWithPhone(
       e.Mobile,
       CASE WHEN ISNULL(e.isActive, 1) = 1 THEN 1 ELSE 0 END AS IsActiveFlag
     FROM dbo.TblEmp e
-    WHERE ${filters.join(' AND ')}
+    WHERE e.TenantId = @tenantId AND ${filters.join(' AND ')}
     ORDER BY e.EmpName
   `);
 
@@ -310,6 +312,7 @@ function buildPayloadForRow(params: {
 }
 
 export async function buildEmployeeDailyWhatsAppPreview(params: {
+  tenantId: string;
   workDate: string;
   employeeIds?: number[] | null;
 }): Promise<EmployeeDailyWhatsAppPreview> {
@@ -321,8 +324,8 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
   const payrollMonth = payrollMonthFromWorkDate(workDate);
   const dayNameAr = getArabicDayName(workDate);
 
-  const employees = await loadActiveEmployeesWithPhone(params.employeeIds);
-  const ledgerSummary = await getEmployeeLedgerSummary(payrollMonth);
+  const employees = await loadActiveEmployeesWithPhone(params.tenantId, params.employeeIds);
+  const ledgerSummary = await getEmployeeLedgerSummary(payrollMonth, null, { tenantId: params.tenantId });
   const balanceByEmp = new Map(
     ledgerSummary.employees.map((e) => [e.empId, e.balance]),
   );
@@ -334,7 +337,7 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
   const [serviceCountRows, breaksByEmp, attendanceBranchesByEmp, branchEarningsByEmp, ...branchSalesLists] =
     employees.length > 0
       ? await Promise.all([
-          getEmployeesServiceCountsByDate(workDate, empIdList),
+          getEmployeesServiceCountsByDate(workDate, empIdList, params.tenantId),
           loadBreaksByEmpIdsOnWorkDate(db, workDate, empIdList),
           loadAttendanceBranchNamesByEmp(db, workDate, empIdList),
           loadBranchEarningsByEmp(db, workDate, empIdList),
@@ -417,6 +420,7 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
       employeeId: emp.EmpID,
       year,
       month,
+      tenantId: params.tenantId,
     });
 
     if (!report) {
@@ -437,6 +441,7 @@ export async function buildEmployeeDailyWhatsAppPreview(params: {
     let balance = ledgerBalance;
     if (!balanceByEmp.has(emp.EmpID)) {
       const ledger = await getEmployeeLedgerEntries({
+        tenantId: params.tenantId,
         empId: emp.EmpID,
         month: payrollMonth,
       });
@@ -590,6 +595,7 @@ function resultStatusLabel(result: MessageSendResult | {
 }
 
 export async function sendEmployeeDailyWhatsAppReports(params: {
+  tenantId: string;
   workDate: string;
   employeeIds?: number[] | null;
   dryRun?: boolean;
@@ -615,6 +621,7 @@ export async function sendEmployeeDailyWhatsAppReports(params: {
   }
 
   const preview = await buildEmployeeDailyWhatsAppPreview({
+    tenantId: params.tenantId,
     workDate: params.workDate,
     employeeIds: params.employeeIds,
   });

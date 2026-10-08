@@ -44,6 +44,7 @@
     "drvo-013:smoke": "tsx scripts/drvo/drvo-013-tenant-isolation-smoke.ts",
     "drvo-012:reconcile-subscriptions": "tsx scripts/drvo/drvo-012-reconcile-subscriptions.ts",
     "drvo-015:smoke": "tsx scripts/drvo/drvo-015-master-data-smoke.ts",
+    "drvo-016:smoke": "tsx scripts/drvo/drvo-016-hr-payroll-smoke.ts",
     "drvo-015:verify": "tsx scripts/drvo/drvo-015-verify.ts",
     "drvo-018:bind-channel": "tsx scripts/drvo/drvo-018-bind-channel.ts",
     "drvo-003:migrate": "tsx scripts/run-drvo-003-platform-core-migration.ts --expected-database=last132_agent",

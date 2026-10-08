@@ -73,15 +73,15 @@ describe('employee ledger multi-branch financial summary', () => {
     expect(svc).toContain('b.BranchName');
   });
 
-  it('panel renders 2-row grouped table with rowSpan merged cells', () => {
+  it('panel renders one row per tenant branch with rowSpan merged cells', () => {
     const panel = read('src/components/hr/EmployeeLedgerPanel.tsx');
     expect(panel).toContain('BranchSummaryCard');
     expect(panel).toContain('branchFilter');
     expect(panel).toContain('الإجمالي العام');
     expect(panel).toContain('رصيد الفرع');
     expect(panel).toContain('الرصيد الإجمالي');
-    expect(panel).toContain('rowSpan={2}');
-    expect(panel).toContain('EMP_LEDGER_TABLE_BRANCH_CODES');
+    expect(panel).toContain('rowSpan={rowSpan}');
+    expect(panel).toContain('tableBranches');
     expect(panel).toContain('BranchRowBadge');
   });
 

@@ -81,6 +81,7 @@ export async function GET(req: NextRequest) {
       LEFT JOIN [dbo].[TblUser] u ON sm.UserID = u.UserID
       LEFT JOIN [dbo].[TblExpCatEmpMap] map ON cm.ExpINID = map.ExpINID AND map.TxnKind = N'advance'
       LEFT JOIN [dbo].[TblEmp] emp ON map.EmpID = emp.EmpID
+        AND emp.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @branchId)
       ${whereClause}
       ORDER BY cm.ID DESC
     `);
