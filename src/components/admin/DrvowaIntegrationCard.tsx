@@ -19,6 +19,7 @@ export function DrvowaIntegrationCard() {
   const [status, setStatus] = useState<StatusPayload | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   async function loadStatus() {
     try {
@@ -44,6 +45,7 @@ export function DrvowaIntegrationCard() {
   async function pair() {
     setBusy(true);
     setMessage(null);
+    setErrorCode(null);
     try {
       const response = await fetch('/api/admin/integrations/drvowa/pair', {
         method: 'POST',
@@ -57,6 +59,7 @@ export function DrvowaIntegrationCard() {
       const data = await response.json();
       if (!response.ok) {
         setMessage(data.error || 'تعذر إكمال الربط');
+        setErrorCode(typeof data.code === 'string' ? data.code : null);
         return;
       }
       setMessage(
@@ -140,7 +143,12 @@ export function DrvowaIntegrationCard() {
 
         {message ? (
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700">
-            {message}
+            <div>{message}</div>
+            {errorCode ? (
+              <div dir="ltr" className="mt-2 font-mono text-[11px] font-semibold text-slate-400">
+                {errorCode}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </section>
