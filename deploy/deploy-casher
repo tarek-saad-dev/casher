@@ -165,32 +165,20 @@ node scripts/ensure-phase1b-secrets.cjs
 "
 
 echo
-echo "[7a/8] Phase 3 AI schema migration..."
-runuser -u casher -- bash -lc "
-cd '$APP_DIR'
-npm run messaging:migrate-ai
-"
-
-echo
-echo "[7b/8] Salon Concierge schema migration (idempotent)..."
-runuser -u casher -- bash -lc "
-cd '$APP_DIR'
-npm run messaging:migrate-salon-concierge
-"
-
-echo
-echo "[7b2/8] Human Handoff schema migration (idempotent, flag stays off)..."
-runuser -u casher -- bash -lc "
-cd '$APP_DIR'
-npm run messaging:migrate-handoff
-"
-
-echo
-echo "[7b3/8] Booking Management schema migration (idempotent, flag stays off)..."
-runuser -u casher -- bash -lc "
-cd '$APP_DIR'
-npm run messaging:migrate-booking-management
-"
+if [[ "${CASHER_APPLY_MESSAGING_SCHEMA:-}" == "I_HAVE_A_VERIFIED_BACKUP" ]]; then
+  echo "[7a/8] Messaging schema migrations (explicitly approved for this deploy)..."
+  runuser -u casher -- bash -lc "
+  cd '$APP_DIR'
+  npm run messaging:migrate-ai
+  npm run messaging:migrate-salon-concierge
+  npm run messaging:migrate-handoff
+  npm run messaging:migrate-booking-management
+  "
+else
+  echo "[7a/8] Messaging schema migrations are NOT applied by application deploy."
+  echo "        Take and verify a backup (docs/drvo/DRVO-020-BACKUP-RESTORE-RUNBOOK.md), then rerun with"
+  echo "        CASHER_APPLY_MESSAGING_SCHEMA=I_HAVE_A_VERIFIED_BACKUP, or run the npm messaging:migrate-* scripts by hand."
+fi
 
 echo
 echo "[7c0/8] DRVO production migrations are NOT applied by application deploy."

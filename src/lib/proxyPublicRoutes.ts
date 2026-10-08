@@ -17,6 +17,9 @@ export const PUBLIC_EXACT_ROUTES = [
   // Public client website (cutsaloon.com via nginx) — narrow exact paths only.
   '/api/client/lookup',
   '/api/client/update',
+  // Uptime/readiness probes — no session, no tenant data, no infrastructure metadata.
+  '/api/health/live',
+  '/api/health/ready',
 ] as const;
 
 /**

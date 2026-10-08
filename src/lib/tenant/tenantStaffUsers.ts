@@ -1,5 +1,6 @@
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
+import { hashPassword } from '@/lib/auth/passwordHash';
 import { assertCanAddUser } from '@/platform/commercial/limits';
 import { ensureLegacyIdMapInTransaction } from '@/platform/onboarding/legacyIdMap';
 
@@ -50,7 +51,7 @@ export async function createTenantStaffUser(input: {
     const inserted = await new sql.Request(tx)
       .input('UserName', sql.NVarChar(50), input.userName)
       .input('loginName', sql.NVarChar(50), input.loginName)
-      .input('Password', sql.NVarChar(50), input.password)
+      .input('Password', sql.NVarChar(50), await hashPassword(input.password))
       .input('UserLevel', sql.NVarChar(20), input.userLevel)
       .input('ShiftID', sql.Int, input.shiftId)
       .input('CardNO', sql.NVarChar(50), '')

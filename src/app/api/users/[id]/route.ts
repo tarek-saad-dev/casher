@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { requireTenantSession } from '@/lib/api-auth';
+import { hashPassword } from '@/lib/auth/passwordHash';
 import { hasPermission } from '@/lib/permissions';
 import { grantStaffAccessToAllActiveBranches } from '@/lib/branch/userLoginBranch';
 import { validateUserBranchAccess } from '@/lib/branch/access';
@@ -104,7 +105,7 @@ export async function PUT(
       sets.push('loginName = @loginName');
     }
     if (Password) {
-      r.input('Password', sql.NVarChar(50), Password);
+      r.input('Password', sql.NVarChar(50), await hashPassword(String(Password)));
       sets.push('Password = @Password');
     }
     if (UserLevel) {
