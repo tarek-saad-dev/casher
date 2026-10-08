@@ -170,7 +170,7 @@ runuser -u casher -- bash -lc "
 cd '$APP_DIR'
 touch .env.local
 if ! grep -q '^DRVOWA_CONNECTOR_SECRET=' .env.local; then
-  printf '\nDRVOWA_CONNECTOR_SECRET=%s\n' "\$(openssl rand -hex 32)" >> .env.local
+  printf '\nDRVOWA_CONNECTOR_SECRET=%s\n' \$(openssl rand -hex 32) >> .env.local
 fi
 chmod 600 .env.local
 "
