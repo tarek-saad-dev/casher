@@ -18,6 +18,19 @@ export type DrvowaEventMessageResult = {
   idempotentReplay?: boolean;
 };
 
+export async function isDrvowaEventMessagingActive(): Promise<boolean> {
+  try {
+    const paired = await getDrvowaIntegrationConfig();
+    if (paired && paired.status === 'ACTIVE') return true;
+    return Boolean(
+      process.env.DRVOWA_BASE_URL?.trim()
+      && process.env.DRVOWA_INBOUND_API_KEY?.trim(),
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function integrationConfig(): Promise<{ baseUrl: string; apiKey: string }> {
   const paired = await getDrvowaIntegrationConfig();
   if (paired && paired.status === 'ACTIVE') {
