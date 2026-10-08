@@ -61,6 +61,7 @@ import {
   summarizeOpenDays,
   workflowSteps,
 } from '@/lib/hr/dailyPayrollClosingUi';
+import { hrBranchPalette, parseHrBranchOptions, type HrBranchOption } from '@/lib/hr/hrBranchUi';
 interface PayrollRow {
   ID: number;
   EmpID: number;
@@ -134,21 +135,21 @@ function payrollMethodBadge(method: string | null) {
   );
 }
 
-type EmployeeScopeFilter = 'all' | 'GLEEM' | 'CAMP_CAESAR';
+/** 'all' or a tenant branch code from the API `scopeOptions`. */
+type EmployeeScopeFilter = string;
 
-function branchBadge(branchCode: string | null | undefined, branchName?: string | null) {
+function branchBadge(
+  branchCode: string | null | undefined,
+  branchName: string | null | undefined,
+  branchCodes: readonly string[],
+) {
   if (!branchCode && !branchName) return null;
   const code = String(branchCode ?? '');
   const label = shortBranchName({
     branchCode: code || '—',
     branchName: branchName || code || '—',
   });
-  const tone =
-    code === 'GLEEM'
-      ? 'border-sky-500/25 bg-sky-500/10 text-sky-300/90'
-      : code === 'CAMP_CAESAR'
-        ? 'border-amber-500/25 bg-amber-500/10 text-amber-300/90'
-        : 'border-zinc-600/40 bg-zinc-800/60 text-zinc-400';
+  const tone = hrBranchPalette(code, branchCodes).badge;
   return (
     <span
       className={cn(
@@ -276,6 +277,8 @@ export default function DailyPayrollPanel() {
   const [sessionBranchId, setSessionBranchId] = useState<number | null>(null);
   /** Table visibility only — never switches session branch by itself. */
   const [employeeScope, setEmployeeScope] = useState<EmployeeScopeFilter>('all');
+  const [scopeOptions, setScopeOptions] = useState<HrBranchOption[]>([]);
+  const scopeCodes = useMemo(() => scopeOptions.map((o) => o.code), [scopeOptions]);
   const [sameDayMultiBranchEmployees, setSameDayMultiBranchEmployees] = useState<
     Array<{ empId: number; empName: string; branchIds: number[] }>
   >([]);
@@ -556,6 +559,7 @@ export default function DailyPayrollPanel() {
       if (!payrollRes.ok) throw new Error(payrollData.error || 'فشل تحميل اليوميات');
       setRows(payrollData.rows ?? []);
       setSummary(payrollData.summary ?? null);
+      setScopeOptions(parseHrBranchOptions(payrollData.scopeOptions));
       setMissingMappingEmps(payrollData.missingMappingEmps ?? []);
 
       if (targetRes.ok) {
@@ -2564,13 +2568,10 @@ export default function DailyPayrollPanel() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[11px] text-zinc-500">عرض الموظفين</span>
-            {(
-              [
-                { id: 'all' as const, label: 'كل الموظفين' },
-                { id: 'GLEEM' as const, label: 'جليم' },
-                { id: 'CAMP_CAESAR' as const, label: 'كامب شيزار' },
-              ] as const
-            ).map((opt) => (
+            {[
+              { id: 'all', label: 'كل الموظفين' },
+              ...scopeOptions.map((o) => ({ id: o.code, label: o.label })),
+            ].map((opt) => (
               <Button
                 key={opt.id}
                 type="button"
@@ -2664,6 +2665,7 @@ export default function DailyPayrollPanel() {
                               {branchBadge(
                                 merged.branchCode ?? row?.BranchCode ?? target?.branchCode,
                                 merged.branchName ?? row?.BranchName ?? target?.branchName,
+                                scopeCodes,
                               )}
                               {merged.sameDayMultiBranch ? (
                                 <span className="text-[10px] text-violet-300/90">متعدد الفروع</span>

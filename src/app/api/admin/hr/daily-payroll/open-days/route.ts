@@ -24,7 +24,7 @@ function cairoMonthStartYmd(now = new Date()): string {
  *   - scope=current-month (default for UI) → from 1st of Cairo month
  *   - fromWorkDate=YYYY-MM-DD [& toWorkDate=]
  *   - lookbackDays=N (legacy)
- * Unresolved BranchID+WorkDate across GLEEM + CAMP_CAESAR (CLOSED excluded).
+ * Unresolved BranchID+WorkDate across the session tenant's active branches (CLOSED excluded).
  */
 export async function GET(request: NextRequest) {
   const auth = await requirePageAccess('/admin/hr');
@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
     }
 
     const result = await listDailyPayrollOpenDays({
+      tenantId: auth.tenantId,
       fromWorkDate,
       toWorkDate,
       lookbackDays: lookback,

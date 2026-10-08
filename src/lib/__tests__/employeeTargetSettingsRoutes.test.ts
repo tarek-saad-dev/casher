@@ -12,7 +12,10 @@ vi.mock('@/lib/session', () => ({
 }));
 
 vi.mock('@/lib/branch/context', () => ({
-  requireBranchOperationAccess: vi.fn(async () => ({ branchId: 1 })),
+  requireBranchOperationAccess: vi.fn(async () => ({
+    branchId: 1,
+    tenantId: '11111111-1111-4111-8111-111111111111',
+  })),
 }));
 
 const getEmployeeTargetSettings = vi.fn();
@@ -60,7 +63,12 @@ describe('target-settings APIs', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.employee.empName).toBe('أحمد');
-    expect(getEmployeeTargetSettings).toHaveBeenCalledWith(5, null, 1);
+    expect(getEmployeeTargetSettings).toHaveBeenCalledWith(
+      5,
+      null,
+      1,
+      '11111111-1111-4111-8111-111111111111',
+    );
   });
 
   it('GET unauthorized', async () => {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { requireTenantSession } from '@/lib/api-auth';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 
 export async function PATCH(
   req: NextRequest,
@@ -21,10 +22,11 @@ export async function PATCH(
     const result = await db
       .request()
       .input("empId", sql.Int, empId)
+      .input("tenantId", sql.UniqueIdentifier, requireMasterDataTenantId(session.TenantId, 'PATCH /api/admin/employees/[id]/activate'))
       .query(`
         UPDATE dbo.TblEmp
         SET isActive = 1
-        WHERE EmpID = @empId
+        WHERE EmpID = @empId AND TenantId = @tenantId
       `);
 
     if (result.rowsAffected[0] === 0) {

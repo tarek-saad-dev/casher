@@ -140,7 +140,7 @@ export function buildHrInsertQuery(
 
     SELECT EmpID, EmpName, isActive
     FROM dbo.TblEmp
-    WHERE EmpID = SCOPE_IDENTITY();
+    WHERE EmpID = SCOPE_IDENTITY() AND TenantId = @tenantId;
   `;
 
   return { sql: sqlText, bind };
@@ -198,6 +198,7 @@ export const EMPLOYEE_LIST_SELECT = `
       AND cat.ExpINType = N'ايرادات'
     ORDER BY m.ModifiedDate DESC, m.ID DESC
   ) rev
+  WHERE e.TenantId = @tenantId
 `;
 
 export const EMPLOYEE_SELECT_BY_ID = `
@@ -227,5 +228,5 @@ export const EMPLOYEE_SELECT_BY_ID = `
     END AS DisplaySortOrder,
     Mobile
   FROM dbo.TblEmp
-  WHERE EmpID = @empID
+  WHERE EmpID = @empID AND TenantId = @tenantId
 `;

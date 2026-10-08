@@ -15,13 +15,15 @@ import {
   listUserValidBranchAccess,
 } from '@/lib/branch/repository';
 import { BranchDomainError } from '@/lib/branch/types';
+import { hrBranchLabel, legacyHrAllScopeBranches } from '@/lib/hr/legacyHrBranchPolicy';
+import { hrTenantIdForBranch } from '@/lib/hr/hrTenantScope';
+import { listTenantLegacyBranchIds } from '@/platform/tenant/tenantContext';
 import {
   parseDailyPayrollEmployeeScope,
   type DailyPayrollEmployeeScope,
 } from '@/lib/payroll/dailyPayrollEmployeeScope.shared';
 
 export {
-  DAILY_PAYROLL_EMPLOYEE_SCOPES,
   parseDailyPayrollEmployeeScope,
   type DailyPayrollEmployeeScope,
 } from '@/lib/payroll/dailyPayrollEmployeeScope.shared';
@@ -32,10 +34,15 @@ export type DailyPayrollViewBranch = {
   branchName: string;
 };
 
+/** One selectable `employeeScope` branch tab. */
+export type DailyPayrollScopeOption = { code: string; label: string };
+
 export type DailyPayrollViewScope = {
   employeeScope: DailyPayrollEmployeeScope | 'active';
   branches: DailyPayrollViewBranch[];
   branchIds: number[];
+  /** Branch tabs of the caller's tenant (in branch order), shown next to 'all'. */
+  scopeOptions: DailyPayrollScopeOption[];
 };
 
 function canViewPayrollBranch(a: {
@@ -49,7 +56,7 @@ function canViewPayrollBranch(a: {
 
 /**
  * Resolve which BranchIDs the table may show for this request.
- * `employeeScope=all|GLEEM|CAMP_CAESAR` never switches the session branch.
+ * `employeeScope=all|<tenant branch code>` never switches the session branch.
  * Omitted / active → caller's current operating branch only (legacy).
  */
 export async function resolveDailyPayrollViewScope(
@@ -61,13 +68,28 @@ export async function resolveDailyPayrollViewScope(
 
   const scope = parseDailyPayrollEmployeeScope(employeeScopeParam);
 
+  if (scope === 'active' && !ctx.canOperate && !ctx.canViewReports) {
+    return NextResponse.json(
+      { error: 'غير مصرح — لا تملك صلاحية عرض يوميات هذا الفرع', code: 'VIEW_NOT_ALLOWED' },
+      { status: 403 },
+    );
+  }
+
+  const tenantBranchIds = await listTenantLegacyBranchIds(await hrTenantIdForBranch(ctx));
+  const access = await listUserValidBranchAccess(ctx.userId, at);
+  const allowed = access
+    .filter((a) => canViewPayrollBranch(a) && tenantBranchIds.has(a.branchId))
+    .map((a) => ({
+      branchId: a.branchId,
+      branchCode: a.branchCode,
+      branchName: a.branchName,
+    }));
+  const scopeOptions = legacyHrAllScopeBranches(allowed)
+    .slice()
+    .sort((a, b) => a.branchId - b.branchId)
+    .map((b) => ({ code: b.branchCode, label: hrBranchLabel(b) }));
+
   if (scope === 'active') {
-    if (!ctx.canOperate && !ctx.canViewReports) {
-      return NextResponse.json(
-        { error: 'غير مصرح — لا تملك صلاحية عرض يوميات هذا الفرع', code: 'VIEW_NOT_ALLOWED' },
-        { status: 403 },
-      );
-    }
     return {
       employeeScope: 'active',
       branches: [
@@ -78,23 +100,12 @@ export async function resolveDailyPayrollViewScope(
         },
       ],
       branchIds: [ctx.branchId],
+      scopeOptions,
     };
   }
 
-  const access = await listUserValidBranchAccess(ctx.userId, at);
-  const allowed = access
-    .filter(canViewPayrollBranch)
-    .map((a) => ({
-      branchId: a.branchId,
-      branchCode: a.branchCode,
-      branchName: a.branchName,
-    }));
-
   if (scope === 'all') {
-    const preferred = allowed.filter(
-      (b) => b.branchCode === 'GLEEM' || b.branchCode === 'CAMP_CAESAR',
-    );
-    const branches = preferred.length > 0 ? preferred : allowed;
+    const branches = legacyHrAllScopeBranches(allowed);
     if (branches.length === 0) {
       return NextResponse.json(
         { error: 'لا توجد فروع مصرح بعرض يومياتها', code: 'NO_BRANCH_ACCESS' },
@@ -105,6 +116,7 @@ export async function resolveDailyPayrollViewScope(
       employeeScope: 'all',
       branches,
       branchIds: branches.map((b) => b.branchId),
+      scopeOptions,
     };
   }
 
@@ -125,6 +137,7 @@ export async function resolveDailyPayrollViewScope(
       employeeScope: scope,
       branches: [hit],
       branchIds: [hit.branchId],
+      scopeOptions,
     };
   } catch (err) {
     if (err instanceof BranchDomainError) {

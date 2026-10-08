@@ -49,6 +49,7 @@ export async function GET(req: NextRequest) {
       : parseEmployeeIds(searchParams.get('employeeIds'));
 
     const preview = await buildEmployeeDailyWhatsAppPreview({
+      tenantId: auth.tenantId,
       workDate,
       employeeIds,
     });
@@ -95,6 +96,7 @@ export async function POST(req: NextRequest) {
     );
 
     const result = await sendEmployeeDailyWhatsAppReports({
+      tenantId: auth.tenantId,
       workDate,
       employeeIds,
       dryRun: Boolean(body.dryRun),

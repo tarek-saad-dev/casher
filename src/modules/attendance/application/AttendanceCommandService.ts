@@ -459,7 +459,7 @@ export async function saveLegacyEmployeeAttendance(
 
   const dbPool = await attendanceRepo.getAttendanceDb();
 
-  const exists = await attendanceRepo.employeeExists(dbPool, empId);
+  const exists = await attendanceRepo.employeeExists(dbPool, empId, branchId);
   if (!exists) {
     throw new AttendanceCommandError(LEGACY_EMPLOYEES_POST_EMP_NOT_FOUND_MESSAGE, 404);
   }
@@ -737,6 +737,7 @@ export async function saveAdminAttendanceBulk(
   const empDefaultsRows = await attendanceRepo.loadBulkEmpDefaults(
     db,
     items.map((item) => item.EmpID),
+    branchId,
   );
   const empDefaultMap = new Map<
     number,

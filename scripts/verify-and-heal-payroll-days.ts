@@ -246,6 +246,7 @@ async function main() {
   for (const date of dates) {
     console.log(`\n>>> nightly-close ${date}`);
     const result = await runNightlyClose({
+      tenantId: bootTenantId,
       workDate: date,
       dryRun: false,
       skipWhatsApp: true,
@@ -266,6 +267,7 @@ async function main() {
     '@/lib/services/employeeLedgerSyncService'
   );
   const sync = await runEmployeeLedgerHistoricalSync({
+    tenantId: bootTenantId,
     month,
     empId: null,
     dryRun: false,

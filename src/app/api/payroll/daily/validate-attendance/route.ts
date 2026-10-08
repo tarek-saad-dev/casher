@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
     const generatedExists: boolean = generatedResult.recordset[0].cnt > 0;
 
     const { missing, excluded } = await validateDailyPayrollAttendance(db, workDate, {
+      empScope: { branchId },
       branchId,
     });
 

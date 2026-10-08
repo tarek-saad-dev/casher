@@ -119,6 +119,7 @@ export async function GET(req: NextRequest) {
           AND a.WorkDate = @workDate
           AND a.BranchID = @branchId
         WHERE ISNULL(e.isActive, 1) = 1
+          AND e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @branchId)
           AND ISNULL(e.EmploymentType, N'') <> N'freelance'
           AND (
             ISNULL(ws.IsWorking, 1) = 0

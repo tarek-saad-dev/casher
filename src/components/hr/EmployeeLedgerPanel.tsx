@@ -17,9 +17,10 @@ import type {
   EmpLedgerEmployeeSummaryRow,
   EmpLedgerListResponse,
   EmpLedgerSummaryResponse,
-  EmpLedgerTableBranchCode,
+  EmpLedgerTableBranch,
 } from '@/lib/types/employee-ledger';
-import { EMP_LEDGER_REASON_LABELS, EMP_LEDGER_TABLE_BRANCH_CODES } from '@/lib/types/employee-ledger';
+import { EMP_LEDGER_REASON_LABELS } from '@/lib/types/employee-ledger';
+import { hrBranchLabel } from '@/lib/hr/legacyHrBranchPolicy';
 import EmployeePayoutModal, { type EmployeePayoutTarget } from '@/components/hr/EmployeePayoutModal';
 import EmployeeFundingModal from '@/components/hr/EmployeeFundingModal';
 import MonthlySalaryPostModal from '@/components/hr/MonthlySalaryPostModal';
@@ -53,9 +54,20 @@ interface AccessibleBranch {
 }
 
 function shortBranchLabel(b: { branchCode: string; branchName: string }): string {
-  if (b.branchCode === 'GLEEM') return 'جليم';
-  if (b.branchCode === 'CAMP_CAESAR') return 'كامب شيزار';
-  return b.branchName || b.branchCode;
+  return hrBranchLabel(b);
+}
+
+/** Row tint + badge per ledger table branch, by index in `tableBranches`. */
+const LEDGER_BRANCH_TONES = [
+  { row: 'bg-sky-950/20', badge: 'border-sky-500/35 bg-sky-500/10 text-sky-300' },
+  { row: 'bg-violet-950/15', badge: 'border-violet-500/35 bg-violet-500/10 text-violet-300' },
+  { row: 'bg-amber-950/15', badge: 'border-amber-500/35 bg-amber-500/10 text-amber-300' },
+  { row: 'bg-emerald-950/15', badge: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-300' },
+  { row: 'bg-rose-950/15', badge: 'border-rose-500/35 bg-rose-500/10 text-rose-300' },
+] as const;
+
+function ledgerBranchTone(idx: number) {
+  return LEDGER_BRANCH_TONES[idx % LEDGER_BRANCH_TONES.length]!;
 }
 
 function balanceTone(n: number): string {
@@ -64,18 +76,15 @@ function balanceTone(n: number): string {
   return 'text-zinc-400';
 }
 
-function BranchRowBadge({ code }: { code: string }) {
-  const gleem = code === 'GLEEM';
+function BranchRowBadge({ branch, idx }: { branch: EmpLedgerTableBranch; idx: number }) {
   return (
     <span
       className={cn(
         'inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold',
-        gleem
-          ? 'border-sky-500/35 bg-sky-500/10 text-sky-300'
-          : 'border-violet-500/35 bg-violet-500/10 text-violet-300',
+        ledgerBranchTone(idx).badge,
       )}
     >
-      {shortBranchLabel({ branchCode: code, branchName: code })}
+      {branch.label || shortBranchLabel(branch)}
     </span>
   );
 }
@@ -251,6 +260,7 @@ export default function EmployeeLedgerPanel() {
     };
   }, [refresh]);
 
+  const tableBranches = summary?.tableBranches ?? [];
   const summaryRows = useMemo(() => {
     if (!summary) return [] as EmpLedgerEmployeeSummaryRow[];
     if (empId === 'all') return summary.employees;
@@ -509,7 +519,7 @@ export default function EmployeeLedgerPanel() {
         </div>
       )}
 
-      {/* Per-employee summary — 2 rows per employee (GLEEM + CAMP_CAESAR) */}
+      {/* Per-employee summary — one row per tenant branch (summary.tableBranches) */}
       <div className="rounded-xl border border-zinc-800 overflow-hidden">
         <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/40 flex items-center gap-2">
           <h3 className="text-sm font-semibold text-zinc-300">أرصدة الموظفين حسب الفرع — {month}</h3>
@@ -542,14 +552,15 @@ export default function EmployeeLedgerPanel() {
                 </tr>
               )}
               {summaryRows.map((row) => {
-                const branchCodes = EMP_LEDGER_TABLE_BRANCH_CODES as readonly EmpLedgerTableBranchCode[];
                 const selected = empId === String(row.empId);
                 const overall = row.overallBalance ?? row.balance;
-                return branchCodes.map((code, idx) => {
+                const rowSpan = Math.max(tableBranches.length, 1);
+                return tableBranches.map((tb, idx) => {
+                  const code = tb.branchCode;
                   const br: EmpLedgerEmployeeBranchBreakdown = row.branches?.[code] ?? {
                     branchId: 0,
                     branchCode: code,
-                    branchName: code,
+                    branchName: tb.branchName,
                     salary: 0,
                     target: 0,
                     funding: 0,
@@ -565,13 +576,12 @@ export default function EmployeeLedgerPanel() {
                     payoutDebits: 0,
                     deductionDebits: 0,
                   };
-                  const isGleem = code === 'GLEEM';
                   return (
                     <tr
                       key={`${row.empId}-${code}`}
                       className={cn(
                         'transition-colors cursor-pointer border-b border-zinc-800/50',
-                        isGleem ? 'bg-sky-950/20' : 'bg-violet-950/15',
+                        ledgerBranchTone(idx).row,
                         selected && 'ring-1 ring-inset ring-primary/30',
                         'hover:brightness-110',
                       )}
@@ -579,14 +589,14 @@ export default function EmployeeLedgerPanel() {
                     >
                       {idx === 0 && (
                         <td
-                          rowSpan={2}
+                          rowSpan={rowSpan}
                           className="px-4 py-3 font-medium text-white align-middle border-l border-zinc-800/40"
                         >
                           {row.empName}
                         </td>
                       )}
                       <td className="px-4 py-2.5">
-                        <BranchRowBadge code={code} />
+                        <BranchRowBadge branch={tb} idx={idx} />
                       </td>
                       <td className="px-4 py-2.5 font-mono text-emerald-400">{fmt(br.salary)}</td>
                       <td className="px-4 py-2.5 font-mono text-emerald-400/80">{fmt(br.target)}</td>
@@ -600,7 +610,7 @@ export default function EmployeeLedgerPanel() {
                       </td>
                       {idx === 0 && (
                         <td
-                          rowSpan={2}
+                          rowSpan={rowSpan}
                           className={cn(
                             'px-4 py-3 font-mono font-bold align-middle border-r border-zinc-800/40',
                             balanceTone(overall),

@@ -48,6 +48,7 @@ import {
   formatTime12hAr,
 } from '@/lib/reports/reportFormatters';
 import { shortBranchName } from '@/lib/hr/dailyPayrollClosingUi';
+import { hrBranchPalette, parseHrBranchOptions, type HrBranchOption } from '@/lib/hr/hrBranchUi';
 
 interface EmployeeOption {
   EmpID: number;
@@ -117,6 +118,7 @@ function dayBranchBadge(
     attendanceBranchName: string | null;
   },
   sessionBranchId: number | null,
+  branchCodes: readonly string[],
 ) {
   if (att.attendanceBranchId == null) return null;
   if (sessionBranchId != null && att.attendanceBranchId === sessionBranchId) return null;
@@ -125,12 +127,7 @@ function dayBranchBadge(
     branchCode: code || '—',
     branchName: att.attendanceBranchName || code || '—',
   });
-  const tone =
-    code === 'GLEEM'
-      ? 'border-sky-500/25 bg-sky-500/10 text-sky-300/90'
-      : code === 'CAMP_CAESAR'
-        ? 'border-amber-500/25 bg-amber-500/10 text-amber-300/90'
-        : 'border-zinc-600/40 bg-zinc-800/60 text-zinc-400';
+  const tone = hrBranchPalette(code, branchCodes).badge;
   return (
     <span
       className={`inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium border ${tone}`}
@@ -159,6 +156,8 @@ export default function EmployeeMonthlySheetPanel() {
   const [error, setError] = useState<string | null>(null);
   const [employeesLoading, setEmployeesLoading] = useState(true);
   const [sessionBranchId, setSessionBranchId] = useState<number | null>(null);
+  const [branchOptions, setBranchOptions] = useState<HrBranchOption[]>([]);
+  const branchCodes = useMemo(() => branchOptions.map((o) => o.code), [branchOptions]);
   const [actionBusyDate, setActionBusyDate] = useState<string | null>(null);
   const [flashMsg, setFlashMsg] = useState('');
   const [completePreview, setCompletePreview] = useState<CompletePreview | null>(null);
@@ -204,6 +203,7 @@ export default function EmployeeMonthlySheetPanel() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'فشل تحميل التقرير');
       setSheet(data);
+      setBranchOptions(parseHrBranchOptions(data.branchOptions));
       if (data.branch?.branchId) setSessionBranchId(Number(data.branch.branchId));
     } catch (err) {
       setSheet(null);
@@ -730,7 +730,7 @@ export default function EmployeeMonthlySheetPanel() {
                         {day.isToday && (
                           <div className="text-[10px] text-amber-300 mt-1">اليوم</div>
                         )}
-                        {dayBranchBadge(day.attendance, sessionBranchId)}
+                        {dayBranchBadge(day.attendance, sessionBranchId, branchCodes)}
                       </td>
                       <td className="px-3 py-3 align-middle text-center tabular-nums text-zinc-100">
                         {checkInDisplay}

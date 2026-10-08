@@ -177,6 +177,7 @@ async function loadEmployeeBranchMeta(empId: number, branchId: number) {
       FROM dbo.TblEmp e
       CROSS JOIN dbo.TblBranch b
       WHERE e.EmpID = @empId AND b.BranchID = @branchId
+        AND e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @branchId)
     `);
   const row = result.recordset[0] as
     | { EmpID: number; EmpName: string; BranchID: number; BranchCode: string; BranchName: string }
@@ -736,13 +737,13 @@ export async function assignEmployeePayrollGapDayAttendance(params: {
     throw new Error('الموظف غير مُعيَّن لهذا الفرع في هذا التاريخ');
   }
 
-  const empRes = await db.request().input('empId', sql.Int, params.empId).query(`
+  const empRes = await db.request().input('empId', sql.Int, params.empId).input('hrBranchId', sql.Int, params.branchId).query(`
     SELECT
       EmpID,
       CONVERT(VARCHAR(5), DefaultCheckInTime, 108) AS DefaultCheckInTime,
       CONVERT(VARCHAR(5), DefaultCheckOutTime, 108) AS DefaultCheckOutTime
     FROM dbo.TblEmp
-    WHERE EmpID = @empId
+    WHERE EmpID = @empId AND TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @hrBranchId)
   `);
   const empRow = empRes.recordset[0] as
     | {

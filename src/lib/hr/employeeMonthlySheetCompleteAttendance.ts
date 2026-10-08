@@ -55,12 +55,12 @@ async function loadDefaults(params: {
   const db = await getPool();
   const dayOfWeek = new Date(`${params.workDate}T12:00:00`).getDay();
 
-  const empRes = await db.request().input('empId', sql.Int, params.empId).query(`
+  const empRes = await db.request().input('empId', sql.Int, params.empId).input('hrBranchId', sql.Int, params.branchId).query(`
     SELECT
       CONVERT(VARCHAR(5), DefaultCheckInTime, 108) AS DefaultCheckInTime,
       CONVERT(VARCHAR(5), DefaultCheckOutTime, 108) AS DefaultCheckOutTime
     FROM dbo.TblEmp
-    WHERE EmpID = @empId
+    WHERE EmpID = @empId AND TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @hrBranchId)
   `);
   const empRow = empRes.recordset[0] as
     | { DefaultCheckInTime: string | null; DefaultCheckOutTime: string | null }

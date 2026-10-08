@@ -8,6 +8,7 @@ import {
   calcLateMinutes,
 } from '@/lib/timeUtils';
 import type { AttendanceBreakInterval } from '@/lib/hr/attendance-breaks';
+import { hrBranchLabel } from '@/lib/hr/legacyHrBranchPolicy';
 import type { DayOffPolicy, EmploymentType } from '@/lib/hr/employee-hr-model';
 import { normalizeEmploymentType, normalizePayrollMethod, normalizeDayOffPolicy } from '@/lib/hr/employee-hr-model';
 import {
@@ -385,9 +386,7 @@ const DAY_OFF_LABELS: Record<string, string> = {
 };
 
 export function shortAttendanceBranchLabel(branch: Pick<AttendanceBranchRef, 'branchCode' | 'branchName'>): string {
-  if (branch.branchCode === 'GLEEM') return 'جليم';
-  if (branch.branchCode === 'CAMP_CAESAR') return 'كامب شيزار';
-  return branch.branchName || branch.branchCode;
+  return hrBranchLabel(branch);
 }
 
 export function resolveAttendanceTransferContext(input: {

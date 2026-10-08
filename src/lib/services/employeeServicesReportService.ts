@@ -117,6 +117,7 @@ export async function getEmployeeServicesRevenueByEmployee(
         ON h.invID = d.invID
         AND h.invType = d.invType
       LEFT JOIN dbo.TblEmp e ON e.EmpID = d.EmpID
+        AND e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @branchId)
       WHERE ${BASE_WHERE}
       GROUP BY d.EmpID, e.EmpName
       ORDER BY totalRevenue DESC
@@ -186,6 +187,7 @@ export async function getEmployeeActualInvoiceRevenueByEmployee(
       INNER JOIN dbo.TblinvServHead h
         ON h.invID = d.invID AND h.invType = d.invType
       LEFT JOIN dbo.TblEmp e ON e.EmpID = d.EmpID
+        AND e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @branchId)
       WHERE ${BASE_WHERE}
     `);
 
@@ -239,11 +241,12 @@ export async function getEmployeeActualInvoiceRevenueByEmployee(
   }));
 }
 
-export async function getEmployeeJobById(): Promise<Map<number, string>> {
+export async function getEmployeeJobById(branchId: number): Promise<Map<number, string>> {
   const db = await getPool();
-  const result = await db.request().query(`
+  const result = await db.request().input('branchId', sql.Int, branchId).query(`
     SELECT EmpID, ISNULL(Job, N'') AS Job
     FROM dbo.TblEmp
+    WHERE TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @branchId)
   `);
 
   const map = new Map<number, string>();
@@ -253,11 +256,12 @@ export async function getEmployeeJobById(): Promise<Map<number, string>> {
   return map;
 }
 
-export async function getEmployeeNamesById(): Promise<Map<number, string>> {
+export async function getEmployeeNamesById(branchId: number): Promise<Map<number, string>> {
   const db = await getPool();
-  const result = await db.request().query(`
+  const result = await db.request().input('branchId', sql.Int, branchId).query(`
     SELECT EmpID, ISNULL(EmpName, N'غير محدد') AS EmpName
     FROM dbo.TblEmp
+    WHERE TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @branchId)
   `);
 
   const map = new Map<number, string>();

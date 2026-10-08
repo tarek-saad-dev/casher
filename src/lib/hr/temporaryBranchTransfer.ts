@@ -3,6 +3,7 @@
  */
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
+import { requireHrTenantId } from '@/lib/hr/hrTenantScope';
 import { getBranchById } from '@/lib/branch/repository';
 import { ensureEmpBranchWorkScheduleTable } from '@/lib/hr/empBranchWorkSchedule';
 import { SchedulePolicyError } from '@/lib/hr/employeeBranchScheduleSave';
@@ -130,12 +131,13 @@ async function resolveDestinationHours(
   return { startTime: start, endTime: end, overnight: isOvernight(start, end) };
 }
 
-async function loadEmployeeEmploymentType(empId: number): Promise<string | null> {
+async function loadEmployeeEmploymentType(empId: number, branchId: number): Promise<string | null> {
   const db = await getPool();
   const r = await db
     .request()
     .input('empId', sql.Int, empId)
-    .query(`SELECT EmploymentType FROM dbo.TblEmp WHERE EmpID = @empId`);
+    .input('hrBranchId', sql.Int, branchId)
+    .query(`SELECT EmploymentType FROM dbo.TblEmp WHERE EmpID = @empId AND TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @hrBranchId)`);
   const raw = r.recordset[0]?.EmploymentType;
   return raw == null ? null : String(raw);
 }
@@ -153,11 +155,12 @@ async function resolveFreelanceOperationalSource(args: {
   const emp = await db
     .request()
     .input('empId', sql.Int, args.empId)
+    .input('hrBranchId', sql.Int, args.toBranchId)
     .query(`
       SELECT
         CONVERT(varchar(5), DefaultCheckInTime, 108) AS DefIn,
         CONVERT(varchar(5), DefaultCheckOutTime, 108) AS DefOut
-      FROM dbo.TblEmp WHERE EmpID = @empId
+      FROM dbo.TblEmp WHERE EmpID = @empId AND TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @hrBranchId)
     `);
   const defIn = emp.recordset[0]?.DefIn ? String(emp.recordset[0].DefIn).slice(0, 5) : null;
   const defOut = emp.recordset[0]?.DefOut ? String(emp.recordset[0].DefOut).slice(0, 5) : null;
@@ -396,7 +399,7 @@ export async function previewTemporaryBranchTransfer(args: {
     publicOnly: false,
   });
 
-  const employmentType = normalizeEmploymentType(await loadEmployeeEmploymentType(args.empId));
+  const employmentType = normalizeEmploymentType(await loadEmployeeEmploymentType(args.empId, args.toBranchId));
   const isFreelance = employmentType === 'freelance';
   const plannedDay = isFutureWorkDate(args.workDate);
 
@@ -1045,6 +1048,7 @@ export type TemporaryTransferListRow = {
 export async function listTemporaryBranchTransfers(args: {
   fromDate: string;
   toDate: string;
+  tenantId: string;
   empId?: number | null;
   activeOnly?: boolean;
 }): Promise<TemporaryTransferListRow[]> {
@@ -1053,7 +1057,8 @@ export async function listTemporaryBranchTransfers(args: {
   const req = db
     .request()
     .input('from', sql.Date, args.fromDate)
-    .input('to', sql.Date, args.toDate);
+    .input('to', sql.Date, args.toDate)
+    .input('tenantId', sql.UniqueIdentifier, requireHrTenantId(args.tenantId, 'listTemporaryBranchTransfers'));
   if (args.empId != null) req.input('empId', sql.Int, args.empId);
 
   const result = await req.query(`
@@ -1074,7 +1079,7 @@ export async function listTemporaryBranchTransfers(args: {
       t.IsActive,
       CONVERT(varchar(33), t.CreatedAt, 126) AS CreatedAt
     FROM dbo.TblEmpTemporaryBranchTransfer t
-    INNER JOIN dbo.TblEmp e ON e.EmpID = t.EmpID
+    INNER JOIN dbo.TblEmp e ON e.EmpID = t.EmpID AND e.TenantId = @tenantId
     LEFT JOIN dbo.TblBranch fb ON fb.BranchID = t.FromBranchID
     LEFT JOIN dbo.TblBranch tb ON tb.BranchID = t.ToBranchID
     WHERE t.WorkDate >= @from AND t.WorkDate <= @to

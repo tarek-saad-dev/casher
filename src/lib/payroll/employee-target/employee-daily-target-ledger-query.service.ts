@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
+import { requireHrTenantId } from '@/lib/hr/hrTenantScope';
 import { assertEmpBranchWorkDayMutable } from '@/lib/hr/empBranchWorkDayClose.service';
 import {
   EMP_LEDGER_DIRECTION_CREDIT,
@@ -445,6 +446,7 @@ export interface DailyTargetLedgerDetails {
 
 export async function getDailyTargetLedgerDetails(
   dailyTargetId: number,
+  tenantId: string,
 ): Promise<DailyTargetLedgerDetails | null> {
   const daily = await getDailyTargetById(dailyTargetId);
   if (!daily) return null;
@@ -453,8 +455,11 @@ export async function getDailyTargetLedgerDetails(
   const empRes = await db
     .request()
     .input('empId', sql.Int, daily.empId)
-    .query(`SELECT EmpName FROM dbo.TblEmp WHERE EmpID = @empId`);
-  const empName = String((empRes.recordset[0] as { EmpName?: string } | undefined)?.EmpName ?? '');
+    .input('tenantId', sql.UniqueIdentifier, requireHrTenantId(tenantId, 'getDailyTargetLedgerDetails'))
+    .query(`SELECT EmpName FROM dbo.TblEmp WHERE EmpID = @empId AND TenantId = @tenantId`);
+  const empRow = empRes.recordset[0] as { EmpName?: string } | undefined;
+  if (!empRow) return null;
+  const empName = String(empRow.EmpName ?? '');
 
   const planMeta = await getTargetPlanMeta(daily.targetPlanId);
   const tiers = await listTiersSnapshotForPlan(daily.targetPlanId);

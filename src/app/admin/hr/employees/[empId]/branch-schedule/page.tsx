@@ -41,13 +41,20 @@ type EmployeeInfo = {
   defaultCheckOutTime: string | null;
 };
 
-const BRANCH_BADGE: Record<string, string> = {
-  GLEEM: 'bg-amber-500/15 text-amber-200 border-amber-500/40',
-  CAMP_CAESAR: 'bg-sky-500/15 text-sky-200 border-sky-500/40',
-};
+/** Badge colours by the branch's index in the tenant branch list. */
+const BRANCH_BADGES = [
+  'bg-amber-500/15 text-amber-200 border-amber-500/40',
+  'bg-sky-500/15 text-sky-200 border-sky-500/40',
+  'bg-emerald-500/15 text-emerald-200 border-emerald-500/40',
+  'bg-violet-500/15 text-violet-200 border-violet-500/40',
+  'bg-rose-500/15 text-rose-200 border-rose-500/40',
+];
 
-function branchBadgeClass(code: string) {
-  return BRANCH_BADGE[code] ?? 'bg-muted text-muted-foreground border-border';
+function branchBadgeClass(code: string, branches: readonly BranchOpt[]) {
+  const idx = branches.findIndex((b) => b.branchCode === code);
+  return idx < 0
+    ? 'bg-muted text-muted-foreground border-border'
+    : BRANCH_BADGES[idx % BRANCH_BADGES.length];
 }
 
 export default function EmployeeBranchSchedulePage() {
@@ -356,7 +363,7 @@ export default function EmployeeBranchSchedulePage() {
               key={s.dayOfWeek}
               className={cn(
                 'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs',
-                s.code ? branchBadgeClass(s.code) : 'border-border text-muted-foreground',
+                s.code ? branchBadgeClass(s.code, branches) : 'border-border text-muted-foreground',
               )}
             >
               <span className="opacity-80">{s.dayNameAr}:</span>

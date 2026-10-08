@@ -167,6 +167,7 @@ export async function getEmployeeMonthlyQuickReview(params: {
       tgt.CalculationBreakdownJson
     FROM DayKeys k
     INNER JOIN dbo.TblEmp e ON e.EmpID = k.EmpID
+      AND e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId IN (${inList}))
     LEFT JOIN DayAtt att ON att.EmpID = k.EmpID AND att.WorkDate = k.WorkDate AND att.rn = 1
     LEFT JOIN DayPay pay ON pay.EmpID = k.EmpID AND pay.WorkDate = k.WorkDate AND pay.rn = 1
     LEFT JOIN DayTgt tgt ON tgt.EmpID = k.EmpID AND tgt.WorkDate = k.WorkDate AND tgt.rn = 1

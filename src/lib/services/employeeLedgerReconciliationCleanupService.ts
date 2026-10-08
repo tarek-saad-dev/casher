@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
+import { requireHrTenantId } from '@/lib/hr/hrTenantScope';
 import {
   EMP_LEDGER_REASON_ADVANCE,
   EMP_LEDGER_REF_TYPE_CASH_MOVE,
@@ -53,12 +54,13 @@ export function extractCategoryNameHints(categoryName: string | null): string[] 
 export async function suggestEmployeesByCategoryName(
   pool: { request: () => sql.Request },
   categoryName: string | null,
+  tenantId: string,
   limit = 5,
 ): Promise<Array<{ empId: number; empName: string; matchScore: number }>> {
   const hints = extractCategoryNameHints(categoryName);
   if (hints.length === 0) return [];
 
-  const req = pool.request();
+  const req = pool.request().input('tenantId', sql.UniqueIdentifier, requireHrTenantId(tenantId, 'suggestEmployeesByCategoryName'));
   const likeClauses: string[] = [];
   hints.forEach((hint, idx) => {
     const param = `hint${idx}`;
@@ -71,7 +73,8 @@ export async function suggestEmployeesByCategoryName(
       e.EmpID AS empId,
       e.EmpName AS empName
     FROM dbo.TblEmp e
-    WHERE e.isActive = 1
+    WHERE e.TenantId = @tenantId
+      AND e.isActive = 1
       AND (${likeClauses.join(' OR ')})
     ORDER BY e.EmpName
   `);
@@ -86,6 +89,7 @@ export async function suggestEmployeesByCategoryName(
 export async function upsertAdvanceCategoryMapping(
   expInId: number,
   empId: number,
+  tenantId: string,
 ): Promise<AdvanceMappingUpsertResult> {
   if (!expInId || expInId <= 0) {
     throw new EmployeeLedgerCleanupError('ExpINID غير صالح');
@@ -113,10 +117,11 @@ export async function upsertAdvanceCategoryMapping(
 
     const empCheck = await new sql.Request(transaction)
       .input('empId', sql.Int, empId)
+      .input('tenantId', sql.UniqueIdentifier, requireHrTenantId(tenantId, 'upsertAdvanceCategoryMapping'))
       .query(`
         SELECT EmpID, EmpName
         FROM dbo.TblEmp
-        WHERE EmpID = @empId
+        WHERE EmpID = @empId AND TenantId = @tenantId
       `);
     if (empCheck.recordset.length === 0) {
       throw new EmployeeLedgerCleanupError('الموظف غير موجود');
@@ -208,6 +213,7 @@ export async function upsertAdvanceCategoryMapping(
 export async function voidReconciliationLedgerEntry(
   ledgerEntryId: number,
   reason: string,
+  tenantId: string,
 ): Promise<VoidLedgerEntryResult> {
   const trimmedReason = reason.trim();
   if (!ledgerEntryId || ledgerEntryId <= 0) {
@@ -220,15 +226,17 @@ export async function voidReconciliationLedgerEntry(
   const db = await getPool();
   const entryResult = await db.request()
     .input('ledgerEntryId', sql.Int, ledgerEntryId)
+    .input('tenantId', sql.UniqueIdentifier, requireHrTenantId(tenantId, 'voidReconciliationLedgerEntry'))
     .query(`
       SELECT
-        ID,
-        EntryReason,
-        RefType,
-        CashMoveID,
-        IsVoided
-      FROM dbo.TblEmpLedgerEntry
-      WHERE ID = @ledgerEntryId
+        l.ID,
+        l.EntryReason,
+        l.RefType,
+        l.CashMoveID,
+        l.IsVoided
+      FROM dbo.TblEmpLedgerEntry l
+      INNER JOIN dbo.TblEmp e ON e.EmpID = l.EmpID AND e.TenantId = @tenantId
+      WHERE l.ID = @ledgerEntryId
     `);
 
   if (entryResult.recordset.length === 0) {

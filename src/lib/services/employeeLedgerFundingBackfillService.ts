@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
+import { requireHrTenantId } from '@/lib/hr/hrTenantScope';
 import { getMonthDateRange, roundMoney } from '@/lib/reportMonthUtils';
 import { validateLedgerMonth } from '@/lib/services/employeeLedgerService';
 import {
@@ -76,12 +77,14 @@ async function loadCandidates(
   pool: Awaited<ReturnType<typeof getPool>>,
   month: string,
   empId: number | null,
+  tid: string,
 ): Promise<CandidateRow[]> {
   const { startDate, endDate } = monthBounds(month);
   const req = pool.request()
     .input('startDate', sql.Date, startDate)
     .input('endDate', sql.Date, endDate)
-    .input('empId', sql.Int, empId);
+    .input('empId', sql.Int, empId)
+    .input('tenantId', sql.UniqueIdentifier, tid);
 
   const result = await req.query(`
     SELECT
@@ -104,7 +107,7 @@ async function loadCandidates(
         AND m.IsActive = 1
       ORDER BY m.ID DESC
     ) map
-    LEFT JOIN dbo.TblEmp e ON e.EmpID = map.EmpID
+    LEFT JOIN dbo.TblEmp e ON e.EmpID = map.EmpID AND e.TenantId = @tenantId
     OUTER APPLY (
       SELECT TOP 1 l.ID, l.Amount
       FROM dbo.TblEmpLedgerEntry l
@@ -119,6 +122,7 @@ async function loadCandidates(
       AND cm.invDate <= @endDate
       AND ISNULL(cm.IsEmployeePayrollIncome, 0) = 0
       AND (@empId IS NULL OR map.EmpID = @empId)
+      AND cm.BranchID IN (SELECT tloc.LegacyBranchId FROM dbo.Location tloc WHERE tloc.TenantId = @tenantId)
     ORDER BY cm.invDate, cm.ID
   `);
 
@@ -138,8 +142,10 @@ async function loadCandidates(
 
 export async function buildEmployeeFundingReconciliation(
   month: string,
-  empId?: number | null,
+  empId: number | null | undefined,
+  tenantId: string,
 ): Promise<FundingReconciliationEmployeeRow[]> {
+  const tid = requireHrTenantId(tenantId, 'buildEmployeeFundingReconciliation');
   const monthError = validateLedgerMonth(month);
   if (monthError) throw new EmployeeLedgerDualWriteError(monthError);
 
@@ -148,7 +154,8 @@ export async function buildEmployeeFundingReconciliation(
   const req = db.request()
     .input('startDate', sql.Date, startDate)
     .input('endDate', sql.Date, endDate)
-    .input('empId', sql.Int, empId ?? null);
+    .input('empId', sql.Int, empId ?? null)
+    .input('tenantId', sql.UniqueIdentifier, tid);
 
   const linked = await req.query(`
     SELECT
@@ -162,11 +169,12 @@ export async function buildEmployeeFundingReconciliation(
       WHERE m.ExpINID = cm.ExpINID AND m.TxnKind = N'revenue' AND m.IsActive = 1
       ORDER BY m.ID DESC
     ) map
-    LEFT JOIN dbo.TblEmp e ON e.EmpID = map.EmpID
+    LEFT JOIN dbo.TblEmp e ON e.EmpID = map.EmpID AND e.TenantId = @tenantId
     WHERE cm.invType = N'ايرادات' AND cm.inOut = N'in'
       AND cm.invDate >= @startDate AND cm.invDate <= @endDate
       AND ISNULL(cm.IsEmployeePayrollIncome, 0) = 0
       AND (@empId IS NULL OR map.EmpID = @empId)
+      AND cm.BranchID IN (SELECT tloc.LegacyBranchId FROM dbo.Location tloc WHERE tloc.TenantId = @tenantId)
     GROUP BY map.EmpID, e.EmpName
   `);
 
@@ -174,6 +182,7 @@ export async function buildEmployeeFundingReconciliation(
     .input('startDate', sql.Date, startDate)
     .input('endDate', sql.Date, endDate)
     .input('empId', sql.Int, empId ?? null)
+    .input('tenantId', sql.UniqueIdentifier, tid)
     .query(`
       SELECT
         l.EmpID AS empId,
@@ -187,12 +196,13 @@ export async function buildEmployeeFundingReconciliation(
         WHERE m.ExpINID = cm.ExpINID AND m.TxnKind = N'revenue' AND m.IsActive = 1
         ORDER BY m.ID DESC
       ) map
-      LEFT JOIN dbo.TblEmp e ON e.EmpID = l.EmpID
+      LEFT JOIN dbo.TblEmp e ON e.EmpID = l.EmpID AND e.TenantId = @tenantId
       WHERE l.EntryReason = N'employee_funding'
         AND l.IsVoided = 0
         AND l.EntryDate >= @startDate AND l.EntryDate <= @endDate
         AND ISNULL(cm.IsEmployeePayrollIncome, 0) = 0
         AND (@empId IS NULL OR l.EmpID = @empId)
+        AND l.BranchID IN (SELECT tloc.LegacyBranchId FROM dbo.Location tloc WHERE tloc.TenantId = @tenantId)
       GROUP BY l.EmpID, e.EmpName
     `);
 
@@ -200,6 +210,7 @@ export async function buildEmployeeFundingReconciliation(
     .input('startDate', sql.Date, startDate)
     .input('endDate', sql.Date, endDate)
     .input('empId', sql.Int, empId ?? null)
+    .input('tenantId', sql.UniqueIdentifier, tid)
     .query(`
       SELECT map.EmpID AS empId, cm.ID AS cashMoveId
       FROM dbo.TblCashMove cm
@@ -213,6 +224,7 @@ export async function buildEmployeeFundingReconciliation(
         AND cm.invDate >= @startDate AND cm.invDate <= @endDate
         AND ISNULL(cm.IsEmployeePayrollIncome, 0) = 0
         AND (@empId IS NULL OR map.EmpID = @empId)
+        AND cm.BranchID IN (SELECT tloc.LegacyBranchId FROM dbo.Location tloc WHERE tloc.TenantId = @tenantId)
         AND NOT EXISTS (
           SELECT 1 FROM dbo.TblEmpLedgerEntry l
           WHERE l.CashMoveID = cm.ID
@@ -225,6 +237,7 @@ export async function buildEmployeeFundingReconciliation(
     .input('startDate', sql.Date, startDate)
     .input('endDate', sql.Date, endDate)
     .input('empId', sql.Int, empId ?? null)
+    .input('tenantId', sql.UniqueIdentifier, tid)
     .query(`
       SELECT l.EmpID AS empId, l.ID AS ledgerId
       FROM dbo.TblEmpLedgerEntry l
@@ -232,6 +245,7 @@ export async function buildEmployeeFundingReconciliation(
         AND l.IsVoided = 0
         AND l.EntryDate >= @startDate AND l.EntryDate <= @endDate
         AND (@empId IS NULL OR l.EmpID = @empId)
+        AND l.BranchID IN (SELECT tloc.LegacyBranchId FROM dbo.Location tloc WHERE tloc.TenantId = @tenantId)
         AND l.CashMoveID IS NOT NULL
         AND EXISTS (
           SELECT 1
@@ -300,6 +314,7 @@ export async function buildEmployeeFundingReconciliation(
  * Never modifies TblCashMove. Skips IsEmployeePayrollIncome=1.
  */
 export async function runEmployeeFundingBackfill(params: {
+  tenantId: string;
   month: string;
   empId?: number | null;
   dryRun?: boolean;
@@ -312,7 +327,8 @@ export async function runEmployeeFundingBackfill(params: {
   const dryRun = params.dryRun !== false;
   const empId = params.empId != null && params.empId > 0 ? params.empId : null;
   const db = await getPool();
-  const candidates = await loadCandidates(db, month, empId);
+  const tid = requireHrTenantId(params.tenantId, 'runEmployeeFundingBackfill');
+  const candidates = await loadCandidates(db, month, empId, tid);
 
   const counts: FundingBackfillCounts = {
     inserted: 0,
@@ -401,7 +417,7 @@ export async function runEmployeeFundingBackfill(params: {
     }
   }
 
-  const reconciliation = await buildEmployeeFundingReconciliation(month, empId);
+  const reconciliation = await buildEmployeeFundingReconciliation(month, empId, tid);
 
   return {
     success: counts.errors === 0,

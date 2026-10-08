@@ -13,7 +13,7 @@ export async function GET() {
     const auth = await requirePageAccess(PAGE);
     if (!isAuthResult(auth)) return auth;
 
-    const data = await resolveOwnerReportRecipients();
+    const data = await resolveOwnerReportRecipients(auth.tenantId);
     return NextResponse.json(data);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

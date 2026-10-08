@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
       year: validated.year,
       month: validated.month,
       branchId: branch.branchId,
+      tenantId: auth.tenantId,
     });
 
     if (!report) {

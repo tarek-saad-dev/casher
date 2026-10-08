@@ -8,31 +8,35 @@ import {
   sumEmployeeServiceBreakdown,
   type EmployeeServiceBreakdown,
 } from '@/lib/services/employeeServiceBreakdown';
+import {
+  CASHER_BOOT_SERVICE_CATALOG as CUT,
+  EMPTY_SERVICE_CATALOG,
+} from '@/lib/services/tenantServiceCatalogConfig';
 
 describe('classifyService', () => {
   it('classifies hair-only service by ProID', () => {
-    expect(classifyService({ proId: 1, serviceName: 'Hair Cut' })).toBe('hair');
-    expect(classifyService({ proId: 4, serviceName: 'Fade Cut' })).toBe('hair');
-    expect(classifyService({ proId: 5, serviceName: 'Advanced Cut' })).toBe('hair');
+    expect(classifyService({ proId: 1, serviceName: 'Hair Cut' }, CUT)).toBe('hair');
+    expect(classifyService({ proId: 4, serviceName: 'Fade Cut' }, CUT)).toBe('hair');
+    expect(classifyService({ proId: 5, serviceName: 'Advanced Cut' }, CUT)).toBe('hair');
   });
 
   it('classifies hair-and-beard service by ProID', () => {
-    expect(classifyService({ proId: 3, serviceName: 'Haircut & Beard' })).toBe('hair_beard');
+    expect(classifyService({ proId: 3, serviceName: 'Haircut & Beard' }, CUT)).toBe('hair_beard');
   });
 
   it('classifies beard-only service by ProID', () => {
-    expect(classifyService({ proId: 2, serviceName: 'Beard Styling & Fade' })).toBe('beard');
+    expect(classifyService({ proId: 2, serviceName: 'Beard Styling & Fade' }, CUT)).toBe('beard');
   });
 
   it('classifies unrelated services as other', () => {
-    expect(classifyService({ proId: 99, serviceName: 'Basic Skin Care' })).toBe('other');
+    expect(classifyService({ proId: 99, serviceName: 'Basic Skin Care' }, CUT)).toBe('other');
   });
 
   it('falls back to normalized service names when ProID is unknown', () => {
-    expect(classifyService({ proId: 999, serviceName: 'Hair Cut' })).toBe('hair');
-    expect(classifyService({ proId: 999, serviceName: 'Haircut & Beard' })).toBe('hair_beard');
-    expect(classifyService({ proId: 999, serviceNameAr: 'حلاقة شعر' })).toBe('hair');
-    expect(classifyService({ proId: 999, serviceNameAr: 'شعر ودقن' })).toBe('hair_beard');
+    expect(classifyService({ proId: 999, serviceName: 'Hair Cut' }, CUT)).toBe('hair');
+    expect(classifyService({ proId: 999, serviceName: 'Haircut & Beard' }, CUT)).toBe('hair_beard');
+    expect(classifyService({ proId: 999, serviceNameAr: 'حلاقة شعر' }, CUT)).toBe('hair');
+    expect(classifyService({ proId: 999, serviceNameAr: 'شعر ودقن' }, CUT)).toBe('hair_beard');
   });
 });
 
@@ -84,7 +88,7 @@ describe('aggregateEmployeeServiceBreakdown', () => {
         discountValue: 20,
         sValue: 100,
       },
-    ]);
+    ], CUT);
 
     expect(rows).toHaveLength(1);
     expect(rows[0].hairRevenue).toBe(80);
@@ -110,7 +114,7 @@ describe('aggregateEmployeeServiceBreakdown', () => {
         serviceName: 'Haircut & Beard',
         lineTotal: 150,
       },
-    ]);
+    ], CUT);
 
     expect(rows).toHaveLength(2);
     expect(rows.find(r => r.employeeId === 1)?.totalRevenue).toBe(100);
@@ -127,7 +131,7 @@ describe('aggregateEmployeeServiceBreakdown', () => {
         serviceName: 'Hair Cut',
         lineTotal: 3000,
       },
-    ]);
+    ], CUT);
 
     expect(rows[0].hairRevenue).toBe(3000);
     expect(rows[0].barberRevenue).toBe(3000);
@@ -142,7 +146,7 @@ describe('aggregateEmployeeServiceBreakdown', () => {
       { empId: 1, empName: 'بشار', proId: 2, serviceName: 'Beard Styling & Fade', lineTotal: 1200 },
     ];
 
-    const rows = aggregateEmployeeServiceBreakdown(lines);
+    const rows = aggregateEmployeeServiceBreakdown(lines, CUT);
     const row = rows[0];
 
     expect(row.barberRevenue).toBe(8700);
@@ -156,7 +160,7 @@ describe('aggregateEmployeeServiceBreakdown', () => {
       { empId: 1, empName: 'Test', proId: 1, serviceName: 'Hair Cut', lineTotal: 50 },
       { empId: 1, empName: 'Test', proId: 3, serviceName: 'Haircut & Beard', lineTotal: 80 },
       { empId: 1, empName: 'Test', proId: 9, serviceName: 'Basic Skin Care', lineTotal: 60 },
-    ]);
+    ], CUT);
 
     expect(classified.map(l => l.serviceCategory)).toEqual(['hair', 'hair_beard', 'other']);
   });
@@ -169,5 +173,24 @@ describe('aggregateEmployeeServiceBreakdown', () => {
     } as EmployeeServiceBreakdown);
 
     expect(amount).toBe(8700);
+  });
+});
+
+describe('per-tenant service catalog (DRVO-016)', () => {
+  it('CUT ProIDs do not classify another tenant\'s services', () => {
+    expect(classifyService({ proId: 1, serviceName: 'Scalp Massage' }, CUT)).toBe('hair');
+    expect(classifyService({ proId: 1, serviceName: 'Scalp Massage' }, EMPTY_SERVICE_CATALOG)).toBe('other');
+  });
+
+  it('name fallback still works without configured IDs', () => {
+    expect(classifyService({ proId: 1, serviceName: 'Hair Cut' }, EMPTY_SERVICE_CATALOG)).toBe('hair');
+  });
+
+  it('pre-classified lines are not reclassified', () => {
+    const [line] = classifyServiceLines(
+      [{ empId: 1, empName: 'A', proId: 1, serviceName: 'x', lineTotal: 10, serviceCategory: 'other' }],
+      CUT,
+    );
+    expect(line!.serviceCategory).toBe('other');
   });
 });

@@ -8,7 +8,7 @@ import {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-// GET /api/payroll/daily?workDate=YYYY-MM-DD&employeeScope=all|GLEEM|CAMP_CAESAR
+// GET /api/payroll/daily?workDate=YYYY-MM-DD&employeeScope=all|<tenant branch code>
 // employeeScope is read-only visibility — does not switch session branch.
 // Omitted employeeScope → active session branch only (legacy).
 export async function GET(req: NextRequest) {
@@ -37,7 +37,9 @@ export async function GET(req: NextRequest) {
     }
 
     const db = await getPool();
-    const reqDb = db.request().input('WorkDate', sql.Date, workDate);
+    const reqDb = db.request()
+      .input('WorkDate', sql.Date, workDate)
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId);
     const idParams: string[] = [];
     branchIds.forEach((id, i) => {
       const name = `branchId${i}`;
@@ -81,6 +83,7 @@ export async function GET(req: NextRequest) {
         FROM dbo.TblEmpDailyPayroll p
         INNER JOIN dbo.TblEmp e
           ON e.EmpID = p.EmpID
+         AND e.TenantId = @tenantId
         INNER JOIN dbo.TblBranch b
           ON b.BranchID = p.BranchID
         LEFT JOIN dbo.TblEmpAttendance a
@@ -172,6 +175,7 @@ export async function GET(req: NextRequest) {
       success: true,
       workDate,
       employeeScope: viewScope.employeeScope,
+      scopeOptions: viewScope.scopeOptions,
       branchIds: viewScope.branchIds,
       branches: viewScope.branches,
       /** @deprecated single-branch callers — first view branch */
